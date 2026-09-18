@@ -70,22 +70,22 @@ func (c *Client) GuestExec(
 	)
 	body, err := json.Marshal(guestExecRequest{Command: command})
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("pve guest exec: marshal request body: %w", err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("pve guest exec: build request: %w", err)
 	}
 	req.Header.Set("Authorization", c.authHeader())
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("pve guest exec: do request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("pve guest exec: read response body: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return 0, fmt.Errorf("pve guest exec: HTTP %d: %s", resp.StatusCode, raw)
@@ -134,21 +134,36 @@ func (c *Client) GuestExecStatus(
 	)
 	for {
 		if err := ctx.Err(); err != nil {
-			return 0, "", "", err
+			slog.WarnContext(ctx, "pve exec-status: wait for guest exec to exit ended",
+				"node", node, "vmid", vmid, "pid", pid, "err", err)
+			return 0, "", "", fmt.Errorf(
+				"pve exec-status: wait for guest exec pid %d to exit: %w",
+				pid,
+				err,
+			)
 		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 		if err != nil {
-			return 0, "", "", err
+			slog.WarnContext(ctx, "pve exec-status: build request failed",
+				"node", node, "vmid", vmid, "pid", pid, "err", err)
+			return 0, "", "", fmt.Errorf("pve exec-status: build request: %w", err)
 		}
 		req.Header.Set("Authorization", c.authHeader())
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			return 0, "", "", err
+			slog.WarnContext(ctx, "pve exec-status: request failed",
+				"node", node, "vmid", vmid, "pid", pid, "err", err)
+			return 0, "", "", fmt.Errorf("pve exec-status: do request: %w", err)
 		}
 		raw, rerr := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		if rerr != nil {
-			return 0, "", "", rerr
+			slog.WarnContext(ctx, "pve exec-status: read response body failed",
+				"node", node, "vmid", vmid, "pid", pid, "err", rerr)
+			return 0, "", "", fmt.Errorf(
+				"pve exec-status: read response body: %w",
+				rerr,
+			)
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			return 0, "", "", fmt.Errorf(
@@ -159,7 +174,12 @@ func (c *Client) GuestExecStatus(
 		}
 		var st execStatusResponse
 		if err := json.Unmarshal(raw, &st); err != nil {
-			return 0, "", "", err
+			slog.WarnContext(ctx, "pve exec-status: unmarshal response failed",
+				"node", node, "vmid", vmid, "pid", pid, "err", err)
+			return 0, "", "", fmt.Errorf(
+				"pve exec-status: unmarshal response: %w",
+				err,
+			)
 		}
 		if st.Data.Exited == 1 {
 			out, oerr := decodeAgentB64(st.Data.OutData)
@@ -174,7 +194,13 @@ func (c *Client) GuestExecStatus(
 		}
 		select {
 		case <-ctx.Done():
-			return 0, "", "", ctx.Err()
+			slog.WarnContext(ctx, "pve exec-status: wait between polls ended",
+				"node", node, "vmid", vmid, "pid", pid, "err", ctx.Err())
+			return 0, "", "", fmt.Errorf(
+				"pve exec-status: wait between polls for guest exec pid %d: %w",
+				pid,
+				ctx.Err(),
+			)
 		case <-time.After(300 * time.Millisecond):
 		}
 	}
