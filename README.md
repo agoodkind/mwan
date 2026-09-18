@@ -8,13 +8,33 @@ over the management datastore.
 
 | Path | What it holds |
 |---|---|
-| `cmd/mwan` | The binary: every subcommand, and the systemd units it installs |
+| `cmd/mwan` | The binary: every subcommand, and the four systemd units it embeds |
 | `internal` | The daemon: interface management modules, BGP, health, the agent, the wanconfig publisher |
+| `internal/yangpub/schema` | The eight YANG modules the binary embeds |
 | `pkg/pveapi` | The Proxmox API client |
 | `proto`, `gen` | The `mwan.v1` wire contract and its generated code |
-| `yang` | The gateway's own steering model and the instance documents the gates validate |
-| `third_party/yang` | The pinned IETF and IANA modules the steering model imports |
+| `yang/instances` | The network documents the instance gate validates |
 | `tools` | The wanconfig stack packaging tool and its builder image |
+
+## Installing what the binary owns
+
+The units and the schema are inside the binary, so a host runs the files the
+release it pins was built from rather than whatever a deploying checkout held.
+`mwan install` puts them on the host:
+
+```
+mwan install                             # says what it would do, touches nothing
+mwan install --role wan --apply          # write that role's units and enable them
+mwan install --print-schema /tmp/schema  # write the YANG modules for validation
+```
+
+A second `--apply` run reports no change and leaves every timestamp alone.
+`--root <dir>` writes under another directory and asks systemd for nothing,
+which is how to inspect a run without affecting the machine. The verb never
+restarts the daemon; that decision stays with whatever called it.
+
+Installing the schema into sysrepo is still the deploy's job. The binary
+carries the modules and writes them out; it does not touch the datastore.
 
 ## Building and testing
 
