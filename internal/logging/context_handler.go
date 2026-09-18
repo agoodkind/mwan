@@ -2,7 +2,6 @@ package logging
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
 	"goodkind.io/mwan/internal/tracing"
@@ -38,12 +37,13 @@ func (h *ContextHandler) Handle(ctx context.Context, record slog.Record) error {
 		cloned.AddAttrs(attrs...)
 		record = cloned
 	}
-	// The failure is not logged here: this is the log path, so emitting a
-	// record from inside it would re-enter this handler.
-	if err := h.next.Handle(ctx, record); err != nil {
-		return fmt.Errorf("context handler: %w", err)
-	}
-	return nil
+	// The error is returned unwrapped on purpose. Wrapping it satisfies
+	// wrapcheck but then trips the staticcheck-extra
+	// wrapped_error_without_slog analyzer, whose only escapes are logging
+	// before the return or a stdlib reader name. Neither is available: this
+	// is the log path, so emitting a record here re-enters this handler, and
+	// the name is fixed by [slog.Handler].
+	return h.next.Handle(ctx, record)
 }
 
 // WithAttrs returns a wrapped handler that adds the given attributes, so a
