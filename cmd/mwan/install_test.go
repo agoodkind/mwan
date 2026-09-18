@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	systemddbus "github.com/coreos/go-systemd/v22/dbus"
+
 	"goodkind.io/mwan/internal/yangpub"
 )
 
@@ -256,6 +258,132 @@ func TestHostRoleGetsNoFailoverRelaxation(t *testing.T) {
 	dropInDir := filepath.Join(root, systemdUnitDir, "mwan-ifmgr.service.d")
 	if _, err := os.Stat(dropInDir); !os.IsNotExist(err) {
 		t.Fatalf("the host role created %s (err %v), want it absent", dropInDir, err)
+	}
+}
+
+// symlinkManager stands in for the systemd manager, which a test host has no
+// bus for. It keeps a real symlink tree under a temp root and applies the two
+// rules this test depends on: disabling removes every install symlink
+// pointing at the unit, wherever it sits, and enabling creates one under the
+// target the unit's [Install] section currently names. Those are systemd's
+// rules, checked separately against a running systemd.
+type symlinkManager struct {
+	root string
+	// wantedBy is the target the unit file currently names, which is where
+	// enabling puts its symlink.
+	wantedBy string
+	calls    []string
+}
+
+func (m *symlinkManager) ReloadContext(_ context.Context) error {
+	m.calls = append(m.calls, "reload")
+	return nil
+}
+
+func (m *symlinkManager) DisableUnitFilesContext(
+	_ context.Context, files []string, _ bool,
+) ([]systemddbus.DisableUnitFileChange, error) {
+	m.calls = append(m.calls, "disable")
+	targets, err := os.ReadDir(m.root)
+	if err != nil {
+		return nil, err
+	}
+	for _, target := range targets {
+		if !strings.HasSuffix(target.Name(), ".wants") {
+			continue
+		}
+		for _, file := range files {
+			link := filepath.Join(m.root, target.Name(), file)
+			if _, statErr := os.Lstat(link); statErr != nil {
+				continue
+			}
+			if removeErr := os.Remove(link); removeErr != nil {
+				return nil, removeErr
+			}
+		}
+	}
+	return nil, nil
+}
+
+func (m *symlinkManager) EnableUnitFilesContext(
+	_ context.Context, files []string, _ bool, _ bool,
+) (bool, []systemddbus.EnableUnitFileChange, error) {
+	m.calls = append(m.calls, "enable")
+	dir := filepath.Join(m.root, m.wantedBy+".wants")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return false, nil, err
+	}
+	for _, file := range files {
+		link := filepath.Join(dir, file)
+		if _, err := os.Lstat(link); err == nil {
+			continue
+		}
+		if err := os.Symlink(filepath.Join(m.root, file), link); err != nil {
+			return false, nil, err
+		}
+	}
+	return false, nil, nil
+}
+
+// TestReenableRemovesASymlinkUnderTheOldTarget proves the enable path
+// converges a unit whose WantedBy moved. Enabling alone creates symlinks only
+// at the paths the current unit names, so the one under the old target would
+// survive and the unit would be wanted by both. A gateway hit exactly this
+// when mwan-ifmgr@.service moved from multi-user.target to sysinit.target.
+func TestReenableRemovesASymlinkUnderTheOldTarget(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	const unitName = "mwan-ifmgr.service"
+	if err := os.WriteFile(filepath.Join(root, unitName), []byte("[Unit]\n"), 0o644); err != nil {
+		t.Fatalf("write the unit: %v", err)
+	}
+	// The host as an earlier deploy left it: wanted by the target the unit
+	// used to name.
+	staleDir := filepath.Join(root, "multi-user.target.wants")
+	if err := os.MkdirAll(staleDir, 0o755); err != nil {
+		t.Fatalf("create the old target directory: %v", err)
+	}
+	stale := filepath.Join(staleDir, unitName)
+	if err := os.Symlink(filepath.Join(root, unitName), stale); err != nil {
+		t.Fatalf("create the stale symlink: %v", err)
+	}
+	manager := &symlinkManager{root: root, wantedBy: "sysinit.target", calls: nil}
+
+	if err := reenableUnits(t.Context(), manager, []string{unitName}); err != nil {
+		t.Fatalf("reenableUnits: %v", err)
+	}
+
+	if _, err := os.Lstat(stale); !os.IsNotExist(err) {
+		t.Errorf("the symlink under the old target survived (err %v)", err)
+	}
+	fresh := filepath.Join(root, "sysinit.target.wants", unitName)
+	if _, err := os.Lstat(fresh); err != nil {
+		t.Errorf("no symlink under the new target: %v", err)
+	}
+	if strings.Join(manager.calls, " ") != "reload disable enable" {
+		t.Errorf("call sequence = %v, want reload disable enable", manager.calls)
+	}
+}
+
+// TestReenableSucceedsOnAUnitThatWasNeverEnabled proves a first install is not
+// an error. Disabling a unit with no symlinks removes nothing and must not
+// fail the run.
+func TestReenableSucceedsOnAUnitThatWasNeverEnabled(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	const unitName = "mwan-agent.service"
+	if err := os.WriteFile(filepath.Join(root, unitName), []byte("[Unit]\n"), 0o644); err != nil {
+		t.Fatalf("write the unit: %v", err)
+	}
+	manager := &symlinkManager{root: root, wantedBy: "multi-user.target", calls: nil}
+
+	if err := reenableUnits(t.Context(), manager, []string{unitName}); err != nil {
+		t.Fatalf("reenableUnits on a unit that was never enabled: %v", err)
+	}
+
+	fresh := filepath.Join(root, "multi-user.target.wants", unitName)
+	if _, err := os.Lstat(fresh); err != nil {
+		t.Errorf("no symlink under the target: %v", err)
 	}
 }
 

@@ -224,23 +224,56 @@ func installUnits(
 	return outcome, nil
 }
 
-// realUnitEnabler reloads systemd and enables the units over the system bus.
-// EnableUnitFiles is idempotent in systemd itself: enabling an already
-// enabled unit changes nothing and reports no link.
+// realUnitEnabler reloads systemd, then removes each unit's existing install
+// symlinks and writes the ones its current [Install] section names. That pair
+// is what `systemctl reenable` does, and enabling alone is not enough: enable
+// only creates symlinks at the paths the current unit names, so a unit whose
+// WantedBy moved keeps the symlink under its old target and ends up wanted by
+// both. A gateway proved that on 2026-09-18, when mwan-ifmgr@.service moved
+// from multi-user.target to sysinit.target and the deployed host still
+// reported multi-user.target with a two month old symlink.
+//
+// Disabling changes no running state. It removes symlinks; it does not stop
+// the daemon, so the unit keeps running across this call and the deploy keeps
+// the restart decision.
 func realUnitEnabler(ctx context.Context, units []string) error {
-	named := strings.Join(units, " ")
 	conn, err := systemddbus.NewSystemConnectionContext(ctx)
 	if err != nil {
-		return installFailed("connect to systemd for", named, err)
+		return installFailed("connect to systemd for", strings.Join(units, " "), err)
 	}
 	defer conn.Close()
-	if err := conn.ReloadContext(ctx); err != nil {
+	return reenableUnits(ctx, conn, units)
+}
+
+// unitInstaller is the part of the systemd manager the enable path drives. It
+// is an interface so the call sequence can be exercised where no system bus
+// exists; *systemddbus.Conn is the only implementation that ships.
+type unitInstaller interface {
+	ReloadContext(ctx context.Context) error
+	DisableUnitFilesContext(
+		ctx context.Context, files []string, runtime bool,
+	) ([]systemddbus.DisableUnitFileChange, error)
+	EnableUnitFilesContext(
+		ctx context.Context, files []string, runtime bool, force bool,
+	) (bool, []systemddbus.EnableUnitFileChange, error)
+}
+
+// reenableUnits reloads the manager, clears each unit's install symlinks, and
+// writes the ones the unit currently names.
+func reenableUnits(ctx context.Context, manager unitInstaller, units []string) error {
+	named := strings.Join(units, " ")
+	if err := manager.ReloadContext(ctx); err != nil {
 		return installFailed("reload systemd before enabling", named, err)
 	}
+	// A unit that is not enabled has no symlinks to remove, which systemd
+	// reports as an empty change list rather than an error, so a first install
+	// runs through here unremarkably.
+	if _, err := manager.DisableUnitFilesContext(ctx, units, false); err != nil {
+		return installFailed("clear the install symlinks of", named, err)
+	}
 	// runtimeOnly=false writes the symlinks under /etc so they survive a
-	// reboot; force=true replaces a symlink that points somewhere else, which
-	// is what makes a re-run converge a host that was enabled by hand.
-	if _, _, err := conn.EnableUnitFilesContext(ctx, units, false, true); err != nil {
+	// reboot; force=true replaces one that points somewhere else.
+	if _, _, err := manager.EnableUnitFilesContext(ctx, units, false, true); err != nil {
 		return installFailed("enable", named, err)
 	}
 	return nil
