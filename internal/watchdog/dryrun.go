@@ -16,7 +16,12 @@ type dryRunOps struct {
 }
 
 func (d *dryRunOps) VMStatus(ctx context.Context, vmid string) (bool, error) {
-	return d.inner.VMStatus(ctx, vmid)
+	running, err := d.inner.VMStatus(ctx, vmid)
+	if err != nil {
+		d.log.WarnContext(ctx, "read vm status failed", "vmid", vmid, "err", err)
+		return running, fmt.Errorf("read vm status: %w", err)
+	}
+	return running, nil
 }
 
 func (d *dryRunOps) VMStop(ctx context.Context, vmid string) error {
@@ -35,7 +40,12 @@ func (d *dryRunOps) VMStart(ctx context.Context, vmid string) error {
 }
 
 func (d *dryRunOps) VMSnapshots(ctx context.Context, vmid string) ([]byte, error) {
-	return d.inner.VMSnapshots(ctx, vmid)
+	out, err := d.inner.VMSnapshots(ctx, vmid)
+	if err != nil {
+		d.log.WarnContext(ctx, "list snapshots failed", "vmid", vmid, "err", err)
+		return out, fmt.Errorf("list snapshots: %w", err)
+	}
+	return out, nil
 }
 
 func (d *dryRunOps) VMSnapshot(ctx context.Context, vmid, snapName string) error {
@@ -100,7 +110,14 @@ func (d *dryRunOps) VMHasRunningTask(
 func (d *dryRunOps) GuestExec(
 	ctx context.Context, vmid string, args ...string,
 ) (ops.GuestExecResult, error) {
-	return d.inner.GuestExec(ctx, vmid, args...)
+	// The error path returns the inner result unchanged, so it keeps the
+	// exit code the wrapped ops reported.
+	result, err := d.inner.GuestExec(ctx, vmid, args...)
+	if err != nil {
+		d.log.WarnContext(ctx, "guest exec failed", "vmid", vmid, "err", err)
+		return result, fmt.Errorf("guest exec: %w", err)
+	}
+	return result, nil
 }
 
 func (d *dryRunOps) Ping(ctx context.Context, bin, target string) bool {
@@ -110,7 +127,12 @@ func (d *dryRunOps) Ping(ctx context.Context, bin, target string) bool {
 func (d *dryRunOps) GetConfigState(
 	ctx context.Context, vmid string,
 ) (*mwanv1.GetConfigStateResponse, string, error) {
-	return d.inner.GetConfigState(ctx, vmid)
+	state, channel, err := d.inner.GetConfigState(ctx, vmid)
+	if err != nil {
+		d.log.WarnContext(ctx, "get config state failed", "vmid", vmid, "err", err)
+		return state, channel, fmt.Errorf("get config state: %w", err)
+	}
+	return state, channel, nil
 }
 
 func (d *dryRunOps) GetBGPStatus(

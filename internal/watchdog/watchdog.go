@@ -205,7 +205,9 @@ func (w *watchdog) findSnapshot(ctx context.Context) (string, error) {
 	log.InfoContext(ctx, "Listing snapshots for VM", "vmid", w.cfg.MwanVMID)
 	out, err := w.ops.VMSnapshots(ctx, w.cfg.MwanVMID)
 	if err != nil {
-		return "", err
+		log.WarnContext(ctx, "list snapshots failed",
+			"vmid", w.cfg.MwanVMID, "err", err)
+		return "", fmt.Errorf("list snapshots: %w", err)
 	}
 	snap := rollback.ExtractLatestSnapshot(out)
 	if snap == "" {
@@ -275,7 +277,7 @@ func (w *watchdog) pruneSnapshots(ctx context.Context) error {
 	log := w.tracedLogger(ctx)
 	out, err := w.ops.VMSnapshots(ctx, w.cfg.MwanVMID)
 	if err != nil {
-		return err
+		return fmt.Errorf("list snapshots before prune: %w", err)
 	}
 	s := string(out)
 	knownGoods := rollback.KnownGoodSnapRE.FindAllString(s, -1)
@@ -304,7 +306,7 @@ func (w *watchdog) pruneSnapshots(ctx context.Context) error {
 		}
 		out, err = w.ops.VMSnapshots(ctx, w.cfg.MwanVMID)
 		if err != nil {
-			return err
+			return fmt.Errorf("list snapshots after known-good rotation: %w", err)
 		}
 		s = string(out)
 		knownGoods = rollback.KnownGoodSnapRE.FindAllString(s, -1)
@@ -483,8 +485,10 @@ func (w *watchdog) rollback(ctx context.Context, deployTS int64, snap string) {
 		"deploy_ts=%d snapshot=%s ts=%d\n",
 		deployTS, snap, w.now().Unix(),
 	)
+	// The watchdog runs as root and is the only reader of the lock, so it
+	// needs no group or world access.
 	if err := os.WriteFile(
-		w.cfg.Watchdog.RollbackLockFile, []byte(lockContent), 0o644,
+		w.cfg.Watchdog.RollbackLockFile, []byte(lockContent), 0o600,
 	); err != nil {
 		log.ErrorContext(ctx, "write rollback lock", "err", err)
 	} else {

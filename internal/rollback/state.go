@@ -1,3 +1,7 @@
+// Package rollback records whether the watchdog has already rolled the gateway
+// back for a given deploy, and reads `qm listsnapshot` output to decide which
+// snapshot to roll back to. The state is a plain key-value file so an operator
+// can read it during an incident without the daemon running.
 package rollback
 
 import (
@@ -12,23 +16,27 @@ import (
 )
 
 var (
+	// PreDeploySnapRE matches the snapshot the deploy takes before it
+	// changes anything, which is the ordinary rollback target.
 	PreDeploySnapRE = regexp.MustCompile(`pre-deploy-[^\s]+`)
+	// KnownGoodSnapRE matches a snapshot the watchdog took after a run of
+	// healthy cycles. It is the fallback target when no pre-deploy snapshot
+	// survives.
 	KnownGoodSnapRE = regexp.MustCompile(`known-good-[^\s]+`)
 )
 
-// Compatibility aliases (lowercase) for backward compatibility with cmd/mwan
-var (
-	preDeploySnapRE = PreDeploySnapRE
-	knownGoodSnapRE = KnownGoodSnapRE
-)
-
+// ExtractLatestSnapshot returns the snapshot to roll back to, given the output
+// of `qm listsnapshot`. It prefers the newest pre-deploy snapshot, because that
+// is the state immediately before the change under suspicion, and falls back to
+// the newest known-good snapshot. It returns the empty string when the guest
+// has neither, which leaves the caller with no rollback target.
 func ExtractLatestSnapshot(qmOutput []byte) string {
 	s := string(qmOutput)
-	pre := preDeploySnapRE.FindAllString(s, -1)
+	pre := PreDeploySnapRE.FindAllString(s, -1)
 	if len(pre) > 0 {
 		return pre[len(pre)-1]
 	}
-	kg := knownGoodSnapRE.FindAllString(s, -1)
+	kg := KnownGoodSnapRE.FindAllString(s, -1)
 	if len(kg) > 0 {
 		return kg[len(kg)-1]
 	}
@@ -67,7 +75,7 @@ func SnapshotsAfter(qmOutput []byte, targetSnap string) []string {
 			continue
 		}
 		// Only collect watchdog-managed snapshots; never touch user snapshots.
-		if preDeploySnapRE.MatchString(name) || knownGoodSnapRE.MatchString(name) {
+		if PreDeploySnapRE.MatchString(name) || KnownGoodSnapRE.MatchString(name) {
 			result = append(result, name)
 		}
 	}
@@ -79,7 +87,9 @@ func parseRollbackStateFile(
 ) (deployTS string, status string, snapshot string, attempts string, err error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", "", "", "", err
+		// A missing file is the ordinary "no rollback yet" case, so the
+		// error is returned unlogged and AlreadyDone classifies it.
+		return "", "", "", "", fmt.Errorf("read rollback state %s: %w", path, err)
 	}
 	kv := make(map[string]string)
 	for line := range strings.SplitSeq(string(data), "\n") {
@@ -101,6 +111,13 @@ func parseRollbackStateFile(
 	return kv["deploy_timestamp"], st, kv["snapshot"], kv["rollback_attempts"], nil
 }
 
+// AlreadyDone reports whether a rollback for this deploy timestamp has already
+// finished, and how many attempts the state file records. A missing state file
+// is not an error: it means no rollback has been attempted, so the caller gets
+// false and zero.
+//
+// A rollback counts as finished when it succeeded or when it exhausted its
+// attempts, because retrying an exhausted rollback would loop.
 func AlreadyDone(
 	statePath string, deployTS int64,
 ) (done bool, attempts int, err error) {
@@ -142,5 +159,11 @@ func WriteState(
 		snapshot,
 		attempts,
 	)
-	return os.WriteFile(path, []byte(content), 0o644)
+	// The watchdog runs as root and is the only reader, so the file needs no
+	// group or world access.
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		slog.Error("rollback: write state failed", "path", path, "err", err)
+		return fmt.Errorf("write rollback state %s: %w", path, err)
+	}
+	return nil
 }

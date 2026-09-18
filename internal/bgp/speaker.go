@@ -750,16 +750,21 @@ func (s *Speaker) Status() Status {
 	started := s.started
 	s.mu.Unlock()
 
-	st := Status{Announcing: announcing}
+	st := Status{Announcing: announcing, Peers: nil}
 	if !started {
 		return st
 	}
 
 	ctx := context.Background()
 	err := s.server.ListPeer(ctx, &apipb.ListPeerRequest{}, func(p *apipb.Peer) {
+		// Established, UpSince and AFI are filled in below only for a peer
+		// that reached the established state.
 		ps := PeerState{
-			Address: peerAddress(p),
-			State:   p.GetState().GetSessionState().String(),
+			Address:     peerAddress(p),
+			State:       p.GetState().GetSessionState().String(),
+			AFI:         "",
+			Established: false,
+			UpSince:     0,
 		}
 
 		if p.GetState().GetSessionState() == apipb.PeerState_SESSION_STATE_ESTABLISHED {
