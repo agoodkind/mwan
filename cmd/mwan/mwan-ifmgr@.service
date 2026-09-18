@@ -1,0 +1,94 @@
+[Unit]
+Description=MWAN ifmgr (interface manager) daemon for role %i
+Documentation=https://github.com/agoodkind/configs
+# The daemon writes each provider link's systemd-networkd unit files from
+# /etc/mwan/network.json. udev applies a .link file when the device appears and
+# the kernel refuses to rename a link that is already up, so a file written
+# after udev's coldplug trigger has no effect until the next boot. The daemon
+# therefore runs ahead of that trigger and of networkd, writes the files, and
+# then waits on netlink for the links as it always has.
+DefaultDependencies=no
+# Ordering after local-fs.target deadlocks this unit. That target waits for
+# every fstab mount, this gateway mounts /boot/efi by PARTUUID, and the symlink
+# that names it is created by the coldplug trigger this unit runs before. The
+# boot then stalls until the device unit times out after 90 seconds, which
+# fails local-fs.target and every target above it, so ssh and the rest of
+# multi-user never start. The daemon needs nothing from that target: the binary,
+# the configuration file, and the schema directory are all on the root
+# filesystem, which the initramfs mounts before this unit exists.
+After=systemd-journald.socket
+Before=systemd-udev-trigger.service systemd-networkd.service shutdown.target
+# DefaultDependencies=no drops the implicit shutdown ordering along with the
+# rest, so the unit states it. Without this the daemon is killed at shutdown
+# rather than stopped.
+Conflicts=shutdown.target
+
+[Service]
+Type=simple
+# Role is selected by the systemd instance name.
+#
+# EnvironmentFile is optional. Ansible renders /etc/mwan/secrets.env with
+# SMTP2GO_API_KEY when the host has email configured. The leading dash
+# tells systemd to start the unit even when the file is absent.
+EnvironmentFile=-/etc/mwan/secrets.env
+ExecStart=/usr/local/bin/mwan ifmgr --role %i
+Restart=always
+RestartSec=10s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mwan-ifmgr@%i
+
+# The daemon needs:
+#   CAP_NET_ADMIN        - addr/rule/route mutations via netlink
+#   CAP_NET_RAW          - ICMPv6 sockets for NDP and connectivity probes,
+#                          plus DHCPv4 raw sockets (insomniacslk/dhcp)
+#   CAP_NET_BIND_SERVICE - reserved for any future low-port bind
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE
+
+# Lock down the rest of the filesystem.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+PrivateTmp=true
+
+# ProtectKernelTunables: vault keeps the default true since its oob
+# instance does not need to write any sysctls. The failover role uses
+# slaac_health, which writes net.ipv6.conf.<iface>.disable_ipv6, and the
+# suburban hypervisor's oob instance enables host_ipv6_policy, which
+# writes net.ipv6.conf.<iface>.accept_ra, autoconf, and
+# accept_ra_defrtr. Those deployments MUST relax this via a drop-in:
+#
+#   # /etc/systemd/system/mwan-ifmgr.service.d/lxc-failover.conf
+#   [Service]
+#   ProtectKernelTunables=false
+#   ReadWritePaths=/var/log /var/run /run /proc/sys/net/ipv6/conf
+#
+# This default keeps prod vault locked down by default and forces an
+# explicit, reviewable change to relax it.
+ProtectKernelTunables=true
+# The health persist mirror needs restart-recovery state under /var/lib/mwan.
+# The wanconfig publish opens a sysrepo connection, which writes lock and
+# state files under the repository directory; the leading dash skips the
+# entry on hosts without the wanconfig stack (sysrepo's shared memory under
+# /dev/shm is already writable, since ProtectSystem leaves /dev alone).
+StateDirectory=mwan
+ReadWritePaths=/var/log /var/run /run /var/lib/mwan /etc/systemd/network -/etc/sysrepo
+# The static sysrepo inside the binary follows the upstream access policy:
+# repository files are group sysrepo with umask 007. The daemon joins that
+# group so its files and the packaged tools' files stay mutually readable.
+# deploy-mwan creates the group on every gateway; the unit fails to start
+# where the group is absent.
+SupplementaryGroups=sysrepo
+
+# Allow reading SSH credentials for outbound SSH from modules like
+# wg that probe remote WG endpoints. ProtectHome=true otherwise
+# hides /root entirely. Read-only is sufficient: the SSH client also
+# needs UserKnownHostsFile=/dev/null in its options to skip the
+# known_hosts write that this read-only mount cannot satisfy.
+BindReadOnlyPaths=-/root/.ssh
+
+[Install]
+WantedBy=multi-user.target

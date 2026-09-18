@@ -1,0 +1,129 @@
+syntax = "proto3";
+
+package mwan.v1;
+
+option go_package = "goodkind.io/mwan/gen/mwan/v1;mwanv1";
+
+// MWANAgent runs inside the MWAN VM on virtio-vsock (e.g. port 50051).
+service MWANAgent {
+  rpc GetHealth(GetHealthRequest) returns (GetHealthResponse);
+  rpc Ping(PingRequest) returns (PingResponse);
+  rpc GetConfigState(GetConfigStateRequest) returns (GetConfigStateResponse);
+  rpc GetSystemInfo(GetSystemInfoRequest) returns (GetSystemInfoResponse);
+  rpc WatchEvents(WatchEventsRequest) returns (stream AgentEvent);
+  rpc GetBGPStatus(GetBGPStatusRequest) returns (GetBGPStatusResponse);
+  rpc AnnounceRoutes(AnnounceRoutesRequest) returns (AnnounceRoutesResponse);
+  rpc WithdrawRoutes(WithdrawRoutesRequest) returns (WithdrawRoutesResponse);
+}
+
+message GetHealthRequest {}
+
+message GetHealthResponse {
+  bool ipv4_ok = 1;
+  bool ipv6_ok = 2;
+  repeated WANStatus wan_interfaces = 3;
+  repeated string failed_units = 4;
+  bool bgp_announcing = 5;
+  bool bgp_all_established = 6;
+}
+
+message WANStatus {
+  string name = 1;
+  bool link_up = 2;
+  bool ipv4_reachable = 3;
+  bool ipv6_reachable = 4;
+}
+
+message PingRequest {
+  string target = 1;
+  string bind_interface = 2;
+  int32 count = 3;
+  int32 timeout_seconds = 4;
+}
+
+message PingResponse {
+  bool success = 1;
+  int32 packets_received = 2;
+}
+
+message GetConfigStateRequest {}
+
+message GetConfigStateResponse {
+  string config_hash     = 1;
+  int64  last_deploy_epoch = 2;
+  int64  last_change_epoch = 3;
+  // Per-file hashes in sha256sum(1) format: "<hash>  <path>\n" per file.
+  // The watchdog diffs consecutive values to report which files changed.
+  string config_manifest = 4;
+}
+
+message GetSystemInfoRequest {}
+
+message GetSystemInfoResponse {
+  string hostname = 1;
+  int64 uptime_seconds = 2;
+  string load_average = 3;
+  int64 memory_used_bytes = 4;
+  int64 memory_total_bytes = 5;
+  int64 disk_used_bytes = 6;
+  int64 disk_total_bytes = 7;
+}
+
+message WatchEventsRequest {}
+
+message AgentEvent {
+  int64 timestamp_epoch = 1;
+  oneof event {
+    ConfigChangedEvent config_changed = 2;
+    HealthTransitionEvent health_transition = 3;
+    SuppressRollbackEvent suppress_rollback = 4;
+  }
+}
+
+message ConfigChangedEvent {
+  string old_hash = 1;
+  string new_hash = 2;
+}
+
+message HealthTransitionEvent {
+  string interface_name = 1;
+  string old_state = 2;
+  string new_state = 3;
+}
+
+message SuppressRollbackEvent {
+  int32 duration_seconds = 1;
+  string reason = 2;
+}
+
+// BGP status and control
+
+message GetBGPStatusRequest {}
+
+message GetBGPStatusResponse {
+  bool announcing = 1;
+  bool all_established = 2;
+  repeated BGPPeerStatus peers = 3;
+}
+
+message BGPPeerStatus {
+  string address = 1;
+  string afi = 2;
+  string session_state = 3;
+  bool established = 4;
+  int64 up_since_epoch = 5;
+}
+
+message AnnounceRoutesRequest {}
+
+message AnnounceRoutesResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message WithdrawRoutesRequest {}
+
+message WithdrawRoutesResponse {
+  bool success = 1;
+  string error = 2;
+}
