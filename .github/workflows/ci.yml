@@ -34,3 +34,36 @@ jobs:
       # Match release.yml, so the build gate compiles exactly the platform the
       # release ships.
       release_platforms: linux/amd64
+
+  # The go job above never runs these. The Makefile hangs the two schema gates
+  # off `check`, and the go-makefile quality matrix runs a fixed list of
+  # commands that does not include it, so without this job nothing validates
+  # the model outside a developer's own machine. The gates run here as their
+  # own named check, because a schema failure and a Go failure are different
+  # problems and a red check should say which one broke.
+  #
+  # The deploy runs this same yanglint validation against the rendered network
+  # configuration before it writes anything to the gateway, so a model or an
+  # instance document that fails here would fail a deploy instead.
+  yang:
+    name: yang gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # The gates are make targets, and the Makefile resolves the Go
+      # environment while make parses it, so Go is a hard dependency even
+      # though this job compiles nothing.
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      # libyang2-tools provides yanglint, which both gates run.
+      - name: Install yanglint
+        run: sudo apt-get update && sudo apt-get install -y libyang2-tools
+      # The Makefile fetches go-makefile through gh while make parses it, so
+      # the token keeps that fetch on the authenticated API path instead of
+      # its anonymous raw fallback.
+      - name: Validate the YANG model and its instance documents
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: make yang-validate yang-validate-instances
