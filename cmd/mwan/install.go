@@ -22,8 +22,8 @@ import (
 
 // unitFS carries the daemon's systemd units inside the binary, so the unit a
 // host runs comes from the release its pin names. Each file is named here
-// rather than matched by a pattern, because this directory also holds files
-// that belong to other programs.
+// rather than matched by a pattern, so a file added to this directory never
+// reaches the binary until someone says it should.
 //
 //go:embed mwan-agent.service mwan-ifmgr.service mwan-ifmgr@.service mwan-trace-boot.service mwan-ifmgr-failover.conf
 var unitFS embed.FS
