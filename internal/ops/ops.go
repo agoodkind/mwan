@@ -64,23 +64,30 @@ type GuestExecResult struct {
 	Stdout   string
 }
 
-// SysOps is every external dependency the watchdog has: the hypervisor, the
-// guest, and the Proxmox API. The watchdog depends on this interface rather
-// than on the implementations so the red-team wrapper can inject faults and
-// the dry-run wrapper can suppress destructive calls, both without the
-// watchdog knowing.
-type SysOps interface {
+// LifecycleOps starts, stops and reports on a guest as a whole.
+type LifecycleOps interface {
 	VMStatus(ctx context.Context, vmid string) (bool, error)
-	VMStop(ctx context.Context, vmid string) error
-	VMRollback(ctx context.Context, vmid, snap string) error
 	VMStart(ctx context.Context, vmid string) error
+	VMStop(ctx context.Context, vmid string) error
+}
+
+// SnapshotOps lists, takes, deletes and rolls back to guest snapshots. A
+// rollback belongs here rather than with the lifecycle because it restores a
+// snapshot; the stop and start around it are the caller's to sequence.
+type SnapshotOps interface {
 	VMSnapshots(ctx context.Context, vmid string) ([]byte, error)
 	VMSnapshot(ctx context.Context, vmid, snapName string) error
 	VMDelSnapshot(ctx context.Context, vmid, snapName string) error
 	VMDelSnapshotForce(ctx context.Context, vmid, snapName string) error
-	VMLock(ctx context.Context, vmid string) (string, error)
-	VMUnlock(ctx context.Context, vmid string) error
-	VMHasRunningTask(ctx context.Context, vmid string) (bool, error)
+	VMRollback(ctx context.Context, vmid, snap string) error
+}
+
+// GatewayOps reaches the running gateway: commands and queries through its
+// agent, and route announcement for failover. Ping is here although it probes
+// from the hypervisor rather than through the agent, because it answers the
+// same question as the rest, whether the gateway is reachable, and the
+// failover path calls it beside them.
+type GatewayOps interface {
 	GuestExec(
 		ctx context.Context, vmid string, args ...string,
 	) (GuestExecResult, error)
@@ -93,8 +100,34 @@ type SysOps interface {
 	) (*mwanv1.GetBGPStatusResponse, error)
 	AnnounceRoutes(ctx context.Context, vmid string) error
 	WithdrawRoutes(ctx context.Context, vmid string) error
+}
+
+// LockOps reads and clears the Proxmox configuration lock and the guest
+// agent's filesystem freeze, which a failed snapshot can leave set.
+// VMHasRunningTask is here because clearing a lock while its task still runs
+// corrupts that task, so every recovery that clears one checks it first.
+type LockOps interface {
+	VMLock(ctx context.Context, vmid string) (string, error)
+	VMUnlock(ctx context.Context, vmid string) error
+	VMHasRunningTask(ctx context.Context, vmid string) (bool, error)
 	VMFSFreezeStatus(ctx context.Context, vmid string) (string, error)
 	VMFSFreezeThaw(ctx context.Context, vmid string) error
+}
+
+// SysOps is every external dependency the watchdog has: the hypervisor, the
+// guest, and the Proxmox API. The watchdog depends on this interface rather
+// than on the implementations so the red-team wrapper can inject faults and
+// the dry-run wrapper can suppress destructive calls, both without the
+// watchdog knowing.
+//
+// It is composed from four parts because the watchdog uses all four. A caller
+// that needs one part should depend on that part, so a method added to one
+// surface does not widen what an unrelated caller must implement.
+type SysOps interface {
+	LifecycleOps
+	SnapshotOps
+	GatewayOps
+	LockOps
 }
 
 // RealOps is the production SysOps. It reaches the guest agent over vsock
