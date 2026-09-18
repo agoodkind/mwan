@@ -105,8 +105,9 @@ func TestGuestExecFallsBackToQmGuestExec(t *testing.T) {
 		wantErr    string
 	}{
 		{
+			// The shape qm printed on the testbed hypervisor for `echo ok`.
 			name:       "the command exits zero",
-			qmStdout:   `{"exitcode":0,"exited":1,"out-data":"1700000000\n"}`,
+			qmStdout:   `{"exitcode":0,"exited":1,"out-data":"1700000000\n","out-truncated":0}`,
 			qmExit:     0,
 			wantResult: GuestExecResult{ExitCode: 0, Stdout: "1700000000\n"},
 			wantErr:    "",
@@ -119,11 +120,20 @@ func TestGuestExecFallsBackToQmGuestExec(t *testing.T) {
 			wantErr:    "",
 		},
 		{
-			name:       "the command exits non-zero",
-			qmStdout:   `{"exitcode":1,"exited":1}`,
+			// The shape qm printed on the testbed hypervisor for
+			// `sh -c "exit 3"`: no out-data key, and qm itself exits zero.
+			name:       "the command exits non-zero with no output",
+			qmStdout:   `{"exitcode":3,"exited":1}`,
+			qmExit:     0,
+			wantResult: GuestExecResult{ExitCode: 3, Stdout: ""},
+			wantErr:    "",
+		},
+		{
+			name:       "the agent truncated the output",
+			qmStdout:   `{"exitcode":0,"exited":1,"out-data":"17000","out-truncated":1}`,
 			qmExit:     0,
 			wantResult: GuestExecResult{ExitCode: 1, Stdout: ""},
-			wantErr:    "",
+			wantErr:    "truncated",
 		},
 		{
 			name:       "the guest agent is down",

@@ -40,8 +40,9 @@ func qmGuestExecArgs(
 	return append(args, command...)
 }
 
-// agentFlag reads the guest agent's exited flag, which Proxmox prints as a
-// JSON boolean or as 0 and 1 depending on the path that serialized it.
+// agentFlag reads one of the guest agent's flags, exited or out-truncated.
+// `qm guest exec` prints them as 0 and 1; a JSON boolean is accepted too, so
+// a Proxmox release that serializes them as booleans still parses.
 type agentFlag bool
 
 // UnmarshalJSON accepts a boolean, a number where non-zero means true, and
@@ -54,9 +55,9 @@ func (f *agentFlag) UnmarshalJSON(data []byte) error {
 	}
 	var asNumber int
 	if err := json.Unmarshal(data, &asNumber); err != nil {
-		slog.Warn("qm guest exec exited flag is neither a boolean nor a number",
+		slog.Warn("qm guest exec flag is neither a boolean nor a number",
 			"value", string(data), "err", err)
-		return fmt.Errorf("exited flag %s: %w", data, err)
+		return fmt.Errorf("guest agent flag %s: %w", data, err)
 	}
 	*f = asNumber != 0
 	return nil
@@ -64,12 +65,15 @@ func (f *agentFlag) UnmarshalJSON(data []byte) error {
 
 // qmGuestExecStatus is the part of what `qm guest exec` prints that a
 // GuestExecResult carries. qm decodes out-data from the agent's base64 before
-// printing, so it is plain text. When the command outlives the agent-side
-// timeout, qm prints the pid with exited false and no exit code.
+// printing, so it is plain text, and qm omits the key when the command printed
+// nothing. out-truncated is set when the agent cut stdout short. When the
+// command outlives the agent-side timeout, qm prints the pid with exited false
+// and no exit code.
 type qmGuestExecStatus struct {
-	Exited   agentFlag `json:"exited"`
-	ExitCode *int      `json:"exitcode"`
-	OutData  string    `json:"out-data"`
+	Exited       agentFlag `json:"exited"`
+	ExitCode     *int      `json:"exitcode"`
+	OutData      string    `json:"out-data"`
+	OutTruncated agentFlag `json:"out-truncated"`
 }
 
 // qmExec runs args inside the guest through `qm guest exec`, which reaches the
@@ -107,6 +111,13 @@ func (r *RealOps) qmExec(
 	if status.ExitCode == nil {
 		return GuestExecResult{ExitCode: 1, Stdout: ""},
 			errors.New("qm guest exec reported an exited command without an exit code")
+	}
+	// A caller parses Stdout, and a truncated stdout would parse as a wrong
+	// value rather than fail, so the attempt fails instead.
+	if status.OutTruncated {
+		return GuestExecResult{ExitCode: 1, Stdout: ""},
+			fmt.Errorf("guest command %q output was truncated by the guest agent",
+				strings.Join(args, " "))
 	}
 	return GuestExecResult{ExitCode: *status.ExitCode, Stdout: status.OutData}, nil
 }
