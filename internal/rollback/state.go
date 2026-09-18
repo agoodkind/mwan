@@ -82,7 +82,11 @@ func SnapshotsAfter(qmOutput []byte, targetSnap string) []string {
 	return result
 }
 
-func parseRollbackStateFile(
+// readStateFile reads the rollback state file and returns its fields as they
+// were written. It is a reader rather than a decision: AlreadyDone interprets
+// the values, including treating a missing file as "no rollback yet", so a
+// failure here is returned without being logged.
+func readStateFile(
 	path string,
 ) (deployTS string, status string, snapshot string, attempts string, err error) {
 	data, err := os.ReadFile(path)
@@ -122,7 +126,7 @@ func AlreadyDone(
 	statePath string, deployTS int64,
 ) (done bool, attempts int, err error) {
 	ds := strconv.FormatInt(deployTS, 10)
-	deployInFile, status, _, attStr, err := parseRollbackStateFile(statePath)
+	deployInFile, status, _, attStr, err := readStateFile(statePath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return false, 0, nil

@@ -20,10 +20,19 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+// Each timeout bounds one `qm` invocation or one RPC. They differ because the
+// underlying operations differ in cost: a status query answers from the
+// hypervisor's own state, while stopping or starting a guest waits on the
+// guest itself.
 const (
-	TimeoutQmStatus       = 10 * time.Second
-	timeoutQmGuestExec    = 30 * time.Second
-	TimeoutQmStop         = 60 * time.Second
+	// TimeoutQmStatus bounds `qm status`, which reads hypervisor state and
+	// returns without touching the guest.
+	TimeoutQmStatus    = 10 * time.Second
+	timeoutQmGuestExec = 30 * time.Second
+	// TimeoutQmStop bounds `qm stop`, which waits for the guest to halt.
+	TimeoutQmStop = 60 * time.Second
+	// TimeoutQmStart bounds `qm start`, which returns once the hypervisor has
+	// started the guest rather than once the guest has booted.
 	TimeoutQmStart        = 60 * time.Second
 	timeoutQmListSnapshot = 10 * time.Second
 	timeoutQmAgentFreeze  = 30 * time.Second
@@ -48,15 +57,18 @@ const (
 	guestCmdCat   guestCmd = "cat"
 )
 
-// ---------------------------------------------------------------------------
-// SysOps: interface for all external dependencies
-// ---------------------------------------------------------------------------
-
+// GuestExecResult is what one command run inside the guest produced. Stdout is
+// empty for the commands whose exit code is the whole answer, such as ping.
 type GuestExecResult struct {
 	ExitCode int
 	Stdout   string
 }
 
+// SysOps is every external dependency the watchdog has: the hypervisor, the
+// guest, and the Proxmox API. The watchdog depends on this interface rather
+// than on the implementations so the red-team wrapper can inject faults and
+// the dry-run wrapper can suppress destructive calls, both without the
+// watchdog knowing.
 type SysOps interface {
 	VMStatus(ctx context.Context, vmid string) (bool, error)
 	VMStop(ctx context.Context, vmid string) error
@@ -85,10 +97,13 @@ type SysOps interface {
 	VMFSFreezeThaw(ctx context.Context, vmid string) error
 }
 
-// ---------------------------------------------------------------------------
-// RealOps: gRPC-over-vsock primary, PVE REST fallback, qm lifecycle
-// ---------------------------------------------------------------------------
-
+// RealOps is the production SysOps. It reaches the guest agent over vsock
+// first, falls back to the Proxmox REST API, and drives the guest's lifecycle
+// with `qm`. vsock comes first because it keeps working when the guest's
+// network does not, which is the case the watchdog exists to handle.
+//
+// The test* fields replace one dial or one exec in unit tests. They are nil in
+// production, and each is checked at the single call site it overrides.
 type RealOps struct {
 	log       *slog.Logger
 	pve       *pveapi.Client
@@ -112,6 +127,11 @@ type RealOps struct {
 	testTCPDialer func(ctx context.Context, addr string) (net.Conn, error)
 }
 
+// NewRealOps builds the production SysOps from the daemon's configuration.
+// The Proxmox client is left nil when no API token is configured, and every
+// call that needs it then returns ErrGuestExecUnavailable rather than failing
+// as though the API had rejected the request. A nil logger becomes the slog
+// default, so a caller that has not set one up still gets output.
 func NewRealOps(
 	cfg *config.Config,
 	logger *slog.Logger,
@@ -136,6 +156,11 @@ func NewRealOps(
 		nc:        cfg.Network,
 		tcpAddr:   cfg.Watchdog.MwanAgentTCPAddr,
 		tracker:   NewChannelTracker(),
+
+		// Production never overrides a dial or an exec; only tests do.
+		testVsockOverride: nil,
+		testGrpcDialer:    nil,
+		testTCPDialer:     nil,
 	}
 }
 
@@ -148,7 +173,16 @@ func runQm(
 	slog.DebugContext(ctx, "ops: runQm", "args", args, "timeout", timeout)
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	return exec.CommandContext(cctx, "qm", args...).CombinedOutput()
+	out, err := exec.CommandContext(cctx, "qm", args...).CombinedOutput()
+	if err != nil {
+		slog.ErrorContext(ctx, "ops: qm failed",
+			"args", args, "err", err,
+			"output", strings.TrimSpace(string(out)))
+		// The output is returned alongside the error because callers read the
+		// combined output to decide what failed.
+		return out, fmt.Errorf("qm %s: %w", strings.Join(args, " "), err)
+	}
+	return out, nil
 }
 
 // VMStatus reports whether the VM with the given vmid is currently running
@@ -264,14 +298,16 @@ func (r *RealOps) vsockExec(
 		grpc.WithContextDialer(dialer),
 	)
 	if err != nil {
-		return GuestExecResult{ExitCode: 1}, err
+		r.log.WarnContext(ctx, "vsock grpc client failed", "err", err)
+		return GuestExecResult{ExitCode: 1, Stdout: ""},
+			fmt.Errorf("vsock grpc client: %w", err)
 	}
 	defer func() { _ = conn.Close() }()
 
 	cli := mwanv1.NewMWANAgentClient(conn)
 
 	if len(args) == 0 {
-		return GuestExecResult{ExitCode: 1}, fmt.Errorf("vsockExec: no args")
+		return GuestExecResult{ExitCode: 1, Stdout: ""}, fmt.Errorf("vsockExec: no args")
 	}
 	switch guestCmd(args[0]) {
 	case guestCmdPing, guestCmdPing6:
@@ -283,23 +319,27 @@ func (r *RealOps) vsockExec(
 		}
 		resp, err := cli.Ping(cctx, req)
 		if err != nil {
-			return GuestExecResult{ExitCode: 1}, err
+			r.log.WarnContext(ctx, "vsock ping failed", "err", err)
+			return GuestExecResult{ExitCode: 1, Stdout: ""},
+				fmt.Errorf("vsock ping: %w", err)
 		}
 		if resp.GetSuccess() {
-			return GuestExecResult{ExitCode: 0}, nil
+			return GuestExecResult{ExitCode: 0, Stdout: ""}, nil
 		}
-		return GuestExecResult{ExitCode: 1}, nil
+		return GuestExecResult{ExitCode: 1, Stdout: ""}, nil
 	case guestCmdCat:
 		if len(args) >= 2 && isLastDeployPath(args[1]) {
 			resp, err := cli.GetConfigState(cctx, &mwanv1.GetConfigStateRequest{})
 			if err != nil {
-				return GuestExecResult{ExitCode: 1}, err
+				r.log.WarnContext(ctx, "vsock get config state failed", "err", err)
+				return GuestExecResult{ExitCode: 1, Stdout: ""},
+					fmt.Errorf("vsock get config state: %w", err)
 			}
 			ts := strconv.FormatInt(resp.GetLastDeployEpoch(), 10)
 			return GuestExecResult{ExitCode: 0, Stdout: ts}, nil
 		}
 	}
-	return GuestExecResult{ExitCode: 1},
+	return GuestExecResult{ExitCode: 1, Stdout: ""},
 		fmt.Errorf("vsockExec: unhandled command %q", args[0])
 }
 
@@ -314,7 +354,7 @@ func (r *RealOps) tcpExec(
 	ctx context.Context, args ...string,
 ) (GuestExecResult, error) {
 	if r.tcpAddr == "" {
-		return GuestExecResult{ExitCode: 1}, fmt.Errorf("tcpExec: no tcp addr configured")
+		return GuestExecResult{ExitCode: 1, Stdout: ""}, fmt.Errorf("tcpExec: no tcp addr configured")
 	}
 	cctx, cancel := context.WithTimeout(ctx, timeoutTCPRPC)
 	defer cancel()
@@ -330,14 +370,16 @@ func (r *RealOps) tcpExec(
 		grpc.WithContextDialer(dialer),
 	)
 	if err != nil {
-		return GuestExecResult{ExitCode: 1}, err
+		r.log.WarnContext(ctx, "tcp grpc client failed", "err", err)
+		return GuestExecResult{ExitCode: 1, Stdout: ""},
+			fmt.Errorf("tcp grpc client: %w", err)
 	}
 	defer func() { _ = conn.Close() }()
 
 	cli := mwanv1.NewMWANAgentClient(conn)
 
 	if len(args) == 0 {
-		return GuestExecResult{ExitCode: 1}, fmt.Errorf("tcpExec: no args")
+		return GuestExecResult{ExitCode: 1, Stdout: ""}, fmt.Errorf("tcpExec: no args")
 	}
 	switch guestCmd(args[0]) {
 	case guestCmdPing, guestCmdPing6:
@@ -349,23 +391,27 @@ func (r *RealOps) tcpExec(
 		}
 		resp, err := cli.Ping(cctx, req)
 		if err != nil {
-			return GuestExecResult{ExitCode: 1}, err
+			r.log.WarnContext(ctx, "tcp ping failed", "err", err)
+			return GuestExecResult{ExitCode: 1, Stdout: ""},
+				fmt.Errorf("tcp ping: %w", err)
 		}
 		if resp.GetSuccess() {
-			return GuestExecResult{ExitCode: 0}, nil
+			return GuestExecResult{ExitCode: 0, Stdout: ""}, nil
 		}
-		return GuestExecResult{ExitCode: 1}, nil
+		return GuestExecResult{ExitCode: 1, Stdout: ""}, nil
 	case guestCmdCat:
 		if len(args) >= 2 && isLastDeployPath(args[1]) {
 			resp, err := cli.GetConfigState(cctx, &mwanv1.GetConfigStateRequest{})
 			if err != nil {
-				return GuestExecResult{ExitCode: 1}, err
+				r.log.WarnContext(ctx, "tcp get config state failed", "err", err)
+				return GuestExecResult{ExitCode: 1, Stdout: ""},
+					fmt.Errorf("tcp get config state: %w", err)
 			}
 			ts := strconv.FormatInt(resp.GetLastDeployEpoch(), 10)
 			return GuestExecResult{ExitCode: 0, Stdout: ts}, nil
 		}
 	}
-	return GuestExecResult{ExitCode: 1},
+	return GuestExecResult{ExitCode: 1, Stdout: ""},
 		fmt.Errorf("tcpExec: unhandled command %q", args[0])
 }
 
@@ -373,17 +419,22 @@ func (r *RealOps) pveExec(
 	ctx context.Context, vmid string, args ...string,
 ) (GuestExecResult, error) {
 	if r.pve == nil {
-		return GuestExecResult{ExitCode: 1}, ErrGuestExecUnavailable
+		return GuestExecResult{ExitCode: 1, Stdout: ""}, ErrGuestExecUnavailable
 	}
 	cctx, cancel := context.WithTimeout(ctx, timeoutPVEExec)
 	defer cancel()
 	pid, err := r.pve.GuestExec(cctx, r.pveNode, vmid, args)
 	if err != nil {
-		return GuestExecResult{ExitCode: 1}, err
+		r.log.ErrorContext(ctx, "pve guest exec failed", "vmid", vmid, "err", err)
+		return GuestExecResult{ExitCode: 1, Stdout: ""},
+			fmt.Errorf("pve guest exec: %w", err)
 	}
 	code, stdout, _, err := r.pve.GuestExecStatus(cctx, r.pveNode, vmid, pid)
 	if err != nil {
-		return GuestExecResult{ExitCode: 1}, err
+		r.log.ErrorContext(ctx, "pve guest exec status failed",
+			"vmid", vmid, "err", err)
+		return GuestExecResult{ExitCode: 1, Stdout: ""},
+			fmt.Errorf("pve guest exec status: %w", err)
 	}
 	return GuestExecResult{ExitCode: code, Stdout: stdout}, nil
 }
@@ -405,11 +456,17 @@ func (r *RealOps) vsockGetConfigState(
 		grpc.WithContextDialer(dialer),
 	)
 	if err != nil {
-		return nil, err
+		r.log.WarnContext(ctx, "vsock grpc client failed", "err", err)
+		return nil, fmt.Errorf("vsock grpc client: %w", err)
 	}
 	defer func() { _ = conn.Close() }()
 	cli := mwanv1.NewMWANAgentClient(conn)
-	return cli.GetConfigState(cctx, &mwanv1.GetConfigStateRequest{})
+	res, err := cli.GetConfigState(cctx, &mwanv1.GetConfigStateRequest{})
+	if err != nil {
+		r.log.WarnContext(ctx, "vsock get config state failed", "err", err)
+		return nil, fmt.Errorf("vsock get config state: %w", err)
+	}
+	return res, nil
 }
 
 func (r *RealOps) tcpGetConfigState(
@@ -432,13 +489,27 @@ func (r *RealOps) tcpGetConfigState(
 		grpc.WithContextDialer(dialer),
 	)
 	if err != nil {
-		return nil, err
+		r.log.ErrorContext(ctx, "tcp grpc client failed", "err", err)
+		return nil, fmt.Errorf("tcp grpc client: %w", err)
 	}
 	defer func() { _ = conn.Close() }()
 	cli := mwanv1.NewMWANAgentClient(conn)
-	return cli.GetConfigState(cctx, &mwanv1.GetConfigStateRequest{})
+	res, err := cli.GetConfigState(cctx, &mwanv1.GetConfigStateRequest{})
+	if err != nil {
+		r.log.ErrorContext(ctx, "tcp get config state failed", "err", err)
+		return nil, fmt.Errorf("tcp get config state: %w", err)
+	}
+	return res, nil
 }
 
+// GetConfigState asks the guest agent what configuration it is running. It
+// tries vsock first and falls back to the management TCP address, and the
+// second return value names the channel that answered, so the caller can
+// report which path is still working. Both attempts are recorded against the
+// channel tracker whether they succeed or fail.
+//
+// vmid is accepted for symmetry with the rest of SysOps and is not used: both
+// channels address the one guest this daemon watches.
 func (r *RealOps) GetConfigState(
 	ctx context.Context, vmid string,
 ) (*mwanv1.GetConfigStateResponse, string, error) {
@@ -485,11 +556,17 @@ func (r *RealOps) vsockGetBGPStatus(
 		grpc.WithContextDialer(dialer),
 	)
 	if err != nil {
-		return nil, err
+		r.log.WarnContext(ctx, "vsock grpc client failed", "err", err)
+		return nil, fmt.Errorf("vsock grpc client: %w", err)
 	}
 	defer func() { _ = conn.Close() }()
 	cli := mwanv1.NewMWANAgentClient(conn)
-	return cli.GetBGPStatus(cctx, &mwanv1.GetBGPStatusRequest{})
+	res, err := cli.GetBGPStatus(cctx, &mwanv1.GetBGPStatusRequest{})
+	if err != nil {
+		r.log.WarnContext(ctx, "vsock get bgp status failed", "err", err)
+		return nil, fmt.Errorf("vsock get bgp status: %w", err)
+	}
+	return res, nil
 }
 
 func (r *RealOps) tcpGetBGPStatus(
@@ -512,13 +589,24 @@ func (r *RealOps) tcpGetBGPStatus(
 		grpc.WithContextDialer(dialer),
 	)
 	if err != nil {
-		return nil, err
+		r.log.ErrorContext(ctx, "tcp grpc client failed", "err", err)
+		return nil, fmt.Errorf("tcp grpc client: %w", err)
 	}
 	defer func() { _ = conn.Close() }()
 	cli := mwanv1.NewMWANAgentClient(conn)
-	return cli.GetBGPStatus(cctx, &mwanv1.GetBGPStatusRequest{})
+	res, err := cli.GetBGPStatus(cctx, &mwanv1.GetBGPStatusRequest{})
+	if err != nil {
+		r.log.ErrorContext(ctx, "tcp get bgp status failed", "err", err)
+		return nil, fmt.Errorf("tcp get bgp status: %w", err)
+	}
+	return res, nil
 }
 
+// GetBGPStatus reports the guest's BGP sessions, trying vsock first and then
+// the management TCP address. Unlike GetConfigState it does not name the
+// channel that answered, because no caller reports it.
+//
+// vmid is accepted for symmetry with the rest of SysOps and is not used.
 func (r *RealOps) GetBGPStatus(
 	ctx context.Context, vmid string,
 ) (*mwanv1.GetBGPStatusResponse, error) {
@@ -561,11 +649,17 @@ func (r *RealOps) vsockAnnounceRoutes(
 		grpc.WithContextDialer(dialer),
 	)
 	if err != nil {
-		return nil, err
+		r.log.WarnContext(ctx, "vsock grpc client failed", "err", err)
+		return nil, fmt.Errorf("vsock grpc client: %w", err)
 	}
 	defer func() { _ = conn.Close() }()
 	cli := mwanv1.NewMWANAgentClient(conn)
-	return cli.AnnounceRoutes(cctx, &mwanv1.AnnounceRoutesRequest{})
+	res, err := cli.AnnounceRoutes(cctx, &mwanv1.AnnounceRoutesRequest{})
+	if err != nil {
+		r.log.WarnContext(ctx, "vsock announce routes failed", "err", err)
+		return nil, fmt.Errorf("vsock announce routes: %w", err)
+	}
+	return res, nil
 }
 
 func (r *RealOps) tcpAnnounceRoutes(
@@ -588,13 +682,25 @@ func (r *RealOps) tcpAnnounceRoutes(
 		grpc.WithContextDialer(dialer),
 	)
 	if err != nil {
-		return nil, err
+		r.log.ErrorContext(ctx, "tcp grpc client failed", "err", err)
+		return nil, fmt.Errorf("tcp grpc client: %w", err)
 	}
 	defer func() { _ = conn.Close() }()
 	cli := mwanv1.NewMWANAgentClient(conn)
-	return cli.AnnounceRoutes(cctx, &mwanv1.AnnounceRoutesRequest{})
+	res, err := cli.AnnounceRoutes(cctx, &mwanv1.AnnounceRoutesRequest{})
+	if err != nil {
+		r.log.ErrorContext(ctx, "tcp announce routes failed", "err", err)
+		return nil, fmt.Errorf("tcp announce routes: %w", err)
+	}
+	return res, nil
 }
 
+// AnnounceRoutes tells the guest to announce its BGP routes, trying vsock
+// first and then the management TCP address. A channel that answers ends the
+// attempt even when the agent reports a failure, because the agent refusing is
+// an answer and retrying on the other channel would reach the same agent.
+//
+// vmid is accepted for symmetry with the rest of SysOps and is not used.
 func (r *RealOps) AnnounceRoutes(ctx context.Context, vmid string) error {
 	_ = vmid
 	r.logAttemptStart(ctx, "announce_routes", ChanVsock, 1, vmid)
@@ -641,11 +747,17 @@ func (r *RealOps) vsockWithdrawRoutes(
 		grpc.WithContextDialer(dialer),
 	)
 	if err != nil {
-		return nil, err
+		r.log.WarnContext(ctx, "vsock grpc client failed", "err", err)
+		return nil, fmt.Errorf("vsock grpc client: %w", err)
 	}
 	defer func() { _ = conn.Close() }()
 	cli := mwanv1.NewMWANAgentClient(conn)
-	return cli.WithdrawRoutes(cctx, &mwanv1.WithdrawRoutesRequest{})
+	res, err := cli.WithdrawRoutes(cctx, &mwanv1.WithdrawRoutesRequest{})
+	if err != nil {
+		r.log.WarnContext(ctx, "vsock withdraw routes failed", "err", err)
+		return nil, fmt.Errorf("vsock withdraw routes: %w", err)
+	}
+	return res, nil
 }
 
 func (r *RealOps) tcpWithdrawRoutes(
@@ -668,13 +780,24 @@ func (r *RealOps) tcpWithdrawRoutes(
 		grpc.WithContextDialer(dialer),
 	)
 	if err != nil {
-		return nil, err
+		r.log.ErrorContext(ctx, "tcp grpc client failed", "err", err)
+		return nil, fmt.Errorf("tcp grpc client: %w", err)
 	}
 	defer func() { _ = conn.Close() }()
 	cli := mwanv1.NewMWANAgentClient(conn)
-	return cli.WithdrawRoutes(cctx, &mwanv1.WithdrawRoutesRequest{})
+	res, err := cli.WithdrawRoutes(cctx, &mwanv1.WithdrawRoutesRequest{})
+	if err != nil {
+		r.log.ErrorContext(ctx, "tcp withdraw routes failed", "err", err)
+		return nil, fmt.Errorf("tcp withdraw routes: %w", err)
+	}
+	return res, nil
 }
 
+// WithdrawRoutes tells the guest to withdraw its BGP routes, trying vsock
+// first and then the management TCP address. It treats an answering channel
+// the same way AnnounceRoutes does.
+//
+// vmid is accepted for symmetry with the rest of SysOps and is not used.
 func (r *RealOps) WithdrawRoutes(ctx context.Context, vmid string) error {
 	_ = vmid
 	r.logAttemptStart(ctx, "withdraw_routes", ChanVsock, 1, vmid)
@@ -787,10 +910,14 @@ func pingIface(args []string) string {
 	return ""
 }
 
+// pingCount reads the count from a `-c N` argument pair, returning def when
+// there is none. Parsing at 32 bits rejects a value too large for the request
+// field, so an out-of-range count falls back to def instead of truncating to
+// an unrelated number.
 func pingCount(args []string, def int32) int32 {
 	for i, a := range args {
 		if a == "-c" && i+1 < len(args) {
-			n, err := strconv.Atoi(args[i+1])
+			n, err := strconv.ParseInt(args[i+1], 10, 32)
 			if err == nil {
 				return int32(n)
 			}
@@ -802,94 +929,4 @@ func pingCount(args []string, def int32) int32 {
 // ExtractTracker returns the internal channel tracker for testing or diagnostics.
 func (r *RealOps) ExtractTracker() *ChannelTracker {
 	return r.tracker
-}
-
-// ---------------------------------------------------------------------------
-// DryRunOps: wraps SysOps, logs destructive operations instead of executing
-// ---------------------------------------------------------------------------
-
-type DryRunOps struct {
-	inner SysOps
-	log   *slog.Logger
-}
-
-// NewDryRunOps creates a new dry-run wrapper.
-func NewDryRunOps(inner SysOps, log *slog.Logger) *DryRunOps {
-	return &DryRunOps{inner: inner, log: log}
-}
-
-func (d *DryRunOps) VMStatus(ctx context.Context, vmid string) (bool, error) {
-	return d.inner.VMStatus(ctx, vmid)
-}
-
-func (d *DryRunOps) VMStop(ctx context.Context, vmid string) error {
-	d.log.InfoContext(ctx, "[DRY-RUN] would stop VM", "vmid", vmid)
-	return nil
-}
-
-func (d *DryRunOps) VMRollback(ctx context.Context, vmid, snap string) error {
-	d.log.InfoContext(ctx, "[DRY-RUN] would rollback VM", "vmid", vmid, "snapshot", snap)
-	return nil
-}
-
-func (d *DryRunOps) VMStart(ctx context.Context, vmid string) error {
-	d.log.InfoContext(ctx, "[DRY-RUN] would start VM", "vmid", vmid)
-	return nil
-}
-
-func (d *DryRunOps) VMSnapshots(ctx context.Context, vmid string) ([]byte, error) {
-	return d.inner.VMSnapshots(ctx, vmid)
-}
-
-func (d *DryRunOps) VMSnapshot(ctx context.Context, vmid, snapName string) error {
-	d.log.InfoContext(
-		ctx,
-		"[DRY-RUN] would snapshot VM",
-		"vmid", vmid,
-		"snapshot", snapName,
-	)
-	return nil
-}
-
-func (d *DryRunOps) VMDelSnapshot(ctx context.Context, vmid, snapName string) error {
-	d.log.InfoContext(
-		ctx,
-		"[DRY-RUN] would delete snapshot",
-		"vmid", vmid,
-		"snapshot", snapName,
-	)
-	return nil
-}
-
-func (d *DryRunOps) GuestExec(
-	ctx context.Context, vmid string, args ...string,
-) (GuestExecResult, error) {
-	return d.inner.GuestExec(ctx, vmid, args...)
-}
-
-func (d *DryRunOps) Ping(ctx context.Context, bin, target string) bool {
-	return d.inner.Ping(ctx, bin, target)
-}
-
-func (d *DryRunOps) GetConfigState(
-	ctx context.Context, vmid string,
-) (*mwanv1.GetConfigStateResponse, string, error) {
-	return d.inner.GetConfigState(ctx, vmid)
-}
-
-func (d *DryRunOps) GetBGPStatus(
-	ctx context.Context, vmid string,
-) (*mwanv1.GetBGPStatusResponse, error) {
-	d.log.InfoContext(ctx, "[DRY-RUN] would get BGP status", "vmid", vmid)
-	return &mwanv1.GetBGPStatusResponse{}, nil
-}
-
-func (d *DryRunOps) AnnounceRoutes(ctx context.Context, vmid string) error {
-	d.log.InfoContext(ctx, "[DRY-RUN] would announce BGP routes", "vmid", vmid)
-	return nil
-}
-
-func (d *DryRunOps) WithdrawRoutes(ctx context.Context, vmid string) error {
-	d.log.InfoContext(ctx, "[DRY-RUN] would withdraw BGP routes", "vmid", vmid)
-	return nil
 }
