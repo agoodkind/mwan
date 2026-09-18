@@ -921,7 +921,13 @@ func (w *watchdog) attemptRollbackForDeploy(ctx context.Context, deployTS int64)
 		"snapshot", snap,
 		"deploy_ts", deployTS,
 	)
-	rbCtx := tracing.WithRunID(context.Background(), w.runID)
+	// The rollback runs on a context that cannot be cancelled. It stops the
+	// guest, restores a snapshot and starts it again; cancelling partway
+	// leaves the guest stopped and the site offline, which is why a signal
+	// arriving during a rollback is deferred through alert.Coord rather than
+	// acted on. WithoutCancel keeps the trace attributes and drops only the
+	// cancellation.
+	rbCtx := tracing.WithRunID(context.WithoutCancel(ctx), w.runID)
 	rbCtx = tracing.WithTraceID(rbCtx, tracing.TraceID(ctx))
 	rbCtx = tracing.WithOperation(rbCtx, "rollback")
 	rbCtx, _ = tracing.StartTrace(rbCtx, "", "rollback")
