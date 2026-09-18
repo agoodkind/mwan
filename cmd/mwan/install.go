@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -175,12 +176,12 @@ func installUnits(
 	for _, file := range units.files {
 		content, err := unitFS.ReadFile(file)
 		if err != nil {
-			return outcome, fmt.Errorf("read embedded unit %s: %w", file, err)
+			return outcome, installFailed("read the embedded unit", file, err)
 		}
 		path := filepath.Join(targetDir, file)
 		changed, err := installfile.Write(path, content, systemdUnitMode)
 		if err != nil {
-			return outcome, err
+			return outcome, installFailed("install the unit", file, err)
 		}
 		if changed {
 			outcome.changed = append(outcome.changed, path)
@@ -200,21 +201,30 @@ func installUnits(
 // EnableUnitFiles is idempotent in systemd itself: enabling an already
 // enabled unit changes nothing and reports no link.
 func realUnitEnabler(ctx context.Context, units []string) error {
+	named := strings.Join(units, " ")
 	conn, err := systemddbus.NewSystemConnectionContext(ctx)
 	if err != nil {
-		return fmt.Errorf("connect to systemd: %w", err)
+		return installFailed("connect to systemd for", named, err)
 	}
 	defer conn.Close()
 	if err := conn.ReloadContext(ctx); err != nil {
-		return fmt.Errorf("reload systemd: %w", err)
+		return installFailed("reload systemd before enabling", named, err)
 	}
 	// runtimeOnly=false writes the symlinks under /etc so they survive a
 	// reboot; force=true replaces a symlink that points somewhere else, which
 	// is what makes a re-run converge a host that was enabled by hand.
 	if _, _, err := conn.EnableUnitFilesContext(ctx, units, false, true); err != nil {
-		return fmt.Errorf("enable units %s: %w", strings.Join(units, ", "), err)
+		return installFailed("enable", named, err)
 	}
 	return nil
+}
+
+// installFailed logs one failure where it happened and returns it wrapped
+// under the same words, so the cause reads the same in the journal and in the
+// message the command prints.
+func installFailed(operation string, name string, err error) error {
+	slog.Warn("install: "+operation+" failed", "name", name, "err", err)
+	return fmt.Errorf("%s %s: %w", operation, name, err)
 }
 
 // reportInstall prints one line per changed file, then the units enabled. A
@@ -253,7 +263,7 @@ func parseInstallFlags(args []string) (installFlags, error) {
 	set.StringVar(&flags.root, "root", "",
 		"write under this directory instead of /, and name the units rather than enabling them")
 	if err := set.Parse(args); err != nil {
-		return flags, fmt.Errorf("parse flags: %w", err)
+		return flags, installFailed("parse the flags of", "mwan install", err)
 	}
 	if flags.printSchema != "" && flags.apply {
 		return flags, errors.New("--print-schema writes no host files, so it does not take --apply")

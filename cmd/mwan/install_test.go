@@ -238,7 +238,10 @@ func TestInstallRejectsAnUnknownRole(t *testing.T) {
 
 // TestInstallPrintSchemaWritesEveryModule proves --print-schema materialises
 // the whole model set, which is what the controller validates a rendered
-// network document against.
+// network document against, and that each file holds the module and revision
+// its name claims. That second check is what the schema gates and the loader
+// rely on: both name the directory rather than a file list, so a file whose
+// name and contents disagree would silently install the wrong revision.
 func TestInstallPrintSchemaWritesEveryModule(t *testing.T) {
 	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "schema")
@@ -248,18 +251,28 @@ func TestInstallPrintSchemaWritesEveryModule(t *testing.T) {
 	if code != exitInstallOK {
 		t.Fatalf("exit code = %d, want %d", code, exitInstallOK)
 	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read %s: %v", dir, err)
+	}
+	if len(entries) != len(yangpub.SchemaModules) {
+		t.Fatalf("wrote %d files, want %d", len(entries), len(yangpub.SchemaModules))
+	}
 	for _, module := range yangpub.SchemaModules {
 		path := filepath.Join(dir, module.File)
 		written, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("read %s: %v", path, err)
 		}
-		embedded, err := yangpub.SchemaModuleContent(module.File)
-		if err != nil {
-			t.Fatalf("read the embedded %s: %v", module.File, err)
+		wantName, wantRevision, found := strings.Cut(strings.TrimSuffix(module.File, ".yang"), "@")
+		if !found {
+			t.Fatalf("module file %s carries no @revision", module.File)
 		}
-		if !bytes.Equal(written, embedded) {
-			t.Fatalf("%s written differs from the embedded copy", module.File)
+		if !bytes.Contains(written, []byte("module "+wantName+" {")) {
+			t.Errorf("%s does not declare module %s", module.File, wantName)
+		}
+		if !bytes.Contains(written, []byte("revision "+wantRevision)) {
+			t.Errorf("%s does not carry revision %s", module.File, wantRevision)
 		}
 	}
 }

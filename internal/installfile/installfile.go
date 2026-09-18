@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -31,14 +32,22 @@ func Write(path string, content []byte, mode fs.FileMode) (bool, error) {
 		return false, nil
 	}
 	if err != nil && !os.IsNotExist(err) {
-		return false, fmt.Errorf("read %s: %w", path, err)
+		return false, failed("read the file in place", path, err)
 	}
 	parent := filepath.Dir(path)
 	if err := os.MkdirAll(parent, dirMode); err != nil {
-		return false, fmt.Errorf("create directory %s: %w", parent, err)
+		return false, failed("create the parent directory", parent, err)
 	}
 	if err := renameio.WriteFile(path, content, mode); err != nil {
-		return false, fmt.Errorf("write %s: %w", path, err)
+		return false, failed("write the file", path, err)
 	}
 	return true, nil
+}
+
+// failed logs one failure where it happened and returns it wrapped under the
+// same words, so an operator reads the same cause in the journal and in the
+// message the command prints.
+func failed(operation string, path string, err error) error {
+	slog.Warn("installfile: "+operation+" failed", "path", path, "err", err)
+	return fmt.Errorf("%s %s: %w", operation, path, err)
 }

@@ -4,6 +4,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -25,6 +26,9 @@ const schemaSubdir = "schema"
 // deploy installs these world readable, because sysrepo and rousette read
 // them as their own users.
 const schemaFileMode fs.FileMode = 0o644
+
+// schemaDirMode is the mode WriteSchema gives the directory it creates.
+const schemaDirMode fs.FileMode = 0o755
 
 // SchemaModule is one module of the gateway's model, named by its file and
 // carrying the features that must be enabled when it is installed.
@@ -67,29 +71,28 @@ var SchemaModules = []SchemaModule{
 // The result is what InstallModules takes, and dir is the search directory
 // that resolves the imports between them.
 func WriteSchema(dir string) ([]Model, error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, fmt.Errorf("create schema directory %s: %w", dir, err)
+	if err := os.MkdirAll(dir, schemaDirMode); err != nil {
+		return nil, schemaFailed("create the schema directory", dir, err)
 	}
 	models := make([]Model, 0, len(SchemaModules))
 	for _, module := range SchemaModules {
 		content, err := schemaFS.ReadFile(filepath.Join(schemaSubdir, module.File))
 		if err != nil {
-			return nil, fmt.Errorf("read embedded module %s: %w", module.File, err)
+			return nil, schemaFailed("read the embedded module", module.File, err)
 		}
 		path := filepath.Join(dir, module.File)
 		if _, err := installfile.Write(path, content, schemaFileMode); err != nil {
-			return nil, err
+			return nil, schemaFailed("write the schema module", module.File, err)
 		}
 		models = append(models, Model{Path: path, Features: module.Features})
 	}
 	return models, nil
 }
 
-// SchemaModuleContent returns one embedded module's bytes by file name.
-func SchemaModuleContent(file string) ([]byte, error) {
-	content, err := schemaFS.ReadFile(filepath.Join(schemaSubdir, file))
-	if err != nil {
-		return nil, fmt.Errorf("read embedded module %s: %w", file, err)
-	}
-	return content, nil
+// schemaFailed logs one failure where it happened and returns it wrapped
+// under the same words, so the cause reads the same in the journal and in the
+// message the caller prints.
+func schemaFailed(operation string, name string, err error) error {
+	slog.Warn("yangpub: "+operation+" failed", "name", name, "err", err)
+	return fmt.Errorf("%s %s: %w", operation, name, err)
 }
