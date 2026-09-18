@@ -14,6 +14,7 @@ import (
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/wanconfig"
+	"goodkind.io/mwan/internal/yangpub"
 )
 
 // networkInstanceGlob finds every network document the YANG instance gate
@@ -77,39 +78,14 @@ func TestPublishedTreeCarriesEveryNetworkLeaf(t *testing.T) {
 	}
 }
 
-// networkSchemaDirForTest assembles the model set the gateway installs into a
-// temporary directory, the same set the loader's own tests use: the vendored
-// IETF modules at the revisions the deploy copies, plus the repository's
-// steering module at whatever revision it currently carries.
+// networkSchemaDirForTest materialises the model set the gateway installs,
+// from the bytes the binary embeds, which is the same set the loader's own
+// tests use.
 func networkSchemaDirForTest(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	sources := []string{
-		"../../third_party/yang/standard/ietf/RFC/ietf-yang-types@2025-12-22.yang",
-		"../../third_party/yang/standard/ietf/RFC/ietf-inet-types@2025-12-22.yang",
-		"../../third_party/yang/standard/ietf/RFC/iana-if-type@2014-05-08.yang",
-		"../../third_party/yang/standard/ietf/RFC/ietf-interfaces@2018-02-20.yang",
-		"../../third_party/yang/standard/ietf/RFC/ietf-ip@2018-02-22.yang",
-		"../../third_party/yang/standard/ietf/RFC/ietf-nat@2019-01-10.yang",
-	}
-	// The steering module is matched by pattern, because its filename carries
-	// a revision date that moves.
-	steering, err := filepath.Glob("../../yang/goodkind-mwan-steering@*.yang")
-	if err != nil {
-		t.Fatalf("glob steering model: %v", err)
-	}
-	if len(steering) != 1 {
-		t.Fatalf("want exactly one steering model, found %d", len(steering))
-	}
-	for _, source := range append(sources, steering[0]) {
-		content, err := os.ReadFile(source)
-		if err != nil {
-			t.Fatalf("read %s: %v", source, err)
-		}
-		target := filepath.Join(dir, filepath.Base(source))
-		if err := os.WriteFile(target, content, 0o644); err != nil {
-			t.Fatalf("write %s: %v", target, err)
-		}
+	if _, err := yangpub.WriteSchema(dir); err != nil {
+		t.Fatalf("write the embedded schema: %v", err)
 	}
 	return dir
 }

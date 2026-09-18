@@ -1,0 +1,288 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"goodkind.io/mwan/internal/yangpub"
+)
+
+// recordingEnabler stands in for the system bus, which a test host does not
+// have. It records what it was asked to enable and nothing else; the files on
+// disk are what the assertions are about.
+type recordingEnabler struct {
+	calls [][]string
+}
+
+func (r *recordingEnabler) enable(_ context.Context, units []string) error {
+	r.calls = append(r.calls, units)
+	return nil
+}
+
+// TestInstallUnitsWritesTheWanRoleUnits proves a wan-role install puts the
+// three units the gateway runs into the systemd directory with the bytes the
+// binary carries, and asks systemd to enable the wan instance rather than the
+// template.
+func TestInstallUnitsWritesTheWanRoleUnits(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	enabler := &recordingEnabler{}
+
+	outcome, err := installUnits(t.Context(), roleWAN, root, enabler.enable)
+	if err != nil {
+		t.Fatalf("installUnits: %v", err)
+	}
+
+	wantFiles := []string{
+		"mwan-agent.service",
+		"mwan-ifmgr@.service",
+		"mwan-trace-boot.service",
+	}
+	if len(outcome.changed) != len(wantFiles) {
+		t.Fatalf("changed = %v, want %d files", outcome.changed, len(wantFiles))
+	}
+	for _, file := range wantFiles {
+		path := filepath.Join(root, systemdUnitDir, file)
+		onDisk, readErr := os.ReadFile(path)
+		if readErr != nil {
+			t.Fatalf("read %s: %v", path, readErr)
+		}
+		embedded, embedErr := unitFS.ReadFile(file)
+		if embedErr != nil {
+			t.Fatalf("read embedded %s: %v", file, embedErr)
+		}
+		if !bytes.Equal(onDisk, embedded) {
+			t.Fatalf("%s on disk differs from the embedded copy", file)
+		}
+		info, statErr := os.Stat(path)
+		if statErr != nil {
+			t.Fatalf("stat %s: %v", path, statErr)
+		}
+		if info.Mode().Perm() != systemdUnitMode {
+			t.Fatalf("%s mode = %v, want %v", file, info.Mode().Perm(), systemdUnitMode)
+		}
+	}
+
+	// The template cannot be enabled, only an instance of it, so a run that
+	// enabled "mwan-ifmgr@.service" would leave the gateway's daemon off
+	// after a reboot.
+	wantEnable := []string{
+		"mwan-agent.service",
+		"mwan-ifmgr@wan.service",
+		"mwan-trace-boot.service",
+	}
+	if len(enabler.calls) != 1 {
+		t.Fatalf("enable called %d times, want 1", len(enabler.calls))
+	}
+	if strings.Join(enabler.calls[0], " ") != strings.Join(wantEnable, " ") {
+		t.Fatalf("enabled %v, want %v", enabler.calls[0], wantEnable)
+	}
+}
+
+// TestInstallUnitsIsIdempotent proves the second run of the same install
+// changes no file and does not touch systemd, which is what lets a deploy run
+// the verb every time without restarting anything.
+func TestInstallUnitsIsIdempotent(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	enabler := &recordingEnabler{}
+
+	if _, err := installUnits(t.Context(), roleWAN, root, enabler.enable); err != nil {
+		t.Fatalf("first installUnits: %v", err)
+	}
+	unitPath := filepath.Join(root, systemdUnitDir, "mwan-agent.service")
+	before, err := os.Stat(unitPath)
+	if err != nil {
+		t.Fatalf("stat after the first run: %v", err)
+	}
+
+	second, err := installUnits(t.Context(), roleWAN, root, enabler.enable)
+	if err != nil {
+		t.Fatalf("second installUnits: %v", err)
+	}
+
+	if len(second.changed) != 0 {
+		t.Fatalf("second run changed %v, want nothing", second.changed)
+	}
+	if len(second.enabled) != 0 {
+		t.Fatalf("second run enabled %v, want nothing", second.enabled)
+	}
+	if len(enabler.calls) != 1 {
+		t.Fatalf("enable called %d times across two runs, want 1", len(enabler.calls))
+	}
+	after, err := os.Stat(unitPath)
+	if err != nil {
+		t.Fatalf("stat after the second run: %v", err)
+	}
+	if !after.ModTime().Equal(before.ModTime()) {
+		t.Fatalf("second run rewrote %s", unitPath)
+	}
+}
+
+// TestInstallUnitsRewritesAChangedUnit proves the verb repairs a unit an
+// operator edited on the host, which is the case that makes the release pin
+// mean something: whatever is on disk, the run puts the release's bytes back.
+func TestInstallUnitsRewritesAChangedUnit(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	enabler := &recordingEnabler{}
+	if _, err := installUnits(t.Context(), roleHost, root, enabler.enable); err != nil {
+		t.Fatalf("first installUnits: %v", err)
+	}
+	unitPath := filepath.Join(root, systemdUnitDir, "mwan-ifmgr.service")
+	if err := os.WriteFile(unitPath, []byte("[Service]\nExecStart=/bin/false\n"), 0o644); err != nil {
+		t.Fatalf("overwrite the unit: %v", err)
+	}
+
+	outcome, err := installUnits(t.Context(), roleHost, root, enabler.enable)
+	if err != nil {
+		t.Fatalf("second installUnits: %v", err)
+	}
+
+	if len(outcome.changed) != 1 || outcome.changed[0] != unitPath {
+		t.Fatalf("changed = %v, want just %s", outcome.changed, unitPath)
+	}
+	onDisk, err := os.ReadFile(unitPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", unitPath, err)
+	}
+	embedded, err := unitFS.ReadFile("mwan-ifmgr.service")
+	if err != nil {
+		t.Fatalf("read the embedded unit: %v", err)
+	}
+	if !bytes.Equal(onDisk, embedded) {
+		t.Fatal("the edited unit was not put back to the embedded bytes")
+	}
+	if len(enabler.calls) != 2 {
+		t.Fatalf("enable called %d times, want 2", len(enabler.calls))
+	}
+}
+
+// TestInstallWithoutApplyWritesNothing proves the default is safe: a run with
+// no --apply prints its help and leaves the host alone.
+func TestInstallWithoutApplyWritesNothing(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+
+	code := runInstall([]string{"--role", "wan", "--root", root})
+
+	if code != exitInstallOK {
+		t.Fatalf("exit code = %d, want %d", code, exitInstallOK)
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatalf("read the root: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("a run without --apply created %d entries under the root", len(entries))
+	}
+}
+
+// TestInstallApplyUnderARootTouchesNoSystemd proves a rooted run writes the
+// units and leaves the running machine's systemd alone, which is what makes
+// --root safe to use on a host that is running the daemon.
+func TestInstallApplyUnderARootTouchesNoSystemd(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+
+	code := runInstall([]string{"--apply", "--role", "host", "--root", root})
+
+	if code != exitInstallOK {
+		t.Fatalf("exit code = %d, want %d", code, exitInstallOK)
+	}
+	unitPath := filepath.Join(root, systemdUnitDir, "mwan-ifmgr.service")
+	onDisk, err := os.ReadFile(unitPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", unitPath, err)
+	}
+	embedded, err := unitFS.ReadFile("mwan-ifmgr.service")
+	if err != nil {
+		t.Fatalf("read the embedded unit: %v", err)
+	}
+	if !bytes.Equal(onDisk, embedded) {
+		t.Fatal("the rooted run did not write the embedded bytes")
+	}
+}
+
+// TestInstallApplyNeedsARole proves a run that would change the host refuses
+// to guess which host it is on.
+func TestInstallApplyNeedsARole(t *testing.T) {
+	t.Parallel()
+
+	code := runInstall([]string{"--apply", "--root", t.TempDir()})
+
+	if code != exitInstallUsage {
+		t.Fatalf("exit code = %d, want %d", code, exitInstallUsage)
+	}
+}
+
+// TestInstallRejectsAnUnknownRole proves a typo in --role fails loudly rather
+// than installing an empty set and reporting success.
+func TestInstallRejectsAnUnknownRole(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+
+	code := runInstall([]string{"--apply", "--role", "gateway", "--root", root})
+
+	if code != exitInstallUsage {
+		t.Fatalf("exit code = %d, want %d", code, exitInstallUsage)
+	}
+	if entries, err := os.ReadDir(root); err != nil || len(entries) != 0 {
+		t.Fatalf("an unknown role wrote %d entries (err %v)", len(entries), err)
+	}
+}
+
+// TestInstallPrintSchemaWritesEveryModule proves --print-schema materialises
+// the whole model set, which is what the controller validates a rendered
+// network document against.
+func TestInstallPrintSchemaWritesEveryModule(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join(t.TempDir(), "schema")
+
+	code := runInstall([]string{"--print-schema", dir})
+
+	if code != exitInstallOK {
+		t.Fatalf("exit code = %d, want %d", code, exitInstallOK)
+	}
+	for _, module := range yangpub.SchemaModules {
+		path := filepath.Join(dir, module.File)
+		written, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		embedded, err := yangpub.SchemaModuleContent(module.File)
+		if err != nil {
+			t.Fatalf("read the embedded %s: %v", module.File, err)
+		}
+		if !bytes.Equal(written, embedded) {
+			t.Fatalf("%s written differs from the embedded copy", module.File)
+		}
+	}
+}
+
+// TestInstalledUnitsAreTheOnesTheDaemonNames proves every unit the install
+// verb enables for the wan role is a unit the binary's own debug output
+// reports on, so the two lists cannot drift apart silently.
+func TestInstalledUnitsAreTheOnesTheDaemonNames(t *testing.T) {
+	t.Parallel()
+	focus := make(map[string]bool, len(debugSystemdFocusUnits))
+	for _, name := range debugSystemdFocusUnits {
+		focus[name] = true
+	}
+
+	for _, unit := range installRoles[roleWAN].enable {
+		if unit == "mwan-trace-boot.service" {
+			// The boot trace is a oneshot that has already exited by the time
+			// anything inspects the running system, so it is not a unit the
+			// debug view times.
+			continue
+		}
+		if !focus[unit] {
+			t.Errorf("the wan role enables %s, which the debug view does not name", unit)
+		}
+	}
+}

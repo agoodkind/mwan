@@ -12,51 +12,15 @@ import (
 	"goodkind.io/mwan/internal/yangpub"
 )
 
-// selftestModelSources are the gateway's model files as the repository
-// carries them at a pinned revision: the IETF modules and the interface-type
-// registry vendored under third_party. This repository's own steering module
-// is not here, because its filename carries a revision date that moves;
-// selftestSteeringModel finds it instead.
-var selftestModelSources = []string{
-	"../../third_party/yang/standard/ietf/RFC/ietf-yang-types@2025-12-22.yang",
-	"../../third_party/yang/standard/ietf/RFC/ietf-inet-types@2025-12-22.yang",
-	"../../third_party/yang/standard/ietf/RFC/ietf-interfaces@2018-02-20.yang",
-	"../../third_party/yang/standard/iana/iana-if-type@2026-03-17.yang",
-	"../../third_party/yang/standard/ietf/RFC/ietf-ip@2018-02-22.yang",
-	"../../third_party/yang/standard/ietf/RFC/ietf-nat@2019-01-10.yang",
-}
-
-// selftestSteeringModel returns the repository's steering module at whatever
-// revision it currently carries. The directory holds exactly one revision
-// file, so a revision bump does not touch this test.
-func selftestSteeringModel(t *testing.T) string {
-	t.Helper()
-	matches, err := filepath.Glob("../../yang/goodkind-mwan-steering@*.yang")
-	if err != nil {
-		t.Fatalf("glob steering model: %v", err)
-	}
-	if len(matches) != 1 {
-		t.Fatalf("want exactly one steering model, found %d", len(matches))
-	}
-	return matches[0]
-}
-
-// selftestModelsDir links the gateway's model files into a directory the
-// private repository installs from.
+// selftestModelsDir writes the gateway's model files into a directory the
+// private repository installs from. They come from the binary's embedded
+// schema, so the selftest drives real sysrepo with the modules a gateway
+// installs, at the revisions it installs them.
 func selftestModelsDir(t *testing.T) string {
 	t.Helper()
 	modelsDir := t.TempDir()
-	for _, source := range append(selftestModelSources, selftestSteeringModel(t)) {
-		absolute, err := filepath.Abs(source)
-		if err != nil {
-			t.Fatalf("resolve %s: %v", source, err)
-		}
-		if _, err := os.Stat(absolute); err != nil {
-			t.Fatalf("model %s: %v", source, err)
-		}
-		if err := os.Symlink(absolute, filepath.Join(modelsDir, filepath.Base(source))); err != nil {
-			t.Fatalf("link %s: %v", source, err)
-		}
+	if _, err := yangpub.WriteSchema(modelsDir); err != nil {
+		t.Fatalf("write the embedded schema: %v", err)
 	}
 	return modelsDir
 }

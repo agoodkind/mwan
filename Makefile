@@ -145,47 +145,29 @@ proto:
 
 # yanglint validates the modules the gateway serves itself with. Install it
 # with `brew install libyang` locally; CI uses the libyang2-tools package.
-# The IETF modules are vendored under third_party/yang at the exact revisions
-# this repository pins, and each gate names its files explicitly, so adding a
-# second revision of a module never changes which one a gate parses.
-YANG_DIR     ?= yang
-YANG_RFC_DIR ?= third_party/yang/standard/ietf/RFC
-YANGLINT     ?= yanglint
+#
+# Both gates parse the whole embedded schema directory, which is the set the
+# binary carries and installs. That directory holds exactly one revision of
+# each module, so naming the directory names one file per module and the
+# gates cannot drift from what ships.
+YANG_SCHEMA_DIR ?= internal/yangpub/schema
+YANG_DIR        ?= yang
+YANGLINT        ?= yanglint
 
 # Both gates resolve their inputs through make rather than a shell glob in the
 # recipe, so an empty result is a value each gate can refuse. A shell glob that
 # matches nothing expands to itself and reaches yanglint as a literal path,
 # which fails for the wrong reason and names no cause.
-YANG_MODELS := $(wildcard $(YANG_DIR)/*.yang)
-
-YANG_IETF_MODULES := \
-	$(YANG_RFC_DIR)/ietf-yang-types@2025-12-22.yang \
-	$(YANG_RFC_DIR)/ietf-inet-types@2025-12-22.yang \
-	$(YANG_RFC_DIR)/ietf-interfaces@2018-02-20.yang \
-	$(YANG_RFC_DIR)/ietf-ip@2018-02-22.yang \
-	$(YANG_RFC_DIR)/ietf-routing@2018-03-13.yang \
-	$(YANG_RFC_DIR)/ietf-nat@2019-01-10.yang
+YANG_MODELS := $(wildcard $(YANG_SCHEMA_DIR)/*.yang)
 
 .PHONY: yang-validate
 yang-validate:
 	@if [ -z "$(strip $(YANG_MODELS))" ]; then \
-		echo "yang-validate: no model files match $(YANG_DIR)/*.yang; restore them or fix YANG_DIR" >&2; \
+		echo "yang-validate: no model files match $(YANG_SCHEMA_DIR)/*.yang; restore them or fix YANG_SCHEMA_DIR" >&2; \
 		exit 1; \
 	fi
 	$(YANGLINT) --version
-	$(YANGLINT) $(YANG_IETF_MODULES) $(YANG_MODELS)
-
-# A data instance carrying an interface must give it a type, and that identity
-# lives in the interface-type registry, so the instance gate needs one module
-# the schema gate does not.
-YANG_INSTANCE_MODULES := \
-	$(YANG_RFC_DIR)/ietf-yang-types@2025-12-22.yang \
-	$(YANG_RFC_DIR)/ietf-inet-types@2025-12-22.yang \
-	$(YANG_RFC_DIR)/iana-if-type@2014-05-08.yang \
-	$(YANG_RFC_DIR)/ietf-interfaces@2018-02-20.yang \
-	$(YANG_RFC_DIR)/ietf-ip@2018-02-22.yang \
-	$(YANG_RFC_DIR)/ietf-routing@2018-03-13.yang \
-	$(YANG_RFC_DIR)/ietf-nat@2019-01-10.yang
+	$(YANGLINT) $(YANG_MODELS)
 
 YANG_INSTANCES := $(wildcard $(YANG_DIR)/instances/*.json)
 
@@ -204,7 +186,7 @@ yang-validate-instances:
 	fi
 	@for instance in $(YANG_INSTANCES); do \
 		echo "yanglint -t config $$instance"; \
-		$(YANGLINT) -t config $(YANG_INSTANCE_MODULES) $(YANG_MODELS) "$$instance" || exit 1; \
+		$(YANGLINT) -t config $(YANG_MODELS) "$$instance" || exit 1; \
 	done
 
 check: yang-validate yang-validate-instances
