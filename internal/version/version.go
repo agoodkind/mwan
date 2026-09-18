@@ -56,7 +56,7 @@ func BinaryHash() string {
 }
 
 // binaryHashFrom hashes the file at path. If path is empty it falls back to
-// os.Executable(). Not exported (used internally and by tests).
+// [os.Executable]. Not exported (used internally and by tests).
 func binaryHashFrom(path string) string {
 	if path == "" {
 		var err error

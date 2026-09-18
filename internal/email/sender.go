@@ -1,3 +1,7 @@
+// Package email sends alert mail through SMTP2GO, retrying over the
+// out-of-band interface when the default route fails. An alert about a
+// connectivity failure has to survive that same failure, so the fallback is
+// the reason this package exists rather than calling the mailer directly.
 package email
 
 import (
@@ -31,6 +35,10 @@ func NewSender(smtp2goAPIKey, from, bindIface, caller string, log *slog.Logger) 
 	}
 }
 
+// Send delivers one message, trying the default route and then the OOB
+// interface. It reports success without sending when no API key is configured,
+// so a host with no mail credentials runs the alert path without failing it.
+// With no OOB interface configured it returns the first attempt's error.
 func (s *Sender) Send(ctx context.Context, to, subject, body string) error {
 	if s.apiKey == "" {
 		return nil

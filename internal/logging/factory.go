@@ -5,7 +5,7 @@
 //
 //   - re-exports of the bits mwan call sites use most so existing
 //     imports of "goodkind.io/mwan/internal/logging" keep working.
-//   - ContextHandler, the project-specific slog.Handler that pulls
+//   - ContextHandler, the project-specific [slog.Handler] that pulls
 //     trace attrs out of context (depends on internal/tracing).
 //
 // Email delivery is owned by goodkind.io/mwan/internal/notify; the

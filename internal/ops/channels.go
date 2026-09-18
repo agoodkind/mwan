@@ -1,3 +1,11 @@
+// Package ops is the watchdog's access to everything outside its own process:
+// the guest agent, the hypervisor's `qm` command, and the Proxmox REST API.
+// The SysOps interface is the whole surface, so a test or a fault injector can
+// stand in for all of it.
+//
+// Reaching the guest has three independent channels, tried in order, because
+// the failures this daemon handles are exactly the ones that take a channel
+// away. ChannelTracker records which ones are working so an alert can say so.
 package ops
 
 import (
@@ -9,12 +17,21 @@ import (
 	"time"
 )
 
+// ChannelName identifies one of the ways the watchdog reaches the gateway VM.
+// The value is what the health summary and the log lines print, so it is
+// stable rather than an index.
 type ChannelName string
 
 const (
+	// ChanVsock is the hypervisor-local virtio socket to the guest agent. It
+	// works while the guest has no working network.
 	ChanVsock ChannelName = "vsock"
-	ChanTCP   ChannelName = "tcp_mgmt"
-	ChanPVE   ChannelName = "pve_rest"
+	// ChanTCP is the gRPC connection to the guest agent over the management
+	// network.
+	ChanTCP ChannelName = "tcp_mgmt"
+	// ChanPVE is the Proxmox REST API, which acts on the VM from outside
+	// rather than talking to anything inside it.
+	ChanPVE ChannelName = "pve_rest"
 )
 
 type channelHealth struct {
@@ -25,21 +42,34 @@ type channelHealth struct {
 	healthy          bool
 }
 
+// ChannelTracker records the last outcome on each channel so an alert can
+// report which paths to the guest still work. That distinction is what tells
+// an operator whether the guest is unreachable or merely off the network.
+//
+// It is written from the watchdog loop and read when an alert is rendered, so
+// every method takes the lock.
 type ChannelTracker struct {
 	mu       sync.Mutex
 	channels map[ChannelName]*channelHealth
 	now      func() time.Time
 }
 
+// NewChannelTracker returns a tracker on the wall clock.
 func NewChannelTracker() *ChannelTracker {
 	return NewChannelTrackerWithClock(time.Now)
 }
 
+// NewChannelTrackerWithClock returns a tracker that reads time from now, which
+// lets a test assert on the recorded timestamps. A nil now falls back to the
+// wall clock rather than panicking on first use.
 func NewChannelTrackerWithClock(now func() time.Time) *ChannelTracker {
 	if now == nil {
 		now = time.Now
 	}
+	// Every channel is present from the start, so recordSuccess and
+	// recordFailure can index the map without checking.
 	return &ChannelTracker{
+		mu: sync.Mutex{},
 		channels: map[ChannelName]*channelHealth{
 			ChanVsock: {},
 			ChanTCP:   {},

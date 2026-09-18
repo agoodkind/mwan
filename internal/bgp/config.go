@@ -1,3 +1,11 @@
+// Package bgp runs the gateway's embedded BGP speaker on top of GoBGP and
+// reads the resulting FIB. The speaker announces the gateway's prefixes to
+// OPNsense, which is how a failover moves traffic without touching static
+// routes.
+//
+// The types here mirror the matching sections of internal/config rather than
+// reusing them, so the speaker depends on its own shape instead of on the
+// TOML schema.
 package bgp
 
 import "net/netip"

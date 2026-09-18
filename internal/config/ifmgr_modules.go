@@ -27,6 +27,10 @@ type IfMgrModulesWANSection struct {
 	Routes *IfMgrWANRoutesSection `toml:"routes"`
 }
 
+// IfMgrWGHealthSection is the [ifmgr.modules.wg] table. The module observes
+// WireGuard peer handshake ages and alerts when one goes stale. SSHHost selects
+// the mode: set, the module reads a remote host's peers over SSH; empty, it
+// reads the local interface.
 type IfMgrWGHealthSection struct {
 	SSHHost           string   `toml:"ssh_host"`
 	SSHPort           *int     `toml:"ssh_port"`
@@ -39,6 +43,10 @@ type IfMgrWGHealthSection struct {
 	IgnorePeers       []string `toml:"ignore_peers"`
 }
 
+// IfMgrOOBV6Section is the [ifmgr.modules.oobv6] table. The module holds the
+// static out-of-band IPv6 address on the interface and keeps the RA-learned
+// default route in the out-of-band routing table, so out-of-band access
+// survives a failure of the main route.
 type IfMgrOOBV6Section struct {
 	Iface                 string `toml:"iface"`
 	OOBAddr               string `toml:"oob_addr"`
@@ -47,11 +55,19 @@ type IfMgrOOBV6Section struct {
 	SLAACRulePriority     *int   `toml:"slaac_rule_priority"`
 }
 
+// IfMgrOOBV4Section is the [ifmgr.modules.oobv4] table. The module puts the
+// DHCP-learned default route into the out-of-band routing table, which is the
+// IPv4 counterpart of what oobv6 does from router advertisements.
 type IfMgrOOBV4Section struct {
 	Iface      string `toml:"iface"`
 	OOBTableID int    `toml:"oob_table_id"`
 }
 
+// IfMgrSLAACHealthSection is the [ifmgr.modules.slaac_health] table. The
+// module detects a deprecated SLAAC address, sends a router solicitation, and
+// escalates to toggling disable_ipv6 when solicitation does not restore the
+// address. MaxTogglesPerHour bounds that last resort, because the toggle drops
+// every IPv6 address on the interface.
 type IfMgrSLAACHealthSection struct {
 	Iface             string   `toml:"iface"`
 	DegradedAfter     string   `toml:"degraded_after"`
@@ -62,11 +78,20 @@ type IfMgrSLAACHealthSection struct {
 	ProbeTimeout      string   `toml:"probe_timeout"`
 }
 
+// IfMgrRALostSection is the [ifmgr.modules.ra_lost] table. The module alerts
+// when no router advertisement has arrived on the interface for
+// RALostAlertAfter, which is the first sign the upstream router stopped
+// advertising.
 type IfMgrRALostSection struct {
 	Iface            string `toml:"iface"`
 	RALostAlertAfter string `toml:"ra_lost_alert_after"`
 }
 
+// IfMgrConnectivityProbeSection is the [ifmgr.modules.connectivity_probe]
+// table. The module pings each target every reconcile tick and alerts once any
+// one of them has been failing for UnhealthyAfter. The delay debounces each
+// target separately, so a single dropped probe does not alert while a target
+// that stays down does.
 type IfMgrConnectivityProbeSection struct {
 	Iface          string   `toml:"iface"`
 	TargetsV6      []string `toml:"targets_v6"`
@@ -74,21 +99,36 @@ type IfMgrConnectivityProbeSection struct {
 	UnhealthyAfter string   `toml:"unhealthy_after"`
 }
 
+// IfMgrBridgeProbeSection is the [ifmgr.modules.bridge_probe] table. The
+// module alerts when no neighbour-discovery or DHCP traffic has arrived on the
+// interface for NoSignalAlertAfter, which is what a dangling host-side veth
+// looks like from inside the guest: the link stays up and nothing arrives.
 type IfMgrBridgeProbeSection struct {
 	Iface              string `toml:"iface"`
 	NoSignalAlertAfter string `toml:"no_signal_alert_after"`
 }
 
+// IfMgrCloudflaredTapSection is the [ifmgr.modules.cloudflared_tap] table. The
+// module reads the named unit's journal and re-emits its lines, downgrading
+// those matching DowngradePatterns so routine cloudflared chatter does not
+// read as an error.
 type IfMgrCloudflaredTapSection struct {
 	Unit              string   `toml:"unit"`
 	DowngradePatterns []string `toml:"downgrade_patterns"`
 	JournalctlPath    string   `toml:"journalctl_path"`
 }
 
+// IfMgrMainV4Section is the [ifmgr.modules.mainv4] table. The module puts the
+// DHCP-learned IPv4 default route into the main routing table, and stays inert
+// unless the named interface has DHCPv4 enabled.
 type IfMgrMainV4Section struct {
 	Iface string `toml:"iface"`
 }
 
+// IfMgrPolicyRulesSection is the [ifmgr.modules.policy_rules] table. The
+// module reconciles the listed ip rules, which is how traffic from the
+// cloudflared user and from the out-of-band source address is directed to the
+// out-of-band table rather than the main one.
 type IfMgrPolicyRulesSection struct {
 	Rule []IfMgrPolicyRuleSection `toml:"rule"`
 }
@@ -193,6 +233,10 @@ type IfMgrHostIPv6PolicyIfaceSection struct {
 	CleanupRADefault bool   `toml:"cleanup_ra_default"`
 }
 
+// IfMgrPolicyRuleSection is one [[ifmgr.modules.policy_rules.rule]] entry: a
+// single ip rule the module keeps in place. A rule selects traffic either by
+// source address or by owning user, and names the table to consult, so From
+// and the UID fields are alternatives rather than a pair.
 type IfMgrPolicyRuleSection struct {
 	Family   string `toml:"family"`
 	Priority int    `toml:"priority"`
