@@ -162,6 +162,103 @@ func TestInstallUnitsRewritesAChangedUnit(t *testing.T) {
 	}
 }
 
+// TestInstallFailoverWritesTheUnitAndItsDropIn proves the failover container
+// gets one shared unit body plus the drop-in that relaxes the sandbox, rather
+// than a second full unit. The drop-in path is the one mwan-ifmgr.service's
+// own ProtectKernelTunables comment prescribes.
+func TestInstallFailoverWritesTheUnitAndItsDropIn(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	enabler := &recordingEnabler{}
+
+	outcome, err := installUnits(t.Context(), roleFailover, root, enabler.enable)
+	if err != nil {
+		t.Fatalf("installUnits: %v", err)
+	}
+
+	wantDests := []string{
+		"mwan-agent.service",
+		"mwan-ifmgr.service",
+		"mwan-ifmgr.service.d/lxc-failover.conf",
+	}
+	if len(outcome.changed) != len(wantDests) {
+		t.Fatalf("changed = %v, want %d files", outcome.changed, len(wantDests))
+	}
+	for _, dest := range wantDests {
+		if _, statErr := os.Stat(filepath.Join(root, systemdUnitDir, dest)); statErr != nil {
+			t.Fatalf("stat %s: %v", dest, statErr)
+		}
+	}
+
+	// The unit body must be the same one the hypervisor gets. A second body
+	// would put the sandbox defaults in two places.
+	shared, err := os.ReadFile(filepath.Join(root, systemdUnitDir, "mwan-ifmgr.service"))
+	if err != nil {
+		t.Fatalf("read the installed unit: %v", err)
+	}
+	embedded, err := unitFS.ReadFile("mwan-ifmgr.service")
+	if err != nil {
+		t.Fatalf("read the embedded unit: %v", err)
+	}
+	if !bytes.Equal(shared, embedded) {
+		t.Fatal("the failover role installed a different unit body from the embedded one")
+	}
+
+	// These three settings are what the failover container needs and what the
+	// unit it replaces set. slaac_health writes IPv6 sysctls, so the tunables
+	// must be writable and that path must be in ReadWritePaths; the empty
+	// BindReadOnlyPaths keeps the base unit's /root/.ssh mount off a container
+	// whose modules never read it.
+	dropIn, err := os.ReadFile(
+		filepath.Join(root, systemdUnitDir, "mwan-ifmgr.service.d", "lxc-failover.conf"))
+	if err != nil {
+		t.Fatalf("read the drop-in: %v", err)
+	}
+	for _, setting := range []string{
+		"ProtectKernelTunables=false",
+		"ReadWritePaths=/var/log /var/run /run /proc/sys/net/ipv6/conf",
+		"BindReadOnlyPaths=",
+	} {
+		if !bytes.Contains(dropIn, []byte(setting)) {
+			t.Errorf("the drop-in does not set %q", setting)
+		}
+	}
+	// ReadWritePaths is a list and a drop-in appends to it, so the empty
+	// assignment has to come first or the effective value repeats the base
+	// unit's three paths. Real systemd showed that duplication before this
+	// line existed.
+	if !bytes.Contains(dropIn, []byte("ReadWritePaths=\nReadWritePaths=")) {
+		t.Error("the drop-in does not reset ReadWritePaths before setting it")
+	}
+
+	wantEnable := []string{"mwan-agent.service", "mwan-ifmgr.service"}
+	if len(enabler.calls) != 1 {
+		t.Fatalf("enable called %d times, want 1", len(enabler.calls))
+	}
+	if strings.Join(enabler.calls[0], " ") != strings.Join(wantEnable, " ") {
+		t.Fatalf("enabled %v, want %v", enabler.calls[0], wantEnable)
+	}
+}
+
+// TestHostRoleGetsNoFailoverRelaxation proves the hypervisor's install does
+// not carry the failover drop-in. The base unit keeps ProtectKernelTunables
+// true on purpose, and a drop-in leaking onto another role would silently
+// relax every ifmgr host.
+func TestHostRoleGetsNoFailoverRelaxation(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	enabler := &recordingEnabler{}
+
+	if _, err := installUnits(t.Context(), roleHost, root, enabler.enable); err != nil {
+		t.Fatalf("installUnits: %v", err)
+	}
+
+	dropInDir := filepath.Join(root, systemdUnitDir, "mwan-ifmgr.service.d")
+	if _, err := os.Stat(dropInDir); !os.IsNotExist(err) {
+		t.Fatalf("the host role created %s (err %v), want it absent", dropInDir, err)
+	}
+}
+
 // TestInstallWithoutApplyWritesNothing proves the default is safe: a run with
 // no --apply prints its help and leaves the host alone.
 func TestInstallWithoutApplyWritesNothing(t *testing.T) {

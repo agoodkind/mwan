@@ -25,7 +25,7 @@ import (
 // rather than matched by a pattern, because this directory also holds files
 // that belong to other programs.
 //
-//go:embed mwan-agent.service mwan-ifmgr.service mwan-ifmgr@.service mwan-trace-boot.service
+//go:embed mwan-agent.service mwan-ifmgr.service mwan-ifmgr@.service mwan-trace-boot.service mwan-ifmgr-failover.conf
 var unitFS embed.FS
 
 const (
@@ -43,18 +43,33 @@ const (
 	// roleWAN is the gateway VM: the agent, the instanced interface manager,
 	// and the boot trace oneshot.
 	roleWAN installRole = "wan"
-	// roleFailover is the failover container, which runs the agent. Its own
-	// mwan-ifmgr.service is not here; see installRoles.
+	// roleFailover is the failover container: the agent, plus the interface
+	// manager with the sandbox relaxation slaac_health needs.
 	roleFailover installRole = "failover"
 	// roleHost is a Proxmox hypervisor, which runs the single-instance
 	// interface manager in its out-of-band role.
 	roleHost installRole = "host"
 )
 
+// installedFile is one embedded file and where it lands under the systemd
+// unit directory. A drop-in names a path inside a unit's .d directory, so the
+// destination cannot always be the embedded file's own name.
+type installedFile struct {
+	// embedded is the file's name inside unitFS.
+	embedded string
+	// dest is the path to write, relative to systemdUnitDir.
+	dest string
+}
+
+// unit names an embedded unit file that installs under its own name.
+func unit(name string) installedFile {
+	return installedFile{embedded: name, dest: name}
+}
+
 // roleUnits is one role's units: the files to write and the units to enable.
 type roleUnits struct {
-	// files are the embedded unit file names this role installs.
-	files []string
+	// files are the embedded files this role installs, in write order.
+	files []installedFile
 	// enable are the unit names to enable, which for an instanced unit is a
 	// concrete instance rather than the template.
 	enable []string
@@ -63,22 +78,34 @@ type roleUnits struct {
 // installRoles maps each role onto what it installs, matching what the
 // playbooks write and enable today.
 //
-// The failover container writes only the agent unit here. Its
-// mwan-ifmgr.service is a different file from the hypervisor's, with the
-// sandboxing relaxed that slaac_health needs, and it still lives in configs
-// at mwan-failover/mwan-ifmgr.service. Until that file has one home, this
-// role installs what the binary owns and leaves that unit to the playbook.
+// One interface-manager unit body serves every host, and a deployment that
+// needs its sandbox relaxed says so in a drop-in. mwan-ifmgr.service's own
+// ProtectKernelTunables comment prescribes exactly that, naming this file's
+// path, and the suburban hypervisor already relaxes the same setting the same
+// way through a drop-in configs deploys. Two full unit bodies would be the
+// novelty here.
 var installRoles = map[installRole]roleUnits{
 	roleWAN: {
-		files:  []string{"mwan-agent.service", "mwan-ifmgr@.service", "mwan-trace-boot.service"},
+		files: []installedFile{
+			unit("mwan-agent.service"),
+			unit("mwan-ifmgr@.service"),
+			unit("mwan-trace-boot.service"),
+		},
 		enable: []string{"mwan-agent.service", "mwan-ifmgr@wan.service", "mwan-trace-boot.service"},
 	},
 	roleFailover: {
-		files:  []string{"mwan-agent.service"},
-		enable: []string{"mwan-agent.service"},
+		files: []installedFile{
+			unit("mwan-agent.service"),
+			unit("mwan-ifmgr.service"),
+			{
+				embedded: "mwan-ifmgr-failover.conf",
+				dest:     "mwan-ifmgr.service.d/lxc-failover.conf",
+			},
+		},
+		enable: []string{"mwan-agent.service", "mwan-ifmgr.service"},
 	},
 	roleHost: {
-		files:  []string{"mwan-ifmgr.service"},
+		files:  []installedFile{unit("mwan-ifmgr.service")},
 		enable: []string{"mwan-ifmgr.service"},
 	},
 }
@@ -174,14 +201,14 @@ func installUnits(
 	units := installRoles[role]
 	targetDir := filepath.Join(root, systemdUnitDir)
 	for _, file := range units.files {
-		content, err := unitFS.ReadFile(file)
+		content, err := unitFS.ReadFile(file.embedded)
 		if err != nil {
-			return outcome, installFailed("read the embedded unit", file, err)
+			return outcome, installFailed("read the embedded unit", file.embedded, err)
 		}
-		path := filepath.Join(targetDir, file)
+		path := filepath.Join(targetDir, filepath.FromSlash(file.dest))
 		changed, err := installfile.Write(path, content, systemdUnitMode)
 		if err != nil {
-			return outcome, installFailed("install the unit", file, err)
+			return outcome, installFailed("install the unit", file.dest, err)
 		}
 		if changed {
 			outcome.changed = append(outcome.changed, path)
@@ -296,7 +323,11 @@ func printInstallUsage(out io.Writer) {
 	fmt.Fprintln(out, "Units installed into "+systemdUnitDir+", by role:")
 	for _, name := range knownInstallRoles() {
 		units := installRoles[installRole(name)]
-		fmt.Fprintf(out, "  %-9s writes %s\n", name, strings.Join(units.files, " "))
+		written := make([]string, 0, len(units.files))
+		for _, file := range units.files {
+			written = append(written, file.dest)
+		}
+		fmt.Fprintf(out, "  %-9s writes %s\n", name, strings.Join(written, " "))
 		fmt.Fprintf(out, "  %-9s enables %s\n", "", strings.Join(units.enable, " "))
 	}
 	fmt.Fprintln(out)
