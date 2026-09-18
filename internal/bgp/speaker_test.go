@@ -312,7 +312,7 @@ func TestStatus_ReportsTheSessionAddressForDynamicPeers(t *testing.T) {
 		},
 	})
 
-	st := s.Status()
+	st := s.Status(t.Context())
 
 	if len(st.Peers) != 2 {
 		t.Fatalf("peers = %+v", st.Peers)

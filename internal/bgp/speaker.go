@@ -193,7 +193,7 @@ func (s *Speaker) handlePeerUpdate(ctx context.Context, event *apiutil.WatchEven
 	peer := event.Peer.State.NeighborAddress.String()
 	if event.Peer.State.SessionState == bgppkt.BGP_FSM_ESTABLISHED {
 		s.log.InfoContext(ctx, "bgp peer established", "peer", peer)
-		if s.IsEstablished() {
+		if s.IsEstablished(ctx) {
 			if err := s.AnnounceDefault(); err != nil {
 				s.log.ErrorContext(ctx, "bgp auto-announce failed", "error", err)
 			} else {
@@ -743,8 +743,10 @@ func peerAddress(p *apipb.Peer) string {
 	return p.GetConf().GetNeighborAddress()
 }
 
-// Status returns the current state of all BGP peers.
-func (s *Speaker) Status() Status {
+// Status returns the current state of all BGP peers. The peer listing uses
+// ctx, so a caller that is cancelled stops waiting on GoBGP; the peers it had
+// not reached yet are then absent from the result, and the failure is logged.
+func (s *Speaker) Status(ctx context.Context) Status {
 	s.mu.Lock()
 	announcing := s.announcing
 	started := s.started
@@ -755,7 +757,6 @@ func (s *Speaker) Status() Status {
 		return st
 	}
 
-	ctx := context.Background()
 	err := s.server.ListPeer(ctx, &apipb.ListPeerRequest{}, func(p *apipb.Peer) {
 		// Established, UpSince and AFI are filled in below only for a peer
 		// that reached the established state.
@@ -790,15 +791,15 @@ func (s *Speaker) Status() Status {
 		st.Peers = append(st.Peers, ps)
 	})
 	if err != nil {
-		s.log.Error("list peers failed", "error", err)
+		s.log.ErrorContext(ctx, "list peers failed", "error", err)
 	}
 
 	return st
 }
 
 // IsEstablished returns true when all configured peers are in ESTABLISHED state.
-func (s *Speaker) IsEstablished() bool {
-	st := s.Status()
+func (s *Speaker) IsEstablished(ctx context.Context) bool {
+	st := s.Status(ctx)
 	if len(st.Peers) == 0 {
 		return false
 	}

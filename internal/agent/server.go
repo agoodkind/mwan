@@ -149,9 +149,9 @@ func (a *Server) GetHealth(
 	}
 
 	if a.bgp != nil {
-		st := a.bgp.Status()
+		st := a.bgp.Status(ctx)
 		resp.BgpAnnouncing = st.Announcing
-		resp.BgpAllEstablished = a.bgp.IsEstablished()
+		resp.BgpAllEstablished = a.bgp.IsEstablished(ctx)
 	}
 
 	return resp, nil
@@ -511,10 +511,10 @@ func (a *Server) GetBGPStatus(
 	if a.bgp == nil {
 		return nil, status.Error(codes.Unavailable, "BGP not enabled")
 	}
-	st := a.bgp.Status()
+	st := a.bgp.Status(ctx)
 	resp := &mwanv1.GetBGPStatusResponse{
 		Announcing:     st.Announcing,
-		AllEstablished: a.bgp.IsEstablished(),
+		AllEstablished: a.bgp.IsEstablished(ctx),
 	}
 	for _, p := range st.Peers {
 		resp.Peers = append(resp.Peers, &mwanv1.BGPPeerStatus{
