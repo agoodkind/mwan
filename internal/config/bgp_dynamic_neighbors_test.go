@@ -11,13 +11,13 @@ func TestValidateBGPDynamicNeighbors(t *testing.T) {
 	valid := minimalBGPSection()
 	valid.DynamicNeighbors = []string{"10.250.250.0/29", "3d06:bad:b01:fe::/64"}
 	valid.LearnedRouteIface = "enmwanbr0"
-	if err := validateBGP(&valid); err != nil {
+	if err := validateBGPDynamicConfig(&valid); err != nil {
 		t.Fatalf("dynamic CIDR prefixes must pass validation: %v", err)
 	}
 
 	invalid := minimalBGPSection()
 	invalid.DynamicNeighbors = []string{"not-a-prefix"}
-	if err := validateBGP(&invalid); err == nil {
+	if err := validateBGPDynamicConfig(&invalid); err == nil {
 		t.Fatal("non-CIDR dynamic neighbor must fail validation")
 	}
 }
@@ -25,7 +25,7 @@ func TestValidateBGPDynamicNeighbors(t *testing.T) {
 func TestValidateBGPRequiresLearnedRouteIfaceForDynamicNeighbors(t *testing.T) {
 	missingIface := minimalBGPSection()
 	missingIface.DynamicNeighbors = []string{"10.250.250.0/29"}
-	if err := validateBGP(&missingIface); err == nil {
+	if err := validateBGPDynamicConfig(&missingIface); err == nil {
 		t.Fatal("dynamic neighbors without learned_route_iface must fail validation")
 	}
 }
@@ -43,7 +43,7 @@ func TestValidateBGPDynamicNeighborsRejectsDefaultRoutes(t *testing.T) {
 			invalid := minimalBGPSection()
 			invalid.DynamicNeighbors = []string{testCase.prefix}
 			invalid.LearnedRouteIface = "enmwanbr0"
-			err := validateBGP(&invalid)
+			err := validateBGPDynamicConfig(&invalid)
 			if err == nil {
 				t.Fatal("default-route dynamic neighbor must fail validation")
 			}

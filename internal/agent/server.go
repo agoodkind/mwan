@@ -410,10 +410,6 @@ func (a *Server) GetSystemInfo(
 	}, nil
 }
 
-func readUptimeSeconds() (int64, error) {
-	return readUptimeSecondsFrom("/proc/uptime")
-}
-
 func readUptimeSecondsFrom(path string) (int64, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -430,10 +426,6 @@ func readUptimeSecondsFrom(path string) (int64, error) {
 	return int64(secFloat), nil
 }
 
-func readLoadAverage() (string, error) {
-	return readLoadAverageFrom("/proc/loadavg")
-}
-
 func readLoadAverageFrom(path string) (string, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -444,10 +436,6 @@ func readLoadAverageFrom(path string) (string, error) {
 		return "", fmt.Errorf("unexpected /proc/loadavg format")
 	}
 	return strings.Join(fields[:3], " "), nil
-}
-
-func readMeminfoKB() (totalKB int64, availKB int64, err error) {
-	return readMeminfoKBFrom("/proc/meminfo")
 }
 
 func readMeminfoKBFrom(path string) (totalKB int64, availKB int64, err error) {

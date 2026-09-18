@@ -952,21 +952,6 @@ func TestGetHealth_PingExecMissing(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Thin /proc wrapper coverage (readUptimeSeconds, readLoadAverage, readMeminfoKB)
-// These wrap the injectable versions; just confirm they call through.
-// We use real /proc on Linux; on Darwin they return an error which is fine.
-// ---------------------------------------------------------------------------
-
-func TestProcWrappers_CallThrough(t *testing.T) {
-	t.Parallel()
-	// These either succeed (Linux) or return an error (Darwin) -- both are fine.
-	// The goal is to hit the statement in each wrapper.
-	_, _ = readUptimeSeconds()
-	_, _ = readLoadAverage()
-	_, _, _ = readMeminfoKB()
-}
-
-// ---------------------------------------------------------------------------
 // GetConfigState -- os.Stat error after successful ReadFile
 // Achieved by making the file unstat-able after the read by replacing it with
 // a directory of the same name (triggers EISDIR on Stat on some platforms) or

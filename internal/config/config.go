@@ -1,4 +1,8 @@
-// Package config defines the mwan TOML configuration schema and validation.
+// Package config defines the mwan TOML configuration schema and loads it.
+// Load applies the built-in defaults, reads the file, overlays the secrets
+// held in the environment, and checks the dynamic BGP settings. Every other
+// section is validated by the subsystem that reads it, at the point it is
+// used.
 package config
 
 import (
@@ -7,6 +11,7 @@ import (
 	"log/slog"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -82,16 +87,26 @@ type WatchdogSection struct {
 	ServiceName string `toml:"service_name"`
 }
 
-// Duration helper methods for WatchdogSection.
+// The TOML fields are plain second counts, so these three methods are the only
+// place the unit is applied. Reading a raw field where a duration is wanted is
+// a bug these methods exist to prevent.
 
+// HealthyInterval is how long the watchdog waits between checks while
+// connectivity is healthy.
 func (ws WatchdogSection) HealthyInterval() time.Duration {
 	return time.Duration(ws.CheckIntervalHealthy) * time.Second
 }
 
+// DegradedInterval is how long the watchdog waits between checks once
+// connectivity is degraded. It is shorter than HealthyInterval so a developing
+// outage is diagnosed sooner.
 func (ws WatchdogSection) DegradedInterval() time.Duration {
 	return time.Duration(ws.CheckIntervalDegraded) * time.Second
 }
 
+// PostRollbackGrace is how long the watchdog withholds judgement after a
+// rollback, which gives the guest time to boot and its routes time to
+// converge before the next verdict.
 func (ws WatchdogSection) PostRollbackGrace() time.Duration {
 	return time.Duration(ws.PostRollbackGraceSeconds) * time.Second
 }
@@ -315,8 +330,23 @@ func defaultConfigBase() Config {
 	// exhaustruct lint does not require enumerating every zero-value
 	// sub-section (OPNsense, IfMgr, and their many nested sub-structs).
 	var cfg Config
-	cfg.Email = EmailConfig{MinLevel: "ERROR", Cooldown: "5m"}
-	cfg.PVE = PVEConfig{BaseURL: "https://127.0.0.1:8006/api2/json"}
+	// The secrets and addresses left empty here come from the TOML file or
+	// the environment; a default would be wrong on every host.
+	cfg.Email = EmailConfig{
+		MinLevel:      "ERROR",
+		Cooldown:      "5m",
+		SMTP2GOAPIKey: "",
+		AlertEmail:    "",
+		From:          "",
+		SubjectPrefix: "",
+		BindIface:     "",
+	}
+	cfg.PVE = PVEConfig{
+		BaseURL:     "https://127.0.0.1:8006/api2/json",
+		Node:        "",
+		TokenID:     "",
+		TokenSecret: "",
+	}
 	cfg.Network = NetworkConfig{
 		PingTargetIPv4: "1.1.1.1",
 		PingTargetIPv6: "2606:4700:4700::1111",
@@ -348,6 +378,7 @@ func defaultConfigBase() Config {
 		DeployFile:     "/var/lib/mwan/last-deploy",
 		DeployExpected: true,
 		LogFile:        "/var/log/mwan-agent.log",
+		Debug:          false,
 	}
 	cfg.BGP.GracefulRestart = BGPGracefulRestart{
 		Enabled:             true,
@@ -371,6 +402,11 @@ func Load() (*Config, error) {
 			break
 		}
 	}
+
+	// The path comes from the unit file or the operator's command line, both
+	// already privileged, so cleaning it normalizes the value rather than
+	// defending a trust boundary.
+	path = filepath.Clean(path)
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -402,143 +438,9 @@ func Load() (*Config, error) {
 	return &cfg, nil
 }
 
-// Subcommand is the typed enum of subcommand names that Validate
-// dispatches on.
-type Subcommand string
-
-// Subcommand constants enumerate the subcommands recognized by Validate.
-const (
-	// SubWatchdog routes config validation through validateWatchdog.
-	SubWatchdog Subcommand = "watchdog"
-	// SubAgent routes config validation through validateAgent.
-	SubAgent Subcommand = "agent"
-	// SubIfMgr routes config validation through validateIfMgr.
-	SubIfMgr Subcommand = "ifmgr"
-)
-
-// Validate validates the Config for a specific subcommand.
-func Validate(cfg *Config, sub string, dryRun bool) error {
-	if cfg.Hostname == "" {
-		return errors.New("hostname is required")
-	}
-	switch Subcommand(sub) {
-	case SubWatchdog:
-		return validateWatchdog(cfg, dryRun)
-	case SubAgent:
-		if cfg.BGP.Enabled {
-			return validateBGP(&cfg.BGP)
-		}
-		return nil
-	case SubIfMgr:
-		return validateIfMgr(cfg)
-	}
-	return nil
-}
-
-// validateIfMgr sanity-checks the [ifmgr] section. Module-specific
-// validation lives in the module Constructor (Init); here we only catch
-// gross structural issues so the CLI fails fast instead of surfacing a
-// confusing runtime error from a module Init far down the call stack.
-func validateIfMgr(cfg *Config) error {
-	if cfg.IfMgr.Role == "" {
-		return errors.New("ifmgr.role is required (or pass --role on the CLI)")
-	}
-	if len(cfg.IfMgr.Iface) == 0 {
-		return errors.New("ifmgr: at least one [ifmgr.iface.<name>] section is required")
-	}
-	if len(cfg.IfMgr.Iface) > 1 {
-		return errors.New("ifmgr: multi-iface configurations are not yet supported")
-	}
-	if cfg.IfMgr.ReconcileInterval != "" {
-		if _, err := time.ParseDuration(cfg.IfMgr.ReconcileInterval); err != nil {
-			slog.Error("config: reconcile_interval invalid", "err", err, "value", cfg.IfMgr.ReconcileInterval)
-			return fmt.Errorf("ifmgr.reconcile_interval %q: %w", cfg.IfMgr.ReconcileInterval, err)
-		}
-	}
-	for name, iface := range cfg.IfMgr.Iface {
-		if iface.DHCPInitialBackoff != "" {
-			if _, err := time.ParseDuration(iface.DHCPInitialBackoff); err != nil {
-				slog.Error("config: dhcp_initial_backoff invalid", "err", err, "iface", name, "value", iface.DHCPInitialBackoff)
-				return fmt.Errorf("ifmgr.iface.%s.dhcp_initial_backoff %q: %w", name, iface.DHCPInitialBackoff, err)
-			}
-		}
-		if iface.DHCPMaxBackoff != "" {
-			if _, err := time.ParseDuration(iface.DHCPMaxBackoff); err != nil {
-				slog.Error("config: dhcp_max_backoff invalid", "err", err, "iface", name, "value", iface.DHCPMaxBackoff)
-				return fmt.Errorf("ifmgr.iface.%s.dhcp_max_backoff %q: %w", name, iface.DHCPMaxBackoff, err)
-			}
-		}
-	}
-	if cfg.IfMgr.Alerts.RepeatEvery != "" {
-		if _, err := time.ParseDuration(cfg.IfMgr.Alerts.RepeatEvery); err != nil {
-			slog.Error("config: alerts.repeat_every invalid", "err", err, "value", cfg.IfMgr.Alerts.RepeatEvery)
-			return fmt.Errorf("ifmgr.alerts.repeat_every %q: %w", cfg.IfMgr.Alerts.RepeatEvery, err)
-		}
-	}
-	for kind, val := range cfg.IfMgr.Alerts.PerModule {
-		if val == "" {
-			continue
-		}
-		if _, err := time.ParseDuration(val); err != nil {
-			slog.Error("config: alerts.per_module invalid", "err", err, "kind", kind, "value", val)
-			return fmt.Errorf("ifmgr.alerts.per_module.%s %q: %w", kind, val, err)
-		}
-	}
-	return nil
-}
-
-func validateWatchdog(cfg *Config, dryRun bool) error {
-	if cfg.MwanVMID == "" {
-		return errors.New("mwan_vmid is required")
-	}
-	if !dryRun && cfg.Email.SMTP2GOAPIKey == "" {
-		return errors.New("[email] smtp2go_api_key is required (set in TOML or SMTP2GO_API_KEY env)")
-	}
-	if cfg.PVE.TokenID != "" && cfg.PVE.TokenSecret == "" {
-		return errors.New("[pve] token_id set but token_secret empty")
-	}
-	return nil
-}
-
-func validateBGP(b *BGPSection) error {
-	if b.ASN == 0 {
-		return errors.New("[bgp] asn is required")
-	}
-	if b.RouterID == "" {
-		return errors.New("[bgp] router_id is required")
-	}
-	if b.ListenPort == 0 {
-		return errors.New("[bgp] listen_port is required")
-	}
-	if b.KeepaliveSeconds == 0 {
-		return errors.New("[bgp] keepalive_seconds is required")
-	}
-	if b.HoldSeconds == 0 {
-		return errors.New("[bgp] hold_seconds is required")
-	}
-	if b.HoldSeconds < 3*b.KeepaliveSeconds {
-		return fmt.Errorf("[bgp] hold_seconds (%d) must be >= 3 * keepalive_seconds (%d)", b.HoldSeconds, b.KeepaliveSeconds)
-	}
-	if err := validateBGPDynamicConfig(b); err != nil {
-		return err
-	}
-	if len(b.Neighbors) == 0 && len(b.NeighborsV6) == 0 && len(b.DynamicNeighbors) == 0 {
-		return errors.New("[bgp] at least one neighbor (v4 or v6) or dynamic neighbor is required")
-	}
-	if len(b.Announce.IPv4) == 0 && len(b.Announce.IPv6) == 0 {
-		return errors.New("[bgp.announce] at least one prefix (ipv4 or ipv6) is required")
-	}
-	if b.GracefulRestart.Enabled {
-		if b.GracefulRestart.RestartTime == 0 {
-			return errors.New("[bgp.graceful_restart] restart_time is required when enabled")
-		}
-		if b.GracefulRestart.RestartTime > 600 {
-			return fmt.Errorf("[bgp.graceful_restart] restart_time (%d) must be <= 600", b.GracefulRestart.RestartTime)
-		}
-	}
-	return nil
-}
-
+// validateBGPDynamicConfig checks the dynamic-neighbor settings. Load calls it
+// on every start, so a gateway with a malformed dynamic_neighbors prefix
+// refuses to come up rather than silently accepting no peers.
 func validateBGPDynamicConfig(b *BGPSection) error {
 	if err := validateBGPDynamicNeighbors(b.DynamicNeighbors); err != nil {
 		return err
