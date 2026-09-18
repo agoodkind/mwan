@@ -188,9 +188,9 @@ func (r *RealOps) VMLock(ctx context.Context, vmid string) (string, error) {
 		r.log.ErrorContext(ctx, "qm config failed",
 			"vmid", vmid, "err", err,
 			"output", strings.TrimSpace(string(out)))
-		return "", fmt.Errorf(
-			"qm config %s: %w: %s", vmid, err, strings.TrimSpace(string(out)),
-		)
+		// runQm already names the command and its arguments, so this adds
+		// only the output rather than repeating the prefix.
+		return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
 	}
 	for line := range strings.SplitSeq(string(out), "\n") {
 		value, found := strings.CutPrefix(line, "lock:")
@@ -209,9 +209,9 @@ func (r *RealOps) VMUnlock(ctx context.Context, vmid string) error {
 		r.log.ErrorContext(ctx, "qm unlock failed",
 			"vmid", vmid, "err", err,
 			"output", strings.TrimSpace(string(out)))
-		return fmt.Errorf(
-			"qm unlock %s: %w: %s", vmid, err, strings.TrimSpace(string(out)),
-		)
+		// runQm already names the command and its arguments, so this adds
+		// only the output rather than repeating the prefix.
+		return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
 	}
 	r.log.InfoContext(ctx, "cleared guest lock", "vmid", vmid)
 	return nil

@@ -175,7 +175,11 @@ func runQm(
 	defer cancel()
 	out, err := exec.CommandContext(cctx, "qm", args...).CombinedOutput()
 	if err != nil {
-		slog.ErrorContext(ctx, "ops: qm failed",
+		// Warn rather than Error: this is the command layer, and the caller
+		// decides whether a failed qm invocation is an incident. The callers
+		// that treat it as one log it again at Error with the guest and
+		// snapshot names this helper does not have.
+		slog.WarnContext(ctx, "ops: qm failed",
 			"args", args, "err", err,
 			"output", strings.TrimSpace(string(out)))
 		// The output is returned alongside the error because callers read the
