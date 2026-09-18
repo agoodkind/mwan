@@ -31,7 +31,6 @@ func (w *watchdog) logStartupConfig(ctx context.Context) {
 	log.InfoContext(ctx,
 		"PVE",
 		"node", w.cfg.PVE.Node,
-		"pve_api_configured", w.cfg.PVE.TokenID != "",
 		"vsock_cid", w.cfg.Watchdog.VsockCID,
 		"vsock_port", w.cfg.Watchdog.VsockPort,
 	)

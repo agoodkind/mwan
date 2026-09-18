@@ -41,12 +41,10 @@ type EmailConfig struct {
 	Cooldown      string `toml:"cooldown"`
 }
 
-// PVEConfig holds Proxmox VE API credentials and endpoints.
+// PVEConfig names the Proxmox VE node the watchdog runs on, which the local
+// `pvesh` task query addresses.
 type PVEConfig struct {
-	BaseURL     string `toml:"base_url"`
-	Node        string `toml:"node"`
-	TokenID     string `toml:"token_id"`
-	TokenSecret string `toml:"token_secret"`
+	Node string `toml:"node"`
 }
 
 // WatchdogSection holds watchdog-specific configuration.
@@ -342,10 +340,7 @@ func defaultConfigBase() Config {
 		BindIface:     "",
 	}
 	cfg.PVE = PVEConfig{
-		BaseURL:     "https://127.0.0.1:8006/api2/json",
-		Node:        "",
-		TokenID:     "",
-		TokenSecret: "",
+		Node: "",
 	}
 	cfg.Network = NetworkConfig{
 		PingTargetIPv4: "1.1.1.1",
@@ -423,9 +418,6 @@ func Load() (*Config, error) {
 	// Env overrides for secrets
 	if v := strings.TrimSpace(os.Getenv("SMTP2GO_API_KEY")); v != "" {
 		cfg.Email.SMTP2GOAPIKey = v
-	}
-	if v := strings.TrimSpace(os.Getenv("PVE_TOKEN_SECRET")); v != "" {
-		cfg.PVE.TokenSecret = v
 	}
 	if v := strings.TrimSpace(os.Getenv("OPNSENSE_API_SECRET")); v != "" {
 		cfg.OPNsense.APISecret = v

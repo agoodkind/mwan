@@ -2,33 +2,22 @@ package watchdog
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"sync"
-
-	"goodkind.io/mwan/internal/ops"
 )
 
-func (w *watchdog) guestExecProbe(ctx context.Context, args ...string) (bool, bool) {
+func (w *watchdog) guestExecProbe(ctx context.Context, args ...string) bool {
 	log := w.tracedLogger(ctx)
 	parsed, err := w.ops.GuestExec(ctx, w.cfg.MwanVMID, args...)
 	if err != nil {
-		if errors.Is(err, ops.ErrGuestExecUnavailable) {
-			log.WarnContext(ctx,
-				"guestExec unavailable",
-				"args", strings.Join(args, " "),
-				"err", err,
-			)
-			return false, true
-		}
 		log.ErrorContext(ctx,
 			"guestExec error",
 			"args", strings.Join(args, " "),
 			"err", err,
 		)
-		return false, false
+		return false
 	}
 	if parsed.ExitCode != 0 {
 		log.InfoContext(ctx,
@@ -36,9 +25,9 @@ func (w *watchdog) guestExecProbe(ctx context.Context, args ...string) (bool, bo
 			"args", strings.Join(args, " "),
 			"exit_code", parsed.ExitCode,
 		)
-		return false, false
+		return false
 	}
-	return true, false
+	return true
 }
 
 // probeConnectivity pings the configured IPv4 and IPv6 targets from the host.
@@ -106,7 +95,7 @@ func (w *watchdog) testVMConnectivity(ctx context.Context) bool {
 		"ping6_target", w.cfg.Network.PingTargetIPv6,
 		"ping_target", w.cfg.Network.PingTargetIPv4,
 	)
-	v6ok, v6Unavailable := w.guestExecProbe(
+	v6ok := w.guestExecProbe(
 		ctx, "ping6", "-c", "2", "-W", "3", w.cfg.Network.PingTargetIPv6,
 	)
 	if v6ok {
@@ -120,7 +109,7 @@ func (w *watchdog) testVMConnectivity(ctx context.Context) bool {
 		))
 		return true
 	}
-	v4ok, v4Unavailable := w.guestExecProbe(
+	v4ok := w.guestExecProbe(
 		ctx, "ping", "-c", "2", "-W", "3", w.cfg.Network.PingTargetIPv4,
 	)
 	if v4ok {
@@ -133,16 +122,6 @@ func (w *watchdog) testVMConnectivity(ctx context.Context) bool {
 			w.cfg.MwanVMID,
 		))
 		return true
-	}
-	if v6Unavailable || v4Unavailable {
-		log.WarnContext(ctx,
-			"VM default-route probes unavailable due to guest-exec transport",
-			"vmid", w.cfg.MwanVMID,
-		)
-		w.appendProbe(fmt.Sprintf(
-			"VM %s default-route probes unavailable (guest-exec transport)",
-			w.cfg.MwanVMID,
-		))
 	}
 	log.InfoContext(ctx,
 		"VM default-route: both IPv4 and IPv6 FAILED",
@@ -159,14 +138,7 @@ func (w *watchdog) readGuestUnix(ctx context.Context, path string) (int64, bool)
 	log := w.tracedLogger(ctx)
 	parsed, err := w.ops.GuestExec(ctx, w.cfg.MwanVMID, "cat", path)
 	if err != nil {
-		if errors.Is(err, ops.ErrGuestExecUnavailable) {
-			log.WarnContext(ctx,
-				"PVE guest-exec unavailable; cannot read deploy timestamp; assuming no recent deploy",
-				"vmid", w.cfg.MwanVMID,
-			)
-		} else {
-			log.ErrorContext(ctx, "guestExec(cat) error", "path", path, "err", err)
-		}
+		log.ErrorContext(ctx, "guestExec(cat) error", "path", path, "err", err)
 		return 0, false
 	}
 	if parsed.ExitCode != 0 {

@@ -2,7 +2,6 @@ package ops
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -15,7 +14,6 @@ import (
 	mwanv1 "goodkind.io/mwan/gen/mwan/v1"
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/tracing"
-	"goodkind.io/mwan/pkg/pveapi"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -27,8 +25,13 @@ import (
 const (
 	// TimeoutQmStatus bounds `qm status`, which reads hypervisor state and
 	// returns without touching the guest.
-	TimeoutQmStatus    = 10 * time.Second
-	timeoutQmGuestExec = 30 * time.Second
+	TimeoutQmStatus = 10 * time.Second
+	// timeoutQmGuestExec is the --timeout `qm guest exec` waits for the guest
+	// command to exit, and timeoutQmGuestExecWait bounds the qm process
+	// itself. The second is longer so qm reports the command's fate before
+	// the process is killed.
+	timeoutQmGuestExec     = 30 * time.Second
+	timeoutQmGuestExecWait = 45 * time.Second
 	// TimeoutQmStop bounds `qm stop`, which waits for the guest to halt.
 	TimeoutQmStop = 60 * time.Second
 	// TimeoutQmStart bounds `qm start`, which returns once the hypervisor has
@@ -39,13 +42,7 @@ const (
 	timeoutHostProbe      = 20 * time.Second
 	timeoutVsockRPC       = 15 * time.Second
 	timeoutTCPRPC         = 15 * time.Second
-	timeoutPVEExec        = 45 * time.Second
 )
-
-// ErrGuestExecUnavailable is returned by pveExec when the PVE client is
-// not configured (missing token). Callers can distinguish this from a
-// command that ran and returned a non-zero exit code.
-var ErrGuestExecUnavailable = errors.New("pve client not configured (no PVE_TOKEN_ID)")
 
 // guestCmd enumerates the argv[0] commands the in-guest gRPC adapter
 // translates from `GuestExec` argv into typed RPCs.
@@ -131,15 +128,15 @@ type SysOps interface {
 }
 
 // RealOps is the production SysOps. It reaches the guest agent over vsock
-// first, falls back to the Proxmox REST API, and drives the guest's lifecycle
-// with `qm`. vsock comes first because it keeps working when the guest's
-// network does not, which is the case the watchdog exists to handle.
+// first, then over the management network, then through `qm guest exec`, and
+// drives the guest's lifecycle with `qm`. vsock comes first because it keeps
+// working when the guest's network does not, which is the case the watchdog
+// exists to handle.
 //
 // The test* fields replace one dial or one exec in unit tests. They are nil in
 // production, and each is checked at the single call site it overrides.
 type RealOps struct {
 	log       *slog.Logger
-	pve       *pveapi.Client
 	vsockCID  uint32
 	vsockPort uint32
 	pveNode   string
@@ -160,29 +157,18 @@ type RealOps struct {
 	testTCPDialer func(ctx context.Context, addr string) (net.Conn, error)
 }
 
-// NewRealOps builds the production SysOps from the daemon's configuration.
-// The Proxmox client is left nil when no API token is configured, and every
-// call that needs it then returns ErrGuestExecUnavailable rather than failing
-// as though the API had rejected the request. A nil logger becomes the slog
-// default, so a caller that has not set one up still gets output.
+// NewRealOps builds the production SysOps from the daemon's configuration. A
+// nil logger becomes the slog default, so a caller that has not set one up
+// still gets output.
 func NewRealOps(
 	cfg *config.Config,
 	logger *slog.Logger,
 ) *RealOps {
-	var pveClient *pveapi.Client
-	if cfg.PVE.TokenID != "" && cfg.PVE.TokenSecret != "" {
-		pveClient = pveapi.NewClient(
-			cfg.PVE.BaseURL,
-			cfg.PVE.TokenID,
-			cfg.PVE.TokenSecret,
-		)
-	}
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &RealOps{
 		log:       logger.With("component", "ops"),
-		pve:       pveClient,
 		vsockCID:  cfg.Watchdog.VsockCID,
 		vsockPort: cfg.Watchdog.VsockPort,
 		pveNode:   cfg.PVE.Node,
@@ -269,8 +255,9 @@ func (r *RealOps) VMFSFreezeThaw(ctx context.Context, vmid string) error {
 	return err
 }
 
-// GuestExec tries all three channels in order: vsock -> TCP/mgmt -> PVE REST.
-// Each channel's result is recorded in the channelTracker regardless of outcome.
+// GuestExec tries all three channels in order: vsock -> TCP/mgmt -> qm guest
+// exec. Each channel's result is recorded in the channelTracker regardless of
+// outcome.
 func (r *RealOps) GuestExec(
 	ctx context.Context, vmid string, args ...string,
 ) (GuestExecResult, error) {
@@ -280,7 +267,7 @@ func (r *RealOps) GuestExec(
 		if err == nil {
 			return res, nil
 		}
-		return r.pveExec(ctx, vmid, args...)
+		return r.qmExec(ctx, vmid, args...)
 	}
 
 	// Channel 1: vsock
@@ -305,17 +292,17 @@ func (r *RealOps) GuestExec(
 	r.tracker.recordFailure(ChanTCP, tcpErr)
 	r.logAttemptResult(ctx, "guest_exec", ChanTCP, 2, vmid, tcpErr)
 
-	// Channel 3: PVE REST API fallback
+	// Channel 3: qm guest exec on the hypervisor
 	r.logAttemptStart(ctx, "guest_exec", ChanPVE, 3, vmid)
-	pveRes, pveErr := r.pveExec(ctx, vmid, args...)
-	if pveErr == nil {
+	qmRes, qmErr := r.qmExec(ctx, vmid, args...)
+	if qmErr == nil {
 		r.tracker.recordSuccess(ChanPVE)
 		r.logAttemptResult(ctx, "guest_exec", ChanPVE, 3, vmid, nil)
 	} else {
-		r.tracker.recordFailure(ChanPVE, pveErr)
-		r.logAttemptResult(ctx, "guest_exec", ChanPVE, 3, vmid, pveErr)
+		r.tracker.recordFailure(ChanPVE, qmErr)
+		r.logAttemptResult(ctx, "guest_exec", ChanPVE, 3, vmid, qmErr)
 	}
-	return pveRes, pveErr
+	return qmRes, qmErr
 }
 
 func (r *RealOps) vsockExec(
@@ -450,30 +437,6 @@ func (r *RealOps) tcpExec(
 	}
 	return GuestExecResult{ExitCode: 1, Stdout: ""},
 		fmt.Errorf("tcpExec: unhandled command %q", args[0])
-}
-
-func (r *RealOps) pveExec(
-	ctx context.Context, vmid string, args ...string,
-) (GuestExecResult, error) {
-	if r.pve == nil {
-		return GuestExecResult{ExitCode: 1, Stdout: ""}, ErrGuestExecUnavailable
-	}
-	cctx, cancel := context.WithTimeout(ctx, timeoutPVEExec)
-	defer cancel()
-	pid, err := r.pve.GuestExec(cctx, r.pveNode, vmid, args)
-	if err != nil {
-		r.log.ErrorContext(ctx, "pve guest exec failed", "vmid", vmid, "err", err)
-		return GuestExecResult{ExitCode: 1, Stdout: ""},
-			fmt.Errorf("pve guest exec: %w", err)
-	}
-	code, stdout, _, err := r.pve.GuestExecStatus(cctx, r.pveNode, vmid, pid)
-	if err != nil {
-		r.log.ErrorContext(ctx, "pve guest exec status failed",
-			"vmid", vmid, "err", err)
-		return GuestExecResult{ExitCode: 1, Stdout: ""},
-			fmt.Errorf("pve guest exec status: %w", err)
-	}
-	return GuestExecResult{ExitCode: code, Stdout: stdout}, nil
 }
 
 func (r *RealOps) vsockGetConfigState(
