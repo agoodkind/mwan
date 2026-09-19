@@ -396,13 +396,18 @@ func parseInstallFlags(args []string) (installFlags, error) {
 // written directly or reached through a symlink. A rooted run skips systemd
 // and keeps a private sysrepo repository below the root, so a root of / would
 // write the host's files without enabling them and open the host's
-// repository under a second shared-memory prefix. A root that does not exist
-// yet cannot be the host's root.
+// repository under a second shared-memory prefix.
+//
+// The root is cleaned before it is resolved, because the install joins every
+// host path onto it and a join cleans lexically, so a/missing/.. writes under
+// a even though missing does not exist. Once cleaned, a root that does not exist cannot be the
+// host's root, because / always exists.
 func rootIsHost(root string) bool {
-	if filepath.Clean(root) == "/" {
+	cleaned := filepath.Clean(root)
+	if cleaned == "/" {
 		return true
 	}
-	resolved, err := filepath.EvalSymlinks(root)
+	resolved, err := filepath.EvalSymlinks(cleaned)
 	if err != nil {
 		return false
 	}
