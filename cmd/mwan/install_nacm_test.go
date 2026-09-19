@@ -100,3 +100,25 @@ func TestInstallApplyImportsTheNACMPolicy(t *testing.T) {
 		t.Fatalf("second run output:\n%s\nwant no import", second)
 	}
 }
+
+// TestInstallApplyImportsTheNACMPolicyIntoAFreshDatastore covers a gateway
+// whose sysrepo repository was reset while the policy file from an earlier
+// deploy stayed in place. The file matching the embedded copy says nothing
+// about the datastore, so the run must still put the policy into startup and
+// running.
+func TestInstallApplyImportsTheNACMPolicyIntoAFreshDatastore(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	runInstallChild(t, root)
+	if err := os.RemoveAll(filepath.Join(root, "/etc/sysrepo")); err != nil {
+		t.Fatalf("reset the repository: %v", err)
+	}
+
+	runInstallChild(t, root)
+
+	for _, datastore := range []string{"running", "startup"} {
+		tree := runChild(t, sysrepoChildEnv(t, root, "export", datastore),
+			datastore, "/ietf-netconf-acm:nacm")
+		requireAnonymousPolicy(t, datastore, tree)
+	}
+}
