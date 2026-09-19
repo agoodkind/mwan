@@ -19,6 +19,9 @@ type Datastore string
 const (
 	// DatastoreRunning is the running configuration datastore.
 	DatastoreRunning Datastore = "running"
+	// DatastoreStartup is the configuration datastore sysrepo loads into
+	// running when it starts with no running data.
+	DatastoreStartup Datastore = "startup"
 	// DatastoreOperational is the read-only operational datastore.
 	DatastoreOperational Datastore = "operational"
 )
@@ -101,6 +104,10 @@ type Publisher interface {
 	// other installed module is left alone. The revision is read from the
 	// file name, name@revision.yang.
 	InstallModules(ctx context.Context, models []Model, searchDirs string) ([]ModuleChange, error)
+	// ImportConfig replaces module's whole configuration in ds with the XML
+	// document xml, the way `sysrepocfg --import` does: the document is
+	// parsed strictly as configuration and any node it leaves out is removed.
+	ImportConfig(ctx context.Context, ds Datastore, module string, xml []byte) error
 	// ExportJSON reads the subtree at xpath in ds and returns it printed
 	// as JSON. It reports found=false when nothing is served there.
 	ExportJSON(ctx context.Context, ds Datastore, xpath string) (tree string, found bool, err error)

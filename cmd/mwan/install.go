@@ -168,6 +168,9 @@ type installOutcome struct {
 	// modules names every schema module the run installed into sysrepo or
 	// updated there. installUnits leaves it empty; runInstall fills it.
 	modules []yangpub.ModuleChange
+	// nacmImported is set when the run imported the NACM policy into
+	// startup and running. runInstall sets it.
+	nacmImported bool
 }
 
 // runInstall is the `mwan install` entry point.
@@ -199,9 +202,11 @@ func runInstall(args []string) int {
 	ctx := context.Background()
 	outcome, err := installUnits(ctx, role, flags.root, enablerFor(rooted))
 	if err == nil && installRoles[role].schema {
-		var schemaChanged []string
-		schemaChanged, outcome.modules, err = installSchema(ctx, slog.Default(), flags.root)
-		outcome.changed = append(outcome.changed, schemaChanged...)
+		var schema schemaOutcome
+		schema, err = installSchema(ctx, slog.Default(), flags.root)
+		outcome.changed = append(outcome.changed, schema.changed...)
+		outcome.modules = schema.modules
+		outcome.nacmImported = schema.nacmImported
 	}
 	reportInstall(os.Stdout, outcome, rooted)
 	if err != nil {
@@ -242,7 +247,7 @@ func installUnits(
 	root string,
 	enabler unitEnabler,
 ) (installOutcome, error) {
-	outcome := installOutcome{changed: nil, enabled: nil, modules: nil}
+	outcome := installOutcome{changed: nil, enabled: nil, modules: nil, nacmImported: false}
 	units := installRoles[role]
 	for _, file := range units.files {
 		content, err := unitFS.ReadFile(file.embedded)
@@ -353,6 +358,9 @@ func reportInstall(out io.Writer, outcome installOutcome, rooted bool) {
 		}
 		fmt.Fprintf(out, "installed module %s@%s\n", module.Module, module.Revision)
 	}
+	if outcome.nacmImported {
+		fmt.Fprintf(out, "imported the %s policy into startup and running\n", nacmModule)
+	}
 	if len(outcome.enabled) == 0 {
 		return
 	}
@@ -448,6 +456,8 @@ func printInstallUsage(out io.Writer) {
 	fmt.Fprintln(out, "The YANG modules are embedded too. The wan role writes them to")
 	fmt.Fprintln(out, networkjson.DefaultSchemaDir+" and installs them into sysrepo,")
 	fmt.Fprintln(out, "updating a module installed at another revision. Under --root it uses")
-	fmt.Fprintln(out, "a private repository below the root. --print-schema writes them to a")
+	fmt.Fprintln(out, "a private repository below the root. It also imports the read-only")
+	fmt.Fprintln(out, "NACM policy into startup and running when "+nacmPolicyPath)
+	fmt.Fprintln(out, "differs from the embedded copy. --print-schema writes the modules to a")
 	fmt.Fprintln(out, "directory for validation and touches nothing else.")
 }
