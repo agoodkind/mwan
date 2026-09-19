@@ -71,11 +71,12 @@ func addresses(values ...string) []netip.Addr {
 // two shapes the production providers have.
 //
 // Reconcile is driven through its public entry point, so the test must stop
-// it before any real kernel write. The provider links do not exist in the test
-// process, so gateway discovery fails right after ownership; the health state
-// path sits under a regular file as a second stop, because opening it fails
-// with a not-a-directory error rather than the missing-file case the reader
-// treats as empty.
+// it before any kernel route or rule write. Gateway discovery uses the real
+// netif read, and the provider links do not exist in the test process, so every
+// provider reads as having no gateway and the pass continues. The health state
+// path sits under a regular file, so the health read stops the pass: opening it
+// fails with a not-a-directory error rather than the missing-file case the
+// reader treats as empty.
 func newOwnershipModule(t *testing.T, kernel *fakeLinkAddresses, store *wanstate.Store) *Module {
 	t.Helper()
 	blocker := filepath.Join(t.TempDir(), "blocker")
@@ -116,12 +117,12 @@ func TestReconcileOwnsOnlyOnLinkAddresses(t *testing.T) {
 	module := newOwnershipModule(t, kernel, store)
 
 	// Each pass ends with an error once ownership has run, because the rest of
-	// the pass cannot read gateways or health here. The /32 writes must already
+	// the pass cannot read health here. The /32 writes must already
 	// be in the kernel, and a second pass must find them and change nothing.
 	for pass := 1; pass <= 2; pass++ {
 		err := module.Reconcile(ctx, module.Log)
 		if err == nil {
-			t.Fatalf("pass %d: Reconcile returned nil, want the gateway or health read to stop the pass", pass)
+			t.Fatalf("pass %d: Reconcile returned nil, want the health read to stop the pass", pass)
 		}
 		if strings.Contains(err.Error(), "mapped addresses") || strings.Contains(err.Error(), "list addresses") {
 			t.Fatalf("pass %d: ownership itself failed: %v", pass, err)

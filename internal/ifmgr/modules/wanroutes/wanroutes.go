@@ -125,6 +125,14 @@ type Module struct {
 	ownedAddresses map[string][]netip.Addr
 }
 
+// gatewayDiscovery is one pass's gateway read. A provider whose link does not
+// exist holds empty gateways, and missingLinks joins one error per family
+// read that found no link.
+type gatewayDiscovery struct {
+	gateways     gateways
+	missingLinks error
+}
+
 // Init implements ifmgr.Module.
 func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	log := m.InitBase(env, "module", moduleName)
@@ -169,19 +177,28 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	// default route is missing still answers for its on-link addresses.
 	ownershipErr := m.ownMappedAddressesLocked(ctx, log)
 
-	currentGateways, err := discoverGateways(m.cfg)
+	// A missing link does not end the pass, because the other providers must
+	// keep their rules while one card is detached. Any other gateway read
+	// error ends it, because a transient netlink failure must not strip a
+	// healthy provider.
+	discovery, err := m.discoverGateways(ctx, log)
 	if err != nil {
 		log.WarnContext(ctx, "wan.routes: discoverGateways failed", "err", err)
-		return errors.Join(ownershipErr, err)
+		return errors.Join(ownershipErr, discovery.missingLinks, err)
 	}
+	currentGateways := discovery.gateways
 	health, err := netif.ReadHealthState(m.cfg.HealthStateFile)
 	if err != nil {
 		log.WarnContext(ctx, "wan.routes: ReadHealthState failed", "err", err)
-		return errors.Join(ownershipErr, fmt.Errorf("read health state %q: %w", m.cfg.HealthStateFile, err))
+		return errors.Join(
+			ownershipErr,
+			discovery.missingLinks,
+			fmt.Errorf("read health state %q: %w", m.cfg.HealthStateFile, err),
+		)
 	}
 	rules, routes := desiredState(currentGateways, health, m.cfg)
 
-	reconcileErr := ownershipErr
+	reconcileErr := errors.Join(ownershipErr, discovery.missingLinks)
 	for _, route := range routes {
 		if route.Dest == "default" {
 			if err := netif.ReconcileTableDefault(ctx, log, route); err != nil {
@@ -611,38 +628,47 @@ func appendWANInternalRoutes(
 	return routes
 }
 
-func discoverGateways(cfg Config) (gateways, error) {
-	currentGateways := make(gateways, len(cfg.WANs))
+// discoverGateways reads every provider's default gateway in both families. A
+// family whose link does not exist reads as no gateway, which is what the
+// kernel holds for a link it does not have, and its error goes to
+// missingLinks. Any other read error is returned with nil gateways.
+func (m *Module) discoverGateways(ctx context.Context, log *slog.Logger) (gatewayDiscovery, error) {
+	discovery := gatewayDiscovery{gateways: make(gateways, len(m.cfg.WANs)), missingLinks: nil}
 	var gatewayErr error
-	for _, wan := range cfg.WANs {
+	for _, wan := range m.cfg.WANs {
 		wanGateways := gatewaySet{V4: "", V6: ""}
-		gatewayV4, err := netif.IfaceDefaultGateway(familyV4, wan.Iface)
-		if err != nil {
-			gatewayErr = errors.Join(gatewayErr, fmt.Errorf(
-				"%s %s default gateway: %w",
-				wan.Name,
-				familyV4,
-				err,
-			))
+		for _, family := range []string{familyV4, familyV6} {
+			gateway, err := netif.IfaceDefaultGateway(family, wan.Iface)
+			if err == nil {
+				if family == familyV4 {
+					wanGateways.V4 = gateway
+				} else {
+					wanGateways.V6 = gateway
+				}
+				continue
+			}
+			wrapped := fmt.Errorf("%s %s default gateway: %w", wan.Name, family, err)
+			if netif.IsLinkNotFound(err) {
+				// The provider keeps an empty gateway, so this pass installs no
+				// rules for it and writes nothing to its table default. No write
+				// is needed there because the kernel removed every route through
+				// the device, including that default, when the device went away.
+				log.WarnContext(ctx, "wan.routes: provider link missing; treating it as having no gateway",
+					"wan", wan.Name, "iface", wan.Iface, "family", family, "err", err)
+				discovery.missingLinks = errors.Join(discovery.missingLinks, wrapped)
+				continue
+			}
+			log.WarnContext(ctx, "wan.routes: default gateway read failed",
+				"wan", wan.Name, "iface", wan.Iface, "family", family, "err", err)
+			gatewayErr = errors.Join(gatewayErr, wrapped)
 		}
-		wanGateways.V4 = gatewayV4
-
-		gatewayV6, err := netif.IfaceDefaultGateway(familyV6, wan.Iface)
-		if err != nil {
-			gatewayErr = errors.Join(gatewayErr, fmt.Errorf(
-				"%s %s default gateway: %w",
-				wan.Name,
-				familyV6,
-				err,
-			))
-		}
-		wanGateways.V6 = gatewayV6
-		currentGateways[wan.Name] = wanGateways
+		discovery.gateways[wan.Name] = wanGateways
 	}
 	if gatewayErr != nil {
-		return nil, gatewayErr
+		discovery.gateways = nil
+		return discovery, gatewayErr
 	}
-	return currentGateways, nil
+	return discovery, nil
 }
 
 func removeDisabledRuleSlots(

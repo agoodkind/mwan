@@ -2,6 +2,7 @@ package netif
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -306,6 +307,14 @@ func linkByName(log *slog.Logger, iface string) (netlink.Link, error) {
 		return nil, fmt.Errorf("link %q: %w", iface, err)
 	}
 	return link, nil
+}
+
+// IsLinkNotFound reports whether err records that the named interface does not
+// exist. It matches the netlink error type rather than its text, so callers can
+// tell a vanished link apart from a failed read without importing netlink.
+func IsLinkNotFound(err error) bool {
+	var notFound netlink.LinkNotFoundError
+	return errors.As(err, &notFound)
 }
 
 func linkIndex(link netlink.Link) int {

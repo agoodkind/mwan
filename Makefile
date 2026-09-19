@@ -368,6 +368,33 @@ test: wanconfig-builder-image
 endif
 
 # ---------------------------------------------------------------------------
+# Network namespace tests
+# ---------------------------------------------------------------------------
+
+# The netns-tagged tests create a private network namespace and build links,
+# routes and policy rules inside it, so they need CAP_SYS_ADMIN and
+# CAP_NET_ADMIN. `make test` runs unprivileged and leaves them out; this
+# target always runs them with that privilege. On linux it runs them as root.
+# On macOS it runs them in a linux/arm64 container, because the amd64 builder
+# runs under qemu, and qemu does not translate policy rule netlink messages.
+NETNS_TEST_PACKAGES := ./internal/ifmgr/modules/wanroutes/...
+NETNS_GO_VERSION    := $(shell awk '/^go /{print $$2}' go.mod)
+
+.PHONY: test-netns
+ifeq ($(shell uname -s),Darwin)
+test-netns:
+	docker run --rm --platform linux/arm64 \
+		--cap-add SYS_ADMIN --cap-add NET_ADMIN \
+		-v $(CURDIR):/src -w /src \
+		-e GOWORK=off -e CGO_ENABLED=0 \
+		golang:$(NETNS_GO_VERSION) \
+		go test -count=1 -tags netns $(NETNS_TEST_PACKAGES)
+else
+test-netns:
+	sudo -E env "PATH=$$PATH" go test -v -count=1 -tags netns $(NETNS_TEST_PACKAGES)
+endif
+
+# ---------------------------------------------------------------------------
 # Wanconfig management stack packages (MWAN-431)
 # ---------------------------------------------------------------------------
 

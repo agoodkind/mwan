@@ -1,8 +1,11 @@
 package netif
 
 import (
+	"errors"
+	"fmt"
 	"log/slog"
 	"net"
+	"syscall"
 	"testing"
 
 	"github.com/vishvananda/netlink"
@@ -131,6 +134,30 @@ func TestBuildTableRoute(t *testing.T) {
 				t.Fatalf("gateway got %s, want %s", route.Gw, tc.wantGw)
 			}
 		})
+	}
+}
+
+// TestIsLinkNotFoundMatchesAMissingLink reads the gateway of a link that does
+// not exist through the exported reader, so the error it classifies is the one
+// the kernel and netlink produce, wrapped the way callers receive it.
+func TestIsLinkNotFoundMatchesAMissingLink(t *testing.T) {
+	t.Parallel()
+
+	_, err := IfaceDefaultGateway("inet", "mwannolink0")
+	if err == nil {
+		t.Fatal("IfaceDefaultGateway on a missing link returned nil error")
+	}
+	if !IsLinkNotFound(err) {
+		t.Fatalf("IsLinkNotFound(%v) = false, want true", err)
+	}
+	if IsLinkNotFound(fmt.Errorf("list rules: %w", syscall.EBUSY)) {
+		t.Fatal("IsLinkNotFound matched a busy netlink read")
+	}
+	if IsLinkNotFound(errors.New("Link not found")) {
+		t.Fatal("IsLinkNotFound matched on error text alone")
+	}
+	if IsLinkNotFound(nil) {
+		t.Fatal("IsLinkNotFound matched a nil error")
 	}
 }
 
