@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -532,6 +534,29 @@ func TestInstallApplyWritesTheWanconfigAndHostFiles(t *testing.T) {
 		}
 		if info.Mode().Perm() != systemdUnitMode {
 			t.Errorf("%s mode = %v, want %v", hostPath, info.Mode().Perm(), systemdUnitMode)
+		}
+	}
+}
+
+// TestInstallApplyRejectsARootThatIsTheHost proves --root cannot name the
+// host's own root, directly or through a symlink. A rooted run skips systemd
+// and uses a private sysrepo repository below the root, so a root of / would
+// write the host's files and open the host's /etc/sysrepo under a second
+// shared-memory prefix. The command runs in a child process, so a run that
+// wrongly goes ahead cannot touch this test's process.
+func TestInstallApplyRejectsARootThatIsTheHost(t *testing.T) {
+	t.Parallel()
+	hostLink := filepath.Join(t.TempDir(), "host")
+	if err := os.Symlink("/", hostLink); err != nil {
+		t.Fatalf("link to the host root: %v", err)
+	}
+	for _, root := range []string{"/", "//", "/etc/..", hostLink} {
+		command := exec.Command(os.Args[0], "install", "--apply", "--role", "wan", "--root", root)
+		command.Env = append(os.Environ(), childMainEnv+"=1")
+		output, err := command.CombinedOutput()
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() != exitInstallUsage {
+			t.Errorf("--root %s: err = %v, want exit code %d\n%s", root, err, exitInstallUsage, output)
 		}
 	}
 }
