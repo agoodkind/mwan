@@ -160,10 +160,133 @@ func datastoreOf(ds Datastore) (C.sr_datastore_t, error) {
 	switch ds {
 	case DatastoreRunning:
 		return C.SR_DS_RUNNING, nil
+	case DatastoreStartup:
+		return C.SR_DS_STARTUP, nil
 	case DatastoreOperational:
 		return C.SR_DS_OPERATIONAL, nil
 	}
 	return C.SR_DS_RUNNING, fmt.Errorf("yangpub: unknown datastore %q", string(ds))
+}
+
+// importParseOptions are the flags `sysrepocfg --import` parses a
+// configuration file with: configuration only, not validated on its own
+// because sysrepo validates the replaced datastore, stored as written, and
+// strict, so a node the schema does not define is an error.
+const importParseOptions = C.LYD_PARSE_NO_STATE | C.LYD_PARSE_ONLY | C.LYD_PARSE_STORE_ONLY | C.LYD_PARSE_STRICT
+
+// ImportConfig parses xml against the connection's schema context and
+// replaces module's configuration in ds with it.
+func (p *publisher) ImportConfig(ctx context.Context, ds Datastore, module string, xml []byte) error {
+	if err := ctx.Err(); err != nil {
+		p.log.ErrorContext(ctx, "import aborted before start", "err", err)
+		return fmt.Errorf("yangpub: import aborted: %w", err)
+	}
+	srDS, err := datastoreOf(ds)
+	if err != nil {
+		p.log.ErrorContext(ctx, "import rejected", "err", err)
+		return err
+	}
+	session, err := p.startSession(ctx, srDS)
+	if err != nil {
+		return err
+	}
+	defer C.sr_session_stop(session)
+	conn := C.sr_session_get_connection(session)
+	lyCtx := C.sr_acquire_context(conn)
+	defer C.sr_release_context(conn)
+
+	cData := C.CString(string(xml))
+	defer C.free(unsafe.Pointer(cData))
+	var tree *C.struct_lyd_node
+	lyErr := C.lyd_parse_data_mem(lyCtx, cData, C.LYD_XML, C.uint32_t(importParseOptions), 0, &tree)
+	if lyFailed(lyErr) {
+		parseErr := fmt.Errorf("yangpub: parse the %s configuration: libyang code %d", module, int(lyErr))
+		p.log.ErrorContext(ctx, "configuration parse failed", "module", module, "err", parseErr)
+		return parseErr
+	}
+	cModule := C.CString(module)
+	defer C.free(unsafe.Pointer(cModule))
+	// sr_replace_config takes ownership of tree whether it succeeds or not.
+	if rc := C.sr_replace_config(session, cModule, tree, C.uint32_t(applyTimeoutMS)); srFailed(rc) {
+		replaceErr := srError("sr_replace_config "+module, rc)
+		p.log.ErrorContext(ctx, "sysrepo replace config failed", "module", module, "datastore", string(ds),
+			"err", replaceErr)
+		return replaceErr
+	}
+	return nil
+}
+
+// ConfigMatches parses xml the way ImportConfig does and compares it with
+// module's configuration in ds. Both sides are printed as JSON with only
+// explicitly set nodes, so defaults sysrepo fills in never count as a
+// difference.
+func (p *publisher) ConfigMatches(ctx context.Context, ds Datastore, module string, xml []byte) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		p.log.ErrorContext(ctx, "comparison aborted before start", "err", err)
+		return false, fmt.Errorf("yangpub: comparison aborted: %w", err)
+	}
+	srDS, err := datastoreOf(ds)
+	if err != nil {
+		p.log.ErrorContext(ctx, "comparison rejected", "err", err)
+		return false, err
+	}
+	session, err := p.startSession(ctx, srDS)
+	if err != nil {
+		return false, err
+	}
+	defer C.sr_session_stop(session)
+	conn := C.sr_session_get_connection(session)
+	lyCtx := C.sr_acquire_context(conn)
+	defer C.sr_release_context(conn)
+
+	cData := C.CString(string(xml))
+	defer C.free(unsafe.Pointer(cData))
+	var wantTree *C.struct_lyd_node
+	lyErr := C.lyd_parse_data_mem(lyCtx, cData, C.LYD_XML, C.uint32_t(importParseOptions), 0, &wantTree)
+	if lyFailed(lyErr) {
+		parseErr := fmt.Errorf("yangpub: parse the %s configuration: libyang code %d", module, int(lyErr))
+		p.log.ErrorContext(ctx, "configuration parse failed", "module", module, "err", parseErr)
+		return false, parseErr
+	}
+	defer C.lyd_free_all(wantTree)
+	want, err := printTreeJSON(wantTree)
+	if err != nil {
+		return false, err
+	}
+
+	cPath := C.CString("/" + module + ":*")
+	defer C.free(unsafe.Pointer(cPath))
+	var data *C.sr_data_t
+	rc := C.sr_get_data(session, cPath, 0, C.uint32_t(getTimeoutMS), C.sr_get_options_t(0), &data)
+	if srFailed(rc) {
+		getErr := srError("sr_get_data "+module, rc)
+		p.log.ErrorContext(ctx, "sysrepo get data failed", "module", module, "err", getErr)
+		return false, getErr
+	}
+	got := ""
+	if data != nil {
+		defer C.sr_release_data(data)
+		if data.tree != nil {
+			if got, err = printTreeJSON(data.tree); err != nil {
+				return false, err
+			}
+		}
+	}
+	return got == want, nil
+}
+
+// printTreeJSON prints tree and its siblings as JSON with only explicitly set
+// nodes, the printer's default.
+func printTreeJSON(tree *C.struct_lyd_node) (string, error) {
+	if tree == nil {
+		return "", nil
+	}
+	var printed *C.char
+	if lyErr := C.lyd_print_mem(&printed, tree, C.LYD_JSON, C.LYD_PRINT_WITHSIBLINGS); lyFailed(lyErr) {
+		return "", fmt.Errorf("yangpub: lyd_print_mem: libyang code %d", int(lyErr))
+	}
+	defer C.free(unsafe.Pointer(printed))
+	return C.GoString(printed), nil
 }
 
 // SetItems sets every item by path in ds and applies them as one change.
