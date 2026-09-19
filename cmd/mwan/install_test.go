@@ -29,9 +29,9 @@ func (r *recordingEnabler) enable(_ context.Context, units []string, reload bool
 }
 
 // TestInstallUnitsWritesTheWanRoleUnits proves a wan-role install puts the
-// three units the gateway runs into the systemd directory with the bytes the
-// binary carries, and asks systemd to enable the wan instance rather than the
-// template.
+// three daemon units the gateway runs into the systemd directory with the bytes
+// the binary carries, and asks systemd to enable the wan instance rather than
+// the template, along with the wanconfig stack's two services.
 func TestInstallUnitsWritesTheWanRoleUnits(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -42,13 +42,16 @@ func TestInstallUnitsWritesTheWanRoleUnits(t *testing.T) {
 		t.Fatalf("installUnits: %v", err)
 	}
 
+	// The role writes these three units plus the four files
+	// TestInstallApplyWritesTheWanconfigAndHostFiles checks.
 	wantFiles := []string{
 		"mwan-agent.service",
 		"mwan-ifmgr@.service",
 		"mwan-trace-boot.service",
 	}
-	if len(outcome.changed) != len(wantFiles) {
-		t.Fatalf("changed = %v, want %d files", outcome.changed, len(wantFiles))
+	const wantChanged = 7
+	if len(outcome.changed) != wantChanged {
+		t.Fatalf("changed = %v, want %d files", outcome.changed, wantChanged)
 	}
 	for _, file := range wantFiles {
 		path := filepath.Join(root, systemdUnitDir, file)
@@ -79,6 +82,8 @@ func TestInstallUnitsWritesTheWanRoleUnits(t *testing.T) {
 		"mwan-agent.service",
 		"mwan-ifmgr@wan.service",
 		"mwan-trace-boot.service",
+		"rousette.service",
+		"nghttpx-wanconfig.service",
 	}
 	if len(enabler.calls) != 1 {
 		t.Fatalf("enable called %d times, want 1", len(enabler.calls))
@@ -617,10 +622,15 @@ func TestInstalledUnitsAreTheOnesTheDaemonNames(t *testing.T) {
 	}
 
 	for _, unit := range installRoles[roleWAN].enable {
-		if unit == "mwan-trace-boot.service" {
+		switch unit {
+		case "mwan-trace-boot.service":
 			// The boot trace is a oneshot that has already exited by the time
 			// anything inspects the running system, so it is not a unit the
 			// debug view times.
+			continue
+		case "rousette.service", "nghttpx-wanconfig.service":
+			// The wanconfig stack serves the management surface; it is not
+			// on the forwarding path whose startup the debug view times.
 			continue
 		}
 		if !focus[unit] {

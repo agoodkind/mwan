@@ -20,19 +20,24 @@ import (
 	"goodkind.io/mwan/internal/yangpub"
 )
 
-// unitFS carries the daemon's systemd units inside the binary, so the unit a
-// host runs comes from the release its pin names. Each file is named here
-// rather than matched by a pattern, so a file added to this directory never
-// reaches the binary until someone says it should.
+// unitFS carries the files the install verb writes inside the binary, so the
+// file a host runs comes from the release its pin names. Each file is named
+// here rather than matched by a pattern, so a file added to this directory
+// never reaches the binary until someone says it should.
 //
 //go:embed mwan-agent.service mwan-ifmgr.service mwan-ifmgr@.service mwan-trace-boot.service mwan-ifmgr-failover.conf
+//go:embed rousette.service nghttpx-wanconfig.service nftables-override.conf 99-quiet-console.conf
 var unitFS embed.FS
 
 const (
 	// systemdUnitDir is where the units go. This is the administrator's unit
 	// directory, which outranks anything a package ships.
 	systemdUnitDir = "/etc/systemd/system"
-	// systemdUnitMode matches what the playbooks write today.
+	// sysctlDir is where the kernel settings files go; systemd-sysctl reads
+	// them at boot.
+	sysctlDir = "/etc/sysctl.d"
+	// systemdUnitMode matches what the playbooks write today, for the units
+	// and for every other file the verb installs.
 	systemdUnitMode fs.FileMode = 0o644
 )
 
@@ -41,7 +46,8 @@ type installRole string
 
 const (
 	// roleWAN is the gateway VM: the agent, the instanced interface manager,
-	// and the boot trace oneshot.
+	// the boot trace oneshot, the wanconfig RESTCONF server and its front-end
+	// proxy, the nftables drop-in, and the quiet console sysctl file.
 	roleWAN installRole = "wan"
 	// roleFailover is the failover container: the agent, plus the interface
 	// manager with the sandbox relaxation slaac_health needs.
@@ -51,19 +57,21 @@ const (
 	roleHost installRole = "host"
 )
 
-// installedFile is one embedded file and where it lands under the systemd
-// unit directory. A drop-in names a path inside a unit's .d directory, so the
-// destination cannot always be the embedded file's own name.
+// installedFile is one embedded file and where it lands on the host. A
+// drop-in names a path inside a unit's .d directory, so the destination
+// cannot always be the embedded file's own name.
 type installedFile struct {
 	// embedded is the file's name inside unitFS.
 	embedded string
-	// dest is the path to write, relative to systemdUnitDir.
+	// dest is the absolute host path to write; a run under --root writes it
+	// below the root.
 	dest string
 }
 
-// unit names an embedded unit file that installs under its own name.
+// unit names an embedded unit file that installs under its own name in the
+// systemd unit directory.
 func unit(name string) installedFile {
-	return installedFile{embedded: name, dest: name}
+	return installedFile{embedded: name, dest: filepath.Join(systemdUnitDir, name)}
 }
 
 // roleUnits is one role's units: the files to write and the units to enable.
@@ -90,8 +98,21 @@ var installRoles = map[installRole]roleUnits{
 			unit("mwan-agent.service"),
 			unit("mwan-ifmgr@.service"),
 			unit("mwan-trace-boot.service"),
+			unit("rousette.service"),
+			unit("nghttpx-wanconfig.service"),
+			{
+				embedded: "nftables-override.conf",
+				dest:     filepath.Join(systemdUnitDir, "nftables.service.d", "override.conf"),
+			},
+			{
+				embedded: "99-quiet-console.conf",
+				dest:     filepath.Join(sysctlDir, "99-quiet-console.conf"),
+			},
 		},
-		enable: []string{"mwan-agent.service", "mwan-ifmgr@wan.service", "mwan-trace-boot.service"},
+		enable: []string{
+			"mwan-agent.service", "mwan-ifmgr@wan.service", "mwan-trace-boot.service",
+			"rousette.service", "nghttpx-wanconfig.service",
+		},
 	},
 	roleFailover: {
 		files: []installedFile{
@@ -99,7 +120,7 @@ var installRoles = map[installRole]roleUnits{
 			unit("mwan-ifmgr.service"),
 			{
 				embedded: "mwan-ifmgr-failover.conf",
-				dest:     "mwan-ifmgr.service.d/lxc-failover.conf",
+				dest:     filepath.Join(systemdUnitDir, "mwan-ifmgr.service.d", "lxc-failover.conf"),
 			},
 		},
 		enable: []string{"mwan-agent.service", "mwan-ifmgr.service"},
@@ -186,8 +207,8 @@ func enablerFor(rooted bool) unitEnabler {
 // exists.
 type unitEnabler func(ctx context.Context, units []string, reload bool) error
 
-// installUnits writes the role's unit files under root and re-enables its
-// units. It returns what it did even when it fails, so the caller reports the
+// installUnits writes the role's files under root and re-enables its units.
+// It returns what it did even when it fails, so the caller reports the
 // files that were already written before the failure.
 //
 // The units are re-enabled on every run, because a current unit file can still
@@ -202,16 +223,15 @@ func installUnits(
 ) (installOutcome, error) {
 	outcome := installOutcome{changed: nil, enabled: nil}
 	units := installRoles[role]
-	targetDir := filepath.Join(root, systemdUnitDir)
 	for _, file := range units.files {
 		content, err := unitFS.ReadFile(file.embedded)
 		if err != nil {
-			return outcome, installFailed("read the embedded unit", file.embedded, err)
+			return outcome, installFailed("read the embedded file", file.embedded, err)
 		}
-		path := filepath.Join(targetDir, filepath.FromSlash(file.dest))
+		path := filepath.Join(root, file.dest)
 		changed, err := installfile.Write(path, content, systemdUnitMode)
 		if err != nil {
-			return outcome, installFailed("install the unit", file.dest, err)
+			return outcome, installFailed("install the file", file.dest, err)
 		}
 		if changed {
 			outcome.changed = append(outcome.changed, path)
@@ -359,7 +379,7 @@ func printInstallUsage(out io.Writer) {
 	fmt.Fprintln(out, "Without --apply nothing is written. A second run writes no file and")
 	fmt.Fprintln(out, "re-enables the units without reloading systemd.")
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Units installed into "+systemdUnitDir+", by role:")
+	fmt.Fprintln(out, "Files installed, by role:")
 	for _, name := range knownInstallRoles() {
 		units := installRoles[installRole(name)]
 		written := make([]string, 0, len(units.files))
