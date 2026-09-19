@@ -385,7 +385,28 @@ func parseInstallFlags(args []string) (installFlags, error) {
 	if flags.apply && flags.role == "" {
 		return flags, errors.New("--apply needs --role")
 	}
+	if flags.root != "" && rootIsHost(flags.root) {
+		return flags, fmt.Errorf(
+			"--root %s is the host's root; leave --root off to install on this host", flags.root)
+	}
 	return flags, nil
+}
+
+// rootIsHost reports whether root names the host's own root directory,
+// written directly or reached through a symlink. A rooted run skips systemd
+// and keeps a private sysrepo repository below the root, so a root of / would
+// write the host's files without enabling them and open the host's
+// repository under a second shared-memory prefix. A root that does not exist
+// yet cannot be the host's root.
+func rootIsHost(root string) bool {
+	if filepath.Clean(root) == "/" {
+		return true
+	}
+	resolved, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return false
+	}
+	return filepath.Clean(resolved) == "/"
 }
 
 // knownInstallRoles lists the roles in a stable order for help and errors.
