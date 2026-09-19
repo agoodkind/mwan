@@ -365,6 +365,51 @@ func TestReenableRemovesASymlinkUnderTheOldTarget(t *testing.T) {
 	}
 }
 
+// TestInstallReenablesWhenNoFileChanged covers a host whose unit file is
+// already current but whose install symlink is stale, which is what a host
+// looks like after another tool wrote the new unit without re-enabling it. The
+// second run changes no file and must still move the symlink.
+func TestInstallReenablesWhenNoFileChanged(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	linkRoot := t.TempDir()
+	manager := &symlinkManager{root: linkRoot, wantedBy: "sysinit.target", calls: nil}
+	enabler := func(ctx context.Context, units []string) error {
+		return reenableUnits(ctx, manager, units)
+	}
+	if _, err := installUnits(t.Context(), roleHost, root, enabler); err != nil {
+		t.Fatalf("first installUnits: %v", err)
+	}
+	const unitName = "mwan-ifmgr.service"
+	staleDir := filepath.Join(linkRoot, "multi-user.target.wants")
+	if err := os.MkdirAll(staleDir, 0o755); err != nil {
+		t.Fatalf("create the old target directory: %v", err)
+	}
+	stale := filepath.Join(staleDir, unitName)
+	if err := os.Symlink(filepath.Join(linkRoot, unitName), stale); err != nil {
+		t.Fatalf("create the stale symlink: %v", err)
+	}
+	manager.calls = nil
+
+	outcome, err := installUnits(t.Context(), roleHost, root, enabler)
+	if err != nil {
+		t.Fatalf("second installUnits: %v", err)
+	}
+
+	if len(outcome.changed) != 0 {
+		t.Fatalf("second run changed %v, want nothing", outcome.changed)
+	}
+	if strings.Join(outcome.enabled, " ") != unitName {
+		t.Fatalf("second run enabled %v, want %s", outcome.enabled, unitName)
+	}
+	if _, err := os.Lstat(stale); !os.IsNotExist(err) {
+		t.Errorf("the symlink under the old target survived (err %v)", err)
+	}
+	if _, err := os.Lstat(filepath.Join(linkRoot, "sysinit.target.wants", unitName)); err != nil {
+		t.Errorf("no symlink under the new target: %v", err)
+	}
+}
+
 // TestReenableSucceedsOnAUnitThatWasNeverEnabled proves a first install is not
 // an error. Disabling a unit with no symlinks removes nothing and must not
 // fail the run.
