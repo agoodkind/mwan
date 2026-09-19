@@ -16,7 +16,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
-func TestUnaryTraceInterceptorUsesIncomingTraceID(t *testing.T) {
+func TestTraceStatsHandlerUsesIncomingTraceID(t *testing.T) {
 	t.Parallel()
 
 	var buffer bytes.Buffer
@@ -26,7 +26,7 @@ func TestUnaryTraceInterceptorUsesIncomingTraceID(t *testing.T) {
 
 	listener := bufconn.Listen(bufSize)
 	server := grpc.NewServer(
-		grpc.UnaryInterceptor(unaryTraceInterceptor(logger)),
+		grpc.StatsHandler(newTraceStatsHandler(logger, &mwanv1.MWANAgent_ServiceDesc)),
 	)
 	mwanv1.RegisterMWANAgentServer(
 		server,
@@ -55,6 +55,10 @@ func TestUnaryTraceInterceptorUsesIncomingTraceID(t *testing.T) {
 	if _, err := client.GetConfigState(ctx, &mwanv1.GetConfigStateRequest{}); err != nil {
 		t.Fatal(err)
 	}
+	// The finish record is written after the response is sent, so the client
+	// can return first. GracefulStop waits for the RPC to end, which orders the
+	// read below after both records.
+	server.GracefulStop()
 
 	output := buffer.String()
 	if !strings.Contains(output, "trace_id=trace-abc") {
@@ -64,6 +68,10 @@ func TestUnaryTraceInterceptorUsesIncomingTraceID(t *testing.T) {
 		t.Fatalf("output=%q", output)
 	}
 	if !strings.Contains(output, "rpc_method=/mwan.v1.MWANAgent/GetConfigState") {
+		t.Fatalf("output=%q", output)
+	}
+	if !strings.Contains(output, "grpc request finished") ||
+		!strings.Contains(output, "grpc_code=OK") {
 		t.Fatalf("output=%q", output)
 	}
 }
