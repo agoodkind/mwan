@@ -7,7 +7,7 @@
 # Project-local targets: protobuf codegen, the YANG model gate, the cgo
 # dependency recipes for the publishing binding, a docker lane for building
 # the linux gateway binary on macOS, the wanconfig stack packaging, and a
-# govulncheck wrapper that allowlists one known gobgp CVE.
+# govulncheck target that fails on every reachable advisory.
 #
 # Shipped binaries come only from the CI release. The one cross build here is
 # the packaging tool, which runs inside a container and never ships.
@@ -506,10 +506,12 @@ endif
 tidy:
 	go mod tidy
 
-# mwan's wrapper filters one known gobgp vulnerability (GO-2026-4736) that
-# upstream fixed in v4.3.0.
+# govulncheck runs the scanner directly and fails on any advisory the code
+# reaches. It replaces go.mk's recipe, which reports findings as advisory and
+# exits zero. GO-2026-4736 in gobgp has no fixed release, so this fails until
+# gobgp ships one.
 govulncheck:
-	./tools/govulncheck.sh
+	go run $(GOVULNCHECK_INSTALL) ./...
 
 clean: clean-dist
 	rm -rf $(LOCAL_BIN)
