@@ -29,7 +29,9 @@ const (
 	// childSysrepoEnv makes the child run one sysrepo step against the
 	// repository SYSREPO_REPOSITORY_PATH names: "seed" installs the model
 	// files its arguments name, with the first argument as the search
-	// directory, and "library" prints the ietf-yang-library tree.
+	// directory, "library" prints the ietf-yang-library tree, and "export"
+	// prints the subtree at its second argument in the datastore its first
+	// argument names, or nothing when the subtree is empty.
 	childSysrepoEnv = "MWAN_INSTALL_TEST_SYSREPO"
 )
 
@@ -71,6 +73,14 @@ func runSysrepoStep(step string, args []string) int {
 			context.Background(), yangpub.DatastoreOperational, "/ietf-yang-library:yang-library")
 		if err != nil || !found {
 			fmt.Fprintf(os.Stderr, "read the yang library: found=%v err=%v\n", found, err)
+			return 1
+		}
+		fmt.Fprint(os.Stdout, tree)
+		return 0
+	case "export":
+		tree, _, err := datastore.ExportJSON(context.Background(), yangpub.Datastore(args[0]), args[1])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "export %s from %s: %v\n", args[1], args[0], err)
 			return 1
 		}
 		fmt.Fprint(os.Stdout, tree)
