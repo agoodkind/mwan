@@ -1,0 +1,90 @@
+name: CI
+
+# Run CI on every branch push, exactly once, with no duplication. There is no
+# `pull_request` trigger: a same-repo PR would double-run (push + pull_request),
+# and same-repo PRs already show these checks because GitHub matches checks to
+# the head commit SHA. `'**'` matches branches but not tags, so the tag-driven
+# release workflow is untouched.
+on:
+  push:
+    branches: ['**']
+
+# Feature branch CI runs cancel superseded runs, and default branch CI runs are never cancelled mid-flight.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_name != github.event.repository.default_branch }}
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    uses: agoodkind/go-makefile/.github/workflows/_ci.yml@main
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    secrets: inherit
+    with:
+      # libyang2-tools supplies yanglint for the YANG model gate, and
+      # libpcre2-dev is what the pinned libyang links against when the
+      # cgo-deps hook builds it.
+      apt_packages: libyang2-tools libpcre2-dev
+      go_tool_packages: github.com/bufbuild/buf/cmd/buf@latest google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11 google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+      # Match release.yml, so the build gate compiles exactly the platform the
+      # release ships.
+      release_platforms: linux/amd64
+
+  # The go job above never runs these. The Makefile hangs the two schema gates
+  # off `check`, and the go-makefile quality matrix runs a fixed list of
+  # commands that does not include it, so without this job nothing validates
+  # the model outside a developer's own machine. The gates run here as their
+  # own named check, because a schema failure and a Go failure are different
+  # problems and a red check should say which one broke.
+  #
+  # The deploy runs this same yanglint validation against the rendered network
+  # configuration before it writes anything to the gateway, so a model or an
+  # instance document that fails here would fail a deploy instead.
+  yang:
+    name: yang gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # The gates are make targets, and the Makefile resolves the Go
+      # environment while make parses it, so Go is a hard dependency even
+      # though this job compiles nothing.
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      # libyang2-tools provides yanglint, which both gates run.
+      - name: Install yanglint
+        run: sudo apt-get update && sudo apt-get install -y libyang2-tools
+      # The Makefile fetches go-makefile through gh while make parses it, so
+      # the token keeps that fetch on the authenticated API path instead of
+      # its anonymous raw fallback.
+      - name: Validate the YANG model and its instance documents
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: make yang-validate yang-validate-instances
+
+  # This job exists because the netns-tagged tests create a private network
+  # namespace and build links, routes and policy rules inside it, which needs
+  # root. The go job above runs its tests as the unprivileged runner user, so
+  # it builds without the tag and never runs them.
+  netns:
+    name: mwan netns tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      # The Makefile fetches go-makefile through gh while make parses it, so
+      # the token keeps that fetch on the authenticated API path instead of
+      # its anonymous raw fallback.
+      - name: Run the network namespace tests as root
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: make test-netns

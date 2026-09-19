@@ -1,0 +1,28 @@
+[Unit]
+Description=MWAN Agent (gRPC over virtio-vsock)
+Documentation=https://github.com/agoodkind/configs
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+# EnvironmentFile is optional. Ansible renders /etc/mwan/secrets.env with
+# SMTP2GO_API_KEY when the host has email configured. The leading dash
+# tells systemd to start the unit even when the file is absent, which is
+# the case on hosts that do not need email (testbed ISP LXCs, etc.).
+EnvironmentFile=-/etc/mwan/secrets.env
+ExecStart=/usr/local/bin/mwan agent
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mwan-agent
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log /var/run
+
+[Install]
+WantedBy=multi-user.target
