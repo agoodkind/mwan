@@ -22,7 +22,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"runtime/cgo"
+	"strings"
 	"sync"
 	"unsafe"
 )
@@ -106,6 +108,14 @@ func New(log *slog.Logger) (Publisher, error) {
 		closed:        false,
 		subscriptions: nil,
 	}, nil
+}
+
+// RepositoryPath returns the repository sysrepo uses in this process. sysrepo
+// resolves it from SYSREPO_REPOSITORY_PATH, or its compiled default, the
+// first time anything asks, and keeps that answer for the life of the
+// process, so a later change to the environment does not move it.
+func RepositoryPath() string {
+	return C.GoString(C.sr_get_repo_path())
 }
 
 // srErrorString renders a sysrepo return code as its message.
@@ -413,23 +423,87 @@ func (p *publisher) SubscribeNotifications(ctx context.Context, module string, f
 	return nil
 }
 
-// InstallModules installs each model in order over the live connection.
-func (p *publisher) InstallModules(ctx context.Context, models []Model, searchDirs string) error {
+// InstallModules installs or updates each model in order over the live
+// connection and returns what it changed.
+//
+// sr_install_module matches an installed module by name alone and leaves its
+// revision as it is, so a module installed at another revision has to go
+// through sr_update_module to take the file's. That is the same split the
+// deploy made with sysrepoctl --install and sysrepoctl --update.
+func (p *publisher) InstallModules(
+	ctx context.Context, models []Model, searchDirs string,
+) ([]ModuleChange, error) {
 	if err := ctx.Err(); err != nil {
 		p.log.ErrorContext(ctx, "module install aborted before start", "err", err)
-		return fmt.Errorf("yangpub: install aborted: %w", err)
+		return nil, fmt.Errorf("yangpub: install aborted: %w", err)
 	}
 	conn, err := p.connection()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	cSearch := C.CString(searchDirs)
 	defer C.free(unsafe.Pointer(cSearch))
+	var changes []ModuleChange
 	for _, model := range models {
-		if err := installModule(conn, model, cSearch); err != nil {
-			p.log.ErrorContext(ctx, "sysrepo module install failed", "path", model.Path, "err", err)
-			return err
+		name, revision := moduleNameRevision(model.Path)
+		installedRev, installed := implementedRevision(conn, name)
+		switch {
+		case !installed:
+			if err := installModule(conn, model, cSearch); err != nil {
+				p.log.ErrorContext(ctx, "sysrepo module install failed", "path", model.Path, "err", err)
+				return changes, err
+			}
+			changes = append(changes, ModuleChange{
+				Module: name, Revision: revision, PriorRevision: "", Action: ModuleInstalled,
+			})
+		case model.Update && revision != "" && installedRev != revision:
+			if err := updateModule(conn, model, cSearch); err != nil {
+				p.log.ErrorContext(ctx, "sysrepo module update failed", "path", model.Path,
+					"installed_revision", installedRev, "err", err)
+				return changes, err
+			}
+			changes = append(changes, ModuleChange{
+				Module: name, Revision: revision, PriorRevision: installedRev, Action: ModuleUpdated,
+			})
 		}
+	}
+	return changes, nil
+}
+
+// moduleNameRevision reads a module's name and revision from its file name,
+// name@revision.yang. A file with no revision in its name returns an empty
+// revision, which InstallModules never updates.
+func moduleNameRevision(path string) (name string, revision string) {
+	base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	name, revision, _ = strings.Cut(base, "@")
+	return name, revision
+}
+
+// implementedRevision reports whether the repository implements the module
+// named name, and at which revision. A module present only as another
+// module's import is not implemented, so it counts as absent.
+func implementedRevision(conn *C.sr_conn_ctx_t, name string) (string, bool) {
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+	lyCtx := C.sr_acquire_context(conn)
+	defer C.sr_release_context(conn)
+	module := C.ly_ctx_get_module_implemented(lyCtx, cName)
+	if module == nil {
+		return "", false
+	}
+	if module.revision == nil {
+		return "", true
+	}
+	return C.GoString(module.revision), true
+}
+
+// updateModule replaces an installed module's schema with the file's
+// revision.
+func updateModule(conn *C.sr_conn_ctx_t, model Model, cSearch *C.char) error {
+	cPath := C.CString(model.Path)
+	defer C.free(unsafe.Pointer(cPath))
+	if rc := C.sr_update_module(conn, cPath, cSearch); srFailed(rc) {
+		return srError("sr_update_module "+model.Path, rc)
 	}
 	return nil
 }
