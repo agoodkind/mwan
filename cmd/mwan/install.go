@@ -177,20 +177,23 @@ func enablerFor(rooted bool) unitEnabler {
 	if !rooted {
 		return realUnitEnabler
 	}
-	return func(_ context.Context, _ []string) error { return nil }
+	return func(_ context.Context, _ []string, _ bool) error { return nil }
 }
 
-// unitEnabler is the systemd side of an install: reload the manager so it
-// reads what was just written, then enable the named units. It is a seam so
-// the file writing can be exercised where no system bus exists.
-type unitEnabler func(ctx context.Context, units []string) error
+// unitEnabler is the systemd side of an install: reload the manager when
+// reload is set, so it reads what was just written, then re-enable the named
+// units. It is a seam so the file writing can be exercised where no system bus
+// exists.
+type unitEnabler func(ctx context.Context, units []string, reload bool) error
 
-// installUnits writes the role's unit files under root and enables its units
-// when anything changed. It returns what it did even when it fails, so the
-// caller reports the files that were already written before the failure.
+// installUnits writes the role's unit files under root and re-enables its
+// units. It returns what it did even when it fails, so the caller reports the
+// files that were already written before the failure.
 //
-// Enabling is skipped when nothing changed, which is what makes a second run
-// silent: systemd is not asked to reload a directory that did not move.
+// The units are re-enabled on every run, because a current unit file can still
+// sit behind a stale install symlink when something other than this verb wrote
+// it. systemd is asked to reload only when a file changed, so a second run
+// leaves the manager's loaded state alone.
 func installUnits(
 	ctx context.Context,
 	role installRole,
@@ -214,17 +217,14 @@ func installUnits(
 			outcome.changed = append(outcome.changed, path)
 		}
 	}
-	if len(outcome.changed) == 0 {
-		return outcome, nil
-	}
-	if err := enabler(ctx, units.enable); err != nil {
+	if err := enabler(ctx, units.enable, len(outcome.changed) > 0); err != nil {
 		return outcome, err
 	}
 	outcome.enabled = units.enable
 	return outcome, nil
 }
 
-// realUnitEnabler reloads systemd, then removes each unit's existing install
+// realUnitEnabler reloads systemd when reload is set, then removes each unit's existing install
 // symlinks and writes the ones its current [Install] section names. That pair
 // is what `systemctl reenable` does, and enabling alone is not enough: enable
 // only creates symlinks at the paths the current unit names, so a unit whose
@@ -236,13 +236,13 @@ func installUnits(
 // Disabling changes no running state. It removes symlinks; it does not stop
 // the daemon, so the unit keeps running across this call and the deploy keeps
 // the restart decision.
-func realUnitEnabler(ctx context.Context, units []string) error {
+func realUnitEnabler(ctx context.Context, units []string, reload bool) error {
 	conn, err := systemddbus.NewSystemConnectionContext(ctx)
 	if err != nil {
 		return installFailed("connect to systemd for", strings.Join(units, " "), err)
 	}
 	defer conn.Close()
-	return reenableUnits(ctx, conn, units)
+	return reenableUnits(ctx, conn, units, reload)
 }
 
 // unitInstaller is the part of the systemd manager the enable path drives. It
@@ -258,12 +258,18 @@ type unitInstaller interface {
 	) (bool, []systemddbus.EnableUnitFileChange, error)
 }
 
-// reenableUnits reloads the manager, clears each unit's install symlinks, and
-// writes the ones the unit currently names.
-func reenableUnits(ctx context.Context, manager unitInstaller, units []string) error {
+// reenableUnits reloads the manager when reload is set, clears each unit's
+// install symlinks, and writes the ones the unit currently names. The symlinks
+// come from the unit files on disk, so re-enabling without a reload still
+// reads the current [Install] section.
+func reenableUnits(
+	ctx context.Context, manager unitInstaller, units []string, reload bool,
+) error {
 	named := strings.Join(units, " ")
-	if err := manager.ReloadContext(ctx); err != nil {
-		return installFailed("reload systemd before enabling", named, err)
+	if reload {
+		if err := manager.ReloadContext(ctx); err != nil {
+			return installFailed("reload systemd before enabling", named, err)
+		}
 	}
 	// A unit that is not enabled has no symlinks to remove, which systemd
 	// reports as an empty change list rather than an error, so a first install
@@ -288,13 +294,12 @@ func installFailed(operation string, name string, err error) error {
 }
 
 // reportInstall prints one line per changed file, then the units enabled. A
-// run that changed nothing says so, so an operator can tell "already correct"
+// run that changed no file says so, so an operator can tell "already correct"
 // from "did nothing because it failed early". A rooted run says what it would
 // have enabled, because it asked systemd for nothing.
 func reportInstall(out io.Writer, outcome installOutcome, rooted bool) {
 	if len(outcome.changed) == 0 {
 		fmt.Fprintln(out, "no change")
-		return
 	}
 	for _, path := range outcome.changed {
 		fmt.Fprintf(out, "wrote %s\n", path)
@@ -351,7 +356,8 @@ func printInstallUsage(out io.Writer) {
 	fmt.Fprintln(out, "       mwan install --print-schema <dir>")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Writes the files this binary owns onto the host and enables its units.")
-	fmt.Fprintln(out, "Without --apply nothing is written. A second run reports no change.")
+	fmt.Fprintln(out, "Without --apply nothing is written. A second run writes no file and")
+	fmt.Fprintln(out, "re-enables the units without reloading systemd.")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Units installed into "+systemdUnitDir+", by role:")
 	for _, name := range knownInstallRoles() {
