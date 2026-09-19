@@ -146,7 +146,16 @@ type IfMgrWANEntry struct {
 	FwMarkPrio int
 	FromPrio   int
 	NptPrefix  string
-	V4Source   string
+	// V4Source is the provider's static IPv4 link address, or empty on a
+	// leased link. The loader derives it from the link's first static address
+	// rather than reading it from the file, so the source rule and the address
+	// the link holds cannot disagree.
+	V4Source string
+	// LinkFiles says who writes the provider link's unit files, as the
+	// link-files leaf spells it: rendered, when the daemon writes them from the
+	// link specification on IfMgrSection.Links, or hand-authored, when the
+	// repository carries them and the daemon writes nothing.
+	LinkFiles string
 	// ForcedDSCP is the DSCP value that forces a new flow onto this provider,
 	// or zero when the provider carries none. Zero is free to mean absent
 	// because the model ranges the leaf from 1, since every unmarked packet

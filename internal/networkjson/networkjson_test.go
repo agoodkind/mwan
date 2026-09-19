@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/networkd"
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/yangpub"
 )
@@ -26,15 +27,38 @@ func schemaDirForTest(t *testing.T) string {
 }
 
 // validDocument is one gateway's network tree: two providers in different
-// tiers, one of them with an IPv4 source pin and one with no probe at all,
-// plus the internal link and the group-wide values. Addresses are
-// documentation prefixes.
+// tiers, one on a rendered link with a static IPv4 address and a delegation
+// client, and one whose unit files are hand-authored and which carries no
+// probe at all, plus the internal link and the group-wide values. Addresses
+// are documentation prefixes.
 const validDocument = `{
   "ietf-interfaces:interfaces": {
     "interface": [
       {
         "name": "enwebpass0",
         "type": "iana-if-type:other",
+        "goodkind-mwan-steering:link-files": "rendered",
+        "goodkind-mwan-steering:link": {
+          "match": { "driver": "igc" },
+          "hardware-address": "02:00:5e:00:53:01"
+        },
+        "ietf-ip:ipv4": {
+          "forwarding": true,
+          "address": [{ "ip": "203.0.113.2", "prefix-length": 29 }],
+          "goodkind-mwan-steering:dhcp": false,
+          "goodkind-mwan-steering:gateway": "203.0.113.1",
+          "goodkind-mwan-steering:route-metric": 10
+        },
+        "ietf-ip:ipv6": {
+          "forwarding": true,
+          "goodkind-mwan-steering:dhcp": true,
+          "goodkind-mwan-steering:accept-ra": true,
+          "goodkind-mwan-steering:delegation": {
+            "hint": "::/56",
+            "duid-type": "link-layer-time",
+            "duid": "00:01:2a:5b:3c:4d:02:00:5e:00:53:01"
+          }
+        },
         "goodkind-mwan-steering:steering": { "tier": 0, "weight": 2 },
         "goodkind-mwan-steering:wan": {
           "name": "webpass",
@@ -43,7 +67,6 @@ const validDocument = `{
           "fw-mark-prio": 200,
           "from-prio": 56,
           "npt-prefix": "2001:db8:beef:200::/60",
-          "v4-source": "203.0.113.2",
           "static-mapping": [
             { "external": "203.0.113.2", "internal": "192.0.2.2" },
             { "external": "203.0.113.3", "internal": "192.0.2.3" }
@@ -64,6 +87,7 @@ const validDocument = `{
       {
         "name": "enatt0",
         "type": "iana-if-type:other",
+        "goodkind-mwan-steering:link-files": "hand-authored",
         "goodkind-mwan-steering:steering": { "tier": 1, "weight": 1 },
         "goodkind-mwan-steering:wan": {
           "name": "att",
@@ -542,8 +566,8 @@ func TestLoadRejectsADuplicateForcedDSCP(t *testing.T) {
 	)
 	body = strings.Replace(
 		body,
-		`"v4-source": "203.0.113.2",`,
-		`"v4-source": "203.0.113.2", "forced-dscp": 8,`,
+		`"npt-prefix": "2001:db8:beef:200::/60",`,
+		`"npt-prefix": "2001:db8:beef:200::/60", "forced-dscp": 8,`,
 		1,
 	)
 	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
@@ -651,5 +675,315 @@ func TestLoadCarriesADeclaredEmptyIPv6TargetList(t *testing.T) {
 	}
 	if len(applied.TargetsV6) != 0 {
 		t.Fatalf("applied targets-v6 = %v, want empty", applied.TargetsV6)
+	}
+}
+
+// withWebpassFreeForm gives webpass one free-form .network section carrying
+// the given line, keyed at position zero.
+func withWebpassFreeForm(key string, value string) string {
+	return strings.Replace(validDocument,
+		`"goodkind-mwan-steering:wan": {`,
+		`"goodkind-mwan-steering:networkd": {"file": [{"kind": "network", "section": [`+
+			`{"index": 0, "name": "DHCPv6", "entry": [`+
+			`{"index": 0, "key": "`+key+`", "value": "`+value+`"}]}]}]},`+"\n"+
+			`      "goodkind-mwan-steering:wan": {`, 1)
+}
+
+func TestLoadRejectsAKeySetByBothLayers(t *testing.T) {
+	t.Parallel()
+
+	// webpass types its delegation hint, so a free-form line naming the key
+	// that leaf renders to would either be read as a list or silently win.
+	body := withWebpassFreeForm("PrefixDelegationHint", "::/60")
+	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err == nil {
+		t.Fatal("Load accepted a key set by both layers")
+	}
+	const want = "interface enwebpass0: networkd section DHCPv6 key PrefixDelegationHint is set by the delegation hint leaf; remove one"
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("Load error = %q, want it to contain %q", err, want)
+	}
+}
+
+func TestLoadCarriesAFreeFormSectionNoTypedLeafNames(t *testing.T) {
+	t.Parallel()
+
+	body := withWebpassFreeForm("UseDNS", "no")
+	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err != nil {
+		t.Fatalf("Load rejected a free-form key no typed leaf names: %v", err)
+	}
+	if len(loaded.Links) != 1 {
+		t.Fatalf("link count = %d, want 1 for the one rendered provider", len(loaded.Links))
+	}
+	want := []networkd.File{{
+		Kind: networkd.FileNetwork,
+		Sections: []networkd.Section{{
+			Index:   0,
+			Name:    "DHCPv6",
+			Entries: []networkd.Entry{{Index: 0, Key: "UseDNS", Value: "no"}},
+		}},
+	}}
+	if got := loaded.Links[0].Files; !reflect.DeepEqual(got, want) {
+		t.Fatalf("free-form files = %+v, want %+v", got, want)
+	}
+}
+
+// TestLoadCarriesTheLinkIdentity pins the specification the renderer reads:
+// every typed leaf the document carries arrives on the rendered provider's
+// entry in Config.Links, the hand-authored provider contributes none, and
+// Apply carries the list onto the daemon's configuration.
+func TestLoadCarriesTheLinkIdentity(t *testing.T) {
+	t.Parallel()
+
+	loaded, err := networkjson.Load(writeDocument(t, validDocument), schemaDirForTest(t))
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	want := []networkd.Spec{{
+		Name:            "enwebpass0",
+		TableID:         200,
+		Match:           networkd.Match{Driver: "igc"},
+		HardwareAddress: "02:00:5e:00:53:01",
+		IPv4: &networkd.FamilyV4{
+			Family: networkd.Family{
+				Forwarding:  new(true),
+				Addresses:   []networkd.Address{{IP: netip.MustParseAddr("203.0.113.2"), PrefixLength: 29}},
+				DHCP:        new(false),
+				Gateway:     netip.MustParseAddr("203.0.113.1"),
+				RouteMetric: new(10),
+			},
+		},
+		IPv6: &networkd.FamilyV6{
+			Family:   networkd.Family{Forwarding: new(true), DHCP: new(true)},
+			AcceptRA: new(true),
+			Delegation: &networkd.Delegation{
+				Hint:     netip.MustParsePrefix("::/56"),
+				DUIDType: "link-layer-time",
+				DUID:     "00:01:2a:5b:3c:4d:02:00:5e:00:53:01",
+			},
+		},
+	}}
+	if !reflect.DeepEqual(loaded.Links, want) {
+		t.Fatalf("links = %+v, want %+v", loaded.Links, want)
+	}
+	if got := loaded.WAN["webpass"].LinkFiles; got != "rendered" {
+		t.Fatalf("webpass link-files = %q, want rendered", got)
+	}
+	if got := loaded.WAN["att"].LinkFiles; got != "hand-authored" {
+		t.Fatalf("att link-files = %q, want hand-authored", got)
+	}
+
+	var cfg config.Config
+	loaded.Apply(&cfg)
+	if !reflect.DeepEqual(cfg.IfMgr.Links, want) {
+		t.Fatalf("applied links = %+v, want the loaded list", cfg.IfMgr.Links)
+	}
+}
+
+// TestLoadDerivesTheIPv4SourcePinFromTheStaticAddress pins that the routing
+// module's source pin is the link's own static address rather than a value
+// inventory types, and that a link which leases its address gets none.
+func TestLoadDerivesTheIPv4SourcePinFromTheStaticAddress(t *testing.T) {
+	t.Parallel()
+
+	loaded, err := networkjson.Load(writeDocument(t, validDocument), schemaDirForTest(t))
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if got := loaded.WAN["webpass"].V4Source; got != "203.0.113.2" {
+		t.Fatalf("static-link v4 source = %q, want the address leaf 203.0.113.2", got)
+	}
+
+	leased := strings.Replace(
+		validDocument,
+		`"address": [{ "ip": "203.0.113.2", "prefix-length": 29 }],
+          "goodkind-mwan-steering:dhcp": false,
+          "goodkind-mwan-steering:gateway": "203.0.113.1",`,
+		`"goodkind-mwan-steering:dhcp": true,`,
+		1,
+	)
+	if leased == validDocument {
+		t.Fatal("the document still carries webpass's static address")
+	}
+	loaded, err = networkjson.Load(writeDocument(t, leased), schemaDirForTest(t))
+	if err != nil {
+		t.Fatalf("Load rejected a leased link: %v", err)
+	}
+	if got := loaded.WAN["webpass"].V4Source; got != "" {
+		t.Fatalf("leased-link v4 source = %q, want empty", got)
+	}
+}
+
+func TestLoadRejectsATypedV4Source(t *testing.T) {
+	t.Parallel()
+
+	// The daemon derives the pin from the address leaf, so a document still
+	// typing it could disagree with the address the link holds.
+	body := strings.Replace(
+		validDocument,
+		`"npt-prefix": "2001:db8:beef:200::/60",`,
+		`"npt-prefix": "2001:db8:beef:200::/60", "v4-source": "203.0.113.2",`,
+		1,
+	)
+	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err == nil {
+		t.Fatal("Load accepted a document that still types v4-source")
+	}
+	if !strings.Contains(err.Error(), "v4-source") {
+		t.Fatalf("error does not name the leaf: %v", err)
+	}
+}
+
+func TestLoadRejectsAProviderThatStatesNoLinkFiles(t *testing.T) {
+	t.Parallel()
+
+	// An entry with no link block looks the same whether its files are
+	// deliberately hand-authored or its link block was never written, so the
+	// exemption must be stated rather than inferred from the absence.
+	body := strings.Replace(validDocument, `"goodkind-mwan-steering:link-files": "hand-authored",`, ``, 1)
+	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err == nil {
+		t.Fatal("Load accepted a provider that states neither link identity nor hand-authored files")
+	}
+	if !strings.Contains(err.Error(), "interface enatt0: link-files is required") {
+		t.Fatalf("error does not name the missing leaf: %v", err)
+	}
+}
+
+func TestLoadRejectsARenderedLinkWithNoIdentity(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		link string
+		want string
+	}{
+		"no link container": {
+			link: ``,
+			want: "link container is required",
+		},
+		"neither match nor vlan": {
+			link: `"goodkind-mwan-steering:link": { "hardware-address": "02:00:5e:00:53:01" },`,
+			want: "exactly one of match/driver, match/hardware-address, or vlan, got 0",
+		},
+		"both match leaves": {
+			link: `"goodkind-mwan-steering:link": { "match": { "driver": "igc", "hardware-address": "02:00:5e:00:53:01" } },`,
+			want: "exactly one of match/driver, match/hardware-address, or vlan, got 2",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			body := strings.Replace(
+				validDocument,
+				`"goodkind-mwan-steering:link": {
+          "match": { "driver": "igc" },
+          "hardware-address": "02:00:5e:00:53:01"
+        },`,
+				tc.link,
+				1,
+			)
+			if body == validDocument {
+				t.Fatal("the document still carries webpass's link container")
+			}
+			_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+			if err == nil {
+				t.Fatal("Load accepted a rendered link with no device identity")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want it to contain %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// withWebpassVLAN replaces webpass's device match with a VLAN on parent.
+func withWebpassVLAN(parent string) string {
+	return strings.Replace(
+		validDocument,
+		`"match": { "driver": "igc" },`,
+		`"vlan": { "parent": "`+parent+`", "id": 101 },`,
+		1,
+	)
+}
+
+func TestLoadCarriesAVLANOnAnInterfaceTheDocumentDescribes(t *testing.T) {
+	t.Parallel()
+
+	// The parent carries no provider of its own, which is the shape a tagged
+	// hand-off takes: the physical link is an entry, the VLAN is the member.
+	body := strings.Replace(
+		withWebpassVLAN("ensonic0"),
+		`{ "name": "enmwanbr0", "type": "iana-if-type:other" }`,
+		`{ "name": "ensonic0", "type": "iana-if-type:other" },
+      { "name": "enmwanbr0", "type": "iana-if-type:other" }`,
+		1,
+	)
+	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err != nil {
+		t.Fatalf("Load rejected a VLAN whose parent the document describes: %v", err)
+	}
+	if len(loaded.Links) != 1 {
+		t.Fatalf("link count = %d, want 1", len(loaded.Links))
+	}
+	want := &networkd.VLAN{Parent: "ensonic0", ID: 101}
+	if got := loaded.Links[0].VLAN; !reflect.DeepEqual(got, want) {
+		t.Fatalf("vlan = %+v, want %+v", got, want)
+	}
+}
+
+func TestLoadRejectsAVLANParentTheDocumentDoesNotDescribe(t *testing.T) {
+	t.Parallel()
+
+	// A VLAN exists only because its parent's file names it, so a parent no
+	// entry describes is created by nothing and the provider would be silently
+	// absent with no error from any layer. The parent leaf is an interface
+	// reference, so the schema validation Load runs first is what refuses it.
+	body := withWebpassVLAN("ensonic0")
+	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err == nil {
+		t.Fatal("Load accepted a VLAN whose parent no interface in the document describes")
+	}
+	if !strings.Contains(err.Error(), "ensonic0") {
+		t.Fatalf("error does not name the parent: %v", err)
+	}
+}
+
+func TestLoadRejectsAFamilyThatOmitsDHCP(t *testing.T) {
+	t.Parallel()
+
+	// A family container that does not say whether a client runs cannot be
+	// rendered either way, and the schema cannot require the leaf because an
+	// interface carrying no provider may leave it out.
+	body := strings.Replace(validDocument, `"goodkind-mwan-steering:dhcp": false,`, ``, 1)
+	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err == nil {
+		t.Fatal("Load accepted a family container with no dhcp leaf")
+	}
+	if !strings.Contains(err.Error(), "ipv4/dhcp is required") {
+		t.Fatalf("error does not name the missing leaf: %v", err)
+	}
+}
+
+func TestLoadRejectsAHandAuthoredEntryThatDescribesItsLink(t *testing.T) {
+	t.Parallel()
+
+	// hand-authored means the model says nothing about how the link comes up,
+	// so a link container beside it would be a description the daemon
+	// silently ignored.
+	body := strings.Replace(
+		validDocument,
+		`"goodkind-mwan-steering:link-files": "hand-authored",`,
+		`"goodkind-mwan-steering:link-files": "hand-authored",
+        "goodkind-mwan-steering:link": { "match": { "driver": "i40e" } },`,
+		1,
+	)
+	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err == nil {
+		t.Fatal("Load accepted a hand-authored entry carrying a link container")
+	}
+	if !strings.Contains(err.Error(), "interface enatt0: link-files is hand-authored") {
+		t.Fatalf("error does not name the contradiction: %v", err)
 	}
 }

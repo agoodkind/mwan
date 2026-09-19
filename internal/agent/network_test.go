@@ -66,6 +66,7 @@ const gatewayNetworkJSON = `{
       {
         "name": "enatt0",
         "type": "iana-if-type:other",
+        "goodkind-mwan-steering:link-files": "hand-authored",
         "goodkind-mwan-steering:steering": { "tier": 0, "weight": 1 },
         "goodkind-mwan-steering:wan": {
           "name": "att",
@@ -79,6 +80,12 @@ const gatewayNetworkJSON = `{
       {
         "name": "enwebpass0",
         "type": "iana-if-type:other",
+        "goodkind-mwan-steering:link-files": "rendered",
+        "goodkind-mwan-steering:link": { "match": { "driver": "igc" } },
+        "ietf-ip:ipv4": {
+          "address": [{ "ip": "203.0.113.2", "prefix-length": 29 }],
+          "goodkind-mwan-steering:dhcp": false
+        },
         "goodkind-mwan-steering:steering": { "tier": 0, "weight": 1 },
         "goodkind-mwan-steering:wan": {
           "name": "webpass",
@@ -86,13 +93,14 @@ const gatewayNetworkJSON = `{
           "fw-mark": 2,
           "fw-mark-prio": 200,
           "from-prio": 56,
-          "npt-prefix": "2001:db8:beef:200::/60",
-          "v4-source": "203.0.113.2"
+          "npt-prefix": "2001:db8:beef:200::/60"
         }
       },
       {
         "name": "enmbrains0",
         "type": "iana-if-type:other",
+        "goodkind-mwan-steering:link-files": "rendered",
+        "goodkind-mwan-steering:link": { "match": { "hardware-address": "02:00:5e:00:53:03" } },
         "goodkind-mwan-steering:steering": { "tier": 0, "weight": 1 },
         "goodkind-mwan-steering:wan": {
           "name": "monkeybrains",

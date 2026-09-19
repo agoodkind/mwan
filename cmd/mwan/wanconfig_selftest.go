@@ -275,6 +275,10 @@ func selftestGateway() wanconfig.Gateway {
 				TargetsV6:            []netip.Addr{netip.MustParseAddr("2001:db8:53::1")},
 				HTTPURLs:             []string{"https://example.test/ip"},
 			},
+			// The selftest proves the serving contract, not the renderer, so
+			// the member states no link files and publishes no link.
+			LinkFiles: "",
+			Link:      nil,
 		}},
 		Daemon: wanconfig.DaemonSettings{
 			Watchdog: wanconfig.WatchdogSettings{

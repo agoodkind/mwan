@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"goodkind.io/mwan/internal/networkd"
 )
 
 // testMember returns a member carrying every value the model requires of a
@@ -175,6 +177,164 @@ func TestConfigItems_DescribesEveryMemberAndTranslation(t *testing.T) {
 	}
 	if !slices.Equal(items, want) {
 		t.Fatalf("items differ\n got: %v\nwant: %v", items, want)
+	}
+}
+
+// renderedLinkSpec is a link like the free-form instance document's: matched
+// by driver, a static IPv4 address with a gateway and an extra source
+// address, a DHCPv6 client with every delegation leaf, and one free-form line.
+func renderedLinkSpec(name string) *networkd.Spec {
+	return &networkd.Spec{
+		Name:            name,
+		TableID:         200,
+		Match:           networkd.Match{Driver: "igc"},
+		HardwareAddress: "02:00:5e:00:53:01",
+		IPv4: &networkd.FamilyV4{
+			Family: networkd.Family{
+				Forwarding:  new(true),
+				Addresses:   []networkd.Address{{IP: netip.MustParseAddr("203.0.113.2"), PrefixLength: 29}},
+				DHCP:        new(false),
+				Gateway:     netip.MustParseAddr("203.0.113.1"),
+				RouteMetric: new(10),
+			},
+			SourceAddresses: []netip.Addr{netip.MustParseAddr("203.0.113.3")},
+		},
+		IPv6: &networkd.FamilyV6{
+			Family:   networkd.Family{Forwarding: new(true), DHCP: new(true), RouteMetric: new(10)},
+			AcceptRA: new(true),
+			Delegation: &networkd.Delegation{
+				Hint:                  netip.MustParsePrefix("::/56"),
+				DUIDType:              "link-layer-time",
+				DUID:                  "00:01:2a:5b:3c:4d:02:00:5e:00:53:01",
+				WithoutRA:             "solicit",
+				UseDelegatedPrefix:    new(false),
+				RouterLifetimeSeconds: new(1800),
+			},
+		},
+		Files: []networkd.File{{
+			Kind: networkd.FileNetwork,
+			Sections: []networkd.Section{{
+				Index:   0,
+				Name:    "DHCPv6",
+				Entries: []networkd.Entry{{Index: 0, Key: "UseDNS", Value: "no"}},
+			}},
+		}},
+	}
+}
+
+// TestConfigItems_DescribesTheLinkTheDaemonRenders pins the published shape
+// of a rendered link: the link-files leaf, the link identity, both family
+// containers with the steering module's leaves under its namespace, the
+// delegation, and the free-form section addressed by its positional keys. A
+// member whose files are hand-authored publishes the leaf alone, and a member
+// stating nothing publishes nothing.
+func TestConfigItems_DescribesTheLinkTheDaemonRenders(t *testing.T) {
+	t.Parallel()
+	webpass := testMember("webpass", "enwebpass0")
+	webpass.TableID = 200
+	webpass.FwMark = 2
+	webpass.LinkFiles = "rendered"
+	webpass.Link = renderedLinkSpec("enwebpass0")
+	att := testMember("att", "enatt0")
+	att.LinkFiles = "hand-authored"
+	monkeybrains := testMember("monkeybrains", "enmbrains0")
+	monkeybrains.TableID = 300
+	monkeybrains.FwMark = 3
+	monkeybrains.FwMarkPrio = 300
+	monkeybrains.FromPrio = 57
+
+	items, err := ConfigItems(Gateway{
+		InternalIface: "eninternal0",
+		Members:       []Member{webpass, att, monkeybrains},
+	})
+	if err != nil {
+		t.Fatalf("ConfigItems: %v", err)
+	}
+
+	const (
+		webpassLink = "/ietf-interfaces:interfaces/interface[name='enwebpass0']"
+		link        = webpassLink + "/goodkind-mwan-steering:link"
+		ipv4        = webpassLink + "/ietf-ip:ipv4"
+		ipv6        = webpassLink + "/ietf-ip:ipv6"
+		delegation  = ipv6 + "/goodkind-mwan-steering:delegation"
+		section     = webpassLink + "/goodkind-mwan-steering:networkd/file[kind='network']/section[index='0']"
+	)
+	var got []Item
+	for _, item := range items {
+		if strings.Contains(item.Path, "link") ||
+			strings.Contains(item.Path, "ietf-ip:ipv") ||
+			strings.Contains(item.Path, "networkd") {
+			got = append(got, item)
+		}
+	}
+	want := []Item{
+		{Path: "/ietf-interfaces:interfaces/interface[name='eninternal0']/ietf-ip:ipv4/enabled", Value: "true"},
+		{Path: "/ietf-interfaces:interfaces/interface[name='eninternal0']/ietf-ip:ipv6/enabled", Value: "true"},
+
+		{Path: ipv4 + "/enabled", Value: "true"},
+		{Path: ipv6 + "/enabled", Value: "true"},
+		{Path: webpassLink + "/goodkind-mwan-steering:link-files", Value: "rendered"},
+		{Path: link + "/match/driver", Value: "igc"},
+		{Path: link + "/hardware-address", Value: "02:00:5e:00:53:01"},
+		{Path: ipv4 + "/forwarding", Value: "true"},
+		{Path: ipv4 + "/address[ip='203.0.113.2']/prefix-length", Value: "29"},
+		{Path: ipv4 + "/goodkind-mwan-steering:dhcp", Value: "false"},
+		{Path: ipv4 + "/goodkind-mwan-steering:gateway", Value: "203.0.113.1"},
+		{Path: ipv4 + "/goodkind-mwan-steering:route-metric", Value: "10"},
+		{Path: ipv4 + "/goodkind-mwan-steering:source-addresses", Value: "203.0.113.3"},
+		{Path: ipv6 + "/forwarding", Value: "true"},
+		{Path: ipv6 + "/goodkind-mwan-steering:dhcp", Value: "true"},
+		{Path: ipv6 + "/goodkind-mwan-steering:route-metric", Value: "10"},
+		{Path: ipv6 + "/goodkind-mwan-steering:accept-ra", Value: "true"},
+		{Path: delegation + "/hint", Value: "::/56"},
+		{Path: delegation + "/duid-type", Value: "link-layer-time"},
+		{Path: delegation + "/duid", Value: "00:01:2a:5b:3c:4d:02:00:5e:00:53:01"},
+		{Path: delegation + "/without-ra", Value: "solicit"},
+		{Path: delegation + "/use-delegated-prefix", Value: "false"},
+		{Path: delegation + "/router-lifetime-seconds", Value: "1800"},
+		{Path: section + "/name", Value: "DHCPv6"},
+		{Path: section + "/entry[index='0']/key", Value: "UseDNS"},
+		{Path: section + "/entry[index='0']/value", Value: "no"},
+
+		{Path: "/ietf-interfaces:interfaces/interface[name='enatt0']/ietf-ip:ipv4/enabled", Value: "true"},
+		{Path: "/ietf-interfaces:interfaces/interface[name='enatt0']/ietf-ip:ipv6/enabled", Value: "true"},
+		{Path: "/ietf-interfaces:interfaces/interface[name='enatt0']/goodkind-mwan-steering:link-files", Value: "hand-authored"},
+
+		{Path: "/ietf-interfaces:interfaces/interface[name='enmbrains0']/ietf-ip:ipv4/enabled", Value: "true"},
+		{Path: "/ietf-interfaces:interfaces/interface[name='enmbrains0']/ietf-ip:ipv6/enabled", Value: "true"},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("link items differ\n got: %v\nwant: %v", got, want)
+	}
+}
+
+// TestConfigItems_PublishesAVLANLink pins the VLAN container, whose two
+// leaves are both mandatory once the presence container exists.
+func TestConfigItems_PublishesAVLANLink(t *testing.T) {
+	t.Parallel()
+	member := testMember("sonic", "ensonic0.101")
+	member.LinkFiles = "rendered"
+	member.Link = &networkd.Spec{
+		Name: "ensonic0.101",
+		VLAN: &networkd.VLAN{Parent: "ensonic0", ID: 101},
+	}
+	items, err := ConfigItems(Gateway{InternalIface: "eninternal0", Members: []Member{member}})
+	if err != nil {
+		t.Fatalf("ConfigItems: %v", err)
+	}
+	const link = "/ietf-interfaces:interfaces/interface[name='ensonic0.101']/goodkind-mwan-steering:link"
+	var got []Item
+	for _, item := range items {
+		if strings.HasPrefix(item.Path, link+"/") {
+			got = append(got, item)
+		}
+	}
+	want := []Item{
+		{Path: link + "/vlan/parent", Value: "ensonic0"},
+		{Path: link + "/vlan/id", Value: "101"},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("vlan items differ\n got: %v\nwant: %v", got, want)
 	}
 }
 
@@ -422,6 +582,62 @@ func TestConfigItems_RejectsWhatAPathCannotCarry(t *testing.T) {
 		"ipv6 internal network": withGroup(func(group *GroupSettings) {
 			group.InternalNetV4 = netip.MustParsePrefix("2001:db8::/64")
 		}),
+		"unknown link-files": withMember(func(member *Member) { member.LinkFiles = "templated" }),
+		"link on a hand-authored member": withMember(func(member *Member) {
+			member.LinkFiles = "hand-authored"
+			member.Link = renderedLinkSpec("enatt0")
+		}),
+		"link naming another interface": withMember(func(member *Member) {
+			member.LinkFiles = "rendered"
+			member.Link = renderedLinkSpec("enwebpass0")
+		}),
+		"vlan id above range": withMember(func(member *Member) {
+			member.LinkFiles = "rendered"
+			member.Link = &networkd.Spec{Name: "enatt0", VLAN: &networkd.VLAN{Parent: "enphys0", ID: 4095}}
+		}),
+		"quote in vlan parent": withMember(func(member *Member) {
+			member.LinkFiles = "rendered"
+			member.Link = &networkd.Spec{Name: "enatt0", VLAN: &networkd.VLAN{Parent: "en'phys0", ID: 1}}
+		}),
+		"ipv6 address in the ipv4 family": withMember(func(member *Member) {
+			member.LinkFiles = "rendered"
+			member.Link = renderedLinkSpec("enatt0")
+			member.Link.IPv4.Addresses[0].IP = netip.MustParseAddr("2001:db8::2")
+		}),
+		"ipv4 gateway in the ipv6 family": withMember(func(member *Member) {
+			member.LinkFiles = "rendered"
+			member.Link = renderedLinkSpec("enatt0")
+			member.Link.IPv6.Gateway = netip.MustParseAddr("203.0.113.1")
+		}),
+		"ipv4 delegation hint": withMember(func(member *Member) {
+			member.LinkFiles = "rendered"
+			member.Link = renderedLinkSpec("enatt0")
+			member.Link.IPv6.Delegation.Hint = netip.MustParsePrefix("10.0.0.0/8")
+		}),
+		"free-form section with no name": withMember(func(member *Member) {
+			member.LinkFiles = "rendered"
+			member.Link = renderedLinkSpec("enatt0")
+			member.Link.Files[0].Sections[0].Name = ""
+		}),
+		"free-form line with no key": withMember(func(member *Member) {
+			member.LinkFiles = "rendered"
+			member.Link = renderedLinkSpec("enatt0")
+			member.Link.Files[0].Sections[0].Entries[0].Key = ""
+		}),
+		"free-form file of an unknown kind": withMember(func(member *Member) {
+			member.LinkFiles = "rendered"
+			member.Link = renderedLinkSpec("enatt0")
+			member.Link.Files[0].Kind = "unit"
+		}),
+	}
+	// A rendered link with every value in range is accepted, so each case
+	// above fails on the one value it breaks.
+	whole := withMember(func(member *Member) {
+		member.LinkFiles = "rendered"
+		member.Link = renderedLinkSpec("enatt0")
+	})
+	if _, err := ConfigItems(whole); err != nil {
+		t.Fatalf("the rendered link the link cases start from is rejected: %v", err)
 	}
 	if _, err := ConfigItems(withMember(func(*Member) {})); err != nil {
 		t.Fatalf("the unbroken gateway every case starts from is rejected: %v", err)

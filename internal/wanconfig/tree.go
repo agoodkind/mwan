@@ -15,6 +15,8 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+
+	"goodkind.io/mwan/internal/networkd"
 )
 
 // Item is one path-value pair in the published tree. It mirrors the
@@ -72,6 +74,15 @@ type Member struct {
 	// Health is the provider's probe as loaded, or nil when the provider
 	// carries no health container.
 	Health *ProbeSettings
+	// LinkFiles says who writes the member's unit files, as the link-files
+	// leaf spells it: rendered or hand-authored. Empty publishes nothing,
+	// which is what a caller holding no network configuration passes.
+	LinkFiles string
+	// Link is the member's link specification when the daemon renders its
+	// unit files, or nil when its files are hand-authored. Its name is the
+	// member's link, because the specification is the interface entry's own
+	// link, family, and free-form containers.
+	Link *networkd.Spec
 }
 
 // StaticMapping is one one-to-one IPv4 translation a provider carries. The
@@ -224,11 +235,21 @@ const (
 	// maxDSCP is the largest value a six-bit DSCP field holds.
 	maxDSCP = 63
 
+	// maxVLANID is the largest tag the model's vlan/id leaf accepts.
+	maxVLANID = 4094
+
+	// The two values the link-files leaf takes.
+	linkFilesRendered     = "rendered"
+	linkFilesHandAuthored = "hand-authored"
+
 	// itemsPerMember and itemsForGroup size the item slice for a member with
 	// a full probe and a group carrying every value; they are capacity hints,
 	// not limits.
 	itemsPerMember = 28
 	itemsForGroup  = 16
+	// itemsPerLink sizes the items a rendered link with both families and a
+	// delegation publishes.
+	itemsPerLink = 24
 )
 
 // ErrInvalidGateway means the Gateway cannot be published as given. The
@@ -251,6 +272,7 @@ func ConfigItems(g Gateway) ([]Item, error) {
 		items = append(items, interfaceItems(member.Iface)...)
 		items = append(items, steeringItems(member)...)
 		items = append(items, wanItems(member)...)
+		items = append(items, linkItems(member)...)
 	}
 	items = append(items, steeringGroupItems(g)...)
 	instanceID := uint32(0)
@@ -466,6 +488,143 @@ func probeItems(base string, probe *ProbeSettings) []Item {
 	return items
 }
 
+// linkItems describes who writes the member's unit files and, for a link the
+// daemon renders, the link identity, both family containers, and the
+// free-form sections exactly as the daemon loaded them. A member holding no
+// link-files value publishes none of it.
+func linkItems(member Member) []Item {
+	if member.LinkFiles == "" {
+		return nil
+	}
+	base := interfacePath(member.Iface)
+	items := make([]Item, 0, itemsPerLink)
+	items = append(items, Item{Path: base + "/goodkind-mwan-steering:link-files", Value: member.LinkFiles})
+	if member.Link == nil {
+		return items
+	}
+	spec := member.Link
+	link := base + "/goodkind-mwan-steering:link"
+	if spec.Match.Driver != "" {
+		items = append(items, Item{Path: link + "/match/driver", Value: spec.Match.Driver})
+	}
+	if spec.Match.HardwareAddress != "" {
+		items = append(items, Item{Path: link + "/match/hardware-address", Value: spec.Match.HardwareAddress})
+	}
+	if spec.HardwareAddress != "" {
+		items = append(items, Item{Path: link + "/hardware-address", Value: spec.HardwareAddress})
+	}
+	if spec.VLAN != nil {
+		items = append(items,
+			Item{Path: link + "/vlan/parent", Value: spec.VLAN.Parent},
+			Item{Path: link + "/vlan/id", Value: uintValue(uint64(spec.VLAN.ID))},
+		)
+	}
+	if spec.IPv4 != nil {
+		family := base + "/ietf-ip:ipv4"
+		items = append(items, familyItems(family, spec.IPv4.Family)...)
+		for _, address := range spec.IPv4.SourceAddresses {
+			items = append(items, Item{
+				Path:  family + "/goodkind-mwan-steering:source-addresses",
+				Value: address.String(),
+			})
+		}
+	}
+	if spec.IPv6 != nil {
+		family := base + "/ietf-ip:ipv6"
+		items = append(items, familyItems(family, spec.IPv6.Family)...)
+		if spec.IPv6.AcceptRA != nil {
+			items = append(items, Item{
+				Path:  family + "/goodkind-mwan-steering:accept-ra",
+				Value: boolValue(*spec.IPv6.AcceptRA),
+			})
+		}
+		if spec.IPv6.Delegation != nil {
+			items = append(items, delegationItems(family+"/goodkind-mwan-steering:delegation", *spec.IPv6.Delegation)...)
+		}
+	}
+	items = append(items, freeFormItems(base+"/goodkind-mwan-steering:networkd", spec.Files)...)
+	return items
+}
+
+// familyItems describes the leaves both families carry: the published
+// forwarding flag and address list, and the steering module's dhcp, gateway,
+// and route-metric leaves beside them.
+func familyItems(base string, family networkd.Family) []Item {
+	var items []Item
+	if family.Forwarding != nil {
+		items = append(items, Item{Path: base + "/forwarding", Value: boolValue(*family.Forwarding)})
+	}
+	for _, address := range family.Addresses {
+		items = append(items, Item{
+			Path:  base + "/address[ip='" + address.IP.String() + "']/prefix-length",
+			Value: uintValue(uint64(address.PrefixLength)),
+		})
+	}
+	if family.DHCP != nil {
+		items = append(items, Item{Path: base + "/goodkind-mwan-steering:dhcp", Value: boolValue(*family.DHCP)})
+	}
+	if family.Gateway.IsValid() {
+		items = append(items, Item{Path: base + "/goodkind-mwan-steering:gateway", Value: family.Gateway.String()})
+	}
+	if family.RouteMetric != nil {
+		items = append(items, Item{
+			Path:  base + "/goodkind-mwan-steering:route-metric",
+			Value: uintValue(uint64(*family.RouteMetric)),
+		})
+	}
+	return items
+}
+
+// delegationItems describes the delegation the interface requests. Every leaf
+// is optional in the model, so each publishes only when the loaded value
+// carries it.
+func delegationItems(base string, delegation networkd.Delegation) []Item {
+	var items []Item
+	if delegation.Hint.IsValid() {
+		items = append(items, Item{Path: base + "/hint", Value: delegation.Hint.String()})
+	}
+	if delegation.DUIDType != "" {
+		items = append(items, Item{Path: base + "/duid-type", Value: delegation.DUIDType})
+	}
+	if delegation.DUID != "" {
+		items = append(items, Item{Path: base + "/duid", Value: delegation.DUID})
+	}
+	if delegation.WithoutRA != "" {
+		items = append(items, Item{Path: base + "/without-ra", Value: delegation.WithoutRA})
+	}
+	if delegation.UseDelegatedPrefix != nil {
+		items = append(items, Item{Path: base + "/use-delegated-prefix", Value: boolValue(*delegation.UseDelegatedPrefix)})
+	}
+	if delegation.RouterLifetimeSeconds != nil {
+		items = append(items, Item{
+			Path:  base + "/router-lifetime-seconds",
+			Value: uintValue(uint64(*delegation.RouterLifetimeSeconds)),
+		})
+	}
+	return items
+}
+
+// freeFormItems describes the free-form sections, addressing each section and
+// each line by the positional key the model gives it.
+func freeFormItems(base string, files []networkd.File) []Item {
+	var items []Item
+	for _, file := range files {
+		filePath := base + "/file[kind='" + string(file.Kind) + "']"
+		for _, section := range file.Sections {
+			sectionPath := filePath + "/section[index='" + uintValue(uint64(section.Index)) + "']"
+			items = append(items, Item{Path: sectionPath + "/name", Value: section.Name})
+			for _, entry := range section.Entries {
+				entryPath := sectionPath + "/entry[index='" + uintValue(uint64(entry.Index)) + "']"
+				items = append(items,
+					Item{Path: entryPath + "/key", Value: entry.Key},
+					Item{Path: entryPath + "/value", Value: entry.Value},
+				)
+			}
+		}
+	}
+	return items
+}
+
 // steeringGroupItems describes the settings that apply to the member set as a
 // whole. A value the gateway does not hold publishes nothing: a role that runs
 // no steering module carries no hash mode, and a caller holding no network
@@ -600,7 +759,100 @@ func validateProvider(member Member) error {
 	if err := validateMappings(member); err != nil {
 		return err
 	}
-	return validateProbe(member.Name, member.Health)
+	if err := validateProbe(member.Name, member.Health); err != nil {
+		return err
+	}
+	return validateLink(member)
+}
+
+// validateLink rejects a link value its leaf or key would refuse: a
+// link-files value outside the enumeration, a specification for another
+// interface than the member's link, a specification on a member whose files
+// are hand-authored, a VLAN tag outside the model's range, a parent or a
+// positional key a path cannot carry, an address in the wrong family, and a
+// free-form file, section, or line with no key.
+func validateLink(member Member) error {
+	switch member.LinkFiles {
+	case "", linkFilesRendered, linkFilesHandAuthored:
+	default:
+		return invalid(fmt.Sprintf("member %s link-files %q is not one of the model's values", member.Name, member.LinkFiles))
+	}
+	spec := member.Link
+	if spec == nil {
+		return nil
+	}
+	if member.LinkFiles != linkFilesRendered {
+		return invalid(fmt.Sprintf("member %s carries a link specification but its link-files is %q", member.Name, member.LinkFiles))
+	}
+	if spec.Name != member.Iface {
+		return invalid(fmt.Sprintf("member %s link specification names %q, not its link %q", member.Name, spec.Name, member.Iface))
+	}
+	if spec.VLAN != nil {
+		if err := validateKey("member "+member.Name+" vlan parent", spec.VLAN.Parent); err != nil {
+			return err
+		}
+		if spec.VLAN.ID < 1 || spec.VLAN.ID > maxVLANID {
+			return invalid(fmt.Sprintf("member %s vlan id %d is outside 1 to %d", member.Name, spec.VLAN.ID, maxVLANID))
+		}
+	}
+	if spec.IPv4 != nil {
+		if err := validateFamily(member.Name, "ipv4", spec.IPv4.Family, netip.Addr.Is4); err != nil {
+			return err
+		}
+		for _, address := range spec.IPv4.SourceAddresses {
+			if !address.Is4() {
+				return invalid(fmt.Sprintf("member %s ipv4 source address %q is not IPv4", member.Name, address))
+			}
+		}
+	}
+	if spec.IPv6 != nil {
+		if err := validateFamily(member.Name, "ipv6", spec.IPv6.Family, netip.Addr.Is6); err != nil {
+			return err
+		}
+		if spec.IPv6.Delegation != nil && spec.IPv6.Delegation.Hint.IsValid() && !spec.IPv6.Delegation.Hint.Addr().Is6() {
+			return invalid(fmt.Sprintf("member %s delegation hint %q is not IPv6", member.Name, spec.IPv6.Delegation.Hint))
+		}
+	}
+	return validateFreeForm(member.Name, spec.Files)
+}
+
+// validateFamily rejects an address or a gateway outside the family's own
+// address family.
+func validateFamily(name string, family string, shared networkd.Family, inFamily func(netip.Addr) bool) error {
+	for _, address := range shared.Addresses {
+		if !inFamily(address.IP) {
+			return invalid(fmt.Sprintf("member %s %s address %q is not %s", name, family, address.IP, family))
+		}
+	}
+	if shared.Gateway.IsValid() && !inFamily(shared.Gateway) {
+		return invalid(fmt.Sprintf("member %s %s gateway %q is not %s", name, family, shared.Gateway, family))
+	}
+	return nil
+}
+
+// validateFreeForm rejects a free-form file whose kind is not one of the
+// model's, a section with no heading, and a line with no key, each of which
+// the datastore would refuse for the mandatory leaf it lacks.
+func validateFreeForm(name string, files []networkd.File) error {
+	for _, file := range files {
+		switch file.Kind {
+		case networkd.FileLink, networkd.FileNetwork, networkd.FileNetdev:
+		default:
+			return invalid(fmt.Sprintf("member %s networkd file kind %q is not one of the model's values", name, file.Kind))
+		}
+		for _, section := range file.Sections {
+			if section.Name == "" {
+				return invalid(fmt.Sprintf("member %s networkd %s section %d has no name", name, file.Kind, section.Index))
+			}
+			for _, entry := range section.Entries {
+				if entry.Key == "" {
+					return invalid(fmt.Sprintf("member %s networkd %s section %s entry %d has no key",
+						name, file.Kind, section.Name, entry.Index))
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // validateMappings rejects a static mapping the list would refuse: an address
