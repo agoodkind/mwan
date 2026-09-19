@@ -42,14 +42,14 @@ func TestInstallUnitsWritesTheWanRoleUnits(t *testing.T) {
 		t.Fatalf("installUnits: %v", err)
 	}
 
-	// The role writes these three units plus the four files
+	// The role writes these three units plus the five files
 	// TestInstallApplyWritesTheWanconfigAndHostFiles checks.
 	wantFiles := []string{
 		"mwan-agent.service",
 		"mwan-ifmgr@.service",
 		"mwan-trace-boot.service",
 	}
-	const wantChanged = 7
+	const wantChanged = 8
 	if len(outcome.changed) != wantChanged {
 		t.Fatalf("changed = %v, want %d files", outcome.changed, wantChanged)
 	}

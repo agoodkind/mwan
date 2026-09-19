@@ -26,7 +26,8 @@ import (
 // never reaches the binary until someone says it should.
 //
 //go:embed mwan-agent.service mwan-ifmgr.service mwan-ifmgr@.service mwan-trace-boot.service mwan-ifmgr-failover.conf
-//go:embed rousette.service nghttpx-wanconfig.service nftables-override.conf 99-quiet-console.conf
+//go:embed rousette.service nghttpx-wanconfig.service nftables-override.conf systemd-networkd-override.conf
+//go:embed 99-quiet-console.conf
 var unitFS embed.FS
 
 const (
@@ -47,7 +48,8 @@ type installRole string
 const (
 	// roleWAN is the gateway VM: the agent, the instanced interface manager,
 	// the boot trace oneshot, the wanconfig RESTCONF server and its front-end
-	// proxy, the nftables drop-in, and the quiet console sysctl file.
+	// proxy, the nftables and systemd-networkd drop-ins, and the quiet console
+	// sysctl file.
 	roleWAN installRole = "wan"
 	// roleFailover is the failover container: the agent, plus the interface
 	// manager with the sandbox relaxation slaac_health needs.
@@ -103,6 +105,10 @@ var installRoles = map[installRole]roleUnits{
 			{
 				embedded: "nftables-override.conf",
 				dest:     filepath.Join(systemdUnitDir, "nftables.service.d", "override.conf"),
+			},
+			{
+				embedded: "systemd-networkd-override.conf",
+				dest:     filepath.Join(systemdUnitDir, "systemd-networkd.service.d", "override.conf"),
 			},
 			{
 				embedded: "99-quiet-console.conf",
