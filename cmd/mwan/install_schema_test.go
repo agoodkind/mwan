@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"goodkind.io/mwan/internal/networkjson"
@@ -115,12 +116,18 @@ func runInstallChild(t *testing.T, root string) string {
 		"install", "--apply", "--role", "wan", "--root", root)
 }
 
+// sysrepoChildRuns numbers the sysrepo child steps, so parallel tests never
+// share a shared-memory prefix.
+var sysrepoChildRuns atomic.Uint64
+
 // sysrepoChildEnv points a sysrepo step at the repository a rooted install
 // keeps below root, with its own shared-memory prefix, and removes that
-// prefix's shared memory when the test ends.
+// prefix's shared memory when the test ends. The number in the prefix is
+// unique to the call and ends in a separator, so the removal's glob matches
+// no other call's segments.
 func sysrepoChildEnv(t *testing.T, root string, step string, prefix string) []string {
 	t.Helper()
-	shmPrefix := fmt.Sprintf("mwaninstalltest%d%s", os.Getpid(), prefix)
+	shmPrefix := fmt.Sprintf("mwaninstalltest%d_%d_%s", os.Getpid(), sysrepoChildRuns.Add(1), prefix)
 	t.Cleanup(func() { removeSelftestSHM(slog.New(slog.DiscardHandler), shmPrefix) })
 	return []string{
 		childSysrepoEnv + "=" + step,

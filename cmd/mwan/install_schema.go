@@ -44,7 +44,9 @@ func installSchema(
 	// life of the process. The command runs once per process, so setting them
 	// here reaches sysrepo; the check below refuses to go on when something
 	// earlier in the process already bound sysrepo to another repository.
-	shmPrefix := fmt.Sprintf("mwaninstall%d", os.Getpid())
+	// The separator after the process id keeps the shared-memory removal's
+	// glob from matching another run whose process id starts with this one.
+	shmPrefix := fmt.Sprintf("mwaninstall%d_", os.Getpid())
 	restoreEnv := setSelftestEnv([]envSetting{
 		{name: "SYSREPO_REPOSITORY_PATH", value: repository},
 		{name: "SYSREPO_SHM_PREFIX", value: shmPrefix},

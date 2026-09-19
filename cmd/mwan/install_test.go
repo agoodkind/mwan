@@ -494,16 +494,15 @@ func TestInstallApplyUnderARootTouchesNoSystemd(t *testing.T) {
 // TestInstallApplyWritesTheWanconfigAndHostFiles runs the verb for the wan
 // role under a root and checks that each file the playbooks copy today lands
 // at the host path the playbooks use, with their mode, holding the binary's
-// bytes.
+// bytes. The wan role also installs the schema into sysrepo, which binds a
+// process to one repository, so the command runs in a child process; the
+// child fails the test on a non-zero exit.
 func TestInstallApplyWritesTheWanconfigAndHostFiles(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 
-	code := runInstall([]string{"--apply", "--role", "wan", "--root", root})
+	runInstallChild(t, root)
 
-	if code != exitInstallOK {
-		t.Fatalf("exit code = %d, want %d", code, exitInstallOK)
-	}
 	wantFiles := map[string]string{
 		"/etc/systemd/system/rousette.service":                         "rousette.service",
 		"/etc/systemd/system/nghttpx-wanconfig.service":                "nghttpx-wanconfig.service",
