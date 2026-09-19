@@ -49,6 +49,14 @@ module goodkind-mwan-steering {
      decides its verdict, the prefix-translation inputs, and the
      internal link the members route toward.";
 
+  revision 2026-09-19 {
+    description
+      "Carry each interface's link identity and any unit-file content the
+       typed leaves do not name, so the daemon renders the network
+       manager's unit files from this model rather than from a per-provider
+       template. Every addition is a new node: no node defined by an
+       earlier revision changes name, type, or shape.";
+  }
   revision 2026-09-14 {
     description
       "Carry each provider's static address mappings, so the gateway reads
@@ -297,11 +305,13 @@ module goodkind-mwan-steering {
           type inet:ipv4-prefix;
         }
         description
-          "This provider's static IPv4 link address. When present,
-           traffic the gateway sources from it is pinned to this
-           provider's routing table, which is the IPv4 counterpart of
-           the translated prefix's IPv6 source rule. Only a provider
-           on a static link carries one.";
+          "This provider's static IPv4 link address. The daemon fills it
+           from the link's static address, so the served tree reports the
+           value while inventory does not type it. When present, traffic
+           the gateway sources from it is pinned to this provider's
+           routing table, which is the IPv4 counterpart of the translated
+           prefix's IPv6 source rule. Only a provider on a static link
+           carries one.";
       }
       leaf forced-dscp {
         type inet:dscp {
@@ -418,9 +428,173 @@ module goodkind-mwan-steering {
     }
   }
 
+  augment "/if:interfaces/if:interface" {
+    description
+      "How the network manager brings this interface up. The published
+       models name an interface and its addresses. They do not name the
+       device the interface is bound to, the tag a VLAN carries, or the
+       identity a delegation is requested with.";
+
+    leaf link-files {
+      type enumeration {
+        enum rendered;
+        enum hand-authored;
+      }
+      description
+        "Who writes this interface's unit files. An interface carrying a
+         wan container states one or the other: rendered means it carries a
+         link container the daemon writes files from, and hand-authored
+         means its files are in the repository and this model says nothing
+         about how the link comes up. An interface that states neither
+         fails the load, so an unwritten link container is caught rather
+         than read as an exemption.";
+    }
+
+    container link {
+      description
+        "What the device is, what it is named, and how it is created.";
+
+      container match {
+        description
+          "How the network manager recognizes the device. An interface
+           that carries a wan container sets exactly one of these leaves
+           or a vlan container; the daemon fails the load otherwise.";
+        leaf driver {
+          type string;
+          description
+            "The kernel driver the device presents, for a device whose
+             address is not stable across a rebuild.";
+        }
+        leaf hardware-address {
+          type yang:mac-address;
+          description
+            "The device's address, for a device whose driver is shared
+             with another interface.";
+        }
+      }
+
+      leaf hardware-address {
+        type yang:mac-address;
+        description
+          "The address to set on the device, which is not always the
+           address it is matched by.";
+      }
+
+      container vlan {
+        presence "The interface is a VLAN on another interface.";
+        description
+          "The interface is created as a VLAN rather than bound to a
+           device. The parent interface carries its own unit files.";
+        leaf parent {
+          mandatory true;
+          type if:interface-ref;
+          description "The interface the VLAN is created on.";
+        }
+        leaf id {
+          mandatory true;
+          type uint16 {
+            range "1..4094";
+          }
+          description "The VLAN tag.";
+        }
+      }
+    }
+
+    container networkd {
+      description
+        "Unit-file content the typed leaves do not name, written as the
+         network manager reads it. The schema validates the structure and
+         the network manager validates the keys, because it is the thing
+         that knows them. A key named here and by a typed leaf is a
+         load-time failure.";
+      list file {
+        key "kind";
+        description "One entry per unit file kind.";
+        leaf kind {
+          type enumeration {
+            enum link;
+            enum network;
+            enum netdev;
+          }
+          description "Which unit file these sections are written to.";
+        }
+        list section {
+          key "index";
+          ordered-by user;
+          description
+            "A heading and its lines, in file order. The key is positional
+             because the network manager reads a repeated heading as one
+             section and a repeated key within a section as a list, so
+             neither the heading nor the key is unique.";
+          leaf index {
+            type uint16;
+            description "Position in the file.";
+          }
+          leaf name {
+            mandatory true;
+            type string;
+            description "The heading, without its brackets.";
+          }
+          list entry {
+            key "index";
+            ordered-by user;
+            description "One line, in section order.";
+            leaf index {
+              type uint16;
+              description "Position in the section.";
+            }
+            leaf key {
+              mandatory true;
+              type string;
+              description "The name left of the equals sign.";
+            }
+            leaf value {
+              mandatory true;
+              type string;
+              description "The text right of the equals sign.";
+            }
+          }
+        }
+      }
+    }
+  }
+
+  augment "/if:interfaces/if:interface/ip:ipv4" {
+    description "How this family is addressed on this interface.";
+    leaf dhcp {
+      type boolean;
+      description
+        "Whether the network manager runs a DHCPv4 client here. An
+         interface carrying a wan container states it either way; the
+         daemon fails the load when it is absent.";
+    }
+    leaf gateway {
+      type inet:ipv4-address;
+      description
+        "The next hop for a statically addressed interface. Absent when
+         the address is leased, because the lease carries it.";
+    }
+    leaf route-metric {
+      type uint32;
+      description
+        "The metric on the default route this interface contributes to
+         the main table. Lower is preferred.";
+    }
+    leaf-list source-addresses {
+      type inet:ipv4-address;
+      description
+        "Addresses beyond the link's own that traffic sourced from this
+         interface's provider may carry. The routing module pins the
+         link's static address on its own; this list adds to it and
+         never replaces it, because a source the provider does not route
+         back is dropped at its edge.";
+    }
+  }
+
   augment "/if:interfaces/if:interface/ip:ipv6" {
     description
-      "The delegation the provider on this interface currently holds.";
+      "The delegation the provider on this interface currently holds,
+       and how this family is addressed on this interface.";
     leaf delegated-prefix {
       config false;
       type inet:ipv6-prefix;
@@ -428,6 +602,77 @@ module goodkind-mwan-steering {
         "The IPv6 prefix currently delegated to this interface, as the
          daemon's prefix tracking sees it. Absent when the provider
          holds no delegation.";
+    }
+    leaf dhcp {
+      type boolean;
+      description
+        "Whether the network manager runs a DHCPv6 client here. An
+         interface carrying a wan container states it either way; the
+         daemon fails the load when it is absent.";
+    }
+    leaf gateway {
+      type inet:ipv6-address;
+      description
+        "The next hop for a statically addressed interface. Absent when
+         the address is leased, because the lease carries it.";
+    }
+    leaf route-metric {
+      type uint32;
+      description
+        "The metric on the default route this interface contributes to
+         the main table. Lower is preferred.";
+    }
+    leaf accept-ra {
+      type boolean;
+      description
+        "Whether the network manager accepts router advertisements here.";
+    }
+    container delegation {
+      presence "The interface requests a delegated prefix.";
+      description
+        "The delegation the interface asks for, and the identity it asks
+         with. The identity is a public identifier, not a secret.";
+      leaf hint {
+        type inet:ipv6-prefix;
+        description "The prefix length the client asks for.";
+      }
+      leaf duid-type {
+        type enumeration {
+          enum link-layer-time;
+          enum link-layer;
+          enum vendor;
+          enum uuid;
+        }
+        description "How the client identity is formed.";
+      }
+      leaf duid {
+        type string {
+          pattern '([0-9a-fA-F]{2}:)*[0-9a-fA-F]{2}';
+        }
+        description "The client identity, as colon-separated octets.";
+      }
+      leaf without-ra {
+        type enumeration {
+          enum no;
+          enum solicit;
+          enum information-request;
+        }
+        description
+          "Whether the client starts without waiting for a router
+           advertisement, and which exchange it starts with.";
+      }
+      leaf use-delegated-prefix {
+        type boolean;
+        description
+          "Whether the network manager applies the delegated prefix to
+           this link.";
+      }
+      leaf router-lifetime-seconds {
+        type uint32;
+        description
+          "The lifetime the link advertises to downstream routers, in
+           seconds.";
+      }
     }
   }
 

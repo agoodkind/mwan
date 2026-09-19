@@ -60,7 +60,7 @@ var SchemaModules = []SchemaModule{
 		File:     "ietf-nat@2019-01-10.yang",
 		Features: []string{"basic-nat44", "napt44", "dst-nat", "nptv6"},
 	},
-	{File: "goodkind-mwan-steering@2026-09-14.yang", Features: nil},
+	{File: "goodkind-mwan-steering@2026-09-19.yang", Features: nil},
 }
 
 // WriteSchema writes every embedded module into dir, creating dir when it is
