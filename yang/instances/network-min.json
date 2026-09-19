@@ -4,10 +4,6 @@
       {
         "name": "enwebpass0",
         "type": "iana-if-type:other",
-        "goodkind-mwan-steering:link-files": "rendered",
-        "goodkind-mwan-steering:link": {
-          "match": { "driver": "igc" }
-        },
         "goodkind-mwan-steering:wan": {
           "name": "webpass",
           "table-id": 200,
@@ -40,7 +36,6 @@
       {
         "name": "enatt0",
         "type": "iana-if-type:other",
-        "goodkind-mwan-steering:link-files": "hand-authored",
         "goodkind-mwan-steering:wan": {
           "name": "att",
           "table-id": 100,
@@ -58,10 +53,6 @@
       {
         "name": "enmbrains0",
         "type": "iana-if-type:other",
-        "goodkind-mwan-steering:link-files": "rendered",
-        "goodkind-mwan-steering:link": {
-          "match": { "hardware-address": "02:00:5e:00:53:03" }
-        },
         "goodkind-mwan-steering:wan": {
           "name": "monkeybrains",
           "table-id": 300,
