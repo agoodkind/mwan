@@ -505,10 +505,11 @@ func TestInstallApplyWritesTheWanconfigAndHostFiles(t *testing.T) {
 		t.Fatalf("exit code = %d, want %d", code, exitInstallOK)
 	}
 	wantFiles := map[string]string{
-		"/etc/systemd/system/rousette.service":                 "rousette.service",
-		"/etc/systemd/system/nghttpx-wanconfig.service":        "nghttpx-wanconfig.service",
-		"/etc/systemd/system/nftables.service.d/override.conf": "nftables-override.conf",
-		"/etc/sysctl.d/99-quiet-console.conf":                  "99-quiet-console.conf",
+		"/etc/systemd/system/rousette.service":                         "rousette.service",
+		"/etc/systemd/system/nghttpx-wanconfig.service":                "nghttpx-wanconfig.service",
+		"/etc/systemd/system/nftables.service.d/override.conf":         "nftables-override.conf",
+		"/etc/systemd/system/systemd-networkd.service.d/override.conf": "systemd-networkd-override.conf",
+		"/etc/sysctl.d/99-quiet-console.conf":                          "99-quiet-console.conf",
 	}
 	for hostPath, embeddedName := range wantFiles {
 		path := filepath.Join(root, hostPath)
@@ -533,12 +534,6 @@ func TestInstallApplyWritesTheWanconfigAndHostFiles(t *testing.T) {
 		if info.Mode().Perm() != systemdUnitMode {
 			t.Errorf("%s mode = %v, want %v", hostPath, info.Mode().Perm(), systemdUnitMode)
 		}
-	}
-	// The systemd-networkd drop-in stays with the playbook until MWAN-400
-	// deletes it, so the verb must not write it.
-	networkdDropIn := filepath.Join(root, "/etc/systemd/system/systemd-networkd.service.d")
-	if _, err := os.Stat(networkdDropIn); !os.IsNotExist(err) {
-		t.Errorf("the verb created %s (err %v), want it absent", networkdDropIn, err)
 	}
 }
 
