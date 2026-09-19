@@ -17,6 +17,7 @@ import (
 	systemddbus "github.com/coreos/go-systemd/v22/dbus"
 
 	"goodkind.io/mwan/internal/installfile"
+	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/yangpub"
 )
 
@@ -83,6 +84,10 @@ type roleUnits struct {
 	// enable are the unit names to enable, which for an instanced unit is a
 	// concrete instance rather than the template.
 	enable []string
+	// schema is set for the role that runs the wanconfig datastore: after the
+	// units, the run writes the embedded modules and installs them into
+	// sysrepo.
+	schema bool
 }
 
 // installRoles maps each role onto what it installs, matching what the
@@ -119,6 +124,7 @@ var installRoles = map[installRole]roleUnits{
 			"mwan-agent.service", "mwan-ifmgr@wan.service", "mwan-trace-boot.service",
 			"rousette.service", "nghttpx-wanconfig.service",
 		},
+		schema: true,
 	},
 	roleFailover: {
 		files: []installedFile{
@@ -159,6 +165,9 @@ type installOutcome struct {
 	changed []string
 	// enabled names every unit the run asked systemd to enable.
 	enabled []string
+	// modules names every schema module the run installed into sysrepo or
+	// updated there. installUnits leaves it empty; runInstall fills it.
+	modules []yangpub.ModuleChange
 }
 
 // runInstall is the `mwan install` entry point.
@@ -187,7 +196,13 @@ func runInstall(args []string) int {
 		return exitInstallUsage
 	}
 	rooted := flags.root != ""
-	outcome, err := installUnits(context.Background(), role, flags.root, enablerFor(rooted))
+	ctx := context.Background()
+	outcome, err := installUnits(ctx, role, flags.root, enablerFor(rooted))
+	if err == nil && installRoles[role].schema {
+		var schemaChanged []string
+		schemaChanged, outcome.modules, err = installSchema(ctx, slog.Default(), flags.root)
+		outcome.changed = append(outcome.changed, schemaChanged...)
+	}
 	reportInstall(os.Stdout, outcome, rooted)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mwan install: %v\n", err)
@@ -227,7 +242,7 @@ func installUnits(
 	root string,
 	enabler unitEnabler,
 ) (installOutcome, error) {
-	outcome := installOutcome{changed: nil, enabled: nil}
+	outcome := installOutcome{changed: nil, enabled: nil, modules: nil}
 	units := installRoles[role]
 	for _, file := range units.files {
 		content, err := unitFS.ReadFile(file.embedded)
@@ -330,6 +345,14 @@ func reportInstall(out io.Writer, outcome installOutcome, rooted bool) {
 	for _, path := range outcome.changed {
 		fmt.Fprintf(out, "wrote %s\n", path)
 	}
+	for _, module := range outcome.modules {
+		if module.Action == yangpub.ModuleUpdated {
+			fmt.Fprintf(out, "updated module %s from %s to %s\n",
+				module.Module, module.PriorRevision, module.Revision)
+			continue
+		}
+		fmt.Fprintf(out, "installed module %s@%s\n", module.Module, module.Revision)
+	}
 	if len(outcome.enabled) == 0 {
 		return
 	}
@@ -396,7 +419,9 @@ func printInstallUsage(out io.Writer) {
 		fmt.Fprintf(out, "  %-9s enables %s\n", "", strings.Join(units.enable, " "))
 	}
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, "The YANG modules are embedded too. --print-schema writes them to a")
-	fmt.Fprintln(out, "directory for validation. Installing them into sysrepo is still the")
-	fmt.Fprintln(out, "deploy's job; this verb does not touch the datastore.")
+	fmt.Fprintln(out, "The YANG modules are embedded too. The wan role writes them to")
+	fmt.Fprintln(out, networkjson.DefaultSchemaDir+" and installs them into sysrepo,")
+	fmt.Fprintln(out, "updating a module installed at another revision. Under --root it uses")
+	fmt.Fprintln(out, "a private repository below the root. --print-schema writes them to a")
+	fmt.Fprintln(out, "directory for validation and touches nothing else.")
 }

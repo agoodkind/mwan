@@ -57,9 +57,9 @@ func runSysrepoStep(step string, args []string) int {
 	case "seed":
 		models := make([]yangpub.Model, 0, len(args)-1)
 		for _, path := range args[1:] {
-			models = append(models, yangpub.Model{Path: path, Features: seedFeatures(path)})
+			models = append(models, yangpub.Model{Path: path, Features: seedFeatures(path), Update: false})
 		}
-		if err := datastore.InstallModules(context.Background(), models, args[0]); err != nil {
+		if _, err := datastore.InstallModules(context.Background(), models, args[0]); err != nil {
 			fmt.Fprintf(os.Stderr, "seed: %v\n", err)
 			return 1
 		}

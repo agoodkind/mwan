@@ -222,7 +222,8 @@ func resolveSelftestModels(log *slog.Logger, dir string) ([]yangpub.Model, error
 			return nil, fmt.Errorf("want exactly one file matching %s in %s, found %d",
 				entry.pattern, dir, len(matches))
 		}
-		models = append(models, yangpub.Model{Path: matches[0], Features: entry.features})
+		// The private repository starts empty, so nothing is ever updated.
+		models = append(models, yangpub.Model{Path: matches[0], Features: entry.features, Update: false})
 	}
 	return models, nil
 }
@@ -479,7 +480,7 @@ func openPrivateRepository(
 		removeSelftestSHM(log, shmPrefix)
 		restoreEnv()
 	}
-	if err := reader.InstallModules(ctx, models, flags.modelsDir); err != nil {
+	if _, err := reader.InstallModules(ctx, models, flags.modelsDir); err != nil {
 		closeRepository()
 		return nil, nil, failStep(log, "install models", err)
 	}
