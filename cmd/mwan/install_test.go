@@ -550,7 +550,11 @@ func TestInstallApplyRejectsARootThatIsTheHost(t *testing.T) {
 	if err := os.Symlink("/", hostLink); err != nil {
 		t.Fatalf("link to the host root: %v", err)
 	}
-	for _, root := range []string{"/", "//", "/etc/..", hostLink} {
+	// The last case names a missing directory below the link and steps back
+	// out of it. The install joins every host path onto the root, and a join
+	// cleans the path lexically, so the files would land through the link on
+	// the host's root.
+	for _, root := range []string{"/", "//", "/etc/..", hostLink, hostLink + "/missing/.."} {
 		command := exec.Command(os.Args[0], "install", "--apply", "--role", "wan", "--root", root)
 		command.Env = append(os.Environ(), childMainEnv+"=1")
 		output, err := command.CombinedOutput()
