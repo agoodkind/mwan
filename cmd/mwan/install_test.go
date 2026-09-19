@@ -14,14 +14,17 @@ import (
 )
 
 // recordingEnabler stands in for the system bus, which a test host does not
-// have. It records what it was asked to enable and nothing else; the files on
-// disk are what the assertions are about.
+// have. It records what it was asked to enable and whether it was asked to
+// reload, and nothing else; the files on disk are what the assertions are
+// about.
 type recordingEnabler struct {
-	calls [][]string
+	calls   [][]string
+	reloads []bool
 }
 
-func (r *recordingEnabler) enable(_ context.Context, units []string) error {
+func (r *recordingEnabler) enable(_ context.Context, units []string, reload bool) error {
 	r.calls = append(r.calls, units)
+	r.reloads = append(r.reloads, reload)
 	return nil
 }
 
@@ -86,8 +89,9 @@ func TestInstallUnitsWritesTheWanRoleUnits(t *testing.T) {
 }
 
 // TestInstallUnitsIsIdempotent proves the second run of the same install
-// changes no file and does not touch systemd, which is what lets a deploy run
-// the verb every time without restarting anything.
+// changes no file and does not reload systemd, which is what lets a deploy run
+// the verb every time without restarting anything. It still re-enables the
+// units, which changes only install symlinks.
 func TestInstallUnitsIsIdempotent(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -110,11 +114,11 @@ func TestInstallUnitsIsIdempotent(t *testing.T) {
 	if len(second.changed) != 0 {
 		t.Fatalf("second run changed %v, want nothing", second.changed)
 	}
-	if len(second.enabled) != 0 {
-		t.Fatalf("second run enabled %v, want nothing", second.enabled)
+	if strings.Join(second.enabled, " ") != strings.Join(installRoles[roleWAN].enable, " ") {
+		t.Fatalf("second run enabled %v, want %v", second.enabled, installRoles[roleWAN].enable)
 	}
-	if len(enabler.calls) != 1 {
-		t.Fatalf("enable called %d times across two runs, want 1", len(enabler.calls))
+	if len(enabler.reloads) != 2 || !enabler.reloads[0] || enabler.reloads[1] {
+		t.Fatalf("reload requests across two runs = %v, want [true false]", enabler.reloads)
 	}
 	after, err := os.Stat(unitPath)
 	if err != nil {
@@ -349,7 +353,7 @@ func TestReenableRemovesASymlinkUnderTheOldTarget(t *testing.T) {
 	}
 	manager := &symlinkManager{root: root, wantedBy: "sysinit.target", calls: nil}
 
-	if err := reenableUnits(t.Context(), manager, []string{unitName}); err != nil {
+	if err := reenableUnits(t.Context(), manager, []string{unitName}, true); err != nil {
 		t.Fatalf("reenableUnits: %v", err)
 	}
 
@@ -374,8 +378,8 @@ func TestInstallReenablesWhenNoFileChanged(t *testing.T) {
 	root := t.TempDir()
 	linkRoot := t.TempDir()
 	manager := &symlinkManager{root: linkRoot, wantedBy: "sysinit.target", calls: nil}
-	enabler := func(ctx context.Context, units []string) error {
-		return reenableUnits(ctx, manager, units)
+	enabler := func(ctx context.Context, units []string, reload bool) error {
+		return reenableUnits(ctx, manager, units, reload)
 	}
 	if _, err := installUnits(t.Context(), roleHost, root, enabler); err != nil {
 		t.Fatalf("first installUnits: %v", err)
@@ -408,6 +412,10 @@ func TestInstallReenablesWhenNoFileChanged(t *testing.T) {
 	if _, err := os.Lstat(filepath.Join(linkRoot, "sysinit.target.wants", unitName)); err != nil {
 		t.Errorf("no symlink under the new target: %v", err)
 	}
+	// No file changed, so the manager must not be asked to reload.
+	if strings.Join(manager.calls, " ") != "disable enable" {
+		t.Errorf("call sequence = %v, want disable enable", manager.calls)
+	}
 }
 
 // TestReenableSucceedsOnAUnitThatWasNeverEnabled proves a first install is not
@@ -422,7 +430,7 @@ func TestReenableSucceedsOnAUnitThatWasNeverEnabled(t *testing.T) {
 	}
 	manager := &symlinkManager{root: root, wantedBy: "multi-user.target", calls: nil}
 
-	if err := reenableUnits(t.Context(), manager, []string{unitName}); err != nil {
+	if err := reenableUnits(t.Context(), manager, []string{unitName}, true); err != nil {
 		t.Fatalf("reenableUnits on a unit that was never enabled: %v", err)
 	}
 
