@@ -45,8 +45,9 @@ func TestMain(m *testing.M) {
 
 // runSysrepoStep is the child side of childSysrepoEnv.
 func runSysrepoStep(step string, args []string) int {
+	// The parent removes this child's shared memory, because it chose the
+	// prefix.
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	defer removeSelftestSHM(log, os.Getenv("SYSREPO_SHM_PREFIX"))
 	datastore, err := yangpub.New(log)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "connect: %v\n", err)
@@ -115,12 +116,16 @@ func runInstallChild(t *testing.T, root string) string {
 }
 
 // sysrepoChildEnv points a sysrepo step at the repository a rooted install
-// keeps below root, with its own shared-memory prefix.
-func sysrepoChildEnv(root string, step string, prefix string) []string {
+// keeps below root, with its own shared-memory prefix, and removes that
+// prefix's shared memory when the test ends.
+func sysrepoChildEnv(t *testing.T, root string, step string, prefix string) []string {
+	t.Helper()
+	shmPrefix := fmt.Sprintf("mwaninstalltest%d%s", os.Getpid(), prefix)
+	t.Cleanup(func() { removeSelftestSHM(slog.New(slog.DiscardHandler), shmPrefix) })
 	return []string{
 		childSysrepoEnv + "=" + step,
 		"SYSREPO_REPOSITORY_PATH=" + filepath.Join(root, "/etc/sysrepo"),
-		"SYSREPO_SHM_PREFIX=" + fmt.Sprintf("mwaninstalltest%d%s", os.Getpid(), prefix),
+		"SYSREPO_SHM_PREFIX=" + shmPrefix,
 		"SR_ENV_RUN_TESTS=1",
 	}
 }
@@ -148,7 +153,7 @@ type implementedModule struct {
 // implementedModules reads which modules the rooted repository implements.
 func implementedModules(t *testing.T, root string, prefix string) map[string]implementedModule {
 	t.Helper()
-	tree := runChild(t, sysrepoChildEnv(root, "library", prefix))
+	tree := runChild(t, sysrepoChildEnv(t, root, "library", prefix))
 	var library yangLibrary
 	if err := json.Unmarshal([]byte(tree), &library); err != nil {
 		t.Fatalf("decode the yang library: %v\n%s", err, tree)
@@ -267,7 +272,7 @@ func TestInstallApplyUpdatesAnOlderSteeringRevision(t *testing.T) {
 		}
 		seedArgs = append(seedArgs, model.Path)
 	}
-	runChild(t, sysrepoChildEnv(root, "seed", "seed"), seedArgs...)
+	runChild(t, sysrepoChildEnv(t, root, "seed", "seed"), seedArgs...)
 	if got := implementedModules(t, root, "before")["goodkind-mwan-steering"].revision; got != "2026-09-13" {
 		t.Fatalf("seeded steering revision = %q, want 2026-09-13", got)
 	}

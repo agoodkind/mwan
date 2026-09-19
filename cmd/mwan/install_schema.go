@@ -29,7 +29,7 @@ func installSchema(
 	schemaDir := filepath.Join(root, networkjson.DefaultSchemaDir)
 	models, changed, err := yangpub.WriteSchemaChanges(schemaDir)
 	if err != nil {
-		return changed, nil, err
+		return changed, nil, installFailed("write the schema into", schemaDir, err)
 	}
 	if root == "" {
 		modules, err := installModules(ctx, log, models, schemaDir)
