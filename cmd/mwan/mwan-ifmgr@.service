@@ -52,7 +52,11 @@ ProtectSystem=strict
 ProtectHome=true
 ProtectKernelModules=true
 ProtectControlGroups=true
-PrivateTmp=true
+# PrivateTmp is absent on purpose. It orders the unit after tmp.mount, which
+# systemd reaches only after local-fs.target, and this unit runs before the
+# coldplug trigger that the mount's device depends on. The daemon writes
+# nothing under /tmp on any code path, so the private namespace protected
+# nothing here.
 
 # ProtectKernelTunables: vault keeps the default true since its oob
 # instance does not need to write any sysctls. The failover role uses
@@ -74,7 +78,11 @@ ProtectKernelTunables=true
 # state files under the repository directory; the leading dash skips the
 # entry on hosts without the wanconfig stack (sysrepo's shared memory under
 # /dev/shm is already writable, since ProtectSystem leaves /dev alone).
-StateDirectory=mwan
+#
+# StateDirectory is absent for the same reason as PrivateTmp: it orders the
+# unit after systemd-tmpfiles-setup.service, which runs after local-fs.target.
+# The tmpfiles rule in mwan/config/tmpfiles-mwan.conf creates the directory
+# instead, and ReadWritePaths still grants the daemon write access to it.
 ReadWritePaths=/var/log /var/run /run /var/lib/mwan /etc/systemd/network -/etc/sysrepo
 # The static sysrepo inside the binary follows the upstream access policy:
 # repository files are group sysrepo with umask 007. The daemon joins that
@@ -91,4 +99,9 @@ SupplementaryGroups=sysrepo
 BindReadOnlyPaths=-/root/.ssh
 
 [Install]
-WantedBy=multi-user.target
+# sysinit.target, not multi-user.target. systemd queues a multi-user job only
+# after sysinit.target and basic.target finish, so a unit installed there
+# cannot run before the coldplug trigger that sysinit.target waits for. The
+# trigger would wait for a job that is not queued yet, and the boot stalls
+# until the device it never coldplugged times out.
+WantedBy=sysinit.target
