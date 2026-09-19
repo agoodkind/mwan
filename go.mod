@@ -15,11 +15,11 @@ require (
 	github.com/mdlayher/vsock v1.2.1
 	github.com/osrg/gobgp/v4 v4.7.0
 	github.com/vishvananda/netlink v1.3.1
-	golang.org/x/net v0.57.0
+	golang.org/x/net v0.58.0
 	golang.org/x/sys v0.47.0
 	goodkind.io/gklog v0.2.1
 	goodkind.io/send-email v0.0.0-20260604011720-40a2ede56cd9
-	google.golang.org/grpc v1.83.1
+	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.11
 	pault.ag/go/debian v0.21.0
 )
