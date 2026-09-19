@@ -128,6 +128,53 @@ func TestValidateAcceptsAKeyNoTypedLeafSets(t *testing.T) {
 	}
 }
 
+// TestValidateOccupiesTheLeaseMetricOnlyWithoutAGateway pins that a route
+// metric occupies the lease client's key only on a family with no gateway:
+// a family with a gateway carries its metric on its static route, so the
+// lease client's key is free for the operator to set.
+func TestValidateOccupiesTheLeaseMetricOnlyWithoutAGateway(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		section string
+		key     string
+		want    string
+	}{
+		"ipv4": {
+			section: "DHCPv4",
+			key:     "RouteMetric",
+			want:    "networkd section DHCPv4 key RouteMetric is set by the ipv4 route-metric leaf; remove one",
+		},
+		"ipv6": {
+			section: "IPv6AcceptRA",
+			key:     "RouteMetric",
+			want:    "networkd section IPv6AcceptRA key RouteMetric is set by the ipv6 route-metric leaf; remove one",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			leased := leasedLinkSpec()
+			leased.Files = networkSection(tc.section, tc.key, "100")
+			err := networkd.Validate(leased)
+			if err == nil {
+				t.Fatal("Validate accepted a lease metric set by both layers")
+			}
+			if err.Error() != tc.want {
+				t.Fatalf("Validate error = %q, want %q", err, tc.want)
+			}
+
+			static := staticLinkSpec(networkSection(tc.section, tc.key, "100"))
+			static.IPv6.Gateway = netip.MustParseAddr("2001:db8::1")
+			static.IPv6.RouteMetric = new(10)
+			if err := networkd.Validate(static); err != nil {
+				t.Fatalf("Validate rejected a lease metric on a family with a gateway: %v", err)
+			}
+		})
+	}
+}
+
 // TestValidateReadsOnlyTheLeavesTheSpecSets pins that an unset typed leaf
 // occupies nothing: a spec that types no delegation may carry the delegation
 // keys free-form, which is how a shape gains typed leaves later without a

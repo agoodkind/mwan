@@ -1,9 +1,11 @@
 // Package networkd describes a provider link the way the network manager
-// brings it up, and maps each typed leaf of the network configuration to the
-// unit-file section and key it renders to. The network configuration loader
-// builds a Spec per rendered link and calls Validate on it, so a key the
-// typed layer and the free-form layer both set fails the load rather than
-// silently overriding one another.
+// brings it up, maps each typed leaf of the network configuration to the
+// unit-file section and key it renders to, and renders the link's unit files
+// from that description. The network configuration loader builds a Spec per
+// rendered link and calls Validate on it, so a key the typed layer and the
+// free-form layer both set fails the load rather than silently overriding
+// one another; Render then serializes the same Spec through the systemd unit
+// package, so the daemon owns the mapping and not the syntax.
 package networkd
 
 import (
@@ -27,9 +29,10 @@ const (
 // identity the network manager matches and names the device by, how each
 // family is addressed, and the free-form sections the typed leaves do not
 // name. Every typed value here has a row in the placements table except the
-// gateway, the route metric, and the source addresses: the first two are
-// built into repeated [Route] sections rather than looked up, and the last
-// never reaches a unit file because the routing module reads it.
+// gateway, the metric of a family with a gateway, and the source addresses:
+// the first two are built into repeated [Route] sections rather than looked
+// up, and the last never reaches a unit file because the routing module
+// reads it.
 type Spec struct {
 	// Name is the interface's name, the entry's key and the name the .link
 	// file asks the network manager to give the device.
@@ -136,9 +139,11 @@ type Entry struct {
 }
 
 // placement names the file, section, and key one typed leaf renders to.
-// This table is the only place in the daemon where a networkd key name
-// appears, so a new option is a row here and a leaf in the model, never a
-// change to the renderer.
+// This table is the only place in the daemon where a typed leaf's networkd
+// key name appears, so a new option is a row here and a leaf in the model,
+// never a change to the renderer. The keys the renderer builds rather than
+// looks up, because they are named by the interface rather than by a leaf,
+// sit beside Render.
 type placement struct {
 	File    FileKind
 	Section string
@@ -147,9 +152,12 @@ type placement struct {
 
 // placements maps each typed leaf, named by its path under the interface
 // entry, to where it lands. The two DHCP rows fold into one emitted key,
-// because the network manager takes one value naming the families. The VLAN
-// parent has no row, because the line it produces lands on the parent's own
-// file rather than this interface's.
+// because the network manager takes one value naming the families. The two
+// route-metric rows apply only to a family with no gateway: such a family
+// leases its default route, so the metric belongs to the lease client, and
+// a family with a gateway carries its metric on the static route built for
+// it instead. The VLAN parent has no row, because the line it produces lands
+// on the parent's own file rather than this interface's.
 //
 // Each row reads file, section, key.
 var placements = map[string]placement{
@@ -165,6 +173,8 @@ var placements = map[string]placement{
 	"ipv6.accept-ra":                     {FileNetwork, "Network", "IPv6AcceptRA"},
 	"ipv4.forwarding":                    {FileNetwork, "Network", "IPv4Forwarding"},
 	"ipv6.forwarding":                    {FileNetwork, "Network", "IPv6Forwarding"},
+	"ipv4.route-metric":                  {FileNetwork, "DHCPv4", "RouteMetric"},
+	"ipv6.route-metric":                  {FileNetwork, "IPv6AcceptRA", "RouteMetric"},
 	"delegation.duid-type":               {FileNetwork, "DHCPv6", "DUIDType"},
 	"delegation.duid":                    {FileNetwork, "DHCPv6", "DUIDRawData"},
 	"delegation.hint":                    {FileNetwork, "DHCPv6", "PrefixDelegationHint"},
@@ -242,7 +252,17 @@ func familyLeaves(family string, shared Family) []string {
 	if shared.DHCP != nil {
 		leaves = append(leaves, family+".dhcp")
 	}
+	if shared.leasesMetric() {
+		leaves = append(leaves, family+".route-metric")
+	}
 	return leaves
+}
+
+// leasesMetric reports whether the family's route metric lands on its lease
+// client: it carries a metric and no gateway, so no static route is built
+// to carry the metric instead.
+func (f Family) leasesMetric() bool {
+	return f.RouteMetric != nil && !f.Gateway.IsValid()
 }
 
 // delegationLeaves names the placement rows a delegation occupies.
