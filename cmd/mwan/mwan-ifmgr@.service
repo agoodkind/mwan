@@ -1,26 +1,20 @@
 [Unit]
 Description=MWAN ifmgr (interface manager) daemon for role %i
 Documentation=https://github.com/agoodkind/configs
-# The daemon writes each provider link's systemd-networkd unit files from
-# /etc/mwan/network.json. udev applies a .link file when the device appears and
-# the kernel refuses to rename a link that is already up, so a file written
-# after udev's coldplug trigger has no effect until the next boot. The daemon
-# therefore runs ahead of that trigger and of networkd, writes the files, and
-# then waits on netlink for the links as it always has.
+# The daemon runs before udev's coldplug trigger and networkd because it writes
+# the provider .link files, and udev reads a .link file only when the device
+# appears.
 DefaultDependencies=no
-# Ordering after local-fs.target deadlocks this unit. That target waits for
-# every fstab mount, this gateway mounts /boot/efi by PARTUUID, and the symlink
-# that names it is created by the coldplug trigger this unit runs before. The
-# boot then stalls until the device unit times out after 90 seconds, which
-# fails local-fs.target and every target above it, so ssh and the rest of
-# multi-user never start. The daemon needs nothing from that target: the binary,
-# the configuration file, and the schema directory are all on the root
-# filesystem, which the initramfs mounts before this unit exists.
-After=systemd-journald.socket
+# No ordering after local-fs.target: that target waits for the /boot/efi
+# device, which the coldplug trigger creates, and the boot stalls 90 seconds.
+# Ordering after systemd-remount-fs.service keeps /var/lib/mwan writable,
+# because ProtectSystem=strict fixes the mounts as they are at start and the
+# root filesystem is read-only until that service runs. That service waits only
+# for the journal socket and the root filesystem check.
+After=systemd-journald.socket systemd-remount-fs.service
 Before=systemd-udev-trigger.service systemd-networkd.service shutdown.target
-# DefaultDependencies=no drops the implicit shutdown ordering along with the
-# rest, so the unit states it. Without this the daemon is killed at shutdown
-# rather than stopped.
+# Conflicts= is stated because DefaultDependencies=no drops the implicit
+# shutdown ordering.
 Conflicts=shutdown.target
 
 [Service]
@@ -52,11 +46,10 @@ ProtectSystem=strict
 ProtectHome=true
 ProtectKernelModules=true
 ProtectControlGroups=true
-# PrivateTmp is absent on purpose. It orders the unit after tmp.mount, which
-# systemd reaches only after local-fs.target, and this unit runs before the
-# coldplug trigger that the mount's device depends on. The daemon writes
-# nothing under /tmp on any code path, so the private namespace protected
-# nothing here.
+# PrivateTmp is absent because it orders the unit after
+# systemd-tmpfiles-setup.service, and that ordering stalls the boot 90 seconds:
+# the service waits for local-fs.target, which waits for the /boot/efi device
+# the coldplug trigger creates. The daemon writes nothing under /tmp.
 
 # ProtectKernelTunables: vault keeps the default true since its oob
 # instance does not need to write any sysctls. The failover role uses
@@ -79,10 +72,10 @@ ProtectKernelTunables=true
 # entry on hosts without the wanconfig stack (sysrepo's shared memory under
 # /dev/shm is already writable, since ProtectSystem leaves /dev alone).
 #
-# StateDirectory is absent for the same reason as PrivateTmp: it orders the
-# unit after systemd-tmpfiles-setup.service, which runs after local-fs.target.
-# The tmpfiles rule in mwan/config/tmpfiles-mwan.conf creates the directory
-# instead, and ReadWritePaths still grants the daemon write access to it.
+# StateDirectory is absent because it orders the unit after
+# systemd-tmpfiles-setup.service, and that ordering stalls the boot 90 seconds:
+# the service waits for local-fs.target, which waits for the /boot/efi device
+# the coldplug trigger creates. A tmpfiles rule creates /var/lib/mwan instead.
 ReadWritePaths=/var/log /var/run /run /var/lib/mwan /etc/systemd/network -/etc/sysrepo
 # The static sysrepo inside the binary follows the upstream access policy:
 # repository files are group sysrepo with umask 007. The daemon joins that
@@ -99,9 +92,4 @@ SupplementaryGroups=sysrepo
 BindReadOnlyPaths=-/root/.ssh
 
 [Install]
-# sysinit.target, not multi-user.target. systemd queues a multi-user job only
-# after sysinit.target and basic.target finish, so a unit installed there
-# cannot run before the coldplug trigger that sysinit.target waits for. The
-# trigger would wait for a job that is not queued yet, and the boot stalls
-# until the device it never coldplugged times out.
-WantedBy=sysinit.target
+WantedBy=multi-user.target
