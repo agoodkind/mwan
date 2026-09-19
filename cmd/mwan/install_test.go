@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -494,16 +496,15 @@ func TestInstallApplyUnderARootTouchesNoSystemd(t *testing.T) {
 // TestInstallApplyWritesTheWanconfigAndHostFiles runs the verb for the wan
 // role under a root and checks that each file the playbooks copy today lands
 // at the host path the playbooks use, with their mode, holding the binary's
-// bytes.
+// bytes. The wan role also installs the schema into sysrepo, which binds a
+// process to one repository, so the command runs in a child process; the
+// child fails the test on a non-zero exit.
 func TestInstallApplyWritesTheWanconfigAndHostFiles(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 
-	code := runInstall([]string{"--apply", "--role", "wan", "--root", root})
+	runInstallChild(t, root)
 
-	if code != exitInstallOK {
-		t.Fatalf("exit code = %d, want %d", code, exitInstallOK)
-	}
 	wantFiles := map[string]string{
 		"/etc/systemd/system/rousette.service":                         "rousette.service",
 		"/etc/systemd/system/nghttpx-wanconfig.service":                "nghttpx-wanconfig.service",
@@ -533,6 +534,33 @@ func TestInstallApplyWritesTheWanconfigAndHostFiles(t *testing.T) {
 		}
 		if info.Mode().Perm() != systemdUnitMode {
 			t.Errorf("%s mode = %v, want %v", hostPath, info.Mode().Perm(), systemdUnitMode)
+		}
+	}
+}
+
+// TestInstallApplyRejectsARootThatIsTheHost proves --root cannot name the
+// host's own root, directly or through a symlink. A rooted run skips systemd
+// and uses a private sysrepo repository below the root, so a root of / would
+// write the host's files and open the host's /etc/sysrepo under a second
+// shared-memory prefix. The command runs in a child process, so a run that
+// wrongly goes ahead cannot touch this test's process.
+func TestInstallApplyRejectsARootThatIsTheHost(t *testing.T) {
+	t.Parallel()
+	hostLink := filepath.Join(t.TempDir(), "host")
+	if err := os.Symlink("/", hostLink); err != nil {
+		t.Fatalf("link to the host root: %v", err)
+	}
+	// The last case names a missing directory below the link and steps back
+	// out of it. The install joins every host path onto the root, and a join
+	// cleans the path lexically, so the files would land through the link on
+	// the host's root.
+	for _, root := range []string{"/", "//", "/etc/..", hostLink, hostLink + "/missing/.."} {
+		command := exec.Command(os.Args[0], "install", "--apply", "--role", "wan", "--root", root)
+		command.Env = append(os.Environ(), childMainEnv+"=1")
+		output, err := command.CombinedOutput()
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() != exitInstallUsage {
+			t.Errorf("--root %s: err = %v, want exit code %d\n%s", root, err, exitInstallUsage, output)
 		}
 	}
 }

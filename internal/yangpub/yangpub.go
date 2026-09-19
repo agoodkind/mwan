@@ -19,6 +19,9 @@ type Datastore string
 const (
 	// DatastoreRunning is the running configuration datastore.
 	DatastoreRunning Datastore = "running"
+	// DatastoreStartup is the configuration datastore sysrepo loads into
+	// running when it starts with no running data.
+	DatastoreStartup Datastore = "startup"
 	// DatastoreOperational is the read-only operational datastore.
 	DatastoreOperational Datastore = "operational"
 )
@@ -41,6 +44,36 @@ type NotificationFunc func(xpath string, payloadJSON string)
 type Model struct {
 	Path     string
 	Features []string
+	// Update lets InstallModules replace a module installed at another
+	// revision with this file. It is off for the base type modules, whose
+	// older revisions libyang and sysrepo load themselves.
+	Update bool
+}
+
+// ModuleAction is what InstallModules did to one module.
+type ModuleAction string
+
+const (
+	// ModuleInstalled means the module was absent and is now installed with
+	// its features.
+	ModuleInstalled ModuleAction = "installed"
+	// ModuleUpdated means the module was installed at another revision and
+	// now carries the file's revision.
+	ModuleUpdated ModuleAction = "updated"
+)
+
+// ModuleChange is one module InstallModules changed. A module already
+// installed at the file's revision produces none.
+type ModuleChange struct {
+	// Module is the module name.
+	Module string
+	// Revision is the revision the module carries now.
+	Revision string
+	// PriorRevision is the revision it carried before an update, and empty
+	// for an install.
+	PriorRevision string
+	// Action says whether the module was installed or updated.
+	Action ModuleAction
 }
 
 // Notifier is the notification half of the datastore handle: sending
@@ -59,14 +92,32 @@ type Notifier interface {
 	SubscribeNotifications(ctx context.Context, module string, fn NotificationFunc) error
 }
 
+// Installer is the setup half of the datastore handle: the schema and the
+// configuration the install verb puts in place before the daemon publishes.
+type Installer interface {
+	// InstallModules brings each model into the datastore's repository in
+	// the given order, resolving imports from the colon-separated
+	// searchDirs, and returns what it changed. A module that is absent is
+	// installed with its features. A module whose Model sets Update and
+	// that is installed at a revision other than the file's is updated to
+	// the file, which keeps its stored data and its enabled features. Any
+	// other installed module is left alone. The revision is read from the
+	// file name, name@revision.yang.
+	InstallModules(ctx context.Context, models []Model, searchDirs string) ([]ModuleChange, error)
+	// ImportConfig replaces module's whole configuration in ds with the XML
+	// document xml, the way `sysrepocfg --import` does: the document is
+	// parsed strictly as configuration and any node it leaves out is removed.
+	ImportConfig(ctx context.Context, ds Datastore, module string, xml []byte) error
+	// ConfigMatches reports whether module's configuration in ds is exactly
+	// what ImportConfig would leave there for xml, so a caller imports only
+	// when the datastore differs.
+	ConfigMatches(ctx context.Context, ds Datastore, module string, xml []byte) (bool, error)
+}
+
 // Publisher is the daemon's handle on the management datastore.
 type Publisher interface {
 	Notifier
-	// InstallModules installs each model into the datastore's repository
-	// in the given order, resolving imports from the colon-separated
-	// searchDirs. The selftest uses it to stand up a private repository;
-	// the gateway's repository is installed by the deploy.
-	InstallModules(ctx context.Context, models []Model, searchDirs string) error
+	Installer
 	// ExportJSON reads the subtree at xpath in ds and returns it printed
 	// as JSON. It reports found=false when nothing is served there.
 	ExportJSON(ctx context.Context, ds Datastore, xpath string) (tree string, found bool, err error)

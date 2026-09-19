@@ -1,0 +1,31 @@
+<nacm xmlns="urn:ietf:params:xml:ns:yang:ietf-netconf-acm">
+  <enable-nacm>true</enable-nacm>
+  <read-default>deny</read-default>
+  <write-default>deny</write-default>
+  <exec-default>deny</exec-default>
+  <groups>
+    <group>
+      <name>yangnobody</name>
+      <user-name>yangnobody</user-name>
+    </group>
+  </groups>
+  <!-- rousette's anonymous-access contract: the first rule-list entry is for
+       the anonymous group, every rule except the last grants only read, and
+       the last rule is a wildcard deny over all modules. -->
+  <rule-list>
+    <name>anonymous</name>
+    <group>yangnobody</group>
+    <rule>
+      <name>read-all</name>
+      <module-name>*</module-name>
+      <access-operations>read</access-operations>
+      <action>permit</action>
+    </rule>
+    <rule>
+      <name>deny-rest</name>
+      <module-name>*</module-name>
+      <access-operations>*</access-operations>
+      <action>deny</action>
+    </rule>
+  </rule-list>
+</nacm>

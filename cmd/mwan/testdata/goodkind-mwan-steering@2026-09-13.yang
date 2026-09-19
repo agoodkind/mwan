@@ -1,0 +1,728 @@
+module goodkind-mwan-steering {
+  yang-version 1.1;
+  namespace "urn:goodkind:mwan-steering";
+  prefix mwan-steer;
+
+  import ietf-interfaces {
+    prefix if;
+    revision-date 2018-02-20;
+    reference
+      "RFC 8343: A YANG Data Model for Interface Management";
+  }
+  import ietf-ip {
+    prefix ip;
+    revision-date 2018-02-22;
+    reference
+      "RFC 8344: A YANG Data Model for IP Management";
+  }
+  import ietf-nat {
+    prefix nat;
+    revision-date 2019-01-10;
+    reference
+      "RFC 8512: A YANG Module for Network Address Translation (NAT)
+       and Network Prefix Translation (NPT)";
+  }
+  import ietf-inet-types {
+    prefix inet;
+    reference
+      "RFC 6991: Common YANG Data Types";
+  }
+  import ietf-yang-types {
+    prefix yang;
+    reference
+      "RFC 6991: Common YANG Data Types";
+  }
+
+  organization
+    "goodkind.io";
+  contact
+    "alex@goodkind.io";
+  description
+    "Steering properties for the MWAN gateway that no published model
+     covers. A member is an interface with steering properties, not a
+     parallel object, so this module augments the interface list and
+     adds the group's hash mode beside it. State nodes carry what is
+     true right now, served from the running daemon.
+
+     The module also carries the gateway's network configuration: the
+     provider inventory each member rides, the health probe that
+     decides its verdict, the prefix-translation inputs, and the
+     internal link the members route toward.";
+
+  revision 2026-09-13 {
+    description
+      "Carry the DSCP value that forces a new flow onto one provider, so a
+       downstream host pins a flow to a provider by stamping that value. Every
+       addition is a new node: no node defined by an earlier revision changes
+       name, type, or shape.";
+  }
+  revision 2026-09-02 {
+    description
+      "Carry the routing tables no provider may take, so the gateway checks a
+       provider's table against the set the operator typed rather than against
+       a copy each reader holds. Every addition is a new node: no node defined
+       by an earlier revision changes name, type, or shape.";
+  }
+  revision 2026-08-30 {
+    description
+      "Carry the gateway's network configuration, so the model's own
+       JSON encoding holds what the daemon reads about its providers.
+       Adds the per-member provider entry beside the steering
+       container, with the interface's routing table, firewall mark,
+       rule priorities, translation prefix, IPv4 source pin, and the
+       health probe that decides the member's verdict; and adds the
+       group-wide translation inputs, the internal link and network,
+       and the probe timeout. Every addition is a new node: no node
+       defined by an earlier revision changes name, type, or shape.";
+  }
+  revision 2026-08-29 {
+    description
+      "Add the daemon container carrying the settings no published
+       model covers: the rollback watchdog's thresholds and probe
+       targets, the out-of-band access policy, and the tunnel tap.";
+  }
+  revision 2026-08-28 {
+    description
+      "Add the health-transition and tier-change notifications the
+       daemon sends at the moment the verdict or the active tier
+       changes, and name the shared verdict type health-state.";
+  }
+  revision 2026-08-20 {
+    description
+      "Add the live-state nodes the daemon serves from the operational
+       datastore: per-member health with its probe evidence, the live
+       delegated prefix, the active tier and traffic carrier, kernel
+       presence per translation instance, routing session state, and
+       the intended firewall ruleset.";
+  }
+  revision 2026-08-13 {
+    description
+      "Initial revision.";
+  }
+
+  typedef health-state {
+    type enumeration {
+      enum healthy {
+        description
+          "The member passed its probes and is usable.";
+      }
+      enum unhealthy {
+        description
+          "The member failed its probes and carries no new traffic.";
+      }
+      enum unknown {
+        description
+          "No verdict has been recorded for the member.";
+      }
+    }
+    description
+      "A member's combined health verdict.";
+  }
+
+  augment "/if:interfaces/if:interface" {
+    description
+      "Marks an interface as a steering member.";
+    container steering {
+      presence
+        "This interface is a steering member.";
+      description
+        "The member's steering properties.";
+      leaf tier {
+        type uint8;
+        mandatory true;
+        description
+          "Preference tier. Lower is preferred. The active tier is the
+           lowest-numbered tier holding at least one healthy member.";
+      }
+      leaf weight {
+        type uint16 {
+          range "1..max";
+        }
+        default "1";
+        description
+          "Weight for unequal balancing among members of one tier. A
+           positive integer, so the slot sum the balancer divides by is
+           never zero.";
+      }
+      leaf probe-policy {
+        type string;
+        description
+          "Names the health probes that decide the member's state. Sits
+           on the interface and covers both address families, because
+           the health verdict is combined.";
+      }
+      container state {
+        config false;
+        description
+          "The member's live steering state, answered by the running
+           daemon at request time.";
+        leaf health {
+          type health-state;
+          description
+            "The member's combined health verdict.";
+        }
+        leaf carrying {
+          type boolean;
+          description
+            "Whether new connections are steered to this member under
+             the last reconciled decision. Existing flows pinned by
+             connection tracking may keep riding a member after this
+             turns false, until they end.";
+        }
+        leaf last-transition {
+          type yang:date-and-time;
+          description
+            "When the health verdict last changed.";
+        }
+        leaf consecutive-failures {
+          type uint32;
+          description
+            "How many combined probe cycles in a row have failed. The
+             verdict's hysteresis counts whole cycles, not families, so
+             the counter sits beside the verdict.";
+        }
+        list probe {
+          key "family";
+          description
+            "The per-family probe evidence behind the verdict.";
+          leaf family {
+            type enumeration {
+              enum ipv4 {
+                description
+                  "The IPv4 probe.";
+              }
+              enum ipv6 {
+                description
+                  "The IPv6 probe.";
+              }
+            }
+            description
+              "The address family the probe exercises.";
+          }
+          leaf last-result {
+            type enumeration {
+              enum pass {
+                description
+                  "The most recent probe succeeded.";
+              }
+              enum fail {
+                description
+                  "The most recent probe failed.";
+              }
+              enum none {
+                description
+                  "No probe has completed yet.";
+              }
+            }
+            description
+              "The most recent probe outcome.";
+          }
+        }
+      }
+    }
+  }
+
+  augment "/if:interfaces/if:interface" {
+    description
+      "The provider this interface carries, and how the gateway routes
+       and probes it.";
+    container wan {
+      presence
+        "This interface carries a provider the gateway steers.";
+      description
+        "The provider entry for this link: the name the gateway knows
+         the provider by, the routing slots that steer traffic onto
+         it, the prefix it translates onto, and the probe that decides
+         whether it is usable.";
+      leaf name {
+        type string;
+        mandatory true;
+        description
+          "The provider's name. Every part of the daemon keys on it:
+           the translation instance takes it, the health verdict is
+           recorded under it, and the routes and rules for this link
+           are grouped by it. It is required, because a provider with
+           no name cannot be joined to its verdict.";
+      }
+      leaf table-id {
+        type uint32 {
+          range "1..max";
+        }
+        description
+          "The routing table that holds this provider's default
+           route.";
+      }
+      leaf fw-mark {
+        type uint32 {
+          range "1..max";
+        }
+        description
+          "The firewall mark that selects this provider's routing
+           table. Traffic the firewall marks with it leaves over this
+           link.";
+      }
+      leaf fw-mark-prio {
+        type uint32;
+        description
+          "The priority of the routing policy rule that matches this
+           provider's firewall mark.";
+      }
+      leaf from-prio {
+        type uint32;
+        description
+          "The priority of the routing policy rule that matches
+           traffic the gateway sources from this provider's own
+           address or translated prefix.";
+      }
+      leaf npt-prefix {
+        type inet:ipv6-prefix;
+        description
+          "The IPv6 prefix this provider delegates, which the gateway
+           translates the internal prefix onto. A provider that
+           delegates nothing carries no prefix and gets no
+           translation.";
+      }
+      leaf v4-source {
+        type union {
+          type inet:ipv4-address;
+          type inet:ipv4-prefix;
+        }
+        description
+          "This provider's static IPv4 link address. When present,
+           traffic the gateway sources from it is pinned to this
+           provider's routing table, which is the IPv4 counterpart of
+           the translated prefix's IPv6 source rule. Only a provider
+           on a static link carries one.";
+      }
+      leaf forced-dscp {
+        type inet:dscp {
+          range "1..63";
+        }
+        description
+          "The DSCP value that forces a new flow onto this provider. A
+           flow arriving from the internal link with this value takes
+           this provider's firewall mark before steering runs, so it
+           leaves over this link whichever member the balancer would
+           have chosen. Zero is excluded because every unmarked packet
+           carries it, and no two providers may share a value.";
+      }
+      container health {
+        presence
+          "The gateway holds a health probe for this provider.";
+        description
+          "The probe that decides this provider's verdict. A provider
+           with no probe holds no verdict and the gateway does not
+           steer on its state.";
+        leaf enabled {
+          type boolean;
+          description
+            "Whether the gateway runs the probe. A probe that is
+             present but not enabled is kept and not run, so the
+             provider holds no verdict.";
+        }
+        leaf ping-count {
+          type uint8;
+          description
+            "How many echo requests each attempt sends to a target.";
+        }
+        leaf success-threshold {
+          type uint8;
+          description
+            "How many of a cycle's targets must answer in an address
+             family for that family to pass. It cannot exceed the
+             number of targets configured for either family.";
+        }
+        leaf failure-threshold {
+          type uint8;
+          description
+            "How many consecutive failed cycles turn a healthy
+             provider unhealthy.";
+        }
+        leaf recovery-threshold {
+          type uint8;
+          description
+            "How many consecutive passing cycles turn an unhealthy
+             provider healthy again.";
+        }
+        leaf check-interval {
+          type uint32;
+          units "seconds";
+          description
+            "How long the gateway waits between probe cycles for this
+             provider. The shortest interval any provider asks for
+             sets the cadence the probe loop runs at.";
+        }
+        leaf-list targets-v4 {
+          type inet:ipv4-address;
+          description
+            "The IPv4 addresses the probe pings.";
+        }
+        leaf-list targets-v6 {
+          type inet:ipv6-address;
+          description
+            "The IPv6 addresses the probe pings.";
+        }
+        leaf-list http-urls {
+          type inet:uri;
+          description
+            "The URLs the probe fetches. They are an alternative leg
+             of the verdict, so a provider that answers pings or
+             serves a fetch passes.";
+        }
+      }
+    }
+  }
+
+  augment "/if:interfaces/if:interface/ip:ipv6" {
+    description
+      "The delegation the provider on this interface currently holds.";
+    leaf delegated-prefix {
+      config false;
+      type inet:ipv6-prefix;
+      description
+        "The IPv6 prefix currently delegated to this interface, as the
+         daemon's prefix tracking sees it. Absent when the provider
+         holds no delegation.";
+    }
+  }
+
+  augment "/nat:nat/nat:instances/nat:instance" {
+    description
+      "Whether the translation instance is realized in the kernel.";
+    leaf kernel-present {
+      config false;
+      type boolean;
+      description
+        "Whether the daemon found this instance's rules present in the
+         kernel on its last reconcile pass.";
+    }
+  }
+
+  augment "/if:interfaces" {
+    description
+      "Group-wide steering settings.";
+    container steering-group {
+      description
+        "Settings that apply to the member group as a whole.";
+      leaf hash-mode {
+        type enumeration {
+          enum random {
+            description
+              "A new connection is assigned to a member at random.";
+          }
+          enum source {
+            description
+              "Assignment is derived from the source address.";
+          }
+          enum source-destination {
+            description
+              "Assignment is derived from source and destination.";
+          }
+        }
+        default "random";
+        description
+          "How a new connection is assigned to a member of the active
+           tier.";
+      }
+      leaf-list reserved-tables {
+        type uint32;
+        description
+          "Routing tables the gateway holds for something other than a
+           provider: the tunnel table and the out-of-band table today. A
+           provider whose table is in this set is a configuration error, and
+           the gateway stops before it writes to the kernel. The kernel's own
+           tables are not listed here, because they are fixed rather than
+           configured.";
+      }
+      container translation {
+        description
+          "The prefix translation the gateway applies on the way out.
+           One internal prefix is translated onto whichever provider
+           carries the traffic, so the internal network keeps one set
+           of addresses across a provider change.";
+        leaf internal-prefix {
+          type inet:ipv6-prefix;
+          description
+            "The IPv6 prefix the internal network holds. It is the
+             internal half of every member's translation.";
+        }
+        leaf opnsense-edge-v6 {
+          type inet:ipv6-address;
+          description
+            "The router's address on the internal link. Routes toward
+             the internal network are installed via it, so a member's
+             routing table reaches the router.";
+        }
+        leaf mwanbr-edge-v6 {
+          type inet:ipv6-address;
+          description
+            "The gateway's own address on the internal link.";
+        }
+      }
+      container routes {
+        description
+          "The internal side every member's routing table must
+           reach.";
+        leaf internal-iface {
+          type string;
+          description
+            "The link that faces the internal network.";
+        }
+        leaf internal-net-v4 {
+          type inet:ipv4-prefix;
+          description
+            "The internal IPv4 network, routed into every member's
+             table so the internal side stays reachable whichever
+             member carries traffic.";
+        }
+      }
+      container health {
+        description
+          "Probe settings shared by every member. What each member is
+           probed with sits on that member.";
+        leaf probe-timeout {
+          type uint32 {
+            range "1..max";
+          }
+          units "milliseconds";
+          description
+            "How long one probe attempt may take before it counts as
+             failed. The unit is milliseconds because a probe timeout
+             is the one setting here an operator tunes below a
+             second.";
+        }
+      }
+      container state {
+        config false;
+        description
+          "The group's live steering state.";
+        leaf active-tier {
+          type uint8;
+          description
+            "The lowest-numbered tier currently holding at least one
+             healthy member.";
+        }
+        list bgp-peer {
+          key "address";
+          description
+            "The routing sessions the gateway's speaker holds. The
+             speaker runs in the agent process, so these values are
+             read over its local RPC and cached briefly.";
+          leaf address {
+            type inet:ip-address;
+            description
+              "The peer's address.";
+          }
+          leaf established {
+            type boolean;
+            description
+              "Whether the session is established.";
+          }
+          leaf stale {
+            type boolean;
+            description
+              "Whether this answer came from an expired cache because
+               the agent could not be reached; a stale answer reports
+               the last known state, not the current one.";
+          }
+        }
+        leaf intended-ruleset {
+          type string;
+          description
+            "The firewall ruleset the daemon intends, rendered in its
+             own text form. Served opaquely; modeling firewall rules
+             structurally is out of scope for this module.";
+        }
+      }
+    }
+  }
+
+  container daemon {
+    description
+      "The daemon settings no published model covers, published from
+       the configuration the daemon loaded at startup. A host whose
+       configuration does not carry a section publishes nothing under
+       it, so the tree never invents values another host owns.";
+    container watchdog {
+      description
+        "The rollback watchdog's thresholds and probe targets, as the
+         gateway's configuration carries them. The watchdog process
+         itself runs beside the hypervisor; these are the values it
+         acts on.";
+      leaf deploy-window-minutes {
+        type uint16;
+        description
+          "How long after a deploy the watchdog treats instability as
+           deploy-caused and eligible for rollback.";
+      }
+      leaf connectivity-timeout-seconds {
+        type uint16;
+        description
+          "How long a connectivity probe may run before it counts as
+           failed.";
+      }
+      leaf check-interval-healthy-seconds {
+        type uint16;
+        description
+          "Seconds between probe cycles while the gateway is healthy.";
+      }
+      leaf check-interval-degraded-seconds {
+        type uint16;
+        description
+          "Seconds between probe cycles while the gateway is degraded.";
+      }
+      leaf post-rollback-grace-seconds {
+        type uint16;
+        description
+          "How long after a rollback the watchdog holds off before
+           judging the gateway again.";
+      }
+      leaf alert-cooldown-seconds {
+        type uint16;
+        description
+          "Minimum seconds between repeated watchdog alerts.";
+      }
+      leaf deploy-grace-period-seconds {
+        type uint16;
+        description
+          "How long after a deploy the watchdog waits before probing.";
+      }
+      leaf max-rollback-attempts {
+        type uint8;
+        description
+          "How many rollbacks the watchdog attempts before freezing.";
+      }
+      leaf snapshot-healthy-threshold {
+        type uint16;
+        description
+          "How many consecutive healthy cycles qualify the running
+           state for a known-good snapshot.";
+      }
+      leaf max-known-good-snapshots {
+        type uint8;
+        description
+          "How many known-good snapshots the watchdog retains.";
+      }
+      container probe-targets {
+        description
+          "What the watchdog probes to judge the gateway.";
+        leaf-list ping {
+          type inet:ip-address;
+          description
+            "Addresses the watchdog pings, both families.";
+        }
+      }
+    }
+    container oob {
+      description
+        "The out-of-band access policy: how the host that carries the
+         OOB tunnel steers management traffic when the data path is
+         down.";
+      container ipv6 {
+        description
+          "The IPv6 half of the policy.";
+        leaf interface {
+          type string;
+          description
+            "The OOB tunnel interface.";
+        }
+        leaf address {
+          type inet:ipv6-address;
+          description
+            "The OOB address management traffic originates from.";
+        }
+        leaf table-id {
+          type uint32;
+          description
+            "The routing table the OOB policy rules select.";
+        }
+        leaf manage-slaac-rule {
+          type boolean;
+          description
+            "Whether the daemon manages the SLAAC source rule that
+             keeps OOB-sourced traffic on the OOB table.";
+        }
+        leaf slaac-rule-priority {
+          type uint32;
+          description
+            "The priority of that SLAAC source rule.";
+        }
+      }
+      container ipv4 {
+        description
+          "The IPv4 half of the policy.";
+        leaf interface {
+          type string;
+          description
+            "The OOB tunnel interface.";
+        }
+        leaf table-id {
+          type uint32;
+          description
+            "The routing table the OOB policy rules select.";
+        }
+      }
+    }
+    container tap {
+      description
+        "The tunnel tap: the daemon tails the named tunnel unit's
+         journal and re-emits its entries through the daemon's own
+         logging and alert pipeline.";
+      leaf unit {
+        type string;
+        description
+          "The systemd unit whose journal is tailed.";
+      }
+      leaf-list downgrade-pattern {
+        type string;
+        description
+          "Message patterns whose entries are downgraded below alert
+           level.";
+      }
+    }
+  }
+
+  notification health-transition {
+    description
+      "Sent at the moment a member's combined health verdict changes.
+       The verdict's hysteresis has already been applied, so every
+       notification is a committed transition, not a raw probe result.";
+    leaf interface {
+      type string;
+      mandatory true;
+      description
+        "The name of the member interface whose verdict changed.";
+    }
+    leaf health {
+      type health-state;
+      mandatory true;
+      description
+        "The verdict the member transitioned to.";
+    }
+    leaf previous-health {
+      type health-state;
+      mandatory true;
+      description
+        "The verdict the member transitioned from.";
+    }
+  }
+
+  notification tier-change {
+    description
+      "Sent at the moment the active tier changes: the lowest-numbered
+       tier holding at least one healthy member is now a different
+       tier, so new connections steer to a different member set.";
+    leaf active-tier {
+      type uint8;
+      mandatory true;
+      description
+        "The tier that is now active.";
+    }
+    leaf previous-tier {
+      type uint8;
+      mandatory true;
+      description
+        "The tier that was active before the change.";
+    }
+  }
+}

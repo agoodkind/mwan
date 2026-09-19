@@ -17,6 +17,7 @@ import (
 	systemddbus "github.com/coreos/go-systemd/v22/dbus"
 
 	"goodkind.io/mwan/internal/installfile"
+	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/yangpub"
 )
 
@@ -83,6 +84,10 @@ type roleUnits struct {
 	// enable are the unit names to enable, which for an instanced unit is a
 	// concrete instance rather than the template.
 	enable []string
+	// schema is set for the role that runs the wanconfig datastore: after the
+	// units, the run writes the embedded modules and installs them into
+	// sysrepo.
+	schema bool
 }
 
 // installRoles maps each role onto what it installs, matching what the
@@ -119,6 +124,7 @@ var installRoles = map[installRole]roleUnits{
 			"mwan-agent.service", "mwan-ifmgr@wan.service", "mwan-trace-boot.service",
 			"rousette.service", "nghttpx-wanconfig.service",
 		},
+		schema: true,
 	},
 	roleFailover: {
 		files: []installedFile{
@@ -159,6 +165,12 @@ type installOutcome struct {
 	changed []string
 	// enabled names every unit the run asked systemd to enable.
 	enabled []string
+	// modules names every schema module the run installed into sysrepo or
+	// updated there. installUnits leaves it empty; runInstall fills it.
+	modules []yangpub.ModuleChange
+	// nacmImported names the datastores the run imported the NACM policy
+	// into. runInstall sets it.
+	nacmImported []yangpub.Datastore
 }
 
 // runInstall is the `mwan install` entry point.
@@ -187,7 +199,15 @@ func runInstall(args []string) int {
 		return exitInstallUsage
 	}
 	rooted := flags.root != ""
-	outcome, err := installUnits(context.Background(), role, flags.root, enablerFor(rooted))
+	ctx := context.Background()
+	outcome, err := installUnits(ctx, role, flags.root, enablerFor(rooted))
+	if err == nil && installRoles[role].schema {
+		var schema schemaOutcome
+		schema, err = installSchema(ctx, slog.Default(), flags.root)
+		outcome.changed = append(outcome.changed, schema.changed...)
+		outcome.modules = schema.modules
+		outcome.nacmImported = schema.nacmImported
+	}
 	reportInstall(os.Stdout, outcome, rooted)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mwan install: %v\n", err)
@@ -227,7 +247,7 @@ func installUnits(
 	root string,
 	enabler unitEnabler,
 ) (installOutcome, error) {
-	outcome := installOutcome{changed: nil, enabled: nil}
+	outcome := installOutcome{changed: nil, enabled: nil, modules: nil, nacmImported: nil}
 	units := installRoles[role]
 	for _, file := range units.files {
 		content, err := unitFS.ReadFile(file.embedded)
@@ -330,6 +350,21 @@ func reportInstall(out io.Writer, outcome installOutcome, rooted bool) {
 	for _, path := range outcome.changed {
 		fmt.Fprintf(out, "wrote %s\n", path)
 	}
+	for _, module := range outcome.modules {
+		if module.Action == yangpub.ModuleUpdated {
+			fmt.Fprintf(out, "updated module %s from %s to %s\n",
+				module.Module, module.PriorRevision, module.Revision)
+			continue
+		}
+		fmt.Fprintf(out, "installed module %s@%s\n", module.Module, module.Revision)
+	}
+	if len(outcome.nacmImported) > 0 {
+		names := make([]string, 0, len(outcome.nacmImported))
+		for _, ds := range outcome.nacmImported {
+			names = append(names, string(ds))
+		}
+		fmt.Fprintf(out, "imported the %s policy into %s\n", nacmModule, strings.Join(names, " and "))
+	}
 	if len(outcome.enabled) == 0 {
 		return
 	}
@@ -362,7 +397,33 @@ func parseInstallFlags(args []string) (installFlags, error) {
 	if flags.apply && flags.role == "" {
 		return flags, errors.New("--apply needs --role")
 	}
+	if flags.root != "" && rootIsHost(flags.root) {
+		return flags, fmt.Errorf(
+			"--root %s is the host's root; leave --root off to install on this host", flags.root)
+	}
 	return flags, nil
+}
+
+// rootIsHost reports whether root names the host's own root directory,
+// written directly or reached through a symlink. A rooted run skips systemd
+// and keeps a private sysrepo repository below the root, so a root of / would
+// write the host's files without enabling them and open the host's
+// repository under a second shared-memory prefix.
+//
+// The root is cleaned before it is resolved, because the install joins every
+// host path onto it and a join cleans lexically, so a/missing/.. writes under
+// a even though missing does not exist. Once cleaned, a root that does not exist cannot be the
+// host's root, because / always exists.
+func rootIsHost(root string) bool {
+	cleaned := filepath.Clean(root)
+	if cleaned == "/" {
+		return true
+	}
+	resolved, err := filepath.EvalSymlinks(cleaned)
+	if err != nil {
+		return false
+	}
+	return filepath.Clean(resolved) == "/"
 }
 
 // knownInstallRoles lists the roles in a stable order for help and errors.
@@ -396,7 +457,11 @@ func printInstallUsage(out io.Writer) {
 		fmt.Fprintf(out, "  %-9s enables %s\n", "", strings.Join(units.enable, " "))
 	}
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, "The YANG modules are embedded too. --print-schema writes them to a")
-	fmt.Fprintln(out, "directory for validation. Installing them into sysrepo is still the")
-	fmt.Fprintln(out, "deploy's job; this verb does not touch the datastore.")
+	fmt.Fprintln(out, "The YANG modules are embedded too. The wan role writes them to")
+	fmt.Fprintln(out, networkjson.DefaultSchemaDir+" and installs them into sysrepo,")
+	fmt.Fprintln(out, "updating a module installed at another revision. Under --root it uses")
+	fmt.Fprintln(out, "a private repository below the root. It also imports the read-only")
+	fmt.Fprintln(out, "NACM policy into each of startup and running that does not already")
+	fmt.Fprintln(out, "hold it, and writes it to "+nacmPolicyPath+". --print-schema")
+	fmt.Fprintln(out, "writes the modules to a directory for validation and touches nothing else.")
 }
