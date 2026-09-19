@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	_ "embed"
 	"fmt"
@@ -45,38 +44,33 @@ type schemaOutcome struct {
 	changed []string
 	// modules names the schema modules it installed or updated.
 	modules []yangpub.ModuleChange
-	// nacmImported is set when it imported the policy.
-	nacmImported bool
+	// nacmImported names the datastores it imported the policy into.
+	nacmImported []yangpub.Datastore
 }
 
 // installSchema writes the embedded modules into the schema directory the
 // daemon validates its network file against and installs or updates them in
-// sysrepo from that directory. When the NACM policy file on the host differs
-// from the embedded one, it imports the policy into startup and running,
-// which is when the deploy imported it, and then writes the file. It returns
-// what it did, even when it fails partway.
+// sysrepo from that directory. It then imports the NACM policy into each of
+// startup and running whose ietf-netconf-acm configuration differs from the
+// embedded policy, and writes the policy file. It returns what it did, even
+// when it fails partway.
+//
+// The datastore decides the import, not the file: a repository reset under a
+// file left from an earlier deploy still needs the policy.
 //
 // A run under root writes below the root and uses a private repository below
 // the root, so it never touches the host's datastore.
 func installSchema(ctx context.Context, log *slog.Logger, root string) (schemaOutcome, error) {
-	outcome := schemaOutcome{changed: nil, modules: nil, nacmImported: false}
+	outcome := schemaOutcome{changed: nil, modules: nil, nacmImported: nil}
 	schemaDir := filepath.Join(root, networkjson.DefaultSchemaDir)
 	models, changed, err := yangpub.WriteSchemaChanges(schemaDir)
 	outcome.changed = changed
 	if err != nil {
 		return outcome, installFailed("write the schema into", schemaDir, err)
 	}
-	// The policy file is written only after the import succeeds, so a failed
-	// import leaves the old file and the next run imports again.
 	policyPath := filepath.Join(root, nacmPolicyPath)
-	current, err := os.ReadFile(policyPath)
-	if err != nil && !os.IsNotExist(err) {
-		return outcome, installFailed("read the NACM policy", policyPath, err)
-	}
-	importPolicy := !bytes.Equal(current, nacmPolicy)
 	if root == "" {
-		err := applyDatastore(ctx, log, models, schemaDir, importPolicy, &outcome)
-		if err != nil {
+		if err := applyDatastore(ctx, log, models, schemaDir, &outcome); err != nil {
 			return outcome, err
 		}
 		return outcome, writePolicy(policyPath, &outcome)
@@ -108,7 +102,7 @@ func installSchema(ctx context.Context, log *slog.Logger, root string) (schemaOu
 			"sysrepo in this process is bound to repository %s, not the private repository %s",
 			bound, repository)
 	}
-	if err := applyDatastore(ctx, log, models, schemaDir, importPolicy, &outcome); err != nil {
+	if err := applyDatastore(ctx, log, models, schemaDir, &outcome); err != nil {
 		return outcome, err
 	}
 	return outcome, writePolicy(policyPath, &outcome)
@@ -128,14 +122,13 @@ func writePolicy(path string, outcome *schemaOutcome) error {
 }
 
 // applyDatastore connects to the datastore the environment names, brings the
-// models in, imports the policy when importPolicy is set, and disconnects. It
-// records what it did in outcome.
+// models in, imports the policy into each datastore that does not already
+// hold it, and disconnects. It records what it did in outcome.
 func applyDatastore(
 	ctx context.Context,
 	log *slog.Logger,
 	models []yangpub.Model,
 	searchDir string,
-	importPolicy bool,
 	outcome *schemaOutcome,
 ) error {
 	datastore, err := yangpub.New(log)
@@ -148,14 +141,18 @@ func applyDatastore(
 	if err != nil {
 		return installFailed("install into sysrepo", "the schema modules", err)
 	}
-	if !importPolicy {
-		return nil
-	}
 	for _, ds := range nacmDatastores {
+		matches, err := datastore.ConfigMatches(ctx, ds, nacmModule, nacmPolicy)
+		if err != nil {
+			return installFailed("read the NACM policy in", string(ds), err)
+		}
+		if matches {
+			continue
+		}
 		if err := datastore.ImportConfig(ctx, ds, nacmModule, nacmPolicy); err != nil {
 			return installFailed("import the NACM policy into", string(ds), err)
 		}
+		outcome.nacmImported = append(outcome.nacmImported, ds)
 	}
-	outcome.nacmImported = true
 	return nil
 }

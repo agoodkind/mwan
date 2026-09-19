@@ -168,9 +168,9 @@ type installOutcome struct {
 	// modules names every schema module the run installed into sysrepo or
 	// updated there. installUnits leaves it empty; runInstall fills it.
 	modules []yangpub.ModuleChange
-	// nacmImported is set when the run imported the NACM policy into
-	// startup and running. runInstall sets it.
-	nacmImported bool
+	// nacmImported names the datastores the run imported the NACM policy
+	// into. runInstall sets it.
+	nacmImported []yangpub.Datastore
 }
 
 // runInstall is the `mwan install` entry point.
@@ -247,7 +247,7 @@ func installUnits(
 	root string,
 	enabler unitEnabler,
 ) (installOutcome, error) {
-	outcome := installOutcome{changed: nil, enabled: nil, modules: nil, nacmImported: false}
+	outcome := installOutcome{changed: nil, enabled: nil, modules: nil, nacmImported: nil}
 	units := installRoles[role]
 	for _, file := range units.files {
 		content, err := unitFS.ReadFile(file.embedded)
@@ -358,8 +358,12 @@ func reportInstall(out io.Writer, outcome installOutcome, rooted bool) {
 		}
 		fmt.Fprintf(out, "installed module %s@%s\n", module.Module, module.Revision)
 	}
-	if outcome.nacmImported {
-		fmt.Fprintf(out, "imported the %s policy into startup and running\n", nacmModule)
+	if len(outcome.nacmImported) > 0 {
+		names := make([]string, 0, len(outcome.nacmImported))
+		for _, ds := range outcome.nacmImported {
+			names = append(names, string(ds))
+		}
+		fmt.Fprintf(out, "imported the %s policy into %s\n", nacmModule, strings.Join(names, " and "))
 	}
 	if len(outcome.enabled) == 0 {
 		return
@@ -457,7 +461,7 @@ func printInstallUsage(out io.Writer) {
 	fmt.Fprintln(out, networkjson.DefaultSchemaDir+" and installs them into sysrepo,")
 	fmt.Fprintln(out, "updating a module installed at another revision. Under --root it uses")
 	fmt.Fprintln(out, "a private repository below the root. It also imports the read-only")
-	fmt.Fprintln(out, "NACM policy into startup and running when "+nacmPolicyPath)
-	fmt.Fprintln(out, "differs from the embedded copy. --print-schema writes the modules to a")
-	fmt.Fprintln(out, "directory for validation and touches nothing else.")
+	fmt.Fprintln(out, "NACM policy into each of startup and running that does not already")
+	fmt.Fprintln(out, "hold it, and writes it to "+nacmPolicyPath+". --print-schema")
+	fmt.Fprintln(out, "writes the modules to a directory for validation and touches nothing else.")
 }

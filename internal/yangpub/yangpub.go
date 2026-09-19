@@ -108,6 +108,10 @@ type Installer interface {
 	// document xml, the way `sysrepocfg --import` does: the document is
 	// parsed strictly as configuration and any node it leaves out is removed.
 	ImportConfig(ctx context.Context, ds Datastore, module string, xml []byte) error
+	// ConfigMatches reports whether module's configuration in ds is exactly
+	// what ImportConfig would leave there for xml, so a caller imports only
+	// when the datastore differs.
+	ConfigMatches(ctx context.Context, ds Datastore, module string, xml []byte) (bool, error)
 }
 
 // Publisher is the daemon's handle on the management datastore.
