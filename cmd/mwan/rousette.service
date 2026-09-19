@@ -1,0 +1,20 @@
+[Unit]
+Description=Rousette RESTCONF server (wanconfig management stack)
+Documentation=https://github.com/CESNET/rousette
+After=network.target
+
+[Service]
+Type=simple
+# rousette binds ::1:10080 only; the nghttpx-wanconfig proxy exposes it on
+# the management address. Journald is detected automatically, no --syslog.
+#
+# The packaged sysrepo keeps /etc/sysrepo group sysrepo with umask 007, so
+# rousette runs in that group and its datastore files stay shared with the
+# daemon's.
+Group=sysrepo
+ExecStart=/opt/mwan-wanconfig/bin/rousette
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
