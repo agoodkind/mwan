@@ -486,6 +486,57 @@ func TestInstallApplyUnderARootTouchesNoSystemd(t *testing.T) {
 	}
 }
 
+// TestInstallApplyWritesTheWanconfigAndHostFiles runs the verb for the wan
+// role under a root and checks that each file the playbooks copy today lands
+// at the host path the playbooks use, with their mode, holding the binary's
+// bytes.
+func TestInstallApplyWritesTheWanconfigAndHostFiles(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+
+	code := runInstall([]string{"--apply", "--role", "wan", "--root", root})
+
+	if code != exitInstallOK {
+		t.Fatalf("exit code = %d, want %d", code, exitInstallOK)
+	}
+	wantFiles := map[string]string{
+		"/etc/systemd/system/rousette.service":                 "rousette.service",
+		"/etc/systemd/system/nghttpx-wanconfig.service":        "nghttpx-wanconfig.service",
+		"/etc/systemd/system/nftables.service.d/override.conf": "nftables-override.conf",
+		"/etc/sysctl.d/99-quiet-console.conf":                  "99-quiet-console.conf",
+	}
+	for hostPath, embeddedName := range wantFiles {
+		path := filepath.Join(root, hostPath)
+		onDisk, err := os.ReadFile(path)
+		if err != nil {
+			t.Errorf("read %s: %v", hostPath, err)
+			continue
+		}
+		embedded, err := unitFS.ReadFile(embeddedName)
+		if err != nil {
+			t.Errorf("read embedded %s: %v", embeddedName, err)
+			continue
+		}
+		if !bytes.Equal(onDisk, embedded) {
+			t.Errorf("%s on disk differs from the embedded %s", hostPath, embeddedName)
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Errorf("stat %s: %v", hostPath, err)
+			continue
+		}
+		if info.Mode().Perm() != systemdUnitMode {
+			t.Errorf("%s mode = %v, want %v", hostPath, info.Mode().Perm(), systemdUnitMode)
+		}
+	}
+	// The systemd-networkd drop-in stays with the playbook until MWAN-400
+	// deletes it, so the verb must not write it.
+	networkdDropIn := filepath.Join(root, "/etc/systemd/system/systemd-networkd.service.d")
+	if _, err := os.Stat(networkdDropIn); !os.IsNotExist(err) {
+		t.Errorf("the verb created %s (err %v), want it absent", networkdDropIn, err)
+	}
+}
+
 // TestInstallApplyNeedsARole proves a run that would change the host refuses
 // to guess which host it is on.
 func TestInstallApplyNeedsARole(t *testing.T) {
