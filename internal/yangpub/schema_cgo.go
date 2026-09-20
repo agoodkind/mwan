@@ -10,6 +10,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"unsafe"
 )
 
@@ -84,6 +85,11 @@ func LoadSchema(searchDir string) (*Schema, error) {
 // handing libyang a NULL-terminated array of feature names or NULL when the
 // module needs none.
 func loadSchemaModule(ctx *C.struct_ly_ctx, module schemaModule) error {
+	// The load and the read of its error record must run on one operating
+	// system thread; see ValidateConfigJSON.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	cName := C.CString(module.name)
 	defer C.free(unsafe.Pointer(cName))
 
@@ -112,6 +118,13 @@ func (s *Schema) ValidateConfigJSON(data []byte) error {
 	if s == nil || s.ctx == nil {
 		return ErrSchemaClosed
 	}
+	// libyang keeps its error record per operating system thread, and the
+	// parse and the read of its message are two cgo calls. The goroutine is
+	// pinned to one thread across both, because a goroutine moved between
+	// them reads an empty record and reports a rejection with no cause.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	cData := C.CString(string(data))
 	defer C.free(unsafe.Pointer(cData))
 

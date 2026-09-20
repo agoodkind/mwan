@@ -15,6 +15,7 @@ import (
 	"goodkind.io/mwan/internal/ifmgr/modules/oobv4"
 	"goodkind.io/mwan/internal/ifmgr/modules/oobv6"
 	"goodkind.io/mwan/internal/ifmgr/modules/wanroutes"
+	"goodkind.io/mwan/internal/networkd"
 	"goodkind.io/mwan/internal/wanconfig"
 	"goodkind.io/mwan/internal/wanstate"
 	"goodkind.io/mwan/internal/yangpub"
@@ -359,6 +360,8 @@ func memberFromWAN(
 		ForcedDSCP:     forcedDSCPFromConfig(cfg, wan.Name),
 		StaticMappings: staticMappingsFromConfig(cfg, wan.Name),
 		Health:         probe,
+		LinkFiles:      linkFilesFromConfig(cfg, wan.Name),
+		Link:           linkFromConfig(cfg, wan.Iface),
 	}
 	if probed {
 		// The probe policy is named after the member: the health module
@@ -488,6 +491,34 @@ func staticMappingsFromConfig(cfg *config.Config, name string) []wanconfig.Stati
 		mappings = append(mappings, wanconfig.StaticMapping{External: mapping.External, Internal: mapping.Internal})
 	}
 	return mappings
+}
+
+// linkFilesFromConfig reads who writes a provider link's unit files from the
+// loaded network configuration. No module config holds it, because no module
+// acts on it: the renderer reads the link list instead. A nil configuration
+// publishes none.
+func linkFilesFromConfig(cfg *config.Config, name string) string {
+	if cfg == nil {
+		return ""
+	}
+	return cfg.IfMgr.WAN[name].LinkFiles
+}
+
+// linkFromConfig reads a provider link's specification from the loaded network
+// configuration, by the interface the provider rides, which is the
+// specification's own name. A nil configuration, or a provider whose files are
+// hand-authored, has none.
+func linkFromConfig(cfg *config.Config, iface string) *networkd.Spec {
+	if cfg == nil {
+		return nil
+	}
+	for i := range cfg.IfMgr.Links {
+		if cfg.IfMgr.Links[i].Name == iface {
+			spec := cfg.IfMgr.Links[i]
+			return &spec
+		}
+	}
+	return nil
 }
 
 // probeSettings projects one provider's probe from the loaded health section.

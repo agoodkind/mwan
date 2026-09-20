@@ -1,9 +1,10 @@
 // Package networkjson loads the gateway's network configuration: the provider
-// inventory, each provider's routing slots, translation prefix, source pin,
-// static mappings, and health probe, and the group-wide translation, internal
-// link, and probe timeout. The file is written in the model's own JSON encoding and validated
-// against the installed schema before any value is read, so the file the daemon
-// loads and the tree the management surface serves describe one thing.
+// inventory, each provider's routing slots, translation prefix, static
+// mappings, health probe, and link identity, and the group-wide translation,
+// internal link, and probe timeout. The file is written in the model's own
+// JSON encoding and validated against the installed schema before any value is
+// read, so the file the daemon loads and the tree the management surface
+// serves describe one thing.
 //
 // The package is linux-only: validation binds libyang, which only the linux
 // build links, and the only role that reads the file runs there.
@@ -19,6 +20,7 @@ import (
 	"slices"
 
 	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/networkd"
 	"goodkind.io/mwan/internal/yangpub"
 )
 
@@ -43,10 +45,102 @@ type interfaces struct {
 }
 
 type ifaceEntry struct {
-	Name     string    `json:"name"`
-	Type     string    `json:"type"`
-	WAN      *wan      `json:"goodkind-mwan-steering:wan"`
-	Steering *steering `json:"goodkind-mwan-steering:steering"`
+	Name      string             `json:"name"`
+	Type      string             `json:"type"`
+	LinkFiles string             `json:"goodkind-mwan-steering:link-files"`
+	Link      *linkIdentity      `json:"goodkind-mwan-steering:link"`
+	Networkd  *networkdContainer `json:"goodkind-mwan-steering:networkd"`
+	IPv4      *familyV4          `json:"ietf-ip:ipv4"`
+	IPv6      *familyV6          `json:"ietf-ip:ipv6"`
+	WAN       *wan               `json:"goodkind-mwan-steering:wan"`
+	Steering  *steering          `json:"goodkind-mwan-steering:steering"`
+}
+
+// The two values the link-files leaf takes.
+const (
+	linkFilesRendered     = "rendered"
+	linkFilesHandAuthored = "hand-authored"
+)
+
+// linkIdentity is the link container: how the device is matched, the address
+// set on it, and the VLAN it is created as. The vlan container has presence,
+// so a pointer distinguishes absent from present.
+type linkIdentity struct {
+	Match           *linkMatch `json:"match"`
+	HardwareAddress string     `json:"hardware-address"`
+	VLAN            *linkVLAN  `json:"vlan"`
+}
+
+type linkMatch struct {
+	Driver          string `json:"driver"`
+	HardwareAddress string `json:"hardware-address"`
+}
+
+// The integer widths of the link, family, and free-form wire types are the
+// model's own, so the decoder refuses a value outside them and the loader
+// never narrows one.
+type linkVLAN struct {
+	Parent string  `json:"parent"`
+	ID     *uint16 `json:"id"`
+}
+
+// networkdContainer mirrors the free-form layer: per unit file kind, an
+// ordered list of sections, each an ordered list of key and value lines.
+type networkdContainer struct {
+	Files []networkdFile `json:"file"`
+}
+
+type networkdFile struct {
+	Kind     string            `json:"kind"`
+	Sections []networkdSection `json:"section"`
+}
+
+type networkdSection struct {
+	Index   *uint16         `json:"index"`
+	Name    string          `json:"name"`
+	Entries []networkdEntry `json:"entry"`
+}
+
+type networkdEntry struct {
+	Index *uint16 `json:"index"`
+	Key   string  `json:"key"`
+	Value string  `json:"value"`
+}
+
+// familyWire is what the two published per-family containers share: the
+// forwarding flag and address list the published model defines, and the
+// leaves the steering module adds under its own namespace.
+type familyWire struct {
+	Forwarding  *bool       `json:"forwarding"`
+	Address     []ipAddress `json:"address"`
+	DHCP        *bool       `json:"goodkind-mwan-steering:dhcp"`
+	Gateway     string      `json:"goodkind-mwan-steering:gateway"`
+	RouteMetric *uint32     `json:"goodkind-mwan-steering:route-metric"`
+}
+
+type familyV4 struct {
+	familyWire
+	SourceAddresses []string `json:"goodkind-mwan-steering:source-addresses"`
+}
+
+type familyV6 struct {
+	familyWire
+	AcceptRA   *bool       `json:"goodkind-mwan-steering:accept-ra"`
+	Delegation *delegation `json:"goodkind-mwan-steering:delegation"`
+}
+
+type ipAddress struct {
+	IP           string `json:"ip"`
+	PrefixLength *uint8 `json:"prefix-length"`
+}
+
+type delegation struct {
+	Hint                  string  `json:"hint"`
+	DUIDType              string  `json:"duid-type"`
+	DUID                  string  `json:"duid"`
+	WithoutRA             string  `json:"without-ra"`
+	UseDelegatedPrefix    *bool   `json:"use-delegated-prefix"`
+	RouterLifetimeSeconds *uint32 `json:"router-lifetime-seconds"`
 }
 
 // steering is the member's steering properties: which tier it sits in and how
@@ -59,12 +153,15 @@ type steering struct {
 }
 
 type wan struct {
-	Name       string  `json:"name"`
-	TableID    *int    `json:"table-id"`
-	FwMark     *int    `json:"fw-mark"`
-	FwMarkPrio *int    `json:"fw-mark-prio"`
-	FromPrio   *int    `json:"from-prio"`
-	NptPrefix  string  `json:"npt-prefix"`
+	Name       string `json:"name"`
+	TableID    *int   `json:"table-id"`
+	FwMark     *int   `json:"fw-mark"`
+	FwMarkPrio *int   `json:"fw-mark-prio"`
+	FromPrio   *int   `json:"from-prio"`
+	NptPrefix  string `json:"npt-prefix"`
+	// V4Source is decoded only to be refused: the daemon derives the source
+	// pin from the link's static address, and a document that still types the
+	// leaf would let inventory and the address disagree.
 	V4Source   string  `json:"v4-source"`
 	ForcedDSCP *int    `json:"forced-dscp"`
 	Health     *health `json:"health"`
@@ -125,6 +222,10 @@ type Config struct {
 	ProbeTimeoutMillis int
 	WAN                map[string]config.IfMgrWANEntry
 	Health             map[string]config.IfMgrHealthWANSection
+	// Links are the link specifications of the providers whose unit files the
+	// daemon renders, in document order. A provider whose entry names its
+	// files hand-authored contributes none.
+	Links []networkd.Spec
 }
 
 // Load reads path, validates it against the models in schemaDir, and returns
@@ -191,6 +292,7 @@ func build(doc *document) (*Config, error) {
 		ProbeTimeoutMillis: 0,
 		WAN:                make(map[string]config.IfMgrWANEntry, len(doc.Interfaces.Interface)),
 		Health:             make(map[string]config.IfMgrHealthWANSection, len(doc.Interfaces.Interface)),
+		Links:              nil,
 	}
 	required := []struct {
 		leaf  string
@@ -224,6 +326,14 @@ func build(doc *document) (*Config, error) {
 		routing, probe, err := buildProvider(entry)
 		if err != nil {
 			return nil, err
+		}
+		spec, err := buildLink(entry, routing.TableID)
+		if err != nil {
+			return nil, err
+		}
+		if spec != nil {
+			routing.V4Source = staticV4Source(*spec)
+			loaded.Links = append(loaded.Links, *spec)
 		}
 		if _, seen := loaded.WAN[entry.WAN.Name]; seen {
 			return nil, fmt.Errorf("provider %q appears on more than one interface", entry.WAN.Name)
@@ -393,6 +503,248 @@ func buildStaticMappings(label string, entries []staticMapping) ([]config.Static
 	return mappings, nil
 }
 
+// buildLink turns one provider interface's link identity into the
+// specification the daemon renders its unit files from. The link-files leaf
+// decides: hand-authored means the repository carries the files and the entry
+// describes nothing about the link, so it yields no specification and must
+// carry no link, family, or free-form container that the daemon would then
+// silently ignore; rendered means the entry describes the link and every
+// requirement the schema cannot express is checked here. An entry that states
+// neither fails, so a link container someone forgot to write is caught rather
+// than read as an exemption. The schema already accepts every value, so a
+// value that does not parse means the document reached the loader
+// unvalidated; it is refused rather than dropped.
+func buildLink(entry ifaceEntry, tableID int) (*networkd.Spec, error) {
+	label := "interface " + entry.Name
+	if entry.LinkFiles == linkFilesHandAuthored {
+		if entry.Link != nil || entry.Networkd != nil || entry.IPv4 != nil || entry.IPv6 != nil {
+			return nil, fmt.Errorf(
+				"%s: link-files is hand-authored, so it must carry no link, networkd, ipv4, or ipv6 container",
+				label)
+		}
+		return nil, nil
+	}
+	if entry.LinkFiles == "" {
+		return nil, fmt.Errorf("%s: link-files is required: rendered with a link container, or hand-authored", label)
+	}
+	if entry.LinkFiles != linkFilesRendered {
+		// The schema's enumeration refuses any other value before build runs.
+		// This stays as a decode-boundary guard for a schema revision that
+		// adds a value the loader does not know.
+		return nil, fmt.Errorf("%s: link-files %q is neither rendered nor hand-authored", label, entry.LinkFiles)
+	}
+	if entry.Link == nil {
+		return nil, fmt.Errorf("%s: link-files is rendered, so a link container is required", label)
+	}
+	spec := networkd.Spec{
+		Name:            entry.Name,
+		TableID:         tableID,
+		Match:           networkd.Match{Driver: "", HardwareAddress: ""},
+		HardwareAddress: entry.Link.HardwareAddress,
+		VLAN:            nil,
+		IPv4:            nil,
+		IPv6:            nil,
+		Files:           nil,
+	}
+	if entry.Link.Match != nil {
+		spec.Match = networkd.Match{
+			Driver:          entry.Link.Match.Driver,
+			HardwareAddress: entry.Link.Match.HardwareAddress,
+		}
+	}
+	identities := 0
+	if spec.Match.Driver != "" {
+		identities++
+	}
+	if spec.Match.HardwareAddress != "" {
+		identities++
+	}
+	if entry.Link.VLAN != nil {
+		identities++
+		vlan, err := buildVLAN(label, *entry.Link.VLAN)
+		if err != nil {
+			return nil, err
+		}
+		spec.VLAN = vlan
+	}
+	if identities != 1 {
+		return nil, fmt.Errorf(
+			"%s: link must set exactly one of match/driver, match/hardware-address, or vlan, got %d",
+			label, identities)
+	}
+	if entry.IPv4 != nil {
+		ipv4, err := buildFamilyV4(label, *entry.IPv4)
+		if err != nil {
+			return nil, err
+		}
+		spec.IPv4 = ipv4
+	}
+	if entry.IPv6 != nil {
+		ipv6, err := buildFamilyV6(label, *entry.IPv6)
+		if err != nil {
+			return nil, err
+		}
+		spec.IPv6 = ipv6
+	}
+	if entry.Networkd != nil {
+		files, err := buildFreeForm(label, *entry.Networkd)
+		if err != nil {
+			return nil, err
+		}
+		spec.Files = files
+	}
+	if err := networkd.Validate(spec); err != nil {
+		slog.Error("networkjson: free-form section sets a typed key", "interface", entry.Name, "err", err)
+		return nil, fmt.Errorf("%s: %w", label, err)
+	}
+	return &spec, nil
+}
+
+// buildVLAN reads the VLAN container. The parent is an interface reference
+// the schema resolves against the document's own interface list, so a parent
+// no entry describes fails Load at validation, before build runs: a VLAN is
+// created by a line in the parent's own file, and a parent nothing describes
+// creates nothing.
+func buildVLAN(label string, vlan linkVLAN) (*networkd.VLAN, error) {
+	if vlan.ID == nil {
+		return nil, fmt.Errorf("%s: link/vlan/id is required", label)
+	}
+	return &networkd.VLAN{Parent: vlan.Parent, ID: *vlan.ID}, nil
+}
+
+// buildFamily reads the leaves both families share. dhcp is required, because
+// a family container that does not say whether a client runs cannot be
+// rendered either way.
+func buildFamily(label string, family string, wire familyWire) (networkd.Family, error) {
+	var none networkd.Family
+	if wire.DHCP == nil {
+		return none, fmt.Errorf("%s: %s/dhcp is required", label, family)
+	}
+	built := networkd.Family{
+		Forwarding:  wire.Forwarding,
+		Addresses:   nil,
+		DHCP:        wire.DHCP,
+		Gateway:     netip.Addr{},
+		RouteMetric: wire.RouteMetric,
+	}
+	for _, address := range wire.Address {
+		ip, err := parseAddress(label, family+"/address", address.IP)
+		if err != nil {
+			return none, err
+		}
+		if address.PrefixLength == nil {
+			return none, fmt.Errorf("%s: %s/address %s carries no prefix-length", label, family, address.IP)
+		}
+		built.Addresses = append(built.Addresses, networkd.Address{IP: ip, PrefixLength: *address.PrefixLength})
+	}
+	if wire.Gateway != "" {
+		parsed, err := parseAddress(label, family+"/gateway", wire.Gateway)
+		if err != nil {
+			return none, err
+		}
+		built.Gateway = parsed
+	}
+	return built, nil
+}
+
+// buildFamilyV4 reads the IPv4 container, including the source addresses the
+// routing module pins beside the link's own.
+func buildFamilyV4(label string, wire familyV4) (*networkd.FamilyV4, error) {
+	shared, err := buildFamily(label, "ipv4", wire.familyWire)
+	if err != nil {
+		return nil, err
+	}
+	built := &networkd.FamilyV4{Family: shared, SourceAddresses: nil}
+	for _, raw := range wire.SourceAddresses {
+		parsed, err := parseAddress(label, "ipv4/source-addresses", raw)
+		if err != nil {
+			return nil, err
+		}
+		built.SourceAddresses = append(built.SourceAddresses, parsed)
+	}
+	return built, nil
+}
+
+// buildFamilyV6 reads the IPv6 container, including the delegation the
+// interface requests.
+func buildFamilyV6(label string, wire familyV6) (*networkd.FamilyV6, error) {
+	shared, err := buildFamily(label, "ipv6", wire.familyWire)
+	if err != nil {
+		return nil, err
+	}
+	built := &networkd.FamilyV6{Family: shared, AcceptRA: wire.AcceptRA, Delegation: nil}
+	if wire.Delegation == nil {
+		return built, nil
+	}
+	built.Delegation = &networkd.Delegation{
+		Hint:                  netip.Prefix{},
+		DUIDType:              wire.Delegation.DUIDType,
+		DUID:                  wire.Delegation.DUID,
+		WithoutRA:             wire.Delegation.WithoutRA,
+		UseDelegatedPrefix:    wire.Delegation.UseDelegatedPrefix,
+		RouterLifetimeSeconds: wire.Delegation.RouterLifetimeSeconds,
+	}
+	if wire.Delegation.Hint != "" {
+		hint, err := netip.ParsePrefix(wire.Delegation.Hint)
+		if err != nil {
+			slog.Error("networkjson: delegation hint unparsable",
+				"entry", label, "hint", wire.Delegation.Hint, "err", err)
+			return nil, fmt.Errorf("%s: ipv6/delegation/hint %q: %w", label, wire.Delegation.Hint, err)
+		}
+		built.Delegation.Hint = hint
+	}
+	return built, nil
+}
+
+// buildFreeForm reads the networkd container in document order. Both indexes
+// are keys the schema requires, so an absent one means the document reached
+// the loader unvalidated.
+func buildFreeForm(label string, container networkdContainer) ([]networkd.File, error) {
+	files := make([]networkd.File, 0, len(container.Files))
+	for _, file := range container.Files {
+		built := networkd.File{Kind: networkd.FileKind(file.Kind), Sections: nil}
+		for _, section := range file.Sections {
+			if section.Index == nil {
+				return nil, fmt.Errorf("%s: networkd file %s carries a section with no index", label, file.Kind)
+			}
+			builtSection := networkd.Section{Index: *section.Index, Name: section.Name, Entries: nil}
+			for _, entry := range section.Entries {
+				if entry.Index == nil {
+					return nil, fmt.Errorf("%s: networkd file %s section %s carries an entry with no index",
+						label, file.Kind, section.Name)
+				}
+				builtSection.Entries = append(builtSection.Entries,
+					networkd.Entry{Index: *entry.Index, Key: entry.Key, Value: entry.Value})
+			}
+			built.Sections = append(built.Sections, builtSection)
+		}
+		files = append(files, built)
+	}
+	return files, nil
+}
+
+// parseAddress parses one address leaf, naming the leaf when it fails.
+func parseAddress(label string, leaf string, raw string) (netip.Addr, error) {
+	parsed, err := netip.ParseAddr(raw)
+	if err != nil {
+		slog.Error("networkjson: address unparsable", "entry", label, "leaf", leaf, "value", raw, "err", err)
+		return netip.Addr{}, fmt.Errorf("%s: %s %q: %w", label, leaf, raw, err)
+	}
+	return parsed, nil
+}
+
+// staticV4Source is the IPv4 source pin a rendered link carries: its first
+// static address, or empty on a link that leases its address. The routing
+// module pins traffic the gateway sources from that address to the provider's
+// table, so the pin is the address the link holds rather than a second value
+// inventory could let drift from it.
+func staticV4Source(spec networkd.Spec) string {
+	if spec.IPv4 == nil || len(spec.IPv4.Addresses) == 0 {
+		return ""
+	}
+	return spec.IPv4.Addresses[0].IP.String()
+}
+
 // buildProvider turns one interface's provider entry into the two sections the
 // daemon holds it in: the routing entry keyed by provider name, and the health
 // policy under the same name. A nil probe is how a provider the gateway does
@@ -420,6 +772,10 @@ func buildProvider(entry ifaceEntry) (config.IfMgrWANEntry, *config.IfMgrHealthW
 			return config.IfMgrWANEntry{}, nil, fmt.Errorf("%s: %s is required", label, number.leaf)
 		}
 	}
+	if provider.V4Source != "" {
+		return config.IfMgrWANEntry{}, nil, fmt.Errorf(
+			"%s: v4-source is derived from the link's static ipv4 address and must not be typed", label)
+	}
 	tier, weight, err := buildSteering(label, entry.Steering)
 	if err != nil {
 		return config.IfMgrWANEntry{}, nil, err
@@ -433,13 +789,16 @@ func buildProvider(entry ifaceEntry) (config.IfMgrWANEntry, *config.IfMgrHealthW
 		forcedDSCP = *provider.ForcedDSCP
 	}
 	routing := config.IfMgrWANEntry{
-		Iface:          entry.Name,
-		TableID:        *provider.TableID,
-		FwMark:         *provider.FwMark,
-		FwMarkPrio:     *provider.FwMarkPrio,
-		FromPrio:       *provider.FromPrio,
-		NptPrefix:      provider.NptPrefix,
-		V4Source:       provider.V4Source,
+		Iface:      entry.Name,
+		TableID:    *provider.TableID,
+		FwMark:     *provider.FwMark,
+		FwMarkPrio: *provider.FwMarkPrio,
+		FromPrio:   *provider.FromPrio,
+		NptPrefix:  provider.NptPrefix,
+		// The caller fills the source pin from the link specification, which
+		// buildLink builds after this returns.
+		V4Source:       "",
+		LinkFiles:      entry.LinkFiles,
 		ForcedDSCP:     forcedDSCP,
 		Tier:           tier,
 		Weight:         weight,
@@ -553,6 +912,7 @@ func (c *Config) Apply(cfg *config.Config) {
 	cfg.IfMgr.HashMode = c.HashMode
 	cfg.IfMgr.ReservedTables = c.ReservedTables
 	cfg.IfMgr.WAN = c.WAN
+	cfg.IfMgr.Links = c.Links
 
 	if cfg.IfMgr.Modules.WAN == nil {
 		cfg.IfMgr.Modules.WAN = &config.IfMgrModulesWANSection{Routes: nil}

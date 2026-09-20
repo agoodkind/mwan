@@ -28,16 +28,22 @@ const networkInstanceGlob = "../../yang/instances/*.json"
 var networkListKeys = map[string]string{
 	"interface":      "name",
 	"static-mapping": "external",
+	"address":        "ip",
+	"file":           "kind",
+	"section":        "index",
+	"entry":          "index",
 }
 
 // servedOnlyPaths match the leaves the tree publishes that a network document
 // does not carry: each interface's enabled flag and its two address-family
-// enabled flags, the probe policy name, the translation instances, and the
-// daemon settings. Every other published leaf must appear in the file.
+// enabled flags, the probe policy name, the source pin the loader derives from
+// the link's static address, the translation instances, and the daemon
+// settings. Every other published leaf must appear in the file.
 var servedOnlyPaths = []*regexp.Regexp{
 	regexp.MustCompile(`^/ietf-interfaces:interfaces/interface\[name='[^']+'\]/enabled$`),
 	regexp.MustCompile(`^/ietf-interfaces:interfaces/interface\[name='[^']+'\]/ietf-ip:ipv[46]/enabled$`),
 	regexp.MustCompile(`^/ietf-interfaces:interfaces/interface\[name='[^']+'\]/goodkind-mwan-steering:steering/probe-policy$`),
+	regexp.MustCompile(`^/ietf-interfaces:interfaces/interface\[name='[^']+'\]/goodkind-mwan-steering:wan/v4-source$`),
 	regexp.MustCompile(`^/ietf-nat:nat/`),
 	regexp.MustCompile(`^/goodkind-mwan-steering:daemon/`),
 }
