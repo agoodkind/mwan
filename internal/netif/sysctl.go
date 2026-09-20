@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -29,10 +30,22 @@ type ProcSysctlRunner struct {
 	log    *slog.Logger
 	dryRun bool
 	clock  clock
+	// root is prefixed onto every /proc/sys path. Empty is the host's own
+	// kernel, which is what the daemon uses.
+	root string
 }
 
-// NewProcSysctlRunner constructs a runner. log must be non-nil.
+// NewProcSysctlRunner constructs a runner against the host's own kernel.
+// log must be non-nil.
 func NewProcSysctlRunner(log *slog.Logger, dryRun bool) *ProcSysctlRunner {
+	return NewProcSysctlRunnerUnder(log, dryRun, "")
+}
+
+// NewProcSysctlRunnerUnder constructs a runner that resolves every key below
+// root rather than at /, so a caller can exercise the real read and write
+// path against a directory tree standing in for /proc/sys. A root of "" is
+// the host's own kernel.
+func NewProcSysctlRunnerUnder(log *slog.Logger, dryRun bool, root string) *ProcSysctlRunner {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -40,15 +53,25 @@ func NewProcSysctlRunner(log *slog.Logger, dryRun bool) *ProcSysctlRunner {
 		log:    log.With("component", "sysctl"),
 		dryRun: dryRun,
 		clock:  realClock{},
+		root:   root,
 	}
-	r.log.Debug("sysctl: constructed", "dry_run", dryRun)
+	r.log.Debug("sysctl: constructed", "dry_run", dryRun, "root", root)
 	return r
+}
+
+// path resolves a sysctl key to the file that holds it, below the runner's
+// root.
+func (r *ProcSysctlRunner) path(key string) string {
+	if r.root == "" {
+		return keyToPath(key)
+	}
+	return filepath.Join(r.root, keyToPath(key))
 }
 
 // Get reads the sysctl value at key (e.g. "net.ipv6.conf.eth0.disable_ipv6").
 // Returns the trimmed string contents.
 func (r *ProcSysctlRunner) Get(ctx context.Context, key string) (string, error) {
-	path := keyToPath(key)
+	path := r.path(key)
 	startTime := r.clock.Now()
 	data, err := os.ReadFile(path)
 	dur := r.clock.Now().Sub(startTime)
@@ -70,7 +93,7 @@ func (r *ProcSysctlRunner) Get(ctx context.Context, key string) (string, error) 
 // Returns wrapped error if the write fails (most commonly EACCES when the
 // process lacks the systemd capability or ProtectKernelTunables blocks it).
 func (r *ProcSysctlRunner) Set(ctx context.Context, key, value string) error {
-	path := keyToPath(key)
+	path := r.path(key)
 	if r.dryRun {
 		r.log.InfoContext(ctx, "sysctl: dry-run skipping write",
 			"key", key, "path", path, "value", value)
