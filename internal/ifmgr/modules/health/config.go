@@ -15,7 +15,6 @@ import (
 
 const (
 	defaultStateFile         = "/var/run/mwan-health.state"
-	defaultPersistStateFile  = "/var/lib/mwan/health-state"
 	defaultTimeout           = 2 * time.Second
 	defaultInterval          = 10 * time.Second
 	defaultPingCount         = 3
@@ -49,12 +48,6 @@ func validateProbeConfig(cfg Config) error {
 	var validationError error
 	if cfg.StateFile == "" {
 		validationError = errors.Join(validationError, errors.New("state_file is required"))
-	}
-	if cfg.PersistStateFile == "" {
-		validationError = errors.Join(
-			validationError,
-			errors.New("persist_state_file is required"),
-		)
 	}
 	if len(cfg.TargetsV6) == 0 {
 		validationError = errors.Join(
@@ -196,7 +189,6 @@ func validateWANs(cfg Config) error {
 func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 	healthConfig := Config{
 		StateFile:         "",
-		PersistStateFile:  "",
 		TargetsV4:         nil,
 		TargetsV6:         nil,
 		HTTPURLs:          nil,
@@ -249,9 +241,6 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 func applyDefaults(cfg *Config) {
 	if cfg.StateFile == "" {
 		cfg.StateFile = defaultStateFile
-	}
-	if cfg.PersistStateFile == "" {
-		cfg.PersistStateFile = defaultPersistStateFile
 	}
 	if len(cfg.TargetsV4) == 0 {
 		cfg.TargetsV4 = defaultTargetsV4()

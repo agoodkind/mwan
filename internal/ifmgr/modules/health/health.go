@@ -128,7 +128,6 @@ func (wan WAN) recoveryThreshold(cfg Config) int {
 // Config keeps module-wide probe policy as the fallback for per-WAN overrides.
 type Config struct {
 	StateFile         string
-	PersistStateFile  string
 	TargetsV4         []netip.Addr
 	TargetsV6         []netip.Addr
 	HTTPURLs          []string
@@ -238,15 +237,12 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	if m.probeHTTP4 == nil {
 		m.probeHTTP4 = netif.HTTPCheck4
 	}
-	if err := m.loadStatuses(ctx, log); err != nil {
-		return err
-	}
-	// Seed the state files. writeStateFiles tolerates a persist-mirror failure,
-	// so any error here is a runtime-file write failure. The runtime file is the
-	// required output, so fail Init rather than run blind on broken /var/run.
-	if err := m.writeStateFiles(ctx, log, m.snapshotStatuses()); err != nil {
+	m.initStatuses()
+	// Seed the state file. It is the module's required output, so fail Init
+	// rather than run blind on a broken /var/run.
+	if err := m.writeStateFile(ctx, log, m.snapshotStatuses()); err != nil {
 		log.WarnContext(ctx, "health: initialize runtime state failed", "err", err)
-		return fmt.Errorf("health: initialize state files: %w", err)
+		return fmt.Errorf("health: initialize state file: %w", err)
 	}
 	// The per-cycle recover in runCycleGuarded keeps a panicking cycle from
 	// killing the loop; this outer recover is a required last-resort backstop for
@@ -374,9 +370,9 @@ func (m *Module) runCycle(ctx context.Context, log *slog.Logger) error {
 			"fail_count", next.FailCount,
 		)
 	}
-	if err := m.writeStateFiles(ctx, log, nextStatuses); err != nil {
-		log.WarnContext(ctx, "health: write state files failed", "err", err)
-		return fmt.Errorf("health: write state files: %w", err)
+	if err := m.writeStateFile(ctx, log, nextStatuses); err != nil {
+		log.WarnContext(ctx, "health: write state file failed", "err", err)
+		return fmt.Errorf("health: write state file: %w", err)
 	}
 	m.Lock()
 	m.statuses = nextStatuses

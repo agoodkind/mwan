@@ -1,18 +1,18 @@
 package health
 
 import (
-	"bufio"
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
-func (m *Module) loadStatuses(ctx context.Context, log *slog.Logger) error {
+// initStatuses puts every configured WAN at the unknown warmup state. A
+// restart therefore probes each link from scratch and reaches its verdict from
+// this run's probes alone, never from a verdict the previous run recorded.
+func (m *Module) initStatuses() {
 	statuses := make(map[string]wanStatus, len(m.cfg.WANs))
 	for _, wan := range m.cfg.WANs {
 		statuses[wan.Name] = wanStatus{
@@ -21,99 +21,30 @@ func (m *Module) loadStatuses(ctx context.Context, log *slog.Logger) error {
 			FailCount: 0,
 		}
 	}
-
-	_, persistPath := m.stateFilePaths()
-	file, err := os.Open(persistPath)
-	if errors.Is(err, os.ErrNotExist) {
-		m.Lock()
-		m.statuses = statuses
-		m.Unlock()
-		log.DebugContext(
-			ctx,
-			"health: persistent state missing; starting unknown",
-			"path", persistPath,
-		)
-		return nil
-	}
-	if err != nil {
-		return stateFileError(ctx, log, "open persistent state", persistPath, err)
-	}
-	defer func() {
-		_ = file.Close()
-	}()
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		name, rawState, found := strings.Cut(scanner.Text(), ":")
-		if !found {
-			continue
-		}
-		if _, configured := statuses[name]; !configured {
-			continue
-		}
-		state := State(rawState)
-		if !state.Valid() {
-			continue
-		}
-		statuses[name] = wanStatus{
-			State:     state,
-			OKCount:   0,
-			FailCount: 0,
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return stateFileError(ctx, log, "scan persistent state", persistPath, err)
-	}
-
 	m.Lock()
 	m.statuses = statuses
 	m.Unlock()
-	log.DebugContext(
-		ctx,
-		"health: persistent state loaded",
-		"path", persistPath,
-		"wan_count", len(statuses),
-	)
-	return nil
 }
 
-// Valid rejects malformed persisted values so a damaged mirror cannot bypass
-// the unknown warmup state on daemon restart.
+// Valid reports whether a state is one the hysteresis machine recognizes.
 func (s State) Valid() bool {
 	return s == StateUnknown || s == StateHealthy || s == StateUnhealthy
 }
 
-func (m *Module) writeStateFiles(
+func (m *Module) writeStateFile(
 	ctx context.Context,
 	log *slog.Logger,
 	statuses map[string]wanStatus,
 ) error {
 	contents := m.serializeState(statuses)
-	statePath, persistPath := m.stateFilePaths()
-	// The runtime file is the load-bearing output, so a failure to write it is an
-	// error the caller must see. Write it before the persist mirror so a runtime
-	// failure leaves persist at the last committed state, matching runCycle's
-	// in-memory rollback.
+	statePath := m.cfg.StateFile
 	if err := writeFileAtomic(ctx, log, statePath, contents); err != nil {
 		return stateFileError(ctx, log, "write runtime state", statePath, err)
 	}
-	// The persist mirror is best-effort restart-recovery state. Log and continue
-	// rather than failing the cycle or killing the module: losing the mirror
-	// only costs restart recovery, and the module re-converges within a couple
-	// of cycles.
-	if err := writeFileAtomic(ctx, log, persistPath, contents); err != nil {
-		log.WarnContext(
-			ctx,
-			"health: persist mirror write failed (best-effort); continuing",
-			"path", persistPath,
-			"err", err,
-		)
-	}
 	log.DebugContext(
 		ctx,
-		"health: state files written",
+		"health: state file written",
 		"state_file", statePath,
-		"persist_state_file", persistPath,
 		"bytes", len(contents),
 	)
 	return nil
@@ -129,10 +60,6 @@ func (m *Module) serializeState(statuses map[string]wanStatus) []byte {
 		_, _ = fmt.Fprintf(&buffer, "%s:%s\n", wan.Name, state)
 	}
 	return buffer.Bytes()
-}
-
-func (m *Module) stateFilePaths() (string, string) {
-	return m.cfg.StateFile, m.cfg.PersistStateFile
 }
 
 func writeFileAtomic(

@@ -66,7 +66,11 @@ ProtectControlGroups=true
 # This default keeps prod vault locked down by default and forces an
 # explicit, reviewable change to relax it.
 ProtectKernelTunables=true
-# The health persist mirror needs restart-recovery state under /var/lib/mwan.
+# /var/lib/mwan is writable because the npt module's DHCPv6-PD source caches
+# each interface's delegated prefix in /var/lib/mwan/pd-<iface>. The
+# /var/lib/mwan entry keeps no leading dash, so systemd refuses to start the
+# unit when the directory is missing.
+#
 # The wanconfig publish opens a sysrepo connection, which writes lock and
 # state files under the repository directory; the leading dash skips the
 # entry on hosts without the wanconfig stack (sysrepo's shared memory under

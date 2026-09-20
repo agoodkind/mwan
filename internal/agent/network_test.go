@@ -22,9 +22,9 @@ import (
 // renders it now that the network tree moved out: a BGP speaker that declares
 // it uses the wanconfig network configuration, an interface to install learned
 // routes on, and the wan module sections reduced to the two filesystem paths
-// TOML still owns. The legacy provider keys are present on purpose, because a
-// gateway upgraded in place still carries them and none of them may reach the
-// parsed configuration.
+// TOML still owns. The legacy provider keys and persist_state_file are present
+// on purpose. A gateway upgraded in place still has them in its config.toml,
+// and none of them may reach the parsed configuration.
 const gatewayConfigTOML = `
 [bgp]
 enabled = true
