@@ -48,6 +48,30 @@ func TestNftEventWipesNAT(t *testing.T) {
 			want:  false,
 		},
 		{
+			// The pinned module empties and refills the two address sets in
+			// table inet mangle on its own cadence, which emits set-element
+			// deletes. They carry a different family, a different table, and a
+			// payload type this classifier does not match, so that module's
+			// writes can never ask npt to reconcile.
+			name: "delete set elements in inet mangle is not a wipe",
+			event: &nftables.MonitorEvent{
+				Type: nftables.MonitorEventTypeDelSetElem,
+				Data: []nftables.SetElement{{Key: []byte{192, 0, 2, 0}}},
+			},
+			want: false,
+		},
+		{
+			name: "delete a set in inet mangle is not a wipe",
+			event: &nftables.MonitorEvent{
+				Type: nftables.MonitorEventTypeDelSet,
+				Data: &nftables.Set{
+					Table: &nftables.Table{Family: nftables.TableFamilyINet, Name: "mangle"},
+					Name:  "att_pinned_v4",
+				},
+			},
+			want: false,
+		},
+		{
 			name:  "delete a different ip6 table",
 			event: &nftables.MonitorEvent{Type: nftables.MonitorEventTypeDelTable, Data: otherV6Table},
 			want:  false,
