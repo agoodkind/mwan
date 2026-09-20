@@ -31,7 +31,8 @@ type ProcSysctlRunner struct {
 	clock  clock
 }
 
-// NewProcSysctlRunner constructs a runner. log must be non-nil.
+// NewProcSysctlRunner constructs a runner that reads and writes the host's own
+// kernel through /proc/sys. log must be non-nil.
 func NewProcSysctlRunner(log *slog.Logger, dryRun bool) *ProcSysctlRunner {
 	if log == nil {
 		log = slog.Default()

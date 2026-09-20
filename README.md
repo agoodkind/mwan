@@ -37,8 +37,8 @@ What a role installs:
   imports the read-only NACM policy into each of startup and running that does
   not already hold it.
 
-Every file the verb writes is byte-identical at every site. It renders no
-template and reads no site value; `configs` renders the files that need one.
+The verb renders no template and reads no site value, so every file it writes
+is byte-identical at every site. `configs` renders the files that need one.
 
 A second `--apply` run reports no change and leaves every timestamp alone.
 `--root <dir>` writes under another directory, asks systemd for nothing, and
