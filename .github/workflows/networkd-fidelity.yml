@@ -1,0 +1,103 @@
+name: networkd fidelity
+
+# A one-time comparison between the unit files the daemon renders from
+# network.json and the hand-authored templates in agoodkind/configs. It runs
+# only when dispatched by hand and is not a required check.
+on:
+  workflow_dispatch:
+    inputs:
+      configs_ref:
+        description: The agoodkind/configs ref to render the inventory from.
+        required: false
+        type: string
+        default: main
+      configs_token:
+        description: >-
+          A token that can read agoodkind/configs. The workflow's own token
+          reads only this repository.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    name: compare rendered and hand-authored unit files
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Mask the configs token
+        env:
+          CONFIGS_TOKEN: ${{ inputs.configs_token }}
+        run: echo "::add-mask::${CONFIGS_TOKEN}"
+
+      - uses: actions/checkout@v7
+
+      - name: Check that the token can read agoodkind/configs
+        env:
+          CONFIGS_TOKEN: ${{ inputs.configs_token }}
+          CONFIGS_REF: ${{ inputs.configs_ref }}
+        run: |
+          if ! git ls-remote "https://x-access-token:${CONFIGS_TOKEN}@github.com/agoodkind/configs.git" "${CONFIGS_REF}" > /tmp/ls-remote.out 2> /tmp/ls-remote.err; then
+            echo "The configs_token input cannot read agoodkind/configs: authentication failed." >&2
+            cat /tmp/ls-remote.err >&2
+            exit 1
+          fi
+          if [ ! -s /tmp/ls-remote.out ]; then
+            echo "The token can read agoodkind/configs, but ref ${CONFIGS_REF} does not exist there." >&2
+            exit 1
+          fi
+          echo "agoodkind/configs ${CONFIGS_REF} is at $(cut -f1 /tmp/ls-remote.out)"
+
+      - name: Check out agoodkind/configs
+        uses: actions/checkout@v7
+        with:
+          repository: agoodkind/configs
+          ref: ${{ inputs.configs_ref }}
+          token: ${{ inputs.configs_token }}
+          path: configs
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      # libpcre2-dev is what the pinned libyang links against, as in ci.yml.
+      # python3-jinja2 and python3-yaml render the inventory the way the
+      # deploy's template module does.
+      - name: Install apt packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libyang2-tools libpcre2-dev python3-jinja2 python3-yaml
+
+      # The render program links the same libyang binding the daemon links,
+      # so the pinned libyang and sysrepo are built into the cgo prefix the
+      # Makefile's hook uses for every gate.
+      - name: Build the cgo dependencies
+        run: make go-mk-cgo-deps
+
+      - name: Build the render program
+        run: |
+          prefix="${PWD}/.make/cgo/$(go env GOOS)-$(go env GOARCH)"
+          export PKG_CONFIG_PATH="${prefix}/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+          go build -trimpath -buildvcs=false -o .make/networkd-render ./internal/networkd/cmd/render
+
+      - name: Compare both gateway groups
+        run: |
+          python3 .github/scripts/networkd-fidelity.py \
+            --configs "${PWD}/configs" \
+            --render "${PWD}/.make/networkd-render" \
+            --work "${RUNNER_TEMP}/networkd-fidelity" \
+            --group mwan_servers \
+            --group mwan_suburban_servers
+
+      - name: Show every rendered file
+        if: always()
+        run: |
+          for file in "${RUNNER_TEMP}"/networkd-fidelity/*/*; do
+            echo "=== ${file}"
+            cat "${file}"
+          done
