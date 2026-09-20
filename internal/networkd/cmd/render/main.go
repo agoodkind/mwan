@@ -87,6 +87,7 @@ func main() {
 	if err != nil {
 		os.Exit(1)
 	}
+	log.Info("render: unit files written", "dir", opts.outDir, "changed", len(changes))
 	for _, change := range changes {
 		fmt.Fprintf(os.Stdout, "%s interface=%s kind=%s removed=%t\n",
 			change.File, change.Interface, change.Kind, change.Removed)
