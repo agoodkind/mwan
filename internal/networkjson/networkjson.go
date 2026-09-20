@@ -226,12 +226,28 @@ type Config struct {
 	// daemon renders, in document order. A provider whose entry names its
 	// files hand-authored contributes none.
 	Links []networkd.Spec
+	// Rejected lists every provider entry the loader refused, in document
+	// order. A rejected provider is absent from WAN, Health, and Links, and the
+	// daemon runs without it.
+	Rejected []Rejection
+}
+
+// Rejection records one provider entry the loader refused and the reason.
+// Provider is empty when the entry states no provider name.
+type Rejection struct {
+	Interface string
+	Provider  string
+	Err       error
 }
 
 // Load reads path, validates it against the models in schemaDir, and returns
-// the network tree it carries. Every failure is fatal to startup: an unreadable
-// file, a file the schema rejects, and a missing value are all configuration
-// errors, and none of them has a safe default.
+// the network tree encoded in it. An unreadable file, a file the schema
+// rejects, a missing group-wide value, and a conflict between two providers
+// are fatal: none of them has a safe default and none of them belongs to one
+// entry. A defect inside one provider entry rejects that entry alone: the
+// loader records it in Rejected, logs it, and returns the remaining providers.
+// One provider's mistake never removes steering from the others. A document
+// with no loadable provider is fatal.
 func Load(path string, schemaDir string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -255,10 +271,9 @@ func Load(path string, schemaDir string) (*Config, error) {
 	}
 	loaded, err := build(&doc)
 	if err != nil {
-		// build returns both a missing required value and a provider-set
-		// conflict (a duplicate routing number, a reserved table), so the log
-		// line names neither specifically; the wrapped error text below carries
-		// the detail.
+		// build returns a missing group-wide value, a provider-set conflict (a
+		// duplicate routing number, a reserved table), and a document with no
+		// loadable provider. The wrapped error text states which.
 		slog.Error("networkjson: configuration rejected", "err", err, "path", path)
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
@@ -293,6 +308,7 @@ func build(doc *document) (*Config, error) {
 		WAN:                make(map[string]config.IfMgrWANEntry, len(doc.Interfaces.Interface)),
 		Health:             make(map[string]config.IfMgrHealthWANSection, len(doc.Interfaces.Interface)),
 		Links:              nil,
+		Rejected:           nil,
 	}
 	required := []struct {
 		leaf  string
@@ -323,13 +339,18 @@ func build(doc *document) (*Config, error) {
 		if entry.WAN == nil {
 			continue
 		}
+		// A defect inside one entry rejects that entry alone. Every check below
+		// this point compares entries with each other. A collision has no
+		// single bad entry, and those checks stay fatal.
 		routing, probe, err := buildProvider(entry)
 		if err != nil {
-			return nil, err
+			loaded.Rejected = append(loaded.Rejected, rejectEntry(entry, err))
+			continue
 		}
 		spec, err := buildLink(entry, routing.TableID)
 		if err != nil {
-			return nil, err
+			loaded.Rejected = append(loaded.Rejected, rejectEntry(entry, err))
+			continue
 		}
 		if spec != nil {
 			routing.V4Source = staticV4Source(*spec)
@@ -352,12 +373,30 @@ func build(doc *document) (*Config, error) {
 		}
 	}
 	if len(loaded.WAN) == 0 {
-		return nil, errors.New("no interface carries a provider")
+		if len(loaded.Rejected) > 0 {
+			slog.Error("networkjson: every provider entry was rejected; nothing to steer",
+				"rejected", len(loaded.Rejected), "err", loaded.Rejected[0].Err)
+			return nil, fmt.Errorf("every provider entry was rejected; the first: %w", loaded.Rejected[0].Err)
+		}
+		return nil, errors.New("no interface declares a provider")
 	}
 	if err := checkProviderSet(loaded); err != nil {
 		return nil, err
 	}
 	return loaded, nil
+}
+
+// rejectEntry records one refused provider entry and logs it. The log line is
+// the operator's first signal: the daemon starts without this provider, and
+// the health state file and the served tree omit it.
+func rejectEntry(entry ifaceEntry, err error) Rejection {
+	provider := ""
+	if entry.WAN != nil {
+		provider = entry.WAN.Name
+	}
+	slog.Error("networkjson: provider entry rejected; the daemon runs without it",
+		"interface", entry.Name, "provider", provider, "err", err)
+	return Rejection{Interface: entry.Name, Provider: provider, Err: err}
 }
 
 // checkProviderSet runs the checks that need the whole provider set rather than

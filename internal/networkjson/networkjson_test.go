@@ -127,6 +127,44 @@ func writeDocument(t *testing.T, body string) string {
 	return path
 }
 
+// requireOneRejection asserts that Load refused exactly the provider entry on
+// iface, with an error containing want, and loaded the other provider of
+// validDocument in full. The daemon runs on that other provider.
+func requireOneRejection(t *testing.T, loaded *networkjson.Config, iface string, provider string, want string) {
+	t.Helper()
+	if len(loaded.Rejected) != 1 {
+		t.Fatalf("rejected = %+v, want exactly one entry", loaded.Rejected)
+	}
+	got := loaded.Rejected[0]
+	if got.Interface != iface || got.Provider != provider {
+		t.Fatalf("rejected %s/%s, want %s/%s", got.Interface, got.Provider, iface, provider)
+	}
+	if got.Err == nil || !strings.Contains(got.Err.Error(), want) {
+		t.Fatalf("rejection error = %v, want it to contain %q", got.Err, want)
+	}
+	if _, present := loaded.WAN[provider]; present {
+		t.Fatalf("rejected provider %s is still in WAN", provider)
+	}
+	if _, present := loaded.Health[provider]; present {
+		t.Fatalf("rejected provider %s is still in Health", provider)
+	}
+	for _, link := range loaded.Links {
+		if link.Name == iface {
+			t.Fatalf("rejected interface %s still has a link specification", iface)
+		}
+	}
+	other := "att"
+	if provider == "att" {
+		other = "webpass"
+	}
+	if _, present := loaded.WAN[other]; !present {
+		t.Fatalf("provider %s is missing; a rejection must leave the other provider loaded", other)
+	}
+	if got := len(loaded.WAN); got != 1 {
+		t.Fatalf("provider count = %d, want 1", got)
+	}
+}
+
 func TestLoadValidFile(t *testing.T) {
 	t.Parallel()
 
@@ -206,12 +244,26 @@ func TestLoadRejectsMissingRequiredLeaf(t *testing.T) {
 	// whether the daemon needs it. The loader is where that requirement lives,
 	// so an absent table id must fail rather than default to zero.
 	body := strings.Replace(validDocument, `"table-id": 100,`, ``, 1)
+	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err != nil {
+		t.Fatalf("Load failed the whole document over one provider's table id: %v", err)
+	}
+	requireOneRejection(t, loaded, "enatt0", "att", "wan att: table-id is required")
+}
+
+func TestLoadFailsWhenEveryProviderIsRejected(t *testing.T) {
+	t.Parallel()
+
+	// A document with no loadable provider gives the daemon nothing to steer,
+	// and starting on it would silently route every LAN flow by the main table.
+	body := strings.Replace(validDocument, `"table-id": 100,`, ``, 1)
+	body = strings.Replace(body, `"table-id": 200,`, ``, 1)
 	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err == nil {
-		t.Fatal("Load accepted a provider with no table id")
+		t.Fatal("Load accepted a document with no loadable provider")
 	}
-	if !strings.Contains(err.Error(), "table-id") {
-		t.Fatalf("error does not name the missing leaf: %v", err)
+	if !strings.Contains(err.Error(), "every provider entry was rejected") {
+		t.Fatalf("error does not state that every entry was rejected: %v", err)
 	}
 }
 
@@ -420,13 +472,11 @@ func TestLoadRejectsAProviderWithNoSteeringContainer(t *testing.T) {
 		``,
 		1,
 	)
-	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
-	if err == nil {
-		t.Fatal("Load accepted a provider with no steering container")
+	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err != nil {
+		t.Fatalf("Load failed the whole document over one provider's steering container: %v", err)
 	}
-	if !strings.Contains(err.Error(), "steering is required") {
-		t.Fatalf("error does not name the missing container: %v", err)
-	}
+	requireOneRejection(t, loaded, "enatt0", "att", "wan att: steering is required")
 }
 
 func TestLoadRejectsAMissingWeight(t *testing.T) {
@@ -441,13 +491,11 @@ func TestLoadRejectsAMissingWeight(t *testing.T) {
 		`"goodkind-mwan-steering:steering": { "tier": 0 },`,
 		1,
 	)
-	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
-	if err == nil {
-		t.Fatal("Load accepted a provider with no weight")
+	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err != nil {
+		t.Fatalf("Load failed the whole document over one provider's weight: %v", err)
 	}
-	if !strings.Contains(err.Error(), "steering/weight is required") {
-		t.Fatalf("error does not name the missing leaf: %v", err)
-	}
+	requireOneRejection(t, loaded, "enwebpass0", "webpass", "wan webpass: steering/weight is required")
 }
 
 func TestLoadRejectsAMissingHashMode(t *testing.T) {
@@ -695,14 +743,12 @@ func TestLoadRejectsAKeySetByBothLayers(t *testing.T) {
 	// webpass types its delegation hint, so a free-form line naming the key
 	// that leaf renders to would either be read as a list or silently win.
 	body := withWebpassFreeForm("PrefixDelegationHint", "::/60")
-	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
-	if err == nil {
-		t.Fatal("Load accepted a key set by both layers")
+	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err != nil {
+		t.Fatalf("Load failed the whole document over one provider's free-form section: %v", err)
 	}
 	const want = "interface enwebpass0: networkd section DHCPv6 key PrefixDelegationHint is set by the delegation hint leaf; remove one"
-	if !strings.Contains(err.Error(), want) {
-		t.Fatalf("Load error = %q, want it to contain %q", err, want)
-	}
+	requireOneRejection(t, loaded, "enwebpass0", "webpass", want)
 }
 
 func TestLoadCarriesAFreeFormSectionNoTypedLeafNames(t *testing.T) {
@@ -826,13 +872,11 @@ func TestLoadRejectsATypedV4Source(t *testing.T) {
 		`"npt-prefix": "2001:db8:beef:200::/60", "v4-source": "203.0.113.2",`,
 		1,
 	)
-	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
-	if err == nil {
-		t.Fatal("Load accepted a document that still types v4-source")
+	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err != nil {
+		t.Fatalf("Load failed the whole document over one provider's v4-source: %v", err)
 	}
-	if !strings.Contains(err.Error(), "v4-source") {
-		t.Fatalf("error does not name the leaf: %v", err)
-	}
+	requireOneRejection(t, loaded, "enwebpass0", "webpass", "v4-source")
 }
 
 func TestLoadRejectsAProviderThatStatesNoLinkFiles(t *testing.T) {
@@ -842,13 +886,11 @@ func TestLoadRejectsAProviderThatStatesNoLinkFiles(t *testing.T) {
 	// deliberately hand-authored or its link block was never written, so the
 	// exemption must be stated rather than inferred from the absence.
 	body := strings.Replace(validDocument, `"goodkind-mwan-steering:link-files": "hand-authored",`, ``, 1)
-	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
-	if err == nil {
-		t.Fatal("Load accepted a provider that states neither link identity nor hand-authored files")
+	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err != nil {
+		t.Fatalf("Load failed the whole document over one provider's link-files leaf: %v", err)
 	}
-	if !strings.Contains(err.Error(), "interface enatt0: link-files is required") {
-		t.Fatalf("error does not name the missing leaf: %v", err)
-	}
+	requireOneRejection(t, loaded, "enatt0", "att", "interface enatt0: link-files is required")
 }
 
 func TestLoadRejectsARenderedLinkWithNoIdentity(t *testing.T) {
@@ -887,13 +929,11 @@ func TestLoadRejectsARenderedLinkWithNoIdentity(t *testing.T) {
 			if body == validDocument {
 				t.Fatal("the document still carries webpass's link container")
 			}
-			_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
-			if err == nil {
-				t.Fatal("Load accepted a rendered link with no device identity")
+			loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+			if err != nil {
+				t.Fatalf("Load failed the whole document over one provider's link identity: %v", err)
 			}
-			if !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("error = %v, want it to contain %q", err, tc.want)
-			}
+			requireOneRejection(t, loaded, "enwebpass0", "webpass", tc.want)
 		})
 	}
 }
@@ -950,19 +990,37 @@ func TestLoadRejectsAVLANParentTheDocumentDoesNotDescribe(t *testing.T) {
 	}
 }
 
-func TestLoadRejectsAFamilyThatOmitsDHCP(t *testing.T) {
+func TestLoadRejectsOnlyTheEntryWithAFamilyThatOmitsDHCP(t *testing.T) {
 	t.Parallel()
 
 	// A family container that does not say whether a client runs cannot be
 	// rendered either way, and the schema cannot require the leaf because an
-	// interface carrying no provider may leave it out.
-	body := strings.Replace(validDocument, `"goodkind-mwan-steering:dhcp": false,`, ``, 1)
-	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
-	if err == nil {
-		t.Fatal("Load accepted a family container with no dhcp leaf")
+	// interface with no provider may leave it out. The 2026-09-20 testbed
+	// outage was an ipv6 container with accept-ra and no dhcp: the loader
+	// refused the whole file and the daemon exited, which removed steering from
+	// three correct providers. Each family is checked, and only the one entry
+	// is rejected.
+	cases := map[string]struct {
+		leaf string
+		want string
+	}{
+		"ipv4": {leaf: `"goodkind-mwan-steering:dhcp": false,`, want: "interface enwebpass0: ipv4/dhcp is required"},
+		"ipv6": {leaf: `"goodkind-mwan-steering:dhcp": true,`, want: "interface enwebpass0: ipv6/dhcp is required"},
 	}
-	if !strings.Contains(err.Error(), "ipv4/dhcp is required") {
-		t.Fatalf("error does not name the missing leaf: %v", err)
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			body := strings.Replace(validDocument, tc.leaf, ``, 1)
+			if body == validDocument {
+				t.Fatalf("webpass's %s dhcp leaf is still in the document", name)
+			}
+			loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+			if err != nil {
+				t.Fatalf("Load failed the whole document over one provider's %s container: %v", name, err)
+			}
+			requireOneRejection(t, loaded, "enwebpass0", "webpass", tc.want)
+		})
 	}
 }
 
@@ -979,11 +1037,9 @@ func TestLoadRejectsAHandAuthoredEntryThatDescribesItsLink(t *testing.T) {
         "goodkind-mwan-steering:link": { "match": { "driver": "i40e" } },`,
 		1,
 	)
-	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
-	if err == nil {
-		t.Fatal("Load accepted a hand-authored entry carrying a link container")
+	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err != nil {
+		t.Fatalf("Load failed the whole document over one provider's contradiction: %v", err)
 	}
-	if !strings.Contains(err.Error(), "interface enatt0: link-files is hand-authored") {
-		t.Fatalf("error does not name the contradiction: %v", err)
-	}
+	requireOneRejection(t, loaded, "enatt0", "att", "interface enatt0: link-files is hand-authored")
 }
