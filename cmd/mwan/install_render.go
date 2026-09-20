@@ -89,8 +89,15 @@ type renderOutcome struct {
 	missing []string
 }
 
+// renderInputs is the closed set of value sets the three templates render
+// from. Naming them keeps each template's inputs typed rather than passing an
+// empty interface through the one rendering path.
+type renderInputs interface {
+	sysctlInputs | rtTablesInputs | nghttpxInputs
+}
+
 // renderGatewayFile renders one embedded template.
-func renderGatewayFile(name string, data any) ([]byte, error) {
+func renderGatewayFile[Inputs renderInputs](name string, data Inputs) ([]byte, error) {
 	parsed, err := template.New(name).ParseFS(renderFS, name)
 	if err != nil {
 		return nil, installFailed("parse the template", name, err)
@@ -271,7 +278,7 @@ type sysctlSetting struct {
 // settle. The number in front of it is what the line means either way.
 func parseSysctlSettings(content []byte) []sysctlSetting {
 	var settings []sysctlSetting
-	for _, raw := range strings.Split(string(content), "\n") {
+	for raw := range strings.SplitSeq(string(content), "\n") {
 		line := strings.TrimSpace(raw)
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
 			continue
