@@ -232,6 +232,39 @@ type Config struct {
 	IfMgr     IfMgrSection     `toml:"ifmgr"`
 	Notify    NotifySection    `toml:"notify"`
 	Wanconfig WanconfigSection `toml:"wanconfig"`
+
+	// Routing and Sysctl carry the site values the install verb renders the
+	// gateway's routing-table and kernel-tunable files from. Both are
+	// pointers, so a host whose config.toml predates them is distinguishable
+	// from one that declares an empty table, and the install verb skips the
+	// file rather than writing an emptier one than the deploy wrote.
+	Routing *RoutingSection `toml:"routing"`
+	Sysctl  *SysctlSection  `toml:"sysctl"`
+}
+
+// RoutingSection carries the routing-table names that are not a provider's.
+// ReservedTables maps each name to the table number it holds, which is what
+// /etc/iproute2/rt_tables lists beside the provider tables the network
+// configuration names. The network file carries the same numbers in its
+// reserved-tables leaf-list and no names, so the names live here.
+type RoutingSection struct {
+	ReservedTables map[string]int `toml:"reserved_tables"`
+}
+
+// SysctlSection names the interfaces whose kernel tunables the gateway's
+// sysctl file overrides. Neither list is derivable from the provider
+// inventory: a provider's link needs reverse path filtering off only where
+// policy routing would otherwise drop its return traffic, and only a link
+// whose upstream sends router advertisements the gateway must ignore needs
+// SLAAC switched off. Both lists hold interface names as the kernel sees
+// them, so a VLAN link is named with its id, for example "enatt0.3242".
+type SysctlSection struct {
+	// DisableSLAACIfaces are the interfaces whose IPv6 router advertisements
+	// and address autoconfiguration are switched off.
+	DisableSLAACIfaces []string `toml:"disable_slaac_ifaces"`
+	// DisableRPFilterIfaces are the interfaces whose IPv4 reverse path
+	// filtering is switched off so policy routing works.
+	DisableRPFilterIfaces []string `toml:"disable_rp_filter_ifaces"`
 }
 
 // WanconfigSection gates the gateway's management surface: whether this
@@ -242,8 +275,14 @@ type Config struct {
 // installed) never opens a connection it cannot complete. Publishing is
 // never a precondition for running: a failed publish is logged and the
 // daemon carries on without a management surface.
+//
+// RestconfPort is the port the front-end proxy exposes rousette on, on the
+// management address. rousette itself binds ::1 only, so this is the one
+// port a client reaches. Zero means the rendered config predates the key,
+// and the install verb then leaves the proxy's configuration alone.
 type WanconfigSection struct {
-	Publish bool `toml:"publish"`
+	Publish      bool `toml:"publish"`
+	RestconfPort int  `toml:"restconf_port"`
 }
 
 // NotifySection controls the per-(kind, key) repeat cadence that the
@@ -398,6 +437,14 @@ func Load() (*Config, error) {
 		}
 	}
 
+	return LoadFrom(path)
+}
+
+// LoadFrom loads the configuration at path, applying the same defaults,
+// environment overrides, and checks Load applies. The install verb calls it
+// with a path below its root, which is why the path resolution stays in Load
+// rather than here.
+func LoadFrom(path string) (*Config, error) {
 	// The path comes from the unit file or the operator's command line, both
 	// already privileged, so cleaning it normalizes the value rather than
 	// defending a trust boundary.
