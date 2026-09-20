@@ -59,8 +59,9 @@ func ReloadIfRunning(ctx context.Context) error {
 	select {
 	case outcome := <-result:
 		if outcome != jobResultDone {
-			slog.ErrorContext(ctx, "networkd: reload did not complete", "unit", networkdUnit, "result", outcome)
-			return fmt.Errorf("reload %s: job result %s", networkdUnit, outcome)
+			err := fmt.Errorf("reload %s: job result %s", networkdUnit, outcome)
+			slog.ErrorContext(ctx, "networkd: reload did not complete", "unit", networkdUnit, "err", err)
+			return err
 		}
 	case <-ctx.Done():
 		slog.ErrorContext(ctx, "networkd: reload interrupted", "unit", networkdUnit, "err", ctx.Err())

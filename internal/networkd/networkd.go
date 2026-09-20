@@ -177,11 +177,10 @@ func WriteDir(dir string, specs []Spec) ([]Change, error) {
 	}
 	var changes []Change
 	for name, file := range rendered {
-		// installfile logs and names the path itself, so the error passes
-		// through as it is.
 		written, err := installfile.Write(filepath.Join(dir, name), []byte(file.content), unitFileMode)
 		if err != nil {
-			return nil, err
+			slog.Error("networkd: writing a unit file failed", "interface", file.iface, "file", name, "err", err)
+			return nil, fmt.Errorf("%s: write %s: %w", file.iface, name, err)
 		}
 		if written {
 			changes = append(changes, Change{File: name, Kind: file.kind, Interface: file.iface, Removed: false})
