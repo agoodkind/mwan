@@ -235,3 +235,144 @@ func TestRenderRejectsAHardwareAddressOnAVLAN(t *testing.T) {
 		t.Fatalf("Render error = %q, want %q", err, want)
 	}
 }
+
+// parentLinkSpec is the physical link a VLAN is created on: matched by
+// driver, with no addressing of its own, the way a tagged hand-off's parent
+// looks when every address sits on the VLAN.
+func parentLinkSpec() networkd.Spec {
+	return networkd.Spec{
+		Name:            "ensonic0",
+		TableID:         0,
+		Match:           networkd.Match{Driver: "e1000e", HardwareAddress: ""},
+		HardwareAddress: "",
+		VLAN:            nil,
+		IPv4:            nil,
+		IPv6:            nil,
+		Files:           nil,
+	}
+}
+
+// mustWrite puts content in dir under name.
+func mustWrite(t *testing.T, dir string, name string, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+}
+
+// assertOnDisk compares one written file against its checked-in rendering.
+func assertOnDisk(t *testing.T, dir string, name string, testdataName string) {
+	t.Helper()
+	got, err := os.ReadFile(filepath.Join(dir, name))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if want := readExpected(t, testdataName); string(got) != want {
+		t.Fatalf("%s on disk mismatch:\ngot:\n%s\nwant:\n%s", name, got, want)
+	}
+}
+
+func TestWriteDirPrunesOnlyItsOwnStaleFiles(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	mustWrite(t, dir, "20-enwebpass0.network", networkd.Marker+"\n[Match]\nName=old\n")
+	mustWrite(t, dir, "10-mgmt.network", "[Match]\nName=enmgmt0\n")
+
+	changed, err := networkd.WriteDir(dir, []networkd.Spec{leasedLinkSpec()})
+	if err != nil {
+		t.Fatalf("WriteDir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "20-enwebpass0.network")); !os.IsNotExist(err) {
+		t.Fatal("a stale file this package wrote was kept")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "10-mgmt.network")); err != nil {
+		t.Fatalf("a file this package did not write was removed: %v", err)
+	}
+	want := []networkd.Change{
+		{File: "20-enmbrains0.link", Kind: networkd.FileLink, Interface: "enmbrains0", Removed: false},
+		{File: "20-enmbrains0.network", Kind: networkd.FileNetwork, Interface: "enmbrains0", Removed: false},
+		{File: "20-enwebpass0.network", Kind: networkd.FileNetwork, Interface: "", Removed: true},
+	}
+	if !slices.Equal(changed, want) {
+		t.Fatalf("WriteDir changed %+v, want %+v", changed, want)
+	}
+	assertOnDisk(t, dir, "20-enmbrains0.link", "20-enmbrains0.link")
+	assertOnDisk(t, dir, "20-enmbrains0.network", "20-enmbrains0.network")
+
+	// The second pass is the point: identical content must not touch a file,
+	// because a changed modification time on a .link file is a reason for
+	// udev to act.
+	again, err := networkd.WriteDir(dir, []networkd.Spec{leasedLinkSpec()})
+	if err != nil {
+		t.Fatalf("WriteDir second pass: %v", err)
+	}
+	if len(again) != 0 {
+		t.Fatalf("WriteDir rewrote unchanged files: %+v", again)
+	}
+}
+
+// TestWriteDirNamesAVLANInItsParentsFile pins that the line creating a VLAN
+// lands in the parent's own .network file, built from the child's parent
+// leaf, because no entry declares its own children.
+func TestWriteDirNamesAVLANInItsParentsFile(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	changed, err := networkd.WriteDir(dir, []networkd.Spec{parentLinkSpec(), vlanLinkSpec()})
+	if err != nil {
+		t.Fatalf("WriteDir: %v", err)
+	}
+	if len(changed) != 4 {
+		t.Fatalf("WriteDir changed %d files, want 4: %+v", len(changed), changed)
+	}
+	assertOnDisk(t, dir, "20-ensonic0.link", "20-ensonic0.link")
+	assertOnDisk(t, dir, "20-ensonic0.network", "20-ensonic0.network")
+	assertOnDisk(t, dir, "20-ensonic0.101.netdev", "20-ensonic0.101.netdev")
+	assertOnDisk(t, dir, "20-ensonic0.101.network", "20-ensonic0.101.network")
+}
+
+// TestWriteDirWritesNothingWhenASetIsRefused covers the two refusals: a VLAN
+// whose parent has no rendered file, which nothing would create, and two
+// specifications naming one interface, which would write one file twice.
+// Each refusal leaves the directory as it was, because a partial set is a
+// gateway whose links come up differently after a reboot.
+func TestWriteDirWritesNothingWhenASetIsRefused(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		specs []networkd.Spec
+		want  string
+	}{
+		"vlan parent renders nothing": {
+			specs: []networkd.Spec{vlanLinkSpec()},
+			want:  "ensonic0.101: vlan parent ensonic0 has no rendered .network file to name the VLAN in",
+		},
+		"one interface twice": {
+			specs: []networkd.Spec{staticLinkSpec(nil), staticLinkSpec(nil)},
+			want:  "enwebpass0: rendered twice",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			mustWrite(t, dir, "20-enwebpass0.network", networkd.Marker+"\n[Match]\nName=old\n")
+			_, err := networkd.WriteDir(dir, tc.specs)
+			if err == nil {
+				t.Fatal("WriteDir accepted the set")
+			}
+			if err.Error() != tc.want {
+				t.Fatalf("WriteDir error = %q, want %q", err, tc.want)
+			}
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				t.Fatalf("ReadDir: %v", err)
+			}
+			if len(entries) != 1 || entries[0].Name() != "20-enwebpass0.network" {
+				t.Fatalf("directory changed after a refusal: %v", entries)
+			}
+		})
+	}
+}
