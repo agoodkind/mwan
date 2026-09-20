@@ -257,6 +257,11 @@ func loadNetworkConfig(ctx context.Context, log *slog.Logger, cfg *config.Config
 			"path", networkjson.DefaultPath, "role", role, "err", err)
 		return fmt.Errorf("load network configuration: %w", err)
 	}
+	for _, rejected := range loaded.Rejected {
+		log.ErrorContext(ctx, "ifmgr: provider entry rejected; steering the remaining providers",
+			"path", networkjson.DefaultPath, "interface", rejected.Interface,
+			"provider", rejected.Provider, "err", rejected.Err)
+	}
 	loaded.Apply(cfg)
 
 	changed, err := networkd.WriteDir(networkd.DefaultUnitDir, loaded.Links)
