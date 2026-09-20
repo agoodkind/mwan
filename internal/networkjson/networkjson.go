@@ -904,7 +904,7 @@ func ApplyDefault(cfg *config.Config) error {
 
 // Apply writes the loaded tree onto cfg, filling the fields the TOML sections
 // filled before this file owned them. The health and routes sections keep the
-// filesystem paths TOML still carries, so only the network values are written.
+// filesystem paths TOML still owns. Apply writes only the network values.
 func (c *Config) Apply(cfg *config.Config) {
 	cfg.IfMgr.InternalPrefix = c.InternalPrefix
 	cfg.IfMgr.OpnsenseEdgeV6 = c.OpnsenseEdgeV6
@@ -930,7 +930,6 @@ func (c *Config) Apply(cfg *config.Config) {
 	if cfg.IfMgr.Modules.Health == nil {
 		cfg.IfMgr.Modules.Health = &config.IfMgrHealthSection{
 			StateFile:          "",
-			PersistStateFile:   "",
 			StatusPushCID:      0,
 			StatusPushPort:     0,
 			ProbeTimeoutMillis: 0,

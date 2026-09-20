@@ -190,14 +190,13 @@ type IfMgrWANRoutesSection struct {
 	HealthStateFile string `toml:"health_state_file"`
 }
 
-// IfMgrHealthSection keeps the module's two state-file paths and the address it
-// pushes its verdict to, all of which stay in TOML, beside the probe timeout and
-// the per-provider policy, which come from network.json. The push address is
-// not a network value: it names a transport between two processes on one
-// machine, so it belongs where state_file belongs.
+// IfMgrHealthSection keeps the module's runtime state-file path and the address
+// it pushes its verdict to. Both stay in TOML, beside the probe timeout and the
+// per-provider policy, which come from network.json. The push address is not a
+// network value. It addresses two processes on one machine, which is why TOML
+// owns it alongside state_file.
 type IfMgrHealthSection struct {
 	StateFile          string                           `toml:"state_file"`
-	PersistStateFile   string                           `toml:"persist_state_file"`
 	StatusPushCID      uint32                           `toml:"status_push_cid"`
 	StatusPushPort     uint32                           `toml:"status_push_port"`
 	ProbeTimeoutMillis int                              `toml:"-"`

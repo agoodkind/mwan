@@ -219,7 +219,6 @@ func buildHealthConfig(
 ) (health.Config, error) {
 	cfg := health.Config{
 		StateFile:         "",
-		PersistStateFile:  "",
 		TargetsV4:         nil,
 		TargetsV6:         nil,
 		HTTPURLs:          nil,
@@ -252,10 +251,9 @@ func buildHealthConfig(
 	}
 
 	cfg.StateFile = section.StateFile
-	cfg.PersistStateFile = section.PersistStateFile
-	// The watchdog's address, not a network value: it names a vsock endpoint on
-	// this machine's hypervisor, which is why it comes from TOML beside the
-	// state files rather than from the network tree.
+	// The watchdog's address, not a network value: it addresses a vsock endpoint
+	// on this machine's hypervisor, which is why TOML owns it alongside the state
+	// file rather than the network tree.
 	cfg.StatusPushCID = section.StatusPushCID
 	cfg.StatusPushPort = section.StatusPushPort
 

@@ -209,8 +209,7 @@ func TestValidateConfigUsesResolvedPerWANPolicy(t *testing.T) {
 	t.Parallel()
 
 	base := Config{
-		StateFile:        "/run/health",
-		PersistStateFile: "/var/lib/health",
+		StateFile: "/run/health",
 		TargetsV4: []netip.Addr{
 			netip.MustParseAddr("192.0.2.1"),
 			netip.MustParseAddr("192.0.2.2"),
@@ -445,7 +444,6 @@ func TestIPv4OnlyProviderValidatesProbesOneFamilyAndReadsHealthy(t *testing.T) {
 	}
 	cfg := Config{
 		StateFile:         filepath.Join(tempDir, "mwan-health.state"),
-		PersistStateFile:  filepath.Join(tempDir, "health-state"),
 		TargetsV4:         defaultTargetsV4(),
 		TargetsV6:         defaultTargetsV6(),
 		HTTPURLs:          []string{"https://example.test/probe"},
@@ -673,16 +671,14 @@ func TestProbeTargetsUsesEveryConfiguredPing(t *testing.T) {
 	}
 }
 
-func TestWriteStateFilesUsesShellFormat(t *testing.T) {
+func TestWriteStateFileUsesShellFormat(t *testing.T) {
 	t.Parallel()
 
 	tempDir := t.TempDir()
 	stateFile := filepath.Join(tempDir, "run", "mwan-health.state")
-	persistStateFile := filepath.Join(tempDir, "lib", "health-state")
 	module := &Module{
 		cfg: Config{
-			StateFile:        stateFile,
-			PersistStateFile: persistStateFile,
+			StateFile: stateFile,
 			WANs: []WAN{
 				{WANRef: ifmgr.WANRef{Name: "att", Iface: "att0"}},
 				{WANRef: ifmgr.WANRef{Name: "webpass", Iface: "webpass0"}},
@@ -694,60 +690,105 @@ func TestWriteStateFilesUsesShellFormat(t *testing.T) {
 		},
 	}
 
-	if err := module.writeStateFiles(
+	if err := module.writeStateFile(
 		context.Background(),
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 		module.statuses,
 	); err != nil {
-		t.Fatalf("writeStateFiles: %v", err)
+		t.Fatalf("writeStateFile: %v", err)
 	}
 
 	wantContents := "att:healthy\nwebpass:unhealthy\n"
-	for _, path := range []string{stateFile, persistStateFile} {
-		contents, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("ReadFile(%q): %v", path, err)
-		}
-		if string(contents) != wantContents {
-			t.Fatalf("%s contents = %q, want %q", path, contents, wantContents)
-		}
+	contents, err := os.ReadFile(stateFile)
+	if err != nil {
+		t.Fatalf("ReadFile(%q): %v", stateFile, err)
+	}
+	if string(contents) != wantContents {
+		t.Fatalf("%s contents = %q, want %q", stateFile, contents, wantContents)
+	}
+	entries, err := os.ReadDir(tempDir)
+	if err != nil {
+		t.Fatalf("ReadDir(%q): %v", tempDir, err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "run" {
+		t.Fatalf("writeStateFile created %v, want only the runtime directory", entries)
 	}
 }
 
-func TestWriteStateFilesToleratesPersistFailure(t *testing.T) {
+// TestInitReachesEveryVerdictFromThisRunAlone is the contract this module now
+// keeps across a restart: a file on disk recording a previous run's verdict
+// decides nothing. The fixture writes att as unhealthy under the directory and
+// the name the deleted mirror used. Init must still publish the warmup state to
+// the runtime file that wan.routes and steering read, and must leave the
+// fixture's file exactly as it found it.
+func TestInitReachesEveryVerdictFromThisRunAlone(t *testing.T) {
 	t.Parallel()
 
 	tempDir := t.TempDir()
-	blocker := filepath.Join(tempDir, "blocked")
-	if err := os.WriteFile(blocker, []byte("not a directory"), 0o600); err != nil {
-		t.Fatalf("WriteFile blocker: %v", err)
+	mirrorDir := filepath.Join(tempDir, "var", "lib", "mwan")
+	if err := os.MkdirAll(mirrorDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q): %v", mirrorDir, err)
 	}
-	statePath := filepath.Join(tempDir, "run", "mwan-health.state")
-	module := &Module{
-		cfg: Config{
-			StateFile:        statePath,
-			PersistStateFile: filepath.Join(blocker, "health-state"),
-			WANs:             []WAN{{WANRef: ifmgr.WANRef{Name: "att", Iface: "att0"}}},
-		},
-		statuses: map[string]wanStatus{"att": {State: StateHealthy}},
+	mirrorPath := filepath.Join(mirrorDir, "health-state")
+	mirrorContents := []byte("att:unhealthy\n")
+	if err := os.WriteFile(mirrorPath, mirrorContents, 0o600); err != nil {
+		t.Fatalf("WriteFile(%q): %v", mirrorPath, err)
 	}
 
-	// The persist mirror lives under an unwritable path, mirroring the ifmgr
-	// sandbox where /var/lib is read-only. The runtime write must still succeed
-	// and the call must not error.
-	if err := module.writeStateFiles(
-		context.Background(),
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		module.statuses,
-	); err != nil {
-		t.Fatalf("writeStateFiles must tolerate a persist failure: %v", err)
+	stateFile := filepath.Join(tempDir, "run", "mwan-health.state")
+	unreachable := func(
+		_ context.Context,
+		_ string,
+		_ netip.Addr,
+		_ time.Duration,
+	) (time.Duration, error) {
+		return 0, errors.New("no probe runs in this test")
 	}
-	contents, err := os.ReadFile(statePath)
+	module := &Module{
+		cfg: Config{
+			StateFile: stateFile,
+			TargetsV6: []netip.Addr{
+				netip.MustParseAddr("2001:db8::1"),
+				netip.MustParseAddr("2001:db8::2"),
+			},
+			TargetsV4: []netip.Addr{
+				netip.MustParseAddr("192.0.2.1"),
+				netip.MustParseAddr("192.0.2.2"),
+			},
+			Timeout:           time.Second,
+			Interval:          time.Hour,
+			PingCount:         1,
+			SuccessThreshold:  1,
+			FailureThreshold:  1,
+			RecoveryThreshold: 1,
+			WANs:              []WAN{{WANRef: ifmgr.WANRef{Name: "att", Iface: "att0"}}},
+		},
+		probeV4: unreachable,
+		probeV6: unreachable,
+	}
+
+	// Init starts the interval loop on the context it is given, so cancelling it
+	// at the end of the test stops that goroutine.
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	env := &ifmgr.Env{Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	if err := module.Init(ctx, env); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	contents, err := os.ReadFile(stateFile)
 	if err != nil {
-		t.Fatalf("runtime state not written: %v", err)
+		t.Fatalf("ReadFile(%q): %v", stateFile, err)
 	}
-	if string(contents) != "att:healthy\n" {
-		t.Fatalf("runtime state = %q, want %q", contents, "att:healthy\n")
+	if string(contents) != "att:unknown\n" {
+		t.Fatalf("runtime state = %q, want %q", contents, "att:unknown\n")
+	}
+	afterInit, err := os.ReadFile(mirrorPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q): %v", mirrorPath, err)
+	}
+	if string(afterInit) != string(mirrorContents) {
+		t.Fatalf("Init rewrote %s: %q, want %q", mirrorPath, afterInit, mirrorContents)
 	}
 }
 
@@ -761,8 +802,7 @@ func TestInitFailsWhenRuntimeStateUnwritable(t *testing.T) {
 	}
 	module := &Module{
 		cfg: Config{
-			StateFile:        filepath.Join(blocker, "mwan-health.state"),
-			PersistStateFile: filepath.Join(tempDir, "health-state"),
+			StateFile: filepath.Join(blocker, "mwan-health.state"),
 			TargetsV6: []netip.Addr{
 				netip.MustParseAddr("2001:db8::1"),
 				netip.MustParseAddr("2001:db8::2"),
@@ -782,10 +822,9 @@ func TestInitFailsWhenRuntimeStateUnwritable(t *testing.T) {
 	}
 	env := &ifmgr.Env{Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 
-	// The runtime state file lives under an unwritable path. The runtime output
-	// is required, so Init must fail rather than start the loop with no state
-	// file. A persist-only failure is tolerated separately (see the persist
-	// test), so this asserts the runtime path stays load-bearing.
+	// The runtime state file lives under an unwritable path. The runtime file is
+	// the module's only output, so Init must fail rather than start the loop
+	// with no state file.
 	if err := module.Init(context.Background(), env); err == nil {
 		t.Fatal("Init must fail when the runtime state file cannot be written")
 	}
@@ -839,7 +878,6 @@ func TestPushSendsOncePerCycleAndCarriesTheTransition(t *testing.T) {
 		BaseModule: ifmgr.NewBaseModule("health"),
 		cfg: Config{
 			StateFile:         filepath.Join(tempDir, "mwan-health.state"),
-			PersistStateFile:  filepath.Join(tempDir, "health-state"),
 			TargetsV4:         []netip.Addr{netip.MustParseAddr("192.0.2.10")},
 			TargetsV6:         []netip.Addr{netip.MustParseAddr("2001:db8:53::1")},
 			Timeout:           time.Second,
@@ -913,7 +951,6 @@ func TestPushIsSkippedWhenUnconfigured(t *testing.T) {
 		BaseModule: ifmgr.NewBaseModule("health"),
 		cfg: Config{
 			StateFile:         filepath.Join(tempDir, "mwan-health.state"),
-			PersistStateFile:  filepath.Join(tempDir, "health-state"),
 			TargetsV4:         []netip.Addr{netip.MustParseAddr("192.0.2.10")},
 			TargetsV6:         []netip.Addr{netip.MustParseAddr("2001:db8:53::1")},
 			Timeout:           time.Second,
@@ -967,7 +1004,6 @@ func TestRunCycleDoesNotCommitStateWhenPublicationFails(t *testing.T) {
 		},
 	)
 	module.cfg.StateFile = filepath.Join(blockedParent, "mwan-health.state")
-	module.cfg.PersistStateFile = filepath.Join(tempDir, "health-state")
 	module.cfg.FailureThreshold = 1
 	module.cfg.RecoveryThreshold = 1
 	module.statuses = map[string]wanStatus{
@@ -1002,7 +1038,6 @@ func TestReconcileRunsOnlyTheStartupProbe(t *testing.T) {
 	module := testProbeModule(probe, probe)
 	tempDir := t.TempDir()
 	module.cfg.StateFile = filepath.Join(tempDir, "mwan-health.state")
-	module.cfg.PersistStateFile = filepath.Join(tempDir, "health-state")
 	module.cfg.FailureThreshold = 1
 	module.cfg.RecoveryThreshold = 1
 	module.statuses = map[string]wanStatus{

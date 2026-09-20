@@ -404,7 +404,6 @@ func TestBuildHealthConfig(t *testing.T) {
 	shared := buildWANRefs(sharedWANForTest())
 	cfg, err := buildHealthConfig(shared, &config.IfMgrHealthSection{
 		StateFile:          "/run/health",
-		PersistStateFile:   "/var/lib/health",
 		ProbeTimeoutMillis: 3000,
 		WAN: map[string]config.IfMgrHealthWANSection{
 			"att": {
@@ -436,7 +435,6 @@ func TestBuildHealthConfig(t *testing.T) {
 	}
 	want := health.Config{
 		StateFile:         "/run/health",
-		PersistStateFile:  "/var/lib/health",
 		TargetsV4:         nil,
 		TargetsV6:         nil,
 		HTTPURLs:          nil,
@@ -785,8 +783,10 @@ func TestBuildIfMgrModuleConfigsWANRoleBuildsSteering(t *testing.T) {
 func TestNetworkConfigOwnsTheNetworkTree(t *testing.T) {
 	t.Parallel()
 
-	// Every network key below is one a pre-cutover config.toml carries. None of
-	// them may reach the parsed config.
+	// Every network key below appears in a pre-cutover config.toml. None of them
+	// may reach the parsed config. persist_state_file is here for a second
+	// reason: no field claims it any more, and a gateway that still renders it
+	// must parse its config.toml without error.
 	const configTOML = `
 [ifmgr]
 role = "wan"
@@ -833,7 +833,8 @@ ping_count = 99
 		t.Fatalf("[ifmgr.modules.health.wan] still decodes from TOML: %#v",
 			cfg.IfMgr.Modules.Health.WAN)
 	}
-	// The two paths the network file deliberately does not carry must survive.
+	// The two runtime paths the network file deliberately does not carry must
+	// survive.
 	if cfg.IfMgr.Modules.Health.StateFile != "/run/mwan-health.state" {
 		t.Fatalf("health state_file did not parse: %q", cfg.IfMgr.Modules.Health.StateFile)
 	}
@@ -937,7 +938,7 @@ ping_count = 99
 }
 
 // TestGatewayLoadWithoutNetworkTOML is the end state: the gateway's config.toml
-// carries no network section at all, and the wan role still builds every module
+// has no network section at all, and the wan role still builds every module
 // config from the network file plus the two state-file paths TOML keeps.
 func TestGatewayLoadWithoutNetworkTOML(t *testing.T) {
 	t.Parallel()
@@ -954,7 +955,6 @@ health_state_file = "/run/mwan-health.state"
 
 [ifmgr.modules.health]
 state_file = "/run/mwan-health.state"
-persist_state_file = "/var/lib/mwan/health-state"
 `
 	var cfg config.Config
 	if err := toml.Unmarshal([]byte(configTOML), &cfg); err != nil {
@@ -1023,8 +1023,8 @@ persist_state_file = "/var/lib/mwan/health-state"
 	if !ok {
 		t.Fatalf("health config missing or wrong type: %T", set["health"])
 	}
-	if hc.PersistStateFile != "/var/lib/mwan/health-state" {
-		t.Fatalf("health persist state file = %q, want TOML's value", hc.PersistStateFile)
+	if hc.StateFile != "/run/mwan-health.state" {
+		t.Fatalf("health state file = %q, want TOML's value", hc.StateFile)
 	}
 	if len(hc.WANs) != 1 || hc.WANs[0].CheckInterval != 10*time.Second {
 		t.Fatalf("health WAN list did not resolve: %#v", hc.WANs)
