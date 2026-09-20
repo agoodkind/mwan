@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/netip"
 	"runtime"
+	"slices"
 	"testing"
 	"time"
 
@@ -236,13 +237,33 @@ func liveSet(t *testing.T, conn *nftables.Conn, name string) *nftables.Set {
 // kernelElementKeys reads one set back and renders its elements the way the
 // recorded tests render the queued ones, so the two assertions read alike and a
 // mismatch names addresses rather than bytes.
+//
+// The elements are sorted by address first. A set dump arrives in the order the
+// kernel walks its backend, which on this kernel is the reverse of the order
+// the elements were added, and that order is not a property this module
+// depends on: what the marking rules read is which addresses the set stores.
 func kernelElementKeys(t *testing.T, conn *nftables.Conn, name string) []string {
 	t.Helper()
 	elements, err := conn.GetSetElements(liveSet(t, conn, name))
 	if err != nil {
 		t.Fatalf("read the elements of %s: %v", name, err)
 	}
+	slices.SortFunc(elements, func(a, b nftables.SetElement) int {
+		return compareElementKeys(t, a, b)
+	})
 	return elementKeys(t, elements)
+}
+
+// compareElementKeys orders two elements of one set by the address each stores.
+// Every key in a set is distinct, so this is a total order.
+func compareElementKeys(t *testing.T, a, b nftables.SetElement) int {
+	t.Helper()
+	left, leftOK := netip.AddrFromSlice(a.Key)
+	right, rightOK := netip.AddrFromSlice(b.Key)
+	if !leftOK || !rightOK {
+		t.Fatalf("element keys %v and %v are not both addresses", a.Key, b.Key)
+	}
+	return left.Compare(right)
 }
 
 // addProbeChain adds an output-hook chain with one counting rule per family.

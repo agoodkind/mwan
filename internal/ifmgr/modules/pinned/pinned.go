@@ -159,7 +159,9 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	desired := m.collect(refreshCtx, log)
 	if err := m.apply.Apply(refreshCtx, log, desired); err != nil {
 		m.nextRefresh = now.Add(refreshRetryInterval)
-		return err
+		log.WarnContext(ctx, "pinned: refresh failed; the sets keep their previous contents",
+			"retry_in", refreshRetryInterval.String(), "err", err)
+		return fmt.Errorf("pinned: refresh: %w", err)
 	}
 	m.nextRefresh = now.Add(m.cfg.RefreshInterval)
 	log.InfoContext(ctx, "pinned: sets refreshed",
