@@ -2,7 +2,8 @@
 
 Multi-WAN gateway daemon. One binary, `mwan`, for linux/amd64, built with cgo
 so it links libyang and libsysrepo statically and can serve its configuration
-over the management datastore.
+over the management datastore. The standards a change to this code has to meet
+are in [AGENTS.md](AGENTS.md).
 
 ## Layout
 
