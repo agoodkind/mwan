@@ -23,6 +23,7 @@ const (
 // lets tests record the batch (the set creations, the two set flushes, the
 // elements, and the single Flush) without opening a kernel netlink socket.
 type nftConn interface {
+	GetSetByName(t *nftables.Table, name string) (*nftables.Set, error)
 	AddSet(s *nftables.Set, vals []nftables.SetElement) error
 	FlushSet(s *nftables.Set)
 	SetAddElements(s *nftables.Set, vals []nftables.SetElement) error
@@ -56,11 +57,13 @@ func defaultNFTConn() (nftConn, error) {
 }
 
 // Apply replaces the contents of both sets in one netlink batch, committed by
-// a single Conn.Flush. Each set is created first, which the kernel treats as a
-// no-op where it already exists, so a ruleset reload that recreated the table
-// without them is repaired rather than written past. Nothing else in the table
-// is touched: no table, chain or rule is added or deleted, and only these two
-// sets are flushed.
+// a single Conn.Flush. A set the table already defines is used as the kernel
+// reports it and never redeclared, because the kernel refuses a declaration
+// that differs from the live set in any compared field and that refusal would
+// take the whole transaction with it. A set the table lacks, which is what a
+// ruleset reload that recreated the table without them leaves, is declared
+// here. Nothing else in the table is touched: no table, chain or rule is added
+// or deleted, and only these two sets are flushed.
 func (a *nftApplier) Apply(ctx context.Context, log *slog.Logger, desired desiredSets) error {
 	conn, err := a.newConn()
 	if err != nil {
@@ -69,31 +72,31 @@ func (a *nftApplier) Apply(ctx context.Context, log *slog.Logger, desired desire
 
 	table := &nftables.Table{Family: nftables.TableFamilyINet, Name: mangleTableName, Use: 0, Flags: 0}
 	writes := []struct {
-		set    *nftables.Set
-		ranges []addrRange
+		name    string
+		keyType nftables.SetDatatype
+		ranges  []addrRange
 	}{
-		{set: pinnedSet(table, setV4Name, nftables.TypeIPAddr), ranges: desired.V4},
-		{set: pinnedSet(table, setV6Name, nftables.TypeIP6Addr), ranges: desired.V6},
+		{name: setV4Name, keyType: nftables.TypeIPAddr, ranges: desired.V4},
+		{name: setV6Name, keyType: nftables.TypeIP6Addr, ranges: desired.V6},
 	}
 
 	for _, write := range writes {
-		if err := conn.AddSet(write.set, nil); err != nil {
-			log.WarnContext(ctx, "pinned: queue set creation failed",
-				"set", write.set.Name, "err", err)
-			return fmt.Errorf("add set %s: %w", write.set.Name, err)
+		set, err := resolveSet(ctx, log, conn, table, write.name, write.keyType)
+		if err != nil {
+			return err
 		}
-		// The flush and the adds ride the same transaction, so the set never
-		// appears empty to a packet and a rejected element leaves the previous
-		// contents in place.
-		conn.FlushSet(write.set)
+		// The flush and the adds are queued into the same transaction, so the
+		// set never appears empty to a packet and a rejected element leaves the
+		// previous contents in place.
+		conn.FlushSet(set)
 		elements := setElements(write.ranges)
 		if len(elements) == 0 {
 			continue
 		}
-		if err := conn.SetAddElements(write.set, elements); err != nil {
+		if err := conn.SetAddElements(set, elements); err != nil {
 			log.WarnContext(ctx, "pinned: queue set elements failed",
-				"set", write.set.Name, "err", err)
-			return fmt.Errorf("add elements to %s: %w", write.set.Name, err)
+				"set", set.Name, "err", err)
+			return fmt.Errorf("add elements to %s: %w", set.Name, err)
 		}
 	}
 
@@ -102,6 +105,34 @@ func (a *nftApplier) Apply(ctx context.Context, log *slog.Logger, desired desire
 		return fmt.Errorf("nft flush: %w", err)
 	}
 	return nil
+}
+
+// resolveSet returns the live set, or queues the creation of one the table
+// does not define. A read that fails for any other reason is treated the same
+// way: the creation is queued, and the commit then reports the real problem,
+// for example a table that is not there at all.
+func resolveSet(
+	ctx context.Context,
+	log *slog.Logger,
+	conn nftConn,
+	table *nftables.Table,
+	name string,
+	keyType nftables.SetDatatype,
+) (*nftables.Set, error) {
+	live, readErr := conn.GetSetByName(table, name)
+	if readErr == nil && live != nil {
+		return live, nil
+	}
+	if readErr != nil {
+		log.InfoContext(ctx, "pinned: set not readable; declaring it",
+			"set", name, "err", readErr)
+	}
+	set := pinnedSet(table, name, keyType)
+	if err := conn.AddSet(set, nil); err != nil {
+		log.WarnContext(ctx, "pinned: queue set creation failed", "set", name, "err", err)
+		return nil, fmt.Errorf("add set %s: %w", name, err)
+	}
+	return set, nil
 }
 
 // pinnedSet describes one pinned-destination set exactly as the ruleset
@@ -131,11 +162,11 @@ func pinnedSet(table *nftables.Table, name string, keyType nftables.SetDatatype)
 	}
 }
 
-// setElements renders merged ranges as the elements an interval set holds. The
-// kernel's interval backend stores a range as its first address followed by a
-// marker element at the address just past its end, and reports a hit for a key
-// at or after a start and before the following marker. A range that runs to
-// the last address of its family therefore carries no marker, because there is
+// setElements renders merged ranges as the elements an interval set stores.
+// The kernel's interval backend stores a range as its first address followed
+// by a marker element at the address just past its end, and reports a hit for
+// a key at or after a start and before the following marker. A range that runs
+// to the last address of its family therefore gets no marker, because there is
 // no address past it and the run to the top of the key space is what the
 // kernel reads an unterminated start as.
 func setElements(ranges []addrRange) []nftables.SetElement {

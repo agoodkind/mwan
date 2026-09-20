@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/netip"
 	"testing"
@@ -18,6 +19,7 @@ type recordedConn struct {
 	ops        []string
 	elements   map[string][]nftables.SetElement
 	sets       map[string]*nftables.Set
+	live       map[string]*nftables.Set
 	flushCount int
 	flushErr   error
 }
@@ -27,9 +29,22 @@ func newRecordedConn() *recordedConn {
 		ops:        nil,
 		elements:   map[string][]nftables.SetElement{},
 		sets:       map[string]*nftables.Set{},
+		live:       map[string]*nftables.Set{},
 		flushCount: 0,
 		flushErr:   nil,
 	}
+}
+
+// GetSetByName answers from the sets the recorded table holds. An empty live
+// map is the table a ruleset reload left without them, which is the case that
+// has the module declare a set.
+func (c *recordedConn) GetSetByName(t *nftables.Table, name string) (*nftables.Set, error) {
+	c.ops = append(c.ops, "getset:"+name)
+	set, ok := c.live[name]
+	if !ok {
+		return nil, fmt.Errorf("no set %s in table %s", name, t.Name)
+	}
+	return set, nil
 }
 
 func (c *recordedConn) AddSet(s *nftables.Set, vals []nftables.SetElement) error {
@@ -125,11 +140,40 @@ func TestApplyOneTransaction(t *testing.T) {
 		t.Fatalf("Flush called %d times, want exactly 1", conn.flushCount)
 	}
 	wantOps := []string{
-		"addset:" + setV4Name, "flushset:" + setV4Name, "addelements:" + setV4Name,
-		"addset:" + setV6Name, "flushset:" + setV6Name, "addelements:" + setV6Name,
+		"getset:" + setV4Name, "addset:" + setV4Name, "flushset:" + setV4Name, "addelements:" + setV4Name,
+		"getset:" + setV6Name, "addset:" + setV6Name, "flushset:" + setV6Name, "addelements:" + setV6Name,
 		"flush",
 	}
 	assertSequence(t, conn.ops, wantOps)
+}
+
+// TestApplyNeverRedeclaresALiveSet is the one that keeps every refresh from
+// failing on a working gateway: the kernel refuses a set declaration that
+// differs from the live set in any compared field, and that refusal fails the
+// whole transaction, so a set the table already holds is used as it is.
+func TestApplyNeverRedeclaresALiveSet(t *testing.T) {
+	t.Parallel()
+
+	conn := newRecordedConn()
+	table := &nftables.Table{Family: nftables.TableFamilyINet, Name: mangleTableName}
+	conn.live[setV4Name] = &nftables.Set{Table: table, Name: setV4Name, KeyType: nftables.TypeIPAddr, Interval: true}
+	conn.live[setV6Name] = &nftables.Set{Table: table, Name: setV6Name, KeyType: nftables.TypeIP6Addr, Interval: true}
+
+	desired := desiredSets{
+		V4: mergePrefixes(mustPrefixes(t, "192.0.2.0/24")),
+		V6: mergePrefixes(mustPrefixes(t, "2001:db8::/32")),
+	}
+	if err := applierOn(conn).Apply(context.Background(), slog.Default(), desired); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	assertSequence(t, conn.ops, []string{
+		"getset:" + setV4Name, "flushset:" + setV4Name, "addelements:" + setV4Name,
+		"getset:" + setV6Name, "flushset:" + setV6Name, "addelements:" + setV6Name,
+		"flush",
+	})
+	assertSequence(t, elementKeys(t, conn.elements[setV4Name]), []string{
+		"192.0.2.0", "192.0.3.0 (end)",
+	})
 }
 
 // TestApplyDeclaresTheSetsTheRulesetDeclares pins the definition used for a set

@@ -1,5 +1,5 @@
 // Package pinned fills the pinned-destination address sets in the inet mangle
-// table: the seed ranges the configuration carries, the addresses its host
+// table: the seed ranges the configuration lists, the addresses its host
 // names resolve to, and the prefixes the published feed lists. The marking
 // rules in that table read those sets, so their contents decide which
 // destinations leave over the pinned provider. The module owns the contents of
@@ -46,8 +46,8 @@ type Config struct {
 	Enabled         bool
 	RefreshInterval time.Duration
 	RefreshTimeout  time.Duration
-	// FeedURL is the published prefix list, empty when the configuration names
-	// none. The body is read as one prefix per line.
+	// FeedURL is the published prefix list, empty when the configuration lists
+	// none. The body is read as one prefix per line, whatever the URL ends in.
 	FeedURL     string
 	SeedCIDRsV4 []string
 	SeedCIDRsV6 []string

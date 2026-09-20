@@ -216,8 +216,8 @@ func TestReconcileWritesEverySourceInOneTransaction(t *testing.T) {
 		t.Fatalf("Flush called %d times, want exactly 1", conn.flushCount)
 	}
 	assertSequence(t, conn.ops, []string{
-		"addset:" + setV4Name, "flushset:" + setV4Name, "addelements:" + setV4Name,
-		"addset:" + setV6Name, "flushset:" + setV6Name, "addelements:" + setV6Name,
+		"getset:" + setV4Name, "addset:" + setV4Name, "flushset:" + setV4Name, "addelements:" + setV4Name,
+		"getset:" + setV6Name, "addset:" + setV6Name, "flushset:" + setV6Name, "addelements:" + setV6Name,
 		"flush",
 	})
 
@@ -235,7 +235,7 @@ func TestReconcileWritesEverySourceInOneTransaction(t *testing.T) {
 	// The resolved address inside the seed range must not be its own element:
 	// the kernel refuses an element that overlaps one in the same transaction.
 	if slices.Contains(keysV4, insideTheSeed) {
-		t.Errorf("IPv4 elements carry %s, which the seed range already covers: %v",
+		t.Errorf("IPv4 elements include %s, which the seed range already covers: %v",
 			insideTheSeed, keysV4)
 	}
 
@@ -283,9 +283,9 @@ func TestReconcileWritesTheFeedPrefixes(t *testing.T) {
 	}
 }
 
-// TestReconcileHoldsTheCadence proves the module refreshes on its own six-hour
+// TestReconcileKeepsTheCadence proves the module refreshes on its own six-hour
 // cadence rather than on every daemon tick, and that a due refresh runs again.
-func TestReconcileHoldsTheCadence(t *testing.T) {
+func TestReconcileKeepsTheCadence(t *testing.T) {
 	t.Parallel()
 
 	conn := newRecordedConn()
@@ -365,7 +365,7 @@ func TestReconcileKeepsTheOtherSourcesWhenTheFeedIsDown(t *testing.T) {
 }
 
 // TestReconcileKeepsTheOtherSourcesWhenTheFeedErrors covers the other way a
-// feed goes bad: it answers, with a status that carries no prefix list.
+// feed goes bad: it answers with a status that returns no prefix list.
 func TestReconcileKeepsTheOtherSourcesWhenTheFeedErrors(t *testing.T) {
 	t.Parallel()
 

@@ -41,7 +41,7 @@ type addrRange struct {
 }
 
 // desiredSets is one refresh's full intent: the merged ranges each set should
-// hold.
+// store.
 type desiredSets struct {
 	V4 []addrRange
 	V6 []addrRange

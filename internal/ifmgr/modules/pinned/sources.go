@@ -46,7 +46,7 @@ func (m *Module) resolveAll(
 
 // fetchFeed reads the published prefix list and splits it by family. A feed
 // that cannot be fetched or read contributes nothing and is logged: the pin
-// then holds the seeds and the resolved names until the next refresh, which is
+// then keeps the seeds and the resolved names until the next refresh, which is
 // the same degradation the shell refresher had.
 func (m *Module) fetchFeed(
 	ctx context.Context, log *slog.Logger,
@@ -60,7 +60,7 @@ func (m *Module) fetchFeed(
 	}
 	prefixes, skipped := parseFeed(body)
 	if skipped > 0 {
-		log.WarnContext(ctx, "pinned: feed carried lines that are not prefixes",
+		log.WarnContext(ctx, "pinned: feed included lines that are not prefixes",
 			"url", m.cfg.FeedURL, "skipped", skipped)
 	}
 	for _, prefix := range prefixes {
@@ -109,10 +109,14 @@ func (m *Module) readFeed(ctx context.Context, log *slog.Logger) ([]byte, bool) 
 }
 
 // parseFeed reads the body as one prefix per line and returns how many lines
-// held something else, counting a line too long to scan as one of them. A bare
-// address counts as its own single-address prefix, blank lines and lines
-// opening with a comment marker are not counted as failures, and nothing about
-// the URL decides how the body is read.
+// contained something else, counting a line too long to scan as one of them. A
+// bare address counts as its own single-address prefix, and blank lines and
+// lines opening with a comment marker are not counted as failures.
+//
+// Nothing about the URL decides how the body is read. The shell refresher
+// selected a JSON reader with grep -qiE '\\.json($|\\?)', a pattern that
+// requires a literal backslash in the URL and so never matched one, leaving a
+// branch that could not run.
 func parseFeed(body []byte) ([]netip.Prefix, int) {
 	prefixes := make([]netip.Prefix, 0, 64)
 	skipped := 0
