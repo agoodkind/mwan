@@ -15,6 +15,7 @@ import (
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/logging"
+	"goodkind.io/mwan/internal/networkd"
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/tracing"
@@ -67,7 +68,11 @@ func runIfMgr(cfg *config.Config) error {
 		"known_roles", ifmgr.KnownRoles(),
 	)
 
-	if err := loadNetworkConfig(cfg, role); err != nil {
+	ctx, cancel := signal.NotifyContext(context.Background(),
+		os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	if err := loadNetworkConfig(ctx, logger, cfg, role); err != nil {
 		logger.Error("ifmgr: network configuration unusable", "err", err)
 		return err
 	}
@@ -79,10 +84,6 @@ func runIfMgr(cfg *config.Config) error {
 	}
 
 	dcfg.Notifier = notify.FromConfig(cfg, logger, "mwan-ifmgr")
-
-	ctx, cancel := signal.NotifyContext(context.Background(),
-		os.Interrupt, syscall.SIGTERM)
-	defer cancel()
 
 	// The management surface starts before the daemon so its snapshot
 	// store can be handed to the modules, and it stays open for the
@@ -232,12 +233,17 @@ func buildIfMgrDaemonConfig(cfg *config.Config, role string) (ifmgr.DaemonConfig
 }
 
 // loadNetworkConfig fills the network tree from the gateway's network
-// configuration file for a role that steers providers. Any other role leaves
-// cfg untouched: the file describes providers, and a role that steers none has
-// nothing to read. A role that does steer them cannot start without it, which
-// is the contract a bad configuration has always had.
-func loadNetworkConfig(cfg *config.Config, role string) error {
-	logger := slog.Default().With("component", "ifmgr")
+// configuration file for a role that steers providers, and writes each
+// rendered link's unit files between the load and the apply. Any other role
+// leaves cfg untouched: the file describes providers, and a role that steers
+// none has nothing to read. A role that does steer them cannot start without
+// it, which is the contract a bad configuration has always had.
+//
+// The files are written before the daemon waits on any link, because udev
+// applies a .link file when the device appears and the daemon runs ahead of
+// its coldplug trigger. The network manager is reloaded only after a change,
+// so an unchanged set leaves it alone.
+func loadNetworkConfig(ctx context.Context, log *slog.Logger, cfg *config.Config, role string) error {
 	steers, err := roleSteersProviders(role)
 	if err != nil {
 		return err
@@ -245,10 +251,29 @@ func loadNetworkConfig(cfg *config.Config, role string) error {
 	if !steers {
 		return nil
 	}
-	if err := networkjson.ApplyDefault(cfg); err != nil {
-		logger.Warn("ifmgr: load network configuration failed",
+	loaded, err := networkjson.Load(networkjson.DefaultPath, networkjson.DefaultSchemaDir)
+	if err != nil {
+		log.ErrorContext(ctx, "ifmgr: load network configuration failed",
 			"path", networkjson.DefaultPath, "role", role, "err", err)
 		return fmt.Errorf("load network configuration: %w", err)
+	}
+	loaded.Apply(cfg)
+
+	changed, err := networkd.WriteDir(networkd.DefaultUnitDir, loaded.Links)
+	if err != nil {
+		log.ErrorContext(ctx, "ifmgr: writing networkd unit files failed",
+			"dir", networkd.DefaultUnitDir, "err", err)
+		return fmt.Errorf("write networkd unit files: %w", err)
+	}
+	log.InfoContext(ctx, "ifmgr: networkd unit files written",
+		"dir", networkd.DefaultUnitDir, "changed", changed)
+	if len(changed) == 0 {
+		return nil
+	}
+	warnRenamedLinks(ctx, log, changed, loaded.Links)
+	if err := networkd.ReloadIfRunning(ctx); err != nil {
+		log.ErrorContext(ctx, "ifmgr: reloading systemd-networkd failed", "err", err)
+		return fmt.Errorf("reload systemd-networkd: %w", err)
 	}
 	return nil
 }
