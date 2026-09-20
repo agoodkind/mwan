@@ -62,16 +62,19 @@ type Match struct {
 	HardwareAddress string
 }
 
-// VLAN names the interface a VLAN is created on and the tag it carries.
+// VLAN names the interface a VLAN is created on and the tag it carries. The
+// integer widths here and below are the model's own, so a value arrives
+// already inside its leaf's range and is widened, never narrowed, on the way
+// to a unit file or the served tree.
 type VLAN struct {
 	Parent string
-	ID     int
+	ID     uint16
 }
 
 // Address is one static address with its prefix length.
 type Address struct {
 	IP           netip.Addr
-	PrefixLength int
+	PrefixLength uint8
 }
 
 // Family is what both address families carry: whether the interface
@@ -84,7 +87,7 @@ type Family struct {
 	Addresses   []Address
 	DHCP        *bool
 	Gateway     netip.Addr
-	RouteMetric *int
+	RouteMetric *uint32
 }
 
 // FamilyV4 is the IPv4 container: the shared family leaves plus the
@@ -110,7 +113,7 @@ type Delegation struct {
 	DUID                  string
 	WithoutRA             string
 	UseDelegatedPrefix    *bool
-	RouterLifetimeSeconds *int
+	RouterLifetimeSeconds *uint32
 }
 
 // File is the free-form content of one unit file kind.
@@ -122,7 +125,7 @@ type File struct {
 // Section is one free-form heading and its lines, keyed by position because
 // the network manager reads a repeated heading as one section.
 type Section struct {
-	Index   int
+	Index   uint16
 	Name    string
 	Entries []Entry
 }
@@ -130,7 +133,7 @@ type Section struct {
 // Entry is one free-form line, keyed by position because the network manager
 // reads a repeated key within a section as a list.
 type Entry struct {
-	Index int
+	Index uint16
 	Key   string
 	Value string
 }

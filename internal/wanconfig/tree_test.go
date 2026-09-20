@@ -195,12 +195,12 @@ func renderedLinkSpec(name string) *networkd.Spec {
 				Addresses:   []networkd.Address{{IP: netip.MustParseAddr("203.0.113.2"), PrefixLength: 29}},
 				DHCP:        new(false),
 				Gateway:     netip.MustParseAddr("203.0.113.1"),
-				RouteMetric: new(10),
+				RouteMetric: new(uint32(10)),
 			},
 			SourceAddresses: []netip.Addr{netip.MustParseAddr("203.0.113.3")},
 		},
 		IPv6: &networkd.FamilyV6{
-			Family:   networkd.Family{Forwarding: new(true), DHCP: new(true), RouteMetric: new(10)},
+			Family:   networkd.Family{Forwarding: new(true), DHCP: new(true), RouteMetric: new(uint32(10))},
 			AcceptRA: new(true),
 			Delegation: &networkd.Delegation{
 				Hint:                  netip.MustParsePrefix("::/56"),
@@ -208,7 +208,7 @@ func renderedLinkSpec(name string) *networkd.Spec {
 				DUID:                  "00:01:2a:5b:3c:4d:02:00:5e:00:53:01",
 				WithoutRA:             "solicit",
 				UseDelegatedPrefix:    new(false),
-				RouterLifetimeSeconds: new(1800),
+				RouterLifetimeSeconds: new(uint32(1800)),
 			},
 		},
 		Files: []networkd.File{{

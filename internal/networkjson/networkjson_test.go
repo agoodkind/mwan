@@ -751,7 +751,7 @@ func TestLoadCarriesTheLinkIdentity(t *testing.T) {
 				Addresses:   []networkd.Address{{IP: netip.MustParseAddr("203.0.113.2"), PrefixLength: 29}},
 				DHCP:        new(false),
 				Gateway:     netip.MustParseAddr("203.0.113.1"),
-				RouteMetric: new(10),
+				RouteMetric: new(uint32(10)),
 			},
 		},
 		IPv6: &networkd.FamilyV6{
