@@ -76,9 +76,12 @@ type linkMatch struct {
 	HardwareAddress string `json:"hardware-address"`
 }
 
+// The integer widths of the link, family, and free-form wire types are the
+// model's own, so the decoder refuses a value outside them and the loader
+// never narrows one.
 type linkVLAN struct {
-	Parent string `json:"parent"`
-	ID     *int   `json:"id"`
+	Parent string  `json:"parent"`
+	ID     *uint16 `json:"id"`
 }
 
 // networkdContainer mirrors the free-form layer: per unit file kind, an
@@ -93,15 +96,15 @@ type networkdFile struct {
 }
 
 type networkdSection struct {
-	Index   *int            `json:"index"`
+	Index   *uint16         `json:"index"`
 	Name    string          `json:"name"`
 	Entries []networkdEntry `json:"entry"`
 }
 
 type networkdEntry struct {
-	Index *int   `json:"index"`
-	Key   string `json:"key"`
-	Value string `json:"value"`
+	Index *uint16 `json:"index"`
+	Key   string  `json:"key"`
+	Value string  `json:"value"`
 }
 
 // familyWire is what the two published per-family containers share: the
@@ -112,7 +115,7 @@ type familyWire struct {
 	Address     []ipAddress `json:"address"`
 	DHCP        *bool       `json:"goodkind-mwan-steering:dhcp"`
 	Gateway     string      `json:"goodkind-mwan-steering:gateway"`
-	RouteMetric *int        `json:"goodkind-mwan-steering:route-metric"`
+	RouteMetric *uint32     `json:"goodkind-mwan-steering:route-metric"`
 }
 
 type familyV4 struct {
@@ -128,16 +131,16 @@ type familyV6 struct {
 
 type ipAddress struct {
 	IP           string `json:"ip"`
-	PrefixLength *int   `json:"prefix-length"`
+	PrefixLength *uint8 `json:"prefix-length"`
 }
 
 type delegation struct {
-	Hint                  string `json:"hint"`
-	DUIDType              string `json:"duid-type"`
-	DUID                  string `json:"duid"`
-	WithoutRA             string `json:"without-ra"`
-	UseDelegatedPrefix    *bool  `json:"use-delegated-prefix"`
-	RouterLifetimeSeconds *int   `json:"router-lifetime-seconds"`
+	Hint                  string  `json:"hint"`
+	DUIDType              string  `json:"duid-type"`
+	DUID                  string  `json:"duid"`
+	WithoutRA             string  `json:"without-ra"`
+	UseDelegatedPrefix    *bool   `json:"use-delegated-prefix"`
+	RouterLifetimeSeconds *uint32 `json:"router-lifetime-seconds"`
 }
 
 // steering is the member's steering properties: which tier it sits in and how
