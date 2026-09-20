@@ -1,9 +1,15 @@
 name: networkd fidelity
 
 # A one-time comparison between the unit files the daemon renders from
-# network.json and the hand-authored templates in agoodkind/configs. It runs
-# only when dispatched by hand and is not a required check.
+# network.json and the hand-authored templates in agoodkind/configs. It is not
+# a required check. The push trigger is limited to this one branch and exists
+# only to register the workflow: GitHub lists a workflow_dispatch workflow for
+# dispatch only after a push event has run it, and this file is on no other
+# branch. A push run has no token input, so its configs checkout step fails
+# and says so.
 on:
+  push:
+    branches: [mwan-491-compare]
   workflow_dispatch:
     inputs:
       configs_ref:
