@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 )
 
-// initStatuses puts every configured WAN at the unknown warmup state. A
-// restart therefore probes each link from scratch and reaches its verdict from
-// this run's probes alone, never from a verdict the previous run recorded.
+// initStatuses keeps every restart probing each link from scratch, so a verdict
+// rests on this run's probes alone. It sets every configured WAN to the unknown
+// warmup state and restores no verdict a previous run recorded.
 func (m *Module) initStatuses() {
 	statuses := make(map[string]wanStatus, len(m.cfg.WANs))
 	for _, wan := range m.cfg.WANs {

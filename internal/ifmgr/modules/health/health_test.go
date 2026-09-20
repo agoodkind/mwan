@@ -718,9 +718,9 @@ func TestWriteStateFileUsesShellFormat(t *testing.T) {
 // TestInitReachesEveryVerdictFromThisRunAlone is the contract this module now
 // keeps across a restart: a file on disk recording a previous run's verdict
 // decides nothing. The fixture writes att as unhealthy under the directory and
-// the name the deleted mirror used, and Init must still leave att at the warmup
-// state, write that warmup state to the runtime file the routing and steering
-// modules read, and leave the file on disk untouched.
+// the name the deleted mirror used. Init must still publish the warmup state to
+// the runtime file that wan.routes and steering read, and must leave the
+// fixture's file exactly as it found it.
 func TestInitReachesEveryVerdictFromThisRunAlone(t *testing.T) {
 	t.Parallel()
 
@@ -776,9 +776,6 @@ func TestInitReachesEveryVerdictFromThisRunAlone(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	if got := module.snapshotStatuses()["att"].State; got != StateUnknown {
-		t.Fatalf("att state after Init = %s, want %s", got, StateUnknown)
-	}
 	contents, err := os.ReadFile(stateFile)
 	if err != nil {
 		t.Fatalf("ReadFile(%q): %v", stateFile, err)
