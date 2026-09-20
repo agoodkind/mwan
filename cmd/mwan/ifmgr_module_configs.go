@@ -18,6 +18,7 @@ import (
 	npt "goodkind.io/mwan/internal/ifmgr/modules/npt"
 	oobv4 "goodkind.io/mwan/internal/ifmgr/modules/oobv4"
 	oobv6 "goodkind.io/mwan/internal/ifmgr/modules/oobv6"
+	pinned "goodkind.io/mwan/internal/ifmgr/modules/pinned"
 	policyrules "goodkind.io/mwan/internal/ifmgr/modules/policyrules"
 	ralost "goodkind.io/mwan/internal/ifmgr/modules/ralost"
 	slaachealth "goodkind.io/mwan/internal/ifmgr/modules/slaachealth"
@@ -168,6 +169,13 @@ func addWANRoleConfigs(
 	}
 	if want["npt"] {
 		moduleConfigs["npt"] = buildNPTConfig(shared)
+	}
+	if want["pinned"] {
+		pinnedConfig, err := buildPinnedConfig(ifmgrCfg.Modules.Pinned)
+		if err != nil {
+			return err
+		}
+		moduleConfigs["pinned"] = pinnedConfig
 	}
 	return nil
 }
@@ -385,6 +393,51 @@ func buildNPTConfig(shared sharedWANInputs) npt.Config {
 		MwanbrEdgeV6:   shared.MwanbrEdgeV6,
 		WANs:           shared.nptWANs(),
 	}
+}
+
+// buildPinnedConfig reads the pinned-destination sources straight from the
+// module's own table. None of them is a provider property, so this builder
+// takes no shared WAN input: an absent table yields the disabled config, which
+// is what keeps the module off wherever the configuration says nothing.
+func buildPinnedConfig(section *config.IfMgrPinnedSection) (pinned.Config, error) {
+	cfg := pinned.Config{
+		Enabled:         false,
+		RefreshInterval: 6 * time.Hour,
+		RefreshTimeout:  2 * time.Minute,
+		FeedURL:         "",
+		SeedCIDRsV4:     nil,
+		SeedCIDRsV6:     nil,
+		FQDNsV4:         nil,
+		FQDNsV6:         nil,
+	}
+	if section == nil {
+		return cfg, nil
+	}
+	cfg.Enabled = section.Enabled
+	cfg.FeedURL = section.FeedURL
+	cfg.SeedCIDRsV4 = append([]string(nil), section.SeedCIDRsV4...)
+	cfg.SeedCIDRsV6 = append([]string(nil), section.SeedCIDRsV6...)
+	cfg.FQDNsV4 = append([]string(nil), section.FQDNsV4...)
+	cfg.FQDNsV6 = append([]string(nil), section.FQDNsV6...)
+
+	var err error
+	cfg.RefreshInterval, err = parseDurationSetting(
+		section.RefreshInterval,
+		cfg.RefreshInterval,
+		"ifmgr.modules.pinned.refresh_interval",
+	)
+	if err != nil {
+		return pinned.Config{}, err
+	}
+	cfg.RefreshTimeout, err = parseDurationSetting(
+		section.RefreshTimeout,
+		cfg.RefreshTimeout,
+		"ifmgr.modules.pinned.refresh_timeout",
+	)
+	if err != nil {
+		return pinned.Config{}, err
+	}
+	return cfg, nil
 }
 
 // buildWGConfig returns nil when section is nil so the wg module's

@@ -14,6 +14,7 @@ import (
 	"goodkind.io/mwan/internal/ifmgr"
 	health "goodkind.io/mwan/internal/ifmgr/modules/health"
 	npt "goodkind.io/mwan/internal/ifmgr/modules/npt"
+	pinned "goodkind.io/mwan/internal/ifmgr/modules/pinned"
 	steering "goodkind.io/mwan/internal/ifmgr/modules/steering"
 	wanroutes "goodkind.io/mwan/internal/ifmgr/modules/wanroutes"
 	"goodkind.io/mwan/internal/networkjson"
@@ -1028,5 +1029,113 @@ persist_state_file = "/var/lib/mwan/health-state"
 	}
 	if len(hc.WANs) != 1 || hc.WANs[0].CheckInterval != 10*time.Second {
 		t.Fatalf("health WAN list did not resolve: %#v", hc.WANs)
+	}
+}
+
+// TestPinnedSectionDecodesFromTOML is the contract with whatever renders
+// /etc/mwan/config.toml: these are the keys the pinned module reads, and each
+// one reaches the module config with the value the file carried.
+func TestPinnedSectionDecodesFromTOML(t *testing.T) {
+	t.Parallel()
+
+	const configTOML = `
+[ifmgr]
+role = "wan"
+
+[ifmgr.iface.enmbrains0]
+name = "enmbrains0"
+
+[ifmgr.modules.pinned]
+enabled = true
+refresh_interval = "6h"
+refresh_timeout = "2m"
+feed_url = "https://feed.example/prefixes.txt"
+seed_cidrs_v4 = ["74.125.250.0/24", "208.54.0.0/16"]
+seed_cidrs_v6 = ["2600:1000::/28"]
+fqdns_v4 = ["wo.example.net", "spg.example.net"]
+fqdns_v6 = ["epdg.example.net"]
+`
+	var cfg config.Config
+	if err := toml.Unmarshal([]byte(configTOML), &cfg); err != nil {
+		t.Fatalf("toml.Unmarshal: %v", err)
+	}
+	set, err := buildIfMgrModuleConfigs(cfg.IfMgr, "wan")
+	if err != nil {
+		t.Fatalf("buildIfMgrModuleConfigs(wan): %v", err)
+	}
+	pinnedConfig, ok := set["pinned"].(pinned.Config)
+	if !ok {
+		t.Fatalf("pinned config missing or wrong type: %T", set["pinned"])
+	}
+	if !pinnedConfig.Enabled {
+		t.Fatal("enabled = false, want the file's true")
+	}
+	if pinnedConfig.RefreshInterval != 6*time.Hour {
+		t.Fatalf("refresh interval = %s, want 6h", pinnedConfig.RefreshInterval)
+	}
+	if pinnedConfig.RefreshTimeout != 2*time.Minute {
+		t.Fatalf("refresh timeout = %s, want 2m", pinnedConfig.RefreshTimeout)
+	}
+	if pinnedConfig.FeedURL != "https://feed.example/prefixes.txt" {
+		t.Fatalf("feed url = %q, want the file's value", pinnedConfig.FeedURL)
+	}
+	if !reflect.DeepEqual(pinnedConfig.SeedCIDRsV4, []string{"74.125.250.0/24", "208.54.0.0/16"}) {
+		t.Fatalf("seed cidrs v4 = %v, want the file's two ranges", pinnedConfig.SeedCIDRsV4)
+	}
+	if !reflect.DeepEqual(pinnedConfig.SeedCIDRsV6, []string{"2600:1000::/28"}) {
+		t.Fatalf("seed cidrs v6 = %v, want the file's range", pinnedConfig.SeedCIDRsV6)
+	}
+	if !reflect.DeepEqual(pinnedConfig.FQDNsV4, []string{"wo.example.net", "spg.example.net"}) {
+		t.Fatalf("fqdns v4 = %v, want the file's two names", pinnedConfig.FQDNsV4)
+	}
+	if !reflect.DeepEqual(pinnedConfig.FQDNsV6, []string{"epdg.example.net"}) {
+		t.Fatalf("fqdns v6 = %v, want the file's name", pinnedConfig.FQDNsV6)
+	}
+}
+
+// TestBuildPinnedConfigWithoutATableIsOff proves a configuration that says
+// nothing about pinned destinations leaves the module off, so the shell
+// refresher keeps sole ownership of the two sets until a host opts in.
+func TestBuildPinnedConfigWithoutATableIsOff(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := buildPinnedConfig(nil)
+	if err != nil {
+		t.Fatalf("buildPinnedConfig(nil): %v", err)
+	}
+	if cfg.Enabled {
+		t.Fatal("an absent [ifmgr.modules.pinned] table produced an enabled module")
+	}
+	if cfg.RefreshInterval != 6*time.Hour {
+		t.Fatalf("refresh interval = %s, want the six-hour default", cfg.RefreshInterval)
+	}
+
+	set, err := buildIfMgrModuleConfigs(ifmgrForTest(config.IfMgrModulesSection{}), "wan")
+	if err != nil {
+		t.Fatalf("buildIfMgrModuleConfigs(wan): %v", err)
+	}
+	built, ok := set["pinned"].(pinned.Config)
+	if !ok {
+		t.Fatalf("the wan role must build a pinned config: %T", set["pinned"])
+	}
+	if built.Enabled {
+		t.Fatal("the wan role built an enabled pinned config from an empty modules section")
+	}
+}
+
+// TestBuildPinnedConfigRejectsAnUnparsableInterval keeps a typo in the cadence
+// from silently becoming the default.
+func TestBuildPinnedConfigRejectsAnUnparsableInterval(t *testing.T) {
+	t.Parallel()
+
+	_, err := buildPinnedConfig(&config.IfMgrPinnedSection{
+		Enabled:         true,
+		RefreshInterval: "six hours",
+	})
+	if err == nil {
+		t.Fatal("buildPinnedConfig accepted an unparsable refresh_interval")
+	}
+	if !strings.Contains(err.Error(), "refresh_interval") {
+		t.Fatalf("error = %q, want it to name the field", err)
 	}
 }

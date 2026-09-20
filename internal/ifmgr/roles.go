@@ -84,6 +84,10 @@ var roleModules = map[string][]string{
 		// npt programs the ip6 nat NPT chains from the live DHCPv6-PD.
 		// Self-disables when the network configuration lists no providers.
 		"npt",
+		// pinned fills the pinned-destination address sets the marking table
+		// reads. Self-disables unless [ifmgr.modules.pinned] turns it on,
+		// because the shell refresher still writes those two sets.
+		"pinned",
 	},
 }
 

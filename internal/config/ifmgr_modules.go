@@ -18,6 +18,23 @@ type IfMgrModulesSection struct {
 	HostIPv6Policy    *IfMgrHostIPv6PolicySection    `toml:"host_ipv6_policy"`
 	WAN               *IfMgrModulesWANSection        `toml:"wan"`
 	Health            *IfMgrHealthSection            `toml:"health"`
+	Pinned            *IfMgrPinnedSection            `toml:"pinned"`
+}
+
+// IfMgrPinnedSection is the [ifmgr.modules.pinned] table. The module keeps the
+// pinned-destination address sets filled from these three kinds of source: the
+// seed ranges, the host names it resolves, and the published prefix list at
+// FeedURL. Enabled is the gate, and it is off wherever the table is absent,
+// because the shell refresher writes the same two sets.
+type IfMgrPinnedSection struct {
+	Enabled         bool     `toml:"enabled"`
+	RefreshInterval string   `toml:"refresh_interval"`
+	RefreshTimeout  string   `toml:"refresh_timeout"`
+	FeedURL         string   `toml:"feed_url"`
+	SeedCIDRsV4     []string `toml:"seed_cidrs_v4"`
+	SeedCIDRsV6     []string `toml:"seed_cidrs_v6"`
+	FQDNsV4         []string `toml:"fqdns_v4"`
+	FQDNsV6         []string `toml:"fqdns_v6"`
 }
 
 // IfMgrModulesWANSection is the [ifmgr.modules.wan] table. It nests the
