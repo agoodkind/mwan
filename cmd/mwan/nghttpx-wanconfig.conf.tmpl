@@ -1,8 +1,0 @@
-# Reverse proxy exposing the rousette RESTCONF server on the management
-# address only. rousette terminates cleartext HTTP/2 on ::1; this front end
-# is the sanctioned exposure per docs/superpowers/wanconfig/surface.md.
-frontend={{.MgmtAddr}},{{.RestconfPort}};no-tls
-backend=::1,{{.RousettePort}};/restconf/:/yang/:/streams/:/.well-known/;proto=h2
-# nghttpx refuses to start without a catch-all backend (no path pattern).
-backend=::1,{{.RousettePort}};;proto=h2
-workers=1
