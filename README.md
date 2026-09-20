@@ -8,7 +8,7 @@ over the management datastore.
 
 | Path | What it holds |
 |---|---|
-| `cmd/mwan` | The binary: every subcommand, and the four systemd units it embeds |
+| `cmd/mwan` | The binary: every subcommand, and the units, drop-ins, policy and templates it embeds |
 | `internal` | The daemon: interface management modules, BGP, health, the agent, the wanconfig publisher |
 | `internal/yangpub/schema` | The eight YANG modules the binary embeds |
 | `pkg/pveapi` | The Proxmox API client |
@@ -18,23 +18,41 @@ over the management datastore.
 
 ## Installing what the binary owns
 
-The units and the schema are inside the binary, so a host runs the files the
-release it pins was built from rather than whatever a deploying checkout held.
-`mwan install` puts them on the host:
+The units, the YANG schema, the read-only RESTCONF policy, and the templates
+for the files that carry a few site values are inside the binary, so a host
+runs what the release it pins was built from rather than whatever a deploying
+checkout held. `mwan install` puts them on the host:
 
 ```
 mwan install                             # says what it would do, touches nothing
-mwan install --role wan --apply          # write that role's units and enable them
+mwan install --role wan --apply          # install everything that role owns
 mwan install --print-schema /tmp/schema  # write the YANG modules for validation
 ```
 
-A second `--apply` run reports no change and leaves every timestamp alone.
-`--root <dir>` writes under another directory and asks systemd for nothing,
+What a role installs:
+
+- Every role writes its systemd units and drop-ins, then re-enables them, so a
+  unit whose `WantedBy` moved loses the symlink under its old target.
+- The `wan` role installs or updates the eight YANG modules in sysrepo and
+  imports the read-only NACM policy into each of startup and running that does
+  not already hold it.
+- The `wan` role renders three files that are the program's but carry a few
+  site values, from `/etc/mwan/config.toml` and `/etc/mwan/network.json`: the
+  kernel tunables at `/etc/sysctl.d/99-mwan.conf`, the routing table names at
+  `/etc/iproute2/rt_tables`, and the RESTCONF proxy's configuration at
+  `/etc/nghttpx/wanconfig.conf`. It then writes each kernel tunable whose live
+  value differs from the file's.
+
+A run writes each file whose content differs, prints one line per file it
+changed, and exits non-zero on any failure, so a second run reports no change
+and leaves every timestamp alone. A value the rendered configuration does not
+carry yet is reported and the file that needs it is left alone, rather than
+written emptier than the deploy wrote it.
+
+`--root <dir>` writes under another directory, asks systemd for nothing, keeps
+its own sysrepo repository below the root, and applies no kernel tunable,
 which is how to inspect a run without affecting the machine. The verb never
 restarts the daemon; that decision stays with whatever called it.
-
-Installing the schema into sysrepo is still the deploy's job. The binary
-carries the modules and writes them out; it does not touch the datastore.
 
 ## Building and testing
 
