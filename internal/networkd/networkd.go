@@ -304,13 +304,13 @@ func (s Spec) typedLines() []typedLine {
 		lines = append(lines, typedLine{leaf: "hardware-address", value: s.HardwareAddress})
 	}
 	if s.VLAN != nil {
-		lines = append(lines, typedLine{leaf: "vlan.id", value: strconv.Itoa(s.VLAN.ID)})
+		lines = append(lines, typedLine{leaf: "vlan.id", value: decimal(uint64(s.VLAN.ID))})
 	}
 	for _, family := range s.families() {
 		for _, address := range family.shared.Addresses {
 			lines = append(lines, typedLine{
 				leaf:  family.name + ".address",
-				value: address.IP.String() + "/" + strconv.Itoa(address.PrefixLength),
+				value: address.IP.String() + "/" + decimal(uint64(address.PrefixLength)),
 			})
 		}
 	}
@@ -326,13 +326,13 @@ func (s Spec) typedLines() []typedLine {
 		}
 	}
 	if s.IPv4 != nil && s.IPv4.leasesMetric() {
-		lines = append(lines, typedLine{leaf: "ipv4.route-metric", value: strconv.Itoa(*s.IPv4.RouteMetric)})
+		lines = append(lines, typedLine{leaf: "ipv4.route-metric", value: decimal(uint64(*s.IPv4.RouteMetric))})
 	}
 	if s.IPv6 != nil && s.IPv6.Delegation != nil {
 		lines = append(lines, delegationLines(*s.IPv6.Delegation)...)
 	}
 	if s.IPv6 != nil && s.IPv6.leasesMetric() {
-		lines = append(lines, typedLine{leaf: "ipv6.route-metric", value: strconv.Itoa(*s.IPv6.RouteMetric)})
+		lines = append(lines, typedLine{leaf: "ipv6.route-metric", value: decimal(uint64(*s.IPv6.RouteMetric))})
 	}
 	return lines
 }
@@ -393,7 +393,7 @@ func delegationLines(delegation Delegation) []typedLine {
 	if delegation.RouterLifetimeSeconds != nil {
 		lines = append(lines, typedLine{
 			leaf:  "delegation.router-lifetime-seconds",
-			value: strconv.Itoa(*delegation.RouterLifetimeSeconds),
+			value: decimal(uint64(*delegation.RouterLifetimeSeconds)),
 		})
 	}
 	return lines
@@ -432,7 +432,7 @@ func staticRoutes(family namedFamily, tableID int) []*unit.UnitSection {
 		Entries: []*unit.UnitEntry{{Name: keyGateway, Value: gateway}},
 	}
 	if family.shared.RouteMetric != nil {
-		main.Entries = append(main.Entries, &unit.UnitEntry{Name: keyMetric, Value: strconv.Itoa(*family.shared.RouteMetric)})
+		main.Entries = append(main.Entries, &unit.UnitEntry{Name: keyMetric, Value: decimal(uint64(*family.shared.RouteMetric))})
 	}
 	provider := &unit.UnitSection{
 		Section: sectionRoute,
@@ -442,6 +442,13 @@ func staticRoutes(family namedFamily, tableID int) []*unit.UnitSection {
 		},
 	}
 	return []*unit.UnitSection{main, provider}
+}
+
+// decimal renders one of the model's unsigned values in the decimal form
+// the network manager reads. Every caller widens to uint64, never narrows,
+// because the value arrived inside its leaf's own range.
+func decimal(value uint64) string {
+	return strconv.FormatUint(value, 10)
 }
 
 // yesNo renders a boolean the way the network manager reads one.

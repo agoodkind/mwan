@@ -167,7 +167,7 @@ func TestValidateOccupiesTheLeaseMetricOnlyWithoutAGateway(t *testing.T) {
 
 			static := staticLinkSpec(networkSection(tc.section, tc.key, "100"))
 			static.IPv6.Gateway = netip.MustParseAddr("2001:db8::1")
-			static.IPv6.RouteMetric = new(10)
+			static.IPv6.RouteMetric = new(uint32(10))
 			if err := networkd.Validate(static); err != nil {
 				t.Fatalf("Validate rejected a lease metric on a family with a gateway: %v", err)
 			}
