@@ -1,0 +1,21 @@
+#
+# reserved values
+#
+255	local
+254	main
+253	default
+0	unspec
+#
+# local
+#
+#1	inr.ruhep
+
+# One table per provider, named for the provider.
+100	att
+200	webpass
+300	monkeybrains
+
+# Tables held for something other than a provider. The daemon refuses a
+# provider whose table is one of these.
+400	cloudflared
+500	oob

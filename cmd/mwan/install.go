@@ -88,6 +88,11 @@ type roleUnits struct {
 	// units, the run writes the embedded modules and installs them into
 	// sysrepo.
 	schema bool
+	// rendered is set for the role whose files carry site values: after the
+	// schema, the run renders the kernel tunables, the routing table names,
+	// and the RESTCONF proxy's configuration from config.toml and
+	// network.json, and applies the tunables.
+	rendered bool
 }
 
 // installRoles maps each role onto what it installs, matching what the
@@ -124,7 +129,8 @@ var installRoles = map[installRole]roleUnits{
 			"mwan-agent.service", "mwan-ifmgr@wan.service", "mwan-trace-boot.service",
 			"rousette.service", "nghttpx-wanconfig.service",
 		},
-		schema: true,
+		schema:   true,
+		rendered: true,
 	},
 	roleFailover: {
 		files: []installedFile{
@@ -171,6 +177,13 @@ type installOutcome struct {
 	// nacmImported names the datastores the run imported the NACM policy
 	// into. runInstall sets it.
 	nacmImported []yangpub.Datastore
+	// skipped explains each rendered file the run left alone, which is how a
+	// gateway whose config.toml predates a site value says so.
+	skipped []string
+	// sysctlApplied names each kernel tunable whose live value the run
+	// changed, and sysctlMissing each key the running kernel does not have.
+	sysctlApplied []string
+	sysctlMissing []string
 }
 
 // runInstall is the `mwan install` entry point.
@@ -207,6 +220,17 @@ func runInstall(args []string) int {
 		outcome.changed = append(outcome.changed, schema.changed...)
 		outcome.modules = schema.modules
 		outcome.nacmImported = schema.nacmImported
+	}
+	// The rendered files come after the schema, because the network
+	// configuration they read is validated against the modules the schema
+	// step just wrote.
+	if err == nil && installRoles[role].rendered {
+		var rendered renderOutcome
+		rendered, err = installRendered(ctx, slog.Default(), flags.root, rooted)
+		outcome.changed = append(outcome.changed, rendered.changed...)
+		outcome.skipped = rendered.skipped
+		outcome.sysctlApplied = rendered.applied
+		outcome.sysctlMissing = rendered.missing
 	}
 	reportInstall(os.Stdout, outcome, rooted)
 	if err != nil {
@@ -247,7 +271,10 @@ func installUnits(
 	root string,
 	enabler unitEnabler,
 ) (installOutcome, error) {
-	outcome := installOutcome{changed: nil, enabled: nil, modules: nil, nacmImported: nil}
+	outcome := installOutcome{
+		changed: nil, enabled: nil, modules: nil, nacmImported: nil,
+		skipped: nil, sysctlApplied: nil, sysctlMissing: nil,
+	}
 	units := installRoles[role]
 	for _, file := range units.files {
 		content, err := unitFS.ReadFile(file.embedded)
@@ -344,7 +371,7 @@ func installFailed(operation string, name string, err error) error {
 // from "did nothing because it failed early". A rooted run says what it would
 // have enabled, because it asked systemd for nothing.
 func reportInstall(out io.Writer, outcome installOutcome, rooted bool) {
-	if len(outcome.changed) == 0 {
+	if len(outcome.changed) == 0 && len(outcome.sysctlApplied) == 0 {
 		fmt.Fprintln(out, "no change")
 	}
 	for _, path := range outcome.changed {
@@ -364,6 +391,16 @@ func reportInstall(out io.Writer, outcome installOutcome, rooted bool) {
 			names = append(names, string(ds))
 		}
 		fmt.Fprintf(out, "imported the %s policy into %s\n", nacmModule, strings.Join(names, " and "))
+	}
+	for _, reason := range outcome.skipped {
+		fmt.Fprintln(out, reason)
+	}
+	for _, setting := range outcome.sysctlApplied {
+		fmt.Fprintf(out, "applied %s\n", setting)
+	}
+	if len(outcome.sysctlMissing) > 0 {
+		fmt.Fprintf(out, "left %s unset: the running kernel has no such key\n",
+			strings.Join(outcome.sysctlMissing, " "))
 	}
 	if len(outcome.enabled) == 0 {
 		return
@@ -456,6 +493,13 @@ func printInstallUsage(out io.Writer) {
 		fmt.Fprintf(out, "  %-9s writes %s\n", name, strings.Join(written, " "))
 		fmt.Fprintf(out, "  %-9s enables %s\n", "", strings.Join(units.enable, " "))
 	}
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "The wan role also renders three files that are this program's but")
+	fmt.Fprintln(out, "carry a few site values, from "+configTOMLPath+" and")
+	fmt.Fprintln(out, networkjson.DefaultPath+": "+sysctlMwanPath+",")
+	fmt.Fprintln(out, rtTablesPath+" and "+nghttpxConfPath+". It")
+	fmt.Fprintln(out, "then writes each kernel tunable whose live value differs, and says so")
+	fmt.Fprintln(out, "when a value the file needs is not in the configuration yet.")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "The YANG modules are embedded too. The wan role writes them to")
 	fmt.Fprintln(out, networkjson.DefaultSchemaDir+" and installs them into sysrepo,")

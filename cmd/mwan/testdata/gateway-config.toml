@@ -1,0 +1,20 @@
+# The runtime configuration of a gateway whose inventory carries the site
+# values the rendered files need. The provider set and the interface names
+# match yang/instances/network-min.json, which stands in for the network
+# configuration the deploy writes beside this file.
+
+hostname = "gateway-test"
+mwan_vmid = "213"
+mwan_mgmt_addr = "2001:db8:b01::213"
+
+[wanconfig]
+publish = true
+restconf_port = 10080
+
+[routing.reserved_tables]
+cloudflared = 400
+oob = 500
+
+[sysctl]
+disable_slaac_ifaces = ["enwebpass0"]
+disable_rp_filter_ifaces = ["enwebpass0", "enatt0"]
