@@ -16,6 +16,7 @@ import (
 	"goodkind.io/mwan/internal/ifmgr/modules/oobv6"
 	"goodkind.io/mwan/internal/ifmgr/modules/wanroutes"
 	"goodkind.io/mwan/internal/networkd"
+	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/wanconfig"
 	"goodkind.io/mwan/internal/wanstate"
 	"goodkind.io/mwan/internal/yangpub"
@@ -72,6 +73,7 @@ func startWanconfigSurface(
 	logger *slog.Logger,
 	cfg *config.Config,
 	moduleConfigs ifmgr.ModuleConfigSet,
+	rejections []networkjson.Rejection,
 ) *wanconfigSurface {
 	if !cfg.Wanconfig.Publish {
 		return nil
@@ -118,7 +120,7 @@ func startWanconfigSurface(
 	notifier := newSurfaceNotifier(log, gateway)
 	store.Observe(notifier)
 	surface.senderDone = startNotifierSender(surfaceCtx, log, notifier, pub)
-	if err := registerLiveStateProviders(ctx, log, pub, store, gateway); err != nil {
+	if err := registerLiveStateProviders(ctx, log, pub, store, gateway, rejections); err != nil {
 		log.ErrorContext(ctx, "wanconfig: provider registration failed; serving configuration only", "err", err)
 		return surface
 	}

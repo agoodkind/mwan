@@ -15,6 +15,7 @@ import (
 
 	mwanv1 "goodkind.io/mwan/gen/mwan/v1"
 	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/wanconfig"
 	"goodkind.io/mwan/internal/wanstate"
 	"goodkind.io/mwan/internal/yangpub"
@@ -69,9 +70,10 @@ func registerLiveStateProviders(
 	pub yangpub.Publisher,
 	store *wanstate.Store,
 	gateway wanconfig.Gateway,
+	rejections []networkjson.Rejection,
 ) error {
 	interfacesProvider := func(_ context.Context, _ string) ([]yangpub.Item, error) {
-		return interfacesLiveItems(store.Snapshot(), gateway), nil
+		return interfacesLiveItems(store.Snapshot(), gateway, rejections), nil
 	}
 	if err := pub.RegisterProvider(ctx, moduleInterfaces, "/ietf-interfaces:interfaces", interfacesProvider); err != nil {
 		log.ErrorContext(ctx, "wanconfig: register interfaces provider failed", "err", err)
@@ -88,11 +90,15 @@ func registerLiveStateProviders(
 	return nil
 }
 
-// interfacesLiveItems renders the steering state, delegated prefixes, and
-// group state from one snapshot. A value the daemon does not hold is left
-// out rather than served empty.
-func interfacesLiveItems(snap wanstate.Snapshot, gateway wanconfig.Gateway) []yangpub.Item {
-	items := make([]yangpub.Item, 0, len(gateway.Members)*8+4)
+// interfacesLiveItems renders the steering state, delegated prefixes, group
+// state, and provider entries rejected at startup. A value the daemon does
+// not have is omitted rather than served empty.
+func interfacesLiveItems(
+	snap wanstate.Snapshot,
+	gateway wanconfig.Gateway,
+	rejections []networkjson.Rejection,
+) []yangpub.Item {
+	items := make([]yangpub.Item, 0, len(gateway.Members)*8+len(rejections)*3+4)
 	for _, member := range gateway.Members {
 		base := "/ietf-interfaces:interfaces/interface[name='" + member.Iface +
 			"']/" + steeringPrefix + ":steering/state"
@@ -136,6 +142,17 @@ func interfacesLiveItems(snap wanstate.Snapshot, gateway wanconfig.Gateway) []ya
 		}
 	}
 	groupBase := "/ietf-interfaces:interfaces/" + steeringPrefix + ":steering-group/state"
+	for _, rejection := range rejections {
+		base := groupBase + "/rejected-provider[interface='" + rejection.Interface + "']"
+		items = append(
+			items,
+			yangpub.Item{Path: base + "/interface", Value: rejection.Interface},
+			yangpub.Item{Path: base + "/reason", Value: rejection.Err.Error()},
+		)
+		if rejection.Provider != "" {
+			items = append(items, yangpub.Item{Path: base + "/provider", Value: rejection.Provider})
+		}
+	}
 	if snap.TierValid {
 		items = append(items, yangpub.Item{
 			Path:  groupBase + "/active-tier",

@@ -72,7 +72,8 @@ func runIfMgr(cfg *config.Config) error {
 		os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	if err := loadNetworkConfig(ctx, logger, cfg, role); err != nil {
+	rejections, err := loadNetworkConfig(ctx, logger, cfg, role)
+	if err != nil {
 		logger.Error("ifmgr: network configuration unusable", "err", err)
 		return err
 	}
@@ -89,7 +90,7 @@ func runIfMgr(cfg *config.Config) error {
 	// store can be handed to the modules, and it stays open for the
 	// daemon's lifetime so the operational providers keep answering.
 	// A nil surface means this host does not publish one.
-	surface := startWanconfigSurface(ctx, logger, cfg, dcfg.ModuleConfigs)
+	surface := startWanconfigSurface(ctx, logger, cfg, dcfg.ModuleConfigs, rejections)
 	if surface != nil {
 		dcfg.LiveState = surface.store
 		defer surface.Close()
@@ -233,9 +234,10 @@ func buildIfMgrDaemonConfig(cfg *config.Config, role string) (ifmgr.DaemonConfig
 }
 
 // loadNetworkConfig fills the network tree from the gateway's network
-// configuration file for a role that steers providers, and writes each
-// rendered link's unit files between the load and the apply. Any other role
-// leaves cfg untouched: the file describes providers, and a role that steers
+// configuration file for a role that steers providers, returns any provider
+// entries the loader rejected, and writes each rendered link's unit files
+// between the load and the apply. Any other role leaves cfg untouched and
+// returns no rejections: the file describes providers, and a role that steers
 // none has nothing to read. A role that does steer them cannot start without
 // it, which is the contract a bad configuration has always had.
 //
@@ -243,19 +245,24 @@ func buildIfMgrDaemonConfig(cfg *config.Config, role string) (ifmgr.DaemonConfig
 // applies a .link file when the device appears and the daemon runs ahead of
 // its coldplug trigger. The network manager is reloaded only after a change,
 // so an unchanged set leaves it alone.
-func loadNetworkConfig(ctx context.Context, log *slog.Logger, cfg *config.Config, role string) error {
+func loadNetworkConfig(
+	ctx context.Context,
+	log *slog.Logger,
+	cfg *config.Config,
+	role string,
+) ([]networkjson.Rejection, error) {
 	steers, err := roleSteersProviders(role)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !steers {
-		return nil
+		return nil, nil
 	}
 	loaded, err := networkjson.Load(networkjson.DefaultPath, networkjson.DefaultSchemaDir)
 	if err != nil {
 		log.ErrorContext(ctx, "ifmgr: load network configuration failed",
 			"path", networkjson.DefaultPath, "role", role, "err", err)
-		return fmt.Errorf("load network configuration: %w", err)
+		return nil, fmt.Errorf("load network configuration: %w", err)
 	}
 	for _, rejected := range loaded.Rejected {
 		log.ErrorContext(ctx, "ifmgr: provider entry rejected; steering the remaining providers",
@@ -268,19 +275,19 @@ func loadNetworkConfig(ctx context.Context, log *slog.Logger, cfg *config.Config
 	if err != nil {
 		log.ErrorContext(ctx, "ifmgr: writing networkd unit files failed",
 			"dir", networkd.DefaultUnitDir, "err", err)
-		return fmt.Errorf("write networkd unit files: %w", err)
+		return nil, fmt.Errorf("write networkd unit files: %w", err)
 	}
 	log.InfoContext(ctx, "ifmgr: networkd unit files written",
 		"dir", networkd.DefaultUnitDir, "changed", changed)
 	if len(changed) == 0 {
-		return nil
+		return loaded.Rejected, nil
 	}
 	warnRenamedLinks(ctx, log, changed, loaded.Links)
 	if err := networkd.ReloadIfRunning(ctx); err != nil {
 		log.ErrorContext(ctx, "ifmgr: reloading systemd-networkd failed", "err", err)
-		return fmt.Errorf("reload systemd-networkd: %w", err)
+		return nil, fmt.Errorf("reload systemd-networkd: %w", err)
 	}
-	return nil
+	return loaded.Rejected, nil
 }
 
 // roleSteersProviders reports whether role runs the modules the network
