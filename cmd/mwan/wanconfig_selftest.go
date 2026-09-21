@@ -244,11 +244,11 @@ func selftestGateway() wanconfig.Gateway {
 			ProbeTimeoutMillis: 2000,
 		},
 		Members: []wanconfig.Member{{
-			Name:        "att",
-			Iface:       "enatt0",
+			Name:        "example",
+			Iface:       "enexample0",
 			Tier:        0,
 			Weight:      1,
-			ProbePolicy: "att",
+			ProbePolicy: "example",
 			NPTInternal: netip.MustParsePrefix("3d06:bad:b01:210::/60"),
 			NPTExternal: netip.MustParsePrefix("2001:db8:a::/60"),
 			TableID:     100,
@@ -323,7 +323,7 @@ func selftestGateway() wanconfig.Gateway {
 func selftestStore() *wanstate.Store {
 	store := wanstate.New()
 	store.SetHealth(map[string]wanstate.MemberHealth{
-		"att": {
+		"example": {
 			Verdict:             wanstate.HealthHealthy,
 			ConsecutiveFailures: 0,
 			LastTransition:      time.Time{},
@@ -331,14 +331,14 @@ func selftestStore() *wanstate.Store {
 			V6:                  wanstate.ProbePass,
 		},
 	})
-	store.SetRouting(0, map[string]wanstate.MemberRouting{"att": {
+	store.SetRouting(0, map[string]wanstate.MemberRouting{"example": {
 		Carrying:       true,
 		OwnedAddresses: []netip.Addr{netip.MustParseAddr(selftestOwnedAddress)},
 	}})
 	store.SetTranslation(map[string]wanstate.MemberTranslation{
-		"att": {Delegated: netip.MustParsePrefix("2001:db8:a::/60"), KernelPresent: true},
+		"example": {Delegated: netip.MustParsePrefix("2001:db8:a::/60"), KernelPresent: true},
 	})
-	store.SetIntendedRuleset("chain prerouting:\n  iif \"enatt0\" ip6 daddr 2001:db8:a::/60 dnat prefix to 3d06:bad:b01:210::/60\nchain postrouting:\n")
+	store.SetIntendedRuleset("chain prerouting:\n  iif \"enexample0\" ip6 daddr 2001:db8:a::/60 dnat prefix to 3d06:bad:b01:210::/60\nchain postrouting:\n")
 	return store
 }
 
@@ -564,8 +564,8 @@ func checkSelftestNotifications(
 	// The two transitions the acceptance names: a committed health
 	// transition, and a routing pass that installs a different tier than
 	// the baseline selftestStore wrote.
-	store.NotifyHealthTransition("att", wanstate.HealthHealthy, wanstate.HealthUnhealthy)
-	store.SetRouting(1, map[string]wanstate.MemberRouting{"att": {Carrying: false, OwnedAddresses: nil}})
+	store.NotifyHealthTransition("example", wanstate.HealthHealthy, wanstate.HealthUnhealthy)
+	store.SetRouting(1, map[string]wanstate.MemberRouting{"example": {Carrying: false, OwnedAddresses: nil}})
 
 	byPath := map[string]string{}
 	for len(byPath) < 2 {
@@ -598,7 +598,7 @@ func checkSelftestHealthNotification(log *slog.Logger, payload string) error {
 	if err != nil {
 		return err
 	}
-	if err := expectLeaf(body, "interface", `"enatt0"`, payload); err != nil {
+	if err := expectLeaf(body, "interface", `"enexample0"`, payload); err != nil {
 		return err
 	}
 	if err := expectLeaf(body, "health", `"unhealthy"`, payload); err != nil {
@@ -717,12 +717,12 @@ func checkSelftestInterfaces(log *slog.Logger, tree json.RawMessage) error {
 		if err != nil {
 			return err
 		}
-		if string(decoded["name"]) == `"enatt0"` {
+		if string(decoded["name"]) == `"enexample0"` {
 			member = decoded
 		}
 	}
 	if member == nil {
-		return errors.New("interface enatt0 is absent")
+		return errors.New("interface enexample0 is absent")
 	}
 	steering, err := unmarshalObject(log, member["goodkind-mwan-steering:steering"], "steering container")
 	if err != nil {
@@ -731,7 +731,7 @@ func checkSelftestInterfaces(log *slog.Logger, tree json.RawMessage) error {
 	if err := expectLeaf(steering, "tier", "0", "configuration"); err != nil {
 		return err
 	}
-	if err := expectLeaf(steering, "probe-policy", `"att"`, "configuration"); err != nil {
+	if err := expectLeaf(steering, "probe-policy", `"example"`, "configuration"); err != nil {
 		return err
 	}
 	state, err := unmarshalObject(log, steering["state"], "steering state")
@@ -774,7 +774,7 @@ func checkSelftestOwnedAddresses(log *slog.Logger, member map[string]json.RawMes
 	if err != nil {
 		return err
 	}
-	if err := expectLeaf(wan, "name", `"att"`, "live state"); err != nil {
+	if err := expectLeaf(wan, "name", `"example"`, "live state"); err != nil {
 		return err
 	}
 	mappings, err := unmarshalArray(log, wan["static-mapping"], "static-mapping list")
@@ -891,7 +891,7 @@ func checkSelftestNAT(log *slog.Logger, tree json.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	if err := expectLeaf(instance, "name", `"att"`, "configuration"); err != nil {
+	if err := expectLeaf(instance, "name", `"example"`, "configuration"); err != nil {
 		return err
 	}
 	// The type is an identity of the instance's own module, which the JSON
