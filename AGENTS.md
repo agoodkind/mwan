@@ -74,5 +74,15 @@ Linux-only libyang and sysrepo bindings. Use the required Linux GitHub CI
 checks.
 
 If GitHub Actions is unavailable, run `make check` inside the repository's
-Linux builder container. `make test` is valid on Darwin because it already
-selects that container.
+Linux builder container:
+
+```bash
+make wanconfig-builder-image
+docker run --rm --platform linux/amd64 \
+    -v "$PWD:/src" -w /src \
+    -v mwan-wanconfig-gomod:/go/pkg/mod \
+    -e GOWORK=off \
+    mwan-wanconfig-builder make check
+```
+
+`make test` is valid on Darwin because it already selects that container.
