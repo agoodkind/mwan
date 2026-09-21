@@ -74,7 +74,7 @@ func TestCheckNetwork(t *testing.T) {
 		want     int
 		expect   []string
 	}{
-		"the checked-in instance": {
+		"valid document with three providers": {
 			document: func(*testing.T) string { return minNetworkDocument },
 			want:     exitDeployGateOK,
 			expect:   []string{"3 providers, 0 rejected"},

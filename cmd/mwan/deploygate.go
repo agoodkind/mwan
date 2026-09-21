@@ -493,8 +493,8 @@ func checkOwnedAddresses(ctx context.Context, deps deployGateDeps) int {
 }
 
 // The runtime may omit one invalid provider to preserve the others. A deploy
-// must fail instead because installing only part of the intended provider set
-// would turn a configuration error into a live topology change.
+// must reject that partial provider set because it would silently remove a
+// provider from the active routing topology.
 func checkNetwork(deps deployGateDeps, path string, schemaDir string) int {
 	loaded, err := deps.loadNetworkFrom(path, schemaDir)
 	if err != nil {
