@@ -59,11 +59,12 @@ const (
 type deployGateMode string
 
 const (
-	gateModeCheckEgress deployGateMode = "check-egress"
-	gateModeWaitReboot  deployGateMode = "wait-reboot"
-	gateModeWaitEgress  deployGateMode = "wait-egress"
-	gateModeWaitDeploy  deployGateMode = "wait-deploy"
-	gateModeCheckOwned  deployGateMode = "check-owned-addresses"
+	gateModeCheckEgress  deployGateMode = "check-egress"
+	gateModeWaitReboot   deployGateMode = "wait-reboot"
+	gateModeWaitEgress   deployGateMode = "wait-egress"
+	gateModeWaitDeploy   deployGateMode = "wait-deploy"
+	gateModeCheckOwned   deployGateMode = "check-owned-addresses"
+	gateModeCheckNetwork deployGateMode = "check-network"
 )
 
 // traceIDPattern bounds the trace id because it lands in the verdict file
@@ -104,9 +105,11 @@ type deployGateDeps struct {
 	readBootID func(ctx context.Context, vmid int) (string, error)
 	now        func() time.Time
 	sleep      func(d time.Duration)
-	// loadNetwork and listAddrs serve the owned-address check inside the guest.
-	loadNetwork func() (*networkjson.Config, error)
-	listAddrs   func(ctx context.Context, log *slog.Logger, iface string) ([]netif.CurrentAddr, error)
+	// loadNetwork and loadNetworkFrom both call networkjson.Load. Both checks
+	// apply identical schema validation and loader rules.
+	loadNetwork     func() (*networkjson.Config, error)
+	loadNetworkFrom func(path string, schemaDir string) (*networkjson.Config, error)
+	listAddrs       func(ctx context.Context, log *slog.Logger, iface string) ([]netif.CurrentAddr, error)
 	// runGuestOwnedCheck runs that check from the hypervisor through the guest
 	// agent.
 	runGuestOwnedCheck func(ctx context.Context, vmid int) (guestExecResponse, error)
@@ -134,6 +137,7 @@ func newDeployGateDeps() deployGateDeps {
 		loadNetwork: func() (*networkjson.Config, error) {
 			return networkjson.Load(networkjson.DefaultPath, networkjson.DefaultSchemaDir)
 		},
+		loadNetworkFrom:    networkjson.Load,
 		listAddrs:          netif.ListAddrs,
 		runGuestOwnedCheck: readGuestOwnedCheck,
 		alertOwnedMissing:  sendOwnedMissingAlert,
@@ -183,6 +187,12 @@ func runDeployGate(args []string) int {
 			return exitDeployGateUsage
 		}
 		return checkOwnedAddresses(ctx, deps)
+	case gateModeCheckNetwork:
+		if len(rest) != 2 {
+			printDeployGateUsage()
+			return exitDeployGateUsage
+		}
+		return checkNetwork(deps, rest[0], rest[1])
 	case gateModeWaitReboot:
 		if len(rest) != 3 {
 			printDeployGateUsage()
@@ -401,6 +411,7 @@ func printDeployGateUsage() {
 	fmt.Fprintln(os.Stderr,
 		"usage: mwan deploy-gate check-egress"+
 			" | check-owned-addresses"+
+			" | check-network <network_json> <schema_dir>"+
 			" | wait-reboot <vmid> <old_boot_id> <seconds>"+
 			" | wait-egress <seconds>"+
 			" | wait-deploy <vmid> <old_boot_id> <reboot_seconds>"+
@@ -476,6 +487,27 @@ func checkOwnedAddresses(ctx context.Context, deps deployGateDeps) int {
 	}
 	fmt.Fprintf(deps.out, "owned addresses: %d present, %d missing\n", present, missing)
 	if missing > 0 {
+		return exitDeployGateFailed
+	}
+	return exitDeployGateOK
+}
+
+// The runtime may omit one invalid provider to preserve the others. A deploy
+// must reject that partial provider set because it would silently remove a
+// provider from the active routing topology.
+func checkNetwork(deps deployGateDeps, path string, schemaDir string) int {
+	loaded, err := deps.loadNetworkFrom(path, schemaDir)
+	if err != nil {
+		fmt.Fprintf(deps.out, "network configuration rejected: %v\n", err)
+		return exitDeployGateFailed
+	}
+	for _, rejected := range loaded.Rejected {
+		fmt.Fprintf(deps.out, "provider entry rejected: interface %s: %v\n",
+			rejected.Interface, rejected.Err)
+	}
+	fmt.Fprintf(deps.out, "network configuration: %d providers, %d rejected\n",
+		len(loaded.WAN), len(loaded.Rejected))
+	if len(loaded.Rejected) > 0 {
 		return exitDeployGateFailed
 	}
 	return exitDeployGateOK
