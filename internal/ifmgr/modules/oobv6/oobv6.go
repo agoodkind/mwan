@@ -39,7 +39,7 @@ type Module struct {
 
 // Config is the parsed [ifmgr.modules.oobv6] sub-config.
 type Config struct {
-	Iface      string // mbrains
+	Iface      string // the provider link this module watches
 	OOBAddr    string // "3d06:bad:b01:ff::1/128"
 	OOBTableID int    // numeric routing table ID (e.g. 500)
 
@@ -129,10 +129,10 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		return err
 	}
 
-	// Keep the source-based rule for the live MB SLAAC in sync. This is
-	// what makes off-site v6 reach back to vault from any address mbrains
-	// hands us, without depending on the address staying the same across
-	// RA renumbers.
+	// Keep the source-based rule for the live SLAAC address in sync. That rule
+	// routes off-site v6 replies through the OOB table from any address the
+	// provider assigns, without depending on the address staying the same
+	// across RA renumbers.
 	return m.reconcileSLAACSrcRule(ctx, log)
 }
 
@@ -187,7 +187,7 @@ func (m *Module) OnKernelEvent(
 			return nil
 		}
 		log = log.With("op", "route-event", "kind", ev.Kind.String(), "via", ev.Via)
-		log.DebugContext(ctx, "oobv6: route event for mbrains default")
+		log.DebugContext(ctx, "oobv6: route event for the watched link's default")
 		cur, err := netif.FindMainRADefault(ctx, m.cfg.Iface)
 		if err != nil {
 			log.WarnContext(ctx, "oobv6: FindMainRADefault after route event failed", "err", err)
