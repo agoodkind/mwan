@@ -92,7 +92,7 @@ func registerLiveStateProviders(
 
 // interfacesLiveItems renders the steering state, delegated prefixes, group
 // state, and provider entries rejected at startup. A value the daemon does
-// not have is omitted rather than served empty.
+// not store is omitted rather than served empty.
 func interfacesLiveItems(
 	snap wanstate.Snapshot,
 	gateway wanconfig.Gateway,
