@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/wanconfig"
 	"goodkind.io/mwan/internal/wanstate"
 	"goodkind.io/mwan/internal/yangpub"
@@ -342,6 +343,14 @@ func selftestStore() *wanstate.Store {
 	return store
 }
 
+func selftestRejections() []networkjson.Rejection {
+	return []networkjson.Rejection{{
+		Interface: "enrejected0",
+		Provider:  "rejected-example",
+		Err:       errors.New("ipv6/dhcp is required"),
+	}}
+}
+
 // runPrivateSelftest proves the serving contract against a private
 // repository: install the models, publish the configuration, own the
 // modules, register the providers, and read the operational datastore
@@ -390,7 +399,14 @@ func runPrivateSelftestSteps(log *slog.Logger, flags selftestFlags) error {
 			return failStep(log, "own "+module, err)
 		}
 	}
-	if err := registerLiveStateProviders(ctx, log, daemon, selftestStore(), gateway); err != nil {
+	if err := registerLiveStateProviders(
+		ctx,
+		log,
+		daemon,
+		selftestStore(),
+		gateway,
+		selftestRejections(),
+	); err != nil {
 		return failStep(log, "register providers", err)
 	}
 
@@ -761,7 +777,34 @@ func checkSelftestInterfaces(log *slog.Logger, tree json.RawMessage) error {
 	if _, present := groupState["intended-ruleset"]; !present {
 		return errors.New("live state: intended-ruleset is absent")
 	}
+	if err := checkSelftestRejectedProviders(log, groupState); err != nil {
+		return err
+	}
 	return nil
+}
+
+func checkSelftestRejectedProviders(
+	log *slog.Logger,
+	groupState map[string]json.RawMessage,
+) error {
+	entries, err := unmarshalArray(log, groupState["rejected-provider"], "rejected provider list")
+	if err != nil {
+		return err
+	}
+	if len(entries) != 1 {
+		return fmt.Errorf("live state: rejected-provider = %s, want one entry", groupState["rejected-provider"])
+	}
+	rejected, err := unmarshalObject(log, entries[0], "rejected provider entry")
+	if err != nil {
+		return err
+	}
+	if err := expectLeaf(rejected, "interface", `"enrejected0"`, "rejected provider"); err != nil {
+		return err
+	}
+	if err := expectLeaf(rejected, "provider", `"rejected-example"`, "rejected provider"); err != nil {
+		return err
+	}
+	return expectLeaf(rejected, "reason", `"ipv6/dhcp is required"`, "rejected provider")
 }
 
 // checkSelftestOwnedAddresses checks the member's wan container carries the

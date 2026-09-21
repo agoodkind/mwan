@@ -59,7 +59,7 @@ func TestInterfacesLiveItems_ServesTheSnapshot(t *testing.T) {
 	})
 	store.SetIntendedRuleset("chain prerouting:\nchain postrouting:\n")
 
-	items := interfacesLiveItems(store.Snapshot(), liveTestGateway())
+	items := interfacesLiveItems(store.Snapshot(), liveTestGateway(), nil)
 
 	attBase := "/ietf-interfaces:interfaces/interface[name='enatt0']/goodkind-mwan-steering:steering/state"
 	peerBase := "/ietf-interfaces:interfaces/goodkind-mwan-steering:steering-group/state/bgp-peer[address='3d06:bad:b01:201::2']"
@@ -111,7 +111,7 @@ func TestInterfacesLiveItems_ServesOwnedAddresses(t *testing.T) {
 		},
 	})
 
-	items := interfacesLiveItems(store.Snapshot(), liveTestGateway())
+	items := interfacesLiveItems(store.Snapshot(), liveTestGateway(), nil)
 
 	served := map[string][]string{}
 	for _, item := range items {
@@ -142,7 +142,7 @@ func TestInterfacesLiveItems_MarksAStaleAgentAnswer(t *testing.T) {
 		ReadAt:  time.Now().Add(-time.Hour),
 		Reached: true,
 	})
-	items := interfacesLiveItems(store.Snapshot(), liveTestGateway())
+	items := interfacesLiveItems(store.Snapshot(), liveTestGateway(), nil)
 	stalePath := "/ietf-interfaces:interfaces/goodkind-mwan-steering:steering-group/state/bgp-peer[address='3d06:bad:b01:201::2']/stale"
 	for _, item := range items {
 		if item.Path == stalePath {

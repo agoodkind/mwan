@@ -49,6 +49,11 @@ module goodkind-mwan-steering {
      decides its verdict, the prefix-translation inputs, and the
      internal link the members route toward.";
 
+  revision 2026-09-21 {
+    description
+      "This revision adds the rejected-provider operational list under
+       steering-group state. No existing node changes name, type, or shape.";
+  }
   revision 2026-09-19 {
     description
       "Carry each interface's link identity and any unit-file content the
@@ -791,6 +796,25 @@ module goodkind-mwan-steering {
           description
             "The lowest-numbered tier currently holding at least one
              healthy member.";
+        }
+        list rejected-provider {
+          key "interface";
+          description
+            "The loader omitted this provider entry and continued with the
+             remaining providers.";
+          leaf interface {
+            type string;
+            description "The interface key from the rejected entry.";
+          }
+          leaf provider {
+            type string;
+            description "The provider name, when the rejected entry supplied one.";
+          }
+          leaf reason {
+            type string;
+            mandatory true;
+            description "The loader error that caused the rejection.";
+          }
         }
         list bgp-peer {
           key "address";
