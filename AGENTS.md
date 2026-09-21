@@ -69,9 +69,8 @@ separate `opnsensectl` binary in
 
 ## Darwin verification
 
-Do not run `make check` on Darwin. Its host lint path cannot compile the
-Linux-only libyang and sysrepo bindings. Use the required Linux GitHub CI
-checks.
+Do not run `make check` on Darwin. Darwin cannot compile the Linux-only
+libyang and sysrepo bindings. Use the required Linux GitHub CI checks.
 
 If GitHub Actions is unavailable, run `make check` inside the repository's
 Linux builder container:

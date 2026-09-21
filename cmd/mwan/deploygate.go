@@ -105,8 +105,8 @@ type deployGateDeps struct {
 	readBootID func(ctx context.Context, vmid int) (string, error)
 	now        func() time.Time
 	sleep      func(d time.Duration)
-	// Both configuration checks use the production loader so their acceptance
-	// rules cannot drift.
+	// loadNetwork and loadNetworkFrom both call networkjson.Load. Both checks
+	// apply identical schema validation and loader rules.
 	loadNetwork     func() (*networkjson.Config, error)
 	loadNetworkFrom func(path string, schemaDir string) (*networkjson.Config, error)
 	listAddrs       func(ctx context.Context, log *slog.Logger, iface string) ([]netif.CurrentAddr, error)
