@@ -233,13 +233,11 @@ func buildIfMgrDaemonConfig(cfg *config.Config, role string) (ifmgr.DaemonConfig
 	}, nil
 }
 
-// loadNetworkConfig fills the network tree from the gateway's network
-// configuration file for a role that steers providers, returns any provider
-// entries the loader rejected, and writes each rendered link's unit files
-// between the load and the apply. Any other role leaves cfg untouched and
-// returns no rejections: the file describes providers, and a role that steers
-// none has nothing to read. A role that does steer them cannot start without
-// it, which is the contract a bad configuration has always had.
+// loadNetworkConfig loads the provider network configuration for a role that
+// steers providers. It returns provider entries the loader rejected and writes
+// each rendered link's unit files before applying the configuration. Other
+// roles leave cfg unchanged and return no rejections because they do not use
+// provider configuration. A steering role cannot start without the file.
 //
 // The files are written before the daemon waits on any link, because udev
 // applies a .link file when the device appears and the daemon runs ahead of
