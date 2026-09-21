@@ -105,10 +105,9 @@ type deployGateDeps struct {
 	readBootID func(ctx context.Context, vmid int) (string, error)
 	now        func() time.Time
 	sleep      func(d time.Duration)
-	// loadNetwork and listAddrs serve the owned-address check inside the guest.
-	loadNetwork func() (*networkjson.Config, error)
-	// loadNetworkFrom serves check-network, which reads a rendered file at a
-	// path the caller names rather than the installed one.
+	// Both configuration checks use the production loader so their acceptance
+	// rules cannot drift.
+	loadNetwork     func() (*networkjson.Config, error)
 	loadNetworkFrom func(path string, schemaDir string) (*networkjson.Config, error)
 	listAddrs       func(ctx context.Context, log *slog.Logger, iface string) ([]netif.CurrentAddr, error)
 	// runGuestOwnedCheck runs that check from the hypervisor through the guest
@@ -493,13 +492,9 @@ func checkOwnedAddresses(ctx context.Context, deps deployGateDeps) int {
 	return exitDeployGateOK
 }
 
-// checkNetwork loads and validates a rendered network configuration against
-// the schema directory the caller names. It writes nothing and reads no kernel
-// state.
-//
-// Any rejected provider entry fails this check. The daemon accepts a rejected
-// entry at runtime and serves the remaining providers; this check fails
-// instead, before the configuration is installed on the gateway.
+// The runtime may omit one invalid provider to preserve the others. A deploy
+// must fail instead because installing only part of the intended provider set
+// would turn a configuration error into a live topology change.
 func checkNetwork(deps deployGateDeps, path string, schemaDir string) int {
 	loaded, err := deps.loadNetworkFrom(path, schemaDir)
 	if err != nil {

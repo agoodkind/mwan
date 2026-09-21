@@ -1,38 +1,34 @@
 package main
 
 import (
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
-
-	"goodkind.io/mwan/internal/networkjson"
 )
 
-// minNetworkDocument is the three-provider instance document at
-// yang/instances/network-min.json, relative to this package directory.
 const minNetworkDocument = "../../yang/instances/network-min.json"
 
-// webpassIPv6NoDHCP returns the path to a network document. The webpass ipv6
-// container in that document sets accept-ra and omits dhcp. The model leaves
-// dhcp optional. The schema accepts the document; networkjson.Load rejects the
-// entry.
-func webpassIPv6NoDHCP(t *testing.T) string {
+type networkReplacement struct {
+	old string
+	new string
+}
+
+func modifiedNetwork(t *testing.T, replacements ...networkReplacement) string {
 	t.Helper()
 	body, err := os.ReadFile(minNetworkDocument)
 	if err != nil {
 		t.Fatalf("read %s: %v", minNetworkDocument, err)
 	}
-	const anchor = `        "goodkind-mwan-steering:wan": {
-          "name": "webpass",`
-	mutated := strings.Replace(string(body), anchor,
-		`        "ietf-ip:ipv6": {
-          "goodkind-mwan-steering:accept-ra": false
-        },
-`+anchor, 1)
-	if mutated == string(body) {
-		t.Fatal("the webpass wan container is absent from the instance")
+	mutated := string(body)
+	for _, replacement := range replacements {
+		updated := strings.Replace(mutated, replacement.old, replacement.new, 1)
+		if updated == mutated {
+			t.Fatalf("network document omits %q", replacement.old)
+		}
+		mutated = updated
 	}
 	path := filepath.Join(t.TempDir(), "network.json")
 	if err := os.WriteFile(path, []byte(mutated), 0o600); err != nil {
@@ -41,9 +37,35 @@ func webpassIPv6NoDHCP(t *testing.T) string {
 	return path
 }
 
-// TestCheckNetwork runs the deploy-time check over the three documents a
-// deploy meets: the instance the model ships, one the schema accepts and the
-// loader refuses, and a path with no file.
+func webpassIPv6NoDHCP(t *testing.T) string {
+	t.Helper()
+	const anchor = `        "goodkind-mwan-steering:wan": {
+          "name": "webpass",`
+	return modifiedNetwork(t, networkReplacement{
+		old: anchor,
+		new: `        "ietf-ip:ipv6": {
+          "goodkind-mwan-steering:accept-ra": false
+        },
+` + anchor,
+	})
+}
+
+func runCheckNetworkCommand(t *testing.T, arguments ...string) (int, string) {
+	t.Helper()
+	commandArguments := append([]string{"deploy-gate", "check-network"}, arguments...)
+	command := exec.Command(os.Args[0], commandArguments...)
+	command.Env = append(os.Environ(), childMainEnv+"=1")
+	output, err := command.CombinedOutput()
+	if err == nil {
+		return exitDeployGateOK, string(output)
+	}
+	var exitError *exec.ExitError
+	if !errors.As(err, &exitError) {
+		t.Fatalf("run check-network: %v\n%s", err, output)
+	}
+	return exitError.ExitCode(), string(output)
+}
+
 func TestCheckNetwork(t *testing.T) {
 	t.Parallel()
 
@@ -65,6 +87,54 @@ func TestCheckNetwork(t *testing.T) {
 				"2 providers, 1 rejected",
 			},
 		},
+		"two rejected providers": {
+			document: func(t *testing.T) string {
+				t.Helper()
+				const anchor = `        "goodkind-mwan-steering:wan": {
+          "name": "webpass",`
+				return modifiedNetwork(t,
+					networkReplacement{
+						old: anchor,
+						new: `        "ietf-ip:ipv6": {
+          "goodkind-mwan-steering:accept-ra": false
+        },
+` + anchor,
+					},
+					networkReplacement{
+						old: "          \"from-prio\": 57,\n",
+						new: "",
+					},
+				)
+			},
+			want: exitDeployGateFailed,
+			expect: []string{
+				"interface enwebpass0: ipv6/dhcp is required",
+				"interface enmbrains0: wan monkeybrains: from-prio is required",
+				"1 providers, 2 rejected",
+			},
+		},
+		"schema-invalid provider": {
+			document: func(t *testing.T) string {
+				t.Helper()
+				return modifiedNetwork(t, networkReplacement{
+					old: "          \"name\": \"webpass\",\n",
+					new: "",
+				})
+			},
+			want:   exitDeployGateFailed,
+			expect: []string{"network configuration rejected"},
+		},
+		"duplicate routing table": {
+			document: func(t *testing.T) string {
+				t.Helper()
+				return modifiedNetwork(t, networkReplacement{
+					old: "          \"table-id\": 200,\n",
+					new: "          \"table-id\": 100,\n",
+				})
+			},
+			want:   exitDeployGateFailed,
+			expect: []string{"table-id 100 is already taken"},
+		},
 		"no file at the path": {
 			document: func(t *testing.T) string {
 				t.Helper()
@@ -78,28 +148,28 @@ func TestCheckNetwork(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			var out strings.Builder
-			deps := newTestDeps(&out, &fakeClock{now: time.Unix(1000, 0)})
-			deps.loadNetworkFrom = networkjson.Load
-
-			code := checkNetwork(deps, testCase.document(t), networkSchemaDirForTest(t))
+			code, output := runCheckNetworkCommand(
+				t,
+				testCase.document(t),
+				networkSchemaDirForTest(t),
+			)
 
 			if code != testCase.want {
-				t.Fatalf("exit code = %d, want %d\noutput: %s", code, testCase.want, out.String())
+				t.Fatalf("exit code = %d, want %d\noutput: %s", code, testCase.want, output)
 			}
 			for _, want := range testCase.expect {
-				if !strings.Contains(out.String(), want) {
-					t.Fatalf("output omits %q: %s", want, out.String())
+				if !strings.Contains(output, want) {
+					t.Fatalf("output omits %q: %s", want, output)
 				}
 			}
 		})
 	}
 }
 
-func TestRunDeployGateRejectsCheckNetworkWithoutTwoArguments(t *testing.T) {
+func TestCheckNetworkRequiresTwoArguments(t *testing.T) {
 	t.Parallel()
 
-	code := runDeployGate([]string{"check-network", minNetworkDocument})
+	code, _ := runCheckNetworkCommand(t, minNetworkDocument)
 
 	if code != exitDeployGateUsage {
 		t.Fatalf("exit code = %d, want %d", code, exitDeployGateUsage)
