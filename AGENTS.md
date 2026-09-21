@@ -66,3 +66,13 @@ separate `opnsensectl` binary in
 - **Report honestly.** State what changed, which gates ran, and what residual
   risk remains. Claim no file, symbol, commit, or behavior that was not
   verified, and say why when a gate could not run.
+
+## Darwin verification
+
+Do not run `make check` on Darwin. Its host lint path cannot compile the
+Linux-only libyang and sysrepo bindings. Use the required Linux GitHub CI
+checks.
+
+If GitHub Actions is unavailable, run `make check` inside the repository's
+Linux builder container. `make test` is valid on Darwin because it already
+selects that container.
