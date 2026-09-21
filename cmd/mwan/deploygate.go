@@ -493,14 +493,13 @@ func checkOwnedAddresses(ctx context.Context, deps deployGateDeps) int {
 	return exitDeployGateOK
 }
 
-// checkNetwork runs the loader against a rendered network configuration and
-// the schema directory the caller names, writing nothing and reading no kernel
-// state. The deploy runs it before the file is copied to the gateway, where
-// the daemon is otherwise the first program to parse it.
+// checkNetwork loads and validates a rendered network configuration against
+// the schema directory the caller names. It writes nothing and reads no kernel
+// state.
 //
-// A rejected provider entry fails this check. The daemon tolerates one at
-// runtime and steers the rest, which keeps a live gateway serving; a deploy
-// has an operator in front of it and stops instead.
+// Any rejected provider entry fails this check. The daemon accepts a rejected
+// entry at runtime and serves the remaining providers; this check fails
+// instead, before the configuration is installed on the gateway.
 func checkNetwork(deps deployGateDeps, path string, schemaDir string) int {
 	loaded, err := deps.loadNetworkFrom(path, schemaDir)
 	if err != nil {

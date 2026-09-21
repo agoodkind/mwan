@@ -10,13 +10,14 @@ import (
 	"goodkind.io/mwan/internal/networkjson"
 )
 
-// minNetworkDocument is the checked-in three-provider instance the repository
-// keeps for the model, named from the package directory the test runs in.
+// minNetworkDocument is the three-provider instance document at
+// yang/instances/network-min.json, relative to this package directory.
 const minNetworkDocument = "../../yang/instances/network-min.json"
 
-// webpassIPv6NoDHCP reproduces the 2026-09-20 testbed outage in one document:
-// an ipv6 container with accept-ra and no dhcp. The model leaves dhcp
-// optional, so yanglint accepts the file and the loader refuses the entry.
+// webpassIPv6NoDHCP returns the path to a network document. The webpass ipv6
+// container in that document sets accept-ra and omits dhcp. The model leaves
+// dhcp optional. The schema accepts the document; networkjson.Load rejects the
+// entry.
 func webpassIPv6NoDHCP(t *testing.T) string {
 	t.Helper()
 	body, err := os.ReadFile(minNetworkDocument)
@@ -42,8 +43,7 @@ func webpassIPv6NoDHCP(t *testing.T) string {
 
 // TestCheckNetwork runs the deploy-time check over the three documents a
 // deploy meets: the instance the model ships, one the schema accepts and the
-// loader refuses, and a path with no file. Each case calls the real loader,
-// which is the program the daemon runs at startup.
+// loader refuses, and a path with no file.
 func TestCheckNetwork(t *testing.T) {
 	t.Parallel()
 
