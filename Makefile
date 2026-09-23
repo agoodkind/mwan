@@ -453,7 +453,7 @@ endif
 # On macOS it runs them in a native linux/arm64 container. An amd64 container
 # on Apple Silicon runs under qemu, and qemu does not translate policy rule
 # netlink messages.
-NETNS_TEST_PACKAGES := ./internal/ifmgr/modules/wanroutes/... ./internal/ifmgr/modules/npt/...
+NETNS_TEST_PACKAGES := ./internal/ifmgr/modules/wanroutes/... ./internal/ifmgr/modules/npt/... ./internal/ifmgr/modules/steering/...
 NETNS_GO_VERSION    := $(shell awk '/^go /{print $$2}' go.mod)
 NETNS_RUNNER_IMAGE  := mwan-netns-runner
 
