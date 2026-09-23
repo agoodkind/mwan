@@ -4,12 +4,10 @@ name: Release
 # a published archive by version, so this workflow is the only place a shipped
 # binary is built.
 #
-# cgo stays off at the workflow level on purpose. The release set declares that
-# the binary links libyang and libsysrepo through its own cgo=1 flag in
-# RELEASE_BINS, so the linux artifact carries the publishing binding,
-# statically linked. The C libraries are still provisioned, because the release
-# engine runs the cgo-deps hook for any consumer that declares GO_MK_CGO_DEPS
-# regardless of this input.
+# The one shipped binary links libyang and libsysrepo, and every release
+# platform builds on a native runner with a C compiler. The cgo input matches
+# that. It also turns on the compile job's cgo dependency cache, ccache, and
+# target architecture.
 
 on:
   push:
@@ -26,6 +24,7 @@ jobs:
     secrets: inherit
     with:
       apt_packages: libpcre2-dev
+      cgo: true
       platforms: linux/amd64 linux/arm64
       # One binary name, verified after publish for every platform, so a
       # release that dropped an archive fails the run instead of shipping a
