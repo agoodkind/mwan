@@ -26,7 +26,7 @@ jobs:
     secrets: inherit
     with:
       apt_packages: libpcre2-dev
-      platforms: linux/amd64
+      platforms: linux/amd64 linux/arm64
       # One binary name, verified after publish for every platform, so a
       # release that dropped an archive fails the run instead of shipping a
       # partial set.

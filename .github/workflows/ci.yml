@@ -31,9 +31,9 @@ jobs:
       # cgo-deps hook builds it.
       apt_packages: libyang2-tools libpcre2-dev
       go_tool_packages: github.com/bufbuild/buf/cmd/buf@latest google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11 google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-      # Match release.yml, so the build gate compiles exactly the platform the
-      # release ships.
-      release_platforms: linux/amd64
+      # This list matches release.yml. The build gate compiles exactly the
+      # platforms the release ships, each on a native runner.
+      release_platforms: linux/amd64 linux/arm64
 
   # The go job above never runs these. The Makefile hangs the two schema gates
   # off `check`, and the go-makefile quality matrix runs a fixed list of
@@ -88,3 +88,25 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: make test-netns
+
+  # The go job's quality matrix runs the suite on amd64 runners only. This job
+  # runs the whole suite, cgo binding included, in the arm64 builder image on
+  # a native arm64 runner.
+  arm64:
+    name: mwan arm64 tests
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      # The Makefile resolves the Go environment while make parses it, so Go
+      # is a hard dependency even though the suite runs in the container.
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      # The Makefile fetches go-makefile through gh while make parses it, so
+      # the token keeps that fetch on the authenticated API path instead of
+      # its anonymous raw fallback.
+      - name: Run the suite in the arm64 builder image
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: make test-docker WANCONFIG_DOCKER_ARCH=arm64
