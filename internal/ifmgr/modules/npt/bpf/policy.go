@@ -19,7 +19,7 @@ const (
 	MaxExceptions = 16
 )
 
-// PrefixPair defines internal and external translation prefixes and address exceptions.
+// PrefixPair requires canonical IPv6 unicast prefixes of at most /64 and a nonzero ID.
 type PrefixPair struct {
 	ID                    uint16
 	Internal              netip.Prefix
@@ -45,7 +45,7 @@ const (
 	Egress Direction = "egress"
 )
 
-// AttachmentState reports whether a kernel attachment matches the desired policy.
+// AttachmentState reports the result for one interface and direction after Reconcile.
 type AttachmentState struct {
 	IfIndex   int
 	Direction Direction
@@ -93,7 +93,7 @@ func adjustment(from, to netip.Prefix) uint16 {
 	return fold(uint32(fold(source)) + uint32(^fold(target)))
 }
 
-// TranslateAddress applies RFC 6296 prefix and checksum-neutral address translation.
+// TranslateAddress translates an IPv6 address between the pair's prefixes. It rejects an address with no available RFC 6296 correction word.
 func TranslateAddress(pair PrefixPair, address netip.Addr, outbound bool) (netip.Addr, error) {
 	if err := ValidatePair(pair); err != nil {
 		return netip.Addr{}, err

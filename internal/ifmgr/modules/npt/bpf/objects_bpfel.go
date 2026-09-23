@@ -1,6 +1,6 @@
 //go:build (386 || amd64 || arm || arm64 || loong64 || mips64le || mipsle || ppc64le || riscv64 || wasm) && linux
 
-// Package bpf installs and verifies RFC 6296 translation programs on Linux interfaces.
+// Package bpf installs RFC 6296 NPTv6 translation on Linux interfaces.
 package bpf
 
 import (
@@ -14,7 +14,7 @@ import (
 	"github.com/cilium/ebpf"
 )
 
-// These layouts match struct pair and struct policy in npt.c.
+// The kernel reads these map values as C structs, so their byte layouts must match npt.c.
 type nptPair struct {
 	_                     structs.HostLayout
 	Internal              [16]uint8

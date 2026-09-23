@@ -34,7 +34,7 @@ const (
 	filterHandle   = 0x4e50
 )
 
-// Translator manages kernel programs, policy maps, and traffic-control attachments.
+// Translator serializes Reconcile and Close so closed program descriptors cannot be used.
 type Translator struct {
 	mu      sync.Mutex
 	objects nptObjects
@@ -331,7 +331,7 @@ func (translator *Translator) removeStalePolicies(desired map[int]preparedPolicy
 	return errors.Join(failures...)
 }
 
-// Reconcile applies and verifies every active policy before removing stale attachments.
+// Reconcile installs active policies and removes stale attachments only if all active policies succeed.
 func (translator *Translator) Reconcile(policies []InterfacePolicy) ([]AttachmentState, error) {
 	translator.mu.Lock()
 	defer translator.mu.Unlock()
@@ -363,7 +363,7 @@ func (translator *Translator) Reconcile(policies []InterfacePolicy) ([]Attachmen
 	return states, translator.removeStalePolicies(desired)
 }
 
-// Close releases userspace descriptors. Classic tc filters retain the kernel programs and maps.
+// Close leaves installed traffic-control filters active; the kernel retains their programs and maps.
 func (translator *Translator) Close() error {
 	translator.mu.Lock()
 	defer translator.mu.Unlock()

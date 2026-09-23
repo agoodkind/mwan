@@ -472,7 +472,7 @@ test-netns: netns-runner-image
 else
 test-netns:
 	@if ! command -v nft >/dev/null; then \
-		echo "test-netns requires nftables; install the nftables package and include nft in PATH" >&2; \
+		echo "test-netns requires nft from the nftables package. Install nftables and add nft to PATH." >&2; \
 		exit 1; \
 	fi
 	sudo -E env "PATH=$$PATH" go test -v -count=1 -tags netns $(NETNS_TEST_PACKAGES)
@@ -603,7 +603,7 @@ govulncheck:
 clean: clean-dist
 	rm -rf $(LOCAL_BIN)
 
-# Regeneration requires Linux, clang, LLVM, and libbpf development headers.
+# To regenerate npt_bpfel.o, run make npt-bpf on Linux with clang, LLVM, and libbpf development headers installed.
 NPT_BPF_CLANG ?= clang
 NPT_BPF_INCLUDE ?= /usr/include/$(shell $(CC) -dumpmachine)
 
