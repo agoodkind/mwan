@@ -6,9 +6,11 @@
 // pinned in that Makefile and passed in as flags, become Debian
 // packages that install on a gateway with apt and nothing else. The two
 // components with upstream Debian packaging (libyang, sysrepo) build through
-// their apkg deb templates, untouched, into /usr under the upstream package
-// names; the sysrepo template compiles the upstream access policy in (group
-// sysrepo, umask 007). The four without (libyang-cpp, sysrepo-cpp,
+// their apkg deb templates into /usr under the upstream package names; the
+// sysrepo template compiles the upstream access policy in (group sysrepo,
+// umask 007). The build rewrites amd64 multiarch paths in the template
+// install files to the multiarch glob and otherwise uses the templates as
+// published. The four without (libyang-cpp, sysrepo-cpp,
 // nghttp2-asio, rousette) are cmake-installed into a DESTDIR stage under the
 // /opt/mwan-wanconfig prefix and packaged by the nfpm library, with a Depends
 // line read off their ELF files.

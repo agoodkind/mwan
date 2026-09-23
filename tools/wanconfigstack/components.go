@@ -68,7 +68,11 @@ func (b *builder) installBuildTools(ctx context.Context) error {
 // tests passed in the container that built it.
 func (b *builder) apkgBuild(ctx context.Context, c component) error {
 	src := b.srcDir(c)
-	depends, err := b.buildDepends(ctx, filepath.Join(src, "distro", "pkg", "deb", "control"))
+	templateDir := filepath.Join(src, "distro", "pkg", "deb")
+	if err := b.portInstallFiles(ctx, templateDir); err != nil {
+		return err
+	}
+	depends, err := b.buildDepends(ctx, filepath.Join(templateDir, "control"))
 	if err != nil {
 		return err
 	}
@@ -81,6 +85,41 @@ func (b *builder) apkgBuild(ctx context.Context, c component) error {
 		return err
 	}
 	return b.installBuilt(ctx, b.pkgDir(c))
+}
+
+// The sysrepo v3.7.11 template lists its plugin directories under the amd64
+// multiarch directory, and its library lines glob that directory. dh_install
+// rejects a listed path the build did not produce. An arm64 build installs
+// the plugin directories under the arm64 multiarch directory. The glob
+// matches the amd64 directory on amd64 and the arm64 directory on arm64.
+const (
+	amd64MultiarchSegment = "/x86_64-linux-gnu/"
+	anyMultiarchSegment   = "/*/"
+)
+
+// portInstallFiles rewrites every amd64 multiarch path in the template's
+// .install files to the multiarch glob.
+func (b *builder) portInstallFiles(ctx context.Context, templateDir string) error {
+	installFiles, err := filepath.Glob(filepath.Join(templateDir, "*.install"))
+	if err != nil {
+		return b.fail(ctx, "list install files", err, slog.String("dir", templateDir))
+	}
+	for _, path := range installFiles {
+		content, err := os.ReadFile(filepath.Clean(path))
+		if err != nil {
+			return b.fail(ctx, "read install file", err, slog.String("path", path))
+		}
+		original := string(content)
+		ported := strings.ReplaceAll(original, amd64MultiarchSegment, anyMultiarchSegment)
+		if ported == original {
+			continue
+		}
+		if err := os.WriteFile(path, []byte(ported), 0o644); err != nil {
+			return b.fail(ctx, "write install file", err, slog.String("path", path))
+		}
+		b.log.InfoContext(ctx, "wanconfigstack: install file ported to the multiarch glob", "path", path)
+	}
+	return nil
 }
 
 // nfpmBuild stages a cmake install under the stack prefix and wraps it as a
