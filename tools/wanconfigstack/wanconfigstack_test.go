@@ -41,6 +41,41 @@ func TestBuildDependsReadsTheUpstreamSysrepoTemplate(t *testing.T) {
 	}
 }
 
+// TestPortInstallFilesGlobsTheAmd64MultiarchDirectory pins that the upstream
+// sysrepo v3.7.11 install files lose every literal amd64 multiarch path, and
+// that a file without one keeps its bytes.
+func TestPortInstallFilesGlobsTheAmd64MultiarchDirectory(t *testing.T) {
+	t.Parallel()
+	templateDir := t.TempDir()
+	upstream := map[string]string{
+		"libsysrepo7.install":    "usr/lib/*/*.so.*\nusr/share/yang/modules/sysrepo\nusr/lib/x86_64-linux-gnu/sysrepo/plugins\netc/sysrepo\n",
+		"sysrepo-tools.install":  "usr/bin/sysrepoctl\nusr/lib/x86_64-linux-gnu/sysrepo-plugind/plugins\nusr/lib/systemd/system/sysrepo-plugind.service\n",
+		"libsysrepo-dev.install": "usr/lib/*/*.so\nusr/lib/*/pkgconfig/sysrepo.pc\nusr/include/*.h\n",
+	}
+	for name, content := range upstream {
+		if err := os.WriteFile(filepath.Join(templateDir, name), []byte(content), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	if err := testBuilder(t).portInstallFiles(context.Background(), templateDir); err != nil {
+		t.Fatalf("portInstallFiles: %v", err)
+	}
+	want := map[string]string{
+		"libsysrepo7.install":    "usr/lib/*/*.so.*\nusr/share/yang/modules/sysrepo\nusr/lib/*/sysrepo/plugins\netc/sysrepo\n",
+		"sysrepo-tools.install":  "usr/bin/sysrepoctl\nusr/lib/*/sysrepo-plugind/plugins\nusr/lib/systemd/system/sysrepo-plugind.service\n",
+		"libsysrepo-dev.install": upstream["libsysrepo-dev.install"],
+	}
+	for name, wantContent := range want {
+		got, err := os.ReadFile(filepath.Join(templateDir, name))
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		if string(got) != wantContent {
+			t.Fatalf("%s = %q, want %q", name, got, wantContent)
+		}
+	}
+}
+
 // TestProjectVersionReadsNghttp2Asio pins the version derivation for the one
 // component pinned to a commit.
 func TestProjectVersionReadsNghttp2Asio(t *testing.T) {

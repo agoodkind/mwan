@@ -61,21 +61,31 @@ func (b *builder) installBuildTools(ctx context.Context) error {
 }
 
 // apkgBuild builds a component through its own distro/pkg/deb template. The
-// template's Build-Depends install first; then apkg's upstream mode
-// downloads the release archive for the exact version, so archive and
-// template come from the same tag. The templates run the upstream test
+// template's Build-Depends install first. apkg then downloads the release
+// archive for the exact version. `apkg build --archive` builds that archive
+// and renders the template from the clone, which is checked out at the
+// pinned commit of the same tag. The clone's install files are ported to the
+// multiarch glob before the build. The templates run the upstream test
 // suites as part of the package build, so a package only exists when its
 // tests passed in the container that built it.
 func (b *builder) apkgBuild(ctx context.Context, c component) error {
 	src := b.srcDir(c)
-	depends, err := b.buildDepends(ctx, filepath.Join(src, "distro", "pkg", "deb", "control"))
+	templateDir := filepath.Join(src, "distro", "pkg", "deb")
+	if err := b.portInstallFiles(ctx, templateDir); err != nil {
+		return err
+	}
+	depends, err := b.buildDepends(ctx, filepath.Join(templateDir, "control"))
 	if err != nil {
 		return err
 	}
 	if err := b.aptInstall(ctx, depends...); err != nil {
 		return err
 	}
-	build := cmd(programApkg, "build", "--upstream", "--version", b.pinVersion(c), "--no-cache", "--result-dir", b.pkgDir(c)).
+	archive, err := b.upstreamArchive(ctx, c)
+	if err != nil {
+		return err
+	}
+	build := cmd(programApkg, "build", "--archive", archive, "--no-cache", "--result-dir", b.pkgDir(c)).
 		in(src).with(aptEnv...)
 	if err := b.run(ctx, build); err != nil {
 		return err

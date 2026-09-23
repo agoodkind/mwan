@@ -69,19 +69,18 @@ separate `opnsensectl` binary in
 
 ## Darwin verification
 
-Do not run `make check` on Darwin. Darwin cannot compile the Linux-only
-libyang and sysrepo bindings. Use the required Linux GitHub CI checks.
-
-If GitHub Actions is unavailable, run `make check` inside the repository's
-Linux builder container:
+Darwin cannot compile the Linux-only libyang and sysrepo bindings. On Darwin,
+run every gate in the repository's Linux builder container, which is native
+arm64 on Apple Silicon. The container builds the cgo dependencies for
+linux/arm64 and runs the named make targets:
 
 ```bash
-make wanconfig-builder-image
-docker run --rm --platform linux/amd64 \
-    -v "$PWD:/src" -w /src \
-    -v mwan-wanconfig-gomod:/go/pkg/mod \
-    -e GOWORK=off \
-    mwan-wanconfig-builder make check
+make docker-make TARGETS="check test"
 ```
 
-`make test` is valid on Darwin because it already selects that container.
+`TARGETS` accepts any make target. The first run builds the image and the cgo
+dependencies, and later runs reuse both.
+
+The container lints linux/arm64. The required Linux GitHub CI checks lint
+linux/amd64 and build and test both architectures. Merge only when those
+checks pass.

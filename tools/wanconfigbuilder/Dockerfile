@@ -22,11 +22,16 @@ RUN apt-get update \
         build-essential cmake pkg-config git libpcre2-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# The YANG gates of `make check` run yanglint. This shared build links it
+# against the pinned libyang, so ENABLE_TOOLS=ON follows the Makefile flags
+# and replaces their ENABLE_TOOLS=OFF, which only the static release archive
+# needs.
 RUN git clone --depth 1 --branch "${LIBYANG_VERSION}" \
         https://github.com/CESNET/libyang.git /usr/local/src/libyang \
     && cmake -S /usr/local/src/libyang -B /usr/local/src/libyang/build \
         -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local \
         ${LIBYANG_CMAKE_FLAGS} \
+        -DENABLE_TOOLS=ON \
         -DBUILD_TESTING=OFF \
     && make -C /usr/local/src/libyang/build -j"$(nproc)" install \
     && ldconfig
