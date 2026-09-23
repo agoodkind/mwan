@@ -2,7 +2,7 @@
 
 Multi-WAN gateway daemon. One binary, `mwan`, for linux/amd64 and linux/arm64.
 The binary links libyang and libsysrepo statically through cgo and serves its
-configuration over the management datastore. The standards a change to this code has to meet
+configuration over the management datastore. The standards a change must meet
 are in [AGENTS.md](AGENTS.md).
 
 ## Layout
@@ -72,10 +72,14 @@ Docker targets need Docker. They use the host architecture unless
 runs under emulation.
 
 The container lints its own architecture, which is linux/arm64 on Apple
-Silicon. CI lints linux/amd64. CI also compiles the binary and the stack
-packages on a native arm64 runner and runs the suite there, and any change
-that breaks arm64 fails those checks. On a Linux host, the YANG gates need
-`yanglint` from the `libyang2-tools` package.
+Silicon.
+
+CI lints linux/amd64. CI also compiles the binary and the stack packages on a
+native arm64 runner and runs the suite there. A change that breaks arm64 fails
+those checks.
+
+On a Linux host, the YANG gates need `yanglint` from the `libyang2-tools`
+package.
 
 ## Releasing
 

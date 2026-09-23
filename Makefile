@@ -4,11 +4,10 @@
 # bootstrap.mk. Do not define lint, deadcode, audit, fmt, vet, or
 # staticcheck targets here; `make help` lists the canonical entry points.
 #
-# Project-local targets: protobuf codegen, the YANG model gate, the cgo
-# dependency recipes for the publishing binding, a docker lane that builds
-# and tests the linux gateway binary for amd64 and arm64, the wanconfig stack
-# packaging, and a
-# govulncheck target that fails on every reachable advisory.
+# This Makefile defines the protobuf codegen, the YANG model gates, and the cgo
+# dependency recipes for the publishing binding. It also defines the docker
+# lane that runs the linux pipeline for amd64 and arm64, the wanconfig stack
+# packaging, and a govulncheck target that fails on every reachable advisory.
 #
 # Shipped binaries come only from the CI release. The one cross build here is
 # the packaging tool, which runs inside a container and never ships.
@@ -335,14 +334,11 @@ WANCONFIG_DOCKER_ARCH ?= amd64
 endif
 WANCONFIG_BUILDER_IMAGE := mwan-wanconfig-builder:$(WANCONFIG_DOCKER_ARCH)
 
-# Both architectures share one module cache volume. The module cache stores
-# only module sources, which are the same for every architecture.
-#
-# Each architecture has its own volume for /root/.cache and for .make. The
-# first stores the Go build cache, the lint caches, and the cgo dependency
-# sources. The second stores go-makefile, its engine, and the cgo dependency
-# archives. The host's .make contains a darwin engine, and the container
-# must not run or replace it.
+# Module sources are the same for every architecture, and both architectures
+# share one module cache volume. Build caches, lint caches, and cgo archives
+# differ by architecture, and each architecture has its own volumes for them.
+# The host's .make contains a darwin engine, and the container mounts its own
+# .make volume over it.
 #
 # The container runs as root. On a Linux host a non-root user owns the
 # mounted checkout, and git refuses a repository another user owns. Go then
@@ -404,11 +400,9 @@ test-docker-all:
 #   make docker-make TARGETS="check test"
 #   make docker-make TARGETS=build-check
 #
-# The lint gates analyze the container's architecture. go-makefile keeps cgo
-# on for a native target, and the gates then check the publishing binding.
-# go-makefile turns cgo off for a foreign target, and the gates then skip the
-# binding without failing. CI lints linux/amd64. The Mac container lints
-# linux/arm64.
+# The lint gates check the publishing binding only when the lint platform
+# matches the container architecture. go-makefile disables cgo for any other
+# platform. CI lints linux/amd64. The Mac container lints linux/arm64.
 DOCKER_MAKE_TARGETS ?= check test
 TARGETS             ?= $(DOCKER_MAKE_TARGETS)
 
@@ -419,8 +413,8 @@ docker-make: wanconfig-builder-image
 		make $(TARGETS) GO_MK_PLATFORMS=linux/$(WANCONFIG_DOCKER_ARCH)
 
 # docker-make-amd64 runs the same targets in the amd64 container. On an arm64
-# host the container runs under emulation, which is the lane main used before
-# the arm64 container existed. It lints linux/amd64, the platform CI lints.
+# host the container runs under emulation. It lints linux/amd64, the platform
+# CI lints.
 #
 #   make docker-make-amd64 TARGETS="check test"
 .PHONY: docker-make-amd64

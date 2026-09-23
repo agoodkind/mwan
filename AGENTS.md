@@ -82,5 +82,5 @@ make docker-make TARGETS="check test"
 dependencies, and later runs reuse both.
 
 The container lints linux/arm64. The required Linux GitHub CI checks lint
-linux/amd64 and build and test both architectures. A change is done only when
-those checks pass.
+linux/amd64 and build and test both architectures. Merge only when those
+checks pass.

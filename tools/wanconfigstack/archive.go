@@ -10,11 +10,11 @@ import (
 	"strings"
 )
 
-// The sysrepo v3.7.11 template lists its plugin directories under the amd64
-// multiarch directory, and its library lines glob that directory. dh_install
-// rejects a listed path the build did not produce. An arm64 build installs
-// the plugin directories under the arm64 multiarch directory. The glob
-// matches the amd64 directory on amd64 and the arm64 directory on arm64.
+// The multiarch glob matches the amd64 directory on amd64 and the arm64
+// directory on arm64. The sysrepo v3.7.11 template lists its plugin
+// directories under the literal amd64 multiarch directory. An arm64 build
+// installs them under the arm64 multiarch directory, and dh_install rejects a
+// listed path the build did not produce.
 const (
 	amd64MultiarchSegment = "/x86_64-linux-gnu/"
 	anyMultiarchSegment   = "/*/"
