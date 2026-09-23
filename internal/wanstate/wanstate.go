@@ -51,19 +51,27 @@ type MemberHealth struct {
 // its last pass.
 type MemberRouting struct {
 	Carrying bool
+	V4Ready  bool
+	V6Ready  bool
 	// OwnedAddresses are the mapped addresses the routing module holds on the
 	// member's link as host addresses, in configuration order.
 	OwnedAddresses []netip.Addr
 }
 
-// MemberTranslation is what the translation module holds for one member.
+// FamilyTranslation records the last realized translation result for one
+// address family. Native mode is ready without a kernel translation rule.
+type FamilyTranslation struct {
+	Mode           string
+	Ready          bool
+	Reason         string
+	InternalPrefix netip.Prefix
+	ExternalPrefix netip.Prefix
+}
+
+// MemberTranslation records IPv4 and IPv6 results independently.
 type MemberTranslation struct {
-	// Delegated is the live delegation, zero when the provider holds
-	// none.
-	Delegated netip.Prefix
-	// KernelPresent reports whether the member's translation rules were
-	// found in the kernel after the last apply.
-	KernelPresent bool
+	V4 FamilyTranslation
+	V6 FamilyTranslation
 }
 
 // BGPPeer is one routing session as last read from the agent.

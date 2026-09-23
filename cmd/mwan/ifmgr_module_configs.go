@@ -378,6 +378,8 @@ func healthSettingValue(setting *int) int {
 // makes it a real consumer of the shared field.
 func buildNPTConfig(shared sharedWANInputs) npt.Config {
 	return npt.Config{
+		InternalIface:  shared.InternalIface,
+		InternalNetV4:  shared.InternalNetV4,
 		InternalPrefix: shared.InternalPrefix,
 		OpnsenseEdgeV6: shared.OpnsenseEdgeV6,
 		MwanbrEdgeV6:   shared.MwanbrEdgeV6,
@@ -725,21 +727,23 @@ func buildHostIPv6PolicyConfig(
 // embedded WANRef. One home per WAN.
 type sharedWAN struct {
 	ifmgr.WANRef
-	TableID        int
-	FwMark         int
-	FwMarkPrio     int
-	FromPrio       int
-	NptPrefix      string
-	V4Source       string
-	Tier           uint8
-	Weight         int
-	StaticMappings []config.StaticMapping
+	TableID       int
+	FwMark        int
+	FwMarkPrio    int
+	FromPrio      int
+	TranslationV4 *config.IPv4Translation
+	TranslationV6 *config.IPv6Translation
+	V4Source      string
+	Tier          uint8
+	Weight        int
 }
 
 // sharedWANInputs is the runtime projection of the network configuration's WAN
 // map and translation prefixes that every ifmgr module builder reuses. WANs is sorted by name
 // for deterministic output. Each module builder projects the fields it needs.
 type sharedWANInputs struct {
+	InternalIface  string
+	InternalNetV4  string
 	WANs           []sharedWAN
 	InternalPrefix string
 	OpnsenseEdgeV6 string
@@ -752,7 +756,7 @@ type sharedWANInputs struct {
 func (s sharedWANInputs) nptWANs() []npt.WAN {
 	wans := make([]npt.WAN, 0, len(s.WANs))
 	for _, wan := range s.WANs {
-		wans = append(wans, npt.WAN{WANRef: wan.WANRef, NptPrefix: wan.NptPrefix})
+		wans = append(wans, npt.WAN{WANRef: wan.WANRef, TranslationV4: wan.TranslationV4, Translation: wan.TranslationV6})
 	}
 	return wans
 }
@@ -767,6 +771,10 @@ func buildWANRefs(ifmgrCfg config.IfMgrSection) sharedWANInputs {
 		OpnsenseEdgeV6: ifmgrCfg.OpnsenseEdgeV6,
 		MwanbrEdgeV6:   ifmgrCfg.MwanbrEdgeV6,
 	}
+	if ifmgrCfg.Modules.WAN != nil && ifmgrCfg.Modules.WAN.Routes != nil {
+		inputs.InternalIface = ifmgrCfg.Modules.WAN.Routes.InternalIface
+		inputs.InternalNetV4 = ifmgrCfg.Modules.WAN.Routes.InternalNetV4
+	}
 	names := make([]string, 0, len(ifmgrCfg.WAN))
 	for name := range ifmgrCfg.WAN {
 		names = append(names, name)
@@ -775,16 +783,16 @@ func buildWANRefs(ifmgrCfg config.IfMgrSection) sharedWANInputs {
 	for _, name := range names {
 		entry := ifmgrCfg.WAN[name]
 		inputs.WANs = append(inputs.WANs, sharedWAN{
-			WANRef:         ifmgr.WANRef{Name: name, Iface: entry.Iface},
-			TableID:        entry.TableID,
-			FwMark:         entry.FwMark,
-			FwMarkPrio:     entry.FwMarkPrio,
-			FromPrio:       entry.FromPrio,
-			NptPrefix:      entry.NptPrefix,
-			V4Source:       entry.V4Source,
-			Tier:           entry.Tier,
-			Weight:         entry.Weight,
-			StaticMappings: entry.StaticMappings,
+			WANRef:        ifmgr.WANRef{Name: name, Iface: entry.Iface},
+			TableID:       entry.TableID,
+			FwMark:        entry.FwMark,
+			FwMarkPrio:    entry.FwMarkPrio,
+			FromPrio:      entry.FromPrio,
+			TranslationV4: entry.TranslationV4,
+			TranslationV6: entry.TranslationV6,
+			V4Source:      entry.V4Source,
+			Tier:          entry.Tier,
+			Weight:        entry.Weight,
 		})
 	}
 	return inputs
@@ -820,11 +828,12 @@ func buildWANRoutesConfig(
 			FwMark:          mark,
 			FwMarkPrio:      wan.FwMarkPrio,
 			FromPrio:        wan.FromPrio,
-			NptPrefix:       wan.NptPrefix,
+			TranslationV4:   wan.TranslationV4,
+			TranslationV6:   wan.TranslationV6,
 			V4Source:        wan.V4Source,
 			Tier:            wan.Tier,
 			Weight:          wan.Weight,
-			MappedExternals: mappedExternals(wan.StaticMappings),
+			MappedExternals: mappedExternals(wan.TranslationV4),
 		})
 	}
 	return cfg, nil
@@ -833,12 +842,12 @@ func buildWANRoutesConfig(
 // mappedExternals projects a provider's static mappings onto the external
 // addresses the routing module decides link ownership for. The routing module
 // never translates, so the internal half stays with the firewall render.
-func mappedExternals(mappings []config.StaticMapping) []netip.Addr {
-	if len(mappings) == 0 {
+func mappedExternals(translation *config.IPv4Translation) []netip.Addr {
+	if translation == nil || len(translation.StaticMappings) == 0 {
 		return nil
 	}
-	externals := make([]netip.Addr, 0, len(mappings))
-	for _, mapping := range mappings {
+	externals := make([]netip.Addr, 0, len(translation.StaticMappings))
+	for _, mapping := range translation.StaticMappings {
 		externals = append(externals, mapping.External)
 	}
 	return externals

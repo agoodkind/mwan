@@ -457,7 +457,8 @@ func checkOwnedAddresses(ctx context.Context, deps deployGateDeps) int {
 	missing := 0
 	for _, name := range slices.Sorted(maps.Keys(network.WAN)) {
 		entry := network.WAN[name]
-		if len(entry.StaticMappings) == 0 {
+		policy := entry.TranslationV4
+		if policy == nil || len(policy.StaticMappings) == 0 {
 			continue
 		}
 		held, err := deps.listAddrs(ctx, log, entry.Iface)
@@ -465,8 +466,8 @@ func checkOwnedAddresses(ctx context.Context, deps deployGateDeps) int {
 			fmt.Fprintf(deps.out, "addresses on %s unreadable: %v\n", entry.Iface, err)
 			return exitDeployGateFailed
 		}
-		externals := make([]netip.Addr, 0, len(entry.StaticMappings))
-		for _, mapping := range entry.StaticMappings {
+		externals := make([]netip.Addr, 0, len(policy.StaticMappings))
+		for _, mapping := range policy.StaticMappings {
 			externals = append(externals, mapping.External)
 		}
 		owned, err := wanroutes.OnLinkMappedAddresses(held, externals)

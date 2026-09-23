@@ -77,8 +77,19 @@ func testConfig() Config {
 		OpnsenseEdgeV6: "3d06:bad:b01:201::1",
 		MwanbrEdgeV6:   "3d06:bad:b01:200::1",
 		WANs: []WAN{
-			{WANRef: ifmgr.WANRef{Name: "att", Iface: "enatt0.3242"}, NptPrefix: "2001:db8:a::/60"},
-			{WANRef: ifmgr.WANRef{Name: "webpass", Iface: "webpass0"}, NptPrefix: "2001:db8:b::/60"},
+			{WANRef: ifmgr.WANRef{Name: "att", Iface: "enatt0.3242"}, Translation: testDelegatedTranslation("2001:db8:a::/60")},
+			{WANRef: ifmgr.WANRef{Name: "webpass", Iface: "webpass0"}, Translation: testDelegatedTranslation("2001:db8:b::/60")},
+		},
+	}
+}
+
+func testDelegatedTranslation(expected string) *config.IPv6Translation {
+	return &config.IPv6Translation{
+		Mode: config.TranslationNPTv6,
+		NPT: &config.NPTv6Translation{
+			InternalPrefix: netip.MustParsePrefix("3d06:bad:b01::/60"),
+			ExternalSource: config.PrefixDelegated,
+			ExpectedPrefix: netip.MustParsePrefix(expected),
 		},
 	}
 }
@@ -89,8 +100,8 @@ func testConfig() Config {
 func configWithAnUntranslatedProvider() Config {
 	cfg := testConfig()
 	cfg.WANs = append(cfg.WANs, WAN{
-		WANRef:    ifmgr.WANRef{Name: "astound", Iface: "astound0"},
-		NptPrefix: "",
+		WANRef:      ifmgr.WANRef{Name: "astound", Iface: "astound0"},
+		Translation: nil,
 	})
 	return cfg
 }
@@ -173,13 +184,13 @@ func TestReconcileAppliesUnion(t *testing.T) {
 	if app.calls != 1 {
 		t.Fatalf("applier called %d times, want 1", app.calls)
 	}
-	// Two WANs * 4 postrouting rules.
-	if len(app.last.Postrouting) != 8 {
-		t.Fatalf("postrouting rule count = %d, want 8", len(app.last.Postrouting))
+	// Two WANs * 3 edge exception postrouting rules.
+	if len(app.last.Postrouting) != 6 {
+		t.Fatalf("postrouting rule count = %d, want 6", len(app.last.Postrouting))
 	}
-	// att: dnat <pd>::1 + dnat-prefix + one extra DNAT = 3; webpass: 2. Total 5.
-	if len(app.last.Prerouting) != 5 {
-		t.Fatalf("prerouting rule count = %d, want 5", len(app.last.Prerouting))
+	// Each WAN has an edge DNAT, and att has one extra address DNAT.
+	if len(app.last.Prerouting) != 3 {
+		t.Fatalf("prerouting rule count = %d, want 3", len(app.last.Prerouting))
 	}
 
 	// The extra /128 on att becomes a DNAT to the OPNsense edge.
@@ -241,9 +252,9 @@ func TestReconcilePDMissSkipsWAN(t *testing.T) {
 	if err := m.Reconcile(context.Background(), slog.Default()); err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-	// Only webpass programmed: 4 postrouting rules, not 8.
-	if len(app.last.Postrouting) != 4 {
-		t.Fatalf("postrouting rule count = %d, want 4 (att skipped)", len(app.last.Postrouting))
+	// Only webpass's three edge exception rules are programmed.
+	if len(app.last.Postrouting) != 3 {
+		t.Fatalf("postrouting rule count = %d, want 3 (att skipped)", len(app.last.Postrouting))
 	}
 	for _, rule := range app.last.Postrouting {
 		if rule.Iface == "enatt0.3242" {
@@ -295,9 +306,9 @@ func TestReconcileAddrOpErrorSkipsWAN(t *testing.T) {
 	if err := m.Reconcile(context.Background(), slog.Default()); err == nil {
 		t.Fatal("Reconcile should surface the address-op error")
 	}
-	// Only webpass programmed: 4 postrouting rules, not 8.
-	if len(app.last.Postrouting) != 4 {
-		t.Fatalf("postrouting rule count = %d, want 4 (att excluded)", len(app.last.Postrouting))
+	// Only webpass's three edge exception rules are programmed.
+	if len(app.last.Postrouting) != 3 {
+		t.Fatalf("postrouting rule count = %d, want 3 (att excluded)", len(app.last.Postrouting))
 	}
 	for _, rule := range app.last.Postrouting {
 		if rule.Iface == "enatt0.3242" {
@@ -480,7 +491,7 @@ func TestEvaluateAlertsClearsAStaleAlertWhenTheExpectationIsRetired(t *testing.T
 	}
 
 	// The operator reconfigures att as an untranslated provider: no npt-prefix.
-	m.cfg.WANs[0].NptPrefix = ""
+	m.cfg.WANs[0].Translation = nil
 
 	m.EvaluateAlerts(context.Background(), slog.Default(), time.Now())
 	if alerts.Active(alertKindPDMissing, "enatt0.3242") {

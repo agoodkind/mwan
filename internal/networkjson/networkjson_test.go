@@ -43,6 +43,13 @@ const validDocument = `{
           "hardware-address": "02:00:5e:00:53:01"
         },
         "ietf-ip:ipv4": {
+          "goodkind-mwan-steering:translation": {
+            "mode": "ietf-nat:napt44",
+            "static-mapping": [
+              { "external": "203.0.113.2", "internal": "192.0.2.2" },
+              { "external": "203.0.113.3", "internal": "192.0.2.3" }
+            ]
+          },
           "forwarding": true,
           "address": [{ "ip": "203.0.113.2", "prefix-length": 29 }],
           "goodkind-mwan-steering:dhcp": false,
@@ -50,6 +57,14 @@ const validDocument = `{
           "goodkind-mwan-steering:route-metric": 10
         },
         "ietf-ip:ipv6": {
+          "goodkind-mwan-steering:translation": {
+            "mode": "ietf-nat:nptv6",
+            "nptv6": {
+              "internal-prefix": "2001:db8:b01::/60",
+              "external-source": "delegated",
+              "expected-prefix": "2001:db8:beef:200::/60"
+            }
+          },
           "forwarding": true,
           "goodkind-mwan-steering:dhcp": true,
           "goodkind-mwan-steering:accept-ra": true,
@@ -66,11 +81,6 @@ const validDocument = `{
           "fw-mark": 2,
           "fw-mark-prio": 200,
           "from-prio": 56,
-          "npt-prefix": "2001:db8:beef:200::/60",
-          "static-mapping": [
-            { "external": "203.0.113.2", "internal": "192.0.2.2" },
-            { "external": "203.0.113.3", "internal": "192.0.2.3" }
-          ],
           "health": {
             "enabled": true,
             "ping-count": 3,
@@ -88,14 +98,19 @@ const validDocument = `{
         "name": "enatt0",
         "type": "iana-if-type:other",
         "goodkind-mwan-steering:link-files": "hand-authored",
+        "ietf-ip:ipv4": {
+          "goodkind-mwan-steering:translation": { "mode": "ietf-nat:napt44" }
+        },
+        "ietf-ip:ipv6": {
+          "goodkind-mwan-steering:translation": { "mode": "native" }
+        },
         "goodkind-mwan-steering:steering": { "tier": 1, "weight": 1 },
         "goodkind-mwan-steering:wan": {
           "name": "att",
           "table-id": 100,
           "fw-mark": 1,
           "fw-mark-prio": 100,
-          "from-prio": 55,
-          "npt-prefix": "2001:db8:beef:100::/60"
+          "from-prio": 55
         }
       },
       { "name": "enmwanbr0", "type": "iana-if-type:other" }
@@ -267,39 +282,24 @@ func TestLoadFailsWhenEveryProviderIsRejected(t *testing.T) {
 	}
 }
 
-func TestLoadAcceptsAProviderThatDelegatesNoPrefix(t *testing.T) {
+func TestLoadAcceptsAnIPv4OnlyProvider(t *testing.T) {
 	t.Parallel()
-
-	// A provider on an IPv4-only link delegates nothing, so it carries no
-	// npt-prefix. The model leaves the leaf optional and the routing module
-	// installs no IPv6 source rule without it, so the loader must carry the
-	// provider rather than refuse the whole file.
-	body := strings.Replace(
-		validDocument,
-		`,
-          "npt-prefix": "2001:db8:beef:100::/60"`,
-		``,
-		1,
-	)
+	body := strings.Replace(validDocument, `        "ietf-ip:ipv6": {
+          "goodkind-mwan-steering:translation": { "mode": "native" }
+        },`, "", 1)
 	if body == validDocument {
-		t.Fatal("the document still carries att's npt prefix")
+		t.Fatal("IPv6 policy was not removed")
 	}
 	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err != nil {
-		t.Fatalf("Load rejected a provider that delegates no prefix: %v", err)
-	}
-	if got := len(loaded.WAN); got != 2 {
-		t.Fatalf("provider count = %d, want 2", got)
+		t.Fatalf("Load: %v", err)
 	}
 	att := loaded.WAN["att"]
-	if att.NptPrefix != "" {
-		t.Fatalf("att npt prefix = %q, want empty", att.NptPrefix)
+	if att.TranslationV6 != nil || att.TranslationV4 == nil {
+		t.Fatalf("IPv4-only policy = %+v", att)
 	}
-	if att.Iface != "enatt0" || att.TableID != 100 || att.Tier != 1 {
-		t.Fatalf("att entry = %+v, want the rest of its configuration unchanged", att)
-	}
-	if got := loaded.WAN["webpass"].NptPrefix; got != "2001:db8:beef:200::/60" {
-		t.Fatalf("webpass npt prefix = %q, want 2001:db8:beef:200::/60", got)
+	if got := loaded.WAN["webpass"].TranslationV6.NPT.ExpectedPrefix; got != netip.MustParsePrefix("2001:db8:beef:200::/60") {
+		t.Fatalf("expected delegation = %s", got)
 	}
 }
 
@@ -311,8 +311,8 @@ func TestLoadAcceptsADisabledProbeWithNoSettings(t *testing.T) {
 	// must load rather than stop the daemon over counts nobody consumes.
 	body := strings.Replace(
 		validDocument,
-		`"npt-prefix": "2001:db8:beef:100::/60"`,
-		`"npt-prefix": "2001:db8:beef:100::/60", "health": {"enabled": false}`,
+		`"from-prio": 55`,
+		`"from-prio": 55, "health": {"enabled": false}`,
 		1,
 	)
 	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
@@ -340,8 +340,8 @@ func TestLoadKeepsEverySettingOfADisabledProbe(t *testing.T) {
 	// carries it.
 	body := strings.Replace(
 		validDocument,
-		`"npt-prefix": "2001:db8:beef:100::/60"`,
-		`"npt-prefix": "2001:db8:beef:100::/60", "health": {
+		`"from-prio": 55`,
+		`"from-prio": 55, "health": {
             "enabled": false,
             "ping-count": 4,
             "success-threshold": 1,
@@ -402,10 +402,10 @@ func TestLoadCarriesStaticMappings(t *testing.T) {
 		{External: netip.MustParseAddr("203.0.113.2"), Internal: netip.MustParseAddr("192.0.2.2")},
 		{External: netip.MustParseAddr("203.0.113.3"), Internal: netip.MustParseAddr("192.0.2.3")},
 	}
-	if got := loaded.WAN["webpass"].StaticMappings; !reflect.DeepEqual(got, want) {
+	if got := loaded.WAN["webpass"].TranslationV4.StaticMappings; !reflect.DeepEqual(got, want) {
 		t.Fatalf("webpass static mappings = %v, want %v", got, want)
 	}
-	if got := loaded.WAN["att"].StaticMappings; len(got) != 0 {
+	if got := loaded.WAN["att"].TranslationV4.StaticMappings; len(got) != 0 {
 		t.Fatalf("att static mappings = %v, want none", got)
 	}
 }
@@ -416,13 +416,10 @@ func TestLoadRejectsAnExternalAddressMappedByTwoProviders(t *testing.T) {
 	// The schema keys the list inside one provider and cannot see another
 	// provider's list. Two providers translating one address would each own it
 	// wherever it is on-link, so which link carries it would be undefined.
-	body := strings.Replace(
-		validDocument,
-		`"npt-prefix": "2001:db8:beef:100::/60"`,
-		`"npt-prefix": "2001:db8:beef:100::/60",
-          "static-mapping": [{ "external": "203.0.113.3", "internal": "192.0.2.4" }]`,
-		1,
-	)
+	body := strings.Replace(validDocument,
+		`"goodkind-mwan-steering:translation": { "mode": "ietf-nat:napt44" }`,
+		`"goodkind-mwan-steering:translation": { "mode": "ietf-nat:napt44", "static-mapping": [{ "external": "203.0.113.3", "internal": "192.0.2.4" }] }`, 1)
+
 	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err == nil {
 		t.Fatal("Load accepted one external address mapped by two providers")
@@ -533,7 +530,7 @@ func TestLoadRejectsDuplicateRoutingNumbers(t *testing.T) {
 		"table":         {from: `"table-id": 100,`, to: `"table-id": 200,`, leaf: "table-id"},
 		"mark":          {from: `"fw-mark": 1,`, to: `"fw-mark": 2,`, leaf: "fw-mark"},
 		"mark priority": {from: `"fw-mark-prio": 100,`, to: `"fw-mark-prio": 200,`, leaf: "fw-mark-prio"},
-		"from priority": {from: `"from-prio": 55,`, to: `"from-prio": 56,`, leaf: "from-prio"},
+		"from priority": {from: `"from-prio": 55`, to: `"from-prio": 56`, leaf: "from-prio"},
 		"mark priority takes from priority": {
 			from:  `"fw-mark-prio": 100,`,
 			to:    `"fw-mark-prio": 56,`,
@@ -567,8 +564,8 @@ func TestLoadAcceptsAForcedDSCP(t *testing.T) {
 	// inventory renders, so the schema and the loader must both accept it.
 	body := strings.Replace(
 		validDocument,
-		`"npt-prefix": "2001:db8:beef:100::/60"`,
-		`"npt-prefix": "2001:db8:beef:100::/60", "forced-dscp": 8`,
+		`"from-prio": 55`,
+		`"from-prio": 55, "forced-dscp": 8`,
 		1,
 	)
 	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
@@ -592,8 +589,8 @@ func TestLoadRejectsAZeroForcedDSCP(t *testing.T) {
 	// take all internal traffic. The schema's range is what refuses it.
 	body := strings.Replace(
 		validDocument,
-		`"npt-prefix": "2001:db8:beef:100::/60"`,
-		`"npt-prefix": "2001:db8:beef:100::/60", "forced-dscp": 0`,
+		`"from-prio": 55`,
+		`"from-prio": 55, "forced-dscp": 0`,
 		1,
 	)
 	if _, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t)); err == nil {
@@ -608,14 +605,14 @@ func TestLoadRejectsADuplicateForcedDSCP(t *testing.T) {
 	// sharing a value would silently send every tagged flow to the last one.
 	body := strings.Replace(
 		validDocument,
-		`"npt-prefix": "2001:db8:beef:100::/60"`,
-		`"npt-prefix": "2001:db8:beef:100::/60", "forced-dscp": 8`,
+		`"from-prio": 55`,
+		`"from-prio": 55, "forced-dscp": 8`,
 		1,
 	)
 	body = strings.Replace(
 		body,
-		`"npt-prefix": "2001:db8:beef:200::/60",`,
-		`"npt-prefix": "2001:db8:beef:200::/60", "forced-dscp": 8,`,
+		`"from-prio": 56,`,
+		`"from-prio": 56, "forced-dscp": 8,`,
 		1,
 	)
 	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
@@ -868,8 +865,8 @@ func TestLoadRejectsATypedV4Source(t *testing.T) {
 	// typing it could disagree with the address the link holds.
 	body := strings.Replace(
 		validDocument,
-		`"npt-prefix": "2001:db8:beef:200::/60",`,
-		`"npt-prefix": "2001:db8:beef:200::/60", "v4-source": "203.0.113.2",`,
+		`"from-prio": 56,`,
+		`"from-prio": 56, "v4-source": "203.0.113.2",`,
 		1,
 	)
 	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
@@ -1005,7 +1002,7 @@ func TestLoadRejectsOnlyTheEntryWithAFamilyThatOmitsDHCP(t *testing.T) {
 		want string
 	}{
 		"ipv4": {leaf: `"goodkind-mwan-steering:dhcp": false,`, want: "interface enwebpass0: ipv4/dhcp is required"},
-		"ipv6": {leaf: `"goodkind-mwan-steering:dhcp": true,`, want: "interface enwebpass0: ipv6/dhcp is required"},
+		"ipv6": {leaf: `"goodkind-mwan-steering:dhcp": true,`, want: "wan webpass ipv6: delegated NPTv6 requires DHCPv6 delegation configuration"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -1042,4 +1039,94 @@ func TestLoadRejectsAHandAuthoredEntryThatDescribesItsLink(t *testing.T) {
 		t.Fatalf("Load failed the whole document over one provider's contradiction: %v", err)
 	}
 	requireOneRejection(t, loaded, "enatt0", "att", "interface enatt0: link-files is hand-authored")
+}
+
+func TestLoadRejectsInvalidTranslation(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		old         string
+		replacement string
+		family      string
+		reason      string
+	}{
+		"IPv6 mode on IPv4": {
+			old: `"mode": "ietf-nat:napt44"`, replacement: `"mode": "ietf-nat:nptv6"`,
+			family: "ipv4", reason: "translation mode",
+		},
+		"native mode with mappings": {
+			old: `"mode": "ietf-nat:napt44"`, replacement: `"mode": "native"`,
+			family: "ipv4", reason: "static mappings require NAPT44",
+		},
+		"missing internal prefix": {
+			old: `"internal-prefix": "2001:db8:b01::/60",`, replacement: "",
+			family: "ipv6", reason: "internal-prefix requires an IPv6 prefix",
+		},
+		"unsupported prefix length": {
+			old: `"internal-prefix": "2001:db8:b01::/60"`, replacement: `"internal-prefix": "2001:db8:b01::/65"`,
+			family: "ipv6", reason: "must be /64 or shorter",
+		},
+		"configured source without prefix": {
+			old: `"external-source": "delegated"`, replacement: `"external-source": "configured"`,
+			family: "ipv6", reason: "external-prefix requires an IPv6 prefix",
+		},
+		"missing source": {
+			old: `"external-source": "delegated",`, replacement: "",
+			family: "ipv6", reason: "external-source must be configured or delegated",
+		},
+		"unusable outgoing interface": {
+			old: `"name": "enwebpass0"`, replacement: `"name": "invalid/interface"`,
+			family: "ipv4", reason: "requires a usable outgoing interface",
+		},
+	}
+	for name, testCase := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			body := strings.Replace(validDocument, testCase.old, testCase.replacement, 1)
+			if body == validDocument {
+				t.Fatal("document mutation did not match")
+			}
+			loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+			if err != nil {
+				t.Fatalf("provider-local error rejected document: %v", err)
+			}
+			iface := "enwebpass0"
+			if name == "unusable outgoing interface" {
+				iface = "invalid/interface"
+			}
+			requireOneRejection(t, loaded, iface, "webpass", "wan webpass "+testCase.family+": ")
+			if !strings.Contains(loaded.Rejected[0].Err.Error(), testCase.reason) {
+				t.Fatalf("rejection = %v, want %s", loaded.Rejected[0].Err, testCase.reason)
+			}
+		})
+	}
+}
+
+func TestLoadAcceptsHandAuthoredDelegationMetadata(t *testing.T) {
+	t.Parallel()
+	body := strings.Replace(validDocument,
+		`"goodkind-mwan-steering:translation": { "mode": "native" }`,
+		`"goodkind-mwan-steering:dhcp": true,
+          "goodkind-mwan-steering:delegation": { "hint": "::/60" },
+          "goodkind-mwan-steering:translation": {
+            "mode": "ietf-nat:nptv6",
+            "nptv6": {
+              "internal-prefix": "2001:db8:b01::/60",
+              "external-source": "delegated",
+              "expected-prefix": "2001:db8:beef:100::/60"
+            }
+          }`, 1)
+	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(loaded.Rejected) != 0 {
+		t.Fatalf("rejected: %+v", loaded.Rejected)
+	}
+	policy := loaded.WAN["att"].TranslationV6
+	if policy == nil || policy.NPT == nil || policy.NPT.ExternalSource != config.PrefixDelegated {
+		t.Fatalf("hand-authored delegation policy = %+v", policy)
+	}
+	if len(loaded.Links) != 1 || loaded.Links[0].Name != "enwebpass0" {
+		t.Fatalf("hand-authored link acquired rendered files: %+v", loaded.Links)
+	}
 }

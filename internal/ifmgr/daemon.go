@@ -82,9 +82,8 @@ type DaemonConfig struct {
 	// Each module's Constructor receives ModuleConfigs[Name()].
 	ModuleConfigs ModuleConfigSet
 
-	// LiveState, when non-nil, receives each module's reconciled snapshot
-	// for the management surface to serve. Hosts without a surface leave
-	// it nil and modules skip the write.
+	// LiveState receives each module's reconciled snapshot. The optional
+	// management surface reads the same store when available.
 	LiveState *wanstate.Store
 }
 

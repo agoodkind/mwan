@@ -83,34 +83,27 @@ func (r natRule) String() string {
 	return fmt.Sprintf("%s %s match=%s %s", r.Chain, r.Iface, r.Match, r.Op)
 }
 
-// wanRuleInput is everything the builder needs to compute one WAN's NPT rules.
-// PD60 is the live delegated /60, Internal is the shared internal /60, and
-// ExtraDNAT is the set of extra global /128s on the iface (excluding <pd>::1),
-// each of which gets a reverse DNAT to the OPNsense edge.
+// wanRuleInput contains the addresses needed for one WAN's edge exceptions.
 type wanRuleInput struct {
 	Iface        string
-	PD60         netip.Prefix
-	Internal     netip.Prefix
+	External     netip.Prefix
 	OpnsenseEdge netip.Addr
 	MwanbrEdge   netip.Addr
 	ExtraDNAT    []netip.Addr
 }
 
-// pdHostOne returns the <pd>::1 host address: the /60 network address with the
-// low bit set, matching ${TARGET_PREFIX%/*}1 in update-npt.sh.
-func pdHostOne(pd60 netip.Prefix) netip.Addr {
-	octets := pd60.Masked().Addr().As16()
+// externalHostOne returns the external prefix's first host address.
+func externalHostOne(externalPrefix netip.Prefix) netip.Addr {
+	octets := externalPrefix.Masked().Addr().As16()
 	octets[15] = 1
 	return netip.AddrFrom16(octets)
 }
 
-// buildWANRules returns the ordered typed rule set for one WAN, reproducing the
-// NPT branch of update-npt.sh:180-217. The order is load-bearing: the ct-status
-// guard MUST precede the edge SNAT so a hairpinned DNAT reply is not re-SNATed.
+// buildWANRules returns the edge exception rules for one WAN. The conntrack
+// guard precedes the edge SNAT so a destination-NATed reply is not re-SNATed.
 func buildWANRules(in wanRuleInput) []natRule {
-	pd60 := in.PD60.Masked()
-	internal := in.Internal.Masked()
-	pd1 := pdHostOne(pd60)
+	externalPrefix := in.External.Masked()
+	pd1 := externalHostOne(externalPrefix)
 	edge128 := netip.PrefixFrom(in.OpnsenseEdge, 128)
 	mwanbr128 := netip.PrefixFrom(in.MwanbrEdge, 128)
 	pd1128 := netip.PrefixFrom(pd1, 128)
@@ -118,15 +111,13 @@ func buildWANRules(in wanRuleInput) []natRule {
 	noAddr := netip.Addr{}
 	noPfx := netip.Prefix{}
 
-	rules := make([]natRule, 0, 6+len(in.ExtraDNAT))
+	rules := make([]natRule, 0, 4+len(in.ExtraDNAT))
 	rules = append(
 		rules,
 		natRule{Chain: chainPostrouting, Iface: in.Iface, Match: edge128, Op: opGuard, ToAddr: noAddr, ToPfx: noPfx},
 		natRule{Chain: chainPostrouting, Iface: in.Iface, Match: edge128, Op: opSNAT, ToAddr: pd1, ToPfx: noPfx},
 		natRule{Chain: chainPostrouting, Iface: in.Iface, Match: mwanbr128, Op: opSNAT, ToAddr: pd1, ToPfx: noPfx},
-		natRule{Chain: chainPostrouting, Iface: in.Iface, Match: internal, Op: opSNATPrefix, ToAddr: noAddr, ToPfx: pd60},
 		natRule{Chain: chainPrerouting, Iface: in.Iface, Match: pd1128, Op: opDNAT, ToAddr: in.OpnsenseEdge, ToPfx: noPfx},
-		natRule{Chain: chainPrerouting, Iface: in.Iface, Match: pd60, Op: opDNATPrefix, ToAddr: noAddr, ToPfx: internal},
 	)
 	for _, addr := range in.ExtraDNAT {
 		rules = append(rules, natRule{

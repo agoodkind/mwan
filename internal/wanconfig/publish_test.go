@@ -7,6 +7,8 @@ import (
 	"net/netip"
 	"slices"
 	"testing"
+
+	"goodkind.io/mwan/internal/config"
 )
 
 // recordingPublisher captures the one ReplaceConfig call Publish makes.
@@ -30,8 +32,14 @@ func TestPublish_ReplacesOwnedSubtreesWithTheProjection(t *testing.T) {
 	t.Parallel()
 	member := testMember("att", "enatt0")
 	member.ProbePolicy = "att"
-	member.NPTInternal = netip.MustParsePrefix("3d06:bad:b01:210::/60")
-	member.NPTExternal = netip.MustParsePrefix("2001:db8:a::/60")
+	member.TranslationV6 = &config.IPv6Translation{
+		Mode: config.TranslationNPTv6,
+		NPT: &config.NPTv6Translation{
+			InternalPrefix: netip.MustParsePrefix("3d06:bad:b01:210::/60"),
+			ExternalSource: config.PrefixConfigured,
+			ExternalPrefix: netip.MustParsePrefix("2001:db8:a::/60"),
+		},
+	}
 	gateway := Gateway{
 		InternalIface: "eninternal0",
 		Members:       []Member{member},
@@ -56,8 +64,8 @@ func TestPublish_ReplacesOwnedSubtreesWithTheProjection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ConfigItems: %v", err)
 	}
-	if len(rec.items) != len(wantItems) {
-		t.Fatalf("items = %d, want %d", len(rec.items), len(wantItems))
+	if !slices.Equal(rec.items, wantItems) {
+		t.Fatalf("items = %v, want %v", rec.items, wantItems)
 	}
 }
 

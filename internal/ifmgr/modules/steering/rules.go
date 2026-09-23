@@ -87,35 +87,23 @@ type ruleInput struct {
 	InternalPrefix netip.Prefix
 	OpnsenseEdgeV6 netip.Addr
 	Mode           hashMode
-	Assign         balancer
+	AssignV4       balancer
+	AssignV6       balancer
 }
 
-// buildRules returns the three rules the module programs, in the order the
-// ruleset file wrote them. The first covers internal IPv4 traffic arriving on
-// the internal link. The second covers replies the router sources from its own
-// edge address, which a hairpinned inbound flow produces and which must leave
-// over the provider that carried it in. The third covers internal IPv6 traffic.
+// buildRules omits a family when no eligible provider can accept its traffic.
 func buildRules(in ruleInput) []steerRule {
-	return []steerRule{
-		{
-			IifName: in.InternalIface,
-			Source:  in.InternalNetV4,
-			Mode:    in.Mode,
-			Assign:  in.Assign,
-		},
-		{
-			IifName: "",
-			Source:  netip.PrefixFrom(in.OpnsenseEdgeV6, 128),
-			Mode:    in.Mode,
-			Assign:  in.Assign,
-		},
-		{
-			IifName: "",
-			Source:  in.InternalPrefix,
-			Mode:    in.Mode,
-			Assign:  in.Assign,
-		},
+	var rules []steerRule
+	if in.AssignV4.Mark != 0 || len(in.AssignV4.Slots) != 0 {
+		rules = append(rules, steerRule{IifName: in.InternalIface, Source: in.InternalNetV4, Mode: in.Mode, Assign: in.AssignV4})
 	}
+	if in.AssignV6.Mark != 0 || len(in.AssignV6.Slots) != 0 {
+		rules = append(rules,
+			steerRule{IifName: "", Source: netip.PrefixFrom(in.OpnsenseEdgeV6, 128), Mode: in.Mode, Assign: in.AssignV6},
+			steerRule{IifName: "", Source: in.InternalPrefix, Mode: in.Mode, Assign: in.AssignV6},
+		)
+	}
+	return rules
 }
 
 // balancerFor returns how the active tier's healthy providers share new

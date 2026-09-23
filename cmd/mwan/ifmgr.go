@@ -20,6 +20,7 @@ import (
 	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/tracing"
 	"goodkind.io/mwan/internal/version"
+	"goodkind.io/mwan/internal/wanstate"
 
 	// Side-effect imports: each module package's init() registers itself
 	// with the ifmgr registry. Roles are resolved by name in roles.go.
@@ -85,14 +86,12 @@ func runIfMgr(cfg *config.Config) error {
 	}
 
 	dcfg.Notifier = notify.FromConfig(cfg, logger, "mwan-ifmgr")
+	dcfg.LiveState = wanstate.New()
 
-	// The management surface starts before the daemon so its snapshot
-	// store can be handed to the modules, and it stays open for the
-	// daemon's lifetime so the operational providers keep answering.
-	// A nil surface means this host does not publish one.
-	surface := startWanconfigSurface(ctx, logger, cfg, dcfg.ModuleConfigs, rejections)
+	// Runtime readiness uses the store even when the optional management
+	// datastore is unavailable.
+	surface := startWanconfigSurface(ctx, logger, cfg, dcfg.ModuleConfigs, rejections, dcfg.LiveState)
 	if surface != nil {
-		dcfg.LiveState = surface.store
 		defer surface.Close()
 	}
 

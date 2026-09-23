@@ -128,7 +128,7 @@ func TestReconcileOwnsOnlyOnLinkAddresses(t *testing.T) {
 			t.Fatalf("pass %d: ownership itself failed: %v", pass, err)
 		}
 	}
-	module.publishLiveState(testGateways(), netif.HealthStates{})
+	module.publishLiveState(testGateways(), netif.HealthStates{}, readyTranslations(module.cfg))
 
 	wantWebpass := []string{"203.0.113.2/29", "203.0.113.3/32", "203.0.113.4/32", "fe80::b/64"}
 	if got := sortedCopy(kernel.byIface["webpass0"]); !reflect.DeepEqual(got, wantWebpass) {
@@ -166,7 +166,7 @@ func TestReconcileOwnsPastAnUnreadableLink(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "list addresses on att0") {
 		t.Fatalf("Reconcile error = %v, want one naming the unreadable att0 link", err)
 	}
-	module.publishLiveState(testGateways(), netif.HealthStates{})
+	module.publishLiveState(testGateways(), netif.HealthStates{}, readyTranslations(module.cfg))
 
 	if got := sortedCopy(kernel.byIface["webpass0"]); !reflect.DeepEqual(got, []string{"203.0.113.2/29", "203.0.113.3/32", "203.0.113.4/32"}) {
 		t.Fatalf("webpass0 addresses = %v, want the link plus two /32s", got)

@@ -118,7 +118,8 @@ func spreadRulesForTest(mode hashMode) []steerRule {
 		InternalPrefix: netip.MustParsePrefix("3d06:bad:b01::/60"),
 		OpnsenseEdgeV6: netip.MustParseAddr("3d06:bad:b01:201::1"),
 		Mode:           mode,
-		Assign:         balancer{Mark: 0, Modulus: 2, Slots: []uint32{1, 2}},
+		AssignV4:       balancer{Mark: 0, Modulus: 2, Slots: []uint32{1, 2}},
+		AssignV6:       balancer{Mark: 0, Modulus: 2, Slots: []uint32{1, 2}},
 	})
 }
 
@@ -335,7 +336,8 @@ func TestApplierSingleMemberSetsTheMarkOutright(t *testing.T) {
 		InternalPrefix: netip.MustParsePrefix("3d06:bad:b01::/60"),
 		OpnsenseEdgeV6: netip.MustParseAddr("3d06:bad:b01:201::1"),
 		Mode:           hashModeRandom,
-		Assign:         balancer{Mark: 3, Modulus: 0, Slots: nil},
+		AssignV4:       balancer{Mark: 3, Modulus: 0, Slots: nil},
+		AssignV6:       balancer{Mark: 3, Modulus: 0, Slots: nil},
 	})
 	if err := app.Apply(context.Background(), slog.Default(), rules); err != nil {
 		t.Fatalf("Apply returned error: %v", err)

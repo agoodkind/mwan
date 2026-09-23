@@ -39,14 +39,9 @@ func modifiedNetwork(t *testing.T, replacements ...networkReplacement) string {
 
 func webpassIPv6NoDHCP(t *testing.T) string {
 	t.Helper()
-	const anchor = `        "goodkind-mwan-steering:wan": {
-          "name": "webpass",`
 	return modifiedNetwork(t, networkReplacement{
-		old: anchor,
-		new: `        "ietf-ip:ipv6": {
-          "goodkind-mwan-steering:accept-ra": false
-        },
-` + anchor,
+		old: `          "goodkind-mwan-steering:dhcp": false,` + "\n",
+		new: "",
 	})
 }
 
@@ -90,15 +85,10 @@ func TestCheckNetwork(t *testing.T) {
 		"two rejected providers": {
 			document: func(t *testing.T) string {
 				t.Helper()
-				const anchor = `        "goodkind-mwan-steering:wan": {
-          "name": "webpass",`
 				return modifiedNetwork(t,
 					networkReplacement{
-						old: anchor,
-						new: `        "ietf-ip:ipv6": {
-          "goodkind-mwan-steering:accept-ra": false
-        },
-` + anchor,
+						old: `          "goodkind-mwan-steering:dhcp": false,` + "\n",
+						new: "",
 					},
 					networkReplacement{
 						old: "          \"from-prio\": 57,\n",
@@ -173,5 +163,45 @@ func TestCheckNetworkRequiresTwoArguments(t *testing.T) {
 
 	if code != exitDeployGateUsage {
 		t.Fatalf("exit code = %d, want %d", code, exitDeployGateUsage)
+	}
+}
+
+func TestCheckNetworkTranslation(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		document func(*testing.T) string
+		want     int
+		expect   string
+	}{
+		"configured and native policies": {
+			document: func(*testing.T) string { return minNetworkDocument },
+			want:     exitDeployGateOK,
+			expect:   "3 providers, 0 rejected",
+		},
+		"delegated policy": {
+			document: func(*testing.T) string { return "../../yang/instances/network-freeform.json" },
+			want:     exitDeployGateOK,
+			expect:   "1 providers, 0 rejected",
+		},
+		"IPv4 mode on IPv6": {
+			document: func(t *testing.T) string {
+				t.Helper()
+				return modifiedNetwork(t, networkReplacement{
+					old: `"mode": "ietf-nat:nptv6"`,
+					new: `"mode": "ietf-nat:napt44"`,
+				})
+			},
+			want:   exitDeployGateFailed,
+			expect: `wan webpass ipv6: translation mode "ietf-nat:napt44" is not supported`,
+		},
+	}
+	for name, testCase := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			code, output := runCheckNetworkCommand(t, testCase.document(t), networkSchemaDirForTest(t))
+			if code != testCase.want || !strings.Contains(output, testCase.expect) {
+				t.Fatalf("check-network exit = %d, want %d; output must contain %q:\n%s", code, testCase.want, testCase.expect, output)
+			}
+		})
 	}
 }

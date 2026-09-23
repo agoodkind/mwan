@@ -67,51 +67,129 @@ const gatewayNetworkJSON = `{
         "name": "enatt0",
         "type": "iana-if-type:other",
         "goodkind-mwan-steering:link-files": "hand-authored",
-        "goodkind-mwan-steering:steering": { "tier": 0, "weight": 1 },
+        "goodkind-mwan-steering:steering": {
+          "tier": 0,
+          "weight": 1
+        },
         "goodkind-mwan-steering:wan": {
           "name": "att",
           "table-id": 100,
           "fw-mark": 1,
           "fw-mark-prio": 100,
-          "from-prio": 55,
-          "npt-prefix": "2001:db8:beef:100::/60"
+          "from-prio": 55
+        },
+        "ietf-ip:ipv4": {
+          "goodkind-mwan-steering:translation": {
+            "mode": "ietf-nat:napt44"
+          }
+        },
+        "ietf-ip:ipv6": {
+          "goodkind-mwan-steering:dhcp": true,
+          "goodkind-mwan-steering:translation": {
+            "mode": "ietf-nat:nptv6",
+            "nptv6": {
+              "internal-prefix": "2001:db8:b01::/60",
+              "external-source": "delegated",
+              "expected-prefix": "2001:db8:beef:100::/60"
+            }
+          },
+          "goodkind-mwan-steering:delegation": {
+            "hint": "::/56"
+          }
         }
       },
       {
         "name": "enwebpass0",
         "type": "iana-if-type:other",
         "goodkind-mwan-steering:link-files": "rendered",
-        "goodkind-mwan-steering:link": { "match": { "driver": "igc" } },
-        "ietf-ip:ipv4": {
-          "address": [{ "ip": "203.0.113.2", "prefix-length": 29 }],
-          "goodkind-mwan-steering:dhcp": false
+        "goodkind-mwan-steering:link": {
+          "match": {
+            "driver": "igc"
+          }
         },
-        "goodkind-mwan-steering:steering": { "tier": 0, "weight": 1 },
+        "ietf-ip:ipv4": {
+          "address": [
+            {
+              "ip": "203.0.113.2",
+              "prefix-length": 29
+            }
+          ],
+          "goodkind-mwan-steering:dhcp": false,
+          "goodkind-mwan-steering:translation": {
+            "mode": "ietf-nat:napt44"
+          }
+        },
+        "goodkind-mwan-steering:steering": {
+          "tier": 0,
+          "weight": 1
+        },
         "goodkind-mwan-steering:wan": {
           "name": "webpass",
           "table-id": 200,
           "fw-mark": 2,
           "fw-mark-prio": 200,
-          "from-prio": 56,
-          "npt-prefix": "2001:db8:beef:200::/60"
+          "from-prio": 56
+        },
+        "ietf-ip:ipv6": {
+          "goodkind-mwan-steering:dhcp": true,
+          "goodkind-mwan-steering:translation": {
+            "mode": "ietf-nat:nptv6",
+            "nptv6": {
+              "internal-prefix": "2001:db8:b01::/60",
+              "external-source": "delegated",
+              "expected-prefix": "2001:db8:beef:200::/60"
+            }
+          },
+          "goodkind-mwan-steering:delegation": {
+            "hint": "::/56"
+          }
         }
       },
       {
         "name": "enmbrains0",
         "type": "iana-if-type:other",
         "goodkind-mwan-steering:link-files": "rendered",
-        "goodkind-mwan-steering:link": { "match": { "hardware-address": "02:00:5e:00:53:03" } },
-        "goodkind-mwan-steering:steering": { "tier": 0, "weight": 1 },
+        "goodkind-mwan-steering:link": {
+          "match": {
+            "hardware-address": "02:00:5e:00:53:03"
+          }
+        },
+        "goodkind-mwan-steering:steering": {
+          "tier": 0,
+          "weight": 1
+        },
         "goodkind-mwan-steering:wan": {
           "name": "monkeybrains",
           "table-id": 300,
           "fw-mark": 3,
           "fw-mark-prio": 300,
-          "from-prio": 57,
-          "npt-prefix": "2001:db8:beef:300::/60"
+          "from-prio": 57
+        },
+        "ietf-ip:ipv4": {
+          "goodkind-mwan-steering:translation": {
+            "mode": "ietf-nat:napt44"
+          },
+          "goodkind-mwan-steering:dhcp": true
+        },
+        "ietf-ip:ipv6": {
+          "goodkind-mwan-steering:dhcp": true,
+          "goodkind-mwan-steering:translation": {
+            "mode": "ietf-nat:nptv6",
+            "nptv6": {
+              "internal-prefix": "2001:db8:b01::/60",
+              "external-source": "delegated",
+              "expected-prefix": "2001:db8:beef:300::/60"
+            }
+          },
+          "goodkind-mwan-steering:delegation": {
+            "hint": "::/56"
+          }
         }
       },
-      { "name": "enmwanbr0", "type": "iana-if-type:other" }
+      {
+        "name": "enmwanbr0",
+        "type": "iana-if-type:other"
+      }
     ],
     "goodkind-mwan-steering:steering-group": {
       "hash-mode": "source",
@@ -124,7 +202,9 @@ const gatewayNetworkJSON = `{
         "internal-iface": "enmwanbr0",
         "internal-net-v4": "192.0.2.0/29"
       },
-      "health": { "probe-timeout": 2000 }
+      "health": {
+        "probe-timeout": 2000
+      }
     }
   }
 }`

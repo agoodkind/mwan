@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/networkd"
 )
 
@@ -45,13 +46,11 @@ type Member struct {
 	Weight uint16
 	// ProbePolicy is the name of the health policy that decides the member's
 	// state, or empty when the daemon runs no probe for it.
-	ProbePolicy string
-	// NPTInternal and NPTExternal are the prefix-translation pair the member
-	// carries. Both are zero when the configuration names none; an instance
-	// is published only when both are set. The external prefix is also the
-	// provider's npt-prefix leaf.
-	NPTInternal netip.Prefix
-	NPTExternal netip.Prefix
+	ProbePolicy     string
+	TranslationV4   *config.IPv4Translation
+	TranslationV6   *config.IPv6Translation
+	TranslationIDV4 uint32
+	TranslationIDV6 uint32
 	// TableID, FwMark, FwMarkPrio, and FromPrio are the provider's routing
 	// numbers: the table holding its default route, the firewall mark that
 	// selects that table, and the priorities of the two policy rules. The
@@ -68,9 +67,6 @@ type Member struct {
 	// or zero when it carries none. The model ranges it from 1, so zero is
 	// free to mean absent.
 	ForcedDSCP uint8
-	// StaticMappings are the provider's one-to-one IPv4 translations, in the
-	// order the configuration lists them.
-	StaticMappings []StaticMapping
 	// Health is the provider's probe as loaded, or nil when the provider
 	// carries no health container.
 	Health *ProbeSettings
@@ -83,13 +79,6 @@ type Member struct {
 	// member's link, because the specification is the interface entry's own
 	// link, family, and free-form containers.
 	Link *networkd.Spec
-}
-
-// StaticMapping is one one-to-one IPv4 translation a provider carries. The
-// model keys the list by the external address.
-type StaticMapping struct {
-	External netip.Addr
-	Internal netip.Addr
 }
 
 // ProbeSettings is one provider's health probe as the loaded configuration
@@ -223,10 +212,6 @@ const (
 	// reports the kernel's type in the operational datastore.
 	ifTypeUnspecified = "iana-if-type:other"
 
-	// natTypeNPTv6 is the translation type of every instance this
-	// configuration can express today.
-	natTypeNPTv6 = "ietf-nat:nptv6"
-
 	// natPolicyID is the single policy each instance carries.
 	natPolicyID = 1
 
@@ -267,21 +252,16 @@ func ConfigItems(g Gateway) ([]Item, error) {
 	}
 
 	items := make([]Item, 0, itemsPerMember*len(g.Members)+itemsForGroup)
-	items = append(items, interfaceItems(g.InternalIface)...)
+	items = append(items, interfaceItems(g.InternalIface, true, true)...)
 	for _, member := range g.Members {
-		items = append(items, interfaceItems(member.Iface)...)
+		items = append(items, interfaceItems(member.Iface, member.TranslationV4 != nil, member.TranslationV6 != nil)...)
 		items = append(items, steeringItems(member)...)
 		items = append(items, wanItems(member)...)
 		items = append(items, linkItems(member)...)
 	}
 	items = append(items, steeringGroupItems(g)...)
-	instanceID := uint32(0)
 	for _, member := range g.Members {
-		if !member.NPTInternal.IsValid() {
-			continue
-		}
-		instanceID++
-		items = append(items, natInstanceItems(instanceID, member)...)
+		items = append(items, natInstanceItems(member)...)
 	}
 	items = append(items, daemonItems(g.Daemon)...)
 	return items, nil
@@ -391,14 +371,16 @@ func boolValue(value bool) string {
 
 // interfaceItems describes one link: the entry exists, its type is
 // unspecified, it is enabled, and both address families are enabled.
-func interfaceItems(iface string) []Item {
+func interfaceItems(iface string, ipv4 bool, ipv6 bool) []Item {
 	base := interfacePath(iface)
-	return []Item{
-		{Path: base + "/type", Value: ifTypeUnspecified},
-		{Path: base + "/enabled", Value: boolTrue},
-		{Path: base + "/ietf-ip:ipv4/enabled", Value: boolTrue},
-		{Path: base + "/ietf-ip:ipv6/enabled", Value: boolTrue},
+	items := []Item{{Path: base + "/type", Value: ifTypeUnspecified}, {Path: base + "/enabled", Value: boolTrue}}
+	if ipv4 {
+		items = append(items, Item{Path: base + "/ietf-ip:ipv4/enabled", Value: boolTrue})
 	}
+	if ipv6 {
+		items = append(items, Item{Path: base + "/ietf-ip:ipv6/enabled", Value: boolTrue})
+	}
+	return items
 }
 
 // steeringItems marks the member's link as a steering member with its tier and
@@ -428,21 +410,13 @@ func wanItems(member Member) []Item {
 		{Path: base + "/fw-mark-prio", Value: uintValue(uint64(member.FwMarkPrio))},
 		{Path: base + "/from-prio", Value: uintValue(uint64(member.FromPrio))},
 	}
-	if member.NPTExternal.IsValid() {
-		items = append(items, Item{Path: base + "/npt-prefix", Value: member.NPTExternal.String()})
-	}
 	if member.V4Source != "" {
 		items = append(items, Item{Path: base + "/v4-source", Value: member.V4Source})
 	}
 	if member.ForcedDSCP != 0 {
 		items = append(items, Item{Path: base + "/forced-dscp", Value: uintValue(uint64(member.ForcedDSCP))})
 	}
-	for _, mapping := range member.StaticMappings {
-		items = append(items, Item{
-			Path:  base + "/static-mapping[external='" + mapping.External.String() + "']/internal",
-			Value: mapping.Internal.String(),
-		})
-	}
+	items = append(items, translationItems(member)...)
 	items = append(items, probeItems(base+"/health", member.Health)...)
 	return items
 }
@@ -673,20 +647,6 @@ var hashModes = map[string]bool{
 	"source-destination": true,
 }
 
-// natInstanceItems describes the member's prefix-translation instance with
-// both prefixes explicit.
-func natInstanceItems(id uint32, member Member) []Item {
-	base := natPath + "/instances/instance[id='" + strconv.FormatUint(uint64(id), 10) + "']"
-	prefixes := base + "/policy[id='" + strconv.Itoa(natPolicyID) + "']" +
-		"/nptv6-prefixes[internal-ipv6-prefix='" + member.NPTInternal.String() + "']"
-	return []Item{
-		{Path: base + "/name", Value: member.Name},
-		{Path: base + "/type", Value: natTypeNPTv6},
-		{Path: base + "/enable", Value: boolTrue},
-		{Path: prefixes + "/external-ipv6-prefix", Value: member.NPTExternal.String()},
-	}
-}
-
 // interfacePath is the list entry for one link.
 func interfacePath(iface string) string {
 	return interfacesPath + "/interface[name='" + iface + "']"
@@ -711,6 +671,7 @@ func validate(g Gateway) error {
 		return err
 	}
 	seen := map[string]string{g.InternalIface: "internal link"}
+	instances := make(map[uint32]string)
 	for _, member := range g.Members {
 		if err := validateKey("member name", member.Name); err != nil {
 			return err
@@ -725,13 +686,17 @@ func validate(g Gateway) error {
 			return invalid(fmt.Sprintf("member %s link %q is already the %s", member.Name, member.Iface, owner))
 		}
 		seen[member.Iface] = "member " + member.Name
-		if member.NPTInternal.IsValid() != member.NPTExternal.IsValid() {
-			return invalid(fmt.Sprintf("member %s translation needs both prefixes (internal %q, external %q)",
-				member.Name, member.NPTInternal, member.NPTExternal))
+		for family, id := range map[string]uint32{"ipv4": member.TranslationIDV4, "ipv6": member.TranslationIDV6} {
+			if id != TranslationInstanceID(member.Name, family) {
+				return invalid("member " + member.Name + " has an invalid translation instance ID")
+			}
+			if prior, exists := instances[id]; exists {
+				return invalid("translation instance ID collision between " + prior + " and " + member.Name + "/" + family)
+			}
+			instances[id] = member.Name + "/" + family
 		}
-		if member.NPTInternal.IsValid() && (!member.NPTInternal.Addr().Is6() || !member.NPTExternal.Addr().Is6()) {
-			return invalid(fmt.Sprintf("member %s translation prefixes must be IPv6 (internal %q, external %q)",
-				member.Name, member.NPTInternal, member.NPTExternal))
+		if err := validateTranslation(member); err != nil {
+			return err
 		}
 		if err := validateProvider(member); err != nil {
 			return err
@@ -859,8 +824,12 @@ func validateFreeForm(name string, files []networkd.File) error {
 // outside IPv4, or an external address the provider maps twice, which the list
 // key would collapse into one entry.
 func validateMappings(member Member) error {
-	seen := make(map[netip.Addr]bool, len(member.StaticMappings))
-	for _, mapping := range member.StaticMappings {
+	if member.TranslationV4 == nil {
+		return nil
+	}
+	mappings := member.TranslationV4.StaticMappings
+	seen := make(map[netip.Addr]bool, len(mappings))
+	for _, mapping := range mappings {
 		if !mapping.External.Is4() || !mapping.Internal.Is4() {
 			return invalid(fmt.Sprintf("member %s static mapping %q to %q is not IPv4",
 				member.Name, mapping.External, mapping.Internal))

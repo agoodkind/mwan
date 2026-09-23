@@ -410,16 +410,22 @@ func ownedTestNetwork() (*networkjson.Config, error) {
 		WAN: map[string]config.IfMgrWANEntry{
 			"att": {
 				Iface: "enatt0",
-				StaticMappings: []config.StaticMapping{
-					{External: netip.MustParseAddr("198.51.100.193"), Internal: netip.MustParseAddr("192.0.2.2")},
+				TranslationV4: &config.IPv4Translation{
+					Mode: config.TranslationNAPT44,
+					StaticMappings: []config.StaticMapping{
+						{External: netip.MustParseAddr("198.51.100.193"), Internal: netip.MustParseAddr("192.0.2.2")},
+					},
 				},
 			},
 			"webpass": {
 				Iface: "enwebpass0",
-				StaticMappings: []config.StaticMapping{
-					{External: netip.MustParseAddr("203.0.113.2"), Internal: netip.MustParseAddr("192.0.2.2")},
-					{External: netip.MustParseAddr("203.0.113.3"), Internal: netip.MustParseAddr("192.0.2.3")},
-					{External: netip.MustParseAddr("203.0.113.4"), Internal: netip.MustParseAddr("192.0.2.4")},
+				TranslationV4: &config.IPv4Translation{
+					Mode: config.TranslationNAPT44,
+					StaticMappings: []config.StaticMapping{
+						{External: netip.MustParseAddr("203.0.113.2"), Internal: netip.MustParseAddr("192.0.2.2")},
+						{External: netip.MustParseAddr("203.0.113.3"), Internal: netip.MustParseAddr("192.0.2.3")},
+						{External: netip.MustParseAddr("203.0.113.4"), Internal: netip.MustParseAddr("192.0.2.4")},
+					},
 				},
 			},
 		},

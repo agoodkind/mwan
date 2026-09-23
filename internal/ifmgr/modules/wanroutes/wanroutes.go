@@ -11,6 +11,7 @@ import (
 	"slices"
 	"time"
 
+	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/wanstate"
@@ -56,14 +57,15 @@ func (Config) ModuleConfigName() string { return moduleName }
 // data.
 type WAN struct {
 	ifmgr.WANRef
-	TableID    int
-	FwMark     uint32
-	FwMarkPrio int
-	FromPrio   int
-	NptPrefix  string
+	TableID       int
+	FwMark        uint32
+	FwMarkPrio    int
+	FromPrio      int
+	TranslationV4 *config.IPv4Translation
+	TranslationV6 *config.IPv6Translation
 	// V4Source is the WAN's static IPv4 link address. When set, traffic the box
 	// sources from that address is pinned to this WAN's table via a v4 source
-	// rule at FromPrio, the IPv4 twin of the NptPrefix v6 source rule. Only
+	// rule at FromPrio, the IPv4 twin of the translated-prefix v6 source rule. Only
 	// static-link WANs set it; a WAN on a dynamic link leaves it empty and gets
 	// no v4 source rule.
 	V4Source string
@@ -196,12 +198,14 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 			fmt.Errorf("read health state %q: %w", m.cfg.HealthStateFile, err),
 		)
 	}
-	rules, routes := desiredState(currentGateways, health, m.cfg)
+	translations := m.translationState()
+	_, routes := desiredState(currentGateways, health, m.cfg, translations)
 
 	reconcileErr := errors.Join(ownershipErr, discovery.missingLinks)
 	for _, route := range routes {
 		if route.Dest == "default" {
-			if err := netif.ReconcileTableDefault(ctx, log, route); err != nil {
+			if err := reconcileTableDefault(ctx, log, route); err != nil {
+				m.excludeRouteFamily(currentGateways, route.TableID, route.Family)
 				reconcileErr = errors.Join(reconcileErr, fmt.Errorf(
 					"reconcile default route table=%d family=%s: %w",
 					route.TableID,
@@ -212,6 +216,7 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 			continue
 		}
 		if err := netif.ReconcileTableRoute(ctx, log, route); err != nil {
+			m.excludeRouteFamily(currentGateways, route.TableID, route.Family)
 			reconcileErr = errors.Join(reconcileErr, fmt.Errorf(
 				"reconcile route table=%d family=%s dest=%s: %w",
 				route.TableID,
@@ -221,35 +226,82 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 			))
 		}
 	}
-	if err := netif.ReconcileRules(ctx, log, rules); err != nil {
-		reconcileErr = errors.Join(reconcileErr, fmt.Errorf("reconcile rules: %w", err))
+	rules, _ := desiredState(currentGateways, health, m.cfg, translations)
+	for _, rule := range rules {
+		if rule.Priority == catchAllPriority {
+			continue
+		}
+		if err := netif.ReconcileRules(ctx, log, []netif.DesiredRule{rule}); err != nil {
+			m.excludeRouteFamily(currentGateways, rule.TableID, rule.Family)
+			reconcileErr = errors.Join(reconcileErr, fmt.Errorf("reconcile rule: %w", err))
+		}
 	}
+	// Select fallback rules only after provider routes and rules have succeeded.
+	rules, _ = desiredState(currentGateways, health, m.cfg, translations)
+	for _, rule := range rules {
+		if rule.Priority != catchAllPriority {
+			continue
+		}
+		if err := netif.ReconcileRules(ctx, log, []netif.DesiredRule{rule}); err != nil {
+			for _, wan := range m.cfg.WANs {
+				m.excludeRouteFamily(currentGateways, wan.TableID, rule.Family)
+			}
+			reconcileErr = errors.Join(reconcileErr, fmt.Errorf("reconcile fallback rule: %w", err))
+		}
+	}
+	rules, _ = desiredState(currentGateways, health, m.cfg, translations)
 	if err := removeDisabledRuleSlots(ctx, log, m.cfg, rules); err != nil {
+		// A stale policy rule can override any provider selected by steering.
+		clear(currentGateways)
 		reconcileErr = errors.Join(reconcileErr, err)
 	}
 	m.checkNextHopLocked(ctx, log)
-	m.publishLiveState(currentGateways, health)
+	m.publishLiveState(currentGateways, health, translations)
 	return reconcileErr
 }
 
-// publishLiveState writes this pass's steering decision to the management
-// surface's snapshot store, when this host serves one. A provider is carrying
-// when it sits in the active tier, its verdict allows it, and it has a gateway
-// in at least one family, which is exactly the condition under which this pass
-// installed its rules. Its owned addresses are the ones this pass held on its
-// link.
-func (m *Module) publishLiveState(currentGateways gateways, health netif.HealthStates) {
+func (m *Module) excludeRouteFamily(current gateways, tableID int, family string) {
+	for _, wan := range m.cfg.WANs {
+		if wan.TableID != tableID {
+			continue
+		}
+		gateway := current[wan.Name]
+		if family == familyV4 {
+			gateway.V4 = ""
+		} else {
+			gateway.V6 = ""
+		}
+		current[wan.Name] = gateway
+	}
+}
+
+func (m *Module) translationState() map[string]wanstate.MemberTranslation {
+	if m.Env == nil || m.Env.LiveState == nil {
+		return nil
+	}
+	return m.Env.LiveState.Snapshot().Translation
+}
+
+// publishLiveState publishes eligible families and marks a provider carrying when either family selects its tier.
+func (m *Module) publishLiveState(currentGateways gateways, health netif.HealthStates, translations map[string]wanstate.MemberTranslation) {
 	if m.Env == nil || m.Env.LiveState == nil {
 		return
 	}
-	activeTier, anyHealthy := netif.ActiveTier(tierMembers(m.cfg), health)
+	v4 := familyMembers(m.cfg, currentGateways, health, translations, familyV4)
+	v6 := familyMembers(m.cfg, currentGateways, health, translations, familyV6)
+	tierV4, readyV4 := netif.ActiveTier(v4, health)
+	tierV6, readyV6 := netif.ActiveTier(v6, health)
+	activeTier := tierV4
+	if !readyV4 || (readyV6 && tierV6 < activeTier) {
+		activeTier = tierV6
+	}
 	members := make(map[string]wanstate.MemberRouting, len(m.cfg.WANs))
 	for _, wan := range m.cfg.WANs {
-		wanGateways := currentGateways[wan.Name]
-		reachable := wanEnabled(wanGateways.V4, health.State(wan.Name)) ||
-			wanEnabled(wanGateways.V6, health.State(wan.Name))
+		v4Ready := familyReady(wan, currentGateways[wan.Name], health, translations[wan.Name], familyV4)
+		v6Ready := familyReady(wan, currentGateways[wan.Name], health, translations[wan.Name], familyV6)
 		members[wan.Name] = wanstate.MemberRouting{
-			Carrying:       anyHealthy && wan.Tier == activeTier && reachable,
+			Carrying: (readyV4 && wan.Tier == tierV4 && v4Ready) || (readyV6 && wan.Tier == tierV6 && v6Ready),
+			V4Ready:  v4Ready, V6Ready: v6Ready,
 			OwnedAddresses: slices.Clone(m.ownedAddresses[wan.Name]),
 		}
 	}
@@ -420,69 +472,47 @@ func desiredState(
 	currentGateways gateways,
 	health netif.HealthStates,
 	cfg Config,
+	translations map[string]wanstate.MemberTranslation,
 ) ([]netif.DesiredRule, []netif.RouteSpec) {
 	rules := make([]netif.DesiredRule, 0, len(cfg.WANs)*3+2)
 	routes := make([]netif.RouteSpec, 0, len(cfg.WANs)*5+1)
 
 	for _, wan := range cfg.WANs {
 		wanGateways := currentGateways[wan.Name]
-		routes = appendWANDefaultRoutes(routes, wan, wanGateways)
-		routes = appendWANInternalRoutes(routes, cfg, wan.TableID)
+		routes = appendWANDefaultRoutes(routes, wan, wanGateways, health, translations[wan.Name])
+		routes = appendWANInternalRoutes(routes, cfg, wan)
 
-		rules = appendWANRules(rules, wan, wanGateways, health)
+		rules = appendWANRules(rules, wan, wanGateways, health, translations[wan.Name])
 	}
 
-	if carrier := catchAllCarrier(cfg, health); carrier != nil {
-		rules = append(
-			rules,
-			netif.DesiredRule{
-				Family:   familyV4,
-				Priority: catchAllPriority,
-				From:     "",
-				Mark:     0,
-				IifName:  cfg.InternalIface,
-				UIDRange: "",
-				Table:    "",
-				TableID:  carrier.TableID,
-			},
-			netif.DesiredRule{
-				Family:   familyV6,
-				Priority: catchAllPriority,
-				From:     "",
-				Mark:     0,
-				IifName:  cfg.InternalIface,
-				UIDRange: "",
-				Table:    "",
-				TableID:  carrier.TableID,
-			},
-		)
+	for _, family := range []string{familyV4, familyV6} {
+		if carrier := catchAllCarrier(cfg, currentGateways, health, translations, family); carrier != nil {
+			rules = append(rules, netif.DesiredRule{Family: family, Priority: catchAllPriority, From: "", Mark: 0, IifName: cfg.InternalIface, UIDRange: "", Table: "", TableID: carrier.TableID})
+		}
 	}
 
 	return rules, routes
 }
 
-// catchAllCarrier returns the provider the catch-all rule pair points at, or
-// nil when this pass installs none. The pair exists for one case: the active
-// tier is below the first configured tier and exactly one provider in it is
-// healthy. Nothing marks internal traffic for that provider then, so without
-// the pair the traffic would fall to the main table.
-//
-// With two or more healthy providers in the active tier the steering module's
-// marks carry the split, and a catch-all would send every unmarked packet to
-// one of them and undo it. With no healthy provider anywhere there is nothing
-// to point at.
-func catchAllCarrier(cfg Config, health netif.HealthStates) *WAN {
-	activeTier, anyHealthy := netif.ActiveTier(tierMembers(cfg), health)
-	if !anyHealthy {
+// catchAllCarrier selects a lone eligible provider below the family's first configured tier.
+func catchAllCarrier(cfg Config, gateways gateways, health netif.HealthStates, translations map[string]wanstate.MemberTranslation, family string) *WAN {
+	tier, available := netif.ActiveTier(familyMembers(cfg, gateways, health, translations, family), health)
+	if !available {
 		return nil
 	}
-	if activeTier == lowestConfiguredTier(cfg) {
+	lowest := tier
+	for _, wan := range cfg.WANs {
+		if familyConfigured(wan, family) && wan.Tier < lowest {
+			lowest = wan.Tier
+		}
+	}
+	if tier == lowest {
 		return nil
 	}
 	var carrier *WAN
 	for i := range cfg.WANs {
 		wan := &cfg.WANs[i]
-		if wan.Tier != activeTier || !netif.HealthIsHealthy(health.State(wan.Name)) {
+		if wan.Tier != tier || !familyReady(*wan, gateways[wan.Name], health, translations[wan.Name], family) {
 			continue
 		}
 		if carrier != nil {
@@ -493,53 +523,75 @@ func catchAllCarrier(cfg Config, health netif.HealthStates) *WAN {
 	return carrier
 }
 
-// tierMembers projects the configured providers onto the list the shared
-// active-tier function reads.
-func tierMembers(cfg Config) []netif.TierMember {
+func familyMembers(cfg Config, gateways gateways, health netif.HealthStates, translations map[string]wanstate.MemberTranslation, family string) []netif.TierMember {
 	members := make([]netif.TierMember, 0, len(cfg.WANs))
 	for _, wan := range cfg.WANs {
-		members = append(members, netif.TierMember{Name: wan.Name, Tier: wan.Tier})
+		if familyReady(wan, gateways[wan.Name], health, translations[wan.Name], family) {
+			members = append(members, netif.TierMember{Name: wan.Name, Tier: wan.Tier})
+		}
 	}
 	return members
 }
 
-// lowestConfiguredTier returns the first tier the configuration names, whether
-// or not any of its providers is healthy. Callers reach it only after
-// netif.ActiveTier reported a healthy provider, so the list is never empty.
-func lowestConfiguredTier(cfg Config) uint8 {
-	lowest := cfg.WANs[0].Tier
-	for _, wan := range cfg.WANs[1:] {
-		if wan.Tier < lowest {
-			lowest = wan.Tier
-		}
+func familyConfigured(wan WAN, family string) bool {
+	if family == familyV4 {
+		return wan.TranslationV4 != nil
 	}
-	return lowest
+	return wan.TranslationV6 != nil
 }
 
-func appendWANDefaultRoutes(routes []netif.RouteSpec, wan WAN, gateways gatewaySet) []netif.RouteSpec {
-	if gateways.V4 != "" {
-		routes = append(routes, netif.RouteSpec{
-			Family:   familyV4,
-			Dest:     "default",
-			Via:      gateways.V4,
-			Dev:      wan.Iface,
-			TableID:  wan.TableID,
-			Metric:   0,
-			Protocol: 0,
-		})
+func familyReady(wan WAN, gateways gatewaySet, health netif.HealthStates, translation wanstate.MemberTranslation, family string) bool {
+	if !familyConfigured(wan, family) {
+		return false
 	}
-	if gateways.V6 != "" {
-		routes = append(routes, netif.RouteSpec{
-			Family:   familyV6,
-			Dest:     "default",
-			Via:      gateways.V6,
-			Dev:      wan.Iface,
-			TableID:  wan.TableID,
-			Metric:   0,
-			Protocol: 0,
-		})
+	if family == familyV4 {
+		return translation.V4.Ready && wanEnabled(gateways.V4, health.State(wan.Name))
+	}
+	return translation.V6.Ready && wanEnabled(gateways.V6, health.State(wan.Name))
+}
+
+func appendWANDefaultRoutes(routes []netif.RouteSpec, wan WAN, gateways gatewaySet, health netif.HealthStates, translation wanstate.MemberTranslation) []netif.RouteSpec {
+	for _, family := range []string{familyV4, familyV6} {
+		via := ""
+		if familyReady(wan, gateways, health, translation, family) {
+			via = gateways.V4
+			if family == familyV6 {
+				via = gateways.V6
+			}
+		}
+		routes = append(routes, netif.RouteSpec{Family: family, Dest: "default", Via: via, Dev: wan.Iface, TableID: wan.TableID, Metric: 0, Protocol: 0})
 	}
 	return routes
+}
+
+// reconcileTableDefault verifies both removal and installation before returning success.
+func reconcileTableDefault(ctx context.Context, log *slog.Logger, desired netif.RouteSpec) error {
+	if err := netif.ReconcileTableDefault(ctx, log, desired); err != nil {
+		log.WarnContext(ctx, "wan.routes: default route reconciliation failed", "family", desired.Family, "table_id", desired.TableID, "err", err)
+		return fmt.Errorf("reconcile table default: %w", err)
+	}
+	routes, err := netif.ListTableRoutes(ctx, log, desired.Family, desired.TableID)
+	if err != nil {
+		log.WarnContext(ctx, "wan.routes: default route readback failed", "family", desired.Family, "table_id", desired.TableID, "err", err)
+		return fmt.Errorf("read back default route: %w", err)
+	}
+	matched := false
+	for _, route := range routes {
+		if route.Dest != "default" {
+			continue
+		}
+		if desired.Via == "" {
+			return fmt.Errorf("default route still present after removal: %+v", route)
+		}
+		if route.Via != desired.Via || route.Dev != desired.Dev {
+			return fmt.Errorf("default route differs after reconciliation: got %+v, want %+v", route, desired)
+		}
+		matched = true
+	}
+	if desired.Via != "" && !matched {
+		return fmt.Errorf("default route missing after reconciliation: %+v", desired)
+	}
+	return nil
 }
 
 func appendWANRules(
@@ -547,8 +599,9 @@ func appendWANRules(
 	wan WAN,
 	gateways gatewaySet,
 	health netif.HealthStates,
+	translation wanstate.MemberTranslation,
 ) []netif.DesiredRule {
-	if wanEnabled(gateways.V4, health.State(wan.Name)) {
+	if familyReady(wan, gateways, health, translation, familyV4) {
 		rules = append(rules, netif.DesiredRule{
 			Family:   familyV4,
 			Priority: wan.FwMarkPrio,
@@ -572,7 +625,7 @@ func appendWANRules(
 			})
 		}
 	}
-	if wanEnabled(gateways.V6, health.State(wan.Name)) {
+	if familyReady(wan, gateways, health, translation, familyV6) {
 		rules = append(rules, netif.DesiredRule{
 			Family:   familyV6,
 			Priority: wan.FwMarkPrio,
@@ -583,11 +636,11 @@ func appendWANRules(
 			Table:    "",
 			TableID:  wan.TableID,
 		})
-		if wan.NptPrefix != "" {
+		if prefix := sourcePrefixV6(wan); prefix != "" {
 			rules = append(rules, netif.DesiredRule{
 				Family:   familyV6,
 				Priority: wan.FromPrio,
-				From:     wan.NptPrefix,
+				From:     prefix,
 				Mark:     0,
 				IifName:  "",
 				UIDRange: "",
@@ -599,32 +652,27 @@ func appendWANRules(
 	return rules
 }
 
-func appendWANInternalRoutes(
-	routes []netif.RouteSpec,
-	cfg Config,
-	tableID int,
-) []netif.RouteSpec {
-	routes = append(
-		routes,
-		netif.RouteSpec{
-			Family:   familyV4,
-			Dest:     cfg.InternalNetV4,
-			Via:      "",
-			Dev:      cfg.InternalIface,
-			TableID:  tableID,
-			Metric:   0,
-			Protocol: 0,
-		},
-		netif.RouteSpec{
-			Family:   familyV6,
-			Dest:     withPrefix(cfg.OpnsenseEdgeV6, "128"),
-			Via:      "",
-			Dev:      cfg.InternalIface,
-			TableID:  tableID,
-			Metric:   0,
-			Protocol: 0,
-		},
-	)
+func sourcePrefixV6(wan WAN) string {
+	translation := wan.TranslationV6
+	if translation == nil || translation.Mode != config.TranslationNPTv6 || translation.NPT == nil {
+		return ""
+	}
+	if translation.NPT.ExternalSource == config.PrefixConfigured {
+		return translation.NPT.ExternalPrefix.String()
+	}
+	if translation.NPT.ExpectedPrefix.IsValid() {
+		return translation.NPT.ExpectedPrefix.String()
+	}
+	return ""
+}
+
+func appendWANInternalRoutes(routes []netif.RouteSpec, cfg Config, wan WAN) []netif.RouteSpec {
+	if wan.TranslationV4 != nil {
+		routes = append(routes, netif.RouteSpec{Family: familyV4, Dest: cfg.InternalNetV4, Via: "", Dev: cfg.InternalIface, TableID: wan.TableID, Metric: 0, Protocol: 0})
+	}
+	if wan.TranslationV6 != nil {
+		routes = append(routes, netif.RouteSpec{Family: familyV6, Dest: withPrefix(cfg.OpnsenseEdgeV6, "128"), Via: "", Dev: cfg.InternalIface, TableID: wan.TableID, Metric: 0, Protocol: 0})
+	}
 	return routes
 }
 
@@ -638,6 +686,9 @@ func (m *Module) discoverGateways(ctx context.Context, log *slog.Logger) (gatewa
 	for _, wan := range m.cfg.WANs {
 		wanGateways := gatewaySet{V4: "", V6: ""}
 		for _, family := range []string{familyV4, familyV6} {
+			if !familyConfigured(wan, family) {
+				continue
+			}
 			gateway, err := netif.IfaceDefaultGateway(family, wan.Iface)
 			if err == nil {
 				if family == familyV4 {

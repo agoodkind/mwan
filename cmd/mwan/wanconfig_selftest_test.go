@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -131,5 +132,53 @@ func TestPublishedTreeRoundTripsThroughSysrepo(t *testing.T) {
 			served := withoutServedOnlyPairs(flattenNetworkJSON(t, []byte(exported)))
 			compareLeafSets(t, flattenNetworkJSON(t, raw), served)
 		})
+	}
+	gateway := selftestGateway()
+	readIDs := func() map[string]uint32 {
+		t.Helper()
+		if err := wanconfig.Publish(ctx, log, runningReplacer{pub: daemon}, gateway); err != nil {
+			t.Fatalf("publish translation identities: %v", err)
+		}
+		exported, found, err := reader.ExportJSON(ctx, yangpub.DatastoreRunning, "/ietf-nat:*")
+		if err != nil || !found {
+			t.Fatalf("read NAT instances: found=%v err=%v", found, err)
+		}
+		var tree struct {
+			NAT struct {
+				Instances struct {
+					Instance []struct {
+						ID   uint32 `json:"id"`
+						Name string `json:"name"`
+					} `json:"instance"`
+				} `json:"instances"`
+			} `json:"ietf-nat:nat"`
+		}
+		if err := json.Unmarshal([]byte(exported), &tree); err != nil {
+			t.Fatalf("decode NAT instances: %v", err)
+		}
+		ids := make(map[string]uint32)
+		for _, instance := range tree.NAT.Instances.Instance {
+			ids[instance.Name] = instance.ID
+		}
+		return ids
+	}
+	initial := readIDs()
+	if len(initial) != 2 {
+		t.Fatalf("initial NAT instances = %v, want one per translated family", initial)
+	}
+	other := gateway.Members[0]
+	other.Name, other.Iface = "another", "enanother0"
+	other.TableID, other.FwMark = 200, 2
+	other.TranslationIDV4 = wanconfig.TranslationInstanceID(other.Name, "ipv4")
+	other.TranslationIDV6 = wanconfig.TranslationInstanceID(other.Name, "ipv6")
+	original := gateway.Members[0]
+	for _, members := range [][]wanconfig.Member{{other, original}, {original, other}, {original}} {
+		gateway.Members = members
+		current := readIDs()
+		for name, id := range initial {
+			if current[name] != id {
+				t.Fatalf("NAT identity %s changed from %d to %d", name, id, current[name])
+			}
+		}
 	}
 }

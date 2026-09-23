@@ -5,7 +5,9 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/netip"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -163,7 +165,17 @@ func TestDesiredState(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			gotRules, gotRoutes := desiredState(tc.gateways, tc.health, tc.cfg)
+			gotRules, gotRoutes := desiredState(tc.gateways, tc.health, tc.cfg, readyTranslations(tc.cfg))
+			for i := range tc.wantRoutes {
+				if tc.wantRoutes[i].Dest != "default" {
+					continue
+				}
+				for _, wan := range tc.cfg.WANs {
+					if tc.wantRoutes[i].TableID == wan.TableID && !netif.HealthIsHealthy(tc.health.State(wan.Name)) {
+						tc.wantRoutes[i].Via = ""
+					}
+				}
+			}
 			if !reflect.DeepEqual(gotRules, tc.wantRules) {
 				t.Fatalf("rules mismatch\ngot:  %#v\nwant: %#v", gotRules, tc.wantRules)
 			}
@@ -189,7 +201,7 @@ func TestPublishLiveStateReportsTheActiveTier(t *testing.T) {
 		"att":          netif.HealthStateUnhealthy,
 		"webpass":      netif.HealthStateUnhealthy,
 		"monkeybrains": netif.HealthStateHealthy,
-	})
+	}, readyTranslations(module.cfg))
 
 	snapshot := store.Snapshot()
 	if !snapshot.TierValid || snapshot.ActiveTier != 1 {
@@ -221,7 +233,7 @@ func TestPublishLiveStateWithNoHealthyProvider(t *testing.T) {
 		"att":          netif.HealthStateUnhealthy,
 		"webpass":      netif.HealthStateUnhealthy,
 		"monkeybrains": netif.HealthStateUnhealthy,
-	})
+	}, readyTranslations(module.cfg))
 
 	for name, routing := range store.Snapshot().Routing {
 		if routing.Carrying {
@@ -237,15 +249,16 @@ func TestValidateWANAcceptsAnyPositivePriority(t *testing.T) {
 	t.Parallel()
 
 	fourth := WAN{
-		WANRef:     ifmgr.WANRef{Name: "astount", Iface: "astount0"},
-		TableID:    600,
-		FwMark:     4,
-		FwMarkPrio: 600,
-		FromPrio:   58,
-		NptPrefix:  "3d06:bad:b01:2500::/60",
-		V4Source:   "",
-		Tier:       2,
-		Weight:     1,
+		WANRef:        ifmgr.WANRef{Name: "astount", Iface: "astount0"},
+		TableID:       600,
+		FwMark:        4,
+		FwMarkPrio:    600,
+		FromPrio:      58,
+		TranslationV4: &config.IPv4Translation{Mode: config.TranslationNAPT44},
+		TranslationV6: testTranslation("3d06:bad:b01:2500::/60"),
+		V4Source:      "",
+		Tier:          2,
+		Weight:        1,
 	}
 	if err := validateWAN(fourth); err != nil {
 		t.Fatalf("validateWAN rejected a fourth provider: %v", err)
@@ -298,7 +311,7 @@ func TestDesiredStateOmitsStaticInternalRoute(t *testing.T) {
 	}
 	cfg := testConfig()
 
-	_, got := desiredState(gateways, health, cfg)
+	_, got := desiredState(gateways, health, cfg, readyTranslations(cfg))
 
 	want := routesForGateways(cfg, gateways)
 	if !reflect.DeepEqual(got, want) {
@@ -329,37 +342,40 @@ func testConfig() Config {
 		HealthStateFile: "/run/mwan-health.state",
 		WANs: []WAN{
 			{
-				WANRef:     ifmgr.WANRef{Name: "att", Iface: "att0"},
-				TableID:    100,
-				FwMark:     1,
-				FwMarkPrio: 100,
-				FromPrio:   55,
-				NptPrefix:  "3d06:bad:b01:1100::/56",
-				V4Source:   "",
-				Tier:       0,
-				Weight:     1,
+				WANRef:        ifmgr.WANRef{Name: "att", Iface: "att0"},
+				TableID:       100,
+				FwMark:        1,
+				FwMarkPrio:    100,
+				FromPrio:      55,
+				TranslationV4: &config.IPv4Translation{Mode: config.TranslationNAPT44},
+				TranslationV6: testTranslation("3d06:bad:b01:1100::/56"),
+				V4Source:      "",
+				Tier:          0,
+				Weight:        1,
 			},
 			{
-				WANRef:     ifmgr.WANRef{Name: "webpass", Iface: "webpass0"},
-				TableID:    200,
-				FwMark:     2,
-				FwMarkPrio: 200,
-				FromPrio:   56,
-				NptPrefix:  "3d06:bad:b01:2200::/56",
-				V4Source:   "203.0.113.2",
-				Tier:       0,
-				Weight:     1,
+				WANRef:        ifmgr.WANRef{Name: "webpass", Iface: "webpass0"},
+				TableID:       200,
+				FwMark:        2,
+				FwMarkPrio:    200,
+				FromPrio:      56,
+				TranslationV4: &config.IPv4Translation{Mode: config.TranslationNAPT44},
+				TranslationV6: testTranslation("3d06:bad:b01:2200::/56"),
+				V4Source:      "203.0.113.2",
+				Tier:          0,
+				Weight:        1,
 			},
 			{
-				WANRef:     ifmgr.WANRef{Name: "monkeybrains", Iface: "mbrains0"},
-				TableID:    300,
-				FwMark:     3,
-				FwMarkPrio: 300,
-				FromPrio:   57,
-				NptPrefix:  "3d06:bad:b01:3300::/56",
-				V4Source:   "",
-				Tier:       1,
-				Weight:     1,
+				WANRef:        ifmgr.WANRef{Name: "monkeybrains", Iface: "mbrains0"},
+				TableID:       300,
+				FwMark:        3,
+				FwMarkPrio:    300,
+				FromPrio:      57,
+				TranslationV4: &config.IPv4Translation{Mode: config.TranslationNAPT44},
+				TranslationV6: testTranslation("3d06:bad:b01:3300::/56"),
+				V4Source:      "",
+				Tier:          1,
+				Weight:        1,
 			},
 		},
 	}
@@ -373,18 +389,29 @@ func testGateways() gateways {
 	}
 }
 
+func testTranslation(expected string) *config.IPv6Translation {
+	return &config.IPv6Translation{
+		Mode: config.TranslationNPTv6,
+		NPT: &config.NPTv6Translation{
+			InternalPrefix: netip.MustParsePrefix("3d06:bad:b01::/60"),
+			ExternalSource: config.PrefixDelegated,
+			ExpectedPrefix: netip.MustParsePrefix(expected),
+		},
+	}
+}
+
 func allHealthyRules(cfg Config) []netif.DesiredRule {
 	return []netif.DesiredRule{
 		fwmarkRule(familyV4, 100, 1, 100),
 		fwmarkRule(familyV6, 100, 1, 100),
-		fromRule(55, cfg.WANs[0].NptPrefix, 100),
+		fromRule(55, cfg.WANs[0].TranslationV6.NPT.ExpectedPrefix.String(), 100),
 		fwmarkRule(familyV4, 200, 2, 200),
 		fromRuleV4(56, cfg.WANs[1].V4Source, 200),
 		fwmarkRule(familyV6, 200, 2, 200),
-		fromRule(56, cfg.WANs[1].NptPrefix, 200),
+		fromRule(56, cfg.WANs[1].TranslationV6.NPT.ExpectedPrefix.String(), 200),
 		fwmarkRule(familyV4, 300, 3, 300),
 		fwmarkRule(familyV6, 300, 3, 300),
-		fromRule(57, cfg.WANs[2].NptPrefix, 300),
+		fromRule(57, cfg.WANs[2].TranslationV6.NPT.ExpectedPrefix.String(), 300),
 	}
 }
 
@@ -392,12 +419,8 @@ func routesForGateways(cfg Config, currentGateways gateways) []netif.RouteSpec {
 	routes := make([]netif.RouteSpec, 0, len(cfg.WANs)*5+1)
 	for _, wan := range cfg.WANs {
 		wanGateways := currentGateways[wan.Name]
-		if wanGateways.V4 != "" {
-			routes = append(routes, route(familyV4, "default", wanGateways.V4, wan.Iface, wan.TableID, 0))
-		}
-		if wanGateways.V6 != "" {
-			routes = append(routes, route(familyV6, "default", wanGateways.V6, wan.Iface, wan.TableID, 0))
-		}
+		routes = append(routes, route(familyV4, "default", wanGateways.V4, wan.Iface, wan.TableID, 0))
+		routes = append(routes, route(familyV6, "default", wanGateways.V6, wan.Iface, wan.TableID, 0))
 		routes = append(routes,
 			route(familyV4, cfg.InternalNetV4, "", cfg.InternalIface, wan.TableID, 0),
 			route(familyV6, withPrefix(cfg.OpnsenseEdgeV6, "128"), "", cfg.InternalIface, wan.TableID, 0),
@@ -481,7 +504,7 @@ func catchAllRule(family string, iifName string, tableID int) netif.DesiredRule 
 
 func configWithoutWebpassNPT(cfg Config) Config {
 	cfg.WANs = append([]WAN(nil), cfg.WANs...)
-	cfg.WANs[1].NptPrefix = ""
+	cfg.WANs[1].TranslationV6 = &config.IPv6Translation{Mode: config.TranslationNative}
 	return cfg
 }
 
@@ -509,4 +532,56 @@ func testEnvWithStore(store *wanstate.Store) *ifmgr.Env {
 	env := testEnv()
 	env.LiveState = store
 	return env
+}
+
+func readyTranslations(cfg Config) map[string]wanstate.MemberTranslation {
+	translations := make(map[string]wanstate.MemberTranslation)
+	for _, wan := range cfg.WANs {
+		state := wanstate.MemberTranslation{V4: wanstate.FamilyTranslation{Ready: wan.TranslationV4 != nil}, V6: wanstate.FamilyTranslation{Ready: wan.TranslationV6 != nil}}
+		if wan.TranslationV6 != nil && wan.TranslationV6.NPT != nil {
+			state.V6.ExternalPrefix = wan.TranslationV6.NPT.ExpectedPrefix
+		}
+		translations[wan.Name] = state
+	}
+	return translations
+}
+
+func TestFamilyReadinessPreservesIPv4AndSelectsIPv6Fallback(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig()
+	translations := readyTranslations(cfg)
+	state := translations["att"]
+	state.V6.Ready = false
+	translations["att"] = state
+	cfg.WANs[1].TranslationV6 = nil
+	health := netif.HealthStates{}
+	rules, routes := desiredState(testGateways(), health, cfg, translations)
+	if !slices.Contains(rules, fwmarkRule(familyV4, 100, 1, 100)) {
+		t.Fatal("unready IPv6 removed the provider's IPv4 rule")
+	}
+	if !containsRoute(routes, route(familyV4, "default", "192.0.2.1", "att0", 100, 0)) {
+		t.Fatal("unready IPv6 removed the ordinary IPv4 default")
+	}
+	for _, rule := range rules {
+		if rule.Family == familyV6 && rule.TableID != 300 {
+			t.Fatalf("IPv6 selected an unready or absent family: %+v", rule)
+		}
+	}
+	if !slices.Contains(rules, catchAllRule(familyV6, cfg.InternalIface, 300)) {
+		t.Fatal("IPv6 did not select the ready fallback tier")
+	}
+	if slices.Contains(rules, catchAllRule(familyV4, cfg.InternalIface, 300)) {
+		t.Fatal("IPv6 fallback changed the IPv4 tier")
+	}
+	store := wanstate.New()
+	module := &Module{cfg: cfg}
+	module.InitBase(testEnvWithStore(store), "module", moduleName)
+	module.publishLiveState(testGateways(), health, translations)
+	snapshot := store.Snapshot()
+	if !snapshot.Routing["att"].V4Ready || snapshot.Routing["att"].V6Ready || snapshot.Routing["webpass"].V6Ready || !snapshot.Routing["monkeybrains"].V6Ready {
+		t.Fatalf("incorrect family readiness: %+v", snapshot.Routing)
+	}
+	if !snapshot.Routing["att"].Carrying || !snapshot.Routing["monkeybrains"].Carrying {
+		t.Fatalf("independent active families not reported: %+v", snapshot.Routing)
+	}
 }

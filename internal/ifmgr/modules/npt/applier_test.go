@@ -128,46 +128,6 @@ func TestApplierGuardRuleShape(t *testing.T) {
 	}
 }
 
-// TestApplierNetmapRuleShape asserts the internal-prefix SNAT rule is a NETMAP:
-// two immediates (range min/max) plus a NAT with Prefix set and a source type.
-func TestApplierNetmapRuleShape(t *testing.T) {
-	t.Parallel()
-
-	fake := &fakeConn{ops: nil, rules: nil, flushCount: 0, flushErr: nil}
-	app := &nftApplier{newConn: func() (nftConn, error) { return fake, nil }}
-	if err := app.Apply(context.Background(), slog.Default(), desiredForTest()); err != nil {
-		t.Fatalf("Apply returned error: %v", err)
-	}
-
-	// The NETMAP SNAT is the fourth postrouting rule (index 3).
-	netmap := fake.rules[3]
-	immediates := 0
-	var nat *expr.NAT
-	for _, e := range netmap.Exprs {
-		switch v := e.(type) {
-		case *expr.Immediate:
-			immediates++
-		case *expr.NAT:
-			nat = v
-		}
-	}
-	if immediates != 2 {
-		t.Fatalf("netmap immediates = %d, want 2 (range min/max)", immediates)
-	}
-	if nat == nil {
-		t.Fatal("netmap rule missing NAT expression")
-	}
-	if !nat.Prefix {
-		t.Fatal("netmap NAT must set Prefix (NF_NAT_RANGE_NETMAP)")
-	}
-	if nat.Type != expr.NATTypeSourceNAT {
-		t.Fatalf("netmap NAT type = %v, want SourceNAT", nat.Type)
-	}
-	if nat.RegAddrMin != 1 || nat.RegAddrMax != 2 {
-		t.Fatalf("netmap NAT regs = (%d,%d), want (1,2)", nat.RegAddrMin, nat.RegAddrMax)
-	}
-}
-
 // TestApplierSingleSNATShape asserts an edge SNAT is a single-address NAT: one
 // immediate, Prefix unset, only the min register.
 func TestApplierSingleSNATShape(t *testing.T) {

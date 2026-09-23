@@ -11,6 +11,7 @@ import (
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/notify"
+	"goodkind.io/mwan/internal/wanstate"
 )
 
 // fakeApplier records the rule set the module hands it, so a test can assert on
@@ -52,7 +53,16 @@ func newTestModule(t *testing.T, cfg Config, health netif.HealthStates) (*Module
 	if err := typed.parse(); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	typed.Env = &ifmgr.Env{Log: slog.Default(), Alerts: ifmgr.WrapNotifier(notify.NullNotifier{})}
+	store := wanstate.New()
+	routing := make(map[string]wanstate.MemberRouting)
+	translation := make(map[string]wanstate.MemberTranslation)
+	for _, member := range cfg.Members {
+		routing[member.Name] = wanstate.MemberRouting{V4Ready: true, V6Ready: true}
+		translation[member.Name] = wanstate.MemberTranslation{V4: wanstate.FamilyTranslation{Ready: true}, V6: wanstate.FamilyTranslation{Ready: true}}
+	}
+	store.SetRouting(0, routing)
+	store.SetTranslation(translation)
+	typed.Env = &ifmgr.Env{Log: slog.Default(), Alerts: ifmgr.WrapNotifier(notify.NullNotifier{}), LiveState: store}
 	typed.Log = slog.Default()
 	typed.readHealth = func(string) (netif.HealthStates, error) { return health, nil }
 	applier := &fakeApplier{calls: 0, last: nil, err: nil}
@@ -203,5 +213,49 @@ func TestNoTeardownMethod(t *testing.T) {
 		if _, found := typ.MethodByName(name); found {
 			t.Fatalf("Module exposes %q; steering must not clear its chain on stop", name)
 		}
+	}
+}
+
+func TestFamilyRulesUseIndependentReadyTiers(t *testing.T) {
+	t.Parallel()
+	module, err := New(testConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := module.(*Module)
+	if err := m.parse(); err != nil {
+		t.Fatal(err)
+	}
+	store := wanstate.New()
+	m.Env = &ifmgr.Env{LiveState: store}
+	store.SetRouting(0, map[string]wanstate.MemberRouting{
+		"att":          {V4Ready: true, V6Ready: true},
+		"webpass":      {V4Ready: true, V6Ready: false},
+		"monkeybrains": {V4Ready: true, V6Ready: true},
+	})
+	translations := map[string]wanstate.MemberTranslation{
+		"att":          {V4: wanstate.FamilyTranslation{Ready: true}, V6: wanstate.FamilyTranslation{Ready: false}},
+		"webpass":      {V4: wanstate.FamilyTranslation{Ready: true}},
+		"monkeybrains": {V4: wanstate.FamilyTranslation{Ready: true}, V6: wanstate.FamilyTranslation{Ready: true}},
+	}
+	store.SetTranslation(translations)
+	rules := m.desiredRules(netif.HealthStates{})
+	if len(rules) != 3 {
+		t.Fatalf("rules = %v, want both families", rules)
+	}
+	for _, rule := range rules {
+		if rule.Source.Addr().Is4() {
+			if !reflect.DeepEqual(rule.Assign.Slots, []uint32{1, 2}) {
+				t.Fatalf("IPv4 changed tier: %+v", rule.Assign)
+			}
+		} else if rule.Assign.Mark != 3 {
+			t.Fatalf("IPv6 selected an unready or absent family: %+v", rule.Assign)
+		}
+	}
+	translations["monkeybrains"] = wanstate.MemberTranslation{V4: wanstate.FamilyTranslation{Ready: true}}
+	store.SetTranslation(translations)
+	rules = m.desiredRules(netif.HealthStates{})
+	if len(rules) != 1 || !rules[0].Source.Addr().Is4() {
+		t.Fatalf("IPv6 readiness loss must preserve only IPv4 rules: %v", rules)
 	}
 }
