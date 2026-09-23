@@ -192,8 +192,6 @@ yang-validate-instances:
 		$(YANGLINT) -t config $(YANG_MODELS) "$$instance" || exit 1; \
 	done
 
-check: yang-validate yang-validate-instances
-
 # ---------------------------------------------------------------------------
 # cgo dependencies for the publishing binding
 # ---------------------------------------------------------------------------
@@ -318,7 +316,7 @@ $(WANCONFIG_SYSREPO_STAMP): $(WANCONFIG_LIBYANG_STAMP)
 endif
 
 # ---------------------------------------------------------------------------
-# Docker lane for the linux gateway binary and test suite
+# Docker lane for the linux gateway binary, test suite, and lint gates
 # ---------------------------------------------------------------------------
 
 # The builder image is Debian trixie with Go and the pinned libyang and
@@ -339,9 +337,17 @@ WANCONFIG_BUILDER_IMAGE := mwan-wanconfig-builder:$(WANCONFIG_DOCKER_ARCH)
 
 # Both architectures share one module cache volume. The module cache stores
 # only module sources, which are the same for every architecture.
+#
+# Each architecture has its own volume for /root/.cache and for .make. The
+# first stores the Go build cache, the lint caches, and the cgo dependency
+# sources. The second stores go-makefile, its engine, and the cgo dependency
+# archives. The host's .make contains a darwin engine, and the container
+# must not run or replace it.
 WANCONFIG_DOCKER_RUN := docker run --rm --platform linux/$(WANCONFIG_DOCKER_ARCH) \
 	-v $(CURDIR):/src -w /src \
 	-v mwan-wanconfig-gomod:/go/pkg/mod \
+	-v mwan-wanconfig-cache-$(WANCONFIG_DOCKER_ARCH):/root/.cache \
+	-v mwan-wanconfig-gomk-$(WANCONFIG_DOCKER_ARCH):/src/.make \
 	-e GOWORK=off \
 	$(WANCONFIG_BUILDER_IMAGE)
 
@@ -383,16 +389,46 @@ test-docker-all:
 		$(MAKE) test-docker WANCONFIG_DOCKER_ARCH=$$arch || exit 1; \
 	done
 
-# On macOS the host test run is not the real one: darwin cannot build the
-# cgo sysrepo binding. Every package that exercises the publishing binding
-# compiles out, and `go test ./...` passes without testing those packages.
-# On darwin, `make test` runs the suite in the builder image, the same code
-# a CI run tests. This recipe replaces the go.mk test recipe on darwin only.
-# Make prints an "overriding commands" warning for the replacement.
+# docker-make runs any make targets inside the builder container. The
+# container builds the cgo dependencies for its own architecture and keeps
+# them in its .make volume.
+#
+#   make docker-make TARGETS="check test"
+#   make docker-make TARGETS=build-check
+#
+# The lint gates analyze the container's architecture. go-makefile keeps cgo
+# on for a native target, and the gates then check the publishing binding.
+# go-makefile turns cgo off for a foreign target, and the gates then skip the
+# binding without failing. CI lints linux/amd64. The Mac container lints
+# linux/arm64.
+DOCKER_MAKE_TARGETS ?= check test
+TARGETS             ?= $(DOCKER_MAKE_TARGETS)
+
+.PHONY: docker-make
+docker-make: wanconfig-builder-image
+	@echo "running make $(TARGETS) in $(WANCONFIG_BUILDER_IMAGE)"
+	$(WANCONFIG_DOCKER_RUN) \
+		make $(TARGETS) GO_MK_PLATFORMS=linux/$(WANCONFIG_DOCKER_ARCH)
+
+# darwin cannot build the cgo sysrepo binding. A host run compiles out every
+# package that uses the binding and passes without testing them. On darwin,
+# the entry points below run inside the builder container instead. go.mk
+# defines `check: lint`, so `lint` runs in the container first, and the check
+# recipe then runs the YANG gates there. These recipes replace the go.mk
+# recipes on darwin only. Make prints an "overriding commands" warning for
+# each.
+DARWIN_DOCKER_TARGETS := build build-check lint test vet
+YANG_GATES            := yang-validate yang-validate-instances
+
 ifeq ($(shell uname -s),Darwin)
-.PHONY: test
-test: test-docker
-	@echo "darwin: the suite ran in $(WANCONFIG_BUILDER_IMAGE), not on the host"
+.PHONY: check $(DARWIN_DOCKER_TARGETS)
+$(DARWIN_DOCKER_TARGETS):
+	@$(MAKE) docker-make TARGETS=$@
+
+check:
+	@$(MAKE) docker-make TARGETS="$(YANG_GATES)"
+else
+check: $(YANG_GATES)
 endif
 
 # ---------------------------------------------------------------------------

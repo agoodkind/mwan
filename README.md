@@ -53,24 +53,28 @@ fetched at parse time by `bootstrap.mk`. Run `make help` for the full target
 list.
 
 ```
-make check               # lint, vet, staticcheck, deadcode, and the YANG model gates
-make test                # the suite
-make test-docker         # the suite in the builder container, on any host
-make build-wanconfig     # the linux binary, built in the builder container
-make test-docker-all     # the suite in the amd64 and the arm64 container
-make build-wanconfig-all # the linux binary for amd64 and for arm64
+make check                   # lint, vet, staticcheck, deadcode, and the YANG model gates
+make test                    # the suite
+make build                   # the linux binary
+make docker-make TARGETS=... # any make targets in the builder container
+make build-wanconfig-all     # the linux binary for amd64 and for arm64
+make test-docker-all         # the suite in the amd64 and the arm64 container
 ```
 
-Both gates need Linux. Darwin cannot build the sysrepo binding, and a host run
-would compile out every package that uses it. On macOS, `make test` runs the
-suite in the builder container, a Debian image with the pinned libyang and
-sysrepo installed. The Docker targets need Docker. They use the host
-architecture unless `WANCONFIG_DOCKER_ARCH` sets `amd64` or `arm64`, and the
-other architecture runs under emulation. `make build-wanconfig` writes
-`bin/mwan-wanconfig-linux-<arch>`.
+Darwin cannot build the sysrepo binding, and a host run would compile out every
+package that uses it. On macOS, `make check`, `make test`, `make build`,
+`make build-check`, and `make vet` run in the builder container. The container
+is a Debian image with the pinned libyang and sysrepo and `yanglint`
+installed, and it builds the cgo dependencies for its own architecture. The
+Docker targets need Docker. They use the host architecture unless
+`WANCONFIG_DOCKER_ARCH` sets `amd64` or `arm64`, and the other architecture
+runs under emulation.
 
-The YANG gates need `yanglint`, from `brew install libyang` locally or the
-`libyang2-tools` package on Linux.
+The container lints its own architecture, which is linux/arm64 on Apple
+Silicon. CI lints linux/amd64. CI also compiles the binary and the stack
+packages on a native arm64 runner and runs the suite there, and any change
+that breaks arm64 fails those checks. On a Linux host, the YANG gates need
+`yanglint` from the `libyang2-tools` package.
 
 ## Releasing
 
