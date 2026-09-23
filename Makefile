@@ -343,12 +343,20 @@ WANCONFIG_BUILDER_IMAGE := mwan-wanconfig-builder:$(WANCONFIG_DOCKER_ARCH)
 # sources. The second stores go-makefile, its engine, and the cgo dependency
 # archives. The host's .make contains a darwin engine, and the container
 # must not run or replace it.
+#
+# The container runs as root. On a Linux host a non-root user owns the
+# mounted checkout, and git refuses a repository another user owns. Go then
+# fails the build when it stamps version-control data. The safe.directory
+# entry lets git read /src.
 WANCONFIG_DOCKER_RUN := docker run --rm --platform linux/$(WANCONFIG_DOCKER_ARCH) \
 	-v $(CURDIR):/src -w /src \
 	-v mwan-wanconfig-gomod:/go/pkg/mod \
 	-v mwan-wanconfig-cache-$(WANCONFIG_DOCKER_ARCH):/root/.cache \
 	-v mwan-wanconfig-gomk-$(WANCONFIG_DOCKER_ARCH):/src/.make \
 	-e GOWORK=off \
+	-e GIT_CONFIG_COUNT=1 \
+	-e GIT_CONFIG_KEY_0=safe.directory \
+	-e GIT_CONFIG_VALUE_0=/src \
 	$(WANCONFIG_BUILDER_IMAGE)
 
 # The image is built here and published nowhere, so `docker run` cannot pull
