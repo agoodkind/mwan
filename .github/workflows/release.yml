@@ -4,10 +4,11 @@ name: Release
 # a published archive by version, so this workflow is the only place a shipped
 # binary is built.
 #
-# The one shipped binary links libyang and libsysrepo, and every release
-# platform builds on a native runner with a C compiler. The cgo input matches
-# that. It also turns on the compile job's cgo dependency cache, ccache, and
-# target architecture.
+# The shipped binary links libyang and libsysrepo through cgo. Every release
+# platform builds on a native Linux runner with a C compiler. The cgo input
+# sets CGO_ENABLED=1 for the compile job and passes the target architecture to
+# the Makefile. It also caches compiler output, the built C libraries, and the
+# stack packages between runs.
 
 on:
   push:
