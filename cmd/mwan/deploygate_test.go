@@ -16,6 +16,7 @@ import (
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/internal/notify"
 )
 
 const (
@@ -609,6 +610,40 @@ func TestWaitDeployRecordsTheVerdictWhenTheAlertFails(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "owned-address alert not sent: email unconfigured") {
 		t.Fatalf("output does not report the failed alert: %s", out.String())
+	}
+}
+
+func TestOwnedMissingAlertEmailExplainsRecovery(t *testing.T) {
+	alert := ownedMissingAlert{
+		VMID:    213,
+		TraceID: "deploy-123",
+		Report: "owned address 10.241.204.3 on enwebpass0: missing\n" +
+			"owned addresses: 0 present, 4 missing",
+	}
+	event := ownedMissingEvent(alert)
+	if event.Message != "VM 213: 4 mapped IPv4 addresses missing" {
+		t.Fatalf("email subject message = %q", event.Message)
+	}
+	record := slog.NewRecord(event.Now, event.Level, event.Message, 0)
+	record.AddAttrs(event.Fields...)
+	body := notify.BuildEmailBody(record, nil)
+	for _, want := range []string{
+		"postdeploy check failed after reboot",
+		"gateway deploy is unhealthy",
+		"No rollback occurred",
+		"deployed configuration remains active",
+		"On gateway VM 213, run: mwan deploy-gate check-owned-addresses",
+		"On gateway VM 213, run: journalctl -u mwan-ifmgr@wan -b --no-pager",
+		"Repair the cause, redeploy, then repeat the check",
+		"If a fresh check reports 0 missing after a later deploy, the current gateway state passes",
+		"10.241.204.3 on enwebpass0: missing",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("email body lacks %q:\n%s", want, body)
+		}
+	}
+	if strings.Index(body, "On gateway VM 213") > strings.Index(body, "10.241.204.3") {
+		t.Fatalf("email puts raw report before action:\n%s", body)
 	}
 }
 

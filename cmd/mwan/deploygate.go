@@ -577,20 +577,40 @@ func sendOwnedMissingAlert(ctx context.Context, alert ownedMissingAlert) error {
 	sendCtx, cancel := context.WithTimeout(ctx, deployGateAlertTimeout)
 	defer cancel()
 	notifier := notify.FromConfig(cfg, log, deployGateAlertService)
-	notifier.Notify(sendCtx, notify.Event{
+	notifier.Notify(sendCtx, ownedMissingEvent(alert))
+	return nil
+}
+
+func ownedMissingEvent(alert ownedMissingAlert) notify.Event {
+	message := fmt.Sprintf("VM %d: mapped IPv4 address check failed", alert.VMID)
+	for line := range strings.SplitSeq(alert.Report, "\n") {
+		var present, missing int
+		if _, err := fmt.Sscanf(strings.TrimSpace(line),
+			"owned addresses: %d present, %d missing", &present, &missing); err == nil && missing > 0 {
+			message = fmt.Sprintf("VM %d: %d mapped IPv4 addresses missing",
+				alert.VMID, missing)
+			break
+		}
+	}
+	return notify.Event{
 		Now:     time.Now(),
 		Level:   slog.LevelError,
 		Kind:    deployGateAlertKind,
 		Key:     alert.TraceID,
-		Message: fmt.Sprintf("deploy gate: VM %d does not hold its on-link mapped addresses", alert.VMID),
+		Message: message,
 		Fields: []slog.Attr{
+			slog.String("action", fmt.Sprintf(
+				"On gateway VM %d, run: mwan deploy-gate check-owned-addresses", alert.VMID)),
+			slog.String("deployment", "The postdeploy check failed after reboot. The gateway deploy is unhealthy. No rollback occurred; the deployed configuration remains active."),
+			slog.String("if missing", fmt.Sprintf(
+				"On gateway VM %d, run: journalctl -u mwan-ifmgr@wan -b --no-pager. Repair the cause, redeploy, then repeat the check.", alert.VMID)),
+			slog.String("later result", "If a fresh check reports 0 missing after a later deploy, the current gateway state passes; this older alert needs no action."),
 			slog.Int("vmid", alert.VMID),
 			slog.String("trace_id", alert.TraceID),
 			slog.String("report", alert.Report),
 		},
 		IsRecovery: false,
-	})
-	return nil
+	}
 }
 
 // readGuestOwnedCheck runs the owned-address check inside the guest through
