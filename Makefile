@@ -5,8 +5,9 @@
 # staticcheck targets here; `make help` lists the canonical entry points.
 #
 # Project-local targets: protobuf codegen, the YANG model gate, the cgo
-# dependency recipes for the publishing binding, a docker lane for building
-# the linux gateway binary on macOS, the wanconfig stack packaging, and a
+# dependency recipes for the publishing binding, a docker lane that builds
+# and tests the linux gateway binary for amd64 and arm64, the wanconfig stack
+# packaging, and a
 # govulncheck target that fails on every reachable advisory.
 #
 # Shipped binaries come only from the CI release. The one cross build here is
@@ -37,21 +38,23 @@ GO_BUILD_EXTRA_FLAGS := -trimpath -buildvcs=false
 # attested GitHub release, which is what the deploy path installs.
 GO_MK_MODULES := go-build.mk go-release.mk
 
-# One linux binary, which links libyang and libsysrepo statically.
+# One linux binary for amd64 and arm64, which links libyang and libsysrepo
+# statically. Each architecture compiles on a native runner.
 #
 # RELEASE_PLATFORMS is a default, not an override. Each release job passes
 # its own single platform in the environment, and this must yield to it.
 # Forcing a list here made every job archive every platform, and release
 # 202608161945-4-9244335 then failed verification on an unattested archive.
 RELEASE_PLATFORMS ?= linux/amd64
-RELEASE_BINS      := mwan:$(CMD):cgo=1,platforms=linux/amd64
+RELEASE_BINS      := mwan:$(CMD):cgo=1,platforms=linux/amd64,platforms=linux/arm64
 
 # gobgp's only cgo symbol is a memory-reporting helper used solely by its
 # tests.
 export GO_MK_CGO_OPTIONAL := github.com/osrg/gobgp/v4/internal/pkg/table
 
-# Every lint gate runs for the one shipped platform. mwan is almost entirely
-# linux-tagged, so a darwin host pass would skip most of the package.
+# Every lint gate runs for linux/amd64. The lint runners are amd64 hosts, and
+# the arm64 cgo dependencies need an arm64 compiler that those hosts lack. The
+# arm64 suite runs in the builder image on an arm64 runner instead.
 GO_MK_PLATFORMS := linux/amd64
 
 # ---------------------------------------------------------------------------
@@ -315,13 +318,32 @@ $(WANCONFIG_SYSREPO_STAMP): $(WANCONFIG_LIBYANG_STAMP)
 endif
 
 # ---------------------------------------------------------------------------
-# Docker lane for the linux gateway binary on macOS
+# Docker lane for the linux gateway binary and test suite
 # ---------------------------------------------------------------------------
 
-# Builds the linux gateway binary inside a Debian trixie golang image that
-# carries the pinned libyang and sysrepo, so the cgo binding links the
-# gateway's library generation and glibc. Nothing deploys its output.
-WANCONFIG_BUILDER_IMAGE := mwan-wanconfig-builder
+# The builder image is Debian trixie with Go and the pinned libyang and
+# sysrepo installed. The cgo binding built in it links the gateway's library
+# generation and glibc. No deploy installs the binary this lane writes.
+#
+# WANCONFIG_DOCKER_ARCH selects the container architecture and defaults to
+# the host's. A native container runs at full speed; the other architecture
+# runs under emulation. Each architecture has its own image tag and binary
+# name, and building one never replaces the other.
+WANCONFIG_DOCKER_ARCHS := amd64 arm64
+ifneq ($(filter arm64 aarch64,$(shell uname -m)),)
+WANCONFIG_DOCKER_ARCH ?= arm64
+else
+WANCONFIG_DOCKER_ARCH ?= amd64
+endif
+WANCONFIG_BUILDER_IMAGE := mwan-wanconfig-builder:$(WANCONFIG_DOCKER_ARCH)
+
+# Both architectures share one module cache volume. The module cache stores
+# only module sources, which are the same for every architecture.
+WANCONFIG_DOCKER_RUN := docker run --rm --platform linux/$(WANCONFIG_DOCKER_ARCH) \
+	-v $(CURDIR):/src -w /src \
+	-v mwan-wanconfig-gomod:/go/pkg/mod \
+	-e GOWORK=off \
+	$(WANCONFIG_BUILDER_IMAGE)
 
 # The image is built here and published nowhere, so `docker run` cannot pull
 # it: every target that runs the image must build it first or fail on a clean
@@ -329,7 +351,7 @@ WANCONFIG_BUILDER_IMAGE := mwan-wanconfig-builder
 # Dockerfile still rebuilds.
 .PHONY: wanconfig-builder-image
 wanconfig-builder-image:
-	docker build --platform linux/amd64 \
+	docker build --platform linux/$(WANCONFIG_DOCKER_ARCH) \
 		--build-arg LIBYANG_VERSION=$(WANCONFIG_LIBYANG_VERSION) \
 		--build-arg SYSREPO_VERSION=$(WANCONFIG_SYSREPO_VERSION) \
 		--build-arg "LIBYANG_CMAKE_FLAGS=$(WANCONFIG_LIBYANG_CMAKE_FLAGS)" \
@@ -339,32 +361,38 @@ wanconfig-builder-image:
 .PHONY: build-wanconfig
 build-wanconfig: wanconfig-builder-image
 	@mkdir -p $(LOCAL_BIN)
-	docker run --rm --platform linux/amd64 \
-		-v $(CURDIR):/src -w /src \
-		-v mwan-wanconfig-gomod:/go/pkg/mod \
-		-e GOWORK=off \
-		$(WANCONFIG_BUILDER_IMAGE) \
-		go build $(GO_BUILD_EXTRA_FLAGS) -ldflags='$(GO_BUILD_LDFLAGS)' -o $(LOCAL_BIN)/$(BINARY)-wanconfig $(CMD)
+	$(WANCONFIG_DOCKER_RUN) \
+		go build $(GO_BUILD_EXTRA_FLAGS) -ldflags='$(GO_BUILD_LDFLAGS)' -o $(LOCAL_BIN)/$(BINARY)-wanconfig-linux-$(WANCONFIG_DOCKER_ARCH) $(CMD)
+
+# The container mounts the repository root. The root is the module root, and
+# it contains the YANG models the suite reads.
+.PHONY: test-docker
+test-docker: wanconfig-builder-image
+	@echo "running the suite in $(WANCONFIG_BUILDER_IMAGE)"
+	$(WANCONFIG_DOCKER_RUN) \
+		go test -count=1 ./...
+
+.PHONY: build-wanconfig-all test-docker-all
+build-wanconfig-all:
+	@for arch in $(WANCONFIG_DOCKER_ARCHS); do \
+		$(MAKE) build-wanconfig WANCONFIG_DOCKER_ARCH=$$arch || exit 1; \
+	done
+
+test-docker-all:
+	@for arch in $(WANCONFIG_DOCKER_ARCHS); do \
+		$(MAKE) test-docker WANCONFIG_DOCKER_ARCH=$$arch || exit 1; \
+	done
 
 # On macOS the host test run is not the real one: darwin cannot build the
-# cgo sysrepo binding, so every package that exercises the publishing
-# binding compiles out and `go test ./...` passes while proving nothing
-# about them. Route the whole suite through the same builder image the
-# gateway binary uses, so a mac run and a CI run exercise identical code.
-# The container mounts the repository root, which is the module root and also
-# holds the YANG models the suite reads. The recipe below replaces go.mk's
-# test target on darwin only, which is why make prints an "overriding
-# commands" warning here.
+# cgo sysrepo binding. Every package that exercises the publishing binding
+# compiles out, and `go test ./...` passes without testing those packages.
+# On darwin, `make test` runs the suite in the builder image, the same code
+# a CI run tests. This recipe replaces the go.mk test recipe on darwin only.
+# Make prints an "overriding commands" warning for the replacement.
 ifeq ($(shell uname -s),Darwin)
 .PHONY: test
-test: wanconfig-builder-image
-	@echo "darwin: running the suite in $(WANCONFIG_BUILDER_IMAGE), not on the host"
-	docker run --rm --platform linux/amd64 \
-		-v $(CURDIR):/src -w /src \
-		-v mwan-wanconfig-gomod:/go/pkg/mod \
-		-e GOWORK=off \
-		$(WANCONFIG_BUILDER_IMAGE) \
-		go test -count=1 ./...
+test: test-docker
+	@echo "darwin: the suite ran in $(WANCONFIG_BUILDER_IMAGE), not on the host"
 endif
 
 # ---------------------------------------------------------------------------
@@ -375,8 +403,9 @@ endif
 # routes and policy rules inside it, so they need CAP_SYS_ADMIN and
 # CAP_NET_ADMIN. `make test` runs unprivileged and leaves them out; this
 # target always runs them with that privilege. On linux it runs them as root.
-# On macOS it runs them in a linux/arm64 container, because the amd64 builder
-# runs under qemu, and qemu does not translate policy rule netlink messages.
+# On macOS it runs them in a native linux/arm64 container. An amd64 container
+# on Apple Silicon runs under qemu, and qemu does not translate policy rule
+# netlink messages.
 NETNS_TEST_PACKAGES := ./internal/ifmgr/modules/wanroutes/...
 NETNS_GO_VERSION    := $(shell awk '/^go /{print $$2}' go.mod)
 
@@ -413,10 +442,10 @@ endif
 # that carries the stack pins, the tool sources, and the module files that
 # pin the tool's dependencies. An unchanged stack is copied, not rebuilt.
 #
-# The architecture is amd64 unless the release engine names another: the
-# gateway is amd64, and the upstream sysrepo deb template hardcodes amd64
-# multiarch paths, so the local lane on an arm64 host runs the container
-# under emulation rather than producing packages no gateway installs.
+# The release engine sets the architecture for each release leg. A local run
+# defaults to amd64, the production gateway's architecture, and an arm64 host
+# runs that container under emulation. Set WANCONFIG_STACK_ARCH=arm64 to
+# build the arm64 bundle natively on an arm64 host.
 WANCONFIG_STACK_ARCH    ?= $(if $(strip $(GO_MK_TARGET_GOARCH)),$(GO_MK_TARGET_GOARCH),amd64)
 WANCONFIG_STACK_IMAGE   := debian:trixie
 WANCONFIG_STACK_SOURCES := $(wildcard tools/wanconfigstack/*.go) go.mod go.sum

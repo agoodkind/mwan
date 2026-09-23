@@ -76,12 +76,12 @@ If GitHub Actions is unavailable, run `make check` inside the repository's
 Linux builder container:
 
 ```bash
-make wanconfig-builder-image
+make wanconfig-builder-image WANCONFIG_DOCKER_ARCH=amd64
 docker run --rm --platform linux/amd64 \
     -v "$PWD:/src" -w /src \
     -v mwan-wanconfig-gomod:/go/pkg/mod \
     -e GOWORK=off \
-    mwan-wanconfig-builder make check
+    mwan-wanconfig-builder:amd64 make check
 ```
 
 `make test` is valid on Darwin because it already selects that container.
