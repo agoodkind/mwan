@@ -204,7 +204,7 @@ func showDebugPrefixes(
 	logger *slog.Logger,
 	cfg *config.Config,
 ) error {
-	source := pd.New(logger, pd.ReadOnly())
+	source := pd.New(logger)
 	for _, wan := range debugWANs(cfg) {
 		prefix, ok, err := source.Prefix(ctx, wan.Iface)
 		if err != nil {
@@ -317,7 +317,7 @@ func showDebugStatus(
 	logger *slog.Logger,
 	cfg *config.Config,
 ) error {
-	source := pd.New(logger, pd.ReadOnly())
+	source := pd.New(logger)
 	for index, wan := range debugWANs(cfg) {
 		if index > 0 {
 			fmt.Fprintln(output)
