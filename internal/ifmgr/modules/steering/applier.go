@@ -248,7 +248,7 @@ func markZeroGuardExprs() []expr.Any {
 	}
 }
 
-// nonHairpinGuardExprs leaves NPT hairpin packets on the internal route.
+// nonHairpinGuardExprs excludes packets tagged by NPT hairpin translation.
 // NPT clears the packet mark on ingress, so the mark-zero guard cannot
 // distinguish a hairpin packet from a new outbound flow.
 func nonHairpinGuardExprs() []expr.Any {
