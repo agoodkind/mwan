@@ -52,6 +52,14 @@ func natInstanceItems(member Member) []Item {
 	if policy := member.TranslationV4; policy != nil && policy.Mode != config.TranslationNative {
 		base := natPath + "/instances/instance[id='" + uintValue(uint64(member.TranslationIDV4)) + "']"
 		items = append(items, Item{Path: base + "/name", Value: member.Name + "/ipv4"}, Item{Path: base + "/type", Value: string(policy.Mode)}, Item{Path: base + "/enable", Value: boolTrue})
+		for index, mapping := range policy.StaticMappings {
+			path := base + "/mapping-table/mapping-entry[index='" + strconv.Itoa(index+1) + "']"
+			items = append(items,
+				Item{Path: path + "/type", Value: "static"},
+				Item{Path: path + "/internal-src-address", Value: mapping.Internal.String() + "/32"},
+				Item{Path: path + "/external-src-address", Value: mapping.External.String() + "/32"},
+			)
+		}
 	}
 	if policy := member.TranslationV6; policy != nil && policy.Mode != config.TranslationNative {
 		base := natPath + "/instances/instance[id='" + uintValue(uint64(member.TranslationIDV6)) + "']"

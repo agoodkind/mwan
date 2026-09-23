@@ -224,7 +224,15 @@ func natLiveItems(snap wanstate.Snapshot, gateway wanconfig.Gateway) []yangpub.I
 			items = append(items, yangpub.Item{Path: fmt.Sprintf("/ietf-nat:nat/instances/instance[id='%d']/%s:kernel-present", member.TranslationIDV4, steeringPrefix), Value: boolValue(state.V4.Ready)})
 		}
 		if member.TranslationV6 != nil && member.TranslationV6.Mode != config.TranslationNative {
-			items = append(items, yangpub.Item{Path: fmt.Sprintf("/ietf-nat:nat/instances/instance[id='%d']/%s:kernel-present", member.TranslationIDV6, steeringPrefix), Value: boolValue(state.V6.Ready)})
+			base := fmt.Sprintf("/ietf-nat:nat/instances/instance[id='%d']", member.TranslationIDV6)
+			items = append(items, yangpub.Item{Path: base + "/" + steeringPrefix + ":kernel-present", Value: boolValue(state.V6.Ready)})
+			if member.TranslationV6.NPT != nil && member.TranslationV6.NPT.ExternalSource == config.PrefixDelegated &&
+				state.V6.Ready && state.V6.InternalPrefix.IsValid() && state.V6.ExternalPrefix.IsValid() &&
+				state.V6.InternalPrefix.Addr().Is6() && state.V6.ExternalPrefix.Addr().Is6() &&
+				state.V6.InternalPrefix.Bits() == state.V6.ExternalPrefix.Bits() {
+				path := base + "/policy[id='1']/nptv6-prefixes[internal-ipv6-prefix='" + state.V6.InternalPrefix.String() + "']"
+				items = append(items, yangpub.Item{Path: path + "/external-ipv6-prefix", Value: state.V6.ExternalPrefix.String()})
+			}
 		}
 	}
 	return items

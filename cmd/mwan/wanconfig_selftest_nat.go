@@ -56,13 +56,75 @@ func checkSelftestNAT(log *slog.Logger, tree json.RawMessage) error {
 		if err := expectLeaf(instance, "goodkind-mwan-steering:kernel-present", "true", "live state"); err != nil {
 			return err
 		}
-		if want.family == "ipv6" {
-			if _, present := instance["policy"]; present {
-				return errors.New("delegated NPT published a configured prefix policy")
+		if want.family == "ipv4" {
+			if err := checkSelftestNATMapping(log, instance); err != nil {
+				return err
 			}
+		} else if err := checkSelftestNPTPolicy(log, instance); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func checkSelftestNATMapping(log *slog.Logger, instance map[string]json.RawMessage) error {
+	table, err := unmarshalObject(log, instance["mapping-table"], "NAT mapping table")
+	if err != nil {
+		return err
+	}
+	entries, err := unmarshalArray(log, table["mapping-entry"], "NAT mapping entries")
+	if err != nil {
+		return err
+	}
+	if len(entries) != 1 {
+		return fmt.Errorf("NAT mapping entries = %d, want 1", len(entries))
+	}
+	mapping, err := unmarshalObject(log, entries[0], "NAT mapping entry")
+	if err != nil {
+		return err
+	}
+	if err := expectLeaf(mapping, "index", "1", "NAT mapping"); err != nil {
+		return err
+	}
+	if err := expectLeaf(mapping, "type", `"static"`, "NAT mapping"); err != nil {
+		return err
+	}
+	if err := expectLeaf(mapping, "internal-src-address", `"192.0.2.3/32"`, "NAT mapping"); err != nil {
+		return err
+	}
+	return expectLeaf(mapping, "external-src-address", `"203.0.113.3/32"`, "NAT mapping")
+}
+
+func checkSelftestNPTPolicy(log *slog.Logger, instance map[string]json.RawMessage) error {
+	policies, err := unmarshalArray(log, instance["policy"], "NPT policies")
+	if err != nil {
+		return err
+	}
+	if len(policies) != 1 {
+		return fmt.Errorf("NPT policies = %d, want 1", len(policies))
+	}
+	policy, err := unmarshalObject(log, policies[0], "NPT policy")
+	if err != nil {
+		return err
+	}
+	if err := expectLeaf(policy, "id", "1", "NPT policy"); err != nil {
+		return err
+	}
+	prefixes, err := unmarshalArray(log, policy["nptv6-prefixes"], "NPT prefix pairs")
+	if err != nil {
+		return err
+	}
+	if len(prefixes) != 1 {
+		return fmt.Errorf("NPT prefix pairs = %d, want 1", len(prefixes))
+	}
+	prefix, err := unmarshalObject(log, prefixes[0], "NPT prefix pair")
+	if err != nil {
+		return err
+	}
+	if err := expectLeaf(prefix, "internal-ipv6-prefix", `"3d06:bad:b01:210::/60"`, "NPT prefix pair"); err != nil {
+		return err
+	}
+	return expectLeaf(prefix, "external-ipv6-prefix", `"2001:db8:b::/60"`, "NPT prefix pair")
 }
 
 func checkSelftestTranslation(log *slog.Logger, member map[string]json.RawMessage) error {
