@@ -453,20 +453,28 @@ endif
 # On macOS it runs them in a native linux/arm64 container. An amd64 container
 # on Apple Silicon runs under qemu, and qemu does not translate policy rule
 # netlink messages.
-NETNS_TEST_PACKAGES := ./internal/ifmgr/modules/wanroutes/...
+NETNS_TEST_PACKAGES := ./internal/ifmgr/modules/wanroutes/... ./internal/ifmgr/modules/npt/...
 NETNS_GO_VERSION    := $(shell awk '/^go /{print $$2}' go.mod)
+NETNS_RUNNER_IMAGE  := mwan-netns-runner
 
-.PHONY: test-netns
+.PHONY: test-netns netns-runner-image
 ifeq ($(shell uname -s),Darwin)
-test-netns:
+netns-runner-image:
+	docker build --platform linux/arm64 --build-arg GO_VERSION=$(NETNS_GO_VERSION) -t $(NETNS_RUNNER_IMAGE) tools/netns
+
+test-netns: netns-runner-image
 	docker run --rm --platform linux/arm64 \
-		--cap-add SYS_ADMIN --cap-add NET_ADMIN \
+		--privileged \
 		-v $(CURDIR):/src -w /src \
 		-e GOWORK=off -e CGO_ENABLED=0 \
-		golang:$(NETNS_GO_VERSION) \
+		$(NETNS_RUNNER_IMAGE) \
 		go test -count=1 -tags netns $(NETNS_TEST_PACKAGES)
 else
 test-netns:
+	@if ! command -v nft >/dev/null; then \
+		echo "test-netns requires nft from the nftables package. Install nftables and add nft to PATH." >&2; \
+		exit 1; \
+	fi
 	sudo -E env "PATH=$$PATH" go test -v -count=1 -tags netns $(NETNS_TEST_PACKAGES)
 endif
 
@@ -594,3 +602,11 @@ govulncheck:
 
 clean: clean-dist
 	rm -rf $(LOCAL_BIN)
+
+# To regenerate npt_bpfel.o, run make npt-bpf on Linux with clang, LLVM, and libbpf development headers installed.
+NPT_BPF_CLANG ?= clang
+NPT_BPF_INCLUDE ?= /usr/include/$(shell $(CC) -dumpmachine)
+
+.PHONY: npt-bpf
+npt-bpf:
+	cd internal/ifmgr/modules/npt/bpf && $(NPT_BPF_CLANG) -O2 -g -Wall -Werror -target bpf -c npt.c -o npt_bpfel.o -I$(NPT_BPF_INCLUDE)
