@@ -80,6 +80,10 @@ func TestKernelTranslation(t *testing.T) {
 	inNamespace(t, namespace, "wan-ingress", func(t *testing.T) {
 		testExchange(t, internetSocket, clientSocket, internet, wan, remote, external, remote, internal)
 	})
+	inNamespace(t, namespace, "tcp-wan-exchange", func(t *testing.T) {
+		testTCPExchange(t, clientSocket, internetSocket, client, lan, internal, remote, external, remote)
+		testTCPExchange(t, internetSocket, clientSocket, internet, wan, remote, external, remote, internal)
+	})
 	inNamespace(t, namespace, "hairpin", func(t *testing.T) {
 		testExchange(t, clientSocket, clientSocket, client, lan, internal, secondExternal, external, secondInternal)
 	})
@@ -297,6 +301,50 @@ func testExchange(t *testing.T, send, receive int, sourceLink, destinationLink n
 		}
 		if packetChecksum(data[:count]) != 0 {
 			t.Fatal("translation changed the UDP checksum sum")
+		}
+		return
+	}
+}
+
+func testTCPExchange(t *testing.T, send, receive int, sourceLink, destinationLink netlink.Link, source, destination, wantSource, wantDestination netip.Addr) {
+	t.Helper()
+	packet := []byte("NPT-TCP!")
+	frame := make([]byte, 14+40+20+len(packet))
+	copy(frame[:6], destinationLink.Attrs().HardwareAddr)
+	copy(frame[6:12], sourceLink.Attrs().HardwareAddr)
+	binary.BigEndian.PutUint16(frame[12:14], unix.ETH_P_IPV6)
+	frame[14] = 0x60
+	binary.BigEndian.PutUint16(frame[18:20], uint16(20+len(packet)))
+	frame[20], frame[21] = 6, 64
+	copy(frame[22:38], source.AsSlice())
+	copy(frame[38:54], destination.AsSlice())
+	binary.BigEndian.PutUint16(frame[54:56], 12345)
+	binary.BigEndian.PutUint16(frame[56:58], 23456)
+	binary.BigEndian.PutUint32(frame[58:62], 100)
+	binary.BigEndian.PutUint32(frame[62:66], 200)
+	frame[66], frame[67] = 0x50, 0x18
+	binary.BigEndian.PutUint16(frame[68:70], 4096)
+	copy(frame[74:], packet)
+	binary.BigEndian.PutUint16(frame[70:72], packetChecksum(frame))
+	if err := unix.Sendto(send, frame, 0, &unix.SockaddrLinklayer{Ifindex: sourceLink.Attrs().Index, Protocol: networkShort(unix.ETH_P_IPV6)}); err != nil {
+		t.Fatal(err)
+	}
+	data := make([]byte, 2048)
+	for {
+		count, _, err := unix.Recvfrom(receive, data, 0)
+		if err != nil {
+			t.Fatalf("receive TCP %s -> %s: %v", wantSource, wantDestination, err)
+		}
+		if count != len(frame) || data[20] != 6 || !bytes.Equal(data[74:count], packet) {
+			continue
+		}
+		actualSource := netip.AddrFrom16([16]byte(data[22:38]))
+		actualDestination := netip.AddrFrom16([16]byte(data[38:54]))
+		if data[21] != 63 || actualSource != wantSource || actualDestination != wantDestination {
+			t.Fatalf("TCP packet = %s -> %s, hop limit %d; want %s -> %s, hop limit 63", actualSource, actualDestination, data[21], wantSource, wantDestination)
+		}
+		if packetChecksum(data[:count]) != 0 {
+			t.Fatal("translation changed the TCP checksum sum")
 		}
 		return
 	}
