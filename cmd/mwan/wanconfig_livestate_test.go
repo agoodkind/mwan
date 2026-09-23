@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/netip"
 	"testing"
 	"time"
@@ -14,18 +15,17 @@ import (
 // liveTestGateway mirrors the testbed shape: three members, two of them
 // translating, the same projection the configuration publish uses.
 func liveTestGateway() wanconfig.Gateway {
-	internal := netip.MustParsePrefix("3d06:bad:b01:210::/60")
 	return wanconfig.Gateway{
 		InternalIface: "eninternal0",
 		Members: []wanconfig.Member{
 			{
-				Name: "att", Iface: "enatt0", Tier: 0, ProbePolicy: "att",
-				NPTInternal: internal, NPTExternal: netip.MustParsePrefix("2001:db8:a::/60"),
+				TranslationIDV6: wanconfig.TranslationInstanceID("att", "ipv6"), Name: "att", Iface: "enatt0", Tier: 0, ProbePolicy: "att",
+				TranslationV6: testNPTPolicy("2001:db8:a::/60"),
 			},
 			{Name: "monkeybrains", Iface: "enmbrains0", Tier: 1, ProbePolicy: "monkeybrains"},
 			{
-				Name: "webpass", Iface: "enwebpass0", Tier: 0, ProbePolicy: "webpass",
-				NPTInternal: internal, NPTExternal: netip.MustParsePrefix("2001:db8:b::/60"),
+				TranslationIDV6: wanconfig.TranslationInstanceID("webpass", "ipv6"), Name: "webpass", Iface: "enwebpass0", Tier: 0, ProbePolicy: "webpass",
+				TranslationV6: testNPTPolicy("2001:db8:b::/60"),
 			},
 		},
 	}
@@ -50,7 +50,7 @@ func TestInterfacesLiveItems_ServesTheSnapshot(t *testing.T) {
 		"att": {Carrying: true},
 	})
 	store.SetTranslation(map[string]wanstate.MemberTranslation{
-		"att": {Delegated: netip.MustParsePrefix("2001:db8:a::/60"), KernelPresent: true},
+		"att": {V6: wanstate.FamilyTranslation{ExternalPrefix: netip.MustParsePrefix("2001:db8:a::/60"), Ready: true}},
 	})
 	store.SetBGP(wanstate.BGP{
 		Peers:   []wanstate.BGPPeer{{Address: "3d06:bad:b01:201::2", Established: true}},
@@ -70,9 +70,9 @@ func TestInterfacesLiveItems_ServesTheSnapshot(t *testing.T) {
 		attBase + "/probe[family='ipv6']/last-result": "pass",
 		attBase + "/last-transition":                  "2026-08-20T03:04:05Z",
 		attBase + "/carrying":                         "true",
-		"/ietf-interfaces:interfaces/interface[name='enatt0']/ietf-ip:ipv6/goodkind-mwan-steering:delegated-prefix": "2001:db8:a::/60",
-		"/ietf-interfaces:interfaces/goodkind-mwan-steering:steering-group/state/active-tier":                       "0",
-		"/ietf-interfaces:interfaces/goodkind-mwan-steering:steering-group/state/intended-ruleset":                  "chain prerouting:\nchain postrouting:\n",
+		"/ietf-interfaces:interfaces/interface[name='enatt0']/ietf-ip:ipv6/goodkind-mwan-steering:translation/state/resolved-external-prefix": "2001:db8:a::/60",
+		"/ietf-interfaces:interfaces/goodkind-mwan-steering:steering-group/state/active-tier":                                                 "0",
+		"/ietf-interfaces:interfaces/goodkind-mwan-steering:steering-group/state/intended-ruleset":                                            "chain prerouting:\nchain postrouting:\n",
 		peerBase + "/established": "true",
 		peerBase + "/stale":       "false",
 	}
@@ -155,21 +155,18 @@ func TestInterfacesLiveItems_MarksAStaleAgentAnswer(t *testing.T) {
 	t.Fatalf("stale leaf not served: %v", items)
 }
 
-// TestNatLiveItems_NumbersInstancesLikeTheConfigPublish pins that kernel
-// presence lands on the same instance ids the configuration publish
-// assigned: sequential over translating members in member order, so att
-// is instance 1 and webpass instance 2 while monkeybrains has none.
+// TestNatLiveItems_NumbersInstancesLikeTheConfigPublish uses each projected identity.
 func TestNatLiveItems_NumbersInstancesLikeTheConfigPublish(t *testing.T) {
 	t.Parallel()
 	store := wanstate.New()
 	store.SetTranslation(map[string]wanstate.MemberTranslation{
-		"att":     {Delegated: netip.MustParsePrefix("2001:db8:a::/60"), KernelPresent: true},
-		"webpass": {Delegated: netip.Prefix{}, KernelPresent: false},
+		"att":     {V6: wanstate.FamilyTranslation{ExternalPrefix: netip.MustParsePrefix("2001:db8:a::/60"), Ready: true}},
+		"webpass": {V6: wanstate.FamilyTranslation{Ready: false}},
 	})
 	items := natLiveItems(store.Snapshot(), liveTestGateway())
 	want := []yangpub.Item{
-		{Path: "/ietf-nat:nat/instances/instance[id='1']/goodkind-mwan-steering:kernel-present", Value: "true"},
-		{Path: "/ietf-nat:nat/instances/instance[id='2']/goodkind-mwan-steering:kernel-present", Value: "false"},
+		{Path: fmt.Sprintf("/ietf-nat:nat/instances/instance[id='%d']/goodkind-mwan-steering:kernel-present", wanconfig.TranslationInstanceID("att", "ipv6")), Value: "true"},
+		{Path: fmt.Sprintf("/ietf-nat:nat/instances/instance[id='%d']/goodkind-mwan-steering:kernel-present", wanconfig.TranslationInstanceID("webpass", "ipv6")), Value: "false"},
 	}
 	if len(items) != len(want) {
 		t.Fatalf("items = %v, want %v", items, want)

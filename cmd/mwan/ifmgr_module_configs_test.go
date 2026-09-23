@@ -131,30 +131,30 @@ func sharedWANForTest() config.IfMgrSection {
 		MwanbrEdgeV6:   "3d06:bad:b01:200::1",
 		WAN: map[string]config.IfMgrWANEntry{
 			"att": {
-				Iface:      "att0",
-				TableID:    100,
-				FwMark:     1,
-				FwMarkPrio: 100,
-				FromPrio:   55,
-				NptPrefix:  "3d06:bad:b01:1100::/56",
-				V4Source:   "",
-				Tier:       0,
-				Weight:     1,
+				Iface:         "att0",
+				TableID:       100,
+				FwMark:        1,
+				FwMarkPrio:    100,
+				FromPrio:      55,
+				TranslationV6: testNPTPolicy("3d06:bad:b01:1100::/56"),
+				V4Source:      "",
+				Tier:          0,
+				Weight:        1,
 			},
 			"webpass": {
-				Iface:      "webpass0",
-				TableID:    200,
-				FwMark:     2,
-				FwMarkPrio: 200,
-				FromPrio:   56,
-				NptPrefix:  "3d06:bad:b01:2200::/56",
-				V4Source:   "203.0.113.2",
-				Tier:       1,
-				Weight:     3,
-				StaticMappings: []config.StaticMapping{
+				Iface:         "webpass0",
+				TableID:       200,
+				FwMark:        2,
+				FwMarkPrio:    200,
+				FromPrio:      56,
+				TranslationV6: testNPTPolicy("3d06:bad:b01:2200::/56"),
+				V4Source:      "203.0.113.2",
+				Tier:          1,
+				Weight:        3,
+				TranslationV4: &config.IPv4Translation{Mode: config.TranslationNAPT44, StaticMappings: []config.StaticMapping{
 					{External: netip.MustParseAddr("203.0.113.2"), Internal: netip.MustParseAddr("192.0.2.2")},
 					{External: netip.MustParseAddr("203.0.113.3"), Internal: netip.MustParseAddr("192.0.2.3")},
-				},
+				}},
 			},
 		},
 	}
@@ -181,29 +181,29 @@ func TestBuildWANRefs(t *testing.T) {
 		MwanbrEdgeV6:   "3d06:bad:b01:200::1",
 		WANs: []sharedWAN{
 			{
-				WANRef:     ifmgr.WANRef{Name: "att", Iface: "att0"},
-				TableID:    100,
-				FwMark:     1,
-				FwMarkPrio: 100,
-				FromPrio:   55,
-				NptPrefix:  "3d06:bad:b01:1100::/56",
-				Tier:       0,
-				Weight:     1,
+				WANRef:        ifmgr.WANRef{Name: "att", Iface: "att0"},
+				TableID:       100,
+				FwMark:        1,
+				FwMarkPrio:    100,
+				FromPrio:      55,
+				TranslationV6: testNPTPolicy("3d06:bad:b01:1100::/56"),
+				Tier:          0,
+				Weight:        1,
 			},
 			{
-				WANRef:     ifmgr.WANRef{Name: "webpass", Iface: "webpass0"},
-				TableID:    200,
-				FwMark:     2,
-				FwMarkPrio: 200,
-				FromPrio:   56,
-				NptPrefix:  "3d06:bad:b01:2200::/56",
-				V4Source:   "203.0.113.2",
-				Tier:       1,
-				Weight:     3,
-				StaticMappings: []config.StaticMapping{
+				WANRef:        ifmgr.WANRef{Name: "webpass", Iface: "webpass0"},
+				TableID:       200,
+				FwMark:        2,
+				FwMarkPrio:    200,
+				FromPrio:      56,
+				TranslationV6: testNPTPolicy("3d06:bad:b01:2200::/56"),
+				V4Source:      "203.0.113.2",
+				Tier:          1,
+				Weight:        3,
+				TranslationV4: &config.IPv4Translation{Mode: config.TranslationNAPT44, StaticMappings: []config.StaticMapping{
 					{External: netip.MustParseAddr("203.0.113.2"), Internal: netip.MustParseAddr("192.0.2.2")},
 					{External: netip.MustParseAddr("203.0.113.3"), Internal: netip.MustParseAddr("192.0.2.3")},
-				},
+				}},
 			},
 		},
 	}
@@ -234,25 +234,32 @@ func TestBuildWANRoutesConfig(t *testing.T) {
 		HealthStateFile: "/var/run/mwan-health.state",
 		WANs: []wanroutes.WAN{
 			{
-				WANRef:     ifmgr.WANRef{Name: "att", Iface: "att0"},
-				TableID:    100,
-				FwMark:     1,
-				FwMarkPrio: 100,
-				FromPrio:   55,
-				NptPrefix:  "3d06:bad:b01:1100::/56",
-				Tier:       0,
-				Weight:     1,
+				WANRef:        ifmgr.WANRef{Name: "att", Iface: "att0"},
+				TableID:       100,
+				FwMark:        1,
+				FwMarkPrio:    100,
+				FromPrio:      55,
+				TranslationV6: testNPTPolicy("3d06:bad:b01:1100::/56"),
+				Tier:          0,
+				Weight:        1,
 			},
 			{
-				WANRef:     ifmgr.WANRef{Name: "webpass", Iface: "webpass0"},
-				TableID:    200,
-				FwMark:     2,
-				FwMarkPrio: 200,
-				FromPrio:   56,
-				NptPrefix:  "3d06:bad:b01:2200::/56",
-				V4Source:   "203.0.113.2",
-				Tier:       1,
-				Weight:     3,
+				WANRef:        ifmgr.WANRef{Name: "webpass", Iface: "webpass0"},
+				TableID:       200,
+				FwMark:        2,
+				FwMarkPrio:    200,
+				FromPrio:      56,
+				TranslationV6: testNPTPolicy("3d06:bad:b01:2200::/56"),
+				V4Source:      "203.0.113.2",
+				Tier:          1,
+				Weight:        3,
+				TranslationV4: &config.IPv4Translation{
+					Mode: config.TranslationNAPT44,
+					StaticMappings: []config.StaticMapping{
+						{External: netip.MustParseAddr("203.0.113.2"), Internal: netip.MustParseAddr("192.0.2.2")},
+						{External: netip.MustParseAddr("203.0.113.3"), Internal: netip.MustParseAddr("192.0.2.3")},
+					},
+				},
 				MappedExternals: []netip.Addr{
 					netip.MustParseAddr("203.0.113.2"),
 					netip.MustParseAddr("203.0.113.3"),
@@ -341,60 +348,6 @@ func TestBuildIfMgrModuleConfigsUnknownRole(t *testing.T) {
 
 	if _, err := buildIfMgrModuleConfigs(config.IfMgrSection{}, "bogus"); err == nil {
 		t.Fatal("buildIfMgrModuleConfigs with an unknown role must error")
-	}
-}
-
-// TestBuildNPTConfig pins that the npt builder projects the shared [ifmgr.wan]
-// prefixes, the WAN identity list, and each provider's configured translation
-// prefix, which is what tells npt whether a missing delegation is a fault. This
-// is also what makes MwanbrEdgeV6 a real consumer of the shared field.
-func TestBuildNPTConfig(t *testing.T) {
-	t.Parallel()
-
-	shared := buildWANRefs(sharedWANForTest())
-	cfg := buildNPTConfig(shared)
-
-	want := npt.Config{
-		InternalPrefix: "3d06:bad:b01::/60",
-		OpnsenseEdgeV6: "3d06:bad:b01:201::1",
-		MwanbrEdgeV6:   "3d06:bad:b01:200::1",
-		WANs: []npt.WAN{
-			{
-				WANRef:    ifmgr.WANRef{Name: "att", Iface: "att0"},
-				NptPrefix: "3d06:bad:b01:1100::/56",
-			},
-			{
-				WANRef:    ifmgr.WANRef{Name: "webpass", Iface: "webpass0"},
-				NptPrefix: "3d06:bad:b01:2200::/56",
-			},
-		},
-	}
-	if !reflect.DeepEqual(cfg, want) {
-		t.Fatalf("buildNPTConfig mismatch\ngot:  %#v\nwant: %#v", cfg, want)
-	}
-}
-
-// TestBuildNPTConfigCarriesAnEmptyPrefixForAnUntranslatedProvider pins that a
-// provider the configuration assigns no npt-prefix reaches npt with an empty
-// prefix, which is what keeps npt from alerting on a delegation it never
-// expects.
-func TestBuildNPTConfigCarriesAnEmptyPrefixForAnUntranslatedProvider(t *testing.T) {
-	t.Parallel()
-
-	section := sharedWANForTest()
-	untranslated := section.WAN["webpass"]
-	untranslated.NptPrefix = ""
-	section.WAN["webpass"] = untranslated
-
-	cfg := buildNPTConfig(buildWANRefs(section))
-	if len(cfg.WANs) != 2 {
-		t.Fatalf("npt WAN count = %d, want 2", len(cfg.WANs))
-	}
-	if got := cfg.WANs[0].NptPrefix; got != "3d06:bad:b01:1100::/56" {
-		t.Fatalf("att npt prefix = %q, want the configured prefix", got)
-	}
-	if got := cfg.WANs[1].NptPrefix; got != "" {
-		t.Fatalf("webpass npt prefix = %q, want empty for a provider carrying none", got)
 	}
 }
 
@@ -852,22 +805,22 @@ ping_count = 99
 		ProbeTimeoutMillis: 2000,
 		WAN: map[string]config.IfMgrWANEntry{
 			"att": {
-				Iface:      "enatt0",
-				TableID:    100,
-				FwMark:     1,
-				FwMarkPrio: 100,
-				FromPrio:   55,
-				NptPrefix:  "3d06:bad:b01:2300::/60",
-				V4Source:   "",
+				Iface:         "enatt0",
+				TableID:       100,
+				FwMark:        1,
+				FwMarkPrio:    100,
+				FromPrio:      55,
+				TranslationV6: testNPTPolicy("3d06:bad:b01:2300::/60"),
+				V4Source:      "",
 			},
 			"webpass": {
-				Iface:      "enwebpass0",
-				TableID:    200,
-				FwMark:     2,
-				FwMarkPrio: 200,
-				FromPrio:   56,
-				NptPrefix:  "3d06:bad:b01:2200::/60",
-				V4Source:   "10.241.204.2",
+				Iface:         "enwebpass0",
+				TableID:       200,
+				FwMark:        2,
+				FwMarkPrio:    200,
+				FromPrio:      56,
+				TranslationV6: testNPTPolicy("3d06:bad:b01:2200::/60"),
+				V4Source:      "10.241.204.2",
 			},
 		},
 		Health: map[string]config.IfMgrHealthWANSection{
@@ -969,13 +922,13 @@ state_file = "/run/mwan-health.state"
 		ProbeTimeoutMillis: 2000,
 		WAN: map[string]config.IfMgrWANEntry{
 			"att": {
-				Iface:      "enatt0",
-				TableID:    100,
-				FwMark:     1,
-				FwMarkPrio: 100,
-				FromPrio:   55,
-				NptPrefix:  "3d06:bad:b01:2300::/60",
-				V4Source:   "",
+				Iface:         "enatt0",
+				TableID:       100,
+				FwMark:        1,
+				FwMarkPrio:    100,
+				FromPrio:      55,
+				TranslationV6: testNPTPolicy("3d06:bad:b01:2300::/60"),
+				V4Source:      "",
 			},
 		},
 		Health: map[string]config.IfMgrHealthWANSection{

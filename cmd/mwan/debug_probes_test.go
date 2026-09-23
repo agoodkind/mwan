@@ -724,22 +724,22 @@ func debugProbeTestConfig() *config.Config {
 			WAN: map[string]config.IfMgrWANEntry{
 				"monkeybrains": {
 					Iface: "enmonkeybrains", TableID: 300, FwMark: 3, FwMarkPrio: 300,
-					FromPrio: 57, NptPrefix: "", V4Source: "", Tier: 1, Weight: 1,
+					FromPrio: 57, V4Source: "", Tier: 1, Weight: 1,
 				},
 				"webpass": {
 					Iface: "enwebpass0", TableID: 200, FwMark: 2, FwMarkPrio: 200,
-					FromPrio: 56, NptPrefix: "", V4Source: "", Tier: 0, Weight: 1,
+					FromPrio: 56, V4Source: "", Tier: 0, Weight: 1,
 				},
 				"att": {
 					Iface: "enatt0", TableID: 100, FwMark: 1, FwMarkPrio: 100,
-					FromPrio: 55, NptPrefix: "", V4Source: "", Tier: 0, Weight: 1,
+					FromPrio: 55, V4Source: "", Tier: 0, Weight: 1,
 				},
 				// A provider with no interface stays in the fixture so the
 				// usable-interface filter is still exercised. Its mark is not
 				// the lowest, so it can never become the default either.
 				"noiface": {
 					Iface: "", TableID: 600, FwMark: 4, FwMarkPrio: 600,
-					FromPrio: 58, NptPrefix: "", V4Source: "", Tier: 2, Weight: 1,
+					FromPrio: 58, V4Source: "", Tier: 2, Weight: 1,
 				},
 			},
 		},

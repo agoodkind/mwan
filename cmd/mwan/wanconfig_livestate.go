@@ -133,12 +133,13 @@ func interfacesLiveItems(
 			})
 			items = append(items, ownedAddressItems(member, routing.OwnedAddresses)...)
 		}
-		if translation, known := snap.Translation[member.Name]; known && translation.Delegated.IsValid() {
-			items = append(items, yangpub.Item{
-				Path: "/ietf-interfaces:interfaces/interface[name='" + member.Iface +
-					"']/ietf-ip:ipv6/" + steeringPrefix + ":delegated-prefix",
-				Value: translation.Delegated.String(),
-			})
+		if translation, known := snap.Translation[member.Name]; known {
+			if member.TranslationV4 != nil {
+				items = append(items, translationLiveItems(member.Iface, "ipv4", translation.V4)...)
+			}
+			if member.TranslationV6 != nil {
+				items = append(items, translationLiveItems(member.Iface, "ipv6", translation.V6)...)
+			}
 		}
 	}
 	groupBase := "/ietf-interfaces:interfaces/" + steeringPrefix + ":steering-group/state"
@@ -197,26 +198,34 @@ func ownedAddressItems(member wanconfig.Member, owned []netip.Addr) []yangpub.It
 	return items
 }
 
-// natLiveItems renders each translation instance's kernel presence, using
-// the same instance numbering the configuration publish assigned:
-// sequential ids over the translating members in member order.
+func translationLiveItems(iface string, family string, state wanstate.FamilyTranslation) []yangpub.Item {
+	base := "/ietf-interfaces:interfaces/interface[name='" + iface + "']/ietf-ip:" + family + "/goodkind-mwan-steering:translation/state"
+	items := []yangpub.Item{{Path: base + "/ready", Value: boolValue(state.Ready)}}
+	if state.Reason != "" {
+		items = append(items, yangpub.Item{Path: base + "/reason", Value: state.Reason})
+	}
+	if state.InternalPrefix.IsValid() {
+		items = append(items, yangpub.Item{Path: base + "/resolved-internal-prefix", Value: state.InternalPrefix.String()})
+	}
+	if state.ExternalPrefix.IsValid() {
+		items = append(items, yangpub.Item{Path: base + "/resolved-external-prefix", Value: state.ExternalPrefix.String()})
+	}
+	return items
+}
+
 func natLiveItems(snap wanstate.Snapshot, gateway wanconfig.Gateway) []yangpub.Item {
-	items := make([]yangpub.Item, 0, len(gateway.Members))
-	instanceID := 0
+	var items []yangpub.Item
 	for _, member := range gateway.Members {
-		if !member.NPTInternal.IsValid() || !member.NPTExternal.IsValid() {
-			continue
-		}
-		instanceID++
-		translation, known := snap.Translation[member.Name]
+		state, known := snap.Translation[member.Name]
 		if !known {
 			continue
 		}
-		items = append(items, yangpub.Item{
-			Path: fmt.Sprintf("/ietf-nat:nat/instances/instance[id='%d']/%s:kernel-present",
-				instanceID, steeringPrefix),
-			Value: boolValue(translation.KernelPresent),
-		})
+		if member.TranslationV4 != nil && member.TranslationV4.Mode != config.TranslationNative {
+			items = append(items, yangpub.Item{Path: fmt.Sprintf("/ietf-nat:nat/instances/instance[id='%d']/%s:kernel-present", member.TranslationIDV4, steeringPrefix), Value: boolValue(state.V4.Ready)})
+		}
+		if member.TranslationV6 != nil && member.TranslationV6.Mode != config.TranslationNative {
+			items = append(items, yangpub.Item{Path: fmt.Sprintf("/ietf-nat:nat/instances/instance[id='%d']/%s:kernel-present", member.TranslationIDV6, steeringPrefix), Value: boolValue(state.V6.Ready)})
+		}
 	}
 	return items
 }

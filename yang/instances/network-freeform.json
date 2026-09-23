@@ -10,6 +10,7 @@
           "hardware-address": "02:00:5e:00:53:01"
         },
         "ietf-ip:ipv4": {
+          "goodkind-mwan-steering:translation": { "mode": "ietf-nat:napt44" },
           "forwarding": true,
           "address": [{ "ip": "203.0.113.2", "prefix-length": 29 }],
           "goodkind-mwan-steering:dhcp": false,
@@ -18,6 +19,14 @@
           "goodkind-mwan-steering:source-addresses": ["203.0.113.3"]
         },
         "ietf-ip:ipv6": {
+          "goodkind-mwan-steering:translation": {
+            "mode": "ietf-nat:nptv6",
+            "nptv6": {
+              "internal-prefix": "2001:db8:b01::/60",
+              "external-source": "delegated",
+              "expected-prefix": "2001:db8:beef:200::/60"
+            }
+          },
           "forwarding": true,
           "goodkind-mwan-steering:dhcp": true,
           "goodkind-mwan-steering:accept-ra": true,
@@ -50,8 +59,7 @@
           "table-id": 200,
           "fw-mark": 2,
           "fw-mark-prio": 200,
-          "from-prio": 56,
-          "npt-prefix": "2001:db8:beef:200::/60"
+          "from-prio": 56
         },
         "goodkind-mwan-steering:steering": {
           "tier": 0,

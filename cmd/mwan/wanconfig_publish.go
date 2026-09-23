@@ -74,6 +74,7 @@ func startWanconfigSurface(
 	cfg *config.Config,
 	moduleConfigs ifmgr.ModuleConfigSet,
 	rejections []networkjson.Rejection,
+	store *wanstate.Store,
 ) *wanconfigSurface {
 	if !cfg.Wanconfig.Publish {
 		return nil
@@ -106,7 +107,6 @@ func startWanconfigSurface(
 	ownPublishedModules(ownCtx, log, pub)
 	ownCancel()
 
-	store := wanstate.New()
 	surfaceCtx, stopSurface := context.WithCancel(ctx)
 	surface := &wanconfigSurface{
 		store:      store,
@@ -321,7 +321,7 @@ func gatewayFromModuleConfigs(cfg *config.Config, configs ifmgr.ModuleConfigSet)
 		Daemon:        daemonSettings(cfg, configs),
 	}
 	for _, wan := range routesCfg.WANs {
-		member, err := memberFromWAN(cfg, wan, group.InternalPrefix, probed[wan.Name])
+		member, err := memberFromWAN(cfg, wan, probed[wan.Name])
 		if err != nil {
 			return none, false, err
 		}
@@ -337,48 +337,37 @@ func gatewayFromModuleConfigs(cfg *config.Config, configs ifmgr.ModuleConfigSet)
 func memberFromWAN(
 	cfg *config.Config,
 	wan wanroutes.WAN,
-	internalPrefix netip.Prefix,
 	probed bool,
 ) (wanconfig.Member, error) {
-	logger := slog.Default().With("component", "wanconfig")
 	var none wanconfig.Member
 	probe, err := probeSettings(cfg, wan.Name)
 	if err != nil {
 		return none, err
 	}
 	member := wanconfig.Member{
-		Name:           wan.Name,
-		Iface:          wan.Iface,
-		Tier:           wan.Tier,
-		Weight:         clampUint16(wan.Weight),
-		ProbePolicy:    "",
-		NPTInternal:    netip.Prefix{},
-		NPTExternal:    netip.Prefix{},
-		TableID:        clampUint32(wan.TableID),
-		FwMark:         wan.FwMark,
-		FwMarkPrio:     clampUint32(wan.FwMarkPrio),
-		FromPrio:       clampUint32(wan.FromPrio),
-		V4Source:       wan.V4Source,
-		ForcedDSCP:     forcedDSCPFromConfig(cfg, wan.Name),
-		StaticMappings: staticMappingsFromConfig(cfg, wan.Name),
-		Health:         probe,
-		LinkFiles:      linkFilesFromConfig(cfg, wan.Name),
-		Link:           linkFromConfig(cfg, wan.Iface),
+		Name:            wan.Name,
+		Iface:           wan.Iface,
+		Tier:            wan.Tier,
+		Weight:          clampUint16(wan.Weight),
+		ProbePolicy:     "",
+		TranslationV4:   translationV4FromConfig(cfg, wan.Name),
+		TranslationV6:   translationV6FromConfig(cfg, wan.Name),
+		TranslationIDV4: wanconfig.TranslationInstanceID(wan.Name, "ipv4"),
+		TranslationIDV6: wanconfig.TranslationInstanceID(wan.Name, "ipv6"),
+		TableID:         clampUint32(wan.TableID),
+		FwMark:          wan.FwMark,
+		FwMarkPrio:      clampUint32(wan.FwMarkPrio),
+		FromPrio:        clampUint32(wan.FromPrio),
+		V4Source:        wan.V4Source,
+		ForcedDSCP:      forcedDSCPFromConfig(cfg, wan.Name),
+		Health:          probe,
+		LinkFiles:       linkFilesFromConfig(cfg, wan.Name),
+		Link:            linkFromConfig(cfg, wan.Iface),
 	}
 	if probed {
 		// The probe policy is named after the member: the health module
 		// keys its per-member policy by the same name.
 		member.ProbePolicy = wan.Name
-	}
-	if wan.NptPrefix != "" {
-		external, err := netip.ParsePrefix(wan.NptPrefix)
-		if err != nil {
-			logger.Warn("wanconfig: member npt prefix unparsable",
-				"member", wan.Name, "value", wan.NptPrefix, "err", err)
-			return none, fmt.Errorf("wanconfig: member %s npt prefix %q: %w", wan.Name, wan.NptPrefix, err)
-		}
-		member.NPTInternal = internalPrefix
-		member.NPTExternal = external
 	}
 	return member, nil
 }
@@ -476,23 +465,18 @@ func forcedDSCPFromConfig(cfg *config.Config, name string) uint8 {
 	return clampUint8(cfg.IfMgr.WAN[name].ForcedDSCP)
 }
 
-// staticMappingsFromConfig reads a provider's static mappings from the loaded
-// network configuration. wan.routes holds only the external half of each
-// mapping, so the loaded entry is the one holder of both addresses. A nil
-// configuration publishes none.
-func staticMappingsFromConfig(cfg *config.Config, name string) []wanconfig.StaticMapping {
+func translationV4FromConfig(cfg *config.Config, name string) *config.IPv4Translation {
 	if cfg == nil {
 		return nil
 	}
-	loaded := cfg.IfMgr.WAN[name].StaticMappings
-	if len(loaded) == 0 {
+	return cfg.IfMgr.WAN[name].TranslationV4
+}
+
+func translationV6FromConfig(cfg *config.Config, name string) *config.IPv6Translation {
+	if cfg == nil {
 		return nil
 	}
-	mappings := make([]wanconfig.StaticMapping, 0, len(loaded))
-	for _, mapping := range loaded {
-		mappings = append(mappings, wanconfig.StaticMapping{External: mapping.External, Internal: mapping.Internal})
-	}
-	return mappings
+	return cfg.IfMgr.WAN[name].TranslationV6
 }
 
 // linkFilesFromConfig reads who writes a provider link's unit files from the

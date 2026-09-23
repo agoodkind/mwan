@@ -23,9 +23,18 @@ func TestStore_SnapshotCarriesEveryWrite(t *testing.T) {
 		"att":          {Carrying: false},
 		"monkeybrains": {Carrying: true},
 	})
-	store.SetTranslation(map[string]MemberTranslation{
-		"att": {Delegated: netip.MustParsePrefix("2001:db8:a::/60"), KernelPresent: true},
-	})
+	translation := MemberTranslation{
+		V4: FamilyTranslation{
+			Mode: "native", Ready: true, Reason: "",
+			InternalPrefix: netip.Prefix{}, ExternalPrefix: netip.Prefix{},
+		},
+		V6: FamilyTranslation{
+			Mode: "ietf-nat:nptv6", Ready: false, Reason: "kernel verification failed",
+			InternalPrefix: netip.MustParsePrefix("2001:db8:1::/60"),
+			ExternalPrefix: netip.MustParsePrefix("2001:db8:a::/60"),
+		},
+	}
+	store.SetTranslation(map[string]MemberTranslation{"att": translation})
 	store.SetBGP(BGP{
 		Peers:   []BGPPeer{{Address: "2001:db8::1", Established: true}},
 		ReadAt:  transition,
@@ -42,8 +51,7 @@ func TestStore_SnapshotCarriesEveryWrite(t *testing.T) {
 	if !snap.Routing["monkeybrains"].Carrying || snap.Routing["att"].Carrying {
 		t.Fatalf("routing snapshot = %+v", snap.Routing)
 	}
-	if !snap.Translation["att"].KernelPresent ||
-		snap.Translation["att"].Delegated.String() != "2001:db8:a::/60" {
+	if snap.Translation["att"] != translation {
 		t.Fatalf("translation snapshot = %+v", snap.Translation["att"])
 	}
 	if !snap.BGP.Reached || len(snap.BGP.Peers) != 1 || !snap.BGP.Peers[0].Established {

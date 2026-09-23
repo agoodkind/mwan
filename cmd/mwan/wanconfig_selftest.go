@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/wanconfig"
 	"goodkind.io/mwan/internal/wanstate"
@@ -245,26 +246,25 @@ func selftestGateway() wanconfig.Gateway {
 			ProbeTimeoutMillis: 2000,
 		},
 		Members: []wanconfig.Member{{
-			Name:        "example",
-			Iface:       "enexample0",
-			Tier:        0,
-			Weight:      1,
-			ProbePolicy: "example",
-			NPTInternal: netip.MustParsePrefix("3d06:bad:b01:210::/60"),
-			NPTExternal: netip.MustParsePrefix("2001:db8:a::/60"),
-			TableID:     100,
-			FwMark:      1,
-			FwMarkPrio:  100,
-			FromPrio:    55,
-			V4Source:    "",
-			ForcedDSCP:  8,
-			// The mapping's external address is the one selftestStore reports
-			// the link owning, so the read carries the configured mapping and
-			// the live owned address under one wan container.
-			StaticMappings: []wanconfig.StaticMapping{{
+			Name:            "example",
+			Iface:           "enexample0",
+			Tier:            0,
+			Weight:          1,
+			ProbePolicy:     "example",
+			TranslationV6:   &config.IPv6Translation{Mode: config.TranslationNPTv6, NPT: &config.NPTv6Translation{InternalPrefix: netip.MustParsePrefix("3d06:bad:b01:210::/60"), ExternalSource: config.PrefixDelegated, ExternalPrefix: netip.Prefix{}, ExpectedPrefix: netip.MustParsePrefix("2001:db8:a::/60")}},
+			TranslationIDV4: wanconfig.TranslationInstanceID("example", "ipv4"),
+			TranslationIDV6: wanconfig.TranslationInstanceID("example", "ipv6"),
+			TableID:         100,
+			FwMark:          1,
+			FwMarkPrio:      100,
+			FromPrio:        55,
+			V4Source:        "",
+			ForcedDSCP:      8,
+			// The configured mapping and operational owned address use the same external address.
+			TranslationV4: &config.IPv4Translation{Mode: config.TranslationNAPT44, StaticMappings: []config.StaticMapping{{
 				External: netip.MustParseAddr(selftestOwnedAddress),
 				Internal: netip.MustParseAddr("192.0.2.3"),
-			}},
+			}}},
 			Health: &wanconfig.ProbeSettings{
 				Enabled:              true,
 				PingCount:            new(uint8(3)),
@@ -334,10 +334,15 @@ func selftestStore() *wanstate.Store {
 	})
 	store.SetRouting(0, map[string]wanstate.MemberRouting{"example": {
 		Carrying:       true,
+		V4Ready:        false,
+		V6Ready:        false,
 		OwnedAddresses: []netip.Addr{netip.MustParseAddr(selftestOwnedAddress)},
 	}})
 	store.SetTranslation(map[string]wanstate.MemberTranslation{
-		"example": {Delegated: netip.MustParsePrefix("2001:db8:a::/60"), KernelPresent: true},
+		"example": {
+			V4: wanstate.FamilyTranslation{Mode: string(config.TranslationNAPT44), Ready: true, Reason: "", InternalPrefix: netip.Prefix{}, ExternalPrefix: netip.Prefix{}},
+			V6: wanstate.FamilyTranslation{Mode: string(config.TranslationNPTv6), Ready: true, Reason: "", InternalPrefix: netip.MustParsePrefix("3d06:bad:b01:210::/60"), ExternalPrefix: netip.MustParsePrefix("2001:db8:b::/60")},
+		},
 	})
 	store.SetIntendedRuleset("chain prerouting:\n  iif \"enexample0\" ip6 daddr 2001:db8:a::/60 dnat prefix to 3d06:bad:b01:210::/60\nchain postrouting:\n")
 	return store
@@ -581,7 +586,7 @@ func checkSelftestNotifications(
 	// transition, and a routing pass that installs a different tier than
 	// the baseline selftestStore wrote.
 	store.NotifyHealthTransition("example", wanstate.HealthHealthy, wanstate.HealthUnhealthy)
-	store.SetRouting(1, map[string]wanstate.MemberRouting{"example": {Carrying: false, OwnedAddresses: nil}})
+	store.SetRouting(1, map[string]wanstate.MemberRouting{"example": {Carrying: false, V4Ready: false, V6Ready: false, OwnedAddresses: nil}})
 
 	byPath := map[string]string{}
 	for len(byPath) < 2 {
@@ -760,6 +765,9 @@ func checkSelftestInterfaces(log *slog.Logger, tree json.RawMessage) error {
 	if err := expectLeaf(state, "carrying", "true", "live state"); err != nil {
 		return err
 	}
+	if err := checkSelftestTranslation(log, member); err != nil {
+		return err
+	}
 	if err := checkSelftestOwnedAddresses(log, member); err != nil {
 		return err
 	}
@@ -807,11 +815,7 @@ func checkSelftestRejectedProviders(
 	return expectLeaf(rejected, "reason", `"ipv6/dhcp is required"`, "rejected provider")
 }
 
-// checkSelftestOwnedAddresses checks the member's wan container carries the
-// provider's name, the static mapping the configuration publish wrote, and
-// exactly the one owned address the store reports. The configuration and the
-// live state both write into this container, so one read proves they merge
-// rather than one replacing the other.
+// checkSelftestOwnedAddresses checks the configured mapping and operational address in one read.
 func checkSelftestOwnedAddresses(log *slog.Logger, member map[string]json.RawMessage) error {
 	wan, err := unmarshalObject(log, member["goodkind-mwan-steering:wan"], "wan container")
 	if err != nil {
@@ -820,12 +824,20 @@ func checkSelftestOwnedAddresses(log *slog.Logger, member map[string]json.RawMes
 	if err := expectLeaf(wan, "name", `"example"`, "live state"); err != nil {
 		return err
 	}
-	mappings, err := unmarshalArray(log, wan["static-mapping"], "static-mapping list")
+	ipv4, err := unmarshalObject(log, member["ietf-ip:ipv4"], "IPv4 container")
+	if err != nil {
+		return err
+	}
+	translation, err := unmarshalObject(log, ipv4["goodkind-mwan-steering:translation"], "IPv4 translation")
+	if err != nil {
+		return err
+	}
+	mappings, err := unmarshalArray(log, translation["static-mapping"], "static-mapping list")
 	if err != nil {
 		return err
 	}
 	if len(mappings) != 1 {
-		return fmt.Errorf("configuration: static-mapping = %s, want one entry", wan["static-mapping"])
+		return fmt.Errorf("configuration: static-mapping = %s, want one entry", translation["static-mapping"])
 	}
 	mapping, err := unmarshalObject(log, mappings[0], "static-mapping entry")
 	if err != nil {
@@ -908,41 +920,6 @@ func checkSelftestDaemon(ctx context.Context, log *slog.Logger, reader yangpub.P
 		return err
 	}
 	return expectLeaf(tap, "unit", `"cloudflared-oob.service"`, "tap")
-}
-
-func checkSelftestNAT(log *slog.Logger, tree json.RawMessage) error {
-	root, err := unmarshalObject(log, tree, "nat tree")
-	if err != nil {
-		return err
-	}
-	nat, err := unmarshalObject(log, root["ietf-nat:nat"], "nat container")
-	if err != nil {
-		return err
-	}
-	instances, err := unmarshalObject(log, nat["instances"], "instances container")
-	if err != nil {
-		return err
-	}
-	entries, err := unmarshalArray(log, instances["instance"], "instance list")
-	if err != nil {
-		return err
-	}
-	if len(entries) != 1 {
-		return fmt.Errorf("nat instances = %d, want 1", len(entries))
-	}
-	instance, err := unmarshalObject(log, entries[0], "nat instance")
-	if err != nil {
-		return err
-	}
-	if err := expectLeaf(instance, "name", `"example"`, "configuration"); err != nil {
-		return err
-	}
-	// The type is an identity of the instance's own module, which the JSON
-	// encoding prints without a module prefix.
-	if err := expectLeaf(instance, "type", `"nptv6"`, "configuration"); err != nil {
-		return err
-	}
-	return expectLeaf(instance, "goodkind-mwan-steering:kernel-present", "true", "live state")
 }
 
 // checkSelftestInterfacesBare fails when the interfaces tree still carries

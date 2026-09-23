@@ -133,7 +133,8 @@ func TestBuildRulesCoversBothFamilies(t *testing.T) {
 		InternalPrefix: netip.MustParsePrefix("3d06:bad:b01::/60"),
 		OpnsenseEdgeV6: netip.MustParseAddr("3d06:bad:b01:201::1"),
 		Mode:           hashModeRandom,
-		Assign:         assign,
+		AssignV4:       assign,
+		AssignV6:       assign,
 	})
 
 	want := []steerRule{

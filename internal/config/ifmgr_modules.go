@@ -136,16 +136,17 @@ type IfMgrPolicyRulesSection struct {
 // IfMgrWANEntry is one provider's routing configuration, keyed by provider
 // name. It comes from network.json: the interface the provider rides, the
 // policy-routing slots wan.routes owns, and the steering properties the
-// balancer reads. Modules read the fields they need; npt uses only the name and
-// interface. The shared internal prefix and edge addresses live on
+// balancer reads. Each configured family has an explicit translation policy.
+// The shared internal prefix and edge addresses live on
 // IfMgrSection, because no single provider owns them.
 type IfMgrWANEntry struct {
-	Iface      string
-	TableID    int
-	FwMark     int
-	FwMarkPrio int
-	FromPrio   int
-	NptPrefix  string
+	Iface         string
+	TableID       int
+	FwMark        int
+	FwMarkPrio    int
+	FromPrio      int
+	TranslationV4 *IPv4Translation
+	TranslationV6 *IPv6Translation
 	// V4Source is the provider's static IPv4 link address, or empty on a
 	// leased link. The loader derives it from the link's first static address
 	// rather than reading it from the file, so the source rule and the address
@@ -168,9 +169,48 @@ type IfMgrWANEntry struct {
 	// refuses a missing or smaller value rather than defaulting it, because a
 	// zero share would make the balancer's divisor wrong.
 	Weight int
-	// StaticMappings are the provider's one-to-one IPv4 translations, in the
-	// order the configuration lists them.
+}
+
+// TranslationMode selects the base packet translation for one address family.
+type TranslationMode string
+
+const (
+	// TranslationNative leaves addresses unchanged.
+	TranslationNative TranslationMode = "native"
+	// TranslationNAPT44 translates IPv4 source addresses and ports.
+	TranslationNAPT44 TranslationMode = "ietf-nat:napt44"
+	// TranslationNPTv6 translates IPv6 prefixes without connection state.
+	TranslationNPTv6 TranslationMode = "ietf-nat:nptv6"
+)
+
+// PrefixSource selects how an IPv6 external prefix is obtained.
+type PrefixSource string
+
+const (
+	// PrefixConfigured uses the external prefix from the policy.
+	PrefixConfigured PrefixSource = "configured"
+	// PrefixDelegated uses a prefix from DHCPv6 delegation.
+	PrefixDelegated PrefixSource = "delegated"
+)
+
+// IPv4Translation configures the IPv4 base mode and optional static mappings.
+type IPv4Translation struct {
+	Mode           TranslationMode
 	StaticMappings []StaticMapping
+}
+
+// IPv6Translation configures the IPv6 base mode and optional NPTv6 settings.
+type IPv6Translation struct {
+	Mode TranslationMode
+	NPT  *NPTv6Translation
+}
+
+// NPTv6Translation configures internal and external prefix selection.
+type NPTv6Translation struct {
+	InternalPrefix netip.Prefix
+	ExternalSource PrefixSource
+	ExternalPrefix netip.Prefix
+	ExpectedPrefix netip.Prefix
 }
 
 // StaticMapping is one one-to-one IPv4 translation a provider carries: traffic

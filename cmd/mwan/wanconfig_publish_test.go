@@ -22,17 +22,17 @@ func wanconfigTestModuleConfigs() ifmgr.ModuleConfigSet {
 	wans := []wanroutes.WAN{
 		{
 			WANRef: ifmgr.WANRef{Name: "att", Iface: "enatt0.3242"}, TableID: 100,
-			FwMark: 1, FwMarkPrio: 10, FromPrio: 20, NptPrefix: "2001:db8:a::/60", V4Source: "",
+			FwMark: 1, FwMarkPrio: 10, FromPrio: 20, TranslationV6: testNPTPolicy("2001:db8:a::/60"), V4Source: "",
 			Tier: 0, Weight: 1,
 		},
 		{
 			WANRef: ifmgr.WANRef{Name: "monkeybrains", Iface: "enmbrains0"}, TableID: 300,
-			FwMark: 3, FwMarkPrio: 12, FromPrio: 22, NptPrefix: "", V4Source: "",
+			FwMark: 3, FwMarkPrio: 12, FromPrio: 22, TranslationV6: testNPTPolicy(""), V4Source: "",
 			Tier: 1, Weight: 1,
 		},
 		{
 			WANRef: ifmgr.WANRef{Name: "webpass", Iface: "enwebpass0"}, TableID: 200,
-			FwMark: 2, FwMarkPrio: 11, FromPrio: 21, NptPrefix: "2001:db8:b::/60", V4Source: "192.0.2.2",
+			FwMark: 2, FwMarkPrio: 11, FromPrio: 21, TranslationV6: testNPTPolicy("2001:db8:b::/60"), V4Source: "192.0.2.2",
 			Tier: 0, Weight: 2,
 		},
 	}
@@ -104,7 +104,6 @@ func TestGatewayFromModuleConfigs_ProjectsTheWANRole(t *testing.T) {
 	want := []wanconfig.Member{
 		{
 			Name: "att", Iface: "enatt0.3242", Tier: 0, Weight: 1, ProbePolicy: "att",
-			NPTInternal: internal, NPTExternal: netip.MustParsePrefix("2001:db8:a::/60"),
 			TableID: 100, FwMark: 1, FwMarkPrio: 10, FromPrio: 20,
 		},
 		{
@@ -113,9 +112,12 @@ func TestGatewayFromModuleConfigs_ProjectsTheWANRole(t *testing.T) {
 		},
 		{
 			Name: "webpass", Iface: "enwebpass0", Tier: 0, Weight: 2, ProbePolicy: "webpass",
-			NPTInternal: internal, NPTExternal: netip.MustParsePrefix("2001:db8:b::/60"),
 			TableID: 200, FwMark: 2, FwMarkPrio: 11, FromPrio: 21, V4Source: "192.0.2.2",
 		},
+	}
+	for i := range want {
+		want[i].TranslationIDV4 = wanconfig.TranslationInstanceID(want[i].Name, "ipv4")
+		want[i].TranslationIDV6 = wanconfig.TranslationInstanceID(want[i].Name, "ipv6")
 	}
 	if !reflect.DeepEqual(gateway.Members, want) {
 		t.Fatalf("members = %+v, want %+v", gateway.Members, want)
@@ -139,7 +141,7 @@ func TestGatewayFromModuleConfigs_CarriesWhatOnlyTheLoadedConfigHolds(t *testing
 		{External: netip.MustParseAddr("198.51.100.3"), Internal: netip.MustParseAddr("10.250.250.3")},
 	}
 	cfg := &config.Config{}
-	cfg.IfMgr.WAN = map[string]config.IfMgrWANEntry{"att": {ForcedDSCP: 8, StaticMappings: mappings}}
+	cfg.IfMgr.WAN = map[string]config.IfMgrWANEntry{"att": {ForcedDSCP: 8, TranslationV4: &config.IPv4Translation{Mode: config.TranslationNAPT44, StaticMappings: mappings}}}
 	cfg.IfMgr.Modules.Health = &config.IfMgrHealthSection{WAN: map[string]config.IfMgrHealthWANSection{
 		"att": {
 			Enabled:              true,
@@ -168,12 +170,12 @@ func TestGatewayFromModuleConfigs_CarriesWhatOnlyTheLoadedConfigHolds(t *testing
 	if att.ForcedDSCP != 8 {
 		t.Fatalf("att forced DSCP = %d, want 8", att.ForcedDSCP)
 	}
-	wantMappings := []wanconfig.StaticMapping{
+	wantMappings := []config.StaticMapping{
 		{External: netip.MustParseAddr("198.51.100.2"), Internal: netip.MustParseAddr("10.250.250.2")},
 		{External: netip.MustParseAddr("198.51.100.3"), Internal: netip.MustParseAddr("10.250.250.3")},
 	}
-	if !reflect.DeepEqual(att.StaticMappings, wantMappings) {
-		t.Fatalf("att static mappings = %+v, want %+v in configuration order", att.StaticMappings, wantMappings)
+	if !reflect.DeepEqual(att.TranslationV4.StaticMappings, wantMappings) {
+		t.Fatalf("att static mappings = %+v, want %+v in configuration order", att.TranslationV4.StaticMappings, wantMappings)
 	}
 	wantAttProbe := &wanconfig.ProbeSettings{
 		Enabled:              true,
@@ -209,7 +211,7 @@ func TestGatewayFromModuleConfigs_CarriesWhatOnlyTheLoadedConfigHolds(t *testing
 	}
 
 	webpass := byName["webpass"]
-	if webpass.Health != nil || webpass.ForcedDSCP != 0 || webpass.StaticMappings != nil {
+	if webpass.Health != nil || webpass.ForcedDSCP != 0 || webpass.TranslationV4 != nil {
 		t.Fatalf("webpass = %+v, want no probe, no forced DSCP, and no static mappings", webpass)
 	}
 
@@ -247,25 +249,6 @@ func TestGatewayFromModuleConfigs_UnprobedMemberHasNoPolicy(t *testing.T) {
 		if member.ProbePolicy != "" {
 			t.Fatalf("member %s ProbePolicy = %q, want empty", member.Name, member.ProbePolicy)
 		}
-	}
-}
-
-// TestGatewayFromModuleConfigs_RejectsAnUnparsableTranslationPrefix pins
-// the loud failure: a malformed prefix in the loaded config returns an
-// error rather than a member silently missing its translation instance.
-func TestGatewayFromModuleConfigs_RejectsAnUnparsableTranslationPrefix(t *testing.T) {
-	t.Parallel()
-	configs := wanconfigTestModuleConfigs()
-	routesCfg, isRoutes := configs["wan.routes"].(wanroutes.Config)
-	if !isRoutes {
-		t.Fatal("wan.routes config missing from fixture")
-	}
-	routesCfg.WANs[0].NptPrefix = "not-a-prefix"
-	configs["wan.routes"] = routesCfg
-
-	_, _, err := gatewayFromModuleConfigs(nil, configs)
-	if err == nil {
-		t.Fatal("err = nil, want a parse error")
 	}
 }
 
@@ -311,4 +294,11 @@ func TestGatewayFromModuleConfigs_RejectsAnUnparsableNetworkValue(t *testing.T) 
 	if _, _, err := gatewayFromModuleConfigs(&config.Config{}, wanconfigTestModuleConfigs()); err != nil {
 		t.Fatalf("the unbroken fixture every case starts from is rejected: %v", err)
 	}
+}
+
+func testNPTPolicy(external string) *config.IPv6Translation {
+	if external == "" {
+		return nil
+	}
+	return &config.IPv6Translation{Mode: config.TranslationNPTv6, NPT: &config.NPTv6Translation{InternalPrefix: netip.MustParsePrefix("3d06:bad:b01::/60"), ExternalSource: config.PrefixDelegated, ExpectedPrefix: netip.MustParsePrefix(external)}}
 }

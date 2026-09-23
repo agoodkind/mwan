@@ -8,17 +8,33 @@
         "goodkind-mwan-steering:link": {
           "match": { "driver": "igc" }
         },
+        "ietf-ip:ipv4": {
+          "goodkind-mwan-steering:dhcp": true,
+          "goodkind-mwan-steering:translation": {
+            "mode": "ietf-nat:napt44",
+            "static-mapping": [
+              { "external": "203.0.113.2", "internal": "192.0.2.2" },
+              { "external": "203.0.113.3", "internal": "192.0.2.3" }
+            ]
+          }
+        },
+        "ietf-ip:ipv6": {
+          "goodkind-mwan-steering:dhcp": false,
+          "goodkind-mwan-steering:translation": {
+            "mode": "ietf-nat:nptv6",
+            "nptv6": {
+              "internal-prefix": "2001:db8:b01::/60",
+              "external-source": "configured",
+              "external-prefix": "2001:db8:beef:200::/60"
+            }
+          }
+        },
         "goodkind-mwan-steering:wan": {
           "name": "webpass",
           "table-id": 200,
           "fw-mark": 2,
           "fw-mark-prio": 200,
           "from-prio": 56,
-          "npt-prefix": "2001:db8:beef:200::/60",
-          "static-mapping": [
-            { "external": "203.0.113.2", "internal": "192.0.2.2" },
-            { "external": "203.0.113.3", "internal": "192.0.2.3" }
-          ],
           "health": {
             "enabled": true,
             "ping-count": 3,
@@ -40,13 +56,18 @@
         "name": "enatt0",
         "type": "iana-if-type:other",
         "goodkind-mwan-steering:link-files": "hand-authored",
+        "ietf-ip:ipv4": {
+          "goodkind-mwan-steering:translation": { "mode": "native" }
+        },
+        "ietf-ip:ipv6": {
+          "goodkind-mwan-steering:translation": { "mode": "native" }
+        },
         "goodkind-mwan-steering:wan": {
           "name": "att",
           "table-id": 100,
           "fw-mark": 1,
           "fw-mark-prio": 100,
           "from-prio": 55,
-          "npt-prefix": "2001:db8:beef:100::/60",
           "forced-dscp": 8
         },
         "goodkind-mwan-steering:steering": {
@@ -61,13 +82,16 @@
         "goodkind-mwan-steering:link": {
           "match": { "hardware-address": "02:00:5e:00:53:03" }
         },
+        "ietf-ip:ipv4": {
+          "goodkind-mwan-steering:dhcp": true,
+          "goodkind-mwan-steering:translation": { "mode": "ietf-nat:napt44" }
+        },
         "goodkind-mwan-steering:wan": {
           "name": "monkeybrains",
           "table-id": 300,
           "fw-mark": 3,
           "fw-mark-prio": 300,
           "from-prio": 57,
-          "npt-prefix": "2001:db8:beef:300::/60",
           "health": {
             "enabled": false,
             "ping-count": 3,

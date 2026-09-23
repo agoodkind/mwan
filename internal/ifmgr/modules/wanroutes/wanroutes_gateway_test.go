@@ -4,6 +4,7 @@ package wanroutes
 
 import (
 	"context"
+	"net"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -118,6 +119,7 @@ func newNamespaceModule(t *testing.T, store *wanstate.Store) *Module {
 	t.Helper()
 	cfg := testConfig()
 	cfg.HealthStateFile = filepath.Join(t.TempDir(), "mwan-health.state")
+	store.SetTranslation(readyTranslations(cfg))
 	module := &Module{cfg: cfg}
 	module.InitBase(testEnvWithStore(store), "module", moduleName)
 	module.resolveNextHop = netif.NextHopResolves
@@ -267,4 +269,107 @@ func TestReconcileRemovesAMissingProvidersRules(t *testing.T) {
 	}
 
 	reconcileWithMonkeybrainsMissing(ctx, t, module, store)
+}
+
+func TestReconcileRemovesOnlyTheUnreadyFamilyDefault(t *testing.T) {
+	t.Parallel()
+	enterPrivateNetworkNamespace(t)
+	ctx := context.Background()
+	store := wanstate.New()
+	module := newNamespaceModule(t, store)
+	module.cfg.WANs = module.cfg.WANs[:2]
+	buildProviderLinks(ctx, t, module)
+	assertFamilyDefault := func(family string, wantGateway string) {
+		t.Helper()
+		routes, err := netif.ListTableRoutes(ctx, module.Log, family, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := ""
+		for _, route := range routes {
+			if route.Dest == "default" {
+				got = route.Via
+			}
+		}
+		if got != wantGateway {
+			t.Fatalf("%s table 100 default = %q, want %q", family, got, wantGateway)
+		}
+	}
+	if err := module.Reconcile(ctx, module.Log); err != nil {
+		t.Fatal(err)
+	}
+	assertFamilyDefault(familyV4, "192.0.2.1")
+	assertFamilyDefault(familyV6, "2001:db8:1::1")
+	translations := readyTranslations(module.cfg)
+	att := translations["att"]
+	att.V6.Ready = false
+	translations["att"] = att
+	store.SetTranslation(translations)
+	if err := module.Reconcile(ctx, module.Log); err != nil {
+		t.Fatal(err)
+	}
+	assertFamilyDefault(familyV4, "192.0.2.1")
+	assertFamilyDefault(familyV6, "")
+	rules := providerRules(ctx, t, module)
+	if !rules[installedRule{family: familyV4, priority: 100, tableID: 100}] {
+		t.Fatal("IPv4 routing rule disappeared during IPv6 readiness loss")
+	}
+	if rules[installedRule{family: familyV6, priority: 100, tableID: 100}] {
+		t.Fatal("IPv6 routing rule survived readiness loss")
+	}
+	att.V6.Ready = true
+	translations["att"] = att
+	store.SetTranslation(translations)
+	if err := module.Reconcile(ctx, module.Log); err != nil {
+		t.Fatal(err)
+	}
+	assertFamilyDefault(familyV6, "2001:db8:1::1")
+	module.cfg.WANs[0].TranslationV6 = nil
+	if err := module.Reconcile(ctx, module.Log); err != nil {
+		t.Fatal(err)
+	}
+	assertFamilyDefault(familyV4, "192.0.2.1")
+	assertFamilyDefault(familyV6, "")
+}
+
+func TestReconcileExcludesFamilyWithConflictingDefault(t *testing.T) {
+	t.Parallel()
+	enterPrivateNetworkNamespace(t)
+	ctx := context.Background()
+	store := wanstate.New()
+	module := newNamespaceModule(t, store)
+	module.cfg.WANs = module.cfg.WANs[:2]
+	module.cfg.WANs[1].Tier = 1
+	buildProviderLinks(ctx, t, module)
+	if err := module.Reconcile(ctx, module.Log); err != nil {
+		t.Fatal(err)
+	}
+	link, err := netlink.LinkByName("webpass0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conflict := &netlink.Route{LinkIndex: link.Attrs().Index, Table: 100, Family: netlink.FAMILY_V6, Gw: net.ParseIP("2001:db8:2::1"), Priority: 77}
+	if err := netlink.RouteAdd(conflict); err != nil {
+		t.Fatal(err)
+	}
+	if err := module.Reconcile(ctx, module.Log); err == nil || !strings.Contains(err.Error(), "default route differs") {
+		t.Fatalf("Reconcile = %v, want conflicting default verification error", err)
+	}
+	routing := store.Snapshot().Routing
+	if routing["att"].V6Ready || !routing["att"].V4Ready || !routing["webpass"].V6Ready || !routing["webpass"].Carrying {
+		t.Fatalf("failed IPv6 route did not select the healthy fallback: %+v", routing)
+	}
+	rules := providerRules(ctx, t, module)
+	if rules[installedRule{family: familyV6, priority: 100, tableID: 100}] || !rules[installedRule{family: familyV6, priority: catchAllPriority, tableID: 200}] {
+		t.Fatalf("failed IPv6 route still selected by policy rules: %+v", rules)
+	}
+	if err := netlink.RouteDel(conflict); err != nil {
+		t.Fatal(err)
+	}
+	if err := module.Reconcile(ctx, module.Log); err != nil {
+		t.Fatal(err)
+	}
+	if !store.Snapshot().Routing["att"].V6Ready {
+		t.Fatal("IPv6 readiness did not recover after the conflict was removed")
+	}
 }

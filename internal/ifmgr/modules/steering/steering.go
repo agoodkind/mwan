@@ -3,9 +3,8 @@
 // active tier's healthy providers and their weights, and reprograms the chain on
 // every reconcile.
 //
-// It runs in the wan role after wan.routes, so the policy rules its marks select
-// are installed before any mark is set, and before npt, which translates the
-// prefix the chosen provider delegates. It never deletes a table or a chain, so
+// It reads routing and translation readiness before assigning marks.
+// It never deletes a table or a chain, so
 // the kernel keeps marking on the last programmed rules across a binary swap.
 package steering
 
@@ -223,22 +222,30 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	return nil
 }
 
-// desiredRules computes this pass's rule set. No healthy provider anywhere
-// programs no rules, which leaves the chain empty and every packet unmarked, so
-// traffic falls to whatever the main table holds rather than being sent at a
-// provider that failed its probes.
+// desiredRules selects each family's active tier from the routing module's ready providers.
 func (m *Module) desiredRules(health netif.HealthStates) []steerRule {
-	assign, anyCarrying := balancerFor(m.cfg.Members, health)
-	if !anyCarrying {
+	if m.Env == nil || m.Env.LiveState == nil {
 		return nil
 	}
+	snapshot := m.Env.LiveState.Snapshot()
+	v4 := make([]Member, 0, len(m.cfg.Members))
+	v6 := make([]Member, 0, len(m.cfg.Members))
+	for _, member := range m.cfg.Members {
+		routing := snapshot.Routing[member.Name]
+		translation := snapshot.Translation[member.Name]
+		if routing.V4Ready && translation.V4.Ready {
+			v4 = append(v4, member)
+		}
+		if routing.V6Ready && translation.V6.Ready {
+			v6 = append(v6, member)
+		}
+	}
+	assignV4, _ := balancerFor(v4, health)
+	assignV6, _ := balancerFor(v6, health)
 	return buildRules(ruleInput{
-		InternalIface:  m.cfg.InternalIface,
-		InternalNetV4:  m.internalNetV4,
-		InternalPrefix: m.internalPrefix,
-		OpnsenseEdgeV6: m.opnsenseEdge,
-		Mode:           m.mode,
-		Assign:         assign,
+		InternalIface: m.cfg.InternalIface, InternalNetV4: m.internalNetV4,
+		InternalPrefix: m.internalPrefix, OpnsenseEdgeV6: m.opnsenseEdge, Mode: m.mode,
+		AssignV4: assignV4, AssignV6: assignV6,
 	})
 }
 

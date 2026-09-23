@@ -49,6 +49,10 @@ module goodkind-mwan-steering {
      decides its verdict, the prefix-translation inputs, and the
      internal link the members route toward.";
 
+  revision 2026-09-22 {
+    description
+      "Replace provider-level translation fields with explicit family policies.";
+  }
   revision 2026-09-21 {
     description
       "This revision adds the rejected-provider operational list under
@@ -296,14 +300,6 @@ module goodkind-mwan-steering {
            traffic the gateway sources from this provider's own
            address or translated prefix.";
       }
-      leaf npt-prefix {
-        type inet:ipv6-prefix;
-        description
-          "The IPv6 prefix this provider delegates, which the gateway
-           translates the internal prefix onto. A provider that
-           delegates nothing carries no prefix and gets no
-           translation.";
-      }
       leaf v4-source {
         type union {
           type inet:ipv4-address;
@@ -329,31 +325,6 @@ module goodkind-mwan-steering {
            leaves over this link whichever member the balancer would
            have chosen. Zero is excluded because every unmarked packet
            carries it, and no two providers may share a value.";
-      }
-      list static-mapping {
-        key "external";
-        description
-          "A one-to-one IPv4 translation this provider carries: traffic
-           arriving on this link for the external address is delivered
-           to the internal address, and the internal address leaves
-           this link as the external one. When the external address
-           sits inside a subnet the link is connected to, the upstream
-           gateway reaches it by address resolution on the link, so the
-           gateway holds it on the link as a host address.";
-        leaf external {
-          type inet:ipv4-address;
-          description
-            "The provider-assigned address the internal address is
-             reachable at. It keys the list, so one provider maps an
-             address once.";
-        }
-        leaf internal {
-          type inet:ipv4-address;
-          mandatory true;
-          description
-            "The internal address traffic for the external address is
-             delivered to.";
-        }
       }
       leaf-list owned-address {
         config false;
@@ -564,7 +535,49 @@ module goodkind-mwan-steering {
     }
   }
 
+  grouping translation-policy {
+    container translation {
+      presence "The family has an explicit translation policy.";
+      container state {
+        config false;
+        leaf ready { type boolean; }
+        leaf reason { type string; }
+        leaf resolved-internal-prefix { type inet:ipv6-prefix; }
+        leaf resolved-external-prefix { type inet:ipv6-prefix; }
+      }
+      leaf mode {
+        mandatory true;
+        type union {
+          type enumeration { enum native; }
+          type identityref { base nat:nat-type; }
+        }
+        description "Native routing or an RFC 8512 translation type.";
+      }
+      list static-mapping {
+        key "external";
+        ordered-by user;
+        leaf external { type inet:ipv4-address; }
+        leaf internal { mandatory true; type inet:ipv4-address; }
+        description "IPv4 mappings take precedence over NAPT44 masquerade.";
+      }
+      container nptv6 {
+        presence "The policy translates IPv6 prefixes.";
+        leaf internal-prefix { type inet:ipv6-prefix; }
+        leaf external-source {
+          type enumeration {
+            enum configured;
+            enum delegated;
+          }
+        }
+        leaf external-prefix { type inet:ipv6-prefix; }
+        leaf expected-prefix { type inet:ipv6-prefix; }
+        description "Configured prefixes or a live DHCP delegated prefix.";
+      }
+    }
+  }
+
   augment "/if:interfaces/if:interface/ip:ipv4" {
+    uses translation-policy;
     description "How this family is addressed on this interface.";
     leaf dhcp {
       type boolean;
@@ -597,6 +610,7 @@ module goodkind-mwan-steering {
   }
 
   augment "/if:interfaces/if:interface/ip:ipv6" {
+    uses translation-policy;
     description
       "The delegation the provider on this interface currently holds,
        and how this family is addressed on this interface.";

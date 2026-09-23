@@ -230,11 +230,11 @@ func delTableDefaultNetlink(
 	_ = ctx
 	famConst := familyToNetlink(family)
 
-	r := &netlink.Route{
-		Table:  tableID,
-		Family: famConst,
-		// Dst nil = default
+	destination := &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)}
+	if famConst == unix.AF_INET6 {
+		destination = &net.IPNet{IP: net.IPv6zero, Mask: net.CIDRMask(0, 128)}
 	}
+	r := &netlink.Route{Table: tableID, Family: famConst, Dst: destination}
 	start := realClock{}.Now()
 	err := netlink.RouteDel(r)
 	dur := realClock{}.Now().Sub(start)

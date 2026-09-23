@@ -111,11 +111,12 @@ type networkdEntry struct {
 // forwarding flag and address list the published model defines, and the
 // leaves the steering module adds under its own namespace.
 type familyWire struct {
-	Forwarding  *bool       `json:"forwarding"`
-	Address     []ipAddress `json:"address"`
-	DHCP        *bool       `json:"goodkind-mwan-steering:dhcp"`
-	Gateway     string      `json:"goodkind-mwan-steering:gateway"`
-	RouteMetric *uint32     `json:"goodkind-mwan-steering:route-metric"`
+	Forwarding  *bool              `json:"forwarding"`
+	Address     []ipAddress        `json:"address"`
+	DHCP        *bool              `json:"goodkind-mwan-steering:dhcp"`
+	Gateway     string             `json:"goodkind-mwan-steering:gateway"`
+	RouteMetric *uint32            `json:"goodkind-mwan-steering:route-metric"`
+	Translation *familyTranslation `json:"goodkind-mwan-steering:translation"`
 }
 
 type familyV4 struct {
@@ -158,15 +159,12 @@ type wan struct {
 	FwMark     *int   `json:"fw-mark"`
 	FwMarkPrio *int   `json:"fw-mark-prio"`
 	FromPrio   *int   `json:"from-prio"`
-	NptPrefix  string `json:"npt-prefix"`
 	// V4Source is decoded only to be refused: the daemon derives the source
 	// pin from the link's static address, and a document that still types the
 	// leaf would let inventory and the address disagree.
 	V4Source   string  `json:"v4-source"`
 	ForcedDSCP *int    `json:"forced-dscp"`
 	Health     *health `json:"health"`
-
-	StaticMappings []staticMapping `json:"static-mapping"`
 }
 
 type staticMapping struct {
@@ -505,9 +503,13 @@ func checkProviderSet(loaded *Config) error {
 func checkMappedExternals(loaded *Config, names []string) error {
 	mappedBy := make(map[netip.Addr]string, len(names))
 	for _, name := range names {
-		for _, mapping := range loaded.WAN[name].StaticMappings {
+		policy := loaded.WAN[name].TranslationV4
+		if policy == nil {
+			continue
+		}
+		for _, mapping := range policy.StaticMappings {
 			if taken, seen := mappedBy[mapping.External]; seen {
-				return fmt.Errorf("wan %s: static-mapping external %s is already mapped by wan %s",
+				return fmt.Errorf("wan %s ipv4: static-mapping external %s is already mapped by wan %s",
 					name, mapping.External, taken)
 			}
 			mappedBy[mapping.External] = name
@@ -537,6 +539,14 @@ func buildStaticMappings(label string, entries []staticMapping) ([]config.Static
 				"wan", label, "internal", entry.Internal, "err", err)
 			return nil, fmt.Errorf("%s: static-mapping internal %q: %w", label, entry.Internal, err)
 		}
+		if !external.Is4() || !internal.Is4() {
+			return nil, fmt.Errorf("%s: static-mapping requires IPv4 addresses", label)
+		}
+		for _, existing := range mappings {
+			if existing.External == external {
+				return nil, fmt.Errorf("%s: static-mapping external %s is duplicated", label, external)
+			}
+		}
 		mappings = append(mappings, config.StaticMapping{External: external, Internal: internal})
 	}
 	return mappings, nil
@@ -546,8 +556,10 @@ func buildStaticMappings(label string, entries []staticMapping) ([]config.Static
 // specification the daemon renders its unit files from. The link-files leaf
 // decides: hand-authored means the repository carries the files and the entry
 // describes nothing about the link, so it yields no specification and must
-// carry no link, family, or free-form container that the daemon would then
-// silently ignore; rendered means the entry describes the link and every
+// carry no link, family addressing, or free-form data the daemon would ignore.
+// Translation policies and DHCPv6 delegation metadata remain explicit for
+// hand-authored links without giving the daemon ownership of their files.
+// Rendered means every
 // requirement the schema cannot express is checked here. An entry that states
 // neither fails, so a link container someone forgot to write is caught rather
 // than read as an exemption. The schema already accepts every value, so a
@@ -556,9 +568,9 @@ func buildStaticMappings(label string, entries []staticMapping) ([]config.Static
 func buildLink(entry ifaceEntry, tableID int) (*networkd.Spec, error) {
 	label := "interface " + entry.Name
 	if entry.LinkFiles == linkFilesHandAuthored {
-		if entry.Link != nil || entry.Networkd != nil || entry.IPv4 != nil || entry.IPv6 != nil {
+		if entry.Link != nil || entry.Networkd != nil || handAuthoredAddressing(entry) {
 			return nil, fmt.Errorf(
-				"%s: link-files is hand-authored, so it must carry no link, networkd, ipv4, or ipv6 container",
+				"%s: link-files is hand-authored, so it must carry no link, networkd, or family addressing",
 				label)
 		}
 		return nil, nil
@@ -784,13 +796,6 @@ func staticV4Source(spec networkd.Spec) string {
 	return spec.IPv4.Addresses[0].IP.String()
 }
 
-// buildProvider turns one interface's provider entry into the two sections the
-// daemon holds it in: the routing entry keyed by provider name, and the health
-// policy under the same name. A nil probe is how a provider the gateway does
-// not probe is expressed, which is one of the two ways the daemon already
-// declines to probe a provider. An empty npt-prefix is how a provider on an
-// IPv4-only link is expressed: it gets no IPv6 source rule and no translation
-// instance, and the modules that read the prefix already guard for it.
 func buildProvider(entry ifaceEntry) (config.IfMgrWANEntry, *config.IfMgrHealthWANSection, error) {
 	provider := entry.WAN
 	if provider.Name == "" {
@@ -819,7 +824,11 @@ func buildProvider(entry ifaceEntry) (config.IfMgrWANEntry, *config.IfMgrHealthW
 	if err != nil {
 		return config.IfMgrWANEntry{}, nil, err
 	}
-	mappings, err := buildStaticMappings(label, provider.StaticMappings)
+	policyV4, err := buildTranslationV4(label+" ipv4", entry)
+	if err != nil {
+		return config.IfMgrWANEntry{}, nil, err
+	}
+	policyV6, err := buildTranslationV6(label+" ipv6", entry)
 	if err != nil {
 		return config.IfMgrWANEntry{}, nil, err
 	}
@@ -828,20 +837,20 @@ func buildProvider(entry ifaceEntry) (config.IfMgrWANEntry, *config.IfMgrHealthW
 		forcedDSCP = *provider.ForcedDSCP
 	}
 	routing := config.IfMgrWANEntry{
-		Iface:      entry.Name,
-		TableID:    *provider.TableID,
-		FwMark:     *provider.FwMark,
-		FwMarkPrio: *provider.FwMarkPrio,
-		FromPrio:   *provider.FromPrio,
-		NptPrefix:  provider.NptPrefix,
+		Iface:         entry.Name,
+		TableID:       *provider.TableID,
+		FwMark:        *provider.FwMark,
+		FwMarkPrio:    *provider.FwMarkPrio,
+		FromPrio:      *provider.FromPrio,
+		TranslationV4: policyV4,
+		TranslationV6: policyV6,
 		// The caller fills the source pin from the link specification, which
 		// buildLink builds after this returns.
-		V4Source:       "",
-		LinkFiles:      entry.LinkFiles,
-		ForcedDSCP:     forcedDSCP,
-		Tier:           tier,
-		Weight:         weight,
-		StaticMappings: mappings,
+		V4Source:   "",
+		LinkFiles:  entry.LinkFiles,
+		ForcedDSCP: forcedDSCP,
+		Tier:       tier,
+		Weight:     weight,
 	}
 	if provider.Health == nil {
 		return routing, nil, nil
