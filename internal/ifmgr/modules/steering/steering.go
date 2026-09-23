@@ -230,14 +230,18 @@ func (m *Module) desiredRules(health netif.HealthStates) []steerRule {
 	snapshot := m.Env.LiveState.Snapshot()
 	v4 := make([]Member, 0, len(m.cfg.Members))
 	v6 := make([]Member, 0, len(m.cfg.Members))
+	eligibleV4 := make(map[uint32]bool, len(m.cfg.Members))
+	eligibleV6 := make(map[uint32]bool, len(m.cfg.Members))
 	for _, member := range m.cfg.Members {
 		routing := snapshot.Routing[member.Name]
 		translation := snapshot.Translation[member.Name]
-		if routing.V4Ready && translation.V4.Ready {
+		if routing.V4Ready && translation.V4.Ready && netif.HealthIsHealthy(health.State(member.Name)) {
 			v4 = append(v4, member)
+			eligibleV4[member.Mark] = true
 		}
-		if routing.V6Ready && translation.V6.Ready {
+		if routing.V6Ready && translation.V6.Ready && netif.HealthIsHealthy(health.State(member.Name)) {
 			v6 = append(v6, member)
+			eligibleV6[member.Mark] = true
 		}
 	}
 	assignV4, _ := balancerFor(v4, health)
@@ -246,6 +250,7 @@ func (m *Module) desiredRules(health netif.HealthStates) []steerRule {
 		InternalIface: m.cfg.InternalIface, InternalNetV4: m.internalNetV4,
 		InternalPrefix: m.internalPrefix, OpnsenseEdgeV6: m.opnsenseEdge, Mode: m.mode,
 		AssignV4: assignV4, AssignV6: assignV6,
+		Members: m.cfg.Members, EligibleV4: eligibleV4, EligibleV6: eligibleV6,
 	})
 }
 
