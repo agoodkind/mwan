@@ -489,11 +489,14 @@ endif
 # that carries the stack pins, the tool sources, and the module files that
 # pin the tool's dependencies. An unchanged stack is copied, not rebuilt.
 #
-# The release engine sets the architecture for each release leg. A local run
-# defaults to amd64, the production gateway's architecture, and an arm64 host
-# runs that container under emulation. Set WANCONFIG_STACK_ARCH=arm64 to
-# build the arm64 bundle natively on an arm64 host.
-WANCONFIG_STACK_ARCH    ?= $(if $(strip $(GO_MK_TARGET_GOARCH)),$(GO_MK_TARGET_GOARCH),amd64)
+# Each release compile leg sets RELEASE_PLATFORMS to its one platform, and the
+# stack architecture is that platform's architecture. A local run uses the
+# default RELEASE_PLATFORMS of linux/amd64, the production gateway's
+# architecture, and an arm64 host runs that container under emulation. Set
+# WANCONFIG_STACK_ARCH=arm64 to build the arm64 bundle natively on an arm64
+# host.
+WANCONFIG_RELEASE_ARCH  := $(lastword $(subst /, ,$(firstword $(RELEASE_PLATFORMS))))
+WANCONFIG_STACK_ARCH    ?= $(if $(strip $(GO_MK_TARGET_GOARCH)),$(GO_MK_TARGET_GOARCH),$(WANCONFIG_RELEASE_ARCH))
 WANCONFIG_STACK_IMAGE   := debian:trixie
 WANCONFIG_STACK_SOURCES := $(wildcard tools/wanconfigstack/*.go) go.mod go.sum
 WANCONFIG_STACK_BUNDLE  := wanconfig-stack_linux_$(WANCONFIG_STACK_ARCH).tar.gz
