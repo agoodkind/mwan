@@ -410,6 +410,15 @@ docker-make: wanconfig-builder-image
 	$(WANCONFIG_DOCKER_RUN) \
 		make $(TARGETS) GO_MK_PLATFORMS=linux/$(WANCONFIG_DOCKER_ARCH)
 
+# docker-make-amd64 runs the same targets in the amd64 container. On an arm64
+# host the container runs under emulation, which is the lane main used before
+# the arm64 container existed. It lints linux/amd64, the platform CI lints.
+#
+#   make docker-make-amd64 TARGETS="check test"
+.PHONY: docker-make-amd64
+docker-make-amd64:
+	@$(MAKE) docker-make WANCONFIG_DOCKER_ARCH=amd64 TARGETS="$(TARGETS)"
+
 # darwin cannot build the cgo sysrepo binding. A host run compiles out every
 # package that uses the binding and passes without testing them. On darwin,
 # the entry points below run inside the builder container instead. go.mk

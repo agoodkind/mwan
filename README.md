@@ -57,6 +57,7 @@ make check                   # lint, vet, staticcheck, deadcode, and the YANG mo
 make test                    # the suite
 make build                   # the linux binary
 make docker-make TARGETS=... # any make targets in the builder container
+make docker-make-amd64 TARGETS=... # the same in the amd64 container, emulated on arm64
 make build-wanconfig-all     # the linux binary for amd64 and for arm64
 make test-docker-all         # the suite in the amd64 and the arm64 container
 ```
