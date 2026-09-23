@@ -34,7 +34,7 @@ const (
 	filterHandle   = 0x4e50
 )
 
-// Translator serializes Reconcile and Close so closed program descriptors cannot be used.
+// Translator prevents use of closed program descriptors by serializing Reconcile and Close.
 type Translator struct {
 	mu      sync.Mutex
 	objects nptObjects

@@ -14,7 +14,7 @@ import (
 	"github.com/cilium/ebpf"
 )
 
-// The kernel reads these map values as C structs, so their byte layouts must match npt.c.
+// Byte layouts must match the C structs in npt.c; the kernel reads map values as C structs.
 type nptPair struct {
 	_                     structs.HostLayout
 	Internal              [16]uint8
