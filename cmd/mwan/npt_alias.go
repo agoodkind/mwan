@@ -41,8 +41,12 @@ func syncNPTv6HairpinAlias(ctx context.Context, log *slog.Logger, cfg config.OPN
 	}
 	roots := x509.NewCertPool()
 	block, _ := pem.Decode(certificate)
-	if block == nil || !roots.AppendCertsFromPEM(certificate) {
-		log.ErrorContext(ctx, "npt: OPNsense certificate configuration invalid", "err", fmt.Errorf("certificate is missing"))
+	if block == nil {
+		log.ErrorContext(ctx, "npt: OPNsense certificate configuration invalid", "err", fmt.Errorf("no PEM block found in certificate file"))
+		return
+	}
+	if !roots.AppendCertsFromPEM(certificate) {
+		log.ErrorContext(ctx, "npt: OPNsense certificate configuration invalid", "err", fmt.Errorf("certificate pool rejected PEM data"))
 		return
 	}
 	parsed, err := x509.ParseCertificate(block.Bytes)

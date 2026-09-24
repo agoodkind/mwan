@@ -98,6 +98,6 @@ func TestNPTv6HairpinAliasReconcilesPrefixes(t *testing.T) {
 		}
 	}
 	if addCount != 2 {
-		t.Fatalf("router restart restored prefix %d times, want two total additions: %v", addCount, operations)
+		t.Fatalf("add 2001:db8:200::/60 operation count = %d, want 2; operations: %v", addCount, operations)
 	}
 }
