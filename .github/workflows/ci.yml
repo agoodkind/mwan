@@ -31,9 +31,10 @@ jobs:
       # cgo-deps hook builds it.
       apt_packages: libyang2-tools libpcre2-dev
       go_tool_packages: github.com/bufbuild/buf/cmd/buf@latest google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11 google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-      # This list matches release.yml. The build gate compiles exactly the
-      # platforms the release ships, each on a native runner.
+      # These two inputs match release.yml. The build gate compiles exactly
+      # the platforms the release ships, each on a native runner, with cgo on.
       release_platforms: linux/amd64 linux/arm64
+      cgo: true
 
   # The go job above never runs these. The Makefile hangs the two schema gates
   # off `check`, and the go-makefile quality matrix runs a fixed list of
