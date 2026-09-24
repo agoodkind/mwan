@@ -48,6 +48,11 @@ const (
 	// ctStateLen is the width of the conntrack state word.
 	ctStateLen uint32 = 4
 
+	// NPT marks an internal hairpin packet in skb priority before prerouting.
+	// These values match the selector in npt/bpf/npt.c.
+	hairpinPriorityMask uint32 = 0xffff0000
+	hairpinPriorityTag  uint32 = 0x4e500000
+
 	// hashSeed is the seed every hashed balancer uses. It is deliberately not
 	// zero: google/nftables v0.3.0 omits NFTA_HASH_SEED when the field is zero
 	// (expr/hash.go:61), and a rule that carries no seed does not carry a seed
@@ -178,6 +183,9 @@ func ruleExprs(conn nftConn, table *nftables.Table, rule steerRule) ([]expr.Any,
 	exprs = append(exprs, familyMatchExprs(rule.Source)...)
 	exprs = append(exprs, sourceMatchExprs(rule.Source)...)
 	exprs = append(exprs, markZeroGuardExprs()...)
+	if rule.Source.Addr().Is6() {
+		exprs = append(exprs, nonHairpinGuardExprs()...)
+	}
 	exprs = append(exprs, ctStateNewExprs()...)
 	assign, err := assignExprs(conn, table, rule)
 	if err != nil {
@@ -237,6 +245,21 @@ func markZeroGuardExprs() []expr.Any {
 	return []expr.Any{
 		&expr.Meta{Key: expr.MetaKeyMARK, SourceRegister: false, Register: 1},
 		&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: binaryutil.NativeEndian.PutUint32(0)},
+	}
+}
+
+// nonHairpinGuardExprs excludes packets tagged by NPT hairpin translation.
+// NPT clears the packet mark on ingress, so the mark-zero guard cannot
+// distinguish a hairpin packet from a new outbound flow.
+func nonHairpinGuardExprs() []expr.Any {
+	return []expr.Any{
+		&expr.Meta{Key: expr.MetaKeyPRIORITY, SourceRegister: false, Register: 1},
+		&expr.Bitwise{
+			SourceRegister: 1, DestRegister: 1, Len: 4,
+			Mask: binaryutil.NativeEndian.PutUint32(hairpinPriorityMask),
+			Xor:  binaryutil.NativeEndian.PutUint32(0),
+		},
+		&expr.Cmp{Op: expr.CmpOpNeq, Register: 1, Data: binaryutil.NativeEndian.PutUint32(hairpinPriorityTag)},
 	}
 }
 
