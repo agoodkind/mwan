@@ -3,9 +3,13 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/pem"
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"slices"
@@ -93,9 +97,12 @@ func runIfMgr(cfg *config.Config) error {
 	dcfg.Notifier = notify.FromConfig(cfg, logger, "mwan-ifmgr")
 	dcfg.LiveState = wanstate.New()
 	if role == "wan" && cfg.OPNsense.NPTv6HairpinAlias != "" {
-		aliasSync.Go(func() {
-			syncNPTv6HairpinAlias(ctx, logger, cfg.OPNsense, dcfg.LiveState, hairpinAliasInterval)
-		})
+		base, ok := http.DefaultTransport.(*http.Transport)
+		if !ok {
+			logger.ErrorContext(ctx, "npt: unsupported HTTP transport", "err", fmt.Errorf("HTTP transport is %T", http.DefaultTransport))
+		} else {
+			startNPTv6HairpinAlias(ctx, logger, cfg.OPNsense, dcfg.LiveState, &aliasSync, base, hairpinAliasInterval)
+		}
 	}
 
 	// Runtime readiness uses the store even when the optional management
@@ -117,6 +124,39 @@ func runIfMgr(cfg *config.Config) error {
 	}
 	logShutdownReason(ctx, logger)
 	return nil
+}
+
+func startNPTv6HairpinAlias(ctx context.Context, log *slog.Logger, cfg config.OPNsenseSection, state *wanstate.Store, aliasSync *sync.WaitGroup, base *http.Transport, interval time.Duration) {
+	certificate, err := os.ReadFile(cfg.NPTv6HairpinCAFile)
+	if err != nil {
+		log.ErrorContext(ctx, "npt: read OPNsense certificate failed", "err", err)
+		return
+	}
+	roots := x509.NewCertPool()
+	block, _ := pem.Decode(certificate)
+	if block == nil {
+		log.ErrorContext(ctx, "npt: OPNsense certificate configuration invalid", "err", fmt.Errorf("no PEM block found in certificate file"))
+		return
+	}
+	if !roots.AppendCertsFromPEM(certificate) {
+		log.ErrorContext(ctx, "npt: OPNsense certificate configuration invalid", "err", fmt.Errorf("certificate pool rejected PEM data"))
+		return
+	}
+	parsed, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		log.ErrorContext(ctx, "npt: parse OPNsense certificate failed", "err", err)
+		return
+	}
+	if len(parsed.DNSNames) == 0 {
+		log.ErrorContext(ctx, "npt: OPNsense certificate has no DNS name", "err", fmt.Errorf("certificate has no DNS SAN"))
+		return
+	}
+	transport := base.Clone()
+	transport.TLSClientConfig = &tls.Config{RootCAs: roots, ServerName: parsed.DNSNames[0]}
+	client := &http.Client{Transport: transport, Timeout: 5 * time.Second}
+	aliasSync.Go(func() {
+		syncNPTv6HairpinAlias(ctx, client, cfg, state, interval)
+	})
 }
 
 type ifmgrFlags struct {
