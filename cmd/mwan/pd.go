@@ -12,9 +12,8 @@ import (
 // runPDProbe prints the current DHCPv6-PD delegated prefix for an
 // interface, one CIDR to stdout. It is the Go replacement for
 // find-pd-prefixes.sh: it reads the live systemd-networkd lease over
-// D-Bus, with the same networkctl, kernel-route, journal, and cached
-// state-file fallbacks. Diagnostics go to stderr so stdout carries only
-// the prefix, keeping the command pipe-friendly.
+// D-Bus, with networkctl and kernel-route fallbacks. Diagnostics go to stderr
+// so stdout contains only the prefix for callers that read the command output.
 func runPDProbe(args []string) int {
 	if len(args) < 1 || args[0] == "" {
 		fmt.Fprintln(os.Stderr, "usage: mwan pd <iface>")

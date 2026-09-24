@@ -92,7 +92,7 @@ func newDebugProbeDependencies(logger *slog.Logger) debugProbeDependencies {
 		httpGet:      netif.HTTPGet,
 		listAddrs:    netif.ListAddrs,
 		renderNPT:    npt.RenderTable,
-		prefixSource: pd.New(logger, pd.ReadOnly()),
+		prefixSource: pd.New(logger),
 	}
 }
 
