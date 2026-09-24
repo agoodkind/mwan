@@ -86,15 +86,16 @@ func TestNPTv6HairpinAliasReconcilesPrefixes(t *testing.T) {
 	}
 	state.SetTranslation(translations)
 	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
+	var aliasSync sync.WaitGroup
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	go func() {
-		defer close(done)
-		syncNPTv6HairpinAlias(ctx, logger, cfg, state, 10*time.Millisecond)
-	}()
+	transport, ok := server.Client().Transport.(*http.Transport)
+	if !ok {
+		t.Fatal("test HTTPS transport is not *http.Transport")
+	}
+	startNPTv6HairpinAlias(ctx, logger, cfg, state, &aliasSync, transport, 10*time.Millisecond)
 	defer func() {
 		cancel()
-		<-done
+		aliasSync.Wait()
 	}()
 	check := func(want ...string) {
 		t.Helper()

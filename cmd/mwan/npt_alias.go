@@ -2,17 +2,13 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/netip"
 	"net/url"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -33,41 +29,8 @@ type aliasResult struct {
 	Status string `json:"status"`
 }
 
-func syncNPTv6HairpinAlias(ctx context.Context, log *slog.Logger, cfg config.OPNsenseSection, state *wanstate.Store, interval time.Duration) {
-	certificate, err := os.ReadFile(cfg.NPTv6HairpinCAFile)
-	if err != nil {
-		log.ErrorContext(ctx, "npt: read OPNsense certificate failed", "err", err)
-		return
-	}
-	roots := x509.NewCertPool()
-	block, _ := pem.Decode(certificate)
-	if block == nil {
-		log.ErrorContext(ctx, "npt: OPNsense certificate configuration invalid", "err", fmt.Errorf("no PEM block found in certificate file"))
-		return
-	}
-	if !roots.AppendCertsFromPEM(certificate) {
-		log.ErrorContext(ctx, "npt: OPNsense certificate configuration invalid", "err", fmt.Errorf("certificate pool rejected PEM data"))
-		return
-	}
-	parsed, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		log.ErrorContext(ctx, "npt: parse OPNsense certificate failed", "err", err)
-		return
-	}
-	if len(parsed.DNSNames) == 0 {
-		log.ErrorContext(ctx, "npt: OPNsense certificate has no DNS name", "err", fmt.Errorf("certificate has no DNS SAN"))
-		return
-	}
-	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
-	if !ok {
-		err := fmt.Errorf("default HTTP transport is %T", http.DefaultTransport)
-		log.ErrorContext(ctx, "npt: unsupported HTTP transport", "err", err)
-		return
-	}
-	transport := defaultTransport.Clone()
-	transport.TLSClientConfig = &tls.Config{RootCAs: roots, ServerName: parsed.DNSNames[0]}
-	client := &http.Client{Transport: transport, Timeout: 5 * time.Second}
-	defer transport.CloseIdleConnections()
+func syncNPTv6HairpinAlias(ctx context.Context, client *http.Client, cfg config.OPNsenseSection, state *wanstate.Store, interval time.Duration) {
+	defer client.CloseIdleConnections()
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
