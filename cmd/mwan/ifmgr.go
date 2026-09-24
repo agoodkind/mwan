@@ -87,6 +87,16 @@ func runIfMgr(cfg *config.Config) error {
 
 	dcfg.Notifier = notify.FromConfig(cfg, logger, "mwan-ifmgr")
 	dcfg.LiveState = wanstate.New()
+	if role == "wan" && cfg.OPNsense.NPTv6HairpinAlias != "" {
+		go func() {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					logger.ErrorContext(ctx, "npt: hairpin alias sync panicked", "err", recovered)
+				}
+			}()
+			syncNPTv6HairpinAlias(ctx, logger, cfg.OPNsense, dcfg.LiveState)
+		}()
+	}
 
 	// Runtime readiness uses the store even when the optional management
 	// datastore is unavailable.

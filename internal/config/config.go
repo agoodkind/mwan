@@ -120,12 +120,14 @@ type FailoverSection struct {
 // OPNsense is a BGP peer, not a speaker we control. Its BGP config is the inverse
 // of the agent's: different router-id, different neighbor list.
 type OPNsenseSection struct {
-	URL          string      `toml:"url"`
-	APIKey       string      `toml:"api_key"`
-	APISecret    string      `toml:"api_secret"`
-	Insecure     bool        `toml:"insecure"`
-	GatewayNames []string    `toml:"gateway_names"`
-	BGP          OPNsenseBGP `toml:"bgp"`
+	URL                string      `toml:"url"`
+	APIKey             string      `toml:"api_key"`
+	APISecret          string      `toml:"api_secret"`
+	Insecure           bool        `toml:"insecure"`
+	NPTv6HairpinAlias  string      `toml:"nptv6_hairpin_alias"`
+	NPTv6HairpinCAFile string      `toml:"nptv6_hairpin_ca_file"`
+	GatewayNames       []string    `toml:"gateway_names"`
+	BGP                OPNsenseBGP `toml:"bgp"`
 
 	// SSHUser is the SSH login on OPNsense. OPNsense disables root SSH by
 	// default and ships with an admin user that has wheel + NOPASSWD sudo.
