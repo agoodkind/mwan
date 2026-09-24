@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"slices"
+	"sync"
 	"syscall"
 	"time"
 
@@ -71,7 +72,11 @@ func runIfMgr(cfg *config.Config) error {
 
 	ctx, cancel := signal.NotifyContext(context.Background(),
 		os.Interrupt, syscall.SIGTERM)
-	defer cancel()
+	var aliasSync sync.WaitGroup
+	defer func() {
+		cancel()
+		aliasSync.Wait()
+	}()
 
 	rejections, err := loadNetworkConfig(ctx, logger, cfg, role)
 	if err != nil {
@@ -88,14 +93,9 @@ func runIfMgr(cfg *config.Config) error {
 	dcfg.Notifier = notify.FromConfig(cfg, logger, "mwan-ifmgr")
 	dcfg.LiveState = wanstate.New()
 	if role == "wan" && cfg.OPNsense.NPTv6HairpinAlias != "" {
-		go func() {
-			defer func() {
-				if recovered := recover(); recovered != nil {
-					logger.ErrorContext(ctx, "npt: hairpin alias sync panicked", "err", recovered)
-				}
-			}()
-			syncNPTv6HairpinAlias(ctx, logger, cfg.OPNsense, dcfg.LiveState)
-		}()
+		aliasSync.Go(func() {
+			syncNPTv6HairpinAlias(ctx, logger, cfg.OPNsense, dcfg.LiveState, hairpinAliasInterval)
+		})
 	}
 
 	// Runtime readiness uses the store even when the optional management

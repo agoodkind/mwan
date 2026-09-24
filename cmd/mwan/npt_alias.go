@@ -33,7 +33,7 @@ type aliasResult struct {
 	Status string `json:"status"`
 }
 
-func syncNPTv6HairpinAlias(ctx context.Context, log *slog.Logger, cfg config.OPNsenseSection, state *wanstate.Store) {
+func syncNPTv6HairpinAlias(ctx context.Context, log *slog.Logger, cfg config.OPNsenseSection, state *wanstate.Store, interval time.Duration) {
 	certificate, err := os.ReadFile(cfg.NPTv6HairpinCAFile)
 	if err != nil {
 		log.ErrorContext(ctx, "npt: read OPNsense certificate failed", "err", err)
@@ -68,7 +68,7 @@ func syncNPTv6HairpinAlias(ctx context.Context, log *slog.Logger, cfg config.OPN
 	transport.TLSClientConfig = &tls.Config{RootCAs: roots, ServerName: parsed.DNSNames[0]}
 	client := &http.Client{Transport: transport, Timeout: 5 * time.Second}
 	defer transport.CloseIdleConnections()
-	ticker := time.NewTicker(hairpinAliasInterval)
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -80,18 +80,13 @@ func syncNPTv6HairpinAlias(ctx context.Context, log *slog.Logger, cfg config.OPN
 				continue
 			}
 			if err := reconcileNPTv6HairpinAlias(ctx, client, cfg, translations); err != nil {
-				log.WarnContext(ctx, "npt: synchronize OPNsense hairpin alias failed", "alias", cfg.NPTv6HairpinAlias, "err", err)
+				continue
 			}
 		}
 	}
 }
 
-func reconcileNPTv6HairpinAlias(ctx context.Context, client *http.Client, cfg config.OPNsenseSection, translations map[string]wanstate.MemberTranslation) (resultErr error) {
-	defer func() {
-		if resultErr != nil {
-			slog.WarnContext(ctx, "npt: reconcile hairpin alias failed", "err", resultErr)
-		}
-	}()
+func reconcileNPTv6HairpinAlias(ctx context.Context, client *http.Client, cfg config.OPNsenseSection, translations map[string]wanstate.MemberTranslation) error {
 	wanted := make(map[netip.Prefix]bool)
 	for _, member := range translations {
 		if member.V6.Mode == string(config.TranslationNPTv6) && member.V6.ExternalPrefix.IsValid() {
@@ -100,15 +95,17 @@ func reconcileNPTv6HairpinAlias(ctx context.Context, client *http.Client, cfg co
 	}
 	endpoint := strings.TrimRight(cfg.URL, "/") + "/api/firewall/alias_util/"
 	alias := url.PathEscape(cfg.NPTv6HairpinAlias)
-	var current aliasTable
-	if err := aliasRequest(ctx, client, cfg, http.MethodGet, endpoint+"list/"+alias, "", &current); err != nil {
+	current, err := listAlias(ctx, client, cfg, endpoint+"list/"+alias)
+	if err != nil {
 		return err
 	}
 	present := make(map[netip.Prefix]bool, len(current.Rows))
 	for _, row := range current.Rows {
 		prefix, err := netip.ParsePrefix(row.IP)
 		if err != nil {
-			return fmt.Errorf("invalid alias entry %q: %w", row.IP, err)
+			wrapped := fmt.Errorf("invalid alias entry %q: %w", row.IP, err)
+			slog.WarnContext(ctx, "npt: OPNsense hairpin alias contains an invalid prefix", "err", wrapped)
+			return wrapped
 		}
 		present[prefix.Masked()] = true
 	}
@@ -116,7 +113,7 @@ func reconcileNPTv6HairpinAlias(ctx context.Context, client *http.Client, cfg co
 		if present[prefix] {
 			continue
 		}
-		if err := aliasRequest(ctx, client, cfg, http.MethodPost, endpoint+"add/"+alias, prefix.String(), nil); err != nil {
+		if err := changeAlias(ctx, client, cfg, endpoint+"add/"+alias, prefix.String()); err != nil {
 			return err
 		}
 	}
@@ -124,7 +121,7 @@ func reconcileNPTv6HairpinAlias(ctx context.Context, client *http.Client, cfg co
 		if wanted[prefix] {
 			continue
 		}
-		if err := aliasRequest(ctx, client, cfg, http.MethodPost, endpoint+"delete/"+alias, prefix.String(), nil); err != nil {
+		if err := changeAlias(ctx, client, cfg, endpoint+"delete/"+alias, prefix.String()); err != nil {
 			return err
 		}
 	}
@@ -140,45 +137,73 @@ func sortedPrefixes(prefixes map[netip.Prefix]bool) []netip.Prefix {
 	return result
 }
 
-func aliasRequest(ctx context.Context, client *http.Client, cfg config.OPNsenseSection, method, endpoint, address string, output *aliasTable) (resultErr error) {
-	defer func() {
-		if resultErr != nil {
-			slog.WarnContext(ctx, "npt: OPNsense alias request failed", "method", method, "err", resultErr)
-		}
-	}()
-	var body io.Reader
-	if method == http.MethodPost {
-		body = strings.NewReader(url.Values{"address": {address}}.Encode())
-	}
-	request, err := http.NewRequestWithContext(ctx, method, endpoint, body)
+func listAlias(ctx context.Context, client *http.Client, cfg config.OPNsenseSection, endpoint string) (aliasTable, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return fmt.Errorf("alias request: %w", err)
+		wrapped := fmt.Errorf("alias list request: %w", err)
+		slog.WarnContext(ctx, "npt: create OPNsense alias list request failed", "err", wrapped)
+		return aliasTable{}, wrapped
 	}
+	data, err := sendAliasRequest(client, cfg, request)
+	if err != nil {
+		return aliasTable{}, err
+	}
+	var table aliasTable
+	if err := json.Unmarshal(data, &table); err != nil {
+		wrapped := fmt.Errorf("decode alias list: %w", err)
+		slog.WarnContext(ctx, "npt: decode OPNsense alias list failed", "err", wrapped)
+		return aliasTable{}, wrapped
+	}
+	return table, nil
+}
+
+func changeAlias(ctx context.Context, client *http.Client, cfg config.OPNsenseSection, endpoint, address string) error {
+	body := strings.NewReader(url.Values{"address": {address}}.Encode())
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, body)
+	if err != nil {
+		wrapped := fmt.Errorf("alias change request: %w", err)
+		slog.WarnContext(ctx, "npt: create OPNsense alias change request failed", "err", wrapped)
+		return wrapped
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	data, err := sendAliasRequest(client, cfg, request)
+	if err != nil {
+		return err
+	}
+	var result aliasResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		wrapped := fmt.Errorf("decode alias change result: %w", err)
+		slog.WarnContext(ctx, "npt: decode OPNsense alias change result failed", "err", wrapped)
+		return wrapped
+	}
+	if result.Status != "done" {
+		err := fmt.Errorf("API status %q", result.Status)
+		slog.WarnContext(ctx, "npt: OPNsense alias change rejected", "err", err)
+		return err
+	}
+	return nil
+}
+
+func sendAliasRequest(client *http.Client, cfg config.OPNsenseSection, request *http.Request) (json.RawMessage, error) {
 	request.SetBasicAuth(cfg.APIKey, cfg.APISecret)
-	if method == http.MethodPost {
-		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	}
 	response, err := client.Do(request)
 	if err != nil {
-		return fmt.Errorf("alias %s: %w", method, err)
+		wrapped := fmt.Errorf("alias %s: %w", request.Method, err)
+		slog.WarnContext(request.Context(), "npt: OPNsense alias request failed", "method", request.Method, "err", wrapped)
+		return nil, wrapped
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d", response.StatusCode)
+		err := fmt.Errorf("HTTP %d", response.StatusCode)
+		slog.WarnContext(request.Context(), "npt: OPNsense alias request returned an error", "method", request.Method, "err", err)
+		return nil, err
 	}
 	decoder := json.NewDecoder(io.LimitReader(response.Body, 1<<20))
-	if output != nil {
-		if err := decoder.Decode(output); err != nil {
-			return fmt.Errorf("decode alias list: %w", err)
-		}
-		return nil
+	var data json.RawMessage
+	if err := decoder.Decode(&data); err != nil {
+		wrapped := fmt.Errorf("decode alias response: %w", err)
+		slog.WarnContext(request.Context(), "npt: decode OPNsense alias response failed", "method", request.Method, "err", wrapped)
+		return nil, wrapped
 	}
-	var result aliasResult
-	if err := decoder.Decode(&result); err != nil {
-		return fmt.Errorf("decode alias result: %w", err)
-	}
-	if result.Status != "done" {
-		return fmt.Errorf("API status %q", result.Status)
-	}
-	return nil
+	return data, nil
 }
