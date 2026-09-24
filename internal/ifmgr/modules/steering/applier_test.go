@@ -77,6 +77,14 @@ func (f *fakeConn) AddChain(c *nftables.Chain) *nftables.Chain {
 	return c
 }
 
+func (f *fakeConn) DelChain(c *nftables.Chain) {
+	f.ops = append(f.ops, "delchain:"+c.Name)
+}
+
+func (f *fakeConn) ListChainsOfTableFamily(nftables.TableFamily) ([]*nftables.Chain, error) {
+	return nil, nil
+}
+
 func (f *fakeConn) FlushChain(c *nftables.Chain) {
 	f.ops = append(f.ops, "flushchain:"+c.Name)
 }
@@ -139,7 +147,9 @@ func TestApplierCreatesOwnsAndCommitsInOneTransaction(t *testing.T) {
 	wantOps := []string{
 		"addtable:mwan_steer",
 		"addchain:prerouting",
+		"addchain:forward",
 		"flushchain:prerouting",
+		"flushchain:forward",
 		"addset", "addrule:prerouting",
 		"addset", "addrule:prerouting",
 		"addset", "addrule:prerouting",
@@ -156,9 +166,6 @@ func TestApplierCreatesOwnsAndCommitsInOneTransaction(t *testing.T) {
 	}
 }
 
-// TestApplierChainPlacement pins where the chain hooks in. One step after the
-// ruleset file's mangle chain at -150 is what lets the mark-zero guard see the
-// marks that chain sets.
 func TestApplierChainPlacement(t *testing.T) {
 	t.Parallel()
 
@@ -176,8 +183,8 @@ func TestApplierChainPlacement(t *testing.T) {
 	if chain.Hooknum == nil || *chain.Hooknum != *nftables.ChainHookPrerouting {
 		t.Fatalf("chain hook = %v, want prerouting", chain.Hooknum)
 	}
-	if chain.Priority == nil || *chain.Priority != -149 {
-		t.Fatalf("chain priority = %v, want -149", chain.Priority)
+	if chain.Priority == nil || *chain.Priority != -99 {
+		t.Fatalf("chain priority = %v, want -99", chain.Priority)
 	}
 	if chain.Policy == nil || *chain.Policy != nftables.ChainPolicyAccept {
 		t.Fatalf("chain policy = %v, want accept", chain.Policy)
@@ -454,7 +461,7 @@ func TestApplierEmptyStillCreatesAndCommits(t *testing.T) {
 	if len(fake.rules) != 0 {
 		t.Fatalf("added %d rules, want 0", len(fake.rules))
 	}
-	want := []string{"addtable:mwan_steer", "addchain:prerouting", "flushchain:prerouting", "flush"}
+	want := []string{"addtable:mwan_steer", "addchain:prerouting", "addchain:forward", "flushchain:prerouting", "flushchain:forward", "flush"}
 	if len(fake.ops) != len(want) {
 		t.Fatalf("ops = %v, want %v", fake.ops, want)
 	}

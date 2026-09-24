@@ -19,12 +19,12 @@ const (
 	// chain wholesale on every pass.
 	steerTableName = "mwan_steer"
 	steerChainName = "prerouting"
+	guardChainName = "forward"
 
-	// steerChainPriority puts the chain one step after the ruleset file's
-	// mangle chain at -150, so that chain's connection-mark restore and its
-	// per-link ingress marks have already run when this chain's mark-zero guard
-	// looks. Reversing the two would overwrite the control-plane pins.
-	steerChainPriority nftables.ChainPriority = -149
+	// Configured pins run at mangle -150 and dstnat -100. Steering must read
+	// both before replacing a mark for an ineligible provider.
+	steerChainPriority nftables.ChainPriority = -99
+	guardChainPriority nftables.ChainPriority = 1
 
 	// ipv4SaddrOffset, ipv4DaddrOffset, and ipv4AddrLen locate the IPv4
 	// addresses relative to the network header.
@@ -80,6 +80,8 @@ const (
 type nftConn interface {
 	AddTable(t *nftables.Table) *nftables.Table
 	AddChain(c *nftables.Chain) *nftables.Chain
+	DelChain(c *nftables.Chain)
+	ListChainsOfTableFamily(family nftables.TableFamily) ([]*nftables.Chain, error)
 	FlushChain(c *nftables.Chain)
 	AddSet(s *nftables.Set, vals []nftables.SetElement) error
 	AddRule(r *nftables.Rule) *nftables.Rule
@@ -118,7 +120,8 @@ func defaultNFTConn() (nftConn, error) {
 // are created on every pass rather than once at Init, because an nftables
 // reload begins with a ruleset flush that deletes them; AddTable and AddChain
 // carry the create flag without the exclusive flag, so a pass over structures
-// that still exist is a no-op. Nothing here ever deletes a table or a chain.
+// that still exist is a no-op. Delete and recreate a chain in one batch when
+// its hook priority changes. AddChain cannot update an existing base chain.
 func (a *nftApplier) Apply(ctx context.Context, log *slog.Logger, desired []steerRule) error {
 	conn, err := a.newConn()
 	if err != nil {
@@ -132,6 +135,20 @@ func (a *nftApplier) Apply(ctx context.Context, log *slog.Logger, desired []stee
 		Family: nftables.TableFamilyINet,
 	}
 	conn.AddTable(table)
+	existing, err := conn.ListChainsOfTableFamily(nftables.TableFamilyINet)
+	if err != nil {
+		return fmt.Errorf("list inet chains: %w", err)
+	}
+	for _, old := range existing {
+		if old.Table == nil || old.Table.Name != steerTableName || old.Name != steerChainName {
+			continue
+		}
+		if old.Priority == nil || *old.Priority != steerChainPriority {
+			conn.FlushChain(old)
+			conn.DelChain(old)
+		}
+		break
+	}
 
 	policy := nftables.ChainPolicyAccept
 	priority := steerChainPriority
@@ -145,17 +162,28 @@ func (a *nftApplier) Apply(ctx context.Context, log *slog.Logger, desired []stee
 		Device:   "",
 	}
 	conn.AddChain(chain)
+	guardPriority := guardChainPriority
+	guard := &nftables.Chain{
+		Name: guardChainName, Table: table, Hooknum: nftables.ChainHookForward,
+		Priority: &guardPriority, Type: nftables.ChainTypeFilter, Policy: &policy,
+	}
+	conn.AddChain(guard)
 
 	// The chain is emptied and refilled inside the same batch, committed by a
 	// single Flush, so no packet ever sees a half-written chain.
 	conn.FlushChain(chain)
+	conn.FlushChain(guard)
 	for _, rule := range desired {
 		exprs, buildErr := ruleExprs(conn, table, rule)
 		if buildErr != nil {
 			return fmt.Errorf("build steering rule %s: %w", rule, buildErr)
 		}
+		target := chain
+		if rule.DropIface != "" {
+			target = guard
+		}
 		conn.AddRule(&nftables.Rule{
-			Table: table, Chain: chain, Position: 0, Handle: 0,
+			Table: table, Chain: target, Position: 0, Handle: 0,
 			Flags: 0, Exprs: exprs, UserData: nil,
 		})
 	}
@@ -173,16 +201,20 @@ func (a *nftApplier) Apply(ctx context.Context, log *slog.Logger, desired []stee
 // chain lives in an inet table, where the network header layout is unknown
 // until the protocol has been compared.
 func ruleExprs(conn nftConn, table *nftables.Table, rule steerRule) ([]expr.Any, error) {
+	if rule.DropIface != "" {
+		return guardExprs(rule), nil
+	}
 	exprs := make([]expr.Any, 0, 20)
 	if rule.IifName != "" {
-		exprs = append(exprs,
+		exprs = append(
+			exprs,
 			&expr.Meta{Key: expr.MetaKeyIIFNAME, SourceRegister: false, Register: 1},
 			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: ifname(rule.IifName)},
 		)
 	}
 	exprs = append(exprs, familyMatchExprs(rule.Source)...)
 	exprs = append(exprs, sourceMatchExprs(rule.Source)...)
-	exprs = append(exprs, markZeroGuardExprs()...)
+	exprs = append(exprs, markMatchExprs(rule.MatchMark)...)
 	if rule.Source.Addr().Is6() {
 		exprs = append(exprs, nonHairpinGuardExprs()...)
 	}
@@ -192,6 +224,28 @@ func ruleExprs(conn nftConn, table *nftables.Table, rule steerRule) ([]expr.Any,
 		return nil, err
 	}
 	return append(exprs, assign...), nil
+}
+
+// guardExprs drops internal traffic on an ineligible provider interface or
+// without a family-eligible mark. A priority-50 fallback rule may select one
+// eligible provider's table for a packet marked for another eligible provider.
+func guardExprs(rule steerRule) []expr.Any {
+	exprs := []expr.Any{
+		&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+		&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: ifname(rule.IifName)},
+		&expr.Meta{Key: expr.MetaKeyOIFNAME, Register: 1},
+		&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: ifname(rule.DropIface)},
+	}
+	exprs = append(exprs, familyMatchExprs(rule.Source)...)
+	if len(rule.AllowedMarks) > 0 {
+		exprs = append(exprs, &expr.Meta{Key: expr.MetaKeyMARK, Register: 1})
+		for _, mark := range rule.AllowedMarks {
+			exprs = append(exprs, &expr.Cmp{
+				Op: expr.CmpOpNeq, Register: 1, Data: binaryutil.NativeEndian.PutUint32(mark),
+			})
+		}
+	}
+	return append(exprs, &expr.Verdict{Kind: expr.VerdictDrop})
 }
 
 // familyMatchExprs compares the packet's protocol family, which an inet chain
@@ -238,13 +292,10 @@ func sourceMatchExprs(source netip.Prefix) []expr.Any {
 	}
 }
 
-// markZeroGuardExprs matches a packet whose mark is still zero. It is what
-// preserves the control-plane pins the ruleset file sets earlier in the pass: a
-// packet already carrying a mark falls through this rule untouched.
-func markZeroGuardExprs() []expr.Any {
+func markMatchExprs(mark uint32) []expr.Any {
 	return []expr.Any{
 		&expr.Meta{Key: expr.MetaKeyMARK, SourceRegister: false, Register: 1},
-		&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: binaryutil.NativeEndian.PutUint32(0)},
+		&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: binaryutil.NativeEndian.PutUint32(mark)},
 	}
 }
 
@@ -297,7 +348,8 @@ func assignExprs(conn nftConn, table *nftables.Table, rule steerRule) ([]expr.An
 	if err != nil {
 		return nil, err
 	}
-	return append(generator,
+	return append(
+		generator,
 		&expr.Lookup{
 			SourceRegister: 1, DestRegister: 1, IsDestRegSet: true,
 			SetID: set.ID, SetName: set.Name, Invert: false,

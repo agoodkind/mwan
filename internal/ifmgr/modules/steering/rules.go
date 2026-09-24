@@ -42,11 +42,8 @@ type balancer struct {
 	Slots []uint32
 }
 
-// steerRule is one balancing rule in typed form, independent of the nftables
-// wire encoding. Every rule carries the same two guards, so they are not
-// fields: the mark must still be zero, which preserves the control-plane pins
-// an earlier chain set, and the flow must be new, which leaves an established
-// flow on the provider conntrack already gave it.
+// steerRule assigns a new-flow mark when DropIface is empty. Otherwise it
+// guards provider egress.
 type steerRule struct {
 	// IifName is the incoming link the rule matches, or empty for no match.
 	// The IPv6 rules carry none, because a hairpinned reply the router sources
@@ -59,11 +56,26 @@ type steerRule struct {
 	Mode hashMode
 	// Assign is how the rule picks the mark.
 	Assign balancer
+	// MatchMark is the packet mark to replace on a new connection. Zero
+	// selects an unmarked connection.
+	MatchMark uint32
+	// DropIface selects a provider egress guard. The guard accepts every
+	// family-eligible mark because a priority-50 fallback rule precedes the
+	// fwmark policy rules.
+	DropIface    string
+	AllowedMarks []uint32
 }
 
 // String renders one rule the way the ruleset file wrote its equivalent, for
 // error messages and debug logging.
 func (r steerRule) String() string {
+	if r.DropIface != "" {
+		marks := make([]string, 0, len(r.AllowedMarks))
+		for _, mark := range r.AllowedMarks {
+			marks = append(marks, strconv.FormatUint(uint64(mark), 10))
+		}
+		return "iif " + r.IifName + " oif " + r.DropIface + " family " + r.Source.String() + " mark outside {" + strings.Join(marks, ",") + "} drop"
+	}
 	where := "saddr " + r.Source.String()
 	if r.IifName != "" {
 		where = "iif " + r.IifName + " " + where
@@ -89,21 +101,66 @@ type ruleInput struct {
 	Mode           hashMode
 	AssignV4       balancer
 	AssignV6       balancer
+	Members        []Member
+	EligibleV4     map[uint32]bool
+	EligibleV6     map[uint32]bool
 }
 
-// buildRules omits a family when no eligible provider can accept its traffic.
+// buildRules omits assignments for unavailable families and blocks provider
+// egress when a packet has no family-eligible mark.
 func buildRules(in ruleInput) []steerRule {
 	var rules []steerRule
 	if in.AssignV4.Mark != 0 || len(in.AssignV4.Slots) != 0 {
-		rules = append(rules, steerRule{IifName: in.InternalIface, Source: in.InternalNetV4, Mode: in.Mode, Assign: in.AssignV4})
+		base := steerRule{IifName: in.InternalIface, Source: in.InternalNetV4, Mode: in.Mode, Assign: in.AssignV4, MatchMark: 0, DropIface: "", AllowedMarks: nil}
+		rules = append(rules, base)
+		for _, member := range in.Members {
+			if !in.EligibleV4[member.Mark] {
+				base.MatchMark = member.Mark
+				rules = append(rules, base)
+			}
+		}
 	}
 	if in.AssignV6.Mark != 0 || len(in.AssignV6.Slots) != 0 {
-		rules = append(rules,
-			steerRule{IifName: "", Source: netip.PrefixFrom(in.OpnsenseEdgeV6, 128), Mode: in.Mode, Assign: in.AssignV6},
-			steerRule{IifName: "", Source: in.InternalPrefix, Mode: in.Mode, Assign: in.AssignV6},
+		for _, source := range []netip.Prefix{netip.PrefixFrom(in.OpnsenseEdgeV6, 128), in.InternalPrefix} {
+			base := steerRule{IifName: "", Source: source, Mode: in.Mode, Assign: in.AssignV6, MatchMark: 0, DropIface: "", AllowedMarks: nil}
+			rules = append(rules, base)
+			for _, member := range in.Members {
+				if !in.EligibleV6[member.Mark] {
+					base.MatchMark = member.Mark
+					rules = append(rules, base)
+				}
+			}
+		}
+	}
+	v4Marks := eligibleMarks(in.EligibleV4)
+	v6Marks := eligibleMarks(in.EligibleV6)
+	for _, member := range in.Members {
+		var allowedV4 []uint32
+		if in.EligibleV4[member.Mark] {
+			allowedV4 = v4Marks
+		}
+		var allowedV6 []uint32
+		if in.EligibleV6[member.Mark] {
+			allowedV6 = v6Marks
+		}
+		rules = append(
+			rules,
+			steerRule{IifName: in.InternalIface, Source: netip.MustParsePrefix("0.0.0.0/0"), Mode: "", Assign: balancer{Mark: 0, Modulus: 0, Slots: nil}, MatchMark: 0, DropIface: member.Iface, AllowedMarks: allowedV4},
+			steerRule{IifName: in.InternalIface, Source: netip.MustParsePrefix("::/0"), Mode: "", Assign: balancer{Mark: 0, Modulus: 0, Slots: nil}, MatchMark: 0, DropIface: member.Iface, AllowedMarks: allowedV6},
 		)
 	}
 	return rules
+}
+
+func eligibleMarks(eligible map[uint32]bool) []uint32 {
+	marks := make([]uint32, 0, len(eligible))
+	for mark, ready := range eligible {
+		if ready {
+			marks = append(marks, mark)
+		}
+	}
+	slices.Sort(marks)
+	return marks
 }
 
 // balancerFor returns how the active tier's healthy providers share new

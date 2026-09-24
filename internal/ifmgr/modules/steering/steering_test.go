@@ -86,14 +86,19 @@ func TestReconcileProgramsTheActiveTierSplit(t *testing.T) {
 	if applier.calls != 1 {
 		t.Fatalf("applier called %d times, want 1", applier.calls)
 	}
-	if len(applier.last) != 3 {
-		t.Fatalf("rule count = %d, want 3", len(applier.last))
-	}
+	assignments := 0
 	for index, rule := range applier.last {
+		if rule.DropIface != "" {
+			continue
+		}
+		assignments++
 		want := balancer{Mark: 0, Modulus: 2, Slots: []uint32{1, 2}}
 		if !reflect.DeepEqual(rule.Assign, want) {
 			t.Fatalf("rule %d balancer = %#v, want %#v", index, rule.Assign, want)
 		}
+	}
+	if assignments != 3 {
+		t.Fatalf("assignment count = %d, want 3", assignments)
 	}
 }
 
@@ -113,8 +118,10 @@ func TestReconcileWithNoHealthyProviderProgramsNothing(t *testing.T) {
 	if applier.calls != 1 {
 		t.Fatalf("applier called %d times, want 1", applier.calls)
 	}
-	if len(applier.last) != 0 {
-		t.Fatalf("rule count = %d, want 0", len(applier.last))
+	for _, rule := range applier.last {
+		if rule.DropIface == "" || len(rule.AllowedMarks) != 0 {
+			t.Fatalf("ineligible family kept a steering rule: %v", rule)
+		}
 	}
 }
 
@@ -240,22 +247,31 @@ func TestFamilyRulesUseIndependentReadyTiers(t *testing.T) {
 	}
 	store.SetTranslation(translations)
 	rules := m.desiredRules(netif.HealthStates{})
-	if len(rules) != 3 {
-		t.Fatalf("rules = %v, want both families", rules)
-	}
+	v6Assignments := 0
 	for _, rule := range rules {
+		if rule.DropIface != "" {
+			continue
+		}
 		if rule.Source.Addr().Is4() {
 			if !reflect.DeepEqual(rule.Assign.Slots, []uint32{1, 2}) {
 				t.Fatalf("IPv4 changed tier: %+v", rule.Assign)
 			}
-		} else if rule.Assign.Mark != 3 {
-			t.Fatalf("IPv6 selected an unready or absent family: %+v", rule.Assign)
+		} else {
+			v6Assignments++
+			if rule.Assign.Mark != 3 {
+				t.Fatalf("IPv6 selected an unready or absent family: %+v", rule.Assign)
+			}
 		}
+	}
+	if v6Assignments == 0 {
+		t.Fatal("no IPv6 assignment")
 	}
 	translations["monkeybrains"] = wanstate.MemberTranslation{V4: wanstate.FamilyTranslation{Ready: true}}
 	store.SetTranslation(translations)
 	rules = m.desiredRules(netif.HealthStates{})
-	if len(rules) != 1 || !rules[0].Source.Addr().Is4() {
-		t.Fatalf("IPv6 readiness loss must preserve only IPv4 rules: %v", rules)
+	for _, rule := range rules {
+		if rule.DropIface == "" && rule.Source.Addr().Is6() {
+			t.Fatalf("IPv6 readiness loss kept assignment: %v", rule)
+		}
 	}
 }
