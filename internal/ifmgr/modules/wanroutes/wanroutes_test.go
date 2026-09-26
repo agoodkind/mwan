@@ -208,7 +208,7 @@ func TestDesiredStateTracksLiveDelegation(t *testing.T) {
 	rules, _ = desiredState(gateways, health, cfg, translations)
 	newRule := fromRule(cfg.WANs[0].FromPrio, newPrefix.String(), cfg.WANs[0].TableID)
 	if !slices.Contains(rules, newRule) || slices.Contains(rules, oldRule) {
-		t.Fatalf("IPv6 source rule did not follow live delegation: %+v", rules)
+		t.Fatalf("IPv6 source rule was not updated to the new delegated prefix: %+v", rules)
 	}
 
 	att.V6.Ready = false
