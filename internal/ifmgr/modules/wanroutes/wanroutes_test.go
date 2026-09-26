@@ -225,10 +225,6 @@ func TestDesiredStateTracksLiveDelegation(t *testing.T) {
 	}
 }
 
-// TestPublishLiveStateReportsTheActiveTier pins what the management surface
-// serves: the active tier the pass decided, and one carrying flag per provider
-// that is true only for a provider in that tier which is healthy and has a
-// gateway.
 func TestPublishLiveStateReportsTheActiveTier(t *testing.T) {
 	t.Parallel()
 
