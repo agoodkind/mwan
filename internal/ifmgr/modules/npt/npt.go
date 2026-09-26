@@ -123,8 +123,8 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 
 	ifmgr.StartIfaceMonitors(ctx, log, moduleName, watchedIfaces(m.cfg), m.onMonitorEvent)
 
-	// Watch table and chain deletion so a ruleset wipe requests immediate
-	// reconciliation. The applier recreates missing structures and rules.
+	// The watcher requests reconciliation after table or chain deletion.
+	// The applier recreates missing structures and rules.
 	// The recover keeps a monitor panic from taking down the daemon.
 	go func() {
 		defer func() {

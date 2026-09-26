@@ -126,9 +126,8 @@ func (m *Module) handleNFTEvent(
 // own reconcile and are safe wipe signals.
 //
 // A `flush ruleset` deletes the ip6 nat table. A DelTable event drives its
-// recreation. A targeted rules-only
-// flush (nft flush table ip6 nat) leaves the table and is recovered by the
-// periodic reconcile tick instead, unchanged from today.
+// recreation. A targeted `nft flush table ip6 nat` removes the rules but
+// preserves the table. The periodic reconcile tick restores those rules.
 func nftEventWipesNAT(event *nftables.MonitorEvent) bool {
 	if event == nil {
 		return false
