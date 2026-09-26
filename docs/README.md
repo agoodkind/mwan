@@ -18,7 +18,8 @@ retain the paths and commands used at the time, including paths that predate
 the separate MWAN repository. Check current implementation and deployment
 state before executing a historical plan or recovery procedure.
 
-Configs retains the additional copied documents as migration snapshots.
+Configs removes the migrated implementation plans and retains the other
+copied documents as migration snapshots.
 Maintain subsequent MWAN documentation changes here. General Configs
 documentation and deployment code remain in Configs.
 
