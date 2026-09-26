@@ -636,7 +636,7 @@ func appendWANRules(
 			Table:    "",
 			TableID:  wan.TableID,
 		})
-		if prefix := sourcePrefixV6(wan); prefix != "" {
+		if prefix := sourcePrefixV6(wan, translation); prefix != "" {
 			rules = append(rules, netif.DesiredRule{
 				Family:   familyV6,
 				Priority: wan.FromPrio,
@@ -652,16 +652,13 @@ func appendWANRules(
 	return rules
 }
 
-func sourcePrefixV6(wan WAN) string {
-	translation := wan.TranslationV6
-	if translation == nil || translation.Mode != config.TranslationNPTv6 || translation.NPT == nil {
+func sourcePrefixV6(wan WAN, state wanstate.MemberTranslation) string {
+	policy := wan.TranslationV6
+	if policy == nil || policy.Mode != config.TranslationNPTv6 || policy.NPT == nil {
 		return ""
 	}
-	if translation.NPT.ExternalSource == config.PrefixConfigured {
-		return translation.NPT.ExternalPrefix.String()
-	}
-	if translation.NPT.ExpectedPrefix.IsValid() {
-		return translation.NPT.ExpectedPrefix.String()
+	if state.V6.ExternalPrefix.IsValid() {
+		return state.V6.ExternalPrefix.String()
 	}
 	return ""
 }
