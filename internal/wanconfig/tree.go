@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/networkd"
 )
 
@@ -171,6 +172,7 @@ type DaemonSettings struct {
 
 // Gateway is the loaded configuration the surface publishes.
 type Gateway struct {
+	Firewall firewall.Config
 	// InternalIface is the link toward the router behind the gateway. It is
 	// published as an interface entry with both families enabled, because
 	// the daemon routes both families over it.
@@ -253,6 +255,17 @@ func ConfigItems(g Gateway) ([]Item, error) {
 
 	items := make([]Item, 0, itemsPerMember*len(g.Members)+itemsForGroup)
 	items = append(items, interfaceItems(g.InternalIface, true, true)...)
+	if g.Firewall.Enabled {
+		managementIsProvider := g.Firewall.ManagementInterface == g.InternalIface
+		for _, member := range g.Members {
+			if member.Iface == g.Firewall.ManagementInterface {
+				managementIsProvider = true
+			}
+		}
+		if !managementIsProvider {
+			items = append(items, interfaceItems(g.Firewall.ManagementInterface, false, false)...)
+		}
+	}
 	for _, member := range g.Members {
 		items = append(items, interfaceItems(member.Iface, member.TranslationV4 != nil, member.TranslationV6 != nil)...)
 		items = append(items, steeringItems(member)...)
@@ -260,6 +273,7 @@ func ConfigItems(g Gateway) ([]Item, error) {
 		items = append(items, linkItems(member)...)
 	}
 	items = append(items, steeringGroupItems(g)...)
+	items = append(items, firewallItems(g)...)
 	for _, member := range g.Members {
 		items = append(items, natInstanceItems(member)...)
 	}
@@ -638,6 +652,47 @@ func steeringGroupItems(g Gateway) []Item {
 	return items
 }
 
+func firewallItems(g Gateway) []Item {
+	cfg := g.Firewall
+	if !cfg.Enabled {
+		return nil
+	}
+	base := steeringGroupPath + "/firewall"
+	items := []Item{
+		{Path: base + "/management-interface", Value: cfg.ManagementInterface},
+		{Path: base + "/pinned-set-v4-name", Value: cfg.PinnedSetV4Name},
+		{Path: base + "/pinned-set-v6-name", Value: cfg.PinnedSetV6Name},
+	}
+	for _, service := range cfg.ManagementServices {
+		path := base + "/management-service[protocol='" + service.Protocol +
+			"'][port='" + uintValue(uint64(service.Port)) + "']"
+		items = append(items, Item{Path: path, Value: ""})
+		for _, source := range service.Sources {
+			items = append(items, Item{Path: path + "/allowed-source", Value: source.String()})
+		}
+	}
+	if cfg.PinnedProvider != "" {
+		for _, member := range g.Members {
+			if member.Iface == cfg.PinnedProvider {
+				items = append(items, Item{Path: base + "/pinned-provider", Value: member.Name})
+				break
+			}
+		}
+		items = append(items,
+			Item{Path: base + "/pinned-source-v4", Value: cfg.PinnedSourceIPv4.String()},
+			Item{Path: base + "/pinned-source-port", Value: uintValue(uint64(cfg.PinnedSourcePort))},
+			Item{Path: base + "/pinned-destination-port", Value: uintValue(uint64(cfg.PinnedDestinationPort))},
+		)
+	}
+	for _, prefix := range cfg.PinnedIPv4 {
+		items = append(items, Item{Path: base + "/pinned-v4", Value: prefix.String()})
+	}
+	for _, prefix := range cfg.PinnedIPv6 {
+		items = append(items, Item{Path: base + "/pinned-v6", Value: prefix.String()})
+	}
+	return items
+}
+
 // hashModes are the values the model's enumeration accepts. A value outside the
 // set would make the datastore reject the whole replace, taking every other
 // item with it, so it is caught before the write.
@@ -663,6 +718,14 @@ func invalid(reason string) error {
 func validate(g Gateway) error {
 	if err := validateKey("internal link", g.InternalIface); err != nil {
 		return err
+	}
+	if g.Firewall.Enabled {
+		if err := g.Firewall.Validate(); err != nil {
+			return invalid(fmt.Sprintf("firewall: %v", err))
+		}
+		if err := validateKey("management link", g.Firewall.ManagementInterface); err != nil {
+			return err
+		}
 	}
 	if g.HashMode != "" && !hashModes[g.HashMode] {
 		return invalid(fmt.Sprintf("hash mode %q is not one of the model's values", g.HashMode))

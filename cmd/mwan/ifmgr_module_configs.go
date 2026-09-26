@@ -169,6 +169,9 @@ func addWANRoleConfigs(
 	if want["npt"] {
 		moduleConfigs["npt"] = buildNPTConfig(shared)
 	}
+	if want["firewall"] {
+		moduleConfigs["firewall"] = ifmgrCfg.Firewall
+	}
 	return nil
 }
 

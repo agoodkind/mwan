@@ -20,6 +20,7 @@ import (
 	"slices"
 
 	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/networkd"
 	"goodkind.io/mwan/internal/yangpub"
 )
@@ -185,11 +186,12 @@ type health struct {
 }
 
 type steeringGroup struct {
-	HashMode       string      `json:"hash-mode"`
-	ReservedTables []int       `json:"reserved-tables"`
-	Translation    translation `json:"translation"`
-	Routes         routes      `json:"routes"`
-	Health         groupHealth `json:"health"`
+	HashMode       string        `json:"hash-mode"`
+	ReservedTables []int         `json:"reserved-tables"`
+	Translation    translation   `json:"translation"`
+	Routes         routes        `json:"routes"`
+	Firewall       *firewallWire `json:"firewall"`
+	Health         groupHealth   `json:"health"`
 }
 
 type translation struct {
@@ -210,6 +212,7 @@ type groupHealth struct {
 // Config is the network tree one file carries, in the shape the daemon's
 // configuration holds it.
 type Config struct {
+	Firewall           firewall.Config
 	InternalPrefix     string
 	OpnsenseEdgeV6     string
 	MwanbrEdgeV6       string
@@ -294,7 +297,9 @@ var kernelReservedTables = []int{0, 253, 254, 255}
 // translation.
 func build(doc *document) (*Config, error) {
 	group := doc.Interfaces.SteeringGroup
+	var zeroFirewall firewall.Config
 	loaded := &Config{
+		Firewall:           zeroFirewall,
 		InternalPrefix:     group.Translation.InternalPrefix,
 		OpnsenseEdgeV6:     group.Translation.OpnsenseEdgeV6,
 		MwanbrEdgeV6:       group.Translation.MwanbrEdgeV6,
@@ -381,6 +386,11 @@ func build(doc *document) (*Config, error) {
 	if err := checkProviderSet(loaded); err != nil {
 		return nil, err
 	}
+	firewallConfig, err := buildFirewall(doc, loaded)
+	if err != nil {
+		return nil, err
+	}
+	loaded.Firewall = firewallConfig
 	return loaded, nil
 }
 
@@ -954,6 +964,7 @@ func ApplyDefault(cfg *config.Config) error {
 // filled before this file owned them. The health and routes sections keep the
 // filesystem paths TOML still owns. Apply writes only the network values.
 func (c *Config) Apply(cfg *config.Config) {
+	cfg.IfMgr.Firewall = c.Firewall
 	cfg.IfMgr.InternalPrefix = c.InternalPrefix
 	cfg.IfMgr.OpnsenseEdgeV6 = c.OpnsenseEdgeV6
 	cfg.IfMgr.MwanbrEdgeV6 = c.MwanbrEdgeV6

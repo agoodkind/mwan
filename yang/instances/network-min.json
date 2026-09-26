@@ -109,7 +109,8 @@
           "weight": 1
         }
       },
-      { "name": "enmwanbr0", "type": "iana-if-type:other" }
+      { "name": "enmwanbr0", "type": "iana-if-type:other" },
+      { "name": "enmgmt0", "type": "iana-if-type:other" }
     ],
     "goodkind-mwan-steering:steering-group": {
       "hash-mode": "source",
@@ -122,6 +123,21 @@
       "routes": {
         "internal-iface": "enmwanbr0",
         "internal-net-v4": "192.0.2.0/29"
+      },
+      "firewall": {
+        "management-interface": "enmgmt0",
+        "management-service": [
+          { "protocol": "tcp", "port": 22 },
+          { "protocol": "tcp", "port": 50052, "allowed-source": ["192.0.2.0/24"] }
+        ],
+        "pinned-provider": "att",
+        "pinned-source-v4": "192.0.2.1",
+        "pinned-source-port": 51820,
+        "pinned-destination-port": 51821,
+        "pinned-set-v4-name": "att_pinned_v4",
+        "pinned-set-v6-name": "att_pinned_v6",
+        "pinned-v4": ["198.51.100.0/24"],
+        "pinned-v6": ["2001:db8:100::/48"]
       },
       "health": { "probe-timeout": 2000 }
     }

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/wanconfig"
 	"goodkind.io/mwan/internal/wanstate"
@@ -234,8 +235,25 @@ func resolveSelftestModels(log *slog.Logger, dir string) ([]yangpub.Model, error
 // translating member on tier 0 and the internal link, the smallest
 // configuration that exercises every owned subtree.
 func selftestGateway() wanconfig.Gateway {
+	var firewallConfig firewall.Config
+	firewallConfig.Enabled = true
+	firewallConfig.InternalInterface = "eninternal0"
+	firewallConfig.InternalNetworkIPv4 = netip.MustParsePrefix("192.0.2.0/29")
+	firewallConfig.ManagementInterface = "enmgmt0"
+	firewallConfig.ManagementServices = []firewall.Service{{Protocol: "tcp", Port: 22, Sources: nil}}
+	firewallConfig.KnownInterfaces = []string{"eninternal0", "enmgmt0", "enexample0"}
+	firewallConfig.Providers = []firewall.Provider{{
+		Interface: "enexample0", Mark: 1, ForcedDSCP: 8,
+		MasqueradeIPv4: true, StaticMappings: nil,
+	}}
+	firewallConfig.Paths = []firewall.ForwardingPath{{
+		InternalInterface: "eninternal0", ExternalInterface: "enexample0", IPv4: true, IPv6: true,
+	}}
+	firewallConfig.PinnedSetV4Name = "selftest_pinned_v4"
+	firewallConfig.PinnedSetV6Name = "selftest_pinned_v6"
 	return wanconfig.Gateway{
 		InternalIface: "eninternal0",
+		Firewall:      firewallConfig,
 		HashMode:      "random",
 		Group: wanconfig.GroupSettings{
 			ReservedTables:     []uint32{400, 500},

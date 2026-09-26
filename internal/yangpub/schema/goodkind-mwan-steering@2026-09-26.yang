@@ -49,6 +49,11 @@ module goodkind-mwan-steering {
      decides its verdict, the prefix-translation inputs, and the
      internal link the members route toward.";
 
+  revision 2026-09-26 {
+    description
+      "Add the gateway firewall ownership, local management permissions,
+       and packet pin configuration.";
+  }
   revision 2026-09-22 {
     description
       "Replace provider-level translation fields with explicit family policies.";
@@ -783,6 +788,64 @@ module goodkind-mwan-steering {
             "The internal IPv4 network, routed into every member's
              table so the internal side stays reachable whichever
              member carries traffic.";
+        }
+      }
+      container firewall {
+        presence
+          "The gateway daemon owns its firewall tables.";
+        description
+          "Local access and packet pins not already defined by the
+           interface, routing, and translation configuration.";
+        leaf management-interface {
+          type if:interface-ref;
+          mandatory true;
+          description "The interface accepting management services.";
+        }
+        list management-service {
+          key "protocol port";
+          description "A management service permitted on that interface.";
+          leaf protocol {
+            type enumeration {
+              enum tcp;
+              enum udp;
+            }
+          }
+          leaf port {
+            type inet:port-number;
+          }
+          leaf-list allowed-source {
+            type inet:ip-prefix;
+            description
+              "Optional source networks. An empty list permits every source
+               on the management interface.";
+          }
+        }
+        leaf pinned-provider {
+          type string;
+          description "Provider name selected by the control-plane pin.";
+        }
+        leaf pinned-source-v4 {
+          type inet:ipv4-address;
+        }
+        leaf pinned-source-port {
+          type inet:port-number;
+        }
+        leaf pinned-destination-port {
+          type inet:port-number;
+        }
+        leaf pinned-set-v4-name {
+          type string;
+          mandatory true;
+        }
+        leaf pinned-set-v6-name {
+          type string;
+          mandatory true;
+        }
+        leaf-list pinned-v4 {
+          type inet:ipv4-prefix;
+        }
+        leaf-list pinned-v6 {
+          type inet:ipv6-prefix;
         }
       }
       container health {

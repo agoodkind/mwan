@@ -1130,3 +1130,31 @@ func TestLoadAcceptsHandAuthoredDelegationMetadata(t *testing.T) {
 		t.Fatalf("hand-authored link acquired rendered files: %+v", loaded.Links)
 	}
 }
+
+func TestLoadBaselineKeepsProtectiveInputsIndependentOfProviderValidation(t *testing.T) {
+	t.Parallel()
+	raw, err := os.ReadFile("../../yang/instances/network-min.json")
+	if err != nil {
+		t.Fatalf("read network instance: %v", err)
+	}
+	body := strings.Replace(string(raw), `"table-id": 200`, `"table-id": "invalid"`, 1)
+	body = strings.Replace(body, `"pinned-source-port": 51820`, `"pinned-source-port": "invalid"`, 1)
+	if body == string(raw) {
+		t.Fatal("network instance mutations did not match")
+	}
+	baseline, err := networkjson.LoadBaseline(writeDocument(t, body))
+	if err != nil {
+		t.Fatalf("LoadBaseline rejected unrelated fields: %v", err)
+	}
+	if baseline == nil || baseline.ManagementInterface != "enmgmt0" || baseline.InternalInterface != "enmwanbr0" {
+		t.Fatalf("baseline = %+v", baseline)
+	}
+	if len(baseline.ManagementServices) != 2 || len(baseline.ProviderInterfaces) != 3 {
+		t.Fatalf("baseline services or providers = %+v", baseline)
+	}
+
+	invalidManagement := strings.Replace(body, `"port": 22`, `"port": 0`, 1)
+	if _, err := networkjson.LoadBaseline(writeDocument(t, invalidManagement)); err == nil {
+		t.Fatal("LoadBaseline accepted an invalid management port")
+	}
+}

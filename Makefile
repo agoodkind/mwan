@@ -492,6 +492,22 @@ test-netns:
 	sudo -E env "PATH=$$PATH" go test -v -count=1 -tags netns $(NETNS_TEST_PACKAGES)
 endif
 
+# The public validator applies the production firewall writer in a private
+# namespace. The privileged builder provides nftables and the cgo schema libs.
+.PHONY: test-firewall
+test-firewall: wanconfig-builder-image
+	docker run --rm --privileged --platform linux/$(WANCONFIG_DOCKER_ARCH) \
+		-v $(CURDIR):/src -w /src \
+		-v mwan-wanconfig-gomod:/go/pkg/mod \
+		-v mwan-wanconfig-cache-$(WANCONFIG_DOCKER_ARCH):/root/.cache \
+		-v mwan-wanconfig-gomk-$(WANCONFIG_DOCKER_ARCH):/src/.make \
+		-e GOWORK=off \
+		-e GIT_CONFIG_COUNT=1 \
+		-e GIT_CONFIG_KEY_0=safe.directory \
+		-e GIT_CONFIG_VALUE_0=/src \
+		$(WANCONFIG_BUILDER_IMAGE) \
+		go test -count=1 -tags firewallnetns ./cmd/mwan -run '^TestCheckFirewallIsolatedKernel$$'
+
 # ---------------------------------------------------------------------------
 # Wanconfig management stack packages (MWAN-431)
 # ---------------------------------------------------------------------------
