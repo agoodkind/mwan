@@ -186,6 +186,45 @@ func TestDesiredState(t *testing.T) {
 	}
 }
 
+func TestDesiredStateTracksLiveDelegation(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	translations := readyTranslations(cfg)
+	gateways := testGateways()
+	health := netif.HealthStates{}
+	oldPrefix := cfg.WANs[0].TranslationV6.NPT.ExpectedPrefix.String()
+	oldRule := fromRule(cfg.WANs[0].FromPrio, oldPrefix, cfg.WANs[0].TableID)
+
+	rules, _ := desiredState(gateways, health, cfg, translations)
+	if !slices.Contains(rules, oldRule) {
+		t.Fatalf("initial IPv6 source rule missing: %+v", oldRule)
+	}
+
+	newPrefix := netip.MustParsePrefix("2001:db8:abc0::/60")
+	att := translations["att"]
+	att.V6.ExternalPrefix = newPrefix
+	translations["att"] = att
+	rules, _ = desiredState(gateways, health, cfg, translations)
+	newRule := fromRule(cfg.WANs[0].FromPrio, newPrefix.String(), cfg.WANs[0].TableID)
+	if !slices.Contains(rules, newRule) || slices.Contains(rules, oldRule) {
+		t.Fatalf("IPv6 source rule did not follow live delegation: %+v", rules)
+	}
+
+	att.V6.Ready = false
+	att.V6.ExternalPrefix = netip.Prefix{}
+	translations["att"] = att
+	rules, _ = desiredState(gateways, health, cfg, translations)
+	for _, rule := range rules {
+		if rule.Family == familyV6 && rule.TableID == cfg.WANs[0].TableID {
+			t.Fatalf("unavailable delegation retained an IPv6 rule: %+v", rule)
+		}
+	}
+	if !slices.Contains(rules, fwmarkRule(familyV4, cfg.WANs[0].FwMarkPrio, cfg.WANs[0].FwMark, cfg.WANs[0].TableID)) {
+		t.Fatal("unavailable IPv6 delegation removed the provider's IPv4 rule")
+	}
+}
+
 // TestPublishLiveStateReportsTheActiveTier pins what the management surface
 // serves: the active tier the pass decided, and one carrying flag per provider
 // that is true only for a provider in that tier which is healthy and has a
