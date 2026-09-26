@@ -5,6 +5,15 @@ The binary links libyang and libsysrepo statically through cgo and serves its
 configuration over the management datastore. The standards a change must meet
 are in [AGENTS.md](AGENTS.md).
 
+## Documentation
+
+MWAN documentation is moving from Configs into this repository. The
+[firewall specification](docs/firewall.md) and
+[MWAN-341 implementation plan](docs/plans/2026-09-26-mwan-341-firewall.md)
+include the requirements and implementation sequence. Read the adjacent
+[epic goal](docs/plans/2026-09-26-mwan-341-goal.md) before executing the plan
+or resuming its ledger.
+
 ## Layout
 
 | Path | What it holds |
