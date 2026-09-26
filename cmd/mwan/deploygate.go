@@ -58,6 +58,18 @@ const (
 // deployGateMode is the typed enum of deploy-gate verbs.
 type deployGateMode string
 
+type requiredEgressFamilies struct {
+	ipv4 bool
+	ipv6 bool
+}
+
+type egressFamily string
+
+const (
+	egressIPv4 egressFamily = "ipv4"
+	egressIPv6 egressFamily = "ipv6"
+)
+
 const (
 	gateModeCheckEgress  deployGateMode = "check-egress"
 	gateModeWaitReboot   deployGateMode = "wait-reboot"
@@ -176,11 +188,16 @@ func runDeployGate(args []string) int {
 	rest := args[1:]
 	switch deployGateMode(args[0]) {
 	case gateModeCheckEgress:
-		if len(rest) != 0 {
+		if len(rest) != 1 {
 			printDeployGateUsage()
 			return exitDeployGateUsage
 		}
-		return checkEgress(ctx, deps)
+		families, err := parseRequiredEgressFamilies(rest[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+			return exitDeployGateUsage
+		}
+		return checkEgress(ctx, deps, families)
 	case gateModeCheckOwned:
 		if len(rest) != 0 {
 			printDeployGateUsage()
@@ -215,16 +232,11 @@ func runDeployGate(args []string) int {
 		}
 		return waitReboot(ctx, deps, vmid, rest[1], budget)
 	case gateModeWaitEgress:
-		if len(rest) != 1 {
-			printDeployGateUsage()
+		budget, families, rounds, ok := parseWaitEgressArgs(rest)
+		if !ok {
 			return exitDeployGateUsage
 		}
-		budget, err := parseBudgetSeconds(rest[0])
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
-			return exitDeployGateUsage
-		}
-		return waitEgress(ctx, deps, budget)
+		return waitEgress(ctx, deps, budget, families, rounds)
 	case gateModeWaitDeploy:
 		inputs, ok := parseWaitDeployArgs(rest)
 		if !ok {
@@ -238,7 +250,7 @@ func runDeployGate(args []string) int {
 }
 
 // waitDeployInputs carries the wait-deploy arguments as one value, because
-// six positional parameters invite transposition bugs at the call site.
+// positional parameters invite transposition bugs at the call site.
 type waitDeployInputs struct {
 	vmid         int
 	oldBootID    string
@@ -246,10 +258,12 @@ type waitDeployInputs struct {
 	egressBudget time.Duration
 	traceID      string
 	verdictPath  string
+	families     requiredEgressFamilies
+	rounds       int
 }
 
 func parseWaitDeployArgs(rest []string) (waitDeployInputs, bool) {
-	if len(rest) != 6 {
+	if len(rest) != 8 {
 		printDeployGateUsage()
 		return waitDeployInputs{}, false
 	}
@@ -279,6 +293,16 @@ func parseWaitDeployArgs(rest []string) (waitDeployInputs, bool) {
 			rest[4], traceIDPattern.String())
 		return waitDeployInputs{}, false
 	}
+	families, err := parseRequiredEgressFamilies(rest[6])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+		return waitDeployInputs{}, false
+	}
+	rounds, err := parseConsecutiveRounds(rest[7])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+		return waitDeployInputs{}, false
+	}
 	return waitDeployInputs{
 		vmid:         vmid,
 		oldBootID:    rest[1],
@@ -286,7 +310,32 @@ func parseWaitDeployArgs(rest []string) (waitDeployInputs, bool) {
 		egressBudget: egressBudget,
 		traceID:      rest[4],
 		verdictPath:  rest[5],
+		families:     families,
+		rounds:       rounds,
 	}, true
+}
+
+func parseWaitEgressArgs(rest []string) (time.Duration, requiredEgressFamilies, int, bool) {
+	if len(rest) != 3 {
+		printDeployGateUsage()
+		return 0, requiredEgressFamilies{}, 0, false
+	}
+	budget, err := parseBudgetSeconds(rest[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+		return 0, requiredEgressFamilies{}, 0, false
+	}
+	families, err := parseRequiredEgressFamilies(rest[1])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+		return 0, requiredEgressFamilies{}, 0, false
+	}
+	rounds, err := parseConsecutiveRounds(rest[2])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+		return 0, requiredEgressFamilies{}, 0, false
+	}
+	return budget, families, rounds, true
 }
 
 // waitDeploy chains the reboot, egress, and owned-address verdicts and records
@@ -314,7 +363,7 @@ func waitDeploy(ctx context.Context, deps deployGateDeps, in waitDeployInputs) i
 	}
 	verdict.RebootRC = waitReboot(ctx, deps, in.vmid, in.oldBootID, in.rebootBudget)
 	if verdict.RebootRC != exitDeployGateFailed {
-		verdict.EgressRC = waitEgress(ctx, deps, in.egressBudget)
+		verdict.EgressRC = waitEgress(ctx, deps, in.egressBudget, in.families, in.rounds)
 	}
 	ownedReport := ""
 	if verdict.EgressRC == exitDeployGateOK {
@@ -409,13 +458,43 @@ func parseVMID(raw string) (int, error) {
 
 func printDeployGateUsage() {
 	fmt.Fprintln(os.Stderr,
-		"usage: mwan deploy-gate check-egress"+
+		"usage: mwan deploy-gate check-egress <families>"+
 			" | check-owned-addresses"+
 			" | check-network <network_json> <schema_dir>"+
 			" | wait-reboot <vmid> <old_boot_id> <seconds>"+
-			" | wait-egress <seconds>"+
+			" | wait-egress <seconds> <families> <consecutive_rounds>"+
 			" | wait-deploy <vmid> <old_boot_id> <reboot_seconds>"+
-			" <egress_seconds> <trace_id> <verdict_path>")
+			" <egress_seconds> <trace_id> <verdict_path> <families> <consecutive_rounds>"+
+			" (families: ipv4, ipv6, or ipv4,ipv6)")
+}
+
+func parseRequiredEgressFamilies(raw string) (requiredEgressFamilies, error) {
+	var families requiredEgressFamilies
+	for name := range strings.SplitSeq(raw, ",") {
+		switch egressFamily(name) {
+		case egressIPv4:
+			if families.ipv4 {
+				return requiredEgressFamilies{}, fmt.Errorf("duplicate egress family %q", name)
+			}
+			families.ipv4 = true
+		case egressIPv6:
+			if families.ipv6 {
+				return requiredEgressFamilies{}, fmt.Errorf("duplicate egress family %q", name)
+			}
+			families.ipv6 = true
+		default:
+			return requiredEgressFamilies{}, fmt.Errorf("unknown egress family %q", name)
+		}
+	}
+	return families, nil
+}
+
+func parseConsecutiveRounds(raw string) (int, error) {
+	rounds, err := strconv.Atoi(raw)
+	if err != nil || rounds <= 0 {
+		return 0, fmt.Errorf("consecutive rounds %q is not a positive integer", raw)
+	}
+	return rounds, nil
 }
 
 func parseBudgetSeconds(raw string) (time.Duration, error) {
@@ -426,17 +505,13 @@ func parseBudgetSeconds(raw string) (time.Duration, error) {
 	return time.Duration(seconds) * time.Second, nil
 }
 
-// checkEgress probes both families once. Either family answering is enough,
-// because this mode only gates whether a pre-deploy snapshot is worth taking.
-func checkEgress(ctx context.Context, deps deployGateDeps) int {
-	_, err6 := deps.ping6(ctx, deployGateTargetV6, deployGateProbeTimeout)
-	_, err4 := deps.ping4(ctx, "", deployGateTargetV4, deployGateProbeTimeout)
-	fmt.Fprintf(deps.out, "egress probe: ipv6=%s ipv4=%s\n",
-		yesNo(err6 == nil), yesNo(err4 == nil))
-	if err6 == nil || err4 == nil {
+func checkEgress(ctx context.Context, deps deployGateDeps, families requiredEgressFamilies) int {
+	ok, report := probeEgressRound(ctx, deps, families)
+	fmt.Fprintf(deps.out, "egress probe: %s\n", report)
+	if ok {
 		return exitDeployGateOK
 	}
-	fmt.Fprintf(deps.out, "no egress on either family; last v4 error: %v\n", err4)
+	fmt.Fprintln(deps.out, "required egress family failed")
 	return exitDeployGateFailed
 }
 
@@ -690,25 +765,60 @@ func errorOrPrior(final error, prior error) error {
 	return prior
 }
 
-// waitEgress polls until IPv6 egress returns. IPv6 decides the verdict
-// because IPv6 is the primary family here; the IPv4 result rides along in
-// the success line for the deploy log.
-func waitEgress(ctx context.Context, deps deployGateDeps, budget time.Duration) int {
+func probeEgressRound(
+	ctx context.Context, deps deployGateDeps, families requiredEgressFamilies,
+) (bool, string) {
+	ok := true
+	v6 := "not-required"
+	v4 := "not-required"
+	var failures []string
+	if families.ipv6 {
+		_, err := deps.ping6(ctx, deployGateTargetV6, deployGateProbeTimeout)
+		v6 = yesNo(err == nil)
+		ok = ok && err == nil
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("ipv6_error=%q", err))
+		}
+	}
+	if families.ipv4 {
+		_, err := deps.ping4(ctx, "", deployGateTargetV4, deployGateProbeTimeout)
+		v4 = yesNo(err == nil)
+		ok = ok && err == nil
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("ipv4_error=%q", err))
+		}
+	}
+	report := fmt.Sprintf("ipv6=%s ipv4=%s", v6, v4)
+	if len(failures) > 0 {
+		report += " " + strings.Join(failures, " ")
+	}
+	return ok, report
+}
+
+func waitEgress(
+	ctx context.Context, deps deployGateDeps, budget time.Duration,
+	families requiredEgressFamilies, requiredRounds int,
+) int {
 	deadline := deps.now().Add(budget)
-	var lastErr error
+	consecutive := 0
 	for deps.now().Before(deadline) {
-		_, err6 := deps.ping6(ctx, deployGateTargetV6, deployGateProbeTimeout)
-		_, err4 := deps.ping4(ctx, "", deployGateTargetV4, deployGateProbeTimeout)
-		if err6 == nil {
-			fmt.Fprintf(deps.out, "egress restored: ipv6=yes ipv4=%s\n",
-				yesNo(err4 == nil))
+		ok, report := probeEgressRound(ctx, deps, families)
+		if ok {
+			consecutive++
+		} else {
+			consecutive = 0
+		}
+		fmt.Fprintf(deps.out, "egress round: %s consecutive=%d/%d\n",
+			report, consecutive, requiredRounds)
+		if consecutive == requiredRounds {
+			fmt.Fprintf(deps.out, "egress restored: %s after %d consecutive rounds\n",
+				report, requiredRounds)
 			return exitDeployGateOK
 		}
-		lastErr = err6
 		deps.sleep(deployGatePollInterval)
 	}
-	fmt.Fprintf(deps.out, "no IPv6 egress within %s; last probe error: %v\n",
-		budget, lastErr)
+	fmt.Fprintf(deps.out, "required egress not restored within %s; consecutive=%d/%d\n",
+		budget, consecutive, requiredRounds)
 	return exitDeployGateFailed
 }
 

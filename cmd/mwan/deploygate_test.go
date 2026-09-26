@@ -185,7 +185,7 @@ func TestWaitDeployRecordsSuccessfulVerdict(t *testing.T) {
 		rebootBudget: time.Minute,
 		egressBudget: time.Minute,
 		traceID:      "trace-123",
-		verdictPath:  verdictPath,
+		verdictPath:  verdictPath, families: requiredEgressFamilies{ipv4: true, ipv6: true}, rounds: 1,
 	})
 
 	if code != exitDeployGateOK {
@@ -249,7 +249,7 @@ func TestWaitDeploySkipsEgressAfterDefinitiveRebootFailure(t *testing.T) {
 		rebootBudget: 3 * time.Second,
 		egressBudget: time.Minute,
 		traceID:      "trace-123",
-		verdictPath:  verdictPath,
+		verdictPath:  verdictPath, families: requiredEgressFamilies{ipv4: true, ipv6: true}, rounds: 1,
 	})
 
 	if code != exitDeployGateOK {
@@ -292,7 +292,7 @@ func TestWaitDeployRunsEgressAfterUnobservableReboot(t *testing.T) {
 		rebootBudget: 3 * time.Second,
 		egressBudget: 3 * time.Second,
 		traceID:      "trace-123",
-		verdictPath:  verdictPath,
+		verdictPath:  verdictPath, families: requiredEgressFamilies{ipv4: true, ipv6: true}, rounds: 1,
 	})
 
 	if code != exitDeployGateOK {
@@ -301,7 +301,7 @@ func TestWaitDeployRunsEgressAfterUnobservableReboot(t *testing.T) {
 	if egressProbes == 0 {
 		t.Fatalf("egress probe count = %d, want greater than zero", egressProbes)
 	}
-	if !strings.Contains(out.String(), "no IPv6 egress") {
+	if !strings.Contains(out.String(), "required egress not restored") {
 		t.Fatalf("output does not confirm the egress verdict: %s", out.String())
 	}
 	verdict := readTestVerdict(t, verdictPath)
@@ -347,7 +347,7 @@ func TestWaitDeployReturnsFailureWhenVerdictWriteFails(t *testing.T) {
 		rebootBudget: time.Minute,
 		egressBudget: time.Minute,
 		traceID:      "trace-123",
-		verdictPath:  filepath.Join(blocker, "verdict.json"),
+		verdictPath:  filepath.Join(blocker, "verdict.json"), families: requiredEgressFamilies{ipv4: true, ipv6: true}, rounds: 1,
 	})
 
 	if code != exitDeployGateFailed {
@@ -355,7 +355,7 @@ func TestWaitDeployReturnsFailureWhenVerdictWriteFails(t *testing.T) {
 	}
 }
 
-func TestWaitEgressV6Decides(t *testing.T) {
+func TestWaitEgressRequiresEveryConfiguredFamily(t *testing.T) {
 	var out strings.Builder
 	clock := &fakeClock{now: time.Unix(1000, 0)}
 	deps := newTestDeps(&out, clock)
@@ -373,10 +373,11 @@ func TestWaitEgressV6Decides(t *testing.T) {
 		return 0, errors.New("still down")
 	}
 
-	code := waitEgress(context.Background(), deps, time.Minute)
+	code := waitEgress(context.Background(), deps, 5*time.Second,
+		requiredEgressFamilies{ipv4: true, ipv6: true}, 1)
 
-	if code != exitDeployGateOK {
-		t.Fatalf("exit code = %d, want %d\noutput: %s", code, exitDeployGateOK, out.String())
+	if code != exitDeployGateFailed {
+		t.Fatalf("exit code = %d, want %d\noutput: %s", code, exitDeployGateFailed, out.String())
 	}
 	if !strings.Contains(out.String(), "ipv6=yes ipv4=no") {
 		t.Fatalf("output does not report both families: %s", out.String())
@@ -396,7 +397,8 @@ func TestWaitEgressTimesOut(t *testing.T) {
 		return time.Millisecond, nil
 	}
 
-	code := waitEgress(context.Background(), deps, 5*time.Second)
+	code := waitEgress(context.Background(), deps, 5*time.Second,
+		requiredEgressFamilies{ipv4: true, ipv6: true}, 1)
 
 	if code != exitDeployGateFailed {
 		t.Fatalf("exit code = %d, want %d\noutput: %s", code, exitDeployGateFailed, out.String())
@@ -510,7 +512,7 @@ func TestWaitDeployRetriesOwnedAddressesUntilHeld(t *testing.T) {
 
 	code := waitDeploy(context.Background(), deps, waitDeployInputs{
 		vmid: 113, oldBootID: testOldBootID, rebootBudget: time.Minute, egressBudget: time.Minute,
-		traceID: "trace-123", verdictPath: verdictPath,
+		traceID: "trace-123", verdictPath: verdictPath, families: requiredEgressFamilies{ipv4: true, ipv6: true}, rounds: 1,
 	})
 
 	if code != exitDeployGateOK {
@@ -555,7 +557,7 @@ func TestWaitDeployFailsOwnedAddressesAfterTheBudget(t *testing.T) {
 
 	code := waitDeploy(context.Background(), deps, waitDeployInputs{
 		vmid: 113, oldBootID: testOldBootID, rebootBudget: time.Minute, egressBudget: time.Minute,
-		traceID: "trace-123", verdictPath: verdictPath,
+		traceID: "trace-123", verdictPath: verdictPath, families: requiredEgressFamilies{ipv4: true, ipv6: true}, rounds: 1,
 	})
 
 	if code != exitDeployGateOK {
@@ -599,7 +601,7 @@ func TestWaitDeployRecordsTheVerdictWhenTheAlertFails(t *testing.T) {
 
 	code := waitDeploy(context.Background(), deps, waitDeployInputs{
 		vmid: 113, oldBootID: testOldBootID, rebootBudget: time.Minute, egressBudget: time.Minute,
-		traceID: "trace-123", verdictPath: verdictPath,
+		traceID: "trace-123", verdictPath: verdictPath, families: requiredEgressFamilies{ipv4: true, ipv6: true}, rounds: 1,
 	})
 
 	if code != exitDeployGateOK {
@@ -647,7 +649,7 @@ func TestOwnedMissingAlertEmailExplainsRecovery(t *testing.T) {
 	}
 }
 
-func TestCheckEgressEitherFamilySuffices(t *testing.T) {
+func TestCheckEgressRequiresEveryConfiguredFamily(t *testing.T) {
 	var out strings.Builder
 	clock := &fakeClock{now: time.Unix(1000, 0)}
 	deps := newTestDeps(&out, clock)
@@ -660,8 +662,9 @@ func TestCheckEgressEitherFamilySuffices(t *testing.T) {
 		return time.Millisecond, nil
 	}
 
-	if code := checkEgress(context.Background(), deps); code != exitDeployGateOK {
-		t.Fatalf("exit code = %d, want %d\noutput: %s", code, exitDeployGateOK, out.String())
+	if code := checkEgress(context.Background(), deps,
+		requiredEgressFamilies{ipv4: true, ipv6: true}); code != exitDeployGateFailed {
+		t.Fatalf("exit code = %d, want %d\noutput: %s", code, exitDeployGateFailed, out.String())
 	}
 
 	deps.ping4 = func(
@@ -669,7 +672,8 @@ func TestCheckEgressEitherFamilySuffices(t *testing.T) {
 	) (time.Duration, error) {
 		return 0, errors.New("v4 down")
 	}
-	if code := checkEgress(context.Background(), deps); code != exitDeployGateFailed {
+	if code := checkEgress(context.Background(), deps,
+		requiredEgressFamilies{ipv4: true, ipv6: true}); code != exitDeployGateFailed {
 		t.Fatalf("exit code = %d, want %d\noutput: %s", code, exitDeployGateFailed, out.String())
 	}
 }

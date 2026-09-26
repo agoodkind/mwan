@@ -382,6 +382,20 @@ test-docker: wanconfig-builder-image
 	$(WANCONFIG_DOCKER_RUN) \
 		go test -count=1 ./...
 
+# The deploy gate test starts two network namespaces and blocks ICMPv4 in one.
+.PHONY: test-firewall
+test-firewall: wanconfig-builder-image
+	docker run --rm --privileged --platform linux/$(WANCONFIG_DOCKER_ARCH) \
+		-v $(CURDIR):/src -w /src \
+		-v mwan-wanconfig-gomod:/go/pkg/mod \
+		-v mwan-wanconfig-cache-$(WANCONFIG_DOCKER_ARCH):/root/.cache \
+		-e GOWORK=off \
+		-e GIT_CONFIG_COUNT=1 \
+		-e GIT_CONFIG_KEY_0=safe.directory \
+		-e GIT_CONFIG_VALUE_0=/src \
+		$(WANCONFIG_BUILDER_IMAGE) \
+		go test -count=1 -tags netns -run '^TestDeployGateEgressNetNS$$' ./cmd/mwan
+
 .PHONY: build-wanconfig-all test-docker-all
 build-wanconfig-all:
 	@for arch in $(WANCONFIG_DOCKER_ARCHS); do \
