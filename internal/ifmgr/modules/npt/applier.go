@@ -36,6 +36,10 @@ const (
 // tests capture the batch (rules added, chain flushes, and the single Flush)
 // without opening a kernel netlink socket.
 type nftConn interface {
+	ListTablesOfFamily(family nftables.TableFamily) ([]*nftables.Table, error)
+	ListChainsOfTableFamily(family nftables.TableFamily) ([]*nftables.Chain, error)
+	AddTable(t *nftables.Table) *nftables.Table
+	AddChain(c *nftables.Chain) *nftables.Chain
 	FlushChain(c *nftables.Chain)
 	AddRule(r *nftables.Rule) *nftables.Rule
 	Flush() error
@@ -78,14 +82,20 @@ func (a *nftApplier) Apply(ctx context.Context, log *slog.Logger, desired desire
 		return err
 	}
 
-	table := &nftables.Table{Family: nftables.TableFamilyIPv6, Name: natTableName, Use: 0, Flags: 0}
+	table := &nftables.Table{Family: nftables.TableFamilyIPv6, Name: natTableName}
+	accept := nftables.ChainPolicyAccept
 	post := &nftables.Chain{
 		Name: postroutingChain, Table: table,
-		Hooknum: nil, Priority: nil, Type: "", Policy: nil, Device: "",
+		Hooknum: nftables.ChainHookPostrouting, Priority: nftables.ChainPriorityNATSource,
+		Type: nftables.ChainTypeNAT, Policy: &accept,
 	}
 	pre := &nftables.Chain{
 		Name: preroutingChain, Table: table,
-		Hooknum: nil, Priority: nil, Type: "", Policy: nil, Device: "",
+		Hooknum: nftables.ChainHookPrerouting, Priority: nftables.ChainPriorityNATDest,
+		Type: nftables.ChainTypeNAT, Policy: &accept,
+	}
+	if err := ensureNATStructure(ctx, log, conn, table, pre, post); err != nil {
+		return err
 	}
 
 	conn.FlushChain(post)
@@ -115,6 +125,54 @@ func (a *nftApplier) Apply(ctx context.Context, log *slog.Logger, desired desire
 		return fmt.Errorf("nft flush: %w", err)
 	}
 	return nil
+}
+
+func ensureNATStructure(ctx context.Context, log *slog.Logger, conn nftConn, table *nftables.Table, chains ...*nftables.Chain) error {
+	tables, err := conn.ListTablesOfFamily(table.Family)
+	if err != nil {
+		log.WarnContext(ctx, "npt: list IPv6 tables failed", "err", err)
+		return fmt.Errorf("list IPv6 tables: %w", err)
+	}
+	tableExists := false
+	for _, current := range tables {
+		if current.Name == table.Name {
+			tableExists = true
+			break
+		}
+	}
+	if !tableExists {
+		conn.AddTable(table)
+	}
+
+	existing, err := conn.ListChainsOfTableFamily(table.Family)
+	if err != nil {
+		log.WarnContext(ctx, "npt: list IPv6 chains failed", "err", err)
+		return fmt.Errorf("list IPv6 chains: %w", err)
+	}
+	for _, wanted := range chains {
+		found := false
+		for _, current := range existing {
+			if current.Table == nil || current.Table.Name != table.Name || current.Name != wanted.Name {
+				continue
+			}
+			found = true
+			if !sameNATChain(current, wanted) {
+				return fmt.Errorf("ip6 nat chain %s has incompatible type, hook, priority, or policy", wanted.Name)
+			}
+			break
+		}
+		if !found {
+			conn.AddChain(wanted)
+		}
+	}
+	return nil
+}
+
+func sameNATChain(current, wanted *nftables.Chain) bool {
+	return current.Type == wanted.Type &&
+		current.Hooknum != nil && wanted.Hooknum != nil && *current.Hooknum == *wanted.Hooknum &&
+		current.Priority != nil && wanted.Priority != nil && *current.Priority == *wanted.Priority &&
+		current.Policy != nil && wanted.Policy != nil && *current.Policy == *wanted.Policy
 }
 
 // ruleExprs translates one typed natRule into its ordered nftables expressions:
