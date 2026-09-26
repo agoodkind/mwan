@@ -110,7 +110,7 @@ over masquerade. Native routing preserves addresses. IPv6 edge exceptions,
 including the published edge address, retain their existing behavior.
 
 The existing translation policy also governs physical and logical interfaces.
-The [translation specification](https://github.com/agoodkind/configs/blob/main/docs/superpowers/wanconfig/translation.md) defines that policy and its
+The [translation specification](superpowers/wanconfig/translation.md) defines that policy and its
 packet requirements. Firewall ownership preserves the translator's kernel
 attachments and packet metadata, including internal clients communicating
 through their external IPv6 addresses.
@@ -120,7 +120,7 @@ address family. The firewall does not create a second health decision.
 
 ## Extension for MWAN-507
 
-The [shared routing model](https://github.com/agoodkind/configs/blob/main/docs/superpowers/wanconfig/model.md) defines direct BGP and tunnel arrangements.
+The [shared routing model](superpowers/wanconfig/model.md) defines direct BGP and tunnel arrangements.
 BGP exchanges route announcements between routers. A tunnel encapsulates
 ordinary packets between endpoints.
 

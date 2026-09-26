@@ -7,12 +7,9 @@ are in [AGENTS.md](AGENTS.md).
 
 ## Documentation
 
-MWAN documentation is moving from Configs into this repository. The
-[firewall specification](docs/firewall.md) and
-[MWAN-341 implementation plan](docs/plans/2026-09-26-mwan-341-firewall.md)
-include the requirements and implementation sequence. Read the adjacent
-[epic goal](docs/plans/2026-09-26-mwan-341-goal.md) before executing the plan
-or resuming its ledger.
+The [documentation guide](docs/README.md) includes MWAN specifications,
+implementation plans, runbooks, and execution records copied from Configs.
+It also explains which commands still require the Configs checkout.
 
 ## Layout
 

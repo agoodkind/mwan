@@ -315,7 +315,7 @@ Files:
 - Modify [the Configs render contract](https://github.com/agoodkind/configs/blob/main/spec/ansible/mwan_install_spec.rb).
 - Modify [the agent's critical paths](../../internal/agent/server.go).
 - Remove installation of [the gateway nftables drop-in](../../cmd/mwan/nftables-override.conf).
-- Update [the MWAN operator reference](https://github.com/agoodkind/configs/blob/main/docs/mwan.md) and affected procedures under [operations](https://github.com/agoodkind/configs/blob/main/docs/ops/README.md).
+- Update [the MWAN operator reference](../mwan.md) and affected procedures under [operations](../ops/README.md).
 
 Behavior:
 
