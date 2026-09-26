@@ -1,0 +1,261 @@
+# Proxmox guest configs on suburban, captured from the live host.
+#
+# Regenerate this file rather than editing it. Its only value is matching
+# what the hypervisor actually runs, so a hand edit makes it worse than
+# absent. Guest ids and addresses are owned by
+# ansible/inventory/group_vars/all/service_mapping.yml.
+#
+# SSH keys and SMBIOS UUIDs are stripped.
+
+=== VM 129 (opnsense-serial-practice) ===
+agent: enabled=1
+args: -device virtio-serial-pci,id=mwanrpc -chardev socket,id=mwanchr,path=/var/run/qemu-server/129.mwanrpc,server=on,wait=off -device virtserialport,chardev=mwanchr,name=io.goodkind.mwan-opnsense.0
+boot: order=scsi1
+cores: 2
+memory: 4096
+meta: creation-qemu=10.1.2,ctime=1778205779
+name: opnsense-serial-practice
+net0: virtio=BC:24:11:47:85:45,bridge=vmbr1
+ostype: other
+scsi0: local-zfs:vm-129-disk-0,size=2553872K
+scsi1: local-zfs:vm-129-disk-1,discard=on,size=16G
+scsihw: virtio-scsi-pci
+serial0: socket
+vga: serial0
+vmgenid: cb2b59f3-bb4c-4d51-bf64-dd3ceefa9b4e
+
+=== VM 130 (opnsense-serial-rehearsal) ===
+agent: enabled=1
+args: -device virtio-serial-pci,id=mwanrpc -chardev socket,id=mwanchr,path=/var/run/qemu-server/130.mwanrpc,server=on,wait=off -device virtserialport,chardev=mwanchr,name=io.goodkind.mwan-opnsense.0
+boot: order=scsi1
+cores: 2
+memory: 4096
+meta: creation-qemu=10.1.2,ctime=1778208369
+name: opnsense-serial-rehearsal
+net0: virtio=BC:24:11:51:14:4A,bridge=vmbr1
+ostype: other
+parent: fresh-25-7-pre-upgrade-2026-05-11
+scsi0: local-zfs:vm-130-disk-0,size=2614635008
+scsi1: local-zfs:vm-130-disk-1,discard=on,size=16G
+scsihw: virtio-scsi-pci
+serial0: socket
+vga: serial0
+vmgenid: 20accf18-f460-42e2-b8e2-b8341d037fed
+
+=== VM 131 (freebsd-stock-14-3) ===
+agent: 1
+boot: order=scsi0
+cores: 2
+description: Plain FreeBSD 14.3 stock. Wedge bisect target.
+memory: 2048
+meta: creation-qemu=10.1.2,ctime=1778521301
+name: freebsd-stock-14-3
+net0: virtio=BC:24:11:2C:C2:BB,bridge=vmbr1
+ostype: other
+scsi0: local-zfs:vm-131-disk-0,size=16417M
+scsihw: virtio-scsi-pci
+serial0: socket
+vga: std
+vmgenid: b4954270-f011-48a4-99fb-a0d785abb5b6
+
+=== VM 132 (opnsense-25-7-spike) ===
+boot: order=scsi1
+cores: 2
+memory: 4096
+meta: creation-qemu=11.0.0,ctime=1781991774
+name: opnsense-25-7-spike
+net0: virtio=BC:24:11:E9:27:E5,bridge=vmbrtrunk
+net1: virtio=BC:24:11:19:7B:F9,bridge=vmbr2
+ostype: other
+scsi0: local-zfs:vm-132-disk-0,size=2553872K
+scsi1: local-zfs:vm-132-disk-1,discard=on,size=16G
+scsihw: virtio-scsi-pci
+serial0: socket
+vga: serial0
+vmgenid: 8d8095f5-d06a-4b20-a153-f6abf021366a
+
+=== VM 201 (opnsense-test) ===
+agent: enabled=1,type=virtio
+args: -device virtio-serial-pci,id=mwanrpc -chardev socket,id=mwanchr,path=/var/run/qemu-server/201.mwanrpc,server=on,wait=off -device virtserialport,chardev=mwanchr,name=io.goodkind.mwan-opnsense.0
+boot: order=scsi0
+cores: 2
+keyboard: en-us
+memory: 4096
+meta: creation-qemu=10.1.2,ctime=1778229650
+name: opnsense-test
+net0: virtio=BC:24:11:7D:6D:87,bridge=vmbrtrunk
+net1: virtio=BC:24:11:0F:66:FA,bridge=vmbr2
+onboot: 1
+ostype: other
+parent: pre_vmnet_cutover_20260727
+scsi0: local-zfs:vm-201-disk-0,size=40G
+scsihw: virtio-scsi-pci
+serial0: socket
+vga: serial0
+vmgenid: a443702c-448e-4e9e-b101-37ca279ab68a
+
+=== VM 213 (test-mwan) ===
+agent: enabled=1,fstrim_cloned_disks=0,type=virtio
+args: -device vhost-vsock-pci,guest-cid=213
+boot: order=scsi0
+ciuser: root
+cores: 2
+ide2: local-zfs:vm-213-cloudinit,media=cdrom
+ipconfig0: gw6=3d06:bad:b01:210::1,ip=dhcp,ip6=3d06:bad:b01:210::113/64
+keyboard: en-us
+machine: q35
+memory: 2048
+meta: creation-qemu=10.1.2,ctime=1775749164
+name: test-mwan
+net0: virtio=BC:24:11:B3:9E:46,bridge=vmbrtrunk,firewall=0
+net1: virtio=BC:24:11:49:5D:94,bridge=vmbr2,firewall=0
+net2: virtio=BC:24:11:BE:8E:B4,bridge=vmbr4,firewall=0
+net3: virtio=BC:24:11:C0:D7:60,bridge=vmbr5,firewall=0
+net4: virtio=BC:24:11:3D:CE:CC,bridge=vmbr6,firewall=0
+ostype: l26
+parent: known-good-20260729-043213
+scsi0: local-zfs:vm-213-disk-0,discard=on,size=16G
+scsihw: virtio-scsi-pci
+serial0: socket
+vga: serial0
+vmgenid: 77048f28-69f7-414e-af11-4c2b04f5aee7
+
+=== VM 300 (win11) ===
+agent: enabled=1
+balloon: 8192
+bios: ovmf
+boot: order=ide2;scsi0;ide0
+cores: 4
+cpu: host
+efidisk0: local-zfs:vm-300-disk-0,efitype=4m,ms-cert=2023w,pre-enrolled-keys=1,size=1M
+hostpci0: 0000:01:00,pcie=1
+ide0: local:iso/virtio-win.iso,media=cdrom,size=771138K
+ide2: local:iso/win11-24h2-multi-edition.iso,media=cdrom,size=6457182K
+machine: pc-q35-10.1
+memory: 16384
+meta: creation-qemu=10.1.2,ctime=1778890321
+name: win11
+net0: virtio=BC:24:11:AB:AF:CD,bridge=vmbr0
+numa: 1
+ostype: win11
+scsi0: local-zfs:vm-300-disk-1,discard=on,iothread=1,size=100G,ssd=1
+scsihw: virtio-scsi-single
+sockets: 1
+tablet: 1
+tpmstate0: local-zfs:vm-300-disk-2,size=4M,version=v2.0
+vga: std
+vmgenid: db1b0c8d-b64c-42f4-afd9-6cc7309127d5
+
+=== CT 203 (dns64-suburban) ===
+arch: amd64
+cmode: tty
+console: 1
+cores: 1
+hostname: dns64-suburban
+memory: 512
+nameserver: 3d06:bad:b01:210::64
+net0: name=eth0,bridge=vmbrtrunk,firewall=0,gw6=3d06:bad:b01:210::1,host-managed=0,hwaddr=BC:24:11:04:64:00,ip6=3d06:bad:b01:210::64/64,type=veth
+onboot: 1
+ostype: debian
+protection: 0
+rootfs: local-zfs:subvol-203-disk-0,size=4G
+swap: 0
+tags: dns;dns64;lxc
+template: 0
+tty: 2
+unprivileged: 1
+
+=== CT 216 (mwan-failover-test) ===
+arch: amd64
+cores: 1
+features: nesting=1
+hostname: mwan-failover-test
+memory: 512
+net0: name=eth0,bridge=vmbr6,hwaddr=BC:24:11:E7:86:B4,ip=dhcp,ip6=auto,type=veth
+net1: name=eth1,bridge=vmbr2,hwaddr=BC:24:11:00:97:29,ip=10.250.250.4/29,ip6=3d06:bad:b01:201::4/64,type=veth
+onboot: 1
+ostype: debian
+parent: pre-vmbr6-move
+rootfs: local-zfs:subvol-216-disk-0,size=4G
+swap: 512
+
+=== CT 217 (tack-qa) ===
+arch: amd64
+cmode: tty
+console: 1
+cores: 2
+cpulimit: 0
+features: nesting=1
+hostname: tack-qa
+memory: 8192
+nameserver: 3d06:bad:b01:210::64
+net0: name=eth0,bridge=vmbrtrunk,firewall=0,gw6=3d06:bad:b01:210::1,host-managed=0,hwaddr=BC:24:11:04:00:00,ip6=3d06:bad:b01:210::217/64,type=veth
+onboot: 1
+ostype: debian
+protection: 0
+rootfs: local-zfs:subvol-217-disk-0,size=40G
+swap: 0
+tags: docker;lxc;qa;tack
+template: 0
+tty: 2
+unprivileged: 1
+
+=== CT 218 (seaweedfs) ===
+arch: amd64
+cmode: tty
+console: 1
+cores: 2
+cpulimit: 0
+features: nesting=1
+hostname: seaweedfs
+memory: 4096
+nameserver: 3d06:bad:b01:210::64
+net0: name=eth0,bridge=vmbrtrunk,firewall=0,gw6=3d06:bad:b01:210::1,host-managed=0,hwaddr=BC:24:11:04:10:00,ip6=3d06:bad:b01:210::218/64,type=veth
+onboot: 1
+ostype: debian
+protection: 0
+rootfs: local-zfs:subvol-218-disk-0,size=100G
+swap: 0
+tags: lxc;s3;seaweedfs
+template: 0
+tty: 2
+unprivileged: 1
+
+=== CT 900 (isp-webpass) ===
+arch: amd64
+cores: 1
+features: nesting=1
+hostname: isp-webpass
+memory: 128
+net0: name=eth0,bridge=vmbr4,hwaddr=BC:24:11:7F:DE:4E,ip=10.240.204.1/24,type=veth
+net1: name=eth1,bridge=vmbr0,hwaddr=BC:24:11:FC:17:A7,ip=dhcp,type=veth
+onboot: 1
+ostype: debian
+rootfs: local-zfs:subvol-900-disk-0,size=2G
+swap: 512
+
+=== CT 901 (isp-att) ===
+arch: amd64
+cores: 1
+features: nesting=1
+hostname: isp-att
+memory: 128
+net0: name=eth0,bridge=vmbr5,hwaddr=BC:24:11:D4:3C:A4,ip=10.240.205.1/24,type=veth
+net1: name=eth1,bridge=vmbr0,hwaddr=BC:24:11:6C:B8:2B,ip=dhcp,type=veth
+onboot: 1
+ostype: debian
+rootfs: local-zfs:subvol-901-disk-0,size=2G
+swap: 512
+
+=== CT 902 (isp-mbrains) ===
+arch: amd64
+cores: 1
+features: nesting=1
+hostname: isp-mbrains
+memory: 128
+net0: name=eth0,bridge=vmbr6,hwaddr=BC:24:11:87:1F:3A,ip=10.240.206.1/24,ip6=3d06:bad:b01:250::1/64,type=veth
+net1: name=eth1,bridge=vmbr0,hwaddr=BC:24:11:DF:62:D3,ip=dhcp,type=veth
+onboot: 1
+ostype: debian
+rootfs: local-zfs:subvol-902-disk-0,size=2G
+swap: 512

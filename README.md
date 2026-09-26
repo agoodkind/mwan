@@ -5,6 +5,12 @@ The binary links libyang and libsysrepo statically through cgo and serves its
 configuration over the management datastore. The standards a change must meet
 are in [AGENTS.md](AGENTS.md).
 
+## Documentation
+
+The [documentation guide](docs/README.md) includes MWAN specifications,
+implementation plans, runbooks, and execution records copied from Configs.
+It also explains which commands still require the Configs checkout.
+
 ## Layout
 
 | Path | What it holds |
