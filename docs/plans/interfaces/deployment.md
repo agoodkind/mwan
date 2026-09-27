@@ -7,10 +7,10 @@ authoritative PR dependencies and parallel work assignments.
 
 Code implementers write settled code, configuration, and local tests only.
 Independent reviewers verify changes, results, required checks, and approvals.
-High intelligence cutover agents alone activate shared testbed infrastructure,
-run deployment commands, and perform live recovery after merge and current
-authorization. Check-mode deployment can copy files and run validation on
-remote hosts; it is not a local implementation check.
+Only the cutover agent assigned by the coordinator activates shared testbed
+infrastructure, runs deployment commands, and performs live recovery after
+merge and current authorization. Check-mode deployment can copy files and
+run validation on remote hosts; it is not a local implementation check.
 
 Merge preparation with default ownership unchanged. Complete the application
 release, deployment mechanism, acceptance harness, and recovery checks before
