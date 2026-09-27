@@ -192,6 +192,12 @@ the backup container through host container operations. A shared notifier
 reports health, failover, and recovery changes without sending one message
 per failed probe.
 
+The agent, interface manager, and watchdog write JSON logs to standard
+output. The agent and interface manager systemd units record that output in
+the journal. Optional log files provide another destination when configured.
+These daemons do not send logs directly to syslog. A host can forward journal
+records to syslog separately.
+
 ## Worked example
 
 These addresses and names illustrate the architecture. They are not
