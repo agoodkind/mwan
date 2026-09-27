@@ -39,13 +39,13 @@ func TestWANFirewallRuntimePackets(t *testing.T) {
 	binary := filepath.Join(t.TempDir(), "mwan")
 	build := exec.Command("go", "build", "-o", binary, ".")
 	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build mwan: %v: %s", err, output)
+		t.Fatalf("The mwan build failed: %v: %s", err, output)
 	}
 	child := exec.Command(os.Args[0], "-test.run=^TestWANFirewallRuntimePackets$")
 	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
 	child.Env = append(os.Environ(), runtimeChildEnv+"=1", runtimeBinaryEnv+"="+binary)
 	if output, err := child.CombinedOutput(); err != nil {
-		t.Fatalf("isolated WAN runtime test: %v: %s", err, output)
+		t.Fatalf("The isolated WAN runtime test failed: %v: %s", err, output)
 	}
 }
 
@@ -210,7 +210,7 @@ func stopRuntimeDaemon(t *testing.T, daemon *runtimeDaemon) {
 	select {
 	case err := <-done:
 		if err != nil {
-			t.Fatalf("WAN daemon stop: %v: %s", err, runtimeDaemonLog(t, daemon))
+			t.Fatalf("The WAN daemon failed to stop: %v: %s", err, runtimeDaemonLog(t, daemon))
 		}
 	case <-time.After(5 * time.Second):
 		daemon.command.Process.Kill()
@@ -253,7 +253,7 @@ func waitRuntimeTable(t *testing.T, daemon *runtimeDaemon, family, table string,
 func assertRuntimeTable(t *testing.T, family, table string) {
 	t.Helper()
 	if output, err := exec.Command("nft", "list", "table", family, table).CombinedOutput(); err != nil {
-		t.Fatalf("%s %s missing after daemon stop: %v: %s", family, table, err, output)
+		t.Fatalf("%s %s is missing after the daemon stopped: %v: %s", family, table, err, output)
 	}
 }
 
@@ -323,7 +323,7 @@ func waitRuntimeForwarding(t *testing.T, daemon *runtimeDaemon, timeout time.Dur
 func runRuntimeNFT(t *testing.T, arguments ...string) {
 	t.Helper()
 	if output, err := exec.Command("nft", arguments...).CombinedOutput(); err != nil {
-		t.Fatalf("nft %v: %v: %s", arguments, err, output)
+		t.Fatalf("The nft command %v failed: %v: %s", arguments, err, output)
 	}
 }
 
@@ -440,10 +440,10 @@ func assertRuntimeTCP(t *testing.T, destinationNamespace, sourceNamespace netns.
 	if accepted && err != nil {
 		setRuntimeNamespace(t, destinationNamespace)
 		rules, _ := exec.Command("nft", "list", "ruleset").CombinedOutput()
-		t.Fatalf("%s from %s rejected: %v\n%s", destination, source, err, rules)
+		t.Fatalf("A connection from %s to %s failed: %v\n%s", source, destination, err, rules)
 	}
 	if !accepted && err == nil {
-		t.Fatalf("%s from %s was accepted", destination, source)
+		t.Fatalf("A connection from %s to %s succeeded", source, destination)
 	}
 	setRuntimeNamespace(t, destinationNamespace)
 }
