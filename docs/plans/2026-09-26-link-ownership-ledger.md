@@ -14,6 +14,12 @@ The implementation plan assigns all 15 remaining work packages. Tack contains
 their parent and dependency relationships. This planning work changed no
 runtime code and performed no deployment.
 
+The operator subsequently confirmed AT&T will retire and delegated the
+migration choice. Omit 802.1X integration from the new manager. Preserve the
+existing AT&T setup until retirement is confirmed. Generic VLAN support
+remains required. MWAN-400 must verify that AT&T no longer requires networkd
+before removing it globally. No live service was changed.
+
 | Ticket | Implementation | Testbed acceptance | Production acceptance |
 | --- | --- | --- | --- |
 | MWAN-516 | Work has not started. | Evidence is pending. | Evidence is pending. |

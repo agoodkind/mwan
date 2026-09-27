@@ -265,8 +265,6 @@ one network configuration model across both repositories.
 | Configure both environments. | Update [production inventory](https://github.com/agoodkind/configs/blob/main/ansible/inventory/group_vars/mwan_servers.yml) and [testbed inventory](https://github.com/agoodkind/configs/blob/main/ansible/inventory/group_vars/mwan_suburban_servers.yml). |
 | Discover management and transit MAC addresses before rendering. | Reorder [runtime discovery](https://github.com/agoodkind/configs/blob/main/ansible/playbooks/tasks/mwan-vm/discover-runtime-network.yml) within [the deployment playbook](https://github.com/agoodkind/configs/blob/main/ansible/playbooks/deploy-mwan.yml). |
 | Transfer management and transit settings. | Replace applicable behavior in [management networking](https://github.com/agoodkind/configs/blob/main/ansible/templates/vm/10-mgmt.network.j2) and [transit networking](https://github.com/agoodkind/configs/blob/main/mwan/networkd/40-mwanbr.network.j2). Account for their adjacent naming files separately. |
-| Replace post-authentication networkd operations. | Update [AT&T activation](https://github.com/agoodkind/configs/blob/main/mwan/scripts/bringup-att-vlan.sh) and [its service](https://github.com/agoodkind/configs/blob/main/mwan/services/bringup-att-vlan.service). |
-| Preserve the existing authentication signal. | Integrate with [the supplicant action](https://github.com/agoodkind/configs/blob/main/mwan/scripts/wpa-action.sh). |
 | Remove conflicting automatic-address settings. | Update [gateway sysctl configuration](https://github.com/agoodkind/configs/blob/main/mwan/config/sysctl-mwan.conf.j2). |
 | Preserve release and checkout verification. | Retain [merged-checkout enforcement](https://github.com/agoodkind/configs/blob/main/ansible/playbooks/tasks/require-merged-checkout.yml) and [release verification](https://github.com/agoodkind/configs/blob/main/ansible/playbooks/tasks/verify-mwan-release.yml). |
 
@@ -288,11 +286,10 @@ one network configuration model across both repositories.
    rollback restores compatible configuration, release, and one active owner.
 
 Preserve management DNS/domain settings and the transit return route.
-Translate AT&T parent addressing, VLAN creation, and post-authentication
-DHCP activation. The existing supplicant signal uses an authenticated marker;
-preserve its CONNECTED and DISCONNECTED behavior while replacing the consumer
-that invokes networkd. Leave certificates and authentication implementation
-unchanged.
+Leave AT&T's existing authentication, parent addressing, VLAN setup, and
+networkd operations unchanged while the circuit is required. Do not add
+authentication markers, post-authentication activation, or 802.1X support to
+the new connection manager. Keep generic VLAN creation and DHCP support.
 
 Resolve the existing sysctl conflict explicitly: Webpass inventory accepts
 router advertisements, while the static sysctl template disables RA and
@@ -333,8 +330,8 @@ and [declared testbed guests](https://github.com/agoodkind/configs/blob/main/ope
    the configured hash mode. Observe provider traffic at simulator ingress.
 5. Exercise absent-provider startup, route deletion, process restart, reboot,
    and exclusive reverse transfer.
-6. Verify VLAN behavior with virtual links. Record that simulated AT&T
-   service does not establish live authentication compatibility.
+6. Verify generic VLAN behavior with virtual links. Keep the existing routed
+   static-block simulator scenario; 802.1X acceptance is outside this epic.
 
 Document executable commands and expected results as part of the test work.
 Required privileged tests must run explicitly. Do not replace missing
@@ -358,9 +355,10 @@ privileges with fake dependencies or count skipped tests as acceptance.
 
 ## Transfer remaining interfaces under MWAN-399
 
-1. Repeat the accepted procedure for remaining dynamic providers.
-2. Transfer the VLAN and authentication-dependent connection. Preserve the
-   Configs authentication service and verify its actual ready signal.
+1. Repeat the accepted procedure for remaining providers that will continue
+   in service. Preserve the legacy AT&T connection until it retires.
+2. Verify generic VLAN support with the testbed. Do not migrate the production
+   AT&T authentication-dependent connection to the new manager.
 3. Transfer internal networking and return routes. Verify internal BGP and
    downstream forwarding separately from management access.
 4. Transfer management last with verified hypervisor console recovery.
@@ -372,9 +370,13 @@ prerequisites.
 
 ## Retire networkd under MWAN-400
 
-1. Prove that every required interface has a replacement owner.
+1. Prove that every required interface has a replacement owner. Confirm AT&T
+   is no longer required and no remaining interface uses its authentication
+   or networkd dependencies before global networkd retirement.
 2. Remove obsolete rendering paths, generated units, networkd lease readers,
    service dependencies, and temporary migration configuration.
+   Include retired AT&T network configuration and services after that
+   confirmation. Do not delete reusable credentials or cancel ISP service.
 3. Account for udev naming files separately from stopping networkd.
 4. Preserve a tested recovery release and matching configuration.
 5. Run the final acceptance tickets before closing the epic.

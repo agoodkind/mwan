@@ -104,11 +104,10 @@ network operations that require that protection. Start independent connections
 independently. An absent provider or unavailable address family must not stop
 the others from starting.
 
-Represent shared parents, bridge members, authentication, and acquired
-assignments as dependencies. Preserve AT&T authentication in Configs. Verify
-its actual readiness signal; interface link-up alone does not establish that
-authentication succeeded. Preserve shared parents while another active
-interface depends on them.
+Represent shared parents, bridge members, and acquired assignments as
+dependencies. Preserve shared parents while another active interface depends
+on them. AT&T remains under its existing Configs and networkd management
+until the circuit retires; this migration adds no 802.1X support.
 
 Use existing family eligibility and probe policy. Keep firewall protection,
 lease validity, installed routes, and forwarding readiness distinguishable in
@@ -150,6 +149,7 @@ The operator approved these decisions on September 26, 2026.
 | Negotiate assignments at initial transfer under MWAN-519. | Preserve client identities and acquire assignments through the protocol. | Acquisition can interrupt or renumber a connection; no networkd lease importer requires maintenance. |
 | Recover MWAN leases under MWAN-518. | Persist assignments and deadlines, then use each protocol's restart validation. | Persistent state needs correct expiration and configuration-change handling. |
 | Use kernel IPv6 autoconfiguration under MWAN-517. | MWAN configures and observes Linux router discovery and SLAAC. | The installed kernel must satisfy the required routing and lifetime reporting before cutover. |
+| Omit AT&T authentication integration. | Preserve the existing AT&T setup until the circuit retires, then remove its obsolete configuration. | Other connections can migrate first; global networkd retirement waits until AT&T no longer depends on it. |
 
 MWAN owns configuration and policy. Linux performs the selected automatic
 address and router operations. MWAN's reconciliation must recognize those
@@ -164,7 +164,10 @@ silently introduce a second IPv6 autoconfiguration implementation.
 
 MWAN-305 owns this migration. Its completed and cancelled historical work
 remains unchanged. Host tuning, pinned-destination machinery, and the AT&T
-authentication rewrite are excluded. MWAN-341 owns firewall policy. Preserve
+authentication integration and rewrite are excluded. Generic VLAN support
+remains in scope. Do not disconnect AT&T as part of implementing this plan.
+Confirm the circuit is no longer needed before removing its configuration
+or dependencies. MWAN-341 owns firewall policy. Preserve
 its boundary and completed translation and steering behavior.
 
 MWAN-507 remains the BGP and tunnel epic. It adds capabilities to the shared
