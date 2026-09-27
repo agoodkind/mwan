@@ -140,7 +140,7 @@ func (s *wanconfigSurface) initialize(
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				s.log.ErrorContext(ctx, "wanconfig: agent poller panicked", "err", fmt.Sprint(recovered))
+				s.log.ErrorContext(ctx, "wanconfig: agent poller panicked; routing-session state is no longer refreshed", "err", fmt.Sprint(recovered))
 			}
 		}()
 		pollAgentBGP(ctx, s.log, cfg, s.store)
