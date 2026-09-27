@@ -38,14 +38,14 @@ MWAN-305 interface ownership code or live gateway configuration changed.
 
 ## Track slice execution
 
-MWAN-524 passed live testbed acceptance. MWAN-505 route repair and the first
-MWAN-521 deployment preparation merged without deployment. MWAN-516 identity
-work is in review. No interface-owner cutover has begun.
+MWAN-524 passed live testbed acceptance. MWAN-505 route repair, the first
+MWAN-521 deployment preparation, and MWAN-516 identity work merged without
+deployment. No interface-owner cutover has begun.
 
 | Ticket | Slices | Current execution state |
 | --- | --- | --- |
 | MWAN-524 | Restore the managed Astound testbed connection first. | Configs PR #522 merged. Deployment, restart, downstream traffic, balancing, and recovery passed. |
-| MWAN-516 | 516-model; 516-state | [MWAN PR #51](https://github.com/agoodkind/mwan/pull/51) contains the standalone identity change. Local checks and independent review passed at `202e230`; final CI and automated review remain pending after a wording follow-up. Shared model and state work remain. |
+| MWAN-516 | 516-model; 516-state | [MWAN PR #51](https://github.com/agoodkind/mwan/pull/51) merged the standalone identity change as `959fbd3a65955e8156f2ea6c9bf2c90febef762c`. Shared model and state work remain. |
 | MWAN-397 | 397-links | Execution has not started. |
 | MWAN-523 | 523-observation | Execution has not started. |
 | MWAN-398 | 398-addresses; 398-dhcpv4 | Execution has not started. |
@@ -64,9 +64,9 @@ work is in review. No interface-owner cutover has begun.
 ## Resume the work
 
 MWAN-524 restored Astound as a permanently managed testbed connection.
-Finish the identity review, then implement the shared interface model before
-observation and state publication. Keep the route repair and MAC discovery
-merges separate from live acceptance. No interface-owner cutover has begun.
+Implement the shared interface model before observation and state publication.
+Keep the route repair, MAC discovery, and identity merges separate from live
+acceptance. No interface-owner cutover has begun.
 
 For every handoff, record the slice, agent responsibility, exact source
 revision, agreed interfaces, owned files, current PR, last passing check,
@@ -183,8 +183,21 @@ unrelated route remained. `make docker-make TARGETS="check test"`, four
 privileged firewall tests, required CI, automated review, and independent
 static review passed. No testbed or production deployment ran.
 
+[MWAN PR #51](https://github.com/agoodkind/mwan/pull/51) assigned stable
+connection IDs independently of provider names and ASNs in the served model.
+Its signed commits were `b01c858145ebd44bb634a474ace448e37f99114b`,
+`202e230451171fbfdd429e51a3d8ff4b55328a30`,
+`13abbefe8872c935ec5050b742675824a8e9748e`, and
+`0bfca014eb4c6b4b9320d3670c999e6bea047073`. It merged as
+`959fbd3a65955e8156f2ea6c9bf2c90febef762c`. The full local check and
+test suite passed at the final head. All required CI checks passed. The
+automated reviewer approved the final head, all review threads were resolved,
+and an independent reviewer found no blocker in the final interface-key fix.
+The optional Govulncheck job repeated the GoBGP database result below. This
+PR changed no interface owner and ran no testbed or production deployment.
+
 The optional `go / Quality / Govulncheck` job failed on GO-2026-4736 for
-GoBGP v4.7.0 on PR #52 and on clean main. The
+GoBGP v4.7.0 on PRs #51 and #52 and on clean main. The
 [GitHub advisory](https://github.com/advisories/GHSA-4p9m-8gc4-rw2h) limits
 affected versions to 4.3.0 and earlier. The
 [upstream fix](https://github.com/osrg/gobgp/commit/583080a7258e22cc884162e15b078771aa2c2c80)
