@@ -54,7 +54,7 @@ No interface-owner cutover has begun.
 | MWAN-227 | 227-delegation | Execution has not started. |
 | MWAN-517 | 517-autoconfiguration; 517-dhcpv6 | Execution has not started. |
 | MWAN-518 | 518-restart | Execution has not started. |
-| MWAN-505 | 505-route-repair | [MWAN PR #52](https://github.com/agoodkind/mwan/pull/52) merged as `18941243f1e8fa3d5623a04440e4d90de796d1f4`. Namespace packet tests and the current testbed traffic battery passed. Owned-route deletion has not been repeated on the deployed release. Production acceptance remains. |
+| MWAN-505 | 505-route-repair | [MWAN PR #52](https://github.com/agoodkind/mwan/pull/52) merged as `18941243f1e8fa3d5623a04440e4d90de796d1f4`. Namespace packet tests and the deployed testbed route and rule deletion checks passed. Production acceptance remains. |
 | MWAN-521 | 521-configuration; 521-deployment | [Configs PR #527](https://github.com/agoodkind/configs/pull/527) merged as `20ad40232fa62394046b1218839e60756a6b7a22`. It moved MAC discovery before rendering. Complete role rendering and transfer remain. |
 | MWAN-522 | 522-acceptance | Execution has not started. |
 | MWAN-519 | 519-first-connection | Execution has not started. |
@@ -312,8 +312,36 @@ after health convergence and recovery on the deployed model release. It does
 not measure session survival or exact interruption duration.
 
 The deployed model still leaves interface control with networkd. MWAN-516
-state publication, MWAN-505 owned-route deletion on the deployed release,
-later interface-owner cutover, and production acceptance remain unfinished.
+state publication, later interface-owner cutover, and production acceptance
+remain unfinished.
+
+### Owned route and rule repair testbed checkpoint, September 27, 2026
+
+VM 213 ran merged MWAN commit `2c6df53` with the interface manager active.
+The owned IPv4 return route was `10.240.240.0/29 dev enmwanbr0` in table 100.
+The owned policy rule selected table 100 for mark `0x1` at priority 100.
+Before the fault, route lookup for `10.240.240.2` with mark `0x1` selected
+`enmwanbr0`, and client 225 returned IPv4 HTTP 200.
+
+The operator scheduled and verified a 60-second route restoration timer on
+VM 213, then deleted only the owned return route through the Proxmox guest
+agent. The first follow-up route query found the exact route restored. The
+interface manager journal recorded `owned return route removed` at
+14:22:56 PDT. Client 225 returned IPv4 HTTP 200. The operator stopped the
+unused timer after verification.
+
+The operator then scheduled and verified a separate 60-second rule
+restoration timer, deleted only the priority 100 rule, and queried the rules
+again. The first follow-up query found the exact rule restored. The journal
+recorded `owned policy rule removed` at 14:23:38 PDT. Marked route lookup
+again selected `enmwanbr0`, and client 225 returned IPv4 HTTP 200. The
+operator stopped the unused rule timer. Neither fallback timer executed.
+
+These observations prove live repair on the deployed release. The first
+follow-up queries found each object restored. Each guest-agent query took
+about two to three seconds. Exact repair latency was not measured. The test
+did not remove both objects together, delete a default route, or exercise
+production.
 
 ## Record future implementation results
 
