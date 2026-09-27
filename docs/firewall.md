@@ -97,7 +97,7 @@ checks set recovery separately from rule recovery.
 
 Drift detection watches the authoritative daemon configuration instead of the
 retired ruleset file. Reconciliation replaces temporary manual rule changes.
-A firewall change persists after deployment of the updated network
+A configured firewall change persists after deployment of the updated network
 configuration.
 
 ## Packet behavior
