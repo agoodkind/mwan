@@ -74,6 +74,52 @@ func TestMonitorDistinguishesSnapshotReplayFromNewAddress(t *testing.T) {
 	}
 }
 
+func TestMonitorReplaysExistingAddressBeforeItsDeletion(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	link := addObservedVeth(t, "obs-order", "obs-order-peer", "02:00:5e:00:53:79")
+	addObservedAddress(t, link, "192.0.2.79/32")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	monitor := NewMonitor(ctx, logger, MonitorConfig{Iface: "obs-order"})
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		for _, address := range snapshot.Addresses {
+			if address.CIDR == "192.0.2.79/32" {
+				return true
+			}
+		}
+		return false
+	})
+	address, err := netlink.ParseAddr("192.0.2.79/32")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.AddrDel(link, address); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	seenReplay := false
+	for {
+		select {
+		case event := <-monitor.Events:
+			if event.CIDR != "192.0.2.79/32" {
+				continue
+			}
+			if event.Kind == EvAddrAdded && event.SnapshotReplay {
+				seenReplay = true
+			}
+			if event.Kind == EvAddrDeleted {
+				if !seenReplay {
+					t.Fatal("address deletion preceded its snapshot replay")
+				}
+				return
+			}
+		case <-deadline.C:
+			t.Fatal("address deletion was not observed")
+		}
+	}
+}
+
 func TestMonitorResyncsAfterAnUnconsumedEventBurst(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	link := addObservedVeth(t, "obs-b", "obs-peer-c", "02:00:5e:00:53:72")

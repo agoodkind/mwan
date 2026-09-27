@@ -526,107 +526,10 @@ func (m *Monitor) resyncLoop(ctx context.Context) {
 		event.IfIndex = snapshot.IfIndex
 		event.ObservedAt = snapshot.ObservedAt
 		event.Snapshot = snapshot
-		replay, published := m.publishSnapshot(ctx, event, epoch)
+		published := m.publishSnapshot(ctx, event, epoch)
 		if !published && ctx.Err() != nil {
 			return
 		}
-		if replay {
-			m.replaySnapshot(ctx, snapshot)
-		}
-	}
-}
-
-func (m *Monitor) publishSnapshot(ctx context.Context, event Event, epoch uint64) (bool, bool) {
-	for {
-		m.dispatchMu.Lock()
-		m.mu.Lock()
-		m.stateMu.Lock()
-		if ctx.Err() != nil {
-			m.stateMu.Unlock()
-			m.mu.Unlock()
-			m.dispatchMu.Unlock()
-			return false, false
-		}
-		if m.bindingEpoch != epoch || !m.ready[0] || !m.ready[1] || !m.ready[2] {
-			m.markStaleLocked()
-			m.stateMu.Unlock()
-			m.mu.Unlock()
-			m.dispatchMu.Unlock()
-			return false, false
-		}
-		select {
-		case m.Events <- event:
-			if m.ifIndex != event.IfIndex || m.actualIface != event.ActualIface {
-				m.ifIndex = event.IfIndex
-				m.actualIface = event.ActualIface
-				m.bindingEpoch++
-			}
-			if m.dirty {
-				m.dirty = false
-				m.markStaleLocked()
-			} else {
-				m.stale = false
-			}
-			replay := !m.stale
-			m.stateMu.Unlock()
-			m.mu.Unlock()
-			m.dispatchMu.Unlock()
-			return replay, true
-		default:
-			m.stateMu.Unlock()
-			m.mu.Unlock()
-			m.dispatchMu.Unlock()
-			if !sleepMonitorRetry(ctx, 10*time.Millisecond) {
-				return false, false
-			}
-		}
-	}
-}
-
-func (m *Monitor) replaySnapshot(ctx context.Context, snapshot *Snapshot) {
-	m.dispatchMu.Lock()
-	defer m.dispatchMu.Unlock()
-	if snapshot.IfIndex == 0 {
-		return
-	}
-	var base Event
-	base.Iface = snapshot.Iface
-	base.ConnectionID = snapshot.ConnectionID
-	base.ActualIface = snapshot.ActualIface
-	base.IfIndex = snapshot.IfIndex
-	base.ObservedAt = snapshot.ObservedAt
-	base.SnapshotReplay = true
-	if snapshot.LinkUp {
-		event := base
-		event.Kind = EvLinkUp
-		m.emit(ctx, event)
-	}
-	for _, address := range snapshot.Addresses {
-		event := base
-		event.Kind = EvAddrAdded
-		event.Family = address.Family
-		event.CIDR = address.CIDR
-		event.Flags = address.Flags
-		event.Scope = address.Scope
-		event.PreferredLifetime = address.PreferredLifetime
-		event.ValidLifetime = address.ValidLifetime
-		event.Origin = address.Origin
-		m.emit(ctx, event)
-	}
-	for _, route := range snapshot.Routes {
-		event := base
-		event.Kind = EvRouteAdded
-		event.Family = route.Family
-		event.Dest = route.Dest
-		event.Via = route.Via
-		event.Dev = route.Dev
-		event.TableID = route.TableID
-		event.Protocol = route.Protocol
-		event.Metric = route.Metric
-		event.Scope = route.Scope
-		event.Type = route.Type
-		event.NextHops = route.NextHops
-		m.emit(ctx, event)
 	}
 }
 
