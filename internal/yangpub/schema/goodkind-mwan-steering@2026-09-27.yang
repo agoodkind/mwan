@@ -831,11 +831,11 @@ module goodkind-mwan-steering {
         }
         leaf pinned-provider {
           type string;
-          description "Provider name selected by the control-plane pin.";
+          description "This field selects a provider by name for the control-plane pin.";
         }
         leaf pinned-connection-id {
           type string;
-          description "Connection identity selected by the control-plane pin.";
+          description "This field selects a connection by ID for the control-plane pin.";
         }
         leaf pinned-source-v4 {
           type inet:ipv4-address;

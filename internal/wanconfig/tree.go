@@ -776,6 +776,15 @@ func validate(g Gateway) error {
 			return err
 		}
 	}
+	return validateConnectionIDInterfaces(g.ConnectionIDs)
+}
+
+func validateConnectionIDInterfaces(ids map[string]connectionid.ID) error {
+	for iface := range ids {
+		if err := validateKey("connection ID interface", iface); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
