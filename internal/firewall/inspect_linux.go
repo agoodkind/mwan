@@ -34,7 +34,6 @@ type kernelItem struct {
 		Name      string   `json:"name"`
 		Type      string   `json:"type"`
 		Flags     []string `json:"flags"`
-		AutoMerge bool     `json:"auto-merge"`
 	} `json:"set"`
 }
 
@@ -145,8 +144,9 @@ func checkDefinitions(readback kernelRuleset, desired Ruleset) error {
 				interval = true
 			}
 		}
-		if item.Set.Type != set.KeyType || !interval || !item.Set.AutoMerge {
-			return fmt.Errorf("incompatible set %s %s %s: expected %s interval auto-merge", set.Table.Family, set.Table.Name, set.Name, set.KeyType)
+		// nft applies auto-merge in user space and does not reliably report it back.
+		if item.Set.Type != set.KeyType || !interval {
+			return fmt.Errorf("incompatible set %s %s %s: expected %s interval", set.Table.Family, set.Table.Name, set.Name, set.KeyType)
 		}
 	}
 	return nil
@@ -183,7 +183,7 @@ func Inspect(ctx context.Context, desired Ruleset) (string, error) {
 		}
 	}
 	for _, set := range desired.Sets {
-		normalized.WriteString(set.Table.Family + " " + set.Table.Name + " set " + set.Name + " " + set.KeyType + " interval auto-merge\n")
+		normalized.WriteString(set.Table.Family + " " + set.Table.Name + " set " + set.Name + " " + set.KeyType + " interval\n")
 	}
 	return normalized.String(), nil
 }
