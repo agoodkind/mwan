@@ -11,6 +11,28 @@ The [routing specification](../superpowers/wanconfig/model.md#persistent-tunnel-
 defines approved behavior. This plan covers simulator prerequisites, not the
 entire MWAN-507 application implementation. No deployment has occurred.
 
+## Tickets and acceptance boundaries
+
+Both simulator tickets are Todo under
+[MWAN-507](https://tack.home.goodkind.io/browse/MWAN-507).
+
+| Ticket | Assigned work |
+| --- | --- |
+| [MWAN-525](https://tack.home.goodkind.io/browse/MWAN-525) | Build the shared inventory and infrastructure in tasks 1 and 2, the Astound 6in4 endpoint without BGP in task 3, and its checks and activation in tasks 5 and 6. |
+| [MWAN-526](https://tack.home.goodkind.io/browse/MWAN-526) | Build the BGP resources in tasks 1 and 2, native Etheric and all three tunnel BGP arrangements in task 4, and their checks and activation in tasks 5 and 6. This ticket depends on MWAN-525's shared infrastructure. |
+
+Complete these tickets after their merged simulator infrastructure passes
+deployed infrastructure checks. Include executable MWAN acceptance checks,
+but record application acceptance separately when the required features exist.
+MWAN-510/511 use the Astound endpoint. MWAN-509/511/512 use the applicable BGP
+scenarios. MWAN-513 owns combined failover and balancing acceptance.
+These acceptance dependencies do not block application code development or
+require application tickets to close before simulator construction.
+
+[MWAN-524](https://tack.home.goodkind.io/browse/MWAN-524) restores the ordinary
+managed Astound connection first. Complete it before live Astound tunnel
+acceptance; simulator preparation can proceed independently.
+
 ## Current behavior
 
 The specification revision is MWAN `b9693a7`; inspected Configs main is
@@ -277,9 +299,11 @@ results, and outstanding acceptance. Update Tack states only from evidence.
 Steps:
 
 1. Review the inventory contract and exclusive file ownership before assigning
-   implementers. Create a Configs PR for inventory/resources, a dependent PR
-   for Astound tunnel behavior and tests, and a dependent PR for BGP variants
-   and tests. Use Graphite for this stack. Preserve required AI reviews.
+   implementers. Create a Configs PR for inventory/resources under MWAN-525,
+   with BGP-specific resources assigned to MWAN-526. Create a dependent PR
+   for Astound tunnel behavior and tests under MWAN-525, and a dependent PR
+   for BGP variants and tests under MWAN-526. Use Graphite for this stack.
+   Preserve required AI reviews.
 2. Permit independent infrastructure, remote configuration, and test work only
    after shared contracts are settled. The coordinator owns shared inventory
    and integration. An independent reviewer verifies each patch and its
@@ -314,3 +338,5 @@ September 26, 2026: The plan is written against the revisions above. No code
 implementation, infrastructure apply, deployment, or packet acceptance has
 occurred. The first task is inventory review and identity reservation.
 MWAN-524 remains the prerequisite for live Astound tunnel acceptance.
+MWAN-525 and MWAN-526 are filed as Todo under MWAN-507. MWAN-526 depends on
+MWAN-525. Their task assignments and acceptance boundaries appear above.
