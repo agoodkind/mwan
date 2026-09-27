@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/vishvananda/netlink/nl"
 	"golang.org/x/sys/unix"
@@ -20,47 +21,82 @@ import (
 // StartRuleMonitor observes policy-rule removal once for the caller's network
 // namespace. Rule messages have no interface identity.
 func StartRuleMonitor(ctx context.Context, log *slog.Logger, handle func(RuleEvent)) error {
-	socket, err := nl.Subscribe(unix.NETLINK_ROUTE,
-		uint(unix.RTNLGRP_IPV4_RULE), uint(unix.RTNLGRP_IPV6_RULE))
+	socket, err := subscribeRuleSocket(log)
 	if err != nil {
-		return fmt.Errorf("subscribe policy rules: %w", err)
-	}
-	if err := socket.SetReceiveTimeout(&unix.Timeval{Usec: 250000}); err != nil {
-		socket.Close()
-		return fmt.Errorf("set policy-rule receive timeout: %w", err)
+		return err
 	}
 	go func() {
-		defer socket.Close()
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				log.ErrorContext(ctx, "policy-rule monitor panicked", "err", fmt.Errorf("panic: %v", recovered))
 			}
 		}()
-		for ctx.Err() == nil {
-			messages, sender, err := socket.Receive()
-			if errors.Is(err, unix.EAGAIN) {
-				continue
-			}
-			if err != nil {
-				log.WarnContext(ctx, "policy-rule subscription failed", "err", err)
-				return
-			}
-			if sender.Pid != 0 {
-				continue
-			}
-			for _, message := range messages {
-				event, err := UnmarshalRuleDeletion(log, message)
-				if err != nil {
-					log.WarnContext(ctx, "policy-rule event unreadable", "err", err)
-					continue
-				}
-				if event.Family != "" {
-					handle(event)
-				}
-			}
-		}
+		runRuleMonitor(ctx, log, handle, socket)
 	}()
 	return nil
+}
+
+func subscribeRuleSocket(log *slog.Logger) (*nl.NetlinkSocket, error) {
+	socket, err := nl.Subscribe(unix.NETLINK_ROUTE,
+		uint(unix.RTNLGRP_IPV4_RULE), uint(unix.RTNLGRP_IPV6_RULE))
+	if err != nil {
+		log.Warn("policy-rule subscribe failed", "err", err)
+		return nil, fmt.Errorf("subscribe policy rules: %w", err)
+	}
+	if err := socket.SetReceiveTimeout(&unix.Timeval{Usec: 250000}); err != nil {
+		socket.Close()
+		log.Warn("policy-rule timeout setup failed", "err", err)
+		return nil, fmt.Errorf("set policy-rule receive timeout: %w", err)
+	}
+	return socket, nil
+}
+
+func runRuleMonitor(ctx context.Context, log *slog.Logger, handle func(RuleEvent), socket *nl.NetlinkSocket) {
+	backoff := 100 * time.Millisecond
+	defer func() {
+		if socket != nil {
+			socket.Close()
+		}
+	}()
+	for ctx.Err() == nil {
+		messages, sender, err := socket.Receive()
+		if errors.Is(err, unix.EAGAIN) {
+			continue
+		}
+		if err != nil {
+			log.WarnContext(ctx, "policy-rule subscription failed", "err", err)
+			socket.Close()
+			for ctx.Err() == nil {
+				if !sleepMonitorRetry(ctx, backoff) {
+					return
+				}
+				socket, err = subscribeRuleSocket(log)
+				if err == nil {
+					backoff = 100 * time.Millisecond
+					var event RuleEvent
+					event.Resync = true
+					handle(event)
+					break
+				}
+				log.WarnContext(ctx, "policy-rule resubscribe failed", "err", err)
+				backoff = min(backoff*2, 5*time.Second)
+			}
+			continue
+		}
+		if sender.Pid != 0 {
+			continue
+		}
+		for _, message := range messages {
+			event, err := UnmarshalRuleDeletion(log, message)
+			if err != nil {
+				log.WarnContext(ctx, "policy-rule event unreadable", "err", err)
+				continue
+			}
+			if event.Family != "" {
+				handle(event)
+			}
+		}
+	}
 }
 
 // UnmarshalRuleDeletion decodes one kernel policy-rule deletion message.
@@ -81,7 +117,7 @@ func UnmarshalRuleDeletion(log *slog.Logger, message syscall.NetlinkMessage) (Ru
 		return empty, nil
 	}
 	event := RuleEvent{
-		Family: family, TableID: int(message.Data[4]), Priority: 0,
+		Resync: false, Family: family, TableID: int(message.Data[4]), Priority: 0,
 		From: "", Mark: 0, IifName: "", UIDRange: "",
 	}
 	attributes, err := nl.ParseRouteAttr(message.Data[unix.SizeofRtMsg:])
