@@ -7,6 +7,9 @@ are in [AGENTS.md](AGENTS.md).
 
 ## Documentation
 
+Read the [gateway architecture](docs/mwan.md) for provider selection,
+routing, failover, and planned designs.
+
 The [documentation guide](docs/README.md) includes MWAN specifications,
 implementation plans, runbooks, and execution records copied from Configs.
 It also explains which commands still require the Configs checkout.
