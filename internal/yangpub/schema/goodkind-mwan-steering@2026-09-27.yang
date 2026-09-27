@@ -748,7 +748,8 @@ module goodkind-mwan-steering {
           enum information-request;
         }
         description
-          "The DHCPv6 exchange to start without a router advertisement.";
+          "This field selects whether and how the client starts DHCPv6
+           without a router advertisement.";
       }
       leaf use-dns {
         type boolean;
