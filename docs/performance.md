@@ -13,7 +13,7 @@ hardware.
 ## Attachment paths
 
 The WAN attachment and the router attachment are independent. These diagrams
-show the three paths used in the architecture example.
+show PCI passthrough, virtual WAN, and host bridge attachment.
 
 ### ISP NIC passed to the gateway
 
@@ -74,6 +74,6 @@ not measure faster links or isolate the cause of the lower download result.
 
 ## Planned investigation
 
-TODO: MWAN-527 compares host and LXC ownership of routing and packet rules
-for a proposed XR11 Broadcom 57504 deployment. Measure bridge transfer cost
-and hardware offload separately before selecting a design.
+The proposed XR11 Broadcom 57504 deployment needs a decision on whether the
+host or an LXC owns routing and packet rules. MWAN-527 tracks measurements of
+bridge transfer cost and hardware offload for that decision.
