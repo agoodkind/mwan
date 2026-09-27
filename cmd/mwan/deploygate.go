@@ -81,8 +81,8 @@ const (
 	gateModeInspectFirewall deployGateMode = "inspect-firewall"
 )
 
-// traceIDPattern bounds the trace id because it lands in the verdict file
-// and in a systemd unit name; anything outside this shape is operator error.
+// traceIDPattern limits trace IDs written to verdict files and systemd unit names.
+// Values outside this pattern are invalid operator input.
 var traceIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 // gateNotRun marks a verdict slot whose gate deliberately did not run: the
