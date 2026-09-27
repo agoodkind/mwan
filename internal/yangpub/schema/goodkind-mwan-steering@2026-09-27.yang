@@ -273,8 +273,8 @@ module goodkind-mwan-steering {
         type string;
         mandatory true;
         description
-          "The provider display name. Connection identity selects
-           routing, health, translation, and steering state.";
+          "This field gives the provider a display name. Connection
+           identity selects routing, health, translation, and steering state.";
       }
       leaf table-id {
         type uint32 {
@@ -420,8 +420,9 @@ module goodkind-mwan-steering {
     leaf connection-id {
       type string;
       description
-        "Stable connection identity. When absent, a provider uses its
-         provider name and another interface uses its interface name.";
+        "This field assigns a stable connection identity. When absent,
+         a provider uses its provider name and another interface uses
+         its interface name.";
     }
 
     leaf link-files {
