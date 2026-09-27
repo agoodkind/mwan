@@ -118,7 +118,8 @@ type RuleEvent struct {
 }
 
 // MonitorConfig configures one Monitor instance. A typed connection matches
-// stable link identity. Legacy callers match the configured interface name.
+// its configured link identity. Virtual links require the configured name.
+// Legacy callers match the configured interface name.
 type MonitorConfig struct {
 	Iface string
 	// Connection enables stable configured identity matching. Nil retains legacy name matching.
@@ -132,21 +133,22 @@ type MonitorConfig struct {
 // Address, route, and link subscriptions retry after errors. A gap emits a
 // complete snapshot before deltas resume. Cancellation closes subscriptions.
 type Monitor struct {
-	cfg         MonitorConfig
-	log         *slog.Logger
-	Events      chan Event
-	done        chan struct{}
-	doneMu      sync.Mutex
-	closed      bool
-	dispatchMu  sync.Mutex
-	mu          sync.RWMutex
-	ifIndex     int
-	actualIface string
-	stateMu     sync.Mutex
-	stale       bool
-	dirty       bool
-	ready       [3]bool
-	resync      chan struct{}
+	cfg          MonitorConfig
+	log          *slog.Logger
+	Events       chan Event
+	done         chan struct{}
+	doneMu       sync.Mutex
+	closed       bool
+	dispatchMu   sync.Mutex
+	mu           sync.RWMutex
+	ifIndex      int
+	actualIface  string
+	bindingEpoch uint64
+	stateMu      sync.Mutex
+	stale        bool
+	dirty        bool
+	ready        [3]bool
+	resync       chan struct{}
 }
 
 // NewMonitor returns a started Monitor. Cancel ctx to stop it cleanly.
@@ -459,6 +461,7 @@ func (m *Monitor) setSubscriptionReady(index int, ready bool) {
 		m.mu.Lock()
 		m.ifIndex = 0
 		m.actualIface = ""
+		m.bindingEpoch++
 		m.mu.Unlock()
 		m.stateMu.Lock()
 		m.ready[index] = false
@@ -502,7 +505,7 @@ func (m *Monitor) resyncLoop(ctx context.Context) {
 		if !ready {
 			continue
 		}
-		snapshot, err := m.readSnapshot()
+		snapshot, epoch, err := m.readSnapshot()
 		if err != nil {
 			m.log.WarnContext(ctx, "monitor: snapshot failed", "err", err)
 			if !sleepMonitorRetry(ctx, backoff) {
@@ -523,38 +526,66 @@ func (m *Monitor) resyncLoop(ctx context.Context) {
 		event.IfIndex = snapshot.IfIndex
 		event.ObservedAt = snapshot.ObservedAt
 		event.Snapshot = snapshot
-		m.dispatchMu.Lock()
-		if ctx.Err() != nil {
-			m.dispatchMu.Unlock()
+		replay, published := m.publishSnapshot(ctx, event, epoch)
+		if !published && ctx.Err() != nil {
 			return
 		}
-		select {
-		case m.Events <- event:
-		case <-ctx.Done():
-			m.dispatchMu.Unlock()
-			return
-		}
-		m.dispatchMu.Unlock()
-		m.stateMu.Lock()
-		if m.ready[0] && m.ready[1] && m.ready[2] {
-			if m.dirty {
-				m.dirty = false
-				m.markStaleLocked()
-			} else {
-				m.stale = false
-			}
-		} else {
-			m.markStaleLocked()
-		}
-		replay := !m.stale
-		m.stateMu.Unlock()
 		if replay {
 			m.replaySnapshot(ctx, snapshot)
 		}
 	}
 }
 
+func (m *Monitor) publishSnapshot(ctx context.Context, event Event, epoch uint64) (bool, bool) {
+	for {
+		m.dispatchMu.Lock()
+		m.mu.Lock()
+		m.stateMu.Lock()
+		if ctx.Err() != nil {
+			m.stateMu.Unlock()
+			m.mu.Unlock()
+			m.dispatchMu.Unlock()
+			return false, false
+		}
+		if m.bindingEpoch != epoch || !m.ready[0] || !m.ready[1] || !m.ready[2] {
+			m.markStaleLocked()
+			m.stateMu.Unlock()
+			m.mu.Unlock()
+			m.dispatchMu.Unlock()
+			return false, false
+		}
+		select {
+		case m.Events <- event:
+			if m.ifIndex != event.IfIndex || m.actualIface != event.ActualIface {
+				m.ifIndex = event.IfIndex
+				m.actualIface = event.ActualIface
+				m.bindingEpoch++
+			}
+			if m.dirty {
+				m.dirty = false
+				m.markStaleLocked()
+			} else {
+				m.stale = false
+			}
+			replay := !m.stale
+			m.stateMu.Unlock()
+			m.mu.Unlock()
+			m.dispatchMu.Unlock()
+			return replay, true
+		default:
+			m.stateMu.Unlock()
+			m.mu.Unlock()
+			m.dispatchMu.Unlock()
+			if !sleepMonitorRetry(ctx, 10*time.Millisecond) {
+				return false, false
+			}
+		}
+	}
+}
+
 func (m *Monitor) replaySnapshot(ctx context.Context, snapshot *Snapshot) {
+	m.dispatchMu.Lock()
+	defer m.dispatchMu.Unlock()
 	if snapshot.IfIndex == 0 {
 		return
 	}
@@ -599,18 +630,18 @@ func (m *Monitor) replaySnapshot(ctx context.Context, snapshot *Snapshot) {
 	}
 }
 
-func (m *Monitor) readSnapshot() (*Snapshot, error) {
+func (m *Monitor) readSnapshot() (*Snapshot, uint64, error) {
 	snapshot := new(Snapshot)
 	snapshot.Iface = m.cfg.Iface
 	snapshot.ObservedAt = realClock{}.Now()
+	m.mu.RLock()
+	epoch := m.bindingEpoch
+	m.mu.RUnlock()
 	var link netlink.Link
 	var err error
 	if m.cfg.Connection != nil {
 		snapshot.ConnectionID = m.cfg.Connection.ID.String()
-		m.mu.RLock()
-		priorIndex := m.ifIndex
-		m.mu.RUnlock()
-		link, err = resolveConnectionLinkAtIndex(m.log, *m.cfg.Connection, priorIndex)
+		link, err = resolveConnectionLink(m.log, *m.cfg.Connection)
 	} else {
 		link, err = netlink.LinkByName(m.cfg.Iface)
 		if IsLinkNotFound(err) {
@@ -618,35 +649,24 @@ func (m *Monitor) readSnapshot() (*Snapshot, error) {
 		}
 	}
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if link == nil {
-		m.setSnapshotBinding(0, "")
-		return snapshot, nil
+		return snapshot, epoch, nil
 	}
 	attrs := link.Attrs()
-	m.setSnapshotBinding(attrs.Index, attrs.Name)
 	snapshot.IfIndex = attrs.Index
 	snapshot.ActualIface = attrs.Name
 	snapshot.LinkUp = attrs.OperState == netlink.OperUp || attrs.OperState == netlink.OperUnknown
 	snapshot.Addresses, err = listAddrsNetlink(m.log, link)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	snapshot.Routes, err = m.snapshotRoutes(attrs.Index)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return snapshot, nil
-}
-
-func (m *Monitor) setSnapshotBinding(index int, name string) {
-	m.dispatchMu.Lock()
-	defer m.dispatchMu.Unlock()
-	m.mu.Lock()
-	m.ifIndex = index
-	m.actualIface = name
-	m.mu.Unlock()
+	return snapshot, epoch, nil
 }
 
 func (m *Monitor) snapshotRoutes(index int) ([]CurrentRoute, error) {
@@ -862,6 +882,9 @@ func (m *Monitor) linkUpdateToEvent(u netlink.LinkUpdate) Event {
 	}
 	actualIface := m.actualIface
 	index := m.ifIndex
+	if previousIndex != index || previousIface != actualIface {
+		m.bindingEpoch++
+	}
 	m.mu.Unlock()
 	if previousIndex != index || previousIface != actualIface {
 		m.invalidateBinding()
@@ -910,6 +933,9 @@ func (m *Monitor) watchesIndex(index int) bool {
 		m.rebindConfiguredLocked()
 		matched := index == m.ifIndex && m.ifIndex != 0
 		changed := previousIndex != m.ifIndex || previousIface != m.actualIface
+		if changed {
+			m.bindingEpoch++
+		}
 		m.mu.Unlock()
 		if changed {
 			m.invalidateBinding()
@@ -928,6 +954,7 @@ func (m *Monitor) watchesIndex(index int) bool {
 	}
 	m.ifIndex = index
 	m.actualIface = link.Attrs().Name
+	m.bindingEpoch++
 	m.mu.Unlock()
 	m.invalidateBinding()
 	return true
@@ -940,7 +967,7 @@ func (m *Monitor) invalidateBinding() {
 }
 
 func (m *Monitor) rebindConfiguredLocked() {
-	link, err := resolveConnectionLinkAtIndex(m.log, *m.cfg.Connection, m.ifIndex)
+	link, err := resolveConnectionLink(m.log, *m.cfg.Connection)
 	if err != nil {
 		m.log.Warn("monitor: configured link match failed", "err", err)
 	}
