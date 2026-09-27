@@ -10,7 +10,7 @@ are Done in Tack. MWAN-341 remains In Progress until its ledger merges.
 
 | Check | Recorded result |
 | --- | --- |
-| Fresh-flow provider selection | IPv4 selected the two providers at 55/45. IPv6 selected them at 49/51. |
+| First fresh-flow sample | The first run recorded selections from both providers, but its record did not preserve which provider had each count. The attributed final-release sample appears below. |
 | AT&T provider pin | 20/20 attempts selected AT&T. |
 | NPT hairpin traffic | Pings succeeded 3/3 times for each tested internal path. |
 | Daemon stop and restart | Recovery passed. |
