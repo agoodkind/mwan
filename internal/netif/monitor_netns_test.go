@@ -179,11 +179,24 @@ func TestMonitorStopsReportingAfterCancellation(t *testing.T) {
 	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
 		return snapshot.IfIndex == link.Attrs().Index
 	})
+	addObservedAddress(t, link, "192.0.2.74/32")
+	queuedDeadline := time.Now().Add(2 * time.Second)
+	for len(monitor.Events) == 0 && time.Now().Before(queuedDeadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if len(monitor.Events) == 0 {
+		t.Fatal("monitor did not queue an event before cancellation")
+	}
 	cancel()
 	select {
 	case <-monitor.done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("monitor did not stop after cancellation")
+	}
+	select {
+	case event := <-monitor.Events:
+		t.Fatalf("monitor retained a queued event after cancellation: %+v", event)
+	default:
 	}
 	addObservedAddress(t, link, "192.0.2.75/32")
 	deadline := time.NewTimer(100 * time.Millisecond)
@@ -198,6 +211,26 @@ func TestMonitorStopsReportingAfterCancellation(t *testing.T) {
 			return
 		}
 	}
+}
+
+func TestMonitorSnapshotsLinkAppearanceAndDeletion(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	monitor := NewMonitor(ctx, logger, MonitorConfig{Iface: "obs-late"})
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == 0
+	})
+	link := addObservedVeth(t, "obs-late", "obs-late-peer", "02:00:5e:00:53:78")
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == link.Attrs().Index && snapshot.ActualIface == "obs-late"
+	})
+	if err := netlink.LinkDel(link); err != nil {
+		t.Fatal(err)
+	}
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == 0
+	})
 }
 
 func TestMonitorRejectsAmbiguousPhysicalAndWrongVirtualLinks(t *testing.T) {
@@ -280,6 +313,77 @@ func TestMonitorRejectsAmbiguousPhysicalAndWrongVirtualLinks(t *testing.T) {
 	})
 	if bridge.IfIndex() != 0 {
 		t.Fatalf("VLAN was accepted as a bridge at index %d", bridge.IfIndex())
+	}
+}
+
+func TestMonitorKeepsVLANIdentityAcrossRenameAndDropsDeletedIndex(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	parent := &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "obs-vparent"}}
+	if err := netlink.LinkAdd(parent); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = netlink.LinkDel(parent) })
+	parentLink, err := netlink.LinkByName("obs-vparent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := &netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "obs-vchild", ParentIndex: parentLink.Attrs().Index}, VlanId: 109}
+	if err := netlink.LinkAdd(first); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = netlink.LinkDel(first) })
+	firstLink, err := netlink.LinkByName("obs-vchild")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	monitor := NewMonitor(ctx, logger, MonitorConfig{
+		Iface: "obs-vchild",
+		Connection: &interfaceintent.Connection{
+			ID: "vlan-stable", Name: "obs-vchild",
+			Link: &interfaceintent.Link{Kind: interfaceintent.KindVLAN, VLAN: &interfaceintent.VLAN{Parent: "obs-vparent", ID: 109}},
+		},
+	})
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == firstLink.Attrs().Index
+	})
+	if err := netlink.LinkSetName(firstLink, "obs-vrenamed"); err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.LinkSetName(parentLink, "obs-prenamed"); err != nil {
+		t.Fatal(err)
+	}
+	addObservedAddress(t, firstLink, "192.0.2.109/32")
+	renamed := waitObservedAddress(t, monitor.Events, "192.0.2.109/32")
+	if renamed.ConnectionID != "vlan-stable" || renamed.ActualIface != "obs-vrenamed" || renamed.IfIndex != firstLink.Attrs().Index {
+		t.Fatalf("renamed VLAN identity = %+v", renamed)
+	}
+	if err := netlink.LinkDel(firstLink); err != nil {
+		t.Fatal(err)
+	}
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == 0
+	})
+	if err := netlink.LinkSetName(parentLink, "obs-vparent"); err != nil {
+		t.Fatal(err)
+	}
+	second := &netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "obs-vchild", ParentIndex: parentLink.Attrs().Index}, VlanId: 109}
+	if err := netlink.LinkAdd(second); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = netlink.LinkDel(second) })
+	secondLink, err := netlink.LinkByName("obs-vchild")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secondLink.Attrs().Index == firstLink.Attrs().Index {
+		t.Fatal("replacement VLAN reused the deleted index")
+	}
+	addObservedAddress(t, secondLink, "192.0.2.110/32")
+	recreated := waitObservedAddress(t, monitor.Events, "192.0.2.110/32")
+	if recreated.ConnectionID != "vlan-stable" || recreated.IfIndex != secondLink.Attrs().Index {
+		t.Fatalf("recreated VLAN identity = %+v", recreated)
 	}
 }
 

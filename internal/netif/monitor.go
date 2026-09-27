@@ -220,12 +220,23 @@ func (m *Monitor) startWorker(
 // so the three subscription goroutines all see one signal.
 func (m *Monitor) shutdownOnCtx(ctx context.Context) {
 	<-ctx.Done()
+	m.dispatchMu.Lock()
+	defer m.dispatchMu.Unlock()
 	m.doneMu.Lock()
 	defer m.doneMu.Unlock()
 	if m.closed {
 		return
 	}
 	m.closed = true
+	m.stateMu.Lock()
+	for draining := true; draining; {
+		select {
+		case <-m.Events:
+		default:
+			draining = false
+		}
+	}
+	m.stateMu.Unlock()
 	close(m.done)
 	m.log.DebugContext(ctx, "monitor: ctx cancelled, done closed; subscribe goroutines will exit")
 }
@@ -404,8 +415,14 @@ func (m *Monitor) subscribeLink(ctx context.Context) {
 // emit reports deltas while subscriptions are current. Overflow schedules
 // a complete kernel snapshot before delta delivery resumes.
 func (m *Monitor) emit(ctx context.Context, ev Event) {
+	if ctx.Err() != nil {
+		return
+	}
 	m.stateMu.Lock()
 	defer m.stateMu.Unlock()
+	if ctx.Err() != nil {
+		return
+	}
 	if m.stale {
 		m.dirty = true
 		return
@@ -438,13 +455,20 @@ func (m *Monitor) markStaleLocked() {
 }
 
 func (m *Monitor) setSubscriptionReady(index int, ready bool) {
+	if !ready {
+		m.mu.Lock()
+		m.ifIndex = 0
+		m.actualIface = ""
+		m.mu.Unlock()
+		m.stateMu.Lock()
+		m.ready[index] = false
+		m.markStaleLocked()
+		m.stateMu.Unlock()
+		return
+	}
 	m.stateMu.Lock()
 	defer m.stateMu.Unlock()
 	m.ready[index] = ready
-	if !ready {
-		m.markStaleLocked()
-		return
-	}
 	if m.ready[0] && m.ready[1] && m.ready[2] && m.stale {
 		select {
 		case m.resync <- struct{}{}:
@@ -499,11 +523,18 @@ func (m *Monitor) resyncLoop(ctx context.Context) {
 		event.IfIndex = snapshot.IfIndex
 		event.ObservedAt = snapshot.ObservedAt
 		event.Snapshot = snapshot
+		m.dispatchMu.Lock()
+		if ctx.Err() != nil {
+			m.dispatchMu.Unlock()
+			return
+		}
 		select {
 		case m.Events <- event:
 		case <-ctx.Done():
+			m.dispatchMu.Unlock()
 			return
 		}
+		m.dispatchMu.Unlock()
 		m.stateMu.Lock()
 		if m.ready[0] && m.ready[1] && m.ready[2] {
 			if m.dirty {
@@ -576,7 +607,10 @@ func (m *Monitor) readSnapshot() (*Snapshot, error) {
 	var err error
 	if m.cfg.Connection != nil {
 		snapshot.ConnectionID = m.cfg.Connection.ID.String()
-		link, err = resolveConnectionLink(m.log, *m.cfg.Connection)
+		m.mu.RLock()
+		priorIndex := m.ifIndex
+		m.mu.RUnlock()
+		link, err = resolveConnectionLinkAtIndex(m.log, *m.cfg.Connection, priorIndex)
 	} else {
 		link, err = netlink.LinkByName(m.cfg.Iface)
 		if IsLinkNotFound(err) {
@@ -813,6 +847,7 @@ func (m *Monitor) decorate(event Event) Event {
 func (m *Monitor) linkUpdateToEvent(u netlink.LinkUpdate) Event {
 	m.mu.Lock()
 	previousIndex := m.ifIndex
+	previousIface := m.actualIface
 	if m.cfg.Connection != nil {
 		m.rebindConfiguredLocked()
 	} else if m.ifIndex == 0 && u.Header.Type == unix.RTM_NEWLINK && u.Attrs() != nil && u.Attrs().Name == m.cfg.Iface {
@@ -828,6 +863,9 @@ func (m *Monitor) linkUpdateToEvent(u netlink.LinkUpdate) Event {
 	actualIface := m.actualIface
 	index := m.ifIndex
 	m.mu.Unlock()
+	if previousIndex != index || previousIface != actualIface {
+		m.invalidateBinding()
+	}
 	if !matched {
 		return unknownEvent()
 	}
@@ -866,25 +904,43 @@ func (m *Monitor) watchesIndex(index int) bool {
 		return false
 	}
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	previousIndex := m.ifIndex
+	previousIface := m.actualIface
 	if m.cfg.Connection != nil {
 		m.rebindConfiguredLocked()
-		return index == m.ifIndex && m.ifIndex != 0
+		matched := index == m.ifIndex && m.ifIndex != 0
+		changed := previousIndex != m.ifIndex || previousIface != m.actualIface
+		m.mu.Unlock()
+		if changed {
+			m.invalidateBinding()
+		}
+		return matched
 	}
 	if m.ifIndex != 0 {
-		return index == m.ifIndex
+		matched := index == m.ifIndex
+		m.mu.Unlock()
+		return matched
 	}
 	link, err := netlink.LinkByIndex(index)
 	if err != nil || link.Attrs() == nil || link.Attrs().Name != m.cfg.Iface {
+		m.mu.Unlock()
 		return false
 	}
 	m.ifIndex = index
 	m.actualIface = link.Attrs().Name
+	m.mu.Unlock()
+	m.invalidateBinding()
 	return true
 }
 
+func (m *Monitor) invalidateBinding() {
+	m.stateMu.Lock()
+	m.markStaleLocked()
+	m.stateMu.Unlock()
+}
+
 func (m *Monitor) rebindConfiguredLocked() {
-	link, err := resolveConnectionLink(m.log, *m.cfg.Connection)
+	link, err := resolveConnectionLinkAtIndex(m.log, *m.cfg.Connection, m.ifIndex)
 	if err != nil {
 		m.log.Warn("monitor: configured link match failed", "err", err)
 	}
