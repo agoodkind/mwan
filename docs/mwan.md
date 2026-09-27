@@ -4,7 +4,8 @@ This overview is for network operators and developers working on MWAN. It
 explains the current gateway, its daemons and deployment safeguards, and
 planned routing changes.
 
-MWAN lets OPNsense keep its ordinary firewall rules while a separate gateway
+MWAN is a Linux gateway that manages multiple internet providers and failover.
+It lets OPNsense keep its ordinary firewall rules while a separate gateway
 selects the internet provider for each connection.
 
 ## Why it was built
