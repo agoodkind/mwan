@@ -468,6 +468,7 @@ func printDeployGateUsage() {
 			" | check-owned-addresses"+
 			" | check-network <network_json> <schema_dir>"+
 			" | check-firewall <network_json> <schema_dir>"+
+			" | inspect-firewall <network_json> <schema_dir>"+
 			" | wait-reboot <vmid> <old_boot_id> <seconds>"+
 			" | wait-egress <seconds> <families> <consecutive_rounds>"+
 			" | wait-deploy <vmid> <old_boot_id> <reboot_seconds>"+
