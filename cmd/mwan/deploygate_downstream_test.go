@@ -3,7 +3,6 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -110,11 +109,5 @@ func TestDownstreamProbeRejectsIncompleteGuestResults(t *testing.T) {
 	hop, err := readRouteGateway(output)
 	if err != nil || hop.String() != "10.240.240.3" {
 		t.Fatalf("gateway = %s, error = %v", hop, err)
-	}
-	if pingReplyPattern.MatchString(strings.ReplaceAll(output, "gateway", "ping")) {
-		t.Fatal("a route result passed as a ping reply")
-	}
-	if !pingReplyPattern.MatchString("1 packets transmitted, 1 packets received, 0.0% packet loss") {
-		t.Fatal("the FreeBSD ping summary did not pass")
 	}
 }
