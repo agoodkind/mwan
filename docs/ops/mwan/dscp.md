@@ -125,7 +125,6 @@ This procedure verifies that OPNsense CS1 tagging causes MWAN to assign
    ```bash
    mwan deploy-gate inspect-firewall /etc/mwan/network.json /usr/local/share/wanconfig/yang
    ```
-   The command fails when the configured rules differ from the current kernel.
 5. Restart Hulu on the device to create new connections. Check `conntrack -L`
    on MWAN for `mark=1` across the changing CDN destinations. Confirm that
    untagged traffic still load-balances.

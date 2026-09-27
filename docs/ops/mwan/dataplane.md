@@ -8,8 +8,8 @@ translation, and marking rules. The `npt` module owns `table ip6 nat` and the
 IPv6 prefix translator. The `wan.routes` module owns `ip rule` and the per-WAN
 routing tables. The `health` module produces WAN health verdicts. The
 `steering` module assigns new connections to eligible providers. A health
-transition requests an immediate reconcile. A failed WAN does not have to
-wait for a periodic tick before routing changes.
+transition requests an immediate reconcile that updates routing before the
+next periodic tick.
 
 ## Shared per-WAN foundation
 
@@ -31,8 +31,9 @@ thrash.
 ## npt ifmgr module
 
 The `npt` module creates and maintains `table ip6 nat`. It runs after the
-firewall module. Its IPv4 translation readiness check reads the installed
-IPv4 rules. It self-disables when the network configuration lists no WANs.
+firewall module. The `npt` module reads the installed IPv4 firewall rules to
+determine IPv4 translation readiness. It self-disables when the network
+configuration lists no WANs.
 
 For delegated NPT, the module derives each configured external prefix from
 the live DHCPv6-PD delegation on that WAN's interface. It does not substitute
@@ -75,8 +76,8 @@ Failure modes worth knowing:
   `mwan-ifmgr@wan` logs for the NPT reconcile result. The module creates
   missing structures on its next reconcile.
 - PCI and virtio devices can appear after the daemon starts. AT&T 802.1X
-  authentication can also finish later. Interface events and periodic
-  reconciliation process those changes.
+  authentication can also finish later. The daemon re-evaluates those
+  interfaces on interface events and periodic ticks.
 
 For terminology, prefer **healthy / unhealthy / unknown** for WAN state. Avoid
 **up / down** for health, because that conflicts with `ip link` administrative
