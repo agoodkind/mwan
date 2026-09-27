@@ -185,7 +185,7 @@ type ifmgrFlags struct {
 func parseIfMgrFlags() ifmgrFlags {
 	fs := flag.NewFlagSet("ifmgr", flag.ContinueOnError)
 	role := fs.String("role", "", "ifmgr role (overrides cfg.IfMgr.Role; valid: see --help)")
-	_ = fs.String("config", "", "TOML path consumed by the top-level loader")
+	_ = fs.String("config", "", "Set the TOML path for the top-level loader.")
 	debug := fs.Bool("debug", false, "enable DEBUG logging")
 	dryRun := fs.Bool("dry-run", false, "log mutating ops instead of applying (TODO: not yet plumbed to netif)")
 	_ = fs.Parse(os.Args[1:])
@@ -301,7 +301,7 @@ func buildIfMgrDaemonConfig(cfg *config.Config, role string) (ifmgr.DaemonConfig
 }
 
 // parseNetworkConfig validates provider settings without writing network files.
-// The caller validates module settings before it installs those files.
+// runIfMgr validates module settings before writeNetworkConfig installs the network files.
 func parseNetworkConfig(
 	ctx context.Context,
 	log *slog.Logger,
