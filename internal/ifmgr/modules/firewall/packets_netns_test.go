@@ -326,7 +326,7 @@ func assertPacketGRE(t *testing.T, gateway, sourceNamespace netns.NsHandle, sour
 	if !accepted && readError == nil {
 		t.Fatalf("GRE from %s was accepted from %s", source, address)
 	}
-	if accepted && !strings.HasPrefix(address.String(), source) {
+	if accepted && address.String() != source {
 		t.Fatalf("GRE source = %s, want %s", address, source)
 	}
 }
