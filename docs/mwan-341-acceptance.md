@@ -1,10 +1,9 @@
 # MWAN-341 acceptance record
 
-The testbed deployment used merged MWAN main `ab7543a` and merged Configs
-main `d2aeefe2`. Production deployed the same MWAN revision from merged
-Configs main. Ticket reconciliation remains pending.
-The deployment gate still needs a downstream probe before MWAN-354 and the
-epic can close.
+The first testbed and production deployments used merged MWAN main `ab7543a`
+and merged Configs main `d2aeefe2`. A second testbed deploy used MWAN
+`ff82fbc` and Configs `b53bcb7` to verify the corrected downstream gate.
+Production still runs the first release. Ticket reconciliation remains pending.
 
 ## Testbed results
 
@@ -22,18 +21,25 @@ epic can close.
 | DSCP packets | Twenty IPv4 and twenty IPv6 requests marked CS1 succeeded. AT&T simulator ingress captured all 40 unique paths; Webpass captured zero. |
 | Observer after reboot | The downstream observer recorded 194 probes per family with zero failures. |
 | Clean-room review | The 31-rule review reported B0/SF0/N1. |
-| Deployed egress gate | The host probe passed, but it did not test testbed MWAN translation. The required IPv4 translation failure exercise remains pending. |
+| First deployed egress gate | The host probe passed, but it did not test testbed MWAN translation. |
+| Corrected gate deploy | Configs `b53bcb7` check mode reported `ok=175 failed=0`. The live deploy reported `ok=223 failed=0`. The reboot, egress, and mapped-address verdict codes were all zero. |
+| Corrected gate probes | The released `ff82fbc` command passed with `ipv6=yes ipv4=yes` before and after reboot. An incorrect expected IPv4 next hop returned `ipv6=yes ipv4=no` and a nonzero exit. |
+| Broken IPv4 translation | A temporary rule translated only OPNsense source `10.240.240.2` traffic to `1.1.1.1` into `192.0.2.1`. The gate returned `ipv6=yes ipv4=no` and a nonzero exit. The rule was removed, its cleanup timer was stopped, and the gate returned `ipv6=yes ipv4=yes`. |
+| Firewall after reboot | `mwan-ifmgr@wan` was active, `nftables.service` was masked, and `inspect-firewall` matched the intended rules to the kernel. |
+| Fresh flows after the corrected deploy | Thirty-two IPv4 and thirty-two IPv6 HTTPS connections succeeded from downstream guest 225. Each family selected Webpass 18 times and AT&T 14 times in ISP bridge captures. All four captures reported zero dropped packets. |
 
-Exact execution times and command output locations for testbed checks were
-not supplied. The [implementation plan](plans/2026-09-26-mwan-341-firewall.md)
+Exact execution times and command output locations for the first testbed
+checks were not supplied. The [implementation plan](plans/2026-09-26-mwan-341-firewall.md)
 includes MWAN-341 checks that are not recorded here. It assigns direct BGP,
 tunnel, and packet-size integrated tests to MWAN-507.
 
-The suburban host routes `1.1.1.1` through `10.240.0.1` on `vmbr0`.
-That route bypasses testbed OPNsense VM 201 and MWAN VM 213. The current
-hypervisor-local egress gate therefore cannot detect a broken testbed IPv4
-translation path. A corrected gate must probe from downstream of MWAN and
-reject an IPv4 translation failure while IPv6 still works.
+The suburban host routes `1.1.1.1` through `10.240.0.1` on `vmbr0`, outside
+the MWAN path. The corrected gate runs its route and ping checks inside
+OPNsense VM 201. During the second deployment, the downstream observer first
+failed at 10:31:20 UTC for IPv4 and 10:31:17 UTC for IPv6. IPv4 resumed at
+10:32:04 UTC and IPv6 at 10:32:02 UTC. The controlled translation fault later
+produced nine IPv4 observer failures while all 25 IPv6 probes succeeded in
+that window. After removal, 63 probes per family succeeded without failure.
 
 ## Production results
 
@@ -63,7 +69,6 @@ No live dashboard query was supplied.
 | `sf-att-1335` | 08:57:08 | 08:57:35 |
 | `sf-1335-ipv6` | 08:57:10 | 08:57:40 |
 
-The production host routes through OPNsense, but its host-side gate remains
-outside the downstream probe contract. The observed downstream recovery is
-valid; a corrected deployment gate and ticket reconciliation remain before
-MWAN-341 closure.
+Production still uses the first host-side gate. The corrected release requires
+a production check run, deployment, downstream acceptance, and ticket
+reconciliation before MWAN-341 closure.
