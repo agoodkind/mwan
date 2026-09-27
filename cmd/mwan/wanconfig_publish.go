@@ -101,7 +101,7 @@ func (s *wanconfigSurface) initialize(
 	}
 	pub, err := yangpub.New(s.log)
 	if err != nil {
-		s.log.ErrorContext(ctx, "wanconfig: datastore unavailable", "err", err)
+		s.log.ErrorContext(ctx, "wanconfig: datastore unavailable; management surface disabled", "err", err)
 		return
 	}
 	defer func() {
