@@ -71,13 +71,14 @@ const (
 )
 
 const (
-	gateModeCheckEgress   deployGateMode = "check-egress"
-	gateModeWaitReboot    deployGateMode = "wait-reboot"
-	gateModeWaitEgress    deployGateMode = "wait-egress"
-	gateModeWaitDeploy    deployGateMode = "wait-deploy"
-	gateModeCheckOwned    deployGateMode = "check-owned-addresses"
-	gateModeCheckNetwork  deployGateMode = "check-network"
-	gateModeCheckFirewall deployGateMode = "check-firewall"
+	gateModeCheckEgress     deployGateMode = "check-egress"
+	gateModeWaitReboot      deployGateMode = "wait-reboot"
+	gateModeWaitEgress      deployGateMode = "wait-egress"
+	gateModeWaitDeploy      deployGateMode = "wait-deploy"
+	gateModeCheckOwned      deployGateMode = "check-owned-addresses"
+	gateModeCheckNetwork    deployGateMode = "check-network"
+	gateModeCheckFirewall   deployGateMode = "check-firewall"
+	gateModeInspectFirewall deployGateMode = "inspect-firewall"
 )
 
 // traceIDPattern bounds the trace id because it lands in the verdict file
@@ -213,6 +214,8 @@ func runDeployGate(args []string) int {
 		return checkNetwork(deps, rest[0], rest[1])
 	case gateModeCheckFirewall:
 		return runFirewallCheck(rest)
+	case gateModeInspectFirewall:
+		return runFirewallInspect(rest)
 	case gateModeWaitReboot:
 		if len(rest) != 3 {
 			printDeployGateUsage()

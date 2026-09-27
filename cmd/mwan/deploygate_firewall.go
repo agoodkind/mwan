@@ -61,6 +61,37 @@ func runFirewallCheck(args []string) int {
 	return 0
 }
 
+// runFirewallInspect compares the configured firewall rules with the current kernel.
+func runFirewallInspect(args []string) int {
+	if len(args) != 2 {
+		fmt.Fprintln(os.Stderr, "usage: mwan deploy-gate inspect-firewall <network.json> <schema-dir>")
+		return 1
+	}
+	loaded, err := networkjson.Load(args[0], args[1])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if !loaded.Firewall.Enabled {
+		fmt.Fprintln(os.Stderr, "firewall ownership is disabled")
+		return 1
+	}
+	desired, err := firewall.Compile(loaded.Firewall)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), firewallCheckTimeout)
+	defer cancel()
+	readback, err := firewall.Inspect(ctx, desired)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	fmt.Print(readback)
+	return 0
+}
+
 func runFirewallCheckChild(ctx context.Context, args []string) int {
 	slog.InfoContext(ctx, "start isolated firewall check")
 	parentNamespace, err := os.Open("/proc/self/ns/net")

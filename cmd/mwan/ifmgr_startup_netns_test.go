@@ -15,6 +15,9 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"goodkind.io/mwan/internal/firewall"
+	"goodkind.io/mwan/internal/networkjson"
 )
 
 const (
@@ -83,6 +86,34 @@ func runWANStartupChild(t *testing.T) {
 	}
 	if !bytes.Contains(input, []byte("policy drop")) || !bytes.Contains(input, []byte("enmgmt0")) || !bytes.Contains(input, []byte("dport 22")) {
 		t.Fatalf("protective management policy missing: %s", input)
+	}
+	schema := filepath.Join("..", "..", "internal", "yangpub", "schema")
+	loaded, err := networkjson.Load(networkPath, schema)
+	if err != nil {
+		t.Fatalf("load full firewall policy: %v", err)
+	}
+	desired, err := firewall.Compile(loaded.Firewall)
+	if err != nil {
+		t.Fatalf("compile full firewall policy: %v", err)
+	}
+	if err := firewall.Apply(context.Background(), desired); err != nil {
+		t.Fatalf("install full firewall policy: %v", err)
+	}
+	inspect := exec.Command(binary, "deploy-gate", "inspect-firewall", networkPath, schema)
+	output, err = inspect.CombinedOutput()
+	if err != nil || !bytes.Contains(output, []byte("inet filter input")) {
+		t.Fatalf("live firewall inspection failed: %v: %s", err, output)
+	}
+	deleteRule := exec.Command("nft", "flush", "chain", "inet", "filter", "input")
+	if output, err := deleteRule.CombinedOutput(); err != nil {
+		t.Fatalf("remove management policy for negative control: %v: %s", err, output)
+	}
+	inspect = exec.Command(binary, "deploy-gate", "inspect-firewall", networkPath, schema)
+	if output, err := inspect.CombinedOutput(); err == nil {
+		t.Fatalf("live firewall inspection accepted missing management rules: %s", output)
+	}
+	if output, err := exec.Command(binary, "ifmgr", "--role", "wan").CombinedOutput(); err == nil || !strings.Contains(string(output), "dynamic_neighbors") {
+		t.Fatalf("invalid TOML did not fail after restoring the baseline: %v: %s", err, output)
 	}
 	entries, err := os.ReadDir(networkdDir)
 	if err != nil {
