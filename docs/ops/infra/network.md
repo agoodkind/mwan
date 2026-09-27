@@ -255,9 +255,9 @@ reach the public IPv6 internet:
 - **Webpass PD lease.** `mwan pd enwebpass0` shows the live delegation.
   The delegation renumbers, so the command output is the source of truth,
   never a stored value.
-- **NPT rules** in `nft list table ip6 nat`. The ifmgr npt module programs
-  them from the live delegation and reconverges after any nftables reload.
-  `mwan debug npt` renders the intended rules against the live table.
+- **NPT rules** in `nft list table ip6 nat`. The ifmgr npt module creates the
+  table and programs its rules from the live delegation. `mwan debug npt`
+  displays the current rules.
 - **Internal return route.** The internal prefix (`mwan_internal_prefix`
   in the MWAN group vars) must route to the OPNsense edge over the
   internal link, in the main table and in every WAN table. The ifmgr

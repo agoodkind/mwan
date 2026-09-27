@@ -90,13 +90,18 @@ with multi-line `$( ... )`.
 - Idempotent deployment: Ansible handles directory creation; systemd reloads on
   reboot.
 
-## nftables and runtime rules
+## Gateway nftables rules
 
-The rendered `nftables.conf` opens with `flush ruleset`, so a reload drops every
-rule that was programmed at runtime. The gateway daemon reprograms the rules it
-owns, including prefix translation, without help from this repository. A script
-here that programs nftables restores its own rules in one idempotent `nft -f`
-transaction under the shared lock, because nothing else restores them.
+The gateway daemon installs and repairs its firewall, translation, and
+steering rules. The gateway no longer installs a rendered `nftables.conf` or
+uses `nftables.service` to load policy. Change the network configuration and
+deploy it for a durable firewall change. Do not use `nft -f` to install a
+durable gateway rule or reload the entire ruleset.
+
+The destination refresher updates addresses in configured destination sets.
+The daemon creates missing sets and preserves existing elements during
+reconciliation. The failover container's service maintains its rules
+separately from the gateway daemon.
 
 ## Documentation constraints
 

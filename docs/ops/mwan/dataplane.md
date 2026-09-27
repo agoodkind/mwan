@@ -2,24 +2,22 @@
 
 # MWAN data plane
 
-Three `mwan ifmgr` modules in the `mwan-ifmgr@wan` unit converge the data
-plane independently of the BGP speaker: `wan.routes` owns `ip rule` and the
-per-WAN routing tables, `health` owns the WAN health verdicts and state
-files, and `npt` owns the runtime `table ip6 nat`. A health transition
-requests an immediate reconcile in-process, so a failed WAN reroutes without
-waiting for a periodic tick.
+The `mwan-ifmgr@wan` unit maintains gateway packet policy independently of
+the BGP speaker. Its firewall module installs input, forwarding, IPv4
+translation, and marking rules. The `npt` module owns `table ip6 nat` and the
+IPv6 prefix translator. The `wan.routes` module owns `ip rule` and the per-WAN
+routing tables. The `health` module produces WAN health verdicts. The
+`steering` module assigns new connections to eligible providers. A health
+transition requests an immediate reconcile that updates routing before the
+next periodic tick.
 
 ## Shared per-WAN foundation
 
-`wan.routes` and `npt` run in the `wan` role and read one WAN list from the
-gateway's network configuration, which the daemon loads from
-`/etc/mwan/network.json` and validates against the model before it programs
-anything. Each WAN entry hangs off the interface that carries it and holds that
-WAN's full config: its name plus the policy-routing slots `wan.routes` programs
-(table, fwmark, priorities, prefixes). The internal prefix and edge addresses
-both modules translate against are group-wide values in the same file. Each
-module reads the fields it needs from that one per-WAN entry, so each WAN has a
-single home instead of a per-module list matched by name.
+`wan.routes` and `npt` read one WAN list from the gateway's network
+configuration. The daemon reads the local firewall settings first and installs
+protective rules before it validates the full document or writes network
+files. Each WAN entry identifies its interface, provider, and policy-routing
+settings. The internal prefix and edge addresses apply to all WAN entries.
 
 ## wan.routes ifmgr module
 
@@ -32,31 +30,28 @@ thrash.
 
 ## npt ifmgr module
 
-The `npt` module owns the runtime `table ip6 nat`. It runs as a second module
-in the `mwan-ifmgr@wan` instance alongside `wan.routes` and self-disables when
-the network configuration lists no WANs.
+The `npt` module creates and maintains `table ip6 nat`. It runs after the
+firewall module. The `npt` module reads the installed IPv4 firewall rules to
+determine IPv4 translation readiness. It self-disables when the network
+configuration lists no WANs.
 
-npt derives every WAN's `/60` from the live DHCPv6-PD delegation on that WAN's
-interface, with no static fallback. A WAN with no delegated prefix is skipped for
-that reconcile, rather than translated against a guessed prefix.
+For delegated NPT, the module derives each configured external prefix from
+the live DHCPv6-PD delegation on that WAN's interface. It does not substitute
+a static prefix when a delegation is missing. It skips that WAN for the
+current reconcile.
 
-npt alerts on a missing delegation only when the network configuration assigns
-that provider a translation prefix, and clears the alert once the delegation
-returns. A provider the configuration assigns no prefix is never expected to
-carry one, because its link is IPv4-only or its ISP delegates nothing by
-DHCPv6-PD, so npt raises nothing for it. That keeps the alert meaningful for the
-case it exists to catch: a provider that should hold a delegation and lost it.
+The module alerts when a provider configured for delegated translation loses
+its delegation. It clears the alert when the delegation returns. The module
+does not raise this alert for a provider without delegated translation.
 
-npt owns the `prerouting` and `postrouting` chains and replaces each chain's
-full rule set in one atomic `google/nftables` transaction, so no packet sees an
-empty chain mid-update and no reconcile can leave a duplicate rule. An nft
-watcher requests a reconcile when the `ip6 nat` table changes underneath the
-module, so an external `nftables` reload converges back within one pass.
+The module creates the IPv6 NAT table and its `prerouting` and `postrouting`
+chains. It replaces both chains' rules in one kernel transaction. Its nftables
+watcher requests reconciliation when the table or either chain is deleted.
+The firewall and steering modules repair their own deleted structures.
 
-npt does not tear its rules down when the module stops. A binary swap or an
-`mwan-ifmgr@wan` restart leaves the kernel forwarding on the last-applied rules,
-and the next reconcile after restart re-applies them atomically. Forwarding never
-stops, and no swap leaves a chain empty or double-programmed.
+Stopping `mwan-ifmgr@wan` preserves its installed rules in the kernel. A
+restart reapplies the policy. A deleted table or chain does not enforce its
+policy until the next successful reconcile.
 
 ## Health state and the email guard
 
@@ -76,12 +71,13 @@ silent until it has been healthy once.
 
 Failure modes worth knowing:
 
-- **Empty `table ip6 nat`** means runtime programming did not happen or was
-  flushed. The npt module's nft watcher reconverges it within one reconcile;
-  `systemctl restart mwan-ifmgr@wan` forces the pass immediately.
-- **Boot ordering**: PCI/virtio devices and AT&T 802.1X authentication can be
-  late. The ifmgr modules replay on netlink events and periodic ticks, so a
-  late device converges without a dispatcher-style one-shot race.
+- A missing or empty `table ip6 nat` indicates that IPv6 edge-rule
+  programming did not complete or the rules were deleted. Check the
+  `mwan-ifmgr@wan` logs for the NPT reconcile result. The module creates
+  missing structures on its next reconcile.
+- PCI and virtio devices can appear after the daemon starts. AT&T 802.1X
+  authentication can also finish later. The daemon re-evaluates those
+  interfaces on interface events and periodic ticks.
 
 For terminology, prefer **healthy / unhealthy / unknown** for WAN state. Avoid
 **up / down** for health, because that conflicts with `ip link` administrative
@@ -109,18 +105,29 @@ mwan debug trace-tail
 
 ## Inspect the data plane
 
-On MWAN:
+The gateway service reports readiness after it installs and inspects
+protective rules and writes required network files. It does not wait for
+working ISP links. The gateway `nftables.service` is masked after the
+ownership cutover. Its stopped state does not indicate a firewall failure.
+
+Inspect the current kernel policy on MWAN:
 
 ```bash
 ssh root@mwan.home.goodkind.io
 wpa_cli status
 systemctl status wpa_supplicant-mwan systemd-networkd networkd-dispatcher \
-  nftables mwan-ifmgr@wan cloudflared
-mwan debug npt              # native inspection: prefixes|routes|policy|status|stats|sim4|sim6|npt
-mwan debug connectivity     # active probes: ping4|ping6|curl4|curl6|lb4|lb6|lb4-ifaces|lb6-ifaces
-mwan debug systemd          # failed/stuck units and slowest starters over D-Bus
-mwan debug trace-tail       # follow the ifmgr daemon JSON log (/var/log/mwan-ifmgr.jsonl), filter by trace id
+  mwan-ifmgr@wan cloudflared
+mwan deploy-gate inspect-firewall /etc/mwan/network.json /usr/local/share/wanconfig/yang
+mwan debug npt
+mwan debug connectivity
+mwan debug systemd
+mwan debug trace-tail
 ```
+
+The inspection command compares the configured firewall policy with the
+current network namespace. It makes no kernel changes and exits unsuccessfully
+when rules or chain properties differ. Use `mwan debug npt` to inspect the
+separate IPv6 NAT rules.
 
 IPv6 sanity checks:
 
