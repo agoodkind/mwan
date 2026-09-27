@@ -20,7 +20,12 @@ const firewallCheckTimeout = 30 * time.Second
 // runFirewallCheck validates the firewall configuration and applies its rules
 // only in a separate network namespace created by unshare.
 func runFirewallCheck(args []string) int {
-	isolated := len(args) == 3 && args[2] == "--isolated"
+	isolated := false
+	for index, argument := range args {
+		if index == 2 && len(args) == 3 {
+			isolated = argument == "--isolated"
+		}
+	}
 	if len(args) != 2 && !isolated {
 		fmt.Fprintln(os.Stderr, "usage: mwan deploy-gate check-firewall <network.json> <schema-dir>")
 		return exitDeployGateUsage
