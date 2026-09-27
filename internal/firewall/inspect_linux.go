@@ -29,11 +29,11 @@ type kernelItem struct {
 		Policy   string `json:"policy"`
 	} `json:"chain"`
 	Set *struct {
-		Family    string   `json:"family"`
-		Table     string   `json:"table"`
-		Name      string   `json:"name"`
-		Type      string   `json:"type"`
-		Flags     []string `json:"flags"`
+		Family string   `json:"family"`
+		Table  string   `json:"table"`
+		Name   string   `json:"name"`
+		Type   string   `json:"type"`
+		Flags  []string `json:"flags"`
 	} `json:"set"`
 }
 
