@@ -1,7 +1,7 @@
 # Gateway firewall ownership
 
 The gateway daemon installs and maintains its firewall rules. Configs deploys
-the network configuration and released binary. The gateway no longer loads a
+the network configuration and the released binary. The gateway no longer loads a
 separate ruleset file through `nftables.service`.
 
 This specification defines the required behavior. The

@@ -100,7 +100,8 @@ durable gateway rule or reload the entire ruleset.
 
 The destination refresher updates addresses in configured destination sets.
 The daemon creates missing sets and preserves existing elements during
-reconciliation. Separate failover-container rules retain their own service.
+reconciliation. The failover container's service maintains its rules
+separately from the gateway daemon.
 
 ## Documentation constraints
 
