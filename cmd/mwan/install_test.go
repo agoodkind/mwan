@@ -505,7 +505,7 @@ func TestInstallApplyWritesTheWanconfigAndHostFiles(t *testing.T) {
 	wantFiles := map[string]string{
 		"/etc/systemd/system/rousette.service":                         "rousette.service",
 		"/etc/systemd/system/nghttpx-wanconfig.service":                "nghttpx-wanconfig.service",
-		"/etc/systemd/system/mwan-ifmgr@wan.service.d/firewall.conf":    "mwan-ifmgr-wan.conf",
+		"/etc/systemd/system/mwan-ifmgr@wan.service.d/firewall.conf":   "mwan-ifmgr-wan.conf",
 		"/etc/systemd/system/systemd-networkd.service.d/override.conf": "systemd-networkd-override.conf",
 		"/etc/sysctl.d/99-quiet-console.conf":                          "99-quiet-console.conf",
 	}
