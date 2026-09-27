@@ -17,6 +17,17 @@ policy and forwards internet traffic to MWAN. MWAN selects an ISP, translates
 addresses when required, and selects another healthy ISP for new connections
 after a provider failure. OPNsense does not need one firewall policy per ISP.
 
+MWAN runs its packet path on Linux. It uses netlink, nftables, and traffic
+control BPF. OPNsense runs on FreeBSD. The Linux packet path cannot run
+there unchanged. OPNsense remains the LAN firewall while MWAN controls
+provider selection and routing.
+
+OPNsense [disables several NIC offloads by default](https://docs.opnsense.org/manual/interfaces_settings.html)
+and [disables system-wide receive-side scaling by default](https://docs.opnsense.org/troubleshooting/performance.html).
+[IPS mode requires hardware offloads to be disabled](https://docs.opnsense.org/manual/ips.html).
+The available acceleration depends on the selected features, driver, and
+hardware.
+
 ## How it works today
 
 The primary MWAN gateway balances new connections across healthy providers.
@@ -26,6 +37,23 @@ when the primary gateway fails.
 
 Both gateways run BGP and advertise a default route to OPNsense. OPNsense
 prefers the primary gateway's route.
+
+Those provider roles come from configuration. The
+[pinned configuration template](https://github.com/agoodkind/configs/blob/20ad40232fa62394046b1218839e60756a6b7a22/mwan/config/network.json.j2)
+renders inventory into `/etc/mwan/network.json`. Each provider entry sets
+its link, addresses, translation, health checks, steering tier, and weight.
+The daemon validates the JSON against its YANG model before applying it.
+A supported provider needs a configuration change and deployment, not a new
+binary.
+
+The model uses [RFC 8343 for interfaces](https://www.rfc-editor.org/rfc/rfc8343),
+[RFC 8344 for IP addresses](https://www.rfc-editor.org/rfc/rfc8344),
+[RFC 8349 for routing](https://www.rfc-editor.org/rfc/rfc8349), and
+[RFC 8512 for translation](https://www.rfc-editor.org/rfc/rfc8512).
+The [local steering model](superpowers/wanconfig/model.md) adds MWAN's
+provider settings. Existing BGP peer settings and credentials remain in
+TOML. MWAN-507 plans to model new upstream BGP and tunnel settings in the
+network configuration.
 
 ```mermaid
 flowchart LR
