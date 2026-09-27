@@ -111,7 +111,7 @@ func runWANStartupChild(t *testing.T) {
 	}
 	deleteRule := exec.Command("nft", "flush", "chain", "inet", "filter", "input")
 	if output, err := deleteRule.CombinedOutput(); err != nil {
-		t.Fatalf("remove management policy for negative control: %v: %s", err, output)
+		t.Fatalf("flush inet filter input chain for negative control: %v: %s", err, output)
 	}
 	inspect = exec.Command(binary, "deploy-gate", "inspect-firewall", networkPath, schema)
 	if output, err := inspect.CombinedOutput(); err == nil {
