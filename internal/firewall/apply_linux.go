@@ -22,7 +22,7 @@ type ApplyResult struct {
 	CreatedSets []Set
 }
 
-// ApplyWithReport installs the policy and reports newly created sets.
+// ApplyWithReport installs the desired ruleset and returns the sets it created.
 func ApplyWithReport(ctx context.Context, desired Ruleset) (ApplyResult, error) {
 	readback, err := readKernel(ctx)
 	if err != nil {

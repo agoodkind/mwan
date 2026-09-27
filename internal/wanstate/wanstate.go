@@ -196,7 +196,7 @@ func (s *Store) SetTranslation(members map[string]MemberTranslation) {
 	s.mu.Unlock()
 }
 
-// SetIntendedRuleset retains the translation module's existing writer API.
+// SetIntendedRuleset writes the NPT module's intended ruleset without an apply error.
 func (s *Store) SetIntendedRuleset(text string) {
 	s.SetOwnedIntendedRuleset("npt", text, nil)
 }
