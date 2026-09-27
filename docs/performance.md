@@ -4,6 +4,12 @@ MWAN forwards packets in the guest kernel. Routes, policy rules, and nftables
 rules do not send packet bytes to the daemon. Separate router and gateway guests
 still use host CPU to transfer packets across their virtual bridge.
 
+OPNsense [disables several NIC offloads by default](https://docs.opnsense.org/manual/interfaces_settings.html)
+and [disables system-wide receive-side scaling by default](https://docs.opnsense.org/troubleshooting/performance.html).
+[IPS mode requires hardware offloads to be disabled](https://docs.opnsense.org/manual/ips.html).
+Available acceleration depends on the selected features, driver, and
+hardware.
+
 ## Attachment paths
 
 The WAN attachment and the router attachment are independent. These diagrams
