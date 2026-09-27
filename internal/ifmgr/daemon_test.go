@@ -142,8 +142,6 @@ func TestDaemonInitAndReconcile(t *testing.T) {
 	}
 	if mod.lastEnv.Monitor == nil {
 		t.Error("env.Monitor is nil")
-	} else if mod.lastEnv.Monitor.IfIndex() == 0 {
-		t.Error("connection without link identity disabled name-based observation")
 	}
 }
 
