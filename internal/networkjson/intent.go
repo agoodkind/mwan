@@ -184,7 +184,7 @@ func buildIntentLink(entry ifaceEntry) (*interfaceintent.Link, error) {
 		link.VLAN = &interfaceintent.VLAN{Parent: wire.VLAN.Parent, ID: *wire.VLAN.ID}
 	}
 	if identities != 1 && entry.LinkFiles == linkFilesRendered {
-		return nil, fmt.Errorf("interface %s: link requires exactly one match or vlan, got %d", entry.Name, identities)
+		return nil, fmt.Errorf("interface %s: link requires exactly one identity (driver, hardware-address, or vlan), got %d", entry.Name, identities)
 	}
 	return link, nil
 }

@@ -709,7 +709,7 @@ module goodkind-mwan-steering {
     }
     container dhcpv6-client {
       presence "Enable explicit DHCPv6 client settings.";
-      description "Options for the DHCPv6 client on this interface.";
+      description "This container configures DHCPv6 client options on this interface.";
       leaf duid-type {
         type enumeration {
           enum link-layer-time;
@@ -718,29 +718,29 @@ module goodkind-mwan-steering {
           enum uuid;
           enum raw;
         }
-        description "How the DHCPv6 client identity is formed.";
+        description "This field selects how the DHCPv6 client forms its identity.";
       }
       leaf duid {
         type string {
           pattern '([0-9a-fA-F]{2}:)*[0-9a-fA-F]{2}';
         }
-        description "The raw client identity as colon-separated octets.";
+        description "This field specifies the raw client identity as colon-separated octets.";
       }
       leaf address-iaid {
         type uint32;
-        description "The identity association ID for requested addresses.";
+        description "This field specifies the identity association ID for requested addresses.";
       }
       leaf prefix-iaid {
         type uint32;
-        description "The identity association ID for requested prefixes.";
+        description "This field specifies the identity association ID for requested prefixes.";
       }
       leaf request-address {
         type boolean;
-        description "Whether the client requests an address.";
+        description "This field selects whether the client requests an address.";
       }
       leaf request-prefix {
         type boolean;
-        description "Whether the client requests a prefix.";
+        description "This field selects whether the client requests a prefix.";
       }
       leaf without-ra {
         type enumeration {
@@ -754,18 +754,18 @@ module goodkind-mwan-steering {
       }
       leaf use-dns {
         type boolean;
-        description "Whether the client installs DNS servers from DHCPv6.";
+        description "This field selects whether the client installs DNS servers from DHCPv6.";
       }
     }
     container resolver {
-      description "Resolver settings for this address family.";
+      description "This container configures resolver settings for this address family.";
       leaf-list dns {
         type inet:ipv6-address;
-        description "DNS servers configured for this interface.";
+        description "This list contains DNS servers configured for this interface.";
       }
       leaf-list search {
         type string;
-        description "DNS search domains configured for this interface.";
+        description "This list contains DNS search domains configured for this interface.";
       }
     }
     leaf gateway {
@@ -799,17 +799,21 @@ module goodkind-mwan-steering {
     }
     list forwarding-address {
       key "address";
-      description "An IPv6 address forwarded by this interface.";
+      description
+        "This list contains IPv6 addresses assigned to the gateway locally
+         or routed to the gateway by the upstream network.";
       leaf address {
         type inet:ipv6-address;
-        description "The forwarded IPv6 address.";
+        description "This field specifies the IPv6 address.";
       }
       leaf delivery {
         type enumeration {
           enum local;
           enum routed;
         }
-        description "Whether this address is assigned locally or routed to the gateway.";
+        description
+          "The gateway assigns this address locally when this field is local.
+           The upstream network routes it to the gateway when this field is routed.";
       }
     }
     container delegation {

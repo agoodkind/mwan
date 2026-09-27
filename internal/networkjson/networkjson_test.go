@@ -1044,11 +1044,11 @@ func TestLoadRejectsARenderedLinkWithNoIdentity(t *testing.T) {
 		},
 		"neither match nor vlan": {
 			link: `"goodkind-mwan-steering:link": { "hardware-address": "02:00:5e:00:53:01" },`,
-			want: "link requires exactly one match or vlan, got 0",
+			want: "link requires exactly one identity (driver, hardware-address, or vlan), got 0",
 		},
 		"both match leaves": {
 			link: `"goodkind-mwan-steering:link": { "match": { "driver": "igc", "hardware-address": "02:00:5e:00:53:01" } },`,
-			want: "link requires exactly one match or vlan, got 2",
+			want: "link requires exactly one identity (driver, hardware-address, or vlan), got 2",
 		},
 	}
 	for name, tc := range cases {
