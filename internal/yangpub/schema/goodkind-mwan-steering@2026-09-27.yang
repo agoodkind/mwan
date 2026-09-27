@@ -448,7 +448,7 @@ module goodkind-mwan-steering {
         enum mwan;
       }
       description
-        "This service configures the interface.";
+        "This field identifies the component that configures the interface.";
     }
     leaf lease-store {
       type string {
@@ -605,8 +605,9 @@ module goodkind-mwan-steering {
             enum routed;
           }
           description
-            "Whether the external address is assigned locally or routed
-             to this gateway.";
+            "The gateway assigns the external address locally when this field
+             is local. The upstream network routes the address to the gateway
+             when this field is routed.";
         }
         description "IPv4 mappings take precedence over NAPT44 masquerade.";
       }
@@ -638,29 +639,29 @@ module goodkind-mwan-steering {
     }
     container dhcpv4 {
       presence "Enable explicit DHCPv4 client settings.";
-      description "Options for the DHCPv4 client on this interface.";
+      description "This container configures DHCPv4 client options on this interface.";
       leaf client-id {
         type string;
-        description "The identifier sent to the DHCP server.";
+        description "The client sends this identifier to the DHCP server.";
       }
       leaf use-dns {
         type boolean;
-        description "Whether the client installs DNS servers from the lease.";
+        description "This field selects whether the client installs DNS servers from the lease.";
       }
       leaf use-routes {
         type boolean;
-        description "Whether the client installs routes from the lease.";
+        description "This field selects whether the client installs routes from the lease.";
       }
     }
     container resolver {
-      description "Resolver settings for this address family.";
+      description "This container configures resolver settings for this address family.";
       leaf-list dns {
         type inet:ipv4-address;
-        description "DNS servers configured for this interface.";
+        description "This list contains DNS servers configured for this interface.";
       }
       leaf-list search {
         type string;
-        description "DNS search domains configured for this interface.";
+        description "This list contains DNS search domains configured for this interface.";
       }
     }
     leaf gateway {
