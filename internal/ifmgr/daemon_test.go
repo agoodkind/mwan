@@ -158,6 +158,9 @@ func TestDaemonRejectsDuplicateConfiguredInterface(t *testing.T) {
 	if err == nil {
 		t.Fatal("NewDaemon accepted two connections for enwan0")
 	}
+	if got, want := err.Error(), `ifmgr.NewDaemon: multiple connections use interface "enwan0"`; got != want {
+		t.Fatalf("NewDaemon error = %q, want %q", got, want)
+	}
 }
 
 func TestUnknownRoleErrors(t *testing.T) {
