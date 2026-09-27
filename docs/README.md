@@ -29,13 +29,18 @@ Read the [gateway architecture](mwan.md) for routing and provider behavior.
 The [configuration specification](superpowers/wanconfig/spec.md) defines the
 provider model and links its detailed requirements. The
 [firewall specification](firewall.md) defines daemon ownership of firewall
-policy. The [downstream router design](superpowers/multirouter/spec.md)
+policy. The [interface ownership specification](interfaces.md) defines the
+MWAN-305 migration from networkd and its shared contracts with MWAN-507.
+The [downstream router design](superpowers/multirouter/spec.md)
 defines the BGP relationship with OPNsense.
 
 ## Implementation plans
 
 Follow the [MWAN-341 plan](plans/2026-09-26-mwan-341-firewall.md) and its
-adjacent goal and ledger for firewall ownership. Earlier work includes the
+adjacent goal and ledger for firewall ownership. Follow the
+[interface migration coordination plan](plans/2026-09-26-link-ownership.md)
+for MWAN-305's work plans, agent assignments, and execution order. Earlier work
+includes the
 [translation plan](plans/2026-09-22-mwan-340-typed-translation.md),
 [provider-model completion plan](plans/2026-09-21-mwan-506-completion.md),
 [live validation plan](plans/2026-09-21-mwan-506-live-validation.md), and

@@ -23,7 +23,11 @@ drives them stays beside them.
 This piece depends on the configuration format, so the inventory is written
 once in its final shape.
 
-## Why a fourth provider is impossible today
+## Historical provider limits before September 27, 2026
+
+The following limits preceded the completed provider migration. The current
+loader accepts additional provider entries and checks routing identifiers
+for collisions. These paragraphs record the original design's motivation.
 
 Five things block it.
 
@@ -515,24 +519,23 @@ that it holds no verdict. No rollback decision reads the verdict in this
 piece. Whether it blocks a rollback is separate work (MWAN-442, MWAN-332,
 MWAN-336).
 
-## Carried through unchanged
+## Source routing and interface ownership
 
-The IPv6 source-pin prefix stays a configured value. Steering builds a policy
-rule from it, and the cleanup pass claims that rule's priority
-unconditionally, so rendering the value empty deletes the live rule rather
-than skipping it. Moving the pin onto the live delegation is separate work,
-because at daemon start the delegation may not be readable yet.
+MWAN-333 changed IPv6 source routing to use the active external translation
+prefix. The WAN routing module installs the source rule for that prefix and
+removes the stale rule when the prefix changes or becomes unavailable.
+Preserve this behavior when MWAN-305 replaces networkd's delegation client.
 
 The IPv4 source pin is different: its value is the link's static address,
 which the entry already carries, so it is derived rather than typed. The
 served tree keeps reporting it under the same leaf, now filled by the daemon
 from the address, so a reader of the served tree sees no change.
 
-The daemon does not create links and does not run its own delegation client.
-Both stay with systemd-networkd. Moving them into the daemon is the monolith
-epic's work (MWAN-305). It is gated on the daemon owning the lease first,
-because a link created by one program and leased by another has two
-authorities.
+Networkd manages links and delegation in this intermediate rendering stage.
+MWAN-305 replaces that management under the
+[interface ownership specification](../../interfaces.md). Its migration
+assigns each object one writer and completes the required acquisition support
+before transferring a connection.
 
 ## Acceptance
 

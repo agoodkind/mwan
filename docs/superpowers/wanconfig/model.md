@@ -84,6 +84,16 @@ The module defines two notifications, a member health transition and an
 active-tier change, each carrying the value before and after. How and when
 the daemon sends them is the surface specification's streaming section.
 
+## Interface ownership and acquisition
+
+MWAN-305 extends this model with explicit interface ownership, acquisition
+lifetimes, applied state, and failure history. The
+[interface ownership specification](../../interfaces.md) defines those
+requirements and the migration from networkd. The unit-rendering fields
+above support the current networkd stage. They do not define the final
+interface lifecycle. MWAN-507 uses the shared ownership and dependency
+contracts when adding tunnels and external BGP.
+
 ## Direct connections and tunnels
 
 The provider-set migration is complete. MWAN-507 requires direct and tunneled
@@ -239,11 +249,14 @@ ASN does not by itself require every connection to advertise the same prefix.
 | MTU | The maximum transmission unit limits packet size on an interface. Tunnel headers consume part of the underlying packet-size allowance. |
 | Translation | The gateway changes packet addresses, such as replacing a private IPv4 source with an ISP address. |
 
-## What today's behavior becomes
+## Historical model comparison
 
-Each row is a current special case and the model element that replaces it.
+This comparison records limitations from before the provider and translation
+migrations and the model contracts selected to replace them. It does not
+report current implementation or deployment status. MWAN-305 and MWAN-507
+retain the future requirements stated above.
 
-| Today | In the model |
+| Before migration | Model contract |
 |---|---|
 | IPv4 and IPv6 translation are different code paths in different components | two instances on one interface, types `napt44` and `nptv6` |
 | IPv4 static mapping is separate from the family's translation type | `mapping-table` entries of type `static` on the interface's NAPT44 instance |
@@ -266,11 +279,14 @@ from the two prefixes and applies that adjustment to a selected 16-bit address
 word. This produces a stateless, checksum-neutral mapping. A stateful NETMAP
 rule that only replaces prefix bits does not satisfy this contract.
 
-The current implementation forces the delegation to a fixed length and uses a
-stateful NAT prefix rule. A shorter delegation is widened onto address space
-the gateway does not have, and the rule does not apply RFC 6296's checksum
+Before MWAN-340, the implementation forced the delegation to a fixed length
+and used a stateful NAT prefix rule. A shorter delegation was widened onto
+unassigned address space, and the rule did not apply RFC 6296's checksum
 adjustment. The model includes both prefixes explicitly, so the implementation
 can calculate the complete mapping.
+
+As verified on September 27, 2026, MWAN uses the BPF translator. Preserve its
+prefix-length and checksum behavior while MWAN-305 changes assignment ownership.
 
 ## Toolchain
 

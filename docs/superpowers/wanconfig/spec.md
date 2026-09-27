@@ -2,6 +2,17 @@
 
 # A standards-modeled MWAN gateway
 
+As verified on September 27, 2026, MWAN loads and serves a standards-based
+interface model. The loader accepts additional provider entries and rejects
+conflicting routing identifiers. A new provider of a supported type requires
+inventory configuration and deployment.
+
+## Original design, superseded by September 27, 2026
+
+The following motivation records the system before the provider and
+translation migrations. Its absence of a model and three-provider limit are
+historical constraints.
+
 The MWAN gateway VM terminates several internet provider links and steers
 traffic across them. It has no model. Each behavior was added where it was
 needed, so IPv4 and IPv6 reach the same goal by different mechanisms, owned
@@ -18,6 +29,8 @@ one-to-one mapping, and no translation at all are values instead of code
 paths. Steering becomes members with a tier, a weight, and a probe policy.
 The daemon then serves that model, so an operator can answer why traffic is
 leaving a given provider without logging in.
+
+## Model contract
 
 The model is defined once in [model.md](model.md). Everything below is
 expressed in its terms.
@@ -132,6 +145,7 @@ provide.
 
 Quality-based steering, meaning selection on latency, jitter, or loss.
 
-The daemon running its own delegation client, and moving link creation off
-systemd networkd. The second is gated on the first, because splitting link
-creation from lease ownership would put one interface under two authorities.
+Interface ownership and delegation clients are separate work under MWAN-305.
+The [interface ownership specification](../../interfaces.md) defines the
+complete migration and its shared contracts with MWAN-507. This provider
+configuration specification covers the intermediate networkd rendering stage.
