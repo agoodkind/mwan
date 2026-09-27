@@ -18,7 +18,8 @@ func normalizeConnectionIDs(entries []ifaceEntry) (map[string]connectionid.ID, m
 			provider = entry.WAN.Name
 		}
 		id := connectionid.Resolve(entry.ConnectionID, provider, entry.Name)
-		if id == "" || strings.ContainsAny(id.String(), "'\"[]/") {
+		if id == "" || strings.TrimSpace(id.String()) != id.String() ||
+			strings.ContainsAny(id.String(), "'\"[]/:\r\n") {
 			return nil, nil, fmt.Errorf("interface %q has invalid connection-id %q", entry.Name, id)
 		}
 		if previous, exists := seen[id]; exists {

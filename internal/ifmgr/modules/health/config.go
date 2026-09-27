@@ -100,14 +100,14 @@ func validateProbeConfig(cfg Config) error {
 
 func validateWANs(cfg Config) error {
 	var validationError error
-	seenNames := make(map[string]bool, len(cfg.WANs))
+	seenIDs := make(map[string]bool, len(cfg.WANs))
 	seenIfaces := make(map[string]bool, len(cfg.WANs))
 	for i, wan := range cfg.WANs {
 		wanLabel := fmt.Sprintf("wan[%d] (%s)", i, wan.Key())
 		if wan.Key() == "" {
 			validationError = errors.Join(
 				validationError,
-				fmt.Errorf("wan[%d]: name is required", i),
+				fmt.Errorf("wan[%d]: connection ID is required", i),
 			)
 		}
 		if wan.Iface == "" {
@@ -116,10 +116,10 @@ func validateWANs(cfg Config) error {
 				fmt.Errorf("wan[%d] (%s): iface is required", i, wan.Key()),
 			)
 		}
-		if seenNames[wan.Key()] {
+		if seenIDs[wan.Key()] {
 			validationError = errors.Join(
 				validationError,
-				fmt.Errorf("wan[%d]: duplicate name %q", i, wan.Key()),
+				fmt.Errorf("wan[%d]: duplicate connection ID %q", i, wan.Key()),
 			)
 		}
 		if seenIfaces[wan.Iface] {
@@ -178,7 +178,7 @@ func validateWANs(cfg Config) error {
 				fmt.Errorf("%s: recovery_threshold must be > 0", wanLabel),
 			)
 		}
-		seenNames[wan.Key()] = true
+		seenIDs[wan.Key()] = true
 		seenIfaces[wan.Iface] = true
 	}
 	return validationError

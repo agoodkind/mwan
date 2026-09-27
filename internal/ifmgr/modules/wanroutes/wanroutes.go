@@ -873,17 +873,17 @@ func validateConfig(cfg Config) error {
 		slog.Warn("wan.routes: missing internal_net_v4")
 		return fmt.Errorf("wan.routes: internal_net_v4 is required")
 	}
-	seenNames := make(map[string]bool, len(cfg.WANs))
+	seenIDs := make(map[string]bool, len(cfg.WANs))
 	seenSlots := map[ruleSlot]bool{}
 	for i, wan := range cfg.WANs {
 		if err := validateWAN(wan); err != nil {
 			return fmt.Errorf("wan.routes.wan[%d]: %w", i, err)
 		}
-		if seenNames[wan.Key()] {
-			slog.Warn("wan.routes: duplicate WAN name", "name", wan.Key())
-			return fmt.Errorf("wan.routes.wan[%d]: duplicate name %q", i, wan.Key())
+		if seenIDs[wan.Key()] {
+			slog.Warn("wan.routes: duplicate connection ID", "connection_id", wan.Key())
+			return fmt.Errorf("wan.routes.wan[%d]: duplicate connection ID %q", i, wan.Key())
 		}
-		seenNames[wan.Key()] = true
+		seenIDs[wan.Key()] = true
 		for _, slot := range wanRuleSlots(wan) {
 			if seenSlots[slot] {
 				slog.Warn("wan.routes: duplicate rule slot",
@@ -907,7 +907,7 @@ func validateConfig(cfg Config) error {
 // reserved list beside them.
 func validateWAN(wan WAN) error {
 	if wan.Key() == "" {
-		return fmt.Errorf("name is required")
+		return fmt.Errorf("connection ID is required")
 	}
 	if wan.Iface == "" {
 		return fmt.Errorf("iface is required")

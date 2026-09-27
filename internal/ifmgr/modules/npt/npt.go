@@ -168,7 +168,7 @@ func validateWANs(wans []WAN) error {
 	seen := make(map[string]bool, len(wans))
 	for i, wan := range wans {
 		if wan.Key() == "" {
-			return fmt.Errorf("npt: wan[%d]: name is required", i)
+			return fmt.Errorf("npt: wan[%d]: connection ID is required", i)
 		}
 		if wan.Iface == "" {
 			return fmt.Errorf("npt: wan[%d] (%s): iface is required", i, wan.Key())

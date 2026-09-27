@@ -255,6 +255,27 @@ func TestLoadRejectsDuplicateNormalizedConnectionIdentity(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsConnectionIdentityThatCannotRoundTrip(t *testing.T) {
+	t.Parallel()
+	for name, value := range map[string]string{
+		"health separator":    `sonic:a`,
+		"leading whitespace":  ` sonic`,
+		"trailing whitespace": `sonic `,
+		"line break":          `sonic\nother`,
+		"carriage return":     `sonic\rother`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			body := strings.Replace(validDocument, `"name": "enwebpass0",`,
+				`"name": "enwebpass0", "goodkind-mwan-steering:connection-id": "`+value+`",`, 1)
+			_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+			if err == nil || !strings.Contains(err.Error(), "invalid connection-id") {
+				t.Fatalf("connection-id %q: error = %v", value, err)
+			}
+		})
+	}
+}
+
 func TestLoadRejectsMalformedJSON(t *testing.T) {
 	t.Parallel()
 

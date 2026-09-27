@@ -172,19 +172,19 @@ func validateConfig(cfg Config) error {
 		return fmt.Errorf("steering: hash_mode %q is not one of random, source, source-destination",
 			cfg.HashMode)
 	}
-	seenNames := make(map[string]bool, len(cfg.Members))
+	seenIDs := make(map[string]bool, len(cfg.Members))
 	weightSum := 0
 	for i, member := range cfg.Members {
 		if member.Key() == "" {
-			return fmt.Errorf("steering: member[%d]: name is required", i)
+			return fmt.Errorf("steering: member[%d]: connection ID is required", i)
 		}
 		if member.Iface == "" {
 			return fmt.Errorf("steering: member[%d] (%s): iface is required", i, member.Key())
 		}
-		if seenNames[member.Key()] {
-			return fmt.Errorf("steering: member[%d]: duplicate name %q", i, member.Key())
+		if seenIDs[member.Key()] {
+			return fmt.Errorf("steering: member[%d]: duplicate connection ID %q", i, member.Key())
 		}
-		seenNames[member.Key()] = true
+		seenIDs[member.Key()] = true
 		if member.Mark == 0 {
 			return fmt.Errorf("steering: member[%d] (%s): mark must be > 0", i, member.Key())
 		}
