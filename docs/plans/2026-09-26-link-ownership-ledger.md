@@ -10,11 +10,16 @@ documentation change.
 ## Current work
 
 September 26, 2026: The specification records the approved migration design.
-The coordination plan groups 15 tickets into six work plans. Their tasks have
-implementation or operational instructions and explicit review requirements.
+The coordination plan groups 15 migration tickets into six work plans. Their
+tasks have implementation or operational instructions and explicit review requirements.
 Tack contains the parent and ticket dependency relationships. Slice ordering
 comes from the coordination plan. This planning work changed no runtime code
 and performed no deployment.
+
+The subsequent audit created urgent MWAN-524 for the operator's required
+Astound baseline restoration. The epic now has 16 Todo children, 22 Done
+children, and nine Cancelled children. MWAN-519 depends on MWAN-524. Historical
+MWAN-331 and MWAN-491 remain Done. The audit changed no running service.
 
 The operator subsequently confirmed AT&T will retire and delegated the
 migration choice. Omit 802.1X integration from the new manager. Preserve the
@@ -29,6 +34,7 @@ review, merge, or live acceptance evidence from this planning work.
 
 | Ticket | Slices | Current execution state |
 | --- | --- | --- |
+| MWAN-524 | Restore the managed Astound testbed connection first. | The anomaly is verified; repair and live acceptance have not started. |
 | MWAN-516 | 516-model; 516-state | Execution has not started. |
 | MWAN-397 | 397-links | Execution has not started. |
 | MWAN-523 | 523-observation | Execution has not started. |
@@ -47,13 +53,20 @@ review, merge, or live acceptance evidence from this planning work.
 
 ## Resume the work
 
-The next task is independent contract review for 516-model against current
-MWAN and Configs source. No implementer or cutover agent has an execution
-assignment from this planning update.
+The first repair is MWAN-524. The operator requires Astound to remain managed
+in the testbed. Resolve the documented plan findings before assigning the
+migration slices. Then review the 516-model contract against current MWAN
+and Configs source. No implementation or cutover began during this audit.
 
 For every handoff, record the slice, agent responsibility, exact source
 revision, agreed interfaces, owned files, current PR, last passing check,
 remaining acceptance, next action, and prerequisite evidence.
+
+## Record plan review
+
+| Date | Reviewed revision | Review scope | Verdict | Evidence |
+| --- | --- | --- | --- | --- |
+| September 26, 2026 | `codex/mwan-network-model` at `3abbafa16ddabe309d7fd76e52f13d16415e035d` | Specification, coordinator, six plans, linked historical specifications, all 46 existing epic children, current MWAN and Configs source, Clyde decisions, and read-only live state. | NOT-READY for unattended execution. One baseline blocker and eight plan corrections remain. | The [audit](2026-09-26-link-ownership-audit.md) distinguishes static findings, live observations, and missing proof. MWAN-524 was added after reviewing the existing children. |
 
 ## Record each implementation result
 

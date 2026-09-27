@@ -38,6 +38,9 @@ watchdog through the verified recovery channel.
 
 ### Establish the prerequisites
 
+Require live acceptance of MWAN-524's Astound baseline repair before any
+migration cutover. Preserve its managed IPv4-only connection during transfer.
+
 Require completed MWAN-516, MWAN-523, MWAN-397, MWAN-398, MWAN-227, MWAN-517,
 MWAN-518, MWAN-505, MWAN-521, MWAN-522, and MWAN-341 protection. Build every
 required component before transfer. Require successful privileged acceptance

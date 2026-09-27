@@ -6,9 +6,26 @@ This plan defines execution order, agent responsibilities, and acceptance
 gates. Each slice plan defines its edits and verification. The
 [execution ledger](2026-09-26-link-ownership-ledger.md) records actual progress.
 
-The inspected baselines are MWAN `03dd43a` and Configs `52056ec`.
+The inspected baselines are MWAN `03dd43a` and Configs `18f2a711`.
 Recheck changed source before delegation. These plans authorize no claim
 that implementation, review, or live acceptance has already happened.
+
+Resolve the findings in the [plan audit](2026-09-26-link-ownership-audit.md)
+before assigning implementation from these plans.
+
+## Restore the Astound baseline first
+
+Complete [MWAN-524](https://tack.home.goodkind.io/browse/MWAN-524) before
+migration cutovers. Restore the existing IPv4-only Astound provider through
+the supported Configs deployment and current networkd owner. Prove managed
+device identity, addressing, routes, downstream packets, configured selection
+and balancing, and persistence after deployment and reboot. Preserve the
+other simulators. This repair precedes the six migration plans below.
+
+MWAN-331 deliberately removed Astound after its configuration-only acceptance
+test. Preserve that ticket and MWAN-491 as historical completed work. The
+operator now requires the testbed connection to remain managed. Do not use
+the current unmanaged device as an accepted migration baseline.
 
 ## Assign work by responsibility
 
