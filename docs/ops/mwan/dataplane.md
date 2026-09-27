@@ -49,8 +49,8 @@ watcher requests reconciliation when the table or either chain is deleted.
 The firewall and steering modules repair their own deleted structures.
 
 Stopping `mwan-ifmgr@wan` preserves its installed rules in the kernel. A
-restart reapplies the policy. A deleted table or chain needs a successful
-reconcile before its policy works again.
+restart reapplies the policy. A deleted table or chain does not enforce its
+policy until the next successful reconcile.
 
 ## Health state and the email guard
 

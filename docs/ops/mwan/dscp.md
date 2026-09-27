@@ -105,8 +105,8 @@ change this policy. No other provider may use the same DSCP value.
 
 ## Test OPNsense tagging
 
-The MWAN marking policy already exists. This procedure tests the undeployed
-OPNsense tag against that policy.
+This procedure verifies that OPNsense CS1 tagging causes MWAN to assign
+`mark=1` to new connections.
 
 1. Identify the streaming device LAN addresses. On the mwan VM during playback,
    the device's v6 appears as the conntrack source for Hulu flows (for example
@@ -130,10 +130,7 @@ OPNsense tag against that policy.
    on MWAN for `mark=1` across the changing CDN destinations. Confirm that
    untagged traffic still load-balances.
 
-Keep the successful scrub rule in the router configuration. Automating it
-later through `mwan-opnsense` requires a verified XPath write of a scrub rule
-subtree and a filter reload. The MWAN provider configuration already specifies
-CS1; no gateway nftables template edit is needed.
+Keep the successful scrub rule in the router configuration.
 
 ## Verification
 
