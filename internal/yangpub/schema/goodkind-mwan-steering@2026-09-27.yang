@@ -448,13 +448,13 @@ module goodkind-mwan-steering {
         enum mwan;
       }
       description
-        "The service responsible for configuring this interface.";
+        "This service configures the interface.";
     }
     leaf lease-store {
       type string {
         pattern '/.*';
       }
-      description "The absolute directory path for DHCP lease files.";
+      description "This field specifies the absolute directory path for DHCP lease files.";
     }
 
     container link {
@@ -465,11 +465,11 @@ module goodkind-mwan-steering {
         type uint32 {
           range "68..max";
         }
-        description "The maximum transmission unit in bytes.";
+        description "This field sets the maximum transmission unit in bytes.";
       }
       leaf bridge-master {
         type if:interface-ref;
-        description "The bridge interface that contains this link.";
+        description "This field specifies the bridge interface containing this link.";
       }
       container match {
         description
