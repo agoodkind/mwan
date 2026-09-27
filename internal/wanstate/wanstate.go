@@ -9,6 +9,8 @@ package wanstate
 import (
 	"maps"
 	"net/netip"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -87,6 +89,12 @@ type BGP struct {
 	Reached bool
 }
 
+// OwnedRuleset is one writer's last intended rules and apply result.
+type OwnedRuleset struct {
+	Rules string
+	Error string
+}
+
 // Observer is told, after a write commits, that the write changed a
 // member's verdict or the active tier. The store calls it outside its
 // lock, on the writer's goroutine, so an observer must hand the event
@@ -102,29 +110,29 @@ type Observer interface {
 // Store is the concurrent snapshot store. The zero value is unusable;
 // construct with New.
 type Store struct {
-	mu              sync.RWMutex
-	health          map[string]MemberHealth
-	routing         map[string]MemberRouting
-	translation     map[string]MemberTranslation
-	activeTier      uint8
-	tierValid       bool
-	bgp             BGP
-	intendedRuleset string
-	observer        Observer
+	mu               sync.RWMutex
+	health           map[string]MemberHealth
+	routing          map[string]MemberRouting
+	translation      map[string]MemberTranslation
+	activeTier       uint8
+	tierValid        bool
+	bgp              BGP
+	intendedRulesets map[string]OwnedRuleset
+	observer         Observer
 }
 
 // New returns an empty store.
 func New() *Store {
 	return &Store{
-		mu:              sync.RWMutex{},
-		health:          map[string]MemberHealth{},
-		routing:         map[string]MemberRouting{},
-		translation:     map[string]MemberTranslation{},
-		activeTier:      0,
-		tierValid:       false,
-		bgp:             BGP{Peers: nil, ReadAt: time.Time{}, Reached: false},
-		intendedRuleset: "",
-		observer:        nil,
+		mu:               sync.RWMutex{},
+		health:           map[string]MemberHealth{},
+		routing:          map[string]MemberRouting{},
+		translation:      map[string]MemberTranslation{},
+		activeTier:       0,
+		tierValid:        false,
+		bgp:              BGP{Peers: nil, ReadAt: time.Time{}, Reached: false},
+		intendedRulesets: map[string]OwnedRuleset{},
+		observer:         nil,
 	}
 }
 
@@ -188,11 +196,19 @@ func (s *Store) SetTranslation(members map[string]MemberTranslation) {
 	s.mu.Unlock()
 }
 
-// SetIntendedRuleset replaces the rendered text of the firewall rules the
-// daemon intends, written by the translation module each reconcile.
+// SetIntendedRuleset retains the translation module's existing writer API.
 func (s *Store) SetIntendedRuleset(text string) {
+	s.SetOwnedIntendedRuleset("npt", text, nil)
+}
+
+// SetOwnedIntendedRuleset replaces one writer's intent and last apply error.
+func (s *Store) SetOwnedIntendedRuleset(owner string, text string, applyError error) {
+	state := OwnedRuleset{Rules: text, Error: ""}
+	if applyError != nil {
+		state.Error = applyError.Error()
+	}
 	s.mu.Lock()
-	s.intendedRuleset = text
+	s.intendedRulesets[owner] = state
 	s.mu.Unlock()
 }
 
@@ -215,6 +231,7 @@ type Snapshot struct {
 	TierValid       bool
 	BGP             BGP
 	IntendedRuleset string
+	IntendedByOwner map[string]OwnedRuleset
 }
 
 // Snapshot returns a copy the caller may read without further locking.
@@ -228,13 +245,39 @@ func (s *Store) Snapshot() Snapshot {
 		ActiveTier:      s.activeTier,
 		TierValid:       s.tierValid,
 		BGP:             s.bgp,
-		IntendedRuleset: s.intendedRuleset,
+		IntendedRuleset: renderIntendedRulesets(s.intendedRulesets),
+		IntendedByOwner: make(map[string]OwnedRuleset, len(s.intendedRulesets)),
 	}
 	maps.Copy(snap.Health, s.health)
 	maps.Copy(snap.Routing, s.routing)
 	maps.Copy(snap.Translation, s.translation)
+	maps.Copy(snap.IntendedByOwner, s.intendedRulesets)
 	peers := make([]BGPPeer, len(s.bgp.Peers))
 	copy(peers, s.bgp.Peers)
 	snap.BGP.Peers = peers
 	return snap
+}
+
+func renderIntendedRulesets(owners map[string]OwnedRuleset) string {
+	if len(owners) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(owners))
+	for owner := range owners {
+		keys = append(keys, owner)
+	}
+	sort.Strings(keys)
+	var output strings.Builder
+	for _, owner := range keys {
+		state := owners[owner]
+		output.WriteString(owner + ":\n")
+		output.WriteString(state.Rules)
+		if !strings.HasSuffix(state.Rules, "\n") {
+			output.WriteByte('\n')
+		}
+		if state.Error != "" {
+			output.WriteString("apply error: " + state.Error + "\n")
+		}
+	}
+	return output.String()
 }

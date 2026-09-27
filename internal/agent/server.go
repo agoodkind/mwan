@@ -334,7 +334,8 @@ func criticalPaths() []string {
 	var paths []string
 	add := func(p string) { paths = append(paths, p) }
 	add("/etc/mwan/mwan.env")
-	add("/etc/nftables.conf")
+	add("/etc/mwan/config.toml")
+	add("/etc/mwan/network.json")
 	add("/etc/iproute2/rt_tables")
 	add("/etc/sysctl.d/99-mwan.conf")
 	add("/etc/wpa_supplicant/wpa_supplicant.conf")
