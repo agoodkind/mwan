@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"goodkind.io/mwan/internal/agent"
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/healthcheck"
+	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/version"
 	"goodkind.io/mwan/internal/watchdog"
 )
@@ -56,6 +58,13 @@ func main() {
 
 	if res := dispatchConfigLess(subcommand(sub)); res.handled {
 		os.Exit(res.code)
+	}
+	// The gateway installs local protection before TOML and BGP validation.
+	if subcommand(sub) == subcmdIfmgr && parseIfMgrFlags().role == "wan" {
+		if err := bootstrapWANFirewall(context.Background(), networkjson.DefaultPath); err != nil {
+			fmt.Fprintf(os.Stderr, "mwan ifmgr: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	cfg, err := config.Load()

@@ -17,7 +17,10 @@ import (
 	"syscall"
 	"time"
 
+	systemddaemon "github.com/coreos/go-systemd/v22/daemon"
+
 	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/logging"
 	"goodkind.io/mwan/internal/networkd"
@@ -83,7 +86,12 @@ func runIfMgr(cfg *config.Config) error {
 		aliasSync.Wait()
 	}()
 
-	rejections, err := loadNetworkConfig(ctx, logger, cfg, role)
+	if role == "wan" && flags.role != "wan" {
+		if err := bootstrapWANFirewall(ctx, networkjson.DefaultPath); err != nil {
+			return err
+		}
+	}
+	loaded, err := parseNetworkConfig(ctx, logger, cfg, role)
 	if err != nil {
 		logger.Error("ifmgr: network configuration unusable", "err", err)
 		return err
@@ -94,9 +102,17 @@ func runIfMgr(cfg *config.Config) error {
 		logger.Warn("ifmgr: build daemon config failed", "err", err)
 		return fmt.Errorf("build daemon config: %w", err)
 	}
-
 	dcfg.Notifier = notify.FromConfig(cfg, logger, "mwan-ifmgr")
 	dcfg.LiveState = wanstate.New()
+	d, err := ifmgr.NewDaemon(logger, dcfg)
+	if err != nil {
+		logger.Warn("ifmgr: new daemon failed", "err", err)
+		return fmt.Errorf("new daemon: %w", err)
+	}
+	rejections, err := writeNetworkConfig(ctx, logger, loaded)
+	if err != nil {
+		return err
+	}
 	if role == "wan" && cfg.OPNsense.NPTv6HairpinAlias != "" {
 		base, ok := http.DefaultTransport.(*http.Transport)
 		if !ok {
@@ -113,10 +129,10 @@ func runIfMgr(cfg *config.Config) error {
 		defer surface.Close()
 	}
 
-	d, err := ifmgr.NewDaemon(logger, dcfg)
-	if err != nil {
-		logger.Warn("ifmgr: new daemon failed", "err", err)
-		return fmt.Errorf("new daemon: %w", err)
+	if role == "wan" {
+		if _, err := systemddaemon.SdNotify(false, systemddaemon.SdNotifyReady); err != nil {
+			return fmt.Errorf("notify systemd readiness: %w", err)
+		}
 	}
 
 	if err := d.Run(ctx); err != nil {
@@ -169,6 +185,7 @@ type ifmgrFlags struct {
 func parseIfMgrFlags() ifmgrFlags {
 	fs := flag.NewFlagSet("ifmgr", flag.ContinueOnError)
 	role := fs.String("role", "", "ifmgr role (overrides cfg.IfMgr.Role; valid: see --help)")
+	_ = fs.String("config", "", "Set the TOML path for the top-level loader.")
 	debug := fs.Bool("debug", false, "enable DEBUG logging")
 	dryRun := fs.Bool("dry-run", false, "log mutating ops instead of applying (TODO: not yet plumbed to netif)")
 	_ = fs.Parse(os.Args[1:])
@@ -283,22 +300,14 @@ func buildIfMgrDaemonConfig(cfg *config.Config, role string) (ifmgr.DaemonConfig
 	}, nil
 }
 
-// loadNetworkConfig loads the provider network configuration for a role that
-// steers providers. It returns provider entries the loader rejected and writes
-// each rendered link's unit files before applying the configuration. Other
-// roles leave cfg unchanged and return no rejections because they do not use
-// provider configuration. A steering role cannot start without the file.
-//
-// The files are written before the daemon waits on any link, because udev
-// applies a .link file when the device appears and the daemon runs ahead of
-// its coldplug trigger. The network manager is reloaded only after a change,
-// so an unchanged set leaves it alone.
-func loadNetworkConfig(
+// parseNetworkConfig validates provider settings without writing network files.
+// runIfMgr validates module settings before writeNetworkConfig installs the network files.
+func parseNetworkConfig(
 	ctx context.Context,
 	log *slog.Logger,
 	cfg *config.Config,
 	role string,
-) ([]networkjson.Rejection, error) {
+) (*networkjson.Config, error) {
 	steers, err := roleSteersProviders(role)
 	if err != nil {
 		return nil, err
@@ -318,6 +327,17 @@ func loadNetworkConfig(
 			"provider", rejected.Provider, "err", rejected.Err)
 	}
 	loaded.Apply(cfg)
+	return loaded, nil
+}
+
+func writeNetworkConfig(
+	ctx context.Context,
+	log *slog.Logger,
+	loaded *networkjson.Config,
+) ([]networkjson.Rejection, error) {
+	if loaded == nil {
+		return nil, nil
+	}
 
 	changed, err := networkd.WriteDir(networkd.DefaultUnitDir, loaded.Links)
 	if err != nil {
@@ -336,6 +356,31 @@ func loadNetworkConfig(
 		return nil, fmt.Errorf("reload systemd-networkd: %w", err)
 	}
 	return loaded.Rejected, nil
+}
+
+func bootstrapWANFirewall(ctx context.Context, path string) error {
+	baseline, err := networkjson.LoadBaseline(path)
+	if err != nil {
+		slog.ErrorContext(ctx, "ifmgr: load protective firewall baseline failed", "path", path, "err", err)
+		return fmt.Errorf("load protective firewall baseline: %w", err)
+	}
+	if baseline == nil {
+		return fmt.Errorf("WAN firewall policy is absent in %s", path)
+	}
+	desired, err := firewall.CompileBaseline(*baseline)
+	if err != nil {
+		slog.ErrorContext(ctx, "ifmgr: compile protective firewall baseline failed", "path", path, "err", err)
+		return fmt.Errorf("compile protective firewall baseline: %w", err)
+	}
+	if err := firewall.Apply(ctx, desired); err != nil {
+		slog.ErrorContext(ctx, "ifmgr: apply protective firewall baseline failed", "path", path, "err", err)
+		return fmt.Errorf("apply protective firewall baseline: %w", err)
+	}
+	if _, err := firewall.Inspect(ctx, desired); err != nil {
+		slog.ErrorContext(ctx, "ifmgr: inspect protective firewall baseline failed", "path", path, "err", err)
+		return fmt.Errorf("inspect protective firewall baseline: %w", err)
+	}
+	return nil
 }
 
 // roleSteersProviders reports whether role runs the modules the network

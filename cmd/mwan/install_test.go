@@ -493,12 +493,9 @@ func TestInstallApplyUnderARootTouchesNoSystemd(t *testing.T) {
 	}
 }
 
-// TestInstallApplyWritesTheWanconfigAndHostFiles runs the verb for the wan
-// role under a root and checks that each file the playbooks copy today lands
-// at the host path the playbooks use, with their mode, holding the binary's
-// bytes. The wan role also installs the schema into sysrepo, which binds a
-// process to one repository, so the command runs in a child process; the
-// child fails the test on a non-zero exit.
+// TestInstallApplyWritesTheWanconfigAndHostFiles runs the WAN installer
+// against a private root. It checks each installed file against the embedded
+// bytes and verifies its path and mode. A child process isolates sysrepo.
 func TestInstallApplyWritesTheWanconfigAndHostFiles(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -508,7 +505,7 @@ func TestInstallApplyWritesTheWanconfigAndHostFiles(t *testing.T) {
 	wantFiles := map[string]string{
 		"/etc/systemd/system/rousette.service":                         "rousette.service",
 		"/etc/systemd/system/nghttpx-wanconfig.service":                "nghttpx-wanconfig.service",
-		"/etc/systemd/system/nftables.service.d/override.conf":         "nftables-override.conf",
+		"/etc/systemd/system/mwan-ifmgr@wan.service.d/firewall.conf":   "mwan-ifmgr-wan.conf",
 		"/etc/systemd/system/systemd-networkd.service.d/override.conf": "systemd-networkd-override.conf",
 		"/etc/sysctl.d/99-quiet-console.conf":                          "99-quiet-console.conf",
 	}
