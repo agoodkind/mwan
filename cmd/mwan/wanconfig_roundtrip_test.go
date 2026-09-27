@@ -25,13 +25,14 @@ const networkInstanceGlob = "../../yang/instances/*.json"
 // carries, by the list's JSON member name. A list missing here fails the
 // flattener, so a model change that adds a configuration list must name its key
 // rather than be flattened into ambiguous paths.
-var networkListKeys = map[string]string{
-	"interface":      "name",
-	"static-mapping": "external",
-	"address":        "ip",
-	"file":           "kind",
-	"section":        "index",
-	"entry":          "index",
+var networkListKeys = map[string][]string{
+	"interface":          {"name"},
+	"static-mapping":     {"external"},
+	"address":            {"ip"},
+	"file":               {"kind"},
+	"section":            {"index"},
+	"entry":              {"index"},
+	"management-service": {"protocol", "port"},
 }
 
 // servedOnlyPaths match the leaves the tree publishes that a network document
@@ -46,6 +47,7 @@ var servedOnlyPaths = []*regexp.Regexp{
 	regexp.MustCompile(`^/ietf-interfaces:interfaces/interface\[name='[^']+'\]/goodkind-mwan-steering:wan/v4-source$`),
 	regexp.MustCompile(`^/ietf-nat:nat/`),
 	regexp.MustCompile(`^/goodkind-mwan-steering:daemon/`),
+	regexp.MustCompile(`/firewall/management-service\[protocol='[^']+'\]\[port='[0-9]+'\]$`),
 }
 
 // leafPair is one leaf instance: its data path and its value as text.
@@ -199,17 +201,20 @@ func flattenArray(t *testing.T, path string, name string, elements []any, pairs 
 			*pairs = append(*pairs, leafPair{path: path, value: scalarText(t, path, element)})
 			continue
 		}
-		keyLeaf, known := networkListKeys[name]
+		keyLeaves, known := networkListKeys[name]
 		if !known {
 			t.Fatalf("list %s has no key in networkListKeys; add its key", path)
 		}
-		keyValue, present := entry[keyLeaf]
-		if !present {
-			t.Fatalf("list %s has an entry with no %s", path, keyLeaf)
+		entryPath := path
+		for _, keyLeaf := range keyLeaves {
+			keyValue, present := entry[keyLeaf]
+			if !present {
+				t.Fatalf("list %s has an entry with no %s", path, keyLeaf)
+			}
+			entryPath += "[" + keyLeaf + "='" + scalarText(t, path, keyValue) + "']"
 		}
-		entryPath := path + "[" + keyLeaf + "='" + scalarText(t, path, keyValue) + "']"
 		for _, leaf := range slices.Sorted(maps.Keys(entry)) {
-			if leaf == keyLeaf {
+			if slices.Contains(keyLeaves, leaf) {
 				continue
 			}
 			flattenMember(t, entryPath+"/"+leaf, leaf, entry[leaf], pairs)

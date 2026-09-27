@@ -145,7 +145,7 @@ completed translation model.
 Files:
 
 - Modify [networkjson.go](../../internal/networkjson/networkjson.go) and [ifmgr_modules.go](../../internal/config/ifmgr_modules.go).
-- Revise [the current steering schema](../../internal/yangpub/schema/goodkind-mwan-steering@2026-09-22.yang), [schema.go](../../internal/yangpub/schema.go), and [schema_cgo.go](../../internal/yangpub/schema_cgo.go).
+- Revise [the steering schema](../../internal/yangpub/schema/goodkind-mwan-steering@2026-09-26.yang) and [schema.go](../../internal/yangpub/schema.go).
 - Modify [ifmgr_module_configs.go](../../cmd/mwan/ifmgr_module_configs.go) and [wanconfig_publish.go](../../cmd/mwan/wanconfig_publish.go).
 - Extend the published `Gateway`, `GroupSettings`, and `ConfigItems` in [tree.go](../../internal/wanconfig/tree.go).
 - Extend [the publication roundtrip test](../../cmd/mwan/wanconfig_roundtrip_test.go) and [the public selftest](../../cmd/mwan/wanconfig_selftest.go).

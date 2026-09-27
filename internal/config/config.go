@@ -17,6 +17,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/networkd"
 )
 
@@ -274,11 +275,12 @@ type NotifySection struct {
 // Each role is a list of modules (see internal/ifmgr/roles.go), and the
 // module config schema is explicitly modeled in IfMgrModulesSection.
 type IfMgrSection struct {
-	Role              string `toml:"role"`
-	ReconcileInterval string `toml:"reconcile_interval"`
-	LogFile           string `toml:"log_file"`
-	JSONLogFile       string `toml:"json_log_file"`
-	Debug             bool   `toml:"debug"`
+	Firewall          firewall.Config `toml:"-"`
+	Role              string          `toml:"role"`
+	ReconcileInterval string          `toml:"reconcile_interval"`
+	LogFile           string          `toml:"log_file"`
+	JSONLogFile       string          `toml:"json_log_file"`
+	Debug             bool            `toml:"debug"`
 	// These three translation values and the WAN map below come from
 	// /etc/mwan/network.json. The skip tag is what stops the decoder reading a
 	// stale key out of a config.toml that still carries one, so exactly one

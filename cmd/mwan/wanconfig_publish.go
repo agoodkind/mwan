@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/ifmgr/modules/cloudflaredtap"
 	"goodkind.io/mwan/internal/ifmgr/modules/health"
@@ -315,6 +316,7 @@ func gatewayFromModuleConfigs(cfg *config.Config, configs ifmgr.ModuleConfigSet)
 
 	gateway := wanconfig.Gateway{
 		InternalIface: routesCfg.InternalIface,
+		Firewall:      firewallFromConfig(cfg),
 		HashMode:      hashModeFromConfig(cfg),
 		Group:         group,
 		Members:       make([]wanconfig.Member, 0, len(routesCfg.WANs)),
@@ -569,4 +571,12 @@ func hashModeFromConfig(cfg *config.Config) string {
 		return ""
 	}
 	return cfg.IfMgr.HashMode
+}
+
+func firewallFromConfig(cfg *config.Config) firewall.Config {
+	if cfg == nil {
+		var empty firewall.Config
+		return empty
+	}
+	return cfg.IfMgr.Firewall
 }
