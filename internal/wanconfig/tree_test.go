@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/networkd"
 )
 
@@ -370,6 +371,12 @@ func TestConfigItems_RejectsWhatAPathCannotCarry(t *testing.T) {
 		"empty internal link": {InternalIface: "", Members: nil},
 		"empty member name":   withMember(func(member *Member) { member.Name = "" }),
 		"quote in link":       withMember(func(member *Member) { member.Iface = "en'att0" }),
+		"quote in connection interface key": {
+			InternalIface: "eninternal0", ConnectionIDs: map[string]connectionid.ID{"en'other0": "other"},
+		},
+		"slash in connection interface key": {
+			InternalIface: "eninternal0", ConnectionIDs: map[string]connectionid.ID{"en/other0": "other"},
+		},
 		"duplicate link": {InternalIface: "eninternal0", Members: []Member{
 			testMember("att", "enatt0"), testMember("webpass", "enatt0"),
 		}},

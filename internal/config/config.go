@@ -17,6 +17,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/networkd"
 )
@@ -275,12 +276,13 @@ type NotifySection struct {
 // Each role is a list of modules (see internal/ifmgr/roles.go), and the
 // module config schema is explicitly modeled in IfMgrModulesSection.
 type IfMgrSection struct {
-	Firewall          firewall.Config `toml:"-"`
-	Role              string          `toml:"role"`
-	ReconcileInterval string          `toml:"reconcile_interval"`
-	LogFile           string          `toml:"log_file"`
-	JSONLogFile       string          `toml:"json_log_file"`
-	Debug             bool            `toml:"debug"`
+	Firewall           firewall.Config `toml:"-"`
+	PinnedConnectionID string          `toml:"-"`
+	Role               string          `toml:"role"`
+	ReconcileInterval  string          `toml:"reconcile_interval"`
+	LogFile            string          `toml:"log_file"`
+	JSONLogFile        string          `toml:"json_log_file"`
+	Debug              bool            `toml:"debug"`
 	// These three translation values and the WAN map below come from
 	// /etc/mwan/network.json. The skip tag is what stops the decoder reading a
 	// stale key out of a config.toml that still carries one, so exactly one
@@ -292,12 +294,14 @@ type IfMgrSection struct {
 	// beside the WAN map, so the same skip tag keeps a stale config.toml key
 	// out of them. HashMode decides how the steering module assigns a new
 	// connection; ReservedTables is the set no provider may route into.
-	HashMode       string                       `toml:"-"`
-	ReservedTables []int                        `toml:"-"`
-	Iface          map[string]IfMgrIfaceSection `toml:"iface"`
-	Modules        IfMgrModulesSection          `toml:"modules"`
-	Alerts         IfMgrAlertsSection           `toml:"alerts"`
-	WAN            map[string]IfMgrWANEntry     `toml:"-"`
+	HashMode              string                       `toml:"-"`
+	ReservedTables        []int                        `toml:"-"`
+	Iface                 map[string]IfMgrIfaceSection `toml:"iface"`
+	Modules               IfMgrModulesSection          `toml:"modules"`
+	Alerts                IfMgrAlertsSection           `toml:"alerts"`
+	WAN                   map[string]IfMgrWANEntry     `toml:"-"`
+	ConnectionIDs         map[string]connectionid.ID   `toml:"-"`
+	ExplicitConnectionIDs map[string]connectionid.ID   `toml:"-"`
 	// Links are the link specifications of the providers whose unit files the
 	// daemon renders, in the order network.json lists their interfaces. A
 	// provider whose files are hand-authored has none. They come from

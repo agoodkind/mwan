@@ -172,24 +172,24 @@ func validateConfig(cfg Config) error {
 		return fmt.Errorf("steering: hash_mode %q is not one of random, source, source-destination",
 			cfg.HashMode)
 	}
-	seenNames := make(map[string]bool, len(cfg.Members))
+	seenIDs := make(map[string]bool, len(cfg.Members))
 	weightSum := 0
 	for i, member := range cfg.Members {
-		if member.Name == "" {
-			return fmt.Errorf("steering: member[%d]: name is required", i)
+		if member.Key() == "" {
+			return fmt.Errorf("steering: member[%d]: connection ID is required", i)
 		}
 		if member.Iface == "" {
-			return fmt.Errorf("steering: member[%d] (%s): iface is required", i, member.Name)
+			return fmt.Errorf("steering: member[%d] (%s): iface is required", i, member.Key())
 		}
-		if seenNames[member.Name] {
-			return fmt.Errorf("steering: member[%d]: duplicate name %q", i, member.Name)
+		if seenIDs[member.Key()] {
+			return fmt.Errorf("steering: member[%d]: duplicate connection ID %q", i, member.Key())
 		}
-		seenNames[member.Name] = true
+		seenIDs[member.Key()] = true
 		if member.Mark == 0 {
-			return fmt.Errorf("steering: member[%d] (%s): mark must be > 0", i, member.Name)
+			return fmt.Errorf("steering: member[%d] (%s): mark must be > 0", i, member.Key())
 		}
 		if member.Weight < 1 {
-			return fmt.Errorf("steering: member[%d] (%s): weight must be >= 1", i, member.Name)
+			return fmt.Errorf("steering: member[%d] (%s): weight must be >= 1", i, member.Key())
 		}
 		weightSum += member.Weight
 	}
@@ -233,13 +233,13 @@ func (m *Module) desiredRules(health netif.HealthStates) []steerRule {
 	eligibleV4 := make(map[uint32]bool, len(m.cfg.Members))
 	eligibleV6 := make(map[uint32]bool, len(m.cfg.Members))
 	for _, member := range m.cfg.Members {
-		routing := snapshot.Routing[member.Name]
-		translation := snapshot.Translation[member.Name]
-		if routing.V4Ready && translation.V4.Ready && netif.HealthIsHealthy(health.State(member.Name)) {
+		routing := snapshot.Routing[member.Key()]
+		translation := snapshot.Translation[member.Key()]
+		if routing.V4Ready && translation.V4.Ready && netif.HealthIsHealthy(health.State(member.Key())) {
 			v4 = append(v4, member)
 			eligibleV4[member.Mark] = true
 		}
-		if routing.V6Ready && translation.V6.Ready && netif.HealthIsHealthy(health.State(member.Name)) {
+		if routing.V6Ready && translation.V6.Ready && netif.HealthIsHealthy(health.State(member.Key())) {
 			v6 = append(v6, member)
 			eligibleV6[member.Mark] = true
 		}

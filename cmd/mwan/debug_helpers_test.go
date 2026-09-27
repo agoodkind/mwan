@@ -25,8 +25,8 @@ func TestDebugWANsSortedByName(t *testing.T) {
 
 	got := debugWANs(cfg)
 	want := []debugWAN{
-		{Name: "att", Iface: "att0", TableID: 100, FwMark: 1},
-		{Name: "webpass", Iface: "webpass0", TableID: 200, FwMark: 2},
+		{ID: "att", Name: "att", Iface: "att0", TableID: 100, FwMark: 1},
+		{ID: "webpass", Name: "webpass", Iface: "webpass0", TableID: 200, FwMark: 2},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("debugWANs mismatch\ngot:  %#v\nwant: %#v", got, want)

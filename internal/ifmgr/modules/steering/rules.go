@@ -175,7 +175,7 @@ func balancerFor(members []Member, health netif.HealthStates) (balancer, bool) {
 	}
 	carrying := make([]Member, 0, len(members))
 	for _, member := range members {
-		if member.Tier != activeTier || !netif.HealthIsHealthy(health.State(member.Name)) {
+		if member.Tier != activeTier || !netif.HealthIsHealthy(health.State(member.Key())) {
 			continue
 		}
 		carrying = append(carrying, member)
@@ -208,7 +208,7 @@ func balancerFor(members []Member, health netif.HealthStates) (balancer, bool) {
 func tierMembers(members []Member) []netif.TierMember {
 	tiers := make([]netif.TierMember, 0, len(members))
 	for _, member := range members {
-		tiers = append(tiers, netif.TierMember{Name: member.Name, Tier: member.Tier})
+		tiers = append(tiers, netif.TierMember{Name: member.Key(), Tier: member.Tier})
 	}
 	return tiers
 }

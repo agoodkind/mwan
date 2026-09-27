@@ -272,13 +272,13 @@ func (m *Module) excludeRouteFamily(current gateways, tableID int, family string
 		if wan.TableID != tableID {
 			continue
 		}
-		gateway := current[wan.Name]
+		gateway := current[wan.Key()]
 		if family == familyV4 {
 			gateway.V4 = ""
 		} else {
 			gateway.V6 = ""
 		}
-		current[wan.Name] = gateway
+		current[wan.Key()] = gateway
 	}
 }
 
@@ -304,12 +304,12 @@ func (m *Module) publishLiveState(currentGateways gateways, health netif.HealthS
 	}
 	members := make(map[string]wanstate.MemberRouting, len(m.cfg.WANs))
 	for _, wan := range m.cfg.WANs {
-		v4Ready := familyReady(wan, currentGateways[wan.Name], health, translations[wan.Name], familyV4)
-		v6Ready := familyReady(wan, currentGateways[wan.Name], health, translations[wan.Name], familyV6)
-		members[wan.Name] = wanstate.MemberRouting{
+		v4Ready := familyReady(wan, currentGateways[wan.Key()], health, translations[wan.Key()], familyV4)
+		v6Ready := familyReady(wan, currentGateways[wan.Key()], health, translations[wan.Key()], familyV6)
+		members[wan.Key()] = wanstate.MemberRouting{
 			Carrying: (readyV4 && wan.Tier == tierV4 && v4Ready) || (readyV6 && wan.Tier == tierV6 && v6Ready),
 			V4Ready:  v4Ready, V6Ready: v6Ready,
-			OwnedAddresses: slices.Clone(m.ownedAddresses[wan.Name]),
+			OwnedAddresses: slices.Clone(m.ownedAddresses[wan.Key()]),
 		}
 	}
 	m.Env.LiveState.SetRouting(activeTier, members)
@@ -331,7 +331,7 @@ func (m *Module) ownMappedAddressesLocked(ctx context.Context, log *slog.Logger)
 			ownershipErr = errors.Join(ownershipErr, err)
 			continue
 		}
-		owned[wan.Name] = addresses
+		owned[wan.Key()] = addresses
 	}
 	m.ownedAddresses = owned
 	return ownershipErr
@@ -343,13 +343,13 @@ func (m *Module) ownLinkAddresses(ctx context.Context, log *slog.Logger, wan WAN
 	held, err := m.listAddrs(ctx, log, wan.Iface)
 	if err != nil {
 		log.WarnContext(ctx, "wan.routes: list link addresses failed",
-			"wan", wan.Name, "iface", wan.Iface, "err", err)
+			"wan", wan.Key(), "iface", wan.Iface, "err", err)
 		return nil, fmt.Errorf("list addresses on %s: %w", wan.Iface, err)
 	}
 	onLink, err := OnLinkMappedAddresses(held, wan.MappedExternals)
 	if err != nil {
 		log.WarnContext(ctx, "wan.routes: link addresses unreadable",
-			"wan", wan.Name, "iface", wan.Iface, "err", err)
+			"wan", wan.Key(), "iface", wan.Iface, "err", err)
 		return nil, fmt.Errorf("read addresses on %s: %w", wan.Iface, err)
 	}
 	if len(onLink) == 0 {
@@ -364,7 +364,7 @@ func (m *Module) ownLinkAddresses(ctx context.Context, log *slog.Logger, wan WAN
 	}
 	if err := m.reconcileAddrs(ctx, log, wan.Iface, desired); err != nil {
 		log.WarnContext(ctx, "wan.routes: hold mapped addresses failed",
-			"wan", wan.Name, "iface", wan.Iface, "err", err)
+			"wan", wan.Key(), "iface", wan.Iface, "err", err)
 		return nil, fmt.Errorf("hold mapped addresses on %s: %w", wan.Iface, err)
 	}
 	return onLink, nil
@@ -549,11 +549,11 @@ func desiredState(
 	routes := make([]netif.RouteSpec, 0, len(cfg.WANs)*5+1)
 
 	for _, wan := range cfg.WANs {
-		wanGateways := currentGateways[wan.Name]
-		routes = appendWANDefaultRoutes(routes, wan, wanGateways, health, translations[wan.Name])
+		wanGateways := currentGateways[wan.Key()]
+		routes = appendWANDefaultRoutes(routes, wan, wanGateways, health, translations[wan.Key()])
 		routes = appendWANInternalRoutes(routes, cfg, wan)
 
-		rules = appendWANRules(rules, wan, wanGateways, health, translations[wan.Name])
+		rules = appendWANRules(rules, wan, wanGateways, health, translations[wan.Key()])
 	}
 
 	for _, family := range []string{familyV4, familyV6} {
@@ -583,7 +583,7 @@ func catchAllCarrier(cfg Config, gateways gateways, health netif.HealthStates, t
 	var carrier *WAN
 	for i := range cfg.WANs {
 		wan := &cfg.WANs[i]
-		if wan.Tier != tier || !familyReady(*wan, gateways[wan.Name], health, translations[wan.Name], family) {
+		if wan.Tier != tier || !familyReady(*wan, gateways[wan.Key()], health, translations[wan.Key()], family) {
 			continue
 		}
 		if carrier != nil {
@@ -597,8 +597,8 @@ func catchAllCarrier(cfg Config, gateways gateways, health netif.HealthStates, t
 func familyMembers(cfg Config, gateways gateways, health netif.HealthStates, translations map[string]wanstate.MemberTranslation, family string) []netif.TierMember {
 	members := make([]netif.TierMember, 0, len(cfg.WANs))
 	for _, wan := range cfg.WANs {
-		if familyReady(wan, gateways[wan.Name], health, translations[wan.Name], family) {
-			members = append(members, netif.TierMember{Name: wan.Name, Tier: wan.Tier})
+		if familyReady(wan, gateways[wan.Key()], health, translations[wan.Key()], family) {
+			members = append(members, netif.TierMember{Name: wan.Key(), Tier: wan.Tier})
 		}
 	}
 	return members
@@ -616,9 +616,9 @@ func familyReady(wan WAN, gateways gatewaySet, health netif.HealthStates, transl
 		return false
 	}
 	if family == familyV4 {
-		return translation.V4.Ready && wanEnabled(gateways.V4, health.State(wan.Name))
+		return translation.V4.Ready && wanEnabled(gateways.V4, health.State(wan.Key()))
 	}
-	return translation.V6.Ready && wanEnabled(gateways.V6, health.State(wan.Name))
+	return translation.V6.Ready && wanEnabled(gateways.V6, health.State(wan.Key()))
 }
 
 func appendWANDefaultRoutes(routes []netif.RouteSpec, wan WAN, gateways gatewaySet, health netif.HealthStates, translation wanstate.MemberTranslation) []netif.RouteSpec {
@@ -766,22 +766,22 @@ func (m *Module) discoverGateways(ctx context.Context, log *slog.Logger) (gatewa
 				}
 				continue
 			}
-			wrapped := fmt.Errorf("%s %s default gateway: %w", wan.Name, family, err)
+			wrapped := fmt.Errorf("%s %s default gateway: %w", wan.Key(), family, err)
 			if netif.IsLinkNotFound(err) {
 				// The provider keeps an empty gateway, so this pass installs no
 				// rules for it and writes nothing to its table default. No write
 				// is needed there because the kernel removed every route through
 				// the device, including that default, when the device went away.
 				log.WarnContext(ctx, "wan.routes: provider link missing; treating it as having no gateway",
-					"wan", wan.Name, "iface", wan.Iface, "family", family, "err", err)
+					"wan", wan.Key(), "iface", wan.Iface, "family", family, "err", err)
 				discovery.missingLinks = errors.Join(discovery.missingLinks, wrapped)
 				continue
 			}
 			log.WarnContext(ctx, "wan.routes: default gateway read failed",
-				"wan", wan.Name, "iface", wan.Iface, "family", family, "err", err)
+				"wan", wan.Key(), "iface", wan.Iface, "family", family, "err", err)
 			gatewayErr = errors.Join(gatewayErr, wrapped)
 		}
-		discovery.gateways[wan.Name] = wanGateways
+		discovery.gateways[wan.Key()] = wanGateways
 	}
 	if gatewayErr != nil {
 		discovery.gateways = nil
@@ -873,17 +873,17 @@ func validateConfig(cfg Config) error {
 		slog.Warn("wan.routes: missing internal_net_v4")
 		return fmt.Errorf("wan.routes: internal_net_v4 is required")
 	}
-	seenNames := make(map[string]bool, len(cfg.WANs))
+	seenIDs := make(map[string]bool, len(cfg.WANs))
 	seenSlots := map[ruleSlot]bool{}
 	for i, wan := range cfg.WANs {
 		if err := validateWAN(wan); err != nil {
 			return fmt.Errorf("wan.routes.wan[%d]: %w", i, err)
 		}
-		if seenNames[wan.Name] {
-			slog.Warn("wan.routes: duplicate WAN name", "name", wan.Name)
-			return fmt.Errorf("wan.routes.wan[%d]: duplicate name %q", i, wan.Name)
+		if seenIDs[wan.Key()] {
+			slog.Warn("wan.routes: duplicate connection ID", "connection_id", wan.Key())
+			return fmt.Errorf("wan.routes.wan[%d]: duplicate connection ID %q", i, wan.Key())
 		}
-		seenNames[wan.Name] = true
+		seenIDs[wan.Key()] = true
 		for _, slot := range wanRuleSlots(wan) {
 			if seenSlots[slot] {
 				slog.Warn("wan.routes: duplicate rule slot",
@@ -906,8 +906,8 @@ func validateConfig(cfg Config) error {
 // load time in networkjson, because they need every provider at once and the
 // reserved list beside them.
 func validateWAN(wan WAN) error {
-	if wan.Name == "" {
-		return fmt.Errorf("name is required")
+	if wan.Key() == "" {
+		return fmt.Errorf("connection ID is required")
 	}
 	if wan.Iface == "" {
 		return fmt.Errorf("iface is required")

@@ -191,7 +191,11 @@ func ownedAddressItems(member wanconfig.Member, owned []netip.Addr) []yangpub.It
 	}
 	base := "/ietf-interfaces:interfaces/interface[name='" + member.Iface + "']/" + steeringPrefix + ":wan"
 	items := make([]yangpub.Item, 0, len(owned)+1)
-	items = append(items, yangpub.Item{Path: base + "/name", Value: member.Name})
+	providerName := member.ProviderName
+	if providerName == "" {
+		providerName = member.Name
+	}
+	items = append(items, yangpub.Item{Path: base + "/name", Value: providerName})
 	for _, address := range owned {
 		items = append(items, yangpub.Item{Path: base + "/owned-address", Value: address.String()})
 	}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/ifmgr/modules/cloudflaredtap"
@@ -309,20 +310,28 @@ func gatewayFromModuleConfigs(cfg *config.Config, configs ifmgr.ModuleConfigSet)
 	probed := map[string]bool{}
 	if healthCfg, isHealth := configs["health"].(health.Config); isHealth {
 		for _, wan := range healthCfg.WANs {
-			probed[wan.Name] = true
+			probed[wan.Key()] = true
 		}
+	}
+	var pinnedConnectionID string
+	var explicitConnectionIDs map[string]connectionid.ID
+	if cfg != nil {
+		pinnedConnectionID = cfg.IfMgr.PinnedConnectionID
+		explicitConnectionIDs = cfg.IfMgr.ExplicitConnectionIDs
 	}
 
 	gateway := wanconfig.Gateway{
-		InternalIface: routesCfg.InternalIface,
-		Firewall:      firewallFromConfig(cfg),
-		HashMode:      hashModeFromConfig(cfg),
-		Group:         group,
-		Members:       make([]wanconfig.Member, 0, len(routesCfg.WANs)),
-		Daemon:        daemonSettings(cfg, configs),
+		InternalIface:      routesCfg.InternalIface,
+		Firewall:           firewallFromConfig(cfg),
+		PinnedConnectionID: pinnedConnectionID,
+		ConnectionIDs:      explicitConnectionIDs,
+		HashMode:           hashModeFromConfig(cfg),
+		Group:              group,
+		Members:            make([]wanconfig.Member, 0, len(routesCfg.WANs)),
+		Daemon:             daemonSettings(cfg, configs),
 	}
 	for _, wan := range routesCfg.WANs {
-		member, err := memberFromWAN(cfg, wan, probed[wan.Name])
+		member, err := memberFromWAN(cfg, wan, probed[wan.Key()])
 		if err != nil {
 			return none, false, err
 		}
@@ -341,34 +350,35 @@ func memberFromWAN(
 	probed bool,
 ) (wanconfig.Member, error) {
 	var none wanconfig.Member
-	probe, err := probeSettings(cfg, wan.Name)
+	probe, err := probeSettings(cfg, wan.Key())
 	if err != nil {
 		return none, err
 	}
 	member := wanconfig.Member{
-		Name:            wan.Name,
+		Name:            wan.Key(),
+		ProviderName:    wan.Name,
 		Iface:           wan.Iface,
 		Tier:            wan.Tier,
 		Weight:          clampUint16(wan.Weight),
 		ProbePolicy:     "",
-		TranslationV4:   translationV4FromConfig(cfg, wan.Name),
-		TranslationV6:   translationV6FromConfig(cfg, wan.Name),
-		TranslationIDV4: wanconfig.TranslationInstanceID(wan.Name, "ipv4"),
-		TranslationIDV6: wanconfig.TranslationInstanceID(wan.Name, "ipv6"),
+		TranslationV4:   translationV4FromConfig(cfg, wan.Key()),
+		TranslationV6:   translationV6FromConfig(cfg, wan.Key()),
+		TranslationIDV4: wanconfig.TranslationInstanceID(wan.Key(), "ipv4"),
+		TranslationIDV6: wanconfig.TranslationInstanceID(wan.Key(), "ipv6"),
 		TableID:         clampUint32(wan.TableID),
 		FwMark:          wan.FwMark,
 		FwMarkPrio:      clampUint32(wan.FwMarkPrio),
 		FromPrio:        clampUint32(wan.FromPrio),
 		V4Source:        wan.V4Source,
-		ForcedDSCP:      forcedDSCPFromConfig(cfg, wan.Name),
+		ForcedDSCP:      forcedDSCPFromConfig(cfg, wan.Key()),
 		Health:          probe,
-		LinkFiles:       linkFilesFromConfig(cfg, wan.Name),
+		LinkFiles:       linkFilesFromConfig(cfg, wan.Key()),
 		Link:            linkFromConfig(cfg, wan.Iface),
 	}
 	if probed {
 		// The probe policy is named after the member: the health module
 		// keys its per-member policy by the same name.
-		member.ProbePolicy = wan.Name
+		member.ProbePolicy = wan.Key()
 	}
 	return member, nil
 }

@@ -15,9 +15,12 @@ import (
 	"time"
 
 	"goodkind.io/mwan/internal/ifmgr"
+	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/statuspush"
 	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/internal/yangpub"
 )
 
 func TestAdvanceHealthAppliesConsecutiveThresholds(t *testing.T) {
@@ -712,6 +715,69 @@ func TestWriteStateFileUsesShellFormat(t *testing.T) {
 	}
 	if len(entries) != 1 || entries[0].Name() != "run" {
 		t.Fatalf("writeStateFile created %v, want only the runtime directory", entries)
+	}
+}
+
+func TestConnectionIdentityStateFileRoundTrip(t *testing.T) {
+	t.Parallel()
+	raw, err := os.ReadFile("../../../../yang/instances/network-min.json")
+	if err != nil {
+		t.Fatalf("read network document: %v", err)
+	}
+	document := string(raw)
+	for _, replacement := range []struct{ old, new string }{
+		{`"name": "enwebpass0",`, `"name": "enwebpass0", "goodkind-mwan-steering:connection-id": "sonic-a",`},
+		{`"name": "enatt0",`, `"name": "enatt0", "goodkind-mwan-steering:connection-id": "sonic-b",`},
+		{`"name": "att",`, `"name": "webpass",`},
+		{`"pinned-provider": "att"`, `"pinned-connection-id": "sonic-b"`},
+	} {
+		updated := strings.Replace(document, replacement.old, replacement.new, 1)
+		if updated == document {
+			t.Fatalf("network document omits %q", replacement.old)
+		}
+		document = updated
+	}
+	documentPath := filepath.Join(t.TempDir(), "network.json")
+	if err := os.WriteFile(documentPath, []byte(document), 0o600); err != nil {
+		t.Fatalf("write network document: %v", err)
+	}
+	schemaDir := filepath.Join(t.TempDir(), "schema")
+	if _, err := yangpub.WriteSchema(schemaDir); err != nil {
+		t.Fatalf("write schema: %v", err)
+	}
+	loaded, err := networkjson.Load(documentPath, schemaDir)
+	if err != nil {
+		t.Fatalf("load network document: %v", err)
+	}
+	first, firstFound := loaded.WAN["sonic-a"]
+	second, secondFound := loaded.WAN["sonic-b"]
+	if !firstFound || !secondFound || first.ProviderName != second.ProviderName {
+		t.Fatalf("connection identities and display names = %+v", loaded.WAN)
+	}
+	stateFile := filepath.Join(t.TempDir(), "mwan-health.state")
+	module := &Module{
+		cfg: Config{
+			StateFile: stateFile,
+			WANs: []WAN{
+				{WANRef: ifmgr.WANRef{ID: "sonic-a", Name: first.ProviderName, Iface: first.Iface}},
+				{WANRef: ifmgr.WANRef{ID: "sonic-b", Name: second.ProviderName, Iface: second.Iface}},
+			},
+		},
+		statuses: map[string]wanStatus{
+			"sonic-a": {State: StateUnhealthy},
+			"sonic-b": {State: StateHealthy},
+		},
+	}
+	if err := module.writeStateFile(context.Background(), slog.Default(), module.statuses); err != nil {
+		t.Fatalf("write state file: %v", err)
+	}
+	states, err := netif.ReadHealthState(stateFile)
+	if err != nil {
+		t.Fatalf("read state file: %v", err)
+	}
+	if states.State("sonic-a") != netif.HealthStateUnhealthy ||
+		states.State("sonic-b") != netif.HealthStateHealthy {
+		t.Fatalf("connection states = %v", states)
 	}
 }
 

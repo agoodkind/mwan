@@ -15,7 +15,7 @@ import (
 func (m *Module) initStatuses() {
 	statuses := make(map[string]wanStatus, len(m.cfg.WANs))
 	for _, wan := range m.cfg.WANs {
-		statuses[wan.Name] = wanStatus{
+		statuses[wan.Key()] = wanStatus{
 			State:     StateUnknown,
 			OKCount:   0,
 			FailCount: 0,
@@ -54,10 +54,10 @@ func (m *Module) serializeState(statuses map[string]wanStatus) []byte {
 	var buffer bytes.Buffer
 	for _, wan := range m.cfg.WANs {
 		state := StateUnknown
-		if status, ok := statuses[wan.Name]; ok && status.State.Valid() {
+		if status, ok := statuses[wan.Key()]; ok && status.State.Valid() {
 			state = status.State
 		}
-		_, _ = fmt.Fprintf(&buffer, "%s:%s\n", wan.Name, state)
+		_, _ = fmt.Fprintf(&buffer, "%s:%s\n", wan.Key(), state)
 	}
 	return buffer.Bytes()
 }

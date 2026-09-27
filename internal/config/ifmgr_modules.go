@@ -133,13 +133,12 @@ type IfMgrPolicyRulesSection struct {
 	Rule []IfMgrPolicyRuleSection `toml:"rule"`
 }
 
-// IfMgrWANEntry is one provider's routing configuration, keyed by provider
-// name. It comes from network.json: the interface the provider rides, the
-// policy-routing slots wan.routes owns, and the steering properties the
-// balancer reads. Each configured family has an explicit translation policy.
-// The shared internal prefix and edge addresses live on
-// IfMgrSection, because no single provider owns them.
+// IfMgrWANEntry stores one connection routing policy, keyed by connection ID.
+// It retains the provider display name, interface, routing slots, steering
+// settings, and per-family translation policy. Shared translation values
+// remain on IfMgrSection.
 type IfMgrWANEntry struct {
+	ProviderName  string
 	Iface         string
 	TableID       int
 	FwMark        int

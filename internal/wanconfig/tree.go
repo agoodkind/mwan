@@ -13,10 +13,12 @@ import (
 	"fmt"
 	"log/slog"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 
 	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/networkd"
 )
@@ -29,15 +31,13 @@ type Item struct {
 	Value string
 }
 
-// Member is one steering member exactly as the daemon loaded it: the link
-// that carries it, the tier the configuration assigns it, the probe policy
-// that decides its health, and the prefix-translation pair it carries when
-// its configuration names one.
+// Member configures one connection with a network interface, steering tier,
+// health policy, and optional translation policy.
 type Member struct {
-	// Name is the member's stable name. It names the probe policy and the
-	// translation instance.
-	Name string
-	// Iface is the link the member rides. It is the interface entry's key.
+	// Name is the connection ID used by probe policies and translation instances.
+	Name         string
+	ProviderName string
+	// Iface is the interface entry key.
 	Iface string
 	// Tier is the steering tier the configuration assigns; lower is preferred.
 	Tier uint8
@@ -172,7 +172,9 @@ type DaemonSettings struct {
 
 // Gateway is the loaded configuration the surface publishes.
 type Gateway struct {
-	Firewall firewall.Config
+	Firewall           firewall.Config
+	PinnedConnectionID string
+	ConnectionIDs      map[string]connectionid.ID
 	// InternalIface is the link toward the router behind the gateway. It is
 	// published as an interface entry with both families enabled, because
 	// the daemon routes both families over it.
@@ -271,6 +273,24 @@ func ConfigItems(g Gateway) ([]Item, error) {
 		items = append(items, steeringItems(member)...)
 		items = append(items, wanItems(member)...)
 		items = append(items, linkItems(member)...)
+	}
+	ifaces := make([]string, 0, len(g.ConnectionIDs))
+	for iface := range g.ConnectionIDs {
+		ifaces = append(ifaces, iface)
+	}
+	slices.Sort(ifaces)
+	for _, iface := range ifaces {
+		known := iface == g.InternalIface || (g.Firewall.Enabled && iface == g.Firewall.ManagementInterface)
+		for _, member := range g.Members {
+			if member.Iface == iface {
+				known = true
+				break
+			}
+		}
+		if !known {
+			items = append(items, interfaceItems(iface, false, false)...)
+		}
+		items = append(items, Item{Path: interfacePath(iface) + "/goodkind-mwan-steering:connection-id", Value: g.ConnectionIDs[iface].String()})
 	}
 	items = append(items, steeringGroupItems(g)...)
 	items = append(items, firewallItems(g)...)
@@ -412,13 +432,16 @@ func steeringItems(member Member) []Item {
 	return items
 }
 
-// wanItems describes the provider the member's link carries: its name, its
-// routing numbers, the prefix it translates onto, its source pin and forced
-// DSCP value when it carries them, and its probe when it has one.
+// wanItems publishes the provider display name and its configured routing,
+// translation, source, and health values.
 func wanItems(member Member) []Item {
 	base := interfacePath(member.Iface) + "/goodkind-mwan-steering:wan"
+	providerName := member.ProviderName
+	if providerName == "" {
+		providerName = member.Name
+	}
 	items := []Item{
-		{Path: base + "/name", Value: member.Name},
+		{Path: base + "/name", Value: providerName},
 		{Path: base + "/table-id", Value: uintValue(uint64(member.TableID))},
 		{Path: base + "/fw-mark", Value: uintValue(uint64(member.FwMark))},
 		{Path: base + "/fw-mark-prio", Value: uintValue(uint64(member.FwMarkPrio))},
@@ -671,19 +694,7 @@ func firewallItems(g Gateway) []Item {
 			items = append(items, Item{Path: path + "/allowed-source", Value: source.String()})
 		}
 	}
-	if cfg.PinnedProvider != "" {
-		for _, member := range g.Members {
-			if member.Iface == cfg.PinnedProvider {
-				items = append(items, Item{Path: base + "/pinned-provider", Value: member.Name})
-				break
-			}
-		}
-		items = append(items,
-			Item{Path: base + "/pinned-source-v4", Value: cfg.PinnedSourceIPv4.String()},
-			Item{Path: base + "/pinned-source-port", Value: uintValue(uint64(cfg.PinnedSourcePort))},
-			Item{Path: base + "/pinned-destination-port", Value: uintValue(uint64(cfg.PinnedDestinationPort))},
-		)
-	}
+	items = append(items, firewallPinItems(g, base)...)
 	for _, prefix := range cfg.PinnedIPv4 {
 		items = append(items, Item{Path: base + "/pinned-v4", Value: prefix.String()})
 	}
@@ -762,6 +773,15 @@ func validate(g Gateway) error {
 			return err
 		}
 		if err := validateProvider(member); err != nil {
+			return err
+		}
+	}
+	return validateConnectionIDInterfaces(g.ConnectionIDs)
+}
+
+func validateConnectionIDInterfaces(ids map[string]connectionid.ID) error {
+	for iface := range ids {
+		if err := validateKey("connection ID interface", iface); err != nil {
 			return err
 		}
 	}
