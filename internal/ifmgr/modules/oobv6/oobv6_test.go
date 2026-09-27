@@ -5,6 +5,11 @@ import (
 	"io"
 	"log/slog"
 	"testing"
+
+	internalclock "goodkind.io/mwan/internal/clock"
+	"goodkind.io/mwan/internal/ifmgr"
+	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/internal/notify"
 )
 
 func testCtx(t *testing.T) context.Context {
@@ -119,5 +124,48 @@ func TestReconcileSLAACSrcRule_Disabled(t *testing.T) {
 	if m.installedSLAACAddr != "previous-value" {
 		t.Errorf("installedSLAACAddr changed despite disabled: %q",
 			m.installedSLAACAddr)
+	}
+}
+
+func TestSnapshotReplayDoesNotReportSLAACRenumber(t *testing.T) {
+	log := testLog(t)
+	notifier, err := notify.New(nil, log, "oobv6-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := &Module{
+		cfg:   Config{Iface: "mbrains", OOBAddr: "3d06:bad:b01:ff::1/128"},
+		clock: internalclock.Real{},
+	}
+	m.Env = &ifmgr.Env{Alerts: ifmgr.WrapNotifier(notifier)}
+	ctx := testCtx(t)
+	oldAddress := netif.Event{Kind: netif.EvAddrAdded, Iface: "mbrains", Family: "inet6", CIDR: "2607:f598:d3e8:4500::1/128"}
+	if err := m.OnKernelEvent(ctx, log, oldAddress); err != nil {
+		t.Fatal(err)
+	}
+	for _, cidr := range []string{"2607:f598:d3e8:4500::1/128", "2607:f598:d3e8:4501::1/128"} {
+		if err := m.OnKernelEvent(ctx, log, netif.Event{
+			Kind:           netif.EvAddrAdded,
+			Iface:          "mbrains",
+			Family:         "inet6",
+			CIDR:           cidr,
+			SnapshotReplay: true,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if m.Env.Alerts.Active("slaac-renumber", "mbrains") {
+		t.Fatal("existing snapshot addresses reported a renumber")
+	}
+	if err := m.OnKernelEvent(ctx, log, netif.Event{
+		Kind:   netif.EvAddrAdded,
+		Iface:  "mbrains",
+		Family: "inet6",
+		CIDR:   "2607:f598:d3e8:4502::1/128",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !m.Env.Alerts.Active("slaac-renumber", "mbrains") {
+		t.Fatal("new address did not report a renumber")
 	}
 }

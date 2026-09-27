@@ -9,6 +9,7 @@ import (
 	"time"
 
 	internalclock "goodkind.io/mwan/internal/clock"
+	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/tracing"
@@ -30,12 +31,13 @@ import (
 //  4. Run returns when ctx is cancelled. Modules' kernel state is left
 //     in place (no Cleanup hook); the daemon is restart-safe.
 type Daemon struct {
-	cfg     DaemonConfig
-	log     *slog.Logger
-	role    string
-	modules []Module
-	clock   internalclock.Clock
-	env     *Env
+	cfg               DaemonConfig
+	log               *slog.Logger
+	role              string
+	modules           []Module
+	clock             internalclock.Clock
+	env               *Env
+	primaryConnection *interfaceintent.Connection
 
 	// reconcileReq lets a module ask for an immediate reconcile pass instead
 	// of waiting for the periodic tick. It is buffered with capacity 1 so a
@@ -54,6 +56,7 @@ type Daemon struct {
 type DaemonConfig struct {
 	Role              string
 	Iface             string
+	Connections       []interfaceintent.Connection
 	ReconcileInterval time.Duration
 
 	// EnableDHCP causes the daemon to start a DHCPv4 client on Iface.
@@ -101,6 +104,19 @@ func NewDaemon(log *slog.Logger, cfg DaemonConfig) (*Daemon, error) {
 	if cfg.Iface == "" {
 		return nil, fmt.Errorf("ifmgr.NewDaemon: cfg.Iface is required")
 	}
+	var primaryConnection *interfaceintent.Connection
+	for i := range cfg.Connections {
+		if cfg.Connections[i].Name != cfg.Iface {
+			continue
+		}
+		if primaryConnection != nil {
+			return nil, fmt.Errorf("ifmgr.NewDaemon: multiple connections use interface %q", cfg.Iface)
+		}
+		primaryConnection = &cfg.Connections[i]
+	}
+	if primaryConnection != nil && primaryConnection.Link == nil {
+		primaryConnection = nil
+	}
 	if cfg.ReconcileInterval == 0 {
 		cfg.ReconcileInterval = 60 * time.Second
 	}
@@ -141,15 +157,16 @@ func NewDaemon(log *slog.Logger, cfg DaemonConfig) (*Daemon, error) {
 	}
 
 	d := &Daemon{
-		cfg:          cfg,
-		log:          dlog,
-		role:         cfg.Role,
-		modules:      modules,
-		clock:        nil,
-		env:          nil,
-		reconcileReq: make(chan struct{}, 1),
-		mu:           sync.Mutex{},
-		startedAt:    time.Time{},
+		cfg:               cfg,
+		log:               dlog,
+		role:              cfg.Role,
+		modules:           modules,
+		clock:             nil,
+		env:               nil,
+		primaryConnection: primaryConnection,
+		reconcileReq:      make(chan struct{}, 1),
+		mu:                sync.Mutex{},
+		startedAt:         time.Time{},
 	}
 	dlog.Info("ifmgr: Daemon ready", "module_count", len(modules))
 	return d, nil
@@ -171,7 +188,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 
 	// Start the kernel event monitor first so any module Init that
 	// triggers a netlink change (rare but possible) sees its own event.
-	mon := netif.NewMonitor(ctx, d.log, netif.MonitorConfig{Iface: d.cfg.Iface})
+	mon := netif.NewMonitor(ctx, d.log, netif.MonitorConfig{Iface: d.cfg.Iface, Connection: d.primaryConnection})
 	d.log.DebugContext(ctx, "ifmgr: monitor started")
 
 	// Start DHCP client if requested.
@@ -205,6 +222,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 
 	d.env = &Env{
 		Iface:            d.cfg.Iface,
+		Connections:      d.cfg.Connections,
 		Sysctl:           netif.NewProcSysctlRunner(d.log, false),
 		Log:              d.log,
 		Alerts:           WrapNotifier(d.cfg.Notifier),
@@ -294,6 +312,9 @@ func (d *Daemon) runLoop(
 				"iface", ev.Iface,
 			)
 			d.dispatchEvent(eventCtx, elog, ev)
+			if ev.Kind == netif.EvResync {
+				d.reconcileAll(eventCtx, elog)
+			}
 
 		case lease, ok := <-dhcpEvents(dhcpClient):
 			if !ok {

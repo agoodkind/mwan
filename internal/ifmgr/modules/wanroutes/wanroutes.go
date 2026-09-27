@@ -165,11 +165,11 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	}
 
 	if err := netif.StartRuleMonitor(ctx, log, func(event netif.RuleEvent) {
-		m.onRuleDeleted(ctx, log, event)
+		m.onRuleEvent(ctx, log, event)
 	}); err != nil {
 		return fmt.Errorf("start policy-rule monitor: %w", err)
 	}
-	ifmgr.StartIfaceMonitors(ctx, log, moduleName, watchedIfaces(m.cfg), m.onMonitorEvent)
+	ifmgr.StartIfaceMonitors(ctx, log, moduleName, watchedIfaces(m.cfg), env.Connections, m.onMonitorEvent)
 	return nil
 }
 
@@ -461,6 +461,10 @@ func (m *Module) EvaluateAlerts(ctx context.Context, _ *slog.Logger, now time.Ti
 }
 
 func (m *Module) onMonitorEvent(ctx context.Context, log *slog.Logger, event netif.Event) {
+	if event.Kind == netif.EvResync {
+		m.requestRepair("interface monitor resubscribed")
+		return
+	}
 	if event.Kind == netif.EvRouteDeleted && m.ownsInternalRouteDeletion(event) {
 		log.WarnContext(ctx, "wan.routes: owned return route removed",
 			"family", event.Family, "table_id", event.TableID, "dest", event.Dest)
@@ -479,15 +483,6 @@ func (m *Module) onMonitorEvent(ctx context.Context, log *slog.Logger, event net
 	if err := m.Reconcile(ctx, eventLog); err != nil {
 		eventLog.WarnContext(ctx, "wan.routes: reconcile after route event failed", "err", err)
 	}
-}
-
-func (m *Module) onRuleDeleted(ctx context.Context, log *slog.Logger, event netif.RuleEvent) {
-	if !m.ownsDesiredRuleDeletion(ctx, log, event) {
-		return
-	}
-	log.WarnContext(ctx, "wan.routes: owned policy rule removed",
-		"family", event.Family, "table_id", event.TableID, "priority", event.Priority)
-	m.requestRepair("owned policy rule deleted")
 }
 
 func (m *Module) requestRepair(reason string) {

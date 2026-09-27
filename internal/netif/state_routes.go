@@ -76,8 +76,7 @@ func isDefaultRoute(r netlink.Route, family int) bool {
 	return false
 }
 
-// routeToCurrent converts a netlink.Route to our CurrentRoute. Multipath routes
-// use the first next hop because CurrentRoute models one gateway and interface.
+// routeToCurrent retains every next hop; Via and Dev remain first-hop compatibility fields.
 func routeToCurrent(log *slog.Logger, r netlink.Route) (*CurrentRoute, error) {
 	dest := "default"
 	if r.Dst != nil {
@@ -86,30 +85,56 @@ func routeToCurrent(log *slog.Logger, r netlink.Route) (*CurrentRoute, error) {
 			dest = r.Dst.String()
 		}
 	}
-	cur := &CurrentRoute{
-		Dest:   dest,
-		Via:    "",
-		Dev:    "",
-		Metric: r.Priority,
+	cur := new(CurrentRoute)
+	cur.Dest = dest
+	cur.TableID = r.Table
+	cur.Protocol = int(r.Protocol)
+	cur.Metric = r.Priority
+	cur.Scope = int(r.Scope)
+	cur.Type = r.Type
+	switch {
+	case r.Family == unix.AF_INET:
+		cur.Family = "inet"
+	case r.Family == unix.AF_INET6:
+		cur.Family = "inet6"
+	case r.Dst != nil && r.Dst.IP.To4() != nil:
+		cur.Family = "inet"
+	case r.Dst != nil || r.Gw != nil:
+		cur.Family = "inet6"
 	}
 	if r.Gw != nil {
 		cur.Via = r.Gw.String()
-	} else if len(r.MultiPath) > 0 && r.MultiPath[0].Gw != nil {
-		cur.Via = r.MultiPath[0].Gw.String()
-		log.Debug("route: multipath route observed; using first nexthop",
-			"hop_count", len(r.MultiPath), "first_via", cur.Via)
 	}
-	linkIndex := r.LinkIndex
-	if linkIndex == 0 && len(r.MultiPath) > 0 {
-		linkIndex = r.MultiPath[0].LinkIndex
+	if r.LinkIndex != 0 {
+		var hop RouteNextHop
+		hop.Via = cur.Via
+		hop.LinkIndex = r.LinkIndex
+		hop.Weight = 1
+		cur.NextHops = append(cur.NextHops, hop)
 	}
-	if linkIndex != 0 {
-		link, err := netlink.LinkByIndex(linkIndex)
-		if err != nil {
-			log.Warn("route: LinkByIndex failed", "index", linkIndex, "err", err)
-			return nil, fmt.Errorf("LinkByIndex(%d): %w", linkIndex, err)
+	for _, hop := range r.MultiPath {
+		if hop == nil {
+			continue
 		}
-		cur.Dev = link.Attrs().Name
+		var observed RouteNextHop
+		observed.LinkIndex = hop.LinkIndex
+		observed.Weight = hop.Hops + 1
+		if hop.Gw != nil {
+			observed.Via = hop.Gw.String()
+		}
+		cur.NextHops = append(cur.NextHops, observed)
+	}
+	for i := range cur.NextHops {
+		link, err := netlink.LinkByIndex(cur.NextHops[i].LinkIndex)
+		if err != nil {
+			log.Warn("route: LinkByIndex failed", "index", cur.NextHops[i].LinkIndex, "err", err)
+			return nil, fmt.Errorf("LinkByIndex(%d): %w", cur.NextHops[i].LinkIndex, err)
+		}
+		cur.NextHops[i].Dev = link.Attrs().Name
+	}
+	if len(cur.NextHops) > 0 {
+		cur.Dev = cur.NextHops[0].Dev
+		cur.Via = cur.NextHops[0].Via
 	}
 	return cur, nil
 }

@@ -71,7 +71,7 @@ func (m *Module) OnKernelEvent(_ context.Context, _ *slog.Logger, ev netif.Event
 	now := m.clock.Now()
 	switch ev.Kind {
 	case netif.EvRouteAdded:
-		if ev.Family == "inet6" && ev.Dest == "default" {
+		if ev.Family == "inet6" && ev.Dest == "default" && !ev.SnapshotReplay {
 			m.Lock()
 			m.lastRA = now
 			m.Unlock()
@@ -80,7 +80,7 @@ func (m *Module) OnKernelEvent(_ context.Context, _ *slog.Logger, ev netif.Event
 		m.Lock()
 		m.lastLinkUp = now
 		m.Unlock()
-	case netif.EvUnknown, netif.EvRouteDeleted, netif.EvAddrAdded, netif.EvAddrDeleted, netif.EvLinkDown:
+	case netif.EvUnknown, netif.EvRouteDeleted, netif.EvAddrAdded, netif.EvAddrDeleted, netif.EvLinkDown, netif.EvResync:
 		return nil
 	}
 	return nil

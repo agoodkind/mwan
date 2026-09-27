@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/vishvananda/netlink"
+	"goodkind.io/mwan/internal/interfaceintent"
 )
 
 // sysClassNet is where the kernel exposes each link's device, whose driver
@@ -53,4 +54,64 @@ func linkDriver(name string) string {
 		return ""
 	}
 	return filepath.Base(target)
+}
+
+// resolveConnectionLink matches a configured connection against current kernel links.
+// A physical match is unique by the configured MAC or driver; virtual links
+// must also satisfy their configured kernel type and VLAN parent and tag.
+func resolveConnectionLink(log *slog.Logger, connection interfaceintent.Connection) (netlink.Link, error) {
+	if connection.Link == nil {
+		return nil, nil
+	}
+	links, err := netlink.LinkList()
+	if err != nil {
+		log.Warn("link: LinkList failed", "connection", connection.ID, "err", err)
+		return nil, fmt.Errorf("list links for %s: %w", connection.ID, err)
+	}
+	var matches []netlink.Link
+	for _, link := range links {
+		if linkMatchesConnection(link, connection) {
+			matches = append(matches, link)
+		}
+	}
+	if len(matches) > 1 {
+		return nil, fmt.Errorf("connection %s matches %d kernel links", connection.ID, len(matches))
+	}
+	if len(matches) == 0 {
+		return nil, nil
+	}
+	return matches[0], nil
+}
+
+func linkMatchesConnection(link netlink.Link, connection interfaceintent.Connection) bool {
+	configured := connection.Link
+	attrs := link.Attrs()
+	if configured == nil || attrs == nil {
+		return false
+	}
+	switch configured.Kind {
+	case interfaceintent.KindBridge:
+		return link.Type() == "bridge" && attrs.Name == connection.Name
+	case interfaceintent.KindVLAN:
+		vlan, ok := link.(*netlink.Vlan)
+		if !ok || configured.VLAN == nil || attrs.Name != connection.Name || vlan.VlanId != int(configured.VLAN.ID) {
+			return false
+		}
+		parent, err := netlink.LinkByIndex(attrs.ParentIndex)
+		return err == nil && parent.Attrs() != nil && parent.Attrs().Name == configured.VLAN.Parent
+	case interfaceintent.KindPhysical, "":
+		if link.Type() == "vlan" || link.Type() == "bridge" {
+			return false
+		}
+		match := configured.Match
+		if match.HardwareAddress != "" {
+			address := attrs.PermHWAddr
+			if len(address) == 0 {
+				address = attrs.HardwareAddr
+			}
+			return strings.EqualFold(address.String(), match.HardwareAddress)
+		}
+		return match.Driver != "" && linkDriver(attrs.Name) == match.Driver
+	}
+	return false
 }

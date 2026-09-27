@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
@@ -39,6 +40,13 @@ type CurrentAddr struct {
 	// Useful flags include IFA_F_PERMANENT (0x80) which is set when the
 	// address was added administratively rather than via SLAAC autoconf.
 	Flags int
+	Scope int
+	// Lifetimes are seconds remaining at ObservedAt. A negative value means unknown.
+	PreferredLifetime int
+	ValidLifetime     int
+	ObservedAt        time.Time
+	// Origin is unknown unless a separate acquisition source establishes it.
+	Origin string
 }
 
 // IFA_F_* flag constants from linux/if_addr.h, exposed so callers can
@@ -148,7 +156,11 @@ func listAddrsNetlink(log *slog.Logger, link netlink.Link) ([]CurrentAddr, error
 		if a.IP.To4() == nil {
 			fam = "inet6"
 		}
-		out = append(out, CurrentAddr{CIDR: a.IPNet.String(), Family: fam, Flags: a.Flags})
+		out = append(out, CurrentAddr{
+			CIDR: a.IPNet.String(), Family: fam, Flags: a.Flags, Scope: a.Scope,
+			PreferredLifetime: a.PreferedLft, ValidLifetime: a.ValidLft,
+			ObservedAt: startTime, Origin: "unknown",
+		})
 	}
 	return out, nil
 }
@@ -204,10 +216,24 @@ type RouteSpec struct {
 // CurrentRoute is one observed route entry. Mirrored from netlink.Route
 // for callers who do not want to import vishvananda/netlink.
 type CurrentRoute struct {
-	Dest   string
-	Via    string
-	Dev    string
-	Metric int
+	Family   string
+	Dest     string
+	Via      string
+	Dev      string
+	TableID  int
+	Protocol int
+	Metric   int
+	Scope    int
+	Type     int
+	NextHops []RouteNextHop
+}
+
+// RouteNextHop records one kernel next hop without flattening a multipath route.
+type RouteNextHop struct {
+	Via       string
+	Dev       string
+	LinkIndex int
+	Weight    int
 }
 
 // ReconcileTableDefault ensures the table contains exactly the desired

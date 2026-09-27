@@ -290,6 +290,7 @@ func buildIfMgrDaemonConfig(cfg *config.Config, role string) (ifmgr.DaemonConfig
 	return ifmgr.DaemonConfig{
 		Role:              role,
 		Iface:             ifaceName,
+		Connections:       cfg.IfMgr.Connections,
 		ReconcileInterval: rec,
 		EnableDHCP:        enableDHCP,
 		DHCPInitial:       dhcpInit,
