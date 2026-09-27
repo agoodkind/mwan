@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/tracing"
 )
@@ -98,6 +99,7 @@ func TestDaemonInitAndReconcile(t *testing.T) {
 	d, err := NewDaemon(log, DaemonConfig{
 		Role:              "test-role",
 		Iface:             "lo", // exists on every Linux box
+		Connections:       []interfaceintent.Connection{{ID: "loopback", Name: "lo"}},
 		ReconcileInterval: 50 * time.Millisecond,
 	})
 	if err != nil {
@@ -129,6 +131,9 @@ func TestDaemonInitAndReconcile(t *testing.T) {
 	if mod.lastEnv.Iface != "lo" {
 		t.Errorf("env.Iface=%q want lo", mod.lastEnv.Iface)
 	}
+	if len(mod.lastEnv.Connections) != 1 || mod.lastEnv.Connections[0].ID != "loopback" {
+		t.Errorf("env.Connections=%+v, want loopback", mod.lastEnv.Connections)
+	}
 	if mod.lastEnv.Alerts == nil {
 		t.Error("env.Alerts is nil")
 	}
@@ -137,6 +142,23 @@ func TestDaemonInitAndReconcile(t *testing.T) {
 	}
 	if mod.lastEnv.Monitor == nil {
 		t.Error("env.Monitor is nil")
+	} else if mod.lastEnv.Monitor.IfIndex() == 0 {
+		t.Error("connection without link identity disabled name-based observation")
+	}
+}
+
+func TestDaemonRejectsDuplicateConfiguredInterface(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	_, err := NewDaemon(log, DaemonConfig{
+		Role:  "test-role",
+		Iface: "enwan0",
+		Connections: []interfaceintent.Connection{
+			{ID: "first", Name: "enwan0"},
+			{ID: "second", Name: "enwan0"},
+		},
+	})
+	if err == nil {
+		t.Fatal("NewDaemon accepted two connections for enwan0")
 	}
 }
 

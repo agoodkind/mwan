@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/wanstate"
 )
@@ -76,6 +77,8 @@ type Env struct {
 	// Iface is the interface name the role manages. Modules that operate
 	// on multiple ifaces (future) will get a per-iface Env.
 	Iface string
+	// Connections are the configured interface identities available to modules.
+	Connections []interfaceintent.Connection
 	// Sysctl exposes /proc/sys read+write. Writes require systemd
 	// ReadWritePaths or relaxed ProtectKernelTunables; the daemon
 	// surfaces EACCES with a helpful message.
