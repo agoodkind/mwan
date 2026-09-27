@@ -11,8 +11,8 @@ Follow the [coordinator](../2026-09-26-link-ownership.md) for sequencing and
 execution evidence. The [interface specification](../../interfaces.md)
 defines the approved behavior.
 
-A high-intelligence design and review agent approves the exact schema and
-API contracts before implementation. The code-implementer agent verifies each
+The independent design reviewer approves the exact schema and API contracts
+before implementation. The code-implementer agent verifies each
 settled brief against current source, implements only that brief, and stops
 for review on contradictions. An independent reviewer verifies behavior
 through public boundaries. The implementer has no live deployment authority.

@@ -2,10 +2,10 @@
 
 This operational plan implements the
 [migration coordinator](../2026-09-26-link-ownership.md) and approved
-[interface specification](../../interfaces.md). High intelligence cutover agents
-own live execution and recovery. Code implementers write settled changes and
-run local validation. Independent reviewers verify changes, required checks,
-approvals, and acceptance evidence before activation.
+[interface specification](../../interfaces.md). The cutover agent assigned by
+the coordinator owns live execution and recovery. Code implementers write
+settled changes and run local validation. Independent reviewers verify
+changes, required checks, approvals, and acceptance evidence before activation.
 
 Every live phase requires current authorization for its exact target, merged
 application and Configs revisions, a compatible release and configuration,
@@ -138,7 +138,7 @@ operation while AT&T or another required interface depends on it.
 
 ### Inventory before assigning deletion
 
-A high intelligence agent performs read-only inventory after MWAN-399.
+The cutover agent performs read-only inventory after MWAN-399.
 Require confirmed AT&T circuit retirement and accepted replacement ownership
 for every required interface before global networkd retirement. Do not assign
 an open-ended deletion task to a code implementer.
@@ -188,7 +188,7 @@ replacement, or an interface without accepted ownership.
 
 ### Activate and hand off retirement
 
-Only the high intelligence cutover agent activates merged retirement changes
+Only the cutover agent activates merged retirement changes
 after current authorization and confirmed AT&T retirement. Run final testbed
 acceptance under MWAN-401 before production activation under MWAN-520. On loss
 of required service, stop promotion and restore the reviewed compatible pair
@@ -255,8 +255,8 @@ checks, approvals, and current production authorization. Final retirement
 also requires confirmed AT&T retirement and MWAN-401 acceptance.
 
 The reviewer verifies scope, release identity, configuration differences,
-testbed evidence, and recovery compatibility. The high intelligence cutover
-agent owns production deployment, observation, and recovery.
+testbed evidence, and recovery compatibility. The cutover agent owns
+production deployment, observation, and recovery.
 
 ### Execute production acceptance
 
