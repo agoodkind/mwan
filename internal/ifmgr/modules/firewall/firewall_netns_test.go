@@ -79,6 +79,25 @@ func TestReconcileRepairsDeletedRulesAndPreservesRefreshedSet(t *testing.T) {
 	if !strings.Contains(setOutput, "203.0.113.0/24") {
 		t.Fatalf("destination refresh was lost: %s", setOutput)
 	}
+	desired, err := firewall.Compile(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unchanged, err := firewall.ApplyWithReport(ctx, desired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(unchanged.CreatedSets) != 0 {
+		t.Fatalf("existing sets reported as new: %+v", unchanged.CreatedSets)
+	}
+	runNFTTest(t, "flush", "ruleset")
+	recreated, err := firewall.ApplyWithReport(ctx, desired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recreated.CreatedSets) != 2 {
+		t.Fatalf("recreated sets = %+v, want both destination sets", recreated.CreatedSets)
+	}
 	runNFTTest(t, "flush", "ruleset")
 	if err := selected.Reconcile(ctx, log); err != nil {
 		t.Fatal(err)

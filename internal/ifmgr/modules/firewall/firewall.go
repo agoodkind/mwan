@@ -5,12 +5,16 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os/exec"
+	"strings"
 
 	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/ifmgr"
 )
 
 const moduleName = "firewall"
+
+const destinationRefreshService = "mwan-update-att-pinned-dests.service"
 
 // Module applies and inspects the configured gateway policy on each pass.
 type Module struct {
@@ -48,10 +52,14 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		m.publish(desired.String(), err)
 		return fmt.Errorf("compile firewall policy: %w", err)
 	}
-	if err := firewall.Apply(ctx, desired); err != nil {
+	result, err := firewall.ApplyWithReport(ctx, desired)
+	if err != nil {
 		m.publish(desired.String(), err)
 		log.WarnContext(ctx, "firewall policy apply failed", "err", err)
 		return fmt.Errorf("apply firewall policy: %w", err)
+	}
+	if len(result.CreatedSets) > 0 {
+		requestDestinationRefresh(ctx, log)
 	}
 	if _, err := firewall.Inspect(ctx, desired); err != nil {
 		m.publish(desired.String(), err)
@@ -61,6 +69,17 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	m.publish(desired.String(), nil)
 	log.DebugContext(ctx, "firewall policy reconciled")
 	return nil
+}
+
+func requestDestinationRefresh(ctx context.Context, log *slog.Logger) {
+	// The refresher orders itself after gateway readiness. Blocking here would
+	// make initial reconciliation wait for the service that waits for this daemon.
+	command := exec.CommandContext(ctx, "systemctl", "--no-block", "start", destinationRefreshService)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		log.WarnContext(ctx, "destination refresh request failed",
+			"service", destinationRefreshService, "err", err, "output", strings.TrimSpace(string(output)))
+	}
 }
 
 func (m *Module) publish(rules string, err error) {
