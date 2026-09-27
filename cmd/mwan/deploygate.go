@@ -113,12 +113,13 @@ var bootIDPattern = regexp.MustCompile(
 // logic is testable without a hypervisor. The real wiring lives in
 // newDeployGateDeps; tests substitute canned readers and probes.
 type deployGateDeps struct {
-	out        io.Writer
-	ping6      func(context.Context, netip.Addr, time.Duration) (time.Duration, error)
-	ping4      func(context.Context, string, netip.Addr, time.Duration) (time.Duration, error)
-	readBootID func(ctx context.Context, vmid int) (string, error)
-	now        func() time.Time
-	sleep      func(d time.Duration)
+	out             io.Writer
+	ping6           func(context.Context, netip.Addr, time.Duration) (time.Duration, error)
+	ping4           func(context.Context, string, netip.Addr, time.Duration) (time.Duration, error)
+	probeDownstream func(context.Context, downstreamProbeConfig, requiredEgressFamilies) (bool, string)
+	readBootID      func(ctx context.Context, vmid int) (string, error)
+	now             func() time.Time
+	sleep           func(d time.Duration)
 	// loadNetwork and loadNetworkFrom both call networkjson.Load. Both checks
 	// apply identical schema validation and loader rules.
 	loadNetwork     func() (*networkjson.Config, error)
@@ -142,12 +143,13 @@ type ownedMissingAlert struct {
 func newDeployGateDeps() deployGateDeps {
 	probe := netif.NewV6Probe("", nil)
 	return deployGateDeps{
-		out:        os.Stdout,
-		ping6:      probe.PingICMP6,
-		ping4:      netif.Ping4,
-		readBootID: readGuestBootID,
-		now:        time.Now,
-		sleep:      time.Sleep,
+		out:             os.Stdout,
+		ping6:           probe.PingICMP6,
+		ping4:           netif.Ping4,
+		probeDownstream: probeDownstreamEgressRound,
+		readBootID:      readGuestBootID,
+		now:             time.Now,
+		sleep:           time.Sleep,
 		loadNetwork: func() (*networkjson.Config, error) {
 			return networkjson.Load(networkjson.DefaultPath, networkjson.DefaultSchemaDir)
 		},
@@ -165,13 +167,9 @@ var (
 	deployGateTargetV4 = netip.MustParseAddr(deployGateEgressTargetV4)
 )
 
-// runDeployGate dispatches the deploy-gate modes, the deploy-time
-// reachability and reboot gates deploy-mwan.yml runs on the Proxmox host
-// that owns the MWAN guest. The host is the only vantage point that stays up
-// while the guest reboots, so the playbook pushes this binary there and
-// delegates the gates to it. check-owned-addresses is the one mode that runs
-// inside the guest, where wait-deploy starts it through the guest agent,
-// because only the guest can read its own link addresses.
+// runDeployGate dispatches deploy-time gates from the Proxmox host.
+// The host reads boot_id and starts the owned-address check through the
+// MWAN guest agent. Egress probes execute inside the OPNsense guest.
 //
 // Exit codes: 0 on success, 1 on a definitive failure, 64 on a usage error,
 // and, for wait-reboot only, 2 when the guest is unobservable at the
@@ -190,16 +188,7 @@ func runDeployGate(args []string) int {
 	rest := args[1:]
 	switch deployGateMode(args[0]) {
 	case gateModeCheckEgress:
-		if len(rest) != 1 {
-			printDeployGateUsage()
-			return exitDeployGateUsage
-		}
-		families, err := parseRequiredEgressFamilies(rest[0])
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
-			return exitDeployGateUsage
-		}
-		return checkEgress(ctx, deps, families)
+		return runCheckDownstreamEgress(ctx, deps, rest)
 	case gateModeCheckOwned:
 		if len(rest) != 0 {
 			printDeployGateUsage()
@@ -266,10 +255,11 @@ type waitDeployInputs struct {
 	verdictPath  string
 	families     requiredEgressFamilies
 	rounds       int
+	probe        downstreamProbeConfig
 }
 
 func parseWaitDeployArgs(rest []string) (waitDeployInputs, bool) {
-	if len(rest) != 8 {
+	if len(rest) != 9 {
 		printDeployGateUsage()
 		return waitDeployInputs{}, false
 	}
@@ -309,6 +299,11 @@ func parseWaitDeployArgs(rest []string) (waitDeployInputs, bool) {
 		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
 		return waitDeployInputs{}, false
 	}
+	probe, err := readDownstreamProbeConfig(rest[8])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+		return waitDeployInputs{}, false
+	}
 	return waitDeployInputs{
 		vmid:         vmid,
 		oldBootID:    rest[1],
@@ -318,6 +313,7 @@ func parseWaitDeployArgs(rest []string) (waitDeployInputs, bool) {
 		verdictPath:  rest[5],
 		families:     families,
 		rounds:       rounds,
+		probe:        probe,
 	}, true
 }
 
@@ -369,7 +365,10 @@ func waitDeploy(ctx context.Context, deps deployGateDeps, in waitDeployInputs) i
 	}
 	verdict.RebootRC = waitReboot(ctx, deps, in.vmid, in.oldBootID, in.rebootBudget)
 	if verdict.RebootRC != exitDeployGateFailed {
-		verdict.EgressRC = waitEgress(ctx, deps, in.egressBudget, in.families, in.rounds)
+		verdict.EgressRC = waitEgressWithProbe(ctx, deps, in.egressBudget, in.rounds,
+			func(ctx context.Context) (bool, string) {
+				return deps.probeDownstream(ctx, in.probe, in.families)
+			})
 	}
 	ownedReport := ""
 	if verdict.EgressRC == exitDeployGateOK {
@@ -464,7 +463,7 @@ func parseVMID(raw string) (int, error) {
 
 func printDeployGateUsage() {
 	fmt.Fprintln(os.Stderr,
-		"usage: mwan deploy-gate check-egress <families>"+
+		"usage: mwan deploy-gate check-egress <families> <probe_config_path>"+
 			" | check-owned-addresses"+
 			" | check-network <network_json> <schema_dir>"+
 			" | check-firewall <network_json> <schema_dir>"+
@@ -472,7 +471,7 @@ func printDeployGateUsage() {
 			" | wait-reboot <vmid> <old_boot_id> <seconds>"+
 			" | wait-egress <seconds> <families> <consecutive_rounds>"+
 			" | wait-deploy <vmid> <old_boot_id> <reboot_seconds>"+
-			" <egress_seconds> <trace_id> <verdict_path> <families> <consecutive_rounds>"+
+			" <egress_seconds> <trace_id> <verdict_path> <families> <consecutive_rounds> <probe_config_path>"+
 			" (families: ipv4, ipv6, or ipv4,ipv6)")
 }
 
@@ -511,16 +510,6 @@ func parseBudgetSeconds(raw string) (time.Duration, error) {
 		return 0, fmt.Errorf("budget %q is not a positive integer of seconds", raw)
 	}
 	return time.Duration(seconds) * time.Second, nil
-}
-
-func checkEgress(ctx context.Context, deps deployGateDeps, families requiredEgressFamilies) int {
-	ok, report := probeEgressRound(ctx, deps, families)
-	fmt.Fprintf(deps.out, "egress probe: %s\n", report)
-	if ok {
-		return exitDeployGateOK
-	}
-	fmt.Fprintln(deps.out, "required egress family failed")
-	return exitDeployGateFailed
 }
 
 // checkOwnedAddresses runs inside the gateway. For each provider with static
@@ -807,10 +796,20 @@ func waitEgress(
 	ctx context.Context, deps deployGateDeps, budget time.Duration,
 	families requiredEgressFamilies, requiredRounds int,
 ) int {
+	return waitEgressWithProbe(ctx, deps, budget, requiredRounds,
+		func(ctx context.Context) (bool, string) {
+			return probeEgressRound(ctx, deps, families)
+		})
+}
+
+func waitEgressWithProbe(
+	ctx context.Context, deps deployGateDeps, budget time.Duration,
+	requiredRounds int, probe func(context.Context) (bool, string),
+) int {
 	deadline := deps.now().Add(budget)
 	consecutive := 0
 	for deps.now().Before(deadline) {
-		ok, report := probeEgressRound(ctx, deps, families)
+		ok, report := probe(ctx)
 		if ok {
 			consecutive++
 		} else {

@@ -48,7 +48,7 @@ func TestDeployGateEgressNetNS(t *testing.T) {
 	setupEgressRequester(t)
 	setTestNamespace(t, original)
 
-	code, output := runEgressCLI(t, requester, original, "check-egress", "ipv4,ipv6")
+	code, output := runEgressCLI(t, requester, original, "wait-egress", "4", "ipv4,ipv6", "1")
 	if code != 0 || !strings.Contains(output, "ipv6=yes ipv4=yes") {
 		t.Fatalf("healthy check: code=%d output=%s", code, output)
 	}
@@ -64,11 +64,11 @@ func TestDeployGateEgressNetNS(t *testing.T) {
 	}
 
 	setIPv4EchoDrop(t, responder, original, true)
-	code, output = runEgressCLI(t, requester, original, "check-egress", "ipv4,ipv6")
+	code, output = runEgressCLI(t, requester, original, "wait-egress", "4", "ipv4,ipv6", "1")
 	if code != exitDeployGateFailed || !strings.Contains(output, "ipv6=yes ipv4=no") {
 		t.Fatalf("IPv4 failure check: code=%d output=%s", code, output)
 	}
-	code, output = runEgressCLI(t, requester, original, "check-egress", "ipv6")
+	code, output = runEgressCLI(t, requester, original, "wait-egress", "4", "ipv6", "1")
 	if code != 0 || !strings.Contains(output, "ipv4=not-required") {
 		t.Fatalf("IPv6-only check: code=%d output=%s", code, output)
 	}
