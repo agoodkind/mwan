@@ -121,7 +121,7 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 		m.listAddrs = netif.ListAddrs
 	}
 
-	ifmgr.StartIfaceMonitors(ctx, log, moduleName, watchedIfaces(m.cfg), m.onMonitorEvent)
+	ifmgr.StartIfaceMonitors(ctx, log, moduleName, watchedIfaces(m.cfg), env.Connections, m.onMonitorEvent)
 
 	// The watcher requests reconciliation after table or chain deletion.
 	// The applier recreates missing structures and rules.

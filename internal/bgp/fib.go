@@ -257,10 +257,16 @@ func (f *FIB) deletePrefix(ctx context.Context, peer string, prefix netip.Prefix
 	for _, tableID := range f.cfg.Tables {
 		route := f.route(prefix, netip.Addr{}, tableID)
 		current := netif.CurrentRoute{
-			Dest:   route.Dest,
-			Via:    route.Via,
-			Dev:    route.Dev,
-			Metric: route.Metric,
+			Family:   route.Family,
+			Dest:     route.Dest,
+			Via:      route.Via,
+			Dev:      route.Dev,
+			TableID:  route.TableID,
+			Protocol: route.Protocol,
+			Metric:   route.Metric,
+			Scope:    0,
+			Type:     0,
+			NextHops: nil,
 		}
 		if err := f.deleteRoute(ctx, peer, tableID, current); err != nil {
 			deleteErr = errors.Join(deleteErr, err)

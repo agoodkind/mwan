@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/netif"
 )
 
@@ -23,10 +24,14 @@ func StartIfaceMonitors(
 	log *slog.Logger,
 	moduleName string,
 	ifaces []string,
+	connections []interfaceintent.Connection,
 	handle MonitorEventHandler,
 ) {
 	for _, iface := range ifaces {
-		monitor := netif.NewMonitor(ctx, log, netif.MonitorConfig{Iface: iface})
+		monitor := netif.NewMonitor(ctx, log, netif.MonitorConfig{
+			Iface:      iface,
+			Connection: connectionForIface(connections, iface),
+		})
 		go func(monitoredIface string, monitored *netif.Monitor) {
 			defer func() {
 				recovered := recover()
@@ -39,6 +44,15 @@ func StartIfaceMonitors(
 			drainIfaceMonitor(ctx, log, moduleName, monitoredIface, monitored, handle)
 		}(iface, monitor)
 	}
+}
+
+func connectionForIface(connections []interfaceintent.Connection, iface string) *interfaceintent.Connection {
+	for i := range connections {
+		if connections[i].Name == iface && connections[i].Link != nil {
+			return &connections[i]
+		}
+	}
+	return nil
 }
 
 func drainIfaceMonitor(

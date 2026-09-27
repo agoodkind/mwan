@@ -195,7 +195,7 @@ func (m *Module) OnKernelEvent(
 		}
 		return m.syncOOBDefault(ctx, log, cur)
 	case netif.EvAddrAdded:
-		if ev.Family != "inet6" {
+		if ev.Family != "inet6" || ev.SnapshotReplay {
 			return nil
 		}
 		// Skip link-local and our static OOB.
@@ -238,7 +238,7 @@ func (m *Module) OnKernelEvent(
 			log.WarnContext(ctx, "oobv6: reconcileSLAACSrcRule on AddrDeleted failed", "err", err)
 			return fmt.Errorf("reconcile slaac src rule on AddrDeleted: %w", err)
 		}
-	case netif.EvUnknown, netif.EvLinkUp, netif.EvLinkDown:
+	case netif.EvUnknown, netif.EvLinkUp, netif.EvLinkDown, netif.EvResync:
 		return nil
 	}
 	return nil

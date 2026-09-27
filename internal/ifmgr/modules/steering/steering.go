@@ -105,7 +105,7 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	// with a new index needs the chain rewritten. The provider links are not
 	// watched: a provider going away is a health verdict, which the health
 	// module owns and which already drives a reconcile.
-	ifmgr.StartIfaceMonitors(ctx, log, moduleName, []string{m.cfg.InternalIface}, m.onMonitorEvent)
+	ifmgr.StartIfaceMonitors(ctx, log, moduleName, []string{m.cfg.InternalIface}, env.Connections, m.onMonitorEvent)
 
 	// The recover keeps a monitor panic from taking down the daemon.
 	go func() {
