@@ -99,10 +99,15 @@ func runWANStartupChild(t *testing.T) {
 	if err := firewall.Apply(context.Background(), desired); err != nil {
 		t.Fatalf("install full firewall policy: %v", err)
 	}
+	beforeInspect := startupRuleset(t)
 	inspect := exec.Command(binary, "deploy-gate", "inspect-firewall", networkPath, schema)
 	output, err = inspect.CombinedOutput()
 	if err != nil || !bytes.Contains(output, []byte("inet filter input")) {
 		t.Fatalf("live firewall inspection failed: %v: %s", err, output)
+	}
+	afterInspect := startupRuleset(t)
+	if !bytes.Equal(beforeInspect, afterInspect) {
+		t.Fatal("live firewall inspection modified the kernel rules")
 	}
 	deleteRule := exec.Command("nft", "flush", "chain", "inet", "filter", "input")
 	if output, err := deleteRule.CombinedOutput(); err != nil {
