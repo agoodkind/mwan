@@ -1205,7 +1205,7 @@ func TestLoadRejectsAHandAuthoredEntryThatDescribesItsLink(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load failed the whole document over one provider's contradiction: %v", err)
 	}
-	requireOneRejection(t, loaded, "enatt0", "att", "hand-authored files cannot include renderable link")
+	requireOneRejection(t, loaded, "enatt0", "att", "hand-authored files cannot include a renderable link")
 }
 
 func TestLoadRejectsInvalidTranslation(t *testing.T) {

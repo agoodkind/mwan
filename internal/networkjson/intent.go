@@ -88,7 +88,7 @@ func validatedOwner(entry ifaceEntry) (interfaceintent.Owner, error) {
 		return owner, fmt.Errorf("interface %s: lease-store must be an absolute path", entry.Name)
 	}
 	if entry.LinkFiles == linkFilesHandAuthored && (entry.Link != nil || entry.Networkd != nil || handAuthoredAddressing(entry)) {
-		return owner, fmt.Errorf("interface %s: hand-authored files cannot include renderable link or address intent", entry.Name)
+		return owner, fmt.Errorf("interface %s: hand-authored files cannot include a renderable link or address intent", entry.Name)
 	}
 	if entry.LinkFiles != "" && entry.LinkFiles != linkFilesRendered && entry.LinkFiles != linkFilesHandAuthored {
 		return owner, fmt.Errorf("interface %s: invalid link-files %q", entry.Name, entry.LinkFiles)

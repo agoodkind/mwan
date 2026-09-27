@@ -233,9 +233,6 @@ func resolveSelftestModels(log *slog.Logger, dir string) ([]yangpub.Model, error
 	return models, nil
 }
 
-// selftestGateway is the shape the private selftest publishes: one
-// translating member on tier 0 and the internal link, the smallest
-// configuration that exercises every owned subtree.
 func selftestConnections() []interfaceintent.Connection {
 	return []interfaceintent.Connection{
 		{ID: connectionid.ID("eninternal0"), Name: "eninternal0", Type: "iana-if-type:other", Enabled: nil, Roles: interfaceintent.RoleInternal, Owner: interfaceintent.OwnerExternal, Link: nil, IPv4: nil, IPv6: nil, LeaseStore: "", Networkd: nil},
@@ -244,6 +241,8 @@ func selftestConnections() []interfaceintent.Connection {
 	}
 }
 
+// selftestGateway builds a fixture with one translating member on tier 0 and
+// the internal link, the smallest configuration that exercises every owned subtree.
 func selftestGateway() wanconfig.Gateway {
 	var firewallConfig firewall.Config
 	firewallConfig.Enabled, firewallConfig.InternalInterface = true, "eninternal0"
