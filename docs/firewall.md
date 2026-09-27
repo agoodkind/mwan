@@ -12,9 +12,9 @@ changes, tests, and deployment sequence.
 
 The gateway firewall module installs filtering, IPv4 address translation,
 packet marking, and destination-set definitions. The translation module
-creates its IPv6 NAT chains and installs edge-address exceptions. Its kernel
-packet program translates IPv6 prefixes. The steering module maintains its
-own table.
+creates its IPv6 NAT chains and installs edge-address exceptions. The translation
+module's kernel packet program translates IPv6 prefixes. The steering module
+maintains its own table.
 
 The gateway daemon starts before device discovery and the network manager. It
 installs and inspects protective rules before writing network configuration.
