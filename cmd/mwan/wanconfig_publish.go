@@ -23,42 +23,25 @@ import (
 	"goodkind.io/mwan/internal/yangpub"
 )
 
-// wanconfigPublishTimeout bounds the startup publish so a stalled
-// datastore cannot delay the daemon's main loop.
+// wanconfigPublishTimeout limits each datastore publication call.
 const wanconfigPublishTimeout = 10 * time.Second
 
-// wanconfigSurface is the running management surface: the snapshot store
-// the modules write, the open datastore connection whose provider
-// registrations serve reads, the agent poller feeding BGP state, and the
-// notifier streaming transitions.
+// wanconfigSurface controls optional management publication. Its worker owns
+// the datastore connection and notification sender.
 type wanconfigSurface struct {
-	store *wanstate.Store
-	pub   yangpub.Publisher
-	log   *slog.Logger
-	stop  context.CancelFunc
-	// senderDone closes when the notifier's sender goroutine has
-	// returned. Close waits on it before releasing the connection,
-	// because a send still inside the binding when the connection is
-	// freed crashes the process.
-	senderDone <-chan struct{}
+	store     *wanstate.Store
+	log       *slog.Logger
+	stop      context.CancelFunc
+	unobserve func()
 }
 
-// Close stops the poller and the notifier, waits for the sender to leave
-// the binding, and releases the datastore connection with its
-// registrations. Safe on a surface whose parts partly failed. The wait
-// is bounded: a send blocks at most for sysrepo's internal subscriber
-// timeout.
+// Close stops publication without waiting for the native sysrepo connection.
 func (s *wanconfigSurface) Close() {
 	if s.stop != nil {
 		s.stop()
 	}
-	if s.senderDone != nil {
-		<-s.senderDone
-	}
-	if s.pub != nil {
-		if err := s.pub.Close(); err != nil {
-			s.log.Error("wanconfig: datastore close failed", "err", err)
-		}
+	if s.unobserve != nil {
+		s.unobserve()
 	}
 }
 
@@ -81,63 +64,89 @@ func startWanconfigSurface(
 		return nil
 	}
 	log := logger.With("component", "wanconfig")
-
 	gateway, ok, err := gatewayFromModuleConfigs(cfg, moduleConfigs)
 	if err != nil {
-		log.ErrorContext(ctx, "wanconfig: projection from module configs failed; running without a management surface", "err", err)
+		log.ErrorContext(ctx, "wanconfig: projection from module configs failed", "err", err)
 		return nil
 	}
 	if !ok {
-		log.InfoContext(ctx, "wanconfig: publish enabled but this role carries no wan config; nothing to publish")
+		log.InfoContext(ctx, "wanconfig: this role has no wan config to publish")
 		return nil
 	}
-
-	pub, err := yangpub.New(log)
-	if err != nil {
-		log.ErrorContext(ctx, "wanconfig: datastore unavailable; running without a management surface", "err", err)
-		return nil
-	}
-
-	publishCtx, cancel := context.WithTimeout(ctx, wanconfigPublishTimeout)
-	defer cancel()
-	// Publish logs its own failure detail; the daemon carries on either way.
-	_ = wanconfig.Publish(publishCtx, log, runningReplacer{pub: pub}, gateway)
-	// Ownership is startup work like the publish, so it carries the same
-	// bound: the daemon's main loop must not wait on the datastore.
-	ownCtx, ownCancel := context.WithTimeout(ctx, wanconfigPublishTimeout)
-	ownPublishedModules(ownCtx, log, pub)
-	ownCancel()
-
 	surfaceCtx, stopSurface := context.WithCancel(ctx)
-	surface := &wanconfigSurface{
-		store:      store,
-		pub:        pub,
-		log:        log,
-		stop:       stopSurface,
-		senderDone: nil,
-	}
-	// The notifier observes the store before any module writes, so the
-	// first real transition already streams.
+	surface := &wanconfigSurface{store: store, log: log, stop: stopSurface}
 	notifier := newSurfaceNotifier(log, gateway)
-	store.Observe(notifier)
-	surface.senderDone = startNotifierSender(surfaceCtx, log, notifier, pub)
-	if err := registerLiveStateProviders(ctx, log, pub, store, gateway, rejections); err != nil {
-		log.ErrorContext(ctx, "wanconfig: provider registration failed; serving configuration only", "err", err)
-		return surface
+	surface.unobserve = store.Observe(notifier)
+	go func() {
+		defer surface.unobserve()
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				log.ErrorContext(surfaceCtx, "wanconfig: initialization panicked", "err", fmt.Sprint(recovered))
+			}
+		}()
+		surface.initialize(surfaceCtx, cfg, gateway, rejections, notifier)
+	}()
+	return surface
+}
+
+func (s *wanconfigSurface) initialize(
+	ctx context.Context,
+	cfg *config.Config,
+	gateway wanconfig.Gateway,
+	rejections []networkjson.Rejection,
+	notifier *surfaceNotifier,
+) {
+	if ctx.Err() != nil {
+		return
+	}
+	pub, err := yangpub.New(s.log)
+	if err != nil {
+		s.log.ErrorContext(ctx, "wanconfig: datastore unavailable", "err", err)
+		return
+	}
+	defer func() {
+		if err := pub.Close(); err != nil {
+			s.log.Error("wanconfig: datastore close failed", "err", err)
+		}
+	}()
+	if ctx.Err() != nil {
+		return
+	}
+	publishCtx, cancel := context.WithTimeout(ctx, wanconfigPublishTimeout)
+	_ = wanconfig.Publish(publishCtx, s.log, runningReplacer{pub: pub}, gateway)
+	cancel()
+	if ctx.Err() != nil {
+		return
+	}
+	ownCtx, ownCancel := context.WithTimeout(ctx, wanconfigPublishTimeout)
+	ownPublishedModules(ownCtx, s.log, pub)
+	ownCancel()
+	if ctx.Err() != nil {
+		return
+	}
+	senderCtx, stopSender := context.WithCancel(ctx)
+	senderDone := startNotifierSender(senderCtx, s.log, notifier, pub)
+	defer func() {
+		stopSender()
+		<-senderDone
+	}()
+	if err := registerLiveStateProviders(ctx, s.log, pub, s.store, gateway, rejections); err != nil {
+		s.log.ErrorContext(ctx, "wanconfig: provider registration failed", "err", err)
+		return
+	}
+	if ctx.Err() != nil {
+		return
 	}
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.ErrorContext(surfaceCtx,
-					"wanconfig: agent poller panicked; routing-session state goes stale",
-					"err", fmt.Sprint(recovered))
+				s.log.ErrorContext(ctx, "wanconfig: agent poller panicked", "err", fmt.Sprint(recovered))
 			}
 		}()
-		pollAgentBGP(surfaceCtx, log, cfg, store)
+		pollAgentBGP(ctx, s.log, cfg, s.store)
 	}()
-	log.InfoContext(ctx, "wanconfig: live-state providers registered",
-		"members", len(gateway.Members))
-	return surface
+	s.log.InfoContext(ctx, "wanconfig: live-state providers registered", "members", len(gateway.Members))
+	<-ctx.Done()
 }
 
 // daemonSettings projects the daemon settings the loaded configuration

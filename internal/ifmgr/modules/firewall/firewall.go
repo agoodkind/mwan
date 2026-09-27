@@ -80,8 +80,7 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 }
 
 func requestDestinationRefresh(ctx context.Context, log *slog.Logger) error {
-	// The updater waits for this daemon's readiness. A synchronous start here
-	// would deadlock initial reconciliation.
+	// Request the refresh without waiting for the updater during reconciliation.
 	command := exec.CommandContext(ctx, "systemctl", "--no-block", "start", destinationRefreshService)
 	output, err := command.CombinedOutput()
 	if err != nil {
