@@ -783,19 +783,20 @@ module goodkind-mwan-steering {
     leaf accept-ra {
       type boolean;
       description
-        "Whether the network manager accepts router advertisements here.";
+        "This field selects whether the network manager accepts router
+         advertisements on this interface.";
     }
     leaf autoconf {
       type boolean;
-      description "Whether the interface configures addresses from router advertisements.";
+      description "This field selects whether the interface configures addresses from router advertisements.";
     }
     leaf accept-ra-default-route {
       type boolean;
-      description "Whether the interface installs a default route from router advertisements.";
+      description "This field selects whether the interface installs a default route from router advertisements.";
     }
     leaf use-ra-dns {
       type boolean;
-      description "Whether the interface installs DNS servers from router advertisements.";
+      description "This field selects whether the interface installs DNS servers from router advertisements.";
     }
     list forwarding-address {
       key "address";
@@ -819,15 +820,15 @@ module goodkind-mwan-steering {
     container delegation {
       presence "The interface requests a delegated prefix.";
       description
-        "The delegation the interface asks for, and the identity it asks
-         with. The identity is a public identifier, not a secret.";
+        "This container configures the requested delegation and client identity.
+         The client identity is a public identifier, not a secret.";
       leaf hint {
         type inet:ipv6-prefix;
-        description "The prefix length the client asks for.";
+        description "The client requests this delegated prefix length.";
       }
       leaf iaid {
         type uint32;
-        description "The identity association ID for this delegation.";
+        description "This field sets the identity association ID for the delegation.";
       }
       leaf duid-type {
         type enumeration {
@@ -836,13 +837,13 @@ module goodkind-mwan-steering {
           enum vendor;
           enum uuid;
         }
-        description "How the client identity is formed.";
+        description "This field selects how the client forms its identity.";
       }
       leaf duid {
         type string {
           pattern '([0-9a-fA-F]{2}:)*[0-9a-fA-F]{2}';
         }
-        description "The client identity, as colon-separated octets.";
+        description "This field specifies the client identity as colon-separated octets.";
       }
       leaf without-ra {
         type enumeration {
@@ -851,20 +852,20 @@ module goodkind-mwan-steering {
           enum information-request;
         }
         description
-          "Whether the client starts without waiting for a router
-           advertisement, and which exchange it starts with.";
+          "This field selects whether and how the client starts DHCPv6
+           without a router advertisement.";
       }
       leaf use-delegated-prefix {
         type boolean;
         description
-          "Whether the network manager applies the delegated prefix to
-           this link.";
+          "This field selects whether the network manager applies the
+           delegated prefix to this link.";
       }
       leaf router-lifetime-seconds {
         type uint32;
         description
-          "The lifetime the link advertises to downstream routers, in
-           seconds.";
+          "This field sets the lifetime, in seconds, that the link
+           advertises to downstream routers.";
       }
     }
   }
