@@ -146,13 +146,14 @@ route ownership without changing observed objects.
 
 | Source to modify | Verified behavior |
 | --- | --- |
-| [The netlink monitor](../../../internal/netif/monitor.go) | `NewMonitor` resolves `ifIndex` once. `addrUpdateToEvent`, `routeUpdateToEvent`, and `linkUpdateToEvent` filter other indices only when `ifIndex != 0`, then label events with `cfg.Iface`. An absent configured link accepts unrelated events. |
-| [Kernel snapshots](../../../internal/netif/state.go) | `CurrentAddr` stores CIDR, family, and flags without lifetimes. `CurrentRoute` omits table and protocol. |
-| [Link identities](../../../internal/netif/links.go) | `ListLinkIdentities` returns names, MAC addresses, and drivers without persistent device-index tracking. |
+| [The netlink monitor](../../../internal/netif/monitor.go) | `NewMonitor` resolves `ifIndex` once. An absent link rejects unrelated address and route events by checking the event index against the configured name. A deleted or recreated link can leave the stored index stale. |
+| [Kernel snapshots](../../../internal/netif/state.go) | `CurrentAddr` stores CIDR, family, and flags without lifetimes. `CurrentRoute` omits table and protocol, and route conversion retains only the first multipath hop. |
+| [Link identities](../../../internal/netif/links.go) | `ListLinkIdentities` returns names, MAC addresses, and drivers without the current kernel index. |
 
 The monitor requests existing addresses, routes, and links when subscribing.
-It drops events when its public channel is full. Route conversion accepts
-only defaults and discards table and protocol. It has no rule subscription.
+It drops events when its public channel is full. Route events already include
+non-default destinations, table, and protocol. A separate namespace-wide
+monitor subscribes to policy-rule deletion.
 
 ### Implement identity and validity observation
 
@@ -173,7 +174,8 @@ Serialize monitor edits with MWAN-505 and reuse one route-event contract.
 4. Preserve address flags, preferred and valid lifetimes, and origin evidence.
    Keep unknown origin explicit. Preserve route family, table, protocol,
    destination, next hop, device, metric, and required ownership attributes.
-   Include relevant non-default routes and policy rules for MWAN-505.
+   Preserve relevant non-default routes. Reuse the namespace-wide policy-rule
+   monitor for MWAN-505 without assigning rules to one interface.
 5. Expose observations to state publication and existing role consumers.
    Preserve kernel RA/SLAAC lifetime ownership. Do not add or repair kernel
    objects in the observer or infer lease validity from installed state.
@@ -187,10 +189,11 @@ Record the actual privileged invocation after creating these tests.
 
 1. Start with the configured device absent and change an unrelated device's
    addresses, routes, and carrier state. Assert no event is attributed to the
-   absent device. This must reproduce the baseline defect before the fix.
+   absent device. Preserve this existing behavior.
 2. Create the intended device, exchange packets, delete it, and recreate it
    with a different index. Verify refreshed events and packet delivery without
-   daemon restart. Repeat with different interface names and index reuse.
+   daemon restart. Reproduce the stale-index defect before the fix. Repeat
+   with different interface names and index reuse.
 3. Send actual router advertisements. Exercise duplicate-address detection,
    deprecation, and expiry. Compare flags and lifetimes with the kernel and
    verify the observer never resets them.
