@@ -299,7 +299,7 @@ func parseWaitDeployArgs(rest []string) (waitDeployInputs, bool) {
 		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
 		return waitDeployInputs{}, false
 	}
-	probe, err := readDownstreamProbeConfig(rest[8])
+	probe, err := readDownstreamProbeConfig(rest[8], families)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
 		return waitDeployInputs{}, false

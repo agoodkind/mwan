@@ -41,6 +41,45 @@ func TestDeployGateRequiresDownstreamProbeConfig(t *testing.T) {
 	}
 }
 
+func TestDeployGateAcceptsSingleFamilyProbeConfigs(t *testing.T) {
+	for _, testCase := range []struct {
+		name     string
+		family   string
+		contents string
+	}{
+		{
+			name:     "ipv4",
+			family:   "ipv4",
+			contents: `{"opnsense_vmid":201,"ipv4_source":"10.240.240.2","ipv4_next_hop":"10.240.240.3"}`,
+		},
+		{
+			name:     "ipv6",
+			family:   "ipv6",
+			contents: `{"opnsense_vmid":201,"ipv6_source":"3d06:bad:b01:201::2","ipv6_next_hop":"3d06:bad:b01:201::3"}`,
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "probe.json")
+			if err := os.WriteFile(path, []byte(testCase.contents), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if code := runDeployGate([]string{"check-egress", testCase.family, path}); code == exitDeployGateUsage {
+				t.Fatalf("%s-only config was rejected as invalid", testCase.family)
+			}
+			if code := runDeployGate([]string{"check-egress", "ipv4,ipv6", path}); code != exitDeployGateUsage {
+				t.Fatalf("both-family check accepted %s-only config: code=%d", testCase.family, code)
+			}
+			_, ok := parseWaitDeployArgs([]string{
+				"113", testOldBootID, "180", "180", "trace-123",
+				filepath.Join(t.TempDir(), "verdict.json"), testCase.family, "3", path,
+			})
+			if !ok {
+				t.Fatalf("wait-deploy rejected %s-only config", testCase.family)
+			}
+		})
+	}
+}
+
 func TestDownstreamProbeRejectsIncompleteGuestResults(t *testing.T) {
 	for name, raw := range map[string]string{
 		"missing exit":            `{"exitcode":0,"out-data":"gateway: 10.240.240.3"}`,

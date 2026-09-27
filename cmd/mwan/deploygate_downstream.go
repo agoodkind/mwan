@@ -36,7 +36,9 @@ type downstreamProbeFile struct {
 	IPv6NextHop  string `json:"ipv6_next_hop"`
 }
 
-func readDownstreamProbeConfig(path string) (downstreamProbeConfig, error) {
+func readDownstreamProbeConfig(
+	path string, families requiredEgressFamilies,
+) (downstreamProbeConfig, error) {
 	root, err := os.OpenRoot(filepath.Dir(path))
 	if err != nil {
 		slog.Warn("open downstream probe config directory failed", "path", path, "err", err)
@@ -61,29 +63,28 @@ func readDownstreamProbeConfig(path string) (downstreamProbeConfig, error) {
 	if input.OPNsenseVMID <= 0 {
 		return downstreamProbeConfig{}, fmt.Errorf("probe config %s: opnsense_vmid must be positive", path)
 	}
-	ipv4Source, err := parseProbeAddress("ipv4_source", input.IPv4Source, true)
-	if err != nil {
-		return downstreamProbeConfig{}, err
+	probe := downstreamProbeConfig{opnsenseVMID: input.OPNsenseVMID}
+	if families.ipv4 {
+		probe.ipv4Source, err = parseProbeAddress("ipv4_source", input.IPv4Source, true)
+		if err != nil {
+			return downstreamProbeConfig{}, err
+		}
+		probe.ipv4NextHop, err = parseProbeAddress("ipv4_next_hop", input.IPv4NextHop, true)
+		if err != nil {
+			return downstreamProbeConfig{}, err
+		}
 	}
-	ipv4NextHop, err := parseProbeAddress("ipv4_next_hop", input.IPv4NextHop, true)
-	if err != nil {
-		return downstreamProbeConfig{}, err
+	if families.ipv6 {
+		probe.ipv6Source, err = parseProbeAddress("ipv6_source", input.IPv6Source, false)
+		if err != nil {
+			return downstreamProbeConfig{}, err
+		}
+		probe.ipv6NextHop, err = parseProbeAddress("ipv6_next_hop", input.IPv6NextHop, false)
+		if err != nil {
+			return downstreamProbeConfig{}, err
+		}
 	}
-	ipv6Source, err := parseProbeAddress("ipv6_source", input.IPv6Source, false)
-	if err != nil {
-		return downstreamProbeConfig{}, err
-	}
-	ipv6NextHop, err := parseProbeAddress("ipv6_next_hop", input.IPv6NextHop, false)
-	if err != nil {
-		return downstreamProbeConfig{}, err
-	}
-	return downstreamProbeConfig{
-		opnsenseVMID: input.OPNsenseVMID,
-		ipv4Source:   ipv4Source,
-		ipv4NextHop:  ipv4NextHop,
-		ipv6Source:   ipv6Source,
-		ipv6NextHop:  ipv6NextHop,
-	}, nil
+	return probe, nil
 }
 
 func runCheckDownstreamEgress(ctx context.Context, deps deployGateDeps, args []string) int {
@@ -96,7 +97,7 @@ func runCheckDownstreamEgress(ctx context.Context, deps deployGateDeps, args []s
 		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
 		return exitDeployGateUsage
 	}
-	probe, err := readDownstreamProbeConfig(args[1])
+	probe, err := readDownstreamProbeConfig(args[1], families)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
 		return exitDeployGateUsage
