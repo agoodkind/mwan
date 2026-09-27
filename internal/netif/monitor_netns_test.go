@@ -53,6 +53,27 @@ func TestMonitorRebindsConfiguredLinkAfterRenameAndRecreation(t *testing.T) {
 	}
 }
 
+func TestMonitorDistinguishesSnapshotReplayFromNewAddress(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	link := addObservedVeth(t, "obs-replay", "obs-replay-peer", "02:00:5e:00:53:77")
+	addObservedAddress(t, link, "192.0.2.77/32")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	monitor := NewMonitor(ctx, logger, MonitorConfig{Iface: "obs-replay"})
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == link.Attrs().Index
+	})
+	replayed := waitObservedAddress(t, monitor.Events, "192.0.2.77/32")
+	if !replayed.SnapshotReplay {
+		t.Fatalf("existing address was reported as new: %+v", replayed)
+	}
+	addObservedAddress(t, link, "192.0.2.78/32")
+	added := waitObservedAddress(t, monitor.Events, "192.0.2.78/32")
+	if added.SnapshotReplay {
+		t.Fatalf("new address was reported as replayed: %+v", added)
+	}
+}
+
 func TestMonitorResyncsAfterAnUnconsumedEventBurst(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	link := addObservedVeth(t, "obs-b", "obs-peer-c", "02:00:5e:00:53:72")

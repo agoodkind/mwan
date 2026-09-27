@@ -71,6 +71,8 @@ type Event struct {
 	ActualIface  string
 	IfIndex      int
 	ObservedAt   time.Time
+	// SnapshotReplay marks a state event reconstructed from a snapshot.
+	SnapshotReplay bool
 	// Route-specific fields (populated when Kind is EvRouteAdded/Deleted).
 	Dest     string
 	Via      string
@@ -531,6 +533,7 @@ func (m *Monitor) replaySnapshot(ctx context.Context, snapshot *Snapshot) {
 	base.ActualIface = snapshot.ActualIface
 	base.IfIndex = snapshot.IfIndex
 	base.ObservedAt = snapshot.ObservedAt
+	base.SnapshotReplay = true
 	if snapshot.LinkUp {
 		event := base
 		event.Kind = EvLinkUp
