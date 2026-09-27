@@ -27,22 +27,32 @@ existing AT&T setup until retirement is confirmed. Generic VLAN support
 remains required. MWAN-400 must verify that AT&T no longer requires networkd
 before removing it globally. No live service was changed.
 
+September 27, 2026: [MWAN PR #48](https://github.com/agoodkind/mwan/pull/48)
+merged the specification, six slice plans, coordination plan, and corrected
+audit as `8d26c5ab078061125bfd91806332622b35fefc26`. Its final signed head
+was `7906f5c45b901344fd71d3e8109e99e2581f3f93`. The independent plan review
+found no remaining conflict after the audit correction. The automated reviewer
+approved the final head, all required checks passed, and no review thread
+remained open. This merge changed documentation only. No MWAN-305 interface
+ownership code or live gateway configuration changed.
+
 ## Track slice execution
 
 MWAN-524 passed implementation, review, merge, and live testbed acceptance.
-The migration slices remain planned.
+MWAN-516 identity work and MWAN-505 route repair have begun in separate local
+worktrees. Neither has a submitted code PR or runtime acceptance yet.
 
 | Ticket | Slices | Current execution state |
 | --- | --- | --- |
 | MWAN-524 | Restore the managed Astound testbed connection first. | Configs PR #522 merged. Deployment, restart, downstream traffic, balancing, and recovery passed. |
-| MWAN-516 | 516-model; 516-state | Execution has not started. |
+| MWAN-516 | 516-model; 516-state | Connection identity implementation has begun in `codex/mwan-516-interface-model` from `5970f1d`; no code PR or acceptance exists. |
 | MWAN-397 | 397-links | Execution has not started. |
 | MWAN-523 | 523-observation | Execution has not started. |
 | MWAN-398 | 398-addresses; 398-dhcpv4 | Execution has not started. |
 | MWAN-227 | 227-delegation | Execution has not started. |
 | MWAN-517 | 517-autoconfiguration; 517-dhcpv6 | Execution has not started. |
 | MWAN-518 | 518-restart | Execution has not started. |
-| MWAN-505 | 505-route-repair | Execution has not started. |
+| MWAN-505 | 505-route-repair | The route and rule deletion mechanism was traced at `8d26c5a`; reproduction and implementation have begun in `codex/mwan-505-route-repair`. No code PR or acceptance exists. |
 | MWAN-521 | 521-configuration; 521-deployment | Execution has not started. |
 | MWAN-522 | 522-acceptance | Execution has not started. |
 | MWAN-519 | 519-first-connection | Execution has not started. |
@@ -54,9 +64,10 @@ The migration slices remain planned.
 ## Resume the work
 
 MWAN-524 restored Astound as a permanently managed testbed connection.
-Resolve the eight remaining documented plan findings before assigning the
-migration slices. Then review the 516-model contract against current MWAN
-and Configs source. No interface-owner cutover has begun.
+The September 27 plan revision corrected the eight audit findings. Continue
+the 516 identity and 505 route repair slices against current source. Review
+their implementation commits and public-boundary tests before merging. No
+interface-owner cutover has begun.
 
 For every handoff, record the slice, agent responsibility, exact source
 revision, agreed interfaces, owned files, current PR, last passing check,
@@ -67,6 +78,7 @@ remaining acceptance, next action, and prerequisite evidence.
 | Date | Reviewed revision | Review scope | Verdict | Evidence |
 | --- | --- | --- | --- | --- |
 | September 26, 2026 | `codex/mwan-network-model` at `3abbafa16ddabe309d7fd76e52f13d16415e035d` | Specification, coordinator, six plans, linked historical specifications, all 46 existing epic children, current MWAN and Configs source, Clyde decisions, and read-only live state. | NOT-READY for unattended execution. One baseline blocker and eight plan corrections remain. | The [audit](2026-09-26-link-ownership-audit.md) distinguishes static findings, live observations, and missing proof. MWAN-524 was added after reviewing the existing children. |
+| September 27, 2026 | `7906f5c45b901344fd71d3e8109e99e2581f3f93` | Corrected F2 through F9, reconciled the current MWAN and Configs source, and reviewed the plan dependencies and acceptance gates. | Plans ready for implementation review. Runtime behavior remains unproved. | MWAN PR #48 merged as `8d26c5ab078061125bfd91806332622b35fefc26` after required CI and AI review. |
 
 ## Record each implementation result
 
@@ -142,8 +154,8 @@ It does not establish seamless survival of existing sessions across failure.
 
 Gateway observations used `qm guest exec 213`. Packet captures used
 `tcpdump` on simulator ingress before masquerade. Downstream commands used
-SSH through Suburban to the clients' IPv4 addresses. The remaining work is
-the eight plan corrections, followed by the 516-model contract review.
+SSH through Suburban to the clients' IPv4 addresses. The plan corrections
+were merged in MWAN PR #48. Implementation and live cutover remain pending.
 
 ## Record future implementation results
 
