@@ -19,10 +19,9 @@ const (
 	// EvUnknown is emitted when the netlink update did not match any known
 	// pattern for the watched iface. Daemon ignores these.
 	EvUnknown EventKind = iota
-	// EvRouteAdded fires when a `default` route via the watched iface is added.
-	// Includes RA-learned routes (proto ra) and DHCP-installed routes.
+	// EvRouteAdded fires when a route via the watched iface is added.
 	EvRouteAdded
-	// EvRouteDeleted fires when such a default route is removed.
+	// EvRouteDeleted fires when a route via the watched iface is removed.
 	EvRouteDeleted
 	// EvAddrAdded fires when any address is added on the watched iface.
 	// Used to detect SLAAC arrivals and renumber events.
@@ -58,25 +57,35 @@ func (k EventKind) String() string {
 	return "unknown"
 }
 
-// Event is one parsed netlink event the daemon should react to. Mirrors
-// what the previous shellout-based monitor produced; new EvLink{Up,Down}
-// kinds are added with the netlink switch since LinkSubscribe gives us
-// link-level events for free.
+// Event is one parsed netlink event for a watched interface.
 type Event struct {
 	Kind   EventKind
-	Family string // "inet" or "inet6" for addr/route events; "" for link events
+	Family string // "inet" or "inet6" for address and route events
 	Iface  string
 	// Route-specific fields (populated when Kind is EvRouteAdded/Deleted).
-	Dest string
-	Via  string
+	Dest     string
+	Via      string
+	TableID  int
+	Protocol int
+	Metric   int
 	// Addr-specific fields (populated when Kind is EvAddrAdded/Deleted).
 	CIDR string
 }
 
-// MonitorConfig configures one Monitor instance. The watched iface name is
-// resolved to a kernel link index at construction; if the iface is renamed
-// or removed, the Monitor logs a WARN and the subscription naturally stops
-// emitting events for the old index. Operator action required.
+// RuleEvent identifies one deleted routing policy rule.
+type RuleEvent struct {
+	Family   string
+	TableID  int
+	Priority int
+	From     string
+	Mark     uint32
+	IifName  string
+	UIDRange string
+}
+
+// MonitorConfig configures one Monitor instance. An existing interface is
+// matched by its index. A missing interface is matched by name when it appears.
+// Renaming an already matched interface requires a monitor restart.
 type MonitorConfig struct {
 	Iface string
 }
@@ -254,7 +263,8 @@ func (m *Monitor) subscribeRoute(ctx context.Context) {
 			}
 			log.DebugContext(ctx, "monitor: route event",
 				"kind", ev.Kind.String(), "dest", ev.Dest, "via", ev.Via,
-				"family", ev.Family)
+				"family", ev.Family, "table_id", ev.TableID,
+				"protocol", ev.Protocol, "metric", ev.Metric)
 			m.emit(ctx, ev)
 		}
 	}
@@ -319,7 +329,7 @@ func (m *Monitor) emit(ctx context.Context, ev Event) {
 // addrUpdateToEvent translates one AddrUpdate into our Event type. Returns
 // EvUnknown for events on other interfaces or with empty CIDR.
 func (m *Monitor) addrUpdateToEvent(u netlink.AddrUpdate) Event {
-	if m.ifIndex != 0 && u.LinkIndex != m.ifIndex {
+	if !m.watchesIndex(u.LinkIndex) {
 		return unknownEvent()
 	}
 	cidr := u.LinkAddress.String()
@@ -335,20 +345,22 @@ func (m *Monitor) addrUpdateToEvent(u netlink.AddrUpdate) Event {
 		kind = EvAddrDeleted
 	}
 	return Event{
-		Kind:   kind,
-		Family: fam,
-		Iface:  m.cfg.Iface,
-		Dest:   "",
-		Via:    "",
-		CIDR:   cidr,
+		Kind:     kind,
+		Family:   fam,
+		Iface:    m.cfg.Iface,
+		Dest:     "",
+		Via:      "",
+		TableID:  0,
+		Protocol: 0,
+		Metric:   0,
+		CIDR:     cidr,
 	}
 }
 
-// routeUpdateToEvent translates one RouteUpdate into our Event type. Filters
-// to default routes via the watched iface.
+// routeUpdateToEvent translates one route update on the watched interface.
 func (m *Monitor) routeUpdateToEvent(u netlink.RouteUpdate) Event {
 	r := u.Route
-	if m.ifIndex != 0 && r.LinkIndex != m.ifIndex {
+	if !m.watchesIndex(r.LinkIndex) {
 		return unknownEvent()
 	}
 	famConst := r.Family
@@ -365,7 +377,7 @@ func (m *Monitor) routeUpdateToEvent(u netlink.RouteUpdate) Event {
 			famConst = unix.AF_INET6
 		}
 	}
-	if !isDefaultRoute(r, famConst) {
+	if famConst != unix.AF_INET && famConst != unix.AF_INET6 {
 		return unknownEvent()
 	}
 	fam := "inet6"
@@ -387,13 +399,20 @@ func (m *Monitor) routeUpdateToEvent(u netlink.RouteUpdate) Event {
 	if r.Gw != nil {
 		via = r.Gw.String()
 	}
+	dest := "default"
+	if !isDefaultRoute(r, famConst) {
+		dest = r.Dst.String()
+	}
 	return Event{
-		Kind:   kind,
-		Family: fam,
-		Iface:  m.cfg.Iface,
-		Dest:   "default",
-		Via:    via,
-		CIDR:   "",
+		Kind:     kind,
+		Family:   fam,
+		Iface:    m.cfg.Iface,
+		Dest:     dest,
+		Via:      via,
+		TableID:  r.Table,
+		Protocol: int(r.Protocol),
+		Metric:   r.Priority,
+		CIDR:     "",
 	}
 }
 
@@ -401,7 +420,11 @@ func (m *Monitor) routeUpdateToEvent(u netlink.RouteUpdate) Event {
 // only when the watched iface transitions across up/down. The kernel sends
 // many LinkUpdates for unrelated state bits; we suppress noise.
 func (m *Monitor) linkUpdateToEvent(u netlink.LinkUpdate) Event {
-	if m.ifIndex != 0 && int(u.Index) != m.ifIndex {
+	if m.ifIndex != 0 {
+		if int(u.Index) != m.ifIndex {
+			return unknownEvent()
+		}
+	} else if u.Attrs() == nil || u.Attrs().Name != m.cfg.Iface {
 		return unknownEvent()
 	}
 	switch u.Header.Type {
@@ -412,14 +435,25 @@ func (m *Monitor) linkUpdateToEvent(u netlink.LinkUpdate) Event {
 		}
 		switch u.Attrs().OperState {
 		case netlink.OperUp, netlink.OperUnknown:
-			return Event{Kind: EvLinkUp, Family: "", Iface: m.cfg.Iface, Dest: "", Via: "", CIDR: ""}
+			return Event{Kind: EvLinkUp, Family: "", Iface: m.cfg.Iface, Dest: "", Via: "", TableID: 0, Protocol: 0, Metric: 0, CIDR: ""}
 		case netlink.OperDown, netlink.OperLowerLayerDown, netlink.OperNotPresent:
-			return Event{Kind: EvLinkDown, Family: "", Iface: m.cfg.Iface, Dest: "", Via: "", CIDR: ""}
+			return Event{Kind: EvLinkDown, Family: "", Iface: m.cfg.Iface, Dest: "", Via: "", TableID: 0, Protocol: 0, Metric: 0, CIDR: ""}
 		}
 	case unix.RTM_DELLINK:
-		return Event{Kind: EvLinkDown, Family: "", Iface: m.cfg.Iface, Dest: "", Via: "", CIDR: ""}
+		return Event{Kind: EvLinkDown, Family: "", Iface: m.cfg.Iface, Dest: "", Via: "", TableID: 0, Protocol: 0, Metric: 0, CIDR: ""}
 	}
 	return unknownEvent()
+}
+
+func (m *Monitor) watchesIndex(index int) bool {
+	if index == 0 {
+		return false
+	}
+	if m.ifIndex != 0 {
+		return index == m.ifIndex
+	}
+	link, err := netlink.LinkByIndex(index)
+	return err == nil && link.Attrs() != nil && link.Attrs().Name == m.cfg.Iface
 }
 
 // IfIndex returns the netlink index of the watched interface (0 if unknown).
@@ -428,12 +462,15 @@ func (m *Monitor) IfIndex() int { return m.ifIndex }
 
 func unknownEvent() Event {
 	return Event{
-		Kind:   EvUnknown,
-		Family: "",
-		Iface:  "",
-		Dest:   "",
-		Via:    "",
-		CIDR:   "",
+		Kind:     EvUnknown,
+		Family:   "",
+		Iface:    "",
+		Dest:     "",
+		Via:      "",
+		TableID:  0,
+		Protocol: 0,
+		Metric:   0,
+		CIDR:     "",
 	}
 }
 
