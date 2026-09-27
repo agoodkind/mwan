@@ -824,7 +824,7 @@ module goodkind-mwan-steering {
          The client identity is a public identifier, not a secret.";
       leaf hint {
         type inet:ipv6-prefix;
-        description "The client requests this delegated prefix length.";
+        description "This field specifies the delegated prefix hint the client requests.";
       }
       leaf iaid {
         type uint32;
