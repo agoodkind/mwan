@@ -107,8 +107,15 @@ func testFirewallPackets(t *testing.T, managementName, lanName, wanName string) 
 	if err := selected.Init(ctx, &ifmgr.Env{Log: logger}); err != nil {
 		t.Fatal(err)
 	}
-	if err := selected.Reconcile(ctx, logger); err != nil {
+	if err := selected.Reconcile(ctx, logger); err != nil && !strings.Contains(err.Error(), "request destination refresh: start "+destinationRefreshService) {
+		t.Fatalf("reconcile firewall policy: %v", err)
+	}
+	desired, err := firewall.Compile(policy)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if _, err := firewall.Inspect(ctx, desired); err != nil {
+		t.Fatalf("inspect firewall policy: %v", err)
 	}
 	observePacketMark(t, wan.gateway)
 
