@@ -528,11 +528,11 @@ which the entry already carries, so it is derived rather than typed. The
 served tree keeps reporting it under the same leaf, now filled by the daemon
 from the address, so a reader of the served tree sees no change.
 
-The daemon does not create links and does not run its own delegation client.
-Both stay with systemd-networkd. Moving them into the daemon is the monolith
-epic's work (MWAN-305). It is gated on the daemon owning the lease first,
-because a link created by one program and leased by another has two
-authorities.
+Networkd manages links and delegation in this intermediate rendering stage.
+MWAN-305 replaces that management under the
+[interface ownership specification](../../interfaces.md). Its migration
+assigns each object one writer and completes the required acquisition support
+before transferring a connection.
 
 ## Acceptance
 

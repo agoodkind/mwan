@@ -132,6 +132,7 @@ provide.
 
 Quality-based steering, meaning selection on latency, jitter, or loss.
 
-The daemon running its own delegation client, and moving link creation off
-systemd networkd. The second is gated on the first, because splitting link
-creation from lease ownership would put one interface under two authorities.
+Interface ownership and delegation clients are separate work under MWAN-305.
+The [interface ownership specification](../../interfaces.md) defines the
+complete migration and its shared contracts with MWAN-507. This provider
+configuration specification covers the intermediate networkd rendering stage.

@@ -84,6 +84,16 @@ The module defines two notifications, a member health transition and an
 active-tier change, each carrying the value before and after. How and when
 the daemon sends them is the surface specification's streaming section.
 
+## Interface ownership and acquisition
+
+MWAN-305 extends this model with explicit interface ownership, acquisition
+lifetimes, applied state, and failure history. The
+[interface ownership specification](../../interfaces.md) defines those
+requirements and the migration from networkd. The unit-rendering fields
+above support the current networkd stage. They do not define the final
+interface lifecycle. MWAN-507 uses the shared ownership and dependency
+contracts when adding tunnels and external BGP.
+
 ## Direct connections and tunnels
 
 The provider-set migration is complete. MWAN-507 requires direct and tunneled
