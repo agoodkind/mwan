@@ -38,22 +38,22 @@ MWAN-305 interface ownership code or live gateway configuration changed.
 
 ## Track slice execution
 
-MWAN-524 passed implementation, review, merge, and live testbed acceptance.
-MWAN-516 identity work and MWAN-505 route repair have begun in separate local
-worktrees. Neither has a submitted code PR or runtime acceptance yet.
+MWAN-524 passed live testbed acceptance. MWAN-505 route repair, the first
+MWAN-521 deployment preparation, and MWAN-516 identity work merged without
+deployment. No interface-owner cutover has begun.
 
 | Ticket | Slices | Current execution state |
 | --- | --- | --- |
 | MWAN-524 | Restore the managed Astound testbed connection first. | Configs PR #522 merged. Deployment, restart, downstream traffic, balancing, and recovery passed. |
-| MWAN-516 | 516-model; 516-state | Connection identity implementation has begun in `codex/mwan-516-interface-model` from `5970f1d`; no code PR or acceptance exists. |
+| MWAN-516 | 516-model; 516-state | [MWAN PR #51](https://github.com/agoodkind/mwan/pull/51) merged the standalone identity change as `959fbd3a65955e8156f2ea6c9bf2c90febef762c`. Shared model and state work remain. |
 | MWAN-397 | 397-links | Execution has not started. |
 | MWAN-523 | 523-observation | Execution has not started. |
 | MWAN-398 | 398-addresses; 398-dhcpv4 | Execution has not started. |
 | MWAN-227 | 227-delegation | Execution has not started. |
 | MWAN-517 | 517-autoconfiguration; 517-dhcpv6 | Execution has not started. |
 | MWAN-518 | 518-restart | Execution has not started. |
-| MWAN-505 | 505-route-repair | Source review traced the route and rule deletion mechanism at `8d26c5a`; reproduction and implementation have begun in `codex/mwan-505-route-repair`. No code PR or acceptance exists. |
-| MWAN-521 | 521-configuration; 521-deployment | Execution has not started. |
+| MWAN-505 | 505-route-repair | [MWAN PR #52](https://github.com/agoodkind/mwan/pull/52) merged as `18941243f1e8fa3d5623a04440e4d90de796d1f4`. Namespace packet tests passed. Testbed and production acceptance remain. |
+| MWAN-521 | 521-configuration; 521-deployment | [Configs PR #527](https://github.com/agoodkind/configs/pull/527) merged as `20ad40232fa62394046b1218839e60756a6b7a22`. It moved MAC discovery before rendering. Complete role rendering and transfer remain. |
 | MWAN-522 | 522-acceptance | Execution has not started. |
 | MWAN-519 | 519-first-connection | Execution has not started. |
 | MWAN-399 | 399-remaining-connections | Execution has not started. |
@@ -64,10 +64,9 @@ worktrees. Neither has a submitted code PR or runtime acceptance yet.
 ## Resume the work
 
 MWAN-524 restored Astound as a permanently managed testbed connection.
-The September 27 plan revision corrected the eight audit findings. Continue
-the 516 identity and 505 route repair slices against current source. Review
-their implementation commits and public-boundary tests before merging. No
-interface-owner cutover has begun.
+Implement the shared interface model before observation and state publication.
+Keep the route repair, MAC discovery, and identity merges separate from live
+acceptance. No interface-owner cutover has begun.
 
 For every handoff, record the slice, agent responsibility, exact source
 revision, agreed interfaces, owned files, current PR, last passing check,
@@ -156,6 +155,55 @@ Gateway observations used `qm guest exec 213`. Packet captures used
 `tcpdump` on simulator ingress before masquerade. Downstream commands used
 SSH through Suburban to the clients' IPv4 addresses. The maintainer merged
 the plan corrections in MWAN PR #48. Implementation and live cutover remain pending.
+
+### First code merges, September 27, 2026
+
+[MWAN PR #49](https://github.com/agoodkind/mwan/pull/49) merged the first
+ledger update and identity PR boundary as
+`58f6faa80bd8c2dc230e4cd36eafea0ad7b0c68b`. Its signed head was
+`4cdbd5183329697a876736035256a7114c9537cb`. Required checks and automated
+review passed. This change modified documentation only.
+
+[Configs PR #527](https://github.com/agoodkind/configs/pull/527) moved runtime
+MAC discovery after VMID resolution and before network document rendering.
+Signed commit `e5a7abe6bed8344db40d1cbbc5ebc0a01a1e8937` merged as
+`20ad40232fa62394046b1218839e60756a6b7a22`. `./configsctl lint` and
+28 install examples passed; one existing optional Linux binary case remained
+pending. Required CI, automated review, and independent static review passed.
+The template and installed configuration did not change. No deployment ran.
+
+[MWAN PR #52](https://github.com/agoodkind/mwan/pull/52) repaired owned route
+and policy-rule deletion. Signed commit
+`7f62b9d070408ef72082fe333710c5678e45a1fb` merged as
+`18941243f1e8fa3d5623a04440e4d90de796d1f4`. Before the fix, a real daemon
+namespace test deleted an owned return route and observed it missing after five
+seconds with one-hour periodic reconciliation. After the fix, deleting that
+route and an owned rule triggered repair; downstream TCP resumed and an
+unrelated route remained. `make docker-make TARGETS="check test"`, four
+privileged firewall tests, required CI, automated review, and independent
+static review passed. No testbed or production deployment ran.
+
+[MWAN PR #51](https://github.com/agoodkind/mwan/pull/51) assigned stable
+connection IDs independently of provider names and ASNs in the served model.
+Its signed commits were `b01c858145ebd44bb634a474ace448e37f99114b`,
+`202e230451171fbfdd429e51a3d8ff4b55328a30`,
+`13abbefe8872c935ec5050b742675824a8e9748e`, and
+`0bfca014eb4c6b4b9320d3670c999e6bea047073`. It merged as
+`959fbd3a65955e8156f2ea6c9bf2c90febef762c`. The full local check and
+test suite passed at the final head. All required CI checks passed. The
+automated reviewer approved the final head, all review threads were resolved,
+and an independent reviewer found no blocker in the final interface-key fix.
+The optional Govulncheck job repeated the GoBGP database result below. This
+PR changed no interface owner and ran no testbed or production deployment.
+
+The optional `go / Quality / Govulncheck` job failed on GO-2026-4736 for
+GoBGP v4.7.0 on PRs #51 and #52 and on clean main. The
+[GitHub advisory](https://github.com/advisories/GHSA-4p9m-8gc4-rw2h) limits
+affected versions to 4.3.0 and earlier. The
+[upstream fix](https://github.com/osrg/gobgp/commit/583080a7258e22cc884162e15b078771aa2c2c80)
+precedes the v4.7.0 tag. The Go vulnerability database currently reports all
+v4 versions as affected. The repository ruleset did not require this check.
+No scanner result was hidden or changed.
 
 ## Record future implementation results
 
