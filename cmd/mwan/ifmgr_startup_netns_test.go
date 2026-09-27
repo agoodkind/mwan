@@ -4,12 +4,15 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -104,6 +107,67 @@ func runWANStartupChild(t *testing.T) {
 	if !bytes.Equal(before, after) {
 		t.Fatal("invalid baseline replaced the prior kernel rules")
 	}
+	missing := fixtureWithoutFirewall(t, fixture)
+	if err := os.WriteFile(networkPath, missing, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte("[ifmgr]\nrole = \"wan\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before = startupRuleset(t)
+	commandContext, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	output, err = exec.CommandContext(commandContext, binary, "ifmgr", "--role", "wan").CombinedOutput()
+	if commandContext.Err() != nil {
+		t.Fatalf("The WAN startup command timed out without a firewall policy: %s", output)
+	}
+	if err == nil || !strings.Contains(string(output), "WAN firewall policy is absent") {
+		t.Fatalf("The WAN daemon did not reject the absent firewall policy: %v: %s", err, output)
+	}
+	after = startupRuleset(t)
+	if !bytes.Equal(before, after) {
+		t.Fatal("WAN startup changed kernel rules despite the absent firewall policy")
+	}
+	entries, err = os.ReadDir(networkdDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("WAN startup wrote network files despite the absent firewall policy: %v", entries)
+	}
+}
+
+func fixtureWithoutFirewall(t *testing.T, fixture []byte) []byte {
+	t.Helper()
+	decode := func(raw []byte) map[string]json.RawMessage {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			t.Fatal(err)
+		}
+		return fields
+	}
+	document := decode(fixture)
+	interfaces := decode(document["ietf-interfaces:interfaces"])
+	group := decode(interfaces["goodkind-mwan-steering:steering-group"])
+	if _, exists := group["firewall"]; !exists {
+		t.Fatal("the fixture has no firewall section")
+	}
+	delete(group, "firewall")
+	groupJSON, err := json.Marshal(group)
+	if err != nil {
+		t.Fatal(err)
+	}
+	interfaces["goodkind-mwan-steering:steering-group"] = groupJSON
+	interfacesJSON, err := json.Marshal(interfaces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document["ietf-interfaces:interfaces"] = interfacesJSON
+	result, err := json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result
 }
 
 func bindStartupDirectory(t *testing.T, source string, target string) {

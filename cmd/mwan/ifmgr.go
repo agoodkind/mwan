@@ -365,7 +365,7 @@ func bootstrapWANFirewall(ctx context.Context, path string) error {
 		return fmt.Errorf("load protective firewall baseline: %w", err)
 	}
 	if baseline == nil {
-		return nil
+		return fmt.Errorf("WAN firewall policy is absent in %s", path)
 	}
 	desired, err := firewall.CompileBaseline(*baseline)
 	if err != nil {
