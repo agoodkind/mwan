@@ -31,10 +31,10 @@ operator requires the testbed connection to remain managed.
 
 | Agent | Assigned work | Required handoff |
 | --- | --- | --- |
-| Coordinator with high reasoning capability | Verify prerequisites, settle interfaces within the approved design, assign exclusive file ownership, sequence PRs, and reconcile evidence. | Give each agent one slice, exact source revision, settled contracts, dependencies, and acceptance requirements. |
+| Coordinator | Verify prerequisites, settle interfaces within the approved design, assign exclusive file ownership, sequence PRs, and reconcile evidence. | Give each agent one slice, exact source revision, settled contracts, dependencies, and acceptance requirements. |
 | Code implementer only | Implement the settled slice, add necessary public-boundary tests, and run local checks. Verify the plan's premise against current source first. | Return the patch, exact checks and results, public behavior proved, and unresolved contradictions. Do not deploy, decide architecture, or substitute self-review for independent review. |
-| Independent reviewer with high reasoning capability | Review contracts before implementation and inspect the resulting patch afterward. Reproduce the slice's failure cases and check shared consumers. | Return findings with evidence and a verdict tied to the reviewed commit. Report missing proof explicitly. |
-| Cutover agent with high reasoning capability | Inspect live ownership, execute the approved merged deployment, monitor downstream traffic, perform recovery, and record acceptance. | Return exact release and configuration revisions, commands, before/after owners, interruption, recovery, and packet results. |
+| Independent reviewer | Review contracts before implementation and inspect the resulting patch afterward. Reproduce the slice's failure cases and check shared consumers. | Return findings with evidence and a verdict tied to the reviewed commit. Report missing proof explicitly. |
+| Cutover agent | Inspect live ownership, execute the approved merged deployment, monitor downstream traffic, perform recovery, and record acceptance. | Return exact release and configuration revisions, commands, before/after owners, interruption, recovery, and packet results. |
 
 Use the code-implementer role only after contract review has settled the
 behavior and interfaces. Do not assign open architecture questions,
