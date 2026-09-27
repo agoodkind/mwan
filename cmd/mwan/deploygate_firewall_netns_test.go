@@ -53,4 +53,15 @@ func TestCheckFirewallIsolatedKernel(t *testing.T) {
 	if output, err := badCheck.CombinedOutput(); err == nil {
 		t.Fatalf("invalid document was accepted: %s", output)
 	}
+	for _, mode := range []string{"check-firewall", "inspect-firewall"} {
+		command := exec.Command(binary, "deploy-gate", mode)
+		output, err := command.CombinedOutput()
+		if err == nil {
+			t.Fatalf("%s accepted missing arguments: %s", mode, output)
+		}
+		failure, ok := err.(*exec.ExitError)
+		if !ok || failure.ExitCode() != exitDeployGateUsage {
+			t.Fatalf("%s returned %v for missing arguments: %s", mode, err, output)
+		}
+	}
 }

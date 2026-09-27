@@ -23,7 +23,7 @@ func runFirewallCheck(args []string) int {
 	isolated := len(args) == 3 && args[2] == "--isolated"
 	if len(args) != 2 && !isolated {
 		fmt.Fprintln(os.Stderr, "usage: mwan deploy-gate check-firewall <network.json> <schema-dir>")
-		return 1
+		return exitDeployGateUsage
 	}
 	loaded, err := networkjson.Load(args[0], args[1])
 	if err != nil {
@@ -64,7 +64,7 @@ func runFirewallCheck(args []string) int {
 func runFirewallInspect(args []string) int {
 	if len(args) != 2 {
 		fmt.Fprintln(os.Stderr, "usage: mwan deploy-gate inspect-firewall <network.json> <schema-dir>")
-		return 1
+		return exitDeployGateUsage
 	}
 	loaded, err := networkjson.Load(args[0], args[1])
 	if err != nil {
