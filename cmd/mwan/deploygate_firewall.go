@@ -23,7 +23,7 @@ func runFirewallCheck(args []string) int {
 	isolated := len(args) == 3 && args[2] == "--isolated"
 	if len(args) != 2 && !isolated {
 		fmt.Fprintln(os.Stderr, "usage: mwan deploy-gate check-firewall <network.json> <schema-dir>")
-		return 1
+		return exitDeployGateUsage
 	}
 	loaded, err := networkjson.Load(args[0], args[1])
 	if err != nil {
@@ -52,6 +52,36 @@ func runFirewallCheck(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
+	readback, err := firewall.Inspect(ctx, desired)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	fmt.Print(readback)
+	return 0
+}
+
+func runFirewallInspect(args []string) int {
+	if len(args) != 2 {
+		fmt.Fprintln(os.Stderr, "usage: mwan deploy-gate inspect-firewall <network.json> <schema-dir>")
+		return exitDeployGateUsage
+	}
+	loaded, err := networkjson.Load(args[0], args[1])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if !loaded.Firewall.Enabled {
+		fmt.Fprintln(os.Stderr, "firewall ownership is disabled")
+		return 1
+	}
+	desired, err := firewall.Compile(loaded.Firewall)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), firewallCheckTimeout)
+	defer cancel()
 	readback, err := firewall.Inspect(ctx, desired)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

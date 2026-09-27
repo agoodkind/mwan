@@ -71,17 +71,18 @@ const (
 )
 
 const (
-	gateModeCheckEgress   deployGateMode = "check-egress"
-	gateModeWaitReboot    deployGateMode = "wait-reboot"
-	gateModeWaitEgress    deployGateMode = "wait-egress"
-	gateModeWaitDeploy    deployGateMode = "wait-deploy"
-	gateModeCheckOwned    deployGateMode = "check-owned-addresses"
-	gateModeCheckNetwork  deployGateMode = "check-network"
-	gateModeCheckFirewall deployGateMode = "check-firewall"
+	gateModeCheckEgress     deployGateMode = "check-egress"
+	gateModeWaitReboot      deployGateMode = "wait-reboot"
+	gateModeWaitEgress      deployGateMode = "wait-egress"
+	gateModeWaitDeploy      deployGateMode = "wait-deploy"
+	gateModeCheckOwned      deployGateMode = "check-owned-addresses"
+	gateModeCheckNetwork    deployGateMode = "check-network"
+	gateModeCheckFirewall   deployGateMode = "check-firewall"
+	gateModeInspectFirewall deployGateMode = "inspect-firewall"
 )
 
-// traceIDPattern bounds the trace id because it lands in the verdict file
-// and in a systemd unit name; anything outside this shape is operator error.
+// traceIDPattern limits trace IDs written to verdict files and systemd unit names.
+// Values outside this pattern are invalid operator input.
 var traceIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 // gateNotRun marks a verdict slot whose gate deliberately did not run: the
@@ -213,6 +214,8 @@ func runDeployGate(args []string) int {
 		return checkNetwork(deps, rest[0], rest[1])
 	case gateModeCheckFirewall:
 		return runFirewallCheck(rest)
+	case gateModeInspectFirewall:
+		return runFirewallInspect(rest)
 	case gateModeWaitReboot:
 		if len(rest) != 3 {
 			printDeployGateUsage()
@@ -465,6 +468,7 @@ func printDeployGateUsage() {
 			" | check-owned-addresses"+
 			" | check-network <network_json> <schema_dir>"+
 			" | check-firewall <network_json> <schema_dir>"+
+			" | inspect-firewall <network_json> <schema_dir>"+
 			" | wait-reboot <vmid> <old_boot_id> <seconds>"+
 			" | wait-egress <seconds> <families> <consecutive_rounds>"+
 			" | wait-deploy <vmid> <old_boot_id> <reboot_seconds>"+
