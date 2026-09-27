@@ -9,7 +9,8 @@ gates. Each slice plan defines its edits and verification. The
 The September 26 audit inspected MWAN `03dd43a` and Configs `18f2a711`.
 The September 27 review compared current plans with MWAN `5970f1d` and
 Configs `b612d1c`. Recheck changed source before each implementation brief.
-MWAN-524 passed live testbed acceptance. The migration slices have not started.
+MWAN-524 passed live testbed acceptance. Connection identity and route repair
+implementation have started; no interface-owner cutover has begun.
 
 The [plan audit](2026-09-26-link-ownership-audit.md) records the corrected
 document gaps and the remaining implementation gates.
@@ -98,7 +99,8 @@ checks at its own position.
 
 | Repository | PR subject | Branch relationship and boundary |
 | --- | --- | --- |
-| MWAN | [MWAN-516] Define shared interface configuration and assignment contracts | Start the model stack from trunk. |
+| MWAN | [MWAN-516] Separate stable connection IDs from provider display names | Use a standalone PR from trunk. Re-key every identity consumer and preserve legacy IDs before accepting repeated provider names. |
+| MWAN | [MWAN-516] Define shared interface configuration and assignment contracts | Start the model stack after the identity PR merges. |
 | MWAN | [MWAN-523] Observe device identity and kernel assignment state | Stack on the model PR. |
 | MWAN | [MWAN-516] Publish connection ownership and acquisition history | Stack on observation. End and merge the model stack here. |
 | MWAN | [MWAN-397] Manage physical links and VLAN dependencies | Start the kernel stack after the model stack merges. |
