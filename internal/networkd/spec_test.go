@@ -4,48 +4,52 @@ import (
 	"net/netip"
 	"testing"
 
+	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/networkd"
 )
 
 // staticLinkSpec is a link like webpass: matched by driver, a static IPv4
 // address, a DHCPv6 client with a delegation, and free-form sections the
 // caller chooses.
-func staticLinkSpec(files []networkd.File) networkd.Spec {
-	return networkd.Spec{
-		Name:            "enwebpass0",
-		TableID:         200,
-		Match:           networkd.Match{Driver: "igc"},
-		HardwareAddress: "02:00:5e:00:53:01",
-		IPv4: &networkd.FamilyV4{
-			Family: networkd.Family{
+func staticLinkSpec(files []interfaceintent.UnitFile) interfaceintent.Connection {
+	return interfaceintent.Connection{
+		ID:    "enwebpass0",
+		Name:  "enwebpass0",
+		Owner: interfaceintent.OwnerNetworkd,
+		Link: &interfaceintent.Link{
+			Match:           interfaceintent.Match{Driver: "igc"},
+			HardwareAddress: "02:00:5e:00:53:01",
+		},
+		IPv4: &interfaceintent.IPv4{
+			Family: interfaceintent.Family{
 				Forwarding:  new(true),
-				Addresses:   []networkd.Address{{IP: netip.MustParseAddr("203.0.113.2"), PrefixLength: 29}},
+				Addresses:   []interfaceintent.Address{{Prefix: netip.MustParsePrefix("203.0.113.2/29"), Purpose: interfaceintent.PurposeLocal}},
 				DHCP:        new(false),
 				Gateway:     netip.MustParseAddr("203.0.113.1"),
 				RouteMetric: new(uint32(10)),
 			},
 		},
-		IPv6: &networkd.FamilyV6{
-			Family:   networkd.Family{Forwarding: new(true), DHCP: new(true)},
+		IPv6: &interfaceintent.IPv6{
+			Family:   interfaceintent.Family{Forwarding: new(true), DHCP: new(true)},
 			AcceptRA: new(true),
-			Delegation: &networkd.Delegation{
+			Delegation: &interfaceintent.Delegation{
 				Hint:     netip.MustParsePrefix("::/56"),
 				DUIDType: "link-layer-time",
 				DUID:     "00:01:2a:5b:3c:4d:02:00:5e:00:53:01",
 			},
 		},
-		Files: files,
+		Networkd: files,
 	}
 }
 
 // networkSection builds one free-form section of the .network file.
-func networkSection(name string, key string, value string) []networkd.File {
-	return []networkd.File{{
-		Kind: networkd.FileNetwork,
-		Sections: []networkd.Section{{
+func networkSection(name string, key string, value string) []interfaceintent.UnitFile {
+	return []interfaceintent.UnitFile{{
+		Kind: string(networkd.FileNetwork),
+		Sections: []interfaceintent.UnitSection{{
 			Index:   0,
 			Name:    name,
-			Entries: []networkd.Entry{{Index: 0, Key: key, Value: value}},
+			Entries: []interfaceintent.UnitEntry{{Index: 0, Key: key, Value: value}},
 		}},
 	}}
 }
@@ -54,7 +58,7 @@ func TestValidateRejectsAKeySetByBothLayers(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]struct {
-		files []networkd.File
+		files []interfaceintent.UnitFile
 		want  string
 	}{
 		"delegation hint": {
@@ -72,12 +76,12 @@ func TestValidateRejectsAKeySetByBothLayers(t *testing.T) {
 			want:  "networkd section Network key Address is set by the ipv4 address leaf; remove one",
 		},
 		"driver match in the link file": {
-			files: []networkd.File{{
-				Kind: networkd.FileLink,
-				Sections: []networkd.Section{{
+			files: []interfaceintent.UnitFile{{
+				Kind: string(networkd.FileLink),
+				Sections: []interfaceintent.UnitSection{{
 					Index:   0,
 					Name:    "Match",
-					Entries: []networkd.Entry{{Index: 0, Key: "Driver", Value: "e1000e"}},
+					Entries: []interfaceintent.UnitEntry{{Index: 0, Key: "Driver", Value: "e1000e"}},
 				}},
 			}},
 			want: "networkd section Match key Driver is set by the match driver leaf; remove one",
@@ -101,18 +105,18 @@ func TestValidateRejectsAKeySetByBothLayers(t *testing.T) {
 func TestValidateAcceptsAKeyNoTypedLeafSets(t *testing.T) {
 	t.Parallel()
 
-	cases := map[string][]networkd.File{
+	cases := map[string][]interfaceintent.UnitFile{
 		"a key under a typed heading": networkSection("DHCPv6", "UseDNS", "no"),
 		"a heading no leaf names":     networkSection("DHCPv4", "UseDNS", "no"),
 		// The typed table places a key in one file kind, so the same key in
 		// another kind is the network manager's to judge rather than a
 		// doubled leaf.
 		"a typed key in another file": {{
-			Kind: networkd.FileNetdev,
-			Sections: []networkd.Section{{
+			Kind: string(networkd.FileNetdev),
+			Sections: []interfaceintent.UnitSection{{
 				Index:   0,
 				Name:    "Match",
-				Entries: []networkd.Entry{{Index: 0, Key: "Driver", Value: "igc"}},
+				Entries: []interfaceintent.UnitEntry{{Index: 0, Key: "Driver", Value: "igc"}},
 			}},
 		}},
 		"no free-form content": nil,
@@ -156,7 +160,7 @@ func TestValidateOccupiesTheLeaseMetricOnlyWithoutAGateway(t *testing.T) {
 			t.Parallel()
 
 			leased := leasedLinkSpec()
-			leased.Files = networkSection(tc.section, tc.key, "100")
+			leased.Networkd = networkSection(tc.section, tc.key, "100")
 			err := networkd.Validate(leased)
 			if err == nil {
 				t.Fatal("Validate accepted a lease metric set by both layers")

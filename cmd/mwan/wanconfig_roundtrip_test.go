@@ -29,6 +29,8 @@ var networkListKeys = map[string][]string{
 	"interface":          {"name"},
 	"static-mapping":     {"external"},
 	"address":            {"ip"},
+	"forwarding-address": {"address"},
+	"goodkind-mwan-steering:forwarding-address": {"address"},
 	"file":               {"kind"},
 	"section":            {"index"},
 	"entry":              {"index"},
@@ -43,6 +45,7 @@ var networkListKeys = map[string][]string{
 var servedOnlyPaths = []*regexp.Regexp{
 	regexp.MustCompile(`^/ietf-interfaces:interfaces/interface\[name='[^']+'\]/enabled$`),
 	regexp.MustCompile(`^/ietf-interfaces:interfaces/interface\[name='[^']+'\]/ietf-ip:ipv[46]/enabled$`),
+	regexp.MustCompile(`^/ietf-interfaces:interfaces/interface\[name='[^']+'\]/goodkind-mwan-steering:owner$`),
 	regexp.MustCompile(`^/ietf-interfaces:interfaces/interface\[name='[^']+'\]/goodkind-mwan-steering:steering/probe-policy$`),
 	regexp.MustCompile(`^/ietf-interfaces:interfaces/interface\[name='[^']+'\]/goodkind-mwan-steering:wan/v4-source$`),
 	regexp.MustCompile(`^/ietf-nat:nat/`),

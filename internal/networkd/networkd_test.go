@@ -9,21 +9,24 @@ import (
 	"strings"
 	"testing"
 
+	"goodkind.io/mwan/internal/connectionid"
+	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/networkd"
 )
 
 // leasedLinkSpec is a link like monkeybrains: matched by hardware address,
 // both families leased with a route metric and no gateway, and a delegation
 // carrying every leaf the model names.
-func leasedLinkSpec() networkd.Spec {
-	return networkd.Spec{
-		Name:            "enmbrains0",
-		TableID:         300,
-		Match:           networkd.Match{Driver: "", HardwareAddress: "02:00:5e:00:53:02"},
-		HardwareAddress: "",
-		VLAN:            nil,
-		IPv4: &networkd.FamilyV4{
-			Family: networkd.Family{
+func leasedLinkSpec() interfaceintent.Connection {
+	return interfaceintent.Connection{
+		ID:    "enmbrains0",
+		Name:  "enmbrains0",
+		Owner: interfaceintent.OwnerNetworkd,
+		Link: &interfaceintent.Link{
+			Match: interfaceintent.Match{HardwareAddress: "02:00:5e:00:53:02"},
+		},
+		IPv4: &interfaceintent.IPv4{
+			Family: interfaceintent.Family{
 				Forwarding:  new(true),
 				Addresses:   nil,
 				DHCP:        new(true),
@@ -32,8 +35,8 @@ func leasedLinkSpec() networkd.Spec {
 			},
 			SourceAddresses: nil,
 		},
-		IPv6: &networkd.FamilyV6{
-			Family: networkd.Family{
+		IPv6: &interfaceintent.IPv6{
+			Family: interfaceintent.Family{
 				Forwarding:  new(true),
 				Addresses:   nil,
 				DHCP:        new(true),
@@ -41,7 +44,7 @@ func leasedLinkSpec() networkd.Spec {
 				RouteMetric: new(uint32(5000)),
 			},
 			AcceptRA: new(true),
-			Delegation: &networkd.Delegation{
+			Delegation: &interfaceintent.Delegation{
 				Hint:                  netip.MustParsePrefix("::/56"),
 				DUIDType:              "link-layer-time",
 				DUID:                  "00:01:2a:5b:3c:4d:02:00:5e:00:53:02",
@@ -50,21 +53,21 @@ func leasedLinkSpec() networkd.Spec {
 				RouterLifetimeSeconds: new(uint32(1800)),
 			},
 		},
-		Files: nil,
 	}
 }
 
 // vlanLinkSpec is a provider handed off on a tagged VLAN: no device match,
 // a parent and a tag, and both families leased.
-func vlanLinkSpec() networkd.Spec {
-	return networkd.Spec{
-		Name:            "ensonic0.101",
-		TableID:         600,
-		Match:           networkd.Match{Driver: "", HardwareAddress: ""},
-		HardwareAddress: "",
-		VLAN:            &networkd.VLAN{Parent: "ensonic0", ID: 101},
-		IPv4: &networkd.FamilyV4{
-			Family: networkd.Family{
+func vlanLinkSpec() interfaceintent.Connection {
+	return interfaceintent.Connection{
+		ID:    "ensonic0.101",
+		Name:  "ensonic0.101",
+		Owner: interfaceintent.OwnerNetworkd,
+		Link: &interfaceintent.Link{
+			VLAN: &interfaceintent.VLAN{Parent: "ensonic0", ID: 101},
+		},
+		IPv4: &interfaceintent.IPv4{
+			Family: interfaceintent.Family{
 				Forwarding:  new(true),
 				Addresses:   nil,
 				DHCP:        new(true),
@@ -73,8 +76,8 @@ func vlanLinkSpec() networkd.Spec {
 			},
 			SourceAddresses: nil,
 		},
-		IPv6: &networkd.FamilyV6{
-			Family: networkd.Family{
+		IPv6: &interfaceintent.IPv6{
+			Family: interfaceintent.Family{
 				Forwarding:  new(true),
 				Addresses:   nil,
 				DHCP:        new(true),
@@ -84,7 +87,6 @@ func vlanLinkSpec() networkd.Spec {
 			AcceptRA:   new(true),
 			Delegation: nil,
 		},
-		Files: nil,
 	}
 }
 
@@ -121,7 +123,7 @@ func assertFiles(t *testing.T, files map[string]string, expected map[string]stri
 func TestRenderWritesAStaticLinkWithADelegation(t *testing.T) {
 	t.Parallel()
 
-	files, err := networkd.Render(staticLinkSpec(nil))
+	files, err := networkd.Render(staticLinkSpec(nil), 200)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -138,7 +140,7 @@ func TestRenderWritesAStaticLinkWithADelegation(t *testing.T) {
 func TestRenderWritesALeasedLinkMetricOntoTheLease(t *testing.T) {
 	t.Parallel()
 
-	files, err := networkd.Render(leasedLinkSpec())
+	files, err := networkd.Render(leasedLinkSpec(), 300)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -158,7 +160,7 @@ func TestRenderAppendsFreeFormSectionsAfterTheTypedLines(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]struct {
-		files []networkd.File
+		files []interfaceintent.UnitFile
 		want  string
 	}{
 		"a key under a typed heading": {
@@ -170,12 +172,12 @@ func TestRenderAppendsFreeFormSectionsAfterTheTypedLines(t *testing.T) {
 			want:  "merge-new-heading.network",
 		},
 		"a heading the typed layer repeats": {
-			files: []networkd.File{{
-				Kind: networkd.FileNetwork,
-				Sections: []networkd.Section{{
+			files: []interfaceintent.UnitFile{{
+				Kind: string(networkd.FileNetwork),
+				Sections: []interfaceintent.UnitSection{{
 					Index: 0,
 					Name:  "Route",
-					Entries: []networkd.Entry{
+					Entries: []interfaceintent.UnitEntry{
 						{Index: 0, Key: "Destination", Value: "198.51.100.0/24"},
 						{Index: 1, Key: "Gateway", Value: "203.0.113.1"},
 					},
@@ -188,7 +190,7 @@ func TestRenderAppendsFreeFormSectionsAfterTheTypedLines(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			files, err := networkd.Render(staticLinkSpec(tc.files))
+			files, err := networkd.Render(staticLinkSpec(tc.files), 200)
 			if err != nil {
 				t.Fatalf("Render: %v", err)
 			}
@@ -207,7 +209,7 @@ func TestRenderAppendsFreeFormSectionsAfterTheTypedLines(t *testing.T) {
 func TestRenderWritesAVLANAsANetdevAndANetwork(t *testing.T) {
 	t.Parallel()
 
-	files, err := networkd.Render(vlanLinkSpec())
+	files, err := networkd.Render(vlanLinkSpec(), 600)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -225,8 +227,8 @@ func TestRenderRejectsAHardwareAddressOnAVLAN(t *testing.T) {
 	t.Parallel()
 
 	spec := vlanLinkSpec()
-	spec.HardwareAddress = "02:00:5e:00:53:03"
-	_, err := networkd.Render(spec)
+	spec.Link.HardwareAddress = "02:00:5e:00:53:03"
+	_, err := networkd.Render(spec, 600)
 	if err == nil {
 		t.Fatal("Render wrote a .link file for a VLAN")
 	}
@@ -239,16 +241,14 @@ func TestRenderRejectsAHardwareAddressOnAVLAN(t *testing.T) {
 // parentLinkSpec is the physical link a VLAN is created on: matched by
 // driver, with no addressing of its own, the way a tagged hand-off's parent
 // looks when every address sits on the VLAN.
-func parentLinkSpec() networkd.Spec {
-	return networkd.Spec{
-		Name:            "ensonic0",
-		TableID:         0,
-		Match:           networkd.Match{Driver: "e1000e", HardwareAddress: ""},
-		HardwareAddress: "",
-		VLAN:            nil,
-		IPv4:            nil,
-		IPv6:            nil,
-		Files:           nil,
+func parentLinkSpec() interfaceintent.Connection {
+	return interfaceintent.Connection{
+		ID:    "ensonic0",
+		Name:  "ensonic0",
+		Owner: interfaceintent.OwnerNetworkd,
+		Link: &interfaceintent.Link{
+			Match: interfaceintent.Match{Driver: "e1000e"},
+		},
 	}
 }
 
@@ -279,7 +279,7 @@ func TestWriteDirPrunesOnlyItsOwnStaleFiles(t *testing.T) {
 	mustWrite(t, dir, "20-enwebpass0.network", networkd.Marker+"\n[Match]\nName=old\n")
 	mustWrite(t, dir, "10-mgmt.network", "[Match]\nName=enmgmt0\n")
 
-	changed, err := networkd.WriteDir(dir, []networkd.Spec{leasedLinkSpec()})
+	changed, err := networkd.WriteDir(dir, []interfaceintent.Connection{leasedLinkSpec()}, map[connectionid.ID]int{"enmbrains0": 300})
 	if err != nil {
 		t.Fatalf("WriteDir: %v", err)
 	}
@@ -303,7 +303,7 @@ func TestWriteDirPrunesOnlyItsOwnStaleFiles(t *testing.T) {
 	// The second pass is the point: identical content must not touch a file,
 	// because a changed modification time on a .link file is a reason for
 	// udev to act.
-	again, err := networkd.WriteDir(dir, []networkd.Spec{leasedLinkSpec()})
+	again, err := networkd.WriteDir(dir, []interfaceintent.Connection{leasedLinkSpec()}, map[connectionid.ID]int{"enmbrains0": 300})
 	if err != nil {
 		t.Fatalf("WriteDir second pass: %v", err)
 	}
@@ -319,7 +319,7 @@ func TestWriteDirNamesAVLANInItsParentsFile(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	changed, err := networkd.WriteDir(dir, []networkd.Spec{parentLinkSpec(), vlanLinkSpec()})
+	changed, err := networkd.WriteDir(dir, []interfaceintent.Connection{parentLinkSpec(), vlanLinkSpec()}, map[connectionid.ID]int{"ensonic0.101": 600})
 	if err != nil {
 		t.Fatalf("WriteDir: %v", err)
 	}
@@ -332,6 +332,36 @@ func TestWriteDirNamesAVLANInItsParentsFile(t *testing.T) {
 	assertOnDisk(t, dir, "20-ensonic0.101.network", "20-ensonic0.101.network")
 }
 
+func TestWriteDirKeepsNonProviderParentOutOfProviderTable(t *testing.T) {
+	t.Parallel()
+
+	parent := parentLinkSpec()
+	parent.Roles = interfaceintent.RoleParent
+	parent.IPv4 = &interfaceintent.IPv4{
+		Family: interfaceintent.Family{Gateway: netip.MustParseAddr("192.0.2.1")},
+	}
+	dir := t.TempDir()
+	_, err := networkd.WriteDir(dir,
+		[]interfaceintent.Connection{parent, vlanLinkSpec()},
+		map[connectionid.ID]int{"ensonic0.101": 600})
+	if err != nil {
+		t.Fatalf("WriteDir: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(dir, "20-ensonic0.network"))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if !strings.Contains(string(content), "VLAN=ensonic0.101\n") {
+		t.Fatalf("parent has no VLAN attachment:\n%s", content)
+	}
+	if !strings.Contains(string(content), "Gateway=192.0.2.1\n") {
+		t.Fatalf("parent has no main route:\n%s", content)
+	}
+	if strings.Contains(string(content), "Table=") {
+		t.Fatalf("parent has a provider table route:\n%s", content)
+	}
+}
+
 // TestWriteDirWritesNothingWhenASetIsRefused covers the two refusals: a VLAN
 // whose parent has no rendered file, which nothing would create, and two
 // specifications naming one interface, which would write one file twice.
@@ -341,15 +371,15 @@ func TestWriteDirWritesNothingWhenASetIsRefused(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]struct {
-		specs []networkd.Spec
+		specs []interfaceintent.Connection
 		want  string
 	}{
 		"vlan parent renders nothing": {
-			specs: []networkd.Spec{vlanLinkSpec()},
+			specs: []interfaceintent.Connection{vlanLinkSpec()},
 			want:  "ensonic0.101: vlan parent ensonic0 has no rendered .network file to name the VLAN in",
 		},
 		"one interface twice": {
-			specs: []networkd.Spec{staticLinkSpec(nil), staticLinkSpec(nil)},
+			specs: []interfaceintent.Connection{staticLinkSpec(nil), staticLinkSpec(nil)},
 			want:  "enwebpass0: rendered twice",
 		},
 	}
@@ -359,7 +389,7 @@ func TestWriteDirWritesNothingWhenASetIsRefused(t *testing.T) {
 
 			dir := t.TempDir()
 			mustWrite(t, dir, "20-enwebpass0.network", networkd.Marker+"\n[Match]\nName=old\n")
-			_, err := networkd.WriteDir(dir, tc.specs)
+			_, err := networkd.WriteDir(dir, tc.specs, map[connectionid.ID]int{"ensonic0.101": 600, "enwebpass0": 200})
 			if err == nil {
 				t.Fatal("WriteDir accepted the set")
 			}

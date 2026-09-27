@@ -9,7 +9,7 @@ import (
 
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/connectionid"
-	"goodkind.io/mwan/internal/networkd"
+	"goodkind.io/mwan/internal/interfaceintent"
 )
 
 // testMember returns a member carrying every value the model requires of a
@@ -29,73 +29,88 @@ func testMember(name string, iface string) Member {
 	}
 }
 
-// renderedLinkSpec is a link like the free-form instance document's: matched
-// by driver, a static IPv4 address with a gateway and an extra source
-// address, a DHCPv6 client with every delegation leaf, and one free-form line.
-func renderedLinkSpec(name string) *networkd.Spec {
-	return &networkd.Spec{
-		Name:            name,
-		TableID:         200,
-		Match:           networkd.Match{Driver: "igc"},
-		HardwareAddress: "02:00:5e:00:53:01",
-		IPv4: &networkd.FamilyV4{
-			Family: networkd.Family{
-				Forwarding:  new(true),
-				Addresses:   []networkd.Address{{IP: netip.MustParseAddr("203.0.113.2"), PrefixLength: 29}},
-				DHCP:        new(false),
-				Gateway:     netip.MustParseAddr("203.0.113.1"),
-				RouteMetric: new(uint32(10)),
-			},
-			SourceAddresses: []netip.Addr{netip.MustParseAddr("203.0.113.3")},
-		},
-		IPv6: &networkd.FamilyV6{
-			Family:   networkd.Family{Forwarding: new(true), DHCP: new(true), RouteMetric: new(uint32(10))},
-			AcceptRA: new(true),
-			Delegation: &networkd.Delegation{
-				Hint:                  netip.MustParsePrefix("::/56"),
-				DUIDType:              "link-layer-time",
-				DUID:                  "00:01:2a:5b:3c:4d:02:00:5e:00:53:01",
-				WithoutRA:             "solicit",
-				UseDelegatedPrefix:    new(false),
-				RouterLifetimeSeconds: new(uint32(1800)),
-			},
-		},
-		Files: []networkd.File{{
-			Kind: networkd.FileNetwork,
-			Sections: []networkd.Section{{
-				Index:   0,
-				Name:    "DHCPv6",
-				Entries: []networkd.Entry{{Index: 0, Key: "UseDNS", Value: "no"}},
-			}},
-		}},
+func testConnection(name string) interfaceintent.Connection {
+	return interfaceintent.Connection{
+		ID: connectionid.ID(name), Name: name, Type: "iana-if-type:ethernetCsmacd",
+		Owner: interfaceintent.OwnerExternal,
 	}
 }
 
-// TestConfigItems_DescribesTheLinkTheDaemonRenders pins the published shape
-// of a rendered link: the link-files leaf, the link identity, both family
-// containers with the steering module's leaves under its namespace, the
-// delegation, and the free-form section addressed by its positional keys. A
-// member whose files are hand-authored publishes the leaf alone, and a member
-// stating nothing publishes nothing.
+func testGateway(members ...Member) Gateway {
+	internal := testConnection("eninternal0")
+	internal.Roles = interfaceintent.RoleInternal
+	internal.IPv4 = &interfaceintent.IPv4{Family: interfaceintent.Family{Enabled: new(true)}}
+	internal.IPv6 = &interfaceintent.IPv6{Family: interfaceintent.Family{Enabled: new(true)}}
+	gateway := Gateway{InternalIface: internal.Name, Members: members, Connections: []interfaceintent.Connection{internal}}
+	for _, member := range members {
+		gateway.Connections = append(gateway.Connections, testConnection(member.Iface))
+	}
+	return gateway
+}
+
+// renderedLinkConnection is a link like the free-form instance document's: matched
+// by driver, a static IPv4 address with a gateway and an extra source
+// address, a DHCPv6 client with every delegation leaf, and one free-form line.
+func renderedLinkConnection(name string) interfaceintent.Connection {
+	connection := testConnection(name)
+	connection.Owner = interfaceintent.OwnerNetworkd
+	connection.Link = &interfaceintent.Link{
+		Kind: interfaceintent.KindPhysical, Match: interfaceintent.Match{Driver: "igc"},
+		HardwareAddress: "02:00:5e:00:53:01",
+	}
+	connection.IPv4 = &interfaceintent.IPv4{
+		Family: interfaceintent.Family{
+			Forwarding:  new(true),
+			Addresses:   []interfaceintent.Address{{Prefix: netip.MustParsePrefix("203.0.113.2/29"), Purpose: interfaceintent.PurposeLocal}},
+			DHCP:        new(false),
+			Gateway:     netip.MustParseAddr("203.0.113.1"),
+			RouteMetric: new(uint32(10)),
+		},
+		SourceAddresses: []netip.Addr{netip.MustParseAddr("203.0.113.3")},
+	}
+	connection.IPv6 = &interfaceintent.IPv6{
+		Family:   interfaceintent.Family{Forwarding: new(true), DHCP: new(true), RouteMetric: new(uint32(10))},
+		AcceptRA: new(true),
+		Delegation: &interfaceintent.Delegation{
+			Hint:                  netip.MustParsePrefix("::/56"),
+			DUIDType:              "link-layer-time",
+			DUID:                  "00:01:2a:5b:3c:4d:02:00:5e:00:53:01",
+			WithoutRA:             "solicit",
+			UseDelegatedPrefix:    new(false),
+			RouterLifetimeSeconds: new(uint32(1800)),
+		},
+	}
+	connection.Networkd = []interfaceintent.UnitFile{{
+		Kind: "network",
+		Sections: []interfaceintent.UnitSection{{
+			Index:   0,
+			Name:    "DHCPv6",
+			Entries: []interfaceintent.UnitEntry{{Index: 0, Key: "UseDNS", Value: "no"}},
+		}},
+	}}
+	return connection
+}
+
+// TestConfigItems_DescribesTheLinkTheDaemonRenders checks the link identity,
+// family settings, delegation, and unit sections published for a rendered
+// connection. Networkd-owned connections without a link publish hand-authored
+// link-files. External connections publish no link-files leaf.
 func TestConfigItems_DescribesTheLinkTheDaemonRenders(t *testing.T) {
 	t.Parallel()
 	webpass := testMember("webpass", "enwebpass0")
 	webpass.TableID = 200
 	webpass.FwMark = 2
-	webpass.LinkFiles = "rendered"
-	webpass.Link = renderedLinkSpec("enwebpass0")
 	att := testMember("att", "enatt0")
-	att.LinkFiles = "hand-authored"
 	monkeybrains := testMember("monkeybrains", "enmbrains0")
 	monkeybrains.TableID = 300
 	monkeybrains.FwMark = 3
 	monkeybrains.FwMarkPrio = 300
 	monkeybrains.FromPrio = 57
 
-	items, err := ConfigItems(Gateway{
-		InternalIface: "eninternal0",
-		Members:       []Member{webpass, att, monkeybrains},
-	})
+	gateway := testGateway(webpass, att, monkeybrains)
+	gateway.Connections[1] = renderedLinkConnection("enwebpass0")
+	gateway.Connections[2].Owner = interfaceintent.OwnerNetworkd
+	items, err := ConfigItems(gateway)
 	if err != nil {
 		t.Fatalf("ConfigItems: %v", err)
 	}
@@ -155,12 +170,13 @@ func TestConfigItems_DescribesTheLinkTheDaemonRenders(t *testing.T) {
 func TestConfigItems_PublishesAVLANLink(t *testing.T) {
 	t.Parallel()
 	member := testMember("sonic", "ensonic0.101")
-	member.LinkFiles = "rendered"
-	member.Link = &networkd.Spec{
-		Name: "ensonic0.101",
-		VLAN: &networkd.VLAN{Parent: "ensonic0", ID: 101},
+	gateway := testGateway(member)
+	gateway.Connections[1].Owner = interfaceintent.OwnerNetworkd
+	gateway.Connections[1].Link = &interfaceintent.Link{
+		Kind: interfaceintent.KindVLAN,
+		VLAN: &interfaceintent.VLAN{Parent: "ensonic0", ID: 101},
 	}
-	items, err := ConfigItems(Gateway{InternalIface: "eninternal0", Members: []Member{member}})
+	items, err := ConfigItems(gateway)
 	if err != nil {
 		t.Fatalf("ConfigItems: %v", err)
 	}
@@ -194,7 +210,7 @@ func TestConfigItems_PublishesExactlyTheSettingsADisabledProbeHolds(t *testing.T
 		TargetsV4:            []netip.Addr{netip.MustParseAddr("192.0.2.20")},
 		HTTPURLs:             []string{"https://example.test/att"},
 	}
-	items, err := ConfigItems(Gateway{InternalIface: "eninternal0", Members: []Member{member}})
+	items, err := ConfigItems(testGateway(member))
 	if err != nil {
 		t.Fatalf("ConfigItems: %v", err)
 	}
@@ -224,21 +240,20 @@ func TestConfigItems_PublishesExactlyTheSettingsADisabledProbeHolds(t *testing.T
 // under the steering group.
 func TestConfigItems_PublishesOnlyWhatAnUnconfiguredGatewayHolds(t *testing.T) {
 	t.Parallel()
-	items, err := ConfigItems(Gateway{
-		InternalIface: "eninternal0",
-		Members:       []Member{testMember("att", "enatt0")},
-	})
+	items, err := ConfigItems(testGateway(testMember("att", "enatt0")))
 	if err != nil {
 		t.Fatalf("ConfigItems: %v", err)
 	}
 	const attLink = "/ietf-interfaces:interfaces/interface[name='enatt0']"
 	want := []Item{
-		{Path: "/ietf-interfaces:interfaces/interface[name='eninternal0']/type", Value: "iana-if-type:other"},
+		{Path: "/ietf-interfaces:interfaces/interface[name='eninternal0']/type", Value: "iana-if-type:ethernetCsmacd"},
 		{Path: "/ietf-interfaces:interfaces/interface[name='eninternal0']/enabled", Value: "true"},
+		{Path: "/ietf-interfaces:interfaces/interface[name='eninternal0']/goodkind-mwan-steering:owner", Value: "external"},
 		{Path: "/ietf-interfaces:interfaces/interface[name='eninternal0']/ietf-ip:ipv4/enabled", Value: "true"},
 		{Path: "/ietf-interfaces:interfaces/interface[name='eninternal0']/ietf-ip:ipv6/enabled", Value: "true"},
-		{Path: attLink + "/type", Value: "iana-if-type:other"},
+		{Path: attLink + "/type", Value: "iana-if-type:ethernetCsmacd"},
 		{Path: attLink + "/enabled", Value: "true"},
+		{Path: attLink + "/goodkind-mwan-steering:owner", Value: "external"},
 		{Path: attLink + "/goodkind-mwan-steering:steering/tier", Value: "0"},
 		{Path: attLink + "/goodkind-mwan-steering:steering/weight", Value: "1"},
 		{Path: attLink + "/goodkind-mwan-steering:wan/name", Value: "att"},
@@ -253,45 +268,103 @@ func TestConfigItems_PublishesOnlyWhatAnUnconfiguredGatewayHolds(t *testing.T) {
 	}
 }
 
+func TestConfigItems_PublishesNonProviderConnectionIntent(t *testing.T) {
+	t.Parallel()
+	gateway := testGateway()
+	management := testConnection("enmanagement0")
+	management.Owner = interfaceintent.OwnerNetworkd
+	management.Roles = interfaceintent.RoleManagement
+	management.Link = &interfaceintent.Link{Kind: interfaceintent.KindPhysical, Match: interfaceintent.Match{Driver: "igc"}}
+	management.IPv4 = &interfaceintent.IPv4{Family: interfaceintent.Family{
+		Enabled: new(false), Forwarding: new(false),
+		Addresses: []interfaceintent.Address{{Prefix: netip.MustParsePrefix("192.0.2.20/24"), Purpose: interfaceintent.PurposeLocal}},
+		DNS:       []netip.Addr{netip.MustParseAddr("192.0.2.53")}, SearchDomains: []string{"example.test"},
+	}}
+	management.IPv6 = &interfaceintent.IPv6{
+		Family: interfaceintent.Family{
+			Forwarding: new(true), DNS: []netip.Addr{netip.MustParseAddr("2001:db8::53")},
+			SearchDomains: []string{"v6.example.test"},
+		},
+		ForwardingAddresses: []interfaceintent.ForwardingAddress{{
+			Address: netip.MustParseAddr("2001:db8::20"), Delivery: interfaceintent.DeliveryRouted,
+		}},
+	}
+	gateway.Connections = append(gateway.Connections, management)
+	gateway.ConnectionIDs = map[string]connectionid.ID{management.Name: "management"}
+
+	items, err := ConfigItems(gateway)
+	if err != nil {
+		t.Fatalf("ConfigItems: %v", err)
+	}
+	served := make(map[string]string, len(items))
+	for _, item := range items {
+		served[item.Path] = item.Value
+	}
+	base := "/ietf-interfaces:interfaces/interface[name='enmanagement0']"
+	want := map[string]string{
+		base + "/type":                                                                                    "iana-if-type:ethernetCsmacd",
+		base + "/goodkind-mwan-steering:owner":                                                            "networkd",
+		base + "/goodkind-mwan-steering:connection-id":                                                    "management",
+		base + "/goodkind-mwan-steering:link-files":                                                       "rendered",
+		base + "/ietf-ip:ipv4/enabled":                                                                    "false",
+		base + "/ietf-ip:ipv4/forwarding":                                                                 "false",
+		base + "/ietf-ip:ipv4/address[ip='192.0.2.20']/prefix-length":                                     "24",
+		base + "/ietf-ip:ipv4/goodkind-mwan-steering:resolver/dns":                                        "192.0.2.53",
+		base + "/ietf-ip:ipv4/goodkind-mwan-steering:resolver/search":                                     "example.test",
+		base + "/ietf-ip:ipv6/forwarding":                                                                 "true",
+		base + "/ietf-ip:ipv6/goodkind-mwan-steering:resolver/dns":                                        "2001:db8::53",
+		base + "/ietf-ip:ipv6/goodkind-mwan-steering:resolver/search":                                     "v6.example.test",
+		base + "/ietf-ip:ipv6/goodkind-mwan-steering:forwarding-address[address='2001:db8::20']/delivery": "routed",
+	}
+	for path, value := range want {
+		if got := served[path]; got != value {
+			t.Errorf("%s = %q, want %q", path, got, value)
+		}
+	}
+	for path := range served {
+		if strings.HasPrefix(path, base+"/goodkind-mwan-steering:wan") ||
+			strings.HasPrefix(path, base+"/goodkind-mwan-steering:steering") {
+			t.Errorf("non-provider connection published provider path %s", path)
+		}
+	}
+}
+
 // TestConfigItems_PublishesTheDaemonSettingsItHolds pins the daemon
 // container: every present section publishes its leaves under
 // /goodkind-mwan-steering:daemon, leaf-list entries are addressed by
 // value, and an absent section publishes nothing.
 func TestConfigItems_PublishesTheDaemonSettingsItHolds(t *testing.T) {
 	t.Parallel()
-	gateway := Gateway{
-		InternalIface: "eninternal0",
-		Members:       []Member{testMember("att", "enatt0")},
-		Daemon: DaemonSettings{
-			Watchdog: WatchdogSettings{
-				Present:                      true,
-				DeployWindowMinutes:          30,
-				ConnectivityTimeoutSeconds:   60,
-				CheckIntervalHealthySeconds:  30,
-				CheckIntervalDegradedSeconds: 10,
-				PostRollbackGraceSeconds:     120,
-				AlertCooldownSeconds:         300,
-				DeployGracePeriodSeconds:     60,
-				MaxRollbackAttempts:          3,
-				SnapshotHealthyThreshold:     20,
-				MaxKnownGoodSnapshots:        3,
-				PingTargets: []netip.Addr{
-					netip.MustParseAddr("2606:4700:4700::1111"),
-					netip.MustParseAddr("1.1.1.1"),
-					// A zero address must publish nothing, never a value
-					// the typed leaf rejects.
-					{},
-				},
+	gateway := testGateway(testMember("att", "enatt0"))
+	gateway.Daemon = DaemonSettings{
+		Watchdog: WatchdogSettings{
+			Present:                      true,
+			DeployWindowMinutes:          30,
+			ConnectivityTimeoutSeconds:   60,
+			CheckIntervalHealthySeconds:  30,
+			CheckIntervalDegradedSeconds: 10,
+			PostRollbackGraceSeconds:     120,
+			AlertCooldownSeconds:         300,
+			DeployGracePeriodSeconds:     60,
+			MaxRollbackAttempts:          3,
+			SnapshotHealthyThreshold:     20,
+			MaxKnownGoodSnapshots:        3,
+			PingTargets: []netip.Addr{
+				netip.MustParseAddr("2606:4700:4700::1111"),
+				netip.MustParseAddr("1.1.1.1"),
+				// A zero address must publish nothing, never a value
+				// the typed leaf rejects.
+				{},
 			},
-			OOB: OOBSettings{
-				V6Present: true, V6Iface: "enoob0",
-				V6Addr:    netip.MustParseAddr("2001:db8:ff::2"),
-				V6TableID: 500, ManageSLAACRule: true, SLAACRulePriority: 7,
-			},
-			Tap: TapSettings{
-				Present: true, Unit: "cloudflared-oob.service",
-				DowngradePatterns: []string{"receive buffer size"},
-			},
+		},
+		OOB: OOBSettings{
+			V6Present: true, V6Iface: "enoob0",
+			V6Addr:    netip.MustParseAddr("2001:db8:ff::2"),
+			V6TableID: 500, ManageSLAACRule: true, SLAACRulePriority: 7,
+		},
+		Tap: TapSettings{
+			Present: true, Unit: "cloudflared-oob.service",
+			DowngradePatterns: []string{"receive buffer size"},
 		},
 	}
 
@@ -336,10 +409,7 @@ func TestConfigItems_PublishesTheDaemonSettingsItHolds(t *testing.T) {
 // sections publishes nothing under the daemon container.
 func TestConfigItems_PublishesNoDaemonSettingsWhenAbsent(t *testing.T) {
 	t.Parallel()
-	items, err := ConfigItems(Gateway{
-		InternalIface: "eninternal0",
-		Members:       []Member{testMember("att", "enatt0")},
-	})
+	items, err := ConfigItems(testGateway(testMember("att", "enatt0")))
 	if err != nil {
 		t.Fatalf("ConfigItems: %v", err)
 	}
@@ -360,7 +430,12 @@ func TestConfigItems_RejectsWhatAPathCannotCarry(t *testing.T) {
 	withMember := func(mutate func(member *Member)) Gateway {
 		member := testMember("att", "enatt0")
 		mutate(&member)
-		return Gateway{InternalIface: "eninternal0", Members: []Member{member}}
+		return testGateway(member)
+	}
+	withConnection := func(mutate func(connection *interfaceintent.Connection)) Gateway {
+		gateway := testGateway(testMember("att", "enatt0"))
+		mutate(&gateway.Connections[1])
+		return gateway
 	}
 	withGroup := func(mutate func(group *GroupSettings)) Gateway {
 		gateway := withMember(func(*Member) {})
@@ -370,17 +445,14 @@ func TestConfigItems_RejectsWhatAPathCannotCarry(t *testing.T) {
 	cases := map[string]Gateway{
 		"empty internal link": {InternalIface: "", Members: nil},
 		"empty member name":   withMember(func(member *Member) { member.Name = "" }),
-		"quote in link":       withMember(func(member *Member) { member.Iface = "en'att0" }),
+		"quote in link":       withConnection(func(connection *interfaceintent.Connection) { connection.Name = "en'att0" }),
 		"quote in connection interface key": {
-			InternalIface: "eninternal0", ConnectionIDs: map[string]connectionid.ID{"en'other0": "other"},
+			InternalIface: "eninternal0", Connections: testGateway().Connections, ConnectionIDs: map[string]connectionid.ID{"en'other0": "other"},
 		},
 		"slash in connection interface key": {
-			InternalIface: "eninternal0", ConnectionIDs: map[string]connectionid.ID{"en/other0": "other"},
+			InternalIface: "eninternal0", Connections: testGateway().Connections, ConnectionIDs: map[string]connectionid.ID{"en/other0": "other"},
 		},
-		"duplicate link": {InternalIface: "eninternal0", Members: []Member{
-			testMember("att", "enatt0"), testMember("webpass", "enatt0"),
-		}},
-		"member on the internal link": withMember(func(member *Member) { member.Iface = "eninternal0" }),
+		"duplicate link": testGateway(testMember("att", "enatt0"), testMember("webpass", "enatt0")),
 		"one translation prefix": withMember(func(member *Member) {
 			member.TranslationV6 = &config.IPv6Translation{Mode: config.TranslationNPTv6, NPT: &config.NPTv6Translation{InternalPrefix: internal, ExternalSource: config.PrefixConfigured}}
 		}),
@@ -389,10 +461,11 @@ func TestConfigItems_RejectsWhatAPathCannotCarry(t *testing.T) {
 			member.TranslationV6.NPT.ExternalPrefix = netip.MustParsePrefix("10.0.0.0/8")
 		}),
 		"zero weight": withMember(func(member *Member) { member.Weight = 0 }),
-		"unknown hash mode": {
-			InternalIface: "eninternal0", HashMode: "round-robin",
-			Members: []Member{testMember("att", "enatt0")},
-		},
+		"unknown hash mode": func() Gateway {
+			gateway := testGateway(testMember("att", "enatt0"))
+			gateway.HashMode = "round-robin"
+			return gateway
+		}(),
 		"zero table id":           withMember(func(member *Member) { member.TableID = 0 }),
 		"zero firewall mark":      withMember(func(member *Member) { member.FwMark = 0 }),
 		"forced dscp above range": withMember(func(member *Member) { member.ForcedDSCP = 64 }),
@@ -430,59 +503,47 @@ func TestConfigItems_RejectsWhatAPathCannotCarry(t *testing.T) {
 		"ipv6 internal network": withGroup(func(group *GroupSettings) {
 			group.InternalNetV4 = netip.MustParsePrefix("2001:db8::/64")
 		}),
-		"unknown link-files": withMember(func(member *Member) { member.LinkFiles = "templated" }),
-		"link on a hand-authored member": withMember(func(member *Member) {
-			member.LinkFiles = "hand-authored"
-			member.Link = renderedLinkSpec("enatt0")
+		"unknown owner": withConnection(func(connection *interfaceintent.Connection) {
+			connection.Owner = interfaceintent.Owner("unknown")
 		}),
-		"link naming another interface": withMember(func(member *Member) {
-			member.LinkFiles = "rendered"
-			member.Link = renderedLinkSpec("enwebpass0")
+		"missing type": withConnection(func(connection *interfaceintent.Connection) { connection.Type = "" }),
+		"vlan id above range": withConnection(func(connection *interfaceintent.Connection) {
+			*connection = renderedLinkConnection("enatt0")
+			connection.Link.VLAN = &interfaceintent.VLAN{Parent: "enphys0", ID: 4095}
 		}),
-		"vlan id above range": withMember(func(member *Member) {
-			member.LinkFiles = "rendered"
-			member.Link = &networkd.Spec{Name: "enatt0", VLAN: &networkd.VLAN{Parent: "enphys0", ID: 4095}}
+		"quote in vlan parent": withConnection(func(connection *interfaceintent.Connection) {
+			*connection = renderedLinkConnection("enatt0")
+			connection.Link.VLAN = &interfaceintent.VLAN{Parent: "en'phys0", ID: 1}
 		}),
-		"quote in vlan parent": withMember(func(member *Member) {
-			member.LinkFiles = "rendered"
-			member.Link = &networkd.Spec{Name: "enatt0", VLAN: &networkd.VLAN{Parent: "en'phys0", ID: 1}}
+		"ipv6 address in the ipv4 family": withConnection(func(connection *interfaceintent.Connection) {
+			*connection = renderedLinkConnection("enatt0")
+			connection.IPv4.Addresses[0].Prefix = netip.MustParsePrefix("2001:db8::2/64")
 		}),
-		"ipv6 address in the ipv4 family": withMember(func(member *Member) {
-			member.LinkFiles = "rendered"
-			member.Link = renderedLinkSpec("enatt0")
-			member.Link.IPv4.Addresses[0].IP = netip.MustParseAddr("2001:db8::2")
+		"ipv4 gateway in the ipv6 family": withConnection(func(connection *interfaceintent.Connection) {
+			*connection = renderedLinkConnection("enatt0")
+			connection.IPv6.Gateway = netip.MustParseAddr("203.0.113.1")
 		}),
-		"ipv4 gateway in the ipv6 family": withMember(func(member *Member) {
-			member.LinkFiles = "rendered"
-			member.Link = renderedLinkSpec("enatt0")
-			member.Link.IPv6.Gateway = netip.MustParseAddr("203.0.113.1")
+		"ipv4 delegation hint": withConnection(func(connection *interfaceintent.Connection) {
+			*connection = renderedLinkConnection("enatt0")
+			connection.IPv6.Delegation.Hint = netip.MustParsePrefix("10.0.0.0/8")
 		}),
-		"ipv4 delegation hint": withMember(func(member *Member) {
-			member.LinkFiles = "rendered"
-			member.Link = renderedLinkSpec("enatt0")
-			member.Link.IPv6.Delegation.Hint = netip.MustParsePrefix("10.0.0.0/8")
+		"free-form section with no name": withConnection(func(connection *interfaceintent.Connection) {
+			*connection = renderedLinkConnection("enatt0")
+			connection.Networkd[0].Sections[0].Name = ""
 		}),
-		"free-form section with no name": withMember(func(member *Member) {
-			member.LinkFiles = "rendered"
-			member.Link = renderedLinkSpec("enatt0")
-			member.Link.Files[0].Sections[0].Name = ""
+		"free-form line with no key": withConnection(func(connection *interfaceintent.Connection) {
+			*connection = renderedLinkConnection("enatt0")
+			connection.Networkd[0].Sections[0].Entries[0].Key = ""
 		}),
-		"free-form line with no key": withMember(func(member *Member) {
-			member.LinkFiles = "rendered"
-			member.Link = renderedLinkSpec("enatt0")
-			member.Link.Files[0].Sections[0].Entries[0].Key = ""
-		}),
-		"free-form file of an unknown kind": withMember(func(member *Member) {
-			member.LinkFiles = "rendered"
-			member.Link = renderedLinkSpec("enatt0")
-			member.Link.Files[0].Kind = "unit"
+		"free-form file of an unknown kind": withConnection(func(connection *interfaceintent.Connection) {
+			*connection = renderedLinkConnection("enatt0")
+			connection.Networkd[0].Kind = "unit"
 		}),
 	}
 	// A rendered link with every value in range is accepted, so each case
 	// above fails on the one value it breaks.
-	whole := withMember(func(member *Member) {
-		member.LinkFiles = "rendered"
-		member.Link = renderedLinkSpec("enatt0")
+	whole := withConnection(func(connection *interfaceintent.Connection) {
+		*connection = renderedLinkConnection("enatt0")
 	})
 	if _, err := ConfigItems(whole); err != nil {
 		t.Fatalf("the rendered link the link cases start from is rejected: %v", err)

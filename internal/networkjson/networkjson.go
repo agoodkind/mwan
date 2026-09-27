@@ -22,7 +22,7 @@ import (
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/firewall"
-	"goodkind.io/mwan/internal/networkd"
+	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/yangpub"
 )
 
@@ -49,8 +49,11 @@ type interfaces struct {
 type ifaceEntry struct {
 	Name         string             `json:"name"`
 	Type         string             `json:"type"`
+	Enabled      *bool              `json:"enabled"`
 	ConnectionID string             `json:"goodkind-mwan-steering:connection-id"`
+	Owner        string             `json:"goodkind-mwan-steering:owner"`
 	LinkFiles    string             `json:"goodkind-mwan-steering:link-files"`
+	LeaseStore   string             `json:"goodkind-mwan-steering:lease-store"`
 	Link         *linkIdentity      `json:"goodkind-mwan-steering:link"`
 	Networkd     *networkdContainer `json:"goodkind-mwan-steering:networkd"`
 	IPv4         *familyV4          `json:"ietf-ip:ipv4"`
@@ -71,7 +74,9 @@ const (
 type linkIdentity struct {
 	Match           *linkMatch `json:"match"`
 	HardwareAddress string     `json:"hardware-address"`
+	MTU             *uint32    `json:"mtu"`
 	VLAN            *linkVLAN  `json:"vlan"`
+	BridgeMaster    string     `json:"bridge-master"`
 }
 
 type linkMatch struct {
@@ -114,23 +119,58 @@ type networkdEntry struct {
 // forwarding flag and address list the published model defines, and the
 // leaves the steering module adds under its own namespace.
 type familyWire struct {
+	Enabled     *bool              `json:"enabled"`
 	Forwarding  *bool              `json:"forwarding"`
 	Address     []ipAddress        `json:"address"`
 	DHCP        *bool              `json:"goodkind-mwan-steering:dhcp"`
 	Gateway     string             `json:"goodkind-mwan-steering:gateway"`
 	RouteMetric *uint32            `json:"goodkind-mwan-steering:route-metric"`
+	Resolver    *resolver          `json:"goodkind-mwan-steering:resolver"`
 	Translation *familyTranslation `json:"goodkind-mwan-steering:translation"`
+}
+
+type resolver struct {
+	DNSServers    []string `json:"dns"`
+	SearchDomains []string `json:"search"`
 }
 
 type familyV4 struct {
 	familyWire
 	SourceAddresses []string `json:"goodkind-mwan-steering:source-addresses"`
+	DHCPv4          *dhcpv4  `json:"goodkind-mwan-steering:dhcpv4"`
+}
+
+type dhcpv4 struct {
+	ClientID  string `json:"client-id"`
+	UseDNS    *bool  `json:"use-dns"`
+	UseRoutes *bool  `json:"use-routes"`
 }
 
 type familyV6 struct {
 	familyWire
-	AcceptRA   *bool       `json:"goodkind-mwan-steering:accept-ra"`
-	Delegation *delegation `json:"goodkind-mwan-steering:delegation"`
+	AcceptRA             *bool               `json:"goodkind-mwan-steering:accept-ra"`
+	AutoConf             *bool               `json:"goodkind-mwan-steering:autoconf"`
+	AcceptRADefaultRoute *bool               `json:"goodkind-mwan-steering:accept-ra-default-route"`
+	UseRADNS             *bool               `json:"goodkind-mwan-steering:use-ra-dns"`
+	Delegation           *delegation         `json:"goodkind-mwan-steering:delegation"`
+	DHCPv6               *dhcpv6             `json:"goodkind-mwan-steering:dhcpv6-client"`
+	ForwardingAddresses  []forwardingAddress `json:"goodkind-mwan-steering:forwarding-address"`
+}
+
+type forwardingAddress struct {
+	Address  string `json:"address"`
+	Delivery string `json:"delivery"`
+}
+
+type dhcpv6 struct {
+	DUIDType       string  `json:"duid-type"`
+	DUID           string  `json:"duid"`
+	IANAIAID       *uint32 `json:"address-iaid"`
+	IAPDIAID       *uint32 `json:"prefix-iaid"`
+	RequestAddress *bool   `json:"request-address"`
+	RequestPrefix  *bool   `json:"request-prefix"`
+	WithoutRA      string  `json:"without-ra"`
+	UseDNS         *bool   `json:"use-dns"`
 }
 
 type ipAddress struct {
@@ -145,6 +185,7 @@ type delegation struct {
 	WithoutRA             string  `json:"without-ra"`
 	UseDelegatedPrefix    *bool   `json:"use-delegated-prefix"`
 	RouterLifetimeSeconds *uint32 `json:"router-lifetime-seconds"`
+	IAID                  *uint32 `json:"iaid"`
 }
 
 // steering is the member's steering properties: which tier it sits in and how
@@ -173,6 +214,7 @@ type wan struct {
 type staticMapping struct {
 	External string `json:"external"`
 	Internal string `json:"internal"`
+	Delivery string `json:"delivery"`
 }
 
 type health struct {
@@ -228,14 +270,9 @@ type Config struct {
 	Health                map[string]config.IfMgrHealthWANSection
 	ConnectionIDs         map[string]connectionid.ID
 	ExplicitConnectionIDs map[string]connectionid.ID
-	// Links are the link specifications of the providers whose unit files the
-	// daemon renders, in document order. A provider whose entry names its
-	// files hand-authored contributes none.
-	Links []networkd.Spec
-	// Rejected lists every provider entry the loader refused, in document
-	// order. A rejected provider is absent from WAN, Health, and Links, and the
-	// daemon runs without it.
-	Rejected []Rejection
+	Connections           []interfaceintent.Connection
+	Claims                []interfaceintent.Claim
+	Rejected              []Rejection
 }
 
 // Rejection records one provider entry the loader refused and the reason.
@@ -318,7 +355,8 @@ func build(doc *document) (*Config, error) {
 		Health:                make(map[string]config.IfMgrHealthWANSection, len(doc.Interfaces.Interface)),
 		ConnectionIDs:         make(map[string]connectionid.ID, len(doc.Interfaces.Interface)),
 		ExplicitConnectionIDs: make(map[string]connectionid.ID),
-		Links:                 nil,
+		Connections:           nil,
+		Claims:                nil,
 		Rejected:              nil,
 	}
 	required := []struct {
@@ -347,46 +385,32 @@ func build(doc *document) (*Config, error) {
 	}
 	loaded.ConnectionIDs = ids
 	loaded.ExplicitConnectionIDs = explicitIDs
+	connections, rejected, err := compileConnections(doc.Interfaces.Interface, ids, loaded.InternalIface, group.Firewall)
+	if err != nil {
+		return nil, err
+	}
+	loaded.Connections = connections
+	loaded.Rejected = append(loaded.Rejected, rejected...)
+	byName := make(map[string]interfaceintent.Connection, len(connections))
+	for _, connection := range connections {
+		byName[connection.Name] = connection
+	}
 
-	// The firewall renders one forced-DSCP rule per provider in list order, and
-	// a later rule overwrites an earlier rule's mark, so a shared value would
-	// silently send every tagged flow to the last provider that claims it.
-	dscpOwners := make(map[int]string, len(doc.Interfaces.Interface))
-	for _, entry := range doc.Interfaces.Interface {
-		if entry.WAN == nil {
-			continue
-		}
-		id := loaded.ConnectionIDs[entry.Name].String()
-		// A defect inside one entry rejects that entry alone. Every check below
-		// this point compares entries with each other. A collision has no
-		// single bad entry, and those checks stay fatal.
-		routing, probe, err := buildProvider(entry)
-		if err != nil {
-			loaded.Rejected = append(loaded.Rejected, rejectEntry(entry, err))
-			continue
-		}
-		spec, err := buildLink(entry, routing.TableID)
-		if err != nil {
-			loaded.Rejected = append(loaded.Rejected, rejectEntry(entry, err))
-			continue
-		}
-		if spec != nil {
-			routing.V4Source = staticV4Source(*spec)
-			loaded.Links = append(loaded.Links, *spec)
-		}
-		if entry.WAN.ForcedDSCP != nil {
-			value := *entry.WAN.ForcedDSCP
-			if owner, taken := dscpOwners[value]; taken {
-				return nil, fmt.Errorf("wan %s: forced-dscp %d is already taken by wan %s",
-					id, value, owner)
+	if err := compileProviderProjections(doc.Interfaces.Interface, byName, loaded); err != nil {
+		return nil, err
+	}
+	active := loaded.Connections[:0]
+	for _, connection := range loaded.Connections {
+		if connection.Roles&interfaceintent.RoleProvider != 0 {
+			if _, accepted := loaded.WAN[connection.ID.String()]; !accepted {
+				continue
 			}
-			dscpOwners[value] = id
 		}
-		routing.ProviderName = entry.WAN.Name
-		loaded.WAN[id] = routing
-		if probe != nil {
-			loaded.Health[id] = *probe
-		}
+		active = append(active, connection)
+	}
+	loaded.Connections = active
+	if err := validateActiveDependencies(loaded.Connections); err != nil {
+		return nil, err
 	}
 	if len(loaded.WAN) == 0 {
 		if len(loaded.Rejected) > 0 {
@@ -399,12 +423,49 @@ func build(doc *document) (*Config, error) {
 	if err := checkProviderSet(loaded); err != nil {
 		return nil, err
 	}
+	loaded.Claims, err = compileClaims(loaded.Connections, loaded.WAN)
+	if err != nil {
+		return nil, err
+	}
 	firewallConfig, err := buildFirewall(doc, loaded)
 	if err != nil {
 		return nil, err
 	}
 	loaded.Firewall = firewallConfig
 	return loaded, nil
+}
+
+func compileProviderProjections(entries []ifaceEntry, byName map[string]interfaceintent.Connection, loaded *Config) error {
+	dscpOwners := make(map[int]string, len(entries))
+	for _, entry := range entries {
+		if entry.WAN == nil {
+			continue
+		}
+		connection, accepted := byName[entry.Name]
+		if !accepted {
+			continue
+		}
+		id := loaded.ConnectionIDs[entry.Name].String()
+		routing, probe, err := buildProvider(entry)
+		if err != nil {
+			loaded.Rejected = append(loaded.Rejected, rejectEntry(entry, err))
+			continue
+		}
+		routing.V4Source = staticV4Source(connection)
+		if entry.WAN.ForcedDSCP != nil {
+			value := *entry.WAN.ForcedDSCP
+			if owner, taken := dscpOwners[value]; taken {
+				return fmt.Errorf("wan %s: forced-dscp %d is already taken by wan %s", id, value, owner)
+			}
+			dscpOwners[value] = id
+		}
+		routing.ProviderName = entry.WAN.Name
+		loaded.WAN[id] = routing
+		if probe != nil {
+			loaded.Health[id] = *probe
+		}
+	}
+	return nil
 }
 
 // rejectEntry records one refused provider entry and logs it. The log line is
@@ -547,231 +608,9 @@ func buildStaticMappings(label string, entries []staticMapping) ([]config.Static
 				return nil, fmt.Errorf("%s: static-mapping external %s is duplicated", label, external)
 			}
 		}
-		mappings = append(mappings, config.StaticMapping{External: external, Internal: internal})
+		mappings = append(mappings, config.StaticMapping{External: external, Internal: internal, Delivery: interfaceintent.AddressDelivery(entry.Delivery)})
 	}
 	return mappings, nil
-}
-
-// buildLink turns one provider interface's link identity into the
-// specification the daemon renders its unit files from. The link-files leaf
-// decides: hand-authored means the repository carries the files and the entry
-// describes nothing about the link, so it yields no specification and must
-// carry no link, family addressing, or free-form data the daemon would ignore.
-// Translation policies and DHCPv6 delegation metadata remain explicit for
-// hand-authored links without giving the daemon ownership of their files.
-// Rendered means every
-// requirement the schema cannot express is checked here. An entry that states
-// neither fails, so a link container someone forgot to write is caught rather
-// than read as an exemption. The schema already accepts every value, so a
-// value that does not parse means the document reached the loader
-// unvalidated; it is refused rather than dropped.
-func buildLink(entry ifaceEntry, tableID int) (*networkd.Spec, error) {
-	label := "interface " + entry.Name
-	if entry.LinkFiles == linkFilesHandAuthored {
-		if entry.Link != nil || entry.Networkd != nil || handAuthoredAddressing(entry) {
-			return nil, fmt.Errorf(
-				"%s: link-files is hand-authored, so it must carry no link, networkd, or family addressing",
-				label)
-		}
-		return nil, nil
-	}
-	if entry.LinkFiles == "" {
-		return nil, fmt.Errorf("%s: link-files is required: rendered with a link container, or hand-authored", label)
-	}
-	if entry.LinkFiles != linkFilesRendered {
-		// The schema's enumeration refuses any other value before build runs.
-		// This stays as a decode-boundary guard for a schema revision that
-		// adds a value the loader does not know.
-		return nil, fmt.Errorf("%s: link-files %q is neither rendered nor hand-authored", label, entry.LinkFiles)
-	}
-	if entry.Link == nil {
-		return nil, fmt.Errorf("%s: link-files is rendered, so a link container is required", label)
-	}
-	spec := networkd.Spec{
-		Name:            entry.Name,
-		TableID:         tableID,
-		Match:           networkd.Match{Driver: "", HardwareAddress: ""},
-		HardwareAddress: entry.Link.HardwareAddress,
-		VLAN:            nil,
-		IPv4:            nil,
-		IPv6:            nil,
-		Files:           nil,
-	}
-	if entry.Link.Match != nil {
-		spec.Match = networkd.Match{
-			Driver:          entry.Link.Match.Driver,
-			HardwareAddress: entry.Link.Match.HardwareAddress,
-		}
-	}
-	identities := 0
-	if spec.Match.Driver != "" {
-		identities++
-	}
-	if spec.Match.HardwareAddress != "" {
-		identities++
-	}
-	if entry.Link.VLAN != nil {
-		identities++
-		vlan, err := buildVLAN(label, *entry.Link.VLAN)
-		if err != nil {
-			return nil, err
-		}
-		spec.VLAN = vlan
-	}
-	if identities != 1 {
-		return nil, fmt.Errorf(
-			"%s: link must set exactly one of match/driver, match/hardware-address, or vlan, got %d",
-			label, identities)
-	}
-	if entry.IPv4 != nil {
-		ipv4, err := buildFamilyV4(label, *entry.IPv4)
-		if err != nil {
-			return nil, err
-		}
-		spec.IPv4 = ipv4
-	}
-	if entry.IPv6 != nil {
-		ipv6, err := buildFamilyV6(label, *entry.IPv6)
-		if err != nil {
-			return nil, err
-		}
-		spec.IPv6 = ipv6
-	}
-	if entry.Networkd != nil {
-		files, err := buildFreeForm(label, *entry.Networkd)
-		if err != nil {
-			return nil, err
-		}
-		spec.Files = files
-	}
-	if err := networkd.Validate(spec); err != nil {
-		slog.Error("networkjson: free-form section sets a typed key", "interface", entry.Name, "err", err)
-		return nil, fmt.Errorf("%s: %w", label, err)
-	}
-	return &spec, nil
-}
-
-// buildVLAN reads the VLAN container. The parent is an interface reference
-// the schema resolves against the document's own interface list, so a parent
-// no entry describes fails Load at validation, before build runs: a VLAN is
-// created by a line in the parent's own file, and a parent nothing describes
-// creates nothing.
-func buildVLAN(label string, vlan linkVLAN) (*networkd.VLAN, error) {
-	if vlan.ID == nil {
-		return nil, fmt.Errorf("%s: link/vlan/id is required", label)
-	}
-	return &networkd.VLAN{Parent: vlan.Parent, ID: *vlan.ID}, nil
-}
-
-// buildFamily reads the leaves both families share. dhcp is required, because
-// a family container that does not say whether a client runs cannot be
-// rendered either way.
-func buildFamily(label string, family string, wire familyWire) (networkd.Family, error) {
-	var none networkd.Family
-	if wire.DHCP == nil {
-		return none, fmt.Errorf("%s: %s/dhcp is required", label, family)
-	}
-	built := networkd.Family{
-		Forwarding:  wire.Forwarding,
-		Addresses:   nil,
-		DHCP:        wire.DHCP,
-		Gateway:     netip.Addr{},
-		RouteMetric: wire.RouteMetric,
-	}
-	for _, address := range wire.Address {
-		ip, err := parseAddress(label, family+"/address", address.IP)
-		if err != nil {
-			return none, err
-		}
-		if address.PrefixLength == nil {
-			return none, fmt.Errorf("%s: %s/address %s carries no prefix-length", label, family, address.IP)
-		}
-		built.Addresses = append(built.Addresses, networkd.Address{IP: ip, PrefixLength: *address.PrefixLength})
-	}
-	if wire.Gateway != "" {
-		parsed, err := parseAddress(label, family+"/gateway", wire.Gateway)
-		if err != nil {
-			return none, err
-		}
-		built.Gateway = parsed
-	}
-	return built, nil
-}
-
-// buildFamilyV4 reads the IPv4 container, including the source addresses the
-// routing module pins beside the link's own.
-func buildFamilyV4(label string, wire familyV4) (*networkd.FamilyV4, error) {
-	shared, err := buildFamily(label, "ipv4", wire.familyWire)
-	if err != nil {
-		return nil, err
-	}
-	built := &networkd.FamilyV4{Family: shared, SourceAddresses: nil}
-	for _, raw := range wire.SourceAddresses {
-		parsed, err := parseAddress(label, "ipv4/source-addresses", raw)
-		if err != nil {
-			return nil, err
-		}
-		built.SourceAddresses = append(built.SourceAddresses, parsed)
-	}
-	return built, nil
-}
-
-// buildFamilyV6 reads the IPv6 container, including the delegation the
-// interface requests.
-func buildFamilyV6(label string, wire familyV6) (*networkd.FamilyV6, error) {
-	shared, err := buildFamily(label, "ipv6", wire.familyWire)
-	if err != nil {
-		return nil, err
-	}
-	built := &networkd.FamilyV6{Family: shared, AcceptRA: wire.AcceptRA, Delegation: nil}
-	if wire.Delegation == nil {
-		return built, nil
-	}
-	built.Delegation = &networkd.Delegation{
-		Hint:                  netip.Prefix{},
-		DUIDType:              wire.Delegation.DUIDType,
-		DUID:                  wire.Delegation.DUID,
-		WithoutRA:             wire.Delegation.WithoutRA,
-		UseDelegatedPrefix:    wire.Delegation.UseDelegatedPrefix,
-		RouterLifetimeSeconds: wire.Delegation.RouterLifetimeSeconds,
-	}
-	if wire.Delegation.Hint != "" {
-		hint, err := netip.ParsePrefix(wire.Delegation.Hint)
-		if err != nil {
-			slog.Error("networkjson: delegation hint unparsable",
-				"entry", label, "hint", wire.Delegation.Hint, "err", err)
-			return nil, fmt.Errorf("%s: ipv6/delegation/hint %q: %w", label, wire.Delegation.Hint, err)
-		}
-		built.Delegation.Hint = hint
-	}
-	return built, nil
-}
-
-// buildFreeForm reads the networkd container in document order. Both indexes
-// are keys the schema requires, so an absent one means the document reached
-// the loader unvalidated.
-func buildFreeForm(label string, container networkdContainer) ([]networkd.File, error) {
-	files := make([]networkd.File, 0, len(container.Files))
-	for _, file := range container.Files {
-		built := networkd.File{Kind: networkd.FileKind(file.Kind), Sections: nil}
-		for _, section := range file.Sections {
-			if section.Index == nil {
-				return nil, fmt.Errorf("%s: networkd file %s carries a section with no index", label, file.Kind)
-			}
-			builtSection := networkd.Section{Index: *section.Index, Name: section.Name, Entries: nil}
-			for _, entry := range section.Entries {
-				if entry.Index == nil {
-					return nil, fmt.Errorf("%s: networkd file %s section %s carries an entry with no index",
-						label, file.Kind, section.Name)
-				}
-				builtSection.Entries = append(builtSection.Entries,
-					networkd.Entry{Index: *entry.Index, Key: entry.Key, Value: entry.Value})
-			}
-			built.Sections = append(built.Sections, builtSection)
-		}
-		files = append(files, built)
-	}
-	return files, nil
 }
 
 // parseAddress parses one address leaf, naming the leaf when it fails.
@@ -782,18 +621,6 @@ func parseAddress(label string, leaf string, raw string) (netip.Addr, error) {
 		return netip.Addr{}, fmt.Errorf("%s: %s %q: %w", label, leaf, raw, err)
 	}
 	return parsed, nil
-}
-
-// staticV4Source is the IPv4 source pin a rendered link carries: its first
-// static address, or empty on a link that leases its address. The routing
-// module pins traffic the gateway sources from that address to the provider's
-// table, so the pin is the address the link holds rather than a second value
-// inventory could let drift from it.
-func staticV4Source(spec networkd.Spec) string {
-	if spec.IPv4 == nil || len(spec.IPv4.Addresses) == 0 {
-		return ""
-	}
-	return spec.IPv4.Addresses[0].IP.String()
 }
 
 func buildProvider(entry ifaceEntry) (config.IfMgrWANEntry, *config.IfMgrHealthWANSection, error) {
@@ -965,7 +792,7 @@ func (c *Config) Apply(cfg *config.Config) {
 	cfg.IfMgr.WAN = c.WAN
 	cfg.IfMgr.ConnectionIDs = c.ConnectionIDs
 	cfg.IfMgr.ExplicitConnectionIDs = c.ExplicitConnectionIDs
-	cfg.IfMgr.Links = c.Links
+	cfg.IfMgr.Connections = c.Connections
 
 	if cfg.IfMgr.Modules.WAN == nil {
 		cfg.IfMgr.Modules.WAN = &config.IfMgrModulesWANSection{Routes: nil}

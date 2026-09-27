@@ -40,10 +40,7 @@ func TestPublish_ReplacesOwnedSubtreesWithTheProjection(t *testing.T) {
 			ExternalPrefix: netip.MustParsePrefix("2001:db8:a::/60"),
 		},
 	}
-	gateway := Gateway{
-		InternalIface: "eninternal0",
-		Members:       []Member{member},
-	}
+	gateway := testGateway(member)
 	rec := &recordingPublisher{}
 
 	if err := Publish(context.Background(), slog.Default(), rec, gateway); err != nil {
@@ -91,10 +88,7 @@ func TestPublish_SurfacesTheDatastoreFailure(t *testing.T) {
 	t.Parallel()
 	rejection := errors.New("session start failed")
 	rec := &recordingPublisher{err: rejection}
-	err := Publish(context.Background(), slog.Default(), rec, Gateway{
-		InternalIface: "eninternal0",
-		Members:       []Member{testMember("att", "enatt0")},
-	})
+	err := Publish(context.Background(), slog.Default(), rec, testGateway(testMember("att", "enatt0")))
 	if rec.calls != 1 {
 		t.Fatalf("ReplaceConfig calls = %d, want 1: the gateway never reached the datastore", rec.calls)
 	}

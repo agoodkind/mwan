@@ -14,6 +14,35 @@ import (
 	"goodkind.io/mwan/internal/yangpub"
 )
 
+func assertEmptyClientPresence(t *testing.T, exported []byte) {
+	t.Helper()
+	var tree struct {
+		Interfaces struct {
+			Interface []struct {
+				Name string                     `json:"name"`
+				IPv4 map[string]json.RawMessage `json:"ietf-ip:ipv4"`
+				IPv6 map[string]json.RawMessage `json:"ietf-ip:ipv6"`
+			} `json:"interface"`
+		} `json:"ietf-interfaces:interfaces"`
+	}
+	if err := json.Unmarshal(exported, &tree); err != nil {
+		t.Fatalf("decode served interfaces: %v", err)
+	}
+	for _, entry := range tree.Interfaces.Interface {
+		if entry.Name != "enmwanbr0" {
+			continue
+		}
+		if _, present := entry.IPv4["goodkind-mwan-steering:dhcpv4"]; !present {
+			t.Fatal("empty DHCPv4 presence container was not published")
+		}
+		if _, present := entry.IPv6["goodkind-mwan-steering:dhcpv6-client"]; !present {
+			t.Fatal("empty DHCPv6 presence container was not published")
+		}
+		return
+	}
+	t.Fatal("internal interface was not published")
+}
+
 // selftestModelsDir writes the gateway's model files into a directory the
 // private repository installs from. They come from the binary's embedded
 // schema, so the selftest drives real sysrepo with the modules a gateway
@@ -98,6 +127,11 @@ func TestPublishedTreeRoundTripsThroughSysrepo(t *testing.T) {
 		networkReplacement{old: `"name": "att",`, new: `"name": "webpass",`},
 		networkReplacement{old: `"pinned-provider": "att"`, new: `"pinned-connection-id": "sonic-b"`},
 	)
+	intentRoundtrip := modifiedNetwork(t,
+		networkReplacement{old: `{ "name": "enmwanbr0", "type": "iana-if-type:other" }`, new: `{ "name": "enmwanbr0", "type": "iana-if-type:other", "ietf-ip:ipv4": { "goodkind-mwan-steering:dhcpv4": {} }, "ietf-ip:ipv6": { "goodkind-mwan-steering:dhcpv6-client": {}, "goodkind-mwan-steering:forwarding-address": [{ "address": "2001:db8:1::9" }] } }`},
+		networkReplacement{old: `{ "name": "enmgmt0", "type": "iana-if-type:other" }`, new: `{ "name": "enmgmt0", "type": "iana-if-type:other", "ietf-ip:ipv6": { "goodkind-mwan-steering:dhcpv6-client": { "address-iaid": 123, "prefix-iaid": 456 } } }`},
+	)
+	documents = append(documents, intentRoundtrip)
 	documents = append(documents, sharedLabel)
 	schemaDir := networkSchemaDirForTest(t)
 	flags := selftestFlags{
@@ -139,6 +173,9 @@ func TestPublishedTreeRoundTripsThroughSysrepo(t *testing.T) {
 			}
 			served := withoutServedOnlyPairs(flattenNetworkJSON(t, []byte(exported)))
 			compareLeafSets(t, flattenNetworkJSON(t, raw), served)
+			if document == intentRoundtrip {
+				assertEmptyClientPresence(t, []byte(exported))
+			}
 		})
 	}
 	exportedNAT, foundNAT, err := reader.ExportJSON(ctx, yangpub.DatastoreRunning, "/ietf-nat:*")
@@ -186,6 +223,9 @@ func TestPublishedTreeRoundTripsThroughSysrepo(t *testing.T) {
 	other.TableID, other.FwMark = 200, 2
 	other.TranslationIDV4 = wanconfig.TranslationInstanceID(other.Name, "ipv4")
 	other.TranslationIDV6 = wanconfig.TranslationInstanceID(other.Name, "ipv6")
+	otherConnection := gateway.Connections[len(gateway.Connections)-1]
+	otherConnection.ID, otherConnection.Name = "another", other.Iface
+	gateway.Connections = append(gateway.Connections, otherConnection)
 	original := gateway.Members[0]
 	for _, members := range [][]wanconfig.Member{{other, original}, {original, other}, {original}} {
 		gateway.Members = members

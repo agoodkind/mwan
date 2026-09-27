@@ -17,7 +17,7 @@ import (
 	"goodkind.io/mwan/internal/ifmgr/modules/oobv4"
 	"goodkind.io/mwan/internal/ifmgr/modules/oobv6"
 	"goodkind.io/mwan/internal/ifmgr/modules/wanroutes"
-	"goodkind.io/mwan/internal/networkd"
+	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/wanconfig"
 	"goodkind.io/mwan/internal/wanstate"
@@ -325,6 +325,7 @@ func gatewayFromModuleConfigs(cfg *config.Config, configs ifmgr.ModuleConfigSet)
 		Firewall:           firewallFromConfig(cfg),
 		PinnedConnectionID: pinnedConnectionID,
 		ConnectionIDs:      explicitConnectionIDs,
+		Connections:        connectionsFromConfig(cfg),
 		HashMode:           hashModeFromConfig(cfg),
 		Group:              group,
 		Members:            make([]wanconfig.Member, 0, len(routesCfg.WANs)),
@@ -373,7 +374,6 @@ func memberFromWAN(
 		ForcedDSCP:      forcedDSCPFromConfig(cfg, wan.Key()),
 		Health:          probe,
 		LinkFiles:       linkFilesFromConfig(cfg, wan.Key()),
-		Link:            linkFromConfig(cfg, wan.Iface),
 	}
 	if probed {
 		// The probe policy is named after the member: the health module
@@ -501,28 +501,13 @@ func linkFilesFromConfig(cfg *config.Config, name string) string {
 	return cfg.IfMgr.WAN[name].LinkFiles
 }
 
-// linkFromConfig reads a provider link's specification from the loaded network
-// configuration, by the interface the provider rides, which is the
-// specification's own name. A nil configuration, or a provider whose files are
-// hand-authored, has none.
-func linkFromConfig(cfg *config.Config, iface string) *networkd.Spec {
+func connectionsFromConfig(cfg *config.Config) []interfaceintent.Connection {
 	if cfg == nil {
 		return nil
 	}
-	for i := range cfg.IfMgr.Links {
-		if cfg.IfMgr.Links[i].Name == iface {
-			spec := cfg.IfMgr.Links[i]
-			return &spec
-		}
-	}
-	return nil
+	return cfg.IfMgr.Connections
 }
 
-// probeSettings projects one provider's probe from the loaded health section.
-// The health module config holds only enabled probes, so the section is the one
-// holder of a disabled probe's settings and of whether a provider carries a
-// health container at all. A nil configuration, or a provider with no
-// container, publishes no probe.
 func probeSettings(cfg *config.Config, name string) (*wanconfig.ProbeSettings, error) {
 	if cfg == nil || cfg.IfMgr.Modules.Health == nil {
 		return nil, nil

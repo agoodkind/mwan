@@ -51,7 +51,8 @@ module goodkind-mwan-steering {
 
   revision 2026-09-27 {
     description
-      "Add stable connection identity and an explicit firewall pin target.";
+      "Add stable connection identity, an explicit firewall pin target,
+       and typed interface ownership, addressing, and resolver settings.";
   }
   revision 2026-09-26 {
     description
@@ -440,10 +441,36 @@ module goodkind-mwan-steering {
          than read as an exemption.";
     }
 
+    leaf owner {
+      type enumeration {
+        enum external;
+        enum networkd;
+        enum mwan;
+      }
+      description
+        "This field identifies the component that configures the interface.";
+    }
+    leaf lease-store {
+      type string {
+        pattern '/.*';
+      }
+      description "This field specifies the absolute directory path for DHCP lease files.";
+    }
+
     container link {
       description
         "What the device is, what it is named, and how it is created.";
 
+      leaf mtu {
+        type uint32 {
+          range "68..max";
+        }
+        description "This field sets the maximum transmission unit in bytes.";
+      }
+      leaf bridge-master {
+        type if:interface-ref;
+        description "This field specifies the bridge interface containing this link.";
+      }
       container match {
         description
           "How the network manager recognizes the device. An interface
@@ -572,6 +599,16 @@ module goodkind-mwan-steering {
         ordered-by user;
         leaf external { type inet:ipv4-address; }
         leaf internal { mandatory true; type inet:ipv4-address; }
+        leaf delivery {
+          type enumeration {
+            enum local;
+            enum routed;
+          }
+          description
+            "The gateway assigns the external address locally when this field
+             is local. The upstream network routes the address to the gateway
+             when this field is routed.";
+        }
         description "IPv4 mappings take precedence over NAPT44 masquerade.";
       }
       container nptv6 {
@@ -599,6 +636,33 @@ module goodkind-mwan-steering {
         "Whether the network manager runs a DHCPv4 client here. An
          interface carrying a wan container states it either way; the
          daemon fails the load when it is absent.";
+    }
+    container dhcpv4 {
+      presence "Enable explicit DHCPv4 client settings.";
+      description "This container configures DHCPv4 client options on this interface.";
+      leaf client-id {
+        type string;
+        description "The client sends this identifier to the DHCP server.";
+      }
+      leaf use-dns {
+        type boolean;
+        description "This field selects whether the client installs DNS servers from the lease.";
+      }
+      leaf use-routes {
+        type boolean;
+        description "This field selects whether the client installs routes from the lease.";
+      }
+    }
+    container resolver {
+      description "This container configures resolver settings for this address family.";
+      leaf-list dns {
+        type inet:ipv4-address;
+        description "This list contains DNS servers configured for this interface.";
+      }
+      leaf-list search {
+        type string;
+        description "This list contains DNS search domains configured for this interface.";
+      }
     }
     leaf gateway {
       type inet:ipv4-address;
@@ -643,6 +707,67 @@ module goodkind-mwan-steering {
          interface carrying a wan container states it either way; the
          daemon fails the load when it is absent.";
     }
+    container dhcpv6-client {
+      presence "Enable explicit DHCPv6 client settings.";
+      description "This container configures DHCPv6 client options on this interface.";
+      leaf duid-type {
+        type enumeration {
+          enum link-layer-time;
+          enum link-layer;
+          enum vendor;
+          enum uuid;
+          enum raw;
+        }
+        description "This field selects how the DHCPv6 client forms its identity.";
+      }
+      leaf duid {
+        type string {
+          pattern '([0-9a-fA-F]{2}:)*[0-9a-fA-F]{2}';
+        }
+        description "This field specifies the raw client identity as colon-separated octets.";
+      }
+      leaf address-iaid {
+        type uint32;
+        description "This field specifies the identity association ID for requested addresses.";
+      }
+      leaf prefix-iaid {
+        type uint32;
+        description "This field specifies the identity association ID for requested prefixes.";
+      }
+      leaf request-address {
+        type boolean;
+        description "This field selects whether the client requests an address.";
+      }
+      leaf request-prefix {
+        type boolean;
+        description "This field selects whether the client requests a prefix.";
+      }
+      leaf without-ra {
+        type enumeration {
+          enum no;
+          enum solicit;
+          enum information-request;
+        }
+        description
+          "This field selects whether and how the client starts DHCPv6
+           without a router advertisement.";
+      }
+      leaf use-dns {
+        type boolean;
+        description "This field selects whether the client installs DNS servers from DHCPv6.";
+      }
+    }
+    container resolver {
+      description "This container configures resolver settings for this address family.";
+      leaf-list dns {
+        type inet:ipv6-address;
+        description "This list contains DNS servers configured for this interface.";
+      }
+      leaf-list search {
+        type string;
+        description "This list contains DNS search domains configured for this interface.";
+      }
+    }
     leaf gateway {
       type inet:ipv6-address;
       description
@@ -658,16 +783,52 @@ module goodkind-mwan-steering {
     leaf accept-ra {
       type boolean;
       description
-        "Whether the network manager accepts router advertisements here.";
+        "This field selects whether the network manager accepts router
+         advertisements on this interface.";
+    }
+    leaf autoconf {
+      type boolean;
+      description "This field selects whether the interface configures addresses from router advertisements.";
+    }
+    leaf accept-ra-default-route {
+      type boolean;
+      description "This field selects whether the interface installs a default route from router advertisements.";
+    }
+    leaf use-ra-dns {
+      type boolean;
+      description "This field selects whether the interface installs DNS servers from router advertisements.";
+    }
+    list forwarding-address {
+      key "address";
+      description
+        "This list contains IPv6 addresses assigned to the gateway locally
+         or routed to the gateway by the upstream network.";
+      leaf address {
+        type inet:ipv6-address;
+        description "This field specifies the IPv6 address.";
+      }
+      leaf delivery {
+        type enumeration {
+          enum local;
+          enum routed;
+        }
+        description
+          "The gateway assigns this address locally when this field is local.
+           The upstream network routes it to the gateway when this field is routed.";
+      }
     }
     container delegation {
       presence "The interface requests a delegated prefix.";
       description
-        "The delegation the interface asks for, and the identity it asks
-         with. The identity is a public identifier, not a secret.";
+        "This container configures the requested delegation and client identity.
+         The client identity is a public identifier, not a secret.";
       leaf hint {
         type inet:ipv6-prefix;
-        description "The prefix length the client asks for.";
+        description "This field specifies the delegated prefix hint the client requests.";
+      }
+      leaf iaid {
+        type uint32;
+        description "This field sets the identity association ID for the delegation.";
       }
       leaf duid-type {
         type enumeration {
@@ -676,13 +837,13 @@ module goodkind-mwan-steering {
           enum vendor;
           enum uuid;
         }
-        description "How the client identity is formed.";
+        description "This field selects how the client forms its identity.";
       }
       leaf duid {
         type string {
           pattern '([0-9a-fA-F]{2}:)*[0-9a-fA-F]{2}';
         }
-        description "The client identity, as colon-separated octets.";
+        description "This field specifies the client identity as colon-separated octets.";
       }
       leaf without-ra {
         type enumeration {
@@ -691,20 +852,20 @@ module goodkind-mwan-steering {
           enum information-request;
         }
         description
-          "Whether the client starts without waiting for a router
-           advertisement, and which exchange it starts with.";
+          "This field selects whether and how the client starts DHCPv6
+           without a router advertisement.";
       }
       leaf use-delegated-prefix {
         type boolean;
         description
-          "Whether the network manager applies the delegated prefix to
-           this link.";
+          "This field selects whether the network manager applies the
+           delegated prefix to this link.";
       }
       leaf router-lifetime-seconds {
         type uint32;
         description
-          "The lifetime the link advertises to downstream routers, in
-           seconds.";
+          "This field sets the lifetime, in seconds, that the link
+           advertises to downstream routers.";
       }
     }
   }

@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/networkd"
 )
@@ -17,9 +18,9 @@ import (
 func TestRenamedLinksNamesALinkWhoseNameTheFileDoesNotAsk(t *testing.T) {
 	t.Parallel()
 
-	byDriver := staticLinkSpecForMain("enwebpass0", networkd.Match{Driver: "igc", HardwareAddress: ""})
-	byAddress := staticLinkSpecForMain("enmbrains0", networkd.Match{Driver: "", HardwareAddress: "02:00:5E:00:53:02"})
-	specs := []networkd.Spec{byDriver, byAddress}
+	byDriver := staticLinkSpecForMain("enwebpass0", interfaceintent.Match{Driver: "igc", HardwareAddress: ""})
+	byAddress := staticLinkSpecForMain("enmbrains0", interfaceintent.Match{Driver: "", HardwareAddress: "02:00:5E:00:53:02"})
+	connections := []interfaceintent.Connection{byDriver, byAddress}
 	linkChanges := []networkd.Change{
 		{File: "20-enwebpass0.link", Kind: networkd.FileLink, Interface: "enwebpass0", Removed: false},
 		{File: "20-enmbrains0.link", Kind: networkd.FileLink, Interface: "enmbrains0", Removed: false},
@@ -72,7 +73,7 @@ func TestRenamedLinksNamesALinkWhoseNameTheFileDoesNotAsk(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			got := renamedLinks(tc.changes, specs, tc.live)
+			got := renamedLinks(tc.changes, connections, tc.live)
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("renamedLinks = %+v, want %+v", got, tc.want)
 			}
@@ -80,17 +81,9 @@ func TestRenamedLinksNamesALinkWhoseNameTheFileDoesNotAsk(t *testing.T) {
 	}
 }
 
-// staticLinkSpecForMain is a link with the given identity and nothing else
-// the rename comparison reads.
-func staticLinkSpecForMain(name string, match networkd.Match) networkd.Spec {
-	return networkd.Spec{
-		Name:            name,
-		TableID:         200,
-		Match:           match,
-		HardwareAddress: "",
-		VLAN:            nil,
-		IPv4:            nil,
-		IPv6:            nil,
-		Files:           nil,
+func staticLinkSpecForMain(name string, match interfaceintent.Match) interfaceintent.Connection {
+	return interfaceintent.Connection{
+		Name: name,
+		Link: &interfaceintent.Link{Match: match},
 	}
 }

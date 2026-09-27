@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/networkd"
+	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/yangpub"
 )
@@ -163,9 +163,9 @@ func requireOneRejection(t *testing.T, loaded *networkjson.Config, iface string,
 	if _, present := loaded.Health[provider]; present {
 		t.Fatalf("rejected provider %s is still in Health", provider)
 	}
-	for _, link := range loaded.Links {
-		if link.Name == iface {
-			t.Fatalf("rejected interface %s still has a link specification", iface)
+	for _, connection := range loaded.Connections {
+		if connection.Name == iface {
+			t.Fatalf("rejected interface %s still has a connection", iface)
 		}
 	}
 	other := "att"
@@ -178,6 +178,17 @@ func requireOneRejection(t *testing.T, loaded *networkjson.Config, iface string,
 	if got := len(loaded.WAN); got != 1 {
 		t.Fatalf("provider count = %d, want 1", got)
 	}
+}
+
+func requireConnection(t *testing.T, connections []interfaceintent.Connection, name string) interfaceintent.Connection {
+	t.Helper()
+	for _, connection := range connections {
+		if connection.Name == name {
+			return connection
+		}
+	}
+	t.Fatalf("connection %s missing from %+v", name, connections)
+	return interfaceintent.Connection{}
 }
 
 func TestLoadValidFile(t *testing.T) {
@@ -219,6 +230,66 @@ func TestLoadValidFile(t *testing.T) {
 	}
 	if got := loaded.InternalIface; got != "enmwanbr0" {
 		t.Fatalf("internal iface = %q, want enmwanbr0", got)
+	}
+	var staticBase, mappedAdditional bool
+	for _, claim := range loaded.Claims {
+		if claim.Kind == interfaceintent.ResourceStaticAddress && claim.Key == "enwebpass0/203.0.113.2/29" && claim.Writer == interfaceintent.WriterNetworkd {
+			staticBase = true
+		}
+		if claim.Kind == interfaceintent.ResourceMappedAddress && claim.Key == "203.0.113.3" && claim.Writer == interfaceintent.WriterWANRoutes {
+			mappedAdditional = true
+		}
+		if claim.Kind == interfaceintent.ResourceMappedAddress && claim.Key == "203.0.113.2" {
+			t.Fatal("base static address has a second mapped-address writer")
+		}
+	}
+	if !staticBase || !mappedAdditional {
+		t.Fatalf("address claims omit base static or additional mapping: %+v", loaded.Claims)
+	}
+}
+
+func TestLoadDoesNotClaimRoutedMappingAsAnAddress(t *testing.T) {
+	t.Parallel()
+	body := strings.Replace(validDocument, `"external": "203.0.113.3"`, `"external": "198.51.100.193"`, 1)
+	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	for _, claim := range loaded.Claims {
+		if claim.Kind == interfaceintent.ResourceMappedAddress && claim.Key == "198.51.100.193" {
+			t.Fatal("routed translation mapping acquired an address writer")
+		}
+	}
+}
+
+func TestLoadRejectsUnsupportedRenderedSettings(t *testing.T) {
+	t.Parallel()
+	for name, change := range map[string]struct{ old, replacement string }{
+		"disabled interface": {`"name": "enwebpass0",`, `"name": "enwebpass0", "enabled": false,`},
+		"disabled family":    {`"ietf-ip:ipv4": {`, `"ietf-ip:ipv4": { "enabled": false,`},
+		"delegation iaid":    {`"hint": "::/56",`, `"hint": "::/56", "iaid": 42,`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			body := strings.Replace(validDocument, change.old, change.replacement, 1)
+			loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+			if err != nil {
+				t.Fatalf("Load rejected all providers: %v", err)
+			}
+			if len(loaded.Rejected) != 1 || loaded.Rejected[0].Provider != "webpass" || len(loaded.WAN) != 1 {
+				t.Fatalf("unsupported setting did not reject only webpass: rejected=%+v wan=%+v", loaded.Rejected, loaded.WAN)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsCaseVariantDeviceMatch(t *testing.T) {
+	t.Parallel()
+	body := strings.Replace(validDocument, `"match": { "driver": "igc" }`, `"match": { "hardware-address": "02:00:5E:00:53:01" }`, 1)
+	body = strings.Replace(body, `{ "name": "enmwanbr0", "type": "iana-if-type:other" }`, `{ "name": "enmwanbr0", "type": "iana-if-type:other", "goodkind-mwan-steering:link-files": "rendered", "goodkind-mwan-steering:link": { "match": { "hardware-address": "02:00:5e:00:53:01" } } }`, 1)
+	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err == nil || !strings.Contains(err.Error(), "match the same device") {
+		t.Fatalf("case-variant MAC match error = %v", err)
 	}
 }
 
@@ -810,26 +881,21 @@ func TestLoadCarriesAFreeFormSectionNoTypedLeafNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load rejected a free-form key no typed leaf names: %v", err)
 	}
-	if len(loaded.Links) != 1 {
-		t.Fatalf("link count = %d, want 1 for the one rendered provider", len(loaded.Links))
-	}
-	want := []networkd.File{{
-		Kind: networkd.FileNetwork,
-		Sections: []networkd.Section{{
+	want := []interfaceintent.UnitFile{{
+		Kind: "network",
+		Sections: []interfaceintent.UnitSection{{
 			Index:   0,
 			Name:    "DHCPv6",
-			Entries: []networkd.Entry{{Index: 0, Key: "UseDNS", Value: "no"}},
+			Entries: []interfaceintent.UnitEntry{{Index: 0, Key: "UseDNS", Value: "no"}},
 		}},
 	}}
-	if got := loaded.Links[0].Files; !reflect.DeepEqual(got, want) {
+	if got := requireConnection(t, loaded.Connections, "enwebpass0").Networkd; !reflect.DeepEqual(got, want) {
 		t.Fatalf("free-form files = %+v, want %+v", got, want)
 	}
 }
 
-// TestLoadCarriesTheLinkIdentity pins the specification the renderer reads:
-// every typed leaf the document carries arrives on the rendered provider's
-// entry in Config.Links, the hand-authored provider contributes none, and
-// Apply carries the list onto the daemon's configuration.
+// TestLoadCarriesTheLinkIdentity checks the loaded provider connection,
+// the hand-authored connection, the internal connection, and Apply output.
 func TestLoadCarriesTheLinkIdentity(t *testing.T) {
 	t.Parallel()
 
@@ -837,44 +903,52 @@ func TestLoadCarriesTheLinkIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
-	want := []networkd.Spec{{
-		Name:            "enwebpass0",
-		TableID:         200,
-		Match:           networkd.Match{Driver: "igc"},
-		HardwareAddress: "02:00:5e:00:53:01",
-		IPv4: &networkd.FamilyV4{
-			Family: networkd.Family{
-				Forwarding:  new(true),
-				Addresses:   []networkd.Address{{IP: netip.MustParseAddr("203.0.113.2"), PrefixLength: 29}},
-				DHCP:        new(false),
-				Gateway:     netip.MustParseAddr("203.0.113.1"),
-				RouteMetric: new(uint32(10)),
-			},
-		},
-		IPv6: &networkd.FamilyV6{
-			Family:   networkd.Family{Forwarding: new(true), DHCP: new(true)},
-			AcceptRA: new(true),
-			Delegation: &networkd.Delegation{
-				Hint:     netip.MustParsePrefix("::/56"),
-				DUIDType: "link-layer-time",
-				DUID:     "00:01:2a:5b:3c:4d:02:00:5e:00:53:01",
-			},
-		},
-	}}
-	if !reflect.DeepEqual(loaded.Links, want) {
-		t.Fatalf("links = %+v, want %+v", loaded.Links, want)
+	if len(loaded.Connections) != 3 {
+		t.Fatalf("connection count = %d, want 3", len(loaded.Connections))
 	}
-	if got := loaded.WAN["webpass"].LinkFiles; got != "rendered" {
-		t.Fatalf("webpass link-files = %q, want rendered", got)
+	webpass := requireConnection(t, loaded.Connections, "enwebpass0")
+	if webpass.ID != "webpass" || webpass.Type != "iana-if-type:other" ||
+		webpass.Owner != interfaceintent.OwnerNetworkd || webpass.Roles&interfaceintent.RoleProvider == 0 {
+		t.Fatalf("webpass identity, type, owner, or role = %+v", webpass)
 	}
-	if got := loaded.WAN["att"].LinkFiles; got != "hand-authored" {
-		t.Fatalf("att link-files = %q, want hand-authored", got)
+	if webpass.Link == nil || webpass.Link.Match.Driver != "igc" ||
+		webpass.Link.HardwareAddress != "02:00:5e:00:53:01" {
+		t.Fatalf("webpass link = %+v", webpass.Link)
+	}
+	if webpass.IPv4 == nil || webpass.IPv4.Forwarding == nil || !*webpass.IPv4.Forwarding ||
+		webpass.IPv4.DHCP == nil || *webpass.IPv4.DHCP ||
+		webpass.IPv4.Gateway != netip.MustParseAddr("203.0.113.1") ||
+		webpass.IPv4.RouteMetric == nil || *webpass.IPv4.RouteMetric != 10 ||
+		!reflect.DeepEqual(webpass.IPv4.Addresses, []interfaceintent.Address{{
+			Prefix: netip.MustParsePrefix("203.0.113.2/29"), Purpose: interfaceintent.PurposeLocal,
+		}}) {
+		t.Fatalf("webpass IPv4 = %+v", webpass.IPv4)
+	}
+	wantDelegation := &interfaceintent.Delegation{
+		Hint: netip.MustParsePrefix("::/56"), DUIDType: "link-layer-time",
+		DUID: "00:01:2a:5b:3c:4d:02:00:5e:00:53:01",
+	}
+	if webpass.IPv6 == nil || webpass.IPv6.Forwarding == nil || !*webpass.IPv6.Forwarding ||
+		webpass.IPv6.DHCP == nil || !*webpass.IPv6.DHCP ||
+		webpass.IPv6.AcceptRA == nil || !*webpass.IPv6.AcceptRA ||
+		!reflect.DeepEqual(webpass.IPv6.Delegation, wantDelegation) {
+		t.Fatalf("webpass IPv6 = %+v, want delegation %+v", webpass.IPv6, wantDelegation)
+	}
+	att := requireConnection(t, loaded.Connections, "enatt0")
+	if att.Owner != interfaceintent.OwnerNetworkd || att.Link != nil ||
+		att.Roles&interfaceintent.RoleProvider == 0 {
+		t.Fatalf("hand-authored provider = %+v", att)
+	}
+	internal := requireConnection(t, loaded.Connections, "enmwanbr0")
+	if internal.Owner != interfaceintent.OwnerExternal || internal.Roles&interfaceintent.RoleInternal == 0 ||
+		internal.Roles&interfaceintent.RoleProvider != 0 {
+		t.Fatalf("internal connection = %+v", internal)
 	}
 
 	var cfg config.Config
 	loaded.Apply(&cfg)
-	if !reflect.DeepEqual(cfg.IfMgr.Links, want) {
-		t.Fatalf("applied links = %+v, want the loaded list", cfg.IfMgr.Links)
+	if !reflect.DeepEqual(cfg.IfMgr.Connections, loaded.Connections) {
+		t.Fatalf("applied connections = %+v, want %+v", cfg.IfMgr.Connections, loaded.Connections)
 	}
 }
 
@@ -930,18 +1004,31 @@ func TestLoadRejectsATypedV4Source(t *testing.T) {
 	requireOneRejection(t, loaded, "enwebpass0", "webpass", "v4-source")
 }
 
-func TestLoadRejectsAProviderThatStatesNoLinkFiles(t *testing.T) {
+func TestLoadInfersExternalOwnerWithoutLinkFiles(t *testing.T) {
 	t.Parallel()
-
-	// An entry with no link block looks the same whether its files are
-	// deliberately hand-authored or its link block was never written, so the
-	// exemption must be stated rather than inferred from the absence.
 	body := strings.Replace(validDocument, `"goodkind-mwan-steering:link-files": "hand-authored",`, ``, 1)
 	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err != nil {
-		t.Fatalf("Load failed the whole document over one provider's link-files leaf: %v", err)
+		t.Fatalf("Load: %v", err)
 	}
-	requireOneRejection(t, loaded, "enatt0", "att", "interface enatt0: link-files is required")
+	if len(loaded.Rejected) != 0 || loaded.WAN["att"].Iface != "enatt0" {
+		t.Fatalf("external provider was rejected: %+v", loaded.Rejected)
+	}
+	att := requireConnection(t, loaded.Connections, "enatt0")
+	if att.Owner != interfaceintent.OwnerExternal || att.Link != nil {
+		t.Fatalf("inferred external provider = %+v", att)
+	}
+}
+
+func TestLoadRejectsNetworkdOwnerWithoutLinkFiles(t *testing.T) {
+	t.Parallel()
+	body := strings.Replace(validDocument, `"goodkind-mwan-steering:link-files": "hand-authored",`,
+		`"goodkind-mwan-steering:owner": "networkd",`, 1)
+	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err != nil {
+		t.Fatalf("Load rejected the whole document: %v", err)
+	}
+	requireOneRejection(t, loaded, "enatt0", "att", "networkd owner requires link-files")
 }
 
 func TestLoadRejectsARenderedLinkWithNoIdentity(t *testing.T) {
@@ -953,15 +1040,15 @@ func TestLoadRejectsARenderedLinkWithNoIdentity(t *testing.T) {
 	}{
 		"no link container": {
 			link: ``,
-			want: "link container is required",
+			want: "rendered link requires a link container",
 		},
 		"neither match nor vlan": {
 			link: `"goodkind-mwan-steering:link": { "hardware-address": "02:00:5e:00:53:01" },`,
-			want: "exactly one of match/driver, match/hardware-address, or vlan, got 0",
+			want: "link requires exactly one identity (driver, hardware-address, or vlan), got 0",
 		},
 		"both match leaves": {
 			link: `"goodkind-mwan-steering:link": { "match": { "driver": "igc", "hardware-address": "02:00:5e:00:53:01" } },`,
-			want: "exactly one of match/driver, match/hardware-address, or vlan, got 2",
+			want: "link requires exactly one identity (driver, hardware-address, or vlan), got 2",
 		},
 	}
 	for name, tc := range cases {
@@ -999,6 +1086,8 @@ func withWebpassVLAN(parent string) string {
 	)
 }
 
+// TestLoadCarriesAVLANOnAnInterfaceTheDocumentDescribes checks that the loader
+// returns a VLAN and its non-provider networkd parent.
 func TestLoadCarriesAVLANOnAnInterfaceTheDocumentDescribes(t *testing.T) {
 	t.Parallel()
 
@@ -1007,7 +1096,10 @@ func TestLoadCarriesAVLANOnAnInterfaceTheDocumentDescribes(t *testing.T) {
 	body := strings.Replace(
 		withWebpassVLAN("ensonic0"),
 		`{ "name": "enmwanbr0", "type": "iana-if-type:other" }`,
-		`{ "name": "ensonic0", "type": "iana-if-type:other" },
+		`{ "name": "ensonic0", "type": "iana-if-type:ethernetCsmacd",
+        "goodkind-mwan-steering:owner": "networkd",
+        "goodkind-mwan-steering:link-files": "rendered",
+        "goodkind-mwan-steering:link": { "match": { "driver": "ixgbe" } } },
       { "name": "enmwanbr0", "type": "iana-if-type:other" }`,
 		1,
 	)
@@ -1015,12 +1107,33 @@ func TestLoadCarriesAVLANOnAnInterfaceTheDocumentDescribes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load rejected a VLAN whose parent the document describes: %v", err)
 	}
-	if len(loaded.Links) != 1 {
-		t.Fatalf("link count = %d, want 1", len(loaded.Links))
+	webpass := requireConnection(t, loaded.Connections, "enwebpass0")
+	want := &interfaceintent.VLAN{Parent: "ensonic0", ID: 101}
+	if webpass.Link == nil {
+		t.Fatal("VLAN provider has no link")
 	}
-	want := &networkd.VLAN{Parent: "ensonic0", ID: 101}
-	if got := loaded.Links[0].VLAN; !reflect.DeepEqual(got, want) {
+	if got := webpass.Link.VLAN; !reflect.DeepEqual(got, want) {
 		t.Fatalf("vlan = %+v, want %+v", got, want)
+	}
+	parent := requireConnection(t, loaded.Connections, "ensonic0")
+	if parent.Roles&interfaceintent.RoleParent == 0 || parent.Roles&interfaceintent.RoleProvider != 0 ||
+		parent.Owner != interfaceintent.OwnerNetworkd || parent.Link == nil {
+		t.Fatalf("non-provider parent = %+v", parent)
+	}
+}
+
+func TestLoadRejectsAVLANParentWithoutARenderedLink(t *testing.T) {
+	t.Parallel()
+	body := strings.Replace(
+		withWebpassVLAN("ensonic0"),
+		`{ "name": "enmwanbr0", "type": "iana-if-type:other" }`,
+		`{ "name": "ensonic0", "type": "iana-if-type:other" },
+      { "name": "enmwanbr0", "type": "iana-if-type:other" }`,
+		1,
+	)
+	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err == nil || !strings.Contains(err.Error(), "vlan parent ensonic0 needs a rendered networkd link") {
+		t.Fatalf("invalid shared parent error = %v", err)
 	}
 }
 
@@ -1056,7 +1169,7 @@ func TestLoadRejectsOnlyTheEntryWithAFamilyThatOmitsDHCP(t *testing.T) {
 		want string
 	}{
 		"ipv4": {leaf: `"goodkind-mwan-steering:dhcp": false,`, want: "interface enwebpass0: ipv4/dhcp is required"},
-		"ipv6": {leaf: `"goodkind-mwan-steering:dhcp": true,`, want: "wan webpass ipv6: delegated NPTv6 requires DHCPv6 delegation configuration"},
+		"ipv6": {leaf: `"goodkind-mwan-steering:dhcp": true,`, want: "interface enwebpass0: ipv6/dhcp is required"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -1092,7 +1205,7 @@ func TestLoadRejectsAHandAuthoredEntryThatDescribesItsLink(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load failed the whole document over one provider's contradiction: %v", err)
 	}
-	requireOneRejection(t, loaded, "enatt0", "att", "interface enatt0: link-files is hand-authored")
+	requireOneRejection(t, loaded, "enatt0", "att", "hand-authored files cannot include a renderable link")
 }
 
 func TestLoadRejectsInvalidTranslation(t *testing.T) {
@@ -1180,8 +1293,8 @@ func TestLoadAcceptsHandAuthoredDelegationMetadata(t *testing.T) {
 	if policy == nil || policy.NPT == nil || policy.NPT.ExternalSource != config.PrefixDelegated {
 		t.Fatalf("hand-authored delegation policy = %+v", policy)
 	}
-	if len(loaded.Links) != 1 || loaded.Links[0].Name != "enwebpass0" {
-		t.Fatalf("hand-authored link acquired rendered files: %+v", loaded.Links)
+	if att := requireConnection(t, loaded.Connections, "enatt0"); att.Link != nil {
+		t.Fatalf("hand-authored connection has rendered link: %+v", att)
 	}
 }
 
