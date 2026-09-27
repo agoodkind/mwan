@@ -110,38 +110,50 @@ type Observer interface {
 // Store is the concurrent snapshot store. The zero value is unusable;
 // construct with New.
 type Store struct {
-	mu               sync.RWMutex
-	health           map[string]MemberHealth
-	routing          map[string]MemberRouting
-	translation      map[string]MemberTranslation
-	activeTier       uint8
-	tierValid        bool
-	bgp              BGP
-	intendedRulesets map[string]OwnedRuleset
-	observer         Observer
+	mu                 sync.RWMutex
+	health             map[string]MemberHealth
+	routing            map[string]MemberRouting
+	translation        map[string]MemberTranslation
+	activeTier         uint8
+	tierValid          bool
+	bgp                BGP
+	intendedRulesets   map[string]OwnedRuleset
+	observer           Observer
+	observerGeneration uint64
 }
 
 // New returns an empty store.
 func New() *Store {
 	return &Store{
-		mu:               sync.RWMutex{},
-		health:           map[string]MemberHealth{},
-		routing:          map[string]MemberRouting{},
-		translation:      map[string]MemberTranslation{},
-		activeTier:       0,
-		tierValid:        false,
-		bgp:              BGP{Peers: nil, ReadAt: time.Time{}, Reached: false},
-		intendedRulesets: map[string]OwnedRuleset{},
-		observer:         nil,
+		mu:                 sync.RWMutex{},
+		health:             map[string]MemberHealth{},
+		routing:            map[string]MemberRouting{},
+		translation:        map[string]MemberTranslation{},
+		activeTier:         0,
+		tierValid:          false,
+		bgp:                BGP{Peers: nil, ReadAt: time.Time{}, Reached: false},
+		intendedRulesets:   map[string]OwnedRuleset{},
+		observer:           nil,
+		observerGeneration: 0,
 	}
 }
 
 // Observe registers the store's one observer. Set it before the modules
-// start writing; events from earlier writes are not replayed.
-func (s *Store) Observe(observer Observer) {
+// start writing; events from earlier writes are not replayed. The returned
+// function removes this registration without replacing a newer observer.
+func (s *Store) Observe(observer Observer) func() {
 	s.mu.Lock()
+	s.observerGeneration++
+	generation := s.observerGeneration
 	s.observer = observer
 	s.mu.Unlock()
+	return func() {
+		s.mu.Lock()
+		if s.observerGeneration == generation {
+			s.observer = nil
+		}
+		s.mu.Unlock()
+	}
 }
 
 // NotifyHealthTransition forwards a committed verdict change to the

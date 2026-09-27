@@ -42,6 +42,27 @@ func TestSurfaceNotifier_RendersTheNotifications(t *testing.T) {
 	assertItems(t, tier, map[string]string{"active-tier": "1", "previous-tier": "0"})
 }
 
+func TestSurfaceObserverRemovalPreservesNewRegistration(t *testing.T) {
+	t.Parallel()
+	store := wanstate.New()
+	oldNotifier := newSurfaceNotifier(quietLogger(), liveTestGateway())
+	currentNotifier := newSurfaceNotifier(quietLogger(), liveTestGateway())
+	removeOld := store.Observe(oldNotifier)
+	removeCurrent := store.Observe(currentNotifier)
+
+	removeOld()
+	store.NotifyHealthTransition("att", wanstate.HealthHealthy, wanstate.HealthUnhealthy)
+	if len(oldNotifier.queue) != 0 || len(currentNotifier.queue) != 1 {
+		t.Fatalf("observer events: old=%d current=%d", len(oldNotifier.queue), len(currentNotifier.queue))
+	}
+
+	removeCurrent()
+	store.NotifyHealthTransition("att", wanstate.HealthUnhealthy, wanstate.HealthHealthy)
+	if len(currentNotifier.queue) != 1 {
+		t.Fatalf("removed observer received %d events", len(currentNotifier.queue))
+	}
+}
+
 func assertItems(t *testing.T, event surfaceEvent, want map[string]string) {
 	t.Helper()
 	got := map[string]string{}
@@ -77,11 +98,8 @@ func (b *blockingNotifier) SubscribeNotifications(_ context.Context, _ string, _
 	return nil
 }
 
-// TestStartNotifierSender_DoneWaitsForTheInFlightSend pins the shutdown
-// contract the surface's Close relies on: after the context is
-// cancelled, the done channel stays open while a send is still inside
-// the binding and closes once the send returns. Without that wait the
-// daemon frees the sysrepo connection under the send and crashes.
+// The management worker waits for in-flight sends before closing its datastore
+// connection. Closing that connection during a native send crashes the process.
 func TestStartNotifierSender_DoneWaitsForTheInFlightSend(t *testing.T) {
 	t.Parallel()
 	notifier := newSurfaceNotifier(quietLogger(), liveTestGateway())
