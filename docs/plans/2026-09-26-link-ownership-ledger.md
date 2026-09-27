@@ -40,36 +40,36 @@ MWAN-305 interface ownership code or live gateway configuration changed.
 
 MWAN-524 passed live testbed acceptance. MWAN-505 route repair, the first
 MWAN-521 deployment preparation, and MWAN-516 identity work merged. The
-merged MWAN-505 and MWAN-516 release passed a testbed deployment and the
-current downstream traffic battery. Production remains on its prior release.
-No interface-owner cutover has begun.
+merged MWAN-505 and MWAN-516 release passed testbed and production
+deployments with downstream traffic checks. MWAN-523 observation implementation
+is under review. No interface-owner cutover has begun.
 
 | Ticket | Slices | Current execution state |
 | --- | --- | --- |
 | MWAN-524 | Restore the managed Astound testbed connection first. | Configs PR #522 merged. Deployment, restart, downstream traffic, balancing, and recovery passed. |
 | MWAN-516 | 516-model; 516-state | [MWAN PR #51](https://github.com/agoodkind/mwan/pull/51) merged standalone identity as `959fbd3a65955e8156f2ea6c9bf2c90febef762c`. [MWAN PR #55](https://github.com/agoodkind/mwan/pull/55) merged shared interface intent as `2c6df538fbb1174a9189f3098d6ac458256857f4`. Both merged releases passed separate testbed traffic checkpoints. State publication remains. |
 | MWAN-397 | 397-links | Execution has not started. |
-| MWAN-523 | 523-observation | Execution has not started. |
+| MWAN-523 | 523-observation | The corrected plan merged in PR #58. Kernel observation implementation is under review; no deployment ran. |
 | MWAN-398 | 398-addresses; 398-dhcpv4 | Execution has not started. |
 | MWAN-227 | 227-delegation | Execution has not started. |
 | MWAN-517 | 517-autoconfiguration; 517-dhcpv6 | Execution has not started. |
 | MWAN-518 | 518-restart | Execution has not started. |
-| MWAN-505 | 505-route-repair | [MWAN PR #52](https://github.com/agoodkind/mwan/pull/52) merged as `18941243f1e8fa3d5623a04440e4d90de796d1f4`. Namespace packet tests and the deployed testbed route and rule deletion checks passed. Production acceptance remains. |
+| MWAN-505 | 505-route-repair | [MWAN PR #52](https://github.com/agoodkind/mwan/pull/52) merged as `18941243f1e8fa3d5623a04440e4d90de796d1f4`. Namespace packet tests and live testbed route and rule deletion checks passed. The release passed production deployment and downstream acceptance. |
 | MWAN-521 | 521-configuration; 521-deployment | [Configs PR #527](https://github.com/agoodkind/configs/pull/527) merged as `20ad40232fa62394046b1218839e60756a6b7a22`. It moved MAC discovery before rendering. Complete role rendering and transfer remain. |
 | MWAN-522 | 522-acceptance | Execution has not started. |
 | MWAN-519 | 519-first-connection | Execution has not started. |
 | MWAN-399 | 399-remaining-connections | Execution has not started. |
 | MWAN-400 | 400-retirement | Execution has not started. |
 | MWAN-401 | 401-testbed | Execution has not started. |
-| MWAN-520 | 520-production | Execution has not started. |
+| MWAN-520 | 520-production | The shared model and route repair release passed its production phase. The ticket remains open for later ownership phases. |
 
 ## Resume the work
 
 MWAN-524 restored Astound as a permanently managed testbed connection.
-Implement the shared interface model before observation and state publication.
-Deploy each subsequent merged runtime slice to testbed and verify the current
-downstream battery before the next production promotion. No interface-owner
-cutover has begun.
+Complete MWAN-523 observation review and MWAN-516 state publication before
+the next ownership slice. Deploy each subsequent merged runtime slice to
+testbed and verify the downstream battery before its production promotion.
+No interface-owner cutover has begun.
 
 For every handoff, record the slice, agent responsibility, exact source
 revision, agreed interfaces, owned files, current PR, last passing check,
@@ -312,8 +312,7 @@ after health convergence and recovery on the deployed model release. It does
 not measure session survival or exact interruption duration.
 
 The deployed model still leaves interface control with networkd. MWAN-516
-state publication, later interface-owner cutover, and production acceptance
-remain unfinished.
+state publication and later interface-owner cutover remain unfinished.
 
 ### Owned route and rule repair testbed checkpoint, September 27, 2026
 
@@ -342,6 +341,60 @@ follow-up queries found each object restored. Each guest-agent query took
 about two to three seconds. Exact repair latency was not measured. The test
 did not remove both objects together, delete a default route, or exercise
 production.
+
+### Shared model and route repair production checkpoint, September 27, 2026
+
+[Configs PR #532](https://github.com/agoodkind/configs/pull/532) pinned the
+testbed-accepted MWAN release `202609272028-35-2c6df53` for production. Its
+signed pin merged as `c26ab7f75cc5336c950824916f12275430f855a9`. The
+previous production binary was `f61a4d7`. The production network document
+SHA-256 after deployment was
+`a068afec1d9de228e5e9a90cd1107d5d1ebe5c91327ddf9c877c663341be2e59`.
+Networkd retained provider ownership throughout this phase.
+
+From clean merged Configs main,
+`./configsctl deploy deploy-mwan --limit mwan_servers --check --diff` passed
+with 187 successful tasks, 14 proposed
+changes, and zero failures. The supported apply command omitted the check and
+diff flags. It reported 242 successful tasks, 24 changes, zero unreachable
+hosts, and zero failures. Trace `20260927-144808-deploy-27830` passed the
+reboot, egress, and mapped-address gates without rollback. VM 113 reported
+`commit=2c6df53 dirty=clean` after reboot and boot ID
+`f9a26309-0a7d-44db-a8f9-479b2b1cd902`.
+
+The downstream UniFi LXC 102 has one network interface and no OOB route. Its
+continuous one-second IPv4 and IPv6 HTTP observer recorded 607 probes per
+family during and after deployment. Each family passed 596 and timed out on
+11. The longest reboot interval between successful replies was 47.069
+seconds for IPv4 and 46.054 seconds for IPv6. Earlier configuration work
+produced an 8 to 9 second interruption in both families and one isolated
+IPv6 timeout. These are measured gaps between replies, not exact link-down
+times. Both families returned HTTP 200 from the LXC after deployment.
+OPNsense VM 101 separately completed source-bound IPv4 and IPv6 HTTPS through
+its MWAN transit addresses.
+
+Twenty fresh external address observations per family from LXC 102 succeeded.
+IPv4 selected Webpass nine times at `136.25.91.242` and AT&T eleven times at
+`104.57.226.193`. IPv6 selected Webpass ten times at
+`2604:5500:c271:be00:583d::102` and AT&T ten times at
+`2600:1700:2f71:c80:dac2::102`. The health file reported AT&T,
+Monkeybrains, and Webpass healthy. From the independent Suburban host, two
+ICMP requests each received replies at Webpass `136.25.91.242` and AT&T
+`104.57.226.193`; two IPv6 requests each received replies at the provider
+edge addresses `2604:5500:c271:be00::1` and
+`2600:1700:2f71:c80::1`. The firewall inspection matched the configured
+DNAT, SNAT, forwarding, and marking rules. The gateway retained its owned
+`10.250.250.0/29` return route in table 100 and mark `0x1` policy rule.
+Internal IPv4 and IPv6 BGP TCP sessions were established, and the BGP return
+routes remained present. The interface manager and agent services were active.
+
+The production playbook performed network reload, daemon restart, and reboot.
+Its downstream observer found no 14 to 40 second gap during network reload,
+and the final route checks found the owned route and rule present. The deletion repair
+itself was deliberately exercised on testbed, not on production. Production
+provider fault injection remains excluded from this checkpoint. MWAN-505 has
+production acceptance; MWAN-516 still needs state publication, and MWAN-520
+remains open for subsequent ownership phases.
 
 ## Record future implementation results
 
