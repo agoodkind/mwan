@@ -1086,8 +1086,8 @@ func withWebpassVLAN(parent string) string {
 	)
 }
 
-// TestLoadCarriesAVLANOnAnInterfaceTheDocumentDescribes checks the
-// rendered VLAN and its non-provider networkd parent.
+// TestLoadCarriesAVLANOnAnInterfaceTheDocumentDescribes checks that the loader
+// returns a VLAN and its non-provider networkd parent.
 func TestLoadCarriesAVLANOnAnInterfaceTheDocumentDescribes(t *testing.T) {
 	t.Parallel()
 
