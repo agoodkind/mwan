@@ -110,7 +110,7 @@ func runWANStartupChild(t *testing.T) {
 	}
 	inspect = exec.Command(binary, "deploy-gate", "inspect-firewall", networkPath, schema)
 	if output, err := inspect.CombinedOutput(); err == nil {
-		t.Fatalf("live firewall inspection accepted missing management rules: %s", output)
+		t.Fatalf("inspect-firewall exited zero after flushing inet filter input chain: %s", output)
 	}
 	if output, err := exec.Command(binary, "ifmgr", "--role", "wan").CombinedOutput(); err == nil || !strings.Contains(string(output), "dynamic_neighbors") {
 		t.Fatalf("invalid TOML did not fail after restoring the baseline: %v: %s", err, output)

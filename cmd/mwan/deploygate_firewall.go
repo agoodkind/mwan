@@ -61,7 +61,6 @@ func runFirewallCheck(args []string) int {
 	return 0
 }
 
-// runFirewallInspect compares the configured firewall rules with the current kernel.
 func runFirewallInspect(args []string) int {
 	if len(args) != 2 {
 		fmt.Fprintln(os.Stderr, "usage: mwan deploy-gate inspect-firewall <network.json> <schema-dir>")
