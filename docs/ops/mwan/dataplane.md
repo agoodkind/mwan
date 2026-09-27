@@ -41,8 +41,8 @@ a static prefix when a delegation is missing. It skips that WAN for the
 current reconcile.
 
 The module alerts when a provider configured for delegated translation loses
-its delegation. It clears the alert when the delegation returns. A provider
-without delegated translation does not raise this alert.
+its delegation. It clears the alert when the delegation returns. The module
+does not raise this alert for a provider without delegated translation.
 
 The module creates the IPv6 NAT table and its `prerouting` and `postrouting`
 chains. It replaces both chains' rules in one kernel transaction. Its nftables
