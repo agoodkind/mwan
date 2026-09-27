@@ -21,6 +21,23 @@ type fakeConn struct {
 	flushErr   error
 }
 
+func (f *fakeConn) ListTablesOfFamily(nftables.TableFamily) ([]*nftables.Table, error) {
+	return []*nftables.Table{{Family: nftables.TableFamilyIPv6, Name: natTableName}}, nil
+}
+
+func (f *fakeConn) ListChainsOfTableFamily(nftables.TableFamily) ([]*nftables.Chain, error) {
+	table := &nftables.Table{Family: nftables.TableFamilyIPv6, Name: natTableName}
+	accept := nftables.ChainPolicyAccept
+	return []*nftables.Chain{
+		{Name: preroutingChain, Table: table, Hooknum: nftables.ChainHookPrerouting, Priority: nftables.ChainPriorityNATDest, Type: nftables.ChainTypeNAT, Policy: &accept},
+		{Name: postroutingChain, Table: table, Hooknum: nftables.ChainHookPostrouting, Priority: nftables.ChainPriorityNATSource, Type: nftables.ChainTypeNAT, Policy: &accept},
+	}, nil
+}
+
+func (f *fakeConn) AddTable(t *nftables.Table) *nftables.Table { return t }
+
+func (f *fakeConn) AddChain(c *nftables.Chain) *nftables.Chain { return c }
+
 func (f *fakeConn) FlushChain(c *nftables.Chain) {
 	f.ops = append(f.ops, "flushchain:"+c.Name)
 }

@@ -17,12 +17,9 @@ const nftMonitorRetryDelay = 2 * time.Second
 
 // watchNFTChanges runs for the module's lifetime and asks the daemon to
 // reconcile whenever the ip6 nat table or its chains are deleted. This is the
-// fix for the wipe problem: an `nft -f` or `systemctl restart nftables` reloads
-// the static ruleset, which flushes and recreates the ip6 nat table and so
-// removes npt's runtime rules. Without an event npt would re-add them only on
-// the periodic tick, leaving an IPv6 outage of up to one interval. The nftables
-// kernel subsystem emits netlink notifications on ruleset changes, so npt reacts
-// to the table delete and re-adds its rules within a cycle. The classifier
+// fix for a ruleset wipe: without an event npt would recreate its table and
+// rules only on the periodic tick. The nftables kernel subsystem emits netlink
+// notifications, so npt reacts to table deletion within a cycle. The classifier
 // matches only table and chain deletes, never rule deletes, so npt's own
 // FlushChain during a reconcile cannot retrigger the watch (see
 // nftEventWipesNAT).
@@ -128,11 +125,9 @@ func (m *Module) handleNFTEvent(
 // but never the chain or table, so DelChain and DelTable never come from npt's
 // own reconcile and are safe wipe signals.
 //
-// The MWAN-4 cases this repairs (nft -f, systemctl restart nftables) reload the
-// static ruleset, which begins with `flush ruleset` and deletes the ip6 nat
-// table, so a DelTable event fires and drives the re-add. A targeted rules-only
-// flush (nft flush table ip6 nat) leaves the table and is recovered by the
-// periodic reconcile tick instead, unchanged from today.
+// A `flush ruleset` deletes the ip6 nat table. A DelTable event drives its
+// recreation. A targeted `nft flush table ip6 nat` removes the rules but
+// preserves the table. The periodic reconcile tick restores those rules.
 func nftEventWipesNAT(event *nftables.MonitorEvent) bool {
 	if event == nil {
 		return false
