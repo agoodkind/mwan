@@ -41,7 +41,7 @@ Never use two active managers as a comparison test.
 | Physical link settings, VLANs, and bridge membership | The link manager applies the configured settings and dependencies. |
 | Static and acquired interface addresses | The address manager reconciles addresses assigned to MWAN. |
 | DHCP assignments and delegated prefixes | The protocol client negotiates assignments and publishes their deadlines. |
-| IPv6 automatic addresses and discovered routers | The selected kernel or userspace implementation manages their lifetimes. |
+| IPv6 automatic addresses and discovered routers | Linux manages their lifetimes under MWAN's per-interface configuration. |
 | Configured and acquired main-table routes | The interface manager applies its assigned routes. |
 | Provider-table routes and policy rules | The existing WAN routing module applies routing policy. |
 | Firewall, translation, and steering | The existing modules retain their responsibilities. |
@@ -93,8 +93,9 @@ an otherwise valid lease. Apply the protocol's rejection and expiration rules.
 Persist MWAN-owned lease metadata and deadlines for protocol-correct restart
 recovery. Verify recovered assignments before using them. Preserve matching
 kernel state where valid. Do not reset an interface solely because the daemon
-restarted. Importing networkd leases during the initial handover is a separate
-choice from recovering MWAN's own leases on ordinary restarts.
+restarted. At the initial handover, preserve client identities and negotiate
+assignments through DHCP. Do not import networkd lease files. This migration
+procedure is separate from recovering MWAN's own leases on ordinary restarts.
 
 ## Startup, readiness, and history
 
@@ -139,16 +140,25 @@ Retire networkd only after every required provider, internal, bridge, and
 management interface has a verified replacement. Remove obsolete renderers,
 lease readers, units, and service dependencies after replacement acceptance.
 
-## Migration choices
+## Approved migration design
 
-The following recommendations remain design choices to resolve in the
-assigned tickets before the affected implementation or cutover.
+The operator approved these decisions on September 26, 2026.
 
-| Choice | Recommendation | Tradeoff and decision ticket |
+| Decision | Required behavior | Tradeoff |
 | --- | --- | --- |
-| Transfer complete connections or individual functions | Transfer one complete connection at a time after its components are ready. | Complete connections require more preparation. Individual functions create more temporary ownership combinations. Resolve under MWAN-519. |
-| Acquire assignments or import networkd leases at first transfer | Preserve client identities and acquire assignments through the protocol. | Acquisition can interrupt or renumber a connection. Import requires verified lease metadata and deadlines. Resolve under MWAN-519. |
-| Use kernel or userspace IPv6 autoconfiguration | Evaluate the kernel first. | Kernel behavior must satisfy configuration and reporting requirements. A userspace implementation adds protocol and lifetime work. Resolve under MWAN-517. |
+| Transfer complete connections under MWAN-519. | Build the required components first, then transfer each connection's link, addressing, and protocol clients together. | More implementation must be ready before live transfer; fewer temporary ownership combinations require support. |
+| Negotiate assignments at initial transfer under MWAN-519. | Preserve client identities and acquire assignments through the protocol. | Acquisition can interrupt or renumber a connection; no networkd lease importer requires maintenance. |
+| Recover MWAN leases under MWAN-518. | Persist assignments and deadlines, then use each protocol's restart validation. | Persistent state needs correct expiration and configuration-change handling. |
+| Use kernel IPv6 autoconfiguration under MWAN-517. | MWAN configures and observes Linux router discovery and SLAAC. | The installed kernel must satisfy the required routing and lifetime reporting before cutover. |
+
+MWAN owns configuration and policy. Linux performs the selected automatic
+address and router operations. MWAN's reconciliation must recognize those
+objects and must not compete with the kernel for their lifetimes. DHCPv6
+address assignment and delegation remain MWAN protocol-client work.
+
+Prove kernel compatibility during implementation. If a required behavior is
+unsupported, record the exact gap before proposing a design change. Do not
+silently introduce a second IPv6 autoconfiguration implementation.
 
 ## Relationship to the saga
 
