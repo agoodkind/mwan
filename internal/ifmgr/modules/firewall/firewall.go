@@ -109,7 +109,7 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 			return nil, fmt.Errorf("firewall: invalid config type %T", cfg)
 		}
 	}
-	return &Module{BaseModule: ifmgr.NewBaseModule(moduleName), cfg: policy, refreshPending: false}, nil
+	return &Module{BaseModule: ifmgr.NewBaseModule(moduleName), cfg: policy, refreshPending: true}, nil
 }
 
 func init() { ifmgr.Register(moduleName, New) }

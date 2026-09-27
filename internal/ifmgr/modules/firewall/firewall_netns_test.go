@@ -98,6 +98,14 @@ func TestReconcileRepairsDeletedRulesAndRetriesFailedRefresh(t *testing.T) {
 	if len(unchanged.CreatedSets) != 0 {
 		t.Fatalf("existing sets reported as new: %+v", unchanged.CreatedSets)
 	}
+	selected, err = New(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := selected.Init(ctx, &ifmgr.Env{Log: log, LiveState: store}); err != nil {
+		t.Fatal(err)
+	}
+	assertRefreshFailure()
 	runNFTTest(t, "flush", "ruleset")
 	recreated, err := firewall.ApplyWithReport(ctx, desired)
 	if err != nil {
@@ -108,8 +116,8 @@ func TestReconcileRepairsDeletedRulesAndRetriesFailedRefresh(t *testing.T) {
 	}
 	runNFTTest(t, "flush", "ruleset")
 	assertRefreshFailure()
-	for _, table := range []struct{ family, name string }{{"inet", "filter"}, {"ip", "nat"}, {"inet", "mangle"}} {
-		runNFTTest(t, "list", "table", table.family, table.name)
+	if _, err := firewall.Inspect(ctx, desired); err != nil {
+		t.Fatalf("inspect repaired firewall policy: %v", err)
 	}
 }
 
