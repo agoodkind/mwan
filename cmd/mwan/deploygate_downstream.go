@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/netip"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -26,7 +26,11 @@ type downstreamProbeConfig struct {
 	ipv6NextHop  netip.Addr
 }
 
-var pingReplyPattern = regexp.MustCompile(`\b1 packets? received\b`)
+const (
+	downstreamHTTPSConnectTimeout = 3 * time.Second
+	downstreamHTTPSRequestTimeout = 8 * time.Second
+	downstreamGuestExecTimeout    = downstreamHTTPSRequestTimeout + 2*time.Second
+)
 
 type downstreamProbeFile struct {
 	OPNsenseVMID int    `json:"opnsense_vmid"`
@@ -181,18 +185,20 @@ func probeDownstreamFamily(
 	if hop != expectedHop {
 		return fmt.Errorf("route get %s: next hop %s, expected %s", target, hop, expectedHop)
 	}
-	pingBinary := "/sbin/ping6"
+	family := "-6"
 	if ipv4 {
-		pingBinary = "/sbin/ping"
+		family = "-4"
 	}
-	output, err = readGuestProbeCommand(ctx, vmid,
-		pingBinary, "-S", source.String(), "-c", "1", "-W",
-		strconv.FormatInt(deployGateProbeTimeout.Milliseconds(), 10), target.String())
+	url := "https://" + net.JoinHostPort(target.String(), "443") + "/"
+	// QEMU omits out-truncated when a command prints nothing. The HTTP status
+	// keeps the guest response parser's truncation check available.
+	_, err = readGuestProbeCommand(ctx, vmid,
+		"/usr/local/bin/curl", family, "--noproxy", "*", "--interface", source.String(),
+		"--connect-timeout", strconv.Itoa(int(downstreamHTTPSConnectTimeout.Seconds())),
+		"--max-time", strconv.Itoa(int(downstreamHTTPSRequestTimeout.Seconds())),
+		"-fsS", "-o", "/dev/null", "-w", "%{http_code}", url)
 	if err != nil {
-		return fmt.Errorf("ping %s from %s: %w", target, source, err)
-	}
-	if !pingReplyPattern.MatchString(output) {
-		return fmt.Errorf("ping %s from %s: reply count missing", target, source)
+		return fmt.Errorf("HTTPS %s from %s: %w", target, source, err)
 	}
 	return nil
 }
@@ -229,7 +235,7 @@ type guestProbeResponse struct {
 
 func readGuestProbeCommand(ctx context.Context, vmid int, command ...string) (string, error) {
 	raw, err := ops.GuestExecViaQm(ctx,
-		deployGateGuestExecTimeout+5*time.Second, deployGateGuestExecTimeout,
+		downstreamGuestExecTimeout+5*time.Second, downstreamGuestExecTimeout,
 		vmid, command...)
 	if err != nil {
 		slog.WarnContext(ctx, "downstream guest command failed", "vmid", vmid, "err", err)
