@@ -60,22 +60,8 @@ func linkDriver(name string) string {
 // A physical match is unique by the configured MAC or driver; virtual links
 // must also satisfy their configured kernel type and VLAN parent and tag.
 func resolveConnectionLink(log *slog.Logger, connection interfaceintent.Connection) (netlink.Link, error) {
-	return resolveConnectionLinkAtIndex(log, connection, 0)
-}
-
-// resolveConnectionLinkAtIndex keeps a bound virtual device across a rename.
-// Callers must clear priorIndex after deletion or loss of event continuity.
-func resolveConnectionLinkAtIndex(
-	log *slog.Logger, connection interfaceintent.Connection, priorIndex int,
-) (netlink.Link, error) {
 	if connection.Link == nil {
 		return nil, nil
-	}
-	if priorIndex > 0 {
-		prior, err := netlink.LinkByIndex(priorIndex)
-		if err == nil && priorVirtualLinkMatches(prior, connection) {
-			return prior, nil
-		}
 	}
 	links, err := netlink.LinkList()
 	if err != nil {
@@ -95,26 +81,6 @@ func resolveConnectionLinkAtIndex(
 		return nil, nil
 	}
 	return matches[0], nil
-}
-
-func priorVirtualLinkMatches(link netlink.Link, connection interfaceintent.Connection) bool {
-	configured := connection.Link
-	attrs := link.Attrs()
-	if configured == nil || attrs == nil {
-		return false
-	}
-	switch configured.Kind {
-	case interfaceintent.KindBridge:
-		return link.Type() == "bridge"
-	case interfaceintent.KindVLAN:
-		vlan, ok := link.(*netlink.Vlan)
-		if !ok || configured.VLAN == nil || attrs.ParentIndex == 0 || vlan.VlanId != int(configured.VLAN.ID) {
-			return false
-		}
-		parent, err := netlink.LinkByName(configured.VLAN.Parent)
-		return IsLinkNotFound(err) || (err == nil && parent.Attrs() != nil && parent.Attrs().Index == attrs.ParentIndex)
-	}
-	return false
 }
 
 func linkMatchesConnection(link netlink.Link, connection interfaceintent.Connection) bool {
