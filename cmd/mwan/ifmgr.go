@@ -361,6 +361,7 @@ func writeNetworkConfig(
 func bootstrapWANFirewall(ctx context.Context, path string) error {
 	baseline, err := networkjson.LoadBaseline(path)
 	if err != nil {
+		slog.ErrorContext(ctx, "ifmgr: load protective firewall baseline failed", "path", path, "err", err)
 		return fmt.Errorf("load protective firewall baseline: %w", err)
 	}
 	if baseline == nil {
@@ -368,12 +369,15 @@ func bootstrapWANFirewall(ctx context.Context, path string) error {
 	}
 	desired, err := firewall.CompileBaseline(*baseline)
 	if err != nil {
+		slog.ErrorContext(ctx, "ifmgr: compile protective firewall baseline failed", "path", path, "err", err)
 		return fmt.Errorf("compile protective firewall baseline: %w", err)
 	}
 	if err := firewall.Apply(ctx, desired); err != nil {
+		slog.ErrorContext(ctx, "ifmgr: apply protective firewall baseline failed", "path", path, "err", err)
 		return fmt.Errorf("apply protective firewall baseline: %w", err)
 	}
 	if _, err := firewall.Inspect(ctx, desired); err != nil {
+		slog.ErrorContext(ctx, "ifmgr: inspect protective firewall baseline failed", "path", path, "err", err)
 		return fmt.Errorf("inspect protective firewall baseline: %w", err)
 	}
 	return nil
