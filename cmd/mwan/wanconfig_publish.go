@@ -78,7 +78,7 @@ func startWanconfigSurface(
 		defer surface.unobserve()
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.ErrorContext(surfaceCtx, "wanconfig: initialization panicked", "err", fmt.Sprint(recovered))
+				log.ErrorContext(surfaceCtx, "wanconfig: initialization panicked; management surface disabled", "err", fmt.Sprint(recovered))
 			}
 		}()
 		surface.initialize(surfaceCtx, cfg, gateway, rejections, notifier)
