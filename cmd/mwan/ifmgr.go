@@ -20,6 +20,7 @@ import (
 	systemddaemon "github.com/coreos/go-systemd/v22/daemon"
 
 	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/logging"
@@ -339,7 +340,11 @@ func writeNetworkConfig(
 		return nil, nil
 	}
 
-	changed, err := networkd.WriteDir(networkd.DefaultUnitDir, loaded.Links)
+	tables := make(map[connectionid.ID]int, len(loaded.WAN))
+	for id, provider := range loaded.WAN {
+		tables[connectionid.ID(id)] = provider.TableID
+	}
+	changed, err := networkd.WriteDir(networkd.DefaultUnitDir, loaded.Connections, tables)
 	if err != nil {
 		log.ErrorContext(ctx, "ifmgr: writing networkd unit files failed",
 			"dir", networkd.DefaultUnitDir, "err", err)
@@ -350,7 +355,7 @@ func writeNetworkConfig(
 	if len(changed) == 0 {
 		return loaded.Rejected, nil
 	}
-	warnRenamedLinks(ctx, log, changed, loaded.Links)
+	warnRenamedLinks(ctx, log, changed, loaded.Connections)
 	if err := networkd.ReloadIfRunning(ctx); err != nil {
 		log.ErrorContext(ctx, "ifmgr: reloading systemd-networkd failed", "err", err)
 		return nil, fmt.Errorf("reload systemd-networkd: %w", err)

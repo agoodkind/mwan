@@ -21,7 +21,11 @@ func translationItems(member Member) []Item {
 		path := base + "/ietf-ip:ipv4/goodkind-mwan-steering:translation"
 		items = append(items, Item{Path: path + "/mode", Value: string(policy.Mode)})
 		for _, mapping := range policy.StaticMappings {
-			items = append(items, Item{Path: path + "/static-mapping[external='" + mapping.External.String() + "']/internal", Value: mapping.Internal.String()})
+			mappingPath := path + "/static-mapping[external='" + mapping.External.String() + "']"
+			items = append(items, Item{Path: mappingPath + "/internal", Value: mapping.Internal.String()})
+			if mapping.Delivery != "" {
+				items = append(items, Item{Path: mappingPath + "/delivery", Value: string(mapping.Delivery)})
+			}
 		}
 	}
 	if policy := member.TranslationV6; policy != nil {

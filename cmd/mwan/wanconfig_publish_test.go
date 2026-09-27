@@ -7,12 +7,26 @@ import (
 	"time"
 
 	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/ifmgr/modules/health"
 	"goodkind.io/mwan/internal/ifmgr/modules/npt"
 	"goodkind.io/mwan/internal/ifmgr/modules/wanroutes"
+	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/wanconfig"
 )
+
+func wanconfigTestConnections() []interfaceintent.Connection {
+	connection := func(name string, id connectionid.ID, roles interfaceintent.Role) interfaceintent.Connection {
+		return interfaceintent.Connection{ID: id, Name: name, Type: "iana-if-type:other", Enabled: nil, Roles: roles, Owner: interfaceintent.OwnerExternal, Link: nil, IPv4: nil, IPv6: nil, LeaseStore: "", Networkd: nil}
+	}
+	return []interfaceintent.Connection{
+		connection("eninternal0", connectionid.ID("eninternal0"), interfaceintent.RoleInternal),
+		connection("enatt0.3242", connectionid.ID("att"), interfaceintent.RoleProvider),
+		connection("enmbrains0", connectionid.ID("monkeybrains"), interfaceintent.RoleProvider),
+		connection("enwebpass0", connectionid.ID("webpass"), interfaceintent.RoleProvider),
+	}
+}
 
 // wanconfigTestModuleConfigs mirrors what buildIfMgrModuleConfigs produces
 // for the wan role from the rendered testbed config: three WANs on
@@ -72,6 +86,7 @@ func wanconfigTestModuleConfigs() ifmgr.ModuleConfigSet {
 func TestGatewayFromModuleConfigs_ProjectsTheWANRole(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{}
+	cfg.IfMgr.Connections = wanconfigTestConnections()
 	cfg.IfMgr.HashMode = "source"
 	cfg.IfMgr.ReservedTables = []int{400, 500}
 	gateway, ok, err := gatewayFromModuleConfigs(cfg, wanconfigTestModuleConfigs())
@@ -141,6 +156,7 @@ func TestGatewayFromModuleConfigs_CarriesWhatOnlyTheLoadedConfigHolds(t *testing
 		{External: netip.MustParseAddr("198.51.100.3"), Internal: netip.MustParseAddr("10.250.250.3")},
 	}
 	cfg := &config.Config{}
+	cfg.IfMgr.Connections = wanconfigTestConnections()
 	cfg.IfMgr.WAN = map[string]config.IfMgrWANEntry{"att": {ForcedDSCP: 8, TranslationV4: &config.IPv4Translation{Mode: config.TranslationNAPT44, StaticMappings: mappings}}}
 	cfg.IfMgr.Modules.Health = &config.IfMgrHealthSection{WAN: map[string]config.IfMgrHealthWANSection{
 		"att": {

@@ -1,6 +1,10 @@
 package config
 
-import "net/netip"
+import (
+	"net/netip"
+
+	"goodkind.io/mwan/internal/interfaceintent"
+)
 
 // IfMgrModulesSection is the explicit TOML schema for [ifmgr.modules].
 // Each field maps to one supported module table.
@@ -150,11 +154,7 @@ type IfMgrWANEntry struct {
 	// leased link. The loader derives it from the link's first static address
 	// rather than reading it from the file, so the source rule and the address
 	// the link holds cannot disagree.
-	V4Source string
-	// LinkFiles says who writes the provider link's unit files, as the
-	// link-files leaf spells it: rendered, when the daemon writes them from the
-	// link specification on IfMgrSection.Links, or hand-authored, when the
-	// repository carries them and the daemon writes nothing.
+	V4Source  string
 	LinkFiles string
 	// ForcedDSCP is the DSCP value that forces a new flow onto this provider,
 	// or zero when the provider carries none. Zero is free to mean absent
@@ -218,6 +218,7 @@ type NPTv6Translation struct {
 type StaticMapping struct {
 	External netip.Addr
 	Internal netip.Addr
+	Delivery interfaceintent.AddressDelivery
 }
 
 // IfMgrWANRoutesSection is the [ifmgr.modules.wan.routes] table. The health

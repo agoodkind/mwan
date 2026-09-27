@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/firewall"
+	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/wanconfig"
 	"goodkind.io/mwan/internal/wanstate"
@@ -234,10 +236,17 @@ func resolveSelftestModels(log *slog.Logger, dir string) ([]yangpub.Model, error
 // selftestGateway is the shape the private selftest publishes: one
 // translating member on tier 0 and the internal link, the smallest
 // configuration that exercises every owned subtree.
+func selftestConnections() []interfaceintent.Connection {
+	return []interfaceintent.Connection{
+		{ID: connectionid.ID("eninternal0"), Name: "eninternal0", Type: "iana-if-type:other", Enabled: nil, Roles: interfaceintent.RoleInternal, Owner: interfaceintent.OwnerExternal, Link: nil, IPv4: nil, IPv6: nil, LeaseStore: "", Networkd: nil},
+		{ID: connectionid.ID("enmgmt0"), Name: "enmgmt0", Type: "iana-if-type:other", Enabled: nil, Roles: interfaceintent.RoleManagement, Owner: interfaceintent.OwnerExternal, Link: nil, IPv4: nil, IPv6: nil, LeaseStore: "", Networkd: nil},
+		{ID: connectionid.ID("example"), Name: "enexample0", Type: "iana-if-type:other", Enabled: nil, Roles: interfaceintent.RoleProvider, Owner: interfaceintent.OwnerExternal, Link: nil, IPv4: nil, IPv6: nil, LeaseStore: "", Networkd: nil},
+	}
+}
+
 func selftestGateway() wanconfig.Gateway {
 	var firewallConfig firewall.Config
-	firewallConfig.Enabled = true
-	firewallConfig.InternalInterface = "eninternal0"
+	firewallConfig.Enabled, firewallConfig.InternalInterface = true, "eninternal0"
 	firewallConfig.InternalNetworkIPv4 = netip.MustParsePrefix("192.0.2.0/29")
 	firewallConfig.ManagementInterface = "enmgmt0"
 	firewallConfig.ManagementServices = []firewall.Service{{Protocol: "tcp", Port: 22, Sources: nil}}
@@ -254,6 +263,7 @@ func selftestGateway() wanconfig.Gateway {
 	return wanconfig.Gateway{
 		PinnedConnectionID: "",
 		ConnectionIDs:      nil,
+		Connections:        selftestConnections(),
 		InternalIface:      "eninternal0",
 		Firewall:           firewallConfig,
 		HashMode:           "random",
@@ -285,6 +295,7 @@ func selftestGateway() wanconfig.Gateway {
 			TranslationV4: &config.IPv4Translation{Mode: config.TranslationNAPT44, StaticMappings: []config.StaticMapping{{
 				External: netip.MustParseAddr(selftestOwnedAddress),
 				Internal: netip.MustParseAddr("192.0.2.3"),
+				Delivery: "",
 			}}},
 			Health: &wanconfig.ProbeSettings{
 				Enabled:              true,
@@ -300,7 +311,6 @@ func selftestGateway() wanconfig.Gateway {
 			// The selftest proves the serving contract, not the renderer, so
 			// the member states no link files and publishes no link.
 			LinkFiles: "",
-			Link:      nil,
 		}},
 		Daemon: wanconfig.DaemonSettings{
 			Watchdog: wanconfig.WatchdogSettings{

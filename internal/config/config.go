@@ -19,7 +19,7 @@ import (
 
 	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/firewall"
-	"goodkind.io/mwan/internal/networkd"
+	"goodkind.io/mwan/internal/interfaceintent"
 )
 
 // NetworkConfig holds site-specific topology values. It carries no provider
@@ -302,11 +302,7 @@ type IfMgrSection struct {
 	WAN                   map[string]IfMgrWANEntry     `toml:"-"`
 	ConnectionIDs         map[string]connectionid.ID   `toml:"-"`
 	ExplicitConnectionIDs map[string]connectionid.ID   `toml:"-"`
-	// Links are the link specifications of the providers whose unit files the
-	// daemon renders, in the order network.json lists their interfaces. A
-	// provider whose files are hand-authored has none. They come from
-	// network.json like the WAN map, so the same skip tag applies.
-	Links []networkd.Spec `toml:"-"`
+	Connections           []interfaceintent.Connection `toml:"-"`
 }
 
 // IfMgrAlertsSection controls the per-alert repeat cadence for the

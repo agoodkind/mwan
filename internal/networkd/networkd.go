@@ -1,3 +1,4 @@
+// Package networkd renders configured interface intent as systemd-networkd unit files.
 package networkd
 
 import (
@@ -13,7 +14,9 @@ import (
 
 	"github.com/coreos/go-systemd/v22/unit"
 
+	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/installfile"
+	"goodkind.io/mwan/internal/interfaceintent"
 )
 
 // Marker opens every file this package writes. Pruning removes a file only
@@ -75,42 +78,47 @@ const (
 // A VLAN's files name nothing about its parent: the line that creates the
 // VLAN belongs to the parent's file, which WriteDir adds because it sees
 // every specification.
-func Render(spec Spec) (map[string]string, error) {
-	files, err := render(spec)
+func Render(connection interfaceintent.Connection, tableID int) (map[string]string, error) {
+	files, err := render(connection, tableID)
 	if err != nil {
 		return nil, err
 	}
-	return files.serialize(spec.Name)
+	return files.serialize(connection.Name)
 }
 
 // render builds the sections of one link's files without serializing them,
 // so WriteDir can add the parent's VLAN line before the file is written.
-func render(spec Spec) (*fileSet, error) {
-	if spec.VLAN != nil && spec.HardwareAddress != "" {
+func render(connection interfaceintent.Connection, tableID int) (*fileSet, error) {
+	if connection.Link == nil {
+		return nil, fmt.Errorf("%s: rendered interface has no link", connection.Name)
+	}
+	link := connection.Link
+	if link.VLAN != nil && link.HardwareAddress != "" {
 		// The address lands in the .link file and a VLAN has no device match
 		// to put in one; a .link file with no [Match] applies to every
 		// device.
-		return nil, fmt.Errorf("%s: hardware-address is set on a VLAN, which has no .link file to carry it", spec.Name)
+		return nil, fmt.Errorf("%s: hardware-address is set on a VLAN, which has no .link file to carry it", connection.Name)
 	}
 	files := newFileSet()
-	if spec.VLAN != nil {
-		files.add(FileNetdev, sectionNetDev, keyName, spec.Name)
+	if link.VLAN != nil {
+		files.add(FileNetdev, sectionNetDev, keyName, connection.Name)
 		files.add(FileNetdev, sectionNetDev, keyKind, kindVLAN)
 	}
-	files.add(FileNetwork, sectionMatch, keyName, spec.Name)
-	for _, line := range spec.typedLines() {
+	files.add(FileNetwork, sectionMatch, keyName, connection.Name)
+	for _, line := range typedLines(connection) {
 		where := placements[line.leaf]
 		files.add(where.File, where.Section, where.Key, line.value)
 	}
-	for _, family := range spec.families() {
-		files.appendSections(FileNetwork, staticRoutes(family, spec.TableID)...)
+	for _, family := range families(connection) {
+		files.appendSections(FileNetwork, staticRoutes(family, tableID)...)
 	}
-	for _, file := range spec.Files {
-		if file.Kind != FileLink && file.Kind != FileNetwork && file.Kind != FileNetdev {
-			return nil, fmt.Errorf("%s: networkd file kind %q is not link, network, or netdev", spec.Name, file.Kind)
+	for _, file := range connection.Networkd {
+		kind := FileKind(file.Kind)
+		if kind != FileLink && kind != FileNetwork && kind != FileNetdev {
+			return nil, fmt.Errorf("%s: networkd file kind %q is not link, network, or netdev", connection.Name, file.Kind)
 		}
 		for _, section := range file.Sections {
-			files.merge(file.Kind, section)
+			files.merge(kind, section)
 		}
 	}
 	return files, nil
@@ -170,8 +178,8 @@ type Change struct {
 // The whole set is rendered before anything is written, so a spec the
 // renderer refuses leaves the directory as it was: a partial set is a
 // gateway whose links come up differently after a reboot.
-func WriteDir(dir string, specs []Spec) ([]Change, error) {
-	rendered, err := renderAll(specs)
+func WriteDir(dir string, connections []interfaceintent.Connection, tables map[connectionid.ID]int) ([]Change, error) {
+	rendered, err := renderAll(connections, tables)
 	if err != nil {
 		return nil, err
 	}
@@ -210,37 +218,44 @@ type renderedFile struct {
 // and must be a rendered interface: a VLAN whose parent's file nothing
 // writes would be created by nothing, so it is refused rather than left
 // silently absent.
-func renderAll(specs []Spec) (map[string]renderedFile, error) {
-	sets := make(map[string]*fileSet, len(specs))
-	for _, spec := range specs {
-		if _, seen := sets[spec.Name]; seen {
-			return nil, fmt.Errorf("%s: rendered twice", spec.Name)
+func renderAll(connections []interfaceintent.Connection, tables map[connectionid.ID]int) (map[string]renderedFile, error) {
+	sets := make(map[string]*fileSet, len(connections))
+	for _, connection := range connections {
+		if connection.Owner != interfaceintent.OwnerNetworkd || connection.Link == nil {
+			continue
 		}
-		files, err := render(spec)
+		if _, seen := sets[connection.Name]; seen {
+			return nil, fmt.Errorf("%s: rendered twice", connection.Name)
+		}
+		files, err := render(connection, tables[connection.ID])
 		if err != nil {
 			return nil, err
 		}
-		sets[spec.Name] = files
+		sets[connection.Name] = files
 	}
-	for _, spec := range specs {
-		if spec.VLAN == nil {
+	for _, connection := range connections {
+		if connection.Owner != interfaceintent.OwnerNetworkd || connection.Link == nil || connection.Link.VLAN == nil {
 			continue
 		}
-		parent, rendered := sets[spec.VLAN.Parent]
+		parent, rendered := sets[connection.Link.VLAN.Parent]
 		if !rendered {
 			return nil, fmt.Errorf("%s: vlan parent %s has no rendered .network file to name the VLAN in",
-				spec.Name, spec.VLAN.Parent)
+				connection.Name, connection.Link.VLAN.Parent)
 		}
-		parent.add(FileNetwork, sectionNetwork, keyVLAN, spec.Name)
+		parent.add(FileNetwork, sectionNetwork, keyVLAN, connection.Name)
 	}
-	rendered := make(map[string]renderedFile, len(specs)*2)
-	for _, spec := range specs {
-		files, err := sets[spec.Name].serialize(spec.Name)
+	rendered := make(map[string]renderedFile, len(sets)*2)
+	for _, connection := range connections {
+		fileset, selected := sets[connection.Name]
+		if !selected {
+			continue
+		}
+		files, err := fileset.serialize(connection.Name)
 		if err != nil {
 			return nil, err
 		}
 		for name, content := range files {
-			rendered[name] = renderedFile{iface: spec.Name, kind: kindOfFile(name), content: content}
+			rendered[name] = renderedFile{iface: connection.Name, kind: kindOfFile(name), content: content}
 		}
 	}
 	return rendered, nil
@@ -284,54 +299,61 @@ type typedLine struct {
 	value string
 }
 
-// typedLines is every typed leaf the spec sets, in the order the lines are
+// typedLines is every typed leaf the connection sets, in the order the lines are
 // emitted, with each value in the form the network manager reads. The order
 // within a section follows the hand-authored files this rendering replaced,
 // so a diff against one reads line for line. The two dhcp leaves fold into
 // one line, named for the first family that sets one.
-func (s Spec) typedLines() []typedLine {
+func typedLines(s interfaceintent.Connection) []typedLine {
 	var lines []typedLine
-	if s.Match.Driver != "" {
-		lines = append(lines, typedLine{leaf: "match.driver", value: s.Match.Driver})
+	link := s.Link
+	if link.Match.Driver != "" {
+		lines = append(lines, typedLine{leaf: "match.driver", value: link.Match.Driver})
 	}
-	if s.Match.HardwareAddress != "" {
-		lines = append(lines, typedLine{leaf: "match.hardware-address", value: s.Match.HardwareAddress})
+	if link.Match.HardwareAddress != "" {
+		lines = append(lines, typedLine{leaf: "match.hardware-address", value: link.Match.HardwareAddress})
 	}
-	if s.VLAN == nil {
+	if link.VLAN == nil {
 		lines = append(lines, typedLine{leaf: "name", value: s.Name})
 	}
-	if s.HardwareAddress != "" {
-		lines = append(lines, typedLine{leaf: "hardware-address", value: s.HardwareAddress})
+	if link.HardwareAddress != "" {
+		lines = append(lines, typedLine{leaf: "hardware-address", value: link.HardwareAddress})
 	}
-	if s.VLAN != nil {
-		lines = append(lines, typedLine{leaf: "vlan.id", value: decimal(uint64(s.VLAN.ID))})
+	if link.MTU != nil {
+		lines = append(lines, typedLine{leaf: "mtu", value: decimal(uint64(*link.MTU))})
 	}
-	for _, family := range s.families() {
+	if link.VLAN != nil {
+		lines = append(lines, typedLine{leaf: "vlan.id", value: decimal(uint64(link.VLAN.ID))})
+	}
+	if link.BridgeMaster != "" {
+		lines = append(lines, typedLine{leaf: "bridge-master", value: link.BridgeMaster})
+	}
+	for _, family := range families(s) {
 		for _, address := range family.shared.Addresses {
 			lines = append(lines, typedLine{
 				leaf:  family.name + ".address",
-				value: address.IP.String() + "/" + decimal(uint64(address.PrefixLength)),
+				value: address.Prefix.String(),
 			})
 		}
 	}
-	if dhcp, set := s.dhcpLine(); set {
+	if dhcp, set := dhcpLine(s); set {
 		lines = append(lines, dhcp)
 	}
 	if s.IPv6 != nil && s.IPv6.AcceptRA != nil {
 		lines = append(lines, typedLine{leaf: "ipv6.accept-ra", value: yesNo(*s.IPv6.AcceptRA)})
 	}
-	for _, family := range s.families() {
+	for _, family := range families(s) {
 		if family.shared.Forwarding != nil {
 			lines = append(lines, typedLine{leaf: family.name + ".forwarding", value: yesNo(*family.shared.Forwarding)})
 		}
 	}
-	if s.IPv4 != nil && s.IPv4.leasesMetric() {
+	if s.IPv4 != nil && leasesMetric(s.IPv4.Family) {
 		lines = append(lines, typedLine{leaf: "ipv4.route-metric", value: decimal(uint64(*s.IPv4.RouteMetric))})
 	}
 	if s.IPv6 != nil && s.IPv6.Delegation != nil {
 		lines = append(lines, delegationLines(*s.IPv6.Delegation)...)
 	}
-	if s.IPv6 != nil && s.IPv6.leasesMetric() {
+	if s.IPv6 != nil && leasesMetric(s.IPv6.Family) {
 		lines = append(lines, typedLine{leaf: "ipv6.route-metric", value: decimal(uint64(*s.IPv6.RouteMetric))})
 	}
 	return lines
@@ -341,7 +363,7 @@ func (s Spec) typedLines() []typedLine {
 // manager takes, which names the families a client runs for. A family the
 // spec does not configure runs none. The line is absent when neither family
 // sets the leaf.
-func (s Spec) dhcpLine() (typedLine, bool) {
+func dhcpLine(s interfaceintent.Connection) (typedLine, bool) {
 	var none typedLine
 	leaf := ""
 	v4 := false
@@ -373,7 +395,7 @@ func (s Spec) dhcpLine() (typedLine, bool) {
 
 // delegationLines renders the delegation leaves the spec sets, in the order
 // the placements table lists them.
-func delegationLines(delegation Delegation) []typedLine {
+func delegationLines(delegation interfaceintent.Delegation) []typedLine {
 	var lines []typedLine
 	if delegation.DUIDType != "" {
 		lines = append(lines, typedLine{leaf: "delegation.duid-type", value: delegation.DUIDType})
@@ -402,11 +424,11 @@ func delegationLines(delegation Delegation) []typedLine {
 // namedFamily is one configured family with the name its leaves carry.
 type namedFamily struct {
 	name   string
-	shared Family
+	shared interfaceintent.Family
 }
 
 // families lists the families the spec configures, IPv4 first.
-func (s Spec) families() []namedFamily {
+func families(s interfaceintent.Connection) []namedFamily {
 	var families []namedFamily
 	if s.IPv4 != nil {
 		families = append(families, namedFamily{name: "ipv4", shared: s.IPv4.Family})
@@ -440,6 +462,9 @@ func staticRoutes(family namedFamily, tableID int) []*unit.UnitSection {
 			{Name: keyGateway, Value: gateway},
 			{Name: keyTable, Value: strconv.Itoa(tableID)},
 		},
+	}
+	if tableID == 0 {
+		return []*unit.UnitSection{main}
 	}
 	return []*unit.UnitSection{main, provider}
 }
@@ -499,7 +524,7 @@ func (f *fileSet) appendSections(kind FileKind, sections ...*unit.UnitSection) {
 // merge places one free-form section: after the typed lines of the one
 // section carrying its heading, or as its own section when no section or
 // more than one carries it.
-func (f *fileSet) merge(kind FileKind, section Section) {
+func (f *fileSet) merge(kind FileKind, section interfaceintent.UnitSection) {
 	entries := make([]*unit.UnitEntry, 0, len(section.Entries))
 	for _, entry := range section.Entries {
 		entries = append(entries, &unit.UnitEntry{Name: entry.Key, Value: entry.Value})
