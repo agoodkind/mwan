@@ -384,7 +384,8 @@ test-docker: wanconfig-builder-image
 
 # The deploy gate test starts two network namespaces and blocks ICMPv4 in one.
 # The firewall validator applies the production writer in a private namespace.
-# WAN startup also verifies protective rules before full configuration validation.
+# WAN startup verifies protective rules before validation and tests packet
+# forwarding and ruleset repair in the running daemon process.
 # These tests require the privileged builder with nftables and the cgo schema libs.
 .PHONY: test-firewall
 test-firewall: wanconfig-builder-image
@@ -399,7 +400,7 @@ test-firewall: wanconfig-builder-image
 		-e GIT_CONFIG_VALUE_0=/src \
 		$(WANCONFIG_BUILDER_IMAGE) \
 		go test -v -count=1 -tags 'netns firewallnetns' ./cmd/mwan \
-		-run '^(TestDeployGateEgressNetNS|TestCheckFirewallIsolatedKernel|TestWANStartupProtectsBeforeConfigValidation)$$'
+		-run '^(TestDeployGateEgressNetNS|TestCheckFirewallIsolatedKernel|TestWANStartupProtectsBeforeConfigValidation|TestWANFirewallRuntimePackets)$$'
 
 .PHONY: build-wanconfig-all test-docker-all
 build-wanconfig-all:

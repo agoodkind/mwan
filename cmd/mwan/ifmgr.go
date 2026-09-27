@@ -86,7 +86,7 @@ func runIfMgr(cfg *config.Config) error {
 		aliasSync.Wait()
 	}()
 
-	if role == "wan" && flags.role != "wan" {
+	if role == "wan" {
 		if err := bootstrapWANFirewall(ctx, networkjson.DefaultPath); err != nil {
 			return err
 		}
