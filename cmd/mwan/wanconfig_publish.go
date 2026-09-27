@@ -46,9 +46,9 @@ func (s *wanconfigSurface) Close() {
 }
 
 // startWanconfigSurface registers a store observer and starts management
-// publication in a worker. It returns nil when publication is disabled or
-// gateway projection fails. The worker logs datastore and provider failures
-// without blocking the daemon.
+// publication in a worker. It returns nil when publication is disabled,
+// gateway projection fails, or this role has no WAN configuration. The worker
+// logs datastore and provider failures without blocking the daemon.
 func startWanconfigSurface(
 	ctx context.Context,
 	logger *slog.Logger,
