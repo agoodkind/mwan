@@ -1,10 +1,11 @@
 # MWAN-305 plan validation, September 26, 2026
 
 The plans are NOT-READY for unattended execution. The approved design agrees
-with prior decisions, but eight plan corrections remain. The operator also
-requires the managed Astound testbed connection to be restored first under
-[MWAN-524](https://tack.home.goodkind.io/browse/MWAN-524). This audit changed
-no running service and performed no deployment.
+with prior decisions, but eight plan corrections remain. The subsequent
+[MWAN-524](https://tack.home.goodkind.io/browse/MWAN-524) repair restored
+Astound and passed live acceptance. The original audit changed no running
+service. The repair results are in the
+[execution ledger](2026-09-26-link-ownership-ledger.md).
 
 ## Reviewed scope
 
@@ -30,9 +31,9 @@ at those revisions, not implementation readiness.
 
 ### F1: Astound requires baseline restoration
 
-[BLOCKER for cutover] VM 213's deployed provider configuration excludes
-Astound. Its device, MAC `bc:24:11:a5:70:06`, is `ens23`, DOWN and unmanaged,
-with no matching networkd unit. Simulator LXC 903 is running.
+[RESOLVED by MWAN-524] At audit time, VM 213's provider configuration excluded
+Astound. Its device, MAC `bc:24:11:a5:70:06`, was `ens23`, DOWN and unmanaged,
+with no matching networkd unit. Simulator LXC 903 was running.
 
 [MWAN-331](https://tack.home.goodkind.io/browse/MWAN-331) deliberately removed
 Astound after proving configuration-only addition, tier changes, and removal.
