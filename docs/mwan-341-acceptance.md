@@ -78,7 +78,7 @@ that window. After removal, 63 probes per family succeeded without failure.
 
 | Check | Recorded result |
 | --- | --- |
-| Initial Configs check mode | `ok=184 failed=0`. |
+| Initial Configs check mode | The initial check-mode play reported `ok=184 failed=0`. |
 | Initial live deployment | The merged-main deploy to VM 113 reported `ok=242 changed=33 failed=0`. |
 | Initial installed gateway | MWAN `ab7543a` was installed. `ifmgr` was active, `nftables.service` was masked and inactive, and `inspect-firewall` passed. |
 | Initial egress and providers | The host-side gate reported `ipv4=yes ipv6=yes`. All three providers were healthy. The separate downstream checks below verified traffic through the gateway. |
