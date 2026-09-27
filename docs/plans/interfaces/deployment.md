@@ -26,7 +26,7 @@ Depend on merged MWAN-516 configuration and ownership contracts. Use its
 compatible released loader and embedded schema. The current Configs template
 loops over providers and appends internal and management entries with names
 and types. Extend those entries with the required ownership configuration.
-Runtime management and transit MAC discovery currently follows rendering.
+Runtime management and transit MAC discovery currently follow rendering.
 
 ### Implement the render
 
