@@ -3,8 +3,9 @@
 MWAN-305 replaces networkd management of gateway interfaces with explicit
 ownership of links, addresses, leases, and routes. This specification defines
 the intended behavior. It does not claim that the migration is implemented
-or deployed. The [migration plan](plans/2026-09-26-link-ownership.md) assigns
-the work to tickets and defines implementation and deployment checks.
+or deployed. The [coordination plan](plans/2026-09-26-link-ownership.md)
+defines work plans, PR boundaries, parallel execution, agent roles, and
+deployment order.
 
 At the inspected baseline, `03dd43a`, MWAN renders networkd units and also
 changes kernel addresses and routes directly. Networkd still manages provider

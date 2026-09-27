@@ -38,8 +38,9 @@ defines the BGP relationship with OPNsense.
 
 Follow the [MWAN-341 plan](plans/2026-09-26-mwan-341-firewall.md) and its
 adjacent goal and ledger for firewall ownership. Follow the
-[interface migration plan](plans/2026-09-26-link-ownership.md) for MWAN-305's
-ticket sequence and deployment checks. Earlier work includes the
+[interface migration coordination plan](plans/2026-09-26-link-ownership.md)
+for MWAN-305's work plans, agent assignments, and execution order. Earlier work
+includes the
 [translation plan](plans/2026-09-22-mwan-340-typed-translation.md),
 [provider-model completion plan](plans/2026-09-21-mwan-506-completion.md),
 [live validation plan](plans/2026-09-21-mwan-506-live-validation.md), and
