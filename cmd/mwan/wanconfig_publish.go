@@ -23,11 +23,8 @@ import (
 	"goodkind.io/mwan/internal/yangpub"
 )
 
-// wanconfigPublishTimeout limits each datastore publication call.
 const wanconfigPublishTimeout = 10 * time.Second
 
-// wanconfigSurface controls optional management publication. Its worker owns
-// the datastore connection and notification sender.
 type wanconfigSurface struct {
 	store     *wanstate.Store
 	log       *slog.Logger
@@ -45,10 +42,6 @@ func (s *wanconfigSurface) Close() {
 	}
 }
 
-// startWanconfigSurface registers a store observer and starts management
-// publication in a worker. It returns nil when publication is disabled,
-// gateway projection fails, or this role has no WAN configuration. The worker
-// logs datastore and provider failures without blocking the daemon.
 func startWanconfigSurface(
 	ctx context.Context,
 	logger *slog.Logger,
