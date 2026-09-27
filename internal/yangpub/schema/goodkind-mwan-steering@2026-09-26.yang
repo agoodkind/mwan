@@ -794,8 +794,8 @@ module goodkind-mwan-steering {
         presence
           "The gateway daemon owns its firewall tables.";
         description
-          "Local access and packet pins not already defined by the
-           interface, routing, and translation configuration.";
+          "The gateway daemon configures management access and
+           control-plane packet pins from these settings.";
         leaf management-interface {
           type if:interface-ref;
           mandatory true;
@@ -803,7 +803,7 @@ module goodkind-mwan-steering {
         }
         list management-service {
           key "protocol port";
-          description "A management service permitted on that interface.";
+          description "A management service permitted on the management-interface.";
           leaf protocol {
             type enumeration {
               enum tcp;

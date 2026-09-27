@@ -17,8 +17,8 @@ import (
 
 const firewallCheckTimeout = 30 * time.Second
 
-// runFirewallCheck validates configuration and applies the production writer
-// only after unshare has created a different network namespace.
+// runFirewallCheck validates the firewall configuration and applies its rules
+// only in a separate network namespace created by unshare.
 func runFirewallCheck(args []string) int {
 	isolated := len(args) == 3 && args[2] == "--isolated"
 	if len(args) != 2 && !isolated {

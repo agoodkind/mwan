@@ -152,8 +152,8 @@ func checkDefinitions(readback kernelRuleset, desired Ruleset) error {
 	return nil
 }
 
-// Inspect checks the kernel's chain properties and each rule expression as
-// nft prints it. Handles and counters do not participate in the comparison.
+// Inspect verifies each configured chain and rule in the kernel and returns a
+// normalized text representation. Handles and counters are excluded.
 func Inspect(ctx context.Context, desired Ruleset) (string, error) {
 	readback, err := readKernel(ctx)
 	if err != nil {

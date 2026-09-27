@@ -24,7 +24,7 @@ type Chain struct {
 	Rules    []string
 }
 
-// Set defines one destination set refreshed independently after startup.
+// Set defines a named nftables set. The destination refresher updates its elements.
 type Set struct {
 	Table    Table
 	Name     string
