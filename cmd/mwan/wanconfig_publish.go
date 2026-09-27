@@ -45,13 +45,10 @@ func (s *wanconfigSurface) Close() {
 	}
 }
 
-// startWanconfigSurface publishes the configuration the daemon just
-// loaded into the wanconfig management datastore and registers the
-// operational providers that serve live state, when this host's config
-// turns the gate on and the role carries the wan modules. It returns nil
-// when the host serves no surface. Every failure is logged and swallowed:
-// describing the system is not a precondition for running it, so the
-// daemon starts identically whether or not the surface came up.
+// startWanconfigSurface registers a store observer and starts management
+// publication in a worker. It returns nil when publication is disabled or
+// gateway projection fails. The worker logs datastore and provider failures
+// without blocking the daemon.
 func startWanconfigSurface(
 	ctx context.Context,
 	logger *slog.Logger,

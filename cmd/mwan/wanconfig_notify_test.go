@@ -98,11 +98,8 @@ func (b *blockingNotifier) SubscribeNotifications(_ context.Context, _ string, _
 	return nil
 }
 
-// TestStartNotifierSender_DoneWaitsForTheInFlightSend pins the shutdown
-// contract the surface's Close relies on: after the context is
-// cancelled, the done channel stays open while a send is still inside
-// the binding and closes once the send returns. Without that wait the
-// daemon frees the sysrepo connection under the send and crashes.
+// The management worker waits for in-flight sends before closing its datastore
+// connection. Closing that connection during a native send crashes the process.
 func TestStartNotifierSender_DoneWaitsForTheInFlightSend(t *testing.T) {
 	t.Parallel()
 	notifier := newSurfaceNotifier(quietLogger(), liveTestGateway())
