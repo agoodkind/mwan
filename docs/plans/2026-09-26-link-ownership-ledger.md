@@ -154,8 +154,8 @@ It does not establish seamless survival of existing sessions across failure.
 
 Gateway observations used `qm guest exec 213`. Packet captures used
 `tcpdump` on simulator ingress before masquerade. Downstream commands used
-SSH through Suburban to the clients' IPv4 addresses. The plan corrections
-were merged in MWAN PR #48. Implementation and live cutover remain pending.
+SSH through Suburban to the clients' IPv4 addresses. The maintainer merged
+the plan corrections in MWAN PR #48. Implementation and live cutover remain pending.
 
 ## Record future implementation results
 
