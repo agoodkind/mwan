@@ -1,9 +1,8 @@
 # Gateway firewall ownership
 
-MWAN-341 makes the gateway daemon responsible for installing and maintaining
-its firewall rules. Configs continues to deploy configuration and released
-binaries. It stops installing a ruleset file or running a service that loads
-that file.
+The gateway daemon installs and maintains its firewall rules. Configs deploys
+the network configuration and released binary. The gateway no longer loads a
+separate ruleset file through `nftables.service`.
 
 This specification defines the required behavior. The
 [implementation plan](plans/2026-09-26-mwan-341-firewall.md) defines the code
@@ -11,17 +10,16 @@ changes, tests, and deployment sequence.
 
 ## Current behavior
 
-Configs generates filtering, IPv4 address translation, and packet marking
-rules. Its ruleset also creates the IPv6 translation chains. Loading that
-file deletes the existing ruleset before installing the generated rules.
+The gateway firewall module installs filtering, IPv4 address translation,
+packet marking, and destination-set definitions. The translation module
+creates its IPv6 NAT chains and installs edge-address exceptions. Its kernel
+packet program translates IPv6 prefixes. The steering module maintains its
+own table.
 
-The daemon separately maintains IPv6 edge-address exceptions and steering
-rules. IPv6 prefix translation already uses a kernel packet program installed
-by MWAN-340. That translator remains responsible for prefix translation.
-
-The daemon already starts before device discovery and the network manager.
-Its service currently reports startup before a successful firewall apply.
-Its IPv6 edge-rule writer also requires chains created by the ruleset file.
+The gateway daemon starts before device discovery and the network manager. It
+installs and inspects protective rules before writing network configuration.
+The gateway service reports readiness after that inspection and the required
+network-file writes. Working ISP links are not required for readiness.
 
 ## Rule ownership
 
@@ -34,8 +32,8 @@ Each table has one rule writer within the gateway daemon:
 | The steering module | It assigns providers to connections and excludes paths that cannot serve an address family. |
 
 Each component creates the tables and chains it needs. It replaces only its
-own rules. Moving the remaining rules into the daemon does not require
-combining these components or changing the translation configuration.
+own rules. The modules share typed translation configuration without combining
+their tables.
 
 The destination refresher continues to update the addresses in the configured
 destination sets. The daemon creates missing sets and preserves their
@@ -98,9 +96,9 @@ set definitions and the refresher repopulates their contents. Acceptance
 checks set recovery separately from rule recovery.
 
 Drift detection watches the authoritative daemon configuration instead of the
-retired ruleset file. Temporary manual rule changes are replaced during
-reconciliation; operator instructions must explain how to make a configured
-change persist.
+retired ruleset file. Reconciliation replaces temporary manual rule changes.
+A firewall change persists after deployment of the updated network
+configuration.
 
 ## Packet behavior
 

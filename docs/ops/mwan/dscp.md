@@ -90,29 +90,23 @@ set-tos   = cs1
 descr     = Tag streaming device for AT&T pin
 ```
 
-### mwan half (nft ip dscp)
+### MWAN half (forced DSCP)
 
-In [nftables.conf.j2](https://github.com/agoodkind/configs/blob/main/mwan/config/nftables.conf.j2), `table inet
-mangle` / `chain prerouting`, right after the existing `@att_pinned` rules and
-before the v6 numgen load-balancer and the `ct state established,related`
-restore:
+The AT&T provider's `forced-dscp` value in the typed network configuration is
+8. The gateway daemon installs IPv4 and IPv6 marking rules in the internal
+interface's `inet mangle` prerouting chain. New CS1-tagged connections receive
+AT&T's firewall mark before load balancing. Connection tracking stores that
+mark for later packets. The daemon maintains the rules, including after a
+missing table or chain is recreated.
 
-```
-# Pin DSCP-tagged app traffic (set by OPNsense scrub set-tos) to AT&T (mark 1).
-ip dscp cs1 meta mark set 1
-ip6 dscp cs1 meta mark set 1
-```
+Do not edit the retired gateway nftables template or add a durable rule with
+`nft`. Change the provider's `forced-dscp` configuration and deploy it to
+change this policy. No other provider may use the same DSCP value.
 
-This works for both families because the inet mangle chain (priority mangle)
-runs before the IPv4 numgen load-balancer in `table ip nat` (priority dstnat),
-so the mark is set before the `meta mark 0` guard there skips it. The existing
-postrouting `ct mark set meta mark` and the prerouting `ct state
-established,related meta mark set ct mark` carry the mark across the rest of the
-flow, identical to how `att_pinned` behaves today.
+## Test OPNsense tagging
 
-## GUI-guided PoC (manual, about 10 minutes, no code deploy)
-
-This proves the path end to end before any Ansible or daemon work.
+The MWAN marking policy already exists. This procedure tests the undeployed
+OPNsense tag against that policy.
 
 1. Identify the streaming device LAN addresses. On the mwan VM during playback,
    the device's v6 appears as the conntrack source for Hulu flows (for example
@@ -127,22 +121,19 @@ This proves the path end to end before any Ansible or daemon work.
    - TOS / DSCP: `cs1`.
    - Description: `Tag streaming device for AT&T pin`.
    - Save, then Apply changes.
-4. mwan, live nft rules (PoC only, reverted on next nft reload):
+4. Inspect the installed MWAN policy without changing kernel state:
+   ```bash
+   mwan deploy-gate inspect-firewall /etc/mwan/network.json /usr/local/share/wanconfig/yang
    ```
-   nft add rule inet mangle prerouting ip dscp cs1 ct state new meta mark set 1
-   nft add rule inet mangle prerouting ip6 dscp cs1 ct state new meta mark set 1
-   ```
-   These append to the chain. `ct state new` marks fresh flows; established flows
-   are restored from ct mark by the existing rule, so append order is safe for a
-   PoC. The permanent placement is after the `@att_pinned` rules as shown above.
-5. Restart Hulu on the device (so flows are new), then watch egress on the mwan
-   VM. A simple watcher over `conntrack -L` filtered to Hulu destinations should
-   show `mark=1` regardless of which CDN IP Hulu rotates to, since the pin now
-   keys on DSCP, not destination.
+   The command fails when the configured rules differ from the current kernel.
+5. Restart Hulu on the device to create new connections. Check `conntrack -L`
+   on MWAN for `mark=1` across the changing CDN destinations. Confirm that
+   untagged traffic still load-balances.
 
-If it works, promote it: add the two nft lines to the mwan nftables template,
-and either keep the scrub rule in the router config or program it from
-`mwan-opnsense` with an XPath write.
+Keep the successful scrub rule in the router configuration. Automating it
+later through `mwan-opnsense` requires a verified XPath write of a scrub rule
+subtree and a filter reload. The MWAN provider configuration already specifies
+CS1; no gateway nftables template edit is needed.
 
 ## Verification
 

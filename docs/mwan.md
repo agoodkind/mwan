@@ -83,6 +83,9 @@ load-balances.
   - The primary speaker terminates the ISP links.
   - The primary speaker marks new flows onto a WAN.
   - The primary speaker translates addresses on the chosen WAN.
+  - The gateway daemon installs the input, forwarding, translation, and
+    marking rules. It repairs missing rules without a separate gateway
+    `nftables.service`.
 - **Failover speaker:** The failover speaker is a second BGP speaker on ISP-3 and
 does not load-balance. The failover speaker masquerades so every outbound
 flow can leave without a matching prefix. The failover speaker does not
