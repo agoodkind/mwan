@@ -29,12 +29,12 @@ before removing it globally. No live service was changed.
 
 September 27, 2026: [MWAN PR #48](https://github.com/agoodkind/mwan/pull/48)
 merged the specification, six slice plans, coordination plan, and corrected
-audit as `8d26c5ab078061125bfd91806332622b35fefc26`. Its final signed head
-was `7906f5c45b901344fd71d3e8109e99e2581f3f93`. The independent plan review
-found no remaining conflict after the audit correction. The automated reviewer
-approved the final head, all required checks passed, and no review thread
-remained open. This merge changed documentation only. No MWAN-305 interface
-ownership code or live gateway configuration changed.
+audit as `8d26c5ab078061125bfd91806332622b35fefc26`. The review ended at
+signed head `7906f5c45b901344fd71d3e8109e99e2581f3f93`. The independent
+plan review found no remaining conflict after the audit correction. The
+automated reviewer approved the final head. All required checks passed, and
+no review thread remained open. This merge changed documentation only. No
+MWAN-305 interface ownership code or live gateway configuration changed.
 
 ## Track slice execution
 
@@ -52,7 +52,7 @@ worktrees. Neither has a submitted code PR or runtime acceptance yet.
 | MWAN-227 | 227-delegation | Execution has not started. |
 | MWAN-517 | 517-autoconfiguration; 517-dhcpv6 | Execution has not started. |
 | MWAN-518 | 518-restart | Execution has not started. |
-| MWAN-505 | 505-route-repair | The route and rule deletion mechanism was traced at `8d26c5a`; reproduction and implementation have begun in `codex/mwan-505-route-repair`. No code PR or acceptance exists. |
+| MWAN-505 | 505-route-repair | Source review traced the route and rule deletion mechanism at `8d26c5a`; reproduction and implementation have begun in `codex/mwan-505-route-repair`. No code PR or acceptance exists. |
 | MWAN-521 | 521-configuration; 521-deployment | Execution has not started. |
 | MWAN-522 | 522-acceptance | Execution has not started. |
 | MWAN-519 | 519-first-connection | Execution has not started. |
