@@ -35,7 +35,7 @@ const (
 	// EvLinkDown fires when the watched iface goes administratively or
 	// operationally down.
 	EvLinkDown
-	// EvResync requests a complete kernel snapshot after observation loses continuity.
+	// EvResync reports a complete kernel snapshot after observation loses continuity.
 	EvResync
 )
 
