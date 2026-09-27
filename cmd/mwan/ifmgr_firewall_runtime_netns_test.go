@@ -262,7 +262,7 @@ func assertRuntimeNoReconcileLoop(t *testing.T, daemon *runtimeDaemon) {
 	first := 0
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		first = bytes.Count([]byte(runtimeDaemonLog(t, daemon)), []byte("firewall policy reconciled"))
+		first = countRuntimeFirewallReconciles(runtimeDaemonLog(t, daemon))
 		if first > 0 {
 			break
 		}
@@ -274,11 +274,21 @@ func assertRuntimeNoReconcileLoop(t *testing.T, daemon *runtimeDaemon) {
 	deadline = time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		time.Sleep(400 * time.Millisecond)
-		second := bytes.Count([]byte(runtimeDaemonLog(t, daemon)), []byte("firewall policy reconciled"))
+		second := countRuntimeFirewallReconciles(runtimeDaemonLog(t, daemon))
 		if second != first {
 			t.Fatalf("WAN daemon reconciled without a timer or external change: %s", runtimeDaemonLog(t, daemon))
 		}
 	}
+}
+
+func countRuntimeFirewallReconciles(log string) int {
+	count := 0
+	for _, line := range strings.Split(log, "\n") {
+		if strings.Contains(line, `"msg":"ifmgr: Reconcile"`) && strings.Contains(line, `"module":"firewall"`) {
+			count++
+		}
+	}
+	return count
 }
 
 func waitRuntimeForwarding(t *testing.T, daemon *runtimeDaemon, timeout time.Duration) {
