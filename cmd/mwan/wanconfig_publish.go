@@ -131,7 +131,7 @@ func (s *wanconfigSurface) initialize(
 		<-senderDone
 	}()
 	if err := registerLiveStateProviders(ctx, s.log, pub, s.store, gateway, rejections); err != nil {
-		s.log.ErrorContext(ctx, "wanconfig: provider registration failed", "err", err)
+		s.log.ErrorContext(ctx, "wanconfig: provider registration failed; management surface disabled", "err", err)
 		return
 	}
 	if ctx.Err() != nil {
