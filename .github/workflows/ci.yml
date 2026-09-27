@@ -90,6 +90,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: make test-netns
 
+  # The firewall tests need the privileged builder and cgo schema libraries.
+  firewall:
+    name: mwan firewall tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Run the firewall tests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: make test-firewall
+
   # The go job's quality matrix runs the suite on amd64 runners only. This job
   # runs the whole suite, cgo binding included, in the arm64 builder image on
   # a native arm64 runner.
