@@ -130,6 +130,10 @@ func runWANFirewallRuntimeChild(t *testing.T) {
 	assertRuntimeTCP(t, wan.namespace, lan.namespace, "tcp4", "198.51.100.2:3001", "192.0.2.2:0", true)
 	setRuntimeNamespace(t, gateway)
 	assertRuntimeTCP(t, wan.namespace, lan.namespace, "tcp6", "[2001:db8:2::2]:3002", "[2001:db8:b01:fe::2]:0", true)
+	setRuntimeNamespace(t, gateway)
+	assertRuntimeOwnedReturnRouteRepair(t, first, gateway, wan.namespace, lan.namespace)
+	setRuntimeNamespace(t, gateway)
+	assertRuntimeOwnedPolicyRuleRepair(t, first, gateway, wan.namespace, lan.namespace)
 
 	setRuntimeNamespace(t, gateway)
 	runRuntimeNFT(t, "flush", "ruleset")
@@ -156,6 +160,120 @@ func runWANFirewallRuntimeChild(t *testing.T) {
 	assertRuntimeTCP(t, wan.namespace, lan.namespace, "tcp6", "[2001:db8:2::2]:3006", "[2001:db8:b01:fe::2]:0", true)
 	assertRuntimeNoReconcileLoop(t, second)
 	assertRuntimeDaemonRunning(t, second)
+}
+
+func assertRuntimeOwnedReturnRouteRepair(t *testing.T, daemon *runtimeDaemon, gateway, wan, lan netns.NsHandle) {
+	t.Helper()
+	_, foreignDestination, err := net.ParseCIDR("192.0.2.0/29")
+	if err != nil {
+		t.Fatal(err)
+	}
+	internal, err := netlink.LinkByName("enmwanbr0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign := &netlink.Route{
+		LinkIndex: internal.Attrs().Index, Dst: foreignDestination,
+		Table: 150, Protocol: unix.RTPROT_STATIC, Scope: netlink.SCOPE_LINK,
+	}
+	if err := netlink.RouteAdd(foreign); err != nil {
+		t.Fatal(err)
+	}
+	var owned *netlink.Route
+	var routes []netlink.Route
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) && owned == nil {
+		var err error
+		routes, err = netlink.RouteListFiltered(unix.AF_INET, &netlink.Route{Table: 100}, netlink.RT_FILTER_TABLE)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := range routes {
+			if routes[i].Dst != nil && routes[i].Dst.String() == "192.0.2.0/29" {
+				owned = &routes[i]
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if owned == nil {
+		t.Fatalf("owned internal return route missing before deletion: %v", routes)
+	}
+	if err := netlink.RouteDel(owned); err != nil {
+		t.Fatal(err)
+	}
+	assertRuntimeTCP(t, wan, lan, "tcp4", "198.51.100.2:3009", "192.0.2.2:0", false)
+	setRuntimeNamespace(t, gateway)
+	deletedAt := time.Now()
+	deadline = deletedAt.Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		routes, err := netlink.RouteListFiltered(unix.AF_INET, &netlink.Route{Table: 100}, netlink.RT_FILTER_TABLE)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, route := range routes {
+			if route.Dst != nil && route.Dst.String() == "192.0.2.0/29" {
+				foreignRoutes, err := netlink.RouteListFiltered(unix.AF_INET,
+					&netlink.Route{Table: 150}, netlink.RT_FILTER_TABLE)
+				if err != nil || len(foreignRoutes) != 1 {
+					t.Fatalf("unrelated route changed during repair: %v, %v", foreignRoutes, err)
+				}
+				t.Logf("owned route restored after %s", time.Since(deletedAt))
+				assertRuntimeTCP(t, wan, lan, "tcp4", "198.51.100.2:3010", "192.0.2.2:0", true)
+				return
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("owned return route was not restored before the 1h periodic reconcile; daemon log: %s", runtimeLogTail(t, daemon, 30))
+}
+
+func assertRuntimeOwnedPolicyRuleRepair(t *testing.T, daemon *runtimeDaemon, gateway, wan, lan netns.NsHandle) {
+	t.Helper()
+	rules, err := netlink.RuleList(unix.AF_INET)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var owned *netlink.Rule
+	for i := range rules {
+		if rules[i].Priority == 100 && rules[i].Table == 100 && rules[i].Mark == 1 {
+			owned = &rules[i]
+			break
+		}
+	}
+	if owned == nil {
+		t.Fatalf("owned policy rule missing before deletion: %v", rules)
+	}
+	if err := netlink.RuleDel(owned); err != nil {
+		t.Fatal(err)
+	}
+	deletedAt := time.Now()
+	deadline := deletedAt.Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		rules, err = netlink.RuleList(unix.AF_INET)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, rule := range rules {
+			if rule.Priority == 100 && rule.Table == 100 && rule.Mark == 1 {
+				t.Logf("owned rule restored after %s", time.Since(deletedAt))
+				assertRuntimeTCP(t, wan, lan, "tcp4", "198.51.100.2:3011", "192.0.2.2:0", true)
+				setRuntimeNamespace(t, gateway)
+				return
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("owned policy rule was not restored before the 1h periodic reconcile; daemon log: %s", runtimeLogTail(t, daemon, 30))
+}
+
+func runtimeLogTail(t *testing.T, daemon *runtimeDaemon, count int) string {
+	t.Helper()
+	lines := strings.Split(runtimeDaemonLog(t, daemon), "\n")
+	if len(lines) > count {
+		lines = lines[len(lines)-count:]
+	}
+	return strings.Join(lines, "\n")
 }
 
 type runtimeDaemon struct {

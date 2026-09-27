@@ -70,7 +70,7 @@ func TestRouteUpdateToEventDefaultV4(t *testing.T) {
 	}
 }
 
-func TestRouteUpdateToEventNonDefaultIgnored(t *testing.T) {
+func TestRouteUpdateToEventNonDefaultPreserved(t *testing.T) {
 	m := newTestMonitor("eth0", 7)
 	_, dst, _ := net.ParseCIDR("192.0.2.0/24")
 	upd := netlink.RouteUpdate{
@@ -79,10 +79,15 @@ func TestRouteUpdateToEventNonDefaultIgnored(t *testing.T) {
 			LinkIndex: 7,
 			Family:    unix.AF_INET,
 			Dst:       dst,
+			Table:     100,
+			Priority:  42,
+			Protocol:  8,
 		},
 	}
-	if got := m.routeUpdateToEvent(upd); got.Kind != EvUnknown {
-		t.Fatalf("expected EvUnknown for non-default, got %s", got.Kind)
+	got := m.routeUpdateToEvent(upd)
+	if got.Kind != EvRouteAdded || got.Dest != "192.0.2.0/24" ||
+		got.TableID != 100 || got.Metric != 42 || got.Protocol != 8 {
+		t.Fatalf("non-default route event lost identity: %+v", got)
 	}
 }
 
