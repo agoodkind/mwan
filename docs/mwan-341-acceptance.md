@@ -3,6 +3,8 @@
 The testbed deployment used merged MWAN main `ab7543a` and merged Configs
 main `d2aeefe2`. Production deployed the same MWAN revision from merged
 Configs main. Ticket reconciliation remains pending.
+The deployment gate still needs a downstream probe before MWAN-354 and the
+epic can close.
 
 ## Testbed results
 
@@ -20,11 +22,18 @@ Configs main. Ticket reconciliation remains pending.
 | DSCP packets | Twenty IPv4 and twenty IPv6 requests marked CS1 succeeded. AT&T simulator ingress captured all 40 unique paths; Webpass captured zero. |
 | Observer after reboot | The downstream observer recorded 194 probes per family with zero failures. |
 | Clean-room review | The 31-rule review reported B0/SF0/N1. |
+| Deployed egress gate | The host probe passed, but it did not test testbed MWAN translation. The required IPv4 translation failure exercise remains pending. |
 
 Exact execution times and command output locations for testbed checks were
 not supplied. The [implementation plan](plans/2026-09-26-mwan-341-firewall.md)
 includes MWAN-341 checks that are not recorded here. It assigns direct BGP,
 tunnel, and packet-size integrated tests to MWAN-507.
+
+The suburban host routes `1.1.1.1` through `10.240.0.1` on `vmbr0`.
+That route bypasses testbed OPNsense VM 201 and MWAN VM 213. The current
+hypervisor-local egress gate therefore cannot detect a broken testbed IPv4
+translation path. A corrected gate must probe from downstream of MWAN and
+reject an IPv4 translation failure while IPv6 still works.
 
 ## Production results
 
@@ -33,7 +42,7 @@ tunnel, and packet-size integrated tests to MWAN-507.
 | Configs check mode | `ok=184 failed=0`. |
 | Live deployment | The merged-main deploy to VM 113 reported `ok=242 changed=33 failed=0`. |
 | Installed gateway | MWAN `ab7543a` was installed. `ifmgr` was active, `nftables.service` was masked and inactive, and `inspect-firewall` passed. |
-| Egress and providers | The gate reported `ipv4=yes ipv6=yes`. All three providers were healthy. |
+| Egress and providers | The existing host-side gate reported `ipv4=yes ipv6=yes`. All three providers were healthy. The separate downstream checks below verified traffic through the gateway. |
 | Gateway connectivity | `mwan debug connectivity` reported P4, P6, and NPT OK for AT&T, Monkeybrains, and Webpass. |
 | Fresh downstream connections | Twenty of twenty IPv4 and twenty of twenty IPv6 requests succeeded after deployment. |
 | Provider source addresses | Successful `ifconfig.co` replies showed 9 AT&T and 9 Webpass IPv4 sources, and 9 AT&T and 7 Webpass IPv6 sources. Other requests returned HTTP 429 rate limits. The counts do not establish the full selection distribution. |
@@ -54,4 +63,7 @@ No live dashboard query was supplied.
 | `sf-att-1335` | 08:57:08 | 08:57:35 |
 | `sf-1335-ipv6` | 08:57:10 | 08:57:40 |
 
-Ticket reconciliation remains pending before MWAN-341 closure.
+The production host routes through OPNsense, but its host-side gate remains
+outside the downstream probe contract. The observed downstream recovery is
+valid; a corrected deployment gate and ticket reconciliation remain before
+MWAN-341 closure.
