@@ -47,7 +47,7 @@ No interface-owner cutover has begun.
 | Ticket | Slices | Current execution state |
 | --- | --- | --- |
 | MWAN-524 | Restore the managed Astound testbed connection first. | Configs PR #522 merged. Deployment, restart, downstream traffic, balancing, and recovery passed. |
-| MWAN-516 | 516-model; 516-state | [MWAN PR #51](https://github.com/agoodkind/mwan/pull/51) merged the standalone identity change as `959fbd3a65955e8156f2ea6c9bf2c90febef762c`. The merged release passed the current testbed traffic battery. Shared model and state work remain. |
+| MWAN-516 | 516-model; 516-state | [MWAN PR #51](https://github.com/agoodkind/mwan/pull/51) merged standalone identity as `959fbd3a65955e8156f2ea6c9bf2c90febef762c`. [MWAN PR #55](https://github.com/agoodkind/mwan/pull/55) merged shared interface intent as `2c6df538fbb1174a9189f3098d6ac458256857f4`. Both merged releases passed separate testbed traffic checkpoints. State publication remains. |
 | MWAN-397 | 397-links | Execution has not started. |
 | MWAN-523 | 523-observation | Execution has not started. |
 | MWAN-398 | 398-addresses; 398-dhcpv4 | Execution has not started. |
@@ -259,6 +259,61 @@ existing sessions survive a provider failure or that detection is instant.
 This checkpoint changed no interface owner. It did not repeat the deployed
 owned-route deletion test from MWAN-505. Complete MWAN-505 testbed acceptance
 and production promotion remain separate from this traffic checkpoint.
+
+### Shared interface model testbed checkpoint, September 27, 2026
+
+[MWAN PR #55](https://github.com/agoodkind/mwan/pull/55) merged the shared
+interface intent and ownership model as
+`2c6df538fbb1174a9189f3098d6ac458256857f4`. Its final signed head was
+`f9bdf4faad15bfb817ae7a770c4e37783b21b3a7`. The full local check and
+test suite passed. Required CI passed, the automated reviewer approved the
+final head, and all review threads were resolved. The optional Govulncheck
+job repeated the GoBGP advisory database mismatch recorded above. The merge
+changed the model and loader, but did not transfer live interface ownership.
+
+The MWAN release workflow published `202609272028-35-2c6df53` from the exact
+merge commit. Its `mwan_linux_amd64.tar.gz` SHA-256 was
+`1d60f1a8e3dfb83fc80fdb3fecd32084089209142b58ef4e373dd16916b130dc`.
+[Configs PR #529](https://github.com/agoodkind/configs/pull/529) pinned that
+release only for testbed. The signed pin `a02b44b4` merged as
+`770833cccf0bb5bbb933df3c9c0de309fd50c423`. Configs lint, required CI,
+and automated review passed. The production release pin did not change.
+
+From clean merged Configs main, the supported check command was
+`./configsctl deploy deploy-mwan --limit mwan_suburban_servers --check --diff`.
+It reported 176 successful tasks, 18 changes, and zero failures. The apply
+command was `./configsctl deploy deploy-mwan --limit mwan_suburban_servers`.
+It reported 229 successful tasks, 24 changes, zero unreachable hosts, and zero
+failures. Deployment trace `20260927-135055-deploy-679436` passed the
+controller reconnect, reboot, egress, and mapped-address gates without
+rollback. VM 213 reported `commit=2c6df53 dirty=clean` after the deploy.
+
+Clients 225 and 226 each used one network interface without an OOB path.
+Both clients returned HTTP 200 over IPv4 and IPv6 after deployment. Client
+225 completed 100 fresh IPv4 and 100 fresh IPv6 HTTP connections, each with
+a distinct source port. Simulator ingress captures attributed IPv4 requests
+to Webpass 49 and AT&T 51, and IPv6 requests to Webpass 52 and AT&T 48.
+All 100 indices per family appeared once across those two providers.
+
+A controlled fault lowered the Webpass and AT&T simulator uplinks with
+verified 600-second restoration timers. An early sample of 10 fresh
+connections per family failed while both providers still reported healthy.
+The health journal then recorded failed probes. The operator restored the
+links before AT&T recorded its second failed probe. That sample does not
+measure forwarding after health convergence.
+
+The repeated fault used fresh verified restoration timers. The health file
+reported Webpass and AT&T unhealthy while Monkeybrains and Astound remained
+healthy. Client 225 then completed 100 of 100 fresh IPv4 and 100 of 100 fresh
+IPv6 HTTP connections, with distinct source ports. Both uplinks were restored
+and the timers stopped. Both clients returned HTTP 200 over IPv4 and IPv6;
+all five health states returned to healthy. This proves fresh-flow failover
+after health convergence and recovery on the deployed model release. It does
+not measure session survival or exact interruption duration.
+
+The deployed model still leaves interface control with networkd. MWAN-516
+state publication, MWAN-505 owned-route deletion on the deployed release,
+later interface-owner cutover, and production acceptance remain unfinished.
 
 ## Record future implementation results
 
