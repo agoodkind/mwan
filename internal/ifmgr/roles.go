@@ -75,6 +75,8 @@ var roleModules = map[string][]string{
 	"wan": {
 		// health writes the state consumed by later WAN-role modules.
 		"health",
+		// firewall installs filtering and IPv4 translation before NPT reads it.
+		"firewall",
 		// npt resolves each IPv6 translation before routes select eligible WANs.
 		"npt",
 		"wan.routes",

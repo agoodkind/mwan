@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 	"testing"
@@ -58,6 +59,7 @@ func TestInterfacesLiveItems_ServesTheSnapshot(t *testing.T) {
 		Reached: true,
 	})
 	store.SetIntendedRuleset("chain prerouting:\nchain postrouting:\n")
+	store.SetOwnedIntendedRuleset("firewall", "inet filter input:\n", errors.New("chain input was not installed"))
 
 	items := interfacesLiveItems(store.Snapshot(), liveTestGateway(), nil)
 
@@ -72,7 +74,7 @@ func TestInterfacesLiveItems_ServesTheSnapshot(t *testing.T) {
 		attBase + "/carrying":                         "true",
 		"/ietf-interfaces:interfaces/interface[name='enatt0']/ietf-ip:ipv6/goodkind-mwan-steering:translation/state/resolved-external-prefix": "2001:db8:a::/60",
 		"/ietf-interfaces:interfaces/goodkind-mwan-steering:steering-group/state/active-tier":                                                 "0",
-		"/ietf-interfaces:interfaces/goodkind-mwan-steering:steering-group/state/intended-ruleset":                                            "chain prerouting:\nchain postrouting:\n",
+		"/ietf-interfaces:interfaces/goodkind-mwan-steering:steering-group/state/intended-ruleset":                                            "firewall:\ninet filter input:\nerror: chain input was not installed\nnpt:\nchain prerouting:\nchain postrouting:\n",
 		peerBase + "/established": "true",
 		peerBase + "/stale":       "false",
 	}
