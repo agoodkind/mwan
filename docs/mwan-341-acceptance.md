@@ -32,9 +32,36 @@ are Done in Tack. MWAN-341 remains In Progress until its ledger merges.
 | HTTPS gate fault | A timed, temporary nftables rule changed only OPNsense source `10.240.240.2` traffic to `1.1.1.1` into source `192.0.2.1`. The HTTPS gate returned `ipv6=yes ipv4=no` and exit 1. After removal and timer stop, it returned `ipv6=yes ipv4=yes`; the temporary table was absent. |
 | HTTPS release load balancing | Guest 225 completed 32 IPv4 and 32 IPv6 HTTPS requests. ISP captures counted Webpass 17 and AT&T 15 IPv4 connection starts, and Webpass 18 and AT&T 14 IPv6 starts. |
 | Restart handler correction | Configs PR #526 merged as `b612d1c8`. A testbed config newline forced the handler. Check mode reported `ok=174 failed=0`; the live play reported `ok=227 failed=0`. Ansible recorded the asynchronous restart, reconnect, and completed job. Trace `20260927-052653-deploy-480650` returned zero for reboot, egress, and owned addresses. A fresh gate check and guest 225 passed IPv4 and IPv6 after reboot. |
+| Final-release balancing | Guest 225 completed 100 tagged, fresh HTTP connections per family to unpinned destinations. Every request received a reply. The ISP captures account for each request index exactly once: Webpass/AT&T selected 55/45 for IPv4 and 56/44 for IPv6. |
+| Destination-set reconciliation | Both pinned sets retained their seed elements and interval flags after a testbed daemon restart. After deletion of `inet mangle`, the daemon recreated the table, and the refresher reported one restored element per set at 06:16:06 PDT. `inspect-firewall` passed, the daemon was active, and three downstream requests per family succeeded. |
 
-Exact execution times and command output locations for the first testbed
-checks were not supplied. The [implementation plan](plans/2026-09-26-mwan-341-firewall.md)
+The final-release flow generator and its JSONL records remain on guest 225 under
+`/root/mwan-341-flows-unpinned.py` and `/root/mwan-341-tagged-{v4,v6}.jsonl`.
+The four packet captures remain on the suburban hypervisor under
+`/var/log/mwan-341-acceptance/mwan341-tagged-{v4,v6}-{webpass,att}.pcap`.
+Each HTTP path contains its family and request index. The generator used
+`1.1.1.1` and `2606:4700:4700::1111`; `nft list table inet mangle` confirmed
+that the pinned sets instead contained `1.0.0.1` and
+`2606:4700:4700::1001`. The generator returned 100 replies and 100 distinct
+client source ports per family. Packet payloads identify all indices from 0
+through 99 on exactly one provider interface per family. The capture files'
+SHA-256 values, in IPv4 Webpass, IPv4 AT&T, IPv6 Webpass, IPv6 AT&T order,
+are `f4346e3bb4484061716dde28ed86401abdabfd0b2a0f0ddd97583f9b4a229181`,
+`ed38ad08622f0ae739ed3f07e8d873e3bbf7138d50501d1cd4aa0b78f69fe586`,
+`8434eedde0282de3d9fbbb7de0f2e0afa1a357273108bb789c2418509b2bf1c6`,
+and `4743d1bdfbc63269437f84ed7720b548b97ba1da508b5b7261ab24ab0978e5e7`.
+
+The destination-set check used `nft -j list table inet mangle` before and
+after `systemctl restart mwan-ifmgr@wan`. Both reads returned interval sets
+with the same IPv4 and IPv6 seed elements. The test then deleted the testbed
+`inet mangle` table with a timed service-restart rescue prepared. The daemon
+recreated the table, and the existing destination refresher restored both
+seed elements before the rescue timer fired. The rescue timer was stopped.
+The refresher journal records `Pinned sets updated (v4: 1, v6: 1)` at
+06:16:06 PDT.
+
+The record does not include exact execution times or command output locations
+for the first testbed checks. The [implementation plan](plans/2026-09-26-mwan-341-firewall.md)
 includes MWAN-341 checks that are not recorded here. It assigns direct BGP,
 tunnel, and packet-size integrated tests to MWAN-507.
 
@@ -43,8 +70,8 @@ the MWAN path. The current gate checks the OPNsense route and makes a
 source-bound HTTPS request inside VM 201. During the second deployment, the
 downstream observer first failed at 10:31:20 UTC for IPv4 and 10:31:17 UTC
 for IPv6. IPv4 resumed at 10:32:04 UTC and IPv6 at 10:32:02 UTC. The
-controlled translation fault later
-produced nine IPv4 observer failures while all 25 IPv6 probes succeeded in
+controlled translation fault later produced nine IPv4 observer failures
+while all 25 IPv6 probes succeeded in
 that window. After removal, 63 probes per family succeeded without failure.
 
 ## Production results
@@ -71,8 +98,8 @@ reboot. IPv4 recovered at 08:57:11 UTC and IPv6 at 08:57:12 UTC. From
 08:57:12 through 08:59:29 UTC, it recorded 135 IPv4 and 136 IPv6
 successes with zero failures.
 
-The latest Cloudflare alert emails reported these pool transitions in UTC.
-No live dashboard query was supplied.
+Cloudflare alert emails reported these transitions during the first
+production deployment. The record includes no live dashboard query.
 
 | Pool | Unhealthy email | Healthy email |
 | --- | --- | --- |
@@ -86,4 +113,4 @@ IPv6 failures from 12:45:34 through 12:46:16 UTC. From 12:46:17 through
 emails reported `sf-att-1335` unhealthy at 12:46:24 and healthy at 12:47:08,
 and `sf-webpass-1335` unhealthy at 12:46:25 and healthy at 12:47:03. No new
 unhealthy email for `sf-1335-ipv6` appeared in that interval. These are email
-times; no live dashboard query was supplied.
+times. The record includes no live dashboard query.
