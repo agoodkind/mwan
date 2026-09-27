@@ -39,6 +39,9 @@ func newTestDeps(out *strings.Builder, clock *fakeClock) deployGateDeps {
 		out:   out,
 		now:   clock.Now,
 		sleep: clock.Sleep,
+		probeDownstream: func(context.Context, downstreamProbeConfig, requiredEgressFamilies) (bool, string) {
+			return true, "ipv6=yes ipv4=yes"
+		},
 	}
 }
 
@@ -170,12 +173,14 @@ func TestWaitDeployRecordsSuccessfulVerdict(t *testing.T) {
 		return guestExecResponse{ExitCode: exitDeployGateOK, OutData: "owned addresses: 2 present, 0 missing\n"}, nil
 	}
 	deps.ping6 = func(context.Context, netip.Addr, time.Duration) (time.Duration, error) {
-		return time.Millisecond, nil
+		t.Fatal("host IPv6 ping ran during wait-deploy")
+		return 0, nil
 	}
 	deps.ping4 = func(
 		context.Context, string, netip.Addr, time.Duration,
 	) (time.Duration, error) {
-		return time.Millisecond, nil
+		t.Fatal("host IPv4 ping ran during wait-deploy")
+		return 0, nil
 	}
 	verdictPath := filepath.Join(t.TempDir(), "verdict.json")
 
@@ -231,15 +236,9 @@ func TestWaitDeploySkipsEgressAfterDefinitiveRebootFailure(t *testing.T) {
 	deps.readBootID = func(_ context.Context, _ int) (string, error) {
 		return testOldBootID, nil
 	}
-	deps.ping6 = func(context.Context, netip.Addr, time.Duration) (time.Duration, error) {
-		t.Fatalf("IPv6 egress probe ran after definitive reboot failure")
-		return 0, nil
-	}
-	deps.ping4 = func(
-		context.Context, string, netip.Addr, time.Duration,
-	) (time.Duration, error) {
-		t.Fatalf("IPv4 egress probe ran after definitive reboot failure")
-		return 0, nil
+	deps.probeDownstream = func(context.Context, downstreamProbeConfig, requiredEgressFamilies) (bool, string) {
+		t.Fatal("downstream egress probe ran after definitive reboot failure")
+		return false, ""
 	}
 	verdictPath := filepath.Join(t.TempDir(), "verdict.json")
 
@@ -275,14 +274,9 @@ func TestWaitDeployRunsEgressAfterUnobservableReboot(t *testing.T) {
 		return "", errors.New("guest agent not running")
 	}
 	egressProbes := 0
-	deps.ping6 = func(context.Context, netip.Addr, time.Duration) (time.Duration, error) {
+	deps.probeDownstream = func(context.Context, downstreamProbeConfig, requiredEgressFamilies) (bool, string) {
 		egressProbes++
-		return 0, errors.New("no route to host")
-	}
-	deps.ping4 = func(
-		context.Context, string, netip.Addr, time.Duration,
-	) (time.Duration, error) {
-		return time.Millisecond, nil
+		return false, `ipv6=no ipv4=yes ipv6_error="no route to host"`
 	}
 	verdictPath := filepath.Join(t.TempDir(), "verdict.json")
 
@@ -649,7 +643,7 @@ func TestOwnedMissingAlertEmailExplainsRecovery(t *testing.T) {
 	}
 }
 
-func TestCheckEgressRequiresEveryConfiguredFamily(t *testing.T) {
+func TestWaitEgressRequiresEveryConfiguredFamilyInOneRound(t *testing.T) {
 	var out strings.Builder
 	clock := &fakeClock{now: time.Unix(1000, 0)}
 	deps := newTestDeps(&out, clock)
@@ -662,8 +656,8 @@ func TestCheckEgressRequiresEveryConfiguredFamily(t *testing.T) {
 		return time.Millisecond, nil
 	}
 
-	if code := checkEgress(context.Background(), deps,
-		requiredEgressFamilies{ipv4: true, ipv6: true}); code != exitDeployGateFailed {
+	if code := waitEgress(context.Background(), deps, time.Second,
+		requiredEgressFamilies{ipv4: true, ipv6: true}, 1); code != exitDeployGateFailed {
 		t.Fatalf("exit code = %d, want %d\noutput: %s", code, exitDeployGateFailed, out.String())
 	}
 
@@ -672,8 +666,8 @@ func TestCheckEgressRequiresEveryConfiguredFamily(t *testing.T) {
 	) (time.Duration, error) {
 		return 0, errors.New("v4 down")
 	}
-	if code := checkEgress(context.Background(), deps,
-		requiredEgressFamilies{ipv4: true, ipv6: true}); code != exitDeployGateFailed {
+	if code := waitEgress(context.Background(), deps, time.Second,
+		requiredEgressFamilies{ipv4: true, ipv6: true}, 1); code != exitDeployGateFailed {
 		t.Fatalf("exit code = %d, want %d\noutput: %s", code, exitDeployGateFailed, out.String())
 	}
 }
