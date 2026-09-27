@@ -13,9 +13,8 @@ or group change could interrupt internet access. Gateway group failures in
 this deployment were also difficult to diagnose.
 
 MWAN moved provider selection out of OPNsense. OPNsense applies its usual LAN
-policy and forwards internet traffic to MWAN. MWAN selects an ISP, translates
-addresses when required, and selects another healthy ISP for new connections
-after a provider failure. OPNsense does not need one firewall policy per ISP.
+policy and forwards internet traffic to MWAN. Provider policy can change
+without adding one firewall policy per ISP.
 
 MWAN runs its packet path on Linux. It uses netlink, nftables, and traffic
 control BPF. OPNsense runs on FreeBSD. The Linux packet path cannot run
@@ -28,23 +27,47 @@ and [disables system-wide receive-side scaling by default](https://docs.opnsense
 The available acceleration depends on the selected features, driver, and
 hardware.
 
+## Components
+
+- [Configuration and interfaces](#configuration-and-interfaces)
+- [Provider health and steering](#provider-health-and-steering)
+- [Firewall and translation](#firewall-and-translation)
+- [BGP agent and gateway failover](#bgp-agent-and-gateway-failover)
+- [Watchdog and recovery](#watchdog-and-recovery)
+- [Deployment safety](#deployment-safety)
+- [Management and diagnostics](#management-and-diagnostics)
+
 ## How it works today
 
-The primary MWAN gateway balances new connections across healthy providers.
-ISP-1 and ISP-2 serve the first preference tier. ISP-3 serves the next tier
-when the first tier is unavailable. A backup MWAN gateway also uses ISP-3
-when the primary gateway fails.
+The primary MWAN gateway connects to multiple providers. The backup gateway
+uses one provider. The diagram uses ISP-1 and ISP-2 for a first
+configured preference tier and ISP-3 for a later tier and the backup uplink.
+These labels illustrate the roles, not production provider names.
 
-Both gateways run BGP and advertise a default route to OPNsense. OPNsense
-prefers the primary gateway's route.
+```mermaid
+flowchart LR
+  isp1[ISP-1] --> primary[Primary MWAN gateway]
+  isp2[ISP-2] --> primary
+  isp3[ISP-3] --> primary
+  isp3 --> fallback[Backup MWAN gateway]
+  primary -->|Preferred default route| router[OPNsense]
+  fallback -->|Backup default route| router
+  router --> lan[LAN]
+```
+
+The backup gateway does not balance providers. It masquerades outbound traffic
+on its configured uplink and does not serve inbound traffic.
+
+## Configuration and interfaces
 
 Those provider roles come from configuration. The
 [pinned configuration template](https://github.com/agoodkind/configs/blob/20ad40232fa62394046b1218839e60756a6b7a22/mwan/config/network.json.j2)
 renders inventory into `/etc/mwan/network.json`. Each provider entry sets
 its link, addresses, translation, health checks, steering tier, and weight.
-The daemon validates the JSON against its YANG model before applying it.
-A supported provider needs a configuration change and deployment, not a new
-binary.
+The gateway interface manager, `mwan ifmgr --role wan`, validates that JSON
+against its YANG network schema. It then writes provider network files and
+reconciles the configured interfaces, routes, and packet policy. A supported
+provider needs a configuration change and deployment, not a new binary.
 
 The model uses [RFC 8343 for interfaces](https://www.rfc-editor.org/rfc/rfc8343),
 [RFC 8344 for IP addresses](https://www.rfc-editor.org/rfc/rfc8344),
@@ -55,28 +78,29 @@ provider settings. Existing BGP peer settings and credentials remain in
 TOML. MWAN-507 plans to model new upstream BGP and tunnel settings in the
 network configuration.
 
-```mermaid
-flowchart LR
-  isp1[ISP-1] --> primary[Primary MWAN gateway]
-  isp2[ISP-2] --> primary
-  isp3[ISP-3] --> primary
-  isp3 --> fallback[Backup MWAN gateway]
-  primary -->|Preferred iBGP default| router[OPNsense]
-  fallback -->|Backup iBGP default| router
-  router --> lan[LAN]
-```
+## Provider health and steering
 
-The backup gateway does not balance providers. It masquerades outbound traffic
-on ISP-3 and does not serve inbound traffic. A watchdog on the hypervisor can
-restore the primary gateway from a snapshot after a failed deployment.
-
-## How MWAN selects a provider
+The interface manager probes each configured provider and records a health
+verdict after its configured failure or recovery threshold. It reconciles
+provider routes and rules before steering new connections. A link with no
+usable route or required translation cannot serve that address family.
 
 The primary gateway selects a healthy ISP in the first available preference
 tier for each new connection. OPNsense can request a specific ISP by setting
 a Differentiated Services Code Point (DSCP) value on the packet. MWAN reads
 that value, assigns the ISP's internal firewall mark, and uses the matching
 routing table. The connection keeps that ISP choice.
+
+When a tier has no eligible provider, the primary gateway selects the next
+tier for new connections. A failed IPv6 path does not disable a working IPv4
+path.
+
+## Firewall and translation
+
+The interface manager installs a protective firewall baseline before it
+loads the rest of the gateway configuration. Its firewall module then
+reconciles filtering and IPv4 translation. The IPv6 translator configures
+traffic control BPF for providers that use prefix translation.
 
 MWAN either preserves an IPv6 source address or applies Network Prefix
 Translation (NPTv6), according to the ISP configuration. NPTv6 substitutes
@@ -97,17 +121,76 @@ the ISP.
 The [translation model](superpowers/wanconfig/translation.md) defines the
 address and readiness requirements that this overview omits.
 
-## How failover works
+## BGP agent and gateway failover
 
-When a balance tier has no healthy provider for an address family, the
-primary gateway selects an eligible provider in the next tier for new
-connections. An unavailable IPv6 path does not disable a working IPv4 path.
+The `mwan agent` process runs Border Gateway Protocol (BGP) sessions and
+serves the gateway API.
+Both gateways advertise a default route to OPNsense. OPNsense prefers the
+primary gateway's route. The hypervisor uses the API to inspect the gateway
+and request route changes during failover.
 
-For planned maintenance, the primary gateway withdraws its BGP default route
-before stopping. If the primary gateway fails unexpectedly, OPNsense selects
-the backup default route after the BGP session expires. Existing connections
-may need to reconnect because the backup gateway uses ISP-3 masquerade and
-does not preserve the primary gateway's connection state.
+Without BGP Graceful Restart, the agent withdraws its default route before
+a controlled stop. With Graceful Restart enabled, the agent stops without an
+explicit withdrawal and OPNsense can retain the route during the restart.
+If the primary gateway fails, OPNsense selects the backup default after BGP
+converges. Existing connections may need to reconnect because the backup
+gateway does not share the primary gateway's connection state.
+
+The backup container runs the failover interface manager to monitor its
+uplink. Its agent advertises the backup default route.
+
+## Watchdog and recovery
+
+The `mwan watchdog` process runs on the hypervisor. It probes IPv4 and IPv6
+connectivity and checks whether the gateway VM is running. The gateway
+sends provider health and active tier status to the watchdog for diagnosis.
+The watchdog also compares the gateway's configuration hash with its previous
+reading and checks the last deploy time.
+
+After sustained healthy operation, the watchdog creates a known-good VM
+snapshot. On rollback, it prefers the latest pre-deploy snapshot and then
+a known-good snapshot. It checks that the guest filesystem thawed after a
+snapshot attempt and leaves locks for active Proxmox tasks alone. When both
+address families fail after a recent configuration change, the watchdog
+allows the deploy grace period, then can restore a rollback snapshot. A
+failure without a recent configuration change prompts diagnosis and may
+trigger BGP failover to the backup container. The watchdog does not restore
+the gateway for every internet outage. The [failover guide](ops/mwan/failover.md)
+covers the recovery decisions and snapshot rules.
+
+## Deployment safety
+
+The deployment verifies the pinned release and checks existing internet
+access. Production deployment stops if that baseline is unhealthy. With a
+healthy baseline, it creates a pre-deploy VM snapshot. Ansible renders the
+network JSON and runs the released `mwan deploy-gate` loader and firewall
+checks before writing it to the gateway.
+
+After reboot, a gate on the hypervisor verifies a new boot ID. It tests
+internet access for the required address families and checks mapped IPv4
+addresses on provider links. It writes one verdict for the
+deploy run on the hypervisor. The controller accepts only a verdict with the
+matching run identifier and previous boot identifier.
+
+A reboot that never happened or an uncollected verdict fails the deployment
+without rollback. Failed egress can start the deployment rollback path.
+A missing mapped address fails the postdeploy check. The gate attempts an
+alert and leaves the deployed VM running. The watchdog remains the recovery
+authority when the controller cannot reconnect. The
+[deploy gate design](superpowers/deploygate/spec.md)
+explains the controller outage case.
+
+## Management and diagnostics
+
+The interface manager publishes configuration and live state through a
+YANG management surface when enabled. The surface does not accept writes.
+The agent serves its API over TCP and, when available, VM sockets
+(vsock). With vsock, the hypervisor can inspect the gateway and request
+route changes when guest networking is unavailable.
+OPNsense uses virtio serial for its management channel. The watchdog controls
+the backup container through host container operations. A shared notifier
+reports health, failover, and recovery changes without sending one message
+per failed probe.
 
 ## Worked example
 
@@ -196,19 +279,13 @@ In the configured route arrangement, MWAN has no BGP session on the tunnel.
 In the upstream peer arrangement, MWAN exchanges routes with the upstream
 router over the tunnel. In the VPS arrangement, MWAN peers with the VPS, and
 the VPS runs a separate upstream BGP session. Each tunnel arrangement also
-transports ordinary IPv6 packets. The [routing model](superpowers/wanconfig/model.md)
-defines readiness and withdrawal requirements.
+transports ordinary IPv6 packets. The planned routing model sets readiness
+and withdrawal requirements.
 
 The longer term plan also includes more detailed network analytics. Those
 plans do not change OPNsense's LAN firewall role.
 
-## Management and performance
-
-The hypervisor communicates with the primary gateway VM over vsock when
-guest networking is unavailable. The OPNsense VM uses virtio serial for its
-management channel. The watchdog controls the failover Linux container
-through the host's container operations. These paths let the host inspect
-guest state and perform recovery without relying on the guest's IP route.
+## Performance
 
 The current guest arrangement uses host CPU to transfer packets between the
 router and gateway guests. The [performance analysis](performance.md) records
