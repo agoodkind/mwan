@@ -89,7 +89,7 @@ type BGP struct {
 	Reached bool
 }
 
-// OwnedRuleset is one writer's last intended rules and apply result.
+// OwnedRuleset is one writer's last intended rules and reconciliation error.
 type OwnedRuleset struct {
 	Rules string
 	Error string
@@ -201,11 +201,11 @@ func (s *Store) SetIntendedRuleset(text string) {
 	s.SetOwnedIntendedRuleset("npt", text, nil)
 }
 
-// SetOwnedIntendedRuleset replaces one writer's intent and last apply error.
-func (s *Store) SetOwnedIntendedRuleset(owner string, text string, applyError error) {
+// SetOwnedIntendedRuleset replaces one writer's intent and last error.
+func (s *Store) SetOwnedIntendedRuleset(owner string, text string, reconcileError error) {
 	state := OwnedRuleset{Rules: text, Error: ""}
-	if applyError != nil {
-		state.Error = applyError.Error()
+	if reconcileError != nil {
+		state.Error = reconcileError.Error()
 	}
 	s.mu.Lock()
 	s.intendedRulesets[owner] = state
@@ -276,7 +276,7 @@ func renderIntendedRulesets(owners map[string]OwnedRuleset) string {
 			output.WriteByte('\n')
 		}
 		if state.Error != "" {
-			output.WriteString("apply error: " + state.Error + "\n")
+			output.WriteString("error: " + state.Error + "\n")
 		}
 	}
 	return output.String()

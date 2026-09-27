@@ -19,7 +19,8 @@ const destinationRefreshService = "mwan-update-att-pinned-dests.service"
 // Module applies and inspects the configured gateway policy on each pass.
 type Module struct {
 	ifmgr.BaseModule
-	cfg firewall.Config
+	cfg            firewall.Config
+	refreshPending bool
 }
 
 // Init validates the policy before the daemon starts reconciliation.
@@ -59,7 +60,14 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		return fmt.Errorf("apply firewall policy: %w", err)
 	}
 	if len(result.CreatedSets) > 0 {
-		requestDestinationRefresh(ctx, log)
+		m.refreshPending = true
+	}
+	if m.refreshPending {
+		if err := requestDestinationRefresh(ctx, log); err != nil {
+			m.publish(desired.String(), err)
+			return fmt.Errorf("request destination refresh: %w", err)
+		}
+		m.refreshPending = false
 	}
 	if _, err := firewall.Inspect(ctx, desired); err != nil {
 		m.publish(desired.String(), err)
@@ -71,7 +79,7 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	return nil
 }
 
-func requestDestinationRefresh(ctx context.Context, log *slog.Logger) {
+func requestDestinationRefresh(ctx context.Context, log *slog.Logger) error {
 	// The updater waits for this daemon's readiness. A synchronous start here
 	// would deadlock initial reconciliation.
 	command := exec.CommandContext(ctx, "systemctl", "--no-block", "start", destinationRefreshService)
@@ -79,7 +87,9 @@ func requestDestinationRefresh(ctx context.Context, log *slog.Logger) {
 	if err != nil {
 		log.WarnContext(ctx, "destination refresh request failed",
 			"service", destinationRefreshService, "err", err, "output", strings.TrimSpace(string(output)))
+		return fmt.Errorf("start %s: %w: %s", destinationRefreshService, err, strings.TrimSpace(string(output)))
 	}
+	return nil
 }
 
 func (m *Module) publish(rules string, err error) {
@@ -99,7 +109,7 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 			return nil, fmt.Errorf("firewall: invalid config type %T", cfg)
 		}
 	}
-	return &Module{BaseModule: ifmgr.NewBaseModule(moduleName), cfg: policy}, nil
+	return &Module{BaseModule: ifmgr.NewBaseModule(moduleName), cfg: policy, refreshPending: false}, nil
 }
 
 func init() { ifmgr.Register(moduleName, New) }

@@ -74,7 +74,7 @@ func TestInterfacesLiveItems_ServesTheSnapshot(t *testing.T) {
 		attBase + "/carrying":                         "true",
 		"/ietf-interfaces:interfaces/interface[name='enatt0']/ietf-ip:ipv6/goodkind-mwan-steering:translation/state/resolved-external-prefix": "2001:db8:a::/60",
 		"/ietf-interfaces:interfaces/goodkind-mwan-steering:steering-group/state/active-tier":                                                 "0",
-		"/ietf-interfaces:interfaces/goodkind-mwan-steering:steering-group/state/intended-ruleset":                                            "firewall:\ninet filter input:\napply error: chain input was not installed\nnpt:\nchain prerouting:\nchain postrouting:\n",
+		"/ietf-interfaces:interfaces/goodkind-mwan-steering:steering-group/state/intended-ruleset":                                            "firewall:\ninet filter input:\nerror: chain input was not installed\nnpt:\nchain prerouting:\nchain postrouting:\n",
 		peerBase + "/established": "true",
 		peerBase + "/stale":       "false",
 	}

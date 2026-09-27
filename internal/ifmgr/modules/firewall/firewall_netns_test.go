@@ -18,7 +18,7 @@ import (
 	"goodkind.io/mwan/internal/wanstate"
 )
 
-func TestReconcileRepairsDeletedRulesAndPreservesRefreshedSet(t *testing.T) {
+func TestReconcileRepairsDeletedRulesAndRetriesFailedRefresh(t *testing.T) {
 	runtime.LockOSThread()
 	previous, err := netns.Get()
 	if err != nil {
@@ -68,13 +68,21 @@ func TestReconcileRepairsDeletedRulesAndPreservesRefreshedSet(t *testing.T) {
 	if err := selected.Init(ctx, &ifmgr.Env{Log: log, LiveState: store}); err != nil {
 		t.Fatal(err)
 	}
-	if err := selected.Reconcile(ctx, log); err != nil {
-		t.Fatal(err)
+	assertRefreshFailure := func() {
+		t.Helper()
+		err := selected.Reconcile(ctx, log)
+		if err == nil || !strings.Contains(err.Error(), "request destination refresh") {
+			t.Fatalf("reconcile error = %v, want destination refresh failure", err)
+		}
+		state := store.Snapshot().IntendedByOwner["firewall"]
+		if state.Rules == "" || !strings.Contains(state.Error, destinationRefreshService) {
+			t.Fatalf("firewall state after refresh failure: %+v", state)
+		}
 	}
+	assertRefreshFailure()
+	runNFTTest(t, "list", "table", "inet", "filter")
 	runNFTTest(t, "add", "element", "inet", "mangle", "pinned_v4", "{", "203.0.113.0/24", "}")
-	if err := selected.Reconcile(ctx, log); err != nil {
-		t.Fatal(err)
-	}
+	assertRefreshFailure()
 	setOutput := runNFTTest(t, "list", "set", "inet", "mangle", "pinned_v4")
 	if !strings.Contains(setOutput, "203.0.113.0/24") {
 		t.Fatalf("destination refresh was lost: %s", setOutput)
@@ -99,14 +107,9 @@ func TestReconcileRepairsDeletedRulesAndPreservesRefreshedSet(t *testing.T) {
 		t.Fatalf("recreated sets = %+v, want both destination sets", recreated.CreatedSets)
 	}
 	runNFTTest(t, "flush", "ruleset")
-	if err := selected.Reconcile(ctx, log); err != nil {
-		t.Fatal(err)
-	}
+	assertRefreshFailure()
 	for _, table := range []struct{ family, name string }{{"inet", "filter"}, {"ip", "nat"}, {"inet", "mangle"}} {
 		runNFTTest(t, "list", "table", table.family, table.name)
-	}
-	if state := store.Snapshot().IntendedByOwner["firewall"]; state.Rules == "" || state.Error != "" {
-		t.Fatalf("firewall state after repair: %+v", state)
 	}
 }
 
