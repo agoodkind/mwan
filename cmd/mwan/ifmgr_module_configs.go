@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/ifmgr"
 	bridgeprobe "goodkind.io/mwan/internal/ifmgr/modules/bridgeprobe"
 	cloudflaredtap "goodkind.io/mwan/internal/ifmgr/modules/cloudflaredtap"
@@ -264,7 +265,7 @@ func buildHealthConfig(
 
 	var err error
 	for _, wan := range shared.WANs {
-		wanSection, ok := section.WAN[wan.Name]
+		wanSection, ok := section.WAN[wan.Key()]
 		if !ok || !wanSection.Enabled {
 			continue
 		}
@@ -766,7 +767,7 @@ func (s sharedWANInputs) nptWANs() []npt.WAN {
 
 // buildWANRefs turns the network configuration's WAN map and translation
 // prefixes into the shared runtime pieces module builders consume: the per-WAN
-// list (sorted by name) and the shared prefixes.
+// list (sorted by connection ID) and the shared prefixes.
 func buildWANRefs(ifmgrCfg config.IfMgrSection) sharedWANInputs {
 	inputs := sharedWANInputs{
 		WANs:           make([]sharedWAN, 0, len(ifmgrCfg.WAN)),
@@ -785,8 +786,12 @@ func buildWANRefs(ifmgrCfg config.IfMgrSection) sharedWANInputs {
 	sort.Strings(names)
 	for _, name := range names {
 		entry := ifmgrCfg.WAN[name]
+		providerName := entry.ProviderName
+		if providerName == "" {
+			providerName = name
+		}
 		inputs.WANs = append(inputs.WANs, sharedWAN{
-			WANRef:        ifmgr.WANRef{Name: name, Iface: entry.Iface},
+			WANRef:        ifmgr.WANRef{ID: connectionid.ID(name), Name: providerName, Iface: entry.Iface},
 			TableID:       entry.TableID,
 			FwMark:        entry.FwMark,
 			FwMarkPrio:    entry.FwMarkPrio,

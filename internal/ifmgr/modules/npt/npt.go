@@ -167,11 +167,11 @@ func (m *Module) parse() error {
 func validateWANs(wans []WAN) error {
 	seen := make(map[string]bool, len(wans))
 	for i, wan := range wans {
-		if wan.Name == "" {
+		if wan.Key() == "" {
 			return fmt.Errorf("npt: wan[%d]: name is required", i)
 		}
 		if wan.Iface == "" {
-			return fmt.Errorf("npt: wan[%d] (%s): iface is required", i, wan.Name)
+			return fmt.Errorf("npt: wan[%d] (%s): iface is required", i, wan.Key())
 		}
 		if seen[wan.Iface] {
 			return fmt.Errorf("npt: wan[%d]: duplicate iface %q", i, wan.Iface)
@@ -220,8 +220,8 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 			missing[wan.Iface] = true
 			continue
 		}
-		delegated[wan.Name] = built.externalPrefix
-		pairs[wan.Name] = built.pair
+		delegated[wan.Key()] = built.externalPrefix
+		pairs[wan.Key()] = built.pair
 		desired.add(built.rules)
 	}
 	m.pdMissing = missing
@@ -286,17 +286,17 @@ func (m *Module) interfacePolicies(ctx context.Context, log *slog.Logger, pairs 
 	identities := make(map[uint16]string, len(pairs))
 	var failures error
 	for _, wan := range m.cfg.WANs {
-		pair, configured := pairs[wan.Name]
+		pair, configured := pairs[wan.Key()]
 		if !configured {
 			continue
 		}
 		if previous, duplicate := identities[pair.ID]; duplicate {
-			failures = errors.Join(failures, fmt.Errorf("npt: %s and %s have colliding prefix-pair IDs", previous, wan.Name))
+			failures = errors.Join(failures, fmt.Errorf("npt: %s and %s have colliding prefix-pair IDs", previous, wan.Key()))
 			continue
 		}
-		identities[pair.ID] = wan.Name
+		identities[pair.ID] = wan.Key()
 		if err := internalPrefixRouteReady(pair.Internal, internal.Attrs().Index); err != nil {
-			failures = errors.Join(failures, fmt.Errorf("npt: %s hairpin route: %w", wan.Name, err))
+			failures = errors.Join(failures, fmt.Errorf("npt: %s hairpin route: %w", wan.Key(), err))
 			continue
 		}
 		link, err := netlink.LinkByName(wan.Iface)
@@ -304,7 +304,7 @@ func (m *Module) interfacePolicies(ctx context.Context, log *slog.Logger, pairs 
 			failures = errors.Join(failures, fmt.Errorf("npt: WAN interface %s: %w", wan.Iface, err))
 			continue
 		}
-		indices[wan.Name] = link.Attrs().Index
+		indices[wan.Key()] = link.Attrs().Index
 		policies = append(policies, bpf.InterfacePolicy{IfIndex: link.Attrs().Index, Internal: false, Pairs: []bpf.PrefixPair{pair}})
 		internalPolicy.Pairs = append(internalPolicy.Pairs, pair)
 	}
@@ -374,10 +374,10 @@ func (m *Module) publishLiveState(
 			}
 		}
 		member.V6 = ipv6TranslationReadiness(
-			wan, delegated[wan.Name], applied && rendered.HasInterface(wan.Iface),
-			bpfReady[wan.Name], nativeReady,
+			wan, delegated[wan.Key()], applied && rendered.HasInterface(wan.Iface),
+			bpfReady[wan.Key()], nativeReady,
 		)
-		members[wan.Name] = member
+		members[wan.Key()] = member
 	}
 	m.Env.LiveState.SetTranslation(members)
 }
@@ -437,19 +437,19 @@ func (m *Module) buildWANDesired(
 	}
 	policy := wan.Translation.NPT
 	if policy == nil {
-		return empty, false, fmt.Errorf("npt: %s has no NPTv6 policy", wan.Name)
+		return empty, false, fmt.Errorf("npt: %s has no NPTv6 policy", wan.Key())
 	}
 	externalPrefix := policy.ExternalPrefix.Masked()
 	if policy.ExternalSource != config.PrefixConfigured {
 		pfx, ok, err := m.src.Prefix(ctx, wan.Iface)
 		if err != nil {
 			log.WarnContext(ctx, "npt: pd lookup failed; skipping WAN",
-				"wan", wan.Name, "iface", wan.Iface, "err", err)
+				"wan", wan.Key(), "iface", wan.Iface, "err", err)
 			return empty, false, nil
 		}
 		if !ok {
 			log.WarnContext(ctx, "npt: no delegated prefix; skipping WAN",
-				"wan", wan.Name, "iface", wan.Iface)
+				"wan", wan.Key(), "iface", wan.Iface)
 			return empty, false, nil
 		}
 		bits := policy.InternalPrefix.Bits()
@@ -457,7 +457,7 @@ func (m *Module) buildWANDesired(
 			bits = policy.ExpectedPrefix.Bits()
 		}
 		if bits < pfx.Bits() {
-			return empty, false, fmt.Errorf("npt: %s delegated %s is longer than required /%d", wan.Name, pfx, bits)
+			return empty, false, fmt.Errorf("npt: %s delegated %s is longer than required /%d", wan.Key(), pfx, bits)
 		}
 		externalPrefix = netip.PrefixFrom(pfx.Addr(), bits).Masked()
 	}
@@ -479,14 +479,14 @@ func (m *Module) buildWANDesired(
 		ExtraDNAT:    extra,
 	})
 	pair := bpf.PrefixPair{
-		ID:                    pairID(wan.Name),
+		ID:                    pairID(wan.Key()),
 		Internal:              policy.InternalPrefix.Masked(),
 		External:              externalPrefix,
 		SourceExceptions:      []netip.Addr{m.opnsenseEdge, m.mwanbrEdge},
 		DestinationExceptions: append([]netip.Addr{pd1}, extra...),
 	}
 	if err := bpf.ValidatePair(pair); err != nil {
-		return empty, false, fmt.Errorf("npt: %s: %w", wan.Name, err)
+		return empty, false, fmt.Errorf("npt: %s: %w", wan.Key(), err)
 	}
 	return wanDesired{rules: rules, ensure: ensure, pair: pair, externalPrefix: externalPrefix}, true, nil
 }
@@ -552,7 +552,7 @@ func (m *Module) EvaluateAlerts(ctx context.Context, _ *slog.Logger, now time.Ti
 	m.Unlock()
 
 	for _, wan := range m.cfg.WANs {
-		fields := []slog.Attr{slog.String("wan", wan.Name), slog.String("iface", wan.Iface)}
+		fields := []slog.Attr{slog.String("wan", wan.Key()), slog.String("iface", wan.Iface)}
 		if !wan.expectsDelegation() {
 			// The configuration names no translation prefix for this provider,
 			// so a missing delegation is its steady state rather than a fault,

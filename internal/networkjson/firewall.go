@@ -16,6 +16,7 @@ type firewallWire struct {
 	ManagementInterface   string                  `json:"management-interface"`
 	ManagementServices    []managementServiceWire `json:"management-service"`
 	PinnedProvider        string                  `json:"pinned-provider"`
+	PinnedConnectionID    string                  `json:"pinned-connection-id"`
 	PinnedSourceV4        string                  `json:"pinned-source-v4"`
 	PinnedSourcePort      *uint16                 `json:"pinned-source-port"`
 	PinnedDestinationPort *uint16                 `json:"pinned-destination-port"`
@@ -23,6 +24,13 @@ type firewallWire struct {
 	PinnedSetV6Name       string                  `json:"pinned-set-v6-name"`
 	PinnedV4              []string                `json:"pinned-v4"`
 	PinnedV6              []string                `json:"pinned-v6"`
+}
+
+func pinnedConnectionID(wire *firewallWire) string {
+	if wire == nil {
+		return ""
+	}
+	return wire.PinnedConnectionID
 }
 
 type managementServiceWire struct {
@@ -212,7 +220,7 @@ func buildFirewall(doc *document, loaded *Config) (firewall.Config, error) {
 	for _, entry := range doc.Interfaces.Interface {
 		cfg.KnownInterfaces = append(cfg.KnownInterfaces, entry.Name)
 	}
-	if err := populateFirewallProviders(&cfg, doc, loaded, group.Firewall.PinnedProvider); err != nil {
+	if err := populateFirewallProviders(&cfg, doc, loaded, group.Firewall); err != nil {
 		return none, err
 	}
 	if err := populateFirewallPins(&cfg, group.Firewall, group.Translation.OpnsenseEdgeV6); err != nil {
@@ -225,12 +233,17 @@ func buildFirewall(doc *document, loaded *Config) (firewall.Config, error) {
 	return cfg, nil
 }
 
-func populateFirewallProviders(cfg *firewall.Config, doc *document, loaded *Config, pinnedProvider string) error {
+func populateFirewallProviders(cfg *firewall.Config, doc *document, loaded *Config, wire *firewallWire) error {
+	if wire.PinnedProvider != "" && wire.PinnedConnectionID != "" {
+		return fmt.Errorf("firewall must select one of pinned-provider or pinned-connection-id")
+	}
+	matches := 0
 	for _, entry := range doc.Interfaces.Interface {
 		if entry.WAN == nil {
 			continue
 		}
-		wan, accepted := loaded.WAN[entry.WAN.Name]
+		id := loaded.ConnectionIDs[entry.Name].String()
+		wan, accepted := loaded.WAN[id]
 		if !accepted {
 			continue
 		}
@@ -257,17 +270,22 @@ func populateFirewallProviders(cfg *firewall.Config, doc *document, loaded *Conf
 			IPv4:              true,
 			IPv6:              true,
 		})
-		if entry.WAN.Name == pinnedProvider {
+		if (wire.PinnedConnectionID != "" && id == wire.PinnedConnectionID) ||
+			(wire.PinnedProvider != "" && entry.WAN.Name == wire.PinnedProvider) {
 			cfg.PinnedProvider = wan.Iface
+			matches++
 		}
+	}
+	if matches > 1 {
+		return fmt.Errorf("firewall pinned-provider %q matches multiple connections; use pinned-connection-id", wire.PinnedProvider)
 	}
 	return nil
 }
 
 func populateFirewallPins(cfg *firewall.Config, wire *firewallWire, opnsenseEdgeV6 string) error {
-	if wire.PinnedProvider != "" {
+	if wire.PinnedProvider != "" || wire.PinnedConnectionID != "" {
 		if cfg.PinnedProvider == "" {
-			return fmt.Errorf("firewall pinned-provider %q is not an accepted provider", wire.PinnedProvider)
+			return fmt.Errorf("firewall pin target is not an accepted connection")
 		}
 		sourceV4, err := netip.ParseAddr(wire.PinnedSourceV4)
 		if err != nil {

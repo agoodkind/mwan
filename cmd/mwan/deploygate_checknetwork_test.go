@@ -125,6 +125,32 @@ func TestCheckNetwork(t *testing.T) {
 			want:   exitDeployGateFailed,
 			expect: []string{"table-id 100 is already taken"},
 		},
+		"shared provider label with explicit connection pin": {
+			document: func(t *testing.T) string {
+				t.Helper()
+				return modifiedNetwork(t,
+					networkReplacement{old: `"name": "enwebpass0",`, new: `"name": "enwebpass0", "goodkind-mwan-steering:connection-id": "sonic-a",`},
+					networkReplacement{old: `"name": "enatt0",`, new: `"name": "enatt0", "goodkind-mwan-steering:connection-id": "sonic-b",`},
+					networkReplacement{old: `"name": "att",`, new: `"name": "webpass",`},
+					networkReplacement{old: `"pinned-provider": "att"`, new: `"pinned-connection-id": "sonic-b"`},
+				)
+			},
+			want:   exitDeployGateOK,
+			expect: []string{"3 providers, 0 rejected"},
+		},
+		"ambiguous legacy provider pin": {
+			document: func(t *testing.T) string {
+				t.Helper()
+				return modifiedNetwork(t,
+					networkReplacement{old: `"name": "enwebpass0",`, new: `"name": "enwebpass0", "goodkind-mwan-steering:connection-id": "sonic-a",`},
+					networkReplacement{old: `"name": "enatt0",`, new: `"name": "enatt0", "goodkind-mwan-steering:connection-id": "sonic-b",`},
+					networkReplacement{old: `"name": "att",`, new: `"name": "webpass",`},
+					networkReplacement{old: `"pinned-provider": "att"`, new: `"pinned-provider": "webpass"`},
+				)
+			},
+			want:   exitDeployGateFailed,
+			expect: []string{"matches multiple connections; use pinned-connection-id"},
+		},
 		"no file at the path": {
 			document: func(t *testing.T) string {
 				t.Helper()

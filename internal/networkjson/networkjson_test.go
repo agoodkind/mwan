@@ -222,6 +222,39 @@ func TestLoadValidFile(t *testing.T) {
 	}
 }
 
+func TestLoadUsesConnectionIdentityForSharedProviderLabel(t *testing.T) {
+	t.Parallel()
+	body := strings.Replace(validDocument, `"name": "enwebpass0",`, `"name": "enwebpass0", "goodkind-mwan-steering:connection-id": "sonic-a",`, 1)
+	body = strings.Replace(body, `"name": "enatt0",`, `"name": "enatt0", "goodkind-mwan-steering:connection-id": "sonic-b",`, 1)
+	body = strings.Replace(body, `"name": "att",`, `"name": "webpass",`, 1)
+	body = strings.Replace(body, `"name": "enmwanbr0",`, `"name": "enmwanbr0", "goodkind-mwan-steering:connection-id": "internal",`, 1)
+	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(loaded.WAN) != 2 || loaded.WAN["sonic-a"].Iface != "enwebpass0" || loaded.WAN["sonic-b"].Iface != "enatt0" {
+		t.Fatalf("connection-keyed providers = %+v", loaded.WAN)
+	}
+	if loaded.WAN["sonic-a"].ProviderName != "webpass" || loaded.WAN["sonic-b"].ProviderName != "webpass" {
+		t.Fatalf("provider display labels changed: %+v", loaded.WAN)
+	}
+	if _, found := loaded.Health["sonic-a"]; !found {
+		t.Fatalf("sonic-a health policy missing: %+v", loaded.Health)
+	}
+	if loaded.ConnectionIDs["enmwanbr0"] != "internal" {
+		t.Fatalf("internal identity = %q", loaded.ConnectionIDs["enmwanbr0"])
+	}
+}
+
+func TestLoadRejectsDuplicateNormalizedConnectionIdentity(t *testing.T) {
+	t.Parallel()
+	body := strings.Replace(validDocument, `"name": "enatt0",`, `"name": "enatt0", "goodkind-mwan-steering:connection-id": "webpass",`, 1)
+	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err == nil || !strings.Contains(err.Error(), `connection-id "webpass" is shared`) {
+		t.Fatalf("duplicate connection identity error = %v", err)
+	}
+}
+
 func TestLoadRejectsMalformedJSON(t *testing.T) {
 	t.Parallel()
 

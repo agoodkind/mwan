@@ -49,6 +49,10 @@ module goodkind-mwan-steering {
      decides its verdict, the prefix-translation inputs, and the
      internal link the members route toward.";
 
+  revision 2026-09-27 {
+    description
+      "Add stable connection identity and an explicit firewall pin target.";
+  }
   revision 2026-09-26 {
     description
       "Add the gateway firewall ownership, local management permissions,
@@ -269,11 +273,8 @@ module goodkind-mwan-steering {
         type string;
         mandatory true;
         description
-          "The provider's name. Every part of the daemon keys on it:
-           the translation instance takes it, the health verdict is
-           recorded under it, and the routes and rules for this link
-           are grouped by it. It is required, because a provider with
-           no name cannot be joined to its verdict.";
+          "The provider display name. Connection identity selects
+           routing, health, translation, and steering state.";
       }
       leaf table-id {
         type uint32 {
@@ -415,6 +416,13 @@ module goodkind-mwan-steering {
        models name an interface and its addresses. They do not name the
        device the interface is bound to, the tag a VLAN carries, or the
        identity a delegation is requested with.";
+
+    leaf connection-id {
+      type string;
+      description
+        "Stable connection identity. When absent, a provider uses its
+         provider name and another interface uses its interface name.";
+    }
 
     leaf link-files {
       type enumeration {
@@ -823,6 +831,10 @@ module goodkind-mwan-steering {
         leaf pinned-provider {
           type string;
           description "Provider name selected by the control-plane pin.";
+        }
+        leaf pinned-connection-id {
+          type string;
+          description "Connection identity selected by the control-plane pin.";
         }
         leaf pinned-source-v4 {
           type inet:ipv4-address;

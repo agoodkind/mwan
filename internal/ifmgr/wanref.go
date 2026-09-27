@@ -1,10 +1,19 @@
 package ifmgr
 
-// WANRef is the per-WAN identity every ifmgr module keys on: the WAN's stable
-// name and the interface it lives on. Modules attach their own per-WAN data by
-// embedding a WANRef or by keying a map on WANRef.Name; the identity itself is
-// declared once here so wan.routes and npt agree on the same WAN set.
+import "goodkind.io/mwan/internal/connectionid"
+
+// WANRef identifies one connection. Name is its provider display label.
+// ID selects state, routing, translation, and health records.
 type WANRef struct {
+	ID    connectionid.ID
 	Name  string
 	Iface string
+}
+
+// Key selects this connection's runtime state and preserves legacy references.
+func (w WANRef) Key() string {
+	if w.ID != "" {
+		return w.ID.String()
+	}
+	return w.Name
 }

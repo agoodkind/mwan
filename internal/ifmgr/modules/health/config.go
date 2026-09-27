@@ -103,8 +103,8 @@ func validateWANs(cfg Config) error {
 	seenNames := make(map[string]bool, len(cfg.WANs))
 	seenIfaces := make(map[string]bool, len(cfg.WANs))
 	for i, wan := range cfg.WANs {
-		wanLabel := fmt.Sprintf("wan[%d] (%s)", i, wan.Name)
-		if wan.Name == "" {
+		wanLabel := fmt.Sprintf("wan[%d] (%s)", i, wan.Key())
+		if wan.Key() == "" {
 			validationError = errors.Join(
 				validationError,
 				fmt.Errorf("wan[%d]: name is required", i),
@@ -113,13 +113,13 @@ func validateWANs(cfg Config) error {
 		if wan.Iface == "" {
 			validationError = errors.Join(
 				validationError,
-				fmt.Errorf("wan[%d] (%s): iface is required", i, wan.Name),
+				fmt.Errorf("wan[%d] (%s): iface is required", i, wan.Key()),
 			)
 		}
-		if seenNames[wan.Name] {
+		if seenNames[wan.Key()] {
 			validationError = errors.Join(
 				validationError,
-				fmt.Errorf("wan[%d]: duplicate name %q", i, wan.Name),
+				fmt.Errorf("wan[%d]: duplicate name %q", i, wan.Key()),
 			)
 		}
 		if seenIfaces[wan.Iface] {
@@ -178,7 +178,7 @@ func validateWANs(cfg Config) error {
 				fmt.Errorf("%s: recovery_threshold must be > 0", wanLabel),
 			)
 		}
-		seenNames[wan.Name] = true
+		seenNames[wan.Key()] = true
 		seenIfaces[wan.Iface] = true
 	}
 	return validationError

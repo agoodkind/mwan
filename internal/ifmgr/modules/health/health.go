@@ -333,15 +333,15 @@ func (m *Module) runCycle(ctx context.Context, log *slog.Logger) error {
 	results := make(map[string]probeResult, len(m.cfg.WANs))
 	for _, wan := range m.cfg.WANs {
 		result := m.probeWAN(ctx, wan, log)
-		results[wan.Name] = result
-		current := nextStatuses[wan.Name]
+		results[wan.Key()] = result
+		current := nextStatuses[wan.Key()]
 		next, changed := advanceHealth(
 			current,
 			result.Passed,
 			wan.failureThreshold(m.cfg),
 			wan.recoveryThreshold(m.cfg),
 		)
-		nextStatuses[wan.Name] = next
+		nextStatuses[wan.Key()] = next
 		if changed {
 			transitions = append(transitions, transition{
 				WAN: wan, From: current.State, To: next.State,
@@ -352,13 +352,13 @@ func (m *Module) runCycle(ctx context.Context, log *slog.Logger) error {
 				if m.lastTransition == nil {
 					m.lastTransition = map[string]time.Time{}
 				}
-				m.lastTransition[wan.Name] = m.clock.Now()
+				m.lastTransition[wan.Key()] = m.clock.Now()
 			}
 		}
 		log.DebugContext(
 			ctx,
 			"health: probe result",
-			"wan", wan.Name,
+			"wan", wan.Key(),
 			"iface", wan.Iface,
 			"passed", result.Passed,
 			"v6_successes", result.V6Successes,
@@ -401,18 +401,18 @@ func (m *Module) publishLiveState(
 	}
 	members := make(map[string]wanstate.MemberHealth, len(m.cfg.WANs))
 	for _, wan := range m.cfg.WANs {
-		status := statuses[wan.Name]
+		status := statuses[wan.Key()]
 		member := wanstate.MemberHealth{
 			Verdict:             verdictOf(status.State),
 			ConsecutiveFailures: 0,
-			LastTransition:      m.lastTransition[wan.Name],
+			LastTransition:      m.lastTransition[wan.Key()],
 			V4:                  wanstate.ProbeNone,
 			V6:                  wanstate.ProbeNone,
 		}
 		if status.FailCount > 0 && status.FailCount <= math.MaxUint32 {
 			member.ConsecutiveFailures = uint32(status.FailCount)
 		}
-		if result, ran := results[wan.Name]; ran {
+		if result, ran := results[wan.Key()]; ran {
 			threshold := wan.successThreshold(m.cfg)
 			if result.V6Probed {
 				member.V6 = legResult(result.V6Successes, result.HTTP6Successes, threshold)
@@ -421,7 +421,7 @@ func (m *Module) publishLiveState(
 				member.V4 = legResult(result.V4Successes, result.HTTP4Successes, threshold)
 			}
 		}
-		members[wan.Name] = member
+		members[wan.Key()] = member
 	}
 	m.Env.LiveState.SetHealth(members)
 }
@@ -438,12 +438,12 @@ func (m *Module) pushStatus(ctx context.Context, statuses map[string]wanStatus) 
 	members := make([]netif.TierMember, 0, len(m.cfg.WANs))
 	for _, wan := range m.cfg.WANs {
 		state := StateUnknown
-		if status, ok := statuses[wan.Name]; ok && status.State.Valid() {
+		if status, ok := statuses[wan.Key()]; ok && status.State.Valid() {
 			state = status.State
 		}
-		providers[wan.Name] = string(state)
-		states[wan.Name] = string(state)
-		members = append(members, netif.TierMember{Name: wan.Name, Tier: wan.Tier})
+		providers[wan.Key()] = string(state)
+		states[wan.Key()] = string(state)
+		members = append(members, netif.TierMember{Name: wan.Key(), Tier: wan.Tier})
 	}
 	// ActiveTier reports false when nothing is healthy. The tier then carries
 	// no meaning and the provider map is what says so, with every entry
@@ -545,7 +545,7 @@ func (m *Module) probeHTTPURLs(
 		log.DebugContext(
 			ctx,
 			"health: HTTP probe result",
-			"wan", wan.Name,
+			"wan", wan.Key(),
 			"iface", wan.Iface,
 			"family", family,
 			"url", url,
@@ -650,7 +650,7 @@ func (m *Module) emitTransition(
 	// transition that caused it.
 	if m.Env != nil && m.Env.LiveState != nil {
 		m.Env.LiveState.NotifyHealthTransition(
-			event.WAN.Name, verdictOf(event.From), verdictOf(event.To),
+			event.WAN.Key(), verdictOf(event.From), verdictOf(event.To),
 		)
 	}
 	// A health transition changes routing eligibility, so ask the daemon to
@@ -674,7 +674,7 @@ func (m *Module) emitTransition(
 			now,
 			slog.LevelWarn,
 			alertKindWANUnhealthy,
-			event.WAN.Name,
+			event.WAN.Key(),
 			"health: WAN became unhealthy",
 			slog.String("iface", event.WAN.Iface),
 		)
@@ -690,7 +690,7 @@ func (m *Module) emitTransition(
 			ctx,
 			now,
 			alertKindWANUnhealthy,
-			event.WAN.Name,
+			event.WAN.Key(),
 			"health: WAN recovered",
 			slog.String("iface", event.WAN.Iface),
 		)

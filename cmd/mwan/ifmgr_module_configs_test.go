@@ -181,7 +181,7 @@ func TestBuildWANRefs(t *testing.T) {
 		MwanbrEdgeV6:   "3d06:bad:b01:200::1",
 		WANs: []sharedWAN{
 			{
-				WANRef:        ifmgr.WANRef{Name: "att", Iface: "att0"},
+				WANRef:        ifmgr.WANRef{ID: "att", Name: "att", Iface: "att0"},
 				TableID:       100,
 				FwMark:        1,
 				FwMarkPrio:    100,
@@ -191,7 +191,7 @@ func TestBuildWANRefs(t *testing.T) {
 				Weight:        1,
 			},
 			{
-				WANRef:        ifmgr.WANRef{Name: "webpass", Iface: "webpass0"},
+				WANRef:        ifmgr.WANRef{ID: "webpass", Name: "webpass", Iface: "webpass0"},
 				TableID:       200,
 				FwMark:        2,
 				FwMarkPrio:    200,
@@ -234,7 +234,7 @@ func TestBuildWANRoutesConfig(t *testing.T) {
 		HealthStateFile: "/var/run/mwan-health.state",
 		WANs: []wanroutes.WAN{
 			{
-				WANRef:        ifmgr.WANRef{Name: "att", Iface: "att0"},
+				WANRef:        ifmgr.WANRef{ID: "att", Name: "att", Iface: "att0"},
 				TableID:       100,
 				FwMark:        1,
 				FwMarkPrio:    100,
@@ -244,7 +244,7 @@ func TestBuildWANRoutesConfig(t *testing.T) {
 				Weight:        1,
 			},
 			{
-				WANRef:        ifmgr.WANRef{Name: "webpass", Iface: "webpass0"},
+				WANRef:        ifmgr.WANRef{ID: "webpass", Name: "webpass", Iface: "webpass0"},
 				TableID:       200,
 				FwMark:        2,
 				FwMarkPrio:    200,
@@ -399,7 +399,7 @@ func TestBuildHealthConfig(t *testing.T) {
 		RecoveryThreshold: 0,
 		WANs: []health.WAN{
 			{
-				WANRef: ifmgr.WANRef{Name: "att", Iface: "att0"},
+				WANRef: ifmgr.WANRef{ID: "att", Name: "att", Iface: "att0"},
 				Tier:   0,
 				TargetsV4: []netip.Addr{
 					netip.MustParseAddr("192.0.2.1"),
@@ -417,7 +417,7 @@ func TestBuildHealthConfig(t *testing.T) {
 				CheckInterval:     15 * time.Second,
 			},
 			{
-				WANRef: ifmgr.WANRef{Name: "webpass", Iface: "webpass0"},
+				WANRef: ifmgr.WANRef{ID: "webpass", Name: "webpass", Iface: "webpass0"},
 				Tier:   1,
 				TargetsV4: []netip.Addr{
 					netip.MustParseAddr("198.51.100.1"),
@@ -696,8 +696,8 @@ func TestBuildSteeringConfig(t *testing.T) {
 		HashMode:        "source",
 		HealthStateFile: "/var/run/mwan-health.state",
 		Members: []steering.Member{
-			{WANRef: ifmgr.WANRef{Name: "att", Iface: "att0"}, Mark: 1, Tier: 0, Weight: 1},
-			{WANRef: ifmgr.WANRef{Name: "webpass", Iface: "webpass0"}, Mark: 2, Tier: 1, Weight: 3},
+			{WANRef: ifmgr.WANRef{ID: "att", Name: "att", Iface: "att0"}, Mark: 1, Tier: 0, Weight: 1},
+			{WANRef: ifmgr.WANRef{ID: "webpass", Name: "webpass", Iface: "webpass0"}, Mark: 2, Tier: 1, Weight: 3},
 		},
 	}
 	if !reflect.DeepEqual(cfg, want) {

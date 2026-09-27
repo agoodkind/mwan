@@ -10,6 +10,7 @@ import (
 )
 
 type debugWAN struct {
+	ID      string
 	Name    string
 	Iface   string
 	TableID int
@@ -26,8 +27,13 @@ func debugWANs(cfg *config.Config) []debugWAN {
 	wans := make([]debugWAN, 0, len(names))
 	for _, name := range names {
 		entry := cfg.IfMgr.WAN[name]
+		providerName := entry.ProviderName
+		if providerName == "" {
+			providerName = name
+		}
 		wans = append(wans, debugWAN{
-			Name:    name,
+			ID:      name,
+			Name:    providerName,
 			Iface:   entry.Iface,
 			TableID: entry.TableID,
 			FwMark:  entry.FwMark,

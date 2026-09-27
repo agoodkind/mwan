@@ -103,15 +103,15 @@ func TestGatewayFromModuleConfigs_ProjectsTheWANRole(t *testing.T) {
 
 	want := []wanconfig.Member{
 		{
-			Name: "att", Iface: "enatt0.3242", Tier: 0, Weight: 1, ProbePolicy: "att",
+			Name: "att", ProviderName: "att", Iface: "enatt0.3242", Tier: 0, Weight: 1, ProbePolicy: "att",
 			TableID: 100, FwMark: 1, FwMarkPrio: 10, FromPrio: 20,
 		},
 		{
-			Name: "monkeybrains", Iface: "enmbrains0", Tier: 1, Weight: 1, ProbePolicy: "monkeybrains",
+			Name: "monkeybrains", ProviderName: "monkeybrains", Iface: "enmbrains0", Tier: 1, Weight: 1, ProbePolicy: "monkeybrains",
 			TableID: 300, FwMark: 3, FwMarkPrio: 12, FromPrio: 22,
 		},
 		{
-			Name: "webpass", Iface: "enwebpass0", Tier: 0, Weight: 2, ProbePolicy: "webpass",
+			Name: "webpass", ProviderName: "webpass", Iface: "enwebpass0", Tier: 0, Weight: 2, ProbePolicy: "webpass",
 			TableID: 200, FwMark: 2, FwMarkPrio: 11, FromPrio: 21, V4Source: "192.0.2.2",
 		},
 	}

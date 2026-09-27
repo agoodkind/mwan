@@ -20,6 +20,7 @@ import (
 	"slices"
 
 	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/networkd"
 	"goodkind.io/mwan/internal/yangpub"
@@ -46,15 +47,16 @@ type interfaces struct {
 }
 
 type ifaceEntry struct {
-	Name      string             `json:"name"`
-	Type      string             `json:"type"`
-	LinkFiles string             `json:"goodkind-mwan-steering:link-files"`
-	Link      *linkIdentity      `json:"goodkind-mwan-steering:link"`
-	Networkd  *networkdContainer `json:"goodkind-mwan-steering:networkd"`
-	IPv4      *familyV4          `json:"ietf-ip:ipv4"`
-	IPv6      *familyV6          `json:"ietf-ip:ipv6"`
-	WAN       *wan               `json:"goodkind-mwan-steering:wan"`
-	Steering  *steering          `json:"goodkind-mwan-steering:steering"`
+	Name         string             `json:"name"`
+	Type         string             `json:"type"`
+	ConnectionID string             `json:"goodkind-mwan-steering:connection-id"`
+	LinkFiles    string             `json:"goodkind-mwan-steering:link-files"`
+	Link         *linkIdentity      `json:"goodkind-mwan-steering:link"`
+	Networkd     *networkdContainer `json:"goodkind-mwan-steering:networkd"`
+	IPv4         *familyV4          `json:"ietf-ip:ipv4"`
+	IPv6         *familyV6          `json:"ietf-ip:ipv6"`
+	WAN          *wan               `json:"goodkind-mwan-steering:wan"`
+	Steering     *steering          `json:"goodkind-mwan-steering:steering"`
 }
 
 // The two values the link-files leaf takes.
@@ -212,17 +214,20 @@ type groupHealth struct {
 // Config is the network tree one file carries, in the shape the daemon's
 // configuration holds it.
 type Config struct {
-	Firewall           firewall.Config
-	InternalPrefix     string
-	OpnsenseEdgeV6     string
-	MwanbrEdgeV6       string
-	InternalIface      string
-	InternalNetV4      string
-	HashMode           string
-	ReservedTables     []int
-	ProbeTimeoutMillis int
-	WAN                map[string]config.IfMgrWANEntry
-	Health             map[string]config.IfMgrHealthWANSection
+	Firewall              firewall.Config
+	PinnedConnectionID    string
+	InternalPrefix        string
+	OpnsenseEdgeV6        string
+	MwanbrEdgeV6          string
+	InternalIface         string
+	InternalNetV4         string
+	HashMode              string
+	ReservedTables        []int
+	ProbeTimeoutMillis    int
+	WAN                   map[string]config.IfMgrWANEntry
+	Health                map[string]config.IfMgrHealthWANSection
+	ConnectionIDs         map[string]connectionid.ID
+	ExplicitConnectionIDs map[string]connectionid.ID
 	// Links are the link specifications of the providers whose unit files the
 	// daemon renders, in document order. A provider whose entry names its
 	// files hand-authored contributes none.
@@ -299,19 +304,22 @@ func build(doc *document) (*Config, error) {
 	group := doc.Interfaces.SteeringGroup
 	var zeroFirewall firewall.Config
 	loaded := &Config{
-		Firewall:           zeroFirewall,
-		InternalPrefix:     group.Translation.InternalPrefix,
-		OpnsenseEdgeV6:     group.Translation.OpnsenseEdgeV6,
-		MwanbrEdgeV6:       group.Translation.MwanbrEdgeV6,
-		InternalIface:      group.Routes.InternalIface,
-		InternalNetV4:      group.Routes.InternalNetV4,
-		HashMode:           group.HashMode,
-		ReservedTables:     group.ReservedTables,
-		ProbeTimeoutMillis: 0,
-		WAN:                make(map[string]config.IfMgrWANEntry, len(doc.Interfaces.Interface)),
-		Health:             make(map[string]config.IfMgrHealthWANSection, len(doc.Interfaces.Interface)),
-		Links:              nil,
-		Rejected:           nil,
+		Firewall:              zeroFirewall,
+		PinnedConnectionID:    pinnedConnectionID(group.Firewall),
+		InternalPrefix:        group.Translation.InternalPrefix,
+		OpnsenseEdgeV6:        group.Translation.OpnsenseEdgeV6,
+		MwanbrEdgeV6:          group.Translation.MwanbrEdgeV6,
+		InternalIface:         group.Routes.InternalIface,
+		InternalNetV4:         group.Routes.InternalNetV4,
+		HashMode:              group.HashMode,
+		ReservedTables:        group.ReservedTables,
+		ProbeTimeoutMillis:    0,
+		WAN:                   make(map[string]config.IfMgrWANEntry, len(doc.Interfaces.Interface)),
+		Health:                make(map[string]config.IfMgrHealthWANSection, len(doc.Interfaces.Interface)),
+		ConnectionIDs:         make(map[string]connectionid.ID, len(doc.Interfaces.Interface)),
+		ExplicitConnectionIDs: make(map[string]connectionid.ID),
+		Links:                 nil,
+		Rejected:              nil,
 	}
 	required := []struct {
 		leaf  string
@@ -333,6 +341,12 @@ func build(doc *document) (*Config, error) {
 		return nil, errors.New("steering-group/health/probe-timeout is required")
 	}
 	loaded.ProbeTimeoutMillis = *group.Health.ProbeTimeout
+	ids, explicitIDs, err := normalizeConnectionIDs(doc.Interfaces.Interface)
+	if err != nil {
+		return nil, err
+	}
+	loaded.ConnectionIDs = ids
+	loaded.ExplicitConnectionIDs = explicitIDs
 
 	// The firewall renders one forced-DSCP rule per provider in list order, and
 	// a later rule overwrites an earlier rule's mark, so a shared value would
@@ -342,6 +356,7 @@ func build(doc *document) (*Config, error) {
 		if entry.WAN == nil {
 			continue
 		}
+		id := loaded.ConnectionIDs[entry.Name].String()
 		// A defect inside one entry rejects that entry alone. Every check below
 		// this point compares entries with each other. A collision has no
 		// single bad entry, and those checks stay fatal.
@@ -359,20 +374,18 @@ func build(doc *document) (*Config, error) {
 			routing.V4Source = staticV4Source(*spec)
 			loaded.Links = append(loaded.Links, *spec)
 		}
-		if _, seen := loaded.WAN[entry.WAN.Name]; seen {
-			return nil, fmt.Errorf("provider %q appears on more than one interface", entry.WAN.Name)
-		}
 		if entry.WAN.ForcedDSCP != nil {
 			value := *entry.WAN.ForcedDSCP
 			if owner, taken := dscpOwners[value]; taken {
 				return nil, fmt.Errorf("wan %s: forced-dscp %d is already taken by wan %s",
-					entry.WAN.Name, value, owner)
+					id, value, owner)
 			}
-			dscpOwners[value] = entry.WAN.Name
+			dscpOwners[value] = id
 		}
-		loaded.WAN[entry.WAN.Name] = routing
+		routing.ProviderName = entry.WAN.Name
+		loaded.WAN[id] = routing
 		if probe != nil {
-			loaded.Health[entry.WAN.Name] = *probe
+			loaded.Health[id] = *probe
 		}
 	}
 	if len(loaded.WAN) == 0 {
@@ -500,29 +513,6 @@ func checkProviderSet(loaded *Config) error {
 		// zero-weight provider through it.
 		if entry.Weight < 1 {
 			return fmt.Errorf("wan %s: steering/weight must be at least 1, got %d", name, entry.Weight)
-		}
-	}
-	return nil
-}
-
-// checkMappedExternals refuses an external address that two providers map. The
-// schema keys the list inside one provider and cannot see another provider's
-// list, and two providers translating one address would each hold it on any
-// link it is on-link for, so which link carries it would be undefined. names
-// is sorted, so the error always names the same pair.
-func checkMappedExternals(loaded *Config, names []string) error {
-	mappedBy := make(map[netip.Addr]string, len(names))
-	for _, name := range names {
-		policy := loaded.WAN[name].TranslationV4
-		if policy == nil {
-			continue
-		}
-		for _, mapping := range policy.StaticMappings {
-			if taken, seen := mappedBy[mapping.External]; seen {
-				return fmt.Errorf("wan %s ipv4: static-mapping external %s is already mapped by wan %s",
-					name, mapping.External, taken)
-			}
-			mappedBy[mapping.External] = name
 		}
 	}
 	return nil
@@ -847,6 +837,7 @@ func buildProvider(entry ifaceEntry) (config.IfMgrWANEntry, *config.IfMgrHealthW
 		forcedDSCP = *provider.ForcedDSCP
 	}
 	routing := config.IfMgrWANEntry{
+		ProviderName:  provider.Name,
 		Iface:         entry.Name,
 		TableID:       *provider.TableID,
 		FwMark:        *provider.FwMark,
@@ -965,12 +956,15 @@ func ApplyDefault(cfg *config.Config) error {
 // filesystem paths TOML still owns. Apply writes only the network values.
 func (c *Config) Apply(cfg *config.Config) {
 	cfg.IfMgr.Firewall = c.Firewall
+	cfg.IfMgr.PinnedConnectionID = c.PinnedConnectionID
 	cfg.IfMgr.InternalPrefix = c.InternalPrefix
 	cfg.IfMgr.OpnsenseEdgeV6 = c.OpnsenseEdgeV6
 	cfg.IfMgr.MwanbrEdgeV6 = c.MwanbrEdgeV6
 	cfg.IfMgr.HashMode = c.HashMode
 	cfg.IfMgr.ReservedTables = c.ReservedTables
 	cfg.IfMgr.WAN = c.WAN
+	cfg.IfMgr.ConnectionIDs = c.ConnectionIDs
+	cfg.IfMgr.ExplicitConnectionIDs = c.ExplicitConnectionIDs
 	cfg.IfMgr.Links = c.Links
 
 	if cfg.IfMgr.Modules.WAN == nil {

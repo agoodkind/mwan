@@ -252,9 +252,11 @@ func selftestGateway() wanconfig.Gateway {
 	firewallConfig.PinnedSetV4Name = "selftest_pinned_v4"
 	firewallConfig.PinnedSetV6Name = "selftest_pinned_v6"
 	return wanconfig.Gateway{
-		InternalIface: "eninternal0",
-		Firewall:      firewallConfig,
-		HashMode:      "random",
+		PinnedConnectionID: "",
+		ConnectionIDs:      nil,
+		InternalIface:      "eninternal0",
+		Firewall:           firewallConfig,
+		HashMode:           "random",
 		Group: wanconfig.GroupSettings{
 			ReservedTables:     []uint32{400, 500},
 			InternalPrefix:     netip.MustParsePrefix("3d06:bad:b01:210::/60"),
@@ -265,6 +267,7 @@ func selftestGateway() wanconfig.Gateway {
 		},
 		Members: []wanconfig.Member{{
 			Name:            "example",
+			ProviderName:    "example",
 			Iface:           "enexample0",
 			Tier:            0,
 			Weight:          1,

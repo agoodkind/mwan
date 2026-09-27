@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"goodkind.io/mwan/internal/wanconfig"
@@ -91,6 +92,13 @@ func TestPublishedTreeRoundTripsThroughSysrepo(t *testing.T) {
 	if len(documents) == 0 {
 		t.Fatalf("no network document matches %s", networkInstanceGlob)
 	}
+	sharedLabel := modifiedNetwork(t,
+		networkReplacement{old: `"name": "enwebpass0",`, new: `"name": "enwebpass0", "goodkind-mwan-steering:connection-id": "sonic-a",`},
+		networkReplacement{old: `"name": "enatt0",`, new: `"name": "enatt0", "goodkind-mwan-steering:connection-id": "sonic-b",`},
+		networkReplacement{old: `"name": "att",`, new: `"name": "webpass",`},
+		networkReplacement{old: `"pinned-provider": "att"`, new: `"pinned-connection-id": "sonic-b"`},
+	)
+	documents = append(documents, sharedLabel)
 	schemaDir := networkSchemaDirForTest(t)
 	flags := selftestFlags{
 		repository: filepath.Join(t.TempDir(), "repository"),
@@ -132,6 +140,13 @@ func TestPublishedTreeRoundTripsThroughSysrepo(t *testing.T) {
 			served := withoutServedOnlyPairs(flattenNetworkJSON(t, []byte(exported)))
 			compareLeafSets(t, flattenNetworkJSON(t, raw), served)
 		})
+	}
+	exportedNAT, foundNAT, err := reader.ExportJSON(ctx, yangpub.DatastoreRunning, "/ietf-nat:*")
+	if err != nil || !foundNAT {
+		t.Fatalf("read shared-label NAT instances: found=%v err=%v", foundNAT, err)
+	}
+	if !strings.Contains(exportedNAT, `sonic-a/ipv4`) || !strings.Contains(exportedNAT, `sonic-a/ipv6`) {
+		t.Fatalf("shared-label NAT identities are missing: %s", exportedNAT)
 	}
 	gateway := selftestGateway()
 	readIDs := func() map[string]uint32 {
