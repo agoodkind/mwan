@@ -55,7 +55,7 @@ No interface-owner cutover has begun.
 | MWAN-524 | Restore the managed Astound testbed connection first. | Configs PR #522 merged. Deployment, restart, downstream traffic, balancing, and recovery passed. |
 | MWAN-516 | 516-model; 516-state | [MWAN PR #51](https://github.com/agoodkind/mwan/pull/51) merged standalone identity as `959fbd3a65955e8156f2ea6c9bf2c90febef762c`. [MWAN PR #55](https://github.com/agoodkind/mwan/pull/55) merged shared interface intent as `2c6df538fbb1174a9189f3098d6ac458256857f4`. Both merged releases passed separate testbed traffic checkpoints. State publication remains. |
 | MWAN-397 | 397-links | Execution has not started. |
-| MWAN-523 | 523-observation | [MWAN PR #60](https://github.com/agoodkind/mwan/pull/60) merged the observer foundation as `13183ea9d6264beac7b85bfd4e7946b15f7da601`. Configs PRs #533 and #535 passed testbed and production deployment checks. MWAN PRs #66, #71, and #73 verified route identity, bridge rebinding, and router advertisement lifetimes in privileged kernel tests. Full observer acceptance remains. |
+| MWAN-523 | 523-observation | [MWAN PR #60](https://github.com/agoodkind/mwan/pull/60) merged the observer foundation as `13183ea9d6264beac7b85bfd4e7946b15f7da601`. Configs PRs #533 and #535 passed testbed and production deployment checks. MWAN PRs #66, #71, #73, and #75 verified route identity, bridge rebinding, router advertisement lifetimes, and index reuse in privileged kernel tests. Full observer acceptance remains. |
 | MWAN-530 | Restart handover | [MWAN PR #64](https://github.com/agoodkind/mwan/pull/64) merged forwarding readiness as `798ee6a8dcb57ef91e7d9656e8a368f3f4bd4412`. OPNsense selected the backup during controlled testbed and production reboots, then restored the primary while downstream replies continued. Tack records Done. |
 | MWAN-398 | 398-addresses; 398-dhcpv4 | Execution has not started. |
 | MWAN-227 | 227-delegation | Execution has not started. |
@@ -759,6 +759,25 @@ existing GoBGP advisory GO-2026-4736, which has no fixed version in that
 scanner result. This test-only merge requires no gateway release or deploy.
 MWAN-523 remains In Progress for index reuse, duplicate-address failure,
 observation-gap recovery, and public daemon packet acceptance.
+
+### Index reuse observer checkpoint, September 28, 2026
+
+[MWAN PR #75](https://github.com/agoodkind/mwan/pull/75) merged as
+`dd288e117435039245024438eb0e7e890c6b01f2`. Its isolated real-kernel
+test deletes a configured physical link and creates an unrelated link with
+the same kernel index. The monitor stays unbound and does not attribute the
+unrelated address. A matching replacement then reuses that index. The
+monitor reports the configured connection ID, replacement name, and current
+address; a fresh snapshot excludes the old address.
+
+The final test passed 20 focused privileged runs, all six packages in
+`make test-netns`, and `make docker-make TARGETS='check test'`. Independent
+review verified the unrelated-link rejection. Required CI and automated
+review passed with no unresolved threads. Optional Govulncheck repeated the
+existing GoBGP advisory GO-2026-4736. This test-only merge requires no
+gateway release or deploy. MWAN-523 remains In Progress for duplicate-address
+failure and public daemon packet acceptance after link replacement and
+observation recovery.
 
 ## Record future implementation results
 
