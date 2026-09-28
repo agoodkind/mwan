@@ -667,7 +667,7 @@ gates. VM 213 reported clean MWAN commit `79d166e` and an active
 
 Client 225 has one downstream interface through OPNsense. Its existing probe
 service recorded 830 successful IPv4 samples and 830 successful IPv6 samples
-through the deployment, with no failed samples. The largest intervals between
+during deployment, with no failed samples. The largest intervals between
 successful replies were 2.127 seconds for IPv4 and 2.126 seconds for IPv6.
 Client 226 returned IPv4 and IPv6 HTTPS replies after deployment. Client 225
 completed 100 of 100 fresh requests in each family; simulator captures saw
