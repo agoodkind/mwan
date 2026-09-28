@@ -1062,8 +1062,40 @@ routed those destinations through Comcast instead of the isolated ISP bridges,
 so that probe did not test inbound mapping. The deploy gate verified address
 presence on the gateway.
 
-Production remains on release `202609281827-52-b601ab8`. Configs PR #549
-proposes the accepted release for production; it has not merged or deployed.
+### MWAN-397 production acceptance, September 28, 2026
+
+[Configs PR #549](https://github.com/agoodkind/configs/pull/549) pinned the
+same release in production and merged as
+`d99305044149a77a7eab7eaf8b3456771c5970db`. Its required checks,
+Graphite AI review, and PR-Agent review passed with no unresolved threads.
+A clean merged checkout ran
+`./configsctl deploy deploy-mwan --limit mwan_servers --check --diff`, then
+the same command without `--check --diff`. Check mode reported 187 successful
+tasks and 14 proposed changes. Apply reported 240 successful tasks and 21
+changes. Both reported zero unreachable hosts and zero failures. The
+predeploy egress check passed and Vault created a rollback snapshot. Trace
+`20260928-162923-deploy-667237` passed reboot, egress, and mapped-address
+gates without rollback. Ansible reconnected after the interface-manager
+restart. VM 113 reported clean commit `446e76f`, an active interface manager,
+and the expected AT&T, Webpass, and Monkeybrains addresses and delegations.
+All live provider links remain under networkd. No reverse transfer applied
+to this link-only release.
+
+Downstream UniFi LXC 102 received 1,125 of 1,126 IPv4 and 1,126 of 1,126
+IPv6 replies across deployment and reboot. IPv4 missed sequence 764 during
+the change to the backup path; successful replies were 2.026 seconds apart.
+The reply TTL changed from 49 to 45 for IPv4 and from 55 to 45 for IPv6
+during the backup interval. OPNsense subsequently installed the primary
+defaults through `10.250.250.3` and `3d06:bad:b01:fe::3`. Twenty fresh
+downstream HTTP connections per family all succeeded. IPv4 selected Webpass
+12 times and AT&T eight times; IPv6 selected Webpass 12 times and AT&T eight
+times. Independent Suburban probes received three of three replies from each
+mapped IPv4 address, `104.57.226.193` and `136.25.91.242`, and each IPv6
+edge address, `2600:1700:2f71:c80::1` and `2604:5500:c271:be00::1`.
+
+MWAN-397 is Done in Tack. The next runtime slice is MWAN-398 owned address
+and route reconciliation; it must pass its own testbed and production gates
+before protocol acquisition work begins.
 
 The finding counts report blockers, issues to fix, and minor issues found
 during review, including findings fixed before the verdict.
