@@ -15,6 +15,7 @@ import (
 	connprobe "goodkind.io/mwan/internal/ifmgr/modules/connprobe"
 	health "goodkind.io/mwan/internal/ifmgr/modules/health"
 	hostipv6policy "goodkind.io/mwan/internal/ifmgr/modules/hostipv6policy"
+	links "goodkind.io/mwan/internal/ifmgr/modules/links"
 	mainv4 "goodkind.io/mwan/internal/ifmgr/modules/mainv4"
 	npt "goodkind.io/mwan/internal/ifmgr/modules/npt"
 	oobv4 "goodkind.io/mwan/internal/ifmgr/modules/oobv4"
@@ -145,6 +146,13 @@ func addWANRoleConfigs(
 	var routesSection *config.IfMgrWANRoutesSection
 	if ifmgrCfg.Modules.WAN != nil {
 		routesSection = ifmgrCfg.Modules.WAN.Routes
+	}
+	if want["links"] {
+		linksConfig := links.Config{Connections: ifmgrCfg.Connections, StateFile: ""}
+		if ifmgrCfg.Modules.Links != nil {
+			linksConfig.StateFile = ifmgrCfg.Modules.Links.StateFile
+		}
+		moduleConfigs["links"] = linksConfig
 	}
 	if want["health"] {
 		healthConfig, err := buildHealthConfig(shared, ifmgrCfg.Modules.Health)

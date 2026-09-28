@@ -76,8 +76,13 @@ func validateMember(member Member, seen map[string]bool, instances map[uint32]st
 }
 
 func validateConnection(connection interfaceintent.Connection) error {
-	if connection.Owner != interfaceintent.OwnerExternal && connection.Owner != interfaceintent.OwnerNetworkd {
+	if connection.Owner != interfaceintent.OwnerExternal && connection.Owner != interfaceintent.OwnerNetworkd &&
+		connection.Owner != interfaceintent.OwnerMWAN {
 		return invalid(fmt.Sprintf("interface %s has invalid owner %q", connection.Name, connection.Owner))
+	}
+	if connection.Owner == interfaceintent.OwnerMWAN &&
+		(connection.Link == nil || connection.IPv4 != nil || connection.IPv6 != nil || len(connection.Networkd) != 0) {
+		return invalid(fmt.Sprintf("interface %s must have only mwan-owned link intent", connection.Name))
 	}
 	if err := validateVLAN(connection.Name, connection.Link); err != nil {
 		return err

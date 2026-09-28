@@ -981,6 +981,28 @@ interface-manager JSON log contained 1,725 lines after reboot. No live
 interface ownership transfer or reverse transfer occurred. MWAN-516 passed
 its state-publication acceptance; MWAN-397 is the next implementation slice.
 
+### MWAN-397 link implementation, September 28, 2026
+
+Tack marks MWAN-397 In Progress. The current unmerged change admits only
+link-only MWAN connections. Existing provider connections retain their
+networkd owner. A privileged Linux namespace test found that netlink
+`LinkAdd` did not retain the requested alias for either a VLAN or a bridge.
+The link writer now syncs a creation record with a random alias token before
+it creates a virtual link under a reserved temporary name. It verifies the
+device before setting the recorded alias and assigning the configured name.
+Focused kernel namespace tests pass
+for creation, restart adoption, removal, and preservation of foreign links.
+The parser, boot-name writer, and configuration-tree tests pass. The public
+daemon namespace test passed with VLAN packet delivery, restart adoption,
+final-link removal, and preservation of legacy and external links. Independent
+review found and verified fixes for journal and bridge identity defects. Lint,
+schema validation, the full test target, and privileged namespace tests pass.
+Merge and deployment remain open.
+
+| Date | Branch | Class | Reviewer tier | Verdict | Catches B/SF/N | Escapes | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-09-28 | MWAN-397 uncommitted patch at `9e8beacf` | Link ownership and recovery | Independent adversarial | MERGE-READY | 10/2/0, fixed before verdict | None found | Fresh public daemon namespace, kernel namespace race, role-order, red-green parser assertion, and live `origin/main` merge-tree passed. Lint and schema passed before the role-order fix; the full test target passed afterward. No deployment was reviewed. |
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.

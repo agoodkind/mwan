@@ -44,9 +44,12 @@ hypervisor bridge. Its name does not require a Linux bridge inside the guest.
 
 ### Implement link dependencies
 
-This PR uses the merged model and observation contracts. The link implementer
-owns the approved new module, kernel link operations, and startup wiring.
-The reviewer must first settle dependency cancellation and boot naming.
+Admit only MWAN-owned link-only connections with an explicit connection ID.
+Reject family settings, provider settings, networkd files, and the internal
+and management roles for that owner. Assign its link claim to the MWAN link
+writer only when the same PR installs the runtime writer. Keep all live
+providers under networkd. The reviewer must settle dependency cancellation
+and boot naming before implementation.
 
 1. Match actual identity unambiguously before mutation. Reject absent or
    multiple matches as explicit connection state. Validate parent references,
@@ -64,13 +67,37 @@ The reviewer must first settle dependency cancellation and boot naming.
    Complete module validation before writing networkd units or starting direct
    link operations. Keep `parseNetworkConfig` separate from `writeNetworkConfig`.
 
+Require a configured permanent MAC address for MWAN-owned physical links.
+Reject driver-only matching until a boot-stable single-device selector exists.
+Stage a udev name rule for each accepted physical link. Do not rename an active
+physical device. Verify the observed permanent MAC before reporting the link
+ready.
+
+Persist and sync a creation record with a random alias token before adding a
+virtual link with a random temporary name. The kernel does not retain an alias
+supplied with VLAN or bridge creation. Verify the new link's type, parent, and
+tag; then set and verify the recorded alias before assigning the configured
+name. On restart, recover an untagged temporary link only when the record,
+boot ID, temporary name, type, parent, and tag match. Recover or remove a
+tagged link only when its recorded alias and identity match. Do not adopt or
+remove an ambiguous link. A kernel index alone does not establish ownership.
+A missing parent must delay only dependent children; it must not stop other
+connections.
+
+Keep the configured ownership state file after removing the final owned
+connection. The reconciler must read that file and prune the final link before
+the state file configuration can be removed. A matching alias without a
+durable record is a conflict, not proof of ownership.
+
 ### Verify links through the daemon
 
 Add public daemon scenarios beside
 [the existing command namespace suite](../../../cmd/mwan/deploygate_egress_netns_test.go).
 Start the production `mwan ifmgr` command with isolated configuration and real
-Linux namespaces, VLANs, and packet exchange. Record the privileged test
-invocation when these cases exist; helper-only tests are insufficient.
+Linux namespaces, VLANs, and packet exchange. Add link-only owned connections
+beside a valid legacy provider in the test configuration. Record the
+privileged test invocation when these cases exist; helper-only tests are
+insufficient. Do not transfer a live provider in MWAN-397.
 
 1. Start two connections with one absent provider. Verify traffic through the
    available connection, then create the missing device and verify recovery.

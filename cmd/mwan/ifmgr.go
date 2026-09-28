@@ -24,6 +24,7 @@ import (
 	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/ifmgr"
+	"goodkind.io/mwan/internal/linkboot"
 	"goodkind.io/mwan/internal/logging"
 	"goodkind.io/mwan/internal/networkd"
 	"goodkind.io/mwan/internal/networkjson"
@@ -40,6 +41,7 @@ import (
 	_ "goodkind.io/mwan/internal/ifmgr/modules/firewall"
 	_ "goodkind.io/mwan/internal/ifmgr/modules/health"
 	_ "goodkind.io/mwan/internal/ifmgr/modules/hostipv6policy"
+	_ "goodkind.io/mwan/internal/ifmgr/modules/links"
 	_ "goodkind.io/mwan/internal/ifmgr/modules/mainv4"
 	_ "goodkind.io/mwan/internal/ifmgr/modules/npt"
 	_ "goodkind.io/mwan/internal/ifmgr/modules/oobv4"
@@ -116,7 +118,7 @@ func runIfMgr(cfg *config.Config) error {
 		logger.Warn("ifmgr: new daemon failed", "err", err)
 		return fmt.Errorf("new daemon: %w", err)
 	}
-	rejections, err := writeNetworkConfig(ctx, logger, loaded)
+	rejections, err := writeInterfaceConfig(ctx, logger, loaded)
 	if err != nil {
 		return err
 	}
@@ -344,6 +346,28 @@ func parseNetworkConfig(
 	}
 	loaded.Apply(cfg)
 	return loaded, nil
+}
+
+func writeInterfaceConfig(
+	ctx context.Context,
+	log *slog.Logger,
+	loaded *networkjson.Config,
+) ([]networkjson.Rejection, error) {
+	if loaded != nil {
+		if err := linkboot.ValidateDir(networkd.DefaultUnitDir, loaded.Connections); err != nil {
+			log.ErrorContext(ctx, "ifmgr: owned link name validation failed", "err", err)
+			return nil, fmt.Errorf("validate owned link names: %w", err)
+		}
+	}
+	rejections, err := writeNetworkConfig(ctx, log, loaded)
+	if err != nil || loaded == nil {
+		return rejections, err
+	}
+	if _, err := linkboot.WriteDir(networkd.DefaultUnitDir, loaded.Connections); err != nil {
+		log.ErrorContext(ctx, "ifmgr: owned link name write failed", "err", err)
+		return nil, fmt.Errorf("write owned link names: %w", err)
+	}
+	return rejections, nil
 }
 
 func writeNetworkConfig(
