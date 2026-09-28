@@ -642,6 +642,53 @@ deployment ran for this test-only merge. MWAN-523 still requires index reuse,
 virtual-link rename, router advertisement lifetimes, and daemon-level packet
 acceptance before state publication.
 
+### VLAN rename observer testbed checkpoint, September 28, 2026
+
+[MWAN PR #68](https://github.com/agoodkind/mwan/pull/68) merged as
+`79d166e709c31d4860eb732c97773d21fe1ed966`. The matcher identifies a
+renamed 802.1Q VLAN by its parent name, tag, and protocol. Its privileged
+kernel test creates 802.1Q and 802.1ad links with the same parent and tag,
+renames the 802.1Q link, and verifies that the monitor follows only that
+link. `make test-netns` passed all six packages, and
+`make docker-make TARGETS='check test'` passed. Required CI, the final
+privileged test run, and independent review passed with no unresolved review
+threads. The optional Govulncheck job repeated the existing GoBGP finding
+GO-2026-4736, with no fixed version reported by the scanner.
+
+Release `202609281014-42-79d166e` passed its publish and verification
+workflow. [Configs PR #542](https://github.com/agoodkind/configs/pull/542)
+merged the testbed pin as `84cd7b3058348bcc7213369185284d0a17cab4b2`.
+The testbed check from clean merged Configs main passed with 176 successful
+tasks, 25 proposed changes, and no failures. The apply passed with 227
+successful tasks, 21 changes, no unreachable hosts, and no failures. Trace
+`20260928-033732-deploy-775018` passed the reboot, egress, and mapped-address
+gates. VM 213 reported clean MWAN commit `79d166e` and an active
+`mwan-ifmgr@wan` service. Networkd retained interface ownership.
+
+Client 225 has one downstream interface through OPNsense. Its existing probe
+service recorded 830 successful IPv4 samples and 830 successful IPv6 samples
+through the deployment, with no failed samples. The largest intervals between
+successful replies were 2.127 seconds for IPv4 and 2.126 seconds for IPv6.
+Client 226 returned IPv4 and IPv6 HTTPS replies after deployment. Client 225
+completed 100 of 100 fresh requests in each family; simulator captures saw
+new connections on both Webpass and AT&T links for both families.
+
+Both primary simulator uplinks were lowered with verified ten-minute
+restoration timers. Client 225 recorded 31 failed samples per family before
+health classified Webpass and AT&T unhealthy. The largest intervals between
+successful replies were 133.660 seconds for IPv4 and 134.764 seconds for
+IPv6. After classification, 20 of 20 fresh IPv4 requests succeeded, with
+SYNs observed on both Monkeybrains and Astound links. Twenty of 20 fresh
+IPv6 requests succeeded, with SYNs observed on Monkeybrains. Both uplinks
+were restored; all five providers returned healthy, both families returned
+successful replies, and the restoration timers were stopped.
+
+The testbed has no live VLAN provider. The real-kernel test verifies VLAN
+rename behavior. The live testbed passed deployment compatibility checks.
+Production still uses its prior release. MWAN-523 still requires index reuse,
+bridge rename, router advertisement lifetimes, and public daemon packet
+acceptance before state publication.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
