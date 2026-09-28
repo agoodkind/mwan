@@ -1182,19 +1182,23 @@ func waitObservedSnapshot(t *testing.T, events <-chan Event, matches func(*Snaps
 
 func addObservedVeth(t *testing.T, name string, peerName string, mac string) netlink.Link {
 	t.Helper()
-	if err := netlink.LinkAdd(&netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: name}, PeerName: peerName}); err != nil {
+	hardware, err := net.ParseMAC(mac)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.LinkAdd(&netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: name, HardwareAddr: hardware}, PeerName: peerName}); err != nil {
 		t.Fatal(err)
 	}
 	link, err := netlink.LinkByName(name)
 	if err != nil {
 		t.Fatal(err)
 	}
-	hardware, err := net.ParseMAC(mac)
-	if err != nil {
-		t.Fatal(err)
+	identity := link.Attrs().PermHWAddr
+	if len(identity) == 0 {
+		identity = link.Attrs().HardwareAddr
 	}
-	if err := netlink.LinkSetHardwareAddr(link, hardware); err != nil {
-		t.Fatal(err)
+	if !strings.EqualFold(identity.String(), mac) {
+		t.Fatalf("link %s identity MAC = %s, want %s", name, identity, mac)
 	}
 	if err := netlink.LinkSetUp(link); err != nil {
 		t.Fatal(err)
