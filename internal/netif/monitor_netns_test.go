@@ -252,6 +252,82 @@ deleteIPv6Route:
 	}
 }
 
+func TestMonitorIdentifiesDeletedRouteAmongMatchingDestinations(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	link := addObservedVeth(t, "obs-route", "obs-route-peer", "02:00:5e:00:53:85")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	monitor := NewMonitor(ctx, logger, MonitorConfig{Iface: "obs-route"})
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == link.Attrs().Index
+	})
+
+	_, destination, err := net.ParseCIDR("203.0.113.0/24")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := &netlink.Route{
+		LinkIndex: link.Attrs().Index, Dst: destination, Family: netlink.FAMILY_V4,
+		Table: 123, Protocol: 42, Scope: netlink.SCOPE_LINK, Priority: 77,
+	}
+	second := &netlink.Route{
+		LinkIndex: link.Attrs().Index, Dst: destination, Family: netlink.FAMILY_V4,
+		Table: 124, Protocol: 43, Scope: netlink.SCOPE_LINK, Priority: 88,
+	}
+	for _, route := range []*netlink.Route{first, second} {
+		if err := netlink.RouteAdd(route); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = netlink.RouteDel(route) })
+	}
+	seen := map[int]bool{}
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	for len(seen) < 2 {
+		select {
+		case event := <-monitor.Events:
+			if event.Kind == EvRouteAdded && event.Dest == destination.String() {
+				seen[event.TableID] = true
+			}
+		case <-deadline.C:
+			t.Fatalf("route additions observed in tables %v", seen)
+		}
+	}
+	if err := netlink.RouteDel(first); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		select {
+		case event := <-monitor.Events:
+			if event.Kind != EvRouteDeleted || event.Dest != destination.String() {
+				continue
+			}
+			if event.Family != "inet" || event.TableID != 123 || event.Protocol != 42 ||
+				event.Metric != 77 || event.IfIndex != link.Attrs().Index ||
+				event.Scope != int(netlink.SCOPE_LINK) || len(event.NextHops) != 1 ||
+				event.NextHops[0].LinkIndex != link.Attrs().Index {
+				t.Fatalf("deleted route identity = %+v", event)
+			}
+			fresh := NewMonitor(ctx, logger, MonitorConfig{Iface: "obs-route"})
+			snapshot := waitObservedSnapshot(t, fresh.Events, func(snapshot *Snapshot) bool {
+				return snapshot.IfIndex == link.Attrs().Index
+			})
+			for _, current := range snapshot.Routes {
+				if current.Dest != destination.String() {
+					continue
+				}
+				if current.TableID != 124 || current.Protocol != 43 || current.Metric != 88 {
+					t.Fatalf("remaining route identity = %+v", current)
+				}
+				return
+			}
+			t.Fatalf("route in table 124 missing from snapshot: %+v", snapshot.Routes)
+		case <-deadline.C:
+			t.Fatal("route deletion was not observed")
+		}
+	}
+}
+
 func TestMonitorDistinguishesSnapshotReplayFromNewAddress(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	link := addObservedVeth(t, "obs-replay", "obs-replay-peer", "02:00:5e:00:53:77")
