@@ -710,8 +710,8 @@ per family all succeeded from that guest. IPv4 selected `136.25.91.242` 16
 times and `104.57.226.193` 14 times. IPv6 selected
 `2600:1700:2f71:c80:dac2::102` 16 times and
 `2604:5500:c271:be00:583d::102` 14 times. Proxy LXC 110 also returned
-IPv4 and IPv6 HTTPS replies after
-deployment. The gateway's provider-bound probe succeeded over IPv4 for all
+IPv4 and IPv6 HTTPS replies after deployment. The gateway's provider-bound
+probe succeeded over IPv4 for all
 three providers and over IPv6 to ifconfig.co for all three providers. Its
 alternate api.ipify.org IPv6 probes failed; the successful ifconfig.co probes
 establish IPv6 egress on each provider.
@@ -723,6 +723,23 @@ provider edge addresses `2600:1700:2f71:c80::1` and
 passed. Networkd still owns interfaces. MWAN-523 remains In Progress for
 index reuse, bridge rename, router advertisement lifetimes, and public daemon
 packet acceptance before state publication.
+
+### Typed bridge observer checkpoint, September 28, 2026
+
+[MWAN PR #71](https://github.com/agoodkind/mwan/pull/71) merged as
+`adb62401a24836b14a1f9cd33f0c228b291492b3`. Its real-kernel test
+renames a configured bridge, verifies that the monitor clears the binding
+and does not attribute the old bridge's address or route, then creates a
+replacement with the configured name and verifies its index and address
+without restarting the monitor. The existing runtime passed 20 focused
+privileged runs, all six packages in `make test-netns`, and
+`make docker-make TARGETS='check test'`. Independent review found no issue.
+Required CI passed after one unrelated firewall packet-test timeout was
+rerun; the new bridge test passed in both CI attempts.
+
+This test-only merge does not change the deployed binary and requires no
+testbed or production deployment. MWAN-523 still requires index reuse,
+actual router-advertisement lifetimes, and public daemon packet acceptance.
 
 ## Record future implementation results
 
