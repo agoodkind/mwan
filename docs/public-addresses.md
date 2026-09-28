@@ -65,20 +65,27 @@ provide the interface and routing controls used in this example.
 
 ## Configuration contract
 
-Configure each native public range with an identity, prefix source, downstream
-peer selection, and eligible upstream connections. Support IPv6 subnets and
-individual `/128` addresses. Resolve configured prefixes or select subnets
-from current delegated prefixes without assuming a fixed length. Extend the
-existing typed configuration model.
+Configure which downstream peers use public addresses directly. Trust their
+BGP announcements as declarations of address use. Support subnets and `/128`
+addresses without requiring a separate MWAN entry for every announced range.
+Keep synthetic-address announcements distinct through the configured peer
+policy. Extend the existing typed configuration model.
+
+Configure the public blocks supported by each upstream, using configured
+prefixes or current delegated prefixes. Match announced source ranges to
+those blocks to select compatible upstreams. This mapping determines packet
+routing, not permission to claim an address. A route without a compatible
+upstream remains visible with an unavailable external path.
 
 An upstream assignment must authorize the range and provide a return path
 to MWAN. A connected ISP subnet alone is not a routed downstream allocation.
 ISP interface-address sharing, bridging, and Neighbor Discovery proxy are
 separate work.
 
-Require a learned downstream route for delivery to a peer. Associate native
-handling with the configured range and selected peers. Preserve existing BGP
-behavior for unrelated internal prefixes.
+Derive the return route and translation exceptions from active public-address
+routes learned from configured peers. Preserve existing BGP behavior for
+unrelated internal prefixes. Do not allocate addresses, verify ownership,
+reserve ranges, or reject duplicates. Peers coordinate address use themselves.
 
 ## Shared addresses and overlapping routes
 
@@ -91,16 +98,22 @@ translating ports. Stateless NPT translates prefixes without that connection
 tracking. It cannot distinguish two independent destinations solely from an
 identical destination address.
 
-Require explicit inbound handling when native forwarding and reverse NPT
-match the same destination. For example, a configured native exception can
-take precedence over reverse translation for a selected subnet or `/128`.
-Packets matching that exception then use the native route; they do not also
-serve the translated destination at that address. Validate the selected
-policy and translation order rather than prohibiting overlap globally.
+An active public-address route creates an inbound exception before reverse
+NPT and an outbound exception before source translation. Matching packets
+retain their addresses. Ordinary routing selects the most specific route
+and uses BGP path selection between routes for the same prefix.
 
-Reject unresolved contradictory actions. Do not silently select native or
-translated delivery based on incidental rule order. Port-sharing NAT is
-outside this IPv6 feature.
+These exceptions implement forwarding, not address-ownership enforcement.
+Do not reject announcements because they overlap translated addresses.
+Peers remain responsible for avoiding unintended address conflicts. If a
+translated client also uses that exact external address, the native exception
+determines inbound delivery; this feature does not resolve the conflict or
+provide port-sharing NAT.
+
+Remove a learned exception when its last applicable public-address route is
+withdrawn under the existing BGP lifecycle. Retain it when another applicable
+peer still supplies the route. Existing translation then applies wherever no
+remaining native exception matches.
 
 ## Forwarding and failure behavior
 
@@ -120,8 +133,10 @@ lifecycle. Upstream failure does not require deleting a valid internal LAN
 route or withdrawing a shared default needed by other clients. Track
 downstream route availability and upstream eligibility separately.
 
-Prefix expiry or replacement invalidates the old native allocation. Reconcile
-source policy and translation exceptions without modifying unrelated state.
+Prefix expiry or replacement changes upstream eligibility. Preserve native
+exceptions while their downstream routes remain active, even if no upstream
+is usable; loss of an upstream must not silently enable address translation.
+Reconcile source policy without modifying unrelated state.
 Expose the resolved prefix, downstream route, eligible upstreams, and reason
 for inactivity. Record changes and recovery through existing status and event
 interfaces. Restore valid state after restart.
@@ -155,12 +170,14 @@ interfaces. Require these outcomes:
    Observe packets at provider ingress before simulator NAT.
 3. Redundant peers can advertise the same prefix. Withdrawal and recovery
    select the expected route and restore delivery without a daemon restart.
-4. Explicit native exceptions select native delivery instead of reverse NPT
-   for overlapping destinations. Unresolved contradictory actions fail validation.
+4. A public-address announcement automatically creates the native exceptions.
+   Overlap does not cause rejection. Native delivery precedes reverse NPT.
+   Final withdrawal removes the exceptions; redundant announcements retain them.
 5. Upstream loss stops incompatible external forwarding for the affected range.
    Other ranges remain usable, and recovery restores the affected range.
-6. Prefix expiry or replacement deactivates stale policy. Replacement addressing
-   and announcements restore service after downstream configuration agrees.
+6. Prefix expiry or replacement disables incompatible external forwarding
+   without translating an active native range. Replacement addressing and
+   announcements restore service after downstream configuration agrees.
 7. Restart and policy removal preserve unrelated routes and translation.
 8. A non-BGP upstream passes independently. Repeat with an upstream BGP path
    when compatible features exist and record those results separately.
