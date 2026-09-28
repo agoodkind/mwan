@@ -71,7 +71,9 @@ func (m *Monitor) replaySnapshot(ctx context.Context, snapshot *Snapshot) {
 	if snapshot.LinkUp {
 		event := base
 		event.Kind = EvLinkUp
-		m.emit(ctx, event)
+		if !m.sendReplay(ctx, event) {
+			return
+		}
 	}
 	for _, address := range snapshot.Addresses {
 		event := base
@@ -83,7 +85,9 @@ func (m *Monitor) replaySnapshot(ctx context.Context, snapshot *Snapshot) {
 		event.PreferredLifetime = address.PreferredLifetime
 		event.ValidLifetime = address.ValidLifetime
 		event.Origin = address.Origin
-		m.emit(ctx, event)
+		if !m.sendReplay(ctx, event) {
+			return
+		}
 	}
 	for _, route := range snapshot.Routes {
 		event := base
@@ -98,6 +102,29 @@ func (m *Monitor) replaySnapshot(ctx context.Context, snapshot *Snapshot) {
 		event.Scope = route.Scope
 		event.Type = route.Type
 		event.NextHops = route.NextHops
-		m.emit(ctx, event)
+		if !m.sendReplay(ctx, event) {
+			return
+		}
+	}
+}
+
+// sendReplay waits for the consumer instead of treating a full channel as a new observation gap.
+func (m *Monitor) sendReplay(ctx context.Context, event Event) bool {
+	for {
+		m.stateMu.Lock()
+		if ctx.Err() != nil || m.stale {
+			m.stateMu.Unlock()
+			return false
+		}
+		select {
+		case m.Events <- event:
+			m.stateMu.Unlock()
+			return true
+		default:
+			m.stateMu.Unlock()
+		}
+		if !sleepMonitorRetry(ctx, 10*time.Millisecond) {
+			return false
+		}
 	}
 }
