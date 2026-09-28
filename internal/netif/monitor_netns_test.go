@@ -8,11 +8,15 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"os"
+	"os/exec"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 	"goodkind.io/mwan/internal/interfaceintent"
 )
 
@@ -50,6 +54,186 @@ func TestMonitorRebindsConfiguredLinkAfterRenameAndRecreation(t *testing.T) {
 	second := waitObservedAddress(t, monitor.Events, "192.0.2.72/32")
 	if second.ConnectionID != "stable-observer" || second.ActualIface != "obs-new" || second.IfIndex != replacement.Attrs().Index {
 		t.Fatalf("replacement link identity = %+v", second)
+	}
+}
+
+func TestMonitorRebindsPhysicalLinkAfterIndexReuse(t *testing.T) {
+	const childEnv = "MWAN_INDEX_REUSE_TEST_CHILD"
+	if os.Getenv(childEnv) != "1" {
+		if os.Geteuid() != 0 {
+			t.Skip("network namespace requires root")
+		}
+		child := exec.Command(os.Args[0], "-test.run=^TestMonitorRebindsPhysicalLinkAfterIndexReuse$")
+		child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNET}
+		child.Env = append(os.Environ(), childEnv+"=1")
+		if output, err := child.CombinedOutput(); err != nil {
+			t.Fatalf("isolated index reuse test: %v: %s", err, output)
+		}
+		return
+	}
+
+	const configuredName = "obs-reuse"
+	const replacementName = "obs-replaced"
+	const mac = "02:00:5e:00:53:93"
+	const connectionID = "index-reuse-observer"
+	first := &netlink.Veth{
+		LinkAttrs: netlink.LinkAttrs{Name: configuredName}, PeerName: "obs-peer-old",
+	}
+	if err := netlink.LinkAdd(first); err != nil {
+		t.Fatal(err)
+	}
+	firstLink, err := netlink.LinkByName(configuredName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hardware, err := net.ParseMAC(mac)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.LinkSetHardwareAddr(firstLink, hardware); err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.LinkSetUp(firstLink); err != nil {
+		t.Fatal(err)
+	}
+	oldIndex := firstLink.Attrs().Index
+	connection := &interfaceintent.Connection{
+		ID: connectionID, Name: configuredName,
+		Link: &interfaceintent.Link{
+			Kind:  interfaceintent.KindPhysical,
+			Match: interfaceintent.Match{HardwareAddress: mac},
+		},
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	monitor := NewMonitor(ctx, logger, MonitorConfig{Iface: configuredName, Connection: connection})
+	initial := waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == oldIndex
+	})
+	if initial.ConnectionID != connectionID || initial.ActualIface != configuredName {
+		t.Fatalf("initial binding = %+v", initial)
+	}
+	addObservedAddress(t, firstLink, "192.0.2.93/32")
+	oldAddress := waitObservedAddress(t, monitor.Events, "192.0.2.93/32")
+	if oldAddress.IfIndex != oldIndex || oldAddress.ConnectionID != connectionID {
+		t.Fatalf("initial address identity = %+v", oldAddress)
+	}
+	if err := netlink.LinkDel(firstLink); err != nil {
+		t.Fatal(err)
+	}
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == 0
+	})
+
+	unrelated := &netlink.Veth{
+		LinkAttrs: netlink.LinkAttrs{Name: "obs-unrelated", Index: oldIndex},
+		PeerName:  "obs-peer-other",
+	}
+	if err := netlink.LinkAdd(unrelated); err != nil {
+		t.Fatalf("request unrelated index %d: %v", oldIndex, err)
+	}
+	unrelatedLink, err := netlink.LinkByName("obs-unrelated")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unrelatedLink.Attrs().Index != oldIndex {
+		t.Fatalf("kernel assigned unrelated index %d, want %d", unrelatedLink.Attrs().Index, oldIndex)
+	}
+	unrelatedHardware, err := net.ParseMAC("02:00:5e:00:53:95")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.LinkSetHardwareAddr(unrelatedLink, unrelatedHardware); err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.LinkSetUp(unrelatedLink); err != nil {
+		t.Fatal(err)
+	}
+	addObservedAddress(t, unrelatedLink, "192.0.2.95/32")
+	unrelatedDeadline := time.NewTimer(100 * time.Millisecond)
+	defer unrelatedDeadline.Stop()
+	watchingUnrelated := true
+	for watchingUnrelated {
+		select {
+		case event := <-monitor.Events:
+			if event.CIDR == "192.0.2.95/32" ||
+				event.Snapshot != nil && event.Snapshot.IfIndex == oldIndex {
+				t.Fatalf("unrelated link attributed to configured connection: %+v", event)
+			}
+		case <-unrelatedDeadline.C:
+			if monitor.IfIndex() != 0 {
+				t.Fatalf("unrelated link bound at index %d", monitor.IfIndex())
+			}
+			watchingUnrelated = false
+		}
+	}
+	unrelatedMonitor := NewMonitor(ctx, logger, MonitorConfig{Iface: configuredName, Connection: connection})
+	unbound := waitObservedSnapshot(t, unrelatedMonitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == 0
+	})
+	if unbound.ActualIface != "" || len(unbound.Addresses) != 0 {
+		t.Fatalf("unrelated link entered configured snapshot: %+v", unbound)
+	}
+	if err := netlink.LinkDel(unrelatedLink); err != nil {
+		t.Fatal(err)
+	}
+
+	replacement := &netlink.Veth{
+		LinkAttrs: netlink.LinkAttrs{Name: replacementName, Index: oldIndex},
+		PeerName:  "obs-peer-new",
+	}
+	if err := netlink.LinkAdd(replacement); err != nil {
+		t.Fatalf("request replacement index %d: %v", oldIndex, err)
+	}
+	replacementLink, err := netlink.LinkByName(replacementName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replacementLink.Attrs().Index != oldIndex {
+		t.Fatalf("kernel assigned replacement index %d, want %d", replacementLink.Attrs().Index, oldIndex)
+	}
+	if err := netlink.LinkSetHardwareAddr(replacementLink, hardware); err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.LinkSetUp(replacementLink); err != nil {
+		t.Fatal(err)
+	}
+	bound := waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == oldIndex && snapshot.ActualIface == replacementName
+	})
+	if bound.ConnectionID != connectionID {
+		t.Fatalf("replacement binding = %+v", bound)
+	}
+	for _, address := range bound.Addresses {
+		if address.CIDR == "192.0.2.93/32" {
+			t.Fatalf("old address appeared on replacement: %+v", bound)
+		}
+	}
+	addObservedAddress(t, replacementLink, "192.0.2.94/32")
+	newAddress := waitObservedAddress(t, monitor.Events, "192.0.2.94/32")
+	if newAddress.IfIndex != oldIndex || newAddress.ConnectionID != connectionID ||
+		newAddress.ActualIface != replacementName || newAddress.Iface != configuredName {
+		t.Fatalf("replacement address identity = %+v", newAddress)
+	}
+	fresh := NewMonitor(ctx, logger, MonitorConfig{Iface: configuredName, Connection: connection})
+	final := waitObservedSnapshot(t, fresh.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == oldIndex && snapshot.ActualIface == replacementName
+	})
+	if final.ConnectionID != connectionID {
+		t.Fatalf("fresh replacement binding = %+v", final)
+	}
+	var foundNew bool
+	for _, address := range final.Addresses {
+		if address.CIDR == "192.0.2.93/32" {
+			t.Fatalf("old address appeared in fresh snapshot: %+v", final)
+		}
+		if address.CIDR == "192.0.2.94/32" {
+			foundNew = true
+		}
+	}
+	if !foundNew {
+		t.Fatalf("fresh snapshot omitted replacement address: %+v", final)
 	}
 }
 
