@@ -8,8 +8,7 @@ import (
 	"goodkind.io/mwan/internal/forwardingready"
 )
 
-// SetForwardingReady requires current ifmgr readiness before this agent
-// announces the primary's configured address families.
+// SetForwardingReady configures polling of ifmgr readiness for primary announcements.
 func (a *Server) SetForwardingReady(path string, pollInterval, readTimeout time.Duration, ipv4, ipv6 bool) {
 	a.forwardingMu.Lock()
 	defer a.forwardingMu.Unlock()
