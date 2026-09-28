@@ -55,7 +55,7 @@ No interface-owner cutover has begun.
 | MWAN-524 | Restore the managed Astound testbed connection first. | Configs PR #522 merged. Deployment, restart, downstream traffic, balancing, and recovery passed. |
 | MWAN-516 | 516-model; 516-state | [MWAN PR #51](https://github.com/agoodkind/mwan/pull/51) merged standalone identity as `959fbd3a65955e8156f2ea6c9bf2c90febef762c`. [MWAN PR #55](https://github.com/agoodkind/mwan/pull/55) merged shared interface intent as `2c6df538fbb1174a9189f3098d6ac458256857f4`. Both merged releases passed separate testbed traffic checkpoints. State publication remains. |
 | MWAN-397 | 397-links | Execution has not started. |
-| MWAN-523 | 523-observation | [MWAN PR #60](https://github.com/agoodkind/mwan/pull/60) merged the observer foundation as `13183ea9d6264beac7b85bfd4e7946b15f7da601`. Configs PRs #533 and #535 passed testbed and production deployment checks. MWAN PRs #66, #71, #73, #75, #77, and #79 verified route identity, bridge rebinding, router advertisement lifetimes, index reuse, daemon packet recovery, and duplicate-address failure in privileged kernel tests. Complete observation-gap acceptance remains. |
+| MWAN-523 | 523-observation | [MWAN PR #60](https://github.com/agoodkind/mwan/pull/60) merged the observer foundation as `13183ea9d6264beac7b85bfd4e7946b15f7da601`. Configs PRs #533 and #535 passed testbed and production deployment checks. MWAN PRs #66, #71, #73, #75, #77, and #79 verified route identity, bridge rebinding, router advertisement lifetimes, index reuse, daemon packet recovery, and duplicate-address failure in privileged kernel tests. PR #81 repaired snapshot replay overflow; testbed and production acceptance remain. |
 | MWAN-530 | Restart handover | [MWAN PR #64](https://github.com/agoodkind/mwan/pull/64) merged forwarding readiness as `798ee6a8dcb57ef91e7d9656e8a368f3f4bd4412`. OPNsense selected the backup during controlled testbed and production reboots, then restored the primary while downstream replies continued. Tack records Done. |
 | MWAN-398 | 398-addresses; 398-dhcpv4 | Execution has not started. |
 | MWAN-227 | 227-delegation | Execution has not started. |
@@ -814,6 +814,26 @@ The focused privileged test passed ten runs. `make test-netns`,
 independent review passed. Optional Govulncheck repeated the existing
 GoBGP advisory. This test-only merge requires no gateway release or deploy.
 MWAN-523 remains In Progress for complete observation-gap snapshot acceptance.
+
+### Snapshot replay overflow repair, September 28, 2026
+
+[MWAN PR #81](https://github.com/agoodkind/mwan/pull/81) merged as
+`1cc8e2d1712d5ac95c44ece621b2deabccdafbab`. Its signed commit was
+`b6464c669920087c669f620318cc0abc13c2cbea`. Real kernel changes filled
+the monitor's 64-event channel. Snapshot replay of 160 addresses filled the
+channel again and repeatedly requested another snapshot. In a five-second
+pre-fix test, overflow warnings increased from one to 1,207 after the burst,
+and the monitor did not report a later address delta.
+
+Snapshot replay now waits for a draining consumer. Real kernel-event
+overflow still requests a complete snapshot. The public real-kernel test
+requires an overflow warning, one snapshot matching all 160 kernel
+addresses, all 160 replayed additions, and a normal delta for address 161.
+The test failed before the fix and passed ten focused runs afterward.
+Existing replay-order tests, `make test-netns`,
+`make docker-make TARGETS='check test'`, required CI, automated review, and
+independent review passed. Optional Govulncheck repeated the existing
+GoBGP advisory. Release and live acceptance remain pending.
 
 ## Record future implementation results
 
