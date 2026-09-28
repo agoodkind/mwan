@@ -878,9 +878,9 @@ active interface manager, and healthy AT&T, Webpass, and Monkeybrains.
 
 Downstream UniFi LXC 102 received 900 of 900 IPv4 and 900 of 900 IPv6
 replies across the deployment and reboot. The largest intervals between
-successful replies were 1.030 and 1.004 seconds. An overlapping window
-received another 900 of 900 replies per family; its largest intervals were
-1.310 and 1.335 seconds. During reboot, OPNsense selected backup
+successful replies were 1.030 and 1.004 seconds. UniFi LXC 102 received
+another 900 of 900 replies per family in an overlapping probe. Its largest
+intervals were 1.310 and 1.335 seconds. During reboot, OPNsense selected backup
 `10.250.250.4`, then restored primary `10.250.250.3`. Twenty fresh requests
 per family succeeded from the downstream guest. IPv4 selected external
 addresses `104.57.226.193` nine times and `136.25.91.242` eleven times.
