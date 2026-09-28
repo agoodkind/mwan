@@ -45,6 +45,8 @@ deployments with downstream traffic checks. The MWAN-523 observer foundation
 merged and passed a separate testbed deployment and downstream battery.
 Its production pin merged and passed production deployment and downstream
 checks.
+MWAN-523 observation and overflow recovery passed the final testbed and
+production checkpoints. Networkd still owns the provider interfaces.
 MWAN-530 passed controlled restart checks on testbed and production after
 the primary stopped advertising Graceful Restart and waited for forwarding
 readiness before announcing either default.
@@ -55,7 +57,7 @@ No interface-owner cutover has begun.
 | MWAN-524 | Restore the managed Astound testbed connection first. | Configs PR #522 merged. Deployment, restart, downstream traffic, balancing, and recovery passed. |
 | MWAN-516 | 516-model; 516-state | [MWAN PR #51](https://github.com/agoodkind/mwan/pull/51) merged standalone identity as `959fbd3a65955e8156f2ea6c9bf2c90febef762c`. [MWAN PR #55](https://github.com/agoodkind/mwan/pull/55) merged shared interface intent as `2c6df538fbb1174a9189f3098d6ac458256857f4`. Both merged releases passed separate testbed traffic checkpoints. State publication remains. |
 | MWAN-397 | 397-links | Execution has not started. |
-| MWAN-523 | 523-observation | [MWAN PR #60](https://github.com/agoodkind/mwan/pull/60) merged the observer foundation as `13183ea9d6264beac7b85bfd4e7946b15f7da601`. Configs PRs #533 and #535 passed testbed and production deployment checks. MWAN PRs #66, #71, #73, #75, #77, and #79 verified route identity, bridge rebinding, router advertisement lifetimes, index reuse, daemon packet recovery, and duplicate-address failure in privileged kernel tests. PR #81 repaired snapshot replay overflow; testbed and production acceptance remain. |
+| MWAN-523 | 523-observation | [MWAN PR #60](https://github.com/agoodkind/mwan/pull/60) merged the observer foundation as `13183ea9d6264beac7b85bfd4e7946b15f7da601`. Configs PRs #533 and #535 passed its first testbed and production checkpoints. MWAN PRs #66, #71, #73, #75, #77, and #79 verified route identity, bridge rebinding, router advertisement lifetimes, index reuse, daemon packet recovery, and duplicate-address failure in privileged kernel tests. PR #81 repaired snapshot replay overflow. Configs PRs #544 and #545 passed final testbed and production acceptance. |
 | MWAN-530 | Restart handover | [MWAN PR #64](https://github.com/agoodkind/mwan/pull/64) merged forwarding readiness as `798ee6a8dcb57ef91e7d9656e8a368f3f4bd4412`. OPNsense selected the backup during controlled testbed and production reboots, then restored the primary while downstream replies continued. Tack records Done. |
 | MWAN-398 | 398-addresses; 398-dhcpv4 | Execution has not started. |
 | MWAN-227 | 227-delegation | Execution has not started. |
@@ -68,15 +70,14 @@ No interface-owner cutover has begun.
 | MWAN-399 | 399-remaining-connections | Execution has not started. |
 | MWAN-400 | 400-retirement | Execution has not started. |
 | MWAN-401 | 401-testbed | Execution has not started. |
-| MWAN-520 | 520-production | The shared model, route repair, and observer foundation releases passed their production phases. The ticket remains open for later ownership phases. |
+| MWAN-520 | 520-production | The shared model, route repair, and complete observer release passed their production phases. The ticket remains open for later ownership phases. |
 
 ## Resume the work
 
 MWAN-524 restored Astound as a permanently managed testbed connection.
-Complete MWAN-523 device replacement and lifetime acceptance, then MWAN-516
-state publication before the next ownership slice. Deploy each subsequent
-merged runtime slice to testbed and verify the downstream battery before its
-production promotion.
+Complete MWAN-516 state publication before the next ownership slice. Deploy
+each subsequent merged runtime slice to testbed and verify the downstream
+battery before its production promotion.
 No interface-owner cutover has begun.
 
 For every handoff, record the slice, agent responsibility, exact source
@@ -833,7 +834,68 @@ The test failed before the fix and passed ten focused runs afterward.
 Existing replay-order tests, `make test-netns`,
 `make docker-make TARGETS='check test'`, required CI, automated review, and
 independent review passed. Optional Govulncheck repeated the existing
-GoBGP advisory. Release and live acceptance remain pending.
+GoBGP advisory. Release and live acceptance followed this repair.
+
+### Snapshot recovery testbed acceptance, September 28, 2026
+
+Release `202609281333-4f-1cc8e2d` passed publication and verification and
+resolves to merged MWAN commit `1cc8e2d1712d5ac95c44ece621b2deabccdafbab`.
+[Configs PR #544](https://github.com/agoodkind/configs/pull/544) pinned it in
+testbed and merged as `d521fcbae35df40f5eb962b28792650b2c707930`.
+The clean merged checkout ran
+`./configsctl deploy deploy-mwan --limit mwan_suburban_servers --check --diff`,
+then the same command without `--check --diff`. Check mode reported 176
+successful tasks and 25 proposed changes. Apply reported 227 successful tasks
+and 20 changes. Both reported zero unreachable hosts and zero failures.
+Trace `20260928-065654-deploy-432649` passed reboot, egress, and mapped-address
+gates without rollback. VM 213 reported clean MWAN commit `1cc8e2d` and an
+active interface manager. All five providers reported healthy.
+
+Client 225 received 600 of 600 IPv4 and 600 of 600 IPv6 replies in each of
+two deployment windows. A controlled primary reboot selected backup
+`10.240.240.4`, then restored primary `10.240.240.3`. The same client received
+180 of 180 replies in each family during that reboot. Clients 225 and 226
+completed 100 fresh connections per family to an unpinned destination.
+Provider ingress captures counted 44 Webpass and 56 AT&T IPv4 connections,
+and 45 Webpass and 55 AT&T IPv6 connections. The remote endpoint returned a
+valid HTTP 404 for each connection. The testbed's configured `1.0.0.1` pin
+selected AT&T for a separate 100-request check; that pin was not used for
+the balancing count.
+
+### Snapshot recovery production acceptance, September 28, 2026
+
+[Configs PR #545](https://github.com/agoodkind/configs/pull/545) pinned the
+same release in production and merged as
+`60e605ca506da9918e2d6adfc83b0e68c1136cd1`. Its published binary
+checksum matched the inventory pin. The clean merged checkout ran
+`./configsctl deploy deploy-mwan --limit mwan_servers --check --diff`, then
+the same command without `--check --diff`. Check mode reported 187 successful
+tasks and 15 proposed changes. Apply reported 240 successful tasks and 20
+changes. Both reported zero unreachable hosts and zero failures. Trace
+`20260928-073213-deploy-243564` passed reboot, egress, and mapped-address
+gates without rollback. VM 113 reported clean MWAN commit `1cc8e2d`, an
+active interface manager, and healthy AT&T, Webpass, and Monkeybrains.
+
+Downstream UniFi LXC 102 received 900 of 900 IPv4 and 900 of 900 IPv6
+replies across the deployment and reboot. The largest intervals between
+successful replies were 1.030 and 1.004 seconds. An overlapping window
+received another 900 of 900 replies per family; its largest intervals were
+1.310 and 1.335 seconds. During reboot, OPNsense selected backup
+`10.250.250.4`, then restored primary `10.250.250.3`. Twenty fresh requests
+per family succeeded from the downstream guest. IPv4 selected external
+addresses `104.57.226.193` nine times and `136.25.91.242` eleven times.
+IPv6 selected
+`2600:1700:2f71:c80:dac2::102` thirteen times and
+`2604:5500:c271:be00:583d::102` seven times. An earlier ifconfig.co
+sample received HTTP 429 after successful connections; the subsequent
+api.ipify.org sample completed without a rate-limit response.
+
+Independent Suburban probes received three of three replies from each
+mapped IPv4 address and from provider edge addresses
+`2600:1700:2f71:c80::1` and `2604:5500:c271:be00::1`. The gateway had
+established internal IPv4 and IPv6 BGP TCP sessions. This release passed
+production acceptance. MWAN-516 state publication is the next prerequisite
+for interface-owner cutover.
 
 ## Record future implementation results
 
