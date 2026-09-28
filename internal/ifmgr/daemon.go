@@ -214,7 +214,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 
 	// Start the kernel event monitor first so any module Init that
 	// triggers a netlink change (rare but possible) sees its own event.
-	mon := netif.NewMonitor(ctx, d.log, netif.MonitorConfig{Iface: d.cfg.Iface, Connection: d.primaryConnection})
+	mon := netif.NewMonitor(ctx, d.log, netif.MonitorConfig{Iface: d.cfg.Iface, Connection: d.primaryConnection, ConnectionID: ""})
 	d.log.DebugContext(ctx, "ifmgr: monitor started")
 
 	// Start DHCP client if requested.

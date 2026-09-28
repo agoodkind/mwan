@@ -99,6 +99,7 @@ func interfacesLiveItems(
 	rejections []networkjson.Rejection,
 ) []yangpub.Item {
 	items := make([]yangpub.Item, 0, len(gateway.Members)*8+len(rejections)*3+4)
+	items = append(items, ownershipLiveItems(snap, gateway)...)
 	for _, member := range gateway.Members {
 		base := "/ietf-interfaces:interfaces/interface[name='" + member.Iface +
 			"']/" + steeringPrefix + ":steering/state"

@@ -80,7 +80,7 @@ func (m *Module) OnKernelEvent(_ context.Context, _ *slog.Logger, ev netif.Event
 		m.Lock()
 		m.lastLinkUp = now
 		m.Unlock()
-	case netif.EvUnknown, netif.EvRouteDeleted, netif.EvAddrAdded, netif.EvAddrDeleted, netif.EvLinkDown, netif.EvResync:
+	case netif.EvUnknown, netif.EvRouteDeleted, netif.EvAddrAdded, netif.EvAddrDeleted, netif.EvLinkDown, netif.EvResync, netif.EvObservationStale, netif.EvObservationFailed:
 		return nil
 	}
 	return nil

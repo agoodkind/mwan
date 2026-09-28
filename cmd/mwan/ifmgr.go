@@ -105,6 +105,12 @@ func runIfMgr(cfg *config.Config) error {
 	}
 	dcfg.Notifier = notify.FromConfig(cfg, logger, "mwan-ifmgr")
 	dcfg.LiveState = wanstate.New()
+	dcfg.LiveState.SetTransitionLogger(runID, logger)
+	providerIfaces := make(map[string]string, len(cfg.IfMgr.WAN))
+	for provider, entry := range cfg.IfMgr.WAN {
+		providerIfaces[provider] = entry.Iface
+	}
+	dcfg.LiveState.SetProviderConnections(dcfg.Connections, providerIfaces)
 	if role == "wan" && cfg.BGP.Enabled && cfg.BGP.UseWanconfig {
 		dcfg.ForwardingReadySocket = cfg.BGP.ForwardingReadiness.SocketPath
 		dcfg.ForwardingReadyTimeout = cfg.BGP.ForwardingReadiness.ReadTimeout()
@@ -126,6 +132,7 @@ func runIfMgr(cfg *config.Config) error {
 			startNPTv6HairpinAlias(ctx, logger, cfg.OPNsense, dcfg.LiveState, &aliasSync, base, hairpinAliasInterval)
 		}
 	}
+	startOwnershipObservers(ctx, logger, dcfg.LiveState, dcfg.Connections)
 
 	// Runtime readiness uses the store even when the optional management
 	// datastore is unavailable.

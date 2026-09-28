@@ -238,7 +238,7 @@ func (m *Module) OnKernelEvent(
 			log.WarnContext(ctx, "oobv6: reconcileSLAACSrcRule on AddrDeleted failed", "err", err)
 			return fmt.Errorf("reconcile slaac src rule on AddrDeleted: %w", err)
 		}
-	case netif.EvUnknown, netif.EvLinkUp, netif.EvLinkDown, netif.EvResync:
+	case netif.EvUnknown, netif.EvLinkUp, netif.EvLinkDown, netif.EvResync, netif.EvObservationStale, netif.EvObservationFailed:
 		return nil
 	}
 	return nil

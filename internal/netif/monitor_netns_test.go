@@ -800,6 +800,75 @@ func TestMonitorResyncsAfterAnUnconsumedEventBurst(t *testing.T) {
 	}
 }
 
+func TestMonitorFailureStatusDoesNotBlockCancellationWithFullQueue(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	link := addObservedVeth(t, "obs-failure", "obs-fail-peer", "02:00:5e:00:53:75")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	monitor := NewMonitor(ctx, logger, MonitorConfig{Iface: "obs-failure"})
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool { return snapshot.IfIndex == link.Attrs().Index })
+	for i := 1; i <= 160; i++ {
+		addObservedAddress(t, link, fmt.Sprintf("198.18.3.%d/32", i))
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for len(monitor.Events) < cap(monitor.Events) {
+		if time.Now().After(deadline) {
+			t.Fatal("real kernel burst did not fill the undrained monitor channel")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	delivered := make(chan struct{})
+	go func() {
+		monitor.stateMu.Lock()
+		monitor.markFailedLocked("snapshot read failed")
+		monitor.stateMu.Unlock()
+		close(delivered)
+	}()
+	select {
+	case <-delivered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("failure status blocked on a full event channel")
+	}
+	stale := <-monitor.Events
+	failed := <-monitor.Events
+	if stale.Kind != EvObservationStale || failed.Kind != EvObservationFailed || failed.Reason != "snapshot read failed" || stale.ObservedAt.IsZero() || failed.ObservedAt.IsZero() {
+		t.Fatalf("full queue failure order = %s then %s", stale.Kind, failed.Kind)
+	}
+	cancel()
+	select {
+	case <-monitor.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("monitor shutdown blocked after failure status delivery")
+	}
+
+	queuedCtx, cancelQueued := context.WithCancel(context.Background())
+	defer cancelQueued()
+	queuedMonitor := NewMonitor(queuedCtx, logger, MonitorConfig{Iface: "obs-failure"})
+	waitObservedSnapshot(t, queuedMonitor.Events, func(snapshot *Snapshot) bool { return snapshot.IfIndex == link.Attrs().Index })
+	for i := 1; i <= 160; i++ {
+		addObservedAddress(t, link, fmt.Sprintf("198.18.4.%d/32", i))
+	}
+	deadline = time.Now().Add(5 * time.Second)
+	for len(queuedMonitor.Events) < cap(queuedMonitor.Events) {
+		if time.Now().After(deadline) {
+			t.Fatal("real kernel burst did not fill the second undrained monitor channel")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	queuedMonitor.stateMu.Lock()
+	queuedMonitor.markFailedLocked("snapshot read failed")
+	queuedMonitor.stateMu.Unlock()
+	if len(queuedMonitor.Events) < 2 {
+		t.Fatal("failure statuses were not queued before cancellation")
+	}
+	cancelQueued()
+	select {
+	case <-queuedMonitor.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("monitor shutdown blocked with failure statuses queued")
+	}
+}
+
 func TestMonitorReportsEveryNextHopForAWatchedMultipathRoute(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	first := addObservedVeth(t, "obs-c", "obs-peer-d", "02:00:5e:00:53:73")
@@ -883,6 +952,12 @@ func TestMonitorStopsReportingAfterCancellation(t *testing.T) {
 	select {
 	case event := <-monitor.Events:
 		t.Fatalf("monitor retained a queued event after cancellation: %+v", event)
+	default:
+	}
+	monitor.setSubscriptionReady(0, false, "address subscription closed after cancellation")
+	select {
+	case event := <-monitor.Events:
+		t.Fatalf("monitor reported subscription failure after cancellation: %+v", event)
 	default:
 	}
 	addObservedAddress(t, link, "192.0.2.75/32")

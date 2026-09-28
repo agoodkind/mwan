@@ -37,6 +37,10 @@ const (
 	EvLinkDown
 	// EvResync reports a complete kernel snapshot after observation loses continuity.
 	EvResync
+	// EvObservationStale reports that queued deltas no longer provide a complete observation.
+	EvObservationStale
+	// EvObservationFailed reports a subscription or snapshot failure.
+	EvObservationFailed
 )
 
 // String returns the stable log-friendly name of the event kind.
@@ -58,6 +62,10 @@ func (k EventKind) String() string {
 		return "link-down"
 	case EvResync:
 		return "resync"
+	case EvObservationStale:
+		return "observation-stale"
+	case EvObservationFailed:
+		return "observation-failed"
 	}
 	return "unknown"
 }
@@ -71,6 +79,7 @@ type Event struct {
 	ActualIface  string
 	IfIndex      int
 	ObservedAt   time.Time
+	Reason       string
 	// SnapshotReplay marks a state event reconstructed from a snapshot.
 	SnapshotReplay bool
 	// Route-specific fields (populated when Kind is EvRouteAdded/Deleted).
@@ -123,6 +132,8 @@ type RuleEvent struct {
 // Legacy callers match the configured interface name.
 type MonitorConfig struct {
 	Iface string
+	// ConnectionID associates legacy name matching with a stable configured identity.
+	ConnectionID string
 	// Connection enables stable configured identity matching. Nil retains legacy name matching.
 	Connection *interfaceintent.Connection
 }
@@ -134,6 +145,7 @@ type MonitorConfig struct {
 // Address, route, and link subscriptions retry after errors. A gap emits a
 // complete snapshot before deltas resume. Cancellation closes subscriptions.
 type Monitor struct {
+	cancelled    <-chan struct{}
 	cfg          MonitorConfig
 	log          *slog.Logger
 	Events       chan Event
@@ -146,7 +158,9 @@ type Monitor struct {
 	actualIface  string
 	bindingEpoch uint64
 	stateMu      sync.Mutex
+	stopped      bool
 	stale        bool
+	failed       bool
 	dirty        bool
 	ready        [3]bool
 	resync       chan struct{}
@@ -181,6 +195,7 @@ func NewMonitor(
 	}
 
 	m := new(Monitor)
+	m.cancelled = ctx.Done()
 	m.cfg = cfg
 	m.log = mlog
 	m.Events = make(chan Event, 64)
@@ -232,6 +247,7 @@ func (m *Monitor) shutdownOnCtx(ctx context.Context) {
 	}
 	m.closed = true
 	m.stateMu.Lock()
+	m.stopped = true
 	for draining := true; draining; {
 		select {
 		case <-m.Events:
@@ -256,7 +272,7 @@ func (m *Monitor) subscribeAddr(ctx context.Context) {
 		subDone := make(chan struct{})
 		err := netlink.AddrSubscribeWithOptions(ch, subDone, netlink.AddrSubscribeOptions{
 			ErrorCallback: func(err error) {
-				m.setSubscriptionReady(0, false)
+				m.setSubscriptionReady(0, false, "address subscription lost: "+err.Error())
 				select {
 				case failed <- err:
 				default:
@@ -266,10 +282,10 @@ func (m *Monitor) subscribeAddr(ctx context.Context) {
 		if err != nil {
 			close(subDone)
 			log.WarnContext(ctx, "monitor: address subscription failed", "err", err)
-			m.setSubscriptionReady(0, false)
+			m.setSubscriptionReady(0, false, "address subscription failed: "+err.Error())
 		} else {
 			backoff = 100 * time.Millisecond
-			m.setSubscriptionReady(0, true)
+			m.setSubscriptionReady(0, true, "")
 			for active := true; active; {
 				select {
 				case <-m.done:
@@ -292,7 +308,7 @@ func (m *Monitor) subscribeAddr(ctx context.Context) {
 				}
 			}
 			close(subDone)
-			m.setSubscriptionReady(0, false)
+			m.setSubscriptionReady(0, false, "address subscription closed")
 		}
 		if !sleepMonitorRetry(ctx, backoff) {
 			return
@@ -312,7 +328,7 @@ func (m *Monitor) subscribeRoute(ctx context.Context) {
 		subDone := make(chan struct{})
 		err := netlink.RouteSubscribeWithOptions(ch, subDone, netlink.RouteSubscribeOptions{
 			ErrorCallback: func(err error) {
-				m.setSubscriptionReady(1, false)
+				m.setSubscriptionReady(1, false, "route subscription lost: "+err.Error())
 				select {
 				case failed <- err:
 				default:
@@ -322,10 +338,10 @@ func (m *Monitor) subscribeRoute(ctx context.Context) {
 		if err != nil {
 			close(subDone)
 			log.WarnContext(ctx, "monitor: route subscription failed", "err", err)
-			m.setSubscriptionReady(1, false)
+			m.setSubscriptionReady(1, false, "route subscription failed: "+err.Error())
 		} else {
 			backoff = 100 * time.Millisecond
-			m.setSubscriptionReady(1, true)
+			m.setSubscriptionReady(1, true, "")
 			for active := true; active; {
 				select {
 				case <-m.done:
@@ -348,7 +364,7 @@ func (m *Monitor) subscribeRoute(ctx context.Context) {
 				}
 			}
 			close(subDone)
-			m.setSubscriptionReady(1, false)
+			m.setSubscriptionReady(1, false, "route subscription closed")
 		}
 		if !sleepMonitorRetry(ctx, backoff) {
 			return
@@ -370,7 +386,7 @@ func (m *Monitor) subscribeLink(ctx context.Context) {
 		subDone := make(chan struct{})
 		err := netlink.LinkSubscribeWithOptions(ch, subDone, netlink.LinkSubscribeOptions{
 			ErrorCallback: func(err error) {
-				m.setSubscriptionReady(2, false)
+				m.setSubscriptionReady(2, false, "link subscription lost: "+err.Error())
 				select {
 				case failed <- err:
 				default:
@@ -380,10 +396,10 @@ func (m *Monitor) subscribeLink(ctx context.Context) {
 		if err != nil {
 			close(subDone)
 			log.WarnContext(ctx, "monitor: link subscription failed", "err", err)
-			m.setSubscriptionReady(2, false)
+			m.setSubscriptionReady(2, false, "link subscription failed: "+err.Error())
 		} else {
 			backoff = 100 * time.Millisecond
-			m.setSubscriptionReady(2, true)
+			m.setSubscriptionReady(2, true, "")
 			for active := true; active; {
 				select {
 				case <-m.done:
@@ -406,7 +422,7 @@ func (m *Monitor) subscribeLink(ctx context.Context) {
 				}
 			}
 			close(subDone)
-			m.setSubscriptionReady(2, false)
+			m.setSubscriptionReady(2, false, "link subscription closed")
 		}
 		if !sleepMonitorRetry(ctx, backoff) {
 			return
@@ -436,28 +452,11 @@ func (m *Monitor) emit(ctx context.Context, ev Event) {
 	default:
 		m.log.WarnContext(ctx, "monitor: Events channel full; requesting snapshot",
 			"kind", ev.Kind.String(), "iface", ev.Iface)
-		m.markStaleLocked()
+		m.markStaleLocked("event queue overflow")
 	}
 }
 
-func (m *Monitor) markStaleLocked() {
-	if !m.stale {
-		m.stale = true
-		for draining := true; draining; {
-			select {
-			case <-m.Events:
-			default:
-				draining = false
-			}
-		}
-	}
-	select {
-	case m.resync <- struct{}{}:
-	default:
-	}
-}
-
-func (m *Monitor) setSubscriptionReady(index int, ready bool) {
+func (m *Monitor) setSubscriptionReady(index int, ready bool, reason string) {
 	if !ready {
 		m.mu.Lock()
 		m.ifIndex = 0
@@ -466,7 +465,8 @@ func (m *Monitor) setSubscriptionReady(index int, ready bool) {
 		m.mu.Unlock()
 		m.stateMu.Lock()
 		m.ready[index] = false
-		m.markStaleLocked()
+		m.markStaleLocked(reason)
+		m.markFailedLocked(reason)
 		m.stateMu.Unlock()
 		return
 	}
@@ -509,12 +509,15 @@ func (m *Monitor) resyncLoop(ctx context.Context) {
 		snapshot, epoch, err := m.readSnapshot()
 		if err != nil {
 			m.log.WarnContext(ctx, "monitor: snapshot failed", "err", err)
+			m.stateMu.Lock()
+			m.markFailedLocked("kernel snapshot failed: " + err.Error())
+			m.stateMu.Unlock()
 			if !sleepMonitorRetry(ctx, backoff) {
 				return
 			}
 			backoff = min(backoff*2, 5*time.Second)
 			m.stateMu.Lock()
-			m.markStaleLocked()
+			m.markStaleLocked("kernel snapshot retry")
 			m.stateMu.Unlock()
 			continue
 		}
@@ -537,6 +540,7 @@ func (m *Monitor) resyncLoop(ctx context.Context) {
 func (m *Monitor) readSnapshot() (*Snapshot, uint64, error) {
 	snapshot := new(Snapshot)
 	snapshot.Iface = m.cfg.Iface
+	snapshot.ConnectionID = m.cfg.ConnectionID
 	snapshot.ObservedAt = realClock{}.Now()
 	m.mu.RLock()
 	epoch := m.bindingEpoch
@@ -759,6 +763,7 @@ func (m *Monitor) decorate(event Event) Event {
 	event.IfIndex = m.ifIndex
 	event.ActualIface = m.actualIface
 	event.ObservedAt = realClock{}.Now()
+	event.ConnectionID = m.cfg.ConnectionID
 	if m.cfg.Connection != nil {
 		event.ConnectionID = m.cfg.Connection.ID.String()
 	}
@@ -806,6 +811,7 @@ func (m *Monitor) linkUpdateToEvent(u netlink.LinkUpdate) Event {
 		event.ActualIface = actualIface
 		event.IfIndex = index
 		event.ObservedAt = realClock{}.Now()
+		event.ConnectionID = m.cfg.ConnectionID
 		if m.cfg.Connection != nil {
 			event.ConnectionID = m.cfg.Connection.ID.String()
 		}
@@ -883,7 +889,7 @@ func (m *Monitor) rebindLegacyLocked(index int) {
 
 func (m *Monitor) invalidateBinding() {
 	m.stateMu.Lock()
-	m.markStaleLocked()
+	m.markStaleLocked("link binding changed")
 	m.stateMu.Unlock()
 }
 
