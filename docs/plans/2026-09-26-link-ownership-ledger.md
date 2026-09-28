@@ -689,6 +689,41 @@ Production still uses its prior release. MWAN-523 still requires index reuse,
 bridge rename, router advertisement lifetimes, and public daemon packet
 acceptance before state publication.
 
+### VLAN rename observer production checkpoint, September 28, 2026
+
+[Configs PR #543](https://github.com/agoodkind/configs/pull/543) pinned release
+`202609281014-42-79d166e` in production and merged as
+`14b87828101871b56277fb9251c5aa263cd51d3b`. The production check ran
+from a clean checkout of that merged commit and passed with 187 successful
+tasks, 15 proposed changes, no unreachable hosts, and no failures. The apply
+passed with 240 successful tasks, 21 changes, no unreachable hosts, and no
+failures. Trace `20260928-041729-deploy-714431` passed the reboot, egress,
+and mapped-address gates without rollback. VM 113 reported clean MWAN commit
+`79d166e`; `mwan-ifmgr@wan` was active, and AT&T, Webpass, and Monkeybrains
+reported healthy.
+
+The existing observer on downstream UniFi LXC 102 recorded 454 successful
+IPv4 samples and 454 successful IPv6 samples from 11:15:46 through 11:23:29
+UTC, with no failures. The largest intervals between successful samples were
+2.039 seconds for IPv4 and 2.040 seconds for IPv6. Thirty fresh connections
+per family all succeeded from that guest. IPv4 selected `136.25.91.242` 16
+times and `104.57.226.193` 14 times. IPv6 selected
+`2600:1700:2f71:c80:dac2::102` 16 times and
+`2604:5500:c271:be00:583d::102` 14 times. Proxy LXC 110 also returned
+IPv4 and IPv6 HTTPS replies after
+deployment. The gateway's provider-bound probe succeeded over IPv4 for all
+three providers and over IPv6 to ifconfig.co for all three providers. Its
+alternate api.ipify.org IPv6 probes failed; the successful ifconfig.co probes
+establish IPv6 egress on each provider.
+
+Independent probes from Suburban received both ICMP replies from mapped IPv4
+addresses `104.57.226.193` and `136.25.91.242` and both ICMPv6 replies from
+provider edge addresses `2600:1700:2f71:c80::1` and
+`2604:5500:c271:be00::1`. Production acceptance for this observer change
+passed. Networkd still owns interfaces. MWAN-523 remains In Progress for
+index reuse, bridge rename, router advertisement lifetimes, and public daemon
+packet acceptance before state publication.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
