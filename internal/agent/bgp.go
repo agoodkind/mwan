@@ -15,6 +15,7 @@ func newBGPSpeaker(cfg *config.Config, log *slog.Logger) (*bgp.Speaker, error) {
 	}
 	bgpCfg := bgp.Config{
 		Enabled:          true,
+		RequireReady:     cfg.BGP.UseWanconfig,
 		ASN:              cfg.BGP.ASN,
 		RouterID:         cfg.BGP.RouterID,
 		NextHopV6:        cfg.BGP.NextHopV6,

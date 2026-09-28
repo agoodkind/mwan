@@ -124,10 +124,8 @@ func (w *watchdog) triggerBGPFailover(ctx context.Context, cfg *config.Config, r
 	return nil
 }
 
-// triggerBGPRecovery moves routes back to the primary MWAN VM after it has
-// returned to a healthy state. It mirrors triggerBGPFailover in shape:
-// verify primary reachability, withdraw from the failover LXC, announce on
-// the primary, send a recovery email, and clear failover state.
+// triggerBGPRecovery announces the primary after it is ready. The backup
+// remains advertised at lower priority while BGP installs the primary route.
 func (w *watchdog) triggerBGPRecovery(ctx context.Context, cfg *config.Config) error {
 	start := w.now()
 
@@ -157,17 +155,7 @@ func (w *watchdog) triggerBGPRecovery(ctx context.Context, cfg *config.Config) e
 		return fmt.Errorf("BGP recovery: primary VM %s BGP not established", cfg.MwanVMID)
 	}
 
-	// Step 3: withdraw from the failover LXC.
-	w.log.InfoContext(ctx, "BGP_RECOVERY: withdrawing routes from failover LXC",
-		"lxc", cfg.Failover.LXCID)
-	if err := w.ops.WithdrawRoutes(ctx, cfg.Failover.LXCID); err != nil {
-		w.log.ErrorContext(ctx, "BGP_RECOVERY: withdraw routes failed on LXC",
-			"lxc", cfg.Failover.LXCID, "err", err)
-		return fmt.Errorf("BGP recovery WithdrawRoutes on LXC %s: %w",
-			cfg.Failover.LXCID, err)
-	}
-
-	// Step 4: announce routes on the primary VM.
+	// Step 3: announce routes on the primary VM.
 	w.log.InfoContext(ctx, "BGP_RECOVERY: announcing routes on primary VM",
 		"vmid", cfg.MwanVMID)
 	if err := w.ops.AnnounceRoutes(ctx, cfg.MwanVMID); err != nil {
@@ -186,7 +174,7 @@ func (w *watchdog) triggerBGPRecovery(ctx context.Context, cfg *config.Config) e
 	// fresh transition rather than a repeat. The recovery line emits at the
 	// same severity the original Notify used (ERROR), per the Manager's
 	// resolveAt contract, so it crosses the same MinLevel threshold.
-	recoveryMsg := "BGP RECOVERED: routes back on primary VM " + cfg.MwanVMID
+	recoveryMsg := "BGP RECOVERED: primary VM " + cfg.MwanVMID + " accepted the announcement; backup remains available"
 	w.notify.Resolve(ctx, "bgp-failover", cfg.MwanVMID, recoveryMsg,
 		slog.Duration("recovery_elapsed", w.since(start).Round(time.Second)),
 		slog.String("original_reason", prevReason),

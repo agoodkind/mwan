@@ -22,6 +22,7 @@ import (
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/firewall"
+	"goodkind.io/mwan/internal/forwardingready"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/logging"
 	"goodkind.io/mwan/internal/networkd"
@@ -105,6 +106,9 @@ func runIfMgr(cfg *config.Config) error {
 	}
 	dcfg.Notifier = notify.FromConfig(cfg, logger, "mwan-ifmgr")
 	dcfg.LiveState = wanstate.New()
+	if role == "wan" {
+		dcfg.ForwardingReadySocket = forwardingready.DefaultSocketPath
+	}
 	d, err := ifmgr.NewDaemon(logger, dcfg)
 	if err != nil {
 		logger.Warn("ifmgr: new daemon failed", "err", err)
@@ -288,17 +292,18 @@ func buildIfMgrDaemonConfig(cfg *config.Config, role string) (ifmgr.DaemonConfig
 	// The repeat cadence is consumed directly by notify.FromConfig from
 	// cfg.IfMgr.Alerts or cfg.Notify.
 	return ifmgr.DaemonConfig{
-		Role:              role,
-		Iface:             ifaceName,
-		Connections:       cfg.IfMgr.Connections,
-		ReconcileInterval: rec,
-		EnableDHCP:        enableDHCP,
-		DHCPInitial:       dhcpInit,
-		DHCPMax:           dhcpMax,
-		EnableRA:          enableRA,
-		Notifier:          nil,
-		ModuleConfigs:     moduleConfigs,
-		LiveState:         nil,
+		Role:                  role,
+		Iface:                 ifaceName,
+		Connections:           cfg.IfMgr.Connections,
+		ReconcileInterval:     rec,
+		EnableDHCP:            enableDHCP,
+		DHCPInitial:           dhcpInit,
+		DHCPMax:               dhcpMax,
+		EnableRA:              enableRA,
+		Notifier:              nil,
+		ModuleConfigs:         moduleConfigs,
+		LiveState:             nil,
+		ForwardingReadySocket: "",
 	}, nil
 }
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	internalclock "goodkind.io/mwan/internal/clock"
+	"goodkind.io/mwan/internal/forwardingready"
 	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/notify"
@@ -46,8 +47,9 @@ type Daemon struct {
 	// failover event-driven rather than tick-latency-bound.
 	reconcileReq chan struct{}
 
-	mu        sync.Mutex
-	startedAt time.Time
+	mu              sync.Mutex
+	startedAt       time.Time
+	forwardingState forwardingready.State
 }
 
 // DaemonConfig captures the subset of cfg.IfMgr that the daemon needs.
@@ -88,6 +90,8 @@ type DaemonConfig struct {
 	// LiveState receives each module's reconciled snapshot. The optional
 	// management surface reads the same store when available.
 	LiveState *wanstate.Store
+
+	ForwardingReadySocket string
 }
 
 // NewDaemon constructs a Daemon for the given config and role. Resolves
@@ -167,6 +171,7 @@ func NewDaemon(log *slog.Logger, cfg DaemonConfig) (*Daemon, error) {
 		reconcileReq:      make(chan struct{}, 1),
 		mu:                sync.Mutex{},
 		startedAt:         time.Time{},
+		forwardingState:   forwardingready.State{IPv4: false, IPv6: false},
 	}
 	dlog.Info("ifmgr: Daemon ready", "module_count", len(modules))
 	return d, nil
@@ -185,6 +190,26 @@ func (d *Daemon) Run(ctx context.Context) error {
 	d.mu.Unlock()
 
 	d.log.InfoContext(ctx, "ifmgr: Run entry")
+	var readinessDone chan struct{}
+	var readinessError error
+	if d.cfg.ForwardingReadySocket != "" {
+		readinessCtx, cancelReadiness := context.WithCancel(ctx)
+		readinessDone = make(chan struct{})
+		go func() {
+			defer close(readinessDone)
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					readinessError = fmt.Errorf("forwarding readiness server panicked: %v", recovered)
+				}
+			}()
+			readinessError = forwardingready.Serve(readinessCtx, d.cfg.ForwardingReadySocket, d.ForwardingReadiness)
+		}()
+		defer func() {
+			d.setForwardingReadiness(forwardingready.State{IPv4: false, IPv6: false})
+			cancelReadiness()
+			<-readinessDone
+		}()
+	}
 
 	// Start the kernel event monitor first so any module Init that
 	// triggers a netlink change (rare but possible) sees its own event.
@@ -237,7 +262,20 @@ func (d *Daemon) Run(ctx context.Context) error {
 		return err
 	}
 
-	return d.runLoop(ctx, mon, dhcpClient, raClient)
+	return d.runLoop(ctx, mon, dhcpClient, raClient, readinessDone, &readinessError)
+}
+
+// ForwardingReadiness reports the last complete WAN reconcile result.
+func (d *Daemon) ForwardingReadiness() forwardingready.State {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.forwardingState
+}
+
+func (d *Daemon) setForwardingReadiness(state forwardingready.State) {
+	d.mu.Lock()
+	d.forwardingState = state
+	d.mu.Unlock()
 }
 
 func (d *Daemon) initModules(ctx context.Context) error {
@@ -274,6 +312,8 @@ func (d *Daemon) runLoop(
 	mon *netif.Monitor,
 	dhcpClient *netif.DHCPClient,
 	raClient *netif.RAClient,
+	readinessDone <-chan struct{},
+	readinessError *error,
 ) error {
 	// Initial reconcile pass.
 	initialCtx := tracing.WithOperation(ctx, "initial_reconcile")
@@ -287,6 +327,11 @@ func (d *Daemon) runLoop(
 	d.log.InfoContext(ctx, "ifmgr: entering main loop")
 	for {
 		select {
+		case <-readinessDone:
+			if *readinessError != nil {
+				return fmt.Errorf("forwarding readiness socket: %w", *readinessError)
+			}
+			readinessDone = nil
 		case <-ctx.Done():
 			d.log.DebugContext(ctx, "ifmgr: ctx cancelled; exiting (kernel state preserved)")
 			if raClient != nil {
@@ -367,13 +412,51 @@ func (d *Daemon) requestReconcile(reason string) {
 // returning an error is logged at WARN; the loop continues so that one
 // flaky module does not silence the others.
 func (d *Daemon) reconcileAll(ctx context.Context, log *slog.Logger) {
+	var routingGeneration uint64
+	if d.cfg.LiveState != nil {
+		routingGeneration = d.cfg.LiveState.Snapshot().RoutingGeneration
+	}
+	failed := false
 	for _, m := range d.modules {
 		mlog := log.With("module", m.Name())
 		mlog.DebugContext(ctx, "ifmgr: Reconcile")
 		if err := m.Reconcile(ctx, mlog); err != nil {
 			mlog.WarnContext(ctx, "ifmgr: module Reconcile failed", "err", err)
+			if m.Name() != "wan.routes" {
+				failed = true
+			}
 		}
 	}
+	if d.role != "wan" || d.cfg.ForwardingReadySocket == "" {
+		return
+	}
+	if d.cfg.LiveState == nil || failed {
+		d.setForwardingReadiness(forwardingready.State{IPv4: false, IPv6: false})
+		return
+	}
+	snapshot := d.cfg.LiveState.Snapshot()
+	if snapshot.RoutingGeneration == routingGeneration {
+		d.setForwardingReadiness(forwardingready.State{IPv4: false, IPv6: false})
+		return
+	}
+	d.setForwardingReadiness(forwardingReadiness(snapshot))
+}
+
+func forwardingReadiness(snapshot wanstate.Snapshot) forwardingready.State {
+	var state forwardingready.State
+	for name, routing := range snapshot.Routing {
+		health := snapshot.Health[name]
+		if health.Verdict != wanstate.HealthHealthy {
+			continue
+		}
+		if routing.V4Ready && health.V4 == wanstate.ProbePass {
+			state.IPv4 = true
+		}
+		if routing.V6Ready && health.V6 == wanstate.ProbePass {
+			state.IPv6 = true
+		}
+	}
+	return state
 }
 
 // dispatchEvent fans out one kernel event to every module.
