@@ -73,7 +73,7 @@ func validatedOwner(entry ifaceEntry) (interfaceintent.Owner, error) {
 		}
 	}
 	if owner == interfaceintent.OwnerMWAN {
-		return owner, fmt.Errorf("interface %s: owner mwan requires unavailable direct writers", entry.Name)
+		return owner, validateMWANOwner(entry)
 	}
 	if owner != interfaceintent.OwnerNetworkd && owner != interfaceintent.OwnerExternal {
 		return owner, fmt.Errorf("interface %s: unknown owner %q", entry.Name, owner)
@@ -97,6 +97,42 @@ func validatedOwner(entry ifaceEntry) (interfaceintent.Owner, error) {
 		return owner, fmt.Errorf("interface %s: rendered link requires a link container", entry.Name)
 	}
 	return owner, nil
+}
+
+func validateMWANOwner(entry ifaceEntry) error {
+	if err := validateOwnedLinkName(entry.Name); err != nil {
+		slog.Warn("networkjson: invalid owned link name", "interface", entry.Name, "err", err)
+		return fmt.Errorf("interface %q: %w", entry.Name, err)
+	}
+	if entry.ConnectionID == "" {
+		return fmt.Errorf("interface %s: mwan owner requires connection-id", entry.Name)
+	}
+	if entry.Link == nil {
+		return fmt.Errorf("interface %s: mwan owner requires a link", entry.Name)
+	}
+	if entry.LinkFiles != "" || entry.Networkd != nil || entry.IPv4 != nil || entry.IPv6 != nil ||
+		entry.WAN != nil || entry.Steering != nil || entry.LeaseStore != "" {
+		return fmt.Errorf("interface %s: mwan owner supports link intent only", entry.Name)
+	}
+	return nil
+}
+
+func validateOwnedLinkName(name string) error {
+	if len(name) == 0 || len(name) > 15 {
+		return fmt.Errorf("mwan link name must contain 1 to 15 ASCII characters")
+	}
+	for index := range len(name) {
+		char := name[index]
+		if char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' ||
+			char >= '0' && char <= '9' || char == '_' || char == '-' || char == '.' {
+			continue
+		}
+		return fmt.Errorf("mwan link name contains an invalid character")
+	}
+	if name == "." || name == ".." {
+		return fmt.Errorf("mwan link name cannot be %q", name)
+	}
+	return nil
 }
 
 func validateRenderedConnection(entry ifaceEntry, connection interfaceintent.Connection) error {
@@ -176,6 +212,9 @@ func buildIntentLink(entry ifaceEntry) (*interfaceintent.Link, error) {
 		identities++
 	}
 	if wire.VLAN != nil {
+		if link.Kind == interfaceintent.KindBridge && entry.Owner == string(interfaceintent.OwnerMWAN) {
+			return nil, fmt.Errorf("interface %s: bridge link cannot include a vlan", entry.Name)
+		}
 		identities++
 		if wire.VLAN.ID == nil {
 			return nil, fmt.Errorf("interface %s: link/vlan/id is required", entry.Name)
@@ -183,8 +222,18 @@ func buildIntentLink(entry ifaceEntry) (*interfaceintent.Link, error) {
 		link.Kind = interfaceintent.KindVLAN
 		link.VLAN = &interfaceintent.VLAN{Parent: wire.VLAN.Parent, ID: *wire.VLAN.ID}
 	}
-	if identities != 1 && entry.LinkFiles == linkFilesRendered {
-		return nil, fmt.Errorf("interface %s: link requires exactly one identity (driver, hardware-address, or vlan), got %d", entry.Name, identities)
+	if entry.LinkFiles == linkFilesRendered || entry.Owner == string(interfaceintent.OwnerMWAN) {
+		if link.Kind == interfaceintent.KindBridge {
+			if identities != 0 {
+				return nil, fmt.Errorf("interface %s: bridge link cannot include a device match or vlan", entry.Name)
+			}
+		} else if identities != 1 {
+			return nil, fmt.Errorf("interface %s: link requires exactly one identity (driver, hardware-address, or vlan), got %d", entry.Name, identities)
+		}
+	}
+	if entry.Owner == string(interfaceintent.OwnerMWAN) && link.Kind == interfaceintent.KindPhysical &&
+		link.Match.HardwareAddress == "" {
+		return nil, fmt.Errorf("interface %s: mwan physical link requires a hardware-address match", entry.Name)
 	}
 	return link, nil
 }
@@ -360,7 +409,12 @@ func compileConnections(entries []ifaceEntry, ids map[string]connectionid.ID, in
 	}
 	for _, entry := range entries {
 		if entry.Owner == string(interfaceintent.OwnerMWAN) {
-			return nil, nil, fmt.Errorf("interface %s: owner mwan requires unavailable direct writers", entry.Name)
+			if entry.WAN != nil {
+				return nil, nil, fmt.Errorf("interface %s: mwan owner cannot declare a provider", entry.Name)
+			}
+			if entry.Name == internal || (firewall != nil && entry.Name == firewall.ManagementInterface) {
+				return nil, nil, fmt.Errorf("interface %s: mwan owner cannot manage internal or firewall-management interfaces", entry.Name)
+			}
 		}
 		connection, err := buildConnection(entry, ids[entry.Name])
 		if err != nil {
@@ -446,7 +500,7 @@ func validateRequiredRoles(indexes map[string]int, internal string, firewall *fi
 func validateConnectionDevices(connections []interfaceintent.Connection) error {
 	devices := make(map[string]string, len(connections))
 	for _, connection := range connections {
-		if connection.Link == nil || connection.Owner != interfaceintent.OwnerNetworkd {
+		if connection.Link == nil {
 			continue
 		}
 		keys := make([]string, 0, 2)
@@ -567,8 +621,12 @@ func claimedAddressKey(claim interfaceintent.Claim, name string) string {
 
 func claimConnectionResources(connection interfaceintent.Connection, add func(interfaceintent.Claim) error) error {
 	writer := interfaceintent.WriterExternal
-	if connection.Owner == interfaceintent.OwnerNetworkd {
+	switch connection.Owner {
+	case interfaceintent.OwnerExternal:
+	case interfaceintent.OwnerNetworkd:
 		writer = interfaceintent.WriterNetworkd
+	case interfaceintent.OwnerMWAN:
+		writer = interfaceintent.WriterMWANLink
 	}
 	if connection.Link != nil {
 		if err := add(interfaceintent.Claim{ConnectionID: connection.ID, Kind: interfaceintent.ResourceLink, Family: "", Key: connection.Name, Writer: writer}); err != nil {

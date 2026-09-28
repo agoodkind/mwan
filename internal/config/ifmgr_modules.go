@@ -22,6 +22,13 @@ type IfMgrModulesSection struct {
 	HostIPv6Policy    *IfMgrHostIPv6PolicySection    `toml:"host_ipv6_policy"`
 	WAN               *IfMgrModulesWANSection        `toml:"wan"`
 	Health            *IfMgrHealthSection            `toml:"health"`
+	Links             *IfMgrLinksSection             `toml:"links"`
+}
+
+// IfMgrLinksSection configures durable ownership records for MWAN-owned links.
+// The state file must persist across daemon restarts.
+type IfMgrLinksSection struct {
+	StateFile string `toml:"state_file"`
 }
 
 // IfMgrModulesWANSection is the [ifmgr.modules.wan] table. It nests the

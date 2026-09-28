@@ -58,7 +58,7 @@ No interface-owner cutover has begun.
 | --- | --- | --- |
 | MWAN-524 | Restore the managed Astound testbed connection first. | Configs PR #522 merged. Deployment, restart, downstream traffic, balancing, and recovery passed. |
 | MWAN-516 | 516-model; 516-state | [MWAN PR #51](https://github.com/agoodkind/mwan/pull/51) merged standalone identity as `959fbd3a65955e8156f2ea6c9bf2c90febef762c`. [MWAN PR #55](https://github.com/agoodkind/mwan/pull/55) merged shared interface intent as `2c6df538fbb1174a9189f3098d6ac458256857f4`. [MWAN PR #84](https://github.com/agoodkind/mwan/pull/84) merged state publication as `b601ab8a5f4f44d09b949ab6132c4287ef9dbbef`. The shared model and state publication passed testbed and production checkpoints. |
-| MWAN-397 | 397-links | Execution has not started. |
+| MWAN-397 | 397-links | [MWAN PR #86](https://github.com/agoodkind/mwan/pull/86) remains open. Independent review accepted pre-rebase `cdb320b` and the bridge guard added after `1db34fb`. Local checks passed on rebased code `b1da33c`. Required CI for the current head, merge, and deployment remain open. |
 | MWAN-523 | 523-observation | [MWAN PR #60](https://github.com/agoodkind/mwan/pull/60) merged the observer foundation as `13183ea9d6264beac7b85bfd4e7946b15f7da601`. Configs PRs #533 and #535 passed its first testbed and production checkpoints. MWAN PRs #66, #71, #73, #75, #77, and #79 verified route identity, bridge rebinding, router advertisement lifetimes, index reuse, daemon packet recovery, and duplicate-address failure in privileged kernel tests. PR #81 repaired snapshot replay overflow. Configs PRs #544 and #545 passed final testbed and production acceptance. |
 | MWAN-530 | Restart handover | [MWAN PR #64](https://github.com/agoodkind/mwan/pull/64) merged forwarding readiness as `798ee6a8dcb57ef91e7d9656e8a368f3f4bd4412`. OPNsense selected the backup during controlled testbed and production reboots, then restored the primary while downstream replies continued. Tack records Done. |
 | MWAN-398 | 398-addresses; 398-dhcpv4 | Execution has not started. |
@@ -980,6 +980,55 @@ a component reports them. AT&T served 28 recent transitions; the persistent
 interface-manager JSON log contained 1,725 lines after reboot. No live
 interface ownership transfer or reverse transfer occurred. MWAN-516 passed
 its state-publication acceptance; MWAN-397 is the next implementation slice.
+
+### MWAN-397 link implementation, September 28, 2026
+
+Tack marks MWAN-397 In Progress. The current unmerged change admits only
+link-only MWAN connections. Existing provider connections retain their
+networkd owner. A privileged Linux namespace test found that netlink
+`LinkAdd` did not retain the requested alias for either a VLAN or a bridge.
+The link writer now syncs a creation record with a random alias token before
+it creates a virtual link under a reserved temporary name. It verifies the
+device before setting the recorded alias and assigning the configured name.
+Focused kernel namespace tests pass for creation, restart adoption, removal,
+and preservation of foreign links.
+The parser, boot-name writer, and configuration-tree tests pass. The public
+daemon namespace test passed with VLAN packet delivery, restart adoption,
+final-link removal, and preservation of legacy and external links. Independent
+review found and verified fixes for journal and bridge identity defects. Lint,
+schema validation, the full test target, and privileged namespace tests pass.
+Merge and deployment remain open.
+
+### September 28, 2026: Repair the monitor test fixture
+
+The Linux namespace job for PR #86 failed on a monitor test that created
+duplicate current MAC addresses after veth creation. The resolver checks the
+permanent MAC when the kernel reports one. The test did not verify that both
+permanent MACs matched the configured address. The production resolver did
+not change. [MWAN PR #87](https://github.com/agoodkind/mwan/pull/87) set the
+requested MAC at veth creation and verified the kernel identity before
+starting the monitor.
+
+The affected tests passed 20 local repetitions. The full privileged netif
+suite passed three repetitions. `make docker-make TARGETS='check test'`
+passed. Independent review found no remaining defect. The Linux namespace,
+firewall, arm64, build, required lint, and automated review checks passed.
+PR #87 merged as `6796dc74352a4c9d3823a58fc5eeb6b59757fc3e`. The optional
+Govulncheck job still reports the preexisting GoBGP advisory.
+
+PR #86 was rebased onto that merged commit. Its signed code revision before
+this ledger update is `b1da33cb38e2763c3797a8e46888a04f471bb585`.
+Required CI and automated review must run again on the rebased head before
+merge. No testbed or production deployment has run for MWAN-397.
+
+The finding counts report blockers, issues to fix, and minor issues found
+during review, including findings fixed before the verdict.
+The post-verdict column records defects discovered after that review verdict.
+
+| Date | Branch | Class | Reviewer tier | Verdict | Blockers / issues to fix / minor issues | Post-verdict defects | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-09-28 | MWAN PR #86 at `cdb320b` | Link ownership and recovery | Independent adversarial | MERGE-READY | 10 / 2 / 0, fixed before verdict | None found | The public daemon namespace test and kernel namespace race tests passed. `TestModulesForRoleWAN` and `TestModulesForRoleExported` passed after their expected WAN module order included `links` before `health`. `TestLoadMWANOwnedLink` failed against `origin/main` because the old parser rejected direct MWAN link ownership, then passed with this change. The live `origin/main` merge-tree passed. Lint and schema passed before the module order fix; the full test target passed afterward. No deployment was reviewed. |
+| 2026-09-28 | MWAN PR #86 follow-up after `1db34fb` | Bridge membership adoption | Independent adversarial | MERGE-READY | 0 / 0 / 0 | None found | The public kernel test failed on the old guard when a replacement bridge reused the configured name and passed with the new guard under `-race`. The test also rejects an unrecorded current membership. The public daemon namespace test and live `origin/main` merge-tree passed. The public deleted-parent test no longer exercises `LinkAdd` rollback after a dependency race; that path was reviewed statically. |
 
 ## Record future implementation results
 

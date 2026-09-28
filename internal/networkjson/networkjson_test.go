@@ -1031,6 +1031,139 @@ func TestLoadRejectsNetworkdOwnerWithoutLinkFiles(t *testing.T) {
 	requireOneRejection(t, loaded, "enatt0", "att", "networkd owner requires link-files")
 }
 
+func TestLoadMWANOwnedLink(t *testing.T) {
+	t.Parallel()
+	owned := `{ "name": "enowned0", "type": "iana-if-type:ethernetCsmacd",
+        "goodkind-mwan-steering:connection-id": "owned-link",
+        "goodkind-mwan-steering:owner": "mwan",
+        "goodkind-mwan-steering:link": { "match": { "hardware-address": "02:00:5e:00:53:77" } } },`
+	body := strings.Replace(validDocument, `{ "name": "enmwanbr0", "type": "iana-if-type:other" }`,
+		owned+` { "name": "enmwanbr0", "type": "iana-if-type:other" }`, 1)
+	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	connection := requireConnection(t, loaded.Connections, "enowned0")
+	if connection.ID != "owned-link" || connection.Owner != interfaceintent.OwnerMWAN ||
+		connection.Link == nil || connection.Link.Kind != interfaceintent.KindPhysical {
+		t.Fatalf("MWAN connection = %+v", connection)
+	}
+	var linkClaims int
+	for _, claim := range loaded.Claims {
+		if claim.ConnectionID != connection.ID {
+			continue
+		}
+		linkClaims++
+		if claim.Kind != interfaceintent.ResourceLink || claim.Key != "enowned0" ||
+			claim.Writer != interfaceintent.WriterMWANLink {
+			t.Fatalf("MWAN claim = %+v", claim)
+		}
+	}
+	if linkClaims != 1 {
+		t.Fatalf("MWAN claims = %d, want one link claim", linkClaims)
+	}
+
+	for name, testCase := range map[string]struct {
+		field string
+		want  string
+	}{
+		"missing connection ID": {`"goodkind-mwan-steering:connection-id": "owned-link",`, "requires connection-id"},
+		"missing link": {`,
+        "goodkind-mwan-steering:link": { "match": { "hardware-address": "02:00:5e:00:53:77" } }`, "requires a link"},
+		"link files":  {`"goodkind-mwan-steering:link-files": "rendered",`, "supports link intent only"},
+		"networkd":    {`"goodkind-mwan-steering:networkd": {},`, "supports link intent only"},
+		"IPv4":        {`"ietf-ip:ipv4": { "goodkind-mwan-steering:dhcp": true },`, "supports link intent only"},
+		"IPv6":        {`"ietf-ip:ipv6": { "goodkind-mwan-steering:dhcp": true },`, "supports link intent only"},
+		"lease store": {`"goodkind-mwan-steering:lease-store": "/tmp/leases",`, "supports link intent only"},
+		"steering":    {`"goodkind-mwan-steering:steering": { "tier": 0 },`, "supports link intent only"},
+		"WAN":         {`"goodkind-mwan-steering:wan": { "name": "owned" },`, "cannot declare a provider"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			invalid := body
+			if name == "missing connection ID" || name == "missing link" {
+				invalid = strings.Replace(invalid, testCase.field, "", 1)
+			} else {
+				invalid = strings.Replace(invalid,
+					`"goodkind-mwan-steering:owner": "mwan",`,
+					`"goodkind-mwan-steering:owner": "mwan", `+testCase.field, 1)
+			}
+			if _, err := networkjson.Load(writeDocument(t, invalid), schemaDirForTest(t)); err == nil ||
+				!strings.Contains(err.Error(), testCase.want) {
+				t.Fatalf("rejection error = %v, want %q", err, testCase.want)
+			}
+		})
+	}
+	t.Run("internal interface", func(t *testing.T) {
+		t.Parallel()
+		invalid := strings.Replace(body, `"internal-iface": "enmwanbr0"`, `"internal-iface": "enowned0"`, 1)
+		if _, err := networkjson.Load(writeDocument(t, invalid), schemaDirForTest(t)); err == nil ||
+			!strings.Contains(err.Error(), "cannot manage internal") {
+			t.Fatalf("internal interface error = %v", err)
+		}
+	})
+
+	t.Run("duplicate physical match across owners", func(t *testing.T) {
+		t.Parallel()
+		duplicate := strings.Replace(body, `"match": { "driver": "igc" }`,
+			`"match": { "hardware-address": "02:00:5e:00:53:77" }`, 1)
+		if _, err := networkjson.Load(writeDocument(t, duplicate), schemaDirForTest(t)); err == nil ||
+			!strings.Contains(err.Error(), "match the same device") {
+			t.Fatalf("duplicate match error = %v", err)
+		}
+	})
+	t.Run("driver-only physical match", func(t *testing.T) {
+		t.Parallel()
+		invalid := strings.Replace(body, `"hardware-address": "02:00:5e:00:53:77"`,
+			`"driver": "igc"`, 1)
+		if _, err := networkjson.Load(writeDocument(t, invalid), schemaDirForTest(t)); err == nil ||
+			!strings.Contains(err.Error(), "requires a hardware-address match") {
+			t.Fatalf("driver-only match error = %v", err)
+		}
+	})
+	t.Run("invalid Linux link name", func(t *testing.T) {
+		t.Parallel()
+		invalid := strings.Replace(body, `"name": "enowned0"`, `"name": "enowned0\n[Link]"`, 1)
+		if _, err := networkjson.Load(writeDocument(t, invalid), schemaDirForTest(t)); err == nil ||
+			!strings.Contains(err.Error(), "invalid character") {
+			t.Fatalf("unsafe link name error = %v", err)
+		}
+	})
+	for name, testCase := range map[string]struct {
+		link string
+		kind interfaceintent.Kind
+	}{
+		"VLAN":   {`"vlan": { "parent": "enwebpass0", "id": 101 }`, interfaceintent.KindVLAN},
+		"bridge": {``, interfaceintent.KindBridge},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			variant := strings.Replace(body,
+				`"match": { "hardware-address": "02:00:5e:00:53:77" }`, testCase.link, 1)
+			if testCase.kind == interfaceintent.KindBridge {
+				variant = strings.Replace(variant, `"name": "enowned0", "type": "iana-if-type:ethernetCsmacd"`,
+					`"name": "enowned0", "type": "iana-if-type:bridge"`, 1)
+			}
+			loaded, err := networkjson.Load(writeDocument(t, variant), schemaDirForTest(t))
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			connection := requireConnection(t, loaded.Connections, "enowned0")
+			if connection.Link == nil || connection.Link.Kind != testCase.kind {
+				t.Fatalf("MWAN link = %+v, want kind %s", connection.Link, testCase.kind)
+			}
+		})
+	}
+	t.Run("physical link without match", func(t *testing.T) {
+		t.Parallel()
+		invalid := strings.Replace(body, `"match": { "hardware-address": "02:00:5e:00:53:77" }`, "", 1)
+		if _, err := networkjson.Load(writeDocument(t, invalid), schemaDirForTest(t)); err == nil ||
+			!strings.Contains(err.Error(), "requires exactly one identity") {
+			t.Fatalf("physical identity error = %v", err)
+		}
+	})
+}
+
 func TestLoadRejectsARenderedLinkWithNoIdentity(t *testing.T) {
 	t.Parallel()
 

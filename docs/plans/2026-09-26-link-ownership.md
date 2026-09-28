@@ -103,8 +103,8 @@ checks at its own position.
 | MWAN | [MWAN-516] Define shared interface configuration and assignment contracts | Start the model stack after the identity PR merges. |
 | MWAN | [MWAN-523] Observe device identity and kernel assignment state | Stack on the model PR. |
 | MWAN | [MWAN-516] Publish connection ownership and acquisition history | Stack on observation. End and merge the model stack here. |
-| MWAN | [MWAN-397] Manage physical links and VLAN dependencies | Start the kernel stack after the model stack merges. |
-| MWAN | [MWAN-398] Reconcile owned addresses and acquired routes | Stack on links. End and merge the kernel stack here. |
+| MWAN | [MWAN-397] Manage physical links and VLAN dependencies | Merge this focused PR after the model stack. Admit owned links and install their runtime writer together. Deploy the merged revision to the testbed, validate synthetic owned links, then promote the proven revision. Keep live providers under networkd. |
+| MWAN | [MWAN-398] Reconcile owned addresses and acquired routes | Start after link management passes testbed and production validation. Merge and validate this slice before DHCP acquisition. |
 | MWAN | [MWAN-505] Restore deleted owned routes | Use a standalone PR for the existing defect. Integrate any new observation API after it merges. |
 | MWAN | [MWAN-398] Complete DHCPv4 acquisition and lease replacement | Use a standalone PR after the kernel stack merges. |
 | MWAN | [MWAN-517] Configure and observe kernel IPv6 acquisition | Use a sibling standalone PR after the kernel stack merges. |

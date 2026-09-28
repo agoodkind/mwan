@@ -329,6 +329,42 @@ func TestConfigItems_PublishesNonProviderConnectionIntent(t *testing.T) {
 	}
 }
 
+func TestConfigItems_PublishesMWANOwnedLink(t *testing.T) {
+	t.Parallel()
+	gateway := testGateway()
+	parent := testConnection("enparent0")
+	owned := testConnection("owned397")
+	owned.Owner = interfaceintent.OwnerMWAN
+	owned.Link = &interfaceintent.Link{
+		Kind: interfaceintent.KindVLAN,
+		VLAN: &interfaceintent.VLAN{Parent: parent.Name, ID: 397},
+	}
+	gateway.Connections = append(gateway.Connections, parent, owned)
+	gateway.ConnectionIDs = map[string]connectionid.ID{owned.Name: owned.ID}
+	items, err := ConfigItems(gateway)
+	if err != nil {
+		t.Fatalf("ConfigItems: %v", err)
+	}
+	served := make(map[string]string, len(items))
+	for _, item := range items {
+		served[item.Path] = item.Value
+	}
+	base := "/ietf-interfaces:interfaces/interface[name='owned397']/goodkind-mwan-steering:"
+	for path, want := range map[string]string{
+		base + "owner":            "mwan",
+		base + "connection-id":    "owned397",
+		base + "link/vlan/parent": "enparent0",
+		base + "link/vlan/id":     "397",
+	} {
+		if got := served[path]; got != want {
+			t.Errorf("%s = %q, want %q", path, got, want)
+		}
+	}
+	if _, exists := served[base+"link-files"]; exists {
+		t.Fatal("MWAN-owned link published networkd ownership")
+	}
+}
+
 // TestConfigItems_PublishesTheDaemonSettingsItHolds pins the daemon
 // container: every present section publishes its leaves under
 // /goodkind-mwan-steering:daemon, leaf-list entries are addressed by

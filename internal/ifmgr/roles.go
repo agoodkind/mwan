@@ -73,6 +73,7 @@ var roleModules = map[string][]string{
 	// wan owns the MWAN VM policy-routing inventory. It runs as a
 	// separate instance from any OOB role.
 	"wan": {
+		"links",
 		// health writes the state consumed by later WAN-role modules.
 		"health",
 		// firewall installs filtering and IPv4 translation before NPT reads it.
