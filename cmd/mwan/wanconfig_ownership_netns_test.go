@@ -88,11 +88,10 @@ func runOwnershipOperationalChild(t *testing.T) {
 	}
 	store := wanstate.New()
 	store.SetTransitionLogger("first-run", log)
-	store.SetProviderConnections(gateway.Connections, map[string]string{"example": "enexample0"})
-	monitorCtx, stopMonitor := context.WithCancel(ctx)
-	startOwnershipObservers(monitorCtx, log, store, gateway.Connections)
-	defer stopMonitor()
-	store.SetRouting(0, map[string]wanstate.MemberRouting{"example": {Carrying: true, V4Ready: true, V6Ready: false, OwnedAddresses: nil}})
+	monitorCtx, stopMonitor := context.WithCancelCause(ctx)
+	startOwnershipObservers(monitorCtx, log, store, gateway.Connections, stopMonitor)
+	defer stopMonitor(nil)
+	store.SetRouting(0, map[string]wanstate.MemberRouting{"stable-example": {Carrying: true, V4Ready: true, V6Ready: false, OwnedAddresses: nil}})
 	if err := registerLiveStateProviders(ctx, log, provider, store, gateway, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +218,7 @@ func runOwnershipOperationalChild(t *testing.T) {
 	if current := read(); !strings.Contains(current, fmt.Sprintf(`"actual-index":%d`, replacement.Attrs().Index)) {
 		t.Fatalf("replacement index absent: %s", current)
 	}
-	stopMonitor()
+	stopMonitor(nil)
 	verifyOverflowOperationalRead(t, ctx, log, logFile, store, &gateway.Connections[2], replacement, read)
 	firstAssignment := ownershipTestAssignment("192.0.2.10/32")
 	secondAssignment := ownershipTestAssignment("192.0.2.11/32")
@@ -231,9 +230,9 @@ func runOwnershipOperationalChild(t *testing.T) {
 	}
 	secondStore := wanstate.New()
 	secondStore.SetTransitionLogger("second-run", log)
-	secondCtx, stopSecond := context.WithCancel(ctx)
-	defer stopSecond()
-	startOwnershipObservers(secondCtx, log, secondStore, gateway.Connections)
+	secondCtx, stopSecond := context.WithCancelCause(ctx)
+	defer stopSecond(nil)
+	startOwnershipObservers(secondCtx, log, secondStore, gateway.Connections, stopSecond)
 	waitOwnershipState(t, secondStore, func(state wanstate.ConnectionState) bool { return state.IfIndex == replacement.Attrs().Index })
 	if len(secondStore.Snapshot().Connections["stable-example"].Recent) != 0 {
 		t.Fatal("startup snapshot was treated as a transition")

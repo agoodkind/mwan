@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"goodkind.io/mwan/internal/interfaceintent"
@@ -9,7 +10,7 @@ import (
 	"goodkind.io/mwan/internal/wanstate"
 )
 
-func startOwnershipObservers(ctx context.Context, log *slog.Logger, store *wanstate.Store, connections []interfaceintent.Connection) {
+func startOwnershipObservers(ctx context.Context, log *slog.Logger, store *wanstate.Store, connections []interfaceintent.Connection, cancel context.CancelCauseFunc) {
 	store.SetConnections(connections)
 	for i := range connections {
 		connection := connections[i]
@@ -21,7 +22,9 @@ func startOwnershipObservers(ctx context.Context, log *slog.Logger, store *wanst
 		go func() {
 			defer func() {
 				if recovered := recover(); recovered != nil {
-					log.ErrorContext(ctx, "ifmgr: ownership observer panicked", "connection", connection.ID.String(), "err", recovered)
+					err := fmt.Errorf("ownership observer %s panicked: %v", connection.ID, recovered)
+					log.ErrorContext(ctx, "ifmgr: ownership observer panicked", "connection", connection.ID.String(), "err", err)
+					cancel(err)
 				}
 			}()
 			for {

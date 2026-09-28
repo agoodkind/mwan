@@ -132,23 +132,6 @@ func (s *Store) SetConnections(connections []interfaceintent.Connection) {
 	}
 }
 
-// SetProviderConnections resolves routing's provider keys against configured connection identities.
-func (s *Store) SetProviderConnections(connections []interfaceintent.Connection, providerIfaces map[string]string) {
-	byName := make(map[string]string, len(connections))
-	for _, connection := range connections {
-		byName[connection.Name] = connection.ID.String()
-	}
-	resolved := make(map[string]string, len(providerIfaces))
-	for provider, iface := range providerIfaces {
-		if id, present := byName[iface]; present {
-			resolved[provider] = id
-		}
-	}
-	s.mu.Lock()
-	s.providerConnections = resolved
-	s.mu.Unlock()
-}
-
 // SetAssignment records protocol evidence separately from observed kernel lifetimes.
 func (s *Store) SetAssignment(id, family, acquisition, validity string, assignments []interfaceintent.Assignment) {
 	s.mu.Lock()

@@ -114,23 +114,22 @@ type Observer interface {
 // Store is the concurrent snapshot store. The zero value is unusable;
 // construct with New.
 type Store struct {
-	mu                  sync.RWMutex
-	clock               clock.Clock
-	connections         map[string]ConnectionState
-	providerConnections map[string]string
-	runID               string
-	transitionSequence  uint64
-	transitionLog       *slog.Logger
-	health              map[string]MemberHealth
-	routing             map[string]MemberRouting
-	translation         map[string]MemberTranslation
-	routingGeneration   uint64
-	activeTier          uint8
-	tierValid           bool
-	bgp                 BGP
-	intendedRulesets    map[string]OwnedRuleset
-	observer            Observer
-	observerGeneration  uint64
+	mu                 sync.RWMutex
+	clock              clock.Clock
+	connections        map[string]ConnectionState
+	runID              string
+	transitionSequence uint64
+	transitionLog      *slog.Logger
+	health             map[string]MemberHealth
+	routing            map[string]MemberRouting
+	translation        map[string]MemberTranslation
+	routingGeneration  uint64
+	activeTier         uint8
+	tierValid          bool
+	bgp                BGP
+	intendedRulesets   map[string]OwnedRuleset
+	observer           Observer
+	observerGeneration uint64
 }
 
 // New returns an empty store.
@@ -141,23 +140,22 @@ func New() *Store {
 // NewWithClock constructs a store with an injected wall clock.
 func NewWithClock(wallClock clock.Clock) *Store {
 	return &Store{
-		mu:                  sync.RWMutex{},
-		clock:               wallClock,
-		connections:         map[string]ConnectionState{},
-		providerConnections: map[string]string{},
-		runID:               "",
-		transitionSequence:  0,
-		transitionLog:       nil,
-		health:              map[string]MemberHealth{},
-		routing:             map[string]MemberRouting{},
-		translation:         map[string]MemberTranslation{},
-		routingGeneration:   0,
-		activeTier:          0,
-		tierValid:           false,
-		bgp:                 BGP{Peers: nil, ReadAt: time.Time{}, Reached: false},
-		intendedRulesets:    map[string]OwnedRuleset{},
-		observer:            nil,
-		observerGeneration:  0,
+		mu:                 sync.RWMutex{},
+		clock:              wallClock,
+		connections:        map[string]ConnectionState{},
+		runID:              "",
+		transitionSequence: 0,
+		transitionLog:      nil,
+		health:             map[string]MemberHealth{},
+		routing:            map[string]MemberRouting{},
+		translation:        map[string]MemberTranslation{},
+		routingGeneration:  0,
+		activeTier:         0,
+		tierValid:          false,
+		bgp:                BGP{Peers: nil, ReadAt: time.Time{}, Reached: false},
+		intendedRulesets:   map[string]OwnedRuleset{},
+		observer:           nil,
+		observerGeneration: 0,
 	}
 }
 
@@ -223,11 +221,7 @@ func (s *Store) SetRouting(activeTier uint8, members map[string]MemberRouting) {
 	s.activeTier = activeTier
 	s.tierValid = true
 	s.routing = copied
-	for provider, member := range members {
-		id, mapped := s.providerConnections[provider]
-		if !mapped {
-			continue
-		}
+	for id, member := range members {
 		connection, present := s.connections[id]
 		if !present {
 			continue
