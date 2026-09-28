@@ -1227,14 +1227,30 @@ func waitObservedAddress(t *testing.T, events <-chan Event, address string) Even
 	t.Helper()
 	deadline := time.NewTimer(5 * time.Second)
 	defer deadline.Stop()
+	var recent []string
 	for {
 		select {
 		case event := <-events:
 			if event.Kind == EvAddrAdded && event.CIDR == address {
 				return event
 			}
+			summary := fmt.Sprintf("%s cidr=%s iface=%s index=%d", event.Kind, event.CIDR, event.ActualIface, event.IfIndex)
+			if event.Snapshot != nil {
+				containsAddress := false
+				for _, observed := range event.Snapshot.Addresses {
+					if observed.CIDR == address {
+						containsAddress = true
+						break
+					}
+				}
+				summary += fmt.Sprintf(" snapshot-index=%d address-count=%d contains-target=%t", event.Snapshot.IfIndex, len(event.Snapshot.Addresses), containsAddress)
+			}
+			recent = append(recent, summary)
+			if len(recent) > 20 {
+				recent = recent[len(recent)-20:]
+			}
 		case <-deadline.C:
-			t.Fatalf("address %s was not observed", address)
+			t.Fatalf("address %s was not observed; recent monitor events: %v", address, recent)
 		}
 	}
 }

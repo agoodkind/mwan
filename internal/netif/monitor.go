@@ -37,7 +37,7 @@ const (
 	EvLinkDown
 	// EvResync reports a complete kernel snapshot after observation loses continuity.
 	EvResync
-	// EvObservationStale reports that queued deltas no longer provide a complete observation.
+	// EvObservationStale reports incomplete state until a successful resynchronization.
 	EvObservationStale
 	// EvObservationFailed reports a subscription or snapshot failure.
 	EvObservationFailed

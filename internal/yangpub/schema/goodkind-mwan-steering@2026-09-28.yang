@@ -162,7 +162,7 @@ module goodkind-mwan-steering {
   augment "/if:interfaces/if:interface" {
     container ownership-state {
       config false;
-      description "Current configured ownership and observed device state.";
+      description "This node reports configured ownership and observed device state.";
       leaf connection-id { type string; }
       leaf configured-owner { type string; }
       leaf actual-name { type string; }
