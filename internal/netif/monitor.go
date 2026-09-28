@@ -773,12 +773,15 @@ func (m *Monitor) linkUpdateToEvent(u netlink.LinkUpdate) Event {
 	previousIface := m.actualIface
 	if m.cfg.Connection != nil {
 		m.rebindConfiguredLocked()
-	} else if m.ifIndex == 0 && u.Header.Type == unix.RTM_NEWLINK && u.Attrs() != nil && u.Attrs().Name == m.cfg.Iface {
-		m.ifIndex = int(u.Index)
-		m.actualIface = u.Attrs().Name
+	} else {
+		m.rebindLegacyLocked(0)
+		if u.Header.Type == unix.RTM_NEWLINK && u.Attrs() != nil && u.Attrs().Name == m.cfg.Iface {
+			m.rebindLegacyLocked(int(u.Index))
+		}
 	}
 	matched := int(u.Index) == m.ifIndex && m.ifIndex != 0
-	if u.Header.Type == unix.RTM_DELLINK && int(u.Index) == previousIndex {
+	if u.Header.Type == unix.RTM_DELLINK && int(u.Index) == previousIndex &&
+		(m.cfg.Connection != nil || u.Attrs() != nil && u.Attrs().Name == m.cfg.Iface) {
 		matched = true
 		m.ifIndex = 0
 		m.actualIface = ""
@@ -845,22 +848,36 @@ func (m *Monitor) watchesIndex(index int) bool {
 		}
 		return matched
 	}
+	m.rebindLegacyLocked(index)
+	matched := index == m.ifIndex && m.ifIndex != 0
+	changed := previousIndex != m.ifIndex || previousIface != m.actualIface
+	if changed {
+		m.bindingEpoch++
+	}
+	m.mu.Unlock()
+	if changed {
+		m.invalidateBinding()
+	}
+	return matched
+}
+
+func (m *Monitor) rebindLegacyLocked(index int) {
 	if m.ifIndex != 0 {
-		matched := index == m.ifIndex
-		m.mu.Unlock()
-		return matched
+		link, err := netlink.LinkByIndex(m.ifIndex)
+		if err != nil || link.Attrs() == nil || link.Attrs().Name != m.cfg.Iface {
+			m.ifIndex = 0
+			m.actualIface = ""
+		}
+	}
+	if m.ifIndex != 0 || index == 0 {
+		return
 	}
 	link, err := netlink.LinkByIndex(index)
 	if err != nil || link.Attrs() == nil || link.Attrs().Name != m.cfg.Iface {
-		m.mu.Unlock()
-		return false
+		return
 	}
 	m.ifIndex = index
 	m.actualIface = link.Attrs().Name
-	m.bindingEpoch++
-	m.mu.Unlock()
-	m.invalidateBinding()
-	return true
 }
 
 func (m *Monitor) invalidateBinding() {
