@@ -637,6 +637,101 @@ func TestMonitorRejectsAmbiguousPhysicalAndWrongVirtualLinks(t *testing.T) {
 	}
 }
 
+func TestMonitorTracksRenamedVLANByParentTagAndProtocol(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	parent := &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "obs-v-parent"}}
+	if err := netlink.LinkAdd(parent); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = netlink.LinkDel(parent) })
+	parentLink, err := netlink.LinkByName("obs-v-parent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.LinkSetUp(parentLink); err != nil {
+		t.Fatal(err)
+	}
+	makeVLAN := func(name string, protocol netlink.VlanProtocol) netlink.Link {
+		vlan := &netlink.Vlan{
+			LinkAttrs: netlink.LinkAttrs{Name: name, ParentIndex: parentLink.Attrs().Index},
+			VlanId:    101, VlanProtocol: protocol,
+		}
+		if err := netlink.LinkAdd(vlan); err != nil {
+			t.Fatal(err)
+		}
+		link, err := netlink.LinkByName(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := netlink.LinkSetUp(link); err != nil {
+			t.Fatal(err)
+		}
+		return link
+	}
+	otherProtocol := makeVLAN("obs-v-ad", netlink.VLAN_PROTOCOL_8021AD)
+	configured := makeVLAN("obs-vlan", netlink.VLAN_PROTOCOL_8021Q)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	monitor := NewMonitor(ctx, logger, MonitorConfig{
+		Iface: "obs-vlan",
+		Connection: &interfaceintent.Connection{
+			ID: "vlan-observer", Name: "obs-vlan",
+			Link: &interfaceintent.Link{
+				Kind: interfaceintent.KindVLAN,
+				VLAN: &interfaceintent.VLAN{Parent: "obs-v-parent", ID: 101},
+			},
+		},
+	})
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == configured.Attrs().Index
+	})
+	if err := netlink.LinkSetName(configured, "obs-v-renamed"); err != nil {
+		t.Fatal(err)
+	}
+	addObservedAddress(t, otherProtocol, "192.0.2.90/32")
+	addObservedAddress(t, configured, "192.0.2.89/32")
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	for {
+		select {
+		case event := <-monitor.Events:
+			if event.CIDR == "192.0.2.90/32" {
+				t.Fatalf("802.1ad address attributed to 802.1Q connection: %+v", event)
+			}
+			if event.Kind != EvAddrAdded || event.CIDR != "192.0.2.89/32" {
+				continue
+			}
+			if event.ConnectionID != "vlan-observer" || event.IfIndex != configured.Attrs().Index ||
+				event.ActualIface != "obs-v-renamed" {
+				t.Fatalf("renamed VLAN address identity = %+v", event)
+			}
+			goto verifyOtherProtocol
+		case <-deadline.C:
+			t.Fatal("renamed VLAN address was not observed")
+		}
+	}
+verifyOtherProtocol:
+	if err := netlink.LinkDel(configured); err != nil {
+		t.Fatal(err)
+	}
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == 0
+	})
+	addObservedAddress(t, otherProtocol, "192.0.2.91/32")
+	otherDeadline := time.NewTimer(100 * time.Millisecond)
+	defer otherDeadline.Stop()
+	for {
+		select {
+		case event := <-monitor.Events:
+			if event.CIDR == "192.0.2.91/32" || event.Snapshot != nil && event.Snapshot.IfIndex == otherProtocol.Attrs().Index {
+				t.Fatalf("802.1ad link replaced configured 802.1Q connection: %+v", event)
+			}
+		case <-otherDeadline.C:
+			return
+		}
+	}
+}
+
 func waitObservedSnapshot(t *testing.T, events <-chan Event, matches func(*Snapshot) bool) *Snapshot {
 	t.Helper()
 	deadline := time.NewTimer(5 * time.Second)

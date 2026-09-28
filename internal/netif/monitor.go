@@ -118,7 +118,8 @@ type RuleEvent struct {
 }
 
 // MonitorConfig configures one Monitor instance. A typed connection matches
-// its configured link identity. Virtual links require the configured name.
+// its configured link identity. Bridges require the configured name.
+// VLANs match the parent name, tag, and 802.1Q protocol.
 // Legacy callers match the configured interface name.
 type MonitorConfig struct {
 	Iface string
