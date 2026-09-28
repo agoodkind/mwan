@@ -12,6 +12,8 @@ import (
 	"goodkind.io/mwan/internal/forwardingready"
 )
 
+const testTimeout = time.Second
+
 func TestServeReadsCurrentStateAndStops(t *testing.T) {
 	directory, err := os.MkdirTemp("", "forwardingready-")
 	if err != nil {
@@ -30,11 +32,11 @@ func TestServeReadsCurrentStateAndStops(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- forwardingready.Serve(ctx, socketPath, snapshot) }()
+	go func() { done <- forwardingready.Serve(ctx, socketPath, testTimeout, snapshot) }()
 
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		got, readErr := forwardingready.Read(context.Background(), socketPath)
+		got, readErr := forwardingready.Read(context.Background(), socketPath, testTimeout)
 		if readErr == nil {
 			if got != (forwardingready.State{}) {
 				t.Fatalf("initial state = %+v, want both families false", got)
@@ -50,7 +52,7 @@ func TestServeReadsCurrentStateAndStops(t *testing.T) {
 	mu.Lock()
 	state = forwardingready.State{IPv4: true, IPv6: true}
 	mu.Unlock()
-	got, err := forwardingready.Read(context.Background(), socketPath)
+	got, err := forwardingready.Read(context.Background(), socketPath, testTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +69,7 @@ func TestServeReadsCurrentStateAndStops(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("Serve did not stop after cancellation")
 	}
-	if _, err := forwardingready.Read(context.Background(), socketPath); err == nil {
+	if _, err := forwardingready.Read(context.Background(), socketPath, testTimeout); err == nil {
 		t.Fatal("Read succeeded after server shutdown")
 	}
 	if _, err := os.Lstat(socketPath); !os.IsNotExist(err) {
@@ -89,7 +91,7 @@ func TestServeReplacesStaleSocket(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- forwardingready.Serve(ctx, socketPath, func() forwardingready.State {
+		done <- forwardingready.Serve(ctx, socketPath, testTimeout, func() forwardingready.State {
 			return forwardingready.State{IPv4: true}
 		})
 	}()
@@ -99,7 +101,7 @@ func TestServeReplacesStaleSocket(t *testing.T) {
 	}()
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		state, err := forwardingready.Read(context.Background(), socketPath)
+		state, err := forwardingready.Read(context.Background(), socketPath, testTimeout)
 		if err == nil {
 			if state != (forwardingready.State{IPv4: true}) {
 				t.Fatalf("state after stale socket replacement = %+v", state)
@@ -128,7 +130,7 @@ func TestServeDoesNotReplaceActiveSocket(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	if err := forwardingready.Serve(ctx, socketPath, func() forwardingready.State {
+	if err := forwardingready.Serve(ctx, socketPath, testTimeout, func() forwardingready.State {
 		return forwardingready.State{}
 	}); err == nil {
 		t.Fatal("Serve replaced an active socket")
@@ -142,5 +144,21 @@ func TestServeDoesNotReplaceActiveSocket(t *testing.T) {
 	}
 	if err := conn.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRejectsNonpositiveTimeout(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "ready.sock")
+	ctx := context.Background()
+	if err := forwardingready.Serve(ctx, socketPath, 0, func() forwardingready.State {
+		return forwardingready.State{}
+	}); err == nil {
+		t.Fatal("Serve accepted a zero timeout")
+	}
+	if _, err := forwardingready.Read(ctx, socketPath, 0); err == nil {
+		t.Fatal("Read accepted a zero timeout")
+	}
+	if _, err := os.Lstat(socketPath); !os.IsNotExist(err) {
+		t.Fatalf("invalid Serve created a socket: %v", err)
 	}
 }

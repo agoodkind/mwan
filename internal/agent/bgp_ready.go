@@ -8,23 +8,22 @@ import (
 	"goodkind.io/mwan/internal/forwardingready"
 )
 
-const forwardingPollInterval = time.Second
-const forwardingReadTimeout = 500 * time.Millisecond
-
 // SetForwardingReady requires current ifmgr readiness before this agent
 // announces the primary's configured address families.
-func (a *Server) SetForwardingReady(path string, ipv4, ipv6 bool) {
+func (a *Server) SetForwardingReady(path string, pollInterval, readTimeout time.Duration, ipv4, ipv6 bool) {
 	a.forwardingMu.Lock()
 	defer a.forwardingMu.Unlock()
 	a.forwardingPath = path
+	a.forwardingPollInterval = pollInterval
+	a.forwardingReadTimeout = readTimeout
 	a.announceIPv4 = ipv4
 	a.announceIPv6 = ipv6
 }
 
 func (a *Server) readForwardingReady(ctx context.Context) (forwardingready.State, error) {
-	readCtx, cancel := context.WithTimeout(ctx, forwardingReadTimeout)
+	readCtx, cancel := context.WithTimeout(ctx, a.forwardingReadTimeout)
 	defer cancel()
-	state, err := forwardingready.Read(readCtx, a.forwardingPath)
+	state, err := forwardingready.Read(readCtx, a.forwardingPath, a.forwardingReadTimeout)
 	if err != nil {
 		if err.Error() != a.lastReadError {
 			a.log.WarnContext(ctx, "read primary forwarding readiness failed", "error", err)
@@ -37,7 +36,7 @@ func (a *Server) readForwardingReady(ctx context.Context) (forwardingready.State
 }
 
 func (a *Server) pollForwardingReady(ctx context.Context) {
-	ticker := time.NewTicker(forwardingPollInterval)
+	ticker := time.NewTicker(a.forwardingPollInterval)
 	defer ticker.Stop()
 	for {
 		a.reconcileForwardingReady(ctx)

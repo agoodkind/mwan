@@ -14,7 +14,6 @@ import (
 	"github.com/mdlayher/vsock"
 	mwanv1 "goodkind.io/mwan/gen/mwan/v1"
 	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/forwardingready"
 	"goodkind.io/mwan/internal/logging"
 	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/tracing"
@@ -117,8 +116,11 @@ func Run(cfg *config.Config) error {
 	agentServer := NewServer(*deployFile, logger, bgpSpeaker, notifier)
 	agentServer.SetDeployExpected(*deployExpected)
 	if bgpSpeaker != nil && cfg.BGP.UseWanconfig {
+		readiness := cfg.BGP.ForwardingReadiness
 		agentServer.SetForwardingReady(
-			forwardingready.DefaultSocketPath,
+			readiness.SocketPath,
+			readiness.PollInterval(),
+			readiness.ReadTimeout(),
 			len(cfg.BGP.Announce.IPv4) > 0,
 			len(cfg.BGP.Announce.IPv6) > 0,
 		)

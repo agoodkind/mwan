@@ -15,11 +15,6 @@ import (
 	internalclock "goodkind.io/mwan/internal/clock"
 )
 
-const transferTimeout = 2 * time.Second
-
-// DefaultSocketPath is the local readiness socket shared by ifmgr and the agent.
-const DefaultSocketPath = "/run/mwan-forwarding-ready.sock"
-
 // State reports whether each address family can forward downstream traffic.
 type State struct {
 	IPv4 bool `json:"ipv4"`
@@ -27,9 +22,14 @@ type State struct {
 }
 
 // Serve writes the current state to each Unix socket connection until ctx ends.
-func Serve(ctx context.Context, socketPath string, snapshot func() State) error {
+func Serve(ctx context.Context, socketPath string, timeout time.Duration, snapshot func() State) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("serve forwarding readiness: %w", err)
+	}
+	if timeout <= 0 {
+		err := fmt.Errorf("forwarding readiness timeout must be positive")
+		slog.ErrorContext(ctx, "forwarding readiness cannot start", "error", err)
+		return err
 	}
 	if snapshot == nil {
 		err := fmt.Errorf("forwarding readiness snapshot is nil")
@@ -38,7 +38,7 @@ func Serve(ctx context.Context, socketPath string, snapshot func() State) error 
 	}
 	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: socketPath, Net: "unix"})
 	if err != nil && errors.Is(err, syscall.EADDRINUSE) {
-		if removeErr := removeStaleSocket(ctx, socketPath); removeErr != nil {
+		if removeErr := removeStaleSocket(ctx, socketPath, timeout); removeErr != nil {
 			slog.ErrorContext(ctx, "forwarding readiness socket unavailable", "path", socketPath, "error", removeErr)
 			return fmt.Errorf("prepare forwarding readiness socket: %w", removeErr)
 		}
@@ -61,11 +61,11 @@ func Serve(ctx context.Context, socketPath string, snapshot func() State) error 
 			slog.ErrorContext(ctx, "forwarding readiness accept failed", "error", err)
 			return fmt.Errorf("accept forwarding readiness connection: %w", err)
 		}
-		writeState(ctx, conn, snapshot)
+		writeState(ctx, conn, timeout, snapshot)
 	}
 }
 
-func removeStaleSocket(ctx context.Context, socketPath string) error {
+func removeStaleSocket(ctx context.Context, socketPath string, timeout time.Duration) error {
 	info, err := os.Lstat(socketPath)
 	if err != nil {
 		slog.ErrorContext(ctx, "inspect forwarding readiness socket failed", "path", socketPath, "error", err)
@@ -76,7 +76,7 @@ func removeStaleSocket(ctx context.Context, socketPath string) error {
 		slog.ErrorContext(ctx, "forwarding readiness socket path is occupied", "path", socketPath, "error", err)
 		return err
 	}
-	dialer := net.Dialer{Timeout: transferTimeout}
+	dialer := net.Dialer{Timeout: timeout}
 	conn, err := dialer.DialContext(ctx, "unix", socketPath)
 	if err == nil {
 		_ = conn.Close()
@@ -95,10 +95,10 @@ func removeStaleSocket(ctx context.Context, socketPath string) error {
 	return nil
 }
 
-func writeState(ctx context.Context, conn net.Conn, snapshot func() State) {
+func writeState(ctx context.Context, conn net.Conn, timeout time.Duration, snapshot func() State) {
 	defer func() { _ = conn.Close() }()
 	clock := internalclock.Real{}
-	if err := conn.SetWriteDeadline(clock.Now().Add(transferTimeout)); err != nil {
+	if err := conn.SetWriteDeadline(clock.Now().Add(timeout)); err != nil {
 		slog.WarnContext(ctx, "set forwarding readiness write deadline failed", "error", err)
 		return
 	}
@@ -108,12 +108,17 @@ func writeState(ctx context.Context, conn net.Conn, snapshot func() State) {
 }
 
 // Read returns one current state from the Unix socket.
-func Read(ctx context.Context, socketPath string) (State, error) {
+func Read(ctx context.Context, socketPath string, timeout time.Duration) (State, error) {
 	var state State
 	if err := ctx.Err(); err != nil {
 		return state, fmt.Errorf("read forwarding readiness: %w", err)
 	}
-	dialer := net.Dialer{Timeout: transferTimeout}
+	if timeout <= 0 {
+		err := fmt.Errorf("forwarding readiness timeout must be positive")
+		slog.ErrorContext(ctx, "forwarding readiness read cannot start", "error", err)
+		return state, err
+	}
+	dialer := net.Dialer{Timeout: timeout}
 	conn, err := dialer.DialContext(ctx, "unix", socketPath)
 	if err != nil {
 		slog.DebugContext(ctx, "forwarding readiness dial failed", "path", socketPath, "error", err)
@@ -123,7 +128,7 @@ func Read(ctx context.Context, socketPath string) (State, error) {
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
 	defer stop()
 	clock := internalclock.Real{}
-	deadline := clock.Now().Add(transferTimeout)
+	deadline := clock.Now().Add(timeout)
 	if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(deadline) {
 		deadline = contextDeadline
 	}

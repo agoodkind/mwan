@@ -18,9 +18,10 @@ func TestPrimaryBGPAnnouncesOnlyReadyFamilies(t *testing.T) {
 	var ipv4Ready atomic.Bool
 	var ipv6Ready atomic.Bool
 	socketPath := filepath.Join(t.TempDir(), "ready.sock")
+	readTimeout := 500 * time.Millisecond
 	serveDone := make(chan error, 1)
 	go func() {
-		serveDone <- forwardingready.Serve(ctx, socketPath, func() forwardingready.State {
+		serveDone <- forwardingready.Serve(ctx, socketPath, readTimeout, func() forwardingready.State {
 			return forwardingready.State{IPv4: ipv4Ready.Load(), IPv6: ipv6Ready.Load()}
 		})
 	}()
@@ -32,7 +33,7 @@ func TestPrimaryBGPAnnouncesOnlyReadyFamilies(t *testing.T) {
 	})
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		if _, err := forwardingready.Read(ctx, socketPath); err == nil {
+		if _, err := forwardingready.Read(ctx, socketPath, readTimeout); err == nil {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -58,7 +59,7 @@ func TestPrimaryBGPAnnouncesOnlyReadyFamilies(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = speaker.Stop() })
 	agent := NewServer("", testLogger(t), speaker, nil)
-	agent.SetForwardingReady(socketPath, true, true)
+	agent.SetForwardingReady(socketPath, time.Second, readTimeout, true, true)
 	client := startTestServer(t, agent)
 
 	request := &mwanv1.AnnounceRoutesRequest{}

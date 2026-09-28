@@ -35,18 +35,20 @@ var pingReceivedRE = regexp.MustCompile(`(\d+)\s+received`)
 
 type Server struct {
 	mwanv1.UnimplementedMWANAgentServer
-	deployFilePath string
-	deployExpected bool
-	log            *slog.Logger
-	bgp            *bgp.Speaker // nil when BGP is disabled
-	clock          clock
-	notifier       notify.Notifier
-	forwardingMu   sync.Mutex
-	forwardingPath string
-	announceIPv4   bool
-	announceIPv6   bool
-	manualWithdraw bool
-	lastReadError  string
+	deployFilePath         string
+	deployExpected         bool
+	log                    *slog.Logger
+	bgp                    *bgp.Speaker // nil when BGP is disabled
+	clock                  clock
+	notifier               notify.Notifier
+	forwardingMu           sync.Mutex
+	forwardingPath         string
+	forwardingPollInterval time.Duration
+	forwardingReadTimeout  time.Duration
+	announceIPv4           bool
+	announceIPv6           bool
+	manualWithdraw         bool
+	lastReadError          string
 
 	// These are injectable in tests to avoid reading real /proc files.
 	// Production code leaves them nil and uses the real /proc paths.

@@ -91,7 +91,8 @@ type DaemonConfig struct {
 	// management surface reads the same store when available.
 	LiveState *wanstate.Store
 
-	ForwardingReadySocket string
+	ForwardingReadySocket  string
+	ForwardingReadyTimeout time.Duration
 }
 
 // NewDaemon constructs a Daemon for the given config and role. Resolves
@@ -202,7 +203,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 					readinessError = fmt.Errorf("forwarding readiness server panicked: %v", recovered)
 				}
 			}()
-			readinessError = forwardingready.Serve(readinessCtx, d.cfg.ForwardingReadySocket, d.ForwardingReadiness)
+			readinessError = forwardingready.Serve(readinessCtx, d.cfg.ForwardingReadySocket, d.cfg.ForwardingReadyTimeout, d.ForwardingReadiness)
 		}()
 		defer func() {
 			d.setForwardingReadiness(forwardingready.State{IPv4: false, IPv6: false})
