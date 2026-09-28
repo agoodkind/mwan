@@ -165,6 +165,113 @@ func TestLegacyMonitorRebindsConfiguredNameAfterRename(t *testing.T) {
 	}
 }
 
+func TestMonitorRebindsTypedBridgeAfterRename(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	addBridge := func(name string) netlink.Link {
+		t.Helper()
+		if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: name}}); err != nil {
+			t.Fatal(err)
+		}
+		link, err := netlink.LinkByName(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := netlink.LinkSetUp(link); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = netlink.LinkDel(link) })
+		return link
+	}
+	old := addBridge("obs-bridge")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	monitor := NewMonitor(ctx, logger, MonitorConfig{
+		Iface: "obs-bridge",
+		Connection: &interfaceintent.Connection{
+			ID: "bridge-observer", Name: "obs-bridge",
+			Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
+		},
+	})
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == old.Attrs().Index && snapshot.ActualIface == "obs-bridge"
+	})
+	if err := netlink.LinkSetName(old, "obs-bridge-old"); err != nil {
+		t.Fatal(err)
+	}
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == 0
+	})
+	if monitor.IfIndex() != 0 {
+		t.Fatalf("renamed bridge remains bound at index %d", monitor.IfIndex())
+	}
+	addObservedAddress(t, old, "192.0.2.86/32")
+	_, oldDestination, err := net.ParseCIDR("203.0.113.86/32")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldRoute := &netlink.Route{
+		LinkIndex: old.Attrs().Index, Dst: oldDestination, Family: netlink.FAMILY_V4,
+		Table: 123, Protocol: 42, Scope: netlink.SCOPE_LINK,
+	}
+	if err := netlink.RouteAdd(oldRoute); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = netlink.RouteDel(oldRoute) })
+
+	replacement := addBridge("obs-bridge")
+	if replacement.Attrs().Index == old.Attrs().Index {
+		t.Fatal("replacement bridge reused the renamed bridge index")
+	}
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	nextEvent := func() Event {
+		t.Helper()
+		select {
+		case event := <-monitor.Events:
+			if event.CIDR == "192.0.2.86/32" || event.Dest == "203.0.113.86/32" {
+				t.Fatalf("renamed bridge event was attributed to configured bridge: %+v", event)
+			}
+			if event.Snapshot != nil {
+				for _, address := range event.Snapshot.Addresses {
+					if address.CIDR == "192.0.2.86/32" {
+						t.Fatalf("renamed bridge address appeared in snapshot: %+v", event)
+					}
+				}
+				for _, route := range event.Snapshot.Routes {
+					if route.Dest == "203.0.113.86/32" {
+						t.Fatalf("renamed bridge route appeared in snapshot: %+v", event)
+					}
+				}
+			}
+			return event
+		case <-deadline.C:
+			t.Fatal("replacement bridge event was not observed")
+			return Event{}
+		}
+	}
+	for {
+		event := nextEvent()
+		if event.Kind == EvResync && event.Snapshot != nil &&
+			event.Snapshot.IfIndex == replacement.Attrs().Index &&
+			event.Snapshot.ConnectionID == "bridge-observer" &&
+			event.Snapshot.ActualIface == "obs-bridge" {
+			break
+		}
+	}
+	addObservedAddress(t, replacement, "192.0.2.87/32")
+	for {
+		event := nextEvent()
+		if event.Kind != EvAddrAdded || event.CIDR != "192.0.2.87/32" {
+			continue
+		}
+		if event.IfIndex != replacement.Attrs().Index ||
+			event.ConnectionID != "bridge-observer" || event.ActualIface != "obs-bridge" {
+			t.Fatalf("replacement bridge address identity = %+v", event)
+		}
+		break
+	}
+}
+
 func TestMonitorReportsIPv6AddressAndDefaultRoute(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	link := addObservedVeth(t, "obs-family", "obs-family-peer", "02:00:5e:00:53:84")
