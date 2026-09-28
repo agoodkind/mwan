@@ -94,7 +94,8 @@ func linkMatchesConnection(link netlink.Link, connection interfaceintent.Connect
 		return link.Type() == "bridge" && attrs.Name == connection.Name
 	case interfaceintent.KindVLAN:
 		vlan, ok := link.(*netlink.Vlan)
-		if !ok || configured.VLAN == nil || attrs.Name != connection.Name || vlan.VlanId != int(configured.VLAN.ID) {
+		if !ok || configured.VLAN == nil || vlan.VlanId != int(configured.VLAN.ID) ||
+			vlan.VlanProtocol != netlink.VLAN_PROTOCOL_8021Q {
 			return false
 		}
 		parent, err := netlink.LinkByIndex(attrs.ParentIndex)
