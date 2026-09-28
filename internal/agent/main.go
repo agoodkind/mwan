@@ -115,6 +115,24 @@ func Run(cfg *config.Config) error {
 	)
 	agentServer := NewServer(*deployFile, logger, bgpSpeaker, notifier)
 	agentServer.SetDeployExpected(*deployExpected)
+	if bgpSpeaker != nil && cfg.BGP.UseWanconfig {
+		readiness := cfg.BGP.ForwardingReadiness
+		agentServer.SetForwardingReady(
+			readiness.SocketPath,
+			readiness.PollInterval(),
+			readiness.ReadTimeout(),
+			len(cfg.BGP.Announce.IPv4) > 0,
+			len(cfg.BGP.Announce.IPv6) > 0,
+		)
+		go func() {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					logger.ErrorContext(runCtx, "primary forwarding readiness poll panic", "error", recovered)
+				}
+			}()
+			agentServer.pollForwardingReady(runCtx)
+		}()
+	}
 	mwanv1.RegisterMWANAgentServer(grpcServer, agentServer)
 	if *debug {
 		reflection.Register(grpcServer)
@@ -150,9 +168,6 @@ func Run(cfg *config.Config) error {
 			errCh <- grpcServer.Serve(vsockLis)
 		}()
 	}
-
-	// Auto-announce is handled by the Speaker's WatchEvent callback.
-	// When all peers reach ESTABLISHED, routes are announced immediately.
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)

@@ -114,6 +114,7 @@ type Store struct {
 	health             map[string]MemberHealth
 	routing            map[string]MemberRouting
 	translation        map[string]MemberTranslation
+	routingGeneration  uint64
 	activeTier         uint8
 	tierValid          bool
 	bgp                BGP
@@ -129,6 +130,7 @@ func New() *Store {
 		health:             map[string]MemberHealth{},
 		routing:            map[string]MemberRouting{},
 		translation:        map[string]MemberTranslation{},
+		routingGeneration:  0,
 		activeTier:         0,
 		tierValid:          false,
 		bgp:                BGP{Peers: nil, ReadAt: time.Time{}, Reached: false},
@@ -192,6 +194,7 @@ func (s *Store) SetRouting(activeTier uint8, members map[string]MemberRouting) {
 	s.activeTier = activeTier
 	s.tierValid = true
 	s.routing = copied
+	s.routingGeneration++
 	observer := s.observer
 	s.mu.Unlock()
 	if observer != nil && previousValid && previousTier != activeTier {
@@ -236,14 +239,15 @@ func (s *Store) SetBGP(bgp BGP) {
 
 // Snapshot is a complete, consistent copy of the store for one read.
 type Snapshot struct {
-	Health          map[string]MemberHealth
-	Routing         map[string]MemberRouting
-	Translation     map[string]MemberTranslation
-	ActiveTier      uint8
-	TierValid       bool
-	BGP             BGP
-	IntendedRuleset string
-	IntendedByOwner map[string]OwnedRuleset
+	Health            map[string]MemberHealth
+	Routing           map[string]MemberRouting
+	RoutingGeneration uint64
+	Translation       map[string]MemberTranslation
+	ActiveTier        uint8
+	TierValid         bool
+	BGP               BGP
+	IntendedRuleset   string
+	IntendedByOwner   map[string]OwnedRuleset
 }
 
 // Snapshot returns a copy the caller may read without further locking.
@@ -251,14 +255,15 @@ func (s *Store) Snapshot() Snapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	snap := Snapshot{
-		Health:          make(map[string]MemberHealth, len(s.health)),
-		Routing:         make(map[string]MemberRouting, len(s.routing)),
-		Translation:     make(map[string]MemberTranslation, len(s.translation)),
-		ActiveTier:      s.activeTier,
-		TierValid:       s.tierValid,
-		BGP:             s.bgp,
-		IntendedRuleset: renderIntendedRulesets(s.intendedRulesets),
-		IntendedByOwner: make(map[string]OwnedRuleset, len(s.intendedRulesets)),
+		Health:            make(map[string]MemberHealth, len(s.health)),
+		Routing:           make(map[string]MemberRouting, len(s.routing)),
+		RoutingGeneration: s.routingGeneration,
+		Translation:       make(map[string]MemberTranslation, len(s.translation)),
+		ActiveTier:        s.activeTier,
+		TierValid:         s.tierValid,
+		BGP:               s.bgp,
+		IntendedRuleset:   renderIntendedRulesets(s.intendedRulesets),
+		IntendedByOwner:   make(map[string]OwnedRuleset, len(s.intendedRulesets)),
 	}
 	maps.Copy(snap.Health, s.health)
 	maps.Copy(snap.Routing, s.routing)

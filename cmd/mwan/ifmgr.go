@@ -105,6 +105,10 @@ func runIfMgr(cfg *config.Config) error {
 	}
 	dcfg.Notifier = notify.FromConfig(cfg, logger, "mwan-ifmgr")
 	dcfg.LiveState = wanstate.New()
+	if role == "wan" && cfg.BGP.Enabled && cfg.BGP.UseWanconfig {
+		dcfg.ForwardingReadySocket = cfg.BGP.ForwardingReadiness.SocketPath
+		dcfg.ForwardingReadyTimeout = cfg.BGP.ForwardingReadiness.ReadTimeout()
+	}
 	d, err := ifmgr.NewDaemon(logger, dcfg)
 	if err != nil {
 		logger.Warn("ifmgr: new daemon failed", "err", err)
@@ -288,17 +292,19 @@ func buildIfMgrDaemonConfig(cfg *config.Config, role string) (ifmgr.DaemonConfig
 	// The repeat cadence is consumed directly by notify.FromConfig from
 	// cfg.IfMgr.Alerts or cfg.Notify.
 	return ifmgr.DaemonConfig{
-		Role:              role,
-		Iface:             ifaceName,
-		Connections:       cfg.IfMgr.Connections,
-		ReconcileInterval: rec,
-		EnableDHCP:        enableDHCP,
-		DHCPInitial:       dhcpInit,
-		DHCPMax:           dhcpMax,
-		EnableRA:          enableRA,
-		Notifier:          nil,
-		ModuleConfigs:     moduleConfigs,
-		LiveState:         nil,
+		Role:                   role,
+		Iface:                  ifaceName,
+		Connections:            cfg.IfMgr.Connections,
+		ReconcileInterval:      rec,
+		EnableDHCP:             enableDHCP,
+		DHCPInitial:            dhcpInit,
+		DHCPMax:                dhcpMax,
+		EnableRA:               enableRA,
+		Notifier:               nil,
+		ModuleConfigs:          moduleConfigs,
+		LiveState:              nil,
+		ForwardingReadySocket:  "",
+		ForwardingReadyTimeout: 0,
 	}, nil
 }
 

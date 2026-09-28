@@ -171,9 +171,27 @@ type BGPSection struct {
 	// /etc/mwan/network.json, the wanconfig network configuration, and refuses
 	// to start without it. The failover container leaves it unset and owns the
 	// main table only.
-	UseWanconfig    bool               `toml:"use_wanconfig"`
-	Announce        BGPAnnounce        `toml:"announce"`
-	GracefulRestart BGPGracefulRestart `toml:"graceful_restart"`
+	UseWanconfig        bool                   `toml:"use_wanconfig"`
+	Announce            BGPAnnounce            `toml:"announce"`
+	GracefulRestart     BGPGracefulRestart     `toml:"graceful_restart"`
+	ForwardingReadiness BGPForwardingReadiness `toml:"forwarding_readiness"`
+}
+
+// BGPForwardingReadiness configures the primary speaker's ifmgr readiness check.
+type BGPForwardingReadiness struct {
+	SocketPath               string `toml:"socket_path"`
+	PollIntervalMilliseconds int    `toml:"poll_interval_milliseconds"`
+	ReadTimeoutMilliseconds  int    `toml:"read_timeout_milliseconds"`
+}
+
+// PollInterval returns the configured readiness polling period.
+func (r BGPForwardingReadiness) PollInterval() time.Duration {
+	return time.Duration(r.PollIntervalMilliseconds) * time.Millisecond
+}
+
+// ReadTimeout returns the configured socket read deadline.
+func (r BGPForwardingReadiness) ReadTimeout() time.Duration {
+	return time.Duration(r.ReadTimeoutMilliseconds) * time.Millisecond
 }
 
 // BGPGracefulRestart configures BGP Graceful Restart (RFC 4724) on the
@@ -437,6 +455,10 @@ func Load() (*Config, error) {
 		slog.Error("validate BGP dynamic configuration failed", "error", err)
 		return nil, fmt.Errorf("validate BGP dynamic configuration: %w", err)
 	}
+	if err := validateBGPForwardingReadiness(&cfg.BGP); err != nil {
+		slog.Error("validate BGP forwarding readiness failed", "error", err)
+		return nil, fmt.Errorf("validate BGP forwarding readiness: %w", err)
+	}
 
 	return &cfg, nil
 }
@@ -463,6 +485,23 @@ func validateBGPDynamicNeighbors(prefixes []string) error {
 		if prefix.Bits() == 0 {
 			return fmt.Errorf("[bgp] dynamic_neighbors[%d] %q must not be a default route", index, prefixText)
 		}
+	}
+	return nil
+}
+
+func validateBGPForwardingReadiness(b *BGPSection) error {
+	if !b.Enabled || !b.UseWanconfig {
+		return nil
+	}
+	readiness := b.ForwardingReadiness
+	if !filepath.IsAbs(readiness.SocketPath) {
+		return errors.New("[bgp.forwarding_readiness] socket_path must be an absolute path")
+	}
+	if readiness.PollIntervalMilliseconds <= 0 {
+		return errors.New("[bgp.forwarding_readiness] poll_interval_milliseconds must be greater than zero")
+	}
+	if readiness.ReadTimeoutMilliseconds <= 0 {
+		return errors.New("[bgp.forwarding_readiness] read_timeout_milliseconds must be greater than zero")
 	}
 	return nil
 }

@@ -23,6 +23,9 @@ func TestStore_SnapshotCarriesEveryWrite(t *testing.T) {
 		"att":          {Carrying: false},
 		"monkeybrains": {Carrying: true},
 	})
+	if got := store.Snapshot().RoutingGeneration; got != 1 {
+		t.Fatalf("routing generation = %d, want 1", got)
+	}
 	translation := MemberTranslation{
 		V4: FamilyTranslation{
 			Mode: "native", Ready: true, Reason: "",
@@ -47,6 +50,9 @@ func TestStore_SnapshotCarriesEveryWrite(t *testing.T) {
 	}
 	if !snap.TierValid || snap.ActiveTier != 1 {
 		t.Fatalf("tier snapshot = valid=%v tier=%d", snap.TierValid, snap.ActiveTier)
+	}
+	if snap.RoutingGeneration != 1 {
+		t.Fatalf("routing generation = %d, want 1", snap.RoutingGeneration)
 	}
 	if !snap.Routing["monkeybrains"].Carrying || snap.Routing["att"].Carrying {
 		t.Fatalf("routing snapshot = %+v", snap.Routing)

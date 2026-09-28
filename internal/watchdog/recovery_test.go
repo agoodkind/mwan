@@ -113,9 +113,9 @@ func TestRecoveryEmail_AfterFailover(t *testing.T) {
 		t.Fatal("expected bgp-failover key to be inactive after recovery")
 	}
 
-	// Recovery must have moved routes off the LXC and back to the primary VM.
-	if len(m.withdrawRoutesCalls) < 2 || m.withdrawRoutesCalls[1] != "203" {
-		t.Fatalf("expected withdraw on LXC 203 during recovery; got %v",
+	// Recovery leaves the backup announced until FRR selects the primary.
+	if len(m.withdrawRoutesCalls) != 1 || m.withdrawRoutesCalls[0] != "113" {
+		t.Fatalf("expected only primary withdrawal during failover; got %v",
 			m.withdrawRoutesCalls)
 	}
 	if len(m.announceRoutesCalls) < 2 || m.announceRoutesCalls[1] != "113" {

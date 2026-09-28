@@ -25,8 +25,10 @@ type PeerState struct {
 
 // Status holds aggregate BGP status.
 type Status struct {
-	Announcing bool
-	Peers      []PeerState
+	Announcing   bool
+	AnnouncingV4 bool
+	AnnouncingV6 bool
+	Peers        []PeerState
 }
 
 // bgpServerAPI is the narrow surface of *server.BgpServer that Speaker
@@ -74,6 +76,8 @@ type Speaker struct {
 
 	mu                sync.Mutex
 	announcing        bool
+	announcingV4      bool
+	announcingV6      bool
 	started           bool
 	sweepArmed        bool
 	startupGraceTimer sweepTimer
@@ -99,6 +103,8 @@ func New(cfg Config, log *slog.Logger) *Speaker {
 		newServer:         nil,
 		mu:                sync.Mutex{},
 		announcing:        false,
+		announcingV4:      false,
+		announcingV6:      false,
 		started:           false,
 		sweepArmed:        false,
 		startupGraceTimer: nil,
@@ -192,18 +198,23 @@ func (s *Speaker) handlePeerUpdate(ctx context.Context, event *apiutil.WatchEven
 	}
 	peer := event.Peer.State.NeighborAddress.String()
 	if event.Peer.State.SessionState == bgppkt.BGP_FSM_ESTABLISHED {
-		s.log.InfoContext(ctx, "bgp peer established", "peer", peer)
-		if s.IsEstablished(ctx) {
-			if err := s.AnnounceDefault(); err != nil {
-				s.log.ErrorContext(ctx, "bgp auto-announce failed", "error", err)
-			} else {
-				s.log.InfoContext(ctx, "bgp routes announced (all peers established)")
-			}
-		}
+		s.handleEstablishedPeer(ctx, peer)
 		return
 	}
 
 	s.handlePeerDown(ctx, peer)
+}
+
+func (s *Speaker) handleEstablishedPeer(ctx context.Context, peer string) {
+	s.log.InfoContext(ctx, "bgp peer established", "peer", peer)
+	if s.cfg.RequireReady || !s.IsEstablished(ctx) {
+		return
+	}
+	if err := s.AnnounceDefault(); err != nil {
+		s.log.ErrorContext(ctx, "bgp auto-announce failed", "error", err)
+		return
+	}
+	s.log.InfoContext(ctx, "bgp routes announced (all peers established)")
 }
 
 func (s *Speaker) handleBestPaths(ctx context.Context, paths []*apiutil.Path) {
@@ -513,67 +524,59 @@ func (s *Speaker) Stop() error {
 	}
 	s.started = false
 	s.announcing = false
+	s.announcingV4 = false
+	s.announcingV6 = false
 	s.log.Info("bgp speaker stopped")
 	return nil
 }
 
 // AnnounceDefault injects the configured default routes into BGP.
 func (s *Speaker) AnnounceDefault() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.announcing {
-		return nil
-	}
-
-	for _, prefix := range s.cfg.Announce.IPv4 {
-		if err := s.addIPv4Path(prefix); err != nil {
-			s.log.Error("announce bgp route failed", "prefix", prefix, "error", err)
-			return fmt.Errorf("announce %s: %w", prefix, err)
-		}
-	}
-
-	for _, prefix := range s.cfg.Announce.IPv6 {
-		if err := s.addIPv6Path(prefix); err != nil {
-			s.log.Error("announce bgp route failed", "prefix", prefix, "error", err)
-			return fmt.Errorf("announce %s: %w", prefix, err)
-		}
-	}
-
-	s.announcing = true
-	s.log.Info(
-		"bgp routes announced",
-		"ipv4", s.cfg.Announce.IPv4,
-		"ipv6", s.cfg.Announce.IPv6,
-	)
-	return nil
+	return s.SetDefaultAnnouncements(true, true)
 }
 
 // WithdrawDefault removes the configured default routes from BGP.
 func (s *Speaker) WithdrawDefault() error {
+	return s.SetDefaultAnnouncements(false, false)
+}
+
+// SetDefaultAnnouncements reconciles each address family independently.
+func (s *Speaker) SetDefaultAnnouncements(ipv4, ipv6 bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if !s.announcing {
-		return nil
-	}
-
-	for _, prefix := range s.cfg.Announce.IPv4 {
-		if err := s.deleteIPv4Path(prefix); err != nil {
-			s.log.Error("withdraw bgp route failed", "prefix", prefix, "error", err)
-			return fmt.Errorf("withdraw %s: %w", prefix, err)
+	if len(s.cfg.Announce.IPv4) > 0 && ipv4 != s.announcingV4 {
+		for _, prefix := range s.cfg.Announce.IPv4 {
+			var err error
+			if ipv4 {
+				err = s.addIPv4Path(prefix)
+			} else {
+				err = s.deleteIPv4Path(prefix)
+			}
+			if err != nil {
+				s.log.Error("reconcile ipv4 BGP announcement failed", "prefix", prefix, "error", err)
+				return fmt.Errorf("reconcile ipv4 %s: %w", prefix, err)
+			}
 		}
+		s.announcingV4 = ipv4
 	}
-
-	for _, prefix := range s.cfg.Announce.IPv6 {
-		if err := s.deleteIPv6Path(prefix); err != nil {
-			s.log.Error("withdraw bgp route failed", "prefix", prefix, "error", err)
-			return fmt.Errorf("withdraw %s: %w", prefix, err)
+	if len(s.cfg.Announce.IPv6) > 0 && ipv6 != s.announcingV6 {
+		for _, prefix := range s.cfg.Announce.IPv6 {
+			var err error
+			if ipv6 {
+				err = s.addIPv6Path(prefix)
+			} else {
+				err = s.deleteIPv6Path(prefix)
+			}
+			if err != nil {
+				s.log.Error("reconcile ipv6 BGP announcement failed", "prefix", prefix, "error", err)
+				return fmt.Errorf("reconcile ipv6 %s: %w", prefix, err)
+			}
 		}
+		s.announcingV6 = ipv6
 	}
-
-	s.announcing = false
-	s.log.Info("bgp routes withdrawn")
+	s.announcing = (len(s.cfg.Announce.IPv4) == 0 || s.announcingV4) &&
+		(len(s.cfg.Announce.IPv6) == 0 || s.announcingV6) &&
+		(len(s.cfg.Announce.IPv4) > 0 || len(s.cfg.Announce.IPv6) > 0)
 	return nil
 }
 
@@ -749,10 +752,12 @@ func peerAddress(p *apipb.Peer) string {
 func (s *Speaker) Status(ctx context.Context) Status {
 	s.mu.Lock()
 	announcing := s.announcing
+	announcingV4 := s.announcingV4
+	announcingV6 := s.announcingV6
 	started := s.started
 	s.mu.Unlock()
 
-	st := Status{Announcing: announcing, Peers: nil}
+	st := Status{Announcing: announcing, AnnouncingV4: announcingV4, AnnouncingV6: announcingV6, Peers: nil}
 	if !started {
 		return st
 	}

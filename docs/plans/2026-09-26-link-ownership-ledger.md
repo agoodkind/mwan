@@ -505,6 +505,49 @@ lifetimes, and route identity acceptance. MWAN-516 state publication and later
 interface ownership transfers remain. MWAN-520 stays open for subsequent
 production phases.
 
+### Observer rebind testbed checkpoint and restart failure, September 27, 2026
+
+[MWAN PR #62](https://github.com/agoodkind/mwan/pull/62) merged the
+name-bound observer rebind as `0ed736e6230dc3039fd3d7b0f4658de4d2de05ec`.
+Release `202609280058-3c-0ed736e` passed its workflow. Configs PR #536
+merged the testbed pin as `2de1f7662bfdccb07791a13c1f49a785dfd9cff6`.
+The check and apply deployments passed from merged Configs main. VM 213
+reported clean commit `0ed736e`; both downstream clients passed IPv4 and
+IPv6 HTTP. Fresh connections used both primary providers in each family.
+When both primary uplinks were lowered and marked unhealthy, 20 fresh IPv4
+requests used Monkeybrains and Astound; 20 fresh IPv6 requests used
+Monkeybrains. Both links and all health states recovered.
+
+A controlled VM 213 reboot exposed two failover defects. OPNsense kept the
+disconnected primary IPv4 route marked stale and best while its Graceful
+Restart timer counted down, despite an available backup route. After backup
+selection, the primary announced defaults before its provider forwarding was
+ready. Client 225 lost IPv4 and IPv6 replies for about 25 seconds on that
+return. The release was not promoted to production. MWAN-530 tracks the
+restart blocker, and MWAN-523 remains In Progress.
+
+[Configs PR #537](https://github.com/agoodkind/configs/pull/537) merged the
+testbed-only Graceful Restart disablement as `51cc98c9`. The check and apply
+deployments passed from clean merged Configs main. The apply recap reported
+227 successful tasks, 18 changes, zero unreachable hosts, and zero failures;
+trace `20260927-192535-deploy-485198` passed its gates. The installed MWAN
+release remained `0ed736e`.
+
+On the next controlled reboot, OPNsense selected the backup IPv4 route by
+Unix time `1790563328`, without retaining a stale primary path. Client 225
+continued to receive IPv4 and IPv6 replies during that handoff. OPNsense
+selected the returned primary route by `1790563362`; the client then had
+24.542 seconds between IPv4 replies and 23.525 seconds between IPv6 replies.
+These are measured reply gaps, not exact link-down durations. The remaining
+failure is premature primary announcement. [MWAN PR #64](https://github.com/agoodkind/mwan/pull/64)
+adds per-family forwarding readiness before primary announcements. Its full
+local Docker check and test gate passed. [Configs PR #538](https://github.com/agoodkind/configs/pull/538)
+merged the matching inventory and rendered configuration as
+`a4eccad51583159e5affdee37503766999862d9f`. Its required checks passed;
+it has not deployed. MWAN PR #64 has not merged or deployed. Repeat testbed
+restart and downstream checks from the merged release before production
+promotion.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.

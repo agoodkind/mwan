@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -34,12 +35,20 @@ var pingReceivedRE = regexp.MustCompile(`(\d+)\s+received`)
 
 type Server struct {
 	mwanv1.UnimplementedMWANAgentServer
-	deployFilePath string
-	deployExpected bool
-	log            *slog.Logger
-	bgp            *bgp.Speaker // nil when BGP is disabled
-	clock          clock
-	notifier       notify.Notifier
+	deployFilePath         string
+	deployExpected         bool
+	log                    *slog.Logger
+	bgp                    *bgp.Speaker // nil when BGP is disabled
+	clock                  clock
+	notifier               notify.Notifier
+	forwardingMu           sync.Mutex
+	forwardingPath         string
+	forwardingPollInterval time.Duration
+	forwardingReadTimeout  time.Duration
+	announceIPv4           bool
+	announceIPv6           bool
+	manualWithdraw         bool
+	lastReadError          string
 
 	// These are injectable in tests to avoid reading real /proc files.
 	// Production code leaves them nil and uses the real /proc paths.
@@ -536,6 +545,22 @@ func (a *Server) AnnounceRoutes(
 	if a.bgp == nil {
 		return nil, status.Error(codes.Unavailable, "BGP not enabled")
 	}
+	if a.forwardingPath != "" {
+		a.forwardingMu.Lock()
+		defer a.forwardingMu.Unlock()
+		state, err := a.readForwardingReady(ctx)
+		if err != nil {
+			return &mwanv1.AnnounceRoutesResponse{Success: false, Error: err.Error()}, nil
+		}
+		if (a.announceIPv4 && !state.IPv4) || (a.announceIPv6 && !state.IPv6) {
+			return &mwanv1.AnnounceRoutesResponse{Success: false, Error: "primary forwarding is not ready"}, nil
+		}
+		if err := a.bgp.SetDefaultAnnouncements(state.IPv4, state.IPv6); err != nil {
+			return &mwanv1.AnnounceRoutesResponse{Success: false, Error: err.Error()}, nil
+		}
+		a.manualWithdraw = false
+		return &mwanv1.AnnounceRoutesResponse{Success: true}, nil
+	}
 	if err := a.bgp.AnnounceDefault(); err != nil {
 		return &mwanv1.AnnounceRoutesResponse{Success: false, Error: err.Error()}, nil
 	}
@@ -548,6 +573,11 @@ func (a *Server) WithdrawRoutes(
 ) (*mwanv1.WithdrawRoutesResponse, error) {
 	if a.bgp == nil {
 		return nil, status.Error(codes.Unavailable, "BGP not enabled")
+	}
+	if a.forwardingPath != "" {
+		a.forwardingMu.Lock()
+		defer a.forwardingMu.Unlock()
+		a.manualWithdraw = true
 	}
 	if err := a.bgp.WithdrawDefault(); err != nil {
 		return &mwanv1.WithdrawRoutesResponse{Success: false, Error: err.Error()}, nil
