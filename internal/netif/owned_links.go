@@ -93,6 +93,13 @@ func (r *OwnedLinkReconciler) matchesRecordedMaster(master netlink.Link, record 
 		master.Attrs().Alias == "" && master.Attrs().Name == record.MasterName
 }
 
+func matchesRecordedSlave(slave netlink.Link, record membershipRecord) bool {
+	if record.SlaveAlias != "" {
+		return slave.Attrs().Alias == record.SlaveAlias
+	}
+	return record.SlaveMAC != "" && linkMAC(slave) == record.SlaveMAC
+}
+
 type ownedLinkState struct {
 	Virtuals    map[string]virtualRecord    `json:"virtuals"`
 	Memberships map[string]membershipRecord `json:"memberships"`
@@ -139,7 +146,7 @@ func NewOwnedLinkReconciler(statePath string) (*OwnedLinkReconciler, error) {
 	return r, nil
 }
 
-// save writes and syncs the journal directory before any kernel mutation.
+// save writes the journal and syncs its directory.
 func (r *OwnedLinkReconciler) save() error {
 	data, err := json.Marshal(r.state)
 	if err != nil {
@@ -766,6 +773,10 @@ func applyLinkEnabled(link netlink.Link, enabled *bool) error {
 
 func (r *OwnedLinkReconciler) attach(id string, slave netlink.Link, master netlink.Link) error {
 	if slave.Attrs().MasterIndex == master.Attrs().Index {
+		record, recorded := r.state.Memberships[id]
+		if !recorded || !matchesRecordedSlave(slave, record) || !r.matchesRecordedMaster(master, record) {
+			return fmt.Errorf("%s has a bridge membership outside its ownership record", slave.Attrs().Name)
+		}
 		return nil
 	}
 	if slave.Attrs().MasterIndex != 0 {
@@ -821,7 +832,7 @@ func (r *OwnedLinkReconciler) detach(id string) error {
 	}
 	var slave netlink.Link
 	for _, link := range links {
-		if record.SlaveAlias != "" && link.Attrs().Alias == record.SlaveAlias || record.SlaveMAC != "" && linkMAC(link) == record.SlaveMAC {
+		if matchesRecordedSlave(link, record) {
 			if slave != nil {
 				return fmt.Errorf("membership %s matches multiple slaves", id)
 			}

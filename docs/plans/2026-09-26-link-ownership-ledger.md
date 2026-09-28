@@ -1005,6 +1005,7 @@ during review, including findings fixed before the verdict.
 | Date | Branch | Class | Reviewer tier | Verdict | Blockers / issues to fix / minor issues | Escapes | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-09-28 | MWAN PR #86 at `cdb320b` | Link ownership and recovery | Independent adversarial | MERGE-READY | 10 / 2 / 0, fixed before verdict | None found | Fresh public daemon namespace, kernel namespace race, role-order, red-green parser assertion, and live `origin/main` merge-tree passed. Lint and schema passed before the role-order fix; the full test target passed afterward. No deployment was reviewed. |
+| 2026-09-28 | MWAN PR #86 follow-up after `1db34fb` | Bridge membership adoption | Independent adversarial | MERGE-READY | 0 / 0 / 0 | None found | The public kernel test failed on the old guard when a replacement bridge reused the configured name and passed with the new guard under `-race`. The test also rejects an unrecorded current membership. The public daemon namespace test and live `origin/main` merge-tree passed. The public deleted-parent test no longer exercises `LinkAdd` rollback after a dependency race; that path was reviewed statically. |
 
 ## Record future implementation results
 

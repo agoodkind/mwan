@@ -443,10 +443,22 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 			VLAN: &interfaceintent.VLAN{Parent: "retry-parent", ID: 398},
 		},
 	}
-	if _, _, err := recovered.virtualLink(retryConnection, retryParent); err == nil {
-		t.Fatal("VLAN creation with a deleted parent succeeded")
+	retryParentConnection := interfaceintent.Connection{
+		ID: "retry-parent", Name: "retry-parent",
+		Owner: interfaceintent.OwnerExternal, Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
 	}
-	onDisk, err := NewOwnedLinkReconciler(statePath)
+	retryStatePath := filepath.Join(t.TempDir(), "retry.json")
+	retryReconciler, err := NewOwnedLinkReconciler(retryStatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retryResults, err := retryReconciler.Reconcile(context.Background(), log,
+		[]interfaceintent.Connection{retryParentConnection, retryConnection})
+	if err != nil || len(retryResults) != 1 || retryResults[0].Status != OwnedLinkWaiting ||
+		retryResults[0].Operation != "wait-for-parent" {
+		t.Fatalf("deleted parent result: results=%+v err=%v", retryResults, err)
+	}
+	onDisk, err := NewOwnedLinkReconciler(retryStatePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -455,10 +467,6 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	}
 	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: "retry-parent"}}); err != nil {
 		t.Fatal(err)
-	}
-	retryParentConnection := interfaceintent.Connection{
-		ID: "retry-parent", Name: "retry-parent",
-		Owner: interfaceintent.OwnerExternal, Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
 	}
 	results, err = onDisk.Reconcile(context.Background(), log,
 		[]interfaceintent.Connection{retryParentConnection, retryConnection})
@@ -641,13 +649,6 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if results[2].Status != OwnedLinkReady {
 		t.Fatalf("independent bridge result = %+v", results[2])
 	}
-	if err := netlink.LinkAdd(&netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: "foreign-slave", HardwareAddr: net.HardwareAddr{2, 0, 94, 0, 57, 255}}, PeerName: "foreign-peer"}); err != nil {
-		t.Fatal(err)
-	}
-	physicalSlave, err := netlink.LinkByName("foreign-slave")
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: "replace-br"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -655,12 +656,33 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	masterConnection := interfaceintent.Connection{
+		ID: "replace-br", Name: "replace-br", Owner: interfaceintent.OwnerExternal,
+		Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
+	}
+	memberConnection := interfaceintent.Connection{
+		ID: "member-vlan", Name: "member-vlan", Owner: interfaceintent.OwnerMWAN,
+		Link: &interfaceintent.Link{
+			Kind:         interfaceintent.KindVLAN,
+			VLAN:         &interfaceintent.VLAN{Parent: parentConnection.Name, ID: 402},
+			BridgeMaster: masterConnection.Name, HardwareAddress: "02:00:5e:00:39:ff",
+		},
+	}
 	membership, err := NewOwnedLinkReconciler(filepath.Join(t.TempDir(), "membership.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := membership.attach("foreign-slave", physicalSlave, oldMaster); err != nil {
-		t.Fatal(err)
+	results, err = membership.Reconcile(context.Background(), log,
+		[]interfaceintent.Connection{parentConnection, masterConnection, memberConnection})
+	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
+		t.Fatalf("attach owned VLAN: results=%+v err=%v", results, err)
+	}
+	memberLink, err := netlink.LinkByName(memberConnection.Name)
+	if err != nil || memberLink.Attrs().MasterIndex != oldMaster.Attrs().Index {
+		t.Fatalf("owned VLAN not attached: link=%+v err=%v", memberLink, err)
+	}
+	if _, exists := membership.state.Memberships[memberConnection.ID.String()]; !exists {
+		t.Fatal("attached VLAN has no membership record")
 	}
 	firstMaster, err := netlink.LinkByName("replace-br")
 	if err != nil {
@@ -673,7 +695,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := membership.attach("low-slave", lowSlave, firstMaster); err != nil {
+	if err := netlink.LinkSetMasterByIndex(lowSlave, oldMaster.Attrs().Index); err != nil {
 		t.Fatal(err)
 	}
 	secondMaster, err := netlink.LinkByName("replace-br")
@@ -683,15 +705,26 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if firstMaster.Attrs().HardwareAddr.String() == secondMaster.Attrs().HardwareAddr.String() {
 		t.Fatal("second member did not change the bridge MAC")
 	}
-	if err := membership.detach("foreign-slave"); err != nil {
-		t.Fatalf("bridge MAC change blocked recorded detach: %v", err)
+	detachedMember := memberConnection
+	detachedLink := *memberConnection.Link
+	detachedLink.BridgeMaster = ""
+	detachedMember.Link = &detachedLink
+	results, err = membership.Reconcile(context.Background(), log,
+		[]interfaceintent.Connection{parentConnection, masterConnection, detachedMember})
+	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
+		t.Fatalf("bridge MAC change blocked recorded detach: results=%+v err=%v", results, err)
 	}
-	physicalSlave, err = netlink.LinkByName("foreign-slave")
-	if err != nil || physicalSlave.Attrs().MasterIndex != 0 {
-		t.Fatalf("first member remained attached: link=%+v err=%v", physicalSlave, err)
+	memberLink, err = netlink.LinkByName(memberConnection.Name)
+	if err != nil || memberLink.Attrs().MasterIndex != 0 {
+		t.Fatalf("owned VLAN remained attached: link=%+v err=%v", memberLink, err)
 	}
-	if err := membership.attach("foreign-slave", physicalSlave, secondMaster); err != nil {
-		t.Fatal(err)
+	if _, exists := membership.state.Memberships[memberConnection.ID.String()]; exists {
+		t.Fatal("detached VLAN retained a membership record")
+	}
+	results, err = membership.Reconcile(context.Background(), log,
+		[]interfaceintent.Connection{parentConnection, masterConnection, memberConnection})
+	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
+		t.Fatalf("reattach owned VLAN: results=%+v err=%v", results, err)
 	}
 	if err := netlink.LinkDel(oldMaster); err != nil {
 		t.Fatal(err)
@@ -706,25 +739,68 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if newMaster.Attrs().Index == oldMaster.Attrs().Index {
 		t.Fatal("replacement bridge reused the old index")
 	}
-	if err := netlink.LinkSetMasterByIndex(physicalSlave, newMaster.Attrs().Index); err != nil {
-		t.Fatal(err)
-	}
-	if err := membership.detach("foreign-slave"); err == nil {
-		t.Fatal("replacement bridge membership was detached")
-	}
-	physicalSlave, err = netlink.LinkByName("foreign-slave")
-	if err != nil || physicalSlave.Attrs().MasterIndex != newMaster.Attrs().Index {
-		t.Fatalf("physical slave changed under replacement bridge: link=%+v err=%v", physicalSlave, err)
-	}
-	if _, exists := membership.state.Memberships["foreign-slave"]; !exists {
-		t.Fatal("conflicting membership record was forgotten")
-	}
-	if err := netlink.LinkAdd(&netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: "tag-slave"}, PeerName: "tag-peer"}); err != nil {
-		t.Fatal(err)
-	}
-	tagSlave, err := netlink.LinkByName("tag-slave")
+	memberLink, err = netlink.LinkByName(memberConnection.Name)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if err := netlink.LinkSetMasterByIndex(memberLink, newMaster.Attrs().Index); err != nil {
+		t.Fatal(err)
+	}
+	results, err = membership.Reconcile(context.Background(), log,
+		[]interfaceintent.Connection{parentConnection, masterConnection, memberConnection})
+	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkFailed {
+		t.Fatalf("replacement bridge was accepted as recorded master: results=%+v err=%v", results, err)
+	}
+	results, err = membership.Reconcile(context.Background(), log,
+		[]interfaceintent.Connection{parentConnection, masterConnection, detachedMember})
+	if err == nil || len(results) != 1 || results[0].Status != OwnedLinkFailed {
+		t.Fatalf("replacement bridge membership was detached: results=%+v err=%v", results, err)
+	}
+	memberLink, err = netlink.LinkByName(memberConnection.Name)
+	if err != nil || memberLink.Attrs().MasterIndex != newMaster.Attrs().Index {
+		t.Fatalf("owned VLAN changed under replacement bridge: link=%+v err=%v", memberLink, err)
+	}
+	if _, exists := membership.state.Memberships[memberConnection.ID.String()]; !exists {
+		t.Fatal("conflicting membership record was forgotten")
+	}
+	unrecordedConnection := interfaceintent.Connection{
+		ID: "unrecorded-vlan", Name: "unrecorded-vlan", Owner: interfaceintent.OwnerMWAN,
+		Link: &interfaceintent.Link{
+			Kind: interfaceintent.KindVLAN,
+			VLAN: &interfaceintent.VLAN{Parent: parentConnection.Name, ID: 404},
+		},
+	}
+	unrecordedState, err := NewOwnedLinkReconciler(filepath.Join(t.TempDir(), "unrecorded-membership.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err = unrecordedState.Reconcile(context.Background(), log,
+		[]interfaceintent.Connection{parentConnection, masterConnection, unrecordedConnection})
+	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
+		t.Fatalf("create unrecorded VLAN: results=%+v err=%v", results, err)
+	}
+	unrecordedLink, err := netlink.LinkByName(unrecordedConnection.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.LinkSetMasterByIndex(unrecordedLink, newMaster.Attrs().Index); err != nil {
+		t.Fatal(err)
+	}
+	unrecordedAttached := unrecordedConnection
+	unrecordedAttachedLink := *unrecordedConnection.Link
+	unrecordedAttachedLink.BridgeMaster = masterConnection.Name
+	unrecordedAttached.Link = &unrecordedAttachedLink
+	results, err = unrecordedState.Reconcile(context.Background(), log,
+		[]interfaceintent.Connection{parentConnection, masterConnection, unrecordedAttached})
+	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkFailed {
+		t.Fatalf("unrecorded membership was accepted: results=%+v err=%v", results, err)
+	}
+	unrecordedLink, err = netlink.LinkByName(unrecordedConnection.Name)
+	if err != nil || unrecordedLink.Attrs().MasterIndex != newMaster.Attrs().Index {
+		t.Fatalf("unrecorded membership changed: link=%+v err=%v", unrecordedLink, err)
+	}
+	if _, exists := unrecordedState.state.Memberships[unrecordedConnection.ID.String()]; exists {
+		t.Fatal("unrecorded membership acquired a journal entry")
 	}
 	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: "tagged-br"}}); err != nil {
 		t.Fatal(err)
@@ -736,12 +812,33 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err := netlink.LinkSetAlias(taggedOld, "mwan-link:tagged-br"); err != nil {
 		t.Fatal(err)
 	}
-	taggedOld, err = netlink.LinkByName("tagged-br")
+	tagMasterConnection := interfaceintent.Connection{
+		ID: "tagged-br", Name: "tagged-br", Owner: interfaceintent.OwnerExternal,
+		Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
+	}
+	tagMemberConnection := interfaceintent.Connection{
+		ID: "tag-member", Name: "tag-member", Owner: interfaceintent.OwnerMWAN,
+		Link: &interfaceintent.Link{
+			Kind:         interfaceintent.KindVLAN,
+			VLAN:         &interfaceintent.VLAN{Parent: parentConnection.Name, ID: 403},
+			BridgeMaster: tagMasterConnection.Name,
+		},
+	}
+	tagMembership, err := NewOwnedLinkReconciler(filepath.Join(t.TempDir(), "tag-membership.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := membership.attach("tag-slave", tagSlave, taggedOld); err != nil {
-		t.Fatal(err)
+	results, err = tagMembership.Reconcile(context.Background(), log,
+		[]interfaceintent.Connection{parentConnection, tagMasterConnection, tagMemberConnection})
+	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
+		t.Fatalf("attach VLAN to tagged bridge: results=%+v err=%v", results, err)
+	}
+	tagMember, err := netlink.LinkByName(tagMemberConnection.Name)
+	if err != nil || tagMember.Attrs().MasterIndex != taggedOld.Attrs().Index {
+		t.Fatalf("tagged bridge membership absent: link=%+v err=%v", tagMember, err)
+	}
+	if _, exists := tagMembership.state.Memberships[tagMemberConnection.ID.String()]; !exists {
+		t.Fatal("tagged bridge membership has no record")
 	}
 	if err := netlink.LinkDel(taggedOld); err != nil {
 		t.Fatal(err)
@@ -759,14 +856,32 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if taggedNew.Attrs().Index == taggedOld.Attrs().Index {
 		t.Fatal("tagged replacement reused the old index")
 	}
-	if err := netlink.LinkSetMasterByIndex(tagSlave, taggedNew.Attrs().Index); err != nil {
+	tagMember, err = netlink.LinkByName(tagMemberConnection.Name)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := membership.detach("tag-slave"); err == nil {
-		t.Fatal("replacement tagged bridge membership was detached")
+	if err := netlink.LinkSetMasterByIndex(tagMember, taggedNew.Attrs().Index); err != nil {
+		t.Fatal(err)
 	}
-	tagSlave, err = netlink.LinkByName("tag-slave")
-	if err != nil || tagSlave.Attrs().MasterIndex != taggedNew.Attrs().Index {
-		t.Fatalf("tagged replacement membership changed: link=%+v err=%v", tagSlave, err)
+	results, err = tagMembership.Reconcile(context.Background(), log,
+		[]interfaceintent.Connection{parentConnection, tagMasterConnection, tagMemberConnection})
+	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkFailed {
+		t.Fatalf("replacement tagged bridge was accepted as recorded master: results=%+v err=%v", results, err)
+	}
+	detachedTagMember := tagMemberConnection
+	detachedTagLink := *tagMemberConnection.Link
+	detachedTagLink.BridgeMaster = ""
+	detachedTagMember.Link = &detachedTagLink
+	results, err = tagMembership.Reconcile(context.Background(), log,
+		[]interfaceintent.Connection{parentConnection, tagMasterConnection, detachedTagMember})
+	if err == nil || len(results) != 1 || results[0].Status != OwnedLinkFailed {
+		t.Fatalf("replacement tagged bridge membership was detached: results=%+v err=%v", results, err)
+	}
+	tagMember, err = netlink.LinkByName(tagMemberConnection.Name)
+	if err != nil || tagMember.Attrs().MasterIndex != taggedNew.Attrs().Index {
+		t.Fatalf("tagged replacement membership changed: link=%+v err=%v", tagMember, err)
+	}
+	if _, exists := tagMembership.state.Memberships[tagMemberConnection.ID.String()]; !exists {
+		t.Fatal("tagged replacement membership record was forgotten")
 	}
 }
