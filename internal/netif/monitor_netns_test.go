@@ -687,7 +687,12 @@ func TestMonitorReplaysExistingAddressBeforeItsDeletion(t *testing.T) {
 }
 
 func TestMonitorResyncsAfterAnUnconsumedEventBurst(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logFile, err := os.CreateTemp(t.TempDir(), "monitor-*.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer logFile.Close()
+	logger := slog.New(slog.NewTextHandler(logFile, nil))
 	link := addObservedVeth(t, "obs-b", "obs-peer-c", "02:00:5e:00:53:72")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -699,30 +704,100 @@ func TestMonitorResyncsAfterAnUnconsumedEventBurst(t *testing.T) {
 	for i := 1; i <= burstSize; i++ {
 		addObservedAddress(t, link, fmt.Sprintf("198.18.1.%d/32", i))
 	}
-	time.Sleep(100 * time.Millisecond)
-	observed := map[string]bool{}
-	recovered := false
-	deadline := time.NewTimer(5 * time.Second)
-	defer deadline.Stop()
-	for !recovered || len(observed) < burstSize {
-		select {
-		case event := <-monitor.Events:
-			if event.Kind == EvResync && event.Snapshot != nil {
-				recovered = true
-				clear(observed)
-				for _, address := range event.Snapshot.Addresses {
-					if strings.HasPrefix(address.CIDR, "198.18.1.") {
-						observed[address.CIDR] = true
-					}
-				}
-			} else if event.Kind == EvAddrAdded && strings.HasPrefix(event.CIDR, "198.18.1.") {
-				observed[event.CIDR] = true
-			}
-		case <-deadline.C:
-			t.Fatalf("recovered address set has %d entries after resync=%t, want %d", len(observed), recovered, burstSize)
+	overflowDeadline := time.Now().Add(5 * time.Second)
+	for {
+		log, err := os.ReadFile(logFile.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(log), "monitor: Events channel full; requesting snapshot") {
+			break
+		}
+		if time.Now().After(overflowDeadline) {
+			t.Fatal("monitor did not report event-channel overflow")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	kernelAddresses, err := netlink.AddrList(link, netlink.FAMILY_V4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{}
+	for _, address := range kernelAddresses {
+		if strings.HasPrefix(address.IPNet.String(), "198.18.1.") {
+			want[address.IPNet.String()] = true
 		}
 	}
-	cancel()
+	if len(want) != burstSize {
+		t.Fatalf("kernel burst address set has %d entries, want %d", len(want), burstSize)
+	}
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	snapshotMatched := false
+	replayed := map[string]bool{}
+	for len(replayed) < len(want) {
+		select {
+		case event := <-monitor.Events:
+			if event.Kind == EvAddrAdded && event.SnapshotReplay && snapshotMatched {
+				if want[event.CIDR] {
+					replayed[event.CIDR] = true
+				}
+				continue
+			}
+			if event.Kind != EvResync || event.Snapshot == nil {
+				continue
+			}
+			if event.Snapshot.IfIndex != link.Attrs().Index {
+				t.Fatalf("recovery snapshot link index = %d, want %d", event.Snapshot.IfIndex, link.Attrs().Index)
+			}
+			observed := map[string]bool{}
+			for _, address := range event.Snapshot.Addresses {
+				if strings.HasPrefix(address.CIDR, "198.18.1.") {
+					observed[address.CIDR] = true
+				}
+			}
+			snapshotMatched = len(observed) == len(want)
+			if snapshotMatched {
+				for address := range want {
+					if !observed[address] {
+						snapshotMatched = false
+						break
+					}
+				}
+			}
+			clear(replayed)
+		case <-deadline.C:
+			t.Fatalf("recovery snapshot matched=%t, replayed=%d of %d kernel addresses",
+				snapshotMatched, len(replayed), len(want))
+		}
+	}
+	const nextAddress = "198.18.1.161/32"
+	logBeforeDelta, err := os.ReadFile(logFile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	warningsBeforeDelta := strings.Count(string(logBeforeDelta), "monitor: Events channel full; requesting snapshot")
+	addObservedAddress(t, link, nextAddress)
+	deltaDeadline := time.NewTimer(5 * time.Second)
+	defer deltaDeadline.Stop()
+	for {
+		select {
+		case event := <-monitor.Events:
+			if event.Kind == EvAddrAdded && event.CIDR == nextAddress {
+				if event.IfIndex != link.Attrs().Index || event.SnapshotReplay {
+					t.Fatalf("post-resync address delta = %+v", event)
+				}
+				return
+			}
+		case <-deltaDeadline.C:
+			logAfterDelta, err := os.ReadFile(logFile.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			warningsAfterDelta := strings.Count(string(logAfterDelta), "monitor: Events channel full; requesting snapshot")
+			t.Fatalf("post-resync address delta was not observed; overflow warnings before=%d after=%d", warningsBeforeDelta, warningsAfterDelta)
+		}
+	}
 }
 
 func TestMonitorReportsEveryNextHopForAWatchedMultipathRoute(t *testing.T) {
