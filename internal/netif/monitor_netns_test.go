@@ -53,6 +53,205 @@ func TestMonitorRebindsConfiguredLinkAfterRenameAndRecreation(t *testing.T) {
 	}
 }
 
+func TestLegacyMonitorRebindsConfiguredNameAfterRename(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	link := addObservedVeth(t, "obs-legacy", "obs-legacy-peer", "02:00:5e:00:53:81")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	monitor := NewMonitor(ctx, logger, MonitorConfig{Iface: "obs-legacy"})
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == link.Attrs().Index
+	})
+	if err := netlink.LinkSetName(link, "obs-legacy-old"); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	nextEvent := func() Event {
+		select {
+		case event := <-monitor.Events:
+			if event.CIDR == "192.0.2.81/32" || event.Dest == "203.0.113.0/24" {
+				t.Fatalf("renamed-away link was attributed to configured name: %+v", event)
+			}
+			if event.Snapshot != nil {
+				for _, address := range event.Snapshot.Addresses {
+					if address.CIDR == "192.0.2.81/32" {
+						t.Fatalf("renamed-away address appeared in snapshot: %+v", event)
+					}
+				}
+				for _, route := range event.Snapshot.Routes {
+					if route.Dest == "203.0.113.0/24" {
+						t.Fatalf("renamed-away route appeared in snapshot: %+v", event)
+					}
+				}
+			}
+			return event
+		case <-deadline.C:
+			t.Fatal("monitor event was not observed")
+			return Event{}
+		}
+	}
+	for {
+		event := nextEvent()
+		if event.Kind == EvResync && event.Snapshot != nil && event.Snapshot.IfIndex == 0 {
+			break
+		}
+	}
+	addObservedAddress(t, link, "192.0.2.81/32")
+	_, oldDestination, err := net.ParseCIDR("203.0.113.0/24")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := addObservedVeth(t, "obs-other", "obs-other-peer", "02:00:5e:00:53:83")
+	oldRoute := &netlink.Route{
+		Dst: oldDestination, Family: netlink.FAMILY_V4,
+		Table: 123, Protocol: 42, Scope: netlink.SCOPE_LINK,
+		MultiPath: []*netlink.NexthopInfo{
+			{LinkIndex: link.Attrs().Index, Hops: 0},
+			{LinkIndex: second.Attrs().Index, Hops: 0},
+		},
+	}
+	if err := netlink.RouteAdd(oldRoute); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = netlink.RouteDel(oldRoute) })
+	replacement := addObservedVeth(t, "obs-legacy", "obs-new-peer", "02:00:5e:00:53:82")
+	if replacement.Attrs().Index == link.Attrs().Index {
+		t.Fatal("replacement reused the renamed link index")
+	}
+	for {
+		event := nextEvent()
+		if event.Kind == EvResync && event.Snapshot != nil &&
+			event.Snapshot.IfIndex == replacement.Attrs().Index && event.Snapshot.ActualIface == "obs-legacy" {
+			break
+		}
+	}
+	addObservedAddress(t, replacement, "192.0.2.82/32")
+	for {
+		event := nextEvent()
+		if event.Kind != EvAddrAdded || event.CIDR != "192.0.2.82/32" {
+			continue
+		}
+		if event.IfIndex != replacement.Attrs().Index || event.ActualIface != "obs-legacy" {
+			t.Fatalf("replacement address binding = %+v", event)
+		}
+		break
+	}
+	_, newDestination, err := net.ParseCIDR("203.0.114.0/24")
+	if err != nil {
+		t.Fatal(err)
+	}
+	newRoute := &netlink.Route{
+		Dst: newDestination, Family: netlink.FAMILY_V4,
+		Table: 123, Protocol: 42, Scope: netlink.SCOPE_LINK,
+		MultiPath: []*netlink.NexthopInfo{
+			{LinkIndex: replacement.Attrs().Index, Hops: 0},
+			{LinkIndex: second.Attrs().Index, Hops: 0},
+		},
+	}
+	if err := netlink.RouteAdd(newRoute); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = netlink.RouteDel(newRoute) })
+	for {
+		event := nextEvent()
+		if event.Kind != EvRouteAdded || event.Dest != "203.0.114.0/24" {
+			continue
+		}
+		if event.IfIndex != replacement.Attrs().Index {
+			t.Fatalf("replacement route binding = %+v", event)
+		}
+		return
+	}
+}
+
+func TestMonitorReportsIPv6AddressAndDefaultRoute(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	link := addObservedVeth(t, "obs-family", "obs-family-peer", "02:00:5e:00:53:84")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	monitor := NewMonitor(ctx, logger, MonitorConfig{Iface: "obs-family"})
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == link.Attrs().Index
+	})
+	addObservedAddress(t, link, "2001:db8:84::1/64")
+	ipv6 := waitObservedAddress(t, monitor.Events, "2001:db8:84::1/64")
+	if ipv6.Family != "inet6" || ipv6.IfIndex != link.Attrs().Index {
+		t.Fatalf("IPv6 address event = %+v", ipv6)
+	}
+	addObservedAddress(t, link, "192.0.2.84/24")
+	waitObservedAddress(t, monitor.Events, "192.0.2.84/24")
+	defaultRoute := &netlink.Route{
+		LinkIndex: link.Attrs().Index, Family: netlink.FAMILY_V4,
+		Gw: net.ParseIP("192.0.2.1"), Table: 123, Protocol: 42,
+	}
+	if err := netlink.RouteAdd(defaultRoute); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = netlink.RouteDel(defaultRoute) })
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	for {
+		select {
+		case event := <-monitor.Events:
+			if event.Kind != EvRouteAdded || event.Dest != "default" {
+				continue
+			}
+			if event.Family != "inet" || event.Via != "192.0.2.1" || event.IfIndex != link.Attrs().Index {
+				t.Fatalf("default route event = %+v", event)
+			}
+			goto checkIPv6Route
+		case <-deadline.C:
+			t.Fatal("default route was not observed")
+		}
+	}
+checkIPv6Route:
+	_, destination, err := net.ParseCIDR("2001:db8:85::/64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ipv6Route := &netlink.Route{
+		LinkIndex: link.Attrs().Index, Dst: destination, Family: netlink.FAMILY_V6,
+		Table: 123, Protocol: 42, Scope: netlink.SCOPE_LINK,
+	}
+	if err := netlink.RouteAdd(ipv6Route); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = netlink.RouteDel(ipv6Route) })
+	for {
+		select {
+		case event := <-monitor.Events:
+			if event.Kind != EvRouteAdded || event.Dest != "2001:db8:85::/64" {
+				continue
+			}
+			if event.Family != "inet6" {
+				t.Fatalf("IPv6 route addition = %+v", event)
+			}
+			goto deleteIPv6Route
+		case <-deadline.C:
+			t.Fatal("IPv6 route addition was not observed")
+		}
+	}
+deleteIPv6Route:
+	if err := netlink.RouteDel(ipv6Route); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		select {
+		case event := <-monitor.Events:
+			if event.Kind != EvRouteDeleted || event.Dest != "2001:db8:85::/64" {
+				continue
+			}
+			if event.Family != "inet6" || event.IfIndex != link.Attrs().Index {
+				t.Fatalf("IPv6 route deletion = %+v", event)
+			}
+			return
+		case <-deadline.C:
+			t.Fatal("IPv6 route deletion was not observed")
+		}
+	}
+}
+
 func TestMonitorDistinguishesSnapshotReplayFromNewAddress(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	link := addObservedVeth(t, "obs-replay", "obs-replay-peer", "02:00:5e:00:53:77")
