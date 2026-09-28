@@ -45,6 +45,9 @@ deployments with downstream traffic checks. The MWAN-523 observer foundation
 merged and passed a separate testbed deployment and downstream battery.
 Its production pin merged and passed production deployment and downstream
 checks.
+MWAN-530 passed controlled restart checks on testbed and production after
+the primary stopped advertising Graceful Restart and waited for forwarding
+readiness before announcing either default.
 No interface-owner cutover has begun.
 
 | Ticket | Slices | Current execution state |
@@ -53,6 +56,7 @@ No interface-owner cutover has begun.
 | MWAN-516 | 516-model; 516-state | [MWAN PR #51](https://github.com/agoodkind/mwan/pull/51) merged standalone identity as `959fbd3a65955e8156f2ea6c9bf2c90febef762c`. [MWAN PR #55](https://github.com/agoodkind/mwan/pull/55) merged shared interface intent as `2c6df538fbb1174a9189f3098d6ac458256857f4`. Both merged releases passed separate testbed traffic checkpoints. State publication remains. |
 | MWAN-397 | 397-links | Execution has not started. |
 | MWAN-523 | 523-observation | [MWAN PR #60](https://github.com/agoodkind/mwan/pull/60) merged the observer foundation as `13183ea9d6264beac7b85bfd4e7946b15f7da601`. Configs PRs #533 and #535 passed testbed and production deployment checks. Full observer acceptance remains. |
+| MWAN-530 | Restart handover | [MWAN PR #64](https://github.com/agoodkind/mwan/pull/64) merged forwarding readiness as `798ee6a8dcb57ef91e7d9656e8a368f3f4bd4412`. OPNsense selected the backup during controlled testbed and production reboots, then restored the primary while downstream replies continued. Tack records Done. |
 | MWAN-398 | 398-addresses; 398-dhcpv4 | Execution has not started. |
 | MWAN-227 | 227-delegation | Execution has not started. |
 | MWAN-517 | 517-autoconfiguration; 517-dhcpv6 | Execution has not started. |
@@ -540,13 +544,84 @@ selected the returned primary route by `1790563362`; the client then had
 24.542 seconds between IPv4 replies and 23.525 seconds between IPv6 replies.
 These are measured reply gaps, not exact link-down durations. The remaining
 failure is premature primary announcement. [MWAN PR #64](https://github.com/agoodkind/mwan/pull/64)
-adds per-family forwarding readiness before primary announcements. Its full
+added per-family forwarding readiness before primary announcements. Its full
 local Docker check and test gate passed. [Configs PR #538](https://github.com/agoodkind/configs/pull/538)
 merged the matching inventory and rendered configuration as
-`a4eccad51583159e5affdee37503766999862d9f`. Its required checks passed;
-it has not deployed. MWAN PR #64 has not merged or deployed. Repeat testbed
-restart and downstream checks from the merged release before production
-promotion.
+`a4eccad51583159e5affdee37503766999862d9f`.
+
+### Forwarding readiness testbed and production checkpoint, September 27, 2026
+
+MWAN PR #64 merged as `798ee6a8dcb57ef91e7d9656e8a368f3f4bd4412` after
+required checks and review-thread resolution. The signed commit passed
+`make docker-make TARGETS="check test"`. Release
+`202609280259-3e-798ee6a` published from that merge. The release archive
+`mwan_linux_amd64.tar.gz` has SHA-256
+`db9faa750ff113a9ef0e2f8e3330dda5c4d910db7c1f16fe91cdbed940337643`.
+[Configs PR #539](https://github.com/agoodkind/configs/pull/539) pinned that
+release on testbed as `7e240ddd3cd2f6eff2644d686e85d78943412326`.
+
+From clean merged Configs main, the testbed check deployment passed with
+176 successful tasks, 19 proposed changes, and no failures. The first apply
+lost management SSH before installing the new binary. VM 213 continued to
+run the old binary and downstream traffic passed. An idempotent retry passed
+with 227 successful tasks, 21 changes, and no failures. Trace
+`20260927-202855-deploy-674680` passed reboot, egress, and mapped-address
+checks. VM 213 reported clean commit `798ee6a`.
+
+Client 225 sent one-second IPv4 and IPv6 probes during deployment. The
+network reload produced 6.165 and 6.118 second reply intervals. OPNsense
+selected backup-only defaults during the reboot, then restored the primary.
+The probes continued to return replies during both route transitions.
+Fifty fresh IPv4 HTTPS requests all succeeded; simulator captures counted
+30 Webpass and 20 AT&T SYNs. Thirty IPv6 requests all succeeded; captures
+counted 14 Webpass and 16 AT&T SYNs. With the Webpass and AT&T simulator
+containers stopped, 20 fresh IPv4 requests succeeded through Monkeybrains
+11 times and Astound nine times. Twenty IPv6 requests succeeded through
+Monkeybrains. Automatic restoration timers restarted both simulators.
+
+AT&T did not initially reacquire its address after simulator restart. The
+guest sent DHCP requests, and a provider-side capture showed no replies.
+The tagged testbed playbook skipped the included service tasks because
+`include_tasks` did not propagate the `isp-lxcs` tag. [Configs PR #540](https://github.com/agoodkind/configs/pull/540)
+merged the tag fix as `b62a96555e799ddf89f7abc9604f7e51fd24c122`.
+The tagged deploy from clean merged main passed with 94 successful tasks,
+70 changes, and no failures. AT&T reacquired IPv4 and IPv6, and all five
+testbed providers reported healthy. Both downstream guests completed IPv4
+and IPv6 HTTPS requests. During the simulator repair, the client probes
+recorded no reply interval above 2.1 seconds.
+
+After a final controlled testbed reboot, OPNsense selected backup-only IPv4
+and IPv6 defaults, then restored the primary. Client 225 returned 387 IPv4 replies
+with a maximum 1.012 second interval. It returned 386 IPv6 replies with
+one missed packet and a maximum 2.057 second interval. The probes covered
+both transitions. All five providers remained healthy.
+
+[Configs PR #541](https://github.com/agoodkind/configs/pull/541) pinned the
+same release and disabled primary Graceful Restart in production. It merged
+as `495d53b70efb6a4ff15ce76c3d8471ffc709f17b` after required checks.
+The production check deployment passed with 187 successful tasks, 15
+proposed changes, and no failures. The apply from clean merged main passed
+with 240 successful tasks, 22 changes, and no failures. Trace
+`20260927-223958-deploy-615749` passed reboot, egress, and mapped-address
+checks. VM 113 reported clean commit `798ee6a`; AT&T, Monkeybrains, and
+Webpass reported healthy.
+
+The first production deployment produced 9.207 and 8.204 second IPv4 and
+IPv6 reply gaps during the network manager restart. Its reboot produced
+18.434 and 18.375 second gaps. The previous BGP session still advertised
+Graceful Restart when the reboot disconnected it. The new IPv4 and IPv6
+sessions report that the primary does not advertise Graceful Restart. The
+observed gaps are consistent with stale-route retention during this
+transition, but no route sample was captured during those gaps.
+
+A second controlled production reboot tested the new session. OPNsense
+selected backup-only defaults and then restored the primary. The proxy
+guest, which routes both families through OPNsense, returned 600 consecutive
+IPv4 replies and 600 consecutive IPv6 replies with no interval above
+2.1 seconds. Both-family HTTPS passed afterward. Twenty fresh IPv4 HTTPS
+requests used Webpass 13 times and AT&T seven times. Twenty IPv6 requests
+used Webpass 12 times and AT&T eight times. All three providers remained
+healthy. MWAN-530 is Done; MWAN-523 and interface ownership remain open.
 
 ## Record future implementation results
 
