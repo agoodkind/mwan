@@ -26,7 +26,7 @@ type IfMgrModulesSection struct {
 }
 
 // IfMgrLinksSection configures durable ownership records for MWAN-owned links.
-// The directory must persist across daemon restarts.
+// The state file must persist across daemon restarts.
 type IfMgrLinksSection struct {
 	StateFile string `toml:"state_file"`
 }
