@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -105,6 +106,7 @@ func runIfMgr(cfg *config.Config) error {
 	}
 	dcfg.Notifier = notify.FromConfig(cfg, logger, "mwan-ifmgr")
 	dcfg.LiveState = wanstate.New()
+	dcfg.LiveState.SetTransitionLogger(runID, logger)
 	if role == "wan" && cfg.BGP.Enabled && cfg.BGP.UseWanconfig {
 		dcfg.ForwardingReadySocket = cfg.BGP.ForwardingReadiness.SocketPath
 		dcfg.ForwardingReadyTimeout = cfg.BGP.ForwardingReadiness.ReadTimeout()
@@ -126,6 +128,9 @@ func runIfMgr(cfg *config.Config) error {
 			startNPTv6HairpinAlias(ctx, logger, cfg.OPNsense, dcfg.LiveState, &aliasSync, base, hairpinAliasInterval)
 		}
 	}
+	ctx, cancelObserver := context.WithCancelCause(ctx)
+	defer cancelObserver(nil)
+	startOwnershipObservers(ctx, logger, dcfg.LiveState, dcfg.Connections, cancelObserver)
 
 	// Runtime readiness uses the store even when the optional management
 	// datastore is unavailable.
@@ -143,6 +148,9 @@ func runIfMgr(cfg *config.Config) error {
 	if err := d.Run(ctx); err != nil {
 		logger.WarnContext(ctx, "ifmgr: daemon run failed", "err", err)
 		return fmt.Errorf("ifmgr daemon: %w", err)
+	}
+	if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, context.Canceled) {
+		return fmt.Errorf("ifmgr daemon: %w", cause)
 	}
 	logShutdownReason(ctx, logger)
 	return nil

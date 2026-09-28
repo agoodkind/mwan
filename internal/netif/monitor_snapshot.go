@@ -18,7 +18,15 @@ func (m *Monitor) publishSnapshot(ctx context.Context, event Event, epoch uint64
 			return false
 		}
 		if m.bindingEpoch != epoch || !m.ready[0] || !m.ready[1] || !m.ready[2] {
-			m.markStaleLocked()
+			m.markStaleLocked("link binding changed during snapshot")
+			m.stateMu.Unlock()
+			m.mu.Unlock()
+			m.dispatchMu.Unlock()
+			return false
+		}
+		if m.dirty {
+			m.dirty = false
+			m.markStaleLocked("kernel changed during snapshot")
 			m.stateMu.Unlock()
 			m.mu.Unlock()
 			m.dispatchMu.Unlock()
@@ -31,18 +39,11 @@ func (m *Monitor) publishSnapshot(ctx context.Context, event Event, epoch uint64
 				m.actualIface = event.ActualIface
 				m.bindingEpoch++
 			}
-			if m.dirty {
-				m.dirty = false
-				m.markStaleLocked()
-			} else {
-				m.stale = false
-			}
-			replay := !m.stale
+			m.stale = false
+			m.failed = false
 			m.stateMu.Unlock()
 			m.mu.Unlock()
-			if replay {
-				m.replaySnapshot(ctx, event.Snapshot)
-			}
+			m.replaySnapshot(ctx, event.Snapshot)
 			m.dispatchMu.Unlock()
 			return true
 		default:

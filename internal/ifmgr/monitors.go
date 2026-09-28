@@ -29,8 +29,9 @@ func StartIfaceMonitors(
 ) {
 	for _, iface := range ifaces {
 		monitor := netif.NewMonitor(ctx, log, netif.MonitorConfig{
-			Iface:      iface,
-			Connection: connectionForIface(connections, iface),
+			Iface:        iface,
+			Connection:   connectionForIface(connections, iface),
+			ConnectionID: "",
 		})
 		go func(monitoredIface string, monitored *netif.Monitor) {
 			defer func() {

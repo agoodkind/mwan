@@ -49,6 +49,10 @@ module goodkind-mwan-steering {
      decides its verdict, the prefix-translation inputs, and the
      internal link the members route toward.";
 
+  revision 2026-09-28 {
+    description
+      "Add operational interface ownership, observation, assignment, and transition state.";
+  }
   revision 2026-09-27 {
     description
       "Add stable connection identity, an explicit firewall pin target,
@@ -153,6 +157,104 @@ module goodkind-mwan-steering {
     }
     description
       "A member's combined health verdict.";
+  }
+
+  augment "/if:interfaces/if:interface" {
+    container ownership-state {
+      config false;
+      description "This node reports configured ownership and observed device state.";
+      leaf connection-id { type string; }
+      leaf configured-owner { type string; }
+      leaf actual-name { type string; }
+      leaf actual-index { type uint32; }
+      leaf link-state { type enumeration { enum unknown; enum absent; enum down; enum up; } }
+      leaf observation { type enumeration { enum unknown; enum fresh; enum stale; enum failed; } }
+      leaf observation-at { type yang:date-and-time; }
+      leaf observation-reason { type string; }
+      leaf observed-at { type yang:date-and-time; }
+      container last-apply {
+        leaf operation { type string; }
+        leaf dependency { type string; }
+        leaf result { type string; }
+        leaf reason { type string; }
+        leaf at { type yang:date-and-time; }
+      }
+      list recent-transition {
+        key "id";
+        leaf id { type string; }
+        leaf at { type yang:date-and-time; }
+        leaf family { type string; }
+        leaf previous { type string; }
+        leaf current { type string; }
+        leaf operation { type string; }
+        leaf dependency { type string; }
+        leaf reason { type string; }
+      }
+    }
+  }
+
+  augment "/if:interfaces/if:interface/ip:ipv4" {
+    container ownership-family-state {
+      config false;
+      uses ownership-family-fields;
+    }
+  }
+
+  augment "/if:interfaces/if:interface/ip:ipv6" {
+    container ownership-family-state {
+      config false;
+      uses ownership-family-fields;
+    }
+  }
+
+  grouping ownership-family-fields {
+    leaf acquisition { type string; }
+    leaf assignment-validity { type string; }
+    leaf firewall-protection { type string; }
+    leaf routing { type string; }
+    leaf readiness { type string; }
+    list assignment {
+      key "id";
+      leaf id { type string; }
+      leaf kind { type string; }
+      leaf source { type string; }
+      leaf value { type string; }
+      leaf valid { type boolean; }
+      leaf acquired-at { type yang:date-and-time; }
+      leaf renew-at { type yang:date-and-time; }
+      leaf rebind-at { type yang:date-and-time; }
+      leaf preferred-until { type yang:date-and-time; }
+      leaf valid-until { type yang:date-and-time; }
+    }
+    list observed-address {
+      key "id";
+      leaf id { type string; }
+      leaf cidr { type string; }
+      leaf origin { type string; }
+      leaf flags { type uint32; }
+      leaf preferred-lifetime { type int64; }
+      leaf valid-lifetime { type int64; }
+    }
+    list observed-route {
+      key "id";
+      leaf id { type string; }
+      leaf destination { type string; }
+      leaf via { type string; }
+      leaf device { type string; }
+      leaf table-id { type uint32; }
+      leaf protocol { type uint32; }
+      leaf metric { type uint32; }
+      leaf scope { type uint32; }
+      leaf route-type { type uint32; }
+      list next-hop {
+        key "id";
+        leaf id { type string; }
+        leaf via { type string; }
+        leaf device { type string; }
+        leaf index { type uint32; }
+        leaf weight { type uint32; }
+      }
+    }
   }
 
   augment "/if:interfaces/if:interface" {

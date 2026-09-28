@@ -7,12 +7,16 @@
 package wanstate
 
 import (
+	"log/slog"
 	"maps"
 	"net/netip"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"goodkind.io/mwan/internal/clock"
 )
 
 // Health is a member's combined verdict, mirroring the health module's
@@ -111,6 +115,11 @@ type Observer interface {
 // construct with New.
 type Store struct {
 	mu                 sync.RWMutex
+	clock              clock.Clock
+	connections        map[string]ConnectionState
+	runID              string
+	transitionSequence uint64
+	transitionLog      *slog.Logger
 	health             map[string]MemberHealth
 	routing            map[string]MemberRouting
 	translation        map[string]MemberTranslation
@@ -125,8 +134,18 @@ type Store struct {
 
 // New returns an empty store.
 func New() *Store {
+	return NewWithClock(clock.Real{})
+}
+
+// NewWithClock constructs a store with an injected wall clock.
+func NewWithClock(wallClock clock.Clock) *Store {
 	return &Store{
 		mu:                 sync.RWMutex{},
+		clock:              wallClock,
+		connections:        map[string]ConnectionState{},
+		runID:              "",
+		transitionSequence: 0,
+		transitionLog:      nil,
 		health:             map[string]MemberHealth{},
 		routing:            map[string]MemberRouting{},
 		translation:        map[string]MemberTranslation{},
@@ -186,17 +205,53 @@ func (s *Store) SetHealth(members map[string]MemberHealth) {
 // from the previous valid write is a tier change and reaches the
 // observer; the first valid write only establishes the baseline.
 func (s *Store) SetRouting(activeTier uint8, members map[string]MemberRouting) {
+	type routingTransition struct {
+		id    string
+		value Transition
+	}
+	var transitions []routingTransition
 	copied := make(map[string]MemberRouting, len(members))
-	maps.Copy(copied, members)
+	for id, member := range members {
+		member.OwnedAddresses = slices.Clone(member.OwnedAddresses)
+		copied[id] = member
+	}
 	s.mu.Lock()
 	previousTier := s.activeTier
 	previousValid := s.tierValid
 	s.activeTier = activeTier
 	s.tierValid = true
 	s.routing = copied
+	for id, member := range members {
+		connection, present := s.connections[id]
+		if !present {
+			continue
+		}
+		oldV4, oldV6 := connection.IPv4.Routing, connection.IPv6.Routing
+		connection.IPv4.Routing = "not-ready"
+		connection.IPv6.Routing = "not-ready"
+		if member.V4Ready {
+			connection.IPv4.Routing = "ready"
+		}
+		if member.V6Ready {
+			connection.IPv6.Routing = "ready"
+		}
+		for _, change := range []struct{ family, previous, current string }{
+			{"ipv4", oldV4, connection.IPv4.Routing}, {"ipv6", oldV6, connection.IPv6.Routing},
+		} {
+			if change.previous != "unknown" && change.previous != change.current {
+				value := s.addTransitionLocked(&connection, change.family, change.previous, change.current, "evaluate-routing", "wan-routes", "routing readiness changed", s.clock.Now())
+				transitions = append(transitions, routingTransition{id: id, value: value})
+			}
+		}
+		s.connections[id] = connection
+	}
 	s.routingGeneration++
 	observer := s.observer
+	transitionLog := s.transitionLog
 	s.mu.Unlock()
+	for _, change := range transitions {
+		logOwnershipTransition(transitionLog, change.id, &change.value)
+	}
 	if observer != nil && previousValid && previousTier != activeTier {
 		observer.TierChange(previousTier, activeTier)
 	}
@@ -239,6 +294,7 @@ func (s *Store) SetBGP(bgp BGP) {
 
 // Snapshot is a complete, consistent copy of the store for one read.
 type Snapshot struct {
+	Connections       map[string]ConnectionState
 	Health            map[string]MemberHealth
 	Routing           map[string]MemberRouting
 	RoutingGeneration uint64
@@ -255,6 +311,7 @@ func (s *Store) Snapshot() Snapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	snap := Snapshot{
+		Connections:       make(map[string]ConnectionState, len(s.connections)),
 		Health:            make(map[string]MemberHealth, len(s.health)),
 		Routing:           make(map[string]MemberRouting, len(s.routing)),
 		RoutingGeneration: s.routingGeneration,
@@ -266,7 +323,14 @@ func (s *Store) Snapshot() Snapshot {
 		IntendedByOwner:   make(map[string]OwnedRuleset, len(s.intendedRulesets)),
 	}
 	maps.Copy(snap.Health, s.health)
+	for id, connection := range s.connections {
+		snap.Connections[id] = cloneConnection(connection)
+	}
 	maps.Copy(snap.Routing, s.routing)
+	for id, member := range snap.Routing {
+		member.OwnedAddresses = slices.Clone(member.OwnedAddresses)
+		snap.Routing[id] = member
+	}
 	maps.Copy(snap.Translation, s.translation)
 	maps.Copy(snap.IntendedByOwner, s.intendedRulesets)
 	peers := make([]BGPPeer, len(s.bgp.Peers))

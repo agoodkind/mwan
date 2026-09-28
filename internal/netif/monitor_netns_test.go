@@ -800,6 +800,66 @@ func TestMonitorResyncsAfterAnUnconsumedEventBurst(t *testing.T) {
 	}
 }
 
+func TestMonitorReportsAmbiguousLinkFailureAndRecovers(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	const hardwareAddress = "02:00:5e:00:53:75"
+	link := addObservedVeth(t, "obs-failure", "obs-fail-peer", hardwareAddress)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	monitor := NewMonitor(ctx, logger, MonitorConfig{
+		Iface: "obs-failure",
+		Connection: &interfaceintent.Connection{
+			ID: "ambiguous-observer", Name: "obs-failure",
+			Link: &interfaceintent.Link{
+				Kind:  interfaceintent.KindPhysical,
+				Match: interfaceintent.Match{HardwareAddress: hardwareAddress},
+			},
+		},
+	})
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool { return snapshot.IfIndex == link.Attrs().Index })
+	duplicate := addObservedVeth(t, "obs-duplicate", "obs-dupe-peer", hardwareAddress)
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	var stale, failed Event
+	for failed.Kind != EvObservationFailed {
+		select {
+		case event := <-monitor.Events:
+			switch event.Kind {
+			case EvObservationStale:
+				stale = event
+			case EvObservationFailed:
+				failed = event
+			}
+		case <-deadline.C:
+			t.Fatalf("ambiguous link did not report snapshot failure; stale=%+v failed=%+v", stale, failed)
+		}
+	}
+	if stale.Kind != EvObservationStale || !strings.Contains(failed.Reason, "matches 2 kernel links") || stale.ObservedAt.IsZero() || failed.ObservedAt.IsZero() {
+		t.Fatalf("ambiguous link status = stale %+v, failed %+v", stale, failed)
+	}
+	if err := netlink.LinkDel(duplicate); err != nil {
+		t.Fatal(err)
+	}
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool { return snapshot.IfIndex == link.Attrs().Index })
+
+	queuedDuplicate := addObservedVeth(t, "obs-duplicate2", "obs-dupe-peer2", hardwareAddress)
+	defer func() { _ = netlink.LinkDel(queuedDuplicate) }()
+	queuedDeadline := time.Now().Add(5 * time.Second)
+	for len(monitor.Events) < 2 {
+		if time.Now().After(queuedDeadline) {
+			t.Fatal("ambiguous link did not queue failure statuses before cancellation")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	for len(monitor.Events) != 0 {
+		if time.Now().After(queuedDeadline) {
+			t.Fatal("monitor did not clear queued failure statuses after cancellation")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 func TestMonitorReportsEveryNextHopForAWatchedMultipathRoute(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	first := addObservedVeth(t, "obs-c", "obs-peer-d", "02:00:5e:00:53:73")
@@ -883,6 +943,12 @@ func TestMonitorStopsReportingAfterCancellation(t *testing.T) {
 	select {
 	case event := <-monitor.Events:
 		t.Fatalf("monitor retained a queued event after cancellation: %+v", event)
+	default:
+	}
+	monitor.setSubscriptionReady(0, false, "address subscription closed after cancellation")
+	select {
+	case event := <-monitor.Events:
+		t.Fatalf("monitor reported subscription failure after cancellation: %+v", event)
 	default:
 	}
 	addObservedAddress(t, link, "192.0.2.75/32")
@@ -1152,14 +1218,30 @@ func waitObservedAddress(t *testing.T, events <-chan Event, address string) Even
 	t.Helper()
 	deadline := time.NewTimer(5 * time.Second)
 	defer deadline.Stop()
+	var recent []string
 	for {
 		select {
 		case event := <-events:
 			if event.Kind == EvAddrAdded && event.CIDR == address {
 				return event
 			}
+			summary := fmt.Sprintf("%s cidr=%s iface=%s index=%d", event.Kind, event.CIDR, event.ActualIface, event.IfIndex)
+			if event.Snapshot != nil {
+				containsAddress := false
+				for _, observed := range event.Snapshot.Addresses {
+					if observed.CIDR == address {
+						containsAddress = true
+						break
+					}
+				}
+				summary += fmt.Sprintf(" snapshot-index=%d address-count=%d contains-target=%t", event.Snapshot.IfIndex, len(event.Snapshot.Addresses), containsAddress)
+			}
+			recent = append(recent, summary)
+			if len(recent) > 20 {
+				recent = recent[len(recent)-20:]
+			}
 		case <-deadline.C:
-			t.Fatalf("address %s was not observed", address)
+			t.Fatalf("address %s was not observed; recent monitor events: %v", address, recent)
 		}
 	}
 }
