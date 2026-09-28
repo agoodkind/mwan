@@ -56,7 +56,7 @@ No interface-owner cutover has begun.
 | MWAN-516 | 516-model; 516-state | [MWAN PR #51](https://github.com/agoodkind/mwan/pull/51) merged standalone identity as `959fbd3a65955e8156f2ea6c9bf2c90febef762c`. [MWAN PR #55](https://github.com/agoodkind/mwan/pull/55) merged shared interface intent as `2c6df538fbb1174a9189f3098d6ac458256857f4`. Both merged releases passed separate testbed traffic checkpoints. State publication remains. |
 | MWAN-397 | 397-links | Execution has not started. |
 | MWAN-523 | 523-observation | [MWAN PR #60](https://github.com/agoodkind/mwan/pull/60) merged the observer foundation as `13183ea9d6264beac7b85bfd4e7946b15f7da601`. Configs PRs #533 and #535 passed testbed and production deployment checks. Full observer acceptance remains. |
-| MWAN-530 | Restart handover | [MWAN PR #64](https://github.com/agoodkind/mwan/pull/64) merged forwarding readiness as `798ee6a8dcb57ef91e7d9656e8a368f3f4bd4412`. Testbed and production controlled reboots selected the backup during primary recovery and returned to primary with downstream replies continuing. Tack records Done. |
+| MWAN-530 | Restart handover | [MWAN PR #64](https://github.com/agoodkind/mwan/pull/64) merged forwarding readiness as `798ee6a8dcb57ef91e7d9656e8a368f3f4bd4412`. OPNsense selected the backup during controlled testbed and production reboots, then restored the primary while downstream replies continued. Tack records Done. |
 | MWAN-398 | 398-addresses; 398-dhcpv4 | Execution has not started. |
 | MWAN-227 | 227-delegation | Execution has not started. |
 | MWAN-517 | 517-autoconfiguration; 517-dhcpv6 | Execution has not started. |
@@ -590,8 +590,8 @@ testbed providers reported healthy. Both downstream guests completed IPv4
 and IPv6 HTTPS requests. During the simulator repair, the client probes
 recorded no reply interval above 2.1 seconds.
 
-A final controlled testbed reboot selected backup-only IPv4 and IPv6
-defaults, then restored the primary. Client 225 returned 387 IPv4 replies
+After a final controlled testbed reboot, OPNsense selected backup-only IPv4
+and IPv6 defaults, then restored the primary. Client 225 returned 387 IPv4 replies
 with a maximum 1.012 second interval. It returned 386 IPv6 replies with
 one missed packet and a maximum 2.057 second interval. The probes covered
 both transitions. All five providers remained healthy.
