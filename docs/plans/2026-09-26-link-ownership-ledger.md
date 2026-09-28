@@ -55,7 +55,7 @@ No interface-owner cutover has begun.
 | MWAN-524 | Restore the managed Astound testbed connection first. | Configs PR #522 merged. Deployment, restart, downstream traffic, balancing, and recovery passed. |
 | MWAN-516 | 516-model; 516-state | [MWAN PR #51](https://github.com/agoodkind/mwan/pull/51) merged standalone identity as `959fbd3a65955e8156f2ea6c9bf2c90febef762c`. [MWAN PR #55](https://github.com/agoodkind/mwan/pull/55) merged shared interface intent as `2c6df538fbb1174a9189f3098d6ac458256857f4`. Both merged releases passed separate testbed traffic checkpoints. State publication remains. |
 | MWAN-397 | 397-links | Execution has not started. |
-| MWAN-523 | 523-observation | [MWAN PR #60](https://github.com/agoodkind/mwan/pull/60) merged the observer foundation as `13183ea9d6264beac7b85bfd4e7946b15f7da601`. Configs PRs #533 and #535 passed testbed and production deployment checks. Full observer acceptance remains. |
+| MWAN-523 | 523-observation | [MWAN PR #60](https://github.com/agoodkind/mwan/pull/60) merged the observer foundation as `13183ea9d6264beac7b85bfd4e7946b15f7da601`. Configs PRs #533 and #535 passed testbed and production deployment checks. MWAN PR #66 verified route deletion identity in the privileged kernel suite. Full observer acceptance remains. |
 | MWAN-530 | Restart handover | [MWAN PR #64](https://github.com/agoodkind/mwan/pull/64) merged forwarding readiness as `798ee6a8dcb57ef91e7d9656e8a368f3f4bd4412`. OPNsense selected the backup during controlled testbed and production reboots, then restored the primary while downstream replies continued. Tack records Done. |
 | MWAN-398 | 398-addresses; 398-dhcpv4 | Execution has not started. |
 | MWAN-227 | 227-delegation | Execution has not started. |
@@ -622,6 +622,25 @@ IPv4 replies and 600 consecutive IPv6 replies with no interval above
 requests used Webpass 13 times and AT&T seven times. Twenty IPv6 requests
 used Webpass 12 times and AT&T eight times. All three providers remained
 healthy. MWAN-530 is Done; MWAN-523 and interface ownership remain open.
+
+### Route deletion identity acceptance, September 28, 2026
+
+[MWAN PR #66](https://github.com/agoodkind/mwan/pull/66) merged as
+`268f01daf02b5bee62fdd730659f13a3e816b350`. Its signed commit was
+`33af2e8864494164c27c042ebed7e92094b54332`. A real-kernel test created
+two routes with the same destination in different tables and protocols. The
+monitor reported the deleted route's family, table, protocol, metric, scope,
+interface index, and next hop. A fresh kernel snapshot retained the route in
+the other table. The default privileged test target now includes the observer
+package. `make test-netns` passed all six packages. The full Docker check and
+test gate, required CI, and independent review passed with no findings or
+unresolved threads. The optional Govulncheck job repeated the existing GoBGP
+database finding recorded above.
+
+This merge changed tests and the test target only. No testbed or production
+deployment ran for this test-only merge. MWAN-523 still requires index reuse,
+virtual-link rename, router advertisement lifetimes, and daemon-level packet
+acceptance before state publication.
 
 ## Record future implementation results
 
