@@ -58,7 +58,7 @@ No interface-owner cutover has begun.
 | --- | --- | --- |
 | MWAN-524 | Restore the managed Astound testbed connection first. | Configs PR #522 merged. Deployment, restart, downstream traffic, balancing, and recovery passed. |
 | MWAN-516 | 516-model; 516-state | [MWAN PR #51](https://github.com/agoodkind/mwan/pull/51) merged standalone identity as `959fbd3a65955e8156f2ea6c9bf2c90febef762c`. [MWAN PR #55](https://github.com/agoodkind/mwan/pull/55) merged shared interface intent as `2c6df538fbb1174a9189f3098d6ac458256857f4`. [MWAN PR #84](https://github.com/agoodkind/mwan/pull/84) merged state publication as `b601ab8a5f4f44d09b949ab6132c4287ef9dbbef`. The shared model and state publication passed testbed and production checkpoints. |
-| MWAN-397 | 397-links | Execution has not started. |
+| MWAN-397 | 397-links | [MWAN PR #86](https://github.com/agoodkind/mwan/pull/86) is open at signed commit `cdb320b`; independent review and local validation passed. Deployment remains open. |
 | MWAN-523 | 523-observation | [MWAN PR #60](https://github.com/agoodkind/mwan/pull/60) merged the observer foundation as `13183ea9d6264beac7b85bfd4e7946b15f7da601`. Configs PRs #533 and #535 passed its first testbed and production checkpoints. MWAN PRs #66, #71, #73, #75, #77, and #79 verified route identity, bridge rebinding, router advertisement lifetimes, index reuse, daemon packet recovery, and duplicate-address failure in privileged kernel tests. PR #81 repaired snapshot replay overflow. Configs PRs #544 and #545 passed final testbed and production acceptance. |
 | MWAN-530 | Restart handover | [MWAN PR #64](https://github.com/agoodkind/mwan/pull/64) merged forwarding readiness as `798ee6a8dcb57ef91e7d9656e8a368f3f4bd4412`. OPNsense selected the backup during controlled testbed and production reboots, then restored the primary while downstream replies continued. Tack records Done. |
 | MWAN-398 | 398-addresses; 398-dhcpv4 | Execution has not started. |
@@ -990,8 +990,8 @@ networkd owner. A privileged Linux namespace test found that netlink
 The link writer now syncs a creation record with a random alias token before
 it creates a virtual link under a reserved temporary name. It verifies the
 device before setting the recorded alias and assigning the configured name.
-Focused kernel namespace tests pass
-for creation, restart adoption, removal, and preservation of foreign links.
+Focused kernel namespace tests pass for creation, restart adoption, removal,
+and preservation of foreign links.
 The parser, boot-name writer, and configuration-tree tests pass. The public
 daemon namespace test passed with VLAN packet delivery, restart adoption,
 final-link removal, and preservation of legacy and external links. Independent
@@ -999,9 +999,12 @@ review found and verified fixes for journal and bridge identity defects. Lint,
 schema validation, the full test target, and privileged namespace tests pass.
 Merge and deployment remain open.
 
-| Date | Branch | Class | Reviewer tier | Verdict | Catches B/SF/N | Escapes | Notes |
+The finding counts report blockers, issues to fix, and minor issues found
+during review, including findings fixed before the verdict.
+
+| Date | Branch | Class | Reviewer tier | Verdict | Blockers / issues to fix / minor issues | Escapes | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2026-09-28 | MWAN-397 uncommitted patch at `9e8beacf` | Link ownership and recovery | Independent adversarial | MERGE-READY | 10/2/0, fixed before verdict | None found | Fresh public daemon namespace, kernel namespace race, role-order, red-green parser assertion, and live `origin/main` merge-tree passed. Lint and schema passed before the role-order fix; the full test target passed afterward. No deployment was reviewed. |
+| 2026-09-28 | MWAN PR #86 at `cdb320b` | Link ownership and recovery | Independent adversarial | MERGE-READY | 10 / 2 / 0, fixed before verdict | None found | Fresh public daemon namespace, kernel namespace race, role-order, red-green parser assertion, and live `origin/main` merge-tree passed. Lint and schema passed before the role-order fix; the full test target passed afterward. No deployment was reviewed. |
 
 ## Record future implementation results
 
