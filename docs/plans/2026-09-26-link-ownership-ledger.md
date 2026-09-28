@@ -983,9 +983,12 @@ its state-publication acceptance; MWAN-397 is the next implementation slice.
 
 ### MWAN-397 link implementation, September 28, 2026
 
-Tack marks MWAN-397 In Progress. The current unmerged change admits only
-link-only MWAN connections. Existing provider connections retain their
-networkd owner. A privileged Linux namespace test found that netlink
+Tack marks MWAN-397 In Progress. [MWAN PR #86](https://github.com/agoodkind/mwan/pull/86)
+merged as `446e76fe590e5dc9bbbcfe6fd875a8752f4e404c`. The release
+`202609282224-55-446e76f` resolves to that commit. Its amd64 binary and
+stack archives passed checksum and source-attestation verification. The change
+admits only link-only MWAN connections. Existing provider connections retain
+their networkd owner. A privileged Linux namespace test found that netlink
 `LinkAdd` did not retain the requested alias for either a VLAN or a bridge.
 The link writer now syncs a creation record with a random alias token before
 it creates a virtual link under a reserved temporary name. It verifies the
@@ -996,8 +999,9 @@ The parser, boot-name writer, and configuration-tree tests pass. The public
 daemon namespace test passed with VLAN packet delivery, restart adoption,
 final-link removal, and preservation of legacy and external links. Independent
 review found and verified fixes for journal and bridge identity defects. Lint,
-schema validation, the full test target, and privileged namespace tests pass.
-Merge and deployment remain open.
+schema validation, the full test target, privileged namespace tests, required
+CI, and automated review passed on the rebased change. The optional
+Govulncheck job reported the existing GoBGP advisory.
 
 ### September 28, 2026: Repair the monitor test fixture
 
@@ -1016,10 +1020,50 @@ firewall, arm64, build, required lint, and automated review checks passed.
 PR #87 merged as `6796dc74352a4c9d3823a58fc5eeb6b59757fc3e`. The optional
 Govulncheck job still reports the preexisting GoBGP advisory.
 
-PR #86 was rebased onto that merged commit. Its signed code revision before
-this ledger update is `b1da33cb38e2763c3797a8e46888a04f471bb585`.
-Required CI and automated review must run again on the rebased head before
-merge. No testbed or production deployment has run for MWAN-397.
+PR #86 was rebased onto that merged commit. Its final signed source revision
+was `b58cd73d2c3b206d0377de947ba67324de82aa65`. Required CI and automated
+review passed on that revision before merge.
+
+### MWAN-397 testbed acceptance, September 28, 2026
+
+[Configs PR #548](https://github.com/agoodkind/configs/pull/548) pinned the
+release in testbed and merged as `52db9c6c46b24a236da9d20adf1455eded333ba0`.
+A clean merged checkout ran
+`./configsctl deploy deploy-mwan --limit mwan_suburban_servers --check --diff`,
+then the same command without `--check --diff`. Check mode reported 176
+successful tasks and 18 proposed changes. Apply reported 227 successful tasks
+and 21 changes. Both reported zero unreachable hosts and zero failures. Trace
+`20260928-155235-deploy-296953` passed reboot, egress, and mapped-address
+gates without rollback. The controller reconnected after the interface-manager
+restart. VM 213 reported clean commit `446e76f` and an active interface manager.
+The network configuration and networkd provider files remained unchanged.
+This deployment transferred no live interface ownership.
+
+Downstream client 225 received 1,221 of 1,221 IPv4 and 1,221 of 1,221 IPv6
+replies during the deployment and reboot. Its default routes selected OPNsense
+for both families. Twenty fresh IPv6 connections used Webpass eight times and
+AT&T 12 times, measured by provider-interface SYN captures. IPv4 captures
+also showed new client connections on both providers. Client HTTP requests
+returned success in both families before the request burst triggered
+`ifconfig.co` rate limiting. The testbed `api.ipify.org` IPv6 endpoint returned
+a mismatched certificate or connection failure; `ifconfig.co` succeeded over
+IPv6. These endpoint results do not indicate a gateway forwarding failure.
+
+OPNsense initially preferred the primary BGP defaults and had the backup
+routes available. A controlled stop of `mwan-agent` selected the backup
+`10.240.240.4` and `3d06:bad:b01:201::4`. Starting the agent restored the
+primary `10.240.240.3` and `3d06:bad:b01:201::3`. Client 225 received 120
+of 120 IPv4 and 119 of 120 IPv6 replies during that test. IPv6 missed sequence
+26; the gap between successful replies was 2.036 seconds. After recovery,
+five of five downstream probes passed in each family. The gateway reported
+the expected addresses and delegations for all configured providers.
+Direct pings from Suburban to the private mapped addresses failed. The host
+routed those destinations through Comcast instead of the isolated ISP bridges,
+so that probe did not test inbound mapping. The deploy gate verified address
+presence on the gateway.
+
+Production remains on release `202609281827-52-b601ab8`. Configs PR #549
+proposes the accepted release for production; it has not merged or deployed.
 
 The finding counts report blockers, issues to fix, and minor issues found
 during review, including findings fixed before the verdict.
