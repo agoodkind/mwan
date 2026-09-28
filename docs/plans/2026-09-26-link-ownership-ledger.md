@@ -542,9 +542,11 @@ These are measured reply gaps, not exact link-down durations. The remaining
 failure is premature primary announcement. [MWAN PR #64](https://github.com/agoodkind/mwan/pull/64)
 adds per-family forwarding readiness before primary announcements. Its full
 local Docker check and test gate passed. [Configs PR #538](https://github.com/agoodkind/configs/pull/538)
-adds the matching inventory and rendered configuration. Neither PR #64 nor
-#538 has merged or deployed. Repeat testbed restart and downstream checks from
-merged releases before production promotion.
+merged the matching inventory and rendered configuration as
+`a4eccad51583159e5affdee37503766999862d9f`. Its required checks passed;
+it has not deployed. MWAN PR #64 has not merged or deployed. Repeat testbed
+restart and downstream checks from the merged release before production
+promotion.
 
 ## Record future implementation results
 
