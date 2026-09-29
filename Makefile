@@ -476,11 +476,12 @@ endif
 NETNS_TEST_PACKAGES := ./internal/ifmgr/modules/wanroutes/... ./internal/ifmgr/modules/npt/... ./internal/ifmgr/modules/steering/... ./internal/ifmgr/modules/firewall/... ./internal/netif/...
 NETNS_GO_VERSION    := $(shell awk '/^go /{print $$2}' go.mod)
 NETNS_RUNNER_IMAGE  := mwan-netns-runner
+NETNS_PROTOCOL_IMAGE := mwan-protocol-runner:$(WANCONFIG_DOCKER_ARCH)
 
-.PHONY: test-netns netns-runner-image
+.PHONY: test-netns test-protocol netns-runner-image protocol-runner-image
 ifeq ($(shell uname -s),Darwin)
 netns-runner-image:
-	docker build --platform linux/arm64 --build-arg GO_VERSION=$(NETNS_GO_VERSION) -t $(NETNS_RUNNER_IMAGE) tools/netns
+	docker build --platform linux/arm64 --build-arg BASE_IMAGE=golang:$(NETNS_GO_VERSION) -t $(NETNS_RUNNER_IMAGE) tools/netns
 
 test-netns: netns-runner-image
 	docker run --rm --platform linux/arm64 \
@@ -489,6 +490,7 @@ test-netns: netns-runner-image
 		-e GOWORK=off -e CGO_ENABLED=0 \
 		$(NETNS_RUNNER_IMAGE) \
 		go test -count=1 -tags netns $(NETNS_TEST_PACKAGES)
+
 else
 test-netns:
 	@if ! command -v nft >/dev/null; then \
@@ -496,7 +498,26 @@ test-netns:
 		exit 1; \
 	fi
 	sudo -E env "PATH=$$PATH" go test -v -count=1 -tags netns $(NETNS_TEST_PACKAGES)
+
 endif
+
+protocol-runner-image: wanconfig-builder-image
+	docker build --platform linux/$(WANCONFIG_DOCKER_ARCH) \
+		--build-arg BASE_IMAGE=$(WANCONFIG_BUILDER_IMAGE) \
+		-t $(NETNS_PROTOCOL_IMAGE) tools/netns
+
+test-protocol: protocol-runner-image
+	docker run --rm --privileged --platform linux/$(WANCONFIG_DOCKER_ARCH) \
+		-v $(CURDIR):/src -w /src \
+		-v mwan-wanconfig-gomod:/go/pkg/mod \
+		-v mwan-wanconfig-cache-$(WANCONFIG_DOCKER_ARCH):/root/.cache \
+		-v mwan-wanconfig-gomk-$(WANCONFIG_DOCKER_ARCH):/src/.make \
+		-e GOWORK=off \
+		-e GIT_CONFIG_COUNT=1 \
+		-e GIT_CONFIG_KEY_0=safe.directory \
+		-e GIT_CONFIG_VALUE_0=/src \
+		$(NETNS_PROTOCOL_IMAGE) \
+		go test -v -count=1 -tags 'netns firewallnetns' -run '^TestProtocolRunnerBootstrap$$' ./cmd/mwan
 
 # ---------------------------------------------------------------------------
 # Wanconfig management stack packages (MWAN-431)
