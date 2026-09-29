@@ -62,12 +62,12 @@ No interface-owner cutover has begun.
 | MWAN-523 | 523-observation | [MWAN PR #60](https://github.com/agoodkind/mwan/pull/60) merged the observer foundation as `13183ea9d6264beac7b85bfd4e7946b15f7da601`. Configs PRs #533 and #535 passed its first testbed and production checkpoints. MWAN PRs #66, #71, #73, #75, #77, and #79 verified route identity, bridge rebinding, router advertisement lifetimes, index reuse, daemon packet recovery, and duplicate-address failure in privileged kernel tests. PR #81 repaired snapshot replay overflow. Configs PRs #544 and #545 passed final testbed and production acceptance. |
 | MWAN-530 | Restart handover | [MWAN PR #64](https://github.com/agoodkind/mwan/pull/64) merged forwarding readiness as `798ee6a8dcb57ef91e7d9656e8a368f3f4bd4412`. OPNsense selected the backup during controlled testbed and production reboots, then restored the primary while downstream replies continued. Tack records Done. |
 | MWAN-398 | 398-static; 398-mapped-addresses; 398-dhcpv4 | MWAN PRs #89, #91, and #95 through #99 merged static, mapped/NPT, and DHCPv4 ownership code. The combined release passed testbed and production deployment. Live providers remain under networkd, so owned acquisition and transfer acceptance remain. Tack records In Progress. |
-| MWAN-227 | 227-delegation | The DHCPv6 client contract review identified the existing library and required assignment, deadline, and translation boundaries. Runtime implementation and acceptance remain. Tack records Todo. |
-| MWAN-517 | 517-autoconfiguration; 517-dhcpv6 | [MWAN PR #102](https://github.com/agoodkind/mwan/pull/102) merged kernel RA policy, [#103](https://github.com/agoodkind/mwan/pull/103) merged its service permission, and [#106](https://github.com/agoodkind/mwan/pull/106) merged observed IPv6 address phases and router validity. Release `202609291301-67-acb81bb` passed testbed and production deployment. DHCPv6 IA_NA and live ownership acceptance remain. Tack records In Progress. |
-| MWAN-518 | 518-restart | Execution has not started. |
+| MWAN-227 | 227-delegation | Client code merged; live acceptance pending. |
+| MWAN-517 | 517-autoconfiguration; 517-dhcpv6 | DHCPv6 code and inactive release passed testbed and production deployment. Live ownership acceptance remains. Tack records In Progress. |
+| MWAN-518 | 518-restart | [MWAN PR #117](https://github.com/agoodkind/mwan/pull/117) adds DHCPv4 restart validation. [MWAN PR #118](https://github.com/agoodkind/mwan/pull/118) adds the durable lease store. Both await merge; DHCPv6 recovery and daemon integration remain. Tack records In Progress. |
 | MWAN-505 | 505-route-repair | [MWAN PR #52](https://github.com/agoodkind/mwan/pull/52) merged as `18941243f1e8fa3d5623a04440e4d90de796d1f4`. Namespace packet tests and live testbed route and rule deletion checks passed. The release passed production deployment and downstream acceptance. |
 | MWAN-521 | 521-configuration; 521-deployment | [Configs PR #527](https://github.com/agoodkind/configs/pull/527) moved MAC discovery before rendering. [Configs PR #558](https://github.com/agoodkind/configs/pull/558) rendered explicit connection IDs and networkd ownership. Configs PRs #559 and #560 pinned and deployed the combined release to testbed and production. Complete role rendering and live transfer remain. |
-| MWAN-522 | 522-acceptance | [MWAN PR #93](https://github.com/agoodkind/mwan/pull/93) merged the protocol test runner. [Configs PR #553](https://github.com/agoodkind/configs/pull/553) merged configurable simulator timing. Seven real Kea DHCPv4 namespace scenarios passed. DHCPv6 delegation, IA_NA, assembled protocol tests, and live ownership acceptance remain. Tack records In Progress. |
+| MWAN-522 | 522-acceptance | The daemon runner and simulator timing merged. Seven DHCPv4 and four DHCPv6 real-server scenarios passed. Restart, assembled protocol, and live ownership acceptance remain. Tack records In Progress. |
 | MWAN-519 | 519-first-connection | Execution has not started. |
 | MWAN-399 | 399-remaining-connections | Execution has not started. |
 | MWAN-400 | 400-retirement | Execution has not started. |
@@ -76,15 +76,13 @@ No interface-owner cutover has begun.
 
 ## Resume the work
 
-MWAN-524 restored Astound as a managed testbed connection. MWAN-397 link
-management and the combined MWAN-398 DHCPv4 and MWAN-517 kernel-policy release
-passed testbed and production deployment without transferring a live link.
-MWAN PR #104 fixed the mapped IPv6 test readiness race. MWAN-517 observed
-IPv6 state merged and passed testbed and production deployment. The next
-protocol work is MWAN-227's shared DHCPv6 client and MWAN-517 IA_NA. Each
-protocol slice still needs public daemon tests, then live ownership transfer
-and downstream acceptance. Keep networkd on AT&T until retirement is
-confirmed.
+MWAN-524 restored Astound as a managed testbed connection. Link management,
+owned DHCPv4, kernel IPv6 policy, and the shared DHCPv6 client passed code
+checks. Their inactive releases passed testbed and production deployment
+without transferring a live provider. MWAN-518 restart recovery is now in
+implementation. The first live transfer still requires real daemon restart
+acceptance and downstream validation. Keep networkd on AT&T until retirement
+is confirmed.
 
 For every handoff, record the slice, agent responsibility, exact source
 revision, agreed interfaces, owned files, current PR, last passing check,

@@ -111,7 +111,10 @@ checks at its own position.
 | MWAN | [MWAN-517] Configure and observe kernel IPv6 acquisition | Use a sibling standalone PR after the kernel stack merges. |
 | MWAN | [MWAN-227] Acquire delegated prefixes through one DHCPv6 lifecycle | Start the DHCPv6 stack after the kernel stack merges. |
 | MWAN | [MWAN-517] Add interface assignments to the DHCPv6 client | Stack on delegation after kernel IPv6 acquisition merges. End the DHCPv6 stack here. |
-| MWAN | [MWAN-518] Recover persisted assignments after restart | Use a standalone PR after acquisition implementations merge. |
+| MWAN | [MWAN-518] Persist lease records | Standalone. |
+| MWAN | [MWAN-518] Validate DHCPv4 restart | Independent. |
+| MWAN | [MWAN-518] Validate DHCPv6 restart | Independent. |
+| MWAN | [MWAN-518] Integrate recovery | After the three PRs merge. |
 | Configs | [MWAN-521] Render complete interface roles and ownership | Start the deployment stack after the model contract merges. Keep default ownership unchanged. |
 | Configs | [MWAN-521] Implement exclusive ownership transfer and recovery | Stack on rendering. End the deployment stack here; gate activation on the complete application release. |
 | Configs | [MWAN-522] Configure protocol lifecycle scenarios in ISP simulators | Use an independent PR. Preserve existing simulator defaults. |
