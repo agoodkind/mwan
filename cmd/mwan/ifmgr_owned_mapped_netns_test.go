@@ -122,6 +122,7 @@ func runOwnedMappedDaemonRuntime(t *testing.T) {
 	waitStaticRuntimeAddress(t, first, "enwebpass0", "2001:db8:beef:200::1/128", true)
 	waitMappedRuntimeRule(t, first, "ip", "nat", "10.39.7.3", 40*time.Second)
 	waitMappedRuntimeRule(t, first, "ip6", "nat", "2001:db8:beef:300::1", 40*time.Second)
+	waitMappedRuntimeForwarding(t, first, 10*time.Second)
 	assertMappedRuntimeReply(t, first, gateway, parentPeer.namespace, lan.namespace, "udp4", "10.39.7.3:39803", "192.0.2.3:39803")
 	assertMappedRuntimeReply(t, first, gateway, parentPeer.namespace, lan.namespace, "udp4", "10.39.7.4:39804", "192.0.2.4:39804")
 	assertMappedRuntimeReply(t, first, gateway, parentPeer.namespace, lan.namespace, "udp6", "[2001:db8:beef:300::1]:39806", "[2001:db8:b01:fe::2]:39806")
@@ -189,6 +190,49 @@ func waitMappedRuntimeRule(t *testing.T, daemon *runtimeDaemon, family, table, m
 	}
 	rules, _ := exec.Command("nft", "list", "ruleset").CombinedOutput()
 	t.Fatalf("%s %s did not install %s: rules=%s daemon=%s", family, table, match, rules, runtimeLogTail(t, daemon, 100))
+}
+
+func waitMappedRuntimeForwarding(t *testing.T, daemon *runtimeDaemon, timeout time.Duration) {
+	t.Helper()
+	checks := []struct {
+		arguments []string
+		matches   []string
+	}{
+		{[]string{"nft", "list", "chain", "inet", "mangle", "prerouting"}, []string{`iifname "owned397" ct state new meta mark set`, "ct state established,related meta mark set ct mark"}},
+		{[]string{"nft", "list", "chain", "inet", "mangle", "postrouting"}, []string{"ct mark set meta mark"}},
+		{[]string{"nft", "list", "chain", "inet", "mwan_steer", "forward"}, []string{`oifname "owned397"`, "meta nfproto ipv6", "drop"}},
+		{[]string{"ip", "-6", "rule", "show"}, []string{"fwmark 0x4", "lookup 398"}},
+		{[]string{"ip", "-6", "route", "show", "table", "398"}, []string{"default via fd39:7::2 dev owned397", "2001:db8:b01:fe::2 dev enmwanbr0"}},
+	}
+	deadline := time.Now().Add(timeout)
+	var last string
+	for time.Now().Before(deadline) {
+		ready := true
+		for _, check := range checks {
+			output, err := exec.Command(check.arguments[0], check.arguments[1:]...).CombinedOutput()
+			if err != nil {
+				last = fmt.Sprintf("%s: %v: %s", strings.Join(check.arguments, " "), err, output)
+				ready = false
+				break
+			}
+			for _, match := range check.matches {
+				if !strings.Contains(string(output), match) {
+					last = fmt.Sprintf("%s lacks %q: %s", strings.Join(check.arguments, " "), match, output)
+					ready = false
+					break
+				}
+			}
+			if !ready {
+				break
+			}
+		}
+		if ready {
+			return
+		}
+		assertRuntimeDaemonRunning(t, daemon)
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("mapped forwarding did not become ready: %s; daemon=%s", last, runtimeLogTail(t, daemon, 100))
 }
 
 func addMappedRuntimeRoute(t *testing.T, destination, gateway, device string) {
