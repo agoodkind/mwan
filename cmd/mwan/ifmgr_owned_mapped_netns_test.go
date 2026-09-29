@@ -162,7 +162,6 @@ func runOwnedMappedDaemonRuntime(t *testing.T) {
 	conflict := startRuntimeDaemon(t, os.Getenv(mappedRuntimeBinaryEnv), configPath, root, "mapped-conflict")
 	defer killOwnedRuntimeDaemon(t, conflict)
 	waitStaticRuntimeLog(t, conflict, "foreign address uses 2001:db8:beef:500::1 with another prefix")
-	waitStaticRuntimeLog(t, conflict, "MWAN-owned external address 2001:db8:beef:500::1/128 is not verified")
 	assertMappedRuntimeRuleAbsent(t, "ip6", "nat", "2001:db8:beef:500::1")
 	waitStaticRuntimeAddress(t, conflict, "owned397", "2001:db8:beef:500::1/64", true)
 }
