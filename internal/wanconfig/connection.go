@@ -126,7 +126,7 @@ func validateMWANConnection(connection interfaceintent.Connection) error {
 			ipv6.Forwarding != nil && *ipv6.Forwarding) {
 		return invalid(fmt.Sprintf("interface %s has unsupported mwan ipv6 intent", connection.Name))
 	}
-	if err := validateMWANDelegation(connection); err != nil {
+	if err := validateMWANDHCPv6(connection); err != nil {
 		return err
 	}
 	if connection.IPv6 != nil {
@@ -135,23 +135,13 @@ func validateMWANConnection(connection interfaceintent.Connection) error {
 	return nil
 }
 
-func validateMWANDelegation(connection interfaceintent.Connection) error {
+func validateMWANDHCPv6(connection interfaceintent.Connection) error {
 	ipv6 := connection.IPv6
-	if ipv6 == nil || ipv6.Delegation == nil {
+	if ipv6 == nil || ipv6.DHCP == nil && ipv6.Delegation == nil && ipv6.DHCPv6 == nil {
 		return nil
 	}
-	duid := ipv6.Delegation.DUID
-	iaid := ipv6.Delegation.IAID
-	if ipv6.DHCPv6 != nil {
-		if ipv6.DHCPv6.DUID != "" {
-			duid = ipv6.DHCPv6.DUID
-		}
-		if ipv6.DHCPv6.IAPDIAID != nil {
-			iaid = ipv6.DHCPv6.IAPDIAID
-		}
-	}
-	if ipv6.DHCP == nil || !*ipv6.DHCP || duid == "" || iaid == nil {
-		return invalid(fmt.Sprintf("interface %s has incomplete mwan DHCPv6 delegation identity", connection.Name))
+	if err := networkjson.ValidateOwnedDHCPv6(connection.Name, ipv6); err != nil {
+		return invalid(err.Error())
 	}
 	return nil
 }

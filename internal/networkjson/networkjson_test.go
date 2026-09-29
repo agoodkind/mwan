@@ -1073,7 +1073,7 @@ func TestLoadMWANOwnedLink(t *testing.T) {
 		"link files":  {`"goodkind-mwan-steering:link-files": "rendered",`, "cannot use networkd files"},
 		"networkd":    {`"goodkind-mwan-steering:networkd": {},`, "cannot use networkd files"},
 		"IPv4":        {`"ietf-ip:ipv4": { "goodkind-mwan-steering:dhcp": true, "goodkind-mwan-steering:resolver": {} },`, "supports local addresses, DHCPv4"},
-		"IPv6":        {`"ietf-ip:ipv6": { "goodkind-mwan-steering:dhcp": true },`, "DHCPv6 delegation requires ipv6/dhcp true and delegation"},
+		"IPv6":        {`"ietf-ip:ipv6": { "goodkind-mwan-steering:dhcp": true },`, "DHCPv6 client must request an address or prefix"},
 		"lease store": {`"goodkind-mwan-steering:lease-store": "/tmp/leases",`, "cannot use networkd files"},
 		"steering":    {`"goodkind-mwan-steering:steering": { "tier": 0 },`, "steering without a provider"},
 		"WAN":         {`"goodkind-mwan-steering:wan": { "name": "owned" },`, "requires an address family"},

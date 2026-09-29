@@ -10,36 +10,62 @@ import (
 	"goodkind.io/mwan/internal/interfaceintent"
 )
 
-func validateMWANDHCPv6(name string, wire *familyV6, intent *interfaceintent.IPv6) error {
-	if wire.DHCP == nil || !*wire.DHCP || wire.Delegation == nil {
-		return fmt.Errorf("interface %s: DHCPv6 delegation requires ipv6/dhcp true and delegation", name)
+// ValidateOwnedDHCPv6 checks the client settings shared by the loader and served tree.
+func ValidateOwnedDHCPv6(name string, intent *interfaceintent.IPv6) error {
+	if intent == nil || intent.DHCP == nil || !*intent.DHCP {
+		return fmt.Errorf("interface %s: DHCPv6 acquisition requires ipv6/dhcp true", name)
 	}
 	delegation := intent.Delegation
+	requestAddress := false
+	requestPrefix := delegation != nil
 	withoutRA := dhcpv6WithoutRA(intent)
-	duid := delegation.DUID
-	iaid := delegation.IAID
-	if client := intent.DHCPv6; client != nil {
-		if client.RequestAddress != nil && *client.RequestAddress || client.RequestPrefix != nil && !*client.RequestPrefix {
-			return fmt.Errorf("interface %s: DHCPv6 address request and disabled prefix request are not supported", name)
-		}
-		if client.UseDNS != nil && *client.UseDNS {
-			return fmt.Errorf("interface %s: dhcpv6 use-dns requires resolver ownership", name)
-		}
-		if client.DUID != "" {
-			duid = client.DUID
-		}
-		if client.IAPDIAID != nil {
-			iaid = client.IAPDIAID
-		}
+	duid := ""
+	var prefixIAID *uint32
+	if delegation != nil {
+		duid = delegation.DUID
+		prefixIAID = delegation.IAID
+	}
+	client := intent.DHCPv6
+	if client == nil {
+		var emptyClient interfaceintent.DHCPv6
+		client = &emptyClient
+	}
+	if client.RequestAddress != nil {
+		requestAddress = *client.RequestAddress
+	}
+	if client.RequestPrefix != nil {
+		requestPrefix = *client.RequestPrefix
+	}
+	if client.UseDNS != nil && *client.UseDNS {
+		return fmt.Errorf("interface %s: dhcpv6 use-dns requires resolver ownership", name)
+	}
+	if client.DUID != "" {
+		duid = client.DUID
+	}
+	addressIAID := client.IANAIAID
+	if client.IAPDIAID != nil {
+		prefixIAID = client.IAPDIAID
+	}
+	if !requestAddress && !requestPrefix {
+		return fmt.Errorf("interface %s: DHCPv6 client must request an address or prefix", name)
+	}
+	if delegation != nil && !requestPrefix {
+		return fmt.Errorf("interface %s: DHCPv6 delegation requires a prefix request", name)
 	}
 	if withoutRA == "information-request" {
-		return fmt.Errorf("interface %s: without-ra information-request cannot acquire an IA_PD prefix", name)
+		return fmt.Errorf("interface %s: without-ra information-request cannot acquire an IA_NA address or IA_PD prefix", name)
 	}
 	if withoutRA != "solicit" && withoutRA != "no" {
-		return fmt.Errorf("interface %s: DHCPv6 delegation requires without-ra no or solicit", name)
+		return fmt.Errorf("interface %s: DHCPv6 acquisition requires without-ra no or solicit", name)
 	}
-	if duid == "" || iaid == nil {
-		return fmt.Errorf("interface %s: DHCPv6 delegation requires configured DUID and prefix IAID", name)
+	if duid == "" {
+		return fmt.Errorf("interface %s: DHCPv6 acquisition requires a configured DUID", name)
+	}
+	if requestAddress && addressIAID == nil {
+		return fmt.Errorf("interface %s: DHCPv6 address request requires address IAID", name)
+	}
+	if requestPrefix && prefixIAID == nil {
+		return fmt.Errorf("interface %s: DHCPv6 prefix request requires prefix IAID", name)
 	}
 	decoded, err := hex.DecodeString(strings.ReplaceAll(duid, ":", ""))
 	if err != nil {
@@ -57,5 +83,8 @@ func dhcpv6WithoutRA(intent *interfaceintent.IPv6) string {
 	if intent.DHCPv6 != nil && intent.DHCPv6.WithoutRA != "" {
 		return intent.DHCPv6.WithoutRA
 	}
-	return intent.Delegation.WithoutRA
+	if intent.Delegation != nil {
+		return intent.Delegation.WithoutRA
+	}
+	return ""
 }
