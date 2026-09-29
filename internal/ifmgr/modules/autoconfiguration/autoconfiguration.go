@@ -30,7 +30,7 @@ type Module struct {
 
 // New validates the connection policies before the module starts.
 func New(config ifmgr.ModuleConfig) (ifmgr.Module, error) {
-	module := &Module{BaseModule: ifmgr.NewBaseModule(moduleName), connections: nil}
+	module := &Module{BaseModule: ifmgr.NewBaseModule(moduleName)}
 	if config == nil {
 		return module, nil
 	}
@@ -45,8 +45,8 @@ func New(config ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		if err := validateIPv6(connection.Name, *connection.IPv6); err != nil {
 			return nil, err
 		}
+		module.connections = append(module.connections, connection)
 	}
-	module.connections = settings.Connections
 	return module, nil
 }
 
@@ -73,6 +73,9 @@ func validateIPv6(name string, ipv6 interfaceintent.IPv6) error {
 // Init receives the owned-link state and sysctl writer.
 func (module *Module) Init(_ context.Context, env *ifmgr.Env) error {
 	module.InitBase(env, "module", moduleName)
+	if len(module.connections) == 0 {
+		return ifmgr.ErrModuleDisabled
+	}
 	if env.OwnedLinks == nil || env.Sysctl == nil {
 		return fmt.Errorf("autoconfiguration: owned links and sysctl access are required")
 	}
@@ -82,9 +85,6 @@ func (module *Module) Init(_ context.Context, env *ifmgr.Env) error {
 // Reconcile applies configured policy to ready owned links.
 func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	for _, connection := range module.connections {
-		if connection.Owner != interfaceintent.OwnerMWAN || connection.IPv6 == nil {
-			continue
-		}
 		ready, ok := module.Env.OwnedLinks.Get(connection.ID.String())
 		if !ok || ready.Status != netif.OwnedLinkReady || ready.ActualName == "" {
 			continue
