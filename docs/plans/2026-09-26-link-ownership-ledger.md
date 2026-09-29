@@ -1147,7 +1147,8 @@ that the phase validates.
 The signed `codex/mwan-398-mapped` patch transfers on-link IPv4 mappings
 and the configured NPT external `::1/128` address to the address module for
 exclusively owned connections. Legacy connections retain their existing
-address writers. No live provider transfer, merge, release, or deployment ran.
+address writers. [MWAN PR #91](https://github.com/agoodkind/mwan/pull/91)
+merged as `4b8a219e601c2444135ef5b0e39bd28dd9e08e41`.
 
 The public daemon namespace test passed local and routed IPv4 packet replies,
 inbound NPT IPv6 packet replies, legacy NPT address installation, changed
@@ -1157,8 +1158,38 @@ the new NPT rule. The focused test passed three consecutive runs. The Docker
 check and test gate and all six privileged public firewall tests passed.
 Independent review found no runtime blocker and identified stale writer
 comments. The corrected patch received a MERGE-READY verdict. The reviewer
-did not run a red-green reversal. The next step is a focused PR, followed by
-testbed validation of a merged release with the other compatible phase work.
+did not run a red-green reversal. Required PR checks passed. The optional
+Govulncheck job reported the existing GoBGP advisory, and the optional
+PR-Agent service failed before reviewing a code chunk.
+
+Release `202609290344-59-4b8a219` passed build, package, publish, and archive
+verification. [Configs PR #551](https://github.com/agoodkind/configs/pull/551)
+pinned that release in testbed and merged as
+`5742621ad33f550d47ceef7e17d42885843036f7`. The production pin did not
+change. The clean merged Configs checkout ran the check-mode
+`./configsctl deploy deploy-mwan --limit mwan_suburban_servers --check --diff`
+command. Its first check lost the SSH
+connection during a Suburban load spike. The VM remained reachable. A repeat
+after host load fell passed with 174 successful tasks, 13 proposed changes,
+and zero unreachable hosts or failures. The same checkout then ran the apply.
+It completed with 229 successful tasks, 24 changes, and zero unreachable hosts
+or failures. The asynchronous interface-manager restart and reconnect passed.
+
+The deploy gate trace `20260928-213013-deploy-973524` recorded reboot,
+OPNsense-originated IPv4 and IPv6 HTTPS egress through the MWAN next hop, and
+mapped-address checks with return codes of zero. VM 213 reported release
+commit `4b8a219e`, and `mwan-ifmgr@wan` was active. Downstream
+clients 225 and 226 each had one network interface and default routes through
+OPNsense. Each client received three of three IPv4 and three of three IPv6
+ICMP replies after deployment. This sample did not measure interruption across
+the reboot. Client 225 then completed ten of ten fresh IPv4 and six of six
+fresh IPv6 HTTPS connections. An IPv4 SYN capture recorded three connections
+on Webpass and two on AT&T before its 20-second timeout. An IPv6 packet capture
+recorded connections on both providers. These samples establish selection of
+both eligible providers, not a statistical weight estimate. The public Linux
+namespace test validated the mapped/NPT writer. No live provider has
+transferred address ownership.
+MWAN-398 remains In Progress for protocol acquisition and full phase acceptance.
 
 The finding counts report blockers, issues to fix, and minor issues found
 during review, including findings fixed before the verdict.
