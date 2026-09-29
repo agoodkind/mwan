@@ -61,7 +61,7 @@ No interface-owner cutover has begun.
 | MWAN-397 | 397-links | [MWAN PR #86](https://github.com/agoodkind/mwan/pull/86) merged as `446e76fe590e5dc9bbbcfe6fd875a8752f4e404c`. Configs PRs #548 and #549 passed testbed and production deployment with downstream packets, balancing, failover, and recovery. Tack records Done. |
 | MWAN-523 | 523-observation | [MWAN PR #60](https://github.com/agoodkind/mwan/pull/60) merged the observer foundation as `13183ea9d6264beac7b85bfd4e7946b15f7da601`. Configs PRs #533 and #535 passed its first testbed and production checkpoints. MWAN PRs #66, #71, #73, #75, #77, and #79 verified route identity, bridge rebinding, router advertisement lifetimes, index reuse, daemon packet recovery, and duplicate-address failure in privileged kernel tests. PR #81 repaired snapshot replay overflow. Configs PRs #544 and #545 passed final testbed and production acceptance. |
 | MWAN-530 | Restart handover | [MWAN PR #64](https://github.com/agoodkind/mwan/pull/64) merged forwarding readiness as `798ee6a8dcb57ef91e7d9656e8a368f3f4bd4412`. OPNsense selected the backup during controlled testbed and production reboots, then restored the primary while downstream replies continued. Tack records Done. |
-| MWAN-398 | 398-static; 398-mapped-addresses; 398-dhcpv4 | The static address and route slice is in implementation on `codex/mwan-398-static` from `fd8277f`. Tack records In Progress. No PR, merge, or deployment exists for this slice. |
+| MWAN-398 | 398-static; 398-mapped-addresses; 398-dhcpv4 | [MWAN PR #89](https://github.com/agoodkind/mwan/pull/89) implements static addresses and routes on `codex/mwan-398-static`. Local tests passed. Final review, required CI, merge, release, and deployment remain pending. Tack records In Progress. |
 | MWAN-227 | 227-delegation | Execution has not started. |
 | MWAN-517 | 517-autoconfiguration; 517-dhcpv6 | Execution has not started. |
 | MWAN-518 | 518-restart | Execution has not started. |
@@ -78,9 +78,8 @@ No interface-owner cutover has begun.
 
 MWAN-524 restored Astound as a managed testbed connection. MWAN-397 link
 management passed testbed and production acceptance without transferring a
-live link. Implement MWAN-398 static address and route ownership on synthetic
-connections first. Deploy its merged release to testbed and verify the
-downstream battery before production promotion.
+live link. Finish MWAN PR #89 review and merge. Deploy its release to testbed
+and verify the downstream battery before production promotion.
 No interface-owner cutover has begun.
 
 For every handoff, record the slice, agent responsibility, exact source
