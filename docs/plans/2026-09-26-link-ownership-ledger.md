@@ -78,8 +78,10 @@ No interface-owner cutover has begun.
 
 MWAN-524 restored Astound as a managed testbed connection. MWAN-397 link
 management passed testbed and production acceptance without transferring a
-live link. Finish MWAN PR #89 review and merge. Deploy its release to testbed
-and verify the downstream battery before production promotion.
+live link. Finish MWAN PR #89 review and merge. Deploy its release to testbed.
+Verify continuous downstream IPv4 and IPv6 packets, new-connection balancing,
+failover and recovery, and the mapped-address deploy gate before production
+promotion.
 No interface-owner cutover has begun.
 
 For every handoff, record the slice, agent responsibility, exact source
