@@ -106,7 +106,11 @@ func dhcpv6PDConfig(connection interfaceintent.Connection, iface string) (netif.
 	delegation := connection.IPv6.Delegation
 	duid := delegation.DUID
 	iaid := delegation.IAID
+	withoutRA := delegation.WithoutRA
 	if client := connection.IPv6.DHCPv6; client != nil {
+		if client.WithoutRA != "" {
+			withoutRA = client.WithoutRA
+		}
 		if client.DUID != "" {
 			duid = client.DUID
 		}
@@ -122,7 +126,7 @@ func dhcpv6PDConfig(connection interfaceintent.Connection, iface string) (netif.
 		slog.Warn("addresses: invalid configured DHCPv6 DUID", "connection_id", connection.ID, "err", err)
 		return netif.DHCPv6PDConfig{}, fmt.Errorf("decode DUID: %w", err)
 	}
-	return netif.DHCPv6PDConfig{Iface: iface, DUID: decoded, IAID: *iaid, Hint: delegation.Hint, Clock: clock.Real{}}, nil
+	return netif.DHCPv6PDConfig{Iface: iface, DUID: decoded, IAID: *iaid, Hint: delegation.Hint, Clock: clock.Real{}, WaitForRA: withoutRA == "no"}, nil
 }
 
 func (module *Module) watchDHCPv6(ctx context.Context, id string, session *dhcpv6Session) {

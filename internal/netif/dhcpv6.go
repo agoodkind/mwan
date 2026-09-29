@@ -22,11 +22,12 @@ import (
 
 // DHCPv6PDConfig identifies one delegated-prefix association on one link.
 type DHCPv6PDConfig struct {
-	Iface string
-	DUID  []byte
-	IAID  uint32
-	Hint  netip.Prefix
-	Clock internalclock.Clock
+	Iface     string
+	DUID      []byte
+	IAID      uint32
+	Hint      netip.Prefix
+	Clock     internalclock.Clock
+	WaitForRA bool
 }
 
 // DelegatedPrefix records the server's association and absolute lifetimes.
@@ -148,6 +149,12 @@ func (client *DHCPv6PDClient) run(ctx context.Context, log *slog.Logger, config 
 			}
 			continue
 		}
+		if config.WaitForRA && !waitDHCPv6RA(ctx, log, config.Iface, link.Index) {
+			if !waitDHCPv6(ctx, time.Second) {
+				return
+			}
+			continue
+		}
 		transport, err := nclient6.New(config.Iface, nclient6.WithRetry(1), nclient6.WithTimeout(time.Second))
 		if err != nil {
 			log.WarnContext(ctx, "dhcpv6: socket unavailable", "iface", config.Iface, "err", err)
@@ -161,6 +168,34 @@ func (client *DHCPv6PDClient) run(ctx context.Context, log *slog.Logger, config 
 			log.WarnContext(ctx, "dhcpv6: close socket failed", "err", err)
 		}
 	}
+}
+
+func waitDHCPv6RA(ctx context.Context, log *slog.Logger, iface string, linkIndex int) bool {
+	raClient, err := NewRAClient(iface, log)
+	if err != nil {
+		log.WarnContext(ctx, "dhcpv6: RA listener unavailable", "iface", iface, "err", err)
+		return false
+	}
+	defer raClient.Close()
+	for ctx.Err() == nil {
+		link, err := net.InterfaceByName(iface)
+		if err != nil || link.Index != linkIndex {
+			return false
+		}
+		advertisement, err := raClient.SolicitRA(ctx, time.Second)
+		if err == nil && (advertisement.ManagedConfiguration || advertisement.OtherConfiguration) {
+			link, err = net.InterfaceByName(iface)
+			return err == nil && link.Index == linkIndex && ctx.Err() == nil
+		}
+		if err != nil && !errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+			log.WarnContext(ctx, "dhcpv6: RA read failed", "iface", iface, "err", err)
+			return false
+		}
+		if !waitDHCPv6(ctx, time.Second) {
+			return false
+		}
+	}
+	return false
 }
 
 func (client *DHCPv6PDClient) negotiate(ctx context.Context, log *slog.Logger, transport *nclient6.Client, config DHCPv6PDConfig, link *net.Interface) {
