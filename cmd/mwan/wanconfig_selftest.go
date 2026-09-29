@@ -198,10 +198,8 @@ func restoreSelftestLeaf(pub yangpub.Publisher, log *slog.Logger, priorValue str
 	log.Info("selftest leaf removed", "path", selftestHashModePath)
 }
 
-// selftestModels lists the gateway's model files in install order, the
-// order the deploy installs them, each matched by pattern because the
-// file name carries the revision and a models directory may carry a
-// different revision of the interface-type registry than the deploy ships.
+// selftestModels selects the steering revision installed by this binary.
+// Other modules may use the revisions already installed on the host.
 var selftestModels = []struct {
 	pattern  string
 	features []string
@@ -212,7 +210,7 @@ var selftestModels = []struct {
 	{pattern: "iana-if-type@*.yang", features: nil},
 	{pattern: "ietf-ip@*.yang", features: nil},
 	{pattern: "ietf-nat@*.yang", features: []string{"basic-nat44", "napt44", "dst-nat", "nptv6"}},
-	{pattern: "goodkind-mwan-steering@*.yang", features: nil},
+	{pattern: yangpub.SteeringSchemaFile, features: nil},
 }
 
 // resolveSelftestModels finds exactly one file per model in dir.

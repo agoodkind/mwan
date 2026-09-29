@@ -37,8 +37,6 @@ type CurrentAddr struct {
 	CIDR   string
 	Family string // "inet" or "inet6"
 	// Flags is the raw IFA_F_* bitmask from netlink (linux/if_addr.h).
-	// Useful flags include IFA_F_PERMANENT (0x80) which is set when the
-	// address was added administratively rather than via SLAAC autoconf.
 	Flags int
 	Scope int
 	// Lifetimes are seconds remaining at ObservedAt. A negative value means unknown.
@@ -49,10 +47,8 @@ type CurrentAddr struct {
 	Origin string
 }
 
-// IFA_F_* flag constants from linux/if_addr.h, exposed so callers can
-// classify addresses (SLAAC vs manually-added vs deprecated etc.) without
-// importing the kernel headers or vishvananda/netlink. Matches the values
-// returned in CurrentAddr.Flags.
+// IFA_F_* flag constants from linux/if_addr.h. These flags describe
+// address state but do not establish acquisition provenance.
 const (
 	IFAFTemporary      = 0x01
 	IFAFNoDAD          = 0x02
