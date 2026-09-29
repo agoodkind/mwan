@@ -1214,6 +1214,34 @@ passed. An independent review parsed the default and short configurations
 with Kea and radvd. Neither merged change has been deployed in this phase.
 MWAN-522 remains In Progress for protocol assertions and live acceptance.
 
+### MWAN-398 DHCPv4 implementation and testbed pin, September 29, 2026
+
+The five focused DHCPv4 PRs merged in order: [#95](https://github.com/agoodkind/mwan/pull/95)
+at `88a34f4` added lease renewal, rebinding, expiry, and classless routes;
+[#96](https://github.com/agoodkind/mwan/pull/96) at `534ea12` added exact
+address and route ownership; [#97](https://github.com/agoodkind/mwan/pull/97)
+at `8912e77` updated OOB and failover assignment consumers;
+[#98](https://github.com/agoodkind/mwan/pull/98) at `86ff105` added WAN-owned
+acquisition and seven real Kea namespace scenarios; and
+[#99](https://github.com/agoodkind/mwan/pull/99) at `3945636` permitted the
+required journal and IPv4 kernel-policy writes in the WAN and failover units.
+An independent review found the missing unit permissions before merge. The
+Docker check and test gate and all seven Kea scenarios passed locally. CI on
+the final main commit passed. The optional mapped IPv6 UDP firewall test
+timed out intermittently on earlier PR runs; its cause remains unproven.
+
+[Configs PR #556](https://github.com/agoodkind/configs/pull/556) merged as
+`a852377` and added the conditional OOB DHCPv4 unit permissions on Vault.
+Release `202609290823-61-3945636` passed archive and attestation verification
+on the second workflow attempt. The first attempt could not query the GitHub
+release API and returned HTTP 403 before checking an archive. Independently,
+all four downloaded archives matched the published SHA256 file.
+[Configs PR #557](https://github.com/agoodkind/configs/pull/557) merged as
+`db0f3cd` and pinned the two Linux AMD64 archives to testbed only. Its
+required checks passed. Production remains pinned to its previous MWAN
+release. No testbed or production deployment of this DHCPv4 phase has run.
+MWAN-398 and MWAN-522 remain In Progress until live acceptance.
+
 The finding counts report blockers, issues to fix, and minor issues found
 during review, including findings fixed before the verdict.
 The post-verdict column records defects discovered after that review verdict.
