@@ -30,7 +30,7 @@ type Module struct {
 
 // New validates the connection policies before the module starts.
 func New(config ifmgr.ModuleConfig) (ifmgr.Module, error) {
-	module := &Module{BaseModule: ifmgr.NewBaseModule(moduleName)}
+	module := &Module{BaseModule: ifmgr.NewBaseModule(moduleName), connections: nil}
 	if config == nil {
 		return module, nil
 	}
