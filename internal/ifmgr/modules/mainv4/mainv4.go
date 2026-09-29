@@ -88,7 +88,7 @@ func (m *Module) OnDHCPLease(
 		return m.applyBound(ctx, log, lease)
 	case netif.LeaseExpired:
 		return m.applyExpired(ctx, log)
-	case netif.LeaseInit, netif.LeaseSelecting, netif.LeaseRequesting, netif.LeaseRenewing:
+	case netif.LeaseInit, netif.LeaseSelecting, netif.LeaseRequesting, netif.LeaseRenewing, netif.LeaseRebinding:
 		return nil
 	}
 	return nil
