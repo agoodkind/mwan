@@ -134,6 +134,13 @@ owned address and route one writer during this integration.
 3. Prevent delayed events from a stopped client from overwriting assignments
    for a recreated interface or replacement client.
 4. Preserve the failover consumer's inactive behavior when DHCPv4 is disabled.
+5. On the first journal-backed assignment, record the exact address confirmed
+   by the new ACK and the old role's default route on the configured link and
+   table before replacing them. Accept an old default with a changed gateway.
+   Record that migration ran so later foreign objects cannot be imported.
+   Reject an unidentified IPv4 address instead of deleting it. When failover
+   DHCPv4 is disabled, remove addresses and routes already recorded in its
+   journal before leaving the module inactive.
 
 ### 3. Verify real DHCP behavior
 
@@ -159,6 +166,12 @@ real DHCPv4 server, and a downstream packet sender.
    and removal of owned addresses and main-table defaults after NAK or expiry.
    Confirm unrelated state survives. Start the role with DHCPv4 disabled and
    verify that it starts no client and performs no DHCP address or route writes.
+6. Start both existing roles with a legacy lease address and default route but
+   no ownership journal. Verify that the first ACK imports the exact old
+   objects, updates the gateway, and removes them after expiry. Repeat with
+   the old default absent and its address present. Reject a different old
+   address without removing it. Restart failover with DHCPv4 disabled and
+   verify that its journaled address and route are removed.
 
 ### Review and handoff
 

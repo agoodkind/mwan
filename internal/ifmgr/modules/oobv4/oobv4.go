@@ -22,16 +22,19 @@ type Module struct {
 
 	cfg   Config
 	clock internalclock.Clock
+	owner *netif.OwnedDHCPv4Reconciler
 
-	currentCIDR string    // last-applied address (e.g. "158.247.70.13/26")
-	currentGW   string    // last-applied default gateway in oob table
-	lastBound   time.Time // last time State==BOUND was observed
+	lastBound        time.Time // last time State==BOUND was observed
+	appliedExpiresAt time.Time
+	appliedEpoch     uint64
+	hasApplied       bool
 }
 
 // Config is the parsed [ifmgr.modules.oobv4] sub-config.
 type Config struct {
 	Iface      string
 	OOBTableID int
+	StateFile  string
 }
 
 // ModuleConfigName returns the registry key for this module's config block.
@@ -53,103 +56,137 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	if env.DHCP == nil {
 		return fmt.Errorf("oobv4: requires DHCP client (set ifmgr.iface.<name>.dhcp_v4 = true)")
 	}
+	stateFile := m.cfg.StateFile
+	if stateFile == "" {
+		stateFile = "/var/lib/mwan/oobv4-dhcpv4.json"
+	}
+	owner, err := netif.NewOwnedDHCPv4Reconciler(stateFile)
+	if err != nil {
+		log.ErrorContext(ctx, "oobv4: ownership journal unavailable", "err", err)
+		return fmt.Errorf("oobv4: open DHCPv4 ownership journal: %w", err)
+	}
+	if err := owner.PruneConsumer(ctx, "oobv4"); err != nil {
+		log.ErrorContext(ctx, "oobv4: prior assignment withdrawal failed", "err", err)
+		return fmt.Errorf("oobv4: withdraw prior DHCPv4 assignment: %w", err)
+	}
+	m.owner = owner
 	return nil
 }
 
-// Reconcile implements ifmgr.Module. v4 reacts to lease events; nothing
-// to do on the periodic tick beyond what OnDHCPLease already applied.
-func (m *Module) Reconcile(_ context.Context, _ *slog.Logger) error {
+// Reconcile retries the latest valid assignment and expires the applied lease.
+func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
+	lease := m.Env.DHCP.LastLease()
+	if err := m.withdrawInvalidated(ctx, lease); err != nil {
+		return err
+	}
+	if lease.State == netif.LeaseBound || lease.State == netif.LeaseExpired ||
+		lease.State == netif.LeaseRenewing || lease.State == netif.LeaseRebinding {
+		return m.OnDHCPLease(ctx, log, lease)
+	}
 	return nil
 }
 
-// OnDHCPLease implements ifmgr.Module. Translates lease state to kernel
-// mutations (address replace, OOB-table default replace/clear).
+func (m *Module) withdrawInvalidated(ctx context.Context, lease netif.LeaseInfo) error {
+	m.Lock()
+	defer m.Unlock()
+	if !m.hasApplied {
+		if lease.InvalidationEpoch > m.appliedEpoch {
+			m.appliedEpoch = lease.InvalidationEpoch
+		}
+		return nil
+	}
+	expired := !m.appliedExpiresAt.IsZero() && !m.clock.Now().Before(m.appliedExpiresAt)
+	if !expired && lease.InvalidationEpoch <= m.appliedEpoch {
+		return nil
+	}
+	if err := m.owner.Reconcile(ctx, "oobv4", m.cfg.Iface, m.cfg.Iface, m.cfg.OOBTableID, 0, nil); err != nil {
+		m.Log.WarnContext(ctx, "oobv4: invalidated assignment withdrawal failed", "err", err)
+		return fmt.Errorf("oobv4: withdraw expired DHCPv4 assignment: %w", err)
+	}
+	m.appliedExpiresAt = time.Time{}
+	if lease.InvalidationEpoch > m.appliedEpoch {
+		m.appliedEpoch = lease.InvalidationEpoch
+	}
+	m.hasApplied = false
+	return nil
+}
+
+// OnDHCPLease implements ifmgr.Module.
 func (m *Module) OnDHCPLease(
 	ctx context.Context, log *slog.Logger, lease netif.LeaseInfo,
 ) error {
 	log = log.With("op", "lease-event", "state", lease.State.String())
 	log.DebugContext(ctx, "oobv4: lease event", "info", lease.String())
+	if lease.State == netif.LeaseBound || lease.State == netif.LeaseRenewing ||
+		lease.State == netif.LeaseRebinding || lease.State == netif.LeaseExpired {
+		matches, err := lease.MatchesLink(m.cfg.Iface)
+		if err != nil {
+			return fmt.Errorf("oobv4: inspect DHCPv4 interface: %w", err)
+		}
+		if !matches {
+			log.WarnContext(ctx, "oobv4: ignored lease from replaced interface")
+			return nil
+		}
+	}
+	m.Lock()
+	stale := lease.InvalidationEpoch < m.appliedEpoch
+	m.Unlock()
+	if stale {
+		return nil
+	}
+	if err := m.withdrawInvalidated(ctx, lease); err != nil {
+		return err
+	}
 
 	switch lease.State {
 	case netif.LeaseBound:
-		return m.applyBound(ctx, log, lease)
+		return m.applyBound(ctx, lease)
 	case netif.LeaseExpired:
 		return m.applyExpired(ctx, log)
-	case netif.LeaseInit, netif.LeaseSelecting, netif.LeaseRequesting, netif.LeaseRenewing, netif.LeaseRebinding:
+	case netif.LeaseRenewing, netif.LeaseRebinding:
+		m.Lock()
+		applied := m.hasApplied
+		m.Unlock()
+		if !applied {
+			lease.State = netif.LeaseBound
+			return m.applyBound(ctx, lease)
+		}
+		return nil
+	case netif.LeaseInit, netif.LeaseSelecting, netif.LeaseRequesting:
 		return nil
 	}
 	return nil
 }
 
-func (m *Module) applyBound(
-	ctx context.Context, log *slog.Logger, lease netif.LeaseInfo,
-) error {
+func (m *Module) applyBound(ctx context.Context, lease netif.LeaseInfo) error {
 	if lease.IP == nil {
 		return fmt.Errorf("oobv4: lease BOUND without IP")
 	}
-	prefix := lease.PrefixLen
-	if prefix <= 0 || prefix > 32 {
-		log.WarnContext(ctx, "oobv4: lease has unusable subnet mask, defaulting to /32",
-			"prefix_len", lease.PrefixLen)
-		prefix = 32
-	}
-	cidr := fmt.Sprintf("%s/%d", lease.IP.String(), prefix)
-
-	if err := netif.ReconcileAddrs(ctx, log, m.cfg.Iface, []netif.AddrSpec{
-		{CIDR: cidr, Family: "inet"},
-	}); err != nil {
-		return fmt.Errorf("apply lease addr %s: %w", cidr, err)
-	}
-
-	want := netif.RouteSpec{
-		Family:   "inet",
-		Dest:     "default",
-		Dev:      m.cfg.Iface,
-		Via:      "",
-		Metric:   0,
-		TableID:  m.cfg.OOBTableID,
-		Protocol: 0,
-	}
-	if lease.Gateway != nil {
-		want.Via = lease.Gateway.String()
-	}
-	if err := netif.ReconcileTableDefault(ctx, log, want); err != nil {
-		return fmt.Errorf("apply lease default route: %w", err)
-	}
-
 	m.Lock()
 	defer m.Unlock()
-	if m.currentCIDR != "" && m.currentCIDR != cidr {
-		log.InfoContext(ctx, "oobv4: lease IP changed", "old", m.currentCIDR, "new", cidr)
+	if !lease.ExpiresAt.IsZero() && !m.clock.Now().Before(lease.ExpiresAt) {
+		return nil
 	}
-	if m.currentGW != "" && m.currentGW != want.Via {
-		log.InfoContext(ctx, "oobv4: lease gateway changed", "old", m.currentGW, "new", want.Via)
+	if err := m.owner.Reconcile(ctx, "oobv4", m.cfg.Iface, m.cfg.Iface, m.cfg.OOBTableID, 0, &lease); err != nil {
+		m.Log.WarnContext(ctx, "oobv4: assignment application failed", "err", err)
+		return fmt.Errorf("oobv4: apply DHCPv4 assignment: %w", err)
 	}
-	m.currentCIDR = cidr
-	m.currentGW = want.Via
 	m.lastBound = m.clock.Now()
+	m.appliedExpiresAt = lease.ExpiresAt
+	m.appliedEpoch = lease.InvalidationEpoch
+	m.hasApplied = true
 	return nil
 }
 
 func (m *Module) applyExpired(ctx context.Context, log *slog.Logger) error {
-	log.WarnContext(ctx, "oobv4: lease expired; clearing oob default v4")
-	clearRoute := netif.RouteSpec{
-		Family:   "inet",
-		Dest:     "default",
-		Dev:      m.cfg.Iface,
-		Via:      "",
-		Metric:   0,
-		TableID:  m.cfg.OOBTableID,
-		Protocol: 0,
-	}
-	if err := netif.ReconcileTableDefault(ctx, log, clearRoute); err != nil {
-		return fmt.Errorf("clear oob default v4: %w", err)
-	}
-	// Address removal intentionally NOT done; kernel keeps lease IP until
-	// next BOUND replaces it atomically.
+	log.WarnContext(ctx, "oobv4: DHCPv4 lease expired")
 	m.Lock()
 	defer m.Unlock()
-	m.currentGW = ""
+	if err := m.owner.Reconcile(ctx, "oobv4", m.cfg.Iface, m.cfg.Iface, m.cfg.OOBTableID, 0, nil); err != nil {
+		return fmt.Errorf("oobv4: withdraw DHCPv4 assignment: %w", err)
+	}
+	m.appliedExpiresAt = time.Time{}
+	m.hasApplied = false
 	return nil
 }
 
@@ -165,6 +202,7 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 	c := Config{
 		Iface:      "",
 		OOBTableID: 0,
+		StateFile:  "",
 	}
 	if cfg != nil {
 		typedConfig, ok := cfg.(Config)
@@ -174,12 +212,14 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		c = typedConfig
 	}
 	return &Module{
-		BaseModule:  ifmgr.NewBaseModule("oobv4"),
-		cfg:         c,
-		clock:       nil,
-		currentCIDR: "",
-		currentGW:   "",
-		lastBound:   time.Time{},
+		BaseModule:       ifmgr.NewBaseModule("oobv4"),
+		cfg:              c,
+		clock:            nil,
+		owner:            nil,
+		lastBound:        time.Time{},
+		appliedExpiresAt: time.Time{},
+		appliedEpoch:     0,
+		hasApplied:       false,
 	}, nil
 }
 

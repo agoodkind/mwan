@@ -505,6 +505,7 @@ func buildOOBV4Config(section *config.IfMgrOOBV4Section) oobv4.Config {
 	cfg := oobv4.Config{
 		Iface:      "",
 		OOBTableID: 0,
+		StateFile:  "",
 	}
 	if section == nil {
 		return cfg
@@ -675,7 +676,8 @@ func buildCloudflaredTapConfig(section *config.IfMgrCloudflaredTapSection) cloud
 
 func buildMainV4Config(section *config.IfMgrMainV4Section) mainv4.Config {
 	cfg := mainv4.Config{
-		Iface: "",
+		Iface:     "",
+		StateFile: "",
 	}
 	if section == nil {
 		return cfg

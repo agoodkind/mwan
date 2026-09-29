@@ -29,52 +29,96 @@ type Module struct {
 
 	cfg   Config
 	clock internalclock.Clock
+	owner *netif.OwnedDHCPv4Reconciler
 
-	currentCIDR string
-	currentGW   string
-	lastBound   time.Time
+	lastBound        time.Time
+	appliedExpiresAt time.Time
+	appliedEpoch     uint64
+	hasApplied       bool
 }
 
 // Config is the parsed [ifmgr.modules.mainv4] sub-config.
 type Config struct {
-	Iface string
+	Iface     string
+	StateFile string
 }
 
 // ModuleConfigName returns the registry key for this module's config block.
 func (Config) ModuleConfigName() string { return "mainv4" }
 
-// Init implements ifmgr.Module. Inert when DHCP is disabled so that the
-// shared failover role still works on hosts that do not own DHCPv4
-// (prod LXC 116 today). A no-op Init lets the role include this module
-// unconditionally without breaking those hosts.
+// Init implements ifmgr.Module. A disabled client withdraws journaled assignments.
 func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	log := m.InitBase(env, "module", "mainv4", "iface", m.cfg.Iface)
 	if m.clock == nil {
 		m.clock = internalclock.Real{}
 	}
+	if env.DHCP != nil && m.cfg.Iface == "" {
+		return fmt.Errorf("mainv4: iface is required when dhcp_v4 is enabled")
+	}
+	stateFile := m.cfg.StateFile
+	if stateFile == "" {
+		stateFile = "/var/lib/mwan/mainv4-dhcpv4.json"
+	}
+	owner, err := netif.NewOwnedDHCPv4Reconciler(stateFile)
+	if err != nil {
+		log.ErrorContext(ctx, "mainv4: ownership journal unavailable", "err", err)
+		return fmt.Errorf("mainv4: open DHCPv4 ownership journal: %w", err)
+	}
+	if err := owner.PruneConsumer(ctx, "mainv4"); err != nil {
+		log.ErrorContext(ctx, "mainv4: prior assignment withdrawal failed", "err", err)
+		return fmt.Errorf("mainv4: withdraw prior DHCPv4 assignment: %w", err)
+	}
+	m.owner = owner
 	if env.DHCP == nil {
-		// Inert when DHCPv4 is disabled. iface is unused in this mode, so
-		// don't require it; lets roles include the module unconditionally
-		// without forcing every host's config to declare a placeholder iface.
 		log.InfoContext(ctx, "mainv4: Init (inert: dhcp_v4 is disabled)")
 		return nil
-	}
-	if m.cfg.Iface == "" {
-		return fmt.Errorf("mainv4: iface is required when dhcp_v4 is enabled")
 	}
 	log.InfoContext(ctx, "mainv4: Init (active)")
 	return nil
 }
 
-// Reconcile implements ifmgr.Module. v4 reacts to lease events.
-func (m *Module) Reconcile(_ context.Context, _ *slog.Logger) error {
+// Reconcile retries the latest valid assignment and expires the applied lease.
+func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
+	if m.Env.DHCP == nil {
+		return nil
+	}
+	lease := m.Env.DHCP.LastLease()
+	if err := m.withdrawInvalidated(ctx, lease); err != nil {
+		return err
+	}
+	if lease.State == netif.LeaseBound || lease.State == netif.LeaseExpired ||
+		lease.State == netif.LeaseRenewing || lease.State == netif.LeaseRebinding {
+		return m.OnDHCPLease(ctx, log, lease)
+	}
 	return nil
 }
 
-// OnDHCPLease implements ifmgr.Module. Applies BOUND leases to the iface
-// addr and the main-table default route. Logs every transition. When
-// inert (no DHCP client wired) this is never invoked because no lease
-// events are produced; this method is a no-op in that case anyway.
+func (m *Module) withdrawInvalidated(ctx context.Context, lease netif.LeaseInfo) error {
+	m.Lock()
+	defer m.Unlock()
+	if !m.hasApplied {
+		if lease.InvalidationEpoch > m.appliedEpoch {
+			m.appliedEpoch = lease.InvalidationEpoch
+		}
+		return nil
+	}
+	expired := !m.appliedExpiresAt.IsZero() && !m.clock.Now().Before(m.appliedExpiresAt)
+	if !expired && lease.InvalidationEpoch <= m.appliedEpoch {
+		return nil
+	}
+	if err := m.owner.Reconcile(ctx, "mainv4", m.cfg.Iface, m.cfg.Iface, unix.RT_TABLE_MAIN, 0, nil); err != nil {
+		m.Log.WarnContext(ctx, "mainv4: invalidated assignment withdrawal failed", "err", err)
+		return fmt.Errorf("mainv4: withdraw invalidated DHCPv4 assignment: %w", err)
+	}
+	m.appliedExpiresAt = time.Time{}
+	if lease.InvalidationEpoch > m.appliedEpoch {
+		m.appliedEpoch = lease.InvalidationEpoch
+	}
+	m.hasApplied = false
+	return nil
+}
+
+// OnDHCPLease implements ifmgr.Module.
 func (m *Module) OnDHCPLease(
 	ctx context.Context, log *slog.Logger, lease netif.LeaseInfo,
 ) error {
@@ -83,84 +127,75 @@ func (m *Module) OnDHCPLease(
 	}
 	log = log.With("op", "lease-event", "state", lease.State.String())
 	log.DebugContext(ctx, "mainv4: lease event", "info", lease.String())
+	if lease.State == netif.LeaseBound || lease.State == netif.LeaseRenewing ||
+		lease.State == netif.LeaseRebinding || lease.State == netif.LeaseExpired {
+		matches, err := lease.MatchesLink(m.cfg.Iface)
+		if err != nil {
+			return fmt.Errorf("mainv4: inspect DHCPv4 interface: %w", err)
+		}
+		if !matches {
+			log.WarnContext(ctx, "mainv4: ignored lease from replaced interface")
+			return nil
+		}
+	}
+	m.Lock()
+	stale := lease.InvalidationEpoch < m.appliedEpoch
+	m.Unlock()
+	if stale {
+		return nil
+	}
+	if err := m.withdrawInvalidated(ctx, lease); err != nil {
+		return err
+	}
 	switch lease.State {
 	case netif.LeaseBound:
-		return m.applyBound(ctx, log, lease)
+		return m.applyBound(ctx, lease)
 	case netif.LeaseExpired:
 		return m.applyExpired(ctx, log)
-	case netif.LeaseInit, netif.LeaseSelecting, netif.LeaseRequesting, netif.LeaseRenewing, netif.LeaseRebinding:
+	case netif.LeaseRenewing, netif.LeaseRebinding:
+		m.Lock()
+		applied := m.hasApplied
+		m.Unlock()
+		if !applied {
+			lease.State = netif.LeaseBound
+			return m.applyBound(ctx, lease)
+		}
+		return nil
+	case netif.LeaseInit, netif.LeaseSelecting, netif.LeaseRequesting:
 		return nil
 	}
 	return nil
 }
 
-func (m *Module) applyBound(
-	ctx context.Context, log *slog.Logger, lease netif.LeaseInfo,
-) error {
+func (m *Module) applyBound(ctx context.Context, lease netif.LeaseInfo) error {
 	if lease.IP == nil {
 		return fmt.Errorf("mainv4: lease BOUND without IP")
 	}
-	prefix := lease.PrefixLen
-	if prefix <= 0 || prefix > 32 {
-		log.WarnContext(ctx, "mainv4: lease has unusable subnet mask, defaulting to /32",
-			"prefix_len", lease.PrefixLen)
-		prefix = 32
-	}
-	cidr := fmt.Sprintf("%s/%d", lease.IP.String(), prefix)
-
-	if err := netif.ReconcileAddrs(ctx, log, m.cfg.Iface, []netif.AddrSpec{
-		{CIDR: cidr, Family: "inet"},
-	}); err != nil {
-		return fmt.Errorf("apply lease addr %s: %w", cidr, err)
-	}
-
-	want := netif.RouteSpec{
-		Family:   "inet",
-		Dest:     "default",
-		Dev:      m.cfg.Iface,
-		Via:      "",
-		Metric:   0,
-		TableID:  unix.RT_TABLE_MAIN,
-		Protocol: 0,
-	}
-	if lease.Gateway != nil {
-		want.Via = lease.Gateway.String()
-	}
-	if err := netif.ReconcileTableDefault(ctx, log, want); err != nil {
-		return fmt.Errorf("apply lease default route: %w", err)
-	}
-
 	m.Lock()
 	defer m.Unlock()
-	if m.currentCIDR != "" && m.currentCIDR != cidr {
-		log.InfoContext(ctx, "mainv4: lease IP changed", "old", m.currentCIDR, "new", cidr)
+	if !lease.ExpiresAt.IsZero() && !m.clock.Now().Before(lease.ExpiresAt) {
+		return nil
 	}
-	if m.currentGW != "" && m.currentGW != want.Via {
-		log.InfoContext(ctx, "mainv4: lease gateway changed", "old", m.currentGW, "new", want.Via)
+	if err := m.owner.Reconcile(ctx, "mainv4", m.cfg.Iface, m.cfg.Iface, unix.RT_TABLE_MAIN, 0, &lease); err != nil {
+		m.Log.WarnContext(ctx, "mainv4: assignment application failed", "err", err)
+		return fmt.Errorf("mainv4: apply DHCPv4 assignment: %w", err)
 	}
-	m.currentCIDR = cidr
-	m.currentGW = want.Via
 	m.lastBound = m.clock.Now()
+	m.appliedExpiresAt = lease.ExpiresAt
+	m.appliedEpoch = lease.InvalidationEpoch
+	m.hasApplied = true
 	return nil
 }
 
 func (m *Module) applyExpired(ctx context.Context, log *slog.Logger) error {
-	log.WarnContext(ctx, "mainv4: lease expired; clearing main-table default v4")
-	clearRoute := netif.RouteSpec{
-		Family:   "inet",
-		Dest:     "default",
-		Dev:      m.cfg.Iface,
-		Via:      "",
-		Metric:   0,
-		TableID:  unix.RT_TABLE_MAIN,
-		Protocol: 0,
-	}
-	if err := netif.ReconcileTableDefault(ctx, log, clearRoute); err != nil {
-		return fmt.Errorf("clear main-table default v4: %w", err)
-	}
+	log.WarnContext(ctx, "mainv4: DHCPv4 lease expired")
 	m.Lock()
 	defer m.Unlock()
-	m.currentGW = ""
+	if err := m.owner.Reconcile(ctx, "mainv4", m.cfg.Iface, m.cfg.Iface, unix.RT_TABLE_MAIN, 0, nil); err != nil {
+		return fmt.Errorf("mainv4: withdraw DHCPv4 assignment: %w", err)
+	}
+	m.appliedExpiresAt = time.Time{}
+	m.hasApplied = false
 	return nil
 }
 
@@ -174,7 +209,8 @@ func (m *Module) LastBound() time.Time {
 // New is the Constructor.
 func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 	c := Config{
-		Iface: "",
+		Iface:     "",
+		StateFile: "",
 	}
 	if cfg != nil {
 		typedConfig, ok := cfg.(Config)
@@ -184,12 +220,14 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		c = typedConfig
 	}
 	return &Module{
-		BaseModule:  ifmgr.NewBaseModule("mainv4"),
-		cfg:         c,
-		clock:       nil,
-		currentCIDR: "",
-		currentGW:   "",
-		lastBound:   time.Time{},
+		BaseModule:       ifmgr.NewBaseModule("mainv4"),
+		cfg:              c,
+		clock:            nil,
+		owner:            nil,
+		lastBound:        time.Time{},
+		appliedExpiresAt: time.Time{},
+		appliedEpoch:     0,
+		hasApplied:       false,
 	}, nil
 }
 
