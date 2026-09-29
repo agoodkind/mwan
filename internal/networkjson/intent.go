@@ -214,7 +214,7 @@ func validateMWANIPv6(name string, wire *familyV6, intent *interfaceintent.IPv6)
 		return fmt.Errorf("interface %s: mwan ipv6 does not support forwarding addresses", name)
 	}
 	if wire.DHCP != nil && *wire.DHCP || wire.Delegation != nil || wire.DHCPv6 != nil {
-		if err := validateMWANDHCPv6(name, wire, intent); err != nil {
+		if err := ValidateOwnedDHCPv6(name, intent); err != nil {
 			return err
 		}
 	}
