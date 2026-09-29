@@ -122,6 +122,7 @@ func runOwnedMappedDaemonRuntime(t *testing.T) {
 	waitStaticRuntimeAddress(t, first, "enwebpass0", "2001:db8:beef:200::1/128", true)
 	waitMappedRuntimeRule(t, first, "ip", "nat", "10.39.7.3", 40*time.Second)
 	waitMappedRuntimeRule(t, first, "ip6", "nat", "2001:db8:beef:300::1", 40*time.Second)
+	waitMappedRuntimeForwarding(t, first, 10*time.Second)
 	assertMappedRuntimeReply(t, first, gateway, parentPeer.namespace, lan.namespace, "udp4", "10.39.7.3:39803", "192.0.2.3:39803")
 	assertMappedRuntimeReply(t, first, gateway, parentPeer.namespace, lan.namespace, "udp4", "10.39.7.4:39804", "192.0.2.4:39804")
 	assertMappedRuntimeReply(t, first, gateway, parentPeer.namespace, lan.namespace, "udp6", "[2001:db8:beef:300::1]:39806", "[2001:db8:b01:fe::2]:39806")
@@ -189,6 +190,109 @@ func waitMappedRuntimeRule(t *testing.T, daemon *runtimeDaemon, family, table, m
 	}
 	rules, _ := exec.Command("nft", "list", "ruleset").CombinedOutput()
 	t.Fatalf("%s %s did not install %s: rules=%s daemon=%s", family, table, match, rules, runtimeLogTail(t, daemon, 100))
+}
+
+func waitMappedRuntimeForwarding(t *testing.T, daemon *runtimeDaemon, timeout time.Duration) {
+	t.Helper()
+	checks := []struct {
+		arguments []string
+		lines     [][]string
+	}{
+		{[]string{"nft", "list", "chain", "inet", "mangle", "prerouting"}, [][]string{{`iifname "owned397" ct state new meta mark set 0x00000004`}, {"ct state established,related meta mark set ct mark"}}},
+		{[]string{"nft", "list", "chain", "inet", "mangle", "postrouting"}, [][]string{{"ct mark set meta mark"}}},
+		{[]string{"nft", "list", "chain", "inet", "mwan_steer", "forward"}, [][]string{{`iifname "enmwanbr0" oifname "owned397" meta nfproto ipv6 meta mark != 0x00000004 drop`}}},
+	}
+	deadline := time.Now().Add(timeout)
+	var last string
+	for time.Now().Before(deadline) {
+		ready := true
+		for _, check := range checks {
+			output, err := exec.Command(check.arguments[0], check.arguments[1:]...).CombinedOutput()
+			if err != nil {
+				last = fmt.Sprintf("%s: %v: %s", strings.Join(check.arguments, " "), err, output)
+				ready = false
+				break
+			}
+			for _, parts := range check.lines {
+				if !mappedRuntimeHasLine(string(output), parts) {
+					last = fmt.Sprintf("%s lacks line containing %q: %s", strings.Join(check.arguments, " "), parts, output)
+					ready = false
+					break
+				}
+			}
+			if !ready {
+				break
+			}
+		}
+		if ready {
+			ready, last = mappedRuntimeKernelForwardingReady()
+		}
+		if ready {
+			return
+		}
+		assertRuntimeDaemonRunning(t, daemon)
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("mapped forwarding did not become ready: %s; daemon=%s", last, runtimeLogTail(t, daemon, 100))
+}
+
+func mappedRuntimeKernelForwardingReady() (bool, string) {
+	rules, err := netlink.RuleList(unix.AF_INET6)
+	if err != nil {
+		return false, fmt.Sprintf("list IPv6 policy rules: %v", err)
+	}
+	foundRule := false
+	for _, rule := range rules {
+		if rule.Priority == 398 && rule.Table == 398 && rule.Mark == 4 {
+			foundRule = true
+			break
+		}
+	}
+	if !foundRule {
+		return false, fmt.Sprintf("IPv6 mark-4 rule for table 398 missing: %v", rules)
+	}
+	wan, err := netlink.LinkByName("owned397")
+	if err != nil {
+		return false, fmt.Sprintf("find owned397: %v", err)
+	}
+	lan, err := netlink.LinkByName("enmwanbr0")
+	if err != nil {
+		return false, fmt.Sprintf("find enmwanbr0: %v", err)
+	}
+	routes, err := netlink.RouteListFiltered(unix.AF_INET6, &netlink.Route{Table: 398}, netlink.RT_FILTER_TABLE)
+	if err != nil {
+		return false, fmt.Sprintf("list IPv6 routes in table 398: %v", err)
+	}
+	defaultReady, edgeReady := false, false
+	for _, route := range routes {
+		if route.LinkIndex == wan.Attrs().Index && route.Gw.Equal(net.ParseIP("fd39:7::2")) &&
+			(route.Dst == nil || route.Dst.String() == "::/0") {
+			defaultReady = true
+		}
+		if route.LinkIndex == lan.Attrs().Index && route.Dst != nil && route.Dst.String() == "2001:db8:b01:fe::2/128" {
+			edgeReady = true
+		}
+	}
+	if !defaultReady || !edgeReady {
+		return false, fmt.Sprintf("IPv6 default or edge route missing in table 398: %v", routes)
+	}
+	return true, ""
+}
+
+func mappedRuntimeHasLine(output string, parts []string) bool {
+	for _, line := range strings.Split(output, "\n") {
+		matched := true
+		for _, part := range parts {
+			if !strings.Contains(line, part) {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return true
+		}
+	}
+	return false
 }
 
 func addMappedRuntimeRoute(t *testing.T, destination, gateway, device string) {
