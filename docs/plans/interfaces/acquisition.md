@@ -202,10 +202,15 @@ Use the shared model for each association's identity and deadlines.
 
 The reviewer must approve the lifecycle API, protocol library operations,
 solicitation and retransmission rules, supported response status codes, and
-consumer withdrawal semantics before implementation. The review must also
-resolve required on-link delegated-prefix use and downstream announcements
-from the actual configuration. Keep ordinary routed prefixes independent
-of delegation and preserve existing translation and source-rule behavior.
+consumer withdrawal semantics before implementation. Current WAN settings use
+`UseDelegatedPrefix=yes` to request IA_PD. The production and testbed network
+files set neither `DHCPPrefixDelegation=yes` nor `IPv6SendRA=yes`.
+[systemd.network(5)](https://man7.org/linux/man-pages/man5/systemd.network.5.html)
+requires separate settings for downstream assignment and announcements;
+`RouterLifetimeSec=1800` alone does not enable either.
+Do not assign a downstream subnet or emit router advertisements for those WAN
+settings. Keep ordinary routed prefixes independent of delegation and preserve
+existing translation and source-rule behavior.
 
 ### 1. Establish the shared DHCPv6 lifecycle
 
@@ -240,8 +245,9 @@ assignment-backed source if the reviewed API requires a separate adapter.
    observation only for connections networkd still owns.
 2. Publish validated delegation to existing translation and routing consumers.
    Withdraw expired state and apply changed prefixes and prefix lengths.
-3. Implement reviewed delegated-prefix link use and announcement behavior
-   without duplicating the address manager's writes.
+3. Apply and withdraw the delegated NPT external `::1/128` address through
+   the address manager before enabling or withdrawing its translation. Do
+   not infer downstream prefix assignment or announcements from an IA_PD request.
 4. Preserve non-DHCP routed-prefix configurations and completed translation
    behavior. Keep default-router discovery under kernel RA policy.
 
