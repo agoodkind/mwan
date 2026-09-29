@@ -268,7 +268,8 @@ func (module *Module) currentDHCPClient(ctx context.Context, log *slog.Logger, c
 	client := netif.StartDHCPClient(clientContext, log, netif.DHCPConfig{
 		Iface: ready.ActualName, InitialBackoff: 0, MaxBackoff: 0,
 		DiscoverTimeout: 0, RequestTimeout: 0, RenewTimeout: 0,
-		ClientID: slices.Clone(module.clientIDs[id]),
+		ClientID:    slices.Clone(module.clientIDs[id]),
+		CachedLease: nil,
 	})
 	session := &dhcpSession{client: client, cancel: cancel, ready: ready, identity: identity, generation: module.nextGeneration}
 	module.sessions[id] = session
