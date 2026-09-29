@@ -340,7 +340,6 @@ func (c *DHCPClient) restartAttempt(ctx context.Context, cached LeaseInfo) (*ncl
 	}
 	request, err := c.restartRequest(client.InterfaceAddr(), cached.IP)
 	if err != nil {
-		c.log.WarnContext(ctx, "dhcp: restart request build failed", "err", err)
 		return nil, fmt.Errorf("build DHCP restart request: %w", err)
 	}
 	deadline := earlier(c.clock.Now().Add(c.cfg.RequestTimeout), cached.ExpiresAt)
