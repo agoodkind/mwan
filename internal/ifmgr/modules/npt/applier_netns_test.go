@@ -5,6 +5,7 @@ package npt
 import (
 	"context"
 	"log/slog"
+	"net/netip"
 	"os/exec"
 	"strings"
 	"testing"
@@ -58,6 +59,53 @@ func TestNPTRejectsIncompatibleBaseChainWithoutReplacingRules(t *testing.T) {
 	}
 	if after := runNFT(t, "list", "table", "ip6", "nat"); after != before {
 		t.Fatalf("failed apply changed ip6 nat table:\nbefore: %s\nafter: %s", before, after)
+	}
+}
+
+func TestRemoveReverseDNATKeepsOtherRulesInKernel(t *testing.T) {
+	inIPv4Namespace(t)
+	local := netip.MustParseAddr("2600:1700:2f71:c85::10")
+	forward := netip.MustParseAddr("2600:1700:2f71:c85::20")
+	other := netip.MustParseAddr("2001:db8:1:20::30")
+	var desired desiredRules
+	desired.add(buildWANRules(wanRuleInput{
+		Iface: "enatt0.3242", External: netip.MustParsePrefix("2600:1700:2f71:c80::/60"),
+		OpnsenseEdge: netip.MustParseAddr("3d06:bad:b01:201::1"), MwanbrEdge: netip.MustParseAddr("3d06:bad:b01:200::1"),
+		ExtraDNAT: []netip.Addr{local, forward},
+	}))
+	desired.add(buildWANRules(wanRuleInput{
+		Iface: "webpass0", External: netip.MustParsePrefix("2001:db8:1:20::/60"),
+		OpnsenseEdge: netip.MustParseAddr("3d06:bad:b01:201::1"), MwanbrEdge: netip.MustParseAddr("3d06:bad:b01:200::1"),
+		ExtraDNAT: []netip.Addr{other},
+	}))
+	if err := newNFTApplier().Apply(context.Background(), slog.Default(), desired); err != nil {
+		t.Fatal(err)
+	}
+	if err := removeReverseDNAT(context.Background(), slog.Default(), "enatt0.3242", []netip.Addr{local}); err != nil {
+		t.Fatal(err)
+	}
+	conn, err := nftables.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	table := &nftables.Table{Family: nftables.TableFamilyIPv6, Name: natTableName}
+	rules, err := conn.GetRules(table, &nftables.Chain{Name: preroutingChain, Table: table})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[netip.Addr]bool{forward: true, other: true}
+	for _, rule := range rules {
+		decoded, ok := decodeRule(ifaceNameByIndex, rule.Exprs)
+		if !ok || decoded.Op != opDNAT {
+			continue
+		}
+		if decoded.Match.Addr() == local {
+			t.Fatal("local address retained reverse DNAT")
+		}
+		delete(want, decoded.Match.Addr())
+	}
+	if len(want) != 0 {
+		t.Fatalf("forwarding rules removed: %v", want)
 	}
 }
 

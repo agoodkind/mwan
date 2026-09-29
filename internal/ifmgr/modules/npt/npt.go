@@ -11,6 +11,7 @@ import (
 	"maps"
 	"net"
 	"net/netip"
+	"slices"
 	"time"
 
 	"github.com/vishvananda/netlink"
@@ -74,17 +75,22 @@ type Module struct {
 	mwanbrEdge   netip.Addr
 
 	// Injectable seams (real implementations wired at Init when nil).
-	src            pd.Source
-	reconcileAddrs reconcileAddrsFunc
-	listAddrs      listAddrsFunc
-	apply          applier
-	translator     interface {
+	src             pd.Source
+	reconcileAddrs  reconcileAddrsFunc
+	listAddrs       listAddrsFunc
+	apply           applier
+	removeDNAT      func(context.Context, *slog.Logger, string, []netip.Addr) error
+	preparePolicies func(context.Context, *slog.Logger, map[string]bpf.PrefixPair) ([]bpf.InterfacePolicy, error)
+	translator      interface {
 		Reconcile([]bpf.InterfacePolicy) ([]bpf.AttachmentState, error)
 	}
 
 	// pdMissing records which WAN ifaces had no delegated prefix on the last
 	// reconcile, read by EvaluateAlerts. Guarded by the embedded mutex.
-	pdMissing map[string]bool
+	pdMissing     map[string]bool
+	previousLocal map[string]map[netip.Addr]bool
+	activePairs   map[string]bpf.PrefixPair
+	activeRules   map[string][]natRule
 }
 
 // Init implements ifmgr.Module. Self-disables when the shared WAN list is empty
@@ -108,6 +114,9 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	if m.apply == nil {
 		m.apply = newNFTApplier()
 	}
+	if m.removeDNAT == nil {
+		m.removeDNAT = removeReverseDNAT
+	}
 	if m.translator == nil {
 		translator, err := bpf.New()
 		if err != nil {
@@ -122,6 +131,13 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	if m.listAddrs == nil {
 		m.listAddrs = netif.ListAddrs
 	}
+	if m.preparePolicies == nil {
+		m.preparePolicies = func(ctx context.Context, log *slog.Logger, pairs map[string]bpf.PrefixPair) ([]bpf.InterfacePolicy, error) {
+			policies, _, _, err := m.interfacePolicies(ctx, log, pairs)
+			return policies, err
+		}
+	}
+	env.PrepareLocalIPv6 = m.prepareLocalIPv6
 
 	ifmgr.StartIfaceMonitors(ctx, log, moduleName, watchedIfaces(m.cfg), env.Connections, m.onMonitorEvent)
 
@@ -190,15 +206,32 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	defer m.Unlock()
 
 	log = log.With("op", "reconcile")
-
+	if err := m.checkUnappliedWANs(); err != nil {
+		return err
+	}
 	var desired desiredRules
 	missing := make(map[string]bool, len(m.cfg.WANs))
 	delegated := make(map[string]netip.Prefix, len(m.cfg.WANs))
 	pairs := make(map[string]bpf.PrefixPair, len(m.cfg.WANs))
+	rules := make(map[string][]natRule, len(m.cfg.WANs))
 	var reconcileErr error
 
 	for _, wan := range m.cfg.WANs {
-		built, present, err := m.buildWANDesired(ctx, log, wan)
+		rules[wan.Key()] = nil
+		if m.addressesNotApplied(wan) {
+			previous := m.activeRules[wan.Key()]
+			pair, hasPair := m.activePairs[wan.Key()]
+			rules[wan.Key()] = previous
+			desired.add(previous)
+			if hasPair {
+				pairs[wan.Key()] = pair
+				delegated[wan.Key()] = pair.External
+			}
+			reconcileErr = errors.Join(reconcileErr,
+				fmt.Errorf("npt: %s IPv6 addresses are not ready; retaining current translation", wan.Key()))
+			continue
+		}
+		built, present, err := m.buildWANDesired(ctx, log, wan, true)
 		if err != nil {
 			// A hard address-op error follows the same skip-and-alert contract
 			// as a PD miss: exclude the WAN from the union and mark it missing so
@@ -221,6 +254,7 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		}
 		delegated[wan.Key()] = built.externalPrefix
 		pairs[wan.Key()] = built.pair
+		rules[wan.Key()] = built.rules
 		desired.add(built.rules)
 	}
 	m.pdMissing = missing
@@ -228,6 +262,8 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	applyErr := m.apply.Apply(ctx, log, desired)
 	if applyErr != nil {
 		reconcileErr = errors.Join(reconcileErr, fmt.Errorf("apply: %w", applyErr))
+	} else {
+		m.activeRules = rules
 	}
 	bpfReady := make(map[string]bool, len(pairs))
 	nativeReady := false
@@ -236,10 +272,13 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		if err != nil {
 			reconcileErr = errors.Join(reconcileErr, err)
 		}
+		policyErr := err
 		states, err := m.translator.Reconcile(policies)
 		nativeReady = err == nil
 		if err != nil {
 			reconcileErr = errors.Join(reconcileErr, fmt.Errorf("reconcile NPTv6 programs: %w", err))
+		} else if policyErr == nil {
+			m.activePairs = maps.Clone(pairs)
 		}
 		internalReady := attachmentsReady(states, internalIndex)
 		for name, index := range ifIndexes {
@@ -248,6 +287,143 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	}
 	m.publishLiveState(ctx, log, delegated, desired, applyErr == nil, bpfReady, nativeReady)
 	return reconcileErr
+}
+
+func (m *Module) checkUnappliedWANs() error {
+	for _, wan := range m.cfg.WANs {
+		if !m.addressesNotApplied(wan) {
+			continue
+		}
+		previous, known := m.activeRules[wan.Key()]
+		_, hasPair := m.activePairs[wan.Key()]
+		if !known || (len(previous) != 0 && !hasPair) {
+			return fmt.Errorf("npt: %s IPv6 addresses are not ready; retaining current translation", wan.Key())
+		}
+	}
+	return nil
+}
+
+func (m *Module) addressesNotApplied(wan WAN) bool {
+	return wan.Owned && wan.Translation != nil && wan.Translation.Mode == config.TranslationNPTv6 &&
+		(m.Env == nil || m.Env.OwnedAddresses == nil || !m.Env.OwnedAddresses.FamilyApplied(wan.Key(), "ipv6"))
+}
+
+func (m *Module) prepareLocalIPv6(ctx context.Context, log *slog.Logger, iface string, local []netip.Addr) error {
+	m.Lock()
+	defer m.Unlock()
+
+	if len(local) == 0 || !m.ownsTranslatedIface(iface) {
+		return nil
+	}
+	pairs, err := m.preparationPairs(ctx, log, iface, local)
+	if err != nil {
+		return err
+	}
+	policies, err := m.preparePolicies(ctx, log, pairs)
+	if err != nil {
+		return err
+	}
+	if _, err := m.translator.Reconcile(policies); err != nil {
+		log.ErrorContext(ctx, "npt: prepare NPTv6 exceptions failed", "iface", iface, "err", err)
+		return fmt.Errorf("prepare NPTv6 exceptions: %w", err)
+	}
+	m.activePairs = maps.Clone(pairs)
+	m.rememberLocal(iface, local)
+	if err := m.removeDNAT(ctx, log, iface, local); err != nil {
+		for _, wan := range m.cfg.WANs {
+			if wan.Iface == iface {
+				delete(m.activeRules, wan.Key())
+			}
+		}
+		log.ErrorContext(ctx, "npt: prepare reverse DNAT failed", "iface", iface, "err", err)
+		return fmt.Errorf("prepare reverse DNAT for %s: %w", iface, err)
+	}
+	for _, wan := range m.cfg.WANs {
+		if wan.Iface != iface {
+			continue
+		}
+		previous, known := m.activeRules[wan.Key()]
+		if !known {
+			break
+		}
+		retained := make([]natRule, 0, len(previous))
+		for _, rule := range previous {
+			if rule.Op != opDNAT || !slices.Contains(local, rule.Match.Addr()) {
+				retained = append(retained, rule)
+			}
+		}
+		m.activeRules[wan.Key()] = retained
+		break
+	}
+	return nil
+}
+
+func (m *Module) rememberLocal(iface string, addresses []netip.Addr) {
+	if m.previousLocal == nil {
+		m.previousLocal = make(map[string]map[netip.Addr]bool)
+	}
+	if m.previousLocal[iface] == nil {
+		m.previousLocal[iface] = make(map[netip.Addr]bool)
+	}
+	for _, address := range addresses {
+		m.previousLocal[iface][address] = true
+	}
+}
+
+func (m *Module) ownsTranslatedIface(iface string) bool {
+	for _, wan := range m.cfg.WANs {
+		if wan.Iface == iface && wan.Owned && wan.Translation != nil && wan.Translation.Mode == config.TranslationNPTv6 {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Module) preparationPairs(ctx context.Context, log *slog.Logger, iface string, local []netip.Addr) (map[string]bpf.PrefixPair, error) {
+	pairs := make(map[string]bpf.PrefixPair, len(m.cfg.WANs))
+	for _, wan := range m.cfg.WANs {
+		built, present, err := m.buildWANDesired(ctx, log, wan, false)
+		if err != nil {
+			return nil, err
+		}
+		if !present {
+			if wan.Iface == iface {
+				return nil, fmt.Errorf("npt: %s has no external prefix for local IPv6 preparation", wan.Key())
+			}
+			if previous, ok := m.activePairs[wan.Key()]; ok {
+				pairs[wan.Key()] = previous
+			}
+			continue
+		}
+		pair := built.pair
+		if wan.Iface == iface {
+			pair, err = addPendingExceptions(pair, local)
+			if err != nil {
+				return nil, err
+			}
+			if err := bpf.ValidatePair(pair); err != nil {
+				log.ErrorContext(ctx, "npt: local IPv6 exception validation failed", "wan", wan.Key(), "err", err)
+				return nil, fmt.Errorf("npt: %s local IPv6 preparation: %w", wan.Key(), err)
+			}
+		}
+		pairs[wan.Key()] = pair
+	}
+	return pairs, nil
+}
+
+func addPendingExceptions(pair bpf.PrefixPair, local []netip.Addr) (bpf.PrefixPair, error) {
+	for _, address := range local {
+		if !address.Is6() || address.Is4In6() || !address.IsGlobalUnicast() {
+			return pair, fmt.Errorf("npt: invalid local IPv6 address %s", address)
+		}
+		if address == externalHostOne(pair.External) {
+			return pair, fmt.Errorf("npt: local IPv6 address %s conflicts with the NPT edge address", address)
+		}
+		if pair.External.Contains(address) && !slices.Contains(pair.DestinationExceptions, address) {
+			pair.DestinationExceptions = append(pair.DestinationExceptions, address)
+		}
+	}
+	return pair, nil
 }
 
 func (m *Module) ensureExternalAddress(ctx context.Context, log *slog.Logger, wan WAN, desired netif.AddrSpec) error {
@@ -437,12 +613,11 @@ type wanDesired struct {
 }
 
 // buildWANDesired resolves one WAN's external prefix and returns its reconcile plan.
-// It only reads (PD lookup plus the extra-/128 enumeration); the caller
-// performs the address write. present is false (skip + alert, no static
+// The caller performs the address write. present is false (skip + alert, no static
 // fallback) when the PD source has no prefix or errors; err is returned only
 // for a hard address-op read failure.
 func (m *Module) buildWANDesired(
-	ctx context.Context, log *slog.Logger, wan WAN,
+	ctx context.Context, log *slog.Logger, wan WAN, finalized bool,
 ) (wanDesired, bool, error) {
 	var empty wanDesired
 	if wan.Translation == nil || wan.Translation.Mode == config.TranslationNative {
@@ -478,7 +653,7 @@ func (m *Module) buildWANDesired(
 
 	ensure := []netif.AddrSpec{{CIDR: netip.PrefixFrom(pd1, 128).String(), Family: "inet6"}}
 
-	extra, err := m.extraGlobal128s(ctx, log, wan.Iface, pd1)
+	extra, local, err := m.extraGlobal128s(ctx, log, wan, pd1, finalized)
 	if err != nil {
 		return empty, false,
 			fmt.Errorf("enumerate extra /128 on %s: %w", wan.Iface, err)
@@ -491,12 +666,18 @@ func (m *Module) buildWANDesired(
 		MwanbrEdge:   m.mwanbrEdge,
 		ExtraDNAT:    extra,
 	})
+	destinationExceptions := append([]netip.Addr{pd1}, extra...)
+	for _, addr := range local {
+		if externalPrefix.Contains(addr) {
+			destinationExceptions = append(destinationExceptions, addr)
+		}
+	}
 	pair := bpf.PrefixPair{
 		ID:                    pairID(wan.Key()),
 		Internal:              policy.InternalPrefix.Masked(),
 		External:              externalPrefix,
 		SourceExceptions:      []netip.Addr{m.opnsenseEdge, m.mwanbrEdge},
-		DestinationExceptions: append([]netip.Addr{pd1}, extra...),
+		DestinationExceptions: destinationExceptions,
 	}
 	if err := bpf.ValidatePair(pair); err != nil {
 		return empty, false, fmt.Errorf("npt: %s: %w", wan.Key(), err)
@@ -514,38 +695,71 @@ func pairID(name string) uint16 {
 	return id
 }
 
-// extraGlobal128s returns the global-scope /128 addresses on iface, excluding
-// <pd>::1, each of which gets a reverse DNAT to the OPNsense edge. Mirrors the
-// shell's `ip -6 addr show scope global` /128 scan.
+// extraGlobal128s separates current local IA_NA addresses from addresses that
+// require reverse DNAT. Legacy WANs retain the global /128 classification.
 func (m *Module) extraGlobal128s(
-	ctx context.Context, log *slog.Logger, iface string, pd1 netip.Addr,
-) ([]netip.Addr, error) {
-	addrs, err := m.listAddrs(ctx, log, iface)
+	ctx context.Context, log *slog.Logger, wan WAN, pd1 netip.Addr, finalized bool,
+) ([]netip.Addr, []netip.Addr, error) {
+	addrs, err := m.listAddrs(ctx, log, wan.Iface)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	out := make([]netip.Addr, 0, len(addrs))
+	localAssignments := m.localAssignmentSet(wan)
+	forward := make([]netip.Addr, 0, len(addrs))
+	local := make([]netip.Addr, 0, len(localAssignments))
 	for _, current := range addrs {
-		if current.Family != "inet6" {
+		addr, eligible := global128Address(current, pd1)
+		if !eligible {
 			continue
 		}
-		prefix, err := netip.ParsePrefix(current.CIDR)
-		if err != nil {
+		if localAssignments[addr] {
+			local = append(local, addr)
 			continue
 		}
-		if prefix.Bits() != 128 {
-			continue
-		}
-		addr := prefix.Addr()
-		if !addr.IsGlobalUnicast() {
-			continue
-		}
-		if addr == pd1 {
-			continue
-		}
-		out = append(out, addr)
+		forward = append(forward, addr)
 	}
-	return out, nil
+	if finalized && wan.Owned {
+		if m.previousLocal == nil {
+			m.previousLocal = make(map[string]map[netip.Addr]bool)
+		}
+		m.previousLocal[wan.Iface] = make(map[netip.Addr]bool, len(local))
+		for _, address := range local {
+			m.previousLocal[wan.Iface][address] = true
+		}
+	}
+	return forward, local, nil
+}
+
+func (m *Module) localAssignmentSet(wan WAN) map[netip.Addr]bool {
+	local := make(map[netip.Addr]bool)
+	for address := range m.previousLocal[wan.Iface] {
+		local[address] = true
+	}
+	if !wan.Owned || m.Env == nil || m.Env.Delegations == nil {
+		return local
+	}
+	lease, ok := m.Env.Delegations.Get(wan.Iface)
+	if !ok {
+		return local
+	}
+	now := (clock.Real{}).Now()
+	for _, address := range lease.Addresses {
+		if now.Before(address.ValidUntil) {
+			local[address.Address] = true
+		}
+	}
+	return local
+}
+
+func global128Address(current netif.CurrentAddr, pd1 netip.Addr) (netip.Addr, bool) {
+	if current.Family != "inet6" {
+		return netip.Addr{}, false
+	}
+	prefix, err := netip.ParsePrefix(current.CIDR)
+	if err != nil || prefix.Bits() != 128 || !prefix.Addr().IsGlobalUnicast() || prefix.Addr() == pd1 {
+		return netip.Addr{}, false
+	}
+	return prefix.Addr(), true
 }
 
 // EvaluateAlerts fires a per-iface WARN for each WAN that the configuration
@@ -639,17 +853,22 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		c = typedConfig
 	}
 	return &Module{
-		BaseModule:     ifmgr.NewBaseModule(moduleName),
-		cfg:            c,
-		internal:       netip.Prefix{},
-		opnsenseEdge:   netip.Addr{},
-		mwanbrEdge:     netip.Addr{},
-		src:            nil,
-		reconcileAddrs: nil,
-		listAddrs:      nil,
-		apply:          nil,
-		translator:     nil,
-		pdMissing:      nil,
+		BaseModule:      ifmgr.NewBaseModule(moduleName),
+		cfg:             c,
+		internal:        netip.Prefix{},
+		opnsenseEdge:    netip.Addr{},
+		mwanbrEdge:      netip.Addr{},
+		src:             nil,
+		reconcileAddrs:  nil,
+		listAddrs:       nil,
+		apply:           nil,
+		removeDNAT:      nil,
+		preparePolicies: nil,
+		translator:      nil,
+		pdMissing:       nil,
+		previousLocal:   nil,
+		activePairs:     nil,
+		activeRules:     nil,
 	}, nil
 }
 

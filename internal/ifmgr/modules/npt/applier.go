@@ -57,6 +57,62 @@ type nftApplier struct {
 	newConn func() (nftConn, error)
 }
 
+type nftRuleRemover interface {
+	GetRules(table *nftables.Table, chain *nftables.Chain) ([]*nftables.Rule, error)
+	DelRule(rule *nftables.Rule) error
+	Flush() error
+}
+
+func removeReverseDNAT(ctx context.Context, log *slog.Logger, iface string, local []netip.Addr) error {
+	conn, err := nftables.New()
+	if err != nil {
+		log.ErrorContext(ctx, "npt: open nftables connection for DNAT preparation failed", "iface", iface, "err", err)
+		return fmt.Errorf("open nftables netlink connection: %w", err)
+	}
+	return removeReverseDNATRules(ctx, log, conn, iface, local)
+}
+
+func removeReverseDNATRules(ctx context.Context, log *slog.Logger, conn nftRuleRemover, iface string, local []netip.Addr) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("remove reverse DNAT: %w", err)
+	}
+	table := &nftables.Table{Family: nftables.TableFamilyIPv6, Name: natTableName}
+	chain := &nftables.Chain{Name: preroutingChain, Table: table}
+	rules, err := conn.GetRules(table, chain)
+	if err != nil && isNFTObjectMissing(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read NPT prerouting rules: %w", err)
+	}
+	pending := make(map[netip.Addr]bool, len(local))
+	for _, address := range local {
+		pending[address] = true
+	}
+	removed := false
+	for _, rule := range rules {
+		if rule == nil {
+			continue
+		}
+		decoded, ok := decodeRule(ifaceNameByIndex, rule.Exprs)
+		if !ok || decoded.Chain != chainPrerouting || decoded.Iface != iface || decoded.Op != opDNAT || decoded.Match.Bits() != 128 || !pending[decoded.Match.Addr()] {
+			continue
+		}
+		if err := conn.DelRule(rule); err != nil {
+			return fmt.Errorf("delete reverse DNAT for %s on %s: %w", decoded.Match.Addr(), iface, err)
+		}
+		removed = true
+	}
+	if !removed {
+		return nil
+	}
+	if err := conn.Flush(); err != nil {
+		log.WarnContext(ctx, "npt: remove reverse DNAT failed", "iface", iface, "err", err)
+		return fmt.Errorf("commit reverse DNAT removal: %w", err)
+	}
+	return nil
+}
+
 // newNFTApplier returns the production applier backed by a real netlink
 // connection opened per Apply call.
 func newNFTApplier() *nftApplier {
