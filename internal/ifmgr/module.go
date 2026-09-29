@@ -112,6 +112,57 @@ type Env struct {
 	LiveState *wanstate.Store
 	// OwnedLinks contains the latest complete link reconcile result for this pass.
 	OwnedLinks *OwnedLinkResults
+	// OwnedAddresses contains address installation results from the current pass.
+	OwnedAddresses *OwnedAddressResults
+}
+
+// OwnedAddressResults shares successful exact address writes with translation consumers.
+type OwnedAddressResults struct {
+	mu        sync.RWMutex
+	addresses map[string]map[string]bool
+	families  map[string]map[string]bool
+}
+
+// Replace clears results before an address reconciliation pass.
+func (s *OwnedAddressResults) Replace() {
+	s.mu.Lock()
+	s.addresses = make(map[string]map[string]bool)
+	s.families = make(map[string]map[string]bool)
+	s.mu.Unlock()
+}
+
+// Set records a verified address for one connection.
+func (s *OwnedAddressResults) Set(id, prefix string) {
+	s.mu.Lock()
+	if s.addresses[id] == nil {
+		s.addresses[id] = make(map[string]bool)
+	}
+	s.addresses[id][prefix] = true
+	s.mu.Unlock()
+}
+
+// Has reports an address installed in the current pass.
+func (s *OwnedAddressResults) Has(id, prefix string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.addresses[id][prefix]
+}
+
+// SetFamilyReady records verified application of every owned object in a family.
+func (s *OwnedAddressResults) SetFamilyReady(id, family string) {
+	s.mu.Lock()
+	if s.families[id] == nil {
+		s.families[id] = make(map[string]bool)
+	}
+	s.families[id][family] = true
+	s.mu.Unlock()
+}
+
+// FamilyReady reports complete application in the current pass.
+func (s *OwnedAddressResults) FamilyReady(id, family string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.families[id][family]
 }
 
 // OwnedLinkResults shares verified link identities with later modules.

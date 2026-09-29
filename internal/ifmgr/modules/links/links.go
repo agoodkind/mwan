@@ -52,7 +52,7 @@ func New(config ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		}
 		owned++
 		if connection.ID == "" || connection.Link == nil ||
-			connection.Roles&(interfaceintent.RoleProvider|interfaceintent.RoleInternal|interfaceintent.RoleManagement) != 0 ||
+			connection.Roles&(interfaceintent.RoleInternal|interfaceintent.RoleManagement) != 0 ||
 			connection.LeaseStore != "" || len(connection.Networkd) != 0 {
 			return nil, fmt.Errorf("links: connection %s has unsupported owned intent", connection.Name)
 		}

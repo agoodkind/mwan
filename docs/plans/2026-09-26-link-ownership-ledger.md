@@ -1142,6 +1142,24 @@ include the mapped/NPT writer transfer while existing providers remain under
 networkd. The final testbed pin must identify the complete merged release
 that the phase validates.
 
+### MWAN-398 mapped and NPT writer, September 28, 2026
+
+The signed `codex/mwan-398-mapped` patch transfers on-link IPv4 mappings
+and the configured NPT external `::1/128` address to the address module for
+exclusively owned connections. Legacy connections retain their existing
+address writers. No live provider transfer, merge, release, or deployment ran.
+
+The public daemon namespace test passed local and routed IPv4 packet replies,
+inbound NPT IPv6 packet replies, legacy NPT address installation, changed
+prefix cleanup, and foreign address preservation. A foreign address with the
+same IPv6 address and a different prefix prevented owned installation and
+the new NPT rule. The focused test passed three consecutive runs. The Docker
+check and test gate and all six privileged public firewall tests passed.
+Independent review found no runtime blocker and identified stale writer
+comments. The corrected patch received a MERGE-READY verdict. The reviewer
+did not run a red-green reversal. The next step is a focused PR, followed by
+testbed validation of a merged release with the other compatible phase work.
+
 The finding counts report blockers, issues to fix, and minor issues found
 during review, including findings fixed before the verdict.
 The post-verdict column records defects discovered after that review verdict.
@@ -1150,6 +1168,7 @@ The post-verdict column records defects discovered after that review verdict.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-09-28 | MWAN PR #86 at `cdb320b` | Link ownership and recovery | Independent adversarial | MERGE-READY | 10 / 2 / 0, fixed before verdict | None found | The public daemon namespace test and kernel namespace race tests passed. `TestModulesForRoleWAN` and `TestModulesForRoleExported` passed after their expected WAN module order included `links` before `health`. `TestLoadMWANOwnedLink` failed against `origin/main` because the old parser rejected direct MWAN link ownership, then passed with this change. The live `origin/main` merge-tree passed. Lint and schema passed before the module order fix; the full test target passed afterward. No deployment was reviewed. |
 | 2026-09-28 | MWAN PR #86 follow-up after `1db34fb` | Bridge membership adoption | Independent adversarial | MERGE-READY | 0 / 0 / 0 | None found | The public kernel test failed on the old guard when a replacement bridge reused the configured name and passed with the new guard under `-race`. The test also rejects an unrecorded current membership. The public daemon namespace test and live `origin/main` merge-tree passed. The public deleted-parent test no longer exercises `LinkAdd` rollback after a dependency race; that path was reviewed statically. |
+| 2026-09-28 | `codex/mwan-398-mapped` | Mapped and NPT address writer transfer | Independent adversarial | MERGE-READY | 0 / 2 / 0, stale comments corrected | None found | The reviewer independently ran all six public firewall tests and checked the corrected comments and diff. The review did not run a red-green reversal. No deployment was reviewed. |
 
 ## Record future implementation results
 

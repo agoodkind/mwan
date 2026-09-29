@@ -27,6 +27,7 @@ import (
 	steering "goodkind.io/mwan/internal/ifmgr/modules/steering"
 	wanroutes "goodkind.io/mwan/internal/ifmgr/modules/wanroutes"
 	wg "goodkind.io/mwan/internal/ifmgr/modules/wg"
+	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/netif"
 )
 
@@ -156,7 +157,16 @@ func addWANRoleConfigs(
 		moduleConfigs["links"] = linksConfig
 	}
 	if want["addresses"] {
-		addressesConfig := addresses.Config{Connections: ifmgrCfg.Connections, StateFile: ""}
+		providers := make(map[string]addresses.Provider)
+		for _, connection := range ifmgrCfg.Connections {
+			if connection.Owner != interfaceintent.OwnerMWAN {
+				continue
+			}
+			if provider, found := ifmgrCfg.WAN[connection.ID.String()]; found {
+				providers[connection.ID.String()] = addresses.Provider{IPv4: provider.TranslationV4, IPv6: provider.TranslationV6}
+			}
+		}
+		addressesConfig := addresses.Config{Connections: ifmgrCfg.Connections, Providers: providers, StateFile: ""}
 		if ifmgrCfg.Modules.Addresses != nil {
 			addressesConfig.StateFile = ifmgrCfg.Modules.Addresses.StateFile
 		}
@@ -747,6 +757,7 @@ func buildHostIPv6PolicyConfig(
 // embedded WANRef. One home per WAN.
 type sharedWAN struct {
 	ifmgr.WANRef
+	Owned         bool
 	TableID       int
 	FwMark        int
 	FwMarkPrio    int
@@ -776,7 +787,7 @@ type sharedWANInputs struct {
 func (s sharedWANInputs) nptWANs() []npt.WAN {
 	wans := make([]npt.WAN, 0, len(s.WANs))
 	for _, wan := range s.WANs {
-		wans = append(wans, npt.WAN{WANRef: wan.WANRef, TranslationV4: wan.TranslationV4, Translation: wan.TranslationV6})
+		wans = append(wans, npt.WAN{WANRef: wan.WANRef, Owned: wan.Owned, TranslationV4: wan.TranslationV4, Translation: wan.TranslationV6})
 	}
 	return wans
 }
@@ -800,6 +811,10 @@ func buildWANRefs(ifmgrCfg config.IfMgrSection) sharedWANInputs {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	owned := make(map[string]bool)
+	for _, connection := range ifmgrCfg.Connections {
+		owned[connection.ID.String()] = connection.Owner == interfaceintent.OwnerMWAN
+	}
 	for _, name := range names {
 		entry := ifmgrCfg.WAN[name]
 		providerName := entry.ProviderName
@@ -808,6 +823,7 @@ func buildWANRefs(ifmgrCfg config.IfMgrSection) sharedWANInputs {
 		}
 		inputs.WANs = append(inputs.WANs, sharedWAN{
 			WANRef:        ifmgr.WANRef{ID: connectionid.ID(name), Name: providerName, Iface: entry.Iface},
+			Owned:         owned[name],
 			TableID:       entry.TableID,
 			FwMark:        entry.FwMark,
 			FwMarkPrio:    entry.FwMarkPrio,
@@ -847,32 +863,47 @@ func buildWANRoutesConfig(
 			return wanroutes.Config{}, err
 		}
 		cfg.WANs = append(cfg.WANs, wanroutes.WAN{
-			WANRef:          wan.WANRef,
-			TableID:         wan.TableID,
-			FwMark:          mark,
-			FwMarkPrio:      wan.FwMarkPrio,
-			FromPrio:        wan.FromPrio,
-			TranslationV4:   wan.TranslationV4,
-			TranslationV6:   wan.TranslationV6,
-			V4Source:        wan.V4Source,
-			Tier:            wan.Tier,
-			Weight:          wan.Weight,
-			MappedExternals: mappedExternals(wan.TranslationV4),
+			WANRef:               wan.WANRef,
+			Owned:                wan.Owned,
+			TableID:              wan.TableID,
+			FwMark:               mark,
+			FwMarkPrio:           wan.FwMarkPrio,
+			FromPrio:             wan.FromPrio,
+			TranslationV4:        wan.TranslationV4,
+			TranslationV6:        wan.TranslationV6,
+			V4Source:             wan.V4Source,
+			Tier:                 wan.Tier,
+			Weight:               wan.Weight,
+			MappedExternals:      mappedExternals(wan.TranslationV4),
+			LocalMappedExternals: localMappedExternals(wan.TranslationV4),
 		})
 	}
 	return cfg, nil
 }
 
-// mappedExternals projects a provider's static mappings onto the external
-// addresses the routing module decides link ownership for. The routing module
-// never translates, so the internal half stays with the firewall render.
+// mappedExternals returns mappings without explicit delivery for legacy inference.
 func mappedExternals(translation *config.IPv4Translation) []netip.Addr {
 	if translation == nil || len(translation.StaticMappings) == 0 {
 		return nil
 	}
 	externals := make([]netip.Addr, 0, len(translation.StaticMappings))
 	for _, mapping := range translation.StaticMappings {
-		externals = append(externals, mapping.External)
+		if mapping.Delivery == "" {
+			externals = append(externals, mapping.External)
+		}
+	}
+	return externals
+}
+
+func localMappedExternals(translation *config.IPv4Translation) []netip.Addr {
+	if translation == nil {
+		return nil
+	}
+	var externals []netip.Addr
+	for _, mapping := range translation.StaticMappings {
+		if mapping.Delivery == interfaceintent.DeliveryLocal {
+			externals = append(externals, mapping.External)
+		}
 	}
 	return externals
 }

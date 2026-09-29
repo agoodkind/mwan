@@ -448,6 +448,10 @@ func compileProviderProjections(entries []ifaceEntry, byName map[string]interfac
 		id := loaded.ConnectionIDs[entry.Name].String()
 		routing, probe, err := buildProvider(entry)
 		if err != nil {
+			if entry.Owner == string(interfaceintent.OwnerMWAN) {
+				slog.Error("networkjson: MWAN-owned provider invalid", "interface", entry.Name, "err", err)
+				return fmt.Errorf("interface %s: %w", entry.Name, err)
+			}
 			loaded.Rejected = append(loaded.Rejected, rejectEntry(entry, err))
 			continue
 		}

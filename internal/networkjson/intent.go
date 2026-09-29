@@ -115,15 +115,36 @@ func validateMWANOwner(entry ifaceEntry) error {
 	if entry.Link == nil {
 		return fmt.Errorf("interface %s: mwan owner requires a link", entry.Name)
 	}
-	if entry.LinkFiles != "" || entry.Networkd != nil ||
-		entry.WAN != nil || entry.Steering != nil || entry.LeaseStore != "" {
-		return fmt.Errorf("interface %s: mwan owner supports link, static local address, gateway, and route metric intent only", entry.Name)
+	if entry.LinkFiles != "" || entry.Networkd != nil || entry.LeaseStore != "" ||
+		(entry.WAN == nil && entry.Steering != nil) {
+		return fmt.Errorf("interface %s: mwan owner cannot use networkd files, a lease store, or steering without a provider", entry.Name)
 	}
-	if err := validateMWANFamily(entry.Name, "ipv4", intentFamilyV4Wire(entry.IPv4)); err != nil {
+	if err := validateMWANFamily(entry.Name, "ipv4", intentFamilyV4Wire(entry.IPv4), entry.WAN != nil); err != nil {
 		return err
 	}
-	if err := validateMWANFamily(entry.Name, "ipv6", intentFamilyV6Wire(entry.IPv6)); err != nil {
+	if err := validateMWANFamily(entry.Name, "ipv6", intentFamilyV6Wire(entry.IPv6), entry.WAN != nil); err != nil {
 		return err
+	}
+	if entry.WAN != nil {
+		return validateMWANProvider(entry)
+	}
+	return nil
+}
+
+func validateMWANProvider(entry ifaceEntry) error {
+	if entry.IPv4 == nil && entry.IPv6 == nil {
+		return fmt.Errorf("interface %s: mwan provider requires a static address family", entry.Name)
+	}
+	if entry.IPv4 != nil && entry.IPv4.Translation != nil {
+		for _, mapping := range entry.IPv4.Translation.StaticMappings {
+			if mapping.Delivery != string(interfaceintent.DeliveryLocal) && mapping.Delivery != string(interfaceintent.DeliveryRouted) {
+				return fmt.Errorf("interface %s: mwan provider mapping %s requires delivery local or routed", entry.Name, mapping.External)
+			}
+		}
+	}
+	if entry.IPv6 != nil && entry.IPv6.Translation != nil && entry.IPv6.Translation.NPT != nil &&
+		entry.IPv6.Translation.NPT.ExternalSource != config.PrefixConfigured {
+		return fmt.Errorf("interface %s: mwan provider supports configured NPT external prefixes until delegation acquisition is available", entry.Name)
 	}
 	return nil
 }
@@ -142,12 +163,12 @@ func intentFamilyV6Wire(family *familyV6) *familyWire {
 	return &family.familyWire
 }
 
-func validateMWANFamily(name, family string, wire *familyWire) error {
+func validateMWANFamily(name, family string, wire *familyWire, provider bool) error {
 	if wire == nil {
 		return nil
 	}
 	if wire.Enabled != nil && !*wire.Enabled || wire.Forwarding != nil ||
-		wire.DHCP != nil || wire.Resolver != nil || wire.Translation != nil ||
+		wire.DHCP != nil || wire.Resolver != nil || (wire.Translation != nil && !provider) ||
 		wire.RouteMetric != nil && wire.Gateway == "" {
 		return fmt.Errorf("interface %s: mwan %s supports static local addresses and an optional gateway with route metric only", name, family)
 	}
@@ -479,16 +500,13 @@ func compileConnections(entries []ifaceEntry, ids map[string]connectionid.ID, in
 	}
 	for _, entry := range entries {
 		if entry.Owner == string(interfaceintent.OwnerMWAN) {
-			if entry.WAN != nil {
-				return nil, nil, fmt.Errorf("interface %s: mwan owner cannot declare a provider", entry.Name)
-			}
 			if entry.Name == internal || (firewall != nil && entry.Name == firewall.ManagementInterface) {
 				return nil, nil, fmt.Errorf("interface %s: mwan owner cannot manage internal or firewall-management interfaces", entry.Name)
 			}
 		}
 		connection, err := buildConnection(entry, ids[entry.Name])
 		if err != nil {
-			if entry.WAN == nil {
+			if entry.WAN == nil || entry.Owner == string(interfaceintent.OwnerMWAN) {
 				return nil, nil, err
 			}
 			rejected = append(rejected, rejectEntry(entry, err))
@@ -766,6 +784,12 @@ func claimFamilyResources(connection interfaceintent.Connection, name string, fa
 }
 
 func claimProviderResources(connection interfaceintent.Connection, provider config.IfMgrWANEntry, add func(interfaceintent.Claim) error) error {
+	addressWriter := interfaceintent.WriterWANRoutes
+	nptWriter := interfaceintent.WriterNPT
+	if connection.Owner == interfaceintent.OwnerMWAN {
+		addressWriter = interfaceintent.WriterMWANAddress
+		nptWriter = interfaceintent.WriterMWANAddress
+	}
 	if err := add(interfaceintent.Claim{ConnectionID: connection.ID, Kind: interfaceintent.ResourceProviderRoute, Family: "ipv4+ipv6", Key: strconv.Itoa(provider.TableID), Writer: interfaceintent.WriterWANRoutes}); err != nil {
 		return err
 	}
@@ -779,7 +803,7 @@ func claimProviderResources(connection interfaceintent.Connection, provider conf
 			if !mappingNeedsAddressClaim(connection, mapping) {
 				continue
 			}
-			if err := add(interfaceintent.Claim{ConnectionID: connection.ID, Kind: interfaceintent.ResourceMappedAddress, Family: "ipv4", Key: mapping.External.String(), Writer: interfaceintent.WriterWANRoutes}); err != nil {
+			if err := add(interfaceintent.Claim{ConnectionID: connection.ID, Kind: interfaceintent.ResourceMappedAddress, Family: "ipv4", Key: mapping.External.String(), Writer: addressWriter}); err != nil {
 				return err
 			}
 		}
@@ -790,7 +814,7 @@ func claimProviderResources(connection interfaceintent.Connection, provider conf
 		if prefix.IsValid() {
 			key = prefix.String()
 		}
-		if err := add(interfaceintent.Claim{ConnectionID: connection.ID, Kind: interfaceintent.ResourceNPTExternalAddress, Family: "ipv6", Key: key + "/::1/128", Writer: interfaceintent.WriterNPT}); err != nil {
+		if err := add(interfaceintent.Claim{ConnectionID: connection.ID, Kind: interfaceintent.ResourceNPTExternalAddress, Family: "ipv6", Key: key + "/::1/128", Writer: nptWriter}); err != nil {
 			return err
 		}
 	}
