@@ -210,8 +210,19 @@ func stopProtocolServices(t *testing.T, services []protocolService) {
 			t.Errorf("stop %s: %v", service.name, err)
 			continue
 		}
-		if err := service.command.Wait(); err != nil && !strings.Contains(fmt.Sprint(err), "signal: terminated") {
-			t.Errorf("wait %s: %v", service.name, err)
+		stopped := make(chan error, 1)
+		go func() { stopped <- service.command.Wait() }()
+		select {
+		case err := <-stopped:
+			if err != nil && !strings.Contains(fmt.Sprint(err), "signal: terminated") {
+				t.Errorf("wait %s: %v", service.name, err)
+			}
+		case <-time.After(3 * time.Second):
+			if err := service.command.Process.Kill(); err != nil {
+				t.Errorf("kill %s: %v", service.name, err)
+			}
+			<-stopped
+			t.Errorf("%s did not stop after SIGTERM", service.name)
 		}
 	}
 }
