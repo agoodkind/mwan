@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 
 	"github.com/vishvananda/netlink"
@@ -18,8 +19,15 @@ import (
 	"goodkind.io/mwan/internal/interfaceintent"
 )
 
-// OwnedStaticRouteProtocol identifies default routes installed by the address module.
+// OwnedStaticRouteProtocol identifies routes installed by the address module.
 const OwnedStaticRouteProtocol = 186
+
+// OwnedRoute is one main-table route assigned to an owned connection.
+type OwnedRoute struct {
+	Destination netip.Prefix
+	Gateway     netip.Addr
+	Metric      uint32
+}
 
 type ownedStaticObject struct {
 	ConnectionID string `json:"connection_id"`
@@ -28,6 +36,7 @@ type ownedStaticObject struct {
 	LinkIndex    int    `json:"link_index"`
 	LinkIdentity string `json:"link_identity"`
 	Prefix       string `json:"prefix,omitempty"`
+	Destination  string `json:"destination,omitempty"`
 	Gateway      string `json:"gateway,omitempty"`
 	Metric       int    `json:"metric,omitempty"`
 }
@@ -140,6 +149,9 @@ func staticObjectKey(value ownedStaticObject) string {
 	if value.Prefix != "" {
 		return value.ConnectionID + "/" + value.Family + "/addr/" + value.Prefix
 	}
+	if value.Destination != "" {
+		return fmt.Sprintf("%s/%s/route/%s/%s/%d", value.ConnectionID, value.Family, value.Destination, value.Gateway, value.Metric)
+	}
 	return fmt.Sprintf("%s/%s/route/%s/%d", value.ConnectionID, value.Family, value.Gateway, value.Metric)
 }
 
@@ -179,6 +191,26 @@ func (r *OwnedStaticReconciler) forget(value ownedStaticObject) error {
 
 // ReconcileFamily installs desired objects before pruning recorded obsolete objects.
 func (r *OwnedStaticReconciler) ReconcileFamily(ctx context.Context, connection interfaceintent.Connection, family string, settings interfaceintent.Family, ready OwnedLinkResult) error {
+	routes := make([]OwnedRoute, 0, 1)
+	if settings.Gateway.IsValid() {
+		metric := uint32(0)
+		if settings.RouteMetric != nil {
+			metric = *settings.RouteMetric
+		}
+		routes = append(routes, OwnedRoute{Destination: defaultPrefix(family), Gateway: settings.Gateway, Metric: metric})
+	}
+	return r.ReconcileFamilyRoutes(ctx, connection, family, settings, routes, ready)
+}
+
+func defaultPrefix(family string) netip.Prefix {
+	if family == "ipv4" {
+		return netip.MustParsePrefix("0.0.0.0/0")
+	}
+	return netip.MustParsePrefix("::/0")
+}
+
+// ReconcileFamilyRoutes installs assigned main-table routes and owned addresses.
+func (r *OwnedStaticReconciler) ReconcileFamilyRoutes(ctx context.Context, connection interfaceintent.Connection, family string, settings interfaceintent.Family, routes []OwnedRoute, ready OwnedLinkResult) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if err := ctx.Err(); err != nil {
@@ -195,7 +227,20 @@ func (r *OwnedStaticReconciler) ReconcileFamily(ctx context.Context, connection 
 	if link.Attrs().Name != ready.ActualName || ready.Name != connection.Name {
 		return fmt.Errorf("connection %s link identity changed", connection.ID)
 	}
-	base := ownedStaticObject{ConnectionID: connection.ID.String(), Family: family, LinkName: ready.ActualName, LinkIndex: ready.IfIndex, LinkIdentity: staticLinkIdentity(link), Prefix: "", Gateway: "", Metric: 0}
+	seenRoutes := make(map[string]netip.Addr, len(routes))
+	for _, assigned := range routes {
+		if !assigned.Destination.IsValid() || !assigned.Gateway.IsValid() ||
+			assigned.Destination.Addr().Is4() != assigned.Gateway.Is4() ||
+			assigned.Destination.Addr().Is4() != (family == "ipv4") {
+			return fmt.Errorf("invalid owned %s route %s via %s", family, assigned.Destination, assigned.Gateway)
+		}
+		slot := fmt.Sprintf("%s/%d", assigned.Destination.Masked(), assigned.Metric)
+		if previous, exists := seenRoutes[slot]; exists && previous != assigned.Gateway {
+			return fmt.Errorf("conflicting owned routes for %s", slot)
+		}
+		seenRoutes[slot] = assigned.Gateway
+	}
+	base := ownedStaticObject{ConnectionID: connection.ID.String(), Family: family, LinkName: ready.ActualName, LinkIndex: ready.IfIndex, LinkIdentity: staticLinkIdentity(link), Prefix: "", Destination: "", Gateway: "", Metric: 0}
 	if family == "ipv4" && len(settings.Addresses) != 0 {
 		if err := r.ensurePromotion(base); err != nil {
 			return err
@@ -210,11 +255,22 @@ func (r *OwnedStaticReconciler) ReconcileFamily(ctx context.Context, connection 
 		}
 		desired[staticObjectKey(value)] = true
 	}
-	if settings.Gateway.IsValid() {
+	orderedRoutes := append([]OwnedRoute(nil), routes...)
+	// An off-subnet gateway can require a DHCP on-link route before the default.
+	sort.SliceStable(orderedRoutes, func(i, j int) bool {
+		leftOnLink := orderedRoutes[i].Gateway.IsUnspecified()
+		rightOnLink := orderedRoutes[j].Gateway.IsUnspecified()
+		if leftOnLink != rightOnLink {
+			return leftOnLink
+		}
+		return orderedRoutes[i].Destination.Bits() > orderedRoutes[j].Destination.Bits()
+	})
+	for _, assigned := range orderedRoutes {
 		value := base
-		value.Gateway = settings.Gateway.String()
-		if settings.RouteMetric != nil {
-			value.Metric = int(*settings.RouteMetric)
+		value.Gateway = assigned.Gateway.String()
+		value.Metric = int(assigned.Metric)
+		if assigned.Destination.Bits() != 0 {
+			value.Destination = assigned.Destination.Masked().String()
 		}
 		if err := r.ensureRoute(value); err != nil {
 			return err
@@ -404,16 +460,26 @@ func (r *OwnedStaticReconciler) ensureAddress(link netlink.Link, value ownedStat
 }
 
 func sameStaticRoute(route netlink.Route, value ownedStaticObject) bool {
-	return isOwnedStaticDefault(route) && route.Table == unix.RT_TABLE_MAIN && route.Priority == value.Metric &&
-		route.Protocol == OwnedStaticRouteProtocol && route.LinkIndex == value.LinkIndex && route.Gw.Equal(net.ParseIP(value.Gateway))
+	return routeMatchesDestination(route, value.Destination) && route.Table == unix.RT_TABLE_MAIN && route.Priority == value.Metric &&
+		route.Protocol == OwnedStaticRouteProtocol && route.LinkIndex == value.LinkIndex && route.Gw.Equal(ownedRouteGateway(value.Gateway))
 }
 
-func isOwnedStaticDefault(route netlink.Route) bool {
-	if route.Dst == nil {
-		return true
+func ownedRouteGateway(gateway string) net.IP {
+	if gateway == "0.0.0.0" {
+		return nil
 	}
-	ones, _ := route.Dst.Mask.Size()
-	return ones == 0
+	return net.ParseIP(gateway)
+}
+
+func routeMatchesDestination(route netlink.Route, destination string) bool {
+	if destination == "" {
+		if route.Dst == nil {
+			return true
+		}
+		ones, _ := route.Dst.Mask.Size()
+		return ones == 0
+	}
+	return route.Dst != nil && route.Dst.String() == destination
 }
 
 func (r *OwnedStaticReconciler) recordedRoute(route netlink.Route, value ownedStaticObject) bool {
@@ -437,11 +503,14 @@ func (r *OwnedStaticReconciler) ensureRoute(value ownedStaticObject) error {
 	found := false
 	replace := false
 	for _, route := range routes {
-		if !isOwnedStaticDefault(route) || route.Priority != value.Metric {
+		if !routeMatchesDestination(route, value.Destination) || route.Priority != value.Metric {
 			continue
 		}
 		if !r.recordedRoute(route, value) {
-			return fmt.Errorf("default route metric %d conflicts with an unowned route", value.Metric)
+			if value.Destination == "" {
+				return fmt.Errorf("default route metric %d conflicts with an unowned route", value.Metric)
+			}
+			return fmt.Errorf("route %s metric %d conflicts with an unowned route", value.Destination, value.Metric)
 		}
 		if sameStaticRoute(route, value) {
 			found = true
@@ -457,7 +526,17 @@ func (r *OwnedStaticReconciler) ensureRoute(value ownedStaticObject) error {
 			return err
 		}
 	}
-	route := &netlink.Route{LinkIndex: value.LinkIndex, Table: unix.RT_TABLE_MAIN, Family: staticFamily(value.Family), Gw: net.ParseIP(value.Gateway), Priority: value.Metric, Protocol: OwnedStaticRouteProtocol}
+	route := &netlink.Route{LinkIndex: value.LinkIndex, Table: unix.RT_TABLE_MAIN, Family: staticFamily(value.Family), Gw: ownedRouteGateway(value.Gateway), Priority: value.Metric, Protocol: OwnedStaticRouteProtocol}
+	if value.Gateway == "0.0.0.0" {
+		route.Scope = netlink.SCOPE_LINK
+	}
+	if value.Destination != "" {
+		_, destination, parseErr := net.ParseCIDR(value.Destination)
+		if parseErr != nil {
+			return fmt.Errorf("parse owned route destination %s: %w", value.Destination, parseErr)
+		}
+		route.Dst = destination
+	}
 	var writeErr error
 	if replace {
 		writeErr = netlink.RouteReplace(route)
@@ -465,8 +544,8 @@ func (r *OwnedStaticReconciler) ensureRoute(value ownedStaticObject) error {
 		writeErr = netlink.RouteAdd(route)
 	}
 	if writeErr != nil {
-		slog.Warn("owned default route write failed", "gateway", value.Gateway, "metric", value.Metric, "err", writeErr)
-		return fmt.Errorf("write owned default route: %w", writeErr)
+		slog.Warn("owned route write failed", "destination", value.Destination, "gateway", value.Gateway, "metric", value.Metric, "err", writeErr)
+		return fmt.Errorf("write owned route: %w", writeErr)
 	}
 	return nil
 }

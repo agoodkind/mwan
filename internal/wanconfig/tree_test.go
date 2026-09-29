@@ -365,6 +365,81 @@ func TestConfigItems_PublishesMWANOwnedLink(t *testing.T) {
 	}
 }
 
+func TestConfigItems_PublishesMWANOwnedDHCPv4(t *testing.T) {
+	t.Parallel()
+	gateway := testGateway()
+	owned := testConnection("endhcp0")
+	owned.Owner = interfaceintent.OwnerMWAN
+	owned.Link = &interfaceintent.Link{
+		Kind:  interfaceintent.KindPhysical,
+		Match: interfaceintent.Match{HardwareAddress: "02:00:5e:00:53:77"},
+	}
+	owned.IPv4 = &interfaceintent.IPv4{
+		Family: interfaceintent.Family{DHCP: new(true), RouteMetric: new(uint32(17))},
+		DHCPv4: &interfaceintent.DHCPv4{ClientID: "hex:01aabb", UseDNS: new(false), UseRoutes: new(true)},
+	}
+	gateway.Connections = append(gateway.Connections, owned)
+	items, err := ConfigItems(gateway)
+	if err != nil {
+		t.Fatalf("ConfigItems: %v", err)
+	}
+	served := make(map[string]string, len(items))
+	for _, item := range items {
+		served[item.Path] = item.Value
+	}
+	base := "/ietf-interfaces:interfaces/interface[name='endhcp0']/ietf-ip:ipv4/goodkind-mwan-steering:"
+	for path, want := range map[string]string{
+		base + "dhcp":              "true",
+		base + "route-metric":      "17",
+		base + "dhcpv4/client-id":  "hex:01aabb",
+		base + "dhcpv4/use-dns":    "false",
+		base + "dhcpv4/use-routes": "true",
+	} {
+		if got := served[path]; got != want {
+			t.Errorf("%s = %q, want %q", path, got, want)
+		}
+	}
+	gateway.Connections[len(gateway.Connections)-1].IPv4.Gateway = netip.MustParseAddr("192.0.2.1")
+	gateway.Connections[len(gateway.Connections)-1].IPv4.DHCPv4.UseRoutes = new(false)
+	if _, err := ConfigItems(gateway); err != nil {
+		t.Fatalf("ConfigItems rejected a static gateway with DHCP routes disabled: %v", err)
+	}
+}
+
+func TestConfigItems_RejectsUnsupportedMWANOwnedDHCPv4(t *testing.T) {
+	t.Parallel()
+	for _, testCase := range []struct {
+		name    string
+		client  interfaceintent.DHCPv4
+		gateway bool
+		want    string
+	}{
+		{"client ID", interfaceintent.DHCPv4{ClientID: "hex:01"}, false, "client-id"},
+		{"DNS", interfaceintent.DHCPv4{UseDNS: new(true)}, false, "use-dns"},
+		{"missing route metric", interfaceintent.DHCPv4{}, false, "routes require route-metric"},
+		{"static gateway with DHCP routes", interfaceintent.DHCPv4{UseRoutes: new(true)}, true, "cannot combine a static gateway with DHCP routes"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			gateway := testGateway()
+			owned := testConnection("endhcp0")
+			owned.Owner = interfaceintent.OwnerMWAN
+			owned.Link = &interfaceintent.Link{Kind: interfaceintent.KindPhysical}
+			owned.IPv4 = &interfaceintent.IPv4{
+				Family: interfaceintent.Family{DHCP: new(true)}, DHCPv4: &testCase.client,
+			}
+			if testCase.gateway {
+				owned.IPv4.Gateway = netip.MustParseAddr("192.0.2.1")
+			}
+			gateway.Connections = append(gateway.Connections, owned)
+			_, err := ConfigItems(gateway)
+			if err == nil || !strings.Contains(err.Error(), testCase.want) {
+				t.Fatalf("ConfigItems error = %v, want %q", err, testCase.want)
+			}
+		})
+	}
+}
+
 // TestConfigItems_PublishesTheDaemonSettingsItHolds pins the daemon
 // container: every present section publishes its leaves under
 // /goodkind-mwan-steering:daemon, leaf-list entries are addressed by

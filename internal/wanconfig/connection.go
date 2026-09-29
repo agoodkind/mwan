@@ -5,6 +5,7 @@ import (
 	"net/netip"
 
 	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/internal/networkjson"
 )
 
 func validateFirewall(g Gateway) error {
@@ -100,22 +101,21 @@ func validateConnection(connection interfaceintent.Connection) error {
 		}
 	}
 	if connection.Owner == interfaceintent.OwnerMWAN {
-		if err := validateMWANStaticConnection(connection); err != nil {
+		if err := validateMWANConnection(connection); err != nil {
 			return err
 		}
 	}
 	return validateFreeForm(connection.Name, connection.Networkd)
 }
 
-func validateMWANStaticConnection(connection interfaceintent.Connection) error {
+func validateMWANConnection(connection interfaceintent.Connection) error {
 	if ipv4 := connection.IPv4; ipv4 != nil &&
-		(ipv4.DHCP != nil || ipv4.DHCPv4 != nil || len(ipv4.SourceAddresses) != 0 ||
-			len(ipv4.DNS) != 0 || len(ipv4.SearchDomains) != 0 ||
+		(len(ipv4.SourceAddresses) != 0 || len(ipv4.DNS) != 0 || len(ipv4.SearchDomains) != 0 ||
 			ipv4.Forwarding != nil && *ipv4.Forwarding) {
 		return invalid(fmt.Sprintf("interface %s has unsupported mwan ipv4 intent", connection.Name))
 	}
 	if connection.IPv4 != nil {
-		if err := validateMWANStaticFamily(connection.Name, "ipv4", connection.IPv4.Family); err != nil {
+		if err := validateMWANIPv4(connection.Name, connection.IPv4); err != nil {
 			return err
 		}
 	}
@@ -128,14 +128,37 @@ func validateMWANStaticConnection(connection interfaceintent.Connection) error {
 		return invalid(fmt.Sprintf("interface %s has unsupported mwan ipv6 intent", connection.Name))
 	}
 	if connection.IPv6 != nil {
-		return validateMWANStaticFamily(connection.Name, "ipv6", connection.IPv6.Family)
+		return validateMWANStaticFamily(connection.Name, "ipv6", connection.IPv6.Family, false)
 	}
 	return nil
 }
 
-func validateMWANStaticFamily(name, familyName string, family interfaceintent.Family) error {
+func validateMWANIPv4(name string, ipv4 *interfaceintent.IPv4) error {
+	dhcp := ipv4.DHCP != nil && *ipv4.DHCP
+	routesEnabled := ipv4.DHCPv4 == nil || ipv4.DHCPv4.UseRoutes == nil || *ipv4.DHCPv4.UseRoutes
+	if dhcp && ipv4.Gateway.IsValid() && routesEnabled {
+		return invalid(fmt.Sprintf("interface %s ipv4 cannot combine a static gateway with DHCP routes", name))
+	}
+	if ipv4.DHCPv4 != nil {
+		if !dhcp {
+			return invalid(fmt.Sprintf("interface %s dhcpv4 requires ipv4/dhcp true", name))
+		}
+		if _, err := networkjson.DecodeDHCPv4ClientID(ipv4.DHCPv4.ClientID); err != nil {
+			return invalid(fmt.Sprintf("interface %s dhcpv4 client-id: %v", name, err))
+		}
+		if ipv4.DHCPv4.UseDNS != nil && *ipv4.DHCPv4.UseDNS {
+			return invalid(fmt.Sprintf("interface %s dhcpv4 use-dns requires resolver ownership", name))
+		}
+	}
+	if dhcp && routesEnabled && ipv4.RouteMetric == nil {
+		return invalid(fmt.Sprintf("interface %s dhcpv4 routes require route-metric", name))
+	}
+	return validateMWANStaticFamily(name, "ipv4", ipv4.Family, dhcp)
+}
+
+func validateMWANStaticFamily(name, familyName string, family interfaceintent.Family, dhcpv4 bool) error {
 	if family.Enabled != nil && !*family.Enabled || family.Forwarding != nil ||
-		family.RouteMetric != nil && !family.Gateway.IsValid() {
+		family.RouteMetric != nil && !family.Gateway.IsValid() && !dhcpv4 {
 		return invalid(fmt.Sprintf("interface %s has unsupported mwan %s settings", name, familyName))
 	}
 	for _, address := range family.Addresses {

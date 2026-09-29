@@ -1072,11 +1072,11 @@ func TestLoadMWANOwnedLink(t *testing.T) {
         "goodkind-mwan-steering:link": { "match": { "hardware-address": "02:00:5e:00:53:77" } }`, "requires a link"},
 		"link files":  {`"goodkind-mwan-steering:link-files": "rendered",`, "cannot use networkd files"},
 		"networkd":    {`"goodkind-mwan-steering:networkd": {},`, "cannot use networkd files"},
-		"IPv4":        {`"ietf-ip:ipv4": { "goodkind-mwan-steering:dhcp": true },`, "supports static local addresses and an optional gateway with route metric only"},
+		"IPv4":        {`"ietf-ip:ipv4": { "goodkind-mwan-steering:dhcp": true, "goodkind-mwan-steering:resolver": {} },`, "supports local addresses, DHCPv4"},
 		"IPv6":        {`"ietf-ip:ipv6": { "goodkind-mwan-steering:dhcp": true },`, "supports static local addresses and an optional gateway with route metric only"},
 		"lease store": {`"goodkind-mwan-steering:lease-store": "/tmp/leases",`, "cannot use networkd files"},
 		"steering":    {`"goodkind-mwan-steering:steering": { "tier": 0 },`, "steering without a provider"},
-		"WAN":         {`"goodkind-mwan-steering:wan": { "name": "owned" },`, "requires a static address family"},
+		"WAN":         {`"goodkind-mwan-steering:wan": { "name": "owned" },`, "requires an address family"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -1456,5 +1456,134 @@ func TestLoadBaselineKeepsProtectiveInputsIndependentOfProviderValidation(t *tes
 	invalidManagement := strings.Replace(body, `"port": 22`, `"port": 0`, 1)
 	if _, err := networkjson.LoadBaseline(writeDocument(t, invalidManagement)); err == nil {
 		t.Fatal("LoadBaseline accepted an invalid management port")
+	}
+}
+
+func mwanDHCPv4Document(family string) string {
+	owned := `{ "name": "enowned0", "type": "iana-if-type:ethernetCsmacd",
+        "goodkind-mwan-steering:connection-id": "owned-link",
+        "goodkind-mwan-steering:owner": "mwan",
+        "goodkind-mwan-steering:link": { "match": { "hardware-address": "02:00:5e:00:53:77" } },
+        "ietf-ip:ipv4": ` + family + ` },`
+	return strings.Replace(validDocument, `{ "name": "enmwanbr0", "type": "iana-if-type:other" }`,
+		owned+` { "name": "enmwanbr0", "type": "iana-if-type:other" }`, 1)
+}
+
+func TestLoadMWANOwnedDHCPv4(t *testing.T) {
+	t.Parallel()
+	for _, testCase := range []struct {
+		name         string
+		clientID     string
+		routeSetting string
+		gateway      string
+		wantID       []byte
+	}{
+		{name: "hardware identity and default routes"},
+		{name: "configured identity and routes", clientID: `"client-id": "hex:01aabb",`, routeSetting: `"use-routes": true,`, wantID: []byte{0x01, 0xaa, 0xbb}},
+		{name: "routes disabled with static gateway", routeSetting: `"use-routes": false,`, gateway: `"goodkind-mwan-steering:gateway": "192.0.2.1",`},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			family := `{ "goodkind-mwan-steering:dhcp": true,
+                "goodkind-mwan-steering:route-metric": 17,
+                ` + testCase.gateway + `
+                "goodkind-mwan-steering:dhcpv4": { ` + testCase.clientID + testCase.routeSetting + `
+                  "use-dns": false } }`
+			loaded, err := networkjson.Load(writeDocument(t, mwanDHCPv4Document(family)), schemaDirForTest(t))
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			connection := requireConnection(t, loaded.Connections, "enowned0")
+			if connection.IPv4 == nil || connection.IPv4.DHCP == nil || !*connection.IPv4.DHCP ||
+				connection.IPv4.DHCPv4 == nil || connection.IPv4.RouteMetric == nil || *connection.IPv4.RouteMetric != 17 {
+				t.Fatalf("DHCPv4 intent = %+v", connection.IPv4)
+			}
+			decoded, err := networkjson.DecodeDHCPv4ClientID(connection.IPv4.DHCPv4.ClientID)
+			if err != nil || !reflect.DeepEqual(decoded, testCase.wantID) {
+				t.Fatalf("decoded client ID = %x, error = %v; want %x", decoded, err, testCase.wantID)
+			}
+			for _, expected := range []struct {
+				kind   interfaceintent.ResourceKind
+				writer interfaceintent.Writer
+			}{
+				{interfaceintent.ResourceDHCPv4, interfaceintent.WriterMWANProtocol},
+				{interfaceintent.ResourceAcquiredAddress, interfaceintent.WriterMWANAddress},
+			} {
+				found := false
+				for _, claim := range loaded.Claims {
+					if claim.ConnectionID == connection.ID && claim.Kind == expected.kind && claim.Writer == expected.writer {
+						found = true
+					}
+				}
+				if !found {
+					t.Fatalf("missing %s claim by %s: %+v", expected.kind, expected.writer, loaded.Claims)
+				}
+			}
+			foundRoute := false
+			expectedRoute := "main/default/17"
+			for _, claim := range loaded.Claims {
+				if claim.ConnectionID == connection.ID && claim.Kind == interfaceintent.ResourceMainRoute &&
+					claim.Key == expectedRoute &&
+					claim.Writer == interfaceintent.WriterMWANRoute {
+					foundRoute = true
+				}
+			}
+			if !foundRoute {
+				t.Fatalf("missing MWAN default route claim: %+v", loaded.Claims)
+			}
+		})
+	}
+}
+
+func TestLoadMWANDHCPv4WithoutRoutesNeedsNoMetric(t *testing.T) {
+	t.Parallel()
+	family := `{ "goodkind-mwan-steering:dhcp": true, "goodkind-mwan-steering:dhcpv4": { "use-routes": false } }`
+	if _, err := networkjson.Load(writeDocument(t, mwanDHCPv4Document(family)), schemaDirForTest(t)); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+}
+
+func TestLoadRejectsDuplicateMWANDHCPv4DefaultMetric(t *testing.T) {
+	t.Parallel()
+	family := `{ "goodkind-mwan-steering:dhcp": true, "goodkind-mwan-steering:route-metric": 17 }`
+	document := mwanDHCPv4Document(family)
+	second := `{ "name": "enowned1", "type": "iana-if-type:ethernetCsmacd",
+        "goodkind-mwan-steering:connection-id": "owned-link-1",
+        "goodkind-mwan-steering:owner": "mwan",
+        "goodkind-mwan-steering:link": { "match": { "hardware-address": "02:00:5e:00:53:78" } },
+        "ietf-ip:ipv4": ` + family + ` },`
+	document = strings.Replace(document, `{ "name": "enmwanbr0", "type": "iana-if-type:other" }`,
+		second+` { "name": "enmwanbr0", "type": "iana-if-type:other" }`, 1)
+	_, err := networkjson.Load(writeDocument(t, document), schemaDirForTest(t))
+	if err == nil || !strings.Contains(err.Error(), "resource main-route/ipv4/main/default/17 has writers") {
+		t.Fatalf("Load error = %v, want duplicate default route metric", err)
+	}
+}
+
+func TestLoadRejectsUnsupportedMWANDHCPv4Options(t *testing.T) {
+	t.Parallel()
+	for _, testCase := range []struct {
+		name   string
+		family string
+		want   string
+	}{
+		{"client ID encoding", `{ "goodkind-mwan-steering:dhcp": true, "goodkind-mwan-steering:dhcpv4": { "client-id": "ethernet:aa" } }`, "client-id"},
+		{"client ID one byte", `{ "goodkind-mwan-steering:dhcp": true, "goodkind-mwan-steering:dhcpv4": { "client-id": "hex:01" } }`, "client-id"},
+		{"client ID over 255 bytes", `{ "goodkind-mwan-steering:dhcp": true, "goodkind-mwan-steering:dhcpv4": { "client-id": "hex:` + strings.Repeat("01", 256) + `" } }`, "client-id"},
+		{"client ID invalid hex", `{ "goodkind-mwan-steering:dhcp": true, "goodkind-mwan-steering:dhcpv4": { "client-id": "hex:01xz" } }`, "client-id"},
+		{"DNS", `{ "goodkind-mwan-steering:dhcp": true, "goodkind-mwan-steering:dhcpv4": { "use-dns": true } }`, "use-dns requires resolver ownership"},
+		{"missing route metric", `{ "goodkind-mwan-steering:dhcp": true }`, "DHCP routes require route-metric"},
+		{"explicit routes without route metric", `{ "goodkind-mwan-steering:dhcp": true, "goodkind-mwan-steering:dhcpv4": { "use-routes": true } }`, "DHCP routes require route-metric"},
+		{"static gateway with default DHCP routes", `{ "goodkind-mwan-steering:dhcp": true, "goodkind-mwan-steering:gateway": "192.0.2.1" }`, "cannot combine a static gateway with DHCP routes"},
+		{"static gateway with requested DHCP routes", `{ "goodkind-mwan-steering:dhcp": true, "goodkind-mwan-steering:gateway": "192.0.2.1", "goodkind-mwan-steering:dhcpv4": { "use-routes": true } }`, "cannot combine a static gateway with DHCP routes"},
+		{"client without DHCP", `{ "goodkind-mwan-steering:dhcp": false, "goodkind-mwan-steering:dhcpv4": {} }`, "requires ipv4/dhcp true"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := networkjson.Load(writeDocument(t, mwanDHCPv4Document(testCase.family)), schemaDirForTest(t))
+			if err == nil || !strings.Contains(err.Error(), testCase.want) {
+				t.Fatalf("Load error = %v, want %q", err, testCase.want)
+			}
+		})
 	}
 }
