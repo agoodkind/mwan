@@ -288,6 +288,7 @@ func (c *DHCPClient) recoverLease(ctx context.Context, cached LeaseInfo) *nclien
 		return nil
 	}
 	if err := c.captureOrigin(); err != nil {
+		c.emit(leaseState(LeaseExpired, cached.AcquiredAt, err))
 		return nil
 	}
 	c.mu.Lock()

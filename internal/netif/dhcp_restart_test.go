@@ -156,3 +156,25 @@ func TestDHCPRestartClientWithServer(t *testing.T) {
 		})
 	}
 }
+
+func TestDHCPRestartReportsMissingInterface(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cached := LeaseInfo{
+		IP:               net.IPv4(192, 0, 2, 8),
+		LinkHardwareAddr: net.HardwareAddr{2, 0, 0, 0, 0, 1},
+		ExpiresAt:        time.Now().Add(time.Minute),
+	}
+	client := StartDHCPClient(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), DHCPConfig{
+		Iface: "missing-dhcp-restart-interface", CachedLease: &cached,
+		InitialBackoff: time.Millisecond,
+	})
+	select {
+	case event := <-client.Events:
+		if event.State != LeaseExpired || event.Err == nil {
+			t.Fatalf("missing interface event = %+v", event)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("missing interface was not reported")
+	}
+}
