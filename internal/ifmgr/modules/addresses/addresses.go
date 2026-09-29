@@ -66,11 +66,14 @@ type dhcpSession struct {
 }
 
 type dhcpv6Session struct {
-	client     *netif.DHCPv6PDClient
-	cancel     context.CancelFunc
-	ready      netif.OwnedLinkResult
-	identity   string
-	generation uint64
+	client      *netif.DHCPv6PDClient
+	cancel      context.CancelFunc
+	ready       netif.OwnedLinkResult
+	identity    string
+	generation  uint64
+	addrUpdates chan netlink.AddrUpdate
+	addrErrors  chan error
+	addrDone    chan struct{}
 }
 
 // New validates the address journal before daemon startup.
@@ -143,39 +146,7 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		if connection.Owner != interfaceintent.OwnerMWAN {
 			continue
 		}
-		families := make(map[string]bool)
-		provider := module.providers[connection.ID.String()]
-		session := module.currentDHCPClient(ctx, log, connection)
-		module.currentDHCPv6Client(ctx, log, connection)
-		for _, candidate := range []struct {
-			name   string
-			intent *interfaceintent.Family
-		}{
-			{name: "ipv4", intent: familyV4(connection.IPv4)},
-			{name: "ipv6", intent: familyV6(connection.IPv6)},
-		} {
-			if candidate.intent == nil {
-				continue
-			}
-			families[candidate.name] = true
-			settings := *candidate.intent
-			assignments := make([]interfaceintent.Assignment, 0, len(settings.Addresses)+1)
-			for _, address := range settings.Addresses {
-				assignments = append(assignments, addressAssignment(connection, candidate.name, interfaceintent.AssignmentStatic, address.Purpose, address.Prefix))
-			}
-			if candidate.name == "ipv4" {
-				for _, address := range mappedAddresses(connection, provider.IPv4) {
-					settings.Addresses = append(slices.Clone(settings.Addresses), address)
-					assignments = append(assignments, addressAssignment(connection, candidate.name, interfaceintent.AssignmentMapped, address.Purpose, address.Prefix))
-				}
-			} else if prefix := nptAddress(provider.IPv6, module.delegation(connection.Name)); prefix.IsValid() {
-				settings.Addresses = append(slices.Clone(settings.Addresses), interfaceintent.Address{Prefix: prefix, Purpose: interfaceintent.PurposeForward})
-				assignments = append(assignments, addressAssignment(connection, candidate.name, interfaceintent.AssignmentNPTExternal, interfaceintent.PurposeForward, prefix))
-			}
-			assignments = append(assignments, module.familyDelegations(connection, candidate.name)...)
-			module.reconcileFamily(ctx, log, connection, candidate.name, settings, assignments, session)
-		}
-		desiredFamilies[connection.ID.String()] = families
+		desiredFamilies[connection.ID.String()] = module.reconcileConnection(ctx, log, connection)
 	}
 	err := module.reconciler.PruneRemoved(desiredFamilies)
 	var pending []wanstate.PendingRemoval
@@ -196,6 +167,67 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		log.WarnContext(ctx, "addresses: prune removed families failed", "err", err)
 		return fmt.Errorf("addresses: prune removed families: %w", err)
+	}
+	return nil
+}
+
+func (module *Module) reconcileConnection(ctx context.Context, log *slog.Logger, connection interfaceintent.Connection) map[string]bool {
+	families := make(map[string]bool)
+	provider := module.providers[connection.ID.String()]
+	session := module.currentDHCPClient(ctx, log, connection)
+	module.currentDHCPv6Client(ctx, log, connection)
+	for _, candidate := range []struct {
+		name   string
+		intent *interfaceintent.Family
+	}{
+		{name: "ipv4", intent: familyV4(connection.IPv4)},
+		{name: "ipv6", intent: familyV6(connection.IPv6)},
+	} {
+		if candidate.intent == nil {
+			continue
+		}
+		families[candidate.name] = true
+		module.reconcileConfiguredFamily(ctx, log, connection, provider, candidate.name, *candidate.intent, session)
+	}
+	return families
+}
+
+func (module *Module) reconcileConfiguredFamily(ctx context.Context, log *slog.Logger, connection interfaceintent.Connection, provider Provider, family string, settings interfaceintent.Family, session *dhcpSession) {
+	assignments := make([]interfaceintent.Assignment, 0, len(settings.Addresses)+1)
+	for _, address := range settings.Addresses {
+		assignments = append(assignments, addressAssignment(connection, family, interfaceintent.AssignmentStatic, address.Purpose, address.Prefix))
+	}
+	var preparationErr error
+	if family == "ipv4" {
+		for _, address := range mappedAddresses(connection, provider.IPv4) {
+			settings.Addresses = append(slices.Clone(settings.Addresses), address)
+			assignments = append(assignments, addressAssignment(connection, family, interfaceintent.AssignmentMapped, address.Purpose, address.Prefix))
+		}
+	} else {
+		if prefix := nptAddress(provider.IPv6, module.delegation(connection.Name)); prefix.IsValid() {
+			settings.Addresses = append(slices.Clone(settings.Addresses), interfaceintent.Address{Prefix: prefix, Purpose: interfaceintent.PurposeForward})
+			assignments = append(assignments, addressAssignment(connection, family, interfaceintent.AssignmentNPTExternal, interfaceintent.PurposeForward, prefix))
+		}
+		leasedAddresses, leasedAssignments := module.localDHCPv6Assignments(connection)
+		preparationErr = module.prepareLocalIPv6(ctx, log, connection.Name, leasedAddresses)
+		settings.Addresses = append(slices.Clone(settings.Addresses), leasedAddresses...)
+		assignments = append(assignments, leasedAssignments...)
+	}
+	assignments = append(assignments, module.familyDelegations(connection, family)...)
+	module.reconcileFamily(ctx, log, connection, family, settings, assignments, session, preparationErr)
+}
+
+func (module *Module) prepareLocalIPv6(ctx context.Context, log *slog.Logger, iface string, addresses []interfaceintent.Address) error {
+	if len(addresses) == 0 || module.Env.PrepareLocalIPv6 == nil {
+		return nil
+	}
+	local := make([]netip.Addr, 0, len(addresses))
+	for _, address := range addresses {
+		local = append(local, address.Prefix.Addr())
+	}
+	if err := module.Env.PrepareLocalIPv6(ctx, log, iface, local); err != nil {
+		log.WarnContext(ctx, "addresses: local IPv6 preparation failed", "iface", iface, "err", err)
+		return fmt.Errorf("prepare local IPv6 on %s: %w", iface, err)
 	}
 	return nil
 }
@@ -272,7 +304,7 @@ func (module *Module) watchDHCP(ctx context.Context, id string, session *dhcpSes
 	}
 }
 
-func (module *Module) reconcileFamily(ctx context.Context, log *slog.Logger, connection interfaceintent.Connection, family string, settings interfaceintent.Family, assignments []interfaceintent.Assignment, session *dhcpSession) {
+func (module *Module) reconcileFamily(ctx context.Context, log *slog.Logger, connection interfaceintent.Connection, family string, settings interfaceintent.Family, assignments []interfaceintent.Assignment, session *dhcpSession, preparationErr error) {
 	id := connection.ID.String()
 	metric := uint32(0)
 	if settings.RouteMetric != nil {
@@ -309,18 +341,33 @@ func (module *Module) reconcileFamily(ctx context.Context, log *slog.Logger, con
 			}
 		}
 	}
+	if family == "ipv6" {
+		acquisition, validity, leaseReady = module.dhcpv6State(connection)
+	}
 	if module.Env.LiveState != nil {
 		module.Env.LiveState.SetAssignment(id, family, acquisition, validity, assignments)
 	}
+	lifetimes := make(map[netip.Prefix]netif.OwnedAddressLifetime)
+	for _, assignment := range assignments {
+		if assignment.Kind != interfaceintent.AssignmentDHCPv6IANA || assignment.PreferredUntil == nil || assignment.ValidUntil == nil {
+			continue
+		}
+		lifetimes[assignment.Value] = netif.OwnedAddressLifetime{
+			PreferredUntil: *assignment.PreferredUntil, ValidUntil: *assignment.ValidUntil,
+		}
+	}
 	ready, ok := module.Env.OwnedLinks.Get(id)
-	err := leaseError
+	err := errors.Join(leaseError, preparationErr)
 	if err == nil && !ok {
 		err = fmt.Errorf("current link result is absent")
 	} else if err == nil {
-		err = module.reconciler.ReconcileFamilyRoutes(ctx, connection, family, settings, routes, ready)
+		err = module.reconciler.ReconcileFamilyRoutesWithLifetimes(ctx, connection, family, settings, routes, ready, lifetimes)
 	}
 	if err == nil {
-		err = module.publishInstalled(ctx, log, connection, settings, ready)
+		err = module.publishInstalled(ctx, log, connection, settings, ready, lifetimes)
+	}
+	if err == nil {
+		module.Env.OwnedAddresses.SetFamilyApplied(id, family)
 	}
 	if err == nil && leaseReady {
 		module.Env.OwnedAddresses.SetFamilyReady(id, family)
@@ -421,7 +468,7 @@ func metricForFamily(family interfaceintent.Family) uint32 {
 	return *family.RouteMetric
 }
 
-func (module *Module) publishInstalled(ctx context.Context, log *slog.Logger, connection interfaceintent.Connection, settings interfaceintent.Family, ready netif.OwnedLinkResult) error {
+func (module *Module) publishInstalled(ctx context.Context, log *slog.Logger, connection interfaceintent.Connection, settings interfaceintent.Family, ready netif.OwnedLinkResult, lifetimes map[netip.Prefix]netif.OwnedAddressLifetime) error {
 	link, err := netlink.LinkByName(ready.ActualName)
 	if err != nil || link.Attrs().Index != ready.IfIndex {
 		return fmt.Errorf("connection %s link identity changed during address verification", connection.ID)
@@ -435,7 +482,14 @@ func (module *Module) publishInstalled(ctx context.Context, log *slog.Logger, co
 	for _, desired := range settings.Addresses {
 		found := false
 		for _, current := range addresses {
-			if current.CIDR == desired.Prefix.String() && current.Flags&unix.IFA_F_TENTATIVE == 0 {
+			if current.CIDR != desired.Prefix.String() {
+				continue
+			}
+			if _, leased := lifetimes[desired.Prefix]; leased && current.Flags&unix.IFA_F_DADFAILED != 0 {
+				module.queueDHCPv6Decline(connection.ID.String(), nil, desired.Prefix.Addr())
+				return fmt.Errorf("DHCPv6 address %s failed duplicate address detection", desired.Prefix)
+			}
+			if current.Flags&(unix.IFA_F_TENTATIVE|unix.IFA_F_DADFAILED) == 0 {
 				found = true
 				break
 			}
@@ -449,6 +503,16 @@ func (module *Module) publishInstalled(ctx context.Context, log *slog.Logger, co
 		module.Env.OwnedAddresses.Set(connection.ID.String(), prefix)
 	}
 	return nil
+}
+
+func (module *Module) queueDHCPv6Decline(id string, expected *dhcpv6Session, address netip.Addr) bool {
+	module.sessionMu.Lock()
+	session := module.dhcpv6Sessions[id]
+	module.sessionMu.Unlock()
+	if session == nil || expected != nil && session != expected {
+		return false
+	}
+	return session.client.DeclineAddress(address)
 }
 
 func mappedAddresses(connection interfaceintent.Connection, translation *config.IPv4Translation) []interfaceintent.Address {

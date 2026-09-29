@@ -12,9 +12,11 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
+	internalclock "goodkind.io/mwan/internal/clock"
 	"goodkind.io/mwan/internal/installfile"
 	"goodkind.io/mwan/internal/interfaceintent"
 )
@@ -27,6 +29,12 @@ type OwnedRoute struct {
 	Destination netip.Prefix
 	Gateway     netip.Addr
 	Metric      uint32
+}
+
+// OwnedAddressLifetime supplies the deadlines for one acquired address.
+type OwnedAddressLifetime struct {
+	PreferredUntil time.Time
+	ValidUntil     time.Time
 }
 
 type ownedStaticObject struct {
@@ -74,6 +82,7 @@ type OwnedStaticReconciler struct {
 	mu      sync.Mutex
 	path    string
 	journal ownedStaticJournal
+	clock   internalclock.Clock
 }
 
 // NewOwnedStaticReconciler reads a durable static ownership journal.
@@ -86,7 +95,7 @@ func NewOwnedStaticReconciler(path string) (*OwnedStaticReconciler, error) {
 		slog.Warn("static ownership boot ID read failed", "err", err)
 		return nil, fmt.Errorf("read boot ID: %w", err)
 	}
-	r := &OwnedStaticReconciler{mu: sync.Mutex{}, path: path, journal: ownedStaticJournal{BootID: string(bootID), Objects: nil, Promotion: nil}}
+	r := &OwnedStaticReconciler{mu: sync.Mutex{}, path: path, journal: ownedStaticJournal{BootID: string(bootID), Objects: nil, Promotion: nil}, clock: internalclock.Real{}}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return r, nil
@@ -211,6 +220,11 @@ func defaultPrefix(family string) netip.Prefix {
 
 // ReconcileFamilyRoutes installs assigned main-table routes and owned addresses.
 func (r *OwnedStaticReconciler) ReconcileFamilyRoutes(ctx context.Context, connection interfaceintent.Connection, family string, settings interfaceintent.Family, routes []OwnedRoute, ready OwnedLinkResult) error {
+	return r.ReconcileFamilyRoutesWithLifetimes(ctx, connection, family, settings, routes, ready, nil)
+}
+
+// ReconcileFamilyRoutesWithLifetimes also applies deadlines to acquired addresses.
+func (r *OwnedStaticReconciler) ReconcileFamilyRoutesWithLifetimes(ctx context.Context, connection interfaceintent.Connection, family string, settings interfaceintent.Family, routes []OwnedRoute, ready OwnedLinkResult, lifetimes map[netip.Prefix]OwnedAddressLifetime) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if err := ctx.Err(); err != nil {
@@ -250,7 +264,7 @@ func (r *OwnedStaticReconciler) ReconcileFamilyRoutes(ctx context.Context, conne
 	for _, address := range settings.Addresses {
 		value := base
 		value.Prefix = address.Prefix.String()
-		if err := r.ensureAddress(link, value); err != nil {
+		if err := r.ensureAddress(link, value, lifetimes[address.Prefix]); err != nil {
 			return err
 		}
 		desired[staticObjectKey(value)] = true
@@ -407,30 +421,19 @@ func addressMatches(address netlink.Addr, prefix netip.Prefix) bool {
 	return address.IP.Equal(net.IP(prefix.Addr().AsSlice())) && bits == prefix.Bits()
 }
 
-func (r *OwnedStaticReconciler) ensureAddress(link netlink.Link, value ownedStaticObject) error {
+func (r *OwnedStaticReconciler) ensureAddress(link netlink.Link, value ownedStaticObject, lifetime OwnedAddressLifetime) error {
 	prefix, err := netip.ParsePrefix(value.Prefix)
 	if err != nil {
+		slog.Warn("owned address prefix parse failed", "prefix", value.Prefix, "err", err)
 		return fmt.Errorf("parse owned prefix: %w", err)
 	}
-	addresses, err := netlink.AddrList(link, staticFamily(value.Family))
+	found, replace, installed, err := r.findOwnedAddress(link, value, prefix)
 	if err != nil {
-		return fmt.Errorf("list link addresses: %w", err)
+		return err
 	}
-	found := false
-	replace := false
-	for _, address := range addresses {
-		if address.IP.Equal(net.IP(prefix.Addr().AsSlice())) {
-			if !addressMatches(address, prefix) {
-				old := value
-				old.Prefix = address.IPNet.String()
-				if !r.recorded(old) {
-					return fmt.Errorf("foreign address uses %s with another prefix", prefix.Addr())
-				}
-				replace = true
-				continue
-			}
-			found = true
-		}
+	now := r.clock.Now()
+	if !lifetime.ValidUntil.IsZero() && !now.Before(lifetime.ValidUntil) {
+		return fmt.Errorf("owned address %s lease expired", value.Prefix)
 	}
 	if found && !r.recorded(value) {
 		return fmt.Errorf("address %s already exists without ownership record", value.Prefix)
@@ -440,23 +443,84 @@ func (r *OwnedStaticReconciler) ensureAddress(link netlink.Link, value ownedStat
 			return err
 		}
 	}
-	if !found {
-		address, err := netlink.ParseAddr(value.Prefix)
-		if err != nil {
-			return fmt.Errorf("parse netlink address: %w", err)
-		}
-		var writeErr error
-		if replace {
-			writeErr = netlink.AddrReplace(link, address)
-		} else {
-			writeErr = netlink.AddrAdd(link, address)
-		}
-		if writeErr != nil {
-			slog.Warn("owned static address write failed", "prefix", value.Prefix, "err", writeErr)
-			return fmt.Errorf("write owned address %s: %w", value.Prefix, writeErr)
+	if !lifetime.ValidUntil.IsZero() {
+		valid := leaseLifetimeSeconds(lifetime.ValidUntil, now)
+		preferred := min(valid, leaseLifetimeSeconds(lifetime.PreferredUntil, now))
+		if found && (lifetimeDifference(installed.ValidLft, valid) > 2 || lifetimeDifference(installed.PreferedLft, preferred) > 2) {
+			replace = true
 		}
 	}
+	if found && !replace {
+		return nil
+	}
+	return r.writeOwnedAddress(link, value, lifetime, replace)
+}
+
+func (r *OwnedStaticReconciler) findOwnedAddress(link netlink.Link, value ownedStaticObject, prefix netip.Prefix) (bool, bool, netlink.Addr, error) {
+	addresses, err := netlink.AddrList(link, staticFamily(value.Family))
+	if err != nil {
+		slog.Warn("owned address list failed", "link", link.Attrs().Name, "err", err)
+		return false, false, netlink.Addr{}, fmt.Errorf("list link addresses: %w", err)
+	}
+	found := false
+	replace := false
+	var installed netlink.Addr
+	for _, address := range addresses {
+		if !address.IP.Equal(net.IP(prefix.Addr().AsSlice())) {
+			continue
+		}
+		if !addressMatches(address, prefix) {
+			old := value
+			old.Prefix = address.IPNet.String()
+			if !r.recorded(old) {
+				return false, false, netlink.Addr{}, fmt.Errorf("foreign address uses %s with another prefix", prefix.Addr())
+			}
+			replace = true
+			continue
+		}
+		found = true
+		installed = address
+	}
+	return found, replace, installed, nil
+}
+
+func (r *OwnedStaticReconciler) writeOwnedAddress(link netlink.Link, value ownedStaticObject, lifetime OwnedAddressLifetime, replace bool) error {
+	address, err := netlink.ParseAddr(value.Prefix)
+	if err != nil {
+		return fmt.Errorf("parse netlink address: %w", err)
+	}
+	if !lifetime.ValidUntil.IsZero() {
+		now := r.clock.Now()
+		if !now.Before(lifetime.ValidUntil) {
+			return fmt.Errorf("owned address %s lease expired", value.Prefix)
+		}
+		address.ValidLft = leaseLifetimeSeconds(lifetime.ValidUntil, now)
+		address.PreferedLft = min(address.ValidLft, leaseLifetimeSeconds(lifetime.PreferredUntil, now))
+	}
+	if replace {
+		err = netlink.AddrReplace(link, address)
+	} else {
+		err = netlink.AddrAdd(link, address)
+	}
+	if err != nil {
+		slog.Warn("owned static address write failed", "prefix", value.Prefix, "err", err)
+		return fmt.Errorf("write owned address %s: %w", value.Prefix, err)
+	}
 	return nil
+}
+
+func leaseLifetimeSeconds(deadline, now time.Time) int {
+	if !deadline.After(now) {
+		return 0
+	}
+	return max(1, int(deadline.Sub(now).Seconds()))
+}
+
+func lifetimeDifference(left, right int) int {
+	if left > right {
+		return left - right
+	}
+	return right - left
 }
 
 func sameStaticRoute(route netlink.Route, value ownedStaticObject) bool {

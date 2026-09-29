@@ -261,6 +261,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 		OwnedLinks:       nil,
 		OwnedAddresses:   nil,
 		Delegations:      nil,
+		PrepareLocalIPv6: nil,
 	}
 
 	if err := d.initModules(ctx); err != nil {
