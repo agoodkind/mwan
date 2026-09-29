@@ -1,6 +1,7 @@
 package networkjson
 
 import (
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"net/netip"
@@ -58,7 +59,7 @@ func buildConnection(entry ifaceEntry, id connectionid.ID) (interfaceintent.Conn
 		connection.Networkd = files
 	}
 	if owner == interfaceintent.OwnerMWAN {
-		if err := validateMWANStaticConnection(entry, connection); err != nil {
+		if err := validateMWANConnection(entry, connection); err != nil {
 			return connection, err
 		}
 	}
@@ -133,7 +134,7 @@ func validateMWANOwner(entry ifaceEntry) error {
 
 func validateMWANProvider(entry ifaceEntry) error {
 	if entry.IPv4 == nil && entry.IPv6 == nil {
-		return fmt.Errorf("interface %s: mwan provider requires a static address family", entry.Name)
+		return fmt.Errorf("interface %s: mwan provider requires an address family", entry.Name)
 	}
 	if entry.IPv4 != nil && entry.IPv4.Translation != nil {
 		for _, mapping := range entry.IPv4.Translation.StaticMappings {
@@ -167,9 +168,14 @@ func validateMWANFamily(name, family string, wire *familyWire, provider bool) er
 	if wire == nil {
 		return nil
 	}
+	dhcpv4 := family == "ipv4" && wire.DHCP != nil && *wire.DHCP
 	if wire.Enabled != nil && !*wire.Enabled || wire.Forwarding != nil ||
-		wire.DHCP != nil || wire.Resolver != nil || (wire.Translation != nil && !provider) ||
-		wire.RouteMetric != nil && wire.Gateway == "" {
+		(family == "ipv6" && wire.DHCP != nil) || wire.Resolver != nil ||
+		(wire.Translation != nil && !provider) ||
+		wire.RouteMetric != nil && wire.Gateway == "" && !dhcpv4 {
+		if family == "ipv4" {
+			return fmt.Errorf("interface %s: mwan ipv4 supports local addresses, DHCPv4, and an optional gateway or DHCP route metric only", name)
+		}
 		return fmt.Errorf("interface %s: mwan %s supports static local addresses and an optional gateway with route metric only", name, family)
 	}
 	return nil
@@ -188,10 +194,13 @@ func validateMWANStaticFamily(name, family string, intent *interfaceintent.Famil
 	return nil
 }
 
-func validateMWANStaticConnection(entry ifaceEntry, connection interfaceintent.Connection) error {
+func validateMWANConnection(entry ifaceEntry, connection interfaceintent.Connection) error {
 	if entry.IPv4 != nil {
-		if len(entry.IPv4.SourceAddresses) != 0 || entry.IPv4.DHCPv4 != nil {
-			return fmt.Errorf("interface %s: mwan ipv4 does not support source addresses or dhcpv4", entry.Name)
+		if len(entry.IPv4.SourceAddresses) != 0 {
+			return fmt.Errorf("interface %s: mwan ipv4 does not support source addresses", entry.Name)
+		}
+		if err := validateMWANDHCPv4(entry.Name, entry.IPv4); err != nil {
+			return err
 		}
 		if err := validateMWANStaticFamily(entry.Name, "ipv4", &connection.IPv4.Family); err != nil {
 			return err
@@ -206,6 +215,45 @@ func validateMWANStaticConnection(entry ifaceEntry, connection interfaceintent.C
 		return validateMWANStaticFamily(entry.Name, "ipv6", &connection.IPv6.Family)
 	}
 	return nil
+}
+
+func validateMWANDHCPv4(name string, family *familyV4) error {
+	dhcp := family.DHCP != nil && *family.DHCP
+	routesEnabled := family.DHCPv4 == nil || family.DHCPv4.UseRoutes == nil || *family.DHCPv4.UseRoutes
+	if dhcp && family.Gateway != "" && routesEnabled {
+		return fmt.Errorf("interface %s: ipv4 cannot combine a static gateway with DHCP routes", name)
+	}
+	if family.DHCPv4 != nil && !dhcp {
+		return fmt.Errorf("interface %s: ipv4/dhcpv4 requires ipv4/dhcp true", name)
+	}
+	if family.DHCPv4 != nil {
+		if _, err := DecodeDHCPv4ClientID(family.DHCPv4.ClientID); err != nil {
+			slog.Error("networkjson: DHCPv4 client ID invalid", "interface", name, "err", err)
+			return fmt.Errorf("interface %s: ipv4/dhcpv4/client-id: %w", name, err)
+		}
+		if family.DHCPv4.UseDNS != nil && *family.DHCPv4.UseDNS {
+			return fmt.Errorf("interface %s: ipv4/dhcpv4/use-dns requires resolver ownership", name)
+		}
+	}
+	if dhcp && routesEnabled && family.RouteMetric == nil {
+		return fmt.Errorf("interface %s: ipv4 DHCP routes require route-metric", name)
+	}
+	return nil
+}
+
+// DecodeDHCPv4ClientID decodes the complete DHCP option 61 payload.
+func DecodeDHCPv4ClientID(value string) ([]byte, error) {
+	if value == "" {
+		return nil, nil
+	}
+	if !strings.HasPrefix(value, "hex:") {
+		return nil, fmt.Errorf("expected hex: followed by 2 to 255 bytes")
+	}
+	decoded, err := hex.DecodeString(strings.TrimPrefix(value, "hex:"))
+	if err != nil || len(decoded) < 2 || len(decoded) > 255 {
+		return nil, fmt.Errorf("expected hex: followed by 2 to 255 bytes")
+	}
+	return decoded, nil
 }
 
 func validateOwnedLinkName(name string) error {
@@ -769,18 +817,36 @@ func claimFamilyResources(connection interfaceintent.Connection, name string, fa
 		}
 	}
 	if family.DHCP != nil && *family.DHCP {
-		kind := interfaceintent.ResourceDHCPv4
-		if name == "ipv6" {
-			kind = interfaceintent.ResourceDHCPv6
+		return claimDHCPResources(connection, name, family, writer, add)
+	}
+	return nil
+}
+
+func claimDHCPResources(connection interfaceintent.Connection, name string, family interfaceintent.Family, writer interfaceintent.Writer, add func(interfaceintent.Claim) error) error {
+	if connection.Owner == interfaceintent.OwnerMWAN && name == "ipv4" &&
+		(connection.IPv4.DHCPv4 == nil || connection.IPv4.DHCPv4.UseRoutes == nil || *connection.IPv4.DHCPv4.UseRoutes) {
+		if family.RouteMetric == nil {
+			return fmt.Errorf("connection %s DHCPv4 route metric is absent", connection.ID)
 		}
-		if err := add(interfaceintent.Claim{ConnectionID: connection.ID, Kind: kind, Family: name, Key: connection.Name, Writer: writer}); err != nil {
-			return err
-		}
-		if err := add(interfaceintent.Claim{ConnectionID: connection.ID, Kind: interfaceintent.ResourceAcquiredAddress, Family: name, Key: connection.Name, Writer: writer}); err != nil {
+		key := fmt.Sprintf("main/default/%d", *family.RouteMetric)
+		if err := add(interfaceintent.Claim{ConnectionID: connection.ID, Kind: interfaceintent.ResourceMainRoute, Family: name, Key: key, Writer: interfaceintent.WriterMWANRoute}); err != nil {
 			return err
 		}
 	}
-	return nil
+	kind := interfaceintent.ResourceDHCPv4
+	if name == "ipv6" {
+		kind = interfaceintent.ResourceDHCPv6
+	}
+	clientWriter := writer
+	acquiredWriter := writer
+	if connection.Owner == interfaceintent.OwnerMWAN {
+		clientWriter = interfaceintent.WriterMWANProtocol
+		acquiredWriter = interfaceintent.WriterMWANAddress
+	}
+	if err := add(interfaceintent.Claim{ConnectionID: connection.ID, Kind: kind, Family: name, Key: connection.Name, Writer: clientWriter}); err != nil {
+		return err
+	}
+	return add(interfaceintent.Claim{ConnectionID: connection.ID, Kind: interfaceintent.ResourceAcquiredAddress, Family: name, Key: connection.Name, Writer: acquiredWriter})
 }
 
 func claimProviderResources(connection interfaceintent.Connection, provider config.IfMgrWANEntry, add func(interfaceintent.Claim) error) error {

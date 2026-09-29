@@ -1,4 +1,4 @@
-// Package addresses reconciles static and translation addresses on MWAN links.
+// Package addresses reconciles configured and acquired addresses on MWAN links.
 package addresses
 
 import (
@@ -9,10 +9,13 @@ import (
 	"net/netip"
 	"path/filepath"
 	"slices"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
+	"goodkind.io/mwan/internal/clock"
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/interfaceintent"
@@ -26,6 +29,7 @@ const moduleName = "addresses"
 type Config struct {
 	Connections []interfaceintent.Connection
 	Providers   map[string]Provider
+	ClientIDs   map[string][]byte
 	StateFile   string
 }
 
@@ -38,17 +42,35 @@ type Provider struct {
 // ModuleConfigName selects the registered address module.
 func (Config) ModuleConfigName() string { return moduleName }
 
-// Module applies static family intent after links are ready.
+// Module applies configured and acquired family intent after links are ready.
 type Module struct {
 	ifmgr.BaseModule
-	connections []interfaceintent.Connection
-	providers   map[string]Provider
-	reconciler  *netif.OwnedStaticReconciler
+	connections    []interfaceintent.Connection
+	providers      map[string]Provider
+	clientIDs      map[string][]byte
+	reconciler     *netif.OwnedStaticReconciler
+	clock          clock.Clock
+	reconcileMu    sync.Mutex
+	sessionMu      sync.Mutex
+	sessions       map[string]*dhcpSession
+	nextGeneration uint64
+}
+
+type dhcpSession struct {
+	client     *netif.DHCPClient
+	cancel     context.CancelFunc
+	ready      netif.OwnedLinkResult
+	identity   string
+	generation uint64
 }
 
 // New validates the address journal before daemon startup.
 func New(config ifmgr.ModuleConfig) (ifmgr.Module, error) {
-	module := &Module{BaseModule: ifmgr.NewBaseModule(moduleName), connections: nil, providers: nil, reconciler: nil}
+	module := &Module{
+		BaseModule: ifmgr.NewBaseModule(moduleName), connections: nil, providers: nil,
+		clientIDs: nil, reconciler: nil, clock: clock.Real{}, reconcileMu: sync.Mutex{},
+		sessionMu: sync.Mutex{}, sessions: make(map[string]*dhcpSession), nextGeneration: 0,
+	}
 	if config == nil {
 		return module, nil
 	}
@@ -58,10 +80,19 @@ func New(config ifmgr.ModuleConfig) (ifmgr.Module, error) {
 	}
 	module.connections = settings.Connections
 	module.providers = settings.Providers
+	module.clientIDs = settings.ClientIDs
+	for _, connection := range settings.Connections {
+		if connection.Owner != interfaceintent.OwnerMWAN || connection.IPv4 == nil || connection.IPv4.DHCPv4 == nil || connection.IPv4.DHCPv4.ClientID == "" {
+			continue
+		}
+		if _, ok := settings.ClientIDs[connection.ID.String()]; !ok {
+			return nil, fmt.Errorf("addresses: connection %s has no decoded DHCPv4 client ID", connection.ID)
+		}
+	}
 	if settings.StateFile == "" {
 		for _, connection := range settings.Connections {
 			if connection.Owner == interfaceintent.OwnerMWAN && (connection.IPv4 != nil || connection.IPv6 != nil) {
-				return nil, fmt.Errorf("addresses: state_file is required for owned static families")
+				return nil, fmt.Errorf("addresses: state_file is required for owned address families")
 			}
 		}
 		return module, nil
@@ -93,6 +124,8 @@ func (module *Module) Init(_ context.Context, env *ifmgr.Env) error {
 
 // Reconcile applies owned addresses and routes, then removes deleted families.
 func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
+	module.reconcileMu.Lock()
+	defer module.reconcileMu.Unlock()
 	module.Env.OwnedAddresses.Replace()
 	desiredFamilies := make(map[string]map[string]bool)
 	for _, connection := range module.connections {
@@ -101,6 +134,7 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		}
 		families := make(map[string]bool)
 		provider := module.providers[connection.ID.String()]
+		session := module.currentDHCPClient(ctx, log, connection)
 		for _, candidate := range []struct {
 			name   string
 			intent *interfaceintent.Family
@@ -126,7 +160,7 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 				settings.Addresses = append(slices.Clone(settings.Addresses), interfaceintent.Address{Prefix: prefix, Purpose: interfaceintent.PurposeForward})
 				assignments = append(assignments, addressAssignment(connection, candidate.name, interfaceintent.AssignmentNPTExternal, interfaceintent.PurposeForward, prefix))
 			}
-			module.reconcileFamily(ctx, log, connection, candidate.name, settings, assignments)
+			module.reconcileFamily(ctx, log, connection, candidate.name, settings, assignments, session)
 		}
 		desiredFamilies[connection.ID.String()] = families
 	}
@@ -153,17 +187,91 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	return nil
 }
 
-func (module *Module) reconcileFamily(ctx context.Context, log *slog.Logger, connection interfaceintent.Connection, family string, settings interfaceintent.Family, assignments []interfaceintent.Assignment) {
+func (module *Module) currentDHCPClient(ctx context.Context, log *slog.Logger, connection interfaceintent.Connection) *dhcpSession {
 	id := connection.ID.String()
+	wantsDHCP := connection.IPv4 != nil && connection.IPv4.DHCP != nil && *connection.IPv4.DHCP
+	ready, ok := module.Env.OwnedLinks.Get(id)
+	identity := ""
+	if wantsDHCP && ok && ready.Status == netif.OwnedLinkReady && ready.ConnectionID == id &&
+		ready.Name == connection.Name && ready.IfIndex != 0 {
+		link, err := netlink.LinkByIndex(ready.IfIndex)
+		if err == nil && link.Attrs().Name == ready.ActualName {
+			attributes := link.Attrs()
+			identity = fmt.Sprintf("%s/%s/%s/%d", link.Type(), attributes.HardwareAddr, attributes.Alias, attributes.ParentIndex)
+		}
+	}
+	module.sessionMu.Lock()
+	previous := module.sessions[id]
+	if identity == "" {
+		if previous != nil {
+			previous.cancel()
+			delete(module.sessions, id)
+		}
+		module.sessionMu.Unlock()
+		return nil
+	}
+	if previous != nil && previous.ready.IfIndex == ready.IfIndex &&
+		previous.ready.ActualName == ready.ActualName && previous.identity == identity {
+		module.sessionMu.Unlock()
+		return previous
+	}
+	if previous != nil {
+		previous.cancel()
+	}
+	clientContext, cancel := context.WithCancel(ctx)
+	module.nextGeneration++
+	client := netif.StartDHCPClient(clientContext, log, netif.DHCPConfig{
+		Iface: ready.ActualName, InitialBackoff: 0, MaxBackoff: 0,
+		DiscoverTimeout: 0, RequestTimeout: 0, RenewTimeout: 0,
+		ClientID: slices.Clone(module.clientIDs[id]),
+	})
+	session := &dhcpSession{client: client, cancel: cancel, ready: ready, identity: identity, generation: module.nextGeneration}
+	module.sessions[id] = session
+	module.sessionMu.Unlock()
+	go func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				log.ErrorContext(clientContext, "addresses: DHCP event watcher panicked", "connection_id", id, "err", recovered)
+			}
+		}()
+		module.watchDHCP(clientContext, id, session)
+	}()
+	return session
+}
+
+func (module *Module) watchDHCP(ctx context.Context, id string, session *dhcpSession) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case _, ok := <-session.client.Events:
+			if !ok {
+				return
+			}
+			module.sessionMu.Lock()
+			current := module.sessions[id]
+			valid := current == session && current.generation == session.generation
+			module.sessionMu.Unlock()
+			if valid && module.Env.RequestReconcile != nil {
+				module.Env.RequestReconcile("dhcpv4 assignment changed")
+			}
+		}
+	}
+}
+
+func (module *Module) reconcileFamily(ctx context.Context, log *slog.Logger, connection interfaceintent.Connection, family string, settings interfaceintent.Family, assignments []interfaceintent.Assignment, session *dhcpSession) {
+	id := connection.ID.String()
+	metric := uint32(0)
+	if settings.RouteMetric != nil {
+		metric = *settings.RouteMetric
+	}
+	routes := make([]netif.OwnedRoute, 0, 1)
 	if settings.Gateway.IsValid() {
 		destination := netip.MustParsePrefix("::/0")
 		if family == "ipv4" {
 			destination = netip.MustParsePrefix("0.0.0.0/0")
 		}
-		metric := uint32(0)
-		if settings.RouteMetric != nil {
-			metric = *settings.RouteMetric
-		}
+		routes = append(routes, netif.OwnedRoute{Destination: destination, Gateway: settings.Gateway, Metric: metric})
 		assignments = append(assignments, interfaceintent.Assignment{
 			ConnectionID: connection.ID, Family: family, Kind: interfaceintent.AssignmentStaticRoute,
 			Source: "configured", Purpose: "", Value: netip.Prefix{}, Route: &interfaceintent.RouteIntent{
@@ -173,23 +281,41 @@ func (module *Module) reconcileFamily(ctx context.Context, log *slog.Logger, con
 			RebindAt: nil, PreferredUntil: nil, ValidUntil: nil, Valid: true,
 		})
 	}
+	acquisition := "static"
+	validity := "valid"
+	leaseReady := true
+	var leaseError error
+	if family == "ipv4" && connection.IPv4 != nil && connection.IPv4.DHCP != nil && *connection.IPv4.DHCP {
+		lease, state, status, valid := currentLease(session, module.clock.Now())
+		acquisition, validity, leaseReady = state, status, valid
+		if valid {
+			settings, routes, assignments, leaseError = appendDHCPv4(connection, settings, routes, assignments, lease)
+			if leaseError != nil {
+				leaseReady = false
+				validity = "invalid"
+			}
+		}
+	}
 	if module.Env.LiveState != nil {
-		module.Env.LiveState.SetAssignment(id, family, "static", "valid", assignments)
+		module.Env.LiveState.SetAssignment(id, family, acquisition, validity, assignments)
 	}
 	ready, ok := module.Env.OwnedLinks.Get(id)
-	var err error
-	if !ok {
+	err := leaseError
+	if err == nil && !ok {
 		err = fmt.Errorf("current link result is absent")
-	} else {
-		err = module.reconciler.ReconcileFamily(ctx, connection, family, settings, ready)
+	} else if err == nil {
+		err = module.reconciler.ReconcileFamilyRoutes(ctx, connection, family, settings, routes, ready)
 	}
 	if err == nil {
 		err = module.publishInstalled(ctx, log, connection, settings, ready)
 	}
-	if err == nil {
+	if err == nil && leaseReady {
 		module.Env.OwnedAddresses.SetFamilyReady(id, family)
 	}
 	result := "ready"
+	if !leaseReady {
+		result = "waiting"
+	}
 	reason := ""
 	if err != nil {
 		result = "failed"
@@ -197,8 +323,89 @@ func (module *Module) reconcileFamily(ctx context.Context, log *slog.Logger, con
 		log.WarnContext(ctx, "addresses: reconcile family failed", "connection_id", id, "family", family, "err", err)
 	}
 	if module.Env.LiveState != nil {
-		module.Env.LiveState.SetFamilyApplyResult(id, family, wanstate.ApplyResult{Operation: "reconcile-static", Dependency: "link", Result: result, Reason: reason, At: time.Time{}})
+		module.Env.LiveState.SetFamilyApplyResult(id, family, wanstate.ApplyResult{Operation: "reconcile-addresses", Dependency: "link", Result: result, Reason: reason, At: time.Time{}})
 	}
+}
+
+func currentLease(session *dhcpSession, now time.Time) (netif.LeaseInfo, string, string, bool) {
+	if session == nil {
+		var empty netif.LeaseInfo
+		return empty, "acquiring", "pending", false
+	}
+	lease := session.client.LastLease()
+	matches, err := lease.MatchesLink(session.ready.ActualName)
+	if err != nil || !matches || lease.LinkIndex != session.ready.IfIndex {
+		return lease, "acquiring", "pending", false
+	}
+	if lease.State == netif.LeaseExpired || !lease.ExpiresAt.IsZero() && !now.Before(lease.ExpiresAt) {
+		return lease, "expired", "expired", false
+	}
+	if lease.State != netif.LeaseBound && lease.State != netif.LeaseRenewing && lease.State != netif.LeaseRebinding {
+		return lease, "acquiring", "pending", false
+	}
+	return lease, strings.ToLower(lease.State.String()), "valid", true
+}
+
+func appendDHCPv4(connection interfaceintent.Connection, settings interfaceintent.Family, routes []netif.OwnedRoute, assignments []interfaceintent.Assignment, lease netif.LeaseInfo) (interfaceintent.Family, []netif.OwnedRoute, []interfaceintent.Assignment, error) {
+	address, ok := netip.AddrFromSlice(lease.IP.To4())
+	if !ok || lease.PrefixLen < 0 || lease.PrefixLen > 32 {
+		slog.Warn("addresses: invalid DHCPv4 leased address", "connection_id", connection.ID)
+		return settings, routes, assignments, fmt.Errorf("invalid DHCPv4 leased address")
+	}
+	prefix := netip.PrefixFrom(address, lease.PrefixLen)
+	settings.Addresses = append(slices.Clone(settings.Addresses), interfaceintent.Address{Prefix: prefix, Purpose: interfaceintent.PurposeLocal})
+	clientID := ""
+	useRoutes := true
+	if connection.IPv4.DHCPv4 != nil {
+		clientID = connection.IPv4.DHCPv4.ClientID
+		if connection.IPv4.DHCPv4.UseRoutes != nil {
+			useRoutes = *connection.IPv4.DHCPv4.UseRoutes
+		}
+	}
+	assignment := interfaceintent.Assignment{
+		ConnectionID: connection.ID, Family: "ipv4", Kind: interfaceintent.AssignmentDHCPv4,
+		Source: "dhcpv4", Purpose: interfaceintent.PurposeLocal, Value: prefix, Route: nil,
+		ClientID: clientID, DUID: "", IAID: nil, AcquiredAt: lease.AcquiredAt,
+		RenewAt: &lease.RenewAt, RebindAt: &lease.RebindAt, PreferredUntil: nil,
+		ValidUntil: &lease.ExpiresAt, Valid: true,
+	}
+	assignments = append(assignments, assignment)
+	if !useRoutes {
+		return settings, routes, assignments, nil
+	}
+	for _, leasedRoute := range lease.Routes {
+		if leasedRoute.Destination == nil {
+			slog.Warn("addresses: DHCPv4 lease route has no destination", "connection_id", connection.ID)
+			return settings, routes, assignments, fmt.Errorf("DHCPv4 lease has a route without a destination")
+		}
+		destination, err := netip.ParsePrefix(leasedRoute.Destination.String())
+		if err != nil {
+			slog.Warn("addresses: invalid DHCPv4 route destination", "connection_id", connection.ID, "err", err)
+			return settings, routes, assignments, fmt.Errorf("DHCPv4 route destination: %w", err)
+		}
+		if destination.Masked() == prefix.Masked() {
+			continue
+		}
+		gateway, ok := netip.AddrFromSlice(leasedRoute.Gateway.To4())
+		if !ok {
+			slog.Warn("addresses: DHCPv4 route has invalid gateway", "connection_id", connection.ID)
+			return settings, routes, assignments, fmt.Errorf("DHCPv4 route has an invalid gateway")
+		}
+		route := netif.OwnedRoute{Destination: destination.Masked(), Gateway: gateway, Metric: metricForFamily(settings)}
+		routes = append(routes, route)
+		assignment.Value = netip.Prefix{}
+		assignment.Purpose = ""
+		assignment.Route = &interfaceintent.RouteIntent{Destination: route.Destination, Gateway: route.Gateway, TableID: 254, Metric: route.Metric}
+		assignments = append(assignments, assignment)
+	}
+	return settings, routes, assignments, nil
+}
+
+func metricForFamily(family interfaceintent.Family) uint32 {
+	if family.RouteMetric == nil {
+		return 0
+	}
+	return *family.RouteMetric
 }
 
 func (module *Module) publishInstalled(ctx context.Context, log *slog.Logger, connection interfaceintent.Connection, settings interfaceintent.Family, ready netif.OwnedLinkResult) error {
