@@ -117,7 +117,7 @@ func validateMWANOwner(entry ifaceEntry) error {
 	}
 	if entry.LinkFiles != "" || entry.Networkd != nil ||
 		entry.WAN != nil || entry.Steering != nil || entry.LeaseStore != "" {
-		return fmt.Errorf("interface %s: mwan owner supports link and static address intent only", entry.Name)
+		return fmt.Errorf("interface %s: mwan owner supports link, static local address, gateway, and route metric intent only", entry.Name)
 	}
 	if err := validateMWANFamily(entry.Name, "ipv4", intentFamilyV4Wire(entry.IPv4)); err != nil {
 		return err
@@ -149,7 +149,7 @@ func validateMWANFamily(name, family string, wire *familyWire) error {
 	if wire.Enabled != nil && !*wire.Enabled || wire.Forwarding != nil ||
 		wire.DHCP != nil || wire.Resolver != nil || wire.Translation != nil ||
 		wire.RouteMetric != nil && wire.Gateway == "" {
-		return fmt.Errorf("interface %s: mwan %s supports static local addresses and gateway only", name, family)
+		return fmt.Errorf("interface %s: mwan %s supports static local addresses and an optional gateway with route metric only", name, family)
 	}
 	return nil
 }

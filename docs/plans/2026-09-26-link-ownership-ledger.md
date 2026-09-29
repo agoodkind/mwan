@@ -1102,7 +1102,7 @@ before protocol acquisition work begins.
 Tack records MWAN-398 In Progress. The uncommitted static patch on
 `codex/mwan-398-static` starts from merged MWAN commit `fd8277f`. The Docker
 check and test gate, privileged kernel suite, and one public daemon namespace
-test passed. No PR, merge, release, or deployment exists for this slice.
+test passed. No merge, release, or deployment exists for this slice.
 
 Independent review found that an owned address could not change prefix
 length, family apply failures lacked a public reason, and a failed journal
@@ -1118,7 +1118,7 @@ replaces the published failure set after each pass. The final independent
 verdict is MERGE-READY on the uncommitted patch. The reviewer independently
 ran the public Linux daemon test. The full Docker check and test gate,
 privileged kernel suite, and public daemon test passed locally on the final
-patch. A PR, merge, release, and deployment remain open.
+patch. PR #89 is open. Merge, release, and deployment remain pending.
 
 The finding counts report blockers, issues to fix, and minor issues found
 during review, including findings fixed before the verdict.
