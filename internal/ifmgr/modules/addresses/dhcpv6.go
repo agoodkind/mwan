@@ -184,7 +184,7 @@ func dhcpv6PDConfig(connection interfaceintent.Connection, iface string) (netif.
 	config := netif.DHCPv6PDConfig{
 		Iface: iface, DUID: decoded, IAID: 0, IANAIAID: 0,
 		RequestAddress: requestAddress, RequestPrefix: requestPrefix,
-		Hint: hint, Clock: clock.Real{}, WaitForRA: withoutRA == "no",
+		Hint: hint, Clock: clock.Real{}, WaitForRA: withoutRA == "no", CachedLease: nil,
 	}
 	if iaid != nil {
 		config.IAID = *iaid
