@@ -1070,13 +1070,13 @@ func TestLoadMWANOwnedLink(t *testing.T) {
 		"missing connection ID": {`"goodkind-mwan-steering:connection-id": "owned-link",`, "requires connection-id"},
 		"missing link": {`,
         "goodkind-mwan-steering:link": { "match": { "hardware-address": "02:00:5e:00:53:77" } }`, "requires a link"},
-		"link files":  {`"goodkind-mwan-steering:link-files": "rendered",`, "supports link, static local address, gateway, and route metric intent only"},
-		"networkd":    {`"goodkind-mwan-steering:networkd": {},`, "supports link, static local address, gateway, and route metric intent only"},
+		"link files":  {`"goodkind-mwan-steering:link-files": "rendered",`, "cannot use networkd files"},
+		"networkd":    {`"goodkind-mwan-steering:networkd": {},`, "cannot use networkd files"},
 		"IPv4":        {`"ietf-ip:ipv4": { "goodkind-mwan-steering:dhcp": true },`, "supports static local addresses and an optional gateway with route metric only"},
 		"IPv6":        {`"ietf-ip:ipv6": { "goodkind-mwan-steering:dhcp": true },`, "supports static local addresses and an optional gateway with route metric only"},
-		"lease store": {`"goodkind-mwan-steering:lease-store": "/tmp/leases",`, "supports link, static local address, gateway, and route metric intent only"},
-		"steering":    {`"goodkind-mwan-steering:steering": { "tier": 0 },`, "supports link, static local address, gateway, and route metric intent only"},
-		"WAN":         {`"goodkind-mwan-steering:wan": { "name": "owned" },`, "cannot declare a provider"},
+		"lease store": {`"goodkind-mwan-steering:lease-store": "/tmp/leases",`, "cannot use networkd files"},
+		"steering":    {`"goodkind-mwan-steering:steering": { "tier": 0 },`, "steering without a provider"},
+		"WAN":         {`"goodkind-mwan-steering:wan": { "name": "owned" },`, "requires a static address family"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

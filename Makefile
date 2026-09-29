@@ -400,7 +400,7 @@ test-firewall: wanconfig-builder-image
 		-e GIT_CONFIG_VALUE_0=/src \
 		$(WANCONFIG_BUILDER_IMAGE) \
 		go test -v -count=1 -tags 'netns firewallnetns' ./cmd/mwan \
-		-run '^(TestDeployGateEgressNetNS|TestCheckFirewallIsolatedKernel|TestWANStartupProtectsBeforeConfigValidation|TestWANFirewallRuntimePackets)$$'
+		-run '^(TestDeployGateEgressNetNS|TestCheckFirewallIsolatedKernel|TestWANStartupProtectsBeforeConfigValidation|TestWANFirewallRuntimePackets|TestOwnedStaticDaemonRuntime|TestOwnedMappedDaemonRuntime)$$'
 
 .PHONY: build-wanconfig-all test-docker-all
 build-wanconfig-all:

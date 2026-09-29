@@ -37,6 +37,7 @@ type listAddrsFunc func(context.Context, *slog.Logger, string) ([]netif.CurrentA
 // WAN is one provider and its configured IPv6 translation policy.
 type WAN struct {
 	ifmgr.WANRef
+	Owned         bool
 	TranslationV4 *config.IPv4Translation
 	Translation   *config.IPv6Translation
 }
@@ -211,10 +212,7 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 			}
 			continue
 		}
-		// The <pd>::1/128 address add is the only address write in a reconcile. A
-		// failure to ensure the address skips and alerts the WAN like any other
-		// address op.
-		if err := m.reconcileAddrs(ctx, log, wan.Iface, built.ensure); err != nil {
+		if err := m.ensureExternalAddress(ctx, log, wan, built.ensure[0]); err != nil {
 			reconcileErr = errors.Join(reconcileErr,
 				fmt.Errorf("ensure %s on %s: %w", built.ensure[0].CIDR, wan.Iface, err))
 			missing[wan.Iface] = true
@@ -249,6 +247,16 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	}
 	m.publishLiveState(ctx, log, delegated, desired, applyErr == nil, bpfReady, nativeReady)
 	return reconcileErr
+}
+
+func (m *Module) ensureExternalAddress(ctx context.Context, log *slog.Logger, wan WAN, desired netif.AddrSpec) error {
+	if !wan.Owned {
+		return m.reconcileAddrs(ctx, log, wan.Iface, []netif.AddrSpec{desired})
+	}
+	if m.Env == nil || m.Env.OwnedAddresses == nil || !m.Env.OwnedAddresses.Has(wan.Key(), desired.CIDR) {
+		return fmt.Errorf("MWAN-owned external address %s is not verified", desired.CIDR)
+	}
+	return nil
 }
 
 func attachmentsReady(states []bpf.AttachmentState, index int) bool {
@@ -371,6 +379,10 @@ func (m *Module) publishLiveState(
 			if internalV4Err != nil && wan.TranslationV4.Mode == config.TranslationNAPT44 {
 				member.V4.Ready = false
 				member.V4.Reason = "internal IPv4 source network is unavailable"
+			}
+			if wan.Owned && (m.Env.OwnedAddresses == nil || !m.Env.OwnedAddresses.FamilyReady(wan.Key(), "ipv4")) {
+				member.V4.Ready = false
+				member.V4.Reason = "MWAN-owned IPv4 addresses are not verified"
 			}
 		}
 		member.V6 = ipv6TranslationReadiness(

@@ -59,6 +59,7 @@ func (Config) ModuleConfigName() string { return moduleName }
 // data.
 type WAN struct {
 	ifmgr.WANRef
+	Owned         bool
 	TableID       int
 	FwMark        uint32
 	FwMarkPrio    int
@@ -84,7 +85,8 @@ type WAN struct {
 	// link as a host address, because the upstream gateway resolves it on the
 	// link; one outside every connected subnet is routed here and needs
 	// nothing.
-	MappedExternals []netip.Addr
+	MappedExternals      []netip.Addr
+	LocalMappedExternals []netip.Addr
 }
 
 type gatewaySet struct {
@@ -196,6 +198,7 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		return errors.Join(ownershipErr, discovery.missingLinks, err)
 	}
 	currentGateways := discovery.gateways
+	m.excludeUnreadyOwnedFamilies(currentGateways)
 	health, err := netif.ReadHealthState(m.cfg.HealthStateFile)
 	if err != nil {
 		log.WarnContext(ctx, "wan.routes: ReadHealthState failed", "err", err)
@@ -267,21 +270,6 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	return reconcileErr
 }
 
-func (m *Module) excludeRouteFamily(current gateways, tableID int, family string) {
-	for _, wan := range m.cfg.WANs {
-		if wan.TableID != tableID {
-			continue
-		}
-		gateway := current[wan.Key()]
-		if family == familyV4 {
-			gateway.V4 = ""
-		} else {
-			gateway.V6 = ""
-		}
-		current[wan.Key()] = gateway
-	}
-}
-
 func (m *Module) translationState() map[string]wanstate.MemberTranslation {
 	if m.Env == nil || m.Env.LiveState == nil {
 		return nil
@@ -315,15 +303,23 @@ func (m *Module) publishLiveState(currentGateways gateways, health netif.HealthS
 	m.Env.LiveState.SetRouting(activeTier, members)
 }
 
-// ownMappedAddressesLocked holds each provider's on-link mapped addresses on its
-// link as host addresses and records what each link holds for the served tree.
-// A link that cannot be read or written records nothing for its provider, and
-// the pass moves on to the next provider. Callers hold the module lock.
+// ownMappedAddressesLocked reads verified mapped addresses for owned providers
+// and installs on-link mappings for legacy providers. It records successful
+// addresses for the served tree. Callers hold the module lock.
 func (m *Module) ownMappedAddressesLocked(ctx context.Context, log *slog.Logger) error {
 	owned := make(map[string][]netip.Addr, len(m.cfg.WANs))
 	var ownershipErr error
 	for _, wan := range m.cfg.WANs {
-		if len(wan.MappedExternals) == 0 {
+		if wan.Owned {
+			for _, address := range append(slices.Clone(wan.MappedExternals), wan.LocalMappedExternals...) {
+				prefix := netip.PrefixFrom(address, hostPrefixBitsV4).String()
+				if m.Env != nil && m.Env.OwnedAddresses != nil && m.Env.OwnedAddresses.Has(wan.Key(), prefix) {
+					owned[wan.Key()] = append(owned[wan.Key()], address)
+				}
+			}
+			continue
+		}
+		if len(wan.MappedExternals) == 0 && len(wan.LocalMappedExternals) == 0 {
 			continue
 		}
 		addresses, err := m.ownLinkAddresses(ctx, log, wan)
@@ -351,6 +347,12 @@ func (m *Module) ownLinkAddresses(ctx context.Context, log *slog.Logger, wan WAN
 		log.WarnContext(ctx, "wan.routes: link addresses unreadable",
 			"wan", wan.Key(), "iface", wan.Iface, "err", err)
 		return nil, fmt.Errorf("read addresses on %s: %w", wan.Iface, err)
+	}
+	for _, address := range wan.LocalMappedExternals {
+		if slices.Contains(onLink, address) || linkAddressAlreadyHeld(held, address) {
+			continue
+		}
+		onLink = append(onLink, address)
 	}
 	if len(onLink) == 0 {
 		return nil, nil
