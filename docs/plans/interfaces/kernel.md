@@ -12,8 +12,9 @@ settled brief against current source and stops for review on contradictions.
 An independent reviewer reproduces behavior with real dependencies. The
 implementer has no live deployment or connection-transfer authority.
 
-Stack the link PR before the address PR and merge that short stack before
-protocol work depends on it. MWAN-505 remains an independent repair PR.
+Merge the link PR before the static address PR. Follow it with a separate
+mapped/NPT writer PR. DHCPv4 acquisition follows both address PRs.
+MWAN-505 remains an independent repair PR.
 Parallel work is permitted when files and runtime objects have separate
 writers. Serialize shared edits to the monitor, kernel operations, daemon,
 and WAN routing module.
@@ -116,11 +117,13 @@ The independent reviewer races appearance with startup, recreates parents,
 and restarts while sibling traffic continues. Inspect kernel state and
 packets rather than relying on a successful reconciliation return value.
 
-## 398-addresses: Apply owned addresses and routes
+## 398-static-addresses: Apply local addresses and main routes
 
-MWAN must reconcile static addresses and routes through a shared assignment
-consumer. Removal must delete stale owned objects without deleting unrelated
-state. The consumer must preserve separate configuration and apply results.
+MWAN must reconcile static local addresses and optional main-table default
+routes on MWAN-owned non-provider links through a runtime assignment writer.
+The writer must report source validity and kernel application results
+separately. The [acquisition plan](acquisition.md) owns DHCPv4 client behavior,
+protocol timers, lease options, and OOB consumer updates.
 
 ### Verify the starting point
 
@@ -130,76 +133,96 @@ state. The consumer must preserve separate configuration and apply results.
 | [WAN routing](../../../internal/ifmgr/modules/wanroutes/wanroutes.go) | `Module` reconciles mapped external addresses classified as on-link and owns provider-table routes and policy rules. |
 | [NPT reconciliation](../../../internal/ifmgr/modules/npt/npt.go) | `buildWANDesired` constructs the external prefix's `::1/128` for configured and delegated prefixes. `Module.Reconcile` installs it through `reconcileAddrs` before publishing translation readiness. |
 
-The [acquisition plan](acquisition.md) owns DHCPv4 client behavior, protocol
-timers, lease options, and OOB consumer updates. Those feature PRs integrate
-dynamic assignments with the consumer established here.
+### Implement static ownership and the assignment writer
 
-### Implement static ownership and the assignment consumer
+This PR follows links and the merged model and observation contracts. Admit
+static local addresses and an optional main-table default route only on
+MWAN-owned non-provider links. Install the runtime writer in the same PR.
+Provider addressing, mapped/NPT addresses, and DHCP acquisition belong to
+later PRs. The reviewer must settle consumer types, journal identity, removal,
+and apply-result semantics before implementation.
 
-This PR follows links and the merged model and observation contracts. The
-address implementer owns the static manager, shared assignment consumer,
-route metrics, and mapped-address ownership. The reviewer must settle exact
-consumer types, object identity, removal, and apply-result semantics first,
-including NPT's dependency on successful address installation.
-
-1. Add removal using explicit ownership records and observed identity. Apply
-   configured IPv4 and IPv6 addresses while preserving foreign addresses,
-   kernel SLAAC, and kernel-generated connected routes.
-2. Apply configured main-table routes and metrics with complete identity.
-   Repair a metric-only change. Preserve WAN ownership of provider-table
-   policy routes and rules.
-3. Consume explicit local-assignment versus ISP-routed mapping intent.
-   Transfer on-link mapped address installation from WAN routing to the
-   address manager only at exclusive ownership transfer. At that boundary,
-   transfer NPT's external prefix `::1/128` address writer to the same manager.
-   Keep its intentional forwarding purpose and edge translation behavior.
-   Make NPT consume actual installation results before reporting readiness.
-   Remove overlapping provider-default writers for transferred connections
-   and preserve both legacy address writers elsewhere.
-4. Expose the approved assignment-consumer API for later protocol clients.
-   Keep assignment validity under the source's control. Apply only valid
-   owned assignments and remove withdrawn owned objects. Do not infer lease
-   validity from health probes or installed addresses.
-   Derive the NPT edge assignment from the selected configured or valid
-   delegated prefix. Remove its obsolete owned address after replacement or
-   withdrawal. Integrate delegated-prefix lifetimes in the delegation PR.
-5. Publish actual installation and removal results, including failed
-   operations and their dependencies. Preserve configured intent separately
-   from observed state. Dynamic client integration remains in its feature PR.
+1. Persist exact owned address and route identities before kernel writes.
+   Reconcile the journal with observed identity on restart.
+   Apply configured IPv4 and IPv6 local addresses without deleting foreign
+   addresses, kernel SLAAC, or kernel-generated connected routes. Manage the
+   per-link IPv4 secondary-address promotion setting while owned IPv4
+   addresses require it. Record and restore its prior value by verified link
+   identity so deleting an owned primary address does not delete a foreign
+   secondary address in the same subnet.
+2. Apply only the configured optional main-table default route, including its
+   metric. Replace a route when only its metric changes. WAN routing continues
+   to write provider-table routes, policy routes, and rules.
+3. Expose the approved assignment-consumer API for later protocol clients.
+   The source controls assignment validity. Apply only valid owned
+   assignments and remove withdrawn owned objects. Health probes and
+   installed addresses do not establish lease validity.
+4. Report source validity separately from each kernel installation or
+   removal result. Record failures and dependencies without changing source
+   validity. Report configured intent separately from observed state.
 
 ### Verify static assignments through the daemon
 
 Extend the public daemon namespace suite with real kernel operations and
 packet delivery. Add executable privileged commands when adding the tests.
-The static configuration must invoke the production assignment consumer;
-tests that call private reconciliation helpers alone are insufficient.
+The static configuration must invoke production admission and the runtime
+writer. Private reconciliation helpers alone do not satisfy acceptance.
 
-1. Apply static addresses and routes, an on-link mapping, and an ISP-routed
-   mapping. Verify downstream replies and address resolution where required.
-   Preserve foreign addresses and connected routes. Remove one owned address
-   and change only a metric; verify exact kernel changes.
-2. Restart with changed static address or gateway configuration. Verify stale
-   owned objects disappear, unrelated objects persist, and request/reply
-   traffic uses the new configuration. Do not require hot reload.
-3. Remove a required namespace link during apply, inspect the reported
-   failure, recreate the link, and verify recovery through the public daemon.
-   Protocol feature PRs later exercise expiry and dynamic assignment changes
-   through this consumer with real servers.
-4. Configure an NPT external prefix and transfer address ownership. Verify
-   one writer installs its `::1/128`, inbound edge translation and replies
-   succeed, and a failed installation prevents translation readiness.
-   Restart with a changed configured prefix and verify removal of the old
-   owned address while unrelated addresses and mappings persist.
-5. In the delegation PR, acquire a real prefix, change it, and let it expire.
-   Verify the corresponding edge address, translation, and readiness follow
-   the valid assignment. Repeat beside a legacy-owned connection and verify
-   its existing NPT writer remains responsible. These cases gate delegation,
-   not the static address PR.
+1. Start the production daemon in namespaces with a legacy provider and an
+   MWAN-owned non-provider link. Apply static IPv4 and IPv6 local addresses
+   and an optional main-table default. Verify downstream packets, foreign
+   addresses, SLAAC, connected routes, and no provider address writes.
+2. Remove one owned address and change only the default-route metric. Verify
+   exact journal entries and kernel changes. Restart with a changed address
+   or gateway. Verify removal of stale owned objects and retention of
+   unrelated objects. Hot reload is not required.
+3. Remove a required namespace link during apply. Verify that source validity
+   remains distinct from the reported kernel failure. Recreate the link and
+   verify recovery and downstream packets through the public daemon.
+
+## 398-mapped-addresses: Transfer mapped and NPT writers
+
+This additive PR extends the assignment writer after static ownership passes
+review. It must not transfer a live provider before MWAN-519 or MWAN-399.
+Networkd, WAN routing, and NPT continue to write addresses for connections
+without exclusive transfer.
+
+1. Consume explicit local-assignment versus ISP-routed mapping intent.
+   Transfer on-link mapped address installation from WAN routing only for an
+   exclusively transferred connection. WAN routing continues to write
+   provider-table routes and policy rules.
+2. Transfer NPT's external prefix `::1/128` address writer to the assignment
+   writer at the same exclusive boundary. Classify this address as an
+   intentional forwarding address for edge translation. Derive it from the
+   selected configured or valid delegated prefix. Remove obsolete owned
+   addresses after replacement or withdrawal. The delegation PR integrates
+   delegated-prefix lifetimes.
+3. Require an actual address installation result for translation readiness.
+   Report source validity separately. Remove overlapping provider-default
+   writers only for exclusively transferred connections.
+
+### Verify mapped assignments through the daemon
+
+Extend the public daemon namespace suite with an exclusively owned synthetic
+connection and a legacy-owned provider. Do not activate a live provider in
+this PR.
+
+1. Apply on-link and ISP-routed mappings. Verify downstream replies, address
+   resolution where required, and one writer per mapped address. Verify the
+   legacy provider's existing writer still installs its addresses.
+2. Apply a configured NPT external prefix. Verify one writer installs its
+   `::1/128`, inbound edge translation and replies succeed, and failed
+   installation prevents translation readiness. Restart with a changed
+   prefix and verify exact removal without changing foreign addresses.
+3. In the delegation PR, acquire a real prefix, change it, and let it expire.
+   Verify the edge address, translation, and readiness follow the valid
+   assignment. Repeat beside a legacy-owned connection and verify its
+   existing NPT writer remains responsible. These cases gate delegation.
 
 The independent reviewer tests unchanged addresses with changed gateways,
 metric-only changes, both mapping kinds, foreign addresses, and SLAAC beside
-static IPv6. Reject stale owned objects, inferred local assignment, competing
-kernel lifetime management, or a second writer.
+static IPv6 across the relevant PRs. Reject stale owned objects, inferred
+local assignment, competing kernel lifetime management, or a second writer.
 
 ## 505-route-repair: Restore deleted owned routes
 

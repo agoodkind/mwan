@@ -23,11 +23,17 @@ type IfMgrModulesSection struct {
 	WAN               *IfMgrModulesWANSection        `toml:"wan"`
 	Health            *IfMgrHealthSection            `toml:"health"`
 	Links             *IfMgrLinksSection             `toml:"links"`
+	Addresses         *IfMgrAddressesSection         `toml:"addresses"`
 }
 
 // IfMgrLinksSection configures durable ownership records for MWAN-owned links.
 // The state file must persist across daemon restarts.
 type IfMgrLinksSection struct {
+	StateFile string `toml:"state_file"`
+}
+
+// IfMgrAddressesSection configures the durable static address and route journal.
+type IfMgrAddressesSection struct {
 	StateFile string `toml:"state_file"`
 }
 

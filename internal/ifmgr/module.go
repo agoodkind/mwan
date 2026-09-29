@@ -112,6 +112,32 @@ type Env struct {
 	// publish a management surface; writers must nil-check, and a nil
 	// store costs the reconcile path nothing.
 	LiveState *wanstate.Store
+	// OwnedLinks contains the latest complete link reconcile result for this pass.
+	OwnedLinks *OwnedLinkResults
+}
+
+// OwnedLinkResults shares verified link identities with later modules.
+type OwnedLinkResults struct {
+	mu      sync.RWMutex
+	results map[string]netif.OwnedLinkResult
+}
+
+// Replace starts a new complete link result set.
+func (s *OwnedLinkResults) Replace(results []netif.OwnedLinkResult) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.results = make(map[string]netif.OwnedLinkResult, len(results))
+	for _, result := range results {
+		s.results[result.ConnectionID] = result
+	}
+}
+
+// Get returns the latest result for one connection.
+func (s *OwnedLinkResults) Get(id string) (netif.OwnedLinkResult, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result, ok := s.results[id]
+	return result, ok
 }
 
 // registry maps module name to constructor. Populated at package init

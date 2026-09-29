@@ -80,9 +80,8 @@ func validateConnection(connection interfaceintent.Connection) error {
 		connection.Owner != interfaceintent.OwnerMWAN {
 		return invalid(fmt.Sprintf("interface %s has invalid owner %q", connection.Name, connection.Owner))
 	}
-	if connection.Owner == interfaceintent.OwnerMWAN &&
-		(connection.Link == nil || connection.IPv4 != nil || connection.IPv6 != nil || len(connection.Networkd) != 0) {
-		return invalid(fmt.Sprintf("interface %s must have only mwan-owned link intent", connection.Name))
+	if connection.Owner == interfaceintent.OwnerMWAN && (connection.Link == nil || len(connection.Networkd) != 0) {
+		return invalid(fmt.Sprintf("interface %s must have a mwan-owned link without networkd files", connection.Name))
 	}
 	if err := validateVLAN(connection.Name, connection.Link); err != nil {
 		return err
@@ -100,7 +99,52 @@ func validateConnection(connection interfaceintent.Connection) error {
 			return invalid(fmt.Sprintf("interface %s delegation hint %q is not IPv6", connection.Name, delegation.Hint))
 		}
 	}
+	if connection.Owner == interfaceintent.OwnerMWAN {
+		if err := validateMWANStaticConnection(connection); err != nil {
+			return err
+		}
+	}
 	return validateFreeForm(connection.Name, connection.Networkd)
+}
+
+func validateMWANStaticConnection(connection interfaceintent.Connection) error {
+	if ipv4 := connection.IPv4; ipv4 != nil &&
+		(ipv4.DHCP != nil || ipv4.DHCPv4 != nil || len(ipv4.SourceAddresses) != 0 ||
+			len(ipv4.DNS) != 0 || len(ipv4.SearchDomains) != 0 ||
+			ipv4.Forwarding != nil && *ipv4.Forwarding) {
+		return invalid(fmt.Sprintf("interface %s has unsupported mwan ipv4 intent", connection.Name))
+	}
+	if connection.IPv4 != nil {
+		if err := validateMWANStaticFamily(connection.Name, "ipv4", connection.IPv4.Family); err != nil {
+			return err
+		}
+	}
+	if ipv6 := connection.IPv6; ipv6 != nil &&
+		(ipv6.DHCP != nil || ipv6.DHCPv6 != nil || ipv6.Delegation != nil ||
+			ipv6.AcceptRA != nil || ipv6.AutoConf != nil || ipv6.AcceptRADefaultRoute != nil ||
+			ipv6.UseRADNS != nil || len(ipv6.ForwardingAddresses) != 0 ||
+			len(ipv6.DNS) != 0 || len(ipv6.SearchDomains) != 0 ||
+			ipv6.Forwarding != nil && *ipv6.Forwarding) {
+		return invalid(fmt.Sprintf("interface %s has unsupported mwan ipv6 intent", connection.Name))
+	}
+	if connection.IPv6 != nil {
+		return validateMWANStaticFamily(connection.Name, "ipv6", connection.IPv6.Family)
+	}
+	return nil
+}
+
+func validateMWANStaticFamily(name, familyName string, family interfaceintent.Family) error {
+	if family.Enabled != nil && !*family.Enabled || family.Forwarding != nil ||
+		family.RouteMetric != nil && !family.Gateway.IsValid() {
+		return invalid(fmt.Sprintf("interface %s has unsupported mwan %s settings", name, familyName))
+	}
+	for _, address := range family.Addresses {
+		if !address.Prefix.IsValid() || address.Prefix.Addr().IsUnspecified() || address.Prefix.Addr().IsMulticast() ||
+			address.Purpose != interfaceintent.PurposeLocal {
+			return invalid(fmt.Sprintf("interface %s has unsupported mwan %s address", name, familyName))
+		}
+	}
+	return nil
 }
 
 func validateVLAN(name string, link *interfaceintent.Link) error {

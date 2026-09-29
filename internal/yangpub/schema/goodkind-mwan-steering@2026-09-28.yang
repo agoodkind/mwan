@@ -213,12 +213,25 @@ module goodkind-mwan-steering {
     leaf firewall-protection { type string; }
     leaf routing { type string; }
     leaf readiness { type string; }
+    container last-apply {
+      leaf operation { type string; }
+      leaf dependency { type string; }
+      leaf result { type enumeration { enum ready; enum failed; } }
+      leaf reason { type string; }
+      leaf at { type yang:date-and-time; }
+    }
     list assignment {
       key "id";
       leaf id { type string; }
       leaf kind { type string; }
       leaf source { type string; }
       leaf value { type string; }
+      container route {
+        leaf destination { type inet:ip-prefix; }
+        leaf gateway { type inet:ip-address; }
+        leaf table-id { type uint32; }
+        leaf metric { type uint32; }
+      }
       leaf valid { type boolean; }
       leaf acquired-at { type yang:date-and-time; }
       leaf renew-at { type yang:date-and-time; }
@@ -1150,7 +1163,7 @@ module goodkind-mwan-steering {
             "The lowest-numbered tier currently holding at least one
              healthy member.";
         }
-        list rejected-provider {
+      list rejected-provider {
           key "interface";
           description
             "The loader omitted this provider entry and continued with the
@@ -1168,8 +1181,18 @@ module goodkind-mwan-steering {
             mandatory true;
             description "The loader error that caused the rejection.";
           }
-        }
-        list bgp-peer {
+      }
+      list pending-removal {
+        key "id";
+        leaf id { type string; }
+        leaf connection-id { type string; }
+        leaf family { type enumeration { enum ipv4; enum ipv6; } }
+        leaf interface { type string; }
+        leaf result { type enumeration { enum failed; } }
+        leaf reason { type string; }
+        leaf at { type yang:date-and-time; }
+      }
+      list bgp-peer {
           key "address";
           description
             "The routing sessions the gateway's speaker holds. The

@@ -1070,12 +1070,12 @@ func TestLoadMWANOwnedLink(t *testing.T) {
 		"missing connection ID": {`"goodkind-mwan-steering:connection-id": "owned-link",`, "requires connection-id"},
 		"missing link": {`,
         "goodkind-mwan-steering:link": { "match": { "hardware-address": "02:00:5e:00:53:77" } }`, "requires a link"},
-		"link files":  {`"goodkind-mwan-steering:link-files": "rendered",`, "supports link intent only"},
-		"networkd":    {`"goodkind-mwan-steering:networkd": {},`, "supports link intent only"},
-		"IPv4":        {`"ietf-ip:ipv4": { "goodkind-mwan-steering:dhcp": true },`, "supports link intent only"},
-		"IPv6":        {`"ietf-ip:ipv6": { "goodkind-mwan-steering:dhcp": true },`, "supports link intent only"},
-		"lease store": {`"goodkind-mwan-steering:lease-store": "/tmp/leases",`, "supports link intent only"},
-		"steering":    {`"goodkind-mwan-steering:steering": { "tier": 0 },`, "supports link intent only"},
+		"link files":  {`"goodkind-mwan-steering:link-files": "rendered",`, "supports link and static address intent only"},
+		"networkd":    {`"goodkind-mwan-steering:networkd": {},`, "supports link and static address intent only"},
+		"IPv4":        {`"ietf-ip:ipv4": { "goodkind-mwan-steering:dhcp": true },`, "supports static local addresses and gateway only"},
+		"IPv6":        {`"ietf-ip:ipv6": { "goodkind-mwan-steering:dhcp": true },`, "supports static local addresses and gateway only"},
+		"lease store": {`"goodkind-mwan-steering:lease-store": "/tmp/leases",`, "supports link and static address intent only"},
+		"steering":    {`"goodkind-mwan-steering:steering": { "tier": 0 },`, "supports link and static address intent only"},
 		"WAN":         {`"goodkind-mwan-steering:wan": { "name": "owned" },`, "cannot declare a provider"},
 	} {
 		t.Run(name, func(t *testing.T) {

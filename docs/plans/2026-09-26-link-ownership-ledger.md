@@ -58,10 +58,10 @@ No interface-owner cutover has begun.
 | --- | --- | --- |
 | MWAN-524 | Restore the managed Astound testbed connection first. | Configs PR #522 merged. Deployment, restart, downstream traffic, balancing, and recovery passed. |
 | MWAN-516 | 516-model; 516-state | [MWAN PR #51](https://github.com/agoodkind/mwan/pull/51) merged standalone identity as `959fbd3a65955e8156f2ea6c9bf2c90febef762c`. [MWAN PR #55](https://github.com/agoodkind/mwan/pull/55) merged shared interface intent as `2c6df538fbb1174a9189f3098d6ac458256857f4`. [MWAN PR #84](https://github.com/agoodkind/mwan/pull/84) merged state publication as `b601ab8a5f4f44d09b949ab6132c4287ef9dbbef`. The shared model and state publication passed testbed and production checkpoints. |
-| MWAN-397 | 397-links | [MWAN PR #86](https://github.com/agoodkind/mwan/pull/86) remains open. Independent review accepted pre-rebase `cdb320b` and the bridge guard added after `1db34fb`. Local checks passed on rebased code `b1da33c`. Required CI for the current head, merge, and deployment remain open. |
+| MWAN-397 | 397-links | [MWAN PR #86](https://github.com/agoodkind/mwan/pull/86) merged as `446e76fe590e5dc9bbbcfe6fd875a8752f4e404c`. Configs PRs #548 and #549 passed testbed and production deployment with downstream packets, balancing, failover, and recovery. Tack records Done. |
 | MWAN-523 | 523-observation | [MWAN PR #60](https://github.com/agoodkind/mwan/pull/60) merged the observer foundation as `13183ea9d6264beac7b85bfd4e7946b15f7da601`. Configs PRs #533 and #535 passed its first testbed and production checkpoints. MWAN PRs #66, #71, #73, #75, #77, and #79 verified route identity, bridge rebinding, router advertisement lifetimes, index reuse, daemon packet recovery, and duplicate-address failure in privileged kernel tests. PR #81 repaired snapshot replay overflow. Configs PRs #544 and #545 passed final testbed and production acceptance. |
 | MWAN-530 | Restart handover | [MWAN PR #64](https://github.com/agoodkind/mwan/pull/64) merged forwarding readiness as `798ee6a8dcb57ef91e7d9656e8a368f3f4bd4412`. OPNsense selected the backup during controlled testbed and production reboots, then restored the primary while downstream replies continued. Tack records Done. |
-| MWAN-398 | 398-addresses; 398-dhcpv4 | Execution has not started. |
+| MWAN-398 | 398-static; 398-mapped-addresses; 398-dhcpv4 | The static address and route slice is in implementation on `codex/mwan-398-static` from `fd8277f`. Tack records In Progress. No PR, merge, or deployment exists for this slice. |
 | MWAN-227 | 227-delegation | Execution has not started. |
 | MWAN-517 | 517-autoconfiguration; 517-dhcpv6 | Execution has not started. |
 | MWAN-518 | 518-restart | Execution has not started. |
@@ -76,11 +76,11 @@ No interface-owner cutover has begun.
 
 ## Resume the work
 
-MWAN-524 restored Astound as a permanently managed testbed connection.
-MWAN-516 state publication passed testbed and production acceptance. Start
-MWAN-397 link management without transferring a live link while networkd
-still owns it. Deploy each subsequent merged runtime slice to testbed and
-verify the downstream battery before its production promotion.
+MWAN-524 restored Astound as a managed testbed connection. MWAN-397 link
+management passed testbed and production acceptance without transferring a
+live link. Implement MWAN-398 static address and route ownership on synthetic
+connections first. Deploy its merged release to testbed and verify the
+downstream battery before production promotion.
 No interface-owner cutover has begun.
 
 For every handoff, record the slice, agent responsibility, exact source
@@ -1096,6 +1096,29 @@ edge address, `2600:1700:2f71:c80::1` and `2604:5500:c271:be00::1`.
 MWAN-397 is Done in Tack. The next runtime slice is MWAN-398 owned address
 and route reconciliation; it must pass its own testbed and production gates
 before protocol acquisition work begins.
+
+### MWAN-398 static implementation review, September 28, 2026
+
+Tack records MWAN-398 In Progress. The uncommitted static patch on
+`codex/mwan-398-static` starts from merged MWAN commit `fd8277f`. The Docker
+check and test gate, privileged kernel suite, and one public daemon namespace
+test passed. No PR, merge, release, or deployment exists for this slice.
+
+Independent review found that an owned address could not change prefix
+length, family apply failures lacked a public reason, and a failed journal
+save could discard the in-memory cleanup record. It also found missing
+publication for removed-family cleanup failures and missing isolated metric
+and failure-state cases in the public test. The review verdict is NOT-READY.
+The implementation corrected those cases and added a pending-removal state
+for cleanup failures after a connection disappears from configuration. The
+public daemon test reproduced a read-only journal failure, read the served
+failure, restored journal writes, and verified cleanup. A second review found
+stale pending-removal entries after mixed cleanup results; the state now
+replaces the published failure set after each pass. The final independent
+verdict is MERGE-READY on the uncommitted patch. The reviewer independently
+ran the public Linux daemon test. The full Docker check and test gate,
+privileged kernel suite, and public daemon test passed locally on the final
+patch. A PR, merge, release, and deployment remain open.
 
 The finding counts report blockers, issues to fix, and minor issues found
 during review, including findings fixed before the verdict.

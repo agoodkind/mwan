@@ -51,10 +51,10 @@ func New(config ifmgr.ModuleConfig) (ifmgr.Module, error) {
 			continue
 		}
 		owned++
-		if connection.ID == "" || connection.Link == nil || connection.IPv4 != nil || connection.IPv6 != nil ||
+		if connection.ID == "" || connection.Link == nil ||
 			connection.Roles&(interfaceintent.RoleProvider|interfaceintent.RoleInternal|interfaceintent.RoleManagement) != 0 ||
 			connection.LeaseStore != "" || len(connection.Networkd) != 0 {
-			return nil, fmt.Errorf("links: connection %s must have only owned link intent", connection.Name)
+			return nil, fmt.Errorf("links: connection %s has unsupported owned intent", connection.Name)
 		}
 	}
 	if owned == 0 && settings.StateFile == "" {
@@ -96,6 +96,7 @@ func (module *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	if module.reconciler == nil {
 		return ifmgr.ErrModuleDisabled
 	}
+	env.OwnedLinks = &ifmgr.OwnedLinkResults{}
 	names := make([]string, 0, len(module.observed))
 	for name := range module.observed {
 		names = append(names, name)
@@ -119,11 +120,13 @@ func (module *Module) OnKernelEvent(ctx context.Context, log *slog.Logger, event
 
 // Reconcile applies owned links and publishes per-connection results.
 func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
+	module.Env.OwnedLinks.Replace(nil)
 	results, err := module.reconciler.Reconcile(ctx, log, module.connections)
 	if err != nil {
 		log.ErrorContext(ctx, "links: reconcile pass failed", "err", err)
 		return fmt.Errorf("links: reconcile: %w", err)
 	}
+	module.Env.OwnedLinks.Replace(results)
 	for _, result := range results {
 		reason := ""
 		if result.Err != nil {

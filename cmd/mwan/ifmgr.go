@@ -35,6 +35,7 @@ import (
 
 	// Side-effect imports: each module package's init() registers itself
 	// with the ifmgr registry. Roles are resolved by name in roles.go.
+	_ "goodkind.io/mwan/internal/ifmgr/modules/addresses"
 	_ "goodkind.io/mwan/internal/ifmgr/modules/bridgeprobe"
 	_ "goodkind.io/mwan/internal/ifmgr/modules/cloudflaredtap"
 	_ "goodkind.io/mwan/internal/ifmgr/modules/connprobe"

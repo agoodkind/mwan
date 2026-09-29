@@ -117,6 +117,7 @@ type Store struct {
 	mu                 sync.RWMutex
 	clock              clock.Clock
 	connections        map[string]ConnectionState
+	pendingRemovals    map[string]PendingRemoval
 	runID              string
 	transitionSequence uint64
 	transitionLog      *slog.Logger
@@ -143,6 +144,7 @@ func NewWithClock(wallClock clock.Clock) *Store {
 		mu:                 sync.RWMutex{},
 		clock:              wallClock,
 		connections:        map[string]ConnectionState{},
+		pendingRemovals:    map[string]PendingRemoval{},
 		runID:              "",
 		transitionSequence: 0,
 		transitionLog:      nil,
@@ -295,6 +297,7 @@ func (s *Store) SetBGP(bgp BGP) {
 // Snapshot is a complete, consistent copy of the store for one read.
 type Snapshot struct {
 	Connections       map[string]ConnectionState
+	PendingRemovals   map[string]PendingRemoval
 	Health            map[string]MemberHealth
 	Routing           map[string]MemberRouting
 	RoutingGeneration uint64
@@ -312,6 +315,7 @@ func (s *Store) Snapshot() Snapshot {
 	defer s.mu.RUnlock()
 	snap := Snapshot{
 		Connections:       make(map[string]ConnectionState, len(s.connections)),
+		PendingRemovals:   make(map[string]PendingRemoval, len(s.pendingRemovals)),
 		Health:            make(map[string]MemberHealth, len(s.health)),
 		Routing:           make(map[string]MemberRouting, len(s.routing)),
 		RoutingGeneration: s.routingGeneration,
@@ -323,6 +327,7 @@ func (s *Store) Snapshot() Snapshot {
 		IntendedByOwner:   make(map[string]OwnedRuleset, len(s.intendedRulesets)),
 	}
 	maps.Copy(snap.Health, s.health)
+	maps.Copy(snap.PendingRemovals, s.pendingRemovals)
 	for id, connection := range s.connections {
 		snap.Connections[id] = cloneConnection(connection)
 	}

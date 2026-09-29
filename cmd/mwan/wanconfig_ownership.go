@@ -74,6 +74,30 @@ func ownershipLiveItems(snapshot wanstate.Snapshot, gateway wanconfig.Gateway) [
 		items = append(items, ownershipFamilyItems(connection.Name, "ipv4", state.IPv4)...)
 		items = append(items, ownershipFamilyItems(connection.Name, "ipv6", state.IPv6)...)
 	}
+	items = append(items, pendingRemovalItems(snapshot.PendingRemovals)...)
+	return items
+}
+
+func pendingRemovalItems(pendingRemovals map[string]wanstate.PendingRemoval) []yangpub.Item {
+	keys := make([]string, 0, len(pendingRemovals))
+	for key := range pendingRemovals {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	var items []yangpub.Item
+	for _, key := range keys {
+		pending := pendingRemovals[key]
+		base := "/ietf-interfaces:interfaces/goodkind-mwan-steering:steering-group/state/pending-removal[id='" + key + "']"
+		items = append(items,
+			yangpub.Item{Path: base + "/id", Value: key},
+			yangpub.Item{Path: base + "/connection-id", Value: pending.ConnectionID},
+			yangpub.Item{Path: base + "/family", Value: pending.Family},
+			yangpub.Item{Path: base + "/interface", Value: pending.Name},
+			yangpub.Item{Path: base + "/result", Value: pending.Apply.Result},
+			yangpub.Item{Path: base + "/reason", Value: pending.Apply.Reason},
+			yangpub.Item{Path: base + "/at", Value: pending.Apply.At.UTC().Format(time.RFC3339Nano)},
+		)
+	}
 	return items
 }
 
@@ -86,6 +110,7 @@ func ownershipFamilyItems(name, family string, state wanstate.FamilyState) []yan
 		{Path: base + "/routing", Value: state.Routing},
 		{Path: base + "/readiness", Value: state.Readiness},
 	}
+	items = append(items, ownershipFamilyApplyItems(base, state.LastApply)...)
 	for _, assignment := range state.Assignments {
 		id := assignmentIdentity(assignment)
 		path := base + "/assignment[id='" + id + "']"
@@ -94,9 +119,19 @@ func ownershipFamilyItems(name, family string, state wanstate.FamilyState) []yan
 			yangpub.Item{Path: path + "/id", Value: id},
 			yangpub.Item{Path: path + "/kind", Value: string(assignment.Kind)},
 			yangpub.Item{Path: path + "/source", Value: assignment.Source},
-			yangpub.Item{Path: path + "/value", Value: assignment.Value.String()},
 			yangpub.Item{Path: path + "/valid", Value: boolValue(assignment.Valid)},
 		)
+		if assignment.Route == nil {
+			items = append(items, yangpub.Item{Path: path + "/value", Value: assignment.Value.String()})
+		} else {
+			routePath := path + "/route"
+			items = append(items,
+				yangpub.Item{Path: routePath + "/destination", Value: assignment.Route.Destination.String()},
+				yangpub.Item{Path: routePath + "/gateway", Value: assignment.Route.Gateway.String()},
+				yangpub.Item{Path: routePath + "/table-id", Value: strconv.FormatUint(uint64(assignment.Route.TableID), 10)},
+				yangpub.Item{Path: routePath + "/metric", Value: strconv.FormatUint(uint64(assignment.Route.Metric), 10)},
+			)
+		}
 		if !assignment.AcquiredAt.IsZero() {
 			items = append(items, yangpub.Item{Path: path + "/acquired-at", Value: assignment.AcquiredAt.UTC().Format(time.RFC3339Nano)})
 		}
@@ -163,6 +198,20 @@ func ownershipFamilyItems(name, family string, state wanstate.FamilyState) []yan
 	return items
 }
 
+func ownershipFamilyApplyItems(base string, result wanstate.ApplyResult) []yangpub.Item {
+	if result.Result == "" {
+		return nil
+	}
+	path := base + "/last-apply"
+	return []yangpub.Item{
+		{Path: path + "/operation", Value: result.Operation},
+		{Path: path + "/dependency", Value: result.Dependency},
+		{Path: path + "/result", Value: result.Result},
+		{Path: path + "/reason", Value: result.Reason},
+		{Path: path + "/at", Value: result.At.UTC().Format(time.RFC3339Nano)},
+	}
+}
+
 func stableIdentity(parts ...string) string {
 	digest := sha256.New()
 	for _, part := range parts {
@@ -176,7 +225,11 @@ func assignmentIdentity(assignment interfaceintent.Assignment) string {
 	if assignment.IAID != nil {
 		iaID = strconv.FormatUint(uint64(*assignment.IAID), 10)
 	}
-	return stableIdentity(assignment.Family, string(assignment.Kind), assignment.Source, string(assignment.Purpose), assignment.Value.String(), assignment.ClientID, assignment.DUID, iaID)
+	parts := []string{assignment.Family, string(assignment.Kind), assignment.Source, string(assignment.Purpose), assignment.Value.String(), assignment.ClientID, assignment.DUID, iaID}
+	if assignment.Route != nil {
+		parts = append(parts, assignment.Route.Destination.String(), assignment.Route.Gateway.String(), strconv.FormatUint(uint64(assignment.Route.TableID), 10), strconv.FormatUint(uint64(assignment.Route.Metric), 10))
+	}
+	return stableIdentity(parts...)
 }
 
 func hopIdentity(hop netif.RouteNextHop) string {
