@@ -15,9 +15,7 @@ func validateMWANDHCPv6(name string, wire *familyV6, intent *interfaceintent.IPv
 		return fmt.Errorf("interface %s: DHCPv6 delegation requires ipv6/dhcp true and delegation", name)
 	}
 	delegation := intent.Delegation
-	if delegation.WithoutRA != "solicit" {
-		return fmt.Errorf("interface %s: DHCPv6 delegation requires without-ra solicit", name)
-	}
+	withoutRA := dhcpv6WithoutRA(intent)
 	duid := delegation.DUID
 	iaid := delegation.IAID
 	if client := intent.DHCPv6; client != nil {
@@ -34,6 +32,12 @@ func validateMWANDHCPv6(name string, wire *familyV6, intent *interfaceintent.IPv
 			iaid = client.IAPDIAID
 		}
 	}
+	if withoutRA == "information-request" {
+		return fmt.Errorf("interface %s: without-ra information-request cannot acquire an IA_PD prefix", name)
+	}
+	if withoutRA != "solicit" && withoutRA != "no" {
+		return fmt.Errorf("interface %s: DHCPv6 delegation requires without-ra no or solicit", name)
+	}
 	if duid == "" || iaid == nil {
 		return fmt.Errorf("interface %s: DHCPv6 delegation requires configured DUID and prefix IAID", name)
 	}
@@ -47,4 +51,11 @@ func validateMWANDHCPv6(name string, wire *familyV6, intent *interfaceintent.IPv
 		return fmt.Errorf("interface %s: invalid DHCPv6 DUID: %w", name, err)
 	}
 	return nil
+}
+
+func dhcpv6WithoutRA(intent *interfaceintent.IPv6) string {
+	if intent.DHCPv6 != nil && intent.DHCPv6.WithoutRA != "" {
+		return intent.DHCPv6.WithoutRA
+	}
+	return intent.Delegation.WithoutRA
 }
