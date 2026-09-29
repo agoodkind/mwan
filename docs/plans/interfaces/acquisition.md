@@ -376,7 +376,9 @@ from MWAN-517 as the separate prerequisite for default-router acceptance.
 Extend the reviewed DHCPv6 client. Do not create an independent address-only
 client alongside the delegation client.
 
-Preserve the shared DUID and configured IAIDs established by MWAN-227.
+Preserve the shared DUID and IA_PD IAID established by MWAN-227. Add the
+configured IA_NA IAID in this slice. The two association types may use the
+same numeric IAID.
 Publish each assignment with its own preferred and valid deadlines,
 association, and validity.
 Keep kernel RA default routes and automatic addresses separate.

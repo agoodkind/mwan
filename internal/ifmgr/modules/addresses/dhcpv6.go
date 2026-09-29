@@ -126,7 +126,17 @@ func dhcpv6PDConfig(connection interfaceintent.Connection, iface string) (netif.
 		slog.Warn("addresses: invalid configured DHCPv6 DUID", "connection_id", connection.ID, "err", err)
 		return netif.DHCPv6PDConfig{}, fmt.Errorf("decode DUID: %w", err)
 	}
-	return netif.DHCPv6PDConfig{Iface: iface, DUID: decoded, IAID: *iaid, Hint: delegation.Hint, Clock: clock.Real{}, WaitForRA: withoutRA == "no"}, nil
+	return netif.DHCPv6PDConfig{
+		Iface:          iface,
+		DUID:           decoded,
+		IAID:           *iaid,
+		IANAIAID:       0,
+		RequestAddress: false,
+		RequestPrefix:  true,
+		Hint:           delegation.Hint,
+		Clock:          clock.Real{},
+		WaitForRA:      withoutRA == "no",
+	}, nil
 }
 
 func (module *Module) watchDHCPv6(ctx context.Context, id string, session *dhcpv6Session) {
