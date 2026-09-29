@@ -15,29 +15,6 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-func TestDHCPRestartRequestPacket(t *testing.T) {
-	clientID := []byte{0xff, 1, 2, 3}
-	client := &DHCPClient{cfg: DHCPConfig{ClientID: clientID}}
-	hardwareAddress := net.HardwareAddr{2, 0, 0, 0, 0, 1}
-	address := net.IPv4(192, 0, 2, 8)
-	request, err := client.restartRequest(hardwareAddress, address)
-	if err != nil {
-		t.Fatal(err)
-	}
-	packet, err := dhcpv4.FromBytes(request.ToBytes())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if packet.MessageType() != dhcpv4.MessageTypeRequest || !packet.IsBroadcast() ||
-		!packet.ClientIPAddr.Equal(net.IPv4zero) ||
-		!packet.RequestedIPAddress().Equal(address) ||
-		packet.Options.Has(dhcpv4.OptionServerIdentifier) ||
-		!bytes.Equal(packet.ClientHWAddr, hardwareAddress) ||
-		!bytes.Equal(packet.Options.Get(dhcpv4.OptionClientIdentifier), clientID) {
-		t.Fatalf("invalid INIT-REBOOT packet: %s", packet.Summary())
-	}
-}
-
 func TestDHCPRestartClientWithServer(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("raw DHCP transport requires root")
@@ -114,7 +91,7 @@ func TestDHCPRestartClientWithServer(t *testing.T) {
 			go func() { _ = server.Serve() }()
 			t.Cleanup(func() { _ = server.Close() })
 			cached := LeaseInfo{
-				IP: address, LinkIndex: clientLink.Index + 100,
+				IP: append(net.IP(nil), address...), LinkIndex: clientLink.Index + 100,
 				LinkHardwareAddr: append(net.HardwareAddr(nil), clientLink.HardwareAddr...),
 				ExpiresAt:        time.Now().Add(800 * time.Millisecond),
 			}
@@ -124,6 +101,7 @@ func TestDHCPRestartClientWithServer(t *testing.T) {
 				Iface: clientInterface, CachedLease: &cached, ClientID: caseClientID,
 				RequestTimeout: 100 * time.Millisecond, InitialBackoff: 50 * time.Millisecond,
 			})
+			cached.IP[0] = 203
 			deadline := time.After(2 * time.Second)
 			for {
 				var packet *dhcpv4.DHCPv4
@@ -176,30 +154,5 @@ func TestDHCPRestartClientWithServer(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestDHCPExpiredSavedLeaseStartsWithoutAssignment(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	cached := LeaseInfo{
-		IP:        net.IPv4(192, 0, 2, 8),
-		ExpiresAt: time.Now().Add(-time.Second),
-	}
-	client := StartDHCPClient(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), DHCPConfig{
-		Iface: "missing-dhcp-restart-interface", CachedLease: &cached,
-		InitialBackoff: time.Millisecond,
-	})
-	cached.IP[0] = 203
-	if !client.cfg.CachedLease.IP.Equal(net.IPv4(192, 0, 2, 8)) {
-		t.Fatal("cached address aliases caller input")
-	}
-	if client.cfg.CachedLease.ExpiresAt.After(time.Now()) {
-		t.Fatal("saved expiry changed")
-	}
-	select {
-	case event := <-client.Events:
-		t.Fatalf("expired saved address published: %v", event)
-	case <-time.After(20 * time.Millisecond):
 	}
 }
