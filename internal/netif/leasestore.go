@@ -156,7 +156,12 @@ func (store *LeaseStore) Load(connectionID string, protocol LeaseProtocol) (Leas
 		return LeaseRecord{}, fmt.Errorf("lease record exceeds %d bytes", maxLeaseRecordSize)
 	}
 	var envelope leaseRecordEnvelope
-	if err := decodeLeaseEnvelope(data, &envelope); err != nil {
+	if err := decodeStrictLeaseJSON(data, func(decoder *json.Decoder) error {
+		if err := decoder.Decode(&envelope); err != nil {
+			return leaseStoreError("decode envelope", err)
+		}
+		return nil
+	}); err != nil {
 		return LeaseRecord{}, leaseStoreError("decode lease envelope", err)
 	}
 	if envelope.Version != leaseRecordVersion {
@@ -170,7 +175,12 @@ func (store *LeaseStore) Load(connectionID string, protocol LeaseProtocol) (Leas
 		return LeaseRecord{}, errors.New("lease record checksum mismatch")
 	}
 	var record LeaseRecord
-	if err := decodeLeaseRecord(envelope.Record, &record); err != nil {
+	if err := decodeStrictLeaseJSON(envelope.Record, func(decoder *json.Decoder) error {
+		if err := decoder.Decode(&record); err != nil {
+			return leaseStoreError("decode record", err)
+		}
+		return nil
+	}); err != nil {
 		return LeaseRecord{}, leaseStoreError("decode lease record", err)
 	}
 	if err := validateLeaseRecord(record); err != nil {
@@ -194,6 +204,9 @@ func (store *LeaseStore) Delete() error {
 		return err
 	}
 	if err := os.Remove(store.path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return os.ErrNotExist
+		}
 		return leaseStoreError("remove lease record", err)
 	}
 	if err := store.syncDirectory(); err != nil {
@@ -279,26 +292,11 @@ func validateLeaseRecord(record LeaseRecord) error {
 	return nil
 }
 
-func decodeLeaseEnvelope(data []byte, destination *leaseRecordEnvelope) error {
+func decodeStrictLeaseJSON(data []byte, decode func(*json.Decoder) error) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(destination); err != nil {
-		return leaseStoreError("decode envelope", err)
-	}
-	if err := decoder.Decode(new(json.RawMessage)); err != io.EOF {
-		if err == nil {
-			return errors.New("trailing JSON value")
-		}
-		return leaseStoreError("decode trailing data", err)
-	}
-	return nil
-}
-
-func decodeLeaseRecord(data []byte, destination *LeaseRecord) error {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(destination); err != nil {
-		return leaseStoreError("decode record", err)
+	if err := decode(decoder); err != nil {
+		return err
 	}
 	if err := decoder.Decode(new(json.RawMessage)); err != io.EOF {
 		if err == nil {
