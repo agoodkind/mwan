@@ -1426,6 +1426,54 @@ transfer DHCPv6 or interface ownership from networkd. MWAN-227 remains Todo
 until real DHCPv6 server acceptance and exclusive handover pass. MWAN-517
 remains In Progress for IA_NA and ownership acceptance.
 
+### MWAN-517 IA_NA release and existing-service acceptance, September 29, 2026
+
+[MWAN PRs #112](https://github.com/agoodkind/mwan/pull/112),
+[#113](https://github.com/agoodkind/mwan/pull/113),
+[#114](https://github.com/agoodkind/mwan/pull/114), and
+[#115](https://github.com/agoodkind/mwan/pull/115) merged the shared DHCPv6
+address client, owned address lifecycle, local NPT exception, and configuration
+support. The final signed merge commit `d442ba1` produced release
+`202609292152-70-d442ba1`. Required CI, Docker check and test, golangci-lint,
+four real Kea namespace scenarios, and six privileged firewall tests passed.
+The release archive checksum matched the published `checksums.txt`.
+
+[Configs PR #565](https://github.com/agoodkind/configs/pull/565) merged the
+testbed pin as `66927454`. The merged checkout passed the deploy check with
+176 successful tasks and 18 proposed changes, then applied with 227 successful
+tasks and 21 changes. Trace `20260929-151541-deploy-321500` passed reboot,
+egress, and mapped-address gates without rollback. VM 213 reported clean
+`d442ba1`. Client 225 completed 20 of 20 IPv4 and 50 of 50 IPv6 HTTPS
+requests, and client 226 returned HTTP 200 in both families. Gateway captures
+showed new client connections on Webpass and AT&T in both families. A separate
+primary VM reboot made OPNsense select the failover default route in both
+families; client 225 received 300 of 300 replies per family at 200 ms intervals.
+OPNsense selected the primary again after recovery. Client 225 received five
+of five replies from the Monkeybrains IA_NA address after reboot.
+
+[Configs PR #566](https://github.com/agoodkind/configs/pull/566) merged the
+production pin as `d53b8b97`. The merged checkout passed the deploy check with
+187 successful tasks and 14 proposed changes, then applied with 240 successful
+tasks and 21 changes. Trace `20260929-155123-deploy-65721` passed reboot,
+egress, and mapped-address gates without rollback. The deploy created snapshot
+`pre-deploy-20260929T155123`. VM 113 reported clean `d442ba1`; its interface
+manager, agent, and RESTCONF services were active. Downstream LXC 102 received
+900 of 900 IPv4 and 900 of 900 IPv6 replies across the deploy and reboot.
+Twenty IPv4 and 50 IPv6 HTTPS requests returned HTTP 200. Captures showed new
+client connections on Webpass and AT&T in both families. OPNsense selected the
+failover default routes during the VM reboot and selected the primary again
+after recovery. The one-second probes observed no interruption; they did not
+measure exact route withdrawal or recovery time.
+
+The first bulk HTTPS test used `ifconfig.co`, which returned HTTP 429 rate
+limits after successful requests in both families. The repeated test used a
+separate Cloudflare endpoint and completed without transport or HTTP failures.
+Both environments still configure `systemd-networkd` with `DHCP=yes` on
+Monkeybrains. The observed IA_NA address therefore does not validate MWAN's
+new client on a live owned link. No owner transfer or reverse transfer occurred.
+MWAN-517 remains In Progress until the later ownership cutover exercises that
+client; MWAN-518 must add durable lease recovery before the cutover.
+
 The finding counts report blockers, issues to fix, and minor issues found
 during review, including findings fixed before the verdict.
 The post-verdict column records defects discovered after that review verdict.
