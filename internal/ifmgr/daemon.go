@@ -260,6 +260,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 		LiveState:        d.cfg.LiveState,
 		OwnedLinks:       nil,
 		OwnedAddresses:   nil,
+		Delegations:      nil,
 	}
 
 	if err := d.initModules(ctx); err != nil {

@@ -120,15 +120,38 @@ func validateMWANConnection(connection interfaceintent.Connection) error {
 		}
 	}
 	if ipv6 := connection.IPv6; ipv6 != nil &&
-		(ipv6.DHCP != nil || ipv6.DHCPv6 != nil || ipv6.Delegation != nil ||
-			ipv6.AcceptRA != nil || ipv6.AutoConf != nil || ipv6.AcceptRADefaultRoute != nil ||
+		(ipv6.AutoConf != nil || ipv6.AcceptRADefaultRoute != nil ||
 			ipv6.UseRADNS != nil || len(ipv6.ForwardingAddresses) != 0 ||
 			len(ipv6.DNS) != 0 || len(ipv6.SearchDomains) != 0 ||
 			ipv6.Forwarding != nil && *ipv6.Forwarding) {
 		return invalid(fmt.Sprintf("interface %s has unsupported mwan ipv6 intent", connection.Name))
 	}
+	if err := validateMWANDelegation(connection); err != nil {
+		return err
+	}
 	if connection.IPv6 != nil {
 		return validateMWANStaticFamily(connection.Name, "ipv6", connection.IPv6.Family, false)
+	}
+	return nil
+}
+
+func validateMWANDelegation(connection interfaceintent.Connection) error {
+	ipv6 := connection.IPv6
+	if ipv6 == nil || ipv6.Delegation == nil {
+		return nil
+	}
+	duid := ipv6.Delegation.DUID
+	iaid := ipv6.Delegation.IAID
+	if ipv6.DHCPv6 != nil {
+		if ipv6.DHCPv6.DUID != "" {
+			duid = ipv6.DHCPv6.DUID
+		}
+		if ipv6.DHCPv6.IAPDIAID != nil {
+			iaid = ipv6.DHCPv6.IAPDIAID
+		}
+	}
+	if ipv6.DHCP == nil || !*ipv6.DHCP || duid == "" || iaid == nil {
+		return invalid(fmt.Sprintf("interface %s has incomplete mwan DHCPv6 delegation identity", connection.Name))
 	}
 	return nil
 }
