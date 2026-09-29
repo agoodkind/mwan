@@ -143,10 +143,6 @@ func validateMWANProvider(entry ifaceEntry) error {
 			}
 		}
 	}
-	if entry.IPv6 != nil && entry.IPv6.Translation != nil && entry.IPv6.Translation.NPT != nil &&
-		entry.IPv6.Translation.NPT.ExternalSource != config.PrefixConfigured {
-		return fmt.Errorf("interface %s: mwan provider supports configured NPT external prefixes until delegation acquisition is available", entry.Name)
-	}
 	return nil
 }
 
@@ -171,7 +167,7 @@ func validateMWANFamily(name, family string, wire *familyWire, provider bool) er
 	dhcpv4 := family == "ipv4" && wire.DHCP != nil && *wire.DHCP
 	raMetric := family == "ipv6" && wire.Gateway == "" && wire.RouteMetric != nil
 	if wire.Enabled != nil && !*wire.Enabled || (family == "ipv4" && wire.Forwarding != nil) ||
-		(family == "ipv6" && wire.DHCP != nil) || wire.Resolver != nil ||
+		wire.Resolver != nil ||
 		(wire.Translation != nil && !provider) ||
 		wire.RouteMetric != nil && wire.Gateway == "" && !dhcpv4 && !raMetric {
 		if family == "ipv4" {
@@ -214,8 +210,13 @@ func validateMWANConnection(entry ifaceEntry, connection interfaceintent.Connect
 }
 
 func validateMWANIPv6(name string, wire *familyV6, intent *interfaceintent.IPv6) error {
-	if wire.Delegation != nil || wire.DHCPv6 != nil || len(wire.ForwardingAddresses) != 0 {
-		return fmt.Errorf("interface %s: mwan ipv6 does not support DHCP, delegation, or forwarding addresses", name)
+	if len(wire.ForwardingAddresses) != 0 {
+		return fmt.Errorf("interface %s: mwan ipv6 does not support forwarding addresses", name)
+	}
+	if wire.DHCP != nil && *wire.DHCP || wire.Delegation != nil || wire.DHCPv6 != nil {
+		if err := validateMWANDHCPv6(name, wire, intent); err != nil {
+			return err
+		}
 	}
 	if wire.UseRADNS != nil && *wire.UseRADNS {
 		return fmt.Errorf("interface %s: ipv6 use-ra-dns requires a resolver integration", name)

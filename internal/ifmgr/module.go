@@ -114,6 +114,8 @@ type Env struct {
 	OwnedLinks *OwnedLinkResults
 	// OwnedAddresses contains address installation results from the current pass.
 	OwnedAddresses *OwnedAddressResults
+	// Delegations publishes MWAN-owned IA_PD leases to translation consumers.
+	Delegations *netif.DHCPv6PDStore
 }
 
 // OwnedAddressResults shares successful exact address writes with translation consumers.

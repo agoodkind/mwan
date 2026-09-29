@@ -15,6 +15,7 @@ import (
 
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
+	"goodkind.io/mwan/internal/clock"
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/ifmgr/modules/npt/bpf"
@@ -102,7 +103,7 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	}
 
 	if m.src == nil {
-		m.src = pd.New(env.Log)
+		m.src = pd.NewAssignmentSource(env.Connections, env.Delegations, pd.New(env.Log), clock.Real{})
 	}
 	if m.apply == nil {
 		m.apply = newNFTApplier()

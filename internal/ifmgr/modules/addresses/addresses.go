@@ -53,6 +53,7 @@ type Module struct {
 	reconcileMu    sync.Mutex
 	sessionMu      sync.Mutex
 	sessions       map[string]*dhcpSession
+	dhcpv6Sessions map[string]*dhcpv6Session
 	nextGeneration uint64
 }
 
@@ -64,12 +65,21 @@ type dhcpSession struct {
 	generation uint64
 }
 
+type dhcpv6Session struct {
+	client     *netif.DHCPv6PDClient
+	cancel     context.CancelFunc
+	ready      netif.OwnedLinkResult
+	identity   string
+	generation uint64
+}
+
 // New validates the address journal before daemon startup.
 func New(config ifmgr.ModuleConfig) (ifmgr.Module, error) {
 	module := &Module{
 		BaseModule: ifmgr.NewBaseModule(moduleName), connections: nil, providers: nil,
 		clientIDs: nil, reconciler: nil, clock: clock.Real{}, reconcileMu: sync.Mutex{},
-		sessionMu: sync.Mutex{}, sessions: make(map[string]*dhcpSession), nextGeneration: 0,
+		sessionMu: sync.Mutex{}, sessions: make(map[string]*dhcpSession),
+		dhcpv6Sessions: make(map[string]*dhcpv6Session), nextGeneration: 0,
 	}
 	if config == nil {
 		return module, nil
@@ -119,6 +129,7 @@ func (module *Module) Init(_ context.Context, env *ifmgr.Env) error {
 		return fmt.Errorf("addresses: links module is required")
 	}
 	env.OwnedAddresses = &ifmgr.OwnedAddressResults{}
+	env.Delegations = netif.NewDHCPv6PDStore()
 	return nil
 }
 
@@ -135,6 +146,7 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		families := make(map[string]bool)
 		provider := module.providers[connection.ID.String()]
 		session := module.currentDHCPClient(ctx, log, connection)
+		module.currentDHCPv6Client(ctx, log, connection)
 		for _, candidate := range []struct {
 			name   string
 			intent *interfaceintent.Family
@@ -156,10 +168,11 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 					settings.Addresses = append(slices.Clone(settings.Addresses), address)
 					assignments = append(assignments, addressAssignment(connection, candidate.name, interfaceintent.AssignmentMapped, address.Purpose, address.Prefix))
 				}
-			} else if prefix := nptAddress(provider.IPv6); prefix.IsValid() {
+			} else if prefix := nptAddress(provider.IPv6, module.delegation(connection.Name)); prefix.IsValid() {
 				settings.Addresses = append(slices.Clone(settings.Addresses), interfaceintent.Address{Prefix: prefix, Purpose: interfaceintent.PurposeForward})
 				assignments = append(assignments, addressAssignment(connection, candidate.name, interfaceintent.AssignmentNPTExternal, interfaceintent.PurposeForward, prefix))
 			}
+			assignments = append(assignments, module.familyDelegations(connection, candidate.name)...)
 			module.reconcileFamily(ctx, log, connection, candidate.name, settings, assignments, session)
 		}
 		desiredFamilies[connection.ID.String()] = families
@@ -479,11 +492,24 @@ func mappingOnLink(connection interfaceintent.Connection, external netip.Addr) b
 	return false
 }
 
-func nptAddress(translation *config.IPv6Translation) netip.Prefix {
-	if translation == nil || translation.NPT == nil || translation.Mode != config.TranslationNPTv6 || translation.NPT.ExternalSource != config.PrefixConfigured {
+func nptAddress(translation *config.IPv6Translation, delegated netip.Prefix) netip.Prefix {
+	if translation == nil || translation.NPT == nil || translation.Mode != config.TranslationNPTv6 {
 		return netip.Prefix{}
 	}
 	prefix := translation.NPT.ExternalPrefix.Masked()
+	if translation.NPT.ExternalSource == config.PrefixDelegated {
+		if !delegated.IsValid() {
+			return netip.Prefix{}
+		}
+		bits := translation.NPT.InternalPrefix.Bits()
+		if translation.NPT.ExpectedPrefix.IsValid() {
+			bits = translation.NPT.ExpectedPrefix.Bits()
+		}
+		if bits < delegated.Bits() {
+			return netip.Prefix{}
+		}
+		prefix = netip.PrefixFrom(delegated.Addr(), bits).Masked()
+	}
 	if !prefix.IsValid() {
 		return netip.Prefix{}
 	}
