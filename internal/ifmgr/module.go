@@ -32,9 +32,9 @@ type Module interface {
 	Init(ctx context.Context, env *Env) error
 
 	// Reconcile is called once at startup (after Init for all modules) and
-	// then on every reconcile tick. Modules MUST be idempotent and tolerant
-	// of running in any order relative to other modules registered for the
-	// same role.
+	// then on every reconcile tick. Modules run in role order and MUST be
+	// idempotent. A module that requires an earlier result must verify it
+	// before changing kernel state.
 	Reconcile(ctx context.Context, log *slog.Logger) error
 
 	// OnKernelEvent is called for every netif.Event that arrives from the
@@ -70,9 +70,7 @@ type Constructor func(cfg ModuleConfig) (Module, error)
 // hold a reference to the bits they need; the daemon will not pass Env
 // again on subsequent dispatch calls.
 //
-// All fields are non-nil except DHCP, which is nil if the role's iface
-// section has dhcp_v4 = false. Modules that only run when DHCP is
-// configured should defensively check.
+// Modules must check optional role capabilities before using them.
 type Env struct {
 	// Iface is the interface name the role manages. Modules that operate
 	// on multiple ifaces (future) will get a per-iface Env.
@@ -112,6 +110,32 @@ type Env struct {
 	// publish a management surface; writers must nil-check, and a nil
 	// store costs the reconcile path nothing.
 	LiveState *wanstate.Store
+	// OwnedLinks contains the latest complete link reconcile result for this pass.
+	OwnedLinks *OwnedLinkResults
+}
+
+// OwnedLinkResults shares verified link identities with later modules.
+type OwnedLinkResults struct {
+	mu      sync.RWMutex
+	results map[string]netif.OwnedLinkResult
+}
+
+// Replace starts a new complete link result set.
+func (s *OwnedLinkResults) Replace(results []netif.OwnedLinkResult) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.results = make(map[string]netif.OwnedLinkResult, len(results))
+	for _, result := range results {
+		s.results[result.ConnectionID] = result
+	}
+}
+
+// Get returns the latest result for one connection.
+func (s *OwnedLinkResults) Get(id string) (netif.OwnedLinkResult, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result, ok := s.results[id]
+	return result, ok
 }
 
 // registry maps module name to constructor. Populated at package init

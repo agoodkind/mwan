@@ -28,6 +28,7 @@ type FamilyState struct {
 	Routing         string
 	Readiness       string
 	Assignments     []interfaceintent.Assignment
+	LastApply       ApplyResult
 	Addresses       []netif.CurrentAddr
 	Routes          []netif.CurrentRoute
 }
@@ -39,6 +40,28 @@ type ApplyResult struct {
 	Result     string
 	Reason     string
 	At         time.Time
+}
+
+// PendingRemoval reports failed cleanup for a removed connection.
+type PendingRemoval struct {
+	ConnectionID string
+	Name         string
+	Family       string
+	Apply        ApplyResult
+}
+
+// ReplacePendingRemovals publishes cleanup failures from one completed pass.
+func (s *Store) ReplacePendingRemovals(pending []PendingRemoval) {
+	next := make(map[string]PendingRemoval, len(pending))
+	for _, value := range pending {
+		if value.Apply.At.IsZero() {
+			value.Apply.At = s.clock.Now()
+		}
+		next[value.ConnectionID+"/"+value.Family] = value
+	}
+	s.mu.Lock()
+	s.pendingRemovals = next
+	s.mu.Unlock()
 }
 
 // Transition identifies a state change within one daemon run.
@@ -87,6 +110,10 @@ func cloneAssignment(value interfaceintent.Assignment) interfaceintent.Assignmen
 		id := *value.IAID
 		value.IAID = &id
 	}
+	if value.Route != nil {
+		route := *value.Route
+		value.Route = &route
+	}
 	return value
 }
 
@@ -111,7 +138,46 @@ func cloneConnection(value ConnectionState) ConnectionState {
 }
 
 func newFamilyState() FamilyState {
-	return FamilyState{Acquisition: "unknown", AssignmentValid: "unknown", Firewall: "unknown", Routing: "unknown", Readiness: "unknown", Assignments: nil, Addresses: nil, Routes: nil}
+	return FamilyState{Acquisition: "unknown", AssignmentValid: "unknown", Firewall: "unknown", Routing: "unknown", Readiness: "unknown", Assignments: nil, LastApply: ApplyResult{Operation: "", Dependency: "", Result: "", Reason: "", At: time.Time{}}, Addresses: nil, Routes: nil}
+}
+
+// SetFamilyApplyResult records a family's kernel operation separately from assignment validity.
+func (s *Store) SetFamilyApplyResult(id, family string, result ApplyResult) {
+	if result.At.IsZero() {
+		result.At = s.clock.Now()
+	}
+	s.mu.Lock()
+	current, ok := s.connections[id]
+	if !ok {
+		s.mu.Unlock()
+		return
+	}
+	var state *FamilyState
+	switch addressFamily(family) {
+	case familyIPv4:
+		state = &current.IPv4
+	case familyIPv6:
+		state = &current.IPv6
+	default:
+		s.mu.Unlock()
+		return
+	}
+	previous := state.LastApply.Result
+	previousReason := state.LastApply.Reason
+	if previous == "" {
+		previous = "unknown"
+	}
+	state.LastApply = result
+	state.Routing = result.Result
+	var transition *Transition
+	if result.Result != previous || result.Reason != previousReason {
+		value := s.addTransitionLocked(&current, family, previous, result.Result, result.Operation, result.Dependency, result.Reason, result.At)
+		transition = &value
+	}
+	s.connections[id] = current
+	logger := s.transitionLog
+	s.mu.Unlock()
+	logOwnershipTransition(logger, id, transition)
 }
 
 // SetConnections initializes configured identity without interpreting kernel state as a lease.
@@ -153,7 +219,7 @@ func (s *Store) SetAssignment(id, family, acquisition, validity string, assignme
 	previous := state.Acquisition + "/" + state.AssignmentValid
 	state.Acquisition = acquisition
 	state.AssignmentValid = validity
-	state.Assignments = cloneFamily(FamilyState{Acquisition: "", AssignmentValid: "", Firewall: "", Routing: "", Readiness: "", Assignments: assignments, Addresses: nil, Routes: nil}).Assignments
+	state.Assignments = cloneFamily(FamilyState{Acquisition: "", AssignmentValid: "", Firewall: "", Routing: "", Readiness: "", Assignments: assignments, LastApply: ApplyResult{Operation: "", Dependency: "", Result: "", Reason: "", At: time.Time{}}, Addresses: nil, Routes: nil}).Assignments
 	var transition *Transition
 	if next := acquisition + "/" + validity; next != previous {
 		value := s.addTransitionLocked(&current, family, previous, next, "acquire", "protocol", "assignment state changed", s.clock.Now())

@@ -57,6 +57,11 @@ func buildConnection(entry ifaceEntry, id connectionid.ID) (interfaceintent.Conn
 		}
 		connection.Networkd = files
 	}
+	if owner == interfaceintent.OwnerMWAN {
+		if err := validateMWANStaticConnection(entry, connection); err != nil {
+			return connection, err
+		}
+	}
 	if err := validateRenderedConnection(entry, connection); err != nil {
 		return connection, err
 	}
@@ -110,9 +115,74 @@ func validateMWANOwner(entry ifaceEntry) error {
 	if entry.Link == nil {
 		return fmt.Errorf("interface %s: mwan owner requires a link", entry.Name)
 	}
-	if entry.LinkFiles != "" || entry.Networkd != nil || entry.IPv4 != nil || entry.IPv6 != nil ||
+	if entry.LinkFiles != "" || entry.Networkd != nil ||
 		entry.WAN != nil || entry.Steering != nil || entry.LeaseStore != "" {
-		return fmt.Errorf("interface %s: mwan owner supports link intent only", entry.Name)
+		return fmt.Errorf("interface %s: mwan owner supports link, static local address, gateway, and route metric intent only", entry.Name)
+	}
+	if err := validateMWANFamily(entry.Name, "ipv4", intentFamilyV4Wire(entry.IPv4)); err != nil {
+		return err
+	}
+	if err := validateMWANFamily(entry.Name, "ipv6", intentFamilyV6Wire(entry.IPv6)); err != nil {
+		return err
+	}
+	return nil
+}
+
+func intentFamilyV4Wire(family *familyV4) *familyWire {
+	if family == nil {
+		return nil
+	}
+	return &family.familyWire
+}
+
+func intentFamilyV6Wire(family *familyV6) *familyWire {
+	if family == nil {
+		return nil
+	}
+	return &family.familyWire
+}
+
+func validateMWANFamily(name, family string, wire *familyWire) error {
+	if wire == nil {
+		return nil
+	}
+	if wire.Enabled != nil && !*wire.Enabled || wire.Forwarding != nil ||
+		wire.DHCP != nil || wire.Resolver != nil || wire.Translation != nil ||
+		wire.RouteMetric != nil && wire.Gateway == "" {
+		return fmt.Errorf("interface %s: mwan %s supports static local addresses and an optional gateway with route metric only", name, family)
+	}
+	return nil
+}
+
+func validateMWANStaticFamily(name, family string, intent *interfaceintent.Family) error {
+	if intent.Gateway.IsValid() && intent.Gateway.Is4() != (family == "ipv4") {
+		return fmt.Errorf("interface %s: %s gateway has wrong address family", name, family)
+	}
+	for _, address := range intent.Addresses {
+		if !address.Prefix.IsValid() || address.Prefix.Addr().Is4() != (family == "ipv4") ||
+			address.Prefix.Addr().IsMulticast() || address.Prefix.Addr().IsUnspecified() {
+			return fmt.Errorf("interface %s: %s has invalid local address %s", name, family, address.Prefix)
+		}
+	}
+	return nil
+}
+
+func validateMWANStaticConnection(entry ifaceEntry, connection interfaceintent.Connection) error {
+	if entry.IPv4 != nil {
+		if len(entry.IPv4.SourceAddresses) != 0 || entry.IPv4.DHCPv4 != nil {
+			return fmt.Errorf("interface %s: mwan ipv4 does not support source addresses or dhcpv4", entry.Name)
+		}
+		if err := validateMWANStaticFamily(entry.Name, "ipv4", &connection.IPv4.Family); err != nil {
+			return err
+		}
+	}
+	if entry.IPv6 != nil {
+		if entry.IPv6.AcceptRA != nil || entry.IPv6.AutoConf != nil || entry.IPv6.AcceptRADefaultRoute != nil ||
+			entry.IPv6.UseRADNS != nil || entry.IPv6.Delegation != nil || entry.IPv6.DHCPv6 != nil ||
+			len(entry.IPv6.ForwardingAddresses) != 0 {
+			return fmt.Errorf("interface %s: mwan ipv6 does not support RA, DHCP, delegation, or forwarding addresses", entry.Name)
+		}
+		return validateMWANStaticFamily(entry.Name, "ipv6", &connection.IPv6.Family)
 	}
 	return nil
 }
@@ -611,7 +681,7 @@ func claimedAddressKey(claim interfaceintent.Claim, name string) string {
 		if err != nil {
 			return ""
 		}
-		return claim.Family + "/" + name + "/" + prefix.Addr().String()
+		return claim.Family + "/" + name + "/" + prefix.String()
 	}
 	if claim.Kind == interfaceintent.ResourceMappedAddress {
 		return claim.Family + "/" + name + "/" + claim.Key
@@ -656,13 +726,27 @@ func claimConnectionResources(connection interfaceintent.Connection, add func(in
 }
 
 func claimFamilyResources(connection interfaceintent.Connection, name string, family interfaceintent.Family, writer interfaceintent.Writer, add func(interfaceintent.Claim) error) error {
+	addressWriter := writer
+	routeWriter := writer
+	if connection.Owner == interfaceintent.OwnerMWAN {
+		addressWriter = interfaceintent.WriterMWANAddress
+		routeWriter = interfaceintent.WriterMWANRoute
+	}
 	for _, address := range family.Addresses {
-		if err := add(interfaceintent.Claim{ConnectionID: connection.ID, Kind: interfaceintent.ResourceStaticAddress, Family: name, Key: connection.Name + "/" + address.Prefix.String(), Writer: writer}); err != nil {
+		if err := add(interfaceintent.Claim{ConnectionID: connection.ID, Kind: interfaceintent.ResourceStaticAddress, Family: name, Key: connection.Name + "/" + address.Prefix.String(), Writer: addressWriter}); err != nil {
 			return err
 		}
 	}
 	if family.Gateway.IsValid() {
-		if err := add(interfaceintent.Claim{ConnectionID: connection.ID, Kind: interfaceintent.ResourceMainRoute, Family: name, Key: connection.Name + "/" + family.Gateway.String(), Writer: writer}); err != nil {
+		key := connection.Name + "/" + family.Gateway.String()
+		if connection.Owner == interfaceintent.OwnerMWAN {
+			metric := uint32(0)
+			if family.RouteMetric != nil {
+				metric = *family.RouteMetric
+			}
+			key = fmt.Sprintf("main/default/%d", metric)
+		}
+		if err := add(interfaceintent.Claim{ConnectionID: connection.ID, Kind: interfaceintent.ResourceMainRoute, Family: name, Key: key, Writer: routeWriter}); err != nil {
 			return err
 		}
 	}

@@ -257,6 +257,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 		RA:               raClient,
 		RequestReconcile: d.requestReconcile,
 		LiveState:        d.cfg.LiveState,
+		OwnedLinks:       nil,
 	}
 
 	if err := d.initModules(ctx); err != nil {

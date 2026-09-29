@@ -263,6 +263,8 @@ type AssignmentKind string
 const (
 	// AssignmentStatic identifies a configured static assignment.
 	AssignmentStatic AssignmentKind = "static"
+	// AssignmentStaticRoute identifies a configured main-table route.
+	AssignmentStaticRoute AssignmentKind = "static-route"
 	// AssignmentDHCPv4 identifies an IPv4 DHCP assignment.
 	AssignmentDHCPv4 AssignmentKind = "dhcpv4"
 	// AssignmentDHCPv6IANA identifies an IPv6 DHCP IA NA assignment.
@@ -279,6 +281,14 @@ const (
 	AssignmentNPTExternal AssignmentKind = "npt-external"
 )
 
+// RouteIntent defines an assigned route independently of its source.
+type RouteIntent struct {
+	Destination netip.Prefix
+	Gateway     netip.Addr
+	TableID     uint32
+	Metric      uint32
+}
+
 // Assignment records an address or route assigned to a connection.
 type Assignment struct {
 	ConnectionID   connectionid.ID
@@ -287,6 +297,7 @@ type Assignment struct {
 	Source         string
 	Purpose        AddressPurpose
 	Value          netip.Prefix
+	Route          *RouteIntent
 	ClientID       string
 	DUID           string
 	IAID           *uint32
