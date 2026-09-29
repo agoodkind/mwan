@@ -12,8 +12,9 @@ settled brief against current source and stops for review on contradictions.
 An independent reviewer reproduces behavior with real dependencies. The
 implementer has no live deployment or connection-transfer authority.
 
-Merge the link PR before the static address PR. Follow it with a separate
-mapped/NPT writer PR. DHCPv4 acquisition follows both address PRs.
+Merge the link PR before the static address PR. Merge the separate mapped/NPT
+writer PR after the static address PR. Start DHCPv4 acquisition after both
+address PRs.
 MWAN-505 remains an independent repair PR.
 Parallel work is permitted when files and runtime objects have separate
 writers. Serialize shared edits to the monitor, kernel operations, daemon,
