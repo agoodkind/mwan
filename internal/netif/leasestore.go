@@ -310,6 +310,18 @@ func decodeLeaseRecord(data []byte, destination *LeaseRecord) error {
 }
 
 func leaseStoreError(operation string, err error) error {
-	slog.Warn("lease store operation failed", "operation", operation, "err", err)
-	return fmt.Errorf("%s: %w", operation, err)
+	return &leaseStoreOperationError{operation: operation, cause: err}
+}
+
+type leaseStoreOperationError struct {
+	operation string
+	cause     error
+}
+
+func (failure *leaseStoreOperationError) Error() string {
+	return failure.operation + ": " + failure.cause.Error()
+}
+
+func (failure *leaseStoreOperationError) Unwrap() error {
+	return failure.cause
 }
