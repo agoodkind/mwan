@@ -1239,8 +1239,24 @@ all four downloaded archives matched the published SHA256 file.
 [Configs PR #557](https://github.com/agoodkind/configs/pull/557) merged as
 `db0f3cd` and pinned the two Linux AMD64 archives to testbed only. Its
 required checks passed. Production remains pinned to its previous MWAN
-release. No testbed or production deployment of this DHCPv4 phase has run.
-MWAN-398 and MWAN-522 remain In Progress until live acceptance.
+release. The merged Configs checkout ran
+`./configsctl deploy deploy-mwan --limit mwan_suburban_servers --check --diff`
+with 176 successful tasks, 25 proposed changes, and no failures. The apply
+completed with 229 successful tasks, 24 changes, and no failures. The
+hypervisor verdict for `20260929-021249-deploy-626884` recorded successful
+reboot, egress, and mapped-address checks from 09:22:25 to 09:23:53 UTC.
+VM 213 reported build commit `3945636`, and `mwan-ifmgr@wan` was active.
+
+Downstream client 225 recorded 600 of 600 IPv4 and 600 of 600 IPv6 ICMP
+replies across the service restart and reboot. Clients 225 and 226 each
+returned IPv4 and IPv6 HTTP 200 responses afterward. Client 225 completed
+20 fresh IPv4 and 20 fresh IPv6 HTTPS requests. WAN packet captures recorded
+ten IPv4 SYNs on Webpass and ten on AT&T, then 14 IPv6 SYNs on Webpass and
+six on AT&T. These samples demonstrate selection of both eligible providers;
+they do not estimate the configured weights or identify the route selected
+for each probe during the reboot. No live provider transferred address
+ownership. Production remains on its previous release. MWAN-398 and MWAN-522
+remain In Progress until protocol transfer and full live acceptance.
 
 The finding counts report blockers, issues to fix, and minor issues found
 during review, including findings fixed before the verdict.
