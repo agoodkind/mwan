@@ -1377,6 +1377,55 @@ so TTL changes alone do not prove which next hop forwarded the packets.
 No live provider changed owner. MWAN-517 remains In Progress for IA_NA and
 ownership acceptance. MWAN-227 must establish the shared DHCPv6 client first.
 
+### MWAN-227 DHCPv6 client release, September 29, 2026
+
+[MWAN PR #109](https://github.com/agoodkind/mwan/pull/109) merged DHCPv6
+prefix acquisition as `ac1c5a7`. [MWAN PR #110](https://github.com/agoodkind/mwan/pull/110)
+merged RA-gated startup as `eb03497`. Required CI, independent review,
+Docker check and test, and the privileged Kea network namespace test passed.
+Release `202609291633-6b-eb03497` publishes merged commit `eb03497`.
+The release archives match the Configs checksums.
+
+[Configs PR #563](https://github.com/agoodkind/configs/pull/563) merged the
+testbed pin as `6be36af2`. The merged checkout ran
+`./configsctl deploy deploy-mwan --limit mwan_suburban_servers --check --diff`,
+then the same command without `--check --diff`. Check mode reported 176
+successful tasks and 19 proposed changes. Apply reported 227 successful tasks
+and 21 changes, with no failed or unreachable hosts. Trace
+`20260929-095813-deploy-131902` passed reboot, egress, and mapped-address
+gates without rollback. VM 213 reported clean `eb03497`. The interface
+manager, agent, and RESTCONF services were active after reboot. Client 225
+received 900 of 900 IPv4 and 900 of 900 IPv6 replies during the deploy.
+An overlapping probe received 600 of 600 replies per family. Clients 225
+and 226 returned HTTP 200 in both families. Twenty fresh IPv4 and 50 fresh
+IPv6 HTTPS requests returned 200. Gateway captures recorded new client
+connections on both Webpass and AT&T in both families. OPNsense reported
+established primary and failover BGP peers for IPv4 and IPv6.
+
+[Configs PR #564](https://github.com/agoodkind/configs/pull/564) merged the
+production pin as `180fbf5a`. The merged checkout ran
+`./configsctl deploy deploy-mwan --limit mwan_servers --check --diff`, then
+the same command without `--check --diff`. Check mode reported 187
+successful tasks and 15 proposed changes. Apply reported 240 successful
+tasks and 21 changes, with no failed or unreachable hosts. Trace
+`20260929-124936-deploy-183334` passed reboot, egress, and mapped-address
+gates without rollback. VM 113 reported clean `eb03497`; its interface
+manager, agent, and RESTCONF services were active after reboot. Downstream
+LXC 102 received 899 of 900 IPv4 and 899 of 900 IPv6 replies. Both families
+missed sequence 288 during the apply before the VM reboot. LXC 102 returned
+HTTP 200 in both families. Twenty fresh IPv4 and 50 fresh IPv6 HTTPS
+requests returned 200. Gateway captures recorded new client connections
+on both Webpass and AT&T in both families. OPNsense reported established
+primary and failover BGP peers and selected the primary VM for both default
+routes after reboot.
+
+The production probes did not record OPNsense's selected route during the
+missed reply. Packet continuity and the later route read do not establish
+which next hop forwarded traffic at that instant. This release did not
+transfer DHCPv6 or interface ownership from networkd. MWAN-227 remains Todo
+until real DHCPv6 server acceptance and exclusive handover pass. MWAN-517
+remains In Progress for IA_NA and ownership acceptance.
+
 The finding counts report blockers, issues to fix, and minor issues found
 during review, including findings fixed before the verdict.
 The post-verdict column records defects discovered after that review verdict.
