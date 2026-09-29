@@ -61,7 +61,7 @@ No interface-owner cutover has begun.
 | MWAN-397 | 397-links | [MWAN PR #86](https://github.com/agoodkind/mwan/pull/86) merged as `446e76fe590e5dc9bbbcfe6fd875a8752f4e404c`. Configs PRs #548 and #549 passed testbed and production deployment with downstream packets, balancing, failover, and recovery. Tack records Done. |
 | MWAN-523 | 523-observation | [MWAN PR #60](https://github.com/agoodkind/mwan/pull/60) merged the observer foundation as `13183ea9d6264beac7b85bfd4e7946b15f7da601`. Configs PRs #533 and #535 passed its first testbed and production checkpoints. MWAN PRs #66, #71, #73, #75, #77, and #79 verified route identity, bridge rebinding, router advertisement lifetimes, index reuse, daemon packet recovery, and duplicate-address failure in privileged kernel tests. PR #81 repaired snapshot replay overflow. Configs PRs #544 and #545 passed final testbed and production acceptance. |
 | MWAN-530 | Restart handover | [MWAN PR #64](https://github.com/agoodkind/mwan/pull/64) merged forwarding readiness as `798ee6a8dcb57ef91e7d9656e8a368f3f4bd4412`. OPNsense selected the backup during controlled testbed and production reboots, then restored the primary while downstream replies continued. Tack records Done. |
-| MWAN-398 | 398-static; 398-mapped-addresses; 398-dhcpv4 | [MWAN PR #89](https://github.com/agoodkind/mwan/pull/89) implements static addresses and routes on `codex/mwan-398-static`. Local tests passed. Final review, required CI, merge, release, and deployment remain pending. Tack records In Progress. |
+| MWAN-398 | 398-static; 398-mapped-addresses; 398-dhcpv4 | [MWAN PR #89](https://github.com/agoodkind/mwan/pull/89) merged static addresses and routes as `d9e8a5a`. [Configs PR #550](https://github.com/agoodkind/configs/pull/550) merged its testbed pin. Check mode passed; apply and production deployment have not run. Mapped/NPT writer transfer and DHCPv4 remain. Tack records In Progress. |
 | MWAN-227 | 227-delegation | Execution has not started. |
 | MWAN-517 | 517-autoconfiguration; 517-dhcpv6 | Execution has not started. |
 | MWAN-518 | 518-restart | Execution has not started. |
@@ -78,10 +78,10 @@ No interface-owner cutover has begun.
 
 MWAN-524 restored Astound as a managed testbed connection. MWAN-397 link
 management passed testbed and production acceptance without transferring a
-live link. Finish MWAN PR #89 review and merge. Deploy its release to testbed.
-Verify continuous downstream IPv4 and IPv6 packets, new-connection balancing,
-failover and recovery, and the mapped-address deploy gate before production
-promotion.
+live link. Add the mapped/NPT writer PR after merged MWAN PR #89. Validate a
+combined release in testbed before production promotion. The deployment phase
+must verify continuous downstream IPv4 and IPv6 packets, new-connection
+balancing, failover and recovery, and the mapped-address deploy gate.
 No interface-owner cutover has begun.
 
 For every handoff, record the slice, agent responsibility, exact source
@@ -1095,8 +1095,8 @@ mapped IPv4 address, `104.57.226.193` and `136.25.91.242`, and each IPv6
 edge address, `2600:1700:2f71:c80::1` and `2604:5500:c271:be00::1`.
 
 MWAN-397 is Done in Tack. The next runtime slice is MWAN-398 owned address
-and route reconciliation; it must pass its own testbed and production gates
-before protocol acquisition work begins.
+and route reconciliation. Static and mapped/NPT code can share one deployment
+phase before protocol acquisition work begins.
 
 ### MWAN-398 static implementation review, September 28, 2026
 
@@ -1120,6 +1120,27 @@ verdict is MERGE-READY on the uncommitted patch. The reviewer independently
 ran the public Linux daemon test. The full Docker check and test gate,
 privileged kernel suite, and public daemon test passed locally on the final
 patch. PR #89 is open. Merge, release, and deployment remain pending.
+
+### MWAN-398 static merge and deferred deployment, September 28, 2026
+
+[MWAN PR #89](https://github.com/agoodkind/mwan/pull/89) merged as
+`d9e8a5a6669c5517325917a97f577d05dda04108`. Required checks, independent
+review, automated review, and thread resolution passed. The optional
+Govulncheck job reported the existing GoBGP advisory. Release
+`202609290156-57-d9e8a5a` passed archive and source verification.
+[Configs PR #550](https://github.com/agoodkind/configs/pull/550) pinned that
+release in testbed and merged as `1cbedd4b3d576ccdec6f3c7238f371b89d9da360`.
+
+The clean merged Configs checkout ran
+`./configsctl deploy deploy-mwan --limit mwan_suburban_servers --check --diff`.
+Check mode reported 176 successful tasks, 18 proposed changes, zero
+unreachable hosts, and zero failures. Downstream guest 225 returned 623
+consecutive IPv4 and 623 consecutive IPv6 replies during the run. No apply
+or production deployment ran. The operator requested batching compatible
+low-risk changes instead of deploying after every merge. The next phase can
+include the mapped/NPT writer transfer while existing providers remain under
+networkd. The final testbed pin must identify the complete merged release
+that the phase validates.
 
 The finding counts report blockers, issues to fix, and minor issues found
 during review, including findings fixed before the verdict.

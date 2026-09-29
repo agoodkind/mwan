@@ -125,15 +125,17 @@ ownership configuration change gets its own focused Configs PR for that phase.
 Do not combine several providers' activation changes merely because the
 underlying code is ready.
 
-After each merged runtime slice, publish its merged release and pin it in a
-focused Configs testbed PR. Deploy from merged Configs main through
-`./configsctl deploy`. Verify both downstream address families, current
-provider balancing, controlled failover after health has classified the
-failed providers, and recovery. Add protocol-specific checks when the slice
-changes acquisition or ownership. Record detection time and successful
-forwarding after failover separately. Keep production on its prior release
-until the complete testbed phase passes. These interim deployments do not
-transfer interface ownership or replace the full cutover battery below.
+The release workflow publishes each merged runtime slice. Group compatible
+changes that do not transfer live connection ownership into a bounded
+deployment phase. Pin the latest verified merged release in a focused Configs
+testbed PR and deploy from merged Configs main through `./configsctl deploy`.
+A focused PR merge alone does not require a deployment. Record every included
+PR and validate the combined release through both downstream address families,
+current provider balancing, controlled failover, and recovery. Add
+protocol-specific checks when the phase changes acquisition or ownership.
+Record detection time and successful forwarding after failover separately.
+Keep production on its prior release until the complete testbed phase passes.
+Transfer each live provider in its own phase and run the full cutover battery.
 
 Before stack mutations, use Graphite MCP with the explicit worktree path to
 inspect state and parents. Fetch current remote trunk. Update local trunk
