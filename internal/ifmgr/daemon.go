@@ -227,6 +227,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 			DiscoverTimeout: 0,
 			RequestTimeout:  0,
 			RenewTimeout:    0,
+			ClientID:        nil,
 		})
 		d.log.DebugContext(ctx, "ifmgr: DHCP client started")
 	}
