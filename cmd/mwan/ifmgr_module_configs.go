@@ -11,6 +11,7 @@ import (
 	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/ifmgr"
 	addresses "goodkind.io/mwan/internal/ifmgr/modules/addresses"
+	autoconfiguration "goodkind.io/mwan/internal/ifmgr/modules/autoconfiguration"
 	bridgeprobe "goodkind.io/mwan/internal/ifmgr/modules/bridgeprobe"
 	cloudflaredtap "goodkind.io/mwan/internal/ifmgr/modules/cloudflaredtap"
 	connprobe "goodkind.io/mwan/internal/ifmgr/modules/connprobe"
@@ -156,6 +157,9 @@ func addWANRoleConfigs(
 			linksConfig.StateFile = ifmgrCfg.Modules.Links.StateFile
 		}
 		moduleConfigs["links"] = linksConfig
+	}
+	if want["autoconfiguration"] {
+		moduleConfigs["autoconfiguration"] = autoconfiguration.Config{Connections: ifmgrCfg.Connections}
 	}
 	if want["addresses"] {
 		addressesConfig, err := buildAddressesConfig(ifmgrCfg)

@@ -169,10 +169,11 @@ func validateMWANFamily(name, family string, wire *familyWire, provider bool) er
 		return nil
 	}
 	dhcpv4 := family == "ipv4" && wire.DHCP != nil && *wire.DHCP
-	if wire.Enabled != nil && !*wire.Enabled || wire.Forwarding != nil ||
+	raMetric := family == "ipv6" && wire.Gateway == "" && wire.RouteMetric != nil
+	if wire.Enabled != nil && !*wire.Enabled || (family == "ipv4" && wire.Forwarding != nil) ||
 		(family == "ipv6" && wire.DHCP != nil) || wire.Resolver != nil ||
 		(wire.Translation != nil && !provider) ||
-		wire.RouteMetric != nil && wire.Gateway == "" && !dhcpv4 {
+		wire.RouteMetric != nil && wire.Gateway == "" && !dhcpv4 && !raMetric {
 		if family == "ipv4" {
 			return fmt.Errorf("interface %s: mwan ipv4 supports local addresses, DHCPv4, and an optional gateway or DHCP route metric only", name)
 		}
@@ -207,14 +208,32 @@ func validateMWANConnection(entry ifaceEntry, connection interfaceintent.Connect
 		}
 	}
 	if entry.IPv6 != nil {
-		if entry.IPv6.AcceptRA != nil || entry.IPv6.AutoConf != nil || entry.IPv6.AcceptRADefaultRoute != nil ||
-			entry.IPv6.UseRADNS != nil || entry.IPv6.Delegation != nil || entry.IPv6.DHCPv6 != nil ||
-			len(entry.IPv6.ForwardingAddresses) != 0 {
-			return fmt.Errorf("interface %s: mwan ipv6 does not support RA, DHCP, delegation, or forwarding addresses", entry.Name)
-		}
-		return validateMWANStaticFamily(entry.Name, "ipv6", &connection.IPv6.Family)
+		return validateMWANIPv6(entry.Name, entry.IPv6, connection.IPv6)
 	}
 	return nil
+}
+
+func validateMWANIPv6(name string, wire *familyV6, intent *interfaceintent.IPv6) error {
+	if wire.Delegation != nil || wire.DHCPv6 != nil || len(wire.ForwardingAddresses) != 0 {
+		return fmt.Errorf("interface %s: mwan ipv6 does not support DHCP, delegation, or forwarding addresses", name)
+	}
+	if wire.UseRADNS != nil && *wire.UseRADNS {
+		return fmt.Errorf("interface %s: ipv6 use-ra-dns requires a resolver integration", name)
+	}
+	acceptsRA := wire.AcceptRA != nil && *wire.AcceptRA
+	if !acceptsRA && (wire.AutoConf != nil && *wire.AutoConf ||
+		wire.AcceptRADefaultRoute != nil && *wire.AcceptRADefaultRoute) {
+		return fmt.Errorf("interface %s: ipv6 autoconf and RA default route require accept-ra", name)
+	}
+	if wire.RouteMetric != nil && wire.Gateway == "" {
+		if !acceptsRA || wire.AcceptRADefaultRoute != nil && !*wire.AcceptRADefaultRoute {
+			return fmt.Errorf("interface %s: ipv6 RA route metric requires an accepted RA default route", name)
+		}
+		if *wire.RouteMetric == 0 {
+			return fmt.Errorf("interface %s: ipv6 RA route metric must be greater than zero", name)
+		}
+	}
+	return validateMWANStaticFamily(name, "ipv6", &intent.Family)
 }
 
 func validateMWANDHCPv4(name string, family *familyV4) error {

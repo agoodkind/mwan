@@ -74,6 +74,7 @@ var roleModules = map[string][]string{
 	// separate instance from any OOB role.
 	"wan": {
 		"links",
+		"autoconfiguration",
 		"addresses",
 		// health writes the state consumed by later WAN-role modules.
 		"health",
