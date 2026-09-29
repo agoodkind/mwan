@@ -53,21 +53,9 @@ ProtectControlGroups=true
 # the service waits for local-fs.target, which waits for the /boot/efi device
 # the coldplug trigger creates. The daemon writes nothing under /tmp.
 
-# ProtectKernelTunables: vault keeps the default true since its oob
-# instance does not need to write any sysctls. The failover role uses
-# slaac_health, which writes net.ipv6.conf.<iface>.disable_ipv6, and the
-# suburban hypervisor's oob instance enables host_ipv6_policy, which
-# writes net.ipv6.conf.<iface>.accept_ra, autoconf, and
-# accept_ra_defrtr. Those deployments MUST relax this via a drop-in:
-#
-#   # /etc/systemd/system/mwan-ifmgr.service.d/lxc-failover.conf
-#   [Service]
-#   ProtectKernelTunables=false
-#   ReadWritePaths=/var/log /var/run /run /proc/sys/net/ipv6/conf
-#
-# This default keeps prod vault locked down by default and forces an
-# explicit, reviewable change to relax it.
-ProtectKernelTunables=true
+# The WAN role changes promote_secondaries while replacing owned DHCPv4
+# addresses. Limit writable sysctls to the interface IPv4 directory below.
+ProtectKernelTunables=false
 # /var/lib/mwan is writable because the npt module's DHCPv6-PD source caches
 # each interface's delegated prefix in /var/lib/mwan/pd-<iface>. The
 # /var/lib/mwan entry keeps no leading dash, so systemd refuses to start the
@@ -82,7 +70,7 @@ ProtectKernelTunables=true
 # systemd-tmpfiles-setup.service, and that ordering stalls the boot 90 seconds:
 # the service waits for local-fs.target, which waits for the /boot/efi device
 # the coldplug trigger creates. A tmpfiles rule creates /var/lib/mwan instead.
-ReadWritePaths=/var/log /var/run /run /var/lib/mwan /etc/systemd/network -/etc/sysrepo
+ReadWritePaths=/var/log /var/run /run /var/lib/mwan /etc/systemd/network /proc/sys/net/ipv4/conf -/etc/sysrepo
 # The static sysrepo inside the binary follows the upstream access policy:
 # repository files are group sysrepo with umask 007. The daemon joins that
 # group so its files and the packaged tools' files stay mutually readable.

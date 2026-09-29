@@ -229,7 +229,7 @@ func TestInstallFailoverWritesTheUnitAndItsDropIn(t *testing.T) {
 	}
 	for _, setting := range []string{
 		"ProtectKernelTunables=false",
-		"ReadWritePaths=/var/log /var/run /run /proc/sys/net/ipv6/conf",
+		"ReadWritePaths=/var/log /var/run /run /var/lib/mwan /proc/sys/net/ipv4/conf /proc/sys/net/ipv6/conf",
 		"BindReadOnlyPaths=",
 	} {
 		if !bytes.Contains(dropIn, []byte(setting)) {
