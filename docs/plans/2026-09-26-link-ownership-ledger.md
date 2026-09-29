@@ -61,30 +61,29 @@ No interface-owner cutover has begun.
 | MWAN-397 | 397-links | [MWAN PR #86](https://github.com/agoodkind/mwan/pull/86) merged as `446e76fe590e5dc9bbbcfe6fd875a8752f4e404c`. Configs PRs #548 and #549 passed testbed and production deployment with downstream packets, balancing, failover, and recovery. Tack records Done. |
 | MWAN-523 | 523-observation | [MWAN PR #60](https://github.com/agoodkind/mwan/pull/60) merged the observer foundation as `13183ea9d6264beac7b85bfd4e7946b15f7da601`. Configs PRs #533 and #535 passed its first testbed and production checkpoints. MWAN PRs #66, #71, #73, #75, #77, and #79 verified route identity, bridge rebinding, router advertisement lifetimes, index reuse, daemon packet recovery, and duplicate-address failure in privileged kernel tests. PR #81 repaired snapshot replay overflow. Configs PRs #544 and #545 passed final testbed and production acceptance. |
 | MWAN-530 | Restart handover | [MWAN PR #64](https://github.com/agoodkind/mwan/pull/64) merged forwarding readiness as `798ee6a8dcb57ef91e7d9656e8a368f3f4bd4412`. OPNsense selected the backup during controlled testbed and production reboots, then restored the primary while downstream replies continued. Tack records Done. |
-| MWAN-398 | 398-static; 398-mapped-addresses; 398-dhcpv4 | [MWAN PR #89](https://github.com/agoodkind/mwan/pull/89) merged static addresses and routes. [MWAN PR #91](https://github.com/agoodkind/mwan/pull/91) merged mapped IPv4 and NPT external address ownership. [Configs PR #551](https://github.com/agoodkind/configs/pull/551) pinned the combined release, and testbed deployment and downstream checks passed. DHCPv4 acquisition and production acceptance remain. Tack records In Progress. |
+| MWAN-398 | 398-static; 398-mapped-addresses; 398-dhcpv4 | MWAN PRs #89, #91, and #95 through #99 merged static, mapped/NPT, and DHCPv4 ownership code. The combined release passed testbed and production deployment. Live providers remain under networkd, so owned acquisition and transfer acceptance remain. Tack records In Progress. |
 | MWAN-227 | 227-delegation | Execution has not started. |
-| MWAN-517 | 517-autoconfiguration; 517-dhcpv6 | Execution has not started. |
+| MWAN-517 | 517-autoconfiguration; 517-dhcpv6 | [MWAN PR #102](https://github.com/agoodkind/mwan/pull/102) merged kernel RA policy and [#103](https://github.com/agoodkind/mwan/pull/103) merged its service permission. Release `202609291053-65-3191615` passed testbed and production deployment. Observed address and router state, duplicate-address acceptance, and DHCPv6 IA_NA remain. Tack records In Progress. |
 | MWAN-518 | 518-restart | Execution has not started. |
 | MWAN-505 | 505-route-repair | [MWAN PR #52](https://github.com/agoodkind/mwan/pull/52) merged as `18941243f1e8fa3d5623a04440e4d90de796d1f4`. Namespace packet tests and live testbed route and rule deletion checks passed. The release passed production deployment and downstream acceptance. |
-| MWAN-521 | 521-configuration; 521-deployment | [Configs PR #527](https://github.com/agoodkind/configs/pull/527) merged as `20ad40232fa62394046b1218839e60756a6b7a22`. It moved MAC discovery before rendering. Complete role rendering and transfer remain. |
-| MWAN-522 | 522-acceptance | [MWAN PR #93](https://github.com/agoodkind/mwan/pull/93) merged the protocol test runner. [Configs PR #553](https://github.com/agoodkind/configs/pull/553) merged configurable simulator lease and advertisement timing. DHCP exchange and delegation tests, testbed deployment, and acceptance remain. Tack records In Progress. |
+| MWAN-521 | 521-configuration; 521-deployment | [Configs PR #527](https://github.com/agoodkind/configs/pull/527) moved MAC discovery before rendering. [Configs PR #558](https://github.com/agoodkind/configs/pull/558) rendered explicit connection IDs and networkd ownership. Configs PRs #559 and #560 pinned and deployed the combined release to testbed and production. Complete role rendering and live transfer remain. |
+| MWAN-522 | 522-acceptance | [MWAN PR #93](https://github.com/agoodkind/mwan/pull/93) merged the protocol test runner. [Configs PR #553](https://github.com/agoodkind/configs/pull/553) merged configurable simulator timing. Seven real Kea DHCPv4 namespace scenarios passed. DHCPv6 delegation, IA_NA, assembled protocol tests, and live ownership acceptance remain. Tack records In Progress. |
 | MWAN-519 | 519-first-connection | Execution has not started. |
 | MWAN-399 | 399-remaining-connections | Execution has not started. |
 | MWAN-400 | 400-retirement | Execution has not started. |
 | MWAN-401 | 401-testbed | Execution has not started. |
-| MWAN-520 | 520-production | The shared model, route repair, observer, and state-publication releases passed their production phases. The ticket remains open for later ownership phases. |
+| MWAN-520 | 520-production | The shared model, route repair, observer, state publication, and release `202609291053-65-3191615` passed production phases. The ticket remains open for live ownership transfer. |
 
 ## Resume the work
 
 MWAN-524 restored Astound as a managed testbed connection. MWAN-397 link
-management passed testbed and production acceptance without transferring a
-live link. MWAN-398 static and mapped/NPT address changes passed testbed
-deployment. DHCPv4 acquisition and protocol tests remain before the next
-production promotion. A public firewall test intermittently times out while
-waiting for a mapped IPv6 reply; diagnose that failure before promotion.
-The deployment phase must verify continuous downstream IPv4 and IPv6 packets,
-new-connection balancing, failover and recovery, and the mapped-address deploy
-gate. No interface-owner cutover has begun.
+management and the combined MWAN-398 DHCPv4 and MWAN-517 kernel-policy release
+passed testbed and production deployment without transferring a live link.
+MWAN PR #104 fixed the mapped IPv6 test readiness race. The next work is
+MWAN-517 observed IPv6 state and MWAN-227's shared DHCPv6 client. Each
+protocol slice still needs public daemon tests, then live ownership transfer
+and downstream acceptance. Keep networkd on AT&T until retirement is
+confirmed.
 
 For every handoff, record the slice, agent responsibility, exact source
 revision, agreed interfaces, owned files, current PR, last passing check,
@@ -1257,6 +1256,63 @@ they do not estimate the configured weights or identify the route selected
 for each probe during the reboot. No live provider transferred address
 ownership. Production remains on its previous release. MWAN-398 and MWAN-522
 remain In Progress until protocol transfer and full live acceptance.
+
+### MWAN-517 kernel policy and combined release, September 29, 2026
+
+[MWAN PR #103](https://github.com/agoodkind/mwan/pull/103) merged the
+interface-manager permission for IPv6 sysctl writes as `5ce1f74`.
+[MWAN PR #104](https://github.com/agoodkind/mwan/pull/104) merged as
+`5214310` after correcting the mapped UDP test's readiness wait. Five
+repeated mapped tests, the firewall suite, and the Docker check and test
+gate passed. [MWAN PR #102](https://github.com/agoodkind/mwan/pull/102)
+merged kernel RA policy as `3191615`. Its namespace and firewall tests,
+required CI, and independent review passed. The optional Govulncheck job
+continued to report the previously recorded GoBGP database advisory.
+Release `202609291053-65-3191615` passed archive verification.
+
+[Configs PR #558](https://github.com/agoodkind/configs/pull/558) merged
+explicit connection IDs and networkd owner fields as `f6769336`.
+[Configs PR #559](https://github.com/agoodkind/configs/pull/559) pinned the
+release in testbed as `514d601e`. A clean checkout of that merged commit
+ran `./configsctl deploy deploy-mwan --limit mwan_suburban_servers --check --diff`,
+then `./configsctl deploy deploy-mwan --limit mwan_suburban_servers`.
+Check mode reported 176 successful tasks, 26 proposed changes, and no failures. Apply reported
+229 successful tasks, 25 changes, and no failures. Trace
+`20260929-041749-deploy-106369` passed reboot, egress, and mapped-address
+gates without rollback. VM 213 reported clean commit `3191615`; the agent,
+interface manager, and RESTCONF service were active. An initial 600-sample
+pair and an overlapping 900-sample pair each received every IPv4 and IPv6
+reply. The longer pair covered the restart and reboot. Clients 225 and 226
+returned HTTP 200 in both families.
+Twenty fresh HTTPS requests per family returned 200. WAN captures counted
+11 Webpass and nine AT&T IPv4 SYNs, then ten Webpass and ten AT&T IPv6 SYNs.
+
+[Configs PR #560](https://github.com/agoodkind/configs/pull/560) pinned the
+same release in production as `e2de4dd4`. Its required checks and automated
+reviews passed without an unresolved thread. The clean merged checkout ran
+`./configsctl deploy deploy-mwan --limit mwan_servers --check --diff`, then
+`./configsctl deploy deploy-mwan --limit mwan_servers`.
+Check mode reported 187 successful tasks, 16 proposed changes, and no failures. Apply reported 242 successful
+tasks, 25 changes, and no failures. Vault created a rollback snapshot. Trace
+`20260929-045726-deploy-756548` passed reboot, egress, and mapped-address
+gates without rollback. VM 113 reported clean commit `3191615`; the agent,
+interface manager, and RESTCONF service were active. Downstream UniFi LXC
+102 returned HTTP 200 in both families. Twenty fresh HTTPS requests per
+family returned 200. WAN captures counted ten Webpass and ten AT&T IPv4
+SYNs, then eight Webpass and 12 AT&T IPv6 SYNs.
+
+LXC 102 received 1,800 of 1,800 IPv4 replies and 1,797 of 1,800 IPv6
+replies during the production apply and reboot. IPv6 missed sequences 698,
+714, and 715 around the first path change. The largest interval between
+successful IPv6 replies was 3.065 seconds; the IPv4 maximum was 1.261
+seconds. Reply TTL changed to 45 during the service restart and again during
+the reboot, matching the backup-path TTL observed in the earlier controlled
+failover test. This run did not sample OPNsense's selected route during
+either interval. Testbed and production rendered every provider as
+networkd-owned. The new kernel policy and DHCPv4 ownership paths did not
+transfer a live interface. MWAN-398, MWAN-517, MWAN-521, MWAN-522, and
+MWAN-520 remain In Progress for the remaining protocol, render, cutover,
+and acceptance work.
 
 The finding counts report blockers, issues to fix, and minor issues found
 during review, including findings fixed before the verdict.
