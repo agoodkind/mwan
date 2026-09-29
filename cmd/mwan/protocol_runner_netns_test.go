@@ -125,7 +125,7 @@ func runProtocolRunnerBootstrap(t *testing.T) {
 	setRuntimeNamespace(t, provider.namespace)
 	assertProtocolServicesRunning(t, services)
 	setRuntimeNamespace(t, gateway)
-	assertRuntimeTCP(t, provider.namespace, downstream.namespace, "tcp4", "198.51.100.2:30522", "192.0.2.2:0", true)
+	waitRuntimeTCP(t, daemon, gateway, provider.namespace, downstream.namespace, "tcp4", "198.51.100.2:30522", "192.0.2.2:0", time.Now().Add(15*time.Second))
 	setRuntimeNamespace(t, gateway)
 	assertRuntimeDaemonRunning(t, daemon)
 }
@@ -183,9 +183,49 @@ func startProtocolServices(t *testing.T, root string) []protocolService {
 		logFile.Close()
 		started = append(started, protocolService{name: service.name, command: command, logPath: logPath})
 	}
-	time.Sleep(500 * time.Millisecond)
-	assertProtocolServicesRunning(t, started)
-	return started
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		assertProtocolServicesRunning(t, started)
+		if protocolServicesReady(t, started, filepath.Join(root, "radvd.pid")) {
+			return started
+		}
+		if time.Now().After(deadline) {
+			logs := make([]string, 0, len(started))
+			for _, service := range started {
+				content, err := os.ReadFile(service.logPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				logs = append(logs, service.name+": "+string(content))
+			}
+			t.Fatalf("protocol services did not become ready within five seconds:\n%s", strings.Join(logs, "\n"))
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+}
+
+func protocolServicesReady(t *testing.T, services []protocolService, radvdPIDPath string) bool {
+	t.Helper()
+	for _, service := range services {
+		if service.name == "radvd" {
+			if _, err := os.Stat(radvdPIDPath); err != nil {
+				return false
+			}
+			continue
+		}
+		content, err := os.ReadFile(service.logPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		marker := "DHCP4_STARTED"
+		if service.name == "kea-dhcp6" {
+			marker = "DHCP6_STARTED"
+		}
+		if !bytes.Contains(content, []byte(marker)) {
+			return false
+		}
+	}
+	return true
 }
 
 func assertProtocolServicesRunning(t *testing.T, services []protocolService) {
