@@ -61,13 +61,13 @@ No interface-owner cutover has begun.
 | MWAN-397 | 397-links | [MWAN PR #86](https://github.com/agoodkind/mwan/pull/86) merged as `446e76fe590e5dc9bbbcfe6fd875a8752f4e404c`. Configs PRs #548 and #549 passed testbed and production deployment with downstream packets, balancing, failover, and recovery. Tack records Done. |
 | MWAN-523 | 523-observation | [MWAN PR #60](https://github.com/agoodkind/mwan/pull/60) merged the observer foundation as `13183ea9d6264beac7b85bfd4e7946b15f7da601`. Configs PRs #533 and #535 passed its first testbed and production checkpoints. MWAN PRs #66, #71, #73, #75, #77, and #79 verified route identity, bridge rebinding, router advertisement lifetimes, index reuse, daemon packet recovery, and duplicate-address failure in privileged kernel tests. PR #81 repaired snapshot replay overflow. Configs PRs #544 and #545 passed final testbed and production acceptance. |
 | MWAN-530 | Restart handover | [MWAN PR #64](https://github.com/agoodkind/mwan/pull/64) merged forwarding readiness as `798ee6a8dcb57ef91e7d9656e8a368f3f4bd4412`. OPNsense selected the backup during controlled testbed and production reboots, then restored the primary while downstream replies continued. Tack records Done. |
-| MWAN-398 | 398-static; 398-mapped-addresses; 398-dhcpv4 | [MWAN PR #89](https://github.com/agoodkind/mwan/pull/89) merged static addresses and routes as `d9e8a5a`. [Configs PR #550](https://github.com/agoodkind/configs/pull/550) merged its testbed pin. Check mode passed; apply and production deployment have not run. Mapped/NPT writer transfer and DHCPv4 remain. Tack records In Progress. |
+| MWAN-398 | 398-static; 398-mapped-addresses; 398-dhcpv4 | [MWAN PR #89](https://github.com/agoodkind/mwan/pull/89) merged static addresses and routes. [MWAN PR #91](https://github.com/agoodkind/mwan/pull/91) merged mapped IPv4 and NPT external address ownership. [Configs PR #551](https://github.com/agoodkind/configs/pull/551) pinned the combined release, and testbed deployment and downstream checks passed. DHCPv4 acquisition and production acceptance remain. Tack records In Progress. |
 | MWAN-227 | 227-delegation | Execution has not started. |
 | MWAN-517 | 517-autoconfiguration; 517-dhcpv6 | Execution has not started. |
 | MWAN-518 | 518-restart | Execution has not started. |
 | MWAN-505 | 505-route-repair | [MWAN PR #52](https://github.com/agoodkind/mwan/pull/52) merged as `18941243f1e8fa3d5623a04440e4d90de796d1f4`. Namespace packet tests and live testbed route and rule deletion checks passed. The release passed production deployment and downstream acceptance. |
 | MWAN-521 | 521-configuration; 521-deployment | [Configs PR #527](https://github.com/agoodkind/configs/pull/527) merged as `20ad40232fa62394046b1218839e60756a6b7a22`. It moved MAC discovery before rendering. Complete role rendering and transfer remain. |
-| MWAN-522 | 522-acceptance | Execution has not started. |
+| MWAN-522 | 522-acceptance | [MWAN PR #93](https://github.com/agoodkind/mwan/pull/93) merged the protocol test runner. [Configs PR #553](https://github.com/agoodkind/configs/pull/553) merged configurable simulator lease and advertisement timing. DHCP exchange and delegation tests, testbed deployment, and acceptance remain. Tack records In Progress. |
 | MWAN-519 | 519-first-connection | Execution has not started. |
 | MWAN-399 | 399-remaining-connections | Execution has not started. |
 | MWAN-400 | 400-retirement | Execution has not started. |
@@ -78,11 +78,13 @@ No interface-owner cutover has begun.
 
 MWAN-524 restored Astound as a managed testbed connection. MWAN-397 link
 management passed testbed and production acceptance without transferring a
-live link. Add the mapped/NPT writer PR after merged MWAN PR #89. Validate a
-combined release in testbed before production promotion. The deployment phase
-must verify continuous downstream IPv4 and IPv6 packets, new-connection
-balancing, failover and recovery, and the mapped-address deploy gate.
-No interface-owner cutover has begun.
+live link. MWAN-398 static and mapped/NPT address changes passed testbed
+deployment. DHCPv4 acquisition and protocol tests remain before the next
+production promotion. A public firewall test intermittently times out while
+waiting for a mapped IPv6 reply; diagnose that failure before promotion.
+The deployment phase must verify continuous downstream IPv4 and IPv6 packets,
+new-connection balancing, failover and recovery, and the mapped-address deploy
+gate. No interface-owner cutover has begun.
 
 For every handoff, record the slice, agent responsibility, exact source
 revision, agreed interfaces, owned files, current PR, last passing check,
@@ -1190,6 +1192,27 @@ both eligible providers, not a statistical weight estimate. The public Linux
 namespace test validated the mapped/NPT writer. No live provider has
 transferred address ownership.
 MWAN-398 remains In Progress for protocol acquisition and full phase acceptance.
+
+### MWAN-522 protocol test preparation, September 28, 2026
+
+[MWAN PR #93](https://github.com/agoodkind/mwan/pull/93) merged as
+`255875090427ad6b063b85cbef6dec5401923931`. Its public namespace test
+starts the production daemon, Kea, and radvd, then verifies downstream TCP.
+`make test-protocol` and the Docker check and test gate passed. This test does
+not yet verify a DHCP exchange or delegated prefix. Required GitHub checks
+passed. The optional firewall job timed out waiting for a mapped IPv6 UDP
+reply in `TestOwnedMappedDaemonRuntime`; a local run reproduced the timeout.
+A separate local run from the previous main commit passed. The failure has
+not been attributed to this PR. The optional Govulncheck job reported an
+existing GoBGP dependency advisory.
+
+[Configs PR #553](https://github.com/agoodkind/configs/pull/553) merged as
+`73701eb061709a007b9b24732c161e9dee852fff`. It permits configured Kea
+DHCPv4 and DHCPv6 lease timing and radvd advertisement timing while retaining
+the previous rendered defaults. Focused render tests and `./configsctl lint`
+passed. An independent review parsed the default and short configurations
+with Kea and radvd. Neither merged change has been deployed in this phase.
+MWAN-522 remains In Progress for protocol assertions and live acceptance.
 
 The finding counts report blockers, issues to fix, and minor issues found
 during review, including findings fixed before the verdict.
