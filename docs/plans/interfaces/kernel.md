@@ -147,9 +147,10 @@ and apply-result semantics before implementation.
    Apply configured IPv4 and IPv6 local addresses without deleting foreign
    addresses, kernel SLAAC, or kernel-generated connected routes. Manage the
    per-link IPv4 secondary-address promotion setting while owned IPv4
-   addresses require it. Record and restore its prior value by verified link
-   identity so deleting an owned primary address does not delete a foreign
-   secondary address in the same subnet.
+   addresses require it. This prevents deletion of a foreign secondary
+   address when MWAN deletes an owned primary address in the same subnet.
+   Record the prior setting and restore it by verified link identity after
+   removing the owned addresses.
 2. Apply only the configured optional main-table default route, including its
    metric. Replace a route when only its metric changes. WAN routing continues
    to write provider-table routes, policy routes, and rules.
