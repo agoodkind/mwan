@@ -14,42 +14,51 @@ import (
 	"github.com/insomniacslk/dhcp/dhcpv6/nclient6"
 )
 
-func (client *DHCPv6PDClient) recoverOnLink(ctx context.Context, log *slog.Logger, config DHCPv6PDConfig, link *net.Interface) (DHCPv6PDLease, time.Duration, bool) {
+type dhcpv6RestartExchangeError struct {
+	operation string
+	cause     error
+}
+
+func (err *dhcpv6RestartExchangeError) Error() string {
+	return err.operation + ": " + err.cause.Error()
+}
+
+func (err *dhcpv6RestartExchangeError) Unwrap() error {
+	return err.cause
+}
+
+func (client *DHCPv6PDClient) recoverOnLink(ctx context.Context, log *slog.Logger, config DHCPv6PDConfig, link *net.Interface) (DHCPv6PDLease, time.Duration, error) {
 	var empty DHCPv6PDLease
 	solicitMaxRT := time.Hour
 	if config.CachedLease == nil || !compatibleDHCPv6Lease(config, link, *config.CachedLease) {
-		return empty, solicitMaxRT, true
+		return empty, solicitMaxRT, nil
 	}
 	transport, err := nclient6.New(config.Iface, nclient6.WithRetry(1), nclient6.WithTimeout(5*time.Second))
 	if err != nil {
-		log.WarnContext(ctx, "dhcpv6: recovery socket unavailable", "iface", config.Iface, "err", err)
-		return empty, solicitMaxRT, false
+		return empty, solicitMaxRT, fmt.Errorf("open DHCPv6 recovery socket on %s: %w", config.Iface, err)
 	}
 	lease := client.recoverCachedDHCPv6(ctx, log, transport, config, link, &solicitMaxRT)
 	if err := transport.Close(); err != nil {
 		log.WarnContext(ctx, "dhcpv6: close recovery socket failed", "err", err)
 	}
-	return lease, solicitMaxRT, true
+	return lease, solicitMaxRT, nil
 }
 
 func exchangeDHCPv6Restart(ctx context.Context, transport *nclient6.Client, config DHCPv6PDConfig, messageType dhcpv6.MessageType, cached DHCPv6PDLease, solicitMaxRT *time.Duration) (*dhcpv6.Message, error) {
 	duid, err := dhcpv6.DUIDFromBytes(config.DUID)
 	if err != nil {
-		slog.WarnContext(ctx, "dhcpv6: invalid restart DUID", "err", err)
-		return nil, fmt.Errorf("decode DHCPv6 DUID: %w", err)
+		return nil, &dhcpv6RestartExchangeError{operation: "decode DHCPv6 DUID", cause: err}
 	}
 	initial, err := dhcpv6.NewMessage(dhcpv6.WithClientID(duid))
 	if err != nil {
-		slog.WarnContext(ctx, "dhcpv6: restart message creation failed", "err", err)
-		return nil, fmt.Errorf("create DHCPv6 restart message: %w", err)
+		return nil, &dhcpv6RestartExchangeError{operation: "create DHCPv6 restart message", cause: err}
 	}
 	delay, err := rand.Int(rand.Reader, big.NewInt(int64(time.Second)))
 	if err != nil {
-		slog.WarnContext(ctx, "dhcpv6: restart delay selection failed", "err", err)
-		return nil, fmt.Errorf("choose DHCPv6 restart delay: %w", err)
+		return nil, &dhcpv6RestartExchangeError{operation: "choose DHCPv6 restart delay", cause: err}
 	}
 	if !waitDHCPv6Duration(ctx, time.Duration(delay.Int64())) {
-		return nil, fmt.Errorf("wait before DHCPv6 restart: %w", ctx.Err())
+		return nil, &dhcpv6RestartExchangeError{operation: "wait before DHCPv6 restart", cause: ctx.Err()}
 	}
 	started := config.Clock.Now()
 	deadline := started.Add(10 * time.Second)
@@ -61,8 +70,7 @@ func exchangeDHCPv6Restart(ctx context.Context, transport *nclient6.Client, conf
 		}
 		message, err := dhcpv6.NewMessage(dhcpv6.WithClientID(duid))
 		if err != nil {
-			slog.WarnContext(ctx, "dhcpv6: restart retransmission creation failed", "err", err)
-			return nil, fmt.Errorf("create DHCPv6 restart retransmission: %w", err)
+			return nil, &dhcpv6RestartExchangeError{operation: "create DHCPv6 restart retransmission", cause: err}
 		}
 		message.TransactionID = initial.TransactionID
 		configureDHCPv6Message(message, config, messageType, &current)
@@ -87,15 +95,15 @@ func exchangeDHCPv6Restart(ctx context.Context, transport *nclient6.Client, conf
 			return response, nil
 		}
 		if ctx.Err() != nil {
-			return nil, fmt.Errorf("DHCPv6 restart interrupted: %w", ctx.Err())
+			return nil, &dhcpv6RestartExchangeError{operation: "DHCPv6 restart interrupted", cause: ctx.Err()}
 		}
 		if !waitDHCPv6Duration(ctx, attemptStarted.Add(wait).Sub(config.Clock.Now())) {
-			return nil, fmt.Errorf("DHCPv6 restart wait interrupted: %w", ctx.Err())
+			return nil, &dhcpv6RestartExchangeError{operation: "DHCPv6 restart wait interrupted", cause: ctx.Err()}
 		}
 		rt = nextDHCPv6RestartRT(rt)
 	}
 	if ctx.Err() != nil {
-		return nil, fmt.Errorf("DHCPv6 restart interrupted: %w", ctx.Err())
+		return nil, &dhcpv6RestartExchangeError{operation: "DHCPv6 restart interrupted", cause: ctx.Err()}
 	}
 	return nil, context.DeadlineExceeded
 }

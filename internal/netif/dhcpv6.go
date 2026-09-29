@@ -228,8 +228,9 @@ func (client *DHCPv6PDClient) run(ctx context.Context, log *slog.Logger, config 
 			}
 			continue
 		}
-		recovered, solicitMaxRT, ready := client.recoverOnLink(ctx, log, config, link)
-		if !ready {
+		recovered, solicitMaxRT, err := client.recoverOnLink(ctx, log, config, link)
+		if err != nil {
+			log.WarnContext(ctx, "dhcpv6: recovery socket unavailable", "iface", config.Iface, "err", err)
 			if !waitDHCPv6(ctx) {
 				return
 			}
