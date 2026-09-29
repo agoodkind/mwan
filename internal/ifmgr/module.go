@@ -3,6 +3,7 @@ package ifmgr
 import (
 	"context"
 	"log/slog"
+	"net/netip"
 	"sort"
 	"sync"
 	"time"
@@ -114,8 +115,10 @@ type Env struct {
 	OwnedLinks *OwnedLinkResults
 	// OwnedAddresses contains address installation results from the current pass.
 	OwnedAddresses *OwnedAddressResults
-	// Delegations publishes MWAN-owned IA_PD leases to translation consumers.
+	// Delegations publishes MWAN-owned DHCPv6 addresses and prefixes.
 	Delegations *netif.DHCPv6PDStore
+	// PrepareLocalIPv6 protects new local DHCPv6 addresses from forwarding translation before installation.
+	PrepareLocalIPv6 func(context.Context, *slog.Logger, string, []netip.Addr) error
 }
 
 // OwnedAddressResults shares successful exact address writes with translation consumers.
@@ -123,6 +126,7 @@ type OwnedAddressResults struct {
 	mu        sync.RWMutex
 	addresses map[string]map[string]bool
 	families  map[string]map[string]bool
+	applied   map[string]map[string]bool
 }
 
 // Replace clears results before an address reconciliation pass.
@@ -130,6 +134,7 @@ func (s *OwnedAddressResults) Replace() {
 	s.mu.Lock()
 	s.addresses = make(map[string]map[string]bool)
 	s.families = make(map[string]map[string]bool)
+	s.applied = make(map[string]map[string]bool)
 	s.mu.Unlock()
 }
 
@@ -165,6 +170,23 @@ func (s *OwnedAddressResults) FamilyReady(id, family string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.families[id][family]
+}
+
+// SetFamilyApplied records a successful kernel address and route reconciliation.
+func (s *OwnedAddressResults) SetFamilyApplied(id, family string) {
+	s.mu.Lock()
+	if s.applied[id] == nil {
+		s.applied[id] = make(map[string]bool)
+	}
+	s.applied[id][family] = true
+	s.mu.Unlock()
+}
+
+// FamilyApplied reports whether the family writer succeeded in this pass.
+func (s *OwnedAddressResults) FamilyApplied(id, family string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.applied[id][family]
 }
 
 // OwnedLinkResults shares verified link identities with later modules.
