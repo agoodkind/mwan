@@ -65,6 +65,14 @@ func selftestModelsDir(t *testing.T) string {
 // sysrepo reads its repository location from the process environment.
 func TestWanconfigSelftest_PrivateRepository(t *testing.T) {
 	modelsDir := selftestModelsDir(t)
+	olderModule := "goodkind-mwan-steering@2026-09-13.yang"
+	olderData, err := os.ReadFile(filepath.Join("testdata", olderModule))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(modelsDir, olderModule), olderData, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	repository := filepath.Join(t.TempDir(), "repository")
 
 	// The run must hand the process environment back the way it found it,

@@ -30,6 +30,9 @@ const schemaFileMode fs.FileMode = 0o644
 // schemaDirMode is the mode WriteSchema gives the directory it creates.
 const schemaDirMode fs.FileMode = 0o755
 
+// SteeringSchemaFile is the steering revision installed by this binary.
+const SteeringSchemaFile = "goodkind-mwan-steering@2026-09-29.yang"
+
 // SchemaModule is one module of the gateway's model, named by its file and
 // carrying the features that must be enabled when it is installed.
 type SchemaModule struct {
@@ -70,7 +73,7 @@ var SchemaModules = []SchemaModule{
 		Features: []string{"basic-nat44", "napt44", "dst-nat", "nptv6"},
 		Update:   true,
 	},
-	{File: "goodkind-mwan-steering@2026-09-28.yang", Features: nil, Update: true},
+	{File: SteeringSchemaFile, Features: nil, Update: true},
 }
 
 // WriteSchema writes every embedded module into dir, creating dir when it is

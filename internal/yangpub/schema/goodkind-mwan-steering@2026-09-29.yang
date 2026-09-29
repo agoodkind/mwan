@@ -49,6 +49,10 @@ module goodkind-mwan-steering {
      decides its verdict, the prefix-translation inputs, and the
      internal link the members route toward.";
 
+  revision 2026-09-29 {
+    description
+      "Add observed IPv6 address phase and router validity.";
+  }
   revision 2026-09-28 {
     description
       "Add operational interface ownership, observation, assignment, and transition state.";
@@ -203,7 +207,20 @@ module goodkind-mwan-steering {
   augment "/if:interfaces/if:interface/ip:ipv6" {
     container ownership-family-state {
       config false;
-      uses ownership-family-fields;
+      uses ownership-family-fields {
+        augment "observed-address" {
+          leaf phase {
+            type enumeration { enum unknown; enum tentative; enum usable; enum deprecated; enum invalid; enum dad-failed; }
+            description
+              "IPv6 address usability derived from fresh kernel flags and lifetimes. An address with zero valid lifetime is invalid while present; removal ends its observation.";
+          }
+        }
+      }
+      leaf router-validity {
+        type enumeration { enum unknown; enum absent; enum present; }
+        description
+          "Whether a fresh observation includes a main-table IPv6 default route with RA protocol.";
+      }
     }
   }
 

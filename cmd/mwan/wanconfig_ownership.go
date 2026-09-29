@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/wanconfig"
@@ -71,8 +73,8 @@ func ownershipLiveItems(snapshot wanstate.Snapshot, gateway wanconfig.Gateway) [
 				yangpub.Item{Path: path + "/reason", Value: transition.Reason},
 			)
 		}
-		items = append(items, ownershipFamilyItems(connection.Name, "ipv4", state.IPv4)...)
-		items = append(items, ownershipFamilyItems(connection.Name, "ipv6", state.IPv6)...)
+		items = append(items, ownershipFamilyItems(connection.Name, "ipv4", state.IPv4, state.Observation)...)
+		items = append(items, ownershipFamilyItems(connection.Name, "ipv6", state.IPv6, state.Observation)...)
 	}
 	items = append(items, pendingRemovalItems(snapshot.PendingRemovals)...)
 	return items
@@ -101,7 +103,7 @@ func pendingRemovalItems(pendingRemovals map[string]wanstate.PendingRemoval) []y
 	return items
 }
 
-func ownershipFamilyItems(name, family string, state wanstate.FamilyState) []yangpub.Item {
+func ownershipFamilyItems(name, family string, state wanstate.FamilyState, observation string) []yangpub.Item {
 	base := "/ietf-interfaces:interfaces/interface[name='" + name + "']/ietf-ip:" + family + "/goodkind-mwan-steering:ownership-family-state"
 	items := []yangpub.Item{
 		{Path: base + "/acquisition", Value: state.Acquisition},
@@ -109,6 +111,9 @@ func ownershipFamilyItems(name, family string, state wanstate.FamilyState) []yan
 		{Path: base + "/firewall-protection", Value: state.Firewall},
 		{Path: base + "/routing", Value: state.Routing},
 		{Path: base + "/readiness", Value: state.Readiness},
+	}
+	if family == "ipv6" {
+		items = append(items, yangpub.Item{Path: base + "/router-validity", Value: observedRARouterValidity(observation, state.Routes)})
 	}
 	items = append(items, ownershipFamilyApplyItems(base, state.LastApply)...)
 	for _, assignment := range state.Assignments {
@@ -149,15 +154,7 @@ func ownershipFamilyItems(name, family string, state wanstate.FamilyState) []yan
 	for _, address := range state.Addresses {
 		id := stableIdentity(address.CIDR)
 		path := base + "/observed-address[id='" + id + "']"
-		items = append(
-			items,
-			yangpub.Item{Path: path + "/id", Value: id},
-			yangpub.Item{Path: path + "/cidr", Value: address.CIDR},
-			yangpub.Item{Path: path + "/origin", Value: address.Origin},
-			yangpub.Item{Path: path + "/flags", Value: strconv.Itoa(address.Flags)},
-			yangpub.Item{Path: path + "/preferred-lifetime", Value: strconv.Itoa(address.PreferredLifetime)},
-			yangpub.Item{Path: path + "/valid-lifetime", Value: strconv.Itoa(address.ValidLifetime)},
-		)
+		items = append(items, observedAddressItems(path, id, family, observation, address)...)
 	}
 	for _, route := range state.Routes {
 		id := routeIdentity(route)
@@ -196,6 +193,54 @@ func ownershipFamilyItems(name, family string, state wanstate.FamilyState) []yan
 		}
 	}
 	return items
+}
+
+func observedAddressItems(path, id, family, observation string, address netif.CurrentAddr) []yangpub.Item {
+	items := []yangpub.Item{
+		{Path: path + "/id", Value: id},
+		{Path: path + "/cidr", Value: address.CIDR},
+		{Path: path + "/origin", Value: address.Origin},
+		{Path: path + "/flags", Value: strconv.Itoa(address.Flags)},
+		{Path: path + "/preferred-lifetime", Value: strconv.Itoa(address.PreferredLifetime)},
+		{Path: path + "/valid-lifetime", Value: strconv.Itoa(address.ValidLifetime)},
+	}
+	if family == "ipv6" {
+		phase := "unknown"
+		if observation == "fresh" {
+			phase = observedIPv6AddressPhase(address)
+		}
+		items = append(items, yangpub.Item{Path: path + "/phase", Value: phase})
+	}
+	return items
+}
+
+func observedIPv6AddressPhase(address netif.CurrentAddr) string {
+	if address.Flags&netif.IFAFDADFailed != 0 {
+		return "dad-failed"
+	}
+	if address.Flags&netif.IFAFTentative != 0 {
+		return "tentative"
+	}
+	if address.ValidLifetime == 0 {
+		return "invalid"
+	}
+	if address.Flags&netif.IFAFDeprecated != 0 || address.PreferredLifetime == 0 {
+		return "deprecated"
+	}
+	return "usable"
+}
+
+func observedRARouterValidity(observation string, routes []netif.CurrentRoute) string {
+	if observation != "fresh" {
+		return "unknown"
+	}
+	for _, route := range routes {
+		if route.Family == "inet6" && route.TableID == unix.RT_TABLE_MAIN &&
+			route.Protocol == unix.RTPROT_RA && (route.Dest == "default" || route.Dest == "::/0") && route.Via != "" {
+			return "present"
+		}
+	}
+	return "absent"
 }
 
 func ownershipFamilyApplyItems(base string, result wanstate.ApplyResult) []yangpub.Item {

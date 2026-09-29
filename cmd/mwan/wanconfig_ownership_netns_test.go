@@ -119,6 +119,7 @@ func runOwnershipOperationalChild(t *testing.T) {
 	if strings.Contains(initial, `"assignment":[`) {
 		t.Fatalf("kernel address invented acquisition: %s", initial)
 	}
+	verifyIPv6OperationalObservation(t, store, link, read)
 	secondAddress, err := netlink.ParseAddr("192.0.2.62/32")
 	if err != nil {
 		t.Fatal(err)
@@ -257,6 +258,178 @@ func runOwnershipOperationalChild(t *testing.T) {
 	}
 }
 
+func verifyIPv6OperationalObservation(t *testing.T, store *wanstate.Store, link netlink.Link, read func() string) {
+	t.Helper()
+	const cidr = "2001:db8:517::61/64"
+	if err := os.WriteFile("/proc/sys/net/ipv6/conf/"+link.Attrs().Name+"/dad_transmits", []byte("2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	address, err := netlink.ParseAddr(cidr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	address.PreferedLft = 3600
+	address.ValidLft = 7200
+	if err := netlink.AddrAdd(link, address); err != nil {
+		t.Fatal(err)
+	}
+	waitOwnershipState(t, store, func(state wanstate.ConnectionState) bool {
+		for _, observed := range state.IPv6.Addresses {
+			if observed.CIDR == cidr && observed.Flags&netif.IFAFTentative != 0 {
+				return true
+			}
+		}
+		return false
+	})
+	if phase := operationalAddressField(t, read(), cidr, "phase"); phase != "tentative" {
+		t.Fatalf("observed IPv6 phase = %q, want tentative", phase)
+	}
+	waitOwnershipState(t, store, func(state wanstate.ConnectionState) bool {
+		for _, observed := range state.IPv6.Addresses {
+			if observed.CIDR == cidr && observed.Flags&netif.IFAFTentative == 0 {
+				return true
+			}
+		}
+		return false
+	})
+	if phase := operationalAddressField(t, read(), cidr, "phase"); phase != "usable" {
+		t.Fatalf("observed IPv6 phase = %q, want usable", phase)
+	}
+	if origin := operationalAddressField(t, read(), cidr, "origin"); origin != "unknown" {
+		t.Fatalf("observed IPv6 origin = %q, want unknown", origin)
+	}
+	addressID := operationalIDFor(t, read(), "cidr", cidr)
+	address.PreferedLft = 0
+	if err := netlink.AddrReplace(link, address); err != nil {
+		t.Fatal(err)
+	}
+	waitOwnershipState(t, store, func(state wanstate.ConnectionState) bool {
+		for _, observed := range state.IPv6.Addresses {
+			if observed.CIDR == cidr && observed.PreferredLifetime == 0 {
+				return true
+			}
+		}
+		return false
+	})
+	if phase := operationalAddressField(t, read(), cidr, "phase"); phase != "deprecated" {
+		t.Fatalf("observed IPv6 phase = %q, want deprecated", phase)
+	}
+	if id := operationalIDFor(t, read(), "cidr", cidr); id != addressID {
+		t.Fatalf("observed IPv6 address ID changed from %s to %s", addressID, id)
+	}
+	if current := read(); !strings.Contains(current, `"router-validity":"absent"`) {
+		t.Fatalf("fresh observation lacks absent router validity: %s", current)
+	}
+	peer, err := netlink.LinkByName("ownership-peer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerAddress, err := netlink.ParseAddr("fe80::1/64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.AddrAdd(peer, peerAddress); err != nil {
+		t.Fatal(err)
+	}
+	_, destination, err := net.ParseCIDR("::/0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	staticDefault := &netlink.Route{LinkIndex: link.Attrs().Index, Dst: destination, Gw: net.ParseIP("fe80::1"), Family: netlink.FAMILY_V6, Table: unix.RT_TABLE_MAIN, Protocol: unix.RTPROT_STATIC, Priority: 4600}
+	if err := netlink.RouteAdd(staticDefault); err != nil {
+		t.Fatal(err)
+	}
+	waitOwnershipState(t, store, func(state wanstate.ConnectionState) bool {
+		for _, route := range state.IPv6.Routes {
+			if route.TableID == unix.RT_TABLE_MAIN && route.Protocol == unix.RTPROT_STATIC && route.Dest == "default" {
+				return true
+			}
+		}
+		return false
+	})
+	if current := read(); !strings.Contains(current, `"router-validity":"absent"`) {
+		t.Fatalf("static default route changed RA router validity: %s", current)
+	}
+	defaultRoute := &netlink.Route{LinkIndex: link.Attrs().Index, Dst: destination, Gw: net.ParseIP("fe80::1"), Family: netlink.FAMILY_V6, Table: unix.RT_TABLE_MAIN, Protocol: unix.RTPROT_RA, Priority: 4700}
+	if err := netlink.RouteAdd(defaultRoute); err != nil {
+		t.Fatal(err)
+	}
+	waitOwnershipState(t, store, func(state wanstate.ConnectionState) bool {
+		for _, route := range state.IPv6.Routes {
+			if route.TableID == unix.RT_TABLE_MAIN && route.Protocol == unix.RTPROT_RA && route.Dest == "default" {
+				return true
+			}
+		}
+		return false
+	})
+	if current := read(); !strings.Contains(current, `"router-validity":"present"`) {
+		t.Fatalf("fresh RA route lacks present router validity: %s", current)
+	}
+	if err := netlink.RouteDel(defaultRoute); err != nil {
+		t.Fatal(err)
+	}
+	waitOwnershipState(t, store, func(state wanstate.ConnectionState) bool {
+		for _, route := range state.IPv6.Routes {
+			if route.TableID == unix.RT_TABLE_MAIN && route.Protocol == unix.RTPROT_RA && route.Dest == "default" {
+				return false
+			}
+		}
+		return true
+	})
+	if current := read(); !strings.Contains(current, `"router-validity":"absent"`) {
+		t.Fatalf("removed RA route remains present in operational state: %s", current)
+	}
+	if err := netlink.RouteDel(staticDefault); err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.AddrDel(link, address); err != nil {
+		t.Fatal(err)
+	}
+	waitOwnershipState(t, store, func(state wanstate.ConnectionState) bool {
+		for _, observed := range state.IPv6.Addresses {
+			if observed.CIDR == cidr {
+				return false
+			}
+		}
+		return true
+	})
+	if current := read(); strings.Contains(current, `"cidr":"`+cidr+`"`) {
+		t.Fatalf("removed IPv6 address remains in operational state: %s", current)
+	}
+	verifyIPv6DADFailure(t, store, link, peer, read)
+}
+
+func verifyIPv6DADFailure(t *testing.T, store *wanstate.Store, link, peer netlink.Link, read func() string) {
+	t.Helper()
+	const cidr = "2001:db8:517::d/128"
+	peerAddress, err := netlink.ParseAddr(cidr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerAddress.Flags = netif.IFAFNoDAD
+	if err := netlink.AddrAdd(peer, peerAddress); err != nil {
+		t.Fatal(err)
+	}
+	address, err := netlink.ParseAddr(cidr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.AddrAdd(link, address); err != nil {
+		t.Fatal(err)
+	}
+	waitOwnershipState(t, store, func(state wanstate.ConnectionState) bool {
+		for _, observed := range state.IPv6.Addresses {
+			if observed.CIDR == cidr && observed.Flags&netif.IFAFDADFailed != 0 {
+				return true
+			}
+		}
+		return false
+	})
+	if phase := operationalAddressField(t, read(), cidr, "phase"); phase != "dad-failed" {
+		t.Fatalf("observed IPv6 phase = %q, want dad-failed", phase)
+	}
+}
+
 func ownershipTestAssignment(prefix string) interfaceintent.Assignment {
 	return interfaceintent.Assignment{
 		ConnectionID: "stable-example", Family: "ipv4", Kind: interfaceintent.AssignmentStatic,
@@ -273,6 +446,14 @@ func verifyOverflowOperationalRead(t *testing.T, ctx context.Context, log *slog.
 		t.Fatal(err)
 	}
 	if err := netlink.AddrAdd(link, base); err != nil {
+		t.Fatal(err)
+	}
+	const ipv6CIDR = "2001:db8:517::99/64"
+	ipv6Address, err := netlink.ParseAddr(ipv6CIDR)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.AddrAdd(link, ipv6Address); err != nil {
 		t.Fatal(err)
 	}
 	monitorCtx, cancel := context.WithCancel(ctx)
@@ -332,8 +513,11 @@ func verifyOverflowOperationalRead(t *testing.T, ctx context.Context, log *slog.
 		t.Fatal("monitor did not publish stale state")
 	}
 	stale := read()
-	if staleAt.IsZero() || !strings.Contains(stale, `"observation":"stale"`) || !strings.Contains(stale, `"observation-reason":"event queue overflow"`) || !strings.Contains(stale, staleAt.UTC().Format(time.RFC3339Nano)) || !strings.Contains(stale, `"cidr":"192.0.2.99/32"`) || !strings.Contains(stale, `"acquisition":"unknown"`) {
+	if staleAt.IsZero() || !strings.Contains(stale, `"observation":"stale"`) || !strings.Contains(stale, `"observation-reason":"event queue overflow"`) || !strings.Contains(stale, staleAt.UTC().Format(time.RFC3339Nano)) || !strings.Contains(stale, `"cidr":"192.0.2.99/32"`) || !strings.Contains(stale, `"acquisition":"unknown"`) || !strings.Contains(stale, `"router-validity":"unknown"`) {
 		t.Fatalf("stale operational read changed known state: %s", stale)
+	}
+	if phase := operationalAddressField(t, stale, ipv6CIDR, "phase"); phase != "unknown" {
+		t.Fatalf("stale IPv6 address phase = %q, want unknown", phase)
 	}
 	for {
 		select {
@@ -434,4 +618,39 @@ func operationalIDFor(t *testing.T, document, field, value string) string {
 		t.Fatalf("operational state lacks %s=%s: %s", field, value, document)
 	}
 	return id
+}
+
+func operationalAddressField(t *testing.T, document, cidr, field string) string {
+	t.Helper()
+	var root any
+	if err := json.Unmarshal([]byte(document), &root); err != nil {
+		t.Fatal(err)
+	}
+	var find func(any) (string, bool)
+	find = func(node any) (string, bool) {
+		switch item := node.(type) {
+		case map[string]any:
+			if item["cidr"] == cidr {
+				value, ok := item[field].(string)
+				return value, ok
+			}
+			for _, child := range item {
+				if value, ok := find(child); ok {
+					return value, true
+				}
+			}
+		case []any:
+			for _, child := range item {
+				if value, ok := find(child); ok {
+					return value, true
+				}
+			}
+		}
+		return "", false
+	}
+	value, ok := find(root)
+	if !ok {
+		t.Fatalf("operational address %s lacks %s: %s", cidr, field, document)
+	}
+	return value
 }
