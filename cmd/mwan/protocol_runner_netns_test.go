@@ -4,7 +4,7 @@ package main
 
 import (
 	"bytes"
-	"fmt"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -254,8 +254,16 @@ func stopProtocolServices(t *testing.T, services []protocolService) {
 		go func() { stopped <- service.command.Wait() }()
 		select {
 		case err := <-stopped:
-			if err != nil && !strings.Contains(fmt.Sprint(err), "signal: terminated") {
-				t.Errorf("wait %s: %v", service.name, err)
+			if err != nil {
+				var exitError *exec.ExitError
+				if !errors.As(err, &exitError) {
+					t.Errorf("wait %s: %v", service.name, err)
+					continue
+				}
+				status, ok := exitError.Sys().(syscall.WaitStatus)
+				if !ok || status.Signal() != syscall.SIGTERM {
+					t.Errorf("wait %s: %v", service.name, err)
+				}
 			}
 		case <-time.After(3 * time.Second):
 			if err := service.command.Process.Kill(); err != nil {
