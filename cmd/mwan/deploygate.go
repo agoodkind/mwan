@@ -77,6 +77,7 @@ const (
 	gateModeWaitDeploy      deployGateMode = "wait-deploy"
 	gateModeCheckOwned      deployGateMode = "check-owned-addresses"
 	gateModeCheckNetwork    deployGateMode = "check-network"
+	gateModeCheckNetworkd   deployGateMode = "check-networkd"
 	gateModeCheckFirewall   deployGateMode = "check-firewall"
 	gateModeInspectFirewall deployGateMode = "inspect-firewall"
 )
@@ -201,6 +202,8 @@ func runDeployGate(args []string) int {
 			return exitDeployGateUsage
 		}
 		return checkNetwork(deps, rest[0], rest[1])
+	case gateModeCheckNetworkd:
+		return runNetworkdCheck(rest)
 	case gateModeCheckFirewall:
 		return runFirewallCheck(rest)
 	case gateModeInspectFirewall:
@@ -466,6 +469,7 @@ func printDeployGateUsage() {
 		"usage: mwan deploy-gate check-egress <families> <probe_config_path>"+
 			" | check-owned-addresses"+
 			" | check-network <network_json> <schema_dir>"+
+			" | check-networkd <network_json> <schema_dir> <unit_dir>"+
 			" | check-firewall <network_json> <schema_dir>"+
 			" | inspect-firewall <network_json> <schema_dir>"+
 			" | wait-reboot <vmid> <old_boot_id> <seconds>"+
