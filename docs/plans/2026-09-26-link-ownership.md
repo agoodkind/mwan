@@ -269,3 +269,10 @@ of logs and documentation. Record command failures and skipped checks.
 Close MWAN-305 only after all slice acceptance requirements, final MWAN-401
 testbed acceptance, and final MWAN-520 production acceptance pass. Preserve
 completed historical tickets and leave MWAN-507 separate.
+
+## Finish deployment reboot detection
+
+Implement this task last, after the daemon owns every interface and the
+ownership acceptance checks pass. Compare hashes or an inventory of applied
+state with the requested deployment to determine whether a reboot is needed.
+Skip the reboot when the changes do not require it.
