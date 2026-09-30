@@ -2542,6 +2542,34 @@ remains separately recorded. Diagnosis, corrected capture lifecycle and a
 fresh calibration remain required before complete downstream acceptance.
 Shared testbed deployment and production promotion have not begun.
 
+### Record the production capability failure
+
+Physical attempt 4 used the unchanged published c808779 ARM64 executable
+and production service capabilities. Six phases completed source-bound IPv4
+and IPv6 requests. Both ten-second DHCP release windows recorded zero
+packets. All fifteen completed captures recorded zero kernel drops.
+
+Reverse edge cleanup failed. Attached BPF program inspection returned
+`get program by id: operation not permitted` on Debian
+`6.12.107+deb13-cloud-arm64`. The obsolete provider A address receipt
+remained. Networkd reacquisition and the cold-baseline reboot sequence did
+not execute. Both private guests shut down cleanly. Deployment requires a
+verified service-permission repair and a fresh complete physical run.
+
+Configs PR #573 adds the required journal to the real acceptance fixture at
+signed `96469501ae8926d6a114d2058afe3b40cf865af9`. Independent validation
+cleared the missing-journal error but failed two of three public cases.
+The published daemon rejected the veth provider's permanent MAC identity
+before readiness. Assertions and deadlines remain unchanged. The fixture
+identity requires correction before merge.
+
+Process cleanup candidate `affcdfec87892af7777226209cecc7660963344d`
+reaps exited leaders before group signals. Real TERM and KILL controls pass
+on macOS and Linux. Independent review must verify descendant cleanup when
+the leader exits first. The candidate remains unpublished. Guest-owned
+capture services require a separate implementation after cleanup review.
+Shared testbed and production deployment remain pending.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
