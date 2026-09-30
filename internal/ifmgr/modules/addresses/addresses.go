@@ -145,7 +145,7 @@ func New(moduleConfig ifmgr.ModuleConfig) (ifmgr.Module, error) {
 	return module, nil
 }
 
-// Init publishes the single journal authority before translation starts.
+// Init permits scoped NPT journals without an MWAN-owned link store.
 func (module *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	module.InitBase(env, "module", moduleName)
 	if module.leaseStore != nil {
