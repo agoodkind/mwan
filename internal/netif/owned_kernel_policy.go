@@ -49,31 +49,48 @@ type OwnedKernelPolicyReconciler struct {
 
 // NewOwnedKernelPolicyReconciler discards records from previous boots without changing kernel policy.
 func NewOwnedKernelPolicyReconciler(path string, sysctl SysctlRunner) (*OwnedKernelPolicyReconciler, error) {
-	if !filepath.IsAbs(path) || sysctl == nil {
-		return nil, errors.New("kernel policy requires an absolute journal path and sysctl access")
+	if sysctl == nil {
+		return nil, errors.New("kernel policy requires sysctl access")
+	}
+	journal, err := loadOwnedKernelPolicyJournal(path)
+	if err != nil {
+		return nil, err
+	}
+	return &OwnedKernelPolicyReconciler{mu: sync.Mutex{}, path: path, sysctl: sysctl, journal: journal}, nil
+}
+
+// ValidateOwnedKernelPolicyJournal checks persistent state before startup writes network configuration.
+func ValidateOwnedKernelPolicyJournal(path string) error {
+	_, err := loadOwnedKernelPolicyJournal(path)
+	return err
+}
+
+func loadOwnedKernelPolicyJournal(path string) (ownedKernelJournal, error) {
+	if !filepath.IsAbs(path) {
+		return ownedKernelJournal{}, errors.New("kernel policy requires an absolute journal path")
 	}
 	boot, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
 	if err != nil {
 		slog.Warn("kernel policy boot ID read failed", "err", err)
-		return nil, fmt.Errorf("read kernel policy boot ID: %w", err)
+		return ownedKernelJournal{}, fmt.Errorf("read kernel policy boot ID: %w", err)
 	}
-	r := &OwnedKernelPolicyReconciler{mu: sync.Mutex{}, path: path, sysctl: sysctl, journal: ownedKernelJournal{BootID: string(boot), Fields: nil}}
+	journal := ownedKernelJournal{BootID: string(boot), Fields: nil}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return r, nil
+		return journal, nil
 	}
 	if err != nil {
 		slog.Warn("kernel policy journal read failed", "path", path, "err", err)
-		return nil, fmt.Errorf("read kernel policy journal: %w", err)
+		return ownedKernelJournal{}, fmt.Errorf("read kernel policy journal: %w", err)
 	}
-	if err := json.Unmarshal(data, &r.journal); err != nil {
+	if err := json.Unmarshal(data, &journal); err != nil {
 		slog.Warn("kernel policy journal decode failed", "path", path, "err", err)
-		return nil, fmt.Errorf("decode kernel policy journal: %w", err)
+		return ownedKernelJournal{}, fmt.Errorf("decode kernel policy journal: %w", err)
 	}
-	if r.journal.BootID != string(boot) {
-		r.journal = ownedKernelJournal{BootID: string(boot), Fields: nil}
+	if journal.BootID != string(boot) {
+		journal = ownedKernelJournal{BootID: string(boot), Fields: nil}
 	}
-	return r, nil
+	return journal, nil
 }
 
 func (r *OwnedKernelPolicyReconciler) save() error {

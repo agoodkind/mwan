@@ -52,6 +52,12 @@ func New(config ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		module.connections = append(module.connections, connection)
 	}
 	module.stateFile = settings.StateFile
+	if len(module.connections) != 0 || module.stateFile != "" {
+		if err := netif.ValidateOwnedKernelPolicyJournal(module.stateFile); err != nil {
+			slog.Warn("autoconfiguration: kernel policy validation failed", "err", err)
+			return nil, fmt.Errorf("validate autoconfiguration kernel policy: %w", err)
+		}
+	}
 	return module, nil
 }
 
@@ -81,7 +87,7 @@ func (module *Module) Init(_ context.Context, env *ifmgr.Env) error {
 	if len(module.connections) == 0 && module.stateFile == "" {
 		return ifmgr.ErrModuleDisabled
 	}
-	if env.OwnedLinks == nil || env.Sysctl == nil {
+	if env.Sysctl == nil || len(module.connections) != 0 && env.OwnedLinks == nil {
 		return fmt.Errorf("autoconfiguration: owned links and sysctl access are required")
 	}
 	reconciler, err := netif.NewOwnedKernelPolicyReconciler(module.stateFile, env.Sysctl)

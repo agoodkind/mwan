@@ -97,6 +97,7 @@ func runKernelPolicyDaemonRuntime(t *testing.T) {
 	setRuntimeNamespace(t, gateway)
 	binary := os.Getenv(kernelPolicyBinaryEnv)
 	writeKernelPolicyNetwork(t, networkDir, nil, false)
+	assertKernelPolicyStartupValidation(t, binary, networkDir, networkdDir, root, config)
 	baseline := startRuntimeDaemon(t, binary, configPath, root, "kernel-baseline")
 	defer killOwnedRuntimeDaemon(t, baseline)
 	waitStaticRuntimeAddress(t, baseline, "enatt0", "10.52.1.1/24", true)
@@ -167,6 +168,118 @@ func runKernelPolicyDaemonRuntime(t *testing.T) {
 	}
 	if got := readKernelPolicyValue(t, "ipv4", "enmgmt0", "forwarding"); got != "1" {
 		t.Fatalf("unrelated management forwarding changed to %s", got)
+	}
+	killOwnedRuntimeDaemon(t, fourth)
+	assertKernelPolicyCleanupOnly(t, binary, networkDir, configPath, root)
+}
+
+func assertKernelPolicyCleanupOnly(t *testing.T, binary, networkDir, configPath, root string) {
+	t.Helper()
+	journalPath := filepath.Join(root, "kernel-policy.json")
+	if kernelPolicyFieldCount(t, journalPath) == 0 {
+		t.Fatal("cleanup control requires the journal retained after an external metric change")
+	}
+	link, err := netlink.LinkByName("enatt0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.LinkDel(link); err != nil {
+		t.Fatal(err)
+	}
+	writeOwnedRuntimeNetwork(t, networkDir, false, false)
+	config := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"200ms\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[wanconfig]\npublish = false\n", journalPath)
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	daemon := startRuntimeDaemon(t, binary, configPath, root, "kernel-cleanup-only")
+	defer killOwnedRuntimeDaemon(t, daemon)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		assertRuntimeDaemonRunning(t, daemon)
+		if kernelPolicyFieldCount(t, journalPath) == 0 {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("cleanup-only daemon retained kernel journal fields: %s", runtimeLogTail(t, daemon, 40))
+}
+
+func kernelPolicyFieldCount(t *testing.T, path string) int {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var journal struct {
+		Fields []json.RawMessage `json:"fields"`
+	}
+	if err := json.Unmarshal(data, &journal); err != nil {
+		t.Fatal(err)
+	}
+	return len(journal.Fields)
+}
+
+func assertKernelPolicyStartupValidation(t *testing.T, binary, networkDir, networkdDir, root, config string) {
+	t.Helper()
+	networkPath := filepath.Join(networkDir, "network.json")
+	original, err := os.ReadFile(networkPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]json.RawMessage
+	if err := json.Unmarshal(original, &document); err != nil {
+		t.Fatal(err)
+	}
+	var interfaces map[string]json.RawMessage
+	if err := json.Unmarshal(document["ietf-interfaces:interfaces"], &interfaces); err != nil {
+		t.Fatal(err)
+	}
+	var entries []json.RawMessage
+	if err := json.Unmarshal(interfaces["interface"], &entries); err != nil {
+		t.Fatal(err)
+	}
+	entries = append(entries, json.RawMessage(`{"name":"legacy-policy","type":"iana-if-type:ethernetCsmacd","goodkind-mwan-steering:owner":"networkd","goodkind-mwan-steering:link-files":"rendered","goodkind-mwan-steering:link":{"match":{"hardware-address":"02:00:5e:00:53:ab"}},"ietf-ip:ipv4":{"address":[{"ip":"203.0.113.9","prefix-length":24}]}}`))
+	interfaces["interface"], err = json.Marshal(entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document["ietf-interfaces:interfaces"], err = json.Marshal(interfaces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(networkPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	malformed := filepath.Join(root, "malformed-kernel-policy.json")
+	if err := os.WriteFile(malformed, []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, check := range []struct{ path, reason string }{
+		{path: "relative-policy.json", reason: "absolute journal path"},
+		{path: malformed, reason: "decode kernel policy journal"},
+	} {
+		invalidPath := filepath.Join(root, "invalid-kernel-config.toml")
+		invalid := strings.Replace(config, fmt.Sprintf("%q", filepath.Join(root, "kernel-policy.json")), fmt.Sprintf("%q", check.path), 1)
+		if err := os.WriteFile(invalidPath, []byte(invalid), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		command := exec.Command(binary, "ifmgr", "--role", "wan")
+		command.Env = append(os.Environ(), "MWAN_CONFIG="+invalidPath)
+		output, err := command.CombinedOutput()
+		if err == nil || !strings.Contains(string(output), check.reason) {
+			t.Fatalf("invalid kernel journal %s: %v: %s", check.path, err, output)
+		}
+		files, err := os.ReadDir(networkdDir)
+		if err != nil || len(files) != 0 {
+			t.Fatalf("invalid kernel journal wrote networkd files: %v: %v", files, err)
+		}
+	}
+	if err := os.WriteFile(networkPath, original, 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 
