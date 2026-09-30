@@ -15,6 +15,8 @@ const activeStateActive = "active"
 
 // ReloadIfRunning reloads changed .network and .netdev files when networkd is active.
 // Inactive networkd reads the files during startup. Udev applies .link files when devices appear.
+// A systemd reload job waits for this daemon's Before ordering and READY notification.
+// The manager method waits for networkd's reload without scheduling that job.
 func ReloadIfRunning(ctx context.Context) error {
 	conn, err := systemddbus.NewSystemConnectionContext(ctx)
 	if err != nil {
@@ -45,8 +47,6 @@ func ReloadIfRunning(ctx context.Context) error {
 		return fmt.Errorf("connect to network manager: %w", err)
 	}
 	defer bus.Close()
-	// A systemd reload job waits for this daemon's Before ordering and READY notification.
-	// The manager method waits for networkd's reload without scheduling that job.
 	manager := bus.Object("org.freedesktop.network1", "/org/freedesktop/network1")
 	if err := manager.CallWithContext(ctx, "org.freedesktop.network1.Manager.Reload", 0).Err; err != nil {
 		slog.ErrorContext(ctx, "networkd: reload request failed", "unit", networkdUnit, "err", err)
