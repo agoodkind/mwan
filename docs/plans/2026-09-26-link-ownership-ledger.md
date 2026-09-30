@@ -2078,6 +2078,35 @@ existing global module-error behavior.
 This checkpoint performed no deployment or live ownership transfer.
 MWAN-521 and MWAN-522 remain In Progress.
 
+## September 30: Verify owned roles and test deployment preparation
+
+Configs PR #569 merged as `2aa7b7ab`. Both environment renders passed all
+32 specs without skips against published release `202609300730-80-2f9a40a`.
+Independent review verified the release digests, role settings, and signatures.
+MWAN PR #133 merged as `6323b505` for read-only generated-unit verification.
+PR #134 merged as `f9027a8f` for the final conditional-reboot task.
+
+Owned-role source `a17ca0a` passed three independent real-daemon runs in
+28.594 seconds. Removing the internal readiness prerequisite failed the
+explicit-false assertion; removing the configured route failed IPv6 packet
+delivery. Management DNS, transit packets, route repair, and restart passed.
+Physical interface transfer and complete operational publication remain
+unproven. The negative control retained a transient projection rejection.
+
+The testbed deployment used the clean merged Configs checkout and stopped at
+daemon restart verification with `ok=198`, `changed=28`, and `failed=1`.
+The first daemon start wrote replacement management/transit units, then waited
+for networkd reload until systemd's 90-second startup timeout. Networkd reloaded
+after that start was terminated. The automatic second start skipped unchanged
+unit reload and became active. Controlled reproduction remains required.
+
+OPNsense selected the backup in both families during restart and restored
+the primary afterward. The before and after batteries each passed 80 downstream
+HTTPS requests, observed both providers in both families, and recorded zero
+kernel capture drops. Continuous probes remain active; final interruption
+measurement, reboot acceptance, and production deployment remain incomplete.
+All live connections remain networkd-owned. MWAN-521 remains In Progress.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
