@@ -100,10 +100,10 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
-      - name: Run the firewall tests
+      - name: Run the firewall and protocol acceptance tests
         env:
           GH_TOKEN: ${{ github.token }}
-        run: make test-firewall
+        run: make test-firewall test-protocol
 
   # The go job's quality matrix runs the suite on amd64 runners only. This job
   # runs the whole suite, cgo binding included, in the arm64 builder image on

@@ -225,6 +225,17 @@ Run `make docker-make TARGETS="check test"` for MWAN code changes on macOS.
 Run every required privileged case explicitly. Missing privileges, skipped
 tests, and absent commands block acceptance.
 
+Run `make test-protocol` for the assembled isolated acquisition, process
+recovery, autoconfiguration, resolver, and ordered-startup cases. Its
+`test-protocol-namespace` and `test-protocol-systemd` subtargets use separate
+privileged containers. The systemd container starts actual networkd,
+resolved, and udev. Set `MWAN_PROTOCOL_TEST_BINARY` to an absolute published
+executable when validating a release. Every selected daemon case uses that
+read-only executable. Commands and complete test events are stored under
+`bin/protocol-results`; change `PROTOCOL_RESULTS_DIR` to retain another
+artifact directory. The aggregate does not establish physical forward and
+reverse transfer, reboot, balancing, or shared testbed acceptance.
+
 The shared simulator activation command from the Configs root is:
 
 ```sh

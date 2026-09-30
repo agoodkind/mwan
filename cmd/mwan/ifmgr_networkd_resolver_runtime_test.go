@@ -88,8 +88,7 @@ func TestNetworkdResolverDaemonRuntime(t *testing.T) {
 		}
 	}
 	writeNetworkdResolverFixture(t, networkDir, "")
-	binary := filepath.Join(root, "mwan")
-	networkdResolverCommand(t, "go", "build", "-o", binary, ".")
+	binary := protocolTestBinary(t)
 	configPath := filepath.Join(root, "config.toml")
 	configuration := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[wanconfig]\npublish = false\n", filepath.Join(root, "links.json"), filepath.Join(root, "addresses.json"), filepath.Join(root, "kernel-policy.json"))
 	if err := os.WriteFile(configPath, []byte(configuration), 0o600); err != nil {

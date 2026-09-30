@@ -76,7 +76,17 @@ func TestNetworkdOrderedDaemonStartup(t *testing.T) {
 	setRuntimeNamespace(t, provider.namespace)
 	queries := startNetworkdResolverAuthority(t)
 	setRuntimeNamespace(t, gateway)
-	networkdResolverCommand(t, "go", "build", "-o", "/usr/local/bin/mwan", ".")
+	binary := protocolTestBinary(t)
+	if binary == "/usr/local/bin/mwan" {
+		t.Fatal("selected executable must differ from the isolated service installation path")
+	}
+	data, err := os.ReadFile(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("/usr/local/bin/mwan", data, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if output, err := exec.Command("getent", "group", "sysrepo").CombinedOutput(); err != nil {
 		t.Logf("provision sysrepo group: %s", output)
 		networkdResolverCommand(t, "groupadd", "--system", "sysrepo")
