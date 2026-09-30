@@ -13,7 +13,6 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -108,34 +107,17 @@ func leaseClockNow(loading bool) (LeaseClockSnapshot, error) {
 		slog.Warn("read boot ID for lease recovery failed", "err", err)
 		return LeaseClockSnapshot{}, fmt.Errorf("read boot ID: %w", err)
 	}
-	uptime, err := os.ReadFile("/proc/uptime")
+	uptime, err := leaseBootTime()
 	if err != nil {
-		slog.Warn("read uptime for lease recovery failed", "err", err)
-		return LeaseClockSnapshot{}, fmt.Errorf("read uptime: %w", err)
+		return LeaseClockSnapshot{}, err
 	}
-	fields := strings.Fields(string(uptime))
-	if len(fields) < 1 || strings.TrimSpace(string(bootID)) == "" {
+	if strings.TrimSpace(string(bootID)) == "" {
 		return LeaseClockSnapshot{}, errors.New("invalid boot clock snapshot")
-	}
-	parts := strings.SplitN(fields[0], ".", 2)
-	seconds, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil || seconds < 0 || seconds > int64((1<<63-1)/time.Second) {
-		return LeaseClockSnapshot{}, errors.New("invalid system uptime")
-	}
-	var fraction int64
-	if len(parts) == 2 {
-		if len(parts[1]) == 0 || len(parts[1]) > 9 {
-			return LeaseClockSnapshot{}, errors.New("invalid uptime precision")
-		}
-		fraction, err = strconv.ParseInt(parts[1]+strings.Repeat("0", 9-len(parts[1])), 10, 64)
-		if err != nil {
-			return LeaseClockSnapshot{}, errors.New("invalid uptime fraction")
-		}
 	}
 	if !loading {
 		wallTime = (realClock{}).Now()
 	}
-	return LeaseClockSnapshot{WallTime: wallTime, BootID: strings.TrimSpace(string(bootID)), Uptime: time.Duration(seconds)*time.Second + time.Duration(fraction)}, nil
+	return LeaseClockSnapshot{WallTime: wallTime, BootID: strings.TrimSpace(string(bootID)), Uptime: uptime}, nil
 }
 
 func leaseElapsed(saved, current LeaseClockSnapshot) (time.Duration, error) {
