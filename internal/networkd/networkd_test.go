@@ -279,7 +279,7 @@ func TestWriteDirPrunesOnlyItsOwnStaleFiles(t *testing.T) {
 	mustWrite(t, dir, "20-enwebpass0.network", networkd.Marker+"\n[Match]\nName=old\n")
 	mustWrite(t, dir, "10-mgmt.network", "[Match]\nName=enmgmt0\n")
 
-	changed, err := networkd.WriteDir(dir, []interfaceintent.Connection{leasedLinkSpec()}, map[connectionid.ID]int{"enmbrains0": 300})
+	changed, err := networkd.WriteDir(dir, []interfaceintent.Connection{leasedLinkSpec()}, map[connectionid.ID]int{"enmbrains0": 300}, nil)
 	if err != nil {
 		t.Fatalf("WriteDir: %v", err)
 	}
@@ -303,7 +303,7 @@ func TestWriteDirPrunesOnlyItsOwnStaleFiles(t *testing.T) {
 	// The second pass is the point: identical content must not touch a file,
 	// because a changed modification time on a .link file is a reason for
 	// udev to act.
-	again, err := networkd.WriteDir(dir, []interfaceintent.Connection{leasedLinkSpec()}, map[connectionid.ID]int{"enmbrains0": 300})
+	again, err := networkd.WriteDir(dir, []interfaceintent.Connection{leasedLinkSpec()}, map[connectionid.ID]int{"enmbrains0": 300}, nil)
 	if err != nil {
 		t.Fatalf("WriteDir second pass: %v", err)
 	}
@@ -319,7 +319,7 @@ func TestWriteDirNamesAVLANInItsParentsFile(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	changed, err := networkd.WriteDir(dir, []interfaceintent.Connection{parentLinkSpec(), vlanLinkSpec()}, map[connectionid.ID]int{"ensonic0.101": 600})
+	changed, err := networkd.WriteDir(dir, []interfaceintent.Connection{parentLinkSpec(), vlanLinkSpec()}, map[connectionid.ID]int{"ensonic0.101": 600}, nil)
 	if err != nil {
 		t.Fatalf("WriteDir: %v", err)
 	}
@@ -343,7 +343,7 @@ func TestWriteDirKeepsNonProviderParentOutOfProviderTable(t *testing.T) {
 	dir := t.TempDir()
 	_, err := networkd.WriteDir(dir,
 		[]interfaceintent.Connection{parent, vlanLinkSpec()},
-		map[connectionid.ID]int{"ensonic0.101": 600})
+		map[connectionid.ID]int{"ensonic0.101": 600}, nil)
 	if err != nil {
 		t.Fatalf("WriteDir: %v", err)
 	}
@@ -389,7 +389,7 @@ func TestWriteDirWritesNothingWhenASetIsRefused(t *testing.T) {
 
 			dir := t.TempDir()
 			mustWrite(t, dir, "20-enwebpass0.network", networkd.Marker+"\n[Match]\nName=old\n")
-			_, err := networkd.WriteDir(dir, tc.specs, map[connectionid.ID]int{"ensonic0.101": 600, "enwebpass0": 200})
+			_, err := networkd.WriteDir(dir, tc.specs, map[connectionid.ID]int{"ensonic0.101": 600, "enwebpass0": 200}, nil)
 			if err == nil {
 				t.Fatal("WriteDir accepted the set")
 			}

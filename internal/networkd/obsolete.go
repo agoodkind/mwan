@@ -6,8 +6,8 @@ import (
 )
 
 // ObsoleteLinkFiles uses the complete render and pruning rules without changing the directory.
-func ObsoleteLinkFiles(directory string, connections []interfaceintent.Connection, tables map[connectionid.ID]int) ([]string, error) {
-	rendered, err := renderAll(connections, tables)
+func ObsoleteLinkFiles(directory string, connections []interfaceintent.Connection, tables map[connectionid.ID]int, preserveStatic map[connectionid.ID]bool) ([]string, error) {
+	rendered, err := renderAll(connections, tables, preserveStatic)
 	if err != nil {
 		return nil, err
 	}

@@ -44,17 +44,18 @@ const FilePrefix = "20"
 // a VLAN's .netdev carries the interface's name and kind, and a family with
 // a gateway contributes two routes whose keys travel together.
 const (
-	sectionMatch   = "Match"
-	sectionNetDev  = "NetDev"
-	sectionNetwork = "Network"
-	sectionRoute   = "Route"
-	keyName        = "Name"
-	keyKind        = "Kind"
-	keyGateway     = "Gateway"
-	keyMetric      = "Metric"
-	keyTable       = "Table"
-	keyVLAN        = "VLAN"
-	kindVLAN       = "vlan"
+	sectionMatch         = "Match"
+	sectionNetDev        = "NetDev"
+	sectionNetwork       = "Network"
+	sectionRoute         = "Route"
+	keyName              = "Name"
+	keyKind              = "Kind"
+	keyGateway           = "Gateway"
+	keyMetric            = "Metric"
+	keyTable             = "Table"
+	keyVLAN              = "VLAN"
+	keyKeepConfiguration = "KeepConfiguration"
+	kindVLAN             = "vlan"
 )
 
 // The values the network manager takes for a boolean and the folded DHCP
@@ -79,7 +80,7 @@ const (
 // VLAN belongs to the parent's file, which WriteDir adds because it sees
 // every specification.
 func Render(connection interfaceintent.Connection, tableID int) (map[string]string, error) {
-	files, err := render(connection, tableID)
+	files, err := render(connection, tableID, false)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +89,7 @@ func Render(connection interfaceintent.Connection, tableID int) (map[string]stri
 
 // render builds the sections of one link's files without serializing them,
 // so WriteDir can add the parent's VLAN line before the file is written.
-func render(connection interfaceintent.Connection, tableID int) (*fileSet, error) {
+func render(connection interfaceintent.Connection, tableID int, preserveStatic bool) (*fileSet, error) {
 	if connection.Link == nil {
 		return nil, fmt.Errorf("%s: rendered interface has no link", connection.Name)
 	}
@@ -105,6 +106,10 @@ func render(connection interfaceintent.Connection, tableID int) (*fileSet, error
 		files.add(FileNetdev, sectionNetDev, keyKind, kindVLAN)
 	}
 	files.add(FileNetwork, sectionMatch, keyName, connection.Name)
+	preserveStatic = preserveStatic && connection.Owner == interfaceintent.OwnerNetworkd
+	if preserveStatic {
+		files.add(FileNetwork, sectionNetwork, keyKeepConfiguration, "static")
+	}
 	for _, line := range typedLines(connection) {
 		where := placements[line.leaf]
 		files.add(where.File, where.Section, where.Key, line.value)
@@ -118,10 +123,32 @@ func render(connection interfaceintent.Connection, tableID int) (*fileSet, error
 			return nil, fmt.Errorf("%s: networkd file kind %q is not link, network, or netdev", connection.Name, file.Kind)
 		}
 		for _, section := range file.Sections {
+			if preserveStatic && kind == FileNetwork && section.Name == sectionNetwork {
+				var err error
+				section.Entries, err = staticPreservationEntries(section.Entries)
+				if err != nil {
+					slog.Error("networkd: NPT static preservation conflicts with free-form configuration", "interface", connection.Name, "err", err)
+					return nil, fmt.Errorf("%s: %w", connection.Name, err)
+				}
+			}
 			files.merge(kind, section)
 		}
 	}
 	return files, nil
+}
+
+func staticPreservationEntries(entries []interfaceintent.UnitEntry) ([]interfaceintent.UnitEntry, error) {
+	retained := make([]interfaceintent.UnitEntry, 0, len(entries))
+	for _, entry := range entries {
+		if entry.Key != keyKeepConfiguration {
+			retained = append(retained, entry)
+			continue
+		}
+		if entry.Value != "static" {
+			return nil, fmt.Errorf("Network/KeepConfiguration=%s conflicts with NPT static preservation", entry.Value)
+		}
+	}
+	return retained, nil
 }
 
 // serialize writes each kind's sections through the systemd unit package and
@@ -178,8 +205,8 @@ type Change struct {
 // The whole set is rendered before anything is written, so a spec the
 // renderer refuses leaves the directory as it was: a partial set is a
 // gateway whose links come up differently after a reboot.
-func WriteDir(dir string, connections []interfaceintent.Connection, tables map[connectionid.ID]int) ([]Change, error) {
-	rendered, err := renderAll(connections, tables)
+func WriteDir(dir string, connections []interfaceintent.Connection, tables map[connectionid.ID]int, preserveStatic map[connectionid.ID]bool) ([]Change, error) {
+	rendered, err := renderAll(connections, tables, preserveStatic)
 	if err != nil {
 		return nil, err
 	}
@@ -218,7 +245,7 @@ type renderedFile struct {
 // and must be a rendered interface: a VLAN whose parent's file nothing
 // writes would be created by nothing, so it is refused rather than left
 // silently absent.
-func renderAll(connections []interfaceintent.Connection, tables map[connectionid.ID]int) (map[string]renderedFile, error) {
+func renderAll(connections []interfaceintent.Connection, tables map[connectionid.ID]int, preserveStatic map[connectionid.ID]bool) (map[string]renderedFile, error) {
 	sets := make(map[string]*fileSet, len(connections))
 	for _, connection := range connections {
 		if connection.Owner != interfaceintent.OwnerNetworkd || connection.Link == nil {
@@ -227,7 +254,7 @@ func renderAll(connections []interfaceintent.Connection, tables map[connectionid
 		if _, seen := sets[connection.Name]; seen {
 			return nil, fmt.Errorf("%s: rendered twice", connection.Name)
 		}
-		files, err := render(connection, tables[connection.ID])
+		files, err := render(connection, tables[connection.ID], preserveStatic[connection.ID])
 		if err != nil {
 			return nil, err
 		}
