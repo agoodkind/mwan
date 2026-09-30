@@ -226,7 +226,7 @@ func (r *OwnedDHCPv4Reconciler) installBound(
 	}
 	base.LinkName = iface
 	base.LinkIndex = link.Attrs().Index
-	base.LinkIdentity = staticLinkIdentity(link)
+	base.LinkIdentity = LinkOwnershipIdentity(link)
 	desired, err := dhcpv4Desired(base, metric, lease)
 	if err != nil {
 		return base, nil, err
@@ -449,7 +449,7 @@ func (r *OwnedDHCPv4Reconciler) ensurePromotion(base ownedDHCPv4Object) error {
 			slog.Warn("old DHCPv4 link verification failed", "index", record.LinkIndex, "err", err)
 			return fmt.Errorf("verify old DHCPv4 link: %w", err)
 		}
-		if err == nil && staticLinkIdentity(old) == record.LinkIdentity {
+		if err == nil && LinkMatchesIdentity(old, record.LinkIndex, record.LinkIdentity) {
 			return errors.New("DHCPv4 ownership moved while old link exists")
 		}
 		if err := r.forgetPromotion(i); err != nil {
@@ -485,7 +485,7 @@ func (r *OwnedDHCPv4Reconciler) restorePromotion(base ownedDHCPv4Object) error {
 			slog.Warn("DHCPv4 promotion link lookup failed", "index", record.LinkIndex, "err", err)
 			return fmt.Errorf("find DHCPv4 promotion link: %w", err)
 		}
-		if staticLinkIdentity(link) != record.LinkIdentity {
+		if !LinkMatchesIdentity(link, record.LinkIndex, record.LinkIdentity) {
 			return r.forgetPromotion(i)
 		}
 		if link.Attrs().Name != record.LinkName {
@@ -746,7 +746,7 @@ func (r *OwnedDHCPv4Reconciler) remove(value ownedDHCPv4Object) error {
 		slog.Warn("DHCPv4 link lookup for removal failed", "index", value.LinkIndex, "err", err)
 		return fmt.Errorf("find recorded DHCPv4 link: %w", err)
 	}
-	if staticLinkIdentity(link) != value.LinkIdentity {
+	if !LinkMatchesIdentity(link, value.LinkIndex, value.LinkIdentity) {
 		return r.forget(value)
 	}
 	if link.Attrs().Name != value.LinkName {
