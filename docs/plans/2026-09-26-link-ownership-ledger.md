@@ -2724,6 +2724,22 @@ Its concurrency window remains part of the evidence. The capture correction
 also requires stop/reap attempts after failed process verification. The stack
 remains unmerged pending those controls and complete acceptance.
 
+### Verify the published service repair
+
+Release `202609302115-8d-c257200` completed workflow `36778234531`.
+All four archive checksums, API digests and exact-source attestations passed.
+Actual ARM64 execution reports clean `c257200`. Its executable SHA256 is
+`600507ae01dc834bb4e6357e243c9a00196ca2bfcf358f4d44ef0203afacaf87`.
+Published installation emits the exact production service with the required
+capability in both sets. The service SHA256 is
+`8b2a7ef93ffb372188d4ccd29156aa6e5ec21af91e275c9988b23c748abc41fa`.
+
+The merged MWAN-532 worktree and refs were removed after proof. Eleven ignored
+artifacts were preserved externally. A native Configs worktree at
+`/Users/agoodkind/.codex/worktrees/mwan-532-release-pin/configs` prepares
+the independent release companion. Actual physical and shared acceptance
+remain pending. Capture cleanup and SSH completion diagnosis remain separate.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
