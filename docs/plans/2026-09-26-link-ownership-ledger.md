@@ -2983,6 +2983,38 @@ under implementation. Published protocol acceptance is running. Shared daemon
 deployment and production promotion remain pending. MWAN-533 remains
 In Progress. Actual Tack comments distinguish publication from live acceptance.
 
+### Record published protocol and mapping fixture failures
+
+Configs PR #580 merged as 37e66118d275244c6c76e3d7a31d3a1f17f72ac1.
+Its production and testbed release pins select the verified 93d3c35 release.
+Configs PR #581 merged as d2f33ce9d5d385271a479f55c5156629021e63d6.
+It configures a separate testbed HTTP mapping endpoint on port 1406 and
+requires HTTP 200 with the exact expected body. Both PRs passed all required
+checks. PR #581 passed independent final-head review.
+
+Published protocol acceptance passed all 22 namespace cases. Its original
+systemd lane passed four cases and failed the ordered startup assertion
+because networkd was active. Fresh isolated and resolver-then-startup runs
+passed unchanged. Both subsequent full systemd lanes passed startup but
+failed the NPT UDP6 request after the route metric changed from 500 to 501
+and the daemon restarted. The configured edge and routing readiness state
+were present at failure. Packet loss location remains unproven. The complete
+diagnostic report and journals are retained in the published release evidence
+directory. Every owned diagnostic container was removed. No source assertion
+or deadline changed.
+
+The merged mapping fixture deploy ran from clean Configs main at d2f33ce9
+with the isp-acceptance-fixture tag. The play failed when sysrc returned
+status 1 with empty output for lighttpd_instances. The play reported seven
+successful tasks, zero changes, and one failure. Its log is
+/var/folders/jq/hwwlnpr56_vdb42ff743hy040000gn/T/configs-runs/deploy-opnsense-20260930T233414Z.log.
+Both downstream observers terminated with status 1; their artifacts require
+inspection before attributing that status to a network interruption.
+
+MWAN-305, MWAN-522, and MWAN-533 remain In Progress. Published protocol
+acceptance and the mapping fixture require correction and fresh proof before
+the shared daemon deploy. Production promotion has not occurred.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
