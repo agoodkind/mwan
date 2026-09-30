@@ -157,6 +157,19 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	writeResolverRuntimeNetwork(t, networkDir, true, true, false)
 	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-restart")
 	waitResolverRuntimeValues(t, daemon, wantedDNS, wantedDomains)
+	resolvedMasked := true
+	t.Cleanup(func() {
+		if resolvedMasked {
+			runResolverCommand(t, "systemctl", "unmask", "--runtime", "systemd-resolved")
+			runResolverCommand(t, "systemctl", "start", "systemd-resolved")
+		}
+	})
+	runResolverCommand(t, "systemctl", "mask", "--runtime", "--now", "systemd-resolved")
+	waitResolverRuntimeFailureLogs(t, daemon)
+	runResolverCommand(t, "systemctl", "unmask", "--runtime", "systemd-resolved")
+	runResolverCommand(t, "systemctl", "start", "systemd-resolved")
+	resolvedMasked = false
+	waitResolverRuntimeValues(t, daemon, wantedDNS, wantedDomains)
 	runResolverCommand(t, "systemctl", "restart", "systemd-resolved")
 	waitResolverRuntimeValues(t, daemon, wantedDNS, wantedDomains)
 	// Resolved restart resets unrelated per-link settings; reset the control before subsequent reconciles.
@@ -222,6 +235,52 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 		}
 		t.Logf("%s daemon log:\n%s", name, data)
 	}
+}
+
+func waitResolverRuntimeFailureLogs(t *testing.T, daemon *runtimeDaemon) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		operationFound := false
+		finalFound := false
+		for _, line := range strings.Split(runtimeDaemonLog(t, daemon), "\n") {
+			var event struct {
+				Message   string          `json:"msg"`
+				Level     string          `json:"level"`
+				Operation string          `json:"operation"`
+				Result    string          `json:"result"`
+				Module    string          `json:"module"`
+				TraceID   string          `json:"trace_id"`
+				Err       json.RawMessage `json:"err"`
+				Error     json.RawMessage `json:"error"`
+			}
+			if json.Unmarshal([]byte(line), &event) != nil {
+				continue
+			}
+			if event.Message == "resolver operation failed" {
+				if event.Level != "WARN" || event.Operation == "" || event.Result != "failed" || len(event.Err) != 0 || len(event.Error) != 0 {
+					t.Fatalf("resolver operation event repeats the error or lacks its outcome: %s", line)
+				}
+				operationFound = true
+			}
+			if event.Message == "ifmgr: module Reconcile failed" && event.Module == "resolver" {
+				var diagnostic string
+				if err := json.Unmarshal(event.Err, &diagnostic); err != nil || event.TraceID == "" || !strings.Contains(diagnostic, "connection ") || !strings.Contains(diagnostic, "get resolved link") {
+					t.Fatalf("resolver final diagnostic lacks connection, operation, or trace context: %s", line)
+				}
+				finalFound = true
+			}
+			if event.Message == "resolver: reconcile failed" || event.Message == "resolved: link apply failed" || event.Message == "resolved: reconcile resolver fields failed" {
+				t.Fatalf("resolver emitted an intermediate duplicate diagnostic: %s", line)
+			}
+		}
+		if operationFound && finalFound {
+			return
+		}
+		assertRuntimeDaemonRunning(t, daemon)
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("resolver dependency failure lacks operation and final diagnostics: %s", runtimeLogTail(t, daemon, 40))
 }
 
 func writeResolverCleanupNetwork(t *testing.T, directory string) {
