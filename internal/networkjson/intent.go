@@ -331,8 +331,8 @@ func unsupportedNetworkdIntent(connection interfaceintent.Connection) error {
 		if ipv4.Enabled != nil && !*ipv4.Enabled {
 			return fmt.Errorf("interface %s: networkd renderer does not support disabled ipv4", connection.Name)
 		}
-		if ipv4.DHCPv4 != nil || len(ipv4.DNS) > 0 || len(ipv4.SearchDomains) > 0 {
-			return fmt.Errorf("interface %s: networkd renderer does not support typed ipv4 client or resolver options", connection.Name)
+		if ipv4.DHCPv4 != nil {
+			return fmt.Errorf("interface %s: networkd renderer does not support typed ipv4 client options", connection.Name)
 		}
 	}
 	if connection.IPv6 != nil {
@@ -343,8 +343,8 @@ func unsupportedNetworkdIntent(connection interfaceintent.Connection) error {
 		if ipv6.Delegation != nil && ipv6.Delegation.IAID != nil {
 			return fmt.Errorf("interface %s: networkd renderer does not support delegation iaid", connection.Name)
 		}
-		if ipv6.DHCPv6 != nil || ipv6.AutoConf != nil || ipv6.AcceptRADefaultRoute != nil || ipv6.UseRADNS != nil || len(ipv6.DNS) > 0 || len(ipv6.SearchDomains) > 0 || len(ipv6.ForwardingAddresses) > 0 {
-			return fmt.Errorf("interface %s: networkd renderer does not support typed ipv6 client, router, resolver, or forwarding options", connection.Name)
+		if ipv6.DHCPv6 != nil || ipv6.AutoConf != nil || ipv6.AcceptRADefaultRoute != nil || ipv6.UseRADNS != nil || len(ipv6.ForwardingAddresses) > 0 {
+			return fmt.Errorf("interface %s: networkd renderer does not support typed ipv6 client, router, or forwarding options", connection.Name)
 		}
 	}
 	return nil

@@ -336,6 +336,7 @@ func typedLines(s interfaceintent.Connection) []typedLine {
 			})
 		}
 	}
+	lines = append(lines, resolverLines(s)...)
 	if dhcp, set := dhcpLine(s); set {
 		lines = append(lines, dhcp)
 	}
@@ -355,6 +356,27 @@ func typedLines(s interfaceintent.Connection) []typedLine {
 	}
 	if s.IPv6 != nil && leasesMetric(s.IPv6.Family) {
 		lines = append(lines, typedLine{leaf: "ipv6.route-metric", value: decimal(uint64(*s.IPv6.RouteMetric))})
+	}
+	return lines
+}
+
+func resolverLines(connection interfaceintent.Connection) []typedLine {
+	var lines []typedLine
+	var servers, domains []string
+	for _, family := range families(connection) {
+		for _, server := range family.shared.DNS {
+			value := server.String()
+			if !slices.Contains(servers, value) {
+				servers = append(servers, value)
+				lines = append(lines, typedLine{leaf: family.name + ".dns", value: value})
+			}
+		}
+		for _, domain := range family.shared.SearchDomains {
+			if !slices.Contains(domains, domain) {
+				domains = append(domains, domain)
+				lines = append(lines, typedLine{leaf: family.name + ".search", value: domain})
+			}
+		}
 	}
 	return lines
 }

@@ -35,6 +35,10 @@ var placements = map[string]placement{
 	"bridge-master":                      {FileNetwork, "Network", "Bridge"},
 	"ipv4.address":                       {FileNetwork, "Network", "Address"},
 	"ipv6.address":                       {FileNetwork, "Network", "Address"},
+	"ipv4.dns":                           {FileNetwork, "Network", "DNS"},
+	"ipv6.dns":                           {FileNetwork, "Network", "DNS"},
+	"ipv4.search":                        {FileNetwork, "Network", "Domains"},
+	"ipv6.search":                        {FileNetwork, "Network", "Domains"},
 	"ipv4.dhcp":                          {FileNetwork, "Network", "DHCP"},
 	"ipv6.dhcp":                          {FileNetwork, "Network", "DHCP"},
 	"ipv6.accept-ra":                     {FileNetwork, "Network", "IPv6AcceptRA"},
@@ -129,6 +133,12 @@ func familyLeaves(name string, family interfaceintent.Family) []string {
 	}
 	if len(family.Addresses) > 0 {
 		leaves = append(leaves, name+".address")
+	}
+	if len(family.DNS) > 0 {
+		leaves = append(leaves, name+".dns")
+	}
+	if len(family.SearchDomains) > 0 {
+		leaves = append(leaves, name+".search")
 	}
 	if family.DHCP != nil {
 		leaves = append(leaves, name+".dhcp")
