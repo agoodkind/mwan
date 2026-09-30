@@ -4,11 +4,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -17,6 +19,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
+	"goodkind.io/mwan/internal/networkd"
 )
 
 func TestNetworkdOrderedDaemonStartup(t *testing.T) {
@@ -125,6 +128,127 @@ func TestNetworkdOrderedDaemonStartup(t *testing.T) {
 		if !strings.Contains(output, "10.52.1.99") || queries.Load() == 0 {
 			t.Fatalf("real DNS query failed: %s; queries=%d", output, queries.Load())
 		}
+	}
+	assertStartupNamingTransfer(t, networkDir, unitDir)
+}
+
+func assertStartupNamingTransfer(t *testing.T, networkDir, unitDir string) {
+	t.Helper()
+	foreign := filepath.Join(unitDir, "05-competing.link")
+	content := "[Match]\nPermanentMACAddress=02:00:5e:52:20:01\n[Link]\nName=competing0\n"
+	for _, competitor := range []string{"none", "foreign", "retained", "symlink"} {
+		t.Run("naming-"+competitor, func(t *testing.T) {
+			writeStartupNamingConnection(t, networkDir, "networkd", competitor == "retained")
+			startOrderedDaemon(t, "restart")
+			// Reset the active unit's start allowance between independent rejection controls.
+			networkdResolverCommand(t, "systemctl", "reset-failed", "mwan-ifmgr@wan")
+			legacy := filepath.Join(unitDir, "20-ownedboot0.link")
+			if _, err := os.Stat(legacy); err != nil {
+				t.Fatalf("networkd naming file absent: %v", err)
+			}
+			if competitor == "foreign" {
+				if err := os.WriteFile(foreign, []byte(content), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if competitor == "symlink" {
+				target := filepath.Join(networkDir, "marked-target.link")
+				if err := os.WriteFile(target, []byte(networkd.Marker+"\n"+content), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(target, foreign); err != nil {
+					t.Fatal(err)
+				}
+			}
+			writeStartupNamingConnection(t, networkDir, "mwan", competitor == "retained")
+			before := checkedUnitDirectory(t, unitDir)
+			if competitor != "none" {
+				ctx, cancel := context.WithTimeout(t.Context(), 12*time.Second)
+				defer cancel()
+				output, err := exec.CommandContext(ctx, "systemctl", "restart", "mwan-ifmgr@wan").CombinedOutput()
+				if err == nil {
+					t.Fatalf("competing naming file accepted: %s", output)
+				}
+				networkdResolverCommand(t, "systemctl", "stop", "mwan-ifmgr@wan")
+				if after := checkedUnitDirectory(t, unitDir); !reflect.DeepEqual(before, after) {
+					t.Fatalf("rejected naming transition changed unit files: before=%+v after=%+v", before, after)
+				}
+				if competitor == "foreign" || competitor == "symlink" {
+					if err := os.Remove(foreign); err != nil {
+						t.Fatal(err)
+					}
+				}
+				return
+			}
+			startOrderedDaemon(t, "restart")
+			if _, err := os.Stat(legacy); !os.IsNotExist(err) {
+				t.Fatalf("obsolete naming file remains: %v", err)
+			}
+			after := checkedUnitDirectory(t, unitDir)
+			ownedNames := 0
+			for path, state := range after {
+				if strings.HasPrefix(filepath.Base(path), "10-mwan-") &&
+					strings.Contains(state.Content, "Name=ownedboot0\n") {
+					ownedNames++
+				}
+			}
+			if ownedNames != 1 {
+				t.Fatalf("owned physical naming files=%d, want one", ownedNames)
+			}
+			for path, state := range before {
+				if filepath.Base(path) == "20-ownedboot0.link" || filepath.Base(path) == "20-ownedboot0.network" || path == unitDir {
+					continue
+				}
+				if after[path] != state {
+					t.Fatalf("naming transfer changed unrelated file %s", path)
+				}
+			}
+		})
+	}
+}
+
+func writeStartupNamingConnection(t *testing.T, directory, owner string, retained bool) {
+	t.Helper()
+	writeNetworkdResolverFixture(t, directory, "")
+	path := filepath.Join(directory, "network.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]json.RawMessage
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	var interfaces map[string]json.RawMessage
+	if err := json.Unmarshal(document["ietf-interfaces:interfaces"], &interfaces); err != nil {
+		t.Fatal(err)
+	}
+	var entries []json.RawMessage
+	if err := json.Unmarshal(interfaces["interface"], &entries); err != nil {
+		t.Fatal(err)
+	}
+	linkFiles := ""
+	if owner == "networkd" {
+		linkFiles = `,"goodkind-mwan-steering:link-files":"rendered"`
+	}
+	entries = append(entries, json.RawMessage(fmt.Sprintf(`{"name":"ownedboot0","type":"iana-if-type:other","goodkind-mwan-steering:connection-id":"ownedboot0","goodkind-mwan-steering:owner":%q,"goodkind-mwan-steering:link":{"match":{"hardware-address":"02:00:5e:52:20:01"}}%s}`, owner, linkFiles)))
+	if retained {
+		entries = append(entries, json.RawMessage(`{"name":"retainedboot0","type":"iana-if-type:other","goodkind-mwan-steering:owner":"networkd","goodkind-mwan-steering:link-files":"rendered","goodkind-mwan-steering:link":{"match":{"driver":"virtio_net"}}}`))
+	}
+	interfaces["interface"], err = json.Marshal(entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document["ietf-interfaces:interfaces"], err = json.Marshal(interfaces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err = json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 
