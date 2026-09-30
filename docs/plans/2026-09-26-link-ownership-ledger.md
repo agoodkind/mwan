@@ -2610,6 +2610,25 @@ VLAN fixture also requires a declared parent and hand-authored networkd
 intent because the fixture creates the links without running networkd.
 Its full published-daemon acceptance remains incomplete.
 
+### Merge the acceptance process correction
+
+Configs PR #574 merged as `b30f1564a610a459f88ff9e4610ef68fbf98a24a`
+at 20:40:08 UTC. All required checks passed, and no review threads remained
+open. The clean primary Configs checkout matches the merge. Main delivers
+direct-child reaping and original process-group termination at
+`lib/mwan_acceptance/processes.rb:85`, with the three real-child regressions.
+The merged worktree and local branch were removed after exact tree equality
+and clean-state verification. The remote branch was already absent. Only
+regenerable CPython inventory bytecode was removed; external evidence remains.
+
+PR #573's next supported fixture uses the existing hand-authored legacy NPT
+contract: original veth topology, no renderable link or explicit DHCP intent,
+translation configuration and the required journal. Exact public loader and
+mapped-fixture evidence established this contract. Earlier invalid VLAN
+contracts remain preserved. Packet acceptance is still pending. The capture
+repair uses a new worktree from the merged Configs base. No shared testbed
+or production deployment occurred.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
