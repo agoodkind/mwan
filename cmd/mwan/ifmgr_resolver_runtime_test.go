@@ -98,8 +98,7 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	runResolverCommand(t, "resolvectl", "dns", "resolver-other", "198.51.100.53")
 	runResolverCommand(t, "resolvectl", "domain", "resolver-other", "~unrelated.test")
 	otherDNS, otherDomains := resolverRuntimeValues(t, "resolver-other")
-	binary := filepath.Join(root, "mwan")
-	runResolverCommand(t, "go", "build", "-o", binary, ".")
+	binary := protocolTestBinary(t)
 	configPath := filepath.Join(root, "config.toml")
 	config := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"200ms\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[ifmgr.modules.resolver]\nstate_file = %q\n[wanconfig]\npublish = true\n", filepath.Join(root, "links.json"), filepath.Join(root, "addresses.json"), filepath.Join(root, "kernel-policy.json"), filepath.Join(root, "resolver.json"))
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
