@@ -477,6 +477,7 @@ NETNS_TEST_PACKAGES := ./internal/ifmgr/modules/wanroutes/... ./internal/ifmgr/m
 NETNS_GO_VERSION    := $(shell awk '/^go /{print $$2}' go.mod)
 NETNS_RUNNER_IMAGE  := mwan-netns-runner
 NETNS_PROTOCOL_IMAGE := mwan-protocol-runner:$(WANCONFIG_DOCKER_ARCH)
+SYSTEMD_RUNNER_IMAGE := mwan-systemd-runner:$(WANCONFIG_DOCKER_ARCH)
 
 .PHONY: test-netns test-protocol netns-runner-image protocol-runner-image
 ifeq ($(shell uname -s),Darwin)
@@ -505,6 +506,12 @@ protocol-runner-image: wanconfig-builder-image
 	docker build --platform linux/$(WANCONFIG_DOCKER_ARCH) \
 		--build-arg BASE_IMAGE=$(WANCONFIG_BUILDER_IMAGE) \
 		-t $(NETNS_PROTOCOL_IMAGE) tools/netns
+
+.PHONY: systemd-runner-image
+systemd-runner-image: wanconfig-builder-image
+	docker build --platform linux/$(WANCONFIG_DOCKER_ARCH) \
+		--build-arg BASE_IMAGE=$(WANCONFIG_BUILDER_IMAGE) \
+		-t $(SYSTEMD_RUNNER_IMAGE) tools/systemd
 
 test-protocol: protocol-runner-image
 	docker run --rm --privileged --platform linux/$(WANCONFIG_DOCKER_ARCH) \
