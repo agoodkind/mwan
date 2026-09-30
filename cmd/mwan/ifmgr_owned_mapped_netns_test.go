@@ -307,6 +307,8 @@ func runOwnedMappedDaemonRuntime(t *testing.T) {
 	waitStaticRuntimeAddress(t, removed, "enwebpass0", "fd20::1/64", true)
 	assertMappedRuntimeRuleAbsent(t, "ip6", "nat", "2001:db8:beef:700::1")
 	assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"))
+	killOwnedRuntimeDaemon(t, removed)
+	checkRuntimeInternalNPTRelocation(t, gateway, configPath, networkDir, root)
 }
 
 func assertMappedRuntimeRuleAbsent(t *testing.T, family, table, match string) {

@@ -12,7 +12,7 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-// VerifyUnused reads provider and internal policies and verifies current program identities.
+// VerifyUnused inspects current policies and surviving managed attachments before edge release.
 func (translator *Translator) VerifyUnused(indices []int, address netip.Addr, policies []InterfacePolicy) (resultErr error) {
 	defer func() {
 		if resultErr != nil {
@@ -37,7 +37,7 @@ func (translator *Translator) VerifyUnused(indices []int, address netip.Addr, po
 			return err
 		}
 	}
-	return nil
+	return translator.verifySurvivingEdgeReferences(indices, address, desired)
 }
 
 func (translator *Translator) verifyEdgePolicy(index int, address netip.Addr, expected preparedPolicy, configured bool) (resultErr error) {
