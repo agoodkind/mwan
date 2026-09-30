@@ -580,7 +580,7 @@ func (m *Monitor) readSnapshot() (*Snapshot, uint64, error) {
 func (m *Monitor) snapshotRoutes(index int) ([]CurrentRoute, error) {
 	var observed []CurrentRoute
 	for _, family := range []int{unix.AF_INET, unix.AF_INET6} {
-		routes, err := netlink.RouteListFiltered(family,
+		routes, err := listUsableRoutes(family,
 			&netlink.Route{Table: unix.RT_TABLE_UNSPEC}, netlink.RT_FILTER_TABLE)
 		if err != nil {
 			m.log.Warn("monitor: route snapshot failed", "family", family, "err", err)

@@ -3,8 +3,11 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/netip"
 	"os"
@@ -20,6 +23,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
+	"goodkind.io/mwan/internal/netif"
 )
 
 const (
@@ -28,8 +32,17 @@ const (
 )
 
 func TestAutoconfigurationDaemonRuntime(t *testing.T) {
+	runAutoconfigurationTest(t, false)
+}
+
+func TestRadvdAutoconfigurationDaemonRuntime(t *testing.T) {
+	runAutoconfigurationTest(t, true)
+}
+
+func runAutoconfigurationTest(t *testing.T, useRadvd bool) {
+	t.Helper()
 	if os.Getenv(raRuntimeChildEnv) == "1" {
-		runAutoconfigurationDaemonRuntime(t)
+		runAutoconfigurationDaemonRuntime(t, useRadvd)
 		return
 	}
 	if os.Geteuid() != 0 {
@@ -40,7 +53,7 @@ func TestAutoconfigurationDaemonRuntime(t *testing.T) {
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build mwan: %v: %s", err, output)
 	}
-	child := exec.Command(os.Args[0], "-test.run=^TestAutoconfigurationDaemonRuntime$")
+	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
 	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
 	child.Env = append(os.Environ(), raRuntimeChildEnv+"=1", raRuntimeBinaryEnv+"="+binary)
 	if output, err := child.CombinedOutput(); err != nil {
@@ -48,7 +61,7 @@ func TestAutoconfigurationDaemonRuntime(t *testing.T) {
 	}
 }
 
-func runAutoconfigurationDaemonRuntime(t *testing.T) {
+func runAutoconfigurationDaemonRuntime(t *testing.T, useRadvd bool) {
 	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +108,7 @@ func runAutoconfigurationDaemonRuntime(t *testing.T) {
 	if err := netlink.LinkAdd(&netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "peer397", ParentIndex: parent.Attrs().Index}, VlanId: 397}); err != nil {
 		t.Fatal(err)
 	}
-	configureRuntimeLink(t, "peer397", []string{"10.39.7.2/24", "2001:db8:517::1/64"})
+	configureRuntimeLink(t, "peer397", []string{"10.39.7.2/24", "2001:db8:517::1/64", "2001:db8:518::1/128"})
 	setRuntimeNamespace(t, gateway)
 	if err := os.WriteFile("/proc/sys/net/ipv6/conf/all/forwarding", []byte("1"), 0o644); err != nil {
 		t.Fatal(err)
@@ -109,34 +122,184 @@ func runAutoconfigurationDaemonRuntime(t *testing.T) {
 	waitStaticRuntimeAddress(t, daemon, "owned397", "10.39.7.1/24", true)
 	waitAutoconfigurationLinkLocal(t, "owned397")
 	assertStaticRuntimePacket(t, gateway, peer.namespace, "udp4", "10.39.7.2:51701")
+	var observation *ndp.Conn
+	if useRadvd {
+		device, err := net.InterfaceByName("owned397")
+		if err != nil {
+			t.Fatal(err)
+		}
+		observation, _, err = ndp.Listen(device, ndp.LinkLocal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer observation.Close()
+	}
 	setRuntimeNamespace(t, peer.namespace)
 	waitAutoconfigurationLinkLocal(t, "peer397")
-	device, err := net.InterfaceByName("peer397")
-	if err != nil {
-		t.Fatal(err)
-	}
-	conn, _, err := ndp.Listen(device, ndp.LinkLocal)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Close()
-	ra := &ndp.RouterAdvertisement{
-		RouterLifetime: 4 * time.Second,
-		Options: []ndp.Option{&ndp.PrefixInformation{
-			PrefixLength: 64, Prefix: netip.MustParseAddr("2001:db8:517::"),
-			OnLink: true, AutonomousAddressConfiguration: true,
-			PreferredLifetime: 2 * time.Second, ValidLifetime: 8 * time.Second,
-		}},
-	}
-	if err := conn.WriteTo(ra, nil, netip.MustParseAddr("ff02::1")); err != nil {
-		t.Fatal(err)
+	var advertiser *protocolService
+	if useRadvd {
+		advertiser = startAutoconfigurationRadvd(t, root)
+		defer func() {
+			if t.Failed() {
+				content, err := os.ReadFile(advertiser.logPath)
+				t.Logf("radvd log read=%v:\n%s", err, content)
+			}
+			if err := advertiser.command.Process.Signal(syscall.SIGCONT); err != nil {
+				t.Errorf("resume radvd for cleanup: %v", err)
+			}
+			stopProtocolServices(t, []protocolService{*advertiser})
+		}()
+	} else {
+		device, err := net.InterfaceByName("peer397")
+		if err != nil {
+			t.Fatal(err)
+		}
+		conn, _, err := ndp.Listen(device, ndp.LinkLocal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close()
+		ra := &ndp.RouterAdvertisement{
+			RouterLifetime: 4 * time.Second,
+			Options: []ndp.Option{&ndp.PrefixInformation{
+				PrefixLength: 64, Prefix: netip.MustParseAddr("2001:db8:517::"),
+				OnLink: true, AutonomousAddressConfiguration: true,
+				PreferredLifetime: 2 * time.Second, ValidLifetime: 8 * time.Second,
+			}},
+		}
+		if err := conn.WriteTo(ra, nil, netip.MustParseAddr("ff02::1")); err != nil {
+			t.Fatal(err)
+		}
 	}
 	setRuntimeNamespace(t, gateway)
 	waitAutoconfigurationState(t, daemon, link, true, true, false)
 	assertStaticRuntimePacket(t, gateway, peer.namespace, "udp6", "[2001:db8:517::1]:51702")
+	assertStaticRuntimePacket(t, gateway, peer.namespace, "udp6", "[2001:db8:518::1]:51703")
+	defaultGateway, err := netif.IfaceDefaultGateway("inet6", "owned397")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.RouteAdd(&netlink.Route{
+		LinkIndex: link.Attrs().Index, Gw: net.ParseIP(defaultGateway),
+		Family: netlink.FAMILY_V6, Table: 778, Priority: 123, Protocol: unix.RTPROT_STATIC,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if advertiser != nil {
+		childrenPath := fmt.Sprintf("/proc/%d/task/%d/children", advertiser.command.Process.Pid, advertiser.command.Process.Pid)
+		children, err := os.ReadFile(childrenPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("radvd pid=%d children=%s", advertiser.command.Process.Pid, children)
+		if err := observation.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		for {
+			message, _, source, err := observation.ReadFrom()
+			if err != nil {
+				t.Fatal(err)
+			}
+			advertisement, ok := message.(*ndp.RouterAdvertisement)
+			if !ok {
+				continue
+			}
+			t.Logf("radvd advertisement from %s: %#v", source, advertisement)
+			for _, option := range advertisement.Options {
+				if prefix, ok := option.(*ndp.PrefixInformation); ok {
+					t.Logf("radvd prefix: %#v", prefix)
+				}
+			}
+			break
+		}
+		// Freeze the router to test natural expiry without a final withdrawal RA.
+		if err := advertiser.command.Process.Signal(syscall.SIGSTOP); err != nil {
+			t.Fatal(err)
+		}
+	}
 	waitAutoconfigurationState(t, daemon, link, true, false, true)
+	if routes, err := netlink.RouteGet(net.ParseIP("2001:db8:518::1")); !errors.Is(err, unix.ENETUNREACH) {
+		t.Fatalf("expired default still selects external destination: routes=%#v err=%v", routes, err)
+	}
+	assertAutoconfigurationRouteObservations(t, defaultGateway)
 	waitAutoconfigurationState(t, daemon, link, false, false, false)
 	waitStaticRuntimeAddress(t, daemon, "owned397", "10.39.7.1/24", true)
+}
+
+func assertAutoconfigurationRouteObservations(t *testing.T, gateway string) {
+	t.Helper()
+	mainRoutes, err := netif.ListTableRoutes(t.Context(), slog.Default(), "inet6", unix.RT_TABLE_MAIN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, route := range mainRoutes {
+		if route.Protocol == unix.RTPROT_RA && route.Dest == "default" {
+			t.Fatalf("inspection includes expired RA default: %#v", route)
+		}
+	}
+	routes, err := netif.ListTableRoutes(t.Context(), slog.Default(), "inet6", 778)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(routes) != 1 || routes[0].Via != gateway || routes[0].Metric != 123 || routes[0].TableID != 778 {
+		t.Fatalf("permanent provider-table default changed: %#v", routes)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	monitor := netif.NewMonitor(ctx, slog.Default(), netif.MonitorConfig{Iface: "owned397"})
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	for {
+		select {
+		case event, ok := <-monitor.Events:
+			if !ok {
+				t.Fatal("route monitor ended before the initial snapshot")
+			}
+			if event.Kind != netif.EvResync || event.Snapshot == nil {
+				continue
+			}
+			foundPermanent := false
+			for _, route := range event.Snapshot.Routes {
+				if route.TableID == unix.RT_TABLE_MAIN && route.Protocol == unix.RTPROT_RA && route.Dest == "default" {
+					t.Fatalf("snapshot includes expired RA default: %#v", route)
+				}
+				if route.TableID == 778 && route.Via == gateway && route.Metric == 123 {
+					foundPermanent = true
+				}
+			}
+			if !foundPermanent {
+				t.Fatalf("snapshot omitted permanent provider-table default: %#v", event.Snapshot.Routes)
+			}
+			return
+		case <-deadline.C:
+			t.Fatal("route monitor did not publish its initial snapshot")
+		}
+	}
+}
+
+func startAutoconfigurationRadvd(t *testing.T, root string) *protocolService {
+	t.Helper()
+	configPath := filepath.Join(root, "radvd.conf")
+	config := "interface peer397 { AdvSendAdvert on; MinRtrAdvInterval 3; MaxRtrAdvInterval 4; AdvDefaultLifetime 4; prefix 2001:db8:517::/64 { AdvOnLink on; AdvAutonomous on; AdvPreferredLifetime 2; AdvValidLifetime 8; }; };\n"
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(root, "radvd.log")
+	logFile, err := os.Create(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("radvd", "-n", "-m", "stderr", "-d", "5", "-C", configPath, "-p", filepath.Join(root, "radvd.pid"))
+	command.Stdout, command.Stderr = logFile, logFile
+	startError := command.Start()
+	closeError := logFile.Close()
+	if startError != nil {
+		t.Fatalf("start radvd: %v", startError)
+	}
+	if closeError != nil {
+		t.Errorf("close radvd log: %v", closeError)
+	}
+	return &protocolService{name: "radvd", command: command, logPath: logPath}
 }
 
 func writeAutoconfigurationRuntimeNetwork(t *testing.T, directory string) {
@@ -250,17 +413,26 @@ func waitAutoconfigurationState(t *testing.T, daemon *runtimeDaemon, link netlin
 			t.Fatal(err)
 		}
 		lastRoutes = routes
-		foundRoute := false
-		for _, current := range routes {
-			if current.LinkIndex == link.Attrs().Index && current.Dst != nil && current.Dst.String() == "::/0" && current.Priority == 4700 && current.Protocol == unix.RTPROT_RA {
-				foundRoute = true
-			}
+		currentDefault, err := netif.FindMainRADefault(t.Context(), link.Attrs().Name)
+		if err != nil {
+			t.Fatal(err)
 		}
-		if foundAddress == address && foundRoute == route && (!address || foundDeprecated == deprecated) {
+		foundRoute := currentDefault != nil && currentDefault.Metric == 4700
+		defaultGateway, err := netif.IfaceDefaultGateway("inet6", link.Attrs().Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if foundAddress == address && foundRoute == route && (defaultGateway != "") == route && (!address || foundDeprecated == deprecated) {
 			return
 		}
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("kernel RA state mismatch: address=%t route=%t deprecated=%t; addresses=%v routes=%v", address, route, deprecated, lastAddresses, lastRoutes)
+	output, err := exec.Command("ip", "-6", "-json", "route", "show", "table", "main").CombinedOutput()
+	t.Logf("actual route cache: err=%v %s", err, output)
+	defaultGateway, gatewayError := netif.IfaceDefaultGateway("ipv6", link.Attrs().Name)
+	t.Logf("production default gateway: err=%v gateway=%q", gatewayError, defaultGateway)
+	selectedRoutes, selectionError := netlink.RouteGet(net.ParseIP("2001:db8:518::1"))
+	t.Logf("kernel external destination lookup: err=%v routes=%#v", selectionError, selectedRoutes)
+	t.Fatalf("kernel RA state mismatch: address=%t route=%t deprecated=%t; addresses=%#v routes=%#v", address, route, deprecated, lastAddresses, lastRoutes)
 }
