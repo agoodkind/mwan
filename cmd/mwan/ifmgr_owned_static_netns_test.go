@@ -133,6 +133,17 @@ func runOwnedStaticDaemonRuntime(t *testing.T) {
 	}
 	binary := os.Getenv(staticRuntimeBinaryEnv)
 	first := startRuntimeDaemon(t, binary, configPath, root, "static-first")
+	defer func() {
+		if !t.Failed() {
+			return
+		}
+		setRuntimeNamespace(t, gateway)
+		output, commandErr := exec.Command("nft", "list", "ruleset").CombinedOutput()
+		t.Logf("failed packet rules: %s error=%v", output, commandErr)
+		routes, routeErr := netlink.RouteListFiltered(netlink.FAMILY_ALL, &netlink.Route{Table: unix.RT_TABLE_MAIN}, netlink.RT_FILTER_TABLE)
+		t.Logf("failed packet main routes=%v error=%v", routes, routeErr)
+		t.Logf("failed packet public state=%s", read())
+	}()
 	defer killOwnedRuntimeDaemon(t, first)
 	waitRuntimeTable(t, first, "inet", "filter", 10*time.Second)
 	waitStaticRuntimeAddress(t, first, "owned397", "10.39.7.1/24", true)
@@ -340,10 +351,7 @@ func runOwnedStaticDaemonRuntime(t *testing.T) {
 	waitStaticRuntimeAddress(t, third, "owned397", "10.39.7.99/24", true)
 	waitStaticRuntimeRoute(t, third, "ipv4", "10.39.7.3", 402, false)
 	waitStaticRuntimeRoute(t, third, "ipv6", "fd39:7::3", 400, true)
-	promotion, err = os.ReadFile(promotionPath)
-	if err != nil || string(promotion) != "0\n" {
-		t.Fatalf("restored IPv4 promotion: value=%q err=%v", promotion, err)
-	}
+	waitStaticRuntimePromotion(t, third, promotionPath, "0\n")
 	latePeer = newRuntimePeer(t, gateway, "latephys0", "late-peer-new", nil, nil, ownedRuntimeLateMAC)
 	defer latePeer.namespace.Close()
 	setRuntimeNamespace(t, gateway)
@@ -489,6 +497,22 @@ func writeStaticRuntimeNetwork(t *testing.T, directory, ipv4, ipv6, gateway4, ga
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func waitStaticRuntimePromotion(t *testing.T, daemon *runtimeDaemon, path, expected string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	var value []byte
+	var err error
+	for time.Now().Before(deadline) {
+		value, err = os.ReadFile(path)
+		if err == nil && string(value) == expected {
+			return
+		}
+		assertRuntimeDaemonRunning(t, daemon)
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("IPv4 promotion: value=%q expected=%q err=%v", value, expected, err)
 }
 
 func waitStaticRuntimeSelection(t *testing.T, daemon *runtimeDaemon, read func() string) {
