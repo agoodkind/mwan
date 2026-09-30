@@ -364,7 +364,8 @@ func writeInterfaceConfig(
 	for id, provider := range loaded.WAN {
 		tables[connectionid.ID(id)] = provider.TableID
 	}
-	retiring, err := networkd.ObsoleteLinkFiles(networkd.DefaultUnitDir, loaded.Connections, tables)
+	preserveStatic := networkdNPTPreservation(loaded)
+	retiring, err := networkd.ObsoleteLinkFiles(networkd.DefaultUnitDir, loaded.Connections, tables, preserveStatic)
 	if err != nil {
 		log.ErrorContext(ctx, "ifmgr: obsolete networkd name inspection failed", "err", err)
 		return nil, fmt.Errorf("inspect obsolete networkd names: %w", err)
@@ -373,7 +374,7 @@ func writeInterfaceConfig(
 		log.ErrorContext(ctx, "ifmgr: owned link name validation failed", "err", err)
 		return nil, fmt.Errorf("validate owned link names: %w", err)
 	}
-	rejections, err := writeNetworkConfig(ctx, log, loaded, tables)
+	rejections, err := writeNetworkConfig(ctx, log, loaded, tables, preserveStatic)
 	if err != nil {
 		return rejections, err
 	}
@@ -389,12 +390,13 @@ func writeNetworkConfig(
 	log *slog.Logger,
 	loaded *networkjson.Config,
 	tables map[connectionid.ID]int,
+	preserveStatic map[connectionid.ID]bool,
 ) ([]networkjson.Rejection, error) {
 	if loaded == nil {
 		return nil, nil
 	}
 
-	changed, err := networkd.WriteDir(networkd.DefaultUnitDir, loaded.Connections, tables)
+	changed, err := networkd.WriteDir(networkd.DefaultUnitDir, loaded.Connections, tables, preserveStatic)
 	if err != nil {
 		log.ErrorContext(ctx, "ifmgr: writing networkd unit files failed",
 			"dir", networkd.DefaultUnitDir, "err", err)

@@ -89,7 +89,7 @@ func renderedNetworkdFixture(t *testing.T) (string, string) {
 		tables[connectionid.ID(id)] = provider.TableID
 	}
 	directory := t.TempDir()
-	if _, err := networkd.WriteDir(directory, loaded.Connections, tables); err != nil {
+	if _, err := networkd.WriteDir(directory, loaded.Connections, tables, networkdNPTPreservation(loaded)); err != nil {
 		t.Fatal(err)
 	}
 	return path, directory
