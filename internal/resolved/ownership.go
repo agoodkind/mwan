@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -191,7 +190,7 @@ func (o *Ownership) Reconcile(ctx context.Context, intents []Intent) error {
 		failures = append(failures, err)
 	}
 	if err := errors.Join(failures...); err != nil {
-		return failure("reconcile resolver fields", err)
+		return err
 	}
 	return nil
 }
@@ -224,8 +223,7 @@ func (o *Ownership) applyRecord(ctx context.Context, c *client, value *record, i
 	dnsErr := reconcileField(o, value, &value.DNS, intent.DNS, func() ([]DNS, error) { return c.dns(ctx, value.Index) }, func(values []DNS) error { return c.setDNS(ctx, value.Index, values) })
 	domainsErr := reconcileField(o, value, &value.Domains, intent.Domains, func() ([]Domain, error) { return c.domains(ctx, value.Index) }, func(values []Domain) error { return c.setDomains(ctx, value.Index, values) })
 	if err := errors.Join(dnsErr, domainsErr); err != nil {
-		slog.WarnContext(ctx, "resolved: link apply failed", "interface", value.Name, "err", err)
-		return fmt.Errorf("resolver fields: %w", err)
+		return err
 	}
 	return nil
 }

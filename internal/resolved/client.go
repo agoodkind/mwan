@@ -117,6 +117,6 @@ func (c *client) setDomains(ctx context.Context, index int, values []Domain) err
 }
 
 func failure(operation string, err error) error {
-	slog.Warn("resolved: "+operation+" failed", "err", err)
+	slog.Warn("resolver operation failed", "operation", operation, "result", "failed")
 	return fmt.Errorf("%s: %w", operation, err)
 }
