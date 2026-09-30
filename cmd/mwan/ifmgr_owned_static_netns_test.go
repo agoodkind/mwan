@@ -216,6 +216,11 @@ func runOwnedStaticDaemonRuntime(t *testing.T) {
 	setRuntimeNamespace(t, gateway)
 	selection, selectionErr := exec.Command("nft", "list", "chain", "inet", "mwan_steer", "prerouting").CombinedOutput()
 	t.Logf("initial IPv4 packet selection: %s error=%v public state=%s", selection, selectionErr, read())
+	for _, path := range []string{"/proc/sys/net/ipv4/ip_forward", "/proc/sys/net/ipv4/conf/all/rp_filter", "/proc/sys/net/ipv4/conf/enmwanbr0/rp_filter", "/proc/sys/net/ipv4/conf/all/src_valid_mark"} {
+		value, readErr := os.ReadFile(path)
+		t.Logf("initial IPv4 packet setting %s=%q error=%v", path, value, readErr)
+	}
+	defer captureStaticRuntimeFailure(t)()
 	assertStaticRuntimePacket(t, lan.namespace, parentPeer.namespace, "udp4", "10.39.9.2:39703")
 	setRuntimeNamespace(t, gateway)
 	if err := netlink.RouteDel(&configuredRoute); err != nil {
@@ -746,6 +751,30 @@ func waitConfiguredRuntimeRoute(t *testing.T, daemon *runtimeDaemon, destination
 	}
 	t.Fatalf("configured route %s absent: %s", destination, runtimeLogTail(t, daemon, 40))
 	return netlink.Route{}
+}
+
+func captureStaticRuntimeFailure(t *testing.T) func() {
+	t.Helper()
+	protocol := uint16(unix.ETH_P_ALL<<8 | unix.ETH_P_ALL>>8)
+	fd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, int(protocol))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return func() {
+		defer unix.Close(fd)
+		if !t.Failed() {
+			return
+		}
+		for range 128 {
+			packet := make([]byte, 1600)
+			count, source, receiveErr := unix.Recvfrom(fd, packet, unix.MSG_DONTWAIT)
+			if receiveErr != nil {
+				t.Logf("packet capture ended: %v", receiveErr)
+				return
+			}
+			t.Logf("gateway packet source=%+v frame=%x", source, packet[:count])
+		}
+	}
 }
 
 func assertStaticRuntimePacket(t *testing.T, gateway, peer netns.NsHandle, network, destination string) {
