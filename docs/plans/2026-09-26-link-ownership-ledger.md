@@ -2787,6 +2787,50 @@ Physical preparation continues from the corrected frozen attempt4 helpers.
 Restart and cold-baseline phases require explicit acceptance before any
 complete-transfer claim. No shared deployment occurred.
 
+### Accept the exact published public battery
+
+Signed `80338d2d` passed all three public cases with zero failures and zero
+skips in 106.84 seconds against the read-only published `c257200` executable.
+Pre/post source and binary hashes matched. Both families, mapping replies,
+actual restart, compressed history, interruption, stopped-observer rejection
+and strict history deadline controls passed. The private runner was removed.
+The supported hostname mapping eliminated the measured post-transfer DNS delay
+without modifying request arguments or deadlines. This proves isolated public
+acceptance, not physical transfer, shared balancing or backup gateway failover.
+
+The PR #573 updater-path finding was disproved: its absent-path guard precedes
+the cleanup ownership assignment, and teardown requires that assignment.
+The evidence reply and thread resolution passed. Every required check was green
+when Graphite merge preview succeeded. Graphite then started merging PR #573
+and PR #575; staging checks remain pending. The physical attempt5 runs the
+bounded forward/reverse and restart sequence. Its separate contract review
+requires executed physical identity, protocol identity, scoped journal lifecycle,
+concurrent provider continuity and cold-baseline assertions before complete
+physical acceptance. The verified historical `2587f14` executable supplies the
+pre-authority writer baseline, subject to its actual loader/runtime validation.
+
+### Verify acceptance stack merge and physical transfer
+
+Graphite merged Configs PR #573 as `74bee79ecc388f91f4a8a155f42109845d6160ef`
+at 21:44:30 UTC and PR #575 as `566d58350f550ed6ec1474fb41937644a20b0a57`
+at 21:47:30 UTC on September 30. Every required check passed. The clean
+Configs main checkout fast-forwarded to the latter merge.
+
+Physical attempt5 passed eight source-bound IPv4/IPv6 phases, actual MWAN
+service restart and networkd reacquisition. All 21 captures reported zero
+drops and equal captured/decoded counts. Both ten-second release windows
+contained zero target DHCP packets. Provider A's edge and scoped receipt
+were removed; provider B's receipt remained unchanged. Protocol identities
+matched baseline, acquisition, restart and reacquisition captures.
+The guests shut down gracefully. Cold recovery, provider B packets during
+the silence windows and exact effective guest capability readback remain
+required. No shared testbed or production deployment occurred.
+
+Tack MWAN-522 and MWAN-532 received current evidence and actual In Progress
+state updates. Raw MWAN-522 properties exceeded the tool's 32 KB response
+limit; the existing description was preserved and new evidence was posted
+as a separate comment. The ergonomic issue read confirmed In Progress.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
