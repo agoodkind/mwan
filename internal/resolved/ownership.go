@@ -197,11 +197,13 @@ func (o *Ownership) Reconcile(ctx context.Context, intents []Intent) error {
 }
 
 func (o *Ownership) retireMissingLinks() error {
+	modified := false
 	for id, value := range o.state.Links {
 		link, err := netlink.LinkByIndex(value.Index)
 		var absent netlink.LinkNotFoundError
 		if errors.As(err, &absent) {
 			delete(o.state.Links, id)
+			modified = true
 			continue
 		}
 		if err != nil {
@@ -209,9 +211,13 @@ func (o *Ownership) retireMissingLinks() error {
 		}
 		if link.Attrs().Name != value.Name || !netif.LinkMatchesIdentity(link, value.Index, value.Identity) {
 			delete(o.state.Links, id)
+			modified = true
 		}
 	}
-	return o.save()
+	if modified {
+		return o.save()
+	}
+	return nil
 }
 
 func (o *Ownership) applyRecord(ctx context.Context, c *client, value *record, intent Intent) error {

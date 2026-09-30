@@ -204,7 +204,18 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	}
 	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-cleanup-only")
 	waitStaticRuntimeLog(t, daemon, `"phase":"initial-reconcile","module":"resolver"`)
-	for _, name := range []string{"resolver-bootstrap", "resolver-first", "resolver-ipv6-only", "resolver-restart", "resolver-dns-remove", "resolver-domains-remove", "resolver-remove", "resolver-external-control", "resolver-external-preserve", "resolver-prune", "resolver-cleanup-only"} {
+	killOwnedRuntimeDaemon(t, daemon)
+	emptyJournal := filepath.Join(root, "resolver-empty.json")
+	if err := os.WriteFile(configPath, []byte(strings.Replace(cleanupConfig, filepath.Join(root, "resolver.json"), emptyJournal, 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-empty-cleanup")
+	waitStaticRuntimeLog(t, daemon, `"phase":"periodic-reconcile","module":"resolver"`)
+	killOwnedRuntimeDaemon(t, daemon)
+	if _, err := os.Stat(emptyJournal); !os.IsNotExist(err) {
+		t.Errorf("empty cleanup created a resolver journal: %v", err)
+	}
+	for _, name := range []string{"resolver-bootstrap", "resolver-first", "resolver-ipv6-only", "resolver-restart", "resolver-dns-remove", "resolver-domains-remove", "resolver-remove", "resolver-external-control", "resolver-external-preserve", "resolver-prune", "resolver-cleanup-only", "resolver-empty-cleanup"} {
 		data, err := os.ReadFile(filepath.Join(root, name+".log"))
 		if err != nil {
 			t.Fatal(err)
