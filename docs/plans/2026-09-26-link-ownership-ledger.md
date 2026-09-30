@@ -64,7 +64,7 @@ No interface-owner cutover has begun.
 | MWAN-398 | 398-static; 398-mapped-addresses; 398-dhcpv4 | MWAN PRs #89, #91, and #95 through #99 merged static, mapped/NPT, and DHCPv4 ownership code. The combined release passed testbed and production deployment. Live providers remain under networkd, so owned acquisition and transfer acceptance remain. Tack records In Progress. |
 | MWAN-227 | 227-delegation | Client code merged; live acceptance pending. |
 | MWAN-517 | 517-autoconfiguration; 517-dhcpv6 | DHCPv6 code and inactive release passed testbed and production deployment. Live ownership acceptance remains. Tack records In Progress. |
-| MWAN-518 | 518-restart | [MWAN PR #117](https://github.com/agoodkind/mwan/pull/117) merged DHCPv4 restart validation as `c51c063060b4d1252db5c36f6578cf519d4c6e42`. [MWAN PR #118](https://github.com/agoodkind/mwan/pull/118) merged the durable lease store as `63cbe758258c97326dfff6c2533e41d58770a890`. [MWAN PR #120](https://github.com/agoodkind/mwan/pull/120) merged DHCPv6 restart validation as `eae8f3c8fb4806cc739e0e2508c86815144a3bf2`. Daemon integration and live acceptance remain. Tack records In Progress. |
+| MWAN-518 | 518-restart | [MWAN PR #117](https://github.com/agoodkind/mwan/pull/117) merged DHCPv4 restart validation as `c51c063060b4d1252db5c36f6578cf519d4c6e42`. [MWAN PR #118](https://github.com/agoodkind/mwan/pull/118) merged the durable lease store as `63cbe758258c97326dfff6c2533e41d58770a890`. [MWAN PR #120](https://github.com/agoodkind/mwan/pull/120) merged DHCPv6 restart validation as `eae8f3c8fb4806cc739e0e2508c86815144a3bf2`. [MWAN PR #121](https://github.com/agoodkind/mwan/pull/121) implements daemon integration and remains under review. Release deployment, daemon restart, downstream traffic, and live acceptance remain. Tack records In Progress. |
 | MWAN-505 | 505-route-repair | [MWAN PR #52](https://github.com/agoodkind/mwan/pull/52) merged as `18941243f1e8fa3d5623a04440e4d90de796d1f4`. Namespace packet tests and live testbed route and rule deletion checks passed. The release passed production deployment and downstream acceptance. |
 | MWAN-521 | 521-configuration; 521-deployment | [Configs PR #527](https://github.com/agoodkind/configs/pull/527) moved MAC discovery before rendering. [Configs PR #558](https://github.com/agoodkind/configs/pull/558) rendered explicit connection IDs and networkd ownership. Configs PRs #559 and #560 pinned and deployed the combined release to testbed and production. Complete role rendering and live transfer remain. |
 | MWAN-522 | 522-acceptance | The daemon runner and simulator timing merged. Seven DHCPv4 and four DHCPv6 real-server scenarios passed. Restart, assembled protocol, and live ownership acceptance remain. Tack records In Progress. |
@@ -79,8 +79,8 @@ No interface-owner cutover has begun.
 MWAN-524 restored Astound as a managed testbed connection. Link management,
 owned DHCPv4, kernel IPv6 policy, and the shared DHCPv6 client passed code
 checks. Their inactive releases passed testbed and production deployment
-without transferring a live provider. MWAN-518 restart recovery is now in
-implementation. The first live transfer still requires real daemon restart
+without transferring a live provider. MWAN-518 restart recovery is implemented
+in PR #121 and awaits merge and deployment. The first live transfer still requires real daemon restart
 acceptance and downstream validation. Keep networkd on AT&T until retirement
 is confirmed.
 
@@ -1504,9 +1504,11 @@ docker run --rm --privileged --platform linux/arm64 -v "$PWD":/src -w /src -v mw
 Independent review found and the integration branch corrected DHCPv6
 retransmission after a silent server, per-association expiry retention,
 unconfigured WAN record pruning, recovery event ordering, OOB expiry cleanup,
-and status after rejected records or failed deletion. The latest read-only
-review found no remaining defect in those fixes. The integration branch has
-not merged or deployed. No testbed guest reboot, downstream traffic battery,
+and status after rejected records or failed deletion. PR #121 review found
+that a startup expiry could withdraw a journaled DHCPv4 assignment before
+recovery completed. Both DHCPv4 role modules now ignore that synthetic event;
+their namespace lifecycle tests verify the saved address and route remain.
+The integration branch has not merged or deployed. No testbed guest reboot, downstream traffic battery,
 production deploy, or live provider owner transfer has occurred for this
 integration.
 
