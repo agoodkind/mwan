@@ -42,7 +42,7 @@ func TestOwnedDHCPv6PDRejectsInformationRequest(t *testing.T) {
 	directory := t.TempDir()
 	writeDHCPv6PDRuntimeNetwork(t, directory, "information-request")
 	_, err := networkjson.Load(filepath.Join(directory, "network.json"), filepath.Join("..", "..", "internal", "yangpub", "schema"))
-	if err == nil || !strings.Contains(err.Error(), "without-ra information-request cannot acquire an IA_PD prefix") {
+	if err == nil || !strings.Contains(err.Error(), "without-ra information-request cannot acquire an IA_NA address or IA_PD prefix") {
 		t.Fatalf("information-request rejection = %v", err)
 	}
 }
@@ -235,7 +235,7 @@ func runOwnedDHCPv6PDDaemonRuntime(t *testing.T, waitForRA bool) {
 
 func waitDHCPv6RuntimePreferredDeadline(t *testing.T, daemon *runtimeDaemon) {
 	t.Helper()
-	const reason = `"reason":"dhcpv6 delegation changed"`
+	const reason = `"reason":"dhcpv6 assignment changed"`
 	initial := strings.Count(runtimeDaemonLog(t, daemon), reason)
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
