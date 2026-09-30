@@ -52,7 +52,9 @@ the primary stopped advertising Graceful Restart and waited for forwarding
 readiness before announcing either default.
 MWAN-516 state publication merged and passed testbed and production acceptance.
 The served ownership state remains observational while networkd owns the links.
-No interface-owner cutover has begun.
+No shared testbed or production interface-owner cutover has begun. The published
+`bb4d1c5` release passed isolated IPv4 forward and reverse transfer on real
+virtio interfaces. IPv6 transfer and complete downstream acceptance remain.
 
 | Ticket | Slices | Current execution state |
 | --- | --- | --- |
@@ -64,10 +66,10 @@ No interface-owner cutover has begun.
 | MWAN-398 | 398-static; 398-mapped-addresses; 398-dhcpv4 | MWAN PRs #89, #91, and #95 through #99 merged static, mapped/NPT, and DHCPv4 ownership code. The combined release passed testbed and production deployment. Live providers remain under networkd, so owned acquisition and transfer acceptance remain. Tack records In Progress. |
 | MWAN-227 | 227-delegation | Client code merged; live acceptance pending. |
 | MWAN-517 | 517-autoconfiguration; 517-dhcpv6 | DHCPv6 code and inactive release passed testbed and production deployment. Live ownership acceptance remains. Tack records In Progress. |
-| MWAN-518 | 518-restart | [MWAN PR #117](https://github.com/agoodkind/mwan/pull/117) merged DHCPv4 restart validation as `c51c063060b4d1252db5c36f6578cf519d4c6e42`. [MWAN PR #118](https://github.com/agoodkind/mwan/pull/118) merged the durable lease store as `63cbe758258c97326dfff6c2533e41d58770a890`. [MWAN PR #120](https://github.com/agoodkind/mwan/pull/120) merged DHCPv6 restart validation as `eae8f3c8fb4806cc739e0e2508c86815144a3bf2`. [MWAN PR #121](https://github.com/agoodkind/mwan/pull/121) merged daemon integration as `5666b3dd`. Release `202609300154-76-5666b3d` passed testbed deployment, downstream traffic, balancing, and restart handover under the merged Configs #567 pin `23cd8f14`. Recovery clock correction, released-binary protocol acceptance, production promotion, and live ownership acceptance remain. Tack records In Progress. |
+| MWAN-518 | 518-restart | [MWAN PR #117](https://github.com/agoodkind/mwan/pull/117) merged DHCPv4 restart validation as `c51c063060b4d1252db5c36f6578cf519d4c6e42`. [MWAN PR #118](https://github.com/agoodkind/mwan/pull/118) merged the durable lease store as `63cbe758258c97326dfff6c2533e41d58770a890`. [MWAN PR #120](https://github.com/agoodkind/mwan/pull/120) merged DHCPv6 restart validation as `eae8f3c8fb4806cc739e0e2508c86815144a3bf2`. [MWAN PR #121](https://github.com/agoodkind/mwan/pull/121) merged daemon integration as `5666b3dd`. Release `202609300154-76-5666b3d` passed testbed deployment, downstream traffic, balancing, and restart handover under the merged Configs #567 pin `23cd8f14`. The clock correction and executable selector merged; five published-release recovery cases passed in isolation on VM 213. Production promotion and live ownership acceptance remain. Tack records In Progress. |
 | MWAN-505 | 505-route-repair | [MWAN PR #52](https://github.com/agoodkind/mwan/pull/52) merged as `18941243f1e8fa3d5623a04440e4d90de796d1f4`. Namespace packet tests and live testbed route and rule deletion checks passed. The release passed production deployment and downstream acceptance. |
-| MWAN-521 | 521-configuration; 521-deployment | [Configs PR #527](https://github.com/agoodkind/configs/pull/527) moved MAC discovery before rendering. [Configs PR #558](https://github.com/agoodkind/configs/pull/558) rendered explicit connection IDs and networkd ownership. Configs PRs #559 and #560 pinned and deployed the combined release to testbed and production. Complete role rendering and live transfer remain. |
-| MWAN-522 | 522-acceptance | The daemon runner and simulator timing merged. Seven DHCPv4 and four DHCPv6 real-server scenarios passed. Restart, assembled protocol, and live ownership acceptance remain. Tack records In Progress. |
+| MWAN-521 | 521-configuration; 521-deployment | [Configs PR #527](https://github.com/agoodkind/configs/pull/527) moved MAC discovery before rendering. [Configs PR #558](https://github.com/agoodkind/configs/pull/558) rendered explicit connection IDs and networkd ownership. Configs PRs #559 and #560 passed testbed and production deployment. Complete role rendering merged in Configs #569. Configs #570 activation remains open after three corrected fixture cases passed independently. Isolated physical IPv4 transfer passed; shared testbed transfer remains. Tack records In Progress. |
+| MWAN-522 | 522-acceptance | Isolated IPv4 passed; shared acceptance remains. |
 | MWAN-519 | 519-first-connection | Execution has not started. |
 | MWAN-399 | 399-remaining-connections | Execution has not started. |
 | MWAN-400 | 400-retirement | Execution has not started. |
@@ -83,10 +85,12 @@ without transferring a live provider. MWAN-518 restart recovery merged
 in PR #121. Its testbed deployment passed after an SSH failure. Downstream
 traffic and primary-to-backup handover passed during restart and reboot.
 Released-binary recovery checks exposed insufficient recovery clock precision.
-The clock correction and released-binary test harness remain unmerged.
-Production promotion and the first live transfer require accepted recovery
-checks and downstream validation. Keep networkd on AT&T until retirement
-is confirmed.
+The clock correction and released-binary test harness merged, and five
+published-release recovery cases passed in isolated namespaces on VM 213.
+The published `bb4d1c5` release passed physical IPv4 forward and reverse
+transfer in isolated QEMU guests. Complete role activation, aggregate protocol
+execution, IPv6 transfer and shared downstream validation remain required
+before production promotion. Keep networkd on AT&T until retirement is confirmed.
 
 For every handoff, record the slice, agent responsibility, exact source
 revision, agreed interfaces, owned files, current PR, last passing check,
@@ -1635,7 +1639,8 @@ subprocesses. Native client 225 passed the OOB cases but denied the eBPF
 operations required by the WAN cases, including with unlimited locked
 memory. VM 213 passed those cases with unlimited locked memory and the
 private runtime mounts. These results establish isolated process recovery.
-The live gateway still runs `5666b3d` with networkd-owned providers.
+At that recovery checkpoint, the live gateway ran `5666b3d` with
+networkd-owned providers.
 Installed-service deployment, reboot validation, provider transfer, and
 production promotion remain separate acceptance requirements.
 
@@ -1677,37 +1682,113 @@ The scanner and dependency remain unchanged. Evidence:
 `20260930-link-naming-fix/ci-evidence-verdict.md`.
 
 [Route expiry PR #138](https://github.com/agoodkind/mwan/pull/138)
-is at signed `18c1d346c87df55127ac2898f7fcf6f3663e20e1`.
-Independent final raw-NDP and radvd daemon tests passed in 22.751 seconds.
+remains open at signed `efde596b018ed2dab06d73690637180d4feb65d7`.
+The earlier `18c1d346` raw-NDP and radvd daemon tests passed in 22.751 seconds.
 Reverting gateway, monitor, and inspection filtering separately failed the
 intended public assertions. Review found that the first inspection control
 checked only a permanent provider route; the final fixture also rejects
 expired main-table RA defaults. Permanent routes, multipath observation,
 and live RA-default deletion passed. The full author ARM64 project gates
 passed before the final assertion. Independent review accepted the final
-source; refreshed CI and merge remain pending. Evidence:
-`20260930-radvd-autoconfiguration/independent-review.md`.
+source. After integration with merged `bb4d1c5`, both daemon tests passed
+in 22.965 seconds. The complete ordered startup and naming fixture passed
+in 6.577 seconds. The integrated merge tree matched the reviewed source.
+One disputed Graphite thread remains open; merge and deployment remain pending.
+The [independent route review](/Users/agoodkind/.local/state/mwan305/20260930-radvd-autoconfiguration/independent-review.md)
+preserves the controls and the first runner's missing-udev prerequisite failure.
 
 [Configs PR #570](https://github.com/agoodkind/configs/pull/570)
-remains open at signed `dc2a4cae5dc5c2de1845e15ca661df52bbb4ad7a`.
-The earlier independent 11-case run passed at `59bc0301`. The final source
+remains open at signed `21006a9ae7f2cdfe24e37026311cc209a87a8996`.
+The earlier independent 11-case run passed at `59bc0301`. Commit `dc2a4cae`
 extracts duplicated fixture configuration. Two independent three-case runs
 each failed first-install and restoration at unchanged 120-second whole-play
 deadlines; recovery diagnosis passed. A quiet repetition still failed.
-Task and transport timing diagnosis is active. Final-source acceptance is
-incomplete. Evidence: `20260930-role-activation/independent-review.md`.
+The transport control reduced first-install Docker exec calls from 214 to 98.
+Commit `21006a9a` enables pipelining only in the Docker fixture inventory.
+The three affected cases then passed independently in 218.2 seconds with
+`ANSIBLE_PIPELINING` explicitly unset and unchanged 120-second play deadlines.
+The [final activation evidence](/Users/agoodkind/.local/state/mwan305/20260930-role-activation/final210-acceptance.md)
+records the root session's final output; its complete transcript is unavailable.
+The duplicate-configuration thread is resolved. Two disputed review threads
+remain open. No merge or revised deployment occurred.
 
-The downstream harness is frozen at signed Configs commit
+The original downstream harness used signed Configs commit
 `48c51ee4c8f063366b8e1d8d1fa458f6d5fc0bb9`. Its actual Linux public suite
 passed three examples in 80.99 seconds, including packet mapping, restart
 history, SIGINT cleanup, and premature observer termination. Project RSpec
 passed 186 examples with four explicit skips; lint passed. Independent
-review, actual Proxmox client identity, and unequal provider weights remain
-unaccepted. Evidence: `20260930-downstream-harness/validation.md`.
+review passed three real public cases in 80.86 seconds and additional controls.
+A later live read found 2,464 compressed product log archives. A real archive
+had gzip signature `1f 8b` and passed integrity validation. The original reader
+used plain `cat` and checked its history deadline only after reading all files.
+The earlier plaintext rotation fixture missed this defect.
 
-No correction above has a live deployment acceptance result. Physical
-forward and reverse transfer, complete downstream testbed acceptance, and
-production promotion remain required. MWAN-521 and MWAN-522 remain In Progress.
+The mechanical library extraction at signed
+`1e53f44b6595b318bbbb1e9729b1fd0e0a3d945f` preserved all 32 parsed declarations.
+The [independent comparison](/Users/agoodkind/.local/state/mwan305/20260930-downstream-harness/refactor-static-review.md)
+also verified unchanged command and public fixture bytes; its deliberate
+TERM-argument change failed the comparison control.
+
+[Configs PR #571](https://github.com/agoodkind/configs/pull/571) corrects gzip
+reading, history-window selection and the overall observation budget.
+Signed `c5d17e7e51d48e7e2446fd11aded1f40b83db6c4` passed three public cases
+in 95.47 seconds, including actual daemon log rotation and compression after
+restart and the one-second history-budget failure control. RuboCop passed
+for nine files and `./configsctl lint` passed. The
+[history verification](/Users/agoodkind/.local/state/mwan305/20260930-downstream-harness/history-c5-verification.md)
+records exact commands, retained artifacts and the unavailable complete terminal
+transcript. Signed follow-up `2c19eeebd8c1cbeee5750ef7e1437969f6288186`
+replaces dynamic assignments with eight explicit plan-field assignments.
+Its RuboCop check passed. Final independent review and negative controls remain
+pending. Actual Proxmox harness execution, unequal provider distribution and
+shared downstream acceptance remain unaccepted.
+
+### MWAN-522 physical IPv4 transfer, September 30, 2026
+
+Published release `202609301143-84-bb4d1c5` passed forward and reverse IPv4
+transfer on two fresh isolated QEMU guests with real virtio interfaces and Kea.
+All four release archives matched published checksums and asset digests;
+attestations included exact merged source
+`bb4d1c5d547d4e776ec11e1f49ecca25ed2590a8`. The guest reported that clean
+source and ARM64 binary SHA256
+`44de93576083f7cc8b73abe123b1cd55ededc553e86bbf0cadcbcf9b4fc9aaef`.
+
+Membership withdrawal preserved the selected physical link and acquisition
+while downstream requests used the second provider. Networkd release removed
+the target's IPv4 addresses and routes. MWAN then acquired the same address
+with the preserved DHCP client identifier. Reverse release stopped the client,
+emptied address, promotion and kernel journals, and restored prior kernel
+policy before networkd reacquisition. Every recorded downstream request passed.
+The unrelated provider received five requests during the transition phases.
+
+The baseline, MWAN and reacquired captures contained two, three and three
+target requests with exact option 61 `01:52:54:00:52:20:01`. Each ten-second
+released interval contained zero target DHCP packets. All five captures
+reported zero kernel drops. Both guests synchronized, powered off gracefully
+and exited with status zero. The
+[physical transfer verdict](/Users/agoodkind/.local/state/mwan305/20260930-exclusive-release-bb4d1c5/qemu-virtio/transfer-verdict.md)
+preserves commands and artifacts. This result establishes this IPv4 transfer
+configuration; it does not establish IPv6 transfer, load distribution or
+continuous delivery between the recorded requests. No shared guest changed.
+
+### MWAN-522 aggregate protocol gap, September 30, 2026
+
+The source audit at merged `6f415f49e8667328f327130770e75af72e608ee3`
+found that `make test-protocol` executes only bootstrap. The required source
+contains 21 namespace cases and two separate opted-in systemd cases. Only
+nine cases use the explicit released-binary selector. The
+[protocol target audit](/Users/agoodkind/.local/state/mwan305/20260930-protocol-target-audit/audit.md)
+records the exact selectors, prerequisites and required execution changes.
+Aggregate execution and consistent released-binary selection are under
+implementation; no passing aggregate result exists at this checkpoint.
+
+MWAN-521 and MWAN-522 descriptions in Tack include this evidence. Both remain
+In Progress. The attempted UUID state-field update was rejected; the
+description-only retry passed without changing state or other properties.
+
+No correction above has a revised shared deployment acceptance result.
+IPv6 physical transfer, complete downstream testbed acceptance and production
+promotion remain required. Production is unchanged.
 
 ## Record future implementation results
 
