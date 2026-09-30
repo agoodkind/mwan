@@ -2930,6 +2930,37 @@ process reaping and absent capture PIDs. No translation defect was demonstrated.
 The admin HTTP endpoint also redirects to HTTPS. A deliberately permitted
 stable HTTP endpoint remains required. No GUI exposure or PF change occurred.
 
+### Preserve the configured edge across physical owner changes
+
+The isolated physical test passed with exit 0 using signed source 56e87533.
+All 14 source-bound IPv4 and IPv6 replies passed the original deadlines.
+The configured edge 2001:db8:30::1/128 and exact scoped receipt remained
+unchanged across networkd release, MWAN acquisition, external release, and
+networkd return. The continuous address observer recorded no event for that
+edge and no observation error. Generated networkd configuration contained
+KeepConfiguration=static without fixture insertion.
+
+Seven strict captures recorded 664 packets. Captured, decoded, and received
+counts matched; every kernel drop counter was zero. The separate ring control
+recorded 40 complete packets with zero drops. Both QEMU guests powered off
+normally with exit 0. The executable matched the previously recorded static
+ARM64 hash. This proves the focused physical transition, not release
+publication, cold boot, or a deployment outage bound.
+
+PR #145 now contains signed head ab7005cbc1ab5b233a2e06e73e22dbfc135e284a.
+The follow-up removes duplicate helper logging and constructs the unchanged
+interface-qualified validation error before returning it. Existing package
+tests and every blocking make check gate passed. The typed-map review finding
+received an evidence reply and resolution. The valid logging finding received
+a verified fix reply and resolution. Required CI checks and independent
+follow-up review remain pending. No shared daemon or production deployment
+occurred. MWAN-533 remains In Progress pending release and live acceptance.
+
+The mapping fixture still requires a deliberately permitted HTTP endpoint.
+The expected /cf_check service on port 1406 is absent from testbed OPNsense.
+Its configuration path requires inspection before a focused repair. The
+admin HTTP firewall restriction remains active.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
