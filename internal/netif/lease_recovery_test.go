@@ -152,26 +152,60 @@ func TestLeaseRecoveryClockElapsed(t *testing.T) {
 	}
 }
 
-func savePruneTestRecord(t *testing.T, store *LeaseRecoveryStore, connectionID string, protocol LeaseProtocol) string {
+func savePruneTestRecord(t *testing.T, store *LeaseRecoveryStore, link *net.Interface, connectionID string, protocol LeaseProtocol) string {
 	t.Helper()
-	path, err := store.leaseStore(connectionID, protocol)
+	before, err := os.ReadDir(store.directory)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			t.Fatal(err)
+		}
+	}
+	previous := make(map[string]bool, len(before))
+	for _, entry := range before {
+		previous[entry.Name()] = true
+	}
+	now := time.Now()
+	switch protocol {
+	case LeaseProtocolDHCPv4:
+		lease := LeaseInfo{
+			State: LeaseBound, LinkHardwareAddr: link.HardwareAddr,
+			IP: net.IPv4(192, 0, 2, 8), PrefixLen: 24, LeaseTime: time.Hour,
+			AcquiredAt: now, ExpiresAt: now.Add(time.Hour),
+		}
+		err = store.SaveDHCPv4(connectionID, link.Name, []byte{1, 2, 3}, lease)
+	case LeaseProtocolDHCPv6:
+		lease := DHCPv6PDLease{
+			LinkName: link.Name, LinkHardwareAddr: link.HardwareAddr,
+			DUID: []byte{0, 3, 0, 1, 2, 0, 0, 0, 0, 1}, IAID: 7,
+			ServerID:   []byte{0, 3, 0, 1, 2, 0, 0, 0, 0, 2},
+			AcquiredAt: now, RenewAt: now.Add(30 * time.Minute), RebindAt: now.Add(45 * time.Minute),
+			RequestPrefix: true, Prefixes: []DelegatedPrefix{{
+				Prefix:         netip.MustParsePrefix("2001:db8:1::/56"),
+				PreferredUntil: now.Add(50 * time.Minute), ValidUntil: now.Add(time.Hour),
+			}},
+		}
+		err = store.SaveDHCPv6(connectionID, lease)
+	default:
+		t.Fatalf("unsupported protocol %s", protocol)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
-	record := LeaseRecord{
-		ConnectionID: connectionID, Protocol: protocol, InterfaceName: "wan0",
-		LinkHardwareAddr: net.HardwareAddr{2, 0, 0, 0, 0, 1},
-		ProtocolIdentity: []byte{1, 2, 3},
-		Clock:            LeaseClockSnapshot{WallTime: time.Now(), BootID: "boot-a", Uptime: time.Hour},
-		Payload:          []byte("{}"),
-	}
-	if err := path.Save(record); err != nil {
+	after, err := os.ReadDir(store.directory)
+	if err != nil {
 		t.Fatal(err)
 	}
-	return path.path
+	for _, entry := range after {
+		if !previous[entry.Name()] {
+			return filepath.Join(store.directory, entry.Name())
+		}
+	}
+	t.Fatal("saved lease record was not created")
+	return ""
 }
 
 func TestLeaseRecoveryPruneUnconfigured(t *testing.T) {
+	link := recoveryTestLink(t)
 	root := t.TempDir()
 	wan, err := NewLeaseRecoveryStore(filepath.Join(root, "wan"))
 	if err != nil {
@@ -181,11 +215,11 @@ func TestLeaseRecoveryPruneUnconfigured(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	active4 := savePruneTestRecord(t, wan, "provider-a", LeaseProtocolDHCPv4)
-	active6 := savePruneTestRecord(t, wan, "provider-a", LeaseProtocolDHCPv6)
-	removed4 := savePruneTestRecord(t, wan, "provider-b", LeaseProtocolDHCPv4)
-	removed6 := savePruneTestRecord(t, wan, "provider-b", LeaseProtocolDHCPv6)
-	role := savePruneTestRecord(t, roles, "provider-b", LeaseProtocolDHCPv4)
+	active4 := savePruneTestRecord(t, wan, link, "provider-a", LeaseProtocolDHCPv4)
+	active6 := savePruneTestRecord(t, wan, link, "provider-a", LeaseProtocolDHCPv6)
+	removed4 := savePruneTestRecord(t, wan, link, "provider-b", LeaseProtocolDHCPv4)
+	removed6 := savePruneTestRecord(t, wan, link, "provider-b", LeaseProtocolDHCPv6)
+	role := savePruneTestRecord(t, roles, link, "provider-b", LeaseProtocolDHCPv4)
 	if err := wan.PruneUnconfigured(map[string]bool{"provider-a": true}); err != nil {
 		t.Fatal(err)
 	}
@@ -208,16 +242,13 @@ func TestLeaseRecoveryPruneUnconfigured(t *testing.T) {
 }
 
 func TestLeaseRecoveryPruneRetainsMalformedFiles(t *testing.T) {
+	link := recoveryTestLink(t)
 	store, err := NewLeaseRecoveryStore(filepath.Join(t.TempDir(), "wan"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	removed := savePruneTestRecord(t, store, "removed", LeaseProtocolDHCPv4)
-	corruptStore, err := store.leaseStore("corrupt", LeaseProtocolDHCPv4)
-	if err != nil {
-		t.Fatal(err)
-	}
-	corrupt := corruptStore.path
+	removed := savePruneTestRecord(t, store, link, "removed", LeaseProtocolDHCPv4)
+	corrupt := savePruneTestRecord(t, store, link, "corrupt", LeaseProtocolDHCPv4)
 	if err := os.WriteFile(corrupt, []byte("broken"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -225,19 +256,19 @@ func TestLeaseRecoveryPruneRetainsMalformedFiles(t *testing.T) {
 	if err := os.WriteFile(unknown, []byte("leave alone"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	symlinkStore, err := store.leaseStore("symlink", LeaseProtocolDHCPv4)
-	if err != nil {
+	symlink := savePruneTestRecord(t, store, link, "symlink", LeaseProtocolDHCPv4)
+	if err := os.Remove(symlink); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(unknown, symlinkStore.path); err != nil {
+	if err := os.Symlink(unknown, symlink); err != nil {
 		t.Fatal(err)
 	}
-	misplaced := savePruneTestRecord(t, store, "misplaced", LeaseProtocolDHCPv4)
-	otherStore, err := store.leaseStore("other", LeaseProtocolDHCPv4)
-	if err != nil {
+	misplaced := savePruneTestRecord(t, store, link, "misplaced", LeaseProtocolDHCPv4)
+	other := savePruneTestRecord(t, store, link, "other", LeaseProtocolDHCPv4)
+	if err := os.Remove(other); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Rename(misplaced, otherStore.path); err != nil {
+	if err := os.Rename(misplaced, other); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.PruneUnconfigured(nil); err == nil {
@@ -246,7 +277,7 @@ func TestLeaseRecoveryPruneRetainsMalformedFiles(t *testing.T) {
 	if _, err := os.Stat(removed); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("valid removed record: %v", err)
 	}
-	for _, path := range []string{corrupt, unknown, symlinkStore.path, otherStore.path} {
+	for _, path := range []string{corrupt, unknown, symlink, other} {
 		if _, err := os.Lstat(path); err != nil {
 			t.Fatalf("malformed file %s was removed: %v", path, err)
 		}
