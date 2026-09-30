@@ -2036,6 +2036,48 @@ in `/Users/agoodkind/.local/state/mwan305/20261001-networkd-resolver/independent
 The stack remains unmerged. This checkpoint performed no deployment or live
 ownership transfer. MWAN-521 remains In Progress.
 
+## Verify the merged kernel policy and runner
+
+Graphite merged PR #128 as `1e2aba914441a7d6c2e62aa66ccb3fb95d684953`
+and PR #129 as `3424270b92d6377997bc0d7e29a8442efc206392`.
+PR #131 merged as `d14a9a43ce499208f41548751ab6bb28dd195cf5`.
+The ARM64 systemd runner booted actual systemd, resolved, D-Bus, and udev.
+Its resolver daemon test passed in 5.201 seconds.
+
+Networkd DNS commit `29459cdf1c14b785938985d615d8b3404bdc51ed`
+includes both merged dependencies. Its real daemon resolved the single-label
+hostname through the authoritative server in 4.401 seconds. Full project
+checks passed. Both rewritten commits have verified signatures and raw
+`gpgsig` headers. PR #132 remains open.
+
+Resolver commit `dbc88dbc1cf7507a18b2b0695b7a3ed001a03958` includes the
+merged dependencies. Its real daemon test passed in 5.815 seconds, and full
+project checks passed. All six rewritten commits have verified signatures
+and raw `gpgsig` headers. PR #130 remains open; the review refresh has not
+published a completed result after the thread replies.
+
+Configs commit `0420b1097dd949cc0e59de4f0946f4d8b2c86a92` renders
+complete networkd-owned management and transit settings. Both environment
+renders passed the combined local loader and firewall validator. All 32
+render specs passed without skips. Independent validation confirmed that
+the installed testbed release rejects the new configured route and typed
+resolver fields. Pair this render with a compatible merged release pin.
+Do not deploy the combined local validation executable.
+
+The playbook still prunes legacy files before replacement verification.
+Complete generated-file verification and runtime selected-unit checks
+must precede legacy retirement. Starting the daemon can activate the
+rendered transit unit before the legacy transit unit is deleted.
+
+The next owned-role source change requires both admission restrictions
+removed and current-pass transit link and family readiness checked before
+forwarding announcements. Omitted forwarding preserves kernel policy;
+explicitly disabled forwarding cannot establish readiness. Preserve the
+existing global module-error behavior.
+
+This checkpoint performed no deployment or live ownership transfer.
+MWAN-521 and MWAN-522 remain In Progress.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
