@@ -2519,6 +2519,29 @@ after containment verification. Ten ignored build files were copied and
 hash-verified in external evidence before removal. Shared Docker fixtures
 and external acceptance artifacts remain available.
 
+### Merge the compatible deployment pair
+
+Configs PR #572 merged as `61feeebfc7870e597a35619616e64d9e3b67bdc2`
+at 19:51:32 UTC. Required checks passed, no review threads remained open,
+and independent review found zero actionable defects at signed `adbcd952`.
+The clean primary Configs checkout matches the merge.
+
+Both unchanged runtime renders initialized addresses and completed initial
+reconciliation with the published executable. Both processes remained alive
+and served IPv4 and IPv6 readiness as false. The controls supplied no
+physical provider identity or delegation. The absent cold journal is correct
+when no edge is reserved. This proves initialization compatibility without
+claiming forwarding or edge creation. Private startup containers were removed.
+
+Further inspection of the failed calibration found successful initial
+simulator stop commands followed by timed-out SSH observers. Host journals
+showed both container-attached capture services exceeded their three-second
+stop deadline and received SIGKILL. The unloaded-unit errors occurred during
+the subsequent cleanup retry. The local process-group permission failure
+remains separately recorded. Diagnosis, corrected capture lifecycle and a
+fresh calibration remain required before complete downstream acceptance.
+Shared testbed deployment and production promotion have not begun.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
