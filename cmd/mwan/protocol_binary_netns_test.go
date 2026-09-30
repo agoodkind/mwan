@@ -26,6 +26,9 @@ func protocolTestBinary(t *testing.T) string {
 		}
 	}
 	if os.Geteuid() != 0 {
+		if supplied {
+			t.Fatal("explicit daemon validation requires root for network and mount namespaces")
+		}
 		t.Skip("network and mount namespaces require root")
 	}
 	if supplied {
