@@ -2961,6 +2961,28 @@ The expected /cf_check service on port 1406 is absent from testbed OPNsense.
 Its configuration path requires inspection before a focused repair. The
 admin HTTP firewall restriction remains active.
 
+### Publish the merged NPT preservation repair
+
+PR #145 merged as 93d3c3579334fc618427560e58aca919247bc2dc after all ten
+required checks passed. Independent final-head review found zero actionable
+defects. The primary MWAN checkout is clean on main at the merged revision.
+Both candidate refs and the exact feature worktree were removed after trunk
+behavior and ancestry verification. All 12 ignored files were copied and
+hash-verified in retained cleanup recovery storage.
+
+Release 202609302311-8e-93d3c35 was published by successful workflow
+36789759627. All four downloaded archives passed published checksums,
+release API digests, and attestations binding their bytes to the exact merged
+source. Published ARM64 execution reports commit 93d3c35, a clean build,
+and libsysrepo 7.34.6. Its SHA256 is
+69a2ed1fe30e135d6382ff7ad9c2ef8608686195d72a4ca7a2fea1e6bf4e1b8e.
+The actual installer emits the reviewed production WAN unit byte for byte.
+
+The focused Configs release pin and dedicated mapping endpoint changes remain
+under implementation. Published protocol acceptance is running. Shared daemon
+deployment and production promotion remain pending. MWAN-533 remains
+In Progress. Actual Tack comments distinguish publication from live acceptance.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
