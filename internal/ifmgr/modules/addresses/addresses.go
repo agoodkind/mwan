@@ -88,19 +88,19 @@ type dhcpv6Session struct {
 }
 
 // New validates the address journal before daemon startup.
-func New(config ifmgr.ModuleConfig) (ifmgr.Module, error) {
+func New(moduleConfig ifmgr.ModuleConfig) (ifmgr.Module, error) {
 	module := &Module{
 		BaseModule: ifmgr.NewBaseModule(moduleName), connections: nil, providers: nil,
 		clientIDs: nil, reconciler: nil, leaseStore: nil, clock: clock.Real{}, reconcileMu: sync.Mutex{},
 		sessionMu: sync.Mutex{}, sessions: make(map[string]*dhcpSession),
 		dhcpv6Sessions: make(map[string]*dhcpv6Session), nextGeneration: 0,
 	}
-	if config == nil {
+	if moduleConfig == nil {
 		return module, nil
 	}
-	settings, ok := config.(Config)
+	settings, ok := moduleConfig.(Config)
 	if !ok {
-		return nil, fmt.Errorf("addresses: invalid config type %T", config)
+		return nil, fmt.Errorf("addresses: invalid config type %T", moduleConfig)
 	}
 	module.connections = settings.Connections
 	module.providers = settings.Providers
@@ -126,6 +126,11 @@ func New(config ifmgr.ModuleConfig) (ifmgr.Module, error) {
 				return nil, fmt.Errorf("addresses: state_file is required for owned address families")
 			}
 		}
+		for _, provider := range settings.Providers {
+			if provider.IPv6 != nil && provider.IPv6.Mode == config.TranslationNPTv6 {
+				return nil, fmt.Errorf("addresses: state_file is required for NPT edges")
+			}
+		}
 		return module, nil
 	}
 	if !filepath.IsAbs(settings.StateFile) {
@@ -140,7 +145,7 @@ func New(config ifmgr.ModuleConfig) (ifmgr.Module, error) {
 	return module, nil
 }
 
-// Init requires the preceding link module's result store.
+// Init permits scoped NPT journals without an MWAN-owned link store.
 func (module *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	module.InitBase(env, "module", moduleName)
 	if module.leaseStore != nil {
@@ -157,11 +162,14 @@ func (module *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	if module.reconciler == nil {
 		return ifmgr.ErrModuleDisabled
 	}
-	if env.OwnedLinks == nil {
-		return fmt.Errorf("addresses: links module is required")
+	for _, connection := range module.connections {
+		if connection.Owner == interfaceintent.OwnerMWAN && (connection.IPv4 != nil || connection.IPv6 != nil) && env.OwnedLinks == nil {
+			return fmt.Errorf("addresses: links module is required for owned address families")
+		}
 	}
 	env.OwnedAddresses = &ifmgr.OwnedAddressResults{}
 	env.Delegations = netif.NewDHCPv6PDStore()
+	env.NPTAddresses = module
 	return nil
 }
 
@@ -233,10 +241,6 @@ func (module *Module) reconcileConfiguredFamily(ctx context.Context, log *slog.L
 			assignments = append(assignments, addressAssignment(connection, family, interfaceintent.AssignmentMapped, address.Purpose, address.Prefix))
 		}
 	} else {
-		if prefix := nptAddress(provider.IPv6, module.delegation(connection.Name)); prefix.IsValid() {
-			settings.Addresses = append(slices.Clone(settings.Addresses), interfaceintent.Address{Prefix: prefix, Purpose: interfaceintent.PurposeForward})
-			assignments = append(assignments, addressAssignment(connection, family, interfaceintent.AssignmentNPTExternal, interfaceintent.PurposeForward, prefix))
-		}
 		leasedAddresses, leasedAssignments := module.localDHCPv6Assignments(connection)
 		preparationErr = module.prepareLocalIPv6(ctx, log, connection.Name, leasedAddresses)
 		settings.Addresses = append(slices.Clone(settings.Addresses), leasedAddresses...)
@@ -553,18 +557,6 @@ func (module *Module) recoveryRetention(connection interfaceintent.Connection, f
 			retention.Prefixes[netip.PrefixFrom(address.Address, 128)] = true
 		}
 	}
-	provider := module.providers[id]
-	if provider.IPv6 == nil || provider.IPv6.NPT == nil || provider.IPv6.NPT.ExternalSource != config.PrefixDelegated {
-		return retention
-	}
-	for _, prefix := range session.cachedLease.Prefixes {
-		if !now.Before(prefix.ValidUntil) {
-			continue
-		}
-		if address := nptAddress(provider.IPv6, prefix.Prefix); address.IsValid() {
-			retention.Prefixes[address] = true
-		}
-	}
 	return retention
 }
 
@@ -741,32 +733,6 @@ func mappingOnLink(connection interfaceintent.Connection, external netip.Addr) b
 		}
 	}
 	return false
-}
-
-func nptAddress(translation *config.IPv6Translation, delegated netip.Prefix) netip.Prefix {
-	if translation == nil || translation.NPT == nil || translation.Mode != config.TranslationNPTv6 {
-		return netip.Prefix{}
-	}
-	prefix := translation.NPT.ExternalPrefix.Masked()
-	if translation.NPT.ExternalSource == config.PrefixDelegated {
-		if !delegated.IsValid() {
-			return netip.Prefix{}
-		}
-		bits := translation.NPT.InternalPrefix.Bits()
-		if translation.NPT.ExpectedPrefix.IsValid() {
-			bits = translation.NPT.ExpectedPrefix.Bits()
-		}
-		if bits < delegated.Bits() {
-			return netip.Prefix{}
-		}
-		prefix = netip.PrefixFrom(delegated.Addr(), bits).Masked()
-	}
-	if !prefix.IsValid() {
-		return netip.Prefix{}
-	}
-	address := prefix.Addr().As16()
-	address[15] = 1
-	return netip.PrefixFrom(netip.AddrFrom16(address), 128)
 }
 
 func addressAssignment(connection interfaceintent.Connection, family string, kind interfaceintent.AssignmentKind, purpose interfaceintent.AddressPurpose, value netip.Prefix) interfaceintent.Assignment {

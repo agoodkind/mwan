@@ -74,8 +74,8 @@ Do not cancel service or delete reusable credentials.
 | Plan | Work covered | Execution |
 | --- | --- | --- |
 | [Model and observation](interfaces/model.md) | MWAN-516 configuration and state; MWAN-523 kernel observation. | Review contracts, then assign code implementers. |
-| [Links, addresses, and route repair](interfaces/kernel.md) | MWAN-397 links; MWAN-398 static local addresses and optional main default routes; MWAN-398 mapped/NPT address-writer transfer; MWAN-505 route repair. | Review each writer boundary before implementation. Keep MWAN-505 independent. |
-| [Address acquisition](interfaces/acquisition.md) | MWAN-398 DHCPv4; MWAN-227 delegation; MWAN-517 kernel IPv6 and DHCPv6 addresses. | Start DHCPv4 after both MWAN-398 address PRs. Assign separate implementers to independent protocols; share one DHCPv6 client. |
+| [Links, addresses, and route repair](interfaces/kernel.md) | MWAN-397 links; MWAN-398 static local addresses and optional main default routes; MWAN-398 mapped address-writer transfer; MWAN-505 route repair. | Review each writer boundary before implementation. Keep MWAN-505 independent. |
+| [Address acquisition](interfaces/acquisition.md) | MWAN-398 DHCPv4; MWAN-227 delegation; MWAN-517 kernel IPv6 and DHCPv6 addresses; the NPT address authority. | Start DHCPv4 after both MWAN-398 address PRs. Assign separate implementers to independent protocols; share one DHCPv6 client. Complete the NPT authority before physical transfer. |
 | [Restart recovery](interfaces/restart.md) | MWAN-518 persistent assignments and restart. | Review protocol recovery, then assign a code implementer. |
 | [Deployment and acceptance tooling](interfaces/deployment.md) | MWAN-521 Configs integration; MWAN-522 real protocol and downstream tests. | Assign code implementers; reserve live provisioning and validation for cutover agents. |
 | [Cutover and retirement](interfaces/cutover.md) | MWAN-519 first connection; MWAN-399 remaining interfaces; MWAN-400 retirement; MWAN-401 and MWAN-520 final acceptance. | Assign cutover agents; use bounded code implementers for reviewed removal patches. |
@@ -105,7 +105,8 @@ checks at its own position.
 | MWAN | [MWAN-516] Publish connection ownership and acquisition history | Stack on observation. End and merge the model stack here. |
 | MWAN | [MWAN-397] Manage physical links and VLAN dependencies | Merge this focused PR after the model stack. Admit owned links and install their runtime writer together. Deploy the merged revision to the testbed, validate synthetic owned links, then promote the proven revision. Keep live providers under networkd. |
 | MWAN | [MWAN-398] Admit and reconcile static local addresses and optional main default routes | Start after link management passes testbed and production validation. Admit MWAN-owned non-provider links and install the runtime writer in this PR. Journal exact owned objects, replace the recorded route when only its metric changes, report source validity separately from kernel apply results, and test through the public daemon namespace suite. Merge and validate this PR before mapped address transfer. |
-| MWAN | [MWAN-398] Transfer mapped and NPT address writers for exclusively owned connections | Add this PR after static addressing. Keep existing writers on connections without exclusive transfer. Test synthetic exclusive ownership and legacy ownership through the public daemon. Do not transfer a live provider before MWAN-519 or MWAN-399. |
+| MWAN | [MWAN-398] Transfer mapped address writes for exclusively owned connections | Add this PR after static addressing. Preserve legacy IPv4 mapped writers. Test synthetic exclusive ownership and legacy ownership through the public daemon. Do not transfer a live provider before MWAN-519 or MWAN-399. |
+| MWAN | [MWAN-305] Journal NPT edge addresses across connection owners | Use a focused standalone PR from merged acquisition and address contracts. Include the authority, scoped journal, verified translation removal, and real daemon regressions. Preserve legacy acquisition and unchanged edges across owner changes. Publish the merged release before the Configs companion. |
 | MWAN | [MWAN-505] Restore deleted owned routes | Use a standalone PR for the existing defect. Integrate any new observation API after it merges. |
 | MWAN | [MWAN-398] Complete DHCPv4 acquisition and lease replacement | Use a standalone PR after both MWAN-398 address PRs merge. |
 | MWAN | [MWAN-517] Configure and observe kernel IPv6 acquisition | Use a sibling standalone PR after the kernel stack merges. |
@@ -116,6 +117,7 @@ checks at its own position.
 | MWAN | [MWAN-518] Validate DHCPv6 restart | Independent. |
 | MWAN | [MWAN-518] Integrate recovery | After the three PRs merge. |
 | Configs | [MWAN-521] Render complete interface roles and ownership | Start the deployment stack after the model contract merges. Keep default ownership unchanged. |
+| Configs | [MWAN-521] Pair the NPT address journal with its compatible release | Use a focused standalone companion after the authority release publishes. Verify both environment renders and actual legacy daemon startup. Prove the same-boot pre-reboot gates and absence-before-creation baseline reboot in isolation and on testbed. Require physical dual-stack transfer acceptance before production promotion. This cross-repository dependency is not a Graphite parent. |
 | Configs | [MWAN-521] Implement exclusive ownership transfer and recovery | Stack on rendering. End the deployment stack here; gate activation on the complete application release. |
 | Configs | [MWAN-522] Configure protocol lifecycle scenarios in ISP simulators | Use an independent PR. Preserve existing simulator defaults. |
 | MWAN | [MWAN-522] Run privileged daemon acceptance through public boundaries | Bootstrap the runner in a standalone PR after the model merges and before protocol PR acceptance. Add each feature's scenarios in its own PR. |
@@ -158,9 +160,10 @@ ordinary GitHub workflow for standalone PRs.
 | --- | --- | --- |
 | Contract review | Inspect configuration, kernel operations, protocols, and deployment sources concurrently. | Approve 516-model interfaces before implementers use them. |
 | Model implementation | Implement the model stack serially. Prepare simulator configuration and reproduce route repair independently. | Merge the model stack. |
-| Kernel implementation | Implement links, static local addressing, and mapped/NPT writer transfer in separate PRs while Configs rendering and the daemon test runner develop against the merged model. | Merge both address PRs and runner bootstrap before protocol PR acceptance. |
+| Kernel implementation | Implement links, static local addressing, and mapped writer transfer in separate PRs while Configs rendering and the daemon test runner develop against the merged model. | Merge both address PRs and runner bootstrap before protocol PR acceptance. |
 | Acquisition | Implement DHCPv4, kernel IPv6, and DHCPv6 delegation in separate lanes. | Merge kernel IPv6 before the DHCPv6 interface-address PR; finish all acquisition before persistence acceptance. |
 | Integration | Implement persistence, deployment mechanics, and acceptance tooling where files do not overlap. | Review and merge all required code and pin compatible revisions before first transfer. |
+| NPT authority follow-up | Serialize address-journal, NPT, and shared module edits in one implementation lane. Prepare Configs render tests independently without activating the journal. | Merge and publish the authority, pair the explicit journal and release, prove the isolated and testbed baseline, then pass physical dual-stack transfer acceptance before production promotion. |
 | Live migration | Review the next phase's evidence and prepare documentation while one cutover agent controls network mutation. | Complete testbed and production acceptance for the current phase before the next live transfer. |
 
 Parallel work requires separate file ownership. Changes to shared daemon
@@ -194,7 +197,7 @@ redesign it.
 | Network loader, served model, schema, and assignment types | Finish 516-model contract review before consumers edit against it. |
 | Kernel monitor and event types | Let 523-observation own event changes; coordinate 505-route-repair consumers. |
 | Interface-manager startup and daemon lifecycle | Serialize integration changes from links, acquisition, state, and persistence. |
-| Address and route ownership | Review static local writes on non-provider links first. Review mapped/NPT writer transfer with WAN routing and OOB consumers before changing exclusive provider ownership. |
+| Address and route ownership | Review static local writes on non-provider links first. Review mapped transfer with WAN routing and OOB consumers. Give one implementer the NPT edge authority, scoped journal, and verified translation removal; ordinary family pruning must exclude those edge records. |
 | DHCPv6 lifecycle | Let 227-delegation establish the client; 517-dhcpv6 extends it. Do not create two clients for one connection. |
 | Operational state and failure history | Let 516-state define publication; protocol slices supply transitions through that contract. |
 | Configs deployment playbook | Finish discovery and rendering order before integrating ownership transfer. |

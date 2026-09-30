@@ -12,7 +12,7 @@ settled brief against current source and stops for review on contradictions.
 An independent reviewer reproduces behavior with real dependencies. The
 implementer has no live deployment or connection-transfer authority.
 
-Merge the link PR before the static address PR. Merge the separate mapped/NPT
+Merge the link PR before the static address PR. Merge the separate mapped
 writer PR after the static address PR. Start DHCPv4 acquisition after both
 address PRs.
 MWAN-505 remains an independent repair PR.
@@ -132,7 +132,6 @@ protocol timers, lease options, and OOB consumer updates.
 | --- | --- |
 | The kernel operations cited above | `ReconcileAddrs` only adds missing addresses. `ReconcileTableDefault` compares gateway and device but ignores changed metrics when both match. |
 | [WAN routing](../../../internal/ifmgr/modules/wanroutes/wanroutes.go) | `Module` reconciles mapped external addresses classified as on-link and owns provider-table routes and policy rules. |
-| [NPT reconciliation](../../../internal/ifmgr/modules/npt/npt.go) | `buildWANDesired` constructs the external prefix's `::1/128` for configured and delegated prefixes. `Module.Reconcile` installs it through `reconcileAddrs` before publishing translation readiness. |
 
 ### Implement static ownership and the assignment writer
 
@@ -182,24 +181,19 @@ writer. Private reconciliation helpers alone do not satisfy acceptance.
    remains distinct from the reported kernel failure. Recreate the link and
    verify recovery and downstream packets through the public daemon.
 
-## 398-mapped-addresses: Transfer mapped and NPT writers
+## 398-mapped-addresses: Transfer mapped address writes
 
 This additive PR extends the assignment writer after static ownership passes
 review. It must not transfer a live provider before MWAN-519 or MWAN-399.
-Networkd, WAN routing, and NPT continue to write addresses for connections
-without exclusive transfer.
+Networkd retains acquisition and ordinary address ownership on connections
+without exclusive transfer. The [NPT authority plan](acquisition.md#npt-address-authority-journal-edges-across-connection-owners)
+defines the separate edge writer for every connection owner.
 
 1. Consume explicit local-assignment versus ISP-routed mapping intent.
    Transfer on-link mapped address installation from WAN routing only for an
    exclusively transferred connection. WAN routing continues to write
    provider-table routes and policy rules.
-2. Transfer NPT's external prefix `::1/128` address writer to the assignment
-   writer at the same exclusive boundary. Classify this address as an
-   intentional forwarding address for edge translation. Derive it from the
-   selected configured or valid delegated prefix. Remove obsolete owned
-   addresses after replacement or withdrawal. The delegation PR integrates
-   delegated-prefix lifetimes.
-3. Require an actual address installation result for translation readiness.
+2. Require an actual address installation result for translation readiness.
    Report source validity separately. Remove overlapping provider-default
    writers only for exclusively transferred connections.
 
@@ -212,14 +206,6 @@ this PR.
 1. Apply on-link and ISP-routed mappings. Verify downstream replies, address
    resolution where required, and one writer per mapped address. Verify the
    legacy provider's existing writer still installs its addresses.
-2. Apply a configured NPT external prefix. Verify one writer installs its
-   `::1/128`, inbound edge translation and replies succeed, and failed
-   installation prevents translation readiness. Restart with a changed
-   prefix and verify exact removal without changing foreign addresses.
-3. In the delegation PR, acquire a real prefix, change it, and let it expire.
-   Verify the edge address, translation, and readiness follow the valid
-   assignment. Repeat beside a legacy-owned connection and verify its
-   existing NPT writer remains responsible. These cases gate delegation.
 
 The independent reviewer tests unchanged addresses with changed gateways,
 metric-only changes, both mapping kinds, foreign addresses, and SLAAC beside

@@ -56,10 +56,18 @@ promptly through the existing event mechanism under MWAN-505.
 The current networkd renderer and WAN routing module both produce provider
 defaults. Remove that overlap during a verified ownership transfer. Transfer
 on-link mapped address installation to the address manager at the same
-boundary. Transfer NPT's external prefix `::1/128` address installation to
-the address manager for both configured and delegated prefixes. Preserve
-NPT's current address writes until that connection transfers. After transfer,
-NPT consumes address installation results and retains translation ownership.
+boundary. Assign NPT's external prefix `::1/128` addresses to one journaled
+address authority for configured and delegated prefixes under every connection
+owner. Configured NPT intent authorizes only this edge address on a networkd
+or external connection; acquisition, ordinary addresses, and routes retain
+their configured owners. NPT consumes verified edge installation results
+and retains translation ownership. Preserve an unchanged edge across an
+owner change only while its link remains present with verified identity.
+Deleting an MWAN-created VLAN removes its addresses; complete connection
+transfer must verify recreation under the replacement owner. Remove obsolete
+edges only after verifying removal of the
+managed translation that references them. Reject foreign addresses rather
+than adopting an address from equality with configured intent.
 Preserve the routing and translation behavior established by MWAN-340 and
 MWAN-333, including source rules based on the live delegation.
 

@@ -53,6 +53,7 @@ type RecordedRetention struct {
 }
 
 type ownedStaticObject struct {
+	Scope        string `json:"scope,omitempty"`
 	ConnectionID string `json:"connection_id"`
 	Family       string `json:"family"`
 	LinkName     string `json:"link_name"`
@@ -126,6 +127,15 @@ func NewOwnedStaticReconciler(path string) (*OwnedStaticReconciler, error) {
 	if r.journal.BootID != string(bootID) {
 		r.journal = ownedStaticJournal{BootID: string(bootID), Objects: nil, Promotion: nil}
 	}
+	for _, value := range r.journal.Objects {
+		if value.Scope == "" {
+			continue
+		}
+		prefix, err := netip.ParsePrefix(value.Prefix)
+		if value.Scope != nptEdgeScope || err != nil || value.Family != "ipv6" || !prefix.Addr().Is6() || prefix.Bits() != 128 || value.ConnectionID == "" || value.LinkName == "" || value.LinkIndex < 1 || value.LinkIdentity == "" || value.Gateway != "" || value.Destination != "" {
+			return nil, fmt.Errorf("invalid scoped address ownership record for %s", value.ConnectionID)
+		}
+	}
 	return r, nil
 }
 
@@ -160,6 +170,9 @@ func staticFamily(family string) int {
 }
 
 func staticObjectKey(value ownedStaticObject) string {
+	if value.Scope != "" {
+		return value.Scope + "/" + value.ConnectionID + "/" + value.Family + "/addr/" + value.Prefix
+	}
 	if value.Prefix != "" {
 		return value.ConnectionID + "/" + value.Family + "/addr/" + value.Prefix
 	}
@@ -265,7 +278,7 @@ func (r *OwnedStaticReconciler) ReconcileFamilyRoutesWithLifetimesRetaining(ctx 
 		}
 		seenRoutes[slot] = assigned.Gateway
 	}
-	base := ownedStaticObject{ConnectionID: connection.ID.String(), Family: family, LinkName: ready.ActualName, LinkIndex: ready.IfIndex, LinkIdentity: LinkOwnershipIdentity(link), Prefix: "", Destination: "", Gateway: "", Metric: 0}
+	base := ownedStaticObject{Scope: "", ConnectionID: connection.ID.String(), Family: family, LinkName: ready.ActualName, LinkIndex: ready.IfIndex, LinkIdentity: LinkOwnershipIdentity(link), Prefix: "", Destination: "", Gateway: "", Metric: 0}
 	if family == "ipv4" && len(settings.Addresses) != 0 {
 		if err := r.ensurePromotion(base); err != nil {
 			return err
@@ -649,7 +662,7 @@ func (r *OwnedStaticReconciler) ensureRoute(value ownedStaticObject) error {
 func (r *OwnedStaticReconciler) pruneFamily(base ownedStaticObject, desired map[string]bool, retention RecordedRetention) error {
 	old := append([]ownedStaticObject(nil), r.journal.Objects...)
 	for _, value := range old {
-		if value.ConnectionID != base.ConnectionID || value.Family != base.Family {
+		if value.Scope != base.Scope || value.ConnectionID != base.ConnectionID || value.Family != base.Family {
 			continue
 		}
 		matchesLink := value.LinkIndex == base.LinkIndex && value.LinkIdentity == base.LinkIdentity && value.LinkName == base.LinkName
@@ -743,6 +756,9 @@ func (r *OwnedStaticReconciler) PruneRemoved(desired map[string]map[string]bool)
 	defer r.mu.Unlock()
 	old := append([]ownedStaticObject(nil), r.journal.Objects...)
 	for _, value := range old {
+		if value.Scope != "" {
+			continue
+		}
 		families := desired[value.ConnectionID]
 		if families[value.Family] {
 			continue

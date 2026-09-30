@@ -318,17 +318,44 @@ func (translator *Translator) removeStalePolicies(desired map[int]preparedPolicy
 			slog.Error("NPTv6 reconciliation could not remove stale attachments", "interface", link.Attrs().Index, "err", err)
 			failures = append(failures, fmt.Errorf("remove interface %d NPTv6: %w", link.Attrs().Index, err))
 		}
-		key, err := interfaceKey(link.Attrs().Index)
-		if err != nil {
-			failures = append(failures, err)
-			continue
-		}
-		if err := translator.objects.Policies.Delete(key); err != nil && !errors.Is(err, ebpf.ErrKeyNotExist) {
-			slog.Error("NPTv6 reconciliation could not remove stale policy", "interface", link.Attrs().Index, "err", err)
-			failures = append(failures, err)
-		}
+	}
+	if err := translator.removeStaleMapEntries(desired); err != nil {
+		failures = append(failures, err)
 	}
 	return errors.Join(failures...)
+}
+
+func (translator *Translator) removeStaleMapEntries(desired map[int]preparedPolicy) (resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			slog.Error("NPTv6 stale policy removal failed", "err", resultErr)
+		}
+	}()
+	iterator := translator.objects.Policies.Iterate()
+	var key uint32
+	var value nptPolicy
+	var obsolete []uint32
+	for iterator.Next(&key, &value) {
+		if _, configured := desired[int(key)]; !configured {
+			obsolete = append(obsolete, key)
+		}
+	}
+	if err := iterator.Err(); err != nil {
+		return fmt.Errorf("inspect NPTv6 policy keys for removal: %w", err)
+	}
+	for _, key := range obsolete {
+		if err := translator.objects.Policies.Delete(key); err != nil && !errors.Is(err, ebpf.ErrKeyNotExist) {
+			return fmt.Errorf("delete obsolete NPTv6 policy %d: %w", key, err)
+		}
+		err := translator.objects.Policies.Lookup(key, &value)
+		if err == nil {
+			return fmt.Errorf("obsolete NPTv6 policy %d remains installed", key)
+		}
+		if !errors.Is(err, ebpf.ErrKeyNotExist) {
+			return fmt.Errorf("verify obsolete NPTv6 policy %d removal: %w", key, err)
+		}
+	}
+	return nil
 }
 
 // Reconcile installs active policies and removes stale attachments only if all active policies succeed.
