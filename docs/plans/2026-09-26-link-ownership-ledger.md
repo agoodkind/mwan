@@ -64,7 +64,7 @@ No interface-owner cutover has begun.
 | MWAN-398 | 398-static; 398-mapped-addresses; 398-dhcpv4 | MWAN PRs #89, #91, and #95 through #99 merged static, mapped/NPT, and DHCPv4 ownership code. The combined release passed testbed and production deployment. Live providers remain under networkd, so owned acquisition and transfer acceptance remain. Tack records In Progress. |
 | MWAN-227 | 227-delegation | Client code merged; live acceptance pending. |
 | MWAN-517 | 517-autoconfiguration; 517-dhcpv6 | DHCPv6 code and inactive release passed testbed and production deployment. Live ownership acceptance remains. Tack records In Progress. |
-| MWAN-518 | 518-restart | [MWAN PR #117](https://github.com/agoodkind/mwan/pull/117) merged DHCPv4 restart validation as `c51c063060b4d1252db5c36f6578cf519d4c6e42`. [MWAN PR #118](https://github.com/agoodkind/mwan/pull/118) merged the durable lease store as `63cbe758258c97326dfff6c2533e41d58770a890`. [MWAN PR #120](https://github.com/agoodkind/mwan/pull/120) merged DHCPv6 restart validation as `eae8f3c8fb4806cc739e0e2508c86815144a3bf2`. [MWAN PR #121](https://github.com/agoodkind/mwan/pull/121) implements daemon integration and remains under review. Release deployment, daemon restart, downstream traffic, and live acceptance remain. Tack records In Progress. |
+| MWAN-518 | 518-restart | [MWAN PR #117](https://github.com/agoodkind/mwan/pull/117) merged DHCPv4 restart validation as `c51c063060b4d1252db5c36f6578cf519d4c6e42`. [MWAN PR #118](https://github.com/agoodkind/mwan/pull/118) merged the durable lease store as `63cbe758258c97326dfff6c2533e41d58770a890`. [MWAN PR #120](https://github.com/agoodkind/mwan/pull/120) merged DHCPv6 restart validation as `eae8f3c8fb4806cc739e0e2508c86815144a3bf2`. [MWAN PR #121](https://github.com/agoodkind/mwan/pull/121) merged daemon integration as `5666b3dd`. Release `202609300154-76-5666b3d` passed testbed deployment, downstream traffic, balancing, and restart handover under the merged Configs #567 pin `23cd8f14`. Recovery clock correction, released-binary protocol acceptance, production promotion, and live ownership acceptance remain. Tack records In Progress. |
 | MWAN-505 | 505-route-repair | [MWAN PR #52](https://github.com/agoodkind/mwan/pull/52) merged as `18941243f1e8fa3d5623a04440e4d90de796d1f4`. Namespace packet tests and live testbed route and rule deletion checks passed. The release passed production deployment and downstream acceptance. |
 | MWAN-521 | 521-configuration; 521-deployment | [Configs PR #527](https://github.com/agoodkind/configs/pull/527) moved MAC discovery before rendering. [Configs PR #558](https://github.com/agoodkind/configs/pull/558) rendered explicit connection IDs and networkd ownership. Configs PRs #559 and #560 pinned and deployed the combined release to testbed and production. Complete role rendering and live transfer remain. |
 | MWAN-522 | 522-acceptance | The daemon runner and simulator timing merged. Seven DHCPv4 and four DHCPv6 real-server scenarios passed. Restart, assembled protocol, and live ownership acceptance remain. Tack records In Progress. |
@@ -79,9 +79,13 @@ No interface-owner cutover has begun.
 MWAN-524 restored Astound as a managed testbed connection. Link management,
 owned DHCPv4, kernel IPv6 policy, and the shared DHCPv6 client passed code
 checks. Their inactive releases passed testbed and production deployment
-without transferring a live provider. MWAN-518 restart recovery is implemented
-in PR #121 and awaits merge and deployment. The first live transfer still requires real daemon restart
-acceptance and downstream validation. Keep networkd on AT&T until retirement
+without transferring a live provider. MWAN-518 restart recovery merged
+in PR #121. Its testbed deployment passed after an SSH failure. Downstream
+traffic and primary-to-backup handover passed during restart and reboot.
+Released-binary recovery checks exposed insufficient recovery clock precision.
+The clock correction and released-binary test harness remain unmerged.
+Production promotion and the first live transfer require accepted recovery
+checks and downstream validation. Keep networkd on AT&T until retirement
 is confirmed.
 
 For every handoff, record the slice, agent responsibility, exact source
@@ -1475,12 +1479,12 @@ client; MWAN-518 must add durable lease recovery before the cutover.
 ### MWAN-518 restart integration, September 29, 2026
 
 PRs #117, #118, and #120 merged the DHCPv4 client, lease store, and DHCPv6
-client foundations. The integration branch `codex/mwan-518-daemon-integration`
-adds saved-lease validation to the owned WAN clients and the OOB and mainv4
-roles. It defers removal of matching journaled addresses during validation,
-keeps original lease deadlines, records WAN lease storage status, and reports
-rejected recovery separately from fresh acquisition. The optional
-`lease_directory` setting does not enable storage in the current deployment.
+client foundations. The daemon validates saved leases for owned WAN, OOB,
+and mainv4 roles. It defers removal of matching journaled addresses during
+validation, records WAN lease storage status, and reports rejected recovery
+separately from fresh acquisition. The optional
+`lease_directory` setting now enables storage on testbed. Production retains
+its previous release without that setting.
 
 `make docker-make TARGETS='check test'` passed after the integration changes.
 `make test-netns` passed for the route, firewall, steering, and netif packages.
@@ -1508,9 +1512,90 @@ and status after rejected records or failed deletion. PR #121 review found
 that a startup expiry could withdraw a journaled DHCPv4 assignment before
 recovery completed. Both DHCPv4 role modules now ignore that synthetic event;
 their namespace lifecycle tests verify the saved address and route remain.
-PR #121 remains open. MWAN-518 integration has not been deployed to testbed
-or production. Testbed guest reboot, downstream traffic tests, and live
-provider owner transfer remain pending.
+PR #121 merged daemon integration as `5666b3dd`. Release
+`202609300154-76-5666b3d` is published and verified. [Configs PR #567](https://github.com/agoodkind/configs/pull/567)
+merged the testbed pin and lease storage configuration as `23cd8f14`.
+The testbed deployment and existing-service checks passed below. Production
+promotion and live provider owner transfer remain pending.
+
+### MWAN-518 testbed deployment attempts, September 29, 2026
+
+The merged Configs checkout passed
+`./configsctl deploy deploy-mwan --limit mwan_suburban_servers --check --diff`
+with 176 successful tasks, 19 proposed changes, and zero failures.
+The first live run was interrupted. Its final result is unavailable.
+VM 213 still reported `d442ba1` after interruption. Its configuration had
+no `lease_directory` setting.
+
+The second live run failed during SSH key deployment to Suburban.
+Its recap reported 32 successful tasks, zero changes, one unreachable host,
+and zero failed tasks.
+The Suburban SSH journal first reported `MaxStartups` at 20:25:31 PDT.
+The journal subsequently reported failed-authentication penalties.
+Sequential SSH resumed at 20:26:56 PDT.
+
+The downstream battery then reused SSH connections and ran commands sequentially.
+Eight baseline HTTPS requests returned HTTP 200.
+Matched IPv4 connections used Webpass twice and AT&T twice.
+Matched IPv6 connections used Webpass once and AT&T three times.
+These baseline results precede deployment acceptance.
+
+The third live run completed with 229 successful tasks, 24 changes, zero
+unreachable hosts, zero failures, zero rescues, and zero ignored tasks.
+The supported apply command was
+`./configsctl deploy deploy-mwan --limit mwan_suburban_servers`.
+The hypervisor verdict for trace `20260929-203535-deploy-866386` reported reboot,
+egress, and mapped-address return codes of zero from 03:45:21 to 03:46:59 UTC
+on September 30. Rollback tasks were skipped. VM 213 reports clean commit
+`5666b3d`, binary hash `43bede7022d3`, and
+`lease_directory = "/var/lib/mwan"`. The interface manager, agent, Rousette,
+and wanconfig proxy services are active.
+
+Clients 225 and 226 each completed 20 fresh IPv4 and 20 fresh IPv6 HTTPS
+requests. All 80 requests returned HTTP 200. Gateway captures matched transit
+and provider SYNs by destination and TCP sequence. IPv4 selected Webpass 16
+times and AT&T 24 times. IPv6 selected Webpass 21 times and AT&T 19 times.
+IPv4 client attribution uses the controlled request interval because OPNsense
+rewrites client addresses and ports. The capture ended at its configured
+timeout after the request commands completed successfully.
+
+Client 225 transmitted 1,798 probes per family across deployment and reboot.
+IPv4 received 1,797 replies and missed sequence 1363 near 03:46:06 UTC.
+The adjacent replies were 2.026 seconds apart. IPv6 received all 1,798 replies.
+The full observation's largest reply intervals were 2.437 seconds for IPv4
+and 2.456 seconds for IPv6, both before deployment at 03:28:31 through
+03:28:33 UTC. One-second probes do not
+establish the exact interruption duration.
+
+OPNsense selected backup `10.240.240.4` and `3d06:bad:b01:201::4` during
+the interface-manager restart and again during reboot. It restored primary
+`10.240.240.3` and `3d06:bad:b01:201::3` after both events. Restart selections
+changed within 03:41:50.179 through 03:41:50.636 UTC and returned within
+03:42:06.086 through 03:42:06.561 UTC. Reboot selections changed within
+03:45:32.927 through 03:45:33.375 UTC and returned within 03:46:28.573
+through 03:46:29.022 UTC. The observer recorded 193 failed samples before the
+successful deployment and zero failed samples during restart or reboot.
+
+All seven configured interfaces still report owner `networkd`. This deploy
+proves compatibility and existing-service handover, not lease recovery on a
+live MWAN-owned provider. MWAN-518 remains In Progress. Production retains
+release `202609292152-70-d442ba1`.
+
+### MWAN-518 recovery clock correction, September 30, 2026
+
+The unmerged [clock correction](https://github.com/agoodkind/mwan/pull/122)
+uses Linux `CLOCK_BOOTTIME` at nanosecond
+precision instead of the rounded uptime value. Its public store regression
+test saves and loads real DHCPv4 records and rejects any extension of the
+saved expiry. The unmerged [protocol harness](https://github.com/agoodkind/mwan/pull/123)
+accepts an explicit daemon
+executable through `MWAN_PROTOCOL_TEST_BINARY` and rejects invalid supplied
+paths instead of compiling another executable.
+
+The explicit corrected executable passed the real DHCPv6 daemon recovery
+test three consecutive times in 96.496 seconds. This executable is not
+installed on testbed or production.
+Merged release validation and live ownership acceptance remain required.
 
 The finding counts report blockers, issues to fix, and minor issues found
 during review, including findings fixed before the verdict.
