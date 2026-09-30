@@ -2193,7 +2193,8 @@ and the observation container was removed. The report is
 Graphite rebased dependent PR #135 to
 `a25a37b8c40bd35b3bab12f9e4b014b0c21b848a` with unchanged accepted tree
 bytes. Its full acceptance passed 22 namespace and four systemd cases.
-GitGuardian and the native merge remain pending at this checkpoint.
+All ten required checks passed. Graphite merged PR #135 as
+`2587f140a10ac8424ef96fe00d57c40853a7fa8a` at 16:19:32 UTC.
 
 The real NPT daemon control passed external link recreation after stale BPF
 policy cleanup. A nested-prefix fault control reproduced obsolete edge
@@ -2202,7 +2203,18 @@ candidate correction verifies actual policy values against desired policy
 and rejects an obsolete edge exception. Independent source review also found
 that a pure interface rename discarded a scoped receipt without removing
 the address. The correction must retain the receipt on that name mismatch.
-Public correction controls and complete project gates remain required.
+The expanded real daemon lifecycle passed in 13.82 seconds, including
+rename retention/recovery, nested prefix replacement, foreign address
+rejection, legacy startup/restart and final NPT withdrawal. Full Linux
+ARM64 project checks passed. Feature-removal controls, real delegated-prefix
+systemd proof and committed independent review remain required.
+
+The mounted published old executable created actual prior-process NPT rules.
+First candidate activation with an empty journal rejected its unjournaled
+edge, preserved that address and removed the prior rules while remaining
+alive. This proves neither NPT packet continuity nor deployment acceptance.
+The actual deployment must prove backup traffic during this interval and
+journaled recovery after reboot without adopting foreign addresses.
 
 Configs commit `a7bfbac749e77fe2c8110f726fc21019272c1164` adds explicit
 journal configuration and a real inventory runtime rendering fixture. Both
