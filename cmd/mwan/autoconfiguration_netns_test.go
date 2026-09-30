@@ -228,6 +228,15 @@ func runAutoconfigurationDaemonRuntime(t *testing.T, useRadvd bool) {
 
 func assertAutoconfigurationRouteObservations(t *testing.T, gateway string) {
 	t.Helper()
+	mainRoutes, err := netif.ListTableRoutes(t.Context(), slog.Default(), "inet6", unix.RT_TABLE_MAIN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, route := range mainRoutes {
+		if route.Protocol == unix.RTPROT_RA && route.Dest == "default" {
+			t.Fatalf("inspection includes expired RA default: %#v", route)
+		}
+	}
 	routes, err := netif.ListTableRoutes(t.Context(), slog.Default(), "inet6", 778)
 	if err != nil {
 		t.Fatal(err)
