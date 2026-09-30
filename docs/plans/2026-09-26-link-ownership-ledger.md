@@ -1485,7 +1485,7 @@ rejected recovery separately from fresh acquisition. The optional
 `make docker-make TARGETS='check test'` passed after the integration changes.
 `make test-netns` passed for the route, firewall, steering, and netif packages.
 Its first run failed one DHCPv6 test that required the next exchange within
-12 seconds of the first packet; the same test passed alone, and the bounded
+12 seconds of the first packet. The test passed in isolation. The bounded
 suite assertion now allows 16 seconds for scheduler delay. The privileged
 daemon process suite passed OOB restart, late interface, expired OOB record,
 and owned DHCPv6 Rebind scenarios in 101.190 seconds. A separate real Kea
