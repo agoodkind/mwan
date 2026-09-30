@@ -242,8 +242,15 @@ func waitResolverRuntimeFailureLogs(t *testing.T, daemon *runtimeDaemon) {
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		operationFound := false
+		applicationFound := false
 		finalFound := false
 		for _, line := range strings.Split(runtimeDaemonLog(t, daemon), "\n") {
+			if strings.Contains(line, "WARN resolver operation failed") {
+				if !strings.HasSuffix(line, `WARN resolver operation failed operation="get resolved link" result=failed`) {
+					t.Fatalf("resolver operation event repeats the error or lacks its outcome: %s", line)
+				}
+				operationFound = true
+			}
 			var event struct {
 				Message   string          `json:"msg"`
 				Level     string          `json:"level"`
@@ -258,10 +265,16 @@ func waitResolverRuntimeFailureLogs(t *testing.T, daemon *runtimeDaemon) {
 				continue
 			}
 			if event.Message == "resolver operation failed" {
-				if event.Level != "WARN" || event.Operation == "" || event.Result != "failed" || len(event.Err) != 0 || len(event.Error) != 0 {
+				if event.Level != "WARN" || event.Operation != "get resolved link" || event.Result != "failed" || len(event.Err) != 0 || len(event.Error) != 0 {
 					t.Fatalf("resolver operation event repeats the error or lacks its outcome: %s", line)
 				}
 				operationFound = true
+			}
+			if event.Message == "resolver application failed" {
+				if event.Level != "WARN" || event.Module != "resolver" || event.Operation == "" || event.Result != "failed" || len(event.Err) != 0 || len(event.Error) != 0 {
+					t.Fatalf("resolver application event repeats the error or lacks its outcome: %s", line)
+				}
+				applicationFound = true
 			}
 			if event.Message == "ifmgr: module Reconcile failed" && event.Module == "resolver" {
 				var diagnostic string
@@ -274,7 +287,7 @@ func waitResolverRuntimeFailureLogs(t *testing.T, daemon *runtimeDaemon) {
 				t.Fatalf("resolver emitted an intermediate duplicate diagnostic: %s", line)
 			}
 		}
-		if operationFound && finalFound {
+		if operationFound && applicationFound && finalFound {
 			return
 		}
 		assertRuntimeDaemonRunning(t, daemon)
