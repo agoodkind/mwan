@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -60,6 +63,7 @@ type DaemonConfig struct {
 	Iface             string
 	Connections       []interfaceintent.Connection
 	ReconcileInterval time.Duration
+	LeaseDirectory    string
 
 	// EnableDHCP causes the daemon to start a DHCPv4 client on Iface.
 	// The client emits LeaseInfo events the daemon fans out to all
@@ -217,20 +221,9 @@ func (d *Daemon) Run(ctx context.Context) error {
 	mon := netif.NewMonitor(ctx, d.log, netif.MonitorConfig{Iface: d.cfg.Iface, Connection: d.primaryConnection, ConnectionID: ""})
 	d.log.DebugContext(ctx, "ifmgr: monitor started")
 
-	// Start DHCP client if requested.
-	var dhcpClient *netif.DHCPClient
-	if d.cfg.EnableDHCP {
-		dhcpClient = netif.StartDHCPClient(ctx, d.log, netif.DHCPConfig{
-			Iface:           d.cfg.Iface,
-			InitialBackoff:  d.cfg.DHCPInitial,
-			MaxBackoff:      d.cfg.DHCPMax,
-			DiscoverTimeout: 0,
-			RequestTimeout:  0,
-			RenewTimeout:    0,
-			ClientID:        nil,
-			CachedLease:     nil,
-		})
-		d.log.DebugContext(ctx, "ifmgr: DHCP client started")
+	dhcp, err := d.startDHCP(ctx)
+	if err != nil {
+		return err
 	}
 
 	// Open RA client if requested. Failure to open is non-fatal; modules
@@ -249,27 +242,117 @@ func (d *Daemon) Run(ctx context.Context) error {
 	}
 
 	d.env = &Env{
-		Iface:            d.cfg.Iface,
-		Connections:      d.cfg.Connections,
-		Sysctl:           netif.NewProcSysctlRunner(d.log, false),
-		Log:              d.log,
-		Alerts:           WrapNotifier(d.cfg.Notifier),
-		Monitor:          mon,
-		DHCP:             dhcpClient,
-		RA:               raClient,
-		RequestReconcile: d.requestReconcile,
-		LiveState:        d.cfg.LiveState,
-		OwnedLinks:       nil,
-		OwnedAddresses:   nil,
-		Delegations:      nil,
-		PrepareLocalIPv6: nil,
+		Iface:               d.cfg.Iface,
+		Connections:         d.cfg.Connections,
+		Sysctl:              netif.NewProcSysctlRunner(d.log, false),
+		Log:                 d.log,
+		Alerts:              WrapNotifier(d.cfg.Notifier),
+		Monitor:             mon,
+		DHCP:                dhcp.client,
+		DHCPRecoveryPending: dhcp.cached,
+		RA:                  raClient,
+		RequestReconcile:    d.requestReconcile,
+		LiveState:           d.cfg.LiveState,
+		OwnedLinks:          nil,
+		OwnedAddresses:      nil,
+		Delegations:         nil,
+		PrepareLocalIPv6:    nil,
 	}
 
 	if err := d.initModules(ctx); err != nil {
 		return err
 	}
 
-	return d.runLoop(ctx, mon, dhcpClient, raClient, readinessDone, &readinessError)
+	return d.runLoop(ctx, mon, dhcp.client, raClient, readinessDone, &readinessError, dhcp.store, dhcp.connectionID)
+}
+
+type dhcpStartup struct {
+	client       *netif.DHCPClient
+	store        *netif.LeaseRecoveryStore
+	connectionID string
+	cached       bool
+}
+
+func (d *Daemon) startDHCP(ctx context.Context) (dhcpStartup, error) {
+	var empty dhcpStartup
+	if !d.cfg.EnableDHCP {
+		return empty, d.retireDisabledDHCPLease(ctx)
+	}
+	var startup dhcpStartup
+	recoveryLoader, err := d.prepareRoleDHCPRecovery(ctx, &startup)
+	if err != nil {
+		return empty, err
+	}
+	dhcpConfig := netif.DHCPConfig{
+		Iface: d.cfg.Iface, InitialBackoff: d.cfg.DHCPInitial, MaxBackoff: d.cfg.DHCPMax,
+		DiscoverTimeout: 0, RequestTimeout: 0, RenewTimeout: 0, ClientID: nil,
+		CachedLease: nil,
+	}
+	if recoveryLoader != nil {
+		startup.client = netif.StartDHCPClientWithRecovery(ctx, d.log, dhcpConfig, recoveryLoader)
+	} else {
+		startup.client = netif.StartDHCPClient(ctx, d.log, dhcpConfig)
+	}
+	d.log.DebugContext(ctx, "ifmgr: DHCP client started")
+	return startup, nil
+}
+
+func (d *Daemon) retireDisabledDHCPLease(ctx context.Context) error {
+	if d.cfg.LeaseDirectory == "" {
+		return nil
+	}
+	store, err := netif.NewLeaseRecoveryStore(filepath.Join(d.cfg.LeaseDirectory, "roles"))
+	if err != nil {
+		return fmt.Errorf("configure DHCP lease recovery: %w", err)
+	}
+	if err := store.Delete(d.role+"/"+d.cfg.Iface, netif.LeaseProtocolDHCPv4); err != nil && !errors.Is(err, os.ErrNotExist) {
+		d.log.WarnContext(ctx, "ifmgr: retire disabled DHCP lease failed", "err", err)
+	}
+	return nil
+}
+
+func (d *Daemon) prepareRoleDHCPRecovery(ctx context.Context, startup *dhcpStartup) (func(context.Context) (*netif.LeaseInfo, error), error) {
+	if d.cfg.LeaseDirectory == "" {
+		return nil, nil
+	}
+	store, err := netif.NewLeaseRecoveryStore(filepath.Join(d.cfg.LeaseDirectory, "roles"))
+	if err != nil {
+		return nil, fmt.Errorf("configure DHCP lease recovery: %w", err)
+	}
+	startup.store = store
+	startup.connectionID = d.role + "/" + d.cfg.Iface
+	startup.cached, err = store.Has(startup.connectionID, netif.LeaseProtocolDHCPv4)
+	if err != nil {
+		d.log.WarnContext(ctx, "ifmgr: saved DHCP lease rejected", "iface", d.cfg.Iface, "err", err)
+		startup.cached = false
+	}
+	if !startup.cached {
+		return nil, nil
+	}
+	return func(loadContext context.Context) (*netif.LeaseInfo, error) {
+		link, linkErr := waitForDHCPInterface(loadContext, d.log, d.cfg.Iface)
+		if linkErr != nil {
+			return nil, linkErr
+		}
+		return store.LoadDHCPv4(startup.connectionID, link, nil)
+	}, nil
+}
+
+func waitForDHCPInterface(ctx context.Context, log *slog.Logger, iface string) (*net.Interface, error) {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		link, err := net.InterfaceByName(iface)
+		if err == nil {
+			return link, nil
+		}
+		select {
+		case <-ctx.Done():
+			log.WarnContext(ctx, "ifmgr: DHCP recovery interface unavailable", "iface", iface, "err", ctx.Err())
+			return nil, fmt.Errorf("wait for interface %s: %w", iface, ctx.Err())
+		case <-ticker.C:
+		}
+	}
 }
 
 // ForwardingReadiness reports the last complete WAN reconcile result.
@@ -321,6 +404,8 @@ func (d *Daemon) runLoop(
 	raClient *netif.RAClient,
 	readinessDone <-chan struct{},
 	readinessError *error,
+	recoveryStore *netif.LeaseRecoveryStore,
+	recoveryConnectionID string,
 ) error {
 	// Initial reconcile pass.
 	initialCtx := tracing.WithOperation(ctx, "initial_reconcile")
@@ -379,6 +464,7 @@ func (d *Daemon) runLoop(
 				"phase", "dhcp-event",
 				"state", lease.State.String(),
 			)
+			d.persistDHCPLease(leaseCtx, llog, recoveryStore, recoveryConnectionID, lease)
 			d.dispatchLease(leaseCtx, llog, lease)
 
 		case <-tick.C:
@@ -397,6 +483,23 @@ func (d *Daemon) runLoop(
 			d.reconcileAll(reqCtx, rlog)
 			d.evaluateAlertsAll(reqCtx, rlog, d.clock.Now())
 		}
+	}
+}
+
+func (d *Daemon) persistDHCPLease(ctx context.Context, log *slog.Logger, store *netif.LeaseRecoveryStore, connectionID string, lease netif.LeaseInfo) {
+	if store == nil {
+		return
+	}
+	switch lease.State {
+	case netif.LeaseBound:
+		if err := store.SaveDHCPv4(connectionID, d.cfg.Iface, nil, lease); err != nil {
+			log.WarnContext(ctx, "ifmgr: save DHCP lease failed", "operation", "persist-lease", "dependency", "storage", "result", "failed", "role", d.role, "iface", d.cfg.Iface, "err", err)
+		}
+	case netif.LeaseExpired:
+		if err := store.Delete(connectionID, netif.LeaseProtocolDHCPv4); err != nil && !errors.Is(err, os.ErrNotExist) {
+			log.WarnContext(ctx, "ifmgr: delete expired DHCP lease failed", "operation", "persist-lease", "dependency", "storage", "result", "failed", "role", d.role, "iface", d.cfg.Iface, "err", err)
+		}
+	case netif.LeaseInit, netif.LeaseSelecting, netif.LeaseRequesting, netif.LeaseRenewing, netif.LeaseRebinding:
 	}
 }
 

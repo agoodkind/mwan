@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/big"
@@ -25,6 +26,42 @@ func (err *dhcpv6RestartExchangeError) Error() string {
 
 func (err *dhcpv6RestartExchangeError) Unwrap() error {
 	return err.cause
+}
+
+// RecoveryDone closes after initial cached lease validation or client shutdown.
+func (client *DHCPv6PDClient) RecoveryDone() <-chan struct{} {
+	return client.recoveryDone
+}
+
+func (client *DHCPv6PDClient) completeRecovery() {
+	client.recoveryOnce.Do(func() { close(client.recoveryDone) })
+}
+
+func (client *DHCPv6PDClient) recoverCachedDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.Client, config DHCPv6PDConfig, link *net.Interface, solicitMaxRT *time.Duration) DHCPv6PDLease {
+	if config.CachedLease == nil || !compatibleDHCPv6Lease(config, link, *config.CachedLease) {
+		var empty DHCPv6PDLease
+		return empty
+	}
+	for ctx.Err() == nil {
+		cached := expireDHCPv6Assignments(*config.CachedLease, config.Clock.Now())
+		if len(cached.Prefixes) == 0 && len(cached.Addresses) == 0 {
+			break
+		}
+		lease, err := validateDHCPv6Restart(ctx, transport, config, link, cached, solicitMaxRT)
+		if err == nil {
+			client.publish(lease)
+			return lease
+		}
+		if errors.Is(err, errDHCPv6RestartRejected) || ctx.Err() != nil {
+			break
+		}
+		log.WarnContext(ctx, "dhcpv6: restart validation pending", "iface", config.Iface, "err", err)
+		if !waitDHCPv6(ctx) {
+			break
+		}
+	}
+	var empty DHCPv6PDLease
+	return empty
 }
 
 func (client *DHCPv6PDClient) recoverOnLink(ctx context.Context, log *slog.Logger, config DHCPv6PDConfig, link *net.Interface) (DHCPv6PDLease, time.Duration, error) {
@@ -68,12 +105,18 @@ func exchangeDHCPv6Restart(ctx context.Context, transport *nclient6.Client, conf
 		if len(current.Prefixes) == 0 && len(current.Addresses) == 0 {
 			return nil, errDHCPv6RestartRejected
 		}
+		if messageType == dhcpv6.MessageTypeRebind && len(current.Prefixes) == 0 {
+			return nil, context.DeadlineExceeded
+		}
 		message, err := dhcpv6.NewMessage(dhcpv6.WithClientID(duid))
 		if err != nil {
 			return nil, &dhcpv6RestartExchangeError{operation: "create DHCPv6 restart retransmission", cause: err}
 		}
 		message.TransactionID = initial.TransactionID
-		configureDHCPv6Message(message, config, messageType, &current)
+		requestConfig := config
+		requestConfig.RequestPrefix = len(current.Prefixes) != 0
+		requestConfig.RequestAddress = len(current.Addresses) != 0
+		configureDHCPv6Message(message, requestConfig, messageType, &current)
 		message.UpdateOption(dhcpv6.OptElapsedTime(config.Clock.Now().Sub(started)))
 		wait := min(rt, deadline.Sub(config.Clock.Now()), latestDHCPv6Validity(current).Sub(config.Clock.Now()))
 		if wait <= 0 {

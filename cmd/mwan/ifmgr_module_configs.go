@@ -222,7 +222,7 @@ func buildAddressesConfig(ifmgrCfg config.IfMgrSection) (addresses.Config, error
 		}
 		clientIDs[connection.ID.String()] = decoded
 	}
-	config := addresses.Config{Connections: ifmgrCfg.Connections, Providers: providers, ClientIDs: clientIDs, StateFile: ""}
+	config := addresses.Config{Connections: ifmgrCfg.Connections, Providers: providers, ClientIDs: clientIDs, StateFile: "", LeaseDirectory: ifmgrCfg.LeaseDirectory}
 	if ifmgrCfg.Modules.Addresses != nil {
 		config.StateFile = ifmgrCfg.Modules.Addresses.StateFile
 	}

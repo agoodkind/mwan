@@ -227,13 +227,18 @@ module goodkind-mwan-steering {
   grouping ownership-family-fields {
     leaf acquisition { type string; }
     leaf assignment-validity { type string; }
+    leaf lease-persistence {
+      type enumeration { enum unknown; enum saved; enum failed; enum rejected; enum retired; }
+      description
+        "The last lease storage or recovery record result. This value does not determine forwarding readiness.";
+    }
     leaf firewall-protection { type string; }
     leaf routing { type string; }
     leaf readiness { type string; }
     container last-apply {
       leaf operation { type string; }
       leaf dependency { type string; }
-      leaf result { type enumeration { enum ready; enum failed; } }
+      leaf result { type enumeration { enum ready; enum waiting; enum failed; } }
       leaf reason { type string; }
       leaf at { type yang:date-and-time; }
     }

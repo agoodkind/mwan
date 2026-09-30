@@ -22,15 +22,17 @@ const (
 
 // FamilyState keeps protocol decisions separate from observed kernel state.
 type FamilyState struct {
-	Acquisition     string
-	AssignmentValid string
-	Firewall        string
-	Routing         string
-	Readiness       string
-	Assignments     []interfaceintent.Assignment
-	LastApply       ApplyResult
-	Addresses       []netif.CurrentAddr
-	Routes          []netif.CurrentRoute
+	Acquisition            string
+	AssignmentValid        string
+	LeasePersistence       string
+	leasePersistenceReason string
+	Firewall               string
+	Routing                string
+	Readiness              string
+	Assignments            []interfaceintent.Assignment
+	LastApply              ApplyResult
+	Addresses              []netif.CurrentAddr
+	Routes                 []netif.CurrentRoute
 }
 
 // ApplyResult records the last operation reported by the component owner.
@@ -138,7 +140,39 @@ func cloneConnection(value ConnectionState) ConnectionState {
 }
 
 func newFamilyState() FamilyState {
-	return FamilyState{Acquisition: "unknown", AssignmentValid: "unknown", Firewall: "unknown", Routing: "unknown", Readiness: "unknown", Assignments: nil, LastApply: ApplyResult{Operation: "", Dependency: "", Result: "", Reason: "", At: time.Time{}}, Addresses: nil, Routes: nil}
+	return FamilyState{Acquisition: "unknown", AssignmentValid: "unknown", LeasePersistence: "unknown", leasePersistenceReason: "", Firewall: "unknown", Routing: "unknown", Readiness: "unknown", Assignments: nil, LastApply: ApplyResult{Operation: "", Dependency: "", Result: "", Reason: "", At: time.Time{}}, Addresses: nil, Routes: nil}
+}
+
+// SetLeasePersistence records lease storage separately from forwarding state.
+func (s *Store) SetLeasePersistence(id, family, result, reason string) {
+	s.mu.Lock()
+	current, ok := s.connections[id]
+	if !ok {
+		s.mu.Unlock()
+		return
+	}
+	var state *FamilyState
+	switch addressFamily(family) {
+	case familyIPv4:
+		state = &current.IPv4
+	case familyIPv6:
+		state = &current.IPv6
+	default:
+		s.mu.Unlock()
+		return
+	}
+	previous := state.LeasePersistence
+	state.LeasePersistence = result
+	var transition *Transition
+	if result != previous || reason != state.leasePersistenceReason {
+		value := s.addTransitionLocked(&current, family, previous, result, "persist-lease", "storage", reason, s.clock.Now())
+		transition = &value
+	}
+	state.leasePersistenceReason = reason
+	s.connections[id] = current
+	logger := s.transitionLog
+	s.mu.Unlock()
+	logOwnershipTransition(logger, id, transition)
 }
 
 // SetFamilyApplyResult records a family's kernel operation separately from assignment validity.
@@ -219,7 +253,7 @@ func (s *Store) SetAssignment(id, family, acquisition, validity string, assignme
 	previous := state.Acquisition + "/" + state.AssignmentValid
 	state.Acquisition = acquisition
 	state.AssignmentValid = validity
-	state.Assignments = cloneFamily(FamilyState{Acquisition: "", AssignmentValid: "", Firewall: "", Routing: "", Readiness: "", Assignments: assignments, LastApply: ApplyResult{Operation: "", Dependency: "", Result: "", Reason: "", At: time.Time{}}, Addresses: nil, Routes: nil}).Assignments
+	state.Assignments = cloneFamily(FamilyState{Acquisition: "", AssignmentValid: "", LeasePersistence: "", leasePersistenceReason: "", Firewall: "", Routing: "", Readiness: "", Assignments: assignments, LastApply: ApplyResult{Operation: "", Dependency: "", Result: "", Reason: "", At: time.Time{}}, Addresses: nil, Routes: nil}).Assignments
 	var transition *Transition
 	if next := acquisition + "/" + validity; next != previous {
 		value := s.addTransitionLocked(&current, family, previous, next, "acquire", "protocol", "assignment state changed", s.clock.Now())

@@ -72,12 +72,14 @@ type DHCPv6PDLease struct {
 
 // DHCPv6PDClient negotiates the requested associations in one session.
 type DHCPv6PDClient struct {
-	mu       sync.RWMutex
-	lease    DHCPv6PDLease
-	declines chan netip.Addr
-	pending  map[netip.Addr]bool
-	done     <-chan struct{}
-	Events   chan struct{}
+	mu           sync.RWMutex
+	lease        DHCPv6PDLease
+	declines     chan netip.Addr
+	pending      map[netip.Addr]bool
+	done         <-chan struct{}
+	recoveryDone chan struct{}
+	recoveryOnce sync.Once
+	Events       chan struct{}
 }
 
 // DHCPv6PDStore publishes current MWAN-owned DHCPv6 assignments to consumers.
@@ -199,7 +201,7 @@ func StartDHCPv6PDClient(ctx context.Context, log *slog.Logger, config DHCPv6PDC
 		config.CachedLease = &cached
 	}
 	var emptyLease DHCPv6PDLease
-	client := &DHCPv6PDClient{mu: sync.RWMutex{}, lease: emptyLease, declines: make(chan netip.Addr, 16), pending: make(map[netip.Addr]bool), done: ctx.Done(), Events: make(chan struct{}, 1)}
+	client := &DHCPv6PDClient{mu: sync.RWMutex{}, lease: emptyLease, declines: make(chan netip.Addr, 16), pending: make(map[netip.Addr]bool), done: ctx.Done(), recoveryDone: make(chan struct{}), recoveryOnce: sync.Once{}, Events: make(chan struct{}, 1)}
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
@@ -213,6 +215,7 @@ func StartDHCPv6PDClient(ctx context.Context, log *slog.Logger, config DHCPv6PDC
 
 func (client *DHCPv6PDClient) run(ctx context.Context, log *slog.Logger, config DHCPv6PDConfig) {
 	defer close(client.Events)
+	defer client.completeRecovery()
 	for ctx.Err() == nil {
 		link, err := net.InterfaceByName(config.Iface)
 		if err != nil {
@@ -236,6 +239,7 @@ func (client *DHCPv6PDClient) run(ctx context.Context, log *slog.Logger, config 
 			}
 			continue
 		}
+		client.completeRecovery()
 		transport, err := nclient6.New(config.Iface, nclient6.WithRetry(1), nclient6.WithTimeout(time.Second))
 		if err != nil {
 			log.WarnContext(ctx, "dhcpv6: socket unavailable", "iface", config.Iface, "err", err)
@@ -353,23 +357,6 @@ func (client *DHCPv6PDClient) completeRecoveredDHCPv6(ctx context.Context, log *
 			return
 		}
 	}
-}
-
-func (client *DHCPv6PDClient) recoverCachedDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.Client, config DHCPv6PDConfig, link *net.Interface, solicitMaxRT *time.Duration) DHCPv6PDLease {
-	if config.CachedLease == nil || !compatibleDHCPv6Lease(config, link, *config.CachedLease) {
-		var empty DHCPv6PDLease
-		return empty
-	}
-	lease, err := validateDHCPv6Restart(ctx, transport, config, link, *config.CachedLease, solicitMaxRT)
-	if err != nil {
-		if !errors.Is(err, errDHCPv6RestartRejected) && ctx.Err() == nil {
-			log.WarnContext(ctx, "dhcpv6: restart validation pending", "iface", config.Iface, "err", err)
-		}
-		var empty DHCPv6PDLease
-		return empty
-	}
-	client.publish(lease)
-	return lease
 }
 
 func (client *DHCPv6PDClient) acquireMissingDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.Client, config DHCPv6PDConfig, link *net.Interface, lease *DHCPv6PDLease, solicitMaxRT *time.Duration) bool {

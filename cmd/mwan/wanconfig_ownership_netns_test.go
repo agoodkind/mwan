@@ -111,13 +111,26 @@ func runOwnershipOperationalChild(t *testing.T) {
 		return compact.String()
 	}
 	initial := read()
-	for _, field := range []string{`"connection-id":"stable-example"`, `"configured-owner":"external"`, `"cidr":"192.0.2.61/32"`, `"acquisition":"unknown"`, `"assignment-validity":"unknown"`, `"readiness":"unknown"`, `"routing":"ready"`} {
+	for _, field := range []string{`"connection-id":"stable-example"`, `"configured-owner":"external"`, `"cidr":"192.0.2.61/32"`, `"acquisition":"unknown"`, `"assignment-validity":"unknown"`, `"lease-persistence":"unknown"`, `"readiness":"unknown"`, `"routing":"ready"`} {
 		if !strings.Contains(initial, field) {
 			t.Fatalf("operational state lacks %s: %s", field, initial)
 		}
 	}
 	if strings.Contains(initial, `"assignment":[`) {
 		t.Fatalf("kernel address invented acquisition: %s", initial)
+	}
+	store.SetFamilyApplyResult("stable-example", "ipv4", wanstate.ApplyResult{Operation: "apply-address", Dependency: "kernel", Result: "ready"})
+	store.SetReadiness("stable-example", "ipv4", "ready")
+	store.SetLeasePersistence("stable-example", "ipv4", "failed", "lease file write failed")
+	current := store.Snapshot().Connections["stable-example"]
+	if current.IPv4.Routing != "ready" || current.IPv4.Readiness != "ready" || current.IPv4.AssignmentValid != "unknown" || current.IPv4.LastApply.Result != "ready" {
+		t.Fatalf("storage failure changed forwarding state: %+v", current.IPv4)
+	}
+	failedStorage := read()
+	for _, field := range []string{`"lease-persistence":"failed"`, `"routing":"ready"`, `"readiness":"ready"`, `"assignment-validity":"unknown"`, `"operation":"persist-lease"`, `"dependency":"storage"`, `"reason":"lease file write failed"`} {
+		if !strings.Contains(failedStorage, field) {
+			t.Fatalf("operational state lacks %s: %s", field, failedStorage)
+		}
 	}
 	verifyIPv6OperationalObservation(t, store, link, read)
 	secondAddress, err := netlink.ParseAddr("192.0.2.62/32")

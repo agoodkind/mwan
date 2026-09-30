@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -31,19 +32,23 @@ const (
 )
 
 func TestOwnedDHCPv4DaemonRuntime(t *testing.T) {
-	testOwnedDHCPv4DaemonRuntime(t, false, false, false)
+	testOwnedDHCPv4DaemonRuntime(t, false, false, false, false)
 }
 
 func TestOwnedDHCPv4ClasslessDaemonRuntime(t *testing.T) {
-	testOwnedDHCPv4DaemonRuntime(t, true, false, false)
+	testOwnedDHCPv4DaemonRuntime(t, true, false, false, false)
 }
 
 func TestOwnedDHCPv4RebindDaemonRuntime(t *testing.T) {
-	testOwnedDHCPv4DaemonRuntime(t, true, true, false)
+	testOwnedDHCPv4DaemonRuntime(t, true, true, false, false)
 }
 
 func TestOwnedDHCPv4NAKDaemonRuntime(t *testing.T) {
-	testOwnedDHCPv4DaemonRuntime(t, true, true, true)
+	testOwnedDHCPv4DaemonRuntime(t, true, true, true, false)
+}
+
+func TestOwnedDHCPv4RejectedRecoveryRuntime(t *testing.T) {
+	testOwnedDHCPv4DaemonRuntime(t, false, false, false, true)
 }
 
 func TestOOBDHCPv4DaemonRuntime(t *testing.T) {
@@ -58,10 +63,10 @@ func TestFailoverDHCPv4DisabledRuntime(t *testing.T) {
 	testRoleDHCPv4DaemonRuntime(t, "failover", false)
 }
 
-func testOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAddress bool) {
+func testOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAddress, rejectedRecovery bool) {
 	t.Helper()
 	if os.Getenv(dhcpv4RuntimeChildEnv) == "1" {
-		runOwnedDHCPv4DaemonRuntime(t, classless, recoverAtT2, replaceAddress)
+		runOwnedDHCPv4DaemonRuntime(t, classless, recoverAtT2, replaceAddress, rejectedRecovery)
 		return
 	}
 	if os.Geteuid() != 0 {
@@ -80,7 +85,7 @@ func testOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceA
 	}
 }
 
-func runOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAddress bool) {
+func runOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAddress, rejectedRecovery bool) {
 	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -110,6 +115,13 @@ func runOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAd
 	writeDHCPv4RuntimeNetwork(t, networkDir)
 	configPath := filepath.Join(root, "config.toml")
 	config := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[wanconfig]\npublish = true\n", filepath.Join(root, "owned-links.json"), filepath.Join(root, "owned-addresses.json"))
+	leaseDirectory := filepath.Join(root, "leases")
+	if rejectedRecovery {
+		if err := os.Mkdir(leaseDirectory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		config = strings.Replace(config, "[ifmgr.iface.enmwanbr0]", fmt.Sprintf("lease_directory = %q\n[ifmgr.iface.enmwanbr0]", leaseDirectory), 1)
+	}
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -135,6 +147,8 @@ func runOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAd
 	leaseSeconds := 8
 	if recoverAtT2 {
 		leaseSeconds = 24
+	} else if rejectedRecovery {
+		leaseSeconds = 40
 	}
 	service := startDHCPv4RuntimeKea(t, root, classless, leaseSeconds, "198.51.100.2", "198.51.100.100", true)
 	serviceRunning := true
@@ -146,7 +160,11 @@ func runOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAd
 	setRuntimeNamespace(t, gateway)
 	addRuntimeRoute(t, gateway, downstream.namespace, "198.51.100.0/24", "192.0.2.1")
 	addRuntimeRoute(t, gateway, provider.namespace, "192.0.2.0/29", "198.51.100.100")
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	runTimeout := 45 * time.Second
+	if rejectedRecovery {
+		runTimeout = time.Minute
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), runTimeout)
 	defer cancel()
 	reader, closeRepository, err := openPrivateRepository(ctx, slog.Default(), selftestFlags{repository: filepath.Join(root, "repository"), modelsDir: selftestModelsDir(t)})
 	if err != nil {
@@ -177,6 +195,50 @@ func runOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAd
 	}
 	waitRuntimeOwnershipRead(t, daemon, read, `"kind":"dhcpv4"`)
 	waitRuntimeOwnershipRead(t, daemon, read, `"valid-until":`)
+	if rejectedRecovery {
+		wanLeaseDirectory := filepath.Join(leaseDirectory, "wan")
+		waitDHCPRecoveryRecord(t, daemon, wanLeaseDirectory)
+		stopRuntimeDaemon(t, daemon)
+		entries, err := os.ReadDir(wanLeaseDirectory)
+		if err != nil || len(entries) != 1 {
+			t.Fatalf("saved WAN lease count: entries=%v err=%v", entries, err)
+		}
+		if err := os.WriteFile(filepath.Join(wanLeaseDirectory, entries[0].Name()), []byte("corrupt saved lease"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		setRuntimeNamespace(t, provider.namespace)
+		stopProtocolServices(t, []protocolService{service})
+		serviceRunning = false
+		setRuntimeNamespace(t, gateway)
+		daemon = startRuntimeDaemon(t, os.Getenv(dhcpv4RuntimeBinaryEnv), configPath, root, "dhcpv4-rejected")
+		waitRuntimeOwnershipRead(t, daemon, read, `"acquisition":"recovery-rejected"`)
+		waitRuntimeOwnershipRead(t, daemon, read, `"lease-persistence":"rejected"`)
+		waitStaticRuntimeAddress(t, daemon, "enatt0", prefix, false)
+		setRuntimeNamespace(t, provider.namespace)
+		service = startDHCPv4RuntimeKea(t, root, false, leaseSeconds, "198.51.100.2", "198.51.100.100", false)
+		serviceRunning = true
+		setRuntimeNamespace(t, gateway)
+		deadline := time.Now().Add(30 * time.Second)
+		for time.Now().Before(deadline) {
+			link, err := netlink.LinkByName("enatt0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			addresses, err := netlink.AddrList(link, unix.AF_INET)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if slices.ContainsFunc(addresses, func(address netlink.Addr) bool { return address.IPNet.String() == prefix }) {
+				break
+			}
+			assertRuntimeDaemonRunning(t, daemon)
+			time.Sleep(50 * time.Millisecond)
+		}
+		waitStaticRuntimeAddress(t, daemon, "enatt0", prefix, true)
+		waitRuntimeOwnershipRead(t, daemon, read, `"lease-persistence":"saved"`)
+		waitRuntimeOwnershipRead(t, daemon, read, `"acquisition":"bound"`)
+		return
+	}
 	initialExpiry := time.Time{}
 	if recoverAtT2 {
 		served := read()

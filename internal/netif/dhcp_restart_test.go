@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -62,6 +63,7 @@ func TestDHCPRestartClientWithServer(t *testing.T) {
 		dhcpv4.MessageTypeAck, dhcpv4.MessageTypeNak, 0,
 	} {
 		t.Run(responseType.String(), func(t *testing.T) {
+			logs := &dhcpRestartLog{}
 			caseClientID := append(append([]byte(nil), clientID...), byte(responseType))
 			requests := make(chan *dhcpv4.DHCPv4, 16)
 			server, err := server4.NewServer(serverInterface,
@@ -97,7 +99,7 @@ func TestDHCPRestartClientWithServer(t *testing.T) {
 			}
 			ctx, cancel := context.WithCancel(context.Background())
 			t.Cleanup(cancel)
-			client := StartDHCPClient(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), DHCPConfig{
+			client := StartDHCPClient(ctx, slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})), DHCPConfig{
 				Iface: clientInterface, CachedLease: &cached, ClientID: caseClientID,
 				RequestTimeout: 100 * time.Millisecond, InitialBackoff: 50 * time.Millisecond,
 			})
@@ -111,14 +113,14 @@ func TestDHCPRestartClientWithServer(t *testing.T) {
 						continue
 					}
 				case <-deadline:
-					t.Fatal("restart request not received")
+					t.Fatalf("restart request not received; client state: %+v; client log: %s", client.LastLease(), logs.String())
 				}
 				if packet.MessageType() != dhcpv4.MessageTypeRequest ||
 					!packet.IsBroadcast() || !packet.ClientIPAddr.Equal(net.IPv4zero) ||
 					!packet.RequestedIPAddress().Equal(address) ||
 					packet.Options.Has(dhcpv4.OptionServerIdentifier) ||
 					!bytes.Equal(packet.Options.Get(dhcpv4.OptionClientIdentifier), caseClientID) {
-					t.Fatalf("invalid restart packet: %s", packet.Summary())
+					t.Fatalf("invalid restart packet: %s\nclient state: %+v\nclient log: %s", packet.Summary(), client.LastLease(), logs.String())
 				}
 				break
 			}
@@ -155,6 +157,23 @@ func TestDHCPRestartClientWithServer(t *testing.T) {
 			}
 		})
 	}
+}
+
+type dhcpRestartLog struct {
+	mu     sync.Mutex
+	buffer bytes.Buffer
+}
+
+func (l *dhcpRestartLog) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buffer.Write(p)
+}
+
+func (l *dhcpRestartLog) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buffer.String()
 }
 
 func TestDHCPRestartReportsMissingInterface(t *testing.T) {

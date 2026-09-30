@@ -308,6 +308,7 @@ func buildIfMgrDaemonConfig(cfg *config.Config, role string) (ifmgr.DaemonConfig
 		Iface:                  ifaceName,
 		Connections:            cfg.IfMgr.Connections,
 		ReconcileInterval:      rec,
+		LeaseDirectory:         cfg.IfMgr.LeaseDirectory,
 		EnableDHCP:             enableDHCP,
 		DHCPInitial:            dhcpInit,
 		DHCPMax:                dhcpMax,

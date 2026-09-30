@@ -120,13 +120,14 @@ func (l LeaseInfo) String() string {
 // DHCPClient runs a long-lived DHCPv4 state machine in its own goroutine.
 // Events publishes the current assignment or its withdrawal.
 type DHCPClient struct {
-	cfg    DHCPConfig
-	log    *slog.Logger
-	clock  clock
-	mu     sync.Mutex
-	last   LeaseInfo
-	origin LeaseInfo
-	epoch  uint64
+	cfg            DHCPConfig
+	log            *slog.Logger
+	clock          clock
+	mu             sync.Mutex
+	last           LeaseInfo
+	origin         LeaseInfo
+	epoch          uint64
+	recoveryLoader func(context.Context) (*LeaseInfo, error)
 
 	Events chan LeaseInfo
 }
@@ -138,6 +139,15 @@ var errDHCPInterfaceChanged = errors.New("DHCP interface changed during exchange
 func StartDHCPClient(
 	ctx context.Context, log *slog.Logger, cfg DHCPConfig,
 ) *DHCPClient {
+	return startDHCPClient(ctx, log, cfg, nil)
+}
+
+// StartDHCPClientWithRecovery loads a saved lease asynchronously before the first acquisition.
+func StartDHCPClientWithRecovery(ctx context.Context, log *slog.Logger, cfg DHCPConfig, loader func(context.Context) (*LeaseInfo, error)) *DHCPClient {
+	return startDHCPClient(ctx, log, cfg, loader)
+}
+
+func startDHCPClient(ctx context.Context, log *slog.Logger, cfg DHCPConfig, loader func(context.Context) (*LeaseInfo, error)) *DHCPClient {
 	if cfg.InitialBackoff == 0 {
 		cfg.InitialBackoff = 5 * time.Second
 	}
@@ -174,14 +184,15 @@ func StartDHCPClient(
 	}
 
 	c := &DHCPClient{
-		cfg:    cfg,
-		log:    log.With("component", "dhcp", "iface", cfg.Iface),
-		clock:  realClock{},
-		mu:     sync.Mutex{},
-		last:   leaseState(LeaseInit, time.Time{}, nil),
-		origin: leaseState(LeaseInit, time.Time{}, nil),
-		epoch:  0,
-		Events: make(chan LeaseInfo, 1),
+		cfg:            cfg,
+		log:            log.With("component", "dhcp", "iface", cfg.Iface),
+		clock:          realClock{},
+		mu:             sync.Mutex{},
+		last:           leaseState(LeaseInit, time.Time{}, nil),
+		origin:         leaseState(LeaseInit, time.Time{}, nil),
+		epoch:          0,
+		recoveryLoader: loader,
+		Events:         make(chan LeaseInfo, 1),
 	}
 	go func() {
 		defer func() {
@@ -258,7 +269,19 @@ func (c *DHCPClient) originMatches() bool {
 func (c *DHCPClient) run(ctx context.Context) {
 	logger := c.log.With("goroutine", "dhcp")
 	backoff := c.cfg.InitialBackoff
-	if cached := c.cfg.CachedLease; cached != nil {
+	cached := c.cfg.CachedLease
+	if c.recoveryLoader != nil {
+		var err error
+		cached, err = c.recoveryLoader(ctx)
+		if err != nil && ctx.Err() == nil {
+			logger.WarnContext(ctx, "dhcp: saved lease unavailable", "err", err)
+			if originErr := c.captureOrigin(); originErr != nil {
+				logger.WarnContext(ctx, "dhcp: rejected lease link unavailable", "err", originErr)
+			}
+			c.emit(leaseState(LeaseExpired, time.Time{}, err))
+		}
+	}
+	if cached != nil {
 		if lease := c.recoverLease(ctx, *cached); lease != nil {
 			c.bound(ctx, logger, lease)
 		}
@@ -284,11 +307,12 @@ func (c *DHCPClient) run(ctx context.Context) {
 
 // recoverLease validates a saved address without publishing it before an ACK.
 func (c *DHCPClient) recoverLease(ctx context.Context, cached LeaseInfo) *nclient4.Lease {
-	if cached.IP.To4() == nil || !c.clock.Now().Before(cached.ExpiresAt) {
-		return nil
-	}
 	if err := c.captureOrigin(); err != nil {
 		c.emit(leaseState(LeaseExpired, cached.AcquiredAt, err))
+		return nil
+	}
+	if cached.IP.To4() == nil || !c.clock.Now().Before(cached.ExpiresAt) {
+		c.emit(leaseState(LeaseExpired, cached.AcquiredAt, errors.New("saved DHCP lease expired before validation")))
 		return nil
 	}
 	c.mu.Lock()

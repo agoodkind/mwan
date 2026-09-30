@@ -37,6 +37,12 @@ type OwnedAddressLifetime struct {
 	ValidUntil     time.Time
 }
 
+// RecordedRetention selects journaled objects kept during lease validation.
+type RecordedRetention struct {
+	All      bool
+	Prefixes map[netip.Prefix]bool
+}
+
 type ownedStaticObject struct {
 	ConnectionID string `json:"connection_id"`
 	Family       string `json:"family"`
@@ -225,6 +231,11 @@ func (r *OwnedStaticReconciler) ReconcileFamilyRoutes(ctx context.Context, conne
 
 // ReconcileFamilyRoutesWithLifetimes also applies deadlines to acquired addresses.
 func (r *OwnedStaticReconciler) ReconcileFamilyRoutesWithLifetimes(ctx context.Context, connection interfaceintent.Connection, family string, settings interfaceintent.Family, routes []OwnedRoute, ready OwnedLinkResult, lifetimes map[netip.Prefix]OwnedAddressLifetime) error {
+	return r.ReconcileFamilyRoutesWithLifetimesRetaining(ctx, connection, family, settings, routes, ready, lifetimes, RecordedRetention{All: false, Prefixes: nil})
+}
+
+// ReconcileFamilyRoutesWithLifetimesRetaining applies desired objects and retains selected recorded objects on the current link.
+func (r *OwnedStaticReconciler) ReconcileFamilyRoutesWithLifetimesRetaining(ctx context.Context, connection interfaceintent.Connection, family string, settings interfaceintent.Family, routes []OwnedRoute, ready OwnedLinkResult, lifetimes map[netip.Prefix]OwnedAddressLifetime, retention RecordedRetention) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if err := ctx.Err(); err != nil {
@@ -291,11 +302,15 @@ func (r *OwnedStaticReconciler) ReconcileFamilyRoutesWithLifetimes(ctx context.C
 		}
 		desired[staticObjectKey(value)] = true
 	}
-	if err := r.pruneFamily(connection.ID.String(), family, desired); err != nil {
+	return r.completeFamily(base, len(settings.Addresses) == 0, desired, retention)
+}
+
+func (r *OwnedStaticReconciler) completeFamily(base ownedStaticObject, noAddresses bool, desired map[string]bool, retention RecordedRetention) error {
+	if err := r.pruneFamily(base, desired, retention); err != nil {
 		return err
 	}
-	if family == "ipv4" && len(settings.Addresses) == 0 {
-		return r.restorePromotion(connection.ID.String())
+	if base.Family == "ipv4" && noAddresses && !retention.All {
+		return r.restorePromotion(base.ConnectionID)
 	}
 	return nil
 }
@@ -614,10 +629,14 @@ func (r *OwnedStaticReconciler) ensureRoute(value ownedStaticObject) error {
 	return nil
 }
 
-func (r *OwnedStaticReconciler) pruneFamily(id, family string, desired map[string]bool) error {
+func (r *OwnedStaticReconciler) pruneFamily(base ownedStaticObject, desired map[string]bool, retention RecordedRetention) error {
 	old := append([]ownedStaticObject(nil), r.journal.Objects...)
 	for _, value := range old {
-		if value.ConnectionID != id || value.Family != family || desired[staticObjectKey(value)] {
+		if value.ConnectionID != base.ConnectionID || value.Family != base.Family {
+			continue
+		}
+		matchesLink := value.LinkIndex == base.LinkIndex && value.LinkIdentity == base.LinkIdentity && value.LinkName == base.LinkName
+		if matchesLink && (desired[staticObjectKey(value)] || retention.All || retainedPrefix(value, retention.Prefixes)) {
 			continue
 		}
 		if err := r.remove(value); err != nil {
@@ -625,6 +644,14 @@ func (r *OwnedStaticReconciler) pruneFamily(id, family string, desired map[strin
 		}
 	}
 	return nil
+}
+
+func retainedPrefix(value ownedStaticObject, prefixes map[netip.Prefix]bool) bool {
+	if value.Prefix == "" || len(prefixes) == 0 {
+		return false
+	}
+	prefix, err := netip.ParsePrefix(value.Prefix)
+	return err == nil && prefixes[prefix]
 }
 
 func (r *OwnedStaticReconciler) remove(value ownedStaticObject) error {

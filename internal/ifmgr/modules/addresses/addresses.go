@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/netip"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -27,10 +29,11 @@ const moduleName = "addresses"
 
 // Config supplies owned family intent, translation settings, and the journal path.
 type Config struct {
-	Connections []interfaceintent.Connection
-	Providers   map[string]Provider
-	ClientIDs   map[string][]byte
-	StateFile   string
+	Connections    []interfaceintent.Connection
+	Providers      map[string]Provider
+	ClientIDs      map[string][]byte
+	StateFile      string
+	LeaseDirectory string
 }
 
 // Provider supplies translation addresses for an exclusively owned connection.
@@ -49,6 +52,7 @@ type Module struct {
 	providers      map[string]Provider
 	clientIDs      map[string][]byte
 	reconciler     *netif.OwnedStaticReconciler
+	leaseStore     *netif.LeaseRecoveryStore
 	clock          clock.Clock
 	reconcileMu    sync.Mutex
 	sessionMu      sync.Mutex
@@ -58,29 +62,36 @@ type Module struct {
 }
 
 type dhcpSession struct {
-	client     *netif.DHCPClient
-	cancel     context.CancelFunc
-	ready      netif.OwnedLinkResult
-	identity   string
-	generation uint64
+	client           *netif.DHCPClient
+	cancel           context.CancelFunc
+	ready            netif.OwnedLinkResult
+	identity         string
+	generation       uint64
+	recoveryPending  bool
+	recoveryUntil    time.Time
+	recoveryRejected bool
 }
 
 type dhcpv6Session struct {
-	client      *netif.DHCPv6PDClient
-	cancel      context.CancelFunc
-	ready       netif.OwnedLinkResult
-	identity    string
-	generation  uint64
-	addrUpdates chan netlink.AddrUpdate
-	addrErrors  chan error
-	addrDone    chan struct{}
+	client           *netif.DHCPv6PDClient
+	cancel           context.CancelFunc
+	ready            netif.OwnedLinkResult
+	identity         string
+	generation       uint64
+	recoveryPending  bool
+	recoveryUntil    time.Time
+	cachedLease      *netif.DHCPv6PDLease
+	recoveryRejected bool
+	addrUpdates      chan netlink.AddrUpdate
+	addrErrors       chan error
+	addrDone         chan struct{}
 }
 
 // New validates the address journal before daemon startup.
 func New(config ifmgr.ModuleConfig) (ifmgr.Module, error) {
 	module := &Module{
 		BaseModule: ifmgr.NewBaseModule(moduleName), connections: nil, providers: nil,
-		clientIDs: nil, reconciler: nil, clock: clock.Real{}, reconcileMu: sync.Mutex{},
+		clientIDs: nil, reconciler: nil, leaseStore: nil, clock: clock.Real{}, reconcileMu: sync.Mutex{},
 		sessionMu: sync.Mutex{}, sessions: make(map[string]*dhcpSession),
 		dhcpv6Sessions: make(map[string]*dhcpv6Session), nextGeneration: 0,
 	}
@@ -94,6 +105,13 @@ func New(config ifmgr.ModuleConfig) (ifmgr.Module, error) {
 	module.connections = settings.Connections
 	module.providers = settings.Providers
 	module.clientIDs = settings.ClientIDs
+	if settings.LeaseDirectory != "" {
+		store, err := netif.NewLeaseRecoveryStore(filepath.Join(settings.LeaseDirectory, "wan"))
+		if err != nil {
+			return nil, fmt.Errorf("addresses: lease recovery directory: %w", err)
+		}
+		module.leaseStore = store
+	}
 	for _, connection := range settings.Connections {
 		if connection.Owner != interfaceintent.OwnerMWAN || connection.IPv4 == nil || connection.IPv4.DHCPv4 == nil || connection.IPv4.DHCPv4.ClientID == "" {
 			continue
@@ -123,8 +141,19 @@ func New(config ifmgr.ModuleConfig) (ifmgr.Module, error) {
 }
 
 // Init requires the preceding link module's result store.
-func (module *Module) Init(_ context.Context, env *ifmgr.Env) error {
+func (module *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	module.InitBase(env, "module", moduleName)
+	if module.leaseStore != nil {
+		active := make(map[string]bool)
+		for _, connection := range module.connections {
+			if connection.Owner == interfaceintent.OwnerMWAN {
+				active[connection.ID.String()] = true
+			}
+		}
+		if err := module.leaseStore.PruneUnconfigured(active); err != nil {
+			module.Log.WarnContext(ctx, "addresses: prune saved leases failed", "err", err)
+		}
+	}
 	if module.reconciler == nil {
 		return ifmgr.ErrModuleDisabled
 	}
@@ -253,6 +282,9 @@ func (module *Module) currentDHCPClient(ctx context.Context, log *slog.Logger, c
 			delete(module.sessions, id)
 		}
 		module.sessionMu.Unlock()
+		if !wantsDHCP {
+			module.deleteRecoveryLease(ctx, id, netif.LeaseProtocolDHCPv4)
+		}
 		return nil
 	}
 	if previous != nil && previous.ready.IfIndex == ready.IfIndex &&
@@ -262,16 +294,24 @@ func (module *Module) currentDHCPClient(ctx context.Context, log *slog.Logger, c
 	}
 	if previous != nil {
 		previous.cancel()
+		delete(module.sessions, id)
 	}
+	module.sessionMu.Unlock()
+	cached, recoveryRejected := module.loadDHCPv4Recovery(ctx, log, id, ready)
+	module.sessionMu.Lock()
 	clientContext, cancel := context.WithCancel(ctx)
 	module.nextGeneration++
 	client := netif.StartDHCPClient(clientContext, log, netif.DHCPConfig{
 		Iface: ready.ActualName, InitialBackoff: 0, MaxBackoff: 0,
 		DiscoverTimeout: 0, RequestTimeout: 0, RenewTimeout: 0,
 		ClientID:    slices.Clone(module.clientIDs[id]),
-		CachedLease: nil,
+		CachedLease: cached,
 	})
-	session := &dhcpSession{client: client, cancel: cancel, ready: ready, identity: identity, generation: module.nextGeneration}
+	recoveryUntil := time.Time{}
+	if cached != nil {
+		recoveryUntil = cached.ExpiresAt
+	}
+	session := &dhcpSession{client: client, cancel: cancel, ready: ready, identity: identity, generation: module.nextGeneration, recoveryPending: cached != nil, recoveryUntil: recoveryUntil, recoveryRejected: recoveryRejected}
 	module.sessions[id] = session
 	module.sessionMu.Unlock()
 	go func() {
@@ -285,23 +325,119 @@ func (module *Module) currentDHCPClient(ctx context.Context, log *slog.Logger, c
 	return session
 }
 
+func (module *Module) loadDHCPv4Recovery(ctx context.Context, log *slog.Logger, id string, ready netif.OwnedLinkResult) (*netif.LeaseInfo, bool) {
+	if module.leaseStore == nil {
+		return nil, false
+	}
+	link, err := net.InterfaceByIndex(ready.IfIndex)
+	if err != nil || link.Name != ready.ActualName {
+		return nil, false
+	}
+	cached, err := module.leaseStore.LoadDHCPv4(id, link, module.clientIDs[id])
+	if err == nil || errors.Is(err, os.ErrNotExist) {
+		return cached, false
+	}
+	log.WarnContext(ctx, "addresses: DHCPv4 saved lease rejected", "connection_id", id, "err", err)
+	if module.deleteRecoveryLease(ctx, id, netif.LeaseProtocolDHCPv4) {
+		module.recordLeasePersistence(id, "ipv4", "rejected", err.Error())
+	}
+	return nil, true
+}
+
 func (module *Module) watchDHCP(ctx context.Context, id string, session *dhcpSession) {
+	var expiry <-chan time.Time
+	if session.recoveryPending {
+		expiry = time.After(max(session.recoveryUntil.Sub(module.clock.Now()), 0))
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-expiry:
+			expiry = nil
+			if module.resolveDHCPv4Recovery(id, session) {
+				module.deleteRecoveryLease(ctx, id, netif.LeaseProtocolDHCPv4)
+				module.requestLeaseReconcile("dhcpv4 saved lease expired")
+			}
 		case _, ok := <-session.client.Events:
 			if !ok {
 				return
 			}
-			module.sessionMu.Lock()
-			current := module.sessions[id]
-			valid := current == session && current.generation == session.generation
-			module.sessionMu.Unlock()
-			if valid && module.Env.RequestReconcile != nil {
-				module.Env.RequestReconcile("dhcpv4 assignment changed")
+			if module.handleDHCPv4Event(ctx, id, session) {
+				expiry = nil
 			}
 		}
+	}
+}
+
+func (module *Module) handleDHCPv4Event(ctx context.Context, id string, session *dhcpSession) bool {
+	lease := session.client.LastLease()
+	module.sessionMu.Lock()
+	current := module.sessions[id]
+	valid := current == session && current.generation == session.generation
+	resolved := valid && (lease.State == netif.LeaseBound || lease.State == netif.LeaseExpired)
+	if resolved {
+		session.recoveryPending = false
+	}
+	module.sessionMu.Unlock()
+	if !valid {
+		return false
+	}
+	if module.leaseStore != nil {
+		switch lease.State {
+		case netif.LeaseBound:
+			if err := module.leaseStore.SaveDHCPv4(id, session.ready.ActualName, module.clientIDs[id], lease); err != nil {
+				module.Log.WarnContext(ctx, "addresses: save DHCPv4 lease failed", "connection_id", id, "err", err)
+				module.recordLeasePersistence(id, "ipv4", "failed", err.Error())
+			} else {
+				module.recordLeasePersistence(id, "ipv4", "saved", "")
+			}
+		case netif.LeaseExpired:
+			module.deleteRecoveryLease(ctx, id, netif.LeaseProtocolDHCPv4)
+		case netif.LeaseInit, netif.LeaseSelecting, netif.LeaseRequesting, netif.LeaseRenewing, netif.LeaseRebinding:
+		}
+	}
+	module.requestLeaseReconcile("dhcpv4 assignment changed")
+	return resolved
+}
+
+func (module *Module) resolveDHCPv4Recovery(id string, session *dhcpSession) bool {
+	module.sessionMu.Lock()
+	defer module.sessionMu.Unlock()
+	current := module.sessions[id]
+	if current != session || current.generation != session.generation || !session.recoveryPending {
+		return false
+	}
+	session.recoveryPending = false
+	return true
+}
+
+func (module *Module) deleteRecoveryLease(ctx context.Context, id string, protocol netif.LeaseProtocol) bool {
+	if module.leaseStore == nil {
+		return false
+	}
+	family := "ipv4"
+	if protocol == netif.LeaseProtocolDHCPv6 {
+		family = "ipv6"
+	}
+	if err := module.leaseStore.Delete(id, protocol); err != nil && !errors.Is(err, os.ErrNotExist) {
+		module.Log.WarnContext(ctx, "addresses: delete saved lease failed", "connection_id", id, "protocol", protocol, "err", err)
+		module.recordLeasePersistence(id, family, "failed", err.Error())
+		return false
+	}
+	module.recordLeasePersistence(id, family, "retired", "")
+	return true
+}
+
+func (module *Module) recordLeasePersistence(id, family, result, reason string) {
+	if module.Env.LiveState != nil {
+		module.Env.LiveState.SetLeasePersistence(id, family, result, reason)
+	}
+}
+
+func (module *Module) requestLeaseReconcile(reason string) {
+	if module.Env.RequestReconcile != nil {
+		module.Env.RequestReconcile(reason)
 	}
 }
 
@@ -362,7 +498,7 @@ func (module *Module) reconcileFamily(ctx context.Context, log *slog.Logger, con
 	if err == nil && !ok {
 		err = fmt.Errorf("current link result is absent")
 	} else if err == nil {
-		err = module.reconciler.ReconcileFamilyRoutesWithLifetimes(ctx, connection, family, settings, routes, ready, lifetimes)
+		err = module.reconciler.ReconcileFamilyRoutesWithLifetimesRetaining(ctx, connection, family, settings, routes, ready, lifetimes, module.recoveryRetention(connection, family, ready))
 	}
 	if err == nil {
 		err = module.publishInstalled(ctx, log, connection, settings, ready, lifetimes)
@@ -388,6 +524,41 @@ func (module *Module) reconcileFamily(ctx context.Context, log *slog.Logger, con
 	}
 }
 
+func (module *Module) recoveryRetention(connection interfaceintent.Connection, family string, ready netif.OwnedLinkResult) netif.RecordedRetention {
+	id := connection.ID.String()
+	now := module.clock.Now()
+	module.sessionMu.Lock()
+	defer module.sessionMu.Unlock()
+	if family == "ipv4" {
+		session := module.sessions[id]
+		return netif.RecordedRetention{All: session != nil && session.recoveryPending && now.Before(session.recoveryUntil) && session.ready.IfIndex == ready.IfIndex && session.ready.ActualName == ready.ActualName, Prefixes: nil}
+	}
+	session := module.dhcpv6Sessions[id]
+	retention := netif.RecordedRetention{All: false, Prefixes: nil}
+	if session == nil || !session.recoveryPending || !now.Before(session.recoveryUntil) || session.ready.IfIndex != ready.IfIndex || session.ready.ActualName != ready.ActualName || session.cachedLease == nil {
+		return retention
+	}
+	retention.Prefixes = make(map[netip.Prefix]bool)
+	for _, address := range session.cachedLease.Addresses {
+		if now.Before(address.ValidUntil) {
+			retention.Prefixes[netip.PrefixFrom(address.Address, 128)] = true
+		}
+	}
+	provider := module.providers[id]
+	if provider.IPv6 == nil || provider.IPv6.NPT == nil || provider.IPv6.NPT.ExternalSource != config.PrefixDelegated {
+		return retention
+	}
+	for _, prefix := range session.cachedLease.Prefixes {
+		if !now.Before(prefix.ValidUntil) {
+			continue
+		}
+		if address := nptAddress(provider.IPv6, prefix.Prefix); address.IsValid() {
+			retention.Prefixes[address] = true
+		}
+	}
+	return retention
+}
+
 func currentLease(session *dhcpSession, now time.Time) (netif.LeaseInfo, string, string, bool) {
 	if session == nil {
 		var empty netif.LeaseInfo
@@ -396,12 +567,18 @@ func currentLease(session *dhcpSession, now time.Time) (netif.LeaseInfo, string,
 	lease := session.client.LastLease()
 	matches, err := lease.MatchesLink(session.ready.ActualName)
 	if err != nil || !matches || lease.LinkIndex != session.ready.IfIndex {
+		if session.recoveryRejected {
+			return lease, "recovery-rejected", "pending", false
+		}
 		return lease, "acquiring", "pending", false
 	}
 	if lease.State == netif.LeaseExpired || !lease.ExpiresAt.IsZero() && !now.Before(lease.ExpiresAt) {
 		return lease, "expired", "expired", false
 	}
 	if lease.State != netif.LeaseBound && lease.State != netif.LeaseRenewing && lease.State != netif.LeaseRebinding {
+		if session.recoveryRejected {
+			return lease, "recovery-rejected", "pending", false
+		}
 		return lease, "acquiring", "pending", false
 	}
 	return lease, strings.ToLower(lease.State.String()), "valid", true
