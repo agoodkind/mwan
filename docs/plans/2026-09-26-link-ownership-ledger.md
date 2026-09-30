@@ -2426,6 +2426,38 @@ balancing, complete client preflight, or independent monitor history.
 PR #143 remains unmerged. Shared testbed deployment and production
 promotion remain pending.
 
+### Cached recovery acceptance and external monitor evidence
+
+Signed source `3398e61af4e635a45d80bd97d3a2475998ba6beb` preserves
+only matching valid scoped edges during pending DHCPv6 recovery. Independent
+real-Kea controls passed delayed validation and expiry in 37.02 seconds,
+NoBinding rejection in 7.45 seconds, and native withdrawal in 8.59 seconds.
+The committed two-prefix case passed in 12.104 seconds: the matching edge
+expired while a different cached prefix remained valid. Every selected
+independent case completed with zero skips. The query does not publish
+cached delegation or family readiness, and introduces no reverse lock
+dependency. The independent review has zero scoped findings.
+
+The complete local protocol namespace suite passed in 324.369 seconds
+with zero skips. Firewall, network namespace, check and test gates passed.
+The previous executable and deliberately incorrect maximum-lifetime control
+failed their intended assertions. All six branch-local signatures passed
+verification, including raw signature inspection. Final CI and the updated
+authority interface example remain pending at this checkpoint.
+
+Full Cloudflare alert bodies identified the three independent pools
+`sf-att-1335`, `sf-webpass-1335`, and `sf-1335-ipv6`. The bounded exact-pool
+queries returned sixty alerts and thirty complete unhealthy/healthy pairs
+without pagination. Body event timestamps establish monitor intervals;
+they do not establish packet outage duration or deployment attribution.
+The exact pool API returned HTTP 403 with an authentication error. Current
+health, monitor targets, and protocols remain unverified. The temporary
+credential file was deleted without displaying its contents.
+
+PR #143 remains unmerged. Compatible release verification, Configs pins,
+shared testbed deployment, complete downstream acceptance, physical
+forward/reverse transfer and production promotion remain required.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
