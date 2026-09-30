@@ -3015,6 +3015,41 @@ MWAN-305, MWAN-522, and MWAN-533 remain In Progress. Published protocol
 acceptance and the mapping fixture require correction and fresh proof before
 the shared daemon deploy. Production promotion has not occurred.
 
+### Restore route observation and correct mapping activation
+
+The first observers received all 240 replies in each family from each client.
+Their route queries failed because Proxmox received no QEMU guest-agent
+response. Read-only inspection found VM201 and its guest agent running with
+the correct port. The transport failure cause remains unknown. Direct SSH
+route reads succeeded. The retained recorder now accepts an explicit route
+host and records those commands without changing the guest agent or VM.
+
+Configs PR #582 merged as ed881f0e394516c504542f82293f3a9370a5502e after
+all required checks and Graphite AI review passed. It accepts only status 1
+with empty output for optional sysrc settings. The subsequent merged fixture
+deploy passed those reads, configuration validation, and reconnection. Native
+listener startup failed because www could not create its log file in the
+root-owned /var/log directory. The play reported ok=18, changed=5, failed=1.
+PHP validation, filter reconciliation, and final endpoint assertions did not
+execute. A dedicated writable log directory requires a focused correction.
+
+Both corrected 240-second observers exited zero. Each client received 240
+IPv4 and 240 IPv6 replies, with zero missing sequences. Each client recorded
+128 successful route samples per family and zero failed samples. Every
+sample selected the primary next hop. The largest packet reply gap was
+1.032402 seconds. This proves continuity during the failed fixture attempt;
+it does not prove failover, load balancing, or the pending daemon deployment.
+
+Read-only inspection of the installed OPNsense Config API found that lock()
+reloads configuration under an exclusive lock. The updater's immediate
+forceReload() closes the locked file handle. Remove that initial reload in
+a separate focused fix; retain the post-unlock verification reload.
+
+Later complete systemd lanes passed unchanged, but the repeated NPT failure
+cause remains unknown. Gateway tcpdump cannot establish UDP visibility
+through the TC redirect path. Endpoint namespace captures require verified
+visibility and complete export before assigning a packet loss cause.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
