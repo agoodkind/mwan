@@ -447,9 +447,8 @@ func (module *Module) reconcileFamily(ctx context.Context, log *slog.Logger, con
 	if settings.RouteMetric != nil {
 		metric = *settings.RouteMetric
 	}
-	routes := make([]netif.OwnedRoute, 0, len(settings.Routes)+1)
+	routes := netif.OwnedRoutesFromIntent(settings.Routes)
 	for _, route := range settings.Routes {
-		routes = append(routes, netif.OwnedRoute{Destination: route.Destination, Gateway: route.Gateway, Metric: route.Metric})
 		assignments = append(assignments, interfaceintent.Assignment{
 			ConnectionID: connection.ID, Family: family, Kind: interfaceintent.AssignmentStaticRoute,
 			Source: "configured", Purpose: "", Value: netip.Prefix{}, Route: &interfaceintent.RouteIntent{

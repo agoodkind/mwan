@@ -31,6 +31,15 @@ type OwnedRoute struct {
 	Metric      uint32
 }
 
+// OwnedRoutesFromIntent omits table IDs because owned routes use the main table.
+func OwnedRoutesFromIntent(routes []interfaceintent.RouteIntent) []OwnedRoute {
+	owned := make([]OwnedRoute, 0, len(routes)+1)
+	for _, route := range routes {
+		owned = append(owned, OwnedRoute{Destination: route.Destination, Gateway: route.Gateway, Metric: route.Metric})
+	}
+	return owned
+}
+
 // OwnedAddressLifetime supplies the deadlines for one acquired address.
 type OwnedAddressLifetime struct {
 	PreferredUntil time.Time
@@ -206,10 +215,7 @@ func (r *OwnedStaticReconciler) forget(value ownedStaticObject) error {
 
 // ReconcileFamily installs desired objects before pruning recorded obsolete objects.
 func (r *OwnedStaticReconciler) ReconcileFamily(ctx context.Context, connection interfaceintent.Connection, family string, settings interfaceintent.Family, ready OwnedLinkResult) error {
-	routes := make([]OwnedRoute, 0, len(settings.Routes)+1)
-	for _, route := range settings.Routes {
-		routes = append(routes, OwnedRoute{Destination: route.Destination, Gateway: route.Gateway, Metric: route.Metric})
-	}
+	routes := OwnedRoutesFromIntent(settings.Routes)
 	if settings.Gateway.IsValid() {
 		metric := uint32(0)
 		if settings.RouteMetric != nil {
