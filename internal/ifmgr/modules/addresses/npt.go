@@ -79,6 +79,41 @@ func (module *Module) Recorded() []ifmgr.NPTEdgeRecord {
 	return module.reconciler.RecordedNPTEdges()
 }
 
+// RetainDuringRecovery authorizes an existing edge while its own cached delegation remains valid.
+func (module *Module) RetainDuringRecovery(record ifmgr.NPTEdgeRecord) bool {
+	for _, connection := range module.connections {
+		if connection.ID != record.ConnectionID || connection.Name != record.Interface || connection.Owner != interfaceintent.OwnerMWAN {
+			continue
+		}
+		provider := module.providers[connection.ID.String()]
+		if provider.IPv6 == nil || provider.IPv6.Mode != config.TranslationNPTv6 || provider.IPv6.NPT == nil || provider.IPv6.NPT.ExternalSource != config.PrefixDelegated {
+			return false
+		}
+		module.sessionMu.Lock()
+		defer module.sessionMu.Unlock()
+		session := module.dhcpv6Sessions[connection.ID.String()]
+		if session == nil || !session.recoveryPending || session.cachedLease == nil || module.Env.OwnedLinks == nil {
+			return false
+		}
+		ready, present := module.Env.OwnedLinks.Get(connection.ID.String())
+		if !present || ready.Status != netif.OwnedLinkReady || ready.ConnectionID != session.ready.ConnectionID || ready.Name != session.ready.Name || ready.IfIndex != session.ready.IfIndex || ready.ActualName != session.ready.ActualName || ready.IfIndex != record.InterfaceIndex || ready.ActualName != record.Interface || dhcpv6LinkIdentity(connection, ready, true) != session.identity {
+			return false
+		}
+		link, err := netlink.LinkByIndex(record.InterfaceIndex)
+		if err != nil || link.Attrs().Name != record.Interface || !netif.LinkMatchesIdentity(link, record.InterfaceIndex, record.LinkIdentity) {
+			return false
+		}
+		now := module.clock.Now()
+		for _, prefix := range session.cachedLease.Prefixes {
+			if prefix.Prefix.Contains(record.Prefix.Addr()) && now.Before(prefix.ValidUntil) {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
 // Release removes exact scoped receipts after the caller verifies translation removal.
 func (module *Module) Release(ctx context.Context, log *slog.Logger, records []ifmgr.NPTEdgeRecord) (resultErr error) {
 	defer func() {

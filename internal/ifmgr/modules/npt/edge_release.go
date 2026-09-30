@@ -30,6 +30,17 @@ func (m *Module) markDesiredEdges(desired map[ifmgr.NPTEdgeRecord]bool, wan WAN,
 	}
 }
 
+func (m *Module) markRecoveringEdges(desired map[ifmgr.NPTEdgeRecord]bool, wan WAN) {
+	if m.Env.NPTAddresses == nil {
+		return
+	}
+	for _, record := range m.Env.NPTAddresses.Recorded() {
+		if record.ConnectionID == wan.ID && record.Interface == wan.Iface && m.Env.NPTAddresses.RetainDuringRecovery(record) {
+			desired[record] = true
+		}
+	}
+}
+
 func (m *Module) journaledEdge(iface string, address netip.Addr) bool {
 	if m.Env == nil || m.Env.NPTAddresses == nil {
 		return false

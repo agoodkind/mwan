@@ -235,6 +235,7 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		}
 		if !present {
 			if wan.expectsDelegation() {
+				m.markRecoveringEdges(desiredEdges, wan)
 				missing[wan.Iface] = true
 			}
 			continue

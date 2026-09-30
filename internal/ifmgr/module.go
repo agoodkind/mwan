@@ -134,6 +134,7 @@ type NPTEdgeRecord = netif.NPTEdgeRecord
 type NPTAddressAuthority interface {
 	Ensure(context.Context, *slog.Logger, NPTEdgeRequest) (NPTEdgeRecord, error)
 	Recorded() []NPTEdgeRecord
+	RetainDuringRecovery(NPTEdgeRecord) bool
 	Release(context.Context, *slog.Logger, []NPTEdgeRecord) error
 }
 
