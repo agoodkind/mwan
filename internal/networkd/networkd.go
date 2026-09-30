@@ -127,7 +127,6 @@ func render(connection interfaceintent.Connection, tableID int, preserveStatic b
 				var err error
 				section.Entries, err = staticPreservationEntries(section.Entries)
 				if err != nil {
-					slog.Error("networkd: NPT static preservation conflicts with free-form configuration", "interface", connection.Name, "err", err)
 					return nil, fmt.Errorf("%s: %w", connection.Name, err)
 				}
 			}
