@@ -1996,6 +1996,46 @@ Complete stack review and merge, integrate and review networkd resolver
 rendering, then finish Configs role rendering, exclusive ownership transfer,
 and the acceptance manifest before the first owner cutover.
 
+## Verify kernel and resolver review corrections
+
+Kernel commit `737f24402a5cff64b14164b7c00a1da3448a1690` separates the
+boot-based journal retention decision from file access. The real daemon
+regression and full project checks passed. Graphite completed its refreshed
+review after the kernel thread reply and resolution.
+
+Resolver commit `f9924591fab325cfa14b426614da3081984eb7e2` saves link-retirement
+state only after removing a missing or replaced link. The unchanged daemon
+regression failed when empty cleanup created a journal. The corrected test
+passed in 5.071 seconds after restacking onto the kernel correction. Full
+project checks passed, and all ten stack commits have verified signatures
+and raw `gpgsig` headers.
+
+The resolver retains persistence before each DNS mutation. A single save at
+the end of reconciliation would omit ownership records after a crash between
+the resolver mutation and that save. The cleanup fixture retains unrelated
+JSON fields before the production loader validates the document. A suggested
+name-only struct would discard required configuration. Removing library
+warnings failed the active analyzer's wrapped-error logging requirement;
+the existing warnings remain. Review replies document these conflicts.
+
+The resolver evidence is in
+`/Users/agoodkind/.local/state/mwan305/20261001-static-resolver/`:
+`review-side-effects-red.log`, `review-retirement-public.log`,
+`review-retirement-restacked-public.log`, and `review-retirement-check-test.log`.
+The kernel evidence is in
+`/Users/agoodkind/.local/state/mwan305/20260930-mwan518-testbed/kernel-policy-validation/`:
+`pure-decode-public.log` and `pure-decode-check-test.log`.
+
+Independent networkd resolver review accepted commit
+`e6504275bea87e89bd04371bb3108f6bcf788613`. Its real daemon test passed in
+2.972 seconds. Removing resolver rendering failed the unchanged assertion in
+11.460 seconds. The private kernel journal configuration is included;
+integration after the kernel stack merges remains required. Its evidence is
+in `/Users/agoodkind/.local/state/mwan305/20261001-networkd-resolver/independent-review.md`.
+
+The stack remains unmerged. This checkpoint performed no deployment or live
+ownership transfer. MWAN-521 remains In Progress.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
