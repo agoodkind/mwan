@@ -1583,19 +1583,61 @@ release `202609292152-70-d442ba1`.
 
 ### MWAN-518 recovery clock correction, September 30, 2026
 
-The unmerged [clock correction](https://github.com/agoodkind/mwan/pull/122)
+The merged [clock correction](https://github.com/agoodkind/mwan/pull/122)
 uses Linux `CLOCK_BOOTTIME` at nanosecond
 precision instead of the rounded uptime value. Its public store regression
 test saves and loads real DHCPv4 records and rejects any extension of the
-saved expiry. The unmerged [protocol harness](https://github.com/agoodkind/mwan/pull/123)
+saved expiry. The merged [protocol harness](https://github.com/agoodkind/mwan/pull/123)
 accepts an explicit daemon
 executable through `MWAN_PROTOCOL_TEST_BINARY` and rejects invalid supplied
-paths instead of compiling another executable.
+paths instead of compiling another executable. The merge commits are
+`9b3363a29867efac4e8aab08b8581f50183ca6fd` and
+`5dd0ce00e5deaa4b3c53e4014ce34cbec1879f5a`, respectively.
 
 The explicit corrected executable passed the real DHCPv6 daemon recovery
 test three consecutive times in 96.496 seconds. This executable is not
 installed on testbed or production.
-Merged release validation and live ownership acceptance remain required.
+Live ownership acceptance remains required.
+
+### MWAN-518 published-release recovery, September 30, 2026
+
+Release `202609300456-79-5dd0ce0` passed all five public process-recovery
+tests on native AMD64 in testbed VM 213. The selected executable was a copy
+of the published artifact, not the live service executable. The archive
+SHA256 matched `7a0a0cec8fc16ffed0feb33911f394ffdeb0ed8d2f274665dcf01d3db181ff2c`.
+The executable SHA256 was
+`19cc23c6642f2c74bcbd676be506f7b2e382f80c8485825d1286d69fcddfff7a`.
+
+The runner was compiled from merged commit `5dd0ce00` with
+`go test -c -tags 'netns firewallnetns' ./cmd/mwan` on Linux AMD64.
+Its SHA256 was
+`b6fc11c6b304b3f2980637aac738b2db9acd22afbe898e39e50a068b7f12262e`.
+Kea 2.6.3 and its lease-cleanup executable ran from a temporary dependency
+bundle. The runner used private network and mount namespaces, a separate
+sysrepo repository and shared-memory prefix, and temporary `/run` and
+`/dev/shm` mounts. The tests did not access the live service sockets.
+
+| Public test | Result | Duration |
+| --- | --- | --- |
+| `TestOOBDHCPv4DaemonRestartRecovery` | Passed | 57.49 seconds |
+| `TestOOBDHCPv4DaemonLateInterfaceRecovery` | Passed | 2.03 seconds |
+| `TestOOBDHCPv4DaemonRejectedRecovery` | Passed | 9.97 seconds |
+| `TestOwnedDHCPv4RejectedRecoveryRuntime` | Passed | 17.56 seconds |
+| `TestOwnedDHCPv6DaemonRestartRecovery` | Passed | 35.76 seconds |
+
+No selected test skipped. The transient unit exited successfully after
+122.905 seconds, used 16.965 CPU seconds, and peaked at 87.9 MB of memory.
+The gateway service remained active. Client 225 completed fresh IPv4 and
+IPv6 HTTPS requests with HTTP 200 afterward.
+
+The earlier AMD64 Docker emulation attempt could not create namespace
+subprocesses. Native client 225 passed the OOB cases but denied the eBPF
+operations required by the WAN cases, including with unlimited locked
+memory. VM 213 passed those cases with unlimited locked memory and the
+private runtime mounts. These results establish isolated process recovery.
+The live gateway still runs `5666b3d` with networkd-owned providers.
+Installed-service deployment, reboot validation, provider transfer, and
+production promotion remain separate acceptance requirements.
 
 The finding counts report blockers, issues to fix, and minor issues found
 during review, including findings fixed before the verdict.
@@ -1608,7 +1650,7 @@ The post-verdict column records defects discovered after that review verdict.
 | 2026-09-28 | `codex/mwan-398-mapped` | Mapped and NPT address writer transfer | Independent adversarial | MERGE-READY | 0 / 2 / 0, stale comments corrected | None found | The reviewer independently ran all six public firewall tests and checked the corrected comments and diff. The review did not run a red-green reversal. No deployment was reviewed. |
 | 2026-09-29 | `codex/mwan-518-clock-recovery`, uncommitted changes over `5666b3d` | Lease recovery clock precision | Independent adversarial | MERGE-READY | 0 / 1 / 1, fixed before verdict | None found | `TestLeaseRecoveryDoesNotExtendSavedDeadline` failed against the mounted `origin/main` implementation with a 5.084375 ms extension on attempt 0. The fix passed five runs with 200 public store roundtrips. A freshly compiled test executable passed all six `TestLeaseRecovery*` tests, including backward clock, identity, corruption, and pruning checks. Review found a Linux/386 type mismatch and an incomplete duration overflow bound. Both were corrected; Linux/386 compilation passed. The reviewer independently ran the real daemon `TestOwnedDHCPv6DaemonRestartRecovery`, which builds a fresh executable and checks its modification time; it passed in 35.759 seconds. Clock capture ordering and compatibility with previous rounded snapshots were reviewed statically. The refreshed live `origin/main` merge-tree passed. Full project gates, suspension, and deployment were not repeated by this reviewer. |
 
-| 2026-09-30 | `codex/mwan-518-dhcp-test-isolation` | DHCP restart fixture isolation | Independent root review | MERGE-READY locally | 0 / 0 / 0 | None found | Real udev changed the fixture MAC after ACK and reproduced NAK and silent-server failures on unchanged main. Root review accepted a child network namespace with unchanged packet assertions, deadlines, and production identity checks. Twenty runs passed with host udev active; a separate instrumented copy recorded 60 valid server REQUEST packets across 20 passing runs. A host control MAC changed under the active daemon. Full Docker check/test and privileged namespace gates passed. Nonroot and missing-capability cases reported explicit skips. CI acceptance and merge remain pending. |
+| 2026-09-30 | `codex/mwan-518-dhcp-test-isolation` | DHCP restart fixture isolation | Independent root review | MERGED as `fde02feed` | 0 / 0 / 0 | None found | Real udev changed the fixture MAC after ACK and reproduced NAK and silent-server failures on unchanged main. Root review accepted a child network namespace with unchanged packet assertions, deadlines, and production identity checks. Twenty runs passed with host udev active; a separate instrumented copy recorded 60 valid server REQUEST packets across 20 passing runs. A host control MAC changed under the active daemon. Full Docker check/test and privileged namespace gates passed. Nonroot and missing-capability cases reported explicit skips. All required CI checks and the namespace, firewall, and ARM64 suites passed. Graphite AI Reviews and PR-Agent passed; the final thread read found no unresolved threads. |
 
 ## Record future implementation results
 
