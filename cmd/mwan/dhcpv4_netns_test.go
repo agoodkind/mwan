@@ -69,19 +69,7 @@ func testOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceA
 		runOwnedDHCPv4DaemonRuntime(t, classless, recoverAtT2, replaceAddress, rejectedRecovery)
 		return
 	}
-	if os.Geteuid() != 0 && !rejectedRecovery {
-		t.Skip("network and mount namespaces require root")
-	}
-	var binary string
-	if rejectedRecovery {
-		binary = protocolTestBinary(t)
-	} else {
-		binary = filepath.Join(t.TempDir(), "mwan")
-		build := exec.Command("go", "build", "-o", binary, ".")
-		if output, err := build.CombinedOutput(); err != nil {
-			t.Fatalf("build mwan: %v: %s", err, output)
-		}
-	}
+	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
 	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
 	child.Env = append(os.Environ(), dhcpv4RuntimeChildEnv+"=1", dhcpv4RuntimeBinaryEnv+"="+binary)
