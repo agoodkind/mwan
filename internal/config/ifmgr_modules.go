@@ -25,6 +25,12 @@ type IfMgrModulesSection struct {
 	Links             *IfMgrLinksSection             `toml:"links"`
 	Autoconfiguration *IfMgrAutoconfigurationSection `toml:"autoconfiguration"`
 	Addresses         *IfMgrAddressesSection         `toml:"addresses"`
+	Resolver          *IfMgrResolverSection          `toml:"resolver"`
+}
+
+// IfMgrResolverSection configures the durable per-link static DNS and domain journal.
+type IfMgrResolverSection struct {
+	StateFile string `toml:"state_file"`
 }
 
 // IfMgrAutoconfigurationSection configures the durable per-link kernel policy journal.

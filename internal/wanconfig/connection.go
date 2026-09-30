@@ -110,7 +110,7 @@ func validateConnection(connection interfaceintent.Connection) error {
 
 func validateMWANConnection(connection interfaceintent.Connection) error {
 	if ipv4 := connection.IPv4; ipv4 != nil &&
-		(len(ipv4.SourceAddresses) != 0 || len(ipv4.DNS) != 0 || len(ipv4.SearchDomains) != 0) {
+		len(ipv4.SourceAddresses) != 0 {
 		return invalid(fmt.Sprintf("interface %s has unsupported mwan ipv4 intent", connection.Name))
 	}
 	if connection.IPv4 != nil {
@@ -120,8 +120,7 @@ func validateMWANConnection(connection interfaceintent.Connection) error {
 	}
 	if ipv6 := connection.IPv6; ipv6 != nil &&
 		(ipv6.AutoConf != nil || ipv6.AcceptRADefaultRoute != nil ||
-			ipv6.UseRADNS != nil || len(ipv6.ForwardingAddresses) != 0 ||
-			len(ipv6.DNS) != 0 || len(ipv6.SearchDomains) != 0) {
+			ipv6.UseRADNS != nil || len(ipv6.ForwardingAddresses) != 0) {
 		return invalid(fmt.Sprintf("interface %s has unsupported mwan ipv6 intent", connection.Name))
 	}
 	if err := validateMWANDHCPv6(connection); err != nil {

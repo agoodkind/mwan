@@ -121,7 +121,7 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	}
 	wantedDNS := []resolved.DNS{{Family: 2, Address: []byte{10, 39, 7, 2}, Port: 0, ServerName: ""}, {Family: 10, Address: net.ParseIP("fd39:7::2").To16(), Port: 0, ServerName: ""}}
 	wantedDomains := []resolved.Domain{{Name: "lab.test", RoutingOnly: false}, {Name: "v6.test", RoutingOnly: false}}
-	writeResolverRuntimeNetwork(t, networkDir, false, false)
+	writeResolverRuntimeNetwork(t, networkDir, false, false, false)
 	daemon := startRuntimeDaemon(t, binary, configPath, root, "resolver-bootstrap")
 	defer func() { killOwnedRuntimeDaemon(t, daemon) }()
 	waitStaticRuntimeAddress(t, daemon, "owned397", "10.39.7.1/24", true)
@@ -133,14 +133,28 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	if len(baselineDNS) != 1 || baselineDNS[0].Port != 5300 || baselineDNS[0].ServerName != "baseline.example.test" || len(baselineDomains) != 2 || !baselineDomains[1].RoutingOnly {
 		t.Fatalf("resolved baseline lacks extended server/domain values: %+v %+v", baselineDNS, baselineDomains)
 	}
-	writeResolverRuntimeNetwork(t, networkDir, true, true)
+	writeResolverRuntimeNetwork(t, networkDir, true, true, false)
 	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-first")
 	waitResolverRuntimeValues(t, daemon, wantedDNS, wantedDomains)
 	waitRuntimeOwnershipRead(t, daemon, read, `"search"`)
 	if output := runResolverCommand(t, "resolvectl", "query", "sensor"); !strings.Contains(output, "10.39.7.99") || queries.Load() == 0 {
 		t.Fatalf("single-label DNS query: %s; authoritative queries=%d", output, queries.Load())
 	}
+	initialOtherDNS, initialOtherDomains := resolverRuntimeValues(t, "resolver-other")
+	if !reflect.DeepEqual(initialOtherDNS, otherDNS) || !reflect.DeepEqual(initialOtherDomains, otherDomains) {
+		t.Fatalf("initial apply changed unrelated settings: %+v %+v", initialOtherDNS, initialOtherDomains)
+	}
 	killOwnedRuntimeDaemon(t, daemon)
+	writeResolverRuntimeNetwork(t, networkDir, true, true, true)
+	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-ipv6-only")
+	waitResolverRuntimeValues(t, daemon, wantedDNS[1:], wantedDomains)
+	runResolverCommand(t, "resolvectl", "flush-caches")
+	beforeIPv6Query := queries.Load()
+	if output := runResolverCommand(t, "resolvectl", "query", "sensor"); !strings.Contains(output, "10.39.7.99") || queries.Load() <= beforeIPv6Query {
+		t.Fatalf("IPv6-only DNS query: %s; authoritative queries before=%d after=%d", output, beforeIPv6Query, queries.Load())
+	}
+	killOwnedRuntimeDaemon(t, daemon)
+	writeResolverRuntimeNetwork(t, networkDir, true, true, false)
 	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-restart")
 	waitResolverRuntimeValues(t, daemon, wantedDNS, wantedDomains)
 	runResolverCommand(t, "systemctl", "restart", "systemd-resolved")
@@ -152,15 +166,15 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 		t.Fatalf("query after resolved restart: %s", output)
 	}
 	killOwnedRuntimeDaemon(t, daemon)
-	writeResolverRuntimeNetwork(t, networkDir, false, true)
+	writeResolverRuntimeNetwork(t, networkDir, false, true, false)
 	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-dns-remove")
 	waitResolverRuntimeValues(t, daemon, baselineDNS, wantedDomains)
 	killOwnedRuntimeDaemon(t, daemon)
-	writeResolverRuntimeNetwork(t, networkDir, true, false)
+	writeResolverRuntimeNetwork(t, networkDir, true, false, false)
 	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-domains-remove")
 	waitResolverRuntimeValues(t, daemon, wantedDNS, baselineDomains)
 	killOwnedRuntimeDaemon(t, daemon)
-	writeResolverRuntimeNetwork(t, networkDir, false, false)
+	writeResolverRuntimeNetwork(t, networkDir, false, false, false)
 	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-remove")
 	waitResolverRuntimeValues(t, daemon, baselineDNS, baselineDomains)
 	actualDNS, actualDomains := resolverRuntimeValues(t, "resolver-other")
@@ -168,17 +182,17 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 		t.Fatalf("unrelated settings changed: %+v %+v", actualDNS, actualDomains)
 	}
 	killOwnedRuntimeDaemon(t, daemon)
-	writeResolverRuntimeNetwork(t, networkDir, false, true)
+	writeResolverRuntimeNetwork(t, networkDir, false, true, false)
 	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-external-control")
 	waitResolverRuntimeValues(t, daemon, baselineDNS, wantedDomains)
 	killOwnedRuntimeDaemon(t, daemon)
 	runResolverCommand(t, "resolvectl", "domain", "owned397", "~external.test")
 	_, externalDomains := resolverRuntimeValues(t, "owned397")
-	writeResolverRuntimeNetwork(t, networkDir, false, false)
+	writeResolverRuntimeNetwork(t, networkDir, false, false, false)
 	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-external-preserve")
 	waitResolverRuntimeValues(t, daemon, baselineDNS, externalDomains)
 	waitStaticRuntimeLog(t, daemon, "external resolver change preserved")
-	for _, name := range []string{"resolver-bootstrap", "resolver-first", "resolver-restart", "resolver-dns-remove", "resolver-domains-remove", "resolver-remove", "resolver-external-control", "resolver-external-preserve"} {
+	for _, name := range []string{"resolver-bootstrap", "resolver-first", "resolver-ipv6-only", "resolver-restart", "resolver-dns-remove", "resolver-domains-remove", "resolver-remove", "resolver-external-control", "resolver-external-preserve"} {
 		data, err := os.ReadFile(filepath.Join(root, name+".log"))
 		if err != nil {
 			t.Fatal(err)
@@ -252,7 +266,7 @@ func waitResolverRuntimeValues(t *testing.T, daemon *runtimeDaemon, dns []resolv
 	t.Fatalf("resolved values differ: DNS=%+v domains=%+v; expected DNS=%+v domains=%+v; %s", actualDNS, actualDomains, dns, domains, runtimeLogTail(t, daemon, 40))
 }
 
-func writeResolverRuntimeNetwork(t *testing.T, directory string, dnsEnabled, domainsEnabled bool) {
+func writeResolverRuntimeNetwork(t *testing.T, directory string, dnsEnabled, domainsEnabled, ipv6Only bool) {
 	t.Helper()
 	writeOwnedRuntimeNetwork(t, directory, false, true)
 	path := filepath.Join(directory, "network.json")
@@ -272,11 +286,16 @@ func writeResolverRuntimeNetwork(t *testing.T, directory string, dnsEnabled, dom
 	if err := json.Unmarshal(interfaces["interface"], &entries); err != nil {
 		t.Fatal(err)
 	}
+	configured := entries[:0]
 	for _, entry := range entries {
 		var name string
 		if err := json.Unmarshal(entry["name"], &name); err != nil {
 			t.Fatal(err)
 		}
+		if name == "owned-br" || name == "late397" || name == "latephys0" || name == "enwebpass0" || name == "enmbrains0" {
+			continue
+		}
+		configured = append(configured, entry)
 		if name != "owned397" {
 			continue
 		}
@@ -284,7 +303,7 @@ func writeResolverRuntimeNetwork(t *testing.T, directory string, dnsEnabled, dom
 		entry["enabled"] = json.RawMessage(`true`)
 		servers := []string{}
 		search4, search6 := []string{}, []string{}
-		if dnsEnabled {
+		if dnsEnabled && !ipv6Only {
 			servers = append(servers, "10.39.7.2")
 		}
 		if domainsEnabled {
@@ -316,7 +335,7 @@ func writeResolverRuntimeNetwork(t *testing.T, directory string, dnsEnabled, dom
 			entry["ietf-ip:ipv6"] = json.RawMessage(`{"address":[{"ip":"fd39:7::1","prefix-length":64}]}`)
 		}
 	}
-	interfaces["interface"], err = json.Marshal(entries)
+	interfaces["interface"], err = json.Marshal(configured)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,6 +378,7 @@ func startResolverAuthority(t *testing.T) *atomic.Int64 {
 			message.Header.Response = true
 			message.Header.Authoritative = true
 			for _, question := range message.Questions {
+				t.Logf("authoritative DNS query: name=%s type=%s source=%s", question.Name.String(), question.Type.String(), peer.String())
 				if question.Name.String() == "sensor.lab.test." && question.Type == dnsmessage.TypeA {
 					message.Answers = append(message.Answers, dnsmessage.Resource{Header: dnsmessage.ResourceHeader{Name: question.Name, Type: dnsmessage.TypeA, Class: dnsmessage.ClassINET, TTL: 1, Length: 0}, Body: &dnsmessage.AResource{A: [4]byte{10, 39, 7, 99}}})
 				}
