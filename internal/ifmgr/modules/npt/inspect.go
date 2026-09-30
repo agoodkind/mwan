@@ -18,8 +18,21 @@ import (
 
 // RenderedTable contains readable rules from the ip6 nat base chains.
 type RenderedTable struct {
-	Prerouting  []string
-	Postrouting []string
+	Prerouting         []string
+	Postrouting        []string
+	unrecognizedIfaces []string
+}
+
+func (table RenderedTable) interfaceAbsent(iface string) bool {
+	if table.HasInterface(iface) {
+		return false
+	}
+	for _, unrecognized := range table.unrecognizedIfaces {
+		if unrecognized == "" || unrecognized == iface {
+			return false
+		}
+	}
+	return true
 }
 
 // HasInterface reports whether either rendered chain contains an exact
@@ -100,33 +113,29 @@ func (r *nftReader) renderTable(
 	pre := &nftables.Chain{Name: preroutingChain, Table: table}
 	post := &nftables.Chain{Name: postroutingChain, Table: table}
 
-	prerouting, missing, err := r.readChain(ctx, log, conn, table, pre)
+	prerouting, unknownPre, err := r.readChain(ctx, log, conn, table, pre)
 	if err != nil {
 		return emptyRenderedTable(), err
-	}
-	if missing {
-		return emptyRenderedTable(), nil
 	}
 	if err := ctx.Err(); err != nil {
 		return emptyRenderedTable(), fmt.Errorf("inspect ip6 nat table: %w", err)
 	}
-	postrouting, missing, err := r.readChain(ctx, log, conn, table, post)
+	postrouting, unknownPost, err := r.readChain(ctx, log, conn, table, post)
 	if err != nil {
 		return emptyRenderedTable(), err
 	}
-	if missing {
-		return emptyRenderedTable(), nil
-	}
 	return RenderedTable{
-		Prerouting:  prerouting,
-		Postrouting: postrouting,
+		Prerouting:         prerouting,
+		Postrouting:        postrouting,
+		unrecognizedIfaces: append(unknownPre, unknownPost...),
 	}, nil
 }
 
 func emptyRenderedTable() RenderedTable {
 	return RenderedTable{
-		Prerouting:  nil,
-		Postrouting: nil,
+		Prerouting:         nil,
+		Postrouting:        nil,
+		unrecognizedIfaces: nil,
 	}
 }
 
@@ -136,16 +145,29 @@ func (r *nftReader) readChain(
 	conn nftReadConn,
 	table *nftables.Table,
 	chain *nftables.Chain,
-) ([]string, bool, error) {
+) ([]string, []string, error) {
 	rules, err := conn.GetRules(table, chain)
 	if err != nil {
 		if isNFTObjectMissing(err) {
-			return nil, true, nil
+			return nil, nil, nil
 		}
 		log.WarnContext(ctx, "npt: read nftables chain failed", "chain", chain.Name, "err", err)
-		return nil, false, fmt.Errorf("get rules for %s: %w", chain.Name, err)
+		return nil, nil, fmt.Errorf("get rules for %s: %w", chain.Name, err)
 	}
-	return r.renderRules(rules), false, nil
+	lines := r.renderRules(rules)
+	var unrecognized []string
+	for _, rule := range rules {
+		if rule != nil {
+			if _, ok := decodeRule(r.ifaceName, rule.Exprs); ok {
+				continue
+			}
+			_, iface, _ := decodeInterfaceMatch(r.ifaceName, rule.Exprs)
+			unrecognized = append(unrecognized, iface)
+		} else {
+			unrecognized = append(unrecognized, "")
+		}
+	}
+	return lines, unrecognized, nil
 }
 
 func isNFTObjectMissing(err error) bool {
