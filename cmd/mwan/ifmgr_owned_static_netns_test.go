@@ -103,6 +103,17 @@ func runOwnedStaticDaemonRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	configureRuntimeLink(t, "peer397", []string{"10.39.7.2/24", "10.39.7.3/24", "10.39.9.2/24", "fd39:7::2/64", "fd39:7::3/64", "fd39:9::2/64"})
+	if err := os.WriteFile("/proc/sys/net/ipv4/conf/all/rp_filter", []byte("2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Loose reverse-path validation requires a return route for native downstream sources.
+	_, downstreamV4, err := net.ParseCIDR("192.0.2.0/29")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.RouteAdd(&netlink.Route{Dst: downstreamV4, Gw: net.ParseIP("10.39.7.1")}); err != nil {
+		t.Fatal(err)
+	}
 	setRuntimeNamespace(t, gateway)
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
