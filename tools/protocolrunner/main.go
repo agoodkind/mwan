@@ -22,7 +22,13 @@ import (
 type options struct {
 	lane                                 lane
 	image, arch, source, binary, results string
+	ownedRoleConfigs                     string
 }
+
+const (
+	ownedRoleService = "mwan/services/mwan-update-att-pinned-dests.service"
+	ownedRoleScript  = "mwan/scripts/update-att-pinned-dests.sh"
+)
 
 type lane string
 
@@ -64,7 +70,7 @@ func requiredTests(selected lane) ([]string, error) {
 			"TestAutoconfigurationDaemonRuntime", "TestRadvdAutoconfigurationDaemonRuntime",
 		}, nil
 	case laneSystemd:
-		return []string{"TestNetworkdResolverDaemonRuntime", "TestNetworkdOrderedDaemonStartup", "TestStaticResolverDaemonRuntime"}, nil
+		return []string{"TestNetworkdResolverDaemonRuntime", "TestNetworkdOrderedDaemonStartup", "TestStaticResolverDaemonRuntime", "TestOwnedRolesDaemonRuntime"}, nil
 	default:
 		return nil, fmt.Errorf("unknown protocol lane %q", selected)
 	}
@@ -85,6 +91,7 @@ func parseOptions() (result options, failure error) {
 	flags.StringVar(&opts.source, "source", "", "absolute source directory")
 	flags.StringVar(&opts.binary, "binary", "", "optional absolute published executable")
 	flags.StringVar(&opts.results, "results", "", "acceptance artifact directory")
+	flags.StringVar(&opts.ownedRoleConfigs, "owned-role-configs", "", "absolute Configs checkout for the systemd suite")
 	if err := flags.Parse(os.Args[1:]); err != nil {
 		return opts, fmt.Errorf("parse protocol options: %w", err)
 	}
@@ -109,6 +116,21 @@ func parseOptions() (result options, failure error) {
 	}
 	if opts.binary != "" && !filepath.IsAbs(opts.binary) {
 		return opts, errors.New("-binary must be absolute")
+	}
+	if opts.lane == laneSystemd {
+		if !filepath.IsAbs(opts.ownedRoleConfigs) {
+			return opts, errors.New("-owned-role-configs must be absolute for the systemd suite")
+		}
+		for _, relative := range []string{ownedRoleService, ownedRoleScript} {
+			path := filepath.Join(opts.ownedRoleConfigs, relative)
+			info, err := os.Stat(path)
+			if err != nil {
+				return opts, fmt.Errorf("inspect owned-role bootstrap %s: %w", path, err)
+			}
+			if !info.Mode().IsRegular() {
+				return opts, fmt.Errorf("owned-role bootstrap must be a regular file: %s", path)
+			}
+		}
 	}
 	return opts, nil
 }
@@ -136,6 +158,11 @@ func startContainer(ctx context.Context, opts options, name string) (failure err
 		"-v", "mwan-wanconfig-gomod:/go/pkg/mod",
 		"-v", "mwan-wanconfig-cache-" + opts.arch + ":/root/.cache",
 		"-v", "mwan-wanconfig-gomk-" + opts.arch + ":/src/.make",
+	}
+	if opts.lane == laneSystemd {
+		for _, relative := range []string{ownedRoleService, ownedRoleScript} {
+			arguments = append(arguments, "--mount", "type=bind,src="+filepath.Join(opts.ownedRoleConfigs, relative)+",dst=/mwan-bootstrap/"+filepath.Base(relative)+",readonly")
+		}
 	}
 	if opts.binary != "" {
 		info, err := os.Stat(opts.binary)
@@ -186,7 +213,7 @@ func testArguments(opts options, container string, required []string) []string {
 		arguments = append(arguments, "-e", "MWAN_PROTOCOL_TEST_BINARY=/mwan-release/mwan")
 	}
 	if opts.lane == laneSystemd {
-		arguments = append(arguments, "-e", "MWAN_NETWORKD_RESOLVER_SYSTEMD_TEST=1", "-e", "MWAN_NETWORKD_STARTUP_SYSTEMD_TEST=1", "-e", "MWAN_RESOLVER_SYSTEMD_TEST=1")
+		arguments = append(arguments, "-e", "MWAN_NETWORKD_RESOLVER_SYSTEMD_TEST=1", "-e", "MWAN_NETWORKD_STARTUP_SYSTEMD_TEST=1", "-e", "MWAN_RESOLVER_SYSTEMD_TEST=1", "-e", "MWAN_OWNED_ROLE_BOOTSTRAP_DIR=/mwan-bootstrap")
 	}
 	patterns := make([]string, len(required))
 	for index, name := range required {

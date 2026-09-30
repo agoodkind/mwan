@@ -96,6 +96,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: agoodkind/configs
+          ref: c6a9a869bc57a5bb69326681416b3d4661aa278b
+          path: .protocol-configs
+          persist-credentials: false
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -103,7 +109,7 @@ jobs:
       - name: Run the firewall and protocol acceptance tests
         env:
           GH_TOKEN: ${{ github.token }}
-        run: make test-firewall test-protocol
+        run: make test-firewall test-protocol MWAN_OWNED_ROLE_CONFIGS="$GITHUB_WORKSPACE/.protocol-configs"
 
   # The go job's quality matrix runs the suite on amd64 runners only. This job
   # runs the whole suite, cgo binding included, in the arm64 builder image on

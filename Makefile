@@ -515,6 +515,7 @@ systemd-runner-image: protocol-runner-image
 
 PROTOCOL_RESULTS_DIR ?= $(LOCAL_BIN)/protocol-results
 MWAN_PROTOCOL_TEST_BINARY ?=
+MWAN_OWNED_ROLE_CONFIGS ?=
 
 .PHONY: test-protocol-namespace test-protocol-systemd
 test-protocol: test-protocol-namespace test-protocol-systemd
@@ -527,7 +528,8 @@ test-protocol-namespace: protocol-runner-image
 test-protocol-systemd: systemd-runner-image
 	go run ./tools/protocolrunner -lane systemd -image $(SYSTEMD_RUNNER_IMAGE) \
 		-arch $(WANCONFIG_DOCKER_ARCH) -source "$(CURDIR)" \
-		-results "$(PROTOCOL_RESULTS_DIR)" -binary "$(MWAN_PROTOCOL_TEST_BINARY)"
+		-results "$(PROTOCOL_RESULTS_DIR)" -binary "$(MWAN_PROTOCOL_TEST_BINARY)" \
+		-owned-role-configs "$(MWAN_OWNED_ROLE_CONFIGS)"
 
 # ---------------------------------------------------------------------------
 # Wanconfig management stack packages (MWAN-431)
