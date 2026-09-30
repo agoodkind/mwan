@@ -20,8 +20,8 @@ import (
 )
 
 type options struct {
-	lane                                            lane
-	image, arch, source, binary, results, container string
+	lane                                 lane
+	image, arch, source, binary, results string
 }
 
 type lane string
@@ -85,7 +85,6 @@ func parseOptions() (result options, failure error) {
 	flags.StringVar(&opts.source, "source", "", "absolute source directory")
 	flags.StringVar(&opts.binary, "binary", "", "optional absolute published executable")
 	flags.StringVar(&opts.results, "results", "", "acceptance artifact directory")
-	flags.StringVar(&opts.container, "container", "", "existing isolated container; source and binary are container paths")
 	if err := flags.Parse(os.Args[1:]); err != nil {
 		return opts, fmt.Errorf("parse protocol options: %w", err)
 	}
@@ -105,7 +104,7 @@ func parseOptions() (result options, failure error) {
 		return opts, fmt.Errorf("resolve results directory: %w", err)
 	}
 	opts.results = results
-	if opts.container == "" && (opts.image == "" || (opts.arch != "arm64" && opts.arch != "amd64")) {
+	if opts.image == "" || (opts.arch != "arm64" && opts.arch != "amd64") {
 		return opts, errors.New("-image and -arch arm64 or amd64 are required for a new container")
 	}
 	if opts.binary != "" && !filepath.IsAbs(opts.binary) {
@@ -178,20 +177,13 @@ func waitSystemd(ctx context.Context, container string) (failure error) {
 }
 
 func testArguments(opts options, container string, required []string) []string {
-	source, binary := opts.source, opts.binary
-	if opts.container == "" {
-		source = "/src"
-		if binary != "" {
-			binary = "/mwan-release/mwan"
-		}
-	}
 	arguments := []string{
-		"exec", "-w", source, "-e", "GOWORK=off", "-e", "GOFLAGS=-buildvcs=false",
+		"exec", "-w", "/src", "-e", "GOWORK=off", "-e", "GOFLAGS=-buildvcs=false",
 		"-e", "MWAN_PROTOCOL_ACCEPTANCE=1",
-		"-e", "GIT_CONFIG_COUNT=1", "-e", "GIT_CONFIG_KEY_0=safe.directory", "-e", "GIT_CONFIG_VALUE_0=" + source,
+		"-e", "GIT_CONFIG_COUNT=1", "-e", "GIT_CONFIG_KEY_0=safe.directory", "-e", "GIT_CONFIG_VALUE_0=/src",
 	}
-	if binary != "" {
-		arguments = append(arguments, "-e", "MWAN_PROTOCOL_TEST_BINARY="+binary)
+	if opts.binary != "" {
+		arguments = append(arguments, "-e", "MWAN_PROTOCOL_TEST_BINARY=/mwan-release/mwan")
 	}
 	if opts.lane == laneSystemd {
 		arguments = append(arguments, "-e", "MWAN_NETWORKD_RESOLVER_SYSTEMD_TEST=1", "-e", "MWAN_NETWORKD_STARTUP_SYSTEMD_TEST=1")
@@ -285,19 +277,16 @@ func run(ctx context.Context, opts options) (result error) {
 		return fmt.Errorf("create diagnostic artifact: %w", err)
 	}
 	defer func() { result = errors.Join(result, diagnostics.Close()) }()
-	container := opts.container
-	if container == "" {
-		container = "mwan-protocol-" + filepath.Base(directory)
-		// Docker may create the container before the client receives its response.
-		defer func() {
-			cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-			defer cancel()
-			err := dockerCommand(cleanup, "rm", "-f", container)
-			result = errors.Join(result, err)
-		}()
-		if err := startContainer(ctx, opts, container); err != nil {
-			return err
-		}
+	container := "mwan-protocol-" + filepath.Base(directory)
+	// Docker may create the container before the client receives its response.
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		err := dockerCommand(cleanup, "rm", "-f", container)
+		result = errors.Join(result, err)
+	}()
+	if err := startContainer(ctx, opts, container); err != nil {
+		return err
 	}
 	if opts.lane == laneSystemd {
 		if err := waitSystemd(ctx, container); err != nil {
