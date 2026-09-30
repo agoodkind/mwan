@@ -2319,8 +2319,9 @@ restart in 3.678 seconds. The actual systemd runner passed all five cases
 with zero skips in 28.182 seconds. The old published executable failed the
 scoped receipt assertion in 3.75 seconds. Local Linux ARM64 checks passed.
 Commit `11a3ae23884964509b15e2b88174bd51332f9c08` changes one Init
-comment. Rebase onto the native readiness merge and final integrated
-acceptance remain required.
+comment. The branch rebased onto the native readiness merge at signed
+`2895d7b49a1a226b74051459396bfae8a931861e`. Final integrated acceptance
+remains required.
 
 The two-provider test reproduced a duplicate address detection readiness
 race with the original one-hour reconciliation interval. NPT readiness
@@ -2329,10 +2330,13 @@ reconciliation only when the stored translation result changes. Repeated
 packet tests verified both provider marks and no additional request during
 the bounded steady-state observation.
 
-A new review finding requires kernel reproduction: changing the internal
-interface may retain a policy on the former internal interface after a
-translator error. Obsolete-edge release currently checks the provider and
-current internal indices. PR #143 remains open pending this investigation.
+Kernel reproduction confirmed that changing the internal interface can
+retain a policy on the former internal interface after a translator error.
+The current provider and internal index checks incorrectly accepted release
+in 0.017 seconds. A fresh translator reproduced the failure in 0.029 seconds:
+surviving TC programs retained the original policy map after restart.
+Obsolete-edge release must inspect surviving managed programs and their
+actual maps before deleting an address. PR #143 remains open for this fix.
 
 Source inspection verified that a hard NPT reconciliation error withdraws
 both primary default announcements through the forwarding readiness socket.
