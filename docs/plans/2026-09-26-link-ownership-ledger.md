@@ -2176,6 +2176,48 @@ their success. No further physical guest boot or shared deployment occurred.
 MWAN-519, MWAN-521 and MWAN-522 remain In Progress in Tack. IPv6 handover,
 complete shared testbed acceptance and production promotion remain required.
 
+### Resolver merge and NPT runtime controls, September 30, 2026
+
+Graphite merged resolver PR #130 as
+`422a64763bb472f86e0b84cddeddff0b252f2110` after all ten required checks
+and complete source acceptance passed. The original full run timed out during
+an IA_NA UDP packet assertion. Its single retry passed the unchanged case in
+8.63 seconds and completed both protocol lanes. The failure remains unexplained.
+Six isolated unchanged ARM64 samples passed; three captured the requested
+datagram in both provider and gateway namespaces. The image lacked `ip`, so
+the attempted route and address snapshots establish no kernel state. No
+failed-packet capture exists. All 39 retained artifacts passed hash verification,
+and the observation container was removed. The report is
+`20261001-ia-na-packet-evidence/report.md`.
+
+Graphite rebased dependent PR #135 to
+`a25a37b8c40bd35b3bab12f9e4b014b0c21b848a` with unchanged accepted tree
+bytes. Its full acceptance passed 22 namespace and four systemd cases.
+GitGuardian and the native merge remain pending at this checkpoint.
+
+The real NPT daemon control passed external link recreation after stale BPF
+policy cleanup. A nested-prefix fault control reproduced obsolete edge
+retention after the new edge completed duplicate address detection. The
+candidate correction verifies actual policy values against desired policy
+and rejects an obsolete edge exception. Independent source review also found
+that a pure interface rename discarded a scoped receipt without removing
+the address. The correction must retain the receipt on that name mismatch.
+Public correction controls and complete project gates remain required.
+
+Configs commit `a7bfbac749e77fe2c8110f726fc21019272c1164` adds explicit
+journal configuration and a real inventory runtime rendering fixture. Both
+production and testbed TOML and network JSON rendered successfully, and the
+fixture lint and diff checks passed. This signed branch remains unmerged;
+compatible published release pins and actual first-start acceptance remain
+required. The production play starts the new daemon before scheduling reboot.
+Current pre-reboot gates do not inspect NPT translation or its journal.
+
+Unchanged edge continuity requires the verified link to remain present.
+The existing link authority deletes an MWAN-created VLAN during release;
+whole-connection transfer must verify its recreation, assignments and packets.
+MWAN-519 has the updated description and remains In Progress. No physical
+guest boot, shared testbed deployment or production promotion occurred.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
