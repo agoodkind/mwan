@@ -91,7 +91,7 @@ func hasOwnedConnections(connections []interfaceintent.Connection) bool {
 }
 
 // Reconcile applies configured settings or restores fields removed from intent.
-func (module *Module) Reconcile(ctx context.Context, _ *slog.Logger) error {
+func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	module.mu.Lock()
 	defer module.mu.Unlock()
 	intents := make([]resolved.Intent, 0, len(module.connections))
@@ -108,7 +108,11 @@ func (module *Module) Reconcile(ctx context.Context, _ *slog.Logger) error {
 		}
 		intents = append(intents, intent)
 	}
-	return module.ownership.Reconcile(ctx, intents)
+	if err := module.ownership.Reconcile(ctx, intents); err != nil {
+		log.WarnContext(ctx, "resolver application failed", "operation", "reconcile", "result", "failed")
+		return fmt.Errorf("apply resolver configuration: %w", err)
+	}
+	return nil
 }
 
 func aggregate(connection interfaceintent.Connection) resolved.Intent {
