@@ -2740,6 +2740,53 @@ artifacts were preserved externally. A native Configs worktree at
 the independent release companion. Actual physical and shared acceptance
 remain pending. Capture cleanup and SSH completion diagnosis remain separate.
 
+### Publish verified capture cleanup and merge the release companion
+
+The public capture identity-failure control kept the actual running tcpdump
+inode while renaming its executable inside a private container. Acceptance
+rejected the identity and preserved that failure. Cleanup still stopped the
+owned service, reaped its runner, recorded zero drops and verified exact PID
+absence. The original executable path was restored and the container removed.
+Source `613797a5` preserves failed verification and caches actual runner status
+to prevent a second reap. Root inspected the diff and runtime report.
+
+Graphite published the correction, then restacked each branch from its owning
+worktree after Configs PR #576 merged as
+`d749838112eda0703685b88caefb28e5d56c4c9f`. All four rewritten signatures
+and raw `gpgsig` headers passed. PR #573 is below ready PR #575 at signed tip
+`80338d2d6ce5a08f6d881dfcdad5cec2c5a82236`. Both remain unmerged pending
+complete public acceptance. Both release companion renders and exact published
+startup checks passed without physical identity or delegation inputs.
+
+Merged-source MWAN CI `36778234620` completed. Firewall/protocol, namespace,
+ARM64 and required Go checks passed. The unchanged Govulncheck advisory failed
+separately. The physical runner will use the verified published `c257200`.
+
+The bounded HTTP diagnostic verified stdin EOF and reproduced the timeout
+with explicit SSH `-n`. Full TCP shutdown completed before curl waited
+4.999 seconds on a UDP socket. JSON output followed that wait; cleanup had
+closed SSH and its write returned EPIPE. UDP destination and query require
+measurement before assigning a cause. Packet and command deadlines remain
+unchanged. Shared testbed and production deployment remain pending.
+
+### Identify the private runner's hostname lookup delay
+
+The full-start trace captured A and AAAA queries for the actual private
+container hostname after TCP shutdown. The hosts file omitted that hostname.
+Curl waited 5.002387 seconds for the inherited DNS server, then wrote JSON
+after SSH cleanup had closed its output. The source function initiating
+resolution remains unassigned. A supported container host mapping is under
+validation with unchanged request arguments and deadlines. Fresh full public
+acceptance will use signed `80338d2d` and the verified published `c257200`.
+
+Configs PR #576's native worktree archive was refused because the app reports
+a pinned task or workspace. The branch deletion attempt was blocked while
+that checkout remained attached. The worktree and local ref remain intact;
+the remote ref is absent. Inventory bytecode was preserved externally.
+Physical preparation continues from the corrected frozen attempt4 helpers.
+Restart and cold-baseline phases require explicit acceptance before any
+complete-transfer claim. No shared deployment occurred.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
