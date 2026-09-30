@@ -508,23 +508,26 @@ protocol-runner-image: wanconfig-builder-image
 		-t $(NETNS_PROTOCOL_IMAGE) tools/netns
 
 .PHONY: systemd-runner-image
-systemd-runner-image: wanconfig-builder-image
+systemd-runner-image: protocol-runner-image
 	docker build --platform linux/$(WANCONFIG_DOCKER_ARCH) \
-		--build-arg BASE_IMAGE=$(WANCONFIG_BUILDER_IMAGE) \
+		--build-arg BASE_IMAGE=$(NETNS_PROTOCOL_IMAGE) \
 		-t $(SYSTEMD_RUNNER_IMAGE) tools/systemd
 
-test-protocol: protocol-runner-image
-	docker run --rm --privileged --platform linux/$(WANCONFIG_DOCKER_ARCH) \
-		-v $(CURDIR):/src -w /src \
-		-v mwan-wanconfig-gomod:/go/pkg/mod \
-		-v mwan-wanconfig-cache-$(WANCONFIG_DOCKER_ARCH):/root/.cache \
-		-v mwan-wanconfig-gomk-$(WANCONFIG_DOCKER_ARCH):/src/.make \
-		-e GOWORK=off \
-		-e GIT_CONFIG_COUNT=1 \
-		-e GIT_CONFIG_KEY_0=safe.directory \
-		-e GIT_CONFIG_VALUE_0=/src \
-		$(NETNS_PROTOCOL_IMAGE) \
-		go test -v -count=1 -tags 'netns firewallnetns' -run '^TestProtocolRunnerBootstrap$$' ./cmd/mwan
+PROTOCOL_RESULTS_DIR ?= $(LOCAL_BIN)/protocol-results
+MWAN_PROTOCOL_TEST_BINARY ?=
+
+.PHONY: test-protocol-namespace test-protocol-systemd
+test-protocol: test-protocol-namespace test-protocol-systemd
+
+test-protocol-namespace: protocol-runner-image
+	go run ./tools/protocolrunner -lane namespace -image $(NETNS_PROTOCOL_IMAGE) \
+		-arch $(WANCONFIG_DOCKER_ARCH) -source "$(CURDIR)" \
+		-results "$(PROTOCOL_RESULTS_DIR)" -binary "$(MWAN_PROTOCOL_TEST_BINARY)"
+
+test-protocol-systemd: systemd-runner-image
+	go run ./tools/protocolrunner -lane systemd -image $(SYSTEMD_RUNNER_IMAGE) \
+		-arch $(WANCONFIG_DOCKER_ARCH) -source "$(CURDIR)" \
+		-results "$(PROTOCOL_RESULTS_DIR)" -binary "$(MWAN_PROTOCOL_TEST_BINARY)"
 
 # ---------------------------------------------------------------------------
 # Wanconfig management stack packages (MWAN-431)

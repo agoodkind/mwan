@@ -27,10 +27,10 @@ Run and independently verify those scenarios before merging the feature.
 Run MWAN-522's final assembled suite after all required feature PRs merge.
 Do not defer individual feature acceptance until that final run.
 
-No inspected existing command runs the proposed protocol tests. The existing
-`make test-netns` checks routing, NPT, and steering regressions. Skipped
-protocol tests do not satisfy acceptance. Record exact commands, revisions,
-server configuration, kernel version, and results.
+Use the [deployment plan's protocol acceptance command](deployment.md#publish-and-verify-executable-commands)
+for the assembled acquisition and process recovery cases. The separate
+`make test-netns` target checks routing, NPT, and steering regressions.
+Record revisions, server configuration, kernel version, and results.
 
 ## Verified current behavior
 
