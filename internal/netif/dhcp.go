@@ -25,6 +25,7 @@ type DHCPConfig struct {
 	RequestTimeout  time.Duration // Per-attempt deadline for REQUEST
 	RenewTimeout    time.Duration // Per-attempt deadline for RENEW
 	ClientID        []byte        // Complete DHCP option 61 payload
+	CachedLease     *LeaseInfo    // Optional saved assignment for INIT-REBOOT
 }
 
 // LeaseState is the simplified RFC 2131 client state machine.
@@ -130,7 +131,7 @@ type DHCPClient struct {
 	Events chan LeaseInfo
 }
 
-var errDHCPInterfaceChanged = errors.New("DHCP interface changed during renewal")
+var errDHCPInterfaceChanged = errors.New("DHCP interface changed during exchange")
 
 // StartDHCPClient returns a DHCPClient running in its own goroutine.
 // Cancel ctx to stop it. The first assignment event follows a valid ACK.
@@ -153,6 +154,24 @@ func StartDHCPClient(
 		cfg.RenewTimeout = 10 * time.Second
 	}
 	cfg.ClientID = append([]byte(nil), cfg.ClientID...)
+	if cfg.CachedLease != nil {
+		cachedCopy := *cfg.CachedLease
+		cachedCopy.LinkHardwareAddr = append(net.HardwareAddr(nil), cachedCopy.LinkHardwareAddr...)
+		cachedCopy.IP = append(net.IP(nil), cachedCopy.IP...)
+		cachedCopy.Gateway = append(net.IP(nil), cachedCopy.Gateway...)
+		cachedCopy.Server = append(net.IP(nil), cachedCopy.Server...)
+		cachedCopy.Routes = make([]LeaseRoute, len(cfg.CachedLease.Routes))
+		for i, route := range cfg.CachedLease.Routes {
+			cachedCopy.Routes[i].Gateway = append(net.IP(nil), route.Gateway...)
+			if route.Destination != nil {
+				cachedCopy.Routes[i].Destination = &net.IPNet{
+					IP:   append(net.IP(nil), route.Destination.IP...),
+					Mask: append(net.IPMask(nil), route.Destination.Mask...),
+				}
+			}
+		}
+		cfg.CachedLease = &cachedCopy
+	}
 
 	c := &DHCPClient{
 		cfg:    cfg,
@@ -239,6 +258,11 @@ func (c *DHCPClient) originMatches() bool {
 func (c *DHCPClient) run(ctx context.Context) {
 	logger := c.log.With("goroutine", "dhcp")
 	backoff := c.cfg.InitialBackoff
+	if cached := c.cfg.CachedLease; cached != nil {
+		if lease := c.recoverLease(ctx, *cached); lease != nil {
+			c.bound(ctx, logger, lease)
+		}
+	}
 	for {
 		if ctx.Err() != nil {
 			return
@@ -256,6 +280,110 @@ func (c *DHCPClient) run(ctx context.Context) {
 
 		c.bound(ctx, logger, lease)
 	}
+}
+
+// recoverLease validates a saved address without publishing it before an ACK.
+func (c *DHCPClient) recoverLease(ctx context.Context, cached LeaseInfo) *nclient4.Lease {
+	if cached.IP.To4() == nil || !c.clock.Now().Before(cached.ExpiresAt) {
+		return nil
+	}
+	if err := c.captureOrigin(); err != nil {
+		c.emit(leaseState(LeaseExpired, cached.AcquiredAt, err))
+		return nil
+	}
+	c.mu.Lock()
+	matches := len(cached.LinkHardwareAddr) > 0 &&
+		bytes.Equal(cached.LinkHardwareAddr, c.origin.LinkHardwareAddr)
+	c.mu.Unlock()
+	if !matches {
+		c.emit(leaseState(LeaseExpired, cached.AcquiredAt, errDHCPInterfaceChanged))
+		return nil
+	}
+	backoff := c.cfg.InitialBackoff
+	for c.clock.Now().Before(cached.ExpiresAt) && ctx.Err() == nil {
+		lease, err := c.restartAttempt(ctx, cached)
+		if err == nil {
+			return lease
+		}
+		if errors.Is(err, errDHCPInterfaceChanged) {
+			c.emit(leaseState(LeaseExpired, cached.AcquiredAt, err))
+			return nil
+		}
+		if _, isNAK := errors.AsType[*nclient4.ErrNak](err); isNAK {
+			c.emit(leaseState(LeaseExpired, cached.AcquiredAt, err))
+			return nil
+		}
+		c.log.WarnContext(ctx, "dhcp: restart request failed", "err", err)
+		c.emit(leaseState(LeaseRequesting, cached.AcquiredAt, err))
+		wait := min(backoff, max(cached.ExpiresAt.Sub(c.clock.Now()), 0))
+		sleepOrCancel(ctx, wait)
+		backoff = nextBackoff(backoff, c.cfg.MaxBackoff)
+	}
+	if ctx.Err() == nil {
+		c.emit(leaseState(LeaseExpired, cached.AcquiredAt, errors.New("saved DHCP lease expired")))
+	}
+	return nil
+}
+
+func (c *DHCPClient) restartAttempt(ctx context.Context, cached LeaseInfo) (*nclient4.Lease, error) {
+	client, err := nclient4.New(c.cfg.Iface,
+		nclient4.WithTimeout(c.cfg.RequestTimeout),
+		nclient4.WithLogger(newSlogDHCPLogger(c.log)),
+	)
+	if err != nil {
+		c.log.WarnContext(ctx, "dhcp: restart socket open failed", "err", err)
+		return nil, fmt.Errorf("open DHCP restart client: %w", err)
+	}
+	defer client.Close()
+	if !c.originMatches() || !bytes.Equal(client.InterfaceAddr(), cached.LinkHardwareAddr) {
+		return nil, errDHCPInterfaceChanged
+	}
+	request, err := c.restartRequest(client.InterfaceAddr(), cached.IP)
+	if err != nil {
+		return nil, fmt.Errorf("build DHCP restart request: %w", err)
+	}
+	deadline := earlier(c.clock.Now().Add(c.cfg.RequestTimeout), cached.ExpiresAt)
+	rctx, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
+	response, err := client.SendAndRead(rctx, nclient4.DefaultServers, request,
+		nclient4.IsMessageType(dhcpv4.MessageTypeAck, dhcpv4.MessageTypeNak))
+	if !c.originMatches() {
+		return nil, errDHCPInterfaceChanged
+	}
+	if err != nil {
+		c.log.WarnContext(ctx, "dhcp: restart response read failed", "err", err)
+		return nil, fmt.Errorf("DHCP restart request: %w", err)
+	}
+	if response.MessageType() == dhcpv4.MessageTypeNak {
+		return nil, &nclient4.ErrNak{Nak: response}
+	}
+	lease := &nclient4.Lease{ACK: response, Offer: response, CreationTime: c.clock.Now()}
+	if err := validateLease(lease); err != nil {
+		c.log.WarnContext(ctx, "dhcp: invalid restart ACK", "err", err)
+		return nil, fmt.Errorf("invalid DHCP restart ACK: %w", err)
+	}
+	return lease, nil
+}
+
+func (c *DHCPClient) restartRequest(hardwareAddress net.HardwareAddr, ip net.IP) (*dhcpv4.DHCPv4, error) {
+	request, err := dhcpv4.New(
+		dhcpv4.WithHwAddr(hardwareAddress),
+		dhcpv4.WithMessageType(dhcpv4.MessageTypeRequest),
+		dhcpv4.WithBroadcast(true),
+		dhcpv4.WithRequestedOptions(
+			dhcpv4.OptionSubnetMask, dhcpv4.OptionRouter,
+			dhcpv4.OptionDomainName, dhcpv4.OptionDomainNameServer,
+		),
+		dhcpv4.WithOption(dhcpv4.OptRequestedIPAddress(ip.To4())),
+	)
+	if err != nil {
+		c.log.Warn("dhcp: restart request encoding failed", "err", err)
+		return nil, fmt.Errorf("new DHCP restart request: %w", err)
+	}
+	for _, modifier := range c.requestModifiers() {
+		modifier(request)
+	}
+	return request, nil
 }
 
 // acquire performs full DORA. On success returns a Lease; on failure
