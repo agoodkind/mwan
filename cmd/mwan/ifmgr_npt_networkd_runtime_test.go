@@ -3,7 +3,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,7 +34,18 @@ func TestNetworkdNPTEdgeDaemonRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer gateway.Close()
-	root := t.TempDir()
+	if err := os.MkdirAll("/var/lib/mwan", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.MkdirTemp("/var/lib/mwan", "networkd-npt-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(root); err != nil {
+			t.Error(err)
+		}
+	})
 	networkDir := filepath.Join(root, "network")
 	unitDir := filepath.Join(root, "units")
 	for _, directory := range []string{networkDir, unitDir} {
@@ -149,4 +162,230 @@ func TestNetworkdNPTEdgeDaemonRuntime(t *testing.T) {
 	}
 	networkdResolverCommand(t, "systemctl", "is-active", "systemd-networkd")
 	assertRuntimeDaemonRunning(t, restarted)
+	killOwnedRuntimeDaemon(t, restarted)
+	checkNetworkdNPTEdgeService(t, gateway, lan.namespace, binary, configPath, networkDir, root)
+}
+
+func checkNetworkdNPTEdgeService(t *testing.T, gateway, downstream netns.NsHandle, binary, configPath, networkDir, root string) {
+	t.Helper()
+	provider := newRuntimePeer(t, gateway, "enservice0", "service-peer", []string{"fd53::1/64"}, []string{"fd53::2/64"}, "")
+	defer provider.namespace.Close()
+	setRuntimeNamespace(t, provider.namespace)
+	addMappedRuntimeRoute(t, "2001:db8:53::/60", "fd53::1", "service-peer")
+	setRuntimeNamespace(t, downstream)
+	addMappedRuntimeRoute(t, "fd53::/64", "2001:db8:b01:fe::3", "npt-lan")
+	setRuntimeNamespace(t, gateway)
+	addMappedRuntimeRoute(t, "2001:db8:b01::/60", "", "enmwanbr0")
+	forwardingPath := "/proc/sys/net/ipv6/conf/all/forwarding"
+	forwarding, err := os.ReadFile(forwardingPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(forwardingPath, []byte("1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		setRuntimeNamespace(t, gateway)
+		if err := os.WriteFile(forwardingPath, forwarding, 0o600); err != nil {
+			t.Error(err)
+		}
+	}()
+	unit := "[Match]\nName=enservice0\n[Network]\nAddress=fd53::1/64\nIPv6AcceptRA=no\n[Route]\nGateway=fd53::2\nMetric=500\n"
+	if err := os.WriteFile("/etc/systemd/network/20-service.network", []byte(unit), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	networkdResolverCommand(t, "networkctl", "reload")
+	networkdResolverCommand(t, "networkctl", "reconfigure", "enservice0")
+	writeNPTServiceProvider(t, networkDir, false)
+	data, err := os.ReadFile(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("/usr/local/bin/mwan", data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.Command("getent", "group", "sysrepo").CombinedOutput(); err != nil {
+		t.Logf("provision sysrepo group: %s", output)
+		networkdResolverCommand(t, "groupadd", "--system", "sysrepo")
+	}
+	installStartupDaemonUnit(t, configPath)
+	t.Cleanup(func() {
+		networkdResolverCommand(t, "systemctl", "stop", "mwan-ifmgr@wan")
+		for _, path := range []string{"/etc/systemd/system/mwan-ifmgr@.service", "/etc/systemd/system/mwan-ifmgr@wan.service.d", "/usr/local/bin/mwan"} {
+			if err := os.RemoveAll(path); err != nil {
+				t.Error(err)
+			}
+		}
+		networkdResolverCommand(t, "systemctl", "daemon-reload")
+	})
+	defer func() {
+		if t.Failed() {
+			setRuntimeNamespace(t, gateway)
+			t.Log(networkdResolverCommand(t, "journalctl", "-u", "mwan-ifmgr@wan", "--no-pager"))
+			for _, arguments := range [][]string{{"-6", "route", "show", "table", "all"}, {"-6", "rule", "show"}, {"-6", "neigh", "show"}} {
+				output, err := exec.Command("ip", arguments...).CombinedOutput()
+				t.Logf("service ip %v: %s (%v)", arguments, output, err)
+			}
+			output, err := exec.Command("nft", "list", "ruleset").CombinedOutput()
+			t.Logf("service ruleset: %s (%v)", output, err)
+			forwarding, err := os.ReadFile("/proc/sys/net/ipv6/conf/all/forwarding")
+			t.Logf("service IPv6 forwarding: %s (%v)", forwarding, err)
+		}
+	}()
+	startOrderedDaemon(t, "start")
+	t.Log(networkdResolverCommand(t, "systemctl", "show", "mwan-ifmgr@wan", "--property=AmbientCapabilities", "--property=CapabilityBoundingSet"))
+	waitNPTServiceAddress(t, "enservice0", "2001:db8:53::1/128", true)
+	assertRuntimeNPTEdges(t, filepath.Join(root, "addresses.json"), "2001:db8:30::1/128", "2001:db8:53::1/128")
+	waitRuntimeAttachedEdge(t, "enmwanbr0", "2001:db8:30::1")
+	waitRuntimeAttachedEdge(t, "enservice0", "2001:db8:53::1")
+	waitNPTServiceForwarding(t)
+	assertNPTServiceReply(t, gateway, provider.namespace, downstream)
+	// SIGKILL preserves the old daemon's attached programs and maps.
+	networkdResolverCommand(t, "systemctl", "kill", "--kill-whom=main", "--signal=SIGKILL", "mwan-ifmgr@wan")
+	networkdResolverCommand(t, "systemctl", "stop", "mwan-ifmgr@wan")
+	waitRuntimeAttachedEdge(t, "enmwanbr0", "2001:db8:30::1")
+	writeNPTServiceProvider(t, networkDir, true)
+	startOrderedDaemon(t, "start")
+	waitNPTServiceAddress(t, "enwebpass0", "2001:db8:30::1/128", false)
+	assertRuntimeNPTEdges(t, filepath.Join(root, "addresses.json"), "2001:db8:53::1/128")
+	waitNPTServiceAddress(t, "enservice0", "2001:db8:53::1/128", true)
+	assertMappedRuntimeRuleAbsent(t, "ip6", "nat", "2001:db8:30::1")
+	waitRuntimeAttachedEdge(t, "enservice0", "2001:db8:53::1")
+	waitNPTServiceForwarding(t)
+	assertNPTServiceReply(t, gateway, provider.namespace, downstream)
+}
+
+func waitNPTServiceForwarding(t *testing.T) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		output, err := exec.Command("nft", "list", "chain", "inet", "mwan_steer", "forward").CombinedOutput()
+		if err == nil && mappedRuntimeHasLine(string(output), []string{`iifname "enmwanbr0" oifname "enservice0" meta nfproto ipv6`, `meta mark != 0x00000005 drop`}) {
+			rules, err := netlink.RuleList(unix.AF_INET6)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, rule := range rules {
+				if rule.Priority == 530 && rule.Table == 530 && rule.Mark == 5 {
+					return
+				}
+			}
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatal("service provider forwarding did not become ready")
+}
+
+func writeNPTServiceProvider(t *testing.T, directory string, withdraw bool) {
+	t.Helper()
+	path := filepath.Join(directory, "network.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]json.RawMessage
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	var interfaces map[string]json.RawMessage
+	if err := json.Unmarshal(document["ietf-interfaces:interfaces"], &interfaces); err != nil {
+		t.Fatal(err)
+	}
+	var entries []map[string]json.RawMessage
+	if err := json.Unmarshal(interfaces["interface"], &entries); err != nil {
+		t.Fatal(err)
+	}
+	if withdraw {
+		for _, entry := range entries {
+			if string(entry["name"]) == `"enwebpass0"` {
+				entry["ietf-ip:ipv6"] = json.RawMessage(`{"goodkind-mwan-steering:dhcp":true,"goodkind-mwan-steering:delegation":{"hint":"::/56","without-ra":"solicit","use-delegated-prefix":true}}`)
+			}
+		}
+	} else {
+		var provider map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(`{"name":"enservice0","type":"iana-if-type:other","enabled":true,"goodkind-mwan-steering:connection-id":"service-provider","goodkind-mwan-steering:owner":"external","ietf-ip:ipv6":{"goodkind-mwan-steering:gateway":"fd53::2","goodkind-mwan-steering:translation":{"mode":"ietf-nat:nptv6","nptv6":{"internal-prefix":"2001:db8:b01::/60","external-source":"configured","external-prefix":"2001:db8:53::/60"}}},"goodkind-mwan-steering:wan":{"name":"service","table-id":530,"fw-mark":5,"fw-mark-prio":530,"from-prio":60,"health":{"enabled":false}},"goodkind-mwan-steering:steering":{"tier":1,"weight":1}}`), &provider); err != nil {
+			t.Fatal(err)
+		}
+		entries = append(entries, provider)
+	}
+	interfaces["interface"], err = json.Marshal(entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document["ietf-interfaces:interfaces"], err = json.Marshal(interfaces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err = json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func waitNPTServiceAddress(t *testing.T, name, prefix string, present bool) {
+	t.Helper()
+	link, err := netlink.LinkByName(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		addresses, err := netlink.AddrList(link, unix.AF_INET6)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, address := range addresses {
+			found = found || address.IPNet.String() == prefix
+		}
+		if found == present {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("service address %s on %s: expected presence %t", prefix, name, present)
+}
+
+func assertNPTServiceReply(t *testing.T, gateway, upstream, downstream netns.NsHandle) {
+	t.Helper()
+	defer setRuntimeNamespace(t, gateway)
+	setRuntimeNamespace(t, downstream)
+	listener, err := net.ListenPacket("udp6", "[2001:db8:b01:fe::2]:53206")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	setRuntimeNamespace(t, upstream)
+	connection, err := net.DialTimeout("udp6", "[2001:db8:53::1]:53206", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	if err := connection.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connection.Write([]byte("service-request")); err != nil {
+		t.Fatal(err)
+	}
+	setRuntimeNamespace(t, downstream)
+	if err := listener.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	buffer := make([]byte, 32)
+	count, sender, err := listener.ReadFrom(buffer)
+	if err != nil || string(buffer[:count]) != "service-request" {
+		t.Fatalf("service provider request: count=%d data=%q error=%v", count, buffer[:count], err)
+	}
+	if _, err := listener.WriteTo([]byte("service-reply"), sender); err != nil {
+		t.Fatal(err)
+	}
+	setRuntimeNamespace(t, upstream)
+	count, err = connection.Read(buffer)
+	setRuntimeNamespace(t, gateway)
+	if err != nil || string(buffer[:count]) != "service-reply" {
+		t.Fatalf("service provider reply: count=%d data=%q error=%v", count, buffer[:count], err)
+	}
 }
