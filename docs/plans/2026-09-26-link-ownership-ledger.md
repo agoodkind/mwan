@@ -1857,6 +1857,55 @@ connections. Only final removal waits for AT&T retirement. Shared testbed
 acceptance and production promotion remain required. MWAN-521 and MWAN-522
 remain In Progress in Tack.
 
+### Integrated acceptance and transfer blockers, September 30, 2026
+
+PR #141 at `dbcb26d86be87d6a54acf9e00fa7b22ed74ad17c` passed all 22
+namespace cases in 337.235 seconds and both systemd cases in 9.905 seconds
+in CI. Six separate firewall cases passed. All required Go checks passed,
+and all review threads are resolved. GitHub blocks merging because the
+required GitGuardian check is absent. The retained evidence is
+`20260930-protocol-target-audit/integrated-dbcb26d/ci-firewall-protocol.log`.
+
+The resolver stack is published through Graphite at parent
+`825e2493ac80d2fe204bcb212476d8ca8b0d5506` and child
+`c7bfb6bd34a64a2fd452136d7a7643ac6a01ce00`. The module records the failed
+application without repeating the error string, then returns its contextual
+wrapped error. The daemon retains the final diagnostic. Both affected
+Linux ARM64 packages passed Golangci with zero issues. Both logging
+analyzers and all 14 branch-local signature checks passed. The real
+masked-resolved failure and recovery test is published; current CI and
+runtime acceptance remain pending.
+
+Configs PR #571 is published at
+`3725a8e71c1df9b63b053672254179b61b8adc4d`. It removes nullable validator
+construction and guarantees teardown after a failed injection thread.
+Lint and data CI passed. Fresh public Linux acceptance remains pending
+after Docker runtime operations stalled. The valid construction thread
+remains open; the incorrect swallowed-error finding is resolved with
+actual Ruby exception evidence.
+
+Physical attempt seven established BGP learning in main, table 100, and
+table 300. Peer withdrawal and recovery passed. Networkd client release
+passed. Full transfer failed: the management DHCP default metric collides
+with the target default, and the new address authority rejects the retained
+NPT edge address without an ownership record. The next fixture must set
+the management metric to 9000 before baseline. The product requires a
+proper NPT address handover correction before another transfer attempt.
+
+The unbound IPv6 client selected the edge exception instead of the LAN
+translation source. Its short baseline capture recorded zero captured
+packets. These results do not prove LAN-prefix translation. The next
+fixture must bind the LAN address and capture actual packets. Both guests
+powered off cleanly. The retained reports are
+`20260930-dualstack-physical-transfer/verdict.md` and
+`20260930-dualstack-physical-transfer/npt-edge-handover-brief.md`.
+
+Tack descriptions for MWAN-521 and MWAN-522 include this checkpoint. Both
+remain In Progress. AT&T retirement does not block earlier production
+cutover phases. Networkd continues managing legacy connections until
+retirement. Full shared testbed acceptance and production promotion remain
+required; no new shared deployment occurred at this checkpoint.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
