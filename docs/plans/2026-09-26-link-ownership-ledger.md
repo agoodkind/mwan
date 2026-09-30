@@ -1508,9 +1508,9 @@ and status after rejected records or failed deletion. PR #121 review found
 that a startup expiry could withdraw a journaled DHCPv4 assignment before
 recovery completed. Both DHCPv4 role modules now ignore that synthetic event;
 their namespace lifecycle tests verify the saved address and route remain.
-The integration branch has not merged or deployed. No testbed guest reboot, downstream traffic battery,
-production deploy, or live provider owner transfer has occurred for this
-integration.
+PR #121 remains open. MWAN-518 integration has not been deployed to testbed
+or production. Testbed guest reboot, downstream traffic tests, and live
+provider owner transfer remain pending.
 
 The finding counts report blockers, issues to fix, and minor issues found
 during review, including findings fixed before the verdict.
