@@ -1820,6 +1820,43 @@ No correction above has a revised shared deployment acceptance result.
 IPv6 physical transfer, complete downstream testbed acceptance and production
 promotion remain required. Production is unchanged.
 
+### Review corrections and merged preparation, September 30, 2026
+
+Configs PR #570 merged as `c6a9a869bc57a5bb69326681416b3d4661aa278b`.
+All required checks passed and all review threads are resolved. Independent
+final affected-case acceptance passed three cases in 218.2 seconds. The
+Configs primary checkout now matches that merged revision. No revised shared
+deployment has run.
+
+MWAN PR #138 merged as `9baef7654c5ceb724990b392603c017a3df44c2f`.
+The independent kernel route-expiry controls passed before merge. PR #141
+was rebased onto that revision and published at signed
+`dbcb26d86be87d6a54acf9e00fa7b22ed74ad17c`. The required manifest now includes
+the real radvd case. Its child selector preserves the current test name.
+Host runner compilation passed. Fresh integrated execution of all 22
+namespace and two systemd cases remains required.
+
+The resolver logging candidate passes both actual logging analyzers on the
+complete Linux ARM64 packages. It records the failed operation without
+repeating the error string and retains the final daemon diagnostic. It
+removes intermediate warnings while preserving joined failures, connection
+identifiers, leaf operation context, and readiness handling. The earlier
+policy-conflict claim was an interpretation error. Implementation and runtime
+verification remain pending.
+
+The IPv6 physical fixture requires the existing BGP route installer and a
+real downstream FRR peer. Attempt six passed all five owner and membership
+loader validations. Its FRR peer remained Active with zero messages at the
+unchanged 15-second prerequisite, before baseline packets or ownership
+changes. Both guests shut down gracefully with status zero. The local report
+`20260930-dualstack-physical-transfer/attempt6/fixture-verdict.md` preserves
+the actual service and socket evidence. Transport diagnosis remains active.
+
+The approved production phases preserve AT&T and networkd for legacy
+connections. Only final removal waits for AT&T retirement. Shared testbed
+acceptance and production promotion remain required. MWAN-521 and MWAN-522
+remain In Progress in Tack.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
