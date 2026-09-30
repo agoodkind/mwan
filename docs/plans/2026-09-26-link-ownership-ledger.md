@@ -2458,6 +2458,37 @@ PR #143 remains unmerged. Compatible release verification, Configs pins,
 shared testbed deployment, complete downstream acceptance, physical
 forward/reverse transfer and production promotion remain required.
 
+### Merge NPT edge authority
+
+PR #143 merged as `c80877958125bcb11dfb49b3612c538720fb5018` on
+September 30, 2026 at 19:33:16 UTC. The merged head is
+`10798d795521246ccb29614bcbb36ee67a64fee4`. All seven branch-local
+commits passed signature verification and raw signature inspection.
+
+CI run `36763504811` passed every required check, ARM64, namespace,
+firewall and both protocol lanes. All four cached-prefix cases passed.
+The nonrequired vulnerability check reported the unchanged GoBGP
+`GO-2026-4736` advisory with no published fixed version.
+
+The independent systemd battery passed all five required cases and four
+interface naming subcases in 25.890 seconds with zero skips. It used the
+explicit candidate executable from signed source `3398e61`; the final
+commit changed only the acquisition plan. The final authority interface
+example includes cached-prefix retention without readiness publication.
+
+The final review has zero actionable findings. The literal empty-WAN
+cleanup conclusion uses source inspection; the public withdrawal control
+retains provider metadata and does not prove a literal empty-WAN input.
+The stale-map fixture uses real journal, kernel address and DAD operations
+before actual daemon startup. No mocked dependency replaces that path.
+
+The clean primary checkout now matches the merged commit. Release
+publication and verification, paired Configs pins and journal configuration,
+shared testbed deployment, downstream balancing and restart acceptance,
+physical forward/reverse transfer and production promotion remain pending.
+Current Cloudflare health verification requires working read access; the
+pool API returned HTTP 403 and Chrome requires sign-in.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
