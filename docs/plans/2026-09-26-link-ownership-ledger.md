@@ -2831,6 +2831,41 @@ state updates. Raw MWAN-522 properties exceeded the tool's 32 KB response
 limit; the existing description was preserved and new evidence was posted
 as a separate comment. The ergonomic issue read confirmed In Progress.
 
+### Verify calibration, package recovery and owner continuity
+
+The corrected shared baseline used provider-facing eth0 captures and 40 fresh
+requests per family. Both families selected AT&T 21 times and Webpass 19 times.
+The predetermined acceptance bounds were 13 through 27. All 20 captures
+reported zero drops and strict process cleanup. This baseline used the older
+installed daemon; it does not prove the published c257200 release on testbed.
+
+Configs PR #577 merged as 1c601538d68938ce5b540ba59ec83fa57b39b4a8. The
+package-only testbed deployment failed when CT904's 128 MiB memory cgroup
+killed apt-get. The unchanged merged play then completed with exit 0 and
+verified curl on CT900 through CT904. The original failure remains evidence.
+The durable correction increases only CT904 memory to 256 MiB; the provider
+will reboot that container during the update. No memory apply occurred.
+
+Downstream guests 225 and 226 each received all 180 IPv4 and 180 IPv6 probes
+during the three-minute primary-route baseline. Route samples selected the
+primary throughout. The primary was not stopped; backup failover remains
+untested.
+
+Physical attempt6 proved same-boot foreign-address rejection and cold kernel
+absence before scoped recreation. Its final capture reported one kernel drop;
+the full attempt failed. Attempt8 passed all six dual-stack packet phases but
+failed the configured-edge continuity assertion. Netlink recorded deletion of
+2001:db8:30::1/128 at 22:18:49.198608 UTC and subsequent DAD recreation.
+The acquisition owner changed while configured translation and WAN membership
+remained unchanged. Startup networkd reload preceded replacement NPT runtime
+initialization. Networkd writer attribution follows source and timing; the
+fixture did not capture a writer syscall. MWAN-533 records this defect under
+MWAN-305 and is In Progress. Independent repair review remains pending.
+
+Both physical guests powered off normally. Shared daemon deployment and
+production promotion remain pending. Tack received current package, baseline
+and defect evidence without overwriting truncated descriptions.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
