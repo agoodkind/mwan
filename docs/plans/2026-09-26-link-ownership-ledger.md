@@ -1653,6 +1653,61 @@ The post-verdict column records defects discovered after that review verdict.
 
 | 2026-09-30 | `codex/mwan-518-dhcp-test-isolation` | DHCP restart fixture isolation | Independent root review | MERGED as `fde02feed` | 0 / 0 / 0 | None found | Real udev changed the fixture MAC after ACK and reproduced NAK and silent-server failures on unchanged main. Root review accepted a child network namespace with unchanged packet assertions, deadlines, and production identity checks. Twenty runs passed with host udev active; a separate instrumented copy recorded 60 valid server REQUEST packets across 20 passing runs. A host control MAC changed under the active daemon. Full Docker check/test and privileged namespace gates passed. Nonroot and missing-capability cases reported explicit skips. All required CI checks and the namespace, firewall, and ARM64 suites passed. Graphite AI Reviews and PR-Agent passed; the final thread read found no unresolved threads. |
 
+### MWAN-521 and MWAN-522 acceptance corrections, September 30, 2026
+
+[Naming transfer PR #137](https://github.com/agoodkind/mwan/pull/137)
+is open at signed `52c06d55343262ad8a3db33716b78c1a2e934052`.
+The independent production-unit test passed all four cases in 6.806 seconds.
+The original-main control failed generated-file transfer in 6.717 seconds;
+foreign, retained, and symlink rejection passed. The actual journal reported
+rejection of `20-ownedboot0.link`. The implementation permits only obsolete
+regular generated files absent from the current networkd render and repeats
+strict validation after pruning. This fixture does not prove physical
+acquisition or reverse transfer.
+
+All ten required checks passed. A nonrequired IPv6 firewall packet check
+failed without packet-state evidence. Ten focused repetitions passed on the
+PR source and ten passed on main. The failed CI job was restarted; its result
+remains pending. Govulncheck reports the same advisory on main. The pinned
+GoBGP v4.7.0 source includes the published correction. GitHub limits affected
+versions to `<=4.3.0`, while the Go database has no fixed-version boundary.
+The scanner and dependency remain unchanged. Evidence:
+`20260930-link-naming-fix/independent-review.md` and
+`20260930-link-naming-fix/ci-evidence-verdict.md`.
+
+[Route expiry PR #138](https://github.com/agoodkind/mwan/pull/138)
+is at signed `18c1d346c87df55127ac2898f7fcf6f3663e20e1`.
+Independent final raw-NDP and radvd daemon tests passed in 22.751 seconds.
+Reverting gateway, monitor, and inspection filtering separately failed the
+intended public assertions. Review found that the first inspection control
+checked only a permanent provider route; the final fixture also rejects
+expired main-table RA defaults. Permanent routes, multipath observation,
+and live RA-default deletion passed. The full author ARM64 project gates
+passed before the final assertion. Independent review accepted the final
+source; refreshed CI and merge remain pending. Evidence:
+`20260930-radvd-autoconfiguration/independent-review.md`.
+
+[Configs PR #570](https://github.com/agoodkind/configs/pull/570)
+remains open at signed `dc2a4cae5dc5c2de1845e15ca661df52bbb4ad7a`.
+The earlier independent 11-case run passed at `59bc0301`. The final source
+extracts duplicated fixture configuration. Two independent three-case runs
+each failed first-install and restoration at unchanged 120-second whole-play
+deadlines; recovery diagnosis passed. A quiet repetition still failed.
+Task and transport timing diagnosis is active. Final-source acceptance is
+incomplete. Evidence: `20260930-role-activation/independent-review.md`.
+
+The downstream harness is frozen at signed Configs commit
+`48c51ee4c8f063366b8e1d8d1fa458f6d5fc0bb9`. Its actual Linux public suite
+passed three examples in 80.99 seconds, including packet mapping, restart
+history, SIGINT cleanup, and premature observer termination. Project RSpec
+passed 186 examples with four explicit skips; lint passed. Independent
+review, actual Proxmox client identity, and unequal provider weights remain
+unaccepted. Evidence: `20260930-downstream-harness/validation.md`.
+
+No correction above has a live deployment acceptance result. Physical
+forward and reverse transfer, complete downstream testbed acceptance, and
+production promotion remain required. MWAN-521 and MWAN-522 remain In Progress.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
