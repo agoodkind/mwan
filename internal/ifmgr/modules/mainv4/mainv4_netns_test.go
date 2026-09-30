@@ -114,6 +114,19 @@ func TestMainDHCPv4AssignmentLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertMainDHCPv4(t, link, true)
+	recoveryInterface, err := New(Config{Iface: iface, StateFile: stateFile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recoveryModule := recoveryInterface.(*Module)
+	if err := recoveryModule.Init(ctx, &ifmgr.Env{Iface: iface, Log: slog.Default(), DHCP: client, DHCPRecoveryPending: true}); err != nil {
+		t.Fatal(err)
+	}
+	startupExpiry := netif.LeaseInfo{State: netif.LeaseExpired}
+	if err := recoveryModule.OnDHCPLease(ctx, slog.Default(), startupExpiry); err != nil {
+		t.Fatal(err)
+	}
+	assertMainDHCPv4(t, link, true)
 	moduleInterface, err = New(Config{Iface: iface, StateFile: stateFile})
 	if err != nil {
 		t.Fatal(err)

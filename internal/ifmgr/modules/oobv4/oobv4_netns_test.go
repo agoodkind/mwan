@@ -121,6 +121,19 @@ func TestOOBDHCPv4AssignmentLifecycle(t *testing.T) {
 	if slices.ContainsFunc(routes, func(route netlink.Route) bool { return route.Protocol == unix.RTPROT_BOOT }) {
 		t.Fatal("legacy default route remained after replacement")
 	}
+	recoveryInterface, err := New(Config{Iface: iface, OOBTableID: tableID, StateFile: stateFile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recoveryModule := recoveryInterface.(*Module)
+	if err := recoveryModule.Init(ctx, &ifmgr.Env{Iface: iface, Log: slog.Default(), DHCP: client, DHCPRecoveryPending: true}); err != nil {
+		t.Fatal(err)
+	}
+	startupExpiry := netif.LeaseInfo{State: netif.LeaseExpired}
+	if err := recoveryModule.OnDHCPLease(ctx, slog.Default(), startupExpiry); err != nil {
+		t.Fatal(err)
+	}
+	assertOOBDHCPv4(t, link, tableID, true)
 	moduleInterface, err = New(Config{Iface: iface, OOBTableID: tableID, StateFile: stateFile})
 	if err != nil {
 		t.Fatal(err)

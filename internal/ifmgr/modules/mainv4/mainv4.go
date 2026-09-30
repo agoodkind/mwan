@@ -132,8 +132,11 @@ func (m *Module) OnDHCPLease(
 	m.Lock()
 	startupExpiry := lease.State == netif.LeaseExpired && lease.LinkIndex == 0 && m.Env.DHCPRecoveryPending && !m.hasApplied
 	m.Unlock()
-	if !startupExpiry && (lease.State == netif.LeaseBound || lease.State == netif.LeaseRenewing ||
-		lease.State == netif.LeaseRebinding || lease.State == netif.LeaseExpired) {
+	if startupExpiry {
+		return nil
+	}
+	if lease.State == netif.LeaseBound || lease.State == netif.LeaseRenewing ||
+		lease.State == netif.LeaseRebinding || lease.State == netif.LeaseExpired {
 		matches, err := lease.MatchesLink(m.cfg.Iface)
 		if err != nil {
 			return fmt.Errorf("mainv4: inspect DHCPv4 interface: %w", err)
