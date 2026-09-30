@@ -152,16 +152,6 @@ func (r *OwnedStaticReconciler) save() error {
 	return nil
 }
 
-func staticLinkIdentity(link netlink.Link) string {
-	if link.Attrs().Alias != "" {
-		return "alias:" + link.Attrs().Alias
-	}
-	if len(link.Attrs().PermHWAddr) != 0 {
-		return "mac:" + link.Attrs().PermHWAddr.String()
-	}
-	return "mac:" + link.Attrs().HardwareAddr.String()
-}
-
 func staticFamily(family string) int {
 	if family == "ipv4" {
 		return unix.AF_INET
@@ -275,7 +265,7 @@ func (r *OwnedStaticReconciler) ReconcileFamilyRoutesWithLifetimesRetaining(ctx 
 		}
 		seenRoutes[slot] = assigned.Gateway
 	}
-	base := ownedStaticObject{ConnectionID: connection.ID.String(), Family: family, LinkName: ready.ActualName, LinkIndex: ready.IfIndex, LinkIdentity: staticLinkIdentity(link), Prefix: "", Destination: "", Gateway: "", Metric: 0}
+	base := ownedStaticObject{ConnectionID: connection.ID.String(), Family: family, LinkName: ready.ActualName, LinkIndex: ready.IfIndex, LinkIdentity: LinkOwnershipIdentity(link), Prefix: "", Destination: "", Gateway: "", Metric: 0}
 	if family == "ipv4" && len(settings.Addresses) != 0 {
 		if err := r.ensurePromotion(base); err != nil {
 			return err
@@ -387,7 +377,7 @@ func (r *OwnedStaticReconciler) ensurePromotion(value ownedStaticObject) error {
 				slog.Warn("recorded promotion link lookup failed", "connection_id", value.ConnectionID, "err", err)
 				return fmt.Errorf("verify recorded promotion link: %w", err)
 			}
-			if err == nil && staticLinkIdentity(old) == record.LinkIdentity {
+			if err == nil && LinkMatchesIdentity(old, record.LinkIndex, record.LinkIdentity) {
 				return fmt.Errorf("promote_secondaries link identity changed for %s", value.ConnectionID)
 			}
 			if err := r.forgetPromotion(i); err != nil {
@@ -422,7 +412,7 @@ func (r *OwnedStaticReconciler) restorePromotion(id string) error {
 			slog.Warn("promotion link lookup failed", "connection_id", id, "err", err)
 			return fmt.Errorf("find promotion link: %w", err)
 		}
-		if staticLinkIdentity(link) != record.LinkIdentity {
+		if !LinkMatchesIdentity(link, record.LinkIndex, record.LinkIdentity) {
 			return r.forgetPromotion(i)
 		}
 		if link.Attrs().Name != record.LinkName {
@@ -690,7 +680,7 @@ func (r *OwnedStaticReconciler) remove(value ownedStaticObject) error {
 		slog.Warn("recorded link lookup failed", "connection_id", value.ConnectionID, "err", err)
 		return fmt.Errorf("find recorded link: %w", err)
 	}
-	if staticLinkIdentity(link) != value.LinkIdentity {
+	if !LinkMatchesIdentity(link, value.LinkIndex, value.LinkIdentity) {
 		return r.forget(value)
 	}
 	if link.Attrs().Name != value.LinkName {
