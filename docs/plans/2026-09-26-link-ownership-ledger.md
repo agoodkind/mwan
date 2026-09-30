@@ -2105,9 +2105,10 @@ after the daemon's readiness notification.
 OPNsense selected the backup in both families during restart and restored
 the primary afterward. The before and after batteries each passed 80 downstream
 HTTPS requests, observed both providers in both families, and recorded zero
-kernel capture drops. Each of the four continuous downstream probe streams
-received 7,199 of 7,200 replies. The single missed sequence preceded daemon
-restart. OPNsense used the backup for 116 seconds in both families.
+kernel capture drops. The four continuous downstream probe streams received
+7,199 of 7,200 replies in total. Client 226's IPv4 stream missed one reply;
+the other three streams received all 1,800 replies. The missed sequence
+preceded daemon restart. OPNsense used the backup for 116 seconds in both families.
 
 MWAN PR #136 merged the direct networkd manager reload as
 `6d3945abccc7c70bf5ca0c2ea4b8e57e0ca9fb2c`. Independent review ran the real
