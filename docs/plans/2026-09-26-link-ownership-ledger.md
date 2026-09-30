@@ -1660,6 +1660,9 @@ The post-verdict column records defects discovered after that review verdict.
 
 ### MWAN-521 and MWAN-522 acceptance corrections, September 30, 2026
 
+The local evidence root is `~/.local/state/mwan305`. Artifact identifiers
+below refer to retained local reports, not repository files.
+
 [Naming transfer PR #137](https://github.com/agoodkind/mwan/pull/137)
 merged as `bb4d1c5d547d4e776ec11e1f49ecca25ed2590a8` from signed
 `52c06d55343262ad8a3db33716b78c1a2e934052`.
@@ -1694,7 +1697,7 @@ source. After integration with merged `bb4d1c5`, both daemon tests passed
 in 22.965 seconds. The complete ordered startup and naming fixture passed
 in 6.577 seconds. The integrated merge tree matched the reviewed source.
 One disputed Graphite thread remains open; merge and deployment remain pending.
-The [independent route review](/Users/agoodkind/.local/state/mwan305/20260930-radvd-autoconfiguration/independent-review.md)
+The local report `20260930-radvd-autoconfiguration/independent-review.md`
 preserves the controls and the first runner's missing-udev prerequisite failure.
 
 [Configs PR #570](https://github.com/agoodkind/configs/pull/570)
@@ -1707,7 +1710,7 @@ The transport control reduced first-install Docker exec calls from 214 to 98.
 Commit `21006a9a` enables pipelining only in the Docker fixture inventory.
 The three affected cases then passed independently in 218.2 seconds with
 `ANSIBLE_PIPELINING` explicitly unset and unchanged 120-second play deadlines.
-The [final activation evidence](/Users/agoodkind/.local/state/mwan305/20260930-role-activation/final210-acceptance.md)
+The local report `20260930-role-activation/final210-acceptance.md`
 records the root session's final output; its complete transcript is unavailable.
 The duplicate-configuration thread is resolved. Two disputed review threads
 remain open. No merge or revised deployment occurred.
@@ -1725,7 +1728,7 @@ The earlier plaintext rotation fixture missed this defect.
 
 The mechanical library extraction at signed
 `1e53f44b6595b318bbbb1e9729b1fd0e0a3d945f` preserved all 32 parsed declarations.
-The [independent comparison](/Users/agoodkind/.local/state/mwan305/20260930-downstream-harness/refactor-static-review.md)
+The local report `20260930-downstream-harness/refactor-static-review.md`
 also verified unchanged command and public fixture bytes; its deliberate
 TERM-argument change failed the comparison control.
 
@@ -1735,7 +1738,7 @@ Signed `c5d17e7e51d48e7e2446fd11aded1f40b83db6c4` passed three public cases
 in 95.47 seconds, including actual daemon log rotation and compression after
 restart and the one-second history-budget failure control. RuboCop passed
 for nine files and `./configsctl lint` passed. The
-[history verification](/Users/agoodkind/.local/state/mwan305/20260930-downstream-harness/history-c5-verification.md)
+local report `20260930-downstream-harness/history-c5-verification.md`
 records exact commands, retained artifacts and the unavailable complete terminal
 transcript. Signed follow-up `2c19eeebd8c1cbeee5750ef7e1437969f6288186`
 replaces dynamic assignments with eight explicit plan-field assignments.
@@ -1746,7 +1749,7 @@ failed the unchanged three-second assertion with elapsed time 22.724572385
 seconds. The mechanical `2c19eeeb` comparison verified the eight original
 field mappings and identical remaining bytes. Both signatures passed with
 status `G` and raw `gpgsig` headers. The
-[final independent history review](/Users/agoodkind/.local/state/mwan305/20260930-downstream-harness/independent-c5-final-review.md)
+local report `20260930-downstream-harness/independent-c5-final-review.md`
 accepts both commits. The explicit-assignment thread is resolved; two disputed
 Graphite threads remain open. Actual Proxmox harness execution, unequal
 provider distribution and shared downstream acceptance remain unaccepted.
@@ -1774,7 +1777,7 @@ target requests with exact option 61 `01:52:54:00:52:20:01`. Each ten-second
 released interval contained zero target DHCP packets. All five captures
 reported zero kernel drops. Both guests synchronized, powered off gracefully
 and exited with status zero. The
-[physical transfer verdict](/Users/agoodkind/.local/state/mwan305/20260930-exclusive-release-bb4d1c5/qemu-virtio/transfer-verdict.md)
+local report `20260930-exclusive-release-bb4d1c5/qemu-virtio/transfer-verdict.md`
 preserves commands and artifacts. This result establishes this IPv4 transfer
 configuration; it does not establish IPv6 transfer, load distribution or
 continuous delivery between the recorded requests. No shared guest changed.
@@ -1785,7 +1788,7 @@ The source audit at merged `6f415f49e8667328f327130770e75af72e608ee3`
 found that `make test-protocol` executes only bootstrap. The required source
 contains 21 namespace cases and two separate opted-in systemd cases. Only
 nine cases use the explicit released-binary selector. The
-[protocol target audit](/Users/agoodkind/.local/state/mwan305/20260930-protocol-target-audit/audit.md)
+local report `20260930-protocol-target-audit/audit.md`
 records the exact selectors, prerequisites and required execution changes.
 Aggregate execution and consistent released-binary selection are under
 implementation; no passing aggregate result exists at this checkpoint.
@@ -1793,8 +1796,9 @@ implementation; no passing aggregate result exists at this checkpoint.
 The initial assembled namespace run passed 20 cases and failed
 `TestOwnedDHCPv6IAAddressOnlyRuntime` on its actual local IPv6 packet assertion.
 The total was 304.680 seconds. Both real systemd cases passed in 11.261 seconds.
-The [namespace events](/Users/agoodkind/.local/state/mwan305/20260930-protocol-target-audit/implementation/namespace-1166649602/events.jsonl)
-and [systemd events](/Users/agoodkind/.local/state/mwan305/20260930-protocol-target-audit/implementation/systemd-4189432965/events.jsonl)
+The local artifacts
+`20260930-protocol-target-audit/implementation/namespace-1166649602/events.jsonl`
+and `20260930-protocol-target-audit/implementation/systemd-4189432965/events.jsonl`
 preserve the actual result. The exact-source and merged-main comparison is
 active; the failure's cause is unestablished. Aggregate acceptance remains
 incomplete.
