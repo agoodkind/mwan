@@ -2629,6 +2629,29 @@ contracts remain preserved. Packet acceptance is still pending. The capture
 repair uses a new worktree from the merged Configs base. No shared testbed
 or production deployment occurred.
 
+### Verify actual guest capture shutdown
+
+Frozen capture source SHA256
+`f7290abd6034b8682969f2e933b09c99a79ce53703f15aa6c05644d7572102b8`
+passed twenty source-bound IPv4 HTTP requests from client 225. TCP sequence
+attribution passed across actual transit, provider and simulator captures.
+All five observers recorded active unit, PID and tcpdump executable identity,
+successful stop and runner completion, zero kernel drops and successful
+exact-PID absence commands. Root verified every PCAP hash and receipt.
+The control lasted 99.04 seconds and reported no cleanup errors.
+
+The two Proxmox simulator services executed tcpdump inside their guests;
+their attach and SSH streams closed successfully. This control establishes
+capture lifecycle behavior only. It does not establish calibration, configured
+weight distribution, IPv6 acceptance or a deployment. Actual SIGKILL failure
+rejection and the integrated Linux suite remain required before publication.
+
+The supported legacy packet fixture passed loader, health and routing checks.
+Its private runner lacks Bird and the required updater unit. The correction
+must provision the real dependency and run the unchanged updater service
+inside the private gateway namespace. Earlier fixture and prerequisite
+failures remain preserved. No product enforcement or packet deadline changed.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
