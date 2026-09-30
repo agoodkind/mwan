@@ -125,9 +125,9 @@ func render(connection interfaceintent.Connection, tableID int, preserveStatic b
 		for _, section := range file.Sections {
 			if preserveStatic && kind == FileNetwork && section.Name == sectionNetwork {
 				var err error
-				section.Entries, err = staticPreservationEntries(section.Entries)
+				section.Entries, err = staticPreservationEntries(connection.Name, section.Entries)
 				if err != nil {
-					return nil, fmt.Errorf("%s: %w", connection.Name, err)
+					return nil, err
 				}
 			}
 			files.merge(kind, section)
@@ -136,7 +136,7 @@ func render(connection interfaceintent.Connection, tableID int, preserveStatic b
 	return files, nil
 }
 
-func staticPreservationEntries(entries []interfaceintent.UnitEntry) ([]interfaceintent.UnitEntry, error) {
+func staticPreservationEntries(iface string, entries []interfaceintent.UnitEntry) ([]interfaceintent.UnitEntry, error) {
 	retained := make([]interfaceintent.UnitEntry, 0, len(entries))
 	for _, entry := range entries {
 		if entry.Key != keyKeepConfiguration {
@@ -144,7 +144,7 @@ func staticPreservationEntries(entries []interfaceintent.UnitEntry) ([]interface
 			continue
 		}
 		if entry.Value != "static" {
-			return nil, fmt.Errorf("Network/KeepConfiguration=%s conflicts with NPT static preservation", entry.Value)
+			return nil, fmt.Errorf("%s: Network/KeepConfiguration=%s conflicts with NPT static preservation", iface, entry.Value)
 		}
 	}
 	return retained, nil
