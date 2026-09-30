@@ -251,8 +251,9 @@ results. Promote only this accepted release and compatible configuration.
 Run this phase after the first connection, each remaining-interface phase,
 and final retirement. Require the same phase's testbed acceptance for the
 exact merged release and compatible Configs revision, executable manifest,
-checks, approvals, and current production authorization. Final retirement
-also requires confirmed AT&T retirement and MWAN-401 acceptance.
+checks, approvals, and current production authorization. Earlier production
+phases retain AT&T and networkd for legacy connections. Require confirmed
+AT&T retirement and MWAN-401 acceptance only for final retirement.
 
 The reviewer verifies scope, release identity, configuration differences,
 testbed evidence, and recovery compatibility. The cutover agent owns
