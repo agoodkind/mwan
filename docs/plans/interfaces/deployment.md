@@ -88,6 +88,57 @@ provider, and sysctl inputs. Stop on a missing required MWAN-516 field and
 report the exact contract gap before changing the design. Hand off the
 Configs commit, compatible MWAN commit, rendered hashes, and local results.
 
+### Pair the NPT journal with the compatible release
+
+The inspected Configs baseline `3f28f3bf` supplies no address journal in the
+VM runtime template. Add this section inside its WAN-enabled condition in
+[the VM template](https://github.com/agoodkind/configs/blob/main/mwan/config/config-vm.toml.j2):
+
+```toml
+[ifmgr.modules.addresses]
+state_file = "/var/lib/mwan/owned-addresses.json"
+```
+
+1. Preserve the existing conditional `lease_directory` in
+   [the shared runtime template](https://github.com/agoodkind/configs/blob/main/mwan/config/_ifmgr_common.toml.j2).
+   Do not add link or kernel-policy journals merely to manage a legacy NPT
+   edge. Networkd and external acquisition retain their configured owners.
+2. Pin the compatible published merged application release in both
+   [testbed release inventory](https://github.com/agoodkind/configs/blob/main/ansible/inventory/group_vars/mwan_testbed_all.yml)
+   and [production release inventory](https://github.com/agoodkind/configs/blob/main/ansible/inventory/group_vars/mwan_prod_all.yml)
+   before merging this shared section. The older address module rejects a
+   supplied journal when legacy startup publishes no `OwnedLinks` result;
+   successful TOML parsing does not prove startup compatibility.
+3. Run both real installation renders with the compatible published Linux
+   executable through this command:
+
+   ```sh
+   env MWAN_TRANSLATION_TEST_BINARY="$MWAN_RELEASE_EXECUTABLE" bundle exec rspec spec/ansible/mwan_install_spec.rb
+   ```
+
+   Also start the actual daemon from rendered TOML with all-networkd input.
+   Require the loader, firewall checks, and startup case to run without skips.
+4. Prove the same-boot deployment sequence before relying on the planned
+   reboot. Binary installation, role activation, handler flush, and firewall
+   inspection precede that reboot. Verify backup forwarding and every
+   intervening gate with the existing unjournaled edge present. Do not adopt
+   that edge, delete it manually, or assume an aborted play will reboot later.
+5. Use the planned baseline reboot, then verify old edge absence before the
+   new authority creates and journals it. Record the actual producer result
+   and kernel readback; a changed boot identity alone does not prove absence.
+   Preserve ordinary historical journal records without reclassification.
+6. Deploy the merged Configs and compatible release pair to the testbed.
+   Require the full NPT regression and isolated and testbed baseline reboot
+   acceptance before physical dual-stack transfer acceptance. Require that
+   physical acceptance before production promotion. An older executable
+   restores the unjournaled writer and is not a compatible same-boot recovery
+   target.
+
+The NPT implementation contract and public regression matrix belong to the
+[acquisition plan](acquisition.md#npt-address-authority-journal-edges-across-connection-owners).
+The existing cutover workflow supplies downstream observation and recovery;
+this companion does not change connection ownership.
+
 ## 521-deployment: Implement exclusive transfer
 
 ### Preserve the deployment boundary

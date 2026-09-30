@@ -245,9 +245,9 @@ assignment-backed source if the reviewed API requires a separate adapter.
    observation only for connections networkd still owns.
 2. Publish validated delegation to existing translation and routing consumers.
    Withdraw expired state and apply changed prefixes and prefix lengths.
-3. Apply and withdraw the delegated NPT external `::1/128` address through
-   the address manager before enabling or withdrawing its translation. Do
-   not infer downstream prefix assignment or announcements from an IA_PD request.
+3. Use the NPT address authority below for delegated edge installation and
+   withdrawal. Do not infer downstream prefix assignment or announcements
+   from an IA_PD request.
 4. Preserve non-DHCP routed-prefix configurations and completed translation
    behavior. Keep default-router discovery under kernel RA policy.
 
@@ -277,6 +277,148 @@ that expired delegation cannot remain usable through a cached prefix.
 
 Give MWAN-517 the reviewed client API and association contract. Give
 MWAN-518 the required recovery metadata.
+
+## NPT address authority: Journal edges across connection owners
+
+Implement this focused MWAN-305 follow-up before physical ownership transfer.
+At the inspected source `2f547619`, NPT writes legacy edges directly and the
+ordinary address manager writes edges for MWAN-owned families. A legacy edge
+can survive handover without a journal record and prevent acquisition by the
+replacement writer. Preserve the stable external `::1/128` address and the
+existing external-owned mapped connection contract.
+
+### 1. Define the shared edge authority
+
+Modify these sources:
+
+| Source | Required change |
+| --- | --- |
+| [Module environment](../../../internal/ifmgr/module.go) | Expose `Env.NPTAddresses` through the typed contract below. |
+| [Address module](../../../internal/ifmgr/modules/addresses/addresses.go) | Provide the authority and retain its journal for pending edge cleanup. |
+| [Owned address journal](../../../internal/netif/owned_addrs_routes.go) | Add a separate `npt-edge` scope without changing ordinary record identities. |
+| [Owned module configuration](../../../cmd/mwan/ifmgr_owned_config.go) | Require an explicit absolute address journal for owned families or configured NPT intent. |
+| [NPT reconciliation](../../../internal/ifmgr/modules/npt/npt.go) | Consume verified edge results and remove its direct address writer. |
+| [Translation inspection](../../../internal/ifmgr/modules/npt/inspect.go) | Verify relevant managed translation removal before releasing obsolete edges. |
+| [BPF translator](../../../internal/ifmgr/modules/npt/bpf/translator.go) | Inspect managed policies and attachments required by edge release. |
+
+Use one reconciler and one in-memory journal. Implement this interface:
+
+```go
+type NPTEdgeRequest struct {
+    ConnectionID connectionid.ID
+    Interface    string
+    Prefix       netip.Prefix
+}
+
+type NPTEdgeRecord struct {
+    ConnectionID   connectionid.ID
+    Interface      string
+    InterfaceIndex int
+    LinkIdentity   string
+    Prefix         netip.Prefix
+}
+
+type NPTAddressAuthority interface {
+    Ensure(context.Context, *slog.Logger, NPTEdgeRequest) (NPTEdgeRecord, error)
+    Recorded() []NPTEdgeRecord
+    Release(context.Context, *slog.Logger, []NPTEdgeRecord) error
+}
+```
+
+1. Resolve each request against configured NPT intent and connection identity.
+   Use current `OwnedLinks` results for MWAN-owned connections. For networkd
+   and external connections, implement read-only
+   `netif.ObserveLegacyLink(connection) (netlink.Link, error)`. Verify rendered
+   physical links by permanent MAC and configured name. For hand-authored
+   AT&T configuration without typed link intent, verify the configured name
+   and observed type, index, and `LinkOwnershipIdentity`. Do not claim parent
+   verification without configured parent input.
+2. Do not apply link settings, create a VLAN, change bridge membership, or
+   start acquisition on legacy connections. Require `OwnedLinks` only for
+   complete MWAN-owned families. All-networkd startup must accept a supplied
+   address journal when the link module correctly publishes no owned links.
+3. Save the scoped record atomically before creating the edge. Verify the
+   actual address and duplicate-address detection before returning success.
+   Keep boot, index, and stable link identity checks. Reject an existing
+   foreign address, including an identical address or a different prefix
+   length. Never adopt an address by matching configured intent.
+4. Add optional journal `scope = "npt-edge"` only to new edge records. Keep
+   records without scope ordinary and preserve their existing keys. Exclude
+   edge records from family pruning. Exclude acquired addresses and routes
+   from edge pruning. Do not reclassify older ordinary records.
+
+### 2. Coordinate edge creation and translation removal
+
+1. Keep configured and delegated prefix selection in NPT through the existing
+   owner-aware `pd.AssignmentSource`. Preserve `ExpectedPrefix` length checks
+   without using a historical address as a source pin. Create no second
+   observer or protocol client.
+2. Remove duplicate edge creation from the ordinary IPv6 family writer and
+   NPT's direct `netif.ReconcileAddrs` call. Call `Ensure` before enabling
+   translation and publish readiness only after verified installation.
+3. Preserve the journaled edge when only connection ownership changes and
+   the edge remains unchanged on a present link with verified identity. Do
+   not force translation withdrawal for that transition. Preserve the
+   existing link lifecycle: deletion of an MWAN-created VLAN removes all
+   addresses on that link. Complete connection transfer must validate VLAN
+   recreation; this correction does not preserve an address across deletion.
+   Mark edges obsolete when their prefix changes or provider membership is
+   withdrawn.
+4. Exclude obsolete edges from `extraGlobal128s`. Apply the desired nftables
+   rules and BPF policies, then inspect the relevant managed provider and
+   shared internal translation state. Verify that old edges have no managed
+   translation references or required attachments. Unreadable relevant state
+   blocks release; unrelated foreign tables and programs do not block it.
+5. Release only the exact records returned by the authority after translation
+   removal succeeds. Recheck boot, index, and link identity, remove the
+   address, verify absence, then forget the record. Retain failed records for
+   retry through ordinary reconciliation and publish the failed operation.
+6. Preserve cleanup after the final WAN or NPT intent disappears. Do not
+   disable initialization while obsolete edge records require reconciliation.
+   Shutdown preserves the journal for restart recovery.
+
+### 3. Prove the public edge lifecycle
+
+Extend the [mapped daemon regression](../../../cmd/mwan/ifmgr_owned_mapped_netns_test.go)
+and the real systemd daemon suite. Run the production loader and `mwan ifmgr`
+with actual kernel networking, networkd, nftables, BPF, Kea, and router
+advertisements where the case requires acquisition. Supply each fixture with
+an explicit private address journal; do not add a silent default.
+
+1. Create and restart a legacy edge through the journal. Verify the stable
+   `::1/128`, translated replies, and unchanged networkd acquisition and
+   routes. Retain the external-owned mapped public regression.
+2. Change only the owner with the same edge. Verify journal continuity and
+   packets without a forced translation withdrawal or competing address write.
+3. Change a prefix and withdraw a provider separately. Verify actual managed
+   translation removal before obsolete address release. Verify independent
+   provider replies throughout each case. Acquire a real delegation and
+   expire its valid lifetime; require edge and translation withdrawal even
+   when an old route remains visible.
+4. Reverse acquisition ownership. Verify ordinary MWAN objects and clients
+   release while the desired edge remains under the shared authority.
+5. Reject foreign identical addresses and differing prefix lengths without
+   adoption or deletion. Exercise an actual translation inspection or removal
+   failure; require retained edge records, a published failure, and recovery.
+6. Remove the final WAN and NPT intent, then restart. Verify pending cleanup
+   completes. Retain an original-main failing control and a focused removal
+   control that fails when translation verification is disabled.
+
+Run `make docker-make TARGETS="check test"` and the affected privileged
+public suites without skips. Keep runtime tests with this behavior in one
+focused PR. The Configs companion must pair the explicit journal with the
+compatible published release under the deployment plan.
+
+After that pair passes its isolated and testbed baseline acceptance, require
+fresh physical dual-stack forward and reverse transfer before production
+promotion. Use actual virtio links, Kea, router
+advertisements, and the existing BGP return-route contract. Verify matching
+DHCPv4 identity and DHCPv6 DUID/IAID, delegated-prefix translation, translated
+source and reply packets, and independent backup traffic. Use a LAN source
+within the configured internal prefix. Preserve the fixture's five-second
+prerequisites, fifteen-second packet deadline, and ten-second release
+captures. Require zero capture drops and journal release readback. Namespace
+tests alone do not prove this physical transfer.
 
 ## 517-autoconfiguration: Configure kernel IPv6 autoconfiguration
 
@@ -390,7 +532,7 @@ other required options before implementation. Do not infer a default router
 from a DHCPv6 server address.
 
 Review address purpose with the translation consumer before implementation.
-The existing [NPT address classification](../../../internal/ifmgr/modules/npt/npt.go)
+The existing NPT address classification
 uses `extraGlobal128s` for intentional forwarding and BPF destination exceptions.
 [The DNAT rule builder](../../../internal/ifmgr/modules/npt/rules.go) forwards
 those addresses to OPNsense. The

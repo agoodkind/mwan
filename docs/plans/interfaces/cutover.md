@@ -70,6 +70,10 @@ another usable provider and baseline downstream traffic.
    downstream packets, and inbound mapping replies before restoring selection.
 6. Execute reverse transfer with one active owner at each step. Prove the
    previous owner restores downstream traffic with compatible configuration.
+   For an MWAN-created VLAN, verify deletion releases its addresses, then
+   verify the replacement owner recreates the VLAN and required assignments.
+   Require the recreated link's verified identity and downstream packets;
+   address continuity requires a link that remains present.
 7. Repeat forward transfer, daemon restart, and guest reboot. Record actual
    interruption and renumbering. Verify persisted recovery separately from
    fresh negotiation at initial transfer.
