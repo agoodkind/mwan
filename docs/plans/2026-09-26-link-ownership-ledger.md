@@ -2230,6 +2230,46 @@ whole-connection transfer must verify its recreation, assignments and packets.
 MWAN-519 has the updated description and remains In Progress. No physical
 guest boot, shared testbed deployment or production promotion occurred.
 
+### Published resolver acceptance and NPT fixture prerequisites
+
+Release `202609301619-8a-2587f14` published from merged commit
+`2587f140a10ac8424ef96fe00d57c40853a7fa8a`. All four archives passed
+checksum, GitHub asset digest and attestation verification. The actual merged
+runner passed all four systemd cases against the published ARM64 executable
+with zero skips in 22.805 seconds. Guest readback verified SHA256
+`67a65dc237819a62e15d23d11baa083c8fbf926c2be469d7000f76829d21c543`
+and the read-only binary mount. The runner removed its container after exit
+zero. This proves resolver and owned-role runtime behavior, not NPT transfer.
+The report is
+`20260930-resolver-owned-role-release-2587f14/verification.md`.
+
+The mapped NPT lifecycle now uses the public binary-selection helper.
+The explicitly mounted candidate passed in 11.89 seconds. The explicitly
+mounted older published executable failed the scoped receipt assertion in
+4.18 seconds without rebuilding a candidate. Separate feature-removal
+controls failed obsolete-edge retention and rename receipt assertions.
+Final committed review and delegated-prefix acceptance remain required.
+
+The real networkd fixture initially started Kea before its provider
+link-local address completed duplicate address detection. Kea reported no
+open sockets. After bounded link-local readiness, networkd sent Solicit and
+Kea returned NoAddrsAvail and NoPrefixAvail because its subnet did not match
+the actual client interface. These results do not test NPT authority.
+The fixture must select the actual Kea server interface without changing
+production code or acceptance deadlines.
+
+The revised physical fixture binds IPv6 HTTP requests to the downstream LAN
+address, requires an explicit verified release, and checks captured packet
+counts. Its management DHCP metric is 9000 before baseline observation.
+Helper validation proved source binding, query preservation, invalid response
+rejection and a 2.094-second timeout. These are fixture results; the revised
+physical transfer has not run.
+
+Read-only inspection found testbed VM 213 running clean release `2f9a40a`.
+All seven configured interfaces use networkd. The service is active, but this
+inspection does not establish downstream health or balancing. No shared
+testbed deployment or production promotion occurred at this checkpoint.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
