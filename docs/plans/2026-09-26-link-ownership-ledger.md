@@ -2299,6 +2299,47 @@ release verification. The companion deployment requires a verified networkd
 baseline, reboot, actual old-edge absence and fresh scoped creation. A changed
 boot identifier alone does not prove that baseline.
 
+### Native readiness merge and NPT authority review
+
+PR [#142](https://github.com/agoodkind/mwan/pull/142) merged as
+`8d408c2f67214e9f2f2a2dca7d295b6ea6944513`. Its signed source
+`049c1b22ad1660eeb08a9ac84407f5897e54e081` passed independent real
+kernel testing, the full local namespace suite, and Linux ARM64 checks.
+CI passed every required check plus namespace, ARM64, firewall and protocol
+tests. The nonrequired vulnerability check reported the existing GoBGP
+GO-2026-4736 advisory with no fixed version. The correction verifies both
+nftables chains and relevant rule absence before reporting native readiness.
+This merge does not establish deployed readiness.
+
+PR [#143](https://github.com/agoodkind/mwan/pull/143) contains the scoped
+NPT address authority. Signed source
+`980f4777ddf026165e995e0412018715955ac1a7` passed the independent mapped
+lifecycle in 12.077 seconds and the read-only networkd delegated-prefix
+restart in 3.678 seconds. The actual systemd runner passed all five cases
+with zero skips in 28.182 seconds. The old published executable failed the
+scoped receipt assertion in 3.75 seconds. Local Linux ARM64 checks passed.
+Commit `11a3ae23884964509b15e2b88174bd51332f9c08` changes one Init
+comment. Rebase onto the native readiness merge and final integrated
+acceptance remain required.
+
+The two-provider test reproduced a duplicate address detection readiness
+race with the original one-hour reconciliation interval. NPT readiness
+changed without requesting route reconciliation. The correction requests
+reconciliation only when the stored translation result changes. Repeated
+packet tests verified both provider marks and no additional request during
+the bounded steady-state observation.
+
+A new review finding requires kernel reproduction: changing the internal
+interface may retain a policy on the former internal interface after a
+translator error. Obsolete-edge release currently checks the provider and
+current internal indices. PR #143 remains open pending this investigation.
+
+Source inspection verified that a hard NPT reconciliation error withdraws
+both primary default announcements through the forwarding readiness socket.
+The backup speaker does not consume that socket. Actual downstream backup
+traffic and interruption duration remain unmeasured for this activation.
+Shared testbed deployment and production promotion remain pending.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
