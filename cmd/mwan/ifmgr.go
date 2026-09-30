@@ -356,14 +356,24 @@ func writeInterfaceConfig(
 	log *slog.Logger,
 	loaded *networkjson.Config,
 ) ([]networkjson.Rejection, error) {
-	if loaded != nil {
-		if err := linkboot.ValidateDir(networkd.DefaultUnitDir, loaded.Connections); err != nil {
-			log.ErrorContext(ctx, "ifmgr: owned link name validation failed", "err", err)
-			return nil, fmt.Errorf("validate owned link names: %w", err)
-		}
+	if loaded == nil {
+		return nil, nil
 	}
-	rejections, err := writeNetworkConfig(ctx, log, loaded)
-	if err != nil || loaded == nil {
+	tables := make(map[connectionid.ID]int, len(loaded.WAN))
+	for id, provider := range loaded.WAN {
+		tables[connectionid.ID(id)] = provider.TableID
+	}
+	retiring, err := networkd.ObsoleteLinkFiles(networkd.DefaultUnitDir, loaded.Connections, tables)
+	if err != nil {
+		log.ErrorContext(ctx, "ifmgr: obsolete networkd name inspection failed", "err", err)
+		return nil, fmt.Errorf("inspect obsolete networkd names: %w", err)
+	}
+	if err := linkboot.ValidateDir(networkd.DefaultUnitDir, loaded.Connections, retiring...); err != nil {
+		log.ErrorContext(ctx, "ifmgr: owned link name validation failed", "err", err)
+		return nil, fmt.Errorf("validate owned link names: %w", err)
+	}
+	rejections, err := writeNetworkConfig(ctx, log, loaded, tables)
+	if err != nil {
 		return rejections, err
 	}
 	if _, err := linkboot.WriteDir(networkd.DefaultUnitDir, loaded.Connections); err != nil {
@@ -377,15 +387,12 @@ func writeNetworkConfig(
 	ctx context.Context,
 	log *slog.Logger,
 	loaded *networkjson.Config,
+	tables map[connectionid.ID]int,
 ) ([]networkjson.Rejection, error) {
 	if loaded == nil {
 		return nil, nil
 	}
 
-	tables := make(map[connectionid.ID]int, len(loaded.WAN))
-	for id, provider := range loaded.WAN {
-		tables[connectionid.ID(id)] = provider.TableID
-	}
 	changed, err := networkd.WriteDir(networkd.DefaultUnitDir, loaded.Connections, tables)
 	if err != nil {
 		log.ErrorContext(ctx, "ifmgr: writing networkd unit files failed",

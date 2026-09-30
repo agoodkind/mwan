@@ -264,6 +264,21 @@ func renderAll(connections []interfaceintent.Connection, tables map[connectionid
 // prune removes every file in dir that opens with the marker and that the
 // current render did not produce, and returns one removal per file.
 func prune(dir string, rendered map[string]renderedFile) ([]Change, error) {
+	removed, err := obsoleteFiles(dir, rendered)
+	if err != nil {
+		return nil, err
+	}
+	for _, change := range removed {
+		path := filepath.Join(dir, change.File)
+		if err := os.Remove(path); err != nil {
+			slog.Error("networkd: removing a stale unit file failed", "path", path, "err", err)
+			return nil, fmt.Errorf("remove %s: %w", path, err)
+		}
+	}
+	return removed, nil
+}
+
+func obsoleteFiles(dir string, rendered map[string]renderedFile) ([]Change, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		slog.Error("networkd: reading the unit directory failed", "dir", dir, "err", err)
@@ -283,10 +298,6 @@ func prune(dir string, rendered map[string]renderedFile) ([]Change, error) {
 		}
 		if !strings.HasPrefix(string(content), Marker+"\n") {
 			continue
-		}
-		if err := os.Remove(path); err != nil {
-			slog.Error("networkd: removing a stale unit file failed", "path", path, "err", err)
-			return nil, fmt.Errorf("remove %s: %w", path, err)
 		}
 		removed = append(removed, Change{File: name, Kind: kindOfFile(name), Interface: "", Removed: true})
 	}
