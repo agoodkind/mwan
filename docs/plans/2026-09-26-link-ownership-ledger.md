@@ -69,7 +69,7 @@ virtio interfaces. IPv6 transfer and complete downstream acceptance remain.
 | MWAN-518 | 518-restart | [MWAN PR #117](https://github.com/agoodkind/mwan/pull/117) merged DHCPv4 restart validation as `c51c063060b4d1252db5c36f6578cf519d4c6e42`. [MWAN PR #118](https://github.com/agoodkind/mwan/pull/118) merged the durable lease store as `63cbe758258c97326dfff6c2533e41d58770a890`. [MWAN PR #120](https://github.com/agoodkind/mwan/pull/120) merged DHCPv6 restart validation as `eae8f3c8fb4806cc739e0e2508c86815144a3bf2`. [MWAN PR #121](https://github.com/agoodkind/mwan/pull/121) merged daemon integration as `5666b3dd`. Release `202609300154-76-5666b3d` passed testbed deployment, downstream traffic, balancing, and restart handover under the merged Configs #567 pin `23cd8f14`. The clock correction and executable selector merged; five published-release recovery cases passed in isolation on VM 213. Production promotion and live ownership acceptance remain. Tack records In Progress. |
 | MWAN-505 | 505-route-repair | [MWAN PR #52](https://github.com/agoodkind/mwan/pull/52) merged as `18941243f1e8fa3d5623a04440e4d90de796d1f4`. Namespace packet tests and live testbed route and rule deletion checks passed. The release passed production deployment and downstream acceptance. |
 | MWAN-521 | 521-configuration; 521-deployment | [Configs PR #527](https://github.com/agoodkind/configs/pull/527) moved MAC discovery before rendering. [Configs PR #558](https://github.com/agoodkind/configs/pull/558) rendered explicit connection IDs and networkd ownership. Configs PRs #559 and #560 passed testbed and production deployment. Complete role rendering merged in Configs #569. Configs #570 activation remains open after three corrected fixture cases passed independently. Isolated physical IPv4 transfer passed; shared testbed transfer remains. Tack records In Progress. |
-| MWAN-522 | 522-acceptance | Isolated IPv4 passed; shared acceptance remains. |
+| MWAN-522 | 522-acceptance | Physical IPv4 transfer passed. Aggregate protocol and shared runtime acceptance remain pending. |
 | MWAN-519 | 519-first-connection | Execution has not started. |
 | MWAN-399 | 399-remaining-connections | Execution has not started. |
 | MWAN-400 | 400-retirement | Execution has not started. |
@@ -1739,9 +1739,17 @@ for nine files and `./configsctl lint` passed. The
 records exact commands, retained artifacts and the unavailable complete terminal
 transcript. Signed follow-up `2c19eeebd8c1cbeee5750ef7e1437969f6288186`
 replaces dynamic assignments with eight explicit plan-field assignments.
-Its RuboCop check passed. Final independent review and negative controls remain
-pending. Actual Proxmox harness execution, unequal provider distribution and
-shared downstream acceptance remain unaccepted.
+Its RuboCop check passed. The independent exact `c5d17e7e` suite passed all
+three cases in 94.63 seconds. Restoring only the old history reader failed
+in 29.86 seconds on actual product gzip. Removing only the observation budget
+failed the unchanged three-second assertion with elapsed time 22.724572385
+seconds. The mechanical `2c19eeeb` comparison verified the eight original
+field mappings and identical remaining bytes. Both signatures passed with
+status `G` and raw `gpgsig` headers. The
+[final independent history review](/Users/agoodkind/.local/state/mwan305/20260930-downstream-harness/independent-c5-final-review.md)
+accepts both commits. The explicit-assignment thread is resolved; two disputed
+Graphite threads remain open. Actual Proxmox harness execution, unequal
+provider distribution and shared downstream acceptance remain unaccepted.
 
 ### MWAN-522 physical IPv4 transfer, September 30, 2026
 
@@ -1781,6 +1789,24 @@ nine cases use the explicit released-binary selector. The
 records the exact selectors, prerequisites and required execution changes.
 Aggregate execution and consistent released-binary selection are under
 implementation; no passing aggregate result exists at this checkpoint.
+
+The initial assembled namespace run passed 20 cases and failed
+`TestOwnedDHCPv6IAAddressOnlyRuntime` on its actual local IPv6 packet assertion.
+The total was 304.680 seconds. Both real systemd cases passed in 11.261 seconds.
+The [namespace events](/Users/agoodkind/.local/state/mwan305/20260930-protocol-target-audit/implementation/namespace-1166649602/events.jsonl)
+and [systemd events](/Users/agoodkind/.local/state/mwan305/20260930-protocol-target-audit/implementation/systemd-4189432965/events.jsonl)
+preserve the actual result. The exact-source and merged-main comparison is
+active; the failure's cause is unestablished. Aggregate acceptance remains
+incomplete.
+
+The resolver Graphite stack was restacked onto `6f415f49` and published.
+[Parent PR #130](https://github.com/agoodkind/mwan/pull/130) uses
+`e23491b1d0c6152b06906a888332b455d5da9c3f`; [child PR #135](https://github.com/agoodkind/mwan/pull/135)
+uses `fab954102da6f2ccb4570113fbb178ad10119a2a`. Both documentation checkpoints
+remain after conflict resolution. All 11 rewritten commits passed signature
+verification with status `G` and raw `gpgsig` headers. Independent integration
+review, fresh CI and automated reviews remain pending. Neither PR merged or
+deployed at this checkpoint.
 
 MWAN-521 and MWAN-522 descriptions in Tack include this evidence. Both remain
 In Progress. The attempted UUID state-field update was rejected; the
