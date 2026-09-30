@@ -516,11 +516,7 @@ func internalPrefixRouteReady(prefix netip.Prefix, internalIndex int) error {
 	return fmt.Errorf("main-table route for %s does not use internal interface index %d", prefix, internalIndex)
 }
 
-// publishLiveState writes this pass's translation outcome to the
-// management surface's snapshot store, when this host serves one. Kernel
-// presence is read back from the live ip6 nat table after the apply, so
-// the served value reports what the kernel holds rather than what the
-// apply intended; a failed apply or read-back reports absent.
+// Native readiness requires verified nft absence even after an apply fails.
 func (m *Module) publishLiveState(
 	ctx context.Context,
 	log *slog.Logger,
@@ -537,15 +533,10 @@ func (m *Module) publishLiveState(
 	// same text form the inspector renders live rules, so the served
 	// intent and any live listing read alike.
 	m.Env.LiveState.SetIntendedRuleset(renderIntended(desired))
-	rendered := emptyRenderedTable()
-	if applied {
-		table, err := RenderTable(ctx, log)
-		if err != nil {
-			log.WarnContext(ctx, "npt: kernel read-back for the surface failed",
-				"err", err)
-		} else {
-			rendered = table
-		}
+	rendered, inspectErr := RenderTable(ctx, log)
+	if inspectErr != nil {
+		log.WarnContext(ctx, "npt: kernel read-back for the surface failed",
+			"err", inspectErr)
 	}
 	members := make(map[string]wanstate.MemberTranslation, len(m.cfg.WANs))
 	internalV4, internalV4Err := netip.ParsePrefix(m.cfg.InternalNetV4)
@@ -564,7 +555,7 @@ func (m *Module) publishLiveState(
 		}
 		member.V6 = ipv6TranslationReadiness(
 			wan, delegated[wan.Key()], applied && rendered.HasInterface(wan.Iface),
-			bpfReady[wan.Key()], nativeReady,
+			bpfReady[wan.Key()], nativeReady && inspectErr == nil && rendered.interfaceAbsent(wan.Iface),
 		)
 		members[wan.Key()] = member
 	}

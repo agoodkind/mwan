@@ -214,7 +214,8 @@ func TestRenderTableTreatsMissingTableAsEmpty(t *testing.T) {
 	fake := &fakeReadConn{
 		rules: nil,
 		errs: map[string]error{
-			preroutingChain: fmt.Errorf("receiveAckAware: %w", unix.ENOENT),
+			preroutingChain:  fmt.Errorf("receiveAckAware: %w", unix.ENOENT),
+			postroutingChain: fmt.Errorf("receiveAckAware: %w", unix.ENOENT),
 		},
 	}
 	reader := &nftReader{newConn: func() (nftReadConn, error) {
