@@ -2489,6 +2489,36 @@ physical forward/reverse transfer and production promotion remain pending.
 Current Cloudflare health verification requires working read access; the
 pool API returned HTTP 403 and Chrome requires sign-in.
 
+### Pair the published release and deployment configuration
+
+Release `202609301934-8c-c808779` passed its terminal release workflow.
+All four downloaded archives match published checksums and asset digests.
+Each archive's attestation verifies the exact merged source and package
+workflow. Actual ARM64 execution reports clean `c808779`; its SHA256 is
+`edb21db2b66294a8770c48012ddf39045af009986f3a006bf3948d79b73607df`.
+AMD64 execution failed with an executable format error on the ARM64 host;
+its archive provenance and embedded full revision passed verification.
+
+Configs PR #572 is open at signed
+`adbcd95225998a6cdb4a600fbc43df357ec80e7a`. It pairs the address journal
+with the compatible release in both environments. Ownership and recovery
+flags are unchanged. Both actual environment renders passed, and the
+published ARM64 executable accepted their network and firewall inputs.
+Lint and data CI passed. Independent review and full rendered startup remain
+pending. The primary Configs checkout remains on merged `3f28f3bf`.
+
+Live client preflight passed for both downstream clients and simulator
+identities. Calibration sent twenty source-bound IPv4 requests and produced
+five capture artifacts. Capture shutdown failed on an unavailable transient
+unit; process cleanup then raised a permission error. This failed run does
+not establish balancing. Diagnosis and exact-owned cleanup are required
+before a new calibration run. No network configuration or deployment changed.
+
+The merged authority worktree and exact local/remote branch were removed
+after containment verification. Ten ignored build files were copied and
+hash-verified in external evidence before removal. Shared Docker fixtures
+and external acceptance artifacts remain available.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
