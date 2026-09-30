@@ -1933,6 +1933,69 @@ complete shared downstream acceptance, and production promotion remain
 unfinished. AT&T and networkd retirement do not block earlier accepted
 production cutover phases.
 
+### MWAN-521 kernel and resolver acceptance, September 30, 2026
+
+MWAN PR #125 merged configured routes as
+`16739bb3d4035b8648e2a08582bfc12352329420`. MWAN PR #127 merged the
+published-release recovery evidence as `fc4298be9f1409e2af394353b58a959392cc6051`.
+Neither merge deployed the new source.
+
+| Open PR | Source revision | Scope |
+| --- | --- | --- |
+| #128 | `5894c82d93ec122f8d3e487af006994694aa586b` | Shared kernel link identity verification. |
+| #129 | `20ec15fd0a5462b73d316151d0f413b9c06488a1` | Durable per-link kernel policy and startup journal validation. |
+| #130 | `6cd53df878cdf68356f1d8aed9195430e19dd74b` | Independent DNS and search-domain ownership through systemd-resolved. |
+
+The Graphite dependency order is #128, #129, then #130. These revisions remain
+unmerged and undeployed. Every commit in their branch range has a verified
+signature and a raw `gpgsig` header.
+
+Independent kernel review reproduced networkd unit writes before invalid
+journal configuration was rejected. Commit `5dce337654244d6dc3f0d612ae3b9e4c91dccb05`
+validates journals during construction and permits cleanup without link results
+when no enabled MWAN connections remain. Its independent public daemon test
+passed in 3.424 seconds. Removing constructor validation reproduced unit writes
+and failed in 1.557 seconds before the real D-Bus reload completed. Restoring
+the unconditional link-results prerequisite failed cleanup startup in 3.941
+seconds. The final independent verdict was MERGE-READY with zero findings.
+The restacked source passed the kernel daemon test in 3.672 seconds and all
+17 affected protocol fixtures. Full Docker `check test` passed.
+
+The static resolver test uses the production daemon, real systemd-resolved,
+and a local authoritative DNS server. It passed in 5.119 seconds, including
+mixed IPv4/IPv6 servers, an IPv6-only query, daemon and resolved restarts,
+independent field removal, baseline restoration, an unrelated link, and
+external domain preservation. After real VLAN pruning, the original resolver
+initialization failed cleanup-only startup with `owned link results are required`
+in 4.002 seconds. The correction passed the complete test in 3.953 seconds.
+Physical hardware restoration remains unproved; restoration used an owned
+VLAN. Kernel identity checks remain required before restoration. Full Docker
+`check test` passed again after the final restack.
+
+Independent networkd resolver commit `aaee02e4` remains unsubmitted. Its real
+daemon test passed three repetitions in 10.114 seconds with networkd rendering,
+systemd-resolved, and authoritative single-label resolution. Disabling resolver
+rendering failed the unchanged public assertion. Its full Docker `check test`
+passed. Integration into the stack and independent review remain required.
+
+The persistent local evidence paths are recorded below for local reproduction.
+These files are not GitHub artifacts.
+
+| Acceptance | Persistent local evidence |
+| --- | --- |
+| Independent kernel finding and controls | `/Users/agoodkind/.local/state/mwan305/20260930-mwan518-testbed/kernel-validation/independent-review.md`, `startup-journal-red.log`, `startup-journal-repro.patch`, `5dce337-public.log`, `5dce337-constructor-red.log`, and `5dce337-cleanup-red.log` in that directory. |
+| Restacked kernel and project gates | `/Users/agoodkind/.local/state/mwan305/20260930-mwan518-testbed/kernel-policy-validation/restacked-kernel-green.log` and `restacked-kernel-check-test.log` in that directory. |
+| Static resolver and cleanup control | `/Users/agoodkind/.local/state/mwan305/20261001-static-resolver/final-restacked-public-daemon.log`, `final-restacked-check-test.log`, `cleanup-only-red.log`, and `cleanup-only-green.log` in that directory. |
+| Networkd resolver and rendering control | `/Users/agoodkind/.local/state/mwan305/20261001-networkd-resolver/runtime-final-green.log`, `runtime-rendering-disabled-red.log`, and `check-test-final.log` in that directory. |
+
+Testbed still runs `5666b3d` with networkd-owned interfaces. Production still
+runs release `202609292152-70-d442ba1`. This checkpoint performed no deployment
+or provider ownership transfer.
+
+Complete stack review and merge, integrate and review networkd resolver
+rendering, then finish Configs role rendering, exclusive ownership transfer,
+and the acceptance manifest before the first owner cutover.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
