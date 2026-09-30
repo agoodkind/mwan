@@ -2,6 +2,7 @@ package networkjson
 
 import (
 	"fmt"
+	"log/slog"
 	"net/netip"
 
 	"goodkind.io/mwan/internal/interfaceintent"
@@ -9,27 +10,27 @@ import (
 
 func buildIntentRoutes(name, family string, routes []routeWire, defaultGateway bool) ([]interfaceintent.RouteIntent, error) {
 	var built []interfaceintent.RouteIntent
-	seen := make(map[netip.Prefix]bool)
 	for _, route := range routes {
 		destination, err := netip.ParsePrefix(route.Destination)
-		if err != nil || destination != destination.Masked() || destination.Addr().Is4In6() || destination.Addr().Is4() != (family == "ipv4") {
+		if err != nil {
 			return built, fmt.Errorf("interface %s: %s route destination %q must be a canonical same-family network prefix", name, family, route.Destination)
 		}
-		if seen[destination] || destination.Bits() == 0 && defaultGateway {
-			return built, fmt.Errorf("interface %s: %s route destination %s is configured twice", name, family, destination)
-		}
-		seen[destination] = true
-		if route.TableID != nil && *route.TableID != 254 {
-			return built, fmt.Errorf("interface %s: %s configured routes require table-id 254", name, family)
+		table := uint32(254)
+		if route.TableID != nil {
+			table = *route.TableID
 		}
 		gateway := netip.Addr{}
 		if route.Gateway != "" {
 			gateway, err = netip.ParseAddr(route.Gateway)
-			if err != nil || gateway.Is4In6() || gateway.Is4() != (family == "ipv4") || gateway.IsUnspecified() || gateway.IsMulticast() || gateway.Zone() != "" {
+			if err != nil {
 				return built, fmt.Errorf("interface %s: %s route %s has invalid same-family gateway %q", name, family, destination, route.Gateway)
 			}
 		}
-		built = append(built, interfaceintent.RouteIntent{Destination: destination, Gateway: gateway, TableID: 254, Metric: route.Metric})
+		built = append(built, interfaceintent.RouteIntent{Destination: destination, Gateway: gateway, TableID: table, Metric: route.Metric})
+	}
+	if err := interfaceintent.ValidateConfiguredRoutes(family, built, defaultGateway); err != nil {
+		slog.Error("networkjson: configured route invalid", "interface", name, "family", family, "err", err)
+		return built, fmt.Errorf("interface %s: %w", name, err)
 	}
 	return built, nil
 }
