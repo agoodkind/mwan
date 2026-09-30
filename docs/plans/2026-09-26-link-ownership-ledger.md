@@ -2682,6 +2682,28 @@ receipt, and preserved B's translated request and reply. Independent review
 and its separate real run remain pending. No shared testbed or production
 deployment occurred for these corrections.
 
+### Review the service repair and detect interrupted capture startup
+
+MWAN PR #144 publishes signed `d4d60df8`. Independent review found no
+actionable defect. Its separate real systemd run passed all five cases with
+zero skips in 27.936 seconds. Actual A references survived SIGKILL; withdrawal
+removed A's address and receipt while B request and reply passed. Install
+output matched the production service bytes. Required CI remains pending.
+
+Graphite published Configs PR #573 below PR #575. Frozen `3221aacf` ran
+three public cases with two failures and zero skips in 93.46 seconds.
+Interruption preceded the second observer's verified process receipt.
+Both capture services stopped, but the missing receipt failed cleanup.
+The other failure exceeded the five-second SSH deadline despite HTTP 200
+and a 0.000394-second curl result. Its cause remains unconfirmed.
+The private container was removed, and source hashes remained unchanged.
+
+The capture correction requires actual process verification during interrupted
+startup cleanup before service stop, followed by strict process absence.
+The public interrupt regression remains unchanged. Fresh integrated acceptance
+and exact failure rejection controls remain required. MWAN-522 and MWAN-532
+remain In Progress. Shared testbed and production deployment remain pending.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
