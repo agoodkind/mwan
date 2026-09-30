@@ -2365,6 +2365,39 @@ authority. The fixture must initialize the production address module before
 testing the intended unrelated BPF policy failure. Retrying unchanged CI
 does not address that integration failure.
 
+### Surviving NPT program verification
+
+PR #143 published signed head
+`d08750553e015ca494ded22b11fc83e1bbf41d55`. Its verifier enumerates
+surviving managed programs and reads their actual policy maps. It rejects
+references to an obsolete edge and inspection failures. Unrelated policies
+and exact desired broader prefixes do not prevent release.
+
+The public old-source control failed address retention in 23.22 seconds
+after verifying actual old program and map references before and after
+restart. The candidate passed in 11.391 seconds. Its fixture prepares the
+replacement edge through the production address authority and waits for
+duplicate address detection. An actual WAN address event triggers recovery;
+TC filter removal and an MTU change alone do not trigger NPT reconciliation.
+Initial fixture failures remain preserved separately from this result.
+
+Independent final controls passed same-process and restart retention,
+unrelated policy, broader-prefix, missing-policy-map inspection failure,
+and actual cleanup recovery with zero skips. The independent public daemon
+lifecycle passed in 14.216 seconds. Local check/test and the full namespace
+suite passed. CI passed all required checks and namespace/ARM64 tests;
+the firewall/protocol job remained pending at this checkpoint.
+
+The constructor review finding was disproven. Actual execution against
+the signed source accepted a valid scoped /128 journal and rejected three
+malformed records without panic. Parse errors short-circuit the validation
+condition. The finding was resolved without a source change.
+
+The surviving-policy finding was resolved after the verified repair.
+A separate review finding about valid cached DHCPv6 delegation during
+restart remains under investigation. PR #143 is not merged. No shared
+deployment or production promotion occurred.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
