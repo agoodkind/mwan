@@ -2704,6 +2704,26 @@ The public interrupt regression remains unchanged. Fresh integrated acceptance
 and exact failure rejection controls remain required. MWAN-522 and MWAN-532
 remain In Progress. Shared testbed and production deployment remain pending.
 
+### Merge the production permission repair
+
+MWAN PR #144 merged as `c25720051c7efd71aa1fa4eb5e4c1a6c7babd559`
+at 21:15:18 UTC. Every active required check passed; no review threads
+remained open. The clean primary MWAN checkout matches the merge.
+The unchanged nonrequired GoBGP advisory remains recorded. The additional
+protocol job was canceled after merge; its cancellation establishes no
+completed full-suite result. Merged-source CI and release verification remain
+pending. No deployment occurred.
+
+Capture source `a15cd293` passed the public interrupt boundary with status 130
+and no cleanup errors. The complete battery still reported two failures and
+zero skips in 109.43 seconds. Source-bound HTTP responses returned 200, but
+their SSH processes exceeded the five-second command deadline. Actual exit
+statuses and timestamps remain preserved; the cause remains unconfirmed.
+A duplicate private run was interrupted and its owned container removed.
+Its concurrency window remains part of the evidence. The capture correction
+also requires stop/reap attempts after failed process verification. The stack
+remains unmerged pending those controls and complete acceptance.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
