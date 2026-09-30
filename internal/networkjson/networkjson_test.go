@@ -1094,15 +1094,6 @@ func TestLoadMWANOwnedLink(t *testing.T) {
 			}
 		})
 	}
-	t.Run("internal interface", func(t *testing.T) {
-		t.Parallel()
-		invalid := strings.Replace(body, `"internal-iface": "enmwanbr0"`, `"internal-iface": "enowned0"`, 1)
-		if _, err := networkjson.Load(writeDocument(t, invalid), schemaDirForTest(t)); err == nil ||
-			!strings.Contains(err.Error(), "cannot manage internal") {
-			t.Fatalf("internal interface error = %v", err)
-		}
-	})
-
 	t.Run("duplicate physical match across owners", func(t *testing.T) {
 		t.Parallel()
 		duplicate := strings.Replace(body, `"match": { "driver": "igc" }`,

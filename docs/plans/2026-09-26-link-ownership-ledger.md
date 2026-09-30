@@ -2078,6 +2078,51 @@ existing global module-error behavior.
 This checkpoint performed no deployment or live ownership transfer.
 MWAN-521 and MWAN-522 remain In Progress.
 
+## September 30: Verify owned roles and test deployment preparation
+
+Configs PR #569 merged as `2aa7b7ab`. Both environment renders passed all
+32 specs without skips against published release `202609300730-80-2f9a40a`.
+Independent review verified the release digests, role settings, and signatures.
+MWAN PR #133 merged as `6323b505` for read-only generated-unit verification.
+PR #134 merged as `f9027a8f` for the final conditional-reboot task.
+
+Owned-role source `a17ca0a` passed three independent real-daemon runs in
+28.594 seconds. Removing the internal readiness prerequisite failed the
+explicit-false assertion; removing the configured route failed IPv6 packet
+delivery. Management DNS, transit packets, route repair, and restart passed.
+Physical interface transfer and complete operational publication remain
+unproven. The negative control retained a transient projection rejection.
+
+The testbed deployment used the clean merged Configs checkout and stopped at
+daemon restart verification with `ok=198`, `changed=28`, and `failed=1`.
+The first daemon start wrote replacement management/transit units, then waited
+for networkd reload until systemd's 90-second startup timeout. Networkd reloaded
+after that start was terminated. The automatic second start skipped unchanged
+unit reload and became active. An isolated real-systemd reproduction confirmed
+the dependency cycle: the daemon waited for a reload job that systemd ordered
+after the daemon's readiness notification.
+
+OPNsense selected the backup in both families during restart and restored
+the primary afterward. The before and after batteries each passed 80 downstream
+HTTPS requests, observed both providers in both families, and recorded zero
+kernel capture drops. The four continuous downstream probe streams received
+7,199 of 7,200 replies in total. Client 226's IPv4 stream missed one reply;
+the other three streams received all 1,800 replies. The missed sequence
+preceded daemon restart. OPNsense used the backup for 116 seconds in both families.
+
+MWAN PR #136 merged the direct networkd manager reload as
+`6d3945abccc7c70bf5ca0c2ea4b8e57e0ca9fb2c`. Independent review ran the real
+daemon under its production systemd unit. Three repetitions passed in
+18.209 seconds. Restoring only the previous reload implementation reproduced
+the startup timeout in 9.883 seconds. An unchanged restart passed in
+6.234 seconds. Required checks and completed automated reviews passed.
+
+Testbed runs `2f9a40a`, but its failed deployment has not passed acceptance.
+Production remains on release `202609292152-70-d442ba1`. All live connections
+remain networkd-owned. Deploy the merged reload fix to testbed, verify actual
+generated-unit activation and restart recovery, then complete reboot and
+downstream acceptance before production promotion. MWAN-521 remains In Progress.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.

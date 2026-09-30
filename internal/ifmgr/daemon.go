@@ -549,7 +549,34 @@ func (d *Daemon) reconcileAll(ctx context.Context, log *slog.Logger) {
 		d.setForwardingReadiness(forwardingready.State{IPv4: false, IPv6: false})
 		return
 	}
-	d.setForwardingReadiness(forwardingReadiness(snapshot))
+	d.setForwardingReadiness(d.internalForwardingReadiness(forwardingReadiness(snapshot)))
+}
+
+func (d *Daemon) internalForwardingReadiness(state forwardingready.State) forwardingready.State {
+	for _, connection := range d.cfg.Connections {
+		if connection.Owner != interfaceintent.OwnerMWAN || connection.Roles&interfaceintent.RoleInternal == 0 ||
+			connection.Enabled != nil && !*connection.Enabled {
+			continue
+		}
+		linkReady := false
+		if d.env.OwnedLinks != nil {
+			result, found := d.env.OwnedLinks.Get(connection.ID.String())
+			linkReady = found && result.Status == netif.OwnedLinkReady
+		}
+		familyReady := func(family string, settings *interfaceintent.Family) bool {
+			if settings.Forwarding != nil && !*settings.Forwarding {
+				return false
+			}
+			return linkReady && d.env.OwnedAddresses != nil && d.env.OwnedAddresses.FamilyReady(connection.ID.String(), family)
+		}
+		if connection.IPv4 != nil {
+			state.IPv4 = state.IPv4 && familyReady("ipv4", &connection.IPv4.Family)
+		}
+		if connection.IPv6 != nil {
+			state.IPv6 = state.IPv6 && familyReady("ipv6", &connection.IPv6.Family)
+		}
+	}
+	return state
 }
 
 func forwardingReadiness(snapshot wanstate.Snapshot) forwardingready.State {

@@ -571,11 +571,6 @@ func compileConnections(entries []ifaceEntry, ids map[string]connectionid.ID, in
 		return nil, nil, fmt.Errorf("management interface %s is not declared", firewall.ManagementInterface)
 	}
 	for _, entry := range entries {
-		if entry.Owner == string(interfaceintent.OwnerMWAN) {
-			if entry.Name == internal || (firewall != nil && entry.Name == firewall.ManagementInterface) {
-				return nil, nil, fmt.Errorf("interface %s: mwan owner cannot manage internal or firewall-management interfaces", entry.Name)
-			}
-		}
 		connection, err := buildConnection(entry, ids[entry.Name])
 		if err != nil {
 			if entry.WAN == nil || entry.Owner == string(interfaceintent.OwnerMWAN) {
