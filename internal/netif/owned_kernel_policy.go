@@ -74,23 +74,28 @@ func loadOwnedKernelPolicyJournal(path string) (ownedKernelJournal, error) {
 		slog.Warn("kernel policy boot ID read failed", "err", err)
 		return ownedKernelJournal{}, fmt.Errorf("read kernel policy boot ID: %w", err)
 	}
-	journal := ownedKernelJournal{BootID: string(boot), Fields: nil}
+	bootID := string(boot)
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return journal, nil
+		return ownedKernelJournal{BootID: bootID, Fields: nil}, nil
 	}
 	if err != nil {
 		slog.Warn("kernel policy journal read failed", "path", path, "err", err)
 		return ownedKernelJournal{}, fmt.Errorf("read kernel policy journal: %w", err)
 	}
+	journal := ownedKernelJournal{BootID: bootID, Fields: nil}
 	if err := json.Unmarshal(data, &journal); err != nil {
 		slog.Warn("kernel policy journal decode failed", "path", path, "err", err)
 		return ownedKernelJournal{}, fmt.Errorf("decode kernel policy journal: %w", err)
 	}
-	if journal.BootID != string(boot) {
-		journal = ownedKernelJournal{BootID: string(boot), Fields: nil}
+	return kernelPolicyJournalForBoot(journal, bootID), nil
+}
+
+func kernelPolicyJournalForBoot(journal ownedKernelJournal, bootID string) ownedKernelJournal {
+	if journal.BootID != bootID {
+		return ownedKernelJournal{BootID: bootID, Fields: nil}
 	}
-	return journal, nil
+	return journal
 }
 
 func (r *OwnedKernelPolicyReconciler) save() error {
