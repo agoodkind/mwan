@@ -1656,7 +1656,8 @@ The post-verdict column records defects discovered after that review verdict.
 ### MWAN-521 and MWAN-522 acceptance corrections, September 30, 2026
 
 [Naming transfer PR #137](https://github.com/agoodkind/mwan/pull/137)
-is open at signed `52c06d55343262ad8a3db33716b78c1a2e934052`.
+merged as `bb4d1c5d547d4e776ec11e1f49ecca25ed2590a8` from signed
+`52c06d55343262ad8a3db33716b78c1a2e934052`.
 The independent production-unit test passed all four cases in 6.806 seconds.
 The original-main control failed generated-file transfer in 6.717 seconds;
 foreign, retained, and symlink rejection passed. The actual journal reported
@@ -1667,8 +1668,8 @@ acquisition or reverse transfer.
 
 All ten required checks passed. A nonrequired IPv6 firewall packet check
 failed without packet-state evidence. Ten focused repetitions passed on the
-PR source and ten passed on main. The failed CI job was restarted; its result
-remains pending. Govulncheck reports the same advisory on main. The pinned
+PR source and ten passed on main. The restarted namespace, firewall, and
+ARM64 CI suites passed. Govulncheck reports the same advisory on main. The pinned
 GoBGP v4.7.0 source includes the published correction. GitHub limits affected
 versions to `<=4.3.0`, while the Go database has no fixed-version boundary.
 The scanner and dependency remain unchanged. Evidence:
