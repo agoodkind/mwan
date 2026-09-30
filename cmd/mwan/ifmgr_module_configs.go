@@ -10,8 +10,6 @@ import (
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/ifmgr"
-	addresses "goodkind.io/mwan/internal/ifmgr/modules/addresses"
-	autoconfiguration "goodkind.io/mwan/internal/ifmgr/modules/autoconfiguration"
 	bridgeprobe "goodkind.io/mwan/internal/ifmgr/modules/bridgeprobe"
 	cloudflaredtap "goodkind.io/mwan/internal/ifmgr/modules/cloudflaredtap"
 	connprobe "goodkind.io/mwan/internal/ifmgr/modules/connprobe"
@@ -30,7 +28,6 @@ import (
 	wg "goodkind.io/mwan/internal/ifmgr/modules/wg"
 	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/networkjson"
 )
 
 // buildIfMgrModuleConfigs builds module configs for ONLY the modules in the
@@ -159,7 +156,7 @@ func addWANRoleConfigs(
 		moduleConfigs["links"] = linksConfig
 	}
 	if want["autoconfiguration"] {
-		moduleConfigs["autoconfiguration"] = autoconfiguration.Config{Connections: ifmgrCfg.Connections}
+		moduleConfigs["autoconfiguration"] = buildAutoconfigurationConfig(ifmgrCfg)
 	}
 	if want["addresses"] {
 		addressesConfig, err := buildAddressesConfig(ifmgrCfg)
@@ -196,37 +193,6 @@ func addWANRoleConfigs(
 		moduleConfigs["firewall"] = ifmgrCfg.Firewall
 	}
 	return nil
-}
-
-func buildAddressesConfig(ifmgrCfg config.IfMgrSection) (addresses.Config, error) {
-	providers := make(map[string]addresses.Provider)
-	clientIDs := make(map[string][]byte)
-	for _, connection := range ifmgrCfg.Connections {
-		if connection.Owner != interfaceintent.OwnerMWAN {
-			continue
-		}
-		if provider, found := ifmgrCfg.WAN[connection.ID.String()]; found {
-			providers[connection.ID.String()] = addresses.Provider{IPv4: provider.TranslationV4, IPv6: provider.TranslationV6}
-		}
-		if connection.IPv4 == nil || connection.IPv4.DHCP == nil || !*connection.IPv4.DHCP {
-			continue
-		}
-		clientID := ""
-		if connection.IPv4.DHCPv4 != nil {
-			clientID = connection.IPv4.DHCPv4.ClientID
-		}
-		decoded, err := networkjson.DecodeDHCPv4ClientID(clientID)
-		if err != nil {
-			slog.Warn("ifmgr: invalid DHCPv4 client ID", "interface", connection.Name, "err", err)
-			return addresses.Config{}, fmt.Errorf("interface %s dhcpv4 client-id: %w", connection.Name, err)
-		}
-		clientIDs[connection.ID.String()] = decoded
-	}
-	config := addresses.Config{Connections: ifmgrCfg.Connections, Providers: providers, ClientIDs: clientIDs, StateFile: "", LeaseDirectory: ifmgrCfg.LeaseDirectory}
-	if ifmgrCfg.Modules.Addresses != nil {
-		config.StateFile = ifmgrCfg.Modules.Addresses.StateFile
-	}
-	return config, nil
 }
 
 // buildSteeringConfig projects the shared provider list and the group-wide

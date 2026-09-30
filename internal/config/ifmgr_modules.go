@@ -23,7 +23,13 @@ type IfMgrModulesSection struct {
 	WAN               *IfMgrModulesWANSection        `toml:"wan"`
 	Health            *IfMgrHealthSection            `toml:"health"`
 	Links             *IfMgrLinksSection             `toml:"links"`
+	Autoconfiguration *IfMgrAutoconfigurationSection `toml:"autoconfiguration"`
 	Addresses         *IfMgrAddressesSection         `toml:"addresses"`
+}
+
+// IfMgrAutoconfigurationSection configures the durable per-link kernel policy journal.
+type IfMgrAutoconfigurationSection struct {
+	StateFile string `toml:"state_file"`
 }
 
 // IfMgrLinksSection configures durable ownership records for MWAN-owned links.

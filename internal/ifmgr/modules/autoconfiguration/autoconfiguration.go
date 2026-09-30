@@ -1,11 +1,10 @@
-// Package autoconfiguration applies IPv6 router discovery policy to MWAN-owned links.
+// Package autoconfiguration applies per-link forwarding and IPv6 router discovery policy.
 package autoconfiguration
 
 import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strconv"
 
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/interfaceintent"
@@ -17,6 +16,7 @@ const moduleName = "autoconfiguration"
 // Config supplies MWAN connection policies to the autoconfiguration module.
 type Config struct {
 	Connections []interfaceintent.Connection
+	StateFile   string
 }
 
 // ModuleConfigName identifies the autoconfiguration module.
@@ -26,11 +26,13 @@ func (Config) ModuleConfigName() string { return moduleName }
 type Module struct {
 	ifmgr.BaseModule
 	connections []interfaceintent.Connection
+	stateFile   string
+	reconciler  *netif.OwnedKernelPolicyReconciler
 }
 
 // New validates the connection policies before the module starts.
 func New(config ifmgr.ModuleConfig) (ifmgr.Module, error) {
-	module := &Module{BaseModule: ifmgr.NewBaseModule(moduleName), connections: nil}
+	module := &Module{BaseModule: ifmgr.NewBaseModule(moduleName), connections: nil, stateFile: "", reconciler: nil}
 	if config == nil {
 		return module, nil
 	}
@@ -39,13 +41,22 @@ func New(config ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		return nil, fmt.Errorf("autoconfiguration: invalid config type %T", config)
 	}
 	for _, connection := range settings.Connections {
-		if connection.Owner != interfaceintent.OwnerMWAN || connection.IPv6 == nil {
+		if connection.Owner != interfaceintent.OwnerMWAN {
 			continue
 		}
-		if err := validateIPv6(connection.Name, *connection.IPv6); err != nil {
-			return nil, err
+		if connection.IPv6 != nil {
+			if err := validateIPv6(connection.Name, *connection.IPv6); err != nil {
+				return nil, err
+			}
 		}
 		module.connections = append(module.connections, connection)
+	}
+	module.stateFile = settings.StateFile
+	if len(module.connections) != 0 || module.stateFile != "" {
+		if err := netif.ValidateOwnedKernelPolicyJournal(module.stateFile); err != nil {
+			slog.Warn("autoconfiguration: kernel policy validation failed", "err", err)
+			return nil, fmt.Errorf("validate autoconfiguration kernel policy: %w", err)
+		}
 	}
 	return module, nil
 }
@@ -73,90 +84,34 @@ func validateIPv6(name string, ipv6 interfaceintent.IPv6) error {
 // Init receives the owned-link state and sysctl writer.
 func (module *Module) Init(_ context.Context, env *ifmgr.Env) error {
 	module.InitBase(env, "module", moduleName)
-	if len(module.connections) == 0 {
+	if len(module.connections) == 0 && module.stateFile == "" {
 		return ifmgr.ErrModuleDisabled
 	}
-	if env.OwnedLinks == nil || env.Sysctl == nil {
+	if env.Sysctl == nil || len(module.connections) != 0 && env.OwnedLinks == nil {
 		return fmt.Errorf("autoconfiguration: owned links and sysctl access are required")
 	}
+	reconciler, err := netif.NewOwnedKernelPolicyReconciler(module.stateFile, env.Sysctl)
+	if err != nil {
+		slog.Warn("autoconfiguration: kernel policy initialization failed", "err", err)
+		return fmt.Errorf("initialize autoconfiguration kernel policy: %w", err)
+	}
+	module.reconciler = reconciler
 	return nil
 }
 
 // Reconcile applies configured policy to ready owned links.
 func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
+	results := make([]netif.OwnedLinkResult, 0, len(module.connections))
 	for _, connection := range module.connections {
-		ready, ok := module.Env.OwnedLinks.Get(connection.ID.String())
-		if !ok || ready.Status != netif.OwnedLinkReady || ready.ActualName == "" {
-			continue
+		if result, found := module.Env.OwnedLinks.Get(connection.ID.String()); found {
+			results = append(results, result)
 		}
-		if err := module.apply(ctx, ready.ActualName, *connection.IPv6); err != nil {
-			log.WarnContext(ctx, "autoconfiguration: apply failed", "connection_id", connection.ID, "interface", ready.ActualName, "err", err)
-			return fmt.Errorf("autoconfiguration: interface %s: %w", connection.Name, err)
-		}
+	}
+	if err := module.reconciler.Reconcile(ctx, module.connections, results); err != nil {
+		log.WarnContext(ctx, "autoconfiguration: kernel policy reconciliation failed", "err", err)
+		return fmt.Errorf("reconcile autoconfiguration kernel policy: %w", err)
 	}
 	return nil
-}
-
-type setting struct {
-	key  string
-	want string
-	have string
-}
-
-func (module *Module) apply(ctx context.Context, name string, ipv6 interfaceintent.IPv6) error {
-	base := "net.ipv6.conf." + name + "."
-	settings := make([]setting, 0, 5)
-	if ipv6.AcceptRA != nil && !*ipv6.AcceptRA {
-		settings = append(settings, setting{key: base + "accept_ra", want: "0", have: ""})
-	}
-	if ipv6.AutoConf != nil || ipv6.AcceptRA != nil {
-		autoconf := ipv6.AcceptRA != nil && *ipv6.AcceptRA
-		if ipv6.AutoConf != nil {
-			autoconf = *ipv6.AutoConf
-		}
-		settings = append(settings, setting{key: base + "autoconf", want: sysctlBool(autoconf), have: ""})
-	}
-	if ipv6.AcceptRADefaultRoute != nil || ipv6.AcceptRA != nil {
-		defaultRoute := ipv6.AcceptRA != nil && *ipv6.AcceptRA
-		if ipv6.AcceptRADefaultRoute != nil {
-			defaultRoute = *ipv6.AcceptRADefaultRoute
-		}
-		settings = append(settings, setting{key: base + "accept_ra_defrtr", want: sysctlBool(defaultRoute), have: ""})
-	}
-	if ipv6.RouteMetric != nil && !ipv6.Gateway.IsValid() {
-		settings = append(settings, setting{key: base + "ra_defrtr_metric", want: strconv.FormatUint(uint64(*ipv6.RouteMetric), 10), have: ""})
-	}
-	if ipv6.Forwarding != nil {
-		settings = append(settings, setting{key: base + "forwarding", want: sysctlBool(*ipv6.Forwarding), have: ""})
-	}
-	if ipv6.AcceptRA != nil && *ipv6.AcceptRA {
-		settings = append(settings, setting{key: base + "accept_ra", want: "2", have: ""})
-	}
-	for i := range settings {
-		current, err := module.Env.Sysctl.Get(ctx, settings[i].key)
-		if err != nil {
-			slog.WarnContext(ctx, "autoconfiguration: sysctl read failed", "key", settings[i].key, "err", err)
-			return fmt.Errorf("read %s: %w", settings[i].key, err)
-		}
-		settings[i].have = current
-	}
-	for _, value := range settings {
-		if value.have == value.want {
-			continue
-		}
-		if err := module.Env.Sysctl.Set(ctx, value.key, value.want); err != nil {
-			slog.WarnContext(ctx, "autoconfiguration: sysctl write failed", "key", value.key, "err", err)
-			return fmt.Errorf("set %s=%s: %w", value.key, value.want, err)
-		}
-	}
-	return nil
-}
-
-func sysctlBool(enabled bool) string {
-	if enabled {
-		return "1"
-	}
-	return "0"
 }
 
 func init() { ifmgr.Register(moduleName, New) }

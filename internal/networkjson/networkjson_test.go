@@ -1073,7 +1073,7 @@ func TestLoadMWANOwnedLink(t *testing.T) {
         "goodkind-mwan-steering:link": { "match": { "hardware-address": "02:00:5e:00:53:77" } }`, "requires a link"},
 		"link files":  {`"goodkind-mwan-steering:link-files": "rendered",`, "cannot use networkd files"},
 		"networkd":    {`"goodkind-mwan-steering:networkd": {},`, "cannot use networkd files"},
-		"IPv4":        {`"ietf-ip:ipv4": { "goodkind-mwan-steering:dhcp": true, "goodkind-mwan-steering:resolver": {} },`, "supports local addresses, DHCPv4"},
+		"IPv4":        {`"ietf-ip:ipv4": { "goodkind-mwan-steering:dhcp": true, "goodkind-mwan-steering:resolver": {} },`, "supports local addresses, forwarding, DHCPv4"},
 		"IPv6":        {`"ietf-ip:ipv6": { "goodkind-mwan-steering:dhcp": true },`, "DHCPv6 client must request an address or prefix"},
 		"lease store": {`"goodkind-mwan-steering:lease-store": "/tmp/leases",`, "cannot use networkd files"},
 		"steering":    {`"goodkind-mwan-steering:steering": { "tier": 0 },`, "steering without a provider"},

@@ -42,7 +42,7 @@ func TestOwnedDHCPv6PDRejectsInformationRequest(t *testing.T) {
 	directory := t.TempDir()
 	writeDHCPv6PDRuntimeNetwork(t, directory, "information-request")
 	_, err := networkjson.Load(filepath.Join(directory, "network.json"), filepath.Join("..", "..", "internal", "yangpub", "schema"))
-	if err == nil || !strings.Contains(err.Error(), "without-ra information-request cannot acquire an IA_PD prefix") {
+	if err == nil || !strings.Contains(err.Error(), "without-ra information-request cannot acquire an IA_NA address or IA_PD prefix") {
 		t.Fatalf("information-request rejection = %v", err)
 	}
 }
@@ -101,7 +101,7 @@ func runOwnedDHCPv6PDDaemonRuntime(t *testing.T, waitForRA bool) {
 	}
 	writeDHCPv6PDRuntimeNetwork(t, networkDir, withoutRA)
 	configPath := filepath.Join(root, "config.toml")
-	config := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[wanconfig]\npublish = true\n", filepath.Join(root, "owned-links.json"), filepath.Join(root, "owned-addresses.json"))
+	config := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[wanconfig]\npublish = true\n", filepath.Join(root, "owned-links.json"), filepath.Join(root, "owned-addresses.json"), filepath.Join(root, "kernel-policy.json"))
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func runOwnedDHCPv6PDDaemonRuntime(t *testing.T, waitForRA bool) {
 
 func waitDHCPv6RuntimePreferredDeadline(t *testing.T, daemon *runtimeDaemon) {
 	t.Helper()
-	const reason = `"reason":"dhcpv6 delegation changed"`
+	const reason = `"reason":"dhcpv6 assignment changed"`
 	initial := strings.Count(runtimeDaemonLog(t, daemon), reason)
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {

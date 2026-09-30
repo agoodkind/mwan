@@ -166,12 +166,12 @@ func validateMWANFamily(name, family string, wire *familyWire, provider bool) er
 	}
 	dhcpv4 := family == "ipv4" && wire.DHCP != nil && *wire.DHCP
 	raMetric := family == "ipv6" && wire.Gateway == "" && wire.RouteMetric != nil
-	if wire.Enabled != nil && !*wire.Enabled || (family == "ipv4" && wire.Forwarding != nil) ||
+	if wire.Enabled != nil && !*wire.Enabled ||
 		wire.Resolver != nil ||
 		(wire.Translation != nil && !provider) ||
 		wire.RouteMetric != nil && wire.Gateway == "" && !dhcpv4 && !raMetric {
 		if family == "ipv4" {
-			return fmt.Errorf("interface %s: mwan ipv4 supports local addresses, DHCPv4, and an optional gateway or DHCP route metric only", name)
+			return fmt.Errorf("interface %s: mwan ipv4 supports local addresses, forwarding, DHCPv4, and an optional gateway or DHCP route metric only", name)
 		}
 		return fmt.Errorf("interface %s: mwan %s supports static local addresses and an optional gateway with route metric only", name, family)
 	}
