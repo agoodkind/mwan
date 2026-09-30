@@ -1760,8 +1760,8 @@ Published release `202609301143-84-bb4d1c5` passed forward and reverse IPv4
 transfer on two fresh isolated QEMU guests with real virtio interfaces and Kea.
 All four release archives matched published checksums and asset digests;
 attestations included exact merged source
-`bb4d1c5d547d4e776ec11e1f49ecca25ed2590a8`. The guest reported that clean
-source and ARM64 binary SHA256
+`bb4d1c5d547d4e776ec11e1f49ecca25ed2590a8`. The guest reported a clean source
+checkout and an ARM64 binary with SHA256
 `44de93576083f7cc8b73abe123b1cd55ededc553e86bbf0cadcbcf9b4fc9aaef`.
 
 Membership withdrawal preserved the selected physical link and acquisition
