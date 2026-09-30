@@ -133,6 +133,7 @@ func runOwnedStaticDaemonRuntime(t *testing.T) {
 	}
 	binary := os.Getenv(staticRuntimeBinaryEnv)
 	first := startRuntimeDaemon(t, binary, configPath, root, "static-first")
+	defer killOwnedRuntimeDaemon(t, first)
 	defer func() {
 		if !t.Failed() {
 			return
@@ -144,7 +145,6 @@ func runOwnedStaticDaemonRuntime(t *testing.T) {
 		t.Logf("failed packet main routes=%v error=%v", routes, routeErr)
 		t.Logf("failed packet public state=%s", read())
 	}()
-	defer killOwnedRuntimeDaemon(t, first)
 	waitRuntimeTable(t, first, "inet", "filter", 10*time.Second)
 	waitStaticRuntimeAddress(t, first, "owned397", "10.39.7.1/24", true)
 	promotionPath := "/proc/sys/net/ipv4/conf/owned397/promote_secondaries"
@@ -214,6 +214,8 @@ func runOwnedStaticDaemonRuntime(t *testing.T) {
 	waitConfiguredRuntimeRoute(t, first, "fd39:9::/64")
 	assertStaticRuntimePacket(t, lan.namespace, parentPeer.namespace, "udp6", "[fd39:9::2]:39804")
 	setRuntimeNamespace(t, gateway)
+	selection, selectionErr := exec.Command("nft", "list", "chain", "inet", "mwan_steer", "prerouting").CombinedOutput()
+	t.Logf("initial IPv4 packet selection: %s error=%v public state=%s", selection, selectionErr, read())
 	assertStaticRuntimePacket(t, lan.namespace, parentPeer.namespace, "udp4", "10.39.9.2:39703")
 	setRuntimeNamespace(t, gateway)
 	if err := netlink.RouteDel(&configuredRoute); err != nil {
