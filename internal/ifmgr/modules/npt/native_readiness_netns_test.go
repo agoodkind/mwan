@@ -7,13 +7,18 @@ import (
 	"fmt"
 	"log/slog"
 	"net/netip"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ifmgr"
+	"goodkind.io/mwan/internal/ifmgr/modules/addresses"
 	"goodkind.io/mwan/internal/ifmgr/modules/npt/bpf"
+	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/wanstate"
 )
 
@@ -102,11 +107,35 @@ func TestNativeIPv6ReadinessIgnoresOtherWANPolicyError(t *testing.T) {
 	if err := netlink.LinkAdd(wan); err != nil {
 		t.Fatal(err)
 	}
-	other := WAN{WANRef: ifmgr.WANRef{Name: "otherwan", Iface: "otherwan"}, Translation: &config.IPv6Translation{
+	if err := netlink.LinkSetUp(wan); err != nil {
+		t.Fatal(err)
+	}
+	other := WAN{WANRef: ifmgr.WANRef{ID: "otherwan", Name: "otherwan", Iface: "otherwan"}, Translation: &config.IPv6Translation{
 		Mode: config.TranslationNPTv6,
 		NPT:  &config.NPTv6Translation{InternalPrefix: netip.MustParsePrefix("fd01:203:405::/48"), ExternalSource: config.PrefixConfigured, ExternalPrefix: netip.MustParsePrefix("2001:db8:1::/48")},
 	}}
 	module, store, ctx := newNativeReadinessModule(t, []WAN{other})
+	t.Logf("initial NPT acquisition: %v", module.Reconcile(ctx, slog.Default()))
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		acquired, err := netlink.AddrList(wan, netlink.FAMILY_V6)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ready := false
+		for _, address := range acquired {
+			if address.IP.String() == "2001:db8:1::1" && address.Flags&(unix.IFA_F_TENTATIVE|unix.IFA_F_DADFAILED) == 0 {
+				ready = true
+			}
+		}
+		if ready {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("NPT edge acquisition did not complete")
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
 	if err := module.Reconcile(ctx, slog.Default()); err == nil || !strings.Contains(err.Error(), "internal interface") {
 		t.Fatalf("missing internal interface policy error = %v", err)
 	}
@@ -132,7 +161,23 @@ func newNativeReadinessModule(t *testing.T, other []WAN) (*Module, *wanstate.Sto
 	store := wanstate.New()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	if err := module.Init(ctx, &ifmgr.Env{LiveState: store, Log: slog.Default()}); err != nil {
+	env := &ifmgr.Env{LiveState: store, Log: slog.Default()}
+	if len(other) != 0 {
+		connections := make([]interfaceintent.Connection, 0, len(other))
+		providers := make(map[string]addresses.Provider, len(other))
+		for _, wan := range other {
+			connections = append(connections, interfaceintent.Connection{ID: wan.ID, Name: wan.Iface, Owner: interfaceintent.OwnerExternal, Roles: interfaceintent.RoleProvider})
+			providers[wan.ID.String()] = addresses.Provider{IPv6: wan.Translation}
+		}
+		authority, err := addresses.New(addresses.Config{Connections: connections, Providers: providers, StateFile: filepath.Join(t.TempDir(), "addresses.json")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := authority.Init(ctx, env); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := module.Init(ctx, env); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
