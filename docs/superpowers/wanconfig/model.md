@@ -86,6 +86,21 @@ the daemon sends them is the surface specification's streaming section.
 
 ## Interface ownership and acquisition
 
+Each address family supports configured destination routes in its
+`goodkind-mwan-steering:route` list. Each destination has one route per
+connection. A next hop is optional; an omitted next hop creates an on-link
+route. MWAN applies these routes in the main routing table and publishes
+their assignments with source `configured`. Networkd-owned rendered
+connections produce equivalent route sections.
+
+The family gateway and route metric remain a default-route shorthand.
+One connection cannot configure a default through both forms. A configured
+default cannot share a main-table route metric with another connection's
+gateway shorthand in the same address family.
+MWAN repairs deleted owned routes and preserves unrelated routes during
+reconciliation and restart. Linux uses metric 1024 when an IPv6 route
+configures metric zero; configured intent retains zero.
+
 MWAN-305 extends this model with explicit interface ownership, acquisition
 lifetimes, applied state, and failure history. The
 [interface ownership specification](../../interfaces.md) defines those

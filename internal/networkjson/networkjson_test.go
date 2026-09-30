@@ -1,6 +1,7 @@
 package networkjson_test
 
 import (
+	"fmt"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -1557,6 +1558,82 @@ func TestLoadRejectsDuplicateMWANDHCPv4DefaultMetric(t *testing.T) {
 	_, err := networkjson.Load(writeDocument(t, document), schemaDirForTest(t))
 	if err == nil || !strings.Contains(err.Error(), "resource main-route/ipv4/main/default/17 has writers") {
 		t.Fatalf("Load error = %v, want duplicate default route metric", err)
+	}
+}
+
+func TestLoadConfiguredRouteContract(t *testing.T) {
+	t.Parallel()
+	family := `{"goodkind-mwan-steering:route":[{"destination":"198.51.100.0/24"},{"destination":"203.0.113.0/24","gateway":"192.0.2.1","metric":17}]}`
+	loaded, err := networkjson.Load(writeDocument(t, mwanDHCPv4Document(family)), schemaDirForTest(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection := requireConnection(t, loaded.Connections, "enowned0")
+	if len(connection.IPv4.Routes) != 2 || connection.IPv4.Routes[0].TableID != 254 || connection.IPv4.Routes[0].Metric != 0 || connection.IPv4.Routes[0].Gateway.IsValid() {
+		t.Fatalf("configured routes: %+v", connection.IPv4.Routes)
+	}
+	for _, route := range []string{
+		`{"destination":"198.51.100.1/24"}`,
+		`{"destination":"198.51.100.0/24","table-id":100}`,
+		`{"destination":"198.51.100.0/24","gateway":"2001:db8::1"}`,
+		`{"destination":"2001:db8::/64"}`,
+		`{"destination":"198.51.100.0/24"},{"destination":"198.51.100.0/24","metric":2}`,
+		`{"destination":"0.0.0.0/0"}`,
+	} {
+		invalidFamily := `{"goodkind-mwan-steering:gateway":"192.0.2.1","goodkind-mwan-steering:route":[` + route + `]}`
+		if _, err := networkjson.Load(writeDocument(t, mwanDHCPv4Document(invalidFamily)), schemaDirForTest(t)); err == nil {
+			t.Fatalf("loader accepted invalid configured route %s", route)
+		}
+	}
+}
+
+func TestLoadRejectsEquivalentIPv6RouteMetrics(t *testing.T) {
+	t.Parallel()
+	family := `{"goodkind-mwan-steering:route":[{"destination":"2001:db8:521::/64"}]}`
+	document := strings.Replace(mwanDHCPv4Document(family), `"ietf-ip:ipv4": `+family, `"ietf-ip:ipv6": `+family, 1)
+	if _, err := networkjson.Load(writeDocument(t, document), schemaDirForTest(t)); err != nil {
+		t.Fatalf("first configured IPv6 route: %v", err)
+	}
+	second := `{"name":"enowned1","type":"iana-if-type:ethernetCsmacd","goodkind-mwan-steering:connection-id":"owned-link-2","goodkind-mwan-steering:owner":"mwan","goodkind-mwan-steering:link":{"match":{"hardware-address":"02:00:5e:00:53:78"}},"ietf-ip:ipv6":{"goodkind-mwan-steering:route":[{"destination":"2001:db8:521::/64","metric":1024}]}},`
+	document = strings.Replace(document, `{ "name": "enmwanbr0", "type": "iana-if-type:other" }`, second+`{ "name": "enmwanbr0", "type": "iana-if-type:other" }`, 1)
+	if _, err := networkjson.Load(writeDocument(t, document), schemaDirForTest(t)); err == nil || !strings.Contains(err.Error(), "main/2001:db8:521::/64/1024") {
+		t.Fatalf("effective metric collision: %v", err)
+	}
+}
+
+func TestLoadConfiguredDefaultChecksLegacyGateways(t *testing.T) {
+	t.Parallel()
+	for _, testCase := range []struct {
+		name    string
+		family  string
+		gateway string
+		prefix  string
+		metric  uint32
+		legacy  uint32
+	}{
+		{name: "ipv4", family: "ipv4", gateway: "192.0.2.1", prefix: "0.0.0.0/0", metric: 55, legacy: 55},
+		{name: "ipv6 effective metric", family: "ipv6", gateway: "2001:db8::1", prefix: "::/0", metric: 0, legacy: 1024},
+	} {
+		for _, owner := range []string{"networkd", "external"} {
+			t.Run(testCase.name+"/"+owner, func(t *testing.T) {
+				family := fmt.Sprintf(`{"goodkind-mwan-steering:route":[{"destination":%q,"gateway":%q,"metric":%d}]}`, testCase.prefix, testCase.gateway, testCase.metric)
+				document := strings.Replace(mwanDHCPv4Document(family), `"ietf-ip:ipv4": `+family, `"ietf-ip:`+testCase.family+`": `+family, 1)
+				linkFiles := ""
+				if owner == "networkd" {
+					linkFiles = `"goodkind-mwan-steering:link-files":"rendered",`
+				}
+				legacy := fmt.Sprintf(`{"name":"legacy521","type":"iana-if-type:ethernetCsmacd","goodkind-mwan-steering:connection-id":"legacy521","goodkind-mwan-steering:owner":%q,%s"goodkind-mwan-steering:link":{"match":{"hardware-address":"02:00:5e:00:53:79"}},"ietf-ip:%s":{"goodkind-mwan-steering:gateway":%q,"goodkind-mwan-steering:route-metric":%d}},`, owner, linkFiles, testCase.family, testCase.gateway, testCase.legacy)
+				document = strings.Replace(document, `{ "name": "enmwanbr0", "type": "iana-if-type:other" }`, legacy+`{ "name": "enmwanbr0", "type": "iana-if-type:other" }`, 1)
+				if _, err := networkjson.Load(writeDocument(t, document), schemaDirForTest(t)); err == nil || !strings.Contains(err.Error(), "conflicts with gateway") {
+					t.Fatalf("configured default and legacy gateway: %v", err)
+				}
+				shorthand := fmt.Sprintf(`{"goodkind-mwan-steering:gateway":%q,"goodkind-mwan-steering:route-metric":%d}`, testCase.gateway, testCase.metric)
+				document = strings.Replace(document, family, shorthand, 1)
+				if _, err := networkjson.Load(writeDocument(t, document), schemaDirForTest(t)); err != nil {
+					t.Fatalf("existing shorthand-only configuration: %v", err)
+				}
+			})
+		}
 	}
 }
 

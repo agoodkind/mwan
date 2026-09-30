@@ -26,13 +26,13 @@ type nptTranslation struct {
 func handAuthoredAddressing(entry ifaceEntry) bool {
 	if entry.IPv4 != nil {
 		family := entry.IPv4
-		if family.Forwarding != nil || len(family.Address) != 0 || family.DHCP != nil || family.Gateway != "" || family.RouteMetric != nil || len(family.SourceAddresses) != 0 || family.DHCPv4 != nil || family.Resolver != nil {
+		if family.Forwarding != nil || len(family.Address) != 0 || family.DHCP != nil || family.Gateway != "" || family.RouteMetric != nil || len(family.Routes) != 0 || len(family.SourceAddresses) != 0 || family.DHCPv4 != nil || family.Resolver != nil {
 			return true
 		}
 	}
 	if entry.IPv6 != nil {
 		family := entry.IPv6
-		if family.Forwarding != nil || len(family.Address) != 0 || (family.DHCP != nil && family.Delegation == nil) || family.Gateway != "" || family.RouteMetric != nil || family.AcceptRA != nil || family.AutoConf != nil || family.AcceptRADefaultRoute != nil || family.UseRADNS != nil || family.DHCPv6 != nil || family.Resolver != nil || len(family.ForwardingAddresses) != 0 {
+		if family.Forwarding != nil || len(family.Address) != 0 || (family.DHCP != nil && family.Delegation == nil) || family.Gateway != "" || family.RouteMetric != nil || len(family.Routes) != 0 || family.AcceptRA != nil || family.AutoConf != nil || family.AcceptRADefaultRoute != nil || family.UseRADNS != nil || family.DHCPv6 != nil || family.Resolver != nil || len(family.ForwardingAddresses) != 0 {
 			return true
 		}
 	}

@@ -31,6 +31,15 @@ type OwnedRoute struct {
 	Metric      uint32
 }
 
+// OwnedRoutesFromIntent omits table IDs because owned routes use the main table.
+func OwnedRoutesFromIntent(routes []interfaceintent.RouteIntent) []OwnedRoute {
+	owned := make([]OwnedRoute, 0, len(routes)+1)
+	for _, route := range routes {
+		owned = append(owned, OwnedRoute{Destination: route.Destination, Gateway: route.Gateway, Metric: route.Metric})
+	}
+	return owned
+}
+
 // OwnedAddressLifetime supplies the deadlines for one acquired address.
 type OwnedAddressLifetime struct {
 	PreferredUntil time.Time
@@ -206,7 +215,7 @@ func (r *OwnedStaticReconciler) forget(value ownedStaticObject) error {
 
 // ReconcileFamily installs desired objects before pruning recorded obsolete objects.
 func (r *OwnedStaticReconciler) ReconcileFamily(ctx context.Context, connection interfaceintent.Connection, family string, settings interfaceintent.Family, ready OwnedLinkResult) error {
-	routes := make([]OwnedRoute, 0, 1)
+	routes := OwnedRoutesFromIntent(settings.Routes)
 	if settings.Gateway.IsValid() {
 		metric := uint32(0)
 		if settings.RouteMetric != nil {
@@ -253,6 +262,7 @@ func (r *OwnedStaticReconciler) ReconcileFamilyRoutesWithLifetimesRetaining(ctx 
 		return fmt.Errorf("connection %s link identity changed", connection.ID)
 	}
 	seenRoutes := make(map[string]netip.Addr, len(routes))
+	routes = normalizeOwnedRoutes(routes, family)
 	for _, assigned := range routes {
 		if !assigned.Destination.IsValid() || !assigned.Gateway.IsValid() ||
 			assigned.Destination.Addr().Is4() != assigned.Gateway.Is4() ||
@@ -303,6 +313,23 @@ func (r *OwnedStaticReconciler) ReconcileFamilyRoutesWithLifetimesRetaining(ctx 
 		desired[staticObjectKey(value)] = true
 	}
 	return r.completeFamily(base, len(settings.Addresses) == 0, desired, retention)
+}
+
+func normalizeOwnedRoutes(routes []OwnedRoute, family string) []OwnedRoute {
+	normalized := append([]OwnedRoute(nil), routes...)
+	for index := range normalized {
+		if !normalized[index].Gateway.IsValid() {
+			normalized[index].Gateway = netip.IPv6Unspecified()
+			if family == "ipv4" {
+				normalized[index].Gateway = netip.IPv4Unspecified()
+			}
+		}
+		// Linux substitutes 1024 for an IPv6 route metric of zero.
+		if family == "ipv6" && normalized[index].Metric == 0 {
+			normalized[index].Metric = 1024
+		}
+	}
+	return normalized
 }
 
 func (r *OwnedStaticReconciler) completeFamily(base ownedStaticObject, noAddresses bool, desired map[string]bool, retention RecordedRetention) error {
@@ -544,7 +571,7 @@ func sameStaticRoute(route netlink.Route, value ownedStaticObject) bool {
 }
 
 func ownedRouteGateway(gateway string) net.IP {
-	if gateway == "0.0.0.0" {
+	if gateway == "0.0.0.0" || gateway == "::" {
 		return nil
 	}
 	return net.ParseIP(gateway)

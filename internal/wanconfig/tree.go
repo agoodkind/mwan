@@ -681,6 +681,13 @@ func familyItems(base string, family interfaceintent.Family) []Item {
 			Value: uintValue(uint64(*family.RouteMetric)),
 		})
 	}
+	for _, route := range family.Routes {
+		path := base + "/goodkind-mwan-steering:route[destination='" + route.Destination.String() + "']"
+		items = append(items, Item{Path: path + "/table-id", Value: uintValue(uint64(route.TableID))}, Item{Path: path + "/metric", Value: uintValue(uint64(route.Metric))})
+		if route.Gateway.IsValid() {
+			items = append(items, Item{Path: path + "/gateway", Value: route.Gateway.String()})
+		}
+	}
 	return items
 }
 

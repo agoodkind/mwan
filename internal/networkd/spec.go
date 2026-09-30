@@ -42,6 +42,10 @@ var placements = map[string]placement{
 	"ipv6.forwarding":                    {FileNetwork, "Network", "IPv6Forwarding"},
 	"ipv4.route-metric":                  {FileNetwork, "DHCPv4", "RouteMetric"},
 	"ipv6.route-metric":                  {FileNetwork, "IPv6AcceptRA", "RouteMetric"},
+	"route.destination":                  {FileNetwork, "Route", "Destination"},
+	"route.gateway":                      {FileNetwork, "Route", "Gateway"},
+	"route.table":                        {FileNetwork, "Route", "Table"},
+	"route.metric":                       {FileNetwork, "Route", "Metric"},
 	"delegation.duid-type":               {FileNetwork, "DHCPv6", "DUIDType"},
 	"delegation.duid":                    {FileNetwork, "DHCPv6", "DUIDRawData"},
 	"delegation.hint":                    {FileNetwork, "DHCPv6", "PrefixDelegationHint"},
@@ -111,6 +115,15 @@ func typedLeaves(connection interfaceintent.Connection) []string {
 
 func familyLeaves(name string, family interfaceintent.Family) []string {
 	var leaves []string
+	if len(family.Routes) > 0 {
+		leaves = append(leaves, "route.destination", "route.table", "route.metric")
+		for _, route := range family.Routes {
+			if route.Gateway.IsValid() {
+				leaves = append(leaves, "route.gateway")
+				break
+			}
+		}
+	}
 	if family.Forwarding != nil {
 		leaves = append(leaves, name+".forwarding")
 	}

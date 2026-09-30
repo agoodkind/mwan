@@ -197,6 +197,9 @@ func validateVLAN(name string, link *interfaceintent.Link) error {
 }
 
 func validateFamily(name string, familyName string, family interfaceintent.Family, inFamily func(netip.Addr) bool) error {
+	if err := interfaceintent.ValidateConfiguredRoutes(familyName, family.Routes, family.Gateway.IsValid()); err != nil {
+		return invalid(fmt.Sprintf("interface %s: %v", name, err))
+	}
 	for _, address := range family.Addresses {
 		if !inFamily(address.Prefix.Addr()) {
 			return invalid(fmt.Sprintf("interface %s %s address %q has the wrong family", name, familyName, address.Prefix))

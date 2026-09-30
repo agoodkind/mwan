@@ -49,6 +49,10 @@ module goodkind-mwan-steering {
      decides its verdict, the prefix-translation inputs, and the
      internal link the members route toward.";
 
+  revision 2026-09-30 {
+    description
+      "Add configured main-table routes for each address family.";
+  }
   revision 2026-09-29 {
     description
       "Add observed IPv6 address phase and router validity.";
@@ -813,6 +817,17 @@ module goodkind-mwan-steering {
         "The metric on the default route this interface contributes to
          the main table. Lower is preferred.";
     }
+    list route {
+      key "destination";
+      description "This list configures one main-table route per destination.";
+      leaf destination { type inet:ipv4-prefix; }
+      leaf gateway {
+        type inet:ipv4-address;
+        description "This next hop is optional. An omitted gateway selects an on-link route.";
+      }
+      leaf table-id { type uint32 { range "254"; } default 254; }
+      leaf metric { type uint32; default 0; }
+    }
     leaf-list source-addresses {
       type inet:ipv4-address;
       description
@@ -916,6 +931,17 @@ module goodkind-mwan-steering {
       description
         "The metric on the default route this interface contributes to
          the main table. Lower is preferred.";
+    }
+    list route {
+      key "destination";
+      description "This list configures one main-table route per destination.";
+      leaf destination { type inet:ipv6-prefix; }
+      leaf gateway {
+        type inet:ipv6-address;
+        description "This next hop is optional. An omitted gateway selects an on-link route.";
+      }
+      leaf table-id { type uint32 { range "254"; } default 254; }
+      leaf metric { type uint32; default 0; }
     }
     leaf accept-ra {
       type boolean;

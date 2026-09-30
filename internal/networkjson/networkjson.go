@@ -125,8 +125,16 @@ type familyWire struct {
 	DHCP        *bool              `json:"goodkind-mwan-steering:dhcp"`
 	Gateway     string             `json:"goodkind-mwan-steering:gateway"`
 	RouteMetric *uint32            `json:"goodkind-mwan-steering:route-metric"`
+	Routes      []routeWire        `json:"goodkind-mwan-steering:route"`
 	Resolver    *resolver          `json:"goodkind-mwan-steering:resolver"`
 	Translation *familyTranslation `json:"goodkind-mwan-steering:translation"`
+}
+
+type routeWire struct {
+	Destination string  `json:"destination"`
+	Gateway     string  `json:"gateway"`
+	TableID     *uint32 `json:"table-id"`
+	Metric      uint32  `json:"metric"`
 }
 
 type resolver struct {

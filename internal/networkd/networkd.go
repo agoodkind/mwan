@@ -439,14 +439,22 @@ func families(s interfaceintent.Connection) []namedFamily {
 	return families
 }
 
-// staticRoutes builds the two routes a family with a gateway contributes:
-// the default route in the main table, carrying the metric when the family
-// sets one, and the default route in the provider's own table, which the
-// policy rules steer into. A family with no gateway leases its routes and
-// contributes none.
+// staticRoutes renders configured routes and the gateway shorthand's defaults.
 func staticRoutes(family namedFamily, tableID int) []*unit.UnitSection {
+	var configured []*unit.UnitSection
+	for _, route := range family.shared.Routes {
+		entries := []*unit.UnitEntry{
+			{Name: "Destination", Value: route.Destination.String()},
+			{Name: keyTable, Value: decimal(uint64(route.TableID))},
+			{Name: keyMetric, Value: decimal(uint64(route.Metric))},
+		}
+		if route.Gateway.IsValid() {
+			entries = append(entries, &unit.UnitEntry{Name: keyGateway, Value: route.Gateway.String()})
+		}
+		configured = append(configured, &unit.UnitSection{Section: sectionRoute, Entries: entries})
+	}
 	if !family.shared.Gateway.IsValid() {
-		return nil
+		return configured
 	}
 	gateway := family.shared.Gateway.String()
 	main := &unit.UnitSection{
@@ -464,9 +472,9 @@ func staticRoutes(family namedFamily, tableID int) []*unit.UnitSection {
 		},
 	}
 	if tableID == 0 {
-		return []*unit.UnitSection{main}
+		return append(configured, main)
 	}
-	return []*unit.UnitSection{main, provider}
+	return append(configured, main, provider)
 }
 
 // decimal renders one of the model's unsigned values in the decimal form
