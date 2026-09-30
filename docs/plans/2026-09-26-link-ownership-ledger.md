@@ -2398,6 +2398,34 @@ A separate review finding about valid cached DHCPv6 delegation during
 restart remains under investigation. PR #143 is not merged. No shared
 deployment or production promotion occurred.
 
+### Cached delegation restart defect
+
+The independent real-Kea restart control confirmed the cached DHCPv6
+finding at `d08750553e015ca494ded22b11fc83e1bbf41d55`. During a
+750 millisecond delay before the actual Rebind reply, the daemon deleted
+`2001:db8:30::1/128` and its scoped receipt despite remaining lease validity.
+The real reply recreated the address. The netlink watcher failed in
+10.334 seconds with zero skips. CI run `36757339674` independently failed
+the existing restart case with the same deletion in 10.67 seconds.
+
+The correction preserves only an existing scoped edge associated with
+the current connection and verified link while recovery is pending and
+its matching cached delegated prefix remains valid. Each prefix's own
+valid lifetime governs retention. The cache must not establish translation
+or routing readiness. Rejection, matching-prefix expiry, and explicit
+configuration withdrawal must permit verified cleanup. Implementation
+and independent public-boundary controls remain pending.
+
+The external continuous observer passed a real ten-second read-only run:
+each family received all ten transmitted packets, and all eight completed
+route observations selected the primary. Signal controls preserved partial
+reports and removed the observer and client ping processes. This proves
+the recorder's operation, not restart continuity, backup selection,
+balancing, complete client preflight, or independent monitor history.
+
+PR #143 remains unmerged. Shared testbed deployment and production
+promotion remain pending.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
