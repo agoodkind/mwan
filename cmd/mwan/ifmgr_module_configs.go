@@ -158,6 +158,9 @@ func addWANRoleConfigs(
 	if want["autoconfiguration"] {
 		moduleConfigs["autoconfiguration"] = buildAutoconfigurationConfig(ifmgrCfg)
 	}
+	if want["resolver"] {
+		moduleConfigs["resolver"] = buildResolverConfig(ifmgrCfg)
+	}
 	if want["addresses"] {
 		addressesConfig, err := buildAddressesConfig(ifmgrCfg)
 		if err != nil {

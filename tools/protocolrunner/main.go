@@ -64,7 +64,7 @@ func requiredTests(selected lane) ([]string, error) {
 			"TestAutoconfigurationDaemonRuntime", "TestRadvdAutoconfigurationDaemonRuntime",
 		}, nil
 	case laneSystemd:
-		return []string{"TestNetworkdResolverDaemonRuntime", "TestNetworkdOrderedDaemonStartup"}, nil
+		return []string{"TestNetworkdResolverDaemonRuntime", "TestNetworkdOrderedDaemonStartup", "TestStaticResolverDaemonRuntime"}, nil
 	default:
 		return nil, fmt.Errorf("unknown protocol lane %q", selected)
 	}
@@ -186,7 +186,7 @@ func testArguments(opts options, container string, required []string) []string {
 		arguments = append(arguments, "-e", "MWAN_PROTOCOL_TEST_BINARY=/mwan-release/mwan")
 	}
 	if opts.lane == laneSystemd {
-		arguments = append(arguments, "-e", "MWAN_NETWORKD_RESOLVER_SYSTEMD_TEST=1", "-e", "MWAN_NETWORKD_STARTUP_SYSTEMD_TEST=1")
+		arguments = append(arguments, "-e", "MWAN_NETWORKD_RESOLVER_SYSTEMD_TEST=1", "-e", "MWAN_NETWORKD_STARTUP_SYSTEMD_TEST=1", "-e", "MWAN_RESOLVER_SYSTEMD_TEST=1")
 	}
 	patterns := make([]string, len(required))
 	for index, name := range required {

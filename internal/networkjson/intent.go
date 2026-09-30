@@ -167,7 +167,6 @@ func validateMWANFamily(name, family string, wire *familyWire, provider bool) er
 	dhcpv4 := family == "ipv4" && wire.DHCP != nil && *wire.DHCP
 	raMetric := family == "ipv6" && wire.Gateway == "" && wire.RouteMetric != nil
 	if wire.Enabled != nil && !*wire.Enabled ||
-		wire.Resolver != nil ||
 		(wire.Translation != nil && !provider) ||
 		wire.RouteMetric != nil && wire.Gateway == "" && !dhcpv4 && !raMetric {
 		if family == "ipv4" {

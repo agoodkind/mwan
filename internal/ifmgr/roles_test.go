@@ -75,6 +75,7 @@ func TestModulesForRoleWAN(t *testing.T) {
 		"links",
 		"autoconfiguration",
 		"addresses",
+		"resolver",
 		"health",
 		"firewall",
 		"npt",
@@ -153,7 +154,7 @@ func TestModulesForRoleExported(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ModulesForRole(\"wan\") returned err: %v", err)
 	}
-	want := []string{"links", "autoconfiguration", "addresses", "health", "firewall", "npt", "wan.routes", "steering"}
+	want := []string{"links", "autoconfiguration", "addresses", "resolver", "health", "firewall", "npt", "wan.routes", "steering"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ModulesForRole(\"wan\") = %v, want %v", got, want)
 	}

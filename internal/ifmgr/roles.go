@@ -76,6 +76,7 @@ var roleModules = map[string][]string{
 		"links",
 		"autoconfiguration",
 		"addresses",
+		"resolver",
 		// health writes the state consumed by later WAN-role modules.
 		"health",
 		// firewall installs filtering and IPv4 translation before NPT reads it.

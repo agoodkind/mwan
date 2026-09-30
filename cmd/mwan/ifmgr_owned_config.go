@@ -7,9 +7,18 @@ import (
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ifmgr/modules/addresses"
 	"goodkind.io/mwan/internal/ifmgr/modules/autoconfiguration"
+	"goodkind.io/mwan/internal/ifmgr/modules/resolver"
 	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/networkjson"
 )
+
+func buildResolverConfig(ifmgrCfg config.IfMgrSection) resolver.Config {
+	resolverConfig := resolver.Config{Connections: ifmgrCfg.Connections, StateFile: ""}
+	if ifmgrCfg.Modules.Resolver != nil {
+		resolverConfig.StateFile = ifmgrCfg.Modules.Resolver.StateFile
+	}
+	return resolverConfig
+}
 
 func buildAutoconfigurationConfig(ifmgrCfg config.IfMgrSection) autoconfiguration.Config {
 	policyConfig := autoconfiguration.Config{Connections: ifmgrCfg.Connections, StateFile: ""}
