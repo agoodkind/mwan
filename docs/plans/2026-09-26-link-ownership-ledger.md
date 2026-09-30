@@ -1906,6 +1906,33 @@ cutover phases. Networkd continues managing legacy connections until
 retirement. Full shared testbed acceptance and production promotion remain
 required; no new shared deployment occurred at this checkpoint.
 
+### Protocol merge and Docker recovery, September 30, 2026
+
+PR #141 merged as `2f547619cec6be859aca269132ec982e60b91dec` after all
+ten required checks passed and all review threads were resolved. The clean
+MWAN primary checkout matches the merge. The protocol manifest requires
+the networkd resolver and ordered startup cases; the new static resolver
+and owned-role cases require separate integration into that manifest.
+
+Fresh Configs PR #571 acceptance passed all three public cases in 94.95
+seconds using the published `bb4d1c5` ARM64 executable. The guest SHA256
+matched `44de93576083f7cc8b73abe123b1cd55ededc553e86bbf0cadcbcf9b4fc9aaef`.
+The real missing-file teardown control remains pending. The log is
+`20261001-pr571-thread-review/fix/public-three-current.log`.
+
+Five unused MWAN Docker fixtures were removed and individually verified
+absent. The resolver and downstream harness fixtures remain available for
+required tests. Docker copy requests stalled or failed guest verification;
+exec stdin transfer passed the actual guest hash check after recovery.
+The user authorized needed Docker restarts by other agents. Tack coordinates
+shared restarts. Interrupted runs require fresh validation. The cleanup
+report is `20261001-container-cleanup/status.md`.
+
+No new shared testbed or production deployment occurred. NPT edge handover,
+complete shared downstream acceptance, and production promotion remain
+unfinished. AT&T and networkd retirement do not block earlier accepted
+production cutover phases.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
