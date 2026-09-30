@@ -2899,6 +2899,37 @@ connections. MWAN scoped withdrawal and cold foreign-address rejection remain
 required. Repository runtime regression uses a real VLAN provider; the physical
 owner transition requires the existing virtio guest fixture.
 
+### Verify NPT regression and diagnose the mapping fixture
+
+MWAN PR #145 contains signed candidate 56e87533fd87c60fdbee087a535da561b3a709af.
+The real networkd/VLAN daemon regression passed in 7.766 seconds with exit 0.
+Published c257200 failed the same assertion in 9.352 seconds with exit 1.
+Its address observer recorded deletion and tentative/DAD recreation. Complete
+terminal logs and actual exit files are preserved. Independent review verified
+the retained logs and found zero actionable source defects. It did not execute
+an independent rerun. Existing package tests and blocking make checks passed.
+
+The first physical candidate required an absent shared libsysrepo library and
+failed before behavior. A static cgo rebuild preserves the release's schema
+binding and starts in Debian. Its SHA256 is
+375c52532ea031d3cb24d6bb9ca0fbeedc1eed186ab5dc6a39151d0cb2d9dcd6.
+Its build metadata reports unknown/dirty because the container cannot resolve
+the linked host Git directory. The host source remains clean at signed
+56e87533. This is an unpublished candidate, not a verified release.
+The next physical attempt failed its baseline because the inherited ISP
+evidence directory prevented fixture initialization. Neither failed attempt
+proves owner transfer. Fresh private directories and persistent archive output
+correct those prerequisites; the original packet and address assertions remain.
+
+The merged mapping acceptance play verified all five package audits and both
+provider-facing routes. Both HTTP requests timed out. A coordinated repeat
+captured eight SYN retransmissions per provider before DNAT and identical
+sequences addressed to 10.240.240.2:80 after DNAT. OPNsense PF rule 25 blocked
+the exact tuples on vtnet1. All three captures reported zero drops, strict
+process reaping and absent capture PIDs. No translation defect was demonstrated.
+The admin HTTP endpoint also redirects to HTTPS. A deliberately permitted
+stable HTTP endpoint remains required. No GUI exposure or PF change occurred.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
