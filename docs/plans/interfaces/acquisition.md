@@ -2,7 +2,8 @@
 
 Implement DHCPv4, delegated prefixes, kernel IPv6 autoconfiguration, and
 DHCPv6 interface addresses as four focused PRs. Each numbered ticket section
-defines one PR boundary. Follow the
+defines one PR boundary. Implement the NPT address authority as a separate
+follow-up PR before physical ownership transfer. Follow the
 [coordinator](../2026-09-26-link-ownership.md) for the authoritative Graphite
 stack, parallel work, and common gates. Apply the
 [approved specification](../../interfaces.md).
@@ -321,6 +322,7 @@ type NPTEdgeRecord struct {
 type NPTAddressAuthority interface {
     Ensure(context.Context, *slog.Logger, NPTEdgeRequest) (NPTEdgeRecord, error)
     Recorded() []NPTEdgeRecord
+    RetainDuringRecovery(NPTEdgeRecord) bool
     Release(context.Context, *slog.Logger, []NPTEdgeRecord) error
 }
 ```
@@ -376,6 +378,15 @@ type NPTAddressAuthority interface {
 6. Preserve cleanup after the final WAN or NPT intent disappears. Do not
    disable initialization while obsolete edge records require reconciliation.
    Shutdown preserves the journal for restart recovery.
+7. Retain a journaled edge during cached DHCPv6 recovery only when the current
+   configured connection uses MWAN ownership and delegated NPT, the recorded
+   link matches the current link identity, and the current DHCPv6 session has
+   pending cache recovery. Query that session under `sessionMu`, without acquiring
+   `reconcileMu`. Require the edge address within a matching cached prefix
+   with its own future `ValidUntil`; do not use the maximum session deadline.
+   Do not publish cached delegation or family readiness, or activate cached
+   translation. After rejection, matching-prefix expiry, or NPT intent
+   withdrawal, release the edge only after verified translation absence.
 
 ### 3. Prove the public edge lifecycle
 
