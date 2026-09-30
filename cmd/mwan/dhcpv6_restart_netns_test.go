@@ -33,28 +33,15 @@ func TestOwnedDHCPv6DaemonRestartRecovery(t *testing.T) {
 		runOwnedDHCPv6DaemonRestartRecovery(t)
 		return
 	}
-	if os.Geteuid() != 0 {
-		t.Skip("network and mount namespaces require root")
-	}
-	binary := filepath.Join(t.TempDir(), "mwan")
-	if err := os.Remove(binary); err != nil && !os.IsNotExist(err) {
-		t.Fatal(err)
-	}
-	buildStarted := time.Now()
-	build := exec.Command("go", "build", "-o", binary, ".")
-	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build mwan: %v: %s", err, output)
-	}
-	stat, err := os.Stat(binary)
-	if err != nil || stat.ModTime().Before(buildStarted) {
-		t.Fatalf("mwan binary was not freshly built: stat=%v err=%v", stat, err)
-	}
-	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
+	binary := protocolTestBinary(t)
+	child := exec.Command(os.Args[0], "-test.v", "-test.run=^"+t.Name()+"$")
 	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
 	child.Env = append(os.Environ(), dhcpv6RestartChildEnv+"=1", dhcpv6RestartBinaryEnv+"="+binary)
-	if output, err := child.CombinedOutput(); err != nil {
+	output, err := child.CombinedOutput()
+	if err != nil {
 		t.Fatalf("isolated DHCPv6 restart test: %v: %s", err, output)
 	}
+	t.Logf("isolated DHCPv6 restart result: %s", output)
 }
 
 func runOwnedDHCPv6DaemonRestartRecovery(t *testing.T) {
@@ -188,8 +175,13 @@ func runOwnedDHCPv6DaemonRestartRecovery(t *testing.T) {
 	for {
 		message, _ := readDHCPv6RestartPacket(t, observer)
 		if message.MessageType == dhcpv6.MessageTypeSolicit {
-			if time.Now().Before(validUntil) {
-				t.Fatalf("fresh Solicit preceded original valid deadline %s", validUntil)
+			observedAt := time.Now()
+			if observedAt.Before(validUntil) {
+				lines := strings.Split(runtimeDaemonLog(t, daemon), "\n")
+				if len(lines) > 20 {
+					lines = lines[len(lines)-20:]
+				}
+				t.Fatalf("fresh Solicit at %s preceded original valid deadline %s by %s; daemon log tail:\n%s", observedAt, validUntil, validUntil.Sub(observedAt), strings.Join(lines, "\n"))
 			}
 			break
 		}
@@ -222,6 +214,7 @@ func savedDHCPv6RestartDeadline(t *testing.T, directory string) time.Time {
 	if len(payload.Prefixes) != 1 || payload.Prefixes[0].ValidUntil.IsZero() {
 		t.Fatalf("saved DHCPv6 prefix deadline missing: %+v", payload)
 	}
+	t.Logf("saved DHCPv6 recovery clock: %+v; prefix valid deadline: %s", record.Clock, payload.Prefixes[0].ValidUntil)
 	return payload.Prefixes[0].ValidUntil
 }
 

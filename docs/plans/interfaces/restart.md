@@ -156,6 +156,46 @@ Run MWAN-522's final assembled suite after all required feature PRs merge.
 That final run does not replace this PR's independent acceptance. Process
 restart evidence does not establish reboot acceptance.
 
+### Run process recovery against a released executable
+
+The process tests accept `MWAN_PROTOCOL_TEST_BINARY` as an absolute path to
+an existing regular executable. An invalid supplied path fails the test.
+Without this variable, each parent test builds the current source. Each
+parent passes the selected path to its isolated child. The test log reports
+the executable used.
+
+1. Compile the test runner on Linux for the testbed architecture with the
+   repository's pinned libyang and sysrepo development dependencies:
+
+   ```bash
+   go test -c -tags 'netns firewallnetns' -o /tmp/mwan-restart.test ./cmd/mwan
+   ```
+
+2. Copy the runner and its matching repository source tree to the testbed.
+   Install neither a new daemon nor a new provider configuration for this
+   test. Use a guest with the matching libyang and sysrepo runtime libraries,
+   `nft`, `kea-dhcp4`, and `kea-dhcp6`. The runner requires root and permission
+   to create network and mount namespaces. Its working directory must be
+   `cmd/mwan` in the matching tree; the owned-connection tests bind the tree's
+   YANG schemas inside their private mount namespaces.
+
+3. Run the compiled public tests against the installed release:
+
+   ```bash
+   cd cmd/mwan
+   sudo env MWAN_PROTOCOL_TEST_BINARY=/usr/local/bin/mwan \
+     /tmp/mwan-restart.test -test.v -test.count=1 \
+     -test.run='^(TestOOBDHCPv4DaemonRestartRecovery|TestOOBDHCPv4DaemonLateInterfaceRecovery|TestOOBDHCPv4DaemonRejectedRecovery|TestOwnedDHCPv6DaemonRestartRecovery|TestOwnedDHCPv4RejectedRecoveryRuntime)$'
+   ```
+
+4. Record the installed release tag, daemon checksum, runner source revision,
+   command, and complete result. These tests start the selected real daemon
+   with real Kea servers and temporary kernel networks and state directories.
+   They validate process recovery in isolation. They do not transfer a live
+   provider, validate the installed service sandbox, or prove guest reboot
+   acceptance. Run the separate live testbed and reboot checks before
+   production promotion.
+
 ## Review and handoff
 
 The reviewer independently tests stale identity, configuration changes,

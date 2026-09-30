@@ -43,14 +43,7 @@ func testOOBDHCPv4DaemonRestartRecovery(t *testing.T, lateInterface, rejected bo
 		runOOBDHCPv4DaemonRestartRecovery(t, lateInterface, rejected)
 		return
 	}
-	if os.Geteuid() != 0 {
-		t.Skip("network and mount namespaces require root")
-	}
-	binary := filepath.Join(t.TempDir(), "mwan")
-	build := exec.Command("go", "build", "-o", binary, ".")
-	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build mwan: %v: %s", err, output)
-	}
+	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
 	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
 	child.Env = append(os.Environ(), dhcpRestartChildEnv+"=1", dhcpRestartBinaryEnv+"="+binary)
