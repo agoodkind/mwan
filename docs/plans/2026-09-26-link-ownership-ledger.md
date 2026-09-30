@@ -2270,6 +2270,35 @@ All seven configured interfaces use networkd. The service is active, but this
 inspection does not establish downstream health or balancing. No shared
 testbed deployment or production promotion occurred at this checkpoint.
 
+### Delegated NPT and native readiness regression
+
+The real systemd/networkd, Kea and radvd fixture passed scoped NPT edge
+creation and daemon restart in 3.97 seconds against the explicit read-only
+candidate. The public prefix command returned the delegated /56, and restart
+preserved acquired networkd addresses. Explicit server interface selection
+resolved the measured Kea subnet mismatch without changing deadlines.
+The log is `20261001-npt-edge-authority/networkd-npt-explicit-candidate.log`.
+
+Independent kernel testing verified rejection of a live BPF edge exception,
+rejection of an actual modified shared policy, removal of the old map key
+after interface recreation, and final map cleanup. The independent mapped
+daemon lifecycle passed in 12.533 seconds. Final signed source review remains
+required; these results are not release or deployment acceptance.
+
+MWAN-531 is In Progress under MWAN-305. A production module lifecycle
+regression reports native IPv6 ready while an actual old prerouting rule
+remains after an nftables apply error. Repairing the incompatible chain and
+reconciling removes the rule and restores readiness. The defect exists on
+merged main. Its focused correction uses a separate worktree and must pass
+before ownership and translation-mode migration acceptance. The evidence is
+`20261001-npt-edge-authority/independent-native-readiness-red.log`.
+
+Same-boot migration of historical unscoped MWAN NPT receipts is unsupported.
+Ordinary reconciliation can prune those old receipts before scoped NPT
+release verification. The companion deployment requires a verified networkd
+baseline, reboot, actual old-edge absence and fresh scoped creation. A changed
+boot identifier alone does not prove that baseline.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
