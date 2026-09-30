@@ -6,7 +6,6 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -17,8 +16,8 @@ import (
 )
 
 func TestDHCPRestartClientWithServer(t *testing.T) {
-	if os.Geteuid() != 0 {
-		t.Skip("raw DHCP transport requires root")
+	if !dhcpRestartNamespace(t) {
+		return
 	}
 	const clientInterface = "dhcrs-client"
 	const serverInterface = "dhcrs-server"
