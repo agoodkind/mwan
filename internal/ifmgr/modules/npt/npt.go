@@ -30,10 +30,6 @@ const (
 	alertKindPDMissing = "npt_pd_missing"
 )
 
-// reconcileAddrsFunc and listAddrsFunc are the netif address seams the module
-// depends on. Injecting them lets module tests run without netlink.
-type reconcileAddrsFunc func(context.Context, *slog.Logger, string, []netif.AddrSpec) error
-
 type listAddrsFunc func(context.Context, *slog.Logger, string) ([]netif.CurrentAddr, error)
 
 // WAN is one provider and its configured IPv6 translation policy.
@@ -76,7 +72,6 @@ type Module struct {
 
 	// Injectable seams (real implementations wired at Init when nil).
 	src             pd.Source
-	reconcileAddrs  reconcileAddrsFunc
 	listAddrs       listAddrsFunc
 	apply           applier
 	removeDNAT      func(context.Context, *slog.Logger, string, []netip.Addr) error
@@ -93,13 +88,12 @@ type Module struct {
 	activeRules   map[string][]natRule
 }
 
-// Init implements ifmgr.Module. Self-disables when the shared WAN list is empty
-// so the wan role can list npt unconditionally.
+// Init enables cleanup when the final configured WAN leaves journaled edges.
 func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	log := m.InitBase(env, "module", moduleName)
 	log.InfoContext(ctx, "npt: Init", "wan_count", len(m.cfg.WANs))
 
-	if len(m.cfg.WANs) == 0 {
+	if len(m.cfg.WANs) == 0 && (env.NPTAddresses == nil || len(env.NPTAddresses.Recorded()) == 0) {
 		log.WarnContext(ctx, "npt: no WAN config; disabling module")
 		return fmt.Errorf("%w: npt: no [ifmgr.wan] WANs", ifmgr.ErrModuleDisabled)
 	}
@@ -124,9 +118,6 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 			return fmt.Errorf("load NPTv6 translator: %w", err)
 		}
 		m.translator = translator
-	}
-	if m.reconcileAddrs == nil {
-		m.reconcileAddrs = netif.ReconcileAddrs
 	}
 	if m.listAddrs == nil {
 		m.listAddrs = netif.ListAddrs
@@ -215,10 +206,12 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	pairs := make(map[string]bpf.PrefixPair, len(m.cfg.WANs))
 	rules := make(map[string][]natRule, len(m.cfg.WANs))
 	var reconcileErr error
+	desiredEdges := make(map[ifmgr.NPTEdgeRecord]bool)
 
 	for _, wan := range m.cfg.WANs {
 		rules[wan.Key()] = nil
 		if m.addressesNotApplied(wan) {
+			m.markDesiredEdges(desiredEdges, wan, "")
 			previous := m.activeRules[wan.Key()]
 			pair, hasPair := m.activePairs[wan.Key()]
 			rules[wan.Key()] = previous
@@ -246,9 +239,11 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 			}
 			continue
 		}
-		if err := m.ensureExternalAddress(ctx, log, wan, built.ensure[0]); err != nil {
+		ensureErr := m.ensureExternalAddress(ctx, log, wan, built.ensure[0])
+		m.markDesiredEdges(desiredEdges, wan, built.ensure[0].CIDR)
+		if ensureErr != nil {
 			reconcileErr = errors.Join(reconcileErr,
-				fmt.Errorf("ensure %s on %s: %w", built.ensure[0].CIDR, wan.Iface, err))
+				fmt.Errorf("ensure %s on %s: %w", built.ensure[0].CIDR, wan.Iface, ensureErr))
 			missing[wan.Iface] = true
 			continue
 		}
@@ -265,28 +260,33 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	} else {
 		m.activeRules = rules
 	}
-	bpfReady := make(map[string]bool, len(pairs))
-	nativeReady := false
-	if m.translator != nil {
-		policies, ifIndexes, internalIndex, err := m.interfacePolicies(ctx, log, pairs)
-		if err != nil {
-			reconcileErr = errors.Join(reconcileErr, err)
-		}
-		policyErr := err
-		states, err := m.translator.Reconcile(policies)
-		nativeReady = err == nil
-		if err != nil {
-			reconcileErr = errors.Join(reconcileErr, fmt.Errorf("reconcile NPTv6 programs: %w", err))
-		} else if policyErr == nil {
-			m.activePairs = maps.Clone(pairs)
-		}
-		internalReady := attachmentsReady(states, internalIndex)
-		for name, index := range ifIndexes {
-			bpfReady[name] = internalReady && attachmentsReady(states, index)
-		}
+	bpfReady, nativeReady, desiredPolicies, policyErr := m.reconcileTranslator(ctx, log, pairs)
+	reconcileErr = errors.Join(reconcileErr, policyErr)
+	if err := m.releaseObsoleteEdges(ctx, log, desiredEdges, bpfReady, desiredPolicies); err != nil {
+		reconcileErr = errors.Join(reconcileErr, err)
 	}
 	m.publishLiveState(ctx, log, delegated, desired, applyErr == nil, bpfReady, nativeReady)
 	return reconcileErr
+}
+
+func (m *Module) reconcileTranslator(ctx context.Context, log *slog.Logger, pairs map[string]bpf.PrefixPair) (map[string]bool, bool, []bpf.InterfacePolicy, error) {
+	ready := make(map[string]bool, len(pairs))
+	if m.translator == nil {
+		return ready, false, nil, nil
+	}
+	policies, ifIndexes, internalIndex, policyErr := m.interfacePolicies(ctx, log, pairs)
+	states, err := m.translator.Reconcile(policies)
+	if err != nil {
+		log.WarnContext(ctx, "NPTv6 program reconciliation failed", "err", err)
+		policyErr = errors.Join(policyErr, fmt.Errorf("reconcile NPTv6 programs: %w", err))
+	} else if policyErr == nil {
+		m.activePairs = maps.Clone(pairs)
+	}
+	internalReady := attachmentsReady(states, internalIndex)
+	for name, index := range ifIndexes {
+		ready[name] = internalReady && attachmentsReady(states, index)
+	}
+	return ready, err == nil, policies, policyErr
 }
 
 func (m *Module) checkUnappliedWANs() error {
@@ -426,12 +426,22 @@ func addPendingExceptions(pair bpf.PrefixPair, local []netip.Addr) (bpf.PrefixPa
 	return pair, nil
 }
 
-func (m *Module) ensureExternalAddress(ctx context.Context, log *slog.Logger, wan WAN, desired netif.AddrSpec) error {
-	if !wan.Owned {
-		return m.reconcileAddrs(ctx, log, wan.Iface, []netif.AddrSpec{desired})
+func (m *Module) ensureExternalAddress(ctx context.Context, log *slog.Logger, wan WAN, desired netif.AddrSpec) (resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			log.WarnContext(ctx, "NPT edge authorization failed", "connection", wan.ID, "err", resultErr)
+		}
+	}()
+	if m.Env == nil || m.Env.NPTAddresses == nil {
+		return fmt.Errorf("NPT edge address authority is unavailable")
 	}
-	if m.Env == nil || m.Env.OwnedAddresses == nil || !m.Env.OwnedAddresses.Has(wan.Key(), desired.CIDR) {
-		return fmt.Errorf("MWAN-owned external address %s is not verified", desired.CIDR)
+	prefix, err := netip.ParsePrefix(desired.CIDR)
+	if err != nil {
+		return fmt.Errorf("parse NPT edge: %w", err)
+	}
+	_, err = m.Env.NPTAddresses.Ensure(ctx, log, ifmgr.NPTEdgeRequest{ConnectionID: wan.ID, Interface: wan.Iface, Prefix: prefix})
+	if err != nil {
+		return fmt.Errorf("ensure authorized NPT edge: %w", err)
 	}
 	return nil
 }
@@ -559,7 +569,9 @@ func (m *Module) publishLiveState(
 		)
 		members[wan.Key()] = member
 	}
-	m.Env.LiveState.SetTranslation(members)
+	if m.Env.LiveState.SetTranslation(members) && m.Env.RequestReconcile != nil {
+		m.Env.RequestReconcile("NPT translation readiness changed")
+	}
 }
 
 func ipv6TranslationReadiness(
@@ -701,6 +713,9 @@ func (m *Module) extraGlobal128s(
 	for _, current := range addrs {
 		addr, eligible := global128Address(current, pd1)
 		if !eligible {
+			continue
+		}
+		if m.journaledEdge(wan.Iface, addr) {
 			continue
 		}
 		if localAssignments[addr] {
@@ -850,7 +865,6 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		opnsenseEdge:    netip.Addr{},
 		mwanbrEdge:      netip.Addr{},
 		src:             nil,
-		reconcileAddrs:  nil,
 		listAddrs:       nil,
 		apply:           nil,
 		removeDNAT:      nil,

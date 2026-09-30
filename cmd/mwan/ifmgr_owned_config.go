@@ -32,11 +32,11 @@ func buildAddressesConfig(ifmgrCfg config.IfMgrSection) (addresses.Config, error
 	providers := make(map[string]addresses.Provider)
 	clientIDs := make(map[string][]byte)
 	for _, connection := range ifmgrCfg.Connections {
-		if connection.Owner != interfaceintent.OwnerMWAN {
-			continue
-		}
 		if provider, found := ifmgrCfg.WAN[connection.ID.String()]; found {
 			providers[connection.ID.String()] = addresses.Provider{IPv4: provider.TranslationV4, IPv6: provider.TranslationV6}
+		}
+		if connection.Owner != interfaceintent.OwnerMWAN {
+			continue
 		}
 		if connection.IPv4 == nil || connection.IPv4.DHCP == nil || !*connection.IPv4.DHCP {
 			continue

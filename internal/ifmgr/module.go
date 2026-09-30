@@ -117,10 +117,24 @@ type Env struct {
 	OwnedLinks *OwnedLinkResults
 	// OwnedAddresses contains address installation results from the current pass.
 	OwnedAddresses *OwnedAddressResults
+	NPTAddresses   NPTAddressAuthority
 	// Delegations publishes MWAN-owned DHCPv6 addresses and prefixes.
 	Delegations *netif.DHCPv6PDStore
 	// PrepareLocalIPv6 protects new local DHCPv6 addresses from forwarding translation before installation.
 	PrepareLocalIPv6 func(context.Context, *slog.Logger, string, []netip.Addr) error
+}
+
+// NPTEdgeRequest authorizes one separately scoped translation address.
+type NPTEdgeRequest = netif.NPTEdgeRequest
+
+// NPTEdgeRecord identifies the journaled provider edge and its verified link.
+type NPTEdgeRecord = netif.NPTEdgeRecord
+
+// NPTAddressAuthority separates edge production from ordinary address acquisition.
+type NPTAddressAuthority interface {
+	Ensure(context.Context, *slog.Logger, NPTEdgeRequest) (NPTEdgeRecord, error)
+	Recorded() []NPTEdgeRecord
+	Release(context.Context, *slog.Logger, []NPTEdgeRecord) error
 }
 
 // OwnedAddressResults shares successful exact address writes with translation consumers.

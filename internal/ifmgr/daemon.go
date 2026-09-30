@@ -255,6 +255,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 		LiveState:           d.cfg.LiveState,
 		OwnedLinks:          nil,
 		OwnedAddresses:      nil,
+		NPTAddresses:        nil,
 		Delegations:         nil,
 		PrepareLocalIPv6:    nil,
 	}

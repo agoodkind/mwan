@@ -405,20 +405,6 @@ func (module *Module) publishDHCPv6Lease(iface string, lease netif.DHCPv6PDLease
 	module.Env.Delegations.Set(iface, lease)
 }
 
-func (module *Module) delegation(iface string) netip.Prefix {
-	lease, ok := module.Env.Delegations.Get(iface)
-	if !ok {
-		return netip.Prefix{}
-	}
-	now := module.clock.Now()
-	for _, value := range lease.Prefixes {
-		if now.Before(value.ValidUntil) {
-			return value.Prefix
-		}
-	}
-	return netip.Prefix{}
-}
-
 func (module *Module) delegationAssignments(connection interfaceintent.Connection) []interfaceintent.Assignment {
 	lease, ok := module.Env.Delegations.Get(connection.Name)
 	if !ok {

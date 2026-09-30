@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -131,6 +132,11 @@ type protocolService struct {
 
 func startProtocolServices(t *testing.T, root string) []protocolService {
 	t.Helper()
+	return startProtocolServicesForInterface(t, root, "")
+}
+
+func startProtocolServicesForInterface(t *testing.T, root, subnetInterface string) []protocolService {
+	t.Helper()
 	runtimeDir := filepath.Join(root, "kea-run")
 	if err := os.MkdirAll(runtimeDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -143,6 +149,9 @@ func startProtocolServices(t *testing.T, root string) []protocolService {
 	bindStartupDirectory(t, stateDir, "/var/lib/kea")
 	dhcp4 := `{"Dhcp4":{"interfaces-config":{"interfaces":["wan-host"]},"lease-database":{"type":"memfile","persist":false},"valid-lifetime":600,"subnet4":[{"id":1,"subnet":"198.51.100.0/24","pools":[{"pool":"198.51.100.100-198.51.100.110"}],"option-data":[{"name":"routers","data":"198.51.100.2"}]}]}}`
 	dhcp6 := `{"Dhcp6":{"interfaces-config":{"interfaces":["wan-host"]},"lease-database":{"type":"memfile","persist":false},"valid-lifetime":600,"preferred-lifetime":300,"subnet6":[{"id":1,"subnet":"2001:db8:2::/64","pools":[{"pool":"2001:db8:2::100-2001:db8:2::110"}],"pd-pools":[{"prefix":"2001:db8:30::","prefix-len":48,"delegated-len":56}]}]}}`
+	if subnetInterface != "" {
+		dhcp6 = strings.Replace(dhcp6, `"subnet6":[{"id":1,`, fmt.Sprintf(`"subnet6":[{"id":1,"interface":%q,`, subnetInterface), 1)
+	}
 	ra := "interface wan-host { AdvSendAdvert on; MinRtrAdvInterval 3; MaxRtrAdvInterval 4; prefix 2001:db8:2::/64 { AdvOnLink on; AdvAutonomous on; }; };\n"
 	services := []struct {
 		name, executable, config string

@@ -259,13 +259,15 @@ func (s *Store) SetRouting(activeTier uint8, members map[string]MemberRouting) {
 	}
 }
 
-// SetTranslation replaces the translation snapshot in one write.
-func (s *Store) SetTranslation(members map[string]MemberTranslation) {
+// SetTranslation replaces the translation snapshot and reports whether it changed.
+func (s *Store) SetTranslation(members map[string]MemberTranslation) bool {
 	copied := make(map[string]MemberTranslation, len(members))
 	maps.Copy(copied, members)
 	s.mu.Lock()
+	changed := !maps.Equal(s.translation, copied)
 	s.translation = copied
 	s.mu.Unlock()
+	return changed
 }
 
 // SetIntendedRuleset writes the NPT module's intended ruleset without an apply error.
