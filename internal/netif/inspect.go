@@ -117,7 +117,7 @@ func listRoutesFiltered(
 		"filter", filterName,
 	)
 	startTime := realClock{}.Now()
-	routes, err := netlink.RouteListFiltered(familyToNetlink(family), filter, filterMask)
+	routes, err := listUsableRoutes(familyToNetlink(family), filter, filterMask)
 	duration := realClock{}.Now().Sub(startTime)
 	log.DebugContext(
 		ctx,

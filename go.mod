@@ -15,7 +15,7 @@ require (
 	github.com/mdlayher/ndp v1.1.0
 	github.com/mdlayher/vsock v1.2.1
 	github.com/osrg/gobgp/v4 v4.7.0
-	github.com/vishvananda/netlink v1.3.1
+	github.com/vishvananda/netlink v1.3.2-0.20250829225123-b032ea08ecfd
 	github.com/vishvananda/netns v0.0.5
 	golang.org/x/net v0.58.0
 	golang.org/x/sys v0.47.0

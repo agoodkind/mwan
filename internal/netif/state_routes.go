@@ -12,6 +12,23 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// Linux can retain expired routes in dumps after rejecting them for forwarding.
+func listUsableRoutes(family int, filter *netlink.Route, mask uint64) ([]netlink.Route, error) {
+	routes, err := netlink.RouteListFiltered(family, filter, mask)
+	if err != nil {
+		slog.Warn("netif: usable route dump failed", "family", family, "err", err)
+		return nil, fmt.Errorf("list usable routes for family %d: %w", family, err)
+	}
+	current := routes[:0]
+	for _, route := range routes {
+		if route.CacheInfo != nil && route.CacheInfo.Expires < 0 {
+			continue
+		}
+		current = append(current, route)
+	}
+	return current, nil
+}
+
 // getTableDefaultNetlink finds the default route in the named table for the
 // given family. Returns (nil, nil) when no default route exists. Returns
 // (nil, nil) for ENOENT-equivalent errors so callers can treat "table empty"
@@ -23,7 +40,7 @@ func getTableDefaultNetlink(
 	filter := &netlink.Route{Table: tableID}
 
 	start := realClock{}.Now()
-	routes, err := netlink.RouteListFiltered(famConst, filter, netlink.RT_FILTER_TABLE)
+	routes, err := listUsableRoutes(famConst, filter, netlink.RT_FILTER_TABLE)
 	dur := realClock{}.Now().Sub(start)
 	log.Debug(
 		"route: RouteListFiltered (default lookup)",
@@ -340,7 +357,7 @@ func FindMainRADefault(
 	mask := netlink.RT_FILTER_OIF | netlink.RT_FILTER_TABLE | netlink.RT_FILTER_PROTOCOL
 
 	start := realClock{}.Now()
-	routes, err := netlink.RouteListFiltered(unix.AF_INET6, filter, mask)
+	routes, err := listUsableRoutes(unix.AF_INET6, filter, mask)
 	dur := realClock{}.Now().Sub(start)
 	log.DebugContext(
 		ctx,
@@ -381,7 +398,7 @@ func IfaceDefaultGateway(family string, iface string) (string, error) {
 	mask := netlink.RT_FILTER_OIF | netlink.RT_FILTER_TABLE
 
 	start := realClock{}.Now()
-	routes, err := netlink.RouteListFiltered(famConst, filter, mask)
+	routes, err := listUsableRoutes(famConst, filter, mask)
 	dur := realClock{}.Now().Sub(start)
 	log.Debug(
 		"route: RouteListFiltered (iface default gateway)",
