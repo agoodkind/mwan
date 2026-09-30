@@ -192,12 +192,71 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-external-preserve")
 	waitResolverRuntimeValues(t, daemon, baselineDNS, externalDomains)
 	waitStaticRuntimeLog(t, daemon, "external resolver change preserved")
-	for _, name := range []string{"resolver-bootstrap", "resolver-first", "resolver-ipv6-only", "resolver-restart", "resolver-dns-remove", "resolver-domains-remove", "resolver-remove", "resolver-external-control", "resolver-external-preserve"} {
+	killOwnedRuntimeDaemon(t, daemon)
+	writeResolverCleanupNetwork(t, networkDir)
+	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-prune")
+	waitOwnedRuntimeAbsent(t, daemon, "owned397", 10*time.Second)
+	waitStaticRuntimeLog(t, daemon, `"phase":"initial-reconcile","module":"resolver"`)
+	killOwnedRuntimeDaemon(t, daemon)
+	cleanupConfig := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"200ms\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.resolver]\nstate_file = %q\n[wanconfig]\npublish = true\n", filepath.Join(root, "resolver.json"))
+	if err := os.WriteFile(configPath, []byte(cleanupConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-cleanup-only")
+	waitStaticRuntimeLog(t, daemon, `"phase":"initial-reconcile","module":"resolver"`)
+	for _, name := range []string{"resolver-bootstrap", "resolver-first", "resolver-ipv6-only", "resolver-restart", "resolver-dns-remove", "resolver-domains-remove", "resolver-remove", "resolver-external-control", "resolver-external-preserve", "resolver-prune", "resolver-cleanup-only"} {
 		data, err := os.ReadFile(filepath.Join(root, name+".log"))
 		if err != nil {
 			t.Fatal(err)
 		}
 		t.Logf("%s daemon log:\n%s", name, data)
+	}
+}
+
+func writeResolverCleanupNetwork(t *testing.T, directory string) {
+	t.Helper()
+	writeResolverRuntimeNetwork(t, directory, false, false, false)
+	path := filepath.Join(directory, "network.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]json.RawMessage
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	var interfaces map[string]json.RawMessage
+	if err := json.Unmarshal(document["ietf-interfaces:interfaces"], &interfaces); err != nil {
+		t.Fatal(err)
+	}
+	var entries []map[string]json.RawMessage
+	if err := json.Unmarshal(interfaces["interface"], &entries); err != nil {
+		t.Fatal(err)
+	}
+	configured := entries[:0]
+	for _, entry := range entries {
+		var name string
+		if err := json.Unmarshal(entry["name"], &name); err != nil {
+			t.Fatal(err)
+		}
+		if name != "owned397" {
+			configured = append(configured, entry)
+		}
+	}
+	interfaces["interface"], err = json.Marshal(configured)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document["ietf-interfaces:interfaces"], err = json.Marshal(interfaces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err = json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -69,16 +69,25 @@ func hasStaticSettings(connections []interfaceintent.Connection) bool {
 	return false
 }
 
-// Init requires link reconciliation results even when only journal cleanup remains.
+// Init requires link results when enabled MWAN connections remain configured.
 func (module *Module) Init(_ context.Context, env *ifmgr.Env) error {
 	module.InitBase(env, "module", moduleName)
 	if module.ownership == nil {
 		return ifmgr.ErrModuleDisabled
 	}
-	if env.OwnedLinks == nil {
+	if env.OwnedLinks == nil && hasOwnedConnections(module.connections) {
 		return fmt.Errorf("resolver: owned link results are required")
 	}
 	return nil
+}
+
+func hasOwnedConnections(connections []interfaceintent.Connection) bool {
+	for _, connection := range connections {
+		if connection.Owner == interfaceintent.OwnerMWAN && (connection.Enabled == nil || *connection.Enabled) {
+			return true
+		}
+	}
+	return false
 }
 
 // Reconcile applies configured settings or restores fields removed from intent.
