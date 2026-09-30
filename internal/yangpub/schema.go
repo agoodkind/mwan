@@ -31,7 +31,7 @@ const schemaFileMode fs.FileMode = 0o644
 const schemaDirMode fs.FileMode = 0o755
 
 // SteeringSchemaFile is the steering revision installed by this binary.
-const SteeringSchemaFile = "goodkind-mwan-steering@2026-09-29.yang"
+const SteeringSchemaFile = "goodkind-mwan-steering@2026-09-30.yang"
 
 // SchemaModule is one module of the gateway's model, named by its file and
 // carrying the features that must be enabled when it is installed.

@@ -447,7 +447,17 @@ func (module *Module) reconcileFamily(ctx context.Context, log *slog.Logger, con
 	if settings.RouteMetric != nil {
 		metric = *settings.RouteMetric
 	}
-	routes := make([]netif.OwnedRoute, 0, 1)
+	routes := make([]netif.OwnedRoute, 0, len(settings.Routes)+1)
+	for _, route := range settings.Routes {
+		routes = append(routes, netif.OwnedRoute{Destination: route.Destination, Gateway: route.Gateway, Metric: route.Metric})
+		assignments = append(assignments, interfaceintent.Assignment{
+			ConnectionID: connection.ID, Family: family, Kind: interfaceintent.AssignmentStaticRoute,
+			Source: "configured", Purpose: "", Value: netip.Prefix{}, Route: &interfaceintent.RouteIntent{
+				Destination: route.Destination, Gateway: route.Gateway, TableID: route.TableID, Metric: route.Metric,
+			}, ClientID: "", DUID: "", IAID: nil, AcquiredAt: time.Time{}, RenewAt: nil,
+			RebindAt: nil, PreferredUntil: nil, ValidUntil: nil, Valid: true,
+		})
+	}
 	if settings.Gateway.IsValid() {
 		destination := netip.MustParsePrefix("::/0")
 		if family == "ipv4" {

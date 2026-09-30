@@ -133,10 +133,12 @@ func ownershipFamilyItems(name, family string, state wanstate.FamilyState, obser
 			routePath := path + "/route"
 			items = append(items,
 				yangpub.Item{Path: routePath + "/destination", Value: assignment.Route.Destination.String()},
-				yangpub.Item{Path: routePath + "/gateway", Value: assignment.Route.Gateway.String()},
 				yangpub.Item{Path: routePath + "/table-id", Value: strconv.FormatUint(uint64(assignment.Route.TableID), 10)},
 				yangpub.Item{Path: routePath + "/metric", Value: strconv.FormatUint(uint64(assignment.Route.Metric), 10)},
 			)
+			if assignment.Route.Gateway.IsValid() {
+				items = append(items, yangpub.Item{Path: routePath + "/gateway", Value: assignment.Route.Gateway.String()})
+			}
 		}
 		if !assignment.AcquiredAt.IsZero() {
 			items = append(items, yangpub.Item{Path: path + "/acquired-at", Value: assignment.AcquiredAt.UTC().Format(time.RFC3339Nano)})

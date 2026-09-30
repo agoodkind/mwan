@@ -117,6 +117,7 @@ type Family struct {
 	DHCP          *bool
 	Gateway       netip.Addr
 	RouteMetric   *uint32
+	Routes        []RouteIntent
 	DNS           []netip.Addr
 	SearchDomains []string
 }

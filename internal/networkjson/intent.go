@@ -401,7 +401,7 @@ func buildIntentFamily(name string, family string, wire familyWire) (interfacein
 	built := interfaceintent.Family{
 		Enabled: wire.Enabled, Forwarding: wire.Forwarding, Addresses: nil,
 		DHCP: wire.DHCP, Gateway: netip.Addr{}, RouteMetric: wire.RouteMetric,
-		DNS: nil, SearchDomains: nil,
+		DNS: nil, SearchDomains: nil, Routes: nil,
 	}
 	for _, address := range wire.Address {
 		ip, err := parseAddress("interface "+name, family+"/address", address.IP)
@@ -421,6 +421,11 @@ func buildIntentFamily(name string, family string, wire familyWire) (interfacein
 		}
 		built.Gateway = gateway
 	}
+	routes, err := buildIntentRoutes(name, family, wire.Routes, built.Gateway.IsValid())
+	if err != nil {
+		return built, err
+	}
+	built.Routes = routes
 	if wire.Resolver != nil {
 		for _, raw := range wire.Resolver.DNSServers {
 			server, err := parseAddress("interface "+name, family+"/resolver/dns", raw)
@@ -725,6 +730,9 @@ func checkParentCycle(name string, connections []interfaceintent.Connection, ind
 }
 
 func compileClaims(connections []interfaceintent.Connection, providers map[string]config.IfMgrWANEntry) ([]interfaceintent.Claim, error) {
+	if err := validateConfiguredGatewayClaims(connections); err != nil {
+		return nil, err
+	}
 	var claims []interfaceintent.Claim
 	owners := make(map[string]interfaceintent.Claim)
 	addressOwners := make(map[string]interfaceintent.Claim)
@@ -830,8 +838,19 @@ func claimFamilyResources(connection interfaceintent.Connection, name string, fa
 			if family.RouteMetric != nil {
 				metric = *family.RouteMetric
 			}
+			metric = mainRouteMetric(name, metric)
 			key = fmt.Sprintf("main/default/%d", metric)
 		}
+		if err := add(interfaceintent.Claim{ConnectionID: connection.ID, Kind: interfaceintent.ResourceMainRoute, Family: name, Key: key, Writer: routeWriter}); err != nil {
+			return err
+		}
+	}
+	for _, route := range family.Routes {
+		destination := route.Destination.String()
+		if route.Destination.Bits() == 0 {
+			destination = "default"
+		}
+		key := fmt.Sprintf("main/%s/%d", destination, mainRouteMetric(name, route.Metric))
 		if err := add(interfaceintent.Claim{ConnectionID: connection.ID, Kind: interfaceintent.ResourceMainRoute, Family: name, Key: key, Writer: routeWriter}); err != nil {
 			return err
 		}

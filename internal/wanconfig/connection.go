@@ -197,6 +197,19 @@ func validateVLAN(name string, link *interfaceintent.Link) error {
 }
 
 func validateFamily(name string, familyName string, family interfaceintent.Family, inFamily func(netip.Addr) bool) error {
+	seenRoutes := make(map[netip.Prefix]bool)
+	for _, route := range family.Routes {
+		if !route.Destination.IsValid() || route.Destination != route.Destination.Masked() || route.Destination.Addr().Is4In6() || !inFamily(route.Destination.Addr()) || route.TableID != 254 {
+			return invalid(fmt.Sprintf("interface %s %s has invalid configured route %s", name, familyName, route.Destination))
+		}
+		if seenRoutes[route.Destination] || route.Destination.Bits() == 0 && family.Gateway.IsValid() {
+			return invalid(fmt.Sprintf("interface %s %s route destination %s is configured twice", name, familyName, route.Destination))
+		}
+		seenRoutes[route.Destination] = true
+		if route.Gateway.IsValid() && (route.Gateway.Is4In6() || !inFamily(route.Gateway) || route.Gateway.IsUnspecified() || route.Gateway.IsMulticast() || route.Gateway.Zone() != "") {
+			return invalid(fmt.Sprintf("interface %s %s route %s has an invalid gateway", name, familyName, route.Destination))
+		}
+	}
 	for _, address := range family.Addresses {
 		if !inFamily(address.Prefix.Addr()) {
 			return invalid(fmt.Sprintf("interface %s %s address %q has the wrong family", name, familyName, address.Prefix))
