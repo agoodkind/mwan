@@ -2344,6 +2344,27 @@ The backup speaker does not consume that socket. Actual downstream backup
 traffic and interruption duration remain unmeasured for this activation.
 Shared testbed deployment and production promotion remain pending.
 
+### Downstream baseline and deployment observation
+
+At 2026-09-30 10:50 PDT, actual OPNsense VM 201 route queries selected
+primary next hops `10.240.240.3` and `3d06:bad:b01:201::3`. Source-bound
+HTTPS requests from `10.240.240.2` and `3d06:bad:b01:201::2` returned
+HTTP 301 with successful, complete, untruncated guest execution. This proves
+primary downstream egress at that checkpoint, not balancing or backup.
+
+The existing downstream deployment probe accepts backup next-hop inputs
+`10.240.240.4` and `3d06:bad:b01:201::4`. It verifies actual guest route
+selection and source-bound HTTPS in both families. Use that expectation
+during the preboot primary withdrawal interval and the ordinary primary
+expectation after reboot. No additional deployment simulator is required
+to measure this shared testbed sequence.
+
+Integrated namespace CI on `2895d7b49a1a226b74051459396bfae8a931861e`
+failed because the native-readiness fixture lacked the new real address
+authority. The fixture must initialize the production address module before
+testing the intended unrelated BPF policy failure. Retrying unchanged CI
+does not address that integration failure.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
