@@ -2570,6 +2570,28 @@ the leader exits first. The candidate remains unpublished. Guest-owned
 capture services require a separate implementation after cleanup review.
 Shared testbed and production deployment remain pending.
 
+### Repair the verified acceptance defects
+
+MWAN-532 is In Progress under MWAN-305. Exact Linux 6.12.107 source
+requires `CAP_SYS_ADMIN` for BPF program and map lookup by ID. Current
+descriptors cannot inspect surviving prior-process attachments. The repair
+adds this capability to the WAN service's ambient and bounding sets and
+retains strict inspection. The capability permits operations beyond BPF
+inspection. Acceptance requires the actual production unit, an unchanged-unit
+EPERM control, restart, obsolete edge removal and surviving provider packets.
+
+Independent real-fork review confirmed that `affcdfec` returns after reaping
+the leader while its TERM-resistant descendant remains alive in the original
+group. Exact-owned reviewer cleanup removed the descendant. The correction
+must preserve original group IDs through cleanup and reap each direct child
+once. The candidate remains unpublished pending real macOS/Linux validation.
+
+Actual veth inspection found no permanent MAC attribute. Configs PR #573
+will use matching real tagged VLAN endpoints and declared VLAN identity
+instead of claiming a physical MAC identity. Its packet assertions and
+deadlines remain unchanged. The public released-daemon battery remains the
+acceptance requirement. These repairs do not authorize an unmerged deploy.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
