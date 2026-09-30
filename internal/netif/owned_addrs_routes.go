@@ -234,7 +234,7 @@ func (r *OwnedStaticReconciler) ReconcileFamilyRoutesWithLifetimes(ctx context.C
 	return r.ReconcileFamilyRoutesWithLifetimesRetaining(ctx, connection, family, settings, routes, ready, lifetimes, RecordedRetention{All: false, Prefixes: nil})
 }
 
-// ReconcileFamilyRoutesWithLifetimesRetaining keeps only selected recorded objects on the current link.
+// ReconcileFamilyRoutesWithLifetimesRetaining applies desired objects and retains selected recorded objects on the current link.
 func (r *OwnedStaticReconciler) ReconcileFamilyRoutesWithLifetimesRetaining(ctx context.Context, connection interfaceintent.Connection, family string, settings interfaceintent.Family, routes []OwnedRoute, ready OwnedLinkResult, lifetimes map[netip.Prefix]OwnedAddressLifetime, retention RecordedRetention) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
