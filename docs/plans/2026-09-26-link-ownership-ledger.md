@@ -2123,6 +2123,59 @@ remain networkd-owned. Deploy the merged reload fix to testbed, verify actual
 generated-unit activation and restart recovery, then complete reboot and
 downstream acceptance before production promotion. MWAN-521 remains In Progress.
 
+### Resolver acceptance and scoped NPT implementation, September 30, 2026
+
+Configs PR #571 merged as `3f28f3bf291ebd6f3374937cb4252896f4feba12`.
+Its real missing-file control raised the expected error and removed the
+fixture directory, all five namespaces and all six units. The evidence is
+`20261001-pr571-thread-review/fix/missing-file-result.json`.
+
+The resolver stack is published at parent
+`f005b62236b921a376b358c7b36f5e5f7f12933d` and child
+`fd9a89d8efbad13b05b88ace54d1eb919c0edbab`. All four source systemd cases
+passed without skips in 26.409 seconds. Explicit read-only candidate
+selection passed the two new cases in 12.485 seconds. Its SHA256 is
+`6b4bedf71cc39648b42e6a06ff3bd4e521ad26f41f146794132b551ea8c4709d`.
+The older published release failed on its unsupported resolver ownership
+configuration, confirming that binary selection did not substitute a source
+build. These candidate results do not prove a published feature release.
+
+Exact parent CI passed 22 namespace and three systemd cases. Exact child CI
+passed 22 namespace and four systemd cases after retrying a dependency
+download failure that occurred before test execution. All review threads
+are resolved. Required GitGuardian checks remain pending at this checkpoint.
+The full local systemd command requires an explicit absolute Configs checkout
+through `MWAN_OWNED_ROLE_CONFIGS`; the runner reads its actual bootstrap
+sources. The report is
+`20261001-networkd-resolver/logging-contract/implementation.md`.
+
+Twenty bounded runs of the earlier monitor and IPv6 firewall failures passed
+with unchanged deadlines and assertions. Passing identity observations and
+TCP captures do not establish the earlier failures' causes. Failure-time
+evidence remains unavailable. No speculative runtime correction was made.
+The report is `20261001-netns-failure-evidence/evidence.md`.
+
+PR #140 merged as `6d238595a7fd8dfe85eaecc41c596e7d0a122bea` after all
+ten required checks passed. The merged protocol and expired-route worktrees
+and their local and remote branches were removed after verifying current
+trunk behavior and ancestry. Their ignored build files and logs were moved
+intact into `20260930-terminal-cleanup` before removal.
+
+The NPT edge authority correction is in implementation on
+`codex/mwan-305-npt-edge-authority`. One scoped journal authority must
+preserve unchanged edges across connection owner changes and verify relevant
+managed translation removal before releasing obsolete edges. Existing
+external-owned NPT configurations remain supported: acquisition stays
+external while configured NPT intent authorizes only the edge producer.
+Legacy networkd acquisition and AT&T authentication continue.
+
+The paired Configs change must provide the explicit journal path and a
+compatible merged published executable. Same-boot startup and pre-reboot
+deployment gates require real acceptance; a future reboot does not prove
+their success. No further physical guest boot or shared deployment occurred.
+MWAN-519, MWAN-521 and MWAN-522 remain In Progress in Tack. IPv6 handover,
+complete shared testbed acceptance and production promotion remain required.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
