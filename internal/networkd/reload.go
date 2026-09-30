@@ -6,27 +6,17 @@ import (
 	"log/slog"
 
 	systemddbus "github.com/coreos/go-systemd/v22/dbus"
+	"github.com/godbus/dbus/v5"
 )
 
-// networkdUnit is the network manager's service, which is asked to reload
-// after a write so a changed .network or .netdev takes effect without a
-// reboot.
 const networkdUnit = "systemd-networkd.service"
 
-// The manager's active state for a running unit, and the job result that
-// means a reload ran to completion.
-const (
-	activeStateActive = "active"
-	jobResultDone     = "done"
-)
+const activeStateActive = "active"
 
-// ReloadIfRunning asks the network manager to reload its unit files when it
-// is running, and does nothing when it is not. At boot the daemon runs
-// before the manager, so the manager reads the fresh files when it starts;
-// after a deploy the daemon restarts while the manager is up, and the
-// reload is what makes a changed .network or .netdev take effect. A changed
-// .link is not carried by the reload, because udev reads a .link when the
-// device appears; the caller logs that case.
+// ReloadIfRunning reloads changed .network and .netdev files when networkd is active.
+// Inactive networkd reads the files during startup. Udev applies .link files when devices appear.
+// A systemd reload job waits for this daemon's Before ordering and READY notification.
+// The manager method waits for networkd's reload without scheduling that job.
 func ReloadIfRunning(ctx context.Context) error {
 	conn, err := systemddbus.NewSystemConnectionContext(ctx)
 	if err != nil {
@@ -51,21 +41,16 @@ func ReloadIfRunning(ctx context.Context) error {
 		return nil
 	}
 
-	result := make(chan string, 1)
-	if _, err := conn.ReloadUnitContext(ctx, networkdUnit, "replace", result); err != nil {
+	bus, err := dbus.ConnectSystemBus(dbus.WithContext(ctx))
+	if err != nil {
+		slog.ErrorContext(ctx, "networkd: connecting to the network manager failed", "err", err)
+		return fmt.Errorf("connect to network manager: %w", err)
+	}
+	defer bus.Close()
+	manager := bus.Object("org.freedesktop.network1", "/org/freedesktop/network1")
+	if err := manager.CallWithContext(ctx, "org.freedesktop.network1.Manager.Reload", 0).Err; err != nil {
 		slog.ErrorContext(ctx, "networkd: reload request failed", "unit", networkdUnit, "err", err)
 		return fmt.Errorf("reload %s: %w", networkdUnit, err)
-	}
-	select {
-	case outcome := <-result:
-		if outcome != jobResultDone {
-			err := fmt.Errorf("reload %s: job result %s", networkdUnit, outcome)
-			slog.ErrorContext(ctx, "networkd: reload did not complete", "unit", networkdUnit, "err", err)
-			return err
-		}
-	case <-ctx.Done():
-		slog.ErrorContext(ctx, "networkd: reload interrupted", "unit", networkdUnit, "err", ctx.Err())
-		return fmt.Errorf("reload %s: %w", networkdUnit, ctx.Err())
 	}
 	slog.InfoContext(ctx, "networkd: reloaded", "unit", networkdUnit)
 	return nil
