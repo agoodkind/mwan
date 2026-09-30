@@ -2592,6 +2592,24 @@ instead of claiming a physical MAC identity. Its packet assertions and
 deadlines remain unchanged. The public released-daemon battery remains the
 acceptance requirement. These repairs do not authorize an unmerged deploy.
 
+### Publish the process cleanup correction
+
+Configs PR #574 contains signed `595e0dc8163cf5134a29b929e50f23c94f699f03`.
+The old permission control and the first correction's descendant control
+both fail against their original sources. The final three real-child cases
+pass on macOS and Linux ARM64 with zero skips. Root inspection and the
+independent macOS rerun passed. Permission errors remain strict. The private
+Linux container was removed. The PR changes process cleanup and its public
+regressions only; capture placement and Engine behavior are unchanged.
+
+The active ruleset requires signed commits, resolved threads, secret checks,
+lint and data tests. Lint and secret checks passed; data CI remains active.
+No review threads were open when exact-head auto-merge was enabled.
+Guest capture implementation must follow the actual merge. PR #573's real
+VLAN fixture also requires a declared parent and hand-authored networkd
+intent because the fixture creates the links without running networkd.
+Its full published-daemon acceptance remains incomplete.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
