@@ -31,6 +31,7 @@ type DHCPv6PDConfig struct {
 	Hint           netip.Prefix
 	Clock          internalclock.Clock
 	WaitForRA      bool
+	CachedLease    *DHCPv6PDLease
 }
 
 // DelegatedPrefix records the server's association and absolute lifetimes.
@@ -49,6 +50,7 @@ type DelegatedAddress struct {
 
 // DHCPv6PDLease retains protocol metadata for renewal and future recovery.
 type DHCPv6PDLease struct {
+	LinkName         string
 	LinkIndex        int
 	LinkHardwareAddr net.HardwareAddr
 	DUID             []byte
@@ -62,6 +64,10 @@ type DHCPv6PDLease struct {
 	IANARebindAt     time.Time
 	Prefixes         []DelegatedPrefix
 	Addresses        []DelegatedAddress
+	RequestAddress   bool
+	RequestPrefix    bool
+	Hint             netip.Prefix
+	WaitForRA        bool
 }
 
 // DHCPv6PDClient negotiates the requested associations in one session.
@@ -173,7 +179,7 @@ func (client *DHCPv6PDClient) publish(lease DHCPv6PDLease) {
 	}
 }
 
-// StartDHCPv6PDClient starts a fresh negotiation with the configured identity.
+// StartDHCPv6PDClient validates cached assignments or starts fresh acquisition.
 func StartDHCPv6PDClient(ctx context.Context, log *slog.Logger, config DHCPv6PDConfig) (*DHCPv6PDClient, error) {
 	if config.Iface == "" || len(config.DUID) == 0 {
 		return nil, errors.New("DHCPv6 interface and DUID are required")
@@ -187,6 +193,10 @@ func StartDHCPv6PDClient(ctx context.Context, log *slog.Logger, config DHCPv6PDC
 	}
 	if !config.RequestAddress && !config.RequestPrefix {
 		config.RequestPrefix = true
+	}
+	if config.CachedLease != nil {
+		cached := cloneDHCPv6Lease(*config.CachedLease)
+		config.CachedLease = &cached
 	}
 	var emptyLease DHCPv6PDLease
 	client := &DHCPv6PDClient{mu: sync.RWMutex{}, lease: emptyLease, declines: make(chan netip.Addr, 16), pending: make(map[netip.Addr]bool), done: ctx.Done(), Events: make(chan struct{}, 1)}
@@ -218,6 +228,14 @@ func (client *DHCPv6PDClient) run(ctx context.Context, log *slog.Logger, config 
 			}
 			continue
 		}
+		recovered, solicitMaxRT, err := client.recoverOnLink(ctx, log, config, link)
+		if err != nil {
+			log.WarnContext(ctx, "dhcpv6: recovery socket unavailable", "iface", config.Iface, "err", err)
+			if !waitDHCPv6(ctx) {
+				return
+			}
+			continue
+		}
 		transport, err := nclient6.New(config.Iface, nclient6.WithRetry(1), nclient6.WithTimeout(time.Second))
 		if err != nil {
 			log.WarnContext(ctx, "dhcpv6: socket unavailable", "iface", config.Iface, "err", err)
@@ -226,7 +244,7 @@ func (client *DHCPv6PDClient) run(ctx context.Context, log *slog.Logger, config 
 			}
 			continue
 		}
-		client.negotiate(ctx, log, transport, config, link)
+		client.negotiate(ctx, log, transport, config, link, recovered, solicitMaxRT)
 		if err := transport.Close(); err != nil {
 			log.WarnContext(ctx, "dhcpv6: close socket failed", "err", err)
 		}
@@ -261,12 +279,14 @@ func waitDHCPv6RA(ctx context.Context, log *slog.Logger, iface string, linkIndex
 	return false
 }
 
-func (client *DHCPv6PDClient) negotiate(ctx context.Context, log *slog.Logger, transport *nclient6.Client, config DHCPv6PDConfig, link *net.Interface) {
-	var lease DHCPv6PDLease
+func (client *DHCPv6PDClient) negotiate(ctx context.Context, log *slog.Logger, transport *nclient6.Client, config DHCPv6PDConfig, link *net.Interface, lease DHCPv6PDLease, solicitMaxRT time.Duration) {
 	backoff := time.Second
-	solicitMaxRT := time.Hour
 	var notifiedThrough time.Time
 	reacquireAddress := false
+	if len(lease.Prefixes) != 0 || len(lease.Addresses) != 0 {
+		notifiedThrough = config.Clock.Now()
+		client.completeRecoveredDHCPv6(ctx, log, transport, config, link, &lease, &solicitMaxRT)
+	}
 	for ctx.Err() == nil {
 		if reacquireAddress && len(lease.Prefixes) != 0 &&
 			client.servicePrefixWhileAcquiringAddress(ctx, log, transport, config, link, &lease, &reacquireAddress, &solicitMaxRT, &notifiedThrough) {
@@ -325,6 +345,147 @@ func (client *DHCPv6PDClient) negotiate(ctx context.Context, log *slog.Logger, t
 		client.processDHCPv6Decline(ctx, log, transport, config, &lease, &reacquireAddress, &solicitMaxRT, address)
 		backoff = min(backoff*2, 120*time.Second)
 	}
+}
+
+func (client *DHCPv6PDClient) completeRecoveredDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.Client, config DHCPv6PDConfig, link *net.Interface, lease *DHCPv6PDLease, solicitMaxRT *time.Duration) {
+	for ctx.Err() == nil && (config.RequestPrefix && len(lease.Prefixes) == 0 || config.RequestAddress && len(lease.Addresses) == 0) {
+		if !client.acquireMissingDHCPv6(ctx, log, transport, config, link, lease, solicitMaxRT) {
+			return
+		}
+	}
+}
+
+func (client *DHCPv6PDClient) recoverCachedDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.Client, config DHCPv6PDConfig, link *net.Interface, solicitMaxRT *time.Duration) DHCPv6PDLease {
+	if config.CachedLease == nil || !compatibleDHCPv6Lease(config, link, *config.CachedLease) {
+		var empty DHCPv6PDLease
+		return empty
+	}
+	lease, err := validateDHCPv6Restart(ctx, transport, config, link, *config.CachedLease, solicitMaxRT)
+	if err != nil {
+		if !errors.Is(err, errDHCPv6RestartRejected) && ctx.Err() == nil {
+			log.WarnContext(ctx, "dhcpv6: restart validation pending", "iface", config.Iface, "err", err)
+		}
+		var empty DHCPv6PDLease
+		return empty
+	}
+	client.publish(lease)
+	return lease
+}
+
+func (client *DHCPv6PDClient) acquireMissingDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.Client, config DHCPv6PDConfig, link *net.Interface, lease *DHCPv6PDLease, solicitMaxRT *time.Duration) bool {
+	expired := expireDHCPv6Assignments(*lease, config.Clock.Now())
+	if len(expired.Prefixes) != len(lease.Prefixes) || len(expired.Addresses) != len(lease.Addresses) {
+		*lease = expired
+		client.publish(*lease)
+	}
+	if len(lease.Prefixes) == 0 && len(lease.Addresses) == 0 {
+		return false
+	}
+	missing := config
+	missing.RequestPrefix = config.RequestPrefix && len(lease.Prefixes) == 0
+	missing.RequestAddress = config.RequestAddress && len(lease.Addresses) == 0
+	if !missing.RequestPrefix && !missing.RequestAddress {
+		return false
+	}
+	acquireCtx, cancel := context.WithDeadline(ctx, latestDHCPv6Validity(*lease))
+	defer cancel()
+	replacement, err := acquireDHCPv6(acquireCtx, transport, missing, link, solicitMaxRT, nil)
+	*lease = expireDHCPv6Assignments(*lease, config.Clock.Now())
+	if err != nil {
+		if len(lease.Prefixes) == 0 && len(lease.Addresses) == 0 {
+			client.publish(*lease)
+			return false
+		}
+		log.WarnContext(ctx, "dhcpv6: missing association acquisition failed", "iface", config.Iface, "err", err)
+	} else {
+		if missing.RequestPrefix {
+			lease.Prefixes, lease.RenewAt, lease.RebindAt = replacement.Prefixes, replacement.RenewAt, replacement.RebindAt
+		}
+		if missing.RequestAddress {
+			lease.Addresses, lease.IANARenewAt, lease.IANARebindAt = replacement.Addresses, replacement.IANARenewAt, replacement.IANARebindAt
+		}
+		lease.ServerID = bytes.Clone(replacement.ServerID)
+		client.publish(*lease)
+	}
+	if !waitDHCPv6(ctx) {
+		return false
+	}
+	return config.RequestPrefix && len(lease.Prefixes) == 0 || config.RequestAddress && len(lease.Addresses) == 0
+}
+
+var errDHCPv6RestartRejected = errors.New("DHCPv6 restart assignment rejected")
+
+func compatibleDHCPv6Lease(config DHCPv6PDConfig, link *net.Interface, cached DHCPv6PDLease) bool {
+	if !bytes.Equal(cached.DUID, config.DUID) || cached.IAID != config.IAID || cached.IANAIAID != config.IANAIAID ||
+		cached.RequestAddress != config.RequestAddress || cached.RequestPrefix != config.RequestPrefix || cached.Hint != config.Hint || cached.WaitForRA != config.WaitForRA ||
+		cached.LinkName != link.Name || !bytes.Equal(cached.LinkHardwareAddr, link.HardwareAddr) {
+		return false
+	}
+	if len(cached.ServerID) == 0 || cached.AcquiredAt.IsZero() || cached.AcquiredAt.After(config.Clock.Now()) {
+		return false
+	}
+	if _, err := dhcpv6.DUIDFromBytes(cached.ServerID); err != nil {
+		return false
+	}
+	if !config.RequestPrefix && len(cached.Prefixes) != 0 || !config.RequestAddress && len(cached.Addresses) != 0 {
+		return false
+	}
+	return validDHCPv6CachedDeadlines(cached) && config.Clock.Now().Before(latestDHCPv6Validity(cached))
+}
+
+func validDHCPv6CachedDeadlines(cached DHCPv6PDLease) bool {
+	for _, prefix := range cached.Prefixes {
+		if !prefix.Prefix.IsValid() || prefix.ValidUntil.IsZero() || prefix.PreferredUntil.After(prefix.ValidUntil) {
+			return false
+		}
+	}
+	if len(cached.Prefixes) != 0 && (cached.RenewAt.IsZero() || !cached.RenewAt.Before(cached.RebindAt)) {
+		return false
+	}
+	for _, address := range cached.Addresses {
+		if !address.Address.IsValid() || address.ValidUntil.IsZero() || address.PreferredUntil.After(address.ValidUntil) {
+			return false
+		}
+	}
+	if len(cached.Addresses) != 0 && (cached.IANARenewAt.IsZero() || !cached.IANARenewAt.Before(cached.IANARebindAt)) {
+		return false
+	}
+	return true
+}
+
+func validateDHCPv6Restart(ctx context.Context, transport *nclient6.Client, config DHCPv6PDConfig, link *net.Interface, cached DHCPv6PDLease, solicitMaxRT *time.Duration) (DHCPv6PDLease, error) {
+	cached = expireDHCPv6Assignments(cached, config.Clock.Now())
+	if len(cached.Prefixes) == 0 && len(cached.Addresses) == 0 {
+		return DHCPv6PDLease{}, errDHCPv6RestartRejected
+	}
+	if len(cached.Prefixes) == 0 {
+		confirm := config
+		confirm.RequestPrefix = false
+		reply, err := exchangeDHCPv6Restart(ctx, transport, confirm, dhcpv6.MessageTypeConfirm, cached, solicitMaxRT)
+		if err != nil {
+			return DHCPv6PDLease{}, err
+		}
+		status := reply.Options.Status()
+		if status == nil || status.StatusCode != iana.StatusSuccess {
+			return DHCPv6PDLease{}, errDHCPv6RestartRejected
+		}
+		cached = expireDHCPv6Assignments(cached, config.Clock.Now())
+		if len(cached.Addresses) == 0 {
+			return DHCPv6PDLease{}, errDHCPv6RestartRejected
+		}
+		cached.ServerID = reply.Options.ServerID().ToBytes()
+		cached.LinkIndex = link.Index
+		return cached, nil
+	}
+	reply, err := exchangeDHCPv6Restart(ctx, transport, config, dhcpv6.MessageTypeRebind, cached, solicitMaxRT)
+	if err != nil {
+		return DHCPv6PDLease{}, err
+	}
+	validated, err := parseDHCPv6(reply, config, nil, link, nil)
+	if err != nil {
+		return DHCPv6PDLease{}, errDHCPv6RestartRejected
+	}
+	return validated, nil
 }
 
 func (client *DHCPv6PDClient) servicePrefixWhileAcquiringAddress(ctx context.Context, log *slog.Logger, transport *nclient6.Client, config DHCPv6PDConfig, link *net.Interface, lease *DHCPv6PDLease, reacquireAddress *bool, solicitMaxRT *time.Duration, notifiedThrough *time.Time) bool {
@@ -634,10 +795,11 @@ func parseDHCPv6(message *dhcpv6.Message, config DHCPv6PDConfig, expectedServer 
 	}
 	now := config.Clock.Now()
 	lease := DHCPv6PDLease{
-		LinkIndex: link.Index, LinkHardwareAddr: bytes.Clone(link.HardwareAddr),
+		LinkName: link.Name, LinkIndex: link.Index, LinkHardwareAddr: bytes.Clone(link.HardwareAddr),
 		DUID: bytes.Clone(config.DUID), IAID: config.IAID, IANAIAID: config.IANAIAID,
 		ServerID: server.ToBytes(), AcquiredAt: now, RenewAt: time.Time{}, RebindAt: time.Time{},
 		IANARenewAt: time.Time{}, IANARebindAt: time.Time{}, Prefixes: nil, Addresses: nil,
+		RequestAddress: config.RequestAddress, RequestPrefix: config.RequestPrefix, Hint: config.Hint, WaitForRA: config.WaitForRA,
 	}
 	responded := false
 	if config.RequestPrefix {
