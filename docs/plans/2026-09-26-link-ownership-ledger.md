@@ -1529,12 +1529,10 @@ no `lease_directory` setting.
 
 The second live run failed during SSH key deployment to Suburban.
 Its recap reported 32 successful tasks, zero changes, one unreachable host,
-and zero failed tasks. The saved deployment log is
-[deploy-failed.log](/Users/agoodkind/.local/state/mwan305/20260930-mwan518-testbed/deploy-failed.log).
+and zero failed tasks.
 The Suburban SSH journal first reported `MaxStartups` at 20:25:31 PDT.
 The journal subsequently reported failed-authentication penalties.
-Sequential SSH resumed at 20:26:56 PDT. The saved journal is
-[suburban-ssh-failure.log](/Users/agoodkind/.local/state/mwan305/20260930-mwan518-testbed/suburban-ssh-failure.log).
+Sequential SSH resumed at 20:26:56 PDT.
 
 The downstream battery then reused SSH connections and ran commands sequentially.
 Eight baseline HTTPS requests returned HTTP 200.
@@ -1546,9 +1544,7 @@ The third live run completed with 229 successful tasks, 24 changes, zero
 unreachable hosts, zero failures, zero rescues, and zero ignored tasks.
 The supported apply command was
 `./configsctl deploy deploy-mwan --limit mwan_suburban_servers`.
-The saved [deploy-passed.log](/Users/agoodkind/.local/state/mwan305/20260930-mwan518-testbed/deploy-passed.log)
-confirms release installation and deployment trace
-`20260929-203535-deploy-866386`. The hypervisor verdict reported reboot,
+The hypervisor verdict for trace `20260929-203535-deploy-866386` reported reboot,
 egress, and mapped-address return codes of zero from 03:45:21 to 03:46:59 UTC
 on September 30. Rollback tasks were skipped. VM 213 reports clean commit
 `5666b3d`, binary hash `43bede7022d3`, and
@@ -1560,9 +1556,7 @@ requests. All 80 requests returned HTTP 200. Gateway captures matched transit
 and provider SYNs by destination and TCP sequence. IPv4 selected Webpass 16
 times and AT&T 24 times. IPv6 selected Webpass 21 times and AT&T 19 times.
 IPv4 client attribution uses the controlled request interval because OPNsense
-rewrites client addresses and ports. The saved
-[analysis.txt](/Users/agoodkind/.local/state/mwan305/20260930-mwan518-testbed/battery/postdeploy/analysis.txt)
-records the request and provider counts. The capture ended at its configured
+rewrites client addresses and ports. The capture ended at its configured
 timeout after the request commands completed successfully.
 
 Client 225 transmitted 1,798 probes per family across deployment and reboot.
@@ -1570,10 +1564,7 @@ IPv4 received 1,797 replies and missed sequence 1363 near 03:46:06 UTC.
 The adjacent replies were 2.026 seconds apart. IPv6 received all 1,798 replies.
 The full observation's largest reply intervals were 2.437 seconds for IPv4
 and 2.456 seconds for IPv6, both before deployment at 03:28:31 through
-03:28:33 UTC. The final
-[IPv4 log](/Users/agoodkind/.local/state/mwan305/20260930-mwan518-testbed/client225-v4-ping.log)
-and [IPv6 log](/Users/agoodkind/.local/state/mwan305/20260930-mwan518-testbed/client225-v6-ping.log)
-contain the transmitted and received totals. One-second probes do not
+03:28:33 UTC. One-second probes do not
 establish the exact interruption duration.
 
 OPNsense selected backup `10.240.240.4` and `3d06:bad:b01:201::4` during
@@ -1582,9 +1573,7 @@ the interface-manager restart and again during reboot. It restored primary
 changed within 03:41:50.179 through 03:41:50.636 UTC and returned within
 03:42:06.086 through 03:42:06.561 UTC. Reboot selections changed within
 03:45:32.927 through 03:45:33.375 UTC and returned within 03:46:28.573
-through 03:46:29.022 UTC. The saved
-[route observations](/Users/agoodkind/.local/state/mwan305/20260930-mwan518-testbed/opnsense-defaults.log)
-include both families. The observer recorded 193 failed samples before the
+through 03:46:29.022 UTC. The observer recorded 193 failed samples before the
 successful deployment and zero failed samples during restart or reboot.
 
 All seven configured interfaces still report owner `networkd`. This deploy
@@ -1604,10 +1593,8 @@ executable through `MWAN_PROTOCOL_TEST_BINARY` and rejects invalid supplied
 paths instead of compiling another executable.
 
 The explicit corrected executable passed the real DHCPv6 daemon recovery
-test three consecutive times in 96.496 seconds. The saved
-[dhcpv6-fixed.log](/Users/agoodkind/.local/state/mwan305/20260930-mwan518-testbed/clock-validation/dhcpv6-fixed.log)
-records the executable path, saved clock, persisted prefix deadline, and
-passing results. This executable is not installed on testbed or production.
+test three consecutive times in 96.496 seconds. This executable is not
+installed on testbed or production.
 Merged release validation and live ownership acceptance remain required.
 
 The finding counts report blockers, issues to fix, and minor issues found
