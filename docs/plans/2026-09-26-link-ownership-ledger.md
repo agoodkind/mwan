@@ -2866,6 +2866,39 @@ Both physical guests powered off normally. Shared daemon deployment and
 production promotion remain pending. Tack received current package, baseline
 and defect evidence without overwriting truncated descriptions.
 
+### Apply the simulator correction and observe BGP handover
+
+Configs PR #578 merged as 7e58ae2de9c36bbfa5ebe459e00dc9022db6f723.
+The saved merged plan changed only CT904 memory from 128 to 256 MiB.
+Actual configuration retains 512 MiB swap. The running memory cgroup reports
+268435456 bytes. A refreshed targeted plan reports no changes. The merged
+package-only play verified curl on all five simulators and reported no failures.
+Both downstream guests received all 180 probes per family across the update.
+
+The primary testbed BGP service was stopped and restored under continuous
+downstream observation. OPNsense selected backup IPv4 gateway 10.240.240.4
+and IPv6 gateway 3d06:bad:b01:201::4, then restored both primary gateways.
+Guest 225 observed backup selections by 22:37:52.525802 and 22:37:52.862851
+UTC. Guest 226 observed them by 22:37:51.193602 and 22:37:52.804819 UTC.
+Both guests received all 180 probes per family. The largest observed reply
+interval was 1.062439 seconds. The primary BGP and WAN services are active.
+This proves service-stop route handover at one-second packet sampling;
+full gateway reboot acceptance remains separate. No exact withdrawal latency
+is assigned because the stop command lacks an independent timestamp receipt.
+
+Configs PR #579 merged as 46297164259fc75f7c751d356258f82b2946ef05.
+Independent exact-head review found zero actionable defects. The disproven
+Graphite finding received an evidence reply and resolution. Required checks
+passed. The read-only acceptance tag audits packages and measures actual
+source-bound mapping responses through the supported Ansible boundary.
+Its first live invocation is pending. Packet captures remain a separate gate.
+
+The MWAN-533 repair uses static preservation only on networkd NPT connections.
+Systemd also preserves other foreign static addresses and routes on those
+connections. MWAN scoped withdrawal and cold foreign-address rejection remain
+required. Repository runtime regression uses a real VLAN provider; the physical
+owner transition requires the existing virtio guest fixture.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
