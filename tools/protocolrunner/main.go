@@ -20,7 +20,8 @@ import (
 )
 
 type options struct {
-	lane, image, arch, source, binary, results, container string
+	lane                                            lane
+	image, arch, source, binary, results, container string
 }
 
 type lane string
@@ -76,8 +77,9 @@ func parseOptions() (result options, failure error) {
 		}
 	}()
 	var opts options
+	var rawLane string
 	flags := flag.NewFlagSet("protocolrunner", flag.ContinueOnError)
-	flags.StringVar(&opts.lane, "lane", "", "namespace or systemd")
+	flags.StringVar(&rawLane, "lane", "", "namespace or systemd")
 	flags.StringVar(&opts.image, "image", "", "local Docker image")
 	flags.StringVar(&opts.arch, "arch", "", "native Linux architecture")
 	flags.StringVar(&opts.source, "source", "", "absolute source directory")
@@ -87,12 +89,22 @@ func parseOptions() (result options, failure error) {
 	if err := flags.Parse(os.Args[1:]); err != nil {
 		return opts, fmt.Errorf("parse protocol options: %w", err)
 	}
-	if _, err := requiredTests(lane(opts.lane)); err != nil {
+	selectedLane := lane(rawLane)
+	if _, err := requiredTests(selectedLane); err != nil {
 		return opts, err
 	}
-	if !filepath.IsAbs(opts.source) || opts.results == "" {
-		return opts, errors.New("absolute -source and -results are required")
+	opts.lane = selectedLane
+	if !filepath.IsAbs(opts.source) {
+		return opts, errors.New("-source must be absolute")
 	}
+	if opts.results == "" {
+		return opts, errors.New("-results is required")
+	}
+	results, err := filepath.Abs(opts.results)
+	if err != nil {
+		return opts, fmt.Errorf("resolve results directory: %w", err)
+	}
+	opts.results = results
 	if opts.container == "" && (opts.image == "" || (opts.arch != "arm64" && opts.arch != "amd64")) {
 		return opts, errors.New("-image and -arch arm64 or amd64 are required for a new container")
 	}
@@ -137,7 +149,7 @@ func startContainer(ctx context.Context, opts options, name string) (failure err
 		arguments = append(arguments, "--mount", "type=bind,src="+opts.binary+",dst=/mwan-release/mwan,readonly")
 	}
 	arguments = append(arguments, opts.image)
-	if opts.lane == "namespace" {
+	if opts.lane == laneNamespace {
 		arguments = append(arguments, "sleep", "infinity")
 	}
 	return dockerCommand(ctx, arguments...)
@@ -181,7 +193,7 @@ func testArguments(opts options, container string, required []string) []string {
 	if binary != "" {
 		arguments = append(arguments, "-e", "MWAN_PROTOCOL_TEST_BINARY="+binary)
 	}
-	if opts.lane == "systemd" {
+	if opts.lane == laneSystemd {
 		arguments = append(arguments, "-e", "MWAN_NETWORKD_RESOLVER_SYSTEMD_TEST=1", "-e", "MWAN_NETWORKD_STARTUP_SYSTEMD_TEST=1")
 	}
 	patterns := make([]string, len(required))
@@ -251,14 +263,14 @@ func run(ctx context.Context, opts options) (result error) {
 			slog.Error("Protocol runner failed", "lane", opts.lane, "error", result)
 		}
 	}()
-	required, err := requiredTests(lane(opts.lane))
+	required, err := requiredTests(opts.lane)
 	if err != nil {
 		return err
 	}
 	if err := os.MkdirAll(opts.results, 0o755); err != nil {
 		return fmt.Errorf("create results directory: %w", err)
 	}
-	directory, err := os.MkdirTemp(opts.results, opts.lane+"-")
+	directory, err := os.MkdirTemp(opts.results, string(opts.lane)+"-")
 	if err != nil {
 		return fmt.Errorf("create run directory: %w", err)
 	}
@@ -287,7 +299,7 @@ func run(ctx context.Context, opts options) (result error) {
 			return err
 		}
 	}
-	if opts.lane == "systemd" {
+	if opts.lane == laneSystemd {
 		if err := waitSystemd(ctx, container); err != nil {
 			return err
 		}
