@@ -95,6 +95,8 @@ type Env struct {
 	// DHCP is the DHCPv4 client, or nil when the iface section did not
 	// request dhcp_v4.
 	DHCP *netif.DHCPClient
+	// DHCPRecoveryPending defers startup pruning during saved lease validation.
+	DHCPRecoveryPending bool
 	// RA is the Router Solicitation client, or nil when the iface section
 	// did not request ra_solicit.
 	RA *netif.RAClient

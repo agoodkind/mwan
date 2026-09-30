@@ -64,9 +64,11 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 		log.ErrorContext(ctx, "mainv4: ownership journal unavailable", "err", err)
 		return fmt.Errorf("mainv4: open DHCPv4 ownership journal: %w", err)
 	}
-	if err := owner.PruneConsumer(ctx, "mainv4"); err != nil {
-		log.ErrorContext(ctx, "mainv4: prior assignment withdrawal failed", "err", err)
-		return fmt.Errorf("mainv4: withdraw prior DHCPv4 assignment: %w", err)
+	if !env.DHCPRecoveryPending || env.DHCP == nil {
+		if err := owner.PruneConsumer(ctx, "mainv4"); err != nil {
+			log.ErrorContext(ctx, "mainv4: prior assignment withdrawal failed", "err", err)
+			return fmt.Errorf("mainv4: withdraw prior DHCPv4 assignment: %w", err)
+		}
 	}
 	m.owner = owner
 	if env.DHCP == nil {
@@ -127,8 +129,11 @@ func (m *Module) OnDHCPLease(
 	}
 	log = log.With("op", "lease-event", "state", lease.State.String())
 	log.DebugContext(ctx, "mainv4: lease event", "info", lease.String())
-	if lease.State == netif.LeaseBound || lease.State == netif.LeaseRenewing ||
-		lease.State == netif.LeaseRebinding || lease.State == netif.LeaseExpired {
+	m.Lock()
+	startupExpiry := lease.State == netif.LeaseExpired && lease.LinkIndex == 0 && m.Env.DHCPRecoveryPending && !m.hasApplied
+	m.Unlock()
+	if !startupExpiry && (lease.State == netif.LeaseBound || lease.State == netif.LeaseRenewing ||
+		lease.State == netif.LeaseRebinding || lease.State == netif.LeaseExpired) {
 		matches, err := lease.MatchesLink(m.cfg.Iface)
 		if err != nil {
 			return fmt.Errorf("mainv4: inspect DHCPv4 interface: %w", err)

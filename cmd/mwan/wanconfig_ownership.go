@@ -108,6 +108,7 @@ func ownershipFamilyItems(name, family string, state wanstate.FamilyState, obser
 	items := []yangpub.Item{
 		{Path: base + "/acquisition", Value: state.Acquisition},
 		{Path: base + "/assignment-validity", Value: state.AssignmentValid},
+		{Path: base + "/lease-persistence", Value: state.LeasePersistence},
 		{Path: base + "/firewall-protection", Value: state.Firewall},
 		{Path: base + "/routing", Value: state.Routing},
 		{Path: base + "/readiness", Value: state.Readiness},

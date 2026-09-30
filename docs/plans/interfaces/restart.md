@@ -69,7 +69,9 @@ clients. Integrate each client after the store contract passes review.
    assignments, server information, original deadlines, and the reviewed
    configuration compatibility data.
 2. Replace saved records atomically at the reviewed persistence boundary.
-   Surface write failures through acquisition status and operation history.
+   Report WAN connection write failures in family operational status and
+   history. Record OOB and mainv4 role write failures in structured daemon logs;
+   those roles have no WAN connection entry in the operational datastore.
 3. Preserve previous valid data after an interrupted replacement. Detect
    truncated, corrupt, incompatible, and expired records explicitly.
 4. Retire records deliberately on configuration removal or ownership

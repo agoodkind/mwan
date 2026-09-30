@@ -298,6 +298,7 @@ type IfMgrSection struct {
 	PinnedConnectionID string          `toml:"-"`
 	Role               string          `toml:"role"`
 	ReconcileInterval  string          `toml:"reconcile_interval"`
+	LeaseDirectory     string          `toml:"lease_directory"`
 	LogFile            string          `toml:"log_file"`
 	JSONLogFile        string          `toml:"json_log_file"`
 	Debug              bool            `toml:"debug"`

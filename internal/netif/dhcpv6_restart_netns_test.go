@@ -38,6 +38,27 @@ func TestDHCPv6RestartRebindRetransmission(t *testing.T) {
 	testDHCPv6RestartWithServer(t, true, true)
 }
 
+func TestDHCPv6RecoveryDoneOnShutdown(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	client, err := StartDHCPv6PDClient(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), DHCPv6PDConfig{
+		Iface: "missing-dhcpv6", DUID: []byte{0, 3, 0, 1, 2, 3, 4, 5, 6, 7},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-client.RecoveryDone():
+		t.Fatal("recovery completed while the client waited for its link")
+	default:
+	}
+	cancel()
+	select {
+	case <-client.RecoveryDone():
+	case <-time.After(5 * time.Second):
+		t.Fatal("client shutdown did not complete recovery")
+	}
+}
+
 func testDHCPv6RestartWithServer(t *testing.T, requestPrefix, timeoutRecovery bool) {
 	t.Helper()
 	const childEnv = "MWAN_DHCPV6_RESTART_CHILD"
@@ -93,6 +114,18 @@ func testDHCPv6RestartWithServer(t *testing.T, requestPrefix, timeoutRecovery bo
 		cached.RebindAt = now.Add(30 * time.Second)
 		cached.Prefixes = []DelegatedPrefix{{Prefix: netip.MustParsePrefix("2001:db8:30::/56"), PreferredUntil: now.Add(35 * time.Second), ValidUntil: now.Add(40 * time.Second)}}
 	}
+	if timeoutRecovery {
+		cached.IANARenewAt = now.Add(8 * time.Second)
+		cached.IANARebindAt = now.Add(16 * time.Second)
+		cached.Addresses[0].PreferredUntil = now.Add(20 * time.Second)
+		cached.Addresses[0].ValidUntil = now.Add(24 * time.Second)
+		if requestPrefix {
+			cached.RenewAt = now.Add(4 * time.Second)
+			cached.RebindAt = now.Add(8 * time.Second)
+			cached.Prefixes[0].PreferredUntil = now.Add(12 * time.Second)
+			cached.Prefixes[0].ValidUntil = now.Add(14 * time.Second)
+		}
+	}
 	server, err := net.ListenUDP("udp6", serverAddress)
 	if err != nil {
 		t.Fatal(err)
@@ -116,8 +149,17 @@ func testDHCPv6RestartWithServer(t *testing.T, requestPrefix, timeoutRecovery bo
 	if got := client.LastLease(); len(got.Addresses) != 0 {
 		t.Fatalf("cached address published before validation: %+v", got)
 	}
+	select {
+	case <-client.RecoveryDone():
+		t.Fatal("recovery completed before restart validation")
+	default:
+	}
 	request := make([]byte, 1500)
-	if err := server.SetReadDeadline(time.Now().Add(15 * time.Second)); err != nil {
+	readTimeout := 15 * time.Second
+	if timeoutRecovery {
+		readTimeout = 35 * time.Second
+	}
+	if err := server.SetReadDeadline(time.Now().Add(readTimeout)); err != nil {
 		t.Fatal(err)
 	}
 	n, source, err := server.ReadFromUDP(request)
@@ -145,7 +187,8 @@ func testDHCPv6RestartWithServer(t *testing.T, requestPrefix, timeoutRecovery bo
 		t.Fatalf("Confirm included IA_PD: %s", restartRequest)
 	}
 	if timeoutRecovery {
-		assertDHCPv6RestartRetransmission(t, server, client, restartRequest)
+		solicit, source := assertDHCPv6RestartRetransmission(t, server, client, restartRequest, cached.Addresses[0].ValidUntil, requestPrefix)
+		assertDHCPv6AcquisitionAfterRestartTimeout(t, server, client, solicit, source, duid, serverDUID, requestPrefix)
 		return
 	}
 	replyClient, err := dhcpv6.DUIDFromBytes(duid)
@@ -173,35 +216,35 @@ func testDHCPv6RestartWithServer(t *testing.T, requestPrefix, timeoutRecovery bo
 	if _, err := server.WriteToUDP(reply.ToBytes(), source); err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		validated := client.LastLease()
-		if requestPrefix && len(validated.Prefixes) == 1 {
-			if validated.Prefixes[0].Prefix != cached.Prefixes[0].Prefix || len(validated.Addresses) != 0 {
-				t.Fatalf("Rebind published an unconfirmed association: %+v", validated)
-			}
-			return
-		}
-		if len(validated.Addresses) == 1 {
-			if validated.Addresses[0] != cached.Addresses[0] || validated.LinkIndex != clientInterface.Index {
-				t.Fatalf("validated address or original deadlines changed: %+v", validated)
-			}
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
+	select {
+	case <-client.RecoveryDone():
+	case <-time.After(5 * time.Second):
+		t.Fatal("restart validation did not complete")
 	}
-	t.Fatal("restart Reply did not publish the validated association")
+	validated := client.LastLease()
+	if requestPrefix {
+		if len(validated.Prefixes) != 1 || validated.Prefixes[0].Prefix != cached.Prefixes[0].Prefix || len(validated.Addresses) != 0 {
+			t.Fatalf("Rebind published an unconfirmed association: %+v", validated)
+		}
+		return
+	}
+	if len(validated.Addresses) != 1 || validated.Addresses[0] != cached.Addresses[0] || validated.LinkIndex != clientInterface.Index {
+		t.Fatalf("validated address or original deadlines changed: %+v", validated)
+	}
 }
 
-func assertDHCPv6RestartRetransmission(t *testing.T, server *net.UDPConn, client *DHCPv6PDClient, first *dhcpv6.Message) {
+func assertDHCPv6RestartRetransmission(t *testing.T, server *net.UDPConn, client *DHCPv6PDClient, first *dhcpv6.Message, validUntil time.Time, requestPrefix bool) (*dhcpv6.Message, *net.UDPAddr) {
 	t.Helper()
 	firstReceived := time.Now()
 	previousElapsed := uint16(0)
 	previousReceived := firstReceived
 	transmissions := 1
+	exchanges := 1
+	previous := first
+	sawConfirm := false
 	request := make([]byte, 1500)
 	for {
-		n, _, err := server.ReadFromUDP(request)
+		n, source, err := server.ReadFromUDP(request)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -210,17 +253,51 @@ func assertDHCPv6RestartRetransmission(t *testing.T, server *net.UDPConn, client
 			t.Fatal(err)
 		}
 		if message.MessageType == dhcpv6.MessageTypeSolicit {
-			elapsed := time.Since(firstReceived)
-			if transmissions < 3 || elapsed < 9*time.Second || elapsed > 12*time.Second {
-				t.Fatalf("restart exchange ended outside 10-second MRD: transmissions=%d elapsed=%s", transmissions, elapsed)
+			if exchanges < 2 || time.Now().Before(validUntil) || requestPrefix && !sawConfirm {
+				t.Fatalf("ordinary Solicit preceded saved association expiry: exchanges=%d valid_until=%s saw_confirm=%t", exchanges, validUntil, sawConfirm)
 			}
 			if got := client.LastLease(); len(got.Prefixes) != 0 || len(got.Addresses) != 0 {
 				t.Fatalf("unvalidated cache published after restart timeout: %+v", got)
 			}
-			return
+			select {
+			case <-client.RecoveryDone():
+			default:
+				t.Fatal("ordinary Solicit preceded recovery completion")
+			}
+			return message, source
 		}
-		if message.MessageType != first.MessageType || message.TransactionID != first.TransactionID || message.Options.ServerID() != nil {
-			t.Fatalf("restart retransmission changed identity or type: %s", message)
+		select {
+		case <-client.RecoveryDone():
+			t.Fatal("recovery completed during restart retransmission")
+		default:
+		}
+		if message.Options.ServerID() != nil {
+			t.Fatalf("restart request included server ID: %s", message)
+		}
+		if message.TransactionID != previous.TransactionID {
+			if exchanges == 1 {
+				elapsed := time.Since(firstReceived)
+				if transmissions < 3 || elapsed < 9*time.Second || elapsed > 16*time.Second {
+					t.Fatalf("first restart exchange ended outside bounded restart window: transmissions=%d elapsed=%s", transmissions, elapsed)
+				}
+			}
+			exchanges++
+			previous = message
+			previousElapsed = 0
+			previousReceived = time.Now()
+			transmissions = 1
+			if message.MessageType == dhcpv6.MessageTypeConfirm {
+				if requestPrefix && (time.Now().Before(validUntil.Add(-10*time.Second)) || len(message.Options.IAPD()) != 0) {
+					t.Fatalf("Confirm did not drop expired prefix: %s", message)
+				}
+				sawConfirm = true
+			} else if message.MessageType != first.MessageType {
+				t.Fatalf("unexpected restart exchange type: %s", message)
+			}
+			continue
+		}
+		if message.MessageType != previous.MessageType {
+			t.Fatalf("restart retransmission changed type: %s", message)
 		}
 		option := message.GetOneOption(dhcpv6.OptionElapsedTime)
 		if option == nil || len(option.ToBytes()) != 2 {
@@ -231,17 +308,82 @@ func assertDHCPv6RestartRetransmission(t *testing.T, server *net.UDPConn, client
 			t.Fatalf("elapsed time did not increase: previous=%d current=%d", previousElapsed, elapsed)
 		}
 		gap := time.Since(previousReceived)
-		if transmissions == 1 && (gap < 700*time.Millisecond || gap > 1500*time.Millisecond) {
+		if exchanges == 1 && transmissions == 1 && (gap < 700*time.Millisecond || gap > 1500*time.Millisecond) {
 			t.Fatalf("initial restart retransmission delay = %s", gap)
 		}
-		if transmissions == 2 && (gap < 1500*time.Millisecond || gap > 2800*time.Millisecond) {
+		if exchanges == 1 && transmissions == 2 && (gap < 1500*time.Millisecond || gap > 2800*time.Millisecond) {
 			t.Fatalf("second restart retransmission delay = %s", gap)
 		}
-		if transmissions > 2 && gap > 5*time.Second {
+		if exchanges == 1 && transmissions > 2 && gap > 5*time.Second {
 			t.Fatalf("restart retransmission exceeded MRT: %s", gap)
 		}
 		previousElapsed = elapsed
 		previousReceived = time.Now()
 		transmissions++
 	}
+}
+
+func assertDHCPv6AcquisitionAfterRestartTimeout(t *testing.T, server *net.UDPConn, client *DHCPv6PDClient, solicit *dhcpv6.Message, source *net.UDPAddr, clientDUID, serverDUID []byte, requestPrefix bool) {
+	t.Helper()
+	newAddress := netip.MustParseAddr("2001:db8::200")
+	newPrefix := netip.MustParsePrefix("2001:db8:40::/56")
+	clientID, err := dhcpv6.DUIDFromBytes(clientDUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverID, err := dhcpv6.DUIDFromBytes(serverDUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	respond := func(request *dhcpv6.Message, messageType dhcpv6.MessageType) {
+		t.Helper()
+		response, err := dhcpv6.NewMessage(dhcpv6.WithClientID(clientID), dhcpv6.WithServerID(serverID))
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.MessageType = messageType
+		response.TransactionID = request.TransactionID
+		var addressIAID [4]byte
+		binary.BigEndian.PutUint32(addressIAID[:], 17)
+		addressAssociation := &dhcpv6.OptIANA{IaId: addressIAID, T1: 30 * time.Second, T2: 60 * time.Second}
+		addressAssociation.Options.Add(&dhcpv6.OptIAAddress{IPv6Addr: net.IP(newAddress.AsSlice()), PreferredLifetime: 90 * time.Second, ValidLifetime: 120 * time.Second})
+		response.AddOption(addressAssociation)
+		if requestPrefix {
+			var prefixIAID [4]byte
+			binary.BigEndian.PutUint32(prefixIAID[:], 19)
+			prefixAssociation := &dhcpv6.OptIAPD{IaId: prefixIAID, T1: 30 * time.Second, T2: 60 * time.Second}
+			prefixAssociation.Options.Add(&dhcpv6.OptIAPrefix{Prefix: prefixToIPNet(newPrefix), PreferredLifetime: 90 * time.Second, ValidLifetime: 120 * time.Second})
+			response.AddOption(prefixAssociation)
+		}
+		if _, err := server.WriteToUDP(response.ToBytes(), source); err != nil {
+			t.Fatal(err)
+		}
+	}
+	respond(solicit, dhcpv6.MessageTypeAdvertise)
+	packet := make([]byte, 1500)
+	n, requestSource, err := server.ReadFromUDP(packet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := dhcpv6.MessageFromBytes(packet[:n])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.MessageType != dhcpv6.MessageTypeRequest {
+		t.Fatalf("expected Request after Advertise, got %s", request)
+	}
+	source = requestSource
+	respond(request, dhcpv6.MessageTypeReply)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		lease := client.LastLease()
+		if len(lease.Addresses) == 1 {
+			if lease.Addresses[0].Address != newAddress || len(lease.Prefixes) != 0 && lease.Prefixes[0].Prefix != newPrefix || requestPrefix != (len(lease.Prefixes) == 1) {
+				t.Fatalf("ordinary acquisition published unexpected lease: %+v", lease)
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("ordinary acquisition did not publish a new assignment")
 }

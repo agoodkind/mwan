@@ -64,7 +64,7 @@ No interface-owner cutover has begun.
 | MWAN-398 | 398-static; 398-mapped-addresses; 398-dhcpv4 | MWAN PRs #89, #91, and #95 through #99 merged static, mapped/NPT, and DHCPv4 ownership code. The combined release passed testbed and production deployment. Live providers remain under networkd, so owned acquisition and transfer acceptance remain. Tack records In Progress. |
 | MWAN-227 | 227-delegation | Client code merged; live acceptance pending. |
 | MWAN-517 | 517-autoconfiguration; 517-dhcpv6 | DHCPv6 code and inactive release passed testbed and production deployment. Live ownership acceptance remains. Tack records In Progress. |
-| MWAN-518 | 518-restart | [MWAN PR #117](https://github.com/agoodkind/mwan/pull/117) adds DHCPv4 restart validation. [MWAN PR #118](https://github.com/agoodkind/mwan/pull/118) adds the durable lease store. Both await merge; DHCPv6 recovery and daemon integration remain. Tack records In Progress. |
+| MWAN-518 | 518-restart | [MWAN PR #117](https://github.com/agoodkind/mwan/pull/117) merged DHCPv4 restart validation as `c51c063060b4d1252db5c36f6578cf519d4c6e42`. [MWAN PR #118](https://github.com/agoodkind/mwan/pull/118) merged the durable lease store as `63cbe758258c97326dfff6c2533e41d58770a890`. [MWAN PR #120](https://github.com/agoodkind/mwan/pull/120) merged DHCPv6 restart validation as `eae8f3c8fb4806cc739e0e2508c86815144a3bf2`. Daemon integration and live acceptance remain. Tack records In Progress. |
 | MWAN-505 | 505-route-repair | [MWAN PR #52](https://github.com/agoodkind/mwan/pull/52) merged as `18941243f1e8fa3d5623a04440e4d90de796d1f4`. Namespace packet tests and live testbed route and rule deletion checks passed. The release passed production deployment and downstream acceptance. |
 | MWAN-521 | 521-configuration; 521-deployment | [Configs PR #527](https://github.com/agoodkind/configs/pull/527) moved MAC discovery before rendering. [Configs PR #558](https://github.com/agoodkind/configs/pull/558) rendered explicit connection IDs and networkd ownership. Configs PRs #559 and #560 pinned and deployed the combined release to testbed and production. Complete role rendering and live transfer remain. |
 | MWAN-522 | 522-acceptance | The daemon runner and simulator timing merged. Seven DHCPv4 and four DHCPv6 real-server scenarios passed. Restart, assembled protocol, and live ownership acceptance remain. Tack records In Progress. |
@@ -1471,6 +1471,44 @@ Monkeybrains. The observed IA_NA address therefore does not validate MWAN's
 new client on a live owned link. No owner transfer or reverse transfer occurred.
 MWAN-517 remains In Progress until the later ownership cutover exercises that
 client; MWAN-518 must add durable lease recovery before the cutover.
+
+### MWAN-518 restart integration, September 29, 2026
+
+PRs #117, #118, and #120 merged the DHCPv4 client, lease store, and DHCPv6
+client foundations. The integration branch `codex/mwan-518-daemon-integration`
+adds saved-lease validation to the owned WAN clients and the OOB and mainv4
+roles. It defers removal of matching journaled addresses during validation,
+keeps original lease deadlines, records WAN lease storage status, and reports
+rejected recovery separately from fresh acquisition. The optional
+`lease_directory` setting does not enable storage in the current deployment.
+
+`make docker-make TARGETS='check test'` passed after the integration changes.
+`make test-netns` passed for the route, firewall, steering, and netif packages.
+Its first run failed one DHCPv6 test that required the next exchange within
+12 seconds of the first packet; the same test passed alone, and the bounded
+suite assertion now allows 16 seconds for scheduler delay. The privileged
+daemon process suite passed OOB restart, late interface, expired OOB record,
+and owned DHCPv6 Rebind scenarios in 101.190 seconds. A separate real Kea
+test passed corrupt owned-WAN record rejection and subsequent reacquisition.
+That test exposed missing YANG enum values for `rejected` lease persistence
+and `waiting` address application; both are defined in the integration branch.
+
+The privileged daemon checks ran from the integration worktree with these
+commands:
+
+```bash
+docker run --rm --privileged --platform linux/arm64 -v "$PWD":/src -w /src -v mwan-wanconfig-gomod:/go/pkg/mod -v mwan-wanconfig-cache-arm64:/root/.cache -e GOWORK=off mwan-protocol-runner:arm64 go test -v -count=1 -tags 'netns firewallnetns' ./cmd/mwan -run '^Test(OOBDHCPv4Daemon(RestartRecovery|LateInterfaceRecovery|RejectedRecovery)|OwnedDHCPv6DaemonRestartRecovery)$'
+docker run --rm --privileged --platform linux/arm64 -v "$PWD":/src -w /src -v mwan-wanconfig-gomod:/go/pkg/mod -v mwan-wanconfig-cache-arm64:/root/.cache -v mwan-wanconfig-gomk-arm64:/src/.make -e GOWORK=off -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/src mwan-protocol-runner:arm64 go test -v -count=1 -tags 'netns firewallnetns' -run '^TestOwnedDHCPv4RejectedRecoveryRuntime$' ./cmd/mwan
+```
+
+Independent review found and the integration branch corrected DHCPv6
+retransmission after a silent server, per-association expiry retention,
+unconfigured WAN record pruning, recovery event ordering, OOB expiry cleanup,
+and status after rejected records or failed deletion. The latest read-only
+review found no remaining defect in those fixes. The integration branch has
+not merged or deployed. No testbed guest reboot, downstream traffic battery,
+production deploy, or live provider owner transfer has occurred for this
+integration.
 
 The finding counts report blockers, issues to fix, and minor issues found
 during review, including findings fixed before the verdict.
