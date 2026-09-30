@@ -2652,6 +2652,36 @@ must provision the real dependency and run the unchanged updater service
 inside the private gateway namespace. Earlier fixture and prerequisite
 failures remain preserved. No product enforcement or packet deadline changed.
 
+### Verify capture failure rejection and combine acceptance repairs
+
+Capture commit `36c9ec6e2f4d0be99c07acaf3f89e6a23fa0239b` passed the actual
+Proxmox positive control. SIGKILL of its uniquely owned simulator observer
+failed acceptance despite twenty successful HTTP requests. The failure receipt
+preserved the missing-unit stop error and the separate cleanup error. Strict
+commands confirmed absence of all five capture PIDs and local observers.
+
+The final legacy fixture uses the real updater inside its private gateway
+namespace. Published `c808779` passed journal authorization, updater completion,
+BGP route installation, preflight and calibration. Its three-case battery
+reported two capture deadline failures and zero skips. Independent review found
+no actionable source defect at fixture SHA256
+`938f8bf404b27eac20b19dc8199680a265e190ea5b93bdc503036dffad45d7d1`.
+
+Graphite restacked the fixture onto merged Configs `b30f1564`, then moved the
+capture correction above it. The signed commits are `a66a46b8`, `174ad62b`
+and `3221aacf`. Every signature and raw `gpgsig` header passed verification.
+Recoverable pre-stack refs preserve both original branches. Submit preview
+updates PR #573 and creates only the capture PR. The combined public battery
+is pending at frozen tip `3221aacfcf4c4351e3ad9a9268127e4e78874220`.
+
+MWAN-532 signed commit `d4d60df811fb1506779dd4a404724aebdf36531b`
+adds the kernel-required capability to the production service. The unchanged
+unit retained actual prior A program/map references and failed withdrawal with
+EPERM. The candidate passed five real systemd cases, removed A's address and
+receipt, and preserved B's translated request and reply. Independent review
+and its separate real run remain pending. No shared testbed or production
+deployment occurred for these corrections.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
