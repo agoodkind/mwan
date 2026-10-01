@@ -5310,6 +5310,45 @@ authorized. Evidence is in 20261001-first-connection-production-compatibility/re
 under the existing local evidence root. AT&T/networkd coexistence remains
 required; circuit retirement does not block this first production phase.
 
+## Confirm repeated forward acquisition and production DNS requirements
+
+The 14:17 UTC heartbeat reorientation confirmed the coordinator, cutover
+plan, interface specification, relevant memory, current tickets, and active
+handles. MWAN-519 and MWAN-521 remain InProgress. Ledger commit 72986bc
+is signed and pushed. Root owns deployment 25290 and the live mutation
+boundary. The production DNS implementer owns its isolated source changes;
+the downstream reviewer owns only its new evidence directory.
+
+Repeated forward deployment passed exclusive source release, fresh replacement
+acquisition, applied assignments, and all acquired and selected AT&T/Webpass
+mapping and NPT checks. The renewed downstream observers recorded 1944
+complete deployment-period replies per guest/family through 14:26:07 through
+14:26:08 UTC, with zero route-query errors. Replacement restart selected
+backup around 14:18:22 and restored primary around 14:18:37. Selection
+restoration selected backup around 14:20:57 and restored primary around
+14:21:12. Final role activation and reboot remain pending.
+
+Capture 92562 finalized with exit status 0 at 14:25:26.382855 UTC,
+before reboot and its deadline. All capture processes were absent after
+cleanup. The phase file update coincided with the stop request; the final
+snapshot is labeled stop-requested rather than role activation. Preserve
+that observation boundary. Journal follower 75208 and renewed observers
+71173 and 77127 remain active. The existing full balancing, mapping,
+failure-history, and restart acceptance remains required after final identity
+verification.
+
+Read-only production identity and acquisition reviews verified actual Webpass
+DHCPv6 DNS and enabled RA DNS policy. Accepted source 3bfdc2a supports the
+verified DUID, both IAIDs, IA_NA/IA_PD requests, SLAAC, and RA defaults,
+but rejects acquired DNS settings and aggregates only static resolver intent.
+Disabling DNS acquisition or copying testbed policy would not preserve the
+required production behavior. A bounded source implementation is assigned
+for acquired DHCPv6 and RA DNS integration with the existing resolver,
+including protocol validity and ownership release. The exact report is
+20261001-production-acquisition-contract/report.md under the local evidence
+root. Production remains unchanged, and its cutover requires subsequent
+authorization after completed testbed proof and reviewed configuration.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
