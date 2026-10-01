@@ -4175,6 +4175,36 @@ Do not expand unrelated tests or declare the probe gap's cause proven.
 The testbed remains recovered; no deployment or fault is active.
 Observers 22271 and 18961 still measure the first attempt and recovery.
 
+## Review the focused exclusion correction
+
+The forwarding correction is signed
+d546441a2128d7e1a3e9ded49bf9a1900ed0f7cc. Only the steering calculation and
+rule construction changed. Actual per-family health, routing and translation
+determine forwarding guard eligibility. Administrative permission separately
+determines new-flow assignments. NEW pinned packets select an eligible
+replacement; without a replacement, a ready excluded-provider packet receives
+mark zero and the existing guard rejects it. Established packets retain
+their ready-provider marks. No blanket established-flow bypass was added.
+
+Required Docker check and test gates passed. Existing real steering namespace
+packet tests passed in 2.211 seconds. No test expectations changed.
+Independent review found no actionable findings at this exact signed head,
+including the immediate-value mark-zero encoding, inbound boundaries and
+hairpin exclusions. Publication, merge, verified release, compatible Configs
+pin and actual cutover acceptance remain pending.
+
+Read-only live diagnostics verified the existing guest 225 IPv6 ICMP flow
+has Webpass mark 2. IPv4 on the primary uses the OPNsense-translated source
+10.240.240.2, so filtering conntrack by the original IPv4 guest address returns
+no entry. Capture ICMP identifiers and sequences to correlate those IPv4
+flows; do not infer the guest from an uncorrelated translated entry.
+
+Reuse the accepted bounded systemd capture lifecycle on the primary transit,
+AT&T and Webpass interfaces. Capture the existing probes, actual guard rules
+and conntrack state during exclusion. Do not run unrelated HTTPS calibration
+to diagnose ICMP. Primary captures do not establish backup packet forwarding;
+retain downstream replies and router selection as separate evidence.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
