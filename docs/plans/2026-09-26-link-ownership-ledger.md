@@ -5978,6 +5978,40 @@ and signature verification passed. Independent review is active. Publication
 and deployment remain unperformed. MWAN-227 remains In Progress; production
 remains unchanged.
 
+## Observe actual prefix renewal and prepare restoration
+
+Webpass acquired 2500::/60 at 18:08:31.847731238 UTC through normal
+renewal. The matching Reply withdraws 2200::/56 with zero lifetimes.
+DUID, IAID and acquired DNS remain unchanged. WAN PID 949 and boot
+identity remain unchanged; no client restart or lease deletion forced
+this change. Root saved operational, address, source-rule, nftables,
+link, identity and resolver snapshots under the focused capture directory.
+
+Broad capture 93883 exited zero with 537,184 captured packets and
+4,409 kernel drops. PID 1496 is absent. This capture cannot prove
+complete packet observation. Focused capture 51993 records DHCPv6,
+router advertisements and the acceptance destination. Its unit is
+mwan305-prefix-focused-20261001-1806.service; PID 1769 executable and
+listening readiness passed. Its final counters remain pending.
+Independent positive packet review already correlates both downstream
+guests with checksum-adjusted translated sources and returned replies.
+Obsolete daemon edge/source/NPT withdrawal and full deploy acceptance
+remain under review. Simulator deploy 22667 is still active.
+
+Restoration PR613 is open at signed 8aa3b426 with independent acceptance
+and passing required checks. Root reviewed the complete two-field patch.
+Its attachment attempt failed at the existing 100-identity cap; unrelated
+attachments remain preserved. No restoration merge or deploy occurred.
+Merged PR612 local branch and worktree were removed after exact contained
+cleanup; its remote branch was already absent. External evidence remains.
+
+Signed DNS reverse candidate 2fa30440 is reconciled onto 2c1babe13.
+Its accepted gateway inventory and rendered JSON remain byte-identical.
+Root reviewed the complete Webpass-only patch and report. It remains
+unpublished until prefix restoration passes. Continuation observer configs
+are prepared with unique control paths; neither new observer has started.
+Production remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
