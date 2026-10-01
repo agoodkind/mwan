@@ -3645,6 +3645,27 @@ A focused diagnostics change will preserve failure-time routes, selectors,
 neighbors, daemon logs, and existing CI results without changing packet
 assertions or production behavior. No shared gateway deployment occurred.
 
+### Publish packet diagnostics and verify focused physical release
+
+PR #152 publishes signed ca3c5e1ecf71c8a39600a3a5adfe9dbe9ef1d03e.
+Independent root review verified its complete two-file diff, raw signature,
+project checks, and the unchanged real packet case's 3.201-second pass.
+The test records marked routes, rule selectors, neighbors, kernel settings,
+and the current daemon log only after failure. Existing CI preserves actual
+protocol result artifacts. Native AMD64 CI and required checks are running;
+no product failure cause or completed aggregate acceptance is claimed.
+
+The focused production release boundary on the exclusive virtio guest passed.
+Its [external networkd observation](/Users/agoodkind/.local/state/mwan305/20261001-configs-physical-transfer/after-networkctl.txt)
+identifies enwebpass0 index 3 as unmanaged. Its
+[kernel address observation](/Users/agoodkind/.local/state/mwan305/20261001-configs-physical-transfer/after-addresses.txt)
+contains neither ordinary primary address; only mapped IPv4 /32s and link-local
+IPv6 remain. The prior generated file has no KeepConfiguration directive.
+This later observation does not establish address absence at the earlier
+replacement start. Immediate release-boundary timing proof is pending.
+The transfer must verify exact prior-owner objects absent before replacement
+without banning unrelated foreign objects or creating ordinary MWAN receipts.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
