@@ -5865,6 +5865,41 @@ The reverse candidate is being reconciled onto merged main without
 publication or live execution. The production draft remains unpublished.
 MWAN-521 and MWAN-227 remain In Progress. Production remains unchanged.
 
+## Preserve the next transfer candidates during live validation
+
+The reverse candidate is signed 83a353bbd5356326137fbc7008ad984db4e3cd2e
+on merged 3aef4df5. Fresh render is byte-identical to the reviewed reverse
+document. Released network, firewall and generated-unit checks passed.
+Root reviewed the complete Webpass-only diff without actionable findings.
+The merged repair branch was removed after bounded containment review;
+the server branch was already absent. The reused worktree and unique reverse
+branch remain. Publication waits for current live DNS acceptance.
+
+Production candidate eecbcf7baa0f7903b0b85bf6aef90a73d713ffaa is signed,
+clean and unpublished on merged 3aef4df5. Actual released construction first
+found missing production link and IPv6 kernel journal paths. The focused
+draft now supplies the existing owned-links.json and owned-kernel.json
+contracts under /var/lib/mwan. It inherits the shared resolver journal.
+Released 7436c5c constructs all nine WAN modules in the actual draft render;
+the later isolated missing networkd directory failure remains separate.
+Network JSON remains byte-identical to the prior validated draft.
+Independent final production configuration review is active.
+
+The production draft preserves the registered MAC but matches the physical
+NIC by independently verified permanent MAC 64:62:66:23:f9:84. Its five
+existing IPv4 mappings explicitly use local delivery, matching the observed
+primary and four local aliases. The phase packet descriptors use the current
+operational translation prefixes. Actual AT&T, management, transit and other
+provider configuration remains unchanged. No production operation occurred.
+
+Root's temporary capture-stop observer is handle 5326. It monitors the
+active deploy log and stops only unit
+mwan305-resolver-repair-20261001-1707.service when the firewall handoff
+marker appears, before reboot scheduling. It also stops that unit after a
+terminal recap. Root must still collect capture completion, counters and
+PID 9266 absence; this observer does not establish those results.
+Deployment handle 76828 and observers 97200/98250 remain active.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
