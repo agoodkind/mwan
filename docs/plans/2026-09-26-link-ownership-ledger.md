@@ -4407,6 +4407,33 @@ The minimum owner-specific delegation verification repair is under independent
 read-only diagnosis. PR #599 remains unmerged and MWAN-519 remains InProgress.
 Production is unchanged.
 
+## Verify established Webpass flows during exclusion
+
+Independent capture reconciliation confirms guest-225 IPv4 ICMP identifier
+16105 and IPv6 identifier 26647 retain Webpass mark 2 in all six conntrack
+snapshots. Actual Webpass replies and matching guest replies exist before
+exclusion at sequence 1985 around 08:31:35 UTC, after exclusion at sequence
+2123 around 08:33:53 UTC, and after verified recovery at sequence 2572 around
+08:41:22 UTC. The excluded-phase firewall retains mark-2 forwarding exemptions
+in both families while its Webpass new-selection rules are absent.
+
+Original guest-225 identifiers 32792 and 26644 and guest-226 identifiers 55052
+and 8388 retain AT&T mark 1 and receive replies before and after these phases.
+The primary captures have approximately 17-second gaps during each observed
+backup interval. Downstream replies continued, but primary captures do not
+observe backup forwarding. Preserve that evidence boundary. These results
+verify exclusion preservation from the new runtime; they do not establish
+exclusive ownership transfer, reversal, or reboot acceptance.
+
+The gate repair must verify actual networkd DHCPv6Client.Prefixes and boot-clock
+expiry for networkd ownership and valid served dhcpv6-ia-pd assignments for MWAN
+ownership. Neither publisher emits the previously required delegated-prefix
+leaf. Keep routing, translation and applied-assignment guards. Verify the
+resolved translation subnet is contained in the current delegated prefix,
+rather than requiring equality between a negotiated /56 and translated /60.
+The bounded implementation includes the existing gate and a read-only clock
+and networkctl transport helper. No runtime release or lease import is needed.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
