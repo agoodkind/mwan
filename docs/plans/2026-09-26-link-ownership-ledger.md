@@ -4021,6 +4021,39 @@ requires rendered link files. The candidate must restore that declaration
 and pass the loader before review. Second forward transfer requires restoring
 the MWAN owner through another merged configuration.
 
+## Resume actual Webpass cutover after Astound acceptance
+
+MWAN-534 is Done. The simulator deployment passed. Actual Astound cold
+startup reproduced the initial eth0-down error; Kea PID 83 recovered its
+packet socket without a service restart. The gateway retained its valid
+DHCP lease, provider default, ready IPv4 routing and translation, and healthy
+probes. This cold startup did not produce a fresh DHCP exchange.
+
+The completed simulator observers transmitted 1798 packets per guest and
+family. Client 225 missed IPv4 sequence 773; its cause remains unverified.
+The other three guest/family observations received every packet. Route
+queries selected the primary and reported no query failures.
+
+The independently reviewed reversal candidate is signed commit da7d4218
+on codex/mwan-519-webpass-reversal. Released loader, render, identity and
+networkd unit checks passed. The candidate is not merged or deployed.
+Merge it only after the actual forward transfer passes.
+
+The first forward deployment used clean merged Configs
+4865782dbd3107217ec7a6bb2e4107a4c258d8a6 at 2026-10-01T06:43:43Z.
+Session 23760 terminated with exit 1 at 06:48:39Z. Ansible failed while
+creating the pre-deploy snapshot because VM 213 was locked for
+snapshot-delete. The recap reported ok=116, changed=9, unreachable=0,
+failed=1, skipped=14, rescued=0, and ignored=0. Ownership transfer did
+not execute. Investigate the active snapshot operation before retrying;
+do not remove an active operation's lock.
+
+Downstream observers 22271 and 18961 remain active in
+webpass-forward-client225 and webpass-forward-client226 under the existing
+20261001-real-cutover evidence directory. Final packet results remain
+pending. The standby calibration drill is deferred. Prioritize actual
+forward transfer, reversal, recovery and second forward transfer.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
