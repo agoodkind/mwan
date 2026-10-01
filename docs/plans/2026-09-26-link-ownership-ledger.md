@@ -3334,6 +3334,33 @@ route query; client 226 had no failed route queries. Successful queries
 selected the primary. These results do not cover the complete play interval,
 balancing, or a gateway deployment. No production deployment ran.
 
+### Verify simulator process recovery and package failure
+
+Configs PR #591 merged as c543a3017f6de4892dd7da11cfd663007dd80ead.
+The signed feature commit passed verification, all required checks passed,
+and the review thread was resolved. The exact branch and unregistered
+worktree are removed. The management play ran from clean merged main.
+It configured CTs 900, 901, and 902, then failed installing tcpdump in CT 903
+with exit 137. Its recap was ok=116, changed=14, unreachable=0, failed=1,
+skipped=24. CT 904 was not processed by this run.
+
+The read-only diagnostic confirms the kernel killed apt-get in CT 903's
+memory cgroup at its 128 MiB limit. The package reports installed, dpkg audit
+returns no findings, and tcpdump reports version 4.99.5. These results do not
+convert the failed play into successful provisioning. Correct the recurring
+resource limit through merged OpenTofu configuration before resuming.
+The [package diagnostic](</var/folders/jq/hwwlnpr56_vdb42ff743hy040000gn/T/configs-runs/management-903-package-readonly-20261001T022342Z.log>)
+retains the actual configuration, kernel event, and package results.
+
+The Linux acceptance plan passes the production plan validator. Authenticated
+SSH verifies hostnames and machine IDs for VM 213, clients 225 and 226, and
+simulators 900 and 901. Dedicated simulator host keys originate from the
+hypervisor's exported identities. The
+[identity preflight](/Users/agoodkind/.local/state/mwan305/20261001-npt-deploy-acceptance/shared-linux-identity-preflight/)
+does not verify product hashes or execute the acceptance engine. All-five
+simulator provisioning and unchanged-play idempotency remain incomplete.
+No gateway upgrade, ownership transfer, or production deployment ran.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
