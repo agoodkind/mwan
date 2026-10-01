@@ -4997,6 +4997,32 @@ deployment verdict remain pending. Root alone owns live mutation and capture
 phase/stop files. Preserve the activation worktree for the required reversal.
 Production remains unchanged.
 
+## Preserve recovery after the snapshot preflight failure
+
+Deployment 79292 ended with exit status 1 at 12:21:04 UTC before ownership
+transfer. The pre-deploy qm snapshot command returned 255 because VM 213
+was locked for snapshot-delete. The recap reports 118 successful tasks,
+14 changes, and one failure. The installed executable and network document
+still match 599392d3 and 2155363a. No cutover acceptance occurred.
+
+The hypervisor reports snapshot-delete in VM 213 configuration. Its active
+API task list is empty, but direct process inspection identifies PID 2449552
+running qm delsnapshot 213 known-good-20260930-031658. This is an actual
+snapshot operation; do not unlock the guest or delete recovery artifacts.
+Wait for its completion and cleared lock before retrying the same clean
+merged configuration. No infrastructure repair is included in this slice.
+
+Independent observation from 12:15:55 through 12:21:04 UTC records 309
+replies per family on guest 225 and 308 per family on guest 226. Each stream
+has zero missing sequences. Router selection did not change, and route
+queries did not fail. This bounded interval is distinct from cutover proof.
+
+The prepared reversal candidate 3c659ce6 passed independent exact-head review.
+Its two files match recovery configuration 829af8d1 exactly, while preserving
+the new release. Fresh recovery rendering matches 2155363a, and all published
+loader/firewall checks passed. Keep it unpublished until the actual forward
+deployment completes. Both tickets remain InProgress; production is unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
