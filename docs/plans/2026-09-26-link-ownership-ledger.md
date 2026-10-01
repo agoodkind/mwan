@@ -3890,6 +3890,37 @@ failure history after a real route deletion, restoration, and daemon restart.
 The destructive operation has not run. Webpass activation remains undeployed.
 Production readiness and ownership transfer remain unaccepted.
 
+## Record preflight failures and Astound drift
+
+The first packet battery exited 1 during client226-fallback-routes6 because
+the Suburban SSH connection closed. Its cleanup_errors array was empty and
+its results object was empty. A direct repeat of the client route query
+succeeded. The second battery, session 41179, then exited 1 during
+client225-hostname because SSH banner exchange timed out. It also reported
+empty results and no cleanup errors. Both failed artifact directories remain
+unchanged. Neither run started captures or injected a network fault.
+
+Direct Suburban SSH subsequently closed connections before authentication.
+Its journal could not be read; the cause remains unverified. Root stopped
+only local observers 75197 and 75434 with SIGINT to reduce route-query
+connection attempts. Sessions 69796 and 80141 exited 130 and their processes
+are absent. No target service or network configuration changed. Fresh
+observation is required before any subsequent risky operation.
+
+Independent live readback verified the expected binary and network hashes,
+all five target identities, seven networkd owners, and healthy AT&T/Webpass
+routing and translation. Astound CT 903 is running, but enastound0 has carrier
+without an IPv4 address or provider default in table 700. Networkd reports
+configuring/degraded and current daemon probes time out. Simulator DHCP
+processes and the timing of acquisition loss remain unverified. Restore and
+accept the Astound baseline before ownership activation. Do not attribute
+this defect to the reboot without evidence.
+
+Tack refresh confirms MWAN-305, 519, 521, 522, and 520 are In Progress;
+MWAN-399 remains Todo. No incomplete acceptance ticket was closed.
+The current blockers are unavailable SSH control access and degraded Astound
+IPv4 acquisition. Production and Webpass ownership remain unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
