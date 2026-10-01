@@ -5156,6 +5156,41 @@ ca5ff093. Its two files match prior activation f67d8af3 exactly. Fresh
 renders and published network/firewall validation passed. An independent
 exact-head reviewer is assigned; no push or activation occurred.
 
+## Verify the reverse replacement and restart interruption
+
+The 13:37 UTC reorientation confirmed the coordinator, interface specification,
+cutover plan, recent ledger, memory, and actual InProgress states for MWAN-519
+and MWAN-521. Reverse deployment 64582, capture 43776, and journal 53798
+remain active. Root owns all live mutation. Capture must stop before reboot
+or 13:49:38 UTC. Both downstream observers remain active; renew their
+observation windows before the repeated forward deployment exceeds expiry.
+
+Source exclusion and all unaffected AT&T downstream, mapping, and translation
+checks passed. The source restart selected backup around 13:28:29 and restored
+primary around 13:28:46 with complete replies. The external-owner restart
+selected backup around 13:31:18 and restored primary around 13:32:27 with
+complete replies. The actual previous-owner release verifier passed before
+networkd replacement activation.
+
+The replacement restart missed guest 225 IPv6 sequence 5605 and guest 226
+IPv4/IPv6 sequence 5210. Their reply intervals were 2.020982, 2.061732,
+and 2.058554 seconds respectively. Guest 225 IPv4 remained complete during
+this phase. Router sampling selected backup at 13:35:54 through 13:35:55
+and restored primary at 13:36:10 through 13:36:11. All four streams resumed
+replies. These measured interruptions require finalized packet analysis;
+do not report zero loss or assign a cause without evidence.
+
+Fresh served state reports networkd ownership, link up, excluded Webpass
+selection, and healthy probes in both families. The forwarding socket reports
+both families ready. Replacement assignments, acquired mappings/translation,
+selection restoration, final capture analysis, and reboot verdict remain
+pending. The old 113-second interruption has not recurred at this observation.
+
+Independent exact-head review approved repeated-forward candidate f7677da9.
+It is published in Configs PR 606. All three required checks pass, and no
+review threads are open. Do not activate before completed reverse acceptance.
+Production remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
