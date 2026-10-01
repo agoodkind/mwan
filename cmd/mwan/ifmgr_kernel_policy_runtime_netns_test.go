@@ -30,13 +30,7 @@ func TestKernelPolicyDaemonRuntime(t *testing.T) {
 		runKernelPolicyDaemonRuntime(t)
 		return
 	}
-	if os.Geteuid() != 0 {
-		t.Skip("network and mount namespaces require root")
-	}
-	binary := filepath.Join(t.TempDir(), "mwan")
-	if output, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput(); err != nil {
-		t.Fatalf("build mwan: %v: %s", err, output)
-	}
+	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^TestKernelPolicyDaemonRuntime$")
 	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
 	child.Env = append(os.Environ(), kernelPolicyChildEnv+"=1", kernelPolicyBinaryEnv+"="+binary)
@@ -260,7 +254,7 @@ func assertKernelPolicyStartupValidation(t *testing.T, binary, networkDir, netwo
 	}
 	for _, check := range []struct{ path, reason string }{
 		{path: "relative-policy.json", reason: "absolute journal path"},
-		{path: malformed, reason: "decode kernel policy journal"},
+		{path: malformed, reason: "decode ownership journal"},
 	} {
 		invalidPath := filepath.Join(root, "invalid-kernel-config.toml")
 		invalid := strings.Replace(config, fmt.Sprintf("%q", filepath.Join(root, "kernel-policy.json")), fmt.Sprintf("%q", check.path), 1)
