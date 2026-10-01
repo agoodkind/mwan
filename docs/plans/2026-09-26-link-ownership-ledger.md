@@ -3849,6 +3849,17 @@ baseline deployment. It has no authorization for another mutation or repair.
 Root retains sole coordination plan and ledger ownership. The next runtime
 slice remains baseline acceptance before Webpass ownership activation.
 
+## Apply the clarified reorientation requirement
+
+The operator clarified that each slice and compaction requires practical
+reorientation. This replaces the exhaustive reread requirement above.
+Review the current plan, applicable specifications and tickets, relevant
+memory, and recent ledger entries. Read older decisions when needed.
+Do not block implementation on reading unrelated memory, the entire ledger,
+or collecting read counts and hashes. Strict delegation and operational
+acceptance requirements remain unchanged. The goal and 30-minute heartbeat
+use this clarified requirement.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.

@@ -32,29 +32,25 @@ ownership, prerequisite revisions, settled interfaces, constraints,
 verification, and report requirements. Assign coupled changes to one owner.
 Inspect reports and diffs before integration. Preserve concurrent edits.
 
-## Require complete execution checkpoints
+## Reorient before each slice
 
-Run this checkpoint immediately after every compaction, before every work
-slice, before every integration, and on every 30-minute heartbeat. Require
-every implementer to complete the same checkpoint before dependent work.
+Reorient immediately after every compaction, before each slice and
+integration, and on every 30-minute heartbeat. Require implementers to
+reorient before dependent work.
 
-1. Reread this entire coordination plan and all six linked slice plans.
-   Reread every applicable current epic specification.
-2. Read MWAN-305 and every current child ticket in full through Tack. Include
-   descriptions, acceptance criteria, dependencies, current states, and
-   relevant comments. Refresh the epic's child list at every checkpoint.
-   Keep the existing ticket identifiers in this plan and its slice plans.
-3. Reread the supplied memory summary and the complete memory registry at
-   [MEMORY.md](/Users/agoodkind/.codex/memories/MEMORY.md). Do not reopen a
-   memory summary file that the environment already supplied. Reread the
-   entire execution ledger linked above.
-4. Use bounded reads. Reread every truncated range. Summaries, metadata
-   queries, and search excerpts do not satisfy a complete reread.
-5. Record checkpoint time, hashes, actual line coverage, ticket states,
-   affected revisions, agent ownership, relevant live state, conflicts, and
-   selected slice in the ledger. Identify every incomplete read. Refresh
-   affected evidence when a source changes during the checkpoint. Do not
-   start dependent work or certify a checkpoint before its reads finish.
+1. Review this coordination plan, the current slice plan, applicable
+   specifications, and relevant tickets. Refresh states and dependencies
+   that determine the next operation.
+2. Review the supplied memory summary, relevant memory entries, and recent
+   ledger entries. Read older decisions when needed to resolve uncertainty.
+   Do not reread unrelated memory or the entire historical ledger.
+3. Confirm the approved scope, completed work, remaining acceptance,
+   deployed revisions, active operations, agent ownership, and recovery
+   procedure. Verify current evidence before a risky operation.
+4. Record the selected slice, prerequisites, evidence, and actual blockers
+   in the ledger. Preserve useful summaries and exact evidence references.
+   Do not require read counts, hashes, or exhaustive rereads as a condition
+   for continuing work.
 
 Keep the existing thread automation `mwan-305-execution-checkpoints` active
 every 30 minutes while the goal is active. Reuse that automation. Inspect
