@@ -78,6 +78,7 @@ const (
 	gateModeCheckOwned      deployGateMode = "check-owned-addresses"
 	gateModeCheckNetwork    deployGateMode = "check-network"
 	gateModeCheckNetworkd   deployGateMode = "check-networkd"
+	gateModeCheckRelease    deployGateMode = "check-release"
 	gateModeCheckFirewall   deployGateMode = "check-firewall"
 	gateModeInspectFirewall deployGateMode = "inspect-firewall"
 )
@@ -204,6 +205,8 @@ func runDeployGate(args []string) int {
 		return checkNetwork(deps, rest[0], rest[1])
 	case gateModeCheckNetworkd:
 		return runNetworkdCheck(rest)
+	case gateModeCheckRelease:
+		return runReleaseCheck()
 	case gateModeCheckFirewall:
 		return runFirewallCheck(rest)
 	case gateModeInspectFirewall:
@@ -470,6 +473,7 @@ func printDeployGateUsage() {
 			" | check-owned-addresses"+
 			" | check-network <network_json> <schema_dir>"+
 			" | check-networkd <network_json> <schema_dir> <unit_dir>"+
+			" | check-release <connection_id> <previous_owner> [--config <config_path>]"+
 			" | check-firewall <network_json> <schema_dir>"+
 			" | inspect-firewall <network_json> <schema_dir>"+
 			" | wait-reboot <vmid> <old_boot_id> <seconds>"+

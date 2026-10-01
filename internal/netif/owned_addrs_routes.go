@@ -3,7 +3,6 @@ package netif
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -112,31 +111,30 @@ func NewOwnedStaticReconciler(path string) (*OwnedStaticReconciler, error) {
 		return nil, fmt.Errorf("read boot ID: %w", err)
 	}
 	r := &OwnedStaticReconciler{mu: sync.Mutex{}, path: path, journal: ownedStaticJournal{BootID: string(bootID), Objects: nil, Promotion: nil}, clock: internalclock.Real{}}
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return r, nil
-	}
-	if err != nil {
+	if _, err := readOwnedJournal(path, &r.journal); err != nil {
 		slog.Warn("static ownership journal read failed", "path", path, "err", err)
 		return nil, fmt.Errorf("read static ownership journal: %w", err)
-	}
-	if err := json.Unmarshal(data, &r.journal); err != nil {
-		slog.Warn("static ownership journal decode failed", "path", path, "err", err)
-		return nil, fmt.Errorf("decode static ownership journal: %w", err)
 	}
 	if r.journal.BootID != string(bootID) {
 		r.journal = ownedStaticJournal{BootID: string(bootID), Objects: nil, Promotion: nil}
 	}
-	for _, value := range r.journal.Objects {
+	if err := validateScopedAddressRecords(r.journal.Objects); err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+func validateScopedAddressRecords(objects []ownedStaticObject) error {
+	for _, value := range objects {
 		if value.Scope == "" {
 			continue
 		}
 		prefix, err := netip.ParsePrefix(value.Prefix)
 		if value.Scope != nptEdgeScope || err != nil || value.Family != "ipv6" || !prefix.Addr().Is6() || prefix.Bits() != 128 || value.ConnectionID == "" || value.LinkName == "" || value.LinkIndex < 1 || value.LinkIdentity == "" || value.Gateway != "" || value.Destination != "" {
-			return nil, fmt.Errorf("invalid scoped address ownership record for %s", value.ConnectionID)
+			return fmt.Errorf("invalid scoped address ownership record for %s", value.ConnectionID)
 		}
 	}
-	return r, nil
+	return nil
 }
 
 func (r *OwnedStaticReconciler) save() error {
