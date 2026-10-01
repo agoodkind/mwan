@@ -235,18 +235,20 @@ func (m *Module) desiredRules(health netif.HealthStates) []steerRule {
 	eligibleV4 := make(map[uint32]bool, len(m.cfg.Members))
 	eligibleV6 := make(map[uint32]bool, len(m.cfg.Members))
 	for _, member := range m.cfg.Members {
-		if !config.ConnectionSelectionEnabled(member.SelectionEnabled) {
-			continue
-		}
+		selectionEnabled := config.ConnectionSelectionEnabled(member.SelectionEnabled)
 		routing := snapshot.Routing[member.Key()]
 		translation := snapshot.Translation[member.Key()]
 		if routing.V4Ready && translation.V4.Ready && netif.HealthIsHealthy(health.State(member.Key())) {
-			v4 = append(v4, member)
 			eligibleV4[member.Mark] = true
+			if selectionEnabled {
+				v4 = append(v4, member)
+			}
 		}
 		if routing.V6Ready && translation.V6.Ready && netif.HealthIsHealthy(health.State(member.Key())) {
-			v6 = append(v6, member)
 			eligibleV6[member.Mark] = true
+			if selectionEnabled {
+				v6 = append(v6, member)
+			}
 		}
 	}
 	assignV4, _ := balancerFor(v4, health)
