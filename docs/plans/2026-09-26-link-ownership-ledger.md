@@ -6237,6 +6237,26 @@ The current provider implementation is merged and released. Remaining
 epic implementation includes later interface transfers, retirement and
 deployment reboot detection. No current user decision is required.
 
+## Execute implementation and testbed correction concurrently
+
+The operator authorized separate code-completion and validation defect lanes.
+release_completion owns the bounded remaining-code audit in
+20261001-code-completion-lane. The audit must distinguish actual missing
+implementation from unfinished live transfers and retirement prerequisites.
+Root will assign exact source files after verifying the next settled slice.
+
+repeat_forward_review owns diagnosis of measured retry packet losses in
+20261001-validation-bug-lane. simulator_dns_review continues independent
+acceptance. Neither lane may mutate the live testbed. Root controls deployments
+and recovery, serializes shared file changes, and reviews implementation
+reports and diffs before integration. Production remains unchanged.
+
+Reverse retry 2458 exited zero. The actual recap reports 419 ok, 44 changed,
+zero failed, unreachable or rescued. Reboot, egress and mapped-address gates
+passed. Independent review still requires final identity, uncached postboot
+queries, closed downstream observations and terminal capture counters.
+Measured missing replies remain separate from passed deployment gates.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.

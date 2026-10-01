@@ -108,6 +108,18 @@ operator requires the testbed connection to remain managed.
 | Independent reviewer | Review contracts before implementation and inspect the resulting patch afterward. Reproduce the slice's failure cases and check shared consumers. | Return findings with evidence and a verdict tied to the reviewed commit. Report missing proof explicitly. |
 | Cutover agent | Inspect live ownership, execute the approved merged deployment, monitor downstream traffic, perform recovery, and record acceptance. | Return exact release and configuration revisions, commands, before/after owners, interruption, recovery, and packet results. |
 
+Run implementation and testbed defect correction concurrently. Give the
+implementation lane the remaining approved code slices. Verify missing code
+against current source; a Todo ticket or unfinished live transfer alone does
+not establish missing implementation. Prepare removals without activating
+them before retirement prerequisites pass.
+
+Give the validation lane measured testbed failures and their evidence.
+Diagnose each failure before assigning a focused fix. Use separate worktrees
+and exclusive file ownership. Serialize shared file changes and integration.
+Keep one controller for every live deployment, cutover and recovery operation.
+Record code completion separately from operational acceptance.
+
 Use the code-implementer role only after contract review has settled the
 behavior and interfaces. Do not assign open architecture questions,
 investigation, review, or live networking to that role. A contradiction in
