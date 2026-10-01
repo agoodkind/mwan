@@ -6703,6 +6703,28 @@ checks and is copying stack packages. Release installation and owner transfer
 remain unperformed. All four downstream streams returned replies at
 23:19:47 through 23:19:48 UTC.
 
+## Publish the production stack and correct its scoped CI failure
+
+Graphite dry-run selected only the two intended branches. Submission created
+Configs PR 617 for preparation and PR 618 for Webpass activation. Root wrote
+their scoped descriptions and verified their exact heads, bases and ready
+states. Native artifact attachment failed because the chat already has 100
+attachment identities. Preserve unrelated attachments.
+
+Independent source review passed for c79c7cd and 73d2136. The preparation PR
+passed all three required main checks. Activation data checks failed in three
+existing trusted inventory loaders because they reject the new YAML aliases.
+production_phase_split owns only spec/ansible/mwan_install_spec.rb for the
+focused alias-loading correction and existing checks. Root retains publication
+and integration. Optional PR-Agent review stopped at provider quota exhaustion
+with zero findings; this is incomplete review, not a source defect or a main
+merge requirement. Both PRs have no unresolved review threads.
+
+MWAN-520 remains In Progress. Root added the two-deployment preparation
+requirement to its description and refreshed the current cutover checkpoint
+on MWAN-398. No production operation or main merge has occurred. Deployment
+48179 is capturing prior role inputs after passing transfer preparation checks.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
