@@ -3549,6 +3549,22 @@ exact mapping receipts, and selected-provider packets before restoring
 selection. Existing shared guests remain unchanged. No gateway or production
 deployment ran.
 
+### Merge the bounded journal-observation correction
+
+PR #151 merged as cc928cfeceb74b493271627d5787c21697d05158 at 03:28:59Z.
+All ten required CI checks passed, the sole rewritten feature commit's
+signature and raw header verified, and the disputed review thread was
+resolved with the exact fixture policy and actual pass evidence. Primary
+MWAN advanced from its clean owning checkout to the merged revision.
+The bounded cleanup is assigned to the original implementation agent.
+
+The legacy mapped receipt repair remains under implementation. It uses
+the existing address-module reconciler and preserves networkd ordinary
+acquisition. The Configs procedure must verify actual selected-provider
+acquisition with a real permanent-MAC NIC before selection restoration.
+Published aggregate, shared baseline deployment, complete transfer/reversal,
+and production acceptance remain pending. MWAN-305 remains active.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
