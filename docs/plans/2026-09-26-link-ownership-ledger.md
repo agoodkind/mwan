@@ -6012,6 +6012,45 @@ unpublished until prefix restoration passes. Continuation observer configs
 are prepared with unique control paths; neither new observer has started.
 Production remains unchanged.
 
+## Accept the changed prefix and begin restoration
+
+Simulator deployment 22667 exited zero with recap 257 ok, 70 changed,
+zero unreachable, failed and rescued. Independent closed observation
+from 17:54:19 through 18:15:30 records one IPv6 miss per guest.
+Reply gaps are 2.049473 seconds for guest 225 and 2.040487 for guest 226.
+IPv4 has no missing sequences; all 4,154 route queries succeed.
+Both families briefly select backup and then primary during renumbering.
+The failed IPv6 requests enter transit without matching provider replies.
+
+Independent acquisition, kernel and packet review verifies actual 2500::/60,
+zero-lifetime old delegation withdrawal, new edge and source rule, old
+edge/source/NPT removal and translated request/reply pairs for both guests.
+The actual checksum-adjusted sources are 2501:dd0f::225 and ::226.
+Numeric capture indices 3 and 4 map to enmwanbr0 and enwebpass0.
+Local macOS decoder labels are not gateway interface names. Focused capture
+51993 exited zero with 15,852 packets and zero kernel drops; PID 1769
+is absent. Binary, network, boot, WAN PID 949, identities and DNS are
+unchanged. Evidence is 20261001-mwan227-live-renumber-review/report.md.
+
+Continuation observers 2638 and 71854 began around 18:15 UTC. Both
+families have fresh replies and successful route queries before old
+observers stopped. Root intentionally interrupted Python processes 74833
+and 74872 after exact command verification. Old handles 97200 and 98250
+exited 130 and saved their terminal reports. The brief overlap preserves
+observed continuity. Current directories are prefix-continuation-client225
+and prefix-continuation-client226 under 20261001-real-cutover.
+
+Restoration PR613 merged as d6a89dd5f4c4486ff339874405e09c2ed00dff66
+after current required checks, signatures and thread gates passed. Owning
+main is clean and advanced. Restore deployment 66439 began at 18:18:21
+UTC through the same supported simulator command. Capture 21967 uses
+mwan305-restoration-focused-20261001-1819.service. Tcpdump PID 2251
+executable identity and focused listening readiness passed. Evidence is
+20261001-mwan227-restoration-focused-capture. Independent restoration
+review is assigned; actual restored lease and packet acceptance are pending.
+MWAN-227 remains In Progress. DNS reverse and production drafts are being
+reconciled without publication or live activation. Production is unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
