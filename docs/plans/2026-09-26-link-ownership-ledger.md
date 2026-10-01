@@ -3361,6 +3361,36 @@ does not verify product hashes or execute the acceptance engine. All-five
 simulator provisioning and unchanged-play idempotency remain incomplete.
 No gateway upgrade, ownership transfer, or production deployment ran.
 
+### Merge release verification and apply the Astound memory correction
+
+MWAN PR #148 merged as 9577cbb99153c5061a82a0bd0e2902536c018838.
+All ten required checks passed. All three feature commits passed signature
+and raw-header verification, and all six review threads were resolved.
+Independent review accepted the runtime changes at f4d77cb; the final
+dff38a4 change corrected only a comment. Six real systemd cases passed with
+zero skips. The CI firewall job was cancelled after merge and does not
+establish full CI firewall acceptance. The advisory Govulncheck failure
+reports the existing unchanged GoBGP vulnerability GO-2026-4736.
+The release feature branch and worktree are removed; primary main matches
+the merged revision. Shared release installation remains pending.
+
+Configs PR #592 merged as cec8de0d9981b877582852e115535e3798b8aa33.
+Its signed feature commit, all three required checks, and thread resolution
+passed. The saved plan changed only CT 903's memory from 128 to 256 MiB.
+OpenTofu applied one in-place update with zero additions or deletions.
+A fresh scoped plan returned zero with no changes. Actual pct configuration
+reports memory 256; package audit remains clean. The
+[resource implementation report](/Users/agoodkind/.local/state/mwan305/20261001-npt-deploy-acceptance/ct903-memory-implementation.md)
+records the source mapping and local validation.
+
+The management play has resumed from clean merged Configs with both
+downstream guest observers started before the play. Provisioning and the
+observers remain active; their eventual terminal results must establish
+completion separately. The renderer PR #593 is open and passed its real
+omitted/true/false rendering and Linux loader regression. PR #147 selection
+exclusion remains open while its final schema prose revision completes CI.
+Ownership transfer and production promotion remain incomplete.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
