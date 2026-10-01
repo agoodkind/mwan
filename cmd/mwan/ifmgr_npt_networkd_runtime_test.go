@@ -244,7 +244,7 @@ func checkNetworkdNPTEdgeService(t *testing.T, gateway, downstream netns.NsHandl
 	assertRuntimeNPTEdges(t, filepath.Join(root, "addresses.json"), "2001:db8:30::1/128", "2001:db8:53::1/128")
 	waitRuntimeAttachedEdge(t, "enmwanbr0", "2001:db8:30::1")
 	waitRuntimeAttachedEdge(t, "enservice0", "2001:db8:53::1")
-	waitNPTServiceForwarding(t, 500, nil)
+	waitNPTServiceForwarding(t, 500, nil, "")
 	assertNPTServiceReply(t, gateway, provider.namespace, downstream)
 	checkRenderedNPTStaticContinuity(t, gateway, provider.namespace, downstream, networkDir, root)
 	previousPrograms := nptServicePrograms(t)
@@ -255,11 +255,11 @@ func checkNetworkdNPTEdgeService(t *testing.T, gateway, downstream netns.NsHandl
 	writeNPTServiceProvider(t, networkDir, true)
 	startOrderedDaemon(t, "start")
 	waitNPTServiceAddress(t, "enwebpass0", "2001:db8:30::1/128", false)
-	assertRuntimeNPTEdges(t, filepath.Join(root, "addresses.json"), "2001:db8:53::1/128")
 	waitNPTServiceAddress(t, "enservice0", "2001:db8:53::1/128", true)
-	assertMappedRuntimeRuleAbsent(t, "ip6", "nat", "2001:db8:30::1")
 	waitRuntimeAttachedEdge(t, "enservice0", "2001:db8:53::1")
-	waitNPTServiceForwarding(t, 501, previousPrograms)
+	waitNPTServiceForwarding(t, 501, previousPrograms, filepath.Join(root, "addresses.json"))
+	assertRuntimeNPTEdges(t, filepath.Join(root, "addresses.json"), "2001:db8:53::1/128")
+	assertMappedRuntimeRuleAbsent(t, "ip6", "nat", "2001:db8:30::1")
 	assertNPTServiceReply(t, gateway, provider.namespace, downstream)
 }
 
@@ -291,7 +291,35 @@ func nptServicePrograms(t *testing.T) map[string][2]int {
 	return programs
 }
 
-func waitNPTServiceForwarding(t *testing.T, metric int, previous map[string][2]int) {
+func nptServiceReceiptReady(t *testing.T, path string) bool {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var journal struct {
+		Objects []struct {
+			Scope  string `json:"scope"`
+			Prefix string `json:"prefix"`
+		} `json:"objects"`
+	}
+	if err := json.Unmarshal(data, &journal); err != nil {
+		t.Fatal(err)
+	}
+	edges := 0
+	for _, record := range journal.Objects {
+		if record.Scope != "npt-edge" {
+			continue
+		}
+		if record.Prefix != "2001:db8:53::1/128" {
+			return false
+		}
+		edges++
+	}
+	return edges == 1
+}
+
+func waitNPTServiceForwarding(t *testing.T, metric int, previous map[string][2]int, receiptPath string) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
@@ -332,7 +360,8 @@ func waitNPTServiceForwarding(t *testing.T, metric int, previous map[string][2]i
 				markReady = markReady || rule.Priority == 530 && rule.Table == 530 && rule.Mark == 5
 				sourceReady = sourceReady || rule.Priority == 60 && rule.Table == 530 && rule.Src != nil && rule.Src.String() == "2001:db8:53::/60"
 			}
-			if mainReady && policyReady && markReady && sourceReady {
+			if mainReady && policyReady && markReady && sourceReady &&
+				(receiptPath == "" || nptServiceReceiptReady(t, receiptPath)) {
 				t.Logf("service forwarding verified: metric=%d previous programs=%v current programs=%v", metric, previous, programs)
 				return
 			}
@@ -411,7 +440,7 @@ func checkRenderedNPTStaticContinuity(t *testing.T, gateway, upstream, downstrea
 	startOrderedDaemon(t, "restart")
 	waitNPTServiceAddress(t, "enservice0", "2001:db8:53::1/128", true)
 	waitRuntimeAttachedEdge(t, "enservice0", "2001:db8:53::1")
-	waitNPTServiceForwarding(t, 501, previousPrograms)
+	waitNPTServiceForwarding(t, 501, previousPrograms, "")
 	assertNPTServiceReply(t, gateway, upstream, downstream)
 	after := runtimeScopedNPTReceipt(t, filepath.Join(root, "addresses.json"), "2001:db8:53::1/128")
 	if !reflect.DeepEqual(before, after) {
