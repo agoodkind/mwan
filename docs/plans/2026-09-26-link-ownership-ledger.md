@@ -5384,6 +5384,27 @@ mapping, persisted failure-history, and controlled restart results remain
 pending. Root alone owns the approved fault and restart after the history
 observation phase begins. Production remains unchanged.
 
+## Repair the mapping acceptance contract after passed balancing
+
+Full acceptance handle 5900 completed with status 1. The real downstream
+cohorts passed calibrated balancing in both families: IPv4 counted Webpass
+27 and AT&T 13; IPv6 counted Webpass 21 and AT&T 19. Each family accepted
+40 requests. Mapping verification then raised key not found: static-mapping.
+Observer cleanup reported no errors. This parser exception does not establish
+a product mapping failure. Mapping, failure-history, and controlled restart
+acceptance did not complete, and root injected no route fault during this run.
+
+The isolated Configs implementer owns the existing mapping acceptance parser
+repair and any minimal required public contract regression. Preserve packet
+assertions and actual product mappings. Root will inspect the exact diff,
+required checks and review before merge, then rerun the existing acceptance
+path from merged source. The production observation reviewer independently
+prepares actual downstream identities and phase packet commands without
+production probes or mutation. The acquired DNS implementer owns its coupled
+source changes on codex/mwan-519-acquired-dns in the existing isolated MWAN
+worktree. Root owns live mutation, ledger and ticket state. Both tickets remain
+InProgress, and production remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
