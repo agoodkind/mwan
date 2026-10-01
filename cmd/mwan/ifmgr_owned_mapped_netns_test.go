@@ -77,7 +77,7 @@ func runOwnedMappedDaemonRuntime(t *testing.T) {
 	defer management.namespace.Close()
 	lan := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29", "2001:db8:b01:fe::3/64"}, []string{"192.0.2.3/29", "192.0.2.4/29", "2001:db8:b01:fe::2/64"}, "")
 	defer lan.namespace.Close()
-	legacy := newRuntimePeer(t, gateway, "enwebpass0", "legacy-peer", []string{"fd20::1/64"}, []string{"fd20::2/64"}, legacyRuntimeMAC)
+	legacy := newRuntimePeer(t, gateway, "enwebpass0", "legacy-peer", []string{"10.20.0.1/24", "fd20::1/64"}, []string{"10.20.0.2/24", "fd20::2/64"}, legacyRuntimeMAC)
 	defer legacy.namespace.Close()
 	setRuntimeNamespace(t, legacy.namespace)
 	addMappedRuntimeRoute(t, "2001:db8:beef:200::/60", "fd20::1", "legacy-peer")
@@ -137,7 +137,43 @@ func runOwnedMappedDaemonRuntime(t *testing.T) {
 	assertMappedRuntimeReply(t, first, gateway, parentPeer.namespace, lan.namespace, "udp6", "[2001:db8:beef:300::1]:39806", "[2001:db8:b01:fe::2]:39806")
 	assertMappedRuntimeReply(t, first, gateway, legacy.namespace, lan.namespace, "udp6", "[2001:db8:beef:200::1]:20006", "[2001:db8:b01:fe::2]:20006")
 	assertRuntimeTranslationSettled(t, first)
+	for _, prefix := range []string{"10.20.0.3/32", "10.20.0.4/32", "10.20.0.5/32"} {
+		waitStaticRuntimeAddress(t, first, "enwebpass0", prefix, false)
+	}
 	killOwnedRuntimeDaemon(t, first)
+	setReleaseOwner(t, networkDir, "webpass", "networkd")
+	setReleaseConnectionField(t, networkDir, "webpass", "goodkind-mwan-steering:link-files", json.RawMessage(`"hand-authored"`))
+	setReleaseConnectionField(t, networkDir, "webpass", "ietf-ip:ipv4", json.RawMessage(`{"goodkind-mwan-steering:translation":{"mode":"ietf-nat:napt44","static-mapping":[{"external":"10.20.0.3","internal":"192.0.2.3"},{"external":"10.20.0.4","internal":"192.0.2.4","delivery":"local"},{"external":"10.20.0.5","internal":"192.0.2.4","delivery":"routed"}]}}`))
+	setReleaseConnectionField(t, networkDir, "webpass", "ietf-ip:ipv6", json.RawMessage(`{"goodkind-mwan-steering:translation":{"mode":"ietf-nat:nptv6","nptv6":{"internal-prefix":"2001:db8:b01::/60","external-source":"configured","external-prefix":"2001:db8:beef:200::/60"}}}`))
+	legacyMappings := startRuntimeDaemon(t, os.Getenv(mappedRuntimeBinaryEnv), configPath, root, "mapped-networkd")
+	defer killOwnedRuntimeDaemon(t, legacyMappings)
+	defer func() {
+		if t.Failed() {
+			t.Logf("complete mapped-networkd daemon log: %s", runtimeDaemonLog(t, legacyMappings))
+		}
+	}()
+	for _, prefix := range []string{"10.20.0.3/32", "10.20.0.4/32"} {
+		waitStaticRuntimeAddress(t, legacyMappings, "enwebpass0", prefix, true)
+	}
+	waitStaticRuntimeAddress(t, legacyMappings, "enwebpass0", "10.20.0.5/32", false)
+	waitMappedRuntimeRule(t, legacyMappings, "ip", "nat", "10.20.0.3", 10*time.Second)
+	waitMappedRuntimeForwarding(t, legacyMappings, 10*time.Second)
+	assertRuntimeTranslationSettled(t, legacyMappings)
+	assertMappedRuntimeReply(t, legacyMappings, gateway, legacy.namespace, lan.namespace, "udp6", "[2001:db8:beef:200::1]:20006", "[2001:db8:b01:fe::2]:20006")
+	killOwnedRuntimeDaemon(t, legacyMappings)
+	legacyLink, err := netlink.LinkByName("enwebpass0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, prefix := range []string{"10.20.0.3/32", "10.20.0.4/32"} {
+		address, err := netlink.ParseAddr(prefix)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := netlink.AddrDel(legacyLink, address); err != nil {
+			t.Fatal(err)
+		}
+	}
 	link, err := netlink.LinkByName("owned397")
 	if err != nil {
 		t.Fatal(err)
@@ -173,6 +209,9 @@ func runOwnedMappedDaemonRuntime(t *testing.T) {
 	assertMappedRuntimeRuleAbsent(t, "ip6", "nat", "2001:db8:beef:300::1")
 	assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"), "2001:db8:beef:200::1/128", "2001:db8:beef:400::1/128")
 	assertMappedRuntimeReply(t, second, gateway, legacy.namespace, lan.namespace, "udp6", "[2001:db8:beef:200::1]:20006", "[2001:db8:b01:fe::2]:20006")
+	for _, prefix := range []string{"10.20.0.3/32", "10.20.0.4/32", "10.20.0.5/32"} {
+		waitStaticRuntimeAddress(t, second, "enwebpass0", prefix, false)
+	}
 	recreated, err := netlink.LinkByName("enwebpass0")
 	if err != nil {
 		t.Fatal(err)
@@ -253,7 +292,7 @@ func runOwnedMappedDaemonRuntime(t *testing.T) {
 	waitMappedRuntimeRule(t, legacyRestart, "ip6", "nat", "2001:db8:beef:200::1", 10*time.Second)
 	assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"), "2001:db8:beef:200::1/128")
 	killOwnedRuntimeDaemon(t, legacyRestart)
-	legacyLink, err := netlink.LinkByName("enwebpass0")
+	legacyLink, err = netlink.LinkByName("enwebpass0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -483,9 +522,11 @@ func writeMappedRuntimeProvider(t *testing.T, directory, externalV4, externalV6 
 	}
 	for _, entry := range entries {
 		if string(entry["name"]) == `"enwebpass0"` {
+			entry["goodkind-mwan-steering:connection-id"] = json.RawMessage(`"webpass"`)
 			delete(entry, "goodkind-mwan-steering:link-files")
 			entry["goodkind-mwan-steering:owner"] = json.RawMessage(`"external"`)
 			delete(entry, "goodkind-mwan-steering:link")
+			entry["ietf-ip:ipv4"] = json.RawMessage(`{"address":[{"ip":"10.20.0.1","prefix-length":24}],"goodkind-mwan-steering:gateway":"10.20.0.2","goodkind-mwan-steering:translation":{"mode":"ietf-nat:napt44","static-mapping":[{"external":"10.20.0.3","internal":"192.0.2.3"},{"external":"10.20.0.4","internal":"192.0.2.4","delivery":"local"},{"external":"10.20.0.5","internal":"192.0.2.4","delivery":"routed"}]}}`)
 			entry["goodkind-mwan-steering:wan"] = json.RawMessage(`{"name":"webpass","table-id":200,"fw-mark":2,"fw-mark-prio":200,"from-prio":56,"health":{"enabled":false}}`)
 			entry["goodkind-mwan-steering:steering"] = json.RawMessage(`{"tier":1,"weight":1}`)
 			continue

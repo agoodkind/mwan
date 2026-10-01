@@ -305,36 +305,6 @@ func (m *Module) publishLiveState(currentGateways gateways, health netif.HealthS
 	m.Env.LiveState.SetRouting(activeTier, members)
 }
 
-// ownMappedAddressesLocked reads verified mapped addresses for owned providers
-// and installs on-link mappings for legacy providers. It records successful
-// addresses for the served tree. Callers hold the module lock.
-func (m *Module) ownMappedAddressesLocked(ctx context.Context, log *slog.Logger) error {
-	owned := make(map[string][]netip.Addr, len(m.cfg.WANs))
-	var ownershipErr error
-	for _, wan := range m.cfg.WANs {
-		if wan.Owned {
-			for _, address := range append(slices.Clone(wan.MappedExternals), wan.LocalMappedExternals...) {
-				prefix := netip.PrefixFrom(address, hostPrefixBitsV4).String()
-				if m.Env != nil && m.Env.OwnedAddresses != nil && m.Env.OwnedAddresses.Has(wan.Key(), prefix) {
-					owned[wan.Key()] = append(owned[wan.Key()], address)
-				}
-			}
-			continue
-		}
-		if len(wan.MappedExternals) == 0 && len(wan.LocalMappedExternals) == 0 {
-			continue
-		}
-		addresses, err := m.ownLinkAddresses(ctx, log, wan)
-		if err != nil {
-			ownershipErr = errors.Join(ownershipErr, err)
-			continue
-		}
-		owned[wan.Key()] = addresses
-	}
-	m.ownedAddresses = owned
-	return ownershipErr
-}
-
 // ownLinkAddresses reads one provider link's addresses, decides which mapped
 // addresses the link must hold, and adds each as a /32.
 func (m *Module) ownLinkAddresses(ctx context.Context, log *slog.Logger, wan WAN) ([]netip.Addr, error) {
