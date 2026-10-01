@@ -123,8 +123,6 @@ func newNamespaceModule(t *testing.T, store *wanstate.Store) *Module {
 	module := &Module{cfg: cfg}
 	module.InitBase(testEnvWithStore(store), "module", moduleName)
 	module.resolveNextHop = netif.NextHopResolves
-	module.listAddrs = netif.ListAddrs
-	module.reconcileAddrs = netif.ReconcileAddrs
 	return module
 }
 

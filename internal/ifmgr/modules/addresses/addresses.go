@@ -1,4 +1,4 @@
-// Package addresses reconciles configured and acquired addresses on MWAN links.
+// Package addresses reconciles MWAN acquisition and journaled WAN translation aliases.
 package addresses
 
 import (
@@ -27,16 +27,17 @@ import (
 
 const moduleName = "addresses"
 
-// Config supplies owned family intent, translation settings, and the journal path.
+// Config supplies family intent, translations, the observation deadline, and the journal path.
 type Config struct {
-	Connections    []interfaceintent.Connection
-	Providers      map[string]Provider
-	ClientIDs      map[string][]byte
-	StateFile      string
-	LeaseDirectory string
+	Connections     []interfaceintent.Connection
+	Providers       map[string]Provider
+	ClientIDs       map[string][]byte
+	StateFile       string
+	LeaseDirectory  string
+	NetworkdTimeout time.Duration
 }
 
-// Provider supplies translation addresses for an exclusively owned connection.
+// Provider supplies translation addresses for a WAN connection.
 type Provider struct {
 	IPv4 *config.IPv4Translation
 	IPv6 *config.IPv6Translation
@@ -48,17 +49,18 @@ func (Config) ModuleConfigName() string { return moduleName }
 // Module applies configured and acquired family intent after links are ready.
 type Module struct {
 	ifmgr.BaseModule
-	connections    []interfaceintent.Connection
-	providers      map[string]Provider
-	clientIDs      map[string][]byte
-	reconciler     *netif.OwnedStaticReconciler
-	leaseStore     *netif.LeaseRecoveryStore
-	clock          clock.Clock
-	reconcileMu    sync.Mutex
-	sessionMu      sync.Mutex
-	sessions       map[string]*dhcpSession
-	dhcpv6Sessions map[string]*dhcpv6Session
-	nextGeneration uint64
+	connections     []interfaceintent.Connection
+	providers       map[string]Provider
+	clientIDs       map[string][]byte
+	reconciler      *netif.OwnedStaticReconciler
+	leaseStore      *netif.LeaseRecoveryStore
+	clock           clock.Clock
+	networkdTimeout time.Duration
+	reconcileMu     sync.Mutex
+	sessionMu       sync.Mutex
+	sessions        map[string]*dhcpSession
+	dhcpv6Sessions  map[string]*dhcpv6Session
+	nextGeneration  uint64
 }
 
 type dhcpSession struct {
@@ -91,7 +93,7 @@ type dhcpv6Session struct {
 func New(moduleConfig ifmgr.ModuleConfig) (ifmgr.Module, error) {
 	module := &Module{
 		BaseModule: ifmgr.NewBaseModule(moduleName), connections: nil, providers: nil,
-		clientIDs: nil, reconciler: nil, leaseStore: nil, clock: clock.Real{}, reconcileMu: sync.Mutex{},
+		clientIDs: nil, reconciler: nil, leaseStore: nil, clock: clock.Real{}, networkdTimeout: 0, reconcileMu: sync.Mutex{},
 		sessionMu: sync.Mutex{}, sessions: make(map[string]*dhcpSession),
 		dhcpv6Sessions: make(map[string]*dhcpv6Session), nextGeneration: 0,
 	}
@@ -105,6 +107,7 @@ func New(moduleConfig ifmgr.ModuleConfig) (ifmgr.Module, error) {
 	module.connections = settings.Connections
 	module.providers = settings.Providers
 	module.clientIDs = settings.ClientIDs
+	module.networkdTimeout = settings.NetworkdTimeout
 	if settings.LeaseDirectory != "" {
 		store, err := netif.NewLeaseRecoveryStore(filepath.Join(settings.LeaseDirectory, "wan"))
 		if err != nil {
@@ -122,6 +125,9 @@ func New(moduleConfig ifmgr.ModuleConfig) (ifmgr.Module, error) {
 	}
 	if settings.StateFile == "" {
 		for _, connection := range settings.Connections {
+			if networkdMappingProvider(connection, settings.Providers) != nil {
+				return nil, fmt.Errorf("addresses: state_file is required for networkd mapped addresses")
+			}
 			if connection.Owner == interfaceintent.OwnerMWAN && (connection.IPv4 != nil || connection.IPv6 != nil) {
 				return nil, fmt.Errorf("addresses: state_file is required for owned address families")
 			}
@@ -179,13 +185,22 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	defer module.reconcileMu.Unlock()
 	module.Env.OwnedAddresses.Replace()
 	desiredFamilies := make(map[string]map[string]bool)
+	var mappingErr error
 	for _, connection := range module.connections {
+		if connection.Owner == interfaceintent.OwnerNetworkd {
+			provider := module.providers[connection.ID.String()]
+			if provider.IPv4 != nil && len(provider.IPv4.StaticMappings) != 0 {
+				desiredFamilies[connection.ID.String()] = map[string]bool{"ipv4": true}
+				mappingErr = errors.Join(mappingErr, module.reconcileLegacyMappings(ctx, log, connection, provider.IPv4))
+			}
+			continue
+		}
 		if connection.Owner != interfaceintent.OwnerMWAN {
 			continue
 		}
 		desiredFamilies[connection.ID.String()] = module.reconcileConnection(ctx, log, connection)
 	}
-	err := module.reconciler.PruneRemoved(desiredFamilies)
+	err := errors.Join(mappingErr, module.reconciler.PruneRemoved(desiredFamilies))
 	var pending []wanstate.PendingRemoval
 	if err != nil {
 		var failure *netif.OwnedStaticPruneError
@@ -202,8 +217,8 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		module.Env.LiveState.ReplacePendingRemovals(pending)
 	}
 	if err != nil {
-		log.WarnContext(ctx, "addresses: prune removed families failed", "err", err)
-		return fmt.Errorf("addresses: prune removed families: %w", err)
+		log.WarnContext(ctx, "addresses: reconciliation failed", "err", err)
+		return fmt.Errorf("addresses: reconciliation: %w", err)
 	}
 	return nil
 }

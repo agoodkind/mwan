@@ -120,15 +120,7 @@ type Module struct {
 	// nextHopAlertThreshold so one in-flight NDP resolution never alerts.
 	nextHopMisses int
 
-	// listAddrs and reconcileAddrs read and add provider link addresses.
-	// Injectable for tests; Init fills them with the netif implementations.
-	listAddrs      func(ctx context.Context, log *slog.Logger, iface string) ([]netif.CurrentAddr, error)
-	reconcileAddrs func(ctx context.Context, log *slog.Logger, iface string, desired []netif.AddrSpec) error
-
-	// ownedAddresses holds, per provider, the mapped addresses the last
-	// reconcile held on the provider's link. Guarded by the embedded mutex and
-	// replaced whole each pass, so a published snapshot never shares a slice a
-	// later pass writes.
+	// The mutex protects the verified mapping snapshot published by addresses.
 	ownedAddresses map[string][]netip.Addr
 }
 
@@ -160,13 +152,6 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	if m.resolveNextHop == nil {
 		m.resolveNextHop = netif.NextHopResolves
 	}
-	if m.listAddrs == nil {
-		m.listAddrs = netif.ListAddrs
-	}
-	if m.reconcileAddrs == nil {
-		m.reconcileAddrs = netif.ReconcileAddrs
-	}
-
 	if err := netif.StartRuleMonitor(ctx, log, func(event netif.RuleEvent) {
 		m.onRuleEvent(ctx, log, event)
 	}); err != nil {
@@ -184,10 +169,7 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	log = log.With("op", "reconcile")
 	log.DebugContext(ctx, "wan.routes: Reconcile entry")
 
-	// Ownership reads only each link's own addresses, so it runs before the
-	// gateway and health reads that can end the pass early: a provider whose
-	// default route is missing still answers for its on-link addresses.
-	ownershipErr := m.ownMappedAddressesLocked(ctx, log)
+	m.ownMappedAddressesLocked()
 
 	// A missing link does not end the pass, because the other providers must
 	// keep their rules while one card is detached. Any other gateway read
@@ -196,7 +178,7 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	discovery, err := m.discoverGateways(ctx, log)
 	if err != nil {
 		log.WarnContext(ctx, "wan.routes: discoverGateways failed", "err", err)
-		return errors.Join(ownershipErr, discovery.missingLinks, err)
+		return errors.Join(discovery.missingLinks, err)
 	}
 	currentGateways := discovery.gateways
 	m.excludeUnreadyOwnedFamilies(currentGateways)
@@ -204,7 +186,6 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		log.WarnContext(ctx, "wan.routes: ReadHealthState failed", "err", err)
 		return errors.Join(
-			ownershipErr,
 			discovery.missingLinks,
 			fmt.Errorf("read health state %q: %w", m.cfg.HealthStateFile, err),
 		)
@@ -212,7 +193,7 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	translations := m.translationState()
 	_, routes := desiredState(currentGateways, health, m.cfg, translations)
 
-	reconcileErr := errors.Join(ownershipErr, discovery.missingLinks)
+	reconcileErr := discovery.missingLinks
 	for _, route := range routes {
 		if route.Dest == "default" {
 			if err := reconcileTableDefault(ctx, log, route); err != nil {
@@ -303,85 +284,6 @@ func (m *Module) publishLiveState(currentGateways gateways, health netif.HealthS
 		}
 	}
 	m.Env.LiveState.SetRouting(activeTier, members)
-}
-
-// ownLinkAddresses reads one provider link's addresses, decides which mapped
-// addresses the link must hold, and adds each as a /32.
-func (m *Module) ownLinkAddresses(ctx context.Context, log *slog.Logger, wan WAN) ([]netip.Addr, error) {
-	held, err := m.listAddrs(ctx, log, wan.Iface)
-	if err != nil {
-		log.WarnContext(ctx, "wan.routes: list link addresses failed",
-			"wan", wan.Key(), "iface", wan.Iface, "err", err)
-		return nil, fmt.Errorf("list addresses on %s: %w", wan.Iface, err)
-	}
-	onLink, err := OnLinkMappedAddresses(held, wan.MappedExternals)
-	if err != nil {
-		log.WarnContext(ctx, "wan.routes: link addresses unreadable",
-			"wan", wan.Key(), "iface", wan.Iface, "err", err)
-		return nil, fmt.Errorf("read addresses on %s: %w", wan.Iface, err)
-	}
-	for _, address := range wan.LocalMappedExternals {
-		if slices.Contains(onLink, address) || linkAddressAlreadyHeld(held, address) {
-			continue
-		}
-		onLink = append(onLink, address)
-	}
-	if len(onLink) == 0 {
-		return nil, nil
-	}
-	desired := make([]netif.AddrSpec, 0, len(onLink))
-	for _, address := range onLink {
-		desired = append(desired, netif.AddrSpec{
-			CIDR:   netip.PrefixFrom(address, hostPrefixBitsV4).String(),
-			Family: familyV4,
-		})
-	}
-	if err := m.reconcileAddrs(ctx, log, wan.Iface, desired); err != nil {
-		log.WarnContext(ctx, "wan.routes: hold mapped addresses failed",
-			"wan", wan.Key(), "iface", wan.Iface, "err", err)
-		return nil, fmt.Errorf("hold mapped addresses on %s: %w", wan.Iface, err)
-	}
-	return onLink, nil
-}
-
-// OnLinkMappedAddresses returns the mapped addresses a link must hold as host
-// addresses: each one inside an IPv4 subnet the link is connected to, except an
-// address the link already holds with a shorter prefix. That exception compares
-// addresses rather than CIDR strings, because the netif write replaces an
-// address it is asked for at a different prefix length, and asking for the
-// link's own address at /32 would drop the link's connected route. A /32 the
-// link holds is not a connected subnet, so a mapped address this function
-// returned on an earlier pass is returned again. Held entries are the netif
-// CIDR strings; one that does not parse is an error rather than a skip, because
-// a skipped subnet would silently stop ownership on that link.
-func OnLinkMappedAddresses(held []netif.CurrentAddr, mapped []netip.Addr) ([]netip.Addr, error) {
-	subnets := make([]netip.Prefix, 0, len(held))
-	linkAddresses := make(map[netip.Addr]bool, len(held))
-	for _, current := range held {
-		if current.Family != familyV4 {
-			continue
-		}
-		prefix, err := netip.ParsePrefix(current.CIDR)
-		if err != nil {
-			slog.Warn("wan.routes: link address unparsable", "cidr", current.CIDR, "err", err)
-			return nil, fmt.Errorf("parse link address %q: %w", current.CIDR, err)
-		}
-		if prefix.Bits() >= hostPrefixBitsV4 {
-			continue
-		}
-		subnets = append(subnets, prefix.Masked())
-		linkAddresses[prefix.Addr()] = true
-	}
-	onLink := make([]netip.Addr, 0, len(mapped))
-	for _, address := range mapped {
-		if linkAddresses[address] {
-			continue
-		}
-		if slices.ContainsFunc(subnets, func(subnet netip.Prefix) bool { return subnet.Contains(address) }) {
-			onLink = append(onLink, address)
-		}
-	}
-	return onLink, nil
 }
 
 // checkNextHopLocked probes the internal next hop's neighbour entry and
@@ -954,14 +856,10 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		c.HealthStateFile = netif.DefaultHealthStatePath
 	}
 	return &Module{
-		BaseModule: ifmgr.NewBaseModule(moduleName),
-		cfg:        c,
-		// Init fills the three seams with the netif implementations; the
-		// counter starts at zero misses, and no pass has owned an address yet.
+		BaseModule:     ifmgr.NewBaseModule(moduleName),
+		cfg:            c,
 		resolveNextHop: nil,
 		nextHopMisses:  0,
-		listAddrs:      nil,
-		reconcileAddrs: nil,
 		ownedAddresses: nil,
 	}, nil
 }

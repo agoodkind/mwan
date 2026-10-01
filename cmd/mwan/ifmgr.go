@@ -35,7 +35,7 @@ import (
 
 	// Side-effect imports: each module package's init() registers itself
 	// with the ifmgr registry. Roles are resolved by name in roles.go.
-	_ "goodkind.io/mwan/internal/ifmgr/modules/addresses"
+	"goodkind.io/mwan/internal/ifmgr/modules/addresses"
 	_ "goodkind.io/mwan/internal/ifmgr/modules/autoconfiguration"
 	_ "goodkind.io/mwan/internal/ifmgr/modules/bridgeprobe"
 	_ "goodkind.io/mwan/internal/ifmgr/modules/cloudflaredtap"
@@ -300,6 +300,10 @@ func buildIfMgrDaemonConfig(cfg *config.Config, role string) (ifmgr.DaemonConfig
 	if err != nil {
 		logger.Warn("ifmgr: build module configs failed", "role", role, "err", err)
 		return ifmgr.DaemonConfig{}, err
+	}
+	if settings, found := moduleConfigs["addresses"].(addresses.Config); found {
+		settings.NetworkdTimeout = time.Duration(cfg.Watchdog.ConnectivityTimeoutSeconds) * time.Second
+		moduleConfigs["addresses"] = settings
 	}
 
 	// The repeat cadence is consumed directly by notify.FromConfig from

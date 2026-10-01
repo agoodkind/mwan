@@ -1,11 +1,5 @@
 package wanroutes
 
-import (
-	"net/netip"
-
-	"goodkind.io/mwan/internal/netif"
-)
-
 func (m *Module) excludeRouteFamily(current gateways, tableID int, family string) {
 	for _, wan := range m.cfg.WANs {
 		if wan.TableID != tableID {
@@ -35,17 +29,4 @@ func (m *Module) excludeUnreadyOwnedFamilies(current gateways) {
 		}
 		current[wan.Key()] = gateway
 	}
-}
-
-func linkAddressAlreadyHeld(held []netif.CurrentAddr, address netip.Addr) bool {
-	for _, current := range held {
-		if current.Family != familyV4 {
-			continue
-		}
-		prefix, err := netip.ParsePrefix(current.CIDR)
-		if err == nil && prefix.Addr() == address {
-			return true
-		}
-	}
-	return false
 }
