@@ -116,11 +116,6 @@ func TestLoadRejectsInvalidMWANOwnedDHCPv6Requests(t *testing.T) {
 			want:   "requires prefix IAID",
 		},
 		{
-			name:   "DNS installation",
-			family: `{ "goodkind-mwan-steering:dhcp": true, "goodkind-mwan-steering:dhcpv6-client": { "duid": "` + testDUID + `", "address-iaid": 41, "request-address": true, "without-ra": "solicit", "use-dns": true } }`,
-			want:   "use-dns requires resolver ownership",
-		},
-		{
 			name:   "information request",
 			family: `{ "goodkind-mwan-steering:dhcp": true, "goodkind-mwan-steering:dhcpv6-client": { "duid": "` + testDUID + `", "address-iaid": 41, "request-address": true, "without-ra": "information-request" } }`,
 			want:   "information-request cannot acquire",

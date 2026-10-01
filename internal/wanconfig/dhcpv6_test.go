@@ -86,7 +86,6 @@ func TestConfigItemsRejectsInvalidMWANOwnedDHCPv6Requests(t *testing.T) {
 		want   string
 	}{
 		{name: "neither association", client: interfaceintent.DHCPv6{RequestAddress: new(false), RequestPrefix: new(false), WithoutRA: "solicit"}, want: "must request an address or prefix"},
-		{name: "DNS installation", client: interfaceintent.DHCPv6{IANAIAID: new(uint32(41)), RequestAddress: new(true), WithoutRA: "solicit", UseDNS: new(true)}, want: "use-dns requires resolver ownership"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()

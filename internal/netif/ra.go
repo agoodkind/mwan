@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mdlayher/ndp"
+	"golang.org/x/net/ipv6"
 )
 
 // RAClient sends Router Solicitations and reads Router Advertisements on
@@ -35,13 +36,17 @@ type RAClient struct {
 // NewRAClient opens a raw ICMPv6 connection on iface, finds (or waits for)
 // the interface's link-local address, and joins the all-routers multicast
 // group. Returns a usable RAClient ready to SolicitRA. Caller must Close.
-func NewRAClient(iface string, log *slog.Logger) (*RAClient, error) {
+func NewRAClient(iface string, log *slog.Logger) (client *RAClient, err error) {
 	log = log.With("component", "ra", "iface", iface)
 	log.Debug("ra: NewRAClient entry")
+	defer func() {
+		if err != nil {
+			log.Warn("ra: listener setup failed", "operation", "listen", "result", "failed")
+		}
+	}()
 
 	netIface, err := net.InterfaceByName(iface)
 	if err != nil {
-		log.Warn("ra: InterfaceByName failed", "iface", iface, "err", err)
 		return nil, fmt.Errorf("InterfaceByName(%q): %w", iface, err)
 	}
 	log.Debug("ra: InterfaceByName ok",
@@ -52,20 +57,26 @@ func NewRAClient(iface string, log *slog.Logger) (*RAClient, error) {
 	// brought up just before this call.
 	conn, ll, err := ndp.Listen(netIface, ndp.LinkLocal)
 	if err != nil {
-		log.Warn("ra: ndp.Listen failed", "iface", iface, "err", err)
 		return nil, fmt.Errorf("ndp.Listen(%q, link-local): %w", iface, err)
 	}
 	log.Debug("ra: ndp.Listen ok", "link_local", ll.String())
+	if err := conn.SetControlMessage(ipv6.FlagHopLimit, true); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("observe RA hop limit: %w", err)
+	}
 
 	// Join the all-routers multicast group so we receive RouterAdvertisements
 	// even when they are sent unsolicited (router flooding the LAN).
 	allRouters := netip.MustParseAddr("ff02::2")
 	if err := conn.JoinGroup(allRouters); err != nil {
 		_ = conn.Close()
-		log.Warn("ra: JoinGroup failed", "iface", iface, "err", err)
 		return nil, fmt.Errorf("JoinGroup(ff02::2): %w", err)
 	}
 	log.Debug("ra: joined all-routers multicast group")
+	if err := conn.JoinGroup(netip.MustParseAddr("ff02::1")); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("JoinGroup(ff02::1): %w", err)
+	}
 
 	return &RAClient{
 		iface:   netIface,
@@ -87,6 +98,12 @@ func NewRAClient(iface string, log *slog.Logger) (*RAClient, error) {
 func (c *RAClient) SolicitRA(
 	ctx context.Context, timeout time.Duration,
 ) (*ndp.RouterAdvertisement, error) {
+	advertisement, _, err := c.ReceiveRA(ctx, timeout, true)
+	return advertisement, err
+}
+
+// ReceiveRA reads an advertisement and its router, optionally sending a solicitation.
+func (c *RAClient) ReceiveRA(ctx context.Context, timeout time.Duration, solicit bool) (*ndp.RouterAdvertisement, netip.Addr, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -96,9 +113,7 @@ func (c *RAClient) SolicitRA(
 	startTime := c.clock.Now()
 	deadline := startTime.Add(timeout)
 	if err := c.conn.SetReadDeadline(deadline); err != nil {
-		c.log.WarnContext(ctx, "ra: SetReadDeadline failed",
-			"op", "SolicitRA", "timeout_ms", timeout.Milliseconds(), "err", err)
-		return nil, fmt.Errorf("SetReadDeadline: %w", err)
+		return nil, netip.Addr{}, fmt.Errorf("SetReadDeadline: %w", err)
 	}
 
 	rs := &ndp.RouterSolicitation{
@@ -111,36 +126,34 @@ func (c *RAClient) SolicitRA(
 	}
 	allRouters := netip.MustParseAddr("ff02::2")
 
-	if err := c.conn.WriteTo(rs, nil, allRouters); err != nil {
-		c.log.WarnContext(ctx, "ra: WriteTo(RouterSolicitation) failed",
-			"op", "SolicitRA", "timeout_ms", timeout.Milliseconds(), "err", err)
-		return nil, fmt.Errorf("send RS: %w", err)
+	if solicit {
+		if err := c.conn.WriteTo(rs, nil, allRouters); err != nil {
+			return nil, netip.Addr{}, fmt.Errorf("send RS: %w", err)
+		}
+		op.DebugContext(ctx, "ra: RouterSolicitation sent", "to", allRouters.String())
 	}
-	op.DebugContext(ctx, "ra: RouterSolicitation sent", "to", allRouters.String())
 
 	for {
 		select {
 		case <-ctx.Done():
 			ctxErr := ctx.Err()
-			c.log.WarnContext(ctx, "ra: ctx cancelled while waiting for RA",
-				"op", "SolicitRA", "timeout_ms", timeout.Milliseconds(), "err", ctxErr)
-			return nil, fmt.Errorf("ctx cancelled while waiting for RA: %w", ctxErr)
+			return nil, netip.Addr{}, fmt.Errorf("ctx cancelled while waiting for RA: %w", ctxErr)
 		default:
 		}
-		msg, _, from, err := c.conn.ReadFrom()
+		msg, control, from, err := c.conn.ReadFrom()
 		dur := c.clock.Now().Sub(startTime)
 		if err != nil {
 			// Treat netConn timeout as DeadlineExceeded for the caller.
 			var nerr net.Error
 			if errors.As(err, &nerr) && nerr.Timeout() {
-				c.log.WarnContext(ctx, "ra: deadline exceeded waiting for RA",
-					"op", "SolicitRA", "timeout_ms", timeout.Milliseconds(),
-					"waited_ms", dur.Milliseconds())
-				return nil, context.DeadlineExceeded
+				if solicit {
+					c.log.WarnContext(ctx, "ra: deadline exceeded waiting for RA",
+						"op", "SolicitRA", "timeout_ms", timeout.Milliseconds(),
+						"waited_ms", dur.Milliseconds())
+				}
+				return nil, netip.Addr{}, context.DeadlineExceeded
 			}
-			c.log.WarnContext(ctx, "ra: ReadFrom failed",
-				"op", "SolicitRA", "timeout_ms", timeout.Milliseconds(), "err", err)
-			return nil, fmt.Errorf("read RA: %w", err)
+			return nil, netip.Addr{}, fmt.Errorf("read RA: %w", err)
 		}
 		op.DebugContext(
 			ctx,
@@ -150,7 +163,7 @@ func (c *RAClient) SolicitRA(
 			"waited_ms", dur.Milliseconds(),
 		)
 		ra, ok := msg.(*ndp.RouterAdvertisement)
-		if !ok {
+		if !ok || !from.IsLinkLocalUnicast() || control == nil || control.HopLimit != ndp.HopLimit {
 			op.DebugContext(ctx, "ra: not a RA, continuing wait")
 			continue
 		}
@@ -162,7 +175,7 @@ func (c *RAClient) SolicitRA(
 			"managed_config", ra.ManagedConfiguration,
 			"other_config", ra.OtherConfiguration,
 		)
-		return ra, nil
+		return ra, from.WithZone(""), nil
 	}
 }
 

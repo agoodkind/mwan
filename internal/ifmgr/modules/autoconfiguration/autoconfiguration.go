@@ -62,12 +62,9 @@ func New(config ifmgr.ModuleConfig) (ifmgr.Module, error) {
 }
 
 func validateIPv6(name string, ipv6 interfaceintent.IPv6) error {
-	if ipv6.UseRADNS != nil && *ipv6.UseRADNS {
-		return fmt.Errorf("autoconfiguration: interface %s requires an RA DNS resolver integration", name)
-	}
 	if ipv6.AcceptRA == nil || !*ipv6.AcceptRA {
 		if ipv6.AutoConf != nil && *ipv6.AutoConf ||
-			ipv6.AcceptRADefaultRoute != nil && *ipv6.AcceptRADefaultRoute {
+			ipv6.AcceptRADefaultRoute != nil && *ipv6.AcceptRADefaultRoute || ipv6.UseRADNS != nil && *ipv6.UseRADNS {
 			return fmt.Errorf("autoconfiguration: interface %s enables an RA option without accept-ra", name)
 		}
 	}

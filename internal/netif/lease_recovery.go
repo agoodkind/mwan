@@ -73,6 +73,8 @@ type dhcpv6RecoveryPayload struct {
 	RequestPrefix    bool                    `json:"request_prefix"`
 	Hint             netip.Prefix            `json:"hint"`
 	WaitForRA        bool                    `json:"wait_for_ra"`
+	UseDNS           bool                    `json:"use_dns"`
+	DNS              []netip.Addr            `json:"dns"`
 }
 
 // NewLeaseRecoveryStore selects a private directory for saved assignments.
@@ -166,6 +168,7 @@ func dhcpv6RecoveryValue(lease DHCPv6PDLease) dhcpv6RecoveryPayload {
 		IANARenewAt: lease.IANARenewAt, IANARebindAt: lease.IANARebindAt,
 		Prefixes: prefixes, Addresses: addresses, RequestAddress: lease.RequestAddress,
 		RequestPrefix: lease.RequestPrefix, Hint: lease.Hint, WaitForRA: lease.WaitForRA,
+		UseDNS: lease.UseDNS, DNS: lease.DNS,
 	}
 }
 
@@ -185,6 +188,7 @@ func (payload dhcpv6RecoveryPayload) lease() DHCPv6PDLease {
 		IANARenewAt: payload.IANARenewAt, IANARebindAt: payload.IANARebindAt,
 		Prefixes: prefixes, Addresses: addresses, RequestAddress: payload.RequestAddress,
 		RequestPrefix: payload.RequestPrefix, Hint: payload.Hint, WaitForRA: payload.WaitForRA,
+		UseDNS: payload.UseDNS, DNS: payload.DNS,
 	}
 }
 
@@ -296,6 +300,7 @@ func (store *LeaseRecoveryStore) SaveDHCPv6(connectionID string, lease DHCPv6PDL
 		Iface: lease.LinkName, DUID: lease.DUID, IAID: lease.IAID, IANAIAID: lease.IANAIAID,
 		RequestAddress: lease.RequestAddress, RequestPrefix: lease.RequestPrefix,
 		Hint: lease.Hint, Clock: realClock{}, WaitForRA: lease.WaitForRA, CachedLease: nil,
+		UseDNS: lease.UseDNS,
 	}
 	if len(lease.DUID) == 0 || !compatibleDHCPv6Lease(cfg, link, lease) || !latestDHCPv6Validity(lease).After(clock.WallTime) {
 		return errors.New("invalid DHCPv6 assignment")
@@ -335,7 +340,7 @@ func (store *LeaseRecoveryStore) LoadDHCPv6(connectionID string, link *net.Inter
 		return nil, fmt.Errorf("decode DHCPv6 assignment: %w", err)
 	}
 	lease := payload.lease()
-	if lease.LinkIndex != 0 || !bytes.Equal(lease.DUID, record.ProtocolIdentity) || lease.IAID != cfg.IAID || lease.IANAIAID != cfg.IANAIAID || lease.RequestAddress != cfg.RequestAddress || lease.RequestPrefix != cfg.RequestPrefix || lease.Hint != cfg.Hint || lease.WaitForRA != cfg.WaitForRA {
+	if lease.LinkIndex != 0 || !bytes.Equal(lease.DUID, record.ProtocolIdentity) || lease.IAID != cfg.IAID || lease.IANAIAID != cfg.IANAIAID || lease.RequestAddress != cfg.RequestAddress || lease.RequestPrefix != cfg.RequestPrefix || lease.Hint != cfg.Hint || lease.WaitForRA != cfg.WaitForRA || lease.UseDNS != cfg.UseDNS {
 		return nil, errors.New("DHCPv6 lease configuration mismatch")
 	}
 	current, err := leaseClockNow(true)

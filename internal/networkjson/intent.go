@@ -217,13 +217,10 @@ func validateMWANIPv6(name string, wire *familyV6, intent *interfaceintent.IPv6)
 			return err
 		}
 	}
-	if wire.UseRADNS != nil && *wire.UseRADNS {
-		return fmt.Errorf("interface %s: ipv6 use-ra-dns requires a resolver integration", name)
-	}
 	acceptsRA := wire.AcceptRA != nil && *wire.AcceptRA
 	if !acceptsRA && (wire.AutoConf != nil && *wire.AutoConf ||
-		wire.AcceptRADefaultRoute != nil && *wire.AcceptRADefaultRoute) {
-		return fmt.Errorf("interface %s: ipv6 autoconf and RA default route require accept-ra", name)
+		wire.AcceptRADefaultRoute != nil && *wire.AcceptRADefaultRoute || wire.UseRADNS != nil && *wire.UseRADNS) {
+		return fmt.Errorf("interface %s: ipv6 autoconf, RA default route and RA DNS require accept-ra", name)
 	}
 	if wire.RouteMetric != nil && wire.Gateway == "" {
 		if !acceptsRA || wire.AcceptRADefaultRoute != nil && !*wire.AcceptRADefaultRoute {

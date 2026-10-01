@@ -1,13 +1,15 @@
-// Package resolver applies configured DNS and search domains to owned links.
+// Package resolver applies configured and acquired DNS to owned links.
 package resolver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/netip"
 	"sync"
 
+	"goodkind.io/mwan/internal/clock"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/netif"
@@ -16,7 +18,7 @@ import (
 
 const moduleName = "resolver"
 
-// Config supplies static resolver intent and its durable journal path.
+// Config supplies resolver intent and its durable journal path.
 type Config struct {
 	Connections []interfaceintent.Connection
 	StateFile   string
@@ -25,12 +27,14 @@ type Config struct {
 // ModuleConfigName identifies the resolver module.
 func (Config) ModuleConfigName() string { return moduleName }
 
-// Module reconciles static resolver fields independently of address acquisition.
+// Module combines configured DNS with valid acquired DNS in one resolver journal.
 type Module struct {
 	ifmgr.BaseModule
 	mu          sync.Mutex
 	connections []interfaceintent.Connection
 	ownership   *resolved.Ownership
+	ra          map[string]*raSession
+	clock       clock.Clock
 }
 
 // New loads the resolver journal before the module starts.
@@ -43,7 +47,7 @@ func New(config ifmgr.ModuleConfig) (ifmgr.Module, error) {
 			return nil, fmt.Errorf("resolver: invalid config type %T", config)
 		}
 	}
-	module := &Module{BaseModule: ifmgr.NewBaseModule(moduleName), mu: sync.Mutex{}, connections: settings.Connections, ownership: nil}
+	module := &Module{BaseModule: ifmgr.NewBaseModule(moduleName), mu: sync.Mutex{}, connections: settings.Connections, ownership: nil, ra: map[string]*raSession{}, clock: clock.Real{}}
 	if settings.StateFile == "" && !hasStaticSettings(settings.Connections) {
 		return module, nil
 	}
@@ -62,7 +66,7 @@ func hasStaticSettings(connections []interfaceintent.Connection) bool {
 			continue
 		}
 		intent := aggregate(connection)
-		if len(intent.DNS)+len(intent.Domains) != 0 {
+		if len(intent.DNS)+len(intent.Domains) != 0 || wantsRADNS(connection) || wantsDHCPDNS(connection) {
 			return true
 		}
 	}
@@ -90,11 +94,13 @@ func hasOwnedConnections(connections []interfaceintent.Connection) bool {
 	return false
 }
 
-// Reconcile applies configured settings or restores fields removed from intent.
+// Reconcile applies current resolver contributions or restores removed fields.
 func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	module.mu.Lock()
 	defer module.mu.Unlock()
 	intents := make([]resolved.Intent, 0, len(module.connections))
+	activeRA := map[string]bool{}
+	var reconcileErr error
 	for _, connection := range module.connections {
 		if connection.Owner != interfaceintent.OwnerMWAN || connection.Enabled != nil && !*connection.Enabled {
 			continue
@@ -105,14 +111,73 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 			intent.Ready = true
 			intent.Index = link.IfIndex
 			intent.Name = link.ActualName
+			appendDNS(&intent, module.leaseDNS(connection, link.ActualName))
+			if wantsRADNS(connection) {
+				id := connection.ID.String()
+				activeRA[id] = true
+				servers, err := module.routerDNS(ctx, id, link, log)
+				reconcileErr = errors.Join(reconcileErr, err)
+				appendDNS(&intent, servers)
+			}
 		}
 		intents = append(intents, intent)
 	}
+	for id, session := range module.ra {
+		if !activeRA[id] {
+			session.cancel()
+			delete(module.ra, id)
+		}
+	}
 	if err := module.ownership.Reconcile(ctx, intents); err != nil {
 		log.WarnContext(ctx, "resolver application failed", "operation", "reconcile", "result", "failed")
-		return fmt.Errorf("apply resolver configuration: %w", err)
+		return errors.Join(reconcileErr, fmt.Errorf("apply resolver configuration: %w", err))
+	}
+	return reconcileErr
+}
+
+func (module *Module) leaseDNS(connection interfaceintent.Connection, name string) []netip.Addr {
+	if !wantsDHCPDNS(connection) || module.Env.Delegations == nil {
+		return nil
+	}
+	lease, found := module.Env.Delegations.Get(name)
+	if !found || !lease.UseDNS {
+		return nil
+	}
+	now := module.clock.Now()
+	for _, prefix := range lease.Prefixes {
+		if now.Before(prefix.ValidUntil) {
+			return lease.DNS
+		}
+	}
+	for _, address := range lease.Addresses {
+		if now.Before(address.ValidUntil) {
+			return lease.DNS
+		}
 	}
 	return nil
+}
+
+func wantsRADNS(connection interfaceintent.Connection) bool {
+	return connection.IPv6 != nil && (connection.IPv6.Enabled == nil || *connection.IPv6.Enabled) && connection.IPv6.UseRADNS != nil && *connection.IPv6.UseRADNS
+}
+
+func wantsDHCPDNS(connection interfaceintent.Connection) bool {
+	return connection.IPv6 != nil && (connection.IPv6.Enabled == nil || *connection.IPv6.Enabled) && connection.IPv6.DHCPv6 != nil && connection.IPv6.DHCPv6.UseDNS != nil && *connection.IPv6.DHCPv6.UseDNS
+}
+
+func appendDNS(intent *resolved.Intent, addresses []netip.Addr) {
+	for _, address := range addresses {
+		present := false
+		for _, server := range intent.DNS {
+			if existing, ok := netip.AddrFromSlice(server.Address); ok && existing == address {
+				present = true
+				break
+			}
+		}
+		if !present {
+			intent.DNS = append(intent.DNS, resolved.DNS{Family: 10, Address: address.AsSlice(), Port: 0, ServerName: ""})
+		}
+	}
 }
 
 func aggregate(connection interfaceintent.Connection) resolved.Intent {

@@ -8,17 +8,20 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/godbus/dbus/v5"
+	"github.com/mdlayher/ndp"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/net/dns/dnsmessage"
@@ -135,6 +138,42 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	writeResolverRuntimeNetwork(t, networkDir, true, true, false)
 	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-first")
 	waitResolverRuntimeValues(t, daemon, wantedDNS, wantedDomains)
+	killOwnedRuntimeDaemon(t, daemon)
+	writeAcquiredResolverRuntimeNetwork(t, networkDir)
+	setRuntimeNamespace(t, peer.namespace)
+	waitAutoconfigurationLinkLocal(t, "resolver397")
+	stopDHCP := startResolverDHCPv6Kea(t, root)
+	stopRA := startResolverRouter(t)
+	setRuntimeNamespace(t, gateway)
+	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-acquired")
+	acquiredDaemon := daemon
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		for _, line := range strings.Split(runtimeDaemonLog(t, acquiredDaemon), "\n") {
+			if strings.Contains(strings.ToLower(line), "dhcpv6") {
+				t.Log(line)
+			}
+		}
+		content, err := os.ReadFile(filepath.Join(root, "resolver-kea.log"))
+		t.Logf("resolver Kea: %s (%v)", content, err)
+	})
+	acquiredDNS := append(append([]resolved.DNS(nil), wantedDNS...), resolved.DNS{Family: 10, Address: net.ParseIP("fd39:7::53").To16(), Port: 0, ServerName: ""}, resolved.DNS{Family: 10, Address: net.ParseIP("fd39:7::54").To16(), Port: 0, ServerName: ""})
+	waitResolverRuntimeValues(t, daemon, acquiredDNS, wantedDomains)
+	t.Logf("resolved acquired DHCPv6 and RA DNS with configured servers: %+v", acquiredDNS)
+	stopRA()
+	stopDHCP()
+	waitResolverRuntimeValues(t, daemon, wantedDNS, wantedDomains)
+	t.Logf("resolved removed expired DHCPv6 and RA DNS and retained configured servers: %+v", wantedDNS)
+	actualOtherDNS, actualOtherDomains := resolverRuntimeValues(t, "resolver-other")
+	if !reflect.DeepEqual(actualOtherDNS, otherDNS) || !reflect.DeepEqual(actualOtherDomains, otherDomains) {
+		t.Fatalf("acquired DNS changed unrelated settings: %+v %+v", actualOtherDNS, actualOtherDomains)
+	}
+	killOwnedRuntimeDaemon(t, daemon)
+	writeResolverRuntimeNetwork(t, networkDir, true, true, false)
+	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-static-after-acquired")
+	waitResolverRuntimeValues(t, daemon, wantedDNS, wantedDomains)
 	waitRuntimeOwnershipRead(t, daemon, read, `"search"`)
 	if output := runResolverCommand(t, "resolvectl", "query", "sensor"); !strings.Contains(output, "10.39.7.99") || queries.Load() == 0 {
 		t.Fatalf("single-label DNS query: %s; authoritative queries=%d", output, queries.Load())
@@ -227,13 +266,154 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	if _, err := os.Stat(emptyJournal); !os.IsNotExist(err) {
 		t.Errorf("empty cleanup created a resolver journal: %v", err)
 	}
-	for _, name := range []string{"resolver-bootstrap", "resolver-first", "resolver-ipv6-only", "resolver-restart", "resolver-dns-remove", "resolver-domains-remove", "resolver-remove", "resolver-external-control", "resolver-external-preserve", "resolver-prune", "resolver-cleanup-only", "resolver-empty-cleanup"} {
+	for _, name := range []string{"resolver-bootstrap", "resolver-first", "resolver-acquired", "resolver-static-after-acquired", "resolver-ipv6-only", "resolver-restart", "resolver-dns-remove", "resolver-domains-remove", "resolver-remove", "resolver-external-control", "resolver-external-preserve", "resolver-prune", "resolver-cleanup-only", "resolver-empty-cleanup"} {
 		data, err := os.ReadFile(filepath.Join(root, name+".log"))
 		if err != nil {
 			t.Fatal(err)
 		}
 		t.Logf("%s daemon log:\n%s", name, data)
 	}
+}
+
+func writeAcquiredResolverRuntimeNetwork(t *testing.T, directory string) {
+	t.Helper()
+	path := filepath.Join(directory, "network.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]json.RawMessage
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	var interfaces map[string]json.RawMessage
+	if err := json.Unmarshal(document["ietf-interfaces:interfaces"], &interfaces); err != nil {
+		t.Fatal(err)
+	}
+	var entries []map[string]json.RawMessage
+	if err := json.Unmarshal(interfaces["interface"], &entries); err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		var name string
+		if err := json.Unmarshal(entry["name"], &name); err != nil {
+			t.Fatal(err)
+		}
+		if name != "owned397" {
+			continue
+		}
+		entry["goodkind-mwan-steering:wan"] = json.RawMessage(`{"name":"resolver","table-id":101,"fw-mark":2,"fw-mark-prio":200,"from-prio":60}`)
+		entry["goodkind-mwan-steering:steering"] = json.RawMessage(`{"tier":0,"weight":1}`)
+		var ipv4 map[string]json.RawMessage
+		if err := json.Unmarshal(entry["ietf-ip:ipv4"], &ipv4); err != nil {
+			t.Fatal(err)
+		}
+		ipv4["goodkind-mwan-steering:translation"] = json.RawMessage(`{"mode":"native"}`)
+		entry["ietf-ip:ipv4"], err = json.Marshal(ipv4)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var family map[string]json.RawMessage
+		if err := json.Unmarshal(entry["ietf-ip:ipv6"], &family); err != nil {
+			t.Fatal(err)
+		}
+		family["goodkind-mwan-steering:accept-ra"] = json.RawMessage(`true`)
+		family["goodkind-mwan-steering:use-ra-dns"] = json.RawMessage(`true`)
+		family["goodkind-mwan-steering:dhcp"] = json.RawMessage(`true`)
+		family["goodkind-mwan-steering:translation"] = json.RawMessage(`{"mode":"native"}`)
+		family["goodkind-mwan-steering:dhcpv6-client"] = json.RawMessage(`{"duid":"00:01:00:01:2a:5b:3c:4d:02:00:5e:00:53:01","prefix-iaid":397,"request-prefix":true,"without-ra":"solicit","use-dns":true}`)
+		entry["ietf-ip:ipv6"], err = json.Marshal(family)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	interfaces["interface"], err = json.Marshal(entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document["ietf-interfaces:interfaces"], err = json.Marshal(interfaces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err = json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func startResolverDHCPv6Kea(t *testing.T, root string) func() {
+	t.Helper()
+	configPath := filepath.Join(root, "resolver-kea.conf")
+	config := `{"Dhcp6":{"interfaces-config":{"interfaces":["resolver397"]},"lease-database":{"type":"memfile","persist":false},"valid-lifetime":8,"preferred-lifetime":4,"subnet6":[{"id":1,"subnet":"fd39:7::/64","interface":"resolver397","pd-pools":[{"prefix":"2001:db8:397::","prefix-len":56,"delegated-len":56}],"option-data":[{"name":"dns-servers","data":"fd39:7::53"}]}]}}`
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(root, "resolver-kea.log")
+	logFile, err := os.Create(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("kea-dhcp6", "-c", configPath, "-d")
+	command.Stdout, command.Stderr = logFile, logFile
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	logFile.Close()
+	service := protocolService{name: "kea-dhcp6", command: command, logPath: logPath}
+	var once sync.Once
+	stop := func() { once.Do(func() { stopProtocolServices(t, []protocolService{service}) }) }
+	t.Cleanup(stop)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		content, err := os.ReadFile(logPath)
+		if err == nil && strings.Contains(string(content), "DHCP6_STARTED") {
+			return stop
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	content, _ := os.ReadFile(logPath)
+	t.Fatalf("resolver Kea did not start: %s", content)
+	return stop
+}
+
+func startResolverRouter(t *testing.T) func() {
+	t.Helper()
+	link, err := net.InterfaceByName("resolver397")
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, _, err := ndp.Listen(link, ndp.LinkLocal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	advertisement := &ndp.RouterAdvertisement{Options: []ndp.Option{&ndp.RecursiveDNSServer{Lifetime: 3 * time.Second, Servers: []netip.Addr{netip.MustParseAddr("fd39:7::54")}}}}
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(200 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				if err := connection.WriteTo(advertisement, nil, netip.MustParseAddr("ff02::1")); err != nil {
+					t.Errorf("write resolver RA: %v", err)
+					return
+				}
+			}
+		}
+	}()
+	var once sync.Once
+	finish := func() {
+		once.Do(func() { close(stop); <-done; connection.Close() })
+	}
+	t.Cleanup(finish)
+	return finish
 }
 
 func waitResolverRuntimeFailureLogs(t *testing.T, daemon *runtimeDaemon) {
