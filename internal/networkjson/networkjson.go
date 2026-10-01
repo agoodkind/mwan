@@ -201,8 +201,9 @@ type delegation struct {
 // distinguishable from a zero the daemon would act on. Tier zero is the
 // preferred tier, and weight zero would make the balancer's divisor wrong.
 type steering struct {
-	Tier   *int `json:"tier"`
-	Weight *int `json:"weight"`
+	Enabled *bool `json:"enabled"`
+	Tier    *int  `json:"tier"`
+	Weight  *int  `json:"weight"`
 }
 
 type wan struct {
@@ -686,11 +687,12 @@ func buildProvider(entry ifaceEntry) (config.IfMgrWANEntry, *config.IfMgrHealthW
 		TranslationV6: policyV6,
 		// The caller fills the source pin from the link specification, which
 		// buildLink builds after this returns.
-		V4Source:   "",
-		LinkFiles:  entry.LinkFiles,
-		ForcedDSCP: forcedDSCP,
-		Tier:       tier,
-		Weight:     weight,
+		V4Source:         "",
+		LinkFiles:        entry.LinkFiles,
+		ForcedDSCP:       forcedDSCP,
+		SelectionEnabled: entry.Steering.Enabled,
+		Tier:             tier,
+		Weight:           weight,
 	}
 	if provider.Health == nil {
 		return routing, nil, nil

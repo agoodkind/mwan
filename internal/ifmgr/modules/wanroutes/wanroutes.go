@@ -59,13 +59,14 @@ func (Config) ModuleConfigName() string { return moduleName }
 // data.
 type WAN struct {
 	ifmgr.WANRef
-	Owned         bool
-	TableID       int
-	FwMark        uint32
-	FwMarkPrio    int
-	FromPrio      int
-	TranslationV4 *config.IPv4Translation
-	TranslationV6 *config.IPv6Translation
+	SelectionEnabled *bool
+	Owned            bool
+	TableID          int
+	FwMark           uint32
+	FwMarkPrio       int
+	FromPrio         int
+	TranslationV4    *config.IPv4Translation
+	TranslationV6    *config.IPv6Translation
 	// V4Source is the WAN's static IPv4 link address. When set, traffic the box
 	// sources from that address is pinned to this WAN's table via a v4 source
 	// rule at FromPrio, the IPv4 twin of the translated-prefix v6 source rule. Only
@@ -294,8 +295,9 @@ func (m *Module) publishLiveState(currentGateways gateways, health netif.HealthS
 	for _, wan := range m.cfg.WANs {
 		v4Ready := familyReady(wan, currentGateways[wan.Key()], health, translations[wan.Key()], familyV4)
 		v6Ready := familyReady(wan, currentGateways[wan.Key()], health, translations[wan.Key()], familyV6)
+		selectionEnabled := config.ConnectionSelectionEnabled(wan.SelectionEnabled)
 		members[wan.Key()] = wanstate.MemberRouting{
-			Carrying: (readyV4 && wan.Tier == tierV4 && v4Ready) || (readyV6 && wan.Tier == tierV6 && v6Ready),
+			Carrying: selectionEnabled && ((readyV4 && wan.Tier == tierV4 && v4Ready) || (readyV6 && wan.Tier == tierV6 && v6Ready)),
 			V4Ready:  v4Ready, V6Ready: v6Ready,
 			OwnedAddresses: slices.Clone(m.ownedAddresses[wan.Key()]),
 		}
@@ -580,7 +582,7 @@ func catchAllCarrier(cfg Config, gateways gateways, health netif.HealthStates, t
 	var carrier *WAN
 	for i := range cfg.WANs {
 		wan := &cfg.WANs[i]
-		if wan.Tier != tier || !familyReady(*wan, gateways[wan.Key()], health, translations[wan.Key()], family) {
+		if !config.ConnectionSelectionEnabled(wan.SelectionEnabled) || wan.Tier != tier || !familyReady(*wan, gateways[wan.Key()], health, translations[wan.Key()], family) {
 			continue
 		}
 		if carrier != nil {
@@ -594,6 +596,9 @@ func catchAllCarrier(cfg Config, gateways gateways, health netif.HealthStates, t
 func familyMembers(cfg Config, gateways gateways, health netif.HealthStates, translations map[string]wanstate.MemberTranslation, family string) []netif.TierMember {
 	members := make([]netif.TierMember, 0, len(cfg.WANs))
 	for _, wan := range cfg.WANs {
+		if !config.ConnectionSelectionEnabled(wan.SelectionEnabled) {
+			continue
+		}
 		if familyReady(wan, gateways[wan.Key()], health, translations[wan.Key()], family) {
 			members = append(members, netif.TierMember{Name: wan.Key(), Tier: wan.Tier})
 		}

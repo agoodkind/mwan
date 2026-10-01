@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net/netip"
 
+	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/netif"
 )
@@ -37,9 +38,10 @@ type readHealthFunc func(path string) (netif.HealthStates, error)
 // tier.
 type Member struct {
 	ifmgr.WANRef
-	Mark   uint32
-	Tier   uint8
-	Weight int
+	SelectionEnabled *bool
+	Mark             uint32
+	Tier             uint8
+	Weight           int
 }
 
 // Config is the runtime config for the steering module. The provider list, the
@@ -233,6 +235,9 @@ func (m *Module) desiredRules(health netif.HealthStates) []steerRule {
 	eligibleV4 := make(map[uint32]bool, len(m.cfg.Members))
 	eligibleV6 := make(map[uint32]bool, len(m.cfg.Members))
 	for _, member := range m.cfg.Members {
+		if !config.ConnectionSelectionEnabled(member.SelectionEnabled) {
+			continue
+		}
 		routing := snapshot.Routing[member.Key()]
 		translation := snapshot.Translation[member.Key()]
 		if routing.V4Ready && translation.V4.Ready && netif.HealthIsHealthy(health.State(member.Key())) {

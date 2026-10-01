@@ -229,10 +229,11 @@ func buildSteeringConfig(
 			return steering.Config{}, err
 		}
 		cfg.Members = append(cfg.Members, steering.Member{
-			WANRef: wan.WANRef,
-			Mark:   mark,
-			Tier:   wan.Tier,
-			Weight: wan.Weight,
+			WANRef:           wan.WANRef,
+			Mark:             mark,
+			Tier:             wan.Tier,
+			Weight:           wan.Weight,
+			SelectionEnabled: wan.SelectionEnabled,
 		})
 	}
 	return cfg, nil
@@ -754,6 +755,7 @@ func buildHostIPv6PolicyConfig(
 // consumes, and the steering properties the balancer reads. npt reads only the
 // embedded WANRef. One home per WAN.
 type sharedWAN struct {
+	SelectionEnabled *bool
 	ifmgr.WANRef
 	Owned         bool
 	TableID       int
@@ -820,17 +822,18 @@ func buildWANRefs(ifmgrCfg config.IfMgrSection) sharedWANInputs {
 			providerName = name
 		}
 		inputs.WANs = append(inputs.WANs, sharedWAN{
-			WANRef:        ifmgr.WANRef{ID: connectionid.ID(name), Name: providerName, Iface: entry.Iface},
-			Owned:         owned[name],
-			TableID:       entry.TableID,
-			FwMark:        entry.FwMark,
-			FwMarkPrio:    entry.FwMarkPrio,
-			FromPrio:      entry.FromPrio,
-			TranslationV4: entry.TranslationV4,
-			TranslationV6: entry.TranslationV6,
-			V4Source:      entry.V4Source,
-			Tier:          entry.Tier,
-			Weight:        entry.Weight,
+			WANRef:           ifmgr.WANRef{ID: connectionid.ID(name), Name: providerName, Iface: entry.Iface},
+			Owned:            owned[name],
+			TableID:          entry.TableID,
+			FwMark:           entry.FwMark,
+			FwMarkPrio:       entry.FwMarkPrio,
+			FromPrio:         entry.FromPrio,
+			TranslationV4:    entry.TranslationV4,
+			TranslationV6:    entry.TranslationV6,
+			V4Source:         entry.V4Source,
+			Tier:             entry.Tier,
+			Weight:           entry.Weight,
+			SelectionEnabled: entry.SelectionEnabled,
 		})
 	}
 	return inputs
@@ -872,6 +875,7 @@ func buildWANRoutesConfig(
 			V4Source:             wan.V4Source,
 			Tier:                 wan.Tier,
 			Weight:               wan.Weight,
+			SelectionEnabled:     wan.SelectionEnabled,
 			MappedExternals:      mappedExternals(wan.TranslationV4),
 			LocalMappedExternals: localMappedExternals(wan.TranslationV4),
 		})

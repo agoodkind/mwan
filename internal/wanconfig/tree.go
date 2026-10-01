@@ -33,6 +33,7 @@ type Item struct {
 // Member configures one connection with a network interface, steering tier,
 // health policy, and optional translation policy.
 type Member struct {
+	SelectionEnabled *bool
 	// Name is the connection ID used by probe policies and translation instances.
 	Name         string
 	ProviderName string
@@ -511,6 +512,9 @@ func steeringItems(member Member) []Item {
 	items := []Item{
 		{Path: base + "/tier", Value: strconv.FormatUint(uint64(member.Tier), 10)},
 		{Path: base + "/weight", Value: strconv.FormatUint(uint64(member.Weight), 10)},
+	}
+	if member.SelectionEnabled != nil {
+		items = append(items, Item{Path: base + "/enabled", Value: boolValue(*member.SelectionEnabled)})
 	}
 	if member.ProbePolicy != "" {
 		items = append(items, Item{Path: base + "/probe-policy", Value: member.ProbePolicy})
