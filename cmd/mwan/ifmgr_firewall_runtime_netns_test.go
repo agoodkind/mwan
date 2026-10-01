@@ -34,14 +34,7 @@ func TestWANFirewallRuntimePackets(t *testing.T) {
 		runWANFirewallRuntimeChild(t)
 		return
 	}
-	if os.Geteuid() != 0 {
-		t.Skip("network and mount namespaces require root")
-	}
-	binary := filepath.Join(t.TempDir(), "mwan")
-	build := exec.Command("go", "build", "-o", binary, ".")
-	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("The mwan build failed: %v: %s", err, output)
-	}
+	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^TestWANFirewallRuntimePackets$")
 	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
 	child.Env = append(os.Environ(), runtimeChildEnv+"=1", runtimeBinaryEnv+"="+binary)
