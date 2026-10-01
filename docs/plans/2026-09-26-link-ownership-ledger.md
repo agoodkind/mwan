@@ -4328,6 +4328,32 @@ PR #599 remains unmerged. Its isolated signed rebase and validation may proceed
 against the new main while root performs the forward deployment. Do not merge
 or deploy reversal before forward acceptance. Production is unchanged.
 
+## Capture the live transfer phases
+
+Recorder session 63760 began around 08:24:52 UTC. It captures primary transit,
+AT&T and Webpass in webpass-retry-capture under the real-cutover evidence
+directory. Its 1800-second bound expires around 08:54:52 UTC. Root controls
+retry-capture-phase.txt and retry-capture.stop. Stop the recorder successfully
+before reboot; do not interrupt it or duplicate capture units.
+
+The initial capture and conntrack snapshot identify the affinity observer's
+IPv4 flow as ICMP identifier 16105 and IPv6 flow as 26647. Both have Webpass
+mark 2 and actual replies. Their sequence 1583 differs from original probes'
+2295. This establishes the pre-exclusion flows; exclusion preservation and
+exclusive ownership transfer remain pending. Deployment 23598 is active.
+
+Before transfer, original guest-225 IPv6 missed sequence 2085, with a
+2.798083-second interreply gap around 08:21:21 through 08:21:24 UTC.
+Delayed IPv4 sequences subsequently arrived. The other channels received
+replies. Preserve this staging loss separately from the prior baseline miss
+and subsequent ownership-transition results. Its cause remains unverified.
+
+Rebased PR #599 uses signed ab00d28d3b051eff5139f31a8b7a38b47f62ed43 on
+fd03855d. Independent source review found no actionable findings. The same
+DUID, IAID and delegation settings, mappings, new pin and RA correction are
+preserved. Actual reversal remains unproved. Keep this PR unmerged until
+forward acceptance passes.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
