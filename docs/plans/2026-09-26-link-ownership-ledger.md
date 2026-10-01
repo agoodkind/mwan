@@ -5135,6 +5135,27 @@ observers remain active; root owns live mutation and capture lifecycle.
 The implementer may prepare the next repeated-forward configuration in the
 isolated activation worktree. Reverse acceptance remains pending.
 
+## Observe the new-release reverse transfer
+
+Reverse capture 43776 began at approximately 13:19:38 UTC. Its transit,
+AT&T, and Webpass units became ready at 13:19:39 through 13:19:40 UTC,
+with PIDs 2396, 2408, and 2414. The output directory is
+route-event-fix-reverse-active-capture under the real-cutover evidence
+directory. Root alone owns route-event-fix-reverse-phase.txt and the new
+stop file. Stop before reboot or 13:49:38 UTC. A read-only journal follower
+53798 records the WAN daemon's UTC journal in route-event-fix-reverse-follow-journal.log.
+
+Guest 225 IPv4 missed sequence 4581 during staging. The adjacent replies
+occurred at 13:18:48.163307 and 13:18:50.175334 UTC, with a 2.012027-second
+interval. This preceded ownership transfer and capture; its cause remains
+unlocalized. The other three channels remained complete at that observation.
+Do not conflate staging loss with the actual reversal result.
+
+The repeated-forward candidate f7677da9 is signed and clean, based on merged
+ca5ff093. Its two files match prior activation f67d8af3 exactly. Fresh
+renders and published network/firewall validation passed. An independent
+exact-head reviewer is assigned; no push or activation occurred.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
