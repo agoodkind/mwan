@@ -5225,6 +5225,46 @@ analysis remains active, and the deployment reboot verdict remains pending.
 The journal follower and both generations of downstream observers remain
 active. No production deployment occurred.
 
+## Accept the new-release reverse procedure and repeat forward
+
+Reverse deployment 64582 completed with exit status 0. Its recap reports
+379 successful tasks, 46 changes, zero failures, and zero unreachable targets.
+Verdict 20261001-061754-deploy-990882 reports reboot_rc=0, egress_rc=0,
+and owned_rc=0. Boot identity changed from 2caef9d9-55d7-4c85-9835-6253d93b4b52
+to da4876ff-88eb-4d6a-93cd-7823458364a0. Both installed and running executables
+match 731618ad, and the recovery network matches 2155363a. Postboot served
+Webpass state reports networkd ownership, link up, healthy selection,
+and passing family probes.
+
+The reverse interval 13:13:45 through 13:51:00 UTC records 2231 replies
+per original guest/family channel and one missed sequence in each channel.
+Guest 225 IPv4's miss occurred during staging. The other three misses
+occurred during replacement restart. The largest reply interval was
+2.061732 seconds. During reboot alone, 13:49:00 through 13:51:00, all eight
+old and renewed streams recorded 120 complete replies. Backup selection
+began around 13:49:25 and primary returned around 13:50:12 through 13:50:13.
+The maximum reboot reply interval was 1.017932 seconds; route queries had
+zero errors.
+
+Independent finalized packet analysis captured all three replacement-restart
+requests on primary transit without corresponding captured ISP egress.
+Shutdown removed AT&T policy defaults; the new daemon recorded route-change
+notifications and subsequent full firewall/steering passes. The earlier
+113-second interruption did not recur. The journal does not prove that
+the exact earlier main-table fault recurred. Packet and journal evidence
+is in route-event-fix-reverse-packet-analysis/report.md. The read-only journal
+follower ended naturally with SSH exit 255 during reboot.
+
+Configs PR 606 merged as 96d45254b51f7b563d944c7db6ffbd1aeb0266d1
+at 13:53:13 UTC after independent exact-head review and all required checks.
+There were no open review threads, and its parent matched current main.
+The clean, idle primary checkout advanced to that merged commit.
+Repeated forward deployment 25290 started at 13:53:42 UTC through the
+testbed-only configsctl command. Its log is deploy-mwan-20261001T135342Z.log.
+Observers 71173 and 77127 remain active. Actual repeated transfer and the
+existing balancing, mapping, failure-history, and restart acceptance remain
+required. MWAN-519 and MWAN-521 remain InProgress. Production is unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
