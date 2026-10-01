@@ -4476,6 +4476,43 @@ Proxmox tasks and the guest boot ID remains
 acceptance passes. No ownership transfer, reversal, or reboot is claimed from
 this retry yet. Production is unchanged.
 
+## Retry after existing snapshot-lock recovery
+
+Deployment 59233 ended at 09:13:34 UTC with exit status 1 before source
+exclusion. Proxmox rejected the pre-deploy snapshot because VM213 had a
+snapshot-delete lock. The play reports 116 successful tasks, 9 changed,
+1 failed, no rescue and no unreachable host. No ownership transfer or reboot
+executed. Original guest-225 IPv6 missed sequence 4954 during startup, between
+replies around 09:09:13.857 and 09:09:16.142 UTC. Other channels had no new
+misses. This is separate from prior misses 902 and 2085; its cause is unproved.
+
+Recorder 15838 finished strictly at 09:15:16 UTC with status 0. Transit captured
+4272 packets, AT&T 3148 and Webpass 1724; all report zero kernel drops.
+Its observation started after the new missing probe. The captures do not
+localize that loss. Continuous downstream observers remain active.
+
+Read-only diagnosis proved mwan-watchdog-testbed.service PID1245262 created
+known-good-20261001-020911 and attempted to prune an older snapshot. The
+original deletion task stopped with a ZFS missing-snapshot error, but its
+snapshot-delete lock persisted while the watchdog continued its two retention
+passes. Empty active-task results between deletions did not prove completion.
+The watchdog completed pruning and applied its existing stale-lock recovery
+at 09:18:48 UTC. Subsequent reads confirm no lock, no active VM213 task and no
+ZFS process. No agent unlocked the guest, changed a host service, changed
+retention, or force-deleted a snapshot. Evidence is preserved under
+real-cutover/snapshot-delete-lock in the MWAN-305 state directory.
+
+Root verified clean primary HEAD equals fetched origin/main c802ebec and live
+binary/network hashes remain 98a858c8/c8a32e91. The actual retry started at
+09:21:43 UTC. Session 80192 is active; log deploy-mwan-20261001T092143Z.log
+under configs-runs. Keep the primary checkout unchanged until it ends.
+Recorder 54027 is active with a 1800-second bound, output
+webpass-pd-unlocked-capture, phase pd-unlocked-capture-phase.txt and stop
+pd-unlocked-capture.stop under real-cutover. Root owns all live mutations
+and capture controls. The delegated observer is read-only. Finish capture
+strictly before the planned reboot. PR #599 remains unmerged until forward
+acceptance. MWAN-519 and MWAN-521 remain InProgress. Production is unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
