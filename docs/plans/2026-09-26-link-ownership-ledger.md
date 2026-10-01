@@ -5207,6 +5207,24 @@ Independent inspection confirms fresh complete replies and primary router
 selection in all four channels. These windows last through approximately
 15:41 UTC. Preserve the old observers for complete reverse-interval proof.
 
+## Finalize reverse captures before reboot
+
+Capture 43776 completed with exit status 0 at 13:47:34.688354 UTC.
+The recorder stopped all three units before reboot and the 1800-second
+deadline. Each capture reported zero kernel drops, and each capture PID
+was absent after cleanup. The finalized report includes all observed
+source, external, replacement, selection, WAN startup, and role reload
+phase snapshots. Snapshot timestamps are observation times, not exact
+operation start times.
+
+The applied management/transit state verifier passed. All four selected
+AT&T/Webpass mapping and NPT checks passed. Primary readiness sampled
+true in both families during WAN startup and management/transit reload;
+AT&T's main IPv6 default was present at those samples. Independent packet
+analysis remains active, and the deployment reboot verdict remains pending.
+The journal follower and both generations of downstream observers remain
+active. No production deployment occurred.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
