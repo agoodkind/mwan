@@ -6725,6 +6725,26 @@ requirement to its description and refreshed the current cutover checkpoint
 on MWAN-398. No production operation or main merge has occurred. Deployment
 48179 is capturing prior role inputs after passing transfer preparation checks.
 
+## Publish the trusted inventory loader correction
+
+Signed head 15b4434d0d1cdfe79309f77af07a08717e734788 adds aliases: true
+only to the three existing trusted inventory loaders. Six selected examples
+passed under Ruby 3.4.7. The full local suite returned 205 examples, one verdict
+path quoting failure and 19 pending. The full suite did not pass. Raw RSpec
+and RuboCop logs were not retained, so baseline failure status and reported
+offense locations remain unverified.
+
+Root inspected the exact three-line diff, checks JSON and independent
+alias-review.md. The correction review found no actionable defect. Signature
+verification passed for every stack commit. Graphite dry-run selected PR 617
+as unchanged and PR 618 for update; submission published only that correction.
+Actual GitHub data checks must pass before main integration. No inventory,
+production implementation, deploy source or live production state changed.
+
+Deployment 48179 completed prior-role snapshot assertions and staged source
+runtime inputs. Its unified binary copy is active. Owner activation, reboot
+and the complete public acceptance battery remain pending.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
