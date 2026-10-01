@@ -3785,6 +3785,38 @@ the IPv4 default through 10.240.1.1 on eth0. Client 226 uses IPv6 defaults
 through 3d06:bad:b01:211::1 and fe80::1 on eth0. These checks do not establish
 cutover acceptance. Shared and production owners remain unchanged.
 
+### Execute the first merged shared baseline deployment
+
+Configs PR #594 merged as 67544f8a2a267257aec0a97b63b609a50795304c.
+Its acquisition check now requires actual configured DHCP addresses, usable
+router advertisement state, and a served delegated prefix when requested.
+The recovery backup finding was disproven by the transition task's templated
+transfer-source.json copy before the recovery snapshot boundary.
+
+Configs PR #595 merged as 2b93519ab43f6707bbf3554d6939f63eb16da9c1.
+Release 202610010439-97-0ff387b passed all archive checksum, API digest,
+and attestation checks. Its actual AMD64 executable SHA256 is
+8b25781720ad04e9ebc7e8dc82fd0e1176c07f73f7b1e016f153e73413976907.
+The merged pin preserves every owner and both lease recovery policies.
+
+The complete shared deploy ran from clean merged 2b93519a with both source-bound
+downstream observers. It failed at the OPNsense certificate retrieval before
+daemon installation, ownership activation, or reboot. The command
+qm guest exec 201 returned QEMU guest agent is not running. The predeploy gate
+failed for the same reason and skipped its snapshot. Actual downstream packets
+continued receiving replies. VM213 still reports active daemon 2f9a40a.
+
+The FreeBSD guest agent service is running and enabled. Its custom MWAN channel
+and QEMU channel use different tty devices. The actual agent channel selection
+requires diagnosis before another deploy. Do not infer network loss from this
+guest execution failure.
+
+The prior binary and network document are preserved under
+/Users/agoodkind/.local/state/mwan305/20261001-real-cutover/baseline-before.
+The failed deploy log is baseline-deploy-ansible.log in the parent directory.
+Ownership cutover, reversal, balancing, restart, reboot, and production readiness
+remain unaccepted. Production has not changed.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
