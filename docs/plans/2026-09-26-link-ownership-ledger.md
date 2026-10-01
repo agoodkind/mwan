@@ -3921,6 +3921,41 @@ MWAN-399 remains Todo. No incomplete acceptance ticket was closed.
 The current blockers are unavailable SSH control access and degraded Astound
 IPv4 acquisition. Production and Webpass ownership remain unchanged.
 
+## Assign the measured DHCP startup repair
+
+The third baseline battery, session 63506, exited 1 during
+client225-ipv4-route-get after SSH banner exchange timed out. It started no
+captures or network fault and reported no cleanup errors. Direct SSH later
+recovered. The Suburban SSH journal reports failed-authentication penalties
+and dropped connections during the failed interval. Host observations show
+load averages above 75 and 70.2% time waiting for input/output. No SSH
+security or unrelated service configuration changed. The source of
+authentication failures and host resource pressure remains unverified.
+
+Read-only CT 903 diagnosis verified isp-astound, an active Kea DHCPv4
+process, and eth0 up at 10.240.207.1/24. Kea's startup log reports eth0
+down, zero retries, and DHCPSRV_NO_SOCKETS_OPEN. Its packet-socket table
+contains no receive socket. The gateway's missing IPv4 acquisition remains
+unaccepted. This is a confirmed simulator startup defect, separate from
+MWAN ownership implementation and the earlier completed MWAN-524 repair.
+
+MWAN-534 is In Progress under MWAN-305. Independent contract review
+identified supported Kea DHCPv4 socket retry fields. The implementation
+assignment owns only testbed/isp-lxc/kea-dhcp4.conf.j2 in
+/Users/agoodkind/.codex/worktrees/mwan-305-dhcp-socket-recovery/configs.
+The branch is codex/mwan-305-dhcp-socket-recovery from merged
+1b8ec0dd8a6cafe741b41d7a9149670f7e07b3b9. Native worktree creation
+succeeded, but attachment registration failed at the 100-artifact limit;
+the returned checkout is used without creating a duplicate.
+
+The settled repair requires all sockets, retries up to 60 times, and waits
+1000 milliseconds between attempts. Installed-version validation and actual
+down-interface startup, recovery, DHCP acquisition, and bounded exhaustion
+remain required. No repair has merged or deployed. The next operation is
+review and real validation of this focused fix before simulator deployment
+and baseline packet acceptance. Production and gateway ownership remain
+unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
