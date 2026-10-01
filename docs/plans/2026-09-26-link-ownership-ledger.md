@@ -4104,12 +4104,45 @@ da7d4218e877015f19b76a066252993bad6cbd84. Required checks and Graphite AI
 review passed; no review threads remain. PR-Agent quota exhaustion is not
 a required check. Keep the PR unmerged until forward acceptance passes.
 Native attachment failed because the thread has 100 identities; the PR
-remains accessible at https://github.com/agoodkind/configs/pull/599.
+remains accessible as [Configs PR #599](https://github.com/agoodkind/configs/pull/599).
 
 MWAN-519 remains In Progress. Snapshot task records prove a lock conflict,
 but they do not identify the caller. Deploy and watchdog snapshots lack
 shared coordination; that separate gap does not block the successful retry's
 snapshot. Continue the actual cutover correction and recovery.
+
+## Verify recovery and correct the packet observation
+
+Session 68771 terminated with exit 1 at 2026-10-01T07:15:07Z. The recap
+reported ok=290, changed=33, unreachable=0, failed=1, skipped=38, rescued=1,
+and ignored=0. The playbook restored prior role inputs and verified the
+applied recovery state. Owner release never ran. The gateway retains the
+baseline network checksum c8a32e91b4b42a9d189b34211b943d6c827f4dafbe4d78e8007272d7cfb33307,
+binary checksum 8b25781720ad04e9ebc7e8dc82fd0e1176c07f73f7b1e016f153e73413976907,
+and boot ID 204ae526-a4d8-4ee1-8c4e-11a575a3e546. Actual served state
+reports Webpass owned by networkd, healthy, selected, and ready for routing
+in both families. Preserve recovered-operational.json with the failure evidence.
+
+The earlier no-loss statement used an incomplete observation. Client 225
+missed 246 replies per family, sequences 1450 through 1695. Its guest
+interreply gap was 252.942 seconds for IPv4 and 252.946 seconds for IPv6,
+around 07:06:11Z through 07:10:24Z. Raw remote ping output records every
+unanswered sequence. SSH output loss does not explain these records.
+The cause and loss location remain unverified. Client 226 had no missing
+sequences in either family. All channels currently receive replies.
+
+Both clients sampled the backup around 07:05:58Z through 07:06:11Z and
+07:10:24Z through 07:10:39Z. Route queries did not fail. Do not claim
+uninterrupted forwarding or production readiness from this attempt.
+
+The isolated acquisition correction is signed
+1e6375e4a554d1a2034db5d023bb8703fa0a8c19. Independent review found no
+blocking defect. The production expression accepts the captured live
+configured IPv6 NDisc nexthop; absent, IPv4, foreign and unconfigured
+nexthops do not satisfy the RA predicate. Lint passes. The existing suite
+reported 204 examples, one unrelated quote-escaping failure, and 18 pending.
+The correction is not merged or deployed. Preserve the later operational
+routing and translation requirements and retry through merged deployment.
 
 ## Record future implementation results
 
