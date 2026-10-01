@@ -3860,6 +3860,36 @@ or collecting read counts and hashes. Strict delegation and operational
 acceptance requirements remain unchanged. The goal and 30-minute heartbeat
 use this clarified requirement.
 
+## Accept the baseline reboot and begin packet acceptance
+
+At September 30, 22:46 PDT, the coordinator reoriented using the current
+coordination plan, deployment and cutover plans, interface specification,
+relevant memory, recent ledger, current checkout, and active agent handles.
+Root owns runtime ordering and this ledger. Three agents independently
+refresh ticket prerequisites, live deployed identity, and runner operations.
+Their assignments permit read-only inspection and exclude target mutations.
+
+The baseline deploy from merged Configs
+4abe359398a0c9e5362c01d34d258bf3c65328ed finished successfully.
+Its recap reported ok=306, changed=33, unreachable=0, failed=0.
+The verdict 20260930-221030-deploy-745801 reported reboot_rc=0,
+egress_rc=0, and owned_rc=0. VM 213 changed boot identity and ran MWAN
+0ff387b with the expected installed and running executable hash.
+Both downstream clients received every sequence from 1 through 1798 for
+each IP family. Both observed backup selection during reboot and primary
+selection afterward. Four SSH route-query connections reset while packet
+sequences continued. The complete evidence is retained in
+[the baseline result](../../../../.local/state/mwan305/20261001-real-cutover/baseline-final-readback/result.md).
+
+Fresh downstream observers run as sessions 69796 and 80141 for clients
+225 and 226. The existing public acceptance runner runs as session 21128
+with shared-plan-0ff387b-linux.json and output baseline-battery-0ff387b.
+All artifacts are under the existing 20261001-real-cutover evidence directory.
+The runner must prove balancing, mappings, translation, and persistent
+failure history after a real route deletion, restoration, and daemon restart.
+The destructive operation has not run. Webpass activation remains undeployed.
+Production readiness and ownership transfer remain unaccepted.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
