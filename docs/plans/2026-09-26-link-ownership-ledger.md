@@ -4966,6 +4966,37 @@ review follows its exact signed commit. Actual testbed forward and reverse
 cutovers, restart, reboot, backup delivery, balancing, and failure history
 remain the acceptance requirements. Production remains unchanged.
 
+## Start the repeated forward deployment from merged configuration
+
+Configs PR 604 merged as f67d8af38f6cc9563e7afc1270ebe514bddaa292
+at 12:14:51 UTC. Independent review approved signed head 1d05142a.
+All three required checks passed, signatures verified, and no review threads
+remained open. The optional PR-agent review exhausted its daily provider
+allowance without reviewing the diff. It is not an active merge requirement.
+No review or workflow settings changed.
+
+The clean primary Configs checkout matches merged origin/main f67d8af3.
+Both existing downstream client preflights passed at 12:15:18 UTC. Each guest
+uses only eth0 plus loopback, expected addresses and MAC, the expected
+OPNsense defaults and router MAC, and no alternate egress or custom policy
+rule. The existing readiness socket reports both families ready. Hypervisor
+access confirms VM 213 is running. Installed binary and network hashes match
+the previous recovery pair 599392d3 and 2155363a.
+
+Root started deployment 79292 at 12:15:55 UTC using
+./configsctl deploy deploy-mwan --limit mwan_suburban_servers.
+The exact log is deploy-mwan-20261001T121555Z.log under the current
+configs-runs temporary directory. The target release is
+202610011156-9a-3bfdc2a; expected executable SHA256 is
+731618adfeb37a6240a36ddbe77049731286cfc0fba36b300a66a3719e1fe587.
+Expected final network SHA256 is
+50c5db1725b57814dcedff43baea84f263fa10f86f1126a1ebc2f76b198a192f.
+Observers 92566 and 56392 measure both downstream families. The actual
+ownership transfer, replacement readiness, failover, reboot and complete
+deployment verdict remain pending. Root alone owns live mutation and capture
+phase/stop files. Preserve the activation worktree for the required reversal.
+Production remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
