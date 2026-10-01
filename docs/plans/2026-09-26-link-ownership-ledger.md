@@ -3760,6 +3760,31 @@ DHCPv6, DHCP-PD, and NDisc objects without deleting foreign or kernel objects.
 The dependent management and transit recovery implementation remains pending.
 Shared testbed and production ownership have not changed.
 
+### Require actual testbed cutover cycles before production
+
+The user requires testbed cutover, failure identification, reversal, repair,
+merged deployment, and repeated cutover validation. Yield only after actual
+testbed evidence establishes production readiness. Do not deploy production
+before that readiness report. Keep both downstream observers active during
+each risky operation and retain failed observations.
+
+PR #153 merged as 1c46529aab2909d6baaa73fe2347c4594f98e67a.
+PR #154 merged as 0ff387b589773a914201ce0e129dc4feae2f8786 and includes
+the diagnostic repair. Required checks passed and review threads are resolved.
+The primary MWAN checkout is clean at 0ff387b. Published release verification
+and the focused Configs baseline pin remain pending.
+
+Configs PR #594 publishes signed 9e7f277019e6acece126d195d9b660e7bc70f764.
+All three required checks and all three branch-local signatures passed.
+Two new review findings require verification: the recovery backup filename and
+dynamic networkd acquisition readiness. The PR remains open. The separate
+management and transit recovery changes remain in implementation.
+
+Read-only shared checks confirm the WAN daemon is active. Client 225 uses
+the IPv4 default through 10.240.1.1 on eth0. Client 226 uses IPv6 defaults
+through 3d06:bad:b01:211::1 and fe80::1 on eth0. These checks do not establish
+cutover acceptance. Shared and production owners remain unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
