@@ -3656,16 +3656,13 @@ and the current daemon log only after failure. Existing CI preserves actual
 protocol result artifacts. Native AMD64 CI and required checks are running;
 no product failure cause or completed aggregate acceptance is claimed.
 
-The focused production release boundary on the exclusive virtio guest passed.
-Its [external networkd observation](/Users/agoodkind/.local/state/mwan305/20261001-configs-physical-transfer/after-networkctl.txt)
-identifies enwebpass0 index 3 as unmanaged. Its
-[kernel address observation](/Users/agoodkind/.local/state/mwan305/20261001-configs-physical-transfer/after-addresses.txt)
-contains neither ordinary primary address; only mapped IPv4 /32s and link-local
-IPv6 remain. The prior generated file has no KeepConfiguration directive.
-This later observation does not establish address absence at the earlier
-replacement start. Immediate release-boundary timing proof is pending.
-The transfer must verify exact prior-owner objects absent before replacement
-without banning unrelated foreign objects or creating ordinary MWAN receipts.
+The first focused release observation contained neither ordinary primary
+address after networkd reported enwebpass0 index 3 unmanaged. A repeated
+observation retained IPv6. The prior generated file has no KeepConfiguration
+directive. Generic before/after output filenames were reused; preserve each
+attempt separately before citing its files as acceptance. The transfer must
+verify actual prior-owner release without banning unrelated foreign objects
+or creating ordinary MWAN receipts.
 
 ### Record diagnostics merge and pending native acceptance
 
@@ -3677,6 +3674,29 @@ completed cancelled. Follow the new merged-main execution for native packet
 acceptance and preserved artifacts. The canceled run is not accepted evidence.
 The mapped-address repair, exact source release boundary, complete transfer,
 and downstream testbed and production acceptance remain incomplete.
+
+### Verify the failed baseline's address provenance
+
+The repeated physical baseline already classified fd39:10::2/64 as foreign,
+tentative, and configuring before release. AdministrativeState=configured did
+not establish usable IPv6 acquisition. The
+[preserved retained-address snapshot](/Users/agoodkind/.local/state/mwan305/20261001-configs-physical-transfer/root-retained-ipv6-20261001T040941Z.json)
+records the failure. The fixture must establish a fresh cold baseline and
+actual configured static acquisition before testing source release. A
+networkd restart during duplicate-address detection requires separate diagnosis;
+this failed baseline does not prove a retained networkd-owned address defect.
+
+The real DHCP mapping regression exposed premature alias creation before
+networkd acquired its configured primary. Defer networkd mapping installation
+until actual configured DHCPv4 acquisition, then exclude the primary from
+mapped receipts. The runtime correction and its packet proof remain pending.
+
+Merged-main CI run 36813450461 and firewall job 110213303425 are verified live
+for source 045d391. The canceled feature run uploaded partial protocol results;
+execution stopped before the kernel-policy case. Artifact preservation passed,
+but native packet and aggregate acceptance remain pending. The clean owning
+MWAN main checkout advanced to the merge. Shared gateway and production
+deployment have not changed.
 
 ## Record future implementation results
 
