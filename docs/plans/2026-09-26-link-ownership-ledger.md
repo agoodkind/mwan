@@ -3452,6 +3452,35 @@ and repeat deployment behavior pass; full gateway release acceptance and
 load balancing remain pending. MWAN-521 and MWAN-522 were read from Tack
 and both remain In Progress, matching their unfinished acceptance work.
 
+### Review external-owner mapping exclusion and aggregate coverage
+
+MWAN PR #149 contains signed head b40a83654054362857557e7d29b1875093b8d3c8
+on merged f025543. Root verified its raw signature and git signature,
+inspected the complete runtime diff, and read its real regression report.
+The final fixture passed in 14.23 seconds and failed against the earlier
+published daemon in 14.10 seconds after observing both unwanted mapped
+IPv4 addresses. The fix excludes explicit external owners from legacy
+mapped-address creation and reporting. It preserves networkd legacy writes,
+MWAN receipt consumption, and scoped NPT authority. All ten required CI
+checks passed; no review threads were posted at inspection. Independent
+review remains in progress. The nonrequired vulnerability check reports
+the existing GoBGP GO-2026-4736 advisory with no fixed release.
+
+The public protocol runner includes release verification but omits the
+mapped-address and selection regressions from its namespace case list.
+A focused aggregate coverage correction is assigned separately from the
+frozen runtime PR. The combined published-release acceptance must execute
+these existing cases and reject skips. The previous complete 27-case
+published aggregate remains valid evidence for its earlier source.
+
+The shared promotion manifest now includes accepted all-five simulator
+provisioning, authenticated SSH, the unchanged zero-change repeat, and
+the downstream observation results. It requires a new combined release
+and a new release-specific acceptance plan while preserving earlier hashes
+and evidence. The transfer procedure still requires real forward/reverse
+packets, prior-owner cleanup, and management/transit verification. No shared
+gateway upgrade, ownership transfer, or production deployment ran.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
