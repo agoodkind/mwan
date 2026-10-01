@@ -3685,6 +3685,11 @@ records the failure. The fixture must establish a fresh cold baseline and
 actual configured static acquisition before testing source release. A
 networkd restart during duplicate-address detection requires separate diagnosis;
 this failed baseline does not prove a retained networkd-owned address defect.
+The [first-attempt report](/Users/agoodkind/.local/state/mwan305/20261001-configs-physical-transfer/attempt-1-source-release/result.md)
+discloses that its original raw snapshots were overwritten. The second
+attempt's raw snapshots and debug journal are preserved separately under
+attempt-2-networkd-restart. Do not use the current generic filenames as
+first-attempt evidence.
 
 The real DHCP mapping regression exposed premature alias creation before
 networkd acquired its configured primary. Defer networkd mapping installation
