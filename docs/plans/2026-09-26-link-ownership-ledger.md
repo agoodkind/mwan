@@ -3309,6 +3309,31 @@ must verify port 22 and the actual sshd process. Both changes remain under
 review. Complete guest provisioning, authenticated SSH, and unchanged-play
 idempotency remain pending. No shared gateway or production deployment ran.
 
+### Merge SSH repair and verify remaining process migration
+
+Configs PR #590 merged as 0704bf40142be7c36e15ec02b0435e8a297ef0ff.
+Required checks passed, both feature signatures verified, and all three review
+threads were resolved. The exact branch and unregistered worktree are removed.
+The primary checkout matched clean merged main before deployment.
+
+The actual management play configured CT 900, exported its identity, and
+authenticated SSH verified isp-webpass and its machine ID. The play then
+failed on CT 901's reload with recap ok=72, changed=12, unreachable=0,
+failed=1, skipped=10. CT 901's old socket-activated process remained active
+after socket shutdown. Its HUP reload reported Cannot bind any address and
+exited 255. Read-only observations confirmed the socket disabled/inactive,
+the service failed, and no port 22 listener. The next repair must stop the
+old process during transition before the existing fresh service startup.
+The [process migration report](/Users/agoodkind/.local/state/mwan305/20261001-npt-deploy-acceptance/management-901-reload-failure.md)
+retains terminal logs and actual identity evidence. All-five provisioning
+and unchanged-play idempotency remain incomplete.
+
+Both downstream guests received all 300 IPv4 and IPv6 probes during the
+five-minute observation after play startup. Client 225 had one failed IPv6
+route query; client 226 had no failed route queries. Successful queries
+selected the primary. These results do not cover the complete play interval,
+balancing, or a gateway deployment. No production deployment ran.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
