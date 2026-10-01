@@ -5955,6 +5955,29 @@ comparison and Kea parsing passed. Review, publication, merged deployment,
 changed-prefix packet proof and restoration remain pending. No simulator
 renumber occurred. Preserve DNS policy, identity, timers and other providers.
 
+## Begin the live delegated-prefix change
+
+PR612 merged as Configs 2c1babe13d924b82cbb68e33e4306dd3d05170ae.
+Required checks and Graphite AI passed. Review threads were empty.
+The clean owning main advanced to this revision. Simulator deployment
+handle 22667 began at 17:54:19 UTC through configsctl deploy deploy-testbed
+with limit suburban and tags isp-lxcs. All simulator services may restart.
+
+Capture handle 93883 uses unit mwan305-prefix-20261001-1756.service.
+PID 1496 is /usr/bin/tcpdump; listening readiness passed for any interface
+with Linux cooked v2 packets. IPv6 capture includes acquisition and transit
+correlation. Evidence is 20261001-mwan227-prefix-capture. Observers 97200
+and 98250 remain fresh for both guests and both families through this phase.
+They expire around 18:30 UTC; continuation must start before that boundary.
+Actual changed-prefix translation, withdrawal and restoration are pending.
+
+Restoration candidate 8aa3b426659d95da1ebcd4e558a8d97ddc3624e0 restores
+only Webpass prefix 2200::/56 and length 56. Its clean native worktree is
+mwan-227-prefix-restoration/configs. Actual template comparison, scoped lint
+and signature verification passed. Independent review is active. Publication
+and deployment remain unperformed. MWAN-227 remains In Progress; production
+remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
