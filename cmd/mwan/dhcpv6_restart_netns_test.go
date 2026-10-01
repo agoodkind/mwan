@@ -169,8 +169,7 @@ func runOwnedDHCPv6DaemonRestartRecovery(t *testing.T) {
 			stopRuntimeDaemon(t, daemon)
 			withdrawDHCPv6RestartNPT(t, networkDir)
 			daemon = startRuntimeDaemon(t, os.Getenv(dhcpv6RestartBinaryEnv), configPath, root, "dhcpv6-withdrawn-npt")
-			waitStaticRuntimeAddress(t, daemon, "enatt0", "2001:db8:30::1/128", false)
-			assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"))
+			waitDHCPv6RestartEdgeReleased(t, daemon, filepath.Join(root, "owned-addresses.json"))
 			waitDHCPv6RuntimeNPTRule(t, daemon, false)
 			return
 		}
@@ -187,8 +186,7 @@ func runOwnedDHCPv6DaemonRestartRecovery(t *testing.T) {
 			if request.MessageType != dhcpv6.MessageTypeRebind || len(request.Options.IAPD()) != 1 || len(request.Options.IAPD()[0].Options.Prefixes()) != 2 {
 				t.Fatalf("cached multi-prefix restart did not send both prefixes: %s", request)
 			}
-			waitStaticRuntimeAddress(t, daemon, "enatt0", "2001:db8:30::1/128", false)
-			assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"))
+			waitDHCPv6RestartEdgeReleased(t, daemon, filepath.Join(root, "owned-addresses.json"))
 			waitDHCPv6RuntimeNPTRule(t, daemon, false)
 			assertDHCPv6OtherPrefixValid(t, journalDirectory)
 			return
@@ -236,6 +234,56 @@ func runOwnedDHCPv6DaemonRestartRecovery(t *testing.T) {
 	waitDHCPv6RestartRecordGone(t, daemon, journalDirectory)
 	waitStaticRuntimeAddress(t, daemon, "enatt0", "2001:db8:30::1/128", false)
 	assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"))
+}
+
+func waitDHCPv6RestartEdgeReleased(t *testing.T, daemon *runtimeDaemon, path string) {
+	t.Helper()
+	// Kernel deletion precedes receipt persistence in the address reconciler.
+	deadline := time.Now().Add(10 * time.Second)
+	var data []byte
+	var addresses []netlink.Addr
+	for time.Now().Before(deadline) {
+		link, err := netlink.LinkByName("enatt0")
+		if netif.IsLinkNotFound(err) {
+			assertRuntimeDaemonRunning(t, daemon)
+			time.Sleep(50 * time.Millisecond)
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		addresses, err = netlink.AddrList(link, netlink.FAMILY_V6)
+		if err != nil {
+			t.Fatal(err)
+		}
+		addressPresent := false
+		for _, address := range addresses {
+			addressPresent = addressPresent || address.IPNet.String() == "2001:db8:30::1/128"
+		}
+		data, err = os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var journal struct {
+			Objects []struct {
+				Scope string `json:"scope"`
+			} `json:"objects"`
+		}
+		if err := json.Unmarshal(data, &journal); err != nil {
+			t.Fatal(err)
+		}
+		present := false
+		for _, record := range journal.Objects {
+			present = present || record.Scope == "npt-edge"
+		}
+		if !addressPresent && !present {
+			assertRuntimeNPTEdges(t, path)
+			return
+		}
+		assertRuntimeDaemonRunning(t, daemon)
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("NPT edge release incomplete: addresses=%v journal=%s: %s", addresses, data, runtimeLogTail(t, daemon, 50))
 }
 
 func withdrawDHCPv6RestartNPT(t *testing.T, directory string) {
