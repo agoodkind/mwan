@@ -4621,6 +4621,53 @@ At 09:55 UTC, deployment remains active in management/transit verification.
 Reboot, complete acceptance battery, reversal, and second forward transfer
 remain required. PR #599 remains unmerged. Production remains unchanged.
 
+## Reject cold-boot acceptance and repair default link activation
+
+Deployment 80192 completed at approximately 09:58 UTC with exit status 0:
+379 successful tasks, 45 changed, no failure, unreachable host, or rescue.
+The deploy gate accepted reboot, egress, and mapped-address checks. Boot ID
+changed from 204ae526-a4d8-4ee1-8c4e-11a575a3e546 to
+6dd73ec5-6b17-46ae-a87a-83e11034ad61. Both downstream guests used backup from
+approximately 09:57:07 to 09:58:01 UTC and returned to primary. The fresh
+guest-225 and working guest-226 windows recorded no missing sequences in
+that reboot interval. Installed binary and network hashes remain unchanged.
+
+The overall deploy verdict does not establish Webpass cold-boot acceptance.
+Live exports postboot-0958-operational.json and postboot-0959-operational.json
+report Webpass routing not ready, IPv4 application failed with network is
+unreachable, and IPv6 acquisition pending. Actual enwebpass0 is DOWN with its
+five IPv4 addresses, only local routes, and no IPv6 link-local address.
+IPv6 is enabled with EUI-64 generation configured. Networkd correctly reports
+the transferred link unmanaged. DHCPv6 recovery repeatedly reports no matching
+address for the interface. AT&T continues serving downstream packets.
+
+The deployed cold-failure-network.json omits the enabled leaf. Source review
+proved applyLinkEnabled skipped writes when the optional field was nil,
+although the public schema defaults enabled to true. The earlier warm
+transfer inherited an already enabled link from networkd. Do not activate
+the post-forward battery or claim production readiness from this failure.
+
+The narrow runtime correction is signed 5d002265f133731120cead09886b2b636b6b70f8
+on codex/mwan-519-cold-physical-link in the reused excluded-forwarding worktree.
+Only owned_links.go and the existing public daemon link regression changed.
+The unchanged runtime failed its initially DOWN link assertion. The corrected
+runtime passed in 2.006 seconds; independent replay passed in 1.880 seconds.
+Real packet delivery, event-driven repair, and unchanged foreign link state
+passed. Local Linux check/test and signature verification passed. Independent
+exact-source review found no blocking defect. The negative-control artifact
+was verified, but its deleted source variant was not independently replayed.
+MWAN PR #156 is published; required CI and release publication remain pending.
+Actual physical cold boot and DHCPv6 recovery remain required.
+
+Recovery PR #599 is rebased onto c802ebec at signed 04896cba. Both environment
+renders, released network/firewall validation, exact client identity/mapping
+checks, and lint passed independently. Required CI passed and no review
+threads are present. The source acquisition gate requires usable current
+assignments. The recovery deployment requires the published link correction.
+Preserve that ordering. Prepare the merged release pin before deploying the
+networkd reversal. MWAN-519 and MWAN-521 remain InProgress; production is
+unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
