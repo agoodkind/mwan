@@ -3092,6 +3092,44 @@ observation window is 90 seconds, not an outage allowance. Engine execution
 and fresh installed-identity verification remain pending. The plan does
 not authorize bypassing the rejected SSH pct transport.
 
+### Verify the applied mapping rules and current NPT programs
+
+Configs PR #585 merged as e1020d68104c56618fe94132b0a2bb58c258111d.
+The subsequent fixture play exited one with ok=26, changed=4,
+unreachable=0, and failed=1. The native updater, filter reload, reconnection,
+and isolated listener assertions passed. Actual PF readback contained both
+exact source-restricted rules with destination (vtnet1). The assertion
+incorrectly required (vtnet1:1) and used incorrect escaping. HTTP and final
+GUI assertions did not execute. A focused assertion repair remains pending.
+The [actual play log](/var/folders/jq/hwwlnpr56_vdb42ff743hy040000gn/T/configs-runs/deploy-opnsense-20261001T001225Z.log)
+retains the failed assertions and completed tasks. This result does not
+establish complete fixture or daemon deployment acceptance.
+
+MWAN PR #146 changes only the existing NPT readiness fixture. Independent
+review of exact commit 857d69394647bc1af6304ef8f481ae7cb2981d42 found no
+actionable defect in the generation, route, or unchanged packet assertions.
+The retained published-binary systemd lane passed all five required cases
+with zero skips in 31.189 seconds. A subsequent review identified a valid
+potential inspection race if a kernel program disappears during replacement.
+That concern remains under investigation; merge acceptance remains pending.
+The [independent review](/Users/agoodkind/.local/state/mwan305/20261001-mwan533-release-93d3c35/startup-diagnostic/independent-pr146-review.md)
+and [public verification report](/Users/agoodkind/.local/state/mwan305/20261001-mwan533-release-93d3c35/startup-diagnostic/npt-fixture-verification.md)
+retain the exact source and runtime evidence. The corrected readiness wait
+does not establish uninterrupted forwarding during startup. The original
+captured startup loss remains a separate result.
+
+The final 900-second fixture observers received 899 of 899 replies in each
+family from each client, with zero missing sequences. Each client recorded
+343 successful route samples per family; every successful sample selected
+the primary next hop. Client225 exited zero with no failed route samples.
+Client226 exited one after a single IPv6 route observation failed. That
+SSH command returned 255 at 00:05:41.745819Z with connection-reset stderr
+from suburban, before the fixture deploy started at 00:12:25Z. It did not
+report a route rejection or packet outage. The [client225 report](/Users/agoodkind/.local/state/mwan305/20261001-npt-deploy-acceptance/mapping-fixture-final-client225/report.json)
+and [client226 report](/Users/agoodkind/.local/state/mwan305/20261001-npt-deploy-acceptance/mapping-fixture-final-client226/report.json)
+retain the packet and route results. The separate 600-second observers
+remain active; their terminal results are not included here.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
