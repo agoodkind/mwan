@@ -57,20 +57,22 @@ func (module *Module) routerDNS(ctx context.Context, id string, link netif.Owned
 		session.done = make(chan struct{})
 		done := session.done
 		go func() {
+			var observationErr error
 			defer func() {
-				failed := false
+				panicked := false
 				if recovered := recover(); recovered != nil {
-					session.mu.Lock()
-					session.failure = fmt.Errorf("resolver RA observer on %s panicked: %v", session.name, recovered)
-					session.mu.Unlock()
-					failed = true
+					observationErr = fmt.Errorf("resolver RA observer on %s panicked: %v", session.name, recovered)
+					panicked = true
 				}
+				session.mu.Lock()
+				session.failure = observationErr
+				session.mu.Unlock()
 				close(done)
-				if failed && module.Env.RequestReconcile != nil {
+				if panicked && module.Env.RequestReconcile != nil {
 					module.Env.RequestReconcile("resolver RA observer failed")
 				}
 			}()
-			session.observe(ctx, log, module.Env.RequestReconcile)
+			observationErr = session.observe(ctx, log, module.Env.RequestReconcile)
 		}()
 	}
 	return session.current(module.clock.Now()), failure
@@ -91,10 +93,13 @@ func (session *raSession) current(now time.Time) []netip.Addr {
 	return servers
 }
 
-func (session *raSession) observe(ctx context.Context, log *slog.Logger, request func(string)) {
+func (session *raSession) observe(ctx context.Context, log *slog.Logger, request func(string)) error {
 	client, err := netif.NewRAClient(session.name, log)
 	if err != nil {
-		return
+		if ctx.Err() != nil {
+			return nil
+		}
+		return fmt.Errorf("open resolver RA observer on %s: %w", session.name, err)
 	}
 	defer client.Close()
 	previous := session.current(session.clock.Now())
@@ -103,7 +108,10 @@ func (session *raSession) observe(ctx context.Context, log *slog.Logger, request
 		advertisement, router, err := client.ReceiveRA(ctx, time.Second, solicit)
 		solicit = false
 		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
-			return
+			if ctx.Err() != nil {
+				return nil
+			}
+			return fmt.Errorf("receive resolver RA on %s: %w", session.name, err)
 		}
 		if err == nil {
 			session.update(router, advertisement, session.clock.Now())
@@ -114,6 +122,7 @@ func (session *raSession) observe(ctx context.Context, log *slog.Logger, request
 		}
 		previous = current
 	}
+	return nil
 }
 
 func (session *raSession) update(router netip.Addr, advertisement *ndp.RouterAdvertisement, now time.Time) {
