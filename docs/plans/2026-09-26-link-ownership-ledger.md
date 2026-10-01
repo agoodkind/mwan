@@ -3602,11 +3602,12 @@ Provider acceptance does not complete that integration requirement.
 The new packet-check input appears in the tasks and fixture but lacks an
 inventory declaration; declare it explicitly before publishing the transfer.
 
-The public loader rejects explicitly disabled families. Supported IPv4-only
-providers omit the IPv6 family, and the acquisition gate already skips omitted
-families. Verify the actual Astound render rather than adding acceptance for
-an unsupported document. Active families still require applied assignments,
-routing, translation, and actual downstream replies.
+The public loader rejects explicitly disabled families. Astound instead
+configures an empty IPv6 family with DHCP=false, accept-ra=false, and native
+translation. Its renderer emits that family. The acquisition gate must
+distinguish requested acquisition from a present but empty family. Require
+applied assignments, routing, translation, and actual downstream replies for
+families that request acquisition; retain owner and release checks for all.
 
 Both exclusive QEMU processes were verified live at PIDs 40331 and 40332.
 The recorded ports and permanent MACs match the fixture readiness artifact.
@@ -3665,6 +3666,17 @@ This later observation does not establish address absence at the earlier
 replacement start. Immediate release-boundary timing proof is pending.
 The transfer must verify exact prior-owner objects absent before replacement
 without banning unrelated foreign objects or creating ordinary MWAN receipts.
+
+### Record diagnostics merge and pending native acceptance
+
+PR #152 merged as 045d391530865eb4ba447a733f3ed9b7508fe589 at 04:04:55Z
+after all ten required checks passed and no unresolved threads remained.
+The signed feature head and complete diff were independently reviewed.
+Its original native run 36813073217 and firewall job 110212160994 subsequently
+completed cancelled. Follow the new merged-main execution for native packet
+acceptance and preserved artifacts. The canceled run is not accepted evidence.
+The mapped-address repair, exact source release boundary, complete transfer,
+and downstream testbed and production acceptance remain incomplete.
 
 ## Record future implementation results
 
