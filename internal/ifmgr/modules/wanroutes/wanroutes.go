@@ -582,7 +582,7 @@ func catchAllCarrier(cfg Config, gateways gateways, health netif.HealthStates, t
 	var carrier *WAN
 	for i := range cfg.WANs {
 		wan := &cfg.WANs[i]
-		if wan.Tier != tier || !familyReady(*wan, gateways[wan.Key()], health, translations[wan.Key()], family) {
+		if (wan.SelectionEnabled != nil && !*wan.SelectionEnabled) || wan.Tier != tier || !familyReady(*wan, gateways[wan.Key()], health, translations[wan.Key()], family) {
 			continue
 		}
 		if carrier != nil {

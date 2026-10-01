@@ -164,6 +164,8 @@ func runSelectionExclusionDaemonRuntime(t *testing.T) {
 	waitSelectionRuntimeMark(t, excluded, 1)
 	waitSelectionRuntimeState(t, excluded, read, "enwebpass0", false, false)
 	waitSelectionRuntimeState(t, excluded, read, "enatt0", true, true)
+	assertSelectionRuntimeFallback(t, "10.50.9.2", "192.0.2.2")
+	assertSelectionRuntimeFallback(t, "fd50:9::2", "2001:db8:b01:fe::2")
 	assertStaticRuntimePacket(t, lan.namespace, backup.namespace, "udp4", "10.50.9.2:50103")
 	assertStaticRuntimePacket(t, lan.namespace, backup.namespace, "udp6", "[fd50:9::2]:50104")
 	setRuntimeNamespace(t, gateway)
@@ -241,9 +243,13 @@ func writeSelectionRuntimeNetwork(t *testing.T, directory string, enabled bool) 
 	for _, entry := range entries {
 		name := string(entry["name"])
 		if name == `"enmbrains0"` {
-			continue
+			if enabled {
+				continue
+			}
+			entry["goodkind-mwan-steering:steering"] = json.RawMessage(`{"tier":0,"weight":1}`)
+			entry["goodkind-mwan-steering:wan"] = json.RawMessage(`{"name":"monkeybrains","table-id":300,"fw-mark":3,"fw-mark-prio":300,"from-prio":57,"health":{"enabled":false}}`)
 		}
-		if name == `"enwebpass0"` || name == `"enatt0"` {
+		if name == `"enwebpass0"` || name == `"enatt0"` || name == `"enmbrains0"` {
 			entry["goodkind-mwan-steering:owner"] = json.RawMessage(`"external"`)
 			delete(entry, "goodkind-mwan-steering:link-files")
 			delete(entry, "goodkind-mwan-steering:link")
@@ -252,7 +258,7 @@ func writeSelectionRuntimeNetwork(t *testing.T, directory string, enabled bool) 
 			if name == `"enwebpass0"` {
 				entry["goodkind-mwan-steering:wan"] = json.RawMessage(`{"name":"webpass","table-id":200,"fw-mark":2,"fw-mark-prio":200,"from-prio":56,"health":{"enabled":false}}`)
 				if !enabled {
-					entry["goodkind-mwan-steering:steering"] = json.RawMessage(`{"enabled":false,"tier":0,"weight":1}`)
+					entry["goodkind-mwan-steering:steering"] = json.RawMessage(`{"enabled":false,"tier":1,"weight":1}`)
 				}
 			}
 		}
@@ -268,6 +274,23 @@ func writeSelectionRuntimeNetwork(t *testing.T, directory string, enabled bool) 
 	}
 	if err := os.WriteFile(filepath.Join(directory, "network.json"), data, 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func assertSelectionRuntimeFallback(t *testing.T, destination, source string) {
+	t.Helper()
+	link, err := netlink.LinkByName("enmwanbr0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	routes, err := netlink.RouteGetWithOptions(net.ParseIP(destination), &netlink.RouteGetOptions{
+		SrcAddr: net.ParseIP(source), IifIndex: link.Attrs().Index,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(routes) != 1 || routes[0].Table != 100 {
+		t.Fatalf("unmarked ingress fallback for %s: %v", destination, routes)
 	}
 }
 
