@@ -6354,6 +6354,29 @@ API calls before PR159 integration. Root retains deployment, ledger, and
 Tack mutation ownership. Brief deployment packet loss alone is not a defect.
 Production remains unchanged and requires subsequent cutover authorization.
 
+## Audit upstream library reuse before custom protocol work
+
+The user requires maintained libraries before custom implementation. The
+coordination plan now requires API inspection, upstream code and release
+activity, issue responses, archive status, and a documented API limitation
+before custom protocol work. Signed policy commit 14ab376 was pushed after
+all 142 branch-local commits passed signature and raw gpgsig verification.
+
+Root read the network audit and verified actual NDP, BGP, and policy-rule
+call sites. Netlink and GoBGP have default-branch code changes in August
+and September 2026. NDP is unarchived, but its default branch has no code
+change after March 2024. Active maintenance of NDP is not established.
+Linux performs automatic IPv6 address configuration and expiry. No source
+replacement is justified by repository inactivity alone.
+
+Custom policy-rule deletion decoding uses the library attribute parser.
+Neither the inspected pinned nor current Netlink API supplies an equivalent
+rule-event subscription and decoder. The audit established no replacement
+for this bounded gap. Existing rule listing and mutation use library APIs.
+The read-only report is external evidence under
+20261001-library-reuse-audit/network.md. DHCP and resolver maintenance review
+remains pending; PR159 integration remains pending.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
