@@ -6304,6 +6304,32 @@ the sole live controller, ticket writer and ledger writer. Tack398 and521
 remain In Progress. The existing521 comment was updated with verified reversal
 and parallel implementation status. Production remains unchanged.
 
+## Replace stalled packet observation before ownership transfer
+
+Independent acceptance detected all four continuation reply streams ending
+at 20:38:22 UTC while route observations continued. Root verified both guest
+and observer timestamps. Active observer handles alone did not establish
+fresh packet proof. The cause is unassigned; this is an observation gap,
+not evidence of downstream loss.
+
+Root started replacement observers 43493 and 86918 with separate control
+paths and verified all four reply streams at 20:48:11 UTC. New directories
+are dns-forward-client225 and dns-forward-client226. Root then interrupted
+the exact old Python processes 44399 and 44459; handles 75771 and 34158
+exited 130 and saved reports. Independent review verified fresh replacement
+replies and route samples. Do not claim packet continuity from 20:38:22
+until the replacements began around 20:47:42. That gap includes initial
+deployment preparation; ownership transfer had not started.
+
+Root collected uncached baseline queries under the existing networkd owner.
+Both families returned actual network answers. The active simulator capture
+allows independent correlation. Current forward acceptance remains pending.
+
+Root read the complete PR615 cleanup report. Its contained local branch,
+feature checkout and regenerable Python cache were removed. The remote
+branch was already absent. External evidence, production draft, DHCPv4 DNS
+implementation checkout and active main deployment remain unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
