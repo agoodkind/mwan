@@ -6576,6 +6576,32 @@ independent. The snapshot recovery reviewer found a transient qm deletion
 worker despite an adjacent empty task list. Root has not unlocked or
 started deployment.
 
+## Start the repeated forward deployment after natural recovery
+
+The watchdog completed its prune pass and cleared the stale lock at
+22:47:25.254732 UTC. Its later probes passed. Independent fresh checks
+confirmed no lock, no active VM 213 task and no matching deletion worker.
+Root separately verified no lock and an empty task list. No operator
+unlock, watchdog stop, snapshot deletion or configuration change occurred.
+The reviewed source comparison confirms the current release does not
+change this watchdog behavior. Its retained orphan metadata is separate
+from the completed recovery and the interface implementation.
+
+Root fetched Configs and verified clean owning main equals origin/main at
+7cbc3ee75d149f7a793d7708c87108328dd0cbdd. Predeploy guest executable and
+configuration still match the accepted reverse pair. Fresh packets from
+both guests and families continued at 22:48:52 UTC.
+
+Root started ./configsctl deploy deploy-mwan --limit mwan_suburban_servers
+from /Users/agoodkind/Sites/configs at 22:49:33 UTC. Session 48179 is active.
+Its exact log is deploy-mwan-20261001T224933Z.log under the local
+configs-runs temporary directory. It pins published e90b629 through the
+merged inventory. repeat_forward_review owns read-only simulator capture
+and acquisition/DNS checks. release_completion owns independent read-only
+identity, ownership and postboot recovery evidence. Root alone controls
+deployment and later faults or restarts. The full packet battery follows
+terminal deployment. Production remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
