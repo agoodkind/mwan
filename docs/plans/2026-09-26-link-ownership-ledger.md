@@ -6473,6 +6473,24 @@ about 22:47 UTC. Replace or renew observation before the next live retry if
 its expected duration exceeds those deadlines. Root remains the sole live
 controller. Production remains unchanged.
 
+## Merge the verified testbed release pin
+
+Root refreshed Configs PR 616's exact signed head, current base, all three
+required checks and review threads. The PR merged through normal gh squash
+at 22:27:49 UTC as 7cbc3ee75d149f7a793d7708c87108328dd0cbdd. No admin bypass
+was used. Clean owning Configs main advanced to that commit.
+
+Root read the bounded cleanup report. The contained pin worktree, local
+branch and regenerable Python cache were removed. The remote head was
+already absent. External release/render evidence, unrelated worktrees,
+shared Docker resources and native artifact operation 59227 were preserved.
+
+Tack comments now include both merges and the actual remaining acceptance.
+MWAN-398 and MWAN-521 remain In Progress. Native AMD64 execution and the
+new release's repeated-forward testbed deploy, restart and full packet
+battery remain unperformed. Do not infer deployment from the merged pin.
+Production remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
