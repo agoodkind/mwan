@@ -3703,6 +3703,23 @@ but native packet and aggregate acceptance remain pending. The clean owning
 MWAN main checkout advanced to the merge. Shared gateway and production
 deployment have not changed.
 
+### Record native packet failure and diagnostic correction
+
+Merged-main run 36813450461 completed with a kernel-policy packet failure.
+Firewall job 110213303425 uploaded artifact 11140693854. The
+[native failure report](/Users/agoodkind/.local/state/mwan305/20261001-kernel-policy-packets/report.md)
+records the preserved log and protocol results. The first enabled packet
+timed out. The container lacks the ip executable; route, rule, neighbor, and
+marked-route diagnostics failed. Sysctls and the complete daemon log were
+captured. The daemon reported table-100 LAN RouteReplace before the packet
+deadline. This evidence does not establish the packet failure's cause.
+Replace the diagnostic commands with existing netlink APIs and repeat native
+packet validation without changing its deadline or assertions.
+
+Ledger commit c978cf1 passed raw-header and signature verification across all
+55 branch-local commits and was pushed. The physical transfer and complete
+shared testbed acceptance remain incomplete. Production has not changed.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
