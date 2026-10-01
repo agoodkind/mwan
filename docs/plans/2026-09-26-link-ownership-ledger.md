@@ -3742,6 +3742,24 @@ owners. The Configs transfer changes still require management and transit
 recovery that supports the configured owner. No shared ownership transfer
 or production deployment occurred.
 
+### Publish runtime repair and transfer implementation
+
+MWAN PR #154 publishes signed 6c24cd6682659688d5666c6f93035e9bd128add9
+on merged 045d391. Root reviewed the address journal migration, DHCP primary
+exclusion, release gate, and corrected writer claims. Required checks remain
+pending. The supplementary DHCP reply failure remains preserved and excluded
+from the accepted coverage. Actual downstream delivery requires testbed
+cutover proof.
+
+Configs PR #594 publishes signed 5ad0c4c7fe727ffa51186d1cf093bcbe3af0fa52.
+Root reviewed exclusion, source release, replacement acquisition, recovery,
+managed-input pruning, and packet execution. Both branch-local signatures and
+raw headers passed verification. Required lint passed; required data tests
+remain pending. The source-release gate checks captured static, DHCPv4,
+DHCPv6, DHCP-PD, and NDisc objects without deleting foreign or kernel objects.
+The dependent management and transit recovery implementation remains pending.
+Shared testbed and production ownership have not changed.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
