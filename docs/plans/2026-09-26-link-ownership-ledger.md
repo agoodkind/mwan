@@ -5733,6 +5733,53 @@ files; a separate reviewer owns exact-head review. Candidate publication,
 merge, deployment and live DNS acceptance remain pending. AT&T/networkd and
 production ownership remain unchanged. MWAN-521 remains In Progress.
 
+## Deploy the acquired DNS testbed policy from merged Configs
+
+Independent review approved signed Configs 978f3949 with no findings.
+Its complete two-file patch enables Webpass RA and DHCPv6 DNS, updates the
+testbed release tag and MWAN checksum, and preserves the stack checksum.
+Actual render comparison changes only the two DNS booleans. DUID, IAID,
+delegation hint, ownership, addressing, mappings and all other providers
+remain identical. The candidate network SHA256 is
+2769af5f68c40d56ca5f4a99015d1267402fd076f6b5a1cc4b39cf5901e8bd88.
+Released network and firewall validators passed. All three required GitHub
+checks passed and review threads were empty. PR 610 merged as
+fc449839cb863d36989ca3daf6a45cd539cd5c17 at 16:29:31 UTC.
+Evidence is 20261001-testbed-acquired-dns-activation/independent-review.md.
+PR attachment failed on the existing 100-identity limit; no other attachment
+was removed.
+
+Root advanced clean primary Configs to that merged revision. At 16:31:59 UTC,
+root started handle 39452: ./configsctl deploy deploy-mwan --limit
+mwan_suburban_servers. The log is deploy-mwan-20261001T163159Z.log under
+configs-runs. Its terminal result and installed identity remain pending.
+Predeployment operational state reports ready translation for both families
+on Webpass and AT&T, with the existing owners unchanged.
+
+New observers 97200 and 98250 started around 16:30 UTC with separate
+dns-activation SSH ControlPaths and output directories. Fresh replies from
+both guests and both families and successful primary-route queries passed
+before deployment. Their durations extend through about 18:30 UTC.
+Root owns preboot capture 72516, unit
+mwan305-dns-activation-20261001-1632.service. Listening readiness and
+tcpdump executable identity passed for PID 3922. Stop this owned capture
+before the scheduled reboot; packet analysis and final drop/PID checks
+remain pending. No other agent may mutate these operations.
+
+Original production release verification confirms the downloaded d442ba1
+executable matches the live binary. Both original archives match their
+manifest and API digests. Provenance correctly attributes the reused original
+stack to source 5dd0ce00. All seven installed package versions match both
+bundles; original and candidate package payloads and control entries match.
+No package downgrade is required. Full original restoration remains
+unperformed. Evidence is
+20261001-production-recovery-contract/original-release/report.md.
+
+PR 158 bounded cleanup removed its contained local/remote source branch
+and worktree. Ignored build inputs are preserved externally. Root then
+advanced clean owning MWAN main to merged 7436c5c. Release/runtime evidence
+and the active ledger remain preserved. Production is unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
