@@ -348,8 +348,8 @@ module goodkind-mwan-steering {
         leaf administratively-enabled {
           type boolean;
           description
-            "The configured selection permission, independent of observed
-             health and forwarding readiness.";
+            "This leaf reports configured selection permission independently
+             of observed health or forwarding readiness.";
         }
         leaf health {
           type health-state;
