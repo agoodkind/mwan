@@ -3506,6 +3506,49 @@ setting produced a downstream IPv6 reply with TTL 63 and no packet loss.
 This proves the fixture prerequisite correction, not complete transfer
 acceptance. Forward/reverse validation remains in progress.
 
+### Merge published aggregate coverage and verify transfer limits
+
+PR #150 merged as 78edc3faec12d25c1129f39751d588f3a3c6c6e5 at 03:23:21Z.
+Root reviewed the exact four-file patch, all five real case results, and
+the final builder checks. All ten required CI checks passed, no review
+threads remained, and the signed feature commit verified. The public
+aggregate now requires 27 namespace and six systemd cases. Static, firewall,
+and kernel-policy cases use the existing published-binary boundary instead
+of unconditionally building source. The kernel-policy fixture's stale error
+expectation was corrected to the observed production ownership-journal
+error. Its malformed-input rejection and no-write assertions remain.
+Final published aggregate acceptance remains pending.
+
+Real netlink observation established the DHCPv6 test race: kernel deletion
+was observable while the prior NPT receipt remained on disk, followed by
+receipt removal. PR #151 changes only the two affected fixture cases to
+one joint kernel/journal wait under their original ten-second deadline.
+All four real restart cases passed in 58.602 seconds. Its signed rebased
+head is 7ee0ff75a9359e87b1cc1f5f839d31c95b28bdc5 on merged PR #150;
+integrated checks passed locally and required CI remains in progress.
+Root disproved and resolved the bot's proposed weaker receipt check:
+the fixture selects only expected-prefix 2001:db8:30::/60 and already
+requires no NPT receipts after withdrawal or matching-prefix expiry.
+The other valid cached prefix remains separately asserted.
+
+The actual networkd release test retained mapped .3 through .6 IPv4 /32s
+after primary-address removal and unmanaged-state verification. The
+[kernel snapshot](/Users/agoodkind/.local/state/mwan305/20261001-transfer-procedure/manual-external-addresses.json)
+proves retention. The approved repair uses the single address-module
+reconciler to reserve and create legacy networkd mappings, then prune exact
+receipts on external release. Networkd retains ordinary acquisition and
+routes. The initial baseline reboot creates fresh receipts without adopting
+existing unjournaled aliases. No new journal scope or second reconciler
+is required; implementation and real release/acquisition proof remain pending.
+
+The veth transfer fixture lacks a permanent hardware MAC, so MWAN correctly
+reports its physical link not ready. Backup replies do not prove selected
+replacement acquisition. The Configs fixture must use an exclusively owned
+real virtual NIC and require applied assignments, routing, translation,
+exact mapping receipts, and selected-provider packets before restoring
+selection. Existing shared guests remain unchanged. No gateway or production
+deployment ran.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
