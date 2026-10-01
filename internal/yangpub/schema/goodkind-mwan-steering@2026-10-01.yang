@@ -312,8 +312,8 @@ module goodkind-mwan-steering {
         type boolean;
         default "true";
         description
-          "Permit selection for both address families. False excludes the
-           connection from selection regardless of health or readiness
+          "This setting permits selection for both address families.
+           False excludes the connection from selection regardless of health or readiness
            and does not stop acquisition, translation, or address ownership.";
       }
       leaf tier {
