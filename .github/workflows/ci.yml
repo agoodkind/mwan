@@ -110,6 +110,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: make test-firewall test-protocol MWAN_OWNED_ROLE_CONFIGS="$GITHUB_WORKSPACE/.protocol-configs"
+      - name: Upload protocol execution results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mwan-protocol-results-${{ github.run_attempt }}
+          path: bin/protocol-results/
+          if-no-files-found: warn
 
   # The go job's quality matrix runs the suite on amd64 runners only. This job
   # runs the whole suite, cgo binding included, in the arm64 builder image on
