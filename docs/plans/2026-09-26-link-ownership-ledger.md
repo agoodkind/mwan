@@ -6377,6 +6377,28 @@ The read-only report is external evidence under
 20261001-library-reuse-audit/network.md. DHCP and resolver maintenance review
 remains pending; PR159 integration remains pending.
 
+## Complete the DHCP and resolver library audit
+
+Root read the complete DHCP/resolver report and the network report. Both
+DHCP and godbus repositories are unarchived and have recent protocol or
+runtime fixes. DHCP received protocol changes in July 2026; godbus received
+code fixes in September. These observations establish current activity,
+not dependency security clearance or a need to upgrade this slice.
+
+DHCPv4 uses upstream message operations and DNS decoding. DHCPv6 uses
+upstream codecs and SendAndRead. Its high-level Solicit and Request helpers
+do not accept the required client/server response matcher; the inspected
+client has no Renew, Rebind, Confirm, or Decline method. MWAN's lifecycle
+and identity policy use the available transport operation. The small
+SOL_MAX_RT helper interprets a generic option without an upstream typed
+accessor. No equivalent API replacement or source correction was established.
+
+systemd-resolved performs resolution. godbus applies its DNS and domain
+settings. MWAN supplies contribution policy, ownership, and restoration.
+The maintenance and API reuse audit is complete. Reports remain external
+under 20261001-library-reuse-audit. PR159 merge and live acceptance remain
+separate pending operations. No runtime code or dependency changed.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
