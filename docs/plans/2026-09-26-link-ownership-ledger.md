@@ -6142,6 +6142,43 @@ of the repeated-forward configuration run separately. MWAN-521 remains
 In Progress; its comment now includes this merged operation. Production
 remains unchanged. Actual reverse acceptance is pending.
 
+## Reject the reverse phase after a transport failure
+
+Networkd acquired Webpass through Solicit df7b3b and Request/Reply 2e1537
+at 19:24:12 through 19:24:13 UTC. The wire identity, IAID, 2200::/56,
+DNS and configured timers match the prior owner. Renew/Reply 59df28 at
+19:25:18 refreshes the assignment. Captured advertisements supply Cloudflare
+DNS with hop limit 255 and lifetime 240. Both initial and post-renew
+uncached queries have matching Google DNS requests and replies.
+The resolver ownership journal has links {}, and networkd publishes all
+three DNS servers with management DNS/domain unchanged.
+
+The selected-phase AT&T mapping command failed at 19:31:56 UTC with SSH
+exit 255 after 115 milliseconds. Suburban reset the connection before
+simulator authentication and curl execution. This is a failed command,
+not evidence of a failed mapping response. Automatic captured-input
+recovery is active; root must verify its terminal result and actual restored
+ownership before another deployment. Positive networkd DNS evidence does
+not establish accepted reversal after this rejected phase.
+
+One later attempt using the exact fresh SSH path and hostname succeeds
+with both host keys and authentication verified. Bounded server logs and
+session observations do not establish the original reset's cause. No SSH,
+firewall, infrastructure or packet-check change is justified by a guessed
+cause. Evidence is 20261001-dns-reverse-ssh-diagnosis/report.md.
+
+Independent observation through 19:34:30 contains 1,995 replies per
+guest/family, no missing interior sequences and no route-query errors.
+Captured networkd Release 299e16 and successful server Reply at 19:32:17
+verify acquisition release during recovery. Final recovery, terminal capture
+counters, closed downstream interval and reverse acceptance remain pending.
+
+Signed repeated-forward candidate 32963acb657573d332a41667b65f0e73c7b63a7f
+and its exact render match accepted forward bytes. Independent review
+accepts this unpublished candidate. PR614's contained terminal refs were
+removed while its checkout was preserved for the active forward branch.
+Production remains unchanged; MWAN-521 remains In Progress.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
