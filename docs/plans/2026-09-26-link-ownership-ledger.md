@@ -5595,6 +5595,59 @@ worktree and local branch were removed. The remote branch was already absent;
 fetch pruned its stale tracking ref. External runtime evidence remains.
 Evidence is 20261001-runtime-packet-edge/cleanup.md.
 
+## Complete simulator deployment and review the acquired DNS release
+
+Handle 92321 returned exit 0 at the root poll at 16:09:30 UTC. Its successful
+recap reports 257 successful tasks, 70 changes, zero failures and zero
+unreachable tasks. The exact earlier process exit time is not established.
+Independent downstream review measured 15:42:05 through 16:10:00 UTC,
+including 30 seconds after the observed terminal boundary. Each guest and
+family recorded 1,673 consecutive replies and 1,389 successful route queries.
+No interior sequence was missing; all sampled routes selected primary.
+The maximum guest timestamp interval was 2.367519 seconds with consecutive
+replied sequences. It does not establish packet loss or its cause.
+Evidence is 20261001-real-cutover/simulator-dns-deploy-downstream-review/result.md.
+
+Read-only Webpass simulator checks verified the installed Kea preferred and
+valid lifetimes of 180 and 240 seconds, renewal and rebinding timers of 60
+and 120 seconds, and both configured Google DNS servers. Installed radvd
+advertises the configured Cloudflare DNS server with a 240-second lifetime.
+Both services are active with PIDs 454909 and 454924, started at 15:53:50 UTC.
+The delegation pool and advertisement intervals remain unchanged. These file
+and service checks do not prove actual option requests, replies or client
+application. The gateway retains release 3bfdc2a and disabled acquired DNS.
+
+PR 158 published signed 18eab5fa after correcting RA listener errors and
+their existing logging contract. Local Docker checks and package tests passed;
+independent exact-head review approved. All ten active required GitHub checks
+passed. The final nonrequired runtime job failed the unchanged selection
+startup-count assertion with resolver disabled. Its systemd resolver cases
+did not execute. Preserve that failure separately from the passed acquired
+DNS fixture; no concrete DNS integration cause was found.
+Evidence is 20261001-acquired-dns-independent-review/listener-correction.md
+and ci-final-head.md.
+
+A new unresolved Graphite finding concerns raw JSON mutation in the fixture
+configuration helper. The implementer and independent reviewer are checking
+the fixture boundary and preservation of untouched fields. Its proposed
+partial serializer omits required ownership, identity and address settings.
+No source correction or merge is assumed. Release verification, client policy
+activation, real renewal, uncached query, restart and DNS transfer acceptance
+remain pending. Production activation and compatible recovery preparation
+remain unfinished. Production services and ownership remain unchanged.
+
+PR 609 bounded cleanup removed its clean worktree and local branch after
+whole-tree and patch-equivalence proof against merged 05cc4751. The remote
+branch was already absent. External renderer and parser evidence remains.
+Evidence is 20261001-testbed-acquired-dns-contract/cleanup.md.
+
+The heartbeat reorientation refreshed coordination and acquisition/cutover
+plans, relevant specification, memory and recent ledger entries. Actual Tack
+states remain MWAN-519 Done, MWAN-521 In Progress and MWAN-227 In Progress.
+Root controls live mutation and the ledger. Separate agents own source
+correction review and production recovery preparation. Observers 26614 and
+24811 remain active through about 17:27 UTC. No capture or deploy is active.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
