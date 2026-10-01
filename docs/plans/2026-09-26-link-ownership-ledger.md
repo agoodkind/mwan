@@ -5083,6 +5083,42 @@ capture and requires finalized packet analysis. Do not assign its cause yet.
 The two staging misses remain distinct from transfer-period packet results.
 Production remains unchanged.
 
+## Complete the route-event release forward cutover
+
+Deployment 4621 completed with exit status 0 at 13:02:33 UTC from clean
+merged Configs f67d8af3. The recap reports 379 successful tasks, 48 changes,
+zero failures, and zero unreachable targets. The hypervisor-local verdict
+20261001-052858-deploy-732826 reports reboot_rc=0, egress_rc=0, and owned_rc=0.
+The boot ID changed from e07e982e-a791-4179-bcee-63b3c243ad75 to
+2caef9d9-55d7-4c85-9835-6253d93b4b52. Both installed and running executables
+match 731618ad, and the final network document matches 50c5db17. Fresh served
+ownership reports Webpass configured-owner=mwan, link up, healthy selection,
+and passing probes in both families. Postboot assignments include the
+negotiated 3d06:bad:b01:2200::/56 prefix.
+
+Both guests recorded 1178 consecutive replies per family during the measured
+transfer interval, 12:39:32 through 12:59:11 UTC. The finalized primary
+captures report zero kernel drops and verified process cleanup. They do not
+observe backup forwarding. During the separate 13:00:30 through 13:02:00
+reboot interval, guest 225 recorded 90 replies per family; guest 226 recorded
+90 IPv4 and 89 IPv6 replies. Every sequence between each stream's first and
+last reply is present. The maximum reply interval was 1.017461 seconds.
+Both guests selected backup around 13:00:49 and primary around 13:01:23,
+with zero route query errors.
+
+The earlier guest 225 staging miss exited Webpass at 12:32:51.544239 UTC.
+Neither Webpass nor transit captured its reply. This establishes absent
+return traffic after Webpass egress, without establishing an ISP cause.
+Guest 226's staging miss preceded capture and remains unlocalized. Exact
+packet evidence is in route-event-fix-forward-packet-analysis/report.md
+under the existing real-cutover evidence directory.
+
+The reverse configuration at signed 3c659ce6 preserves the verified new
+release and passed independent exact-head review. The next operation is its
+reviewed merge and actual testbed reverse deployment. Repeat forward transfer
+and the existing balancing, mapping, and failure-history battery afterward.
+MWAN-519 and MWAN-521 remain InProgress. Production remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
