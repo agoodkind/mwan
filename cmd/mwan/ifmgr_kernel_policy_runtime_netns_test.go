@@ -109,7 +109,7 @@ func runKernelPolicyDaemonRuntime(t *testing.T) {
 	waitKernelPolicyValue(t, first, "ipv6", "enatt0", "ra_defrtr_metric", "777")
 	waitStaticRuntimeAddress(t, first, "enatt0", "10.52.1.1/24", true)
 	waitKernelPolicyFirewall(t, first)
-	assertKernelPolicyPacket(t, gateway, source.namespace, lan.namespace, false)
+	assertKernelPolicyPacket(t, first, gateway, source.namespace, lan.namespace, false)
 	killOwnedRuntimeDaemon(t, first)
 	writeKernelPolicyNetwork(t, networkDir, new(true), true)
 	second := startRuntimeDaemon(t, binary, configPath, root, "kernel-enabled")
@@ -117,7 +117,7 @@ func runKernelPolicyDaemonRuntime(t *testing.T) {
 	waitKernelPolicyValue(t, second, "ipv4", "enatt0", "forwarding", "1")
 	waitStaticRuntimeAddress(t, second, "enatt0", "10.52.1.1/24", true)
 	waitKernelPolicyFirewall(t, second)
-	assertKernelPolicyPacket(t, gateway, source.namespace, lan.namespace, true)
+	assertKernelPolicyPacket(t, second, gateway, source.namespace, lan.namespace, true)
 	killOwnedRuntimeDaemon(t, second)
 	if got := readKernelPolicyValue(t, "ipv4", "enatt0", "forwarding"); got != "1" {
 		t.Fatalf("daemon shutdown changed forwarding to %s", got)
@@ -127,7 +127,7 @@ func runKernelPolicyDaemonRuntime(t *testing.T) {
 	waitKernelPolicyValue(t, third, "ipv4", "enatt0", "forwarding", "1")
 	waitStaticRuntimeAddress(t, third, "enatt0", "10.52.1.1/24", true)
 	waitKernelPolicyFirewall(t, third)
-	assertKernelPolicyPacket(t, gateway, source.namespace, lan.namespace, true)
+	assertKernelPolicyPacket(t, third, gateway, source.namespace, lan.namespace, true)
 	killOwnedRuntimeDaemon(t, third)
 	writeKernelPolicyNetwork(t, networkDir, new(false), true)
 	disabled := startRuntimeDaemon(t, binary, configPath, root, "kernel-explicit-false")
@@ -135,7 +135,7 @@ func runKernelPolicyDaemonRuntime(t *testing.T) {
 	waitKernelPolicyValue(t, disabled, "ipv4", "enatt0", "forwarding", "0")
 	waitStaticRuntimeAddress(t, disabled, "enatt0", "10.52.1.1/24", true)
 	waitKernelPolicyFirewall(t, disabled)
-	assertKernelPolicyPacket(t, gateway, source.namespace, lan.namespace, false)
+	assertKernelPolicyPacket(t, disabled, gateway, source.namespace, lan.namespace, false)
 	killOwnedRuntimeDaemon(t, disabled)
 	writeKernelPolicyNetwork(t, networkDir, new(true), true)
 	reenabled := startRuntimeDaemon(t, binary, configPath, root, "kernel-reenabled")
@@ -143,7 +143,7 @@ func runKernelPolicyDaemonRuntime(t *testing.T) {
 	waitKernelPolicyValue(t, reenabled, "ipv4", "enatt0", "forwarding", "1")
 	waitStaticRuntimeAddress(t, reenabled, "enatt0", "10.52.1.1/24", true)
 	waitKernelPolicyFirewall(t, reenabled)
-	assertKernelPolicyPacket(t, gateway, source.namespace, lan.namespace, true)
+	assertKernelPolicyPacket(t, reenabled, gateway, source.namespace, lan.namespace, true)
 	killOwnedRuntimeDaemon(t, reenabled)
 	setKernelPolicyValue(t, "ipv6", "enatt0", "ra_defrtr_metric", "888")
 	writeKernelPolicyNetwork(t, networkDir, nil, false)
@@ -153,7 +153,7 @@ func runKernelPolicyDaemonRuntime(t *testing.T) {
 	waitStaticRuntimeAddress(t, fourth, "enatt0", "10.52.1.1/24", true)
 	waitStaticRuntimeLog(t, fourth, "changed outside MWAN")
 	waitKernelPolicyFirewall(t, fourth)
-	assertKernelPolicyPacket(t, gateway, source.namespace, lan.namespace, false)
+	assertKernelPolicyPacket(t, fourth, gateway, source.namespace, lan.namespace, false)
 	for leaf, value := range originalIPv6 {
 		waitKernelPolicyValue(t, fourth, "ipv6", "enatt0", leaf, value)
 	}
@@ -391,8 +391,13 @@ func waitKernelPolicyFirewall(t *testing.T, daemon *runtimeDaemon) {
 	t.Fatalf("daemon forwarding rule was not installed: %s", runtimeDaemonLog(t, daemon))
 }
 
-func assertKernelPolicyPacket(t *testing.T, gateway, source, destination netns.NsHandle, expected bool) {
+func assertKernelPolicyPacket(t *testing.T, daemon *runtimeDaemon, gateway, source, destination netns.NsHandle, expected bool) {
 	t.Helper()
+	defer func() {
+		if t.Failed() {
+			logKernelPolicyPacketFailure(t, daemon, gateway, source, destination)
+		}
+	}()
 	setRuntimeNamespace(t, destination)
 	listener, err := net.ListenPacket("udp4", "192.0.2.2:52100")
 	if err != nil {
@@ -428,4 +433,27 @@ func assertKernelPolicyPacket(t *testing.T, gateway, source, destination netns.N
 			t.Fatalf("disabled forwarding returned a non-timeout error: %v", readErr)
 		}
 	}
+}
+
+func logKernelPolicyPacketFailure(t *testing.T, daemon *runtimeDaemon, gateway, source, destination netns.NsHandle) {
+	t.Helper()
+	for _, endpoint := range []struct {
+		name      string
+		namespace netns.NsHandle
+	}{{"gateway", gateway}, {"source", source}, {"destination", destination}} {
+		setRuntimeNamespace(t, endpoint.namespace)
+		for _, arguments := range [][]string{{"-4", "route", "show", "table", "all"}, {"-4", "neigh", "show", "nud", "all"}, {"-4", "rule", "show"}} {
+			output, err := exec.Command("ip", arguments...).CombinedOutput()
+			t.Logf("%s ip %v: %s (%v)", endpoint.name, arguments, output, err)
+		}
+	}
+	setRuntimeNamespace(t, gateway)
+	output, err := exec.Command("ip", "-4", "route", "get", "192.0.2.2", "from", "10.52.1.2", "iif", "enatt0", "mark", "1").CombinedOutput()
+	t.Logf("marked packet route after failure: %s (%v)", output, err)
+	for _, iface := range []string{"all", "enatt0", "enmwanbr0"} {
+		for _, leaf := range []string{"rp_filter", "forwarding"} {
+			t.Logf("ipv4 %s %s=%s", iface, leaf, readKernelPolicyValue(t, "ipv4", iface, leaf))
+		}
+	}
+	t.Logf("complete %s daemon log: %s", daemon.logPath, runtimeDaemonLog(t, daemon))
 }
