@@ -5265,6 +5265,23 @@ Observers 71173 and 77127 remain active. Actual repeated transfer and the
 existing balancing, mapping, failure-history, and restart acceptance remain
 required. MWAN-519 and MWAN-521 remain InProgress. Production is unchanged.
 
+## Observe repeated forward transfer
+
+Repeated-forward capture 92562 began at approximately 13:59:49 UTC.
+Transit, AT&T, and Webpass capture units became ready at 13:59:51 through
+13:59:52 UTC with PIDs 2438, 2445, and 2454. Its output is
+route-event-fix-repeat-forward-active-capture under the real-cutover
+evidence directory. Root alone owns the new phase and stop files.
+Stop before reboot or approximately 14:29:49 UTC; target cleanup by
+14:28 UTC. The read-only WAN journal follower 75208 writes
+route-event-fix-repeat-forward-follow-journal.log.
+
+Renewed observers recorded 223 complete replies per family per guest
+between deployment start and 13:57:25 UTC. Router selection remained
+primary, with no query errors. Keep subsequent staging losses separate
+from actual transfer losses. Actual ownership transfer and final deployment
+acceptance remain pending. Production is unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
