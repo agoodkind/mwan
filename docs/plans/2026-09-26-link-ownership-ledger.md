@@ -4228,6 +4228,32 @@ transfer, restart, reboot, balancing, mappings, both downstream guests and both
 families remain unaccepted. Keep reversal PR #599 unmerged until forward
 acceptance passes.
 
+## Finish the failed-attempt observation and establish retry probes
+
+Both original observers ended naturally at 07:42:02 UTC. Guest 225 received
+3344 of 3590 IPv4 probes and 3344 of 3591 IPv6 probes. Both families missed
+sequences 1450 through 1695 during the approximately 253-second interruption.
+IPv6 also lacks the final reply at observer expiry; that sample does not prove
+a second outage. Guest 226 received all 3596 probes in each family. All four
+ping commands returned zero, which does not establish packet continuity.
+
+Reports and raw output remain in webpass-forward-client225 and
+webpass-forward-client226 under the existing real-cutover evidence directory.
+The actual failure location remains unverified.
+
+Fresh 7200-second probes began around 07:46:35 UTC. Session 99158 observes
+guest 225; session 76919 observes guest 226. Separate webpass-retry-client225
+and webpass-retry-client226 directories preserve their evidence. Each family
+currently receives replies and each router observation selects the primary.
+The actual served Webpass owner remains networkd. No deployment is active.
+
+The bounded operational capture recorder passed independent inspection.
+Start it near source exclusion, capture primary transit and both provider
+interfaces, and stop it successfully before the planned reboot. Its captures
+cannot prove backup forwarding. Keep the downstream observers active through
+reboot and acceptance. The final PR #155 firewall/protocol CI job remains
+active; required checks passed and no review threads remain.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
