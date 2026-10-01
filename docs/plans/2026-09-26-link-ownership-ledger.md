@@ -6214,6 +6214,29 @@ PID 477073 executable and listening readiness passed. Its two-hour bound
 preserves packet observation through reboot. Independent retry acceptance
 is assigned. MWAN-521 remains In Progress; production remains unchanged.
 
+## Reduce heartbeat repetition and refresh current acceptance
+
+The existing automation now uses a short coordination-plan reference and
+a two-hour interval instead of repeating the full instructions every
+30 minutes. The saved notification policy is failed_runs_only. Readback
+verified the existing automation ID, thread, active status and updated
+fields. Slice and compaction reorientation requirements remain mandatory.
+
+Production baseline refresh completed at 19:56:27 UTC. Independent review
+verified original executable and network hashes, gateway and guest identities,
+both families on both downstream guests, and all four mapping endpoints.
+Root read the complete report at
+20261001-production-baseline-refresh/report.md. Production remains unchanged.
+
+Reverse retry 2458 remains active. Independent observation measured one
+guest226 IPv6 missing reply before ownership transfer, sequence 984, with
+a 4.021435-second gap between adjacent replies. The cause is unassigned.
+This observation requires acceptance review; it does not establish a
+cutover failure. Reverse and repeated-forward acceptance remain incomplete.
+The current provider implementation is merged and released. Remaining
+epic implementation includes later interface transfers, retirement and
+deployment reboot detection. No current user decision is required.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.

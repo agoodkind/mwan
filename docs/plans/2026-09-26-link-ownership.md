@@ -35,7 +35,7 @@ Inspect reports and diffs before integration. Preserve concurrent edits.
 ## Reorient before each slice
 
 Reorient immediately after every compaction, before each slice and
-integration, and on every 30-minute heartbeat. Require implementers to
+integration, and on every scheduled heartbeat. Require implementers to
 reorient before dependent work.
 
 1. Review this coordination plan, the current slice plan, applicable
@@ -53,7 +53,10 @@ reorient before dependent work.
    for continuing work.
 
 Keep the existing thread automation `mwan-305-execution-checkpoints` active
-every 30 minutes while the goal is active. Reuse that automation. Inspect
+while the goal is active. Use a short prompt that references this plan and
+the recent ledger. Use a two-hour interval and adjust it when the next useful
+checkpoint changes. Preserve reorientation at every slice and compaction.
+Reuse that automation. Inspect
 actual process and agent handles before dispatching work. Do not interrupt
 an active mutation or create duplicate workers. Respect explicit pauses.
 Suspend the automation after verified completion. Notify only for a meaningful
