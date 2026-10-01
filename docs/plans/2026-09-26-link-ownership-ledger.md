@@ -4712,6 +4712,39 @@ and output webpass-recovery-client226. Guest-225 observer 21087 remains active.
 No packet capture or deployment is active. Webpass remains DOWN; AT&T serves
 downstream traffic. Preserve terminal windows and incomplete evidence.
 
+## Deploy the merged cold-boot recovery pair
+
+Published release 202610011030-99-2df8faa passed all four archive checksum,
+GitHub digest, hosted-package attestation, and exact-source checks. Its actual
+Linux ARM64 executable passed version/schema and both environment network and
+firewall validators in ARM64 Docker containers. Extracted AMD64 executable
+SHA256 is 599392d397367743432fa6c2c642dbb4b2d32b06e0bc9529d3b73d8b47965127.
+No direct macOS execution of the Linux artifact succeeded or is required.
+
+Testbed pin PR #603 merged normally as 829af8d18f2de0884a7f82390376006833945a2c
+at 10:43:34 UTC after all three required checks and independent mechanical
+review passed. Only the testbed MWAN release tag and archive checksum changed.
+Clean primary Configs main matches that merge. Recovery deployment 4497 began
+at 10:43:55 UTC through ./configsctl deploy deploy-mwan --limit
+mwan_suburban_servers. Its log is deploy-mwan-20261001T104355Z.log under the
+existing configs-runs directory. Preserve that checkout until the play ends.
+
+Pre-deploy binary/network hashes still matched 98a858c8 and 50c5db17. Packet
+capture 23045 failed before any phase at 10:42:32 UTC: tcpdump rejected the
+DOWN Webpass interface. Both successfully started captures stopped, recorded
+zero-drop counters, and passed process-absence checks. The Webpass unit was
+not loaded and had no PID. Preserve the failed capture report; start a new
+window only after the corrected daemon enables Webpass. Downstream observers
+21087 and 1403 remain active with fresh replies in both families.
+
+The repeated-forward configuration is prepared and independently reviewed,
+but remains unpublished. Its initial signed head 82db9134 restores only the
+previously accepted Webpass intent and owner assertion. Both environment
+renders and published validators passed. Rebase it onto the merged release
+pin before publication. Actual networkd reversal must pass before repeating
+forward transfer. Recovery, cold boot, and full acceptance are still pending;
+production remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
