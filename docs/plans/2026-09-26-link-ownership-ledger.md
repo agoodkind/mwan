@@ -5900,6 +5900,61 @@ terminal recap. Root must still collect capture completion, counters and
 PID 9266 absence; this observer does not establish those results.
 Deployment handle 76828 and observers 97200/98250 remain active.
 
+## Accept the repaired DNS deployment and ordinary restart
+
+Deploy handle 76828 exited zero at approximately 17:32 UTC. Its recap is
+ok=307, changed=27, unreachable=0, failed=0 and rescued=0. Reboot, egress
+and mapped-address verdicts passed. Actual postboot ID is
+a8999e84-c7b9-4fc1-a418-487117b9c25e. Installed executable d224ccc6 and
+network 2769af5f match the exact intended hashes recorded above.
+
+Capture-stop observer 5326 exited zero after stopping its owned unit at
+17:29:23 UTC before reboot scheduling. Capture 52025 exited zero with
+3,611 packets, zero kernel drops and PID 9266 absent. Independent packet
+review verifies initial DNS option 23 acquisition, seven DNS-enabled renewal
+exchanges, preserved DUID/IAID/PD, router DNS option 25, and matching
+uncached query replies. Resolved publishes both Google servers and Cloudflare.
+
+Closed downstream review covers 17:07:34 through 17:33 UTC. Guests 225 and
+226 received 1,524 replies per family except guest 226 IPv4 with 1,523.
+Its sole missing sequence 2491 preceded activation at approximately
+17:12:25. The cause is unassigned. Restart and reboot backup intervals
+contain complete replies. All 5,051 route queries succeeded. Reboot selected
+backup around 17:30:29 and primary around 17:31:09 in both families.
+
+Postboot capture 7155 verified tcpdump PID 869 and listening readiness.
+It began after initial reboot acquisition. Actual Renew/Reply exchanges
+at 17:33:51 and 17:34:51 request DNS and refresh the same valid delegation.
+All before/after-renew uncached queries passed. Root restarted WAN at
+17:35:28; handle 19849 exited zero and PID 313 changed to active PID 949.
+The capture verifies protocol Rebind/Reply during restart and subsequent
+DNS-enabled renewals, plus the successful uncached query after restart.
+Management DNS/domain remain 3d06:bad:b01:210::1 and home.goodkind.io.
+Root stopped the unit; capture exited zero with 1,382 packets, zero drops
+and PID 869 absent. The separate 62-second restart interval contains
+62 replies per guest/family without missing sequences and 186 successful
+route queries. All channels sampled backup then primary.
+
+Evidence is resolver-journal-repair/downstream-review and both
+resolver-journal-repair capture directories under 20261001-real-cutover.
+Actual reverse and repeated forward DNS ownership remain pending.
+
+Independent production review accepts signed eecbcf7b without actionable
+source findings. Its complete identities, journals, mapping delivery and
+phase checks match the approved contract. Production remains unpublished
+and unchanged. Testbed proof and subsequent authorization remain required.
+
+MWAN-227 reconciliation found one remaining combined live observation:
+successful translation and packet exchange after a different delegated
+prefix/length. ExpectedPrefix only supplies the NPT length; it does not pin
+the old address. Existing cases verify changed acquisition and old rule
+withdrawal but omit a positive packet assertion on the new prefix.
+A focused two-field simulator candidate prepares Webpass 2500::/60 in
+place of 2200::/56. Root verified that prefix is unused. Real template
+comparison and Kea parsing passed. Review, publication, merged deployment,
+changed-prefix packet proof and restoration remain pending. No simulator
+renumber occurred. Preserve DNS policy, identity, timers and other providers.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
