@@ -8,6 +8,8 @@ import (
 	"log"
 	"log/slog"
 	"net"
+	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -80,6 +82,7 @@ type LeaseInfo struct {
 	PrefixLen         int    // bits of subnet mask; 0 when unknown
 	Gateway           net.IP // default router from option 121 or option 3
 	Routes            []LeaseRoute
+	DNS               []netip.Addr
 	Server            net.IP        // DHCP server identifier
 	LeaseTime         time.Duration // option 51
 	AcquiredAt        time.Time     // ACK reception time
@@ -170,6 +173,7 @@ func startDHCPClient(ctx context.Context, log *slog.Logger, cfg DHCPConfig, load
 		cachedCopy.IP = append(net.IP(nil), cachedCopy.IP...)
 		cachedCopy.Gateway = append(net.IP(nil), cachedCopy.Gateway...)
 		cachedCopy.Server = append(net.IP(nil), cachedCopy.Server...)
+		cachedCopy.DNS = slices.Clone(cachedCopy.DNS)
 		cachedCopy.Routes = make([]LeaseRoute, len(cfg.CachedLease.Routes))
 		for i, route := range cfg.CachedLease.Routes {
 			cachedCopy.Routes[i].Gateway = append(net.IP(nil), route.Gateway...)
@@ -214,6 +218,7 @@ func (c *DHCPClient) LastLease() LeaseInfo {
 	defer c.mu.Unlock()
 	last := c.last
 	last.LinkHardwareAddr = append(net.HardwareAddr(nil), last.LinkHardwareAddr...)
+	last.DNS = slices.Clone(last.DNS)
 	return last
 }
 
@@ -225,7 +230,9 @@ func (c *DHCPClient) emit(info LeaseInfo) {
 	info.InvalidationEpoch = c.epoch
 	info.LinkIndex = c.origin.LinkIndex
 	info.LinkHardwareAddr = append(net.HardwareAddr(nil), c.origin.LinkHardwareAddr...)
+	info.DNS = slices.Clone(info.DNS)
 	c.last = info
+	info.DNS = slices.Clone(info.DNS)
 	if info.State == LeaseBound || info.State == LeaseRenewing ||
 		info.State == LeaseRebinding || info.State == LeaseExpired {
 		select {
@@ -634,6 +641,7 @@ func (c *DHCPClient) requestModifiers() []dhcpv4.Modifier {
 
 func requestClasslessRouteFirst(packet *dhcpv4.DHCPv4) {
 	requested := dhcpv4.OptionCodeList{dhcpv4.OptionClasslessStaticRoute}
+	requested.Add(dhcpv4.OptionDomainNameServer)
 	for _, code := range packet.ParameterRequestList() {
 		requested.Add(code)
 	}
@@ -669,6 +677,12 @@ func leaseToInfo(state LeaseState, lease *nclient4.Lease, acquired time.Time) Le
 		}}
 	}
 	info.Server = ack.ServerIdentifier()
+	for _, server := range ack.DNS() {
+		address, ok := netip.AddrFromSlice(server.To4())
+		if ok && !address.IsUnspecified() && !address.IsMulticast() && address != netip.MustParseAddr("255.255.255.255") {
+			info.DNS = append(info.DNS, address.Unmap())
+		}
+	}
 	info.LeaseTime = ack.IPAddressLeaseTime(0)
 	t1 := ack.IPAddressRenewalTime(0)
 	t2 := ack.IPAddressRebindingTime(0)

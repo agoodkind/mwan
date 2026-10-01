@@ -247,9 +247,6 @@ func validateMWANDHCPv4(name string, family *familyV4) error {
 			slog.Error("networkjson: DHCPv4 client ID invalid", "interface", name, "err", err)
 			return fmt.Errorf("interface %s: ipv4/dhcpv4/client-id: %w", name, err)
 		}
-		if family.DHCPv4.UseDNS != nil && *family.DHCPv4.UseDNS {
-			return fmt.Errorf("interface %s: ipv4/dhcpv4/use-dns requires resolver ownership", name)
-		}
 	}
 	if dhcp && routesEnabled && family.RouteMetric == nil {
 		return fmt.Errorf("interface %s: ipv4 DHCP routes require route-metric", name)

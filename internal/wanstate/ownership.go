@@ -97,6 +97,7 @@ type ConnectionState struct {
 }
 
 func cloneAssignment(value interfaceintent.Assignment) interfaceintent.Assignment {
+	value.DNS = slices.Clone(value.DNS)
 	cloneTime := func(source *time.Time) *time.Time {
 		if source == nil {
 			return nil

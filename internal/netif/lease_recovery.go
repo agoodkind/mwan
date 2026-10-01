@@ -29,6 +29,7 @@ type dhcpv4RecoveryPayload struct {
 	PrefixLen  int                   `json:"prefix_len"`
 	Gateway    net.IP                `json:"gateway"`
 	Routes     []dhcpv4RecoveryRoute `json:"routes"`
+	DNS        []netip.Addr          `json:"dns"`
 	Server     net.IP                `json:"server"`
 	LeaseTime  time.Duration         `json:"lease_time"`
 	AcquiredAt time.Time             `json:"acquired_at"`
@@ -218,7 +219,7 @@ func (store *LeaseRecoveryStore) SaveDHCPv4(connectionID, iface string, clientID
 		routes[i] = dhcpv4RecoveryRoute(route)
 	}
 	payload, err := json.Marshal(dhcpv4RecoveryPayload{
-		IP: lease.IP, PrefixLen: lease.PrefixLen, Gateway: lease.Gateway, Routes: routes,
+		IP: lease.IP, PrefixLen: lease.PrefixLen, Gateway: lease.Gateway, Routes: routes, DNS: lease.DNS,
 		Server: lease.Server, LeaseTime: lease.LeaseTime, AcquiredAt: lease.AcquiredAt,
 		RenewAt: lease.RenewAt, RebindAt: lease.RebindAt, ExpiresAt: lease.ExpiresAt,
 	})
@@ -268,7 +269,7 @@ func (store *LeaseRecoveryStore) LoadDHCPv4(connectionID string, link *net.Inter
 	}
 	lease := &LeaseInfo{
 		State: LeaseBound, LinkIndex: link.Index, LinkHardwareAddr: bytes.Clone(link.HardwareAddr), InvalidationEpoch: 0, Err: nil,
-		IP: payload.IP, PrefixLen: payload.PrefixLen, Gateway: payload.Gateway, Routes: routes,
+		IP: payload.IP, PrefixLen: payload.PrefixLen, Gateway: payload.Gateway, Routes: routes, DNS: payload.DNS,
 		Server: payload.Server, LeaseTime: payload.LeaseTime,
 		AcquiredAt: rebaseLeaseDeadline(payload.AcquiredAt, record.Clock, current, elapsed),
 		RenewAt:    rebaseLeaseDeadline(payload.RenewAt, record.Clock, current, elapsed),
