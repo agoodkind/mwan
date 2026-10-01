@@ -4805,6 +4805,22 @@ and started its restart to release MWAN. Its reconnect and exclusive-release
 verdict remain pending. No replacement owner or complete reverse-transfer
 acceptance is established yet. The capture phase is source-verified-owner-release.
 
+## Verify source release during the reverse cutover
+
+Deployment 29579 passed the external-owner daemon replacement, previous
+embedded-client termination, served ownership and exclusion, and installed
+release checks. The play installed the excluded replacement configuration
+and restored networkd authority after release. The replacement daemon restart
+passed; the play is reconnecting after networkd reload.
+
+The operational export cold-recovery-networkd-acquiring-operational.json
+reports networkd ownership, an UP physical link, passing IPv4 and IPv6 probes,
+and disabled selection. Both downstream observers still receive replies in
+both families. Capture 50168 now records phase
+source-released-networkd-acquiring. Replacement assignment acceptance,
+selection restoration, reboot recovery, and complete reversal remain pending.
+The repeated-forward configuration remains unpublished. Production is unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
