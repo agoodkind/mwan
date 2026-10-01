@@ -3050,6 +3050,48 @@ cause remains unknown. Gateway tcpdump cannot establish UDP visibility
 through the TC redirect path. Endpoint namespace captures require verified
 visibility and complete export before assigning a packet loss cause.
 
+### Verify native fixture dependencies and startup timing
+
+Configs PR #583 merged as ddd5ac159d652037f6e707a8dd60b6afa910f45c.
+It creates a dedicated www-owned log directory. PR #584 merged as
+baafcee99b50604d9be656d16e7f167144b259a0 after a signed rebase to that
+base. Both passed required checks and Graphite AI review with resolved
+threads. The following merged fixture deploy started the listener and
+passed actual guest PHP syntax validation. Rule reconciliation failed on
+the missing shell_safe function before either rule was saved. Native
+config.inc requires util.inc for revision creation. PR #585 adds that
+include and guards error-output parsing; its final review remains pending.
+No filter reload or mapped HTTP acceptance occurred in this attempt.
+The PHP helper configures only testbed firewall rules. The endpoint serves
+a static file; production MWAN does not depend on the helper.
+
+The longer continuation observers lost all four ping SSH processes at
+23:51:38Z with status 255 and empty stderr. They recorded 187 replies per
+family from client225 and 186 from client226, but no final counts. Route
+sampling continued successfully. Their cleanup occurred later. The cause
+remains unknown; these incomplete streams do not prove packet loss or
+zero loss. Fresh observers use independent SSH connections and preserve
+the incomplete artifacts.
+
+Exact endpoint captures reproduced the NPT request during the restarted
+daemon's initialization, before its first reconciliation. The provider
+emitted an Ethernet UDP frame; the client received none. Both endpoint
+counts matched exactly and kernel drops were zero. The fixture accepted
+previous-process TC programs. The protective-firewall READY contract
+deliberately precedes forwarding convergence. A focused fixture correction
+will require replacement programs and the requested route/policy outcome
+before the unchanged packet assertion. Startup loss remains distinct from
+steady-state translation failure.
+
+The complete shared-plan-93d3c35.json passed the actual public Plan
+constructor. Its expected AMD64 binary hash is
+f8b1ce2a5379c9a484e3539ba7fdd46ee56c103b8bb0fb63d0fdad78bac8c6bc,
+computed from the verified release archive. Existing calibration counts,
+bounds, capture hashes, and identities remain unchanged. The new history
+observation window is 90 seconds, not an outage allowance. Engine execution
+and fresh installed-identity verification remain pending. The plan does
+not authorize bypassing the rejected SSH pct transport.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
