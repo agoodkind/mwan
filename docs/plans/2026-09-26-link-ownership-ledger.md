@@ -5780,6 +5780,49 @@ and worktree. Ignored build inputs are preserved externally. Root then
 advanced clean owning MWAN main to merged 7436c5c. Release/runtime evidence
 and the active ledger remain preserved. Production is unchanged.
 
+## Recover the failed acquired DNS activation
+
+Configs fc449839 activation failed on October 1 at about 16:47 UTC.
+Released MWAN 7436c5c rejected resolver construction because the role TOML
+omitted its journal path: resolved journal path must be absolute: "".
+Network document validation did not construct that module and did not detect
+the missing TOML setting. The automatic role recovery restored prior inputs
+and verified applied state. The play ended with failed=1, rescued=1 and
+unreachable=0. Root polled handle 39452 at approximately 17:00 UTC and
+received terminal exit 1. No scheduled reboot occurred.
+
+Read-only verification found WAN service active/running with PID 8436.
+Its executable and installed binary both match released 7436c5c SHA256
+d224ccc6f06ce36b64d6f584565e4256a7cf808b46cc6c1fcea7d1325f6d85a1.
+Recovered network SHA256 is the exact prior
+50c5db1725b57814dcedff43baea84f263fa10f86f1126a1ebc2f76b198a192f.
+This recovery retained the candidate executable and restored prior inputs;
+it did not restore the previous executable.
+
+The downstream review through 16:51 UTC found all four channels selected
+backup at 16:47:09 through 16:47:10. Recovery sampled primary around
+16:49:38, backup around 16:49:49 and primary around 16:50:05. Route queries
+had zero errors. No additional reply sequence was missing. Guest 225 IPv4
+sequence 638 was missing before activation at approximately 16:41:29;
+the other three streams had no missing sequences. Its cause is unassigned.
+Final closed-interval review remains separate.
+
+Root stopped the exclusively owned capture unit
+mwan305-dns-activation-20261001-1632.service. Handle 72516 exited zero.
+It captured 4,262 packets with zero kernel drops; PID 3922 is absent.
+Evidence is 20261001-real-cutover/dns-activation-preboot-capture and
+20261001-testbed-acquired-dns-activation/downstream-review.
+
+The implementer reproduced the exact constructor failure with the actual
+released executable and real template. Explicit journal wiring constructs
+resolver successfully. Independent review rejected an empty shared default
+because later production DNS activation would repeat the failure. The
+approved repair uses /var/lib/mwan/owned-resolver.json as the shared default
+and renders the existing WAN module setting. Final two-file verification,
+review, signed commit, merge and testbed redeployment remain pending.
+Production activation and the preserved reverse candidate remain on hold.
+MWAN-521 remains In Progress; production has not changed.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
