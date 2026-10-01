@@ -3391,6 +3391,50 @@ omitted/true/false rendering and Linux loader regression. PR #147 selection
 exclusion remains open while its final schema prose revision completes CI.
 Ownership transfer and production promotion remain incomplete.
 
+### Complete simulator provisioning and merge selection configuration
+
+The merged management play completed with ok=178, changed=21,
+unreachable=0, failed=0, skipped=39. Authenticated SSH independently verifies
+the exported host key, hostname, and machine ID for all five simulators.
+The unchanged management play is running from the same cec8de0d checkout;
+repeat deployment acceptance remains pending its terminal result.
+
+Both downstream guests received all 600 IPv4 and IPv6 probes in each of
+the first two overlapping observation windows. Client 225's first window
+had one IPv4 route-query failure at 02:41:39Z: SSH reported a connection
+reset from suburban before key exchange. No probe reply was missing.
+The second windows had no failed route queries. Successful route queries
+selected the primary. These windows cover the completed provisioning play;
+they do not establish balancing or acceptance of a gateway upgrade.
+The [first client 225 report](/Users/agoodkind/.local/state/mwan305/20261001-npt-deploy-acceptance/management-cec8-client225/report.json)
+retains the failed sample alongside packet counts. Additional observers
+remain active during the repeat play.
+
+MWAN PR #147 merged as f02554367bb40b0189dd0e7c28916a38f6f3342f.
+All ten required checks passed, all review threads were resolved, and all
+seven rewritten feature commits passed signature and raw-header verification.
+The branch was rebased onto merged PR #148. Full ARM64 checks and tests
+passed after integration. Root review accepted the original exclusion,
+same-tier fallback repair, and mechanical selection-default normalization.
+The real daemon regression verifies both address families and backup traffic.
+
+Configs PR #593 merged as aaeffd4873177ccc701c0159338dd91477a88711.
+All three required checks passed, all review threads were resolved, and all
+three feature signatures verified. CI executes the real rendering assertions
+without requiring a Linux binary. The selected Webpass entry must exist
+before its permission is asserted. Both actual rendering and the integrated
+Linux loader passed in 6.74 seconds. Published-release validation remains
+pending. The running play's checkout has not been updated during execution.
+
+Transfer review found that the legacy WAN routing address writer still
+installs mapped IPv4 addresses for external owners. A focused runtime repair
+is under implementation. It must preserve networkd legacy writes, MWAN's
+journaled address consumer, and separate NPT authority. The address manager
+already rejects retained unjournaled mapped addresses; the real networkd
+sentinel fixture must establish whether release removes those addresses.
+The Configs transfer procedure remains under implementation. No shared
+gateway upgrade, ownership transfer, or production deployment ran.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
