@@ -45,7 +45,7 @@ type OwnedReleaseReceipts struct {
 	PreviousBoot        bool `json:"previous_boot"`
 }
 
-// Released requires current-boot NPT receipts and no ordinary ownership receipts.
+// Released permits current-boot NPT edge receipts and rejects ordinary receipts.
 func (receipts OwnedReleaseReceipts) Released() bool {
 	return !receipts.PreviousBoot && receipts.VirtualLinks == 0 && receipts.Memberships == 0 && receipts.OrdinaryObjects == 0 && receipts.Promotions == 0 && receipts.KernelFields == 0
 }
