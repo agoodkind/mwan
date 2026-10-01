@@ -6051,6 +6051,47 @@ review is assigned; actual restored lease and packet acceptance are pending.
 MWAN-227 remains In Progress. DNS reverse and production drafts are being
 reconciled without publication or live activation. Production is unchanged.
 
+## Accept restored delegation and prepare DNS reversal
+
+Restoration deployment 66439 exited zero with 257 ok, 70 changed and zero
+unreachable, failed or rescued. Reply bec85a at 18:31:33.320583 UTC restores
+2200::/56 and withdraws 2500::/60 with zero lifetimes. Client identity,
+DNS, timers, binary, network, boot and WAN PID 949 remain unchanged.
+Old daemon edge, source rule and translation state disappeared. Existing
+simulator return routes remain separate from daemon ownership.
+
+Independent review verifies restored Webpass exchanges for both guests.
+Guest 226 has matching ICMPv6 packets. Guest 225 has a successful HTTP 200
+exchange using translated source 2201:e00f::225. The first guest command
+incorrectly targeted OPNsense and failed address binding with exit 45;
+that command does not establish network failure or acceptance.
+
+The closed 18:18:21 through 18:39:30 interval has no IPv4 misses and 4,188
+successful route queries. Guest 226 misses one IPv6 sequence during
+renumbering. Guest 225 misses one later IPv6 sequence; its request is absent
+from the gateway capture and its cause remains unknown. Capture 21967
+exited zero with 37,054 packets, zero drops and PID 2251 absent. Evidence
+is 20261001-mwan227-live-restoration-review/report.md. Actual Tack MWAN-227
+state is now Done; MWAN-305 and MWAN-521 remain In Progress.
+
+PR613's contained local branch and clean worktree were removed; its remote
+branch was already absent. External reports remain preserved. Observers
+2638 and 71854 remain active until approximately 20:15 UTC. No deployment
+or packet capture remains active after restoration.
+
+DNS reverse candidate ce3b8eef63740b3f2942661b37cf2618e659c3fa is signed
+and reconciled onto d6a89dd5. Root inspected its Webpass-only diff. The fresh
+render matches accepted reverse bytes 0ea76add; prior released-loader,
+firewall and generated-unit validation applies to those exact bytes.
+Publication is underway. Actual reverse and repeated forward DNS ownership
+acceptance remain pending.
+
+Production draft 497d77c042a2d3282ee4a29f1469b0ae8e46fc2b is reconciled
+onto d6a89dd5 with both rewritten signatures verified. Independent review
+accepts its source and runtime bytes, which match accepted eecbcf7b.
+Production remains unpublished and unchanged. Testbed proof and subsequent
+production authorization remain required.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
