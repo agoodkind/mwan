@@ -335,7 +335,7 @@ func assertServiceMappingReceipts(t *testing.T, root string) {
 	t.Helper()
 	receipts, err := netif.InspectOwnedRelease(connectionid.ID("service-provider"), filepath.Join(root, "links.json"), filepath.Join(root, "addresses.json"), filepath.Join(root, "kernel.json"))
 	if err != nil || receipts.OrdinaryObjects != 1 || receipts.Promotions != 1 || receipts.NPTEdges != 1 {
-		t.Fatalf("networkd primary acquired ordinary receipts: %+v (%v)", receipts, err)
+		t.Fatalf("service mapping receipts differ: %+v (%v)", receipts, err)
 	}
 }
 
