@@ -4205,6 +4205,29 @@ and conntrack state during exclusion. Do not run unrelated HTTPS calibration
 to diagnose ICMP. Primary captures do not establish backup packet forwarding;
 retain downstream replies and router selection as separate evidence.
 
+## Prepare the next actual cutover retry
+
+[MWAN PR #155](https://github.com/agoodkind/mwan/pull/155) publishes the
+focused exclusion repair. The revised signed head is
+8753e9bffd49796fcaf1adffefdd9fed01f7fe2d. Independent exact-head review found
+no actionable findings. Root inspected the complete three-file diff and
+verified signatures and raw headers for all three branch commits.
+
+The existing public daemon case initially failed because its convergence
+helper rejected every mark assignment, including the valid mark-zero rule.
+The corrected helper rejects nonzero assignments and retains the real IPv4
+and IPv6 UDP absence assertions. The focused case passed in 4.41 seconds;
+required Docker check and test gates passed. The shared assignment predicate
+applies identical conditions to both families. Final CI remains pending.
+
+Continue only the cutover repair, verified release, testbed-only Configs pin,
+and actual forward transfer. Do not expand simulator calibration or unrelated
+features. Production remains unchanged. Configs PR #600 is merged but has not
+been deployed. MWAN-519 remains In Progress. Reverse transfer, second forward
+transfer, restart, reboot, balancing, mappings, both downstream guests and both
+families remain unaccepted. Keep reversal PR #599 unmerged until forward
+acceptance passes.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
