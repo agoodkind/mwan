@@ -3956,6 +3956,41 @@ review and real validation of this focused fix before simulator deployment
 and baseline packet acceptance. Production and gateway ownership remain
 unchanged.
 
+## Deploy the merged DHCP socket recovery
+
+Configs PR [598](https://github.com/agoodkind/configs/pull/598) merged as
+4865782dbd3107217ec7a6bb2e4107a4c258d8a6 at 2026-10-01T06:08:28Z.
+Independent review of signed source 64ae0298 found no actionable defects.
+The actual rendered Astound configuration passed Kea 2.6.3 parsing.
+An isolated real DHCP client obtained 10.240.207.2 after delayed interface
+activation in 4.188 seconds without changing Kea PID 525. The permanently
+down interface exhausted 60 retries and exited 1 after 60.182 seconds.
+These checks prove socket recovery and lease negotiation, not shared
+gateway acquisition or downstream forwarding. The owned container was removed.
+The retained evidence is in the existing dhcp-socket-validation directory.
+
+The clean merged Configs main checkout started
+`./configsctl deploy deploy-testbed --limit suburban --tags isp-lxcs`
+at 2026-10-01T06:11:32Z. Session 96066 remains active. This operation
+configures the testbed simulators and does not activate gateway ownership.
+The deployment log is deploy-testbed-20261001T061132Z.log in the existing
+configs-runs directory. Do not change this checkout or start another deployment
+until its actual process terminates.
+
+Fresh observers run as sessions 22513 and 89809 for clients 225 and 226.
+Their output directories are simulator-repair-client225 and
+simulator-repair-client226 under the existing 20261001-real-cutover evidence
+directory. The local multiplexed-ssh-config reuses authenticated SSH
+connections without changing server security configuration. Both guests
+received actual IPv4 and IPv6 replies before deployment and at 06:17:23Z.
+Final packet totals and interruption remain unmeasured while observation runs.
+
+MWAN-534 remains In Progress. MWAN-519 now depends on its live acceptance.
+Require the deployed Astound DHCP socket, gateway address, provider route,
+readiness, downstream packets, and repeated cold startup before closing it.
+Webpass ownership activation, the full packet battery, and production
+readiness remain unaccepted. Production configuration remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.

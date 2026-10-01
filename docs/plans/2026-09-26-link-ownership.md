@@ -89,6 +89,9 @@ records the revisions,
 packet counts, and interruptions. Keep this accepted baseline during the
 migration cutovers.
 
+Require [MWAN-534](https://tack.home.goodkind.io/browse/MWAN-534) live
+acceptance before resuming ownership transfer.
+
 MWAN-331 deliberately removed Astound after its configuration-only acceptance
 test. Preserve that ticket and MWAN-491 as historical completed work. The
 operator requires the testbed connection to remain managed.
