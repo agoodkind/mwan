@@ -32,6 +32,12 @@ ownership, prerequisite revisions, settled interfaces, constraints,
 verification, and report requirements. Assign coupled changes to one owner.
 Inspect reports and diffs before integration. Preserve concurrent edits.
 
+Reuse available protocol libraries and operating system services. Require
+implementers and reviewers to identify the library operations used for DHCP,
+neighbor discovery, routing, and resolver configuration. Implement only MWAN
+policy and lifecycle integration where existing APIs do not provide them.
+Verify any claimed library limitation before adding custom protocol code.
+
 ## Reorient before each slice
 
 Reorient immediately after every compaction, before each slice and

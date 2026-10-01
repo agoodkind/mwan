@@ -6330,6 +6330,30 @@ feature checkout and regenerable Python cache were removed. The remote
 branch was already absent. External evidence, production draft, DHCPv4 DNS
 implementation checkout and active main deployment remain unchanged.
 
+## Record the repeated-forward prerequisite failure and library requirement
+
+Deployment 46574 failed before ownership transfer when the Proxmox snapshot
+command returned VM is locked (snapshot-delete). Its recap reported 116 ok,
+8 changed, 1 failed, and no unreachable or rescued tasks. The replacement
+observers recorded healthy replies during the covered preparation interval.
+The lock later cleared without manual intervention. The filtered configuration
+reported no lock and the active VM 213 task list was empty. Current evidence
+does not identify the lock owner or justify a source correction.
+
+PR159 implements DHCPv4 acquired DNS using the existing DHCP library and
+systemd-resolved integration. Root read the complete implementation and
+independent reports for signed head b20af8ba. The real runtime checks passed
+in 24.56 and 24.95 seconds. All ten required checks passed in the implementer's
+latest observation; root must refresh merge requirements before merging.
+Release publication and live acceptance remain unperformed.
+
+The user requires available libraries rather than custom protocol engines.
+The coordination plan now requires library reuse review. release_completion
+owns a bounded read-only review of actual DHCP option decoding and resolver
+API calls before PR159 integration. Root retains deployment, ledger, and
+Tack mutation ownership. Brief deployment packet loss alone is not a defect.
+Production remains unchanged and requires subsequent cutover authorization.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
