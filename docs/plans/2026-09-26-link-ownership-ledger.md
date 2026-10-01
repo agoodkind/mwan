@@ -4382,6 +4382,31 @@ read-only diagnosis examines the owner-specific readiness contract. PR #599
 remains unmerged. Production is unchanged. Focus remains cutover, recovery,
 and the minimum demonstrated repair.
 
+## Verify recovery after the source readiness failure
+
+Deployment 23598 ended at 08:41:00 UTC with exit status 1. The play explicitly
+verified restored role inputs, kernel address identities, forwarding, return
+routes and resolver tuples, removed its recovered backup, and reported the
+original activation failure. No ownership release or reboot executed.
+
+A separate live read confirms the installed executable SHA-256 is
+98a858c8400e0cd67d2809d54e337b29f7d4a012c910aa47b44919e3352f011a,
+the approved ff37bec binary. The restored network document SHA-256 is
+c8a32e91b4b42a9d189b34211b943d6c827f4dafbe4d78e8007272d7cfb33307.
+The recovered operational export reports networkd ownership for all seven
+interfaces. It is saved as recovered-0841-operational.json in the real-cutover
+evidence directory. The source-excluded export remains separately preserved.
+
+Recorder 63760 finished at 08:41:34 UTC with exit status 0 and report status 0.
+Transit captured 11614 packets, AT&T 8593 and Webpass 4736. Every capture
+reports zero kernel drops. All three process-absence checks passed. The final
+phase includes a recovered-state nftables and conntrack snapshot. Continuous
+downstream observers remain active for the corrected retry.
+
+The minimum owner-specific delegation verification repair is under independent
+read-only diagnosis. PR #599 remains unmerged and MWAN-519 remains InProgress.
+Production is unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
