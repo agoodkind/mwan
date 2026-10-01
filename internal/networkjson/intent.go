@@ -883,10 +883,12 @@ func claimDHCPResources(connection interfaceintent.Connection, name string, fami
 }
 
 func claimProviderResources(connection interfaceintent.Connection, provider config.IfMgrWANEntry, add func(interfaceintent.Claim) error) error {
-	addressWriter := interfaceintent.WriterWANRoutes
+	addressWriter := interfaceintent.WriterMWANAddress
+	if connection.Owner == interfaceintent.OwnerExternal {
+		addressWriter = interfaceintent.WriterExternal
+	}
 	nptWriter := interfaceintent.WriterNPT
 	if connection.Owner == interfaceintent.OwnerMWAN {
-		addressWriter = interfaceintent.WriterMWANAddress
 		nptWriter = interfaceintent.WriterMWANAddress
 	}
 	if err := add(interfaceintent.Claim{ConnectionID: connection.ID, Kind: interfaceintent.ResourceProviderRoute, Family: "ipv4+ipv6", Key: strconv.Itoa(provider.TableID), Writer: interfaceintent.WriterWANRoutes}); err != nil {

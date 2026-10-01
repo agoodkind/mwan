@@ -237,7 +237,7 @@ func TestLoadValidFile(t *testing.T) {
 		if claim.Kind == interfaceintent.ResourceStaticAddress && claim.Key == "enwebpass0/203.0.113.2/29" && claim.Writer == interfaceintent.WriterNetworkd {
 			staticBase = true
 		}
-		if claim.Kind == interfaceintent.ResourceMappedAddress && claim.Key == "203.0.113.3" && claim.Writer == interfaceintent.WriterWANRoutes {
+		if claim.Kind == interfaceintent.ResourceMappedAddress && claim.Key == "203.0.113.3" && claim.Writer == interfaceintent.WriterMWANAddress {
 			mappedAdditional = true
 		}
 		if claim.Kind == interfaceintent.ResourceMappedAddress && claim.Key == "203.0.113.2" {

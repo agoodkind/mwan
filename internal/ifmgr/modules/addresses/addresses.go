@@ -1,4 +1,4 @@
-// Package addresses reconciles configured and acquired addresses on MWAN links.
+// Package addresses reconciles MWAN acquisition and journaled WAN translation aliases.
 package addresses
 
 import (
@@ -27,7 +27,7 @@ import (
 
 const moduleName = "addresses"
 
-// Config supplies owned family intent, translation settings, and the journal path.
+// Config supplies family intent, translations, the observation deadline, and the journal path.
 type Config struct {
 	Connections     []interfaceintent.Connection
 	Providers       map[string]Provider
@@ -37,7 +37,7 @@ type Config struct {
 	NetworkdTimeout time.Duration
 }
 
-// Provider supplies translation addresses for an exclusively owned connection.
+// Provider supplies translation addresses for a WAN connection.
 type Provider struct {
 	IPv4 *config.IPv4Translation
 	IPv6 *config.IPv6Translation

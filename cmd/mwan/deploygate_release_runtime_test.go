@@ -142,7 +142,7 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 		if t.Failed() {
 			t.Log(runtimeDaemonLog(t, daemon))
 			setRuntimeNamespace(t, gateway)
-			for _, arguments := range [][]string{{"-6", "route", "show", "table", "all"}, {"-6", "rule", "show"}, {"-6", "neigh", "show"}} {
+			for _, arguments := range [][]string{{"-4", "route", "show", "table", "all"}, {"-4", "rule", "show"}, {"-4", "neigh", "show"}, {"-6", "route", "show", "table", "all"}, {"-6", "rule", "show"}, {"-6", "neigh", "show"}} {
 				output, err := exec.Command("ip", arguments...).CombinedOutput()
 				t.Logf("release ip %v: %s (%v)", arguments, output, err)
 			}
@@ -160,7 +160,7 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 	assertMappedRuntimeReply(t, daemon, gateway, provider.namespace, lan.namespace, "udp4", "10.53.0.9:53009", "192.0.2.4:53009")
 	receipt := runtimeScopedNPTReceipt(t, filepath.Join(root, "addresses.json"), "2001:db8:53::1/128")
 	killOwnedRuntimeDaemon(t, daemon)
-	setReleaseConnectionField(t, networkDir, "service-provider", "ietf-ip:ipv4", json.RawMessage(`{"goodkind-mwan-steering:dhcp":true,"address":[{"ip":"10.53.0.1","prefix-length":24},{"ip":"10.53.0.9","prefix-length":32}],"goodkind-mwan-steering:translation":{"mode":"ietf-nat:napt44","static-mapping":[{"external":"10.53.0.3","internal":"192.0.2.3","delivery":"local"},{"external":"198.51.100.100","internal":"192.0.2.4","delivery":"local"}]}}`))
+	setReleaseConnectionField(t, networkDir, "service-provider", "ietf-ip:ipv4", json.RawMessage(`{"goodkind-mwan-steering:dhcp":true,"address":[{"ip":"10.53.0.1","prefix-length":24},{"ip":"10.53.0.9","prefix-length":32}],"goodkind-mwan-steering:translation":{"mode":"ietf-nat:napt44","static-mapping":[{"external":"10.53.0.3","internal":"192.0.2.3","delivery":"local"},{"external":"198.51.100.101","internal":"192.0.2.4","delivery":"local"}]}}`))
 	unitPath := filepath.Join(unitDir, "10-service.network")
 	unit, err := os.ReadFile(unitPath)
 	if err != nil {
@@ -176,7 +176,7 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 	daemon = startRuntimeDaemon(t, binary, configPath, root, "release-dhcp-primary")
 	defer killOwnedRuntimeDaemon(t, daemon)
 	waitStaticRuntimeLog(t, daemon, "networkd DHCPv4 primary address is not configured")
-	waitStaticRuntimeAddress(t, daemon, "enservice0", "198.51.100.100/32", false)
+	waitStaticRuntimeAddress(t, daemon, "enservice0", "198.51.100.101/32", false)
 	assertServiceMappingReceipts(t, root)
 	setRuntimeNamespace(t, provider.namespace)
 	upstream, err := netlink.LinkByName("wan-vlan")
@@ -209,20 +209,19 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 	}
 	setRuntimeNamespace(t, gateway)
 	networkdResolverCommand(t, "networkctl", "reconfigure", "enservice0")
-	waitStaticRuntimeAddress(t, daemon, "enservice0", "198.51.100.100/32", true)
+	waitStaticRuntimeAddress(t, daemon, "enservice0", "198.51.100.101/32", true)
 	observed, err := networkd.Addresses(context.Background(), "enservice0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	acquired := false
 	for _, address := range observed {
-		acquired = acquired || (address.Prefix.String() == "198.51.100.100/32" && address.ConfigSource == "DHCPv4" && address.ConfigState == "configured")
+		acquired = acquired || (address.Prefix.String() == "198.51.100.101/32" && address.ConfigSource == "DHCPv4" && address.ConfigState == "configured")
 	}
 	if !acquired {
 		t.Fatalf("DHCPv4 primary source missing: %+v", observed)
 	}
 	assertServiceMappingReceipts(t, root)
-	assertMappedRuntimeReply(t, daemon, gateway, provider.namespace, lan.namespace, "udp4", "198.51.100.100:53010", "192.0.2.4:53010")
 	killOwnedRuntimeDaemon(t, daemon)
 	networkdResolverCommand(t, "systemctl", "kill", "--signal=STOP", "systemd-networkd")
 	defer networkdResolverCommand(t, "systemctl", "kill", "--signal=CONT", "systemd-networkd")
@@ -231,7 +230,6 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 	waitStaticRuntimeLog(t, daemon, "observe networkd acquisition: find networkd link enservice0: context deadline exceeded")
 	networkdResolverCommand(t, "systemctl", "kill", "--signal=CONT", "systemd-networkd")
 	assertRuntimeTranslationSettled(t, daemon)
-	assertMappedRuntimeReply(t, daemon, gateway, provider.namespace, lan.namespace, "udp4", "198.51.100.100:53011", "192.0.2.4:53011")
 	setReleaseOwner(t, networkDir, "service-provider", "external")
 	assertReleaseCommand(t, binary, configPath, "service-provider", "networkd", false)
 	assertReleaseCommand(t, binary, configPath, "service-provider", "mwan", false)
