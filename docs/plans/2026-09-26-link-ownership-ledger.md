@@ -3481,6 +3481,31 @@ and evidence. The transfer procedure still requires real forward/reverse
 packets, prior-owner cleanup, and management/transit verification. No shared
 gateway upgrade, ownership transfer, or production deployment ran.
 
+### Merge external-owner mapping repair
+
+Independent review approved exact PR #149 head
+b40a83654054362857557e7d29b1875093b8d3c8 without findings. PR #149 merged
+as 7d0fb56a876b272dc797bd81c553dbb060c0ed3d at 03:13:33Z. All ten
+required checks passed and no review threads remained. Primary MWAN
+advanced from its own clean checkout to that merged revision.
+
+The completed AMD64 firewall job passed all seven firewall cases, including
+mapped addresses, static addresses, and selection exclusion. Its subsequent
+protocol aggregate failed DHCPv6 restart withdrawal and prefix expiry.
+Both failures observed the NPT edge still in the journal after kernel
+withdrawal. The complete failed job is retained at
+[/tmp/mwan149-firewall-failure.log](/tmp/mwan149-firewall-failure.log).
+Diagnosis must distinguish asynchronous persistence from failed cleanup;
+the failure alone establishes neither cause. An independent agent owns
+the exact public reproduction without longer deadlines or skipped cases.
+The combined release remains unaccepted for deployment.
+
+The transfer fixture's IPv6 forwarding failed because its global forwarding
+sysctl was zero. Applying the production template's exact all.forwarding=1
+setting produced a downstream IPv6 reply with TTL 63 and no packet loss.
+This proves the fixture prerequisite correction, not complete transfer
+acceptance. Forward/reverse validation remains in progress.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
