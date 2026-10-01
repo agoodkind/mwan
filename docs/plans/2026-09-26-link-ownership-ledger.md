@@ -5050,6 +5050,39 @@ this interval and cannot localize the miss. Do not assign a cutover or ISP
 cause without evidence. Actual ownership transfer and readiness restoration
 remain pending. Production remains unchanged.
 
+## Verify release and acquisition during the repeated transfer
+
+The 12:45 UTC reorientation confirmed the current coordinator, cutover plan,
+interface specification, recent ledger, relevant memory, and both InProgress
+tickets. Root remains the only live mutation owner. Deployment 4621 and
+capture 66096 are active. The prepared reversal remains unpublished.
+
+Source exclusion, usable assignments, and all six unaffected AT&T packet
+checks passed. The running ifmgr executable at PID 6574 matched
+731618adfeb37a6240a36ddbe77049731286cfc0fba36b300a66a3719e1fe587.
+The first restart selected backup around 12:40:04 and restored primary
+around 12:40:20. The external-owner restart selected backup around
+12:42:56 to 12:42:57 and restored primary around 12:43:35.
+Both guests and families continued replies through these intervals.
+
+Networkd reconfiguration and the actual previous-owner release verifier
+passed before replacement activation. The replacement restart selected
+backup around 12:49:39 to 12:49:40 and restored primary around
+12:49:54 to 12:49:55. No transfer-period sequence misses were observed.
+The new ownership state reports configured-owner=mwan and an UP Webpass
+link. DHCPv6 negotiated 3d06:bad:b01:2200::/56 at 12:49:42 UTC,
+with valid deadlines and saved lease state. Replacement assignment checks
+and all four acquired AT&T/Webpass mapped HTTP and NPT edge checks passed.
+The play is restarting with restored selection policy. Final selection,
+capture cleanup, reboot, deployment verdict, and full acceptance remain pending.
+
+The second pre-transfer staging miss was guest 225 IPv4 sequence 1827.
+Replies 1826 and 1828 occurred at 12:32:50.554199 and 12:32:52.603242 UTC,
+an interreply gap of 2.049043 seconds. This interval is inside the active
+capture and requires finalized packet analysis. Do not assign its cause yet.
+The two staging misses remain distinct from transfer-period packet results.
+Production remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
