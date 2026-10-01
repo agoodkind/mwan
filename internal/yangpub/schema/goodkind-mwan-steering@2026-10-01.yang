@@ -51,7 +51,7 @@ module goodkind-mwan-steering {
 
   revision 2026-10-01 {
     description
-      "Add administrative provider selection exclusion.";
+      "Add administrative connection selection exclusion.";
   }
   revision 2026-09-30 {
     description
@@ -313,8 +313,8 @@ module goodkind-mwan-steering {
         default "true";
         description
           "Permit selection for both address families. False excludes the
-           connection regardless of health or readiness and does not stop
-           acquisition, translation, or address ownership.";
+           connection from selection regardless of health or readiness
+           and does not stop acquisition, translation, or address ownership.";
       }
       leaf tier {
         type uint8;
