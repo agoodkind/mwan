@@ -4845,6 +4845,39 @@ applying generated management/transit units. Reboot acceptance remains pending.
 Keep repeated-forward publication and production promotion suspended until
 the measured interruption is understood and reversal acceptance is complete.
 
+## Verify reboot after the completed reverse deployment
+
+Deployment 29579 completed with exit status 0 from clean Configs 829af8d1
+and released source 2df8faa0. The recap reports 379 successful tasks,
+48 changes, zero failures, zero unreachable hosts, and no rescue. The actual
+hypervisor verdict for trace 20261001-035925-deploy-215292 returned
+reboot_rc=0, egress_rc=0, and owned_rc=0. The guest boot ID changed from
+6dd73ec5-6b17-46ae-a87a-83e11034ad61 to
+e07e982e-a791-4179-bcee-63b3c243ad75.
+
+Post-boot executable SHA256 is
+599392d397367743432fa6c2c642dbb4b2d32b06e0bc9529d3b73d8b47965127.
+Network document SHA256 is
+2155363a3a11b3867756a42ab54ad2d9dc86123a9a36e56cc1021245e08286b8.
+Webpass is networkd-owned, UP, selected, carrying, and healthy in both families.
+The primary checkout remains clean after the completed play.
+
+Independent reboot observation from 11:31:00 through 11:33:21 UTC records
+141 replies in each guest 225 family, 141 guest 226 IPv4 replies, and
+140 guest 226 IPv6 replies. All four streams have zero missing sequences.
+Both families selected backup around 11:31:19 and primary around 11:32:05.
+The largest interreply gap is 1.015240 seconds; route queries did not fail.
+This bounded reboot proof does not clear the earlier reverse-transfer gap.
+
+The finalized reverse captures record every missing IPv6 request at transit
+and none at either captured ISP egress. Both streams retained AT&T mark 1
+and resumed through AT&T. Saved phase 1 firewall rules block AT&T IPv6
+forwarding, but that snapshot precedes the measured gap. Later snapshots
+restore forwarding. No firewall snapshot exists inside the interruption.
+Independent source investigation must establish the mechanism before a fix.
+Keep MWAN-519 and MWAN-521 InProgress. Keep the next forward activation
+unpublished and production unchanged. Existing observers remain active.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
