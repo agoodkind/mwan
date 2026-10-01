@@ -5648,6 +5648,37 @@ Root controls live mutation and the ledger. Separate agents own source
 correction review and production recovery preparation. Observers 26614 and
 24811 remain active through about 17:27 UTC. No capture or deploy is active.
 
+## Merge acquired DNS and prepare the testbed policy
+
+Independent review approved the unchanged fixture helper at 18eab5fa.
+It edits serialized configuration at an external fixture boundary and
+preserves untouched values. The daemon validates the entire document and
+decodes concrete wire types before runtime acquisition. Root verified the
+loader and helper, replied with evidence, and resolved the Graphite thread.
+Evidence is 20261001-acquired-dns-independent-review/fixture-boundary.md.
+
+Root refreshed the active ruleset, all ten required passing checks, all three
+resolved threads and four valid commit signatures with raw signature headers.
+PR 158 merged through the ordinary standalone GitHub workflow as
+7436c5cab0f93ae521f9bdf96c90bd830af0a0c1 at 16:14:00 UTC.
+Release workflow 36890439684 is compiling the actual main revision.
+The release agent owns archive, checksum, attestation, executable and rendered
+document verification. Published release identity remains pending.
+
+A separate Configs implementer owns the focused testbed Webpass DNS policy
+and verified release pin. The implementer must preserve client identities,
+existing addressing, mappings, other providers and ownership. No release
+value may be guessed. Production recovery review is read-only and separate.
+Production cutover remains unauthorized.
+
+At about 16:16 UTC, root started bounded capture handle 76291 for actual
+Webpass DHCPv6 and advertisements. The systemd unit is
+mwan305-dns-simulator-20261001-1617.service, with tcpdump PID 3554 and
+verified /usr/bin/tcpdump executable. Listening readiness passed. Capture
+termination, drop counters, PID absence and packet analysis remain pending.
+The capture does not enable gateway DNS policy. Both downstream observers
+remain active; no deploy is active.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
