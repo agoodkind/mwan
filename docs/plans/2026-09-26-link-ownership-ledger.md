@@ -6399,6 +6399,48 @@ The maintenance and API reuse audit is complete. Reports remain external
 under 20261001-library-reuse-audit. PR159 merge and live acceptance remain
 separate pending operations. No runtime code or dependency changed.
 
+## Merge the acquired DHCPv4 DNS slice and verify its release
+
+Root read the complete bounded firewall CI diagnosis. The unchanged public
+kernel-policy case passed on native ARM64 in 3.65 seconds at b20af8ba.
+The original CI assertion used static IPv4 with resolver disabled. Its
+forwarded packet drop remains unlocalized. No acquired-DNS correction was
+supported. Root requested one CI job rerun; attempt two was canceled and
+does not provide passing proof. The original failed result remains preserved.
+
+Root verified the exact signed PR159 head, all ten active required checks,
+mergeability, and review threads. Root replied with evidence and resolved
+the disproven clone finding. PR159 merged through normal gh squash merge
+at 22:10:22 UTC as e90b629814cfad205397be9cc5f95c60d82d169f. No admin bypass
+was used. Clean owning MWAN main advanced to the merge.
+
+Root read the completed cleanup report. The contained PR159 worktree and
+local and remote branch were removed after patch and complete-tree equality
+verification. External evidence, unrelated worktrees and Docker resources
+were preserved.
+
+Release 202610012210-9c-e90b629 published from the exact merge. Root read the
+complete release report and pin metadata. All four archives passed checksum,
+API digest, and source-attestation verification. Native ARM64 version and
+schema execution passed. Local AMD64 Docker execution failed with exec format
+error. Root's separate native AMD64 artifact operation 59227 is copying the
+verified executable into a private temporary directory on suburban, without
+installation or daemon startup. The transfer is active and progressing;
+native execution remains pending. Its own evidence directory is native-amd64.
+
+Root created the Configs checkout for codex/mwan-398-dns-testbed-release
+at e0ff57ca. App registration failed the existing 100-identity limit after
+checkout creation; the returned checkout is usable and no second checkout
+was created. network_library_audit owns only the testbed release pin and
+existing render/loader checks. Settled values come from the verified release.
+Ruby 3.4.7 satisfies the existing locked bundle; no toolchain dependency
+change was authorized. Root retains publication and every live cutover.
+
+Tack398 and521 remain In Progress with updated current results. Production
+is unchanged. The accepted reversal remains passed; failed forward46574 is
+not reclassified. The new merged release and compatible Configs pin must
+complete review and verification before another testbed deploy.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
