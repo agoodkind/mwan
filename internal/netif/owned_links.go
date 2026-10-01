@@ -747,10 +747,11 @@ func applyLinkSettings(link netlink.Link, connection interfaceintent.Connection)
 }
 
 func applyLinkEnabled(link netlink.Link, enabled *bool) error {
-	if enabled == nil || *enabled == (link.Attrs().Flags&net.FlagUp != 0) {
+	desired := enabled == nil || *enabled
+	if desired == (link.Attrs().Flags&net.FlagUp != 0) {
 		return nil
 	}
-	if *enabled {
+	if desired {
 		if err := netlink.LinkSetUp(link); err != nil {
 			slog.Warn("link enable failed", "link", link.Attrs().Name, "err", err)
 			return fmt.Errorf("raise link %s: %w", link.Attrs().Name, err)

@@ -87,6 +87,9 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := netlink.LinkSetUp(parent); err != nil {
+		t.Fatal(err)
+	}
 	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: "foreign-br"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -468,6 +471,13 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: "retry-parent"}}); err != nil {
 		t.Fatal(err)
 	}
+	retryParent, err = netlink.LinkByName("retry-parent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.LinkSetUp(retryParent); err != nil {
+		t.Fatal(err)
+	}
 	results, err = onDisk.Reconcile(context.Background(), log,
 		[]interfaceintent.Connection{retryParentConnection, retryConnection})
 	if err != nil || len(results) < 1 || results[0].Status != OwnedLinkReady {
@@ -503,6 +513,9 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	}
 	bridgeParent, err := netlink.LinkByName("mac-parent")
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.LinkSetUp(bridgeParent); err != nil {
 		t.Fatal(err)
 	}
 	bridgeParentConnection := interfaceintent.Connection{
