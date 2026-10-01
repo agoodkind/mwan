@@ -5023,6 +5023,33 @@ the new release. Fresh recovery rendering matches 2155363a, and all published
 loader/firewall checks passed. Keep it unpublished until the actual forward
 deployment completes. Both tickets remain InProgress; production is unchanged.
 
+## Resume the forward cutover after snapshot completion
+
+The snapshot deletion process ended naturally, and VM 213's lock cleared
+by 12:24:45 UTC. No unlock, process termination, or infrastructure repair
+occurred. Root refreshed origin and confirmed clean Configs f67d8af3 still
+matches main. Retry 4621 started at 12:25:03 UTC through the same bounded
+configsctl command. Its log is deploy-mwan-20261001T122503Z.log under
+the current configs-runs directory. The recovery snapshot succeeded.
+
+Capture 66096 began at approximately 12:29:40 UTC. Three primary capture
+units became ready at 12:29:41.538401, 12:29:42.285551, and
+12:29:43.020535 UTC on enmwanbr0, enatt0, and enwebpass0. Their PIDs
+are 3800, 3804, and 3808. The capture output is
+route-event-fix-forward-active-capture under the real-cutover evidence
+directory. Root alone updates its phase and stop files. Stop before reboot
+or approximately 12:59:39 UTC. Primary captures do not observe backup packets.
+Old guest 226 observer 1403 completed naturally with exit status 0.
+Isolated observers 92566 and 56392 remain active.
+
+Before ownership transfer, guest 226 IPv4 missed sequence 1235. Replies
+1234 and 1236 occurred at 12:29:33.710052 and 12:29:35.738804 UTC,
+an interreply gap of 2.028752 seconds. Router selection did not change;
+the other three streams remained continuous. The capture started after
+this interval and cannot localize the miss. Do not assign a cutover or ISP
+cause without evidence. Actual ownership transfer and readiness restoration
+remain pending. Production remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
