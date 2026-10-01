@@ -3130,6 +3130,51 @@ and [client226 report](/Users/agoodkind/.local/state/mwan305/20261001-npt-deploy
 retain the packet and route results. The separate 600-second observers
 remain active; their terminal results are not included here.
 
+### Verify the unchanged fixture and preserve failed simulator reporting
+
+Configs PR #586 merged as c0859644ada4b2f95cc4592d5c94b9eecbc88d78.
+Independent review found no actionable issue in its exact PF assertion.
+The merged fixture play passed with ok=29, changed=0, unreachable=0,
+and failed=0. Both PF rules, local HTTP 200, exact response bytes, and
+original GUI process/configuration assertions passed. Listener activation
+and filter reload tasks skipped. The [fixture log](/var/folders/jq/hwwlnpr56_vdb42ff743hy040000gn/T/configs-runs/deploy-opnsense-20261001T002359Z.log)
+retains this unchanged run.
+
+The following merged simulator acceptance play received HTTP 200 and the
+expected body from both source-selected mapping requests. Its report
+template failed while splitting the response delimiter. Final HTTP status
+and body assertions did not execute. The [failed simulator log](/var/folders/jq/hwwlnpr56_vdb42ff743hy040000gn/T/configs-runs/deploy-testbed-20261001T002553Z.log)
+retains both real responses. A single YAML-decoded delimiter correction
+remains under validation. This result does not establish packet attribution.
+
+Both 300-second observers received 300 of 300 replies per family and
+recorded 115 successful primary route samples per family, with no failed
+samples. The [client225 result](/Users/agoodkind/.local/state/mwan305/20261001-npt-deploy-acceptance/mapping-c085-client225/report.json)
+and [client226 result](/Users/agoodkind/.local/state/mwan305/20261001-npt-deploy-acceptance/mapping-c085-client226/report.json)
+retain the completed observations.
+
+The earlier 600-second observers recorded different results. Client225
+received 600 of 600 replies per family and failed one route observation
+after an SSH key exchange reset from suburban. Client226 received 599 of
+600 replies per family, with sequence 189 missing around 00:15:20Z,
+about 70 seconds after the fixture play ended. Its observer exited zero
+because the recorder reports missing sequences without rejecting them.
+The [observer review](/Users/agoodkind/.local/state/mwan305/20261001-npt-deploy-acceptance/mapping-native-observer-review.md)
+retains the command failures and packet counts. The loss cause and backup
+selection remain unproven.
+
+PR #146 corrected the vanished-program inspection race at signed commit
+29579c1d2314b04cb12e3309adb2c7aa13513df5. Independent source review passed.
+Its complete published-binary aggregate passed all 22 namespace cases
+and four of five systemd cases, with zero skips. The NPT case passed its
+packet check, then failed a receipt assertion during withdrawal. Production
+retirement removes and verifies the address before persisting receipt
+removal. The fixture now requires the exact expected receipt within its
+existing readiness deadline. Final receipt and packet assertions remain.
+Signed commit 7201aa87f6d076fa66cbac546aa03ffe784986cb passed the affected
+five-case systemd lane and code checks; its complete aggregate remains
+pending. Shared daemon deployment and production acceptance remain pending.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
