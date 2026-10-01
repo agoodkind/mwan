@@ -4283,6 +4283,51 @@ Webpass affinity preservation. Additional distinct guest-225 probe session
 12936 began around 07:58 UTC to observe provider selection without changing
 policy or connection marks. Preserve webpass-affinity-client225 separately.
 
+## Start the merged repaired Webpass cutover
+
+Release 202610010759-98-ff37bec completed publication and verification in
+run 36833372083. All four archive checksums, API digests and exact-source
+attestations passed. Root independently hashed the archives and executables.
+The expected AMD64 executable checksum is
+98a858c8400e0cd67d2809d54e337b29f7d4a012c910aa47b44919e3352f011a.
+
+[Configs PR #601](https://github.com/agoodkind/configs/pull/601) passed the
+actual configsctl render, published loader and isolated firewall checks.
+Independent review passed signed head 01d561ad1c719f79333f14631003b29e216dbe65.
+The one-file patch changes only the testbed release tag and AMD64 checksum.
+All three active required checks and Graphite AI review passed. No threads
+remained. Normal merge completed at 08:15:19 UTC as
+fd03855dc1c8b6075d49045d9546f56dfb6c649b; no bypass was used.
+
+Root fast-forwarded the clean primary Configs checkout to that merged commit.
+The hypervisor reported no active tasks before deployment. The gateway still
+had its verified old binary and network checksums and boot ID
+204ae526-a4d8-4ee1-8c4e-11a575a3e546. Both primary and backup BGP sessions were
+established in both families. Both default prefixes had valid primary and
+backup paths. Primary neighbors reported Remote GR Mode Disable and received
+restart time zero. This proves control-plane availability, not backup packets.
+
+Actual deployment began at 08:16:24 UTC through
+./configsctl deploy deploy-mwan --limit mwan_suburban_servers. Session 23598
+is active. The log is deploy-mwan-20261001T081624Z.log under configs-runs.
+Do not mutate the primary checkout or start another live operation until the
+play ends. Root owns deployment and capture phase transitions. Preserve
+observers 99158, 76919 and 12936 through transfer and reboot.
+
+The additional guest-225 IPv6 flow has verified Webpass mark 2 and ICMP
+identifier 26647. Original guest-225 and guest-226 flow identifiers are
+IPv4 32792/55052 and IPv6 26644/8388, each with AT&T mark 1. The additional
+IPv4 identifier remains pending the transfer capture. Guest capture clocks
+and gateway capture clocks differ by approximately 0.780 seconds; correlate
+identifiers and sequences. Gateway health probes with identifier 8192 do not
+prove guest flow delivery. Original guest-225 IPv6 recorded one missing probe
+before this deployment; preserve phase-specific loss instead of claiming a
+zero-loss cumulative baseline.
+
+PR #599 remains unmerged. Its isolated signed rebase and validation may proceed
+against the new main while root performs the forward deployment. Do not merge
+or deploy reversal before forward acceptance. Production is unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
