@@ -3991,6 +3991,36 @@ readiness, downstream packets, and repeated cold startup before closing it.
 Webpass ownership activation, the full packet battery, and production
 readiness remain unaccepted. Production configuration remains unchanged.
 
+## Complete simulator deployment and prepare reversal
+
+Session 96066 terminated with exit 0. The simulator-only deployment recap
+reported ok=257, changed=70, unreachable=0, failed=0, skipped=77,
+rescued=0, and ignored=0. The primary Configs checkout remains clean at
+merged 4865782d. Astound live acquisition and cold startup remain unaccepted.
+
+The observer snapshot at 06:21:59Z recorded 627 replies per guest and family
+since deployment start. Every sequence had zero observed gaps or duplicates;
+route queries selected the primary and reported zero failures. Observers
+22513 and 89809 remain active. Final transmission totals remain pending.
+The retained snapshot is in simulator-repair-observer-snapshot/report.md.
+
+Root verified the PR #598 slice against current trunk before removing its
+clean feature worktree and local branch. The remote branch was already absent.
+No ignored, untracked, modified, or submodule paths required preservation.
+The first local deletion from the unrelated checkout failed its merged check;
+deletion from the unchanged main checkout then succeeded. Trunk and active
+deployment files were not changed by cleanup.
+
+The merged ownership mechanism renders the requested owner and permits one
+changed connection. It has no manual reversal selector. Prepare a focused
+Webpass networkd inventory PR in the returned
+/Users/agoodkind/.codex/worktrees/mwan-519-webpass-reversal/configs checkout.
+Do not merge or deploy it before the first forward transfer passes.
+The actual released loader rejected an owner-only candidate because networkd
+requires rendered link files. The candidate must restore that declaration
+and pass the loader before review. Second forward transfer requires restoring
+the MWAN owner through another merged configuration.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
