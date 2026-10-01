@@ -99,6 +99,7 @@ func (session *raSession) observe(ctx context.Context, log *slog.Logger, request
 		if ctx.Err() != nil {
 			return nil
 		}
+		log.WarnContext(ctx, "resolver RA observer startup failed", "operation", "open", "result", "failed")
 		return fmt.Errorf("open resolver RA observer on %s: %w", session.name, err)
 	}
 	defer client.Close()
@@ -111,6 +112,7 @@ func (session *raSession) observe(ctx context.Context, log *slog.Logger, request
 			if ctx.Err() != nil {
 				return nil
 			}
+			log.WarnContext(ctx, "resolver RA observation failed", "operation", "receive", "result", "failed")
 			return fmt.Errorf("receive resolver RA on %s: %w", session.name, err)
 		}
 		if err == nil {

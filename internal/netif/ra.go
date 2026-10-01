@@ -36,9 +36,14 @@ type RAClient struct {
 // NewRAClient opens a raw ICMPv6 connection on iface, finds (or waits for)
 // the interface's link-local address, and joins the all-routers multicast
 // group. Returns a usable RAClient ready to SolicitRA. Caller must Close.
-func NewRAClient(iface string, log *slog.Logger) (*RAClient, error) {
+func NewRAClient(iface string, log *slog.Logger) (client *RAClient, err error) {
 	log = log.With("component", "ra", "iface", iface)
 	log.Debug("ra: NewRAClient entry")
+	defer func() {
+		if err != nil {
+			log.Warn("ra: listener setup failed", "operation", "listen", "result", "failed")
+		}
+	}()
 
 	netIface, err := net.InterfaceByName(iface)
 	if err != nil {
