@@ -6,14 +6,83 @@ This plan defines execution order, agent responsibilities, and acceptance
 gates. Each slice plan defines its edits and verification. The
 [execution ledger](2026-09-26-link-ownership-ledger.md) records actual progress.
 
-The September 26 audit inspected MWAN `03dd43a` and Configs `18f2a711`.
-The September 27 review compared current plans with MWAN `5970f1d` and
-Configs `b612d1c`. Recheck changed source before each implementation brief.
-MWAN-524 passed live testbed acceptance. Connection identity and route repair
-implementation have started; no interface-owner cutover has begun.
-
 The [plan audit](2026-09-26-link-ownership-audit.md) records the corrected
 document gaps and the remaining implementation gates.
+
+## Complete the operational goal
+
+Complete MWAN-305 interface ownership through verified operational acceptance.
+Preserve AT&T and networkd coexistence, deployment authorization, original
+sources, backups, and recovery state. Deploy only clean merged revisions
+through `./configsctl deploy`. Perform actual testbed forward and reverse
+cutovers, restart, reboot, failover, recovery, and repeated unchanged operation.
+Observe both downstream guests and both IP families. Verify acquisition,
+load balancing, mappings, IPv6 translation, binary identity, and configuration
+identity. Recover or revert measured failures, implement focused fixes, review,
+merge, redeploy, and repeat acceptance.
+
+Yield a production readiness report only after the required testbed evidence
+supports production cutover. Do not initiate production cutover without the
+required subsequent authorization. Production phases and final retirement
+remain epic requirements; this execution goal does not authorize them early.
+
+Apply [subagent-driven-development](../../../../.agents/skills/subagent-driven-development/SKILL.md)
+strictly. Give every implementer exact working directories, exclusive file
+ownership, prerequisite revisions, settled interfaces, constraints,
+verification, and report requirements. Assign coupled changes to one owner.
+Inspect reports and diffs before integration. Preserve concurrent edits.
+
+## Require complete execution checkpoints
+
+Run this checkpoint immediately after every compaction, before every work
+slice, before every integration, and on every 30-minute heartbeat. Require
+every implementer to complete the same checkpoint before dependent work.
+
+1. Reread this entire coordination plan and all six linked slice plans.
+   Reread every applicable current epic specification.
+2. Read MWAN-305 and every current child ticket in full through Tack. Include
+   descriptions, acceptance criteria, dependencies, current states, and
+   relevant comments. Refresh the epic's child list at every checkpoint.
+   Keep the existing ticket identifiers in this plan and its slice plans.
+3. Reread the supplied memory summary and the complete memory registry at
+   [MEMORY.md](/Users/agoodkind/.codex/memories/MEMORY.md). Do not reopen a
+   memory summary file that the environment already supplied. Reread the
+   entire execution ledger linked above.
+4. Use bounded reads. Reread every truncated range. Summaries, metadata
+   queries, and search excerpts do not satisfy a complete reread.
+5. Record checkpoint time, hashes, actual line coverage, ticket states,
+   affected revisions, agent ownership, relevant live state, conflicts, and
+   selected slice in the ledger. Identify every incomplete read. Refresh
+   affected evidence when a source changes during the checkpoint. Do not
+   start dependent work or certify a checkpoint before its reads finish.
+
+Keep the existing thread automation `mwan-305-execution-checkpoints` active
+every 30 minutes while the goal is active. Reuse that automation. Inspect
+actual process and agent handles before dispatching work. Do not interrupt
+an active mutation or create duplicate workers. Respect explicit pauses.
+Suspend the automation after verified completion. Notify only for a meaningful
+result, failure, completion, or required decision.
+
+Separate passed, failed, speculative, and unperformed results. Record each
+exact binary, configuration, source revision, operation, result, and remaining
+gap. State the operation needed to resolve missing evidence. Plans, component
+tests, merged PRs, and installed binaries do not prove operational acceptance.
+Do not infer causes, reduce intended behavior, increase limits to conceal
+failures, or add unrelated repairs and speculative safeguards.
+
+Follow [enforce-rules](../../../../.agents/skills/enforce-rules/SKILL.md) and
+repository testing rules for every new test, including complete required
+rule-file reads. Use the smallest necessary public-boundary regression test
+with real dependencies and an observable result. Use inspection, generation,
+compilation, or existing checks for mechanical changes. Delete tests for
+removed behavior. Do not use mocks, stubs, spies, recorded responses, static
+content checks, or tests that repeat implementation.
+
+Continue authorized safe and reversible work autonomously. Ask only when a
+required decision remains after useful independent work is exhausted.
+Reconcile the ledger and actual Tack ticket states with verified operational
+acceptance. Mark the goal complete only after the required deployed revisions,
+live behavior, ledger, and tickets pass verification.
 
 ## Restore the Astound baseline first
 

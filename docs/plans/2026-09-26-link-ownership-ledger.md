@@ -3817,6 +3817,38 @@ The failed deploy log is baseline-deploy-ansible.log in the parent directory.
 Ownership cutover, reversal, balancing, restart, reboot, and production readiness
 remain unaccepted. Production has not changed.
 
+## Save the mandatory execution contract on September 30 at 22:35 PDT
+
+The operator requires strict subagent-driven development, complete rereads
+after every compaction and before every slice and integration, and a regular
+heartbeat. The coordination plan now includes the operational goal and these
+requirements. The active goal includes every current epic child ticket,
+all plans and applicable specifications, the complete memory registry, and
+this entire ledger. Partial reads and summaries do not satisfy a checkpoint.
+
+Automation mwan-305-execution-checkpoints is active every 30 minutes on this
+thread. Its saved prompt repeats the complete reread and evidence requirements.
+The plan's skill links resolve. The plan passed git diff --check. No runtime
+code or deployment configuration changed for this request.
+
+This checkpoint is incomplete. The coordinator read all 347 lines of the
+updated plan. Memory reads included truncated output; the complete 8126-line
+registry has not been reread. Only the ledger's final 42 lines were read in
+this turn. All six slice plans, applicable specifications, and every current
+epic child ticket still require complete reads before the next runtime slice.
+No full checkpoint is certified.
+
+The plan SHA256 after its complete read is
+060bf378eb632a18f61cf543932b3e70b74ab3a62a7f657a4d8b31ebd0cbfa9b.
+The registry SHA256 is
+76cc7105d84d8b0702666495a8ab7c7b3f601577409b20697cc4ac05a1254e06.
+The ledger SHA256 before this entry is
+95ec52e15ad2611f79d73c6d839c0db43d5c467201bdd48b26bf1452cc54532c.
+The existing release_completion agent observes only the already running
+baseline deployment. It has no authorization for another mutation or repair.
+Root retains sole coordination plan and ledger ownership. The next runtime
+slice remains baseline acceptance before Webpass ownership activation.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
