@@ -4781,6 +4781,30 @@ DOWN. Observers 21087 and 1403 remain active; source correction, owner
 reversal, and post-transfer acceptance are pending. Preserve the running
 checkout until this retry ends.
 
+## Verify actual link recovery before networkd reversal
+
+Retry 29579 created its pre-deploy snapshot and installed the verified
+2df8faa0 executable. Live SHA256 matches 599392d3. The source-exclusion
+restart enabled enwebpass0 at 11:10:22 UTC. The exported source ownership
+remains MWAN, link state is UP, final reconcile is ready, and IPv4/IPv6 health
+probes pass while administrative selection and carrying remain false.
+DHCPv6 changed from acquiring/pending to bound/valid at 11:10:37 UTC.
+The observed delegated edge is now 3d06:bad:b01:2200::1/128; do not infer
+unchanged delegation from the previous 2201-prefix capture.
+
+Fresh capture 50168 records the three gateway interfaces after link
+activation. Webpass capture readiness is 11:10:50.697427 UTC. Output is
+webpass-cold-recovery-active-capture, with a strict 1800-second bound. Root
+owns its phase and stop files. Stop it before reboot or its deadline; primary
+captures still do not observe backup forwarding. Observers 21087 and 1403
+remain active with fresh replies in both families.
+
+The installed source owner, exclusion, usable-assignment, and all six
+excluded-provider packet gates passed. The play installed external ownership
+and started its restart to release MWAN. Its reconnect and exclusive-release
+verdict remain pending. No replacement owner or complete reverse-transfer
+acceptance is established yet. The capture phase is source-verified-owner-release.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
