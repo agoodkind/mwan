@@ -6441,6 +6441,38 @@ is unchanged. The accepted reversal remains passed; failed forward46574 is
 not reclassified. The new merged release and compatible Configs pin must
 complete review and verification before another testbed deploy.
 
+## Publish the compatible testbed pin for the repeated forward transfer
+
+Root read the complete Configs report and inspected the exact two-line diff.
+Signed clean head 434c996bb4de253e65bf6d03d3393556e0f32342 changes only the
+testbed release tag and MWAN AMD64 archive checksum. Lint passed. The existing
+data suite reported 205 examples, zero failures and 19 pending environment
+cases. Both rendered configurations passed all four released ARM64 loader
+and firewall commands. The testbed render still matches approved forward
+hash 2769af5f68c40d56ca5f4a99015d1267402fd076f6b5a1cc4b39cf5901e8bd88.
+
+Root published Configs PR616 after signed-commit verification. Its active
+ruleset requires GitGuardian, configs lint, configs data tests, resolved
+threads, signatures, and an up-to-date base. The latest readback has lint,
+GitGuardian and Graphite passed, no threads, and data tests still active.
+PR attachment failed the existing 100-identity cap; unrelated attachments
+were preserved. The PR remains unmerged and must not be deployed.
+
+Root read the updated firewall diagnosis after merged main repeated the same
+static forwarded-packet assertion. Resolver remained disabled. No capture or
+send timestamp localizes the drop or proves a DNS defect. Preserve both CI
+failures, the canceled rerun, and the separate native ARM64 focused pass.
+The required real testbed packet battery remains unperformed for this release.
+
+Native AMD64 operation 59227 remains active. Its private artifact copy showed
+increasing bytes on the testbed hypervisor, so slow transfer is not treated
+as terminal failure or restarted. No binary was installed or daemon started.
+Fresh downstream replies were verified during preparation. Existing capture
+32907 is bounded through about 22:42 UTC; observers 43493 and86918 through
+about 22:47 UTC. Replace or renew observation before the next live retry if
+its expected duration exceeds those deadlines. Root remains the sole live
+controller. Production remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
