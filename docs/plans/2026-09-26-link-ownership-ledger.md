@@ -5282,6 +5282,34 @@ primary, with no query errors. Keep subsequent staging losses separate
 from actual transfer losses. Actual ownership transfer and final deployment
 acceptance remain pending. Production is unchanged.
 
+## Reorient during repeated forward exclusion
+
+The 14:08 UTC reorientation confirmed the coordinator, cutover plan,
+interface specification, recent ledger, relevant memory, and both actual
+InProgress tickets. Repeated forward deployment 25290, capture 92562,
+journal 75208, and renewed observers 71173/77127 remain active. Root alone
+owns live mutation. Stop capture by approximately 14:28 UTC before reboot
+or its 14:29:49 deadline. Original observers 92566 and 56392 completed
+naturally with exit status 0; their evidence remains preserved.
+
+The repeated source-exclusion restart selected backup around 14:08:45 and
+restored primary around 14:09:01, approximately 15.7 seconds later.
+Both guests and families recorded complete replies throughout that interval.
+Source exclusion is confirmed; source assignment verification is active.
+Primary forwarding readiness reports true in both families. Ownership
+release, replacement acquisition, and final deployment remain pending.
+
+A bounded production compatibility review identified the configuration
+preparation required for this phase. Production remains networkd owned and
+has no transfer packet commands. Preserve its actual driver-based Webpass
+selection, registered MAC, full DUID, and effective IAID/acquisition policy.
+Use the accepted release in a focused production activation/pin PR with real
+phase packet checks and reviewed persisted recovery. A separate read-only
+identity verification is assigned. No production mutation or deployment is
+authorized. Evidence is in 20261001-first-connection-production-compatibility/report.md
+under the existing local evidence root. AT&T/networkd coexistence remains
+required; circuit retirement does not block this first production phase.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
