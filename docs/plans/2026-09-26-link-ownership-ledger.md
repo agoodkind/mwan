@@ -4354,6 +4354,34 @@ DUID, IAID and delegation settings, mappings, new pin and RA correction are
 preserved. Actual reversal remains unproved. Keep this PR unmerged until
 forward acceptance passes.
 
+## Diagnose the source readiness failure before ownership release
+
+Deployment 23598 passed source exclusion and the actual networkd acquisition
+check. Both guests selected the backup around 08:31:40 UTC and returned to
+the primary around 08:31:56 UTC. No additional missing replies appeared in
+that interval, including the established Webpass mark-2 flows in both families.
+
+The served assignment check failed after 30 attempts at 08:35:35 UTC. The
+operational export returned successfully. The captured Webpass source state
+reports networkd ownership, routing ready and translation ready in both
+families. IPv6 translation resolves 3d06:bad:b01:2200::/60, but the IPv6
+operational family lacks goodkind-mwan-steering:delegated-prefix. The check
+requires that field for delegation regardless of the active owner. This
+missing field explains the failed predicate; delegation acquisition and the
+correct source-owner evidence require further inspection.
+
+Ownership release did not execute. The play restored captured role inputs and
+restarted the writer. Both guests selected backup around 08:36:14 UTC and
+returned to primary around 08:36:31 UTC without additional missing replies.
+Recovery acceptance remains pending. Recorder 63760 remains active; root
+changed its phase to role-input-recovery. Original guest-225 IPv6 retains the
+single staging miss 2085. Do not claim a completed forward cutover.
+
+Root retains exclusive live deployment and capture control. The delegated
+read-only diagnosis examines the owner-specific readiness contract. PR #599
+remains unmerged. Production is unchanged. Focus remains cutover, recovery,
+and the minimum demonstrated repair.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
