@@ -295,8 +295,9 @@ func (m *Module) publishLiveState(currentGateways gateways, health netif.HealthS
 	for _, wan := range m.cfg.WANs {
 		v4Ready := familyReady(wan, currentGateways[wan.Key()], health, translations[wan.Key()], familyV4)
 		v6Ready := familyReady(wan, currentGateways[wan.Key()], health, translations[wan.Key()], familyV6)
+		selectionEnabled := wan.SelectionEnabled == nil || *wan.SelectionEnabled
 		members[wan.Key()] = wanstate.MemberRouting{
-			Carrying: (readyV4 && wan.Tier == tierV4 && v4Ready) || (readyV6 && wan.Tier == tierV6 && v6Ready),
+			Carrying: selectionEnabled && ((readyV4 && wan.Tier == tierV4 && v4Ready) || (readyV6 && wan.Tier == tierV6 && v6Ready)),
 			V4Ready:  v4Ready, V6Ready: v6Ready,
 			OwnedAddresses: slices.Clone(m.ownedAddresses[wan.Key()]),
 		}

@@ -83,11 +83,16 @@ func runSelectionExclusionDaemonRuntime(t *testing.T) {
 		name := []string{"primary", "backup"}[index]
 		addMappedRuntimeRoute(t, "192.0.2.0/29", fmt.Sprintf("10.50.%d.1", index+1), name)
 		addMappedRuntimeRoute(t, "2001:db8:b01::/60", fmt.Sprintf("fd50:%d::1", index+1), name)
+		waitAutoconfigurationLinkLocal(t, name)
 	}
 	setRuntimeNamespace(t, lan.namespace)
 	addRuntimeDefault(t, "downstream", "192.0.2.1")
 	addRuntimeDefault(t, "downstream", "2001:db8:b01:fe::3")
+	waitAutoconfigurationLinkLocal(t, "downstream")
 	setRuntimeNamespace(t, gateway)
+	for _, name := range []string{"enmwanbr0", "enwebpass0", "enatt0"} {
+		waitAutoconfigurationLinkLocal(t, name)
+	}
 	defer func() {
 		if !t.Failed() {
 			return
@@ -142,6 +147,11 @@ func runSelectionExclusionDaemonRuntime(t *testing.T) {
 	writeSelectionRuntimeNetwork(t, networkDir, true)
 	first := startRuntimeDaemon(t, os.Getenv(mappedRuntimeBinaryEnv), configPath, root, "selection-default")
 	defer killOwnedRuntimeDaemon(t, first)
+	defer func() {
+		if t.Failed() {
+			t.Logf("initial daemon: %s", runtimeLogTail(t, first, 150))
+		}
+	}()
 	waitSelectionRuntimeMark(t, first, 2)
 	waitSelectionRuntimeState(t, first, read, "enwebpass0", true, true)
 	assertStaticRuntimePacket(t, lan.namespace, primary.namespace, "udp4", "10.50.9.2:50101")
