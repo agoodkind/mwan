@@ -4904,6 +4904,37 @@ and reverse testbed cutovers. Require backup delivery while a primary route
 is unavailable. A successful component regression does not prove cutover.
 AT&T and networkd remain active; production is unchanged.
 
+## Merge the routing notification correction
+
+PR 157 merged as 3bfdc2a65fef9907137829664b411ce4dbb3b6f2 at
+11:55:47 UTC. Independent review approved signed head 4be8753b. The source
+requests a complete daemon pass after main-table default events and preserves
+immediate route repair. Managed policy-table writes do not queue that pass.
+
+The existing real daemon regression uses a one-hour periodic interval.
+The released 2df8faa executable failed with stale selection after 17.58 seconds.
+The corrected daemon passed after 15.79 seconds, including route restoration,
+IPv4/IPv6 UDP replies, and the reconcile-loop check. Linux ARM64 check/test
+and all ten required CI checks passed. Optional netns and ARM64 checks passed.
+The optional firewall job was still running at merge. Govulncheck reports the
+unchanged GoBGP GO-2026-4736 advisory. The sole Graphite comment was answered
+with the main-table condition and runtime evidence, then resolved.
+
+The local fixture cannot prove BGP/socket readiness because its real refresh
+service is unavailable. Actual testbed withdrawal, restoration, and backup
+packets remain required. Verify the published release before activation.
+Combine its testbed release pin with the already reviewed repeated-forward
+configuration in one focused activation PR. This is the next testbed experiment,
+not a production promotion or a claim that the earlier interruption is fixed.
+
+Observer 21087 completed naturally with exit status 0. Renewed guest 225
+observer 29152 began at approximately 11:51 UTC with the existing independent
+SSH configuration and fresh replies in both families. Guest 226 observer 1403
+remains active until approximately 12:29 UTC. Renew it before any live phase
+would exceed that window. Old observers 5808 and 18926 ended with status 1;
+preserve their earlier incomplete packet evidence. No deploy or capture is
+currently active. The recovered gateway remains healthy and networkd-owned.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
