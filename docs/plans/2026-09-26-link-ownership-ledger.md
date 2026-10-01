@@ -6627,6 +6627,25 @@ candidate before matching testbed acceptance and subsequent authorization.
 This preparation does not change live production. Root retains all live
 operations, ledger and ticket writes.
 
+## Refresh the unpublished production candidate
+
+Root read the completed candidate-refresh report and inspected the exact
+two-file diff against freshly fetched origin/main. Signed clean head
+4530d47aa490c9f8a1676a2502e61bfce201ec18 rebases the reviewed activation
+onto merged Configs 7cbc3ee7. The activation inventory remains byte-identical
+to the previously reviewed 497d77c. The new edits change only the release
+tag and MWAN archive checksum. The existing recovery flag and activation
+configuration remain part of the complete candidate diff.
+
+Lint, render, signature and published native ARM64 schema/network/firewall
+checks passed. Exact production network and runtime render hashes remain
+3f7b7f3d87e0bb52f74812b6ae5b9c3f3ba68f22d68642140b65c49ba08d4796
+and 739f35843df4b439679c8d4652c50cd8cb0147155227e1890234f3259a075e29.
+The candidate remains unpublished and unpushed. Independent reviewer
+production_candidate_review owns a read-only review of immutable head
+4530d47. Matching testbed proof and subsequent production authorization
+remain required before cutover. Production has not changed.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
