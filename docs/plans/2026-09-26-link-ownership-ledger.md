@@ -4577,6 +4577,50 @@ active with fresh replies in both families at 09:47 UTC. Do not interpret
 the original windows' terminal timestamps as an outage. No production
 activation occurred. PR #599 remains unmerged until forward acceptance.
 
+## Verify selection restoration before reboot
+
+Deployment 80192 passed the MWAN replacement assignment check and acquired
+AT&T/Webpass mapped HTTP and NPT edge replies. It restored target selection
+and passed the corresponding selected-phase packet checks. The live installed
+binary SHA256 is 98a858c8400e0cd67d2809d54e337b29f7d4a012c910aa47b44919e3352f011a;
+network SHA256 is 50c5db1725b57814dcedff43baea84f263fa10f86f1126a1ebc2f76b198a192f.
+Both match the reviewed release and rendered intent. Operational export
+selection-restored-0953-operational.json reports Webpass owner mwan and all
+six other connections networkd, including AT&T, management, and transit.
+
+Capture 4133 finished strictly at 09:51:49.806110 UTC with status 0. Transit
+captured 6314 packets, AT&T 6668, and Webpass 288. All kernel drop counts are
+zero and all three recorded process-absence checks returned 0. No guest
+capture remains active before the planned reboot.
+
+Guest 225's affinity and renewed local probe output froze at approximately
+09:48:07 UTC. Independent packet inspection proves later requests and replies
+for IPv4 IDs 16105 and 53124 and IPv6 IDs 26647 and 26660 on transit and AT&T,
+including replies after 09:50 UTC. Every captured request has a matching
+reply. Each stream omits 16 consecutive sequences from the primary-only
+capture; backup forwarding or loss during those omissions remains unproved.
+Do not classify frozen output as a sustained packet outage or claim zero
+end-to-end loss. Fresh bounded guest-225 probes passed 3 of 3 in each family.
+
+Fresh guest-225 observer 21087 started around 09:53 UTC with a separate SSH
+ControlPath and a 7200-second bound. Its output is webpass-reboot-client225.
+Both families have fresh replies. Working guest-226 observer 5808 remains
+active. Preserve old windows as incomplete evidence and do not interrupt
+their processes. Use the fresh windows for reboot observation.
+
+Independent review of the first completed capture proves established Webpass
+forwarding after exclusion: IDs 16105 and 26647 retained mark 2 and had paired
+transit/provider requests, replies, and guest output. Health probes were
+excluded. The isolated pre-exclusion missing sequence 5285 has no packet on
+any recorded interface; adjacent sequences are paired. Its cause is unknown.
+
+The separate post-forward plan shared-plan-ff37bec-post-forward.json changes
+only the verified executable and network hashes. Root verified that structured
+comparison. Do not start its fault and restart operations during this play.
+At 09:55 UTC, deployment remains active in management/transit verification.
+Reboot, complete acceptance battery, reversal, and second forward transfer
+remain required. PR #599 remains unmerged. Production remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
