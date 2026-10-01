@@ -5349,6 +5349,41 @@ including protocol validity and ownership release. The exact report is
 root. Production remains unchanged, and its cutover requires subsequent
 authorization after completed testbed proof and reviewed configuration.
 
+## Accept repeated forward deployment and begin the full battery
+
+Repeated forward deployment 25290 completed with exit status 0. Its recap
+reports 379 successful tasks, 46 changes, zero failures, and zero unreachable
+targets. Verdict 20261001-065755-deploy-849229 reports reboot_rc=0,
+egress_rc=0, and owned_rc=0. The gate ran from 14:29:21 through 14:30:49 UTC.
+Boot identity changed from da4876ff-88eb-4d6a-93cd-7823458364a0 to
+2a1e44a1-c1b5-4b2a-89b5-50dcca40b2c0. Installed and running PID 314
+executables match 731618ad; the final network matches 50c5db17.
+Webpass serves MWAN ownership, link up, healthy selection, and passing
+probes in both families. AT&T and all other interfaces remain networkd
+owned. Both forwarding-readiness values are true.
+
+The renewed observers selected backup around 14:29:32 and restored primary
+around 14:30:20. Both guests and both families recorded 2227 complete
+deployment-period replies through 14:30:51, without missing sequences or
+route-query errors. Journal follower 75208 ended naturally with SSH exit
+255 during reboot. A preboot operational SSH read failed during reboot;
+its empty output does not establish operational state. Later postboot
+operational reads succeeded. The initial postboot snapshot included a
+temporary Webpass IPv6 probe failure; the later snapshot passed both probes.
+
+Independent finalized capture review verified every captured renewed request
+has a transit reply, all three hashes match, all kernel drop counts are zero,
+and all exact-PID cleanup checks passed. Primary capture gaps coincide with
+the measured restarts; these captures do not observe backup forwarding or
+reboot. Evidence is in route-event-fix-repeat-forward-packet-analysis/report.md.
+
+The existing full acceptance runner started as handle 5900 after deployment
+completed, using the validated route-event-fix-forward-plan.json and a new
+route-event-fix-repeat-forward-full-acceptance evidence directory. Balancing,
+mapping, persisted failure-history, and controlled restart results remain
+pending. Root alone owns the approved fault and restart after the history
+observation phase begins. Production remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
