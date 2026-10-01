@@ -4054,6 +4054,25 @@ webpass-forward-client225 and webpass-forward-client226 under the existing
 pending. The standby calibration drill is deferred. Prioritize actual
 forward transfer, reversal, recovery and second forward transfer.
 
+## Retry Webpass forward transfer after the snapshot operation
+
+Read-only Proxmox inspection confirmed VM 213 running, no configuration
+lock, and no active tasks on node hypervisor. The first API task query used
+an unsupported option; the corrected query used source=active and returned
+an empty list. Root did not unlock the VM or interrupt a snapshot operation.
+
+Each downstream guest and family received all 296 probes during the failed
+deployment interval 06:43:43Z through 06:48:39Z. The longest reply gap was
+1.017292 seconds. Every sampled route selected the primary gateway; no
+route query failed. This proves observed ICMP continuity, not completed
+ownership transfer or new-flow load balancing.
+
+Root retried the same clean merged deployment at 06:51:43Z. Session 68771
+is active. Its log is deploy-mwan-20261001T065143Z.log in configs-runs.
+Observers 22271 and 18961 continue. Do not mutate the primary checkout or
+start another deployment while this process runs. The reversal PR may be
+prepared independently, but it must not merge before forward acceptance.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
