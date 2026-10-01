@@ -6118,6 +6118,30 @@ all three Webpass DNS servers and unchanged management DNS. The paired
 multi-interface DNS command failed parsing and did not set DNS. Baseline
 evidence separates these command errors from network acceptance.
 
+## Begin merged DNS reverse deployment
+
+PR614 merged as c4c761f11891d9dea01b0f81d2181a91290b2ac9 at
+19:00:37 UTC. Required GitGuardian, lint and data checks passed.
+Graphite AI passed and review threads were empty. Independent spec review
+accepted exact signed head 0193cac4. PR-Agent exhausted its allowance;
+that check is not an active ruleset requirement. No bypass occurred.
+
+Root reviewed the corrected baseline. Actual gateway and both guest
+identities match; WAN PID, boot, binary, DNS and current network are unchanged.
+Both uncached configured-resolver queries pass and both downstream observers
+publish fresh replies and successful route queries. Evidence is
+20261001-dns-reverse-live-review/baseline/report.md.
+
+The clean owning main advanced to c4c761f1. Supported configsctl reverse
+deployment handle 17193 began at 19:01:13 UTC with limit
+mwan_suburban_servers. Actual streamed play output is
+deploy-mwan-20261001T190113Z.log under the existing configs-runs directory.
+Simulator capture 16896 and downstream observers 2638/71854 remain active.
+Root controls live mutation. Independent reverse acceptance and preparation
+of the repeated-forward configuration run separately. MWAN-521 remains
+In Progress; its comment now includes this merged operation. Production
+remains unchanged. Actual reverse acceptance is pending.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
