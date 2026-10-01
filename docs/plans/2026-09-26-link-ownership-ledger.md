@@ -4073,6 +4073,44 @@ Observers 22271 and 18961 continue. Do not mutate the primary checkout or
 start another deployment while this process runs. The reversal PR may be
 prepared independently, but it must not merge before forward acceptance.
 
+## Correct the acquisition gate found by actual cutover
+
+The retry created its recovery snapshot successfully. Source exclusion
+passed. The source networkd acquisition gate then failed after 30 attempts,
+before owner release. Session 68771 began restoring captured prior inputs;
+its recovery result remains pending.
+
+Independent review identified the sole false condition: the RA acquisition
+check accepts NDisc addresses or Routes but ignores configured NDisc
+NextHops. Live Webpass has static IPv4 10.241.204.2/29 and DHCPv6 PD /56.
+Its configured NDisc nexthop 2311400098 matches the actual kernel RA default
+and gateway fe80::be24:11ff:fe7f:de4e. Preserve the real networkctl, network
+document and kernel routes in webpass-source-acquisition-failure under the
+existing 20261001-real-cutover evidence directory.
+
+Delegate the focused acquisition check correction in the isolated
+/Users/agoodkind/.codex/worktrees/mwan-519-ra-readiness/configs checkout.
+Do not change the active primary checkout, relax routing or translation
+requirements, or deploy an unmerged fix. Validate the production predicate,
+review, merge, and retry actual cutover after recovery completes.
+
+Both downstream guests and families selected the backup during the source
+restart around 07:05:58Z through 07:06:11Z. The observer found no missing
+probe sequences. These observations prove sampled gateway failover, not
+individual ISP selection or new-flow balancing.
+
+Configs PR #599 publishes signed reversal head
+da7d4218e877015f19b76a066252993bad6cbd84. Required checks and Graphite AI
+review passed; no review threads remain. PR-Agent quota exhaustion is not
+a required check. Keep the PR unmerged until forward acceptance passes.
+Native attachment failed because the thread has 100 identities; the PR
+remains accessible at https://github.com/agoodkind/configs/pull/599.
+
+MWAN-519 remains In Progress. Snapshot task records prove a lock conflict,
+but they do not identify the caller. Deploy and watchdog snapshots lack
+shared coordination; that separate gap does not block the successful retry's
+snapshot. Continue the actual cutover correction and recovery.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
