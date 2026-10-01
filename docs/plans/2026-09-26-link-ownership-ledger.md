@@ -6678,6 +6678,31 @@ under /tmp/.ansible/tmp increased from 21,672,960 to 24,284,160 bytes.
 The copy updates only mwan-deploy-gate, preserving the watchdog executable.
 Do not restart a live transfer because a log observation has no new task.
 
+## Review the local production preparation stack
+
+Root inspected both scoped diffs against fetched origin/main. The clean
+local Graphite stack contains preparation c79c7cd6223d8ee31fdc5e061ef000b395cc4527
+and Webpass activation 73d21366ce59c6822ab53fe400ad0bceb7c7369c. Preparation
+changes only the production release tag, archive checksum and lease recovery
+flag. Activation changes only the previously reviewed Webpass inventory.
+The complete candidate equals the preserved original branch. No publication,
+merge or production deployment has occurred.
+
+Both positions passed fixture rendering, released native ARM64 network loader
+validation and isolated firewall validation. All five preparation connections
+remain networkd-owned. Only Webpass changes owner during activation; all other
+rendered connection records compare equal. Signature verification passed for
+both commits. The phase-split report and validation.json retain exact commands
+and hashes under 20261001-production-phase-split in the private evidence root.
+
+production_split_review owns independent review of these immutable heads.
+Root updated the production cutover plan with preparation, installed-document
+capture and acceptance before activation. Owning Configs main remains unchanged
+during deployment 48179. The deployment has passed snapshot and reconnection
+checks and is copying stack packages. Release installation and owner transfer
+remain unperformed. All four downstream streams returned replies at
+23:19:47 through 23:19:48 UTC.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
