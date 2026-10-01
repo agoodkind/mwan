@@ -5559,6 +5559,42 @@ uncached per-link DNS query, restart and reverse/forward transfer.
 Production configuration and its compatible recovery pair remain unfinished.
 MWAN-521 and MWAN-227 remain In Progress; MWAN-519 remains Done.
 
+## Deploy the managed DNS simulator while the gateway repair continues
+
+Configs PR 609 merged as 05cc47515b9818cd1e3c42b30de44522e0db68ee
+at 15:40:58 UTC. Required checks passed and review threads were empty.
+Independent final review confirms signed f21c1356 has the original accepted
+four-file patch. Root advanced clean primary Configs to the merge.
+The corrected renderer evidence contains 18 files, with 16 unchanged.
+
+At 15:42:05 UTC, root started handle 92321 from that clean merged revision:
+./configsctl deploy deploy-testbed --limit suburban --tags isp-lxcs.
+Merged-checkout enforcement passed. The existing operation restarts enabled
+simulator services. Observers 26614 and 24811 remain active through about
+17:27 UTC with both families replying and successful primary route queries.
+The gateway DNS policy remains disabled. The installed gateway release and
+ownership remain the accepted 3bfdc2a pair. No production mutation occurred.
+The deploy log is deploy-testbed-20261001T154205Z.log under configs-runs.
+Its terminal result and subsequent simulator validation remain pending.
+
+PR 158 attempt 2 passed the original selection assertion twice, then failed
+TestKernelPolicyDaemonRuntime at the same line and IPv4 packet assertion as
+current main. The failed scenario disables resolver and has no acquired DNS
+settings. Source-adjacent acquisition cases passed. The systemd lane did not
+execute because make stopped after the namespace failure. Preserve the failed
+suite and the separately passed local acquired DNS case as distinct facts.
+Independent review found no concrete DNS integration cause or blocker for
+authorized testbed deployment after source merge and release verification.
+A new valid Graphite finding identifies silent RA listener creation failure.
+The original implementer owns its contextual error correction and a separate
+reviewer owns exact-head review. Do not merge before that correction is verified.
+
+PR 608 bounded cleanup completed. Its accepted tree matched merged main;
+the ignored Python cache reproduced byte-for-byte and was removed. The clean
+worktree and local branch were removed. The remote branch was already absent;
+fetch pruned its stale tracking ref. External runtime evidence remains.
+Evidence is 20261001-runtime-packet-edge/cleanup.md.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
