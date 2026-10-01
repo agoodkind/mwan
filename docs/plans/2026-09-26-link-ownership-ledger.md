@@ -6491,6 +6491,41 @@ new release's repeated-forward testbed deploy, restart and full packet
 battery remain unperformed. Do not infer deployment from the merged pin.
 Production remains unchanged.
 
+## Renew observation before the repeated forward cutover
+
+Clean owning Configs main and origin/main both equal 7cbc3ee7 after fetch.
+VM 213 retains machine ID bdd916f95e3e44568e6a5d3096cf2dea and accepted
+reverse boot 870752b9-0517-4df0-a7b6-48428d754e11. The fresh prerequisite
+check found snapshot-delete again, with no active Proxmox task returned.
+The current snapshot parent is known-good-20261001-153646. The independent
+reviewer is investigating that exact operation read-only. No retry deploy
+or manual unlock occurred.
+
+Fresh three-hour downstream observers 10279 and 50515 started at about
+22:38:57 UTC. Both guests returned IPv4 and IPv6 packets through the primary.
+The preceding observers stopped after overlapping observation at 22:40:50.
+Their reports preserve three missing sequences across four streams and
+22,566 successful route queries. SIGINT prevented final ping transmission
+summaries; the reports retain that limitation. Their packet gaps do not
+identify a new implementation defect.
+
+The independent reviewer started fresh simulator capture 36267. Verified
+Webpass simulator identity matches the approved machine. Exact unit
+mwan305-dns-forward-renewed-20261001-2239.service and PID 492440 were active
+from 22:39:28 UTC, bounded through 01:39:28 UTC on October 2. Its filter
+includes DHCPv4, DHCPv6, router advertisements, DNS and both public probes.
+Evidence is retained in 20261001-dns-forward-renewed-capture. The older
+capture was not interrupted.
+
+Root updated only the external acceptance manifest's expected executable
+hash to cb96234df3b6c6fcf2aa989202de8bd854599869e3733b17d55e250a99c56942.
+The approved forward configuration hash and all packet requirements remain
+unchanged. Native AMD64 verification 59227 remains active; its copied file
+increased to 29,767,680 bytes. No daemon was started or binary installed.
+The implementation lane is checking remaining code requirements separately
+from live acceptance. Root retains sole deployment control. Production
+remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
