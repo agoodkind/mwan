@@ -4254,6 +4254,35 @@ cannot prove backup forwarding. Keep the downstream observers active through
 reboot and acceptance. The final PR #155 firewall/protocol CI job remains
 active; required checks passed and no review threads remain.
 
+## Merge the cutover forwarding repair
+
+MWAN PR #155 merged normally as ff37bec50a7837d09b6910fbc8183de3c0478174
+at 07:57:21 UTC. All ten active required checks passed, signatures were
+verified, and required review threads were resolved. No bypass was used.
+The selection-exclusion case passed in both CI lanes, in 5.90 and 5.57 seconds.
+
+The optional combined protocol lane failed its existing kernel-policy
+one-shot packet assertion. Its unchanged focused rerun passed in 3.39 seconds.
+Independent review confirmed its default-enabled provider has unchanged
+assignments and guards; its provider-to-internal packet does not match the
+changed outbound guard. The case waits for the static firewall and kernel
+settings, not complete routing readiness. The precise loss cause remains
+unproved. Preserve the failed full-lane output and focused rerun evidence;
+do not report the full protocol lane as passing or expand this cutover repair.
+
+Release run 36833372083 targets the exact merged source. Publication,
+artifact verification, a merged testbed-only Configs pin, and deployment
+remain pending. Production is unchanged.
+
+The operational recorder captured primary transit, AT&T and Webpass from
+07:54:08 through 07:54:56 UTC. It exited zero after successful runner exits,
+zero kernel drops and verified capture PID absence. Preserve report.json
+and the packet captures in retry-capture-baseline. Both existing retry probe
+flows currently have AT&T mark 1 in each family. They do not establish
+Webpass affinity preservation. Additional distinct guest-225 probe session
+12936 began around 07:58 UTC to observe provider selection without changing
+policy or connection marks. Preserve webpass-affinity-client225 separately.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
