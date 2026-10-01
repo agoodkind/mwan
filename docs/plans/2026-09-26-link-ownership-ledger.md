@@ -5515,6 +5515,50 @@ public-boundary verification. Evidence is
 services remain unchanged. MWAN-519 is Done; MWAN-521 and MWAN-227 remain
 In Progress. Production promotion requires subsequent authorization.
 
+## Merge current-prefix packet targets and prepare DNS activation
+
+Configs PR 608 merged as 76f4e2bb9f1bde6453ddf45bdd4790e16606382c
+at 15:35:51 UTC. Root inspected signed source 29a39d98, its six-file diff,
+independent exact-head report, all three required checks and empty threads.
+The production task received actual IPv6 replies from two current prefixes
+through the unchanged descriptor; literal and invalid-manifest cases passed.
+The fixture used the released 3bfdc2a daemon and actual sysrepo publication.
+Its configured prefix source does not prove DHCP negotiation or cutover.
+The owned fixture was removed. Clean primary Configs advanced to merged main.
+Evidence is 20261001-runtime-packet-edge/report.md and
+20261001-runtime-packet-edge-independent-review/report.md.
+
+Configs PR 609 contains the four-file simulator DNS configuration.
+Independent review approved signed eeb32951 and corrected the external report
+count: 18 rendered files, with 16 byte-identical and only Webpass DHCPv6 and
+RA output changed. Real Kea and radvd parsers accepted all three enabled
+IPv6 simulators; four existing timing cases passed. Root published the PR,
+then signed and published rebase f21c13568d9dc5adea2a9e7aef09eb94586355d2
+onto merged 76f4e2bb to satisfy the strict branch policy. Exact rebased review,
+current checks and threads remain pending. No simulator deployment occurred.
+Evidence is 20261001-testbed-acquired-dns-contract/implementation.md.
+
+The unchanged PR 158 failed-job rerun is attempt 2, job 110443517795.
+The original assertion rejected a reconciliation count increase while startup
+requests remained queued. Its scenario disables resolver, address and kernel
+IPv6 modules; the relevant scenario and reconciliation sources are unchanged.
+No DNS causation is established. Retain the original failure separately from
+the pending retry. Evidence is 20261001-acquired-dns-independent-review/ci-failure.md.
+
+Renewed downstream observers started around 15:27 UTC as handles 26614
+for guest 225 and 24811 for guest 226, with separate acquired-dns SSH
+ControlPaths and 7200-second durations. Their baseline records replies in
+both families and successful primary-route queries. Fresh operational state
+reports healthy, carrying AT&T and Webpass with passing probes and ready
+translation; Webpass is MWAN owned and AT&T remains networkd owned.
+No deployment, capture or production mutation is active.
+
+Remaining DNS acceptance requires the verified published release, reviewed
+client policy, managed simulator deployment, acquisition, actual renewal,
+uncached per-link DNS query, restart and reverse/forward transfer.
+Production configuration and its compatible recovery pair remain unfinished.
+MWAN-521 and MWAN-227 remain In Progress; MWAN-519 remains Done.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
