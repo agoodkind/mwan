@@ -6549,6 +6549,33 @@ MWAN-398 and MWAN-521 actual states remain In Progress. Their current
 comments include native verification and the measured snapshot prerequisite.
 The next deploy has not started. Production remains unchanged.
 
+## Refresh code completion and correct observation isolation
+
+Root read the code-completion refresh report against clean merged MWAN
+e90b629 and Configs 7cbc3ee7. The audit identifies no further demonstrated
+protocol gap. Generic provider, transit and management ownership and
+both-direction transfer are implemented. Remaining code includes focused
+activation configurations, final retirement after exact consumer inventory
+and accepted transfers, and the final conditional-reboot slice. Retain
+AT&T and networkd coexistence. Actual Tack states remain unchanged.
+
+The first renewed observers reused preceding SSH control sockets. Their
+four ping streams ended at 22:40:49 during cleanup of the preceding
+observers, while their route queries continued. Root detected stale packet
+timestamps before deployment. Preserve that interval as an observation gap,
+not a network outage. Sessions 10279 and 50515 stopped with exit 130 after
+their replacements returned packets.
+
+Replacement sessions 98573 and 17866 use separate control sockets
+/tmp/mwan305-dns-isolated-225-%C and /tmp/mwan305-dns-isolated-226-%C.
+Their three-hour observation started at about 22:46:24 UTC. All four
+streams returned fresh packets at 22:46:54 and continued after the
+incomplete observers stopped. Evidence is retained in dns-isolated-client225
+and dns-isolated-client226 under 20261001-real-cutover. Capture 36267 is
+independent. The snapshot recovery reviewer found a transient qm deletion
+worker despite an adjacent empty task list. Root has not unlocked or
+started deployment.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
