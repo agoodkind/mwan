@@ -240,6 +240,7 @@ func dhcpv6PDConfig(connection interfaceintent.Connection, iface string) (netif.
 		Iface: iface, DUID: decoded, IAID: 0, IANAIAID: 0,
 		RequestAddress: requestAddress, RequestPrefix: requestPrefix,
 		Hint: hint, Clock: clock.Real{}, WaitForRA: withoutRA == "no", CachedLease: nil,
+		UseDNS: client.UseDNS != nil && *client.UseDNS,
 	}
 	if iaid != nil {
 		config.IAID = *iaid

@@ -36,9 +36,6 @@ func ValidateOwnedDHCPv6(name string, intent *interfaceintent.IPv6) error {
 	if client.RequestPrefix != nil {
 		requestPrefix = *client.RequestPrefix
 	}
-	if client.UseDNS != nil && *client.UseDNS {
-		return fmt.Errorf("interface %s: dhcpv6 use-dns requires resolver ownership", name)
-	}
 	if client.DUID != "" {
 		duid = client.DUID
 	}

@@ -31,6 +31,7 @@ type DHCPv6PDConfig struct {
 	Hint           netip.Prefix
 	Clock          internalclock.Clock
 	WaitForRA      bool
+	UseDNS         bool
 	CachedLease    *DHCPv6PDLease
 }
 
@@ -68,6 +69,8 @@ type DHCPv6PDLease struct {
 	RequestPrefix    bool
 	Hint             netip.Prefix
 	WaitForRA        bool
+	UseDNS           bool
+	DNS              []netip.Addr
 }
 
 // DHCPv6PDClient negotiates the requested associations in one session.
@@ -155,6 +158,7 @@ func cloneDHCPv6Lease(lease DHCPv6PDLease) DHCPv6PDLease {
 	lease.LinkHardwareAddr = bytes.Clone(lease.LinkHardwareAddr)
 	lease.Prefixes = append([]DelegatedPrefix(nil), lease.Prefixes...)
 	lease.Addresses = append([]DelegatedAddress(nil), lease.Addresses...)
+	lease.DNS = append([]netip.Addr(nil), lease.DNS...)
 	return lease
 }
 
@@ -392,6 +396,7 @@ func (client *DHCPv6PDClient) acquireMissingDHCPv6(ctx context.Context, log *slo
 			lease.Addresses, lease.IANARenewAt, lease.IANARebindAt = replacement.Addresses, replacement.IANARenewAt, replacement.IANARebindAt
 		}
 		lease.ServerID = bytes.Clone(replacement.ServerID)
+		lease.DNS = append([]netip.Addr(nil), replacement.DNS...)
 		client.publish(*lease)
 	}
 	if !waitDHCPv6(ctx) {
@@ -404,7 +409,7 @@ var errDHCPv6RestartRejected = errors.New("DHCPv6 restart assignment rejected")
 
 func compatibleDHCPv6Lease(config DHCPv6PDConfig, link *net.Interface, cached DHCPv6PDLease) bool {
 	if !bytes.Equal(cached.DUID, config.DUID) || cached.IAID != config.IAID || cached.IANAIAID != config.IANAIAID ||
-		cached.RequestAddress != config.RequestAddress || cached.RequestPrefix != config.RequestPrefix || cached.Hint != config.Hint || cached.WaitForRA != config.WaitForRA ||
+		cached.RequestAddress != config.RequestAddress || cached.RequestPrefix != config.RequestPrefix || cached.Hint != config.Hint || cached.WaitForRA != config.WaitForRA || cached.UseDNS != config.UseDNS ||
 		cached.LinkName != link.Name || !bytes.Equal(cached.LinkHardwareAddr, link.HardwareAddr) {
 		return false
 	}
@@ -421,6 +426,14 @@ func compatibleDHCPv6Lease(config DHCPv6PDConfig, link *net.Interface, cached DH
 }
 
 func validDHCPv6CachedDeadlines(cached DHCPv6PDLease) bool {
+	if !cached.UseDNS && len(cached.DNS) != 0 {
+		return false
+	}
+	for _, server := range cached.DNS {
+		if !server.Is6() || server.IsUnspecified() || server.IsMulticast() {
+			return false
+		}
+	}
 	for _, prefix := range cached.Prefixes {
 		if !prefix.Prefix.IsValid() || prefix.ValidUntil.IsZero() || prefix.PreferredUntil.After(prefix.ValidUntil) {
 			return false
@@ -573,6 +586,9 @@ func (client *DHCPv6PDClient) processDHCPv6Decline(ctx context.Context, log *slo
 		return
 	}
 	lease.Addresses = addresses
+	if len(lease.Prefixes)+len(addresses) == 0 {
+		lease.DNS = nil
+	}
 	client.publish(*lease)
 	*reacquireAddress = true
 	declined := *lease
@@ -619,6 +635,9 @@ func expireDHCPv6Assignments(lease DHCPv6PDLease, now time.Time) DHCPv6PDLease {
 	}
 	lease.Prefixes = prefixes
 	lease.Addresses = addresses
+	if len(prefixes)+len(addresses) == 0 {
+		lease.DNS = nil
+	}
 	return lease
 }
 
@@ -721,7 +740,11 @@ func exchangeDHCPv6(ctx context.Context, transport *nclient6.Client, config DHCP
 func configureDHCPv6Message(message *dhcpv6.Message, config DHCPv6PDConfig, messageType dhcpv6.MessageType, previous *DHCPv6PDLease) {
 	message.MessageType = messageType
 	message.AddOption(dhcpv6.OptElapsedTime(0))
-	message.AddOption(dhcpv6.OptRequestedOption(dhcpv6.OptionSolMaxRT))
+	requested := []dhcpv6.OptionCode{dhcpv6.OptionSolMaxRT}
+	if config.UseDNS {
+		requested = append(requested, dhcpv6.OptionDNSRecursiveNameServer)
+	}
+	message.AddOption(dhcpv6.OptRequestedOption(requested...))
 	if config.RequestPrefix && messageType != dhcpv6.MessageTypeDecline {
 		var iaid [4]byte
 		binary.BigEndian.PutUint32(iaid[:], config.IAID)
@@ -787,7 +810,9 @@ func parseDHCPv6(message *dhcpv6.Message, config DHCPv6PDConfig, expectedServer 
 		ServerID: server.ToBytes(), AcquiredAt: now, RenewAt: time.Time{}, RebindAt: time.Time{},
 		IANARenewAt: time.Time{}, IANARebindAt: time.Time{}, Prefixes: nil, Addresses: nil,
 		RequestAddress: config.RequestAddress, RequestPrefix: config.RequestPrefix, Hint: config.Hint, WaitForRA: config.WaitForRA,
+		UseDNS: config.UseDNS, DNS: nil,
 	}
+	lease.DNS = dhcpv6DNS(message, config.UseDNS)
 	responded := false
 	if config.RequestPrefix {
 		var err error
