@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"net/netip"
@@ -168,6 +169,9 @@ func waitRuntimeAttachedEdge(t *testing.T, interfaceName, edge string) {
 func runtimeProgramReferencesEdge(t *testing.T, programID int, index uint32, address [16]byte) bool {
 	t.Helper()
 	program, err := ebpf.NewProgramFromID(ebpf.ProgramID(programID))
+	if errors.Is(err, unix.ENOENT) {
+		return false
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
