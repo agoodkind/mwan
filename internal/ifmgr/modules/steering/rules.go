@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/netif"
 )
 
@@ -110,25 +111,33 @@ type ruleInput struct {
 // egress when a packet has no family-eligible mark.
 func buildRules(in ruleInput) []steerRule {
 	var rules []steerRule
-	if in.AssignV4.Mark != 0 || len(in.AssignV4.Slots) != 0 {
-		base := steerRule{IifName: in.InternalIface, Source: in.InternalNetV4, Mode: in.Mode, Assign: in.AssignV4, MatchMark: 0, DropIface: "", AllowedMarks: nil}
-		rules = append(rules, base)
-		for _, member := range in.Members {
-			if !in.EligibleV4[member.Mark] {
-				base.MatchMark = member.Mark
-				rules = append(rules, base)
-			}
+	v4 := steerRule{IifName: in.InternalIface, Source: in.InternalNetV4, Mode: in.Mode, Assign: in.AssignV4, MatchMark: 0, DropIface: "", AllowedMarks: nil}
+	hasV4Assignment := in.AssignV4.Mark != 0 || len(in.AssignV4.Slots) != 0
+	if hasV4Assignment {
+		rules = append(rules, v4)
+	}
+	for _, member := range in.Members {
+		if !hasV4Assignment && (config.ConnectionSelectionEnabled(member.SelectionEnabled) || !in.EligibleV4[member.Mark]) {
+			continue
+		}
+		if !config.ConnectionSelectionEnabled(member.SelectionEnabled) || !in.EligibleV4[member.Mark] {
+			v4.MatchMark = member.Mark
+			rules = append(rules, v4)
 		}
 	}
-	if in.AssignV6.Mark != 0 || len(in.AssignV6.Slots) != 0 {
-		for _, source := range []netip.Prefix{netip.PrefixFrom(in.OpnsenseEdgeV6, 128), in.InternalPrefix} {
-			base := steerRule{IifName: "", Source: source, Mode: in.Mode, Assign: in.AssignV6, MatchMark: 0, DropIface: "", AllowedMarks: nil}
+	hasV6Assignment := in.AssignV6.Mark != 0 || len(in.AssignV6.Slots) != 0
+	for _, source := range []netip.Prefix{netip.PrefixFrom(in.OpnsenseEdgeV6, 128), in.InternalPrefix} {
+		base := steerRule{IifName: "", Source: source, Mode: in.Mode, Assign: in.AssignV6, MatchMark: 0, DropIface: "", AllowedMarks: nil}
+		if hasV6Assignment {
 			rules = append(rules, base)
-			for _, member := range in.Members {
-				if !in.EligibleV6[member.Mark] {
-					base.MatchMark = member.Mark
-					rules = append(rules, base)
-				}
+		}
+		for _, member := range in.Members {
+			if !hasV6Assignment && (config.ConnectionSelectionEnabled(member.SelectionEnabled) || !in.EligibleV6[member.Mark]) {
+				continue
+			}
+			if !config.ConnectionSelectionEnabled(member.SelectionEnabled) || !in.EligibleV6[member.Mark] {
+				base.MatchMark = member.Mark
+				rules = append(rules, base)
 			}
 		}
 	}
