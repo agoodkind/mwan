@@ -66,7 +66,7 @@ func hasStaticSettings(connections []interfaceintent.Connection) bool {
 			continue
 		}
 		intent := aggregate(connection)
-		if len(intent.DNS)+len(intent.Domains) != 0 || wantsRADNS(connection) || wantsDHCPDNS(connection) {
+		if len(intent.DNS)+len(intent.Domains) != 0 || wantsRADNS(connection) || wantsDHCPDNS(connection) || wantsDHCPv4DNS(connection) {
 			return true
 		}
 	}
@@ -112,6 +112,7 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 			intent.Index = link.IfIndex
 			intent.Name = link.ActualName
 			appendDNS(&intent, module.leaseDNS(connection, link.ActualName))
+			appendDNS(&intent, module.dhcpv4DNS(connection, link))
 			if wantsRADNS(connection) {
 				id := connection.ID.String()
 				activeRA[id] = true
@@ -165,8 +166,37 @@ func wantsDHCPDNS(connection interfaceintent.Connection) bool {
 	return connection.IPv6 != nil && (connection.IPv6.Enabled == nil || *connection.IPv6.Enabled) && connection.IPv6.DHCPv6 != nil && connection.IPv6.DHCPv6.UseDNS != nil && *connection.IPv6.DHCPv6.UseDNS
 }
 
+func wantsDHCPv4DNS(connection interfaceintent.Connection) bool {
+	return connection.IPv4 != nil && (connection.IPv4.Enabled == nil || *connection.IPv4.Enabled) &&
+		connection.IPv4.DHCP != nil && *connection.IPv4.DHCP && connection.IPv4.DHCPv4 != nil &&
+		connection.IPv4.DHCPv4.UseDNS != nil && *connection.IPv4.DHCPv4.UseDNS
+}
+
+func (module *Module) dhcpv4DNS(connection interfaceintent.Connection, link netif.OwnedLinkResult) []netip.Addr {
+	if !wantsDHCPv4DNS(connection) || module.Env.LiveState == nil {
+		return nil
+	}
+	state, found := module.Env.LiveState.Snapshot().Connections[connection.ID.String()]
+	if !found || state.Owner != interfaceintent.OwnerMWAN || state.IPv4.AssignmentValid != "valid" ||
+		state.IfIndex != link.IfIndex || state.ActualName != link.ActualName {
+		return nil
+	}
+	now := module.clock.Now()
+	var servers []netip.Addr
+	for _, assignment := range state.IPv4.Assignments {
+		if assignment.ConnectionID != connection.ID || assignment.Family != "ipv4" ||
+			assignment.Kind != interfaceintent.AssignmentDHCPv4 || assignment.Source != "dhcpv4" ||
+			assignment.Route != nil || !assignment.Valid || assignment.ValidUntil == nil || !now.Before(*assignment.ValidUntil) {
+			continue
+		}
+		servers = append(servers, assignment.DNS...)
+	}
+	return servers
+}
+
 func appendDNS(intent *resolved.Intent, addresses []netip.Addr) {
 	for _, address := range addresses {
+		address = address.Unmap()
 		present := false
 		for _, server := range intent.DNS {
 			if existing, ok := netip.AddrFromSlice(server.Address); ok && existing == address {
@@ -175,7 +205,11 @@ func appendDNS(intent *resolved.Intent, addresses []netip.Addr) {
 			}
 		}
 		if !present {
-			intent.DNS = append(intent.DNS, resolved.DNS{Family: 10, Address: address.AsSlice(), Port: 0, ServerName: ""})
+			family := int32(10)
+			if address.Is4() {
+				family = 2
+			}
+			intent.DNS = append(intent.DNS, resolved.DNS{Family: family, Address: address.AsSlice(), Port: 0, ServerName: ""})
 		}
 	}
 }

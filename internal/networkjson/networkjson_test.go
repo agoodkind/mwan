@@ -1638,7 +1638,6 @@ func TestLoadRejectsUnsupportedMWANDHCPv4Options(t *testing.T) {
 		{"client ID one byte", `{ "goodkind-mwan-steering:dhcp": true, "goodkind-mwan-steering:dhcpv4": { "client-id": "hex:01" } }`, "client-id"},
 		{"client ID over 255 bytes", `{ "goodkind-mwan-steering:dhcp": true, "goodkind-mwan-steering:dhcpv4": { "client-id": "hex:` + strings.Repeat("01", 256) + `" } }`, "client-id"},
 		{"client ID invalid hex", `{ "goodkind-mwan-steering:dhcp": true, "goodkind-mwan-steering:dhcpv4": { "client-id": "hex:01xz" } }`, "client-id"},
-		{"DNS", `{ "goodkind-mwan-steering:dhcp": true, "goodkind-mwan-steering:dhcpv4": { "use-dns": true } }`, "use-dns requires resolver ownership"},
 		{"missing route metric", `{ "goodkind-mwan-steering:dhcp": true }`, "DHCP routes require route-metric"},
 		{"explicit routes without route metric", `{ "goodkind-mwan-steering:dhcp": true, "goodkind-mwan-steering:dhcpv4": { "use-routes": true } }`, "DHCP routes require route-metric"},
 		{"static gateway with default DHCP routes", `{ "goodkind-mwan-steering:dhcp": true, "goodkind-mwan-steering:gateway": "192.0.2.1" }`, "cannot combine a static gateway with DHCP routes"},

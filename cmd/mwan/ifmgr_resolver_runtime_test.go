@@ -85,7 +85,7 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	if err := netlink.LinkAdd(&netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "resolver397", ParentIndex: parent.Attrs().Index}, VlanId: 397}); err != nil {
 		t.Fatal(err)
 	}
-	configureRuntimeLink(t, "resolver397", []string{"10.39.7.2/24", "fd39:7::2/64"})
+	configureRuntimeLink(t, "resolver397", []string{"10.39.7.2/24", "10.39.7.53/24", "10.39.7.54/24", "fd39:7::2/64"})
 	queries := startResolverAuthority(t)
 	setRuntimeNamespace(t, gateway)
 	unrelated := &netlink.Dummy{LinkAttrs: netlink.NewLinkAttrs()}
@@ -104,6 +104,14 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	binary := protocolTestBinary(t)
 	configPath := filepath.Join(root, "config.toml")
 	config := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"200ms\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[ifmgr.modules.resolver]\nstate_file = %q\n[wanconfig]\npublish = true\n", filepath.Join(root, "links.json"), filepath.Join(root, "addresses.json"), filepath.Join(root, "kernel-policy.json"), filepath.Join(root, "resolver.json"))
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	leaseDirectory := filepath.Join(root, "leases")
+	if err := os.Mkdir(leaseDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	config = strings.Replace(config, "[ifmgr.iface.enmwanbr0]", fmt.Sprintf("lease_directory = %q\n[ifmgr.iface.enmwanbr0]", leaseDirectory), 1)
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -170,6 +178,55 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	if !reflect.DeepEqual(actualOtherDNS, otherDNS) || !reflect.DeepEqual(actualOtherDomains, otherDomains) {
 		t.Fatalf("acquired DNS changed unrelated settings: %+v %+v", actualOtherDNS, actualOtherDomains)
 	}
+	killOwnedRuntimeDaemon(t, daemon)
+	writeDHCPv4ResolverRuntimeNetwork(t, networkDir, false, true)
+	setRuntimeNamespace(t, peer.namespace)
+	stopDHCP4 := startResolverDHCPv4Kea(t, root, "10.39.7.2")
+	setRuntimeNamespace(t, gateway)
+	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-dhcpv4")
+	dns4 := []resolved.DNS{{Family: 2, Address: []byte{10, 39, 7, 2}, Port: 0, ServerName: ""}}
+	waitResolverRuntimeValues(t, daemon, dns4, baselineDomains)
+	runResolverCommand(t, "resolvectl", "flush-caches")
+	beforeDHCP4Query := queries.Load()
+	if output := runResolverCommand(t, "resolvectl", "query", "--interface=owned397", "sensor.route.test"); !strings.Contains(output, "10.39.7.99") || queries.Load() <= beforeDHCP4Query {
+		t.Fatalf("acquired DHCPv4 DNS query: %s; authoritative queries before=%d after=%d", output, beforeDHCP4Query, queries.Load())
+	}
+	stopDHCP4()
+	setRuntimeNamespace(t, peer.namespace)
+	stopDHCP4 = startResolverDHCPv4Kea(t, root, "")
+	setRuntimeNamespace(t, gateway)
+	waitResolverRuntimeValues(t, daemon, baselineDNS, baselineDomains)
+	stopDHCP4()
+	setRuntimeNamespace(t, peer.namespace)
+	stopDHCP4 = startResolverDHCPv4Kea(t, root, "10.39.7.54")
+	setRuntimeNamespace(t, gateway)
+	dns4 = []resolved.DNS{{Family: 2, Address: []byte{10, 39, 7, 54}, Port: 0, ServerName: ""}}
+	waitResolverRuntimeValues(t, daemon, dns4, baselineDomains)
+	t.Log("DHCPv4 renewal replaced an absent DNS option with 10.39.7.54")
+	killOwnedRuntimeDaemon(t, daemon)
+	writeDHCPv4ResolverRuntimeNetwork(t, networkDir, true, true)
+	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-dhcpv4-renewed")
+	dns4 = append(append([]resolved.DNS(nil), wantedDNS...), resolved.DNS{Family: 2, Address: []byte{10, 39, 7, 54}, Port: 0, ServerName: ""})
+	waitResolverRuntimeValues(t, daemon, dns4, wantedDomains)
+	killOwnedRuntimeDaemon(t, daemon)
+	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-dhcpv4-recovered")
+	waitStaticRuntimeLog(t, daemon, `state=BOUND`)
+	waitResolverRuntimeValues(t, daemon, dns4, wantedDomains)
+	stopDHCP4()
+	waitResolverRuntimeValues(t, daemon, wantedDNS, wantedDomains)
+	killOwnedRuntimeDaemon(t, daemon)
+	writeDHCPv4ResolverRuntimeNetwork(t, networkDir, true, false)
+	setRuntimeNamespace(t, peer.namespace)
+	stopDHCP4 = startResolverDHCPv4Kea(t, root, "10.39.7.53")
+	setRuntimeNamespace(t, gateway)
+	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-dhcpv4-disabled")
+	waitStaticRuntimeAddress(t, daemon, "owned397", "10.39.7.100/24", true)
+	waitResolverRuntimeValues(t, daemon, wantedDNS, wantedDomains)
+	actualOtherDNS, actualOtherDomains = resolverRuntimeValues(t, "resolver-other")
+	if !reflect.DeepEqual(actualOtherDNS, otherDNS) || !reflect.DeepEqual(actualOtherDomains, otherDomains) {
+		t.Fatalf("DHCPv4 DNS changed unrelated settings: %+v %+v", actualOtherDNS, actualOtherDomains)
+	}
+	stopDHCP4()
 	killOwnedRuntimeDaemon(t, daemon)
 	writeResolverRuntimeNetwork(t, networkDir, true, true, false)
 	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-static-after-acquired")
@@ -266,7 +323,7 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	if _, err := os.Stat(emptyJournal); !os.IsNotExist(err) {
 		t.Errorf("empty cleanup created a resolver journal: %v", err)
 	}
-	for _, name := range []string{"resolver-bootstrap", "resolver-first", "resolver-acquired", "resolver-static-after-acquired", "resolver-ipv6-only", "resolver-restart", "resolver-dns-remove", "resolver-domains-remove", "resolver-remove", "resolver-external-control", "resolver-external-preserve", "resolver-prune", "resolver-cleanup-only", "resolver-empty-cleanup"} {
+	for _, name := range []string{"resolver-bootstrap", "resolver-first", "resolver-acquired", "resolver-dhcpv4", "resolver-dhcpv4-renewed", "resolver-dhcpv4-recovered", "resolver-dhcpv4-disabled", "resolver-static-after-acquired", "resolver-ipv6-only", "resolver-restart", "resolver-dns-remove", "resolver-domains-remove", "resolver-remove", "resolver-external-control", "resolver-external-preserve", "resolver-prune", "resolver-cleanup-only", "resolver-empty-cleanup"} {
 		data, err := os.ReadFile(filepath.Join(root, name+".log"))
 		if err != nil {
 			t.Fatal(err)
@@ -342,6 +399,102 @@ func writeAcquiredResolverRuntimeNetwork(t *testing.T, directory string) {
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func writeDHCPv4ResolverRuntimeNetwork(t *testing.T, directory string, staticDNS, useDNS bool) {
+	t.Helper()
+	writeResolverRuntimeNetwork(t, directory, staticDNS, staticDNS, false)
+	path := filepath.Join(directory, "network.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]json.RawMessage
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	var interfaces map[string]json.RawMessage
+	if err := json.Unmarshal(document["ietf-interfaces:interfaces"], &interfaces); err != nil {
+		t.Fatal(err)
+	}
+	var entries []map[string]json.RawMessage
+	if err := json.Unmarshal(interfaces["interface"], &entries); err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		var name string
+		if err := json.Unmarshal(entry["name"], &name); err != nil {
+			t.Fatal(err)
+		}
+		if name != "owned397" {
+			continue
+		}
+		var family map[string]json.RawMessage
+		if err := json.Unmarshal(entry["ietf-ip:ipv4"], &family); err != nil {
+			t.Fatal(err)
+		}
+		family["goodkind-mwan-steering:dhcp"] = json.RawMessage(`true`)
+		family["goodkind-mwan-steering:dhcpv4"] = json.RawMessage(fmt.Sprintf(`{"client-id":"hex:01aabb","use-dns":%t,"use-routes":true}`, useDNS))
+		family["goodkind-mwan-steering:route-metric"] = json.RawMessage(`100`)
+		entry["ietf-ip:ipv4"], err = json.Marshal(family)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	interfaces["interface"], err = json.Marshal(entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document["ietf-interfaces:interfaces"], err = json.Marshal(interfaces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err = json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func startResolverDHCPv4Kea(t *testing.T, root, server string) func() {
+	t.Helper()
+	configPath := filepath.Join(root, "resolver-kea4.conf")
+	options := `{"name":"routers","data":"10.39.7.2"}`
+	if server != "" {
+		options += fmt.Sprintf(`,{"name":"domain-name-servers","data":%q}`, server)
+	}
+	config := fmt.Sprintf(`{"Dhcp4":{"interfaces-config":{"interfaces":["resolver397"]},"lease-database":{"type":"memfile","persist":false},"valid-lifetime":6,"renew-timer":2,"rebind-timer":4,"subnet4":[{"id":1,"subnet":"10.39.7.0/24","interface":"resolver397","pools":[{"pool":"10.39.7.100-10.39.7.100"}],"option-data":[%s]}]}}`, options)
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(root, fmt.Sprintf("resolver-kea4-%s.log", server))
+	logFile, err := os.Create(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("kea-dhcp4", "-c", configPath, "-d")
+	command.Stdout, command.Stderr = logFile, logFile
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	logFile.Close()
+	service := protocolService{name: "kea-dhcp4", command: command, logPath: logPath}
+	var once sync.Once
+	stop := func() { once.Do(func() { stopProtocolServices(t, []protocolService{service}) }) }
+	t.Cleanup(stop)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		content, err := os.ReadFile(logPath)
+		if err == nil && strings.Contains(string(content), "DHCP4_STARTED") {
+			return stop
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	content, _ := os.ReadFile(logPath)
+	t.Fatalf("resolver Kea DHCPv4 did not start: %s", content)
+	return stop
 }
 
 func startResolverDHCPv6Kea(t *testing.T, root string) func() {
@@ -700,7 +853,7 @@ func startResolverAuthority(t *testing.T) *atomic.Int64 {
 			message.Header.Authoritative = true
 			for _, question := range message.Questions {
 				t.Logf("authoritative DNS query: name=%s type=%s source=%s", question.Name.String(), question.Type.String(), peer.String())
-				if question.Name.String() == "sensor.lab.test." && question.Type == dnsmessage.TypeA {
+				if (question.Name.String() == "sensor.lab.test." || question.Name.String() == "sensor.route.test.") && question.Type == dnsmessage.TypeA {
 					message.Answers = append(message.Answers, dnsmessage.Resource{Header: dnsmessage.ResourceHeader{Name: question.Name, Type: dnsmessage.TypeA, Class: dnsmessage.ClassINET, TTL: 1, Length: 0}, Body: &dnsmessage.AResource{A: [4]byte{10, 39, 7, 99}}})
 				}
 			}

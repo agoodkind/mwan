@@ -420,7 +420,7 @@ func (module *Module) delegationAssignments(connection interfaceintent.Connectio
 		iaid := lease.IAID
 		assignment := interfaceintent.Assignment{
 			ConnectionID: connection.ID, Family: "ipv6", Kind: interfaceintent.AssignmentDHCPv6IAPD,
-			Source: "dhcpv6", Purpose: "", Value: prefix.Prefix, Route: nil, ClientID: "", DUID: net.HardwareAddr(lease.DUID).String(),
+			Source: "dhcpv6", Purpose: "", Value: prefix.Prefix, Route: nil, ClientID: "", DNS: nil, DUID: net.HardwareAddr(lease.DUID).String(),
 			IAID: &iaid, AcquiredAt: lease.AcquiredAt, RenewAt: &lease.RenewAt,
 			RebindAt: &lease.RebindAt, PreferredUntil: &prefix.PreferredUntil,
 			ValidUntil: &prefix.ValidUntil, Valid: true,
@@ -447,7 +447,7 @@ func (module *Module) localDHCPv6Assignments(connection interfaceintent.Connecti
 		iaid := lease.IANAIAID
 		assignments = append(assignments, interfaceintent.Assignment{
 			ConnectionID: connection.ID, Family: "ipv6", Kind: interfaceintent.AssignmentDHCPv6IANA,
-			Source: "dhcpv6", Purpose: interfaceintent.PurposeLocal, Value: prefix, Route: nil, ClientID: "",
+			Source: "dhcpv6", Purpose: interfaceintent.PurposeLocal, Value: prefix, Route: nil, ClientID: "", DNS: nil,
 			DUID: net.HardwareAddr(lease.DUID).String(), IAID: &iaid,
 			AcquiredAt: lease.AcquiredAt, RenewAt: &lease.IANARenewAt,
 			RebindAt: &lease.IANARebindAt, PreferredUntil: &leased.PreferredUntil,

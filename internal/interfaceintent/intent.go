@@ -300,6 +300,7 @@ type Assignment struct {
 	Value          netip.Prefix
 	Route          *RouteIntent
 	ClientID       string
+	DNS            []netip.Addr
 	DUID           string
 	IAID           *uint32
 	AcquiredAt     time.Time

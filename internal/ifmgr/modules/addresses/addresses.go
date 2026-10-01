@@ -472,7 +472,7 @@ func (module *Module) reconcileFamily(ctx context.Context, log *slog.Logger, con
 			ConnectionID: connection.ID, Family: family, Kind: interfaceintent.AssignmentStaticRoute,
 			Source: "configured", Purpose: "", Value: netip.Prefix{}, Route: &interfaceintent.RouteIntent{
 				Destination: route.Destination, Gateway: route.Gateway, TableID: route.TableID, Metric: route.Metric,
-			}, ClientID: "", DUID: "", IAID: nil, AcquiredAt: time.Time{}, RenewAt: nil,
+			}, ClientID: "", DNS: nil, DUID: "", IAID: nil, AcquiredAt: time.Time{}, RenewAt: nil,
 			RebindAt: nil, PreferredUntil: nil, ValidUntil: nil, Valid: true,
 		})
 	}
@@ -487,7 +487,7 @@ func (module *Module) reconcileFamily(ctx context.Context, log *slog.Logger, con
 			Source: "configured", Purpose: "", Value: netip.Prefix{}, Route: &interfaceintent.RouteIntent{
 				Destination: destination,
 				Gateway:     settings.Gateway, TableID: 254, Metric: metric,
-			}, ClientID: "", DUID: "", IAID: nil, AcquiredAt: time.Time{}, RenewAt: nil,
+			}, ClientID: "", DNS: nil, DUID: "", IAID: nil, AcquiredAt: time.Time{}, RenewAt: nil,
 			RebindAt: nil, PreferredUntil: nil, ValidUntil: nil, Valid: true,
 		})
 	}
@@ -619,7 +619,7 @@ func appendDHCPv4(connection interfaceintent.Connection, settings interfaceinten
 	assignment := interfaceintent.Assignment{
 		ConnectionID: connection.ID, Family: "ipv4", Kind: interfaceintent.AssignmentDHCPv4,
 		Source: "dhcpv4", Purpose: interfaceintent.PurposeLocal, Value: prefix, Route: nil,
-		ClientID: clientID, DUID: "", IAID: nil, AcquiredAt: lease.AcquiredAt,
+		ClientID: clientID, DNS: slices.Clone(lease.DNS), DUID: "", IAID: nil, AcquiredAt: lease.AcquiredAt,
 		RenewAt: &lease.RenewAt, RebindAt: &lease.RebindAt, PreferredUntil: nil,
 		ValidUntil: &lease.ExpiresAt, Valid: true,
 	}
@@ -649,6 +649,7 @@ func appendDHCPv4(connection interfaceintent.Connection, settings interfaceinten
 		routes = append(routes, route)
 		assignment.Value = netip.Prefix{}
 		assignment.Purpose = ""
+		assignment.DNS = nil
 		assignment.Route = &interfaceintent.RouteIntent{Destination: route.Destination, Gateway: route.Gateway, TableID: 254, Metric: route.Metric}
 		assignments = append(assignments, assignment)
 	}
@@ -753,7 +754,7 @@ func mappingOnLink(connection interfaceintent.Connection, external netip.Addr) b
 func addressAssignment(connection interfaceintent.Connection, family string, kind interfaceintent.AssignmentKind, purpose interfaceintent.AddressPurpose, value netip.Prefix) interfaceintent.Assignment {
 	return interfaceintent.Assignment{
 		ConnectionID: connection.ID, Family: family, Kind: kind,
-		Source: "configured", Purpose: purpose, Value: value, Route: nil, ClientID: "", DUID: "", IAID: nil,
+		Source: "configured", Purpose: purpose, Value: value, Route: nil, ClientID: "", DNS: nil, DUID: "", IAID: nil,
 		AcquiredAt: time.Time{}, RenewAt: nil, RebindAt: nil, PreferredUntil: nil, ValidUntil: nil, Valid: true,
 	}
 }
