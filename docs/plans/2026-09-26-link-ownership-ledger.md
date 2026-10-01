@@ -3593,6 +3593,27 @@ ready. Baseline cold creation, forward/reverse transfer, and owner-aware
 management/transit acceptance remain unproven. Shared testbed and production
 gateways remain unchanged.
 
+### Review the transfer acceptance boundary
+
+Source review confirmed that role activation and recovery still compare
+networkd-generated files, DNS, and static route observations. These checks
+require an owner-aware companion before transit or management transfer.
+Provider acceptance does not complete that integration requirement.
+The new packet-check input appears in the tasks and fixture but lacks an
+inventory declaration; declare it explicitly before publishing the transfer.
+
+The public loader rejects explicitly disabled families. Supported IPv4-only
+providers omit the IPv6 family, and the acquisition gate already skips omitted
+families. Verify the actual Astound render rather than adding acceptance for
+an unsupported document. Active families still require applied assignments,
+routing, translation, and actual downstream replies.
+
+Both exclusive QEMU processes were verified live at PIDs 40331 and 40332.
+The recorded ports and permanent MACs match the fixture readiness artifact.
+Three unchanged ARM64 kernel-policy executions passed; they do not identify
+the cause of the failed AMD64 packet. Route-table and neighbor observations
+remain required before changing the packet fixture.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
