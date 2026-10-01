@@ -32,11 +32,15 @@ ownership, prerequisite revisions, settled interfaces, constraints,
 verification, and report requirements. Assign coupled changes to one owner.
 Inspect reports and diffs before integration. Preserve concurrent edits.
 
-Reuse available protocol libraries and operating system services. Require
+Reuse maintained protocol libraries and operating system services. Before
+adding custom protocol code, inspect existing library APIs and verify upstream
+maintenance using code changes, releases, issue responses, and archive status.
+Do not treat a recent repository push alone as maintenance proof. Require
 implementers and reviewers to identify the library operations used for DHCP,
 neighbor discovery, routing, and resolver configuration. Implement only MWAN
 policy and lifecycle integration where existing APIs do not provide them.
-Verify any claimed library limitation before adding custom protocol code.
+Record the exact API limitation and evaluated alternatives before approving
+custom protocol code.
 
 ## Reorient before each slice
 
