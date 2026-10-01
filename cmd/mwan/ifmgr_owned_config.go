@@ -52,7 +52,7 @@ func buildAddressesConfig(ifmgrCfg config.IfMgrSection) (addresses.Config, error
 		}
 		clientIDs[connection.ID.String()] = decoded
 	}
-	settings := addresses.Config{Connections: ifmgrCfg.Connections, Providers: providers, ClientIDs: clientIDs, StateFile: "", LeaseDirectory: ifmgrCfg.LeaseDirectory}
+	settings := addresses.Config{Connections: ifmgrCfg.Connections, Providers: providers, ClientIDs: clientIDs, StateFile: "", LeaseDirectory: ifmgrCfg.LeaseDirectory, NetworkdTimeout: 0}
 	if ifmgrCfg.Modules.Addresses != nil {
 		settings.StateFile = ifmgrCfg.Modules.Addresses.StateFile
 	}

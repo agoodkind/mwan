@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/ifmgr/modules/wanroutes"
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/notify"
@@ -550,7 +549,7 @@ func checkOwnedAddresses(ctx context.Context, deps deployGateDeps) int {
 		for _, mapping := range policy.StaticMappings {
 			externals = append(externals, mapping.External)
 		}
-		owned, err := wanroutes.OnLinkMappedAddresses(held, externals)
+		owned, err := netif.OnLinkMappedAddresses(held, externals)
 		if err != nil {
 			fmt.Fprintf(deps.out, "addresses on %s unreadable: %v\n", entry.Iface, err)
 			return exitDeployGateFailed

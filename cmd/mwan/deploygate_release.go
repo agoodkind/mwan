@@ -54,7 +54,6 @@ func checkConnectionRelease(ctx context.Context, output io.Writer, cfg *config.C
 		if state != "unmanaged" {
 			return exitDeployGateFailed
 		}
-		return exitDeployGateOK
 	}
 	modules := cfg.IfMgr.Modules
 	if modules.Links == nil || modules.Addresses == nil || modules.Autoconfiguration == nil {

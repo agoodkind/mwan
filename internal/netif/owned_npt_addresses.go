@@ -36,7 +36,7 @@ type NPTEdgeRecord struct {
 func ObserveLegacyLink(connection interfaceintent.Connection) (result netlink.Link, resultErr error) {
 	defer func() {
 		if resultErr != nil {
-			slog.Warn("legacy NPT link inspection failed", "connection", connection.ID, "err", resultErr)
+			slog.Warn("legacy link identity inspection failed", "connection", connection.ID, "err", resultErr)
 		}
 	}()
 	link, err := netlink.LinkByName(connection.Name)

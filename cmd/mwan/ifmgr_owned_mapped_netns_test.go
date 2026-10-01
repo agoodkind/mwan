@@ -18,6 +18,8 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
+	"goodkind.io/mwan/internal/connectionid"
+	"goodkind.io/mwan/internal/netif"
 )
 
 const (
@@ -156,6 +158,8 @@ func runOwnedMappedDaemonRuntime(t *testing.T) {
 		waitStaticRuntimeAddress(t, legacyMappings, "enwebpass0", prefix, true)
 	}
 	waitStaticRuntimeAddress(t, legacyMappings, "enwebpass0", "10.20.0.5/32", false)
+	waitStaticRuntimeAddress(t, legacyMappings, "enwebpass0", "10.20.0.1/24", true)
+	assertLegacyMappingReceipts(t, root, 2, 1)
 	waitMappedRuntimeRule(t, legacyMappings, "ip", "nat", "10.20.0.3", 10*time.Second)
 	waitMappedRuntimeForwarding(t, legacyMappings, 10*time.Second)
 	assertRuntimeTranslationSettled(t, legacyMappings)
@@ -164,15 +168,6 @@ func runOwnedMappedDaemonRuntime(t *testing.T) {
 	legacyLink, err := netlink.LinkByName("enwebpass0")
 	if err != nil {
 		t.Fatal(err)
-	}
-	for _, prefix := range []string{"10.20.0.3/32", "10.20.0.4/32"} {
-		address, err := netlink.ParseAddr(prefix)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := netlink.AddrDel(legacyLink, address); err != nil {
-			t.Fatal(err)
-		}
 	}
 	link, err := netlink.LinkByName("owned397")
 	if err != nil {
@@ -212,6 +207,8 @@ func runOwnedMappedDaemonRuntime(t *testing.T) {
 	for _, prefix := range []string{"10.20.0.3/32", "10.20.0.4/32", "10.20.0.5/32"} {
 		waitStaticRuntimeAddress(t, second, "enwebpass0", prefix, false)
 	}
+	assertLegacyMappingReceipts(t, root, 0, 0)
+	waitStaticRuntimeAddress(t, second, "enwebpass0", "10.20.0.1/24", true)
 	recreated, err := netlink.LinkByName("enwebpass0")
 	if err != nil {
 		t.Fatal(err)
@@ -348,6 +345,36 @@ func runOwnedMappedDaemonRuntime(t *testing.T) {
 	assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"))
 	killOwnedRuntimeDaemon(t, removed)
 	checkRuntimeInternalNPTRelocation(t, gateway, configPath, networkDir, root)
+	setReleaseOwner(t, networkDir, "webpass", "networkd")
+	setReleaseConnectionField(t, networkDir, "webpass", "goodkind-mwan-steering:link-files", json.RawMessage(`"hand-authored"`))
+	setReleaseConnectionField(t, networkDir, "webpass", "ietf-ip:ipv4", json.RawMessage(`{"goodkind-mwan-steering:translation":{"mode":"ietf-nat:napt44","static-mapping":[{"external":"10.20.0.4","internal":"192.0.2.4","delivery":"local"}]}}`))
+	legacyLink, err = netlink.LinkByName("enwebpass0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unrecorded, err = netlink.ParseAddr("10.20.0.4/32")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.AddrAdd(legacyLink, unrecorded); err != nil {
+		t.Fatal(err)
+	}
+	rejected := startRuntimeDaemon(t, os.Getenv(mappedRuntimeBinaryEnv), configPath, root, "mapped-unrecorded")
+	defer killOwnedRuntimeDaemon(t, rejected)
+	waitStaticRuntimeLog(t, rejected, "address 10.20.0.4/32 already exists without ownership record")
+	waitStaticRuntimeAddress(t, rejected, "enwebpass0", "10.20.0.4/32", true)
+	assertLegacyMappingReceipts(t, root, 0, 1)
+}
+
+func assertLegacyMappingReceipts(t *testing.T, root string, objects, promotions int) {
+	t.Helper()
+	receipts, err := netif.InspectOwnedRelease(connectionid.ID("webpass"), filepath.Join(root, "owned-links.json"), filepath.Join(root, "owned-addresses.json"), filepath.Join(root, "kernel-policy.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipts.PreviousBoot || receipts.OrdinaryObjects != objects || receipts.Promotions != promotions || receipts.NPTEdges != 1 {
+		t.Fatalf("legacy mapping receipts: %+v; expected %d objects, %d promotions, and one NPT edge", receipts, objects, promotions)
+	}
 }
 
 func assertMappedRuntimeRuleAbsent(t *testing.T, family, table, match string) {
