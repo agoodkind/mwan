@@ -359,6 +359,10 @@ func (m *Module) onMonitorEvent(ctx context.Context, log *slog.Logger, event net
 	if err := m.Reconcile(ctx, eventLog); err != nil {
 		eventLog.WarnContext(ctx, "wan.routes: reconcile after route event failed", "err", err)
 	}
+	if event.TableID == unix.RT_TABLE_MAIN {
+		// Policy-table defaults are written by this module and must not queue another pass.
+		m.requestRepair("provider main default route changed")
+	}
 }
 
 func (m *Module) requestRepair(reason string) {

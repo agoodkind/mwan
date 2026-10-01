@@ -66,7 +66,8 @@ func runSelectionExclusionDaemonRuntime(t *testing.T) {
 	bindStartupDirectory(t, networkdDir, "/etc/systemd/network")
 	bindStartupDirectory(t, schemaDir, "/usr/local/share/wanconfig/yang")
 	configPath := filepath.Join(root, "config.toml")
-	if err := os.WriteFile(configPath, []byte("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"100ms\"\n[ifmgr.iface.enmwanbr0]\n[wanconfig]\npublish = true\n"), 0o600); err != nil {
+	configuration := "[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[wanconfig]\npublish = true\n"
+	if err := os.WriteFile(configPath, []byte(configuration), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	setRuntimeLoopback(t)
@@ -114,15 +115,18 @@ func runSelectionExclusionDaemonRuntime(t *testing.T) {
 			t.Logf("%v: %v: %s", arguments, err, output)
 		}
 	}()
+	var mainDefaults []netlink.Route
 	for index, name := range []string{"enwebpass0", "enatt0"} {
 		link, err := netlink.LinkByName(name)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, gatewayAddress := range []string{fmt.Sprintf("10.50.%d.2", index+1), fmt.Sprintf("fd50:%d::2", index+1)} {
-			if err := netlink.RouteAdd(&netlink.Route{LinkIndex: link.Attrs().Index, Gw: net.ParseIP(gatewayAddress), Priority: 100 + index}); err != nil {
+			route := netlink.Route{LinkIndex: link.Attrs().Index, Gw: net.ParseIP(gatewayAddress), Priority: 100 + index, Table: unix.RT_TABLE_MAIN}
+			if err := netlink.RouteAdd(&route); err != nil {
 				t.Fatal(err)
 			}
+			mainDefaults = append(mainDefaults, route)
 		}
 	}
 	for _, path := range []string{"/proc/sys/net/ipv4/ip_forward", "/proc/sys/net/ipv6/conf/all/forwarding"} {
@@ -157,6 +161,27 @@ func runSelectionExclusionDaemonRuntime(t *testing.T) {
 	assertStaticRuntimePacket(t, lan.namespace, primary.namespace, "udp4", "10.50.9.2:50101")
 	assertStaticRuntimePacket(t, lan.namespace, primary.namespace, "udp6", "[fd50:9::2]:50102")
 	setRuntimeNamespace(t, gateway)
+	assertRuntimeNoReconcileLoop(t, first)
+	for _, route := range mainDefaults {
+		if err := netlink.RouteDel(&route); err != nil {
+			t.Fatal(err)
+		}
+	}
+	waitSelectionRuntimeMark(t, first, 0)
+	assertConfiguredRuntimePacketAbsent(t, gateway, lan.namespace, primary.namespace, "udp4", "10.50.9.2:50107")
+	assertConfiguredRuntimePacketAbsent(t, gateway, lan.namespace, primary.namespace, "udp6", "[fd50:9::2]:50108")
+	setRuntimeNamespace(t, gateway)
+	for _, route := range mainDefaults {
+		if err := netlink.RouteAdd(&route); err != nil {
+			t.Fatal(err)
+		}
+	}
+	waitSelectionRuntimeMark(t, first, 2)
+	waitSelectionRuntimeState(t, first, read, "enwebpass0", true, true)
+	assertStaticRuntimePacket(t, lan.namespace, primary.namespace, "udp4", "10.50.9.2:50109")
+	assertStaticRuntimePacket(t, lan.namespace, primary.namespace, "udp6", "[fd50:9::2]:50110")
+	setRuntimeNamespace(t, gateway)
+	assertRuntimeNoReconcileLoop(t, first)
 	killOwnedRuntimeDaemon(t, first)
 	writeSelectionRuntimeNetwork(t, networkDir, false)
 	excluded := startRuntimeDaemon(t, os.Getenv(mappedRuntimeBinaryEnv), configPath, root, "selection-excluded")
