@@ -5462,6 +5462,59 @@ reply interval was 1.021599 seconds. No backup selection was sampled at
 the earlier repaired route loss. Evidence is
 repeated-forward-downstream-review/route-fault-restart.md.
 
+## Prepare acquired DNS and production packet contracts
+
+The 15:17 UTC heartbeat and compaction reorientation refreshed the coordinator,
+current cutover and acquisition requirements, relevant memory, recent ledger,
+MWAN-521 and MWAN-227, current agent ownership and active handles.
+No deployment or capture is active. The two downstream observers expire
+around 15:41 UTC and require renewal before the next live operation.
+Root retains exclusive control of live mutations and the ledger.
+
+MWAN PR 158 is published at signed head
+2c012501c7caf00799ea90450606f5d428e00b55. Its acquired DHCPv6 and RA DNS
+implementation passed the actual daemon, Kea, RA and resolved public case.
+The source case verified acquisition, expiration, static DNS and domain
+preservation, unrelated resolved state, restart and journal behavior.
+The older released executable rejected the newly supported required policy.
+Source acceptance does not establish released identity or shared testbed proof.
+Evidence is 20261001-acquired-dns/report.md.
+
+Independent exact-head review approved the correction that returns observer
+panic errors through Reconcile and the existing final daemon logging boundary.
+Both branch commits passed signature and raw gpgsig verification. All ten
+active required checks passed. Root verified the two-file correction and
+replied to and resolved the valid Graphite finding. The nonrequired firewall
+and protocol job failed and requires diagnosis before merge; its full result
+is not replaced by the required-check result. Govulncheck reports the existing
+GO-2026-4736 GoBGP affected-version record with no fixed version. No merge,
+release deployment or production change has occurred.
+
+The managed Webpass simulator advertises neither DHCPv6 DNS nor RA recursive
+DNS. Its existing client policy disables both. A bounded Configs implementer
+owns only the simulator templates, selected Webpass protocol values and
+minimal field validation. Empty DNS defaults preserve other simulators.
+Webpass uses preferred lifetime 180 seconds, valid lifetime 240 seconds,
+renewal 60 seconds, rebinding 120 seconds and RA DNS lifetime 240 seconds.
+Existing RA intervals, delegated prefix, identity and IPv4 remain unchanged.
+Gateway policy and release pins require the verified merged DNS release.
+The existing shared simulator operation restarts all enabled simulator
+services; retain downstream observers and verify unchanged other renders.
+Actual acquisition, renewal, query, restart, reverse and forward acceptance
+remain unperformed. Evidence is 20261001-testbed-acquired-dns-contract/result.md.
+
+Production read-only baselines verified mapped SSH replies over both IPv4
+providers and current IPv6 NPT edges with the existing router host key.
+UniFi and proxy guests have only their downstream interface and loopback,
+normal default routes and no active OOB interface. Both guest aliases and
+hypervisor route reads passed. Runtime-derived IPv6 destinations remain
+necessary because production delegation is not a configuration pin.
+An isolated Configs implementer owns that packet-task helper and its actual
+public-boundary verification. Evidence is
+20261001-production-packet-contract/result.md. Production ownership and
+services remain unchanged. MWAN-519 is Done; MWAN-521 and MWAN-227 remain
+In Progress. Production promotion requires subsequent authorization.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
