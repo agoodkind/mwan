@@ -3214,6 +3214,40 @@ complete shared battery, and cutover acceptance remain pending. Genuine
 management SSH provisioning is under implementation in a separate Configs
 worktree. That prerequisite has not installed keys or changed live guests.
 
+### Verify SSH identities and cutover ordering
+
+The testbed PHP updater configures the OPNsense mapping fixture through
+OPNsense's native configuration API. The MWAN daemon has no PHP dependency.
+
+Configs PR #588 remains open at signed head
+9db86203b480486f5293bddb53be6f4c9e1280ca. Independent source review found
+no actionable defects. Subsequent review identified incorrect change reporting
+for management directory creation. That repair remains under implementation.
+Guest provisioning, idempotency, and authenticated simulator SSH remain pending.
+
+Fresh authenticated SSH confirmed gateway hostname mwan and machine ID
+bdd916f95e3e44568e6a5d3096cf2dea. SSH through suburban confirmed client225
+hostname mwan-client-a and machine ID 46393cb237bb436c84675dd426cb58d3,
+and client226 hostname mwan-client-b and machine ID
+9f56214dcf9c473fa4a5b9b3821829fb. Direct client IPv4 SSH returned
+Network is unreachable; the SSH jump connection succeeded with existing host
+verification. These identity checks do not establish downstream forwarding.
+
+The owned render prerequisite must emit explicit delegation IAID, persistent
+link and kernel policy journals, and optional static mapping delivery. The
+actual published decoder rejects owned Webpass mappings without delivery.
+The renderer must preserve explicit local or routed values without inferring
+them. Live ownership and delivery configuration have not changed.
+
+Source review confirms mixed ownership support with legacy AT&T active.
+The supported deployment still lacks per-interface networkd release readback,
+administrative exclusion from new selection, and unmanaged sentinel retention.
+Startup reloads networkd before owned journal cleanup. Reverse transfer must
+verify address cleanup and kernel policy restoration before networkd acquisition.
+An owner change alone does not establish that ordering. No shared daemon
+deployment, ownership transfer, or production deployment occurred during these
+checks.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
