@@ -3565,6 +3565,34 @@ acquisition with a real permanent-MAC NIC before selection restoration.
 Published aggregate, shared baseline deployment, complete transfer/reversal,
 and production acceptance remain pending. MWAN-305 remains active.
 
+### Verify merged protocol CI and isolate transfer control
+
+Merged-main CI run 36810709792 completed. All DHCPv6 restart, rejection,
+withdrawal, and prefix-expiry cases passed on AMD64. The kernel-policy
+packet case failed with forwarding=1 and a missing UDP reply. The
+[actual CI log](/Users/agoodkind/.local/state/mwan305/20261001-dhcpv6-journal-observation/merged-main-firewall.log)
+includes the firewall, routes, policy rules, and rp_filter=2. This failure
+requires diagnosis before published aggregate acceptance. ARM64 and ordinary
+network-namespace jobs passed; their results do not establish aggregate acceptance.
+
+The real networkd JSON observation marks retained mapped /32 addresses
+as ConfigSource=foreign and ordinary configured addresses as static.
+The [released provider observation](/Users/agoodkind/.local/state/mwan305/20261001-transfer-procedure/networkd-external-address-sources.json)
+and [transit observation](/Users/agoodkind/.local/state/mwan305/20261001-transfer-procedure/networkd-transit-address-sources.json)
+are preserved. Actual DHCP source encoding remains unverified. The receipt
+repair must preserve configured and acquired primary /32 addresses without
+adopting foreign mapped aliases.
+
+The isolated physical fixture exposed SSH input drops on enoob0 after
+production firewall activation. Its configuration now declares an external
+control connection and typed management services restricted to 10.0.2.2/32.
+The production management role still uses enmgmt0. Downstream packet tests
+use transfer-downstream; control SSH does not prove provider connectivity.
+The fixture agent verified its launcher remains live and reported both guests
+ready. Baseline cold creation, forward/reverse transfer, and owner-aware
+management/transit acceptance remain unproven. Shared testbed and production
+gateways remain unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
