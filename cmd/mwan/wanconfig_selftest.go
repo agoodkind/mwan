@@ -255,8 +255,7 @@ func selftestGateway() wanconfig.Gateway {
 	firewallConfig.Paths = []firewall.ForwardingPath{{
 		InternalInterface: "eninternal0", ExternalInterface: "enexample0", IPv4: true, IPv6: true,
 	}}
-	firewallConfig.PinnedSetV4Name = "selftest_pinned_v4"
-	firewallConfig.PinnedSetV6Name = "selftest_pinned_v6"
+	firewallConfig.PinnedSetV4Name, firewallConfig.PinnedSetV6Name = "selftest_pinned_v4", "selftest_pinned_v6"
 	return wanconfig.Gateway{
 		PinnedConnectionID: "",
 		ConnectionIDs:      nil,
@@ -273,21 +272,22 @@ func selftestGateway() wanconfig.Gateway {
 			ProbeTimeoutMillis: 2000,
 		},
 		Members: []wanconfig.Member{{
-			Name:            "example",
-			ProviderName:    "example",
-			Iface:           "enexample0",
-			Tier:            0,
-			Weight:          1,
-			ProbePolicy:     "example",
-			TranslationV6:   &config.IPv6Translation{Mode: config.TranslationNPTv6, NPT: &config.NPTv6Translation{InternalPrefix: netip.MustParsePrefix("3d06:bad:b01:210::/60"), ExternalSource: config.PrefixDelegated, ExternalPrefix: netip.Prefix{}, ExpectedPrefix: netip.MustParsePrefix("2001:db8:a::/60")}},
-			TranslationIDV4: wanconfig.TranslationInstanceID("example", "ipv4"),
-			TranslationIDV6: wanconfig.TranslationInstanceID("example", "ipv6"),
-			TableID:         100,
-			FwMark:          1,
-			FwMarkPrio:      100,
-			FromPrio:        55,
-			V4Source:        "",
-			ForcedDSCP:      8,
+			SelectionEnabled: nil,
+			Name:             "example",
+			ProviderName:     "example",
+			Iface:            "enexample0",
+			Tier:             0,
+			Weight:           1,
+			ProbePolicy:      "example",
+			TranslationV6:    &config.IPv6Translation{Mode: config.TranslationNPTv6, NPT: &config.NPTv6Translation{InternalPrefix: netip.MustParsePrefix("3d06:bad:b01:210::/60"), ExternalSource: config.PrefixDelegated, ExternalPrefix: netip.Prefix{}, ExpectedPrefix: netip.MustParsePrefix("2001:db8:a::/60")}},
+			TranslationIDV4:  wanconfig.TranslationInstanceID("example", "ipv4"),
+			TranslationIDV6:  wanconfig.TranslationInstanceID("example", "ipv6"),
+			TableID:          100,
+			FwMark:           1,
+			FwMarkPrio:       100,
+			FromPrio:         55,
+			V4Source:         "",
+			ForcedDSCP:       8,
 			// The configured mapping and operational owned address use the same external address.
 			TranslationV4: &config.IPv4Translation{Mode: config.TranslationNAPT44, StaticMappings: []config.StaticMapping{{
 				External: netip.MustParseAddr(selftestOwnedAddress),

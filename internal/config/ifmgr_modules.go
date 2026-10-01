@@ -167,14 +167,15 @@ type IfMgrPolicyRulesSection struct {
 // settings, and per-family translation policy. Shared translation values
 // remain on IfMgrSection.
 type IfMgrWANEntry struct {
-	ProviderName  string
-	Iface         string
-	TableID       int
-	FwMark        int
-	FwMarkPrio    int
-	FromPrio      int
-	TranslationV4 *IPv4Translation
-	TranslationV6 *IPv6Translation
+	SelectionEnabled *bool
+	ProviderName     string
+	Iface            string
+	TableID          int
+	FwMark           int
+	FwMarkPrio       int
+	FromPrio         int
+	TranslationV4    *IPv4Translation
+	TranslationV6    *IPv6Translation
 	// V4Source is the provider's static IPv4 link address, or empty on a
 	// leased link. The loader derives it from the link's first static address
 	// rather than reading it from the file, so the source rule and the address

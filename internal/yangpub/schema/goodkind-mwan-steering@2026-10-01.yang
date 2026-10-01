@@ -49,6 +49,10 @@ module goodkind-mwan-steering {
      decides its verdict, the prefix-translation inputs, and the
      internal link the members route toward.";
 
+  revision 2026-10-01 {
+    description
+      "Add administrative provider selection exclusion.";
+  }
   revision 2026-09-30 {
     description
       "Add configured main-table routes for each address family.";
@@ -304,6 +308,14 @@ module goodkind-mwan-steering {
         "This interface is a steering member.";
       description
         "The member's steering properties.";
+      leaf enabled {
+        type boolean;
+        default "true";
+        description
+          "Permit selection for both address families. False excludes the
+           connection regardless of health or readiness and does not stop
+           acquisition, translation, or address ownership.";
+      }
       leaf tier {
         type uint8;
         mandatory true;
@@ -333,6 +345,12 @@ module goodkind-mwan-steering {
         description
           "The member's live steering state, answered by the running
            daemon at request time.";
+        leaf administratively-enabled {
+          type boolean;
+          description
+            "The configured selection permission, independent of observed
+             health and forwarding readiness.";
+        }
         leaf health {
           type health-state;
           description

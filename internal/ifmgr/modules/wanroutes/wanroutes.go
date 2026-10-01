@@ -59,13 +59,14 @@ func (Config) ModuleConfigName() string { return moduleName }
 // data.
 type WAN struct {
 	ifmgr.WANRef
-	Owned         bool
-	TableID       int
-	FwMark        uint32
-	FwMarkPrio    int
-	FromPrio      int
-	TranslationV4 *config.IPv4Translation
-	TranslationV6 *config.IPv6Translation
+	SelectionEnabled *bool
+	Owned            bool
+	TableID          int
+	FwMark           uint32
+	FwMarkPrio       int
+	FromPrio         int
+	TranslationV4    *config.IPv4Translation
+	TranslationV6    *config.IPv6Translation
 	// V4Source is the WAN's static IPv4 link address. When set, traffic the box
 	// sources from that address is pinned to this WAN's table via a v4 source
 	// rule at FromPrio, the IPv4 twin of the translated-prefix v6 source rule. Only
@@ -594,6 +595,9 @@ func catchAllCarrier(cfg Config, gateways gateways, health netif.HealthStates, t
 func familyMembers(cfg Config, gateways gateways, health netif.HealthStates, translations map[string]wanstate.MemberTranslation, family string) []netif.TierMember {
 	members := make([]netif.TierMember, 0, len(cfg.WANs))
 	for _, wan := range cfg.WANs {
+		if wan.SelectionEnabled != nil && !*wan.SelectionEnabled {
+			continue
+		}
 		if familyReady(wan, gateways[wan.Key()], health, translations[wan.Key()], family) {
 			members = append(members, netif.TierMember{Name: wan.Key(), Tier: wan.Tier})
 		}
