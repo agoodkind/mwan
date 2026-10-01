@@ -4769,6 +4769,18 @@ two-file patch is unchanged; all rewritten signatures passed verification.
 Keep the candidate unpublished until the actual networkd reversal passes.
 MWAN-519 and MWAN-521 remain InProgress. Production remains unchanged.
 
+## Resume the same merged recovery deployment
+
+The snapshot-delete lock disappeared by 10:54:57 UTC without agent
+intervention. Proxmox reported no active task, and the watchdog's next
+iteration reported successful IPv4 and IPv6 probes. Recovery retry 29579
+began at 10:55:30 UTC from the same clean 829af8d1 Configs main. Its log is
+deploy-mwan-20261001T105530Z.log under configs-runs. The release and target
+configuration are unchanged. No capture is active while Webpass remains
+DOWN. Observers 21087 and 1403 remain active; source correction, owner
+reversal, and post-transfer acceptance are pending. Preserve the running
+checkout until this retry ends.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
