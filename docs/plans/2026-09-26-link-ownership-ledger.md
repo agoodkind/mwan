@@ -6257,6 +6257,53 @@ passed. Independent review still requires final identity, uncached postboot
 queries, closed downstream observations and terminal capture counters.
 Measured missing replies remain separate from passed deployment gates.
 
+## Accept reversal and assign the missing DHCPv4 DNS slice
+
+Root read the complete reverse retry and separate packet diagnosis reports.
+Exclusive release, restored networkd acquisition, selected packets, reboot
+and captured postboot uncached DNS queries passed. Closed observation has
+9,674 replies, ten failed probes and 8,065 successful route queries. The
+largest adjacent reply gap is 4.101665 seconds. Actual reboot backup selection
+from 20:26:23 through 20:27:12 contains no failed probes. The operator accepts
+brief deployment loss. These observations establish no code defect.
+The manifest has no numerical outage limit; no such comparison was performed.
+
+Actual reverse boot is 870752b9, executable d224ccc6 and network 0ea76add.
+Networkd owns Webpass, its DHCP identity/prefix and three DNS servers match,
+and management DNS/domain remain unchanged. Postboot network replies match
+captured Google query IDs 43311 and 28168 after real renewal. Explicit retry
+preboot queries were unperformed. Capture 63964 ended with 11,192 packets,
+zero kernel drops and exact PID 477073 absent. The first failed attempt
+and its successful automatic recovery remain separate evidence.
+
+The six-plan/current-code audit establishes a concrete remaining omission:
+DHCPv4 UseDNS is rejected despite the typed option and real simulator option 6.
+Later provider, transit and management transfers reuse existing generic code;
+their unfinished activation does not establish another missing transfer engine.
+Root read the complete code audit and independent DHCPv4 DNS contract review.
+release_completion implements the approved seven runtime files and existing
+real resolver regression in /Users/agoodkind/.worktrees/mwan-398-dhcpv4-dns.
+No served assignment/YANG revision changes are required or authorized.
+Renewal, expiry, persistence, stable-ID snapshots and shared resolver ownership
+must preserve existing IPv6 and unrelated management behavior. Retirement
+and final conditional reboot retain their approved prerequisites.
+
+Configs PR615 merged as e0ff57ca after all three required checks passed,
+Graphite AI passed and required threads were absent. Its accepted head is
+32963acb. The app attachment failed its existing 100-identity limit; unrelated
+attachments were preserved. Clean owning main advanced to the merge.
+Repeated-forward deployment 46574 began at 20:43:56 UTC through configsctl.
+Simulator capture 32907 uses unit mwan305-dns-forward-20261001-2042.service,
+verified tcpdump PID 481970 and listening readiness. One earlier SSH closure
+preceded unit creation; unit absence and successful hostname preceded retry.
+The original stderr is preserved. Current observers remain fresh.
+
+simulator_dns_review owns independent repeated-forward acceptance;
+repeat_forward_review owns bounded terminal PR615 cleanup. Root remains
+the sole live controller, ticket writer and ledger writer. Tack398 and521
+remain In Progress. The existing521 comment was updated with verified reversal
+and parallel implementation status. Production remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
