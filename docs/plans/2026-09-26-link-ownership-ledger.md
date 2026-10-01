@@ -4687,6 +4687,31 @@ guests have fresh IPv4 and IPv6 replies at this checkpoint. Webpass cold boot,
 reverse transfer, repeated forward transfer, and full acceptance remain
 incomplete. Production remains unchanged.
 
+## Publish the cold-boot correction and renew guest observation
+
+PR #156 merged normally as 2df8faa0cb9ebe306c50fbfeb615bceacdde9d62
+at 10:29:10 UTC. Signed final head e533c84 passed all ten required checks,
+privileged namespace and ARM64 checks, Graphite review, and independent
+review with no blocking findings or unresolved threads. The fixture enables
+three external parents before creating their VLANs; runtime code does not
+change external ownership. Local full privileged namespace checks and builder
+check/test passed. The firewall IPv4 UDP timeout also occurred on prior merged
+main cc928cf; its precise packet failure remains unexplained. The new source
+push started another firewall run. Do not claim every optional check passed.
+
+Release workflow 36849430846 is queued for exact merge 2df8faa0. The testbed
+release pin is not yet edited. Recovery deployment remains pending published
+artifact verification and a merged compatible pin.
+
+Guest 226's original window recorded 3502 replies per family without a missing
+sequence before both ping SSH commands exited 255 at 10:24:46.857 UTC. The
+observer still samples routes, but guest inspection confirms its ping
+processes ended. This output gap does not establish network loss. Fresh
+guest-226 observer 1403 uses the existing independent reboot SSH configuration
+and output webpass-recovery-client226. Guest-225 observer 21087 remains active.
+No packet capture or deployment is active. Webpass remains DOWN; AT&T serves
+downstream traffic. Preserve terminal windows and incomplete evidence.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
