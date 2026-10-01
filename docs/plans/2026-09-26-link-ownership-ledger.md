@@ -4745,6 +4745,30 @@ pin before publication. Actual networkd reversal must pass before repeating
 forward transfer. Recovery, cold boot, and full acceptance are still pending;
 production remains unchanged.
 
+## Retry recovery after the snapshot prerequisite returns
+
+Deployment 4497 ended with exit status 1 at 10:49:14 UTC. The pre-deploy
+snapshot failed with VM is locked (snapshot-delete). The recap reports
+118 successful tasks, 14 changed, one failure, no unreachable host or rescue.
+The released hypervisor deploy-gate identity passed, but guest binary install,
+source exclusion, ownership release, replacement, and reboot did not occur.
+Guest binary/network hashes remain 98a858c8 and 50c5db17. The recovery pair
+remains merged and verified, but is not deployed or accepted.
+
+Read-only Proxmox inspection confirms VM 213's snapshot-delete lock and no
+active task at the queried instant. The actual mwan-watchdog-testbed.service
+continues retention attempts that fail against that lock. No manual unlock,
+snapshot deletion, service restart, or host repair occurred. Monitor the
+existing cleanup and retry the exact merged pair only after a usable snapshot
+precondition returns. Both downstream guests still have fresh replies in both
+families; Webpass remains DOWN. No capture or deployment is active.
+
+Repeated-forward configuration rebased cleanly onto 829af8d1 at signed
+019f6a2097a7c2a83a1e451734a65d6f1c53f009. Range comparison proves the approved
+two-file patch is unchanged; all rewritten signatures passed verification.
+Keep the candidate unpublished until the actual networkd reversal passes.
+MWAN-519 and MWAN-521 remain InProgress. Production remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
