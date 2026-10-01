@@ -132,6 +132,17 @@ func runOwnedLinksDaemonRuntime(t *testing.T) {
 	}
 	bridgeIndex, vlanIndex := bridge.Attrs().Index, vlan.Attrs().Index
 	assertOwnedRuntimeVLANPacket(t, gateway, parentPeer.namespace, vlan)
+	if err := netlink.LinkSetDown(vlan); err != nil {
+		t.Fatal(err)
+	}
+	waitOwnedRuntimeLink(t, first, "owned397", 10*time.Second)
+	foreign, err := netlink.LinkByName("foreign-br")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if foreign.Attrs().Flags&net.FlagUp != 0 {
+		t.Fatal("owned reconciliation enabled the foreign bridge")
+	}
 	assertRuntimeDaemonRunning(t, first)
 	killOwnedRuntimeDaemon(t, first)
 	second := startRuntimeDaemon(t, binary, configPath, root, "owned-second")
@@ -260,13 +271,13 @@ func waitOwnedRuntimeLink(t *testing.T, daemon *runtimeDaemon, name string, time
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		link, err := netlink.LinkByName(name)
-		if err == nil {
+		if err == nil && link.Attrs().Flags&net.FlagUp != 0 {
 			return link
 		}
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("link %s was not created: %s", name, runtimeLogTail(t, daemon, 40))
+	t.Fatalf("link %s was not enabled: %s", name, runtimeLogTail(t, daemon, 40))
 	return nil
 }
 
@@ -287,7 +298,13 @@ func waitOwnedRuntimeAbsent(t *testing.T, daemon *runtimeDaemon, name string, ti
 
 func assertOwnedRuntimeVLANPacket(t *testing.T, gateway, peer netns.NsHandle, gatewayVLAN netlink.Link) {
 	t.Helper()
-	configureRuntimeLink(t, gatewayVLAN.Attrs().Name, []string{"10.39.7.1/24"})
+	address, err := netlink.ParseAddr("10.39.7.1/24")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.AddrAdd(gatewayVLAN, address); err != nil {
+		t.Fatal(err)
+	}
 	setRuntimeNamespace(t, peer)
 	parent, err := netlink.LinkByName("owned-peer")
 	if err != nil {
