@@ -4668,6 +4668,25 @@ Preserve that ordering. Prepare the merged release pin before deploying the
 networkd reversal. MWAN-519 and MWAN-521 remain InProgress; production is
 unchanged.
 
+## Continue cold-boot recovery before further cutover
+
+PR #156's required checks passed at 5d002265. The privileged namespace job
+110320734155 failed TestOwnedLinksCreateRestartAndRemove: the kernel rejected
+raising owned-vlan over its disabled external parent. The implementer verified
+that the existing fixture never enabled that parent. A focused fixture
+correction and affected privileged validation are in progress. Firewall job
+110320734147 also failed; independent diagnosis is pending. Do not dismiss
+either failure or deploy the candidate. The existing GoBGP vulnerability
+check failure is unrelated to this patch.
+
+Recovery PR #599 merged normally as 1ea637962de2959baf550068b608f737906364e1
+at 10:22:13 UTC after required checks, signature verification, and independent
+review passed. No recovery deployment occurred. The deployment still requires
+the published link correction and merged testbed release pin. Both downstream
+guests have fresh IPv4 and IPv6 replies at this checkpoint. Webpass cold boot,
+reverse transfer, repeated forward transfer, and full acceptance remain
+incomplete. Production remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
