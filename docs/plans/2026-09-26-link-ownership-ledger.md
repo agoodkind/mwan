@@ -3175,6 +3175,45 @@ Signed commit 7201aa87f6d076fa66cbac546aa03ffe784986cb passed the affected
 five-case systemd lane and code checks; its complete aggregate remains
 pending. Shared daemon deployment and production acceptance remain pending.
 
+### Verify the complete mapping report and published protocol aggregate
+
+Configs PR #587 merged as 5da630fb3341032b132f021f98e89552e496a1f0
+at 00:39:06Z. Exact head 671624559f1b184263e8ee8e0cfc9b41dfe679f5
+passed all three required checks, signature verification, and raw signature
+inspection. Graphite AI review completed. The request for a constructed
+stdout specification was answered with the actual public diagnostic and
+testing rules, then resolved. The original expressions failed against the
+real retained responses; the corrected expressions passed.
+
+The fresh merged ISP tag passed with ok=14, changed=0, unreachable=0,
+failed=0, and skipped=1. All five package audits passed. AT&T simulator 901
+used source 10.240.205.1 and external destination 10.241.205.2. Webpass
+simulator 900 used source 10.241.204.1 and external destination 10.241.204.2.
+Both source-selected routes used eth0. Both actual requests returned zero,
+HTTP 200, and response SHA256
+70c035bfb6878b96ba12eb10ab3d93dcee5b333e7b7a10762747854788afbd42.
+The final status and body assertions passed. The [fresh ISP log](/var/folders/jq/hwwlnpr56_vdb42ff743hy040000gn/T/configs-runs/deploy-testbed-20261001T003926Z.log)
+retains the actual requests and structured responses. Packet capture
+verification remains separate; this play reports it as false.
+
+MWAN PR #146 merged as cb88cab11ff273b909410586cf9c98275ee4e30d
+at 00:39:50Z after required checks and final independent review of exact head
+7201aa87f6d076fa66cbac546aa03ffe784986cb. The complete aggregate used
+the unchanged published daemon and passed all 22 namespace cases and
+five systemd cases with zero skips. Namespace execution took 324.451
+seconds; systemd execution took 28.389 seconds. The [aggregate report](/Users/agoodkind/.local/state/mwan305/20261001-mwan533-release-93d3c35/startup-diagnostic/npt-receipt-aggregate/report.md)
+retains the manifests, exact binary hash, and results. The fixture correction
+requires current programs, routes, and persisted receipt retirement within
+the original readiness deadline. The three-second packet assertion and
+continuous address checks remain unchanged. Earlier startup loss and
+receipt failure artifacts remain intact. This merge changes fixture source,
+not production forwarding behavior.
+
+MWAN-522 and MWAN-533 remain In Progress. Shared daemon deployment, the
+complete shared battery, and cutover acceptance remain pending. Genuine
+management SSH provisioning is under implementation in a separate Configs
+worktree. That prerequisite has not installed keys or changed live guests.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
