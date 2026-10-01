@@ -4513,6 +4513,32 @@ and capture controls. The delegated observer is read-only. Finish capture
 strictly before the planned reboot. PR #599 remains unmerged until forward
 acceptance. MWAN-519 and MWAN-521 remain InProgress. Production is unchanged.
 
+## Renew downstream observation during the cutover retry
+
+Deployment 80192 created its pre-deploy snapshot successfully. At 09:33 UTC,
+the play remains active at reconnection after the asynchronous udev trigger.
+Source exclusion and ownership transfer have not executed. The primary
+checkout remains unchanged. Recorder 54027 remains active before exclusion.
+
+New observer sessions 18926 and 5808 started around 09:26 UTC with 7200-second
+bounds. Their output directories are webpass-cutover-client225 and
+webpass-cutover-client226 under the real-cutover evidence directory. Both
+guests have fresh IPv4 and IPv6 replies at 09:32 UTC. Preserve the original
+observer sessions and established Webpass affinity streams until their
+bounded runs end. The delegated observer now includes the new windows.
+
+Affinity guest 225 IPv4 missed sequence 5285 before source exclusion. Replies
+5284 and 5286 occurred at 09:26:38.478175 and 09:26:40.700349 UTC. The other
+five original channels had no new misses through 09:26:58 UTC. This miss does
+not establish an ownership-transfer failure; its cause remains unproved.
+
+Independent read-only review confirmed the existing post-forward battery
+requires a separate plan with actual verified executable and network hashes.
+Preserve calibration, identities, mapping checks, and history requirements.
+Do not run its route-deletion and daemon-restart operations during deployment.
+Forward acquisition, reversal, reboot, and production readiness remain
+unaccepted. Cutover remains the current workstream.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
