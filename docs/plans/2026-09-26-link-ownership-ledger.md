@@ -4434,6 +4434,48 @@ rather than requiring equality between a negotiated /56 and translated /60.
 The bounded implementation includes the existing gate and a read-only clock
 and networkctl transport helper. No runtime release or lease import is needed.
 
+## Merge the owner-specific delegation gate and retry cutover
+
+Configs PR #602 merged normally at 09:08:22 UTC as
+c802ebece1acd610a0632de8fdc9e3d52a2985d3. Its reviewed signed head is
+23eba403e0243af4059f04052bb31e79edc6c3c6. Root inspected the complete patch
+and all four branch-local commit signatures and raw headers. Independent
+final-head review found no actionable findings. The three required checks
+passed. All review threads were resolved without an administrative bypass.
+The optional final PR-Agent check required quota action; it is not a merge
+requirement. The app attachment failed at its existing 100-identity limit.
+
+The gate now verifies networkd DHCPv6Client.Prefixes against a fresh guest
+CLOCK_BOOTTIME sample and MWAN valid dhcpv6-ia-pd assignments. Both paths
+retain routing, translation and applicable last-apply/assignment guards.
+A read-only Python helper samples networkctl and clock, parses its JSON object,
+and preserves command failures. Its type alias supports Python 3.10 and newer
+without provisioning changes. Actual VM213 helper execution, lint and latest
+Python compilation passed. Source predicates passed ten checks through native
+configsctl/Jinja. Independent review found the initial CIDR filter accepted
+None as non-false; the final correction uses Jinja truthiness. Actual AT&T
+2300::/60 and overlapping Webpass 2200::/55 controls both reject containment.
+The accepted actual Webpass translated /60 remains contained in its live /56.
+Validation logs end 085217Z and 090156Z under configs-runs; external evidence
+is under 20261001-networkd-pd-readiness in the MWAN-305 state directory.
+
+Root reconciled clean primary Configs main to the merge and started the actual
+merged testbed deploy at 09:08:36 UTC. Session 59233 remains active. The log is
+deploy-mwan-20261001T090836Z.log under configs-runs. Do not mutate the primary
+checkout or run another live deployment while this play is active. Root owns
+live mutation and capture phases; the delegated observer is read-only.
+
+Recorder session 15838 started around 09:09 UTC with a 1800-second bound.
+Its output directory is webpass-pd-retry-capture, phase file
+pd-retry-capture-phase.txt and stop file pd-retry-capture.stop under the
+real-cutover evidence directory. Finish strict cleanup before the planned
+reboot. Existing downstream observer sessions 99158, 76919 and 12936 remain
+active; preserve phase-specific losses. The hypervisor reported no active
+Proxmox tasks and the guest boot ID remains
+204ae526-a4d8-4ee1-8c4e-11a575a3e546. PR #599 remains unmerged until forward
+acceptance passes. No ownership transfer, reversal, or reboot is claimed from
+this retry yet. Production is unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
