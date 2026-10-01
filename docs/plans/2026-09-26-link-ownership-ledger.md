@@ -6092,6 +6092,32 @@ accepts its source and runtime bytes, which match accepted eecbcf7b.
 Production remains unpublished and unchanged. Testbed proof and subsequent
 production authorization remain required.
 
+## Publish DNS reversal and correct its render assertion
+
+PR614 publishes signed head 0193cac47632afb3855262e532434d285c65ac0e.
+The first required data check rejected configured networkd ownership because
+an existing render assertion hardcoded Webpass owner mwan. The focused spec
+correction independently reads configured owners and verifies the production
+renderer's owner and link-file declaration. Both real environment renders
+passed, two examples with zero failures. Both branch signatures and raw
+headers passed. Required CI and independent spec review remain pending.
+The PR attachment attempt failed at the existing 100-identity limit.
+
+Simulator capture 16896 began at 18:53:58 UTC on verified Webpass eth0.
+Unit mwan305-dns-reverse-20261001-1854.service has PID 471909, verified
+tcpdump executable and listening readiness. Its DNS, DHCPv6, advertisement
+and acceptance-destination filter remains active through gateway reboot;
+its one-hour runtime ends approximately 19:54 UTC. No reverse deployment
+has started. Downstream observers 2638 and 71854 remain active.
+
+A baseline command incorrectly used a second interface operand with
+resolvectl domain and assigned enmgmt0 as Webpass's search domain. Root
+reversed this exact accidental change with an empty Webpass domain. Fresh
+readback confirms empty Webpass domain, home.goodkind.io on management,
+all three Webpass DNS servers and unchanged management DNS. The paired
+multi-interface DNS command failed parsing and did not set DNS. Baseline
+evidence separates these command errors from network acceptance.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
