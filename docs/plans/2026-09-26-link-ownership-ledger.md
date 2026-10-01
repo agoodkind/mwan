@@ -3720,6 +3720,28 @@ Ledger commit c978cf1 passed raw-header and signature verification across all
 55 branch-local commits and was pushed. The physical transfer and complete
 shared testbed acceptance remain incomplete. Production has not changed.
 
+### Prioritize implementation and actual cutover
+
+The user directed implementation and cutover to take priority over additional
+tests. Stop expanding auxiliary fixtures. Publish and merge focused runtime
+and transfer changes under the active GitHub merge contract. Verify actual
+downstream forwarding, ownership, reversal, and recovery during testbed
+cutover before production promotion. Preserve failed observations without
+claiming a pass or weakening a failing assertion.
+
+PR #153 publishes signed b1c8e90c354898d0e1db86158b62f857fa070dd2.
+Root reviewed the complete diagnostic patch, verified its signature and raw
+header, and inspected the project checks and existing ARM64 packet output.
+All ten required checks passed. Native firewall job 110217644153 in run
+36814871029 remains active. The diagnostic PR does not block publication of
+the runtime and transfer changes.
+
+Root review found stale mapped-address writer claims in the loader. The
+runtime repair must assign the actual writer for networkd, MWAN, and external
+owners. The Configs transfer changes still require management and transit
+recovery that supports the configured owner. No shared ownership transfer
+or production deployment occurred.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
