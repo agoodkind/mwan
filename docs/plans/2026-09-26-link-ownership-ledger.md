@@ -6179,6 +6179,41 @@ accepts this unpublished candidate. PR614's contained terminal refs were
 removed while its checkout was preserved for the active forward branch.
 Production remains unchanged; MWAN-521 remains In Progress.
 
+## Accept recovered state and retry the merged reversal
+
+Deployment 17193 exited 1 at 19:47:33 UTC with 443 ok, 57 changed,
+zero unreachable, one failed and one rescued. Automatic recovery passed
+applied-state and packet checks, restored selection and passed recovered
+packets again. Actual original network 2769af5f, executable d224ccc6 and
+boot a8999e84 are verified; WAN PID 10473 is active. Acquired DNS and
+management settings are restored. Recovery uncached queries match captured
+network replies after real renewal. No reboot occurred in this failed phase.
+
+The complete closed 19:01:13 through 19:48:30 interval has 2,834 replies
+per guest/family, zero missing sequences and 9,447 successful route queries.
+Every channel selected backup seven times and returned to primary.
+Independent final review is 20261001-dns-reverse-live-review/report.md.
+Simulator capture 16896 exited zero with 12,503 packets and zero drops;
+PID 471909 is absent. These passed observations do not replace the failed
+selected check or unperformed reverse reboot acceptance.
+
+Continuation observers 75771 and 34158 began around 19:39 UTC with
+unique control paths. Both families have fresh replies and successful
+routes before old Python processes 70477 and 70512 were interrupted.
+Old handles 2638 and 71854 exited 130 and saved reports. New directories
+are dns-continuation-client225 and dns-continuation-client226; observations
+continue until approximately 21:39 UTC.
+
+Root verified recovered inputs, fresh downstream traffic, current SSH
+access and the unchanged clean merged checkout. Supported reverse retry
+handle 2458 is active from c4c761f1. Its output locator is in
+20261001-dns-reverse-retry-live-review/deploy.log. No speculative source
+or infrastructure change preceded retry. Capture 63964 began at 19:50:20
+on simulator eth0 with unit mwan305-dns-retry-20261001-1950.service.
+PID 477073 executable and listening readiness passed. Its two-hour bound
+preserves packet observation through reboot. Independent retry acceptance
+is assigned. MWAN-521 remains In Progress; production remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
