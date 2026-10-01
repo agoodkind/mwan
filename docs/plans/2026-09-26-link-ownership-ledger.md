@@ -4821,6 +4821,30 @@ source-released-networkd-acquiring. Replacement assignment acceptance,
 selection restoration, reboot recovery, and complete reversal remain pending.
 The repeated-forward configuration remains unpublished. Production is unchanged.
 
+## Measure the reverse cutover before reboot
+
+Networkd acquisition and all four acquired and selected AT&T/Webpass mapped
+HTTP and NPT edge checks passed. The live export reports networkd ownership,
+an UP link, enabled selection, carrying true, healthy state, and both family
+probes passing. Capture 50168 stopped before reboot at 11:24:47.836271 UTC
+with exit status 0, zero kernel drops, and verified capture process absence.
+
+Independent downstream evidence records an IPv6 interruption during reversal.
+Guest 225 missed sequences 5088 to 5196 between replies at 11:17:58.067957 UTC
+and 11:19:50.660921 UTC. Guest 226 missed sequences 2896 to 3004 between replies
+at 11:17:58.489343 UTC and 11:19:51.124966 UTC. Each stream missed 109 replies.
+The interreply gaps are 112.592964 and 112.635623 seconds. Each IPv4 stream
+recorded 839 replies without a missing sequence in the capture interval.
+Each IPv6 stream recorded 727 replies. Router selection returned to primary
+before IPv6 replies resumed. Packet analysis and the actual UTC-bounded
+networkd/daemon journal must establish the failing boundary. Do not infer
+global IPv6 unavailability or promise existing-flow survival from these streams.
+
+Both guests now receive fresh replies in both families. The deployment is
+applying generated management/transit units. Reboot acceptance remains pending.
+Keep repeated-forward publication and production promotion suspended until
+the measured interruption is understood and reversal acceptance is complete.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
