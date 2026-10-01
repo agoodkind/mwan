@@ -107,6 +107,16 @@ type ruleInput struct {
 	EligibleV6     map[uint32]bool
 }
 
+func shouldAppendMemberRule(hasAssignment, selectionEnabled, eligible bool) bool {
+	if selectionEnabled && eligible {
+		return false
+	}
+	if hasAssignment {
+		return true
+	}
+	return !selectionEnabled && eligible
+}
+
 // buildRules omits assignments for unavailable families and blocks provider
 // egress when a packet has no family-eligible mark.
 func buildRules(in ruleInput) []steerRule {
@@ -117,10 +127,7 @@ func buildRules(in ruleInput) []steerRule {
 		rules = append(rules, v4)
 	}
 	for _, member := range in.Members {
-		if !hasV4Assignment && (config.ConnectionSelectionEnabled(member.SelectionEnabled) || !in.EligibleV4[member.Mark]) {
-			continue
-		}
-		if !config.ConnectionSelectionEnabled(member.SelectionEnabled) || !in.EligibleV4[member.Mark] {
+		if shouldAppendMemberRule(hasV4Assignment, config.ConnectionSelectionEnabled(member.SelectionEnabled), in.EligibleV4[member.Mark]) {
 			v4.MatchMark = member.Mark
 			rules = append(rules, v4)
 		}
@@ -132,10 +139,7 @@ func buildRules(in ruleInput) []steerRule {
 			rules = append(rules, base)
 		}
 		for _, member := range in.Members {
-			if !hasV6Assignment && (config.ConnectionSelectionEnabled(member.SelectionEnabled) || !in.EligibleV6[member.Mark]) {
-				continue
-			}
-			if !config.ConnectionSelectionEnabled(member.SelectionEnabled) || !in.EligibleV6[member.Mark] {
+			if shouldAppendMemberRule(hasV6Assignment, config.ConnectionSelectionEnabled(member.SelectionEnabled), in.EligibleV6[member.Mark]) {
 				base.MatchMark = member.Mark
 				rules = append(rules, base)
 			}
