@@ -5450,8 +5450,17 @@ mapped endpoint response, not future cutover acceptance. Production acquired
 DNS support and the reviewed activation/recovery pair remain unfinished.
 MWAN-227 changed from stale Todo to actual In Progress; complete acquisition
 acceptance still requires reconciliation of its specific remaining results.
-MWAN-519 and MWAN-521 remain InProgress during that reconciliation and
-required production compatibility preparation. Production is unchanged.
+MWAN-519 changed to Done after its first-connection testbed acceptance
+completed. Production promotion remains under MWAN-520. MWAN-521 remains
+InProgress during required production compatibility preparation.
+Production is unchanged.
+
+The separate 14:45:00 through 14:48:00 UTC downstream review records 180
+complete replies per guest/family and zero query errors. Backup selection
+began around 14:46:05 and primary returned around 14:46:20. The maximum
+reply interval was 1.021599 seconds. No backup selection was sampled at
+the earlier repaired route loss. Evidence is
+repeated-forward-downstream-review/route-fault-restart.md.
 
 ## Record future implementation results
 
