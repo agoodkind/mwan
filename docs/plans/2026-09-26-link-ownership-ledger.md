@@ -6622,8 +6622,8 @@ network_library_audit owns preparation of the existing unpublished
 codex/mwan-519-production-activation branch, including signed rebase onto
 fetched origin/main, compatible release pin and existing render/loader gates.
 Preserve the reviewed production identities, assignments, AT&T coexistence
-and private original inputs. Do not publish, push, merge or deploy that
-candidate before matching testbed acceptance and subsequent authorization.
+and private original inputs. Do not deploy that candidate before matching
+testbed acceptance and subsequent production authorization.
 This preparation does not change live production. Root retains all live
 operations, ledger and ticket writes.
 
@@ -6645,6 +6645,38 @@ The candidate remains unpublished and unpushed. Independent reviewer
 production_candidate_review owns a read-only review of immutable head
 4530d47. Matching testbed proof and subsequent production authorization
 remain required before cutover. Production has not changed.
+
+## Split production preparation from Webpass ownership activation
+
+Root read the completed independent review of immutable head 4530d47.
+The exact installed production document differs from the candidate for
+management and transit link files, links, IPv4 and IPv6 fields. The transfer
+guard correctly rejects these unrelated differences before snapshot capture
+or runtime staging. Validating both documents does not establish equality.
+The captured legacy role units match the requested management and transit
+addresses, DNS/search and return-route endpoints.
+
+Use an all-networkd preparation phase before Webpass activation. Fresh
+origin/main intent and a compatible release pin supply that preparation.
+Zero owner changes avoid a handover, and existing role staging verifies
+generated external-owner units. Preserve the strict equality guard. Require
+fresh complete installed input capture and accepted downstream packets after
+preparation before activating Webpass. Production preparation and ownership
+cutover require subsequent live authorization; source preparation and review
+do not require that authorization.
+
+production_phase_split owns two local dependent branches through Graphite:
+codex/mwan-519-production-preparation changes only the compatible production
+pin and recovery flag; codex/mwan-519-production-webpass contains the reviewed
+activation inventory. The original branch and refs/backup snapshot remain.
+No production operation or branch publication has occurred. Root retains
+integration, PRs, ledger, tickets and live operations. Do not change owning
+Configs main while deployment 48179 remains active.
+
+The current testbed delegate copy remains active. Its exact .source artifact
+under /tmp/.ansible/tmp increased from 21,672,960 to 24,284,160 bytes.
+The copy updates only mwan-deploy-gate, preserving the watchdog executable.
+Do not restart a live transfer because a log observation has no new task.
 
 ## Record future implementation results
 
