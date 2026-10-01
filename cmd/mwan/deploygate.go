@@ -206,7 +206,7 @@ func runDeployGate(args []string) int {
 	case gateModeCheckNetworkd:
 		return runNetworkdCheck(rest)
 	case gateModeCheckRelease:
-		return runReleaseCheck()
+		return runReleaseCheck(rest)
 	case gateModeCheckFirewall:
 		return runFirewallCheck(rest)
 	case gateModeInspectFirewall:

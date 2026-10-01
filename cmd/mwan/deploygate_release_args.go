@@ -10,14 +10,12 @@ import (
 	"goodkind.io/mwan/internal/interfaceintent"
 )
 
-func runReleaseCheck() int {
-	cfg, err := config.Load()
+func runReleaseCheck(arguments []string) int {
+	cfg, args, err := config.LoadArguments(arguments)
 	if err != nil {
 		fmt.Fprintf(os.Stdout, "release configuration rejected: %v\n", err)
 		return exitDeployGateFailed
 	}
-	// The shared loader removes --config before positional arguments are parsed.
-	args := os.Args[2:]
 	if len(args) != 2 {
 		printDeployGateUsage()
 		return exitDeployGateUsage

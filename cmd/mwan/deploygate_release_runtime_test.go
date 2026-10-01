@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -124,7 +125,7 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 	networkdResolverCommand(t, "systemctl", "start", "systemd-udevd")
 	networkdResolverCommand(t, "systemctl", "restart", "systemd-networkd")
 	configPath := filepath.Join(root, "config.toml")
-	configuration := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"100ms\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n", filepath.Join(root, "links.json"), filepath.Join(root, "addresses.json"), filepath.Join(root, "kernel.json"))
+	configuration := fmt.Sprintf("[watchdog]\nconnectivity_timeout_seconds = 1\n[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"100ms\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n", filepath.Join(root, "links.json"), filepath.Join(root, "addresses.json"), filepath.Join(root, "kernel.json"))
 	if err := os.WriteFile(configPath, []byte(configuration), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -163,6 +164,17 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 	networkdResolverCommand(t, "networkctl", "reload")
 	networkdResolverCommand(t, "networkctl", "reconfigure", "enservice0")
 	waitReleaseCommand(t, binary, configPath, "service-provider", "networkd", daemon)
+	networkdResolverCommand(t, "systemctl", "kill", "--signal=STOP", "systemd-networkd")
+	defer networkdResolverCommand(t, "systemctl", "kill", "--signal=CONT", "systemd-networkd")
+	deadline, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	output, deadlineError := exec.CommandContext(deadline, binary, "deploy-gate", "check-release", "service-provider", "networkd", "--config", configPath).CombinedOutput()
+	deadlineExpired := deadline.Err()
+	cancel()
+	networkdResolverCommand(t, "systemctl", "kill", "--signal=CONT", "systemd-networkd")
+	if deadlineError == nil || deadlineExpired != nil || !strings.Contains(string(output), "context deadline exceeded") {
+		t.Fatalf("stopped networkd did not fail within its configured observation deadline: %s (%v, outer deadline %v)", output, deadlineError, deadlineExpired)
+	}
+	t.Logf("configured networkd observation deadline: %s", output)
 	setReleaseOwner(t, networkDir, "service-provider", "networkd")
 	setReleaseConnectionField(t, networkDir, "service-provider", "goodkind-mwan-steering:link-files", json.RawMessage(`"rendered"`))
 	if err := os.WriteFile(filepath.Join(unitDir, "10-service.network"), serviceUnit, 0o644); err != nil {
@@ -194,9 +206,9 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 	if err := os.Remove(linksPath); err != nil {
 		t.Fatal(err)
 	}
-	output := assertReleaseCommand(t, binary, configPath, "owned397", "mwan", true)
-	if !strings.Contains(output, `"links_present":false`) {
-		t.Fatalf("missing journal presence was not reported: %s", output)
+	outputText := assertReleaseCommand(t, binary, configPath, "owned397", "mwan", true)
+	if !strings.Contains(outputText, `"links_present":false`) {
+		t.Fatalf("missing journal presence was not reported: %s", outputText)
 	}
 	if err := os.WriteFile(linksPath, []byte("{invalid"), 0o600); err != nil {
 		t.Fatal(err)
@@ -222,9 +234,9 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 	if err := os.WriteFile(addressesPath, []byte(previousBoot), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	output = assertReleaseCommand(t, binary, configPath, "service-provider", "mwan", false)
-	if !strings.Contains(output, `"previous_boot":true`) {
-		t.Fatalf("previous-boot receipt was not reported: %s", output)
+	outputText = assertReleaseCommand(t, binary, configPath, "service-provider", "mwan", false)
+	if !strings.Contains(outputText, `"previous_boot":true`) {
+		t.Fatalf("previous-boot receipt was not reported: %s", outputText)
 	}
 	unchanged, err := os.ReadFile(addressesPath)
 	if err != nil || string(unchanged) != previousBoot {

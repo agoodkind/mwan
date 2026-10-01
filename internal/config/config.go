@@ -416,18 +416,30 @@ func defaultConfigBase() Config {
 // Load loads the single TOML config.
 // Path: --config flag > MWAN_CONFIG env > /etc/mwan/config.toml
 func Load() (*Config, error) {
+	cfg, arguments, err := LoadArguments(os.Args)
+	os.Args = arguments
+	return cfg, err
+}
+
+// LoadArguments consumes --config without modifying process-global arguments.
+func LoadArguments(arguments []string) (*Config, []string, error) {
 	path := "/etc/mwan/config.toml"
 	if v := os.Getenv("MWAN_CONFIG"); v != "" {
 		path = v
 	}
-	for i, arg := range os.Args {
-		if arg == "--config" && i+1 < len(os.Args) {
-			path = os.Args[i+1]
-			os.Args = append(os.Args[:i], os.Args[i+2:]...)
+	remaining := append([]string(nil), arguments...)
+	for i, arg := range remaining {
+		if arg == "--config" && i+1 < len(remaining) {
+			path = remaining[i+1]
+			remaining = append(remaining[:i], remaining[i+2:]...)
 			break
 		}
 	}
+	cfg, err := loadConfig(path)
+	return cfg, remaining, err
+}
 
+func loadConfig(path string) (*Config, error) {
 	// The path comes from the unit file or the operator's command line, both
 	// already privileged, so cleaning it normalizes the value rather than
 	// defending a trust boundary.

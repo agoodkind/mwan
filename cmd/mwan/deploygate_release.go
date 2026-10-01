@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"time"
 
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/connectionid"
@@ -37,6 +38,13 @@ func checkConnectionRelease(ctx context.Context, output io.Writer, cfg *config.C
 		return exitDeployGateFailed
 	}
 	if previous == interfaceintent.OwnerNetworkd {
+		timeout := time.Duration(cfg.Watchdog.ConnectivityTimeoutSeconds) * time.Second
+		if timeout <= 0 {
+			fmt.Fprintln(output, "release verification failed: watchdog connectivity timeout must be positive")
+			return exitDeployGateFailed
+		}
+		ctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
 		state, err := networkd.AdministrativeState(ctx, selected.Name)
 		if err != nil {
 			fmt.Fprintf(output, "release verification failed: %v\n", err)
