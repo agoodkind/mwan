@@ -4144,6 +4144,37 @@ reported 204 examples, one unrelated quote-escaping failure, and 18 pending.
 The correction is not merged or deployed. Preserve the later operational
 routing and translation requirements and retry through merged deployment.
 
+## Preserve existing forwarding during selection exclusion
+
+Configs PR #600 merged as b0c0c6bd9aa4a0d4c2960da73b716b1c4cf297e5 at
+07:19:12Z. Required lint, data and security checks passed, as did Graphite
+AI review. Root fast-forwarded the clean primary Configs checkout to that
+merge after recovery terminated. The fix has not been deployed.
+
+Independent source review confirmed a separate contract discrepancy.
+Administrative exclusion removes the provider from new-flow assignments
+and guard eligibility. Existing conntrack marks persist, while the excluded
+provider's forwarding guard drops internal packets routed through that
+provider. Ready provider routes and translation remain installed. The
+approved contract excludes new traffic and preserves existing connection
+affinity while forwarding remains ready. This discrepancy could explain
+the guest 225 gap, but the actual flow mark and packet loss location were
+not captured during that attempt.
+
+Implement the narrow forwarding correction in the isolated
+/Users/agoodkind/.worktrees/mwan-519-excluded-forwarding checkout, based on
+merged MWAN 0ff387b. Separate new-flow selection permission from forwarding
+readiness. Keep excluded providers out of new assignments, permit existing
+ready-provider marks, and preserve guards for unhealthy or unready providers.
+Do not add a blanket established-connection exception.
+
+The implementation, independent review, merged release, compatible Configs
+pin and actual retry remain pending. Capture the existing ICMP flow marks,
+installed guards and paired internal/provider packets during the retry.
+Do not expand unrelated tests or declare the probe gap's cause proven.
+The testbed remains recovered; no deployment or fault is active.
+Observers 22271 and 18961 still measure the first attempt and recovery.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
