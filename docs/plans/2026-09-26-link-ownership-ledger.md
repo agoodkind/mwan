@@ -3248,6 +3248,48 @@ An owner change alone does not establish that ordering. No shared daemon
 deployment, ownership transfer, or production deployment occurred during these
 checks.
 
+### Merge rendering and simulator SSH prerequisites
+
+Configs PR #589 merged as fe822642ca180a9fb5ab546ce1069db10f5a558a
+at 01:17:40Z. Signed head ad416651f6124bf9e96bc25cac17e7e10464ef3b
+passed all three required checks, raw signature inspection, and independent
+review. The actual published decoder accepted both unchanged environment
+renders and the explicit owned Webpass sample. All five sample mappings
+remain present. Sample DHCP identity does not establish live identity.
+The [render report](/Users/agoodkind/.local/state/mwan305/20261001-owned-render-prerequisite/report.md)
+retains inputs, hashes, and decoder results. Native archive protection retains
+the merged worktree and local branch; its remote branch is deleted.
+
+Configs PR #588 merged as 3d010b7a53825e3986a76c4d456d21ecd2d89029
+at 01:23:52Z. Signed head 5c238f99f8ce3d7eba0b3f6cb73192e36e0238e2
+passed required checks and Graphite review. Both branch commits passed raw
+signature inspection and verification. All five review threads are resolved.
+Actual public diagnostics proved loop return-code handling, strict permission
+failures, directory creation and rerun reporting, and key reconciliation for
+absent, matching, and mismatched file bytes. The [review report](/Users/agoodkind/.local/state/mwan305/20261001-npt-deploy-acceptance/management-review-triage.md)
+separates these results from guest transport acceptance. The exact feature
+branch and unregistered worktree are removed; validation evidence is retained.
+
+The targeted OpenTofu plan refreshed all five simulator containers and reported
+no changes. It also warned that three prior bridge/VLAN state objects include
+an unsupported reload attribute. The [plan log](/var/folders/jq/hwwlnpr56_vdb42ff743hy040000gn/T/configs-runs/tofu-plan-20261001T012445Z.log)
+retains that scope and those warnings. No apply ran.
+
+The first merged simulator management play failed on CT 900's directory
+creation command with return code 129 and empty stdout/stderr. Its recap was
+ok=20, changed=2, unreachable=0, failed=1, skipped=2. The [failed play log](/var/folders/jq/hwwlnpr56_vdb42ff743hy040000gn/T/configs-runs/deploy-testbed-20261001T012528Z.log)
+retains the exact command and result. A subsequent read-only public diagnostic
+confirmed CT 900 running and the requested directory present with mode 0755
+and root ownership. GNU install is present. The queried container and kernel
+journals contain no corresponding event. The cause of code 129 remains
+unproven. The unchanged idempotent play is under retry; complete provisioning,
+authenticated simulator SSH, and whole-play idempotency remain pending.
+
+Administrative exclusion and read-only per-connection release verification
+remain under implementation in separate MWAN worktrees. Forward and reverse
+transfer must retain AT&T under networkd. Shared daemon deployment and
+production acceptance remain pending.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
