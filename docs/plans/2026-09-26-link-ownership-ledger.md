@@ -5119,6 +5119,22 @@ reviewed merge and actual testbed reverse deployment. Repeat forward transfer
 and the existing balancing, mapping, and failure-history battery afterward.
 MWAN-519 and MWAN-521 remain InProgress. Production remains unchanged.
 
+## Execute the new-release reverse cutover
+
+Configs PR 605 merged as ca5ff0933f036b7db625c76c2ec7ec05cba1b4a7
+at 13:13:00 UTC. Independent review accepted signed source 3c659ce6.
+All three required checks passed, no review threads were open, and the
+branch matched current main. The optional PR-Agent review exhausted its
+daily allowance without publishing findings. No review settings changed.
+
+The clean, idle primary Configs checkout advanced to merged ca5ff093.
+Actual reverse deployment 64582 started at 13:13:45 UTC through configsctl
+with the testbed-only limit. Its log is deploy-mwan-20261001T131345Z.log.
+The published route-event release remains unchanged. Both downstream
+observers remain active; root owns live mutation and capture lifecycle.
+The implementer may prepare the next repeated-forward configuration in the
+isolated activation worktree. Reverse acceptance remains pending.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
