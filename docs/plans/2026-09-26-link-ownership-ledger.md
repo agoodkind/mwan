@@ -6526,6 +6526,29 @@ The implementation lane is checking remaining code requirements separately
 from live acceptance. Root retains sole deployment control. Production
 remains unchanged.
 
+## Complete native artifact verification and identify the snapshot lock
+
+Native AMD64 operation 59227 exited zero. Hash, version and schema commands
+passed against the exact published executable. Version reports e90b629,
+dirty=clean and libsysrepo 7.34.6. Root read the independently updated release
+report and retained stdout/stderr. Root removed only its private remote
+artifact directory and verified its absence. No install or daemon startup
+occurred.
+
+The renewed capture report and journal identify the current lock's cause.
+Watchdog PID 1245262, build 4b8a219, created known-good-20261001-153646
+at 22:36:53 UTC. Its deletion of known-good-20260929-011903 failed at
+22:36:57 because ZFS could not find the snapshot. Its forced-delete limit
+was already three. Subsequent pruning attempts failed on snapshot-delete.
+The exact active service is mwan-watchdog-testbed.service. An empty task
+snapshot between its transient deletion attempts does not prove pruning
+finished. The reviewer is verifying exact snapshot storage, worker state
+and the minimal reversible recovery before root changes service state.
+
+MWAN-398 and MWAN-521 actual states remain In Progress. Their current
+comments include native verification and the measured snapshot prerequisite.
+The next deploy has not started. Production remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
