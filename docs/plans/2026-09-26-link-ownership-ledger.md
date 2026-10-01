@@ -5405,6 +5405,54 @@ source changes on codex/mwan-519-acquired-dns in the existing isolated MWAN
 worktree. Root owns live mutation, ledger and ticket state. Both tickets remain
 InProgress, and production remains unchanged.
 
+## Accept balancing, mappings and persistent history from merged source
+
+Configs PR 607 merged as f9f69335a618ca04c2884e869c0ab73fff61b424
+at 14:42:17 UTC. Root inspected signed head df1391cb, the one-file diff,
+all active ruleset requirements and empty review threads. All three required
+checks passed. The parser reads deployed mapping intent separately from
+fresh operational readiness and preserves the actual packet assertions.
+The clean, idle primary checkout advanced to merged main.
+
+Full acceptance handle 18648 completed with exit status 0 from that merged
+runner. Its result has no failure and no cleanup errors. Forty IPv4 requests
+selected Webpass 24 times and AT&T 16 times. Forty IPv6 requests selected
+Webpass 18 times and AT&T 22 times. Both IPv4 mapped HTTP probes verified
+actual response content and correlated simulator, provider and transit packet
+exchanges. Evidence is route-event-fix-repeat-forward-full-acceptance-fixed/result.json.
+IPv4 packet correlation does not independently prove every post-NAT guest
+source identity; the runner retains its explicit attribution limit.
+
+History observation began at 14:45:00.322245896 UTC with PID 314.
+Root verified and deleted the Webpass main-table IPv4 default via
+10.241.204.1 with metric 10. The command succeeded, and a subsequent read
+verified automatic restoration. Persistent transition 7b34b78f1634ff22:192
+records ready to not-ready at 14:45:19.741027731 UTC for Webpass IPv4,
+dependency wan-routes, reason routing readiness changed. Root verified that
+record before restarting the WAN service. Restart handle 28686 completed
+with exit status 0. The runner observed a different positive PID and the
+same persistent transition after restart. Current PID is 2177; both providers
+report healthy selection and passing family probes. Both forwarding-readiness
+values are true. Detailed downstream restart observation remains assigned.
+
+The 14:47 UTC heartbeat refreshed the coordinator, cutover plan, relevant
+specification, memory, recent ledger, ticket states and active operations.
+Both renewed observers remain active until approximately 15:41 UTC.
+No deploy or capture remains active. Root owns live mutation and the ledger.
+The acquired DNS implementer owns isolated source and verification; its
+independent reviewer found one actual same-link listener retry lifetime defect,
+which is in correction. The production reviewer owns its command manifest.
+
+Production baseline mapped SSH observations through suburban succeeded for
+both Webpass and AT&T with strict existing router host-key verification and
+the expected router hostname. These read-only observations prove the current
+mapped endpoint response, not future cutover acceptance. Production acquired
+DNS support and the reviewed activation/recovery pair remain unfinished.
+MWAN-227 changed from stale Todo to actual In Progress; complete acquisition
+acceptance still requires reconciliation of its specific remaining results.
+MWAN-519 and MWAN-521 remain InProgress during that reconciliation and
+required production compatibility preparation. Production is unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
