@@ -5191,6 +5191,22 @@ It is published in Configs PR 606. All three required checks pass, and no
 review threads are open. Do not activate before completed reverse acceptance.
 Production remains unchanged.
 
+## Preserve observation through repeated forward acceptance
+
+Replacement acquisition and all four acquired mapping/NPT checks passed.
+The selection-restoration restart selected backup around 13:40:41 and
+restored primary around 13:40:55 through 13:40:56. Both guests and families
+continued replies without additional missing sequences. Final networkd
+startup and deployment reboot acceptance remain pending.
+
+Root started fresh downstream observers at 13:41:48 UTC using the existing
+observer and unique SSH ControlPaths. Guest 225 session 71173 writes
+repeated-forward-client225; guest 226 session 77127 writes
+repeated-forward-client226 under the real-cutover evidence directory.
+Independent inspection confirms fresh complete replies and primary router
+selection in all four channels. These windows last through approximately
+15:41 UTC. Preserve the old observers for complete reverse-interval proof.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
