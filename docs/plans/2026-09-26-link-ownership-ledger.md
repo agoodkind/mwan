@@ -3435,6 +3435,23 @@ sentinel fixture must establish whether release removes those addresses.
 The Configs transfer procedure remains under implementation. No shared
 gateway upgrade, ownership transfer, or production deployment ran.
 
+### Accept unchanged simulator deployment
+
+The unchanged management play completed with ok=162, changed=0,
+unreachable=0, failed=0, skipped=55. It used the same clean merged cec8de0d
+checkout as the successful first run. Primary Configs advanced to merged
+aaeffd48 only after the play's terminal result. Primary MWAN remains clean
+at f025543. Both merged feature worktrees and branches are removed with
+their external evidence preserved.
+
+Both guests' final overlapping observer windows completed successfully.
+Each guest received all 600 IPv4 and IPv6 probes, with no failed route
+queries. Successful queries selected the primary. The second and final
+windows overlap and cover the entire unchanged play. Simulator management
+and repeat deployment behavior pass; full gateway release acceptance and
+load balancing remain pending. MWAN-521 and MWAN-522 were read from Tack
+and both remain In Progress, matching their unfinished acceptance work.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
