@@ -302,8 +302,18 @@ func waitSelectionRuntimeMark(t *testing.T, daemon *runtimeDaemon, mark int) {
 		var err error
 		output, err = exec.Command("nft", "list", "chain", "inet", "mwan_steer", "prerouting").CombinedOutput()
 		if err == nil {
-			if mark == 0 && !strings.Contains(string(output), "meta mark set") {
-				return
+			if mark == 0 {
+				onlyZeroAssignments := true
+				for _, line := range strings.Split(string(output), "\n") {
+					_, assignment, found := strings.Cut(line, "meta mark set")
+					if found && strings.TrimSpace(assignment) != "0x00000000" {
+						onlyZeroAssignments = false
+						break
+					}
+				}
+				if onlyZeroAssignments {
+					return
+				}
 			}
 			if mark != 0 && selectionRuntimeFamilyMarks(string(output), mark) && !strings.Contains(string(output), fmt.Sprintf("meta mark set 0x%08x", 3-mark)) {
 				return
