@@ -3614,6 +3614,37 @@ Three unchanged ARM64 kernel-policy executions passed; they do not identify
 the cause of the failed AMD64 packet. Route-table and neighbor observations
 remain required before changing the packet fixture.
 
+### Verify acquired primary identity and preserve packet failure evidence
+
+Actual Kea and networkd acquired IPv4 198.51.100.100/32. The
+[acquisition observation](/Users/agoodkind/.local/state/mwan305/20261001-transfer-procedure/networkd-dhcpv4-source-acquired32.json)
+reports ConfigSource=DHCPv4, ConfigState=configured, and its active lease.
+The capture and server logs preserve the actual exchange. Extend the existing
+typed networkd observer to distinguish acquired primaries from foreign aliases.
+The runtime integration and its packet regression still require acceptance.
+
+The corrected six-case systemd lane passed in 36.361 seconds with zero skips.
+The release case passed in 4.49 seconds after verifying pending mapping receipts
+on the surviving unmanaged interface and subsequent external pruning.
+The accepted events are under mapped-receipts-systemd-native; the earlier
+mapped-receipts-systemd-final failure remains preserved. This result precedes
+the acquired-primary observer integration and does not prove that later change.
+
+The physical fixture rejected replacement acquisition with unrecorded mapped
+IPv4 and ordinary static IPv6 addresses still present. The selected native
+IPv6 source file has no KeepConfiguration directive. The release cause remains
+unverified pending exact prior and external snapshots. No address was adopted
+or manually deleted. Selected-provider proof during exclusion must use actual
+inbound request/reply packets; backup outbound replies are separate evidence.
+
+Repeated ARM64 kernel-policy runs preserved the 300-millisecond deadline and
+confirmed the marked table's LAN route. Their successful packets do not assign
+the original AMD64 failure. Suburban has no Docker or Podman runtime, and
+existing CI has no targeted manual job or retained protocol result artifacts.
+A focused diagnostics change will preserve failure-time routes, selectors,
+neighbors, daemon logs, and existing CI results without changing packet
+assertions or production behavior. No shared gateway deployment occurred.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
