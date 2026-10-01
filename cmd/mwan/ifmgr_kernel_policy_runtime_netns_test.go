@@ -442,14 +442,20 @@ func logKernelPolicyPacketFailure(t *testing.T, daemon *runtimeDaemon, gateway, 
 		namespace netns.NsHandle
 	}{{"gateway", gateway}, {"source", source}, {"destination", destination}} {
 		setRuntimeNamespace(t, endpoint.namespace)
-		for _, arguments := range [][]string{{"-4", "route", "show", "table", "all"}, {"-4", "neigh", "show", "nud", "all"}, {"-4", "rule", "show"}} {
-			output, err := exec.Command("ip", arguments...).CombinedOutput()
-			t.Logf("%s ip %v: %s (%v)", endpoint.name, arguments, output, err)
-		}
+		routes, routeErr := netlink.RouteListFiltered(netlink.FAMILY_V4, &netlink.Route{Table: unix.RT_TABLE_UNSPEC}, netlink.RT_FILTER_TABLE)
+		rules, ruleErr := netlink.RuleList(netlink.FAMILY_V4)
+		neighbors, neighborErr := netlink.NeighList(0, netlink.FAMILY_V4)
+		state, marshalErr := json.Marshal(struct {
+			Routes    []netlink.Route
+			Rules     []netlink.Rule
+			Neighbors []netlink.Neigh
+		}{routes, rules, neighbors})
+		t.Logf("%s network state: %s; routes error=%v; rules error=%v; neighbors error=%v; encoding error=%v", endpoint.name, state, routeErr, ruleErr, neighborErr, marshalErr)
 	}
 	setRuntimeNamespace(t, gateway)
-	output, err := exec.Command("ip", "-4", "route", "get", "192.0.2.2", "from", "10.52.1.2", "iif", "enatt0", "mark", "1").CombinedOutput()
-	t.Logf("marked packet route after failure: %s (%v)", output, err)
+	routes, err := netlink.RouteGetWithOptions(net.ParseIP("192.0.2.2"), &netlink.RouteGetOptions{SrcAddr: net.ParseIP("10.52.1.2"), Iif: "enatt0", Mark: 1})
+	state, marshalErr := json.Marshal(routes)
+	t.Logf("marked packet route after failure: %s; lookup error=%v; encoding error=%v", state, err, marshalErr)
 	for _, iface := range []string{"all", "enatt0", "enmwanbr0"} {
 		for _, leaf := range []string{"rp_filter", "forwarding"} {
 			t.Logf("ipv4 %s %s=%s", iface, leaf, readKernelPolicyValue(t, "ipv4", iface, leaf))
