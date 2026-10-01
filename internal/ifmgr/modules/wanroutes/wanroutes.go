@@ -295,7 +295,7 @@ func (m *Module) publishLiveState(currentGateways gateways, health netif.HealthS
 	for _, wan := range m.cfg.WANs {
 		v4Ready := familyReady(wan, currentGateways[wan.Key()], health, translations[wan.Key()], familyV4)
 		v6Ready := familyReady(wan, currentGateways[wan.Key()], health, translations[wan.Key()], familyV6)
-		selectionEnabled := wan.SelectionEnabled == nil || *wan.SelectionEnabled
+		selectionEnabled := config.ConnectionSelectionEnabled(wan.SelectionEnabled)
 		members[wan.Key()] = wanstate.MemberRouting{
 			Carrying: selectionEnabled && ((readyV4 && wan.Tier == tierV4 && v4Ready) || (readyV6 && wan.Tier == tierV6 && v6Ready)),
 			V4Ready:  v4Ready, V6Ready: v6Ready,
@@ -582,7 +582,7 @@ func catchAllCarrier(cfg Config, gateways gateways, health netif.HealthStates, t
 	var carrier *WAN
 	for i := range cfg.WANs {
 		wan := &cfg.WANs[i]
-		if (wan.SelectionEnabled != nil && !*wan.SelectionEnabled) || wan.Tier != tier || !familyReady(*wan, gateways[wan.Key()], health, translations[wan.Key()], family) {
+		if !config.ConnectionSelectionEnabled(wan.SelectionEnabled) || wan.Tier != tier || !familyReady(*wan, gateways[wan.Key()], health, translations[wan.Key()], family) {
 			continue
 		}
 		if carrier != nil {
@@ -596,7 +596,7 @@ func catchAllCarrier(cfg Config, gateways gateways, health netif.HealthStates, t
 func familyMembers(cfg Config, gateways gateways, health netif.HealthStates, translations map[string]wanstate.MemberTranslation, family string) []netif.TierMember {
 	members := make([]netif.TierMember, 0, len(cfg.WANs))
 	for _, wan := range cfg.WANs {
-		if wan.SelectionEnabled != nil && !*wan.SelectionEnabled {
+		if !config.ConnectionSelectionEnabled(wan.SelectionEnabled) {
 			continue
 		}
 		if familyReady(wan, gateways[wan.Key()], health, translations[wan.Key()], family) {

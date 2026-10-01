@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net/netip"
 
+	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/netif"
 )
@@ -234,7 +235,7 @@ func (m *Module) desiredRules(health netif.HealthStates) []steerRule {
 	eligibleV4 := make(map[uint32]bool, len(m.cfg.Members))
 	eligibleV6 := make(map[uint32]bool, len(m.cfg.Members))
 	for _, member := range m.cfg.Members {
-		if member.SelectionEnabled != nil && !*member.SelectionEnabled {
+		if !config.ConnectionSelectionEnabled(member.SelectionEnabled) {
 			continue
 		}
 		routing := snapshot.Routing[member.Key()]

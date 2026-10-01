@@ -196,6 +196,11 @@ type IfMgrWANEntry struct {
 	Weight int
 }
 
+// ConnectionSelectionEnabled treats omitted selection permission as enabled.
+func ConnectionSelectionEnabled(enabled *bool) bool {
+	return enabled == nil || *enabled
+}
+
 // TranslationMode selects the base packet translation for one address family.
 type TranslationMode string
 

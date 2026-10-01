@@ -103,7 +103,7 @@ func interfacesLiveItems(
 	for _, member := range gateway.Members {
 		base := "/ietf-interfaces:interfaces/interface[name='" + member.Iface +
 			"']/" + steeringPrefix + ":steering/state"
-		selectionEnabled := member.SelectionEnabled == nil || *member.SelectionEnabled
+		selectionEnabled := config.ConnectionSelectionEnabled(member.SelectionEnabled)
 		items = append(items, yangpub.Item{Path: base + "/administratively-enabled", Value: boolValue(selectionEnabled)})
 		if health, known := snap.Health[member.Name]; known {
 			items = append(
