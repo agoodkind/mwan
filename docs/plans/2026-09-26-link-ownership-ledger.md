@@ -5679,6 +5679,60 @@ termination, drop counters, PID absence and packet analysis remain pending.
 The capture does not enable gateway DNS policy. Both downstream observers
 remain active; no deploy is active.
 
+## Verify the published DNS release and preserved recovery inputs
+
+Release 202610011614-9b-7436c5c targets merged 7436c5c. Workflow
+36890439684 passed Publish and Verify. All four actual archives match the
+checksum manifest and GitHub API digests and pass exact-source attestations.
+Native ARM64 version reports clean 7436c5c; schema export passed.
+AMD64 executable SHA256 is
+d224ccc6f06ce36b64d6f584565e4256a7cf808b46cc6c1fcea7d1325f6d85a1.
+Both fresh environment renders and captured actual prior production JSON
+passed released network and firewall validators. The original production
+TOML parsed through the existing debug usage command with expected usage
+exit 1, without a loader error, daemon launch or debug operation.
+Initial unprivileged firewall checks failed on unshare permissions; isolated
+privileged checks passed. Owned containers were removed.
+Evidence is 20261001-acquired-dns-release-7436c5c/report.md.
+
+Capture 76291 returned exit 0 after explicit stop. Its tcpdump PID 3554
+is absent; counters report 81 captured packets and zero kernel drops.
+Independent packet review verifies complete preserved DUID and IAID,
+matching Renew/Reply exchanges, unchanged /56 delegation, T1 60, T2 120,
+preferred lifetime 180 and valid lifetime 240. Renew packets are
+60.002710 seconds apart. A link-local hop-255 RA includes RDNSS option 25
+with Cloudflare DNS and a 240-second lifetime. Neither Renew requests
+option 23, and neither Reply includes it. This is consistent with the
+old release's disabled DNS policy; it does not establish a server defect.
+Resolver publication and new-release DNS cutover acceptance remain pending.
+Evidence is 20261001-real-cutover/acquired-dns-simulator-capture/report.md.
+
+Read-only production capture preserved actual network.json and config.toml
+with local directory mode 0700 and file mode 0600. Local and remote hashes
+match. Their JSON and TOML hashes are respectively
+36ebd6ac4ce8f66c231ed5d06ddea0689531e3814797073d91985488131ff39f
+and 1e6912f7219eabbd9dfa2a18dccf742d17c2f3cc1933b69677ab24d574480217.
+The live executable still matches original d442ba1's observed hash.
+A private read-only runtime archive preserves the executable, environment
+and runtime inputs, networkd files, systemd units, sysctl inputs and schema.
+Its SHA256 is
+8844d3bb4aed0c155c912a6ff0af2839a6651ea2f23ddaf0c5ba200780605852.
+Confidential inputs are under 20261001-production-original-inputs and were
+not printed. No production service, owner, route or firewall changed.
+
+Automatic connection recovery restores captured inputs under the candidate
+executable. It does not restore the old executable or stack. Candidate
+validation of the exact original documents passed; independent verification
+of the original published binary and stack remains separate. The original
+binary extracted from the published archive matches the live hash. Do not
+claim full release reversal from document validation alone.
+
+The focused Configs candidate enables only Webpass's two DNS policy fields
+and pins the verified testbed release. Its implementer owns the two inventory
+files; a separate reviewer owns exact-head review. Candidate publication,
+merge, deployment and live DNS acceptance remain pending. AT&T/networkd and
+production ownership remain unchanged. MWAN-521 remains In Progress.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
