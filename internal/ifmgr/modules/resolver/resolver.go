@@ -3,6 +3,7 @@ package resolver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/netip"
@@ -99,6 +100,7 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	defer module.mu.Unlock()
 	intents := make([]resolved.Intent, 0, len(module.connections))
 	activeRA := map[string]bool{}
+	var reconcileErr error
 	for _, connection := range module.connections {
 		if connection.Owner != interfaceintent.OwnerMWAN || connection.Enabled != nil && !*connection.Enabled {
 			continue
@@ -113,7 +115,9 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 			if wantsRADNS(connection) {
 				id := connection.ID.String()
 				activeRA[id] = true
-				appendDNS(&intent, module.routerDNS(ctx, id, link, log))
+				servers, err := module.routerDNS(ctx, id, link, log)
+				reconcileErr = errors.Join(reconcileErr, err)
+				appendDNS(&intent, servers)
 			}
 		}
 		intents = append(intents, intent)
@@ -126,9 +130,9 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	}
 	if err := module.ownership.Reconcile(ctx, intents); err != nil {
 		log.WarnContext(ctx, "resolver application failed", "operation", "reconcile", "result", "failed")
-		return fmt.Errorf("apply resolver configuration: %w", err)
+		return errors.Join(reconcileErr, fmt.Errorf("apply resolver configuration: %w", err))
 	}
-	return nil
+	return reconcileErr
 }
 
 func (module *Module) leaseDNS(connection interfaceintent.Connection, name string) []netip.Addr {

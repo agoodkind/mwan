@@ -3,6 +3,7 @@ package resolver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/netip"
 	"slices"
@@ -22,14 +23,20 @@ type raSession struct {
 	done    chan struct{}
 	servers map[netip.Addr]map[netip.Addr]time.Time
 	clock   clock.Clock
+	failure error
 }
 
-func (module *Module) routerDNS(ctx context.Context, id string, link netif.OwnedLinkResult, log *slog.Logger) []netip.Addr {
+func (module *Module) routerDNS(ctx context.Context, id string, link netif.OwnedLinkResult, log *slog.Logger) ([]netip.Addr, error) {
 	session := module.ra[id]
 	start := session == nil
+	var failure error
 	if session != nil {
 		select {
 		case <-session.done:
+			session.mu.Lock()
+			failure = session.failure
+			session.failure = nil
+			session.mu.Unlock()
 			session.cancel()
 			start = true
 		default:
@@ -41,23 +48,32 @@ func (module *Module) routerDNS(ctx context.Context, id string, link netif.Owned
 		start = true
 	}
 	if session == nil {
-		session = &raSession{mu: sync.Mutex{}, name: link.ActualName, index: link.IfIndex, cancel: nil, done: nil, servers: map[netip.Addr]map[netip.Addr]time.Time{}, clock: module.clock}
+		session = &raSession{mu: sync.Mutex{}, name: link.ActualName, index: link.IfIndex, cancel: nil, done: nil, servers: map[netip.Addr]map[netip.Addr]time.Time{}, clock: module.clock, failure: nil}
 		module.ra[id] = session
 	}
 	if start {
 		ctx, cancel := context.WithCancel(ctx)
 		session.cancel = cancel
 		session.done = make(chan struct{})
+		done := session.done
 		go func() {
 			defer func() {
+				failed := false
 				if recovered := recover(); recovered != nil {
-					log.ErrorContext(ctx, "resolver RA observer panicked", "iface", session.name, "err", recovered)
+					session.mu.Lock()
+					session.failure = fmt.Errorf("resolver RA observer on %s panicked: %v", session.name, recovered)
+					session.mu.Unlock()
+					failed = true
+				}
+				close(done)
+				if failed && module.Env.RequestReconcile != nil {
+					module.Env.RequestReconcile("resolver RA observer failed")
 				}
 			}()
 			session.observe(ctx, log, module.Env.RequestReconcile)
 		}()
 	}
-	return session.current(module.clock.Now())
+	return session.current(module.clock.Now()), failure
 }
 
 func (session *raSession) current(now time.Time) []netip.Addr {
@@ -76,7 +92,6 @@ func (session *raSession) current(now time.Time) []netip.Addr {
 }
 
 func (session *raSession) observe(ctx context.Context, log *slog.Logger, request func(string)) {
-	defer close(session.done)
 	client, err := netif.NewRAClient(session.name, log)
 	if err != nil {
 		return
