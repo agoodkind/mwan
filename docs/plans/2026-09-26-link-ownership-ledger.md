@@ -6602,6 +6602,31 @@ identity, ownership and postboot recovery evidence. Root alone controls
 deployment and later faults or restarts. The full packet battery follows
 terminal deployment. Production remains unchanged.
 
+## Isolate simulator capture and prepare the unpublished production candidate
+
+Capture 36267 ended with SSH exit 255. Its unit was inactive and its terminal
+packet/drop counters were absent. The reviewer retained that result and
+the capture gap from 22:43:43 through 22:52:41 UTC. No traffic outage is
+inferred. The replacement uses its own control socket, local session 32435,
+unit mwan305-dns-forward-isolated-20261001-2252.service and PID 493693.
+Listening readiness passed at 22:52:41 UTC; its deadline is 01:52:41 UTC.
+Artifacts are under isolated-replacement in the renewed-capture directory.
+All four separate downstream packet streams continued at 22:53:52 UTC.
+
+Deployment 48179 remains active in package preparation. Pre-transfer
+uncached resolver queries passed at 22:51:03 UTC, before the replacement
+capture. They have no correlated packet proof and are not forward acceptance.
+The independent identity reviewer captured the unchanged reverse baseline.
+
+network_library_audit owns preparation of the existing unpublished
+codex/mwan-519-production-activation branch, including signed rebase onto
+fetched origin/main, compatible release pin and existing render/loader gates.
+Preserve the reviewed production identities, assignments, AT&T coexistence
+and private original inputs. Do not publish, push, merge or deploy that
+candidate before matching testbed acceptance and subsequent authorization.
+This preparation does not change live production. Root retains all live
+operations, ledger and ticket writes.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
