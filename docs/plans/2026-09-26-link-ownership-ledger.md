@@ -4878,6 +4878,32 @@ Independent source investigation must establish the mechanism before a fix.
 Keep MWAN-519 and MWAN-521 InProgress. Keep the next forward activation
 unpublished and production unchanged. Existing observers remain active.
 
+## Correct routing-event propagation before repeating cutover
+
+The actual journal records AT&T main-table IPv6 default removal at
+11:17:43.956270 UTC during the Webpass startup reload. Only Webpass generated
+files changed; AT&T configured intent remained identical. The deleting process
+is not identified. Do not change main-route management without that evidence.
+Networkd restored the main default at 11:19:28.302122. MWAN restored table 100
+at 11:19:28.328583. Steering did not reconcile until 11:19:50.371924.
+The observed periodic interval is 60 seconds.
+
+Exact merged source 2df8faa confirms that default-route monitor events
+reconcile routing without requesting a complete daemon pass. Routing state
+publication increments its generation, but steering and the BGP readiness
+socket retain results from the last complete pass. Same-pass firewall apply
+and inspection failures already block advertisements. This is a notification
+defect, not an absent firewall check.
+
+The focused correction preserves immediate routing repair and requests a
+complete pass for main-table default changes. Managed provider-table writes
+must not create repeated complete passes. Reuse the existing real daemon
+selection regression and public readiness socket. Do not add a framework.
+Then review, merge, verify the published release, and repeat actual forward
+and reverse testbed cutovers. Require backup delivery while a primary route
+is unavailable. A successful component regression does not prove cutover.
+AT&T and networkd remain active; production is unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
