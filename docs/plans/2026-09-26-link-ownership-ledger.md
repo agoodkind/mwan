@@ -3290,6 +3290,25 @@ remain under implementation in separate MWAN worktrees. Forward and reverse
 transfer must retain AT&T under networkd. Shared daemon deployment and
 production acceptance remain pending.
 
+### Diagnose simulator SSH reload and prepare repair
+
+The second unchanged merged management play failed after CT 900's SSH reload.
+Its recap was ok=35, changed=5, unreachable=0, failed=1, skipped=4.
+The reload returned zero; the following active check returned code 3 and
+failed. The guest journal records sshd receiving SIGHUP, reporting Cannot bind
+any address, and exiting with status 255. The socket remained active, and
+systemd owned port 22. The service unit prevents restart after status 255.
+The [diagnosis](/Users/agoodkind/.local/state/mwan305/20261001-npt-deploy-acceptance/management-ssh-reload-failure.md)
+retains actual unit, journal, configuration, listener, and command results.
+These observations do not establish the cause of the earlier install exit 129.
+
+Configs PR #590 configures service-only SSH on the testbed simulators.
+Root review found an unquoted comma in the existing service properties
+argument. That argument must remain one YAML string. The listener assertion
+must verify port 22 and the actual sshd process. Both changes remain under
+review. Complete guest provisioning, authenticated SSH, and unchanged-play
+idempotency remain pending. No shared gateway or production deployment ran.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
