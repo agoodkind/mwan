@@ -4539,6 +4539,44 @@ Do not run its route-deletion and daemon-restart operations during deployment.
 Forward acquisition, reversal, reboot, and production readiness remain
 unaccepted. Cutover remains the current workstream.
 
+## Verify source release and observe replacement acquisition
+
+Deployment 80192 passed both corrected source acquisition checks against the
+live networkd connection. Excluded AT&T mapped HTTP, NPT edge, and both
+downstream guests' IPv4 and IPv6 packet checks passed. The source-exclusion
+restart selected backup from approximately 09:36:20.863 to 09:36:36.516 UTC.
+All ten observed channels continued replying during that interval.
+
+The external-owner restart selected backup from approximately 09:39:12.570
+to 09:39:52.700 UTC. All ten channels continued replying. The deployment
+then passed the actual previous-owner release check and recorded networkd
+address and route removal checks. It installed the excluded MWAN replacement
+and restarted the daemon. Backup selection during replacement startup lasted
+approximately 09:45:58.219 to 09:46:15.473 UTC without new observed misses.
+
+Live operational export at 09:46 UTC reports Webpass owner mwan, connection
+and family application ready, valid IPv4 static/mapped assignments, and a
+fresh DHCPv6 delegated prefix 3d06:bad:b01:2200::/56 acquired at
+09:46:00.228034 UTC. Both families report routing and translation ready;
+IPv6 translation uses 3d06:bad:b01:2200::/60. Preserve the full export in
+real-cutover/mwan-acquisition-0946-operational.json. The play still needs its
+replacement acquisition and downstream packet verdicts before selection.
+
+Capture 54027 finished strictly at 09:44:05.468422 UTC with status 0. Transit
+captured 23492 packets, AT&T 15856, and Webpass 9526. All kernel drop counts
+are zero and all three recorded process-absence checks returned 0.
+Continuation capture 4133 was active on all three interfaces by
+09:43:22.648812 UTC, before stopping the first window. Its output is
+webpass-pd-acquisition-capture, stop file pd-acquisition-capture.stop, and
+phase file pd-unlocked-capture-phase.txt under real-cutover. Its 1800-second
+deadline is approximately 10:13 UTC. Stop it strictly before planned reboot.
+
+Original observer sessions 99158 and 76919 ended naturally around 09:46:35
+UTC. Affinity observer 12936 and renewed observers 18926 and 5808 remain
+active with fresh replies in both families at 09:47 UTC. Do not interpret
+the original windows' terminal timestamps as an outage. No production
+activation occurred. PR #599 remains unmerged until forward acceptance.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
