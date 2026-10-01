@@ -4935,6 +4935,37 @@ would exceed that window. Old observers 5808 and 18926 ended with status 1;
 preserve their earlier incomplete packet evidence. No deploy or capture is
 currently active. The recovered gateway remains healthy and networkd-owned.
 
+## Verify the release and restore current observation
+
+Release 202610011156-9a-3bfdc2a passed published workflow, archive checksum,
+GitHub digest, exact source/main attestation, native ARM64 version/schema,
+and six loader/firewall checks against the saved reversal, production, and
+repeated-forward documents. Its AMD64 archive SHA256 is
+a04b4029b615b5bfed66c40f6637da70e70fb4e703833c5a2924042be335362e.
+Its AMD64 executable SHA256 is
+731618adfeb37a6240a36ddbe77049731286cfc0fba36b300a66a3719e1fe587.
+The release verification report is retained under local state in
+20261001-route-event-release-3bfdc2a. Fresh activation rendering and actual
+cutover proof remain required.
+
+Observer 29152's guest SSH streams exited 255 at 11:54:18 UTC after
+181 replies per family. Its router sampler continued; the frozen ping files
+do not prove current packets or a network outage. The root stopped its exact
+Python process with SIGINT at 12:08:30 UTC, and the observer exited 130.
+Its report preserves the incomplete interval and absent final packet counts.
+The stream exits coincided with completion of observer 21087 using a shared
+SSH control path. New observers use distinct control paths per window.
+
+Guest 225 observer 92566 and guest 226 observer 56392 now record fresh
+IPv4 and IPv6 replies under route-event-fix-isolated-client225 and
+route-event-fix-isolated-client226. The existing guest 226 observer 1403
+continues its prior interval until approximately 12:29 UTC. No deployment or
+capture is active. The configuration implementer is combining the verified
+testbed release pin with the prepared repeated-forward activation. Independent
+review follows its exact signed commit. Actual testbed forward and reverse
+cutovers, restart, reboot, backup delivery, balancing, and failure history
+remain the acceptance requirements. Production remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
