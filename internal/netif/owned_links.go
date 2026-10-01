@@ -126,16 +126,9 @@ func NewOwnedLinkReconciler(statePath string) (*OwnedLinkReconciler, error) {
 		mu: sync.Mutex{}, statePath: statePath, bootID: strings.TrimSpace(string(bootID)),
 		state: ownedLinkState{Virtuals: make(map[string]virtualRecord), Memberships: make(map[string]membershipRecord)},
 	}
-	data, err := os.ReadFile(statePath)
-	if errors.Is(err, os.ErrNotExist) {
-		return r, nil
-	}
-	if err != nil {
+	if _, err := readOwnedJournal(statePath, &r.state); err != nil {
 		slog.Warn("owned link state read failed", "path", statePath, "err", err)
 		return nil, fmt.Errorf("read owned link state: %w", err)
-	}
-	if err := json.Unmarshal(data, &r.state); err != nil {
-		return nil, fmt.Errorf("decode owned link state: %w", err)
 	}
 	if r.state.Virtuals == nil {
 		r.state.Virtuals = make(map[string]virtualRecord)
