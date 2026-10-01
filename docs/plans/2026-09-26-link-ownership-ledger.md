@@ -5823,6 +5823,48 @@ review, signed commit, merge and testbed redeployment remain pending.
 Production activation and the preserved reverse candidate remain on hold.
 MWAN-521 remains In Progress; production has not changed.
 
+## Deploy the shared resolver journal repair
+
+Configs PR 611 merged as 3aef4df55005e34b87a81bb093736330857aac02
+at 17:06:12 UTC. Signed source ddd5ca404b72bde46ad1d5ab042aed913fa16489
+passed signature and raw-header verification. Independent final diff review
+had no actionable findings. Both real environment renders change only the
+resolver journal section; both network documents remain byte-identical.
+Released 7436c5c constructs the resolver in both isolated renders. Their
+later missing networkd directory failure is separate from constructor proof.
+All three active required checks passed and review threads were empty.
+Graphite AI review passed. PR attachment again failed at the existing
+100-identity limit without removing another attachment.
+
+Root advanced clean owning Configs main and started handle 76828 at
+17:07:34 UTC: ./configsctl deploy deploy-mwan --limit mwan_suburban_servers.
+Its log is deploy-mwan-20261001T170734Z.log under configs-runs.
+Existing observers 97200 and 98250 continue through about 18:30 UTC.
+Before this retry both providers reported healthy, both-family probes passed,
+and current downstream replies used the primary router. Recovered Webpass
+DNS was empty; management DNS/domain was 3d06:bad:b01:210::1 and
+home.goodkind.io.
+
+Root owns capture handle 52025 and unit
+mwan305-resolver-repair-20261001-1707.service. Listening readiness and
+/usr/bin/tcpdump identity passed for PID 9266. Stop that exact unit before
+the play schedules reboot; retain terminal counters and PID absence.
+Its packet directory is resolver-journal-repair-preboot-capture under
+20261001-real-cutover. Deployment, applied DNS, renewal, uncached query,
+restart, reboot and repaired reverse/forward acceptance remain pending.
+
+The prior failed phase's closed review through 17:00 UTC confirms only the
+preactivation guest 225 IPv4 miss. Backup/recovery added no missing reply
+sequences; all 5,591 route queries succeeded. Packet review confirms preserved
+DUID/IAID/PD, 23 Renew and two Rebind requests with 25 matching Replies,
+and 24 RDNSS advertisements. DHCP requests contain only ORO 82, Replies
+omit option 23, and the capture contains no port 53 traffic. Advertising
+and prior-policy lease recovery passed; acquired DNS publication did not.
+
+The reverse candidate is being reconciled onto merged main without
+publication or live execution. The production draft remains unpublished.
+MWAN-521 and MWAN-227 remain In Progress. Production remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
