@@ -1,10 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/gob"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/netip"
@@ -97,14 +98,15 @@ func readLegacyMappedTransition(ctx context.Context, log *slog.Logger, cfg *conf
 			if err != nil {
 				return nil, err
 			}
-			intent, err := json.Marshal(struct {
+			intent := struct {
 				Connection  interfaceintent.Connection `json:"connection"`
 				Translation config.IPv4Translation     `json:"translation"`
-			}{connection, *wan.TranslationV4})
-			if err != nil {
+			}{connection, *wan.TranslationV4}
+			var intentBytes bytes.Buffer
+			if err := gob.NewEncoder(&intentBytes).Encode(intent); err != nil {
 				return nil, netif.NewLegacyNPTError("marshal legacy mapping intent", err)
 			}
-			digest := sha256.Sum256(intent)
+			digest := sha256.Sum256(intentBytes.Bytes())
 			observed, err := netif.ReadLegacyMappedAddresses(connection, prefixes, hex.EncodeToString(digest[:]))
 			if err != nil {
 				return nil, netif.NewLegacyNPTError("observe legacy mapped addresses", err)
