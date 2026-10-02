@@ -9531,6 +9531,31 @@ PR 177 source cleanup completed the remote lease deletion with terminal exit
 zero. The merged source worktree and local branch were already removed.
 Only its compact verification catalog remains. Production is unchanged.
 
+The next approved reverse slice began at 22:21:01 UTC. Root alone controls
+live Configs transport 94824 from clean detached merged revision
+269c2f9183732f34dbd21fe593c382f799d821dc and release
+202610022136-ad-b8b7f52. Its reviewed Webpass reverse input restores networkd
+ownership without changing the other interfaces. The input SHA256 is
+25305763889ef1029eba8fe4622bf21af40e20ddaf8db65691d93f7f1bc7c9bb;
+the target network hash is
+a95dda2e294635dd78c1cbd697f0687718371a3e67c33d8d95346a4acc3b6115.
+All eight independent application observations passed before initiation.
+The controller verified the matching B8 hypervisor gate and watchdog, prepared
+the exact snapshot and started operation arming. It is still active; reverse
+acceptance and corrected family-state publication are unperformed.
+
+MWAN-546 tracks the confirmed capture diagnostics defect under MWAN-305 and
+is In Progress. PR 178 contains signed commit
+2e15cec71e94007ca4eb94a489be52f8bbaeaf34 in the exclusively assigned three
+observation files. Root inspected the diff and full capture/distribution
+sources. Independent review and required runtime gates remain pending.
+The patch preserves current verdict semantics and reports each finalized
+capture's native statistics and errors. It does not establish the underlying
+cohort failure cause. No new filters, infrastructure or calibration changes
+were added. Active artifacts remain on mounted Chaos Storage; controller
+storage uses approximately 1.1 GiB and distribution storage 18 MiB. Owned
+signature verification scratch files were deleted after the ledger push.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
