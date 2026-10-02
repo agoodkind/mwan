@@ -7817,6 +7817,42 @@ do not increase the general failure threshold. The runtime policy lane owns
 that focused correction. The distribution fixture now proves IPv4 requests
 and calibrated counts; IPv6 remains under actual neighbor-readiness diagnosis.
 
+At 08:41 UTC on October 2, PR171 merged signed 815f16c as
+d632bfc26400f6ee29cf60070a7bad55d5bea8eb. The controller inspected the
+final implementation and public runtime changes, verified all three branch
+commit signatures and raw signature headers, and checked the active merge
+rules and empty review threads. All required checks passed. The real
+TestDeployOperationWatchRuntime passed in 45.34 seconds. Its selected-provider
+case retained failed health observations during the exact live lease and
+started recovery after expiration. Other-provider, downstream and default
+failures triggered recovery during the lease. Commitment and mutation
+readiness remain strict. Physical snapshot recovery remains unperformed.
+The optional vulnerability job failed after runner shutdown and was retried;
+that failure did not report a vulnerability. Automatic PR review exhausted
+its quota and did not provide review findings.
+
+Independent review of Configs PR627 at 87e8667d found two blocking source
+defects. Six sequential module installations permit 720 seconds of remote
+work under a 660-second lease. The host observer policy verifies restart
+completion without verifying the active daemon, repaired source route or
+application reply. The implementation lane owns both corrections. Two data
+checks also require removed legacy deployment commands in an obsolete static
+test. Preparation remains undeployed, and whole-provider handover remains
+explicitly blocked until its separate integration passes.
+
+The distribution fixture completed both families' requests. Its aggregate
+run then exposed a capture defect: userspace processing time can exclude a
+valid request processed after its reply. The repair uses existing packet
+socket APIs and kernel ancillary timestamps without changing request windows,
+retries or calibration bounds. Final aggregate evidence is pending. Production
+remains unchanged under conditional authorization after all required proof.
+
+The controller removed PR170's clean worktree and exact local and remote
+branch after verifying its sole change was included in main. Superseded raw
+fixture logs were deleted after their outcomes were recorded. Required local
+controller caches remain on Chaos Storage. The external volume has about
+1.0 TiB available; the internal filesystem has about 663 GiB available.
+
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
 2. Record independent review and its reviewed commit separately from local checks.
 3. State the observable behavior demonstrated and any missing acceptance.
