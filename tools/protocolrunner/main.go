@@ -212,7 +212,7 @@ func startContainer(ctx context.Context, opts options, name string) (failure err
 	return dockerCommand(ctx, arguments...)
 }
 
-func waitSystemd(ctx context.Context, container string) (failure error) {
+func waitSystemd(ctx context.Context, container string, selected lane) (failure error) {
 	defer func() {
 		if failure != nil {
 			slog.Error("Systemd bus readiness failed", "container", container, "error", failure)
@@ -223,6 +223,9 @@ func waitSystemd(ctx context.Context, container string) (failure error) {
 	var lastError error
 	for {
 		lastError = dockerCommand(deadline, "exec", container, "systemctl", "show", "--property=Version", "--value")
+		if lastError == nil && selected == laneOriginalUpgrade {
+			lastError = dockerCommand(deadline, "exec", container, "busctl", "--system", "--no-pager", "list")
+		}
 		if lastError == nil {
 			return nil
 		}
@@ -352,7 +355,7 @@ func run(ctx context.Context, opts options) (result error) {
 		return err
 	}
 	if opts.lane != laneNamespace {
-		if err := waitSystemd(ctx, container); err != nil {
+		if err := waitSystemd(ctx, container, opts.lane); err != nil {
 			return err
 		}
 	}
