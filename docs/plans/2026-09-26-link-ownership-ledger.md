@@ -8638,6 +8638,49 @@ repair2 firewall/routes snapshots were collected after candidate startup,
 despite their stopped filename suffix. Retain these unique raw captures and
 startup journal until correction and recovery results are durable.
 
+### Restore the original release after the measured preparation failure
+
+The native watcher initiated recovery at 14:19:59 UTC. Restoration proceeded
+after the original lease expired at 14:37:30. Exact operation status became
+Recovered at 14:39:29.595031005 UTC, with no lease and eight fresh passing
+application checks. Root separately verified running WAN PID 318 and both
+installed/proc executable digests equal the original 1c79542f6f9e56fc digest.
+Network digest acfbf1dc71c43206bd43fbd9fa3d4291efad6d9eaa9661f4316c24d59c4b3b53
+and runtime digest a3786fa6c66c9b816ab2c5f2c70701c8c321162a087cfcc5974d56b527026f24
+match the exact baseline. Machine ID remains bdd916f95e3e44568e6a5d3096cf2dea.
+New boot ID is 0b5a165a-f3b1-45dc-a34e-d5354c0ec7ac. Actual version reports
+clean d442ba1. Controller 54453 exited 1 after coordinated recovery, with
+709 ok, 82 changed, one failed, one rescued and zero unreachable tasks.
+The controller rescue also invoked the same recovery operation. Deliberate
+controller-disconnection acceptance remains unperformed.
+
+Configs PR639 merged as bfdcd66a561a5891977c0ece21ad1b83f34a526b at
+14:40:46 UTC. Exact signed source 9939879d stages candidate installation before
+stopping the captured producer, verifies its original executable/network/runtime
+bytes and fresh applications, and recognizes exact issued systemd completion
+through its public success or explicit failure format. Missing/wrong jobs and
+timeouts remain fenced. Root independently inspected the complete six-file
+patch and installer/activation sources. Required checks passed. Two bot findings
+incorrectly treated distinct terminal result formats as a duplicated shared job
+identity check; root answered with the native result and regression evidence
+and resolved both. A fresh query confirmed zero unresolved threads before merge.
+Fourteen existing real Ansible cases and scoped lint/RuboCop/diff checks passed.
+Four added metadata reads account for 60 seconds in the full operation bound:
+activation 1370, maximum lease 1400, recovery 2000 and duration 8570 seconds.
+Physical acceptance remains pending. This patch does not fix the separate
+unadopted mapped IPv4 address.
+
+The four surviving repair2 capture producers stopped through exact main-process
+SIGINT. Their transports exited 0 and native units are inactive with PID 0.
+Webpass captured 36285 packets, AT&T 33026, edge 61665 and backup 24301;
+each reports zero kernel drops. Primary transit transport 2548 exited 255 when
+snapshot restoration disconnected SSH. It has no terminal tcpdump counters;
+do not claim zero drops for that capture. Retain the unique failure/recovery
+packet evidence and current observation output. The two superseded native
+rename-failure logs were purged after signed ledger 3c07ac6 was pushed.
+Source lanes now implement mapped IPv4 adoption and review the exact repair.
+Production remains unchanged under conditional authorization.
+
 Historical raw observations, terminal historical deployment and
 recovery logs, and the rejected preparation's baseline captures were purged
 after signed ledger d932a44 was pushed.
