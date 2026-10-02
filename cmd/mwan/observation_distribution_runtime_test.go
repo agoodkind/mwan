@@ -67,10 +67,10 @@ func runDistributionObservationRuntime(t *testing.T) {
 	configureRuntimeLink(t, "enmgmt0", []string{"203.0.113.1/24"})
 	setRuntimeNamespace(t, host)
 	setRuntimeLoopback(t)
-	transit := distributionGatewayBridge(t, host, gateway, "transit", "lantap", "enmwanbr0", []string{"192.0.2.1/29", "2001:db8:b01:fe::3/64"})
-	configureRuntimeLink(t, "transit", []string{"192.0.2.4/29", "192.0.2.5/29", "2001:db8:b01:fe::4/64", "2001:db8:b01:fe::5/64"})
+	transit := distributionGatewayBridge(t, host, gateway, "transit", "lantap", "enmwanbr0", []string{"192.0.2.1/29", "2001:db8:b01:fe::3/64", "2001:db8:b01:1::3/64"})
+	configureRuntimeLink(t, "transit", []string{"192.0.2.4/29", "192.0.2.5/29", "2001:db8:b01:1::4/64", "2001:db8:b01:1::5/64"})
 	addRuntimeDefault(t, "transit", "192.0.2.1")
-	addRuntimeDefault(t, "transit", "2001:db8:b01:fe::3")
+	addRuntimeDefault(t, "transit", "2001:db8:b01:1::3")
 	var providers []observation.ProviderIngress
 	for index, name := range []string{"enwebpass0", "enatt0"} {
 		bridge := fmt.Sprintf("provider%d", index)
@@ -147,14 +147,12 @@ func runDistributionObservationRuntime(t *testing.T) {
 			return
 		}
 		setRuntimeNamespace(t, gateway)
-		for _, arguments := range [][]string{{"nft", "list", "ruleset"}, {"ip", "-4", "route", "show", "table", "all"}, {"ip", "-6", "route", "show", "table", "all"}, {"ip", "rule", "show"}} {
-			output, err := exec.Command(arguments[0], arguments[1:]...).CombinedOutput()
-			t.Logf("gateway %v: %v: %s", arguments, err, output)
-		}
+		output, err := exec.Command("nft", "list", "ruleset").CombinedOutput()
+		t.Logf("gateway rules: %v: %s", err, output)
+		logDistributionRuntimeNetwork(t, "gateway")
 		t.Logf("gateway daemon: %s", runtimeLogTail(t, daemon, 50))
 		setRuntimeNamespace(t, host)
-		output, err := exec.Command("ip", "-4", "route", "get", "10.50.9.2", "from", "192.0.2.4").CombinedOutput()
-		t.Logf("downstream route: %v: %s", err, output)
+		logDistributionRuntimeNetwork(t, "downstream")
 	}()
 	deadline := time.Now().Add(10 * time.Second)
 	for {
@@ -174,7 +172,7 @@ func runDistributionObservationRuntime(t *testing.T) {
 		now := time.Now().UTC()
 		nextHop, target, sources := "192.0.2.1", "http://10.50.9.2:45001", []string{"192.0.2.4", "192.0.2.5"}
 		if family == observation.FamilyIPv6 {
-			nextHop, target, sources = "2001:db8:b01:fe::3", "http://[fd50:9::2]:45002", []string{"2001:db8:b01:fe::4", "2001:db8:b01:fe::5"}
+			nextHop, target, sources = "2001:db8:b01:1::3", "http://[fd50:9::2]:45002", []string{"2001:db8:b01:1::4", "2001:db8:b01:1::5"}
 		}
 		var requests []observation.CheckSpec
 		for index, source := range sources {
@@ -229,6 +227,26 @@ func runDistributionObservationRuntime(t *testing.T) {
 		missing = runDistributionRuntimeProcess(t, binary, spec, paths)
 		if missing.Availability != observation.AvailabilityMissing || missing.Outcome != observation.OutcomeUnknown {
 			t.Fatalf("missing calibration reported health: %+v", missing)
+		}
+	}
+}
+
+func logDistributionRuntimeNetwork(t *testing.T, scope string) {
+	t.Helper()
+	for _, family := range []int{unix.AF_INET, unix.AF_INET6} {
+		routes, routeError := netlink.RouteListFiltered(family, &netlink.Route{Table: unix.RT_TABLE_UNSPEC}, netlink.RT_FILTER_TABLE)
+		rules, ruleError := netlink.RuleList(family)
+		neighbors, neighborError := netlink.NeighList(0, family)
+		t.Logf("%s family %d routes=%+v error=%v rules=%+v error=%v neighbors=%+v error=%v", scope, family, routes, routeError, rules, ruleError, neighbors, neighborError)
+	}
+	links, err := netlink.LinkList()
+	t.Logf("%s links: %v", scope, err)
+	for _, link := range links {
+		addresses, err := netlink.AddrList(link, unix.AF_UNSPEC)
+		t.Logf("%s link %s index %d addresses=%+v error=%v", scope, link.Attrs().Name, link.Attrs().Index, addresses, err)
+		for _, setting := range []string{"rp_filter", "forwarding"} {
+			value, err := os.ReadFile(filepath.Join("/proc/sys/net/ipv4/conf", link.Attrs().Name, setting))
+			t.Logf("%s %s %s: %s error=%v", scope, link.Attrs().Name, setting, bytes.TrimSpace(value), err)
 		}
 	}
 }
