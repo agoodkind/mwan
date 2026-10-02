@@ -5,7 +5,9 @@ import (
 	"log/slog"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/vishvananda/netlink"
@@ -25,25 +27,20 @@ type NPTEdgeRequest struct {
 
 // NPTEdgeRecord records the verified link identity for one scoped provider edge.
 type NPTEdgeRecord struct {
-	ConnectionID   connectionid.ID
-	Interface      string
-	InterfaceIndex int
-	LinkIdentity   string
-	Prefix         netip.Prefix
+	ConnectionID   connectionid.ID `json:"connection_id"`
+	Interface      string          `json:"interface"`
+	InterfaceIndex int             `json:"interface_index"`
+	LinkIdentity   string          `json:"link_identity"`
+	Prefix         netip.Prefix    `json:"prefix"`
 }
 
 // ObserveLegacyLink verifies configured identity without applying link settings.
-func ObserveLegacyLink(connection interfaceintent.Connection) (result netlink.Link, resultErr error) {
-	defer func() {
-		if resultErr != nil {
-			slog.Warn("legacy link identity inspection failed", "connection", connection.ID, "err", resultErr)
-		}
-	}()
+func ObserveLegacyLink(connection interfaceintent.Connection) (netlink.Link, error) {
 	link, err := netlink.LinkByName(connection.Name)
 	if err != nil {
-		return nil, fmt.Errorf("observe legacy link %s: %w", connection.Name, err)
+		return nil, NewLegacyNPTError("observe legacy link "+connection.Name, err)
 	}
-	if connection.Link != nil && (connection.Link.Kind == interfaceintent.KindPhysical || connection.Link.Kind == "") {
+	if connection.Link != nil && (connection.Link.Kind == interfaceintent.KindPhysical || connection.Link.Kind == "") && connection.Link.Match.HardwareAddress != "" {
 		matched, err := physicalLink(connection)
 		if err != nil {
 			return nil, err
@@ -51,6 +48,22 @@ func ObserveLegacyLink(connection interfaceintent.Connection) (result netlink.Li
 		if matched == nil || matched.Attrs().Index != link.Attrs().Index || matched.Attrs().Name != connection.Name {
 			return nil, fmt.Errorf("legacy connection %s permanent MAC does not match configured name %s", connection.ID, connection.Name)
 		}
+	}
+	if connection.Link != nil && connection.Link.Match.Driver != "" {
+		driver := link.Type()
+		if driver != "veth" {
+			path, err := filepath.EvalSymlinks(filepath.Join("/sys/class/net", connection.Name, "device/driver"))
+			if err != nil {
+				return nil, NewLegacyNPTError(fmt.Sprintf("observe legacy driver for %s", connection.ID), err)
+			}
+			driver = filepath.Base(path)
+		}
+		if driver != connection.Link.Match.Driver {
+			return nil, fmt.Errorf("legacy connection %s driver does not match", connection.ID)
+		}
+	}
+	if connection.Link != nil && connection.Link.HardwareAddress != "" && !strings.EqualFold(link.Attrs().HardwareAddr.String(), connection.Link.HardwareAddress) {
+		return nil, fmt.Errorf("legacy connection %s configured MAC does not match", connection.ID)
 	}
 	return link, nil
 }
