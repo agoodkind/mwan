@@ -8869,6 +8869,43 @@ Primary transit capture 83921 exited 255 during restoration and has no
 terminal capture counters. Provider captures remain active. Production is
 unchanged. Retry only after the focused fix merges.
 
+### Recover the deployment checkpoint failure
+
+PR642 merged as 7b72dce116edada9261a9aa4f92c8265208875ec at 16:37:15 UTC.
+The configsctl testbed deployment used that clean merged revision and the
+original provider ownership inputs. Controller 22001 failed before candidate
+installation, legacy capture or daemon replacement. The delegated status
+checkpoint exceeded its five-second Ansible task timeout. Physical execution
+of the executable hash correction remains unperformed.
+
+Operation 20261002-093845-deploy-959851, generation
+9503610f-ae69-4a26-8294-32de850b792b, completed coordinated snapshot recovery.
+The cloudflared-configuration lease expired at 16:49:10.919848837 UTC.
+The terminal operation state is recovered with eight passing application
+results through 16:51:56 UTC. Controller 22001 exited 1 with 182 successful
+tasks, one failure and one rescued block. The independently read executable,
+network and runtime hashes match the exact baseline. The WAN writer is active
+with PID 318 and boot 7c3f2c80-10e1-40e9-8949-6869036a964f.
+
+Both downstream guests and both families passed during recovery from 16:49
+to 16:51 UTC. Four inbound checks failed. Their first failed samples were
+between 16:49:26 and 16:49:28 UTC. Their first recovered samples were between
+16:51:04 and 16:51:05 UTC. Each IPv4 inbound check recorded eight failures.
+Each IPv6 check recorded six failures. These sample times do not establish
+exact continuous outage duration. Native OPNsense reads showed both primary
+peers disconnected and both backup defaults selected at 16:50:42 UTC.
+Both primary peers and preferred defaults were restored by 16:51:54 UTC.
+This proves snapshot recovery and native route failover. Repaired preparation
+and ownership transfer remain unperformed.
+
+The hypervisor has eight CPUs. Observed load averages were about 25.
+The vmstat samples reported 30 to 31 percent disk wait during recovery.
+Independent SSH plus native status reads completed in 1.13 and 1.23 seconds.
+The actual timeout cause remains unconfirmed. Another retry requires diagnosis
+of the failed checkpoint. The current controller log, application observations
+and packet evidence remain on Chaos Storage for diagnosis. Production is
+unchanged.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
