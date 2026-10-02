@@ -275,7 +275,7 @@ func logDistributionRuntimeNetwork(t *testing.T, scope string) {
 func distributionGatewayBridge(t *testing.T, host, gateway netns.NsHandle, bridgeName, portName, gatewayName string, addresses []string) observation.ProviderIngress {
 	t.Helper()
 	setRuntimeNamespace(t, host)
-	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: bridgeName}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: bridgeName}, MulticastSnooping: new(false)}); err != nil {
 		t.Fatal(err)
 	}
 	configureRuntimeLink(t, bridgeName, nil)
