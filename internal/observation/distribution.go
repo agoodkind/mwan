@@ -53,7 +53,8 @@ func validateDistributionRequest(request CheckSpec, family Family) error {
 	return Validate(request)
 }
 
-func (executor *Executor) distribution(ctx context.Context, spec CheckSpec, result Result) Result {
+func (executor *Executor) distribution(ctx context.Context, spec CheckSpec, initial Result) (result Result) {
+	result = initial
 	plan := spec.DistributionPlan
 	if !distributionCalibrated(spec) {
 		result.Availability, result.Reason = AvailabilityMissing, "distribution lacks calibration for the exact sample count, hash policy and eligible provider tiers and weights"
@@ -79,9 +80,8 @@ func (executor *Executor) distribution(ctx context.Context, spec CheckSpec, resu
 	var captures []*ingressCapture
 	var transitCaptures []*ingressCapture
 	defer func() {
-		for _, capture := range append(captures, transitCaptures...) {
-			_ = capture.finish()
-		}
+		finalizeCaptureEvidence(captures, result.DistributionCaptures)
+		finalizeCaptureEvidence(transitCaptures, result.TransitCaptures)
 	}()
 	var captureError error
 	captures, result.DistributionCaptures, captureError = executor.openDistributionCaptures(ctx, spec, providers, notify)
@@ -132,6 +132,13 @@ func (executor *Executor) distribution(ctx context.Context, spec CheckSpec, resu
 	}
 	result.Outcome, result.Reason = OutcomePass, "actual ingress samples satisfy calibrated provider shares"
 	return result
+}
+
+func finalizeCaptureEvidence(captures []*ingressCapture, evidence []CaptureReady) {
+	for index, capture := range captures {
+		_ = capture.finish()
+		evidence[index] = capture.ready
+	}
 }
 
 func (executor *Executor) openDistributionCaptures(ctx context.Context, spec CheckSpec, mappings []ProviderIngress, notify chan<- struct{}) ([]*ingressCapture, []CaptureReady, error) {
