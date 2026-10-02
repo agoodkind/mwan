@@ -7693,7 +7693,7 @@ temporary deployment script after recording the result. Runtime cache remains
 on Chaos Storage for the next approved deployment phase. Production was not
 changed.
 
-## Record future implementation results
+## Record resumed repair decisions
 
 The operator authorized production after complete defect repair. Require the
 same repaired merged release and configuration to pass the required testbed
@@ -7720,6 +7720,48 @@ downstream application observations for each family before arming. Existing
 IPv6 edge pings do not prove mapped application replies. Production observer
 transport remains under source review; do not substitute hypervisor outbound
 success for a downstream client or external inbound reply.
+
+At 07:02 UTC on October 2, PR169 merged signed revision 175e53fb as
+102b2e1. Every required check passed and no review thread remained open.
+The existing upgrade fixture already supplied driver and current MAC;
+the redundant fixture edit was removed. Release
+202610020702-a3-102b2e1 is published. This release is not deployed.
+The clean observer worktree and its contained local and remote branch were
+removed. Trunk was updated from its own checkout to 102b2e1.
+
+Recovery PR168 now uses d5215a9. Independent review passed its commit fence,
+single final command error handler and CI step separation. An unchanged
+kernel-policy namespace case failed before any deployment operation. That
+failure prevented the previous CI job from executing its systemd cases.
+The updated job runs systemd acceptance independently and preserves both
+failure verdicts. Current runtime proof remains pending.
+
+Production PF readback permits SSH on WAN port 22 for both families.
+Port 1406 accepts only Cloudflare source tables; neither public OOB source
+matches those tables. Direct 1406 timeouts from OOB do not prove an outage.
+The existing SSH banner boundary provides an allowed inbound observation
+alongside separate Cloudflare pool health observations.
+
+Both Webpass and AT&T IPv6 public SSH endpoints returned
+SSH-2.0-OpenSSH_10.5 FreeBSD-openssh-portable-10.5.p1_1,1 through the physical
+mbrains interface. Webpass IPv4 returned that banner under the existing
+cloudflared-oob user. IPv4 routing selects the OOB gateway for UID 997;
+root lacks an equivalent source rule. The Configs integration will declare
+and verify an exact IPv4 source rule through the existing host policy module.
+These inbound observations do not replace downstream guest acceptance.
+
+The testbed simulator route from 3d06:bad:b01:200::90 to the Webpass edge
+uses eth0 and the primary gateway's link-local next hop. Its current HTTP
+request still times out. Repaired physical mapping, preparation, transfer,
+recovery and complete acceptance remain unperformed. Production received
+only read-only inspection and outbound probe requests.
+
+The controller deleted its temporary signature verifier after checking all
+183 ledger branch commits and raw signature headers. No local Docker
+container with an MWAN name remains. Required controller caches remain
+approximately 146 MiB on Chaos Storage.
+
+## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
 2. Record independent review and its reviewed commit separately from local checks.
