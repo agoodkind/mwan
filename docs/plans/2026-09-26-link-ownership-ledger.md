@@ -9119,6 +9119,30 @@ health establish eligibility; lower tier alone does not establish false
 eligibility. Refresh all metadata after deployment before executing cohorts.
 No cohort or production operation has run.
 
+### Execute the merged Webpass forward transfer
+
+Configs PR 649 merged at 19:07:51 UTC as
+f577d8948eb8c44edfcf5773ea774be0f7d3d9f3. The corrected public render and all
+required checks passed. Only Webpass ownership, typed acquisition settings,
+device matching and removal of its obsolete link-files field changed.
+
+Root started forward controller 36819 at 19:10:21 UTC from that clean merged
+revision with release 202610021844-ac-f4fbb85. The path-only override uses
+Chaos Storage for release staging and rendered network output. All unrelated
+providers, AT&T and management/transit remain under their existing owners.
+The controller is active; forward transfer acceptance remains unperformed.
+Production is unchanged.
+
+Three bounded captures started at 19:09 UTC on Webpass900, AT&T901 and
+primary213. Root verified each unit, PID and invocation, then independently
+read /usr/bin/tcpdump as each actual executable. Their filters include mapping,
+HTTPS, ICMPv6 and DHCPv6 traffic. The artifact catalog records exact identities.
+Observer 41403 and the distribution lane's four guest ping streams remain
+active. A downstream-A IPv4 application request timed out at 19:13:09.716 UTC
+and passed at 19:13:16.846 UTC. Sequential ICMP replies continued during this
+interval; one reply took 1334 milliseconds. This HTTP sample does not establish
+continuous packet loss.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
