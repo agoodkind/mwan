@@ -7763,6 +7763,21 @@ approximately 146 MiB on Chaos Storage.
 
 ## Record future implementation results
 
+At 07:22 UTC on October 2, recovery PR168 merged d5215a9 as
+2cbfdd99. Every required merge check passed and all review threads were
+resolved. TestDeployOperationWatchRuntime passed in a real systemd container
+in 4.65 seconds. The unchanged kernel-policy namespace test still failed;
+the complete firewall suite did not pass. Release
+202610020723-a4-2cbfdd9 is published and is not deployed. The clean recovery
+worktree and its contained local and remote branch were removed.
+
+Production authorization remains conditional on complete defect repair and
+the required testbed results. Configs operation integration is unfinished.
+The distribution runtime still fails its first IPv4 request while resolving
+the simulated upstream neighbor. Its fixture requires further diagnosis;
+no production steering correction is established. Physical cutover,
+restoration and full downstream acceptance remain unperformed.
+
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
 2. Record independent review and its reviewed commit separately from local checks.
 3. State the observable behavior demonstrated and any missing acceptance.
