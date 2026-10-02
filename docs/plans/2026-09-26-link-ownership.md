@@ -13,7 +13,9 @@ document gaps and the remaining implementation gates.
 
 Complete MWAN-305 interface ownership through verified operational acceptance.
 Preserve AT&T and networkd coexistence, deployment authorization, original
-sources, backups, and recovery state. Deploy only clean merged revisions
+sources, production backups, and production recovery state. Testbed state is
+disposable; do not require backups or preservation before fault injection.
+Deploy only clean merged revisions
 through `./configsctl deploy`. Perform actual testbed forward and reverse
 cutovers, restart, reboot, failover, recovery, and repeated unchanged operation.
 Observe both downstream guests and both IP families. Verify acquisition,
@@ -60,7 +62,7 @@ testbed operations under one controller. Require the original-release upgrade,
 inbound failure recovery and independent health results before promotion.
 Reproduce the original-release upgrade on the physical testbed with existing
 legacy edges, an empty new ownership journal and the actual legacy device
-selector. Preserve the accepted testbed snapshot before changing that fixture.
+selector. Do not require preservation of the current testbed fixture.
 Require positive inbound and downstream results before accepting the repair.
 An omitted optional upgrade branch does not establish successful coverage.
 
