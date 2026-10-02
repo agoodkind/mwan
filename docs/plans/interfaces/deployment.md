@@ -156,6 +156,59 @@ forward and reverse commands, interruption limits, and recovery evidence.
 Missing executable acceptance commands block transfer until MWAN-522 supplies
 them. The operational plan defines the verified deployment entry points.
 
+## Correct legacy preparation and deployment recovery
+
+Complete MWAN-535 through MWAN-544 before another production preparation.
+Keep the recovered production pair unchanged during implementation and
+testbed validation. Require subsequent production authorization after proof.
+
+1. Stage the merged candidate separately from the installed original binary.
+   Capture legacy NPT evidence while the original producer runs, before
+   replacing its executable or configuration. Stop and verify that producer,
+   adopt the verified surviving objects through the candidate's one-shot
+   command, then start the ordinary service. Retain no boot-bound adoption
+   flag in its persistent service command.
+2. Require the dedicated original-release upgrade case to execute its original
+   binary and hash through real networkd and daemon startup. Keep ordinary
+   ownership cases independent. Require positive translation and inbound
+   replies after preparation; neither a skip nor translation removal passes.
+3. Verify the snapshot and baseline application replies, then arm one recovery
+   operation before the first network-affecting change. Register the exact
+   hypervisor watch unit, invocation and PID. Require fresh passing observations
+   and mutation-ready status before any leased write.
+4. Acquire a bounded mutation lease for each risky persistent-write group.
+   Preserve remote asynchronous jobs and reconnect verification. Release the
+   exact lease after completion. After reconnect, reject writes from an
+   operation that started recovery. Lease expiration alone does not prove that
+   remote jobs stopped; require VM stop and stopped-state readback before
+   snapshot restoration.
+5. Serialize automatic and manual recovery with the watchdog. Resume the exact
+   operation if its watch disappears or its deadline expires. Reject new
+   writes during recovery. Verify the restored machine, executable, network
+   and runtime pair, record its new boot identity, and require restored
+   application replies before success. Permit exact recovery retry after a
+   measured recovery failure without granting new deployment leases.
+6. Include required inbound replies independently of backup outbound success.
+   Use configured interruption and recovery policy. Keep failed target replies
+   separate from missing, stale or inaccessible observations. Commit only
+   after independently repeating the required checks and target identity.
+7. Run failed original-release preparation and repaired preparation on the
+   physical testbed with both downstream guests and both families observed.
+   Do not require testbed backups or preservation of its current state before
+   fault injection. The testbed has no production clients. Prove automatic recovery
+   after controller disconnection, successful commit, restart, reboot, reverse
+   transfer and failover. Keep historical and current attempts separate.
+
+Implement the shared typed observations and one-shot public command in MWAN.
+Keep downstream applications, inbound services, provider egress, ping paths,
+external public addresses and connection distribution independent. Refresh
+assignment and path evidence. Testbed outer NAT can give different simulated
+providers one public address; verify their distribution at simulator ingress.
+Use the maintained Cloudflare SDK for current pool health and its protected
+credential file. Preserve existing Cloudflare configuration during state
+adoption. Implement playbook orchestration in Configs without a new application
+harness or shell wrapper.
+
 ## 522-acceptance: Implement repeatable protocol and packet checks
 
 ### Prepare the simulator and harness changes

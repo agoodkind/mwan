@@ -7409,6 +7409,35 @@ deadline expires. A state pointer alone does not establish an active watch.
 The maintained Cloudflare SDK provides pool health reads; custom Cloudflare
 HTTP bindings are unnecessary.
 
+## Remove testbed preservation as a prerequisite
+
+The user explicitly authorized disposable testbed state. Testbed backups and
+preservation are not prerequisites for fault injection or cutover. Production
+VM113 remains outside this authorization. Do not spend additional time
+verifying or creating testbed backup archives.
+
+The already running VM213 backup finished successfully at 20:20:18 PDT.
+The testbed watchdog remains stopped; account for this state during recovery
+acceptance and restore its normal operation during testbed cleanup.
+
+Cloudflare HCL conversion merged in Configs PR622 as
+cafce87f9e640e0ca983ceaca231fb137ac55682. The ordinary Terraform files replace
+the JSON configuration. All eight imported resources produced no-op plan
+actions with identical planned values. Durable authorization and monitor
+failure acceptance remain unfinished.
+
+Both downstream guests passed three IPv4 and three IPv6 ping requests and
+interface-bound HTTPS using normal DNS. Both reported public IPv4
+174.166.126.204 and IPv6 2601:84:837c:a160:f66d:4ff:fe66:b6de.
+IPv4 SSH through Suburban succeeded; the earlier IPv6 SSH failure did not
+establish a downstream packet outage. These baseline checks do not establish
+cutover, inbound availability or load balancing.
+
+The verified original-release ARM64 upgrade case passed in 4.262 seconds.
+It proved generic NPT translation and edge DNAT before capture, exact receipt
+adoption after original shutdown, candidate translation and restart retention.
+Physical upgrade and automatic recovery remain unperformed.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
