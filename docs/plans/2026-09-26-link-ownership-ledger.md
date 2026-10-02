@@ -9822,6 +9822,22 @@ match the recorded recovery pair. Observer C remains active with its exact
 recorded PID and invocation. Root remains the sole deployment controller.
 Production remains unchanged. Candidate retry acceptance is unperformed.
 
+Root started the exact configsctl deployment at 23:33 UTC. Transport 49991
+owns the operation. The wrapper log and actual play log remain on Chaos
+Storage under resume-controller. Release preparation and verification passed;
+the play continues. The prior operation is recovered with no lease and its
+watch is inactive. Observer C, all four Ping E streams and native route
+observations remain independently assigned and active.
+
+The old baseline recorded Guest B IPv6 HTTP failure at 23:32:45.078031238
+and Guest A IPv6 timeout at 23:32:50.813223415 UTC, before deployment.
+Their next complete passes occurred at 23:32:54.063496657 and
+23:32:57.757266427. IPv6 selected backup in the 23:32:51 native sample
+and primary in the 23:33:46 sample. Exact event duration remains pending.
+Ping sequence matching identified delayed replies and separate unanswered
+sequences. These samples do not establish total client outage or a deployment
+cause. Preserve them independently of candidate acceptance.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
