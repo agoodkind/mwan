@@ -6949,6 +6949,53 @@ production authorization. Both downstream guests continue receiving actual
 IPv4 and IPv6 replies at 01:00 UTC. MWAN-398 and MWAN-522 remain In Progress
 while aggregate acceptance is unfinished; MWAN-521 remains Done.
 
+## Complete systemd acceptance and diagnose startup observation
+
+The complete corrected systemd aggregate passed all six required cases with
+zero failures and skips in 61.022 seconds. Session 94436 exited zero. Its
+source 8554258c is included in merged aeb4f926; the published daemon remains
+e90b629 with ARM64 hash a8863b95. Its owned container is absent. The source
+worktree, local branch and exact leased remote branch were removed after
+trunk containment and generated-cache inspection. The primary MWAN checkout
+is clean at aeb4f926. No new release was deployed.
+
+The unchanged namespace repeat exited one: 26 of 27 cases passed without
+skips in 362.513 seconds. The formerly failing mapped case passed unchanged
+in 12.59 seconds. Selection exclusion failed because its idle assertion
+counted legitimate startup reconciliation. The retained log proves initial
+reconciliation, initial kernel resync and one coalesced readiness request
+within 51 milliseconds. It does not prove a continuous loop or packet defect.
+Both initial family packet assertions passed; later exclusion checks did not
+run in that failed case. Its dedicated container is absent.
+
+dynamic_acceptance_discovery owns the existing idle helper correction in
+mwan-startup-idle-observation at base aeb4f926. Require positive stable startup
+within the original five-second initialization bound, then preserve the
+complete original five-second quiet window. Do not change production code,
+timers or acceptance deadlines. Focused released-daemon validation precedes
+independent review and integration. Do not repeat the broad aggregate before
+the measured fixture failure is corrected.
+
+Both downstream observers stopped after their exact remote ping processes
+received SIGINT and wrote complete terminal counts. Local sessions 75246
+and 2793 exited 130 deliberately. Exact local and guest process lists are
+empty. Guest 225 received 3380/3380 IPv4 and 3379/3380 IPv6 replies; guest
+226 received 3383/3383 in each family. IPv6 sequence 2904 was lost near
+00:57:42 UTC, outside the reboot and both restart windows. Its cause remains
+unlocalized. All four operation streams have zero missing probes during the
+second restart, maximum reply interval 1.017557 seconds, and observed backup
+then primary selection. Delayed bursts and failed SSH route observations
+remain separate from packet loss.
+
+Three unused fixtures were removed: mwan-transfer-procedure-521,
+mwan-downstream-harness-522 and mwan-networkd-resolver-systemd-521. Preserve
+unrelated Docker services and reusable testbed guests. Evidence is
+20261002-released-systemd-repeat/report.md,
+20261002-released-namespace-repeat/report.md and
+20261002-final-observer-review.md. The first production readiness audit
+accepts physical Webpass proof but requires disposition of the namespace
+failure before promotion. Production still requires subsequent authorization.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
