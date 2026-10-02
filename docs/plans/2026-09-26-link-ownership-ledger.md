@@ -8583,6 +8583,61 @@ start and this checkout must remain unchanged until the play terminates.
 Production authorization is conditional on complete defect repair and the
 required testbed proof. Production remains unchanged.
 
+This retry passed all four staged digest/version checks, native replacements,
+exact staging cleanup and final published executable version checks. The
+observer provisioning blocker did not recur. This result does not establish
+the earlier native signal cause.
+
+The actual operation is 20261002-065724-deploy-395316, generation
+13d76220-8991-47d3-b476-da9dddc65d6f. Its exact recovery snapshot is
+pre-deploy-20261002-065724-deploy-395316. At 14:03 UTC, status was armed with
+mutation_ready true and eight fresh passing application checks. The native
+watch has PID 721344 and invocation cdad2352cbfb46efbfeb5568ad4506a6;
+systemctl confirms that same active invocation. The baseline executable
+digest is the verified original d442 digest. The operation permits bounded
+preparation writes and verifies each lease before mutation. Its preparation
+deadline is 16:23:37 UTC and recovery timeout is 1940 seconds. No second
+controller or manual recovery may run concurrently. Current application
+observation 73905 and all five repair2 captures remain active on Chaos.
+
+The repaired attempt failed physical acceptance. Independent observations
+first report complete inbound timeouts at 14:17:08.288511360 UTC for Webpass
+IPv4, 14:17:08.984224205 for AT&T IPv4, 14:17:11.767226088 for AT&T IPv6,
+and 14:17:13.794207451 for Webpass IPv6. Both downstream guests and families
+continue passing. Native watch 721344 independently entered Recovering at
+14:19:59 UTC after three failing observation cycles. The controller's fresh
+post-start health gate rejected promotion at 14:20:07. Candidate WAN PID
+5003 is active with invocation 99a8f976693f4efdb2378a8bf615517c. Its actual
+startup journal reports rejection of original Webpass 10.241.204.3/32 without
+an ownership record at 14:19:42. IPv6 receipt capture/adoption succeeded;
+mapped IPv4 adoption is still missing. Do not claim that shorter staging
+alone repairs candidate forwarding.
+
+The adoption always block skipped lease release despite completed native
+stop and start jobs. Exact native artifacts j704717881737.4611 and
+j60985422854.4944 contain name, changed, status and state, without invocation.
+They return mwan-ifmgr@wan with stopped and started respectively. Their
+status dictionary records pre-operation state; it cannot prove post-operation
+PID or activity. The invocation-only completion predicate retains the lease
+until its actual 14:37:30 UTC expiry. Recovery is pending; do not manually
+release or claim restoration completed. The source lane corrects staging
+order and job-bound completion. The independent lane diagnoses mapped
+address adoption. Both lanes preserve strict health/watch/lease gates.
+
+The new captures prove actual asymmetric IPv4 replies for the first failure
+cohort. Webpass sends sequence 2573852462 from 10.241.204.1:57257 at
+14:16:58.278021 UTC; AT&T sends sequence 1589944835 from
+10.240.205.1:51277 at 14:16:58.974742. Primary transit contains each same
+request translated to 10.240.240.2:1406. The edge emits SYN-ACKs with
+matching acknowledgments to backup MAC bc:24:11:00:97:29. Backup veth216i1
+captures those actual replies. Provider captures contain repeated requests
+without replies for these cohorts. Native edge routes select 10.240.240.4.
+This closes the earlier gap about actual delivery of replies to the backup;
+it does not prove the backup's subsequent outbound disposition. The current
+repair2 firewall/routes snapshots were collected after candidate startup,
+despite their stopped filename suffix. Retain these unique raw captures and
+startup journal until correction and recovery results are durable.
+
 Historical raw observations, terminal historical deployment and
 recovery logs, and the rejected preparation's baseline captures were purged
 after signed ledger d932a44 was pushed.
