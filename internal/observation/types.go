@@ -98,29 +98,30 @@ type Endpoint struct {
 
 // CheckSpec defines a positive reply and the required observer and path.
 type CheckSpec struct {
-	ID                        string         `json:"id"`
-	Dimension                 Dimension      `json:"dimension"`
-	Operation                 Operation      `json:"operation"`
-	Observer                  Endpoint       `json:"observer"`
-	Family                    Family         `json:"family"`
-	ConnectionID              string         `json:"connection_id,omitempty"`
-	Router                    Router         `json:"router,omitempty"`
-	Interface                 string         `json:"interface,omitempty"`
-	Source                    netip.Addr     `json:"source,omitzero"`
-	Target                    string         `json:"target"`
-	TimeoutSeconds            int            `json:"timeout_seconds"`
-	MaxAgeSeconds             int            `json:"max_age_seconds"`
-	HTTPMethod                string         `json:"http_method,omitempty"`
-	ExpectedHTTPStatus        []int          `json:"expected_http_status,omitempty"`
-	ExpectedBody              string         `json:"expected_body,omitempty"`
-	ExpectedNextHop           netip.Addr     `json:"expected_next_hop,omitzero"`
-	DNSExpectedAddresses      []netip.Addr   `json:"dns_expected_addresses,omitempty"`
-	DNSServer                 string         `json:"dns_server,omitempty"`
-	ExpectedSSHVersion        string         `json:"expected_ssh_version,omitempty"`
-	CloudflarePoolID          string         `json:"cloudflare_pool_id,omitempty"`
-	CloudflareExpectedOrigins []string       `json:"cloudflare_expected_origins,omitempty"`
-	DistributionSamples       int            `json:"distribution_samples,omitempty"`
-	PublicIPPolicy            PublicIPPolicy `json:"public_ip_policy,omitempty"`
+	ID                        string            `json:"id"`
+	Dimension                 Dimension         `json:"dimension"`
+	Operation                 Operation         `json:"operation"`
+	Observer                  Endpoint          `json:"observer"`
+	Family                    Family            `json:"family"`
+	ConnectionID              string            `json:"connection_id,omitempty"`
+	Router                    Router            `json:"router,omitempty"`
+	Interface                 string            `json:"interface,omitempty"`
+	Source                    netip.Addr        `json:"source,omitzero"`
+	Target                    string            `json:"target"`
+	TimeoutSeconds            int               `json:"timeout_seconds"`
+	MaxAgeSeconds             int               `json:"max_age_seconds"`
+	HTTPMethod                string            `json:"http_method,omitempty"`
+	ExpectedHTTPStatus        []int             `json:"expected_http_status,omitempty"`
+	ExpectedBody              string            `json:"expected_body,omitempty"`
+	ExpectedNextHop           netip.Addr        `json:"expected_next_hop,omitzero"`
+	DNSExpectedAddresses      []netip.Addr      `json:"dns_expected_addresses,omitempty"`
+	DNSServer                 string            `json:"dns_server,omitempty"`
+	ExpectedSSHVersion        string            `json:"expected_ssh_version,omitempty"`
+	CloudflarePoolID          string            `json:"cloudflare_pool_id,omitempty"`
+	CloudflareExpectedOrigins []string          `json:"cloudflare_expected_origins,omitempty"`
+	DistributionSamples       int               `json:"distribution_samples,omitempty"`
+	DistributionPlan          *DistributionPlan `json:"distribution_plan,omitempty"`
+	PublicIPPolicy            PublicIPPolicy    `json:"public_ip_policy,omitempty"`
 }
 
 // Availability separates a performed observation from missing or unusable evidence.
@@ -151,43 +152,55 @@ const (
 
 // Path records socket addresses and the subsequently queried kernel route.
 type Path struct {
-	Source       netip.Addr `json:"source,omitzero"`
-	Destination  netip.Addr `json:"destination,omitzero"`
-	NextHop      netip.Addr `json:"next_hop,omitzero"`
-	Interface    string     `json:"interface,omitempty"`
-	ConnectionID string     `json:"connection_id,omitempty"`
-	Router       Router     `json:"router,omitempty"`
+	Source          netip.Addr `json:"source,omitzero"`
+	Destination     netip.Addr `json:"destination,omitzero"`
+	SourcePort      uint16     `json:"source_port,omitempty"`
+	DestinationPort uint16     `json:"destination_port,omitempty"`
+	NextHop         netip.Addr `json:"next_hop,omitzero"`
+	Interface       string     `json:"interface,omitempty"`
+	ConnectionID    string     `json:"connection_id,omitempty"`
+	Router          Router     `json:"router,omitempty"`
 }
 
 // DistributionSample records one request and its measured provider association.
 type DistributionSample struct {
-	At           time.Time  `json:"at"`
-	PublicIP     netip.Addr `json:"public_ip"`
-	ConnectionID string     `json:"connection_id"`
-	HTTPStatus   int        `json:"http_status"`
+	StartedAt    time.Time    `json:"started_at"`
+	At           time.Time    `json:"at"`
+	CheckID      string       `json:"check_id"`
+	Observer     Endpoint     `json:"observer"`
+	Path         Path         `json:"path"`
+	Ingress      TCPIngress   `json:"ingress"`
+	Availability Availability `json:"availability"`
+	Outcome      Outcome      `json:"outcome"`
+	PublicIP     netip.Addr   `json:"public_ip"`
+	ConnectionID string       `json:"connection_id"`
+	HTTPStatus   int          `json:"http_status"`
+	ResponseBody string       `json:"response_body,omitempty"`
 }
 
 // Result contains one observation with its endpoint, family, and reply evidence.
 type Result struct {
-	CheckID        string               `json:"check_id"`
-	Dimension      Dimension            `json:"dimension"`
-	Operation      Operation            `json:"operation"`
-	Target         string               `json:"target"`
-	PublicIPPolicy PublicIPPolicy       `json:"public_ip_policy,omitempty"`
-	Family         Family               `json:"family"`
-	Observer       Endpoint             `json:"observer"`
-	ObservedAt     time.Time            `json:"observed_at"`
-	Availability   Availability         `json:"availability"`
-	Outcome        Outcome              `json:"outcome"`
-	Reason         string               `json:"reason"`
-	Path           Path                 `json:"path"`
-	HTTPStatus     int                  `json:"http_status,omitempty"`
-	ResponseBody   string               `json:"response_body,omitempty"`
-	DNSAddresses   []netip.Addr         `json:"dns_addresses,omitempty"`
-	PublicIP       netip.Addr           `json:"public_ip,omitzero"`
-	SSHVersion     string               `json:"ssh_version,omitempty"`
-	Distribution   []DistributionSample `json:"distribution,omitempty"`
-	CloudflarePool *PoolHealth          `json:"cloudflare_pool,omitempty"`
+	CheckID               string               `json:"check_id"`
+	Dimension             Dimension            `json:"dimension"`
+	Operation             Operation            `json:"operation"`
+	Target                string               `json:"target"`
+	PublicIPPolicy        PublicIPPolicy       `json:"public_ip_policy,omitempty"`
+	Family                Family               `json:"family"`
+	Observer              Endpoint             `json:"observer"`
+	ObservedAt            time.Time            `json:"observed_at"`
+	Availability          Availability         `json:"availability"`
+	Outcome               Outcome              `json:"outcome"`
+	Reason                string               `json:"reason"`
+	Path                  Path                 `json:"path"`
+	HTTPStatus            int                  `json:"http_status,omitempty"`
+	ResponseBody          string               `json:"response_body,omitempty"`
+	DNSAddresses          []netip.Addr         `json:"dns_addresses,omitempty"`
+	PublicIP              netip.Addr           `json:"public_ip,omitzero"`
+	SSHVersion            string               `json:"ssh_version,omitempty"`
+	Distribution          []DistributionSample `json:"distribution,omitempty"`
+	DistributionProviders []ProviderShare      `json:"distribution_providers,omitempty"`
+	DistributionCaptures  []CaptureReady       `json:"distribution_captures,omitempty"`
+	CloudflarePool        *PoolHealth          `json:"cloudflare_pool,omitempty"`
 }
 
 // RequiredPassed rejects replies from another endpoint, family, target, or expired check.
@@ -203,6 +216,9 @@ func RequiredPassed(spec CheckSpec, result Result, now time.Time) bool {
 	age := now.Sub(result.ObservedAt)
 	if age < 0 || age > time.Duration(spec.MaxAgeSeconds)*time.Second {
 		return false
+	}
+	if spec.Operation == OperationDistribution {
+		return requiredDistributionPassed(spec, result, now)
 	}
 	return requiredPathPassed(spec, result) && requiredReplyPassed(spec, result)
 }

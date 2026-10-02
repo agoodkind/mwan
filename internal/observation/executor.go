@@ -120,8 +120,10 @@ func Validate(spec CheckSpec) error {
 
 func validateOperation(spec CheckSpec) error {
 	switch spec.Operation {
-	case OperationHTTP, OperationPublicIP, OperationDistribution:
+	case OperationHTTP, OperationPublicIP:
 		return validateHTTP(spec)
+	case OperationDistribution:
+		return validateDistribution(spec)
 	case OperationDNS:
 		server, err := netip.ParseAddrPort(spec.DNSServer)
 		if err != nil || server.Addr().Is4() != (spec.Family == FamilyIPv4) || server.Port() == 0 {
@@ -228,8 +230,7 @@ func (executor *Executor) Run(ctx context.Context, spec CheckSpec) Result {
 	case OperationCloudflarePool:
 		result = executor.cloudflarePool(probeContext, spec, result)
 	case OperationDistribution:
-		result.Availability = AvailabilityMissing
-		result.Reason = "this operation requires its configured state integration"
+		result = executor.distribution(probeContext, spec, result)
 	}
 	if ctx.Err() != nil {
 		result.Availability, result.Outcome, result.Reason = AvailabilityError, OutcomeUnknown, "observation context ended"
@@ -333,6 +334,7 @@ func (executor *Executor) http(ctx context.Context, spec CheckSpec, result Resul
 		URL: spec.Target, Method: method, Timeout: time.Duration(spec.TimeoutSeconds) * time.Second,
 	})
 	result.Path.Source, result.Path.Destination = probe.Source, probe.Destination
+	result.Path.SourcePort, result.Path.DestinationPort = probe.SourcePort, probe.DestinationPort
 	result.HTTPStatus, result.ResponseBody = probe.StatusCode, probe.Body
 	if err != nil {
 		return failedProbe(result, err)
