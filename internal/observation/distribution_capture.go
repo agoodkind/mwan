@@ -3,12 +3,14 @@ package observation
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
 	"net/netip"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/gopacket/gopacket"
@@ -20,6 +22,7 @@ import (
 
 type ingressCapture struct {
 	connection  *packet.Conn
+	raw         syscall.RawConn
 	ready       CaptureReady
 	mu          sync.Mutex
 	frames      []TCPIngress
@@ -82,8 +85,22 @@ func (executor *Executor) openIngressCapture(ctx context.Context, provider Provi
 		_ = connection.Close()
 		return nil, errors.New("provider capture deadline cannot be set")
 	}
+	raw, err := connection.SyscallConn()
+	if err != nil {
+		_ = connection.Close()
+		return nil, errors.New("provider capture raw socket is unavailable")
+	}
+	var optionErr error
+	err = raw.Control(func(fd uintptr) {
+		optionErr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_TIMESTAMPNS_NEW, 1)
+	})
+	if err != nil || optionErr != nil {
+		_ = connection.Close()
+		return nil, errors.New("provider capture kernel timestamps are unavailable")
+	}
 	capture := &ingressCapture{
 		connection: connection,
+		raw:        raw,
 		ready:      CaptureReady{ConnectionID: provider.ConnectionID, Interface: device.Name, PortInterface: port.Attrs().Name, DestinationMAC: mac.String(), At: executor.config.Clock.Now().UTC()},
 		frames:     nil, err: nil, done: make(chan struct{}), stopContext: nil, mu: sync.Mutex{}, notify: notify,
 		closing: atomic.Bool{}, finishOnce: sync.Once{}, finishError: nil,
@@ -98,24 +115,25 @@ func (executor *Executor) openIngressCapture(ctx context.Context, provider Provi
 			}
 			close(capture.done)
 		}()
-		capture.read(ctx, provider, limit, executor.config.Clock.Now)
+		capture.read(ctx, provider, limit)
 	}()
 	return capture, nil
 }
 
-func (capture *ingressCapture) read(ctx context.Context, provider ProviderIngress, limit int, now func() time.Time) {
+func (capture *ingressCapture) read(ctx context.Context, provider ProviderIngress, limit int) {
 	buffer := make([]byte, 65536)
+	control := make([]byte, unix.CmsgSpace(unix.SizeofTimespec))
 	for {
-		count, _, err := capture.connection.ReadFrom(buffer)
+		count, at, err := capture.receive(buffer, control)
 		if err != nil {
 			if !capture.closing.Load() && ctx.Err() == nil && !errors.Is(err, net.ErrClosed) {
 				capture.mu.Lock()
-				capture.err = errors.New("provider ingress capture failed before completion")
+				capture.err = fmt.Errorf("provider ingress capture failed before completion: %w", err)
 				capture.mu.Unlock()
 			}
 			return
 		}
-		frame, matched := decodeIngress(buffer[:count], provider, now().UTC())
+		frame, matched := decodeIngress(buffer[:count], provider, at)
 		if !matched {
 			continue
 		}
@@ -132,6 +150,46 @@ func (capture *ingressCapture) read(ctx context.Context, provider ProviderIngres
 		default:
 		}
 	}
+}
+
+func (capture *ingressCapture) receive(buffer, control []byte) (int, time.Time, error) {
+	var count, controlCount, flags int
+	var receiveErr error
+	err := capture.raw.Read(func(fd uintptr) bool {
+		count, controlCount, flags, _, receiveErr = unix.Recvmsg(int(fd), buffer, control, 0)
+		return !errors.Is(receiveErr, unix.EAGAIN) && !errors.Is(receiveErr, unix.EINTR)
+	})
+	if err != nil {
+		return 0, time.Time{}, err
+	}
+	if receiveErr != nil {
+		return 0, time.Time{}, receiveErr
+	}
+	if flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) != 0 {
+		return 0, time.Time{}, errors.New("provider capture packet or timestamp was truncated")
+	}
+	messages, err := unix.ParseSocketControlMessage(control[:controlCount])
+	if err != nil {
+		return 0, time.Time{}, err
+	}
+	for _, message := range messages {
+		if message.Header.Level != unix.SOL_SOCKET || message.Header.Type != unix.SO_TIMESTAMPNS_NEW {
+			continue
+		}
+		// SO_TIMESTAMPNS_NEW uses two native-endian 64-bit values on both architectures.
+		var timestamp unix.Timespec
+		if len(message.Data) != binary.Size(timestamp) {
+			return 0, time.Time{}, errors.New("provider capture kernel timestamp has an invalid size")
+		}
+		if _, err := binary.Decode(message.Data, binary.NativeEndian, &timestamp); err != nil {
+			return 0, time.Time{}, err
+		}
+		if timestamp.Sec <= 0 || timestamp.Nsec < 0 || timestamp.Nsec >= int64(time.Second) {
+			return 0, time.Time{}, errors.New("provider capture kernel timestamp is invalid")
+		}
+		return count, time.Unix(timestamp.Sec, timestamp.Nsec).UTC(), nil
+	}
+	return 0, time.Time{}, errors.New("provider capture packet has no kernel timestamp")
 }
 
 func decodeIngress(data []byte, provider ProviderIngress, at time.Time) (TCPIngress, bool) {
