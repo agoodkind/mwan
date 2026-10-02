@@ -38,6 +38,15 @@ func defaultTargetsV6() []netip.Addr {
 }
 
 func validateConfig(cfg Config) error {
+	if cfg.Observations != nil {
+		if err := cfg.Observations.Validate(); err != nil {
+			slog.Warn("health observation configuration rejected", "err", err)
+			return fmt.Errorf("validate health observations: %w", err)
+		}
+	}
+	if len(cfg.WANs) == 0 && cfg.Observations != nil {
+		return nil
+	}
 	var validationError error
 	validationError = errors.Join(validationError, validateProbeConfig(cfg))
 	validationError = errors.Join(validationError, validateWANs(cfg))
@@ -188,6 +197,7 @@ func validateWANs(cfg Config) error {
 // module so omitted TOML fields still produce the same baseline probe cadence.
 func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 	healthConfig := Config{
+		Observations:      nil,
 		StateFile:         "",
 		TargetsV4:         nil,
 		TargetsV6:         nil,
@@ -222,19 +232,20 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		)
 	}
 	return &Module{
-		BaseModule:       ifmgr.NewBaseModule(moduleName),
-		cfg:              healthConfig,
-		clock:            nil,
-		cycleMu:          sync.Mutex{},
-		reconcileMu:      sync.Mutex{},
-		reconcilePending: true,
-		statuses:         nil,
-		lastTransition:   nil,
-		probeV4:          netif.Ping4,
-		probeV6:          netif.Ping6,
-		probeHTTP6:       netif.HTTPCheck6,
-		probeHTTP4:       netif.HTTPCheck4,
-		pusher:           pusher,
+		observationWorkers: sync.WaitGroup{},
+		BaseModule:         ifmgr.NewBaseModule(moduleName),
+		cfg:                healthConfig,
+		clock:              nil,
+		cycleMu:            sync.Mutex{},
+		reconcileMu:        sync.Mutex{},
+		reconcilePending:   true,
+		statuses:           nil,
+		lastTransition:     nil,
+		probeV4:            netif.Ping4,
+		probeV6:            netif.Ping6,
+		probeHTTP6:         netif.HTTPCheck6,
+		probeHTTP4:         netif.HTTPCheck4,
+		pusher:             pusher,
 	}, nil
 }
 

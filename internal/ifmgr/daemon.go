@@ -187,6 +187,15 @@ func NewDaemon(log *slog.Logger, cfg DaemonConfig) (*Daemon, error) {
 // Blocks until ctx is cancelled. Returns the first error from Init or
 // the main loop; transient Reconcile errors are logged but do not exit.
 func (d *Daemon) Run(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer func() {
+		cancel()
+		for _, module := range d.modules {
+			if worker, ok := module.(interface{ Wait() }); ok {
+				worker.Wait()
+			}
+		}
+	}()
 	if d.clock == nil {
 		d.clock = internalclock.Real{}
 	}

@@ -9,12 +9,16 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,6 +26,7 @@ import (
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
 	"goodkind.io/mwan/internal/forwardingready"
+	"goodkind.io/mwan/internal/observation"
 	"goodkind.io/mwan/internal/resolved"
 	"goodkind.io/mwan/internal/yangpub"
 )
@@ -115,8 +120,36 @@ func runOwnedRolesDaemonRuntime(t *testing.T) {
 	otherDNS, otherDomains := resolverRuntimeValues(t, "roles-other")
 	binary := protocolTestBinary(t)
 	configPath := filepath.Join(root, "config.toml")
+	var applicationFailing atomic.Bool
+	application := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		if applicationFailing.Load() {
+			writer.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = writer.Write([]byte("healthy"))
+	}))
+	defer application.Close()
+	identity, err := os.ReadFile("/etc/machine-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	settingsPath := filepath.Join(root, "observations.json")
+	settings := observation.ContinuousSettings{Runtime: observation.RuntimeConfig{MachineIDPath: "/etc/machine-id", ProbeBinary: binary}, Checks: []observation.ScheduledCheck{{IntervalSeconds: 1, Check: observation.CheckSpec{
+		ID: "required-inbound", Dimension: observation.DimensionInboundApplication, Operation: observation.OperationHTTP,
+		Observer: observation.Endpoint{Kind: observation.EndpointLocal, MachineID: strings.TrimSpace(string(identity))},
+		Family:   observation.FamilyIPv4, Interface: "lo", Source: netip.MustParseAddr("127.0.0.1"), Target: application.URL,
+		ExpectedHTTPStatus: []int{http.StatusOK}, ExpectedBody: "healthy", TimeoutSeconds: 2, MaxAgeSeconds: 10,
+	}}}}
+	encodedSettings, err := json.Marshal(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(settingsPath, encodedSettings, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	socket := filepath.Join(root, "forwarding.sock")
 	config := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"200ms\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[ifmgr.modules.resolver]\nstate_file = %q\n[wanconfig]\npublish = true\n[bgp]\nenabled = true\nuse_wanconfig = true\n[bgp.forwarding_readiness]\nsocket_path = %q\npoll_interval_milliseconds = 100\nread_timeout_milliseconds = 500\n", filepath.Join(root, "links.json"), filepath.Join(root, "addresses.json"), filepath.Join(root, "kernel.json"), filepath.Join(root, "resolver.json"), socket)
+	config += fmt.Sprintf("[ifmgr.modules.health]\nobservation_settings_file = %q\n", settingsPath)
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -127,6 +160,7 @@ func runOwnedRolesDaemonRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer closeRepository()
+	exerciseHostObservations(t, ctx, reader, binary, settingsPath, root)
 	read := func() string {
 		value, found, exportErr := reader.ExportJSON(ctx, yangpub.DatastoreOperational, "/ietf-interfaces:*")
 		if exportErr != nil || !found {
@@ -183,6 +217,13 @@ func runOwnedRolesDaemonRuntime(t *testing.T) {
 	waitStaticRuntimeAddress(t, daemon, "enmwanbr0", "192.0.2.1/29", true)
 	waitStaticRuntimeAddress(t, daemon, "enmwanbr0", "2001:db8:b01:fe::1/64", true)
 	waitOwnedRoleForwarding(t, daemon, socket, forwardingready.State{IPv4: true, IPv6: true})
+	waitRecurringApplication(t, ctx, reader, daemon, observation.OutcomePass)
+	applicationFailing.Store(true)
+	waitRecurringApplication(t, ctx, reader, daemon, observation.OutcomeFail)
+	waitOwnedRoleProvider(t, daemon, read)
+	waitOwnedRoleForwarding(t, daemon, socket, forwardingready.State{IPv4: true, IPv6: true})
+	applicationFailing.Store(false)
+	waitRecurringApplication(t, ctx, reader, daemon, observation.OutcomePass)
 	assertOwnedRolePackets(t, gateway, transit.namespace, upstream.namespace)
 	route := waitConfiguredRuntimeRoute(t, daemon, "fd39:5::/64")
 	if err := netlink.RouteDel(&route); err != nil {
@@ -238,6 +279,98 @@ func runOwnedRolesDaemonRuntime(t *testing.T) {
 		t.Fatalf("unrelated resolver changed: DNS=%+v domains=%+v", actualDNS, actualDomains)
 	}
 	waitStaticRuntimeAddress(t, daemon, "roles-other", "198.51.100.1/24", true)
+}
+
+func exerciseHostObservations(t *testing.T, ctx context.Context, reader yangpub.Publisher, binary, settingsPath, root string) {
+	t.Helper()
+	if err := reader.SetItems(ctx, yangpub.DatastoreRunning, []yangpub.Item{{Path: selftestHashModePath, Value: selftestHashModeValue}}); err != nil {
+		t.Fatal(err)
+	}
+	before, found, err := reader.ExportJSON(ctx, yangpub.DatastoreRunning, "/ietf-interfaces:*")
+	if err != nil || !found {
+		t.Fatalf("read host running configuration: found=%v err=%v", found, err)
+	}
+	configPath := filepath.Join(root, "host.toml")
+	configuration := fmt.Sprintf("[ifmgr]\nrole = \"host\"\n[ifmgr.iface.lo]\n[ifmgr.modules.health]\nobservation_settings_file = %q\n[wanconfig]\npublish = true\n", settingsPath)
+	if err := os.WriteFile(configPath, []byte(configuration), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(root, "host.log")
+	logFile, err := os.Create(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(binary, "ifmgr", "--role", "host", "--debug")
+	command.Env = append(os.Environ(), "MWAN_CONFIG="+configPath)
+	command.Stdout, command.Stderr = logFile, logFile
+	if err := command.Start(); err != nil {
+		logFile.Close()
+		t.Fatal(err)
+	}
+	logFile.Close()
+	daemon := &runtimeDaemon{command: command, logPath: logPath}
+	defer killOwnedRuntimeDaemon(t, daemon)
+	waitRecurringApplication(t, ctx, reader, daemon, observation.OutcomePass)
+	after, found, err := reader.ExportJSON(ctx, yangpub.DatastoreRunning, "/ietf-interfaces:*")
+	if err != nil || !found || after != before {
+		t.Fatalf("host observation replaced running WAN configuration: found=%v err=%v before=%s after=%s", found, err, before, after)
+	}
+	stopRuntimeDaemon(t, daemon)
+	if !strings.Contains(runtimeDaemonLog(t, daemon), "recurring health observations stopped") {
+		t.Fatal("host daemon exited before recurring observations joined")
+	}
+}
+
+func waitRecurringApplication(t *testing.T, ctx context.Context, reader yangpub.Publisher, daemon *runtimeDaemon, expected observation.Outcome) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	var last string
+	for time.Now().Before(deadline) {
+		value, found, err := reader.ExportJSON(ctx, yangpub.DatastoreOperational, "/goodkind-mwan-steering:daemon/observation")
+		if err != nil {
+			t.Fatalf("read recurring operational state: %v", err)
+		}
+		last = value
+		var document struct {
+			Daemon struct {
+				Observation struct {
+					Checks []struct {
+						ID     string `json:"id"`
+						Result struct {
+							Evidence string `json:"evidence-json"`
+						} `json:"result"`
+						Recent []struct {
+							Result struct {
+								Evidence string `json:"evidence-json"`
+							} `json:"result"`
+						} `json:"recent-transition"`
+					} `json:"check"`
+				} `json:"observation"`
+			} `json:"goodkind-mwan-steering:daemon"`
+		}
+		if found {
+			if err := json.Unmarshal([]byte(value), &document); err != nil {
+				t.Fatal(err)
+			}
+			for _, check := range document.Daemon.Observation.Checks {
+				var result observation.Result
+				if err := json.Unmarshal([]byte(check.Result.Evidence), &result); err != nil {
+					t.Fatal(err)
+				}
+				if check.ID == "required-inbound" && result.Availability == observation.AvailabilityComplete && result.Outcome == expected {
+					if result.Path.Source != netip.MustParseAddr("127.0.0.1") || result.Path.Interface != "lo" {
+						t.Fatalf("served result omitted actual application path: %+v", result)
+					}
+					if expected == observation.OutcomeFail && len(check.Recent) < 2 {
+						t.Fatal("served application history omitted the failure transition")
+					}
+					return
+				}
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("recurring application outcome %s absent: %s; %s", expected, last, runtimeLogTail(t, daemon, 40))
 }
 
 func addOwnedRolePeerVLAN(t *testing.T, parentName, name string, tag int, addresses []string) {

@@ -658,7 +658,8 @@ func buildProvider(entry ifaceEntry) (config.IfMgrWANEntry, *config.IfMgrHealthW
 	}
 	if provider.V4Source != "" {
 		return config.IfMgrWANEntry{}, nil, fmt.Errorf(
-			"%s: v4-source is derived from the link's static ipv4 address and must not be typed", label)
+			"%s: v4-source is derived from the link's static ipv4 address and must not be typed", label,
+		)
 	}
 	tier, weight, err := buildSteering(label, entry.Steering)
 	if err != nil {
@@ -823,11 +824,12 @@ func (c *Config) Apply(cfg *config.Config) {
 
 	if cfg.IfMgr.Modules.Health == nil {
 		cfg.IfMgr.Modules.Health = &config.IfMgrHealthSection{
-			StateFile:          "",
-			StatusPushCID:      0,
-			StatusPushPort:     0,
-			ProbeTimeoutMillis: 0,
-			WAN:                nil,
+			ObservationSettingsFile: "",
+			StateFile:               "",
+			StatusPushCID:           0,
+			StatusPushPort:          0,
+			ProbeTimeoutMillis:      0,
+			WAN:                     nil,
 		}
 	}
 	cfg.IfMgr.Modules.Health.ProbeTimeoutMillis = c.ProbeTimeoutMillis

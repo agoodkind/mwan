@@ -61,15 +61,23 @@ func startWanconfigSurface(
 		return nil
 	}
 	if !ok {
-		log.InfoContext(ctx, "wanconfig: this role has no wan config to publish")
-		return nil
+		healthConfig, configured := moduleConfigs["health"].(health.Config)
+		if !configured || healthConfig.Observations == nil {
+			log.InfoContext(ctx, "wanconfig: this role has no wan config to publish")
+			return nil
+		}
 	}
 	surfaceCtx, stopSurface := context.WithCancel(ctx)
 	surface := &wanconfigSurface{store: store, log: log, stop: stopSurface}
-	notifier := newSurfaceNotifier(log, gateway)
-	surface.unobserve = store.Observe(notifier)
+	var notifier *surfaceNotifier
+	if ok {
+		notifier = newSurfaceNotifier(log, gateway)
+		surface.unobserve = store.Observe(notifier)
+	}
 	go func() {
-		defer surface.unobserve()
+		if surface.unobserve != nil {
+			defer surface.unobserve()
+		}
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				log.ErrorContext(surfaceCtx, "wanconfig: initialization panicked; management surface disabled", "err", fmt.Sprint(recovered))
@@ -101,6 +109,14 @@ func (s *wanconfigSurface) initialize(
 		}
 	}()
 	if ctx.Err() != nil {
+		return
+	}
+	if notifier == nil {
+		if err := registerObservationProvider(ctx, pub, s.store); err != nil {
+			s.log.ErrorContext(ctx, "wanconfig: observation provider registration failed", "err", err)
+			return
+		}
+		<-ctx.Done()
 		return
 	}
 	publishCtx, cancel := context.WithTimeout(ctx, wanconfigPublishTimeout)

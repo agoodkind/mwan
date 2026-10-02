@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"goodkind.io/mwan/internal/clock"
+	"goodkind.io/mwan/internal/observation/contract"
 )
 
 // Health is a member's combined verdict, mirroring the health module's
@@ -122,6 +123,7 @@ type Store struct {
 	transitionSequence uint64
 	transitionLog      *slog.Logger
 	health             map[string]MemberHealth
+	checks             map[string]CheckState
 	routing            map[string]MemberRouting
 	translation        map[string]MemberTranslation
 	routingGeneration  uint64
@@ -149,6 +151,7 @@ func NewWithClock(wallClock clock.Clock) *Store {
 		transitionSequence: 0,
 		transitionLog:      nil,
 		health:             map[string]MemberHealth{},
+		checks:             map[string]CheckState{},
 		routing:            map[string]MemberRouting{},
 		translation:        map[string]MemberTranslation{},
 		routingGeneration:  0,
@@ -301,6 +304,8 @@ type Snapshot struct {
 	Connections       map[string]ConnectionState
 	PendingRemovals   map[string]PendingRemoval
 	Health            map[string]MemberHealth
+	Checks            map[string]CheckState
+	ObservationError  error `json:"-"`
 	Routing           map[string]MemberRouting
 	RoutingGeneration uint64
 	Translation       map[string]MemberTranslation
@@ -319,6 +324,8 @@ func (s *Store) Snapshot() Snapshot {
 		Connections:       make(map[string]ConnectionState, len(s.connections)),
 		PendingRemovals:   make(map[string]PendingRemoval, len(s.pendingRemovals)),
 		Health:            make(map[string]MemberHealth, len(s.health)),
+		Checks:            make(map[string]CheckState, len(s.checks)),
+		ObservationError:  nil,
 		Routing:           make(map[string]MemberRouting, len(s.routing)),
 		RoutingGeneration: s.routingGeneration,
 		Translation:       make(map[string]MemberTranslation, len(s.translation)),
@@ -329,6 +336,15 @@ func (s *Store) Snapshot() Snapshot {
 		IntendedByOwner:   make(map[string]OwnedRuleset, len(s.intendedRulesets)),
 	}
 	maps.Copy(snap.Health, s.health)
+	for id, check := range s.checks {
+		copied, err := cloneCheckState(check)
+		if err != nil {
+			snap.ObservationError = err
+			continue
+		}
+		copied.Result = contract.FreshResult(copied.Check, copied.Result, s.clock.Now())
+		snap.Checks[id] = copied
+	}
 	maps.Copy(snap.PendingRemovals, s.pendingRemovals)
 	for id, connection := range s.connections {
 		snap.Connections[id] = cloneConnection(connection)

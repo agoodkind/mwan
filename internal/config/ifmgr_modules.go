@@ -267,11 +267,12 @@ type IfMgrWANRoutesSection struct {
 // network value. It addresses two processes on one machine, which is why TOML
 // owns it alongside state_file.
 type IfMgrHealthSection struct {
-	StateFile          string                           `toml:"state_file"`
-	StatusPushCID      uint32                           `toml:"status_push_cid"`
-	StatusPushPort     uint32                           `toml:"status_push_port"`
-	ProbeTimeoutMillis int                              `toml:"-"`
-	WAN                map[string]IfMgrHealthWANSection `toml:"-"`
+	ObservationSettingsFile string                           `toml:"observation_settings_file"`
+	StateFile               string                           `toml:"state_file"`
+	StatusPushCID           uint32                           `toml:"status_push_cid"`
+	StatusPushPort          uint32                           `toml:"status_push_port"`
+	ProbeTimeoutMillis      int                              `toml:"-"`
+	WAN                     map[string]IfMgrHealthWANSection `toml:"-"`
 }
 
 // IfMgrHealthWANSection is one provider's probe policy, read from network.json.
