@@ -211,7 +211,7 @@ func checkRuntimeLegacyFirstStart(t *testing.T, configPath, root string, gateway
 	addMappedRuntimeRoute(t, "2001:db8:beef:600::/60", "fd20::1", "legacy-peer")
 	setRuntimeNamespace(t, gateway)
 	configureLegacyUpgradeLink(t, filepath.Join(root, "mwan", "network.json"))
-	setReleaseConnectionField(t, filepath.Join(root, "mwan"), "webpass", "ietf-ip:ipv4", json.RawMessage(`{"goodkind-mwan-steering:dhcp":false,"goodkind-mwan-steering:translation":{"mode":"ietf-nat:napt44","static-mapping":[{"external":"10.20.0.3","internal":"192.0.2.2"}]}}`))
+	setReleaseConnectionField(t, filepath.Join(root, "mwan"), "webpass", "ietf-ip:ipv4", json.RawMessage(`{"address":[{"ip":"10.20.0.2","prefix-length":24}],"goodkind-mwan-steering:gateway":"10.20.0.1","goodkind-mwan-steering:dhcp":false,"goodkind-mwan-steering:translation":{"mode":"ietf-nat:napt44","static-mapping":[{"external":"10.20.0.3","internal":"192.0.2.2"}]}}`))
 	config, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatal(err)
