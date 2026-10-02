@@ -7853,6 +7853,38 @@ fixture logs were deleted after their outcomes were recorded. Required local
 controller caches remain on Chaos Storage. The external volume has about
 1.0 TiB available; the internal filesystem has about 663 GiB available.
 
+At 08:51 UTC on October 2, Configs PR627 merged signed 9f653d8f as
+ffdddac9913b728ff15227c40ea56628239c9afc. Independent review and controller
+inspection confirmed both source corrections. All three required checks
+passed, review threads were empty and all four branch commits had verified
+signatures and raw headers. The existing data suite passed 197 examples with
+zero failures and 16 fixture-dependent pending cases. Those pending cases
+do not establish physical acceptance.
+
+The controller attempted preparation from clean merged ffdddac9. The first
+attempt terminated before guest steps because the key-value extra variable
+split the external volume path at its space. The JSON argument preserved the
+path on the second attempt. That attempt stopped at the skipped bootstrap
+import: Ansible evaluated an undefined delegated loop variable in the imported
+SSH play. Both operations are terminal. Gateway preparation, arming and
+recovery did not execute. The source lane will remove the generic bootstrap
+import from routine upgrades instead of changing shared SSH provisioning.
+
+Code audit confirmed that MWAN-541 still lacks recurring shared application
+observations, served results and their failure/recovery transitions. MWAN-542
+still lacks continuous acceptance after a deployment operation commits or
+recovers. These source requirements are separate from the incomplete physical
+proof. All incident tickets remain In Progress. The operator's production
+authorization remains conditional; production received no mutations.
+
+The repaired distribution capture passed both focused and aggregate requests
+in CI36985267248. Focused provider counts were IPv4 16/24 and IPv6 20/20;
+aggregate counts were IPv4 14/26 and IPv6 25/15. Each family generated 40
+requests under the exact 13-through-27 equal-weight calibration. The whole
+firewall job still failed an unequal-lifetime DHCPv6 mapped UDP case. Keep that
+failure separate from the passing distribution evidence and diagnose its
+actual boundary before claiming complete runtime acceptance.
+
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
 2. Record independent review and its reviewed commit separately from local checks.
 3. State the observable behavior demonstrated and any missing acceptance.
