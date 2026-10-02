@@ -8000,6 +8000,62 @@ reproduction and cutover acceptance remain unperformed. Production received
 no writes. The failed preparation and superseded timestamp logs can be purged
 after this evidence is committed.
 
+Root re-read MWAN-535 through MWAN-544 and the current coordination and
+deployment plans. Five new stack review threads were resolved after source
+inspection: the shared observation SDK type, one validation implementation,
+initial concurrency assertion, corrected typed copy errors, and separate
+host/WAN publication branches. Four superseded formal bot change requests on
+PR167 were dismissed after confirming all its inline threads were resolved.
+Its required checks and physical acceptance remain separate gates.
+
+PR167 CI36992035199 passed both distribution executions and systemd runtime.
+The unequal-lifetime DHCP case passed in 18.37 seconds without triggering its
+failure diagnostics; the earlier intermittent timeout remains undiagnosed.
+The selected one-shot observation fixture failed because its image lacks
+systemd-machine-id-setup; the dependent observation stack replaces that
+dependency with isolated identity files and the public runtime-settings path.
+Focused counts were IPv4 19/21 and IPv6 20/20. Aggregate counts were IPv4
+19/21 and IPv6 29/11. The aggregate IPv6 sample failed the reviewed 13..27
+calibration; the regression correctly asserted the failure verdict. It used
+the unchanged verified random mod2 policy and equal tier/weights. This is
+complete failed distribution evidence, without proof of a steering defect.
+The sole Govulncheck retry also stopped with runner shutdown and exit143;
+no vulnerability report was produced, and that check remains incomplete.
+
+Root verified merged Cloudflare HCL and the management correction report.
+Configs PR623 merged as d30e26c1 with separate persistent read and management
+credentials. The management credential grants the account monitor/pool and
+zone load-balancer write permissions omitted by the initial read-only
+proposal. The resource settings and DNS credential remain unchanged.
+From clean merged Configs168be4b8, configsctl tofu init and the fresh targeted
+plan completed with exit0 at 10:17:43 UTC. Cloudflare5.26.0, Proxmox0.114.0
+and HTTP3.6.2 refreshed exactly the eight imported objects. The plan reported
+no changes or imports and released its state lock. No apply ran. The generated
+untracked provider lock was removed; all provider/data/temp outputs used
+Chaos Storage.
+
+Root used the deployed clean 2cbfdd9 public observation command for independent
+authenticated Cloudflare reads at 10:13:23 UTC. AT&T and Webpass each reported
+294 healthy regions; the IPv6 pool reported one healthy region. The existing
+Monkeybrains fallback reported one unhealthy WNAM region with HTTP timeout.
+All observations were complete, with failed fallback health distinct from
+authentication error. The temporary remote credential/runtime files and local
+runtime file were deleted after these reads.
+
+Root independently read all six original Gmail messages for the three primary
+pool failures and recoveries. Pool IDs and Pool Alert policy match the current
+HCL. AT&T failed at 01:54:34.759460477 UTC and recovered at
+02:00:32.179223562 UTC. Webpass failed at 01:54:35.625716429 UTC and recovered
+at 02:00:33.165962637 UTC. IPv6 failed at 01:54:42.206678744 UTC and recovered
+at 02:00:16.201983219 UTC. The exact message IDs are
+1a0fa5226a050df6, 1a0fa5252346779c, 1a0fa525d1990db5,
+1a0fa57a955da6a3, 1a0fa57a0f6da003 and 1a0fa57682d82b2b.
+These establish real monitor failure/recovery and delivery during the approved
+production preparation incident. They do not measure total client outage.
+The independent lane verified every MWAN-543 requirement against this evidence.
+Tack comment 01a0fc22-2ea0-715f-aa9f-bb5f8056362c includes the acceptance results.
+MWAN-543 is Done; the actual ticket state was updated and read back.
+
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
 2. Record independent review and its reviewed commit separately from local checks.
 3. State the observable behavior demonstrated and any missing acceptance.
