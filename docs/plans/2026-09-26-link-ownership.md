@@ -23,10 +23,13 @@ load balancing, mappings, IPv6 translation, binary identity, and configuration
 identity. Recover or revert measured failures, implement focused fixes, review,
 merge, redeploy, and repeat acceptance.
 
-Yield a production readiness report only after the required testbed evidence
-supports production cutover. Do not initiate production cutover without the
-required subsequent authorization. Production phases and final retirement
-remain epic requirements; this execution goal does not authorize them early.
+Require the complete testbed evidence before production cutover. The operator
+authorized production once the defect is fully fixed. That authorization
+applies only after the incident corrections and required testbed acceptance
+pass for the exact merged release and compatible configuration. Do not ask
+again for this authorized scope. Preserve recovered production until these
+conditions pass. Final retirement still requires confirmed AT&T retirement
+and its separate acceptance prerequisites.
 
 Apply the subagent-driven-development skill strictly. Give every implementer
 exact working directories, exclusive file ownership, prerequisite revisions,
@@ -48,7 +51,8 @@ custom protocol code.
 
 Production preparation failed on October 1 and the original snapshot was
 restored. Require the incident corrections under MWAN-535 through MWAN-544
-before another production attempt. Production activation remains stopped.
+before another production attempt. Production activation remains stopped until
+the repair and testbed gates pass.
 Complete every incident correction as part of the operational goal. Import
 the existing MWAN Cloudflare load balancers, pools and health monitors into
 OpenTofu under MWAN-543. Preserve their current configuration and alert policy.
@@ -77,7 +81,38 @@ observation separately from healthy or unhealthy service.
 Arm recovery before network-affecting changes. Include required inbound
 application replies in the deploy verdict even when backup egress succeeds.
 Verify actual failure and recovery alerts. Keep new application and acceptance
-code in MWAN. Require subsequent authorization before production retry.
+code in MWAN. Apply the operator's conditional production authorization only
+after the repair and testbed gates pass.
+
+## Store and clean generated artifacts
+
+Store all generated ephemeral artifacts under
+[/Volumes/Chaos Storage/Codex/mwan305](</Volumes/Chaos Storage/Codex/mwan305>)
+only while needed. This includes build
+outputs, caches, downloads, VM disks, captures, logs, temporary scripts and test
+fixtures. Keep source changes and the durable coordination plan and ledger in
+their repositories.
+
+1. Verify Chaos Storage is mounted before every artifact-producing operation.
+   Stop the operation if the volume is unavailable. Do not create a replacement
+   directory or silently fall back to the internal Mac disk.
+2. Configure each tool's temporary, output and cache directories explicitly on
+   Chaos Storage before generation. Assign each subagent an exclusive artifact
+   directory and these storage and cleanup requirements.
+3. Record each artifact's purpose, location and retention need in a compact
+   catalog. Retain only minimal unique evidence required for current acceptance,
+   incident analysis or production recovery.
+4. After each slice, failed attempt and compaction reorientation, summarize
+   durable results in the ledger and delete owned artifacts no longer required.
+   Regenerate disposable outputs instead of keeping redundant copies.
+5. Remove owned temporary containers and images once unused. Verify ownership
+   before deletion and preserve other agents' resources.
+6. Check disk usage regularly. Prevent unbounded accumulation and finish owned
+   artifact cleanup before declaring the goal complete.
+
+The previous local artifact directory is a symlink to Chaos Storage. Verify
+that symlink before using an old absolute evidence reference. An unavailable
+external volume does not permit generation under that old path.
 
 ## Reorient before each slice
 

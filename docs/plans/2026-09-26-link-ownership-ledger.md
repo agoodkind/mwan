@@ -7538,6 +7538,79 @@ pending. Missing and null SDK health fields are both rejected by IsNull.
 Distribution remains a separate implementation with exclusive dependency
 ownership assigned to the provider observation lane.
 
+## Resume after artifact cleanup and reconcile incident work
+
+The operator resumed MWAN-305 after emergency disk cleanup and authorized
+production once the defect is fully fixed. Require the incident corrections
+and complete testbed proof for the exact merged release and compatible
+configuration before exercising that authorization. Do not request repeated
+approval for this scope. Root remains the sole live testbed operator.
+
+The migration record reports 49,250 files verified with SHA256 under
+[/Volumes/Chaos Storage/Codex/mwan305](</Volumes/Chaos Storage/Codex/mwan305>).
+The retained artifacts occupied 699 MiB at migration. Readback on October 2
+confirmed that
+[/Users/agoodkind/.local/state/mwan305](/Users/agoodkind/.local/state/mwan305)
+is a symlink to that
+directory. The retained catalog and cleanup records remain with the artifacts.
+Regenerable disks, downloads, copied binaries, build caches and redundant
+evidence were purged. Source changes and durable plans remain in their
+repositories.
+
+All new generated artifacts, temporary files, caches, logs and fixtures must
+use Chaos Storage. Verify the mount and configure tool directories before
+generation. Stop artifact-producing operations when the volume is absent;
+never use the internal disk as a fallback. Give each subagent an exclusive
+artifact directory and these constraints. Record purpose, location and
+retention need in a compact catalog. After every slice, failed attempt and
+compaction reorientation, summarize durable evidence here and purge owned
+artifacts no longer needed. Remove only owned unused containers and images.
+Check disk usage regularly and complete cleanup before goal completion.
+
+GitHub readback on October 2 confirmed these states; the PR625 merge was
+refreshed after root completed its reviewed merge:
+
+| Repository and PR | State | Exact head or merge commit |
+| --- | --- | --- |
+| MWAN PR164, legacy preparation correction | Merged at 04:14:26 UTC | Merge 64821d87462541fb5abeb6d17ec510b09da02f7c; head 4b4bfb880ef7a4a96ebb0a04dc3d7045e88ff687 |
+| MWAN PR165, shared observation command | Merged at 03:58:00 UTC | Merge a96ce76a33bcb20624bba8fa88d5a533f5fbef42 |
+| MWAN PR166, Cloudflare SDK observation | Merged at 04:12:03 UTC | Merge abbfea8df2106aa4e650adbdb93cc176161e3801 |
+| MWAN PR167, connection distribution | Open | Head 95420d4abb663cf03142f6905eb90ccc2ac4214d |
+| Configs PR623, durable Cloudflare authorization | Merged at 04:34:22 UTC | Merge d30e26c12a792d175d09e2834b73ac57841d96fb |
+| Configs PR625, IPv6 mapping fixture | Merged at 06:17:41 UTC | Merge 1b0d9373f576c3ffc1f00ec149b2610b041ecbe5; head a2e3ee38ae8081922a3a1430fd5e2b283eef83da |
+
+The Tack MCP returned In Progress for each ticket MWAN-535 through MWAN-544.
+No ticket state changed during this reconciliation. Merged implementation
+does not establish the required physical acceptance or alert delivery.
+MWAN-537's historical snapshot requirement does not override the operator's
+later instruction that testbed state is disposable.
+
+The interrupted operation handoff reports Configs4e502017 deployed candidate
+e90b629 to the testbed preparation phase. Both Webpass and AT&T provider-side
+IPv4 mapping requests timed out after restart while both guests' IPv4 and
+IPv6 pings still replied. The live operator must refresh machine, executable,
+configuration, process and packet evidence before another mutation. This
+handoff establishes an unresolved reported failure, not its cause or repaired
+acceptance. Production remains recovered; this reconciliation made no live
+changes. Root's resumed readback confirmed VM213 still runs e90b629 and lacks
+the new observe command. No live deploy or SSH observer was active at resume.
+The merged IPv6 fixture still requires physical deployment and acceptance.
+
+The recovery review found that the watchdog bypasses FailureThreshold; its
+owner is correcting that behavior. The distribution runner omits the new
+test; its owner is correcting registration. Neither finding establishes
+successful recovery or distribution acceptance.
+
+Physical diagnosis of the first failing inbound packet boundary remains
+required. Complete and review distribution and deployment recovery work;
+validate repaired original-release preparation and measured automatic
+recovery. Prove both guests and families, acquisition, mappings, translation,
+balancing, ISP egress, ping paths, apparent public addresses, client
+applications, inbound services, alerts and deployed identity. Repeat forward
+and reverse transfer, restart, reboot, failover and recovery on the accepted
+pair. Keep passed, failed and unperformed results separate. Finish reboot
+detection only after ownership prerequisites pass.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
