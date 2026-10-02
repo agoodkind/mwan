@@ -8402,6 +8402,70 @@ The native standalone merge used the exact reviewed head. The release boundary
 passed 12 examples locally. Physical repaired-release acceptance remains
 unfinished; recovered production is unchanged.
 
+### Reproduce the original preparation failure on the physical testbed
+
+Historical operation 58277 installed and ran e90b629. The executable at
+/proc/10910/exe has SHA256
+cb96234df3b6c6fcf2aa989202de8bd854599869e3733b17d55e250a99c56942.
+The WAN unit used invocation 249cda5dd4124483b74be58f48497500.
+At 12:58:29 UTC, startup rejected existing AT&T and Monkeybrains NPT edge
+addresses and Webpass mapped IPv4 addresses without ownership records.
+Public IPv6 edge addresses remained local /128 addresses, but IPv6 translation
+chains were empty. The local input policy dropped mapping port 1406.
+
+Independent complete inbound HTTP results first failed at 12:58:42.517171803
+UTC for Webpass IPv6, 12:58:42.653646382 for AT&T IPv6,
+12:58:44.382462413 for AT&T IPv4, and 12:58:44.479168002 for Webpass IPv4.
+Both downstream guests continued passing in both families throughout the
+recorded outage. These results prove inbound failure, not total client loss.
+First recovery observations after the scheduled reboot were AT&T IPv4
+13:07:45.906315288, Webpass IPv4 13:07:46.356382001, Webpass IPv6
+13:07:46.417476122 and AT&T IPv6 13:07:53.867480821 UTC. Each IPv4 inbound
+check failed 32 times; each IPv6 inbound check failed 33 times. The measured
+inbound outage lasted approximately nine minutes.
+
+All three Linux captures finished at their native 1200-second deadline.
+Webpass captured 3277 packets, received 3278, and dropped zero in the kernel.
+AT&T captured 3290, received 3290, and dropped zero. Primary transit captured
+5829, received 5829, and dropped zero. Their transport exit status is 1.
+Provider IPv6 SYNs at 12:58:32 UTC do not appear on primary transit.
+First failed IPv4 SYNs at 12:58:34 UTC appear on the provider and primary
+transit after destination translation to 10.240.240.2:1406. No matching
+SYNACK appears on primary transit or either provider during those captures.
+
+OPNsense SSH rejected the key, but the native guest agent supports capture.
+A baseline 48-packet sample exited 0 without truncation or kernel drops.
+The subsequent bounded 4000-packet capture used native guest PID 16677.
+Its completed result was consumed, then overwritten by a second status read;
+the first-failure downstream-edge capture is unavailable. A later 48-packet
+failure sample exited 0 without truncation or kernel drops. At 13:03:40 UTC,
+OPNsense received both providers' IPv4 SYNs and transmitted matching SYNACKs.
+Actual return-route queries selected backup 10.240.240.4 for both provider
+observer addresses. Baseline queries selected primary 10.240.240.3.
+This supports an asymmetric return path, but does not prove the backup's
+packet transmission or translation. The backup capture could not start
+because tcpdump is absent; no backup packets were measured. After reboot,
+the measured Webpass return route selected primary 10.240.240.3 again.
+
+The historical deployment exited 0 with 306 successful tasks, 36 changed,
+zero failed, zero unreachable and 66 skipped. Its native post-reboot gate
+reported reboot_rc=0, egress_rc=0 and owned_rc=0, started at 13:06:37 UTC,
+and finished at 13:08:14 UTC. This passing gate omitted the preceding inbound
+outage. The gate starts only after preparation changes. The repaired release's
+physical acceptance remains unfinished. Production remains unchanged.
+
+The merged original-testbed recovery started at 13:09:33 UTC as operation
+35368 from clean Configs eebb726f. It selects only
+known-good-20260929-184618. Observe this exact operation; do not duplicate
+mutations. The independent application observer remains active. The global
+watchdog remains intentionally inactive until recovery finishes. MWAN-535
+remains In Progress; comment 01a0fcba-8dd2-7db5-b591-dfac626c6c1c includes
+the reproduced failure and incomplete repaired-release acceptance.
+
+Configs PR636 at signed 3513d165 passed required lint, data and GitGuardian
+checks and independent source review. Three new inline review threads remain
+under source triage. Physical provider handover remains unperformed.
+
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
 2. Record independent review and its reviewed commit separately from local checks.
 3. State the observable behavior demonstrated and any missing acceptance.
