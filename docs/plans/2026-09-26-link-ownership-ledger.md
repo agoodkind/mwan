@@ -6907,6 +6907,48 @@ tests are assigned. The existing focused released-binary case is active;
 root retains integration and PR publication. Source, runtime, fixture and
 cleanup results remain separate. Production promotion remains pending.
 
+## Merge the release fixture correction and retain the mapped failure
+
+MWAN PR #160 merged as aeb4f92665784000be085eef08190c8c65671cc5 at
+01:00:06 UTC on October 2. Independent review accepted signed source
+8554258c6e2418754124fabcc63dec4f7d135b04 with no findings. The fixture
+accepts only ENODEV when the kernel already removed its device. Other
+deletion errors still fail and report the exact link name and index.
+Production code, runtime assertions and deadlines are unchanged.
+
+The focused public release case passed against the published a8863b95
+ARM64 daemon in 9.72 seconds. Local Docker check/test gates exited zero.
+All active required GitHub checks passed and no review threads existed.
+The nonrequired Govulncheck failure reports the unchanged GoBGP
+GO-2026-4736 advisory with no fixed version. It is separate from the
+fixture correction. No security dependency change or live deployment
+occurred. The source checkout remains unchanged while its namespace
+runner is active.
+
+Seven instrumented mapped-case reproductions passed. Six visible receipt
+snapshots were already empty after kernel address deletion. No measured
+old-receipt-to-empty interval or journal write failure establishes the
+cause of the original failed read. Its cause remains unassigned. Temporary
+diagnostics remain uncommitted in mwan-mapped-receipt-observation; they
+are not integrated. Its dedicated container is absent. Evidence is
+20261002-mapped-failure-diagnosis.md and
+20261002-mapped-receipt-observation.
+
+dynamic_acceptance_discovery owns one unchanged namespace aggregate repeat
+at source e90b629 against the published a8863b95 daemon. Its exact session
+is 56593 and container is mwan-protocol-namespace-3579215580. The existing
+27-case list and deadlines are unchanged. release_completion owns a separate
+complete systemd repeat with the merged fixture correction and unchanged
+published daemon. Record both terminal results separately from the earlier
+failed aggregates.
+
+Configs PRs #617 and #618 have successful checks at heads 375808b7 and
+4e233e4c. Production remains unchanged. Preparation must be merged,
+deployed and accepted before activation. Neither operation has subsequent
+production authorization. Both downstream guests continue receiving actual
+IPv4 and IPv6 replies at 01:00 UTC. MWAN-398 and MWAN-522 remain In Progress
+while aggregate acceptance is unfinished; MWAN-521 remains Done.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
