@@ -9,29 +9,21 @@ import (
 	"slices"
 	"strings"
 
+	"goodkind.io/mwan/internal/observation/contract"
+
 	"github.com/cloudflare/cloudflare-go/v7"
 	"github.com/cloudflare/cloudflare-go/v7/load_balancers"
 	"github.com/cloudflare/cloudflare-go/v7/option"
 )
 
-// PoolOrigin includes the origin name omitted from the SDK's fixed IP field.
-type PoolOrigin struct {
-	Name   string                                                 `json:"name"`
-	Health load_balancers.PoolHealthGetResponsePOPHealthOriginsIP `json:"health"`
-}
+// PoolOrigin preserves the maintained SDK origin health fields.
+type PoolOrigin = contract.PoolOrigin
 
-// PoolRegion includes the location name omitted from the SDK's fixed region fields.
-type PoolRegion struct {
-	Name    string       `json:"name"`
-	Healthy bool         `json:"healthy"`
-	Origins []PoolOrigin `json:"origins"`
-}
+// PoolRegion preserves the maintained SDK regional health fields.
+type PoolRegion = contract.PoolRegion
 
-// PoolHealth contains the latest pool results returned by the configured account.
-type PoolHealth struct {
-	ID      string       `json:"id"`
-	Regions []PoolRegion `json:"regions"`
-}
+// PoolHealth preserves the maintained SDK pool health fields.
+type PoolHealth = contract.PoolHealth
 
 func (executor *Executor) cloudflarePool(ctx context.Context, spec CheckSpec, result Result) Result {
 	if executor.config.CloudflareAccountID == "" || executor.config.CloudflareTokenFile == "" {

@@ -1,75 +1,24 @@
 package observation
 
-import (
-	"net/netip"
-	"time"
-)
+import "goodkind.io/mwan/internal/observation/contract"
 
-// ProviderIngress separates current selection policy from the verified capture mapping.
-type ProviderIngress struct {
-	ConnectionID   string    `json:"connection_id"`
-	Family         Family    `json:"family"`
-	Bridge         string    `json:"bridge"`
-	PortInterface  string    `json:"port_interface"`
-	DestinationMAC string    `json:"destination_mac"`
-	Tier           uint8     `json:"tier"`
-	Weight         int       `json:"weight"`
-	Eligible       bool      `json:"eligible"`
-	ObservedAt     time.Time `json:"observed_at"`
-}
+// ProviderIngress identifies an independently captured provider path.
+type ProviderIngress = contract.ProviderIngress
 
-// DistributionPlan requires current provider policy and explicit downstream probes.
-type DistributionPlan struct {
-	HashMode          string                   `json:"hash_mode"`
-	ActiveTier        uint8                    `json:"active_tier"`
-	ObservedAt        time.Time                `json:"observed_at"`
-	RoutingGeneration uint64                   `json:"routing_generation"`
-	Providers         []ProviderIngress        `json:"providers"`
-	Transit           []ProviderIngress        `json:"transit"`
-	Calibration       *DistributionCalibration `json:"calibration"`
-	Requests          []CheckSpec              `json:"requests"`
-}
+// DistributionPlan requires current provider eligibility and steering policy.
+type DistributionPlan = contract.DistributionPlan
 
-// DistributionCalibration binds reviewed count bounds to one complete selection policy.
-type DistributionCalibration struct {
-	HashMode   string               `json:"hash_mode"`
-	ActiveTier uint8                `json:"active_tier"`
-	Samples    int                  `json:"samples"`
-	Providers  []CalibratedProvider `json:"providers"`
-}
+// DistributionCalibration records eligible providers before sample acceptance.
+type DistributionCalibration = contract.DistributionCalibration
 
-// CalibratedProvider requires explicit count bounds for its configured tier and weight.
-type CalibratedProvider struct {
-	ConnectionID string `json:"connection_id"`
-	Tier         uint8  `json:"tier"`
-	Weight       int    `json:"weight"`
-	MinSamples   int    `json:"min_samples"`
-	MaxSamples   int    `json:"max_samples"`
-}
+// CalibratedProvider records a provider's expected share under the current policy.
+type CalibratedProvider = contract.CalibratedProvider
 
-// TCPIngress records an actual initial TCP packet addressed to a verified provider endpoint.
-type TCPIngress struct {
-	At              time.Time  `json:"at"`
-	Source          netip.Addr `json:"source"`
-	Destination     netip.Addr `json:"destination"`
-	SourcePort      uint16     `json:"source_port"`
-	Sequence        uint32     `json:"sequence"`
-	DestinationPort uint16     `json:"destination_port"`
-	DestinationMAC  string     `json:"destination_mac"`
-	ConnectionID    string     `json:"connection_id"`
-}
+// TCPIngress records the packet tuple and kernel capture timestamp.
+type TCPIngress = contract.TCPIngress
 
-// CaptureReady records the verified kernel mapping and successful socket binding before probes.
-type CaptureReady struct {
-	ConnectionID   string    `json:"connection_id"`
-	Interface      string    `json:"interface"`
-	PortInterface  string    `json:"port_interface"`
-	DestinationMAC string    `json:"destination_mac"`
-	At             time.Time `json:"at"`
-}
+// CaptureReady requires capture startup before any distribution request.
+type CaptureReady = contract.CaptureReady
 
-// ProviderShare reports configured weights and actual request counts without a statistical guarantee.
-type ProviderShare struct {
-	Provider ProviderIngress `json:"provider"`
-	Samples  int             `json:"samples"`
-}
+// ProviderShare compares captured requests with the calibrated expectation.
+type ProviderShare = contract.ProviderShare
