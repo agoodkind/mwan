@@ -36,6 +36,7 @@ type Manifest struct {
 	Observation               observation.RuntimeConfig `json:"observation"`
 }
 
+// ExpectedInterruption authorizes bounded failures without changing their health verdict.
 type ExpectedInterruption struct {
 	Phase      string   `json:"phase"`
 	CheckIDs   []string `json:"check_ids"`
