@@ -8104,6 +8104,41 @@ executable verification. Root remains the sole live operator. Snapshot names
 and timestamps do not prove their executable identity. Physical original
 reproduction remains unperformed.
 
+### Verify repaired HTTP observations and the native snapshot graph
+
+PR174 at f12fdb30 completed its Linux runtime run 36997153302. The systemd
+stage ran and passed TestOwnedRolesDaemonRuntime in 15.85 seconds, including
+the repaired HTTP503 path assertion. Both-family recurring observation cases
+passed. Namespace acceptance failed initial IPv6 autoconfiguration at line168:
+the kernel had only a link-local address and no default gateway after the
+one-shot router advertisement. The missing optional diagnostic ip command
+does not establish the acquisition failure cause. Distribution samples passed
+calibration: focused IPv4 22/18 and IPv6 20/20, aggregate IPv4 21/19 and IPv6
+17/23. The minimal failed acquisition evidence remains on Chaos Storage;
+the full downloaded log was purged.
+
+PR174 now publishes signed 32c8d555. Root inspected its exact diff: the
+recurring observation worker no longer suppresses panics, and the notifier
+uses the module clock initialized before observation startup. Formatting and
+scoped Staticcheck passed. Root replied to and resolved both fixed review
+threads. The current Linux runtime run remains incomplete; no retry ran.
+
+Configs PR631 at 4e765454 passed required checks. Root reviewed all native
+operations and watchdog coordination. The running testbed watchdog must stop
+after its existing native VM213 jobs finish; the play pauses only its main
+process while native children continue, verifies the original invocation,
+waits for task and lock completion, and verifies service stop before VM stop.
+No native lock is forced. Production is excluded.
+
+The real localhost Ansible validation used captured native snapshot JSON and
+found that the descendant graph expression returns a string rather than a
+list. No VM or watchdog mutation ran. The source lane is correcting native
+list conversion before publication and physical use. Snapshot selection uses
+exact parent relationships; timestamps do not prove the restored executable.
+Original-release restoration, repaired preparation and ownership cutovers
+remain unperformed. Production remains recovered and unchanged under the
+operator's conditional authorization.
+
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
 2. Record independent review and its reviewed commit separately from local checks.
 3. State the observable behavior demonstrated and any missing acceptance.
