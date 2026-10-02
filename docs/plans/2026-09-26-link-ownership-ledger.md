@@ -8218,6 +8218,43 @@ unfinished. Its declared critical section is 1310 seconds, maximum lease 1340,
 recovery 1940 and operation duration 8510. Physical failed preparation
 reproduction and repair acceptance remain unfinished. Production is unchanged.
 
+### Merge durable health and the preparation repair
+
+The original native Graphite merge completed all four health PRs. PR172 merged
+as db3f39b2, PR173 as 826fac43 and PR174 as d1ac42eb. PR174's final rewritten
+head was 15daf5ba. No second merge or manual restack ran. Its required checks
+passed. Its rewritten netns and ARM64 jobs passed; its firewall job was
+canceled after merge. The earlier exact 32c8d555 firewall and systemd
+acceptance passed. These checks do not establish physical testbed acceptance.
+
+Independent review found completed failure results could retain the legacy
+adoption lease in capture, stop, adoption, start and shared installer tasks.
+Configs PR633 corrected their terminal-result accounting. Finished command
+results require rc. Finished systemd results require the exact WAN unit and
+requested state. Missing, unfinished and timeout results retain pending
+state. The original failed task remains fatal. Timeout and budget values
+remain unchanged.
+
+The independent lane reviewed exact signed head 58b1f5c6 with no remaining
+source finding. Root inspected the full patch, active merge rules, all three
+branch signatures and raw signature headers. Required lint, data and
+GitGuardian checks passed. All three Graphite threads were resolved with
+caller and recovery evidence. Configs PR633 merged as c8f9da4f at
+11:58:33 UTC on October 2. The final local suite passed 39 examples with
+one existing Linux validator skip. No physical preparation deployment ran.
+
+The historical controller checkout is clean and detached at merged Configs
+369add99 for the original failed-release reproduction. Its testbed Webpass
+owner must change only from mwan to networkd through complete extra-vars;
+the remaining historical provider fields must remain unchanged. The original
+d442ba1 testbed and its eight passing application observations are the
+verified baseline. Continuous observations during the failed preparation,
+recovery, repaired preparation and complete ownership acceptance remain
+unperformed. Production remains recovered and unchanged. The operator's
+conditional production authorization is recorded in the coordination plan
+and active automation; another approval is not required after the defect
+repair and all required testbed proof pass.
+
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
 2. Record independent review and its reviewed commit separately from local checks.
 3. State the observable behavior demonstrated and any missing acceptance.
