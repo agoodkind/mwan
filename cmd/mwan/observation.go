@@ -133,6 +133,9 @@ func loadObservationRuntime(path string) (observation.RuntimeConfig, error) {
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		return settings, fmt.Errorf("observe runtime settings require one JSON object")
 	}
+	if settings.CloudflareTokenFile != "" && !filepath.IsAbs(settings.CloudflareTokenFile) {
+		return settings, fmt.Errorf("observe Cloudflare token file path must be absolute")
+	}
 	for _, configured := range []string{settings.MachineIDPath, settings.ProbeBinary} {
 		if configured == "" {
 			continue

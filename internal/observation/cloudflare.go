@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -35,6 +36,10 @@ type PoolHealth struct {
 func (executor *Executor) cloudflarePool(ctx context.Context, spec CheckSpec, result Result) Result {
 	if executor.config.CloudflareAccountID == "" || executor.config.CloudflareTokenFile == "" {
 		result.Availability, result.Reason = AvailabilityMissing, "cloudflare account or protected token file is unavailable"
+		return result
+	}
+	if !filepath.IsAbs(executor.config.CloudflareTokenFile) {
+		result.Reason = "cloudflare credential file path must be absolute"
 		return result
 	}
 	file, err := os.Open(executor.config.CloudflareTokenFile)
