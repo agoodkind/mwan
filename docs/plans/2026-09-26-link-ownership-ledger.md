@@ -8056,6 +8056,54 @@ The independent lane verified every MWAN-543 requirement against this evidence.
 Tack comment 01a0fc22-2ea0-715f-aa9f-bb5f8056362c includes the acceptance results.
 MWAN-543 is Done; the actual ticket state was updated and read back.
 
+### Review the exact health runtime results and activation timing
+
+PR173 at 66f90a69 passed namespace and systemd acceptance. Its continuous
+checks exercised both families, independent checks during a slow request,
+application failure/recovery, wrong-identity rejection and SIGTERM completion.
+PR172 at 3eb17ebc failed only the inherited machine-id utility dependency;
+PR173 corrects that fixture and passed it. All PR172 distribution cohorts
+passed calibration. PR173's focused IPv6 12/28 cohort failed calibration and
+was correctly classified; its aggregate IPv4 17/23 and IPv6 19/21 passed.
+
+PR174 at 33bd7dc passed namespace checks and every distribution cohort, but
+TestOwnedRolesDaemonRuntime failed the actual HTTP503 result at line222.
+The result included source127.0.0.1 but omitted the configured interface lo.
+Source inspection confirmed executor.http returns completed status/body
+failures before calling executor.route. The implementation lane owns the
+focused fix; merge and production acceptance remain unfinished.
+
+PR174 now publishes f12fdb30. Independent source review verified that the only
+change moves the existing route lookup before completed HTTP verdict returns.
+The result retains socket source/destination, HTTP status/body and failure
+verdict; unavailable route evidence remains unknown. Actual formatter and
+scoped Staticcheck passed. Local Darwin Golangci and Linux cross-install
+attempts did not complete; the exact Linux CI and runtime jobs are active.
+
+The isolated Configs activation draft is signed 5adf282b and unpublished.
+Its real Ansible health expressions passed four examples, including rejection
+of missing, unknown, stale, future and wrong-identity results. Root reviewed
+its timing formula with declared testbed values: activation10885 seconds,
+maximum lease10915, recovery timeout11515 and operation duration18085.
+This draft could delay restoration for over three hours while awaiting its
+lease. It requires a timing correction before publication. Verified
+noninterrupting prerequisites and task-specific bounds must reduce the
+critical section without removing actual deadlines or recovery fencing.
+
+Ledger commit542bd59 was signed, all195 branch-local signatures and raw
+signature headers verified, and the branch pushed. Completed Cloudflare
+plan/data/provider/log artifacts and signature-check artifacts were purged.
+Current deployment release and Go caches remain required on Chaos Storage.
+
+The independent baseline audit found no public selected-snapshot restoration
+or original-release-only installation entry point. The current full deploy
+rewrites configuration and runs preparation; a release tag alone retains
+current checksums. The baseline lane now owns a bounded testbed-only Configs
+playbook for explicit existing-snapshot restoration and exact d442 running
+executable verification. Root remains the sole live operator. Snapshot names
+and timestamps do not prove their executable identity. Physical original
+reproduction remains unperformed.
+
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
 2. Record independent review and its reviewed commit separately from local checks.
 3. State the observable behavior demonstrated and any missing acceptance.
