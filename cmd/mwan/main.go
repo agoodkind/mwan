@@ -61,8 +61,9 @@ func main() {
 		os.Exit(res.code)
 	}
 	// The gateway installs local protection before TOML and BGP validation.
+	var flags ifmgrFlags
 	if subcommand(sub) == subcmdIfmgr {
-		flags := parseIfMgrFlags()
+		flags = parseIfMgrFlags()
 		if flags.role == "wan" && flags.captureLegacyNPT == "" && flags.adoptLegacyNPT == "" {
 			if err := bootstrapWANFirewall(context.Background(), networkjson.DefaultPath); err != nil {
 				fmt.Fprintf(os.Stderr, "mwan ifmgr: %v\n", err)
@@ -77,7 +78,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if code := dispatchWithConfig(sub, subcommand(sub), cfg); code != 0 {
+	if code := dispatchWithConfig(sub, subcommand(sub), cfg, flags); code != 0 {
 		os.Exit(code)
 	}
 }
@@ -115,7 +116,7 @@ func dispatchConfigLess(sub subcommand) dispatchResult {
 // dispatchWithConfig handles subcommands that need a loaded mwan config.
 // Returns the exit code; 0 means success. The helper prints the error
 // itself so wrapcheck doesn't fire on the cross-package error returns.
-func dispatchWithConfig(rawSub string, sub subcommand, cfg *config.Config) int {
+func dispatchWithConfig(rawSub string, sub subcommand, cfg *config.Config, flags ifmgrFlags) int {
 	var runErr error
 	switch sub {
 	case subcmdAgent:
@@ -128,7 +129,7 @@ func dispatchWithConfig(rawSub string, sub subcommand, cfg *config.Config) int {
 			runErr = watchdog.Run(cfg)
 		}
 	case subcmdIfmgr:
-		runErr = runIfMgr(cfg)
+		runErr = runIfMgr(cfg, flags)
 	case subcmdNotify:
 		runErr = runNotify(cfg)
 	case subcmdDebug:

@@ -57,12 +57,8 @@ import (
 	_ "goodkind.io/mwan/internal/ifmgr/modules/wg"
 )
 
-// runIfMgr is the entry point for the `mwan ifmgr` subcommand.
-// Parses flags, builds a slog logger with the email handler chain, and
-// hands off to ifmgr.Daemon.
-func runIfMgr(cfg *config.Config) error {
-	flags := parseIfMgrFlags()
-
+// runIfMgr configures the daemon with the flags parsed before firewall bootstrap.
+func runIfMgr(cfg *config.Config, flags ifmgrFlags) error {
 	role, err := ifMgrRole(cfg, flags)
 	if err != nil {
 		return err

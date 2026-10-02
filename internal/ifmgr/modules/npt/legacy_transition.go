@@ -64,22 +64,17 @@ func ReadLegacyNPTEdges(ctx context.Context, log *slog.Logger, cfg Config, conne
 }
 
 // ReadLegacyNPTRules rejects rules outside the recognized managed NAT forms.
-func ReadLegacyNPTRules() (result []natRule, resultErr error) {
-	defer func() {
-		if resultErr != nil {
-			slog.Warn("legacy NPT rule inspection failed", "err", resultErr)
-		}
-	}()
+func ReadLegacyNPTRules() ([]natRule, error) {
 	conn, err := nftables.New()
 	if err != nil {
-		return nil, fmt.Errorf("open legacy NPT rules: %w", err)
+		return nil, netif.NewLegacyNPTError("open legacy NPT rules", err)
 	}
 	table := &nftables.Table{Family: nftables.TableFamilyIPv6, Name: natTableName}
 	var installed []natRule
 	for _, name := range []string{preroutingChain, postroutingChain} {
 		rules, err := conn.GetRules(table, &nftables.Chain{Name: name, Table: table})
 		if err != nil {
-			return nil, fmt.Errorf("read legacy NPT chain %s: %w", name, err)
+			return nil, netif.NewLegacyNPTError("read legacy NPT chain "+name, err)
 		}
 		for _, rule := range rules {
 			if rule == nil {
@@ -96,15 +91,10 @@ func ReadLegacyNPTRules() (result []natRule, resultErr error) {
 }
 
 // ReadLegacyNPTEdge requires the configured rules and ready address on the observed link.
-func (m *Module) ReadLegacyNPTEdge(ctx context.Context, log *slog.Logger, wan WAN, configured interfaceintent.Connection, installed []natRule) (result netif.LegacyNPTEdge, resultErr error) {
-	defer func() {
-		if resultErr != nil {
-			log.WarnContext(ctx, "legacy NPT edge inspection failed", "connection", wan.ID, "err", resultErr)
-		}
-	}()
+func (m *Module) ReadLegacyNPTEdge(ctx context.Context, log *slog.Logger, wan WAN, configured interfaceintent.Connection, installed []natRule) (netif.LegacyNPTEdge, error) {
 	link, err := netif.ObserveLegacyLink(configured)
 	if err != nil {
-		return netif.LegacyNPTEdge{}, fmt.Errorf("read legacy NPT link: %w", err)
+		return netif.LegacyNPTEdge{}, netif.NewLegacyNPTError("read legacy NPT link", err)
 	}
 	built, present, err := m.buildWANDesired(ctx, log, wan, false)
 	if err != nil {
@@ -120,11 +110,11 @@ func (m *Module) ReadLegacyNPTEdge(ctx context.Context, log *slog.Logger, wan WA
 	}
 	prefix, err := netip.ParsePrefix(built.ensure[0].CIDR)
 	if err != nil {
-		return netif.LegacyNPTEdge{}, fmt.Errorf("parse legacy NPT edge: %w", err)
+		return netif.LegacyNPTEdge{}, netif.NewLegacyNPTError("parse legacy NPT edge", err)
 	}
 	addresses, err := netlink.AddrList(link, unix.AF_INET6)
 	if err != nil {
-		return netif.LegacyNPTEdge{}, fmt.Errorf("read legacy NPT addresses: %w", err)
+		return netif.LegacyNPTEdge{}, netif.NewLegacyNPTError("read legacy NPT addresses", err)
 	}
 	ready := false
 	for _, address := range addresses {
@@ -145,11 +135,11 @@ func (m *Module) ReadLegacyNPTEdge(ctx context.Context, log *slog.Logger, wan WA
 	var intentBytes, ruleBytes bytes.Buffer
 	err = gob.NewEncoder(&intentBytes).Encode(intent)
 	if err != nil {
-		return netif.LegacyNPTEdge{}, fmt.Errorf("marshal legacy NPT intent: %w", err)
+		return netif.LegacyNPTEdge{}, netif.NewLegacyNPTError("marshal legacy NPT intent", err)
 	}
 	err = gob.NewEncoder(&ruleBytes).Encode(built.rules)
 	if err != nil {
-		return netif.LegacyNPTEdge{}, fmt.Errorf("marshal legacy NPT rules: %w", err)
+		return netif.LegacyNPTEdge{}, netif.NewLegacyNPTError("marshal legacy NPT rules", err)
 	}
 	intentDigest := sha256.Sum256(intentBytes.Bytes())
 	ruleDigest := sha256.Sum256(ruleBytes.Bytes())

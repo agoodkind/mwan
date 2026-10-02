@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -43,37 +42,27 @@ type legacyNPTTransition struct {
 }
 
 // ReadTransitionKernelIdentity binds receipts to the boot and network namespace.
-func ReadTransitionKernelIdentity() (bootID, networkNamespace string, resultErr error) {
-	defer func() {
-		if resultErr != nil {
-			slog.Warn("legacy NPT kernel identity inspection failed", "err", resultErr)
-		}
-	}()
+func ReadTransitionKernelIdentity() (string, string, error) {
 	boot, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
 	if err != nil {
-		return "", "", fmt.Errorf("read transition boot identity: %w", err)
+		return "", "", NewLegacyNPTError("read transition boot identity", err)
 	}
 	namespace, err := os.Readlink("/proc/self/ns/net")
 	if err != nil {
-		return "", "", fmt.Errorf("read transition namespace: %w", err)
+		return "", "", NewLegacyNPTError("read transition namespace", err)
 	}
 	return string(boot), namespace, nil
 }
 
 // ReadLegacyNPTProducer verifies the running WAN command and original executable.
-func ReadLegacyNPTProducer(pid int, expectedSHA256 string) (result legacyNPTProducer, resultErr error) {
-	defer func() {
-		if resultErr != nil {
-			slog.Warn("legacy NPT producer inspection failed", "pid", pid, "err", resultErr)
-		}
-	}()
+func ReadLegacyNPTProducer(pid int, expectedSHA256 string) (legacyNPTProducer, error) {
 	if pid <= 1 || pid == os.Getpid() || len(expectedSHA256) != sha256.Size*2 {
 		return legacyNPTProducer{}, fmt.Errorf("invalid legacy producer identity")
 	}
 	root := filepath.Join("/proc", strconv.Itoa(pid))
 	command, err := os.ReadFile(filepath.Join(root, "cmdline"))
 	if err != nil {
-		return legacyNPTProducer{}, fmt.Errorf("read original command: %w", err)
+		return legacyNPTProducer{}, NewLegacyNPTError("read original command", err)
 	}
 	arguments := strings.Split(string(command), "\x00")
 	if len(arguments) < 4 || arguments[1] != "ifmgr" {
@@ -90,7 +79,7 @@ func ReadLegacyNPTProducer(pid int, expectedSHA256 string) (result legacyNPTProd
 	}
 	namespace, err := os.Readlink(filepath.Join(root, "ns/net"))
 	if err != nil {
-		return legacyNPTProducer{}, fmt.Errorf("read original namespace: %w", err)
+		return legacyNPTProducer{}, NewLegacyNPTError("read original namespace", err)
 	}
 	_, currentNamespace, err := ReadTransitionKernelIdentity()
 	if err != nil {
@@ -101,7 +90,7 @@ func ReadLegacyNPTProducer(pid int, expectedSHA256 string) (result legacyNPTProd
 	}
 	stat, err := os.ReadFile(filepath.Join(root, "stat"))
 	if err != nil {
-		return legacyNPTProducer{}, fmt.Errorf("read original process start time: %w", err)
+		return legacyNPTProducer{}, NewLegacyNPTError("read original process start time", err)
 	}
 	end := strings.LastIndex(string(stat), ") ")
 	if end < 0 {
@@ -113,12 +102,12 @@ func ReadLegacyNPTProducer(pid int, expectedSHA256 string) (result legacyNPTProd
 	}
 	executable, err := os.Open(filepath.Join(root, "exe"))
 	if err != nil {
-		return legacyNPTProducer{}, fmt.Errorf("open original executable: %w", err)
+		return legacyNPTProducer{}, NewLegacyNPTError("open original executable", err)
 	}
 	defer executable.Close()
 	digest := sha256.New()
 	if _, err := io.Copy(digest, executable); err != nil {
-		return legacyNPTProducer{}, fmt.Errorf("hash original executable: %w", err)
+		return legacyNPTProducer{}, NewLegacyNPTError("hash original executable", err)
 	}
 	actual := hex.EncodeToString(digest.Sum(nil))
 	if actual != expectedSHA256 {
@@ -128,12 +117,7 @@ func ReadLegacyNPTProducer(pid int, expectedSHA256 string) (result legacyNPTProd
 }
 
 // WriteLegacyNPTTransition records the running producer without changing kernel state.
-func WriteLegacyNPTTransition(path string, pid int, producerSHA256, journalPath string, edges []LegacyNPTEdge) (resultErr error) {
-	defer func() {
-		if resultErr != nil {
-			slog.Warn("legacy NPT manifest write failed", "err", resultErr)
-		}
-	}()
+func WriteLegacyNPTTransition(path string, pid int, producerSHA256, journalPath string, edges []LegacyNPTEdge) error {
 	if os.Geteuid() != 0 || !filepath.IsAbs(path) || !filepath.IsAbs(journalPath) || len(edges) == 0 {
 		return fmt.Errorf("legacy NPT capture requires root, absolute paths and verified edges")
 	}
@@ -148,7 +132,7 @@ func WriteLegacyNPTTransition(path string, pid int, producerSHA256, journalPath 
 	manifest := legacyNPTTransition{Version: 1, BootID: boot, NetworkNamespace: namespace, Producer: producer, JournalPath: journalPath, Edges: edges}
 	data, err := json.Marshal(manifest)
 	if err != nil {
-		return fmt.Errorf("marshal legacy NPT manifest: %w", err)
+		return NewLegacyNPTError("marshal legacy NPT manifest", err)
 	}
 	confirmed, err := ReadLegacyNPTProducer(pid, producerSHA256)
 	if err != nil {
@@ -163,11 +147,11 @@ func WriteLegacyNPTTransition(path string, pid int, producerSHA256, journalPath 
 			return fmt.Errorf("existing legacy NPT manifest must be a root-owned regular file with mode 0600")
 		}
 	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("inspect legacy NPT manifest path: %w", err)
+		return NewLegacyNPTError("inspect legacy NPT manifest path", err)
 	}
 	_, err = installfile.Write(path, append(data, '\n'), 0o600)
 	if err != nil {
-		return fmt.Errorf("write legacy NPT manifest: %w", err)
+		return NewLegacyNPTError("write legacy NPT manifest", err)
 	}
 	return nil
 }
@@ -212,15 +196,10 @@ func ApplyLegacyNPTTransition(path, journalPath string, current []LegacyNPTEdge)
 }
 
 // ReadLegacyNPTManifest rejects stale evidence and a producer that has not stopped.
-func ReadLegacyNPTManifest(path, journalPath string) (result legacyNPTTransition, resultErr error) {
-	defer func() {
-		if resultErr != nil {
-			slog.Warn("legacy NPT manifest inspection failed", "err", resultErr)
-		}
-	}()
+func ReadLegacyNPTManifest(path, journalPath string) (legacyNPTTransition, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
-		return legacyNPTTransition{}, fmt.Errorf("inspect legacy NPT manifest: %w", err)
+		return legacyNPTTransition{}, NewLegacyNPTError("inspect legacy NPT manifest", err)
 	}
 	owner, ok := info.Sys().(*syscall.Stat_t)
 	if !ok || owner.Uid != 0 || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
@@ -228,13 +207,13 @@ func ReadLegacyNPTManifest(path, journalPath string) (result legacyNPTTransition
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return legacyNPTTransition{}, fmt.Errorf("read legacy NPT manifest: %w", err)
+		return legacyNPTTransition{}, NewLegacyNPTError("read legacy NPT manifest", err)
 	}
 	var manifest legacyNPTTransition
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&manifest); err != nil {
-		return legacyNPTTransition{}, fmt.Errorf("decode legacy NPT manifest: %w", err)
+		return legacyNPTTransition{}, NewLegacyNPTError("decode legacy NPT manifest", err)
 	}
 	var trailing json.RawMessage
 	if err := decoder.Decode(&trailing); err != io.EOF {
@@ -254,19 +233,14 @@ func ReadLegacyNPTManifest(path, journalPath string) (result legacyNPTTransition
 }
 
 // ReadLegacyNPTEdge rejects changed kernel identity and conflicting scoped receipts.
-func (r *OwnedStaticReconciler) ReadLegacyNPTEdge(record NPTEdgeRecord) (resultErr error) {
-	defer func() {
-		if resultErr != nil {
-			slog.Warn("legacy NPT edge verification failed", "connection", record.ConnectionID, "err", resultErr)
-		}
-	}()
+func (r *OwnedStaticReconciler) ReadLegacyNPTEdge(record NPTEdgeRecord) error {
 	link, err := netlink.LinkByIndex(record.InterfaceIndex)
 	if err != nil || link.Attrs().Name != record.Interface || !LinkMatchesIdentity(link, record.InterfaceIndex, record.LinkIdentity) {
 		return fmt.Errorf("legacy NPT link changed for %s", record.ConnectionID)
 	}
 	addresses, err := netlink.AddrList(link, unix.AF_INET6)
 	if err != nil {
-		return fmt.Errorf("read legacy NPT edge addresses: %w", err)
+		return NewLegacyNPTError("read legacy NPT edge addresses", err)
 	}
 	ready := false
 	for _, address := range addresses {
@@ -284,4 +258,25 @@ func (r *OwnedStaticReconciler) ReadLegacyNPTEdge(record NPTEdgeRecord) (resultE
 		}
 	}
 	return nil
+}
+
+// NewLegacyNPTError preserves the operation and cause for the command error boundary.
+func NewLegacyNPTError(operation string, cause error) *LegacyNPTOperationError {
+	return &LegacyNPTOperationError{operation: operation, cause: cause}
+}
+
+// LegacyNPTOperationError retains the original cause without logging it.
+type LegacyNPTOperationError struct {
+	operation string
+	cause     error
+}
+
+// Error includes the operation in the command's rejection message.
+func (failure *LegacyNPTOperationError) Error() string {
+	return failure.operation + ": " + failure.cause.Error()
+}
+
+// Unwrap permits [errors.Is] and [errors.As] to inspect the original cause.
+func (failure *LegacyNPTOperationError) Unwrap() error {
+	return failure.cause
 }

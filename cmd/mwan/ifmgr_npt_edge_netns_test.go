@@ -309,6 +309,12 @@ func assertLegacyAdoptionCommand(t *testing.T, configPath, manifest, expectedErr
 	if err == nil || !strings.Contains(string(output), expectedError) {
 		t.Fatalf("adoption rejection expected %q: %v: %s", expectedError, err, output)
 	}
+	if count := strings.Count(string(output), "legacy NPT transition rejected"); count != 1 {
+		t.Fatalf("adoption rejection requires one command error log, got %d: %s", count, output)
+	}
+	if strings.Contains(string(output), "legacy NPT manifest inspection failed") || strings.Contains(string(output), "legacy NPT edge inspection failed") || strings.Contains(string(output), "legacy link identity inspection failed") {
+		t.Fatalf("adoption rejection logged a helper failure: %s", output)
+	}
 }
 
 func configureLegacyUpgradeLink(t *testing.T, path string) {

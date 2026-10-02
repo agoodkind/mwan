@@ -35,15 +35,10 @@ type NPTEdgeRecord struct {
 }
 
 // ObserveLegacyLink verifies configured identity without applying link settings.
-func ObserveLegacyLink(connection interfaceintent.Connection) (result netlink.Link, resultErr error) {
-	defer func() {
-		if resultErr != nil {
-			slog.Warn("legacy link identity inspection failed", "connection", connection.ID, "err", resultErr)
-		}
-	}()
+func ObserveLegacyLink(connection interfaceintent.Connection) (netlink.Link, error) {
 	link, err := netlink.LinkByName(connection.Name)
 	if err != nil {
-		return nil, fmt.Errorf("observe legacy link %s: %w", connection.Name, err)
+		return nil, NewLegacyNPTError("observe legacy link "+connection.Name, err)
 	}
 	if connection.Link != nil && (connection.Link.Kind == interfaceintent.KindPhysical || connection.Link.Kind == "") && connection.Link.Match.HardwareAddress != "" {
 		matched, err := physicalLink(connection)
@@ -59,7 +54,7 @@ func ObserveLegacyLink(connection interfaceintent.Connection) (result netlink.Li
 		if driver != "veth" {
 			path, err := filepath.EvalSymlinks(filepath.Join("/sys/class/net", connection.Name, "device/driver"))
 			if err != nil {
-				return nil, fmt.Errorf("observe legacy driver for %s: %w", connection.ID, err)
+				return nil, NewLegacyNPTError(fmt.Sprintf("observe legacy driver for %s", connection.ID), err)
 			}
 			driver = filepath.Base(path)
 		}
