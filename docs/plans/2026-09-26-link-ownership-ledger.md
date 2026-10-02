@@ -9325,6 +9325,34 @@ before merge. The next physical forward attempt must use this merged revision
 and the same independently reviewed Webpass configuration. No production
 operation is authorized before the remaining testbed acceptance passes.
 
+The repeated forward controller 20561 started at 20:47:32 UTC from clean merged
+Configs 69ed320643b60bd9eeccc18b62ba1791dd3b009f, using the same F4 release
+and reviewed Webpass-only configuration. Root independently read operation
+20261002-134829-deploy-738854 with generation
+d2f0d984-c943-47cc-aa84-b1823f83b63f. Its registered watch is active with
+PID 2781844 and invocation c80258d1af6e4b90b819f474385f4871. The snapshot is
+pre-deploy-20261002-134829-deploy-738854. All eight required application checks
+passed between 20:55:02 and 20:55:19 UTC. The current cloudflared-configuration
+lease expires at 20:58:27 UTC. Complete ownership transfer and commitment are
+still pending; passing preparation checks do not establish them.
+
+Root verified three bounded capture producers before this attempt. Webpass
+uses PID 667429 and invocation e902335dbe0340ab82473bfe043469f8; AT&T uses
+667310 and 3d110b1e265d4753b4d35769a2cc875e; primary transit uses 1124 and
+7d0589dd3f58495fb585887da629026e. Their files use the retryforward prefix
+under the external resume-controller directory. The existing four guest ping
+streams and independent application observer remain active. The native route
+observer renewed at 20:54:22 UTC with PID 48709 and a 133-second overlap.
+All readbacks through 20:54:25 UTC selected the primary in both families.
+The root controller remains the sole network mutation owner.
+
+The reconnect implementer removed only its clean merged source worktree and
+branch after bounded cleanup verification. The deploy checkout is unchanged.
+The three superseded full captures from the failed attempt were deleted after
+their results became durable. Compact DHCP, mapping and ICMP evidence remains.
+Chaos Storage is mounted with 966 GiB available; current root controller
+artifacts use 981 MiB. Production remains unchanged.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
