@@ -355,7 +355,9 @@ does not establish AMD64 execution or physical ownership transfer.
    restart and reboot. Preserve fresh initial acquisition separately from
    persisted restart recovery.
 4. For the first Webpass production phase, prepare with every connection
-   networkd-owned. After current production authorization, run its separate
+   networkd-owned. Production is authorized after complete incident repair and
+   the required testbed acceptance pass for the exact merged release and
+   compatible configuration. Run its separate
    operation:
 
    ```sh
@@ -364,7 +366,7 @@ does not establish AMD64 execution or physical ownership transfer.
 
    Accept preparation and capture installed runtime/network documents before
    merging and deploying Webpass activation. Preserve strict comparison of
-   nonselected records. Require subsequent authorization for activation. Keep
+   nonselected records. Apply that conditional authorization to activation. Keep
    AT&T and networkd coexistence; other interfaces and retirement are later phases.
 
 #### Observe downstream packets and provider attribution
