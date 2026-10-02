@@ -8462,9 +8462,69 @@ watchdog remains intentionally inactive until recovery finishes. MWAN-535
 remains In Progress; comment 01a0fcba-8dd2-7db5-b591-dfac626c6c1c includes
 the reproduced failure and incomplete repaired-release acceptance.
 
-Configs PR636 at signed 3513d165 passed required lint, data and GitGuardian
-checks and independent source review. Three new inline review threads remain
-under source triage. Physical provider handover remains unperformed.
+Configs PR636 merged as 439d94f01a5fdc652a2dae6d33b524ad108e4d33 at
+13:17:24 UTC. Root inspected the complete source at signed 3513d165 and the
+four-file correction at signed e213c617. The correction calculates unchanged
+transfer bounds once after selected owner and packet facts. Independent
+review passed both revisions. Required lint, data and GitGuardian checks
+passed; every review thread was resolved after source evidence or correction.
+The native standalone merge used the exact reviewed head. Physical provider
+handover remains unperformed.
+
+### Restore the original pair and begin repaired preparation
+
+Recovery 35368 exited 0 with 43 successful tasks, seven changed, zero failed
+and 12 skipped. It verified original d442ba1 and matching installed/running
+SHA256 1c79542f6f9e56fc0ad0f101b0688a84f95bfc41706ebebf36982e0f4f8726fa.
+Machine bdd916f95e3e44568e6a5d3096cf2dea is unchanged. WAN PID 321 and
+networkd PID 595 are active; management/transit daemons are inactive and all
+four ownership journals are absent. All eight independent application checks
+passed freshly at 13:13:57 through 13:14:02 UTC. Root restored the originally
+active global watchdog, now PID 479876 and invocation
+d36fe11e8e714d499ee963f2eadc8a5a.
+
+Historical observation 2194 exited 0 after exact main-process SIGINT. Its
+native unit is inactive with PID 0. It observed 130 complete inbound failures
+during preparation and 45 during intentional snapshot restoration. Neither
+phase recorded downstream failures or unknown results. Restoration recovered
+all inbound checks at 13:13:15 through 13:13:23 UTC. Its terminal summary
+finished at 13:18:21.705395165 UTC with every check passing. The independent
+lane retained a compact phase summary; purge superseded raw observations and
+terminal deployment/recovery logs after this checkpoint is durable.
+
+Independent repaired observation 73905 is active. Native unit
+mwan-repaired-observation-20261002 uses PID 501202 and invocation
+2a474492c5174cef8a75cf2643206a77, with a 10800-second maximum lifetime.
+It uses the previously verified temporary executable and eight-check manifest.
+Output remains on Chaos Storage. Do not duplicate this producer.
+
+Repaired preparation 26139 started at 13:19:19 UTC from clean merged Configs
+439d94f0 with pinned MWAN d1ac42eb. Its provider override retains all five
+original networkd owners. Independent source audit found no missing input;
+legacy adoption remains enabled for the exact d442 executable. The operation
+trace is 20261002-062012-deploy-482644.
+
+The preparation exited 1 before arming recovery or installing the gateway
+runtime. Observer 900 and 901 version checks returned old 2cbfdd9 despite
+parent copy commands returning 0. Observers 225 and 226 returned the required
+d1ac42e. Native completed push_file tasks for 900 and 901 report Text file
+busy. The hypervisor candidate has SHA256
+d0f0d060fed27a07f29188a45133f2cd1148cfd74d9f6f9c10dabf54931ea122;
+the unchanged provider destination has SHA256
+34aad4bda3e56beabd2558ac20c5a14dbefe0f596653d9d83c9d27b16c1c0f21.
+Installed Proxmox copy code truncates an existing executable. Its synchronous
+worker is reaped, but the CLI discards the worker error status. Root observed
+an executing provider observer. Atomic same-directory replacement requires a
+verified staged candidate, not an in-place overwrite or a weakened version
+gate. The source lane owns that focused correction. All application checks
+still pass; the gateway remains original and production remains unchanged.
+
+Five preparation captures were stopped with exact main-process SIGINT after
+the version gate failed. Every transport exited 0; native units are inactive
+with PID 0. Webpass captured 1394 packets, AT&T 1397, primary transit 2801,
+OPNsense tap201i1 2801 and backup veth216i1 zero. Each reports zero kernel
+drops. These capture only the healthy original baseline before a rejected
+preparation. Purge their regenerable raw output after this checkpoint.
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
 2. Record independent review and its reviewed commit separately from local checks.
