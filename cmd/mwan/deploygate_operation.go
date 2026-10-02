@@ -95,7 +95,7 @@ func runDeployOperation(arguments []string) int {
 func executeDeployOperation(ctx, signalContext context.Context, cfg *config.Config, engine deployoperation.Engine, args []string) error {
 	switch operationMode(args[0]) {
 	case operationArm:
-		return armDeployOperation(ctx, cfg, engine, args)
+		return armDeployOperation(signalContext, cfg, engine, args)
 	case operationWatch, operationStatus, operationLease, operationRelease, operationCommit, operationRecover:
 		return executeCurrentDeployOperation(ctx, signalContext, cfg, engine, args)
 	default:
@@ -162,6 +162,7 @@ func executeCurrentDeployOperation(ctx, signalContext context.Context, cfg *conf
 		if err := engine.Recover(recoveryContext, record.OperationID, record.Generation, "explicit exact-operation recovery requested"); err != nil {
 			return fmt.Errorf("execute deployment operation: %w", err)
 		}
+		return writeDeployOperationStatus(recoveryContext, engine)
 	default:
 		return fmt.Errorf("unsupported deployment operation mode %s", mode)
 	}
@@ -207,10 +208,12 @@ func armDeployOperation(ctx context.Context, cfg *config.Config, engine deployop
 	if manifest.VMID != cfg.MwanVMID {
 		return fmt.Errorf("deployment manifest VMID differs from configured gateway")
 	}
-	if err := engine.Arm(ctx, manifest); err != nil {
+	armContext, cancel := context.WithDeadline(ctx, manifest.Deadline)
+	defer cancel()
+	if err := engine.Arm(armContext, manifest); err != nil {
 		return fmt.Errorf("execute deployment operation: %w", err)
 	}
-	return writeDeployOperationStatus(ctx, engine)
+	return writeDeployOperationStatus(armContext, engine)
 }
 
 func validateExistingOperationArguments(mode operationMode, args []string) error {
