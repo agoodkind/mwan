@@ -7344,6 +7344,71 @@ unchanged baseline and candidate through the ARM64 builder. A separate optional
 firewall job failed at 02:50 UTC and still requires diagnosis. Root has not
 merged or deployed this repair. Production remains restored and unchanged.
 
+## Preserve the physical reproduction recovery state
+
+Configs PR620 merged as 3dcf1576e16b598e3fd710d911c7db9f1b1ef8a0 at
+02:52:38 UTC. Required checks passed and the incorrect selector thread was
+resolved with renderer evidence. The fixture is merged but not deployed.
+
+MWAN PR163 merged as e6a63e4ef2b7dd4b8ccc770071df30c8a6f3218b at
+02:55:22 UTC. Root inspected its complete four-file diff and both signatures.
+All ten required checks passed. The optional firewall timeout case also passed
+on unchanged baseline62c0fa79 in 5.29 seconds and candidateabe6536 in 4.66
+seconds through actual daemon namespace execution. The original optional CI
+timeouts remain unlocalized. These comparisons do not prove physical BGP
+acceptance. No new release was deployed.
+
+Readback of VM213 confirms executable hash
+cb96234df3b6c6fcf2aa989202de8bd854599869e3733b17d55e250a99c56942,
+network hash 2769af5f68c40d56ca5f4a99015d1267402fd076f6b5a1cc4b39cf5901e8bd88
+and runtime hash c1be8fc749f15fab68e20ea27307f6765a4cf77c2f44b870df5ffe53f7a5d189.
+The actual paths are /usr/local/bin/mwan, /etc/mwan/network.json and
+/etc/mwan/config.toml. mwan-ifmgr@wan is active at PID5797. Earlier reads of
+/usr/local/sbin/mwan and network.yaml failed because those paths are absent;
+they did not establish a missing installed runtime.
+
+The first recovery snapshot name exceeded Proxmox's 40-character limit.
+The shorter retry failed because VM213 retained a snapshot-delete lock.
+Proxmox active task readback was empty; no snapshot/delete worker process was
+present. The testbed watchdog was repeatedly recording terminal locked-VM
+errors while pruning old known-good snapshots. Root stopped
+mwan-watchdog-testbed.service and verified MainPID=0 and inactive state.
+After another empty active task readback, root removed the stale lock.
+No active mutation was interrupted and no snapshot was deleted by root.
+
+Snapshot mwan305-recovery-20261002T0255 then completed successfully with
+filesystem freeze, disk snapshot and thaw. Proxmox configuration and the actual
+ZFS snapshot both exist. VM213 remains running. The candidate legacy source
+known-good-20260929-235727 also has complete snapshot configuration and a ZFS
+snapshot. Its executable, journal and packet contents are not yet verified.
+The oldest known-good snapshot has snapstate=delete and is unsuitable for
+restoration. Do not select it by timestamp alone.
+
+The testbed watchdog remains stopped to preserve the legacy snapshots during
+fixture preparation. Keep this state explicit before every next operation.
+Restart it after the required legacy state has been preserved and snapshot
+pruning can no longer remove that input. Production watchdogs and VM113 were
+not changed. Physical restoration, failed preparation and repaired preparation
+remain unperformed. Do not start restoration before the observer and recovery
+operation prerequisites are verified.
+
+Guests225 and226 are running LXCs with addresses 3d06:bad:b01:211::225 and
+3d06:bad:b01:211::226. Direct SSH timed out at banner exchange; neither ping
+executed. The command gate rejected SSH pct execution with event
+intake_ab755bc71ded3ed3fae7a4ea0d044459dd1fff8db182458413ba9b4f8537ecf6.
+No shell wrapper was used to bypass that rejection. The shared observation
+implementation requires the real typed LXC transport and a fixed public
+one-shot command, rather than substituting a hypervisor response.
+
+The observation lane owns internal/observation, explicit-source HTTP and DNS
+helpers, and cmd/mwan/observation.go. The legacy lane owns the narrow main.go
+observe dispatch. The recovery lane owns the deploy-gate operation dispatch.
+Register exact systemd unit, invocation and PID before granting mutation
+leases. Resume recovery of the exact operation if its watch is absent or its
+deadline expires. A state pointer alone does not establish an active watch.
+The maintained Cloudflare SDK provides pool health reads; custom Cloudflare
+HTTP bindings are unnecessary.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
