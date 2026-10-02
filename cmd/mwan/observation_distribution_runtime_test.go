@@ -198,6 +198,7 @@ func runDistributionObservationRuntime(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+	waitDistributionRuntimeIPv6(t, append([]netns.NsHandle{host, gateway}, upstreams...))
 	setRuntimeNamespace(t, host)
 	observer := observation.Endpoint{Kind: observation.EndpointLocal, MachineID: "distribution-runtime-host"}
 	for _, family := range []observation.Family{observation.FamilyIPv4, observation.FamilyIPv6} {
@@ -262,6 +263,48 @@ func runDistributionObservationRuntime(t *testing.T) {
 			t.Fatalf("missing calibration reported health: %+v", missing)
 		}
 	}
+}
+
+func waitDistributionRuntimeIPv6(t *testing.T, namespaces []netns.NsHandle) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for _, namespace := range namespaces {
+		setRuntimeNamespace(t, namespace)
+		for !distributionRuntimeIPv6Ready(t) {
+			if time.Now().After(deadline) {
+				t.Fatal("fixture IPv6 link-local addresses did not complete DAD")
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	t.Log("fixture IPv6 link-local addresses completed DAD")
+}
+
+func distributionRuntimeIPv6Ready(t *testing.T) bool {
+	t.Helper()
+	links, err := netlink.LinkList()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, link := range links {
+		if link.Attrs().Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addresses, err := netlink.AddrList(link, unix.AF_INET6)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ready := false
+		for _, address := range addresses {
+			if address.IP.IsLinkLocalUnicast() && address.Flags&(unix.IFA_F_TENTATIVE|unix.IFA_F_OPTIMISTIC|unix.IFA_F_DADFAILED) == 0 {
+				ready = true
+			}
+		}
+		if !ready {
+			return false
+		}
+	}
+	return true
 }
 
 func logDistributionRuntimeNetwork(t *testing.T, scope string) {
@@ -335,7 +378,7 @@ func captureDistributionRuntimeND(t *testing.T, interfaceName string) func() []s
 func distributionGatewayBridge(t *testing.T, host, gateway netns.NsHandle, bridgeName, portName, gatewayName string, addresses []string) observation.ProviderIngress {
 	t.Helper()
 	setRuntimeNamespace(t, host)
-	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: bridgeName}, MulticastSnooping: new(false)}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: bridgeName}}); err != nil {
 		t.Fatal(err)
 	}
 	configureRuntimeLink(t, bridgeName, nil)
