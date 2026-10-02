@@ -20,6 +20,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gopacket/gopacket"
+	"github.com/gopacket/gopacket/layers"
+	"github.com/mdlayher/packet"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
@@ -156,11 +159,20 @@ func runDistributionObservationRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	binary := os.Getenv(mappedRuntimeBinaryEnv)
+	setRuntimeNamespace(t, host)
+	var diagnostics []func() []string
+	for _, port := range []string{"wantap0", "isptap0", "wantap1", "isptap1"} {
+		diagnostics = append(diagnostics, captureDistributionRuntimeND(t, port))
+	}
+	setRuntimeNamespace(t, gateway)
 	daemon := startRuntimeDaemon(t, binary, configuration, root, "distribution")
 	defer killOwnedRuntimeDaemon(t, daemon)
 	defer func() {
 		if !t.Failed() {
 			return
+		}
+		for _, capture := range diagnostics {
+			t.Logf("neighbor discovery packets: %v", capture())
 		}
 		setRuntimeNamespace(t, gateway)
 		output, err := exec.Command("nft", "list", "ruleset").CombinedOutput()
@@ -265,11 +277,59 @@ func logDistributionRuntimeNetwork(t *testing.T, scope string) {
 	for _, link := range links {
 		addresses, err := netlink.AddrList(link, unix.AF_UNSPEC)
 		t.Logf("%s link %s index %d master %d flags %s addresses=%+v error=%v", scope, link.Attrs().Name, link.Attrs().Index, link.Attrs().MasterIndex, link.Attrs().Flags, addresses, err)
+		for _, address := range addresses {
+			t.Logf("%s %s address %s flags %d", scope, link.Attrs().Name, address.String(), address.Flags)
+		}
 		for _, setting := range []string{"rp_filter", "forwarding", "arp_ignore", "arp_filter"} {
 			value, err := os.ReadFile(filepath.Join("/proc/sys/net/ipv4/conf", link.Attrs().Name, setting))
 			t.Logf("%s %s %s: %s error=%v", scope, link.Attrs().Name, setting, bytes.TrimSpace(value), err)
 		}
 	}
+}
+
+func captureDistributionRuntimeND(t *testing.T, interfaceName string) func() []string {
+	t.Helper()
+	device, err := net.InterfaceByName(interfaceName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, err := packet.Listen(device, packet.Raw, unix.ETH_P_ALL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := connection.SetReadDeadline(time.Now().Add(20 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	records := make(chan string, 32)
+	go func() {
+		defer close(records)
+		buffer := make([]byte, 65536)
+		for {
+			count, _, err := connection.ReadFrom(buffer)
+			if err != nil {
+				return
+			}
+			decoded := gopacket.NewPacket(buffer[:count], layers.LayerTypeEthernet, gopacket.Default)
+			icmp, found := decoded.Layer(layers.LayerTypeICMPv6).(*layers.ICMPv6)
+			if !found || icmp.TypeCode.Type() != 135 && icmp.TypeCode.Type() != 136 {
+				continue
+			}
+			select {
+			case records <- interfaceName + ": " + decoded.String():
+			default:
+			}
+		}
+	}()
+	finish := func() []string {
+		_ = connection.Close()
+		var result []string
+		for record := range records {
+			result = append(result, record)
+		}
+		return result
+	}
+	t.Cleanup(func() { _ = finish() })
+	return finish
 }
 
 func distributionGatewayBridge(t *testing.T, host, gateway netns.NsHandle, bridgeName, portName, gatewayName string, addresses []string) observation.ProviderIngress {
