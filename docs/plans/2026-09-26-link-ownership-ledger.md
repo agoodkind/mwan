@@ -7519,6 +7519,25 @@ requests with simulator ingress and current eligibility, tier, weights and
 hash policy. Insufficient source or target diversity must return missing
 coverage rather than a false balancing failure.
 
+## Complete the preparation preflight observations
+
+All four 900-second ping observer processes exited0. Guest225 transmitted899
+requests and received899 replies in each family. Guest226 received899 of899
+IPv4 replies and898 of899 IPv6 replies. These observations cover the deploy
+that stopped at configuration validation, not the failed preparation restart.
+
+After the rejected deploy, QEMU readback confirmed the original executable,
+network and runtime hashes were unchanged. Webpass and AT&T provider-side
+HTTP mapping requests both returned mwan-testbed-mapping-ok. No automatic
+recovery ran because the preparation restart had not executed.
+
+Cloudflare runtime PR166 is open at signed41f5bbf with the real maintained SDK
+and strict nonsecret runtime settings. Root inspected the production decoder,
+executor integration and public real-API case. Required CI checks remain
+pending. Missing and null SDK health fields are both rejected by IsNull.
+Distribution remains a separate implementation with exclusive dependency
+ownership assigned to the provider observation lane.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
