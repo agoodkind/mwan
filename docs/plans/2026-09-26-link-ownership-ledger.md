@@ -7978,8 +7978,27 @@ rejects insufficient or equal remaining time. Required data and lint checks
 passed in CI36991641888. Preparation from clean merged 168be4b8 started at
 09:49:18 UTC with pinned MWAN 2cbfdd9. Its timestamp lease checks passed,
 candidate and transition runtime staging completed, and the bounded original
-WAN stop reconnected and completed. The operation remains active. Upgrade,
-final application verdict and cutover acceptance have not passed yet.
+WAN stop reconnected and completed. One-shot adoption then passed. The play
+requested a cloudflared-configuration lease before normal WAN activation.
+All four inbound checks timed out; both downstream guests passed application
+checks for both families. The strict lease gate rejected further writes at
+09:57:51 UTC. The source lane owns the missing adoption-to-activation sequence
+under one bounded lease before an unrelated phase starts. Preserve the strict
+inbound checks.
+
+Operation 20261002-025008-deploy-274805, generation
+1d1dced3-e576-437d-85e2-3c5e27c44c94 recovered at
+09:59:44.441626721 UTC. The executable, network and runtime hashes equal the
+baseline. The restored boot identity is 8cc5a791-b795-4351-8e5e-23ef4ccbb157.
+All eight application checks passed between 09:59:32 and 09:59:44 UTC.
+Independent root SSH verified clean 5666b3d and binary hash 43bede7022d3.
+The play terminated with exit 1, 190 successful tasks, 20 changed tasks,
+one failed task and one rescued task. This proves coordinated restoration
+after a measured candidate adoption failure. Autonomous controller-loss
+recovery, successful preparation, full original production-release physical
+reproduction and cutover acceptance remain unperformed. Production received
+no writes. The failed preparation and superseded timestamp logs can be purged
+after this evidence is committed.
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
 2. Record independent review and its reviewed commit separately from local checks.
