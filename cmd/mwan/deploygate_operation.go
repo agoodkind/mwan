@@ -73,40 +73,43 @@ func runDeployOperation(arguments []string) int {
 	defer stop()
 	ctx, cancel := context.WithTimeout(signalContext, time.Duration(cfg.Watchdog.ConnectivityTimeoutSeconds)*time.Second)
 	defer cancel()
-	err = executeDeployOperation(ctx, signalContext, cfg, engine, args)
-	if err != nil {
-		logger.Error("deployment operation failed", "err", err)
-		return exitDeployGateFailed
-	}
-	return exitDeployGateOK
+	return executeDeployOperation(ctx, signalContext, cfg, engine, args)
 }
 
-func executeDeployOperation(ctx, signalContext context.Context, cfg *config.Config, engine deployoperation.Engine, args []string) error {
+func executeDeployOperation(ctx, signalContext context.Context, cfg *config.Config, engine deployoperation.Engine, args []string) int {
 	switch operationMode(args[0]) {
 	case operationArm:
-		return armDeployOperation(signalContext, cfg, engine, args)
+		if err := armDeployOperation(signalContext, cfg, engine, args); err != nil {
+			return deployOperationFailure(engine.Log, err)
+		}
+		return exitDeployGateOK
 	case operationWatch, operationStatus, operationLease, operationRelease, operationCommit, operationRecover:
 		return executeCurrentDeployOperation(ctx, signalContext, cfg, engine, args)
 	default:
-		return fmt.Errorf("unsupported deployment operation mode %s", args[0])
+		return deployOperationFailure(engine.Log, fmt.Errorf("unsupported deployment operation mode %s", args[0]))
 	}
 }
 
-func executeCurrentDeployOperation(ctx, signalContext context.Context, cfg *config.Config, engine deployoperation.Engine, args []string) error {
+func deployOperationFailure(logger *slog.Logger, err error) int {
+	logger.Error("deployment operation failed", "err", err)
+	return exitDeployGateFailed
+}
+
+func executeCurrentDeployOperation(ctx, signalContext context.Context, cfg *config.Config, engine deployoperation.Engine, args []string) int {
 	mode := operationMode(args[0])
 	if err := validateExistingOperationArguments(mode, args); err != nil {
-		return err
+		return deployOperationFailure(engine.Log, err)
 	}
 	record, err := engine.Store.Read(ctx)
 	if err != nil {
-		return err
+		return deployOperationFailure(engine.Log, fmt.Errorf("read deployment operation: %w", err))
 	}
 	if record.OperationID != args[1] || record.Generation != args[2] || record.VMID != cfg.MwanVMID {
-		return fmt.Errorf("deployment operation identity differs from request or configured gateway")
+		return deployOperationFailure(engine.Log, fmt.Errorf("deployment operation identity differs from request or configured gateway"))
 	}
 	switch mode {
 	case operationArm:
-		return fmt.Errorf("arm requires a new deployment manifest")
+		return deployOperationFailure(engine.Log, fmt.Errorf("arm requires a new deployment manifest"))
 	case operationStatus:
 
 	case operationWatch:
@@ -114,45 +117,51 @@ func executeCurrentDeployOperation(ctx, signalContext context.Context, cfg *conf
 		watchContext, watchCancel := context.WithDeadline(signalContext, record.Deadline.Add(time.Duration(record.RecoveryTimeoutSeconds)*time.Second))
 		defer watchCancel()
 		if err := engine.Watch(watchContext, record.OperationID, record.Generation); err != nil {
-			return err
+			return deployOperationFailure(engine.Log, fmt.Errorf("watch deployment operation: %w", err))
 		}
-		return nil
+		return exitDeployGateOK
 	case operationLease:
 
 		seconds, err := strconv.Atoi(args[4])
 		if err != nil || seconds <= 0 {
-			return fmt.Errorf("lease duration must be positive integer seconds")
+			return deployOperationFailure(engine.Log, fmt.Errorf("lease duration must be positive integer seconds"))
 		}
 		lease, err := engine.Store.Grant(ctx, record.OperationID, record.Generation, args[3], engine.Store.Clock.Now().Add(time.Duration(seconds)*time.Second))
 		if err != nil {
-			return err
+			return deployOperationFailure(engine.Log, fmt.Errorf("grant deployment lease: %w", err))
 		}
 		if err := json.NewEncoder(os.Stdout).Encode(lease); err != nil {
-			return err
+			return deployOperationFailure(engine.Log, fmt.Errorf("write deployment lease: %w", err))
 		}
-		return nil
+		return exitDeployGateOK
 	case operationRelease:
 
 		if err := engine.Store.Release(ctx, record.OperationID, record.Generation, args[3]); err != nil {
-			return err
+			return deployOperationFailure(engine.Log, fmt.Errorf("release deployment lease: %w", err))
 		}
 	case operationCommit:
 
 		if err := engine.Commit(ctx, record.OperationID, record.Generation); err != nil {
-			return err
+			return deployOperationFailure(engine.Log, fmt.Errorf("commit deployment operation: %w", err))
 		}
 	case operationRecover:
 
 		recoveryContext, recoveryCancel := context.WithTimeout(signalContext, time.Duration(record.RecoveryTimeoutSeconds)*time.Second)
 		defer recoveryCancel()
 		if err := engine.Recover(recoveryContext, record.OperationID, record.Generation, "explicit exact-operation recovery requested"); err != nil {
-			return err
+			return deployOperationFailure(engine.Log, fmt.Errorf("recover deployment operation: %w", err))
 		}
-		return writeDeployOperationStatus(recoveryContext, engine)
+		if err := writeDeployOperationStatus(recoveryContext, engine); err != nil {
+			return deployOperationFailure(engine.Log, err)
+		}
+		return exitDeployGateOK
 	default:
-		return fmt.Errorf("unsupported deployment operation mode %s", mode)
+		return deployOperationFailure(engine.Log, fmt.Errorf("unsupported deployment operation mode %s", mode))
 	}
-	return writeDeployOperationStatus(ctx, engine)
+	if err := writeDeployOperationStatus(ctx, engine); err != nil {
+		return deployOperationFailure(engine.Log, err)
+	}
+	return exitDeployGateOK
 }
 
 func writeDeployOperationStatus(ctx context.Context, engine deployoperation.Engine) (resultErr error) {

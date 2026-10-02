@@ -146,7 +146,8 @@ func (engine Engine) Watch(ctx context.Context, operationID, generation string) 
 func (engine Engine) Commit(ctx context.Context, operationID, generation string) (resultErr error) {
 	coordinator, err := rollback.Acquire(ctx, engine.RollbackLock, engine.Store.PollInterval)
 	if err != nil {
-		return err
+		engine.Log.WarnContext(ctx, "deployment commit coordination failed")
+		return fmt.Errorf("coordinate deployment commit: %w", err)
 	}
 	defer func() { resultErr = errors.Join(resultErr, coordinator.Close()) }()
 	return engine.Store.Commit(ctx, operationID, generation, func(record Record) ([]observation.Result, error) {
