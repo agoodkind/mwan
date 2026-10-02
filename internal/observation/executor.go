@@ -143,8 +143,8 @@ func validateOperation(spec CheckSpec) error {
 			return errors.New("expected SSH server version must begin with SSH-2.0-")
 		}
 	case OperationCloudflarePool:
-		if spec.CloudflarePoolID == "" {
-			return errors.New("cloudflare pool ID is required")
+		if spec.CloudflarePoolID == "" || len(spec.CloudflareExpectedOrigins) == 0 {
+			return errors.New("cloudflare pool ID and expected origins are required")
 		}
 	default:
 		return errors.New("unsupported observation operation")
@@ -225,7 +225,9 @@ func (executor *Executor) Run(ctx context.Context, spec CheckSpec) Result {
 		result = executor.ping(probeContext, spec, result)
 	case OperationSSHBanner:
 		result = executor.sshBanner(probeContext, spec, result)
-	case OperationDistribution, OperationCloudflarePool:
+	case OperationCloudflarePool:
+		result = executor.cloudflarePool(probeContext, spec, result)
+	case OperationDistribution:
 		result.Availability = AvailabilityMissing
 		result.Reason = "this operation requires its configured state integration"
 	}

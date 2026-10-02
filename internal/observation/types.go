@@ -98,28 +98,29 @@ type Endpoint struct {
 
 // CheckSpec defines a positive reply and the required observer and path.
 type CheckSpec struct {
-	ID                   string         `json:"id"`
-	Dimension            Dimension      `json:"dimension"`
-	Operation            Operation      `json:"operation"`
-	Observer             Endpoint       `json:"observer"`
-	Family               Family         `json:"family"`
-	ConnectionID         string         `json:"connection_id,omitempty"`
-	Router               Router         `json:"router,omitempty"`
-	Interface            string         `json:"interface,omitempty"`
-	Source               netip.Addr     `json:"source,omitzero"`
-	Target               string         `json:"target"`
-	TimeoutSeconds       int            `json:"timeout_seconds"`
-	MaxAgeSeconds        int            `json:"max_age_seconds"`
-	HTTPMethod           string         `json:"http_method,omitempty"`
-	ExpectedHTTPStatus   []int          `json:"expected_http_status,omitempty"`
-	ExpectedBody         string         `json:"expected_body,omitempty"`
-	ExpectedNextHop      netip.Addr     `json:"expected_next_hop,omitzero"`
-	DNSExpectedAddresses []netip.Addr   `json:"dns_expected_addresses,omitempty"`
-	DNSServer            string         `json:"dns_server,omitempty"`
-	ExpectedSSHVersion   string         `json:"expected_ssh_version,omitempty"`
-	CloudflarePoolID     string         `json:"cloudflare_pool_id,omitempty"`
-	DistributionSamples  int            `json:"distribution_samples,omitempty"`
-	PublicIPPolicy       PublicIPPolicy `json:"public_ip_policy,omitempty"`
+	ID                        string         `json:"id"`
+	Dimension                 Dimension      `json:"dimension"`
+	Operation                 Operation      `json:"operation"`
+	Observer                  Endpoint       `json:"observer"`
+	Family                    Family         `json:"family"`
+	ConnectionID              string         `json:"connection_id,omitempty"`
+	Router                    Router         `json:"router,omitempty"`
+	Interface                 string         `json:"interface,omitempty"`
+	Source                    netip.Addr     `json:"source,omitzero"`
+	Target                    string         `json:"target"`
+	TimeoutSeconds            int            `json:"timeout_seconds"`
+	MaxAgeSeconds             int            `json:"max_age_seconds"`
+	HTTPMethod                string         `json:"http_method,omitempty"`
+	ExpectedHTTPStatus        []int          `json:"expected_http_status,omitempty"`
+	ExpectedBody              string         `json:"expected_body,omitempty"`
+	ExpectedNextHop           netip.Addr     `json:"expected_next_hop,omitzero"`
+	DNSExpectedAddresses      []netip.Addr   `json:"dns_expected_addresses,omitempty"`
+	DNSServer                 string         `json:"dns_server,omitempty"`
+	ExpectedSSHVersion        string         `json:"expected_ssh_version,omitempty"`
+	CloudflarePoolID          string         `json:"cloudflare_pool_id,omitempty"`
+	CloudflareExpectedOrigins []string       `json:"cloudflare_expected_origins,omitempty"`
+	DistributionSamples       int            `json:"distribution_samples,omitempty"`
+	PublicIPPolicy            PublicIPPolicy `json:"public_ip_policy,omitempty"`
 }
 
 // Availability separates a performed observation from missing or unusable evidence.
@@ -186,6 +187,7 @@ type Result struct {
 	PublicIP       netip.Addr           `json:"public_ip,omitzero"`
 	SSHVersion     string               `json:"ssh_version,omitempty"`
 	Distribution   []DistributionSample `json:"distribution,omitempty"`
+	CloudflarePool *PoolHealth          `json:"cloudflare_pool,omitempty"`
 }
 
 // RequiredPassed rejects replies from another endpoint, family, target, or expired check.
@@ -225,6 +227,9 @@ func requiredPathPassed(spec CheckSpec, result Result) bool {
 }
 
 func requiredReplyPassed(spec CheckSpec, result Result) bool {
+	if spec.Operation == OperationCloudflarePool {
+		return result.CloudflarePool != nil && poolOriginsPresent(spec, *result.CloudflarePool) && poolHealthy(spec, *result.CloudflarePool)
+	}
 	if spec.Operation == OperationHTTP || spec.Operation == OperationPublicIP {
 		if !slices.Contains(spec.ExpectedHTTPStatus, result.HTTPStatus) || (spec.ExpectedBody != "" && result.ResponseBody != spec.ExpectedBody) {
 			return false
