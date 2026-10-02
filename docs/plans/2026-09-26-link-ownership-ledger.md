@@ -9307,6 +9307,24 @@ repaired deployment has started. The saved PR body was verified on GitHub and
 its temporary local file was deleted. MWAN-519, MWAN-521, MWAN-538, MWAN-544
 and MWAN-545 retain incomplete operational acceptance. Production is unchanged.
 
+The completed per-phase ICMP report records eight consecutive unanswered
+sequences in each guest and family during restoration. Last-before and
+first-after reply timestamps span 9.184465 seconds for A IPv4, 9.181109 seconds
+for A IPv6, 9.228883 seconds for B IPv4 and 9.204936 seconds for B IPv6, between
+20:32:10 and 20:32:20 UTC. B IPv4 also had two isolated missing replies during
+the forward phase and one during lease waiting. Other forward streams had no
+missing sequences. These are measured ICMP gaps, not proof that every client
+application failed. The external report retains sequence IDs, counts and exact
+application failure timestamps. Producer overlap is excluded from any combined
+count. HTTPS distribution cohorts remain unperformed.
+
+PR 651 merged normally as 69ed320643b60bd9eeccc18b62ba1791dd3b009f at
+20:42:05 UTC. All three required checks passed and no unresolved review thread
+remained. Root verified the rewritten commit signature and raw gpgsig header
+before merge. The next physical forward attempt must use this merged revision
+and the same independently reviewed Webpass configuration. No production
+operation is authorized before the remaining testbed acceptance passes.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
