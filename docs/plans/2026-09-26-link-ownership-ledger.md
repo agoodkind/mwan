@@ -8179,6 +8179,45 @@ Graphite dry-run scope. Native Graphite merge started for PR167, PR172,
 PR173 and PR174. Terminal merge verification remains pending. The Configs
 activation timing correction remains unpublished and independently owned.
 
+### Verify the exact original testbed and eight application replies
+
+Operation 39880 completed with exit 0, 43 successful tasks, seven changed
+tasks and no failure. Snapshot known-good-20260929-184618 runs original
+d442ba1a3d1e4fdf5ca8dbb997b05ea545b3f70c. Installed and running executable
+SHA256 both equal 1c79542f6f9e56fc0ad0f101b0688a84f95bfc41706ebebf36982e0f4f8726fa.
+The machine ID is bdd916f95e3e44568e6a5d3096cf2dea. The WAN writer is active
+with PID 319; networkd is active with PID 584. Management and transit daemon
+units are inactive. All four owned-links, owned-kernel, owned-resolver and
+owned-addresses journals are absent. Legacy IPv6 source selectors remain
+at priorities 55, 56 and 57 for AT&T 2300::/60, Webpass 2200::/60 and
+Monkeybrains 2400::/60. This is physical original-release baseline proof.
+
+The second invocation correctly preserved its observed inactive watchdog.
+Root then restored the originally active testbed watchdog as recovery from
+the first failed assertion. Native systemctl readback was inactive with MainPID=0
+before start and active with MainPID=32187 afterward. No production service changed.
+
+Root verified fresh identities for observers 900, 901, 225 and 226, then used
+their deployed clean 2cbfdd9 public observe command over direct SSH through
+suburban. Every check bound eth0 and its exact source address, required HTTP 200
+and verified reply path. All eight observations were complete/pass at
+11:40:51 through 11:41:12 UTC. Both provider mappings returned the exact
+mwan-testbed-mapping-ok body in both families. Both downstream guests returned
+HTTP 200 in both families with next hops 10.240.1.1 and 3d06:bad:b01:211::1.
+The externally reported IPv4 was 174.166.126.204; IPv6 was
+2601:84:837c:a160:f66d:4ff:fe66:b6de. These do not prove ISP balancing.
+The terminal observer transports exited 0. No guest networking changed.
+
+Graphite merged PR167 as 7c94859a at 11:35:42 UTC. Its active native merge
+job then rewrote PR172 to e6921080 without controller intervention. The
+transient retargeting conflict was resolved by that job; required checks
+are running. PR173 and PR174 remain open. No second merge or manual restack
+ran. The separate Configs preparation repair is now PR633 at signed
+f01cc468, with required checks passing; independent full diff review remains
+unfinished. Its declared critical section is 1310 seconds, maximum lease 1340,
+recovery 1940 and operation duration 8510. Physical failed preparation
+reproduction and repair acceptance remain unfinished. Production is unchanged.
+
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
 2. Record independent review and its reviewed commit separately from local checks.
 3. State the observable behavior demonstrated and any missing acceptance.
