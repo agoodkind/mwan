@@ -122,7 +122,7 @@ func (executor *Executor) openIngressCapture(ctx context.Context, provider Provi
 
 func (capture *ingressCapture) read(ctx context.Context, provider ProviderIngress, limit int) {
 	buffer := make([]byte, 65536)
-	control := make([]byte, unix.CmsgSpace(unix.SizeofTimespec))
+	control := make([]byte, unix.CmsgSpace(binary.Size(unix.Timespec{})))
 	for {
 		count, at, err := capture.receive(buffer, control)
 		if err != nil {
