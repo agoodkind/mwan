@@ -181,8 +181,8 @@ var (
 // args excludes the subcommand name itself.
 func runDeployGate(args []string) int {
 	if len(args) > 0 {
-		switch args[0] {
-		case "arm", "watch", "status", "lease", "release", "commit", "recover":
+		switch operationMode(args[0]) {
+		case operationArm, operationWatch, operationStatus, operationLease, operationRelease, operationCommit, operationRecover:
 			return runDeployOperation(args)
 		}
 	}

@@ -12,7 +12,7 @@ import (
 	"goodkind.io/mwan/internal/rollback"
 )
 
-// Recovery acquires the hypervisor coordinator before short record transactions.
+// WaitForLease requires recovery to own the hypervisor coordinator before short record transactions.
 // Each poll releases the record lock before waiting because lease release needs
 // that record lock but never needs the hypervisor coordinator.
 func (store Store) WaitForLease(ctx context.Context, operationID, generation string) error {
@@ -24,15 +24,16 @@ func (store Store) WaitForLease(ctx context.Context, operationID, generation str
 		if record.OperationID != operationID || record.Generation != generation || record.Status != Recovering {
 			return fmt.Errorf("deploy recovery operation identity or state has changed")
 		}
-		if record.Lease == nil || !record.Lease.ExpiresAt.After(time.Now()) {
+		if record.Lease == nil || !record.Lease.ExpiresAt.After(store.Clock.Now()) {
 			return nil
 		}
-		delay := min(store.PollInterval, time.Until(record.Lease.ExpiresAt))
+		delay := min(store.PollInterval, record.Lease.ExpiresAt.Sub(store.Clock.Now()))
 		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return ctx.Err()
+			slog.WarnContext(ctx, "deployment mutation lease wait interrupted")
+			return fmt.Errorf("deployment mutation lease wait interrupted: %w", ctx.Err())
 		case <-timer.C:
 		}
 	}
@@ -40,8 +41,8 @@ func (store Store) WaitForLease(ctx context.Context, operationID, generation str
 
 // Restore requires the caller to own the shared rollback coordinator and to
 // drain the mutation lease before stopping the guest.
-func Restore(ctx context.Context, operations *ops.RealOps, record Record) error {
-	if record.Status != Recovering || (record.Lease != nil && record.Lease.ExpiresAt.After(time.Now())) {
+func Restore(ctx context.Context, operations *ops.RealOps, record Record, now time.Time) error {
+	if record.Status != Recovering || (record.Lease != nil && record.Lease.ExpiresAt.After(now)) {
 		return fmt.Errorf("snapshot restoration requires recovery state and an expired or released mutation lease")
 	}
 	snapshots, err := operations.VMSnapshots(ctx, record.VMID)

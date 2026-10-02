@@ -12,10 +12,12 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// Coordinator serializes all VM recovery operations across processes.
 type Coordinator struct {
 	file *os.File
 }
 
+// Owns verifies that an open coordinator uses the configured recovery lock.
 func (coordinator *Coordinator) Owns(markerPath string) bool {
 	return coordinator != nil && coordinator.file != nil && coordinator.file.Name() == markerPath+".coordination"
 }
@@ -53,6 +55,7 @@ func Acquire(ctx context.Context, markerPath string, pollInterval time.Duration)
 	}
 }
 
+// Close releases the advisory lock without unlinking its persistent inode.
 func (coordinator *Coordinator) Close() error {
 	err := unix.Flock(int(coordinator.file.Fd()), unix.LOCK_UN)
 	closeErr := coordinator.file.Close()

@@ -18,20 +18,28 @@ import (
 
 	"github.com/google/renameio/v2"
 	"github.com/google/uuid"
+	"goodkind.io/mwan/internal/clock"
 	"goodkind.io/mwan/internal/observation"
 	"goodkind.io/mwan/internal/rollback"
 )
 
+// Status restricts grants and recovery to the current operation lifecycle.
 type Status string
 
 const (
-	Armed          Status = "armed"
-	Recovering     Status = "recovering"
-	Recovered      Status = "recovered"
+	// Armed permits mutations only with a verified watch and current observations.
+	Armed Status = "armed"
+	// Recovering denies new grants while prior writes drain.
+	Recovering Status = "recovering"
+	// Recovered requires an actual restored identity and application replies.
+	Recovered Status = "recovered"
+	// RecoveryFailed permits only exact-operation recovery retries.
 	RecoveryFailed Status = "recovery_failed"
-	Committed      Status = "committed"
+	// Committed ends the current generation after target verification.
+	Committed Status = "committed"
 )
 
+// Identity binds the recovery pair to one machine and records its actual boot.
 type Identity struct {
 	MachineID        string `json:"machine_id"`
 	BootID           string `json:"boot_id"`
@@ -40,12 +48,14 @@ type Identity struct {
 	RuntimeSHA256    string `json:"runtime_sha256"`
 }
 
+// Lease fences one mutation until explicit release or its runtime deadline.
 type Lease struct {
 	ID        string    `json:"id"`
 	Phase     string    `json:"phase"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
+// Record persists the current generation separately from archived terminal records.
 type Record struct {
 	Manifest
 	Status           Status               `json:"status"`
@@ -58,11 +68,14 @@ type Record struct {
 	ObservedAt       time.Time            `json:"observed_at"`
 }
 
+// Store serializes record transactions independently of the VM recovery coordinator.
 type Store struct {
 	Path         string
 	PollInterval time.Duration
+	Clock        clock.Clock
 }
 
+// Read rejects malformed records rather than treating them as absent operations.
 func (store Store) Read(ctx context.Context) (Record, error) {
 	var record Record
 	err := store.locked(ctx, func() error {
@@ -73,7 +86,13 @@ func (store Store) Read(ctx context.Context) (Record, error) {
 	return record, err
 }
 
-func (store Store) Create(ctx context.Context, record Record) error {
+// Create archives terminal records and rejects unresolved or reused identities.
+func (store Store) Create(ctx context.Context, record Record) (resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			slog.WarnContext(ctx, "deployment operation creation failed")
+		}
+	}()
 	return store.locked(ctx, func() error {
 		_, err := os.Stat(store.Path)
 		if err == nil {
@@ -97,7 +116,7 @@ func (store Store) Create(ctx context.Context, record Record) error {
 		if record.Status != Armed || record.Lease != nil || record.Generation == "" {
 			return fmt.Errorf("new deploy operation must be armed without a lease")
 		}
-		record.UpdatedAt = time.Now().UTC()
+		record.UpdatedAt = store.Clock.Now().UTC()
 		if !record.Deadline.After(record.UpdatedAt) {
 			return fmt.Errorf("new deploy operation deadline has expired")
 		}
@@ -105,14 +124,16 @@ func (store Store) Create(ctx context.Context, record Record) error {
 	})
 }
 
+// Grant requires a verified watch and fresh application observations before mutation.
 func (store Store) Grant(ctx context.Context, operationID, generation, phase string, deadline time.Time) (Lease, error) {
 	var lease Lease
 	err := store.change(ctx, operationID, generation, func(record *Record) error {
-		now := time.Now()
+		now := store.Clock.Now()
 		if record.Status != Armed || !record.Deadline.After(now) {
 			return fmt.Errorf("deploy operation does not permit mutations")
 		}
 		if err := record.Watch.Verify(ctx); err != nil {
+			slog.WarnContext(ctx, "deployment mutation lease watch verification failed")
 			return fmt.Errorf("mutation lease requires the active deploy watch: %w", err)
 		}
 		if !record.MutationReady(now) {
@@ -131,12 +152,13 @@ func (store Store) Grant(ctx context.Context, operationID, generation, phase str
 	return lease, err
 }
 
+// RegisterWatch binds the service invocation to the actual registering process.
 func (store Store) RegisterWatch(ctx context.Context, operationID, generation, unit string) error {
 	identity, err := ReadWatch(ctx, unit)
 	if err != nil {
 		return err
 	}
-	if identity.PID != uint32(os.Getpid()) {
+	if int64(identity.PID) != int64(os.Getpid()) {
 		return fmt.Errorf("deploy watch PID does not match the registering process")
 	}
 	return store.change(ctx, operationID, generation, func(record *Record) error {
@@ -148,6 +170,7 @@ func (store Store) RegisterWatch(ctx context.Context, operationID, generation, u
 	})
 }
 
+// Release requires the exact generation and outstanding lease identity.
 func (store Store) Release(ctx context.Context, operationID, generation, leaseID string) error {
 	return store.change(ctx, operationID, generation, func(record *Record) error {
 		if record.Status != Armed && record.Status != Recovering {
@@ -161,6 +184,7 @@ func (store Store) Release(ctx context.Context, operationID, generation, leaseID
 	})
 }
 
+// BeginRecovery denies further grants and permits exact-operation failure retries.
 func (store Store) BeginRecovery(ctx context.Context, operationID, generation, reason string) error {
 	return store.change(ctx, operationID, generation, func(record *Record) error {
 		if record.Status == Recovering {
@@ -185,7 +209,7 @@ func (store Store) finishRecovery(ctx context.Context, operationID, generation s
 		}
 		record.Status = RecoveryFailed
 		if restored != nil {
-			if record.Lease != nil && record.Lease.ExpiresAt.After(time.Now()) {
+			if record.Lease != nil && record.Lease.ExpiresAt.After(store.Clock.Now()) {
 				return fmt.Errorf("deploy recovery cannot finish before mutation lease release or expiry")
 			}
 			if err := restored.verifyRestored(record.Baseline); err != nil {
@@ -200,15 +224,17 @@ func (store Store) finishRecovery(ctx context.Context, operationID, generation s
 	})
 }
 
+// Commit rejects outstanding writes, expired deadlines and unverifiable watches.
 func (store Store) Commit(ctx context.Context, operationID, generation string) error {
 	return store.change(ctx, operationID, generation, func(record *Record) error {
-		if record.Status != Armed || record.Lease != nil || !record.Deadline.After(time.Now()) {
+		if record.Status != Armed || record.Lease != nil || !record.Deadline.After(store.Clock.Now()) {
 			return fmt.Errorf("deploy operation cannot commit with an outstanding lease or expired deadline")
 		}
 		if err := record.Watch.Verify(ctx); err != nil {
+			slog.WarnContext(ctx, "deployment commit watch verification failed")
 			return fmt.Errorf("deploy commit requires the active deploy watch: %w", err)
 		}
-		if !record.MutationReady(time.Now()) {
+		if !record.MutationReady(store.Clock.Now()) {
 			return fmt.Errorf("deploy commit requires fresh passing application observations")
 		}
 		record.Status = Committed
@@ -216,6 +242,7 @@ func (store Store) Commit(ctx context.Context, operationID, generation string) e
 	})
 }
 
+// MutationReady requires complete fresh application replies for every configured check.
 func (record Record) MutationReady(now time.Time) bool {
 	if record.Status != Armed || record.Watch.PID == 0 || !record.Deadline.After(now) {
 		return false
@@ -241,7 +268,7 @@ func (store Store) observe(ctx context.Context, operationID, generation string, 
 			return fmt.Errorf("terminal deploy operation rejects observations")
 		}
 		record.Results = results
-		record.ObservedAt = time.Now().UTC()
+		record.ObservedAt = store.Clock.Now().UTC()
 		return nil
 	})
 }
@@ -258,7 +285,7 @@ func (store Store) change(ctx context.Context, operationID, generation string, u
 		if err := update(&record); err != nil {
 			return err
 		}
-		record.UpdatedAt = time.Now().UTC()
+		record.UpdatedAt = store.Clock.Now().UTC()
 		return store.write(record)
 	})
 }
@@ -269,7 +296,8 @@ func (store Store) locked(ctx context.Context, operation func() error) (resultEr
 	}
 	coordinator, err := rollback.Acquire(ctx, store.Path, store.PollInterval)
 	if err != nil {
-		return err
+		slog.WarnContext(ctx, "deployment record coordination failed")
+		return fmt.Errorf("coordinate deployment record: %w", err)
 	}
 	defer func() { resultErr = errors.Join(resultErr, coordinator.Close()) }()
 	return operation()
@@ -285,6 +313,7 @@ func (store Store) read() (Record, error) {
 	decoder := json.NewDecoder(file)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&record); err != nil {
+		slog.Warn("deployment operation decoding failed")
 		return Record{}, fmt.Errorf("decode deploy operation: %w", err)
 	}
 	var trailing json.RawMessage
@@ -373,6 +402,7 @@ func (identity Identity) validate() error {
 	}
 	boot, err := uuid.Parse(identity.BootID)
 	if err != nil {
+		slog.Warn("deployment boot identity validation failed")
 		return fmt.Errorf("deploy identity boot UUID is invalid: %w", err)
 	}
 	if boot.String() != identity.BootID {

@@ -1,3 +1,4 @@
+// Package deployoperation fences mutations and restores exact deployment recovery pairs.
 package deployoperation
 
 import (
@@ -13,6 +14,7 @@ import (
 	"goodkind.io/mwan/internal/rollback"
 )
 
+// Engine composes actual observations and VM operations under the recovery coordinator.
 type Engine struct {
 	Store        Store
 	RollbackLock string
@@ -22,13 +24,19 @@ type Engine struct {
 	RuntimePath  string
 }
 
+// Arm verifies the baseline and registers its autonomous watch before allowing mutations.
 func (engine Engine) Arm(ctx context.Context, manifest Manifest) (resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			engine.Log.WarnContext(ctx, "deployment operation arm failed")
+		}
+	}()
 	if err := manifest.validate(); err != nil {
 		return err
 	}
 	coordinator, err := rollback.Acquire(ctx, engine.RollbackLock, engine.Store.PollInterval)
 	if err != nil {
-		return err
+		return fmt.Errorf("coordinate deployment recovery: %w", err)
 	}
 	defer func() { resultErr = errors.Join(resultErr, coordinator.Close()) }()
 	identity, err := ReadIdentity(ctx, engine.Operations, manifest.VMID, manifest.Paths)
@@ -46,10 +54,10 @@ func (engine Engine) Arm(ctx context.Context, manifest Manifest) (resultErr erro
 		return fmt.Errorf("exact deployment baseline snapshot is absent")
 	}
 	results := engine.check(ctx, manifest, manifest.RequiredChecks)
-	if !checksPassed(manifest.RequiredChecks, results, time.Now()) {
+	if !checksPassed(manifest.RequiredChecks, results, engine.Store.Clock.Now()) {
 		return fmt.Errorf("deployment baseline application checks did not pass")
 	}
-	record := Record{Manifest: manifest, Status: Armed, Results: results, ObservedAt: time.Now().UTC()}
+	record := Record{Manifest: manifest, Status: Armed, Results: results, ObservedAt: engine.Store.Clock.Now().UTC(), Lease: nil, Watch: WatchIdentity{Unit: "", InvocationID: "", PID: 0}, Reason: "", UpdatedAt: time.Time{}, RestoredIdentity: nil}
 	if err := engine.Store.Create(ctx, record); err != nil {
 		return err
 	}
@@ -61,7 +69,7 @@ func (engine Engine) Arm(ctx context.Context, manifest Manifest) (resultErr erro
 			engine.transition(persistContext, record, "deploy_operation_watch_failed", "Deployment watch setup failed", resultErr.Error())
 		}
 	}()
-	if err := StartWatch(ctx, record, engine.RuntimePath); err != nil {
+	if err := StartWatch(ctx, record, engine.RuntimePath, engine.Store.Clock); err != nil {
 		return err
 	}
 	for {
@@ -72,7 +80,7 @@ func (engine Engine) Arm(ctx context.Context, manifest Manifest) (resultErr erro
 		if registered.Status != Armed {
 			return fmt.Errorf("deploy watch setup no longer permits mutations")
 		}
-		if registered.MutationReady(time.Now()) && registered.Watch.Verify(ctx) == nil {
+		if registered.MutationReady(engine.Store.Clock.Now()) && registered.Watch.Verify(ctx) == nil {
 			return nil
 		}
 		if err := wait(ctx, engine.Store.PollInterval); err != nil {
@@ -94,6 +102,7 @@ func (engine Engine) check(ctx context.Context, manifest Manifest, checks []obse
 	return results
 }
 
+// Watch persists application observations independently of the deployment controller.
 func (engine Engine) Watch(ctx context.Context, operationID, generation string) error {
 	record, err := engine.exact(ctx, operationID, generation)
 	if err != nil {
@@ -111,18 +120,18 @@ func (engine Engine) Watch(ctx context.Context, operationID, generation string) 
 		if record.Status == Committed || record.Status == Recovered {
 			return nil
 		}
-		if record.Status != Armed || !record.Deadline.After(time.Now()) {
+		if record.Status != Armed || !record.Deadline.After(engine.Store.Clock.Now()) {
 			return engine.Recover(ctx, operationID, generation, "operation deadline or recovery state requires snapshot restoration")
 		}
 		results := engine.check(ctx, record.Manifest, record.RequiredChecks)
 		if err := engine.Store.observe(ctx, operationID, generation, results); err != nil {
 			return err
 		}
-		if checksPassed(record.RequiredChecks, results, time.Now()) {
+		if checksPassed(record.RequiredChecks, results, engine.Store.Clock.Now()) {
 			failures = 0
 		} else {
 			failures++
-			engine.Notify.Notify(ctx, notify.Event{Now: time.Now().UTC(), Level: slog.LevelWarn, Kind: "deploy_operation_observation_failed", Key: operationID + "/" + generation, Message: "Deployment application observations did not pass", Fields: []slog.Attr{slog.Any("results", results)}, IsRecovery: false})
+			engine.Notify.Notify(ctx, notify.Event{Now: engine.Store.Clock.Now().UTC(), Level: slog.LevelWarn, Kind: "deploy_operation_observation_failed", Key: operationID + "/" + generation, Message: "Deployment application observations did not pass", Fields: []slog.Attr{slog.Any("results", results)}, IsRecovery: false})
 		}
 		if failures >= record.FailureThreshold {
 			return engine.Recover(ctx, operationID, generation, "required application observations failed")
@@ -133,6 +142,7 @@ func (engine Engine) Watch(ctx context.Context, operationID, generation string) 
 	}
 }
 
+// Commit repeats target identity and application checks before ending recovery protection.
 func (engine Engine) Commit(ctx context.Context, operationID, generation string) error {
 	record, err := engine.exact(ctx, operationID, generation)
 	if err != nil {
@@ -152,15 +162,22 @@ func (engine Engine) Commit(ctx context.Context, operationID, generation string)
 	return engine.Store.Commit(ctx, operationID, generation)
 }
 
+// Recover owns the hypervisor coordinator throughout mutation drain and restoration.
 func (engine Engine) Recover(ctx context.Context, operationID, generation, reason string) (resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			engine.Log.WarnContext(ctx, "deployment recovery coordination failed")
+		}
+	}()
 	coordinator, err := rollback.Acquire(ctx, engine.RollbackLock, engine.Store.PollInterval)
 	if err != nil {
-		return err
+		return fmt.Errorf("coordinate deployment recovery: %w", err)
 	}
 	defer func() { resultErr = errors.Join(resultErr, coordinator.Close()) }()
 	return engine.RecoverCoordinated(ctx, operationID, generation, reason, coordinator)
 }
 
+// RecoverCoordinated requires the matching coordinator already owned by the watchdog.
 func (engine Engine) RecoverCoordinated(ctx context.Context, operationID, generation, reason string, coordinator *rollback.Coordinator) (resultErr error) {
 	if !coordinator.Owns(engine.RollbackLock) {
 		return fmt.Errorf("deployment recovery requires the hypervisor coordinator")
@@ -188,6 +205,7 @@ func (engine Engine) RecoverCoordinated(ctx context.Context, operationID, genera
 	engine.transition(recoveryContext, record, "deploy_operation_recovery", "Deployment snapshot recovery started", reason)
 	defer func() {
 		if resultErr != nil {
+			engine.Log.WarnContext(ctx, "deployment snapshot recovery failed")
 			persistContext, persistCancel := context.WithTimeout(context.WithoutCancel(ctx), engine.Store.PollInterval)
 			defer persistCancel()
 			resultErr = errors.Join(resultErr, engine.Store.finishRecovery(persistContext, operationID, generation, nil, resultErr.Error()))
@@ -201,29 +219,38 @@ func (engine Engine) RecoverCoordinated(ctx context.Context, operationID, genera
 	if err != nil {
 		return err
 	}
-	if err := Restore(recoveryContext, engine.Operations, record); err != nil {
+	if err := Restore(recoveryContext, engine.Operations, record, engine.Store.Clock.Now()); err != nil {
 		return err
 	}
+	identity, err := engine.awaitRestored(recoveryContext, record)
+	if err != nil {
+		return err
+	}
+	if err := engine.Store.finishRecovery(recoveryContext, operationID, generation, &identity, "baseline identity and application responses restored"); err != nil {
+		return err
+	}
+	engine.Notify.Resolve(recoveryContext, "deploy_operation_observation_failed", operationID+"/"+generation, "Deployment baseline application responses restored")
+	for _, kind := range []string{"deploy_operation_watch_failed", "deploy_operation_recovery", "deploy_operation_recovery_failed"} {
+		engine.Notify.Resolve(recoveryContext, kind, operationID+"/"+generation, "Deployment baseline identity and application responses restored")
+	}
+	return nil
+}
+
+func (engine Engine) awaitRestored(ctx context.Context, record Record) (Identity, error) {
 	for {
-		identity, identityErr := ReadIdentity(recoveryContext, engine.Operations, record.VMID, record.Paths)
+		identity, identityErr := ReadIdentity(ctx, engine.Operations, record.VMID, record.Paths)
 		if identityErr == nil && identity.verifyRestored(record.Baseline) == nil {
-			results := engine.check(recoveryContext, record.Manifest, record.RestoredRequiredChecks)
-			if err := engine.Store.observe(recoveryContext, operationID, generation, results); err != nil {
-				return err
+			results := engine.check(ctx, record.Manifest, record.RestoredRequiredChecks)
+			if err := engine.Store.observe(ctx, record.OperationID, record.Generation, results); err != nil {
+				return Identity{}, err
 			}
-			if checksPassed(record.RestoredRequiredChecks, results, time.Now()) {
-				if err := engine.Store.finishRecovery(recoveryContext, operationID, generation, &identity, "baseline identity and application responses restored"); err != nil {
-					return err
-				}
-				engine.Notify.Resolve(recoveryContext, "deploy_operation_observation_failed", operationID+"/"+generation, "Deployment baseline application responses restored")
-				for _, kind := range []string{"deploy_operation_watch_failed", "deploy_operation_recovery", "deploy_operation_recovery_failed"} {
-					engine.Notify.Resolve(recoveryContext, kind, operationID+"/"+generation, "Deployment baseline identity and application responses restored")
-				}
-				return nil
+			if checksPassed(record.RestoredRequiredChecks, results, engine.Store.Clock.Now()) {
+				return identity, nil
 			}
 		}
-		if err := wait(recoveryContext, time.Duration(record.PollSeconds)*time.Second); err != nil {
-			return fmt.Errorf("wait for restored deployment identity and applications: %w", err)
+		if err := wait(ctx, time.Duration(record.PollSeconds)*time.Second); err != nil {
+			engine.Log.WarnContext(ctx, "restored deployment application wait interrupted")
+			return Identity{}, fmt.Errorf("wait for restored deployment identity and applications: %w", err)
 		}
 	}
 }
@@ -232,7 +259,7 @@ func (engine Engine) transition(ctx context.Context, record Record, kind, messag
 	alertContext, cancel := context.WithTimeout(ctx, time.Duration(record.ObservationTimeoutSeconds)*time.Second)
 	defer cancel()
 	engine.Notify.Notify(alertContext, notify.Event{
-		Now:        time.Now().UTC(),
+		Now:        engine.Store.Clock.Now().UTC(),
 		Level:      slog.LevelWarn,
 		Kind:       kind,
 		Key:        record.OperationID + "/" + record.Generation,
@@ -258,7 +285,8 @@ func wait(ctx context.Context, duration time.Duration) error {
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		slog.WarnContext(ctx, "deployment operation wait interrupted")
+		return fmt.Errorf("deployment operation wait interrupted: %w", ctx.Err())
 	case <-timer.C:
 		return nil
 	}

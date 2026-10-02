@@ -3,18 +3,21 @@ package deployoperation
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 
 	"goodkind.io/mwan/internal/ops"
 )
 
+// Paths restricts identity reads to the configured executable and recovery documents.
 type Paths struct {
 	Executable string `json:"executable"`
 	Network    string `json:"network"`
 	Runtime    string `json:"runtime"`
 }
 
+// ReadIdentity reads only machine identity and hashes through the existing guest transport.
 func ReadIdentity(ctx context.Context, operations *ops.RealOps, vmid string, paths Paths) (Identity, error) {
 	for _, path := range []string{paths.Executable, paths.Network, paths.Runtime} {
 		if !filepath.IsAbs(path) {
@@ -41,9 +44,12 @@ func ReadIdentity(ctx context.Context, operations *ops.RealOps, vmid string, pat
 	if err != nil {
 		return Identity{}, err
 	}
-	identity := Identity{MachineID: machine, BootID: boot, ExecutableSHA256: executable,
-		NetworkSHA256: network, RuntimeSHA256: runtime}
+	identity := Identity{
+		MachineID: machine, BootID: boot, ExecutableSHA256: executable,
+		NetworkSHA256: network, RuntimeSHA256: runtime,
+	}
 	if err := identity.validate(); err != nil {
+		slog.WarnContext(ctx, "guest deployment identity validation failed")
 		return Identity{}, fmt.Errorf("validate guest deploy identity: %w", err)
 	}
 	return identity, nil
@@ -64,6 +70,7 @@ func guestDigest(ctx context.Context, operations *ops.RealOps, vmid, path string
 func guestText(ctx context.Context, operations *ops.RealOps, vmid string, command string, arguments ...string) (string, error) {
 	response, err := operations.GuestExec(ctx, vmid, append([]string{command}, arguments...)...)
 	if err != nil {
+		slog.WarnContext(ctx, "guest deployment identity read failed")
 		return "", fmt.Errorf("read deploy identity with %s: %w", command, err)
 	}
 	if response.ExitCode != 0 {

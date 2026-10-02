@@ -14,7 +14,6 @@ import (
 
 	"goodkind.io/mwan/internal/alert"
 	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/deployoperation"
 	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/ops"
 	"goodkind.io/mwan/internal/rollback"
@@ -354,13 +353,12 @@ func (w *watchdog) executeRollbackVM(ctx context.Context, snap string) error {
 			"err", err,
 		)
 		return fmt.Errorf("stop VM before rollback: %w", err)
-	} else {
-		log.DebugContext(ctx,
-			"VM stopped",
-			"vmid", w.cfg.MwanVMID,
-			"elapsed", w.since(stopStart).Round(time.Millisecond),
-		)
 	}
+	log.DebugContext(ctx,
+		"VM stopped",
+		"vmid", w.cfg.MwanVMID,
+		"elapsed", w.since(stopStart).Round(time.Millisecond),
+	)
 	running, err := w.ops.VMStatus(ctx, w.cfg.MwanVMID)
 	if err != nil {
 		log.WarnContext(ctx, "stopped VM verification failed")
@@ -424,13 +422,12 @@ func (w *watchdog) executeRollbackVM(ctx context.Context, snap string) error {
 			"err", err,
 		)
 		return errors.Join(rollbackErr, fmt.Errorf("start VM after rollback: %w", err))
-	} else {
-		log.InfoContext(ctx,
-			"VM started",
-			"vmid", w.cfg.MwanVMID,
-			"elapsed", w.since(startTime).Round(time.Millisecond),
-		)
 	}
+	log.InfoContext(ctx,
+		"VM started",
+		"vmid", w.cfg.MwanVMID,
+		"elapsed", w.since(startTime).Round(time.Millisecond),
+	)
 	return rollbackErr
 }
 
@@ -626,67 +623,6 @@ func (w *watchdog) recoverInterrupted(ctx context.Context) {
 	if !sleepOrDone(ctx, time.Duration(w.cfg.Watchdog.PostRollbackGraceSeconds)*time.Second) {
 		log.InfoContext(ctx, "Context cancelled during interrupted rollback recovery")
 	}
-}
-
-func (w *watchdog) handleDeployOperation(ctx context.Context) bool {
-	_, err := os.Stat(w.cfg.Watchdog.RollbackLockFile + ".operation")
-	if errors.Is(err, os.ErrNotExist) {
-		return false
-	}
-	log := w.tracedLogger(ctx)
-	if err != nil {
-		log.ErrorContext(ctx, "deployment operation inspection failed", "err", err)
-		return true
-	}
-	coordinator, err := rollback.Acquire(ctx, w.cfg.Watchdog.RollbackLockFile, w.cfg.Watchdog.DegradedInterval())
-	if err != nil {
-		log.ErrorContext(ctx, "deployment operation coordination failed", "err", err)
-		return true
-	}
-	defer func() {
-		if err := coordinator.Close(); err != nil {
-			log.ErrorContext(ctx, "deployment operation coordination release failed", "err", err)
-		}
-	}()
-	return w.inspectDeployOperation(ctx, coordinator)
-}
-
-func (w *watchdog) inspectDeployOperation(ctx context.Context, coordinator *rollback.Coordinator) bool {
-	log := w.tracedLogger(ctx)
-	store := deployoperation.Store{Path: w.cfg.Watchdog.RollbackLockFile + ".operation", PollInterval: w.cfg.Watchdog.DegradedInterval()}
-	record, err := store.Read(ctx)
-	if errors.Is(err, os.ErrNotExist) {
-		return false
-	}
-	if err != nil {
-		log.ErrorContext(ctx, "deployment operation read failed", "err", err)
-		return true
-	}
-	if record.Status == deployoperation.Committed || record.Status == deployoperation.Recovered {
-		return false
-	}
-	if record.VMID != w.cfg.MwanVMID {
-		log.ErrorContext(ctx, "deployment operation VMID conflicts with watchdog configuration")
-		return true
-	}
-	watchContext, cancel := context.WithTimeout(ctx, time.Duration(w.cfg.Watchdog.ConnectivityTimeoutSeconds)*time.Second)
-	watchError := record.Watch.Verify(watchContext)
-	cancel()
-	if record.MutationReady(w.now()) && watchError == nil {
-		return true
-	}
-	operations, ok := w.ops.(*ops.RealOps)
-	if !ok {
-		log.ErrorContext(ctx, "deployment recovery requires the production hypervisor operations")
-		return true
-	}
-	engine := deployoperation.Engine{Store: store, RollbackLock: w.cfg.Watchdog.RollbackLockFile, Operations: operations, Log: log, Notify: w.notify}
-	w.coord.SetRollingBack(true)
-	defer w.coord.SetRollingBack(false)
-	if err := engine.RecoverCoordinated(ctx, record.OperationID, record.Generation, "exact deployment watch is absent, expired or not healthy", coordinator); err != nil {
-		log.ErrorContext(ctx, "exact deployment recovery failed", "err", err)
-	}
-	return true
 }
 
 func sleepOrDone(ctx context.Context, d time.Duration) bool {
