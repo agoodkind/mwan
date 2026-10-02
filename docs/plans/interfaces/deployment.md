@@ -180,7 +180,9 @@ testbed validation. Apply the coordinator's production authorization gate.
    remaining lease budget before each write under that lease.
 4. Acquire a bounded mutation lease for each risky persistent-write group.
    Preserve remote asynchronous jobs and reconnect verification. Release the
-   exact lease after completion. After reconnect, reject writes from an
+   exact lease after verified remote completion, including during recovery.
+   Set the recovery timeout to cover the maximum remaining lease wait plus
+   restoration and verification. After reconnect, reject writes from an
    operation that started recovery. Lease expiration alone does not prove that
    remote jobs stopped; require VM stop and stopped-state readback before
    snapshot restoration.
@@ -191,7 +193,12 @@ testbed validation. Apply the coordinator's production authorization gate.
    application replies before success. Permit exact recovery retry after a
    measured recovery failure without granting new deployment leases.
 6. Include required inbound replies independently of backup outbound success.
-   Use configured interruption and recovery policy. Keep failed target replies
+   Configure each planned provider interruption with an exact lease phase,
+   selected-provider inbound check IDs and maximum duration. Keep failed
+   replies in the health results. Permit those failures only while the exact
+   matching lease remains live. Keep downstream traffic, other providers,
+   missing or stale observations and commitment checks strict. Grant no
+   interruption exception by default. Keep failed target replies
    separate from missing, stale or inaccessible observations. Commit only
    after independently repeating the required checks and target identity.
 7. Run failed original-release preparation and repaired preparation on the
