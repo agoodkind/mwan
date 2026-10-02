@@ -9070,14 +9070,54 @@ reported zero kernel drops. Independent process checks confirmed both exact
 PIDs absent. The rebooted primary capture exited 255 without terminal counters.
 The eight-check observer and four replacement guest ping streams remain live.
 
-Forward and reverse transfer inputs reference a missing
-mwan_webpass_transfer_packet_checks_json variable. Direct merged inventory
-and inherited group reads do not define it. Historical semantic hits are
-stale. Existing application results are not transfer execution dictionaries.
-The read-only handover lane is inspecting the existing merged validation and
-execution contract before correcting these ephemeral inputs. No transfer has
-started. The separate distribution lane is preparing actual public observer
-inputs without running cohorts or replacing the current application observer.
+The earlier missing packet-variable diagnosis was incorrect. Root read the
+complete inventory and verified its existing
+mwan_webpass_transfer_packet_checks_json generator and consumer. The inventory
+file is unchanged between 02151351 and 078ea2b2. Literal external scenario
+inputs are supported but are unnecessary for forward activation. Eight
+distinct existing packet commands passed once on the healthy baseline.
+Their provider HTTP bodies matched; six ping commands received three of three
+replies. IPv6 edge pings prove edge replies, and unbound guest pings do not
+establish AT&T attribution.
+
+### Prepare the merged Webpass activation phase
+
+Release 202610021844-ac-f4fbb85 published from f4fbb855 with both architecture
+archives. Configs PR 648 merged as 078ea2b24d0d1482042ac90acc427003382160d8
+at 18:54:21 UTC after required checks passed. The clean detached deployment
+checkout now uses that revision. Source worktrees and branches for MWAN PR 176
+and Configs PR 648 were removed through bounded cleanup after exact merged
+source verification. Production is unchanged.
+
+The cutover plan requires a separate ownership activation PR. Configs PR 649
+changes only Webpass ownership, MAC matching and typed DUID/IAID/delegation
+settings. Root inspected its initial 88742d78 diff against current main.
+Its required public render check detected obsolete link-files on the owned
+connection. The implementer is removing only that Webpass field. Preserve
+the existing template, checks and all unrelated providers. The forward deploy
+will inherit merged inventory with path-only controller artifact overrides;
+the older forward provider array must not reintroduce the obsolete field.
+Reverse transfer retains the reviewed networkd scenario inputs. No transfer
+has started. MWAN-519 was restored to In Progress because its required shared
+testbed transfer acceptance remains pending.
+
+Observer 41403 started at 18:56:07 UTC with exact unit
+mwan-cutover-observation-20261002, PID 2186608 and invocation
+880998f8b4024517b512bababc291369. All eight initial checks passed before root
+stopped observer 53402. That old transport exited zero; exact PID 1256853 is
+absent. Its two final unknown transport samples coincide with cancellation,
+not measured application failure. Both observers share the existing remote
+executable and settings, which remain required by the replacement observer.
+The new four-hour observation bound ends near 22:56 UTC.
+
+The distribution lane verified OPNsense IPv4 NAT in actual transit packets.
+The existing public observer can correlate guest requests before that NAT on
+vmbrtrunk, tap201i0 and router MAC bc:24:11:7d:6d:87. Both guests use VLAN 100
+and resolve their router addresses to that MAC. Draft family inputs require
+40 new connections, 20 per guest. Operational carrying, family readiness and
+health establish eligibility; lower tier alone does not establish false
+eligibility. Refresh all metadata after deployment before executing cohorts.
+No cohort or production operation has run.
 
 ## Record each deployment result
 
