@@ -16,6 +16,9 @@ type WatchIdentity struct {
 }
 
 func ReadWatch(ctx context.Context, unit string) (WatchIdentity, error) {
+	if _, bounded := ctx.Deadline(); !bounded {
+		return WatchIdentity{}, fmt.Errorf("deploy watch observation requires a context deadline")
+	}
 	connection, err := systemddbus.NewSystemConnectionContext(ctx)
 	if err != nil {
 		slog.WarnContext(ctx, "deploy watch systemd connection failed")

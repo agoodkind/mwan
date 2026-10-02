@@ -3,6 +3,7 @@ package deployoperation
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/google/renameio/v2"
+	"github.com/google/uuid"
 	"goodkind.io/mwan/internal/rollback"
 )
 
@@ -44,17 +46,18 @@ type Lease struct {
 }
 
 type Record struct {
-	OperationID string        `json:"operation_id"`
-	Generation  string        `json:"generation"`
-	VMID        string        `json:"vmid"`
-	Snapshot    string        `json:"snapshot"`
-	Baseline    Identity      `json:"baseline"`
-	Status      Status        `json:"status"`
-	Deadline    time.Time     `json:"deadline"`
-	Lease       *Lease        `json:"lease,omitempty"`
-	Watch       WatchIdentity `json:"watch"`
-	Reason      string        `json:"reason,omitempty"`
-	UpdatedAt   time.Time     `json:"updated_at"`
+	OperationID      string        `json:"operation_id"`
+	Generation       string        `json:"generation"`
+	VMID             string        `json:"vmid"`
+	Snapshot         string        `json:"snapshot"`
+	Baseline         Identity      `json:"baseline"`
+	Status           Status        `json:"status"`
+	Deadline         time.Time     `json:"deadline"`
+	Lease            *Lease        `json:"lease,omitempty"`
+	Watch            WatchIdentity `json:"watch"`
+	Reason           string        `json:"reason,omitempty"`
+	UpdatedAt        time.Time     `json:"updated_at"`
+	RestoredIdentity *Identity     `json:"restored_identity,omitempty"`
 }
 
 type Store struct {
@@ -162,7 +165,7 @@ func (store Store) BeginRecovery(ctx context.Context, operationID, generation, r
 		if record.Status == Recovering {
 			return nil
 		}
-		if record.Status != Armed {
+		if record.Status != Armed && record.Status != RecoveryFailed {
 			return fmt.Errorf("terminal deploy operation rejects recovery")
 		}
 		if strings.TrimSpace(reason) == "" {
@@ -174,17 +177,24 @@ func (store Store) BeginRecovery(ctx context.Context, operationID, generation, r
 	})
 }
 
-func (store Store) FinishRecovery(ctx context.Context, operationID, generation string, success bool, reason string) error {
+func (store Store) finishRecovery(ctx context.Context, operationID, generation string, restored *Identity, reason string) error {
 	return store.change(ctx, operationID, generation, func(record *Record) error {
 		if record.Status != Recovering {
 			return fmt.Errorf("deploy operation is not recovering")
 		}
 		record.Status = RecoveryFailed
-		if success {
+		if restored != nil {
+			if record.Lease != nil && record.Lease.ExpiresAt.After(time.Now()) {
+				return fmt.Errorf("deploy recovery cannot finish before mutation lease release or expiry")
+			}
+			if err := restored.verifyRestored(record.Baseline); err != nil {
+				return err
+			}
 			record.Status = Recovered
+			record.Lease = nil
 		}
+		record.RestoredIdentity = restored
 		record.Reason = reason
-		record.Lease = nil
 		return nil
 	})
 }
@@ -290,14 +300,16 @@ func (record Record) validate() error {
 	if err != nil || vmid <= 0 {
 		return fmt.Errorf("deploy operation VMID must be positive")
 	}
-	for _, digest := range []string{record.Baseline.ExecutableSHA256, record.Baseline.NetworkSHA256, record.Baseline.RuntimeSHA256} {
-		decoded, decodeErr := hex.DecodeString(digest)
-		if decodeErr != nil || len(decoded) != 32 {
-			return fmt.Errorf("deploy operation baseline requires SHA256 digests")
-		}
+	if err := record.Baseline.validate(); err != nil {
+		return err
 	}
-	if record.Baseline.MachineID == "" || record.Baseline.BootID == "" {
-		return fmt.Errorf("deploy operation baseline machine and boot identities are required")
+	if record.Status == Recovered {
+		if record.RestoredIdentity == nil {
+			return fmt.Errorf("recovered deploy operation requires actual restored identity")
+		}
+		if err := record.RestoredIdentity.verifyRestored(record.Baseline); err != nil {
+			return err
+		}
 	}
 	switch record.Status {
 	case Armed, Recovering, Recovered, RecoveryFailed, Committed:
@@ -307,6 +319,41 @@ func (record Record) validate() error {
 	if record.Lease != nil && (record.Lease.ID == "" || record.Lease.Phase == "" ||
 		record.Lease.ExpiresAt.IsZero() || record.Lease.ExpiresAt.After(record.Deadline)) {
 		return fmt.Errorf("deploy operation lease is invalid")
+	}
+	return nil
+}
+
+func (identity Identity) validate() error {
+	for _, digest := range []string{identity.ExecutableSHA256, identity.NetworkSHA256, identity.RuntimeSHA256} {
+		decoded, decodeErr := hex.DecodeString(digest)
+		if decodeErr != nil || len(decoded) != sha256.Size {
+			return fmt.Errorf("deploy identity requires SHA256 digests")
+		}
+	}
+	machine, err := hex.DecodeString(identity.MachineID)
+	if err != nil || len(machine) != len(uuid.UUID{}) {
+		return fmt.Errorf("deploy machine identity is invalid")
+	}
+	boot, err := uuid.Parse(identity.BootID)
+	if err != nil {
+		return fmt.Errorf("deploy identity boot UUID is invalid: %w", err)
+	}
+	if boot.String() != identity.BootID {
+		return fmt.Errorf("deploy boot identity requires the canonical UUID format")
+	}
+	return nil
+}
+
+func (identity Identity) verifyRestored(baseline Identity) error {
+	if err := identity.validate(); err != nil {
+		return err
+	}
+	if identity.MachineID != baseline.MachineID || identity.ExecutableSHA256 != baseline.ExecutableSHA256 ||
+		identity.NetworkSHA256 != baseline.NetworkSHA256 || identity.RuntimeSHA256 != baseline.RuntimeSHA256 {
+		return fmt.Errorf("restored deploy identity does not match the baseline recovery pair")
+	}
+	if identity.BootID == baseline.BootID {
+		return fmt.Errorf("restored deploy VM has not booted after snapshot recovery")
 	}
 	return nil
 }

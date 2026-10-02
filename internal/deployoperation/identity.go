@@ -41,8 +41,12 @@ func ReadIdentity(ctx context.Context, operations *ops.RealOps, vmid string, pat
 	if err != nil {
 		return Identity{}, err
 	}
-	return Identity{MachineID: machine, BootID: boot, ExecutableSHA256: executable,
-		NetworkSHA256: network, RuntimeSHA256: runtime}, nil
+	identity := Identity{MachineID: machine, BootID: boot, ExecutableSHA256: executable,
+		NetworkSHA256: network, RuntimeSHA256: runtime}
+	if err := identity.validate(); err != nil {
+		return Identity{}, fmt.Errorf("validate guest deploy identity: %w", err)
+	}
+	return identity, nil
 }
 
 func guestDigest(ctx context.Context, operations *ops.RealOps, vmid, path string) (string, error) {

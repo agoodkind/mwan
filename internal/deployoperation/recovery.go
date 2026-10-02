@@ -12,6 +12,9 @@ import (
 	"goodkind.io/mwan/internal/rollback"
 )
 
+// Recovery acquires the hypervisor coordinator before short record transactions.
+// Each poll releases the record lock before waiting because lease release needs
+// that record lock but never needs the hypervisor coordinator.
 func (store Store) WaitForLease(ctx context.Context, operationID, generation string) error {
 	for {
 		record, err := store.Read(ctx)
