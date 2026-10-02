@@ -9838,6 +9838,20 @@ Ping sequence matching identified delayed replies and separate unanswered
 sequences. These samples do not establish total client outage or a deployment
 cause. Preserve them independently of candidate acceptance.
 
+Candidate deployment transport 49991 ended with exit one at 23:36 UTC.
+Snapshot creation failed before gateway preparation because VM 213 retained
+a snapshot-delete lock. The matching hypervisor executable and watchdog
+upgraded to 054e41d, but the guest executable, network and runtime remain
+the F4 baseline. All eight application checks passed after failure.
+No new deployment recovery operation was armed.
+
+Proxmox active tasks returned an empty list twice; no snapshot or ZFS destroy
+process matched the bounded process query. Prior deletion tasks were terminal
+errors. Watchdog logs recorded failed snapshot deletion and cancellation
+during its restart. Root cleared only VM 213's stale lock with qm unlock
+and verified the lock field absent. No snapshot or production state was
+deleted. Root will retry the same merged deployment and reviewed input.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
