@@ -577,10 +577,18 @@ func assertRuntimeTable(t *testing.T, family, table string) {
 func assertRuntimeNoReconcileLoop(t *testing.T, daemon *runtimeDaemon) {
 	t.Helper()
 	first := 0
+	stableSince := time.Now()
+	stable := false
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		first = countRuntimeFirewallReconciles(runtimeDaemonLog(t, daemon))
-		if first > 0 {
+		assertRuntimeDaemonRunning(t, daemon)
+		current := countRuntimeFirewallReconciles(runtimeDaemonLog(t, daemon))
+		if current != first {
+			first = current
+			stableSince = time.Now()
+		}
+		if first > 0 && time.Since(stableSince) >= 400*time.Millisecond {
+			stable = true
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
@@ -588,9 +596,13 @@ func assertRuntimeNoReconcileLoop(t *testing.T, daemon *runtimeDaemon) {
 	if first == 0 {
 		t.Fatalf("WAN daemon never reconciled the firewall: %s", runtimeDaemonLog(t, daemon))
 	}
+	if !stable {
+		t.Fatalf("WAN daemon startup reconciliation did not settle: %s", runtimeDaemonLog(t, daemon))
+	}
 	deadline = time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		time.Sleep(400 * time.Millisecond)
+		assertRuntimeDaemonRunning(t, daemon)
 		second := countRuntimeFirewallReconciles(runtimeDaemonLog(t, daemon))
 		if second != first {
 			t.Fatalf("WAN daemon reconciled without a timer or external change: %s", runtimeDaemonLog(t, daemon))
