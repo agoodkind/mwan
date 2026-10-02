@@ -8720,6 +8720,28 @@ application observations pass. No deployment or fault started in this slice.
 The superseded failed preparation log was purged after signed ledger a97c297
 was pushed. Unique packet evidence remains necessary for repair acceptance.
 
+### Diagnose the original-release fixture prerequisite
+
+CI 37023814711 executed TestLegacyNPTPreparationUpgrade with zero skips.
+The original executable hash matched the baseline and its log identifies
+d442ba1. Candidate SHA256 is
+457f197089a9d014d91d44edf2b0f45b840929b7e67a9fdaa564becc6220d9d7,
+with clean eeb0457 identity. At 15:04:12 UTC the original daemon wrote missing
+networkd units and exited because the plain builder had no system D-Bus
+socket. At 15:04:22 the fixture failed waiting for its original IPv6 NAT
+rule. Capture and adoption did not execute. Correct the real original startup
+prerequisite without fake services, placeholder files or relaxed deadlines.
+
+The source owner canceled only this disposable CI run after the measured
+failure to obtain otherwise unavailable logs. Its terminal state is Canceled.
+Govulncheck stopped on runner shutdown with exit 143 and no vulnerability
+report. Staticcheck Extra identified three helper error wrappers; use the
+existing operation error type and final-boundary logging. Both lanes inspect
+the existing real renderer/systemd fixture before the next source correction.
+Both new bot findings were resolved with evidence: the helper receives parsed
+typed configuration, and the raw address digest exists only in the same-candidate
+one-shot manifest, not in durable receipts. No live testbed fault occurred.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
