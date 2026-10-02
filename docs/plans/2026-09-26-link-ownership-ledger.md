@@ -8526,6 +8526,67 @@ OPNsense tap201i1 2801 and backup veth216i1 zero. Each reports zero kernel
 drops. These capture only the healthy original baseline before a rejected
 preparation. Purge their regenerable raw output after this checkpoint.
 
+### Validate atomic observer replacement before gateway activation
+
+Configs PR637 merged as f42a2455dc633010cc15efeb48ef0602bb7cbfcd at
+13:37:05 UTC. Exact signed source 486dff5d installs each observer through a
+unique same-directory staging file, complete candidate hash/version checks,
+native rename and exact cleanup. Installed Proxmox CLI source proves that a
+returned push command has reaped its synchronous child, although its return
+code omits the copy worker's failure. An unproved timeout or transport loss
+retains the staging file. The final published-path version gate remains strict.
+Root inspected the complete patch, signature/raw header and active rules.
+Independent review passed. Required lint, data and GitGuardian checks passed;
+the fresh pre-merge query found no unresolved threads. Seven existing actual
+Ansible checkpoint/manifest examples passed; no new mock/static test was added.
+
+Preparation 28341 used clean merged f42a2455 and pinned d1ac42eb. Observer
+900's staging digest and executable version checks passed. The native rename
+returned 129 with empty stderr at 13:40:40 UTC. The play stopped before
+recovery arming or gateway activation. Exact staging cleanup completed.
+Actual published-path readback reports d1ac42e and SHA256
+d0f0d060fed27a07f29188a45133f2cd1148cfd74d9f6f9c10dabf54931ea122.
+The staged path is absent. Replacement completed despite the command error.
+All eight independent application checks continue passing. The cause of this
+command result is unconfirmed; do not assign packet failure or implement an
+unrelated host fix.
+
+Retry 23095 exited 1 from the same clean merged source. Observer 900 and 901
+replacement succeeded. The native observer 225 rename returned 129 with empty
+stderr at 13:46:49 UTC. Exact staging cleanup passed. Recovery arming and
+gateway activation did not occur. The native rename result recurred; its
+signal cause remains unconfirmed. Independent observation recorded one
+downstream-a IPv4 HTTP timeout at 13:45:22.81353013 UTC. The next complete
+observation recovered. The latest eight checks pass without unknown results.
+No gateway installation occurred during that timeout.
+
+Configs PR638 merged as 318b96f32ee11bc5b57924ba3100f49cbddb48cd at
+13:55:58 UTC. Exact signed source a0a17e83 disables SSH terminal allocation
+only within the observer replacement block, including exact cleanup. Every
+command exit, full digest, executable version and final published-path gate
+remains strict. Official Ansible documentation supports ansible_ssh_use_tty.
+Root inspected the complete three-line patch, verified the signature and raw
+header, and read the active merge contract. Required checks passed and no
+review threads existed. Independent exact-commit review passed. Scoped lint,
+diff checks and seven existing actual Ansible examples passed. This change
+does not establish the cause of either native 129 result.
+
+Preparation retry 54453 started at 13:56:31 UTC from clean detached merged
+318b96f3, retaining the same original-owner input and pinned d1ac42eb release.
+Its external log is deploy-mwan-20261002T135631Z.log. Independent observation
+73905 remains active. Five new captures started before protected gateway
+writes, using native 3600-second deadlines: Webpass 49742, AT&T 3679,
+primary transit 2548, edge tap201i1 93794 and backup veth216i1 8593.
+Each tcpdump reports listening on its verified interface. Their repair2
+pcap/stderr files are on Chaos Storage. No second deployment controller may
+start and this checkout must remain unchanged until the play terminates.
+Production authorization is conditional on complete defect repair and the
+required testbed proof. Production remains unchanged.
+
+Historical raw observations, terminal historical deployment and
+recovery logs, and the rejected preparation's baseline captures were purged
+after signed ledger d932a44 was pushed.
+
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
 2. Record independent review and its reviewed commit separately from local checks.
 3. State the observable behavior demonstrated and any missing acceptance.
