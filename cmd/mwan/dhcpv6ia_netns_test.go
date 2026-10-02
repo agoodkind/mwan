@@ -160,6 +160,16 @@ func runOwnedDHCPv6IARuntime(t *testing.T, combined, unequal, duplicate bool) {
 	if !unequal {
 		return
 	}
+	unequalStarted := time.Now()
+	var phases []runtimePacketPhase
+	mark := func(stage string) {
+		phases = append(phases, runtimePacketPhase{Stage: stage, Elapsed: time.Since(unequalStarted)})
+	}
+	defer func() {
+		if t.Failed() {
+			t.Logf("unequal IA elapsed=%s phases=%+v; daemon: %s", time.Since(unequalStarted), phases, runtimeLogTail(t, daemon, 80))
+		}
+	}()
 	stopRuntimeDaemon(t, daemon)
 	setRuntimeNamespace(t, provider.namespace)
 	stopProtocolServices(t, []protocolService{service})
@@ -171,8 +181,11 @@ func runOwnedDHCPv6IARuntime(t *testing.T, combined, unequal, duplicate bool) {
 	defer stopRouter()
 	setRuntimeNamespace(t, gateway)
 	daemon = startRuntimeDaemon(t, os.Getenv(dhcpv6RuntimeBinaryEnv), configPath, root, "dhcpv6ia-unequal")
+	mark("unequal_daemon_started")
 	waitStaticRuntimeAddress(t, daemon, "enatt0", "2001:db8:30::100/128", true)
+	mark("short_address_installed")
 	waitDHCPv6RuntimeDefault(t, daemon)
+	mark("default_route_installed")
 	select {
 	case err := <-served:
 		if err != nil {
@@ -181,10 +194,13 @@ func runOwnedDHCPv6IARuntime(t *testing.T, combined, unequal, duplicate bool) {
 	case <-time.After(15 * time.Second):
 		t.Fatal("DHCPv6 Request with unequal associations did not complete")
 	}
+	mark("dhcp_reply_acknowledged")
 	stopServer()
 	assertDHCPv6IALocalPacket(t, daemon, gateway, provider.namespace, "[2001:db8:30::100]:52229")
+	mark("short_address_request_received")
 	waitMappedRuntimeRule(t, daemon, "ip6", "nat", "2001:db8:30::1", 10*time.Second)
 	waitDHCPv6RuntimeSourceRule(t, daemon, true)
+	mark("mapping_and_source_rule_installed")
 	assertMappedRuntimeReply(t, daemon, gateway, provider.namespace, downstream.namespace,
 		"udp6", "[2001:db8:30::1]:52227", "[2001:db8:b01:fe::2]:52227")
 	waitDHCPv6RuntimeAddressGone(t, daemon, "2001:db8:30::100/128")

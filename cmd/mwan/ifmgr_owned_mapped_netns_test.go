@@ -582,42 +582,95 @@ func writeMappedRuntimeProvider(t *testing.T, directory, externalV4, externalV6 
 	}
 }
 
+type runtimePacketPhase struct {
+	Stage   string
+	Elapsed time.Duration
+}
+
 func assertMappedRuntimeReply(t *testing.T, daemon *runtimeDaemon, gateway, upstream, downstream netns.NsHandle, network, external, internal string) {
 	t.Helper()
+	started := time.Now()
+	var phases []runtimePacketPhase
+	mark := func(stage string) {
+		phases = append(phases, runtimePacketPhase{Stage: stage, Elapsed: time.Since(started)})
+	}
+	var upstreamDeadline, downstreamDeadline time.Time
+	defer func() {
+		if !t.Failed() {
+			return
+		}
+		t.Logf("mapped packet elapsed=%s phases=%+v", time.Since(started), phases)
+		logMappedRuntimeDeadline(t, "upstream", started, upstreamDeadline)
+		logMappedRuntimeDeadline(t, "downstream", started, downstreamDeadline)
+		logMappedRuntimeNetwork(t, "downstream", downstream)
+		logMappedRuntimeNetwork(t, "upstream", upstream)
+		logMappedRuntimeNetwork(t, "gateway", gateway)
+		output, err := exec.Command("nft", "list", "ruleset").CombinedOutput()
+		t.Logf("mapped gateway rules: %v: %s", err, output)
+		t.Logf("mapped gateway daemon: %s", runtimeLogTail(t, daemon, 80))
+	}()
 	setRuntimeNamespace(t, downstream)
 	listener, err := net.ListenPacket(network, internal)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer listener.Close()
+	mark("downstream_listener_bound")
 	setRuntimeNamespace(t, upstream)
 	connection, err := net.DialTimeout(network, external, time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer connection.Close()
-	if err := connection.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
+	mark("upstream_connected")
+	upstreamDeadline = time.Now().Add(3 * time.Second)
+	if err := connection.SetDeadline(upstreamDeadline); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := connection.Write([]byte("mapped-request")); err != nil {
 		t.Fatal(err)
 	}
+	mark("upstream_request_written")
 	setRuntimeNamespace(t, downstream)
-	if err := listener.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+	downstreamDeadline = time.Now().Add(3 * time.Second)
+	if err := listener.SetReadDeadline(downstreamDeadline); err != nil {
 		t.Fatal(err)
 	}
 	buffer := make([]byte, 32)
 	count, sender, err := listener.ReadFrom(buffer)
+	mark("downstream_request_read")
 	if err != nil || string(buffer[:count]) != "mapped-request" {
 		t.Fatalf("mapped request: count=%d data=%q error=%v: %s", count, buffer[:count], err, runtimeLogTail(t, daemon, 50))
 	}
 	if _, err := listener.WriteTo([]byte("mapped-reply"), sender); err != nil {
 		t.Fatal(err)
 	}
+	mark("downstream_reply_written")
 	setRuntimeNamespace(t, upstream)
 	count, err = connection.Read(buffer)
+	mark("upstream_reply_read")
 	setRuntimeNamespace(t, gateway)
 	if err != nil || string(buffer[:count]) != "mapped-reply" {
 		t.Fatalf("mapped reply: count=%d data=%q error=%v", count, buffer[:count], err)
+	}
+}
+
+func logMappedRuntimeDeadline(t *testing.T, scope string, started, deadline time.Time) {
+	t.Helper()
+	if !deadline.IsZero() {
+		t.Logf("%s deadline elapsed=%s remaining=%s", scope, deadline.Sub(started), time.Until(deadline))
+	}
+}
+
+func logMappedRuntimeNetwork(t *testing.T, scope string, namespace netns.NsHandle) {
+	t.Helper()
+	setRuntimeNamespace(t, namespace)
+	routes, routeErr := netlink.RouteListFiltered(unix.AF_INET6, &netlink.Route{Table: unix.RT_TABLE_UNSPEC}, netlink.RT_FILTER_TABLE)
+	rules, ruleErr := netlink.RuleList(unix.AF_INET6)
+	neighbors, neighborErr := netlink.NeighList(0, unix.AF_INET6)
+	addresses, addressErr := netlink.AddrList(nil, unix.AF_INET6)
+	t.Logf("%s IPv6 routes=%+v error=%v rules=%+v error=%v neighbors=%+v error=%v addresses_error=%v", scope, routes, routeErr, rules, ruleErr, neighbors, neighborErr, addressErr)
+	for _, address := range addresses {
+		t.Logf("%s IPv6 address=%s link=%d flags=%d preferred=%d valid=%d", scope, address.String(), address.LinkIndex, address.Flags, address.PreferedLft, address.ValidLft)
 	}
 }
