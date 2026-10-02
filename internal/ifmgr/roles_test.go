@@ -25,6 +25,7 @@ func TestModulesForRoleOOB(t *testing.T) {
 		"ra_lost",
 		"cloudflared_tap",
 		"wg",
+		"health",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("oob role module count = %d, want %d (got=%v)", len(got), len(want), got)

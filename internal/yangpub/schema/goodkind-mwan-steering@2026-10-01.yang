@@ -1293,7 +1293,57 @@ module goodkind-mwan-steering {
     }
   }
 
+  grouping application-observation-result {
+    leaf availability { type enumeration { enum complete; enum missing; enum stale; enum error; } }
+    leaf outcome { type enumeration { enum pass; enum fail; enum unknown; } }
+    leaf reason { type string; }
+    leaf observed-at { type yang:date-and-time; }
+    leaf observer-kind { type enumeration { enum local; enum qemu; enum lxc; } }
+    leaf machine-id { type string; }
+    leaf host-machine-id { type string; }
+    leaf vmid { type uint32; }
+    leaf source { type inet:ip-address; }
+    leaf destination { type inet:ip-address; }
+    leaf next-hop { type inet:ip-address; }
+    leaf interface { type string; }
+    leaf connection-id { type string; }
+    leaf router { type string; }
+    leaf public-ip { type inet:ip-address; }
+    leaf http-status { type uint16; }
+    leaf ssh-version { type string; }
+    leaf evidence-json {
+      type string;
+      description "The complete shared result includes protocol and distribution evidence.";
+    }
+  }
+
   container daemon {
+    container observation {
+      config false;
+      description "Recurring application results remain separate from provider selection probes.";
+      list check {
+        key "id";
+        leaf id { type string; }
+        leaf dimension { type enumeration {
+          enum downstream_application; enum inbound_application; enum connection_distribution;
+          enum inbound_pool; enum provider_egress; enum ping_path; enum public_ip;
+        } }
+        leaf operation { type string; }
+        leaf family { type enumeration { enum ipv4; enum ipv6; } }
+        leaf target { type string; }
+        leaf interval-seconds { type uint32; }
+        leaf timeout-seconds { type uint32; }
+        leaf max-age-seconds { type uint32; }
+        leaf definition-json { type string; }
+        container result { uses application-observation-result; }
+        list recent-transition {
+          key "id";
+          leaf id { type string; }
+          leaf previous { type string; }
+          container result { uses application-observation-result; }
+        }
+      }
+    }
     description
       "The daemon settings no published model covers, published from
        the configuration the daemon loaded at startup. A host whose

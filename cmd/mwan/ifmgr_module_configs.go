@@ -28,6 +28,7 @@ import (
 	wg "goodkind.io/mwan/internal/ifmgr/modules/wg"
 	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/internal/observation"
 )
 
 // buildIfMgrModuleConfigs builds module configs for ONLY the modules in the
@@ -245,6 +246,7 @@ func buildHealthConfig(
 	section *config.IfMgrHealthSection,
 ) (health.Config, error) {
 	cfg := health.Config{
+		Observations:      nil,
 		StateFile:         "",
 		TargetsV4:         nil,
 		TargetsV6:         nil,
@@ -278,6 +280,14 @@ func buildHealthConfig(
 	}
 
 	cfg.StateFile = section.StateFile
+	if section.ObservationSettingsFile != "" {
+		settings, err := observation.LoadContinuousSettings(section.ObservationSettingsFile)
+		if err != nil {
+			slog.Warn("health observation settings rejected", "path", section.ObservationSettingsFile, "err", err)
+			return cfg, fmt.Errorf("load health observations: %w", err)
+		}
+		cfg.Observations = &settings
+	}
 	// The watchdog's address, not a network value: it addresses a vsock endpoint
 	// on this machine's hypervisor, which is why TOML owns it alongside the state
 	// file rather than the network tree.

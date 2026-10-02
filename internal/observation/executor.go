@@ -340,6 +340,10 @@ func (executor *Executor) http(ctx context.Context, spec CheckSpec, result Resul
 		return failedProbe(result, err)
 	}
 	result.Availability, result.Outcome = AvailabilityComplete, OutcomeFail
+	executor.route(ctx, spec, &result)
+	if result.Availability != AvailabilityComplete {
+		return result
+	}
 	if !slices.Contains(spec.ExpectedHTTPStatus, probe.StatusCode) {
 		result.Reason = "HTTP status does not match the expected response"
 		return result
@@ -353,10 +357,6 @@ func (executor *Executor) http(ctx context.Context, spec CheckSpec, result Resul
 		if result.Outcome != OutcomePass {
 			return result
 		}
-	}
-	executor.route(ctx, spec, &result)
-	if result.Availability != AvailabilityComplete {
-		return result
 	}
 	result.Outcome, result.Reason = OutcomePass, "expected HTTP response received"
 	return result

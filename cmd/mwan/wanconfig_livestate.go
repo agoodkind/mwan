@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/netip"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +18,7 @@ import (
 	mwanv1 "goodkind.io/mwan/gen/mwan/v1"
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/internal/observation/contract"
 	"goodkind.io/mwan/internal/wanconfig"
 	"goodkind.io/mwan/internal/wanstate"
 	"goodkind.io/mwan/internal/yangpub"
@@ -87,7 +90,94 @@ func registerLiveStateProviders(
 		return fmt.Errorf("register nat provider: %w", err)
 	}
 	log.DebugContext(ctx, "wanconfig: providers registered")
+	return registerObservationProvider(ctx, pub, store)
+}
+
+func registerObservationProvider(ctx context.Context, pub yangpub.Publisher, store *wanstate.Store) error {
+	observationProvider := func(_ context.Context, _ string) ([]yangpub.Item, error) {
+		return observationLiveItems(store.Snapshot())
+	}
+	if err := pub.RegisterProvider(ctx, moduleSteering, "/goodkind-mwan-steering:daemon/observation", observationProvider); err != nil {
+		slog.ErrorContext(ctx, "wanconfig: register observation provider failed", "err", err)
+		return fmt.Errorf("register observation provider: %w", err)
+	}
 	return nil
+}
+
+func observationLiveItems(snapshot wanstate.Snapshot) ([]yangpub.Item, error) {
+	if snapshot.ObservationError != nil {
+		return nil, snapshot.ObservationError
+	}
+	var items []yangpub.Item
+	ids := make([]string, 0, len(snapshot.Checks))
+	for id := range snapshot.Checks {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		state := snapshot.Checks[id]
+		definition, err := wanconfig.MarshalObservationItems(state.Check, state.IntervalSeconds)
+		if err != nil {
+			slog.Warn("wanconfig: observation definition could not be projected", "check_id", id, "err", err)
+			return nil, fmt.Errorf("project observation definition: %w", err)
+		}
+		for _, item := range definition {
+			items = append(items, yangpub.Item{Path: item.Path, Value: item.Value})
+		}
+		base := "/goodkind-mwan-steering:daemon/observation/check[id='" + id + "']"
+		resultItems, err := marshalObservationResult(base+"/result", state.Result)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, resultItems...)
+		for _, transition := range state.Recent {
+			transitionBase := base + "/recent-transition[id='" + transition.ID + "']"
+			items = append(items, yangpub.Item{Path: transitionBase + "/id", Value: transition.ID}, yangpub.Item{Path: transitionBase + "/previous", Value: transition.Previous})
+			resultItems, err := marshalObservationResult(transitionBase+"/result", transition.Result)
+			if err != nil {
+				return nil, err
+			}
+			items = append(items, resultItems...)
+		}
+	}
+	return items, nil
+}
+
+func marshalObservationResult(base string, result contract.Result) ([]yangpub.Item, error) {
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		slog.Error("served observation could not be encoded", "check_id", result.CheckID, "err", err)
+		return nil, fmt.Errorf("encode served observation: %w", err)
+	}
+	items := []yangpub.Item{
+		{Path: base + "/availability", Value: string(result.Availability)},
+		{Path: base + "/outcome", Value: string(result.Outcome)},
+		{Path: base + "/reason", Value: result.Reason},
+		{Path: base + "/observer-kind", Value: string(result.Observer.Kind)},
+		{Path: base + "/machine-id", Value: result.Observer.MachineID},
+		{Path: base + "/host-machine-id", Value: result.Observer.HostMachineID},
+		{Path: base + "/vmid", Value: strconv.Itoa(result.Observer.VMID)},
+		{Path: base + "/interface", Value: result.Path.Interface},
+		{Path: base + "/connection-id", Value: result.Path.ConnectionID},
+		{Path: base + "/router", Value: string(result.Path.Router)},
+		{Path: base + "/http-status", Value: strconv.Itoa(result.HTTPStatus)},
+		{Path: base + "/ssh-version", Value: result.SSHVersion},
+		{Path: base + "/evidence-json", Value: string(encoded)},
+	}
+	if !result.ObservedAt.IsZero() {
+		items = append(items, yangpub.Item{Path: base + "/observed-at", Value: result.ObservedAt.UTC().Format(time.RFC3339Nano)})
+	}
+	for _, address := range []struct {
+		leaf  string
+		value netip.Addr
+	}{
+		{"source", result.Path.Source}, {"destination", result.Path.Destination}, {"next-hop", result.Path.NextHop}, {"public-ip", result.PublicIP},
+	} {
+		if address.value.IsValid() {
+			items = append(items, yangpub.Item{Path: base + "/" + address.leaf, Value: address.value.String()})
+		}
+	}
+	return items, nil
 }
 
 // interfacesLiveItems renders the steering state, delegated prefixes, group

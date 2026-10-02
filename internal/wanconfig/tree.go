@@ -1,14 +1,9 @@
-// Package wanconfig projects the configuration the gateway daemon loaded onto
-// the model it describes itself with, so the management surface serves what
-// the running process holds rather than a file on disk. The projection turns
-// a Gateway value into the path-value items the publishing binding writes.
-//
-// The package carries the platform constraint of the gateway it describes:
-// only the linux daemon loads this configuration and only its sysrepo
-// binding publishes it, so the freebsd router build never reaches this code.
+// Package wanconfig projects the loaded gateway configuration into management
+// path-value items. The Linux daemon publishes the projection through sysrepo.
 package wanconfig
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -20,7 +15,29 @@ import (
 	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/internal/observation/contract"
 )
+
+// MarshalObservationItems includes the complete configured check in operational reads.
+func MarshalObservationItems(check contract.CheckSpec, intervalSeconds int) ([]Item, error) {
+	definition, err := json.Marshal(check)
+	if err != nil {
+		slog.Error("observation definition could not be encoded", "check_id", check.ID, "err", err)
+		return nil, fmt.Errorf("encode observation definition: %w", err)
+	}
+	base := daemonPath + "/observation/check[id='" + check.ID + "']"
+	return []Item{
+		{Path: base + "/id", Value: check.ID},
+		{Path: base + "/dimension", Value: string(check.Dimension)},
+		{Path: base + "/operation", Value: string(check.Operation)},
+		{Path: base + "/family", Value: string(check.Family)},
+		{Path: base + "/target", Value: check.Target},
+		{Path: base + "/interval-seconds", Value: strconv.Itoa(intervalSeconds)},
+		{Path: base + "/timeout-seconds", Value: strconv.Itoa(check.TimeoutSeconds)},
+		{Path: base + "/max-age-seconds", Value: strconv.Itoa(check.MaxAgeSeconds)},
+		{Path: base + "/definition-json", Value: string(definition)},
+	}, nil
+}
 
 // Item is one path-value pair in the published tree. It mirrors the
 // publishing binding's item so the projection can be built and tested on
@@ -624,7 +641,8 @@ func linkItems(connection interfaceintent.Connection) []Item {
 		items = append(items, Item{Path: link + "/bridge-master", Value: linkSpec.BridgeMaster})
 	}
 	if linkSpec.VLAN != nil {
-		items = append(items,
+		items = append(
+			items,
 			Item{Path: link + "/vlan/parent", Value: linkSpec.VLAN.Parent},
 			Item{Path: link + "/vlan/id", Value: uintValue(uint64(linkSpec.VLAN.ID))},
 		)
@@ -738,7 +756,8 @@ func freeFormItems(base string, files []interfaceintent.UnitFile) []Item {
 			items = append(items, Item{Path: sectionPath + "/name", Value: section.Name})
 			for _, entry := range section.Entries {
 				entryPath := sectionPath + "/entry[index='" + uintValue(uint64(entry.Index)) + "']"
-				items = append(items,
+				items = append(
+					items,
 					Item{Path: entryPath + "/key", Value: entry.Key},
 					Item{Path: entryPath + "/value", Value: entry.Value},
 				)

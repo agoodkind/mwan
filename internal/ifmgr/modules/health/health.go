@@ -13,6 +13,8 @@ import (
 	internalclock "goodkind.io/mwan/internal/clock"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/internal/notify"
+	"goodkind.io/mwan/internal/observation"
 	"goodkind.io/mwan/internal/statuspush"
 	"goodkind.io/mwan/internal/wanstate"
 )
@@ -127,6 +129,7 @@ func (wan WAN) recoveryThreshold(cfg Config) int {
 
 // Config keeps module-wide probe policy as the fallback for per-WAN overrides.
 type Config struct {
+	Observations      *observation.ContinuousSettings
 	StateFile         string
 	TargetsV4         []netip.Addr
 	TargetsV6         []netip.Addr
@@ -182,7 +185,8 @@ type statusSender interface {
 type Module struct {
 	ifmgr.BaseModule
 
-	cfg Config
+	cfg                Config
+	observationWorkers sync.WaitGroup
 
 	clock            internalclock.Clock
 	cycleMu          sync.Mutex
@@ -214,7 +218,7 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 		"wan_count", len(m.cfg.WANs),
 		"interval", m.cfg.Interval.String(),
 	)
-	if len(m.cfg.WANs) == 0 {
+	if len(m.cfg.WANs) == 0 && m.cfg.Observations == nil {
 		log.WarnContext(ctx, "health: no WAN config; disabling module")
 		return fmt.Errorf("%w: health: no [ifmgr.wan] WANs", ifmgr.ErrModuleDisabled)
 	}
@@ -224,6 +228,29 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	}
 	if m.clock == nil {
 		m.clock = internalclock.Real{}
+	}
+	if m.cfg.Observations != nil {
+		if env.LiveState == nil || env.Alerts == nil {
+			return fmt.Errorf("recurring observations require live state and alerts")
+		}
+		settings := *m.cfg.Observations
+		settings.Runtime.State = env.LiveState
+		for _, scheduled := range settings.Checks {
+			if err := env.LiveState.ConfigureCheck(scheduled.Check, scheduled.IntervalSeconds); err != nil {
+				log.ErrorContext(ctx, "health observation state could not be initialized", "check_id", scheduled.Check.ID, "err", err)
+				return fmt.Errorf("configure health observation: %w", err)
+			}
+		}
+		m.observationWorkers.Go(func() {
+			summary, err := observation.RunContinuous(ctx, settings, healthObservationNotifier{alerts: env.Alerts, clock: m.clock}, log, env.LiveState.RecordCheck)
+			if err != nil {
+				log.ErrorContext(ctx, "recurring health observations failed", "err", err)
+			}
+			log.Info("recurring health observations stopped", "summary", summary)
+		})
+	}
+	if len(m.cfg.WANs) == 0 {
+		return nil
 	}
 	if m.probeV4 == nil {
 		m.probeV4 = netif.Ping4
@@ -262,9 +289,17 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	return nil
 }
 
+// Wait completes observation cancellation before daemon logging closes.
+func (m *Module) Wait() {
+	m.observationWorkers.Wait()
+}
+
 // Reconcile runs an immediate cycle so later WAN-role modules read fresh state
 // during the daemon's ordered startup reconcile.
 func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
+	if len(m.cfg.WANs) == 0 {
+		return nil
+	}
 	m.reconcileMu.Lock()
 	if !m.reconcilePending {
 		m.reconcileMu.Unlock()
@@ -280,6 +315,23 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		return err
 	}
 	return nil
+}
+
+type healthObservationNotifier struct {
+	alerts *ifmgr.AlertManager
+	clock  internalclock.Clock
+}
+
+func (adapter healthObservationNotifier) Notify(ctx context.Context, event notify.Event) {
+	adapter.alerts.NotifyContext(ctx, event.Now, event.Level, event.Kind, event.Key, event.Message, event.Fields...)
+}
+
+func (adapter healthObservationNotifier) Resolve(ctx context.Context, kind, key, message string, fields ...slog.Attr) {
+	adapter.alerts.ResolveContext(ctx, adapter.clock.Now(), kind, key, message, fields...)
+}
+
+func (adapter healthObservationNotifier) Active(kind, key string) bool {
+	return adapter.alerts.Active(kind, key)
 }
 
 // EvaluateAlerts implements ifmgr.Module; transitions emit synchronously from

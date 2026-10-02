@@ -47,6 +47,7 @@ var roleModules = map[string][]string{
 		// SSH (vault polls OPNsense) or local exec (suburban polls its
 		// own wg0). Read-only observer; no kernel state.
 		"wg",
+		"health",
 	},
 	// host is the hypervisor role for a Proxmox host with no OOB tunnel.
 	// It omits oobv6, oobv4 and ra_lost, which require an OOB interface
@@ -55,6 +56,7 @@ var roleModules = map[string][]string{
 		"policy_rules",
 		"host_ipv6_policy",
 		"wg",
+		"health",
 	},
 	// failover is the iface-monitor role for prod LXC 116 and testbed
 	// LXC 100. mainv4 is included so that when dhcp_v4 is enabled for
