@@ -7885,6 +7885,45 @@ firewall job still failed an unequal-lifetime DHCPv6 mapped UDP case. Keep that
 failure separate from the passing distribution evidence and diagnose its
 actual boundary before claiming complete runtime acceptance.
 
+At 09:12 UTC on October 2, Configs PR628 merged signed 0a05728d as
+508dee53a9f1ce0499dee330135b363e68e5f973. The controller inspected the
+five-line bootstrap import removal, verified the signature and raw header,
+and confirmed required checks and empty review threads. The existing loader
+renders only the release and gateway plays. Routine upgrades no longer import
+generic guest provisioning. PR627 and PR628 worktrees and exact merged branch
+refs were removed after their source was verified in main.
+
+Preparation from clean merged 508dee53 stopped at baseline application
+observation at 09:17:30 UTC. Observer executables ran successfully on simulator
+CT900, CT901 and downstream CT225, CT226. Gateway executable, network and
+runtime replacement did not execute. The gateway still reports clean
+5666b3d with executable digest 43bede7022d3. The attempted operation
+20261002-021346-deploy-992191 has no armed operation record.
+
+Direct public observation localized the baseline rejection. Webpass IPv4 and
+AT&T IPv4 and IPv6 returned HTTP 200 with response body
+`mwan-testbed-mapping-ok`. Their checks expected that text plus a newline and
+returned a complete failed result. The repeated Webpass IPv6 observation
+failed at the controller SSH connection and remains unperformed. The original
+arm command did not print individual results. The focused configuration lane
+will verify the probe body contract and correct the exact fixture expectation.
+
+Both downstream guests passed IPv4 and IPv6 HTTPS application checks through
+their declared LAN sources and next hops at 09:23:10 through 09:23:14 UTC.
+The external service observed IPv4 174.166.126.204 and IPv6
+2601:84:837c:a160:f66d:4ff:fe66:b6de. These results establish baseline client
+application responses, not candidate cutover or load distribution acceptance.
+Production received no mutations.
+
+CI36987045687 passed the full namespace and systemd suites at published
+PR167 head 4d1d34a. The unequal-lifetime mapped UDP case passed at that same
+head after its prior timeout. Existing evidence does not explain or fix that
+timeout. Its downstream request receipt and successful reply submission
+preceded the upstream receive timeout. Required packet, neighbor and timing
+evidence was absent. Keep this failure separate from passing distribution
+counts and physical acceptance. The durable observation lane now implements
+MWAN-541 and MWAN-542 in dependent source slices with exclusive ownership.
+
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
 2. Record independent review and its reviewed commit separately from local checks.
 3. State the observable behavior demonstrated and any missing acceptance.
