@@ -9683,6 +9683,28 @@ publication and physical diagnostic cohorts remain pending. Production is
 unchanged. Tack comments now include the exact failed reverse, automatic
 recovery and MWAN-547 findings; open acceptance tickets remain In Progress.
 
+PR 179 implements MWAN-547 at signed
+ca06699ed67eb3ea28da3b40a31a41150561227f. Root inspected its one-line diff
+and complete firewall source. Independent review approved this exact commit
+after checking both families, policy ordering, hairpin return, pinned UDP,
+zero-mark first packets and later family-ineligible remapping. Direct AMD64
+and ARM64 firewall compilation, vet, formatting and whitespace checks passed.
+Existing required CI is running. Local Docker images are absent; no builder
+image or internal-disk cache was generated. No existing public runtime case
+tests two-provider unreplied retries. Physical same-tuple/SYN-sequence proof
+and application recovery are required before acceptance.
+
+Root created minimal replacements for the three terminal captures:
+retryforward-webpass-retained.pcap, approximately 3.0 MiB;
+retryforward-att-retained.pcap, 6.2 MiB; and
+retryforward-transit-postboot-retained.pcap, 2.3 MiB. Each preserves mapping
+port 1406, DHCPv6, ICMPv6 and the two incident TCP source ports 41861 and
+42289 at destination port 443. Native tcpdump decoded every replacement
+completely with exit zero. Root separately verified both original SYN
+sequences and provider changes in these replacements. Ending counters remain
+unknown. The superseded 26 MiB, 34 MiB and 12 MiB captures are eligible for
+deletion after this entry is committed. Retain their original transport errors.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
