@@ -338,7 +338,6 @@ func (w *watchdog) pruneSnapshots(ctx context.Context) error {
 // executeRollbackVM performs the stop-rollback-start cycle on the MWAN VM.
 // It deletes intermediate snapshots that are children of the target (Proxmox/ZFS
 // requires the target to be a leaf), then runs qm rollback and qm start.
-// Returns a non-nil error if the qm rollback command itself failed.
 func (w *watchdog) executeRollbackVM(ctx context.Context, snap string) error {
 	log := w.tracedLogger(ctx)
 	stopStart := w.now()
@@ -349,16 +348,24 @@ func (w *watchdog) executeRollbackVM(ctx context.Context, snap string) error {
 	)
 	if err := w.ops.VMStop(ctx, w.cfg.MwanVMID); err != nil {
 		log.ErrorContext(ctx,
-			"vmStop error (continuing to rollback)",
+			"vmStop failed before rollback",
 			"vmid", w.cfg.MwanVMID,
 			"err", err,
 		)
-	} else {
-		log.DebugContext(ctx,
-			"VM stopped",
-			"vmid", w.cfg.MwanVMID,
-			"elapsed", w.since(stopStart).Round(time.Millisecond),
-		)
+		return fmt.Errorf("stop VM before rollback: %w", err)
+	}
+	log.DebugContext(ctx,
+		"VM stopped",
+		"vmid", w.cfg.MwanVMID,
+		"elapsed", w.since(stopStart).Round(time.Millisecond),
+	)
+	running, err := w.ops.VMStatus(ctx, w.cfg.MwanVMID)
+	if err != nil {
+		log.WarnContext(ctx, "stopped VM verification failed")
+		return fmt.Errorf("verify stopped VM before rollback: %w", err)
+	}
+	if running {
+		return fmt.Errorf("VM remains running after stop; rollback rejected")
 	}
 
 	// Delete any watchdog-managed snapshots that are children of the target.
@@ -414,13 +421,13 @@ func (w *watchdog) executeRollbackVM(ctx context.Context, snap string) error {
 			"elapsed", w.since(startTime).Round(time.Millisecond),
 			"err", err,
 		)
-	} else {
-		log.InfoContext(ctx,
-			"VM started",
-			"vmid", w.cfg.MwanVMID,
-			"elapsed", w.since(startTime).Round(time.Millisecond),
-		)
+		return errors.Join(rollbackErr, fmt.Errorf("start VM after rollback: %w", err))
 	}
+	log.InfoContext(ctx,
+		"VM started",
+		"vmid", w.cfg.MwanVMID,
+		"elapsed", w.since(startTime).Round(time.Millisecond),
+	)
 	return rollbackErr
 }
 
@@ -433,11 +440,13 @@ func (w *watchdog) recordRollbackResult(
 	rollbackErr error,
 ) {
 	log := w.tracedLogger(ctx)
-	if err := os.Remove(w.cfg.Watchdog.RollbackLockFile); err != nil &&
-		!errors.Is(err, os.ErrNotExist) {
-		log.ErrorContext(ctx, "remove rollback lock", "err", err)
-	} else {
-		log.InfoContext(ctx, "Removed rollback lock file")
+	if rollbackErr == nil {
+		if err := os.Remove(w.cfg.Watchdog.RollbackLockFile); err != nil &&
+			!errors.Is(err, os.ErrNotExist) {
+			log.ErrorContext(ctx, "remove rollback lock", "err", err)
+		} else {
+			log.InfoContext(ctx, "Removed rollback lock file")
+		}
 	}
 
 	rollbackAttempts := 1
@@ -473,6 +482,28 @@ func (w *watchdog) recordRollbackResult(
 
 func (w *watchdog) rollback(ctx context.Context, deployTS int64, snap string) {
 	log := w.tracedLogger(ctx)
+	coordinator, err := rollback.Acquire(ctx, w.cfg.Watchdog.RollbackLockFile,
+		time.Duration(w.cfg.Watchdog.CheckIntervalDegraded)*time.Second)
+	if err != nil {
+		log.ErrorContext(ctx, "rollback coordination failed", "err", err)
+		return
+	}
+	defer func() {
+		if closeErr := coordinator.Close(); closeErr != nil {
+			log.ErrorContext(ctx, "rollback coordination release failed", "err", closeErr)
+		}
+	}()
+	if w.inspectDeployOperation(ctx, coordinator) {
+		return
+	}
+	done, _, err := rollback.AlreadyDone(w.cfg.Watchdog.RollbackStateFile, deployTS)
+	if err != nil {
+		log.ErrorContext(ctx, "rollback state verification failed", "err", err)
+		return
+	}
+	if done {
+		return
+	}
 	w.hashChangeWindowStart = 0
 	w.coord.SetRollingBack(true)
 	w.totalFailStart = time.Time{}
@@ -505,6 +536,10 @@ func (w *watchdog) rollback(ctx context.Context, deployTS int64, snap string) {
 
 	rollbackErr := w.executeRollbackVM(ctx, snap)
 	w.recordRollbackResult(ctx, deployTS, snap, rollbackErr)
+	if rollbackErr != nil {
+		log.ErrorContext(ctx, "rollback failed; recovery marker retained", "err", rollbackErr)
+		return
+	}
 
 	log.InfoContext(ctx,
 		"ROLLBACK COMPLETE; waiting for routes to converge",
@@ -525,6 +560,19 @@ func (w *watchdog) rollback(ctx context.Context, deployTS int64, snap string) {
 
 func (w *watchdog) recoverInterrupted(ctx context.Context) {
 	log := w.tracedLogger(ctx)
+	coordinator, err := rollback.Acquire(ctx, w.cfg.Watchdog.RollbackLockFile, w.cfg.Watchdog.DegradedInterval())
+	if err != nil {
+		log.ErrorContext(ctx, "interrupted recovery coordination failed", "err", err)
+		return
+	}
+	defer func() {
+		if err := coordinator.Close(); err != nil {
+			log.ErrorContext(ctx, "interrupted recovery coordination release failed", "err", err)
+		}
+	}()
+	if w.inspectDeployOperation(ctx, coordinator) {
+		return
+	}
 	data, err := os.ReadFile(w.cfg.Watchdog.RollbackLockFile)
 	if errors.Is(err, os.ErrNotExist) {
 		return
@@ -563,12 +611,12 @@ func (w *watchdog) recoverInterrupted(ctx context.Context) {
 			"vmid", w.cfg.MwanVMID,
 			"err", startErr,
 		)
-	} else {
-		log.InfoContext(ctx,
-			"VM started successfully after interrupted rollback",
-			"vmid", w.cfg.MwanVMID,
-		)
+		return
 	}
+	log.InfoContext(ctx,
+		"VM started successfully after interrupted rollback",
+		"vmid", w.cfg.MwanVMID,
+	)
 	if err := os.Remove(w.cfg.Watchdog.RollbackLockFile); err != nil &&
 		!errors.Is(err, os.ErrNotExist) {
 		log.ErrorContext(ctx, "remove rollback lock after recovery", "err", err)
@@ -765,6 +813,9 @@ func (w *watchdog) runIteration(ctx context.Context, iteration int) bool {
 		log.InfoContext(ctx, "Context cancelled; watchdog shutting down")
 		return false
 	default:
+	}
+	if w.handleDeployOperation(iterCtx) {
+		return w.sleepOrShutdown(iterCtx, w.cfg.Watchdog.DegradedInterval())
 	}
 
 	running, err := w.ops.VMStatus(iterCtx, w.cfg.MwanVMID)

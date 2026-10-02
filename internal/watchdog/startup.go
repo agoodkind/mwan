@@ -41,6 +41,9 @@ func (w *watchdog) logStartupConfig(ctx context.Context) {
 // connectivity, and checking the config hash.
 func (w *watchdog) runStartupChecks(ctx context.Context) {
 	log := w.tracedLogger(ctx)
+	if w.handleDeployOperation(ctx) {
+		return
+	}
 	w.recoverInterrupted(ctx)
 
 	// A watchdog that died mid-snapshot can leave the guest frozen with no
