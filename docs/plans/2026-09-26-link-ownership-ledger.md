@@ -7080,6 +7080,38 @@ MWAN-520 and MWAN-305 remain In Progress. Remaining-interface transfer,
 AT&T retirement, final networkd removal and conditional reboot work remain
 separate unfinished epic requirements.
 
+## Finish the first-phase command manifest and cleanup
+
+Signed commit 61395f9 publishes the reusable existing-command manifest in
+interfaces/deployment.md. Independent readback verified protocol arguments,
+source-bound downstream requests, configured balancing, capture lifecycles,
+mapping replies, route repair, restart history, recovery and owned cleanup.
+Every repository and Configs source link resolves. Root inspected the complete
+manifest and diff before integration. No acceptance application, replacement
+Ruby harness, new script, test or live mutation was added.
+
+MWAN-522 is Done with actual Tack description and state readback verified.
+Independent review matched its explicit VLAN, absent-provider, replacement
+index and routed static-block requirements to passing public daemon cases,
+separately from the aggregate counts. Physical Webpass acceptance and all
+required released protocol cases pass. MWAN-401 retains final testbed
+acceptance after retirement; MWAN-520 retains production acceptance.
+
+PR #161's exact worktree, local branch and leased remote branch were removed
+after root verified trunk containment and the generated-cache classification.
+Ten unchanged regenerable files and two empty directories were removed;
+external reports and terminal events remain. Root independently verified
+worktree and local/remote branch absence. Primary MWAN is clean at 62c0fa79.
+The cleanup report is 20261002-pr161-cleanup-classification.md.
+
+No first-Webpass implementation or testbed acceptance blocker remains.
+Production requires subsequent authorization, current baseline verification,
+and accepted preparation before activation. Preserve the recorded isolated
+IPv6 loss outside operation windows, missing DNS terminal drop counters and
+initial observer gap as measurement limits. They do not establish a failed
+cutover or a localized runtime cause. MWAN-305 and MWAN-520 remain active;
+remaining interfaces and final retirement are unfinished.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
