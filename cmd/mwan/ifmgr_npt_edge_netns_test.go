@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -19,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/nftables"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
@@ -220,6 +222,15 @@ func checkRuntimeLegacyFirstStart(t *testing.T, configPath, root string, gateway
 	manifest := filepath.Join(root, "legacy-npt-transition.json")
 	capture := exec.Command(os.Getenv(mappedRuntimeBinaryEnv), "ifmgr", "--role", "wan", "--capture-legacy-npt", manifest, "--producer-pid", fmt.Sprint(old.command.Process.Pid), "--producer-sha256", legacySHA256)
 	capture.Env = append(os.Environ(), "MWAN_CONFIG="+configPath)
+	removeExtra := addExtraLegacyUpgradeRule(t)
+	if output, err := capture.CombinedOutput(); err == nil || !strings.Contains(string(output), "rules differ from configured producer intent") {
+		t.Fatalf("capture must reject an extra recognized rule: %v: %s", err, output)
+	}
+	assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"))
+	removeExtra()
+	assertMappedRuntimeReply(t, old, gateway, upstream, downstream, "udp6", "[2001:db8:beef:601:4611::2]:17607", "[2001:db8:b01:1::2]:17607")
+	capture = exec.Command(os.Getenv(mappedRuntimeBinaryEnv), "ifmgr", "--role", "wan", "--capture-legacy-npt", manifest, "--producer-pid", fmt.Sprint(old.command.Process.Pid), "--producer-sha256", legacySHA256)
+	capture.Env = append(os.Environ(), "MWAN_CONFIG="+configPath)
 	if output, err := capture.CombinedOutput(); err != nil {
 		t.Fatalf("capture original producer: %v: %s", err, output)
 	}
@@ -293,6 +304,43 @@ func checkRuntimeLegacyFirstStart(t *testing.T, configPath, root string, gateway
 	assertMappedRuntimeReply(t, restarted, gateway, upstream, downstream, "udp6", "[2001:db8:beef:601:4611::2]:17603", "[2001:db8:b01:1::2]:17603")
 	assertMappedRuntimeReply(t, restarted, gateway, upstream, downstream, "udp6", "[2001:db8:beef:600::1]:17606", "[2001:db8:b01:fe::2]:17606")
 	waitStaticRuntimeAddress(t, restarted, "enmgmt0", "203.0.113.1/24", true)
+}
+
+func addExtraLegacyUpgradeRule(t *testing.T) func() {
+	t.Helper()
+	connection, err := nftables.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	table := &nftables.Table{Family: nftables.TableFamilyIPv6, Name: "nat"}
+	chain := &nftables.Chain{Table: table, Name: "postrouting"}
+	rules, err := connection.GetRules(table, chain)
+	if err != nil || len(rules) == 0 {
+		t.Fatalf("read original NPT rules: %v", err)
+	}
+	marker := []byte("legacy-upgrade-extra-rule")
+	connection.AddRule(&nftables.Rule{Table: table, Chain: chain, Exprs: rules[0].Exprs, UserData: marker})
+	if err := connection.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	return func() {
+		rules, err := connection.GetRules(table, chain)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, rule := range rules {
+			if bytes.Equal(rule.UserData, marker) {
+				if err := connection.DelRule(rule); err != nil {
+					t.Fatal(err)
+				}
+				if err := connection.Flush(); err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+		}
+		t.Fatal("extra NPT rule disappeared before exact cleanup")
+	}
 }
 
 func assertLegacyAdoptionCommand(t *testing.T, configPath, manifest, expectedError string) {

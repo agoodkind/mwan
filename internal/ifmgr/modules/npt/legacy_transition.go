@@ -103,6 +103,15 @@ func (m *Module) ReadLegacyNPTEdge(ctx context.Context, log *slog.Logger, wan WA
 	if !present || len(built.ensure) != 1 {
 		return netif.LegacyNPTEdge{}, fmt.Errorf("legacy NPT intent has no single edge for %s", wan.ID)
 	}
+	installedCount := 0
+	for _, rule := range installed {
+		if rule.Iface == wan.Iface {
+			installedCount++
+		}
+	}
+	if installedCount != len(built.rules) {
+		return netif.LegacyNPTEdge{}, fmt.Errorf("legacy NPT rules differ from configured producer intent for %s", wan.ID)
+	}
 	for _, expected := range built.rules {
 		if !slices.Contains(installed, expected) {
 			return netif.LegacyNPTEdge{}, fmt.Errorf("legacy NPT rule does not match configured producer intent for %s", wan.ID)
