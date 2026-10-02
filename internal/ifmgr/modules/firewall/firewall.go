@@ -47,6 +47,8 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	m.Lock()
 	defer m.Unlock()
+	protection := "not-ready"
+	defer func() { m.publishProtection(protection) }()
 
 	desired, err := firewall.Compile(m.cfg)
 	if err != nil {
@@ -62,17 +64,18 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	if len(result.CreatedSets) > 0 {
 		m.refreshPending = true
 	}
+	if _, err := firewall.Inspect(ctx, desired); err != nil {
+		m.publish(desired.String(), err)
+		log.WarnContext(ctx, "firewall policy inspection failed", "err", err)
+		return fmt.Errorf("inspect firewall policy: %w", err)
+	}
+	protection = "ready"
 	if m.refreshPending {
 		if err := requestDestinationRefresh(ctx, log); err != nil {
 			m.publish(desired.String(), err)
 			return fmt.Errorf("request destination refresh: %w", err)
 		}
 		m.refreshPending = false
-	}
-	if _, err := firewall.Inspect(ctx, desired); err != nil {
-		m.publish(desired.String(), err)
-		log.WarnContext(ctx, "firewall policy inspection failed", "err", err)
-		return fmt.Errorf("inspect firewall policy: %w", err)
 	}
 	m.publish(desired.String(), nil)
 	log.DebugContext(ctx, "firewall policy reconciled")
@@ -96,6 +99,20 @@ func (m *Module) publish(rules string, err error) {
 		return
 	}
 	m.Env.LiveState.SetOwnedIntendedRuleset(moduleName, rules, err)
+}
+
+func (m *Module) publishProtection(verdict string) {
+	if m.Env == nil || m.Env.LiveState == nil {
+		return
+	}
+	for _, connection := range m.Env.Connections {
+		if connection.IPv4 != nil {
+			m.Env.LiveState.SetFirewallProtection(connection.ID.String(), "ipv4", verdict)
+		}
+		if connection.IPv6 != nil {
+			m.Env.LiveState.SetFirewallProtection(connection.ID.String(), "ipv6", verdict)
+		}
+	}
 }
 
 // New constructs the gateway module from the shared typed policy.
