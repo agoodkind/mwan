@@ -293,7 +293,8 @@ func distributionBridgePort(t *testing.T, bridgeName, portName string, mac net.H
 	if err := netlink.LinkSetMaster(port, bridge); err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.NeighSet(&netlink.Neigh{LinkIndex: port.Attrs().Index, Family: unix.AF_BRIDGE, State: unix.NUD_PERMANENT, Flags: unix.NTF_MASTER, HardwareAddr: mac}); err != nil {
+	// NUD_PERMANENT makes the MAC local to the bridge and consumes peer replies.
+	if err := netlink.NeighSet(&netlink.Neigh{LinkIndex: port.Attrs().Index, Family: unix.AF_BRIDGE, State: unix.NUD_NOARP, Flags: unix.NTF_MASTER, HardwareAddr: mac}); err != nil {
 		t.Fatal(err)
 	}
 }
