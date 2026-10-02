@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -45,8 +46,8 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 			if err != nil {
 				continue
 			}
-			if err := netlink.LinkDel(link); err != nil {
-				t.Error(err)
+			if err := netlink.LinkDel(link); err != nil && !errors.Is(err, unix.ENODEV) {
+				t.Errorf("delete fixture link %s index %d: %v", name, link.Attrs().Index, err)
 			}
 		}
 	}()
