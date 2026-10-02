@@ -7778,6 +7778,45 @@ the simulated upstream neighbor. Its fixture requires further diagnosis;
 no production steering correction is established. Physical cutover,
 restoration and full downstream acceptance remain unperformed.
 
+At 07:58 UTC on October 2, PR170 merged signed 26a69d4 as
+59560308. Its one-line fixture route restores the LAN destination's return
+path to 10.52.1.0/24 through 192.0.2.1. Production code, reverse-path filtering
+and packet assertions are unchanged. All ten required checks passed.
+TestKernelPolicyDaemonRuntime passed in 7.09 seconds and
+TestDeployOperationWatchRuntime passed in 4.57 seconds. The complete firewall,
+namespace and systemd steps passed in CI36979934044.
+
+The controller stopped VM213 and attempted the verified
+known-good-20260929-235727 restore. ZFS rejected restoration because
+pre-deploy-20261001T212514 was newer. The controller deleted only that
+disposable testbed snapshot, restored the known-good snapshot and started
+VM213. Its executable, network and runtime hashes match the recorded 5666b3d
+baseline. This manual recovery does not prove autonomous operation recovery
+or exact physical d442ba1 preparation.
+
+Webpass 10.241.204.2 and AT&T 10.241.205.2 returned
+mwan-testbed-mapping-ok over IPv4. Both IPv6 edges, 2200::1 and 2300::1
+within 3d06:bad:b01, returned that response. Each request used the simulator's
+eth0; IPv6 bound the verified simulator source explicitly. An initial AT&T
+probe used the interface address 10.240.205.2 instead of the mapped address
+and timed out; it is not a mapping acceptance result. Direct controller SSH
+to both downstream guests failed with Network is unreachable. Their
+application checks remain unperformed through the required LXC observer.
+
+Production still reports clean d442ba1 with executable SHA256
+1c79542f6f9e56fc0ad0f101b0688a84f95bfc41706ebebf36982e0f4f8726fa.
+CT102 has one LAN interface with IPv4 10.250.0.102/32 and IPv6
+3d06:bad:b01::102/64. CT100 has only IPv6 3d06:bad:b01::100/64;
+do not count it as IPv4 proof. Production received no mutations.
+
+Preparation integration remains unfinished. Whole-provider transfer also
+requires a bounded policy for its expected selected-provider interruption.
+The current watch begins recovery after those failed checks even during an
+active handover lease. Keep downstream and unaffected-provider checks strict;
+do not increase the general failure threshold. The runtime policy lane owns
+that focused correction. The distribution fixture now proves IPv4 requests
+and calibrated counts; IPv6 remains under actual neighbor-readiness diagnosis.
+
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
 2. Record independent review and its reviewed commit separately from local checks.
 3. State the observable behavior demonstrated and any missing acceptance.
