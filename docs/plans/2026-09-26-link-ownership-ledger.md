@@ -9054,8 +9054,30 @@ on mounted Chaos Storage. No production write occurred.
 MWAN-535 is Done after physical original-release capture, adoption, restart
 and reboot acceptance. MWAN-538 and MWAN-544 remain In Progress for their
 remaining recovery and traffic acceptance. PR 176 contains reviewed MWAN-545
-commit f44028c; its required checks are running. AMD64 and ARM64 compilation
-passed. The next merged release must prove successful physical watch exit.
+commit f44028c. It merged normally at 18:43:20 UTC as
+f4fbb855967832c7d4da99e17fb65b004b524dac after every active required check
+passed, with no review threads. AMD64 and ARM64 compilation passed. The
+optional firewall job was canceled after merge and its systemd acceptance
+was skipped. The new regression remains unperformed. Release run 37049354594
+is publishing the exact merge; the next physical deployment must prove
+successful watch exit. The release implementer exclusively owns the existing
+testbed release pin in mwan_testbed_all.yml. Production pins remain unchanged.
+
+Both final3 provider captures stopped after exact unit, executable, PID and
+invocation verification. Both transports exited zero. Webpass captured 86659
+packets from 86715 filtered packets; AT&T captured 79999 from 79999. Both
+reported zero kernel drops. Independent process checks confirmed both exact
+PIDs absent. The rebooted primary capture exited 255 without terminal counters.
+The eight-check observer and four replacement guest ping streams remain live.
+
+Forward and reverse transfer inputs reference a missing
+mwan_webpass_transfer_packet_checks_json variable. Direct merged inventory
+and inherited group reads do not define it. Historical semantic hits are
+stale. Existing application results are not transfer execution dictionaries.
+The read-only handover lane is inspecting the existing merged validation and
+execution contract before correcting these ephemeral inputs. No transfer has
+started. The separate distribution lane is preparing actual public observer
+inputs without running cohorts or replacing the current application observer.
 
 ## Record each deployment result
 
