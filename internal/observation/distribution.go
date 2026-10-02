@@ -53,7 +53,8 @@ func validateDistributionRequest(request CheckSpec, family Family) error {
 	return Validate(request)
 }
 
-func (executor *Executor) distribution(ctx context.Context, spec CheckSpec, result Result) Result {
+func (executor *Executor) distribution(ctx context.Context, spec CheckSpec, initial Result) (result Result) {
+	result = initial
 	plan := spec.DistributionPlan
 	if !distributionCalibrated(spec) {
 		result.Availability, result.Reason = AvailabilityMissing, "distribution lacks calibration for the exact sample count, hash policy and eligible provider tiers and weights"
@@ -81,6 +82,12 @@ func (executor *Executor) distribution(ctx context.Context, spec CheckSpec, resu
 	defer func() {
 		for _, capture := range append(captures, transitCaptures...) {
 			_ = capture.finish()
+		}
+		for index, capture := range captures {
+			result.DistributionCaptures[index] = capture.ready
+		}
+		for index, capture := range transitCaptures {
+			result.TransitCaptures[index] = capture.ready
 		}
 	}()
 	var captureError error

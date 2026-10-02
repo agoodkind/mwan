@@ -239,6 +239,20 @@ func (capture *ingressCapture) finish() error {
 		capture.closing.Store(true)
 		_ = capture.connection.Close()
 		<-capture.done
+		capture.mu.Lock()
+		defer capture.mu.Unlock()
+		capture.ready.FinishedAt = time.Now().UTC()
+		if statsErr != nil {
+			capture.ready.StatisticsError = statsErr.Error()
+		} else {
+			capture.ready.StatisticsAvailable = true
+			capture.ready.Packets = stats.Packets
+			capture.ready.Drops = stats.Drops
+			capture.ready.FreezeQueueCount = stats.FreezeQueueCount
+		}
+		if capture.err != nil {
+			capture.ready.ReaderError = capture.err.Error()
+		}
 		if statsErr != nil || stats.Drops != 0 {
 			capture.finishError = errors.New("provider ingress capture statistics are unavailable or report dropped packets")
 		}
