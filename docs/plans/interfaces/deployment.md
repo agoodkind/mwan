@@ -406,8 +406,9 @@ attribution and missing capture counters cannot establish complete acceptance.
    drops. Check its recorded PID on the capture host with
    `find /proc -maxdepth 1 -mindepth 1 -name "$CAPTURE_PID" -print`; require empty
    output. Unit collection alone does not prove process absence. On each guest,
-   verify both owned ping PIDs and arguments with `ps -C ping -o pid,args`, then
-   run `kill -INT "$OWNED_PING4_PID" "$OWNED_PING6_PID"`. Retain transmission
+   run `ps -p "$OWNED_PING4_PID,$OWNED_PING6_PID" -o pid,args`. Require both exact
+   PIDs and their recorded arguments before running
+   `kill -INT "$OWNED_PING4_PID" "$OWNED_PING6_PID"`. Retain transmission
    summaries and require each exact PID to be absent with the same `/proc` check.
    Signal only the recorded local observer process with
    `kill -INT "$OWNED_OBSERVER_PID"` and reap its transport. Refresh every PID

@@ -26,9 +26,9 @@ supports production cutover. Do not initiate production cutover without the
 required subsequent authorization. Production phases and final retirement
 remain epic requirements; this execution goal does not authorize them early.
 
-Apply [subagent-driven-development](../../../../.agents/skills/subagent-driven-development/SKILL.md)
-strictly. Give every implementer exact working directories, exclusive file
-ownership, prerequisite revisions, settled interfaces, constraints,
+Apply the subagent-driven-development skill strictly. Give every implementer
+exact working directories, exclusive file ownership, prerequisite revisions,
+settled interfaces, constraints,
 verification, and report requirements. Assign coupled changes to one owner.
 Inspect reports and diffs before integration. Preserve concurrent edits.
 
@@ -79,8 +79,8 @@ tests, merged PRs, and installed binaries do not prove operational acceptance.
 Do not infer causes, reduce intended behavior, increase limits to conceal
 failures, or add unrelated repairs and speculative safeguards.
 
-Follow [enforce-rules](../../../../.agents/skills/enforce-rules/SKILL.md) and
-repository testing rules for every new test, including complete required
+Follow the enforce-rules skill and repository testing rules for every new
+test, including complete required
 rule-file reads. Use the smallest necessary public-boundary regression test
 with real dependencies and an observable result. Use inspection, generation,
 compilation, or existing checks for mechanical changes. Delete tests for
