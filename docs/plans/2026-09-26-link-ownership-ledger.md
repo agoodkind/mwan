@@ -9175,6 +9175,40 @@ not satisfy the remaining physical ownership acceptance. MWAN-545 remains
 In Progress until the current registered watch terminates successfully after
 commitment. The forward controller remains active.
 
+The preparation restart started daemon PID 6980 at 19:49:58 UTC. Root verified
+its actual process executable matched the released target digest, while the
+installed network and runtime still matched the baseline. Native route events
+recorded both backups selected from 19:49:58.940 through 19:50:16.933 UTC;
+IPv6 backup installation was four milliseconds later. Another complete backup
+window occurred from 19:53:29.935 through 19:53:45.928 UTC for IPv4 and through
+19:53:45.929 UTC for IPv6. The raw capture completed with timeout exit 124 and
+no truncated output. These intervals measure route selection, not client loss.
+
+Root read the intermediate Webpass configuration with owner external and
+steering disabled. Its interface had only a link-local IPv6 address while the
+controller released networkd. Inbound Webpass checks failed during this
+intentional release interval. First passing recovery samples were at
+20:05:20.035 UTC for IPv4 and 20:05:33.197 UTC for IPv6. These sample boundaries
+do not establish continuous outage duration. AT&T recovered from its separate
+restart timeouts, and downstream application samples continued passing.
+
+Root then verified the actual Webpass interface with 10.241.204.2/29,
+10.241.204.3 through .6/32, and 3d06:bad:b01:2200::1/128 installed. The scoped
+operational readback returned configured owner mwan, valid static IPv4,
+bound valid IPv6, saved IPv6 lease state, present router, both routing states
+ready, and healthy carrying selection. Published family firewall-protection
+and readiness scalars returned unknown; this readback alone does not establish
+those requirements. Full forward commitment, reboot, reverse transfer,
+new-connection balancing, faults and recovery remain unperformed.
+
+The distribution lane renewed all four guest ping streams before expiry,
+verified actual replies and exact identities, then stopped the prior exact
+PIDs after documented overlap. All four old transports exited zero. Their
+two-hour transmission/receipt totals were A4 6996/6996, A6 6995/6978,
+B4 6998/6996 and B6 6998/6982. These totals include earlier preparation and
+reboot windows and do not measure one cutover's interruption. The lane's
+catalog records the new bounded producers and retained per-phase logs.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
