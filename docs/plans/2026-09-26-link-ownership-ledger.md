@@ -9556,6 +9556,25 @@ were added. Active artifacts remain on mounted Chaos Storage; controller
 storage uses approximately 1.1 GiB and distribution storage 18 MiB. Owned
 signature verification scratch files were deleted after the ledger push.
 
+Independent review approved the exact PR 178 source head 2e15cec. The reviewer
+verified partial-open slice lengths, all early-return cleanup, serialized
+reader shutdown, result publication and unchanged acceptance semantics.
+Required Staticcheck Extra then rejected time.Now outside internal/clock.
+The original implementer published signed
+8fcf6433388594a1e56a82287b1248e0ac084dca, using the existing injected clock
+for finalization. Root inspected this one-file followup; independent review
+and exact-head required checks remain pending. Previous-head AMD64 and ARM64
+compilation, tests, vet, namespace runtime and ARM64 runtime passed. These
+results do not establish current-head acceptance. No CI workflow changed.
+
+Root reduced the terminal preboot transit capture from approximately 31 MiB
+to 5.8 MiB. The retained retryforward-transit-retained.pcap includes mapping
+port 1406, DHCPv6 and ICMPv6 packets. Native tcpdump decoded the entire
+retained capture with exit zero. Original acquisition, application and reboot
+results are durable above. Ending counters remain unavailable after reboot.
+The superseded full capture is eligible for deletion after this entry is
+committed. Active provider and postboot captures remain unchanged.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
