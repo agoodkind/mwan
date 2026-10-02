@@ -9780,6 +9780,36 @@ Native full decoding passed for every replacement. Retain original ending
 counters, request result and producer identities. Superseded full captures
 are eligible for deletion after this entry is committed.
 
+The narrowed F4 IPv6 control reproduced changing providers with complete
+capture evidence. Guest source 3d06:bad:b01:211::225:55061 and SYN1312340832
+used AT&T at 23:18:23.465201 UTC and Webpass at 23:18:24.494434 on the
+same hypervisor clock. Translated prefixes differed. AT&T recorded one
+dropped initial SYN; Webpass recorded zero. The request returned HTTP200.
+Provider, original guest and gateway captures reported zero kernel drops.
+Captured/received totals were Webpass29/29, AT&T1/1, guest30/30 and
+gateway30/31. All four transports ended with exit zero after exact unit stops.
+Guest tcpdump was absent, so root used the verified host veth225i0 peer of
+guest eth0 without installing packages. Native peer indices, MAC and container
+configuration verified that original-packet boundary.
+
+The repeated F4 IPv4 control also reproduced the defect with complete
+capture evidence. Guest10.240.1.241:55042, transit10.240.240.2:62346 and
+SYN4207750633 correlated with provider source10.241.205.2:62346.
+AT&T observed the SYN at23:20:17.730286 UTC, Webpass at23:20:18.735149,
+then AT&T at23:20:19.761757. AT&T dropped one initial SYN; Webpass recorded
+zero. HTTP200 followed. Captured/received totals were Webpass1/1, AT&T32/32,
+guest33/33 and gateway33/33, with zero kernel drops. All four transports
+ended with exit zero. The provider timestamp comparisons use one hypervisor
+clock; gateway timestamps differ and are not used for interruption durations.
+
+Root removed both exact fault tables after each control and verified the
+original provider NAT/filter definitions unchanged. All eight application
+checks passed in64 sampled results from23:22:32.544291743 through
+23:23:28.620263449 UTC. Fresh guest hashes still match the F4 baseline.
+These results establish the old release's retry defect, not candidate
+acceptance. The compact captures, ending counters and request results remain
+necessary until the merged candidate repeats both controls successfully.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
