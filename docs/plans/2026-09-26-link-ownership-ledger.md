@@ -7257,6 +7257,46 @@ upgrade repairs, Cloudflare imports and recovery/health contract inspection.
 The coordinator owns shared plan edits and live deployment serialization.
 Physical reproduction and repaired cutover acceptance remain unperformed.
 
+## Verify incident repair inputs
+
+The supplied Desktop cftoken folder authorized a temporary read-only
+Cloudflare credential. Actual account pool, monitor and zone load balancer
+reads succeeded. The existing sanctioned token authenticates but cannot read
+those resources. Temporary credentials remain outside the repositories.
+
+Configs PR621 merged as a9372c1b5f491637d5e20e74e8618dfccd6457bd.
+The reviewed plan contains eight imports and no infrastructure mutations:
+two load balancers, four referenced pools and two existing monitors. Required
+checks, signatures and review threads passed. The coordinator authorized
+state-only adoption from that clean merged revision. Import apply and a
+post-import zero-change plan remain pending at this checkpoint. The three
+incident pools are healthy. The existing Monkeybrains fallback reports an
+HTTP timeout; adoption preserves that monitor and pool configuration.
+
+MWAN-540 now has a real negative control and candidate packet result.
+Published e90b629 invalidates both families after an unrecorded IPv6 NPT edge
+failure. The repaired daemon preserves IPv4 readiness and downstream/provider
+IPv4 UDP replies. Required Linux checks passed. Root reviewed the full diff
+and report; PR163 remains under review. Actual BGP retention and shared
+firewall failure acceptance remain unperformed. MWAN-540 is In Progress.
+
+Configs PR620 contains the all-networkd e90b629 preparation fixture at signed
+edd586947d3fc8e27b18b6de08bc6e454c8ad3b2. Its Webpass document retains the
+legacy driver selector without a typed permanent-MAC match. A free-form
+MACAddress narrows the rendered Match section to the exact testbed device.
+Production Validate and Render produced one Match section with virtio_net
+and bc:24:11:be:8e:b4. Lint and whitespace checks passed. Local RSpec could
+not start because a locked gem is missing. CI and physical fixture verification
+remain required. No testbed deployment occurred.
+
+Legacy transition implementation requires a scoped manifest captured before
+replacement while the original process runs. Startup verifies the stopped
+producer and exact surviving provider objects before recording receipts.
+The implementation and required positive original-release upgrade case remain
+unfinished. Recovery arming and inbound rollback still require a bounded
+mutation fence and a serialized hypervisor operation. Production remains
+restored; no production retry is authorized.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
