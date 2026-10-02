@@ -402,6 +402,19 @@ test-firewall: wanconfig-builder-image
 		go test -v -count=1 -tags 'netns firewallnetns' ./cmd/mwan \
 		-run '^(TestDeployGateEgressNetNS|TestCheckFirewallIsolatedKernel|TestWANStartupProtectsBeforeConfigValidation|TestWANFirewallRuntimePackets|TestOwnedStaticDaemonRuntime|TestOwnedMappedDaemonRuntime|TestSelectionExclusionDaemonRuntime|TestDistributionObservationDaemonRuntime)$$'
 
+.PHONY: test-legacy-upgrade
+test-legacy-upgrade: build-wanconfig systemd-runner-image
+	$(if $(strip $(MWAN_NPT_LEGACY_BINARY)),,$(error MWAN_NPT_LEGACY_BINARY is required))
+	$(if $(filter /%,$(MWAN_NPT_LEGACY_BINARY)),,$(error MWAN_NPT_LEGACY_BINARY must be absolute))
+	$(if $(strip $(MWAN_NPT_LEGACY_SHA256)),,$(error MWAN_NPT_LEGACY_SHA256 is required))
+	$(if $(filter amd64,$(WANCONFIG_DOCKER_ARCH)),,$(error test-legacy-upgrade requires the AMD64 original release))
+	$(WANCONFIG_DOCKER_RUN) sha256sum $(LOCAL_BIN)/$(BINARY)-wanconfig-linux-amd64
+	$(WANCONFIG_DOCKER_RUN) $(LOCAL_BIN)/$(BINARY)-wanconfig-linux-amd64 version
+	GOWORK=off go run ./tools/protocolrunner -lane original-upgrade \
+		-image "$(SYSTEMD_RUNNER_IMAGE)" -arch amd64 -source "$(CURDIR)" \
+		-results "$(PROTOCOL_RESULTS_DIR)" -binary "$(CURDIR)/$(LOCAL_BIN)/$(BINARY)-wanconfig-linux-amd64" \
+		-original-binary "$(MWAN_NPT_LEGACY_BINARY)" -original-sha256 "$(MWAN_NPT_LEGACY_SHA256)"
+
 .PHONY: build-wanconfig-all test-docker-all
 build-wanconfig-all:
 	@for arch in $(WANCONFIG_DOCKER_ARCHS); do \

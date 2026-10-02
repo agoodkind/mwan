@@ -83,13 +83,15 @@ func runLegacyNPTPreparationUpgrade(t *testing.T) {
 	setRuntimeLoopback(t)
 	management := newRuntimePeer(t, gateway, "enmgmt0", "mgmt-host", []string{"203.0.113.1/24"}, []string{"203.0.113.2/24"}, "")
 	defer management.namespace.Close()
-	lan := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"2001:db8:b01:fe::3/64", "2001:db8:b01:1::3/64"}, []string{"2001:db8:b01:fe::2/64", "2001:db8:b01:1::2/64"}, "")
+	lan := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29", "2001:db8:b01:fe::3/64", "2001:db8:b01:1::3/64"}, []string{"192.0.2.2/29", "2001:db8:b01:fe::2/64", "2001:db8:b01:1::2/64"}, "")
 	defer lan.namespace.Close()
-	provider := newRuntimePeer(t, gateway, "enwebpass0", "legacy-peer", []string{"fd20::1/64"}, []string{"fd20::2/64"}, legacyRuntimeMAC)
+	provider := newRuntimePeer(t, gateway, "enwebpass0", "legacy-peer", []string{"10.20.0.2/24", "fd20::1/64"}, []string{"10.20.0.1/24", "fd20::2/64"}, legacyRuntimeMAC)
 	defer provider.namespace.Close()
 	setRuntimeNamespace(t, lan.namespace)
+	addMappedRuntimeRoute(t, "10.20.0.0/24", "192.0.2.1", "lan-host")
 	addMappedRuntimeRoute(t, "fd20::/64", "2001:db8:b01:fe::3", "lan-host")
 	setRuntimeNamespace(t, gateway)
+	addRuntimeDefault(t, "enwebpass0", "10.20.0.1")
 	addRuntimeDefault(t, "enwebpass0", "fd20::2")
 	addMappedRuntimeRoute(t, "2001:db8:b01::/60", "", "enmwanbr0")
 	internalLink, err := netlink.LinkByName("enmwanbr0")
@@ -101,6 +103,16 @@ func runLegacyNPTPreparationUpgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := netlink.RouteAdd(&netlink.Route{LinkIndex: internalLink.Attrs().Index, Dst: internalRoute, Table: 200}); err != nil {
+		t.Fatal(err)
+	}
+	internalV4Route, err := netlink.ParseIPNet("192.0.2.0/29")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.RouteAdd(&netlink.Route{LinkIndex: internalLink.Attrs().Index, Dst: internalV4Route, Table: 200}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("/proc/sys/net/ipv4/ip_forward", []byte("1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile("/proc/sys/net/ipv6/conf/all/forwarding", []byte("1\n"), 0o600); err != nil {
@@ -200,6 +212,7 @@ func checkRuntimeLegacyFirstStart(t *testing.T, configPath, root string, gateway
 	addMappedRuntimeRoute(t, "2001:db8:beef:600::/60", "fd20::1", "legacy-peer")
 	setRuntimeNamespace(t, gateway)
 	configureLegacyUpgradeLink(t, filepath.Join(root, "mwan", "network.json"))
+	setReleaseConnectionField(t, filepath.Join(root, "mwan"), "webpass", "ietf-ip:ipv4", json.RawMessage(`{"address":[{"ip":"10.20.0.2","prefix-length":24}],"goodkind-mwan-steering:gateway":"10.20.0.1","goodkind-mwan-steering:dhcp":false,"goodkind-mwan-steering:translation":{"mode":"ietf-nat:napt44","static-mapping":[{"external":"10.20.0.3","internal":"192.0.2.2"}]}}`))
 	config, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatal(err)
@@ -212,6 +225,13 @@ func checkRuntimeLegacyFirstStart(t *testing.T, configPath, root string, gateway
 	defer killOwnedRuntimeDaemon(t, old)
 	waitMappedRuntimeRule(t, old, "ip6", "nat", "2001:db8:beef:600::1", 10*time.Second)
 	waitRuntimeNPTEdgeReady(t, old, "enwebpass0", "2001:db8:beef:600::1/128")
+	waitStaticRuntimeAddress(t, old, "enwebpass0", "10.20.0.3/32", true)
+	unrelatedLink, err := netlink.LinkByName("enwebpass0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addEgressAddress(t, unrelatedLink, "10.20.0.99/32")
+	assertMappedRuntimeReply(t, old, gateway, upstream, downstream, "udp4", "10.20.0.3:17608", "192.0.2.2:17608")
 	assertRuntimeDaemonRunning(t, old)
 	assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"))
 	assertMappedRuntimeReply(t, old, gateway, upstream, downstream, "udp6", "[2001:db8:beef:601:4611::2]:17600", "[2001:db8:b01:1::2]:17600")
@@ -244,6 +264,30 @@ func checkRuntimeLegacyFirstStart(t *testing.T, configPath, root string, gateway
 		t.Fatal(err)
 	}
 	var captured map[string]json.RawMessage
+	if err := json.Unmarshal(manifestBytes, &captured); err != nil {
+		t.Fatal(err)
+	}
+	var mapped []struct {
+		Record struct {
+			Prefix string `json:"prefix"`
+		} `json:"record"`
+	}
+	if err := json.Unmarshal(captured["mapped_addresses"], &mapped); err != nil {
+		t.Fatal(err)
+	}
+	if len(mapped) != 1 || mapped[0].Record.Prefix != "10.20.0.3/32" {
+		t.Fatalf("capture selected primary or unrelated addresses: %s", manifestBytes)
+	}
+	captured["mapped_addresses"] = json.RawMessage(strings.ReplaceAll(string(captured["mapped_addresses"]), "10.20.0.3/32", "10.20.0.99/32"))
+	unrelated, err := json.Marshal(captured)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifest, unrelated, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	assertLegacyAdoptionCommand(t, configPath, manifest, "legacy mapped address intent, link or kernel address changed")
+	assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"))
 	if err := json.Unmarshal(manifestBytes, &captured); err != nil {
 		t.Fatal(err)
 	}
@@ -293,6 +337,8 @@ func checkRuntimeLegacyFirstStart(t *testing.T, configPath, root string, gateway
 	defer killOwnedRuntimeDaemon(t, current)
 	waitMappedRuntimeRule(t, current, "ip6", "nat", "2001:db8:beef:600::1", 10*time.Second)
 	waitStaticRuntimeAddress(t, current, "enwebpass0", "2001:db8:beef:600::1/128", true)
+	waitStaticRuntimeAddress(t, current, "enwebpass0", "10.20.0.3/32", true)
+	assertMappedRuntimeReply(t, current, gateway, upstream, downstream, "udp4", "10.20.0.3:17609", "192.0.2.2:17609")
 	assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"), "2001:db8:beef:600::1/128")
 	assertMappedRuntimeReply(t, current, gateway, upstream, downstream, "udp6", "[2001:db8:beef:601:4611::2]:17602", "[2001:db8:b01:1::2]:17602")
 	assertMappedRuntimeReply(t, current, gateway, upstream, downstream, "udp6", "[2001:db8:beef:600::1]:17605", "[2001:db8:b01:fe::2]:17605")
@@ -303,6 +349,7 @@ func checkRuntimeLegacyFirstStart(t *testing.T, configPath, root string, gateway
 	assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"), "2001:db8:beef:600::1/128")
 	assertMappedRuntimeReply(t, restarted, gateway, upstream, downstream, "udp6", "[2001:db8:beef:601:4611::2]:17603", "[2001:db8:b01:1::2]:17603")
 	assertMappedRuntimeReply(t, restarted, gateway, upstream, downstream, "udp6", "[2001:db8:beef:600::1]:17606", "[2001:db8:b01:fe::2]:17606")
+	assertMappedRuntimeReply(t, restarted, gateway, upstream, downstream, "udp4", "10.20.0.3:17610", "192.0.2.2:17610")
 	waitStaticRuntimeAddress(t, restarted, "enmgmt0", "203.0.113.1/24", true)
 }
 

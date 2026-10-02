@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"slices"
@@ -17,6 +18,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	"goodkind.io/mwan/internal/installfile"
+	"goodkind.io/mwan/internal/interfaceintent"
 )
 
 // LegacyNPTEdge limits a producer transition to verified intent and kernel rules.
@@ -26,6 +28,49 @@ type LegacyNPTEdge struct {
 	RulesSHA256  string        `json:"rules_sha256"`
 }
 
+// LegacyMappedAddress binds a configured secondary mapping to its kernel address.
+type LegacyMappedAddress struct {
+	Record       ownedStaticObject `json:"record"`
+	IntentSHA256 string            `json:"intent_sha256"`
+	KernelSHA256 string            `json:"kernel_sha256"`
+}
+
+// ReadLegacyMappedAddresses omits absent mappings and never changes kernel state.
+func ReadLegacyMappedAddresses(connection interfaceintent.Connection, prefixes []netip.Prefix, intentSHA256 string) ([]LegacyMappedAddress, error) {
+	if len(intentSHA256) != sha256.Size*2 {
+		return nil, fmt.Errorf("legacy mapping requires an exact intent digest")
+	}
+	link, err := ObserveLegacyLink(connection)
+	if err != nil {
+		return nil, NewLegacyNPTError("read legacy mapping link", err)
+	}
+	addresses, err := netlink.AddrList(link, unix.AF_INET)
+	if err != nil {
+		return nil, NewLegacyNPTError("read legacy mapping addresses", err)
+	}
+	var captured []LegacyMappedAddress
+	for _, prefix := range prefixes {
+		if !prefix.Addr().Is4() || prefix.Bits() != 32 {
+			return nil, fmt.Errorf("legacy mapping requires an IPv4 secondary /32")
+		}
+		for _, address := range addresses {
+			if !addressMatches(address, prefix) {
+				continue
+			}
+			if address.Flags&(unix.IFA_F_TENTATIVE|unix.IFA_F_DADFAILED) != 0 {
+				return nil, fmt.Errorf("legacy mapped address %s is not ready", prefix)
+			}
+			data, err := json.Marshal(address)
+			if err != nil {
+				return nil, NewLegacyNPTError("marshal legacy mapped address", err)
+			}
+			digest := sha256.Sum256(data)
+			captured = append(captured, LegacyMappedAddress{Record: ownedStaticObject{Scope: "", ConnectionID: connection.ID.String(), Family: "ipv4", LinkName: connection.Name, LinkIndex: link.Attrs().Index, LinkIdentity: LinkOwnershipIdentity(link), Prefix: prefix.String(), Destination: "", Gateway: "", Metric: 0}, IntentSHA256: intentSHA256, KernelSHA256: hex.EncodeToString(digest[:])})
+		}
+	}
+	return captured, nil
+}
+
 type legacyNPTProducer struct {
 	PID              int    `json:"pid"`
 	StartTime        string `json:"start_time"`
@@ -33,12 +78,13 @@ type legacyNPTProducer struct {
 }
 
 type legacyNPTTransition struct {
-	Version          int               `json:"version"`
-	BootID           string            `json:"boot_id"`
-	NetworkNamespace string            `json:"network_namespace"`
-	Producer         legacyNPTProducer `json:"producer"`
-	JournalPath      string            `json:"journal_path"`
-	Edges            []LegacyNPTEdge   `json:"edges"`
+	Version          int                   `json:"version"`
+	BootID           string                `json:"boot_id"`
+	NetworkNamespace string                `json:"network_namespace"`
+	Producer         legacyNPTProducer     `json:"producer"`
+	JournalPath      string                `json:"journal_path"`
+	Edges            []LegacyNPTEdge       `json:"edges"`
+	MappedAddresses  []LegacyMappedAddress `json:"mapped_addresses,omitempty"`
 }
 
 // ReadTransitionKernelIdentity binds receipts to the boot and network namespace.
@@ -117,7 +163,7 @@ func ReadLegacyNPTProducer(pid int, expectedSHA256 string) (legacyNPTProducer, e
 }
 
 // WriteLegacyNPTTransition records the running producer without changing kernel state.
-func WriteLegacyNPTTransition(path string, pid int, producerSHA256, journalPath string, edges []LegacyNPTEdge) error {
+func WriteLegacyNPTTransition(path string, pid int, producerSHA256, journalPath string, edges []LegacyNPTEdge, mappings []LegacyMappedAddress) error {
 	if os.Geteuid() != 0 || !filepath.IsAbs(path) || !filepath.IsAbs(journalPath) || len(edges) == 0 {
 		return fmt.Errorf("legacy NPT capture requires root, absolute paths and verified edges")
 	}
@@ -129,7 +175,7 @@ func WriteLegacyNPTTransition(path string, pid int, producerSHA256, journalPath 
 	if err != nil {
 		return err
 	}
-	manifest := legacyNPTTransition{Version: 1, BootID: boot, NetworkNamespace: namespace, Producer: producer, JournalPath: journalPath, Edges: edges}
+	manifest := legacyNPTTransition{Version: 1, BootID: boot, NetworkNamespace: namespace, Producer: producer, JournalPath: journalPath, Edges: edges, MappedAddresses: mappings}
 	data, err := json.Marshal(manifest)
 	if err != nil {
 		return NewLegacyNPTError("marshal legacy NPT manifest", err)
@@ -157,7 +203,7 @@ func WriteLegacyNPTTransition(path string, pid int, producerSHA256, journalPath 
 }
 
 // ApplyLegacyNPTTransition adopts exact old-producer edges only after producer termination.
-func ApplyLegacyNPTTransition(path, journalPath string, current []LegacyNPTEdge) error {
+func ApplyLegacyNPTTransition(path, journalPath string, current []LegacyNPTEdge, mappings []LegacyMappedAddress) error {
 	if os.Geteuid() != 0 || !filepath.IsAbs(path) || !filepath.IsAbs(journalPath) {
 		return fmt.Errorf("legacy NPT adoption requires root and absolute paths")
 	}
@@ -184,11 +230,37 @@ func ApplyLegacyNPTTransition(path, journalPath string, current []LegacyNPTEdge)
 			return err
 		}
 	}
+	if err := r.readLegacyMappedReceipts(manifest.MappedAddresses, mappings); err != nil {
+		return err
+	}
 	for _, edge := range manifest.Edges {
 		value := nptEdgeObject(edge.Record)
 		if !r.recorded(value) {
 			if err := r.reserve(value); err != nil {
 				return err
+			}
+		}
+	}
+	for _, mapping := range manifest.MappedAddresses {
+		if !r.recorded(mapping.Record) {
+			if err := r.reserve(mapping.Record); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (r *OwnedStaticReconciler) readLegacyMappedReceipts(captured, current []LegacyMappedAddress) error {
+	seen := make(map[ownedStaticObject]bool)
+	for _, mapping := range captured {
+		if seen[mapping.Record] || !slices.Contains(current, mapping) {
+			return fmt.Errorf("legacy mapped address intent, link or kernel address changed for %s", mapping.Record.ConnectionID)
+		}
+		seen[mapping.Record] = true
+		for _, old := range r.journal.Objects {
+			if old.Prefix == mapping.Record.Prefix && old.LinkName == mapping.Record.LinkName && old != mapping.Record {
+				return fmt.Errorf("legacy mapped address conflicts with an existing receipt")
 			}
 		}
 	}

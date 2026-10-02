@@ -106,6 +106,16 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
+      - name: Verify the original release and run its preparation upgrade
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MWAN_NPT_LEGACY_SHA256: 1c79542f6f9e56fc0ad0f101b0688a84f95bfc41706ebebf36982e0f4f8726fa
+        run: |
+          mkdir -p "$RUNNER_TEMP/mwan-original"
+          gh release download 202609292152-70-d442ba1 --repo agoodkind/mwan --pattern mwan_linux_amd64.tar.gz --dir "$RUNNER_TEMP/mwan-original"
+          tar -xzf "$RUNNER_TEMP/mwan-original/mwan_linux_amd64.tar.gz" -C "$RUNNER_TEMP/mwan-original" mwan
+          printf '%s  %s\n' "$MWAN_NPT_LEGACY_SHA256" "$RUNNER_TEMP/mwan-original/mwan" | sha256sum --check --strict
+          make test-legacy-upgrade WANCONFIG_DOCKER_ARCH=amd64 MWAN_NPT_LEGACY_BINARY="$RUNNER_TEMP/mwan-original/mwan" MWAN_NPT_LEGACY_SHA256="$MWAN_NPT_LEGACY_SHA256"
       - name: Run the firewall and namespace acceptance tests
         env:
           GH_TOKEN: ${{ github.token }}
