@@ -8945,6 +8945,43 @@ Their unique recovery evidence remains necessary. Native OPNsense reads at
 with both primary defaults selected. Preparation acceptance remains pending.
 Production is unchanged.
 
+### Verify repaired legacy capture and adoption on the physical testbed
+
+Controller 52369 passed the previously failing checkpoint and installed the
+candidate prerequisites without replacing the original writer or active
+network/runtime inputs. Legacy capture completed at 17:42:38 UTC with exit
+zero. The record identifies original PID 318 and its exact executable hash,
+boot and namespace. It includes AT&T, Monkeybrains and Webpass IPv6 edge
+addresses and Webpass IPv4 mappings 10.241.204.3 through 10.241.204.6 as /32
+addresses. The primary address 10.241.204.2 is excluded.
+
+After candidate installation, the direct /proc/318/exe hash and unchanged
+network/runtime assertions passed. The original writer stopped and its PID
+was absent before adoption. Adoption completed at 17:46:24 UTC with exit
+zero. Normal candidate startup completed without a persistent adoption flag.
+Successful startup alone does not prove complete preparation acceptance.
+
+The independent observer recorded first inbound failures from 17:45:52
+through 17:45:58 UTC. First recovered samples were AT&T IPv6 at 17:47:24,
+AT&T IPv4 at 17:47:28, Webpass IPv4 at 17:47:29 and Webpass IPv6 at
+17:47:31 UTC. Downstream B IPv6 recorded one failure at 17:47:22 and its
+next passing sample at 17:47:29 UTC. Other downstream checks passed.
+All subsequent samples through 17:47:57 passed with no unknown results.
+These are sample timestamps, not exact continuous outage durations.
+
+Actual OPNsense routes selected both backup defaults at 17:46:29 through
+17:46:35 UTC. Both primary peers reported zero prefixes. At 17:47:35 UTC,
+both primary defaults were selected and installed again. The route samples
+do not establish the exact withdrawal or restoration instant. The bounded
+native evidence remains in planned-handover/preparation-52369-bgp-readback.md
+on Chaos Storage. Controller 52369 remains live; preparation commitment,
+reboot and ownership transfers remain pending. Production is unchanged.
+
+The superseded second-attempt controller log and pointer were purged after
+pushed ledger 8bca984 preserved diagnosis and recovery. Current raw evidence
+remains required. Chaos Storage has 972 GiB available; the controller artifact
+directory used 502 MB at 17:40 UTC.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
