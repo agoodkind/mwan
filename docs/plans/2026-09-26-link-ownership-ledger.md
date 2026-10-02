@@ -6784,6 +6784,31 @@ resolver queries passed in 29.6 and 33.1 milliseconds. The public acceptance
 manifest now uses its own nonmultiplexed SSH configuration; binary and network
 expectations remain unchanged. No shared SSH master was stopped.
 
+## Complete the merged release deployment and begin public acceptance
+
+Deployment 48179 exited zero. The recap reports 421 ok, 54 changed and zero
+failed, unreachable, rescued or ignored tasks. The collected reboot verdict
+passed egress and owned-address checks without rollback. Independent postboot
+readback verifies the same machine bdd916f9, new boot
+f5d7eb33-c688-4158-855f-7b6bf1f047db, exact installed and running executable
+cb96234d and final network 2769af5f. Webpass is MWAN-owned, up and ready with
+valid assignments and routes for both families; networkd remains unmanaged.
+All other providers, management and transit retain networkd ownership.
+
+Fresh capture records postboot Rebind and Reply at 00:15:56, followed by Renew
+and Reply at 00:16:56. Postboot configured resolver queries returned network
+answers. Their packet correlation remains under review and is not yet claimed.
+All four nonmultiplexed downstream streams returned packets at 00:17:02.
+Preserve the earlier capture and observer gaps separately from reboot evidence.
+
+Root started the full public mwan_acceptance.rb entrypoint with the exact
+released binary and final network expectations. Session 78365 owns evidence
+directory 20261002-forward-e90b629-battery. The manifest uses the dedicated
+nonmultiplexed SSH configuration and retains all packet, mapping, translation,
+balancing, protocol, history and identity requirements. Root owns the bounded
+route deletion and daemon restart only when the runner enters its failure and
+restart observation phase. Production remains unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
