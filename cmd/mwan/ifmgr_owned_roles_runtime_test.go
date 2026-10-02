@@ -204,6 +204,16 @@ func runOwnedRolesDaemonRuntime(t *testing.T) {
 	}
 	assertOwnedRolePackets(t, gateway, transit.namespace, upstream.namespace)
 	killOwnedRuntimeDaemon(t, daemon)
+	writeOwnedRoleNetwork(t, networkDir, &enabled)
+	setReleaseConnectionField(t, networkDir, "owned397", "ietf-ip:ipv6", json.RawMessage(`{"address":[{"ip":"fd39:7::1","prefix-length":64}],"goodkind-mwan-steering:dhcp":false,"goodkind-mwan-steering:accept-ra":false,"goodkind-mwan-steering:gateway":"fd39:7::2","goodkind-mwan-steering:route-metric":398,"goodkind-mwan-steering:translation":{"mode":"ietf-nat:nptv6","nptv6":{"internal-prefix":"2001:db8:b01::/60","external-source":"configured","external-prefix":"2001:db8:540::/60"}}}`))
+	configureRuntimeLink(t, "owned397", []string{"2001:db8:540::1/128"})
+	daemon = startRuntimeDaemon(t, binary, configPath, root, "roles-ipv6-failure")
+	waitOwnedRoleForwarding(t, daemon, socket, forwardingready.State{IPv4: true, IPv6: false})
+	assertStaticRuntimePacket(t, transit.namespace, upstream.namespace, "udp4", "10.39.7.2:39506")
+	setRuntimeNamespace(t, gateway)
+	assertStaticRuntimePacket(t, upstream.namespace, transit.namespace, "udp4", "192.0.2.2:39507")
+	setRuntimeNamespace(t, gateway)
+	killOwnedRuntimeDaemon(t, daemon)
 	enabled = false
 	writeOwnedRoleNetwork(t, networkDir, &enabled)
 	daemon = startRuntimeDaemon(t, binary, configPath, root, "roles-forwarding-disabled")

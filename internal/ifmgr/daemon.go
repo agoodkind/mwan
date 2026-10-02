@@ -527,21 +527,23 @@ func (d *Daemon) reconcileAll(ctx context.Context, log *slog.Logger) {
 	if d.cfg.LiveState != nil {
 		routingGeneration = d.cfg.LiveState.Snapshot().RoutingGeneration
 	}
-	failed := false
+	var failed forwardingready.State
 	for _, m := range d.modules {
 		mlog := log.With("module", m.Name())
 		mlog.DebugContext(ctx, "ifmgr: Reconcile")
 		if err := m.Reconcile(ctx, mlog); err != nil {
 			mlog.WarnContext(ctx, "ifmgr: module Reconcile failed", "err", err)
 			if m.Name() != "wan.routes" {
-				failed = true
+				impact := forwardingFailureImpact(m)
+				failed.IPv4 = failed.IPv4 || impact.IPv4
+				failed.IPv6 = failed.IPv6 || impact.IPv6
 			}
 		}
 	}
 	if d.role != "wan" || d.cfg.ForwardingReadySocket == "" {
 		return
 	}
-	if d.cfg.LiveState == nil || failed {
+	if d.cfg.LiveState == nil {
 		d.setForwardingReadiness(forwardingready.State{IPv4: false, IPv6: false})
 		return
 	}
@@ -550,7 +552,10 @@ func (d *Daemon) reconcileAll(ctx context.Context, log *slog.Logger) {
 		d.setForwardingReadiness(forwardingready.State{IPv4: false, IPv6: false})
 		return
 	}
-	d.setForwardingReadiness(d.internalForwardingReadiness(forwardingReadiness(snapshot)))
+	state := d.internalForwardingReadiness(forwardingReadiness(snapshot))
+	state.IPv4 = state.IPv4 && !failed.IPv4
+	state.IPv6 = state.IPv6 && !failed.IPv6
+	d.setForwardingReadiness(state)
 }
 
 func (d *Daemon) internalForwardingReadiness(state forwardingready.State) forwardingready.State {
