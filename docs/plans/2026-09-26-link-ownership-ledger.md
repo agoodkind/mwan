@@ -8690,6 +8690,36 @@ after signed ledger d932a44 was pushed.
 3. State the observable behavior demonstrated and any missing acceptance.
 4. Identify the next unfinished task and its prerequisites.
 
+### Review mapped IPv4 adoption and register the original-release regression
+
+MWAN PR175 source eeb04574d42446765e0606fc8afbdcc3d6c46679 captures only
+configured on-link/local secondary IPv4 /32 mappings and adopts unchanged
+intent, link and kernel observations after the original producer stops. It
+excludes acquired/static primary and unrelated addresses. Independent source
+reviews passed the original patch, digest/lint correction and final CI
+registration. Root inspected each patch. The real regression checks mapped
+packets before adoption, after candidate startup and after restart, with
+unrelated-address and tampered-manifest rejection.
+
+The existing CI selection omitted TestLegacyNPTPreparationUpgrade and its
+original-release inputs. The dedicated target now builds and identifies the
+actual candidate, mounts the original executable read-only and selects that
+case explicitly. Native AMD64 CI verifies original release
+202609292152-70-d442ba1 against the full baseline executable digest.
+Exact-head CI 37023814711 and firewall job 110893451715 are active at the
+original-release step. Runtime success remains unproved. Two new bot findings
+remain under source-owner triage; merge requires final checks and resolved
+required threads.
+
+The root deployment checkout is clean detached merged Configs
+bfdcd66a561a5891977c0ece21ad1b83f34a526b. Its cache symlink still uses Chaos.
+Read-only native verification confirms original WAN PID 318 and the exact
+original installed/running executable, network and runtime digests. Observer
+73905 remains active with its recorded PID and invocation; all eight recent
+application observations pass. No deployment or fault started in this slice.
+The superseded failed preparation log was purged after signed ledger a97c297
+was pushed. Unique packet evidence remains necessary for repair acceptance.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
