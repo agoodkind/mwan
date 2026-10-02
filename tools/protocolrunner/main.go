@@ -71,6 +71,8 @@ func requiredTests(selected lane) ([]string, error) {
 			"TestOwnedMappedDaemonRuntime", "TestSelectionExclusionDaemonRuntime",
 			"TestOwnedStaticDaemonRuntime", "TestWANFirewallRuntimePackets",
 			"TestKernelPolicyDaemonRuntime",
+			"TestObservationDaemonRuntime",
+			"TestDistributionObservationDaemonRuntime",
 		}, nil
 	case laneSystemd:
 		return []string{"TestNetworkdResolverDaemonRuntime", "TestNetworkdOrderedDaemonStartup", "TestStaticResolverDaemonRuntime", "TestOwnedRolesDaemonRuntime", "TestNetworkdNPTEdgeDaemonRuntime", "TestConnectionReleaseDaemonRuntime", "TestDeployOperationWatchRuntime"}, nil

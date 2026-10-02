@@ -247,9 +247,11 @@ type HTTPProbeSpec struct {
 // HTTPProbeResult includes the actual connected socket addresses.
 type HTTPProbeResult struct {
 	HTTPResult
-	Source      netip.Addr
-	Destination netip.Addr
-	Connected   bool
+	Source          netip.Addr
+	Destination     netip.Addr
+	SourcePort      uint16
+	DestinationPort uint16
+	Connected       bool
 }
 
 // DialProbe opens a source-bound TCP connection with the shared interface binding.
@@ -308,9 +310,11 @@ func httpRequest(ctx context.Context, spec HTTPProbeSpec, readBody, direct bool)
 		socketResult.Connected = true
 		if address, ok := info.Conn.LocalAddr().(*net.TCPAddr); ok {
 			socketResult.Source = address.AddrPort().Addr().Unmap()
+			socketResult.SourcePort = address.AddrPort().Port()
 		}
 		if address, ok := info.Conn.RemoteAddr().(*net.TCPAddr); ok {
 			socketResult.Destination = address.AddrPort().Addr().Unmap()
+			socketResult.DestinationPort = address.AddrPort().Port()
 		}
 	}}
 	request, err := http.NewRequestWithContext(httptrace.WithClientTrace(ctx, trace), spec.Method, spec.URL, nil)
