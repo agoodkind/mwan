@@ -143,23 +143,22 @@ func (engine Engine) Watch(ctx context.Context, operationID, generation string) 
 }
 
 // Commit repeats target identity and application checks before ending recovery protection.
-func (engine Engine) Commit(ctx context.Context, operationID, generation string) error {
-	record, err := engine.exact(ctx, operationID, generation)
+func (engine Engine) Commit(ctx context.Context, operationID, generation string) (resultErr error) {
+	coordinator, err := rollback.Acquire(ctx, engine.RollbackLock, engine.Store.PollInterval)
 	if err != nil {
 		return err
 	}
-	identity, err := ReadIdentity(ctx, engine.Operations, record.VMID, record.Paths)
-	if err != nil {
-		return err
-	}
-	if identity.MachineID != record.Target.MachineID || identity.ExecutableSHA256 != record.Target.ExecutableSHA256 || identity.NetworkSHA256 != record.Target.NetworkSHA256 || identity.RuntimeSHA256 != record.Target.RuntimeSHA256 {
-		return fmt.Errorf("actual deployment target identity differs from the manifest")
-	}
-	results := engine.check(ctx, record.Manifest, record.RequiredChecks)
-	if err := engine.Store.observe(ctx, operationID, generation, results); err != nil {
-		return err
-	}
-	return engine.Store.Commit(ctx, operationID, generation)
+	defer func() { resultErr = errors.Join(resultErr, coordinator.Close()) }()
+	return engine.Store.Commit(ctx, operationID, generation, func(record Record) ([]observation.Result, error) {
+		identity, err := ReadIdentity(ctx, engine.Operations, record.VMID, record.Paths)
+		if err != nil {
+			return nil, err
+		}
+		if identity.MachineID != record.Target.MachineID || identity.ExecutableSHA256 != record.Target.ExecutableSHA256 || identity.NetworkSHA256 != record.Target.NetworkSHA256 || identity.RuntimeSHA256 != record.Target.RuntimeSHA256 {
+			return nil, fmt.Errorf("actual deployment target identity differs from the manifest")
+		}
+		return engine.check(ctx, record.Manifest, record.RequiredChecks), nil
+	})
 }
 
 // Recover owns the hypervisor coordinator throughout mutation drain and restoration.

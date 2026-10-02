@@ -612,12 +612,11 @@ func (w *watchdog) recoverInterrupted(ctx context.Context) {
 			"err", startErr,
 		)
 		return
-	} else {
-		log.InfoContext(ctx,
-			"VM started successfully after interrupted rollback",
-			"vmid", w.cfg.MwanVMID,
-		)
 	}
+	log.InfoContext(ctx,
+		"VM started successfully after interrupted rollback",
+		"vmid", w.cfg.MwanVMID,
+	)
 	if err := os.Remove(w.cfg.Watchdog.RollbackLockFile); err != nil &&
 		!errors.Is(err, os.ErrNotExist) {
 		log.ErrorContext(ctx, "remove rollback lock after recovery", "err", err)

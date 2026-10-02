@@ -99,7 +99,7 @@ func executeCurrentDeployOperation(ctx, signalContext context.Context, cfg *conf
 	}
 	record, err := engine.Store.Read(ctx)
 	if err != nil {
-		return fmt.Errorf("execute deployment operation: %w", err)
+		return err
 	}
 	if record.OperationID != args[1] || record.Generation != args[2] || record.VMID != cfg.MwanVMID {
 		return fmt.Errorf("deployment operation identity differs from request or configured gateway")
@@ -114,7 +114,7 @@ func executeCurrentDeployOperation(ctx, signalContext context.Context, cfg *conf
 		watchContext, watchCancel := context.WithDeadline(signalContext, record.Deadline.Add(time.Duration(record.RecoveryTimeoutSeconds)*time.Second))
 		defer watchCancel()
 		if err := engine.Watch(watchContext, record.OperationID, record.Generation); err != nil {
-			return fmt.Errorf("watch deployment operation: %w", err)
+			return err
 		}
 		return nil
 	case operationLease:
@@ -125,28 +125,28 @@ func executeCurrentDeployOperation(ctx, signalContext context.Context, cfg *conf
 		}
 		lease, err := engine.Store.Grant(ctx, record.OperationID, record.Generation, args[3], engine.Store.Clock.Now().Add(time.Duration(seconds)*time.Second))
 		if err != nil {
-			return fmt.Errorf("execute deployment operation: %w", err)
+			return err
 		}
 		if err := json.NewEncoder(os.Stdout).Encode(lease); err != nil {
-			return fmt.Errorf("write deployment lease: %w", err)
+			return err
 		}
 		return nil
 	case operationRelease:
 
 		if err := engine.Store.Release(ctx, record.OperationID, record.Generation, args[3]); err != nil {
-			return fmt.Errorf("execute deployment operation: %w", err)
+			return err
 		}
 	case operationCommit:
 
 		if err := engine.Commit(ctx, record.OperationID, record.Generation); err != nil {
-			return fmt.Errorf("execute deployment operation: %w", err)
+			return err
 		}
 	case operationRecover:
 
 		recoveryContext, recoveryCancel := context.WithTimeout(signalContext, time.Duration(record.RecoveryTimeoutSeconds)*time.Second)
 		defer recoveryCancel()
 		if err := engine.Recover(recoveryContext, record.OperationID, record.Generation, "explicit exact-operation recovery requested"); err != nil {
-			return fmt.Errorf("execute deployment operation: %w", err)
+			return err
 		}
 		return writeDeployOperationStatus(recoveryContext, engine)
 	default:

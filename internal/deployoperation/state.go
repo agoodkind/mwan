@@ -224,22 +224,36 @@ func (store Store) finishRecovery(ctx context.Context, operationID, generation s
 	})
 }
 
-// Commit rejects outstanding writes, expired deadlines and unverifiable watches.
-func (store Store) Commit(ctx context.Context, operationID, generation string) error {
-	return store.change(ctx, operationID, generation, func(record *Record) error {
+// Commit excludes mutation grants throughout target and application verification.
+func (store Store) Commit(ctx context.Context, operationID, generation string, verify func(Record) ([]observation.Result, error)) error {
+	var commitErr error
+	transactionErr := store.change(ctx, operationID, generation, func(record *Record) error {
 		if record.Status != Armed || record.Lease != nil || !record.Deadline.After(store.Clock.Now()) {
 			return fmt.Errorf("deploy operation cannot commit with an outstanding lease or expired deadline")
 		}
+		results, err := verify(*record)
+		if err != nil {
+			return err
+		}
+		record.Results = results
+		record.ObservedAt = store.Clock.Now().UTC()
+		if !record.Deadline.After(store.Clock.Now()) {
+			commitErr = fmt.Errorf("deploy operation deadline expired during commit verification")
+			return nil
+		}
 		if err := record.Watch.Verify(ctx); err != nil {
 			slog.WarnContext(ctx, "deployment commit watch verification failed")
-			return fmt.Errorf("deploy commit requires the active deploy watch: %w", err)
+			commitErr = fmt.Errorf("deploy commit requires the active deploy watch: %w", err)
+			return nil
 		}
 		if !record.MutationReady(store.Clock.Now()) {
-			return fmt.Errorf("deploy commit requires fresh passing application observations")
+			commitErr = fmt.Errorf("deploy commit requires fresh passing application observations")
+			return nil
 		}
 		record.Status = Committed
 		return nil
 	})
+	return errors.Join(transactionErr, commitErr)
 }
 
 // MutationReady requires complete fresh application replies for every configured check.
