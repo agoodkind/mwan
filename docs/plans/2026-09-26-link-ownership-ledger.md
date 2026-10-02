@@ -9045,9 +9045,17 @@ Ownership transfers, remaining fault acceptance and production remain pending.
 After controller completion, the clean detached deployment checkout advanced
 to merged Configs 02151351. Scoped guest preparation started at 18:38 UTC
 through configsctl, with controller handle 37195 and only
-mwan_suburban_servers selected. Its live result remains pending. Output and
-all controller caches remain on mounted Chaos Storage. No production write
-occurred.
+mwan_suburban_servers selected. It completed with exit zero, 87 successful
+tasks, 13 changes, no failures and no unreachable results. Independent SSH
+readback returned guest preparation revision 1. All eight latest application
+samples passed through 18:43:02 UTC. Output and all controller caches remain
+on mounted Chaos Storage. No production write occurred.
+
+MWAN-535 is Done after physical original-release capture, adoption, restart
+and reboot acceptance. MWAN-538 and MWAN-544 remain In Progress for their
+remaining recovery and traffic acceptance. PR 176 contains reviewed MWAN-545
+commit f44028c; its required checks are running. AMD64 and ARM64 compilation
+passed. The next merged release must prove successful physical watch exit.
 
 ## Record each deployment result
 
