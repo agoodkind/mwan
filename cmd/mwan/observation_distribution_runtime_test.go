@@ -72,12 +72,14 @@ func runDistributionObservationRuntime(t *testing.T) {
 	addRuntimeDefault(t, "transit", "192.0.2.1")
 	addRuntimeDefault(t, "transit", "2001:db8:b01:1::3")
 	var providers []observation.ProviderIngress
+	var upstreams []netns.NsHandle
 	for index, name := range []string{"enwebpass0", "enatt0"} {
 		bridge := fmt.Sprintf("provider%d", index)
 		distributionGatewayBridge(t, host, gateway, bridge, fmt.Sprintf("wantap%d", index), name, []string{fmt.Sprintf("10.50.%d.1/24", index+1), fmt.Sprintf("fd50:%d::1/64", index+1)})
 		port := fmt.Sprintf("isptap%d", index)
 		peer := newRuntimePeer(t, host, port, "isp", nil, []string{fmt.Sprintf("10.50.%d.2/24", index+1), fmt.Sprintf("fd50:%d::2/64", index+1), "10.50.9.2/32", "fd50:9::2/128"}, "")
 		defer peer.namespace.Close()
+		upstreams = append(upstreams, peer.namespace)
 		setRuntimeNamespace(t, peer.namespace)
 		link, err := netlink.LinkByName("isp")
 		if err != nil {
@@ -153,6 +155,10 @@ func runDistributionObservationRuntime(t *testing.T) {
 		t.Logf("gateway daemon: %s", runtimeLogTail(t, daemon, 50))
 		setRuntimeNamespace(t, host)
 		logDistributionRuntimeNetwork(t, "downstream")
+		for index, upstream := range upstreams {
+			setRuntimeNamespace(t, upstream)
+			logDistributionRuntimeNetwork(t, fmt.Sprintf("upstream%d", index))
+		}
 	}()
 	deadline := time.Now().Add(10 * time.Second)
 	for {
@@ -243,8 +249,8 @@ func logDistributionRuntimeNetwork(t *testing.T, scope string) {
 	t.Logf("%s links: %v", scope, err)
 	for _, link := range links {
 		addresses, err := netlink.AddrList(link, unix.AF_UNSPEC)
-		t.Logf("%s link %s index %d addresses=%+v error=%v", scope, link.Attrs().Name, link.Attrs().Index, addresses, err)
-		for _, setting := range []string{"rp_filter", "forwarding"} {
+		t.Logf("%s link %s index %d master %d flags %s addresses=%+v error=%v", scope, link.Attrs().Name, link.Attrs().Index, link.Attrs().MasterIndex, link.Attrs().Flags, addresses, err)
+		for _, setting := range []string{"rp_filter", "forwarding", "arp_ignore", "arp_filter"} {
 			value, err := os.ReadFile(filepath.Join("/proc/sys/net/ipv4/conf", link.Attrs().Name, setting))
 			t.Logf("%s %s %s: %s error=%v", scope, link.Attrs().Name, setting, bytes.TrimSpace(value), err)
 		}
