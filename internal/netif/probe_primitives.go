@@ -252,6 +252,27 @@ type HTTPProbeResult struct {
 	Connected   bool
 }
 
+// DialProbe opens a source-bound TCP connection with the shared interface binding.
+func DialProbe(ctx context.Context, iface string, source netip.Addr, family, address string, timeout time.Duration) (net.Conn, error) {
+	network, err := httpNetwork(family)
+	if err != nil {
+		return nil, err
+	}
+	dialer := &net.Dialer{Timeout: timeout}
+	if iface != "" {
+		dialer.Control = bindToDevice(iface)
+	}
+	if source.IsValid() {
+		dialer.LocalAddr = &net.TCPAddr{IP: source.AsSlice(), Zone: source.Zone(), Port: 0}
+	}
+	connection, err := dialer.DialContext(ctx, network, address)
+	if err != nil {
+		slog.WarnContext(ctx, "TCP observation dial failed", "iface", iface, "err", err)
+		return nil, fmt.Errorf("TCP observation dial: %w", err)
+	}
+	return connection, nil
+}
+
 // HTTPProbe records socket endpoints and disables proxies and redirects.
 func HTTPProbe(ctx context.Context, spec HTTPProbeSpec) (HTTPProbeResult, error) {
 	return httpRequest(ctx, spec, true, true)

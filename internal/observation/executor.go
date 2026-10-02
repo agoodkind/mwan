@@ -49,14 +49,15 @@ type PathIdentity struct {
 
 // RuntimeConfig supplies execution dependencies and protected credential file references.
 type RuntimeConfig struct {
-	MachineIDPath       string          `json:"machine_id_path"`
-	ProbeBinary         string          `json:"probe_binary"`
-	CloudflareAccountID string          `json:"cloudflare_account_id,omitempty"`
-	CloudflareTokenFile string          `json:"cloudflare_token_file,omitempty"`
-	Paths               []PathIdentity  `json:"paths,omitempty"`
-	GuestOps            *ops.RealOps    `json:"-"`
-	State               *wanstate.Store `json:"-"`
-	Clock               clock.Clock     `json:"-"`
+	MachineIDPath            string          `json:"machine_id_path"`
+	ProbeBinary              string          `json:"probe_binary"`
+	TransportOverheadSeconds int             `json:"transport_overhead_seconds"`
+	CloudflareAccountID      string          `json:"cloudflare_account_id,omitempty"`
+	CloudflareTokenFile      string          `json:"cloudflare_token_file,omitempty"`
+	Paths                    []PathIdentity  `json:"paths,omitempty"`
+	GuestOps                 *ops.RealOps    `json:"-"`
+	State                    *wanstate.Store `json:"-"`
+	Clock                    clock.Clock     `json:"-"`
 }
 
 type executor struct {
@@ -75,6 +76,9 @@ func NewExecutor(cfg RuntimeConfig, log *slog.Logger) Executor {
 	}
 	if cfg.Clock == nil {
 		cfg.Clock = clock.Real{}
+	}
+	if cfg.TransportOverheadSeconds <= 0 {
+		cfg.TransportOverheadSeconds = 5
 	}
 	return &executor{config: cfg, log: log}
 }
@@ -271,7 +275,7 @@ func (executor *executor) remote(ctx context.Context, spec CheckSpec, result Res
 		result.Reason = "observer metadata exceeds its encoding limit"
 		return result
 	}
-	commandContext, cancel := context.WithTimeout(ctx, time.Duration(spec.TimeoutSeconds)*time.Second)
+	commandContext, cancel := context.WithTimeout(ctx, (time.Duration(spec.TimeoutSeconds)+time.Duration(executor.config.TransportOverheadSeconds))*time.Second)
 	defer cancel()
 	var output []byte
 	if spec.Observer.Kind == EndpointLXC {
@@ -420,20 +424,7 @@ func (executor *executor) ping(ctx context.Context, spec CheckSpec, result Resul
 }
 
 func (executor *executor) sshBanner(ctx context.Context, spec CheckSpec, result Result) Result {
-	network := "tcp4"
-	if spec.Family == FamilyIPv6 {
-		network = "tcp6"
-	}
-	dialer := &net.Dialer{Timeout: time.Duration(spec.TimeoutSeconds) * time.Second}
-	if spec.Interface != "" {
-		result.Reason = "SSH banner interface binding is not implemented"
-		result.Availability = AvailabilityMissing
-		return result
-	}
-	if spec.Source.IsValid() {
-		dialer.LocalAddr = &net.TCPAddr{IP: spec.Source.AsSlice(), Zone: spec.Source.Zone(), Port: 0}
-	}
-	connection, err := dialer.DialContext(ctx, network, spec.Target)
+	connection, err := netif.DialProbe(ctx, spec.Interface, spec.Source, family(spec), spec.Target, time.Duration(spec.TimeoutSeconds)*time.Second)
 	if err != nil {
 		return failedProbe(result, err)
 	}
