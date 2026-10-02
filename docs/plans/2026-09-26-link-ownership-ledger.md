@@ -7969,6 +7969,18 @@ live activation, alerts and final acceptance remain unfinished. Source audit
 also confirms that whole-provider transfer still lacks manifest interruption
 policy, exact nested lease phases and a complete bounded transfer budget.
 
+Configs PR630 merged signed 3a72361ee30ad7de8644e48b437eda6a71c9e7df as
+168be4b8ffaf1ba8b30b9e317a84534ee859599a at 09:48:26 UTC on October 2.
+Root inspected the parsed-instant comparison, signature, raw signature header,
+required checks and empty review threads. The actual Ansible expression
+accepts equivalent offset/UTC instants and valid fractional timestamps; it
+rejects insufficient or equal remaining time. Required data and lint checks
+passed in CI36991641888. Preparation from clean merged 168be4b8 started at
+09:49:18 UTC with pinned MWAN 2cbfdd9. Its timestamp lease checks passed,
+candidate and transition runtime staging completed, and the bounded original
+WAN stop reconnected and completed. The operation remains active. Upgrade,
+final application verdict and cutover acceptance have not passed yet.
+
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
 2. Record independent review and its reviewed commit separately from local checks.
 3. State the observable behavior demonstrated and any missing acceptance.
