@@ -8742,6 +8742,32 @@ Both new bot findings were resolved with evidence: the helper receives parsed
 typed configuration, and the raw address digest exists only in the same-candidate
 one-shot manifest, not in durable receipts. No live testbed fault occurred.
 
+### Require authentic system services and provider eligibility in the regression
+
+PR175 revision cced5a29e9e96f17ffcc8d2778187466b72d9565 uses the existing
+real systemd image and protocolrunner. Revision
+7b895a60871f9942d500a7d7c8c8c299a895223e requires the actual system D-Bus
+boundary after the existing systemd Version check within the same 30-second
+readiness deadline. Root and independent review inspected both patches.
+Existing lanes and the original case's ten-minute bound remain unchanged.
+
+The cced5a2 original case started d442ba1 successfully and installed its
+IPv4 mapping and NPT rules. Its original IPv4 baseline UDP reply on port 17608
+failed before capture/adoption. The downstream received the request and wrote
+its reply within 177 microseconds, but the upstream timed out after three
+seconds. Actual original mwan_steer rules drop IPv4 from enmwanbr0 to
+enwebpass0. The fixture declares disabled DHCP and translation without its
+static primary/gateway; the provider is ineligible for IPv4 steering.
+The source lane corrects that configuration through the real loader rather
+than removing the protective drop or relaxing the packet assertion. This
+failure is separate from the earlier D-Bus prerequisite and does not prove
+an adoption result. Superseded CI 37025744026 is terminal Canceled.
+Exact 7b895a6 CI 37026496595 remains pending runtime acceptance.
+
+Read-only physical testbed verification found active networkd PID 549 and
+D-Bus PID 605. The gateway still runs the original verified pair. No shared
+testbed or production deployment occurred during these fixture corrections.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
