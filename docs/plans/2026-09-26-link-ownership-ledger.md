@@ -8310,6 +8310,98 @@ recovery play and exact known-good-20260929-184618 snapshot remain the recovery
 procedure. Conditional production authorization requires the complete repaired
 release's testbed proof; production remains unchanged.
 
+### Correct the historical preparation input
+
+Retry 19839 exited 1 at 12:31:18 UTC before candidate runtime installation.
+Snapshot creation passed. The released loader rejected Webpass because root's
+networkd preparation input lacked required link_files metadata. Root added
+link_files: rendered only to Webpass. Existing MAC, addresses, protocol and
+routing fields remain unchanged. This is a reproduction input correction;
+it does not fix or reproduce the incident defect. The original d442 executable
+remains installed. Independent observation remains active.
+
+Before candidate installation, native guest-agent route queries on OPNsense
+VM201 passed without truncation. IPv4 selected primary 10.240.240.3 and IPv6
+selected primary 3d06:bad:b01:201::3 on vtnet1. The inventory independently
+assigns these addresses to VM213; backup VM216 uses .4 and ::4. These route
+queries establish primary selection at measurement time, not balancing.
+
+Configs PR634 merged as 9f0be106 at 12:29:25 UTC. Exact signed source ce6aa88c
+restricts the additional-write assertion to acquire=true. Completed work can
+release its exact lease during Recovering. New writes still require Armed
+status, exact operation/generation/lease, live watch identity and deadline.
+Root inspected the full checkpoint and patch. The independent lane inspected
+the exact commit and native release contract with no remaining finding. Four
+scoped Ansible examples, RuboCop and configsctl lint passed locally. Required
+CI lint, data and GitGuardian checks passed. Native GitHub auto-merge used the
+exact reviewed head; all review threads remain absent. Physical acceptance
+remains unfinished. The running historical checkout was not changed.
+
+The independent lane compared the corrected external input with all five
+historical provider entries. Only Webpass owner=networkd and
+link_files=rendered differ. Production Webpass already defines both fields
+at the historical revision. Every other provider field remains equal.
+
+The third historical deployment started at 12:33:06 UTC as operation 9559.
+Its external log is deploy-mwan-20261002T123306Z.log. Root finished the original
+observer before its deadline and before candidate installation. Transport
+33931 exited 0 and its native unit is inactive with PID 0. Its terminal
+summary finished at 12:33:36.122115938 UTC with 1,572 complete passing checks,
+zero failures and zero unknown or unavailable results. Counts were downstream
+A 196 per family, downstream B 193 per family, inbound AT&T 197 per family
+and inbound Webpass 200 per family. Observations began at 12:10:06 UTC.
+The old raw output was deleted after the independent terminal summary.
+
+Replacement observation transport 2194 uses the same verified executable and
+settings. Native unit mwan-original-observation-20261002b is active with PID
+287926 and invocation 2dfc211b7cc3479c92467fdd3315572f. Its maximum lifetime
+is 3600 seconds. Output uses original-observations-b.jsonl and its stderr file
+under the external controller namespace. The earlier unit rejected an in-place
+lifetime update; its unchanged lifetime remained 1800 seconds. No duplicate
+observer or network mutation was started during replacement. Reproduction and
+repair acceptance remain unfinished.
+
+### Match the original networkd IPv6 input
+
+Operation 9559 exited 1 at 12:39:53 UTC before candidate installation. The
+e90 loader rejected Webpass's newer typed DHCPv6 and router options. The actual
+original networkd units configure DHCP=ipv6, IPv6AcceptRA=yes, both forwarding
+families, the original static IPv4 address and routes, and
+PrefixDelegationHint=::/56. They do not configure the future MWAN client's
+typed DHCPv6 identity or typed router fields. Independent review verified the
+complete e90 rejection contract. The corrected Webpass historical input omits
+only autoconf, accept_ra_default_route, use_ra_dns and dhcpv6_client.
+Translation, link identity and all permitted legacy family behavior remain
+unchanged. This corrects reproduction inputs; it does not reproduce or repair
+the incident. No failed or unknown application observation occurred during
+this attempt.
+
+The fourth historical deployment started at 12:43:37 UTC as operation 58277.
+Its external log is deploy-mwan-20261002T124337Z.log. The controller remains
+clean at historical merged Configs 369add99. Only root controls live mutations.
+Continuous observation 2194 remains active. Three bounded native captures
+record mapping port 1406 on provider eth0 and gateway enmwanbr0. Webpass
+transport 56711 uses unit mwan-original-map-webpass-20261002, PID 572939,
+invocation ab9191abee3f432ab116efabb3ac112c. AT&T transport 4750 uses unit
+mwan-original-map-att-20261002, PID 572668, invocation
+00f261b20be74ebfbf048d7a3c801eef. Gateway transport 47839 uses unit
+mwan-original-map-transit-20261002, PID 7115, invocation
+0de043d2f93f481694e9ba61441efefb. Capture lifetimes are 1200 seconds. A prior
+gateway jump transport returned 255 before capture start; the known direct
+gateway transport started the verified native unit. OPNsense SSH to its actual
+transit address rejected the key. That transport error does not prove packet
+loss. Complete downstream-edge capture remains unperformed.
+
+Configs PR635 merged as 6b786678 at 12:37:05 UTC. Exact signed source 88caf6c3
+changes only the MWAN tag and archive hashes in both inventory pin files.
+Published 202610021159-aa-d1ac42e resolves to merged d1ac42eb. Independent
+metadata review matched both archive digests. Root inspected the complete
+diff, verified the signature and raw header, and read the active ruleset.
+Required lint, data and GitGuardian checks passed. No review threads existed.
+The native standalone merge used the exact reviewed head. The release boundary
+passed 12 examples locally. Physical repaired-release acceptance remains
+unfinished; recovered production is unchanged.
+
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
 2. Record independent review and its reviewed commit separately from local checks.
 3. State the observable behavior demonstrated and any missing acceptance.
