@@ -136,7 +136,7 @@ func (engine Engine) Watch(ctx context.Context, operationID, generation string) 
 		if err != nil {
 			return err
 		}
-		if watchChecksPassed(record, current, results, engine.Store.Clock.Now()) {
+		if watchObservationsAllowed(record, current, results, engine.Store.Clock.Now()) {
 			failures = 0
 		} else {
 			failures++
@@ -150,36 +150,45 @@ func (engine Engine) Watch(ctx context.Context, operationID, generation string) 
 	}
 }
 
-func watchChecksPassed(previous, current Record, results []observation.Result, now time.Time) bool {
+func watchObservationsAllowed(previous, current Record, results []observation.Result, now time.Time) bool {
 	if current.Status != Armed || !current.Deadline.After(now) || len(results) != len(current.RequiredChecks) {
 		return false
 	}
-	var exemptIDs []string
-	lease := current.Lease
-	if lease != nil && previous.Lease != nil && lease.ID == previous.Lease.ID && lease.Phase == previous.Lease.Phase &&
-		!lease.StartedAt.IsZero() && !lease.StartedAt.After(now) && lease.ExpiresAt.After(now) {
-		for _, interruption := range current.ExpectedInterruptions {
-			if interruption.Phase == lease.Phase && now.Before(lease.StartedAt.Add(time.Duration(interruption.MaxSeconds)*time.Second)) {
-				exemptIDs = interruption.CheckIDs
-				break
-			}
-		}
-	}
+	exemptIDs := expectedInterruptionIDs(previous, current, now)
 	for index, check := range current.RequiredChecks {
 		result := results[index]
 		if observation.RequiredPassed(check, result, now) {
 			continue
 		}
-		if !slices.Contains(exemptIDs, check.ID) || check.Dimension != observation.DimensionInboundApplication ||
-			result.CheckID != check.ID || result.Dimension != check.Dimension || result.Operation != check.Operation ||
-			result.Target != check.Target || result.PublicIPPolicy != check.PublicIPPolicy || result.Family != check.Family || result.Observer != check.Observer ||
-			result.Availability != observation.AvailabilityComplete || result.Outcome != observation.OutcomeFail ||
-			result.ObservedAt.IsZero() || result.ObservedAt.Before(lease.StartedAt) || result.ObservedAt.After(now) ||
-			now.Sub(result.ObservedAt) > time.Duration(check.MaxAgeSeconds)*time.Second {
+		if !slices.Contains(exemptIDs, check.ID) || !interruptedObservationFresh(check, result, current.Lease.StartedAt, now) {
 			return false
 		}
 	}
 	return true
+}
+
+func expectedInterruptionIDs(previous, current Record, now time.Time) []string {
+	lease := current.Lease
+	if lease != nil && previous.Lease != nil && lease.ID == previous.Lease.ID && lease.Phase == previous.Lease.Phase &&
+		!lease.StartedAt.IsZero() && !lease.StartedAt.After(now) && lease.ExpiresAt.After(now) {
+		for _, interruption := range current.ExpectedInterruptions {
+			if interruption.Phase == lease.Phase && now.Before(lease.StartedAt.Add(time.Duration(interruption.MaxSeconds)*time.Second)) {
+				return interruption.CheckIDs
+			}
+		}
+	}
+	return nil
+}
+
+func interruptedObservationFresh(check observation.CheckSpec, result observation.Result, startedAt, now time.Time) bool {
+	if check.Dimension != observation.DimensionInboundApplication ||
+		result.CheckID != check.ID || result.Dimension != check.Dimension || result.Operation != check.Operation ||
+		result.Target != check.Target || result.PublicIPPolicy != check.PublicIPPolicy || result.Family != check.Family || result.Observer != check.Observer ||
+		result.Availability != observation.AvailabilityComplete || result.Outcome != observation.OutcomeFail ||
+		result.ObservedAt.IsZero() || result.ObservedAt.Before(startedAt) || result.ObservedAt.After(now) {
+		return false
+	}
+	return now.Sub(result.ObservedAt) <= time.Duration(check.MaxAgeSeconds)*time.Second
 }
 
 // Commit repeats target identity and application checks before ending recovery protection.
