@@ -57,7 +57,7 @@ func (w *watchdog) inspectDeployOperation(ctx context.Context, coordinator *roll
 	watchContext, cancel := context.WithTimeout(ctx, time.Duration(w.cfg.Watchdog.ConnectivityTimeoutSeconds)*time.Second)
 	watchError := record.Watch.Verify(watchContext)
 	cancel()
-	if record.MutationReady(w.now()) && watchError == nil {
+	if record.Status == deployoperation.Armed && record.Deadline.After(w.now()) && watchError == nil {
 		return true
 	}
 	operations, ok := w.ops.(*ops.RealOps)
@@ -68,7 +68,7 @@ func (w *watchdog) inspectDeployOperation(ctx context.Context, coordinator *roll
 	engine := deployoperation.Engine{Store: store, RollbackLock: w.cfg.Watchdog.RollbackLockFile, Operations: operations, Log: log, Notify: w.notify, RuntimePath: ""}
 	w.coord.SetRollingBack(true)
 	defer w.coord.SetRollingBack(false)
-	if err := engine.RecoverCoordinated(ctx, record.OperationID, record.Generation, "exact deployment watch is absent, expired or not healthy", coordinator); err != nil {
+	if err := engine.RecoverCoordinated(ctx, record.OperationID, record.Generation, "deployment watch is absent, operation deadline expired or recovery already started", coordinator); err != nil {
 		log.ErrorContext(ctx, "exact deployment recovery failed", "err", err)
 	}
 	return true
