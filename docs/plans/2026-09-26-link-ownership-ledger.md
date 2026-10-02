@@ -9810,6 +9810,18 @@ These results establish the old release's retry defect, not candidate
 acceptance. The compact captures, ending counters and request results remain
 necessary until the merged candidate repeats both controls successfully.
 
+Configs PR 655 merged as 4fbfacfbf28724b76b7e094bb4ad8739710dad43.
+The root deployment checkout is clean and detached at that revision.
+The next testbed deployment installs release 202610022307-af-054e41d
+using the existing reviewed Webpass forward input. Its network hash
+24ec95b7a11b4c1ac21d0a0b5d2aaff120028fe4ce3afb5e8574695dbb22bcc5
+matches the installed F4 network; this operation changes no interface owner.
+All eight application checks passed at 23:32 UTC. The gateway service is
+active with PID 315. Installed executable, network and config.toml hashes
+match the recorded recovery pair. Observer C remains active with its exact
+recorded PID and invocation. Root remains the sole deployment controller.
+Production remains unchanged. Candidate retry acceptance is unperformed.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
