@@ -7611,6 +7611,45 @@ and reverse transfer, restart, reboot, failover and recovery on the accepted
 pair. Keep passed, failed and unperformed results separate. Finish reboot
 detection only after ownership prerequisites pass.
 
+## Deploy the mapping fixture and record remaining validation
+
+Root deployed the fixture from clean merged Configs
+1b0d9373f576c3ffc1f00ec149b2610b041ecbe5 through configsctl:
+
+```sh
+./configsctl deploy deploy-opnsense --limit opnsense_suburban_servers --tags isp-acceptance-fixture --extra-var release_stage_root=/Volumes/Chaos\ Storage/Codex/mwan305/resume-controller/releases
+```
+
+The canonical redacted
+[deployment log](</Volumes/Chaos Storage/Codex/mwan305/resume-controller/tmp/configs-runs/deploy-opnsense-20261002T062406Z.log>)
+records 38 successful tasks, seven changed tasks, zero unreachable hosts and
+zero failed tasks. Both simulator-specific IPv4 and IPv6 filter passes, local
+IPv4 and IPv6 fixed-response checks and unchanged administration GUI checks
+passed. Root owns session52674 and its terminal readback. These results prove
+fixture installation and local replies; provider-side end-to-end mapping
+acceptance remains unperformed at this checkpoint.
+
+GitHub readback confirmed recovery PR168 is open at
+031ac890b757ac012ec7707557f857bfa4bd1aa5. Its threshold and startup corrections
+still require CI and physical acceptance. Distribution PR167 is open at
+f9df4b466c3b330dc79ed01dcc9201fb097cc714 with test registration added; weight
+bounds and transit steering still require correction. Neither PR is deployed.
+
+Root reports VM213 still runs e90b629 with MainPID7234. IPv4 NAT rules are
+present and IPv6 NAT is empty. The log reports seven links matching the driver
+selector while provider HTTP checks report healthy. These observations do
+not identify the first failing IPv4 packet boundary or establish repaired
+translation. Preserve measured symptoms separately from their unproven cause.
+
+The checkpoint automation is active with a two-hour interval and a short
+prompt covering artifact rules and conditional production authorization.
+Local Docker builds are stopped because its storage uses internal
+/Volumes/Docker on disk3s7. Existing GitHub CI supplies current build checks;
+local Docker output must not be generated there. Root's compact artifact
+catalog retains approximately 147 MiB of cache for the current deployment.
+Purge it when that deployment no longer requires it. Tickets MWAN-535 through
+MWAN-544 remain In Progress; required physical acceptance is unfinished.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
