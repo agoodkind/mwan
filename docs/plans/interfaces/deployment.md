@@ -165,8 +165,8 @@ PR acceptance. Establish real daemon startup, Linux namespaces, Kea and radvd
 processes, packet observation, and cleanup without waiting for every acquisition
 feature. Each feature PR adds and runs its scenarios through this runner.
 
-Prepare simulator configuration independently. Build the Configs downstream
-harness after deployment and simulator changes merge. Assemble and run the
+Prepare simulator configuration independently. Keep downstream acceptance
+code in MWAN after deployment and simulator changes merge. Assemble and run the
 final MWAN-522 suite after all required feature changes merge. Follow the
 coordinator's PR map and preserve existing provider scenarios.
 

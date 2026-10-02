@@ -143,6 +143,12 @@ for a standalone PR. Preserve required AI reviews and resolve review findings.
 
 ## Preserve the approved boundaries
 
+Keep new MWAN application and acceptance code in the MWAN repository.
+Use Configs for deployment configuration, inventory, templates and
+infrastructure declarations. Do not restore the deleted Ruby acceptance
+harness or add its replacement to Configs. Use existing public daemon
+commands and protocol runners for acceptance.
+
 Transfer one complete connection at a time. Use fresh DHCP negotiation for
 the first transfer with preserved client identity. Recover subsequent
 restarts from MWAN-owned persistent state with protocol validation. Do not
@@ -212,7 +218,7 @@ checks at its own position.
 | Configs | [MWAN-521] Implement exclusive ownership transfer and recovery | Stack on rendering. End the deployment stack here; gate activation on the complete application release. |
 | Configs | [MWAN-522] Configure protocol lifecycle scenarios in ISP simulators | Use an independent PR. Preserve existing simulator defaults. |
 | MWAN | [MWAN-522] Run privileged daemon acceptance through public boundaries | Bootstrap the runner in a standalone PR after the model merges and before protocol PR acceptance. Add each feature's scenarios in its own PR. |
-| Configs | [MWAN-522] Verify downstream forwarding and balancing during migration | Use a standalone PR after deployment integration and simulator changes merge. |
+| MWAN | [MWAN-522] Verify downstream forwarding and balancing during migration | Use a standalone PR after deployment integration and simulator changes merge. Keep executable acceptance code outside Configs. |
 | MWAN | [MWAN-400] Remove retired networkd application dependencies | Use a standalone PR after the retirement inventory verifies removal scope. |
 | Configs | [MWAN-400] Remove retired networkd deployment dependencies | Use a separate standalone PR after that inventory; pin the compatible MWAN release. |
 

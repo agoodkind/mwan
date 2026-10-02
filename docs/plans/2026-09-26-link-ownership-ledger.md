@@ -6809,6 +6809,71 @@ balancing, protocol, history and identity requirements. Root owns the bounded
 route deletion and daemon restart only when the runner enters its failure and
 restart observation phase. Production remains unchanged.
 
+## Delete the Configs Ruby acceptance implementation
+
+The operator requires new MWAN application and acceptance code outside
+Configs and ordered deletion without a backup. Signed commit a5d9431e
+removes ten harness and dedicated spec files, totaling 2190 lines.
+Configs PR 619 merged as 519d9126747a0913391a7ccf83943ffb500a7a21
+after all three required checks passed and no review threads remained.
+The owning main checkout fast-forwarded to the merge. The clean feature
+worktree and local branch were removed after ancestry and deletion proof;
+the remote branch was already absent. No backup was created. Preserve
+existing unrelated Rake and RSpec tooling. Do not restore or execute the
+deleted harness.
+
+## Complete packet and persistent-history acceptance
+
+The terminal battery exited one because its final read-only history query
+exceeded the remaining 0.719113-second allowance. It establishes no runtime
+outage. Independent raw packet review accepted all eighty downstream HTTPS
+requests, IPv4 provider counts AT&T 17/Webpass 23, IPv6 counts AT&T 21/Webpass
+19, and both IPv4 mapping replies and body hashes. All thirty battery
+captures stopped with zero kernel drops and verified PID absence.
+
+Root separately deleted the exact verified main Webpass default route;
+readback verified repair. That operation produced no new pre-restart
+Webpass transition. Restart changed PID 316 to 5512. Both guests and both
+families have zero missing sequences during the measured reboot and first
+restart. Route observations show backup selection and return to the primary.
+Do not convert adjacent reply intervals into continuous outage durations.
+
+Root deleted the verified table 200 Webpass IPv4 default at 00:39:15 UTC.
+Persistent history records its removal and repair as transitions
+b41a18a1f5e57102:38 and :39, and IPv6 routing failure and recovery as :41
+and :43. A second restart changed PID 5512 to 5797. All four complete
+records occur exactly once and compare equal before and after restart.
+This proves persistence of observed failures; it does not establish an
+unobserved IPv4 routing-readiness failure. Final served Webpass owner is
+mwan, apply result ready and both family routes ready.
+
+Evidence is 20261002-battery-terminal-review.md and
+20261002-route-repair-restart. Bound postboot DNS packets, renewal and
+recovery remain accepted separately. DNS capture 49928 is no longer a
+local handle. Its exact unit is inactive with MainPID zero, and PID 500813
+is absent. Its stderr has no terminal packet/drop counts; that capture's
+complete drop accounting remains missing. A stop returned unit not loaded.
+No replacement capture or network configuration change occurred.
+
+## Validate the released DHCPv4 protocol independently
+
+The existing MWAN Go runner selected the published ARM64 executable
+a8863b95 for the systemd lane. DHCPv4 DNS acquisition, renewal replacement,
+real resolver queries, restart and expiry passed in 24.37 seconds.
+The aggregate exited one. Independent diagnosis identifies a release
+fixture teardown error, no such device from LinkDel, after runtime release
+assertions completed. This is a failed aggregate with successful individual
+behavior, not a passing cleanup result. Its dedicated container is absent.
+
+Namespace session 66535 is active against the same read-only published
+executable under 20261002-released-dhcpv4-protocol. Exact source requirements
+permit real Kea provider simulation through public daemon namespace and
+systemd boundaries. They do not require another shared physical-provider
+ownership transfer before first Webpass promotion. Preserve ARM64 protocol
+proof separately from actual AMD64 Webpass live acceptance. Remaining
+namespace results, fixture failure review, actual ticket reconciliation and
+production phase approval remain unfinished.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
