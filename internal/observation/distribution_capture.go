@@ -19,6 +19,8 @@ import (
 	"github.com/mdlayher/packet"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
+
+	"goodkind.io/mwan/internal/clock"
 )
 
 type ingressCapture struct {
@@ -34,6 +36,7 @@ type ingressCapture struct {
 	closing     atomic.Bool
 	finishOnce  sync.Once
 	finishError error
+	clock       clock.Clock
 }
 
 func (executor *Executor) openIngressCapture(ctx context.Context, provider ProviderIngress, limit int, notify chan<- struct{}) (*ingressCapture, error) {
@@ -104,7 +107,7 @@ func (executor *Executor) openIngressCapture(ctx context.Context, provider Provi
 		raw:        raw,
 		ready:      CaptureReady{ConnectionID: provider.ConnectionID, Interface: device.Name, PortInterface: port.Attrs().Name, DestinationMAC: mac.String(), At: executor.config.Clock.Now().UTC()},
 		frames:     nil, err: nil, done: make(chan struct{}), stopContext: nil, mu: sync.Mutex{}, notify: notify,
-		closing: atomic.Bool{}, finishOnce: sync.Once{}, finishError: nil,
+		closing: atomic.Bool{}, finishOnce: sync.Once{}, finishError: nil, clock: executor.config.Clock,
 	}
 	capture.stopContext = context.AfterFunc(ctx, func() { _ = connection.Close() })
 	go func() {
@@ -241,7 +244,7 @@ func (capture *ingressCapture) finish() error {
 		<-capture.done
 		capture.mu.Lock()
 		defer capture.mu.Unlock()
-		capture.ready.FinishedAt = time.Now().UTC()
+		capture.ready.FinishedAt = capture.clock.Now().UTC()
 		if statsErr != nil {
 			capture.ready.StatisticsError = statsErr.Error()
 		} else {
