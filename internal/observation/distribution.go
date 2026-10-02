@@ -80,15 +80,8 @@ func (executor *Executor) distribution(ctx context.Context, spec CheckSpec, init
 	var captures []*ingressCapture
 	var transitCaptures []*ingressCapture
 	defer func() {
-		for _, capture := range append(captures, transitCaptures...) {
-			_ = capture.finish()
-		}
-		for index, capture := range captures {
-			result.DistributionCaptures[index] = capture.ready
-		}
-		for index, capture := range transitCaptures {
-			result.TransitCaptures[index] = capture.ready
-		}
+		finalizeCaptureEvidence(captures, result.DistributionCaptures)
+		finalizeCaptureEvidence(transitCaptures, result.TransitCaptures)
 	}()
 	var captureError error
 	captures, result.DistributionCaptures, captureError = executor.openDistributionCaptures(ctx, spec, providers, notify)
@@ -139,6 +132,13 @@ func (executor *Executor) distribution(ctx context.Context, spec CheckSpec, init
 	}
 	result.Outcome, result.Reason = OutcomePass, "actual ingress samples satisfy calibrated provider shares"
 	return result
+}
+
+func finalizeCaptureEvidence(captures []*ingressCapture, evidence []CaptureReady) {
+	for index, capture := range captures {
+		_ = capture.finish()
+		evidence[index] = capture.ready
+	}
 }
 
 func (executor *Executor) openDistributionCaptures(ctx context.Context, spec CheckSpec, mappings []ProviderIngress, notify chan<- struct{}) ([]*ingressCapture, []CaptureReady, error) {

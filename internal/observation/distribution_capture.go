@@ -105,8 +105,12 @@ func (executor *Executor) openIngressCapture(ctx context.Context, provider Provi
 	capture := &ingressCapture{
 		connection: connection,
 		raw:        raw,
-		ready:      CaptureReady{ConnectionID: provider.ConnectionID, Interface: device.Name, PortInterface: port.Attrs().Name, DestinationMAC: mac.String(), At: executor.config.Clock.Now().UTC()},
-		frames:     nil, err: nil, done: make(chan struct{}), stopContext: nil, mu: sync.Mutex{}, notify: notify,
+		ready: CaptureReady{
+			ConnectionID: provider.ConnectionID, Interface: device.Name, PortInterface: port.Attrs().Name,
+			DestinationMAC: mac.String(), At: executor.config.Clock.Now().UTC(), FinishedAt: time.Time{},
+			StatisticsAvailable: false, Packets: 0, Drops: 0, FreezeQueueCount: 0, StatisticsError: "", ReaderError: "",
+		},
+		frames: nil, err: nil, done: make(chan struct{}), stopContext: nil, mu: sync.Mutex{}, notify: notify,
 		closing: atomic.Bool{}, finishOnce: sync.Once{}, finishError: nil, clock: executor.config.Clock,
 	}
 	capture.stopContext = context.AfterFunc(ctx, func() { _ = connection.Close() })
