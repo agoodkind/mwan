@@ -9261,6 +9261,52 @@ files and their script were deleted after verification. Chaos Storage remained
 mounted with 968 GiB available; current controller evidence used approximately
 1.0 GiB. No local Docker resources were created.
 
+Exact recovery controller 6530 completed with exit zero. The operation became
+recovered at 20:34:12.633758458 UTC after all eight restored application checks
+passed between 20:33:57 and 20:34:12 UTC. Root independently verified the
+installed executable, network and runtime hashes match the baseline. The new
+boot ID is 9268d448-9d7c-47a6-8741-a5d9f2c918cc. The registered watch deactivated
+successfully at 20:34:14 UTC, returned ExecMainStatus zero and MainPID zero,
+and its exact former PID was absent. This proves successful terminal recovery
+under the repaired watch; successful target commitment remains unperformed.
+
+Root inspected the complete native recovery route record. IPv4 selected its
+backup at 20:32:19.618 UTC and IPv6 at 20:32:19.746 UTC. Both primary defaults
+returned at 20:33:25.867 UTC. Backup residence was 66.249 seconds for IPv4 and
+66.121 seconds for IPv6. The monitor ended with timeout exit 124 and no
+truncated output. These intervals measure route selection, not client outage.
+Independent observations recorded one downstream B IPv4 timeout during
+restoration, followed by a passing sample at 20:32:29.395 UTC. All four inbound
+checks recovered between 20:33:25.935 and 20:33:35.213 UTC. The complete
+per-phase guest packet analysis remains pending.
+
+The bounded observer review corrected the earlier partial transport report:
+all eight checks had one unknown transport sample between 19:15:55.055 and
+19:16:09.914 UTC, not only downstream B. Those samples report remote observer
+execution failure and do not establish application failure. The controller
+failure and lease-wait phases contain complete passing application samples.
+The failed forward phase and restoration retain their measured failures
+separately; no result establishes continuous total client loss.
+
+Root stopped the exact forward capture producers. Provider transports exited
+zero and their exact PIDs are absent. Webpass captured 87247 packets and AT&T
+captured 108001 packets; both reported zero kernel drops. The restored primary
+has no matching capture unit. Root verified and terminated its obsolete local
+SSH process; transport 74329 exited 255 without terminal counters. No complete
+primary capture or zero-drop claim is supported. Three compact captures retain
+mapping, DHCPv6 and ICMPv6 evidence, use approximately 14 MiB together, parse
+completely, and preserve the fresh DHCP exchange. Superseded full captures are
+eligible for deletion. Full HTTPS cohort acceptance remains unperformed.
+
+Configs PR 651 contains the reviewed seven-line checkpoint fix. Its current
+signed commit is 180b47c63aaf4d389d24e036941d15eaa1000aa2 on base
+f1cf09260e6b75661d4cc46a7847fb67eaf576b3. Both rebases preserved the exact
+read-only retry scope and verified signatures and raw gpgsig headers. Local
+lint and deployment syntax passed. Required data CI remains pending; no
+repaired deployment has started. The saved PR body was verified on GitHub and
+its temporary local file was deleted. MWAN-519, MWAN-521, MWAN-538, MWAN-544
+and MWAN-545 retain incomplete operational acceptance. Production is unchanged.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
