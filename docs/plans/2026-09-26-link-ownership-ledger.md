@@ -9852,6 +9852,15 @@ during its restart. Root cleared only VM 213's stale lock with qm unlock
 and verified the lock field absent. No snapshot or production state was
 deleted. Root will retry the same merged deployment and reviewed input.
 
+Retry transport 56554 started at 23:38 UTC through the same clean merged
+configsctl command and reviewed forward input. Snapshot creation passed;
+released observer provisioning continues. The actual play log is
+resume-controller/tmp/configs-runs/deploy-mwan-20261002T233858Z.log.
+Guest A IPv4 HTTP timed out at 23:41:30.739099973 UTC and passed next at
+23:41:38.971814422. IPv4 ping replies continued during that interval.
+Fresh gateway version still reports F4 during this preparation. The result
+does not prove candidate behavior or continuous client packet loss.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
