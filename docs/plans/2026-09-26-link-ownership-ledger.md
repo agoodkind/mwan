@@ -8255,6 +8255,61 @@ conditional production authorization is recorded in the coordination plan
 and active automation; another approval is not required after the defect
 repair and all required testbed proof pass.
 
+### Observe the original failed-release preparation
+
+Root refreshed the actual d442ba1 executable and suburban machine identity.
+The historical controller remains clean at merged Configs 369add99. Complete
+extra-vars change only Webpass ownership from mwan to networkd; all five
+providers and both non-provider connections use networkd. Render, release,
+Go, Python, Ansible and controller log paths use Chaos Storage. The temporary
+input generator and its dedicated dependency cache were deleted after use.
+
+The independent lane supplied the existing continuous observation manifest
+for four inbound and four downstream HTTP checks. Root inspected every check
+and verified the published 826fac43 AMD64 archive with the existing shared
+signer and exact source digest. The temporary executable SHA256 is
+6d9ffff8099fa746d02291509bcb46ef52303a6643fb7a6dc65920f88c571918.
+The eight-check manifest SHA256 is
+1598513d5f18c51a18f1ebfd900f04f38f7d760c64f6ae9752557ea72c58222b.
+Each LXC uses its existing 2cbfdd9 public observe command. No daemon or guest
+network configuration was installed for this measurement.
+
+The first temporary executable could not start under the hypervisor's noexec
+/run mount and returned 203. Root verified the failed operation terminated,
+then used /var/tmp/mwan305-observer.NB1P5c/mwan on its executable root mount.
+Version and hash verification passed. The bounded 1800-second native unit
+mwan-original-observation-20261002 is active with PID 172809 and invocation
+1786a994ce3d42f1b08d3e323251107c. Its controller transport is operation 33931.
+Eight complete passing replies were verified before deployment. Output uses
+the root artifact namespace's original-observations.jsonl and stderr files.
+
+Root verified no active native hypervisor jobs and started the sole historical
+deployment through configsctl at 12:11:42 UTC. Controller operation 89907
+uses tmp/configs-runs/deploy-mwan-20261002T121142Z.log. Published e90b629
+archives passed release verification. Operation 89907 exited 1 at snapshot
+creation at 12:16:52 UTC: VM213 was locked by snapshot deletion. Preparation
+completed 118 tasks with 18 changes before that failure. The candidate gateway
+executable was not installed. The original d442 executable remains active.
+The independent observer recorded no failed or unknown application checks.
+This attempt did not reproduce the preparation defect.
+
+Root waited for the native configuration lock to disappear and verified no
+active VM213 tasks. Root paused only watchdog main PID 32187 and verified its
+unchanged invocation c3c8b6b929e040b7879a6faff8aff403. The procps state command
+failed with its SIGCHLD error; /proc/32187/status verified State T. Root stopped
+the idle watchdog and verified inactive state with MainPID 0. No native lock
+was forced and no child mutation was interrupted. Restore the originally
+active watchdog after reproduction and recovery.
+
+Root restarted the same clean merged historical deployment at 12:24:27 UTC.
+Operation 19839 uses deploy-mwan-20261002T122427Z.log in the external controller
+log directory. Independent observer transport 33931 remains active. Failure
+reproduction, recovery and repaired preparation remain unproven. Preserve
+the exact handles and do not duplicate mutations. The merged original-testbed
+recovery play and exact known-good-20260929-184618 snapshot remain the recovery
+procedure. Conditional production authorization requires the complete repaired
+release's testbed proof; production remains unchanged.
+
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
 2. Record independent review and its reviewed commit separately from local checks.
 3. State the observable behavior demonstrated and any missing acceptance.
