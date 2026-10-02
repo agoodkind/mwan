@@ -7438,6 +7438,87 @@ It proved generic NPT translation and edge DNAT before capture, exact receipt
 adoption after original shutdown, candidate translation and restart retention.
 Physical upgrade and automatic recovery remain unperformed.
 
+## Measure legacy restoration and the preparation validation failure
+
+VM213 was stopped and restored to known-good-20260929-235727. Proxmox rejected
+the first rollback because newer snapshots existed. Removal of 110 newer
+testbed snapshots allowed the exact rollback and start. The temporary recovery
+snapshot was deleted with those newer snapshots. Testbed state is disposable.
+Production VM113 was not changed. The testbed watchdog remains stopped.
+
+During the deliberate stop, guest225 received 592 of 600 IPv4 and IPv6 ping
+replies. Guest226 received 593 of 600 replies in each family. Both guests passed
+interface-bound HTTPS with normal DNS after backup selection while VM213 was
+still stopped. Their observed public addresses were 174.166.126.204 and
+2601:84:837c:a160:f66d:4ff:fe66:b6de. Both provider-side inbound HTTP mapping
+requests timed out during the stop and returned mwan-testbed-mapping-ok after
+restoration. Backup outbound success did not establish inbound availability.
+
+The restored executable reports 5666b3d+43bede7022d3. Its SHA256 is
+43bede7022d370f2ec2514134e463bac2a0e5d24ff34310ccfe24585277cd42f.
+The network and runtime hashes are
+acfbf1dc71c43206bd43fbd9fa3d4291efad6d9eaa9661f4316c24d59c4b3b53 and
+789e51ad9a6807e973a9e9bfb3999ec912f0ef3153eafa03b3bf133d8084804b.
+The new owned-addresses, owned-links and owned-kernel journals were absent.
+This physical baseline differs from the exact d442ba1 executable verified by
+the namespace upgrade case. Do not combine those results into exact physical
+original-release proof.
+
+Configs revision 3dcf1576e16b598e3fd710d911c7db9f1b1ef8a0 was clean and merged
+before configsctl deploy deploy-mwan --limit mwan_suburban_servers started.
+The deploy terminated with exit1 at 20:53:35 PDT on October 1. Released
+e90b629 check-network rejected enwebpass0 because its networkd owner does not
+support the configured typed IPv6 client, router or forwarding options.
+Preparation failure reproduction and repaired preparation remain unperformed.
+Four source-bound downstream ping observers continue with complete output in
+the local 20261002-repro225v4, repro225v6, repro226v4 and repro226v6 logs.
+
+PR164 at 379360d contains the reviewed legacy receipt adoption corrections.
+PR165 at ad36c966 contains the concrete shared observation executor.
+Both passed the ten active required CI checks. Govulncheck failed on existing
+GoBGP GO-2026-4736; advisory scope and review findings require separate
+evaluation. Neither PR was merged at this checkpoint.
+
+Configs PR623 at a91e5e27 passed its checks and an eight-resource no-op plan.
+Its protected persistent credential permits pool health reads. The proposed
+read-only provider cannot apply future load-balancer changes, so durable
+OpenTofu management remains unfinished. No Cloudflare infrastructure changed.
+The real SDK public command returned passing AT&T, Webpass and IPv6 pool
+results and a failing existing Monkeybrains fallback result. Missing expected
+origins and unavailable credentials returned separate unknown classifications.
+Physical monitor failure and recovery acceptance remain unperformed.
+
+Deployment recovery checkpoint e7b73a7 has not compiled against the merged
+observation contract. Watch disappearance reporting, public command proof and
+physical automatic recovery remain unfinished. Each independent implementer
+retains exclusive files. Root serializes all physical testbed changes.
+
+## Integrate the shared observation command
+
+PR165 merged as a96ce76a33bcb20624bba8fa88d5a533f5fbef42 at 03:58:00 UTC on
+October 2. GitHub confirmed the exact reviewed head ad36c966. All ten active
+required checks passed and review threads were resolved. Govulncheck is not an
+active required check. Its GoBGP finding affects the unchanged main dependency
+and path; primary advisory records disagree about affected versions.
+
+PR164 remains open. Review found that legacy capture accepted extra recognized
+rules on the configured interface. Require exact installed-rule count and
+membership for that interface without rejecting rules for other providers.
+The existing public upgrade case will exercise this rejected extra rule.
+
+Recovery rebased onto the merged observation command as signed70f0898.
+Its builder stopped at relevant lint findings before tests. Move only the new
+deployment-pointer helpers to internal/watchdog/deploy_operation.go and correct
+the reported runtime/lint findings. Successful compilation and physical
+automatic recovery remain unperformed.
+
+The provider observation lane owns the maintained Cloudflare SDK integration
+and dependency files. Its measured four-pool public command returned actual
+results. The next separate distribution implementation will correlate TCP
+requests with simulator ingress and current eligibility, tier, weights and
+hash policy. Insufficient source or target diversity must return missing
+coverage rather than a false balancing failure.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
