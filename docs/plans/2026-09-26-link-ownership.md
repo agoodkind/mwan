@@ -42,6 +42,30 @@ policy and lifecycle integration where existing APIs do not provide them.
 Record the exact API limitation and evaluated alternatives before approving
 custom protocol code.
 
+## Correct the failed preparation before production
+
+Production preparation failed on October 1 and the original snapshot was
+restored. Require the incident corrections under MWAN-535 through MWAN-544
+before another production attempt. Production activation remains stopped.
+Reproduce the original-release upgrade on the physical testbed with existing
+legacy edges, an empty new ownership journal and the actual legacy device
+selector. Preserve the accepted testbed snapshot before changing that fixture.
+Require positive inbound and downstream results before accepting the repair.
+An omitted optional upgrade branch does not establish successful coverage.
+
+Keep durable health and acceptance results separate for actual downstream
+client experience, configured connection distribution and inbound pool health,
+provider-specific egress, each ping's source and selected path, and the public
+source address observed externally. Keep both IP families and primary/backup
+selection explicit. Preserve acquisition, ownership, translation, mapping,
+BGP, management, lifetime, restart, reboot and recovery checks. Report missing
+observation separately from healthy or unhealthy service.
+
+Arm recovery before network-affecting changes. Include required inbound
+application replies in the deploy verdict even when backup egress succeeds.
+Verify actual failure and recovery alerts. Keep new application and acceptance
+code in MWAN. Require subsequent authorization before production retry.
+
 ## Reorient before each slice
 
 Reorient immediately after every compaction, before each slice and

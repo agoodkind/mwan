@@ -7180,6 +7180,69 @@ legacy preparation compatibility failures in testbed before reconsidering
 production. The earlier readiness report is superseded by this failed actual
 production preparation. MWAN-520 and MWAN-305 remain In Progress.
 
+## Verify recovery and file incident corrections
+
+Independent original-pair restoration acceptance passed by 02:00:55 UTC.
+All four mappings and all four short downstream family samples passed.
+Every provider's translation and probes were ready, and all three internal
+BGP peers were established and nonstale. The restored boot identity is
+fecfc318-74b3-4b13-ad44-9dbddfb202be. Cloudflare reported IPv6 healthy at
+02:00:16 UTC, AT&T at 02:00:32 and Webpass at 02:00:33. The pool unhealthy
+event intervals were 333.995, 357.420 and 357.540 seconds respectively.
+These intervals do not measure exact application or all-client outage.
+
+Terminal observers recorded all 3,727 transmitted probes and replies, with
+no missing sequences. UniFi IPv4 received 932 and IPv6 931; proxy received
+932 in each family. Maximum adjacent reply gap was 1.017147 seconds.
+OPNsense selected backup in both families near 01:53:52 and selected restored
+primary near 02:00:14. Successful outbound backup traffic did not establish
+inbound service. The harness had no continuous inbound requests or alert
+dispatch. Both guest ping pairs stopped with successful terminal summaries,
+their exact PIDs were absent, and local observers exited 130 after deliberate
+SIGINT. No deployment or observer remains active.
+
+Tack tickets MWAN-535 through MWAN-544 are actual children of MWAN-305, with
+parent and state readback verified. MWAN-537 and MWAN-544 are In Progress;
+the other new tickets are Todo. Each includes its measured defect or gap,
+durable correction and public acceptance requirements. Their work covers
+legacy NPT edge transition, legacy link validation, successful original-release
+upgrade acceptance, early recovery arming, inbound rollback, family-specific
+readiness, durable health and alerts, continuous acceptance alerts, Cloudflare
+read access, and IPv4 mapping diagnosis. Existing earlier tickets were reviewed
+for overlap. No completed historical ticket was reopened or removed.
+
+Source inspection confirms that any non-routing module reconciliation error
+sets both forwarding families false. BGP consumes those values. This is a
+family-coupling defect distinct from the unlocalized IPv4 inbound packet
+failure. The old-release upgrade fixture expects translation removal, removes
+physical link settings and silently returns when its optional binary input is
+absent. The aggregate did not execute that upgrade branch. Its passing count
+did not prove the production preparation transition.
+
+The operator requires durable checks and the harness to distinguish client
+experience, load balance health, ISP egress, ping paths and observed public IP.
+MWAN-541 and MWAN-542 include those independent dimensions for both families
+without substituting backup success for primary or inbound health. Preserve
+the existing mapping, translation, acquisition and recovery requirements.
+
+Physical testbed reproduction remains unperformed. The read-only plan found
+that current VM213 already owns Webpass under MWAN and has journals. The
+closest merged legacy baseline is 48e51c12972035ae3d98c202091b6a07b3db0010;
+its old release has no new journal configuration. Existing journal files can
+survive a downgrade, so its installation alone cannot establish the fixture.
+Require verified old snapshot state and a focused merged all-networkd e90b629
+preparation configuration with the testbed-derived legacy selector. Do not
+deploy production addresses or unmerged overrides to force reproduction.
+
+Evidence is 20261002-production-impact-review.md,
+20261002-production-preparation-acceptance/report.md,
+20261002-production-monitor-observation/20261002T020115Z-recovery-alerts.md,
+20261002-production-activation-merge-review/report.md and
+20261002-testbed-preparation-reproduction-plan/report.md. Root inspected the
+complete independent reports. No new source fix, reproduction or deployment
+passed at this checkpoint. Production activation remains blocked and requires
+subsequent authorization after testbed repair acceptance.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
