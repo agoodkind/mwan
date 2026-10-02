@@ -8829,6 +8829,46 @@ The source lane reads application results; root alone controls mutations.
 This deployment remains in progress and does not establish cutover acceptance.
 Production is unchanged.
 
+### Correct the physical running-executable hash failure
+
+Preparation 16394 captured actual original PID 318 and digest before installing
+the candidate. The manifest includes three NPT edges and the four configured
+Webpass IPv4 mappings 10.241.204.3 through .6 as /32 receipts. It excludes the
+primary .2 address. Original executable, network, runtime and schema checks
+passed after prerequisites. No ordinary adoption acceptance occurred.
+
+After candidate installation, Ansible stat with follow=true resolved
+/proc/318/exe to /usr/local/bin/mwan (deleted) and failed before stopping
+the original WAN producer. The running process remains readable through
+its /proc executable descriptor; resolving its removed pathname is incorrect.
+PR642 replaces that one executable hash with native sha256sum argv and
+preserves the captured PID, exact baseline digest and network/runtime checks.
+Root inspected the focused diff and signed commit
+2898281930a431775ab835e4483189cda8ded5b8. Required data CI remains pending.
+
+The exact operation 20261002-091049-deploy-869396, generation
+bf8d5be1-9be2-426c-8d86-768a19be2616, released its outstanding lease and
+completed coordinated snapshot recovery. Native watch PID 1365131 and
+invocation 9b4ca936ad6e40158127b0cd7244290c match the armed record.
+Its terminal state is Recovered with eight fresh passing application checks
+through 16:34:29 UTC and no lease. Controller 16394 exited 1 after
+633 successful tasks, one failure and one rescued block. This is coordinated
+controller recovery; controller-disconnection proof remains unperformed.
+
+Original running PID 314 and installed executable both match
+1c79542f6f9e56fc0ad0f101b0688a84f95bfc41706ebebf36982e0f4f8726fa.
+The original network/runtime digests match the recorded recovery pair.
+New boot is 26e16a58-eda4-4ac9-810b-664f7319511f.
+Application observations recorded five failures per inbound check and one
+downstream-A IPv6 timeout. The other downstream checks passed, with zero
+unknown results. Downstream A IPv6 recovered at 16:32:37 UTC; inbound checks
+recovered between 16:33:39 and 16:33:47 UTC. These are sample timestamps,
+not an exact continuous loss duration. The compact observer summary
+preserves precise timestamps. Four source-bound ping streams continue.
+Primary transit capture 83921 exited 255 during restoration and has no
+terminal capture counters. Provider captures remain active. Production is
+unchanged. Retry only after the focused fix merges.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
