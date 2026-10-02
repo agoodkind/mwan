@@ -58,6 +58,7 @@ func (engine Engine) Arm(ctx context.Context, manifest Manifest) (resultErr erro
 			persistContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), engine.Store.PollInterval)
 			defer cancel()
 			resultErr = errors.Join(resultErr, engine.Store.BeginRecovery(persistContext, manifest.OperationID, manifest.Generation, "deploy watch setup failed"))
+			engine.transition(persistContext, record, "deploy_operation_watch_failed", "Deployment watch setup failed", resultErr.Error())
 		}
 	}()
 	if err := StartWatch(ctx, record, engine.RuntimePath); err != nil {
@@ -121,7 +122,7 @@ func (engine Engine) Watch(ctx context.Context, operationID, generation string) 
 			failures = 0
 		} else {
 			failures++
-			engine.Notify.Notify(ctx, notify.Event{Kind: "deploy_operation_observation_failed", Key: operationID + "/" + generation, Message: "Deployment application observations did not pass", Fields: []slog.Attr{slog.Any("results", results)}})
+			engine.Notify.Notify(ctx, notify.Event{Now: time.Now().UTC(), Level: slog.LevelWarn, Kind: "deploy_operation_observation_failed", Key: operationID + "/" + generation, Message: "Deployment application observations did not pass", Fields: []slog.Attr{slog.Any("results", results)}, IsRecovery: false})
 		}
 		if failures >= record.FailureThreshold {
 			return engine.Recover(ctx, operationID, generation, "required application observations failed")
@@ -176,11 +177,21 @@ func (engine Engine) RecoverCoordinated(ctx context.Context, operationID, genera
 	if err := engine.Store.BeginRecovery(recoveryContext, operationID, generation, reason); err != nil {
 		return err
 	}
+	if record.Status == Armed {
+		watchContext, watchCancel := context.WithTimeout(recoveryContext, time.Duration(record.ObservationTimeoutSeconds)*time.Second)
+		watchError := record.Watch.Verify(watchContext)
+		watchCancel()
+		if watchError != nil {
+			engine.transition(recoveryContext, record, "deploy_operation_watch_failed", "Deployment watch identity could not be verified", watchError.Error())
+		}
+	}
+	engine.transition(recoveryContext, record, "deploy_operation_recovery", "Deployment snapshot recovery started", reason)
 	defer func() {
 		if resultErr != nil {
 			persistContext, persistCancel := context.WithTimeout(context.WithoutCancel(ctx), engine.Store.PollInterval)
 			defer persistCancel()
 			resultErr = errors.Join(resultErr, engine.Store.finishRecovery(persistContext, operationID, generation, nil, resultErr.Error()))
+			engine.transition(persistContext, record, "deploy_operation_recovery_failed", "Deployment snapshot recovery failed", resultErr.Error())
 		}
 	}()
 	if err := engine.Store.WaitForLease(recoveryContext, operationID, generation); err != nil {
@@ -205,6 +216,9 @@ func (engine Engine) RecoverCoordinated(ctx context.Context, operationID, genera
 					return err
 				}
 				engine.Notify.Resolve(recoveryContext, "deploy_operation_observation_failed", operationID+"/"+generation, "Deployment baseline application responses restored")
+				for _, kind := range []string{"deploy_operation_watch_failed", "deploy_operation_recovery", "deploy_operation_recovery_failed"} {
+					engine.Notify.Resolve(recoveryContext, kind, operationID+"/"+generation, "Deployment baseline identity and application responses restored")
+				}
 				return nil
 			}
 		}
@@ -212,6 +226,20 @@ func (engine Engine) RecoverCoordinated(ctx context.Context, operationID, genera
 			return fmt.Errorf("wait for restored deployment identity and applications: %w", err)
 		}
 	}
+}
+
+func (engine Engine) transition(ctx context.Context, record Record, kind, message, reason string) {
+	alertContext, cancel := context.WithTimeout(ctx, time.Duration(record.ObservationTimeoutSeconds)*time.Second)
+	defer cancel()
+	engine.Notify.Notify(alertContext, notify.Event{
+		Now:        time.Now().UTC(),
+		Level:      slog.LevelWarn,
+		Kind:       kind,
+		Key:        record.OperationID + "/" + record.Generation,
+		Message:    message,
+		Fields:     []slog.Attr{slog.String("vmid", record.VMID), slog.String("snapshot", record.Snapshot), slog.String("reason", reason)},
+		IsRecovery: false,
+	})
 }
 
 func (engine Engine) exact(ctx context.Context, operationID, generation string) (Record, error) {
