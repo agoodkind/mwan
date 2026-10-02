@@ -9705,6 +9705,36 @@ sequences and provider changes in these replacements. Ending counters remain
 unknown. The superseded 26 MiB, 34 MiB and 12 MiB captures are eligible for
 deletion after this entry is committed. Retain their original transport errors.
 
+Existing kernel runtime tests rejected PR 179's initial decimal-zero rule:
+Linux prints ct mark != 0x00000000, but firewall Inspect does not normalize
+conntrack comparison literals. Module.Reconcile therefore returned a rule
+inspection error. TestReconcileRepairsDeletedRulesAndRetriesFailedRefresh
+and both TestFirewallReconcileAcceptsPackets naming subcases detected the
+regression before packet assertions. The initial commit is not deployable.
+
+Signed correction d8170857dd5c618a2fe71a8c74a0203b7388ec5e uses the exact
+observed canonical zero literal. Root inspected its incremental diff and the
+complete Inspect normalizer; independent incremental review passed. Direct
+AMD64 and ARM64 compilation, vet, formatting and whitespace passed again.
+Exact-head existing kernel and required CI reruns remain active. No new test,
+CI change or deployment occurred. Physical retry proof remains required.
+
+PR 178 release 202610022255-ae-dd34143 completed publication and verification.
+The exclusively assigned diagnostic source worktree and matching local and
+remote refs were removed after direct containment, clean status and open-file
+checks. Active observations and minimal unique evidence remain intact.
+Root deleted the three superseded terminal captures after commit 57ab13d.
+Root also removed regenerable release caches for 2cbfdd9, d1ac42e and
+b8b7f52 after verifying terminal deployments and no open files. Original
+incident, production recovery and current F4 baseline caches remain.
+Controller artifacts decreased from approximately 1.1 GiB to 869 MiB.
+
+Read-only guest A HTTPS baselines passed for dedicated destinations
+1.1.1.1 and 2606:4700:4700::1111. Existing required application checks use
+different destinations. The bounded physical retry procedure must account
+for observed IPv4 source-port translation rather than assuming guest ports
+remain unchanged. No packet suppression or physical retry control ran yet.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
