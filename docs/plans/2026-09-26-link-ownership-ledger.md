@@ -9232,6 +9232,35 @@ must respect the outstanding lease. No competing deployment, cohort or
 production operation is authorized during recovery. The route and guest
 observers remain active. Recovery completion is pending.
 
+Root decoded the actual Webpass provider capture with UTC timestamps. The
+new client sent Solicit transaction bbb064 at 20:05:07.529054 UTC and received
+Advertise at 20:05:07.534057 UTC. It sent Request transaction 2049f3 at
+20:05:07.534439 UTC and received Reply at 20:05:07.535524 UTC. The captured
+client identifier bytes match configured DUID 00:02:00:00:ab:11:11:18:28:f5:
+2b:50:d8:af, and the delegation identity matches IAID 1370549548. The client
+requested an unspecified /56 hint. The reply assigned
+3d06:bad:b01:2200::/56 with T1 60 seconds, T2 120 seconds, preferred lifetime
+180 seconds and valid lifetime 240 seconds. These packets prove fresh
+negotiation separately from the earlier networkd Renew exchanges. They do not
+establish complete transfer, reverse transfer or reboot acceptance.
+
+The reconnect lane inspected the maintained Ansible SSH plugin and executor.
+The focused proposal retries only the four read-only checkpoint commands,
+with three transport retries inside each existing 15-second task timeout.
+Lease and release writes remain unretried. Root assigned exclusive source
+ownership of mwan-operation-checkpoint.yml in the inactive clean activation
+worktree. Root retains live deployment and recovery ownership. The installed
+Homebrew package is Ansible 14.4.0 with ansible-core 2.21.4; executable selection
+and existing quality gates are being verified before integration.
+
+Root posted the exact task, SSH error and recovery status for the deployment
+speed agent in Configs PR 643 comment 5960897630. This communication does not
+attribute the SSH reset to that PR. Ledger 6bf0c5a is pushed after verification
+of all 226 branch-local signatures and raw gpgsig headers. Temporary signature
+files and their script were deleted after verification. Chaos Storage remained
+mounted with 968 GiB available; current controller evidence used approximately
+1.0 GiB. No local Docker resources were created.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
