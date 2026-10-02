@@ -8982,6 +8982,73 @@ pushed ledger 8bca984 preserved diagnosis and recovery. Current raw evidence
 remains required. Chaos Storage has 972 GiB available; the controller artifact
 directory used 502 MB at 17:40 UTC.
 
+### Complete repaired preparation and identify the terminal watch defect
+
+Controller 52369 completed successfully with exit zero, 1601 successful tasks,
+201 changes and no failure, rescue or unreachable result. The exact operation
+is committed. Its commitment independently repeated all eight application
+checks successfully through 18:27:22 UTC. The new boot identity is
+6b8f4209-dcea-4a93-a74b-5bdfe31c4ff8. Installed executable, network and runtime
+hashes match the target. The ownership journal contains the four secondary
+IPv4 mappings and all three IPv6 translation edges under the new boot.
+
+The ordinary daemon restart changed PID 3776 to PID 6261. All four inbound
+checks recorded one timeout sample in the 18:11 interval. Both downstream
+IPv6 checks failed at 18:11:18 and 18:11:35 UTC; their first recovered samples
+were 18:12:00 and 18:12:02 UTC. IPv4 checks passed. Minute route samples
+did not directly observe backup selection during this restart.
+
+Actual reboot route reads selected both backups at 18:26:30, 18:26:39 and
+18:26:48 UTC. Both primary defaults were selected again at 18:26:57 UTC.
+The continuous application observer recorded one downstream-B IPv6 failure
+at 18:26:03 and its next pass at 18:26:10. Each inbound check recorded three
+timeouts. First recovered inbound samples were between 18:26:56 and
+18:27:00 UTC. Ping replies continued; application timeouts do not establish
+total packet loss. Native route-event capture 12759 completed with timeout
+exit 124 and no truncated output. It recorded both primary default deletions
+and backup installations at 18:26:03.114 through 18:26:03.115 UTC. Both
+primaries replaced the backups at 18:26:56.364 through 18:26:56.365 UTC.
+Each family selected its backup for 53.250 seconds. This is route selection
+duration, not a continuous client outage measurement.
+
+The four original guest ping transports exited zero after exact producer
+verification and SIGINT. Root verified their old PIDs are absent. Terminal
+transmission/receipt totals are A4 6994/6980, A6 6995/6943, B4 6993/6978
+and B6 6993/6941. These totals cover multiple preparation and recovery
+intervals. Replacement streams started at 18:11:28 UTC before stopping
+the original streams. Root independently verified their four exact unit
+identities. The distribution agent owns their bounded processes and outputs.
+Primary capture 65628 exited 255 during reboot without terminal counters.
+Provider captures and independent application observation remain active.
+
+At 18:27:28 UTC, the exact watch exited one after commitment. Native journal
+reports terminal observation rejection. The unit is failed with MainPID zero;
+the persisted operation remains committed with fresh passing checks. Engine.Watch
+read Armed before HTTP checks; concurrent commitment made the later observation
+write reject terminal state. MWAN-545 tracks the focused correction in signed
+commit f44028c. Independent source review found no blocking source defect.
+The regression uses the public watch command and actual HTTP/systemd, but
+sets committed state directly rather than executing the public commit command.
+Formatting and diff checks passed. Linux cgo compilation and runtime execution
+remain unperformed. The next physical deployment must prove watch exit zero.
+Identity, storage and recovery errors remain errors.
+This reporting defect is separate from successful preparation and reboot.
+
+Configs PR 643 merged as 187c8904 during the active play. The deployment
+checkout was unchanged throughout controller 52369. The next deploy requires the new
+guest preparation revision. The actual testbed marker is absent. Run
+configsctl prep-guests from clean latest merged Configs after this terminal
+operation; do not write the marker manually. Forward and reverse Webpass
+inputs match current networkd identities and unrelated provider records.
+Ownership transfers, remaining fault acceptance and production remain pending.
+
+After controller completion, the clean detached deployment checkout advanced
+to merged Configs 02151351. Scoped guest preparation started at 18:38 UTC
+through configsctl, with controller handle 37195 and only
+mwan_suburban_servers selected. Its live result remains pending. Output and
+all controller caches remain on mounted Chaos Storage. No production write
+occurred.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
