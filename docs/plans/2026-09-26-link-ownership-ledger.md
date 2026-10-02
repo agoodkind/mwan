@@ -7650,7 +7650,76 @@ catalog retains approximately 147 MiB of cache for the current deployment.
 Purge it when that deployment no longer requires it. Tickets MWAN-535 through
 MWAN-544 remain In Progress; required physical acceptance is unfinished.
 
+## Trace the current inbound IPv4 failure
+
+The fixture deployment session52674 exited0. A provider-side Webpass request
+from 10.241.204.1 to 10.241.204.2:1406 still timed out after ten seconds.
+The gateway capture on enmwanbr0 recorded the translated SYN destination
+10.240.240.2:1406. Its six-packet capture reported zero kernel drops.
+
+At 06:30:56 UTC on October 2, OPNsense's vtnet1 capture recorded the incoming
+SYN and the responding SYN-ACK. The reply destination MAC was
+bc:24:11:00:97:29. ARP readback identifies that MAC as backup gateway
+10.240.240.4; the route query also selects that backup. The eight-packet
+capture reported zero kernel drops. The listener replies through the backup
+instead of the primary that translated the request. The subsequent backup
+packet path and every original production timeout remain unproven.
+
+Source inspection found that the merged legacy NPT observer validates the
+configured name, driver and current MAC. The normal monitor still selects
+all links by driver when no permanent-MAC match exists. Its current Webpass
+configuration matches seven virtio links. The observer correction must
+preserve strict identity for MWAN-owned acquisition and foreign links.
+Physical repaired preparation remains blocked by this measured ambiguity.
+
+Independent review of recovery PR168 at b41a709 found a commit race: a new
+mutation lease can change files during commit's identity and application
+verification. The implementer published the verification fence in b7c044c;
+independent final review and fresh CI remain pending. Distribution PR167 at
+d673606 adds explicit calibrated policy bounds and real downstream steering
+with transit/provider TCP sequence correlation. Its fresh CI and independent
+inspection remain pending. Neither revision is deployed.
+
+Configs still requires the capture/stop/adopt transition before executable
+and configuration replacement, and the operation arm/lease/reconnect/commit
+integration before network-affecting preparation. The matching hypervisor
+watchdog must support operation recovery before arming. Its helper binary
+alone does not establish watchdog recovery. Replace direct rollback and
+post-recovery guest writes with the exact coordinated operation.
+
+The controller retained the canonical redacted fixture log and compact
+catalog. It deleted the redundant Ansible log, deployment pointer log and
+temporary deployment script after recording the result. Runtime cache remains
+on Chaos Storage for the next approved deployment phase. Production was not
+changed.
+
 ## Record future implementation results
+
+The operator authorized production after complete defect repair. Require the
+same repaired merged release and configuration to pass the required testbed
+acceptance before production deployment. Do not request repeated authorization
+for that approved scope. Production remains recovered and unchanged.
+
+Independent review passed recovery PR168 at b7c044c. The implementer is
+correcting a required lint failure; the commit verification fence remains
+unchanged. The focused legacy monitor correction is PR169 at c3bbad8.
+It validates networkd-owned physical links by configured name, driver and
+current MAC while preserving strict selection for MWAN-owned links. Its
+existing original-release upgrade regression now includes the legacy link
+intent. Current CI and physical acceptance remain pending.
+
+The distribution lane disproved a suspected steering byte-order defect.
+Linux uses native words for the generator and mark register. The maintained
+nftables library writes anonymous-map display metadata that makes nft print
+swapped values. Require actual downstream packet selection rather than a
+text match against that display. No steering code correction is established.
+
+The Configs integration lane owns the protected operation and legacy
+capture, stop and adoption sequence. It must declare real inbound and
+downstream application observations for each family before arming. Existing
+IPv6 edge pings do not prove mapped application replies. Production observer
+transport remains under source review; do not substitute hypervisor outbound
+success for a downstream client or external inbound reply.
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
 2. Record independent review and its reviewed commit separately from local checks.
