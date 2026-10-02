@@ -145,7 +145,7 @@ func runDistributionObservationRuntime(t *testing.T) {
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		output, err := exec.Command("nft", "list", "chain", "inet", "mwan_steer", "prerouting").CombinedOutput()
-		if err == nil && strings.Contains(string(output), "numgen random") && strings.Contains(string(output), "0x00000001") && strings.Contains(string(output), "0x00000002") {
+		if err == nil && strings.Contains(string(output), "numgen random mod 2") && strings.Contains(string(output), "ip saddr") && strings.Contains(string(output), "ip6 saddr") {
 			break
 		}
 		assertRuntimeDaemonRunning(t, daemon)
@@ -171,7 +171,7 @@ func runDistributionObservationRuntime(t *testing.T) {
 		}
 		transit.Family, transit.ObservedAt = family, now
 		calibration := &observation.DistributionCalibration{HashMode: "random", ActiveTier: 1, Samples: 40, Providers: []observation.CalibratedProvider{{ConnectionID: "enwebpass0", Tier: 1, Weight: 1, MinSamples: 13, MaxSamples: 27}, {ConnectionID: "enatt0", Tier: 1, Weight: 1, MinSamples: 13, MaxSamples: 27}}}
-		plan := &observation.DistributionPlan{HashMode: "random", ActiveTier: 1, ObservedAt: now, MinimumSamplesPerProvider: 1, Providers: providers, Transit: []observation.ProviderIngress{transit}, Calibration: calibration, Requests: requests}
+		plan := &observation.DistributionPlan{HashMode: "random", ActiveTier: 1, ObservedAt: now, Providers: providers, Transit: []observation.ProviderIngress{transit}, Calibration: calibration, Requests: requests}
 		spec := observation.CheckSpec{ID: "real-distribution", Dimension: observation.DimensionConnectionDistribution, Operation: observation.OperationDistribution, Observer: observer, Family: family, Target: target, TimeoutSeconds: 4, MaxAgeSeconds: 30, DistributionSamples: 40, DistributionPlan: plan}
 		paths := []observation.PathIdentity{{Interface: "transit", NextHop: netip.MustParseAddr(nextHop), Router: observation.RouterPrimary, ObservedAt: now}}
 		result := runDistributionRuntimeProcess(t, binary, spec, paths)
@@ -180,11 +180,31 @@ func runDistributionObservationRuntime(t *testing.T) {
 		}
 		withinBounds := true
 		for _, share := range result.DistributionProviders {
+			if share.Samples == 0 {
+				t.Fatalf("actual steering omitted a provider: %+v", result)
+			}
 			withinBounds = withinBounds && share.Samples >= 13 && share.Samples <= 27
 		}
 		if observation.RequiredPassed(spec, result, time.Now()) != withinBounds || (result.Outcome == observation.OutcomePass) != withinBounds {
 			t.Fatalf("calibration verdict disagrees with actual counts: %+v", result)
 		}
+		calibration.Providers[0].MinSamples, calibration.Providers[0].MaxSamples = 0, 0
+		calibration.Providers[1].MinSamples, calibration.Providers[1].MaxSamples = 40, 40
+		outside := runDistributionRuntimeProcess(t, binary, spec, paths)
+		if outside.Availability != observation.AvailabilityComplete || outside.DistributionProviders[0].Samples == 0 || outside.Outcome != observation.OutcomeFail || observation.RequiredPassed(spec, outside, time.Now()) {
+			t.Fatalf("observed provider counts outside explicit bounds did not fail: %+v", outside)
+		}
+		for index := range calibration.Providers {
+			calibration.Providers[index].MinSamples, calibration.Providers[index].MaxSamples = 13, 27
+		}
+		plan.HashMode, calibration.HashMode = "source", "source"
+		plan.Requests = requests[:1]
+		missingDiversity := runDistributionRuntimeProcess(t, binary, spec, paths)
+		if missingDiversity.Availability != observation.AvailabilityMissing || missingDiversity.Outcome != observation.OutcomeUnknown {
+			t.Fatalf("one source produced a false weighted balancing verdict: %+v", missingDiversity)
+		}
+		plan.HashMode, calibration.HashMode = "random", "random"
+		plan.Requests = requests
 		plan.Providers[0].Weight = 2
 		missing := runDistributionRuntimeProcess(t, binary, spec, paths)
 		if missing.Availability != observation.AvailabilityMissing || missing.Outcome != observation.OutcomeUnknown {

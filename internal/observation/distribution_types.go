@@ -20,17 +20,17 @@ type ProviderIngress struct {
 
 // DistributionPlan requires current provider policy and explicit downstream probes.
 type DistributionPlan struct {
-	HashMode                  string                   `json:"hash_mode"`
-	ActiveTier                uint8                    `json:"active_tier"`
-	ObservedAt                time.Time                `json:"observed_at"`
-	RoutingGeneration         uint64                   `json:"routing_generation"`
-	MinimumSamplesPerProvider int                      `json:"minimum_samples_per_provider"`
-	Providers                 []ProviderIngress        `json:"providers"`
-	Transit                   []ProviderIngress        `json:"transit"`
-	Calibration               *DistributionCalibration `json:"calibration"`
-	Requests                  []CheckSpec              `json:"requests"`
+	HashMode          string                   `json:"hash_mode"`
+	ActiveTier        uint8                    `json:"active_tier"`
+	ObservedAt        time.Time                `json:"observed_at"`
+	RoutingGeneration uint64                   `json:"routing_generation"`
+	Providers         []ProviderIngress        `json:"providers"`
+	Transit           []ProviderIngress        `json:"transit"`
+	Calibration       *DistributionCalibration `json:"calibration"`
+	Requests          []CheckSpec              `json:"requests"`
 }
 
+// DistributionCalibration binds reviewed count bounds to one complete selection policy.
 type DistributionCalibration struct {
 	HashMode   string               `json:"hash_mode"`
 	ActiveTier uint8                `json:"active_tier"`
@@ -38,6 +38,7 @@ type DistributionCalibration struct {
 	Providers  []CalibratedProvider `json:"providers"`
 }
 
+// CalibratedProvider requires explicit count bounds for its configured tier and weight.
 type CalibratedProvider struct {
 	ConnectionID string `json:"connection_id"`
 	Tier         uint8  `json:"tier"`
