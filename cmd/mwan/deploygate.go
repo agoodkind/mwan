@@ -180,6 +180,12 @@ var (
 //
 // args excludes the subcommand name itself.
 func runDeployGate(args []string) int {
+	if len(args) > 0 {
+		switch args[0] {
+		case "arm", "watch", "status", "lease", "release", "commit", "recover":
+			return runDeployOperation(args)
+		}
+	}
 	deps := newDeployGateDeps()
 	ctx := context.Background()
 	if len(args) < 1 {

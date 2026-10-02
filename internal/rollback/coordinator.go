@@ -16,6 +16,10 @@ type Coordinator struct {
 	file *os.File
 }
 
+func (coordinator *Coordinator) Owns(markerPath string) bool {
+	return coordinator != nil && coordinator.file != nil && coordinator.file.Name() == markerPath+".coordination"
+}
+
 // Acquire serializes recovery independently of the existing recovery marker.
 // The advisory lock file must remain present because unlinking it permits a
 // second process to lock a different inode during recovery.
@@ -52,6 +56,7 @@ func Acquire(ctx context.Context, markerPath string, pollInterval time.Duration)
 func (coordinator *Coordinator) Close() error {
 	err := unix.Flock(int(coordinator.file.Fd()), unix.LOCK_UN)
 	closeErr := coordinator.file.Close()
+	coordinator.file = nil
 	if err != nil || closeErr != nil {
 		slog.Warn("rollback coordinator release failed")
 		return errors.Join(err, closeErr)

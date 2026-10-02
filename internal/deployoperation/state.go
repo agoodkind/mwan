@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/renameio/v2"
 	"github.com/google/uuid"
+	"goodkind.io/mwan/internal/observation"
 	"goodkind.io/mwan/internal/rollback"
 )
 
@@ -46,18 +47,15 @@ type Lease struct {
 }
 
 type Record struct {
-	OperationID      string        `json:"operation_id"`
-	Generation       string        `json:"generation"`
-	VMID             string        `json:"vmid"`
-	Snapshot         string        `json:"snapshot"`
-	Baseline         Identity      `json:"baseline"`
-	Status           Status        `json:"status"`
-	Deadline         time.Time     `json:"deadline"`
-	Lease            *Lease        `json:"lease,omitempty"`
-	Watch            WatchIdentity `json:"watch"`
-	Reason           string        `json:"reason,omitempty"`
-	UpdatedAt        time.Time     `json:"updated_at"`
-	RestoredIdentity *Identity     `json:"restored_identity,omitempty"`
+	Manifest
+	Status           Status               `json:"status"`
+	Lease            *Lease               `json:"lease,omitempty"`
+	Watch            WatchIdentity        `json:"watch"`
+	Reason           string               `json:"reason,omitempty"`
+	UpdatedAt        time.Time            `json:"updated_at"`
+	RestoredIdentity *Identity            `json:"restored_identity,omitempty"`
+	Results          []observation.Result `json:"results,omitempty"`
+	ObservedAt       time.Time            `json:"observed_at"`
 }
 
 type Store struct {
@@ -116,6 +114,9 @@ func (store Store) Grant(ctx context.Context, operationID, generation, phase str
 		}
 		if err := record.Watch.Verify(ctx); err != nil {
 			return fmt.Errorf("mutation lease requires the active deploy watch: %w", err)
+		}
+		if !record.MutationReady(now) {
+			return fmt.Errorf("mutation lease requires fresh passing application observations")
 		}
 		if record.Lease != nil {
 			return fmt.Errorf("deploy operation already has an outstanding lease")
@@ -207,7 +208,40 @@ func (store Store) Commit(ctx context.Context, operationID, generation string) e
 		if err := record.Watch.Verify(ctx); err != nil {
 			return fmt.Errorf("deploy commit requires the active deploy watch: %w", err)
 		}
+		if !record.MutationReady(time.Now()) {
+			return fmt.Errorf("deploy commit requires fresh passing application observations")
+		}
 		record.Status = Committed
+		return nil
+	})
+}
+
+func (record Record) MutationReady(now time.Time) bool {
+	if record.Status != Armed || record.Watch.PID == 0 || !record.Deadline.After(now) {
+		return false
+	}
+	return checksPassed(record.RequiredChecks, record.Results, now)
+}
+
+func checksPassed(checks []observation.CheckSpec, results []observation.Result, now time.Time) bool {
+	if len(checks) == 0 || len(checks) != len(results) {
+		return false
+	}
+	for index, check := range checks {
+		if !observation.RequiredPassed(check, results[index], now) {
+			return false
+		}
+	}
+	return true
+}
+
+func (store Store) observe(ctx context.Context, operationID, generation string, results []observation.Result) error {
+	return store.change(ctx, operationID, generation, func(record *Record) error {
+		if record.Status != Armed && record.Status != Recovering {
+			return fmt.Errorf("terminal deploy operation rejects observations")
+		}
+		record.Results = results
+		record.ObservedAt = time.Now().UTC()
 		return nil
 	})
 }
@@ -292,6 +326,9 @@ func (store Store) archive(record Record) error {
 }
 
 func (record Record) validate() error {
+	if err := record.Manifest.validate(); err != nil {
+		return err
+	}
 	if !validName(record.OperationID) || !validName(record.Generation) ||
 		!validName(record.Snapshot) || record.Deadline.IsZero() || record.UpdatedAt.IsZero() {
 		return fmt.Errorf("deploy operation identity, snapshot and timestamps are required")

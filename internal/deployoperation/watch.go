@@ -5,14 +5,56 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"time"
 
 	systemddbus "github.com/coreos/go-systemd/v22/dbus"
+	"github.com/godbus/dbus/v5"
 )
 
 type WatchIdentity struct {
 	Unit         string `json:"unit"`
 	InvocationID string `json:"invocation_id"`
 	PID          uint32 `json:"pid"`
+}
+
+func StartWatch(ctx context.Context, record Record, runtimePath string) error {
+	executable, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve deploy watch executable: %w", err)
+	}
+	if !filepath.IsAbs(executable) || !filepath.IsAbs(runtimePath) {
+		return fmt.Errorf("deploy watch requires absolute executable and explicit runtime configuration paths")
+	}
+	connection, err := systemddbus.NewSystemConnectionContext(ctx)
+	if err != nil {
+		return fmt.Errorf("connect to systemd for deploy watch startup: %w", err)
+	}
+	defer connection.Close()
+	remaining := time.Until(record.Deadline.Add(time.Duration(record.RecoveryTimeoutSeconds) * time.Second))
+	if remaining <= 0 {
+		return fmt.Errorf("deploy watch execution deadline has expired")
+	}
+	result := make(chan string, 1)
+	properties := []systemddbus.Property{
+		systemddbus.PropExecStart([]string{executable, "deploy-gate", "watch", record.OperationID, record.Generation, "--config", runtimePath}, false),
+		{Name: "Type", Value: dbus.MakeVariant("exec")},
+		{Name: "RuntimeMaxUSec", Value: dbus.MakeVariant(uint64(remaining.Microseconds()))},
+		{Name: "KillMode", Value: dbus.MakeVariant("control-group")},
+	}
+	if _, err := connection.StartTransientUnitContext(ctx, record.WatchUnit, "fail", properties, result); err != nil {
+		return fmt.Errorf("start exact deploy watch unit: %w", err)
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case outcome := <-result:
+		if outcome != "done" {
+			return fmt.Errorf("deploy watch startup job returned %s", outcome)
+		}
+		return nil
+	}
 }
 
 func ReadWatch(ctx context.Context, unit string) (WatchIdentity, error) {
