@@ -8906,6 +8906,45 @@ of the failed checkpoint. The current controller log, application observations
 and packet evidence remain on Chaos Storage for diagnosis. Production is
 unchanged.
 
+### Align checkpoint and initial lease budgets
+
+Installed ansible-core applies the checkpoint timeout to the entire remote
+task, including connection and module execution. The five-second task limit
+was shorter than the configured ten-second SSH connection timeout. The failed
+callback cannot distinguish transport, module setup, lock wait or D-Bus delay.
+The correction addresses that confirmed budget mismatch without assigning a
+CPU or storage cause.
+
+Configs PR644 changes checkpoint tasks to the existing fifteen-second
+metadata timeout. Initial leases add four checkpoint bounds plus ten seconds,
+giving seventy seconds. Ordinary restart and reload budgets now account for
+the submission, reconnect and all twenty-five completion attempts: 1040
+seconds of mutation time and an 1110-second lease. Legacy activation permits
+2030 seconds, an initial 2100-second lease and 2700 seconds of recovery.
+Reused handover leases retain their existing calculations. Operation identity,
+watch identity, phase, status, expiry and completion assertions are unchanged.
+
+Scoped configsctl lint passed. Ten existing real Ansible expression and render
+checks passed. Two existing manifest expectations changed numerically; no new
+test or CI workflow was added. Independent review inspected exact signed head
+bd48cc710b992d7f702cb5ce1e452b90f51e21ec against merged parent 7b72dce1.
+All required checks passed. Two stylistic review findings received evidence
+replies and were resolved. The normal squash merge completed at 17:21:42 UTC
+as 9b64fd3ef1d6a53740226539bb6ef2d304c5376e.
+
+Root started preparation 52369 from that clean merged Configs revision through
+configsctl at 17:22:40 UTC. The original provider ownership inputs and release
+202610021553-ab-a96991a are unchanged. Diagnostic output uses the normal
+redacted run log on mounted Chaos Storage. Independent application observer
+53402, four source-bound ping streams and three new two-hour packet captures
+are active. The capture filter includes TCP ports 1406 and 443. Earlier
+provider capture transports 57197 and 92664 completed successfully with
+13,380 and 13,397 packets, zero kernel drops and both exact PIDs absent.
+Their unique recovery evidence remains necessary. Native OPNsense reads at
+17:23 UTC show both primary and backup sessions established in both families,
+with both primary defaults selected. Preparation acceptance remains pending.
+Production is unchanged.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
