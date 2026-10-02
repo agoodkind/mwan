@@ -7045,6 +7045,41 @@ normative requirements are preserved. MWAN-517's obsolete branch links now
 reference the merged main specifications and plans. MWAN-305 remains active;
 production MWAN-520 and the remaining interface phases remain unfinished.
 
+## Complete the released protocol aggregates
+
+The final namespace aggregate passed all 27 required cases with zero failures
+and skips in 377.541 seconds. Session 29201 exited zero. Frozen clean source
+9e1ab626 included the reviewed startup observation correction; the unchanged
+published ARM64 daemon remains e90b629 with SHA256 a8863b95. Mapped lifecycle
+passed in 12.15 seconds and selection exclusion passed in 15.09 seconds.
+The complete systemd aggregate separately passed all six required cases.
+Both owned containers are absent. The current Docker inventory contains no
+MWAN containers. Historical failed runs remain failed results with their
+recorded dispositions; no production behavior or deadline changed.
+
+PR #161 merged as 62c0fa79ee462da0b11839925065b9446a1ea5a6 at
+01:22:39 UTC on October 2 after required checks and independent review passed.
+PR #160 and #161 modify acceptance fixtures only. They do not require another
+runtime deployment. Evidence is 20261002-released-namespace-final/report.md,
+namespace-2853405517/terminal-results.json, and
+20261002-released-systemd-repeat/report.md under the retained evidence root.
+
+The remaining MWAN-522 deliverable is the current reusable command manifest.
+acceptance_evidence_review owns only interfaces/deployment.md. Replace the
+obsolete deleted Ruby invocation with existing public daemon and protocol
+runner commands and recorded physical operations. Do not add replacement
+application or acceptance code to Configs. Root owns ledger and integration;
+release_completion independently audits first-phase readiness.
+
+Production preparation PR #617 at 375808b7 and activation PR #618 at
+4e233e4c remain open with successful checks and clean merge status. Neither
+has been merged or deployed. Subsequent authorization remains required.
+Accept the preparation deployment before merging or deploying activation.
+MWAN-398, MWAN-517, MWAN-518, MWAN-519 and MWAN-521 are Done. MWAN-522,
+MWAN-520 and MWAN-305 remain In Progress. Remaining-interface transfer,
+AT&T retirement, final networkd removal and conditional reboot work remain
+separate unfinished epic requirements.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
