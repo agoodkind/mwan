@@ -60,13 +60,14 @@ type RuntimeConfig struct {
 	Clock                    clock.Clock     `json:"-"`
 }
 
-type executor struct {
+// Executor performs configured checks on their specified observers.
+type Executor struct {
 	config RuntimeConfig
 	log    *slog.Logger
 }
 
 // NewExecutor uses the existing guest transport and current operational state.
-func NewExecutor(cfg RuntimeConfig, log *slog.Logger) Executor {
+func NewExecutor(cfg RuntimeConfig, log *slog.Logger) *Executor {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -80,7 +81,7 @@ func NewExecutor(cfg RuntimeConfig, log *slog.Logger) Executor {
 	if cfg.TransportOverheadSeconds <= 0 {
 		cfg.TransportOverheadSeconds = 5
 	}
-	return &executor{config: cfg, log: log}
+	return &Executor{config: cfg, log: log}
 }
 
 // Validate rejects incomplete probe expectations and observer identities.
@@ -178,7 +179,8 @@ func validateHTTP(spec CheckSpec) error {
 	return nil
 }
 
-func (executor *executor) Run(ctx context.Context, spec CheckSpec) Result {
+// Run executes the configured probe and verifies its observer and required path.
+func (executor *Executor) Run(ctx context.Context, spec CheckSpec) Result {
 	var result Result
 	result.CheckID, result.Dimension, result.Operation = spec.ID, spec.Dimension, spec.Operation
 	result.Target, result.PublicIPPolicy, result.Family = spec.Target, spec.PublicIPPolicy, spec.Family
@@ -257,7 +259,7 @@ func verifyRequiredPath(spec CheckSpec, result Result) Result {
 	return result
 }
 
-func (executor *executor) remote(ctx context.Context, spec CheckSpec, result Result, machineID string) Result {
+func (executor *Executor) remote(ctx context.Context, spec CheckSpec, result Result, machineID string) Result {
 	executor.log.InfoContext(ctx, "remote observation", "check_id", spec.ID, "observer_kind", spec.Observer.Kind, "vmid", spec.Observer.VMID)
 	if machineID != spec.Observer.HostMachineID || executor.config.ProbeBinary == "" {
 		result.Reason = "observer host identity or probe executable is unavailable"
@@ -319,7 +321,7 @@ func family(spec CheckSpec) string {
 	return "inet6"
 }
 
-func (executor *executor) http(ctx context.Context, spec CheckSpec, result Result) Result {
+func (executor *Executor) http(ctx context.Context, spec CheckSpec, result Result) Result {
 	method := spec.HTTPMethod
 	if method == "" {
 		method = http.MethodGet
@@ -356,7 +358,7 @@ func (executor *executor) http(ctx context.Context, spec CheckSpec, result Resul
 	return result
 }
 
-func (executor *executor) checkPublicIP(spec CheckSpec, result Result, body string) Result {
+func (executor *Executor) checkPublicIP(spec CheckSpec, result Result, body string) Result {
 	address, err := netip.ParseAddr(body)
 	result.PublicIP = address.Unmap()
 	if err != nil || result.PublicIP.Is4() != (spec.Family == FamilyIPv4) {
@@ -378,7 +380,7 @@ func (executor *executor) checkPublicIP(spec CheckSpec, result Result, body stri
 	return result
 }
 
-func (executor *executor) dns(ctx context.Context, spec CheckSpec, result Result) Result {
+func (executor *Executor) dns(ctx context.Context, spec CheckSpec, result Result) Result {
 	probe, err := netif.DNSProbe(ctx, netif.DNSProbeSpec{
 		Interface: spec.Interface, Family: family(spec), Source: spec.Source,
 		Server: spec.DNSServer, Name: spec.Target, Timeout: time.Duration(spec.TimeoutSeconds) * time.Second,
@@ -406,7 +408,7 @@ func (executor *executor) dns(ctx context.Context, spec CheckSpec, result Result
 	return result
 }
 
-func (executor *executor) ping(ctx context.Context, spec CheckSpec, result Result) Result {
+func (executor *Executor) ping(ctx context.Context, spec CheckSpec, result Result) Result {
 	address, err := netip.ParseAddr(spec.Target)
 	if err != nil {
 		result.Reason = "invalid ping target"
@@ -423,7 +425,7 @@ func (executor *executor) ping(ctx context.Context, spec CheckSpec, result Resul
 	return result
 }
 
-func (executor *executor) sshBanner(ctx context.Context, spec CheckSpec, result Result) Result {
+func (executor *Executor) sshBanner(ctx context.Context, spec CheckSpec, result Result) Result {
 	connection, err := netif.DialProbe(ctx, spec.Interface, spec.Source, family(spec), spec.Target, time.Duration(spec.TimeoutSeconds)*time.Second)
 	if err != nil {
 		return failedProbe(result, err)
@@ -494,7 +496,7 @@ func failedProbe(result Result, err error) Result {
 	return result
 }
 
-func (executor *executor) route(ctx context.Context, spec CheckSpec, result *Result) {
+func (executor *Executor) route(ctx context.Context, spec CheckSpec, result *Result) {
 	if !result.Path.Destination.IsValid() {
 		return
 	}
@@ -529,7 +531,7 @@ func (executor *executor) route(ctx context.Context, spec CheckSpec, result *Res
 	}
 }
 
-func (executor *executor) paths() []PathIdentity {
+func (executor *Executor) paths() []PathIdentity {
 	paths := slices.Clone(executor.config.Paths)
 	if executor.config.State == nil {
 		return paths
@@ -550,7 +552,7 @@ func (executor *executor) paths() []PathIdentity {
 	return paths
 }
 
-func (executor *executor) publicAddressValid(spec CheckSpec, address netip.Addr) (bool, bool) {
+func (executor *Executor) publicAddressValid(spec CheckSpec, address netip.Addr) (bool, bool) {
 	now := executor.config.Clock.Now()
 	available := false
 	for _, identity := range executor.paths() {

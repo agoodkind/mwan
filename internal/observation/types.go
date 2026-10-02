@@ -1,7 +1,6 @@
 package observation
 
 import (
-	"context"
 	"net/netip"
 	"slices"
 	"time"
@@ -187,11 +186,6 @@ type Result struct {
 	PublicIP       netip.Addr           `json:"public_ip,omitzero"`
 	SSHVersion     string               `json:"ssh_version,omitempty"`
 	Distribution   []DistributionSample `json:"distribution,omitempty"`
-}
-
-// Executor performs configured checks on their specified observers.
-type Executor interface {
-	Run(context.Context, CheckSpec) Result
 }
 
 // RequiredPassed rejects replies from another endpoint, family, target, or expired check.
