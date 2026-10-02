@@ -9735,6 +9735,51 @@ different destinations. The bounded physical retry procedure must account
 for observed IPv4 source-port translation rather than assuming guest ports
 remain unchanged. No packet suppression or physical retry control ran yet.
 
+PR 179 merged normally as 054e41d00f5cd41f8cae2362eff51fa80e0fe059 at
+23:07:31 UTC. Exact-head required checks, kernel namespace runtime and ARM64
+runtime passed; review threads were empty. Release 202610022307-af-054e41d
+published at 23:11:58 and passed normal release verification and attestation.
+Its AMD64 archive SHA256 is
+df55e0e929b0921c8ce223d358090f71e94165ede9ac5c4db80c57d784f0cc19.
+The source worktree and contained local/remote branch were removed after
+clean status and open-file proof. The candidate is not deployed. The separate
+Configs lane owns only the testbed inventory release-pin PR.
+
+Root executed the reviewed F4 IPv4 retry control on guest 225 using native
+three-second timeout sets on both provider simulators. The literal HTTPS
+destination 1.1.1.1 does not match current required application destinations.
+Guest tuple 10.240.1.241:55041 and SYN sequence 1299260470 appeared on
+Webpass at 23:11:41.316895 UTC, AT&T at 23:11:42.318400 and Webpass again
+at 23:11:43.342330. Provider ingress retained translated source
+10.241.204.2:14724 during the AT&T retry. Webpass recorded one
+dropped initial SYN; AT&T recorded zero. The request completed HTTP 200.
+This positively reproduces changing providers for one unreplied connection.
+
+The provider captures ended with 1177/1177 and 2024/2024 captured/received
+packets and zero kernel drops. Whole-host vmbrtrunk capture ended with
+197702 captured, 204160 received and 6458 kernel drops. Transit frames were
+VLAN-tagged and required VLAN-aware decoding. All three native units exhausted
+their 45-second bound; transports ended with exit one. Their complete counters
+are retained. Capture completeness is failed, not accepted. Root removed
+both exact mwan547_retry tables and verified original NAT/filter definitions
+unchanged. No ownership change or production operation occurred.
+
+The next bounded control uses the actual gateway virtio transit interface
+enmwanbr0, verified up, and stops exact native units after the request within
+the same execution call. This excludes unrelated host trunk traffic and avoids
+assuming untagged frames. A narrow guest eth0 capture records the original
+tuple and sequence independently of OPNsense IPv4 port translation. Candidate
+proof requires retransmitted SYNs, positive fault counters, unchanged provider
+selection, HTTP 200 and complete captures with zero kernel drops for both
+families.
+
+Root reduced the terminal first-control captures to three matching
+f4-v4-a1-*-retained.pcap files under planned-handover. Each contains only the
+literal HTTPS connection; the transit replacement retains its VLAN tag.
+Native full decoding passed for every replacement. Retain original ending
+counters, request result and producer identities. Superseded full captures
+are eligible for deletion after this entry is committed.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
