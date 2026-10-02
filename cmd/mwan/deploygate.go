@@ -10,14 +10,18 @@ import (
 	"maps"
 	"net/netip"
 	"os"
+	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/logging"
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/notify"
@@ -80,6 +84,7 @@ const (
 	gateModeCheckRelease    deployGateMode = "check-release"
 	gateModeCheckFirewall   deployGateMode = "check-firewall"
 	gateModeInspectFirewall deployGateMode = "inspect-firewall"
+	gateModeCreateSnapshot  deployGateMode = "create-predeploy-snapshot"
 )
 
 // traceIDPattern limits trace IDs written to verdict files and systemd unit names.
@@ -181,6 +186,9 @@ var (
 // args excludes the subcommand name itself.
 func runDeployGate(args []string) int {
 	if len(args) > 0 {
+		if deployGateMode(args[0]) == gateModeCreateSnapshot {
+			return runCreatePredeploySnapshot(args[1:])
+		}
 		switch operationMode(args[0]) {
 		case operationArm, operationWatch, operationStatus, operationLease, operationRelease, operationCommit, operationRecover:
 			return runDeployOperation(args)
@@ -252,6 +260,89 @@ func runDeployGate(args []string) int {
 	default:
 		printDeployGateUsage()
 		return exitDeployGateUsage
+	}
+}
+
+type predeploySnapshotInputs struct {
+	name           string
+	description    string
+	recoveryBudget time.Duration
+}
+
+func parsePredeploySnapshotInputs(args []string) (predeploySnapshotInputs, error) {
+	if len(args) != 3 {
+		return predeploySnapshotInputs{}, fmt.Errorf("create-predeploy-snapshot requires NAME DESCRIPTION RECOVERY_BUDGET_SECONDS")
+	}
+	traceID, found := strings.CutPrefix(args[0], "pre-deploy-")
+	if !found || !traceIDPattern.MatchString(traceID) {
+		return predeploySnapshotInputs{}, fmt.Errorf("snapshot name must be pre-deploy- followed by a valid deployment trace ID")
+	}
+	budget, err := parseBudgetSeconds(args[2])
+	if err != nil {
+		return predeploySnapshotInputs{}, err
+	}
+	return predeploySnapshotInputs{name: args[0], description: args[1], recoveryBudget: budget}, nil
+}
+
+func runCreatePredeploySnapshot(arguments []string) int {
+	cfg, args, err := config.LoadArguments(arguments)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+		return exitDeployGateUsage
+	}
+	inputs, err := parsePredeploySnapshotInputs(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+		return exitDeployGateUsage
+	}
+	logger, closer := logging.New(logging.Config{Handlers: []slog.Handler{slog.NewJSONHandler(os.Stderr, nil)}})
+	defer func() { _ = closer.Close() }()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	operations := ops.NewRealOps(cfg, logger)
+	if err := createPredeploySnapshot(ctx, operations, logger, cfg.MwanVMID, inputs); err != nil {
+		logger.Error("predeployment snapshot failed", "vmid", cfg.MwanVMID, "snapshot", inputs.name, "err", err)
+		return exitDeployGateFailed
+	}
+	logger.Info("predeployment snapshot completed", "vmid", cfg.MwanVMID, "snapshot", inputs.name)
+	return exitDeployGateOK
+}
+
+func createPredeploySnapshot(ctx context.Context, operations *ops.RealOps, logger *slog.Logger, vmid string, inputs predeploySnapshotInputs) error {
+	recoveryContext, cancel := context.WithTimeout(ctx, inputs.recoveryBudget)
+	defer cancel()
+	for {
+		lock, ready, err := ops.RecoverSnapshotLock(recoveryContext, operations, vmid)
+		if err != nil {
+			return err
+		}
+		if ready {
+			if lock != "" {
+				logger.Warn("cleared a stale guest lock", "phase", "predeployment", "lock", lock, "vmid", vmid)
+			}
+			// Snapshot execution retains the native 75-minute wait. Expiring
+			// the recovery budget must not interrupt a snapshot already started.
+			err := operations.VMSnapshotWithDescription(ctx, vmid, inputs.name, inputs.description)
+			if err == nil {
+				return nil
+			}
+			var exitError *exec.ExitError
+			if !errors.As(err, &exitError) ||
+				(!strings.Contains(err.Error(), "VM is locked (snapshot)") &&
+					!strings.Contains(err.Error(), "VM is locked (snapshot-delete)")) {
+				return fmt.Errorf("create predeployment snapshot: %w", err)
+			}
+			logger.Info("snapshot refused by a snapshot lock; retrying recovery", "vmid", vmid, "err", err)
+		} else {
+			logger.Info("waiting for an active guest task before snapshot", "vmid", vmid, "lock", lock)
+		}
+		timer := time.NewTimer(deployGatePollInterval)
+		select {
+		case <-recoveryContext.Done():
+			timer.Stop()
+			return fmt.Errorf("wait for predeployment snapshot recovery: %w", recoveryContext.Err())
+		case <-timer.C:
+		}
 	}
 }
 
@@ -481,6 +572,7 @@ func printDeployGateUsage() {
 			" | check-release <connection_id> <previous_owner> [--config <config_path>]"+
 			" | check-firewall <network_json> <schema_dir>"+
 			" | inspect-firewall <network_json> <schema_dir>"+
+			" | create-predeploy-snapshot <name> <description> <recovery_seconds> [--config <config_path>]"+
 			" | wait-reboot <vmid> <old_boot_id> <seconds>"+
 			" | wait-egress <seconds> <families> <consecutive_rounds>"+
 			" | wait-deploy <vmid> <old_boot_id> <reboot_seconds>"+

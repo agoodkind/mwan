@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
 	"strings"
 	"time"
 
 	"goodkind.io/mwan/internal/notify"
+	"goodkind.io/mwan/internal/ops"
 	"goodkind.io/mwan/internal/rollback"
 )
 
@@ -53,13 +53,6 @@ const (
 	// reason a delete fails with nothing left to remove.
 	storageSnapshotMissingMarker = "could not find any snapshots to destroy"
 )
-
-// recoverableLocks are the guest locks the watchdog's own snapshot work
-// takes. A lock outside this set was set by something else and is left
-// alone. Rollback is excluded deliberately: a stranded rollback lock means
-// a rollback stopped partway, and resuming that is not a cleanup decision
-// the watchdog can make on its own.
-var recoverableLocks = []string{"snapshot", "snapshot-delete"}
 
 // snapshotBackoffActive reports whether a recent failure is still spacing
 // out the next snapshot attempt.
@@ -143,37 +136,19 @@ func (w *watchdog) noteSnapshotSuccess(ctx context.Context) {
 // running corrupts that operation.
 func (w *watchdog) clearStaleGuestLock(ctx context.Context, phase string) {
 	log := w.tracedLogger(ctx)
-	lock, err := w.ops.VMLock(ctx, w.cfg.MwanVMID)
+	lock, ready, err := ops.RecoverSnapshotLock(ctx, w.ops, w.cfg.MwanVMID)
 	if err != nil {
-		log.WarnContext(ctx, "read guest lock failed",
-			"phase", phase, "err", err)
-		return
-	}
-	if lock == "" {
-		return
-	}
-	if !slices.Contains(recoverableLocks, lock) {
-		log.WarnContext(ctx,
-			"guest is locked by an operation the watchdog does not own",
-			"phase", phase, "lock", lock)
-		return
-	}
-	running, err := w.ops.VMHasRunningTask(ctx, w.cfg.MwanVMID)
-	if err != nil {
-		log.WarnContext(ctx,
-			"task liveness check failed; leaving the guest lock in place",
+		log.WarnContext(ctx, "guest lock recovery failed",
 			"phase", phase, "lock", lock, "err", err)
 		return
 	}
-	if running {
+	if !ready {
 		log.InfoContext(ctx,
 			"guest lock belongs to a running task; leaving it in place",
 			"phase", phase, "lock", lock)
 		return
 	}
-	if err := w.ops.VMUnlock(ctx, w.cfg.MwanVMID); err != nil {
-		log.ErrorContext(ctx, "clearing the stale guest lock failed",
-			"phase", phase, "lock", lock, "err", err)
+	if lock == "" {
 		return
 	}
 	log.WarnContext(ctx, "cleared a stale guest lock",

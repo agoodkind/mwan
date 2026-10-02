@@ -96,6 +96,9 @@ func runQmDetached(ctx context.Context, args ...string) ([]byte, error) {
 	)
 	out, err := exec.CommandContext(cctx, scopeRunner, scopeArgs...).CombinedOutput()
 	if err != nil {
+		if cctx.Err() != nil {
+			return out, fmt.Errorf("systemd-run scope qm %s wait interrupted; native operation may still be running: %w", args[0], cctx.Err())
+		}
 		return out, fmt.Errorf("systemd-run scope qm %s: %w", args[0], err)
 	}
 	return out, nil
@@ -119,7 +122,16 @@ func (r *RealOps) VMRollback(ctx context.Context, vmid, snap string) error {
 // VMSnapshot creates a new snapshot named snapName on the given VM via
 // `qm snapshot`.
 func (r *RealOps) VMSnapshot(ctx context.Context, vmid, snapName string) error {
-	out, err := runQmDetached(ctx, "snapshot", vmid, snapName)
+	return r.createSnapshot(ctx, vmid, snapName)
+}
+
+func (r *RealOps) VMSnapshotWithDescription(ctx context.Context, vmid, snapName, description string) error {
+	return r.createSnapshot(ctx, vmid, snapName, "--description", description)
+}
+
+func (r *RealOps) createSnapshot(ctx context.Context, vmid, snapName string, options ...string) error {
+	args := append([]string{"snapshot", vmid, snapName}, options...)
+	out, err := runQmDetached(ctx, args...)
 	if err != nil {
 		r.log.ErrorContext(ctx, "qm snapshot failed",
 			"vmid", vmid, "snapshot", snapName, "err", err,
@@ -130,6 +142,46 @@ func (r *RealOps) VMSnapshot(ctx context.Context, vmid, snapName string) error {
 		)
 	}
 	return nil
+}
+
+// The lock reread rejects changes during the task query. Proxmox provides no
+// atomic compare-and-unlock operation; an unrelated task can still start later.
+func RecoverSnapshotLock(ctx context.Context, operations LockOps, vmid string) (lock string, ready bool, err error) {
+	lock, err = operations.VMLock(ctx, vmid)
+	if err != nil {
+		return lock, false, fmt.Errorf("read guest lock: %w", err)
+	}
+	if lock != "" && lock != "snapshot" && lock != "snapshot-delete" {
+		return lock, false, fmt.Errorf("guest lock %q is not recoverable", lock)
+	}
+	running, err := operations.VMHasRunningTask(ctx, vmid)
+	if err != nil {
+		return lock, false, fmt.Errorf("read guest task liveness: %w", err)
+	}
+	if running {
+		return lock, false, nil
+	}
+	current, err := operations.VMLock(ctx, vmid)
+	if err != nil {
+		return lock, false, fmt.Errorf("reread guest lock: %w", err)
+	}
+	if current != lock {
+		return lock, false, fmt.Errorf("guest lock changed from %q to %q during recovery", lock, current)
+	}
+	if lock == "" {
+		return "", true, nil
+	}
+	if err := operations.VMUnlock(ctx, vmid); err != nil {
+		return lock, false, fmt.Errorf("clear stale guest lock: %w", err)
+	}
+	current, err = operations.VMLock(ctx, vmid)
+	if err != nil {
+		return lock, false, fmt.Errorf("verify cleared guest lock: %w", err)
+	}
+	if current != "" {
+		return lock, false, fmt.Errorf("guest lock %q remains after recovery", current)
+	}
+	return lock, true, nil
 }
 
 // VMDelSnapshot deletes the snapshot named snapName via `qm delsnapshot`.
