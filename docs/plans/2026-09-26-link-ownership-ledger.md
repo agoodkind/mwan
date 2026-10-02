@@ -9878,6 +9878,20 @@ is assigned separately without live mutations. Preserve active-task checks,
 unrelated locks and rollback locks. The exact original lock-setting deletion
 remains unproved. This defect is not grounds for a broader pruning redesign.
 
+Root inspected the minimal native monitor and family readbacks for the
+predeployment IPv6 event. The monitor reports exited=1, exitcode=124 and
+out-truncated=0. Primary deletion occurred at 23:32:47.720 UTC, backup
+installation at 23:32:47.721, and primary restoration at 23:32:54.722.
+Backup residence was 7.001 seconds. No IPv4 default change appears in that
+interval. This measures route selection; client application and ping results
+remain separately recorded. Raw route-change evidence remains necessary.
+
+The observation lane identified approximately 102 MiB of regenerable Go build
+cache and 62 MiB of module cache, with no open files in either directory.
+The lane may delete only those owned caches after cataloging their exact
+paths. Preserve native route-change artifacts, active observers and source
+worktrees. Required incident evidence must remain until acceptance completes.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
