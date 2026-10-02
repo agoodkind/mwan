@@ -9143,6 +9143,31 @@ and passed at 19:13:16.846 UTC. Sequential ICMP replies continued during this
 interval; one reply took 1334 milliseconds. This HTTP sample does not establish
 continuous packet loss.
 
+The actual forward operation is 20261002-121120-deploy-315512 with generation
+7ec6016c-c175-4e62-8e5f-64473e3c3d71 and snapshot
+pre-deploy-20261002-121120-deploy-315512. Root independently verified running
+watch PID 2291544 and invocation b9753067a3be43c1a61eb9240b87728c. Its armed
+status included fresh passing required checks before continued preparation.
+The target executable SHA256 is
+f970841fefb241b05fea95b9de34d0971b76141be2abf9de0033722b66455ce1;
+the freshly rendered target network SHA256 is
+24ec95b7a11b4c1ac21d0a0b5d2aaff120028fe4ce3afb5e8574695dbb22bcc5.
+
+The read-only review compared the fresh forward render with reverse network
+SHA256 a95dda2e294635dd78c1cbd697f0687718371a3e67c33d8d95346a4acc3b6115.
+All six nonselected interface records and shared steering settings matched.
+Root independently repeated both structural comparisons; both returned true.
+Webpass preserves its exact MAC, static IPv4 address, gateway and mappings.
+Its typed DHCPv6 settings use the existing vendor DUID and IAID. These render
+comparisons do not establish exclusive ownership or fresh acquisition.
+
+Native OPNsense route monitor 5912 completed its 19:16:39 through 19:26:39 UTC
+window with timeout exit 124, no truncated output and no default-route changes.
+Replacement monitor 65450 started at 19:26:32 UTC with seven seconds of overlap.
+The reviewer verified timeout PID 65450 and route child 65978. Route readbacks
+through 19:25:49 UTC selected both primaries. Actual handover failover remains
+unperformed. No producer or source mutation belongs to that review lane.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
