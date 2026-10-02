@@ -9353,6 +9353,25 @@ their results became durable. Compact DHCP, mapping and ICMP evidence remains.
 Chaos Storage is mounted with 966 GiB available; current root controller
 artifacts use 981 MiB. Production remains unchanged.
 
+The independent source audit confirmed an existing publication defect at exact
+release source f4fbb855967832c7d4da99e17fb65b004b524dac. Family firewall
+protection and forwarding readiness initialize to unknown and have no production
+setter callers. The public operational callback publishes those unchanged
+values. Root inspected the setters, firewall module publication and daemon
+reconciliation. This proves missing reporting, not failed kernel protection or
+failed packets. MWAN-516 was reopened to In Progress under its existing readiness
+contract. A bounded implementer owns only firewall result publication and
+per-connection readiness integration in a separate source worktree. The global
+readiness socket must retain its aggregate semantics; another provider's success
+must not establish readiness for Webpass.
+
+Before target installation, the read-only firewall inspection on the restored
+baseline guest returned zero at 21:02:53 UTC. The executable still identified
+a96991a and the served Webpass owner remained networkd. This result establishes
+only baseline kernel agreement. The target release, owned transfer and corrected
+family publication still require actual testbed acceptance. Controller 20561
+remains active. Production is unchanged.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
