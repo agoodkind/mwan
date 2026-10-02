@@ -106,10 +106,15 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
-      - name: Run the firewall and protocol acceptance tests
+      - name: Run the firewall and namespace acceptance tests
         env:
           GH_TOKEN: ${{ github.token }}
-        run: make test-firewall test-protocol MWAN_OWNED_ROLE_CONFIGS="$GITHUB_WORKSPACE/.protocol-configs"
+        run: make test-firewall test-protocol-namespace
+      - name: Run the systemd acceptance tests
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: make test-protocol-systemd MWAN_OWNED_ROLE_CONFIGS="$GITHUB_WORKSPACE/.protocol-configs"
       - name: Upload protocol execution results
         if: always()
         uses: actions/upload-artifact@v7
