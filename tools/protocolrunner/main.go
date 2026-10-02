@@ -73,7 +73,7 @@ func requiredTests(selected lane) ([]string, error) {
 			"TestKernelPolicyDaemonRuntime",
 		}, nil
 	case laneSystemd:
-		return []string{"TestNetworkdResolverDaemonRuntime", "TestNetworkdOrderedDaemonStartup", "TestStaticResolverDaemonRuntime", "TestOwnedRolesDaemonRuntime", "TestNetworkdNPTEdgeDaemonRuntime", "TestConnectionReleaseDaemonRuntime"}, nil
+		return []string{"TestNetworkdResolverDaemonRuntime", "TestNetworkdOrderedDaemonStartup", "TestStaticResolverDaemonRuntime", "TestOwnedRolesDaemonRuntime", "TestNetworkdNPTEdgeDaemonRuntime", "TestConnectionReleaseDaemonRuntime", "TestDeployOperationWatchRuntime"}, nil
 	default:
 		return nil, fmt.Errorf("unknown protocol lane %q", selected)
 	}

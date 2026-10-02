@@ -440,11 +440,13 @@ func (w *watchdog) recordRollbackResult(
 	rollbackErr error,
 ) {
 	log := w.tracedLogger(ctx)
-	if err := os.Remove(w.cfg.Watchdog.RollbackLockFile); err != nil &&
-		!errors.Is(err, os.ErrNotExist) {
-		log.ErrorContext(ctx, "remove rollback lock", "err", err)
-	} else {
-		log.InfoContext(ctx, "Removed rollback lock file")
+	if rollbackErr == nil {
+		if err := os.Remove(w.cfg.Watchdog.RollbackLockFile); err != nil &&
+			!errors.Is(err, os.ErrNotExist) {
+			log.ErrorContext(ctx, "remove rollback lock", "err", err)
+		} else {
+			log.InfoContext(ctx, "Removed rollback lock file")
+		}
 	}
 
 	rollbackAttempts := 1
@@ -534,6 +536,10 @@ func (w *watchdog) rollback(ctx context.Context, deployTS int64, snap string) {
 
 	rollbackErr := w.executeRollbackVM(ctx, snap)
 	w.recordRollbackResult(ctx, deployTS, snap, rollbackErr)
+	if rollbackErr != nil {
+		log.ErrorContext(ctx, "rollback failed; recovery marker retained", "err", rollbackErr)
+		return
+	}
 
 	log.InfoContext(ctx,
 		"ROLLBACK COMPLETE; waiting for routes to converge",
@@ -605,6 +611,7 @@ func (w *watchdog) recoverInterrupted(ctx context.Context) {
 			"vmid", w.cfg.MwanVMID,
 			"err", startErr,
 		)
+		return
 	} else {
 		log.InfoContext(ctx,
 			"VM started successfully after interrupted rollback",

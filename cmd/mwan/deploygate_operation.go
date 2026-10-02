@@ -32,17 +32,6 @@ const (
 	operationRecover operationMode = "recover"
 )
 
-type currentOperationMode string
-
-const (
-	currentWatch   currentOperationMode = "watch"
-	currentStatus  currentOperationMode = "status"
-	currentLease   currentOperationMode = "lease"
-	currentRelease currentOperationMode = "release"
-	currentCommit  currentOperationMode = "commit"
-	currentRecover currentOperationMode = "recover"
-)
-
 type deployOperationStatus struct {
 	deployoperation.Record
 	MutationReady bool   `json:"mutation_ready"`
@@ -103,14 +92,9 @@ func executeDeployOperation(ctx, signalContext context.Context, cfg *config.Conf
 	}
 }
 
-func executeCurrentDeployOperation(ctx, signalContext context.Context, cfg *config.Config, engine deployoperation.Engine, args []string) (resultErr error) {
-	defer func() {
-		if resultErr != nil {
-			engine.Log.WarnContext(ctx, "deployment operation command rejected")
-		}
-	}()
-	mode := currentOperationMode(args[0])
-	if err := validateExistingOperationArguments(operationMode(mode), args); err != nil {
+func executeCurrentDeployOperation(ctx, signalContext context.Context, cfg *config.Config, engine deployoperation.Engine, args []string) error {
+	mode := operationMode(args[0])
+	if err := validateExistingOperationArguments(mode, args); err != nil {
 		return err
 	}
 	record, err := engine.Store.Read(ctx)
@@ -121,9 +105,11 @@ func executeCurrentDeployOperation(ctx, signalContext context.Context, cfg *conf
 		return fmt.Errorf("deployment operation identity differs from request or configured gateway")
 	}
 	switch mode {
-	case currentStatus:
+	case operationArm:
+		return fmt.Errorf("arm requires a new deployment manifest")
+	case operationStatus:
 
-	case currentWatch:
+	case operationWatch:
 
 		watchContext, watchCancel := context.WithDeadline(signalContext, record.Deadline.Add(time.Duration(record.RecoveryTimeoutSeconds)*time.Second))
 		defer watchCancel()
@@ -131,7 +117,7 @@ func executeCurrentDeployOperation(ctx, signalContext context.Context, cfg *conf
 			return fmt.Errorf("watch deployment operation: %w", err)
 		}
 		return nil
-	case currentLease:
+	case operationLease:
 
 		seconds, err := strconv.Atoi(args[4])
 		if err != nil || seconds <= 0 {
@@ -145,17 +131,17 @@ func executeCurrentDeployOperation(ctx, signalContext context.Context, cfg *conf
 			return fmt.Errorf("write deployment lease: %w", err)
 		}
 		return nil
-	case currentRelease:
+	case operationRelease:
 
 		if err := engine.Store.Release(ctx, record.OperationID, record.Generation, args[3]); err != nil {
 			return fmt.Errorf("execute deployment operation: %w", err)
 		}
-	case currentCommit:
+	case operationCommit:
 
 		if err := engine.Commit(ctx, record.OperationID, record.Generation); err != nil {
 			return fmt.Errorf("execute deployment operation: %w", err)
 		}
-	case currentRecover:
+	case operationRecover:
 
 		recoveryContext, recoveryCancel := context.WithTimeout(signalContext, time.Duration(record.RecoveryTimeoutSeconds)*time.Second)
 		defer recoveryCancel()
