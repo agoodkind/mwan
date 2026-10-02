@@ -21,6 +21,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"goodkind.io/mwan/internal/clock"
+	"goodkind.io/mwan/internal/observation/contract"
 )
 
 type ingressCapture struct {
@@ -108,7 +109,7 @@ func (executor *Executor) openIngressCapture(ctx context.Context, provider Provi
 		ready: CaptureReady{
 			ConnectionID: provider.ConnectionID, Interface: device.Name, PortInterface: port.Attrs().Name,
 			DestinationMAC: mac.String(), At: executor.config.Clock.Now().UTC(), FinishedAt: time.Time{},
-			StatisticsAvailable: false, Packets: 0, Drops: 0, FreezeQueueCount: 0, StatisticsError: "", ReaderError: "",
+			Statistics: nil, StatisticsError: "", ReaderError: "",
 		},
 		frames: nil, err: nil, done: make(chan struct{}), stopContext: nil, mu: sync.Mutex{}, notify: notify,
 		closing: atomic.Bool{}, finishOnce: sync.Once{}, finishError: nil, clock: executor.config.Clock,
@@ -252,10 +253,9 @@ func (capture *ingressCapture) finish() error {
 		if statsErr != nil {
 			capture.ready.StatisticsError = statsErr.Error()
 		} else {
-			capture.ready.StatisticsAvailable = true
-			capture.ready.Packets = stats.Packets
-			capture.ready.Drops = stats.Drops
-			capture.ready.FreezeQueueCount = stats.FreezeQueueCount
+			capture.ready.Statistics = &contract.CaptureStatistics{
+				Packets: stats.Packets, Drops: stats.Drops, FreezeQueueCount: stats.FreezeQueueCount,
+			}
 		}
 		if capture.err != nil {
 			capture.ready.ReaderError = capture.err.Error()

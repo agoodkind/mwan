@@ -308,18 +308,22 @@ type TCPIngress struct {
 
 // CaptureReady records the verified kernel mapping and successful socket binding before probes.
 type CaptureReady struct {
-	ConnectionID        string    `json:"connection_id"`
-	Interface           string    `json:"interface"`
-	PortInterface       string    `json:"port_interface"`
-	DestinationMAC      string    `json:"destination_mac"`
-	At                  time.Time `json:"at"`
-	FinishedAt          time.Time `json:"finished_at,omitzero"`
-	StatisticsAvailable bool      `json:"statistics_available"`
-	Packets             uint32    `json:"packets"`
-	Drops               uint32    `json:"drops"`
-	FreezeQueueCount    uint32    `json:"freeze_queue_count"`
-	StatisticsError     string    `json:"statistics_error,omitempty"`
-	ReaderError         string    `json:"reader_error,omitempty"`
+	ConnectionID    string             `json:"connection_id"`
+	Interface       string             `json:"interface"`
+	PortInterface   string             `json:"port_interface"`
+	DestinationMAC  string             `json:"destination_mac"`
+	At              time.Time          `json:"at"`
+	FinishedAt      time.Time          `json:"finished_at,omitzero"`
+	Statistics      *CaptureStatistics `json:"statistics,omitempty"`
+	StatisticsError string             `json:"statistics_error,omitempty"`
+	ReaderError     string             `json:"reader_error,omitempty"`
+}
+
+// CaptureStatistics includes counters from a successful native socket query.
+type CaptureStatistics struct {
+	Packets          uint32 `json:"packets"`
+	Drops            uint32 `json:"drops"`
+	FreezeQueueCount uint32 `json:"freeze_queue_count"`
 }
 
 // ProviderShare reports configured weights and actual request counts without a statistical guarantee.
