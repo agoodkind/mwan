@@ -37,6 +37,9 @@ type LegacyMappedAddress struct {
 
 // ReadLegacyMappedAddresses omits absent mappings and never changes kernel state.
 func ReadLegacyMappedAddresses(connection interfaceintent.Connection, prefixes []netip.Prefix, intentSHA256 string) ([]LegacyMappedAddress, error) {
+	if len(intentSHA256) != sha256.Size*2 {
+		return nil, fmt.Errorf("legacy mapping requires an exact intent digest")
+	}
 	link, err := ObserveLegacyLink(connection)
 	if err != nil {
 		return nil, NewLegacyNPTError("read legacy mapping link", err)
@@ -47,8 +50,8 @@ func ReadLegacyMappedAddresses(connection interfaceintent.Connection, prefixes [
 	}
 	var captured []LegacyMappedAddress
 	for _, prefix := range prefixes {
-		if !prefix.Addr().Is4() || prefix.Bits() != 32 || len(intentSHA256) != sha256.Size*2 {
-			return nil, fmt.Errorf("legacy mapping requires an IPv4 secondary and exact intent digest")
+		if !prefix.Addr().Is4() || prefix.Bits() != 32 {
+			return nil, fmt.Errorf("legacy mapping requires an IPv4 secondary /32")
 		}
 		for _, address := range addresses {
 			if !addressMatches(address, prefix) {
@@ -62,7 +65,7 @@ func ReadLegacyMappedAddresses(connection interfaceintent.Connection, prefixes [
 				return nil, NewLegacyNPTError("marshal legacy mapped address", err)
 			}
 			digest := sha256.Sum256(data)
-			captured = append(captured, LegacyMappedAddress{Record: ownedStaticObject{ConnectionID: connection.ID.String(), Family: "ipv4", LinkName: connection.Name, LinkIndex: link.Attrs().Index, LinkIdentity: LinkOwnershipIdentity(link), Prefix: prefix.String()}, IntentSHA256: intentSHA256, KernelSHA256: hex.EncodeToString(digest[:])})
+			captured = append(captured, LegacyMappedAddress{Record: ownedStaticObject{Scope: "", ConnectionID: connection.ID.String(), Family: "ipv4", LinkName: connection.Name, LinkIndex: link.Attrs().Index, LinkIdentity: LinkOwnershipIdentity(link), Prefix: prefix.String(), Destination: "", Gateway: "", Metric: 0}, IntentSHA256: intentSHA256, KernelSHA256: hex.EncodeToString(digest[:])})
 		}
 	}
 	return captured, nil
@@ -227,17 +230,8 @@ func ApplyLegacyNPTTransition(path, journalPath string, current []LegacyNPTEdge,
 			return err
 		}
 	}
-	seenMappings := make(map[ownedStaticObject]bool)
-	for _, mapping := range manifest.MappedAddresses {
-		if seenMappings[mapping.Record] || !slices.Contains(mappings, mapping) {
-			return fmt.Errorf("legacy mapped address intent, link or kernel address changed for %s", mapping.Record.ConnectionID)
-		}
-		seenMappings[mapping.Record] = true
-		for _, old := range r.journal.Objects {
-			if old.Prefix == mapping.Record.Prefix && old.LinkName == mapping.Record.LinkName && old != mapping.Record {
-				return fmt.Errorf("legacy mapped address conflicts with an existing receipt")
-			}
-		}
+	if err := r.readLegacyMappedReceipts(manifest.MappedAddresses, mappings); err != nil {
+		return err
 	}
 	for _, edge := range manifest.Edges {
 		value := nptEdgeObject(edge.Record)
@@ -251,6 +245,22 @@ func ApplyLegacyNPTTransition(path, journalPath string, current []LegacyNPTEdge,
 		if !r.recorded(mapping.Record) {
 			if err := r.reserve(mapping.Record); err != nil {
 				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (r *OwnedStaticReconciler) readLegacyMappedReceipts(captured, current []LegacyMappedAddress) error {
+	seen := make(map[ownedStaticObject]bool)
+	for _, mapping := range captured {
+		if seen[mapping.Record] || !slices.Contains(current, mapping) {
+			return fmt.Errorf("legacy mapped address intent, link or kernel address changed for %s", mapping.Record.ConnectionID)
+		}
+		seen[mapping.Record] = true
+		for _, old := range r.journal.Objects {
+			if old.Prefix == mapping.Record.Prefix && old.LinkName == mapping.Record.LinkName && old != mapping.Record {
+				return fmt.Errorf("legacy mapped address conflicts with an existing receipt")
 			}
 		}
 	}
