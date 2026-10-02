@@ -61,10 +61,13 @@ func main() {
 		os.Exit(res.code)
 	}
 	// The gateway installs local protection before TOML and BGP validation.
-	if subcommand(sub) == subcmdIfmgr && parseIfMgrFlags().role == "wan" {
-		if err := bootstrapWANFirewall(context.Background(), networkjson.DefaultPath); err != nil {
-			fmt.Fprintf(os.Stderr, "mwan ifmgr: %v\n", err)
-			os.Exit(1)
+	if subcommand(sub) == subcmdIfmgr {
+		flags := parseIfMgrFlags()
+		if flags.role == "wan" && flags.captureLegacyNPT == "" && flags.adoptLegacyNPT == "" {
+			if err := bootstrapWANFirewall(context.Background(), networkjson.DefaultPath); err != nil {
+				fmt.Fprintf(os.Stderr, "mwan ifmgr: %v\n", err)
+				os.Exit(1)
+			}
 		}
 	}
 

@@ -63,12 +63,9 @@ import (
 func runIfMgr(cfg *config.Config) error {
 	flags := parseIfMgrFlags()
 
-	role := cfg.IfMgr.Role
-	if flags.role != "" {
-		role = flags.role
-	}
-	if role == "" {
-		return fmt.Errorf("ifmgr: role required (set [ifmgr].role in config or pass --role)")
+	role, err := ifMgrRole(cfg, flags)
+	if err != nil {
+		return err
 	}
 
 	logger := buildIfMgrLogger(cfg, flags.debug)
@@ -92,6 +89,9 @@ func runIfMgr(cfg *config.Config) error {
 		cancel()
 		aliasSync.Wait()
 	}()
+	if flags.captureLegacyNPT != "" || flags.adoptLegacyNPT != "" {
+		return runLegacyNPTTransition(ctx, logger, cfg, flags, role)
+	}
 
 	if role == "wan" {
 		if err := bootstrapWANFirewall(ctx, networkjson.DefaultPath); err != nil {
@@ -195,9 +195,13 @@ func startNPTv6HairpinAlias(ctx context.Context, log *slog.Logger, cfg config.OP
 }
 
 type ifmgrFlags struct {
-	role   string
-	debug  bool
-	dryRun bool
+	role             string
+	debug            bool
+	dryRun           bool
+	captureLegacyNPT string
+	adoptLegacyNPT   string
+	producerPID      int
+	producerSHA256   string
 }
 
 func parseIfMgrFlags() ifmgrFlags {
@@ -206,8 +210,12 @@ func parseIfMgrFlags() ifmgrFlags {
 	_ = fs.String("config", "", "Set the TOML path for the top-level loader.")
 	debug := fs.Bool("debug", false, "enable DEBUG logging")
 	dryRun := fs.Bool("dry-run", false, "log mutating ops instead of applying (TODO: not yet plumbed to netif)")
+	capture := fs.String("capture-legacy-npt", "", "Capture verified original NPT producer state to an absolute manifest path.")
+	transition := fs.String("adopt-legacy-npt", "", "Persist exact captured NPT receipts after original producer termination, then exit.")
+	producerPID := fs.Int("producer-pid", 0, "Original WAN service PID required for capture.")
+	producerSHA256 := fs.String("producer-sha256", "", "Verified original release SHA256 required for capture.")
 	_ = fs.Parse(os.Args[1:])
-	return ifmgrFlags{role: *role, debug: *debug, dryRun: *dryRun}
+	return ifmgrFlags{role: *role, debug: *debug, dryRun: *dryRun, captureLegacyNPT: *capture, adoptLegacyNPT: *transition, producerPID: *producerPID, producerSHA256: *producerSHA256}
 }
 
 func buildIfMgrLogger(cfg *config.Config, debug bool) *slog.Logger {

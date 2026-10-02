@@ -308,7 +308,6 @@ func runOwnedMappedDaemonRuntime(t *testing.T) {
 	waitStaticRuntimeAddress(t, unrecordedDaemon, "enwebpass0", "2001:db8:beef:200::1/128", false)
 	assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"))
 	killOwnedRuntimeDaemon(t, unrecordedDaemon)
-	checkRuntimeLegacyFirstStart(t, configPath, root)
 	writeRuntimeLegacyNPT(t, networkDir, "2001:db8:beef:700::/60", false)
 	finalIntent := startRuntimeDaemon(t, os.Getenv(mappedRuntimeBinaryEnv), configPath, root, "mapped-final-intent")
 	defer killOwnedRuntimeDaemon(t, finalIntent)
