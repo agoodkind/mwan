@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/netip"
 	"sync"
@@ -115,12 +116,12 @@ func (executor *Executor) openIngressCapture(ctx context.Context, provider Provi
 			}
 			close(capture.done)
 		}()
-		capture.read(ctx, provider, limit)
+		capture.read(ctx, provider, limit, executor.log)
 	}()
 	return capture, nil
 }
 
-func (capture *ingressCapture) read(ctx context.Context, provider ProviderIngress, limit int) {
+func (capture *ingressCapture) read(ctx context.Context, provider ProviderIngress, limit int, log *slog.Logger) {
 	buffer := make([]byte, 65536)
 	control := make([]byte, unix.CmsgSpace(binary.Size(unix.Timespec{})))
 	for {
@@ -130,6 +131,8 @@ func (capture *ingressCapture) read(ctx context.Context, provider ProviderIngres
 				capture.mu.Lock()
 				capture.err = fmt.Errorf("provider ingress capture failed before completion: %w", err)
 				capture.mu.Unlock()
+				log.WarnContext(ctx, "provider ingress capture failed before completion", "err", err,
+					"connection_id", provider.ConnectionID, "family", provider.Family, "interface", capture.ready.Interface)
 			}
 			return
 		}
@@ -160,17 +163,17 @@ func (capture *ingressCapture) receive(buffer, control []byte) (int, time.Time, 
 		return !errors.Is(receiveErr, unix.EAGAIN) && !errors.Is(receiveErr, unix.EINTR)
 	})
 	if err != nil {
-		return 0, time.Time{}, fmt.Errorf("read provider capture socket: %w", err)
+		return 0, time.Time{}, capture.receiveError("read", err)
 	}
 	if receiveErr != nil {
-		return 0, time.Time{}, fmt.Errorf("receive provider capture packet: %w", receiveErr)
+		return 0, time.Time{}, capture.receiveError("recvmsg", receiveErr)
 	}
 	if flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) != 0 {
-		return 0, time.Time{}, errors.New("provider capture packet or timestamp was truncated")
+		return 0, time.Time{}, capture.receiveError("recvmsg", errors.New("provider capture packet or timestamp was truncated"))
 	}
 	messages, err := unix.ParseSocketControlMessage(control[:controlCount])
 	if err != nil {
-		return 0, time.Time{}, fmt.Errorf("parse provider capture control message: %w", err)
+		return 0, time.Time{}, capture.receiveError("parse-control", err)
 	}
 	for _, message := range messages {
 		if message.Header.Level != unix.SOL_SOCKET || message.Header.Type != unix.SO_TIMESTAMPNS_NEW {
@@ -179,17 +182,21 @@ func (capture *ingressCapture) receive(buffer, control []byte) (int, time.Time, 
 		// SO_TIMESTAMPNS_NEW uses two native-endian 64-bit values on both architectures.
 		var timestamp unix.Timespec
 		if len(message.Data) != binary.Size(timestamp) {
-			return 0, time.Time{}, errors.New("provider capture kernel timestamp has an invalid size")
+			return 0, time.Time{}, capture.receiveError("decode-timestamp", errors.New("provider capture kernel timestamp has an invalid size"))
 		}
 		if _, err := binary.Decode(message.Data, binary.NativeEndian, &timestamp); err != nil {
-			return 0, time.Time{}, fmt.Errorf("decode provider capture kernel timestamp: %w", err)
+			return 0, time.Time{}, capture.receiveError("decode-timestamp", err)
 		}
 		if timestamp.Sec <= 0 || timestamp.Nsec < 0 || timestamp.Nsec >= int64(time.Second) {
-			return 0, time.Time{}, errors.New("provider capture kernel timestamp is invalid")
+			return 0, time.Time{}, capture.receiveError("decode-timestamp", errors.New("provider capture kernel timestamp is invalid"))
 		}
 		return count, time.Unix(timestamp.Sec, timestamp.Nsec).UTC(), nil
 	}
-	return 0, time.Time{}, errors.New("provider capture packet has no kernel timestamp")
+	return 0, time.Time{}, capture.receiveError("decode-timestamp", errors.New("provider capture packet has no kernel timestamp"))
+}
+
+func (capture *ingressCapture) receiveError(operation string, err error) error {
+	return &net.OpError{Op: operation, Net: "packet", Source: nil, Addr: capture.connection.LocalAddr(), Err: err}
 }
 
 func decodeIngress(data []byte, provider ProviderIngress, at time.Time) (TCPIngress, bool) {
