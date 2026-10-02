@@ -423,5 +423,12 @@ func requiredDistributionSample(request CheckSpec, sample DistributionSample, no
 }
 
 func distributionSampleCaptured(request CheckSpec, sample DistributionSample) bool {
-	return sample.Ingress.Source.IsValid() && sample.Ingress.Source.Is4() == (request.Family == FamilyIPv4) && !sample.Ingress.At.Before(sample.StartedAt) && !sample.Ingress.At.After(sample.At) && sample.Ingress.SourcePort != 0 && sample.Transit.Source == sample.Path.Source && sample.Transit.SourcePort == sample.Path.SourcePort && sample.Transit.Sequence == sample.Ingress.Sequence && !sample.Transit.At.Before(sample.StartedAt) && !sample.Transit.At.After(sample.At) && sample.Ingress.Destination == sample.Path.Destination && sample.Transit.Destination == sample.Path.Destination && sample.Transit.DestinationPort == sample.Path.DestinationPort && sample.Ingress.DestinationPort == sample.Path.DestinationPort && sample.Ingress.ConnectionID == sample.ConnectionID
+	sourceValid := sample.Ingress.Source.IsValid() && sample.Ingress.Source.Is4() == (request.Family == FamilyIPv4) && sample.Ingress.SourcePort != 0
+	ingressTiming := !sample.Ingress.At.Before(sample.StartedAt) && !sample.Ingress.At.After(sample.At)
+	transitTiming := !sample.Transit.At.Before(sample.StartedAt) && !sample.Transit.At.After(sample.At)
+	sourceMatched := sample.Transit.Source == sample.Path.Source && sample.Transit.SourcePort == sample.Path.SourcePort
+	sequenceMatched := sample.Transit.Sequence == sample.Ingress.Sequence
+	destinationMatched := sample.Ingress.Destination == sample.Path.Destination && sample.Transit.Destination == sample.Path.Destination && sample.Transit.DestinationPort == sample.Path.DestinationPort && sample.Ingress.DestinationPort == sample.Path.DestinationPort
+	connectionMatched := sample.Ingress.ConnectionID == sample.ConnectionID
+	return sourceValid && ingressTiming && transitTiming && sourceMatched && sequenceMatched && destinationMatched && connectionMatched
 }
