@@ -6996,6 +6996,36 @@ unrelated Docker services and reusable testbed guests. Evidence is
 accepts physical Webpass proof but requires disposition of the namespace
 failure before promotion. Production still requires subsequent authorization.
 
+## Publish the bounded startup fixture correction
+
+MWAN PR #161 contains signed head
+9e1ab626eb581c7e7aaf1b65c5d8f1e012a986e6 from aeb4f926. Only the existing
+firewall idle helper changed. Its initial positive count must remain stable
+for 400 milliseconds within the original five-second initialization bound.
+The complete subsequent five-second quiet interval still rejects every
+count change. Both phases verify daemon liveness.
+
+Focused published-daemon selection acceptance passed in 15.22 and 15.32
+seconds, including every later exclusion, default deletion/restoration and
+fallback packet assertion. A real-daemon 100ms periodic-reconcile control
+failed stabilization in 7.29 seconds. The control altered only an external
+read-only fixture override; production source and deadlines are unchanged.
+All three owned containers are absent. Independent review accepted patch
+hash fe940c836d2b22126049571485d4dff925d5bd132542df17f21e60dec298fe12.
+Local Docker check/test gates passed. Current required CI is pending.
+
+The complete final namespace run uses frozen source 9e1ab626 and the
+unchanged published a8863b95 daemon. Session 29201 and its dedicated
+mwan-protocol-namespace-2853405517 container are active. Retain its terminal
+result separately; do not convert any earlier failed run into a pass.
+
+MWAN-398 is Done, with actual Tack state readback verified. Independent
+audit matched every static, dynamic, mapping, route, expiry, OOB/failover
+and DNS requirement to the successful unchanged released cases. Its exact
+ticket assigns live transfer to MWAN-519. The separate selection fixture
+failure remains under MWAN-522 and does not invalidate MWAN-398's completed
+acceptance. MWAN-522 and production MWAN-520 remain In Progress.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
