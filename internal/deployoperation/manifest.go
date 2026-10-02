@@ -31,8 +31,16 @@ type Manifest struct {
 	FailureThreshold          int                       `json:"failure_threshold"`
 	RequiredFamilies          []observation.Family      `json:"required_families"`
 	RequiredChecks            []observation.CheckSpec   `json:"required_checks"`
+	ExpectedInterruptions     []ExpectedInterruption    `json:"expected_interruptions,omitempty"`
 	RestoredRequiredChecks    []observation.CheckSpec   `json:"restored_required_checks"`
 	Observation               observation.RuntimeConfig `json:"observation"`
+}
+
+// ExpectedInterruption authorizes bounded failures without changing their health verdict.
+type ExpectedInterruption struct {
+	Phase      string   `json:"phase"`
+	CheckIDs   []string `json:"check_ids"`
+	MaxSeconds int      `json:"max_seconds"`
 }
 
 // ReadManifest rejects unknown fields and trailing JSON before any runtime operation.
@@ -86,6 +94,25 @@ func (manifest Manifest) validate() error {
 	for _, checks := range [][]observation.CheckSpec{manifest.RequiredChecks, manifest.RestoredRequiredChecks} {
 		if err := manifest.validateChecks(checks); err != nil {
 			return err
+		}
+	}
+	checks := make(map[string]observation.CheckSpec, len(manifest.RequiredChecks))
+	for _, check := range manifest.RequiredChecks {
+		checks[check.ID] = check
+	}
+	phases := make(map[string]bool, len(manifest.ExpectedInterruptions))
+	for _, interruption := range manifest.ExpectedInterruptions {
+		if strings.TrimSpace(interruption.Phase) == "" || phases[interruption.Phase] || interruption.MaxSeconds <= 0 || len(interruption.CheckIDs) == 0 {
+			return fmt.Errorf("expected interruptions require unique nonempty phases, positive bounds and check IDs")
+		}
+		phases[interruption.Phase] = true
+		seen := make(map[string]bool, len(interruption.CheckIDs))
+		for _, id := range interruption.CheckIDs {
+			check, exists := checks[id]
+			if !exists || seen[id] || check.Dimension != observation.DimensionInboundApplication {
+				return fmt.Errorf("expected interruption check %s must identify a unique required inbound application check", id)
+			}
+			seen[id] = true
 		}
 	}
 	return nil
