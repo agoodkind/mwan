@@ -141,7 +141,7 @@ func Compile(config Config) (Ruleset, error) {
 			"iifname "+iface+" ip dscp "+dscp+" ct state new meta mark set "+mark,
 			"iifname "+iface+" ip6 dscp "+dscp+" ct state new meta mark set "+mark)
 	}
-	preMangle.Rules = append(preMangle.Rules, "ct state new ct mark != 0 meta mark set ct mark", "ct state established,related meta mark set ct mark")
+	preMangle.Rules = append(preMangle.Rules, "ct state new ct mark != 0x00000000 meta mark set ct mark", "ct state established,related meta mark set ct mark")
 	postMangle.Rules = append(postMangle.Rules, "ct mark set meta mark")
 
 	rules := Ruleset{Chains: []Chain{input, forward, output, preNAT, postNAT, preMangle, postMangle}, Sets: nil}
