@@ -8798,6 +8798,37 @@ New observer transport 53402 uses a distinct final-repair unit and outputs
 on Chaos Storage. Production remains unchanged. Repaired physical acceptance
 is pending the verified published release and merged pin.
 
+### Deploy the merged repair to the physical testbed
+
+Release 202610021553-ab-a96991a published from merged
+a96991a046f84dda1ba135d81894224ff1530e3b through successful run 37030105400.
+Actual AMD64 executable digest is
+93fc771974fda1f9f94a6b79afe26ad47c6553dc3f9b17608e44582432ff03b3.
+Archive and stack digests are
+a29305a520b8f5aa923fc0c22cec2351e1e6292586fbd6c0dc3e4866c5e446c8 and
+ae11e8de8fcf714f6f5f1086f751a332345f83dc3b409b44570debd6b2ca051f.
+Both archive attestations verified the repository, shared workflow signer and
+exact source. Root independently compared actual downloaded hashes.
+Temporary release downloads were purged after compact provenance retention.
+
+Configs PR640 changes only the two release pins and their checksums.
+Root inspected the diff, commit signature and raw signature header.
+All required checks passed and no review threads were unresolved.
+It merged at 16:09:22 UTC as
+4244d4ccd972b46e4f32e1db58a4c6141f471e86.
+The clean detached root deployment checkout uses that merged revision.
+Its cache and all generation paths use mounted Chaos Storage.
+
+Root started configsctl deploy deploy-mwan with the exact testbed limit
+and original-reproduction-vars.json, preserving the original five networkd
+provider owners. Controller handle 16394 started at 16:09:53 UTC.
+Its actual play log is resume-controller/tmp/configs-runs/
+deploy-mwan-20261002T160953Z.log on Chaos Storage. Independent observer
+53402 and three exact provider/transit captures remain active.
+The source lane reads application results; root alone controls mutations.
+This deployment remains in progress and does not establish cutover acceptance.
+Production is unchanged.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
