@@ -7112,6 +7112,37 @@ initial observer gap as measurement limits. They do not establish a failed
 cutover or a localized runtime cause. MWAN-305 and MWAN-520 remain active;
 remaining interfaces and final retirement are unfinished.
 
+## Begin authorized production preparation
+
+The operator authorized the staged production deployment after the first
+Webpass readiness report: "Okay then do it." Preparation acceptance remains
+required before merging or deploying activation. The tested published daemon
+remains e90b629; subsequent documentation corrections do not change it.
+
+Graphite merged preparation PR #617 as
+369add99cb3181412a8ecb9c2fbb5e73ff130ef4 at 01:45:32 UTC on October 2.
+Root verified the active merge contract, successful required checks, exact
+signed source and absent review threads. The dry run selected preparation
+only. PR #618 remains open; Graphite updated its remote head during merge.
+Reconcile that exact head and source before later activation.
+
+The fresh production preflight passed current gateway/recovery identity,
+five networkd owners, both downstream guests without OOB, three replies per
+family per guest, and four provider/family mapping hostname checks. The
+console serial socket is available. Evidence is
+20261002-production-authorized-preflight/report.md.
+
+Root started production preparation through configsctl from the clean
+detached merged 369add99 checkout. Its exact session is 41460 and log is
+deploy-mwan-20261002T014714Z.log under the controller configs-runs directory.
+Do not change its checkout while active. Separate existing observers run in
+sessions 73336 and 97445 for UniFi 102 and proxy 110. Both families produced
+actual source-bound replies before deployment. Their SSH transports disable
+multiplexing; Vault supplies control only. Packet and OPNsense route evidence
+is retained under 20261002-production-staged-cutover. Root is the only live
+deployment controller. Other agents perform read-only preflight and monitor
+review. Preparation, activation and production acceptance remain unfinished.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
