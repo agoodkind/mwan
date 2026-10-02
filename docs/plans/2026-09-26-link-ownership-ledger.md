@@ -9592,6 +9592,97 @@ The target executable hash is
 network A95d and runtime C1be match the reviewed reverse pair. Controller
 94824 remains live. Reverse acceptance is pending; production is unchanged.
 
+### Recover the failed reverse preparation and repair retry selection
+
+Reverse transport 94824 ended with exit one at 22:35:11 UTC on October 2.
+The play reported 306 successful tasks, 48 changes, one failure, one rescued
+failure, zero unreachable hosts and 17 skipped tasks. The bounded gateway
+mutation lease task timed out after 15 seconds. The actual reverse ownership
+transfer did not execute and remains unaccepted.
+
+The registered watchdog recorded Guest A's IPv6 application timeout at
+22:33:06.675766481 UTC and emitted deploy_operation_observation_failed at
+22:33:12.352122138 before snapshot recovery. Root did not initiate a second
+manual recovery. The operation restored its exact baseline and reported
+recovered at 22:35:11.456418566. All eight restored application checks passed
+between 22:34:58.437331957 and 22:35:11.453770827. The warning proves journal
+publication, not delivery of an email or external notification.
+
+The recovered executable SHA256 is
+f970841fefb241b05fea95b9de34d0971b76141be2abf9de0033722b66455ce1;
+the network SHA256 is
+24ec95b7a11b4c1ac21d0a0b5d2aaff120028fe4ce3afb5e8574695dbb22bcc5;
+the runtime SHA256 is
+c1be8fc749f15fab68e20ea27307f6765a4cf77c2f44b870df5ffe53f7a5d189.
+The recovered boot is 6d525d69-a44b-406c-9eee-151eda7038a9. Webpass remains
+MWAN-owned under the previously accepted F4 forward baseline; the other six
+interfaces remain networkd-owned. A fresh operation-status read independently
+confirmed these hashes and recovered status. Production remains unchanged.
+
+Native route events recorded backup selection at 22:33:27.299 for IPv6 and
+22:33:27.300 for IPv4. Both primary defaults returned at 22:34:19.140.
+Backup residence was 51.841 seconds for IPv6 and 51.840 seconds for IPv4.
+These intervals do not establish total client outage duration.
+
+Root application observer 15159 and packet capture transports 8716, 90259
+and 13386 ended with SSH exit 255 during the interruption. Capture ending
+counters are unavailable. Root observer 41403 had already stopped after
+replacement observations passed. Observer 15159's final recorded Guest A
+IPv6 timeout was 22:33:06.523896630. Application recording resumed with
+observer 66258 at 22:39:11, using unit
+mwan-cutover-observation-renewal-c-20261002, PID 3332033 and invocation
+5374515fe9a543dc8acddbcde7b0e627. Its bound ends at 00:39:11 UTC October 3.
+All eight checks passed in its initial complete batches. The recording gap
+does not prove continuous client loss. Old ping D transports also ended with
+exit 255; their terminal totals are unavailable. Verified ping E producers
+resumed at 22:37:55 through 22:37:59. Their catalog records exact identities.
+
+MWAN-547 tracks a confirmed connection selection defect under MWAN-305.
+The same Guest A IPv6 SYN sequence 2513719411, source port 41861 and
+destination 2606:4700::6810:7c60:443 used Webpass at 22:32:56.520272 and
+AT&T at 22:32:57.582410, with different translated source addresses. A second
+connection, port 42289 and sequence 763922873, alternated providers on
+retries. Root inspected all three terminal packet captures and the actual
+deployed nftables rules. F4 restores connection marks only for established
+or related packets. Unreplied NEW retries can repeat the random selection.
+
+Independent source review confirmed the existing kernel conntrack and
+maintained nftables interfaces support a focused correction. Restore a saved
+nonzero connection mark for NEW packets before steering. Preserve initial
+zero-mark policy selection, established restoration, postrouting save and
+family eligibility remapping. The original reviewer now owns only this
+implementation in internal/firewall/rules.go and an appropriate existing
+public-boundary regression if available. Independent review and physical
+testbed retry proof remain required. This defect does not establish the
+cause of the broader SSH interruption or lease timeout.
+
+Root inspected each PR 178 followup and the independent review reports.
+Exact signed head 1d6c4ac9cd9313bbccfd1171a5b465803f1bfa6f replaces the
+statistics-availability flag and flat counts with an optional typed
+CaptureStatistics object. Missing statistics remain distinct from valid zero
+counts. The finalization clock uses the existing injected clock. Required
+checks passed on this head; a fresh ruleset and thread check still precedes
+merge. Capture acceptance semantics remain unchanged. MWAN-546 remains
+In Progress until physical cohorts provide complete diagnostic evidence.
+
+The artifact volume remains mounted with approximately 964 GiB free.
+Terminal captures containing the MWAN-547 SYN evidence remain necessary
+until minimal unique replacements and durable summaries are verified.
+Active observer artifacts remain necessary. Superseded generated files must
+be purged after their evidence is recorded. No new production operation,
+infrastructure repair or CI workflow was added.
+
+PR 178 merged normally as dd34143c8f3cc1a24a71589cc86e02c4598d0bf4 at
+22:55:29 UTC. Root freshly verified the active ruleset, all ten required
+checks, commit signature, mergeable state and both resolved review threads.
+Root inspected the finalization code before accepting the second bot finding
+as disproven: each returned error category is also published in finalized
+capture evidence, and normal completion checks finalization before passing.
+No source change or redundant log was added for that finding. Release
+publication and physical diagnostic cohorts remain pending. Production is
+unchanged. Tack comments now include the exact failed reverse, automatic
+recovery and MWAN-547 findings; open acceptance tickets remain In Progress.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
