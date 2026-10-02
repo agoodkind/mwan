@@ -9861,6 +9861,23 @@ Guest A IPv4 HTTP timed out at 23:41:30.739099973 UTC and passed next at
 Fresh gateway version still reports F4 during this preparation. The result
 does not prove candidate behavior or continuous client packet loss.
 
+The retry armed operation 20261002-163955-deploy-924045 with generation
+5dc7ba56-0996-436b-a15d-ee10b291e05c. Its exact watch is active with PID
+3646024 and invocation 9955112c888144938caf3f4dabe91979. Root read all
+eight operation checks passing and mutation_ready=true before preparation.
+Target executable hash is
+787bd8cca577206514bf6fb2c84289e7977f2a8d050d66e0f672f0a9a4fb2967;
+network and runtime hashes remain unchanged. The play continues under bounded
+mutation leases. Candidate fault controls remain unperformed.
+
+MWAN-548 tracks the measured stale snapshot-lock blocker. Root inspected
+startup and lock recovery source after independent review: post-prune cleanup
+uses the cancelled loop context, and startup does not retry stale lock cleanup.
+The deployment snapshot precedes operation arming. A bounded repair proposal
+is assigned separately without live mutations. Preserve active-task checks,
+unrelated locks and rollback locks. The exact original lock-setting deletion
+remains unproved. This defect is not grounds for a broader pruning redesign.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
