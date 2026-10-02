@@ -8139,6 +8139,46 @@ Original-release restoration, repaired preparation and ownership cutovers
 remain unperformed. Production remains recovered and unchanged under the
 operator's conditional authorization.
 
+### Execute the merged original-release restoration
+
+Configs PR631 merged as eebb726f after signed head f9e6343d passed all
+required checks and every review thread was resolved. Root reviewed the final
+conversion and the actual successful localhost result: the selected parent
+graph produced a native nine-element descendant list without the selected
+or current snapshot. The controller checkout was clean and fast-forwarded
+to merged eebb726f before configsctl execution.
+
+Operation 93274 restored known-good-20260929-235727 on VM213. It verified
+the exact paused watchdog invocation, completed native jobs, absent VM lock,
+stopped watchdog, stopped VM, deletion of ten settled descendants and native
+rollback/start completion. The guest reconnected. Exact version verification
+rejected the restored writer: it runs 5666b3d+43bede7022d3 rather than d442ba1.
+The operation ended with exit1, 46 successful tasks, ten changed tasks and
+one rescued failure. The global testbed watchdog remains stopped after this
+measured failed assertion; its originally active state requires restoration
+after baseline verification. Production did not change.
+
+Root started the sole next operation 39880 through the same merged playbook,
+selecting older known-good-20260929-184618. Its terminal identity result is
+pending. Candidate timestamps select an attempt; only the executable hash
+and actual running version establish the original release. Both controller
+logs and the native graph remain on Chaos Storage until terminal evidence
+is summarized and superseded raw evidence is purged.
+
+PR174 at 32c8d555 passed both firewall/namespace acceptance and systemd
+acceptance in job110813632005. The separate netns job failed its existing
+DHCPv6 Rebind fixture when the server UDP reply returned EADDRNOTAVAIL.
+Confirm and retransmission cases passed. The fixture does not inspect the
+server link-local address flags before its reply. DAD readiness remains an
+unproved candidate; no timer change or CI retry ran. This stack changes
+neither the DHCPv6 client nor its restart fixture. Physical acquisition
+acceptance remains required.
+
+Root verified the four stack heads, required checks, resolved threads and
+Graphite dry-run scope. Native Graphite merge started for PR167, PR172,
+PR173 and PR174. Terminal merge verification remains pending. The Configs
+activation timing correction remains unpublished and independently owned.
+
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
 2. Record independent review and its reviewed commit separately from local checks.
 3. State the observable behavior demonstrated and any missing acceptance.
