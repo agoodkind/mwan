@@ -403,30 +403,17 @@ test-firewall: wanconfig-builder-image
 		-run '^(TestDeployGateEgressNetNS|TestCheckFirewallIsolatedKernel|TestWANStartupProtectsBeforeConfigValidation|TestWANFirewallRuntimePackets|TestOwnedStaticDaemonRuntime|TestOwnedMappedDaemonRuntime|TestSelectionExclusionDaemonRuntime|TestDistributionObservationDaemonRuntime)$$'
 
 .PHONY: test-legacy-upgrade
-test-legacy-upgrade: build-wanconfig
+test-legacy-upgrade: build-wanconfig systemd-runner-image
 	$(if $(strip $(MWAN_NPT_LEGACY_BINARY)),,$(error MWAN_NPT_LEGACY_BINARY is required))
 	$(if $(filter /%,$(MWAN_NPT_LEGACY_BINARY)),,$(error MWAN_NPT_LEGACY_BINARY must be absolute))
 	$(if $(strip $(MWAN_NPT_LEGACY_SHA256)),,$(error MWAN_NPT_LEGACY_SHA256 is required))
 	$(if $(filter amd64,$(WANCONFIG_DOCKER_ARCH)),,$(error test-legacy-upgrade requires the AMD64 original release))
 	$(WANCONFIG_DOCKER_RUN) sha256sum $(LOCAL_BIN)/$(BINARY)-wanconfig-linux-amd64
 	$(WANCONFIG_DOCKER_RUN) $(LOCAL_BIN)/$(BINARY)-wanconfig-linux-amd64 version
-	docker run --rm --privileged --platform linux/amd64 \
-		-v "$(CURDIR):/src" -w /src \
-		-v "$(MWAN_NPT_LEGACY_BINARY):/mwan-original/mwan:ro" \
-		-v mwan-wanconfig-gomod:/go/pkg/mod \
-		-v mwan-wanconfig-cache-amd64:/root/.cache \
-		-v mwan-wanconfig-gomk-amd64:/src/.make \
-		-e GOWORK=off \
-		-e GIT_CONFIG_COUNT=1 \
-		-e GIT_CONFIG_KEY_0=safe.directory \
-		-e GIT_CONFIG_VALUE_0=/src \
-		-e MWAN_PROTOCOL_ACCEPTANCE=1 \
-		-e MWAN_PROTOCOL_TEST_BINARY=/src/$(LOCAL_BIN)/$(BINARY)-wanconfig-linux-amd64 \
-		-e MWAN_NPT_LEGACY_BINARY=/mwan-original/mwan \
-		-e MWAN_NPT_LEGACY_SHA256=$(MWAN_NPT_LEGACY_SHA256) \
-		$(WANCONFIG_BUILDER_IMAGE) \
-		go test -v -count=1 -tags 'netns firewallnetns' ./cmd/mwan \
-		-run '^TestLegacyNPTPreparationUpgrade$$'
+	GOWORK=off go run ./tools/protocolrunner -lane original-upgrade \
+		-image "$(SYSTEMD_RUNNER_IMAGE)" -arch amd64 -source "$(CURDIR)" \
+		-results "$(PROTOCOL_RESULTS_DIR)" -binary "$(CURDIR)/$(LOCAL_BIN)/$(BINARY)-wanconfig-linux-amd64" \
+		-original-binary "$(MWAN_NPT_LEGACY_BINARY)" -original-sha256 "$(MWAN_NPT_LEGACY_SHA256)"
 
 .PHONY: build-wanconfig-all test-docker-all
 build-wanconfig-all:

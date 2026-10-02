@@ -107,7 +107,7 @@ func readLegacyMappedTransition(ctx context.Context, log *slog.Logger, cfg *conf
 			digest := sha256.Sum256(intent)
 			observed, err := netif.ReadLegacyMappedAddresses(connection, prefixes, hex.EncodeToString(digest[:]))
 			if err != nil {
-				return nil, fmt.Errorf("observe legacy mapped addresses: %w", err)
+				return nil, netif.NewLegacyNPTError("observe legacy mapped addresses", err)
 			}
 			result = append(result, observed...)
 		}
@@ -118,7 +118,7 @@ func readLegacyMappedTransition(ctx context.Context, log *slog.Logger, cfg *conf
 func legacyMappedTransitionPrefixes(ctx context.Context, log *slog.Logger, cfg *config.Config, connection interfaceintent.Connection, mappings []config.StaticMapping) ([]netip.Prefix, error) {
 	current, err := netif.ListAddrs(ctx, log, connection.Name)
 	if err != nil {
-		return nil, fmt.Errorf("read legacy mapping addresses: %w", err)
+		return nil, netif.NewLegacyNPTError("read legacy mapping addresses", err)
 	}
 	primary, err := legacyMappedTransitionPrimary(ctx, cfg, connection, current)
 	if err != nil {
@@ -132,7 +132,7 @@ func legacyMappedTransitionPrefixes(ctx context.Context, log *slog.Logger, cfg *
 	}
 	onLink, err := netif.OnLinkMappedAddresses(current, external)
 	if err != nil {
-		return nil, fmt.Errorf("select legacy mapped subnets: %w", err)
+		return nil, netif.NewLegacyNPTError("select legacy mapped subnets", err)
 	}
 	var prefixes []netip.Prefix
 	for _, mapping := range mappings {
@@ -188,7 +188,7 @@ func legacyMappedAcquiredPrimary(ctx context.Context, cfg *config.Config, name s
 	defer cancel()
 	addresses, err := networkd.Addresses(bounded, name)
 	if err != nil {
-		return nil, fmt.Errorf("observe legacy networkd primary: %w", err)
+		return nil, netif.NewLegacyNPTError("observe legacy networkd primary", err)
 	}
 	var acquired []netip.Addr
 	for _, address := range addresses {

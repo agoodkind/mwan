@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -23,6 +24,7 @@ type options struct {
 	lane                                 lane
 	image, arch, source, binary, results string
 	ownedRoleConfigs                     string
+	originalBinary, originalSHA256       string
 }
 
 const (
@@ -33,8 +35,9 @@ const (
 type lane string
 
 const (
-	laneNamespace lane = "namespace"
-	laneSystemd   lane = "systemd"
+	laneNamespace       lane = "namespace"
+	laneSystemd         lane = "systemd"
+	laneOriginalUpgrade lane = "original-upgrade"
 )
 
 type eventAction string
@@ -76,6 +79,8 @@ func requiredTests(selected lane) ([]string, error) {
 		}, nil
 	case laneSystemd:
 		return []string{"TestNetworkdResolverDaemonRuntime", "TestNetworkdOrderedDaemonStartup", "TestStaticResolverDaemonRuntime", "TestOwnedRolesDaemonRuntime", "TestNetworkdNPTEdgeDaemonRuntime", "TestConnectionReleaseDaemonRuntime", "TestDeployOperationWatchRuntime"}, nil
+	case laneOriginalUpgrade:
+		return []string{"TestLegacyNPTPreparationUpgrade"}, nil
 	default:
 		return nil, fmt.Errorf("unknown protocol lane %q", selected)
 	}
@@ -90,13 +95,15 @@ func parseOptions() (result options, failure error) {
 	var opts options
 	var rawLane string
 	flags := flag.NewFlagSet("protocolrunner", flag.ContinueOnError)
-	flags.StringVar(&rawLane, "lane", "", "namespace or systemd")
+	flags.StringVar(&rawLane, "lane", "", "namespace, systemd or original-upgrade")
 	flags.StringVar(&opts.image, "image", "", "local Docker image")
 	flags.StringVar(&opts.arch, "arch", "", "native Linux architecture")
 	flags.StringVar(&opts.source, "source", "", "absolute source directory")
 	flags.StringVar(&opts.binary, "binary", "", "optional absolute published executable")
 	flags.StringVar(&opts.results, "results", "", "acceptance artifact directory")
 	flags.StringVar(&opts.ownedRoleConfigs, "owned-role-configs", "", "absolute Configs checkout for the systemd suite")
+	flags.StringVar(&opts.originalBinary, "original-binary", "", "absolute original executable for the upgrade")
+	flags.StringVar(&opts.originalSHA256, "original-sha256", "", "verified original executable SHA256")
 	if err := flags.Parse(os.Args[1:]); err != nil {
 		return opts, fmt.Errorf("parse protocol options: %w", err)
 	}
@@ -122,6 +129,9 @@ func parseOptions() (result options, failure error) {
 	if opts.binary != "" && !filepath.IsAbs(opts.binary) {
 		return opts, errors.New("-binary must be absolute")
 	}
+	if err := validateOriginalUpgrade(opts); err != nil {
+		return opts, err
+	}
 	if opts.lane == laneSystemd {
 		if !filepath.IsAbs(opts.ownedRoleConfigs) {
 			return opts, errors.New("-owned-role-configs must be absolute for the systemd suite")
@@ -138,6 +148,19 @@ func parseOptions() (result options, failure error) {
 		}
 	}
 	return opts, nil
+}
+
+func validateOriginalUpgrade(opts options) error {
+	if opts.lane != laneOriginalUpgrade {
+		return nil
+	}
+	if opts.arch != "amd64" || opts.binary == "" || !filepath.IsAbs(opts.originalBinary) {
+		return errors.New("original-upgrade requires AMD64 and absolute candidate/original executable paths")
+	}
+	if len(opts.originalSHA256) != sha256.Size*2 || strings.Trim(opts.originalSHA256, "0123456789abcdef") != "" {
+		return errors.New("original-upgrade requires a complete lowercase hexadecimal executable SHA256")
+	}
+	return nil
 }
 
 func dockerCommand(ctx context.Context, arguments ...string) error {
@@ -178,6 +201,9 @@ func startContainer(ctx context.Context, opts options, name string) (failure err
 			return errors.New("published executable must be a regular executable file")
 		}
 		arguments = append(arguments, "--mount", "type=bind,src="+opts.binary+",dst=/mwan-release/mwan,readonly")
+	}
+	if opts.lane == laneOriginalUpgrade {
+		arguments = append(arguments, "--mount", "type=bind,src="+opts.originalBinary+",dst=/mwan-original/mwan,readonly")
 	}
 	arguments = append(arguments, opts.image)
 	if opts.lane == laneNamespace {
@@ -220,11 +246,16 @@ func testArguments(opts options, container string, required []string) []string {
 	if opts.lane == laneSystemd {
 		arguments = append(arguments, "-e", "MWAN_NETWORKD_RESOLVER_SYSTEMD_TEST=1", "-e", "MWAN_NETWORKD_STARTUP_SYSTEMD_TEST=1", "-e", "MWAN_RESOLVER_SYSTEMD_TEST=1", "-e", "MWAN_OWNED_ROLE_BOOTSTRAP_DIR=/mwan-bootstrap")
 	}
+	timeout := "20m"
+	if opts.lane == laneOriginalUpgrade {
+		arguments = append(arguments, "-e", "MWAN_NPT_LEGACY_BINARY=/mwan-original/mwan", "-e", "MWAN_NPT_LEGACY_SHA256="+opts.originalSHA256)
+		timeout = "10m"
+	}
 	patterns := make([]string, len(required))
 	for index, name := range required {
 		patterns[index] = regexp.QuoteMeta(name)
 	}
-	return append(arguments, container, "go", "test", "-json", "-count=1", "-timeout=20m", "-tags", "netns firewallnetns",
+	return append(arguments, container, "go", "test", "-json", "-count=1", "-timeout="+timeout, "-tags", "netns firewallnetns",
 		"-run", "^("+strings.Join(patterns, "|")+")$", "./cmd/mwan")
 }
 
@@ -320,7 +351,7 @@ func run(ctx context.Context, opts options) (result error) {
 	if err := startContainer(ctx, opts, container); err != nil {
 		return err
 	}
-	if opts.lane == laneSystemd {
+	if opts.lane != laneNamespace {
 		if err := waitSystemd(ctx, container); err != nil {
 			return err
 		}
