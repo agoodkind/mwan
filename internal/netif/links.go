@@ -57,11 +57,19 @@ func linkDriver(name string) string {
 }
 
 // resolveConnectionLink matches a configured connection against current kernel links.
-// A physical match is unique by the configured MAC or driver; virtual links
-// must also satisfy their configured kernel type and VLAN parent and tag.
+// Networkd controls legacy physical device names. Its devices require observed
+// identity checks rather than a global driver match across identical devices.
 func resolveConnectionLink(log *slog.Logger, connection interfaceintent.Connection) (netlink.Link, error) {
 	if connection.Link == nil {
 		return nil, nil
+	}
+	if connection.Owner == interfaceintent.OwnerNetworkd &&
+		(connection.Link.Kind == interfaceintent.KindPhysical || connection.Link.Kind == "") {
+		link, err := ObserveLegacyLink(connection)
+		if IsLinkNotFound(err) {
+			return nil, nil
+		}
+		return link, err
 	}
 	links, err := netlink.LinkList()
 	if err != nil {
