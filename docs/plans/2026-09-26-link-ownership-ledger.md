@@ -7924,6 +7924,51 @@ evidence was absent. Keep this failure separate from passing distribution
 counts and physical acceptance. The durable observation lane now implements
 MWAN-541 and MWAN-542 in dependent source slices with exclusive ownership.
 
+Configs PR629 merged signed acaf32d0 as 451c5adbf6fa34ba58dea76f9e7ee86be35b09da
+at 09:30:29 UTC on October 2. Root independently inspected the template, actual
+HTTP probe normalization, signature and raw header. All required checks passed
+and review threads were empty. The one-line expectation change preserves
+HTTP 200 and exact normalized body comparison. Its clean worktree and exact
+merged branch refs were removed. A repeated Webpass IPv6 observation at
+09:27:15 UTC also returned HTTP 200 with the normalized body and the same
+newline mismatch.
+
+Preparation from clean merged 451c5adb armed operation
+20261002-023154-deploy-315924, generation
+4fd6bbda-727a-4602-9e97-3d4c2e0487db. All eight baseline checks passed.
+The first gateway timestamp checkpoint then rejected a valid lease because
+it compared RFC3339 strings in different time zones. The lease expiration was
+2026-10-02T02:38:21.093861617-07:00; the required mutation deadline used UTC.
+The playbook compares those strings lexically and strips fractions only when
+the timestamp ends in Z. The source lane owns a focused parsed-instant fix.
+The timestamp write and later gateway upgrade steps did not execute.
+
+The playbook's rescue invoked exact-operation recovery. Recovery waited for
+the lease, restored the snapshot, and completed at 09:40:09.303407174 UTC.
+The operation record is recovered. The executable, network and runtime hashes
+equal the baseline; boot identity changed from
+6daff0de-5642-4faa-b12e-87e321d0a95f to
+15d22f89-6187-4dfd-9595-f800beca8abe. All four inbound and four downstream
+application checks passed between 09:39:56 and 09:40:09 UTC. The live gateway
+again reports clean 5666b3d. This result proves physical coordinated snapshot
+restoration and restored application checks after a rejected preparation.
+Controller-loss recovery, candidate upgrade and cutover remain unperformed.
+The observer recorded one Webpass IPv4 timeout during restoration; continuous
+client interruption duration was not measured. Production received no writes.
+
+PR167's CI36988731435 passed both distribution cases and systemd runtime but
+repeated the unequal-lifetime mapped UDP reply timeout. Focused provider
+counts were IPv4 22/18 and IPv6 17/23; aggregate counts were IPv4 19/21 and
+IPv6 22/18. The distribution lane owns failure-only diagnosis through the
+existing public DHCP fixture without changing its deadlines or retries.
+
+The durable observation source is published in the dependent stack:
+PR172 contracts at fd126473, PR173 continuous runner at 94170a9 and PR174
+daemon integration at c7d9700. Root source review is in progress. Runtime CI,
+live activation, alerts and final acceptance remain unfinished. Source audit
+also confirms that whole-provider transfer still lacks manifest interruption
+policy, exact nested lease phases and a complete bounded transfer budget.
+
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
 2. Record independent review and its reviewed commit separately from local checks.
 3. State the observable behavior demonstrated and any missing acceptance.
