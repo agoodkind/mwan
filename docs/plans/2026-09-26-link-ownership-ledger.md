@@ -9395,6 +9395,44 @@ active with its registered invocation. Networkd-dispatcher completed after the
 udev reconnect. Complete ownership transfer, target commitment and reversal
 remain pending. Production is unchanged.
 
+PR 177 merged normally as b8b7f520c36b5ed0787ccf91c78f46af0e276593 at
+21:35:53 UTC. Its reviewed source head was
+dadf74ef7c5a97a3548ca82448039a8b90e660ed. The independent reviewer approved
+the exact patch. Root inspected the report and diff. Both Graphite findings
+were disproven with source evidence, received explanatory replies and were
+resolved. All ten checks required by the active ruleset passed. The namespace
+and ARM64 runtime jobs passed; this entry does not establish that a particular
+new case executed. The optional firewall job failed in the existing mapped
+daemon case because an NPT edge remained in its ownership journal when the
+case expected none. Govulncheck also failed; its cause remains unverified.
+Neither failure is recorded as passing. The merged release workflow is active.
+The running Configs deployment remains on F4 and is not modified by this merge.
+MWAN-516 remains In Progress pending actual corrected publication acceptance.
+
+The repeated forward deployment executed selected-owner release. Root inspected
+the live kernel and operational state at 21:36 UTC. Webpass had only its
+link-local IPv6 address, external ownership, disabled selection and not-ready
+routing. Its defaults and mapped addresses were removed between 21:33:06 and
+21:33:08 UTC. The WAN daemon was active with PID 5841 and invocation
+ef36cecab0ce4c5b9d815cd83b165140. Read-only firewall inspection returned zero at
+21:37:53 UTC. This proves policy agreement during release, not acquisition or
+restored mappings. Configs installs external ownership and releases networkd
+before installing the replacement owner. The independent source reviewer
+confirmed two unconditional 120-second reconnect delays after reload and
+selected reconfiguration. These contribute 240 seconds before acquisition,
+plus intervening operations. The handover lease permits selected inbound
+failures during this phase. The controller completed the first reconnect and
+has not completed selected reconfiguration verification. This intermediate
+state does not establish an acquisition defect. Complete transfer, commitment
+and reversal remain pending.
+
+Webpass inbound checks began failing at 21:33:16 UTC and still failed in both
+families at 21:35:46 and 21:35:58 UTC. AT&T inbound replies and both downstream
+guests' application checks passed through 21:36:12 UTC. Root independently
+read these current operation results. Required checks are unhealthy and the
+operation is not mutation-ready. Its registered watch and handover lease remain
+active. No production operation occurred. Distribution cohorts remain unperformed.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
