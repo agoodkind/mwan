@@ -6874,6 +6874,39 @@ proof separately from actual AMD64 Webpass live acceptance. Remaining
 namespace results, fixture failure review, actual ticket reconciliation and
 production phase approval remain unfinished.
 
+## Reconcile deployment state and released protocol failures
+
+MWAN-521 is Done. Its explicit acceptance requires validated renders and a
+merged complete connection transfer and reversal without a second writer.
+The independent render, forward, reverse, reboot, restart and packet evidence
+satisfies that deployment boundary. MWAN-305, MWAN-398, MWAN-522 and
+production acceptance MWAN-520 remain open.
+
+Graphite rebased only production preparation and activation onto merged
+Configs 519d9126. Signed heads are 375808b7922347ee2e95f5d4f37f896807c9fdca
+and 4e233e4c741a68cf6befb8d72853d57490f4c30d. Source comparison finds only
+the ten harness deletions relative to the prior activation head; inventory
+and loader content are unchanged. Dry-run selected only existing PRs 617
+and 618, and submission updated them. Their current checks are running.
+No production merge or deployment occurred.
+
+Released ARM64 namespace acceptance exited one after 368.869 seconds.
+Twenty-six of twenty-seven required cases passed without skips, including
+DHCPv4 acquisition, classless routes, rebind, NAK, rejected recovery,
+OOB/failover behavior and restart recovery. Mapped acceptance failed because
+the NPT journal still included 2001:db8:beef:200::1/128 after the test observed
+its removal. The aggregate is failed. Root assigned read-only diagnosis to
+acceptance_evidence_review; do not assign a runtime cause or weaken the
+assertion before diagnosis. The dedicated namespace container is absent.
+
+dynamic_acceptance_discovery owns only the measured release fixture cleanup
+correction in the separate mwan-release-fixture-cleanup worktree. It accepts
+the kernel's already-absent device result from deletion, preserves all other
+errors and reports link identity. No runtime implementation changes or new
+tests are assigned. The existing focused released-binary case is active;
+root retains integration and PR publication. Source, runtime, fixture and
+cleanup results remain separate. Production promotion remains pending.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
