@@ -8768,6 +8768,36 @@ Read-only physical testbed verification found active networkd PID 549 and
 D-Bus PID 605. The gateway still runs the original verified pair. No shared
 testbed or production deployment occurred during these fixture corrections.
 
+### Merge the mapped-address repair and resume physical acceptance
+
+The operator requires the existing repair, release, testbed deployment and
+actual traffic, cutover, restart, reboot, failover and recovery validation.
+Do not expand CI or add unrelated acceptance infrastructure.
+
+PR175 merged normally at 15:53:06 UTC as
+a96991a046f84dda1ba135d81894224ff1530e3b. All required checks passed,
+all six review threads were resolved, and all eight source commits had
+verified signatures and raw signature headers. The original upgrade case
+passed the exact final 981eacf CI step. Earlier 2f9e62b execution passed in
+4.30 seconds with candidate digest
+c73bdcce7b383140124ed71bbbaeef8f77f25152ff9638b8565f91239997e735.
+Those results do not establish repaired physical cutover acceptance.
+The existing release workflow started run 37030105400 for the merged source.
+The release lane verifies publication; the Configs lane prepares only its
+compatible pin. Root exclusively controls physical deployment and faults.
+
+Observer 73905 stopped with exit zero at 15:53:52 UTC. Its native unit is
+inactive with PID zero. Its terminal results include downstream A IPv4
+1279 pass/1 fail, A IPv6 1278 pass, B IPv4 1256 pass and B IPv6 1258 pass/
+1 unknown. The final unknown coincides with observer shutdown and remains
+unknown. Inbound AT&T IPv4 has 1119 pass/78 fail, IPv6 1119 pass/77 fail;
+Webpass IPv4 has 1121 pass/76 fail, IPv6 1123 pass/76 fail. The failed
+preparation and recovery explain the measured inbound failure interval;
+the earlier isolated downstream timeout remains unattributed.
+New observer transport 53402 uses a distinct final-repair unit and outputs
+on Chaos Storage. Production remains unchanged. Repaired physical acceptance
+is pending the verified published release and merged pin.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
