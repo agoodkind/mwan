@@ -12,7 +12,7 @@ import (
 
 func validateDistribution(spec CheckSpec) error {
 	plan := spec.DistributionPlan
-	if plan == nil || spec.DistributionSamples <= 0 || plan.MinimumSamplesPerProvider <= 0 || len(plan.Providers) == 0 || len(plan.Requests) == 0 {
+	if plan == nil || spec.DistributionSamples <= 0 || plan.MinimumSamplesPerProvider <= 0 || len(plan.Providers) == 0 || len(plan.Requests) == 0 || len(plan.Transit) == 0 {
 		return errors.New("distribution requires providers, probes and positive sample requirements")
 	}
 	if spec.Observer.Kind != EndpointLocal {
@@ -30,11 +30,17 @@ func validateDistribution(spec CheckSpec) error {
 		identities[provider.ConnectionID] = true
 	}
 	for _, request := range plan.Requests {
-		if request.Operation != OperationHTTP || request.Family != spec.Family || request.DistributionPlan != nil {
+		if request.Operation != OperationHTTP || request.Dimension != DimensionDownstreamApplication || request.Family != spec.Family || request.DistributionPlan != nil || request.Router != RouterPrimary || !request.ExpectedNextHop.IsValid() || !request.Source.IsValid() || request.ConnectionID != "" {
 			return errors.New("distribution probes must be HTTP checks in the required family")
 		}
 		if err := Validate(request); err != nil {
 			return err
+		}
+	}
+	for _, transit := range plan.Transit {
+		mac, err := net.ParseMAC(transit.DestinationMAC)
+		if transit.ConnectionID == "" || transit.Family != spec.Family || transit.Bridge == "" || transit.PortInterface == "" || err != nil || mac.String() != transit.DestinationMAC {
+			return errors.New("distribution transit requires verified bridge, gateway port and MAC")
 		}
 	}
 	return nil
@@ -42,6 +48,10 @@ func validateDistribution(spec CheckSpec) error {
 
 func (executor *Executor) distribution(ctx context.Context, spec CheckSpec, result Result) Result {
 	plan := spec.DistributionPlan
+	if !distributionCalibrated(spec) {
+		result.Availability, result.Reason = AvailabilityMissing, "distribution lacks calibration for the exact sample count, hash policy and eligible provider tiers and weights"
+		return result
+	}
 	providers, current := executor.distributionProviders(spec)
 	if !current {
 		result.Availability, result.Reason = AvailabilityStale, "distribution provider policy is absent, stale or inconsistent with current state"
@@ -58,10 +68,11 @@ func (executor *Executor) distribution(ctx context.Context, spec CheckSpec, resu
 		result.Availability, result.Reason = AvailabilityMissing, "distribution has no current eligible providers or too few configured samples"
 		return result
 	}
-	notify := make(chan struct{}, len(providers))
+	notify := make(chan struct{}, len(providers)+len(plan.Transit))
 	var captures []*ingressCapture
+	var transitCaptures []*ingressCapture
 	defer func() {
-		for _, capture := range captures {
+		for _, capture := range append(captures, transitCaptures...) {
 			_ = capture.finish()
 		}
 	}()
@@ -74,12 +85,25 @@ func (executor *Executor) distribution(ctx context.Context, spec CheckSpec, resu
 		captures = append(captures, capture)
 		result.DistributionCaptures = append(result.DistributionCaptures, capture.ready)
 	}
-	if err := executor.distributionRequests(ctx, spec, captures, notify, &result); err != nil {
+	for _, transit := range plan.Transit {
+		if !observationCurrent(transit.ObservedAt, executor.config.Clock.Now(), spec.MaxAgeSeconds) {
+			result.Availability, result.Reason = AvailabilityStale, "distribution transit mapping is stale"
+			return result
+		}
+		capture, err := executor.openIngressCapture(ctx, transit, spec.DistributionSamples*16, notify)
+		if err != nil {
+			result.Reason = err.Error()
+			return result
+		}
+		transitCaptures = append(transitCaptures, capture)
+		result.TransitCaptures = append(result.TransitCaptures, capture.ready)
+	}
+	if err := executor.distributionRequests(ctx, spec, captures, transitCaptures, notify, &result); err != nil {
 		result.Availability, result.Reason = AvailabilityMissing, err.Error()
 		return result
 	}
 	var captureError error
-	for _, capture := range captures {
+	for _, capture := range append(captures, transitCaptures...) {
 		if err := capture.finish(); err != nil {
 			captureError = err
 		}
@@ -90,12 +114,12 @@ func (executor *Executor) distribution(ctx context.Context, spec CheckSpec, resu
 	}
 	for index := range result.Distribution {
 		sample := &result.Distribution[index]
-		frame, matched := capturedIngress(captures, sample.StartedAt, sample.Path)
+		frame, transit, matched := capturedIngress(captures, transitCaptures, sample.StartedAt, sample.Path)
 		if !matched {
 			result.Availability, result.Reason = AvailabilityMissing, "completed capture contains ambiguous or unmatched provider ingress"
 			return result
 		}
-		sample.Ingress, sample.ConnectionID = frame, frame.ConnectionID
+		sample.Ingress, sample.Transit, sample.ConnectionID = frame, transit, frame.ConnectionID
 		for shareIndex := range result.DistributionProviders {
 			if result.DistributionProviders[shareIndex].Provider.ConnectionID == frame.ConnectionID {
 				result.DistributionProviders[shareIndex].Samples++
@@ -108,14 +132,14 @@ func (executor *Executor) distribution(ctx context.Context, spec CheckSpec, resu
 	}
 	result.Availability, result.Outcome = AvailabilityComplete, OutcomeFail
 	if !distributionSharesPassed(plan, result.DistributionProviders) {
-		result.Reason = "observed distribution omits an eligible provider or selects an ineligible provider"
+		result.Reason = "observed distribution violates calibrated provider shares or selects an ineligible provider"
 		return result
 	}
 	result.Outcome, result.Reason = OutcomePass, "actual ingress samples satisfy configured provider coverage"
 	return result
 }
 
-func (executor *Executor) distributionRequests(ctx context.Context, spec CheckSpec, captures []*ingressCapture, notify <-chan struct{}, result *Result) error {
+func (executor *Executor) distributionRequests(ctx context.Context, spec CheckSpec, captures, transitCaptures []*ingressCapture, notify <-chan struct{}, result *Result) error {
 	for index := range spec.DistributionSamples {
 		request := spec.DistributionPlan.Requests[index%len(spec.DistributionPlan.Requests)]
 		started := executor.config.Clock.Now().UTC()
@@ -128,11 +152,11 @@ func (executor *Executor) distributionRequests(ctx context.Context, spec CheckSp
 		if !RequiredPassed(request, reply, executor.config.Clock.Now()) {
 			return errors.New("distribution request lacks an expected application reply or required path")
 		}
-		frame, matched := awaitIngress(ctx, captures, notify, started, reply.Path)
+		frame, transit, matched := awaitIngress(ctx, captures, transitCaptures, notify, started, reply.Path)
 		if !matched {
 			return errors.New("distribution request has ambiguous, rewritten or unobserved ingress tuple")
 		}
-		sample.Ingress, sample.ConnectionID = frame, frame.ConnectionID
+		sample.Ingress, sample.Transit, sample.ConnectionID = frame, transit, frame.ConnectionID
 		result.Distribution[len(result.Distribution)-1] = sample
 	}
 	return nil
@@ -181,34 +205,58 @@ func observationCurrent(observed, now time.Time, ageSeconds int) bool {
 	return !observed.IsZero() && age >= 0 && age <= time.Duration(ageSeconds)*time.Second
 }
 
-func awaitIngress(ctx context.Context, captures []*ingressCapture, notify <-chan struct{}, started time.Time, path Path) (TCPIngress, bool) {
+func awaitIngress(ctx context.Context, captures, transitCaptures []*ingressCapture, notify <-chan struct{}, started time.Time, path Path) (TCPIngress, TCPIngress, bool) {
 	var absent TCPIngress
 	for {
-		found, matched := capturedIngress(captures, started, path)
+		found, transit, matched := capturedIngress(captures, transitCaptures, started, path)
 		if matched {
-			return found, true
+			return found, transit, true
 		}
 		select {
 		case <-ctx.Done():
-			return absent, false
+			return absent, absent, false
 		case <-notify:
 		}
 	}
 }
 
-func capturedIngress(captures []*ingressCapture, started time.Time, path Path) (TCPIngress, bool) {
+func capturedIngress(captures, transitCaptures []*ingressCapture, started time.Time, path Path) (TCPIngress, TCPIngress, bool) {
+	transit, matched := capturedTransit(transitCaptures, started, path)
+	if !matched {
+		return TCPIngress{}, TCPIngress{}, false
+	}
 	var found TCPIngress
-	matched := false
+	matched = false
 	for _, capture := range captures {
 		capture.mu.Lock()
 		for _, frame := range capture.frames {
-			if frame.At.Before(started) || frame.SourcePort != path.SourcePort || frame.Destination != path.Destination || frame.DestinationPort != path.DestinationPort {
+			if frame.At.Before(started) || frame.Sequence != transit.Sequence || frame.Destination != transit.Destination || frame.DestinationPort != transit.DestinationPort {
 				continue
 			}
 			if matched && found.ConnectionID != frame.ConnectionID {
 				capture.mu.Unlock()
 				var absent TCPIngress
-				return absent, false
+				return absent, transit, false
+			}
+			found, matched = frame, true
+		}
+		capture.mu.Unlock()
+	}
+	return found, transit, matched
+}
+
+func capturedTransit(captures []*ingressCapture, started time.Time, path Path) (TCPIngress, bool) {
+	var found TCPIngress
+	matched := false
+	for _, capture := range captures {
+		capture.mu.Lock()
+		for _, frame := range capture.frames {
+			if frame.At.Before(started) || frame.Source != path.Source || frame.SourcePort != path.SourcePort || frame.Destination != path.Destination || frame.DestinationPort != path.DestinationPort {
+				continue
+			}
+			if matched && frame.Sequence != found.Sequence {
+				capture.mu.Unlock()
+				return TCPIngress{}, false
 			}
 			found, matched = frame, true
 		}
@@ -238,7 +286,8 @@ func distributionDiverse(mode string, samples []DistributionSample, providers in
 func distributionSharesPassed(plan *DistributionPlan, shares []ProviderShare) bool {
 	for _, share := range shares {
 		if share.Provider.Eligible && share.Provider.Tier == plan.ActiveTier {
-			if share.Samples < plan.MinimumSamplesPerProvider {
+			bound, exists := calibratedProvider(plan, share.Provider.ConnectionID)
+			if !exists || share.Samples < bound.MinSamples || share.Samples > bound.MaxSamples {
 				return false
 			}
 		} else if share.Samples != 0 {
@@ -248,8 +297,52 @@ func distributionSharesPassed(plan *DistributionPlan, shares []ProviderShare) bo
 	return true
 }
 
+func calibratedProvider(plan *DistributionPlan, id string) (CalibratedProvider, bool) {
+	if plan.Calibration != nil {
+		for _, provider := range plan.Calibration.Providers {
+			if provider.ConnectionID == id {
+				return provider, true
+			}
+		}
+	}
+	return CalibratedProvider{}, false
+}
+
+func distributionCalibrated(spec CheckSpec) bool {
+	plan := spec.DistributionPlan
+	calibration := plan.Calibration
+	if calibration == nil || calibration.HashMode != plan.HashMode || calibration.ActiveTier != plan.ActiveTier || calibration.Samples != spec.DistributionSamples {
+		return false
+	}
+	seen := make(map[string]bool)
+	minimum, maximum := 0, 0
+	for _, calibrated := range calibration.Providers {
+		if seen[calibrated.ConnectionID] || calibrated.MinSamples < plan.MinimumSamplesPerProvider || calibrated.MaxSamples < calibrated.MinSamples || calibrated.MaxSamples > calibration.Samples {
+			return false
+		}
+		seen[calibrated.ConnectionID] = true
+		minimum += calibrated.MinSamples
+		maximum += calibrated.MaxSamples
+	}
+	eligible := 0
+	for _, provider := range plan.Providers {
+		if !provider.Eligible || provider.Tier != plan.ActiveTier {
+			continue
+		}
+		eligible++
+		calibrated, exists := calibratedProvider(plan, provider.ConnectionID)
+		if !exists || calibrated.Tier != provider.Tier || calibrated.Weight != provider.Weight {
+			return false
+		}
+	}
+	return eligible > 0 && eligible == len(calibration.Providers) && minimum <= calibration.Samples && maximum >= calibration.Samples
+}
+
 func requiredDistributionPassed(spec CheckSpec, result Result, now time.Time) bool {
 	if validateDistribution(spec) != nil || len(result.Distribution) != spec.DistributionSamples {
+		return false
+	}
+	if !distributionCalibrated(spec) || len(result.TransitCaptures) != len(spec.DistributionPlan.Transit) {
 		return false
 	}
 	plan := spec.DistributionPlan
@@ -268,6 +361,12 @@ func requiredDistributionPassed(spec CheckSpec, result Result, now time.Time) bo
 			eligible++
 		}
 	}
+	for index, transit := range plan.Transit {
+		ready := result.TransitCaptures[index]
+		if !requiredProviderReady(transit, ProviderShare{Provider: transit}, ready, now, spec.MaxAgeSeconds) {
+			return false
+		}
+	}
 	for index, sample := range result.Distribution {
 		request := plan.Requests[index%len(plan.Requests)]
 		if !requiredDistributionSample(request, sample, now) {
@@ -280,6 +379,15 @@ func requiredDistributionPassed(spec CheckSpec, result Result, now time.Time) bo
 			}
 		}
 		if !matched {
+			return false
+		}
+		transitMatched := false
+		for transitIndex, transit := range plan.Transit {
+			if transit.ConnectionID == sample.Transit.ConnectionID && transit.DestinationMAC == sample.Transit.DestinationMAC && !result.TransitCaptures[transitIndex].At.After(sample.StartedAt) {
+				transitMatched = true
+			}
+		}
+		if !transitMatched {
 			return false
 		}
 		counts[sample.ConnectionID]++
@@ -301,5 +409,5 @@ func requiredDistributionSample(request CheckSpec, sample DistributionSample, no
 	reply.CheckID, reply.Dimension, reply.Operation, reply.Target, reply.Family = sample.CheckID, request.Dimension, OperationHTTP, request.Target, request.Family
 	reply.Observer, reply.ObservedAt, reply.Availability, reply.Outcome = sample.Observer, sample.At, sample.Availability, sample.Outcome
 	reply.Path, reply.HTTPStatus, reply.ResponseBody = sample.Path, sample.HTTPStatus, sample.ResponseBody
-	return RequiredPassed(request, reply, now) && !sample.StartedAt.IsZero() && !sample.StartedAt.After(sample.At) && sample.Ingress.Source.IsValid() && sample.Ingress.Source.Is4() == (request.Family == FamilyIPv4) && !sample.Ingress.At.Before(sample.StartedAt) && sample.Ingress.SourcePort != 0 && sample.Ingress.SourcePort == sample.Path.SourcePort && sample.Ingress.Destination == sample.Path.Destination && sample.Ingress.DestinationPort == sample.Path.DestinationPort && sample.Ingress.ConnectionID == sample.ConnectionID
+	return RequiredPassed(request, reply, now) && !sample.StartedAt.IsZero() && !sample.StartedAt.After(sample.At) && sample.Ingress.Source.IsValid() && sample.Ingress.Source.Is4() == (request.Family == FamilyIPv4) && !sample.Ingress.At.Before(sample.StartedAt) && sample.Ingress.SourcePort != 0 && sample.Transit.Source == sample.Path.Source && sample.Transit.SourcePort == sample.Path.SourcePort && sample.Transit.Sequence == sample.Ingress.Sequence && !sample.Transit.At.Before(sample.StartedAt) && sample.Ingress.Destination == sample.Path.Destination && sample.Transit.Destination == sample.Path.Destination && sample.Transit.DestinationPort == sample.Path.DestinationPort && sample.Ingress.DestinationPort == sample.Path.DestinationPort && sample.Ingress.ConnectionID == sample.ConnectionID
 }

@@ -69,6 +69,10 @@ func (executor *Executor) openIngressCapture(ctx context.Context, provider Provi
 	if err != nil {
 		return nil, errors.New("provider capture socket cannot be opened")
 	}
+	if err := connection.SetPromiscuous(true); err != nil {
+		_ = connection.Close()
+		return nil, errors.New("provider capture cannot observe forwarded bridge traffic")
+	}
 	deadline, ok := ctx.Deadline()
 	if !ok {
 		_ = connection.Close()
@@ -160,7 +164,7 @@ func decodeIngress(data []byte, provider ProviderIngress, at time.Time) (TCPIngr
 	default:
 		return absent, false
 	}
-	return TCPIngress{At: at, Source: source.Unmap(), Destination: destination.Unmap(), SourcePort: uint16(tcp.SrcPort), DestinationPort: uint16(tcp.DstPort), DestinationMAC: ethernet.DstMAC.String(), ConnectionID: provider.ConnectionID}, true
+	return TCPIngress{At: at, Source: source.Unmap(), Destination: destination.Unmap(), SourcePort: uint16(tcp.SrcPort), Sequence: tcp.Seq, DestinationPort: uint16(tcp.DstPort), DestinationMAC: ethernet.DstMAC.String(), ConnectionID: provider.ConnectionID}, true
 }
 
 func (capture *ingressCapture) finish() error {

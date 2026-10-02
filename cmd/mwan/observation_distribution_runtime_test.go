@@ -3,14 +3,20 @@
 package main
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -21,60 +27,67 @@ import (
 	"goodkind.io/mwan/internal/observation"
 )
 
+const distributionRuntimeChild = "MWAN_DISTRIBUTION_RUNTIME_CHILD"
+
 func TestDistributionObservationDaemonRuntime(t *testing.T) {
+	if os.Getenv(distributionRuntimeChild) == "1" {
+		runDistributionObservationRuntime(t)
+		return
+	}
 	binary := protocolTestBinary(t)
-	machineID, err := os.ReadFile("/etc/machine-id")
-	if err != nil {
+	command := exec.Command(os.Args[0], "-test.run=^TestDistributionObservationDaemonRuntime$")
+	command.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
+	command.Env = append(os.Environ(), distributionRuntimeChild+"=1", mappedRuntimeBinaryEnv+"="+binary)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("real downstream distribution: %v: %s", err, output)
+	}
+}
+
+func runDistributionObservationRuntime(t *testing.T) {
+	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
 		t.Fatal(err)
 	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	original, err := netns.Get()
+	host, err := netns.Get()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer original.Close()
+	defer host.Close()
 	gateway, err := netns.New()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer gateway.Close()
-	defer setRuntimeNamespace(t, original)
-	bridge := &netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: "observebr"}}
-	if err := netlink.LinkAdd(bridge); err != nil {
+	defer setRuntimeNamespace(t, host)
+	setRuntimeLoopback(t)
+	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "enmgmt0"}}); err != nil {
 		t.Fatal(err)
 	}
-	configureRuntimeLink(t, "observebr", []string{"192.0.2.1/24", "2001:db8:123::1/64"})
+	configureRuntimeLink(t, "enmgmt0", []string{"203.0.113.1/24"})
+	setRuntimeNamespace(t, host)
 	setRuntimeLoopback(t)
-	observer := observation.Endpoint{Kind: observation.EndpointLocal, MachineID: strings.TrimSpace(string(machineID))}
+	transit := distributionGatewayBridge(t, host, gateway, "transit", "lantap", "enmwanbr0", []string{"192.0.2.1/29", "2001:db8:b01:fe::3/64"})
+	configureRuntimeLink(t, "transit", []string{"192.0.2.4/29", "192.0.2.5/29", "2001:db8:b01:fe::4/64", "2001:db8:b01:fe::5/64"})
+	addRuntimeDefault(t, "transit", "192.0.2.1")
+	addRuntimeDefault(t, "transit", "2001:db8:b01:fe::3")
 	var providers []observation.ProviderIngress
-	var requests4, requests6 []observation.CheckSpec
-	for index, addresses := range [][]string{{"192.0.2.2/24", "2001:db8:123::2/64"}, {"192.0.2.3/24", "2001:db8:123::3/64"}} {
-		connectionID, portName := "first", "portfirst"
-		if index == 1 {
-			connectionID, portName = "second", "portsecond"
-		}
-		peer := newRuntimePeer(t, gateway, portName, "provider", nil, addresses, "")
+	for index, name := range []string{"enwebpass0", "enatt0"} {
+		bridge := fmt.Sprintf("provider%d", index)
+		distributionGatewayBridge(t, host, gateway, bridge, fmt.Sprintf("wantap%d", index), name, []string{fmt.Sprintf("10.50.%d.1/24", index+1), fmt.Sprintf("fd50:%d::1/64", index+1)})
+		port := fmt.Sprintf("isptap%d", index)
+		peer := newRuntimePeer(t, host, port, "isp", nil, []string{fmt.Sprintf("10.50.%d.2/24", index+1), fmt.Sprintf("fd50:%d::2/64", index+1), "10.50.9.2/32", "fd50:9::2/128"}, "")
 		defer peer.namespace.Close()
-		port, err := netlink.LinkByName(portName)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := netlink.LinkSetMaster(port, bridge); err != nil {
-			t.Fatal(err)
-		}
 		setRuntimeNamespace(t, peer.namespace)
-		device, err := netlink.LinkByName("provider")
+		link, err := netlink.LinkByName("isp")
 		if err != nil {
 			t.Fatal(err)
 		}
-		mac := device.Attrs().HardwareAddr
-		for _, family := range []observation.Family{observation.FamilyIPv4, observation.FamilyIPv6} {
-			address, network := strings.Split(addresses[0], "/")[0], "tcp4"
-			if family == observation.FamilyIPv6 {
-				address, network = strings.Split(addresses[1], "/")[0], "tcp6"
-			}
-			listener, err := net.Listen(network, net.JoinHostPort(address, "0"))
+		mac := link.Attrs().HardwareAddr
+		addMappedRuntimeRoute(t, "192.0.2.0/29", fmt.Sprintf("10.50.%d.1", index+1), "isp")
+		addMappedRuntimeRoute(t, "2001:db8:b01::/60", fmt.Sprintf("fd50:%d::1", index+1), "isp")
+		for _, target := range []struct{ network, address string }{{"tcp4", "10.50.9.2:45001"}, {"tcp6", "[fd50:9::2]:45002"}} {
+			listener, err := net.Listen(target.network, target.address)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -84,63 +97,228 @@ func TestDistributionObservationDaemonRuntime(t *testing.T) {
 			server.Listener = listener
 			server.Start()
 			defer server.Close()
-			request := observation.CheckSpec{ID: connectionID + string(family), Dimension: observation.DimensionDownstreamApplication, Operation: observation.OperationHTTP, Observer: observer, Family: family, Target: server.URL, TimeoutSeconds: 1, MaxAgeSeconds: 30, ExpectedHTTPStatus: []int{200}, ExpectedBody: "provider-application-ok"}
-			if family == observation.FamilyIPv4 {
-				request.Source = netip.MustParseAddr("192.0.2.1")
-				requests4 = append(requests4, request)
-			} else {
-				request.Source = netip.MustParseAddr("2001:db8:123::1")
-				requests6 = append(requests6, request)
-			}
 		}
+		setRuntimeNamespace(t, host)
+		distributionBridgePort(t, bridge, port, mac)
+		providers = append(providers, observation.ProviderIngress{ConnectionID: name, Bridge: bridge, PortInterface: port, DestinationMAC: mac.String(), Tier: 1, Weight: 1, Eligible: true})
 		setRuntimeNamespace(t, gateway)
-		if err := netlink.NeighSet(&netlink.Neigh{LinkIndex: port.Attrs().Index, Family: unix.AF_BRIDGE, State: unix.NUD_PERMANENT, Flags: unix.NTF_MASTER, HardwareAddr: mac}); err != nil {
+		device, err := netlink.LinkByName(name)
+		if err != nil {
 			t.Fatal(err)
 		}
-		providers = append(providers, observation.ProviderIngress{ConnectionID: connectionID, Bridge: "observebr", PortInterface: portName, DestinationMAC: mac.String(), Tier: 1, Weight: index + 1, Eligible: true})
+		for _, nextHop := range []string{fmt.Sprintf("10.50.%d.2", index+1), fmt.Sprintf("fd50:%d::2", index+1)} {
+			if err := netlink.RouteAdd(&netlink.Route{LinkIndex: device.Attrs().Index, Gw: net.ParseIP(nextHop), Priority: 100 + index, Table: unix.RT_TABLE_MAIN}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		setRuntimeNamespace(t, host)
 	}
+	setRuntimeNamespace(t, gateway)
+	for _, path := range []string{"/proc/sys/net/ipv4/ip_forward", "/proc/sys/net/ipv6/conf/all/forwarding"} {
+		if err := os.WriteFile(path, []byte("1\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	root := t.TempDir()
+	network := filepath.Join(root, "network")
+	networkd := filepath.Join(root, "networkd")
+	for _, directory := range []string{network, networkd} {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	schema, err := filepath.Abs(filepath.Join("..", "..", "internal", "yangpub", "schema"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindStartupDirectory(t, network, "/etc/mwan")
+	bindStartupDirectory(t, networkd, "/etc/systemd/network")
+	bindStartupDirectory(t, schema, "/usr/local/share/wanconfig/yang")
+	writeDistributionRuntimeNetwork(t, network)
+	configuration := filepath.Join(root, "config.toml")
+	if err := os.WriteFile(configuration, []byte("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[wanconfig]\npublish = false\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	binary := os.Getenv(mappedRuntimeBinaryEnv)
+	daemon := startRuntimeDaemon(t, binary, configuration, root, "distribution")
+	defer killOwnedRuntimeDaemon(t, daemon)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		output, err := exec.Command("nft", "list", "chain", "inet", "mwan_steer", "prerouting").CombinedOutput()
+		if err == nil && strings.Contains(string(output), "numgen random") && strings.Contains(string(output), "0x00000001") && strings.Contains(string(output), "0x00000002") {
+			break
+		}
+		assertRuntimeDaemonRunning(t, daemon)
+		if time.Now().After(deadline) {
+			t.Fatalf("random steering unavailable: %v: %s; daemon: %s", err, output, runtimeLogTail(t, daemon, 50))
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	setRuntimeNamespace(t, host)
+	observer := observation.Endpoint{Kind: observation.EndpointLocal, MachineID: "distribution-runtime-host"}
 	for _, family := range []observation.Family{observation.FamilyIPv4, observation.FamilyIPv6} {
-		t.Run(string(family), func(t *testing.T) {
-			runtime.LockOSThread()
-			defer runtime.UnlockOSThread()
-			setRuntimeNamespace(t, gateway)
-			defer setRuntimeNamespace(t, original)
-			requests := requests4
-			if family == observation.FamilyIPv6 {
-				requests = requests6
-			}
-			now := time.Now().UTC()
-			familyProviders := slices.Clone(providers)
-			for index := range familyProviders {
-				familyProviders[index].Family, familyProviders[index].ObservedAt = family, now
-			}
-			plan := &observation.DistributionPlan{HashMode: "source-destination", ActiveTier: 1, ObservedAt: now, MinimumSamplesPerProvider: 1, Providers: familyProviders, Requests: requests}
-			spec := observation.CheckSpec{ID: "provider-distribution", Dimension: observation.DimensionConnectionDistribution, Operation: observation.OperationDistribution, Observer: observer, Family: family, Target: "configured-provider-ingress", TimeoutSeconds: 4, MaxAgeSeconds: 30, DistributionSamples: 2, DistributionPlan: plan}
-			result := runObservationProcess(t, binary, spec)
-			if !observation.RequiredPassed(spec, result, time.Now()) {
-				t.Fatalf("actual HTTP and provider ingress did not pass: %+v", result)
-			}
-			for _, share := range result.DistributionProviders {
-				if share.Samples != 1 {
-					t.Fatalf("wrong measured provider count: %+v", share)
-				}
-			}
-			plan.HashMode = "random"
-			plan.Requests = requests[:1]
-			missingProvider := runObservationProcess(t, binary, spec)
-			if missingProvider.Availability != observation.AvailabilityComplete || missingProvider.Outcome != observation.OutcomeFail || observation.RequiredPassed(spec, missingProvider, time.Now()) {
-				t.Fatalf("omitted eligible provider did not fail: %+v", missingProvider)
-			}
-			plan.HashMode = "source"
-			insufficientDiversity := runObservationProcess(t, binary, spec)
-			if insufficientDiversity.Availability != observation.AvailabilityMissing || insufficientDiversity.Outcome != observation.OutcomeUnknown {
-				t.Fatalf("insufficient source diversity became a balancing failure: %+v", insufficientDiversity)
-			}
-			plan.Providers[0].DestinationMAC = "02:00:00:00:00:99"
-			unverified := runObservationProcess(t, binary, spec)
-			if unverified.Availability != observation.AvailabilityError || unverified.Outcome != observation.OutcomeUnknown {
-				t.Fatalf("unverified kernel mapping became measured distribution: %+v", unverified)
-			}
-		})
+		now := time.Now().UTC()
+		nextHop, target, sources := "192.0.2.1", "http://10.50.9.2:45001", []string{"192.0.2.4", "192.0.2.5"}
+		if family == observation.FamilyIPv6 {
+			nextHop, target, sources = "2001:db8:b01:fe::3", "http://[fd50:9::2]:45002", []string{"2001:db8:b01:fe::4", "2001:db8:b01:fe::5"}
+		}
+		var requests []observation.CheckSpec
+		for index, source := range sources {
+			requests = append(requests, observation.CheckSpec{ID: fmt.Sprintf("guest%d-%s", index, family), Dimension: observation.DimensionDownstreamApplication, Operation: observation.OperationHTTP, Observer: observer, Router: observation.RouterPrimary, Source: netip.MustParseAddr(source), ExpectedNextHop: netip.MustParseAddr(nextHop), Family: family, Target: target, TimeoutSeconds: 1, MaxAgeSeconds: 30, ExpectedHTTPStatus: []int{200}, ExpectedBody: "provider-application-ok"})
+		}
+		for index := range providers {
+			providers[index].Family, providers[index].ObservedAt = family, now
+		}
+		transit.Family, transit.ObservedAt = family, now
+		calibration := &observation.DistributionCalibration{HashMode: "random", ActiveTier: 1, Samples: 40, Providers: []observation.CalibratedProvider{{ConnectionID: "enwebpass0", Tier: 1, Weight: 1, MinSamples: 13, MaxSamples: 27}, {ConnectionID: "enatt0", Tier: 1, Weight: 1, MinSamples: 13, MaxSamples: 27}}}
+		plan := &observation.DistributionPlan{HashMode: "random", ActiveTier: 1, ObservedAt: now, MinimumSamplesPerProvider: 1, Providers: providers, Transit: []observation.ProviderIngress{transit}, Calibration: calibration, Requests: requests}
+		spec := observation.CheckSpec{ID: "real-distribution", Dimension: observation.DimensionConnectionDistribution, Operation: observation.OperationDistribution, Observer: observer, Family: family, Target: target, TimeoutSeconds: 4, MaxAgeSeconds: 30, DistributionSamples: 40, DistributionPlan: plan}
+		paths := []observation.PathIdentity{{Interface: "transit", NextHop: netip.MustParseAddr(nextHop), Router: observation.RouterPrimary, ObservedAt: now}}
+		result := runDistributionRuntimeProcess(t, binary, spec, paths)
+		if result.Availability != observation.AvailabilityComplete {
+			t.Fatalf("real steering measurement missing: %+v", result)
+		}
+		withinBounds := true
+		for _, share := range result.DistributionProviders {
+			withinBounds = withinBounds && share.Samples >= 13 && share.Samples <= 27
+		}
+		if observation.RequiredPassed(spec, result, time.Now()) != withinBounds || (result.Outcome == observation.OutcomePass) != withinBounds {
+			t.Fatalf("calibration verdict disagrees with actual counts: %+v", result)
+		}
+		plan.Providers[0].Weight = 2
+		missing := runDistributionRuntimeProcess(t, binary, spec, paths)
+		if missing.Availability != observation.AvailabilityMissing || missing.Outcome != observation.OutcomeUnknown {
+			t.Fatalf("changed weight reused calibration: %+v", missing)
+		}
+		plan.Providers[0].Weight = 1
+		plan.Calibration = nil
+		missing = runDistributionRuntimeProcess(t, binary, spec, paths)
+		if missing.Availability != observation.AvailabilityMissing || missing.Outcome != observation.OutcomeUnknown {
+			t.Fatalf("missing calibration reported health: %+v", missing)
+		}
 	}
+}
+
+func distributionGatewayBridge(t *testing.T, host, gateway netns.NsHandle, bridgeName, portName, gatewayName string, addresses []string) observation.ProviderIngress {
+	t.Helper()
+	setRuntimeNamespace(t, host)
+	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: bridgeName}}); err != nil {
+		t.Fatal(err)
+	}
+	configureRuntimeLink(t, bridgeName, nil)
+	if err := netlink.LinkAdd(&netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: portName}, PeerName: gatewayName, PeerNamespace: netlink.NsFd(gateway)}); err != nil {
+		t.Fatal(err)
+	}
+	configureRuntimeLink(t, portName, nil)
+	setRuntimeNamespace(t, gateway)
+	configureRuntimeLink(t, gatewayName, addresses)
+	link, err := netlink.LinkByName(gatewayName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mac := link.Attrs().HardwareAddr
+	setRuntimeNamespace(t, host)
+	distributionBridgePort(t, bridgeName, portName, mac)
+	return observation.ProviderIngress{ConnectionID: gatewayName, Bridge: bridgeName, PortInterface: portName, DestinationMAC: mac.String()}
+}
+
+func distributionBridgePort(t *testing.T, bridgeName, portName string, mac net.HardwareAddr) {
+	t.Helper()
+	bridge, err := netlink.LinkByName(bridgeName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := netlink.LinkByName(portName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.LinkSetMaster(port, bridge); err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.NeighSet(&netlink.Neigh{LinkIndex: port.Attrs().Index, Family: unix.AF_BRIDGE, State: unix.NUD_PERMANENT, Flags: unix.NTF_MASTER, HardwareAddr: mac}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeDistributionRuntimeNetwork(t *testing.T, directory string) {
+	t.Helper()
+	writeSelectionRuntimeNetwork(t, directory, true)
+	path := filepath.Join(directory, "network.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]map[string]json.RawMessage
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	interfaces := document["ietf-interfaces:interfaces"]
+	var group map[string]json.RawMessage
+	if err := json.Unmarshal(interfaces["goodkind-mwan-steering:steering-group"], &group); err != nil {
+		t.Fatal(err)
+	}
+	group["hash-mode"] = json.RawMessage(`"random"`)
+	interfaces["goodkind-mwan-steering:steering-group"], err = json.Marshal(group)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var entries []map[string]json.RawMessage
+	if err := json.Unmarshal(interfaces["interface"], &entries); err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if string(entry["name"]) == `"enwebpass0"` || string(entry["name"]) == `"enatt0"` {
+			entry["goodkind-mwan-steering:steering"] = json.RawMessage(`{"tier":1,"weight":1}`)
+		}
+	}
+	interfaces["interface"], err = json.Marshal(entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err = json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func runDistributionRuntimeProcess(t *testing.T, binary string, spec observation.CheckSpec, paths []observation.PathIdentity) observation.Result {
+	t.Helper()
+	request, err := json.Marshal(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identities, err := json.Marshal(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	directory := t.TempDir()
+	machineID := filepath.Join(directory, "machine-id")
+	if err := os.WriteFile(machineID, []byte(spec.Observer.MachineID), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	settings, err := json.Marshal(observation.RuntimeConfig{MachineIDPath: machineID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimePath := filepath.Join(directory, "runtime.json")
+	if err := os.WriteFile(runtimePath, settings, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.CommandContext(ctx, binary, "observe", "--check", string(request), "--paths", string(identities), "--runtime-settings", runtimePath)
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+	output, err := command.Output()
+	if err != nil {
+		t.Fatalf("downstream observation command: %v: %s", err, stderr.String())
+	}
+	var result observation.Result
+	if err := json.Unmarshal(output, &result); err != nil {
+		t.Fatal(err)
+	}
+	return result
 }

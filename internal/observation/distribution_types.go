@@ -20,13 +20,30 @@ type ProviderIngress struct {
 
 // DistributionPlan requires current provider policy and explicit downstream probes.
 type DistributionPlan struct {
-	HashMode                  string            `json:"hash_mode"`
-	ActiveTier                uint8             `json:"active_tier"`
-	ObservedAt                time.Time         `json:"observed_at"`
-	RoutingGeneration         uint64            `json:"routing_generation"`
-	MinimumSamplesPerProvider int               `json:"minimum_samples_per_provider"`
-	Providers                 []ProviderIngress `json:"providers"`
-	Requests                  []CheckSpec       `json:"requests"`
+	HashMode                  string                   `json:"hash_mode"`
+	ActiveTier                uint8                    `json:"active_tier"`
+	ObservedAt                time.Time                `json:"observed_at"`
+	RoutingGeneration         uint64                   `json:"routing_generation"`
+	MinimumSamplesPerProvider int                      `json:"minimum_samples_per_provider"`
+	Providers                 []ProviderIngress        `json:"providers"`
+	Transit                   []ProviderIngress        `json:"transit"`
+	Calibration               *DistributionCalibration `json:"calibration"`
+	Requests                  []CheckSpec              `json:"requests"`
+}
+
+type DistributionCalibration struct {
+	HashMode   string               `json:"hash_mode"`
+	ActiveTier uint8                `json:"active_tier"`
+	Samples    int                  `json:"samples"`
+	Providers  []CalibratedProvider `json:"providers"`
+}
+
+type CalibratedProvider struct {
+	ConnectionID string `json:"connection_id"`
+	Tier         uint8  `json:"tier"`
+	Weight       int    `json:"weight"`
+	MinSamples   int    `json:"min_samples"`
+	MaxSamples   int    `json:"max_samples"`
 }
 
 // TCPIngress records an actual initial TCP packet addressed to a verified provider endpoint.
@@ -35,6 +52,7 @@ type TCPIngress struct {
 	Source          netip.Addr `json:"source"`
 	Destination     netip.Addr `json:"destination"`
 	SourcePort      uint16     `json:"source_port"`
+	Sequence        uint32     `json:"sequence"`
 	DestinationPort uint16     `json:"destination_port"`
 	DestinationMAC  string     `json:"destination_mac"`
 	ConnectionID    string     `json:"connection_id"`

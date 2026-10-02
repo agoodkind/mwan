@@ -170,6 +170,7 @@ type DistributionSample struct {
 	Observer     Endpoint     `json:"observer"`
 	Path         Path         `json:"path"`
 	Ingress      TCPIngress   `json:"ingress"`
+	Transit      TCPIngress   `json:"transit"`
 	Availability Availability `json:"availability"`
 	Outcome      Outcome      `json:"outcome"`
 	PublicIP     netip.Addr   `json:"public_ip"`
@@ -200,6 +201,7 @@ type Result struct {
 	Distribution          []DistributionSample `json:"distribution,omitempty"`
 	DistributionProviders []ProviderShare      `json:"distribution_providers,omitempty"`
 	DistributionCaptures  []CaptureReady       `json:"distribution_captures,omitempty"`
+	TransitCaptures       []CaptureReady       `json:"transit_captures,omitempty"`
 	CloudflarePool        *PoolHealth          `json:"cloudflare_pool,omitempty"`
 }
 
