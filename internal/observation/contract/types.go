@@ -2,11 +2,55 @@
 package contract
 
 import (
+	"encoding/json"
+	"fmt"
+	"log/slog"
 	"net/netip"
 	"time"
 
 	"github.com/cloudflare/cloudflare-go/v7/load_balancers"
 )
+
+// CloneResult copies the SDK's nested pool metadata and distribution evidence.
+func CloneResult(result Result) (Result, error) {
+	data, err := json.Marshal(result)
+	if err != nil {
+		slog.Warn("observation result could not be encoded", "check_id", result.CheckID, "err", err)
+		return Result{}, fmt.Errorf("encode observation copy: %w", err)
+	}
+	var copied Result
+	if err := json.Unmarshal(data, &copied); err != nil {
+		slog.Warn("observation result could not be copied", "check_id", result.CheckID, "err", err)
+		return copied, fmt.Errorf("decode observation copy: %w", err)
+	}
+	return copied, nil
+}
+
+// CloneCheck copies nested check requirements before a consumer can modify them.
+func CloneCheck(check CheckSpec) (CheckSpec, error) {
+	data, err := json.Marshal(check)
+	if err != nil {
+		slog.Warn("observation check could not be encoded", "check_id", check.ID, "err", err)
+		return CheckSpec{}, fmt.Errorf("encode check copy: %w", err)
+	}
+	var copied CheckSpec
+	if err := json.Unmarshal(data, &copied); err != nil {
+		slog.Warn("observation check could not be copied", "check_id", check.ID, "err", err)
+		return copied, fmt.Errorf("decode check copy: %w", err)
+	}
+	return copied, nil
+}
+
+// FreshResult changes the served verdict without rewriting the completed observation.
+func FreshResult(check CheckSpec, result Result, now time.Time) Result {
+	age := now.Sub(result.ObservedAt)
+	if result.ObservedAt.IsZero() {
+		result.Availability, result.Outcome, result.Reason = AvailabilityMissing, OutcomeUnknown, "observation has no timestamp"
+	} else if age < 0 || check.MaxAgeSeconds <= 0 || age > time.Duration(check.MaxAgeSeconds)*time.Second {
+		result.Availability, result.Outcome, result.Reason = AvailabilityStale, OutcomeUnknown, "observation freshness expired"
+	}
+	return result
+}
 
 // Operation selects the production probe or provider observation.
 type Operation string

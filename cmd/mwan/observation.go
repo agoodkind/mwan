@@ -13,7 +13,9 @@ import (
 	"strings"
 	"syscall"
 
+	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/logging"
+	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/observation"
 )
 
@@ -24,6 +26,9 @@ func runObservation(args []string) int {
 	checkJSON := flags.String("check", "", "CheckSpec JSON; empty reads standard input")
 	pathsJSON := flags.String("paths", "[]", "current typed path identities as JSON")
 	runtimeFile := flags.String("runtime-settings", "", "nonsecret RuntimeConfig JSON file")
+	continuous := flags.Bool("continuous", false, "observe scheduled checks until cancellation")
+	settingsFile := flags.String("settings", "", "strict recurring observation settings JSON")
+	configFile := flags.String("config", "", "existing TOML configuration for notifications")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -31,6 +36,27 @@ func runObservation(args []string) int {
 		fmt.Fprintln(os.Stderr, "observe accepts no positional arguments")
 		return 2
 	}
+	if *continuous {
+		pathsSpecified := false
+		flags.Visit(func(value *flag.Flag) {
+			if value.Name == "paths" {
+				pathsSpecified = true
+			}
+		})
+		if *checkJSON != "" || *runtimeFile != "" || pathsSpecified {
+			fmt.Fprintln(os.Stderr, "continuous observations use --settings")
+			return 2
+		}
+		return runContinuousObservation(*settingsFile, *configFile)
+	}
+	if *settingsFile != "" || *configFile != "" {
+		fmt.Fprintln(os.Stderr, "--settings and --config require --continuous")
+		return 2
+	}
+	return runSingleObservation(flags, checkJSON, pathsJSON, runtimeFile)
+}
+
+func runSingleObservation(flags *flag.FlagSet, checkJSON, pathsJSON, runtimeFile *string) int {
 	if len(*checkJSON) > 64*1024 || len(*pathsJSON) > 64*1024 {
 		fmt.Fprintln(os.Stderr, "observe JSON input exceeds 64 KiB")
 		return 2
@@ -85,6 +111,49 @@ func runObservation(args []string) int {
 	result := executor.Run(ctx, spec)
 	if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
 		fmt.Fprintln(os.Stderr, "observe result output failed")
+		return 1
+	}
+	return 0
+}
+
+func runContinuousObservation(settingsPath, configPath string) int {
+	settings, err := observation.LoadContinuousSettings(settingsPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	var arguments []string
+	if configPath != "" {
+		arguments = []string{"--config", configPath}
+	}
+	cfg, _, err := config.LoadArguments(arguments)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	log, closer := logging.New(logging.Config{Handlers: []slog.Handler{slog.NewJSONHandler(os.Stderr, nil)}})
+	defer func() { _ = closer.Close() }()
+	notifier, err := notify.New(cfg, log, "mwan-observe")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+	encoder := json.NewEncoder(os.Stdout)
+	summary, runError := observation.RunContinuous(ctx, settings, notifier, log, func(_ observation.CheckSpec, result observation.Result) error {
+		return encoder.Encode(struct {
+			Result observation.Result `json:"result"`
+		}{Result: result})
+	})
+	if err := encoder.Encode(struct {
+		Summary observation.Summary `json:"summary"`
+	}{Summary: summary}); err != nil {
+		fmt.Fprintln(os.Stderr, "observe terminal output failed")
+		return 1
+	}
+	if runError != nil {
+		fmt.Fprintln(os.Stderr, runError)
 		return 1
 	}
 	return 0
