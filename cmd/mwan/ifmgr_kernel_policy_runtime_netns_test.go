@@ -88,6 +88,7 @@ func runKernelPolicyDaemonRuntime(t *testing.T) {
 	}
 	configureRuntimeLink(t, "peer521", []string{"10.52.1.2/24"})
 	addRuntimeRoute(t, gateway, source.namespace, "192.0.2.0/29", "10.52.1.1")
+	addRuntimeRoute(t, gateway, lan.namespace, "10.52.1.0/24", "192.0.2.1")
 	setRuntimeNamespace(t, gateway)
 	binary := os.Getenv(kernelPolicyBinaryEnv)
 	writeKernelPolicyNetwork(t, networkDir, nil, false)
