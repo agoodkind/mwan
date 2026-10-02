@@ -91,6 +91,7 @@ func runLegacyNPTPreparationUpgrade(t *testing.T) {
 	addMappedRuntimeRoute(t, "10.20.0.0/24", "192.0.2.1", "lan-host")
 	addMappedRuntimeRoute(t, "fd20::/64", "2001:db8:b01:fe::3", "lan-host")
 	setRuntimeNamespace(t, gateway)
+	addRuntimeDefault(t, "enwebpass0", "10.20.0.1")
 	addRuntimeDefault(t, "enwebpass0", "fd20::2")
 	addMappedRuntimeRoute(t, "2001:db8:b01::/60", "", "enmwanbr0")
 	internalLink, err := netlink.LinkByName("enmwanbr0")
