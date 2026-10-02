@@ -7026,6 +7026,25 @@ ticket assigns live transfer to MWAN-519. The separate selection fixture
 failure remains under MWAN-522 and does not invalidate MWAN-398's completed
 acceptance. MWAN-522 and production MWAN-520 remain In Progress.
 
+## Reconcile acquisition and restart ticket completion
+
+MWAN-517 and MWAN-518 are Done with actual state and description readback
+verified. Independent review matched MWAN-517's router-advertisement,
+preferred/valid lifetime, separate IA_NA/IA_PD, duplicate-address detection,
+IPv4 preservation and packet requirements to passing released cases.
+MWAN-518's five public recovery cases passed, including validation, expiry,
+rejection and withdrawal. Installed-service recovery also passed through
+captured postboot Rebind/Reply and renewal with ready assignments. Both
+later restart windows had complete downstream sequences, and the exact
+failure-history records survived restart.
+
+The separate MWAN-522 aggregate correction does not invalidate these
+completed requirements. Ticket descriptions now distinguish current
+acceptance from production promotion and final retirement. Their original
+normative requirements are preserved. MWAN-517's obsolete branch links now
+reference the merged main specifications and plans. MWAN-305 remains active;
+production MWAN-520 and the remaining interface phases remain unfinished.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
