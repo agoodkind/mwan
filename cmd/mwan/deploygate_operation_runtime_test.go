@@ -16,10 +16,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/google/renameio/v2"
 	"goodkind.io/mwan/internal/deployoperation"
 	"goodkind.io/mwan/internal/observation"
 )
@@ -56,6 +58,65 @@ func TestDeployOperationWatchRuntime(t *testing.T) {
 		t.Fatalf("lease accepted after actual watch exit: %s", output)
 	}
 	t.Run("expected-interruption", deployWatchExpectedInterruption)
+	t.Run("commit-during-observation", deployWatchCommitDuringObservation)
+}
+
+func deployWatchCommitDuringObservation(t *testing.T) {
+	t.Helper()
+	var blockNext atomic.Bool
+	started := make(chan struct{})
+	resume := make(chan struct{})
+	var release sync.Once
+	binary, runtimePath, record, _ := startDeployWatchFixtureWithResponse(t, nil, func(id string) {
+		if id == "ipv4-inbound_application" && blockNext.CompareAndSwap(true, false) {
+			close(started)
+			<-resume
+		}
+	})
+	t.Cleanup(func() { release.Do(func() { close(resume) }) })
+	blockNext.Store(true)
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("watch did not start the blocked application observation")
+	}
+	args := []string{"deploy-gate", "status", record.OperationID, record.Generation, "--config", runtimePath}
+	committed := deployWatchStatus(t, binary, args).Record
+	committed.Status = deployoperation.Committed
+	data, err := json.Marshal(committed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recordPath := filepath.Join(filepath.Dir(runtimePath), "rollback.operation")
+	if err := renameio.WriteFile(recordPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	release.Do(func() { close(resume) })
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		output, err := exec.Command("systemctl", "show", record.WatchUnit, "--property=ActiveState", "--property=Result", "--property=ExecMainStatus").CombinedOutput()
+		if err != nil {
+			t.Fatalf("read actual watch exit: %v: %s", err, output)
+		}
+		if strings.Contains(string(output), "ActiveState=inactive\n") {
+			if !strings.Contains(string(output), "Result=success\n") || !strings.Contains(string(output), "ExecMainStatus=0\n") {
+				t.Fatalf("committed watch did not exit successfully: %s", output)
+			}
+			after, err := os.ReadFile(recordPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(data, after) {
+				t.Fatalf("watch changed the committed record: before=%s after=%s", data, after)
+			}
+			return
+		}
+		if strings.Contains(string(output), "ActiveState=failed\n") {
+			t.Fatalf("committed watch failed: %s", output)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("committed watch did not exit after the observation completed")
 }
 
 func deployWatchExpectedInterruption(t *testing.T) {
@@ -128,6 +189,11 @@ func deployWatchExpectedInterruption(t *testing.T) {
 
 func startDeployWatchFixture(t *testing.T, interruptions []deployoperation.ExpectedInterruption) (string, string, deployoperation.Record, map[string]*atomic.Bool) {
 	t.Helper()
+	return startDeployWatchFixtureWithResponse(t, interruptions, nil)
+}
+
+func startDeployWatchFixtureWithResponse(t *testing.T, interruptions []deployoperation.ExpectedInterruption, beforeResponse func(string)) (string, string, deployoperation.Record, map[string]*atomic.Bool) {
+	t.Helper()
 	if os.Getenv("MWAN_RESOLVER_SYSTEMD_TEST") != "1" {
 		t.Skip("requires the existing dedicated systemd container")
 	}
@@ -145,7 +211,7 @@ func startDeployWatchFixture(t *testing.T, interruptions []deployoperation.Expec
 		}
 	}
 	identity := deployWatchFixtureIdentity(t, binary, networkPath, runtimePath)
-	checks, failed := deployWatchApplicationChecks(t, identity.MachineID)
+	checks, failed := deployWatchApplicationChecks(t, identity.MachineID, beforeResponse)
 	record := deployoperation.Record{
 		Manifest: deployoperation.Manifest{
 			OperationID: "watch-runtime", Generation: rand.Text(), VMID: "999999", Snapshot: "unexecuted-watch-fixture",
@@ -185,7 +251,7 @@ func startDeployWatchFixture(t *testing.T, interruptions []deployoperation.Expec
 	return binary, runtimePath, record, failed
 }
 
-func deployWatchApplicationChecks(t *testing.T, machineID string) ([]observation.CheckSpec, map[string]*atomic.Bool) {
+func deployWatchApplicationChecks(t *testing.T, machineID string, beforeResponse func(string)) ([]observation.CheckSpec, map[string]*atomic.Bool) {
 	t.Helper()
 	var checks []observation.CheckSpec
 	failed := make(map[string]*atomic.Bool)
@@ -216,6 +282,9 @@ func deployWatchApplicationChecks(t *testing.T, machineID string) ([]observation
 				failure := &atomic.Bool{}
 				failed[id] = failure
 				mux.HandleFunc("/"+id, func(writer http.ResponseWriter, _ *http.Request) {
+					if beforeResponse != nil {
+						beforeResponse(id)
+					}
 					if failure.Load() {
 						writer.WriteHeader(http.StatusServiceUnavailable)
 						return

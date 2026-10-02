@@ -125,8 +125,12 @@ func (engine Engine) Watch(ctx context.Context, operationID, generation string) 
 			return engine.Recover(ctx, operationID, generation, "operation deadline or recovery state requires snapshot restoration")
 		}
 		results := engine.check(ctx, record.Manifest, record.RequiredChecks)
-		if err := engine.Store.observe(ctx, operationID, generation, results); err != nil {
+		status, err := engine.Store.observe(ctx, operationID, generation, results)
+		if err != nil {
 			return err
+		}
+		if status == Committed || status == Recovered {
+			return nil
 		}
 		now := engine.Store.Clock.Now()
 		if !checksPassed(record.RequiredChecks, results, now) {
@@ -135,6 +139,9 @@ func (engine Engine) Watch(ctx context.Context, operationID, generation string) 
 		current, err := engine.exact(ctx, operationID, generation)
 		if err != nil {
 			return err
+		}
+		if current.Status == Committed || current.Status == Recovered {
+			return nil
 		}
 		if watchObservationsAllowed(record, current, results, engine.Store.Clock.Now()) {
 			failures = 0
@@ -290,8 +297,12 @@ func (engine Engine) awaitRestored(ctx context.Context, record Record) (Identity
 		identity, identityErr := ReadIdentity(ctx, engine.Operations, record.VMID, record.Paths)
 		if identityErr == nil && identity.verifyRestored(record.Baseline) == nil {
 			results := engine.check(ctx, record.Manifest, record.RestoredRequiredChecks)
-			if err := engine.Store.observe(ctx, record.OperationID, record.Generation, results); err != nil {
+			status, err := engine.Store.observe(ctx, record.OperationID, record.Generation, results)
+			if err != nil {
 				return Identity{}, err
+			}
+			if status != Armed && status != Recovering {
+				return Identity{}, fmt.Errorf("terminal deploy operation rejects restoration observations")
 			}
 			if checksPassed(record.RestoredRequiredChecks, results, engine.Store.Clock.Now()) {
 				return identity, nil

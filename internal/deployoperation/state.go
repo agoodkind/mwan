@@ -282,15 +282,29 @@ func checksPassed(checks []observation.CheckSpec, results []observation.Result, 
 	return true
 }
 
-func (store Store) observe(ctx context.Context, operationID, generation string, results []observation.Result) error {
-	return store.change(ctx, operationID, generation, func(record *Record) error {
+func (store Store) observe(ctx context.Context, operationID, generation string, results []observation.Result) (Status, error) {
+	var status Status
+	err := store.locked(ctx, func() error {
+		record, err := store.read()
+		if err != nil {
+			return err
+		}
+		if record.OperationID != operationID || record.Generation != generation {
+			return fmt.Errorf("deploy operation identity does not match")
+		}
+		status = record.Status
+		if status == Committed || status == Recovered {
+			return nil
+		}
 		if record.Status != Armed && record.Status != Recovering {
 			return fmt.Errorf("terminal deploy operation rejects observations")
 		}
 		record.Results = results
 		record.ObservedAt = store.Clock.Now().UTC()
-		return nil
+		record.UpdatedAt = store.Clock.Now().UTC()
+		return store.write(record)
 	})
+	return status, err
 }
 
 func (store Store) change(ctx context.Context, operationID, generation string, update func(*Record) error) error {
