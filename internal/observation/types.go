@@ -173,6 +173,7 @@ type DistributionSample struct {
 	Transit      TCPIngress   `json:"transit"`
 	Availability Availability `json:"availability"`
 	Outcome      Outcome      `json:"outcome"`
+	Reason       string       `json:"reason,omitempty"`
 	PublicIP     netip.Addr   `json:"public_ip"`
 	ConnectionID string       `json:"connection_id"`
 	HTTPStatus   int          `json:"http_status"`

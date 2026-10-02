@@ -160,6 +160,7 @@ func (executor *Executor) distributionRequests(ctx context.Context, spec CheckSp
 		sample.StartedAt, sample.ResponseBody = started, reply.ResponseBody
 		sample.At, sample.CheckID, sample.Observer, sample.Path = reply.ObservedAt, reply.CheckID, reply.Observer, reply.Path
 		sample.Availability, sample.Outcome, sample.HTTPStatus = reply.Availability, reply.Outcome, reply.HTTPStatus
+		sample.Reason = reply.Reason
 		result.Distribution = append(result.Distribution, sample)
 		if !RequiredPassed(request, reply, executor.config.Clock.Now()) {
 			return errors.New("distribution request lacks an expected application reply or required path")

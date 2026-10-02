@@ -142,6 +142,20 @@ func runDistributionObservationRuntime(t *testing.T) {
 	binary := os.Getenv(mappedRuntimeBinaryEnv)
 	daemon := startRuntimeDaemon(t, binary, configuration, root, "distribution")
 	defer killOwnedRuntimeDaemon(t, daemon)
+	defer func() {
+		if !t.Failed() {
+			return
+		}
+		setRuntimeNamespace(t, gateway)
+		for _, arguments := range [][]string{{"nft", "list", "ruleset"}, {"ip", "-4", "route", "show", "table", "all"}, {"ip", "-6", "route", "show", "table", "all"}, {"ip", "rule", "show"}} {
+			output, err := exec.Command(arguments[0], arguments[1:]...).CombinedOutput()
+			t.Logf("gateway %v: %v: %s", arguments, err, output)
+		}
+		t.Logf("gateway daemon: %s", runtimeLogTail(t, daemon, 50))
+		setRuntimeNamespace(t, host)
+		output, err := exec.Command("ip", "-4", "route", "get", "10.50.9.2", "from", "192.0.2.4").CombinedOutput()
+		t.Logf("downstream route: %v: %s", err, output)
+	}()
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		output, err := exec.Command("nft", "list", "chain", "inet", "mwan_steer", "prerouting").CombinedOutput()
@@ -339,6 +353,9 @@ func runDistributionRuntimeProcess(t *testing.T, binary string, spec observation
 	var result observation.Result
 	if err := json.Unmarshal(output, &result); err != nil {
 		t.Fatal(err)
+	}
+	if result.Availability != observation.AvailabilityComplete {
+		t.Logf("observation stderr: %s", stderr.String())
 	}
 	return result
 }
