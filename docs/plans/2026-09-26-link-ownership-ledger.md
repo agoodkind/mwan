@@ -9209,6 +9209,29 @@ B4 6998/6996 and B6 6998/6982. These totals include earlier preparation and
 reboot windows and do not measure one cutover's interruption. The lane's
 catalog records the new bounded producers and retained per-phase logs.
 
+The forward controller exited one at 20:16:29 UTC after a delegated SSH
+checkpoint reported connection reset by the suburban hypervisor. The play
+reported 1424 successful tasks, 183 changes, one unreachable result and zero
+failed tasks. It stopped before full reboot and commitment. This deployment
+already includes merged Configs PR 643 and verified guest preparation revision
+1. No timing comparison establishes a deployment speed improvement.
+
+Fresh hypervisor SSH commands succeeded after the reset. Its SSH journal
+recorded accepted sessions before and after the failure but no server restart
+or matching reset explanation. Effective MaxStartups was 10:30:100; no
+measurement proves that threshold was exceeded. The reset cause remains
+unknown. Do not change infrastructure based on this hypothesis.
+
+The exact operation remained armed with its registered watch active, PID
+2291544 and invocation b9753067a3be43c1a61eb9240b87728c. Its networkd-reload
+lease N37XQYKUWYXVGZQE2LLOBSXW6W expires at 20:32:08 UTC. All eight independent
+operation application checks passed between 20:17:13 and 20:17:29 UTC.
+Root requested recovery through the exact public operation and generation at
+20:18:22 UTC. Recovery controller 6530 writes only to Chaos Storage. Recovery
+must respect the outstanding lease. No competing deployment, cohort or
+production operation is authorized during recovery. The route and guest
+observers remain active. Recovery completion is pending.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
