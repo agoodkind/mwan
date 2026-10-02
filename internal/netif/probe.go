@@ -2,7 +2,6 @@ package netif
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -56,19 +55,28 @@ func NewV6Probe(iface string, log *slog.Logger) *V6Probe {
 func (p *V6Probe) PingICMP6(
 	ctx context.Context, target netip.Addr, timeout time.Duration,
 ) (time.Duration, error) {
+	result, err := p.pingICMP6Source(ctx, netip.Addr{}, target, timeout, false)
+	return result.RoundTripTime, err
+}
+
+func (p *V6Probe) pingICMP6Source(ctx context.Context, source, target netip.Addr, timeout time.Duration, observe bool) (PingProbeResult, error) {
 	op := p.log.With("op", "PingICMP6",
 		"target", target.String(), "timeout_ms", timeout.Milliseconds())
 	op.DebugContext(ctx, "v6probe: PingICMP6 entry")
 
 	if !target.Is6() {
-		return 0, fmt.Errorf("PingICMP6: target %q is not IPv6", target)
+		return PingProbeResult{}, fmt.Errorf("PingICMP6: target %q is not IPv6", target)
 	}
 
-	conn, err := icmp.ListenPacket("ip6:ipv6-icmp", "::")
+	listenAddress := "::"
+	if source.IsValid() {
+		listenAddress = source.String()
+	}
+	conn, err := icmp.ListenPacket("ip6:ipv6-icmp", listenAddress)
 	if err != nil {
 		p.log.WarnContext(ctx, "v6probe: ListenPacket failed",
 			"op", "PingICMP6", "target", target.String(), "timeout_ms", timeout.Milliseconds(), "err", err)
-		return 0, fmt.Errorf("ListenPacket: %w", err)
+		return PingProbeResult{}, fmt.Errorf("ListenPacket: %w", err)
 	}
 	defer conn.Close()
 
@@ -80,11 +88,16 @@ func (p *V6Probe) PingICMP6(
 		// bind fails rather than run an unpinned probe that could report a dead
 		// WAN as healthy.
 		if err := p.bindProbeToDevice(ctx, conn); err != nil {
-			return 0, fmt.Errorf("PingICMP6: %w", err)
+			return PingProbeResult{}, fmt.Errorf("PingICMP6: %w", err)
 		}
 		p.setMulticastInterface(ctx, op, conn)
 	}
 
+	if observe {
+		if err := conn.IPv6PacketConn().SetControlMessage(ipv6.FlagDst, true); err != nil {
+			return PingProbeResult{}, fmt.Errorf("Ping6 source metadata: %w", err)
+		}
+	}
 	// Build Echo Request.
 	startTime := p.clock.Now()
 	msg, id, seq := newEchoRequest(startTime)
@@ -92,21 +105,21 @@ func (p *V6Probe) PingICMP6(
 	if err != nil {
 		p.log.WarnContext(ctx, "v6probe: marshal echo failed",
 			"op", "PingICMP6", "target", target.String(), "timeout_ms", timeout.Milliseconds(), "err", err)
-		return 0, fmt.Errorf("marshal echo: %w", err)
+		return PingProbeResult{}, fmt.Errorf("marshal echo: %w", err)
 	}
 
 	deadline := startTime.Add(timeout)
 	if err := conn.SetReadDeadline(deadline); err != nil {
 		p.log.WarnContext(ctx, "v6probe: SetReadDeadline failed",
 			"op", "PingICMP6", "target", target.String(), "timeout_ms", timeout.Milliseconds(), "err", err)
-		return 0, fmt.Errorf("SetReadDeadline: %w", err)
+		return PingProbeResult{}, fmt.Errorf("SetReadDeadline: %w", err)
 	}
 
 	dst := &net.IPAddr{IP: target.AsSlice()}
 	if _, err := conn.WriteTo(wb, dst); err != nil {
 		p.log.WarnContext(ctx, "v6probe: WriteTo failed",
 			"op", "PingICMP6", "target", target.String(), "timeout_ms", timeout.Milliseconds(), "err", err)
-		return 0, fmt.Errorf("WriteTo(%s): %w", target, err)
+		return PingProbeResult{}, fmt.Errorf("WriteTo(%s): %w", target, err)
 	}
 	op.DebugContext(ctx, "v6probe: echo sent", "id", id, "seq", seq)
 
@@ -117,38 +130,45 @@ func (p *V6Probe) PingICMP6(
 			ctxErr := ctx.Err()
 			p.log.WarnContext(ctx, "v6probe: ctx cancelled while waiting for reply",
 				"op", "PingICMP6", "target", target.String(), "timeout_ms", timeout.Milliseconds(), "err", ctxErr)
-			return 0, fmt.Errorf("PingICMP6: %w", ctxErr)
+			return PingProbeResult{}, fmt.Errorf("PingICMP6: %w", ctxErr)
 		default:
 		}
-		n, peer, err := conn.ReadFrom(rb)
+		var n int
+		var peer net.Addr
+		var err error
+		var control *ipv6.ControlMessage
+		if observe {
+			n, control, peer, err = conn.IPv6PacketConn().ReadFrom(rb)
+		} else {
+			n, peer, err = conn.ReadFrom(rb)
+		}
 		dur := p.clock.Now().Sub(startTime)
 		if err != nil {
-			var networkError net.Error
-			if errors.As(err, &networkError) && networkError.Timeout() {
-				op.DebugContext(ctx, "v6probe: deadline exceeded waiting for reply",
-					"waited_ms", dur.Milliseconds())
-				return 0, context.DeadlineExceeded
-			}
-			p.log.WarnContext(ctx, "v6probe: ReadFrom failed",
-				"op", "PingICMP6", "target", target.String(), "timeout_ms", timeout.Milliseconds(), "err", err)
-			return 0, fmt.Errorf("ReadFrom: %w", err)
+			return PingProbeResult{}, classifyPingReadError(ctx, err)
 		}
-		rm, err := icmp.ParseMessage(58, rb[:n])
-		if err != nil {
-			op.DebugContext(ctx, "v6probe: parse failed (continuing)", "err", err)
-			continue
-		}
-		if rm.Type != ipv6.ICMPTypeEchoReply {
-			continue
-		}
-		echo, ok := rm.Body.(*icmp.Echo)
-		if !ok || echo.ID != id || echo.Seq != seq {
+		if !matchesProbeReply6(rb[:n], id, seq) {
 			continue
 		}
 		op.DebugContext(ctx, "v6probe: echo reply received",
 			"from", peer.String(), "rtt_ms", dur.Milliseconds())
-		return dur, nil
+		if observe && !peerMatchesTarget(peer, target) {
+			continue
+		}
+		result := PingProbeResult{RoundTripTime: dur, Source: netip.Addr{}}
+		if observe && control != nil {
+			result.Source, _ = netip.AddrFromSlice(control.Dst)
+		}
+		return result, nil
 	}
+}
+
+func matchesProbeReply6(packet []byte, id, sequence int) bool {
+	message, err := icmp.ParseMessage(58, packet)
+	if err != nil || message.Type != ipv6.ICMPTypeEchoReply {
+		return false
+	}
+	echo, ok := message.Body.(*icmp.Echo)
+	return ok && echo.ID == id && echo.Seq == sequence
 }
 
 // bindProbeToDevice pins the raw ICMPv6 socket to p.iface via SO_BINDTODEVICE so
