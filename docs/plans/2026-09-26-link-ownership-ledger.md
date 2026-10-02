@@ -9433,6 +9433,104 @@ read these current operation results. Required checks are unhealthy and the
 operation is not mutation-ready. Its registered watch and handover lease remain
 active. No production operation occurred. Distribution cohorts remain unperformed.
 
+The F4 forward controller completed connection transfer accounting and restored
+Webpass selection before 21:46:35 UTC. Root read actual MWAN ownership,
+administrative eligibility, carrying state, healthy probes, both routing
+verdicts and both translation verdicts at 21:47 UTC. The other six interfaces
+remain networkd-owned. Installed executable, network and runtime hashes match
+the operation target exactly. Webpass has its configured IPv4 address and four
+additional mapped addresses, plus the delegated IPv6 edge. Root inspected
+the provider capture: Solicit 831ec4 at 21:41:05.929409 UTC, Advertise at
+21:41:05.930464, Request 3b0c65 at 21:41:05.931780 and Reply at
+21:41:05.933930. The reply assigns 3d06:bad:b01:2200::/56 with IAID 1370549548,
+T1 60, T2 120, preferred lifetime 180 and valid lifetime 240 seconds. This
+establishes fresh negotiation rather than lease import. The capture producer
+is still active; this read does not establish capture completion.
+
+All eight operation checks passed through 21:46:53 UTC. Webpass inbound first
+passed again at 21:41:20.884267482 UTC for IPv4 and 21:41:26.437390895 for
+IPv6. A subsequent restart produced isolated inbound timeouts followed by
+passing samples at 21:44:24 through 21:44:26. Both downstream guests continued
+passing application checks during that interval. Complete deployment commitment,
+reverse transfer, reboot and distribution acceptance remain pending. Controller
+20561 is active and the independent observer 41403 is also active.
+
+Root inspected native default-route events in the completed 55046 and 65530
+monitor outputs. Both QGA results exited with 124 and no truncated output.
+The first backup selection lasted 17.995 seconds for IPv4 and 17.994 for IPv6,
+from 21:25:49 to 21:26:07 UTC. The next selection lasted 18.004 and 18.008
+seconds, from 21:29:23 to 21:29:41. The third lasted 39.995 seconds in both
+families, from 21:33:04 to 21:33:44. These are installed-route intervals,
+not total client outage durations. Actual packet and application results
+remain separate.
+
+The separate Configs release pin merged as
+269c2f9183732f34dbd21fe593c382f799d821dc at 21:53:53 UTC under PR 653.
+Root inspected the six-line gateway-only diff, required checks, zero unresolved
+threads, source signature and raw gpgsig header. Release
+202610022136-ad-b8b7f52 completed publication and verification. Its AMD64
+binary and wanconfig archive digests match the pin. The existing installer
+requires checksums and release attestations before extraction. Production
+and broader testbed default pins are unchanged. The Configs implementation
+lane removed its verified merged worktree and local branch using cleanup-git.
+Its caches and temporary files are deleted; only the compact catalog remains.
+The active deployment checkout remains on 69ed320 with F4. PR 653 is not
+deployed. No second deployment may begin until controller 20561 is terminal.
+
+The independent review of the optional firewall CI failure found a source
+observation window between kernel address deletion and receipt persistence.
+The test waits for kernel removal and then reads the journal once. NPT cleanup
+deletes and verifies the address before writing the updated journal. The
+failure supports a synchronization race but does not establish a persistent
+production cleanup failure. No test or production code changed for this
+finding. Reverse transfer must verify the unchanged translation edge and its
+receipt; an empty journal is required only after obsolete intent cleanup.
+
+The repeated physical forward deployment 20561 finished with exit zero at
+approximately 22:00:43 UTC. Its recap reports 1663 successful tasks, 208
+changes, zero failed tasks and zero unreachable hosts. Exact operation
+20261002-134829-deploy-738854 with generation
+d2f0d984-c943-47cc-aa84-b1823f83b63f committed at
+22:00:42.611132635 UTC after all eight required application checks passed.
+Root verified persisted commitment, target hashes and the watch journal's
+successful deactivation at 22:00:46 UTC. The registered watch PID was absent.
+Unit collection alone was not used as proof of successful completion.
+MWAN-545 is Done for its verified concurrent commitment and watch completion.
+
+The guest reboot changed boot identity to
+2bb9ddf3-9727-478e-a80c-03b7b53e641a. Its executable, network and runtime
+hashes still matched the operation target. Native monitoring recorded backup
+selection from 21:59:21.196 to 22:00:04.125 UTC for IPv4 and from
+21:59:21.197 to 22:00:04.125 for IPv6. Both downstream guests continued
+passing application checks. All four inbound checks recorded two timeouts
+and recovered between 22:00:04.572 and 22:00:05.490 UTC. Route residence
+does not establish total client outage duration.
+
+Both physical distribution cohorts completed forty HTTP requests, twenty per
+guest. IPv4 observed ATT 26 and Webpass 14 between 22:05:30.529742521 and
+22:07:10.041103771 UTC. IPv6 observed ATT 24 and Webpass 16 between
+22:07:40.188055351 and 22:09:22.589512801. Every request correlated with LAN
+and provider ingress SYN evidence. Both shares satisfy the reviewed bounds,
+but both public acceptance results remain error/unknown. Capture finalization
+combines statistics errors with packet drops and omits the actual interface,
+counter values and underlying error. Neither cohort is accepted. Both CLI
+transports are terminal; all twelve capture sockets were owned by their
+completed coordinators. No coordinator remains. The distribution lane owns
+a focused diagnostics correction in the existing public capture result,
+without changing acceptance semantics, calibration, filters or request counts.
+
+The reboot terminated the old transit capture transport 24858 with exit 255;
+ending capture counters are unavailable. Root started bounded postboot transit
+capture 13386 at 22:02:53 UTC with unit
+mwan-retryforward-transit-postboot-20261002, PID 988 and invocation
+f0d61b54d623444ca3150cb6fa5e32a0. Its two-hour deadline is 00:02:53 UTC
+on October 3. Active capture evidence remains on Chaos Storage. Reverse
+transfer and corrected family-state publication remain unperformed.
+
+PR 177 source cleanup completed the remote lease deletion with terminal exit
+zero. The merged source worktree and local branch were already removed.
+Only its compact verification catalog remains. Production is unchanged.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
