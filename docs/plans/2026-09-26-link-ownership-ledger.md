@@ -7143,6 +7143,43 @@ is retained under 20261002-production-staged-cutover. Root is the only live
 deployment controller. Other agents perform read-only preflight and monitor
 review. Preparation, activation and production acceptance remain unfinished.
 
+## Reject preparation and restore production
+
+Production preparation failed acceptance. Cloudflare reported all three pools
+unhealthy at 01:54:34 through 01:54:42 UTC on October 2 after the daemon
+restart. All four independent provider/family mapping SSH checks timed out.
+Downstream outbound ping replies did not establish inbound health.
+
+The installed e90b629 daemon rejected existing AT&T and Monkeybrains NPT edge
+addresses because they lacked ownership records. Webpass legacy NPT inspection
+failed because its configuration lacked a permanent MAC match. Served IPv6
+translation was unavailable. These errors establish the translation failure;
+the separate IPv4 mapping failure still requires diagnosis. Preserve actual
+incident state, kernel snapshots and journal in
+20261002-production-preparation-acceptance. The monitor report records exact
+alert bodies. Current Cloudflare API health reads failed authentication.
+
+The operator explicitly requested rollback. Root terminated the verified local
+Ansible controller and worker, PIDs 51389 and 78458. Session 41460 exited one,
+and controller PIDs 51359, 51389 and 78458 were absent before recovery.
+No hypervisor deploy-gate unit was active. Root restored VM 113 from the exact
+pre-deploy-20261001T184909 snapshot through qm stop, qm rollback and qm start.
+All commands exited zero. The VM was stopped after restoration and running
+after startup at 01:59:29 UTC. Existing downstream observers remained active.
+
+The restored executable hash is 1c79542f and network hash is 36ebd6ac, exactly
+matching the original production pair. Independent readback also verified the
+original TOML, five networkd owners and restored IPv6 translation for all three
+providers. All four external mapping checks returned the expected router
+hostname. Cloudflare recovery notification and complete terminal observer
+results remain pending at this checkpoint.
+
+PR #618 remains open and was not deployed. No new production activation is
+authorized by a successful outbound probe. Reproduce and correct the measured
+legacy preparation compatibility failures in testbed before reconsidering
+production. The earlier readiness report is superseded by this failed actual
+production preparation. MWAN-520 and MWAN-305 remain In Progress.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
