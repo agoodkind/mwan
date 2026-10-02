@@ -9168,6 +9168,13 @@ The reviewer verified timeout PID 65450 and route child 65978. Route readbacks
 through 19:25:49 UTC selected both primaries. Actual handover failover remains
 unperformed. No producer or source mutation belongs to that review lane.
 
+MWAN-521 incorrectly remained Done despite its explicit complete-transfer and
+reverse-transfer acceptance. Root restored its actual state to In Progress and
+verified the readback. Merged rendering and isolated implementation results do
+not satisfy the remaining physical ownership acceptance. MWAN-545 remains
+In Progress until the current registered watch terminates successfully after
+commitment. The forward controller remains active.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
