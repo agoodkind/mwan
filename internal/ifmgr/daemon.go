@@ -549,7 +549,14 @@ func (d *Daemon) reconcileAll(ctx context.Context, log *slog.Logger) {
 			}
 		}
 	}
-	if d.role != "wan" || d.cfg.ForwardingReadySocket == "" {
+	if d.role != "wan" {
+		return
+	}
+	if d.cfg.LiveState != nil {
+		snapshot := d.cfg.LiveState.Snapshot()
+		d.publishFamilyReadiness(snapshot, snapshot.RoutingGeneration != routingGeneration, failed)
+	}
+	if d.cfg.ForwardingReadySocket == "" {
 		return
 	}
 	if d.cfg.LiveState == nil {
@@ -597,16 +604,9 @@ func (d *Daemon) internalForwardingReadiness(state forwardingready.State) forwar
 func forwardingReadiness(snapshot wanstate.Snapshot) forwardingready.State {
 	var state forwardingready.State
 	for name, routing := range snapshot.Routing {
-		health := snapshot.Health[name]
-		if health.Verdict != wanstate.HealthHealthy {
-			continue
-		}
-		if routing.V4Ready && health.V4 == wanstate.ProbePass {
-			state.IPv4 = true
-		}
-		if routing.V6Ready && health.V6 == wanstate.ProbePass {
-			state.IPv6 = true
-		}
+		member := memberForwardingReadiness(routing, snapshot.Health[name])
+		state.IPv4 = state.IPv4 || member.IPv4
+		state.IPv6 = state.IPv6 || member.IPv6
 	}
 	return state
 }

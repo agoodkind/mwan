@@ -227,20 +227,40 @@ func waitSelectionRuntimeState(t *testing.T, daemon *runtimeDaemon, read func() 
 		}
 		if json.Unmarshal([]byte(read()), &document) == nil {
 			for _, entry := range document.Interfaces.Entries {
-				if entry.Name == name && entry.Steering.State.Enabled != nil && *entry.Steering.State.Enabled == enabled && entry.Steering.State.Carrying == carrying && entry.V4.Ownership.Routing == "ready" && entry.V6.Ownership.Routing == "ready" && entry.V4.Translation.State.Ready && entry.V6.Translation.State.Ready {
-					return
+				if entry.Name == name && entry.Steering.State.Enabled != nil && *entry.Steering.State.Enabled == enabled && entry.Steering.State.Carrying == carrying && entry.V4.Ownership.Routing == "ready" && entry.V6.Ownership.Routing == "ready" && entry.V4.Translation.State.Ready && entry.V6.Translation.State.Ready && entry.V4.Ownership.Protection == "ready" && entry.V6.Ownership.Protection == "ready" && entry.V4.Ownership.Readiness == "not-ready" && entry.V6.Ownership.Readiness == "not-ready" {
+					if failure := selectionRuntimeRefreshFailure(t, daemon); failure != "" {
+						t.Logf("provider %s protection=ready readiness=not-ready; firewall reconciliation failed: %s", name, failure)
+						return
+					}
 				}
 			}
 		}
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("provider %s administratively enabled=%t carrying=%t with both families ready absent: %s", name, enabled, carrying, read())
+	t.Fatalf("provider %s administratively enabled=%t carrying=%t with routing, translation, protection ready and readiness not-ready after destination-refresh failure absent: %s; daemon=%s", name, enabled, carrying, read(), runtimeLogTail(t, daemon, 100))
+}
+
+func selectionRuntimeRefreshFailure(t *testing.T, daemon *runtimeDaemon) string {
+	t.Helper()
+	for _, line := range strings.Split(runtimeDaemonLog(t, daemon), "\n") {
+		var event struct {
+			Module  string `json:"module"`
+			Message string `json:"msg"`
+			Error   string `json:"err"`
+		}
+		if json.Unmarshal([]byte(line), &event) == nil && event.Module == "firewall" && event.Message == "ifmgr: module Reconcile failed" && strings.HasPrefix(event.Error, "request destination refresh: start mwan-update-att-pinned-dests.service:") {
+			return event.Error
+		}
+	}
+	return ""
 }
 
 type selectionRuntimeFamily struct {
 	Ownership struct {
-		Routing string `json:"routing"`
+		Routing    string `json:"routing"`
+		Protection string `json:"firewall-protection"`
+		Readiness  string `json:"readiness"`
 	} `json:"goodkind-mwan-steering:ownership-family-state"`
 	Translation struct {
 		State struct {
