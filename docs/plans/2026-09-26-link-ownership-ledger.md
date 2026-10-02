@@ -7297,6 +7297,53 @@ unfinished. Recovery arming and inbound rollback still require a bounded
 mutation fence and a serialized hypervisor operation. Production remains
 restored; no production retry is authorized.
 
+## Verify Cloudflare adoption and recovery interfaces
+
+On October 1 at 19:50 PDT, OpenTofu adoption had completed. Apply session99615
+exited zero with eight imports and no additions, changes or deletions.
+Post-import plan session6536 exited zero with eight unchanged resources.
+Cloudflare readback at 02:39:27 UTC verified unchanged load balancers, monitors
+and pool configuration. The temporary read token was revoked and its private
+file removed. Evidence is 20261002-cloudflare-adoption/report.md and its
+post-import plan, state addresses and API read proof.
+
+Configs PR622 merged at 02:48:16 UTC as
+cafce87f9e640e0ca983ceaca231fb137ac55682. It replaces the two JSON files with
+ordinary HCL configuration and import blocks. Root inspected the complete diff
+and signed commit. Validation, lint and required CI passed. Fresh plan28598
+reported eight unchanged resources and zero imports or mutations. Its complete
+planned values equal the prior JSON plan. The read token was revoked. Evidence
+is 20261002-cloudflare-hcl/report.md and equivalence-proof.json. Durable read
+credentials and real monitor failure/recovery acceptance remain unfinished;
+MWAN-543 remains In Progress.
+
+Configs PR620 was rebased with signed commits onto cafce87f. Its current head
+is e8d2cd2a083a9958cd8bb5aa0a74f50750aaeffa. Root replied to and resolved the
+incorrect permanent-MAC review finding using actual Validate/Render evidence,
+then dismissed the corresponding change requests. The omitted typed match
+is the required legacy precondition. Required CI is running after rebase.
+No physical fixture deployment or snapshot restoration has occurred.
+
+Legacy adoption now uses separate capture and adoption commands. Capture runs
+while the verified original producer is active. Adoption runs after that
+producer stops, validates the same-boot manifest and exact surviving objects,
+then writes scoped receipts. Normal service startup omits the transition flag.
+The dedicated upgrade case requires fresh namespaces; its earlier attempt
+could not execute capture because ordinary teardown had removed the provider
+peer. This fixture failure does not establish a runtime defect.
+
+The recovery implementer owns the operation persistence, lease fence and shared
+rollback coordinator, including internal/watchdog/watchdog.go. Require a
+successful VM stop and stopped-state readback before snapshot rollback. Return
+start failures. The observation implementer is defining shared CheckSpec and
+Result contracts for required and restored checks. MWAN-538, MWAN-539,
+MWAN-541 and MWAN-542 are now In Progress.
+
+PR163 required CI passes. The exact optional renamed-link case passes on both
+unchanged baseline and candidate through the ARM64 builder. A separate optional
+firewall job failed at 02:50 UTC and still requires diagnosis. Root has not
+merged or deployed this repair. Production remains restored and unchanged.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
