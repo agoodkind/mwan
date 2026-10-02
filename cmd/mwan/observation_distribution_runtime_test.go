@@ -116,6 +116,20 @@ func runDistributionObservationRuntime(t *testing.T) {
 		setRuntimeNamespace(t, host)
 	}
 	setRuntimeNamespace(t, gateway)
+	internal, err := netlink.LinkByName("enmwanbr0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, downstream, err := net.ParseCIDR("2001:db8:b01:1::/64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// External ownership supplies guest return routes independently of WAN defaults.
+	for _, table := range []int{100, 200} {
+		if err := netlink.RouteAdd(&netlink.Route{LinkIndex: internal.Attrs().Index, Dst: downstream, Table: table, Scope: netlink.SCOPE_LINK}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for _, path := range []string{"/proc/sys/net/ipv4/ip_forward", "/proc/sys/net/ipv6/conf/all/forwarding"} {
 		if err := os.WriteFile(path, []byte("1\n"), 0o600); err != nil {
 			t.Fatal(err)
@@ -196,6 +210,7 @@ func runDistributionObservationRuntime(t *testing.T) {
 		if result.Availability != observation.AvailabilityComplete {
 			t.Fatalf("real steering measurement missing: %+v", result)
 		}
+		t.Logf("actual %s provider samples: %+v", family, result.DistributionProviders)
 		withinBounds := true
 		for _, share := range result.DistributionProviders {
 			if share.Samples == 0 {
