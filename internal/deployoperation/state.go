@@ -52,6 +52,7 @@ type Identity struct {
 type Lease struct {
 	ID        string    `json:"id"`
 	Phase     string    `json:"phase"`
+	StartedAt time.Time `json:"started_at,omitzero"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
@@ -145,7 +146,12 @@ func (store Store) Grant(ctx context.Context, operationID, generation, phase str
 		if strings.TrimSpace(phase) == "" || !deadline.After(now) || deadline.After(record.Deadline) {
 			return fmt.Errorf("mutation lease requires a phase and deadline within the operation deadline")
 		}
-		lease = Lease{ID: rand.Text(), Phase: phase, ExpiresAt: deadline}
+		for _, interruption := range record.ExpectedInterruptions {
+			if interruption.Phase == phase && deadline.After(now.Add(time.Duration(interruption.MaxSeconds)*time.Second)) {
+				return fmt.Errorf("mutation lease exceeds the expected interruption bound for phase %s", phase)
+			}
+		}
+		lease = Lease{ID: rand.Text(), Phase: phase, StartedAt: now.UTC(), ExpiresAt: deadline}
 		record.Lease = &lease
 		return nil
 	})

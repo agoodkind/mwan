@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"goodkind.io/mwan/internal/notify"
@@ -127,11 +128,18 @@ func (engine Engine) Watch(ctx context.Context, operationID, generation string) 
 		if err := engine.Store.observe(ctx, operationID, generation, results); err != nil {
 			return err
 		}
-		if checksPassed(record.RequiredChecks, results, engine.Store.Clock.Now()) {
+		now := engine.Store.Clock.Now()
+		if !checksPassed(record.RequiredChecks, results, now) {
+			engine.Notify.Notify(ctx, notify.Event{Now: now.UTC(), Level: slog.LevelWarn, Kind: "deploy_operation_observation_failed", Key: operationID + "/" + generation, Message: "Deployment application observations did not pass", Fields: []slog.Attr{slog.Any("results", results)}, IsRecovery: false})
+		}
+		current, err := engine.exact(ctx, operationID, generation)
+		if err != nil {
+			return err
+		}
+		if watchChecksPassed(record, current, results, engine.Store.Clock.Now()) {
 			failures = 0
 		} else {
 			failures++
-			engine.Notify.Notify(ctx, notify.Event{Now: engine.Store.Clock.Now().UTC(), Level: slog.LevelWarn, Kind: "deploy_operation_observation_failed", Key: operationID + "/" + generation, Message: "Deployment application observations did not pass", Fields: []slog.Attr{slog.Any("results", results)}, IsRecovery: false})
 		}
 		if failures >= record.FailureThreshold {
 			return engine.Recover(ctx, operationID, generation, "required application observations failed")
@@ -140,6 +148,38 @@ func (engine Engine) Watch(ctx context.Context, operationID, generation string) 
 			return err
 		}
 	}
+}
+
+func watchChecksPassed(previous, current Record, results []observation.Result, now time.Time) bool {
+	if current.Status != Armed || !current.Deadline.After(now) || len(results) != len(current.RequiredChecks) {
+		return false
+	}
+	var exemptIDs []string
+	lease := current.Lease
+	if lease != nil && previous.Lease != nil && lease.ID == previous.Lease.ID && lease.Phase == previous.Lease.Phase &&
+		!lease.StartedAt.IsZero() && !lease.StartedAt.After(now) && lease.ExpiresAt.After(now) {
+		for _, interruption := range current.ExpectedInterruptions {
+			if interruption.Phase == lease.Phase && now.Before(lease.StartedAt.Add(time.Duration(interruption.MaxSeconds)*time.Second)) {
+				exemptIDs = interruption.CheckIDs
+				break
+			}
+		}
+	}
+	for index, check := range current.RequiredChecks {
+		result := results[index]
+		if observation.RequiredPassed(check, result, now) {
+			continue
+		}
+		if !slices.Contains(exemptIDs, check.ID) || check.Dimension != observation.DimensionInboundApplication ||
+			result.CheckID != check.ID || result.Dimension != check.Dimension || result.Operation != check.Operation ||
+			result.Target != check.Target || result.PublicIPPolicy != check.PublicIPPolicy || result.Family != check.Family || result.Observer != check.Observer ||
+			result.Availability != observation.AvailabilityComplete || result.Outcome != observation.OutcomeFail ||
+			result.ObservedAt.IsZero() || result.ObservedAt.Before(lease.StartedAt) || result.ObservedAt.After(now) ||
+			now.Sub(result.ObservedAt) > time.Duration(check.MaxAgeSeconds)*time.Second {
+			return false
+		}
+	}
+	return true
 }
 
 // Commit repeats target identity and application checks before ending recovery protection.

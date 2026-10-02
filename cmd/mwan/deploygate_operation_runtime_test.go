@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -24,59 +25,9 @@ import (
 )
 
 func TestDeployOperationWatchRuntime(t *testing.T) {
-	if os.Getenv("MWAN_RESOLVER_SYSTEMD_TEST") != "1" {
-		t.Skip("requires the existing dedicated systemd container")
-	}
-	runResolverCommand(t, "systemctl", "is-active", "dbus")
-	binary := protocolTestBinary(t)
-	root := t.TempDir()
-	unit := "mwan-deploy-watch-" + rand.Text() + ".service"
-	runtimePath := filepath.Join(root, "config.toml")
-	networkPath := filepath.Join(root, "network.json")
-	lockPath := filepath.Join(root, "rollback")
-	configuration := fmt.Sprintf("mwan_vmid = '999999'\n[watchdog]\nrollback_lock_file = '%s'\nrollback_state_file = '%s'\ncheck_interval_degraded_seconds = 1\nconnectivity_timeout_seconds = 5\n", lockPath, filepath.Join(root, "rollback-state"))
-	for path, data := range map[string][]byte{runtimePath: []byte(configuration), networkPath: []byte("{}\n")} {
-		if err := os.WriteFile(path, data, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	identity := deployWatchFixtureIdentity(t, binary, networkPath, runtimePath)
-	checks := deployWatchApplicationChecks(t, identity.MachineID)
-	record := deployoperation.Record{
-		Manifest: deployoperation.Manifest{
-			OperationID: "watch-runtime", Generation: rand.Text(), VMID: "999999", Snapshot: "unexecuted-watch-fixture",
-			Baseline: identity, Target: identity,
-			Paths:    deployoperation.Paths{Executable: binary, Network: networkPath, Runtime: runtimePath},
-			Deadline: time.Now().Add(2 * time.Minute), WatchUnit: unit,
-			PollSeconds: 1, ObservationTimeoutSeconds: 5, RecoveryTimeoutSeconds: 10, FailureThreshold: 3,
-			RequiredFamilies: []observation.Family{observation.FamilyIPv4, observation.FamilyIPv6},
-			RequiredChecks:   checks, RestoredRequiredChecks: checks,
-			Observation: observation.RuntimeConfig{MachineIDPath: "/etc/machine-id", ProbeBinary: binary},
-		},
-		Status: deployoperation.Armed, UpdatedAt: time.Now().UTC(),
-	}
-	data, err := json.Marshal(record)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(lockPath+".operation", data, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	binary, runtimePath, record, _ := startDeployWatchFixture(t, nil)
 	commandArgs := []string{"deploy-gate", "status", record.OperationID, record.Generation, "--config", runtimePath}
-	before := deployWatchStatus(t, binary, commandArgs)
-	if before.MutationReady {
-		t.Fatal("unregistered watch permits mutation")
-	}
-	runResolverCommand(t, "systemd-run", "--unit="+unit, "--property=Type=exec", binary, "deploy-gate", "watch", record.OperationID, record.Generation, "--config", runtimePath)
-	t.Cleanup(func() {
-		if output, err := exec.Command("systemctl", "stop", unit).CombinedOutput(); err != nil {
-			t.Errorf("stop owned watch: %v: %s", err, output)
-		}
-	})
-	ready := waitDeployWatchReady(t, binary, commandArgs)
-	if ready.Watch.PID == 0 || ready.Watch.InvocationID == "" || ready.Watch.Unit != unit {
-		t.Fatalf("watch registration lacks actual service identity: %+v", ready.Watch)
-	}
+	unit := record.WatchUnit
 	leaseOutput, err := deployWatchCommand(binary, "deploy-gate", "lease", record.OperationID, record.Generation, "fixture-phase", "10", "--config", runtimePath)
 	if err != nil {
 		t.Fatalf("fresh real application replies did not permit lease: %v: %s", err, leaseOutput)
@@ -104,11 +55,140 @@ func TestDeployOperationWatchRuntime(t *testing.T) {
 	if output, err := deployWatchCommand(binary, "deploy-gate", "lease", record.OperationID, record.Generation, "after-stop", "10", "--config", runtimePath); err == nil {
 		t.Fatalf("lease accepted after actual watch exit: %s", output)
 	}
+	t.Run("expected-interruption", deployWatchExpectedInterruption)
 }
 
-func deployWatchApplicationChecks(t *testing.T, machineID string) []observation.CheckSpec {
+func deployWatchExpectedInterruption(t *testing.T) {
+	t.Helper()
+	selectedID := "ipv4-inbound_application"
+	policy := []deployoperation.ExpectedInterruption{{Phase: "connection-handover-selected", CheckIDs: []string{selectedID}, MaxSeconds: 8}}
+	for _, scenario := range []struct {
+		name          string
+		failedID      string
+		interruptions []deployoperation.ExpectedInterruption
+		expected      bool
+	}{
+		{name: "selected-until-expiry", failedID: selectedID, interruptions: policy, expected: true},
+		{name: "unaffected-provider", failedID: "ipv4-inbound_application-unaffected", interruptions: policy},
+		{name: "downstream", failedID: "ipv4-downstream_application", interruptions: policy},
+		{name: "no-exemption", failedID: selectedID},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			binary, runtimePath, record, failed := startDeployWatchFixture(t, scenario.interruptions)
+			args := []string{"deploy-gate", "status", record.OperationID, record.Generation, "--config", runtimePath}
+			if len(scenario.interruptions) > 0 {
+				if output, err := deployWatchCommand(binary, "deploy-gate", "lease", record.OperationID, record.Generation, policy[0].Phase, "9", "--config", runtimePath); err == nil {
+					t.Fatalf("lease exceeds declared interruption bound: %s", output)
+				}
+			}
+			output, err := deployWatchCommand(binary, "deploy-gate", "lease", record.OperationID, record.Generation, policy[0].Phase, "8", "--config", runtimePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var lease deployoperation.Lease
+			if err := json.Unmarshal(output, &lease); err != nil {
+				t.Fatal(err)
+			}
+			failed[scenario.failedID].Store(true)
+			deadline := lease.ExpiresAt.Add(5 * time.Second)
+			failedObservations := 0
+			var observedAt time.Time
+			for time.Now().Before(deadline) {
+				status := deployWatchStatus(t, binary, args)
+				if status.Status == deployoperation.Recovering || status.Status == deployoperation.RecoveryFailed {
+					if scenario.expected && time.Now().Before(lease.ExpiresAt) {
+						t.Fatal("selected-provider interruption triggered recovery before lease expiry")
+					}
+					if scenario.expected && failedObservations < record.FailureThreshold {
+						t.Fatal("expected interruption did not persist enough actual failed observations")
+					}
+					if !scenario.expected && !time.Now().Before(lease.ExpiresAt) {
+						t.Fatal("strict check did not trigger recovery during the live lease")
+					}
+					if output, err := deployWatchCommand(binary, "deploy-gate", "lease", record.OperationID, record.Generation, "after-failure", "1", "--config", runtimePath); err == nil {
+						t.Fatalf("recovery permits a new lease: %s", output)
+					}
+					return
+				}
+				for _, result := range status.Results {
+					if result.CheckID == scenario.failedID && result.Outcome == observation.OutcomeFail && result.Availability == observation.AvailabilityComplete && result.ObservedAt.After(observedAt) {
+						observedAt = result.ObservedAt
+						failedObservations++
+						if status.MutationReady {
+							t.Fatal("failed application observation permits mutation")
+						}
+					}
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+			t.Fatal("required application failure did not enter recovery")
+		})
+	}
+}
+
+func startDeployWatchFixture(t *testing.T, interruptions []deployoperation.ExpectedInterruption) (string, string, deployoperation.Record, map[string]*atomic.Bool) {
+	t.Helper()
+	if os.Getenv("MWAN_RESOLVER_SYSTEMD_TEST") != "1" {
+		t.Skip("requires the existing dedicated systemd container")
+	}
+	runResolverCommand(t, "systemctl", "is-active", "dbus")
+	binary := protocolTestBinary(t)
+	root := t.TempDir()
+	unit := "mwan-deploy-watch-" + rand.Text() + ".service"
+	runtimePath := filepath.Join(root, "config.toml")
+	networkPath := filepath.Join(root, "network.json")
+	lockPath := filepath.Join(root, "rollback")
+	configuration := fmt.Sprintf("mwan_vmid = '999999'\n[watchdog]\nrollback_lock_file = '%s'\nrollback_state_file = '%s'\ncheck_interval_degraded_seconds = 1\nconnectivity_timeout_seconds = 5\n", lockPath, filepath.Join(root, "rollback-state"))
+	for path, data := range map[string][]byte{runtimePath: []byte(configuration), networkPath: []byte("{}\n")} {
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	identity := deployWatchFixtureIdentity(t, binary, networkPath, runtimePath)
+	checks, failed := deployWatchApplicationChecks(t, identity.MachineID)
+	record := deployoperation.Record{
+		Manifest: deployoperation.Manifest{
+			OperationID: "watch-runtime", Generation: rand.Text(), VMID: "999999", Snapshot: "unexecuted-watch-fixture",
+			Baseline: identity, Target: identity,
+			Paths:    deployoperation.Paths{Executable: binary, Network: networkPath, Runtime: runtimePath},
+			Deadline: time.Now().Add(2 * time.Minute), WatchUnit: unit,
+			PollSeconds: 1, ObservationTimeoutSeconds: 5, RecoveryTimeoutSeconds: 10, FailureThreshold: 3,
+			RequiredFamilies: []observation.Family{observation.FamilyIPv4, observation.FamilyIPv6},
+			RequiredChecks:   checks, RestoredRequiredChecks: checks,
+			ExpectedInterruptions: interruptions,
+			Observation:           observation.RuntimeConfig{MachineIDPath: "/etc/machine-id", ProbeBinary: binary},
+		},
+		Status: deployoperation.Armed, UpdatedAt: time.Now().UTC(),
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(lockPath+".operation", data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	commandArgs := []string{"deploy-gate", "status", record.OperationID, record.Generation, "--config", runtimePath}
+	before := deployWatchStatus(t, binary, commandArgs)
+	if before.MutationReady {
+		t.Fatal("unregistered watch permits mutation")
+	}
+	runResolverCommand(t, "systemd-run", "--unit="+unit, "--property=Type=exec", binary, "deploy-gate", "watch", record.OperationID, record.Generation, "--config", runtimePath)
+	t.Cleanup(func() {
+		if output, err := exec.Command("systemctl", "stop", unit).CombinedOutput(); err != nil {
+			t.Errorf("stop owned watch: %v: %s", err, output)
+		}
+	})
+	ready := waitDeployWatchReady(t, binary, commandArgs)
+	if ready.Watch.PID == 0 || ready.Watch.InvocationID == "" || ready.Watch.Unit != unit {
+		t.Fatalf("watch registration lacks actual service identity: %+v", ready.Watch)
+	}
+	return binary, runtimePath, record, failed
+}
+
+func deployWatchApplicationChecks(t *testing.T, machineID string) ([]observation.CheckSpec, map[string]*atomic.Bool) {
 	t.Helper()
 	var checks []observation.CheckSpec
+	failed := make(map[string]*atomic.Bool)
 	for _, family := range []observation.Family{observation.FamilyIPv4, observation.FamilyIPv6} {
 		network, address := "tcp4", "127.0.0.1:0"
 		if family == observation.FamilyIPv6 {
@@ -118,9 +198,8 @@ func deployWatchApplicationChecks(t *testing.T, machineID string) []observation.
 		if err != nil {
 			t.Fatal(err)
 		}
-		server := httptest.NewUnstartedServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-			_, _ = writer.Write([]byte("healthy"))
-		}))
+		mux := http.NewServeMux()
+		server := httptest.NewUnstartedServer(mux)
 		if err := server.Listener.Close(); err != nil {
 			t.Fatal(err)
 		}
@@ -129,15 +208,30 @@ func deployWatchApplicationChecks(t *testing.T, machineID string) []observation.
 		t.Cleanup(server.Close)
 		source := listener.Addr().(*net.TCPAddr).AddrPort().Addr().Unmap()
 		for _, dimension := range []observation.Dimension{observation.DimensionInboundApplication, observation.DimensionDownstreamApplication} {
-			checks = append(checks, observation.CheckSpec{
-				ID: string(family) + "-" + string(dimension), Dimension: dimension,
-				Operation: observation.OperationHTTP, Observer: observation.Endpoint{Kind: observation.EndpointLocal, MachineID: machineID},
-				Family: family, Interface: "lo", Source: source, Target: server.URL,
-				TimeoutSeconds: 2, MaxAgeSeconds: 10, ExpectedHTTPStatus: []int{http.StatusOK}, ExpectedBody: "healthy",
-			})
+			ids := []string{string(family) + "-" + string(dimension)}
+			if dimension == observation.DimensionInboundApplication {
+				ids = append(ids, ids[0]+"-unaffected")
+			}
+			for _, id := range ids {
+				failure := &atomic.Bool{}
+				failed[id] = failure
+				mux.HandleFunc("/"+id, func(writer http.ResponseWriter, _ *http.Request) {
+					if failure.Load() {
+						writer.WriteHeader(http.StatusServiceUnavailable)
+						return
+					}
+					_, _ = writer.Write([]byte("healthy"))
+				})
+				checks = append(checks, observation.CheckSpec{
+					ID: id, Dimension: dimension,
+					Operation: observation.OperationHTTP, Observer: observation.Endpoint{Kind: observation.EndpointLocal, MachineID: machineID},
+					Family: family, Interface: "lo", Source: source, Target: server.URL + "/" + id,
+					TimeoutSeconds: 2, MaxAgeSeconds: 10, ExpectedHTTPStatus: []int{http.StatusOK}, ExpectedBody: "healthy",
+				})
+			}
 		}
 	}
-	return checks
+	return checks, failed
 }
 
 func deployWatchFixtureIdentity(t *testing.T, binary, networkPath, runtimePath string) deployoperation.Identity {
