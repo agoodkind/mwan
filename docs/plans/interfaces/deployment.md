@@ -160,7 +160,7 @@ them. The operational plan defines the verified deployment entry points.
 
 Complete MWAN-535 through MWAN-544 before another production preparation.
 Keep the recovered production pair unchanged during implementation and
-testbed validation. Require subsequent production authorization after proof.
+testbed validation. Apply the coordinator's production authorization gate.
 
 1. Stage the merged candidate separately from the installed original binary.
    Capture legacy NPT evidence while the original producer runs, before
@@ -175,7 +175,9 @@ testbed validation. Require subsequent production authorization after proof.
 3. Verify the snapshot and baseline application replies, then arm one recovery
    operation before the first network-affecting change. Register the exact
    hypervisor watch unit, invocation and PID. Require fresh passing observations
-   and mutation-ready status before any leased write.
+   and mutation-ready status before granting a mutation lease. During a
+   planned interruption, verify the exact armed operation, live watch and
+   remaining lease budget before each write under that lease.
 4. Acquire a bounded mutation lease for each risky persistent-write group.
    Preserve remote asynchronous jobs and reconnect verification. Release the
    exact lease after completion. After reconnect, reject writes from an
