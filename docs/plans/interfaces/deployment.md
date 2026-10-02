@@ -236,6 +236,188 @@ read-only executable. Commands and complete test events are stored under
 artifact directory. The aggregate does not establish physical forward and
 reverse transfer, reboot, balancing, or shared testbed acceptance.
 
+#### Prepare the reusable execution manifest
+
+Use existing public daemon commands, protocol runners and Linux utilities.
+Keep new acceptance application code in MWAN. Do not restore the deleted
+Configs Ruby harness or require a replacement harness for these operations.
+
+1. Record clean merged MWAN and Configs commits, published executable/archive
+   hashes, native architecture and runner image identity. Record actual daemon,
+   systemd, Kea, radvd, iproute2 and tcpdump versions. Preserve a compatible
+   recovery release/configuration pair and verified hypervisor console access.
+2. Record the authorized gateway, hypervisor, OPNsense edge, both downstream
+   guests, simulator hosts and interfaces. Supply machine and boot IDs,
+   installed executable/service/configuration hashes, owners, protocol
+   identities, assignments and deadlines. Refresh these before execution.
+3. Supply each guest's source addresses, probe destinations, primary/backup
+   gateways, eligible providers, tiers, weights and hash mode. Supply mapped
+   destinations, ports, response hashes and translation prefixes. Production
+   values are separate reviewed inputs, not testbed defaults.
+4. Assign separate observation transports and new outputs. Record every owned
+   capture unit, PID, executable and host. Do not stop a shared SSH master.
+   Retain complete setup, fault, restoration and teardown arguments, timestamps,
+   stdout, stderr and exit statuses. Identify each destructive target before
+   authorizing the operation.
+
+Run the assembled protocol suite from clean merged MWAN with its published
+native executable, a new output directory and the compatible Configs checkout:
+
+```sh
+make test-protocol MWAN_PROTOCOL_TEST_BINARY="$PUBLISHED_NATIVE_EXECUTABLE" PROTOCOL_RESULTS_DIR="$PROTOCOL_EVIDENCE" MWAN_OWNED_ROLE_CONFIGS="$CONFIGS_CHECKOUT"
+```
+
+Require every selected case's passing terminal event and zero skips. Preserve
+failed attempts separately. The accepted release execution selected 27 namespace
+and six systemd cases; review any changed selection. Preserve the twenty-minute
+package deadline and existing fixture deadlines. Require the runner's exact
+owned container to be absent after cleanup. Native ARM64 protocol evidence
+does not establish AMD64 execution or physical ownership transfer.
+
+#### Deploy the authorized phase
+
+1. Merge compatible release pins and configuration before deployment. Start
+   source-bound observation on both downstream guests before the first network
+   change and continue through primary recovery. Preserve Configs checkout and
+   release enforcement, reconnection and hypervisor-local verdict collection.
+2. From clean merged Configs, run the complete authorized testbed operation:
+
+   ```sh
+   ./configsctl deploy deploy-mwan --limit mwan_suburban_servers
+   ```
+
+3. Compare installed identity, owner release/acquisition, selection, protection,
+   BGP, mappings, translation, management/transit and the reboot verdict. Compare
+   every nonselected connection with its baseline. Execute the reviewed reverse
+   configuration through the same play, then repeat forward transfer, ordinary
+   restart and reboot. Preserve fresh initial acquisition separately from
+   persisted restart recovery.
+4. For the first Webpass production phase, prepare with every connection
+   networkd-owned. After current production authorization, run its separate
+   operation:
+
+   ```sh
+   ./configsctl deploy deploy-mwan --limit mwan_servers
+   ```
+
+   Accept preparation and capture installed runtime/network documents before
+   merging and deploying Webpass activation. Preserve strict comparison of
+   nonselected records. Require subsequent authorization for activation. Keep
+   AT&T and networkd coexistence; other interfaces and retirement are later phases.
+
+#### Observe downstream packets and provider attribution
+
+Run the following commands on the indicated host through its reviewed,
+authenticated SSH transport. Bind variables to reviewed environment inputs
+before execution. Retain the complete transport arguments. The accepted packet
+commands used BatchMode=yes and ConnectTimeout=15; continuous observers used
+ConnectTimeout=5. Do not infer packet health from SSH success.
+
+| Host | Existing commands | Required observation |
+| --- | --- | --- |
+| Each downstream guest | `ip -j -d link`; `ip -j address`; `ip -4 -j route show table all`; `ip -6 -j route show table all`; `ip -4 -j rule`; `ip -6 -j rule` | Compare actual interfaces, addresses and routes with the declared guest. Reject an OOB bypass. |
+| Each downstream guest | `ip -4 -j route get "$PROBE4" from "$SOURCE4"`; `ip -6 -j route get "$PROBE6" from "$SOURCE6"` | Verify source and downstream gateway before requests. |
+| Gateway | `sha256sum /usr/local/bin/mwan`; `sha256sum /etc/mwan/network.json`; `cat /etc/machine-id`; `cat /proc/sys/kernel/random/boot_id`; `systemctl show mwan-ifmgr@wan.service --property=MainPID,ActiveState` | Match the installed pair and machine. Compare boot ID after reboot and MainPID after restart. |
+| Gateway | `sysrepocfg -X -d operational -m ietf-interfaces -f json`; `ip -j -d link`; `ip -j address`; `ip -4 -j route show table all`; `ip -6 -j route show table all`; `nft list ruleset` | Compare owner, acquisition/deadlines, family readiness, routes, mappings and translation. |
+| Each downstream guest | `ping -4 -D -O -n -I "$SOURCE4" -i 1.0 -w "$OBSERVATION_SECONDS" "$PROBE4"`; `ping -6 -D -O -n -I "$SOURCE6" -i 1.0 -w "$OBSERVATION_SECONDS" "$PROBE6"` | Run all four streams concurrently. Preserve timestamps, sequences and terminal transmission totals. |
+
+Query OPNsense concurrently with `/sbin/route -n get -inet "$PROBE4"` and
+`/sbin/route -n get -inet6 "$PROBE6"`. Record backup selection and primary
+recovery separately from packet replies. Route-query failures and SSH gaps
+do not establish packet loss. Adjacent reply intervals do not establish a
+continuous outage. The observation duration is not an outage limit. Preserve
+measured interruption without inventing a new bound.
+
+Start captures on gateway transit, each participating gateway WAN and each
+participating simulator ingress. Use simulator eth0, not its management
+interface. The recorded capture operation is:
+
+```sh
+systemd-run --quiet --collect --pipe --wait --unit="$CAPTURE_UNIT" --property=RuntimeMaxSec=601 --property=KillSignal=SIGINT --property=TimeoutStopSec=3 -- tcpdump --immediate-mode -U -nn -s 0 -i "$CAPTURE_INTERFACE" -w - tcp port "$CAPTURE_PORT"
+```
+
+Retain binary stdout as the capture and stderr as its terminal counters.
+Verify active unit, MainPID and `/proc` executable before requests. Use TCP
+port 443 for HTTPS and the reviewed mapping port for mapping cohorts. The
+tested mapping port was 1406; do not assign it to production.
+
+Run the recorded HTTPS operation on each guest with family 4 or 6, its source,
+the family-specific resolve argument and a distinct request label:
+
+```sh
+curl -"$FAMILY" --interface "$SOURCE" --silent --show-error --fail --noproxy '*' --http1.1 --connect-timeout 15 --max-time 14 --header 'Connection: close' --header "X-Mwan-Acceptance: $REQUEST_LABEL" --resolve "$RESOLVE_ARGUMENT" --output /dev/null --write-out '%{json}' https://one.one.one.one/cdn-cgi/trace
+```
+
+Use 20 new connections per guest and family, for 40 per family. Require HTTP
+200 and actual ingress attribution. Decode with
+`tcpdump -nn -tt -S -r "$CAPTURE_FILE"`. Correlate TCP tuples and sequence
+numbers across transit and provider ingress, including translated addresses.
+Compare provider counts with eligibility, tiers, weights and hash mode. The
+accepted equal-weight random calibration permits 13 through 27 of 40 per
+provider. Review bounds for different weights or hash modes before execution;
+do not reuse that range for a different policy.
+
+Run each mapping operation from its provider side:
+
+```sh
+ip -4 -j route get "$MAPPED_ADDRESS" from "$PROVIDER_SOURCE4"
+curl -4 --interface "$PROVIDER_SOURCE4" --noproxy '*' --silent --show-error --fail --http1.1 --header 'Connection: close' --max-time 14 --write-out '\nMWAN-RESULT:%{json}\n' "$MAPPING_URL"
+```
+
+Require HTTP 200 and the expected response hash. Correlate external request,
+mapped internal request and reply. Preserve IPv4 independence and IPv6
+translation after assignment changes. Gateway-only probes, requests without
+attribution and missing capture counters cannot establish complete acceptance.
+
+#### Verify route repair, persistent history and cleanup
+
+1. Refresh the exact owned route before its authorized testbed fault. Keep all
+   four downstream streams active. Record the complete numeric route identity
+   and deletion arguments. The accepted main-table Webpass example was:
+
+   ```sh
+   ip -4 route del default via 10.241.204.1 dev enwebpass0 table 254 proto static metric 10
+   ```
+
+   Treat this as a testbed example, not a production default. The later approved
+   provider-table fault used its separately verified identity. Do not select a
+   different route merely to force a particular readiness transition.
+2. Compare kernel absence and restoration with served state and actual product
+   history. Read current history with `cat -- /var/log/mwan-ifmgr.jsonl`. Preserve
+   event IDs, timestamps, connection, family, dependency, reason and state before
+   restart. Require detailed failure/repair history, not an unobserved IPv4
+   not-ready transition that prompt repair never produced. Preserve the approved
+   90-second history window; it is not an outage limit.
+3. Run `systemctl restart mwan-ifmgr@wan.service`. Require changed MainPID,
+   active service, recovered packets and identical recorded history events after
+   restart. A ready status or successful exit does not prove history retention.
+4. If automatic repair fails, restore only the refreshed deleted object. For the
+   preceding example, the recorded restoration command was:
+
+   ```sh
+   ip -4 route add default via 10.241.204.1 dev enwebpass0 table 254 proto static metric 10
+   ```
+
+   Stop further faults and use the reviewed reverse configuration or hypervisor
+   recovery appropriate to actual guest/verdict state. Do not restore an already
+   repaired route or change unrelated provider objects.
+5. Stop each exact owned capture with `systemctl stop "$CAPTURE_UNIT"`, reap its
+   waiting SSH process and require a successful terminal result and zero kernel
+   drops. Check its recorded PID on the capture host with
+   `find /proc -maxdepth 1 -mindepth 1 -name "$CAPTURE_PID" -print`; require empty
+   output. Unit collection alone does not prove process absence. On each guest,
+   verify both owned ping PIDs and arguments with `ps -C ping -o pid,args`, then
+   run `kill -INT "$OWNED_PING4_PID" "$OWNED_PING6_PID"`. Retain transmission
+   summaries and require each exact PID to be absent with the same `/proc` check.
+   Signal only the recorded local observer process with
+   `kill -INT "$OWNED_OBSERVER_PID"` and reap its transport. Refresh every PID
+   before execution.
+6. Restore ordinary simulator traffic and compare final owners, assignments,
+   routes, translation, mappings, BGP, management and both downstream families.
+   Record passed, failed and unperformed results separately. Preserve command
+   records, captures/counters, event logs, recovery and final identity as the
+   execution's manifest evidence.
+
 The shared simulator activation command from the Configs root is:
 
 ```sh
@@ -251,7 +433,7 @@ evidence. Stop on missing return routing, OOB bypass, conflicting owners,
 unbounded interruptions, or failures hidden by skipped tests. Restore ordinary
 simulator traffic after each fault before accepting the next result.
 
-Hand off the merged harness and configuration revisions, complete manifest,
+Hand off the merged protocol runner and configuration revisions, complete manifest,
 measured baseline and interruption bounds, scenario results, and packet
 artifacts. Separate isolated tests, shared testbed acceptance, and production
 acceptance in the execution ledger.
