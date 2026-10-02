@@ -6745,6 +6745,45 @@ Deployment 48179 completed prior-role snapshot assertions and staged source
 runtime inputs. Its unified binary copy is active. Owner activation, reboot
 and the complete public acceptance battery remain pending.
 
+## Verify Webpass ownership and restore measurement coverage
+
+Deployment 48179 installed the exact published executable cb96234d. Source
+exclusion passed readiness and downstream packet gates. Independent external
+readback verified owner external, networkd unmanaged, no loaded network file
+and termination of the previous acquisition process. Replacement readback
+at 00:04:49 UTC verified owner mwan, link up, ready apply state and valid
+assignments and routes for both families.
+
+Selection restoration passed. Installed and running process executables
+equal cb96234d; the final network equals 2769af5f. Every nonselected interface
+record equals the baseline, including AT&T, management and transit. Networkd
+still reports Webpass unmanaged. Reboot and full public acceptance remain
+pending. Both production PRs now have passing main check names and no
+unresolved review threads; no production merge or deployment has occurred.
+
+Simulator capture 32435 exited 255. Its file ends at 00:00:00.879 UTC, and
+the owned unit deactivated at 00:01:11 with MainPID zero. Initial acquisition
+packet proof is missing. The saved lease and operational readiness remain
+separate evidence. Old downstream streams stopped returning packets around
+00:00:07 through 00:00:08 while route queries continued. Do not infer an
+outage or assign a cause to these observation gaps.
+
+Fresh nonmultiplexed observers 75246 and 2793 returned all four packet streams
+at 00:09:32 through 00:09:33. Their output directories are nomux-client225
+and nomux-client226 under the real-cutover evidence directory. Root verified
+the exact old observer PIDs 50187 and 50223, then stopped them with SIGINT;
+sessions 98573 and 17866 exited 130. Preserve their reports and gaps.
+
+The replacement simulator capture uses isolated jump and destination sockets,
+session 49928, unit mwan305-dns-forward-final-20261002-0010.service and
+PID 500813. Listening readiness passed at 00:09:31, with deadline 03:09:31.
+Fresh captured uncached A and AAAA requests and replies passed at 00:09:48.
+Captured Renew and Reply at 00:10:29 preserve IAID 1370549548, delegated
+2200::/56, renewal deadlines and advertised DNS. After-renew configured
+resolver queries passed in 29.6 and 33.1 milliseconds. The public acceptance
+manifest now uses its own nonmultiplexed SSH configuration; binary and network
+expectations remain unchanged. No shared SSH master was stopped.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
