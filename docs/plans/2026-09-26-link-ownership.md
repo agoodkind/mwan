@@ -47,6 +47,17 @@ custom protocol code.
 Production preparation failed on October 1 and the original snapshot was
 restored. Require the incident corrections under MWAN-535 through MWAN-544
 before another production attempt. Production activation remains stopped.
+Complete every incident correction as part of the operational goal. Import
+the existing MWAN Cloudflare load balancers, pools and health monitors into
+OpenTofu under MWAN-543. Preserve their current configuration and alert policy.
+Verify an import plan without infrastructure changes before applying state
+adoption. Exclude unrelated zones and services.
+
+Run legacy upgrade repairs, Cloudflare imports and health contract inspection
+in separate lanes with exclusive files. Review the health interfaces before
+implementing dependent checks. Serialize deployment recovery edits and live
+testbed operations under one controller. Require the original-release upgrade,
+inbound failure recovery and independent health results before promotion.
 Reproduce the original-release upgrade on the physical testbed with existing
 legacy edges, an empty new ownership journal and the actual legacy device
 selector. Preserve the accepted testbed snapshot before changing that fixture.

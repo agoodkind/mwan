@@ -7243,6 +7243,20 @@ complete independent reports. No new source fix, reproduction or deployment
 passed at this checkpoint. Production activation remains blocked and requires
 subsequent authorization after testbed repair acceptance.
 
+## Expand the goal after production recovery
+
+On October 1 at 19:20 PDT, the operator required implementation of all
+MWAN-535 through MWAN-544 and OpenTofu adoption of existing Cloudflare load
+balancers and health checks. The active goal includes those requirements,
+strict delegated execution, reorientation, ledger and actual ticket updates,
+complete testbed proof and subsequent production authorization.
+
+The existing heartbeat now references the expanded scope. Its two-hour
+interval and notification policy remain unchanged. Separate agents own legacy
+upgrade repairs, Cloudflare imports and recovery/health contract inspection.
+The coordinator owns shared plan edits and live deployment serialization.
+Physical reproduction and repaired cutover acceptance remain unperformed.
+
 ## Record future implementation results
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
