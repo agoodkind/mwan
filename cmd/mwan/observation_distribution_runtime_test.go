@@ -38,12 +38,14 @@ func TestDistributionObservationDaemonRuntime(t *testing.T) {
 		return
 	}
 	binary := protocolTestBinary(t)
-	command := exec.Command(os.Args[0], "-test.run=^TestDistributionObservationDaemonRuntime$")
+	command := exec.Command(os.Args[0], "-test.run=^TestDistributionObservationDaemonRuntime$", "-test.v")
 	command.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
 	command.Env = append(os.Environ(), distributionRuntimeChild+"=1", mappedRuntimeBinaryEnv+"="+binary)
-	if output, err := command.CombinedOutput(); err != nil {
+	output, err := command.CombinedOutput()
+	if err != nil {
 		t.Fatalf("real downstream distribution: %v: %s", err, output)
 	}
+	t.Logf("real downstream distribution: %s", output)
 }
 
 func runDistributionObservationRuntime(t *testing.T) {
