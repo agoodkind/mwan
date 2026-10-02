@@ -9575,6 +9575,23 @@ results are durable above. Ending counters remain unavailable after reboot.
 The superseded full capture is eligible for deletion after this entry is
 committed. Active provider and postboot captures remain unchanged.
 
+Independent incremental review approved exact signed 8fcf643 after checking
+the existing clock default and constructor. No new finding remains from that
+review. Exact-head required CI is still running. Root deleted the superseded
+31 MiB preboot transit capture after its compact 5.8 MiB replacement and
+purpose were committed as 3541e39. Active captures remain unchanged.
+
+Root independently read the reverse manifest and operation status. Exact
+operation 20261002-152200-deploy-368253 uses generation
+50ca1044-9172-4079-86c7-173953db3f9e and snapshot
+pre-deploy-20261002-152200-deploy-368253. Its watch is running with PID
+3273243 and invocation 6e6d1ba919624f1aaf96cf67752dd076. Status at
+22:28:44 UTC is armed and mutation-ready with all eight checks complete/pass.
+The target executable hash is
+7df2c484c0c87ed13f018a80d96d491115c618c945691b6d8429fa772e8005c1;
+network A95d and runtime C1be match the reviewed reverse pair. Controller
+94824 remains live. Reverse acceptance is pending; production is unchanged.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
