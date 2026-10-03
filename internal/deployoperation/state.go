@@ -210,6 +210,11 @@ func (store Store) BeginRecovery(ctx context.Context, operationID, generation, r
 	})
 }
 
+// settled reports a status that needs no watch, observation, or snapshot restoration.
+func (status Status) settled() bool {
+	return status == Committed || status == Recovered || status == Disarmed
+}
+
 // Disarm ends an armed operation that has no mutation lease. The gateway keeps its current disk.
 func (store Store) Disarm(ctx context.Context, operationID, generation, reason string) error {
 	return store.change(ctx, operationID, generation, func(record *Record) error {
@@ -313,7 +318,7 @@ func (store Store) observe(ctx context.Context, operationID, generation string, 
 			return fmt.Errorf("deploy operation identity does not match")
 		}
 		status = record.Status
-		if status == Committed || status == Recovered || status == Disarmed {
+		if status.settled() {
 			return nil
 		}
 		if record.Status != Armed && record.Status != Recovering {
