@@ -9954,6 +9954,23 @@ after source merge and publication. This updates desired deployment
 compatibility, not live production or ownership. Preserve the recovered
 production pair and require full testbed proof before any production deploy.
 
+At 00:17 UTC the deployment restarted ifmgr. Its new PID is 6738 and
+invocation is 267a7a4226ba422b9c57083566ff85c2. Root verified its live
+executable hash matches candidate 787bd8cca577206514bf6fb2c84289e7977f2a8d050d66e0f672f0a9a4fb2967.
+Native nft readback includes the nonzero NEW conntrack-mark restore rule.
+This establishes candidate runtime activation, not retry packet acceptance.
+The operation remains armed in its wan-restart lease; fault controls remain
+prohibited until successful commit and healthy baseline.
+
+Independent observations recorded one timeout per inbound check:
+Webpass IPv4 at 00:17:35.074753476, AT&T IPv4 at 00:17:35.379251638,
+AT&T IPv6 at 00:17:35.867234434 and Webpass IPv6 at 00:17:39.256523948.
+Their next passes were 00:17:42.011284367, 00:17:42.411373038,
+00:17:42.857696783 and 00:17:46.123549461 UTC respectively.
+Downstream checks remained passing and Ping E recorded no new unanswered
+requests. These samples do not establish total client outage duration.
+The exact operation's eight checks all pass at 00:18:29 UTC.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
