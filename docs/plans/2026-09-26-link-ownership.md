@@ -11,6 +11,13 @@ document gaps and the remaining implementation gates.
 
 ## Complete the operational goal
 
+Prioritize the first safe production cutover. Complete the exact merged
+release's physical testbed proof, then perform the conditionally authorized
+production preparation and Webpass activation. Limit deployment refinements
+to requirements for that cutover. Preserve the remaining epic scope; later
+interface transfers, AT&T retirement and reboot detection remain subsequent
+phases.
+
 Complete MWAN-305 interface ownership through verified operational acceptance.
 Preserve AT&T and networkd coexistence, deployment authorization, original
 sources, production backups, and production recovery state. Testbed state is

@@ -10094,6 +10094,33 @@ Candidate retry, distribution and full cutover acceptance remain unperformed.
 Production remains unchanged. Root controls deployment and application
 observations; distribution_resume owns the existing bounded Ping F streams.
 
+The operator set a new active goal prioritizing safe production cutover while
+preserving the entire epic scope and artifact constraints. The independent
+acceptance review separates first Webpass activation from later AT&T
+retirement, remaining interface transfers and global networkd removal.
+Those later phases do not block first activation. Exact candidate retry,
+distribution, complete forward/reverse transfer, family protection,
+autonomous recovery and notification delivery still require live proof.
+
+Configs PR 658 merged as ca69a264. The requested explanatory comment
+identifies Ansible's built-in Python module and remote execution check;
+comment-only PR 659 merged as 6db5e167449d55ab4a35e1b5cee9a86cbecd1669.
+Root advanced the clean idle detached deploy checkout to that merged revision.
+The prior operation independently reports recovered, lease null, and inactive
+watch with MainPID zero. Guest preparation revision independently reads one.
+The reviewed forward document still preserves Webpass ownership and all six
+nonselected connections, including AT&T/networkd coexistence.
+
+Root started candidate deployment through configsctl at 02:50 UTC October 3,
+transport 94236. All eight fresh independent application checks passed before
+deployment. The new bounded application observer is unit
+mwan305-root-cutover-20261003-0250, transport 14464. Its predecessor is
+verified inactive and its transport is absent; do not reuse its historical
+samples as current health. distribution_resume owns the active Ping G
+streams and the terminal F/G overlap accounting. Deployment, commitment and
+candidate packet acceptance remain pending. Production remains unchanged.
+All controller caches, temporary output and release staging use Chaos Storage.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
