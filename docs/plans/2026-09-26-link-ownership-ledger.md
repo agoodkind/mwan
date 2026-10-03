@@ -10121,6 +10121,31 @@ streams and the terminal F/G overlap accounting. Deployment, commitment and
 candidate packet acceptance remain pending. Production remains unchanged.
 All controller caches, temporary output and release staging use Chaos Storage.
 
+The active candidate operation is 20261002-195107-deploy-965919, generation
+b2d76049-c119-4cf6-9fea-6020dfc215a6. Its independently inspected manifest
+targets executable 787bd8cca577206514bf6fb2c84289e7977f2a8d050d66e0f672f0a9a4fb2967
+and preserves the accepted network and runtime hashes. Native watch PID
+345434 and invocation deb716b220824ff8bbdb5545810c41bc are active. Public
+status reports armed with a fresh bounded mutation lease and mutation_ready
+true. No candidate fault or distribution cohort has started.
+
+The independent production brief confirms preparation requires only the
+production release pin, with all existing owners still networkd. Root inspected
+the bounded implementer diff and committed that two-value pin change as
+9eb6d96a on codex/mwan-305-production-candidate. The branch remains unpublished
+and unmerged pending candidate testbed acceptance. Existing activation PR 618
+must be refreshed against the accepted preparation baseline before its separate
+activation. Earlier saved production input and recovery evidence are historical;
+fresh production health and complete nonselected comparisons remain required.
+
+Root published coordination and ledger revision 9bc0ac0 after verifying every
+one of 258 branch signatures and raw signature headers. The one-use verifier
+and its log were removed by the exit trap, and their absence was verified.
+Root purged superseded 90-second baseline output and merged PR body files,
+plus the unused 13 MiB reconnect validation cache after confirming no open
+files. Active controller caches, observations and unique incident evidence
+remain required and cataloged on Chaos Storage.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
