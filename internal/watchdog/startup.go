@@ -45,6 +45,7 @@ func (w *watchdog) runStartupChecks(ctx context.Context) {
 		return
 	}
 	w.recoverInterrupted(ctx)
+	w.clearStaleGuestLock(ctx, "startup")
 
 	// A watchdog that died mid-snapshot can leave the guest frozen with no
 	// process left to thaw it; recover that state before anything else
