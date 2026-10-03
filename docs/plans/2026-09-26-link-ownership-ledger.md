@@ -10188,6 +10188,14 @@ that proves the cause. Do not increase the timeout or alter recovery from this
 unconfirmed diagnosis. The restored inbound checks now pass without manual
 network repair. Candidate installation and packet acceptance remain incomplete.
 
+Root started one unchanged candidate retry through configsctl at 03:31:18 UTC
+October 3, controller 47967. The deploy checkout is clean at latest merged
+Configs 6db5e167. Fresh active VM 213 tasks are empty before the retry.
+All eight independent checks pass on the restored baseline. The current
+application observer and distribution-owned ping streams continue; no candidate
+fault or distribution cohort may start before commitment and identity proof.
+No timeout, snapshot or routing behavior changed for this retry.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
