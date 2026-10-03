@@ -406,6 +406,47 @@ func TestConfigItems_PublishesMWANOwnedDHCPv4(t *testing.T) {
 	}
 }
 
+func TestConfigItems_PublishesMWANOwnedAcquiredSettings(t *testing.T) {
+	t.Parallel()
+	gateway := testGateway()
+	owned := testConnection("enacquired0")
+	owned.Owner = interfaceintent.OwnerMWAN
+	owned.Link = &interfaceintent.Link{
+		Kind:  interfaceintent.KindPhysical,
+		Match: interfaceintent.Match{HardwareAddress: "02:00:5e:00:53:78"},
+	}
+	owned.IPv4 = &interfaceintent.IPv4{
+		Family: interfaceintent.Family{DHCP: new(true), RouteMetric: new(uint32(17))},
+		DHCPv4: &interfaceintent.DHCPv4{UseDNS: new(true)},
+	}
+	owned.IPv6 = &interfaceintent.IPv6{
+		Family:   interfaceintent.Family{RouteMetric: new(uint32(18))},
+		AcceptRA: new(true), AutoConf: new(true), AcceptRADefaultRoute: new(true), UseRADNS: new(true),
+	}
+	gateway.Connections = append(gateway.Connections, owned)
+	items, err := ConfigItems(gateway)
+	if err != nil {
+		t.Fatalf("ConfigItems rejected settings that the network configuration loader accepts: %v", err)
+	}
+	served := make(map[string]string, len(items))
+	for _, item := range items {
+		served[item.Path] = item.Value
+	}
+	base := "/ietf-interfaces:interfaces/interface[name='enacquired0']"
+	for path, want := range map[string]string{
+		base + "/ietf-ip:ipv4/goodkind-mwan-steering:dhcpv4/use-dns":          "true",
+		base + "/ietf-ip:ipv6/goodkind-mwan-steering:route-metric":            "18",
+		base + "/ietf-ip:ipv6/goodkind-mwan-steering:accept-ra":               "true",
+		base + "/ietf-ip:ipv6/goodkind-mwan-steering:autoconf":                "true",
+		base + "/ietf-ip:ipv6/goodkind-mwan-steering:accept-ra-default-route": "true",
+		base + "/ietf-ip:ipv6/goodkind-mwan-steering:use-ra-dns":              "true",
+	} {
+		if got := served[path]; got != want {
+			t.Errorf("%s = %q, want %q", path, got, want)
+		}
+	}
+}
+
 func TestConfigItems_RejectsUnsupportedMWANOwnedDHCPv4(t *testing.T) {
 	t.Parallel()
 	for _, testCase := range []struct {
@@ -415,7 +456,6 @@ func TestConfigItems_RejectsUnsupportedMWANOwnedDHCPv4(t *testing.T) {
 		want    string
 	}{
 		{"client ID", interfaceintent.DHCPv4{ClientID: "hex:01"}, false, "client-id"},
-		{"DNS", interfaceintent.DHCPv4{UseDNS: new(true)}, false, "use-dns"},
 		{"missing route metric", interfaceintent.DHCPv4{}, false, "routes require route-metric"},
 		{"static gateway with DHCP routes", interfaceintent.DHCPv4{UseRoutes: new(true)}, true, "cannot combine a static gateway with DHCP routes"},
 	} {

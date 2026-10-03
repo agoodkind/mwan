@@ -118,16 +118,15 @@ func validateMWANConnection(connection interfaceintent.Connection) error {
 			return err
 		}
 	}
-	if ipv6 := connection.IPv6; ipv6 != nil &&
-		(ipv6.AutoConf != nil || ipv6.AcceptRADefaultRoute != nil ||
-			ipv6.UseRADNS != nil || len(ipv6.ForwardingAddresses) != 0) {
+	if ipv6 := connection.IPv6; ipv6 != nil && len(ipv6.ForwardingAddresses) != 0 {
 		return invalid(fmt.Sprintf("interface %s has unsupported mwan ipv6 intent", connection.Name))
 	}
 	if err := validateMWANDHCPv6(connection); err != nil {
 		return err
 	}
 	if connection.IPv6 != nil {
-		return validateMWANStaticFamily(connection.Name, "ipv6", connection.IPv6.Family, false)
+		// An IPv6 route-metric with no gateway sets the metric of the router advertisement default route.
+		return validateMWANStaticFamily(connection.Name, "ipv6", connection.IPv6.Family, true)
 	}
 	return nil
 }
@@ -156,9 +155,6 @@ func validateMWANIPv4(name string, ipv4 *interfaceintent.IPv4) error {
 		if _, err := networkjson.DecodeDHCPv4ClientID(ipv4.DHCPv4.ClientID); err != nil {
 			return invalid(fmt.Sprintf("interface %s dhcpv4 client-id: %v", name, err))
 		}
-		if ipv4.DHCPv4.UseDNS != nil && *ipv4.DHCPv4.UseDNS {
-			return invalid(fmt.Sprintf("interface %s dhcpv4 use-dns requires resolver ownership", name))
-		}
 	}
 	if dhcp && routesEnabled && ipv4.RouteMetric == nil {
 		return invalid(fmt.Sprintf("interface %s dhcpv4 routes require route-metric", name))
@@ -166,9 +162,9 @@ func validateMWANIPv4(name string, ipv4 *interfaceintent.IPv4) error {
 	return validateMWANStaticFamily(name, "ipv4", ipv4.Family, dhcp)
 }
 
-func validateMWANStaticFamily(name, familyName string, family interfaceintent.Family, dhcpv4 bool) error {
+func validateMWANStaticFamily(name, familyName string, family interfaceintent.Family, acquiredRouteMetric bool) error {
 	if family.Enabled != nil && !*family.Enabled ||
-		family.RouteMetric != nil && !family.Gateway.IsValid() && !dhcpv4 {
+		family.RouteMetric != nil && !family.Gateway.IsValid() && !acquiredRouteMetric {
 		return invalid(fmt.Sprintf("interface %s has unsupported mwan %s settings", name, familyName))
 	}
 	for _, address := range family.Addresses {
