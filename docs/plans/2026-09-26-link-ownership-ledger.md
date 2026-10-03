@@ -10038,6 +10038,24 @@ ordering; September 29 package-version parity is unverified. Exact-name ZFS
 history records deletion, not a matching rollback. Clearing the stale guest
 lock alone does not reconcile orphaned snapshot metadata.
 
+The operator superseded the MWAN-548 recovery proposal with prevention.
+The repaired operation must complete native deletion and configuration
+cleanup without automatic lock removal. Root inspected and discarded only
+the five unpublished atomic-unlock draft edits. The source worktree is clean
+at published PR 180 head 5dba2d9. No Perl asset exists. PR 180 remains
+unmerged and its implementation must be revised before acceptance. Its
+earlier declaration exception question is obsolete.
+
+The bounded native origin report is retained under
+planned-handover/snapshot-delete-origin-evidence.md on Chaos Storage.
+The independent contract investigation compares supported native operation
+lifecycle and an isolated reproduction of task-registry failure. No live
+snapshot or registry mutation occurred during that investigation. The
+testbed baseline is recovered; production remains unchanged. Observer D is
+inactive with MainPID zero and ExecMainStatus zero. Its former transport is
+absent. Its last application result is historical and does not prove current
+health. The distribution owner retains the bounded ping streams separately.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
