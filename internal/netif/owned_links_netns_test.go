@@ -62,6 +62,56 @@ func TestOwnedLinkAliasOnCreate(t *testing.T) {
 	}
 }
 
+func TestOwnedLinkReservationFromOlderBoot(t *testing.T) {
+	const childEnv = "MWAN_OWNED_LINK_OLDER_BOOT_CHILD"
+	if os.Getenv(childEnv) != "1" {
+		if os.Geteuid() != 0 {
+			t.Skip("network namespace requires root")
+		}
+		child := exec.Command(os.Args[0], "-test.run=^TestOwnedLinkReservationFromOlderBoot$")
+		child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNET}
+		child.Env = append(os.Environ(), childEnv+"=1")
+		if output, err := child.CombinedOutput(); err != nil {
+			t.Fatalf("isolated older boot reservation test: %v: %s", err, output)
+		}
+		return
+	}
+	connection := interfaceintent.Connection{
+		ID: "older-boot-bridge", Name: "older-boot-br",
+		Owner: interfaceintent.OwnerMWAN, Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
+	}
+	statePath := filepath.Join(t.TempDir(), "links.json")
+	interrupted, err := NewOwnedLinkReconciler(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	interrupted.state.Virtuals[connection.ID.String()] = virtualRecord{
+		BootID: "previous-boot", ConnectionID: connection.ID.String(),
+		Alias:    aliasFor(connection.ID.String()) + ":older-boot-token",
+		TempName: "mw-older-boot", Name: connection.Name, Kind: string(interfaceintent.KindBridge),
+	}
+	if err := interrupted.save(); err != nil {
+		t.Fatal(err)
+	}
+	rebooted, err := NewOwnedLinkReconciler(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	results, err := rebooted.Reconcile(context.Background(), log, []interfaceintent.Connection{connection})
+	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
+		t.Fatalf("reservation from an older boot blocked link creation: results=%+v err=%v", results, err)
+	}
+	bridge, err := netlink.LinkByName(connection.Name)
+	if err != nil {
+		t.Fatalf("owned bridge is absent after reconciliation: %v", err)
+	}
+	record := rebooted.state.Virtuals[connection.ID.String()]
+	if !record.Complete || record.BootID != rebooted.bootID || bridge.Attrs().Alias != record.Alias {
+		t.Fatalf("journal kept the reservation from the older boot: record=%+v alias=%q", record, bridge.Attrs().Alias)
+	}
+}
+
 func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	const childEnv = "MWAN_OWNED_LINK_LIFECYCLE_CHILD"
 	if os.Getenv(childEnv) != "1" {

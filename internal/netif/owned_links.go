@@ -508,10 +508,11 @@ func (r *OwnedLinkReconciler) virtualLink(connection interfaceintent.Connection,
 	if found != nil {
 		return r.adoptVirtualLink(found, connection, parent)
 	}
-	if record, ok := r.state.Virtuals[id]; ok && !record.Complete {
+	// A reboot removes every virtual link. A reservation from an older boot has no link to recover.
+	if record, ok := r.state.Virtuals[id]; ok && !record.Complete && record.BootID == r.bootID {
 		return r.recoverVirtual(connection, parent, record)
 	}
-	if record, ok := r.state.Virtuals[id]; ok && record.Complete {
+	if _, ok := r.state.Virtuals[id]; ok {
 		delete(r.state.Virtuals, id)
 		if err := r.save(); err != nil {
 			return nil, false, err
