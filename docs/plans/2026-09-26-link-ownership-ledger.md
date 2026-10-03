@@ -10196,6 +10196,22 @@ application observer and distribution-owned ping streams continue; no candidate
 fault or distribution cohort may start before commitment and identity proof.
 No timeout, snapshot or routing behavior changed for this retry.
 
+Controller 47967 ended exit one at 03:33:41 UTC October 3 before arming a new
+operation or preparing the gateway. Snapshot creation reported snapshot-delete
+lock. Native watchdog cleanup workers independently reported the same lock
+error. Root suspended only the watchdog main process with SIGSTOP and verified
+that its state was stopped. The latest native deletion task was terminal with
+that lock error; fresh active VM tasks were empty and no snapshot or ZFS worker
+remained. Root cleared VM 213's lock by hand once, verified it absent and resumed
+the same watchdog main process with SIGCONT. Its state is sleeping, not stopped.
+No automatic lock removal or snapshot implementation was added.
+
+At 03:40 UTC, active VM tasks and matching workers are absent, the lock is absent,
+and all eight independent application checks pass. Root started the next unchanged
+merged candidate deployment as controller 38257. Keep one deployment owner and
+continue the existing observers. Candidate commitment and packet proof remain
+pending; production remains unchanged.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
