@@ -9935,6 +9935,25 @@ release. Active deployment 56554 remains unchanged. At 00:12 UTC its original
 watch remains armed and all eight checks pass. The running ifmgr still uses
 F4 until activation; candidate packet controls remain unperformed.
 
+At 00:14 UTC, the corrected source still fails required Golangci Lint:
+dispatch contains 62 statements and wrapcheck requires contextual wrapping
+of native interface errors. Staticcheck Extra passed the direct-return
+revision. Root disabled auto-merge pending another reviewed correction.
+Move the existing verified stale-unlock warning into the common recovery
+operation and remove caller duplicates. Preserve watchdog notification and
+the single final failure log. Wrap native errors with %w. Add no dummy log,
+suppression or new error-construction mechanism. The fresh Govulncheck job
+also ended after runner shutdown with exit 143; it produced no vulnerability
+verdict and does not prove a clean vulnerability scan.
+
+The shared Configs snapshot command also requires a compatible production
+release pin. Current production release 202610021553-ab-a96991a lacks the
+new verb. Root assigned release tag and asset hash changes only in
+ansible/inventory/group_vars/mwan_prod_all.yml, alongside the testbed pin,
+after source merge and publication. This updates desired deployment
+compatibility, not live production or ownership. Preserve the recovered
+production pair and require full testbed proof before any production deploy.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
