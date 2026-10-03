@@ -21,6 +21,12 @@ const (
 	renderedExtraLine  = `iif "enatt0.3242" ip6 daddr 2600:1700:2f71:c85::abcd dnat to 3d06:bad:b01:201::1`
 )
 
+func desiredForTest() desiredRules {
+	var desired desiredRules
+	desired.add(buildWANRules(wanInputForTest()))
+	return desired
+}
+
 func renderFromKernel(t *testing.T) RenderedTable {
 	t.Helper()
 	rendered, err := RenderTable(context.Background(), slog.Default())
