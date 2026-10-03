@@ -2123,12 +2123,8094 @@ remain networkd-owned. Deploy the merged reload fix to testbed, verify actual
 generated-unit activation and restart recovery, then complete reboot and
 downstream acceptance before production promotion. MWAN-521 remains In Progress.
 
+### Resolver acceptance and scoped NPT implementation, September 30, 2026
+
+Configs PR #571 merged as `3f28f3bf291ebd6f3374937cb4252896f4feba12`.
+Its real missing-file control raised the expected error and removed the
+fixture directory, all five namespaces and all six units. The evidence is
+`20261001-pr571-thread-review/fix/missing-file-result.json`.
+
+The resolver stack is published at parent
+`f005b62236b921a376b358c7b36f5e5f7f12933d` and child
+`fd9a89d8efbad13b05b88ace54d1eb919c0edbab`. All four source systemd cases
+passed without skips in 26.409 seconds. Explicit read-only candidate
+selection passed the two new cases in 12.485 seconds. Its SHA256 is
+`6b4bedf71cc39648b42e6a06ff3bd4e521ad26f41f146794132b551ea8c4709d`.
+The older published release failed on its unsupported resolver ownership
+configuration, confirming that binary selection did not substitute a source
+build. These candidate results do not prove a published feature release.
+
+Exact parent CI passed 22 namespace and three systemd cases. Exact child CI
+passed 22 namespace and four systemd cases after retrying a dependency
+download failure that occurred before test execution. All review threads
+are resolved. Required GitGuardian checks remain pending at this checkpoint.
+The full local systemd command requires an explicit absolute Configs checkout
+through `MWAN_OWNED_ROLE_CONFIGS`; the runner reads its actual bootstrap
+sources. The report is
+`20261001-networkd-resolver/logging-contract/implementation.md`.
+
+Twenty bounded runs of the earlier monitor and IPv6 firewall failures passed
+with unchanged deadlines and assertions. Passing identity observations and
+TCP captures do not establish the earlier failures' causes. Failure-time
+evidence remains unavailable. No speculative runtime correction was made.
+The report is `20261001-netns-failure-evidence/evidence.md`.
+
+PR #140 merged as `6d238595a7fd8dfe85eaecc41c596e7d0a122bea` after all
+ten required checks passed. The merged protocol and expired-route worktrees
+and their local and remote branches were removed after verifying current
+trunk behavior and ancestry. Their ignored build files and logs were moved
+intact into `20260930-terminal-cleanup` before removal.
+
+The NPT edge authority correction is in implementation on
+`codex/mwan-305-npt-edge-authority`. One scoped journal authority must
+preserve unchanged edges across connection owner changes and verify relevant
+managed translation removal before releasing obsolete edges. Existing
+external-owned NPT configurations remain supported: acquisition stays
+external while configured NPT intent authorizes only the edge producer.
+Legacy networkd acquisition and AT&T authentication continue.
+
+The paired Configs change must provide the explicit journal path and a
+compatible merged published executable. Same-boot startup and pre-reboot
+deployment gates require real acceptance; a future reboot does not prove
+their success. No further physical guest boot or shared deployment occurred.
+MWAN-519, MWAN-521 and MWAN-522 remain In Progress in Tack. IPv6 handover,
+complete shared testbed acceptance and production promotion remain required.
+
+### Resolver merge and NPT runtime controls, September 30, 2026
+
+Graphite merged resolver PR #130 as
+`422a64763bb472f86e0b84cddeddff0b252f2110` after all ten required checks
+and complete source acceptance passed. The original full run timed out during
+an IA_NA UDP packet assertion. Its single retry passed the unchanged case in
+8.63 seconds and completed both protocol lanes. The failure remains unexplained.
+Six isolated unchanged ARM64 samples passed; three captured the requested
+datagram in both provider and gateway namespaces. The image lacked `ip`, so
+the attempted route and address snapshots establish no kernel state. No
+failed-packet capture exists. All 39 retained artifacts passed hash verification,
+and the observation container was removed. The report is
+`20261001-ia-na-packet-evidence/report.md`.
+
+Graphite rebased dependent PR #135 to
+`a25a37b8c40bd35b3bab12f9e4b014b0c21b848a` with unchanged accepted tree
+bytes. Its full acceptance passed 22 namespace and four systemd cases.
+All ten required checks passed. Graphite merged PR #135 as
+`2587f140a10ac8424ef96fe00d57c40853a7fa8a` at 16:19:32 UTC.
+
+The real NPT daemon control passed external link recreation after stale BPF
+policy cleanup. A nested-prefix fault control reproduced obsolete edge
+retention after the new edge completed duplicate address detection. The
+candidate correction verifies actual policy values against desired policy
+and rejects an obsolete edge exception. Independent source review also found
+that a pure interface rename discarded a scoped receipt without removing
+the address. The correction must retain the receipt on that name mismatch.
+The expanded real daemon lifecycle passed in 13.82 seconds, including
+rename retention/recovery, nested prefix replacement, foreign address
+rejection, legacy startup/restart and final NPT withdrawal. Full Linux
+ARM64 project checks passed. Feature-removal controls, real delegated-prefix
+systemd proof and committed independent review remain required.
+
+The mounted published old executable created actual prior-process NPT rules.
+First candidate activation with an empty journal rejected its unjournaled
+edge, preserved that address and removed the prior rules while remaining
+alive. This proves neither NPT packet continuity nor deployment acceptance.
+The actual deployment must prove backup traffic during this interval and
+journaled recovery after reboot without adopting foreign addresses.
+
+Configs commit `a7bfbac749e77fe2c8110f726fc21019272c1164` adds explicit
+journal configuration and a real inventory runtime rendering fixture. Both
+production and testbed TOML and network JSON rendered successfully, and the
+fixture lint and diff checks passed. This signed branch remains unmerged;
+compatible published release pins and actual first-start acceptance remain
+required. The production play starts the new daemon before scheduling reboot.
+Current pre-reboot gates do not inspect NPT translation or its journal.
+
+Unchanged edge continuity requires the verified link to remain present.
+The existing link authority deletes an MWAN-created VLAN during release;
+whole-connection transfer must verify its recreation, assignments and packets.
+MWAN-519 has the updated description and remains In Progress. No physical
+guest boot, shared testbed deployment or production promotion occurred.
+
+### Published resolver acceptance and NPT fixture prerequisites
+
+Release `202609301619-8a-2587f14` published from merged commit
+`2587f140a10ac8424ef96fe00d57c40853a7fa8a`. All four archives passed
+checksum, GitHub asset digest and attestation verification. The actual merged
+runner passed all four systemd cases against the published ARM64 executable
+with zero skips in 22.805 seconds. Guest readback verified SHA256
+`67a65dc237819a62e15d23d11baa083c8fbf926c2be469d7000f76829d21c543`
+and the read-only binary mount. The runner removed its container after exit
+zero. This proves resolver and owned-role runtime behavior, not NPT transfer.
+The report is
+`20260930-resolver-owned-role-release-2587f14/verification.md`.
+
+The mapped NPT lifecycle now uses the public binary-selection helper.
+The explicitly mounted candidate passed in 11.89 seconds. The explicitly
+mounted older published executable failed the scoped receipt assertion in
+4.18 seconds without rebuilding a candidate. Separate feature-removal
+controls failed obsolete-edge retention and rename receipt assertions.
+Final committed review and delegated-prefix acceptance remain required.
+
+The real networkd fixture initially started Kea before its provider
+link-local address completed duplicate address detection. Kea reported no
+open sockets. After bounded link-local readiness, networkd sent Solicit and
+Kea returned NoAddrsAvail and NoPrefixAvail because its subnet did not match
+the actual client interface. These results do not test NPT authority.
+The fixture must select the actual Kea server interface without changing
+production code or acceptance deadlines.
+
+The revised physical fixture binds IPv6 HTTP requests to the downstream LAN
+address, requires an explicit verified release, and checks captured packet
+counts. Its management DHCP metric is 9000 before baseline observation.
+Helper validation proved source binding, query preservation, invalid response
+rejection and a 2.094-second timeout. These are fixture results; the revised
+physical transfer has not run.
+
+Read-only inspection found testbed VM 213 running clean release `2f9a40a`.
+All seven configured interfaces use networkd. The service is active, but this
+inspection does not establish downstream health or balancing. No shared
+testbed deployment or production promotion occurred at this checkpoint.
+
+### Delegated NPT and native readiness regression
+
+The real systemd/networkd, Kea and radvd fixture passed scoped NPT edge
+creation and daemon restart in 3.97 seconds against the explicit read-only
+candidate. The public prefix command returned the delegated /56, and restart
+preserved acquired networkd addresses. Explicit server interface selection
+resolved the measured Kea subnet mismatch without changing deadlines.
+The log is `20261001-npt-edge-authority/networkd-npt-explicit-candidate.log`.
+
+Independent kernel testing verified rejection of a live BPF edge exception,
+rejection of an actual modified shared policy, removal of the old map key
+after interface recreation, and final map cleanup. The independent mapped
+daemon lifecycle passed in 12.533 seconds. Final signed source review remains
+required; these results are not release or deployment acceptance.
+
+MWAN-531 is In Progress under MWAN-305. A production module lifecycle
+regression reports native IPv6 ready while an actual old prerouting rule
+remains after an nftables apply error. Repairing the incompatible chain and
+reconciling removes the rule and restores readiness. The defect exists on
+merged main. Its focused correction uses a separate worktree and must pass
+before ownership and translation-mode migration acceptance. The evidence is
+`20261001-npt-edge-authority/independent-native-readiness-red.log`.
+
+Same-boot migration of historical unscoped MWAN NPT receipts is unsupported.
+Ordinary reconciliation can prune those old receipts before scoped NPT
+release verification. The companion deployment requires a verified networkd
+baseline, reboot, actual old-edge absence and fresh scoped creation. A changed
+boot identifier alone does not prove that baseline.
+
+### Native readiness merge and NPT authority review
+
+PR [#142](https://github.com/agoodkind/mwan/pull/142) merged as
+`8d408c2f67214e9f2f2a2dca7d295b6ea6944513`. Its signed source
+`049c1b22ad1660eeb08a9ac84407f5897e54e081` passed independent real
+kernel testing, the full local namespace suite, and Linux ARM64 checks.
+CI passed every required check plus namespace, ARM64, firewall and protocol
+tests. The nonrequired vulnerability check reported the existing GoBGP
+GO-2026-4736 advisory with no fixed version. The correction verifies both
+nftables chains and relevant rule absence before reporting native readiness.
+This merge does not establish deployed readiness.
+
+PR [#143](https://github.com/agoodkind/mwan/pull/143) contains the scoped
+NPT address authority. Signed source
+`980f4777ddf026165e995e0412018715955ac1a7` passed the independent mapped
+lifecycle in 12.077 seconds and the read-only networkd delegated-prefix
+restart in 3.678 seconds. The actual systemd runner passed all five cases
+with zero skips in 28.182 seconds. The old published executable failed the
+scoped receipt assertion in 3.75 seconds. Local Linux ARM64 checks passed.
+Commit `11a3ae23884964509b15e2b88174bd51332f9c08` changes one Init
+comment. The branch rebased onto the native readiness merge at signed
+`2895d7b49a1a226b74051459396bfae8a931861e`. Final integrated acceptance
+remains required.
+
+The two-provider test reproduced a duplicate address detection readiness
+race with the original one-hour reconciliation interval. NPT readiness
+changed without requesting route reconciliation. The correction requests
+reconciliation only when the stored translation result changes. Repeated
+packet tests verified both provider marks and no additional request during
+the bounded steady-state observation.
+
+Kernel reproduction confirmed that changing the internal interface can
+retain a policy on the former internal interface after a translator error.
+The current provider and internal index checks incorrectly accepted release
+in 0.017 seconds. A fresh translator reproduced the failure in 0.029 seconds:
+surviving TC programs retained the original policy map after restart.
+Obsolete-edge release must inspect surviving managed programs and their
+actual maps before deleting an address. PR #143 remains open for this fix.
+
+Source inspection verified that a hard NPT reconciliation error withdraws
+both primary default announcements through the forwarding readiness socket.
+The backup speaker does not consume that socket. Actual downstream backup
+traffic and interruption duration remain unmeasured for this activation.
+Shared testbed deployment and production promotion remain pending.
+
+### Downstream baseline and deployment observation
+
+At 2026-09-30 10:50 PDT, actual OPNsense VM 201 route queries selected
+primary next hops `10.240.240.3` and `3d06:bad:b01:201::3`. Source-bound
+HTTPS requests from `10.240.240.2` and `3d06:bad:b01:201::2` returned
+HTTP 301 with successful, complete, untruncated guest execution. This proves
+primary downstream egress at that checkpoint, not balancing or backup.
+
+The existing downstream deployment probe accepts backup next-hop inputs
+`10.240.240.4` and `3d06:bad:b01:201::4`. It verifies actual guest route
+selection and source-bound HTTPS in both families. Use that expectation
+during the preboot primary withdrawal interval and the ordinary primary
+expectation after reboot. No additional deployment simulator is required
+to measure this shared testbed sequence.
+
+Integrated namespace CI on `2895d7b49a1a226b74051459396bfae8a931861e`
+failed because the native-readiness fixture lacked the new real address
+authority. The fixture must initialize the production address module before
+testing the intended unrelated BPF policy failure. Retrying unchanged CI
+does not address that integration failure.
+
+### Surviving NPT program verification
+
+PR #143 published signed head
+`d08750553e015ca494ded22b11fc83e1bbf41d55`. Its verifier enumerates
+surviving managed programs and reads their actual policy maps. It rejects
+references to an obsolete edge and inspection failures. Unrelated policies
+and exact desired broader prefixes do not prevent release.
+
+The public old-source control failed address retention in 23.22 seconds
+after verifying actual old program and map references before and after
+restart. The candidate passed in 11.391 seconds. Its fixture prepares the
+replacement edge through the production address authority and waits for
+duplicate address detection. An actual WAN address event triggers recovery;
+TC filter removal and an MTU change alone do not trigger NPT reconciliation.
+Initial fixture failures remain preserved separately from this result.
+
+Independent final controls passed same-process and restart retention,
+unrelated policy, broader-prefix, missing-policy-map inspection failure,
+and actual cleanup recovery with zero skips. The independent public daemon
+lifecycle passed in 14.216 seconds. Local check/test and the full namespace
+suite passed. CI passed all required checks and namespace/ARM64 tests;
+the firewall/protocol job remained pending at this checkpoint.
+
+The constructor review finding was disproven. Actual execution against
+the signed source accepted a valid scoped /128 journal and rejected three
+malformed records without panic. Parse errors short-circuit the validation
+condition. The finding was resolved without a source change.
+
+The surviving-policy finding was resolved after the verified repair.
+A separate review finding about valid cached DHCPv6 delegation during
+restart remains under investigation. PR #143 is not merged. No shared
+deployment or production promotion occurred.
+
+### Cached delegation restart defect
+
+The independent real-Kea restart control confirmed the cached DHCPv6
+finding at `d08750553e015ca494ded22b11fc83e1bbf41d55`. During a
+750 millisecond delay before the actual Rebind reply, the daemon deleted
+`2001:db8:30::1/128` and its scoped receipt despite remaining lease validity.
+The real reply recreated the address. The netlink watcher failed in
+10.334 seconds with zero skips. CI run `36757339674` independently failed
+the existing restart case with the same deletion in 10.67 seconds.
+
+The correction preserves only an existing scoped edge associated with
+the current connection and verified link while recovery is pending and
+its matching cached delegated prefix remains valid. Each prefix's own
+valid lifetime governs retention. The cache must not establish translation
+or routing readiness. Rejection, matching-prefix expiry, and explicit
+configuration withdrawal must permit verified cleanup. Implementation
+and independent public-boundary controls remain pending.
+
+The external continuous observer passed a real ten-second read-only run:
+each family received all ten transmitted packets, and all eight completed
+route observations selected the primary. Signal controls preserved partial
+reports and removed the observer and client ping processes. This proves
+the recorder's operation, not restart continuity, backup selection,
+balancing, complete client preflight, or independent monitor history.
+
+PR #143 remains unmerged. Shared testbed deployment and production
+promotion remain pending.
+
+### Cached recovery acceptance and external monitor evidence
+
+Signed source `3398e61af4e635a45d80bd97d3a2475998ba6beb` preserves
+only matching valid scoped edges during pending DHCPv6 recovery. Independent
+real-Kea controls passed delayed validation and expiry in 37.02 seconds,
+NoBinding rejection in 7.45 seconds, and native withdrawal in 8.59 seconds.
+The committed two-prefix case passed in 12.104 seconds: the matching edge
+expired while a different cached prefix remained valid. Every selected
+independent case completed with zero skips. The query does not publish
+cached delegation or family readiness, and introduces no reverse lock
+dependency. The independent review has zero scoped findings.
+
+The complete local protocol namespace suite passed in 324.369 seconds
+with zero skips. Firewall, network namespace, check and test gates passed.
+The previous executable and deliberately incorrect maximum-lifetime control
+failed their intended assertions. All six branch-local signatures passed
+verification, including raw signature inspection. Final CI and the updated
+authority interface example remain pending at this checkpoint.
+
+Full Cloudflare alert bodies identified the three independent pools
+`sf-att-1335`, `sf-webpass-1335`, and `sf-1335-ipv6`. The bounded exact-pool
+queries returned sixty alerts and thirty complete unhealthy/healthy pairs
+without pagination. Body event timestamps establish monitor intervals;
+they do not establish packet outage duration or deployment attribution.
+The exact pool API returned HTTP 403 with an authentication error. Current
+health, monitor targets, and protocols remain unverified. The temporary
+credential file was deleted without displaying its contents.
+
+PR #143 remains unmerged. Compatible release verification, Configs pins,
+shared testbed deployment, complete downstream acceptance, physical
+forward/reverse transfer and production promotion remain required.
+
+### Merge NPT edge authority
+
+PR #143 merged as `c80877958125bcb11dfb49b3612c538720fb5018` on
+September 30, 2026 at 19:33:16 UTC. The merged head is
+`10798d795521246ccb29614bcbb36ee67a64fee4`. All seven branch-local
+commits passed signature verification and raw signature inspection.
+
+CI run `36763504811` passed every required check, ARM64, namespace,
+firewall and both protocol lanes. All four cached-prefix cases passed.
+The nonrequired vulnerability check reported the unchanged GoBGP
+`GO-2026-4736` advisory with no published fixed version.
+
+The independent systemd battery passed all five required cases and four
+interface naming subcases in 25.890 seconds with zero skips. It used the
+explicit candidate executable from signed source `3398e61`; the final
+commit changed only the acquisition plan. The final authority interface
+example includes cached-prefix retention without readiness publication.
+
+The final review has zero actionable findings. The literal empty-WAN
+cleanup conclusion uses source inspection; the public withdrawal control
+retains provider metadata and does not prove a literal empty-WAN input.
+The stale-map fixture uses real journal, kernel address and DAD operations
+before actual daemon startup. No mocked dependency replaces that path.
+
+The clean primary checkout now matches the merged commit. Release
+publication and verification, paired Configs pins and journal configuration,
+shared testbed deployment, downstream balancing and restart acceptance,
+physical forward/reverse transfer and production promotion remain pending.
+Current Cloudflare health verification requires working read access; the
+pool API returned HTTP 403 and Chrome requires sign-in.
+
+### Pair the published release and deployment configuration
+
+Release `202609301934-8c-c808779` passed its terminal release workflow.
+All four downloaded archives match published checksums and asset digests.
+Each archive's attestation verifies the exact merged source and package
+workflow. Actual ARM64 execution reports clean `c808779`; its SHA256 is
+`edb21db2b66294a8770c48012ddf39045af009986f3a006bf3948d79b73607df`.
+AMD64 execution failed with an executable format error on the ARM64 host;
+its archive provenance and embedded full revision passed verification.
+
+Configs PR #572 is open at signed
+`adbcd95225998a6cdb4a600fbc43df357ec80e7a`. It pairs the address journal
+with the compatible release in both environments. Ownership and recovery
+flags are unchanged. Both actual environment renders passed, and the
+published ARM64 executable accepted their network and firewall inputs.
+Lint and data CI passed. Independent review and full rendered startup remain
+pending. The primary Configs checkout remains on merged `3f28f3bf`.
+
+Live client preflight passed for both downstream clients and simulator
+identities. Calibration sent twenty source-bound IPv4 requests and produced
+five capture artifacts. Capture shutdown failed on an unavailable transient
+unit; process cleanup then raised a permission error. This failed run does
+not establish balancing. Diagnosis and exact-owned cleanup are required
+before a new calibration run. No network configuration or deployment changed.
+
+The merged authority worktree and exact local/remote branch were removed
+after containment verification. Ten ignored build files were copied and
+hash-verified in external evidence before removal. Shared Docker fixtures
+and external acceptance artifacts remain available.
+
+### Merge the compatible deployment pair
+
+Configs PR #572 merged as `61feeebfc7870e597a35619616e64d9e3b67bdc2`
+at 19:51:32 UTC. Required checks passed, no review threads remained open,
+and independent review found zero actionable defects at signed `adbcd952`.
+The clean primary Configs checkout matches the merge.
+
+Both unchanged runtime renders initialized addresses and completed initial
+reconciliation with the published executable. Both processes remained alive
+and served IPv4 and IPv6 readiness as false. The controls supplied no
+physical provider identity or delegation. The absent cold journal is correct
+when no edge is reserved. This proves initialization compatibility without
+claiming forwarding or edge creation. Private startup containers were removed.
+
+Further inspection of the failed calibration found successful initial
+simulator stop commands followed by timed-out SSH observers. Host journals
+showed both container-attached capture services exceeded their three-second
+stop deadline and received SIGKILL. The unloaded-unit errors occurred during
+the subsequent cleanup retry. The local process-group permission failure
+remains separately recorded. Diagnosis, corrected capture lifecycle and a
+fresh calibration remain required before complete downstream acceptance.
+Shared testbed deployment and production promotion have not begun.
+
+### Record the production capability failure
+
+Physical attempt 4 used the unchanged published c808779 ARM64 executable
+and production service capabilities. Six phases completed source-bound IPv4
+and IPv6 requests. Both ten-second DHCP release windows recorded zero
+packets. All fifteen completed captures recorded zero kernel drops.
+
+Reverse edge cleanup failed. Attached BPF program inspection returned
+`get program by id: operation not permitted` on Debian
+`6.12.107+deb13-cloud-arm64`. The obsolete provider A address receipt
+remained. Networkd reacquisition and the cold-baseline reboot sequence did
+not execute. Both private guests shut down cleanly. Deployment requires a
+verified service-permission repair and a fresh complete physical run.
+
+Configs PR #573 adds the required journal to the real acceptance fixture at
+signed `96469501ae8926d6a114d2058afe3b40cf865af9`. Independent validation
+cleared the missing-journal error but failed two of three public cases.
+The published daemon rejected the veth provider's permanent MAC identity
+before readiness. Assertions and deadlines remain unchanged. The fixture
+identity requires correction before merge.
+
+Process cleanup candidate `affcdfec87892af7777226209cecc7660963344d`
+reaps exited leaders before group signals. Real TERM and KILL controls pass
+on macOS and Linux. Independent review must verify descendant cleanup when
+the leader exits first. The candidate remains unpublished. Guest-owned
+capture services require a separate implementation after cleanup review.
+Shared testbed and production deployment remain pending.
+
+### Repair the verified acceptance defects
+
+MWAN-532 is In Progress under MWAN-305. Exact Linux 6.12.107 source
+requires `CAP_SYS_ADMIN` for BPF program and map lookup by ID. Current
+descriptors cannot inspect surviving prior-process attachments. The repair
+adds this capability to the WAN service's ambient and bounding sets and
+retains strict inspection. The capability permits operations beyond BPF
+inspection. Acceptance requires the actual production unit, an unchanged-unit
+EPERM control, restart, obsolete edge removal and surviving provider packets.
+
+Independent real-fork review confirmed that `affcdfec` returns after reaping
+the leader while its TERM-resistant descendant remains alive in the original
+group. Exact-owned reviewer cleanup removed the descendant. The correction
+must preserve original group IDs through cleanup and reap each direct child
+once. The candidate remains unpublished pending real macOS/Linux validation.
+
+Actual veth inspection found no permanent MAC attribute. Configs PR #573
+will use matching real tagged VLAN endpoints and declared VLAN identity
+instead of claiming a physical MAC identity. Its packet assertions and
+deadlines remain unchanged. The public released-daemon battery remains the
+acceptance requirement. These repairs do not authorize an unmerged deploy.
+
+### Publish the process cleanup correction
+
+Configs PR #574 contains signed `595e0dc8163cf5134a29b929e50f23c94f699f03`.
+The old permission control and the first correction's descendant control
+both fail against their original sources. The final three real-child cases
+pass on macOS and Linux ARM64 with zero skips. Root inspection and the
+independent macOS rerun passed. Permission errors remain strict. The private
+Linux container was removed. The PR changes process cleanup and its public
+regressions only; capture placement and Engine behavior are unchanged.
+
+The active ruleset requires signed commits, resolved threads, secret checks,
+lint and data tests. Lint and secret checks passed; data CI remains active.
+No review threads were open when exact-head auto-merge was enabled.
+Guest capture implementation must follow the actual merge. PR #573's real
+VLAN fixture also requires a declared parent and hand-authored networkd
+intent because the fixture creates the links without running networkd.
+Its full published-daemon acceptance remains incomplete.
+
+### Merge the acceptance process correction
+
+Configs PR #574 merged as `b30f1564a610a459f88ff9e4610ef68fbf98a24a`
+at 20:40:08 UTC. All required checks passed, and no review threads remained
+open. The clean primary Configs checkout matches the merge. Main delivers
+direct-child reaping and original process-group termination at
+`lib/mwan_acceptance/processes.rb:85`, with the three real-child regressions.
+The merged worktree and local branch were removed after exact tree equality
+and clean-state verification. The remote branch was already absent. Only
+regenerable CPython inventory bytecode was removed; external evidence remains.
+
+PR #573's next supported fixture uses the existing hand-authored legacy NPT
+contract: original veth topology, no renderable link or explicit DHCP intent,
+translation configuration and the required journal. Exact public loader and
+mapped-fixture evidence established this contract. Earlier invalid VLAN
+contracts remain preserved. Packet acceptance is still pending. The capture
+repair uses a new worktree from the merged Configs base. No shared testbed
+or production deployment occurred.
+
+### Verify actual guest capture shutdown
+
+Frozen capture source SHA256
+`f7290abd6034b8682969f2e933b09c99a79ce53703f15aa6c05644d7572102b8`
+passed twenty source-bound IPv4 HTTP requests from client 225. TCP sequence
+attribution passed across actual transit, provider and simulator captures.
+All five observers recorded active unit, PID and tcpdump executable identity,
+successful stop and runner completion, zero kernel drops and successful
+exact-PID absence commands. Root verified every PCAP hash and receipt.
+The control lasted 99.04 seconds and reported no cleanup errors.
+
+The two Proxmox simulator services executed tcpdump inside their guests;
+their attach and SSH streams closed successfully. This control establishes
+capture lifecycle behavior only. It does not establish calibration, configured
+weight distribution, IPv6 acceptance or a deployment. Actual SIGKILL failure
+rejection and the integrated Linux suite remain required before publication.
+
+The supported legacy packet fixture passed loader, health and routing checks.
+Its private runner lacks Bird and the required updater unit. The correction
+must provision the real dependency and run the unchanged updater service
+inside the private gateway namespace. Earlier fixture and prerequisite
+failures remain preserved. No product enforcement or packet deadline changed.
+
+### Verify capture failure rejection and combine acceptance repairs
+
+Capture commit `36c9ec6e2f4d0be99c07acaf3f89e6a23fa0239b` passed the actual
+Proxmox positive control. SIGKILL of its uniquely owned simulator observer
+failed acceptance despite twenty successful HTTP requests. The failure receipt
+preserved the missing-unit stop error and the separate cleanup error. Strict
+commands confirmed absence of all five capture PIDs and local observers.
+
+The final legacy fixture uses the real updater inside its private gateway
+namespace. Published `c808779` passed journal authorization, updater completion,
+BGP route installation, preflight and calibration. Its three-case battery
+reported two capture deadline failures and zero skips. Independent review found
+no actionable source defect at fixture SHA256
+`938f8bf404b27eac20b19dc8199680a265e190ea5b93bdc503036dffad45d7d1`.
+
+Graphite restacked the fixture onto merged Configs `b30f1564`, then moved the
+capture correction above it. The signed commits are `a66a46b8`, `174ad62b`
+and `3221aacf`. Every signature and raw `gpgsig` header passed verification.
+Recoverable pre-stack refs preserve both original branches. Submit preview
+updates PR #573 and creates only the capture PR. The combined public battery
+is pending at frozen tip `3221aacfcf4c4351e3ad9a9268127e4e78874220`.
+
+MWAN-532 signed commit `d4d60df811fb1506779dd4a404724aebdf36531b`
+adds the kernel-required capability to the production service. The unchanged
+unit retained actual prior A program/map references and failed withdrawal with
+EPERM. The candidate passed five real systemd cases, removed A's address and
+receipt, and preserved B's translated request and reply. Independent review
+and its separate real run remain pending. No shared testbed or production
+deployment occurred for these corrections.
+
+### Review the service repair and detect interrupted capture startup
+
+MWAN PR #144 publishes signed `d4d60df8`. Independent review found no
+actionable defect. Its separate real systemd run passed all five cases with
+zero skips in 27.936 seconds. Actual A references survived SIGKILL; withdrawal
+removed A's address and receipt while B request and reply passed. Install
+output matched the production service bytes. Required CI remains pending.
+
+Graphite published Configs PR #573 below PR #575. Frozen `3221aacf` ran
+three public cases with two failures and zero skips in 93.46 seconds.
+Interruption preceded the second observer's verified process receipt.
+Both capture services stopped, but the missing receipt failed cleanup.
+The other failure exceeded the five-second SSH deadline despite HTTP 200
+and a 0.000394-second curl result. Its cause remains unconfirmed.
+The private container was removed, and source hashes remained unchanged.
+
+The capture correction requires actual process verification during interrupted
+startup cleanup before service stop, followed by strict process absence.
+The public interrupt regression remains unchanged. Fresh integrated acceptance
+and exact failure rejection controls remain required. MWAN-522 and MWAN-532
+remain In Progress. Shared testbed and production deployment remain pending.
+
+### Merge the production permission repair
+
+MWAN PR #144 merged as `c25720051c7efd71aa1fa4eb5e4c1a6c7babd559`
+at 21:15:18 UTC. Every active required check passed; no review threads
+remained open. The clean primary MWAN checkout matches the merge.
+The unchanged nonrequired GoBGP advisory remains recorded. The additional
+protocol job was canceled after merge; its cancellation establishes no
+completed full-suite result. Merged-source CI and release verification remain
+pending. No deployment occurred.
+
+Capture source `a15cd293` passed the public interrupt boundary with status 130
+and no cleanup errors. The complete battery still reported two failures and
+zero skips in 109.43 seconds. Source-bound HTTP responses returned 200, but
+their SSH processes exceeded the five-second command deadline. Actual exit
+statuses and timestamps remain preserved; the cause remains unconfirmed.
+A duplicate private run was interrupted and its owned container removed.
+Its concurrency window remains part of the evidence. The capture correction
+also requires stop/reap attempts after failed process verification. The stack
+remains unmerged pending those controls and complete acceptance.
+
+### Verify the published service repair
+
+Release `202609302115-8d-c257200` completed workflow `36778234531`.
+All four archive checksums, API digests and exact-source attestations passed.
+Actual ARM64 execution reports clean `c257200`. Its executable SHA256 is
+`600507ae01dc834bb4e6357e243c9a00196ca2bfcf358f4d44ef0203afacaf87`.
+Published installation emits the exact production service with the required
+capability in both sets. The service SHA256 is
+`8b2a7ef93ffb372188d4ccd29156aa6e5ec21af91e275c9988b23c748abc41fa`.
+
+The merged MWAN-532 worktree and refs were removed after proof. Eleven ignored
+artifacts were preserved externally. A native Configs worktree at
+`/Users/agoodkind/.codex/worktrees/mwan-532-release-pin/configs` prepares
+the independent release companion. Actual physical and shared acceptance
+remain pending. Capture cleanup and SSH completion diagnosis remain separate.
+
+### Publish verified capture cleanup and merge the release companion
+
+The public capture identity-failure control kept the actual running tcpdump
+inode while renaming its executable inside a private container. Acceptance
+rejected the identity and preserved that failure. Cleanup still stopped the
+owned service, reaped its runner, recorded zero drops and verified exact PID
+absence. The original executable path was restored and the container removed.
+Source `613797a5` preserves failed verification and caches actual runner status
+to prevent a second reap. Root inspected the diff and runtime report.
+
+Graphite published the correction, then restacked each branch from its owning
+worktree after Configs PR #576 merged as
+`d749838112eda0703685b88caefb28e5d56c4c9f`. All four rewritten signatures
+and raw `gpgsig` headers passed. PR #573 is below ready PR #575 at signed tip
+`80338d2d6ce5a08f6d881dfcdad5cec2c5a82236`. Both remain unmerged pending
+complete public acceptance. Both release companion renders and exact published
+startup checks passed without physical identity or delegation inputs.
+
+Merged-source MWAN CI `36778234620` completed. Firewall/protocol, namespace,
+ARM64 and required Go checks passed. The unchanged Govulncheck advisory failed
+separately. The physical runner will use the verified published `c257200`.
+
+The bounded HTTP diagnostic verified stdin EOF and reproduced the timeout
+with explicit SSH `-n`. Full TCP shutdown completed before curl waited
+4.999 seconds on a UDP socket. JSON output followed that wait; cleanup had
+closed SSH and its write returned EPIPE. UDP destination and query require
+measurement before assigning a cause. Packet and command deadlines remain
+unchanged. Shared testbed and production deployment remain pending.
+
+### Identify the private runner's hostname lookup delay
+
+The full-start trace captured A and AAAA queries for the actual private
+container hostname after TCP shutdown. The hosts file omitted that hostname.
+Curl waited 5.002387 seconds for the inherited DNS server, then wrote JSON
+after SSH cleanup had closed its output. The source function initiating
+resolution remains unassigned. A supported container host mapping is under
+validation with unchanged request arguments and deadlines. Fresh full public
+acceptance will use signed `80338d2d` and the verified published `c257200`.
+
+Configs PR #576's native worktree archive was refused because the app reports
+a pinned task or workspace. The branch deletion attempt was blocked while
+that checkout remained attached. The worktree and local ref remain intact;
+the remote ref is absent. Inventory bytecode was preserved externally.
+Physical preparation continues from the corrected frozen attempt4 helpers.
+Restart and cold-baseline phases require explicit acceptance before any
+complete-transfer claim. No shared deployment occurred.
+
+### Accept the exact published public battery
+
+Signed `80338d2d` passed all three public cases with zero failures and zero
+skips in 106.84 seconds against the read-only published `c257200` executable.
+Pre/post source and binary hashes matched. Both families, mapping replies,
+actual restart, compressed history, interruption, stopped-observer rejection
+and strict history deadline controls passed. The private runner was removed.
+The supported hostname mapping eliminated the measured post-transfer DNS delay
+without modifying request arguments or deadlines. This proves isolated public
+acceptance, not physical transfer, shared balancing or backup gateway failover.
+
+The PR #573 updater-path finding was disproved: its absent-path guard precedes
+the cleanup ownership assignment, and teardown requires that assignment.
+The evidence reply and thread resolution passed. Every required check was green
+when Graphite merge preview succeeded. Graphite then started merging PR #573
+and PR #575; staging checks remain pending. The physical attempt5 runs the
+bounded forward/reverse and restart sequence. Its separate contract review
+requires executed physical identity, protocol identity, scoped journal lifecycle,
+concurrent provider continuity and cold-baseline assertions before complete
+physical acceptance. The verified historical `2587f14` executable supplies the
+pre-authority writer baseline, subject to its actual loader/runtime validation.
+
+### Verify acceptance stack merge and physical transfer
+
+Graphite merged Configs PR #573 as `74bee79ecc388f91f4a8a155f42109845d6160ef`
+at 21:44:30 UTC and PR #575 as `566d58350f550ed6ec1474fb41937644a20b0a57`
+at 21:47:30 UTC on September 30. Every required check passed. The clean
+Configs main checkout fast-forwarded to the latter merge.
+
+Physical attempt5 passed eight source-bound IPv4/IPv6 phases, actual MWAN
+service restart and networkd reacquisition. All 21 captures reported zero
+drops and equal captured/decoded counts. Both ten-second release windows
+contained zero target DHCP packets. Provider A's edge and scoped receipt
+were removed; provider B's receipt remained unchanged. Protocol identities
+matched baseline, acquisition, restart and reacquisition captures.
+The guests shut down gracefully. Cold recovery, provider B packets during
+the silence windows and exact effective guest capability readback remain
+required. No shared testbed or production deployment occurred.
+
+Tack MWAN-522 and MWAN-532 received current evidence and actual In Progress
+state updates. Raw MWAN-522 properties exceeded the tool's 32 KB response
+limit; the existing description was preserved and new evidence was posted
+as a separate comment. The ergonomic issue read confirmed In Progress.
+
+### Verify calibration, package recovery and owner continuity
+
+The corrected shared baseline used provider-facing eth0 captures and 40 fresh
+requests per family. Both families selected AT&T 21 times and Webpass 19 times.
+The predetermined acceptance bounds were 13 through 27. All 20 captures
+reported zero drops and strict process cleanup. This baseline used the older
+installed daemon; it does not prove the published c257200 release on testbed.
+
+Configs PR #577 merged as 1c601538d68938ce5b540ba59ec83fa57b39b4a8. The
+package-only testbed deployment failed when CT904's 128 MiB memory cgroup
+killed apt-get. The unchanged merged play then completed with exit 0 and
+verified curl on CT900 through CT904. The original failure remains evidence.
+The durable correction increases only CT904 memory to 256 MiB; the provider
+will reboot that container during the update. No memory apply occurred.
+
+Downstream guests 225 and 226 each received all 180 IPv4 and 180 IPv6 probes
+during the three-minute primary-route baseline. Route samples selected the
+primary throughout. The primary was not stopped; backup failover remains
+untested.
+
+Physical attempt6 proved same-boot foreign-address rejection and cold kernel
+absence before scoped recreation. Its final capture reported one kernel drop;
+the full attempt failed. Attempt8 passed all six dual-stack packet phases but
+failed the configured-edge continuity assertion. Netlink recorded deletion of
+2001:db8:30::1/128 at 22:18:49.198608 UTC and subsequent DAD recreation.
+The acquisition owner changed while configured translation and WAN membership
+remained unchanged. Startup networkd reload preceded replacement NPT runtime
+initialization. Networkd writer attribution follows source and timing; the
+fixture did not capture a writer syscall. MWAN-533 records this defect under
+MWAN-305 and is In Progress. Independent repair review remains pending.
+
+Both physical guests powered off normally. Shared daemon deployment and
+production promotion remain pending. Tack received current package, baseline
+and defect evidence without overwriting truncated descriptions.
+
+### Apply the simulator correction and observe BGP handover
+
+Configs PR #578 merged as 7e58ae2de9c36bbfa5ebe459e00dc9022db6f723.
+The saved merged plan changed only CT904 memory from 128 to 256 MiB.
+Actual configuration retains 512 MiB swap. The running memory cgroup reports
+268435456 bytes. A refreshed targeted plan reports no changes. The merged
+package-only play verified curl on all five simulators and reported no failures.
+Both downstream guests received all 180 probes per family across the update.
+
+The primary testbed BGP service was stopped and restored under continuous
+downstream observation. OPNsense selected backup IPv4 gateway 10.240.240.4
+and IPv6 gateway 3d06:bad:b01:201::4, then restored both primary gateways.
+Guest 225 observed backup selections by 22:37:52.525802 and 22:37:52.862851
+UTC. Guest 226 observed them by 22:37:51.193602 and 22:37:52.804819 UTC.
+Both guests received all 180 probes per family. The largest observed reply
+interval was 1.062439 seconds. The primary BGP and WAN services are active.
+This proves service-stop route handover at one-second packet sampling;
+full gateway reboot acceptance remains separate. No exact withdrawal latency
+is assigned because the stop command lacks an independent timestamp receipt.
+
+Configs PR #579 merged as 46297164259fc75f7c751d356258f82b2946ef05.
+Independent exact-head review found zero actionable defects. The disproven
+Graphite finding received an evidence reply and resolution. Required checks
+passed. The read-only acceptance tag audits packages and measures actual
+source-bound mapping responses through the supported Ansible boundary.
+Its first live invocation is pending. Packet captures remain a separate gate.
+
+The MWAN-533 repair uses static preservation only on networkd NPT connections.
+Systemd also preserves other foreign static addresses and routes on those
+connections. MWAN scoped withdrawal and cold foreign-address rejection remain
+required. Repository runtime regression uses a real VLAN provider; the physical
+owner transition requires the existing virtio guest fixture.
+
+### Verify NPT regression and diagnose the mapping fixture
+
+MWAN PR #145 contains signed candidate 56e87533fd87c60fdbee087a535da561b3a709af.
+The real networkd/VLAN daemon regression passed in 7.766 seconds with exit 0.
+Published c257200 failed the same assertion in 9.352 seconds with exit 1.
+Its address observer recorded deletion and tentative/DAD recreation. Complete
+terminal logs and actual exit files are preserved. Independent review verified
+the retained logs and found zero actionable source defects. It did not execute
+an independent rerun. Existing package tests and blocking make checks passed.
+
+The first physical candidate required an absent shared libsysrepo library and
+failed before behavior. A static cgo rebuild preserves the release's schema
+binding and starts in Debian. Its SHA256 is
+375c52532ea031d3cb24d6bb9ca0fbeedc1eed186ab5dc6a39151d0cb2d9dcd6.
+Its build metadata reports unknown/dirty because the container cannot resolve
+the linked host Git directory. The host source remains clean at signed
+56e87533. This is an unpublished candidate, not a verified release.
+The next physical attempt failed its baseline because the inherited ISP
+evidence directory prevented fixture initialization. Neither failed attempt
+proves owner transfer. Fresh private directories and persistent archive output
+correct those prerequisites; the original packet and address assertions remain.
+
+The merged mapping acceptance play verified all five package audits and both
+provider-facing routes. Both HTTP requests timed out. A coordinated repeat
+captured eight SYN retransmissions per provider before DNAT and identical
+sequences addressed to 10.240.240.2:80 after DNAT. OPNsense PF rule 25 blocked
+the exact tuples on vtnet1. All three captures reported zero drops, strict
+process reaping and absent capture PIDs. No translation defect was demonstrated.
+The admin HTTP endpoint also redirects to HTTPS. A deliberately permitted
+stable HTTP endpoint remains required. No GUI exposure or PF change occurred.
+
+### Preserve the configured edge across physical owner changes
+
+The isolated physical test passed with exit 0 using signed source 56e87533.
+All 14 source-bound IPv4 and IPv6 replies passed the original deadlines.
+The configured edge 2001:db8:30::1/128 and exact scoped receipt remained
+unchanged across networkd release, MWAN acquisition, external release, and
+networkd return. The continuous address observer recorded no event for that
+edge and no observation error. Generated networkd configuration contained
+KeepConfiguration=static without fixture insertion.
+
+Seven strict captures recorded 664 packets. Captured, decoded, and received
+counts matched; every kernel drop counter was zero. The separate ring control
+recorded 40 complete packets with zero drops. Both QEMU guests powered off
+normally with exit 0. The executable matched the previously recorded static
+ARM64 hash. This proves the focused physical transition, not release
+publication, cold boot, or a deployment outage bound.
+
+PR #145 now contains signed head ab7005cbc1ab5b233a2e06e73e22dbfc135e284a.
+The follow-up removes duplicate helper logging and constructs the unchanged
+interface-qualified validation error before returning it. Existing package
+tests and every blocking make check gate passed. The typed-map review finding
+received an evidence reply and resolution. The valid logging finding received
+a verified fix reply and resolution. Required CI checks and independent
+follow-up review remain pending. No shared daemon or production deployment
+occurred. MWAN-533 remains In Progress pending release and live acceptance.
+
+The mapping fixture still requires a deliberately permitted HTTP endpoint.
+The expected /cf_check service on port 1406 is absent from testbed OPNsense.
+Its configuration path requires inspection before a focused repair. The
+admin HTTP firewall restriction remains active.
+
+### Publish the merged NPT preservation repair
+
+PR #145 merged as 93d3c3579334fc618427560e58aca919247bc2dc after all ten
+required checks passed. Independent final-head review found zero actionable
+defects. The primary MWAN checkout is clean on main at the merged revision.
+Both candidate refs and the exact feature worktree were removed after trunk
+behavior and ancestry verification. All 12 ignored files were copied and
+hash-verified in retained cleanup recovery storage.
+
+Release 202609302311-8e-93d3c35 was published by successful workflow
+36789759627. All four downloaded archives passed published checksums,
+release API digests, and attestations binding their bytes to the exact merged
+source. Published ARM64 execution reports commit 93d3c35, a clean build,
+and libsysrepo 7.34.6. Its SHA256 is
+69a2ed1fe30e135d6382ff7ad9c2ef8608686195d72a4ca7a2fea1e6bf4e1b8e.
+The actual installer emits the reviewed production WAN unit byte for byte.
+
+The focused Configs release pin and dedicated mapping endpoint changes remain
+under implementation. Published protocol acceptance is running. Shared daemon
+deployment and production promotion remain pending. MWAN-533 remains
+In Progress. Actual Tack comments distinguish publication from live acceptance.
+
+### Record published protocol and mapping fixture failures
+
+Configs PR #580 merged as 37e66118d275244c6c76e3d7a31d3a1f17f72ac1.
+Its production and testbed release pins select the verified 93d3c35 release.
+Configs PR #581 merged as d2f33ce9d5d385271a479f55c5156629021e63d6.
+It configures a separate testbed HTTP mapping endpoint on port 1406 and
+requires HTTP 200 with the exact expected body. Both PRs passed all required
+checks. PR #581 passed independent final-head review.
+
+Published protocol acceptance passed all 22 namespace cases. Its original
+systemd lane passed four cases and failed the ordered startup assertion
+because networkd was active. Fresh isolated and resolver-then-startup runs
+passed unchanged. Both subsequent full systemd lanes passed startup but
+failed the NPT UDP6 request after the route metric changed from 500 to 501
+and the daemon restarted. The configured edge and routing readiness state
+were present at failure. Packet loss location remains unproven. The complete
+diagnostic report and journals are retained in the published release evidence
+directory. Every owned diagnostic container was removed. No source assertion
+or deadline changed.
+
+The merged mapping fixture deploy ran from clean Configs main at d2f33ce9
+with the isp-acceptance-fixture tag. The play failed when sysrc returned
+status 1 with empty output for lighttpd_instances. The play reported seven
+successful tasks, zero changes, and one failure. Its log is
+/var/folders/jq/hwwlnpr56_vdb42ff743hy040000gn/T/configs-runs/deploy-opnsense-20260930T233414Z.log.
+Both downstream observers terminated with status 1; their artifacts require
+inspection before attributing that status to a network interruption.
+
+MWAN-305, MWAN-522, and MWAN-533 remain In Progress. Published protocol
+acceptance and the mapping fixture require correction and fresh proof before
+the shared daemon deploy. Production promotion has not occurred.
+
+### Restore route observation and correct mapping activation
+
+The first observers received all 240 replies in each family from each client.
+Their route queries failed because Proxmox received no QEMU guest-agent
+response. Read-only inspection found VM201 and its guest agent running with
+the correct port. The transport failure cause remains unknown. Direct SSH
+route reads succeeded. The retained recorder now accepts an explicit route
+host and records those commands without changing the guest agent or VM.
+
+Configs PR #582 merged as ed881f0e394516c504542f82293f3a9370a5502e after
+all required checks and Graphite AI review passed. It accepts only status 1
+with empty output for optional sysrc settings. The subsequent merged fixture
+deploy passed those reads, configuration validation, and reconnection. Native
+listener startup failed because www could not create its log file in the
+root-owned /var/log directory. The play reported ok=18, changed=5, failed=1.
+PHP validation, filter reconciliation, and final endpoint assertions did not
+execute. A dedicated writable log directory requires a focused correction.
+
+Both corrected 240-second observers exited zero. Each client received 240
+IPv4 and 240 IPv6 replies, with zero missing sequences. Each client recorded
+128 successful route samples per family and zero failed samples. Every
+sample selected the primary next hop. The largest packet reply gap was
+1.032402 seconds. This proves continuity during the failed fixture attempt;
+it does not prove failover, load balancing, or the pending daemon deployment.
+
+Read-only inspection of the installed OPNsense Config API found that lock()
+reloads configuration under an exclusive lock. The updater's immediate
+forceReload() closes the locked file handle. Remove that initial reload in
+a separate focused fix; retain the post-unlock verification reload.
+
+Later complete systemd lanes passed unchanged, but the repeated NPT failure
+cause remains unknown. Gateway tcpdump cannot establish UDP visibility
+through the TC redirect path. Endpoint namespace captures require verified
+visibility and complete export before assigning a packet loss cause.
+
+### Verify native fixture dependencies and startup timing
+
+Configs PR #583 merged as ddd5ac159d652037f6e707a8dd60b6afa910f45c.
+It creates a dedicated www-owned log directory. PR #584 merged as
+baafcee99b50604d9be656d16e7f167144b259a0 after a signed rebase to that
+base. Both passed required checks and Graphite AI review with resolved
+threads. The following merged fixture deploy started the listener and
+passed actual guest PHP syntax validation. Rule reconciliation failed on
+the missing shell_safe function before either rule was saved. Native
+config.inc requires util.inc for revision creation. PR #585 adds that
+include and guards error-output parsing; its final review remains pending.
+No filter reload or mapped HTTP acceptance occurred in this attempt.
+The PHP helper configures only testbed firewall rules. The endpoint serves
+a static file; production MWAN does not depend on the helper.
+
+The longer continuation observers lost all four ping SSH processes at
+23:51:38Z with status 255 and empty stderr. They recorded 187 replies per
+family from client225 and 186 from client226, but no final counts. Route
+sampling continued successfully. Their cleanup occurred later. The cause
+remains unknown; these incomplete streams do not prove packet loss or
+zero loss. Fresh observers use independent SSH connections and preserve
+the incomplete artifacts.
+
+Exact endpoint captures reproduced the NPT request during the restarted
+daemon's initialization, before its first reconciliation. The provider
+emitted an Ethernet UDP frame; the client received none. Both endpoint
+counts matched exactly and kernel drops were zero. The fixture accepted
+previous-process TC programs. The protective-firewall READY contract
+deliberately precedes forwarding convergence. A focused fixture correction
+will require replacement programs and the requested route/policy outcome
+before the unchanged packet assertion. Startup loss remains distinct from
+steady-state translation failure.
+
+The complete shared-plan-93d3c35.json passed the actual public Plan
+constructor. Its expected AMD64 binary hash is
+f8b1ce2a5379c9a484e3539ba7fdd46ee56c103b8bb0fb63d0fdad78bac8c6bc,
+computed from the verified release archive. Existing calibration counts,
+bounds, capture hashes, and identities remain unchanged. The new history
+observation window is 90 seconds, not an outage allowance. Engine execution
+and fresh installed-identity verification remain pending. The plan does
+not authorize bypassing the rejected SSH pct transport.
+
+### Verify the applied mapping rules and current NPT programs
+
+Configs PR #585 merged as e1020d68104c56618fe94132b0a2bb58c258111d.
+The subsequent fixture play exited one with ok=26, changed=4,
+unreachable=0, and failed=1. The native updater, filter reload, reconnection,
+and isolated listener assertions passed. Actual PF readback contained both
+exact source-restricted rules with destination (vtnet1). The assertion
+incorrectly required (vtnet1:1) and used incorrect escaping. HTTP and final
+GUI assertions did not execute. A focused assertion repair remains pending.
+The [actual play log](/var/folders/jq/hwwlnpr56_vdb42ff743hy040000gn/T/configs-runs/deploy-opnsense-20261001T001225Z.log)
+retains the failed assertions and completed tasks. This result does not
+establish complete fixture or daemon deployment acceptance.
+
+MWAN PR #146 changes only the existing NPT readiness fixture. Independent
+review of exact commit 857d69394647bc1af6304ef8f481ae7cb2981d42 found no
+actionable defect in the generation, route, or unchanged packet assertions.
+The retained published-binary systemd lane passed all five required cases
+with zero skips in 31.189 seconds. A subsequent review identified a valid
+potential inspection race if a kernel program disappears during replacement.
+That concern remains under investigation; merge acceptance remains pending.
+The [independent review](/Users/agoodkind/.local/state/mwan305/20261001-mwan533-release-93d3c35/startup-diagnostic/independent-pr146-review.md)
+and [public verification report](/Users/agoodkind/.local/state/mwan305/20261001-mwan533-release-93d3c35/startup-diagnostic/npt-fixture-verification.md)
+retain the exact source and runtime evidence. The corrected readiness wait
+does not establish uninterrupted forwarding during startup. The original
+captured startup loss remains a separate result.
+
+The final 900-second fixture observers received 899 of 899 replies in each
+family from each client, with zero missing sequences. Each client recorded
+343 successful route samples per family; every successful sample selected
+the primary next hop. Client225 exited zero with no failed route samples.
+Client226 exited one after a single IPv6 route observation failed. That
+SSH command returned 255 at 00:05:41.745819Z with connection-reset stderr
+from suburban, before the fixture deploy started at 00:12:25Z. It did not
+report a route rejection or packet outage. The [client225 report](/Users/agoodkind/.local/state/mwan305/20261001-npt-deploy-acceptance/mapping-fixture-final-client225/report.json)
+and [client226 report](/Users/agoodkind/.local/state/mwan305/20261001-npt-deploy-acceptance/mapping-fixture-final-client226/report.json)
+retain the packet and route results. The separate 600-second observers
+remain active; their terminal results are not included here.
+
+### Verify the unchanged fixture and preserve failed simulator reporting
+
+Configs PR #586 merged as c0859644ada4b2f95cc4592d5c94b9eecbc88d78.
+Independent review found no actionable issue in its exact PF assertion.
+The merged fixture play passed with ok=29, changed=0, unreachable=0,
+and failed=0. Both PF rules, local HTTP 200, exact response bytes, and
+original GUI process/configuration assertions passed. Listener activation
+and filter reload tasks skipped. The [fixture log](/var/folders/jq/hwwlnpr56_vdb42ff743hy040000gn/T/configs-runs/deploy-opnsense-20261001T002359Z.log)
+retains this unchanged run.
+
+The following merged simulator acceptance play received HTTP 200 and the
+expected body from both source-selected mapping requests. Its report
+template failed while splitting the response delimiter. Final HTTP status
+and body assertions did not execute. The [failed simulator log](/var/folders/jq/hwwlnpr56_vdb42ff743hy040000gn/T/configs-runs/deploy-testbed-20261001T002553Z.log)
+retains both real responses. A single YAML-decoded delimiter correction
+remains under validation. This result does not establish packet attribution.
+
+Both 300-second observers received 300 of 300 replies per family and
+recorded 115 successful primary route samples per family, with no failed
+samples. The [client225 result](/Users/agoodkind/.local/state/mwan305/20261001-npt-deploy-acceptance/mapping-c085-client225/report.json)
+and [client226 result](/Users/agoodkind/.local/state/mwan305/20261001-npt-deploy-acceptance/mapping-c085-client226/report.json)
+retain the completed observations.
+
+The earlier 600-second observers recorded different results. Client225
+received 600 of 600 replies per family and failed one route observation
+after an SSH key exchange reset from suburban. Client226 received 599 of
+600 replies per family, with sequence 189 missing around 00:15:20Z,
+about 70 seconds after the fixture play ended. Its observer exited zero
+because the recorder reports missing sequences without rejecting them.
+The [observer review](/Users/agoodkind/.local/state/mwan305/20261001-npt-deploy-acceptance/mapping-native-observer-review.md)
+retains the command failures and packet counts. The loss cause and backup
+selection remain unproven.
+
+PR #146 corrected the vanished-program inspection race at signed commit
+29579c1d2314b04cb12e3309adb2c7aa13513df5. Independent source review passed.
+Its complete published-binary aggregate passed all 22 namespace cases
+and four of five systemd cases, with zero skips. The NPT case passed its
+packet check, then failed a receipt assertion during withdrawal. Production
+retirement removes and verifies the address before persisting receipt
+removal. The fixture now requires the exact expected receipt within its
+existing readiness deadline. Final receipt and packet assertions remain.
+Signed commit 7201aa87f6d076fa66cbac546aa03ffe784986cb passed the affected
+five-case systemd lane and code checks; its complete aggregate remains
+pending. Shared daemon deployment and production acceptance remain pending.
+
+### Verify the complete mapping report and published protocol aggregate
+
+Configs PR #587 merged as 5da630fb3341032b132f021f98e89552e496a1f0
+at 00:39:06Z. Exact head 671624559f1b184263e8ee8e0cfc9b41dfe679f5
+passed all three required checks, signature verification, and raw signature
+inspection. Graphite AI review completed. The request for a constructed
+stdout specification was answered with the actual public diagnostic and
+testing rules, then resolved. The original expressions failed against the
+real retained responses; the corrected expressions passed.
+
+The fresh merged ISP tag passed with ok=14, changed=0, unreachable=0,
+failed=0, and skipped=1. All five package audits passed. AT&T simulator 901
+used source 10.240.205.1 and external destination 10.241.205.2. Webpass
+simulator 900 used source 10.241.204.1 and external destination 10.241.204.2.
+Both source-selected routes used eth0. Both actual requests returned zero,
+HTTP 200, and response SHA256
+70c035bfb6878b96ba12eb10ab3d93dcee5b333e7b7a10762747854788afbd42.
+The final status and body assertions passed. The [fresh ISP log](/var/folders/jq/hwwlnpr56_vdb42ff743hy040000gn/T/configs-runs/deploy-testbed-20261001T003926Z.log)
+retains the actual requests and structured responses. Packet capture
+verification remains separate; this play reports it as false.
+
+MWAN PR #146 merged as cb88cab11ff273b909410586cf9c98275ee4e30d
+at 00:39:50Z after required checks and final independent review of exact head
+7201aa87f6d076fa66cbac546aa03ffe784986cb. The complete aggregate used
+the unchanged published daemon and passed all 22 namespace cases and
+five systemd cases with zero skips. Namespace execution took 324.451
+seconds; systemd execution took 28.389 seconds. The [aggregate report](/Users/agoodkind/.local/state/mwan305/20261001-mwan533-release-93d3c35/startup-diagnostic/npt-receipt-aggregate/report.md)
+retains the manifests, exact binary hash, and results. The fixture correction
+requires current programs, routes, and persisted receipt retirement within
+the original readiness deadline. The three-second packet assertion and
+continuous address checks remain unchanged. Earlier startup loss and
+receipt failure artifacts remain intact. This merge changes fixture source,
+not production forwarding behavior.
+
+MWAN-522 and MWAN-533 remain In Progress. Shared daemon deployment, the
+complete shared battery, and cutover acceptance remain pending. Genuine
+management SSH provisioning is under implementation in a separate Configs
+worktree. That prerequisite has not installed keys or changed live guests.
+
+### Verify SSH identities and cutover ordering
+
+The testbed PHP updater configures the OPNsense mapping fixture through
+OPNsense's native configuration API. The MWAN daemon has no PHP dependency.
+
+Configs PR #588 remains open at signed head
+9db86203b480486f5293bddb53be6f4c9e1280ca. Independent source review found
+no actionable defects. Subsequent review identified incorrect change reporting
+for management directory creation. That repair remains under implementation.
+Guest provisioning, idempotency, and authenticated simulator SSH remain pending.
+
+Fresh authenticated SSH confirmed gateway hostname mwan and machine ID
+bdd916f95e3e44568e6a5d3096cf2dea. SSH through suburban confirmed client225
+hostname mwan-client-a and machine ID 46393cb237bb436c84675dd426cb58d3,
+and client226 hostname mwan-client-b and machine ID
+9f56214dcf9c473fa4a5b9b3821829fb. Direct client IPv4 SSH returned
+Network is unreachable; the SSH jump connection succeeded with existing host
+verification. These identity checks do not establish downstream forwarding.
+
+The owned render prerequisite must emit explicit delegation IAID, persistent
+link and kernel policy journals, and optional static mapping delivery. The
+actual published decoder rejects owned Webpass mappings without delivery.
+The renderer must preserve explicit local or routed values without inferring
+them. Live ownership and delivery configuration have not changed.
+
+Source review confirms mixed ownership support with legacy AT&T active.
+The supported deployment still lacks per-interface networkd release readback,
+administrative exclusion from new selection, and unmanaged sentinel retention.
+Startup reloads networkd before owned journal cleanup. Reverse transfer must
+verify address cleanup and kernel policy restoration before networkd acquisition.
+An owner change alone does not establish that ordering. No shared daemon
+deployment, ownership transfer, or production deployment occurred during these
+checks.
+
+### Merge rendering and simulator SSH prerequisites
+
+Configs PR #589 merged as fe822642ca180a9fb5ab546ce1069db10f5a558a
+at 01:17:40Z. Signed head ad416651f6124bf9e96bc25cac17e7e10464ef3b
+passed all three required checks, raw signature inspection, and independent
+review. The actual published decoder accepted both unchanged environment
+renders and the explicit owned Webpass sample. All five sample mappings
+remain present. Sample DHCP identity does not establish live identity.
+The [render report](/Users/agoodkind/.local/state/mwan305/20261001-owned-render-prerequisite/report.md)
+retains inputs, hashes, and decoder results. Native archive protection retains
+the merged worktree and local branch; its remote branch is deleted.
+
+Configs PR #588 merged as 3d010b7a53825e3986a76c4d456d21ecd2d89029
+at 01:23:52Z. Signed head 5c238f99f8ce3d7eba0b3f6cb73192e36e0238e2
+passed required checks and Graphite review. Both branch commits passed raw
+signature inspection and verification. All five review threads are resolved.
+Actual public diagnostics proved loop return-code handling, strict permission
+failures, directory creation and rerun reporting, and key reconciliation for
+absent, matching, and mismatched file bytes. The [review report](/Users/agoodkind/.local/state/mwan305/20261001-npt-deploy-acceptance/management-review-triage.md)
+separates these results from guest transport acceptance. The exact feature
+branch and unregistered worktree are removed; validation evidence is retained.
+
+The targeted OpenTofu plan refreshed all five simulator containers and reported
+no changes. It also warned that three prior bridge/VLAN state objects include
+an unsupported reload attribute. The [plan log](/var/folders/jq/hwwlnpr56_vdb42ff743hy040000gn/T/configs-runs/tofu-plan-20261001T012445Z.log)
+retains that scope and those warnings. No apply ran.
+
+The first merged simulator management play failed on CT 900's directory
+creation command with return code 129 and empty stdout/stderr. Its recap was
+ok=20, changed=2, unreachable=0, failed=1, skipped=2. The [failed play log](/var/folders/jq/hwwlnpr56_vdb42ff743hy040000gn/T/configs-runs/deploy-testbed-20261001T012528Z.log)
+retains the exact command and result. A subsequent read-only public diagnostic
+confirmed CT 900 running and the requested directory present with mode 0755
+and root ownership. GNU install is present. The queried container and kernel
+journals contain no corresponding event. The cause of code 129 remains
+unproven. The unchanged idempotent play is under retry; complete provisioning,
+authenticated simulator SSH, and whole-play idempotency remain pending.
+
+Administrative exclusion and read-only per-connection release verification
+remain under implementation in separate MWAN worktrees. Forward and reverse
+transfer must retain AT&T under networkd. Shared daemon deployment and
+production acceptance remain pending.
+
+### Diagnose simulator SSH reload and prepare repair
+
+The second unchanged merged management play failed after CT 900's SSH reload.
+Its recap was ok=35, changed=5, unreachable=0, failed=1, skipped=4.
+The reload returned zero; the following active check returned code 3 and
+failed. The guest journal records sshd receiving SIGHUP, reporting Cannot bind
+any address, and exiting with status 255. The socket remained active, and
+systemd owned port 22. The service unit prevents restart after status 255.
+The [diagnosis](/Users/agoodkind/.local/state/mwan305/20261001-npt-deploy-acceptance/management-ssh-reload-failure.md)
+retains actual unit, journal, configuration, listener, and command results.
+These observations do not establish the cause of the earlier install exit 129.
+
+Configs PR #590 configures service-only SSH on the testbed simulators.
+Root review found an unquoted comma in the existing service properties
+argument. That argument must remain one YAML string. The listener assertion
+must verify port 22 and the actual sshd process. Both changes remain under
+review. Complete guest provisioning, authenticated SSH, and unchanged-play
+idempotency remain pending. No shared gateway or production deployment ran.
+
+### Merge SSH repair and verify remaining process migration
+
+Configs PR #590 merged as 0704bf40142be7c36e15ec02b0435e8a297ef0ff.
+Required checks passed, both feature signatures verified, and all three review
+threads were resolved. The exact branch and unregistered worktree are removed.
+The primary checkout matched clean merged main before deployment.
+
+The actual management play configured CT 900, exported its identity, and
+authenticated SSH verified isp-webpass and its machine ID. The play then
+failed on CT 901's reload with recap ok=72, changed=12, unreachable=0,
+failed=1, skipped=10. CT 901's old socket-activated process remained active
+after socket shutdown. Its HUP reload reported Cannot bind any address and
+exited 255. Read-only observations confirmed the socket disabled/inactive,
+the service failed, and no port 22 listener. The next repair must stop the
+old process during transition before the existing fresh service startup.
+The [process migration report](/Users/agoodkind/.local/state/mwan305/20261001-npt-deploy-acceptance/management-901-reload-failure.md)
+retains terminal logs and actual identity evidence. All-five provisioning
+and unchanged-play idempotency remain incomplete.
+
+Both downstream guests received all 300 IPv4 and IPv6 probes during the
+five-minute observation after play startup. Client 225 had one failed IPv6
+route query; client 226 had no failed route queries. Successful queries
+selected the primary. These results do not cover the complete play interval,
+balancing, or a gateway deployment. No production deployment ran.
+
+### Verify simulator process recovery and package failure
+
+Configs PR #591 merged as c543a3017f6de4892dd7da11cfd663007dd80ead.
+The signed feature commit passed verification, all required checks passed,
+and the review thread was resolved. The exact branch and unregistered
+worktree are removed. The management play ran from clean merged main.
+It configured CTs 900, 901, and 902, then failed installing tcpdump in CT 903
+with exit 137. Its recap was ok=116, changed=14, unreachable=0, failed=1,
+skipped=24. CT 904 was not processed by this run.
+
+The read-only diagnostic confirms the kernel killed apt-get in CT 903's
+memory cgroup at its 128 MiB limit. The package reports installed, dpkg audit
+returns no findings, and tcpdump reports version 4.99.5. These results do not
+convert the failed play into successful provisioning. Correct the recurring
+resource limit through merged OpenTofu configuration before resuming.
+The [package diagnostic](</var/folders/jq/hwwlnpr56_vdb42ff743hy040000gn/T/configs-runs/management-903-package-readonly-20261001T022342Z.log>)
+retains the actual configuration, kernel event, and package results.
+
+The Linux acceptance plan passes the production plan validator. Authenticated
+SSH verifies hostnames and machine IDs for VM 213, clients 225 and 226, and
+simulators 900 and 901. Dedicated simulator host keys originate from the
+hypervisor's exported identities. The
+[identity preflight](/Users/agoodkind/.local/state/mwan305/20261001-npt-deploy-acceptance/shared-linux-identity-preflight/)
+does not verify product hashes or execute the acceptance engine. All-five
+simulator provisioning and unchanged-play idempotency remain incomplete.
+No gateway upgrade, ownership transfer, or production deployment ran.
+
+### Merge release verification and apply the Astound memory correction
+
+MWAN PR #148 merged as 9577cbb99153c5061a82a0bd0e2902536c018838.
+All ten required checks passed. All three feature commits passed signature
+and raw-header verification, and all six review threads were resolved.
+Independent review accepted the runtime changes at f4d77cb; the final
+dff38a4 change corrected only a comment. Six real systemd cases passed with
+zero skips. The CI firewall job was cancelled after merge and does not
+establish full CI firewall acceptance. The advisory Govulncheck failure
+reports the existing unchanged GoBGP vulnerability GO-2026-4736.
+The release feature branch and worktree are removed; primary main matches
+the merged revision. Shared release installation remains pending.
+
+Configs PR #592 merged as cec8de0d9981b877582852e115535e3798b8aa33.
+Its signed feature commit, all three required checks, and thread resolution
+passed. The saved plan changed only CT 903's memory from 128 to 256 MiB.
+OpenTofu applied one in-place update with zero additions or deletions.
+A fresh scoped plan returned zero with no changes. Actual pct configuration
+reports memory 256; package audit remains clean. The
+[resource implementation report](/Users/agoodkind/.local/state/mwan305/20261001-npt-deploy-acceptance/ct903-memory-implementation.md)
+records the source mapping and local validation.
+
+The management play has resumed from clean merged Configs with both
+downstream guest observers started before the play. Provisioning and the
+observers remain active; their eventual terminal results must establish
+completion separately. The renderer PR #593 is open and passed its real
+omitted/true/false rendering and Linux loader regression. PR #147 selection
+exclusion remains open while its final schema prose revision completes CI.
+Ownership transfer and production promotion remain incomplete.
+
+### Complete simulator provisioning and merge selection configuration
+
+The merged management play completed with ok=178, changed=21,
+unreachable=0, failed=0, skipped=39. Authenticated SSH independently verifies
+the exported host key, hostname, and machine ID for all five simulators.
+The unchanged management play is running from the same cec8de0d checkout;
+repeat deployment acceptance remains pending its terminal result.
+
+Both downstream guests received all 600 IPv4 and IPv6 probes in each of
+the first two overlapping observation windows. Client 225's first window
+had one IPv4 route-query failure at 02:41:39Z: SSH reported a connection
+reset from suburban before key exchange. No probe reply was missing.
+The second windows had no failed route queries. Successful route queries
+selected the primary. These windows cover the completed provisioning play;
+they do not establish balancing or acceptance of a gateway upgrade.
+The [first client 225 report](/Users/agoodkind/.local/state/mwan305/20261001-npt-deploy-acceptance/management-cec8-client225/report.json)
+retains the failed sample alongside packet counts. Additional observers
+remain active during the repeat play.
+
+MWAN PR #147 merged as f02554367bb40b0189dd0e7c28916a38f6f3342f.
+All ten required checks passed, all review threads were resolved, and all
+seven rewritten feature commits passed signature and raw-header verification.
+The branch was rebased onto merged PR #148. Full ARM64 checks and tests
+passed after integration. Root review accepted the original exclusion,
+same-tier fallback repair, and mechanical selection-default normalization.
+The real daemon regression verifies both address families and backup traffic.
+
+Configs PR #593 merged as aaeffd4873177ccc701c0159338dd91477a88711.
+All three required checks passed, all review threads were resolved, and all
+three feature signatures verified. CI executes the real rendering assertions
+without requiring a Linux binary. The selected Webpass entry must exist
+before its permission is asserted. Both actual rendering and the integrated
+Linux loader passed in 6.74 seconds. Published-release validation remains
+pending. The running play's checkout has not been updated during execution.
+
+Transfer review found that the legacy WAN routing address writer still
+installs mapped IPv4 addresses for external owners. A focused runtime repair
+is under implementation. It must preserve networkd legacy writes, MWAN's
+journaled address consumer, and separate NPT authority. The address manager
+already rejects retained unjournaled mapped addresses; the real networkd
+sentinel fixture must establish whether release removes those addresses.
+The Configs transfer procedure remains under implementation. No shared
+gateway upgrade, ownership transfer, or production deployment ran.
+
+### Accept unchanged simulator deployment
+
+The unchanged management play completed with ok=162, changed=0,
+unreachable=0, failed=0, skipped=55. It used the same clean merged cec8de0d
+checkout as the successful first run. Primary Configs advanced to merged
+aaeffd48 only after the play's terminal result. Primary MWAN remains clean
+at f025543. Both merged feature worktrees and branches are removed with
+their external evidence preserved.
+
+Both guests' final overlapping observer windows completed successfully.
+Each guest received all 600 IPv4 and IPv6 probes, with no failed route
+queries. Successful queries selected the primary. The second and final
+windows overlap and cover the entire unchanged play. Simulator management
+and repeat deployment behavior pass; full gateway release acceptance and
+load balancing remain pending. MWAN-521 and MWAN-522 were read from Tack
+and both remain In Progress, matching their unfinished acceptance work.
+
+### Review external-owner mapping exclusion and aggregate coverage
+
+MWAN PR #149 contains signed head b40a83654054362857557e7d29b1875093b8d3c8
+on merged f025543. Root verified its raw signature and git signature,
+inspected the complete runtime diff, and read its real regression report.
+The final fixture passed in 14.23 seconds and failed against the earlier
+published daemon in 14.10 seconds after observing both unwanted mapped
+IPv4 addresses. The fix excludes explicit external owners from legacy
+mapped-address creation and reporting. It preserves networkd legacy writes,
+MWAN receipt consumption, and scoped NPT authority. All ten required CI
+checks passed; no review threads were posted at inspection. Independent
+review remains in progress. The nonrequired vulnerability check reports
+the existing GoBGP GO-2026-4736 advisory with no fixed release.
+
+The public protocol runner includes release verification but omits the
+mapped-address and selection regressions from its namespace case list.
+A focused aggregate coverage correction is assigned separately from the
+frozen runtime PR. The combined published-release acceptance must execute
+these existing cases and reject skips. The previous complete 27-case
+published aggregate remains valid evidence for its earlier source.
+
+The shared promotion manifest now includes accepted all-five simulator
+provisioning, authenticated SSH, the unchanged zero-change repeat, and
+the downstream observation results. It requires a new combined release
+and a new release-specific acceptance plan while preserving earlier hashes
+and evidence. The transfer procedure still requires real forward/reverse
+packets, prior-owner cleanup, and management/transit verification. No shared
+gateway upgrade, ownership transfer, or production deployment ran.
+
+### Merge external-owner mapping repair
+
+Independent review approved exact PR #149 head
+b40a83654054362857557e7d29b1875093b8d3c8 without findings. PR #149 merged
+as 7d0fb56a876b272dc797bd81c553dbb060c0ed3d at 03:13:33Z. All ten
+required checks passed and no review threads remained. Primary MWAN
+advanced from its own clean checkout to that merged revision.
+
+The completed AMD64 firewall job passed all seven firewall cases, including
+mapped addresses, static addresses, and selection exclusion. Its subsequent
+protocol aggregate failed DHCPv6 restart withdrawal and prefix expiry.
+Both failures observed the NPT edge still in the journal after kernel
+withdrawal. The complete failed job is retained at
+[/tmp/mwan149-firewall-failure.log](/tmp/mwan149-firewall-failure.log).
+Diagnosis must distinguish asynchronous persistence from failed cleanup;
+the failure alone establishes neither cause. An independent agent owns
+the exact public reproduction without longer deadlines or skipped cases.
+The combined release remains unaccepted for deployment.
+
+The transfer fixture's IPv6 forwarding failed because its global forwarding
+sysctl was zero. Applying the production template's exact all.forwarding=1
+setting produced a downstream IPv6 reply with TTL 63 and no packet loss.
+This proves the fixture prerequisite correction, not complete transfer
+acceptance. Forward/reverse validation remains in progress.
+
+### Merge published aggregate coverage and verify transfer limits
+
+PR #150 merged as 78edc3faec12d25c1129f39751d588f3a3c6c6e5 at 03:23:21Z.
+Root reviewed the exact four-file patch, all five real case results, and
+the final builder checks. All ten required CI checks passed, no review
+threads remained, and the signed feature commit verified. The public
+aggregate now requires 27 namespace and six systemd cases. Static, firewall,
+and kernel-policy cases use the existing published-binary boundary instead
+of unconditionally building source. The kernel-policy fixture's stale error
+expectation was corrected to the observed production ownership-journal
+error. Its malformed-input rejection and no-write assertions remain.
+Final published aggregate acceptance remains pending.
+
+Real netlink observation established the DHCPv6 test race: kernel deletion
+was observable while the prior NPT receipt remained on disk, followed by
+receipt removal. PR #151 changes only the two affected fixture cases to
+one joint kernel/journal wait under their original ten-second deadline.
+All four real restart cases passed in 58.602 seconds. Its signed rebased
+head is 7ee0ff75a9359e87b1cc1f5f839d31c95b28bdc5 on merged PR #150;
+integrated checks passed locally and required CI remains in progress.
+Root disproved and resolved the bot's proposed weaker receipt check:
+the fixture selects only expected-prefix 2001:db8:30::/60 and already
+requires no NPT receipts after withdrawal or matching-prefix expiry.
+The other valid cached prefix remains separately asserted.
+
+The actual networkd release test retained mapped .3 through .6 IPv4 /32s
+after primary-address removal and unmanaged-state verification. The
+[kernel snapshot](/Users/agoodkind/.local/state/mwan305/20261001-transfer-procedure/manual-external-addresses.json)
+proves retention. The approved repair uses the single address-module
+reconciler to reserve and create legacy networkd mappings, then prune exact
+receipts on external release. Networkd retains ordinary acquisition and
+routes. The initial baseline reboot creates fresh receipts without adopting
+existing unjournaled aliases. No new journal scope or second reconciler
+is required; implementation and real release/acquisition proof remain pending.
+
+The veth transfer fixture lacks a permanent hardware MAC, so MWAN correctly
+reports its physical link not ready. Backup replies do not prove selected
+replacement acquisition. The Configs fixture must use an exclusively owned
+real virtual NIC and require applied assignments, routing, translation,
+exact mapping receipts, and selected-provider packets before restoring
+selection. Existing shared guests remain unchanged. No gateway or production
+deployment ran.
+
+### Merge the bounded journal-observation correction
+
+PR #151 merged as cc928cfeceb74b493271627d5787c21697d05158 at 03:28:59Z.
+All ten required CI checks passed, the sole rewritten feature commit's
+signature and raw header verified, and the disputed review thread was
+resolved with the exact fixture policy and actual pass evidence. Primary
+MWAN advanced from its clean owning checkout to the merged revision.
+The bounded cleanup is assigned to the original implementation agent.
+
+The legacy mapped receipt repair remains under implementation. It uses
+the existing address-module reconciler and preserves networkd ordinary
+acquisition. The Configs procedure must verify actual selected-provider
+acquisition with a real permanent-MAC NIC before selection restoration.
+Published aggregate, shared baseline deployment, complete transfer/reversal,
+and production acceptance remain pending. MWAN-305 remains active.
+
+### Verify merged protocol CI and isolate transfer control
+
+Merged-main CI run 36810709792 completed. All DHCPv6 restart, rejection,
+withdrawal, and prefix-expiry cases passed on AMD64. The kernel-policy
+packet case failed with forwarding=1 and a missing UDP reply. The
+[actual CI log](/Users/agoodkind/.local/state/mwan305/20261001-dhcpv6-journal-observation/merged-main-firewall.log)
+includes the firewall, routes, policy rules, and rp_filter=2. This failure
+requires diagnosis before published aggregate acceptance. ARM64 and ordinary
+network-namespace jobs passed; their results do not establish aggregate acceptance.
+
+The real networkd JSON observation marks retained mapped /32 addresses
+as ConfigSource=foreign and ordinary configured addresses as static.
+The [released provider observation](/Users/agoodkind/.local/state/mwan305/20261001-transfer-procedure/networkd-external-address-sources.json)
+and [transit observation](/Users/agoodkind/.local/state/mwan305/20261001-transfer-procedure/networkd-transit-address-sources.json)
+are preserved. Actual DHCP source encoding remains unverified. The receipt
+repair must preserve configured and acquired primary /32 addresses without
+adopting foreign mapped aliases.
+
+The isolated physical fixture exposed SSH input drops on enoob0 after
+production firewall activation. Its configuration now declares an external
+control connection and typed management services restricted to 10.0.2.2/32.
+The production management role still uses enmgmt0. Downstream packet tests
+use transfer-downstream; control SSH does not prove provider connectivity.
+The fixture agent verified its launcher remains live and reported both guests
+ready. Baseline cold creation, forward/reverse transfer, and owner-aware
+management/transit acceptance remain unproven. Shared testbed and production
+gateways remain unchanged.
+
+### Review the transfer acceptance boundary
+
+Source review confirmed that role activation and recovery still compare
+networkd-generated files, DNS, and static route observations. These checks
+require an owner-aware companion before transit or management transfer.
+Provider acceptance does not complete that integration requirement.
+The new packet-check input appears in the tasks and fixture but lacks an
+inventory declaration; declare it explicitly before publishing the transfer.
+
+The public loader rejects explicitly disabled families. Astound instead
+configures an empty IPv6 family with DHCP=false, accept-ra=false, and native
+translation. Its renderer emits that family. The acquisition gate must
+distinguish requested acquisition from a present but empty family. Require
+applied assignments, routing, translation, and actual downstream replies for
+families that request acquisition; retain owner and release checks for all.
+
+Both exclusive QEMU processes were verified live at PIDs 40331 and 40332.
+The recorded ports and permanent MACs match the fixture readiness artifact.
+Three unchanged ARM64 kernel-policy executions passed; they do not identify
+the cause of the failed AMD64 packet. Route-table and neighbor observations
+remain required before changing the packet fixture.
+
+### Verify acquired primary identity and preserve packet failure evidence
+
+Actual Kea and networkd acquired IPv4 198.51.100.100/32. The
+[acquisition observation](/Users/agoodkind/.local/state/mwan305/20261001-transfer-procedure/networkd-dhcpv4-source-acquired32.json)
+reports ConfigSource=DHCPv4, ConfigState=configured, and its active lease.
+The capture and server logs preserve the actual exchange. Extend the existing
+typed networkd observer to distinguish acquired primaries from foreign aliases.
+The runtime integration and its packet regression still require acceptance.
+
+The corrected six-case systemd lane passed in 36.361 seconds with zero skips.
+The release case passed in 4.49 seconds after verifying pending mapping receipts
+on the surviving unmanaged interface and subsequent external pruning.
+The accepted events are under mapped-receipts-systemd-native; the earlier
+mapped-receipts-systemd-final failure remains preserved. This result precedes
+the acquired-primary observer integration and does not prove that later change.
+
+The physical fixture rejected replacement acquisition with unrecorded mapped
+IPv4 and ordinary static IPv6 addresses still present. The selected native
+IPv6 source file has no KeepConfiguration directive. The release cause remains
+unverified pending exact prior and external snapshots. No address was adopted
+or manually deleted. Selected-provider proof during exclusion must use actual
+inbound request/reply packets; backup outbound replies are separate evidence.
+
+Repeated ARM64 kernel-policy runs preserved the 300-millisecond deadline and
+confirmed the marked table's LAN route. Their successful packets do not assign
+the original AMD64 failure. Suburban has no Docker or Podman runtime, and
+existing CI has no targeted manual job or retained protocol result artifacts.
+A focused diagnostics change will preserve failure-time routes, selectors,
+neighbors, daemon logs, and existing CI results without changing packet
+assertions or production behavior. No shared gateway deployment occurred.
+
+### Publish packet diagnostics and verify focused physical release
+
+PR #152 publishes signed ca3c5e1ecf71c8a39600a3a5adfe9dbe9ef1d03e.
+Independent root review verified its complete two-file diff, raw signature,
+project checks, and the unchanged real packet case's 3.201-second pass.
+The test records marked routes, rule selectors, neighbors, kernel settings,
+and the current daemon log only after failure. Existing CI preserves actual
+protocol result artifacts. Native AMD64 CI and required checks are running;
+no product failure cause or completed aggregate acceptance is claimed.
+
+The first focused release observation contained neither ordinary primary
+address after networkd reported enwebpass0 index 3 unmanaged. A repeated
+observation retained IPv6. The prior generated file has no KeepConfiguration
+directive. Generic before/after output filenames were reused; preserve each
+attempt separately before citing its files as acceptance. The transfer must
+verify actual prior-owner release without banning unrelated foreign objects
+or creating ordinary MWAN receipts.
+
+### Record diagnostics merge and pending native acceptance
+
+PR #152 merged as 045d391530865eb4ba447a733f3ed9b7508fe589 at 04:04:55Z
+after all ten required checks passed and no unresolved threads remained.
+The signed feature head and complete diff were independently reviewed.
+Its original native run 36813073217 and firewall job 110212160994 subsequently
+completed cancelled. Follow the new merged-main execution for native packet
+acceptance and preserved artifacts. The canceled run is not accepted evidence.
+The mapped-address repair, exact source release boundary, complete transfer,
+and downstream testbed and production acceptance remain incomplete.
+
+### Verify the failed baseline's address provenance
+
+The repeated physical baseline already classified fd39:10::2/64 as foreign,
+tentative, and configuring before release. AdministrativeState=configured did
+not establish usable IPv6 acquisition. The
+[preserved retained-address snapshot](/Users/agoodkind/.local/state/mwan305/20261001-configs-physical-transfer/root-retained-ipv6-20261001T040941Z.json)
+records the failure. The fixture must establish a fresh cold baseline and
+actual configured static acquisition before testing source release. A
+networkd restart during duplicate-address detection requires separate diagnosis;
+this failed baseline does not prove a retained networkd-owned address defect.
+The [first-attempt report](/Users/agoodkind/.local/state/mwan305/20261001-configs-physical-transfer/attempt-1-source-release/result.md)
+discloses that its original raw snapshots were overwritten. The second
+attempt's raw snapshots and debug journal are preserved separately under
+attempt-2-networkd-restart. Do not use the current generic filenames as
+first-attempt evidence.
+
+The real DHCP mapping regression exposed premature alias creation before
+networkd acquired its configured primary. Defer networkd mapping installation
+until actual configured DHCPv4 acquisition, then exclude the primary from
+mapped receipts. The runtime correction and its packet proof remain pending.
+
+Merged-main CI run 36813450461 and firewall job 110213303425 are verified live
+for source 045d391. The canceled feature run uploaded partial protocol results;
+execution stopped before the kernel-policy case. Artifact preservation passed,
+but native packet and aggregate acceptance remain pending. The clean owning
+MWAN main checkout advanced to the merge. Shared gateway and production
+deployment have not changed.
+
+### Record native packet failure and diagnostic correction
+
+Merged-main run 36813450461 completed with a kernel-policy packet failure.
+Firewall job 110213303425 uploaded artifact 11140693854. The
+[native failure report](/Users/agoodkind/.local/state/mwan305/20261001-kernel-policy-packets/report.md)
+records the preserved log and protocol results. The first enabled packet
+timed out. The container lacks the ip executable; route, rule, neighbor, and
+marked-route diagnostics failed. Sysctls and the complete daemon log were
+captured. The daemon reported table-100 LAN RouteReplace before the packet
+deadline. This evidence does not establish the packet failure's cause.
+Replace the diagnostic commands with existing netlink APIs and repeat native
+packet validation without changing its deadline or assertions.
+
+Ledger commit c978cf1 passed raw-header and signature verification across all
+55 branch-local commits and was pushed. The physical transfer and complete
+shared testbed acceptance remain incomplete. Production has not changed.
+
+### Prioritize implementation and actual cutover
+
+The user directed implementation and cutover to take priority over additional
+tests. Stop expanding auxiliary fixtures. Publish and merge focused runtime
+and transfer changes under the active GitHub merge contract. Verify actual
+downstream forwarding, ownership, reversal, and recovery during testbed
+cutover before production promotion. Preserve failed observations without
+claiming a pass or weakening a failing assertion.
+
+PR #153 publishes signed b1c8e90c354898d0e1db86158b62f857fa070dd2.
+Root reviewed the complete diagnostic patch, verified its signature and raw
+header, and inspected the project checks and existing ARM64 packet output.
+All ten required checks passed. Native firewall job 110217644153 in run
+36814871029 remains active. The diagnostic PR does not block publication of
+the runtime and transfer changes.
+
+Root review found stale mapped-address writer claims in the loader. The
+runtime repair must assign the actual writer for networkd, MWAN, and external
+owners. The Configs transfer changes still require management and transit
+recovery that supports the configured owner. No shared ownership transfer
+or production deployment occurred.
+
+### Publish runtime repair and transfer implementation
+
+MWAN PR #154 publishes signed 6c24cd6682659688d5666c6f93035e9bd128add9
+on merged 045d391. Root reviewed the address journal migration, DHCP primary
+exclusion, release gate, and corrected writer claims. Required checks remain
+pending. The supplementary DHCP reply failure remains preserved and excluded
+from the accepted coverage. Actual downstream delivery requires testbed
+cutover proof.
+
+Configs PR #594 publishes signed 5ad0c4c7fe727ffa51186d1cf093bcbe3af0fa52.
+Root reviewed exclusion, source release, replacement acquisition, recovery,
+managed-input pruning, and packet execution. Both branch-local signatures and
+raw headers passed verification. Required lint passed; required data tests
+remain pending. The source-release gate checks captured static, DHCPv4,
+DHCPv6, DHCP-PD, and NDisc objects without deleting foreign or kernel objects.
+The dependent management and transit recovery implementation remains pending.
+Shared testbed and production ownership have not changed.
+
+### Require actual testbed cutover cycles before production
+
+The user requires testbed cutover, failure identification, reversal, repair,
+merged deployment, and repeated cutover validation. Yield only after actual
+testbed evidence establishes production readiness. Do not deploy production
+before that readiness report. Keep both downstream observers active during
+each risky operation and retain failed observations.
+
+PR #153 merged as 1c46529aab2909d6baaa73fe2347c4594f98e67a.
+PR #154 merged as 0ff387b589773a914201ce0e129dc4feae2f8786 and includes
+the diagnostic repair. Required checks passed and review threads are resolved.
+The primary MWAN checkout is clean at 0ff387b. Published release verification
+and the focused Configs baseline pin remain pending.
+
+Configs PR #594 publishes signed 9e7f277019e6acece126d195d9b660e7bc70f764.
+All three required checks and all three branch-local signatures passed.
+Two new review findings require verification: the recovery backup filename and
+dynamic networkd acquisition readiness. The PR remains open. The separate
+management and transit recovery changes remain in implementation.
+
+Read-only shared checks confirm the WAN daemon is active. Client 225 uses
+the IPv4 default through 10.240.1.1 on eth0. Client 226 uses IPv6 defaults
+through 3d06:bad:b01:211::1 and fe80::1 on eth0. These checks do not establish
+cutover acceptance. Shared and production owners remain unchanged.
+
+### Execute the first merged shared baseline deployment
+
+Configs PR #594 merged as 67544f8a2a267257aec0a97b63b609a50795304c.
+Its acquisition check now requires actual configured DHCP addresses, usable
+router advertisement state, and a served delegated prefix when requested.
+The recovery backup finding was disproven by the transition task's templated
+transfer-source.json copy before the recovery snapshot boundary.
+
+Configs PR #595 merged as 2b93519ab43f6707bbf3554d6939f63eb16da9c1.
+Release 202610010439-97-0ff387b passed all archive checksum, API digest,
+and attestation checks. Its actual AMD64 executable SHA256 is
+8b25781720ad04e9ebc7e8dc82fd0e1176c07f73f7b1e016f153e73413976907.
+The merged pin preserves every owner and both lease recovery policies.
+
+The complete shared deploy ran from clean merged 2b93519a with both source-bound
+downstream observers. It failed at the OPNsense certificate retrieval before
+daemon installation, ownership activation, or reboot. The command
+qm guest exec 201 returned QEMU guest agent is not running. The predeploy gate
+failed for the same reason and skipped its snapshot. Actual downstream packets
+continued receiving replies. VM213 still reports active daemon 2f9a40a.
+
+The FreeBSD guest agent service is running and enabled. Its custom MWAN channel
+and QEMU channel use different tty devices. The actual agent channel selection
+requires diagnosis before another deploy. Do not infer network loss from this
+guest execution failure.
+
+The prior binary and network document are preserved under
+/Users/agoodkind/.local/state/mwan305/20261001-real-cutover/baseline-before.
+The failed deploy log is baseline-deploy-ansible.log in the parent directory.
+Ownership cutover, reversal, balancing, restart, reboot, and production readiness
+remain unaccepted. Production has not changed.
+
+## Save the mandatory execution contract on September 30 at 22:35 PDT
+
+The operator requires strict subagent-driven development, complete rereads
+after every compaction and before every slice and integration, and a regular
+heartbeat. The coordination plan now includes the operational goal and these
+requirements. The active goal includes every current epic child ticket,
+all plans and applicable specifications, the complete memory registry, and
+this entire ledger. Partial reads and summaries do not satisfy a checkpoint.
+
+Automation mwan-305-execution-checkpoints is active every 30 minutes on this
+thread. Its saved prompt repeats the complete reread and evidence requirements.
+The plan's skill links resolve. The plan passed git diff --check. No runtime
+code or deployment configuration changed for this request.
+
+This checkpoint is incomplete. The coordinator read all 347 lines of the
+updated plan. Memory reads included truncated output; the complete 8126-line
+registry has not been reread. Only the ledger's final 42 lines were read in
+this turn. All six slice plans, applicable specifications, and every current
+epic child ticket still require complete reads before the next runtime slice.
+No full checkpoint is certified.
+
+The plan SHA256 after its complete read is
+060bf378eb632a18f61cf543932b3e70b74ab3a62a7f657a4d8b31ebd0cbfa9b.
+The registry SHA256 is
+76cc7105d84d8b0702666495a8ab7c7b3f601577409b20697cc4ac05a1254e06.
+The ledger SHA256 before this entry is
+95ec52e15ad2611f79d73c6d839c0db43d5c467201bdd48b26bf1452cc54532c.
+The existing release_completion agent observes only the already running
+baseline deployment. It has no authorization for another mutation or repair.
+Root retains sole coordination plan and ledger ownership. The next runtime
+slice remains baseline acceptance before Webpass ownership activation.
+
+## Apply the clarified reorientation requirement
+
+The operator clarified that each slice and compaction requires practical
+reorientation. This replaces the exhaustive reread requirement above.
+Review the current plan, applicable specifications and tickets, relevant
+memory, and recent ledger entries. Read older decisions when needed.
+Do not block implementation on reading unrelated memory, the entire ledger,
+or collecting read counts and hashes. Strict delegation and operational
+acceptance requirements remain unchanged. The goal and 30-minute heartbeat
+use this clarified requirement.
+
+## Accept the baseline reboot and begin packet acceptance
+
+At September 30, 22:46 PDT, the coordinator reoriented using the current
+coordination plan, deployment and cutover plans, interface specification,
+relevant memory, recent ledger, current checkout, and active agent handles.
+Root owns runtime ordering and this ledger. Three agents independently
+refresh ticket prerequisites, live deployed identity, and runner operations.
+Their assignments permit read-only inspection and exclude target mutations.
+
+The baseline deploy from merged Configs
+4abe359398a0c9e5362c01d34d258bf3c65328ed finished successfully.
+Its recap reported ok=306, changed=33, unreachable=0, failed=0.
+The verdict 20260930-221030-deploy-745801 reported reboot_rc=0,
+egress_rc=0, and owned_rc=0. VM 213 changed boot identity and ran MWAN
+0ff387b with the expected installed and running executable hash.
+Both downstream clients received every sequence from 1 through 1798 for
+each IP family. Both observed backup selection during reboot and primary
+selection afterward. Four SSH route-query connections reset while packet
+sequences continued. The complete evidence is retained in
+[the baseline result](../../../../.local/state/mwan305/20261001-real-cutover/baseline-final-readback/result.md).
+
+Fresh downstream observers run as sessions 69796 and 80141 for clients
+225 and 226. The existing public acceptance runner runs as session 21128
+with shared-plan-0ff387b-linux.json and output baseline-battery-0ff387b.
+All artifacts are under the existing 20261001-real-cutover evidence directory.
+The runner must prove balancing, mappings, translation, and persistent
+failure history after a real route deletion, restoration, and daemon restart.
+The destructive operation has not run. Webpass activation remains undeployed.
+Production readiness and ownership transfer remain unaccepted.
+
+## Record preflight failures and Astound drift
+
+The first packet battery exited 1 during client226-fallback-routes6 because
+the Suburban SSH connection closed. Its cleanup_errors array was empty and
+its results object was empty. A direct repeat of the client route query
+succeeded. The second battery, session 41179, then exited 1 during
+client225-hostname because SSH banner exchange timed out. It also reported
+empty results and no cleanup errors. Both failed artifact directories remain
+unchanged. Neither run started captures or injected a network fault.
+
+Direct Suburban SSH subsequently closed connections before authentication.
+Its journal could not be read; the cause remains unverified. Root stopped
+only local observers 75197 and 75434 with SIGINT to reduce route-query
+connection attempts. Sessions 69796 and 80141 exited 130 and their processes
+are absent. No target service or network configuration changed. Fresh
+observation is required before any subsequent risky operation.
+
+Independent live readback verified the expected binary and network hashes,
+all five target identities, seven networkd owners, and healthy AT&T/Webpass
+routing and translation. Astound CT 903 is running, but enastound0 has carrier
+without an IPv4 address or provider default in table 700. Networkd reports
+configuring/degraded and current daemon probes time out. Simulator DHCP
+processes and the timing of acquisition loss remain unverified. Restore and
+accept the Astound baseline before ownership activation. Do not attribute
+this defect to the reboot without evidence.
+
+Tack refresh confirms MWAN-305, 519, 521, 522, and 520 are In Progress;
+MWAN-399 remains Todo. No incomplete acceptance ticket was closed.
+The current blockers are unavailable SSH control access and degraded Astound
+IPv4 acquisition. Production and Webpass ownership remain unchanged.
+
+## Assign the measured DHCP startup repair
+
+The third baseline battery, session 63506, exited 1 during
+client225-ipv4-route-get after SSH banner exchange timed out. It started no
+captures or network fault and reported no cleanup errors. Direct SSH later
+recovered. The Suburban SSH journal reports failed-authentication penalties
+and dropped connections during the failed interval. Host observations show
+load averages above 75 and 70.2% time waiting for input/output. No SSH
+security or unrelated service configuration changed. The source of
+authentication failures and host resource pressure remains unverified.
+
+Read-only CT 903 diagnosis verified isp-astound, an active Kea DHCPv4
+process, and eth0 up at 10.240.207.1/24. Kea's startup log reports eth0
+down, zero retries, and DHCPSRV_NO_SOCKETS_OPEN. Its packet-socket table
+contains no receive socket. The gateway's missing IPv4 acquisition remains
+unaccepted. This is a confirmed simulator startup defect, separate from
+MWAN ownership implementation and the earlier completed MWAN-524 repair.
+
+MWAN-534 is In Progress under MWAN-305. Independent contract review
+identified supported Kea DHCPv4 socket retry fields. The implementation
+assignment owns only testbed/isp-lxc/kea-dhcp4.conf.j2 in
+/Users/agoodkind/.codex/worktrees/mwan-305-dhcp-socket-recovery/configs.
+The branch is codex/mwan-305-dhcp-socket-recovery from merged
+1b8ec0dd8a6cafe741b41d7a9149670f7e07b3b9. Native worktree creation
+succeeded, but attachment registration failed at the 100-artifact limit;
+the returned checkout is used without creating a duplicate.
+
+The settled repair requires all sockets, retries up to 60 times, and waits
+1000 milliseconds between attempts. Installed-version validation and actual
+down-interface startup, recovery, DHCP acquisition, and bounded exhaustion
+remain required. No repair has merged or deployed. The next operation is
+review and real validation of this focused fix before simulator deployment
+and baseline packet acceptance. Production and gateway ownership remain
+unchanged.
+
+## Deploy the merged DHCP socket recovery
+
+Configs PR [598](https://github.com/agoodkind/configs/pull/598) merged as
+4865782dbd3107217ec7a6bb2e4107a4c258d8a6 at 2026-10-01T06:08:28Z.
+Independent review of signed source 64ae0298 found no actionable defects.
+The actual rendered Astound configuration passed Kea 2.6.3 parsing.
+An isolated real DHCP client obtained 10.240.207.2 after delayed interface
+activation in 4.188 seconds without changing Kea PID 525. The permanently
+down interface exhausted 60 retries and exited 1 after 60.182 seconds.
+These checks prove socket recovery and lease negotiation, not shared
+gateway acquisition or downstream forwarding. The owned container was removed.
+The retained evidence is in the existing dhcp-socket-validation directory.
+
+The clean merged Configs main checkout started
+`./configsctl deploy deploy-testbed --limit suburban --tags isp-lxcs`
+at 2026-10-01T06:11:32Z. Session 96066 remains active. This operation
+configures the testbed simulators and does not activate gateway ownership.
+The deployment log is deploy-testbed-20261001T061132Z.log in the existing
+configs-runs directory. Do not change this checkout or start another deployment
+until its actual process terminates.
+
+Fresh observers run as sessions 22513 and 89809 for clients 225 and 226.
+Their output directories are simulator-repair-client225 and
+simulator-repair-client226 under the existing 20261001-real-cutover evidence
+directory. The local multiplexed-ssh-config reuses authenticated SSH
+connections without changing server security configuration. Both guests
+received actual IPv4 and IPv6 replies before deployment and at 06:17:23Z.
+Final packet totals and interruption remain unmeasured while observation runs.
+
+MWAN-534 remains In Progress. MWAN-519 now depends on its live acceptance.
+Require the deployed Astound DHCP socket, gateway address, provider route,
+readiness, downstream packets, and repeated cold startup before closing it.
+Webpass ownership activation, the full packet battery, and production
+readiness remain unaccepted. Production configuration remains unchanged.
+
+## Complete simulator deployment and prepare reversal
+
+Session 96066 terminated with exit 0. The simulator-only deployment recap
+reported ok=257, changed=70, unreachable=0, failed=0, skipped=77,
+rescued=0, and ignored=0. The primary Configs checkout remains clean at
+merged 4865782d. Astound live acquisition and cold startup remain unaccepted.
+
+The observer snapshot at 06:21:59Z recorded 627 replies per guest and family
+since deployment start. Every sequence had zero observed gaps or duplicates;
+route queries selected the primary and reported zero failures. Observers
+22513 and 89809 remain active. Final transmission totals remain pending.
+The retained snapshot is in simulator-repair-observer-snapshot/report.md.
+
+Root verified the PR #598 slice against current trunk before removing its
+clean feature worktree and local branch. The remote branch was already absent.
+No ignored, untracked, modified, or submodule paths required preservation.
+The first local deletion from the unrelated checkout failed its merged check;
+deletion from the unchanged main checkout then succeeded. Trunk and active
+deployment files were not changed by cleanup.
+
+The merged ownership mechanism renders the requested owner and permits one
+changed connection. It has no manual reversal selector. Prepare a focused
+Webpass networkd inventory PR in the returned
+/Users/agoodkind/.codex/worktrees/mwan-519-webpass-reversal/configs checkout.
+Do not merge or deploy it before the first forward transfer passes.
+The actual released loader rejected an owner-only candidate because networkd
+requires rendered link files. The candidate must restore that declaration
+and pass the loader before review. Second forward transfer requires restoring
+the MWAN owner through another merged configuration.
+
+## Resume actual Webpass cutover after Astound acceptance
+
+MWAN-534 is Done. The simulator deployment passed. Actual Astound cold
+startup reproduced the initial eth0-down error; Kea PID 83 recovered its
+packet socket without a service restart. The gateway retained its valid
+DHCP lease, provider default, ready IPv4 routing and translation, and healthy
+probes. This cold startup did not produce a fresh DHCP exchange.
+
+The completed simulator observers transmitted 1798 packets per guest and
+family. Client 225 missed IPv4 sequence 773; its cause remains unverified.
+The other three guest/family observations received every packet. Route
+queries selected the primary and reported no query failures.
+
+The independently reviewed reversal candidate is signed commit da7d4218
+on codex/mwan-519-webpass-reversal. Released loader, render, identity and
+networkd unit checks passed. The candidate is not merged or deployed.
+Merge it only after the actual forward transfer passes.
+
+The first forward deployment used clean merged Configs
+4865782dbd3107217ec7a6bb2e4107a4c258d8a6 at 2026-10-01T06:43:43Z.
+Session 23760 terminated with exit 1 at 06:48:39Z. Ansible failed while
+creating the pre-deploy snapshot because VM 213 was locked for
+snapshot-delete. The recap reported ok=116, changed=9, unreachable=0,
+failed=1, skipped=14, rescued=0, and ignored=0. Ownership transfer did
+not execute. Investigate the active snapshot operation before retrying;
+do not remove an active operation's lock.
+
+Downstream observers 22271 and 18961 remain active in
+webpass-forward-client225 and webpass-forward-client226 under the existing
+20261001-real-cutover evidence directory. Final packet results remain
+pending. The standby calibration drill is deferred. Prioritize actual
+forward transfer, reversal, recovery and second forward transfer.
+
+## Retry Webpass forward transfer after the snapshot operation
+
+Read-only Proxmox inspection confirmed VM 213 running, no configuration
+lock, and no active tasks on node hypervisor. The first API task query used
+an unsupported option; the corrected query used source=active and returned
+an empty list. Root did not unlock the VM or interrupt a snapshot operation.
+
+Each downstream guest and family received all 296 probes during the failed
+deployment interval 06:43:43Z through 06:48:39Z. The longest reply gap was
+1.017292 seconds. Every sampled route selected the primary gateway; no
+route query failed. This proves observed ICMP continuity, not completed
+ownership transfer or new-flow load balancing.
+
+Root retried the same clean merged deployment at 06:51:43Z. Session 68771
+is active. Its log is deploy-mwan-20261001T065143Z.log in configs-runs.
+Observers 22271 and 18961 continue. Do not mutate the primary checkout or
+start another deployment while this process runs. The reversal PR may be
+prepared independently, but it must not merge before forward acceptance.
+
+## Correct the acquisition gate found by actual cutover
+
+The retry created its recovery snapshot successfully. Source exclusion
+passed. The source networkd acquisition gate then failed after 30 attempts,
+before owner release. Session 68771 began restoring captured prior inputs;
+its recovery result remains pending.
+
+Independent review identified the sole false condition: the RA acquisition
+check accepts NDisc addresses or Routes but ignores configured NDisc
+NextHops. Live Webpass has static IPv4 10.241.204.2/29 and DHCPv6 PD /56.
+Its configured NDisc nexthop 2311400098 matches the actual kernel RA default
+and gateway fe80::be24:11ff:fe7f:de4e. Preserve the real networkctl, network
+document and kernel routes in webpass-source-acquisition-failure under the
+existing 20261001-real-cutover evidence directory.
+
+Delegate the focused acquisition check correction in the isolated
+/Users/agoodkind/.codex/worktrees/mwan-519-ra-readiness/configs checkout.
+Do not change the active primary checkout, relax routing or translation
+requirements, or deploy an unmerged fix. Validate the production predicate,
+review, merge, and retry actual cutover after recovery completes.
+
+Both downstream guests and families selected the backup during the source
+restart around 07:05:58Z through 07:06:11Z. The observer found no missing
+probe sequences. These observations prove sampled gateway failover, not
+individual ISP selection or new-flow balancing.
+
+Configs PR #599 publishes signed reversal head
+da7d4218e877015f19b76a066252993bad6cbd84. Required checks and Graphite AI
+review passed; no review threads remain. PR-Agent quota exhaustion is not
+a required check. Keep the PR unmerged until forward acceptance passes.
+Native attachment failed because the thread has 100 identities; the PR
+remains accessible as [Configs PR #599](https://github.com/agoodkind/configs/pull/599).
+
+MWAN-519 remains In Progress. Snapshot task records prove a lock conflict,
+but they do not identify the caller. Deploy and watchdog snapshots lack
+shared coordination; that separate gap does not block the successful retry's
+snapshot. Continue the actual cutover correction and recovery.
+
+## Verify recovery and correct the packet observation
+
+Session 68771 terminated with exit 1 at 2026-10-01T07:15:07Z. The recap
+reported ok=290, changed=33, unreachable=0, failed=1, skipped=38, rescued=1,
+and ignored=0. The playbook restored prior role inputs and verified the
+applied recovery state. Owner release never ran. The gateway retains the
+baseline network checksum c8a32e91b4b42a9d189b34211b943d6c827f4dafbe4d78e8007272d7cfb33307,
+binary checksum 8b25781720ad04e9ebc7e8dc82fd0e1176c07f73f7b1e016f153e73413976907,
+and boot ID 204ae526-a4d8-4ee1-8c4e-11a575a3e546. Actual served state
+reports Webpass owned by networkd, healthy, selected, and ready for routing
+in both families. Preserve recovered-operational.json with the failure evidence.
+
+The earlier no-loss statement used an incomplete observation. Client 225
+missed 246 replies per family, sequences 1450 through 1695. Its guest
+interreply gap was 252.942 seconds for IPv4 and 252.946 seconds for IPv6,
+around 07:06:11Z through 07:10:24Z. Raw remote ping output records every
+unanswered sequence. SSH output loss does not explain these records.
+The cause and loss location remain unverified. Client 226 had no missing
+sequences in either family. All channels currently receive replies.
+
+Both clients sampled the backup around 07:05:58Z through 07:06:11Z and
+07:10:24Z through 07:10:39Z. Route queries did not fail. Do not claim
+uninterrupted forwarding or production readiness from this attempt.
+
+The isolated acquisition correction is signed
+1e6375e4a554d1a2034db5d023bb8703fa0a8c19. Independent review found no
+blocking defect. The production expression accepts the captured live
+configured IPv6 NDisc nexthop; absent, IPv4, foreign and unconfigured
+nexthops do not satisfy the RA predicate. Lint passes. The existing suite
+reported 204 examples, one unrelated quote-escaping failure, and 18 pending.
+The correction is not merged or deployed. Preserve the later operational
+routing and translation requirements and retry through merged deployment.
+
+## Preserve existing forwarding during selection exclusion
+
+Configs PR #600 merged as b0c0c6bd9aa4a0d4c2960da73b716b1c4cf297e5 at
+07:19:12Z. Required lint, data and security checks passed, as did Graphite
+AI review. Root fast-forwarded the clean primary Configs checkout to that
+merge after recovery terminated. The fix has not been deployed.
+
+Independent source review confirmed a separate contract discrepancy.
+Administrative exclusion removes the provider from new-flow assignments
+and guard eligibility. Existing conntrack marks persist, while the excluded
+provider's forwarding guard drops internal packets routed through that
+provider. Ready provider routes and translation remain installed. The
+approved contract excludes new traffic and preserves existing connection
+affinity while forwarding remains ready. This discrepancy could explain
+the guest 225 gap, but the actual flow mark and packet loss location were
+not captured during that attempt.
+
+Implement the narrow forwarding correction in the isolated
+/Users/agoodkind/.worktrees/mwan-519-excluded-forwarding checkout, based on
+merged MWAN 0ff387b. Separate new-flow selection permission from forwarding
+readiness. Keep excluded providers out of new assignments, permit existing
+ready-provider marks, and preserve guards for unhealthy or unready providers.
+Do not add a blanket established-connection exception.
+
+The implementation, independent review, merged release, compatible Configs
+pin and actual retry remain pending. Capture the existing ICMP flow marks,
+installed guards and paired internal/provider packets during the retry.
+Do not expand unrelated tests or declare the probe gap's cause proven.
+The testbed remains recovered; no deployment or fault is active.
+Observers 22271 and 18961 still measure the first attempt and recovery.
+
+## Review the focused exclusion correction
+
+The forwarding correction is signed
+d546441a2128d7e1a3e9ded49bf9a1900ed0f7cc. Only the steering calculation and
+rule construction changed. Actual per-family health, routing and translation
+determine forwarding guard eligibility. Administrative permission separately
+determines new-flow assignments. NEW pinned packets select an eligible
+replacement; without a replacement, a ready excluded-provider packet receives
+mark zero and the existing guard rejects it. Established packets retain
+their ready-provider marks. No blanket established-flow bypass was added.
+
+Required Docker check and test gates passed. Existing real steering namespace
+packet tests passed in 2.211 seconds. No test expectations changed.
+Independent review found no actionable findings at this exact signed head,
+including the immediate-value mark-zero encoding, inbound boundaries and
+hairpin exclusions. Publication, merge, verified release, compatible Configs
+pin and actual cutover acceptance remain pending.
+
+Read-only live diagnostics verified the existing guest 225 IPv6 ICMP flow
+has Webpass mark 2. IPv4 on the primary uses the OPNsense-translated source
+10.240.240.2, so filtering conntrack by the original IPv4 guest address returns
+no entry. Capture ICMP identifiers and sequences to correlate those IPv4
+flows; do not infer the guest from an uncorrelated translated entry.
+
+Reuse the accepted bounded systemd capture lifecycle on the primary transit,
+AT&T and Webpass interfaces. Capture the existing probes, actual guard rules
+and conntrack state during exclusion. Do not run unrelated HTTPS calibration
+to diagnose ICMP. Primary captures do not establish backup packet forwarding;
+retain downstream replies and router selection as separate evidence.
+
+## Prepare the next actual cutover retry
+
+[MWAN PR #155](https://github.com/agoodkind/mwan/pull/155) publishes the
+focused exclusion repair. The revised signed head is
+8753e9bffd49796fcaf1adffefdd9fed01f7fe2d. Independent exact-head review found
+no actionable findings. Root inspected the complete three-file diff and
+verified signatures and raw headers for all three branch commits.
+
+The existing public daemon case initially failed because its convergence
+helper rejected every mark assignment, including the valid mark-zero rule.
+The corrected helper rejects nonzero assignments and retains the real IPv4
+and IPv6 UDP absence assertions. The focused case passed in 4.41 seconds;
+required Docker check and test gates passed. The shared assignment predicate
+applies identical conditions to both families. Final CI remains pending.
+
+Continue only the cutover repair, verified release, testbed-only Configs pin,
+and actual forward transfer. Do not expand simulator calibration or unrelated
+features. Production remains unchanged. Configs PR #600 is merged but has not
+been deployed. MWAN-519 remains In Progress. Reverse transfer, second forward
+transfer, restart, reboot, balancing, mappings, both downstream guests and both
+families remain unaccepted. Keep reversal PR #599 unmerged until forward
+acceptance passes.
+
+## Finish the failed-attempt observation and establish retry probes
+
+Both original observers ended naturally at 07:42:02 UTC. Guest 225 received
+3344 of 3590 IPv4 probes and 3344 of 3591 IPv6 probes. Both families missed
+sequences 1450 through 1695 during the approximately 253-second interruption.
+IPv6 also lacks the final reply at observer expiry; that sample does not prove
+a second outage. Guest 226 received all 3596 probes in each family. All four
+ping commands returned zero, which does not establish packet continuity.
+
+Reports and raw output remain in webpass-forward-client225 and
+webpass-forward-client226 under the existing real-cutover evidence directory.
+The actual failure location remains unverified.
+
+Fresh 7200-second probes began around 07:46:35 UTC. Session 99158 observes
+guest 225; session 76919 observes guest 226. Separate webpass-retry-client225
+and webpass-retry-client226 directories preserve their evidence. Each family
+currently receives replies and each router observation selects the primary.
+The actual served Webpass owner remains networkd. No deployment is active.
+
+The bounded operational capture recorder passed independent inspection.
+Start it near source exclusion, capture primary transit and both provider
+interfaces, and stop it successfully before the planned reboot. Its captures
+cannot prove backup forwarding. Keep the downstream observers active through
+reboot and acceptance. The final PR #155 firewall/protocol CI job remains
+active; required checks passed and no review threads remain.
+
+## Merge the cutover forwarding repair
+
+MWAN PR #155 merged normally as ff37bec50a7837d09b6910fbc8183de3c0478174
+at 07:57:21 UTC. All ten active required checks passed, signatures were
+verified, and required review threads were resolved. No bypass was used.
+The selection-exclusion case passed in both CI lanes, in 5.90 and 5.57 seconds.
+
+The optional combined protocol lane failed its existing kernel-policy
+one-shot packet assertion. Its unchanged focused rerun passed in 3.39 seconds.
+Independent review confirmed its default-enabled provider has unchanged
+assignments and guards; its provider-to-internal packet does not match the
+changed outbound guard. The case waits for the static firewall and kernel
+settings, not complete routing readiness. The precise loss cause remains
+unproved. Preserve the failed full-lane output and focused rerun evidence;
+do not report the full protocol lane as passing or expand this cutover repair.
+
+Release run 36833372083 targets the exact merged source. Publication,
+artifact verification, a merged testbed-only Configs pin, and deployment
+remain pending. Production is unchanged.
+
+The operational recorder captured primary transit, AT&T and Webpass from
+07:54:08 through 07:54:56 UTC. It exited zero after successful runner exits,
+zero kernel drops and verified capture PID absence. Preserve report.json
+and the packet captures in retry-capture-baseline. Both existing retry probe
+flows currently have AT&T mark 1 in each family. They do not establish
+Webpass affinity preservation. Additional distinct guest-225 probe session
+12936 began around 07:58 UTC to observe provider selection without changing
+policy or connection marks. Preserve webpass-affinity-client225 separately.
+
+## Start the merged repaired Webpass cutover
+
+Release 202610010759-98-ff37bec completed publication and verification in
+run 36833372083. All four archive checksums, API digests and exact-source
+attestations passed. Root independently hashed the archives and executables.
+The expected AMD64 executable checksum is
+98a858c8400e0cd67d2809d54e337b29f7d4a012c910aa47b44919e3352f011a.
+
+[Configs PR #601](https://github.com/agoodkind/configs/pull/601) passed the
+actual configsctl render, published loader and isolated firewall checks.
+Independent review passed signed head 01d561ad1c719f79333f14631003b29e216dbe65.
+The one-file patch changes only the testbed release tag and AMD64 checksum.
+All three active required checks and Graphite AI review passed. No threads
+remained. Normal merge completed at 08:15:19 UTC as
+fd03855dc1c8b6075d49045d9546f56dfb6c649b; no bypass was used.
+
+Root fast-forwarded the clean primary Configs checkout to that merged commit.
+The hypervisor reported no active tasks before deployment. The gateway still
+had its verified old binary and network checksums and boot ID
+204ae526-a4d8-4ee1-8c4e-11a575a3e546. Both primary and backup BGP sessions were
+established in both families. Both default prefixes had valid primary and
+backup paths. Primary neighbors reported Remote GR Mode Disable and received
+restart time zero. This proves control-plane availability, not backup packets.
+
+Actual deployment began at 08:16:24 UTC through
+./configsctl deploy deploy-mwan --limit mwan_suburban_servers. Session 23598
+is active. The log is deploy-mwan-20261001T081624Z.log under configs-runs.
+Do not mutate the primary checkout or start another live operation until the
+play ends. Root owns deployment and capture phase transitions. Preserve
+observers 99158, 76919 and 12936 through transfer and reboot.
+
+The additional guest-225 IPv6 flow has verified Webpass mark 2 and ICMP
+identifier 26647. Original guest-225 and guest-226 flow identifiers are
+IPv4 32792/55052 and IPv6 26644/8388, each with AT&T mark 1. The additional
+IPv4 identifier remains pending the transfer capture. Guest capture clocks
+and gateway capture clocks differ by approximately 0.780 seconds; correlate
+identifiers and sequences. Gateway health probes with identifier 8192 do not
+prove guest flow delivery. Original guest-225 IPv6 recorded one missing probe
+before this deployment; preserve phase-specific loss instead of claiming a
+zero-loss cumulative baseline.
+
+PR #599 remains unmerged. Its isolated signed rebase and validation may proceed
+against the new main while root performs the forward deployment. Do not merge
+or deploy reversal before forward acceptance. Production is unchanged.
+
+## Capture the live transfer phases
+
+Recorder session 63760 began around 08:24:52 UTC. It captures primary transit,
+AT&T and Webpass in webpass-retry-capture under the real-cutover evidence
+directory. Its 1800-second bound expires around 08:54:52 UTC. Root controls
+retry-capture-phase.txt and retry-capture.stop. Stop the recorder successfully
+before reboot; do not interrupt it or duplicate capture units.
+
+The initial capture and conntrack snapshot identify the affinity observer's
+IPv4 flow as ICMP identifier 16105 and IPv6 flow as 26647. Both have Webpass
+mark 2 and actual replies. Their sequence 1583 differs from original probes'
+2295. This establishes the pre-exclusion flows; exclusion preservation and
+exclusive ownership transfer remain pending. Deployment 23598 is active.
+
+Before transfer, original guest-225 IPv6 missed sequence 2085, with a
+2.798083-second interreply gap around 08:21:21 through 08:21:24 UTC.
+Delayed IPv4 sequences subsequently arrived. The other channels received
+replies. Preserve this staging loss separately from the prior baseline miss
+and subsequent ownership-transition results. Its cause remains unverified.
+
+Rebased PR #599 uses signed ab00d28d3b051eff5139f31a8b7a38b47f62ed43 on
+fd03855d. Independent source review found no actionable findings. The same
+DUID, IAID and delegation settings, mappings, new pin and RA correction are
+preserved. Actual reversal remains unproved. Keep this PR unmerged until
+forward acceptance passes.
+
+## Diagnose the source readiness failure before ownership release
+
+Deployment 23598 passed source exclusion and the actual networkd acquisition
+check. Both guests selected the backup around 08:31:40 UTC and returned to
+the primary around 08:31:56 UTC. No additional missing replies appeared in
+that interval, including the established Webpass mark-2 flows in both families.
+
+The served assignment check failed after 30 attempts at 08:35:35 UTC. The
+operational export returned successfully. The captured Webpass source state
+reports networkd ownership, routing ready and translation ready in both
+families. IPv6 translation resolves 3d06:bad:b01:2200::/60, but the IPv6
+operational family lacks goodkind-mwan-steering:delegated-prefix. The check
+requires that field for delegation regardless of the active owner. This
+missing field explains the failed predicate; delegation acquisition and the
+correct source-owner evidence require further inspection.
+
+Ownership release did not execute. The play restored captured role inputs and
+restarted the writer. Both guests selected backup around 08:36:14 UTC and
+returned to primary around 08:36:31 UTC without additional missing replies.
+Recovery acceptance remains pending. Recorder 63760 remains active; root
+changed its phase to role-input-recovery. Original guest-225 IPv6 retains the
+single staging miss 2085. Do not claim a completed forward cutover.
+
+Root retains exclusive live deployment and capture control. The delegated
+read-only diagnosis examines the owner-specific readiness contract. PR #599
+remains unmerged. Production is unchanged. Focus remains cutover, recovery,
+and the minimum demonstrated repair.
+
+## Verify recovery after the source readiness failure
+
+Deployment 23598 ended at 08:41:00 UTC with exit status 1. The play explicitly
+verified restored role inputs, kernel address identities, forwarding, return
+routes and resolver tuples, removed its recovered backup, and reported the
+original activation failure. No ownership release or reboot executed.
+
+A separate live read confirms the installed executable SHA-256 is
+98a858c8400e0cd67d2809d54e337b29f7d4a012c910aa47b44919e3352f011a,
+the approved ff37bec binary. The restored network document SHA-256 is
+c8a32e91b4b42a9d189b34211b943d6c827f4dafbe4d78e8007272d7cfb33307.
+The recovered operational export reports networkd ownership for all seven
+interfaces. It is saved as recovered-0841-operational.json in the real-cutover
+evidence directory. The source-excluded export remains separately preserved.
+
+Recorder 63760 finished at 08:41:34 UTC with exit status 0 and report status 0.
+Transit captured 11614 packets, AT&T 8593 and Webpass 4736. Every capture
+reports zero kernel drops. All three process-absence checks passed. The final
+phase includes a recovered-state nftables and conntrack snapshot. Continuous
+downstream observers remain active for the corrected retry.
+
+The minimum owner-specific delegation verification repair is under independent
+read-only diagnosis. PR #599 remains unmerged and MWAN-519 remains InProgress.
+Production is unchanged.
+
+## Verify established Webpass flows during exclusion
+
+Independent capture reconciliation confirms guest-225 IPv4 ICMP identifier
+16105 and IPv6 identifier 26647 retain Webpass mark 2 in all six conntrack
+snapshots. Actual Webpass replies and matching guest replies exist before
+exclusion at sequence 1985 around 08:31:35 UTC, after exclusion at sequence
+2123 around 08:33:53 UTC, and after verified recovery at sequence 2572 around
+08:41:22 UTC. The excluded-phase firewall retains mark-2 forwarding exemptions
+in both families while its Webpass new-selection rules are absent.
+
+Original guest-225 identifiers 32792 and 26644 and guest-226 identifiers 55052
+and 8388 retain AT&T mark 1 and receive replies before and after these phases.
+The primary captures have approximately 17-second gaps during each observed
+backup interval. Downstream replies continued, but primary captures do not
+observe backup forwarding. Preserve that evidence boundary. These results
+verify exclusion preservation from the new runtime; they do not establish
+exclusive ownership transfer, reversal, or reboot acceptance.
+
+The gate repair must verify actual networkd DHCPv6Client.Prefixes and boot-clock
+expiry for networkd ownership and valid served dhcpv6-ia-pd assignments for MWAN
+ownership. Neither publisher emits the previously required delegated-prefix
+leaf. Keep routing, translation and applied-assignment guards. Verify the
+resolved translation subnet is contained in the current delegated prefix,
+rather than requiring equality between a negotiated /56 and translated /60.
+The bounded implementation includes the existing gate and a read-only clock
+and networkctl transport helper. No runtime release or lease import is needed.
+
+## Merge the owner-specific delegation gate and retry cutover
+
+Configs PR #602 merged normally at 09:08:22 UTC as
+c802ebece1acd610a0632de8fdc9e3d52a2985d3. Its reviewed signed head is
+23eba403e0243af4059f04052bb31e79edc6c3c6. Root inspected the complete patch
+and all four branch-local commit signatures and raw headers. Independent
+final-head review found no actionable findings. The three required checks
+passed. All review threads were resolved without an administrative bypass.
+The optional final PR-Agent check required quota action; it is not a merge
+requirement. The app attachment failed at its existing 100-identity limit.
+
+The gate now verifies networkd DHCPv6Client.Prefixes against a fresh guest
+CLOCK_BOOTTIME sample and MWAN valid dhcpv6-ia-pd assignments. Both paths
+retain routing, translation and applicable last-apply/assignment guards.
+A read-only Python helper samples networkctl and clock, parses its JSON object,
+and preserves command failures. Its type alias supports Python 3.10 and newer
+without provisioning changes. Actual VM213 helper execution, lint and latest
+Python compilation passed. Source predicates passed ten checks through native
+configsctl/Jinja. Independent review found the initial CIDR filter accepted
+None as non-false; the final correction uses Jinja truthiness. Actual AT&T
+2300::/60 and overlapping Webpass 2200::/55 controls both reject containment.
+The accepted actual Webpass translated /60 remains contained in its live /56.
+Validation logs end 085217Z and 090156Z under configs-runs; external evidence
+is under 20261001-networkd-pd-readiness in the MWAN-305 state directory.
+
+Root reconciled clean primary Configs main to the merge and started the actual
+merged testbed deploy at 09:08:36 UTC. Session 59233 remains active. The log is
+deploy-mwan-20261001T090836Z.log under configs-runs. Do not mutate the primary
+checkout or run another live deployment while this play is active. Root owns
+live mutation and capture phases; the delegated observer is read-only.
+
+Recorder session 15838 started around 09:09 UTC with a 1800-second bound.
+Its output directory is webpass-pd-retry-capture, phase file
+pd-retry-capture-phase.txt and stop file pd-retry-capture.stop under the
+real-cutover evidence directory. Finish strict cleanup before the planned
+reboot. Existing downstream observer sessions 99158, 76919 and 12936 remain
+active; preserve phase-specific losses. The hypervisor reported no active
+Proxmox tasks and the guest boot ID remains
+204ae526-a4d8-4ee1-8c4e-11a575a3e546. PR #599 remains unmerged until forward
+acceptance passes. No ownership transfer, reversal, or reboot is claimed from
+this retry yet. Production is unchanged.
+
+## Retry after existing snapshot-lock recovery
+
+Deployment 59233 ended at 09:13:34 UTC with exit status 1 before source
+exclusion. Proxmox rejected the pre-deploy snapshot because VM213 had a
+snapshot-delete lock. The play reports 116 successful tasks, 9 changed,
+1 failed, no rescue and no unreachable host. No ownership transfer or reboot
+executed. Original guest-225 IPv6 missed sequence 4954 during startup, between
+replies around 09:09:13.857 and 09:09:16.142 UTC. Other channels had no new
+misses. This is separate from prior misses 902 and 2085; its cause is unproved.
+
+Recorder 15838 finished strictly at 09:15:16 UTC with status 0. Transit captured
+4272 packets, AT&T 3148 and Webpass 1724; all report zero kernel drops.
+Its observation started after the new missing probe. The captures do not
+localize that loss. Continuous downstream observers remain active.
+
+Read-only diagnosis proved mwan-watchdog-testbed.service PID1245262 created
+known-good-20261001-020911 and attempted to prune an older snapshot. The
+original deletion task stopped with a ZFS missing-snapshot error, but its
+snapshot-delete lock persisted while the watchdog continued its two retention
+passes. Empty active-task results between deletions did not prove completion.
+The watchdog completed pruning and applied its existing stale-lock recovery
+at 09:18:48 UTC. Subsequent reads confirm no lock, no active VM213 task and no
+ZFS process. No agent unlocked the guest, changed a host service, changed
+retention, or force-deleted a snapshot. Evidence is preserved under
+real-cutover/snapshot-delete-lock in the MWAN-305 state directory.
+
+Root verified clean primary HEAD equals fetched origin/main c802ebec and live
+binary/network hashes remain 98a858c8/c8a32e91. The actual retry started at
+09:21:43 UTC. Session 80192 is active; log deploy-mwan-20261001T092143Z.log
+under configs-runs. Keep the primary checkout unchanged until it ends.
+Recorder 54027 is active with a 1800-second bound, output
+webpass-pd-unlocked-capture, phase pd-unlocked-capture-phase.txt and stop
+pd-unlocked-capture.stop under real-cutover. Root owns all live mutations
+and capture controls. The delegated observer is read-only. Finish capture
+strictly before the planned reboot. PR #599 remains unmerged until forward
+acceptance. MWAN-519 and MWAN-521 remain InProgress. Production is unchanged.
+
+## Renew downstream observation during the cutover retry
+
+Deployment 80192 created its pre-deploy snapshot successfully. At 09:33 UTC,
+the play remains active at reconnection after the asynchronous udev trigger.
+Source exclusion and ownership transfer have not executed. The primary
+checkout remains unchanged. Recorder 54027 remains active before exclusion.
+
+New observer sessions 18926 and 5808 started around 09:26 UTC with 7200-second
+bounds. Their output directories are webpass-cutover-client225 and
+webpass-cutover-client226 under the real-cutover evidence directory. Both
+guests have fresh IPv4 and IPv6 replies at 09:32 UTC. Preserve the original
+observer sessions and established Webpass affinity streams until their
+bounded runs end. The delegated observer now includes the new windows.
+
+Affinity guest 225 IPv4 missed sequence 5285 before source exclusion. Replies
+5284 and 5286 occurred at 09:26:38.478175 and 09:26:40.700349 UTC. The other
+five original channels had no new misses through 09:26:58 UTC. This miss does
+not establish an ownership-transfer failure; its cause remains unproved.
+
+Independent read-only review confirmed the existing post-forward battery
+requires a separate plan with actual verified executable and network hashes.
+Preserve calibration, identities, mapping checks, and history requirements.
+Do not run its route-deletion and daemon-restart operations during deployment.
+Forward acquisition, reversal, reboot, and production readiness remain
+unaccepted. Cutover remains the current workstream.
+
+## Verify source release and observe replacement acquisition
+
+Deployment 80192 passed both corrected source acquisition checks against the
+live networkd connection. Excluded AT&T mapped HTTP, NPT edge, and both
+downstream guests' IPv4 and IPv6 packet checks passed. The source-exclusion
+restart selected backup from approximately 09:36:20.863 to 09:36:36.516 UTC.
+All ten observed channels continued replying during that interval.
+
+The external-owner restart selected backup from approximately 09:39:12.570
+to 09:39:52.700 UTC. All ten channels continued replying. The deployment
+then passed the actual previous-owner release check and recorded networkd
+address and route removal checks. It installed the excluded MWAN replacement
+and restarted the daemon. Backup selection during replacement startup lasted
+approximately 09:45:58.219 to 09:46:15.473 UTC without new observed misses.
+
+Live operational export at 09:46 UTC reports Webpass owner mwan, connection
+and family application ready, valid IPv4 static/mapped assignments, and a
+fresh DHCPv6 delegated prefix 3d06:bad:b01:2200::/56 acquired at
+09:46:00.228034 UTC. Both families report routing and translation ready;
+IPv6 translation uses 3d06:bad:b01:2200::/60. Preserve the full export in
+real-cutover/mwan-acquisition-0946-operational.json. The play still needs its
+replacement acquisition and downstream packet verdicts before selection.
+
+Capture 54027 finished strictly at 09:44:05.468422 UTC with status 0. Transit
+captured 23492 packets, AT&T 15856, and Webpass 9526. All kernel drop counts
+are zero and all three recorded process-absence checks returned 0.
+Continuation capture 4133 was active on all three interfaces by
+09:43:22.648812 UTC, before stopping the first window. Its output is
+webpass-pd-acquisition-capture, stop file pd-acquisition-capture.stop, and
+phase file pd-unlocked-capture-phase.txt under real-cutover. Its 1800-second
+deadline is approximately 10:13 UTC. Stop it strictly before planned reboot.
+
+Original observer sessions 99158 and 76919 ended naturally around 09:46:35
+UTC. Affinity observer 12936 and renewed observers 18926 and 5808 remain
+active with fresh replies in both families at 09:47 UTC. Do not interpret
+the original windows' terminal timestamps as an outage. No production
+activation occurred. PR #599 remains unmerged until forward acceptance.
+
+## Verify selection restoration before reboot
+
+Deployment 80192 passed the MWAN replacement assignment check and acquired
+AT&T/Webpass mapped HTTP and NPT edge replies. It restored target selection
+and passed the corresponding selected-phase packet checks. The live installed
+binary SHA256 is 98a858c8400e0cd67d2809d54e337b29f7d4a012c910aa47b44919e3352f011a;
+network SHA256 is 50c5db1725b57814dcedff43baea84f263fa10f86f1126a1ebc2f76b198a192f.
+Both match the reviewed release and rendered intent. Operational export
+selection-restored-0953-operational.json reports Webpass owner mwan and all
+six other connections networkd, including AT&T, management, and transit.
+
+Capture 4133 finished strictly at 09:51:49.806110 UTC with status 0. Transit
+captured 6314 packets, AT&T 6668, and Webpass 288. All kernel drop counts are
+zero and all three recorded process-absence checks returned 0. No guest
+capture remains active before the planned reboot.
+
+Guest 225's affinity and renewed local probe output froze at approximately
+09:48:07 UTC. Independent packet inspection proves later requests and replies
+for IPv4 IDs 16105 and 53124 and IPv6 IDs 26647 and 26660 on transit and AT&T,
+including replies after 09:50 UTC. Every captured request has a matching
+reply. Each stream omits 16 consecutive sequences from the primary-only
+capture; backup forwarding or loss during those omissions remains unproved.
+Do not classify frozen output as a sustained packet outage or claim zero
+end-to-end loss. Fresh bounded guest-225 probes passed 3 of 3 in each family.
+
+Fresh guest-225 observer 21087 started around 09:53 UTC with a separate SSH
+ControlPath and a 7200-second bound. Its output is webpass-reboot-client225.
+Both families have fresh replies. Working guest-226 observer 5808 remains
+active. Preserve old windows as incomplete evidence and do not interrupt
+their processes. Use the fresh windows for reboot observation.
+
+Independent review of the first completed capture proves established Webpass
+forwarding after exclusion: IDs 16105 and 26647 retained mark 2 and had paired
+transit/provider requests, replies, and guest output. Health probes were
+excluded. The isolated pre-exclusion missing sequence 5285 has no packet on
+any recorded interface; adjacent sequences are paired. Its cause is unknown.
+
+The separate post-forward plan shared-plan-ff37bec-post-forward.json changes
+only the verified executable and network hashes. Root verified that structured
+comparison. Do not start its fault and restart operations during this play.
+At 09:55 UTC, deployment remains active in management/transit verification.
+Reboot, complete acceptance battery, reversal, and second forward transfer
+remain required. PR #599 remains unmerged. Production remains unchanged.
+
+## Reject cold-boot acceptance and repair default link activation
+
+Deployment 80192 completed at approximately 09:58 UTC with exit status 0:
+379 successful tasks, 45 changed, no failure, unreachable host, or rescue.
+The deploy gate accepted reboot, egress, and mapped-address checks. Boot ID
+changed from 204ae526-a4d8-4ee1-8c4e-11a575a3e546 to
+6dd73ec5-6b17-46ae-a87a-83e11034ad61. Both downstream guests used backup from
+approximately 09:57:07 to 09:58:01 UTC and returned to primary. The fresh
+guest-225 and working guest-226 windows recorded no missing sequences in
+that reboot interval. Installed binary and network hashes remain unchanged.
+
+The overall deploy verdict does not establish Webpass cold-boot acceptance.
+Live exports postboot-0958-operational.json and postboot-0959-operational.json
+report Webpass routing not ready, IPv4 application failed with network is
+unreachable, and IPv6 acquisition pending. Actual enwebpass0 is DOWN with its
+five IPv4 addresses, only local routes, and no IPv6 link-local address.
+IPv6 is enabled with EUI-64 generation configured. Networkd correctly reports
+the transferred link unmanaged. DHCPv6 recovery repeatedly reports no matching
+address for the interface. AT&T continues serving downstream packets.
+
+The deployed cold-failure-network.json omits the enabled leaf. Source review
+proved applyLinkEnabled skipped writes when the optional field was nil,
+although the public schema defaults enabled to true. The earlier warm
+transfer inherited an already enabled link from networkd. Do not activate
+the post-forward battery or claim production readiness from this failure.
+
+The narrow runtime correction is signed 5d002265f133731120cead09886b2b636b6b70f8
+on codex/mwan-519-cold-physical-link in the reused excluded-forwarding worktree.
+Only owned_links.go and the existing public daemon link regression changed.
+The unchanged runtime failed its initially DOWN link assertion. The corrected
+runtime passed in 2.006 seconds; independent replay passed in 1.880 seconds.
+Real packet delivery, event-driven repair, and unchanged foreign link state
+passed. Local Linux check/test and signature verification passed. Independent
+exact-source review found no blocking defect. The negative-control artifact
+was verified, but its deleted source variant was not independently replayed.
+MWAN PR #156 is published; required CI and release publication remain pending.
+Actual physical cold boot and DHCPv6 recovery remain required.
+
+Recovery PR #599 is rebased onto c802ebec at signed 04896cba. Both environment
+renders, released network/firewall validation, exact client identity/mapping
+checks, and lint passed independently. Required CI passed and no review
+threads are present. The source acquisition gate requires usable current
+assignments. The recovery deployment requires the published link correction.
+Preserve that ordering. Prepare the merged release pin before deploying the
+networkd reversal. MWAN-519 and MWAN-521 remain InProgress; production is
+unchanged.
+
+## Continue cold-boot recovery before further cutover
+
+PR #156's required checks passed at 5d002265. The privileged namespace job
+110320734155 failed TestOwnedLinksCreateRestartAndRemove: the kernel rejected
+raising owned-vlan over its disabled external parent. The implementer verified
+that the existing fixture never enabled that parent. A focused fixture
+correction and affected privileged validation are in progress. Firewall job
+110320734147 also failed; independent diagnosis is pending. Do not dismiss
+either failure or deploy the candidate. The existing GoBGP vulnerability
+check failure is unrelated to this patch.
+
+Recovery PR #599 merged normally as 1ea637962de2959baf550068b608f737906364e1
+at 10:22:13 UTC after required checks, signature verification, and independent
+review passed. No recovery deployment occurred. The deployment still requires
+the published link correction and merged testbed release pin. Both downstream
+guests have fresh IPv4 and IPv6 replies at this checkpoint. Webpass cold boot,
+reverse transfer, repeated forward transfer, and full acceptance remain
+incomplete. Production remains unchanged.
+
+## Publish the cold-boot correction and renew guest observation
+
+PR #156 merged normally as 2df8faa0cb9ebe306c50fbfeb615bceacdde9d62
+at 10:29:10 UTC. Signed final head e533c84 passed all ten required checks,
+privileged namespace and ARM64 checks, Graphite review, and independent
+review with no blocking findings or unresolved threads. The fixture enables
+three external parents before creating their VLANs; runtime code does not
+change external ownership. Local full privileged namespace checks and builder
+check/test passed. The firewall IPv4 UDP timeout also occurred on prior merged
+main cc928cf; its precise packet failure remains unexplained. The new source
+push started another firewall run. Do not claim every optional check passed.
+
+Release workflow 36849430846 is queued for exact merge 2df8faa0. The testbed
+release pin is not yet edited. Recovery deployment remains pending published
+artifact verification and a merged compatible pin.
+
+Guest 226's original window recorded 3502 replies per family without a missing
+sequence before both ping SSH commands exited 255 at 10:24:46.857 UTC. The
+observer still samples routes, but guest inspection confirms its ping
+processes ended. This output gap does not establish network loss. Fresh
+guest-226 observer 1403 uses the existing independent reboot SSH configuration
+and output webpass-recovery-client226. Guest-225 observer 21087 remains active.
+No packet capture or deployment is active. Webpass remains DOWN; AT&T serves
+downstream traffic. Preserve terminal windows and incomplete evidence.
+
+## Deploy the merged cold-boot recovery pair
+
+Published release 202610011030-99-2df8faa passed all four archive checksum,
+GitHub digest, hosted-package attestation, and exact-source checks. Its actual
+Linux ARM64 executable passed version/schema and both environment network and
+firewall validators in ARM64 Docker containers. Extracted AMD64 executable
+SHA256 is 599392d397367743432fa6c2c642dbb4b2d32b06e0bc9529d3b73d8b47965127.
+No direct macOS execution of the Linux artifact succeeded or is required.
+
+Testbed pin PR #603 merged normally as 829af8d18f2de0884a7f82390376006833945a2c
+at 10:43:34 UTC after all three required checks and independent mechanical
+review passed. Only the testbed MWAN release tag and archive checksum changed.
+Clean primary Configs main matches that merge. Recovery deployment 4497 began
+at 10:43:55 UTC through ./configsctl deploy deploy-mwan --limit
+mwan_suburban_servers. Its log is deploy-mwan-20261001T104355Z.log under the
+existing configs-runs directory. Preserve that checkout until the play ends.
+
+Pre-deploy binary/network hashes still matched 98a858c8 and 50c5db17. Packet
+capture 23045 failed before any phase at 10:42:32 UTC: tcpdump rejected the
+DOWN Webpass interface. Both successfully started captures stopped, recorded
+zero-drop counters, and passed process-absence checks. The Webpass unit was
+not loaded and had no PID. Preserve the failed capture report; start a new
+window only after the corrected daemon enables Webpass. Downstream observers
+21087 and 1403 remain active with fresh replies in both families.
+
+The repeated-forward configuration is prepared and independently reviewed,
+but remains unpublished. Its initial signed head 82db9134 restores only the
+previously accepted Webpass intent and owner assertion. Both environment
+renders and published validators passed. Rebase it onto the merged release
+pin before publication. Actual networkd reversal must pass before repeating
+forward transfer. Recovery, cold boot, and full acceptance are still pending;
+production remains unchanged.
+
+## Retry recovery after the snapshot prerequisite returns
+
+Deployment 4497 ended with exit status 1 at 10:49:14 UTC. The pre-deploy
+snapshot failed with VM is locked (snapshot-delete). The recap reports
+118 successful tasks, 14 changed, one failure, no unreachable host or rescue.
+The released hypervisor deploy-gate identity passed, but guest binary install,
+source exclusion, ownership release, replacement, and reboot did not occur.
+Guest binary/network hashes remain 98a858c8 and 50c5db17. The recovery pair
+remains merged and verified, but is not deployed or accepted.
+
+Read-only Proxmox inspection confirms VM 213's snapshot-delete lock and no
+active task at the queried instant. The actual mwan-watchdog-testbed.service
+continues retention attempts that fail against that lock. No manual unlock,
+snapshot deletion, service restart, or host repair occurred. Monitor the
+existing cleanup and retry the exact merged pair only after a usable snapshot
+precondition returns. Both downstream guests still have fresh replies in both
+families; Webpass remains DOWN. No capture or deployment is active.
+
+Repeated-forward configuration rebased cleanly onto 829af8d1 at signed
+019f6a2097a7c2a83a1e451734a65d6f1c53f009. Range comparison proves the approved
+two-file patch is unchanged; all rewritten signatures passed verification.
+Keep the candidate unpublished until the actual networkd reversal passes.
+MWAN-519 and MWAN-521 remain InProgress. Production remains unchanged.
+
+## Resume the same merged recovery deployment
+
+The snapshot-delete lock disappeared by 10:54:57 UTC without agent
+intervention. Proxmox reported no active task, and the watchdog's next
+iteration reported successful IPv4 and IPv6 probes. Recovery retry 29579
+began at 10:55:30 UTC from the same clean 829af8d1 Configs main. Its log is
+deploy-mwan-20261001T105530Z.log under configs-runs. The release and target
+configuration are unchanged. No capture is active while Webpass remains
+DOWN. Observers 21087 and 1403 remain active; source correction, owner
+reversal, and post-transfer acceptance are pending. Preserve the running
+checkout until this retry ends.
+
+## Verify actual link recovery before networkd reversal
+
+Retry 29579 created its pre-deploy snapshot and installed the verified
+2df8faa0 executable. Live SHA256 matches 599392d3. The source-exclusion
+restart enabled enwebpass0 at 11:10:22 UTC. The exported source ownership
+remains MWAN, link state is UP, final reconcile is ready, and IPv4/IPv6 health
+probes pass while administrative selection and carrying remain false.
+DHCPv6 changed from acquiring/pending to bound/valid at 11:10:37 UTC.
+The observed delegated edge is now 3d06:bad:b01:2200::1/128; do not infer
+unchanged delegation from the previous 2201-prefix capture.
+
+Fresh capture 50168 records the three gateway interfaces after link
+activation. Webpass capture readiness is 11:10:50.697427 UTC. Output is
+webpass-cold-recovery-active-capture, with a strict 1800-second bound. Root
+owns its phase and stop files. Stop it before reboot or its deadline; primary
+captures still do not observe backup forwarding. Observers 21087 and 1403
+remain active with fresh replies in both families.
+
+The installed source owner, exclusion, usable-assignment, and all six
+excluded-provider packet gates passed. The play installed external ownership
+and started its restart to release MWAN. Its reconnect and exclusive-release
+verdict remain pending. No replacement owner or complete reverse-transfer
+acceptance is established yet. The capture phase is source-verified-owner-release.
+
+## Verify source release during the reverse cutover
+
+Deployment 29579 passed the external-owner daemon replacement, previous
+embedded-client termination, served ownership and exclusion, and installed
+release checks. The play installed the excluded replacement configuration
+and restored networkd authority after release. The replacement daemon restart
+passed; the play is reconnecting after networkd reload.
+
+The operational export cold-recovery-networkd-acquiring-operational.json
+reports networkd ownership, an UP physical link, passing IPv4 and IPv6 probes,
+and disabled selection. Both downstream observers still receive replies in
+both families. Capture 50168 now records phase
+source-released-networkd-acquiring. Replacement assignment acceptance,
+selection restoration, reboot recovery, and complete reversal remain pending.
+The repeated-forward configuration remains unpublished. Production is unchanged.
+
+## Measure the reverse cutover before reboot
+
+Networkd acquisition and all four acquired and selected AT&T/Webpass mapped
+HTTP and NPT edge checks passed. The live export reports networkd ownership,
+an UP link, enabled selection, carrying true, healthy state, and both family
+probes passing. Capture 50168 stopped before reboot at 11:24:47.836271 UTC
+with exit status 0, zero kernel drops, and verified capture process absence.
+
+Independent downstream evidence records an IPv6 interruption during reversal.
+Guest 225 missed sequences 5088 to 5196 between replies at 11:17:58.067957 UTC
+and 11:19:50.660921 UTC. Guest 226 missed sequences 2896 to 3004 between replies
+at 11:17:58.489343 UTC and 11:19:51.124966 UTC. Each stream missed 109 replies.
+The interreply gaps are 112.592964 and 112.635623 seconds. Each IPv4 stream
+recorded 839 replies without a missing sequence in the capture interval.
+Each IPv6 stream recorded 727 replies. Router selection returned to primary
+before IPv6 replies resumed. Packet analysis and the actual UTC-bounded
+networkd/daemon journal must establish the failing boundary. Do not infer
+global IPv6 unavailability or promise existing-flow survival from these streams.
+
+Both guests now receive fresh replies in both families. The deployment is
+applying generated management/transit units. Reboot acceptance remains pending.
+Keep repeated-forward publication and production promotion suspended until
+the measured interruption is understood and reversal acceptance is complete.
+
+## Verify reboot after the completed reverse deployment
+
+Deployment 29579 completed with exit status 0 from clean Configs 829af8d1
+and released source 2df8faa0. The recap reports 379 successful tasks,
+48 changes, zero failures, zero unreachable hosts, and no rescue. The actual
+hypervisor verdict for trace 20261001-035925-deploy-215292 returned
+reboot_rc=0, egress_rc=0, and owned_rc=0. The guest boot ID changed from
+6dd73ec5-6b17-46ae-a87a-83e11034ad61 to
+e07e982e-a791-4179-bcee-63b3c243ad75.
+
+Post-boot executable SHA256 is
+599392d397367743432fa6c2c642dbb4b2d32b06e0bc9529d3b73d8b47965127.
+Network document SHA256 is
+2155363a3a11b3867756a42ab54ad2d9dc86123a9a36e56cc1021245e08286b8.
+Webpass is networkd-owned, UP, selected, carrying, and healthy in both families.
+The primary checkout remains clean after the completed play.
+
+Independent reboot observation from 11:31:00 through 11:33:21 UTC records
+141 replies in each guest 225 family, 141 guest 226 IPv4 replies, and
+140 guest 226 IPv6 replies. All four streams have zero missing sequences.
+Both families selected backup around 11:31:19 and primary around 11:32:05.
+The largest interreply gap is 1.015240 seconds; route queries did not fail.
+This bounded reboot proof does not clear the earlier reverse-transfer gap.
+
+The finalized reverse captures record every missing IPv6 request at transit
+and none at either captured ISP egress. Both streams retained AT&T mark 1
+and resumed through AT&T. Saved phase 1 firewall rules block AT&T IPv6
+forwarding, but that snapshot precedes the measured gap. Later snapshots
+restore forwarding. No firewall snapshot exists inside the interruption.
+Independent source investigation must establish the mechanism before a fix.
+Keep MWAN-519 and MWAN-521 InProgress. Keep the next forward activation
+unpublished and production unchanged. Existing observers remain active.
+
+## Correct routing-event propagation before repeating cutover
+
+The actual journal records AT&T main-table IPv6 default removal at
+11:17:43.956270 UTC during the Webpass startup reload. Only Webpass generated
+files changed; AT&T configured intent remained identical. The deleting process
+is not identified. Do not change main-route management without that evidence.
+Networkd restored the main default at 11:19:28.302122. MWAN restored table 100
+at 11:19:28.328583. Steering did not reconcile until 11:19:50.371924.
+The observed periodic interval is 60 seconds.
+
+Exact merged source 2df8faa confirms that default-route monitor events
+reconcile routing without requesting a complete daemon pass. Routing state
+publication increments its generation, but steering and the BGP readiness
+socket retain results from the last complete pass. Same-pass firewall apply
+and inspection failures already block advertisements. This is a notification
+defect, not an absent firewall check.
+
+The focused correction preserves immediate routing repair and requests a
+complete pass for main-table default changes. Managed provider-table writes
+must not create repeated complete passes. Reuse the existing real daemon
+selection regression and public readiness socket. Do not add a framework.
+Then review, merge, verify the published release, and repeat actual forward
+and reverse testbed cutovers. Require backup delivery while a primary route
+is unavailable. A successful component regression does not prove cutover.
+AT&T and networkd remain active; production is unchanged.
+
+## Merge the routing notification correction
+
+PR 157 merged as 3bfdc2a65fef9907137829664b411ce4dbb3b6f2 at
+11:55:47 UTC. Independent review approved signed head 4be8753b. The source
+requests a complete daemon pass after main-table default events and preserves
+immediate route repair. Managed policy-table writes do not queue that pass.
+
+The existing real daemon regression uses a one-hour periodic interval.
+The released 2df8faa executable failed with stale selection after 17.58 seconds.
+The corrected daemon passed after 15.79 seconds, including route restoration,
+IPv4/IPv6 UDP replies, and the reconcile-loop check. Linux ARM64 check/test
+and all ten required CI checks passed. Optional netns and ARM64 checks passed.
+The optional firewall job was still running at merge. Govulncheck reports the
+unchanged GoBGP GO-2026-4736 advisory. The sole Graphite comment was answered
+with the main-table condition and runtime evidence, then resolved.
+
+The local fixture cannot prove BGP/socket readiness because its real refresh
+service is unavailable. Actual testbed withdrawal, restoration, and backup
+packets remain required. Verify the published release before activation.
+Combine its testbed release pin with the already reviewed repeated-forward
+configuration in one focused activation PR. This is the next testbed experiment,
+not a production promotion or a claim that the earlier interruption is fixed.
+
+Observer 21087 completed naturally with exit status 0. Renewed guest 225
+observer 29152 began at approximately 11:51 UTC with the existing independent
+SSH configuration and fresh replies in both families. Guest 226 observer 1403
+remains active until approximately 12:29 UTC. Renew it before any live phase
+would exceed that window. Old observers 5808 and 18926 ended with status 1;
+preserve their earlier incomplete packet evidence. No deploy or capture is
+currently active. The recovered gateway remains healthy and networkd-owned.
+
+## Verify the release and restore current observation
+
+Release 202610011156-9a-3bfdc2a passed published workflow, archive checksum,
+GitHub digest, exact source/main attestation, native ARM64 version/schema,
+and six loader/firewall checks against the saved reversal, production, and
+repeated-forward documents. Its AMD64 archive SHA256 is
+a04b4029b615b5bfed66c40f6637da70e70fb4e703833c5a2924042be335362e.
+Its AMD64 executable SHA256 is
+731618adfeb37a6240a36ddbe77049731286cfc0fba36b300a66a3719e1fe587.
+The release verification report is retained under local state in
+20261001-route-event-release-3bfdc2a. Fresh activation rendering and actual
+cutover proof remain required.
+
+Observer 29152's guest SSH streams exited 255 at 11:54:18 UTC after
+181 replies per family. Its router sampler continued; the frozen ping files
+do not prove current packets or a network outage. The root stopped its exact
+Python process with SIGINT at 12:08:30 UTC, and the observer exited 130.
+Its report preserves the incomplete interval and absent final packet counts.
+The stream exits coincided with completion of observer 21087 using a shared
+SSH control path. New observers use distinct control paths per window.
+
+Guest 225 observer 92566 and guest 226 observer 56392 now record fresh
+IPv4 and IPv6 replies under route-event-fix-isolated-client225 and
+route-event-fix-isolated-client226. The existing guest 226 observer 1403
+continues its prior interval until approximately 12:29 UTC. No deployment or
+capture is active. The configuration implementer is combining the verified
+testbed release pin with the prepared repeated-forward activation. Independent
+review follows its exact signed commit. Actual testbed forward and reverse
+cutovers, restart, reboot, backup delivery, balancing, and failure history
+remain the acceptance requirements. Production remains unchanged.
+
+## Start the repeated forward deployment from merged configuration
+
+Configs PR 604 merged as f67d8af38f6cc9563e7afc1270ebe514bddaa292
+at 12:14:51 UTC. Independent review approved signed head 1d05142a.
+All three required checks passed, signatures verified, and no review threads
+remained open. The optional PR-agent review exhausted its daily provider
+allowance without reviewing the diff. It is not an active merge requirement.
+No review or workflow settings changed.
+
+The clean primary Configs checkout matches merged origin/main f67d8af3.
+Both existing downstream client preflights passed at 12:15:18 UTC. Each guest
+uses only eth0 plus loopback, expected addresses and MAC, the expected
+OPNsense defaults and router MAC, and no alternate egress or custom policy
+rule. The existing readiness socket reports both families ready. Hypervisor
+access confirms VM 213 is running. Installed binary and network hashes match
+the previous recovery pair 599392d3 and 2155363a.
+
+Root started deployment 79292 at 12:15:55 UTC using
+./configsctl deploy deploy-mwan --limit mwan_suburban_servers.
+The exact log is deploy-mwan-20261001T121555Z.log under the current
+configs-runs temporary directory. The target release is
+202610011156-9a-3bfdc2a; expected executable SHA256 is
+731618adfeb37a6240a36ddbe77049731286cfc0fba36b300a66a3719e1fe587.
+Expected final network SHA256 is
+50c5db1725b57814dcedff43baea84f263fa10f86f1126a1ebc2f76b198a192f.
+Observers 92566 and 56392 measure both downstream families. The actual
+ownership transfer, replacement readiness, failover, reboot and complete
+deployment verdict remain pending. Root alone owns live mutation and capture
+phase/stop files. Preserve the activation worktree for the required reversal.
+Production remains unchanged.
+
+## Preserve recovery after the snapshot preflight failure
+
+Deployment 79292 ended with exit status 1 at 12:21:04 UTC before ownership
+transfer. The pre-deploy qm snapshot command returned 255 because VM 213
+was locked for snapshot-delete. The recap reports 118 successful tasks,
+14 changes, and one failure. The installed executable and network document
+still match 599392d3 and 2155363a. No cutover acceptance occurred.
+
+The hypervisor reports snapshot-delete in VM 213 configuration. Its active
+API task list is empty, but direct process inspection identifies PID 2449552
+running qm delsnapshot 213 known-good-20260930-031658. This is an actual
+snapshot operation; do not unlock the guest or delete recovery artifacts.
+Wait for its completion and cleared lock before retrying the same clean
+merged configuration. No infrastructure repair is included in this slice.
+
+Independent observation from 12:15:55 through 12:21:04 UTC records 309
+replies per family on guest 225 and 308 per family on guest 226. Each stream
+has zero missing sequences. Router selection did not change, and route
+queries did not fail. This bounded interval is distinct from cutover proof.
+
+The prepared reversal candidate 3c659ce6 passed independent exact-head review.
+Its two files match recovery configuration 829af8d1 exactly, while preserving
+the new release. Fresh recovery rendering matches 2155363a, and all published
+loader/firewall checks passed. Keep it unpublished until the actual forward
+deployment completes. Both tickets remain InProgress; production is unchanged.
+
+## Resume the forward cutover after snapshot completion
+
+The snapshot deletion process ended naturally, and VM 213's lock cleared
+by 12:24:45 UTC. No unlock, process termination, or infrastructure repair
+occurred. Root refreshed origin and confirmed clean Configs f67d8af3 still
+matches main. Retry 4621 started at 12:25:03 UTC through the same bounded
+configsctl command. Its log is deploy-mwan-20261001T122503Z.log under
+the current configs-runs directory. The recovery snapshot succeeded.
+
+Capture 66096 began at approximately 12:29:40 UTC. Three primary capture
+units became ready at 12:29:41.538401, 12:29:42.285551, and
+12:29:43.020535 UTC on enmwanbr0, enatt0, and enwebpass0. Their PIDs
+are 3800, 3804, and 3808. The capture output is
+route-event-fix-forward-active-capture under the real-cutover evidence
+directory. Root alone updates its phase and stop files. Stop before reboot
+or approximately 12:59:39 UTC. Primary captures do not observe backup packets.
+Old guest 226 observer 1403 completed naturally with exit status 0.
+Isolated observers 92566 and 56392 remain active.
+
+Before ownership transfer, guest 226 IPv4 missed sequence 1235. Replies
+1234 and 1236 occurred at 12:29:33.710052 and 12:29:35.738804 UTC,
+an interreply gap of 2.028752 seconds. Router selection did not change;
+the other three streams remained continuous. The capture started after
+this interval and cannot localize the miss. Do not assign a cutover or ISP
+cause without evidence. Actual ownership transfer and readiness restoration
+remain pending. Production remains unchanged.
+
+## Verify release and acquisition during the repeated transfer
+
+The 12:45 UTC reorientation confirmed the current coordinator, cutover plan,
+interface specification, recent ledger, relevant memory, and both InProgress
+tickets. Root remains the only live mutation owner. Deployment 4621 and
+capture 66096 are active. The prepared reversal remains unpublished.
+
+Source exclusion, usable assignments, and all six unaffected AT&T packet
+checks passed. The running ifmgr executable at PID 6574 matched
+731618adfeb37a6240a36ddbe77049731286cfc0fba36b300a66a3719e1fe587.
+The first restart selected backup around 12:40:04 and restored primary
+around 12:40:20. The external-owner restart selected backup around
+12:42:56 to 12:42:57 and restored primary around 12:43:35.
+Both guests and families continued replies through these intervals.
+
+Networkd reconfiguration and the actual previous-owner release verifier
+passed before replacement activation. The replacement restart selected
+backup around 12:49:39 to 12:49:40 and restored primary around
+12:49:54 to 12:49:55. No transfer-period sequence misses were observed.
+The new ownership state reports configured-owner=mwan and an UP Webpass
+link. DHCPv6 negotiated 3d06:bad:b01:2200::/56 at 12:49:42 UTC,
+with valid deadlines and saved lease state. Replacement assignment checks
+and all four acquired AT&T/Webpass mapped HTTP and NPT edge checks passed.
+The play is restarting with restored selection policy. Final selection,
+capture cleanup, reboot, deployment verdict, and full acceptance remain pending.
+
+The second pre-transfer staging miss was guest 225 IPv4 sequence 1827.
+Replies 1826 and 1828 occurred at 12:32:50.554199 and 12:32:52.603242 UTC,
+an interreply gap of 2.049043 seconds. This interval is inside the active
+capture and requires finalized packet analysis. Do not assign its cause yet.
+The two staging misses remain distinct from transfer-period packet results.
+Production remains unchanged.
+
+## Complete the route-event release forward cutover
+
+Deployment 4621 completed with exit status 0 at 13:02:33 UTC from clean
+merged Configs f67d8af3. The recap reports 379 successful tasks, 48 changes,
+zero failures, and zero unreachable targets. The hypervisor-local verdict
+20261001-052858-deploy-732826 reports reboot_rc=0, egress_rc=0, and owned_rc=0.
+The boot ID changed from e07e982e-a791-4179-bcee-63b3c243ad75 to
+2caef9d9-55d7-4c85-9835-6253d93b4b52. Both installed and running executables
+match 731618ad, and the final network document matches 50c5db17. Fresh served
+ownership reports Webpass configured-owner=mwan, link up, healthy selection,
+and passing probes in both families. Postboot assignments include the
+negotiated 3d06:bad:b01:2200::/56 prefix.
+
+Both guests recorded 1178 consecutive replies per family during the measured
+transfer interval, 12:39:32 through 12:59:11 UTC. The finalized primary
+captures report zero kernel drops and verified process cleanup. They do not
+observe backup forwarding. During the separate 13:00:30 through 13:02:00
+reboot interval, guest 225 recorded 90 replies per family; guest 226 recorded
+90 IPv4 and 89 IPv6 replies. Every sequence between each stream's first and
+last reply is present. The maximum reply interval was 1.017461 seconds.
+Both guests selected backup around 13:00:49 and primary around 13:01:23,
+with zero route query errors.
+
+The earlier guest 225 staging miss exited Webpass at 12:32:51.544239 UTC.
+Neither Webpass nor transit captured its reply. This establishes absent
+return traffic after Webpass egress, without establishing an ISP cause.
+Guest 226's staging miss preceded capture and remains unlocalized. Exact
+packet evidence is in route-event-fix-forward-packet-analysis/report.md
+under the existing real-cutover evidence directory.
+
+The reverse configuration at signed 3c659ce6 preserves the verified new
+release and passed independent exact-head review. The next operation is its
+reviewed merge and actual testbed reverse deployment. Repeat forward transfer
+and the existing balancing, mapping, and failure-history battery afterward.
+MWAN-519 and MWAN-521 remain InProgress. Production remains unchanged.
+
+## Execute the new-release reverse cutover
+
+Configs PR 605 merged as ca5ff0933f036b7db625c76c2ec7ec05cba1b4a7
+at 13:13:00 UTC. Independent review accepted signed source 3c659ce6.
+All three required checks passed, no review threads were open, and the
+branch matched current main. The optional PR-Agent review exhausted its
+daily allowance without publishing findings. No review settings changed.
+
+The clean, idle primary Configs checkout advanced to merged ca5ff093.
+Actual reverse deployment 64582 started at 13:13:45 UTC through configsctl
+with the testbed-only limit. Its log is deploy-mwan-20261001T131345Z.log.
+The published route-event release remains unchanged. Both downstream
+observers remain active; root owns live mutation and capture lifecycle.
+The implementer may prepare the next repeated-forward configuration in the
+isolated activation worktree. Reverse acceptance remains pending.
+
+## Observe the new-release reverse transfer
+
+Reverse capture 43776 began at approximately 13:19:38 UTC. Its transit,
+AT&T, and Webpass units became ready at 13:19:39 through 13:19:40 UTC,
+with PIDs 2396, 2408, and 2414. The output directory is
+route-event-fix-reverse-active-capture under the real-cutover evidence
+directory. Root alone owns route-event-fix-reverse-phase.txt and the new
+stop file. Stop before reboot or 13:49:38 UTC. A read-only journal follower
+53798 records the WAN daemon's UTC journal in route-event-fix-reverse-follow-journal.log.
+
+Guest 225 IPv4 missed sequence 4581 during staging. The adjacent replies
+occurred at 13:18:48.163307 and 13:18:50.175334 UTC, with a 2.012027-second
+interval. This preceded ownership transfer and capture; its cause remains
+unlocalized. The other three channels remained complete at that observation.
+Do not conflate staging loss with the actual reversal result.
+
+The repeated-forward candidate f7677da9 is signed and clean, based on merged
+ca5ff093. Its two files match prior activation f67d8af3 exactly. Fresh
+renders and published network/firewall validation passed. An independent
+exact-head reviewer is assigned; no push or activation occurred.
+
+## Verify the reverse replacement and restart interruption
+
+The 13:37 UTC reorientation confirmed the coordinator, interface specification,
+cutover plan, recent ledger, memory, and actual InProgress states for MWAN-519
+and MWAN-521. Reverse deployment 64582, capture 43776, and journal 53798
+remain active. Root owns all live mutation. Capture must stop before reboot
+or 13:49:38 UTC. Both downstream observers remain active; renew their
+observation windows before the repeated forward deployment exceeds expiry.
+
+Source exclusion and all unaffected AT&T downstream, mapping, and translation
+checks passed. The source restart selected backup around 13:28:29 and restored
+primary around 13:28:46 with complete replies. The external-owner restart
+selected backup around 13:31:18 and restored primary around 13:32:27 with
+complete replies. The actual previous-owner release verifier passed before
+networkd replacement activation.
+
+The replacement restart missed guest 225 IPv6 sequence 5605 and guest 226
+IPv4/IPv6 sequence 5210. Their reply intervals were 2.020982, 2.061732,
+and 2.058554 seconds respectively. Guest 225 IPv4 remained complete during
+this phase. Router sampling selected backup at 13:35:54 through 13:35:55
+and restored primary at 13:36:10 through 13:36:11. All four streams resumed
+replies. These measured interruptions require finalized packet analysis;
+do not report zero loss or assign a cause without evidence.
+
+Fresh served state reports networkd ownership, link up, excluded Webpass
+selection, and healthy probes in both families. The forwarding socket reports
+both families ready. Replacement assignments, acquired mappings/translation,
+selection restoration, final capture analysis, and reboot verdict remain
+pending. The old 113-second interruption has not recurred at this observation.
+
+Independent exact-head review approved repeated-forward candidate f7677da9.
+It is published in Configs PR 606. All three required checks pass, and no
+review threads are open. Do not activate before completed reverse acceptance.
+Production remains unchanged.
+
+## Preserve observation through repeated forward acceptance
+
+Replacement acquisition and all four acquired mapping/NPT checks passed.
+The selection-restoration restart selected backup around 13:40:41 and
+restored primary around 13:40:55 through 13:40:56. Both guests and families
+continued replies without additional missing sequences. Final networkd
+startup and deployment reboot acceptance remain pending.
+
+Root started fresh downstream observers at 13:41:48 UTC using the existing
+observer and unique SSH ControlPaths. Guest 225 session 71173 writes
+repeated-forward-client225; guest 226 session 77127 writes
+repeated-forward-client226 under the real-cutover evidence directory.
+Independent inspection confirms fresh complete replies and primary router
+selection in all four channels. These windows last through approximately
+15:41 UTC. Preserve the old observers for complete reverse-interval proof.
+
+## Finalize reverse captures before reboot
+
+Capture 43776 completed with exit status 0 at 13:47:34.688354 UTC.
+The recorder stopped all three units before reboot and the 1800-second
+deadline. Each capture reported zero kernel drops, and each capture PID
+was absent after cleanup. The finalized report includes all observed
+source, external, replacement, selection, WAN startup, and role reload
+phase snapshots. Snapshot timestamps are observation times, not exact
+operation start times.
+
+The applied management/transit state verifier passed. All four selected
+AT&T/Webpass mapping and NPT checks passed. Primary readiness sampled
+true in both families during WAN startup and management/transit reload;
+AT&T's main IPv6 default was present at those samples. Independent packet
+analysis remains active, and the deployment reboot verdict remains pending.
+The journal follower and both generations of downstream observers remain
+active. No production deployment occurred.
+
+## Accept the new-release reverse procedure and repeat forward
+
+Reverse deployment 64582 completed with exit status 0. Its recap reports
+379 successful tasks, 46 changes, zero failures, and zero unreachable targets.
+Verdict 20261001-061754-deploy-990882 reports reboot_rc=0, egress_rc=0,
+and owned_rc=0. Boot identity changed from 2caef9d9-55d7-4c85-9835-6253d93b4b52
+to da4876ff-88eb-4d6a-93cd-7823458364a0. Both installed and running executables
+match 731618ad, and the recovery network matches 2155363a. Postboot served
+Webpass state reports networkd ownership, link up, healthy selection,
+and passing family probes.
+
+The reverse interval 13:13:45 through 13:51:00 UTC records 2231 replies
+per original guest/family channel and one missed sequence in each channel.
+Guest 225 IPv4's miss occurred during staging. The other three misses
+occurred during replacement restart. The largest reply interval was
+2.061732 seconds. During reboot alone, 13:49:00 through 13:51:00, all eight
+old and renewed streams recorded 120 complete replies. Backup selection
+began around 13:49:25 and primary returned around 13:50:12 through 13:50:13.
+The maximum reboot reply interval was 1.017932 seconds; route queries had
+zero errors.
+
+Independent finalized packet analysis captured all three replacement-restart
+requests on primary transit without corresponding captured ISP egress.
+Shutdown removed AT&T policy defaults; the new daemon recorded route-change
+notifications and subsequent full firewall/steering passes. The earlier
+113-second interruption did not recur. The journal does not prove that
+the exact earlier main-table fault recurred. Packet and journal evidence
+is in route-event-fix-reverse-packet-analysis/report.md. The read-only journal
+follower ended naturally with SSH exit 255 during reboot.
+
+Configs PR 606 merged as 96d45254b51f7b563d944c7db6ffbd1aeb0266d1
+at 13:53:13 UTC after independent exact-head review and all required checks.
+There were no open review threads, and its parent matched current main.
+The clean, idle primary checkout advanced to that merged commit.
+Repeated forward deployment 25290 started at 13:53:42 UTC through the
+testbed-only configsctl command. Its log is deploy-mwan-20261001T135342Z.log.
+Observers 71173 and 77127 remain active. Actual repeated transfer and the
+existing balancing, mapping, failure-history, and restart acceptance remain
+required. MWAN-519 and MWAN-521 remain InProgress. Production is unchanged.
+
+## Observe repeated forward transfer
+
+Repeated-forward capture 92562 began at approximately 13:59:49 UTC.
+Transit, AT&T, and Webpass capture units became ready at 13:59:51 through
+13:59:52 UTC with PIDs 2438, 2445, and 2454. Its output is
+route-event-fix-repeat-forward-active-capture under the real-cutover
+evidence directory. Root alone owns the new phase and stop files.
+Stop before reboot or approximately 14:29:49 UTC; target cleanup by
+14:28 UTC. The read-only WAN journal follower 75208 writes
+route-event-fix-repeat-forward-follow-journal.log.
+
+Renewed observers recorded 223 complete replies per family per guest
+between deployment start and 13:57:25 UTC. Router selection remained
+primary, with no query errors. Keep subsequent staging losses separate
+from actual transfer losses. Actual ownership transfer and final deployment
+acceptance remain pending. Production is unchanged.
+
+## Reorient during repeated forward exclusion
+
+The 14:08 UTC reorientation confirmed the coordinator, cutover plan,
+interface specification, recent ledger, relevant memory, and both actual
+InProgress tickets. Repeated forward deployment 25290, capture 92562,
+journal 75208, and renewed observers 71173/77127 remain active. Root alone
+owns live mutation. Stop capture by approximately 14:28 UTC before reboot
+or its 14:29:49 deadline. Original observers 92566 and 56392 completed
+naturally with exit status 0; their evidence remains preserved.
+
+The repeated source-exclusion restart selected backup around 14:08:45 and
+restored primary around 14:09:01, approximately 15.7 seconds later.
+Both guests and families recorded complete replies throughout that interval.
+Source exclusion is confirmed; source assignment verification is active.
+Primary forwarding readiness reports true in both families. Ownership
+release, replacement acquisition, and final deployment remain pending.
+
+A bounded production compatibility review identified the configuration
+preparation required for this phase. Production remains networkd owned and
+has no transfer packet commands. Preserve its actual driver-based Webpass
+selection, registered MAC, full DUID, and effective IAID/acquisition policy.
+Use the accepted release in a focused production activation/pin PR with real
+phase packet checks and reviewed persisted recovery. A separate read-only
+identity verification is assigned. No production mutation or deployment is
+authorized. Evidence is in 20261001-first-connection-production-compatibility/report.md
+under the existing local evidence root. AT&T/networkd coexistence remains
+required; circuit retirement does not block this first production phase.
+
+## Confirm repeated forward acquisition and production DNS requirements
+
+The 14:17 UTC heartbeat reorientation confirmed the coordinator, cutover
+plan, interface specification, relevant memory, current tickets, and active
+handles. MWAN-519 and MWAN-521 remain InProgress. Ledger commit 72986bc
+is signed and pushed. Root owns deployment 25290 and the live mutation
+boundary. The production DNS implementer owns its isolated source changes;
+the downstream reviewer owns only its new evidence directory.
+
+Repeated forward deployment passed exclusive source release, fresh replacement
+acquisition, applied assignments, and all acquired and selected AT&T/Webpass
+mapping and NPT checks. The renewed downstream observers recorded 1944
+complete deployment-period replies per guest/family through 14:26:07 through
+14:26:08 UTC, with zero route-query errors. Replacement restart selected
+backup around 14:18:22 and restored primary around 14:18:37. Selection
+restoration selected backup around 14:20:57 and restored primary around
+14:21:12. Final role activation and reboot remain pending.
+
+Capture 92562 finalized with exit status 0 at 14:25:26.382855 UTC,
+before reboot and its deadline. All capture processes were absent after
+cleanup. The phase file update coincided with the stop request; the final
+snapshot is labeled stop-requested rather than role activation. Preserve
+that observation boundary. Journal follower 75208 and renewed observers
+71173 and 77127 remain active. The existing full balancing, mapping,
+failure-history, and restart acceptance remains required after final identity
+verification.
+
+Read-only production identity and acquisition reviews verified actual Webpass
+DHCPv6 DNS and enabled RA DNS policy. Accepted source 3bfdc2a supports the
+verified DUID, both IAIDs, IA_NA/IA_PD requests, SLAAC, and RA defaults,
+but rejects acquired DNS settings and aggregates only static resolver intent.
+Disabling DNS acquisition or copying testbed policy would not preserve the
+required production behavior. A bounded source implementation is assigned
+for acquired DHCPv6 and RA DNS integration with the existing resolver,
+including protocol validity and ownership release. The exact report is
+20261001-production-acquisition-contract/report.md under the local evidence
+root. Production remains unchanged, and its cutover requires subsequent
+authorization after completed testbed proof and reviewed configuration.
+
+## Accept repeated forward deployment and begin the full battery
+
+Repeated forward deployment 25290 completed with exit status 0. Its recap
+reports 379 successful tasks, 46 changes, zero failures, and zero unreachable
+targets. Verdict 20261001-065755-deploy-849229 reports reboot_rc=0,
+egress_rc=0, and owned_rc=0. The gate ran from 14:29:21 through 14:30:49 UTC.
+Boot identity changed from da4876ff-88eb-4d6a-93cd-7823458364a0 to
+2a1e44a1-c1b5-4b2a-89b5-50dcca40b2c0. Installed and running PID 314
+executables match 731618ad; the final network matches 50c5db17.
+Webpass serves MWAN ownership, link up, healthy selection, and passing
+probes in both families. AT&T and all other interfaces remain networkd
+owned. Both forwarding-readiness values are true.
+
+The renewed observers selected backup around 14:29:32 and restored primary
+around 14:30:20. Both guests and both families recorded 2227 complete
+deployment-period replies through 14:30:51, without missing sequences or
+route-query errors. Journal follower 75208 ended naturally with SSH exit
+255 during reboot. A preboot operational SSH read failed during reboot;
+its empty output does not establish operational state. Later postboot
+operational reads succeeded. The initial postboot snapshot included a
+temporary Webpass IPv6 probe failure; the later snapshot passed both probes.
+
+Independent finalized capture review verified every captured renewed request
+has a transit reply, all three hashes match, all kernel drop counts are zero,
+and all exact-PID cleanup checks passed. Primary capture gaps coincide with
+the measured restarts; these captures do not observe backup forwarding or
+reboot. Evidence is in route-event-fix-repeat-forward-packet-analysis/report.md.
+
+The existing full acceptance runner started as handle 5900 after deployment
+completed, using the validated route-event-fix-forward-plan.json and a new
+route-event-fix-repeat-forward-full-acceptance evidence directory. Balancing,
+mapping, persisted failure-history, and controlled restart results remain
+pending. Root alone owns the approved fault and restart after the history
+observation phase begins. Production remains unchanged.
+
+## Repair the mapping acceptance contract after passed balancing
+
+Full acceptance handle 5900 completed with status 1. The real downstream
+cohorts passed calibrated balancing in both families: IPv4 counted Webpass
+27 and AT&T 13; IPv6 counted Webpass 21 and AT&T 19. Each family accepted
+40 requests. Mapping verification then raised key not found: static-mapping.
+Observer cleanup reported no errors. This parser exception does not establish
+a product mapping failure. Mapping, failure-history, and controlled restart
+acceptance did not complete, and root injected no route fault during this run.
+
+The isolated Configs implementer owns the existing mapping acceptance parser
+repair and any minimal required public contract regression. Preserve packet
+assertions and actual product mappings. Root will inspect the exact diff,
+required checks and review before merge, then rerun the existing acceptance
+path from merged source. The production observation reviewer independently
+prepares actual downstream identities and phase packet commands without
+production probes or mutation. The acquired DNS implementer owns its coupled
+source changes on codex/mwan-519-acquired-dns in the existing isolated MWAN
+worktree. Root owns live mutation, ledger and ticket state. Both tickets remain
+InProgress, and production remains unchanged.
+
+## Accept balancing, mappings and persistent history from merged source
+
+Configs PR 607 merged as f9f69335a618ca04c2884e869c0ab73fff61b424
+at 14:42:17 UTC. Root inspected signed head df1391cb, the one-file diff,
+all active ruleset requirements and empty review threads. All three required
+checks passed. The parser reads deployed mapping intent separately from
+fresh operational readiness and preserves the actual packet assertions.
+The clean, idle primary checkout advanced to merged main.
+
+Full acceptance handle 18648 completed with exit status 0 from that merged
+runner. Its result has no failure and no cleanup errors. Forty IPv4 requests
+selected Webpass 24 times and AT&T 16 times. Forty IPv6 requests selected
+Webpass 18 times and AT&T 22 times. Both IPv4 mapped HTTP probes verified
+actual response content and correlated simulator, provider and transit packet
+exchanges. Evidence is route-event-fix-repeat-forward-full-acceptance-fixed/result.json.
+IPv4 packet correlation does not independently prove every post-NAT guest
+source identity; the runner retains its explicit attribution limit.
+
+History observation began at 14:45:00.322245896 UTC with PID 314.
+Root verified and deleted the Webpass main-table IPv4 default via
+10.241.204.1 with metric 10. The command succeeded, and a subsequent read
+verified automatic restoration. Persistent transition 7b34b78f1634ff22:192
+records ready to not-ready at 14:45:19.741027731 UTC for Webpass IPv4,
+dependency wan-routes, reason routing readiness changed. Root verified that
+record before restarting the WAN service. Restart handle 28686 completed
+with exit status 0. The runner observed a different positive PID and the
+same persistent transition after restart. Current PID is 2177; both providers
+report healthy selection and passing family probes. Both forwarding-readiness
+values are true. Detailed downstream restart observation remains assigned.
+
+The 14:47 UTC heartbeat refreshed the coordinator, cutover plan, relevant
+specification, memory, recent ledger, ticket states and active operations.
+Both renewed observers remain active until approximately 15:41 UTC.
+No deploy or capture remains active. Root owns live mutation and the ledger.
+The acquired DNS implementer owns isolated source and verification; its
+independent reviewer found one actual same-link listener retry lifetime defect,
+which is in correction. The production reviewer owns its command manifest.
+
+Production baseline mapped SSH observations through suburban succeeded for
+both Webpass and AT&T with strict existing router host-key verification and
+the expected router hostname. These read-only observations prove the current
+mapped endpoint response, not future cutover acceptance. Production acquired
+DNS support and the reviewed activation/recovery pair remain unfinished.
+MWAN-227 changed from stale Todo to actual In Progress; complete acquisition
+acceptance still requires reconciliation of its specific remaining results.
+MWAN-519 changed to Done after its first-connection testbed acceptance
+completed. Production promotion remains under MWAN-520. MWAN-521 remains
+InProgress during required production compatibility preparation.
+Production is unchanged.
+
+The separate 14:45:00 through 14:48:00 UTC downstream review records 180
+complete replies per guest/family and zero query errors. Backup selection
+began around 14:46:05 and primary returned around 14:46:20. The maximum
+reply interval was 1.021599 seconds. No backup selection was sampled at
+the earlier repaired route loss. Evidence is
+repeated-forward-downstream-review/route-fault-restart.md.
+
+## Prepare acquired DNS and production packet contracts
+
+The 15:17 UTC heartbeat and compaction reorientation refreshed the coordinator,
+current cutover and acquisition requirements, relevant memory, recent ledger,
+MWAN-521 and MWAN-227, current agent ownership and active handles.
+No deployment or capture is active. The two downstream observers expire
+around 15:41 UTC and require renewal before the next live operation.
+Root retains exclusive control of live mutations and the ledger.
+
+MWAN PR 158 is published at signed head
+2c012501c7caf00799ea90450606f5d428e00b55. Its acquired DHCPv6 and RA DNS
+implementation passed the actual daemon, Kea, RA and resolved public case.
+The source case verified acquisition, expiration, static DNS and domain
+preservation, unrelated resolved state, restart and journal behavior.
+The older released executable rejected the newly supported required policy.
+Source acceptance does not establish released identity or shared testbed proof.
+Evidence is 20261001-acquired-dns/report.md.
+
+Independent exact-head review approved the correction that returns observer
+panic errors through Reconcile and the existing final daemon logging boundary.
+Both branch commits passed signature and raw gpgsig verification. All ten
+active required checks passed. Root verified the two-file correction and
+replied to and resolved the valid Graphite finding. The nonrequired firewall
+and protocol job failed and requires diagnosis before merge; its full result
+is not replaced by the required-check result. Govulncheck reports the existing
+GO-2026-4736 GoBGP affected-version record with no fixed version. No merge,
+release deployment or production change has occurred.
+
+The managed Webpass simulator advertises neither DHCPv6 DNS nor RA recursive
+DNS. Its existing client policy disables both. A bounded Configs implementer
+owns only the simulator templates, selected Webpass protocol values and
+minimal field validation. Empty DNS defaults preserve other simulators.
+Webpass uses preferred lifetime 180 seconds, valid lifetime 240 seconds,
+renewal 60 seconds, rebinding 120 seconds and RA DNS lifetime 240 seconds.
+Existing RA intervals, delegated prefix, identity and IPv4 remain unchanged.
+Gateway policy and release pins require the verified merged DNS release.
+The existing shared simulator operation restarts all enabled simulator
+services; retain downstream observers and verify unchanged other renders.
+Actual acquisition, renewal, query, restart, reverse and forward acceptance
+remain unperformed. Evidence is 20261001-testbed-acquired-dns-contract/result.md.
+
+Production read-only baselines verified mapped SSH replies over both IPv4
+providers and current IPv6 NPT edges with the existing router host key.
+UniFi and proxy guests have only their downstream interface and loopback,
+normal default routes and no active OOB interface. Both guest aliases and
+hypervisor route reads passed. Runtime-derived IPv6 destinations remain
+necessary because production delegation is not a configuration pin.
+An isolated Configs implementer owns that packet-task helper and its actual
+public-boundary verification. Evidence is
+20261001-production-packet-contract/result.md. Production ownership and
+services remain unchanged. MWAN-519 is Done; MWAN-521 and MWAN-227 remain
+In Progress. Production promotion requires subsequent authorization.
+
+## Merge current-prefix packet targets and prepare DNS activation
+
+Configs PR 608 merged as 76f4e2bb9f1bde6453ddf45bdd4790e16606382c
+at 15:35:51 UTC. Root inspected signed source 29a39d98, its six-file diff,
+independent exact-head report, all three required checks and empty threads.
+The production task received actual IPv6 replies from two current prefixes
+through the unchanged descriptor; literal and invalid-manifest cases passed.
+The fixture used the released 3bfdc2a daemon and actual sysrepo publication.
+Its configured prefix source does not prove DHCP negotiation or cutover.
+The owned fixture was removed. Clean primary Configs advanced to merged main.
+Evidence is 20261001-runtime-packet-edge/report.md and
+20261001-runtime-packet-edge-independent-review/report.md.
+
+Configs PR 609 contains the four-file simulator DNS configuration.
+Independent review approved signed eeb32951 and corrected the external report
+count: 18 rendered files, with 16 byte-identical and only Webpass DHCPv6 and
+RA output changed. Real Kea and radvd parsers accepted all three enabled
+IPv6 simulators; four existing timing cases passed. Root published the PR,
+then signed and published rebase f21c13568d9dc5adea2a9e7aef09eb94586355d2
+onto merged 76f4e2bb to satisfy the strict branch policy. Exact rebased review,
+current checks and threads remain pending. No simulator deployment occurred.
+Evidence is 20261001-testbed-acquired-dns-contract/implementation.md.
+
+The unchanged PR 158 failed-job rerun is attempt 2, job 110443517795.
+The original assertion rejected a reconciliation count increase while startup
+requests remained queued. Its scenario disables resolver, address and kernel
+IPv6 modules; the relevant scenario and reconciliation sources are unchanged.
+No DNS causation is established. Retain the original failure separately from
+the pending retry. Evidence is 20261001-acquired-dns-independent-review/ci-failure.md.
+
+Renewed downstream observers started around 15:27 UTC as handles 26614
+for guest 225 and 24811 for guest 226, with separate acquired-dns SSH
+ControlPaths and 7200-second durations. Their baseline records replies in
+both families and successful primary-route queries. Fresh operational state
+reports healthy, carrying AT&T and Webpass with passing probes and ready
+translation; Webpass is MWAN owned and AT&T remains networkd owned.
+No deployment, capture or production mutation is active.
+
+Remaining DNS acceptance requires the verified published release, reviewed
+client policy, managed simulator deployment, acquisition, actual renewal,
+uncached per-link DNS query, restart and reverse/forward transfer.
+Production configuration and its compatible recovery pair remain unfinished.
+MWAN-521 and MWAN-227 remain In Progress; MWAN-519 remains Done.
+
+## Deploy the managed DNS simulator while the gateway repair continues
+
+Configs PR 609 merged as 05cc47515b9818cd1e3c42b30de44522e0db68ee
+at 15:40:58 UTC. Required checks passed and review threads were empty.
+Independent final review confirms signed f21c1356 has the original accepted
+four-file patch. Root advanced clean primary Configs to the merge.
+The corrected renderer evidence contains 18 files, with 16 unchanged.
+
+At 15:42:05 UTC, root started handle 92321 from that clean merged revision:
+./configsctl deploy deploy-testbed --limit suburban --tags isp-lxcs.
+Merged-checkout enforcement passed. The existing operation restarts enabled
+simulator services. Observers 26614 and 24811 remain active through about
+17:27 UTC with both families replying and successful primary route queries.
+The gateway DNS policy remains disabled. The installed gateway release and
+ownership remain the accepted 3bfdc2a pair. No production mutation occurred.
+The deploy log is deploy-testbed-20261001T154205Z.log under configs-runs.
+Its terminal result and subsequent simulator validation remain pending.
+
+PR 158 attempt 2 passed the original selection assertion twice, then failed
+TestKernelPolicyDaemonRuntime at the same line and IPv4 packet assertion as
+current main. The failed scenario disables resolver and has no acquired DNS
+settings. Source-adjacent acquisition cases passed. The systemd lane did not
+execute because make stopped after the namespace failure. Preserve the failed
+suite and the separately passed local acquired DNS case as distinct facts.
+Independent review found no concrete DNS integration cause or blocker for
+authorized testbed deployment after source merge and release verification.
+A new valid Graphite finding identifies silent RA listener creation failure.
+The original implementer owns its contextual error correction and a separate
+reviewer owns exact-head review. Do not merge before that correction is verified.
+
+PR 608 bounded cleanup completed. Its accepted tree matched merged main;
+the ignored Python cache reproduced byte-for-byte and was removed. The clean
+worktree and local branch were removed. The remote branch was already absent;
+fetch pruned its stale tracking ref. External runtime evidence remains.
+Evidence is 20261001-runtime-packet-edge/cleanup.md.
+
+## Complete simulator deployment and review the acquired DNS release
+
+Handle 92321 returned exit 0 at the root poll at 16:09:30 UTC. Its successful
+recap reports 257 successful tasks, 70 changes, zero failures and zero
+unreachable tasks. The exact earlier process exit time is not established.
+Independent downstream review measured 15:42:05 through 16:10:00 UTC,
+including 30 seconds after the observed terminal boundary. Each guest and
+family recorded 1,673 consecutive replies and 1,389 successful route queries.
+No interior sequence was missing; all sampled routes selected primary.
+The maximum guest timestamp interval was 2.367519 seconds with consecutive
+replied sequences. It does not establish packet loss or its cause.
+Evidence is 20261001-real-cutover/simulator-dns-deploy-downstream-review/result.md.
+
+Read-only Webpass simulator checks verified the installed Kea preferred and
+valid lifetimes of 180 and 240 seconds, renewal and rebinding timers of 60
+and 120 seconds, and both configured Google DNS servers. Installed radvd
+advertises the configured Cloudflare DNS server with a 240-second lifetime.
+Both services are active with PIDs 454909 and 454924, started at 15:53:50 UTC.
+The delegation pool and advertisement intervals remain unchanged. These file
+and service checks do not prove actual option requests, replies or client
+application. The gateway retains release 3bfdc2a and disabled acquired DNS.
+
+PR 158 published signed 18eab5fa after correcting RA listener errors and
+their existing logging contract. Local Docker checks and package tests passed;
+independent exact-head review approved. All ten active required GitHub checks
+passed. The final nonrequired runtime job failed the unchanged selection
+startup-count assertion with resolver disabled. Its systemd resolver cases
+did not execute. Preserve that failure separately from the passed acquired
+DNS fixture; no concrete DNS integration cause was found.
+Evidence is 20261001-acquired-dns-independent-review/listener-correction.md
+and ci-final-head.md.
+
+A new unresolved Graphite finding concerns raw JSON mutation in the fixture
+configuration helper. The implementer and independent reviewer are checking
+the fixture boundary and preservation of untouched fields. Its proposed
+partial serializer omits required ownership, identity and address settings.
+No source correction or merge is assumed. Release verification, client policy
+activation, real renewal, uncached query, restart and DNS transfer acceptance
+remain pending. Production activation and compatible recovery preparation
+remain unfinished. Production services and ownership remain unchanged.
+
+PR 609 bounded cleanup removed its clean worktree and local branch after
+whole-tree and patch-equivalence proof against merged 05cc4751. The remote
+branch was already absent. External renderer and parser evidence remains.
+Evidence is 20261001-testbed-acquired-dns-contract/cleanup.md.
+
+The heartbeat reorientation refreshed coordination and acquisition/cutover
+plans, relevant specification, memory and recent ledger entries. Actual Tack
+states remain MWAN-519 Done, MWAN-521 In Progress and MWAN-227 In Progress.
+Root controls live mutation and the ledger. Separate agents own source
+correction review and production recovery preparation. Observers 26614 and
+24811 remain active through about 17:27 UTC. No capture or deploy is active.
+
+## Merge acquired DNS and prepare the testbed policy
+
+Independent review approved the unchanged fixture helper at 18eab5fa.
+It edits serialized configuration at an external fixture boundary and
+preserves untouched values. The daemon validates the entire document and
+decodes concrete wire types before runtime acquisition. Root verified the
+loader and helper, replied with evidence, and resolved the Graphite thread.
+Evidence is 20261001-acquired-dns-independent-review/fixture-boundary.md.
+
+Root refreshed the active ruleset, all ten required passing checks, all three
+resolved threads and four valid commit signatures with raw signature headers.
+PR 158 merged through the ordinary standalone GitHub workflow as
+7436c5cab0f93ae521f9bdf96c90bd830af0a0c1 at 16:14:00 UTC.
+Release workflow 36890439684 is compiling the actual main revision.
+The release agent owns archive, checksum, attestation, executable and rendered
+document verification. Published release identity remains pending.
+
+A separate Configs implementer owns the focused testbed Webpass DNS policy
+and verified release pin. The implementer must preserve client identities,
+existing addressing, mappings, other providers and ownership. No release
+value may be guessed. Production recovery review is read-only and separate.
+Production cutover remains unauthorized.
+
+At about 16:16 UTC, root started bounded capture handle 76291 for actual
+Webpass DHCPv6 and advertisements. The systemd unit is
+mwan305-dns-simulator-20261001-1617.service, with tcpdump PID 3554 and
+verified /usr/bin/tcpdump executable. Listening readiness passed. Capture
+termination, drop counters, PID absence and packet analysis remain pending.
+The capture does not enable gateway DNS policy. Both downstream observers
+remain active; no deploy is active.
+
+## Verify the published DNS release and preserved recovery inputs
+
+Release 202610011614-9b-7436c5c targets merged 7436c5c. Workflow
+36890439684 passed Publish and Verify. All four actual archives match the
+checksum manifest and GitHub API digests and pass exact-source attestations.
+Native ARM64 version reports clean 7436c5c; schema export passed.
+AMD64 executable SHA256 is
+d224ccc6f06ce36b64d6f584565e4256a7cf808b46cc6c1fcea7d1325f6d85a1.
+Both fresh environment renders and captured actual prior production JSON
+passed released network and firewall validators. The original production
+TOML parsed through the existing debug usage command with expected usage
+exit 1, without a loader error, daemon launch or debug operation.
+Initial unprivileged firewall checks failed on unshare permissions; isolated
+privileged checks passed. Owned containers were removed.
+Evidence is 20261001-acquired-dns-release-7436c5c/report.md.
+
+Capture 76291 returned exit 0 after explicit stop. Its tcpdump PID 3554
+is absent; counters report 81 captured packets and zero kernel drops.
+Independent packet review verifies complete preserved DUID and IAID,
+matching Renew/Reply exchanges, unchanged /56 delegation, T1 60, T2 120,
+preferred lifetime 180 and valid lifetime 240. Renew packets are
+60.002710 seconds apart. A link-local hop-255 RA includes RDNSS option 25
+with Cloudflare DNS and a 240-second lifetime. Neither Renew requests
+option 23, and neither Reply includes it. This is consistent with the
+old release's disabled DNS policy; it does not establish a server defect.
+Resolver publication and new-release DNS cutover acceptance remain pending.
+Evidence is 20261001-real-cutover/acquired-dns-simulator-capture/report.md.
+
+Read-only production capture preserved actual network.json and config.toml
+with local directory mode 0700 and file mode 0600. Local and remote hashes
+match. Their JSON and TOML hashes are respectively
+36ebd6ac4ce8f66c231ed5d06ddea0689531e3814797073d91985488131ff39f
+and 1e6912f7219eabbd9dfa2a18dccf742d17c2f3cc1933b69677ab24d574480217.
+The live executable still matches original d442ba1's observed hash.
+A private read-only runtime archive preserves the executable, environment
+and runtime inputs, networkd files, systemd units, sysctl inputs and schema.
+Its SHA256 is
+8844d3bb4aed0c155c912a6ff0af2839a6651ea2f23ddaf0c5ba200780605852.
+Confidential inputs are under 20261001-production-original-inputs and were
+not printed. No production service, owner, route or firewall changed.
+
+Automatic connection recovery restores captured inputs under the candidate
+executable. It does not restore the old executable or stack. Candidate
+validation of the exact original documents passed; independent verification
+of the original published binary and stack remains separate. The original
+binary extracted from the published archive matches the live hash. Do not
+claim full release reversal from document validation alone.
+
+The focused Configs candidate enables only Webpass's two DNS policy fields
+and pins the verified testbed release. Its implementer owns the two inventory
+files; a separate reviewer owns exact-head review. Candidate publication,
+merge, deployment and live DNS acceptance remain pending. AT&T/networkd and
+production ownership remain unchanged. MWAN-521 remains In Progress.
+
+## Deploy the acquired DNS testbed policy from merged Configs
+
+Independent review approved signed Configs 978f3949 with no findings.
+Its complete two-file patch enables Webpass RA and DHCPv6 DNS, updates the
+testbed release tag and MWAN checksum, and preserves the stack checksum.
+Actual render comparison changes only the two DNS booleans. DUID, IAID,
+delegation hint, ownership, addressing, mappings and all other providers
+remain identical. The candidate network SHA256 is
+2769af5f68c40d56ca5f4a99015d1267402fd076f6b5a1cc4b39cf5901e8bd88.
+Released network and firewall validators passed. All three required GitHub
+checks passed and review threads were empty. PR 610 merged as
+fc449839cb863d36989ca3daf6a45cd539cd5c17 at 16:29:31 UTC.
+Evidence is 20261001-testbed-acquired-dns-activation/independent-review.md.
+PR attachment failed on the existing 100-identity limit; no other attachment
+was removed.
+
+Root advanced clean primary Configs to that merged revision. At 16:31:59 UTC,
+root started handle 39452: ./configsctl deploy deploy-mwan --limit
+mwan_suburban_servers. The log is deploy-mwan-20261001T163159Z.log under
+configs-runs. Its terminal result and installed identity remain pending.
+Predeployment operational state reports ready translation for both families
+on Webpass and AT&T, with the existing owners unchanged.
+
+New observers 97200 and 98250 started around 16:30 UTC with separate
+dns-activation SSH ControlPaths and output directories. Fresh replies from
+both guests and both families and successful primary-route queries passed
+before deployment. Their durations extend through about 18:30 UTC.
+Root owns preboot capture 72516, unit
+mwan305-dns-activation-20261001-1632.service. Listening readiness and
+tcpdump executable identity passed for PID 3922. Stop this owned capture
+before the scheduled reboot; packet analysis and final drop/PID checks
+remain pending. No other agent may mutate these operations.
+
+Original production release verification confirms the downloaded d442ba1
+executable matches the live binary. Both original archives match their
+manifest and API digests. Provenance correctly attributes the reused original
+stack to source 5dd0ce00. All seven installed package versions match both
+bundles; original and candidate package payloads and control entries match.
+No package downgrade is required. Full original restoration remains
+unperformed. Evidence is
+20261001-production-recovery-contract/original-release/report.md.
+
+PR 158 bounded cleanup removed its contained local/remote source branch
+and worktree. Ignored build inputs are preserved externally. Root then
+advanced clean owning MWAN main to merged 7436c5c. Release/runtime evidence
+and the active ledger remain preserved. Production is unchanged.
+
+## Recover the failed acquired DNS activation
+
+Configs fc449839 activation failed on October 1 at about 16:47 UTC.
+Released MWAN 7436c5c rejected resolver construction because the role TOML
+omitted its journal path: resolved journal path must be absolute: "".
+Network document validation did not construct that module and did not detect
+the missing TOML setting. The automatic role recovery restored prior inputs
+and verified applied state. The play ended with failed=1, rescued=1 and
+unreachable=0. Root polled handle 39452 at approximately 17:00 UTC and
+received terminal exit 1. No scheduled reboot occurred.
+
+Read-only verification found WAN service active/running with PID 8436.
+Its executable and installed binary both match released 7436c5c SHA256
+d224ccc6f06ce36b64d6f584565e4256a7cf808b46cc6c1fcea7d1325f6d85a1.
+Recovered network SHA256 is the exact prior
+50c5db1725b57814dcedff43baea84f263fa10f86f1126a1ebc2f76b198a192f.
+This recovery retained the candidate executable and restored prior inputs;
+it did not restore the previous executable.
+
+The downstream review through 16:51 UTC found all four channels selected
+backup at 16:47:09 through 16:47:10. Recovery sampled primary around
+16:49:38, backup around 16:49:49 and primary around 16:50:05. Route queries
+had zero errors. No additional reply sequence was missing. Guest 225 IPv4
+sequence 638 was missing before activation at approximately 16:41:29;
+the other three streams had no missing sequences. Its cause is unassigned.
+Final closed-interval review remains separate.
+
+Root stopped the exclusively owned capture unit
+mwan305-dns-activation-20261001-1632.service. Handle 72516 exited zero.
+It captured 4,262 packets with zero kernel drops; PID 3922 is absent.
+Evidence is 20261001-real-cutover/dns-activation-preboot-capture and
+20261001-testbed-acquired-dns-activation/downstream-review.
+
+The implementer reproduced the exact constructor failure with the actual
+released executable and real template. Explicit journal wiring constructs
+resolver successfully. Independent review rejected an empty shared default
+because later production DNS activation would repeat the failure. The
+approved repair uses /var/lib/mwan/owned-resolver.json as the shared default
+and renders the existing WAN module setting. Final two-file verification,
+review, signed commit, merge and testbed redeployment remain pending.
+Production activation and the preserved reverse candidate remain on hold.
+MWAN-521 remains In Progress; production has not changed.
+
+## Deploy the shared resolver journal repair
+
+Configs PR 611 merged as 3aef4df55005e34b87a81bb093736330857aac02
+at 17:06:12 UTC. Signed source ddd5ca404b72bde46ad1d5ab042aed913fa16489
+passed signature and raw-header verification. Independent final diff review
+had no actionable findings. Both real environment renders change only the
+resolver journal section; both network documents remain byte-identical.
+Released 7436c5c constructs the resolver in both isolated renders. Their
+later missing networkd directory failure is separate from constructor proof.
+All three active required checks passed and review threads were empty.
+Graphite AI review passed. PR attachment again failed at the existing
+100-identity limit without removing another attachment.
+
+Root advanced clean owning Configs main and started handle 76828 at
+17:07:34 UTC: ./configsctl deploy deploy-mwan --limit mwan_suburban_servers.
+Its log is deploy-mwan-20261001T170734Z.log under configs-runs.
+Existing observers 97200 and 98250 continue through about 18:30 UTC.
+Before this retry both providers reported healthy, both-family probes passed,
+and current downstream replies used the primary router. Recovered Webpass
+DNS was empty; management DNS/domain was 3d06:bad:b01:210::1 and
+home.goodkind.io.
+
+Root owns capture handle 52025 and unit
+mwan305-resolver-repair-20261001-1707.service. Listening readiness and
+/usr/bin/tcpdump identity passed for PID 9266. Stop that exact unit before
+the play schedules reboot; retain terminal counters and PID absence.
+Its packet directory is resolver-journal-repair-preboot-capture under
+20261001-real-cutover. Deployment, applied DNS, renewal, uncached query,
+restart, reboot and repaired reverse/forward acceptance remain pending.
+
+The prior failed phase's closed review through 17:00 UTC confirms only the
+preactivation guest 225 IPv4 miss. Backup/recovery added no missing reply
+sequences; all 5,591 route queries succeeded. Packet review confirms preserved
+DUID/IAID/PD, 23 Renew and two Rebind requests with 25 matching Replies,
+and 24 RDNSS advertisements. DHCP requests contain only ORO 82, Replies
+omit option 23, and the capture contains no port 53 traffic. Advertising
+and prior-policy lease recovery passed; acquired DNS publication did not.
+
+The reverse candidate is being reconciled onto merged main without
+publication or live execution. The production draft remains unpublished.
+MWAN-521 and MWAN-227 remain In Progress. Production remains unchanged.
+
+## Preserve the next transfer candidates during live validation
+
+The reverse candidate is signed 83a353bbd5356326137fbc7008ad984db4e3cd2e
+on merged 3aef4df5. Fresh render is byte-identical to the reviewed reverse
+document. Released network, firewall and generated-unit checks passed.
+Root reviewed the complete Webpass-only diff without actionable findings.
+The merged repair branch was removed after bounded containment review;
+the server branch was already absent. The reused worktree and unique reverse
+branch remain. Publication waits for current live DNS acceptance.
+
+Production candidate eecbcf7baa0f7903b0b85bf6aef90a73d713ffaa is signed,
+clean and unpublished on merged 3aef4df5. Actual released construction first
+found missing production link and IPv6 kernel journal paths. The focused
+draft now supplies the existing owned-links.json and owned-kernel.json
+contracts under /var/lib/mwan. It inherits the shared resolver journal.
+Released 7436c5c constructs all nine WAN modules in the actual draft render;
+the later isolated missing networkd directory failure remains separate.
+Network JSON remains byte-identical to the prior validated draft.
+Independent final production configuration review is active.
+
+The production draft preserves the registered MAC but matches the physical
+NIC by independently verified permanent MAC 64:62:66:23:f9:84. Its five
+existing IPv4 mappings explicitly use local delivery, matching the observed
+primary and four local aliases. The phase packet descriptors use the current
+operational translation prefixes. Actual AT&T, management, transit and other
+provider configuration remains unchanged. No production operation occurred.
+
+Root's temporary capture-stop observer is handle 5326. It monitors the
+active deploy log and stops only unit
+mwan305-resolver-repair-20261001-1707.service when the firewall handoff
+marker appears, before reboot scheduling. It also stops that unit after a
+terminal recap. Root must still collect capture completion, counters and
+PID 9266 absence; this observer does not establish those results.
+Deployment handle 76828 and observers 97200/98250 remain active.
+
+## Accept the repaired DNS deployment and ordinary restart
+
+Deploy handle 76828 exited zero at approximately 17:32 UTC. Its recap is
+ok=307, changed=27, unreachable=0, failed=0 and rescued=0. Reboot, egress
+and mapped-address verdicts passed. Actual postboot ID is
+a8999e84-c7b9-4fc1-a418-487117b9c25e. Installed executable d224ccc6 and
+network 2769af5f match the exact intended hashes recorded above.
+
+Capture-stop observer 5326 exited zero after stopping its owned unit at
+17:29:23 UTC before reboot scheduling. Capture 52025 exited zero with
+3,611 packets, zero kernel drops and PID 9266 absent. Independent packet
+review verifies initial DNS option 23 acquisition, seven DNS-enabled renewal
+exchanges, preserved DUID/IAID/PD, router DNS option 25, and matching
+uncached query replies. Resolved publishes both Google servers and Cloudflare.
+
+Closed downstream review covers 17:07:34 through 17:33 UTC. Guests 225 and
+226 received 1,524 replies per family except guest 226 IPv4 with 1,523.
+Its sole missing sequence 2491 preceded activation at approximately
+17:12:25. The cause is unassigned. Restart and reboot backup intervals
+contain complete replies. All 5,051 route queries succeeded. Reboot selected
+backup around 17:30:29 and primary around 17:31:09 in both families.
+
+Postboot capture 7155 verified tcpdump PID 869 and listening readiness.
+It began after initial reboot acquisition. Actual Renew/Reply exchanges
+at 17:33:51 and 17:34:51 request DNS and refresh the same valid delegation.
+All before/after-renew uncached queries passed. Root restarted WAN at
+17:35:28; handle 19849 exited zero and PID 313 changed to active PID 949.
+The capture verifies protocol Rebind/Reply during restart and subsequent
+DNS-enabled renewals, plus the successful uncached query after restart.
+Management DNS/domain remain 3d06:bad:b01:210::1 and home.goodkind.io.
+Root stopped the unit; capture exited zero with 1,382 packets, zero drops
+and PID 869 absent. The separate 62-second restart interval contains
+62 replies per guest/family without missing sequences and 186 successful
+route queries. All channels sampled backup then primary.
+
+Evidence is resolver-journal-repair/downstream-review and both
+resolver-journal-repair capture directories under 20261001-real-cutover.
+Actual reverse and repeated forward DNS ownership remain pending.
+
+Independent production review accepts signed eecbcf7b without actionable
+source findings. Its complete identities, journals, mapping delivery and
+phase checks match the approved contract. Production remains unpublished
+and unchanged. Testbed proof and subsequent authorization remain required.
+
+MWAN-227 reconciliation found one remaining combined live observation:
+successful translation and packet exchange after a different delegated
+prefix/length. ExpectedPrefix only supplies the NPT length; it does not pin
+the old address. Existing cases verify changed acquisition and old rule
+withdrawal but omit a positive packet assertion on the new prefix.
+A focused two-field simulator candidate prepares Webpass 2500::/60 in
+place of 2200::/56. Root verified that prefix is unused. Real template
+comparison and Kea parsing passed. Review, publication, merged deployment,
+changed-prefix packet proof and restoration remain pending. No simulator
+renumber occurred. Preserve DNS policy, identity, timers and other providers.
+
+## Begin the live delegated-prefix change
+
+PR612 merged as Configs 2c1babe13d924b82cbb68e33e4306dd3d05170ae.
+Required checks and Graphite AI passed. Review threads were empty.
+The clean owning main advanced to this revision. Simulator deployment
+handle 22667 began at 17:54:19 UTC through configsctl deploy deploy-testbed
+with limit suburban and tags isp-lxcs. All simulator services may restart.
+
+Capture handle 93883 uses unit mwan305-prefix-20261001-1756.service.
+PID 1496 is /usr/bin/tcpdump; listening readiness passed for any interface
+with Linux cooked v2 packets. IPv6 capture includes acquisition and transit
+correlation. Evidence is 20261001-mwan227-prefix-capture. Observers 97200
+and 98250 remain fresh for both guests and both families through this phase.
+They expire around 18:30 UTC; continuation must start before that boundary.
+Actual changed-prefix translation, withdrawal and restoration are pending.
+
+Restoration candidate 8aa3b426659d95da1ebcd4e558a8d97ddc3624e0 restores
+only Webpass prefix 2200::/56 and length 56. Its clean native worktree is
+mwan-227-prefix-restoration/configs. Actual template comparison, scoped lint
+and signature verification passed. Independent review is active. Publication
+and deployment remain unperformed. MWAN-227 remains In Progress; production
+remains unchanged.
+
+## Observe actual prefix renewal and prepare restoration
+
+Webpass acquired 2500::/60 at 18:08:31.847731238 UTC through normal
+renewal. The matching Reply withdraws 2200::/56 with zero lifetimes.
+DUID, IAID and acquired DNS remain unchanged. WAN PID 949 and boot
+identity remain unchanged; no client restart or lease deletion forced
+this change. Root saved operational, address, source-rule, nftables,
+link, identity and resolver snapshots under the focused capture directory.
+
+Broad capture 93883 exited zero with 537,184 captured packets and
+4,409 kernel drops. PID 1496 is absent. This capture cannot prove
+complete packet observation. Focused capture 51993 records DHCPv6,
+router advertisements and the acceptance destination. Its unit is
+mwan305-prefix-focused-20261001-1806.service; PID 1769 executable and
+listening readiness passed. Its final counters remain pending.
+Independent positive packet review already correlates both downstream
+guests with checksum-adjusted translated sources and returned replies.
+Obsolete daemon edge/source/NPT withdrawal and full deploy acceptance
+remain under review. Simulator deploy 22667 is still active.
+
+Restoration PR613 is open at signed 8aa3b426 with independent acceptance
+and passing required checks. Root reviewed the complete two-field patch.
+Its attachment attempt failed at the existing 100-identity cap; unrelated
+attachments remain preserved. No restoration merge or deploy occurred.
+Merged PR612 local branch and worktree were removed after exact contained
+cleanup; its remote branch was already absent. External evidence remains.
+
+Signed DNS reverse candidate 2fa30440 is reconciled onto 2c1babe13.
+Its accepted gateway inventory and rendered JSON remain byte-identical.
+Root reviewed the complete Webpass-only patch and report. It remains
+unpublished until prefix restoration passes. Continuation observer configs
+are prepared with unique control paths; neither new observer has started.
+Production remains unchanged.
+
+## Accept the changed prefix and begin restoration
+
+Simulator deployment 22667 exited zero with recap 257 ok, 70 changed,
+zero unreachable, failed and rescued. Independent closed observation
+from 17:54:19 through 18:15:30 records one IPv6 miss per guest.
+Reply gaps are 2.049473 seconds for guest 225 and 2.040487 for guest 226.
+IPv4 has no missing sequences; all 4,154 route queries succeed.
+Both families briefly select backup and then primary during renumbering.
+The failed IPv6 requests enter transit without matching provider replies.
+
+Independent acquisition, kernel and packet review verifies actual 2500::/60,
+zero-lifetime old delegation withdrawal, new edge and source rule, old
+edge/source/NPT removal and translated request/reply pairs for both guests.
+The actual checksum-adjusted sources are 2501:dd0f::225 and ::226.
+Numeric capture indices 3 and 4 map to enmwanbr0 and enwebpass0.
+Local macOS decoder labels are not gateway interface names. Focused capture
+51993 exited zero with 15,852 packets and zero kernel drops; PID 1769
+is absent. Binary, network, boot, WAN PID 949, identities and DNS are
+unchanged. Evidence is 20261001-mwan227-live-renumber-review/report.md.
+
+Continuation observers 2638 and 71854 began around 18:15 UTC. Both
+families have fresh replies and successful route queries before old
+observers stopped. Root intentionally interrupted Python processes 74833
+and 74872 after exact command verification. Old handles 97200 and 98250
+exited 130 and saved their terminal reports. The brief overlap preserves
+observed continuity. Current directories are prefix-continuation-client225
+and prefix-continuation-client226 under 20261001-real-cutover.
+
+Restoration PR613 merged as d6a89dd5f4c4486ff339874405e09c2ed00dff66
+after current required checks, signatures and thread gates passed. Owning
+main is clean and advanced. Restore deployment 66439 began at 18:18:21
+UTC through the same supported simulator command. Capture 21967 uses
+mwan305-restoration-focused-20261001-1819.service. Tcpdump PID 2251
+executable identity and focused listening readiness passed. Evidence is
+20261001-mwan227-restoration-focused-capture. Independent restoration
+review is assigned; actual restored lease and packet acceptance are pending.
+MWAN-227 remains In Progress. DNS reverse and production drafts are being
+reconciled without publication or live activation. Production is unchanged.
+
+## Accept restored delegation and prepare DNS reversal
+
+Restoration deployment 66439 exited zero with 257 ok, 70 changed and zero
+unreachable, failed or rescued. Reply bec85a at 18:31:33.320583 UTC restores
+2200::/56 and withdraws 2500::/60 with zero lifetimes. Client identity,
+DNS, timers, binary, network, boot and WAN PID 949 remain unchanged.
+Old daemon edge, source rule and translation state disappeared. Existing
+simulator return routes remain separate from daemon ownership.
+
+Independent review verifies restored Webpass exchanges for both guests.
+Guest 226 has matching ICMPv6 packets. Guest 225 has a successful HTTP 200
+exchange using translated source 2201:e00f::225. The first guest command
+incorrectly targeted OPNsense and failed address binding with exit 45;
+that command does not establish network failure or acceptance.
+
+The closed 18:18:21 through 18:39:30 interval has no IPv4 misses and 4,188
+successful route queries. Guest 226 misses one IPv6 sequence during
+renumbering. Guest 225 misses one later IPv6 sequence; its request is absent
+from the gateway capture and its cause remains unknown. Capture 21967
+exited zero with 37,054 packets, zero drops and PID 2251 absent. Evidence
+is 20261001-mwan227-live-restoration-review/report.md. Actual Tack MWAN-227
+state is now Done; MWAN-305 and MWAN-521 remain In Progress.
+
+PR613's contained local branch and clean worktree were removed; its remote
+branch was already absent. External reports remain preserved. Observers
+2638 and 71854 remain active until approximately 20:15 UTC. No deployment
+or packet capture remains active after restoration.
+
+DNS reverse candidate ce3b8eef63740b3f2942661b37cf2618e659c3fa is signed
+and reconciled onto d6a89dd5. Root inspected its Webpass-only diff. The fresh
+render matches accepted reverse bytes 0ea76add; prior released-loader,
+firewall and generated-unit validation applies to those exact bytes.
+Publication is underway. Actual reverse and repeated forward DNS ownership
+acceptance remain pending.
+
+Production draft 497d77c042a2d3282ee4a29f1469b0ae8e46fc2b is reconciled
+onto d6a89dd5 with both rewritten signatures verified. Independent review
+accepts its source and runtime bytes, which match accepted eecbcf7b.
+Production remains unpublished and unchanged. Testbed proof and subsequent
+production authorization remain required.
+
+## Publish DNS reversal and correct its render assertion
+
+PR614 publishes signed head 0193cac47632afb3855262e532434d285c65ac0e.
+The first required data check rejected configured networkd ownership because
+an existing render assertion hardcoded Webpass owner mwan. The focused spec
+correction independently reads configured owners and verifies the production
+renderer's owner and link-file declaration. Both real environment renders
+passed, two examples with zero failures. Both branch signatures and raw
+headers passed. Required CI and independent spec review remain pending.
+The PR attachment attempt failed at the existing 100-identity limit.
+
+Simulator capture 16896 began at 18:53:58 UTC on verified Webpass eth0.
+Unit mwan305-dns-reverse-20261001-1854.service has PID 471909, verified
+tcpdump executable and listening readiness. Its DNS, DHCPv6, advertisement
+and acceptance-destination filter remains active through gateway reboot;
+its one-hour runtime ends approximately 19:54 UTC. No reverse deployment
+has started. Downstream observers 2638 and 71854 remain active.
+
+A baseline command incorrectly used a second interface operand with
+resolvectl domain and assigned enmgmt0 as Webpass's search domain. Root
+reversed this exact accidental change with an empty Webpass domain. Fresh
+readback confirms empty Webpass domain, home.goodkind.io on management,
+all three Webpass DNS servers and unchanged management DNS. The paired
+multi-interface DNS command failed parsing and did not set DNS. Baseline
+evidence separates these command errors from network acceptance.
+
+## Begin merged DNS reverse deployment
+
+PR614 merged as c4c761f11891d9dea01b0f81d2181a91290b2ac9 at
+19:00:37 UTC. Required GitGuardian, lint and data checks passed.
+Graphite AI passed and review threads were empty. Independent spec review
+accepted exact signed head 0193cac4. PR-Agent exhausted its allowance;
+that check is not an active ruleset requirement. No bypass occurred.
+
+Root reviewed the corrected baseline. Actual gateway and both guest
+identities match; WAN PID, boot, binary, DNS and current network are unchanged.
+Both uncached configured-resolver queries pass and both downstream observers
+publish fresh replies and successful route queries. Evidence is
+20261001-dns-reverse-live-review/baseline/report.md.
+
+The clean owning main advanced to c4c761f1. Supported configsctl reverse
+deployment handle 17193 began at 19:01:13 UTC with limit
+mwan_suburban_servers. Actual streamed play output is
+deploy-mwan-20261001T190113Z.log under the existing configs-runs directory.
+Simulator capture 16896 and downstream observers 2638/71854 remain active.
+Root controls live mutation. Independent reverse acceptance and preparation
+of the repeated-forward configuration run separately. MWAN-521 remains
+In Progress; its comment now includes this merged operation. Production
+remains unchanged. Actual reverse acceptance is pending.
+
+## Reject the reverse phase after a transport failure
+
+Networkd acquired Webpass through Solicit df7b3b and Request/Reply 2e1537
+at 19:24:12 through 19:24:13 UTC. The wire identity, IAID, 2200::/56,
+DNS and configured timers match the prior owner. Renew/Reply 59df28 at
+19:25:18 refreshes the assignment. Captured advertisements supply Cloudflare
+DNS with hop limit 255 and lifetime 240. Both initial and post-renew
+uncached queries have matching Google DNS requests and replies.
+The resolver ownership journal has links {}, and networkd publishes all
+three DNS servers with management DNS/domain unchanged.
+
+The selected-phase AT&T mapping command failed at 19:31:56 UTC with SSH
+exit 255 after 115 milliseconds. Suburban reset the connection before
+simulator authentication and curl execution. This is a failed command,
+not evidence of a failed mapping response. Automatic captured-input
+recovery is active; root must verify its terminal result and actual restored
+ownership before another deployment. Positive networkd DNS evidence does
+not establish accepted reversal after this rejected phase.
+
+One later attempt using the exact fresh SSH path and hostname succeeds
+with both host keys and authentication verified. Bounded server logs and
+session observations do not establish the original reset's cause. No SSH,
+firewall, infrastructure or packet-check change is justified by a guessed
+cause. Evidence is 20261001-dns-reverse-ssh-diagnosis/report.md.
+
+Independent observation through 19:34:30 contains 1,995 replies per
+guest/family, no missing interior sequences and no route-query errors.
+Captured networkd Release 299e16 and successful server Reply at 19:32:17
+verify acquisition release during recovery. Final recovery, terminal capture
+counters, closed downstream interval and reverse acceptance remain pending.
+
+Signed repeated-forward candidate 32963acb657573d332a41667b65f0e73c7b63a7f
+and its exact render match accepted forward bytes. Independent review
+accepts this unpublished candidate. PR614's contained terminal refs were
+removed while its checkout was preserved for the active forward branch.
+Production remains unchanged; MWAN-521 remains In Progress.
+
+## Accept recovered state and retry the merged reversal
+
+Deployment 17193 exited 1 at 19:47:33 UTC with 443 ok, 57 changed,
+zero unreachable, one failed and one rescued. Automatic recovery passed
+applied-state and packet checks, restored selection and passed recovered
+packets again. Actual original network 2769af5f, executable d224ccc6 and
+boot a8999e84 are verified; WAN PID 10473 is active. Acquired DNS and
+management settings are restored. Recovery uncached queries match captured
+network replies after real renewal. No reboot occurred in this failed phase.
+
+The complete closed 19:01:13 through 19:48:30 interval has 2,834 replies
+per guest/family, zero missing sequences and 9,447 successful route queries.
+Every channel selected backup seven times and returned to primary.
+Independent final review is 20261001-dns-reverse-live-review/report.md.
+Simulator capture 16896 exited zero with 12,503 packets and zero drops;
+PID 471909 is absent. These passed observations do not replace the failed
+selected check or unperformed reverse reboot acceptance.
+
+Continuation observers 75771 and 34158 began around 19:39 UTC with
+unique control paths. Both families have fresh replies and successful
+routes before old Python processes 70477 and 70512 were interrupted.
+Old handles 2638 and 71854 exited 130 and saved reports. New directories
+are dns-continuation-client225 and dns-continuation-client226; observations
+continue until approximately 21:39 UTC.
+
+Root verified recovered inputs, fresh downstream traffic, current SSH
+access and the unchanged clean merged checkout. Supported reverse retry
+handle 2458 is active from c4c761f1. Its output locator is in
+20261001-dns-reverse-retry-live-review/deploy.log. No speculative source
+or infrastructure change preceded retry. Capture 63964 began at 19:50:20
+on simulator eth0 with unit mwan305-dns-retry-20261001-1950.service.
+PID 477073 executable and listening readiness passed. Its two-hour bound
+preserves packet observation through reboot. Independent retry acceptance
+is assigned. MWAN-521 remains In Progress; production remains unchanged.
+
+## Reduce heartbeat repetition and refresh current acceptance
+
+The existing automation now uses a short coordination-plan reference and
+a two-hour interval instead of repeating the full instructions every
+30 minutes. The saved notification policy is failed_runs_only. Readback
+verified the existing automation ID, thread, active status and updated
+fields. Slice and compaction reorientation requirements remain mandatory.
+
+Production baseline refresh completed at 19:56:27 UTC. Independent review
+verified original executable and network hashes, gateway and guest identities,
+both families on both downstream guests, and all four mapping endpoints.
+Root read the complete report at
+20261001-production-baseline-refresh/report.md. Production remains unchanged.
+
+Reverse retry 2458 remains active. Independent observation measured one
+guest226 IPv6 missing reply before ownership transfer, sequence 984, with
+a 4.021435-second gap between adjacent replies. The cause is unassigned.
+This observation requires acceptance review; it does not establish a
+cutover failure. Reverse and repeated-forward acceptance remain incomplete.
+The current provider implementation is merged and released. Remaining
+epic implementation includes later interface transfers, retirement and
+deployment reboot detection. No current user decision is required.
+
+## Execute implementation and testbed correction concurrently
+
+The operator authorized separate code-completion and validation defect lanes.
+release_completion owns the bounded remaining-code audit in
+20261001-code-completion-lane. The audit must distinguish actual missing
+implementation from unfinished live transfers and retirement prerequisites.
+Root will assign exact source files after verifying the next settled slice.
+
+repeat_forward_review owns diagnosis of measured retry packet losses in
+20261001-validation-bug-lane. simulator_dns_review continues independent
+acceptance. Neither lane may mutate the live testbed. Root controls deployments
+and recovery, serializes shared file changes, and reviews implementation
+reports and diffs before integration. Production remains unchanged.
+
+Reverse retry 2458 exited zero. The actual recap reports 419 ok, 44 changed,
+zero failed, unreachable or rescued. Reboot, egress and mapped-address gates
+passed. Independent review still requires final identity, uncached postboot
+queries, closed downstream observations and terminal capture counters.
+Measured missing replies remain separate from passed deployment gates.
+
+## Accept reversal and assign the missing DHCPv4 DNS slice
+
+Root read the complete reverse retry and separate packet diagnosis reports.
+Exclusive release, restored networkd acquisition, selected packets, reboot
+and captured postboot uncached DNS queries passed. Closed observation has
+9,674 replies, ten failed probes and 8,065 successful route queries. The
+largest adjacent reply gap is 4.101665 seconds. Actual reboot backup selection
+from 20:26:23 through 20:27:12 contains no failed probes. The operator accepts
+brief deployment loss. These observations establish no code defect.
+The manifest has no numerical outage limit; no such comparison was performed.
+
+Actual reverse boot is 870752b9, executable d224ccc6 and network 0ea76add.
+Networkd owns Webpass, its DHCP identity/prefix and three DNS servers match,
+and management DNS/domain remain unchanged. Postboot network replies match
+captured Google query IDs 43311 and 28168 after real renewal. Explicit retry
+preboot queries were unperformed. Capture 63964 ended with 11,192 packets,
+zero kernel drops and exact PID 477073 absent. The first failed attempt
+and its successful automatic recovery remain separate evidence.
+
+The six-plan/current-code audit establishes a concrete remaining omission:
+DHCPv4 UseDNS is rejected despite the typed option and real simulator option 6.
+Later provider, transit and management transfers reuse existing generic code;
+their unfinished activation does not establish another missing transfer engine.
+Root read the complete code audit and independent DHCPv4 DNS contract review.
+release_completion implements the approved seven runtime files and existing
+real resolver regression in /Users/agoodkind/.worktrees/mwan-398-dhcpv4-dns.
+No served assignment/YANG revision changes are required or authorized.
+Renewal, expiry, persistence, stable-ID snapshots and shared resolver ownership
+must preserve existing IPv6 and unrelated management behavior. Retirement
+and final conditional reboot retain their approved prerequisites.
+
+Configs PR615 merged as e0ff57ca after all three required checks passed,
+Graphite AI passed and required threads were absent. Its accepted head is
+32963acb. The app attachment failed its existing 100-identity limit; unrelated
+attachments were preserved. Clean owning main advanced to the merge.
+Repeated-forward deployment 46574 began at 20:43:56 UTC through configsctl.
+Simulator capture 32907 uses unit mwan305-dns-forward-20261001-2042.service,
+verified tcpdump PID 481970 and listening readiness. One earlier SSH closure
+preceded unit creation; unit absence and successful hostname preceded retry.
+The original stderr is preserved. Current observers remain fresh.
+
+simulator_dns_review owns independent repeated-forward acceptance;
+repeat_forward_review owns bounded terminal PR615 cleanup. Root remains
+the sole live controller, ticket writer and ledger writer. Tack398 and521
+remain In Progress. The existing521 comment was updated with verified reversal
+and parallel implementation status. Production remains unchanged.
+
+## Replace stalled packet observation before ownership transfer
+
+Independent acceptance detected all four continuation reply streams ending
+at 20:38:22 UTC while route observations continued. Root verified both guest
+and observer timestamps. Active observer handles alone did not establish
+fresh packet proof. The cause is unassigned; this is an observation gap,
+not evidence of downstream loss.
+
+Root started replacement observers 43493 and 86918 with separate control
+paths and verified all four reply streams at 20:48:11 UTC. New directories
+are dns-forward-client225 and dns-forward-client226. Root then interrupted
+the exact old Python processes 44399 and 44459; handles 75771 and 34158
+exited 130 and saved reports. Independent review verified fresh replacement
+replies and route samples. Do not claim packet continuity from 20:38:22
+until the replacements began around 20:47:42. That gap includes initial
+deployment preparation; ownership transfer had not started.
+
+Root collected uncached baseline queries under the existing networkd owner.
+Both families returned actual network answers. The active simulator capture
+allows independent correlation. Current forward acceptance remains pending.
+
+Root read the complete PR615 cleanup report. Its contained local branch,
+feature checkout and regenerable Python cache were removed. The remote
+branch was already absent. External evidence, production draft, DHCPv4 DNS
+implementation checkout and active main deployment remain unchanged.
+
+## Record the repeated-forward prerequisite failure and library requirement
+
+Deployment 46574 failed before ownership transfer when the Proxmox snapshot
+command returned VM is locked (snapshot-delete). Its recap reported 116 ok,
+8 changed, 1 failed, and no unreachable or rescued tasks. The replacement
+observers recorded healthy replies during the covered preparation interval.
+The lock later cleared without manual intervention. The filtered configuration
+reported no lock and the active VM 213 task list was empty. Current evidence
+does not identify the lock owner or justify a source correction.
+
+PR159 implements DHCPv4 acquired DNS using the existing DHCP library and
+systemd-resolved integration. Root read the complete implementation and
+independent reports for signed head b20af8ba. The real runtime checks passed
+in 24.56 and 24.95 seconds. All ten required checks passed in the implementer's
+latest observation; root must refresh merge requirements before merging.
+Release publication and live acceptance remain unperformed.
+
+The user requires available libraries rather than custom protocol engines.
+The coordination plan now requires library reuse review. release_completion
+owns a bounded read-only review of actual DHCP option decoding and resolver
+API calls before PR159 integration. Root retains deployment, ledger, and
+Tack mutation ownership. Brief deployment packet loss alone is not a defect.
+Production remains unchanged and requires subsequent cutover authorization.
+
+## Audit upstream library reuse before custom protocol work
+
+The user requires maintained libraries before custom implementation. The
+coordination plan now requires API inspection, upstream code and release
+activity, issue responses, archive status, and a documented API limitation
+before custom protocol work. Signed policy commit 14ab376 was pushed after
+all 142 branch-local commits passed signature and raw gpgsig verification.
+
+Root read the network audit and verified actual NDP, BGP, and policy-rule
+call sites. Netlink and GoBGP have default-branch code changes in August
+and September 2026. NDP is unarchived, but its default branch has no code
+change after March 2024. Active maintenance of NDP is not established.
+Linux performs automatic IPv6 address configuration and expiry. No source
+replacement is justified by repository inactivity alone.
+
+Custom policy-rule deletion decoding uses the library attribute parser.
+Neither the inspected pinned nor current Netlink API supplies an equivalent
+rule-event subscription and decoder. The audit established no replacement
+for this bounded gap. Existing rule listing and mutation use library APIs.
+The read-only report is external evidence under
+20261001-library-reuse-audit/network.md. DHCP and resolver maintenance review
+remains pending; PR159 integration remains pending.
+
+## Complete the DHCP and resolver library audit
+
+Root read the complete DHCP/resolver report and the network report. Both
+DHCP and godbus repositories are unarchived and have recent protocol or
+runtime fixes. DHCP received protocol changes in July 2026; godbus received
+code fixes in September. These observations establish current activity,
+not dependency security clearance or a need to upgrade this slice.
+
+DHCPv4 uses upstream message operations and DNS decoding. DHCPv6 uses
+upstream codecs and SendAndRead. Its high-level Solicit and Request helpers
+do not accept the required client/server response matcher; the inspected
+client has no Renew, Rebind, Confirm, or Decline method. MWAN's lifecycle
+and identity policy use the available transport operation. The small
+SOL_MAX_RT helper interprets a generic option without an upstream typed
+accessor. No equivalent API replacement or source correction was established.
+
+systemd-resolved performs resolution. godbus applies its DNS and domain
+settings. MWAN supplies contribution policy, ownership, and restoration.
+The maintenance and API reuse audit is complete. Reports remain external
+under 20261001-library-reuse-audit. PR159 merge and live acceptance remain
+separate pending operations. No runtime code or dependency changed.
+
+## Merge the acquired DHCPv4 DNS slice and verify its release
+
+Root read the complete bounded firewall CI diagnosis. The unchanged public
+kernel-policy case passed on native ARM64 in 3.65 seconds at b20af8ba.
+The original CI assertion used static IPv4 with resolver disabled. Its
+forwarded packet drop remains unlocalized. No acquired-DNS correction was
+supported. Root requested one CI job rerun; attempt two was canceled and
+does not provide passing proof. The original failed result remains preserved.
+
+Root verified the exact signed PR159 head, all ten active required checks,
+mergeability, and review threads. Root replied with evidence and resolved
+the disproven clone finding. PR159 merged through normal gh squash merge
+at 22:10:22 UTC as e90b629814cfad205397be9cc5f95c60d82d169f. No admin bypass
+was used. Clean owning MWAN main advanced to the merge.
+
+Root read the completed cleanup report. The contained PR159 worktree and
+local and remote branch were removed after patch and complete-tree equality
+verification. External evidence, unrelated worktrees and Docker resources
+were preserved.
+
+Release 202610012210-9c-e90b629 published from the exact merge. Root read the
+complete release report and pin metadata. All four archives passed checksum,
+API digest, and source-attestation verification. Native ARM64 version and
+schema execution passed. Local AMD64 Docker execution failed with exec format
+error. Root's separate native AMD64 artifact operation 59227 is copying the
+verified executable into a private temporary directory on suburban, without
+installation or daemon startup. The transfer is active and progressing;
+native execution remains pending. Its own evidence directory is native-amd64.
+
+Root created the Configs checkout for codex/mwan-398-dns-testbed-release
+at e0ff57ca. App registration failed the existing 100-identity limit after
+checkout creation; the returned checkout is usable and no second checkout
+was created. network_library_audit owns only the testbed release pin and
+existing render/loader checks. Settled values come from the verified release.
+Ruby 3.4.7 satisfies the existing locked bundle; no toolchain dependency
+change was authorized. Root retains publication and every live cutover.
+
+Tack398 and521 remain In Progress with updated current results. Production
+is unchanged. The accepted reversal remains passed; failed forward46574 is
+not reclassified. The new merged release and compatible Configs pin must
+complete review and verification before another testbed deploy.
+
+## Publish the compatible testbed pin for the repeated forward transfer
+
+Root read the complete Configs report and inspected the exact two-line diff.
+Signed clean head 434c996bb4de253e65bf6d03d3393556e0f32342 changes only the
+testbed release tag and MWAN AMD64 archive checksum. Lint passed. The existing
+data suite reported 205 examples, zero failures and 19 pending environment
+cases. Both rendered configurations passed all four released ARM64 loader
+and firewall commands. The testbed render still matches approved forward
+hash 2769af5f68c40d56ca5f4a99015d1267402fd076f6b5a1cc4b39cf5901e8bd88.
+
+Root published Configs PR616 after signed-commit verification. Its active
+ruleset requires GitGuardian, configs lint, configs data tests, resolved
+threads, signatures, and an up-to-date base. The latest readback has lint,
+GitGuardian and Graphite passed, no threads, and data tests still active.
+PR attachment failed the existing 100-identity cap; unrelated attachments
+were preserved. The PR remains unmerged and must not be deployed.
+
+Root read the updated firewall diagnosis after merged main repeated the same
+static forwarded-packet assertion. Resolver remained disabled. No capture or
+send timestamp localizes the drop or proves a DNS defect. Preserve both CI
+failures, the canceled rerun, and the separate native ARM64 focused pass.
+The required real testbed packet battery remains unperformed for this release.
+
+Native AMD64 operation 59227 remains active. Its private artifact copy showed
+increasing bytes on the testbed hypervisor, so slow transfer is not treated
+as terminal failure or restarted. No binary was installed or daemon started.
+Fresh downstream replies were verified during preparation. Existing capture
+32907 is bounded through about 22:42 UTC; observers 43493 and86918 through
+about 22:47 UTC. Replace or renew observation before the next live retry if
+its expected duration exceeds those deadlines. Root remains the sole live
+controller. Production remains unchanged.
+
+## Merge the verified testbed release pin
+
+Root refreshed Configs PR 616's exact signed head, current base, all three
+required checks and review threads. The PR merged through normal gh squash
+at 22:27:49 UTC as 7cbc3ee75d149f7a793d7708c87108328dd0cbdd. No admin bypass
+was used. Clean owning Configs main advanced to that commit.
+
+Root read the bounded cleanup report. The contained pin worktree, local
+branch and regenerable Python cache were removed. The remote head was
+already absent. External release/render evidence, unrelated worktrees,
+shared Docker resources and native artifact operation 59227 were preserved.
+
+Tack comments now include both merges and the actual remaining acceptance.
+MWAN-398 and MWAN-521 remain In Progress. Native AMD64 execution and the
+new release's repeated-forward testbed deploy, restart and full packet
+battery remain unperformed. Do not infer deployment from the merged pin.
+Production remains unchanged.
+
+## Renew observation before the repeated forward cutover
+
+Clean owning Configs main and origin/main both equal 7cbc3ee7 after fetch.
+VM 213 retains machine ID bdd916f95e3e44568e6a5d3096cf2dea and accepted
+reverse boot 870752b9-0517-4df0-a7b6-48428d754e11. The fresh prerequisite
+check found snapshot-delete again, with no active Proxmox task returned.
+The current snapshot parent is known-good-20261001-153646. The independent
+reviewer is investigating that exact operation read-only. No retry deploy
+or manual unlock occurred.
+
+Fresh three-hour downstream observers 10279 and 50515 started at about
+22:38:57 UTC. Both guests returned IPv4 and IPv6 packets through the primary.
+The preceding observers stopped after overlapping observation at 22:40:50.
+Their reports preserve three missing sequences across four streams and
+22,566 successful route queries. SIGINT prevented final ping transmission
+summaries; the reports retain that limitation. Their packet gaps do not
+identify a new implementation defect.
+
+The independent reviewer started fresh simulator capture 36267. Verified
+Webpass simulator identity matches the approved machine. Exact unit
+mwan305-dns-forward-renewed-20261001-2239.service and PID 492440 were active
+from 22:39:28 UTC, bounded through 01:39:28 UTC on October 2. Its filter
+includes DHCPv4, DHCPv6, router advertisements, DNS and both public probes.
+Evidence is retained in 20261001-dns-forward-renewed-capture. The older
+capture was not interrupted.
+
+Root updated only the external acceptance manifest's expected executable
+hash to cb96234df3b6c6fcf2aa989202de8bd854599869e3733b17d55e250a99c56942.
+The approved forward configuration hash and all packet requirements remain
+unchanged. Native AMD64 verification 59227 remains active; its copied file
+increased to 29,767,680 bytes. No daemon was started or binary installed.
+The implementation lane is checking remaining code requirements separately
+from live acceptance. Root retains sole deployment control. Production
+remains unchanged.
+
+## Complete native artifact verification and identify the snapshot lock
+
+Native AMD64 operation 59227 exited zero. Hash, version and schema commands
+passed against the exact published executable. Version reports e90b629,
+dirty=clean and libsysrepo 7.34.6. Root read the independently updated release
+report and retained stdout/stderr. Root removed only its private remote
+artifact directory and verified its absence. No install or daemon startup
+occurred.
+
+The renewed capture report and journal identify the current lock's cause.
+Watchdog PID 1245262, build 4b8a219, created known-good-20261001-153646
+at 22:36:53 UTC. Its deletion of known-good-20260929-011903 failed at
+22:36:57 because ZFS could not find the snapshot. Its forced-delete limit
+was already three. Subsequent pruning attempts failed on snapshot-delete.
+The exact active service is mwan-watchdog-testbed.service. An empty task
+snapshot between its transient deletion attempts does not prove pruning
+finished. The reviewer is verifying exact snapshot storage, worker state
+and the minimal reversible recovery before root changes service state.
+
+MWAN-398 and MWAN-521 actual states remain In Progress. Their current
+comments include native verification and the measured snapshot prerequisite.
+The next deploy has not started. Production remains unchanged.
+
+## Refresh code completion and correct observation isolation
+
+Root read the code-completion refresh report against clean merged MWAN
+e90b629 and Configs 7cbc3ee7. The audit identifies no further demonstrated
+protocol gap. Generic provider, transit and management ownership and
+both-direction transfer are implemented. Remaining code includes focused
+activation configurations, final retirement after exact consumer inventory
+and accepted transfers, and the final conditional-reboot slice. Retain
+AT&T and networkd coexistence. Actual Tack states remain unchanged.
+
+The first renewed observers reused preceding SSH control sockets. Their
+four ping streams ended at 22:40:49 during cleanup of the preceding
+observers, while their route queries continued. Root detected stale packet
+timestamps before deployment. Preserve that interval as an observation gap,
+not a network outage. Sessions 10279 and 50515 stopped with exit 130 after
+their replacements returned packets.
+
+Replacement sessions 98573 and 17866 use separate control sockets
+/tmp/mwan305-dns-isolated-225-%C and /tmp/mwan305-dns-isolated-226-%C.
+Their three-hour observation started at about 22:46:24 UTC. All four
+streams returned fresh packets at 22:46:54 and continued after the
+incomplete observers stopped. Evidence is retained in dns-isolated-client225
+and dns-isolated-client226 under 20261001-real-cutover. Capture 36267 is
+independent. The snapshot recovery reviewer found a transient qm deletion
+worker despite an adjacent empty task list. Root has not unlocked or
+started deployment.
+
+## Start the repeated forward deployment after natural recovery
+
+The watchdog completed its prune pass and cleared the stale lock at
+22:47:25.254732 UTC. Its later probes passed. Independent fresh checks
+confirmed no lock, no active VM 213 task and no matching deletion worker.
+Root separately verified no lock and an empty task list. No operator
+unlock, watchdog stop, snapshot deletion or configuration change occurred.
+The reviewed source comparison confirms the current release does not
+change this watchdog behavior. Its retained orphan metadata is separate
+from the completed recovery and the interface implementation.
+
+Root fetched Configs and verified clean owning main equals origin/main at
+7cbc3ee75d149f7a793d7708c87108328dd0cbdd. Predeploy guest executable and
+configuration still match the accepted reverse pair. Fresh packets from
+both guests and families continued at 22:48:52 UTC.
+
+Root started ./configsctl deploy deploy-mwan --limit mwan_suburban_servers
+from /Users/agoodkind/Sites/configs at 22:49:33 UTC. Session 48179 is active.
+Its exact log is deploy-mwan-20261001T224933Z.log under the local
+configs-runs temporary directory. It pins published e90b629 through the
+merged inventory. repeat_forward_review owns read-only simulator capture
+and acquisition/DNS checks. release_completion owns independent read-only
+identity, ownership and postboot recovery evidence. Root alone controls
+deployment and later faults or restarts. The full packet battery follows
+terminal deployment. Production remains unchanged.
+
+## Isolate simulator capture and prepare the unpublished production candidate
+
+Capture 36267 ended with SSH exit 255. Its unit was inactive and its terminal
+packet/drop counters were absent. The reviewer retained that result and
+the capture gap from 22:43:43 through 22:52:41 UTC. No traffic outage is
+inferred. The replacement uses its own control socket, local session 32435,
+unit mwan305-dns-forward-isolated-20261001-2252.service and PID 493693.
+Listening readiness passed at 22:52:41 UTC; its deadline is 01:52:41 UTC.
+Artifacts are under isolated-replacement in the renewed-capture directory.
+All four separate downstream packet streams continued at 22:53:52 UTC.
+
+Deployment 48179 remains active in package preparation. Pre-transfer
+uncached resolver queries passed at 22:51:03 UTC, before the replacement
+capture. They have no correlated packet proof and are not forward acceptance.
+The independent identity reviewer captured the unchanged reverse baseline.
+
+network_library_audit owns preparation of the existing unpublished
+codex/mwan-519-production-activation branch, including signed rebase onto
+fetched origin/main, compatible release pin and existing render/loader gates.
+Preserve the reviewed production identities, assignments, AT&T coexistence
+and private original inputs. Do not deploy that candidate before matching
+testbed acceptance and subsequent production authorization.
+This preparation does not change live production. Root retains all live
+operations, ledger and ticket writes.
+
+## Refresh the unpublished production candidate
+
+Root read the completed candidate-refresh report and inspected the exact
+two-file diff against freshly fetched origin/main. Signed clean head
+4530d47aa490c9f8a1676a2502e61bfce201ec18 rebases the reviewed activation
+onto merged Configs 7cbc3ee7. The activation inventory remains byte-identical
+to the previously reviewed 497d77c. The new edits change only the release
+tag and MWAN archive checksum. The existing recovery flag and activation
+configuration remain part of the complete candidate diff.
+
+Lint, render, signature and published native ARM64 schema/network/firewall
+checks passed. Exact production network and runtime render hashes remain
+3f7b7f3d87e0bb52f74812b6ae5b9c3f3ba68f22d68642140b65c49ba08d4796
+and 739f35843df4b439679c8d4652c50cd8cb0147155227e1890234f3259a075e29.
+The candidate remains unpublished and unpushed. Independent reviewer
+production_candidate_review owns a read-only review of immutable head
+4530d47. Matching testbed proof and subsequent production authorization
+remain required before cutover. Production has not changed.
+
+## Split production preparation from Webpass ownership activation
+
+Root read the completed independent review of immutable head 4530d47.
+The exact installed production document differs from the candidate for
+management and transit link files, links, IPv4 and IPv6 fields. The transfer
+guard correctly rejects these unrelated differences before snapshot capture
+or runtime staging. Validating both documents does not establish equality.
+The captured legacy role units match the requested management and transit
+addresses, DNS/search and return-route endpoints.
+
+Use an all-networkd preparation phase before Webpass activation. Fresh
+origin/main intent and a compatible release pin supply that preparation.
+Zero owner changes avoid a handover, and existing role staging verifies
+generated external-owner units. Preserve the strict equality guard. Require
+fresh complete installed input capture and accepted downstream packets after
+preparation before activating Webpass. Production preparation and ownership
+cutover require subsequent live authorization; source preparation and review
+do not require that authorization.
+
+production_phase_split owns two local dependent branches through Graphite:
+codex/mwan-519-production-preparation changes only the compatible production
+pin and recovery flag; codex/mwan-519-production-webpass contains the reviewed
+activation inventory. The original branch and refs/backup snapshot remain.
+No production operation or branch publication has occurred. Root retains
+integration, PRs, ledger, tickets and live operations. Do not change owning
+Configs main while deployment 48179 remains active.
+
+The current testbed delegate copy remains active. Its exact .source artifact
+under /tmp/.ansible/tmp increased from 21,672,960 to 24,284,160 bytes.
+The copy updates only mwan-deploy-gate, preserving the watchdog executable.
+Do not restart a live transfer because a log observation has no new task.
+
+## Review the local production preparation stack
+
+Root inspected both scoped diffs against fetched origin/main. The clean
+local Graphite stack contains preparation c79c7cd6223d8ee31fdc5e061ef000b395cc4527
+and Webpass activation 73d21366ce59c6822ab53fe400ad0bceb7c7369c. Preparation
+changes only the production release tag, archive checksum and lease recovery
+flag. Activation changes only the previously reviewed Webpass inventory.
+The complete candidate equals the preserved original branch. No publication,
+merge or production deployment has occurred.
+
+Both positions passed fixture rendering, released native ARM64 network loader
+validation and isolated firewall validation. All five preparation connections
+remain networkd-owned. Only Webpass changes owner during activation; all other
+rendered connection records compare equal. Signature verification passed for
+both commits. The phase-split report and validation.json retain exact commands
+and hashes under 20261001-production-phase-split in the private evidence root.
+
+production_split_review owns independent review of these immutable heads.
+Root updated the production cutover plan with preparation, installed-document
+capture and acceptance before activation. Owning Configs main remains unchanged
+during deployment 48179. The deployment has passed snapshot and reconnection
+checks and is copying stack packages. Release installation and owner transfer
+remain unperformed. All four downstream streams returned replies at
+23:19:47 through 23:19:48 UTC.
+
+## Publish the production stack and correct its scoped CI failure
+
+Graphite dry-run selected only the two intended branches. Submission created
+Configs PR 617 for preparation and PR 618 for Webpass activation. Root wrote
+their scoped descriptions and verified their exact heads, bases and ready
+states. Native artifact attachment failed because the chat already has 100
+attachment identities. Preserve unrelated attachments.
+
+Independent source review passed for c79c7cd and 73d2136. The preparation PR
+passed all three required main checks. Activation data checks failed in three
+existing trusted inventory loaders because they reject the new YAML aliases.
+production_phase_split owns only spec/ansible/mwan_install_spec.rb for the
+focused alias-loading correction and existing checks. Root retains publication
+and integration. Optional PR-Agent review stopped at provider quota exhaustion
+with zero findings; this is incomplete review, not a source defect or a main
+merge requirement. Both PRs have no unresolved review threads.
+
+MWAN-520 remains In Progress. Root added the two-deployment preparation
+requirement to its description and refreshed the current cutover checkpoint
+on MWAN-398. No production operation or main merge has occurred. Deployment
+48179 is capturing prior role inputs after passing transfer preparation checks.
+
+## Publish the trusted inventory loader correction
+
+Signed head 15b4434d0d1cdfe79309f77af07a08717e734788 adds aliases: true
+only to the three existing trusted inventory loaders. Six selected examples
+passed under Ruby 3.4.7. The full local suite returned 205 examples, one verdict
+path quoting failure and 19 pending. The full suite did not pass. Raw RSpec
+and RuboCop logs were not retained, so baseline failure status and reported
+offense locations remain unverified.
+
+Root inspected the exact three-line diff, checks JSON and independent
+alias-review.md. The correction review found no actionable defect. Signature
+verification passed for every stack commit. Graphite dry-run selected PR 617
+as unchanged and PR 618 for update; submission published only that correction.
+Actual GitHub data checks must pass before main integration. No inventory,
+production implementation, deploy source or live production state changed.
+
+Deployment 48179 completed prior-role snapshot assertions and staged source
+runtime inputs. Its unified binary copy is active. Owner activation, reboot
+and the complete public acceptance battery remain pending.
+
+## Verify Webpass ownership and restore measurement coverage
+
+Deployment 48179 installed the exact published executable cb96234d. Source
+exclusion passed readiness and downstream packet gates. Independent external
+readback verified owner external, networkd unmanaged, no loaded network file
+and termination of the previous acquisition process. Replacement readback
+at 00:04:49 UTC verified owner mwan, link up, ready apply state and valid
+assignments and routes for both families.
+
+Selection restoration passed. Installed and running process executables
+equal cb96234d; the final network equals 2769af5f. Every nonselected interface
+record equals the baseline, including AT&T, management and transit. Networkd
+still reports Webpass unmanaged. Reboot and full public acceptance remain
+pending. Both production PRs now have passing main check names and no
+unresolved review threads; no production merge or deployment has occurred.
+
+Simulator capture 32435 exited 255. Its file ends at 00:00:00.879 UTC, and
+the owned unit deactivated at 00:01:11 with MainPID zero. Initial acquisition
+packet proof is missing. The saved lease and operational readiness remain
+separate evidence. Old downstream streams stopped returning packets around
+00:00:07 through 00:00:08 while route queries continued. Do not infer an
+outage or assign a cause to these observation gaps.
+
+Fresh nonmultiplexed observers 75246 and 2793 returned all four packet streams
+at 00:09:32 through 00:09:33. Their output directories are nomux-client225
+and nomux-client226 under the real-cutover evidence directory. Root verified
+the exact old observer PIDs 50187 and 50223, then stopped them with SIGINT;
+sessions 98573 and 17866 exited 130. Preserve their reports and gaps.
+
+The replacement simulator capture uses isolated jump and destination sockets,
+session 49928, unit mwan305-dns-forward-final-20261002-0010.service and
+PID 500813. Listening readiness passed at 00:09:31, with deadline 03:09:31.
+Fresh captured uncached A and AAAA requests and replies passed at 00:09:48.
+Captured Renew and Reply at 00:10:29 preserve IAID 1370549548, delegated
+2200::/56, renewal deadlines and advertised DNS. After-renew configured
+resolver queries passed in 29.6 and 33.1 milliseconds. The public acceptance
+manifest now uses its own nonmultiplexed SSH configuration; binary and network
+expectations remain unchanged. No shared SSH master was stopped.
+
+## Complete the merged release deployment and begin public acceptance
+
+Deployment 48179 exited zero. The recap reports 421 ok, 54 changed and zero
+failed, unreachable, rescued or ignored tasks. The collected reboot verdict
+passed egress and owned-address checks without rollback. Independent postboot
+readback verifies the same machine bdd916f9, new boot
+f5d7eb33-c688-4158-855f-7b6bf1f047db, exact installed and running executable
+cb96234d and final network 2769af5f. Webpass is MWAN-owned, up and ready with
+valid assignments and routes for both families; networkd remains unmanaged.
+All other providers, management and transit retain networkd ownership.
+
+Fresh capture records postboot Rebind and Reply at 00:15:56, followed by Renew
+and Reply at 00:16:56. Postboot configured resolver queries returned network
+answers. Their packet correlation remains under review and is not yet claimed.
+All four nonmultiplexed downstream streams returned packets at 00:17:02.
+Preserve the earlier capture and observer gaps separately from reboot evidence.
+
+Root started the full public mwan_acceptance.rb entrypoint with the exact
+released binary and final network expectations. Session 78365 owns evidence
+directory 20261002-forward-e90b629-battery. The manifest uses the dedicated
+nonmultiplexed SSH configuration and retains all packet, mapping, translation,
+balancing, protocol, history and identity requirements. Root owns the bounded
+route deletion and daemon restart only when the runner enters its failure and
+restart observation phase. Production remains unchanged.
+
+## Delete the Configs Ruby acceptance implementation
+
+The operator requires new MWAN application and acceptance code outside
+Configs and ordered deletion without a backup. Signed commit a5d9431e
+removes ten harness and dedicated spec files, totaling 2190 lines.
+Configs PR 619 merged as 519d9126747a0913391a7ccf83943ffb500a7a21
+after all three required checks passed and no review threads remained.
+The owning main checkout fast-forwarded to the merge. The clean feature
+worktree and local branch were removed after ancestry and deletion proof;
+the remote branch was already absent. No backup was created. Preserve
+existing unrelated Rake and RSpec tooling. Do not restore or execute the
+deleted harness.
+
+## Complete packet and persistent-history acceptance
+
+The terminal battery exited one because its final read-only history query
+exceeded the remaining 0.719113-second allowance. It establishes no runtime
+outage. Independent raw packet review accepted all eighty downstream HTTPS
+requests, IPv4 provider counts AT&T 17/Webpass 23, IPv6 counts AT&T 21/Webpass
+19, and both IPv4 mapping replies and body hashes. All thirty battery
+captures stopped with zero kernel drops and verified PID absence.
+
+Root separately deleted the exact verified main Webpass default route;
+readback verified repair. That operation produced no new pre-restart
+Webpass transition. Restart changed PID 316 to 5512. Both guests and both
+families have zero missing sequences during the measured reboot and first
+restart. Route observations show backup selection and return to the primary.
+Do not convert adjacent reply intervals into continuous outage durations.
+
+Root deleted the verified table 200 Webpass IPv4 default at 00:39:15 UTC.
+Persistent history records its removal and repair as transitions
+b41a18a1f5e57102:38 and :39, and IPv6 routing failure and recovery as :41
+and :43. A second restart changed PID 5512 to 5797. All four complete
+records occur exactly once and compare equal before and after restart.
+This proves persistence of observed failures; it does not establish an
+unobserved IPv4 routing-readiness failure. Final served Webpass owner is
+mwan, apply result ready and both family routes ready.
+
+Evidence is 20261002-battery-terminal-review.md and
+20261002-route-repair-restart. Bound postboot DNS packets, renewal and
+recovery remain accepted separately. DNS capture 49928 is no longer a
+local handle. Its exact unit is inactive with MainPID zero, and PID 500813
+is absent. Its stderr has no terminal packet/drop counts; that capture's
+complete drop accounting remains missing. A stop returned unit not loaded.
+No replacement capture or network configuration change occurred.
+
+## Validate the released DHCPv4 protocol independently
+
+The existing MWAN Go runner selected the published ARM64 executable
+a8863b95 for the systemd lane. DHCPv4 DNS acquisition, renewal replacement,
+real resolver queries, restart and expiry passed in 24.37 seconds.
+The aggregate exited one. Independent diagnosis identifies a release
+fixture teardown error, no such device from LinkDel, after runtime release
+assertions completed. This is a failed aggregate with successful individual
+behavior, not a passing cleanup result. Its dedicated container is absent.
+
+Namespace session 66535 is active against the same read-only published
+executable under 20261002-released-dhcpv4-protocol. Exact source requirements
+permit real Kea provider simulation through public daemon namespace and
+systemd boundaries. They do not require another shared physical-provider
+ownership transfer before first Webpass promotion. Preserve ARM64 protocol
+proof separately from actual AMD64 Webpass live acceptance. Remaining
+namespace results, fixture failure review, actual ticket reconciliation and
+production phase approval remain unfinished.
+
+## Reconcile deployment state and released protocol failures
+
+MWAN-521 is Done. Its explicit acceptance requires validated renders and a
+merged complete connection transfer and reversal without a second writer.
+The independent render, forward, reverse, reboot, restart and packet evidence
+satisfies that deployment boundary. MWAN-305, MWAN-398, MWAN-522 and
+production acceptance MWAN-520 remain open.
+
+Graphite rebased only production preparation and activation onto merged
+Configs 519d9126. Signed heads are 375808b7922347ee2e95f5d4f37f896807c9fdca
+and 4e233e4c741a68cf6befb8d72853d57490f4c30d. Source comparison finds only
+the ten harness deletions relative to the prior activation head; inventory
+and loader content are unchanged. Dry-run selected only existing PRs 617
+and 618, and submission updated them. Their current checks are running.
+No production merge or deployment occurred.
+
+Released ARM64 namespace acceptance exited one after 368.869 seconds.
+Twenty-six of twenty-seven required cases passed without skips, including
+DHCPv4 acquisition, classless routes, rebind, NAK, rejected recovery,
+OOB/failover behavior and restart recovery. Mapped acceptance failed because
+the NPT journal still included 2001:db8:beef:200::1/128 after the test observed
+its removal. The aggregate is failed. Root assigned read-only diagnosis to
+acceptance_evidence_review; do not assign a runtime cause or weaken the
+assertion before diagnosis. The dedicated namespace container is absent.
+
+dynamic_acceptance_discovery owns only the measured release fixture cleanup
+correction in the separate mwan-release-fixture-cleanup worktree. It accepts
+the kernel's already-absent device result from deletion, preserves all other
+errors and reports link identity. No runtime implementation changes or new
+tests are assigned. The existing focused released-binary case is active;
+root retains integration and PR publication. Source, runtime, fixture and
+cleanup results remain separate. Production promotion remains pending.
+
+## Merge the release fixture correction and retain the mapped failure
+
+MWAN PR #160 merged as aeb4f92665784000be085eef08190c8c65671cc5 at
+01:00:06 UTC on October 2. Independent review accepted signed source
+8554258c6e2418754124fabcc63dec4f7d135b04 with no findings. The fixture
+accepts only ENODEV when the kernel already removed its device. Other
+deletion errors still fail and report the exact link name and index.
+Production code, runtime assertions and deadlines are unchanged.
+
+The focused public release case passed against the published a8863b95
+ARM64 daemon in 9.72 seconds. Local Docker check/test gates exited zero.
+All active required GitHub checks passed and no review threads existed.
+The nonrequired Govulncheck failure reports the unchanged GoBGP
+GO-2026-4736 advisory with no fixed version. It is separate from the
+fixture correction. No security dependency change or live deployment
+occurred. The source checkout remains unchanged while its namespace
+runner is active.
+
+Seven instrumented mapped-case reproductions passed. Six visible receipt
+snapshots were already empty after kernel address deletion. No measured
+old-receipt-to-empty interval or journal write failure establishes the
+cause of the original failed read. Its cause remains unassigned. Temporary
+diagnostics remain uncommitted in mwan-mapped-receipt-observation; they
+are not integrated. Its dedicated container is absent. Evidence is
+20261002-mapped-failure-diagnosis.md and
+20261002-mapped-receipt-observation.
+
+dynamic_acceptance_discovery owns one unchanged namespace aggregate repeat
+at source e90b629 against the published a8863b95 daemon. Its exact session
+is 56593 and container is mwan-protocol-namespace-3579215580. The existing
+27-case list and deadlines are unchanged. release_completion owns a separate
+complete systemd repeat with the merged fixture correction and unchanged
+published daemon. Record both terminal results separately from the earlier
+failed aggregates.
+
+Configs PRs #617 and #618 have successful checks at heads 375808b7 and
+4e233e4c. Production remains unchanged. Preparation must be merged,
+deployed and accepted before activation. Neither operation has subsequent
+production authorization. Both downstream guests continue receiving actual
+IPv4 and IPv6 replies at 01:00 UTC. MWAN-398 and MWAN-522 remain In Progress
+while aggregate acceptance is unfinished; MWAN-521 remains Done.
+
+## Complete systemd acceptance and diagnose startup observation
+
+The complete corrected systemd aggregate passed all six required cases with
+zero failures and skips in 61.022 seconds. Session 94436 exited zero. Its
+source 8554258c is included in merged aeb4f926; the published daemon remains
+e90b629 with ARM64 hash a8863b95. Its owned container is absent. The source
+worktree, local branch and exact leased remote branch were removed after
+trunk containment and generated-cache inspection. The primary MWAN checkout
+is clean at aeb4f926. No new release was deployed.
+
+The unchanged namespace repeat exited one: 26 of 27 cases passed without
+skips in 362.513 seconds. The formerly failing mapped case passed unchanged
+in 12.59 seconds. Selection exclusion failed because its idle assertion
+counted legitimate startup reconciliation. The retained log proves initial
+reconciliation, initial kernel resync and one coalesced readiness request
+within 51 milliseconds. It does not prove a continuous loop or packet defect.
+Both initial family packet assertions passed; later exclusion checks did not
+run in that failed case. Its dedicated container is absent.
+
+dynamic_acceptance_discovery owns the existing idle helper correction in
+mwan-startup-idle-observation at base aeb4f926. Require positive stable startup
+within the original five-second initialization bound, then preserve the
+complete original five-second quiet window. Do not change production code,
+timers or acceptance deadlines. Focused released-daemon validation precedes
+independent review and integration. Do not repeat the broad aggregate before
+the measured fixture failure is corrected.
+
+Both downstream observers stopped after their exact remote ping processes
+received SIGINT and wrote complete terminal counts. Local sessions 75246
+and 2793 exited 130 deliberately. Exact local and guest process lists are
+empty. Guest 225 received 3380/3380 IPv4 and 3379/3380 IPv6 replies; guest
+226 received 3383/3383 in each family. IPv6 sequence 2904 was lost near
+00:57:42 UTC, outside the reboot and both restart windows. Its cause remains
+unlocalized. All four operation streams have zero missing probes during the
+second restart, maximum reply interval 1.017557 seconds, and observed backup
+then primary selection. Delayed bursts and failed SSH route observations
+remain separate from packet loss.
+
+Three unused fixtures were removed: mwan-transfer-procedure-521,
+mwan-downstream-harness-522 and mwan-networkd-resolver-systemd-521. Preserve
+unrelated Docker services and reusable testbed guests. Evidence is
+20261002-released-systemd-repeat/report.md,
+20261002-released-namespace-repeat/report.md and
+20261002-final-observer-review.md. The first production readiness audit
+accepts physical Webpass proof but requires disposition of the namespace
+failure before promotion. Production still requires subsequent authorization.
+
+## Publish the bounded startup fixture correction
+
+MWAN PR #161 contains signed head
+9e1ab626eb581c7e7aaf1b65c5d8f1e012a986e6 from aeb4f926. Only the existing
+firewall idle helper changed. Its initial positive count must remain stable
+for 400 milliseconds within the original five-second initialization bound.
+The complete subsequent five-second quiet interval still rejects every
+count change. Both phases verify daemon liveness.
+
+Focused published-daemon selection acceptance passed in 15.22 and 15.32
+seconds, including every later exclusion, default deletion/restoration and
+fallback packet assertion. A real-daemon 100ms periodic-reconcile control
+failed stabilization in 7.29 seconds. The control altered only an external
+read-only fixture override; production source and deadlines are unchanged.
+All three owned containers are absent. Independent review accepted patch
+hash fe940c836d2b22126049571485d4dff925d5bd132542df17f21e60dec298fe12.
+Local Docker check/test gates passed. Current required CI is pending.
+
+The complete final namespace run uses frozen source 9e1ab626 and the
+unchanged published a8863b95 daemon. Session 29201 and its dedicated
+mwan-protocol-namespace-2853405517 container are active. Retain its terminal
+result separately; do not convert any earlier failed run into a pass.
+
+MWAN-398 is Done, with actual Tack state readback verified. Independent
+audit matched every static, dynamic, mapping, route, expiry, OOB/failover
+and DNS requirement to the successful unchanged released cases. Its exact
+ticket assigns live transfer to MWAN-519. The separate selection fixture
+failure remains under MWAN-522 and does not invalidate MWAN-398's completed
+acceptance. MWAN-522 and production MWAN-520 remain In Progress.
+
+## Reconcile acquisition and restart ticket completion
+
+MWAN-517 and MWAN-518 are Done with actual state and description readback
+verified. Independent review matched MWAN-517's router-advertisement,
+preferred/valid lifetime, separate IA_NA/IA_PD, duplicate-address detection,
+IPv4 preservation and packet requirements to passing released cases.
+MWAN-518's five public recovery cases passed, including validation, expiry,
+rejection and withdrawal. Installed-service recovery also passed through
+captured postboot Rebind/Reply and renewal with ready assignments. Both
+later restart windows had complete downstream sequences, and the exact
+failure-history records survived restart.
+
+The separate MWAN-522 aggregate correction does not invalidate these
+completed requirements. Ticket descriptions now distinguish current
+acceptance from production promotion and final retirement. Their original
+normative requirements are preserved. MWAN-517's obsolete branch links now
+reference the merged main specifications and plans. MWAN-305 remains active;
+production MWAN-520 and the remaining interface phases remain unfinished.
+
+## Complete the released protocol aggregates
+
+The final namespace aggregate passed all 27 required cases with zero failures
+and skips in 377.541 seconds. Session 29201 exited zero. Frozen clean source
+9e1ab626 included the reviewed startup observation correction; the unchanged
+published ARM64 daemon remains e90b629 with SHA256 a8863b95. Mapped lifecycle
+passed in 12.15 seconds and selection exclusion passed in 15.09 seconds.
+The complete systemd aggregate separately passed all six required cases.
+Both owned containers are absent. The current Docker inventory contains no
+MWAN containers. Historical failed runs remain failed results with their
+recorded dispositions; no production behavior or deadline changed.
+
+PR #161 merged as 62c0fa79ee462da0b11839925065b9446a1ea5a6 at
+01:22:39 UTC on October 2 after required checks and independent review passed.
+PR #160 and #161 modify acceptance fixtures only. They do not require another
+runtime deployment. Evidence is 20261002-released-namespace-final/report.md,
+namespace-2853405517/terminal-results.json, and
+20261002-released-systemd-repeat/report.md under the retained evidence root.
+
+The remaining MWAN-522 deliverable is the current reusable command manifest.
+acceptance_evidence_review owns only interfaces/deployment.md. Replace the
+obsolete deleted Ruby invocation with existing public daemon and protocol
+runner commands and recorded physical operations. Do not add replacement
+application or acceptance code to Configs. Root owns ledger and integration;
+release_completion independently audits first-phase readiness.
+
+Production preparation PR #617 at 375808b7 and activation PR #618 at
+4e233e4c remain open with successful checks and clean merge status. Neither
+has been merged or deployed. Subsequent authorization remains required.
+Accept the preparation deployment before merging or deploying activation.
+MWAN-398, MWAN-517, MWAN-518, MWAN-519 and MWAN-521 are Done. MWAN-522,
+MWAN-520 and MWAN-305 remain In Progress. Remaining-interface transfer,
+AT&T retirement, final networkd removal and conditional reboot work remain
+separate unfinished epic requirements.
+
+## Finish the first-phase command manifest and cleanup
+
+Signed commit 61395f9 publishes the reusable existing-command manifest in
+interfaces/deployment.md. Independent readback verified protocol arguments,
+source-bound downstream requests, configured balancing, capture lifecycles,
+mapping replies, route repair, restart history, recovery and owned cleanup.
+Every repository and Configs source link resolves. Root inspected the complete
+manifest and diff before integration. No acceptance application, replacement
+Ruby harness, new script, test or live mutation was added.
+
+MWAN-522 is Done with actual Tack description and state readback verified.
+Independent review matched its explicit VLAN, absent-provider, replacement
+index and routed static-block requirements to passing public daemon cases,
+separately from the aggregate counts. Physical Webpass acceptance and all
+required released protocol cases pass. MWAN-401 retains final testbed
+acceptance after retirement; MWAN-520 retains production acceptance.
+
+PR #161's exact worktree, local branch and leased remote branch were removed
+after root verified trunk containment and the generated-cache classification.
+Ten unchanged regenerable files and two empty directories were removed;
+external reports and terminal events remain. Root independently verified
+worktree and local/remote branch absence. Primary MWAN is clean at 62c0fa79.
+The cleanup report is 20261002-pr161-cleanup-classification.md.
+
+No first-Webpass implementation or testbed acceptance blocker remains.
+Production requires subsequent authorization, current baseline verification,
+and accepted preparation before activation. Preserve the recorded isolated
+IPv6 loss outside operation windows, missing DNS terminal drop counters and
+initial observer gap as measurement limits. They do not establish a failed
+cutover or a localized runtime cause. MWAN-305 and MWAN-520 remain active;
+remaining interfaces and final retirement are unfinished.
+
+## Begin authorized production preparation
+
+The operator authorized the staged production deployment after the first
+Webpass readiness report: "Okay then do it." Preparation acceptance remains
+required before merging or deploying activation. The tested published daemon
+remains e90b629; subsequent documentation corrections do not change it.
+
+Graphite merged preparation PR #617 as
+369add99cb3181412a8ecb9c2fbb5e73ff130ef4 at 01:45:32 UTC on October 2.
+Root verified the active merge contract, successful required checks, exact
+signed source and absent review threads. The dry run selected preparation
+only. PR #618 remains open; Graphite updated its remote head during merge.
+Reconcile that exact head and source before later activation.
+
+The fresh production preflight passed current gateway/recovery identity,
+five networkd owners, both downstream guests without OOB, three replies per
+family per guest, and four provider/family mapping hostname checks. The
+console serial socket is available. Evidence is
+20261002-production-authorized-preflight/report.md.
+
+Root started production preparation through configsctl from the clean
+detached merged 369add99 checkout. Its exact session is 41460 and log is
+deploy-mwan-20261002T014714Z.log under the controller configs-runs directory.
+Do not change its checkout while active. Separate existing observers run in
+sessions 73336 and 97445 for UniFi 102 and proxy 110. Both families produced
+actual source-bound replies before deployment. Their SSH transports disable
+multiplexing; Vault supplies control only. Packet and OPNsense route evidence
+is retained under 20261002-production-staged-cutover. Root is the only live
+deployment controller. Other agents perform read-only preflight and monitor
+review. Preparation, activation and production acceptance remain unfinished.
+
+## Reject preparation and restore production
+
+Production preparation failed acceptance. Cloudflare reported all three pools
+unhealthy at 01:54:34 through 01:54:42 UTC on October 2 after the daemon
+restart. All four independent provider/family mapping SSH checks timed out.
+Downstream outbound ping replies did not establish inbound health.
+
+The installed e90b629 daemon rejected existing AT&T and Monkeybrains NPT edge
+addresses because they lacked ownership records. Webpass legacy NPT inspection
+failed because its configuration lacked a permanent MAC match. Served IPv6
+translation was unavailable. These errors establish the translation failure;
+the separate IPv4 mapping failure still requires diagnosis. Preserve actual
+incident state, kernel snapshots and journal in
+20261002-production-preparation-acceptance. The monitor report records exact
+alert bodies. Current Cloudflare API health reads failed authentication.
+
+The operator explicitly requested rollback. Root terminated the verified local
+Ansible controller and worker, PIDs 51389 and 78458. Session 41460 exited one,
+and controller PIDs 51359, 51389 and 78458 were absent before recovery.
+No hypervisor deploy-gate unit was active. Root restored VM 113 from the exact
+pre-deploy-20261001T184909 snapshot through qm stop, qm rollback and qm start.
+All commands exited zero. The VM was stopped after restoration and running
+after startup at 01:59:29 UTC. Existing downstream observers remained active.
+
+The restored executable hash is 1c79542f and network hash is 36ebd6ac, exactly
+matching the original production pair. Independent readback also verified the
+original TOML, five networkd owners and restored IPv6 translation for all three
+providers. All four external mapping checks returned the expected router
+hostname. Cloudflare recovery notification and complete terminal observer
+results remain pending at this checkpoint.
+
+PR #618 remains open and was not deployed. No new production activation is
+authorized by a successful outbound probe. Reproduce and correct the measured
+legacy preparation compatibility failures in testbed before reconsidering
+production. The earlier readiness report is superseded by this failed actual
+production preparation. MWAN-520 and MWAN-305 remain In Progress.
+
+## Verify recovery and file incident corrections
+
+Independent original-pair restoration acceptance passed by 02:00:55 UTC.
+All four mappings and all four short downstream family samples passed.
+Every provider's translation and probes were ready, and all three internal
+BGP peers were established and nonstale. The restored boot identity is
+fecfc318-74b3-4b13-ad44-9dbddfb202be. Cloudflare reported IPv6 healthy at
+02:00:16 UTC, AT&T at 02:00:32 and Webpass at 02:00:33. The pool unhealthy
+event intervals were 333.995, 357.420 and 357.540 seconds respectively.
+These intervals do not measure exact application or all-client outage.
+
+Terminal observers recorded all 3,727 transmitted probes and replies, with
+no missing sequences. UniFi IPv4 received 932 and IPv6 931; proxy received
+932 in each family. Maximum adjacent reply gap was 1.017147 seconds.
+OPNsense selected backup in both families near 01:53:52 and selected restored
+primary near 02:00:14. Successful outbound backup traffic did not establish
+inbound service. The harness had no continuous inbound requests or alert
+dispatch. Both guest ping pairs stopped with successful terminal summaries,
+their exact PIDs were absent, and local observers exited 130 after deliberate
+SIGINT. No deployment or observer remains active.
+
+Tack tickets MWAN-535 through MWAN-544 are actual children of MWAN-305, with
+parent and state readback verified. MWAN-537 and MWAN-544 are In Progress;
+the other new tickets are Todo. Each includes its measured defect or gap,
+durable correction and public acceptance requirements. Their work covers
+legacy NPT edge transition, legacy link validation, successful original-release
+upgrade acceptance, early recovery arming, inbound rollback, family-specific
+readiness, durable health and alerts, continuous acceptance alerts, Cloudflare
+read access, and IPv4 mapping diagnosis. Existing earlier tickets were reviewed
+for overlap. No completed historical ticket was reopened or removed.
+
+Source inspection confirms that any non-routing module reconciliation error
+sets both forwarding families false. BGP consumes those values. This is a
+family-coupling defect distinct from the unlocalized IPv4 inbound packet
+failure. The old-release upgrade fixture expects translation removal, removes
+physical link settings and silently returns when its optional binary input is
+absent. The aggregate did not execute that upgrade branch. Its passing count
+did not prove the production preparation transition.
+
+The operator requires durable checks and the harness to distinguish client
+experience, load balance health, ISP egress, ping paths and observed public IP.
+MWAN-541 and MWAN-542 include those independent dimensions for both families
+without substituting backup success for primary or inbound health. Preserve
+the existing mapping, translation, acquisition and recovery requirements.
+
+Physical testbed reproduction remains unperformed. The read-only plan found
+that current VM213 already owns Webpass under MWAN and has journals. The
+closest merged legacy baseline is 48e51c12972035ae3d98c202091b6a07b3db0010;
+its old release has no new journal configuration. Existing journal files can
+survive a downgrade, so its installation alone cannot establish the fixture.
+Require verified old snapshot state and a focused merged all-networkd e90b629
+preparation configuration with the testbed-derived legacy selector. Do not
+deploy production addresses or unmerged overrides to force reproduction.
+
+Evidence is 20261002-production-impact-review.md,
+20261002-production-preparation-acceptance/report.md,
+20261002-production-monitor-observation/20261002T020115Z-recovery-alerts.md,
+20261002-production-activation-merge-review/report.md and
+20261002-testbed-preparation-reproduction-plan/report.md. Root inspected the
+complete independent reports. No new source fix, reproduction or deployment
+passed at this checkpoint. Production activation remains blocked and requires
+subsequent authorization after testbed repair acceptance.
+
+## Expand the goal after production recovery
+
+On October 1 at 19:20 PDT, the operator required implementation of all
+MWAN-535 through MWAN-544 and OpenTofu adoption of existing Cloudflare load
+balancers and health checks. The active goal includes those requirements,
+strict delegated execution, reorientation, ledger and actual ticket updates,
+complete testbed proof and subsequent production authorization.
+
+The existing heartbeat now references the expanded scope. Its two-hour
+interval and notification policy remain unchanged. Separate agents own legacy
+upgrade repairs, Cloudflare imports and recovery/health contract inspection.
+The coordinator owns shared plan edits and live deployment serialization.
+Physical reproduction and repaired cutover acceptance remain unperformed.
+
+## Verify incident repair inputs
+
+The supplied Desktop cftoken folder authorized a temporary read-only
+Cloudflare credential. Actual account pool, monitor and zone load balancer
+reads succeeded. The existing sanctioned token authenticates but cannot read
+those resources. Temporary credentials remain outside the repositories.
+
+Configs PR621 merged as a9372c1b5f491637d5e20e74e8618dfccd6457bd.
+The reviewed plan contains eight imports and no infrastructure mutations:
+two load balancers, four referenced pools and two existing monitors. Required
+checks, signatures and review threads passed. The coordinator authorized
+state-only adoption from that clean merged revision. Import apply and a
+post-import zero-change plan remain pending at this checkpoint. The three
+incident pools are healthy. The existing Monkeybrains fallback reports an
+HTTP timeout; adoption preserves that monitor and pool configuration.
+
+MWAN-540 now has a real negative control and candidate packet result.
+Published e90b629 invalidates both families after an unrecorded IPv6 NPT edge
+failure. The repaired daemon preserves IPv4 readiness and downstream/provider
+IPv4 UDP replies. Required Linux checks passed. Root reviewed the full diff
+and report; PR163 remains under review. Actual BGP retention and shared
+firewall failure acceptance remain unperformed. MWAN-540 is In Progress.
+
+Configs PR620 contains the all-networkd e90b629 preparation fixture at signed
+edd586947d3fc8e27b18b6de08bc6e454c8ad3b2. Its Webpass document retains the
+legacy driver selector without a typed permanent-MAC match. A free-form
+MACAddress narrows the rendered Match section to the exact testbed device.
+Production Validate and Render produced one Match section with virtio_net
+and bc:24:11:be:8e:b4. Lint and whitespace checks passed. Local RSpec could
+not start because a locked gem is missing. CI and physical fixture verification
+remain required. No testbed deployment occurred.
+
+Legacy transition implementation requires a scoped manifest captured before
+replacement while the original process runs. Startup verifies the stopped
+producer and exact surviving provider objects before recording receipts.
+The implementation and required positive original-release upgrade case remain
+unfinished. Recovery arming and inbound rollback still require a bounded
+mutation fence and a serialized hypervisor operation. Production remains
+restored; no production retry is authorized.
+
+## Verify Cloudflare adoption and recovery interfaces
+
+On October 1 at 19:50 PDT, OpenTofu adoption had completed. Apply session99615
+exited zero with eight imports and no additions, changes or deletions.
+Post-import plan session6536 exited zero with eight unchanged resources.
+Cloudflare readback at 02:39:27 UTC verified unchanged load balancers, monitors
+and pool configuration. The temporary read token was revoked and its private
+file removed. Evidence is 20261002-cloudflare-adoption/report.md and its
+post-import plan, state addresses and API read proof.
+
+Configs PR622 merged at 02:48:16 UTC as
+cafce87f9e640e0ca983ceaca231fb137ac55682. It replaces the two JSON files with
+ordinary HCL configuration and import blocks. Root inspected the complete diff
+and signed commit. Validation, lint and required CI passed. Fresh plan28598
+reported eight unchanged resources and zero imports or mutations. Its complete
+planned values equal the prior JSON plan. The read token was revoked. Evidence
+is 20261002-cloudflare-hcl/report.md and equivalence-proof.json. Durable read
+credentials and real monitor failure/recovery acceptance remain unfinished;
+MWAN-543 remains In Progress.
+
+Configs PR620 was rebased with signed commits onto cafce87f. Its current head
+is e8d2cd2a083a9958cd8bb5aa0a74f50750aaeffa. Root replied to and resolved the
+incorrect permanent-MAC review finding using actual Validate/Render evidence,
+then dismissed the corresponding change requests. The omitted typed match
+is the required legacy precondition. Required CI is running after rebase.
+No physical fixture deployment or snapshot restoration has occurred.
+
+Legacy adoption now uses separate capture and adoption commands. Capture runs
+while the verified original producer is active. Adoption runs after that
+producer stops, validates the same-boot manifest and exact surviving objects,
+then writes scoped receipts. Normal service startup omits the transition flag.
+The dedicated upgrade case requires fresh namespaces; its earlier attempt
+could not execute capture because ordinary teardown had removed the provider
+peer. This fixture failure does not establish a runtime defect.
+
+The recovery implementer owns the operation persistence, lease fence and shared
+rollback coordinator, including internal/watchdog/watchdog.go. Require a
+successful VM stop and stopped-state readback before snapshot rollback. Return
+start failures. The observation implementer is defining shared CheckSpec and
+Result contracts for required and restored checks. MWAN-538, MWAN-539,
+MWAN-541 and MWAN-542 are now In Progress.
+
+PR163 required CI passes. The exact optional renamed-link case passes on both
+unchanged baseline and candidate through the ARM64 builder. A separate optional
+firewall job failed at 02:50 UTC and still requires diagnosis. Root has not
+merged or deployed this repair. Production remains restored and unchanged.
+
+## Preserve the physical reproduction recovery state
+
+Configs PR620 merged as 3dcf1576e16b598e3fd710d911c7db9f1b1ef8a0 at
+02:52:38 UTC. Required checks passed and the incorrect selector thread was
+resolved with renderer evidence. The fixture is merged but not deployed.
+
+MWAN PR163 merged as e6a63e4ef2b7dd4b8ccc770071df30c8a6f3218b at
+02:55:22 UTC. Root inspected its complete four-file diff and both signatures.
+All ten required checks passed. The optional firewall timeout case also passed
+on unchanged baseline62c0fa79 in 5.29 seconds and candidateabe6536 in 4.66
+seconds through actual daemon namespace execution. The original optional CI
+timeouts remain unlocalized. These comparisons do not prove physical BGP
+acceptance. No new release was deployed.
+
+Readback of VM213 confirms executable hash
+cb96234df3b6c6fcf2aa989202de8bd854599869e3733b17d55e250a99c56942,
+network hash 2769af5f68c40d56ca5f4a99015d1267402fd076f6b5a1cc4b39cf5901e8bd88
+and runtime hash c1be8fc749f15fab68e20ea27307f6765a4cf77c2f44b870df5ffe53f7a5d189.
+The actual paths are /usr/local/bin/mwan, /etc/mwan/network.json and
+/etc/mwan/config.toml. mwan-ifmgr@wan is active at PID5797. Earlier reads of
+/usr/local/sbin/mwan and network.yaml failed because those paths are absent;
+they did not establish a missing installed runtime.
+
+The first recovery snapshot name exceeded Proxmox's 40-character limit.
+The shorter retry failed because VM213 retained a snapshot-delete lock.
+Proxmox active task readback was empty; no snapshot/delete worker process was
+present. The testbed watchdog was repeatedly recording terminal locked-VM
+errors while pruning old known-good snapshots. Root stopped
+mwan-watchdog-testbed.service and verified MainPID=0 and inactive state.
+After another empty active task readback, root removed the stale lock.
+No active mutation was interrupted and no snapshot was deleted by root.
+
+Snapshot mwan305-recovery-20261002T0255 then completed successfully with
+filesystem freeze, disk snapshot and thaw. Proxmox configuration and the actual
+ZFS snapshot both exist. VM213 remains running. The candidate legacy source
+known-good-20260929-235727 also has complete snapshot configuration and a ZFS
+snapshot. Its executable, journal and packet contents are not yet verified.
+The oldest known-good snapshot has snapstate=delete and is unsuitable for
+restoration. Do not select it by timestamp alone.
+
+The testbed watchdog remains stopped to preserve the legacy snapshots during
+fixture preparation. Keep this state explicit before every next operation.
+Restart it after the required legacy state has been preserved and snapshot
+pruning can no longer remove that input. Production watchdogs and VM113 were
+not changed. Physical restoration, failed preparation and repaired preparation
+remain unperformed. Do not start restoration before the observer and recovery
+operation prerequisites are verified.
+
+Guests225 and226 are running LXCs with addresses 3d06:bad:b01:211::225 and
+3d06:bad:b01:211::226. Direct SSH timed out at banner exchange; neither ping
+executed. The command gate rejected SSH pct execution with event
+intake_ab755bc71ded3ed3fae7a4ea0d044459dd1fff8db182458413ba9b4f8537ecf6.
+No shell wrapper was used to bypass that rejection. The shared observation
+implementation requires the real typed LXC transport and a fixed public
+one-shot command, rather than substituting a hypervisor response.
+
+The observation lane owns internal/observation, explicit-source HTTP and DNS
+helpers, and cmd/mwan/observation.go. The legacy lane owns the narrow main.go
+observe dispatch. The recovery lane owns the deploy-gate operation dispatch.
+Register exact systemd unit, invocation and PID before granting mutation
+leases. Resume recovery of the exact operation if its watch is absent or its
+deadline expires. A state pointer alone does not establish an active watch.
+The maintained Cloudflare SDK provides pool health reads; custom Cloudflare
+HTTP bindings are unnecessary.
+
+## Remove testbed preservation as a prerequisite
+
+The user explicitly authorized disposable testbed state. Testbed backups and
+preservation are not prerequisites for fault injection or cutover. Production
+VM113 remains outside this authorization. Do not spend additional time
+verifying or creating testbed backup archives.
+
+The already running VM213 backup finished successfully at 20:20:18 PDT.
+The testbed watchdog remains stopped; account for this state during recovery
+acceptance and restore its normal operation during testbed cleanup.
+
+Cloudflare HCL conversion merged in Configs PR622 as
+cafce87f9e640e0ca983ceaca231fb137ac55682. The ordinary Terraform files replace
+the JSON configuration. All eight imported resources produced no-op plan
+actions with identical planned values. Durable authorization and monitor
+failure acceptance remain unfinished.
+
+Both downstream guests passed three IPv4 and three IPv6 ping requests and
+interface-bound HTTPS using normal DNS. Both reported public IPv4
+174.166.126.204 and IPv6 2601:84:837c:a160:f66d:4ff:fe66:b6de.
+IPv4 SSH through Suburban succeeded; the earlier IPv6 SSH failure did not
+establish a downstream packet outage. These baseline checks do not establish
+cutover, inbound availability or load balancing.
+
+The verified original-release ARM64 upgrade case passed in 4.262 seconds.
+It proved generic NPT translation and edge DNAT before capture, exact receipt
+adoption after original shutdown, candidate translation and restart retention.
+Physical upgrade and automatic recovery remain unperformed.
+
+## Measure legacy restoration and the preparation validation failure
+
+VM213 was stopped and restored to known-good-20260929-235727. Proxmox rejected
+the first rollback because newer snapshots existed. Removal of 110 newer
+testbed snapshots allowed the exact rollback and start. The temporary recovery
+snapshot was deleted with those newer snapshots. Testbed state is disposable.
+Production VM113 was not changed. The testbed watchdog remains stopped.
+
+During the deliberate stop, guest225 received 592 of 600 IPv4 and IPv6 ping
+replies. Guest226 received 593 of 600 replies in each family. Both guests passed
+interface-bound HTTPS with normal DNS after backup selection while VM213 was
+still stopped. Their observed public addresses were 174.166.126.204 and
+2601:84:837c:a160:f66d:4ff:fe66:b6de. Both provider-side inbound HTTP mapping
+requests timed out during the stop and returned mwan-testbed-mapping-ok after
+restoration. Backup outbound success did not establish inbound availability.
+
+The restored executable reports 5666b3d+43bede7022d3. Its SHA256 is
+43bede7022d370f2ec2514134e463bac2a0e5d24ff34310ccfe24585277cd42f.
+The network and runtime hashes are
+acfbf1dc71c43206bd43fbd9fa3d4291efad6d9eaa9661f4316c24d59c4b3b53 and
+789e51ad9a6807e973a9e9bfb3999ec912f0ef3153eafa03b3bf133d8084804b.
+The new owned-addresses, owned-links and owned-kernel journals were absent.
+This physical baseline differs from the exact d442ba1 executable verified by
+the namespace upgrade case. Do not combine those results into exact physical
+original-release proof.
+
+Configs revision 3dcf1576e16b598e3fd710d911c7db9f1b1ef8a0 was clean and merged
+before configsctl deploy deploy-mwan --limit mwan_suburban_servers started.
+The deploy terminated with exit1 at 20:53:35 PDT on October 1. Released
+e90b629 check-network rejected enwebpass0 because its networkd owner does not
+support the configured typed IPv6 client, router or forwarding options.
+Preparation failure reproduction and repaired preparation remain unperformed.
+Four source-bound downstream ping observers continue with complete output in
+the local 20261002-repro225v4, repro225v6, repro226v4 and repro226v6 logs.
+
+PR164 at 379360d contains the reviewed legacy receipt adoption corrections.
+PR165 at ad36c966 contains the concrete shared observation executor.
+Both passed the ten active required CI checks. Govulncheck failed on existing
+GoBGP GO-2026-4736; advisory scope and review findings require separate
+evaluation. Neither PR was merged at this checkpoint.
+
+Configs PR623 at a91e5e27 passed its checks and an eight-resource no-op plan.
+Its protected persistent credential permits pool health reads. The proposed
+read-only provider cannot apply future load-balancer changes, so durable
+OpenTofu management remains unfinished. No Cloudflare infrastructure changed.
+The real SDK public command returned passing AT&T, Webpass and IPv6 pool
+results and a failing existing Monkeybrains fallback result. Missing expected
+origins and unavailable credentials returned separate unknown classifications.
+Physical monitor failure and recovery acceptance remain unperformed.
+
+Deployment recovery checkpoint e7b73a7 has not compiled against the merged
+observation contract. Watch disappearance reporting, public command proof and
+physical automatic recovery remain unfinished. Each independent implementer
+retains exclusive files. Root serializes all physical testbed changes.
+
+## Integrate the shared observation command
+
+PR165 merged as a96ce76a33bcb20624bba8fa88d5a533f5fbef42 at 03:58:00 UTC on
+October 2. GitHub confirmed the exact reviewed head ad36c966. All ten active
+required checks passed and review threads were resolved. Govulncheck is not an
+active required check. Its GoBGP finding affects the unchanged main dependency
+and path; primary advisory records disagree about affected versions.
+
+PR164 remains open. Review found that legacy capture accepted extra recognized
+rules on the configured interface. Require exact installed-rule count and
+membership for that interface without rejecting rules for other providers.
+The existing public upgrade case will exercise this rejected extra rule.
+
+Recovery rebased onto the merged observation command as signed70f0898.
+Its builder stopped at relevant lint findings before tests. Move only the new
+deployment-pointer helpers to internal/watchdog/deploy_operation.go and correct
+the reported runtime/lint findings. Successful compilation and physical
+automatic recovery remain unperformed.
+
+The provider observation lane owns the maintained Cloudflare SDK integration
+and dependency files. Its measured four-pool public command returned actual
+results. The next separate distribution implementation will correlate TCP
+requests with simulator ingress and current eligibility, tier, weights and
+hash policy. Insufficient source or target diversity must return missing
+coverage rather than a false balancing failure.
+
+## Complete the preparation preflight observations
+
+All four 900-second ping observer processes exited0. Guest225 transmitted899
+requests and received899 replies in each family. Guest226 received899 of899
+IPv4 replies and898 of899 IPv6 replies. These observations cover the deploy
+that stopped at configuration validation, not the failed preparation restart.
+
+After the rejected deploy, QEMU readback confirmed the original executable,
+network and runtime hashes were unchanged. Webpass and AT&T provider-side
+HTTP mapping requests both returned mwan-testbed-mapping-ok. No automatic
+recovery ran because the preparation restart had not executed.
+
+Cloudflare runtime PR166 is open at signed41f5bbf with the real maintained SDK
+and strict nonsecret runtime settings. Root inspected the production decoder,
+executor integration and public real-API case. Required CI checks remain
+pending. Missing and null SDK health fields are both rejected by IsNull.
+Distribution remains a separate implementation with exclusive dependency
+ownership assigned to the provider observation lane.
+
+## Resume after artifact cleanup and reconcile incident work
+
+The operator resumed MWAN-305 after emergency disk cleanup and authorized
+production once the defect is fully fixed. Require the incident corrections
+and complete testbed proof for the exact merged release and compatible
+configuration before exercising that authorization. Do not request repeated
+approval for this scope. Root remains the sole live testbed operator.
+
+The migration record reports 49,250 files verified with SHA256 under
+[/Volumes/Chaos Storage/Codex/mwan305](</Volumes/Chaos Storage/Codex/mwan305>).
+The retained artifacts occupied 699 MiB at migration. Readback on October 2
+confirmed that
+[/Users/agoodkind/.local/state/mwan305](/Users/agoodkind/.local/state/mwan305)
+is a symlink to that
+directory. The retained catalog and cleanup records remain with the artifacts.
+Regenerable disks, downloads, copied binaries, build caches and redundant
+evidence were purged. Source changes and durable plans remain in their
+repositories.
+
+All new generated artifacts, temporary files, caches, logs and fixtures must
+use Chaos Storage. Verify the mount and configure tool directories before
+generation. Stop artifact-producing operations when the volume is absent;
+never use the internal disk as a fallback. Give each subagent an exclusive
+artifact directory and these constraints. Record purpose, location and
+retention need in a compact catalog. After every slice, failed attempt and
+compaction reorientation, summarize durable evidence here and purge owned
+artifacts no longer needed. Remove only owned unused containers and images.
+Check disk usage regularly and complete cleanup before goal completion.
+
+GitHub readback on October 2 confirmed these states; the PR625 merge was
+refreshed after root completed its reviewed merge:
+
+| Repository and PR | State | Exact head or merge commit |
+| --- | --- | --- |
+| MWAN PR164, legacy preparation correction | Merged at 04:14:26 UTC | Merge 64821d87462541fb5abeb6d17ec510b09da02f7c; head 4b4bfb880ef7a4a96ebb0a04dc3d7045e88ff687 |
+| MWAN PR165, shared observation command | Merged at 03:58:00 UTC | Merge a96ce76a33bcb20624bba8fa88d5a533f5fbef42 |
+| MWAN PR166, Cloudflare SDK observation | Merged at 04:12:03 UTC | Merge abbfea8df2106aa4e650adbdb93cc176161e3801 |
+| MWAN PR167, connection distribution | Open | Head 95420d4abb663cf03142f6905eb90ccc2ac4214d |
+| Configs PR623, durable Cloudflare authorization | Merged at 04:34:22 UTC | Merge d30e26c12a792d175d09e2834b73ac57841d96fb |
+| Configs PR625, IPv6 mapping fixture | Merged at 06:17:41 UTC | Merge 1b0d9373f576c3ffc1f00ec149b2610b041ecbe5; head a2e3ee38ae8081922a3a1430fd5e2b283eef83da |
+
+The Tack MCP returned In Progress for each ticket MWAN-535 through MWAN-544.
+No ticket state changed during this reconciliation. Merged implementation
+does not establish the required physical acceptance or alert delivery.
+MWAN-537's historical snapshot requirement does not override the operator's
+later instruction that testbed state is disposable.
+
+The interrupted operation handoff reports Configs4e502017 deployed candidate
+e90b629 to the testbed preparation phase. Both Webpass and AT&T provider-side
+IPv4 mapping requests timed out after restart while both guests' IPv4 and
+IPv6 pings still replied. The live operator must refresh machine, executable,
+configuration, process and packet evidence before another mutation. This
+handoff establishes an unresolved reported failure, not its cause or repaired
+acceptance. Production remains recovered; this reconciliation made no live
+changes. Root's resumed readback confirmed VM213 still runs e90b629 and lacks
+the new observe command. No live deploy or SSH observer was active at resume.
+The merged IPv6 fixture still requires physical deployment and acceptance.
+
+The recovery review found that the watchdog bypasses FailureThreshold; its
+owner is correcting that behavior. The distribution runner omits the new
+test; its owner is correcting registration. Neither finding establishes
+successful recovery or distribution acceptance.
+
+Physical diagnosis of the first failing inbound packet boundary remains
+required. Complete and review distribution and deployment recovery work;
+validate repaired original-release preparation and measured automatic
+recovery. Prove both guests and families, acquisition, mappings, translation,
+balancing, ISP egress, ping paths, apparent public addresses, client
+applications, inbound services, alerts and deployed identity. Repeat forward
+and reverse transfer, restart, reboot, failover and recovery on the accepted
+pair. Keep passed, failed and unperformed results separate. Finish reboot
+detection only after ownership prerequisites pass.
+
+## Deploy the mapping fixture and record remaining validation
+
+Root deployed the fixture from clean merged Configs
+1b0d9373f576c3ffc1f00ec149b2610b041ecbe5 through configsctl:
+
+```sh
+./configsctl deploy deploy-opnsense --limit opnsense_suburban_servers --tags isp-acceptance-fixture --extra-var release_stage_root=/Volumes/Chaos\ Storage/Codex/mwan305/resume-controller/releases
+```
+
+The canonical redacted
+[deployment log](</Volumes/Chaos Storage/Codex/mwan305/resume-controller/tmp/configs-runs/deploy-opnsense-20261002T062406Z.log>)
+records 38 successful tasks, seven changed tasks, zero unreachable hosts and
+zero failed tasks. Both simulator-specific IPv4 and IPv6 filter passes, local
+IPv4 and IPv6 fixed-response checks and unchanged administration GUI checks
+passed. Root owns session52674 and its terminal readback. These results prove
+fixture installation and local replies; provider-side end-to-end mapping
+acceptance remains unperformed at this checkpoint.
+
+GitHub readback confirmed recovery PR168 is open at
+031ac890b757ac012ec7707557f857bfa4bd1aa5. Its threshold and startup corrections
+still require CI and physical acceptance. Distribution PR167 is open at
+f9df4b466c3b330dc79ed01dcc9201fb097cc714 with test registration added; weight
+bounds and transit steering still require correction. Neither PR is deployed.
+
+Root reports VM213 still runs e90b629 with MainPID7234. IPv4 NAT rules are
+present and IPv6 NAT is empty. The log reports seven links matching the driver
+selector while provider HTTP checks report healthy. These observations do
+not identify the first failing IPv4 packet boundary or establish repaired
+translation. Preserve measured symptoms separately from their unproven cause.
+
+The checkpoint automation is active with a two-hour interval and a short
+prompt covering artifact rules and conditional production authorization.
+Local Docker builds are stopped because its storage uses internal
+/Volumes/Docker on disk3s7. Existing GitHub CI supplies current build checks;
+local Docker output must not be generated there. Root's compact artifact
+catalog retains approximately 147 MiB of cache for the current deployment.
+Purge it when that deployment no longer requires it. Tickets MWAN-535 through
+MWAN-544 remain In Progress; required physical acceptance is unfinished.
+
+## Trace the current inbound IPv4 failure
+
+The fixture deployment session52674 exited0. A provider-side Webpass request
+from 10.241.204.1 to 10.241.204.2:1406 still timed out after ten seconds.
+The gateway capture on enmwanbr0 recorded the translated SYN destination
+10.240.240.2:1406. Its six-packet capture reported zero kernel drops.
+
+At 06:30:56 UTC on October 2, OPNsense's vtnet1 capture recorded the incoming
+SYN and the responding SYN-ACK. The reply destination MAC was
+bc:24:11:00:97:29. ARP readback identifies that MAC as backup gateway
+10.240.240.4; the route query also selects that backup. The eight-packet
+capture reported zero kernel drops. The listener replies through the backup
+instead of the primary that translated the request. The subsequent backup
+packet path and every original production timeout remain unproven.
+
+Source inspection found that the merged legacy NPT observer validates the
+configured name, driver and current MAC. The normal monitor still selects
+all links by driver when no permanent-MAC match exists. Its current Webpass
+configuration matches seven virtio links. The observer correction must
+preserve strict identity for MWAN-owned acquisition and foreign links.
+Physical repaired preparation remains blocked by this measured ambiguity.
+
+Independent review of recovery PR168 at b41a709 found a commit race: a new
+mutation lease can change files during commit's identity and application
+verification. The implementer published the verification fence in b7c044c;
+independent final review and fresh CI remain pending. Distribution PR167 at
+d673606 adds explicit calibrated policy bounds and real downstream steering
+with transit/provider TCP sequence correlation. Its fresh CI and independent
+inspection remain pending. Neither revision is deployed.
+
+Configs still requires the capture/stop/adopt transition before executable
+and configuration replacement, and the operation arm/lease/reconnect/commit
+integration before network-affecting preparation. The matching hypervisor
+watchdog must support operation recovery before arming. Its helper binary
+alone does not establish watchdog recovery. Replace direct rollback and
+post-recovery guest writes with the exact coordinated operation.
+
+The controller retained the canonical redacted fixture log and compact
+catalog. It deleted the redundant Ansible log, deployment pointer log and
+temporary deployment script after recording the result. Runtime cache remains
+on Chaos Storage for the next approved deployment phase. Production was not
+changed.
+
+## Record resumed repair decisions
+
+The operator authorized production after complete defect repair. Require the
+same repaired merged release and configuration to pass the required testbed
+acceptance before production deployment. Do not request repeated authorization
+for that approved scope. Production remains recovered and unchanged.
+
+Independent review passed recovery PR168 at b7c044c. The implementer is
+correcting a required lint failure; the commit verification fence remains
+unchanged. The focused legacy monitor correction is PR169 at c3bbad8.
+It validates networkd-owned physical links by configured name, driver and
+current MAC while preserving strict selection for MWAN-owned links. Its
+existing original-release upgrade regression now includes the legacy link
+intent. Current CI and physical acceptance remain pending.
+
+The distribution lane disproved a suspected steering byte-order defect.
+Linux uses native words for the generator and mark register. The maintained
+nftables library writes anonymous-map display metadata that makes nft print
+swapped values. Require actual downstream packet selection rather than a
+text match against that display. No steering code correction is established.
+
+The Configs integration lane owns the protected operation and legacy
+capture, stop and adoption sequence. It must declare real inbound and
+downstream application observations for each family before arming. Existing
+IPv6 edge pings do not prove mapped application replies. Production observer
+transport remains under source review; do not substitute hypervisor outbound
+success for a downstream client or external inbound reply.
+
+At 07:02 UTC on October 2, PR169 merged signed revision 175e53fb as
+102b2e1. Every required check passed and no review thread remained open.
+The existing upgrade fixture already supplied driver and current MAC;
+the redundant fixture edit was removed. Release
+202610020702-a3-102b2e1 is published. This release is not deployed.
+The clean observer worktree and its contained local and remote branch were
+removed. Trunk was updated from its own checkout to 102b2e1.
+
+Recovery PR168 now uses d5215a9. Independent review passed its commit fence,
+single final command error handler and CI step separation. An unchanged
+kernel-policy namespace case failed before any deployment operation. That
+failure prevented the previous CI job from executing its systemd cases.
+The updated job runs systemd acceptance independently and preserves both
+failure verdicts. Current runtime proof remains pending.
+
+Production PF readback permits SSH on WAN port 22 for both families.
+Port 1406 accepts only Cloudflare source tables; neither public OOB source
+matches those tables. Direct 1406 timeouts from OOB do not prove an outage.
+The existing SSH banner boundary provides an allowed inbound observation
+alongside separate Cloudflare pool health observations.
+
+Both Webpass and AT&T IPv6 public SSH endpoints returned
+SSH-2.0-OpenSSH_10.5 FreeBSD-openssh-portable-10.5.p1_1,1 through the physical
+mbrains interface. Webpass IPv4 returned that banner under the existing
+cloudflared-oob user. IPv4 routing selects the OOB gateway for UID 997;
+root lacks an equivalent source rule. The Configs integration will declare
+and verify an exact IPv4 source rule through the existing host policy module.
+These inbound observations do not replace downstream guest acceptance.
+
+The testbed simulator route from 3d06:bad:b01:200::90 to the Webpass edge
+uses eth0 and the primary gateway's link-local next hop. Its current HTTP
+request still times out. Repaired physical mapping, preparation, transfer,
+recovery and complete acceptance remain unperformed. Production received
+only read-only inspection and outbound probe requests.
+
+The controller deleted its temporary signature verifier after checking all
+183 ledger branch commits and raw signature headers. No local Docker
+container with an MWAN name remains. Required controller caches remain
+approximately 146 MiB on Chaos Storage.
+
 ## Record future implementation results
+
+At 07:22 UTC on October 2, recovery PR168 merged d5215a9 as
+2cbfdd99. Every required merge check passed and all review threads were
+resolved. TestDeployOperationWatchRuntime passed in a real systemd container
+in 4.65 seconds. The unchanged kernel-policy namespace test still failed;
+the complete firewall suite did not pass. Release
+202610020723-a4-2cbfdd9 is published and is not deployed. The clean recovery
+worktree and its contained local and remote branch were removed.
+
+Production authorization remains conditional on complete defect repair and
+the required testbed results. Configs operation integration is unfinished.
+The distribution runtime still fails its first IPv4 request while resolving
+the simulated upstream neighbor. Its fixture requires further diagnosis;
+no production steering correction is established. Physical cutover,
+restoration and full downstream acceptance remain unperformed.
+
+At 07:58 UTC on October 2, PR170 merged signed 26a69d4 as
+59560308. Its one-line fixture route restores the LAN destination's return
+path to 10.52.1.0/24 through 192.0.2.1. Production code, reverse-path filtering
+and packet assertions are unchanged. All ten required checks passed.
+TestKernelPolicyDaemonRuntime passed in 7.09 seconds and
+TestDeployOperationWatchRuntime passed in 4.57 seconds. The complete firewall,
+namespace and systemd steps passed in CI36979934044.
+
+The controller stopped VM213 and attempted the verified
+known-good-20260929-235727 restore. ZFS rejected restoration because
+pre-deploy-20261001T212514 was newer. The controller deleted only that
+disposable testbed snapshot, restored the known-good snapshot and started
+VM213. Its executable, network and runtime hashes match the recorded 5666b3d
+baseline. This manual recovery does not prove autonomous operation recovery
+or exact physical d442ba1 preparation.
+
+Webpass 10.241.204.2 and AT&T 10.241.205.2 returned
+mwan-testbed-mapping-ok over IPv4. Both IPv6 edges, 2200::1 and 2300::1
+within 3d06:bad:b01, returned that response. Each request used the simulator's
+eth0; IPv6 bound the verified simulator source explicitly. An initial AT&T
+probe used the interface address 10.240.205.2 instead of the mapped address
+and timed out; it is not a mapping acceptance result. Direct controller SSH
+to both downstream guests failed with Network is unreachable. Their
+application checks remain unperformed through the required LXC observer.
+
+Production still reports clean d442ba1 with executable SHA256
+1c79542f6f9e56fc0ad0f101b0688a84f95bfc41706ebebf36982e0f4f8726fa.
+CT102 has one LAN interface with IPv4 10.250.0.102/32 and IPv6
+3d06:bad:b01::102/64. CT100 has only IPv6 3d06:bad:b01::100/64;
+do not count it as IPv4 proof. Production received no mutations.
+
+Preparation integration remains unfinished. Whole-provider transfer also
+requires a bounded policy for its expected selected-provider interruption.
+The current watch begins recovery after those failed checks even during an
+active handover lease. Keep downstream and unaffected-provider checks strict;
+do not increase the general failure threshold. The runtime policy lane owns
+that focused correction. The distribution fixture now proves IPv4 requests
+and calibrated counts; IPv6 remains under actual neighbor-readiness diagnosis.
+
+At 08:41 UTC on October 2, PR171 merged signed 815f16c as
+d632bfc26400f6ee29cf60070a7bad55d5bea8eb. The controller inspected the
+final implementation and public runtime changes, verified all three branch
+commit signatures and raw signature headers, and checked the active merge
+rules and empty review threads. All required checks passed. The real
+TestDeployOperationWatchRuntime passed in 45.34 seconds. Its selected-provider
+case retained failed health observations during the exact live lease and
+started recovery after expiration. Other-provider, downstream and default
+failures triggered recovery during the lease. Commitment and mutation
+readiness remain strict. Physical snapshot recovery remains unperformed.
+The optional vulnerability job failed after runner shutdown and was retried;
+that failure did not report a vulnerability. Automatic PR review exhausted
+its quota and did not provide review findings.
+
+Independent review of Configs PR627 at 87e8667d found two blocking source
+defects. Six sequential module installations permit 720 seconds of remote
+work under a 660-second lease. The host observer policy verifies restart
+completion without verifying the active daemon, repaired source route or
+application reply. The implementation lane owns both corrections. Two data
+checks also require removed legacy deployment commands in an obsolete static
+test. Preparation remains undeployed, and whole-provider handover remains
+explicitly blocked until its separate integration passes.
+
+The distribution fixture completed both families' requests. Its aggregate
+run then exposed a capture defect: userspace processing time can exclude a
+valid request processed after its reply. The repair uses existing packet
+socket APIs and kernel ancillary timestamps without changing request windows,
+retries or calibration bounds. Final aggregate evidence is pending. Production
+remains unchanged under conditional authorization after all required proof.
+
+The controller removed PR170's clean worktree and exact local and remote
+branch after verifying its sole change was included in main. Superseded raw
+fixture logs were deleted after their outcomes were recorded. Required local
+controller caches remain on Chaos Storage. The external volume has about
+1.0 TiB available; the internal filesystem has about 663 GiB available.
+
+At 08:51 UTC on October 2, Configs PR627 merged signed 9f653d8f as
+ffdddac9913b728ff15227c40ea56628239c9afc. Independent review and controller
+inspection confirmed both source corrections. All three required checks
+passed, review threads were empty and all four branch commits had verified
+signatures and raw headers. The existing data suite passed 197 examples with
+zero failures and 16 fixture-dependent pending cases. Those pending cases
+do not establish physical acceptance.
+
+The controller attempted preparation from clean merged ffdddac9. The first
+attempt terminated before guest steps because the key-value extra variable
+split the external volume path at its space. The JSON argument preserved the
+path on the second attempt. That attempt stopped at the skipped bootstrap
+import: Ansible evaluated an undefined delegated loop variable in the imported
+SSH play. Both operations are terminal. Gateway preparation, arming and
+recovery did not execute. The source lane will remove the generic bootstrap
+import from routine upgrades instead of changing shared SSH provisioning.
+
+Code audit confirmed that MWAN-541 still lacks recurring shared application
+observations, served results and their failure/recovery transitions. MWAN-542
+still lacks continuous acceptance after a deployment operation commits or
+recovers. These source requirements are separate from the incomplete physical
+proof. All incident tickets remain In Progress. The operator's production
+authorization remains conditional; production received no mutations.
+
+The repaired distribution capture passed both focused and aggregate requests
+in CI36985267248. Focused provider counts were IPv4 16/24 and IPv6 20/20;
+aggregate counts were IPv4 14/26 and IPv6 25/15. Each family generated 40
+requests under the exact 13-through-27 equal-weight calibration. The whole
+firewall job still failed an unequal-lifetime DHCPv6 mapped UDP case. Keep that
+failure separate from the passing distribution evidence and diagnose its
+actual boundary before claiming complete runtime acceptance.
+
+At 09:12 UTC on October 2, Configs PR628 merged signed 0a05728d as
+508dee53a9f1ce0499dee330135b363e68e5f973. The controller inspected the
+five-line bootstrap import removal, verified the signature and raw header,
+and confirmed required checks and empty review threads. The existing loader
+renders only the release and gateway plays. Routine upgrades no longer import
+generic guest provisioning. PR627 and PR628 worktrees and exact merged branch
+refs were removed after their source was verified in main.
+
+Preparation from clean merged 508dee53 stopped at baseline application
+observation at 09:17:30 UTC. Observer executables ran successfully on simulator
+CT900, CT901 and downstream CT225, CT226. Gateway executable, network and
+runtime replacement did not execute. The gateway still reports clean
+5666b3d with executable digest 43bede7022d3. The attempted operation
+20261002-021346-deploy-992191 has no armed operation record.
+
+Direct public observation localized the baseline rejection. Webpass IPv4 and
+AT&T IPv4 and IPv6 returned HTTP 200 with response body
+`mwan-testbed-mapping-ok`. Their checks expected that text plus a newline and
+returned a complete failed result. The repeated Webpass IPv6 observation
+failed at the controller SSH connection and remains unperformed. The original
+arm command did not print individual results. The focused configuration lane
+will verify the probe body contract and correct the exact fixture expectation.
+
+Both downstream guests passed IPv4 and IPv6 HTTPS application checks through
+their declared LAN sources and next hops at 09:23:10 through 09:23:14 UTC.
+The external service observed IPv4 174.166.126.204 and IPv6
+2601:84:837c:a160:f66d:4ff:fe66:b6de. These results establish baseline client
+application responses, not candidate cutover or load distribution acceptance.
+Production received no mutations.
+
+CI36987045687 passed the full namespace and systemd suites at published
+PR167 head 4d1d34a. The unequal-lifetime mapped UDP case passed at that same
+head after its prior timeout. Existing evidence does not explain or fix that
+timeout. Its downstream request receipt and successful reply submission
+preceded the upstream receive timeout. Required packet, neighbor and timing
+evidence was absent. Keep this failure separate from passing distribution
+counts and physical acceptance. The durable observation lane now implements
+MWAN-541 and MWAN-542 in dependent source slices with exclusive ownership.
+
+Configs PR629 merged signed acaf32d0 as 451c5adbf6fa34ba58dea76f9e7ee86be35b09da
+at 09:30:29 UTC on October 2. Root independently inspected the template, actual
+HTTP probe normalization, signature and raw header. All required checks passed
+and review threads were empty. The one-line expectation change preserves
+HTTP 200 and exact normalized body comparison. Its clean worktree and exact
+merged branch refs were removed. A repeated Webpass IPv6 observation at
+09:27:15 UTC also returned HTTP 200 with the normalized body and the same
+newline mismatch.
+
+Preparation from clean merged 451c5adb armed operation
+20261002-023154-deploy-315924, generation
+4fd6bbda-727a-4602-9e97-3d4c2e0487db. All eight baseline checks passed.
+The first gateway timestamp checkpoint then rejected a valid lease because
+it compared RFC3339 strings in different time zones. The lease expiration was
+2026-10-02T02:38:21.093861617-07:00; the required mutation deadline used UTC.
+The playbook compares those strings lexically and strips fractions only when
+the timestamp ends in Z. The source lane owns a focused parsed-instant fix.
+The timestamp write and later gateway upgrade steps did not execute.
+
+The playbook's rescue invoked exact-operation recovery. Recovery waited for
+the lease, restored the snapshot, and completed at 09:40:09.303407174 UTC.
+The operation record is recovered. The executable, network and runtime hashes
+equal the baseline; boot identity changed from
+6daff0de-5642-4faa-b12e-87e321d0a95f to
+15d22f89-6187-4dfd-9595-f800beca8abe. All four inbound and four downstream
+application checks passed between 09:39:56 and 09:40:09 UTC. The live gateway
+again reports clean 5666b3d. This result proves physical coordinated snapshot
+restoration and restored application checks after a rejected preparation.
+Controller-loss recovery, candidate upgrade and cutover remain unperformed.
+The observer recorded one Webpass IPv4 timeout during restoration; continuous
+client interruption duration was not measured. Production received no writes.
+
+PR167's CI36988731435 passed both distribution cases and systemd runtime but
+repeated the unequal-lifetime mapped UDP reply timeout. Focused provider
+counts were IPv4 22/18 and IPv6 17/23; aggregate counts were IPv4 19/21 and
+IPv6 22/18. The distribution lane owns failure-only diagnosis through the
+existing public DHCP fixture without changing its deadlines or retries.
+
+The durable observation source is published in the dependent stack:
+PR172 contracts at fd126473, PR173 continuous runner at 94170a9 and PR174
+daemon integration at c7d9700. Root source review is in progress. Runtime CI,
+live activation, alerts and final acceptance remain unfinished. Source audit
+also confirms that whole-provider transfer still lacks manifest interruption
+policy, exact nested lease phases and a complete bounded transfer budget.
+
+Configs PR630 merged signed 3a72361ee30ad7de8644e48b437eda6a71c9e7df as
+168be4b8ffaf1ba8b30b9e317a84534ee859599a at 09:48:26 UTC on October 2.
+Root inspected the parsed-instant comparison, signature, raw signature header,
+required checks and empty review threads. The actual Ansible expression
+accepts equivalent offset/UTC instants and valid fractional timestamps; it
+rejects insufficient or equal remaining time. Required data and lint checks
+passed in CI36991641888. Preparation from clean merged 168be4b8 started at
+09:49:18 UTC with pinned MWAN 2cbfdd9. Its timestamp lease checks passed,
+candidate and transition runtime staging completed, and the bounded original
+WAN stop reconnected and completed. One-shot adoption then passed. The play
+requested a cloudflared-configuration lease before normal WAN activation.
+All four inbound checks timed out; both downstream guests passed application
+checks for both families. The strict lease gate rejected further writes at
+09:57:51 UTC. The source lane owns the missing adoption-to-activation sequence
+under one bounded lease before an unrelated phase starts. Preserve the strict
+inbound checks.
+
+Operation 20261002-025008-deploy-274805, generation
+1d1dced3-e576-437d-85e2-3c5e27c44c94 recovered at
+09:59:44.441626721 UTC. The executable, network and runtime hashes equal the
+baseline. The restored boot identity is 8cc5a791-b795-4351-8e5e-23ef4ccbb157.
+All eight application checks passed between 09:59:32 and 09:59:44 UTC.
+Independent root SSH verified clean 5666b3d and binary hash 43bede7022d3.
+The play terminated with exit 1, 190 successful tasks, 20 changed tasks,
+one failed task and one rescued task. This proves coordinated restoration
+after a measured candidate adoption failure. Autonomous controller-loss
+recovery, successful preparation, full original production-release physical
+reproduction and cutover acceptance remain unperformed. Production received
+no writes. The failed preparation and superseded timestamp logs can be purged
+after this evidence is committed.
+
+Root re-read MWAN-535 through MWAN-544 and the current coordination and
+deployment plans. Five new stack review threads were resolved after source
+inspection: the shared observation SDK type, one validation implementation,
+initial concurrency assertion, corrected typed copy errors, and separate
+host/WAN publication branches. Four superseded formal bot change requests on
+PR167 were dismissed after confirming all its inline threads were resolved.
+Its required checks and physical acceptance remain separate gates.
+
+PR167 CI36992035199 passed both distribution executions and systemd runtime.
+The unequal-lifetime DHCP case passed in 18.37 seconds without triggering its
+failure diagnostics; the earlier intermittent timeout remains undiagnosed.
+The selected one-shot observation fixture failed because its image lacks
+systemd-machine-id-setup; the dependent observation stack replaces that
+dependency with isolated identity files and the public runtime-settings path.
+Focused counts were IPv4 19/21 and IPv6 20/20. Aggregate counts were IPv4
+19/21 and IPv6 29/11. The aggregate IPv6 sample failed the reviewed 13..27
+calibration; the regression correctly asserted the failure verdict. It used
+the unchanged verified random mod2 policy and equal tier/weights. This is
+complete failed distribution evidence, without proof of a steering defect.
+The sole Govulncheck retry also stopped with runner shutdown and exit143;
+no vulnerability report was produced, and that check remains incomplete.
+
+Root verified merged Cloudflare HCL and the management correction report.
+Configs PR623 merged as d30e26c1 with separate persistent read and management
+credentials. The management credential grants the account monitor/pool and
+zone load-balancer write permissions omitted by the initial read-only
+proposal. The resource settings and DNS credential remain unchanged.
+From clean merged Configs168be4b8, configsctl tofu init and the fresh targeted
+plan completed with exit0 at 10:17:43 UTC. Cloudflare5.26.0, Proxmox0.114.0
+and HTTP3.6.2 refreshed exactly the eight imported objects. The plan reported
+no changes or imports and released its state lock. No apply ran. The generated
+untracked provider lock was removed; all provider/data/temp outputs used
+Chaos Storage.
+
+Root used the deployed clean 2cbfdd9 public observation command for independent
+authenticated Cloudflare reads at 10:13:23 UTC. AT&T and Webpass each reported
+294 healthy regions; the IPv6 pool reported one healthy region. The existing
+Monkeybrains fallback reported one unhealthy WNAM region with HTTP timeout.
+All observations were complete, with failed fallback health distinct from
+authentication error. The temporary remote credential/runtime files and local
+runtime file were deleted after these reads.
+
+Root independently read all six original Gmail messages for the three primary
+pool failures and recoveries. Pool IDs and Pool Alert policy match the current
+HCL. AT&T failed at 01:54:34.759460477 UTC and recovered at
+02:00:32.179223562 UTC. Webpass failed at 01:54:35.625716429 UTC and recovered
+at 02:00:33.165962637 UTC. IPv6 failed at 01:54:42.206678744 UTC and recovered
+at 02:00:16.201983219 UTC. The exact message IDs are
+1a0fa5226a050df6, 1a0fa5252346779c, 1a0fa525d1990db5,
+1a0fa57a955da6a3, 1a0fa57a0f6da003 and 1a0fa57682d82b2b.
+These establish real monitor failure/recovery and delivery during the approved
+production preparation incident. They do not measure total client outage.
+The independent lane verified every MWAN-543 requirement against this evidence.
+Tack comment 01a0fc22-2ea0-715f-aa9f-bb5f8056362c includes the acceptance results.
+MWAN-543 is Done; the actual ticket state was updated and read back.
+
+### Review the exact health runtime results and activation timing
+
+PR173 at 66f90a69 passed namespace and systemd acceptance. Its continuous
+checks exercised both families, independent checks during a slow request,
+application failure/recovery, wrong-identity rejection and SIGTERM completion.
+PR172 at 3eb17ebc failed only the inherited machine-id utility dependency;
+PR173 corrects that fixture and passed it. All PR172 distribution cohorts
+passed calibration. PR173's focused IPv6 12/28 cohort failed calibration and
+was correctly classified; its aggregate IPv4 17/23 and IPv6 19/21 passed.
+
+PR174 at 33bd7dc passed namespace checks and every distribution cohort, but
+TestOwnedRolesDaemonRuntime failed the actual HTTP503 result at line222.
+The result included source127.0.0.1 but omitted the configured interface lo.
+Source inspection confirmed executor.http returns completed status/body
+failures before calling executor.route. The implementation lane owns the
+focused fix; merge and production acceptance remain unfinished.
+
+PR174 now publishes f12fdb30. Independent source review verified that the only
+change moves the existing route lookup before completed HTTP verdict returns.
+The result retains socket source/destination, HTTP status/body and failure
+verdict; unavailable route evidence remains unknown. Actual formatter and
+scoped Staticcheck passed. Local Darwin Golangci and Linux cross-install
+attempts did not complete; the exact Linux CI and runtime jobs are active.
+
+The isolated Configs activation draft is signed 5adf282b and unpublished.
+Its real Ansible health expressions passed four examples, including rejection
+of missing, unknown, stale, future and wrong-identity results. Root reviewed
+its timing formula with declared testbed values: activation10885 seconds,
+maximum lease10915, recovery timeout11515 and operation duration18085.
+This draft could delay restoration for over three hours while awaiting its
+lease. It requires a timing correction before publication. Verified
+noninterrupting prerequisites and task-specific bounds must reduce the
+critical section without removing actual deadlines or recovery fencing.
+
+Ledger commit542bd59 was signed, all195 branch-local signatures and raw
+signature headers verified, and the branch pushed. Completed Cloudflare
+plan/data/provider/log artifacts and signature-check artifacts were purged.
+Current deployment release and Go caches remain required on Chaos Storage.
+
+The independent baseline audit found no public selected-snapshot restoration
+or original-release-only installation entry point. The current full deploy
+rewrites configuration and runs preparation; a release tag alone retains
+current checksums. The baseline lane now owns a bounded testbed-only Configs
+playbook for explicit existing-snapshot restoration and exact d442 running
+executable verification. Root remains the sole live operator. Snapshot names
+and timestamps do not prove their executable identity. Physical original
+reproduction remains unperformed.
+
+### Verify repaired HTTP observations and the native snapshot graph
+
+PR174 at f12fdb30 completed its Linux runtime run 36997153302. The systemd
+stage ran and passed TestOwnedRolesDaemonRuntime in 15.85 seconds, including
+the repaired HTTP503 path assertion. Both-family recurring observation cases
+passed. Namespace acceptance failed initial IPv6 autoconfiguration at line168:
+the kernel had only a link-local address and no default gateway after the
+one-shot router advertisement. The missing optional diagnostic ip command
+does not establish the acquisition failure cause. Distribution samples passed
+calibration: focused IPv4 22/18 and IPv6 20/20, aggregate IPv4 21/19 and IPv6
+17/23. The minimal failed acquisition evidence remains on Chaos Storage;
+the full downloaded log was purged.
+
+PR174 now publishes signed 32c8d555. Root inspected its exact diff: the
+recurring observation worker no longer suppresses panics, and the notifier
+uses the module clock initialized before observation startup. Formatting and
+scoped Staticcheck passed. Root replied to and resolved both fixed review
+threads. The current Linux runtime run remains incomplete; no retry ran.
+
+Configs PR631 at 4e765454 passed required checks. Root reviewed all native
+operations and watchdog coordination. The running testbed watchdog must stop
+after its existing native VM213 jobs finish; the play pauses only its main
+process while native children continue, verifies the original invocation,
+waits for task and lock completion, and verifies service stop before VM stop.
+No native lock is forced. Production is excluded.
+
+The real localhost Ansible validation used captured native snapshot JSON and
+found that the descendant graph expression returns a string rather than a
+list. No VM or watchdog mutation ran. The source lane is correcting native
+list conversion before publication and physical use. Snapshot selection uses
+exact parent relationships; timestamps do not prove the restored executable.
+Original-release restoration, repaired preparation and ownership cutovers
+remain unperformed. Production remains recovered and unchanged under the
+operator's conditional authorization.
+
+### Execute the merged original-release restoration
+
+Configs PR631 merged as eebb726f after signed head f9e6343d passed all
+required checks and every review thread was resolved. Root reviewed the final
+conversion and the actual successful localhost result: the selected parent
+graph produced a native nine-element descendant list without the selected
+or current snapshot. The controller checkout was clean and fast-forwarded
+to merged eebb726f before configsctl execution.
+
+Operation 93274 restored known-good-20260929-235727 on VM213. It verified
+the exact paused watchdog invocation, completed native jobs, absent VM lock,
+stopped watchdog, stopped VM, deletion of ten settled descendants and native
+rollback/start completion. The guest reconnected. Exact version verification
+rejected the restored writer: it runs 5666b3d+43bede7022d3 rather than d442ba1.
+The operation ended with exit1, 46 successful tasks, ten changed tasks and
+one rescued failure. The global testbed watchdog remains stopped after this
+measured failed assertion; its originally active state requires restoration
+after baseline verification. Production did not change.
+
+Root started the sole next operation 39880 through the same merged playbook,
+selecting older known-good-20260929-184618. Its terminal identity result is
+pending. Candidate timestamps select an attempt; only the executable hash
+and actual running version establish the original release. Both controller
+logs and the native graph remain on Chaos Storage until terminal evidence
+is summarized and superseded raw evidence is purged.
+
+PR174 at 32c8d555 passed both firewall/namespace acceptance and systemd
+acceptance in job110813632005. The separate netns job failed its existing
+DHCPv6 Rebind fixture when the server UDP reply returned EADDRNOTAVAIL.
+Confirm and retransmission cases passed. The fixture does not inspect the
+server link-local address flags before its reply. DAD readiness remains an
+unproved candidate; no timer change or CI retry ran. This stack changes
+neither the DHCPv6 client nor its restart fixture. Physical acquisition
+acceptance remains required.
+
+Root verified the four stack heads, required checks, resolved threads and
+Graphite dry-run scope. Native Graphite merge started for PR167, PR172,
+PR173 and PR174. Terminal merge verification remains pending. The Configs
+activation timing correction remains unpublished and independently owned.
+
+### Verify the exact original testbed and eight application replies
+
+Operation 39880 completed with exit 0, 43 successful tasks, seven changed
+tasks and no failure. Snapshot known-good-20260929-184618 runs original
+d442ba1a3d1e4fdf5ca8dbb997b05ea545b3f70c. Installed and running executable
+SHA256 both equal 1c79542f6f9e56fc0ad0f101b0688a84f95bfc41706ebebf36982e0f4f8726fa.
+The machine ID is bdd916f95e3e44568e6a5d3096cf2dea. The WAN writer is active
+with PID 319; networkd is active with PID 584. Management and transit daemon
+units are inactive. All four owned-links, owned-kernel, owned-resolver and
+owned-addresses journals are absent. Legacy IPv6 source selectors remain
+at priorities 55, 56 and 57 for AT&T 2300::/60, Webpass 2200::/60 and
+Monkeybrains 2400::/60. This is physical original-release baseline proof.
+
+The second invocation correctly preserved its observed inactive watchdog.
+Root then restored the originally active testbed watchdog as recovery from
+the first failed assertion. Native systemctl readback was inactive with MainPID=0
+before start and active with MainPID=32187 afterward. No production service changed.
+
+Root verified fresh identities for observers 900, 901, 225 and 226, then used
+their deployed clean 2cbfdd9 public observe command over direct SSH through
+suburban. Every check bound eth0 and its exact source address, required HTTP 200
+and verified reply path. All eight observations were complete/pass at
+11:40:51 through 11:41:12 UTC. Both provider mappings returned the exact
+mwan-testbed-mapping-ok body in both families. Both downstream guests returned
+HTTP 200 in both families with next hops 10.240.1.1 and 3d06:bad:b01:211::1.
+The externally reported IPv4 was 174.166.126.204; IPv6 was
+2601:84:837c:a160:f66d:4ff:fe66:b6de. These do not prove ISP balancing.
+The terminal observer transports exited 0. No guest networking changed.
+
+Graphite merged PR167 as 7c94859a at 11:35:42 UTC. Its active native merge
+job then rewrote PR172 to e6921080 without controller intervention. The
+transient retargeting conflict was resolved by that job; required checks
+are running. PR173 and PR174 remain open. No second merge or manual restack
+ran. The separate Configs preparation repair is now PR633 at signed
+f01cc468, with required checks passing; independent full diff review remains
+unfinished. Its declared critical section is 1310 seconds, maximum lease 1340,
+recovery 1940 and operation duration 8510. Physical failed preparation
+reproduction and repair acceptance remain unfinished. Production is unchanged.
+
+### Merge durable health and the preparation repair
+
+The original native Graphite merge completed all four health PRs. PR172 merged
+as db3f39b2, PR173 as 826fac43 and PR174 as d1ac42eb. PR174's final rewritten
+head was 15daf5ba. No second merge or manual restack ran. Its required checks
+passed. Its rewritten netns and ARM64 jobs passed; its firewall job was
+canceled after merge. The earlier exact 32c8d555 firewall and systemd
+acceptance passed. These checks do not establish physical testbed acceptance.
+
+Independent review found completed failure results could retain the legacy
+adoption lease in capture, stop, adoption, start and shared installer tasks.
+Configs PR633 corrected their terminal-result accounting. Finished command
+results require rc. Finished systemd results require the exact WAN unit and
+requested state. Missing, unfinished and timeout results retain pending
+state. The original failed task remains fatal. Timeout and budget values
+remain unchanged.
+
+The independent lane reviewed exact signed head 58b1f5c6 with no remaining
+source finding. Root inspected the full patch, active merge rules, all three
+branch signatures and raw signature headers. Required lint, data and
+GitGuardian checks passed. All three Graphite threads were resolved with
+caller and recovery evidence. Configs PR633 merged as c8f9da4f at
+11:58:33 UTC on October 2. The final local suite passed 39 examples with
+one existing Linux validator skip. No physical preparation deployment ran.
+
+The historical controller checkout is clean and detached at merged Configs
+369add99 for the original failed-release reproduction. Its testbed Webpass
+owner must change only from mwan to networkd through complete extra-vars;
+the remaining historical provider fields must remain unchanged. The original
+d442ba1 testbed and its eight passing application observations are the
+verified baseline. Continuous observations during the failed preparation,
+recovery, repaired preparation and complete ownership acceptance remain
+unperformed. Production remains recovered and unchanged. The operator's
+conditional production authorization is recorded in the coordination plan
+and active automation; another approval is not required after the defect
+repair and all required testbed proof pass.
+
+### Observe the original failed-release preparation
+
+Root refreshed the actual d442ba1 executable and suburban machine identity.
+The historical controller remains clean at merged Configs 369add99. Complete
+extra-vars change only Webpass ownership from mwan to networkd; all five
+providers and both non-provider connections use networkd. Render, release,
+Go, Python, Ansible and controller log paths use Chaos Storage. The temporary
+input generator and its dedicated dependency cache were deleted after use.
+
+The independent lane supplied the existing continuous observation manifest
+for four inbound and four downstream HTTP checks. Root inspected every check
+and verified the published 826fac43 AMD64 archive with the existing shared
+signer and exact source digest. The temporary executable SHA256 is
+6d9ffff8099fa746d02291509bcb46ef52303a6643fb7a6dc65920f88c571918.
+The eight-check manifest SHA256 is
+1598513d5f18c51a18f1ebfd900f04f38f7d760c64f6ae9752557ea72c58222b.
+Each LXC uses its existing 2cbfdd9 public observe command. No daemon or guest
+network configuration was installed for this measurement.
+
+The first temporary executable could not start under the hypervisor's noexec
+/run mount and returned 203. Root verified the failed operation terminated,
+then used /var/tmp/mwan305-observer.NB1P5c/mwan on its executable root mount.
+Version and hash verification passed. The bounded 1800-second native unit
+mwan-original-observation-20261002 is active with PID 172809 and invocation
+1786a994ce3d42f1b08d3e323251107c. Its controller transport is operation 33931.
+Eight complete passing replies were verified before deployment. Output uses
+the root artifact namespace's original-observations.jsonl and stderr files.
+
+Root verified no active native hypervisor jobs and started the sole historical
+deployment through configsctl at 12:11:42 UTC. Controller operation 89907
+uses tmp/configs-runs/deploy-mwan-20261002T121142Z.log. Published e90b629
+archives passed release verification. Operation 89907 exited 1 at snapshot
+creation at 12:16:52 UTC: VM213 was locked by snapshot deletion. Preparation
+completed 118 tasks with 18 changes before that failure. The candidate gateway
+executable was not installed. The original d442 executable remains active.
+The independent observer recorded no failed or unknown application checks.
+This attempt did not reproduce the preparation defect.
+
+Root waited for the native configuration lock to disappear and verified no
+active VM213 tasks. Root paused only watchdog main PID 32187 and verified its
+unchanged invocation c3c8b6b929e040b7879a6faff8aff403. The procps state command
+failed with its SIGCHLD error; /proc/32187/status verified State T. Root stopped
+the idle watchdog and verified inactive state with MainPID 0. No native lock
+was forced and no child mutation was interrupted. Restore the originally
+active watchdog after reproduction and recovery.
+
+Root restarted the same clean merged historical deployment at 12:24:27 UTC.
+Operation 19839 uses deploy-mwan-20261002T122427Z.log in the external controller
+log directory. Independent observer transport 33931 remains active. Failure
+reproduction, recovery and repaired preparation remain unproven. Preserve
+the exact handles and do not duplicate mutations. The merged original-testbed
+recovery play and exact known-good-20260929-184618 snapshot remain the recovery
+procedure. Conditional production authorization requires the complete repaired
+release's testbed proof; production remains unchanged.
+
+### Correct the historical preparation input
+
+Retry 19839 exited 1 at 12:31:18 UTC before candidate runtime installation.
+Snapshot creation passed. The released loader rejected Webpass because root's
+networkd preparation input lacked required link_files metadata. Root added
+link_files: rendered only to Webpass. Existing MAC, addresses, protocol and
+routing fields remain unchanged. This is a reproduction input correction;
+it does not fix or reproduce the incident defect. The original d442 executable
+remains installed. Independent observation remains active.
+
+Before candidate installation, native guest-agent route queries on OPNsense
+VM201 passed without truncation. IPv4 selected primary 10.240.240.3 and IPv6
+selected primary 3d06:bad:b01:201::3 on vtnet1. The inventory independently
+assigns these addresses to VM213; backup VM216 uses .4 and ::4. These route
+queries establish primary selection at measurement time, not balancing.
+
+Configs PR634 merged as 9f0be106 at 12:29:25 UTC. Exact signed source ce6aa88c
+restricts the additional-write assertion to acquire=true. Completed work can
+release its exact lease during Recovering. New writes still require Armed
+status, exact operation/generation/lease, live watch identity and deadline.
+Root inspected the full checkpoint and patch. The independent lane inspected
+the exact commit and native release contract with no remaining finding. Four
+scoped Ansible examples, RuboCop and configsctl lint passed locally. Required
+CI lint, data and GitGuardian checks passed. Native GitHub auto-merge used the
+exact reviewed head; all review threads remain absent. Physical acceptance
+remains unfinished. The running historical checkout was not changed.
+
+The independent lane compared the corrected external input with all five
+historical provider entries. Only Webpass owner=networkd and
+link_files=rendered differ. Production Webpass already defines both fields
+at the historical revision. Every other provider field remains equal.
+
+The third historical deployment started at 12:33:06 UTC as operation 9559.
+Its external log is deploy-mwan-20261002T123306Z.log. Root finished the original
+observer before its deadline and before candidate installation. Transport
+33931 exited 0 and its native unit is inactive with PID 0. Its terminal
+summary finished at 12:33:36.122115938 UTC with 1,572 complete passing checks,
+zero failures and zero unknown or unavailable results. Counts were downstream
+A 196 per family, downstream B 193 per family, inbound AT&T 197 per family
+and inbound Webpass 200 per family. Observations began at 12:10:06 UTC.
+The old raw output was deleted after the independent terminal summary.
+
+Replacement observation transport 2194 uses the same verified executable and
+settings. Native unit mwan-original-observation-20261002b is active with PID
+287926 and invocation 2dfc211b7cc3479c92467fdd3315572f. Its maximum lifetime
+is 3600 seconds. Output uses original-observations-b.jsonl and its stderr file
+under the external controller namespace. The earlier unit rejected an in-place
+lifetime update; its unchanged lifetime remained 1800 seconds. No duplicate
+observer or network mutation was started during replacement. Reproduction and
+repair acceptance remain unfinished.
+
+### Match the original networkd IPv6 input
+
+Operation 9559 exited 1 at 12:39:53 UTC before candidate installation. The
+e90 loader rejected Webpass's newer typed DHCPv6 and router options. The actual
+original networkd units configure DHCP=ipv6, IPv6AcceptRA=yes, both forwarding
+families, the original static IPv4 address and routes, and
+PrefixDelegationHint=::/56. They do not configure the future MWAN client's
+typed DHCPv6 identity or typed router fields. Independent review verified the
+complete e90 rejection contract. The corrected Webpass historical input omits
+only autoconf, accept_ra_default_route, use_ra_dns and dhcpv6_client.
+Translation, link identity and all permitted legacy family behavior remain
+unchanged. This corrects reproduction inputs; it does not reproduce or repair
+the incident. No failed or unknown application observation occurred during
+this attempt.
+
+The fourth historical deployment started at 12:43:37 UTC as operation 58277.
+Its external log is deploy-mwan-20261002T124337Z.log. The controller remains
+clean at historical merged Configs 369add99. Only root controls live mutations.
+Continuous observation 2194 remains active. Three bounded native captures
+record mapping port 1406 on provider eth0 and gateway enmwanbr0. Webpass
+transport 56711 uses unit mwan-original-map-webpass-20261002, PID 572939,
+invocation ab9191abee3f432ab116efabb3ac112c. AT&T transport 4750 uses unit
+mwan-original-map-att-20261002, PID 572668, invocation
+00f261b20be74ebfbf048d7a3c801eef. Gateway transport 47839 uses unit
+mwan-original-map-transit-20261002, PID 7115, invocation
+0de043d2f93f481694e9ba61441efefb. Capture lifetimes are 1200 seconds. A prior
+gateway jump transport returned 255 before capture start; the known direct
+gateway transport started the verified native unit. OPNsense SSH to its actual
+transit address rejected the key. That transport error does not prove packet
+loss. Complete downstream-edge capture remains unperformed.
+
+Configs PR635 merged as 6b786678 at 12:37:05 UTC. Exact signed source 88caf6c3
+changes only the MWAN tag and archive hashes in both inventory pin files.
+Published 202610021159-aa-d1ac42e resolves to merged d1ac42eb. Independent
+metadata review matched both archive digests. Root inspected the complete
+diff, verified the signature and raw header, and read the active ruleset.
+Required lint, data and GitGuardian checks passed. No review threads existed.
+The native standalone merge used the exact reviewed head. The release boundary
+passed 12 examples locally. Physical repaired-release acceptance remains
+unfinished; recovered production is unchanged.
+
+### Reproduce the original preparation failure on the physical testbed
+
+Historical operation 58277 installed and ran e90b629. The executable at
+/proc/10910/exe has SHA256
+cb96234df3b6c6fcf2aa989202de8bd854599869e3733b17d55e250a99c56942.
+The WAN unit used invocation 249cda5dd4124483b74be58f48497500.
+At 12:58:29 UTC, startup rejected existing AT&T and Monkeybrains NPT edge
+addresses and Webpass mapped IPv4 addresses without ownership records.
+Public IPv6 edge addresses remained local /128 addresses, but IPv6 translation
+chains were empty. The local input policy dropped mapping port 1406.
+
+Independent complete inbound HTTP results first failed at 12:58:42.517171803
+UTC for Webpass IPv6, 12:58:42.653646382 for AT&T IPv6,
+12:58:44.382462413 for AT&T IPv4, and 12:58:44.479168002 for Webpass IPv4.
+Both downstream guests continued passing in both families throughout the
+recorded outage. These results prove inbound failure, not total client loss.
+First recovery observations after the scheduled reboot were AT&T IPv4
+13:07:45.906315288, Webpass IPv4 13:07:46.356382001, Webpass IPv6
+13:07:46.417476122 and AT&T IPv6 13:07:53.867480821 UTC. Each IPv4 inbound
+check failed 32 times; each IPv6 inbound check failed 33 times. The measured
+inbound outage lasted approximately nine minutes.
+
+All three Linux captures finished at their native 1200-second deadline.
+Webpass captured 3277 packets, received 3278, and dropped zero in the kernel.
+AT&T captured 3290, received 3290, and dropped zero. Primary transit captured
+5829, received 5829, and dropped zero. Their transport exit status is 1.
+Provider IPv6 SYNs at 12:58:32 UTC do not appear on primary transit.
+First failed IPv4 SYNs at 12:58:34 UTC appear on the provider and primary
+transit after destination translation to 10.240.240.2:1406. No matching
+SYNACK appears on primary transit or either provider during those captures.
+
+OPNsense SSH rejected the key, but the native guest agent supports capture.
+A baseline 48-packet sample exited 0 without truncation or kernel drops.
+The subsequent bounded 4000-packet capture used native guest PID 16677.
+Its completed result was consumed, then overwritten by a second status read;
+the first-failure downstream-edge capture is unavailable. A later 48-packet
+failure sample exited 0 without truncation or kernel drops. At 13:03:40 UTC,
+OPNsense received both providers' IPv4 SYNs and transmitted matching SYNACKs.
+Actual return-route queries selected backup 10.240.240.4 for both provider
+observer addresses. Baseline queries selected primary 10.240.240.3.
+This supports an asymmetric return path, but does not prove the backup's
+packet transmission or translation. The backup capture could not start
+because tcpdump is absent; no backup packets were measured. After reboot,
+the measured Webpass return route selected primary 10.240.240.3 again.
+
+The historical deployment exited 0 with 306 successful tasks, 36 changed,
+zero failed, zero unreachable and 66 skipped. Its native post-reboot gate
+reported reboot_rc=0, egress_rc=0 and owned_rc=0, started at 13:06:37 UTC,
+and finished at 13:08:14 UTC. This passing gate omitted the preceding inbound
+outage. The gate starts only after preparation changes. The repaired release's
+physical acceptance remains unfinished. Production remains unchanged.
+
+The merged original-testbed recovery started at 13:09:33 UTC as operation
+35368 from clean Configs eebb726f. It selects only
+known-good-20260929-184618. Observe this exact operation; do not duplicate
+mutations. The independent application observer remains active. The global
+watchdog remains intentionally inactive until recovery finishes. MWAN-535
+remains In Progress; comment 01a0fcba-8dd2-7db5-b591-dfac626c6c1c includes
+the reproduced failure and incomplete repaired-release acceptance.
+
+Configs PR636 merged as 439d94f01a5fdc652a2dae6d33b524ad108e4d33 at
+13:17:24 UTC. Root inspected the complete source at signed 3513d165 and the
+four-file correction at signed e213c617. The correction calculates unchanged
+transfer bounds once after selected owner and packet facts. Independent
+review passed both revisions. Required lint, data and GitGuardian checks
+passed; every review thread was resolved after source evidence or correction.
+The native standalone merge used the exact reviewed head. Physical provider
+handover remains unperformed.
+
+### Restore the original pair and begin repaired preparation
+
+Recovery 35368 exited 0 with 43 successful tasks, seven changed, zero failed
+and 12 skipped. It verified original d442ba1 and matching installed/running
+SHA256 1c79542f6f9e56fc0ad0f101b0688a84f95bfc41706ebebf36982e0f4f8726fa.
+Machine bdd916f95e3e44568e6a5d3096cf2dea is unchanged. WAN PID 321 and
+networkd PID 595 are active; management/transit daemons are inactive and all
+four ownership journals are absent. All eight independent application checks
+passed freshly at 13:13:57 through 13:14:02 UTC. Root restored the originally
+active global watchdog, now PID 479876 and invocation
+d36fe11e8e714d499ee963f2eadc8a5a.
+
+Historical observation 2194 exited 0 after exact main-process SIGINT. Its
+native unit is inactive with PID 0. It observed 130 complete inbound failures
+during preparation and 45 during intentional snapshot restoration. Neither
+phase recorded downstream failures or unknown results. Restoration recovered
+all inbound checks at 13:13:15 through 13:13:23 UTC. Its terminal summary
+finished at 13:18:21.705395165 UTC with every check passing. The independent
+lane retained a compact phase summary; purge superseded raw observations and
+terminal deployment/recovery logs after this checkpoint is durable.
+
+Independent repaired observation 73905 is active. Native unit
+mwan-repaired-observation-20261002 uses PID 501202 and invocation
+2a474492c5174cef8a75cf2643206a77, with a 10800-second maximum lifetime.
+It uses the previously verified temporary executable and eight-check manifest.
+Output remains on Chaos Storage. Do not duplicate this producer.
+
+Repaired preparation 26139 started at 13:19:19 UTC from clean merged Configs
+439d94f0 with pinned MWAN d1ac42eb. Its provider override retains all five
+original networkd owners. Independent source audit found no missing input;
+legacy adoption remains enabled for the exact d442 executable. The operation
+trace is 20261002-062012-deploy-482644.
+
+The preparation exited 1 before arming recovery or installing the gateway
+runtime. Observer 900 and 901 version checks returned old 2cbfdd9 despite
+parent copy commands returning 0. Observers 225 and 226 returned the required
+d1ac42e. Native completed push_file tasks for 900 and 901 report Text file
+busy. The hypervisor candidate has SHA256
+d0f0d060fed27a07f29188a45133f2cd1148cfd74d9f6f9c10dabf54931ea122;
+the unchanged provider destination has SHA256
+34aad4bda3e56beabd2558ac20c5a14dbefe0f596653d9d83c9d27b16c1c0f21.
+Installed Proxmox copy code truncates an existing executable. Its synchronous
+worker is reaped, but the CLI discards the worker error status. Root observed
+an executing provider observer. Atomic same-directory replacement requires a
+verified staged candidate, not an in-place overwrite or a weakened version
+gate. The source lane owns that focused correction. All application checks
+still pass; the gateway remains original and production remains unchanged.
+
+Five preparation captures were stopped with exact main-process SIGINT after
+the version gate failed. Every transport exited 0; native units are inactive
+with PID 0. Webpass captured 1394 packets, AT&T 1397, primary transit 2801,
+OPNsense tap201i1 2801 and backup veth216i1 zero. Each reports zero kernel
+drops. These capture only the healthy original baseline before a rejected
+preparation. Purge their regenerable raw output after this checkpoint.
+
+### Validate atomic observer replacement before gateway activation
+
+Configs PR637 merged as f42a2455dc633010cc15efeb48ef0602bb7cbfcd at
+13:37:05 UTC. Exact signed source 486dff5d installs each observer through a
+unique same-directory staging file, complete candidate hash/version checks,
+native rename and exact cleanup. Installed Proxmox CLI source proves that a
+returned push command has reaped its synchronous child, although its return
+code omits the copy worker's failure. An unproved timeout or transport loss
+retains the staging file. The final published-path version gate remains strict.
+Root inspected the complete patch, signature/raw header and active rules.
+Independent review passed. Required lint, data and GitGuardian checks passed;
+the fresh pre-merge query found no unresolved threads. Seven existing actual
+Ansible checkpoint/manifest examples passed; no new mock/static test was added.
+
+Preparation 28341 used clean merged f42a2455 and pinned d1ac42eb. Observer
+900's staging digest and executable version checks passed. The native rename
+returned 129 with empty stderr at 13:40:40 UTC. The play stopped before
+recovery arming or gateway activation. Exact staging cleanup completed.
+Actual published-path readback reports d1ac42e and SHA256
+d0f0d060fed27a07f29188a45133f2cd1148cfd74d9f6f9c10dabf54931ea122.
+The staged path is absent. Replacement completed despite the command error.
+All eight independent application checks continue passing. The cause of this
+command result is unconfirmed; do not assign packet failure or implement an
+unrelated host fix.
+
+Retry 23095 exited 1 from the same clean merged source. Observer 900 and 901
+replacement succeeded. The native observer 225 rename returned 129 with empty
+stderr at 13:46:49 UTC. Exact staging cleanup passed. Recovery arming and
+gateway activation did not occur. The native rename result recurred; its
+signal cause remains unconfirmed. Independent observation recorded one
+downstream-a IPv4 HTTP timeout at 13:45:22.81353013 UTC. The next complete
+observation recovered. The latest eight checks pass without unknown results.
+No gateway installation occurred during that timeout.
+
+Configs PR638 merged as 318b96f32ee11bc5b57924ba3100f49cbddb48cd at
+13:55:58 UTC. Exact signed source a0a17e83 disables SSH terminal allocation
+only within the observer replacement block, including exact cleanup. Every
+command exit, full digest, executable version and final published-path gate
+remains strict. Official Ansible documentation supports ansible_ssh_use_tty.
+Root inspected the complete three-line patch, verified the signature and raw
+header, and read the active merge contract. Required checks passed and no
+review threads existed. Independent exact-commit review passed. Scoped lint,
+diff checks and seven existing actual Ansible examples passed. This change
+does not establish the cause of either native 129 result.
+
+Preparation retry 54453 started at 13:56:31 UTC from clean detached merged
+318b96f3, retaining the same original-owner input and pinned d1ac42eb release.
+Its external log is deploy-mwan-20261002T135631Z.log. Independent observation
+73905 remains active. Five new captures started before protected gateway
+writes, using native 3600-second deadlines: Webpass 49742, AT&T 3679,
+primary transit 2548, edge tap201i1 93794 and backup veth216i1 8593.
+Each tcpdump reports listening on its verified interface. Their repair2
+pcap/stderr files are on Chaos Storage. No second deployment controller may
+start and this checkout must remain unchanged until the play terminates.
+Production authorization is conditional on complete defect repair and the
+required testbed proof. Production remains unchanged.
+
+This retry passed all four staged digest/version checks, native replacements,
+exact staging cleanup and final published executable version checks. The
+observer provisioning blocker did not recur. This result does not establish
+the earlier native signal cause.
+
+The actual operation is 20261002-065724-deploy-395316, generation
+13d76220-8991-47d3-b476-da9dddc65d6f. Its exact recovery snapshot is
+pre-deploy-20261002-065724-deploy-395316. At 14:03 UTC, status was armed with
+mutation_ready true and eight fresh passing application checks. The native
+watch has PID 721344 and invocation cdad2352cbfb46efbfeb5568ad4506a6;
+systemctl confirms that same active invocation. The baseline executable
+digest is the verified original d442 digest. The operation permits bounded
+preparation writes and verifies each lease before mutation. Its preparation
+deadline is 16:23:37 UTC and recovery timeout is 1940 seconds. No second
+controller or manual recovery may run concurrently. Current application
+observation 73905 and all five repair2 captures remain active on Chaos.
+
+The repaired attempt failed physical acceptance. Independent observations
+first report complete inbound timeouts at 14:17:08.288511360 UTC for Webpass
+IPv4, 14:17:08.984224205 for AT&T IPv4, 14:17:11.767226088 for AT&T IPv6,
+and 14:17:13.794207451 for Webpass IPv6. Both downstream guests and families
+continue passing. Native watch 721344 independently entered Recovering at
+14:19:59 UTC after three failing observation cycles. The controller's fresh
+post-start health gate rejected promotion at 14:20:07. Candidate WAN PID
+5003 is active with invocation 99a8f976693f4efdb2378a8bf615517c. Its actual
+startup journal reports rejection of original Webpass 10.241.204.3/32 without
+an ownership record at 14:19:42. IPv6 receipt capture/adoption succeeded;
+mapped IPv4 adoption is still missing. Do not claim that shorter staging
+alone repairs candidate forwarding.
+
+The adoption always block skipped lease release despite completed native
+stop and start jobs. Exact native artifacts j704717881737.4611 and
+j60985422854.4944 contain name, changed, status and state, without invocation.
+They return mwan-ifmgr@wan with stopped and started respectively. Their
+status dictionary records pre-operation state; it cannot prove post-operation
+PID or activity. The invocation-only completion predicate retains the lease
+until its actual 14:37:30 UTC expiry. Recovery is pending; do not manually
+release or claim restoration completed. The source lane corrects staging
+order and job-bound completion. The independent lane diagnoses mapped
+address adoption. Both lanes preserve strict health/watch/lease gates.
+
+The new captures prove actual asymmetric IPv4 replies for the first failure
+cohort. Webpass sends sequence 2573852462 from 10.241.204.1:57257 at
+14:16:58.278021 UTC; AT&T sends sequence 1589944835 from
+10.240.205.1:51277 at 14:16:58.974742. Primary transit contains each same
+request translated to 10.240.240.2:1406. The edge emits SYN-ACKs with
+matching acknowledgments to backup MAC bc:24:11:00:97:29. Backup veth216i1
+captures those actual replies. Provider captures contain repeated requests
+without replies for these cohorts. Native edge routes select 10.240.240.4.
+This closes the earlier gap about actual delivery of replies to the backup;
+it does not prove the backup's subsequent outbound disposition. The current
+repair2 firewall/routes snapshots were collected after candidate startup,
+despite their stopped filename suffix. Retain these unique raw captures and
+startup journal until correction and recovery results are durable.
+
+### Restore the original release after the measured preparation failure
+
+The native watcher initiated recovery at 14:19:59 UTC. Restoration proceeded
+after the original lease expired at 14:37:30. Exact operation status became
+Recovered at 14:39:29.595031005 UTC, with no lease and eight fresh passing
+application checks. Root separately verified running WAN PID 318 and both
+installed/proc executable digests equal the original 1c79542f6f9e56fc digest.
+Network digest acfbf1dc71c43206bd43fbd9fa3d4291efad6d9eaa9661f4316c24d59c4b3b53
+and runtime digest a3786fa6c66c9b816ab2c5f2c70701c8c321162a087cfcc5974d56b527026f24
+match the exact baseline. Machine ID remains bdd916f95e3e44568e6a5d3096cf2dea.
+New boot ID is 0b5a165a-f3b1-45dc-a34e-d5354c0ec7ac. Actual version reports
+clean d442ba1. Controller 54453 exited 1 after coordinated recovery, with
+709 ok, 82 changed, one failed, one rescued and zero unreachable tasks.
+The controller rescue also invoked the same recovery operation. Deliberate
+controller-disconnection acceptance remains unperformed.
+
+Configs PR639 merged as bfdcd66a561a5891977c0ece21ad1b83f34a526b at
+14:40:46 UTC. Exact signed source 9939879d stages candidate installation before
+stopping the captured producer, verifies its original executable/network/runtime
+bytes and fresh applications, and recognizes exact issued systemd completion
+through its public success or explicit failure format. Missing/wrong jobs and
+timeouts remain fenced. Root independently inspected the complete six-file
+patch and installer/activation sources. Required checks passed. Two bot findings
+incorrectly treated distinct terminal result formats as a duplicated shared job
+identity check; root answered with the native result and regression evidence
+and resolved both. A fresh query confirmed zero unresolved threads before merge.
+Fourteen existing real Ansible cases and scoped lint/RuboCop/diff checks passed.
+Four added metadata reads account for 60 seconds in the full operation bound:
+activation 1370, maximum lease 1400, recovery 2000 and duration 8570 seconds.
+Physical acceptance remains pending. This patch does not fix the separate
+unadopted mapped IPv4 address.
+
+The four surviving repair2 capture producers stopped through exact main-process
+SIGINT. Their transports exited 0 and native units are inactive with PID 0.
+Webpass captured 36285 packets, AT&T 33026, edge 61665 and backup 24301;
+each reports zero kernel drops. Primary transit transport 2548 exited 255 when
+snapshot restoration disconnected SSH. It has no terminal tcpdump counters;
+do not claim zero drops for that capture. Retain the unique failure/recovery
+packet evidence and current observation output. The two superseded native
+rename-failure logs were purged after signed ledger 3c07ac6 was pushed.
+Source lanes now implement mapped IPv4 adoption and review the exact repair.
+Production remains unchanged under conditional authorization.
+
+Historical raw observations, terminal historical deployment and
+recovery logs, and the rejected preparation's baseline captures were purged
+after signed ledger d932a44 was pushed.
 
 1. Record the ticket and slice, PR, signed commit, merge result, and exact checks.
 2. Record independent review and its reviewed commit separately from local checks.
 3. State the observable behavior demonstrated and any missing acceptance.
 4. Identify the next unfinished task and its prerequisites.
+
+### Review mapped IPv4 adoption and register the original-release regression
+
+MWAN PR175 source eeb04574d42446765e0606fc8afbdcc3d6c46679 captures only
+configured on-link/local secondary IPv4 /32 mappings and adopts unchanged
+intent, link and kernel observations after the original producer stops. It
+excludes acquired/static primary and unrelated addresses. Independent source
+reviews passed the original patch, digest/lint correction and final CI
+registration. Root inspected each patch. The real regression checks mapped
+packets before adoption, after candidate startup and after restart, with
+unrelated-address and tampered-manifest rejection.
+
+The existing CI selection omitted TestLegacyNPTPreparationUpgrade and its
+original-release inputs. The dedicated target now builds and identifies the
+actual candidate, mounts the original executable read-only and selects that
+case explicitly. Native AMD64 CI verifies original release
+202609292152-70-d442ba1 against the full baseline executable digest.
+Exact-head CI 37023814711 and firewall job 110893451715 are active at the
+original-release step. Runtime success remains unproved. Two new bot findings
+remain under source-owner triage; merge requires final checks and resolved
+required threads.
+
+The root deployment checkout is clean detached merged Configs
+bfdcd66a561a5891977c0ece21ad1b83f34a526b. Its cache symlink still uses Chaos.
+Read-only native verification confirms original WAN PID 318 and the exact
+original installed/running executable, network and runtime digests. Observer
+73905 remains active with its recorded PID and invocation; all eight recent
+application observations pass. No deployment or fault started in this slice.
+The superseded failed preparation log was purged after signed ledger a97c297
+was pushed. Unique packet evidence remains necessary for repair acceptance.
+
+### Diagnose the original-release fixture prerequisite
+
+CI 37023814711 executed TestLegacyNPTPreparationUpgrade with zero skips.
+The original executable hash matched the baseline and its log identifies
+d442ba1. Candidate SHA256 is
+457f197089a9d014d91d44edf2b0f45b840929b7e67a9fdaa564becc6220d9d7,
+with clean eeb0457 identity. At 15:04:12 UTC the original daemon wrote missing
+networkd units and exited because the plain builder had no system D-Bus
+socket. At 15:04:22 the fixture failed waiting for its original IPv6 NAT
+rule. Capture and adoption did not execute. Correct the real original startup
+prerequisite without fake services, placeholder files or relaxed deadlines.
+
+The source owner canceled only this disposable CI run after the measured
+failure to obtain otherwise unavailable logs. Its terminal state is Canceled.
+Govulncheck stopped on runner shutdown with exit 143 and no vulnerability
+report. Staticcheck Extra identified three helper error wrappers; use the
+existing operation error type and final-boundary logging. Both lanes inspect
+the existing real renderer/systemd fixture before the next source correction.
+Both new bot findings were resolved with evidence: the helper receives parsed
+typed configuration, and the raw address digest exists only in the same-candidate
+one-shot manifest, not in durable receipts. No live testbed fault occurred.
+
+### Require authentic system services and provider eligibility in the regression
+
+PR175 revision cced5a29e9e96f17ffcc8d2778187466b72d9565 uses the existing
+real systemd image and protocolrunner. Revision
+7b895a60871f9942d500a7d7c8c8c299a895223e requires the actual system D-Bus
+boundary after the existing systemd Version check within the same 30-second
+readiness deadline. Root and independent review inspected both patches.
+Existing lanes and the original case's ten-minute bound remain unchanged.
+
+The cced5a2 original case started d442ba1 successfully and installed its
+IPv4 mapping and NPT rules. Its original IPv4 baseline UDP reply on port 17608
+failed before capture/adoption. The downstream received the request and wrote
+its reply within 177 microseconds, but the upstream timed out after three
+seconds. Actual original mwan_steer rules drop IPv4 from enmwanbr0 to
+enwebpass0. The fixture declares disabled DHCP and translation without its
+static primary/gateway; the provider is ineligible for IPv4 steering.
+The source lane corrects that configuration through the real loader rather
+than removing the protective drop or relaxing the packet assertion. This
+failure is separate from the earlier D-Bus prerequisite and does not prove
+an adoption result. Superseded CI 37025744026 is terminal Canceled.
+Exact 7b895a6 CI 37026496595 remains pending runtime acceptance.
+
+Read-only physical testbed verification found active networkd PID 549 and
+D-Bus PID 605. The gateway still runs the original verified pair. No shared
+testbed or production deployment occurred during these fixture corrections.
+
+### Merge the mapped-address repair and resume physical acceptance
+
+The operator requires the existing repair, release, testbed deployment and
+actual traffic, cutover, restart, reboot, failover and recovery validation.
+Do not expand CI or add unrelated acceptance infrastructure.
+
+PR175 merged normally at 15:53:06 UTC as
+a96991a046f84dda1ba135d81894224ff1530e3b. All required checks passed,
+all six review threads were resolved, and all eight source commits had
+verified signatures and raw signature headers. The original upgrade case
+passed the exact final 981eacf CI step. Earlier 2f9e62b execution passed in
+4.30 seconds with candidate digest
+c73bdcce7b383140124ed71bbbaeef8f77f25152ff9638b8565f91239997e735.
+Those results do not establish repaired physical cutover acceptance.
+The existing release workflow started run 37030105400 for the merged source.
+The release lane verifies publication; the Configs lane prepares only its
+compatible pin. Root exclusively controls physical deployment and faults.
+
+Observer 73905 stopped with exit zero at 15:53:52 UTC. Its native unit is
+inactive with PID zero. Its terminal results include downstream A IPv4
+1279 pass/1 fail, A IPv6 1278 pass, B IPv4 1256 pass and B IPv6 1258 pass/
+1 unknown. The final unknown coincides with observer shutdown and remains
+unknown. Inbound AT&T IPv4 has 1119 pass/78 fail, IPv6 1119 pass/77 fail;
+Webpass IPv4 has 1121 pass/76 fail, IPv6 1123 pass/76 fail. The failed
+preparation and recovery explain the measured inbound failure interval;
+the earlier isolated downstream timeout remains unattributed.
+New observer transport 53402 uses a distinct final-repair unit and outputs
+on Chaos Storage. Production remains unchanged. Repaired physical acceptance
+is pending the verified published release and merged pin.
+
+### Deploy the merged repair to the physical testbed
+
+Release 202610021553-ab-a96991a published from merged
+a96991a046f84dda1ba135d81894224ff1530e3b through successful run 37030105400.
+Actual AMD64 executable digest is
+93fc771974fda1f9f94a6b79afe26ad47c6553dc3f9b17608e44582432ff03b3.
+Archive and stack digests are
+a29305a520b8f5aa923fc0c22cec2351e1e6292586fbd6c0dc3e4866c5e446c8 and
+ae11e8de8fcf714f6f5f1086f751a332345f83dc3b409b44570debd6b2ca051f.
+Both archive attestations verified the repository, shared workflow signer and
+exact source. Root independently compared actual downloaded hashes.
+Temporary release downloads were purged after compact provenance retention.
+
+Configs PR640 changes only the two release pins and their checksums.
+Root inspected the diff, commit signature and raw signature header.
+All required checks passed and no review threads were unresolved.
+It merged at 16:09:22 UTC as
+4244d4ccd972b46e4f32e1db58a4c6141f471e86.
+The clean detached root deployment checkout uses that merged revision.
+Its cache and all generation paths use mounted Chaos Storage.
+
+Root started configsctl deploy deploy-mwan with the exact testbed limit
+and original-reproduction-vars.json, preserving the original five networkd
+provider owners. Controller handle 16394 started at 16:09:53 UTC.
+Its actual play log is resume-controller/tmp/configs-runs/
+deploy-mwan-20261002T160953Z.log on Chaos Storage. Independent observer
+53402 and three exact provider/transit captures remain active.
+The source lane reads application results; root alone controls mutations.
+This deployment remains in progress and does not establish cutover acceptance.
+Production is unchanged.
+
+### Correct the physical running-executable hash failure
+
+Preparation 16394 captured actual original PID 318 and digest before installing
+the candidate. The manifest includes three NPT edges and the four configured
+Webpass IPv4 mappings 10.241.204.3 through .6 as /32 receipts. It excludes the
+primary .2 address. Original executable, network, runtime and schema checks
+passed after prerequisites. No ordinary adoption acceptance occurred.
+
+After candidate installation, Ansible stat with follow=true resolved
+/proc/318/exe to /usr/local/bin/mwan (deleted) and failed before stopping
+the original WAN producer. The running process remains readable through
+its /proc executable descriptor; resolving its removed pathname is incorrect.
+PR642 replaces that one executable hash with native sha256sum argv and
+preserves the captured PID, exact baseline digest and network/runtime checks.
+Root inspected the focused diff and signed commit
+2898281930a431775ab835e4483189cda8ded5b8. Required data CI remains pending.
+
+The exact operation 20261002-091049-deploy-869396, generation
+bf8d5be1-9be2-426c-8d86-768a19be2616, released its outstanding lease and
+completed coordinated snapshot recovery. Native watch PID 1365131 and
+invocation 9b4ca936ad6e40158127b0cd7244290c match the armed record.
+Its terminal state is Recovered with eight fresh passing application checks
+through 16:34:29 UTC and no lease. Controller 16394 exited 1 after
+633 successful tasks, one failure and one rescued block. This is coordinated
+controller recovery; controller-disconnection proof remains unperformed.
+
+Original running PID 314 and installed executable both match
+1c79542f6f9e56fc0ad0f101b0688a84f95bfc41706ebebf36982e0f4f8726fa.
+The original network/runtime digests match the recorded recovery pair.
+New boot is 26e16a58-eda4-4ac9-810b-664f7319511f.
+Application observations recorded five failures per inbound check and one
+downstream-A IPv6 timeout. The other downstream checks passed, with zero
+unknown results. Downstream A IPv6 recovered at 16:32:37 UTC; inbound checks
+recovered between 16:33:39 and 16:33:47 UTC. These are sample timestamps,
+not an exact continuous loss duration. The compact observer summary
+preserves precise timestamps. Four source-bound ping streams continue.
+Primary transit capture 83921 exited 255 during restoration and has no
+terminal capture counters. Provider captures remain active. Production is
+unchanged. Retry only after the focused fix merges.
+
+### Recover the deployment checkpoint failure
+
+PR642 merged as 7b72dce116edada9261a9aa4f92c8265208875ec at 16:37:15 UTC.
+The configsctl testbed deployment used that clean merged revision and the
+original provider ownership inputs. Controller 22001 failed before candidate
+installation, legacy capture or daemon replacement. The delegated status
+checkpoint exceeded its five-second Ansible task timeout. Physical execution
+of the executable hash correction remains unperformed.
+
+Operation 20261002-093845-deploy-959851, generation
+9503610f-ae69-4a26-8294-32de850b792b, completed coordinated snapshot recovery.
+The cloudflared-configuration lease expired at 16:49:10.919848837 UTC.
+The terminal operation state is recovered with eight passing application
+results through 16:51:56 UTC. Controller 22001 exited 1 with 182 successful
+tasks, one failure and one rescued block. The independently read executable,
+network and runtime hashes match the exact baseline. The WAN writer is active
+with PID 318 and boot 7c3f2c80-10e1-40e9-8949-6869036a964f.
+
+Both downstream guests and both families passed during recovery from 16:49
+to 16:51 UTC. Four inbound checks failed. Their first failed samples were
+between 16:49:26 and 16:49:28 UTC. Their first recovered samples were between
+16:51:04 and 16:51:05 UTC. Each IPv4 inbound check recorded eight failures.
+Each IPv6 check recorded six failures. These sample times do not establish
+exact continuous outage duration. Native OPNsense reads showed both primary
+peers disconnected and both backup defaults selected at 16:50:42 UTC.
+Both primary peers and preferred defaults were restored by 16:51:54 UTC.
+This proves snapshot recovery and native route failover. Repaired preparation
+and ownership transfer remain unperformed.
+
+The hypervisor has eight CPUs. Observed load averages were about 25.
+The vmstat samples reported 30 to 31 percent disk wait during recovery.
+Independent SSH plus native status reads completed in 1.13 and 1.23 seconds.
+The actual timeout cause remains unconfirmed. Another retry requires diagnosis
+of the failed checkpoint. The current controller log, application observations
+and packet evidence remain on Chaos Storage for diagnosis. Production is
+unchanged.
+
+### Align checkpoint and initial lease budgets
+
+Installed ansible-core applies the checkpoint timeout to the entire remote
+task, including connection and module execution. The five-second task limit
+was shorter than the configured ten-second SSH connection timeout. The failed
+callback cannot distinguish transport, module setup, lock wait or D-Bus delay.
+The correction addresses that confirmed budget mismatch without assigning a
+CPU or storage cause.
+
+Configs PR644 changes checkpoint tasks to the existing fifteen-second
+metadata timeout. Initial leases add four checkpoint bounds plus ten seconds,
+giving seventy seconds. Ordinary restart and reload budgets now account for
+the submission, reconnect and all twenty-five completion attempts: 1040
+seconds of mutation time and an 1110-second lease. Legacy activation permits
+2030 seconds, an initial 2100-second lease and 2700 seconds of recovery.
+Reused handover leases retain their existing calculations. Operation identity,
+watch identity, phase, status, expiry and completion assertions are unchanged.
+
+Scoped configsctl lint passed. Ten existing real Ansible expression and render
+checks passed. Two existing manifest expectations changed numerically; no new
+test or CI workflow was added. Independent review inspected exact signed head
+bd48cc710b992d7f702cb5ce1e452b90f51e21ec against merged parent 7b72dce1.
+All required checks passed. Two stylistic review findings received evidence
+replies and were resolved. The normal squash merge completed at 17:21:42 UTC
+as 9b64fd3ef1d6a53740226539bb6ef2d304c5376e.
+
+Root started preparation 52369 from that clean merged Configs revision through
+configsctl at 17:22:40 UTC. The original provider ownership inputs and release
+202610021553-ab-a96991a are unchanged. Diagnostic output uses the normal
+redacted run log on mounted Chaos Storage. Independent application observer
+53402, four source-bound ping streams and three new two-hour packet captures
+are active. The capture filter includes TCP ports 1406 and 443. Earlier
+provider capture transports 57197 and 92664 completed successfully with
+13,380 and 13,397 packets, zero kernel drops and both exact PIDs absent.
+Their unique recovery evidence remains necessary. Native OPNsense reads at
+17:23 UTC show both primary and backup sessions established in both families,
+with both primary defaults selected. Preparation acceptance remains pending.
+Production is unchanged.
+
+### Verify repaired legacy capture and adoption on the physical testbed
+
+Controller 52369 passed the previously failing checkpoint and installed the
+candidate prerequisites without replacing the original writer or active
+network/runtime inputs. Legacy capture completed at 17:42:38 UTC with exit
+zero. The record identifies original PID 318 and its exact executable hash,
+boot and namespace. It includes AT&T, Monkeybrains and Webpass IPv6 edge
+addresses and Webpass IPv4 mappings 10.241.204.3 through 10.241.204.6 as /32
+addresses. The primary address 10.241.204.2 is excluded.
+
+After candidate installation, the direct /proc/318/exe hash and unchanged
+network/runtime assertions passed. The original writer stopped and its PID
+was absent before adoption. Adoption completed at 17:46:24 UTC with exit
+zero. Normal candidate startup completed without a persistent adoption flag.
+Successful startup alone does not prove complete preparation acceptance.
+
+The independent observer recorded first inbound failures from 17:45:52
+through 17:45:58 UTC. First recovered samples were AT&T IPv6 at 17:47:24,
+AT&T IPv4 at 17:47:28, Webpass IPv4 at 17:47:29 and Webpass IPv6 at
+17:47:31 UTC. Downstream B IPv6 recorded one failure at 17:47:22 and its
+next passing sample at 17:47:29 UTC. Other downstream checks passed.
+All subsequent samples through 17:47:57 passed with no unknown results.
+These are sample timestamps, not exact continuous outage durations.
+
+Actual OPNsense routes selected both backup defaults at 17:46:29 through
+17:46:35 UTC. Both primary peers reported zero prefixes. At 17:47:35 UTC,
+both primary defaults were selected and installed again. The route samples
+do not establish the exact withdrawal or restoration instant. The bounded
+native evidence remains in planned-handover/preparation-52369-bgp-readback.md
+on Chaos Storage. Controller 52369 remains live; preparation commitment,
+reboot and ownership transfers remain pending. Production is unchanged.
+
+The superseded second-attempt controller log and pointer were purged after
+pushed ledger 8bca984 preserved diagnosis and recovery. Current raw evidence
+remains required. Chaos Storage has 972 GiB available; the controller artifact
+directory used 502 MB at 17:40 UTC.
+
+### Complete repaired preparation and identify the terminal watch defect
+
+Controller 52369 completed successfully with exit zero, 1601 successful tasks,
+201 changes and no failure, rescue or unreachable result. The exact operation
+is committed. Its commitment independently repeated all eight application
+checks successfully through 18:27:22 UTC. The new boot identity is
+6b8f4209-dcea-4a93-a74b-5bdfe31c4ff8. Installed executable, network and runtime
+hashes match the target. The ownership journal contains the four secondary
+IPv4 mappings and all three IPv6 translation edges under the new boot.
+
+The ordinary daemon restart changed PID 3776 to PID 6261. All four inbound
+checks recorded one timeout sample in the 18:11 interval. Both downstream
+IPv6 checks failed at 18:11:18 and 18:11:35 UTC; their first recovered samples
+were 18:12:00 and 18:12:02 UTC. IPv4 checks passed. Minute route samples
+did not directly observe backup selection during this restart.
+
+Actual reboot route reads selected both backups at 18:26:30, 18:26:39 and
+18:26:48 UTC. Both primary defaults were selected again at 18:26:57 UTC.
+The continuous application observer recorded one downstream-B IPv6 failure
+at 18:26:03 and its next pass at 18:26:10. Each inbound check recorded three
+timeouts. First recovered inbound samples were between 18:26:56 and
+18:27:00 UTC. Ping replies continued; application timeouts do not establish
+total packet loss. Native route-event capture 12759 completed with timeout
+exit 124 and no truncated output. It recorded both primary default deletions
+and backup installations at 18:26:03.114 through 18:26:03.115 UTC. Both
+primaries replaced the backups at 18:26:56.364 through 18:26:56.365 UTC.
+Each family selected its backup for 53.250 seconds. This is route selection
+duration, not a continuous client outage measurement.
+
+The four original guest ping transports exited zero after exact producer
+verification and SIGINT. Root verified their old PIDs are absent. Terminal
+transmission/receipt totals are A4 6994/6980, A6 6995/6943, B4 6993/6978
+and B6 6993/6941. These totals cover multiple preparation and recovery
+intervals. Replacement streams started at 18:11:28 UTC before stopping
+the original streams. Root independently verified their four exact unit
+identities. The distribution agent owns their bounded processes and outputs.
+Primary capture 65628 exited 255 during reboot without terminal counters.
+Provider captures and independent application observation remain active.
+
+At 18:27:28 UTC, the exact watch exited one after commitment. Native journal
+reports terminal observation rejection. The unit is failed with MainPID zero;
+the persisted operation remains committed with fresh passing checks. Engine.Watch
+read Armed before HTTP checks; concurrent commitment made the later observation
+write reject terminal state. MWAN-545 tracks the focused correction in signed
+commit f44028c. Independent source review found no blocking source defect.
+The regression uses the public watch command and actual HTTP/systemd, but
+sets committed state directly rather than executing the public commit command.
+Formatting and diff checks passed. Linux cgo compilation and runtime execution
+remain unperformed. The next physical deployment must prove watch exit zero.
+Identity, storage and recovery errors remain errors.
+This reporting defect is separate from successful preparation and reboot.
+
+Configs PR 643 merged as 187c8904 during the active play. The deployment
+checkout was unchanged throughout controller 52369. The next deploy requires the new
+guest preparation revision. The actual testbed marker is absent. Run
+configsctl prep-guests from clean latest merged Configs after this terminal
+operation; do not write the marker manually. Forward and reverse Webpass
+inputs match current networkd identities and unrelated provider records.
+Ownership transfers, remaining fault acceptance and production remain pending.
+
+After controller completion, the clean detached deployment checkout advanced
+to merged Configs 02151351. Scoped guest preparation started at 18:38 UTC
+through configsctl, with controller handle 37195 and only
+mwan_suburban_servers selected. It completed with exit zero, 87 successful
+tasks, 13 changes, no failures and no unreachable results. Independent SSH
+readback returned guest preparation revision 1. All eight latest application
+samples passed through 18:43:02 UTC. Output and all controller caches remain
+on mounted Chaos Storage. No production write occurred.
+
+MWAN-535 is Done after physical original-release capture, adoption, restart
+and reboot acceptance. MWAN-538 and MWAN-544 remain In Progress for their
+remaining recovery and traffic acceptance. PR 176 contains reviewed MWAN-545
+commit f44028c. It merged normally at 18:43:20 UTC as
+f4fbb855967832c7d4da99e17fb65b004b524dac after every active required check
+passed, with no review threads. AMD64 and ARM64 compilation passed. The
+optional firewall job was canceled after merge and its systemd acceptance
+was skipped. The new regression remains unperformed. Release run 37049354594
+is publishing the exact merge; the next physical deployment must prove
+successful watch exit. The release implementer exclusively owns the existing
+testbed release pin in mwan_testbed_all.yml. Production pins remain unchanged.
+
+Both final3 provider captures stopped after exact unit, executable, PID and
+invocation verification. Both transports exited zero. Webpass captured 86659
+packets from 86715 filtered packets; AT&T captured 79999 from 79999. Both
+reported zero kernel drops. Independent process checks confirmed both exact
+PIDs absent. The rebooted primary capture exited 255 without terminal counters.
+The eight-check observer and four replacement guest ping streams remain live.
+
+The earlier missing packet-variable diagnosis was incorrect. Root read the
+complete inventory and verified its existing
+mwan_webpass_transfer_packet_checks_json generator and consumer. The inventory
+file is unchanged between 02151351 and 078ea2b2. Literal external scenario
+inputs are supported but are unnecessary for forward activation. Eight
+distinct existing packet commands passed once on the healthy baseline.
+Their provider HTTP bodies matched; six ping commands received three of three
+replies. IPv6 edge pings prove edge replies, and unbound guest pings do not
+establish AT&T attribution.
+
+### Prepare the merged Webpass activation phase
+
+Release 202610021844-ac-f4fbb85 published from f4fbb855 with both architecture
+archives. Configs PR 648 merged as 078ea2b24d0d1482042ac90acc427003382160d8
+at 18:54:21 UTC after required checks passed. The clean detached deployment
+checkout now uses that revision. Source worktrees and branches for MWAN PR 176
+and Configs PR 648 were removed through bounded cleanup after exact merged
+source verification. Production is unchanged.
+
+The cutover plan requires a separate ownership activation PR. Configs PR 649
+changes only Webpass ownership, MAC matching and typed DUID/IAID/delegation
+settings. Root inspected its initial 88742d78 diff against current main.
+Its required public render check detected obsolete link-files on the owned
+connection. The implementer is removing only that Webpass field. Preserve
+the existing template, checks and all unrelated providers. The forward deploy
+will inherit merged inventory with path-only controller artifact overrides;
+the older forward provider array must not reintroduce the obsolete field.
+Reverse transfer retains the reviewed networkd scenario inputs. No transfer
+has started. MWAN-519 was restored to In Progress because its required shared
+testbed transfer acceptance remains pending.
+
+Observer 41403 started at 18:56:07 UTC with exact unit
+mwan-cutover-observation-20261002, PID 2186608 and invocation
+880998f8b4024517b512bababc291369. All eight initial checks passed before root
+stopped observer 53402. That old transport exited zero; exact PID 1256853 is
+absent. Its two final unknown transport samples coincide with cancellation,
+not measured application failure. Both observers share the existing remote
+executable and settings, which remain required by the replacement observer.
+The new four-hour observation bound ends near 22:56 UTC.
+
+The distribution lane verified OPNsense IPv4 NAT in actual transit packets.
+The existing public observer can correlate guest requests before that NAT on
+vmbrtrunk, tap201i0 and router MAC bc:24:11:7d:6d:87. Both guests use VLAN 100
+and resolve their router addresses to that MAC. Draft family inputs require
+40 new connections, 20 per guest. Operational carrying, family readiness and
+health establish eligibility; lower tier alone does not establish false
+eligibility. Refresh all metadata after deployment before executing cohorts.
+No cohort or production operation has run.
+
+### Execute the merged Webpass forward transfer
+
+Configs PR 649 merged at 19:07:51 UTC as
+f577d8948eb8c44edfcf5773ea774be0f7d3d9f3. The corrected public render and all
+required checks passed. Only Webpass ownership, typed acquisition settings,
+device matching and removal of its obsolete link-files field changed.
+
+Root started forward controller 36819 at 19:10:21 UTC from that clean merged
+revision with release 202610021844-ac-f4fbb85. The path-only override uses
+Chaos Storage for release staging and rendered network output. All unrelated
+providers, AT&T and management/transit remain under their existing owners.
+The controller is active; forward transfer acceptance remains unperformed.
+Production is unchanged.
+
+Three bounded captures started at 19:09 UTC on Webpass900, AT&T901 and
+primary213. Root verified each unit, PID and invocation, then independently
+read /usr/bin/tcpdump as each actual executable. Their filters include mapping,
+HTTPS, ICMPv6 and DHCPv6 traffic. The artifact catalog records exact identities.
+Observer 41403 and the distribution lane's four guest ping streams remain
+active. A downstream-A IPv4 application request timed out at 19:13:09.716 UTC
+and passed at 19:13:16.846 UTC. Sequential ICMP replies continued during this
+interval; one reply took 1334 milliseconds. This HTTP sample does not establish
+continuous packet loss.
+
+The actual forward operation is 20261002-121120-deploy-315512 with generation
+7ec6016c-c175-4e62-8e5f-64473e3c3d71 and snapshot
+pre-deploy-20261002-121120-deploy-315512. Root independently verified running
+watch PID 2291544 and invocation b9753067a3be43c1a61eb9240b87728c. Its armed
+status included fresh passing required checks before continued preparation.
+The target executable SHA256 is
+f970841fefb241b05fea95b9de34d0971b76141be2abf9de0033722b66455ce1;
+the freshly rendered target network SHA256 is
+24ec95b7a11b4c1ac21d0a0b5d2aaff120028fe4ce3afb5e8574695dbb22bcc5.
+
+The read-only review compared the fresh forward render with reverse network
+SHA256 a95dda2e294635dd78c1cbd697f0687718371a3e67c33d8d95346a4acc3b6115.
+All six nonselected interface records and shared steering settings matched.
+Root independently repeated both structural comparisons; both returned true.
+Webpass preserves its exact MAC, static IPv4 address, gateway and mappings.
+Its typed DHCPv6 settings use the existing vendor DUID and IAID. These render
+comparisons do not establish exclusive ownership or fresh acquisition.
+
+Native OPNsense route monitor 5912 completed its 19:16:39 through 19:26:39 UTC
+window with timeout exit 124, no truncated output and no default-route changes.
+Replacement monitor 65450 started at 19:26:32 UTC with seven seconds of overlap.
+The reviewer verified timeout PID 65450 and route child 65978. Route readbacks
+through 19:25:49 UTC selected both primaries. Actual handover failover remains
+unperformed. No producer or source mutation belongs to that review lane.
+
+MWAN-521 incorrectly remained Done despite its explicit complete-transfer and
+reverse-transfer acceptance. Root restored its actual state to In Progress and
+verified the readback. Merged rendering and isolated implementation results do
+not satisfy the remaining physical ownership acceptance. MWAN-545 remains
+In Progress until the current registered watch terminates successfully after
+commitment. The forward controller remains active.
+
+The preparation restart started daemon PID 6980 at 19:49:58 UTC. Root verified
+its actual process executable matched the released target digest, while the
+installed network and runtime still matched the baseline. Native route events
+recorded both backups selected from 19:49:58.940 through 19:50:16.933 UTC;
+IPv6 backup installation was four milliseconds later. Another complete backup
+window occurred from 19:53:29.935 through 19:53:45.928 UTC for IPv4 and through
+19:53:45.929 UTC for IPv6. The raw capture completed with timeout exit 124 and
+no truncated output. These intervals measure route selection, not client loss.
+
+Root read the intermediate Webpass configuration with owner external and
+steering disabled. Its interface had only a link-local IPv6 address while the
+controller released networkd. Inbound Webpass checks failed during this
+intentional release interval. First passing recovery samples were at
+20:05:20.035 UTC for IPv4 and 20:05:33.197 UTC for IPv6. These sample boundaries
+do not establish continuous outage duration. AT&T recovered from its separate
+restart timeouts, and downstream application samples continued passing.
+
+Root then verified the actual Webpass interface with 10.241.204.2/29,
+10.241.204.3 through .6/32, and 3d06:bad:b01:2200::1/128 installed. The scoped
+operational readback returned configured owner mwan, valid static IPv4,
+bound valid IPv6, saved IPv6 lease state, present router, both routing states
+ready, and healthy carrying selection. Published family firewall-protection
+and readiness scalars returned unknown; this readback alone does not establish
+those requirements. Full forward commitment, reboot, reverse transfer,
+new-connection balancing, faults and recovery remain unperformed.
+
+The distribution lane renewed all four guest ping streams before expiry,
+verified actual replies and exact identities, then stopped the prior exact
+PIDs after documented overlap. All four old transports exited zero. Their
+two-hour transmission/receipt totals were A4 6996/6996, A6 6995/6978,
+B4 6998/6996 and B6 6998/6982. These totals include earlier preparation and
+reboot windows and do not measure one cutover's interruption. The lane's
+catalog records the new bounded producers and retained per-phase logs.
+
+The forward controller exited one at 20:16:29 UTC after a delegated SSH
+checkpoint reported connection reset by the suburban hypervisor. The play
+reported 1424 successful tasks, 183 changes, one unreachable result and zero
+failed tasks. It stopped before full reboot and commitment. This deployment
+already includes merged Configs PR 643 and verified guest preparation revision
+1. No timing comparison establishes a deployment speed improvement.
+
+Fresh hypervisor SSH commands succeeded after the reset. Its SSH journal
+recorded accepted sessions before and after the failure but no server restart
+or matching reset explanation. Effective MaxStartups was 10:30:100; no
+measurement proves that threshold was exceeded. The reset cause remains
+unknown. Do not change infrastructure based on this hypothesis.
+
+The exact operation remained armed with its registered watch active, PID
+2291544 and invocation b9753067a3be43c1a61eb9240b87728c. Its networkd-reload
+lease N37XQYKUWYXVGZQE2LLOBSXW6W expires at 20:32:08 UTC. All eight independent
+operation application checks passed between 20:17:13 and 20:17:29 UTC.
+Root requested recovery through the exact public operation and generation at
+20:18:22 UTC. Recovery controller 6530 writes only to Chaos Storage. Recovery
+must respect the outstanding lease. No competing deployment, cohort or
+production operation is authorized during recovery. The route and guest
+observers remain active. Recovery completion is pending.
+
+Root decoded the actual Webpass provider capture with UTC timestamps. The
+new client sent Solicit transaction bbb064 at 20:05:07.529054 UTC and received
+Advertise at 20:05:07.534057 UTC. It sent Request transaction 2049f3 at
+20:05:07.534439 UTC and received Reply at 20:05:07.535524 UTC. The captured
+client identifier bytes match configured DUID 00:02:00:00:ab:11:11:18:28:f5:
+2b:50:d8:af, and the delegation identity matches IAID 1370549548. The client
+requested an unspecified /56 hint. The reply assigned
+3d06:bad:b01:2200::/56 with T1 60 seconds, T2 120 seconds, preferred lifetime
+180 seconds and valid lifetime 240 seconds. These packets prove fresh
+negotiation separately from the earlier networkd Renew exchanges. They do not
+establish complete transfer, reverse transfer or reboot acceptance.
+
+The reconnect lane inspected the maintained Ansible SSH plugin and executor.
+The focused proposal retries only the four read-only checkpoint commands,
+with three transport retries inside each existing 15-second task timeout.
+Lease and release writes remain unretried. Root assigned exclusive source
+ownership of mwan-operation-checkpoint.yml in the inactive clean activation
+worktree. Root retains live deployment and recovery ownership. The installed
+Homebrew package is Ansible 14.4.0 with ansible-core 2.21.4; executable selection
+and existing quality gates are being verified before integration.
+
+Root posted the exact task, SSH error and recovery status for the deployment
+speed agent in Configs PR 643 comment 5960897630. This communication does not
+attribute the SSH reset to that PR. Ledger 6bf0c5a is pushed after verification
+of all 226 branch-local signatures and raw gpgsig headers. Temporary signature
+files and their script were deleted after verification. Chaos Storage remained
+mounted with 968 GiB available; current controller evidence used approximately
+1.0 GiB. No local Docker resources were created.
+
+Exact recovery controller 6530 completed with exit zero. The operation became
+recovered at 20:34:12.633758458 UTC after all eight restored application checks
+passed between 20:33:57 and 20:34:12 UTC. Root independently verified the
+installed executable, network and runtime hashes match the baseline. The new
+boot ID is 9268d448-9d7c-47a6-8741-a5d9f2c918cc. The registered watch deactivated
+successfully at 20:34:14 UTC, returned ExecMainStatus zero and MainPID zero,
+and its exact former PID was absent. This proves successful terminal recovery
+under the repaired watch; successful target commitment remains unperformed.
+
+Root inspected the complete native recovery route record. IPv4 selected its
+backup at 20:32:19.618 UTC and IPv6 at 20:32:19.746 UTC. Both primary defaults
+returned at 20:33:25.867 UTC. Backup residence was 66.249 seconds for IPv4 and
+66.121 seconds for IPv6. The monitor ended with timeout exit 124 and no
+truncated output. These intervals measure route selection, not client outage.
+Independent observations recorded one downstream B IPv4 timeout during
+restoration, followed by a passing sample at 20:32:29.395 UTC. All four inbound
+checks recovered between 20:33:25.935 and 20:33:35.213 UTC. The complete
+per-phase guest packet analysis remains pending.
+
+The bounded observer review corrected the earlier partial transport report:
+all eight checks had one unknown transport sample between 19:15:55.055 and
+19:16:09.914 UTC, not only downstream B. Those samples report remote observer
+execution failure and do not establish application failure. The controller
+failure and lease-wait phases contain complete passing application samples.
+The failed forward phase and restoration retain their measured failures
+separately; no result establishes continuous total client loss.
+
+Root stopped the exact forward capture producers. Provider transports exited
+zero and their exact PIDs are absent. Webpass captured 87247 packets and AT&T
+captured 108001 packets; both reported zero kernel drops. The restored primary
+has no matching capture unit. Root verified and terminated its obsolete local
+SSH process; transport 74329 exited 255 without terminal counters. No complete
+primary capture or zero-drop claim is supported. Three compact captures retain
+mapping, DHCPv6 and ICMPv6 evidence, use approximately 14 MiB together, parse
+completely, and preserve the fresh DHCP exchange. Superseded full captures are
+eligible for deletion. Full HTTPS cohort acceptance remains unperformed.
+
+Configs PR 651 contains the reviewed seven-line checkpoint fix. Its current
+signed commit is 180b47c63aaf4d389d24e036941d15eaa1000aa2 on base
+f1cf09260e6b75661d4cc46a7847fb67eaf576b3. Both rebases preserved the exact
+read-only retry scope and verified signatures and raw gpgsig headers. Local
+lint and deployment syntax passed. Required data CI remains pending; no
+repaired deployment has started. The saved PR body was verified on GitHub and
+its temporary local file was deleted. MWAN-519, MWAN-521, MWAN-538, MWAN-544
+and MWAN-545 retain incomplete operational acceptance. Production is unchanged.
+
+The completed per-phase ICMP report records eight consecutive unanswered
+sequences in each guest and family during restoration. Last-before and
+first-after reply timestamps span 9.184465 seconds for A IPv4, 9.181109 seconds
+for A IPv6, 9.228883 seconds for B IPv4 and 9.204936 seconds for B IPv6, between
+20:32:10 and 20:32:20 UTC. B IPv4 also had two isolated missing replies during
+the forward phase and one during lease waiting. Other forward streams had no
+missing sequences. These are measured ICMP gaps, not proof that every client
+application failed. The external report retains sequence IDs, counts and exact
+application failure timestamps. Producer overlap is excluded from any combined
+count. HTTPS distribution cohorts remain unperformed.
+
+PR 651 merged normally as 69ed320643b60bd9eeccc18b62ba1791dd3b009f at
+20:42:05 UTC. All three required checks passed and no unresolved review thread
+remained. Root verified the rewritten commit signature and raw gpgsig header
+before merge. The next physical forward attempt must use this merged revision
+and the same independently reviewed Webpass configuration. No production
+operation is authorized before the remaining testbed acceptance passes.
+
+The repeated forward controller 20561 started at 20:47:32 UTC from clean merged
+Configs 69ed320643b60bd9eeccc18b62ba1791dd3b009f, using the same F4 release
+and reviewed Webpass-only configuration. Root independently read operation
+20261002-134829-deploy-738854 with generation
+d2f0d984-c943-47cc-aa84-b1823f83b63f. Its registered watch is active with
+PID 2781844 and invocation c80258d1af6e4b90b819f474385f4871. The snapshot is
+pre-deploy-20261002-134829-deploy-738854. All eight required application checks
+passed between 20:55:02 and 20:55:19 UTC. The current cloudflared-configuration
+lease expires at 20:58:27 UTC. Complete ownership transfer and commitment are
+still pending; passing preparation checks do not establish them.
+
+Root verified three bounded capture producers before this attempt. Webpass
+uses PID 667429 and invocation e902335dbe0340ab82473bfe043469f8; AT&T uses
+667310 and 3d110b1e265d4753b4d35769a2cc875e; primary transit uses 1124 and
+7d0589dd3f58495fb585887da629026e. Their files use the retryforward prefix
+under the external resume-controller directory. The existing four guest ping
+streams and independent application observer remain active. The native route
+observer renewed at 20:54:22 UTC with PID 48709 and a 133-second overlap.
+All readbacks through 20:54:25 UTC selected the primary in both families.
+The root controller remains the sole network mutation owner.
+
+The reconnect implementer removed only its clean merged source worktree and
+branch after bounded cleanup verification. The deploy checkout is unchanged.
+The three superseded full captures from the failed attempt were deleted after
+their results became durable. Compact DHCP, mapping and ICMP evidence remains.
+Chaos Storage is mounted with 966 GiB available; current root controller
+artifacts use 981 MiB. Production remains unchanged.
+
+The independent source audit confirmed an existing publication defect at exact
+release source f4fbb855967832c7d4da99e17fb65b004b524dac. Family firewall
+protection and forwarding readiness initialize to unknown and have no production
+setter callers. The public operational callback publishes those unchanged
+values. Root inspected the setters, firewall module publication and daemon
+reconciliation. This proves missing reporting, not failed kernel protection or
+failed packets. MWAN-516 was reopened to In Progress under its existing readiness
+contract. A bounded implementer owns only firewall result publication and
+per-connection readiness integration in a separate source worktree. The global
+readiness socket must retain its aggregate semantics; another provider's success
+must not establish readiness for Webpass.
+
+Before target installation, the read-only firewall inspection on the restored
+baseline guest returned zero at 21:02:53 UTC. The executable still identified
+a96991a and the served Webpass owner remained networkd. This result establishes
+only baseline kernel agreement. The target release, owned transfer and corrected
+family publication still require actual testbed acceptance. Controller 20561
+remains active. Production is unchanged.
+
+The family-state implementer committed dadf74ef7c5a97a3548ca82448039a8b90e660ed
+in the isolated source worktree. Root inspected the production patch and its
+existing daemon/sysrepo regression. AMD64 and ARM64 package builds and AMD64 vet
+passed. The runtime regression and Linux builder gates are unperformed locally;
+cgo-free command compilation cannot resolve yangpub.LoadSchema. The regression
+uses actual kernel inspection and the fixture's real destination-refresh module
+failure to distinguish protection from readiness. It adds no mock, probe or
+test infrastructure. Positive readiness and provider/family independence still
+require actual systemd testbed acceptance. Root verified the signature and raw
+gpgsig header and assigned a separate read-only reviewer. The commit is not
+pushed or merged. Disposable verification artifacts were purged; only its
+compact external catalog remains.
+
+The repeated deployment remains active. All eight independent application
+checks passed through 21:16:49 UTC. Guest A IPv6 missed only sequence 2540,
+between replies at 20:49:55.653072 and 20:49:57.701030 UTC. Root independently
+read those raw ping records. The other three streams had no recorded unanswered
+samples in this interval. This isolated ICMP result preceded the net udev phase
+and does not establish total client loss. The exact operation watch remained
+active with its registered invocation. Networkd-dispatcher completed after the
+udev reconnect. Complete ownership transfer, target commitment and reversal
+remain pending. Production is unchanged.
+
+PR 177 merged normally as b8b7f520c36b5ed0787ccf91c78f46af0e276593 at
+21:35:53 UTC. Its reviewed source head was
+dadf74ef7c5a97a3548ca82448039a8b90e660ed. The independent reviewer approved
+the exact patch. Root inspected the report and diff. Both Graphite findings
+were disproven with source evidence, received explanatory replies and were
+resolved. All ten checks required by the active ruleset passed. The namespace
+and ARM64 runtime jobs passed; this entry does not establish that a particular
+new case executed. The optional firewall job failed in the existing mapped
+daemon case because an NPT edge remained in its ownership journal when the
+case expected none. Govulncheck also failed; its cause remains unverified.
+Neither failure is recorded as passing. The merged release workflow is active.
+The running Configs deployment remains on F4 and is not modified by this merge.
+MWAN-516 remains In Progress pending actual corrected publication acceptance.
+
+The repeated forward deployment executed selected-owner release. Root inspected
+the live kernel and operational state at 21:36 UTC. Webpass had only its
+link-local IPv6 address, external ownership, disabled selection and not-ready
+routing. Its defaults and mapped addresses were removed between 21:33:06 and
+21:33:08 UTC. The WAN daemon was active with PID 5841 and invocation
+ef36cecab0ce4c5b9d815cd83b165140. Read-only firewall inspection returned zero at
+21:37:53 UTC. This proves policy agreement during release, not acquisition or
+restored mappings. Configs installs external ownership and releases networkd
+before installing the replacement owner. The independent source reviewer
+confirmed two unconditional 120-second reconnect delays after reload and
+selected reconfiguration. These contribute 240 seconds before acquisition,
+plus intervening operations. The handover lease permits selected inbound
+failures during this phase. The controller completed the first reconnect and
+has not completed selected reconfiguration verification. This intermediate
+state does not establish an acquisition defect. Complete transfer, commitment
+and reversal remain pending.
+
+Webpass inbound checks began failing at 21:33:16 UTC and still failed in both
+families at 21:35:46 and 21:35:58 UTC. AT&T inbound replies and both downstream
+guests' application checks passed through 21:36:12 UTC. Root independently
+read these current operation results. Required checks are unhealthy and the
+operation is not mutation-ready. Its registered watch and handover lease remain
+active. No production operation occurred. Distribution cohorts remain unperformed.
+
+The F4 forward controller completed connection transfer accounting and restored
+Webpass selection before 21:46:35 UTC. Root read actual MWAN ownership,
+administrative eligibility, carrying state, healthy probes, both routing
+verdicts and both translation verdicts at 21:47 UTC. The other six interfaces
+remain networkd-owned. Installed executable, network and runtime hashes match
+the operation target exactly. Webpass has its configured IPv4 address and four
+additional mapped addresses, plus the delegated IPv6 edge. Root inspected
+the provider capture: Solicit 831ec4 at 21:41:05.929409 UTC, Advertise at
+21:41:05.930464, Request 3b0c65 at 21:41:05.931780 and Reply at
+21:41:05.933930. The reply assigns 3d06:bad:b01:2200::/56 with IAID 1370549548,
+T1 60, T2 120, preferred lifetime 180 and valid lifetime 240 seconds. This
+establishes fresh negotiation rather than lease import. The capture producer
+is still active; this read does not establish capture completion.
+
+All eight operation checks passed through 21:46:53 UTC. Webpass inbound first
+passed again at 21:41:20.884267482 UTC for IPv4 and 21:41:26.437390895 for
+IPv6. A subsequent restart produced isolated inbound timeouts followed by
+passing samples at 21:44:24 through 21:44:26. Both downstream guests continued
+passing application checks during that interval. Complete deployment commitment,
+reverse transfer, reboot and distribution acceptance remain pending. Controller
+20561 is active and the independent observer 41403 is also active.
+
+Root inspected native default-route events in the completed 55046 and 65530
+monitor outputs. Both QGA results exited with 124 and no truncated output.
+The first backup selection lasted 17.995 seconds for IPv4 and 17.994 for IPv6,
+from 21:25:49 to 21:26:07 UTC. The next selection lasted 18.004 and 18.008
+seconds, from 21:29:23 to 21:29:41. The third lasted 39.995 seconds in both
+families, from 21:33:04 to 21:33:44. These are installed-route intervals,
+not total client outage durations. Actual packet and application results
+remain separate.
+
+The separate Configs release pin merged as
+269c2f9183732f34dbd21fe593c382f799d821dc at 21:53:53 UTC under PR 653.
+Root inspected the six-line gateway-only diff, required checks, zero unresolved
+threads, source signature and raw gpgsig header. Release
+202610022136-ad-b8b7f52 completed publication and verification. Its AMD64
+binary and wanconfig archive digests match the pin. The existing installer
+requires checksums and release attestations before extraction. Production
+and broader testbed default pins are unchanged. The Configs implementation
+lane removed its verified merged worktree and local branch using cleanup-git.
+Its caches and temporary files are deleted; only the compact catalog remains.
+The active deployment checkout remains on 69ed320 with F4. PR 653 is not
+deployed. No second deployment may begin until controller 20561 is terminal.
+
+The independent review of the optional firewall CI failure found a source
+observation window between kernel address deletion and receipt persistence.
+The test waits for kernel removal and then reads the journal once. NPT cleanup
+deletes and verifies the address before writing the updated journal. The
+failure supports a synchronization race but does not establish a persistent
+production cleanup failure. No test or production code changed for this
+finding. Reverse transfer must verify the unchanged translation edge and its
+receipt; an empty journal is required only after obsolete intent cleanup.
+
+The repeated physical forward deployment 20561 finished with exit zero at
+approximately 22:00:43 UTC. Its recap reports 1663 successful tasks, 208
+changes, zero failed tasks and zero unreachable hosts. Exact operation
+20261002-134829-deploy-738854 with generation
+d2f0d984-c943-47cc-aa84-b1823f83b63f committed at
+22:00:42.611132635 UTC after all eight required application checks passed.
+Root verified persisted commitment, target hashes and the watch journal's
+successful deactivation at 22:00:46 UTC. The registered watch PID was absent.
+Unit collection alone was not used as proof of successful completion.
+MWAN-545 is Done for its verified concurrent commitment and watch completion.
+
+The guest reboot changed boot identity to
+2bb9ddf3-9727-478e-a80c-03b7b53e641a. Its executable, network and runtime
+hashes still matched the operation target. Native monitoring recorded backup
+selection from 21:59:21.196 to 22:00:04.125 UTC for IPv4 and from
+21:59:21.197 to 22:00:04.125 for IPv6. Both downstream guests continued
+passing application checks. All four inbound checks recorded two timeouts
+and recovered between 22:00:04.572 and 22:00:05.490 UTC. Route residence
+does not establish total client outage duration.
+
+Both physical distribution cohorts completed forty HTTP requests, twenty per
+guest. IPv4 observed ATT 26 and Webpass 14 between 22:05:30.529742521 and
+22:07:10.041103771 UTC. IPv6 observed ATT 24 and Webpass 16 between
+22:07:40.188055351 and 22:09:22.589512801. Every request correlated with LAN
+and provider ingress SYN evidence. Both shares satisfy the reviewed bounds,
+but both public acceptance results remain error/unknown. Capture finalization
+combines statistics errors with packet drops and omits the actual interface,
+counter values and underlying error. Neither cohort is accepted. Both CLI
+transports are terminal; all twelve capture sockets were owned by their
+completed coordinators. No coordinator remains. The distribution lane owns
+a focused diagnostics correction in the existing public capture result,
+without changing acceptance semantics, calibration, filters or request counts.
+
+The reboot terminated the old transit capture transport 24858 with exit 255;
+ending capture counters are unavailable. Root started bounded postboot transit
+capture 13386 at 22:02:53 UTC with unit
+mwan-retryforward-transit-postboot-20261002, PID 988 and invocation
+f0d61b54d623444ca3150cb6fa5e32a0. Its two-hour deadline is 00:02:53 UTC
+on October 3. Active capture evidence remains on Chaos Storage. Reverse
+transfer and corrected family-state publication remain unperformed.
+
+PR 177 source cleanup completed the remote lease deletion with terminal exit
+zero. The merged source worktree and local branch were already removed.
+Only its compact verification catalog remains. Production is unchanged.
+
+The next approved reverse slice began at 22:21:01 UTC. Root alone controls
+live Configs transport 94824 from clean detached merged revision
+269c2f9183732f34dbd21fe593c382f799d821dc and release
+202610022136-ad-b8b7f52. Its reviewed Webpass reverse input restores networkd
+ownership without changing the other interfaces. The input SHA256 is
+25305763889ef1029eba8fe4622bf21af40e20ddaf8db65691d93f7f1bc7c9bb;
+the target network hash is
+a95dda2e294635dd78c1cbd697f0687718371a3e67c33d8d95346a4acc3b6115.
+All eight independent application observations passed before initiation.
+The controller verified the matching B8 hypervisor gate and watchdog, prepared
+the exact snapshot and started operation arming. It is still active; reverse
+acceptance and corrected family-state publication are unperformed.
+
+MWAN-546 tracks the confirmed capture diagnostics defect under MWAN-305 and
+is In Progress. PR 178 contains signed commit
+2e15cec71e94007ca4eb94a489be52f8bbaeaf34 in the exclusively assigned three
+observation files. Root inspected the diff and full capture/distribution
+sources. Independent review and required runtime gates remain pending.
+The patch preserves current verdict semantics and reports each finalized
+capture's native statistics and errors. It does not establish the underlying
+cohort failure cause. No new filters, infrastructure or calibration changes
+were added. Active artifacts remain on mounted Chaos Storage; controller
+storage uses approximately 1.1 GiB and distribution storage 18 MiB. Owned
+signature verification scratch files were deleted after the ledger push.
+
+Independent review approved the exact PR 178 source head 2e15cec. The reviewer
+verified partial-open slice lengths, all early-return cleanup, serialized
+reader shutdown, result publication and unchanged acceptance semantics.
+Required Staticcheck Extra then rejected time.Now outside internal/clock.
+The original implementer published signed
+8fcf6433388594a1e56a82287b1248e0ac084dca, using the existing injected clock
+for finalization. Root inspected this one-file followup; independent review
+and exact-head required checks remain pending. Previous-head AMD64 and ARM64
+compilation, tests, vet, namespace runtime and ARM64 runtime passed. These
+results do not establish current-head acceptance. No CI workflow changed.
+
+Root reduced the terminal preboot transit capture from approximately 31 MiB
+to 5.8 MiB. The retained retryforward-transit-retained.pcap includes mapping
+port 1406, DHCPv6 and ICMPv6 packets. Native tcpdump decoded the entire
+retained capture with exit zero. Original acquisition, application and reboot
+results are durable above. Ending counters remain unavailable after reboot.
+The superseded full capture is eligible for deletion after this entry is
+committed. Active provider and postboot captures remain unchanged.
+
+Independent incremental review approved exact signed 8fcf643 after checking
+the existing clock default and constructor. No new finding remains from that
+review. Exact-head required CI is still running. Root deleted the superseded
+31 MiB preboot transit capture after its compact 5.8 MiB replacement and
+purpose were committed as 3541e39. Active captures remain unchanged.
+
+Root independently read the reverse manifest and operation status. Exact
+operation 20261002-152200-deploy-368253 uses generation
+50ca1044-9172-4079-86c7-173953db3f9e and snapshot
+pre-deploy-20261002-152200-deploy-368253. Its watch is running with PID
+3273243 and invocation 6e6d1ba919624f1aaf96cf67752dd076. Status at
+22:28:44 UTC is armed and mutation-ready with all eight checks complete/pass.
+The target executable hash is
+7df2c484c0c87ed13f018a80d96d491115c618c945691b6d8429fa772e8005c1;
+network A95d and runtime C1be match the reviewed reverse pair. Controller
+94824 remains live. Reverse acceptance is pending; production is unchanged.
+
+### Recover the failed reverse preparation and repair retry selection
+
+Reverse transport 94824 ended with exit one at 22:35:11 UTC on October 2.
+The play reported 306 successful tasks, 48 changes, one failure, one rescued
+failure, zero unreachable hosts and 17 skipped tasks. The bounded gateway
+mutation lease task timed out after 15 seconds. The actual reverse ownership
+transfer did not execute and remains unaccepted.
+
+The registered watchdog recorded Guest A's IPv6 application timeout at
+22:33:06.675766481 UTC and emitted deploy_operation_observation_failed at
+22:33:12.352122138 before snapshot recovery. Root did not initiate a second
+manual recovery. The operation restored its exact baseline and reported
+recovered at 22:35:11.456418566. All eight restored application checks passed
+between 22:34:58.437331957 and 22:35:11.453770827. The warning proves journal
+publication, not delivery of an email or external notification.
+
+The recovered executable SHA256 is
+f970841fefb241b05fea95b9de34d0971b76141be2abf9de0033722b66455ce1;
+the network SHA256 is
+24ec95b7a11b4c1ac21d0a0b5d2aaff120028fe4ce3afb5e8574695dbb22bcc5;
+the runtime SHA256 is
+c1be8fc749f15fab68e20ea27307f6765a4cf77c2f44b870df5ffe53f7a5d189.
+The recovered boot is 6d525d69-a44b-406c-9eee-151eda7038a9. Webpass remains
+MWAN-owned under the previously accepted F4 forward baseline; the other six
+interfaces remain networkd-owned. A fresh operation-status read independently
+confirmed these hashes and recovered status. Production remains unchanged.
+
+Native route events recorded backup selection at 22:33:27.299 for IPv6 and
+22:33:27.300 for IPv4. Both primary defaults returned at 22:34:19.140.
+Backup residence was 51.841 seconds for IPv6 and 51.840 seconds for IPv4.
+These intervals do not establish total client outage duration.
+
+Root application observer 15159 and packet capture transports 8716, 90259
+and 13386 ended with SSH exit 255 during the interruption. Capture ending
+counters are unavailable. Root observer 41403 had already stopped after
+replacement observations passed. Observer 15159's final recorded Guest A
+IPv6 timeout was 22:33:06.523896630. Application recording resumed with
+observer 66258 at 22:39:11, using unit
+mwan-cutover-observation-renewal-c-20261002, PID 3332033 and invocation
+5374515fe9a543dc8acddbcde7b0e627. Its bound ends at 00:39:11 UTC October 3.
+All eight checks passed in its initial complete batches. The recording gap
+does not prove continuous client loss. Old ping D transports also ended with
+exit 255; their terminal totals are unavailable. Verified ping E producers
+resumed at 22:37:55 through 22:37:59. Their catalog records exact identities.
+
+MWAN-547 tracks a confirmed connection selection defect under MWAN-305.
+The same Guest A IPv6 SYN sequence 2513719411, source port 41861 and
+destination 2606:4700::6810:7c60:443 used Webpass at 22:32:56.520272 and
+AT&T at 22:32:57.582410, with different translated source addresses. A second
+connection, port 42289 and sequence 763922873, alternated providers on
+retries. Root inspected all three terminal packet captures and the actual
+deployed nftables rules. F4 restores connection marks only for established
+or related packets. Unreplied NEW retries can repeat the random selection.
+
+Independent source review confirmed the existing kernel conntrack and
+maintained nftables interfaces support a focused correction. Restore a saved
+nonzero connection mark for NEW packets before steering. Preserve initial
+zero-mark policy selection, established restoration, postrouting save and
+family eligibility remapping. The original reviewer now owns only this
+implementation in internal/firewall/rules.go and an appropriate existing
+public-boundary regression if available. Independent review and physical
+testbed retry proof remain required. This defect does not establish the
+cause of the broader SSH interruption or lease timeout.
+
+Root inspected each PR 178 followup and the independent review reports.
+Exact signed head 1d6c4ac9cd9313bbccfd1171a5b465803f1bfa6f replaces the
+statistics-availability flag and flat counts with an optional typed
+CaptureStatistics object. Missing statistics remain distinct from valid zero
+counts. The finalization clock uses the existing injected clock. Required
+checks passed on this head; a fresh ruleset and thread check still precedes
+merge. Capture acceptance semantics remain unchanged. MWAN-546 remains
+In Progress until physical cohorts provide complete diagnostic evidence.
+
+The artifact volume remains mounted with approximately 964 GiB free.
+Terminal captures containing the MWAN-547 SYN evidence remain necessary
+until minimal unique replacements and durable summaries are verified.
+Active observer artifacts remain necessary. Superseded generated files must
+be purged after their evidence is recorded. No new production operation,
+infrastructure repair or CI workflow was added.
+
+PR 178 merged normally as dd34143c8f3cc1a24a71589cc86e02c4598d0bf4 at
+22:55:29 UTC. Root freshly verified the active ruleset, all ten required
+checks, commit signature, mergeable state and both resolved review threads.
+Root inspected the finalization code before accepting the second bot finding
+as disproven: each returned error category is also published in finalized
+capture evidence, and normal completion checks finalization before passing.
+No source change or redundant log was added for that finding. Release
+publication and physical diagnostic cohorts remain pending. Production is
+unchanged. Tack comments now include the exact failed reverse, automatic
+recovery and MWAN-547 findings; open acceptance tickets remain In Progress.
+
+PR 179 implements MWAN-547 at signed
+ca06699ed67eb3ea28da3b40a31a41150561227f. Root inspected its one-line diff
+and complete firewall source. Independent review approved this exact commit
+after checking both families, policy ordering, hairpin return, pinned UDP,
+zero-mark first packets and later family-ineligible remapping. Direct AMD64
+and ARM64 firewall compilation, vet, formatting and whitespace checks passed.
+Existing required CI is running. Local Docker images are absent; no builder
+image or internal-disk cache was generated. No existing public runtime case
+tests two-provider unreplied retries. Physical same-tuple/SYN-sequence proof
+and application recovery are required before acceptance.
+
+Root created minimal replacements for the three terminal captures:
+retryforward-webpass-retained.pcap, approximately 3.0 MiB;
+retryforward-att-retained.pcap, 6.2 MiB; and
+retryforward-transit-postboot-retained.pcap, 2.3 MiB. Each preserves mapping
+port 1406, DHCPv6, ICMPv6 and the two incident TCP source ports 41861 and
+42289 at destination port 443. Native tcpdump decoded every replacement
+completely with exit zero. Root separately verified both original SYN
+sequences and provider changes in these replacements. Ending counters remain
+unknown. The superseded 26 MiB, 34 MiB and 12 MiB captures are eligible for
+deletion after this entry is committed. Retain their original transport errors.
+
+Existing kernel runtime tests rejected PR 179's initial decimal-zero rule:
+Linux prints ct mark != 0x00000000, but firewall Inspect does not normalize
+conntrack comparison literals. Module.Reconcile therefore returned a rule
+inspection error. TestReconcileRepairsDeletedRulesAndRetriesFailedRefresh
+and both TestFirewallReconcileAcceptsPackets naming subcases detected the
+regression before packet assertions. The initial commit is not deployable.
+
+Signed correction d8170857dd5c618a2fe71a8c74a0203b7388ec5e uses the exact
+observed canonical zero literal. Root inspected its incremental diff and the
+complete Inspect normalizer; independent incremental review passed. Direct
+AMD64 and ARM64 compilation, vet, formatting and whitespace passed again.
+Exact-head existing kernel and required CI reruns remain active. No new test,
+CI change or deployment occurred. Physical retry proof remains required.
+
+PR 178 release 202610022255-ae-dd34143 completed publication and verification.
+The exclusively assigned diagnostic source worktree and matching local and
+remote refs were removed after direct containment, clean status and open-file
+checks. Active observations and minimal unique evidence remain intact.
+Root deleted the three superseded terminal captures after commit 57ab13d.
+Root also removed regenerable release caches for 2cbfdd9, d1ac42e and
+b8b7f52 after verifying terminal deployments and no open files. Original
+incident, production recovery and current F4 baseline caches remain.
+Controller artifacts decreased from approximately 1.1 GiB to 869 MiB.
+
+Read-only guest A HTTPS baselines passed for dedicated destinations
+1.1.1.1 and 2606:4700:4700::1111. Existing required application checks use
+different destinations. The bounded physical retry procedure must account
+for observed IPv4 source-port translation rather than assuming guest ports
+remain unchanged. No packet suppression or physical retry control ran yet.
+
+PR 179 merged normally as 054e41d00f5cd41f8cae2362eff51fa80e0fe059 at
+23:07:31 UTC. Exact-head required checks, kernel namespace runtime and ARM64
+runtime passed; review threads were empty. Release 202610022307-af-054e41d
+published at 23:11:58 and passed normal release verification and attestation.
+Its AMD64 archive SHA256 is
+df55e0e929b0921c8ce223d358090f71e94165ede9ac5c4db80c57d784f0cc19.
+The source worktree and contained local/remote branch were removed after
+clean status and open-file proof. The candidate is not deployed. The separate
+Configs lane owns only the testbed inventory release-pin PR.
+
+Root executed the reviewed F4 IPv4 retry control on guest 225 using native
+three-second timeout sets on both provider simulators. The literal HTTPS
+destination 1.1.1.1 does not match current required application destinations.
+Guest tuple 10.240.1.241:55041 and SYN sequence 1299260470 appeared on
+Webpass at 23:11:41.316895 UTC, AT&T at 23:11:42.318400 and Webpass again
+at 23:11:43.342330. Provider ingress retained translated source
+10.241.204.2:14724 during the AT&T retry. Webpass recorded one
+dropped initial SYN; AT&T recorded zero. The request completed HTTP 200.
+This positively reproduces changing providers for one unreplied connection.
+
+The provider captures ended with 1177/1177 and 2024/2024 captured/received
+packets and zero kernel drops. Whole-host vmbrtrunk capture ended with
+197702 captured, 204160 received and 6458 kernel drops. Transit frames were
+VLAN-tagged and required VLAN-aware decoding. All three native units exhausted
+their 45-second bound; transports ended with exit one. Their complete counters
+are retained. Capture completeness is failed, not accepted. Root removed
+both exact mwan547_retry tables and verified original NAT/filter definitions
+unchanged. No ownership change or production operation occurred.
+
+The next bounded control uses the actual gateway virtio transit interface
+enmwanbr0, verified up, and stops exact native units after the request within
+the same execution call. This excludes unrelated host trunk traffic and avoids
+assuming untagged frames. A narrow guest eth0 capture records the original
+tuple and sequence independently of OPNsense IPv4 port translation. Candidate
+proof requires retransmitted SYNs, positive fault counters, unchanged provider
+selection, HTTP 200 and complete captures with zero kernel drops for both
+families.
+
+Root reduced the terminal first-control captures to three matching
+f4-v4-a1-*-retained.pcap files under planned-handover. Each contains only the
+literal HTTPS connection; the transit replacement retains its VLAN tag.
+Native full decoding passed for every replacement. Retain original ending
+counters, request result and producer identities. Superseded full captures
+are eligible for deletion after this entry is committed.
+
+The narrowed F4 IPv6 control reproduced changing providers with complete
+capture evidence. Guest source 3d06:bad:b01:211::225:55061 and SYN1312340832
+used AT&T at 23:18:23.465201 UTC and Webpass at 23:18:24.494434 on the
+same hypervisor clock. Translated prefixes differed. AT&T recorded one
+dropped initial SYN; Webpass recorded zero. The request returned HTTP200.
+Provider, original guest and gateway captures reported zero kernel drops.
+Captured/received totals were Webpass29/29, AT&T1/1, guest30/30 and
+gateway30/31. All four transports ended with exit zero after exact unit stops.
+Guest tcpdump was absent, so root used the verified host veth225i0 peer of
+guest eth0 without installing packages. Native peer indices, MAC and container
+configuration verified that original-packet boundary.
+
+The repeated F4 IPv4 control also reproduced the defect with complete
+capture evidence. Guest10.240.1.241:55042, transit10.240.240.2:62346 and
+SYN4207750633 correlated with provider source10.241.205.2:62346.
+AT&T observed the SYN at23:20:17.730286 UTC, Webpass at23:20:18.735149,
+then AT&T at23:20:19.761757. AT&T dropped one initial SYN; Webpass recorded
+zero. HTTP200 followed. Captured/received totals were Webpass1/1, AT&T32/32,
+guest33/33 and gateway33/33, with zero kernel drops. All four transports
+ended with exit zero. The provider timestamp comparisons use one hypervisor
+clock; gateway timestamps differ and are not used for interruption durations.
+
+Root removed both exact fault tables after each control and verified the
+original provider NAT/filter definitions unchanged. All eight application
+checks passed in64 sampled results from23:22:32.544291743 through
+23:23:28.620263449 UTC. Fresh guest hashes still match the F4 baseline.
+These results establish the old release's retry defect, not candidate
+acceptance. The compact captures, ending counters and request results remain
+necessary until the merged candidate repeats both controls successfully.
+
+Configs PR 655 merged as 4fbfacfbf28724b76b7e094bb4ad8739710dad43.
+The root deployment checkout is clean and detached at that revision.
+The next testbed deployment installs release 202610022307-af-054e41d
+using the existing reviewed Webpass forward input. Its network hash
+24ec95b7a11b4c1ac21d0a0b5d2aaff120028fe4ce3afb5e8574695dbb22bcc5
+matches the installed F4 network; this operation changes no interface owner.
+All eight application checks passed at 23:32 UTC. The gateway service is
+active with PID 315. Installed executable, network and config.toml hashes
+match the recorded recovery pair. Observer C remains active with its exact
+recorded PID and invocation. Root remains the sole deployment controller.
+Production remains unchanged. Candidate retry acceptance is unperformed.
+
+Root started the exact configsctl deployment at 23:33 UTC. Transport 49991
+owns the operation. The wrapper log and actual play log remain on Chaos
+Storage under resume-controller. Release preparation and verification passed;
+the play continues. The prior operation is recovered with no lease and its
+watch is inactive. Observer C, all four Ping E streams and native route
+observations remain independently assigned and active.
+
+The old baseline recorded Guest B IPv6 HTTP failure at 23:32:45.078031238
+and Guest A IPv6 timeout at 23:32:50.813223415 UTC, before deployment.
+Their next complete passes occurred at 23:32:54.063496657 and
+23:32:57.757266427. IPv6 selected backup in the 23:32:51 native sample
+and primary in the 23:33:46 sample. Exact event duration remains pending.
+Ping sequence matching identified delayed replies and separate unanswered
+sequences. These samples do not establish total client outage or a deployment
+cause. Preserve them independently of candidate acceptance.
+
+Candidate deployment transport 49991 ended with exit one at 23:36 UTC.
+Snapshot creation failed before gateway preparation because VM 213 retained
+a snapshot-delete lock. The matching hypervisor executable and watchdog
+upgraded to 054e41d, but the guest executable, network and runtime remain
+the F4 baseline. All eight application checks passed after failure.
+No new deployment recovery operation was armed.
+
+Proxmox active tasks returned an empty list twice; no snapshot or ZFS destroy
+process matched the bounded process query. Prior deletion tasks were terminal
+errors. Watchdog logs recorded failed snapshot deletion and cancellation
+during its restart. Root cleared only VM 213's stale lock with qm unlock
+and verified the lock field absent. No snapshot or production state was
+deleted. Root will retry the same merged deployment and reviewed input.
+
+Retry transport 56554 started at 23:38 UTC through the same clean merged
+configsctl command and reviewed forward input. Snapshot creation passed;
+released observer provisioning continues. The actual play log is
+resume-controller/tmp/configs-runs/deploy-mwan-20261002T233858Z.log.
+Guest A IPv4 HTTP timed out at 23:41:30.739099973 UTC and passed next at
+23:41:38.971814422. IPv4 ping replies continued during that interval.
+Fresh gateway version still reports F4 during this preparation. The result
+does not prove candidate behavior or continuous client packet loss.
+
+The retry armed operation 20261002-163955-deploy-924045 with generation
+5dc7ba56-0996-436b-a15d-ee10b291e05c. Its exact watch is active with PID
+3646024 and invocation 9955112c888144938caf3f4dabe91979. Root read all
+eight operation checks passing and mutation_ready=true before preparation.
+Target executable hash is
+787bd8cca577206514bf6fb2c84289e7977f2a8d050d66e0f672f0a9a4fb2967;
+network and runtime hashes remain unchanged. The play continues under bounded
+mutation leases. Candidate fault controls remain unperformed.
+
+MWAN-548 tracks the measured stale snapshot-lock blocker. Root inspected
+startup and lock recovery source after independent review: post-prune cleanup
+uses the cancelled loop context, and startup does not retry stale lock cleanup.
+The deployment snapshot precedes operation arming. A bounded repair proposal
+is assigned separately without live mutations. Preserve active-task checks,
+unrelated locks and rollback locks. The exact original lock-setting deletion
+remains unproved. This defect is not grounds for a broader pruning redesign.
+
+Root inspected the minimal native monitor and family readbacks for the
+predeployment IPv6 event. The monitor reports exited=1, exitcode=124 and
+out-truncated=0. Primary deletion occurred at 23:32:47.720 UTC, backup
+installation at 23:32:47.721, and primary restoration at 23:32:54.722.
+Backup residence was 7.001 seconds. No IPv4 default change appears in that
+interval. This measures route selection; client application and ping results
+remain separately recorded. Raw route-change evidence remains necessary.
+
+The observation lane identified approximately 102 MiB of regenerable Go build
+cache and 62 MiB of module cache, with no open files in either directory.
+The lane may delete only those owned caches after cataloging their exact
+paths. Preserve native route-change artifacts, active observers and source
+worktrees. Required incident evidence must remain until acceptance completes.
+
+October 3, 2026, 00:05 UTC: Retry transport 56554 remains running. The exact
+operation remains armed and mutation_ready=true with the original watch
+invocation. Its latest eight inbound and downstream checks pass. Direct SSH
+to the configured management address verifies executable hash
+787bd8cca577206514bf6fb2c84289e7977f2a8d050d66e0f672f0a9a4fb2967;
+mwan-agent and mwan-ifmgr@wan.service are active. This proves candidate
+installation, not deployment commit or packet acceptance. Candidate faults
+and distribution cohorts remain prohibited until commit and healthy baseline.
+
+MWAN PR 180 contains signed source commit
+494b86f891d9eceba5dbb4c1e0944d191afb1b1b. Independent inspection passed
+the supported-lock, active-task, cancellation and snapshot-wait contracts.
+The fresh active ruleset requires ten named checks and thread resolution.
+No review thread exists. Required Golangci Lint and Staticcheck Extra failed;
+the implementation owner must diagnose and correct these before merge.
+Both architecture compilations, build, test and vet passed. Configs integration
+is assigned to the same owner in a separate external checkout, after the
+source correction. The active deployment checkout must remain unchanged.
+
+The observation owner deleted only its unused planned-handover/cache/go-build
+and planned-handover/cache/go-mod directories after checking open files.
+Both paths are absent. The directory decreased from 178980 KiB to 11068 KiB.
+Unique route evidence and active observations remain. Chaos Storage has
+959 GiB available. Production remains unchanged.
+
+At 00:11 UTC, PR 180's signed correction
+d1bcdb36431bd573ecb3a5feca2739d45216e998 passed independent incremental
+review. The exhaustive dispatch creates no socket or schema dependency.
+Native operation errors preserve identity; the CLI wraps them with %w and
+logs the final failure once. Lock decisions and native snapshot-wait behavior
+remain unchanged. Root verified both branch signatures and raw gpgsig headers,
+current mergeability and absent review threads. Normal GitHub auto-merge is
+enabled for the exact head, contingent on required checks. Merge and release
+remain unproved until their authoritative results are read.
+
+The Configs owner prepared a separate external checkout from merged main
+2248cbfa. Its integration will use the installed /usr/local/bin/mwan,
+/etc/mwan/config.toml and existing mwan_operation_poll_budget_seconds.
+It must preserve the native snapshot wait and may pin only a published merged
+release. Active deployment 56554 remains unchanged. At 00:12 UTC its original
+watch remains armed and all eight checks pass. The running ifmgr still uses
+F4 until activation; candidate packet controls remain unperformed.
+
+At 00:14 UTC, the corrected source still fails required Golangci Lint:
+dispatch contains 62 statements and wrapcheck requires contextual wrapping
+of native interface errors. Staticcheck Extra passed the direct-return
+revision. Root disabled auto-merge pending another reviewed correction.
+Move the existing verified stale-unlock warning into the common recovery
+operation and remove caller duplicates. Preserve watchdog notification and
+the single final failure log. Wrap native errors with %w. Add no dummy log,
+suppression or new error-construction mechanism. The fresh Govulncheck job
+also ended after runner shutdown with exit 143; it produced no vulnerability
+verdict and does not prove a clean vulnerability scan.
+
+The shared Configs snapshot command also requires a compatible production
+release pin. Current production release 202610021553-ab-a96991a lacks the
+new verb. Root assigned release tag and asset hash changes only in
+ansible/inventory/group_vars/mwan_prod_all.yml, alongside the testbed pin,
+after source merge and publication. This updates desired deployment
+compatibility, not live production or ownership. Preserve the recovered
+production pair and require full testbed proof before any production deploy.
+
+At 00:17 UTC the deployment restarted ifmgr. Its new PID is 6738 and
+invocation is 267a7a4226ba422b9c57083566ff85c2. Root verified its live
+executable hash matches candidate 787bd8cca577206514bf6fb2c84289e7977f2a8d050d66e0f672f0a9a4fb2967.
+Native nft readback includes the nonzero NEW conntrack-mark restore rule.
+This establishes candidate runtime activation, not retry packet acceptance.
+The operation remains armed in its wan-restart lease; fault controls remain
+prohibited until successful commit and healthy baseline.
+
+Independent observations recorded one timeout per inbound check:
+Webpass IPv4 at 00:17:35.074753476, AT&T IPv4 at 00:17:35.379251638,
+AT&T IPv6 at 00:17:35.867234434 and Webpass IPv6 at 00:17:39.256523948.
+Their next passes were 00:17:42.011284367, 00:17:42.411373038,
+00:17:42.857696783 and 00:17:46.123549461 UTC respectively.
+Downstream checks remained passing and Ping E recorded no new unanswered
+requests. These samples do not establish total client outage duration.
+The exact operation's eight checks all pass at 00:18:29 UTC.
+
+October 3, 2026: Candidate deployment 56554 ended with exit one after the
+scheduled reboot. Ansible could not transfer AnsiballZ_ping.py into its
+cached remote temporary directory. The reconnect task timed out after
+380 seconds and requested coordinated recovery. At 00:46:11.946552943 UTC
+the public operation reported recovered, with all eight checks passing.
+The restored executable hash is
+f970841fefb241b05fea95b9de34d0971b76141be2abf9de0033722b66455ce1;
+network and runtime hashes exactly match the recorded baseline. The watch
+terminated successfully. Candidate packet and distribution acceptance remain
+unperformed. Production remains unchanged.
+
+Independent recovery observations recorded 27 missing ICMP replies across
+the four downstream streams during 00:43:47 through 00:43:53 UTC. Downstream
+HTTP samples passed. All four inbound checks failed complete requests during
+recovery and subsequently passed: AT&T IPv4 at 00:45:24.719954991,
+Webpass IPv4 at 00:45:25.038416619, AT&T IPv6 at 00:45:25.562556640 and
+Webpass IPv6 at 00:45:34.907002612 UTC. These samples do not establish
+continuous total client outage. The compact recovery report remains under
+distribution-resume on Chaos Storage.
+
+The operator requested the cause of the stale snapshot-delete lock before
+further helper implementation. Fresh native journal evidence establishes a
+lock-producing deletion failure. At 23:15:40.899749309 UTC on October 2,
+watchdog b8b7f52 failed to delete known-good-20260929-011903 because ZFS
+could not find its disk snapshot. At 23:15:44.770969395 UTC, its forced
+retry failed because snapshot-delete remained set. Installed Proxmox
+AbstractConfig.pm sets the lock before volume deletion, rethrows a failed
+nonforced volume deletion and clears the lock only in later configuration
+cleanup. This mechanism does not require a killed worker.
+
+The watchdog attempts the forced deletion before its post-prune lock cleanup.
+The forced operation therefore encounters the lock created by the failed
+plain deletion. A later watchdog restart cancelled the context used for
+post-prune cleanup. The metadata mismatch precedes that restart. Native task
+history investigation remains active to identify why the disk snapshot was
+already absent. Do not claim that cancellation created the first lock.
+
+PR 180 remains unmerged. Independent review confirmed that separate task
+checks and unlock permit a concurrent operation between them. The five Go
+integration edits for a native atomic helper remain unpublished, and its
+Perl asset is absent after automatic review misclassified a declaration
+keyword as prose. The narrow exception question remains unanswered. No native
+helper execution or production mutation occurred. Investigation of the
+originating metadata mismatch takes priority over helper implementation.
+
+Earlier native history establishes the originating partial deletion.
+The exact snapshot known-good-20260929-011903 was created on September 29
+around 08:19 UTC. Its first deletion used native task
+UPID:hypervisor:001B0B87:21C05DE5:6ABB79DB:qmdelsnapshot:213:root@pam:,
+with parent 1772403 and child 1772423. The parent failed at
+08:42:13.677518084 UTC after /var/log/pve/tasks/.active.lock timed out.
+ZFS history records destruction of
+rpool/vm-213-disk-0@known-good-20260929-011903 completing at 08:43:15 UTC,
+with a 72016 ms operation duration. Its systemd scope completed successfully
+at 08:43:15.784470 UTC. Storage deletion continued after the parent failure.
+
+The next deletion at 08:53:17 UTC found no disk snapshot. Its forced retry
+at 08:53:21 UTC encountered snapshot-delete. Current configuration retains
+the snapshot with snapstate delete, but the exact ZFS snapshot is absent.
+This confirms incomplete metadata cleanup after a completed storage deletion.
+The first task log is no longer retained, and the bounded historical task
+query returns no matching entry. The child exit reason and initial task
+registry lock owner remain unproved. Installed source establishes current
+ordering; September 29 package-version parity is unverified. Exact-name ZFS
+history records deletion, not a matching rollback. Clearing the stale guest
+lock alone does not reconcile orphaned snapshot metadata.
+
+The operator superseded the MWAN-548 recovery proposal with prevention.
+The repaired operation must complete native deletion and configuration
+cleanup without automatic lock removal. Root inspected and discarded only
+the five unpublished atomic-unlock draft edits. The source worktree is clean
+at published PR 180 head 5dba2d9. No Perl asset exists. PR 180 remains
+unmerged and its implementation must be revised before acceptance. Its
+earlier declaration exception question is obsolete.
+
+The bounded native origin report is retained under
+planned-handover/snapshot-delete-origin-evidence.md on Chaos Storage.
+The independent contract investigation compares supported native operation
+lifecycle and an isolated reproduction of task-registry failure. No live
+snapshot or registry mutation occurred during that investigation. The
+testbed baseline is recovered; production remains unchanged. Observer D is
+inactive with MainPID zero and ExecMainStatus zero. Its former transport is
+absent. Its last application result is historical and does not prove current
+health. The distribution owner retains the bounded ping streams separately.
+
+The operator stopped further snapshot investigation and authorized one
+manual lock cleanup before resuming cutover work. Fresh Proxmox active tasks
+for VM 213 returned an empty list; the bounded native snapshot, rollback and
+storage worker query found no matching process. Root ran qm unlock 213 once.
+It returned exit zero. Fresh current configuration contains no lock field.
+No automatic unlock code was added. Production remains unchanged.
+
+The isolated native registry reproduction used a stopped, unconnected
+disposable VM 100 with a thin 1 GiB ZFS disk. The private namespace reproduced
+the exact task-registry timeout and parent exit four. Disk snapshot and
+snapshot metadata were absent afterward; current VM configuration had no
+lock. The initial worker query was invalid because pgrep lacked its full
+command-line option; root discarded it and verified the corrected query
+returned no worker. This fast deletion does not reproduce the original
+incomplete cleanup. No further reproduction is authorized. Root destroyed
+only the verified owned VM 100 through ordinary qm destroy; exit zero.
+Retain only the compact failed-hypothesis result and remove unused fixtures.
+
+The operator made routing repair and physical cutover acceptance the sole
+priority. Limit deployment changes to prerequisites for installing the merged
+candidate. The reconnect prerequisite changes only two lines in the reboot
+task and sets task-scoped ansible_pipelining. Configs PR 658 contains signed
+commit 1401085d1a54c53cd8b66f88364e6f05c7119455. Scoped configsctl lint,
+configsctl syntax-check and diff checking passed. Actual reboot proof remains
+unperformed; no new deployment has started.
+
+Root refreshed physical application observations from 01:59:19 through
+02:00:49 UTC October 3. All eight check identities recorded passing HTTP
+responses on the restored F4 release. The final three results reported remote
+execution errors at the bounded observer deadline; they do not establish
+application failure. The observer unit is inactive with MainPID zero and
+ExecMainStatus zero; its transport ended one. VM 213 has no active Proxmox
+task. Its active daemon PID is 321, executable hash f970841fefb241b05fea95b9de34d0971b76141be2abf9de0033722b66455ce1,
+and network hash 24ec95b7a11b4c1ac21d0a0b5d2aaff120028fe4ce3afb5e8574695dbb22bcc5.
+Candidate retry, distribution and full cutover acceptance remain unperformed.
+Production remains unchanged. Root controls deployment and application
+observations; distribution_resume owns the existing bounded Ping F streams.
+
+The operator set a new active goal prioritizing safe production cutover while
+preserving the entire epic scope and artifact constraints. The independent
+acceptance review separates first Webpass activation from later AT&T
+retirement, remaining interface transfers and global networkd removal.
+Those later phases do not block first activation. Exact candidate retry,
+distribution, complete forward/reverse transfer, family protection,
+autonomous recovery and notification delivery still require live proof.
+
+Configs PR 658 merged as ca69a264. The requested explanatory comment
+identifies Ansible's built-in Python module and remote execution check;
+comment-only PR 659 merged as 6db5e167449d55ab4a35e1b5cee9a86cbecd1669.
+Root advanced the clean idle detached deploy checkout to that merged revision.
+The prior operation independently reports recovered, lease null, and inactive
+watch with MainPID zero. Guest preparation revision independently reads one.
+The reviewed forward document still preserves Webpass ownership and all six
+nonselected connections, including AT&T/networkd coexistence.
+
+Root started candidate deployment through configsctl at 02:50 UTC October 3,
+transport 94236. All eight fresh independent application checks passed before
+deployment. The new bounded application observer is unit
+mwan305-root-cutover-20261003-0250, transport 14464. Its predecessor is
+verified inactive and its transport is absent; do not reuse its historical
+samples as current health. distribution_resume owns the active Ping G
+streams and the terminal F/G overlap accounting. Deployment, commitment and
+candidate packet acceptance remain pending. Production remains unchanged.
+All controller caches, temporary output and release staging use Chaos Storage.
+
+The active candidate operation is 20261002-195107-deploy-965919, generation
+b2d76049-c119-4cf6-9fea-6020dfc215a6. Its independently inspected manifest
+targets executable 787bd8cca577206514bf6fb2c84289e7977f2a8d050d66e0f672f0a9a4fb2967
+and preserves the accepted network and runtime hashes. Native watch PID
+345434 and invocation deb716b220824ff8bbdb5545810c41bc are active. Public
+status reports armed with a fresh bounded mutation lease and mutation_ready
+true. No candidate fault or distribution cohort has started.
+
+The independent production brief confirms preparation requires only the
+production release pin, with all existing owners still networkd. Root inspected
+the bounded implementer diff and committed that two-value pin change as
+9eb6d96a on codex/mwan-305-production-candidate. The branch remains unpublished
+and unmerged pending candidate testbed acceptance. Existing activation PR 618
+must be refreshed against the accepted preparation baseline before its separate
+activation. Earlier saved production input and recovery evidence are historical;
+fresh production health and complete nonselected comparisons remain required.
+
+Root published coordination and ledger revision 9bc0ac0 after verifying every
+one of 258 branch signatures and raw signature headers. The one-use verifier
+and its log were removed by the exit trap, and their absence was verified.
+Root purged superseded 90-second baseline output and merged PR body files,
+plus the unused 13 MiB reconnect validation cache after confirming no open
+files. Active controller caches, observations and unique incident evidence
+remain required and cataloged on Chaos Storage.
+
+At 03:23 UTC October 3, candidate controller 94236 failed when the delegated
+operation status read exceeded its 15-second task limit after networkd-dispatcher
+completed. The play requested recovery through the exact existing operation.
+Fresh status reports recovering with the existing watch PID 345434 and invocation
+deb716b220824ff8bbdb5545810c41bc. Its outstanding preparation lease expires at
+03:24:36 UTC. All eight independent application checks still pass through
+03:23:59 UTC. Candidate commitment, retry and distribution acceptance remain
+unperformed. Production remains unchanged. Do not start another deployment or
+fault before this operation becomes terminal and restored identity passes.
+
+Root inspected the independent physical recovery procedure. The inbound-only
+fault must use gateway forwarding after destination translation; the mapping
+listener runs on OPNsense, not VM 213. Controller termination must include
+verified descendants and completion of issued remote mutations. A completed
+arm command alone does not prove controller-disconnection recovery. The review
+agent owns the bounded status-timeout diagnosis and procedure corrections;
+distribution_resume continues the existing Ping G streams.
+
+Controller 94236 exited one at 03:25:39 UTC after its recovery command failed
+while stopping VM 213. The independent watch subsequently completed restoration.
+Native qmstart task UPID:hypervisor:0007B4DD:23B2C4D6:6AC075C4:qmstart:213:root@pam:
+reports stopped with exitstatus OK. Public operation status is recovered at
+03:28:33 UTC, with no lease and all eight required checks passing. Root verified
+the actual F4 executable and original network/runtime hashes through guest SSH
+using the hypervisor jump. Boot identity changed to
+2c9722db-f391-4387-8d2c-90c2a55441f0. The exact watch is inactive with MainPID
+zero and ExecMainStatus zero. Independent checks also pass through 03:29 UTC.
+
+Downstream A4 recorded one complete failed HTTPS sample at 03:24:48 UTC and a
+passing response at 03:24:55 UTC. Inbound checks failed during restoration and
+first passed again between 03:27:48 and 03:27:56 UTC. These are separate
+application measurements, not total client outage estimates. Guest B IPv6's
+ping process terminated after an unreachable reply; its replacement first
+replied at 03:27:17 UTC. Record that producer gap separately from packet loss.
+
+The independent source review rules out normal watch observations retaining
+the operation record lock. Status performs record reads and D-Bus watch
+verification. The failed task contains no component timings or remote error
+that proves the cause. Do not increase the timeout or alter recovery from this
+unconfirmed diagnosis. The restored inbound checks now pass without manual
+network repair. Candidate installation and packet acceptance remain incomplete.
+
+Root started one unchanged candidate retry through configsctl at 03:31:18 UTC
+October 3, controller 47967. The deploy checkout is clean at latest merged
+Configs 6db5e167. Fresh active VM 213 tasks are empty before the retry.
+All eight independent checks pass on the restored baseline. The current
+application observer and distribution-owned ping streams continue; no candidate
+fault or distribution cohort may start before commitment and identity proof.
+No timeout, snapshot or routing behavior changed for this retry.
+
+Controller 47967 ended exit one at 03:33:41 UTC October 3 before arming a new
+operation or preparing the gateway. Snapshot creation reported snapshot-delete
+lock. Native watchdog cleanup workers independently reported the same lock
+error. Root suspended only the watchdog main process with SIGSTOP and verified
+that its state was stopped. The latest native deletion task was terminal with
+that lock error; fresh active VM tasks were empty and no snapshot or ZFS worker
+remained. Root cleared VM 213's lock by hand once, verified it absent and resumed
+the same watchdog main process with SIGCONT. Its state is sleeping, not stopped.
+No automatic lock removal or snapshot implementation was added.
+
+At 03:40 UTC, active VM tasks and matching workers are absent, the lock is absent,
+and all eight independent application checks pass. Root started the next unchanged
+merged candidate deployment as controller 38257. Keep one deployment owner and
+continue the existing observers. Candidate commitment and packet proof remain
+pending; production remains unchanged.
 
 ## Record each deployment result
 

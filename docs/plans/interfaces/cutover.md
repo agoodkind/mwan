@@ -265,6 +265,19 @@ production deployment, observation, and recovery.
 
 ### Execute production acceptance
 
+Install the compatible release with every connection still networkd-owned
+before the first Webpass transfer. The installed production management and
+transit document predates the role fields. The transfer guard rejects changes
+to these nonselected interfaces. Preserve that guard.
+
+Accept the preparation deployment and capture its complete installed runtime
+and network documents before activating Webpass. Compare every nonselected
+connection between that baseline and the activation candidate. Keep release
+preparation and ownership activation in separate dependent PRs. Deploy the
+merged preparation revision first; merge and deploy activation only after
+preparation acceptance. Require current production authorization for both
+live operations.
+
 1. Resolve the current guest, hypervisor, connections, owner state, and phase.
    Verify console recovery and the previous compatible release pair. Record
    healthy downstream and deploy-gate baselines.

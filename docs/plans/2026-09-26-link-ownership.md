@@ -6,14 +6,177 @@ This plan defines execution order, agent responsibilities, and acceptance
 gates. Each slice plan defines its edits and verification. The
 [execution ledger](2026-09-26-link-ownership-ledger.md) records actual progress.
 
-The September 26 audit inspected MWAN `03dd43a` and Configs `18f2a711`.
-The September 27 review compared current plans with MWAN `5970f1d` and
-Configs `b612d1c`. Recheck changed source before each implementation brief.
-MWAN-524 passed live testbed acceptance. Connection identity and route repair
-implementation have started; no interface-owner cutover has begun.
-
 The [plan audit](2026-09-26-link-ownership-audit.md) records the corrected
 document gaps and the remaining implementation gates.
+
+## Complete the operational goal
+
+Prioritize the first safe production cutover. Complete the exact merged
+release's physical testbed proof, then perform the conditionally authorized
+production preparation and Webpass activation. Limit deployment refinements
+to requirements for that cutover. Preserve the remaining epic scope; later
+interface transfers, AT&T retirement and reboot detection remain subsequent
+phases.
+
+Complete MWAN-305 interface ownership through verified operational acceptance.
+Preserve AT&T and networkd coexistence, deployment authorization, original
+sources, production backups, and production recovery state. Testbed state is
+disposable; do not require backups or preservation before fault injection.
+Deploy only clean merged revisions
+through `./configsctl deploy`. Perform actual testbed forward and reverse
+cutovers, restart, reboot, failover, recovery, and repeated unchanged operation.
+Observe both downstream guests and both IP families. Verify acquisition,
+load balancing, mappings, IPv6 translation, binary identity, and configuration
+identity. Recover or revert measured failures, implement focused fixes, review,
+merge, redeploy, and repeat acceptance.
+
+Require the complete testbed evidence before production cutover. The operator
+authorized production once the defect is fully fixed. That authorization
+applies only after the incident corrections and required testbed acceptance
+pass for the exact merged release and compatible configuration. Do not ask
+again for this authorized scope. Preserve recovered production until these
+conditions pass. Final retirement still requires confirmed AT&T retirement
+and its separate acceptance prerequisites.
+
+Apply the subagent-driven-development skill strictly. Give every implementer
+exact working directories, exclusive file ownership, prerequisite revisions,
+settled interfaces, constraints,
+verification, and report requirements. Assign coupled changes to one owner.
+Inspect reports and diffs before integration. Preserve concurrent edits.
+
+Reuse maintained protocol libraries and operating system services. Before
+adding custom protocol code, inspect existing library APIs and verify upstream
+maintenance using code changes, releases, issue responses, and archive status.
+Do not treat a recent repository push alone as maintenance proof. Require
+implementers and reviewers to identify the library operations used for DHCP,
+neighbor discovery, routing, and resolver configuration. Implement only MWAN
+policy and lifecycle integration where existing APIs do not provide them.
+Record the exact API limitation and evaluated alternatives before approving
+custom protocol code.
+
+## Correct the failed preparation before production
+
+Production preparation failed on October 1 and the original snapshot was
+restored. Require the incident corrections under MWAN-535 through MWAN-544
+before another production attempt. Production activation remains stopped until
+the repair and testbed gates pass.
+Complete every incident correction as part of the operational goal. Import
+the existing MWAN Cloudflare load balancers, pools and health monitors into
+OpenTofu under MWAN-543. Preserve their current configuration and alert policy.
+Verify an import plan without infrastructure changes before applying state
+adoption. Exclude unrelated zones and services.
+
+The operator authorized one manual lock cleanup and stopped further
+MWAN-548 investigation and reproduction. Continue cutover acceptance after
+that cleanup. Do not add automatic lock removal or require a new prevention
+project before resuming the approved migration. The unpublished lock-removal
+helper is abandoned; its earlier permission question requires no answer.
+
+Run legacy upgrade repairs, Cloudflare imports and health contract inspection
+in separate lanes with exclusive files. Review the health interfaces before
+implementing dependent checks. Serialize deployment recovery edits and live
+testbed operations under one controller. Require the original-release upgrade,
+inbound failure recovery and independent health results before promotion.
+Reproduce the original-release upgrade on the physical testbed with existing
+legacy edges, an empty new ownership journal and the actual legacy device
+selector. Do not require preservation of the current testbed fixture.
+Require positive inbound and downstream results before accepting the repair.
+An omitted optional upgrade branch does not establish successful coverage.
+
+Keep durable health and acceptance results separate for actual downstream
+client experience, configured connection distribution and inbound pool health,
+provider-specific egress, each ping's source and selected path, and the public
+source address observed externally. Keep both IP families and primary/backup
+selection explicit. Preserve acquisition, ownership, translation, mapping,
+BGP, management, lifetime, restart, reboot and recovery checks. Report missing
+observation separately from healthy or unhealthy service.
+
+Arm recovery before network-affecting changes. Include required inbound
+application replies in the deploy verdict even when backup egress succeeds.
+Verify actual failure and recovery alerts. Keep new application and acceptance
+code in MWAN. Apply the operator's conditional production authorization only
+after the repair and testbed gates pass.
+
+## Store and clean generated artifacts
+
+Store all generated ephemeral artifacts under
+[/Volumes/Chaos Storage/Codex/mwan305](</Volumes/Chaos Storage/Codex/mwan305>)
+only while needed. This includes build
+outputs, caches, downloads, VM disks, captures, logs, temporary scripts and test
+fixtures. Keep source changes and the durable coordination plan and ledger in
+their repositories.
+
+1. Verify Chaos Storage is mounted before every artifact-producing operation.
+   Stop the operation if the volume is unavailable. Do not create a replacement
+   directory or silently fall back to the internal Mac disk.
+2. Configure each tool's temporary, output and cache directories explicitly on
+   Chaos Storage before generation. Assign each subagent an exclusive artifact
+   directory and these storage and cleanup requirements.
+3. Record each artifact's purpose, location and retention need in a compact
+   catalog. Retain only minimal unique evidence required for current acceptance,
+   incident analysis or production recovery.
+4. After each slice, failed attempt and compaction reorientation, summarize
+   durable results in the ledger and delete owned artifacts no longer required.
+   Regenerate disposable outputs instead of keeping redundant copies.
+5. Remove owned temporary containers and images once unused. Verify ownership
+   before deletion and preserve other agents' resources.
+6. Check disk usage regularly. Prevent unbounded accumulation and finish owned
+   artifact cleanup before declaring the goal complete.
+
+The previous local artifact directory is a symlink to Chaos Storage. Verify
+that symlink before using an old absolute evidence reference. An unavailable
+external volume does not permit generation under that old path.
+
+## Reorient before each slice
+
+Reorient immediately after every compaction, before each slice and
+integration, and on every scheduled heartbeat. Require implementers to
+reorient before dependent work.
+
+1. Review this coordination plan, the current slice plan, applicable
+   specifications, and relevant tickets. Refresh states and dependencies
+   that determine the next operation.
+2. Review the supplied memory summary, relevant memory entries, and recent
+   ledger entries. Read older decisions when needed to resolve uncertainty.
+   Do not reread unrelated memory or the entire historical ledger.
+3. Confirm the approved scope, completed work, remaining acceptance,
+   deployed revisions, active operations, agent ownership, and recovery
+   procedure. Verify current evidence before a risky operation.
+4. Record the selected slice, prerequisites, evidence, and actual blockers
+   in the ledger. Preserve useful summaries and exact evidence references.
+   Do not require read counts, hashes, or exhaustive rereads as a condition
+   for continuing work.
+
+Keep the existing thread automation `mwan-305-execution-checkpoints` active
+while the goal is active. Use a short prompt that references this plan and
+the recent ledger. Use a two-hour interval and adjust it when the next useful
+checkpoint changes. Preserve reorientation at every slice and compaction.
+Reuse that automation. Inspect
+actual process and agent handles before dispatching work. Do not interrupt
+an active mutation or create duplicate workers. Respect explicit pauses.
+Suspend the automation after verified completion. Notify only for a meaningful
+result, failure, completion, or required decision.
+
+Separate passed, failed, speculative, and unperformed results. Record each
+exact binary, configuration, source revision, operation, result, and remaining
+gap. State the operation needed to resolve missing evidence. Plans, component
+tests, merged PRs, and installed binaries do not prove operational acceptance.
+Do not infer causes, reduce intended behavior, increase limits to conceal
+failures, or add unrelated repairs and speculative safeguards.
+
+Follow the enforce-rules skill and repository testing rules for every new
+test, including complete required
+rule-file reads. Use the smallest necessary public-boundary regression test
+with real dependencies and an observable result. Use inspection, generation,
+compilation, or existing checks for mechanical changes. Delete tests for
+removed behavior. Do not use mocks, stubs, spies, recorded responses, static
+content checks, or tests that repeat implementation.
+
+Continue authorized safe and reversible work autonomously. Ask only when a
+required decision remains after useful independent work is exhausted.
+Reconcile the ledger and actual Tack ticket states with verified operational
+acceptance. Mark the goal complete only after the required deployed revisions,
+live behavior, ledger, and tickets pass verification.
 
 ## Restore the Astound baseline first
 
@@ -23,6 +186,9 @@ passed reboot, downstream packet, balancing, and recovery checks. The ledger
 records the revisions,
 packet counts, and interruptions. Keep this accepted baseline during the
 migration cutovers.
+
+Require [MWAN-534](https://tack.home.goodkind.io/browse/MWAN-534) live
+acceptance before resuming ownership transfer.
 
 MWAN-331 deliberately removed Astound after its configuration-only acceptance
 test. Preserve that ticket and MWAN-491 as historical completed work. The
@@ -37,6 +203,18 @@ operator requires the testbed connection to remain managed.
 | Independent reviewer | Review contracts before implementation and inspect the resulting patch afterward. Reproduce the slice's failure cases and check shared consumers. | Return findings with evidence and a verdict tied to the reviewed commit. Report missing proof explicitly. |
 | Cutover agent | Inspect live ownership, execute the approved merged deployment, monitor downstream traffic, perform recovery, and record acceptance. | Return exact release and configuration revisions, commands, before/after owners, interruption, recovery, and packet results. |
 
+Run implementation and testbed defect correction concurrently. Give the
+implementation lane the remaining approved code slices. Verify missing code
+against current source; a Todo ticket or unfinished live transfer alone does
+not establish missing implementation. Prepare removals without activating
+them before retirement prerequisites pass.
+
+Give the validation lane measured testbed failures and their evidence.
+Diagnose each failure before assigning a focused fix. Use separate worktrees
+and exclusive file ownership. Serialize shared file changes and integration.
+Keep one controller for every live deployment, cutover and recovery operation.
+Record code completion separately from operational acceptance.
+
 Use the code-implementer role only after contract review has settled the
 behavior and interfaces. Do not assign open architecture questions,
 investigation, review, or live networking to that role. A contradiction in
@@ -49,6 +227,12 @@ workflow. Use Graphite for dependent stacks and the individual PR workflow
 for a standalone PR. Preserve required AI reviews and resolve review findings.
 
 ## Preserve the approved boundaries
+
+Keep new MWAN application and acceptance code in the MWAN repository.
+Use Configs for deployment configuration, inventory, templates and
+infrastructure declarations. Do not restore the deleted Ruby acceptance
+harness or add its replacement to Configs. Use existing public daemon
+commands and protocol runners for acceptance.
 
 Transfer one complete connection at a time. Use fresh DHCP negotiation for
 the first transfer with preserved client identity. Recover subsequent
@@ -121,7 +305,7 @@ checks at its own position.
 | Configs | [MWAN-521] Implement exclusive ownership transfer and recovery | Stack on rendering. End the deployment stack here; gate activation on the complete application release. |
 | Configs | [MWAN-522] Configure protocol lifecycle scenarios in ISP simulators | Use an independent PR. Preserve existing simulator defaults. |
 | MWAN | [MWAN-522] Run privileged daemon acceptance through public boundaries | Bootstrap the runner in a standalone PR after the model merges and before protocol PR acceptance. Add each feature's scenarios in its own PR. |
-| Configs | [MWAN-522] Verify downstream forwarding and balancing during migration | Use a standalone PR after deployment integration and simulator changes merge. |
+| MWAN | [MWAN-522] Verify downstream forwarding and balancing during migration | Use a standalone PR after deployment integration and simulator changes merge. Keep executable acceptance code outside Configs. |
 | MWAN | [MWAN-400] Remove retired networkd application dependencies | Use a standalone PR after the retirement inventory verifies removal scope. |
 | Configs | [MWAN-400] Remove retired networkd deployment dependencies | Use a separate standalone PR after that inventory; pin the compatible MWAN release. |
 
