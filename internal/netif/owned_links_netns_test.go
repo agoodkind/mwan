@@ -81,23 +81,19 @@ func TestOwnedLinkReservationFromOlderBoot(t *testing.T) {
 		Owner: interfaceintent.OwnerMWAN, Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
 	}
 	statePath := filepath.Join(t.TempDir(), "links.json")
-	interrupted, err := NewOwnedLinkReconciler(statePath)
-	if err != nil {
+	// The journal file has the incomplete record that an interrupted creation
+	// writes, with the boot ID of an older boot.
+	interruptedJournal := `{"virtuals":{"older-boot-bridge":{"boot_id":"previous-boot",` +
+		`"connection_id":"older-boot-bridge","alias":"mwan-link:older-boot-bridge:older-boot-token",` +
+		`"temp_name":"mw-older-boot","name":"older-boot-br","kind":"bridge","complete":false}},"memberships":{}}`
+	if err := os.WriteFile(statePath, []byte(interruptedJournal), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	interrupted.state.Virtuals[connection.ID.String()] = virtualRecord{
-		BootID: "previous-boot", ConnectionID: connection.ID.String(),
-		Alias:    aliasFor(connection.ID.String()) + ":older-boot-token",
-		TempName: "mw-older-boot", Name: connection.Name, Kind: string(interfaceintent.KindBridge),
-	}
-	if err := interrupted.save(); err != nil {
-		t.Fatal(err)
-	}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	rebooted, err := NewOwnedLinkReconciler(statePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	results, err := rebooted.Reconcile(context.Background(), log, []interfaceintent.Connection{connection})
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
 		t.Fatalf("reservation from an older boot blocked link creation: results=%+v err=%v", results, err)
@@ -106,9 +102,16 @@ func TestOwnedLinkReservationFromOlderBoot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("owned bridge is absent after reconciliation: %v", err)
 	}
-	record := rebooted.state.Virtuals[connection.ID.String()]
-	if !record.Complete || record.BootID != rebooted.bootID || bridge.Attrs().Alias != record.Alias {
-		t.Fatalf("journal kept the reservation from the older boot: record=%+v alias=%q", record, bridge.Attrs().Alias)
+	// A restarted reconciler reads the journal file and must find the same bridge ready.
+	restarted, err := NewOwnedLinkReconciler(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err = restarted.Reconcile(context.Background(), log, []interfaceintent.Connection{connection})
+	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady ||
+		results[0].IfIndex != bridge.Attrs().Index {
+		t.Fatalf("restart after the older boot recovery replaced the bridge: results=%+v err=%v index=%d",
+			results, err, bridge.Attrs().Index)
 	}
 }
 
