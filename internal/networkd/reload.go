@@ -2,8 +2,10 @@ package networkd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 
 	systemddbus "github.com/coreos/go-systemd/v22/dbus"
 	"github.com/godbus/dbus/v5"
@@ -19,6 +21,10 @@ const activeStateActive = "active"
 // The manager method waits for networkd's reload without scheduling that job.
 func ReloadIfRunning(ctx context.Context) error {
 	conn, err := systemddbus.NewSystemConnectionContext(ctx)
+	if errors.Is(err, os.ErrNotExist) {
+		slog.InfoContext(ctx, "networkd: system bus socket is absent, so networkd is not running and reads the unit files when it starts", "err", err)
+		return nil
+	}
 	if err != nil {
 		slog.ErrorContext(ctx, "networkd: connecting to systemd failed", "err", err)
 		return fmt.Errorf("connect to systemd: %w", err)
