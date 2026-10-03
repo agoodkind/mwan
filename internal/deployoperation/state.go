@@ -310,7 +310,7 @@ func (store Store) observe(ctx context.Context, operationID, generation string, 
 			return fmt.Errorf("deploy operation identity does not match")
 		}
 		status = record.Status
-		if status == Committed || status == Recovered {
+		if status == Committed || status == Recovered || status == Disarmed {
 			return nil
 		}
 		if record.Status != Armed && record.Status != Recovering {

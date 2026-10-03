@@ -123,7 +123,7 @@ func (engine Engine) Watch(ctx context.Context, operationID, generation string) 
 		if err != nil {
 			return err
 		}
-		if record.Status == Committed || record.Status == Recovered {
+		if record.Status == Committed || record.Status == Recovered || record.Status == Disarmed {
 			return nil
 		}
 		if record.Status != Armed || !record.Deadline.After(engine.Store.Clock.Now()) {
@@ -134,7 +134,7 @@ func (engine Engine) Watch(ctx context.Context, operationID, generation string) 
 		if err != nil {
 			return err
 		}
-		if status == Committed || status == Recovered {
+		if status == Committed || status == Recovered || status == Disarmed {
 			return nil
 		}
 		now := engine.Store.Clock.Now()
@@ -145,7 +145,7 @@ func (engine Engine) Watch(ctx context.Context, operationID, generation string) 
 		if err != nil {
 			return err
 		}
-		if current.Status == Committed || current.Status == Recovered {
+		if current.Status == Committed || current.Status == Recovered || current.Status == Disarmed {
 			return nil
 		}
 		if watchObservationsAllowed(record, current, results, engine.Store.Clock.Now()) {
