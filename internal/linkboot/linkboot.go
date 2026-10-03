@@ -160,18 +160,18 @@ func checkConnectionConflict(directory string, desired map[string]string, entrie
 			}
 			continue
 		}
-		rendered := entry.Type().IsRegular() && strings.HasPrefix(string(content), networkd.Marker+"\n")
-		if slices.Contains(retiring, entry.Name()) && rendered {
+		if slices.Contains(retiring, entry.Name()) && entry.Type().IsRegular() &&
+			strings.HasPrefix(string(content), networkd.Marker+"\n") {
 			continue
 		}
-		if !strings.HasPrefix(string(content), marker+"\n") && mayMatch(content, connection.Link.Match.HardwareAddress, rendered) {
+		if !strings.HasPrefix(string(content), marker+"\n") && mayMatch(content, connection.Link.Match.HardwareAddress) {
 			return fmt.Errorf("interface %s: existing link name file %s may match the same device", connection.Name, path)
 		}
 	}
 	return nil
 }
 
-func mayMatch(content []byte, hardwareAddress string, rendered bool) bool {
+func mayMatch(content []byte, hardwareAddress string) bool {
 	inMatch := false
 	matchedMACKey := false
 	for line := range strings.SplitSeq(string(content), "\n") {
@@ -198,6 +198,5 @@ func mayMatch(content []byte, hardwareAddress string, rendered bool) bool {
 			}
 		}
 	}
-	// udev applies the first matching file. A rendered file name sorts after the owned name file.
-	return !matchedMACKey && !rendered
+	return !matchedMACKey
 }
