@@ -8,7 +8,49 @@ import (
 
 	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/linkboot"
+	"goodkind.io/mwan/internal/networkd"
 )
+
+func TestRenderedDriverMatchDoesNotConflict(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	owned := interfaceintent.Connection{
+		Name:  "enowned0",
+		Owner: interfaceintent.OwnerMWAN,
+		Link: &interfaceintent.Link{
+			Kind:  interfaceintent.KindPhysical,
+			Match: interfaceintent.Match{HardwareAddress: "02:00:5e:00:53:77"},
+		},
+	}
+	rendered := interfaceintent.Connection{
+		ID: "enrendered0", Name: "enrendered0", Owner: interfaceintent.OwnerNetworkd,
+		Link: &interfaceintent.Link{
+			Kind:  interfaceintent.KindPhysical,
+			Match: interfaceintent.Match{Driver: "virtio_net"},
+		},
+	}
+	connections := []interfaceintent.Connection{owned, rendered}
+	writeRendered := func(match string) {
+		t.Helper()
+		content := networkd.Marker + "\n[Match]\n" + match + "\n\n[Link]\nName=enrendered0\n"
+		path := filepath.Join(directory, networkd.FilePrefix+"-enrendered0.link")
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatalf("write rendered file: %v", err)
+		}
+	}
+	writeRendered("Driver=virtio_net")
+	if err := linkboot.ValidateDir(directory, connections); err != nil {
+		t.Fatalf("ValidateDir rejected a rendered driver match: %v", err)
+	}
+	if _, err := linkboot.WriteDir(directory, connections); err != nil {
+		t.Fatalf("WriteDir rejected a rendered driver match: %v", err)
+	}
+	writeRendered("MACAddress=" + owned.Link.Match.HardwareAddress)
+	if err := linkboot.ValidateDir(directory, connections); err == nil ||
+		!strings.Contains(err.Error(), "may match the same device") {
+		t.Fatalf("rendered file with the owned hardware address returned %v", err)
+	}
+}
 
 func TestWriteDirManagesOnlyOwnedPhysicalNames(t *testing.T) {
 	t.Parallel()
