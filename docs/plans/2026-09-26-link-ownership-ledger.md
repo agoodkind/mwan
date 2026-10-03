@@ -9971,6 +9971,51 @@ Downstream checks remained passing and Ping E recorded no new unanswered
 requests. These samples do not establish total client outage duration.
 The exact operation's eight checks all pass at 00:18:29 UTC.
 
+October 3, 2026: Candidate deployment 56554 ended with exit one after the
+scheduled reboot. Ansible could not transfer AnsiballZ_ping.py into its
+cached remote temporary directory. The reconnect task timed out after
+380 seconds and requested coordinated recovery. At 00:46:11.946552943 UTC
+the public operation reported recovered, with all eight checks passing.
+The restored executable hash is
+f970841fefb241b05fea95b9de34d0971b76141be2abf9de0033722b66455ce1;
+network and runtime hashes exactly match the recorded baseline. The watch
+terminated successfully. Candidate packet and distribution acceptance remain
+unperformed. Production remains unchanged.
+
+Independent recovery observations recorded 27 missing ICMP replies across
+the four downstream streams during 00:43:47 through 00:43:53 UTC. Downstream
+HTTP samples passed. All four inbound checks failed complete requests during
+recovery and subsequently passed: AT&T IPv4 at 00:45:24.719954991,
+Webpass IPv4 at 00:45:25.038416619, AT&T IPv6 at 00:45:25.562556640 and
+Webpass IPv6 at 00:45:34.907002612 UTC. These samples do not establish
+continuous total client outage. The compact recovery report remains under
+distribution-resume on Chaos Storage.
+
+The operator requested the cause of the stale snapshot-delete lock before
+further helper implementation. Fresh native journal evidence establishes a
+lock-producing deletion failure. At 23:15:40.899749309 UTC on October 2,
+watchdog b8b7f52 failed to delete known-good-20260929-011903 because ZFS
+could not find its disk snapshot. At 23:15:44.770969395 UTC, its forced
+retry failed because snapshot-delete remained set. Installed Proxmox
+AbstractConfig.pm sets the lock before volume deletion, rethrows a failed
+nonforced volume deletion and clears the lock only in later configuration
+cleanup. This mechanism does not require a killed worker.
+
+The watchdog attempts the forced deletion before its post-prune lock cleanup.
+The forced operation therefore encounters the lock created by the failed
+plain deletion. A later watchdog restart cancelled the context used for
+post-prune cleanup. The metadata mismatch precedes that restart. Native task
+history investigation remains active to identify why the disk snapshot was
+already absent. Do not claim that cancellation created the first lock.
+
+PR 180 remains unmerged. Independent review confirmed that separate task
+checks and unlock permit a concurrent operation between them. The five Go
+integration edits for a native atomic helper remain unpublished, and its
+Perl asset is absent after automatic review misclassified a declaration
+keyword as prose. The narrow exception question remains unanswered. No native
+helper execution or production mutation occurred. Investigation of the
+originating metadata mismatch takes priority over helper implementation.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
