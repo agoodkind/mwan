@@ -9892,6 +9892,31 @@ The lane may delete only those owned caches after cataloging their exact
 paths. Preserve native route-change artifacts, active observers and source
 worktrees. Required incident evidence must remain until acceptance completes.
 
+October 3, 2026, 00:05 UTC: Retry transport 56554 remains running. The exact
+operation remains armed and mutation_ready=true with the original watch
+invocation. Its latest eight inbound and downstream checks pass. Direct SSH
+to the configured management address verifies executable hash
+787bd8cca577206514bf6fb2c84289e7977f2a8d050d66e0f672f0a9a4fb2967;
+mwan-agent and mwan-ifmgr@wan.service are active. This proves candidate
+installation, not deployment commit or packet acceptance. Candidate faults
+and distribution cohorts remain prohibited until commit and healthy baseline.
+
+MWAN PR 180 contains signed source commit
+494b86f891d9eceba5dbb4c1e0944d191afb1b1b. Independent inspection passed
+the supported-lock, active-task, cancellation and snapshot-wait contracts.
+The fresh active ruleset requires ten named checks and thread resolution.
+No review thread exists. Required Golangci Lint and Staticcheck Extra failed;
+the implementation owner must diagnose and correct these before merge.
+Both architecture compilations, build, test and vet passed. Configs integration
+is assigned to the same owner in a separate external checkout, after the
+source correction. The active deployment checkout must remain unchanged.
+
+The observation owner deleted only its unused planned-handover/cache/go-build
+and planned-handover/cache/go-mod directories after checking open files.
+Both paths are absent. The directory decreased from 178980 KiB to 11068 KiB.
+Unique route evidence and active observations remain. Chaos Storage has
+959 GiB available. Production remains unchanged.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
