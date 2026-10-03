@@ -136,7 +136,7 @@ func (w *watchdog) noteSnapshotSuccess(ctx context.Context) {
 // running corrupts that operation.
 func (w *watchdog) clearStaleGuestLock(ctx context.Context, phase string) {
 	log := w.tracedLogger(ctx)
-	lock, ready, err := ops.RecoverSnapshotLock(ctx, w.ops, w.cfg.MwanVMID)
+	lock, ready, err := ops.RecoverSnapshotLock(ctx, w.ops, log.With("phase", phase), w.cfg.MwanVMID)
 	if err != nil {
 		log.WarnContext(ctx, "guest lock recovery failed",
 			"phase", phase, "lock", lock, "err", err)
@@ -151,8 +151,6 @@ func (w *watchdog) clearStaleGuestLock(ctx context.Context, phase string) {
 	if lock == "" {
 		return
 	}
-	log.WarnContext(ctx, "cleared a stale guest lock",
-		"phase", phase, "lock", lock)
 	w.notifierOrNull().Notify(ctx, notify.Event{
 		Now:     w.now(),
 		Level:   slog.LevelWarn,

@@ -197,8 +197,11 @@ func runDeployGate(args []string) int {
 		printDeployGateUsage()
 		return exitDeployGateUsage
 	}
-	rest := args[1:]
-	switch deployGateMode(args[0]) {
+	return dispatchDeployGate(ctx, deps, deployGateMode(args[0]), args[1:])
+}
+
+func dispatchDeployGate(ctx context.Context, deps deployGateDeps, mode deployGateMode, rest []string) int {
+	switch mode {
 	case gateModeCreateSnapshot:
 		return runCreatePredeploySnapshot(rest)
 	case gateModeCheckEgress:
@@ -300,25 +303,26 @@ func runCreatePredeploySnapshot(arguments []string) int {
 	defer stop()
 	operations := ops.NewRealOps(cfg, logger)
 	if err := createPredeploySnapshot(ctx, operations, logger, cfg.MwanVMID, inputs); err != nil {
-		logger.Error("predeployment snapshot failed", "vmid", cfg.MwanVMID, "snapshot", inputs.name, "err", err)
 		return exitDeployGateFailed
 	}
 	logger.Info("predeployment snapshot completed", "vmid", cfg.MwanVMID, "snapshot", inputs.name)
 	return exitDeployGateOK
 }
 
-func createPredeploySnapshot(ctx context.Context, operations *ops.RealOps, logger *slog.Logger, vmid string, inputs predeploySnapshotInputs) error {
+func createPredeploySnapshot(ctx context.Context, operations *ops.RealOps, logger *slog.Logger, vmid string, inputs predeploySnapshotInputs) (err error) {
+	defer func() {
+		if err != nil {
+			logger.ErrorContext(ctx, "predeployment snapshot failed", "vmid", vmid, "snapshot", inputs.name, "err", err)
+		}
+	}()
 	recoveryContext, cancel := context.WithTimeout(ctx, inputs.recoveryBudget)
 	defer cancel()
 	for {
-		lock, ready, err := ops.RecoverSnapshotLock(recoveryContext, operations, vmid)
+		lock, ready, err := ops.RecoverSnapshotLock(recoveryContext, operations, logger.With("component", "deploy-gate", "phase", "predeployment"), vmid)
 		if err != nil {
 			return fmt.Errorf("recover guest before predeployment snapshot: %w", err)
 		}
 		if ready {
-			if lock != "" {
-				logger.Warn("cleared a stale guest lock", "phase", "predeployment", "lock", lock, "vmid", vmid)
-			}
 			// Snapshot execution retains the native 75-minute wait. Expiring
 			// the recovery budget must not interrupt a snapshot already started.
 			err := operations.VMSnapshotWithDescription(ctx, vmid, inputs.name, inputs.description)
