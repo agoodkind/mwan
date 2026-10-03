@@ -213,8 +213,11 @@ func (store Store) BeginRecovery(ctx context.Context, operationID, generation, r
 // Disarm ends an armed operation that has no mutation lease. The gateway keeps its current disk.
 func (store Store) Disarm(ctx context.Context, operationID, generation, reason string) error {
 	return store.change(ctx, operationID, generation, func(record *Record) error {
-		if record.Status != Armed || record.Lease != nil {
-			return fmt.Errorf("deploy operation with a mutation lease or started recovery cannot disarm")
+		if record.Status != Armed {
+			return fmt.Errorf("deploy operation with status %s cannot disarm", record.Status)
+		}
+		if record.Lease != nil {
+			return fmt.Errorf("deploy operation with a mutation lease cannot disarm")
 		}
 		if strings.TrimSpace(reason) == "" {
 			return fmt.Errorf("deploy disarm requires a reason")
