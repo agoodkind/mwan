@@ -73,6 +73,7 @@ func requiredTests(selected lane) ([]string, error) {
 			"TestAutoconfigurationDaemonRuntime", "TestRadvdAutoconfigurationDaemonRuntime",
 			"TestOwnedMappedDaemonRuntime", "TestSelectionExclusionDaemonRuntime",
 			"TestOwnedStaticDaemonRuntime", "TestWANFirewallRuntimePackets",
+			"TestStartupPolicyIgnoresUnansweredProbes",
 			"TestKernelPolicyDaemonRuntime",
 			"TestObservationDaemonRuntime",
 			"TestDistributionObservationDaemonRuntime",
