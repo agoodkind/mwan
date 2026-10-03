@@ -125,6 +125,8 @@ func (r *RealOps) VMSnapshot(ctx context.Context, vmid, snapName string) error {
 	return r.createSnapshot(ctx, vmid, snapName)
 }
 
+// VMSnapshotWithDescription uses the native lock-holding wait budget rather
+// than the shorter deadline for predeployment lock recovery.
 func (r *RealOps) VMSnapshotWithDescription(ctx context.Context, vmid, snapName, description string) error {
 	return r.createSnapshot(ctx, vmid, snapName, "--description", description)
 }
@@ -144,26 +146,27 @@ func (r *RealOps) createSnapshot(ctx context.Context, vmid, snapName string, opt
 	return nil
 }
 
-// The lock reread rejects changes during the task query. Proxmox provides no
-// atomic compare-and-unlock operation; an unrelated task can still start later.
+// RecoverSnapshotLock rereads the lock after checking native task liveness.
+// Proxmox provides no atomic compare-and-unlock operation; an unrelated task
+// can still start later.
 func RecoverSnapshotLock(ctx context.Context, operations LockOps, vmid string) (lock string, ready bool, err error) {
 	lock, err = operations.VMLock(ctx, vmid)
 	if err != nil {
-		return lock, false, fmt.Errorf("read guest lock: %w", err)
+		return lock, false, err
 	}
 	if lock != "" && lock != "snapshot" && lock != "snapshot-delete" {
 		return lock, false, fmt.Errorf("guest lock %q is not recoverable", lock)
 	}
 	running, err := operations.VMHasRunningTask(ctx, vmid)
 	if err != nil {
-		return lock, false, fmt.Errorf("read guest task liveness: %w", err)
+		return lock, false, err
 	}
 	if running {
 		return lock, false, nil
 	}
 	current, err := operations.VMLock(ctx, vmid)
 	if err != nil {
-		return lock, false, fmt.Errorf("reread guest lock: %w", err)
+		return lock, false, err
 	}
 	if current != lock {
 		return lock, false, fmt.Errorf("guest lock changed from %q to %q during recovery", lock, current)
@@ -172,11 +175,11 @@ func RecoverSnapshotLock(ctx context.Context, operations LockOps, vmid string) (
 		return "", true, nil
 	}
 	if err := operations.VMUnlock(ctx, vmid); err != nil {
-		return lock, false, fmt.Errorf("clear stale guest lock: %w", err)
+		return lock, false, err
 	}
 	current, err = operations.VMLock(ctx, vmid)
 	if err != nil {
-		return lock, false, fmt.Errorf("verify cleared guest lock: %w", err)
+		return lock, false, err
 	}
 	if current != "" {
 		return lock, false, fmt.Errorf("guest lock %q remains after recovery", current)

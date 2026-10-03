@@ -186,9 +186,6 @@ var (
 // args excludes the subcommand name itself.
 func runDeployGate(args []string) int {
 	if len(args) > 0 {
-		if deployGateMode(args[0]) == gateModeCreateSnapshot {
-			return runCreatePredeploySnapshot(args[1:])
-		}
 		switch operationMode(args[0]) {
 		case operationArm, operationWatch, operationStatus, operationLease, operationRelease, operationCommit, operationRecover:
 			return runDeployOperation(args)
@@ -202,6 +199,8 @@ func runDeployGate(args []string) int {
 	}
 	rest := args[1:]
 	switch deployGateMode(args[0]) {
+	case gateModeCreateSnapshot:
+		return runCreatePredeploySnapshot(rest)
 	case gateModeCheckEgress:
 		return runCheckDownstreamEgress(ctx, deps, rest)
 	case gateModeCheckOwned:
@@ -314,7 +313,7 @@ func createPredeploySnapshot(ctx context.Context, operations *ops.RealOps, logge
 	for {
 		lock, ready, err := ops.RecoverSnapshotLock(recoveryContext, operations, vmid)
 		if err != nil {
-			return err
+			return fmt.Errorf("recover guest before predeployment snapshot: %w", err)
 		}
 		if ready {
 			if lock != "" {
@@ -332,9 +331,9 @@ func createPredeploySnapshot(ctx context.Context, operations *ops.RealOps, logge
 					!strings.Contains(err.Error(), "VM is locked (snapshot-delete)")) {
 				return fmt.Errorf("create predeployment snapshot: %w", err)
 			}
-			logger.Info("snapshot refused by a snapshot lock; retrying recovery", "vmid", vmid, "err", err)
+			logger.Debug("snapshot refused by a snapshot lock; retrying recovery", "vmid", vmid, "err", err)
 		} else {
-			logger.Info("waiting for an active guest task before snapshot", "vmid", vmid, "lock", lock)
+			logger.Debug("waiting for an active guest task before snapshot", "vmid", vmid, "lock", lock)
 		}
 		timer := time.NewTimer(deployGatePollInterval)
 		select {
