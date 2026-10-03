@@ -10016,6 +10016,28 @@ keyword as prose. The narrow exception question remains unanswered. No native
 helper execution or production mutation occurred. Investigation of the
 originating metadata mismatch takes priority over helper implementation.
 
+Earlier native history establishes the originating partial deletion.
+The exact snapshot known-good-20260929-011903 was created on September 29
+around 08:19 UTC. Its first deletion used native task
+UPID:hypervisor:001B0B87:21C05DE5:6ABB79DB:qmdelsnapshot:213:root@pam:,
+with parent 1772403 and child 1772423. The parent failed at
+08:42:13.677518084 UTC after /var/log/pve/tasks/.active.lock timed out.
+ZFS history records destruction of
+rpool/vm-213-disk-0@known-good-20260929-011903 completing at 08:43:15 UTC,
+with a 72016 ms operation duration. Its systemd scope completed successfully
+at 08:43:15.784470 UTC. Storage deletion continued after the parent failure.
+
+The next deletion at 08:53:17 UTC found no disk snapshot. Its forced retry
+at 08:53:21 UTC encountered snapshot-delete. Current configuration retains
+the snapshot with snapstate delete, but the exact ZFS snapshot is absent.
+This confirms incomplete metadata cleanup after a completed storage deletion.
+The first task log is no longer retained, and the bounded historical task
+query returns no matching entry. The child exit reason and initial task
+registry lock owner remain unproved. Installed source establishes current
+ordering; September 29 package-version parity is unverified. Exact-name ZFS
+history records deletion, not a matching rollback. Clearing the stale guest
+lock alone does not reconcile orphaned snapshot metadata.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
