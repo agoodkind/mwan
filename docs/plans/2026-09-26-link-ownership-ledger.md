@@ -9917,6 +9917,24 @@ Both paths are absent. The directory decreased from 178980 KiB to 11068 KiB.
 Unique route evidence and active observations remain. Chaos Storage has
 959 GiB available. Production remains unchanged.
 
+At 00:11 UTC, PR 180's signed correction
+d1bcdb36431bd573ecb3a5feca2739d45216e998 passed independent incremental
+review. The exhaustive dispatch creates no socket or schema dependency.
+Native operation errors preserve identity; the CLI wraps them with %w and
+logs the final failure once. Lock decisions and native snapshot-wait behavior
+remain unchanged. Root verified both branch signatures and raw gpgsig headers,
+current mergeability and absent review threads. Normal GitHub auto-merge is
+enabled for the exact head, contingent on required checks. Merge and release
+remain unproved until their authoritative results are read.
+
+The Configs owner prepared a separate external checkout from merged main
+2248cbfa. Its integration will use the installed /usr/local/bin/mwan,
+/etc/mwan/config.toml and existing mwan_operation_poll_budget_seconds.
+It must preserve the native snapshot wait and may pin only a published merged
+release. Active deployment 56554 remains unchanged. At 00:12 UTC its original
+watch remains armed and all eight checks pass. The running ifmgr still uses
+F4 until activation; candidate packet controls remain unperformed.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
