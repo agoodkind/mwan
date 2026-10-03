@@ -10056,6 +10056,24 @@ inactive with MainPID zero and ExecMainStatus zero. Its former transport is
 absent. Its last application result is historical and does not prove current
 health. The distribution owner retains the bounded ping streams separately.
 
+The operator stopped further snapshot investigation and authorized one
+manual lock cleanup before resuming cutover work. Fresh Proxmox active tasks
+for VM 213 returned an empty list; the bounded native snapshot, rollback and
+storage worker query found no matching process. Root ran qm unlock 213 once.
+It returned exit zero. Fresh current configuration contains no lock field.
+No automatic unlock code was added. Production remains unchanged.
+
+The isolated native registry reproduction used a stopped, unconnected
+disposable VM 100 with a thin 1 GiB ZFS disk. The private namespace reproduced
+the exact task-registry timeout and parent exit four. Disk snapshot and
+snapshot metadata were absent afterward; current VM configuration had no
+lock. The initial worker query was invalid because pgrep lacked its full
+command-line option; root discarded it and verified the corrected query
+returned no worker. This fast deletion does not reproduce the original
+incomplete cleanup. No further reproduction is authorized. Root destroyed
+only the verified owned VM 100 through ordinary qm destroy; exit zero.
+Retain only the compact failed-hypothesis result and remove unused fixtures.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.

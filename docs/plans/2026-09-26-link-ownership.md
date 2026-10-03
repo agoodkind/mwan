@@ -59,15 +59,11 @@ OpenTofu under MWAN-543. Preserve their current configuration and alert policy.
 Verify an import plan without infrastructure changes before applying state
 adoption. Exclude unrelated zones and services.
 
-Prevent the incomplete snapshot operation under MWAN-548. Reproduce the
-task-registry failure that preceded storage deletion without configuration
-cleanup. Repair native operation execution and verify that snapshot deletion
-finishes both storage and configuration cleanup. Require actual interruption
-and registry-failure proof on an isolated disposable testbed target. Do not
-accept automatic lock removal as the repair. Do not replace this requirement
-with retrying a deletion against orphaned snapshot metadata. Preserve active
-operations and production recovery. The unpublished lock-removal helper is
-abandoned; its earlier permission question requires no answer.
+The operator authorized one manual lock cleanup and stopped further
+MWAN-548 investigation and reproduction. Continue cutover acceptance after
+that cleanup. Do not add automatic lock removal or require a new prevention
+project before resuming the approved migration. The unpublished lock-removal
+helper is abandoned; its earlier permission question requires no answer.
 
 Run legacy upgrade repairs, Cloudflare imports and health contract inspection
 in separate lanes with exclusive files. Review the health interfaces before
