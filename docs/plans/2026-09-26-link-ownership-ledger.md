@@ -10074,6 +10074,26 @@ incomplete cleanup. No further reproduction is authorized. Root destroyed
 only the verified owned VM 100 through ordinary qm destroy; exit zero.
 Retain only the compact failed-hypothesis result and remove unused fixtures.
 
+The operator made routing repair and physical cutover acceptance the sole
+priority. Limit deployment changes to prerequisites for installing the merged
+candidate. The reconnect prerequisite changes only two lines in the reboot
+task and sets task-scoped ansible_pipelining. Configs PR 658 contains signed
+commit 1401085d1a54c53cd8b66f88364e6f05c7119455. Scoped configsctl lint,
+configsctl syntax-check and diff checking passed. Actual reboot proof remains
+unperformed; no new deployment has started.
+
+Root refreshed physical application observations from 01:59:19 through
+02:00:49 UTC October 3. All eight check identities recorded passing HTTP
+responses on the restored F4 release. The final three results reported remote
+execution errors at the bounded observer deadline; they do not establish
+application failure. The observer unit is inactive with MainPID zero and
+ExecMainStatus zero; its transport ended one. VM 213 has no active Proxmox
+task. Its active daemon PID is 321, executable hash f970841fefb241b05fea95b9de34d0971b76141be2abf9de0033722b66455ce1,
+and network hash 24ec95b7a11b4c1ac21d0a0b5d2aaff120028fe4ce3afb5e8574695dbb22bcc5.
+Candidate retry, distribution and full cutover acceptance remain unperformed.
+Production remains unchanged. Root controls deployment and application
+observations; distribution_resume owns the existing bounded Ping F streams.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
