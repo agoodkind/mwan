@@ -19,26 +19,7 @@ import (
 )
 
 func TestReconcileRepairsDeletedRulesAndRetriesFailedRefresh(t *testing.T) {
-	runtime.LockOSThread()
-	previous, err := netns.Get()
-	if err != nil {
-		runtime.UnlockOSThread()
-		t.Fatal(err)
-	}
-	current, err := netns.New()
-	if err != nil {
-		previous.Close()
-		runtime.UnlockOSThread()
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := netns.Set(previous); err != nil {
-			t.Error(err)
-		}
-		current.Close()
-		previous.Close()
-		runtime.UnlockOSThread()
-	})
+	enterFirewallTestNamespace(t)
 
 	policy := firewall.Config{
 		Enabled:               true,
@@ -119,6 +100,64 @@ func TestReconcileRepairsDeletedRulesAndRetriesFailedRefresh(t *testing.T) {
 	if _, err := firewall.Inspect(ctx, desired); err != nil {
 		t.Fatalf("inspect repaired firewall policy: %v", err)
 	}
+}
+
+func TestReconcileRequestsNoRefreshWithoutPinnedProvider(t *testing.T) {
+	enterFirewallTestNamespace(t)
+
+	policy := firewall.Config{
+		Enabled:             true,
+		InternalInterface:   "lan0",
+		InternalNetworkIPv4: netip.MustParsePrefix("192.0.2.0/24"),
+		ManagementInterface: "mgmt0",
+		ManagementServices:  []firewall.Service{{Protocol: "tcp", Port: 22}},
+		KnownInterfaces:     []string{"lan0", "mgmt0", "wan0"},
+		Paths:               []firewall.ForwardingPath{{InternalInterface: "lan0", ExternalInterface: "wan0", IPv4: true, IPv6: true}},
+		Providers:           []firewall.Provider{{Interface: "wan0", Mark: 100, MasqueradeIPv4: true}},
+	}
+	selected, err := New(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := wanstate.New()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if err := selected.Init(ctx, &ifmgr.Env{Log: log, LiveState: store}); err != nil {
+		t.Fatal(err)
+	}
+	if err := selected.Reconcile(ctx, log); err != nil {
+		t.Fatalf("reconcile without a pinned provider failed: %v", err)
+	}
+	state := store.Snapshot().IntendedByOwner["firewall"]
+	if state.Rules == "" || state.Error != "" {
+		t.Fatalf("firewall state without a pinned provider: %+v", state)
+	}
+	runNFTTest(t, "list", "chain", "inet", "filter", "forward")
+}
+
+func enterFirewallTestNamespace(t *testing.T) {
+	t.Helper()
+	runtime.LockOSThread()
+	previous, err := netns.Get()
+	if err != nil {
+		runtime.UnlockOSThread()
+		t.Fatal(err)
+	}
+	current, err := netns.New()
+	if err != nil {
+		previous.Close()
+		runtime.UnlockOSThread()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := netns.Set(previous); err != nil {
+			t.Error(err)
+		}
+		current.Close()
+		previous.Close()
+		runtime.UnlockOSThread()
+	})
 }
 
 func runNFTTest(t *testing.T, args ...string) string {
