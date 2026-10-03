@@ -22,6 +22,10 @@ import (
 const (
 	moduleName            = "health"
 	alertKindWANUnhealthy = "wan-health"
+
+	// startupCycleWait bounds how long the startup reconcile pass waits for the
+	// first probe cycle.
+	startupCycleWait = 5 * time.Second
 )
 
 type pingFunc func(
@@ -294,8 +298,14 @@ func (m *Module) Wait() {
 	m.observationWorkers.Wait()
 }
 
-// Reconcile runs an immediate cycle so later WAN-role modules read fresh state
-// during the daemon's ordered startup reconcile.
+// Reconcile starts an immediate cycle so later WAN-role modules read fresh
+// state during the daemon's ordered startup reconcile. The reconcile pass waits
+// at most startupCycleWait for the cycle. A cycle that probes unreachable
+// targets takes several timeouts per provider, and the firewall, translation,
+// and routing modules run after this one in the same pass. A cycle still
+// running at the deadline finishes in the background. Its committed
+// transitions request a reconcile pass. Until the cycle commits, the state file
+// keeps the unknown verdicts that Init wrote.
 func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	if len(m.cfg.WANs) == 0 {
 		return nil
@@ -308,13 +318,36 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	m.reconcilePending = false
 	m.reconcileMu.Unlock()
 
-	if err := m.runCycle(ctx, log); err != nil {
-		m.reconcileMu.Lock()
-		m.reconcilePending = true
-		m.reconcileMu.Unlock()
+	cycleDone := make(chan error, 1)
+	go func() {
+		var cycleErr error
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				log.ErrorContext(ctx, "health: startup probe cycle panicked", "err", fmt.Sprint(recovered))
+				cycleErr = fmt.Errorf("health: startup probe cycle panicked: %v", recovered)
+			}
+			if cycleErr != nil {
+				m.reconcileMu.Lock()
+				m.reconcilePending = true
+				m.reconcileMu.Unlock()
+			}
+			cycleDone <- cycleErr
+		}()
+		cycleErr = m.runCycle(ctx, log)
+	}()
+	deadline := time.NewTimer(startupCycleWait)
+	defer deadline.Stop()
+	select {
+	case err := <-cycleDone:
 		return err
+	case <-deadline.C:
+		log.InfoContext(
+			ctx,
+			"health: startup probe cycle still running; continuing the reconcile pass",
+			"wait", startupCycleWait.String(),
+		)
+		return nil
 	}
-	return nil
 }
 
 type healthObservationNotifier struct {
