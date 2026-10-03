@@ -10146,6 +10146,48 @@ plus the unused 13 MiB reconnect validation cache after confirming no open
 files. Active controller caches, observations and unique incident evidence
 remain required and cataloged on Chaos Storage.
 
+At 03:23 UTC October 3, candidate controller 94236 failed when the delegated
+operation status read exceeded its 15-second task limit after networkd-dispatcher
+completed. The play requested recovery through the exact existing operation.
+Fresh status reports recovering with the existing watch PID 345434 and invocation
+deb716b220824ff8bbdb5545810c41bc. Its outstanding preparation lease expires at
+03:24:36 UTC. All eight independent application checks still pass through
+03:23:59 UTC. Candidate commitment, retry and distribution acceptance remain
+unperformed. Production remains unchanged. Do not start another deployment or
+fault before this operation becomes terminal and restored identity passes.
+
+Root inspected the independent physical recovery procedure. The inbound-only
+fault must use gateway forwarding after destination translation; the mapping
+listener runs on OPNsense, not VM 213. Controller termination must include
+verified descendants and completion of issued remote mutations. A completed
+arm command alone does not prove controller-disconnection recovery. The review
+agent owns the bounded status-timeout diagnosis and procedure corrections;
+distribution_resume continues the existing Ping G streams.
+
+Controller 94236 exited one at 03:25:39 UTC after its recovery command failed
+while stopping VM 213. The independent watch subsequently completed restoration.
+Native qmstart task UPID:hypervisor:0007B4DD:23B2C4D6:6AC075C4:qmstart:213:root@pam:
+reports stopped with exitstatus OK. Public operation status is recovered at
+03:28:33 UTC, with no lease and all eight required checks passing. Root verified
+the actual F4 executable and original network/runtime hashes through guest SSH
+using the hypervisor jump. Boot identity changed to
+2c9722db-f391-4387-8d2c-90c2a55441f0. The exact watch is inactive with MainPID
+zero and ExecMainStatus zero. Independent checks also pass through 03:29 UTC.
+
+Downstream A4 recorded one complete failed HTTPS sample at 03:24:48 UTC and a
+passing response at 03:24:55 UTC. Inbound checks failed during restoration and
+first passed again between 03:27:48 and 03:27:56 UTC. These are separate
+application measurements, not total client outage estimates. Guest B IPv6's
+ping process terminated after an unreachable reply; its replacement first
+replied at 03:27:17 UTC. Record that producer gap separately from packet loss.
+
+The independent source review rules out normal watch observations retaining
+the operation record lock. Status performs record reads and D-Bus watch
+verification. The failed task contains no component timings or remote error
+that proves the cause. Do not increase the timeout or alter recovery from this
+unconfirmed diagnosis. The restored inbound checks now pass without manual
+network repair. Candidate installation and packet acceptance remain incomplete.
+
 ## Record each deployment result
 
 1. Record the environment, release, configuration revision, and connection.
