@@ -66,12 +66,12 @@ func (engine Engine) Arm(ctx context.Context, manifest Manifest) (resultErr erro
 		if resultErr != nil {
 			persistContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), engine.Store.PollInterval)
 			defer cancel()
-			persistErr := engine.Store.Disarm(persistContext, manifest.OperationID, manifest.Generation, "deploy watch setup failed")
-			if persistErr != nil {
+			disarmErr := engine.Store.Disarm(persistContext, manifest.OperationID, manifest.Generation, "deploy watch setup failed")
+			if disarmErr != nil {
 				// A record that cannot disarm has a lease or a recovery that the watch started.
-				persistErr = engine.Store.BeginRecovery(persistContext, manifest.OperationID, manifest.Generation, "deploy watch setup failed")
+				recoveryErr := engine.Store.BeginRecovery(persistContext, manifest.OperationID, manifest.Generation, "deploy watch setup failed")
+				resultErr = errors.Join(resultErr, disarmErr, recoveryErr)
 			}
-			resultErr = errors.Join(resultErr, persistErr)
 			engine.transition(persistContext, record, "deploy_operation_watch_failed", "Deployment watch setup failed", resultErr.Error())
 		}
 	}()
