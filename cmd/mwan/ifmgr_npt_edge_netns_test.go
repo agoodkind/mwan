@@ -545,65 +545,43 @@ func writeRuntimeLegacyNPT(t *testing.T, directory, prefix string, removeWANs bo
 	}
 }
 
-// waitRuntimeNPTEdgeJournal waits for the journal file to list exactly the wanted edges.
+// assertRuntimeNPTEdges compares one journal snapshot per attempt until the deadline.
 // The daemon changes the kernel address before it saves the journal.
-func waitRuntimeNPTEdgeJournal(path string, want []string) {
-	wanted := slices.Clone(want)
-	slices.Sort(wanted)
+func assertRuntimeNPTEdges(t *testing.T, path string, want ...string) {
+	t.Helper()
+	slices.Sort(want)
 	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
+	for {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
 		var journal struct {
 			Objects []struct {
 				Scope  string `json:"scope"`
 				Prefix string `json:"prefix"`
 			} `json:"objects"`
 		}
-		data, err := os.ReadFile(path)
-		if err == nil && json.Unmarshal(data, &journal) == nil {
-			var actual []string
-			for _, record := range journal.Objects {
-				if record.Scope == "npt-edge" {
-					actual = append(actual, record.Prefix)
-				}
+		if err := json.Unmarshal(data, &journal); err != nil {
+			t.Fatal(err)
+		}
+		var actual []string
+		for _, record := range journal.Objects {
+			if slices.Contains(want, record.Prefix) && record.Scope != "npt-edge" {
+				t.Fatalf("edge %s was journaled as ordinary acquisition: %s", record.Prefix, data)
 			}
-			slices.Sort(actual)
-			if slices.Equal(actual, wanted) {
-				return
+			if record.Scope == "npt-edge" {
+				actual = append(actual, record.Prefix)
 			}
+		}
+		slices.Sort(actual)
+		if slices.Equal(actual, want) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("journaled NPT edges = %v; expected %v: %s", actual, want, data)
 		}
 		time.Sleep(20 * time.Millisecond)
-	}
-}
-
-func assertRuntimeNPTEdges(t *testing.T, path string, want ...string) {
-	t.Helper()
-	waitRuntimeNPTEdgeJournal(path, want)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var journal struct {
-		Objects []struct {
-			Scope  string `json:"scope"`
-			Prefix string `json:"prefix"`
-		} `json:"objects"`
-	}
-	if err := json.Unmarshal(data, &journal); err != nil {
-		t.Fatal(err)
-	}
-	var actual []string
-	for _, record := range journal.Objects {
-		if slices.Contains(want, record.Prefix) && record.Scope != "npt-edge" {
-			t.Fatalf("edge %s was journaled as ordinary acquisition: %s", record.Prefix, data)
-		}
-		if record.Scope == "npt-edge" {
-			actual = append(actual, record.Prefix)
-		}
-	}
-	slices.Sort(actual)
-	slices.Sort(want)
-	if !slices.Equal(actual, want) {
-		t.Fatalf("journaled NPT edges = %v; expected %v: %s", actual, want, data)
 	}
 }
 
