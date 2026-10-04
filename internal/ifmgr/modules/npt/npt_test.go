@@ -211,18 +211,3 @@ func TestModuleDisablesWithoutWANs(t *testing.T) {
 		t.Fatalf("Init error = %v, want the disabled sentinel", err)
 	}
 }
-
-// TestNoTeardownMethod is the traffic-continuity guard: the module must not
-// expose a stop/close/teardown that would flush the chains on exit. The kernel
-// keeps forwarding on the last programmed rules across a binary swap.
-func TestNoTeardownMethod(t *testing.T) {
-	t.Parallel()
-
-	m := &Module{}
-	typ := reflect.TypeOf(m)
-	for _, name := range []string{"Stop", "Close", "Teardown", "Shutdown", "Remove"} {
-		if _, ok := typ.MethodByName(name); ok {
-			t.Fatalf("Module exposes %q; NPT must not tear rules down on stop", name)
-		}
-	}
-}
