@@ -545,8 +545,39 @@ func writeRuntimeLegacyNPT(t *testing.T, directory, prefix string, removeWANs bo
 	}
 }
 
+// waitRuntimeNPTEdgeJournal waits for the journal file to list exactly the wanted edges.
+// The daemon changes the kernel address before it saves the journal.
+func waitRuntimeNPTEdgeJournal(path string, want []string) {
+	wanted := slices.Clone(want)
+	slices.Sort(wanted)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		var journal struct {
+			Objects []struct {
+				Scope  string `json:"scope"`
+				Prefix string `json:"prefix"`
+			} `json:"objects"`
+		}
+		data, err := os.ReadFile(path)
+		if err == nil && json.Unmarshal(data, &journal) == nil {
+			var actual []string
+			for _, record := range journal.Objects {
+				if record.Scope == "npt-edge" {
+					actual = append(actual, record.Prefix)
+				}
+			}
+			slices.Sort(actual)
+			if slices.Equal(actual, wanted) {
+				return
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 func assertRuntimeNPTEdges(t *testing.T, path string, want ...string) {
 	t.Helper()
+	waitRuntimeNPTEdgeJournal(path, want)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
