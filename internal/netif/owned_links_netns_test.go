@@ -62,6 +62,59 @@ func TestOwnedLinkAliasOnCreate(t *testing.T) {
 	}
 }
 
+func TestOwnedLinkReservationFromOlderBoot(t *testing.T) {
+	const childEnv = "MWAN_OWNED_LINK_OLDER_BOOT_CHILD"
+	if os.Getenv(childEnv) != "1" {
+		if os.Geteuid() != 0 {
+			t.Skip("network namespace requires root")
+		}
+		child := exec.Command(os.Args[0], "-test.run=^TestOwnedLinkReservationFromOlderBoot$")
+		child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNET}
+		child.Env = append(os.Environ(), childEnv+"=1")
+		if output, err := child.CombinedOutput(); err != nil {
+			t.Fatalf("isolated older boot reservation test: %v: %s", err, output)
+		}
+		return
+	}
+	connection := interfaceintent.Connection{
+		ID: "older-boot-bridge", Name: "older-boot-br",
+		Owner: interfaceintent.OwnerMWAN, Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
+	}
+	statePath := filepath.Join(t.TempDir(), "links.json")
+	// The journal file has the incomplete record that an interrupted creation
+	// writes, with the boot ID of an older boot.
+	interruptedJournal := `{"virtuals":{"older-boot-bridge":{"boot_id":"previous-boot",` +
+		`"connection_id":"older-boot-bridge","alias":"mwan-link:older-boot-bridge:older-boot-token",` +
+		`"temp_name":"mw-older-boot","name":"older-boot-br","kind":"bridge","complete":false}},"memberships":{}}`
+	if err := os.WriteFile(statePath, []byte(interruptedJournal), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	rebooted, err := NewOwnedLinkReconciler(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := rebooted.Reconcile(context.Background(), log, []interfaceintent.Connection{connection})
+	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
+		t.Fatalf("reservation from an older boot blocked link creation: results=%+v err=%v", results, err)
+	}
+	bridge, err := netlink.LinkByName(connection.Name)
+	if err != nil {
+		t.Fatalf("owned bridge is absent after reconciliation: %v", err)
+	}
+	// A restarted reconciler reads the journal file and must find the same bridge ready.
+	restarted, err := NewOwnedLinkReconciler(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err = restarted.Reconcile(context.Background(), log, []interfaceintent.Connection{connection})
+	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady ||
+		results[0].IfIndex != bridge.Attrs().Index {
+		t.Fatalf("restart after the older boot recovery replaced the bridge: results=%+v err=%v index=%d",
+			results, err, bridge.Attrs().Index)
+	}
+}
+
 func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	const childEnv = "MWAN_OWNED_LINK_LIFECYCLE_CHILD"
 	if os.Getenv(childEnv) != "1" {

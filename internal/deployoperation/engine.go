@@ -66,7 +66,12 @@ func (engine Engine) Arm(ctx context.Context, manifest Manifest) (resultErr erro
 		if resultErr != nil {
 			persistContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), engine.Store.PollInterval)
 			defer cancel()
-			resultErr = errors.Join(resultErr, engine.Store.BeginRecovery(persistContext, manifest.OperationID, manifest.Generation, "deploy watch setup failed"))
+			disarmErr := engine.Store.Disarm(persistContext, manifest.OperationID, manifest.Generation, "deploy watch setup failed")
+			if disarmErr != nil {
+				// A record that cannot disarm has a lease or a recovery that the watch started.
+				recoveryErr := engine.Store.BeginRecovery(persistContext, manifest.OperationID, manifest.Generation, "deploy watch setup failed")
+				resultErr = errors.Join(resultErr, disarmErr, recoveryErr)
+			}
 			engine.transition(persistContext, record, "deploy_operation_watch_failed", "Deployment watch setup failed", resultErr.Error())
 		}
 	}()
@@ -118,7 +123,7 @@ func (engine Engine) Watch(ctx context.Context, operationID, generation string) 
 		if err != nil {
 			return err
 		}
-		if record.Status == Committed || record.Status == Recovered {
+		if record.Status.settled() {
 			return nil
 		}
 		if record.Status != Armed || !record.Deadline.After(engine.Store.Clock.Now()) {
@@ -129,7 +134,7 @@ func (engine Engine) Watch(ctx context.Context, operationID, generation string) 
 		if err != nil {
 			return err
 		}
-		if status == Committed || status == Recovered {
+		if status.settled() {
 			return nil
 		}
 		now := engine.Store.Clock.Now()
@@ -140,7 +145,7 @@ func (engine Engine) Watch(ctx context.Context, operationID, generation string) 
 		if err != nil {
 			return err
 		}
-		if current.Status == Committed || current.Status == Recovered {
+		if current.Status.settled() {
 			return nil
 		}
 		if watchObservationsAllowed(record, current, results, engine.Store.Clock.Now()) {

@@ -125,7 +125,8 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 			return nil, fmt.Errorf("firewall: invalid config type %T", cfg)
 		}
 	}
-	return &Module{BaseModule: ifmgr.NewBaseModule(moduleName), cfg: policy, refreshPending: true}, nil
+	// Only a pinned provider creates the destination sets that the refresh service fills.
+	return &Module{BaseModule: ifmgr.NewBaseModule(moduleName), cfg: policy, refreshPending: policy.PinnedProvider != ""}, nil
 }
 
 func init() { ifmgr.Register(moduleName, New) }

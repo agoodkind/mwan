@@ -37,6 +37,8 @@ const (
 	RecoveryFailed Status = "recovery_failed"
 	// Committed ends the current generation after target verification.
 	Committed Status = "committed"
+	// Disarmed ends a generation that granted no mutation lease, without restoration.
+	Disarmed Status = "disarmed"
 )
 
 // Identity binds the recovery pair to one machine and records its actual boot.
@@ -208,6 +210,29 @@ func (store Store) BeginRecovery(ctx context.Context, operationID, generation, r
 	})
 }
 
+// settled reports a status that needs no watch, observation, or snapshot restoration.
+func (status Status) settled() bool {
+	return status == Committed || status == Recovered || status == Disarmed
+}
+
+// Disarm ends an armed operation that has no mutation lease. The gateway keeps its current disk.
+func (store Store) Disarm(ctx context.Context, operationID, generation, reason string) error {
+	return store.change(ctx, operationID, generation, func(record *Record) error {
+		if record.Status != Armed {
+			return fmt.Errorf("deploy operation with status %s cannot disarm", record.Status)
+		}
+		if record.Lease != nil {
+			return fmt.Errorf("deploy operation with a mutation lease cannot disarm")
+		}
+		if strings.TrimSpace(reason) == "" {
+			return fmt.Errorf("deploy disarm requires a reason")
+		}
+		record.Status = Disarmed
+		record.Reason = reason
+		return nil
+	})
+}
+
 func (store Store) finishRecovery(ctx context.Context, operationID, generation string, restored *Identity, reason string) error {
 	return store.change(ctx, operationID, generation, func(record *Record) error {
 		if record.Status != Recovering {
@@ -293,7 +318,7 @@ func (store Store) observe(ctx context.Context, operationID, generation string, 
 			return fmt.Errorf("deploy operation identity does not match")
 		}
 		status = record.Status
-		if status == Committed || status == Recovered {
+		if status.settled() {
 			return nil
 		}
 		if record.Status != Armed && record.Status != Recovering {
@@ -412,7 +437,7 @@ func (record Record) validate() error {
 		}
 	}
 	switch record.Status {
-	case Armed, Recovering, Recovered, RecoveryFailed, Committed:
+	case Armed, Recovering, Recovered, RecoveryFailed, Committed, Disarmed:
 	default:
 		return fmt.Errorf("deploy operation status is invalid")
 	}

@@ -47,7 +47,8 @@ func (w *watchdog) inspectDeployOperation(ctx context.Context, coordinator *roll
 		log.ErrorContext(ctx, "deployment operation read failed", "err", err)
 		return true
 	}
-	if record.Status == deployoperation.Committed || record.Status == deployoperation.Recovered {
+	if record.Status == deployoperation.Committed || record.Status == deployoperation.Recovered ||
+		record.Status == deployoperation.Disarmed {
 		return false
 	}
 	if record.VMID != w.cfg.MwanVMID {
