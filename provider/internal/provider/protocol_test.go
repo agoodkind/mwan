@@ -48,7 +48,6 @@ type roleUnit struct {
 type roleSysrepoData struct {
 	Datastore string
 	Module    string
-	XPath     string
 	Content   string
 }
 
@@ -270,7 +269,6 @@ func decodeRole(t *testing.T, state tftypes.Value) roleData {
 		role.SysrepoData = append(role.SysrepoData, roleSysrepoData{
 			Datastore: text(t, entry, "datastore"),
 			Module:    text(t, entry, "module"),
-			XPath:     text(t, entry, "xpath"),
 			Content:   text(t, entry, "content"),
 		})
 	}

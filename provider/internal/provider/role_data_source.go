@@ -38,7 +38,6 @@ type unitModel struct {
 type sysrepoDataModel struct {
 	Datastore types.String `tfsdk:"datastore"`
 	Module    types.String `tfsdk:"module"`
-	XPath     types.String `tfsdk:"xpath"`
 	Content   types.String `tfsdk:"content"`
 }
 
@@ -128,7 +127,6 @@ func (d *roleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 					Attributes: map[string]schema.Attribute{
 						"datastore": schema.StringAttribute{Computed: true, Description: "startup or running."},
 						"module":    schema.StringAttribute{Computed: true, Description: "Module the import configures."},
-						"xpath":     schema.StringAttribute{Computed: true, Description: "Subtree the content defines."},
 						"content":   schema.StringAttribute{Computed: true, Description: "XML document to import."},
 					},
 				},
@@ -227,7 +225,6 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 		model.SysrepoData = append(model.SysrepoData, sysrepoDataModel{
 			Datastore: types.StringValue(string(entry.Datastore)),
 			Module:    types.StringValue(entry.Module),
-			XPath:     types.StringValue(entry.XPath),
 			Content:   types.StringValue(string(entry.Content)),
 		})
 	}

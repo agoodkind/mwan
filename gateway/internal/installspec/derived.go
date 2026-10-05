@@ -12,8 +12,6 @@ const (
 
 	// NACMModule is the sysrepo module the NACM policy configures.
 	NACMModule = "ietf-netconf-acm"
-	// NACMXPath is the subtree the NACM policy defines.
-	NACMXPath = "/ietf-netconf-acm:nacm"
 
 	unitSuffix        = ".service"
 	dropInDirSuffix   = ".d"
@@ -38,8 +36,6 @@ type SysrepoImport struct {
 	Datastore Datastore
 	// Module is the module that the import replaces the whole configuration of.
 	Module string
-	// XPath is the subtree the content defines.
-	XPath string
 	// Content is the XML document to import.
 	Content []byte
 }
@@ -60,7 +56,6 @@ func (s Spec) SysrepoImports() ([]SysrepoImport, error) {
 		imports = append(imports, SysrepoImport{
 			Datastore: datastore,
 			Module:    NACMModule,
-			XPath:     NACMXPath,
 			Content:   policy,
 		})
 	}
