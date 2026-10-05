@@ -279,9 +279,14 @@ func (r *RealOps) VMFSFreezeThaw(ctx context.Context, vmid string) error {
 
 // GuestExec tries vsock, then management TCP, then a hypervisor command.
 // ChannelTracker records whether each attempted transport succeeded.
+// An LXC guest runs the hypervisor command only.
 func (r *RealOps) GuestExec(
 	ctx context.Context, vmid string, args ...string,
 ) (GuestExecResult, error) {
+	if !r.guest.hasGuestAgentChannels() {
+		return r.trackedHypervisorExec(ctx, 1, vmid, args...)
+	}
+
 	// Allow unit test overrides to bypass the real transport layer.
 	if r.testVsockOverride != nil {
 		res, err := r.testVsockOverride(ctx, args...)
@@ -313,16 +318,21 @@ func (r *RealOps) GuestExec(
 	r.tracker.recordFailure(ChanTCP, tcpErr)
 	r.logAttemptResult(ctx, "guest_exec", ChanTCP, 2, vmid, tcpErr)
 
-	r.logAttemptStart(ctx, "guest_exec", ChanPVE, 3, vmid)
-	qmRes, qmErr := r.hypervisorExec(ctx, vmid, args...)
-	if qmErr == nil {
+	return r.trackedHypervisorExec(ctx, 3, vmid, args...)
+}
+
+func (r *RealOps) trackedHypervisorExec(
+	ctx context.Context, attempt int, vmid string, args ...string,
+) (GuestExecResult, error) {
+	r.logAttemptStart(ctx, "guest_exec", ChanPVE, attempt, vmid)
+	result, err := r.hypervisorExec(ctx, vmid, args...)
+	if err == nil {
 		r.tracker.recordSuccess(ChanPVE)
-		r.logAttemptResult(ctx, "guest_exec", ChanPVE, 3, vmid, nil)
 	} else {
-		r.tracker.recordFailure(ChanPVE, qmErr)
-		r.logAttemptResult(ctx, "guest_exec", ChanPVE, 3, vmid, qmErr)
+		r.tracker.recordFailure(ChanPVE, err)
 	}
-	return qmRes, qmErr
+	r.logAttemptResult(ctx, "guest_exec", ChanPVE, attempt, vmid, err)
+	return result, err
 }
 
 func (r *RealOps) hypervisorExec(
