@@ -87,6 +87,13 @@ func GitCommit() string {
 	return stampedOrUnknown(gklogversion.Commit)
 }
 
+// StampedCommit returns the git commit stamped at link time. The second result
+// is false for a binary without a stamp.
+func StampedCommit() (string, bool) {
+	commit := GitCommit()
+	return commit, commit != unknown
+}
+
 // GitDirty returns "clean", "dirty", or "unknown".
 func GitDirty() string {
 	switch dirtyStamp(gklogversion.Dirty) {
