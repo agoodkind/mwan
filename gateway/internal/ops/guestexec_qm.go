@@ -34,7 +34,8 @@ func RunInGuest(
 	command ...string,
 ) (GuestCommandResult, error) {
 	driver := newGuestDriver(guestType)
-	return driver.execGuest(ctx, strconv.Itoa(vmid), waitTimeout, agentTimeout, command)
+	return driver.execGuest(
+		ctx, slog.Default(), strconv.Itoa(vmid), waitTimeout, agentTimeout, command)
 }
 
 func failedGuestCommand() GuestCommandResult {
@@ -100,13 +101,14 @@ type qmGuestExecStatus struct {
 // an error.
 func (qemuGuest) execGuest(
 	ctx context.Context,
+	log *slog.Logger,
 	vmid string,
 	waitTimeout, agentTimeout time.Duration,
 	command []string,
 ) (GuestCommandResult, error) {
 	out, err := runQm(ctx, waitTimeout, qmGuestExecArgs(vmid, agentTimeout, command)...)
 	if err != nil {
-		slog.ErrorContext(ctx, "qm guest exec failed",
+		log.ErrorContext(ctx, "qm guest exec failed",
 			"vmid", vmid, "err", err,
 			"output", strings.TrimSpace(string(out)))
 		// runQm returns the command line in its error; this adds the output.
@@ -115,7 +117,7 @@ func (qemuGuest) execGuest(
 	}
 	var status qmGuestExecStatus
 	if err := json.Unmarshal(out, &status); err != nil {
-		slog.WarnContext(ctx, "qm guest exec output is not JSON",
+		log.WarnContext(ctx, "qm guest exec output is not JSON",
 			"vmid", vmid, "err", err,
 			"output", strings.TrimSpace(string(out)))
 		return failedGuestCommand(),

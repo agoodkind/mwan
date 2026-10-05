@@ -337,13 +337,8 @@ func (r *RealOps) hypervisorExec(
 	ctx context.Context, vmid string, args ...string,
 ) (GuestExecResult, error) {
 	result, err := r.guest.execGuest(
-		ctx, vmid, timeoutQmGuestExecWait, timeoutQmGuestExec, args)
-	if err != nil {
-		r.log.ErrorContext(ctx, "guest exec failed",
-			"binary", r.guest.binary(), "vmid", vmid, "err", err)
-		return result.GuestExecResult, err
-	}
-	return result.GuestExecResult, nil
+		ctx, r.log, vmid, timeoutQmGuestExecWait, timeoutQmGuestExec, args)
+	return result.GuestExecResult, err
 }
 
 func (r *RealOps) vsockExec(

@@ -3,6 +3,7 @@ package ops
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"time"
 
 	"goodkind.io/mwan/internal/config"
@@ -29,6 +30,7 @@ type guestDriver interface {
 type guestExecRunner interface {
 	execGuest(
 		ctx context.Context,
+		log *slog.Logger,
 		vmid string,
 		waitTimeout, agentTimeout time.Duration,
 		command []string,

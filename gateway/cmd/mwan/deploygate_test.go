@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/netip"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -674,6 +675,154 @@ func guestResult(exitCode int, stdout string) ops.GuestCommandResult {
 	return ops.GuestCommandResult{
 		GuestExecResult: ops.GuestExecResult{ExitCode: exitCode, Stdout: stdout},
 		Stderr:          "",
+	}
+}
+
+func buildMwanBinary(t *testing.T) string {
+	t.Helper()
+	binaryPath := filepath.Join(t.TempDir(), "mwan")
+	build := exec.CommandContext(t.Context(), "go", "build", "-o", binaryPath, ".")
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("go build: %v\n%s", err, output)
+	}
+	return binaryPath
+}
+
+// installFakeHypervisorTool writes an executable named name with the given
+// script and returns its directory, which the caller puts first on PATH.
+func installFakeHypervisorTool(t *testing.T, name, script string) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// runMwanBinary runs the built binary with toolDir first on PATH and returns
+// its combined output and exit code.
+func runMwanBinary(
+	t *testing.T, binaryPath, toolDir, configPath string, args ...string,
+) (string, int) {
+	t.Helper()
+	command := exec.CommandContext(t.Context(), binaryPath, args...)
+	command.Env = append(os.Environ(),
+		"PATH="+toolDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"MWAN_CONFIG="+configPath)
+	output, err := command.CombinedOutput()
+	if err == nil {
+		return string(output), 0
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("run %v: %v", args, err)
+	}
+	return string(output), exitErr.ExitCode()
+}
+
+func writeTestFile(t *testing.T, name, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// TestDeployGateWaitRebootReadsTheBootIDThroughTheGuestDriver runs the built
+// wait-reboot gate with a fake hypervisor tool on PATH. An unusable read ends
+// the gate at the deadline with exit 2, a read of the old boot id ends it with
+// exit 1, and a read of a new boot id ends it with exit 0.
+func TestDeployGateWaitRebootReadsTheBootIDThroughTheGuestDriver(t *testing.T) {
+	binaryPath := buildMwanBinary(t)
+	qemuConfig := writeTestFile(t, "config.toml", "guest_type = \"qemu\"\n")
+	lxcConfig := writeTestFile(t, "config.toml", "guest_type = \"lxc\"\n")
+	cases := []struct {
+		name       string
+		tool       string
+		configPath string
+		reply      string
+		wantExit   int
+		wantOutput string
+	}{
+		{
+			name: "qemu new boot id", tool: "qm", configPath: qemuConfig,
+			reply:    `{"exitcode":0,"exited":1,"out-data":"` + testNewBootID + `\n","out-truncated":0}`,
+			wantExit: exitDeployGateOK, wantOutput: "rebooted",
+		},
+		{
+			name: "qemu same boot id", tool: "qm", configPath: qemuConfig,
+			reply:    `{"exitcode":0,"exited":1,"out-data":"` + testOldBootID + `\n","out-truncated":0}`,
+			wantExit: exitDeployGateFailed, wantOutput: "reboot never fired",
+		},
+		{
+			name: "qemu non-zero exit", tool: "qm", configPath: qemuConfig,
+			reply:    `{"exitcode":1,"exited":1,"out-data":"boom","out-truncated":0}`,
+			wantExit: exitDeployGateUnobservable, wantOutput: "guest command exited 1",
+		},
+		{
+			name: "qemu stdout is not a boot id", tool: "qm", configPath: qemuConfig,
+			reply:    `{"exitcode":0,"exited":1,"out-data":"hello","out-truncated":0}`,
+			wantExit: exitDeployGateUnobservable, wantOutput: "not a boot_id UUID",
+		},
+		{
+			name: "qemu empty stdout", tool: "qm", configPath: qemuConfig,
+			reply:    `{"exitcode":0,"exited":1}`,
+			wantExit: exitDeployGateUnobservable, wantOutput: "not a boot_id UUID",
+		},
+		{
+			name: "qemu partial boot id", tool: "qm", configPath: qemuConfig,
+			reply:    `{"exitcode":0,"exited":1,"out-data":"aaaaaaaa-bbbb","out-truncated":0}`,
+			wantExit: exitDeployGateUnobservable, wantOutput: "not a boot_id UUID",
+		},
+		{
+			name: "qemu upper-case boot id", tool: "qm", configPath: qemuConfig,
+			reply: `{"exitcode":0,"exited":1,` +
+				`"out-data":"AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE","out-truncated":0}`,
+			wantExit: exitDeployGateUnobservable, wantOutput: "not a boot_id UUID",
+		},
+		{
+			name: "qemu truncated reply", tool: "qm", configPath: qemuConfig,
+			reply:    `{"exitcode":0,"exited":1,"out-data":"` + testNewBootID + `","out-truncated":1}`,
+			wantExit: exitDeployGateUnobservable, wantOutput: "truncated",
+		},
+		{
+			name: "lxc new boot id", tool: "pct", configPath: lxcConfig,
+			reply:    testNewBootID + "\n",
+			wantExit: exitDeployGateOK, wantOutput: "rebooted",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			replyPath := writeTestFile(t, "reply", tc.reply)
+			toolDir := installFakeHypervisorTool(t, tc.tool, "#!/bin/sh\ncat '"+replyPath+"'\n")
+
+			output, exitCode := runMwanBinary(t, binaryPath, toolDir, tc.configPath,
+				"deploy-gate", "wait-reboot", "113", testOldBootID, "1")
+
+			if exitCode != tc.wantExit {
+				t.Fatalf("exit code = %d, want %d\noutput: %s", exitCode, tc.wantExit, output)
+			}
+			if !strings.Contains(output, tc.wantOutput) {
+				t.Fatalf("output does not contain %q: %s", tc.wantOutput, output)
+			}
+		})
+	}
+}
+
+func TestDeployGateWaitRebootFailsWhenTheHostConfigurationIsUnreadable(t *testing.T) {
+	binaryPath := buildMwanBinary(t)
+	missingConfig := filepath.Join(t.TempDir(), "absent.toml")
+
+	output, exitCode := runMwanBinary(t, binaryPath, t.TempDir(), missingConfig,
+		"deploy-gate", "wait-reboot", "113", testOldBootID, "1")
+
+	if exitCode != exitDeployGateFailed {
+		t.Fatalf("exit code = %d, want %d\noutput: %s", exitCode, exitDeployGateFailed, output)
+	}
+	if !strings.Contains(output, "load configuration") {
+		t.Fatalf("output does not name the configuration failure: %s", output)
 	}
 }
 

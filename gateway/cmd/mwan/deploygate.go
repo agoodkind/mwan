@@ -148,7 +148,7 @@ func newDeployGateDeps() deployGateDeps {
 		ping6:           probe.PingICMP6,
 		ping4:           netif.Ping4,
 		probeDownstream: probeDownstreamEgressRound,
-		readBootID:      readGuestBootID,
+		readBootID:      nil,
 		now:             time.Now,
 		sleep:           time.Sleep,
 		loadNetwork: func() (*networkjson.Config, error) {
@@ -156,7 +156,7 @@ func newDeployGateDeps() deployGateDeps {
 		},
 		loadNetworkFrom:    networkjson.Load,
 		listAddrs:          netif.ListAddrs,
-		runGuestOwnedCheck: readGuestOwnedCheck,
+		runGuestOwnedCheck: nil,
 		alertOwnedMissing:  sendOwnedMissingAlert,
 	}
 }
@@ -236,7 +236,9 @@ func runDeployGate(args []string) int {
 				"mwan deploy-gate: old_boot_id %q is not a boot_id UUID\n", rest[1])
 			return exitDeployGateUsage
 		}
-		return waitReboot(ctx, deps, vmid, rest[1], budget)
+		return onGatewayHost(deps, func(hostDeps deployGateDeps) int {
+			return waitReboot(ctx, hostDeps, vmid, rest[1], budget)
+		})
 	case gateModeWaitEgress:
 		budget, families, rounds, ok := parseWaitEgressArgs(rest)
 		if !ok {
@@ -248,7 +250,9 @@ func runDeployGate(args []string) int {
 		if !ok {
 			return exitDeployGateUsage
 		}
-		return waitDeploy(ctx, deps, inputs)
+		return onGatewayHost(deps, func(hostDeps deployGateDeps) int {
+			return waitDeploy(ctx, hostDeps, inputs)
+		})
 	default:
 		printDeployGateUsage()
 		return exitDeployGateUsage
@@ -700,9 +704,11 @@ func ownedMissingEvent(alert ownedMissingAlert) notify.Event {
 
 // readGuestOwnedCheck runs the owned-address check inside the guest through
 // the QEMU guest agent and returns its exit code and report.
-func readGuestOwnedCheck(ctx context.Context, vmid int) (ops.GuestCommandResult, error) {
+func readGuestOwnedCheck(
+	ctx context.Context, guestType config.GuestType, vmid int,
+) (ops.GuestCommandResult, error) {
 	log := slog.With("component", "deploy-gate", "op", "readGuestOwnedCheck", "vmid", vmid)
-	result, err := execInGateGuest(ctx, vmid,
+	result, err := execInGateGuest(ctx, guestType, vmid,
 		deployGateGuestBinary, "deploy-gate", string(gateModeCheckOwned))
 	if err != nil {
 		log.WarnContext(ctx, "deploy-gate: guest exec failed", "err", err)
@@ -711,21 +717,43 @@ func readGuestOwnedCheck(ctx context.Context, vmid int) (ops.GuestCommandResult,
 	return result, nil
 }
 
-// execInGateGuest runs command in the gateway guest. The guest type comes from
-// the host configuration.
-func execInGateGuest(
-	ctx context.Context, vmid int, command ...string,
-) (ops.GuestCommandResult, error) {
-	var none ops.GuestCommandResult
+// withGatewayGuestReads binds the boot id and owned-address reads to the guest
+// type in the host configuration. The gate loads the configuration once per
+// run.
+func withGatewayGuestReads(deps deployGateDeps) (deployGateDeps, error) {
 	cfg, err := config.Load()
 	if err != nil {
-		slog.ErrorContext(ctx, "deploy-gate: configuration unreadable", "err", err)
-		return none, fmt.Errorf("load configuration: %w", err)
+		slog.Error("deploy-gate: configuration unreadable", "err", err)
+		return deps, fmt.Errorf("load configuration: %w", err)
 	}
-	result, err := ops.RunInGuest(ctx, cfg.GuestType,
+	guestType := cfg.GuestType
+	deps.readBootID = func(ctx context.Context, vmid int) (string, error) {
+		return readGuestBootID(ctx, guestType, vmid)
+	}
+	deps.runGuestOwnedCheck = func(ctx context.Context, vmid int) (ops.GuestCommandResult, error) {
+		return readGuestOwnedCheck(ctx, guestType, vmid)
+	}
+	return deps, nil
+}
+
+func onGatewayHost(deps deployGateDeps, run func(deployGateDeps) int) int {
+	hostDeps, err := withGatewayGuestReads(deps)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+		return exitDeployGateFailed
+	}
+	return run(hostDeps)
+}
+
+func execInGateGuest(
+	ctx context.Context, guestType config.GuestType, vmid int, command ...string,
+) (ops.GuestCommandResult, error) {
+	var none ops.GuestCommandResult
+	result, err := ops.RunInGuest(ctx, guestType,
 		deployGateGuestExecTimeout+5*time.Second, deployGateGuestExecTimeout,
 		vmid, command...)
 	if err != nil {
+		slog.WarnContext(ctx, "deploy-gate: guest exec failed", "vmid", vmid, "err", err)
 		return none, fmt.Errorf("guest exec %d: %w", vmid, err)
 	}
 	return result, nil
@@ -866,10 +894,13 @@ func yesNo(ok bool) string {
 // readGuestBootID reads /proc/sys/kernel/random/boot_id inside the guest
 // through the QEMU guest agent and validates the response shape, so a
 // partial or error-shaped reply never compares equal or unequal by accident.
-func readGuestBootID(ctx context.Context, vmid int) (string, error) {
+func readGuestBootID(
+	ctx context.Context, guestType config.GuestType, vmid int,
+) (string, error) {
 	log := slog.With("component", "deploy-gate", "op", "readGuestBootID", "vmid", vmid)
 	log.DebugContext(ctx, "deploy-gate: reading guest boot_id")
-	result, err := execInGateGuest(ctx, vmid, "cat", "/proc/sys/kernel/random/boot_id")
+	result, err := execInGateGuest(ctx, guestType, vmid,
+		"cat", "/proc/sys/kernel/random/boot_id")
 	if err != nil {
 		log.WarnContext(ctx, "deploy-gate: guest exec failed", "err", err)
 		return "", err

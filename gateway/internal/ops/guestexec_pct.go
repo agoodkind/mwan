@@ -17,6 +17,7 @@ import (
 // `pct exec` has no agent-side wait.
 func (lxcGuest) execGuest(
 	ctx context.Context,
+	log *slog.Logger,
 	vmid string,
 	waitTimeout, _ time.Duration,
 	command []string,
@@ -24,7 +25,7 @@ func (lxcGuest) execGuest(
 	args := append([]string{"exec", vmid, "--"}, command...)
 	cctx, cancel := context.WithTimeout(ctx, waitTimeout)
 	defer cancel()
-	slog.DebugContext(ctx, "ops: pct exec", "args", args, "timeout", waitTimeout)
+	log.DebugContext(ctx, "ops: pct exec", "args", args, "timeout", waitTimeout)
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(cctx, pctBinary, args...)
 	cmd.Stdout = &stdout
@@ -34,7 +35,7 @@ func (lxcGuest) execGuest(
 		return lxcCommandResult(0, &stdout, &stderr), nil
 	}
 	if cctx.Err() != nil {
-		slog.WarnContext(ctx, "pct exec timed out",
+		log.WarnContext(ctx, "pct exec timed out",
 			"vmid", vmid, "timeout", waitTimeout, "err", err)
 		return failedGuestCommand(), fmt.Errorf(
 			"guest command %q did not exit within %s",
@@ -44,7 +45,7 @@ func (lxcGuest) execGuest(
 	if errors.As(err, &exitErr) && exitErr.ExitCode() >= 0 {
 		return lxcCommandResult(exitErr.ExitCode(), &stdout, &stderr), nil
 	}
-	slog.WarnContext(ctx, "pct exec failed",
+	log.WarnContext(ctx, "pct exec failed",
 		"vmid", vmid, "err", err, "stderr", strings.TrimSpace(stderr.String()))
 	return failedGuestCommand(), fmt.Errorf("pct %s: %w", strings.Join(args, " "), err)
 }
