@@ -24,6 +24,7 @@ jobs:
       attestations: write
     secrets: inherit
     with:
+      working_directory: gateway
       apt_packages: libpcre2-dev
       cgo: true
       platforms: linux/amd64 linux/arm64

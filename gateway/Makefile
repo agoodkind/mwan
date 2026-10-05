@@ -318,6 +318,10 @@ endif
 # Docker lane for the linux gateway binary, test suite, and lint gates
 # ---------------------------------------------------------------------------
 
+# The docker lane mounts the repository root, which is the parent of this
+# module directory.
+REPO_ROOT := $(abspath $(CURDIR)/..)
+
 # The builder image is Debian trixie with Go and the pinned libyang and
 # sysrepo installed. The cgo binding built in it links the gateway's library
 # generation and glibc. No deploy installs the binary this lane writes.
@@ -337,18 +341,18 @@ WANCONFIG_BUILDER_IMAGE := mwan-wanconfig-builder:$(WANCONFIG_DOCKER_ARCH)
 # Module sources are the same for every architecture, and both architectures
 # share one module cache volume. Build caches, lint caches, and cgo archives
 # differ by architecture, and each architecture has its own volumes for them.
-# The host's .make contains a darwin engine, and the container mounts its own
-# .make volume over it.
+# The host's gateway/.make contains a darwin engine, and the container mounts
+# its own .make volume over it.
 #
 # The container runs as root. On a Linux host a non-root user owns the
 # mounted checkout, and git refuses a repository another user owns. Go then
 # fails the build when it stamps version-control data. The safe.directory
 # entry lets git read /src.
 WANCONFIG_DOCKER_RUN := docker run --rm --platform linux/$(WANCONFIG_DOCKER_ARCH) \
-	-v $(CURDIR):/src -w /src \
+	-v $(REPO_ROOT):/src -w /src/gateway \
 	-v mwan-wanconfig-gomod:/go/pkg/mod \
 	-v mwan-wanconfig-cache-$(WANCONFIG_DOCKER_ARCH):/root/.cache \
-	-v mwan-wanconfig-gomk-$(WANCONFIG_DOCKER_ARCH):/src/.make \
+	-v mwan-wanconfig-gomk-$(WANCONFIG_DOCKER_ARCH):/src/gateway/.make \
 	-e GOWORK=off \
 	-e GIT_CONFIG_COUNT=1 \
 	-e GIT_CONFIG_KEY_0=safe.directory \
@@ -374,8 +378,9 @@ build-wanconfig: wanconfig-builder-image
 	$(WANCONFIG_DOCKER_RUN) \
 		go build $(GO_BUILD_EXTRA_FLAGS) -ldflags='$(GO_BUILD_LDFLAGS)' -o $(LOCAL_BIN)/$(BINARY)-wanconfig-linux-$(WANCONFIG_DOCKER_ARCH) $(CMD)
 
-# The container mounts the repository root. The root is the module root, and
-# it contains the YANG models the suite reads.
+# The container mounts the repository root at /src and runs in /src/gateway,
+# the module root. The module root contains the YANG models the suite reads,
+# and the repository root supplies the .git directory go-makefile reads.
 .PHONY: test-docker
 test-docker: wanconfig-builder-image
 	@echo "running the suite in $(WANCONFIG_BUILDER_IMAGE)"
@@ -390,10 +395,10 @@ test-docker: wanconfig-builder-image
 .PHONY: test-firewall
 test-firewall: wanconfig-builder-image
 	docker run --rm --privileged --platform linux/$(WANCONFIG_DOCKER_ARCH) \
-		-v $(CURDIR):/src -w /src \
+		-v $(REPO_ROOT):/src -w /src/gateway \
 		-v mwan-wanconfig-gomod:/go/pkg/mod \
 		-v mwan-wanconfig-cache-$(WANCONFIG_DOCKER_ARCH):/root/.cache \
-		-v mwan-wanconfig-gomk-$(WANCONFIG_DOCKER_ARCH):/src/.make \
+		-v mwan-wanconfig-gomk-$(WANCONFIG_DOCKER_ARCH):/src/gateway/.make \
 		-e GOWORK=off \
 		-e GIT_CONFIG_COUNT=1 \
 		-e GIT_CONFIG_KEY_0=safe.directory \
@@ -411,7 +416,7 @@ test-legacy-upgrade: build-wanconfig systemd-runner-image
 	$(WANCONFIG_DOCKER_RUN) sha256sum $(LOCAL_BIN)/$(BINARY)-wanconfig-linux-amd64
 	$(WANCONFIG_DOCKER_RUN) $(LOCAL_BIN)/$(BINARY)-wanconfig-linux-amd64 version
 	GOWORK=off go run ./tools/protocolrunner -lane original-upgrade \
-		-image "$(SYSTEMD_RUNNER_IMAGE)" -arch amd64 -source "$(CURDIR)" \
+		-image "$(SYSTEMD_RUNNER_IMAGE)" -arch amd64 -source "$(REPO_ROOT)" \
 		-results "$(PROTOCOL_RESULTS_DIR)" -binary "$(CURDIR)/$(LOCAL_BIN)/$(BINARY)-wanconfig-linux-amd64" \
 		-original-binary "$(MWAN_NPT_LEGACY_BINARY)" -original-sha256 "$(MWAN_NPT_LEGACY_SHA256)"
 
@@ -500,7 +505,7 @@ netns-runner-image:
 test-netns: netns-runner-image
 	docker run --rm --platform linux/arm64 \
 		--privileged \
-		-v $(CURDIR):/src -w /src \
+		-v $(REPO_ROOT):/src -w /src/gateway \
 		-e GOWORK=off -e CGO_ENABLED=0 \
 		$(NETNS_RUNNER_IMAGE) \
 		go test -count=1 -tags netns $(NETNS_TEST_PACKAGES)
@@ -535,12 +540,12 @@ test-protocol: test-protocol-namespace test-protocol-systemd
 
 test-protocol-namespace: protocol-runner-image
 	go run ./tools/protocolrunner -lane namespace -image $(NETNS_PROTOCOL_IMAGE) \
-		-arch $(WANCONFIG_DOCKER_ARCH) -source "$(CURDIR)" \
+		-arch $(WANCONFIG_DOCKER_ARCH) -source "$(REPO_ROOT)" \
 		-results "$(PROTOCOL_RESULTS_DIR)" -binary "$(MWAN_PROTOCOL_TEST_BINARY)"
 
 test-protocol-systemd: systemd-runner-image
 	go run ./tools/protocolrunner -lane systemd -image $(SYSTEMD_RUNNER_IMAGE) \
-		-arch $(WANCONFIG_DOCKER_ARCH) -source "$(CURDIR)" \
+		-arch $(WANCONFIG_DOCKER_ARCH) -source "$(REPO_ROOT)" \
 		-results "$(PROTOCOL_RESULTS_DIR)" -binary "$(MWAN_PROTOCOL_TEST_BINARY)" \
 		-owned-role-configs "$(MWAN_OWNED_ROLE_CONFIGS)"
 

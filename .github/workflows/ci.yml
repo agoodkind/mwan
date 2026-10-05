@@ -26,6 +26,8 @@ jobs:
       attestations: write
     secrets: inherit
     with:
+      working_directory: gateway
+      go_version_file: gateway/go.mod
       # libyang2-tools supplies yanglint for the YANG model gate, and
       # libpcre2-dev is what the pinned libyang links against when the
       # cgo-deps hook builds it.
@@ -56,8 +58,8 @@ jobs:
       # though this job compiles nothing.
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
-          cache-dependency-path: go.sum
+          go-version-file: gateway/go.mod
+          cache-dependency-path: gateway/go.sum
       # libyang2-tools provides yanglint, which both gates run.
       - name: Install yanglint
         run: sudo apt-get update && sudo apt-get install -y libyang2-tools
@@ -67,6 +69,7 @@ jobs:
       - name: Validate the YANG model and its instance documents
         env:
           GH_TOKEN: ${{ github.token }}
+        working-directory: gateway
         run: make yang-validate yang-validate-instances
 
   # This job exists because the netns-tagged tests create a private network
@@ -80,14 +83,15 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
-          cache-dependency-path: go.sum
+          go-version-file: gateway/go.mod
+          cache-dependency-path: gateway/go.sum
       # The Makefile fetches go-makefile through gh while make parses it, so
       # the token keeps that fetch on the authenticated API path instead of
       # its anonymous raw fallback.
       - name: Run the network namespace tests as root
         env:
           GH_TOKEN: ${{ github.token }}
+        working-directory: gateway
         run: make test-netns
 
   # The firewall tests need the privileged builder and cgo schema libraries.
@@ -104,12 +108,13 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
-          cache-dependency-path: go.sum
+          go-version-file: gateway/go.mod
+          cache-dependency-path: gateway/go.sum
       - name: Verify the original release and run its preparation upgrade
         env:
           GH_TOKEN: ${{ github.token }}
           MWAN_NPT_LEGACY_SHA256: 1c79542f6f9e56fc0ad0f101b0688a84f95bfc41706ebebf36982e0f4f8726fa
+        working-directory: gateway
         run: |
           mkdir -p "$RUNNER_TEMP/mwan-original"
           gh release download 202609292152-70-d442ba1 --repo agoodkind/mwan --pattern mwan_linux_amd64.tar.gz --dir "$RUNNER_TEMP/mwan-original"
@@ -119,18 +124,20 @@ jobs:
       - name: Run the firewall and namespace acceptance tests
         env:
           GH_TOKEN: ${{ github.token }}
+        working-directory: gateway
         run: make test-firewall test-protocol-namespace
       - name: Run the systemd acceptance tests
         if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
+        working-directory: gateway
         run: make test-protocol-systemd MWAN_OWNED_ROLE_CONFIGS="$GITHUB_WORKSPACE/.protocol-configs"
       - name: Upload protocol execution results
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: mwan-protocol-results-${{ github.run_attempt }}
-          path: bin/protocol-results/
+          path: gateway/bin/protocol-results/
           if-no-files-found: warn
 
   # The go job's quality matrix runs the suite on amd64 runners only. This job
@@ -145,12 +152,13 @@ jobs:
       # is a hard dependency even though the suite runs in the container.
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
-          cache-dependency-path: go.sum
+          go-version-file: gateway/go.mod
+          cache-dependency-path: gateway/go.sum
       # The Makefile fetches go-makefile through gh while make parses it, so
       # the token keeps that fetch on the authenticated API path instead of
       # its anonymous raw fallback.
       - name: Run the suite in the arm64 builder image
         env:
           GH_TOKEN: ${{ github.token }}
+        working-directory: gateway
         run: make test-docker WANCONFIG_DOCKER_ARCH=arm64
