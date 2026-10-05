@@ -243,7 +243,7 @@ func reportInstall(out io.Writer, outcome installOutcome, rooted bool) {
 		for _, ds := range outcome.nacmImported {
 			names = append(names, string(ds))
 		}
-		fmt.Fprintf(out, "imported the %s policy into %s\n", nacmModule, strings.Join(names, " and "))
+		fmt.Fprintf(out, "imported the %s policy into %s\n", installspec.NACMModule, strings.Join(names, " and "))
 	}
 	if len(outcome.enabled) == 0 {
 		return

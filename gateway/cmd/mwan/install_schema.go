@@ -18,14 +18,6 @@ import (
 // root instead of touching the host's.
 const sysrepoRepositoryDir = "/etc/sysrepo"
 
-// nacmModule is the module the policy configures.
-const nacmModule = "ietf-netconf-acm"
-
-// nacmDatastores are the datastores the policy is imported into, in the order
-// the deploy imported it: startup first, so a restarted sysrepo loads the
-// policy, then running, so it applies now.
-var nacmDatastores = []yangpub.Datastore{yangpub.DatastoreStartup, yangpub.DatastoreRunning}
-
 // schemaOutcome is what the datastore half of an install did.
 type schemaOutcome struct {
 	// changed names the files it rewrote: schema modules and the policy.
@@ -60,9 +52,14 @@ func installSchema(ctx context.Context, log *slog.Logger, root string) (schemaOu
 	if err != nil {
 		return outcome, installFailed("read the embedded file", installspec.NACMPolicyPath, err)
 	}
+	wanSpec, _ := installspec.For(installspec.RoleWAN)
+	imports, err := wanSpec.SysrepoImports()
+	if err != nil {
+		return outcome, installFailed("read the embedded file", installspec.NACMPolicyPath, err)
+	}
 	policyPath := filepath.Join(root, installspec.NACMPolicyPath)
 	if root == "" {
-		if err := applyDatastore(ctx, log, models, schemaDir, policy, &outcome); err != nil {
+		if err := applyDatastore(ctx, log, models, schemaDir, imports, &outcome); err != nil {
 			return outcome, err
 		}
 		return outcome, writePolicy(policyPath, policy, &outcome)
@@ -94,7 +91,7 @@ func installSchema(ctx context.Context, log *slog.Logger, root string) (schemaOu
 			"sysrepo in this process is bound to repository %s, not the private repository %s",
 			bound, repository)
 	}
-	if err := applyDatastore(ctx, log, models, schemaDir, policy, &outcome); err != nil {
+	if err := applyDatastore(ctx, log, models, schemaDir, imports, &outcome); err != nil {
 		return outcome, err
 	}
 	return outcome, writePolicy(policyPath, policy, &outcome)
@@ -121,7 +118,7 @@ func applyDatastore(
 	log *slog.Logger,
 	models []yangpub.Model,
 	searchDir string,
-	policy []byte,
+	imports []installspec.SysrepoImport,
 	outcome *schemaOutcome,
 ) error {
 	datastore, err := yangpub.New(log)
@@ -134,15 +131,16 @@ func applyDatastore(
 	if err != nil {
 		return installFailed("install into sysrepo", "the schema modules", err)
 	}
-	for _, ds := range nacmDatastores {
-		matches, err := datastore.ConfigMatches(ctx, ds, nacmModule, policy)
+	for _, entry := range imports {
+		ds := yangpub.Datastore(entry.Datastore)
+		matches, err := datastore.ConfigMatches(ctx, ds, entry.Module, entry.Content)
 		if err != nil {
 			return installFailed("read the NACM policy in", string(ds), err)
 		}
 		if matches {
 			continue
 		}
-		if err := datastore.ImportConfig(ctx, ds, nacmModule, policy); err != nil {
+		if err := datastore.ImportConfig(ctx, ds, entry.Module, entry.Content); err != nil {
 			return installFailed("import the NACM policy into", string(ds), err)
 		}
 		outcome.nacmImported = append(outcome.nacmImported, ds)

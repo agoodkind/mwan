@@ -93,8 +93,7 @@ func unit(name string) File {
 // needs its sandbox relaxed says so in a drop-in. mwan-ifmgr.service's own
 // ProtectKernelTunables comment prescribes exactly that, naming this file's
 // path, and the suburban hypervisor already relaxes the same setting the same
-// way through a drop-in configs deploys. Two full unit bodies would be the
-// novelty here.
+// way through a drop-in configs deploys.
 func specs() map[Role]Spec {
 	return map[Role]Spec{
 		RoleWAN: {
@@ -143,7 +142,7 @@ func specs() map[Role]Spec {
 	}
 }
 
-// For returns the install list of role and whether the role exists.
+// For returns the install list for a role and whether the role exists.
 func For(role Role) (Spec, bool) {
 	spec, known := specs()[role]
 	return spec, known

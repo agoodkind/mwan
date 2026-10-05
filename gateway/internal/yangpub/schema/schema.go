@@ -32,8 +32,8 @@ const (
 	SteeringFile = "goodkind-mwan-steering@2026-10-01.yang"
 )
 
-// Module is one module of the gateway's model, named by its file and carrying
-// the features that must be enabled when it is installed.
+// Module is one module of the gateway's model, named by its file, with
+// the list of features to enable when it is installed.
 type Module struct {
 	// File is the module's file name inside the embedded schema directory,
 	// including the revision date the YANG convention puts there.

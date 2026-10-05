@@ -12,7 +12,7 @@ import (
 
 // WriteSchema writes every embedded module into dir, creating dir when it is
 // absent, and returns the models in install order with the paths it wrote.
-// A file already holding the right bytes is left alone, and its timestamp does
+// A file that already contains the right bytes is left alone, and its timestamp does
 // not change.
 //
 // The result is what InstallModules takes, and dir is the search directory
