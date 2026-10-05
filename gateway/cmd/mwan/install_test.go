@@ -32,7 +32,7 @@ func TestInstallUnitsWritesTheWanRoleUnits(t *testing.T) {
 	root := t.TempDir()
 	enabler := &recordingEnabler{}
 
-	outcome, err := installUnits(t.Context(), installspec.RoleWAN, root, enabler.enable)
+	outcome, err := installUnits(t.Context(), installspec.RoleWAN, root, false, enabler.enable)
 	if err != nil {
 		t.Fatalf("installUnits: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestInstallUnitsIsIdempotent(t *testing.T) {
 	root := t.TempDir()
 	enabler := &recordingEnabler{}
 
-	if _, err := installUnits(t.Context(), installspec.RoleWAN, root, enabler.enable); err != nil {
+	if _, err := installUnits(t.Context(), installspec.RoleWAN, root, false, enabler.enable); err != nil {
 		t.Fatalf("first installUnits: %v", err)
 	}
 	unitPath := filepath.Join(root, installspec.SystemdUnitDir, "mwan-agent.service")
@@ -102,7 +102,7 @@ func TestInstallUnitsIsIdempotent(t *testing.T) {
 		t.Fatalf("stat after the first run: %v", err)
 	}
 
-	second, err := installUnits(t.Context(), installspec.RoleWAN, root, enabler.enable)
+	second, err := installUnits(t.Context(), installspec.RoleWAN, root, false, enabler.enable)
 	if err != nil {
 		t.Fatalf("second installUnits: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestInstallUnitsRewritesAChangedUnit(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	enabler := &recordingEnabler{}
-	if _, err := installUnits(t.Context(), installspec.RoleHost, root, enabler.enable); err != nil {
+	if _, err := installUnits(t.Context(), installspec.RoleHost, root, false, enabler.enable); err != nil {
 		t.Fatalf("first installUnits: %v", err)
 	}
 	unitPath := filepath.Join(root, installspec.SystemdUnitDir, "mwan-ifmgr.service")
@@ -138,7 +138,7 @@ func TestInstallUnitsRewritesAChangedUnit(t *testing.T) {
 		t.Fatalf("overwrite the unit: %v", err)
 	}
 
-	outcome, err := installUnits(t.Context(), installspec.RoleHost, root, enabler.enable)
+	outcome, err := installUnits(t.Context(), installspec.RoleHost, root, false, enabler.enable)
 	if err != nil {
 		t.Fatalf("second installUnits: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestInstallFailoverWritesTheUnitAndItsDropIn(t *testing.T) {
 	root := t.TempDir()
 	enabler := &recordingEnabler{}
 
-	outcome, err := installUnits(t.Context(), installspec.RoleFailover, root, enabler.enable)
+	outcome, err := installUnits(t.Context(), installspec.RoleFailover, root, false, enabler.enable)
 	if err != nil {
 		t.Fatalf("installUnits: %v", err)
 	}
@@ -241,7 +241,7 @@ func TestHostRoleGetsNoFailoverRelaxation(t *testing.T) {
 	root := t.TempDir()
 	enabler := &recordingEnabler{}
 
-	if _, err := installUnits(t.Context(), installspec.RoleHost, root, enabler.enable); err != nil {
+	if _, err := installUnits(t.Context(), installspec.RoleHost, root, false, enabler.enable); err != nil {
 		t.Fatalf("installUnits: %v", err)
 	}
 
@@ -358,7 +358,7 @@ func TestInstallReenablesWhenNoFileChanged(t *testing.T) {
 	enabler := func(ctx context.Context, units []string, reload bool) error {
 		return reenableUnits(ctx, manager, units, reload)
 	}
-	if _, err := installUnits(t.Context(), installspec.RoleHost, root, enabler); err != nil {
+	if _, err := installUnits(t.Context(), installspec.RoleHost, root, false, enabler); err != nil {
 		t.Fatalf("first installUnits: %v", err)
 	}
 	const unitName = "mwan-ifmgr.service"
@@ -372,7 +372,7 @@ func TestInstallReenablesWhenNoFileChanged(t *testing.T) {
 	}
 	manager.calls = nil
 
-	outcome, err := installUnits(t.Context(), installspec.RoleHost, root, enabler)
+	outcome, err := installUnits(t.Context(), installspec.RoleHost, root, false, enabler)
 	if err != nil {
 		t.Fatalf("second installUnits: %v", err)
 	}
@@ -491,6 +491,62 @@ func TestInstallApplyWritesTheWanconfigAndHostFiles(t *testing.T) {
 		if info.Mode().Perm() != installspec.FileMode {
 			t.Errorf("%s mode = %v, want %v", hostPath, info.Mode().Perm(), installspec.FileMode)
 		}
+	}
+}
+
+// TestInstallApplyInAContainerKeepsOnlyNamespacedSysctls proves a wan install
+// inside a container writes the conntrack setting of the quiet-console file and
+// none of its kernel settings, which a container cannot write, and still writes
+// the other files unchanged.
+func TestInstallApplyInAContainerKeepsOnlyNamespacedSysctls(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+
+	runInstallChildOn(t, root, true)
+
+	sysctlPath := filepath.Join(root, installspec.SysctlDir, "99-quiet-console.conf")
+	written, err := os.ReadFile(sysctlPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", sysctlPath, err)
+	}
+	if !bytes.Contains(written, []byte("net.netfilter.nf_conntrack_log_invalid = 0")) {
+		t.Errorf("the container run dropped the conntrack setting:\n%s", written)
+	}
+	if bytes.Contains(written, []byte("kernel.")) {
+		t.Errorf("the container run wrote a kernel setting:\n%s", written)
+	}
+	overridePath := filepath.Join(root, installspec.SystemdUnitDir, "systemd-networkd.service.d", "override.conf")
+	onDisk, err := os.ReadFile(overridePath)
+	if err != nil {
+		t.Fatalf("read %s: %v", overridePath, err)
+	}
+	embedded, err := installspec.Read("systemd-networkd-override.conf")
+	if err != nil {
+		t.Fatalf("read the embedded override: %v", err)
+	}
+	if !bytes.Equal(onDisk, embedded) {
+		t.Error("the container run changed a file that is not a sysctl file")
+	}
+}
+
+// TestInstallApplyFailsWhenTheContainerDetectorIsMissing proves a host without
+// systemd-detect-virt gets an error and no files, rather than a guess about
+// whether the kernel settings apply.
+func TestInstallApplyFailsWhenTheContainerDetectorIsMissing(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	command := exec.Command(os.Args[0], "install", "--apply", "--role", "wan", "--root", root)
+	command.Env = append(os.Environ(), childMainEnv+"=1", "PATH="+t.TempDir())
+
+	output, err := command.CombinedOutput()
+
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != exitInstallFailed {
+		t.Fatalf("err = %v, want exit code %d\n%s", err, exitInstallFailed, output)
+	}
+	entries, readErr := os.ReadDir(root)
+	if readErr != nil || len(entries) != 0 {
+		t.Fatalf("the failed run wrote %d entries (err %v)", len(entries), readErr)
 	}
 }
 

@@ -116,12 +116,36 @@ func runChild(t *testing.T, env []string, args ...string) string {
 	return stdout.String()
 }
 
+// containerDetectorEnv puts a systemd-detect-virt on the child's PATH that
+// answers --container the way the real program does: exit status 0 inside a
+// container and 1 outside one. The test host may or may not be a container, so
+// the child must not read the host's answer.
+func containerDetectorEnv(t *testing.T, inContainer bool) []string {
+	t.Helper()
+	answer := 1
+	if inContainer {
+		answer = 0
+	}
+	dir := t.TempDir()
+	script := fmt.Sprintf("#!/bin/sh\n[ \"$*\" = \"--container\" ] || exit 1\nexit %d\n", answer)
+	if err := os.WriteFile(filepath.Join(dir, "systemd-detect-virt"), []byte(script), 0o755); err != nil {
+		t.Fatalf("write the container detector: %v", err)
+	}
+	return []string{"PATH=" + dir + string(os.PathListSeparator) + os.Getenv("PATH")}
+}
+
 // runInstallChild runs `mwan install --apply --role wan --root root` in a
-// child process and returns its stdout.
+// child process on a host that is not a container and returns its stdout.
 func runInstallChild(t *testing.T, root string) string {
 	t.Helper()
-	return runChild(t, []string{childMainEnv + "=1"},
-		"install", "--apply", "--role", "wan", "--root", root)
+	return runInstallChildOn(t, root, false)
+}
+
+// runInstallChildOn is runInstallChild on a host that is or is not a container.
+func runInstallChildOn(t *testing.T, root string, inContainer bool) string {
+	t.Helper()
+	env := append([]string{childMainEnv + "=1"}, containerDetectorEnv(t, inContainer)...)
+	return runChild(t, env, "install", "--apply", "--role", "wan", "--root", root)
 }
 
 // sysrepoChildRuns numbers the sysrepo child steps, so parallel tests never

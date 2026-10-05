@@ -66,7 +66,16 @@ func runInstall(args []string) int {
 	}
 	rooted := flags.root != ""
 	ctx := context.Background()
-	outcome, err := installUnits(ctx, role, flags.root, enablerFor(rooted))
+	container := false
+	if roleInstallsSysctl(spec) {
+		inContainer, detectErr := detectContainer(ctx)
+		if detectErr != nil {
+			fmt.Fprintf(os.Stderr, "mwan install: %v\n", detectErr)
+			return exitInstallFailed
+		}
+		container = inContainer
+	}
+	outcome, err := installUnits(ctx, role, flags.root, container, enablerFor(rooted))
 	if err == nil && spec.Schema {
 		var schema schemaOutcome
 		schema, err = installSchema(ctx, slog.Default(), flags.root)
@@ -98,6 +107,7 @@ func installUnits(
 	ctx context.Context,
 	role installspec.Role,
 	root string,
+	container bool,
 	enabler unitEnabler,
 ) (installOutcome, error) {
 	outcome := installOutcome{changed: nil, enabled: nil, modules: nil, nacmImported: nil}
@@ -109,6 +119,12 @@ func installUnits(
 		content, err := installspec.Read(file.Embedded)
 		if err != nil {
 			return outcome, installFailed("read the embedded file", file.Embedded, err)
+		}
+		if container && isSysctlFile(file) {
+			content = namespacedSysctlSettings(content)
+			if content == nil {
+				continue
+			}
 		}
 		path := filepath.Join(root, file.Dest)
 		changed, err := installfile.Write(path, content, installspec.FileMode)
