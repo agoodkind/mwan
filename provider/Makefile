@@ -26,6 +26,10 @@ GO_MK_MODULES := go-build.mk go-release.mk
 # because the shared lint rejects a local replace directive in go.mod.
 GO_MK_WORKSPACE_USE := . ../gateway
 
+# go.mk leaves go-mk-workspace off lint-format and lint-gocyclo. The formatter
+# loads the provider's imports of the gateway module and fails without go.work.
+lint-format lint-gocyclo: go-mk-workspace
+
 # bootstrap.mk fetches go.mk + golangci.yml + every module in GO_MK_MODULES
 # at parse time and -includes them.
 include bootstrap.mk
