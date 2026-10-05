@@ -1,12 +1,11 @@
 .DEFAULT_GOAL := help
 
 define HELP_TEXT
-Run make inside a module directory. The repository root does not build anything.
+Run make in a module directory.
 
-  gateway/   The mwan gateway program, Go module goodkind.io/mwan.
+  gateway/ builds the mwan program from the goodkind.io/mwan module.
 
-Each directory has its own Makefile and its own gates.
-Example: make -C gateway check test
+Run make -C gateway help to list its targets.
 endef
 export HELP_TEXT
 
