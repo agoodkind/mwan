@@ -25,6 +25,7 @@ It also explains which commands still require the Configs checkout.
 | `gateway/proto`, `gateway/gen` | The `mwan.v1` wire contract and its generated code |
 | `gateway/yang/instances` | The network documents the instance gate validates |
 | `gateway/tools` | The wanconfig stack packaging tool and its builder image |
+| `provider` | The `terraform-provider-mwan` OpenTofu provider: data sources for the release archives and the files each role installs |
 
 ## Installing what the binary owns
 

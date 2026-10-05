@@ -38,6 +38,39 @@ jobs:
       release_platforms: linux/amd64 linux/arm64
       cgo: true
 
+  # The OpenTofu provider module imports packages of the gateway module and
+  # links no C code. It needs none of the cgo inputs above.
+  provider:
+    uses: agoodkind/go-makefile/.github/workflows/_ci.yml@main
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    secrets: inherit
+    with:
+      working_directory: provider
+      go_version_file: provider/go.mod
+      release_platforms: darwin/arm64 linux/amd64 linux/arm64
+
+  # The provider module runs on a runner without libsysrepo, which the mwan
+  # binary needs. This job builds the binary in the builder image and compares
+  # the files `mwan install --root` writes for every role with the provider's
+  # mwan_role data source.
+  drift:
+    name: provider drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: gateway/go.mod
+          cache-dependency-path: gateway/go.sum
+      - name: Compare mwan install with the provider data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: gateway
+        run: make test-provider-drift WANCONFIG_DOCKER_ARCH=amd64
+
   # The go job above never runs these. The Makefile hangs the two schema gates
   # off `check`, and the go-makefile quality matrix runs a fixed list of
   # commands that does not include it, so without this job nothing validates
