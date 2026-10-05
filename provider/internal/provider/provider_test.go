@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
+
+	"goodkind.io/mwan/internal/installspec"
 )
 
 const (
@@ -161,11 +163,13 @@ func TestRoleWANListsFilesUnitsAndModules(t *testing.T) {
 	for _, wantPath := range []string{
 		"/etc/systemd/system/mwan-ifmgr@.service",
 		"/etc/sysctl.d/99-quiet-console.conf",
-		"/etc/sysrepo-nacm-anonymous.xml",
 	} {
 		if paths[wantPath] != "0644" {
 			t.Errorf("file %s has mode %q, want 0644", wantPath, paths[wantPath])
 		}
+	}
+	if _, listed := paths[installspec.NACMPolicyPath]; listed {
+		t.Error("files lists the NACM policy, which sysrepo_data provides")
 	}
 	owners := map[string][]string{}
 	for _, unit := range role.Units {
@@ -174,10 +178,6 @@ func TestRoleWANListsFilesUnitsAndModules(t *testing.T) {
 		}
 	}
 	for _, file := range role.Files {
-		// sysrepo reads the NACM policy through sysrepo_data, and no unit reads it.
-		if file.Path == "/etc/sysrepo-nacm-anonymous.xml" {
-			continue
-		}
 		if len(owners[file.Path]) != 1 {
 			t.Errorf("file %s is in the files of units %v, want exactly one", file.Path, owners[file.Path])
 		}

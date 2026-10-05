@@ -112,6 +112,10 @@ func TestProviderRoleMatchesMwanInstall(t *testing.T) {
 				}
 			}
 			for path := range installed {
+				// The policy is compared with sysrepo_data below.
+				if path == installspec.NACMPolicyPath {
+					continue
+				}
 				if _, listed := want[path]; !listed {
 					t.Errorf("mwan install wrote %s, which the provider does not list", path)
 				}

@@ -171,7 +171,7 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 		return
 	}
 
-	model.Files = make([]roleFileModel, 0, len(spec.Files)+1)
+	model.Files = make([]roleFileModel, 0, len(spec.Files))
 	for _, file := range spec.Files {
 		content, err := installspec.Read(file.Embedded)
 		if err != nil {
@@ -182,12 +182,6 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 	}
 	model.YangModules = make([]yangModuleModel, 0, len(moduleschema.Modules()))
 	if spec.Schema {
-		policy, err := installspec.NACMPolicy()
-		if err != nil {
-			resp.Diagnostics.AddError("Cannot read the NACM policy", err.Error())
-			return
-		}
-		model.Files = append(model.Files, newRoleFile(installspec.NACMPolicyPath, policy))
 		for _, module := range moduleschema.Modules() {
 			content, err := moduleschema.Read(module.File)
 			if err != nil {
