@@ -399,7 +399,7 @@ func (r *Ops) GuestExec(
 ) (ops.GuestExecResult, error) {
 	if r.preset.GuestExecFail {
 		r.logFault(ctx, "guest_exec_fail", vmid, args)
-		return ops.GuestExecResult{ExitCode: 1, Stdout: ""},
+		return ops.GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""},
 			fmt.Errorf("red-team: guest agent down")
 	}
 	if res, handled := r.handlePingFault(ctx, vmid, args); handled {
@@ -462,17 +462,17 @@ func (r *Ops) handlePingFault(
 	hasIface := hasIfaceArg(args)
 	if isPing && hasIface && r.preset.GuestIfaceFail {
 		r.logFault(ctx, "guest_iface_fail", vmid, args)
-		return ops.GuestExecResult{ExitCode: 1, Stdout: ""}, true
+		return ops.GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""}, true
 	}
 	if isPing && hasIface && r.preset.GuestIfaceSucceed {
 		r.logFault(ctx, "guest_iface_succeed", vmid, args)
-		return ops.GuestExecResult{ExitCode: 0, Stdout: ""}, true
+		return ops.GuestExecResult{ExitCode: 0, Stdout: "", Stderr: ""}, true
 	}
 	if isPing && !hasIface && r.preset.GuestDefaultFail {
 		r.logFault(ctx, "guest_default_route_fail", vmid, args)
-		return ops.GuestExecResult{ExitCode: 1, Stdout: ""}, true
+		return ops.GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""}, true
 	}
-	return ops.GuestExecResult{ExitCode: 0, Stdout: ""}, false
+	return ops.GuestExecResult{ExitCode: 0, Stdout: "", Stderr: ""}, false
 }
 
 func (r *Ops) handleDeployFault(
@@ -481,16 +481,16 @@ func (r *Ops) handleDeployFault(
 	args []string,
 ) (ops.GuestExecResult, bool) {
 	if !isCatDeployArgs(args) {
-		return ops.GuestExecResult{ExitCode: 0, Stdout: ""}, false
+		return ops.GuestExecResult{ExitCode: 0, Stdout: "", Stderr: ""}, false
 	}
 	if r.preset.OmitDeployMarker {
-		return ops.GuestExecResult{ExitCode: 1, Stdout: ""}, true
+		return ops.GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""}, true
 	}
 	if r.preset.DeployTSMode == deployTSModeRecentThenStale && r.deployTSInjected {
 		oldTS := r.now().Unix() - 7200
 		r.logFault(ctx, "inject_deploy_ts_once", vmid, args)
 		return ops.GuestExecResult{
-			ExitCode: 0, Stdout: strconv.FormatInt(oldTS, 10),
+			ExitCode: 0, Stdout: strconv.FormatInt(oldTS, 10), Stderr: "",
 		}, true
 	}
 	if r.preset.DeployTSMode == deployTSModeAlwaysRecent ||
@@ -499,10 +499,10 @@ func (r *Ops) handleDeployFault(
 		r.logFault(ctx, "inject_deploy_ts", vmid, args)
 		r.deployTSInjected = true
 		return ops.GuestExecResult{
-			ExitCode: 0, Stdout: strconv.FormatInt(ts, 10),
+			ExitCode: 0, Stdout: strconv.FormatInt(ts, 10), Stderr: "",
 		}, true
 	}
-	return ops.GuestExecResult{ExitCode: 0, Stdout: ""}, false
+	return ops.GuestExecResult{ExitCode: 0, Stdout: "", Stderr: ""}, false
 }
 
 func (r *Ops) handleChangeFault(
@@ -511,12 +511,12 @@ func (r *Ops) handleChangeFault(
 	args []string,
 ) (ops.GuestExecResult, bool) {
 	if !isCatChangeArgs(args) || !r.preset.InjectChangeMarker {
-		return ops.GuestExecResult{ExitCode: 0, Stdout: ""}, false
+		return ops.GuestExecResult{ExitCode: 0, Stdout: "", Stderr: ""}, false
 	}
 	ts := r.now().Unix() - 60
 	r.logFault(ctx, "inject_change_ts", vmid, args)
 	return ops.GuestExecResult{
-		ExitCode: 0, Stdout: strconv.FormatInt(ts, 10),
+		ExitCode: 0, Stdout: strconv.FormatInt(ts, 10), Stderr: "",
 	}, true
 }
 

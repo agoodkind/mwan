@@ -1,7 +1,10 @@
 package config
 
 import (
+	"fmt"
+	"log/slog"
 	"net/netip"
+	"time"
 
 	"goodkind.io/mwan/internal/interfaceintent"
 )
@@ -271,8 +274,26 @@ type IfMgrHealthSection struct {
 	StateFile               string                           `toml:"state_file"`
 	StatusPushCID           uint32                           `toml:"status_push_cid"`
 	StatusPushPort          uint32                           `toml:"status_push_port"`
+	MaxStateAge             string                           `toml:"max_state_age"`
 	ProbeTimeoutMillis      int                              `toml:"-"`
 	WAN                     map[string]IfMgrHealthWANSection `toml:"-"`
+}
+
+// ParseMaxStateAge returns the max_state_age duration and reports whether the setting is present.
+func (section IfMgrHealthSection) ParseMaxStateAge() (time.Duration, bool, error) {
+	if section.MaxStateAge == "" {
+		return 0, false, nil
+	}
+	maxAge, err := time.ParseDuration(section.MaxStateAge)
+	if err != nil {
+		slog.Warn("health max_state_age rejected", "value", section.MaxStateAge, "err", err)
+		return 0, true, fmt.Errorf("max_state_age %q: %w", section.MaxStateAge, err)
+	}
+	if maxAge <= 0 {
+		slog.Warn("health max_state_age rejected", "value", section.MaxStateAge)
+		return 0, true, fmt.Errorf("max_state_age %q must be greater than zero", section.MaxStateAge)
+	}
+	return maxAge, true, nil
 }
 
 // IfMgrHealthWANSection is one provider's probe policy, read from network.json.

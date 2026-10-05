@@ -59,6 +59,7 @@ const (
 type GuestExecResult struct {
 	ExitCode int
 	Stdout   string
+	Stderr   string
 }
 
 // LifecycleOps starts, stops and reports on a guest as a whole.
@@ -321,7 +322,7 @@ func (r *RealOps) hypervisorExec(
 ) (GuestExecResult, error) {
 	result, err := r.guest.execGuest(
 		ctx, r.log, vmid, timeoutQmGuestExecWait, timeoutQmGuestExec, args)
-	return result.GuestExecResult, err
+	return result, err
 }
 
 func (r *RealOps) vsockExec(
@@ -342,7 +343,7 @@ func (r *RealOps) vsockExec(
 	)
 	if err != nil {
 		r.log.WarnContext(ctx, "vsock grpc client failed", "err", err)
-		return GuestExecResult{ExitCode: 1, Stdout: ""},
+		return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""},
 			fmt.Errorf("vsock grpc client: %w", err)
 	}
 	defer func() { _ = conn.Close() }()
@@ -350,7 +351,7 @@ func (r *RealOps) vsockExec(
 	cli := mwanv1.NewMWANAgentClient(conn)
 
 	if len(args) == 0 {
-		return GuestExecResult{ExitCode: 1, Stdout: ""}, fmt.Errorf("vsockExec: no args")
+		return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""}, fmt.Errorf("vsockExec: no args")
 	}
 	switch guestCmd(args[0]) {
 	case guestCmdPing, guestCmdPing6:
@@ -363,26 +364,26 @@ func (r *RealOps) vsockExec(
 		resp, err := cli.Ping(cctx, req)
 		if err != nil {
 			r.log.WarnContext(ctx, "vsock ping failed", "err", err)
-			return GuestExecResult{ExitCode: 1, Stdout: ""},
+			return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""},
 				fmt.Errorf("vsock ping: %w", err)
 		}
 		if resp.GetSuccess() {
-			return GuestExecResult{ExitCode: 0, Stdout: ""}, nil
+			return GuestExecResult{ExitCode: 0, Stdout: "", Stderr: ""}, nil
 		}
-		return GuestExecResult{ExitCode: 1, Stdout: ""}, nil
+		return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""}, nil
 	case guestCmdCat:
 		if len(args) >= 2 && isLastDeployPath(args[1]) {
 			resp, err := cli.GetConfigState(cctx, &mwanv1.GetConfigStateRequest{})
 			if err != nil {
 				r.log.WarnContext(ctx, "vsock get config state failed", "err", err)
-				return GuestExecResult{ExitCode: 1, Stdout: ""},
+				return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""},
 					fmt.Errorf("vsock get config state: %w", err)
 			}
 			ts := strconv.FormatInt(resp.GetLastDeployEpoch(), 10)
-			return GuestExecResult{ExitCode: 0, Stdout: ts}, nil
+			return GuestExecResult{ExitCode: 0, Stdout: ts, Stderr: ""}, nil
 		}
 	}
-	return GuestExecResult{ExitCode: 1, Stdout: ""},
+	return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""},
 		fmt.Errorf("vsockExec: unhandled command %q", args[0])
 }
 
@@ -397,7 +398,7 @@ func (r *RealOps) tcpExec(
 	ctx context.Context, args ...string,
 ) (GuestExecResult, error) {
 	if r.tcpAddr == "" {
-		return GuestExecResult{ExitCode: 1, Stdout: ""}, fmt.Errorf("tcpExec: no tcp addr configured")
+		return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""}, fmt.Errorf("tcpExec: no tcp addr configured")
 	}
 	cctx, cancel := context.WithTimeout(ctx, timeoutTCPRPC)
 	defer cancel()
@@ -414,7 +415,7 @@ func (r *RealOps) tcpExec(
 	)
 	if err != nil {
 		r.log.WarnContext(ctx, "tcp grpc client failed", "err", err)
-		return GuestExecResult{ExitCode: 1, Stdout: ""},
+		return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""},
 			fmt.Errorf("tcp grpc client: %w", err)
 	}
 	defer func() { _ = conn.Close() }()
@@ -422,7 +423,7 @@ func (r *RealOps) tcpExec(
 	cli := mwanv1.NewMWANAgentClient(conn)
 
 	if len(args) == 0 {
-		return GuestExecResult{ExitCode: 1, Stdout: ""}, fmt.Errorf("tcpExec: no args")
+		return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""}, fmt.Errorf("tcpExec: no args")
 	}
 	switch guestCmd(args[0]) {
 	case guestCmdPing, guestCmdPing6:
@@ -435,26 +436,26 @@ func (r *RealOps) tcpExec(
 		resp, err := cli.Ping(cctx, req)
 		if err != nil {
 			r.log.WarnContext(ctx, "tcp ping failed", "err", err)
-			return GuestExecResult{ExitCode: 1, Stdout: ""},
+			return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""},
 				fmt.Errorf("tcp ping: %w", err)
 		}
 		if resp.GetSuccess() {
-			return GuestExecResult{ExitCode: 0, Stdout: ""}, nil
+			return GuestExecResult{ExitCode: 0, Stdout: "", Stderr: ""}, nil
 		}
-		return GuestExecResult{ExitCode: 1, Stdout: ""}, nil
+		return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""}, nil
 	case guestCmdCat:
 		if len(args) >= 2 && isLastDeployPath(args[1]) {
 			resp, err := cli.GetConfigState(cctx, &mwanv1.GetConfigStateRequest{})
 			if err != nil {
 				r.log.WarnContext(ctx, "tcp get config state failed", "err", err)
-				return GuestExecResult{ExitCode: 1, Stdout: ""},
+				return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""},
 					fmt.Errorf("tcp get config state: %w", err)
 			}
 			ts := strconv.FormatInt(resp.GetLastDeployEpoch(), 10)
-			return GuestExecResult{ExitCode: 0, Stdout: ts}, nil
+			return GuestExecResult{ExitCode: 0, Stdout: ts, Stderr: ""}, nil
 		}
 	}
-	return GuestExecResult{ExitCode: 1, Stdout: ""},
+	return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""},
 		fmt.Errorf("tcpExec: unhandled command %q", args[0])
 }
 

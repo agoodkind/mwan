@@ -22,6 +22,8 @@ const (
 	mainEntryEnv = "MWAN_INSTALL_TEST_MAIN"
 
 	networkTemplate = "../../yang/instances/network-min.json"
+
+	freshStateBound = "10m"
 )
 
 type gatewayStatusRun struct {
@@ -30,7 +32,7 @@ type gatewayStatusRun struct {
 	exitCode int
 }
 
-func writeGatewayStatusInputs(t *testing.T, statePath string) []string {
+func writeGatewayStatusInputs(t *testing.T, statePath string, maxStateAge string) []string {
 	t.Helper()
 
 	directory := t.TempDir()
@@ -48,6 +50,9 @@ func writeGatewayStatusInputs(t *testing.T, statePath string) []string {
 	}
 	configPath := filepath.Join(directory, "config.toml")
 	configText := fmt.Sprintf("[ifmgr.modules.health]\nstate_file = %q\n", statePath)
+	if maxStateAge != "" {
+		configText += fmt.Sprintf("max_state_age = %q\n", maxStateAge)
+	}
 	if err := os.WriteFile(configPath, []byte(configText), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -94,12 +99,12 @@ func TestGatewayStatusPrintsTheVerdictFromTheStateFile(t *testing.T) {
 	if err := os.WriteFile(statePath, []byte(stateText), 0o600); err != nil {
 		t.Fatalf("write state file: %v", err)
 	}
-	writtenAt := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	writtenAt := time.Now().Add(-time.Minute).UTC().Truncate(time.Second)
 	if err := os.Chtimes(statePath, writtenAt, writtenAt); err != nil {
 		t.Fatalf("set state file time: %v", err)
 	}
 
-	run := runStatusSubcommand(t, writeGatewayStatusInputs(t, statePath))
+	run := runStatusSubcommand(t, writeGatewayStatusInputs(t, statePath, freshStateBound))
 
 	if run.exitCode != 0 {
 		t.Fatalf("exit code = %d, stderr:\n%s", run.exitCode, run.stderr)
@@ -128,7 +133,7 @@ func TestGatewayStatusFailsWhenTheStateFileIsMissing(t *testing.T) {
 
 	statePath := filepath.Join(t.TempDir(), "absent.state")
 
-	run := runStatusSubcommand(t, writeGatewayStatusInputs(t, statePath))
+	run := runStatusSubcommand(t, writeGatewayStatusInputs(t, statePath, freshStateBound))
 
 	if run.exitCode == 0 {
 		t.Fatalf("exit code = 0 with no state file, stdout:\n%s", run.stdout)
@@ -136,7 +141,53 @@ func TestGatewayStatusFailsWhenTheStateFileIsMissing(t *testing.T) {
 	if run.stdout != "" {
 		t.Fatalf("stdout = %q, want empty", run.stdout)
 	}
-	if run.stderr == "" {
-		t.Fatal("stderr is empty, want an error message")
+	if !strings.Contains(run.stderr, "stat health state file") {
+		t.Fatalf("stderr = %q, want the missing file reason", run.stderr)
+	}
+}
+
+func TestGatewayStatusFailsWhenTheStateFileIsStale(t *testing.T) {
+	t.Parallel()
+
+	statePath := filepath.Join(t.TempDir(), "health.state")
+	if err := os.WriteFile(statePath, []byte("webpass:healthy\n"), 0o600); err != nil {
+		t.Fatalf("write state file: %v", err)
+	}
+	writtenAt := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(statePath, writtenAt, writtenAt); err != nil {
+		t.Fatalf("set state file time: %v", err)
+	}
+
+	run := runStatusSubcommand(t, writeGatewayStatusInputs(t, statePath, freshStateBound))
+
+	if run.exitCode == 0 {
+		t.Fatalf("exit code = 0 with a stale state file, stdout:\n%s", run.stdout)
+	}
+	if run.stdout != "" {
+		t.Fatalf("stdout = %q, want empty", run.stdout)
+	}
+	if !strings.Contains(run.stderr, "older than ifmgr.modules.health.max_state_age 10m0s") {
+		t.Fatalf("stderr = %q, want the stale file reason", run.stderr)
+	}
+}
+
+func TestGatewayStatusFailsWhenTheAgeBoundIsNotSet(t *testing.T) {
+	t.Parallel()
+
+	statePath := filepath.Join(t.TempDir(), "health.state")
+	if err := os.WriteFile(statePath, []byte("webpass:healthy\n"), 0o600); err != nil {
+		t.Fatalf("write state file: %v", err)
+	}
+
+	run := runStatusSubcommand(t, writeGatewayStatusInputs(t, statePath, ""))
+
+	if run.exitCode == 0 {
+		t.Fatalf("exit code = 0 with no age bound, stdout:\n%s", run.stdout)
+	}
+	if run.stdout != "" {
+		t.Fatalf("stdout = %q, want empty", run.stdout)
+	}
+	if !strings.Contains(run.stderr, "ifmgr.modules.health.max_state_age is not set") {
+		t.Fatalf("stderr = %q, want the missing setting reason", run.stderr)
 	}
 }

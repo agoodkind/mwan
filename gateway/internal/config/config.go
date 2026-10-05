@@ -489,6 +489,12 @@ func loadConfig(path string) (*Config, error) {
 		slog.Error("validate watchdog status source failed", "error", err)
 		return nil, fmt.Errorf("validate watchdog status source: %w", err)
 	}
+	if cfg.IfMgr.Modules.Health != nil {
+		if _, _, err := cfg.IfMgr.Modules.Health.ParseMaxStateAge(); err != nil {
+			slog.Error("validate health max state age failed", "error", err)
+			return nil, fmt.Errorf("validate [ifmgr.modules.health]: %w", err)
+		}
+	}
 	if err := validateBGPDynamicConfig(&cfg.BGP); err != nil {
 		slog.Error("validate BGP dynamic configuration failed", "error", err)
 		return nil, fmt.Errorf("validate BGP dynamic configuration: %w", err)

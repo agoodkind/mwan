@@ -30,7 +30,7 @@ type guestExecRunner interface {
 		vmid string,
 		waitTimeout, agentTimeout time.Duration,
 		command []string,
-	) (GuestCommandResult, error)
+	) (GuestExecResult, error)
 }
 
 type guestLifecycleArgs interface {

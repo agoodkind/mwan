@@ -13,12 +13,6 @@ import (
 	"goodkind.io/mwan/internal/config"
 )
 
-// GuestCommandResult includes stderr from commands executed through the hypervisor.
-type GuestCommandResult struct {
-	GuestExecResult
-	Stderr string
-}
-
 // RunInGuest executes a command through the hypervisor. A guest command failure
 // returns an exit status; a hypervisor execution failure returns an error.
 // waitTimeout limits the hypervisor process. agentTimeout applies only to QEMU.
@@ -29,17 +23,14 @@ func RunInGuest(
 	agentTimeout time.Duration,
 	vmid int,
 	command ...string,
-) (GuestCommandResult, error) {
+) (GuestExecResult, error) {
 	driver := newGuestDriver(guestType)
 	return driver.execGuest(
 		ctx, slog.Default(), strconv.Itoa(vmid), waitTimeout, agentTimeout, command)
 }
 
-func failedGuestCommand() GuestCommandResult {
-	return GuestCommandResult{
-		GuestExecResult: GuestExecResult{ExitCode: 1, Stdout: ""},
-		Stderr:          "",
-	}
+func failedGuestCommand() GuestExecResult {
+	return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""}
 }
 
 // qmGuestExecArgs builds the `qm guest exec` argv. agentTimeout is how long qm
@@ -100,7 +91,7 @@ func (qemuGuest) execGuest(
 	vmid string,
 	waitTimeout, agentTimeout time.Duration,
 	command []string,
-) (GuestCommandResult, error) {
+) (GuestExecResult, error) {
 	out, err := runQm(ctx, waitTimeout, qmGuestExecArgs(vmid, agentTimeout, command)...)
 	if err != nil {
 		log.ErrorContext(ctx, "qm guest exec failed",
@@ -132,8 +123,9 @@ func (qemuGuest) execGuest(
 			fmt.Errorf("guest command %q output was truncated by the guest agent",
 				strings.Join(command, " "))
 	}
-	return GuestCommandResult{
-		GuestExecResult: GuestExecResult{ExitCode: *status.ExitCode, Stdout: status.OutData},
-		Stderr:          status.ErrData,
+	return GuestExecResult{
+		ExitCode: *status.ExitCode,
+		Stdout:   status.OutData,
+		Stderr:   status.ErrData,
 	}, nil
 }

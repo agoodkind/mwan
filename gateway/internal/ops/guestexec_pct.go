@@ -17,7 +17,7 @@ func (lxcGuest) execGuest(
 	vmid string,
 	waitTimeout, _ time.Duration,
 	command []string,
-) (GuestCommandResult, error) {
+) (GuestExecResult, error) {
 	args := append([]string{"exec", vmid, "--"}, command...)
 	cctx, cancel := context.WithTimeout(ctx, waitTimeout)
 	defer cancel()
@@ -46,9 +46,10 @@ func (lxcGuest) execGuest(
 	return failedGuestCommand(), fmt.Errorf("pct %s: %w", strings.Join(args, " "), err)
 }
 
-func lxcCommandResult(exitCode int, stdout, stderr *bytes.Buffer) GuestCommandResult {
-	return GuestCommandResult{
-		GuestExecResult: GuestExecResult{ExitCode: exitCode, Stdout: stdout.String()},
-		Stderr:          stderr.String(),
+func lxcCommandResult(exitCode int, stdout, stderr *bytes.Buffer) GuestExecResult {
+	return GuestExecResult{
+		ExitCode: exitCode,
+		Stdout:   stdout.String(),
+		Stderr:   stderr.String(),
 	}
 }

@@ -170,7 +170,7 @@ func TestWaitDeployRecordsSuccessfulVerdict(t *testing.T) {
 	deps.readBootID = func(_ context.Context, _ int) (string, error) {
 		return testNewBootID, nil
 	}
-	deps.runGuestOwnedCheck = func(context.Context, int) (ops.GuestCommandResult, error) {
+	deps.runGuestOwnedCheck = func(context.Context, int) (ops.GuestExecResult, error) {
 		return guestResult(exitDeployGateOK, "owned addresses: 2 present, 0 missing\n"), nil
 	}
 	deps.ping6 = func(context.Context, netip.Addr, time.Duration) (time.Duration, error) {
@@ -320,7 +320,7 @@ func TestWaitDeployReturnsFailureWhenVerdictWriteFails(t *testing.T) {
 	deps.readBootID = func(_ context.Context, _ int) (string, error) {
 		return testNewBootID, nil
 	}
-	deps.runGuestOwnedCheck = func(context.Context, int) (ops.GuestCommandResult, error) {
+	deps.runGuestOwnedCheck = func(context.Context, int) (ops.GuestExecResult, error) {
 		return guestResult(exitDeployGateOK, "owned addresses: 2 present, 0 missing\n"), nil
 	}
 	deps.ping6 = func(context.Context, netip.Addr, time.Duration) (time.Duration, error) {
@@ -492,7 +492,7 @@ func TestWaitDeployRetriesOwnedAddressesUntilHeld(t *testing.T) {
 		return time.Millisecond, nil
 	}
 	checks := 0
-	deps.runGuestOwnedCheck = func(context.Context, int) (ops.GuestCommandResult, error) {
+	deps.runGuestOwnedCheck = func(context.Context, int) (ops.GuestExecResult, error) {
 		checks++
 		if checks < 3 {
 			return guestResult(exitDeployGateFailed, "owned addresses: 1 present, 1 missing\n"), nil
@@ -532,7 +532,7 @@ func TestWaitDeployFailsOwnedAddressesAfterTheBudget(t *testing.T) {
 	deps.ping4 = func(context.Context, string, netip.Addr, time.Duration) (time.Duration, error) {
 		return time.Millisecond, nil
 	}
-	deps.runGuestOwnedCheck = func(context.Context, int) (ops.GuestCommandResult, error) {
+	deps.runGuestOwnedCheck = func(context.Context, int) (ops.GuestExecResult, error) {
 		return guestResult(exitDeployGateFailed,
 			"owned address 203.0.113.4 on enwebpass0: missing\n"), nil
 	}
@@ -584,7 +584,7 @@ func TestWaitDeployRecordsTheVerdictWhenTheAlertFails(t *testing.T) {
 	deps.ping4 = func(context.Context, string, netip.Addr, time.Duration) (time.Duration, error) {
 		return time.Millisecond, nil
 	}
-	deps.runGuestOwnedCheck = func(context.Context, int) (ops.GuestCommandResult, error) {
+	deps.runGuestOwnedCheck = func(context.Context, int) (ops.GuestExecResult, error) {
 		return guestResult(exitDeployGateFailed, "owned addresses: 0 present, 1 missing\n"), nil
 	}
 	deps.alertOwnedMissing = func(context.Context, ownedMissingAlert) error {
@@ -671,11 +671,8 @@ func TestWaitEgressRequiresEveryConfiguredFamilyInOneRound(t *testing.T) {
 	}
 }
 
-func guestResult(exitCode int, stdout string) ops.GuestCommandResult {
-	return ops.GuestCommandResult{
-		GuestExecResult: ops.GuestExecResult{ExitCode: exitCode, Stdout: stdout},
-		Stderr:          "",
-	}
+func guestResult(exitCode int, stdout string) ops.GuestExecResult {
+	return ops.GuestExecResult{ExitCode: exitCode, Stdout: stdout, Stderr: ""}
 }
 
 func buildMwanBinary(t *testing.T) string {
