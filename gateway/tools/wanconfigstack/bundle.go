@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"goodkind.io/mwan/internal/stackspec"
 )
 
 // manifestName is the bundle member that lists every package it carries.
@@ -98,8 +100,23 @@ func (b *builder) collectRuntimeMembers(ctx context.Context, debs []string) ([]b
 	if len(missing) > 0 {
 		return nil, b.fail(ctx, "collect runtime packages", errMissingPackage, slog.String("missing", strings.Join(missing, " ")))
 	}
+	if err := b.checkAgainstSpec(ctx, members); err != nil {
+		return nil, err
+	}
 	slices.SortFunc(members, func(x, y bundleMember) int { return strings.Compare(x.name, y.name) })
 	return members, nil
+}
+
+// checkAgainstSpec fails when a built package has a version or file name other
+// than the one stackspec lists, because the provider derives its member paths
+// from that list.
+func (b *builder) checkAgainstSpec(ctx context.Context, members []bundleMember) error {
+	for _, member := range members {
+		if err := stackspec.CheckBuilt(member.name, member.version, filepath.Base(member.path), b.arch); err != nil {
+			return b.fail(ctx, "check package against stackspec", err, slog.String("package", member.name))
+		}
+	}
+	return nil
 }
 
 // manifest renders the bundle manifest: one line per package.
