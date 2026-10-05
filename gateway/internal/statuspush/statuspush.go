@@ -1,16 +1,4 @@
 // Package statuspush sends provider verdicts from the gateway to the watchdog.
-//
-// One message is one connection: dial, write a single JSON line, close. There
-// is no session to resynchronise after a hypervisor restart, and a hypervisor
-// running an older watchdog with no listener costs the gateway one failed dial
-// per probe cycle and nothing else.
-//
-// This file carries no build constraint: the Listener runs on the hypervisor
-// watchdog, which is untagged and builds on every release platform. The Sender
-// lives in statuspush_sender.go under a linux build tag, because its only
-// caller is the linux-only health module; an untagged Sender would be dead
-// code in a non-linux watchdog binary, which the deadcode gate correctly
-// refuses to ship.
 package statuspush
 
 import (
