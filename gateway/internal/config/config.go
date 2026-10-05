@@ -252,6 +252,12 @@ const (
 	GuestTypeLXC GuestType = "lxc"
 )
 
+// HasFilesystemFreeze reports whether snapshots freeze the guest filesystem
+// through a guest agent, which only a QEMU guest does.
+func (g GuestType) HasFilesystemFreeze() bool {
+	return g != GuestTypeLXC
+}
+
 // Config is the single TOML configuration for the mwan monolith.
 // Default path: /etc/mwan/config.toml, override with --config or MWAN_CONFIG env.
 type Config struct {

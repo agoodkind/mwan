@@ -132,6 +132,36 @@ func TestLoadHealthMaxStateAge(t *testing.T) {
 	}
 }
 
+func TestLoadedGuestTypeFilesystemFreeze(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{name: "missing key is a QEMU guest", text: `mwan_vmid = "4100"`, want: true},
+		{name: "qemu", text: `guest_type = "qemu"`, want: true},
+		{name: "lxc", text: `guest_type = "lxc"`, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			configPath := filepath.Join(t.TempDir(), "config.toml")
+			if err := os.WriteFile(configPath, []byte(tc.text), 0o600); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+			t.Setenv("MWAN_CONFIG", configPath)
+
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+
+			if got := cfg.GuestType.HasFilesystemFreeze(); got != tc.want {
+				t.Fatalf("HasFilesystemFreeze = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestLoadGuestType(t *testing.T) {
 	cases := []struct {
 		name     string

@@ -22,6 +22,9 @@ const thawGuardTimeout = 90 * time.Second
 // snapshot context is exactly the case that leaves the guest frozen, so the
 // recovery must not inherit it. Its own deadline keeps the calls bounded.
 func (w *watchdog) ensureGuestThawed(parent context.Context, phase string) {
+	if !w.cfg.GuestType.HasFilesystemFreeze() {
+		return
+	}
 	ctx, cancel := context.WithTimeout(
 		context.WithoutCancel(parent), thawGuardTimeout,
 	)
