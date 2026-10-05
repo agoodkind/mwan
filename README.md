@@ -21,7 +21,6 @@ It also explains which commands still require the Configs checkout.
 | `gateway/cmd/mwan` | The binary: every subcommand, and the units, drop-ins and policy it embeds |
 | `gateway/internal` | The daemon: interface management modules, BGP, health, the agent, the wanconfig publisher |
 | `gateway/internal/yangpub/schema` | The eight YANG modules the binary embeds |
-| `pkg/pveapi` | The Proxmox API client |
 | `gateway/proto`, `gateway/gen` | The `mwan.v1` wire contract and its generated code |
 | `gateway/yang/instances` | The network documents the instance gate validates |
 | `gateway/tools` | The wanconfig stack packaging tool and its builder image |
@@ -33,7 +32,7 @@ binary, so a host runs the files the release it pins was built from rather than
 whatever a deploying checkout held. `mwan install` puts them on the host:
 
 ```
-mwan install                             # says what it would do, touches nothing
+mwan install                             # Print help
 mwan install --role wan --apply          # install everything that role owns
 mwan install --print-schema /tmp/schema  # write the YANG modules for validation
 ```
