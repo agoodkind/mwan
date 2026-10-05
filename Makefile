@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 
 define HELP_TEXT
-This repository has no root build. Run make inside a module directory.
+Run make inside a module directory. The repository root does not build anything.
 
   gateway/   The mwan gateway program, Go module goodkind.io/mwan.
 
