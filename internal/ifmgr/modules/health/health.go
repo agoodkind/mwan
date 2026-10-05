@@ -192,11 +192,10 @@ type Module struct {
 	cfg                Config
 	observationWorkers sync.WaitGroup
 
-	clock            internalclock.Clock
-	cycleMu          sync.Mutex
-	reconcileMu      sync.Mutex
-	reconcilePending bool
-	// Reconcile does not start a probe cycle while reconcileCycleRunning is true.
+	clock                 internalclock.Clock
+	cycleMu               sync.Mutex
+	reconcileMu           sync.Mutex
+	reconcilePending      bool
 	reconcileCycleRunning bool
 	statuses              map[string]wanStatus
 	// lastTransition records when each WAN's verdict last changed, for
