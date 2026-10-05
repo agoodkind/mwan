@@ -1,7 +1,4 @@
-// Package statuspush carries the gateway's provider verdict to the hypervisor
-// watchdog. The gateway is the only process that probes every provider, so the
-// watchdog is told what it needs rather than made to rediscover it by pinging
-// through a list of interface names typed into its own configuration.
+// Package statuspush sends provider verdicts from the gateway to the watchdog.
 //
 // One message is one connection: dial, write a single JSON line, close. There
 // is no session to resynchronise after a hypervisor restart, and a hypervisor
@@ -35,36 +32,26 @@ import (
 )
 
 const (
-	// DefaultPort is the vsock port the hypervisor watchdog listens on and the
-	// gateway dials. It sits beside the agent's 50051 and its TCP fallback
-	// 50052, which are the only other ports in this family.
+	// DefaultPort is the watchdog's vsock listener port.
 	DefaultPort uint32 = 50053
 
-	// HostCID is VMADDR_CID_HOST, the context id every guest reaches its own
-	// hypervisor on. A guest therefore needs no knowledge of which machine it
-	// runs on to find the watchdog.
+	// HostCID selects the local hypervisor for vsock connections.
 	HostCID uint32 = 2
 
-	// transferTimeout bounds one push and one receive. Both ends are on the
-	// same machine over a virtio transport, so a transfer that has not finished
-	// in this long is not going to.
 	transferTimeout = 2 * time.Second
 
-	// maxMessageBytes caps one status line. The real message is a few hundred
-	// bytes; the cap stops a wedged or hostile writer from growing the read
-	// buffer without bound.
 	maxMessageBytes = 64 * 1024
 )
 
-// Status is what the gateway knows about its providers at one instant. When no
-// provider is healthy anywhere, ActiveTier carries no meaning and every entry
-// in Providers reads unhealthy, which is what a reader checks.
+// Status stores provider verdicts and a timestamp.
+// Interpret ActiveTier only when Providers includes a healthy provider.
 type Status struct {
 	SentAt     time.Time         `json:"sent_at"`
 	ActiveTier uint8             `json:"active_tier"`
 	Providers  map[string]string `json:"providers"`
 }
 
+// NewStatus converts unrecognized provider states to unknown.
 func NewStatus(
 	sentAt time.Time,
 	members []netif.TierMember,
@@ -80,8 +67,7 @@ func NewStatus(
 		}
 		verdicts[member.Name] = verdict
 	}
-	// netif.ActiveTier reports false when no member is healthy. The tier is then
-	// meaningless, and readers check that every provider entry reads unhealthy.
+	// ActiveTier is meaningful only when at least one provider is healthy.
 	activeTier, _ := netif.ActiveTier(members, verdicts)
 	return Status{
 		SentAt:     sentAt,
@@ -90,6 +76,7 @@ func NewStatus(
 	}
 }
 
+// UnmarshalStatus returns an error when the input is not valid Status JSON.
 func UnmarshalStatus(line []byte) (Status, error) {
 	var status Status
 	if err := json.Unmarshal(line, &status); err != nil {
@@ -103,9 +90,7 @@ func UnmarshalStatus(line []byte) (Status, error) {
 // ListenFunc opens the socket the Listener accepts on.
 type ListenFunc func() (net.Listener, error)
 
-// Listener keeps the most recent Status the gateway pushed, with the time it
-// arrived. Nothing is queued: a diagnosis wants what is true now, and an older
-// status is never the answer.
+// Listener replaces its stored Status after decoding each status message.
 type Listener struct {
 	listen ListenFunc
 	log    *slog.Logger
@@ -118,7 +103,7 @@ type Listener struct {
 	address  string
 }
 
-// NewListener returns a Listener bound to this host's vsock context on port.
+// NewListener configures a vsock listener. Run opens the socket.
 func NewListener(port uint32, log *slog.Logger) *Listener {
 	return NewListenerWithListen(func() (net.Listener, error) {
 		listener, err := vsock.Listen(port, nil)
@@ -130,8 +115,7 @@ func NewListener(port uint32, log *slog.Logger) *Listener {
 	}, log)
 }
 
-// NewListenerWithListen is NewListener with the socket named, so a test drives
-// the real accept loop and decoder over a socket it can create.
+// NewListenerWithListen defers socket creation until Run starts.
 func NewListenerWithListen(listen ListenFunc, log *slog.Logger) *Listener {
 	return &Listener{
 		listen:   listen,
@@ -145,25 +129,21 @@ func NewListenerWithListen(listen ListenFunc, log *slog.Logger) *Listener {
 	}
 }
 
-// Latest returns the last status received, when it arrived, and whether one
-// ever has.
+// Latest returns the last decoded status, its receipt time, and whether a status was received.
 func (l *Listener) Latest() (Status, time.Time, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.latest, l.received, l.seen
 }
 
-// Address reports the socket the listener bound, once Run has bound it. It is
-// empty before that and on a listener whose socket failed.
+// Address returns an empty string until Run opens the listener socket.
 func (l *Listener) Address() string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.address
 }
 
-// Run accepts connections until ctx is cancelled or the socket fails. The
-// caller runs it in a goroutine and treats a returned error as the channel
-// being down, not as a reason to stop watching connectivity.
+// Run accepts connections until ctx is canceled or the listener socket fails.
 func (l *Listener) Run(ctx context.Context) error {
 	socket, err := l.listen()
 	if err != nil {
@@ -198,11 +178,7 @@ func (l *Listener) Run(ctx context.Context) error {
 	}
 }
 
-// readOne reads one status line and records it. Connections are served one at a
-// time on purpose: a push is one short line, and a serial loop means the stored
-// status is the last one that arrived rather than whichever goroutine won a
-// race. The read deadline keeps a client that connects and says nothing from
-// holding the loop.
+// Do not parallelize status reads. Each decoded message replaces Listener.latest.
 func (l *Listener) readOne(ctx context.Context, conn net.Conn) {
 	defer func() {
 		_ = conn.Close()
@@ -222,8 +198,6 @@ func (l *Listener) readOne(ctx context.Context, conn net.Conn) {
 	}
 	status, err := UnmarshalStatus(line)
 	if err != nil {
-		// A rejected line leaves the stored status alone. The watchdog would
-		// rather diagnose against a slightly older verdict than against none.
 		l.log.WarnContext(ctx, "statuspush: decode status failed", "err", err)
 		return
 	}

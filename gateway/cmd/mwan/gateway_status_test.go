@@ -30,9 +30,6 @@ type gatewayStatusRun struct {
 	exitCode int
 }
 
-// writeGatewayStatusInputs writes the three files the subcommand reads: a TOML
-// configuration naming the health state file, a network document with two
-// health-enabled providers, and the model directory that validates the document.
 func writeGatewayStatusInputs(t *testing.T, statePath string) []string {
 	t.Helper()
 

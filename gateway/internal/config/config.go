@@ -76,8 +76,8 @@ type WatchdogSection struct {
 	// verdict to. Zero, the default everywhere but the two hypervisors, starts
 	// no listener at all.
 	StatusListenPort uint32 `toml:"status_listen_port"`
-	// StatusCommand is the argv the watchdog runs inside the guest to read the
-	// provider verdict. It excludes status_listen_port.
+	// StatusCommand configures the guest status command arguments.
+	// Do not configure StatusCommand together with status_listen_port.
 	StatusCommand []string `toml:"status_command"`
 
 	LogFile           string `toml:"log_file"`

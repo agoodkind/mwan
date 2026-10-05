@@ -9,6 +9,7 @@ import (
 	"goodkind.io/mwan/internal/statuspush"
 )
 
+// GuestStatusSource executes the configured guest command on each Latest call.
 type GuestStatusSource struct {
 	gateway ops.GatewayOps
 	vmid    string
@@ -17,6 +18,7 @@ type GuestStatusSource struct {
 	now     func() time.Time
 }
 
+// NewGuestStatusSource defers command execution until Latest is called.
 func NewGuestStatusSource(
 	gateway ops.GatewayOps,
 	vmid string,
@@ -32,8 +34,7 @@ func NewGuestStatusSource(
 	}
 }
 
-// Latest runs the status command on every call. Only the diagnosis path calls
-// it, and that path runs after connectivity has already degraded.
+// Latest returns false if guest execution or status decoding fails.
 func (s *GuestStatusSource) Latest() (statuspush.Status, time.Time, bool) {
 	ctx := context.Background()
 	none := statuspush.Status{SentAt: time.Time{}, ActiveTier: 0, Providers: nil}

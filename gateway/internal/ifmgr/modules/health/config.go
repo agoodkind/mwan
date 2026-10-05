@@ -250,6 +250,7 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 	}, nil
 }
 
+// StateFilePath returns StateFile or /var/run/mwan-health.state when StateFile is empty.
 func (cfg Config) StateFilePath() string {
 	if cfg.StateFile == "" {
 		return defaultStateFile
@@ -257,6 +258,7 @@ func (cfg Config) StateFilePath() string {
 	return cfg.StateFile
 }
 
+// TierMembers returns provider keys and tiers in configuration order.
 func (cfg Config) TierMembers() []netif.TierMember {
 	members := make([]netif.TierMember, 0, len(cfg.WANs))
 	for _, wan := range cfg.WANs {

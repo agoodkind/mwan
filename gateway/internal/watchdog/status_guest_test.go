@@ -23,9 +23,6 @@ const (
 	argvMismatchExit = 9
 )
 
-// installGuestCommand puts a pct executable on PATH that runs in place of the
-// hypervisor's pct. It exits with argvMismatchExit unless the guest command
-// matches the argv the source must forward.
 func installGuestCommand(t *testing.T, stdout string, exitCode int) {
 	t.Helper()
 

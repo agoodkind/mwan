@@ -63,8 +63,7 @@ func readGatewayStatus(
 	if err != nil {
 		return none, gatewayStatusError("read health state file", err)
 	}
-	// SentAt is the state file modification time. The health module rewrites the
-	// file every probe cycle.
+	// SentAt uses the health state file's modification time.
 	sentAt := info.ModTime().UTC()
 	return statuspush.NewStatus(sentAt, healthConfig.TierMembers(), states), nil
 }
