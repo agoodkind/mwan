@@ -76,6 +76,9 @@ type WatchdogSection struct {
 	// verdict to. Zero, the default everywhere but the two hypervisors, starts
 	// no listener at all.
 	StatusListenPort uint32 `toml:"status_listen_port"`
+	// StatusCommand is the argv the watchdog runs inside the guest to read the
+	// provider verdict. It excludes status_listen_port.
+	StatusCommand []string `toml:"status_command"`
 
 	LogFile           string `toml:"log_file"`
 	JSONLogFile       string `toml:"json_log_file"`
@@ -406,6 +409,7 @@ func defaultConfigBase() Config {
 		VsockPort:         0,
 		MwanAgentTCPAddr:  "",
 		StatusListenPort:  0,
+		StatusCommand:     nil,
 		LogFile:           "/var/log/mwan-watchdog.log", JSONLogFile: "/var/log/mwan-watchdog.jsonl",
 		RollbackStateFile: "/run/mwan-rollback.state",
 		RollbackLockFile:  "/run/mwan-watchdog-rollback.lock",
@@ -481,6 +485,10 @@ func loadConfig(path string) (*Config, error) {
 		slog.Error("validate guest type failed", "error", err)
 		return nil, fmt.Errorf("validate guest type: %w", err)
 	}
+	if err := validateWatchdogStatusSource(cfg.Watchdog); err != nil {
+		slog.Error("validate watchdog status source failed", "error", err)
+		return nil, fmt.Errorf("validate watchdog status source: %w", err)
+	}
 	if err := validateBGPDynamicConfig(&cfg.BGP); err != nil {
 		slog.Error("validate BGP dynamic configuration failed", "error", err)
 		return nil, fmt.Errorf("validate BGP dynamic configuration: %w", err)
@@ -502,6 +510,13 @@ func validateBGPDynamicConfig(b *BGPSection) error {
 	}
 	if len(b.DynamicNeighbors) > 0 && b.LearnedRouteIface == "" {
 		return errors.New("[bgp] learned_route_iface is required when dynamic_neighbors is configured")
+	}
+	return nil
+}
+
+func validateWatchdogStatusSource(section WatchdogSection) error {
+	if len(section.StatusCommand) > 0 && section.StatusListenPort != 0 {
+		return errors.New("[watchdog] status_command and status_listen_port are mutually exclusive")
 	}
 	return nil
 }
