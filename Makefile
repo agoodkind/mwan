@@ -4,7 +4,7 @@ define HELP_TEXT
 Run make in a module directory.
 
   gateway/ contains the goodkind.io/mwan module.
-  make -C gateway build compiles the mwan program.
+  Run make -C gateway build to compile the mwan program.
 
 Run make -C gateway help to list its targets.
 endef
