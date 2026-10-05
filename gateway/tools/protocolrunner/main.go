@@ -99,7 +99,7 @@ func parseOptions() (result options, failure error) {
 	flags.StringVar(&rawLane, "lane", "", "namespace, systemd or original-upgrade")
 	flags.StringVar(&opts.image, "image", "", "local Docker image")
 	flags.StringVar(&opts.arch, "arch", "", "native Linux architecture")
-	flags.StringVar(&opts.source, "source", "", "absolute source directory")
+	flags.StringVar(&opts.source, "source", "", "absolute repository root directory")
 	flags.StringVar(&opts.binary, "binary", "", "optional absolute published executable")
 	flags.StringVar(&opts.results, "results", "", "acceptance artifact directory")
 	flags.StringVar(&opts.ownedRoleConfigs, "owned-role-configs", "", "absolute Configs checkout for the systemd suite")
@@ -186,7 +186,7 @@ func startContainer(ctx context.Context, opts options, name string) (failure err
 		"--mount", "type=bind,src=" + opts.source + ",dst=/src,readonly",
 		"-v", "mwan-wanconfig-gomod:/go/pkg/mod",
 		"-v", "mwan-wanconfig-cache-" + opts.arch + ":/root/.cache",
-		"-v", "mwan-wanconfig-gomk-" + opts.arch + ":/src/.make",
+		"-v", "mwan-wanconfig-gomk-" + opts.arch + ":/src/gateway/.make",
 	}
 	if opts.lane == laneSystemd {
 		for _, relative := range []string{ownedRoleService, ownedRoleScript} {
@@ -240,7 +240,7 @@ func waitSystemd(ctx context.Context, container string, selected lane) (failure 
 
 func testArguments(opts options, container string, required []string) []string {
 	arguments := []string{
-		"exec", "-w", "/src", "-e", "GOWORK=off", "-e", "GOFLAGS=-buildvcs=false",
+		"exec", "-w", "/src/gateway", "-e", "GOWORK=off", "-e", "GOFLAGS=-buildvcs=false",
 		"-e", "MWAN_PROTOCOL_ACCEPTANCE=1",
 		"-e", "GIT_CONFIG_COUNT=1", "-e", "GIT_CONFIG_KEY_0=safe.directory", "-e", "GIT_CONFIG_VALUE_0=/src",
 	}

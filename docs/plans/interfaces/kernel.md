@@ -34,12 +34,12 @@ absent provider leaves other connections operational.
 
 | Source to modify | Verified behavior |
 | --- | --- |
-| [Link identities](../../../internal/netif/links.go) | `ListLinkIdentities` reads names, MAC addresses, and sysfs drivers without applying configuration. |
-| [Kernel operations](../../../internal/netif/state.go) | `linkByName` resolves devices for address and route operations. The file does not implement the complete planned link lifecycle. |
-| [Daemon startup](../../../cmd/mwan/ifmgr.go) | `bootstrapWANFirewall` installs and inspects protective policy before `parseNetworkConfig`. Daemon construction validates module settings before `writeNetworkConfig` writes units and reloads networkd. |
-| [Rename diagnostics](../../../cmd/mwan/ifmgr_links.go) | `warnRenamedLinks` logs rendered-name mismatches without renaming active devices. |
-| [The daemon](../../../internal/ifmgr/daemon.go) | `Daemon.Run` starts a monitor and optional clients before module initialization. Ordinary initialization errors stop startup. |
-| [Role composition](../../../internal/ifmgr/roles.go) | Existing roles select registered modules. |
+| [Link identities](../../../gateway/internal/netif/links.go) | `ListLinkIdentities` reads names, MAC addresses, and sysfs drivers without applying configuration. |
+| [Kernel operations](../../../gateway/internal/netif/state.go) | `linkByName` resolves devices for address and route operations. The file does not implement the complete planned link lifecycle. |
+| [Daemon startup](../../../gateway/cmd/mwan/ifmgr.go) | `bootstrapWANFirewall` installs and inspects protective policy before `parseNetworkConfig`. Daemon construction validates module settings before `writeNetworkConfig` writes units and reloads networkd. |
+| [Rename diagnostics](../../../gateway/cmd/mwan/ifmgr_links.go) | `warnRenamedLinks` logs rendered-name mismatches without renaming active devices. |
+| [The daemon](../../../gateway/internal/ifmgr/daemon.go) | `Daemon.Run` starts a monitor and optional clients before module initialization. Ordinary initialization errors stop startup. |
+| [Role composition](../../../gateway/internal/ifmgr/roles.go) | Existing roles select registered modules. |
 
 The guest transit interface `enmwanbr0` is a virtio device attached to a
 hypervisor bridge. Its name does not require a Linux bridge inside the guest.
@@ -94,7 +94,7 @@ durable record is a conflict, not proof of ownership.
 ### Verify links through the daemon
 
 Add public daemon scenarios beside
-[the existing command namespace suite](../../../cmd/mwan/deploygate_egress_netns_test.go).
+[the existing command namespace suite](../../../gateway/cmd/mwan/deploygate_egress_netns_test.go).
 Start the production `mwan ifmgr` command with isolated configuration and real
 Linux namespaces, VLANs, and packet exchange. Add link-only owned connections
 beside a valid legacy provider in the test configuration. Record the
@@ -131,7 +131,7 @@ protocol timers, lease options, and OOB consumer updates.
 | Source to modify | Verified behavior |
 | --- | --- |
 | The kernel operations cited above | `ReconcileAddrs` only adds missing addresses. `ReconcileTableDefault` compares gateway and device but ignores changed metrics when both match. |
-| [WAN routing](../../../internal/ifmgr/modules/wanroutes/wanroutes.go) | `Module` reconciles mapped external addresses classified as on-link and owns provider-table routes and policy rules. |
+| [WAN routing](../../../gateway/internal/ifmgr/modules/wanroutes/wanroutes.go) | `Module` reconciles mapped external addresses classified as on-link and owns provider-table routes and policy rules. |
 
 ### Implement static ownership and the assignment writer
 
@@ -220,7 +220,7 @@ must remain verifiable.
 
 ### Verify the starting point
 
-[The monitor](../../../internal/netif/monitor.go) rejects non-default routes
+[The monitor](../../../gateway/internal/netif/monitor.go) rejects non-default routes
 in `routeUpdateToEvent`, omits table and protocol from `Event`, and has no rule
 subscription. WAN routing's `watchedIfaces` already includes `InternalIface`
 and providers. Its `onMonitorEvent` accepts only `isDefaultRouteEvent`.

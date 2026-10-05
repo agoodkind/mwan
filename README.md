@@ -18,13 +18,13 @@ It also explains which commands still require the Configs checkout.
 
 | Path | What it holds |
 |---|---|
-| `cmd/mwan` | The binary: every subcommand, and the units, drop-ins and policy it embeds |
-| `internal` | The daemon: interface management modules, BGP, health, the agent, the wanconfig publisher |
-| `internal/yangpub/schema` | The eight YANG modules the binary embeds |
+| `gateway/cmd/mwan` | The binary: every subcommand, and the units, drop-ins and policy it embeds |
+| `gateway/internal` | The daemon: interface management modules, BGP, health, the agent, the wanconfig publisher |
+| `gateway/internal/yangpub/schema` | The eight YANG modules the binary embeds |
 | `pkg/pveapi` | The Proxmox API client |
-| `proto`, `gen` | The `mwan.v1` wire contract and its generated code |
-| `yang/instances` | The network documents the instance gate validates |
-| `tools` | The wanconfig stack packaging tool and its builder image |
+| `gateway/proto`, `gateway/gen` | The `mwan.v1` wire contract and its generated code |
+| `gateway/yang/instances` | The network documents the instance gate validates |
+| `gateway/tools` | The wanconfig stack packaging tool and its builder image |
 
 ## Installing what the binary owns
 
@@ -58,22 +58,22 @@ decision stays with whatever called it.
 ## Building and testing
 
 The build and lint pipeline is [go-makefile](https://github.com/agoodkind/go-makefile),
-fetched at parse time by `bootstrap.mk`. Run `make help` for the full target
+fetched at parse time by `gateway/bootstrap.mk`. Run `make -C gateway help` for the full target
 list.
 
 ```
-make check                   # lint, vet, staticcheck, deadcode, and the YANG model gates
-make test                    # the suite
-make build                   # the linux binary
-make docker-make TARGETS=... # any make targets in the builder container
-make docker-make-amd64 TARGETS=... # the same in the amd64 container, emulated on arm64
-make build-wanconfig-all     # the linux binary for amd64 and for arm64
-make test-docker-all         # the suite in the amd64 and the arm64 container
+make -C gateway check                   # lint, vet, staticcheck, deadcode, and the YANG model gates
+make -C gateway test                    # the suite
+make -C gateway build                   # the linux binary
+make -C gateway docker-make TARGETS=... # any make targets in the builder container
+make -C gateway docker-make-amd64 TARGETS=... # the same in the amd64 container, emulated on arm64
+make -C gateway build-wanconfig-all     # the linux binary for amd64 and for arm64
+make -C gateway test-docker-all         # the suite in the amd64 and the arm64 container
 ```
 
 Darwin cannot build the sysrepo binding, and a host run would compile out every
-package that uses it. On macOS, `make check`, `make test`, `make build`,
-`make build-check`, and `make vet` run in the builder container. The container
+package that uses it. On macOS, `make -C gateway check`, `make -C gateway test`, `make -C gateway build`,
+`make -C gateway build-check`, and `make -C gateway vet` run in the builder container. The container
 is a Debian image with the pinned libyang and sysrepo and `yanglint`
 installed, and it builds the cgo dependencies for its own architecture. The
 Docker targets need Docker. They use the host architecture unless

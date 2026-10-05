@@ -23,12 +23,12 @@ separate `opnsensectl` binary in
 ## Code standards
 
 - **One configuration path.** A subcommand reads its settings through
-  `internal/config`, which loads one TOML file and overlays exactly two secrets
+  `gateway/internal/config`, which loads one TOML file and overlays exactly two secrets
   from the environment. No subcommand reads its own environment variables for
   configuration, and a missing required field fails at load rather than
   defaulting to a value that is wrong on every host.
 - **One notifier and one logger factory.** Alert mail goes through
-  `internal/notify`, and every logger comes from `logging.New`. No subcommand
+  `gateway/internal/notify`, and every logger comes from `logging.New`. No subcommand
   builds a second mail path or a second handler stack.
 - **No globals.** Configuration and state pass through function arguments. No
   package-level `var` holds configuration, shared state, or a singleton.
@@ -75,7 +75,7 @@ arm64 on Apple Silicon. The container builds the cgo dependencies for
 linux/arm64 and runs the named make targets:
 
 ```bash
-make docker-make TARGETS="check test"
+make -C gateway docker-make TARGETS="check test"
 ```
 
 `TARGETS` accepts any make target. The first run builds the image and the cgo

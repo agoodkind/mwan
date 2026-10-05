@@ -147,9 +147,9 @@ Require confirmed AT&T circuit retirement and accepted replacement ownership
 for every required interface before global networkd retirement. Do not assign
 an open-ended deletion task to a code implementer.
 
-Inspect [the networkd renderer](../../../internal/networkd/spec.go),
-[the prefix source](../../../internal/pd/source.go),
-[the daemon unit](../../../cmd/mwan/mwan-ifmgr@.service), and current callers.
+Inspect [the networkd renderer](../../../gateway/internal/networkd/spec.go),
+[the prefix source](../../../gateway/internal/pd/source.go),
+[the daemon unit](../../../gateway/cmd/mwan/mwan-ifmgr@.service), and current callers.
 Inspect the Configs deployment and inventories identified above and
 [AT&T deployment](https://github.com/agoodkind/configs/blob/main/ansible/playbooks/tasks/mwan-vm/att-8021x.yml).
 These are inspection starting points, not unconditional deletion targets.
@@ -180,7 +180,7 @@ instructions and update the actual replacement procedure. Delete tests for
 removed behavior. Keep completed MWAN-491 and cancelled historical tickets
 unchanged.
 
-Run `make docker-make TARGETS="check test"` for MWAN code changes on macOS.
+Run `make -C gateway docker-make TARGETS="check test"` for MWAN code changes on macOS.
 Run real daemon startup, restart, acquisition, and packet tests without
 networkd in the privileged MWAN-522 environment. Skipped cases do not prove
 replacement acceptance.

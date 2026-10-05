@@ -27,12 +27,12 @@ may proceed in parallel when files and runtime objects have separate writers.
 
 | Source to modify | Verified behavior |
 | --- | --- |
-| [The network loader](../../../internal/networkjson/networkjson.go) | `build` skips entries with no `WAN`, keys `Config.WAN` by provider name, rejects duplicate provider names, and calls `buildLink` only for accepted providers. |
-| [The networkd specification](../../../internal/networkd/spec.go) | `Spec`, `Family`, and `Delegation` combine shared intent with rendering data. `Validate` rejects free-form keys that overlap typed values. |
-| [The active schema](../../../internal/yangpub/schema/goodkind-mwan-steering@2026-09-26.yang) | Production validation uses this schema for the network document. |
-| [The daemon configuration](../../../internal/config/config.go) | `IfMgrSection.Links` stores `[]networkd.Spec`; provider settings use the separate `WAN` map. |
-| [The served tree](../../../internal/wanconfig/tree.go) | `Gateway` uses `InternalIface` for the internal interface and `Member.Link` for provider link specifications. |
-| [Daemon startup](../../../cmd/mwan/ifmgr.go) | `bootstrapWANFirewall` installs and inspects protective policy. `parseNetworkConfig` loads and applies validated configuration. After daemon construction validates module settings, `writeNetworkConfig` writes units and reloads networkd when files change. |
+| [The network loader](../../../gateway/internal/networkjson/networkjson.go) | `build` skips entries with no `WAN`, keys `Config.WAN` by provider name, rejects duplicate provider names, and calls `buildLink` only for accepted providers. |
+| [The networkd specification](../../../gateway/internal/networkd/spec.go) | `Spec`, `Family`, and `Delegation` combine shared intent with rendering data. `Validate` rejects free-form keys that overlap typed values. |
+| [The active schema](../../../gateway/internal/yangpub/schema/goodkind-mwan-steering@2026-09-26.yang) | Production validation uses this schema for the network document. |
+| [The daemon configuration](../../../gateway/internal/config/config.go) | `IfMgrSection.Links` stores `[]networkd.Spec`; provider settings use the separate `WAN` map. |
+| [The served tree](../../../gateway/internal/wanconfig/tree.go) | `Gateway` uses `InternalIface` for the internal interface and `Member.Link` for provider link specifications. |
+| [Daemon startup](../../../gateway/cmd/mwan/ifmgr.go) | `bootstrapWANFirewall` installs and inspects protective policy. `parseNetworkConfig` loads and applies validated configuration. After daemon construction validates module settings, `writeNetworkConfig` writes units and reloads networkd when files change. |
 
 The loader preserves provider-local rejection after schema validation and
 treats shared routing conflicts as fatal. A document with no accepted provider
@@ -77,7 +77,7 @@ and state-publication PRs. The coordinator defines the Graphite boundaries.
    routed IPv6 prefixes without delegation and separately configured physical
    links, tunnels, and BGP sessions for later MWAN-507 extension.
 7. Define assignment purpose for local IA_NA addresses and intentional
-   forwarding addresses. In [NPT reconciliation](../../../internal/ifmgr/modules/npt/npt.go),
+   forwarding addresses. In [NPT reconciliation](../../../gateway/internal/ifmgr/modules/npt/npt.go),
    replace `extraGlobal128s` inference with the approved classification for
    transferred connections. Exclude local assignments from `ExtraDNAT` while
    preserving them in `PrefixPair.DestinationExceptions` when a translated
@@ -110,12 +110,12 @@ Preserve AT&T under its existing owner. Generic VLAN support remains required;
 
 ### Verify production boundaries
 
-Extend [public validation tests](../../../cmd/mwan/deploygate_checknetwork_test.go)
-and [real datastore tests](../../../cmd/mwan/wanconfig_selftest_test.go).
+Extend [public validation tests](../../../gateway/cmd/mwan/deploygate_checknetwork_test.go)
+and [real datastore tests](../../../gateway/cmd/mwan/wanconfig_selftest_test.go).
 Use the production loader, actual libyang, and private sysrepo repositories.
 
 1. Run the existing command
-   `mwan deploy-gate check-network yang/instances/network-min.json internal/yangpub/schema`.
+   `mwan deploy-gate check-network gateway/yang/instances/network-min.json gateway/internal/yangpub/schema`.
    Preserve the existing three-provider acceptance result.
 2. Add tests for repeated provider names, repeated ASNs, and non-provider
    parent, internal, and management interfaces. Read published configuration
@@ -146,9 +146,9 @@ route ownership without changing observed objects.
 
 | Source to modify | Verified behavior |
 | --- | --- |
-| [The netlink monitor](../../../internal/netif/monitor.go) | `NewMonitor` resolves `ifIndex` once. An absent link rejects unrelated address and route events by checking the event index against the configured name. A deleted or recreated link can leave the stored index stale. |
-| [Kernel snapshots](../../../internal/netif/state.go) | `CurrentAddr` stores CIDR, family, and flags without lifetimes. `CurrentRoute` omits table and protocol, and route conversion retains only the first multipath hop. |
-| [Link identities](../../../internal/netif/links.go) | `ListLinkIdentities` returns names, MAC addresses, and drivers without the current kernel index. |
+| [The netlink monitor](../../../gateway/internal/netif/monitor.go) | `NewMonitor` resolves `ifIndex` once. An absent link rejects unrelated address and route events by checking the event index against the configured name. A deleted or recreated link can leave the stored index stale. |
+| [Kernel snapshots](../../../gateway/internal/netif/state.go) | `CurrentAddr` stores CIDR, family, and flags without lifetimes. `CurrentRoute` omits table and protocol, and route conversion retains only the first multipath hop. |
+| [Link identities](../../../gateway/internal/netif/links.go) | `ListLinkIdentities` returns names, MAC addresses, and drivers without the current kernel index. |
 
 The monitor requests existing addresses, routes, and links when subscribing.
 It drops events when its public channel is full. Route events already include
@@ -182,9 +182,9 @@ Serialize monitor edits with MWAN-505 and reuse one route-event contract.
 
 ### Verify observation through public events
 
-Add real-kernel cases to [the monitor suite](../../../internal/netif/monitor_test.go)
+Add real-kernel cases to [the monitor suite](../../../gateway/internal/netif/monitor_test.go)
 through `NewMonitor` and its events. Add public daemon scenarios beside
-[the existing command namespace suite](../../../cmd/mwan/deploygate_egress_netns_test.go).
+[the existing command namespace suite](../../../gateway/cmd/mwan/deploygate_egress_netns_test.go).
 Record the actual privileged invocation after creating these tests.
 
 1. Start with the configured device absent and change an unrelated device's
@@ -216,8 +216,8 @@ family. Persistent history must explain failures across ordinary restart.
 
 | Source to modify | Verified behavior |
 | --- | --- |
-| [The live store](../../../internal/wanstate/wanstate.go) | `Store`, `Snapshot`, `SetHealth`, `SetRouting`, and `SetTranslation` store member decisions. General interface assignment and observation records are absent. |
-| [Operational publication](../../../cmd/mwan/wanconfig_livestate.go) | `registerLiveStateProviders` reads snapshots. `interfacesLiveItems` iterates `Gateway.Members` and publishes provider, rejection, and group state. |
+| [The live store](../../../gateway/internal/wanstate/wanstate.go) | `Store`, `Snapshot`, `SetHealth`, `SetRouting`, and `SetTranslation` store member decisions. General interface assignment and observation records are absent. |
+| [Operational publication](../../../gateway/cmd/mwan/wanconfig_livestate.go) | `registerLiveStateProviders` reads snapshots. `interfacesLiveItems` iterates `Gateway.Members` and publishes provider, rejection, and group state. |
 
 `runIfMgr` creates the store independently of the optional management surface.
 `MemberRouting.V4Ready` and `V6Ready` already distinguish families. The health
@@ -249,7 +249,7 @@ configuration and kernel presence cannot establish acquisition.
 ### Verify operational reads and history
 
 Extend the real datastore tests cited in the model slice and
-[the operational publication suite](../../../cmd/mwan/wanconfig_livestate_test.go).
+[the operational publication suite](../../../gateway/cmd/mwan/wanconfig_livestate_test.go).
 The private selftest accepts `mwan wanconfig-selftest --repository` and
 `--models-dir` together. Use temporary directories and the release schema.
 The unqualified command temporarily publishes a host marker; use the private

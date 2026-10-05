@@ -10,17 +10,17 @@ Follow the [coordinator](../2026-09-26-link-ownership.md) and
 
 ## Current behavior
 
-[The DHCPv4 client](../../../internal/netif/dhcp.go) keeps `last` and the
+[The DHCPv4 client](../../../gateway/internal/netif/dhcp.go) keeps `last` and the
 active lease in process memory. `StartDHCPClient` starts `run`, which begins
 with `acquire`. `LeaseInfo` stores acquisition time and duration but does
 not implement persisted restart validation.
 
-[The DHCPv6 client](../../../internal/netif/dhcpv6.go) manages IA_NA and IA_PD
+[The DHCPv6 client](../../../gateway/internal/netif/dhcpv6.go) manages IA_NA and IA_PD
 in one process. It records each association's deadlines in memory, but starts
 a fresh negotiation after restart. The legacy prefix source still observes
 networkd delegation on connections that have not transferred.
 
-[The daemon service](../../../cmd/mwan/mwan-ifmgr@.service) already permits
+[The daemon service](../../../gateway/cmd/mwan/mwan-ifmgr@.service) already permits
 writes to `/var/lib/mwan` through `ReadWritePaths`. It starts before udev
 coldplug and networkd, uses `ProtectSystem=strict`, and deliberately omits
 `StateDirectory` to avoid boot ordering through local filesystem setup.
@@ -80,9 +80,9 @@ clients. Integrate each client after the store contract passes review.
 ### 2. Validate saved state before publishing usability
 
 Integrate owned-connection loading and recovery in the
-[addresses module](../../../internal/ifmgr/modules/addresses/addresses.go)
+[addresses module](../../../gateway/internal/ifmgr/modules/addresses/addresses.go)
 before its DHCPv4 and DHCPv6 clients start. Integrate the OOB and mainv4
-role clients with [Daemon.Run](../../../internal/ifmgr/daemon.go). Those roles
+role clients with [Daemon.Run](../../../gateway/internal/ifmgr/daemon.go). Those roles
 currently prune journaled addresses during initialization; defer that prune
 until recovery validates or rejects the saved assignment.
 
@@ -168,7 +168,7 @@ the executable used.
    repository's pinned libyang and sysrepo development dependencies:
 
    ```bash
-   go test -c -tags 'netns firewallnetns' -o /tmp/mwan-restart.test ./cmd/mwan
+   go -C gateway test -c -tags 'netns firewallnetns' -o /tmp/mwan-restart.test ./cmd/mwan
    ```
 
 2. Copy the runner and its matching repository source tree to the testbed.
@@ -176,13 +176,13 @@ the executable used.
    test. Use a guest with the matching libyang and sysrepo runtime libraries,
    `nft`, `kea-dhcp4`, and `kea-dhcp6`. The runner requires root and permission
    to create network and mount namespaces. Its working directory must be
-   `cmd/mwan` in the matching tree; the owned-connection tests bind the tree's
+   `gateway/cmd/mwan` in the matching tree; the owned-connection tests bind the tree's
    YANG schemas inside their private mount namespaces.
 
 3. Run the compiled public tests against the installed release:
 
    ```bash
-   cd cmd/mwan
+   cd gateway/cmd/mwan
    sudo env MWAN_PROTOCOL_TEST_BINARY=/usr/local/bin/mwan \
      /tmp/mwan-restart.test -test.v -test.count=1 \
      -test.run='^(TestOOBDHCPv4DaemonRestartRecovery|TestOOBDHCPv4DaemonLateInterfaceRecovery|TestOOBDHCPv4DaemonRejectedRecovery|TestOwnedDHCPv6DaemonRestartRecovery|TestOwnedDHCPv4RejectedRecoveryRuntime)$'

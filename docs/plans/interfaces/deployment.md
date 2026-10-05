@@ -157,7 +157,7 @@ Preserve [asynchronous restart and reconnection](https://github.com/agoodkind/co
 start the restart asynchronously, wait for controller access after the job
 deadline, then verify completion.
 Coordinate capabilities and persistent storage with
-[the installed daemon unit](../../../cmd/mwan/mwan-ifmgr@.service).
+[the installed daemon unit](../../../gateway/cmd/mwan/mwan-ifmgr@.service).
 
 ### Implement forward and reverse transfer
 
@@ -272,18 +272,18 @@ inputs, packet artifacts, expected observations, timing bounds, and recovery.
 Identify every destructive fault injection and its isolated target. Review
 the manifest before authorizing transfer.
 
-Run `make docker-make TARGETS="check test"` for MWAN code changes on macOS.
+Run `make -C gateway docker-make TARGETS="check test"` for MWAN code changes on macOS.
 Run every required privileged case explicitly. Missing privileges, skipped
 tests, and absent commands block acceptance.
 
-Run `make test-protocol` for the assembled isolated acquisition, process
+Run `make -C gateway test-protocol` for the assembled isolated acquisition, process
 recovery, autoconfiguration, resolver, and ordered-startup cases. Its
 `test-protocol-namespace` and `test-protocol-systemd` subtargets use separate
 privileged containers. The systemd container starts actual networkd,
 resolved, and udev. Set `MWAN_PROTOCOL_TEST_BINARY` to an absolute published
 executable when validating a release. Every selected daemon case uses that
 read-only executable. Commands and complete test events are stored under
-`bin/protocol-results`; change `PROTOCOL_RESULTS_DIR` to retain another
+`gateway/bin/protocol-results`; change `PROTOCOL_RESULTS_DIR` to retain another
 artifact directory. The aggregate does not establish physical forward and
 reverse transfer, reboot, balancing, or shared testbed acceptance.
 
