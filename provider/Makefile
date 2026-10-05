@@ -5,7 +5,7 @@
 # audit, fmt, vet, and staticcheck targets are prohibited here, because they
 # duplicate the central pipeline and let agents bypass strict rules.
 
-# Identity. go-makefile stamps the release tag into gklog's version package,
+# go-makefile stamps the release tag into gklog's version package,
 # which the provider compares with the release version a configuration asks for.
 BINARY     := terraform-provider-mwan
 CMD        := .

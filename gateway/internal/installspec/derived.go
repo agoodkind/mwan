@@ -65,7 +65,7 @@ func (s Spec) SysrepoImports() ([]SysrepoImport, error) {
 // Unit is one unit the role enables.
 type Unit struct {
 	Name string
-	// Enabled is true for every listed unit, because `mwan install` enables each.
+	// Enabled is true for every listed unit.
 	Enabled bool
 	// Active is the state the deploy expects after the install. It is false for
 	// a oneshot unit without RemainAfterExit, which exits after it runs.

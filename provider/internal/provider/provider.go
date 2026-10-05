@@ -50,12 +50,12 @@ func (p *mwanProvider) Metadata(_ context.Context, _ provider.MetadataRequest, r
 
 func (p *mwanProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Reads the files, units, and release archives that an mwan release installs. " +
+		Description: "Reads the files, units, YANG modules, and release archives that an mwan release installs. " +
 			"The provider writes nothing to a host.",
 		Attributes: map[string]schema.Attribute{
 			"release_base_url": schema.StringAttribute{
 				Optional: true,
-				Description: "Download root of the mwan release assets. The default is " +
+				Description: "This attribute sets the download root of the mwan release assets. The default is " +
 					release.DefaultBaseURL + ". An asset is at <root>/<version>/<asset>.",
 			},
 		},

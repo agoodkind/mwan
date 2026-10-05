@@ -29,8 +29,9 @@ type installedFile struct {
 	mode    fs.FileMode
 }
 
-// walkInstalled lists the regular files below root by absolute host path. The
-// private sysrepo repository of a wan run is not an installed file.
+// walkInstalled lists the regular files below root by their path relative to
+// root, with a leading slash. The private sysrepo repository of a wan run is
+// not an installed file.
 func walkInstalled(t *testing.T, root string) map[string]installedFile {
 	t.Helper()
 	installed := map[string]installedFile{}
