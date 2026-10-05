@@ -127,14 +127,9 @@ type SysOps interface {
 	LockOps
 }
 
-// RealOps is the production SysOps. It reaches the guest agent over vsock
-// first, then over the management network, then through `qm guest exec`, and
-// drives the guest's lifecycle with `qm`. vsock comes first because it keeps
-// working when the guest's network does not, which is the case the watchdog
-// exists to handle.
-//
-// The test* fields replace one dial or one exec in unit tests. They are nil in
-// production, and each is checked at the single call site it overrides.
+// RealOps tries vsock, then management TCP, then a hypervisor command.
+// Vsock does not require guest network access. The guest driver selects qm
+// for QEMU and pct for LXC operations.
 type RealOps struct {
 	log       *slog.Logger
 	vsockCID  uint32
@@ -197,10 +192,7 @@ func runHypervisor(
 	defer cancel()
 	out, err := exec.CommandContext(cctx, binary, args...).CombinedOutput()
 	if err != nil {
-		// Warn rather than Error: this is the command layer, and the caller
-		// decides whether a failed qm invocation is an incident. The callers
-		// that treat it as one log it again at Error with the guest and
-		// snapshot names this helper does not have.
+		// The caller decides whether a command failure requires an Error log.
 		slog.WarnContext(ctx, "ops: hypervisor command failed",
 			"binary", binary, "args", args, "err", err,
 			"output", strings.TrimSpace(string(out)))
@@ -251,11 +243,8 @@ func (r *RealOps) VMSnapshots(ctx context.Context, vmid string) ([]byte, error) 
 	return r.runGuest(ctx, timeoutQmListSnapshot, r.guest.listSnapshotsArgs(vmid)...)
 }
 
-// VMFSFreezeStatus reports the guest agent's filesystem freeze state via
-// `qm agent fsfreeze-status` ("thawed" or "frozen"). Snapshots freeze the
-// guest through the agent, and a thaw that never lands leaves the guest
-// wedged with guest-exec disabled, so the watchdog checks this after every
-// snapshot and at startup.
+// VMFSFreezeStatus queries the QEMU guest agent for the filesystem freeze state.
+// It returns an error for LXC guests.
 func (r *RealOps) VMFSFreezeStatus(ctx context.Context, vmid string) (string, error) {
 	args, err := r.guest.freezeStatusArgs(vmid)
 	if err != nil {
@@ -268,8 +257,8 @@ func (r *RealOps) VMFSFreezeStatus(ctx context.Context, vmid string) (string, er
 	return strings.TrimSpace(string(out)), nil
 }
 
-// VMFSFreezeThaw releases a stuck filesystem freeze via
-// `qm agent fsfreeze-thaw`.
+// VMFSFreezeThaw asks the QEMU guest agent to thaw the filesystem.
+// It returns an error for LXC guests.
 func (r *RealOps) VMFSFreezeThaw(ctx context.Context, vmid string) error {
 	args, err := r.guest.thawArgs(vmid)
 	if err != nil {
@@ -279,9 +268,8 @@ func (r *RealOps) VMFSFreezeThaw(ctx context.Context, vmid string) error {
 	return err
 }
 
-// GuestExec tries all three channels in order: vsock -> TCP/mgmt -> qm guest
-// exec. Each channel's result is recorded in the channelTracker regardless of
-// outcome.
+// GuestExec tries vsock, then management TCP, then a hypervisor command.
+// ChannelTracker records whether each attempted transport succeeded.
 func (r *RealOps) GuestExec(
 	ctx context.Context, vmid string, args ...string,
 ) (GuestExecResult, error) {
@@ -316,7 +304,6 @@ func (r *RealOps) GuestExec(
 	r.tracker.recordFailure(ChanTCP, tcpErr)
 	r.logAttemptResult(ctx, "guest_exec", ChanTCP, 2, vmid, tcpErr)
 
-	// Channel 3: qm guest exec on the hypervisor
 	r.logAttemptStart(ctx, "guest_exec", ChanPVE, 3, vmid)
 	qmRes, qmErr := r.hypervisorExec(ctx, vmid, args...)
 	if qmErr == nil {
