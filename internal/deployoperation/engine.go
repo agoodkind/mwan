@@ -205,6 +205,9 @@ func interruptedObservationFresh(check observation.CheckSpec, result observation
 
 // Commit repeats target identity and application checks before ending recovery protection.
 func (engine Engine) Commit(ctx context.Context, operationID, generation string) (resultErr error) {
+	if err := engine.awaitWatchObservations(ctx, operationID, generation); err != nil {
+		return err
+	}
 	coordinator, err := rollback.Acquire(ctx, engine.RollbackLock, engine.Store.PollInterval)
 	if err != nil {
 		engine.Log.WarnContext(ctx, "deployment commit coordination failed")
@@ -221,6 +224,32 @@ func (engine Engine) Commit(ctx context.Context, operationID, generation string)
 		}
 		return engine.check(ctx, record.Manifest, record.RequiredChecks), nil
 	})
+}
+
+// Wait for passing observations before acquiring the rollback lock.
+// The deploy watch may need that lock to recover the operation.
+func (engine Engine) awaitWatchObservations(ctx context.Context, operationID, generation string) error {
+	for {
+		record, err := engine.exact(ctx, operationID, generation)
+		if err != nil {
+			return err
+		}
+		now := engine.Store.Clock.Now()
+		if record.Status != Armed || !record.Deadline.After(now) {
+			return fmt.Errorf("deploy operation is not armed or its deadline has expired (status %s)", record.Status)
+		}
+		if err := record.Watch.Verify(ctx); err != nil {
+			engine.Log.WarnContext(ctx, "deployment commit watch verification failed", "err", err)
+			return fmt.Errorf("deploy commit requires the active deploy watch: %w", err)
+		}
+		if record.MutationReady(now) {
+			return nil
+		}
+		if err := wait(ctx, engine.Store.PollInterval); err != nil {
+			engine.Log.WarnContext(ctx, "deployment commit wait interrupted", "err", err)
+			return fmt.Errorf("wait for passing deploy watch observations: %w", err)
+		}
+	}
 }
 
 // Recover owns the hypervisor coordinator throughout mutation drain and restoration.

@@ -141,9 +141,15 @@ func executeCurrentDeployOperation(ctx, signalContext context.Context, cfg *conf
 		}
 	case operationCommit:
 
-		if err := engine.Commit(ctx, record.OperationID, record.Generation); err != nil {
+		commitContext, commitCancel := context.WithDeadline(signalContext, record.Deadline)
+		defer commitCancel()
+		if err := engine.Commit(commitContext, record.OperationID, record.Generation); err != nil {
 			return deployOperationFailure(engine.Log, fmt.Errorf("commit deployment operation: %w", err))
 		}
+		if err := writeDeployOperationStatus(commitContext, engine); err != nil {
+			return deployOperationFailure(engine.Log, err)
+		}
+		return exitDeployGateOK
 	case operationRecover:
 
 		recoveryContext, recoveryCancel := context.WithTimeout(signalContext, time.Duration(record.RecoveryTimeoutSeconds)*time.Second)

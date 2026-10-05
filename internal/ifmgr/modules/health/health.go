@@ -192,11 +192,12 @@ type Module struct {
 	cfg                Config
 	observationWorkers sync.WaitGroup
 
-	clock            internalclock.Clock
-	cycleMu          sync.Mutex
-	reconcileMu      sync.Mutex
-	reconcilePending bool
-	statuses         map[string]wanStatus
+	clock                 internalclock.Clock
+	cycleMu               sync.Mutex
+	reconcileMu           sync.Mutex
+	reconcilePending      bool
+	reconcileCycleRunning bool
+	statuses              map[string]wanStatus
 	// lastTransition records when each WAN's verdict last changed, for
 	// the management surface. Guarded by cycleMu: only runCycle writes it.
 	lastTransition map[string]time.Time
@@ -298,24 +299,19 @@ func (m *Module) Wait() {
 	m.observationWorkers.Wait()
 }
 
-// Reconcile starts an immediate cycle so later WAN-role modules read fresh
-// state during the daemon's ordered startup reconcile. The reconcile pass waits
-// at most startupCycleWait for the cycle. A cycle that probes unreachable
-// targets takes several timeouts per provider, and the firewall, translation,
-// and routing modules run after this one in the same pass. A cycle still
-// running at the deadline finishes in the background. Its committed
-// transitions request a reconcile pass. Until the cycle commits, the state file
-// keeps the unknown verdicts that Init wrote.
+// Reconcile waits at most startupCycleWait for probing to finish.
+// Probing continues in the background after that wait expires.
 func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	if len(m.cfg.WANs) == 0 {
 		return nil
 	}
 	m.reconcileMu.Lock()
-	if !m.reconcilePending {
+	if m.reconcileCycleRunning || (!m.reconcilePending && !m.anyUnknown()) {
 		m.reconcileMu.Unlock()
 		return nil
 	}
 	m.reconcilePending = false
+	m.reconcileCycleRunning = true
 	m.reconcileMu.Unlock()
 
 	cycleDone := make(chan error, 1)
@@ -326,11 +322,12 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 				log.ErrorContext(ctx, "health: startup probe cycle panicked", "err", fmt.Sprint(recovered))
 				cycleErr = fmt.Errorf("health: startup probe cycle panicked: %v", recovered)
 			}
+			m.reconcileMu.Lock()
+			m.reconcileCycleRunning = false
 			if cycleErr != nil {
-				m.reconcileMu.Lock()
 				m.reconcilePending = true
-				m.reconcileMu.Unlock()
 			}
+			m.reconcileMu.Unlock()
 			cycleDone <- cycleErr
 		}()
 		cycleErr = m.runCycle(ctx, log)
@@ -663,6 +660,17 @@ func (m *Module) probeTargets(
 	return successes
 }
 
+func (m *Module) anyUnknown() bool {
+	m.Lock()
+	defer m.Unlock()
+	for _, status := range m.statuses {
+		if status.State == StateUnknown {
+			return true
+		}
+	}
+	return false
+}
+
 func (m *Module) snapshotStatuses() map[string]wanStatus {
 	m.Lock()
 	defer m.Unlock()
@@ -691,7 +699,7 @@ func advanceHealth(
 	if cyclePassed {
 		next.OKCount++
 		next.FailCount = 0
-		if next.OKCount >= recoveryThreshold {
+		if current.State == StateUnknown || next.OKCount >= recoveryThreshold {
 			next.State = StateHealthy
 		}
 	} else {

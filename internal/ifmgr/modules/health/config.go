@@ -232,20 +232,21 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		)
 	}
 	return &Module{
-		observationWorkers: sync.WaitGroup{},
-		BaseModule:         ifmgr.NewBaseModule(moduleName),
-		cfg:                healthConfig,
-		clock:              nil,
-		cycleMu:            sync.Mutex{},
-		reconcileMu:        sync.Mutex{},
-		reconcilePending:   true,
-		statuses:           nil,
-		lastTransition:     nil,
-		probeV4:            netif.Ping4,
-		probeV6:            netif.Ping6,
-		probeHTTP6:         netif.HTTPCheck6,
-		probeHTTP4:         netif.HTTPCheck4,
-		pusher:             pusher,
+		observationWorkers:    sync.WaitGroup{},
+		BaseModule:            ifmgr.NewBaseModule(moduleName),
+		cfg:                   healthConfig,
+		clock:                 nil,
+		cycleMu:               sync.Mutex{},
+		reconcileMu:           sync.Mutex{},
+		reconcilePending:      true,
+		reconcileCycleRunning: false,
+		statuses:              nil,
+		lastTransition:        nil,
+		probeV4:               netif.Ping4,
+		probeV6:               netif.Ping6,
+		probeHTTP6:            netif.HTTPCheck6,
+		probeHTTP4:            netif.HTTPCheck4,
+		pusher:                pusher,
 	}, nil
 }
 

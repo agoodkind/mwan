@@ -59,6 +59,33 @@ func TestDeployOperationWatchRuntime(t *testing.T) {
 	}
 	t.Run("expected-interruption", deployWatchExpectedInterruption)
 	t.Run("commit-during-observation", deployWatchCommitDuringObservation)
+	t.Run("commit-waits-for-observations", deployWatchCommitWaitsForObservations)
+}
+
+func deployWatchCommitWaitsForObservations(t *testing.T) {
+	t.Helper()
+	failedID := "ipv4-inbound_application"
+	binary, runtimePath, record, failed := startDeployWatchFixture(t, nil)
+	args := []string{"deploy-gate", "status", record.OperationID, record.Generation, "--config", runtimePath}
+	failed[failedID].Store(true)
+	observed := false
+	for deadline := time.Now().Add(5 * time.Second); !observed && time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		for _, result := range deployWatchStatus(t, binary, args).Results {
+			if result.CheckID == failedID && result.Outcome == observation.OutcomeFail {
+				observed = true
+			}
+		}
+	}
+	if !observed {
+		t.Fatal("watch did not record the failed application observation")
+	}
+	output, err := deployWatchCommand(binary, "deploy-gate", "commit", record.OperationID, record.Generation, "--config", runtimePath)
+	if err == nil {
+		t.Fatalf("commit succeeded with a failed application observation: %s", output)
+	}
+	if !strings.Contains(err.Error(), "deploy operation is not armed") {
+		t.Fatalf("commit did not wait for the watch to start recovery: %v", err)
+	}
 }
 
 func deployWatchCommitDuringObservation(t *testing.T) {
@@ -240,6 +267,14 @@ func startDeployWatchFixtureWithResponse(t *testing.T, interruptions []deployope
 	}
 	runResolverCommand(t, "systemd-run", "--unit="+unit, "--property=Type=exec", binary, "deploy-gate", "watch", record.OperationID, record.Generation, "--config", runtimePath)
 	t.Cleanup(func() {
+		loadState, err := exec.Command("systemctl", "show", unit, "--property=LoadState", "--value").Output()
+		if err != nil {
+			t.Errorf("read owned watch load state: %v", err)
+			return
+		}
+		if strings.TrimSpace(string(loadState)) == "not-found" {
+			return
+		}
 		if output, err := exec.Command("systemctl", "stop", unit).CombinedOutput(); err != nil {
 			t.Errorf("stop owned watch: %v: %s", err, output)
 		}
