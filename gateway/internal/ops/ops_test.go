@@ -21,6 +21,7 @@ import (
 func newRealOpsWithGuestNetworkDown(logger *slog.Logger) *RealOps {
 	realOps := &RealOps{
 		log:     logger,
+		guest:   qemuGuest{},
 		tcpAddr: "127.0.0.1:1",
 		tracker: NewChannelTracker(),
 	}

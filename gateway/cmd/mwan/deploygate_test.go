@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/netip"
 	"os"
@@ -17,6 +16,7 @@ import (
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/notify"
+	"goodkind.io/mwan/internal/ops"
 )
 
 const (
@@ -169,8 +169,8 @@ func TestWaitDeployRecordsSuccessfulVerdict(t *testing.T) {
 	deps.readBootID = func(_ context.Context, _ int) (string, error) {
 		return testNewBootID, nil
 	}
-	deps.runGuestOwnedCheck = func(context.Context, int) (guestExecResponse, error) {
-		return guestExecResponse{ExitCode: exitDeployGateOK, OutData: "owned addresses: 2 present, 0 missing\n"}, nil
+	deps.runGuestOwnedCheck = func(context.Context, int) (ops.GuestCommandResult, error) {
+		return guestResult(exitDeployGateOK, "owned addresses: 2 present, 0 missing\n"), nil
 	}
 	deps.ping6 = func(context.Context, netip.Addr, time.Duration) (time.Duration, error) {
 		t.Fatal("host IPv6 ping ran during wait-deploy")
@@ -319,8 +319,8 @@ func TestWaitDeployReturnsFailureWhenVerdictWriteFails(t *testing.T) {
 	deps.readBootID = func(_ context.Context, _ int) (string, error) {
 		return testNewBootID, nil
 	}
-	deps.runGuestOwnedCheck = func(context.Context, int) (guestExecResponse, error) {
-		return guestExecResponse{ExitCode: exitDeployGateOK, OutData: "owned addresses: 2 present, 0 missing\n"}, nil
+	deps.runGuestOwnedCheck = func(context.Context, int) (ops.GuestCommandResult, error) {
+		return guestResult(exitDeployGateOK, "owned addresses: 2 present, 0 missing\n"), nil
 	}
 	deps.ping6 = func(context.Context, netip.Addr, time.Duration) (time.Duration, error) {
 		return time.Millisecond, nil
@@ -491,12 +491,12 @@ func TestWaitDeployRetriesOwnedAddressesUntilHeld(t *testing.T) {
 		return time.Millisecond, nil
 	}
 	checks := 0
-	deps.runGuestOwnedCheck = func(context.Context, int) (guestExecResponse, error) {
+	deps.runGuestOwnedCheck = func(context.Context, int) (ops.GuestCommandResult, error) {
 		checks++
 		if checks < 3 {
-			return guestExecResponse{ExitCode: exitDeployGateFailed, OutData: "owned addresses: 1 present, 1 missing\n"}, nil
+			return guestResult(exitDeployGateFailed, "owned addresses: 1 present, 1 missing\n"), nil
 		}
-		return guestExecResponse{ExitCode: exitDeployGateOK, OutData: "owned addresses: 2 present, 0 missing\n"}, nil
+		return guestResult(exitDeployGateOK, "owned addresses: 2 present, 0 missing\n"), nil
 	}
 	deps.alertOwnedMissing = func(context.Context, ownedMissingAlert) error {
 		t.Fatal("owned-address alert sent although the addresses were held within the budget")
@@ -531,11 +531,9 @@ func TestWaitDeployFailsOwnedAddressesAfterTheBudget(t *testing.T) {
 	deps.ping4 = func(context.Context, string, netip.Addr, time.Duration) (time.Duration, error) {
 		return time.Millisecond, nil
 	}
-	deps.runGuestOwnedCheck = func(context.Context, int) (guestExecResponse, error) {
-		return guestExecResponse{
-			ExitCode: exitDeployGateFailed,
-			OutData:  "owned address 203.0.113.4 on enwebpass0: missing\n",
-		}, nil
+	deps.runGuestOwnedCheck = func(context.Context, int) (ops.GuestCommandResult, error) {
+		return guestResult(exitDeployGateFailed,
+			"owned address 203.0.113.4 on enwebpass0: missing\n"), nil
 	}
 	verdictPath := filepath.Join(t.TempDir(), "verdict.json")
 	var alerts []ownedMissingAlert
@@ -585,8 +583,8 @@ func TestWaitDeployRecordsTheVerdictWhenTheAlertFails(t *testing.T) {
 	deps.ping4 = func(context.Context, string, netip.Addr, time.Duration) (time.Duration, error) {
 		return time.Millisecond, nil
 	}
-	deps.runGuestOwnedCheck = func(context.Context, int) (guestExecResponse, error) {
-		return guestExecResponse{ExitCode: exitDeployGateFailed, OutData: "owned addresses: 0 present, 1 missing\n"}, nil
+	deps.runGuestOwnedCheck = func(context.Context, int) (ops.GuestCommandResult, error) {
+		return guestResult(exitDeployGateFailed, "owned addresses: 0 present, 1 missing\n"), nil
 	}
 	deps.alertOwnedMissing = func(context.Context, ownedMissingAlert) error {
 		return errors.New("email unconfigured")
@@ -672,28 +670,10 @@ func TestWaitEgressRequiresEveryConfiguredFamilyInOneRound(t *testing.T) {
 	}
 }
 
-func TestUnmarshalGuestBootID(t *testing.T) {
-	valid := fmt.Sprintf(`{"exitcode": 0, "out-data": "%s\n"}`, testOldBootID)
-	bootID, err := unmarshalGuestBootID([]byte(valid))
-	if err != nil {
-		t.Fatalf("unmarshalGuestBootID(valid): %v", err)
-	}
-	if bootID != testOldBootID {
-		t.Fatalf("bootID = %q, want %q", bootID, testOldBootID)
-	}
-
-	cases := map[string]string{
-		"nonzero exit": `{"exitcode": 1, "out-data": "boom"}`,
-		"not a uuid":   `{"exitcode": 0, "out-data": "hello"}`,
-		"empty out":    `{"exitcode": 0, "out-data": ""}`,
-		"malformed":    `QEMU guest agent is not running`,
-		"truncated":    `{"exitcode": 0, "out-data": "aaaaaaaa-bbbb"}`,
-		"upper hex":    `{"exitcode": 0, "out-data": "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"}`,
-	}
-	for name, raw := range cases {
-		if _, err := unmarshalGuestBootID([]byte(raw)); err == nil {
-			t.Fatalf("unmarshalGuestBootID(%s) accepted %q", name, raw)
-		}
+func guestResult(exitCode int, stdout string) ops.GuestCommandResult {
+	return ops.GuestCommandResult{
+		GuestExecResult: ops.GuestExecResult{ExitCode: exitCode, Stdout: stdout},
+		Stderr:          "",
 	}
 }
 

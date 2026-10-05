@@ -1,7 +1,9 @@
 package ops
 
 import (
+	"context"
 	"errors"
+	"time"
 
 	"goodkind.io/mwan/internal/config"
 )
@@ -21,6 +23,16 @@ type guestDriver interface {
 	guestLifecycleArgs
 	guestSnapshotArgs
 	guestLockArgs
+	guestExecRunner
+}
+
+type guestExecRunner interface {
+	execGuest(
+		ctx context.Context,
+		vmid string,
+		waitTimeout, agentTimeout time.Duration,
+		command []string,
+	) (GuestCommandResult, error)
 }
 
 type guestLifecycleArgs interface {

@@ -295,7 +295,7 @@ func (r *RealOps) GuestExec(
 		if err == nil {
 			return res, nil
 		}
-		return r.qmExec(ctx, vmid, args...)
+		return r.hypervisorExec(ctx, vmid, args...)
 	}
 
 	// Channel 1: vsock
@@ -322,7 +322,7 @@ func (r *RealOps) GuestExec(
 
 	// Channel 3: qm guest exec on the hypervisor
 	r.logAttemptStart(ctx, "guest_exec", ChanPVE, 3, vmid)
-	qmRes, qmErr := r.qmExec(ctx, vmid, args...)
+	qmRes, qmErr := r.hypervisorExec(ctx, vmid, args...)
 	if qmErr == nil {
 		r.tracker.recordSuccess(ChanPVE)
 		r.logAttemptResult(ctx, "guest_exec", ChanPVE, 3, vmid, nil)
@@ -331,6 +331,19 @@ func (r *RealOps) GuestExec(
 		r.logAttemptResult(ctx, "guest_exec", ChanPVE, 3, vmid, qmErr)
 	}
 	return qmRes, qmErr
+}
+
+func (r *RealOps) hypervisorExec(
+	ctx context.Context, vmid string, args ...string,
+) (GuestExecResult, error) {
+	result, err := r.guest.execGuest(
+		ctx, vmid, timeoutQmGuestExecWait, timeoutQmGuestExec, args)
+	if err != nil {
+		r.log.ErrorContext(ctx, "guest exec failed",
+			"binary", r.guest.binary(), "vmid", vmid, "err", err)
+		return result.GuestExecResult, err
+	}
+	return result.GuestExecResult, nil
 }
 
 func (r *RealOps) vsockExec(

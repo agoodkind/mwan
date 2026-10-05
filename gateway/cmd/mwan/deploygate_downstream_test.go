@@ -80,17 +80,8 @@ func TestDeployGateAcceptsSingleFamilyProbeConfigs(t *testing.T) {
 }
 
 func TestDownstreamProbeRejectsIncompleteGuestResults(t *testing.T) {
-	for name, raw := range map[string]string{
-		"missing exit":            `{"exitcode":0,"out-data":"gateway: 10.240.240.3"}`,
-		"not exited":              `{"exited":0,"out-data":"gateway: 10.240.240.3"}`,
-		"nonzero exit":            `{"exited":1,"exitcode":1}`,
-		"missing truncation flag": `{"exited":1,"exitcode":0,"out-data":"gateway: 10.240.240.3"}`,
-		"truncated":               `{"exited":1,"exitcode":0,"out-truncated":1,"out-data":"gateway: 10.240.240.3"}`,
-		"invalid JSON":            `{"exited":`,
-	} {
-		if _, err := readGuestProbeResponse([]byte(raw)); err == nil {
-			t.Fatalf("%s response passed", name)
-		}
+	if _, err := readGuestProbeResponse(guestResult(1, "")); err == nil {
+		t.Fatal("nonzero exit passed")
 	}
 	for name, output := range map[string]string{
 		"missing gateway":   "route to: 1.1.1.1\n",
@@ -101,12 +92,7 @@ func TestDownstreamProbeRejectsIncompleteGuestResults(t *testing.T) {
 			t.Fatalf("%s route passed", name)
 		}
 	}
-	response := `{"exited":1,"exitcode":0,"out-truncated":0,"out-data":"gateway: 10.240.240.3\n"}`
-	output, err := readGuestProbeResponse([]byte(response))
-	if err != nil {
-		t.Fatal(err)
-	}
-	hop, err := readRouteGateway(output)
+	hop, err := readRouteGateway("gateway: 10.240.240.3\n")
 	if err != nil || hop.String() != "10.240.240.3" {
 		t.Fatalf("gateway = %s, error = %v", hop, err)
 	}
