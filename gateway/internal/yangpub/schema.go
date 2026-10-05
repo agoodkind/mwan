@@ -23,7 +23,7 @@ func WriteSchema(dir string) ([]Model, error) {
 }
 
 // WriteSchemaChanges is WriteSchema that also returns the path of every file
-// it replaced, in the order it wrote them. An install verb reports these paths.
+// it replaced, in the order it wrote them. The `mwan install` command reports these paths.
 func WriteSchemaChanges(dir string) ([]Model, []string, error) {
 	if err := os.MkdirAll(dir, schema.DirMode); err != nil {
 		return nil, nil, schemaFailed("create the schema directory", dir, err)

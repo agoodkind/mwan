@@ -1,5 +1,5 @@
 # `make help` is the canonical source of truth for every target this repo
-# supports. Developers run it before adding a target. Lint, build, test,
+# supports. Run make help before adding a target. Lint, build, test,
 # deadcode, release, baseline, and service-install live in the central
 # go-makefile pipeline fetched at parse time. Project-local lint, deadcode,
 # audit, fmt, vet, and staticcheck targets are prohibited here, because they
