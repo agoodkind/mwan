@@ -167,6 +167,32 @@ func TestRoleWANListsFilesUnitsAndModules(t *testing.T) {
 			t.Errorf("file %s has mode %q, want 0644", wantPath, paths[wantPath])
 		}
 	}
+	owners := map[string][]string{}
+	for _, unit := range role.Units {
+		for _, path := range unit.Files {
+			owners[path] = append(owners[path], unit.Name)
+		}
+	}
+	for _, file := range role.Files {
+		// sysrepo reads the NACM policy through sysrepo_data, and no unit reads it.
+		if file.Path == "/etc/sysrepo-nacm-anonymous.xml" {
+			continue
+		}
+		if len(owners[file.Path]) != 1 {
+			t.Errorf("file %s is in the files of units %v, want exactly one", file.Path, owners[file.Path])
+		}
+	}
+	for _, name := range []string{"systemd-networkd.service", "systemd-sysctl.service"} {
+		var found bool
+		for _, unit := range role.Units {
+			if unit.Name == name {
+				found = unit.Enabled && unit.Active && len(unit.Files) == 1
+			}
+		}
+		if !found {
+			t.Errorf("unit %s is missing, or not enabled and active with one file", name)
+		}
+	}
 	if role.BinaryPath != "/usr/local/bin/mwan" {
 		t.Errorf("binary path = %q, want /usr/local/bin/mwan", role.BinaryPath)
 	}

@@ -78,6 +78,17 @@ type Spec struct {
 	// units, the run writes the embedded modules and the NACM policy and
 	// installs the modules into sysrepo.
 	Schema bool
+	// NotOwned are units that the role does not enable and that read files the
+	// role writes. `mwan install` ignores them; Units lists them.
+	NotOwned []NotOwnedUnit
+}
+
+// NotOwnedUnit is a system unit that reads files a role writes.
+type NotOwnedUnit struct {
+	// Name is the unit name.
+	Name string
+	// Files are the host paths of the role's files that the unit reads.
+	Files []string
 }
 
 // unit is an embedded unit file that installs under its own name in the
@@ -121,6 +132,16 @@ func specs() map[Role]Spec {
 				"rousette.service", "nghttpx-wanconfig.service",
 			},
 			Schema: true,
+			NotOwned: []NotOwnedUnit{
+				{
+					Name:  "systemd-networkd.service",
+					Files: []string{filepath.Join(SystemdUnitDir, "systemd-networkd.service.d", "override.conf")},
+				},
+				{
+					Name:  "systemd-sysctl.service",
+					Files: []string{filepath.Join(SysctlDir, "99-quiet-console.conf")},
+				},
+			},
 		},
 		RoleFailover: {
 			Files: []File{
@@ -131,13 +152,15 @@ func specs() map[Role]Spec {
 					Dest:     filepath.Join(SystemdUnitDir, "mwan-ifmgr.service.d", "lxc-failover.conf"),
 				},
 			},
-			Enable: []string{"mwan-agent.service", "mwan-ifmgr.service"},
-			Schema: false,
+			Enable:   []string{"mwan-agent.service", "mwan-ifmgr.service"},
+			Schema:   false,
+			NotOwned: nil,
 		},
 		RoleHost: {
-			Files:  []File{unit("mwan-ifmgr.service")},
-			Enable: []string{"mwan-ifmgr.service"},
-			Schema: false,
+			Files:    []File{unit("mwan-ifmgr.service")},
+			Enable:   []string{"mwan-ifmgr.service"},
+			Schema:   false,
+			NotOwned: nil,
 		},
 	}
 }

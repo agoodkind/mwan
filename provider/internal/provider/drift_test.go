@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -116,9 +117,16 @@ func TestProviderRoleMatchesMwanInstall(t *testing.T) {
 				}
 			}
 
+			spec, _ := installspec.For(role)
 			unitNames := make([]string, 0, len(data.Units))
 			for _, unit := range data.Units {
-				unitNames = append(unitNames, unit.Name)
+				if !slices.Contains(spec.Enable, unit.Name) {
+					if slices.Contains(strings.Fields(enableLine(string(output))), unit.Name) {
+						t.Errorf("mwan install output enables the not-owned unit %s:\n%s", unit.Name, output)
+					}
+				} else {
+					unitNames = append(unitNames, unit.Name)
+				}
 				if !unit.Enabled {
 					t.Errorf("unit %s is listed but not enabled", unit.Name)
 				}
@@ -172,6 +180,16 @@ func TestProviderRoleMatchesMwanInstall(t *testing.T) {
 			}
 		})
 	}
+}
+
+// enableLine returns the "would enable" line of the install output.
+func enableLine(output string) string {
+	for line := range strings.SplitSeq(output, "\n") {
+		if strings.HasPrefix(line, enableMarker) {
+			return line
+		}
+	}
+	return ""
 }
 
 func parseMode(t *testing.T, text string) fs.FileMode {

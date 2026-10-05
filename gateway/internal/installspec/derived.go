@@ -82,15 +82,20 @@ type Unit struct {
 	Files []string
 }
 
-// Units lists the units of the role in enable order.
+// Units lists the units of the role: the enabled units in enable order, then
+// the not-owned units. Both kinds are enabled and active. Only Enable feeds
+// `mwan install`.
 func (s Spec) Units() ([]Unit, error) {
-	units := make([]Unit, 0, len(s.Enable))
+	units := make([]Unit, 0, len(s.Enable)+len(s.NotOwned))
 	for _, name := range s.Enable {
 		unit, err := s.unitFor(name)
 		if err != nil {
 			return nil, err
 		}
 		units = append(units, unit)
+	}
+	for _, notOwned := range s.NotOwned {
+		units = append(units, Unit{Name: notOwned.Name, Enabled: true, Active: true, Files: notOwned.Files})
 	}
 	return units, nil
 }
