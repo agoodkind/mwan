@@ -80,13 +80,13 @@ requires it.
 **Files:**
 
 - Rename and modify the current schema revision under
-  `internal/yangpub/schema/goodkind-mwan-steering@2026-09-21.yang`.
-- Modify `internal/yangpub/schema.go` and
-  `internal/yangpub/schema_cgo.go` for the new revision and features.
-- Modify `internal/networkjson/networkjson.go`.
-- Modify `internal/config/ifmgr_modules.go`.
-- Modify the valid documents under `yang/instances/`.
-- Preserve `cmd/mwan/testdata/goodkind-mwan-steering@2026-09-13.yang` as the
+  `gateway/internal/yangpub/schema/goodkind-mwan-steering@2026-09-21.yang`.
+- Modify `gateway/internal/yangpub/schema.go` and
+  `gateway/internal/yangpub/schema_cgo.go` for the new revision and features.
+- Modify `gateway/internal/networkjson/networkjson.go`.
+- Modify `gateway/internal/config/ifmgr_modules.go`.
+- Modify the valid documents under `gateway/yang/instances/`.
+- Preserve `gateway/cmd/mwan/testdata/goodkind-mwan-steering@2026-09-13.yang` as the
   install-upgrade fixture.
 
 ### Model contract
@@ -129,18 +129,18 @@ be rejected.
 
 ### Public verification
 
-Extend `cmd/mwan/deploygate_checknetwork_test.go` with one accepted typed
+Extend `gateway/cmd/mwan/deploygate_checknetwork_test.go` with one accepted typed
 document and one rejected family or mode combination. Run the real child
-process command. Extend `cmd/mwan/wanconfig_roundtrip_test.go` so the normal
+process command. Extend `gateway/cmd/mwan/wanconfig_roundtrip_test.go` so the normal
 loader, `Apply`, module projection, and publisher chain compares translation
 input instead of excluding every `/ietf-nat:nat/` leaf.
 
 Run:
 
 ```bash
-make wanconfig-builder-image
+make -C gateway wanconfig-builder-image
 docker run --rm --platform linux/amd64 \
-    -v "$PWD:/src" -w /src \
+    -v "$PWD:/src" -w /src/gateway \
     -v mwan-wanconfig-gomod:/go/pkg/mod \
     -e GOWORK=off \
     mwan-wanconfig-builder \
@@ -157,13 +157,13 @@ translation value.
 
 **Files:**
 
-- Modify `cmd/mwan/ifmgr_module_configs.go`.
-- Modify `cmd/mwan/wanconfig_publish.go`.
-- Modify `cmd/mwan/ifmgr.go` where the shared live-state store is created.
-- Modify `internal/wanconfig/tree.go`.
-- Modify `cmd/mwan/wanconfig_roundtrip_test.go`.
-- Modify `cmd/mwan/wanconfig_selftest.go` and
-  `cmd/mwan/wanconfig_selftest_test.go`.
+- Modify `gateway/cmd/mwan/ifmgr_module_configs.go`.
+- Modify `gateway/cmd/mwan/wanconfig_publish.go`.
+- Modify `gateway/cmd/mwan/ifmgr.go` where the shared live-state store is created.
+- Modify `gateway/internal/wanconfig/tree.go`.
+- Modify `gateway/cmd/mwan/wanconfig_roundtrip_test.go`.
+- Modify `gateway/cmd/mwan/wanconfig_selftest.go` and
+  `gateway/cmd/mwan/wanconfig_selftest_test.go`.
 
 Replace `sharedWAN.NptPrefix` with the typed per-family policy. Project the
 same value into the translation module, routing address ownership, steering,
@@ -202,25 +202,25 @@ mappings that the input document configured.
 
 **Files:**
 
-- Modify `internal/ifmgr/modules/npt/npt.go`.
-- Modify `internal/ifmgr/modules/npt/rules.go`.
-- Modify `internal/ifmgr/modules/npt/applier.go`.
-- Add `internal/ifmgr/modules/npt/algorithm.go` for RFC 6296 prefix validation,
+- Modify `gateway/internal/ifmgr/modules/npt/npt.go`.
+- Modify `gateway/internal/ifmgr/modules/npt/rules.go`.
+- Modify `gateway/internal/ifmgr/modules/npt/applier.go`.
+- Add `gateway/internal/ifmgr/modules/npt/algorithm.go` for RFC 6296 prefix validation,
   checksum adjustment, and address calculation.
-- Add `internal/ifmgr/modules/npt/bpf/npt.c` and generated Go bindings for the
+- Add `gateway/internal/ifmgr/modules/npt/bpf/npt.c` and generated Go bindings for the
   traffic control translator.
-- Add `internal/ifmgr/modules/npt/npt_namespace_test.go`.
-- Modify `go.mod`, `go.sum`, and the build configuration for the eBPF compiler
+- Add `gateway/internal/ifmgr/modules/npt/npt_namespace_test.go`.
+- Modify `gateway/go.mod`, `gateway/go.sum`, and the build configuration for the eBPF compiler
   and loader dependencies.
-- Modify `cmd/mwan/mwan-ifmgr@.service` to grant `CAP_BPF` with the existing
+- Modify `gateway/cmd/mwan/mwan-ifmgr@.service` to grant `CAP_BPF` with the existing
   network capabilities.
-- Modify `internal/wanstate/wanstate.go`.
-- Modify `cmd/mwan/wanconfig_livestate.go`.
-- Modify `internal/ifmgr/modules/steering/` and the shared module environment
+- Modify `gateway/internal/wanstate/wanstate.go`.
+- Modify `gateway/cmd/mwan/wanconfig_livestate.go`.
+- Modify `gateway/internal/ifmgr/modules/steering/` and the shared module environment
   that supplies family eligibility.
-- Modify `internal/ifmgr/modules/wanroutes/` where it selects family routes and
+- Modify `gateway/internal/ifmgr/modules/wanroutes/` where it selects family routes and
   consumes the same family eligibility result.
-- Modify `Makefile` to add the NPT namespace test to `make test-netns`.
+- Modify `gateway/Makefile` to add the NPT namespace test to `make -C gateway test-netns`.
 
 Replace the current fixed `/60` computation with the typed NPTv6 policy.
 Delegated mode reads the live delegated prefix. Configured mode uses the
@@ -305,7 +305,7 @@ is complete.
 
 ### Packet verification
 
-Add `TestNPTNamespacePackets` under the existing `make test-netns` entry point.
+Add `TestNPTNamespacePackets` under the existing `make -C gateway test-netns` entry point.
 Use real namespaces, veth interfaces, routes, nftables, connection tracking,
 TCP, UDP, and ICMPv6. Do not use mocked kernel operations. Cover these
 outcomes:
@@ -337,7 +337,7 @@ outcomes:
 Run:
 
 ```bash
-make test-netns
+make -C gateway test-netns
 ```
 
 Expected: all packet, checksum, stateless return, connection affinity, edge
@@ -411,8 +411,8 @@ management stack and daemon restart.
 Finish the MWAN repository gates before creating the release:
 
 ```bash
-make check
-make test-netns
+make -C gateway check
+make -C gateway test-netns
 ```
 
 Expected: schema validation, Go checks, private sysrepo publication, and real
@@ -498,7 +498,7 @@ MWAN-340 is ready to close after all of these facts are recorded:
 - the released loader accepts the typed production and testbed documents;
 - the private sysrepo selftest publishes the configured policy and realized
   per-family state;
-- `make check` and `make test-netns` pass on the release commit;
+- `make -C gateway check` and `make -C gateway test-netns` pass on the release commit;
 - Configs lint and the focused public render contract pass with the release
   pins;
 - testbed ingress captures prove translated and native source addresses,

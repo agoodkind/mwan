@@ -98,9 +98,9 @@ This task implements MWAN-354 and can be reviewed independently.
 
 Files:
 
-- Modify [deploygate.go](../../cmd/mwan/deploygate.go).
-- Create `cmd/mwan/deploygate_egress_netns_test.go` in the MWAN repository.
-- Modify [the MWAN Makefile](../../Makefile).
+- Modify [deploygate.go](../../gateway/cmd/mwan/deploygate.go).
+- Create `gateway/cmd/mwan/deploygate_egress_netns_test.go` in the MWAN repository.
+- Modify [the MWAN Makefile](../../gateway/Makefile).
 - Modify [deploy-mwan.yml](https://github.com/agoodkind/configs/blob/main/ansible/playbooks/deploy-mwan.yml) to pass the required families and consecutive-success count.
 
 Behavior:
@@ -125,13 +125,13 @@ Steps:
    use packet captures or per-round logs to verify the failed verdict and
    reset of the consecutive-success count. Keep both namespaces isolated
    from the public Internet.
-5. Add `make test-firewall` using the existing native Linux builder with
+5. Add `make -C gateway test-firewall` using the existing native Linux builder with
    namespace privileges and the real schema libraries. Run this CLI test
    there. Task 2 extends the target for schema-dependent firewall checks.
 
 Verification:
 
-1. Run `make test`, `make check`, and `make test-firewall` in MWAN.
+1. Run `make -C gateway test`, `make -C gateway check`, and `make -C gateway test-firewall` in MWAN.
 2. During Task 5, deliberately break IPv4 translation on the testbed.
    Expect gate failure even while IPv6 probes succeed.
 3. Restore translation and rerun the gate. Expect success only after three
@@ -144,14 +144,14 @@ completed translation model.
 
 Files:
 
-- Modify [networkjson.go](../../internal/networkjson/networkjson.go) and [ifmgr_modules.go](../../internal/config/ifmgr_modules.go).
-- Revise [the steering schema](../../internal/yangpub/schema/goodkind-mwan-steering@2026-09-26.yang) and [schema.go](../../internal/yangpub/schema.go).
-- Modify [ifmgr_module_configs.go](../../cmd/mwan/ifmgr_module_configs.go) and [wanconfig_publish.go](../../cmd/mwan/wanconfig_publish.go).
-- Extend the published `Gateway`, `GroupSettings`, and `ConfigItems` in [tree.go](../../internal/wanconfig/tree.go).
-- Extend [the publication roundtrip test](../../cmd/mwan/wanconfig_roundtrip_test.go) and [the public selftest](../../cmd/mwan/wanconfig_selftest.go).
-- Modify [the valid model instances](../../yang/instances) and [the public loader test](../../cmd/mwan/deploygate_checknetwork_test.go).
-- Create `internal/firewall/config.go`, `rules.go`, `apply_linux.go`, and `inspect_linux.go` in the MWAN repository.
-- Create `cmd/mwan/deploygate_firewall.go` and `cmd/mwan/deploygate_firewall_netns_test.go` in the MWAN repository.
+- Modify [networkjson.go](../../gateway/internal/networkjson/networkjson.go) and [ifmgr_modules.go](../../gateway/internal/config/ifmgr_modules.go).
+- Revise [the steering schema](../../gateway/internal/yangpub/schema/goodkind-mwan-steering@2026-09-26.yang) and [schema.go](../../gateway/internal/yangpub/schema.go).
+- Modify [ifmgr_module_configs.go](../../gateway/cmd/mwan/ifmgr_module_configs.go) and [wanconfig_publish.go](../../gateway/cmd/mwan/wanconfig_publish.go).
+- Extend the published `Gateway`, `GroupSettings`, and `ConfigItems` in [tree.go](../../gateway/internal/wanconfig/tree.go).
+- Extend [the publication roundtrip test](../../gateway/cmd/mwan/wanconfig_roundtrip_test.go) and [the public selftest](../../gateway/cmd/mwan/wanconfig_selftest.go).
+- Modify [the valid model instances](../../gateway/yang/instances) and [the public loader test](../../gateway/cmd/mwan/deploygate_checknetwork_test.go).
+- Create `gateway/internal/firewall/config.go`, `rules.go`, `apply_linux.go`, and `inspect_linux.go` in the MWAN repository.
+- Create `gateway/cmd/mwan/deploygate_firewall.go` and `gateway/cmd/mwan/deploygate_firewall_netns_test.go` in the MWAN repository.
 
 Behavior:
 
@@ -198,7 +198,7 @@ Steps:
    configured firewall and table definitions without inventing a delegated
    prefix or a healthy provider. Runtime NPT and steering state receive their
    existing packet tests and the live checks in Task 5.
-9. Extend `make test-firewall` from Task 1 with the new CLI test.
+9. Extend `make -C gateway test-firewall` from Task 1 with the new CLI test.
    Do not add the schema-dependent CLI to the current
    `CGO_ENABLED=0` namespace runner.
 
@@ -206,7 +206,7 @@ Verification:
 
 1. Run the existing `mwan deploy-gate check-network <network.json> <schema-dir>`
    against both rendered environments.
-2. Run `make test-firewall`. Expect the public check to reject invalid
+2. Run `make -C gateway test-firewall`. Expect the public check to reject invalid
    configuration and accept valid rules in its private namespace. Verify
    that the caller's rules remain unchanged. The private namespace ends
    when the command exits.
@@ -222,12 +222,12 @@ on Task 2.
 
 Files:
 
-- Modify [main.go](../../cmd/mwan/main.go), [ifmgr.go](../../cmd/mwan/ifmgr.go), and [roles.go](../../internal/ifmgr/roles.go).
-- Modify [the daemon service](../../cmd/mwan/mwan-ifmgr@.service) and [install.go](../../cmd/mwan/install.go).
-- Create `internal/ifmgr/modules/firewall/firewall.go` and `nftwatch.go` in the MWAN repository.
-- Modify [the NPT applier](../../internal/ifmgr/modules/npt/applier.go).
-- Modify [the live state store](../../internal/wanstate/wanstate.go) and [live publication](../../cmd/mwan/wanconfig_livestate.go) for each writer's intended rules.
-- Extend [the existing namespace tests](../../internal/ifmgr/modules) through their production packet paths.
+- Modify [main.go](../../gateway/cmd/mwan/main.go), [ifmgr.go](../../gateway/cmd/mwan/ifmgr.go), and [roles.go](../../gateway/internal/ifmgr/roles.go).
+- Modify [the daemon service](../../gateway/cmd/mwan/mwan-ifmgr@.service) and [install.go](../../gateway/cmd/mwan/install.go).
+- Create `gateway/internal/ifmgr/modules/firewall/firewall.go` and `nftwatch.go` in the MWAN repository.
+- Modify [the NPT applier](../../gateway/internal/ifmgr/modules/npt/applier.go).
+- Modify [the live state store](../../gateway/internal/wanstate/wanstate.go) and [live publication](../../gateway/cmd/mwan/wanconfig_livestate.go) for each writer's intended rules.
+- Extend [the existing namespace tests](../../gateway/internal/ifmgr/modules) through their production packet paths.
 
 Behavior:
 
@@ -276,7 +276,7 @@ Steps:
 
 Verification:
 
-1. Run `make test-netns` and `make test-firewall`.
+1. Run `make -C gateway test-netns` and `make -C gateway test-firewall`.
    Run the real `mwan ifmgr --role wan` process inside persistent network
    and mount namespaces owned by the test harness. Use temporary configuration,
    schema, and network-file directories. Disable optional sysrepo publication
@@ -313,8 +313,8 @@ Files:
 - Remove [the gateway ruleset template](https://github.com/agoodkind/configs/blob/main/mwan/config/nftables.conf.j2) after its complete policy is generated by the daemon.
 - Modify [the destination refresher service](https://github.com/agoodkind/configs/blob/main/mwan/services/mwan-update-att-pinned-dests.service), [its timer](https://github.com/agoodkind/configs/blob/main/mwan/timers/mwan-update-att-pinned-dests.timer), and [its existing implementation](https://github.com/agoodkind/configs/blob/main/mwan/scripts/update-att-pinned-dests.sh) only as needed for set recovery.
 - Modify [the Configs render contract](https://github.com/agoodkind/configs/blob/main/spec/ansible/mwan_install_spec.rb).
-- Modify [the agent's critical paths](../../internal/agent/server.go).
-- Remove installation of [the gateway nftables drop-in](../../cmd/mwan/nftables-override.conf).
+- Modify [the agent's critical paths](../../gateway/internal/agent/server.go).
+- Remove installation of [the gateway nftables drop-in](../../gateway/cmd/mwan/nftables-override.conf).
 - Update [the MWAN operator reference](../mwan.md) and affected procedures under [operations](../ops/README.md).
 
 Behavior:
@@ -376,8 +376,8 @@ Files:
 
 Steps:
 
-1. Run `make check`, `make test`, `make test-netns`, and
-   `make test-firewall` in MWAN. Merge the reviewed changes and verify the
+1. Run `make -C gateway check`, `make -C gateway test`, `make -C gateway test-netns`, and
+   `make -C gateway test-firewall` in MWAN. Merge the reviewed changes and verify the
    resulting release and attestations.
 2. Merge the compatible Configs changes and testbed release pin. Run
    `./configsctl deploy deploy-mwan --limit mwan_suburban_servers`

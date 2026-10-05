@@ -30,55 +30,55 @@ Do not defer individual feature acceptance until that final run.
 
 Use the [deployment plan's protocol acceptance command](deployment.md#publish-and-verify-executable-commands)
 for the assembled acquisition and process recovery cases. The separate
-`make test-netns` target checks routing, NPT, and steering regressions.
+`make -C gateway test-netns` target checks routing, NPT, and steering regressions.
 Record revisions, server configuration, kernel version, and results.
 
 ## Verified current behavior
 
-In [the DHCPv4 client](../../../internal/netif/dhcp.go), `DHCPConfig` has
+In [the DHCPv4 client](../../../gateway/internal/netif/dhcp.go), `DHCPConfig` has
 interface and timeout settings but no configured client identifier.
 `acquire` performs discovery and request. `bound` schedules renewal at half
 the lease duration and emits `LeaseExpired` after any renewal error.
 `LeaseInfo` and `leaseToInfo` expose an address, mask, router, server, lease
 duration, and acquisition time; they do not expose rebinding deadlines.
 
-[Daemon startup](../../../internal/ifmgr/daemon.go) starts this client from
+[Daemon startup](../../../gateway/internal/ifmgr/daemon.go) starts this client from
 `Daemon.Run` and optionally constructs an RA client. This lifecycle has no
 DHCPv6 address client.
 
-[The OOB consumer](../../../internal/ifmgr/modules/oobv4/oobv4.go) uses
+[The OOB consumer](../../../gateway/internal/ifmgr/modules/oobv4/oobv4.go) uses
 `OnDHCPLease`, `applyBound`, and `applyExpired`. Expiration clears the OOB
 default route and leaves the previous address installed.
 
-[The failover consumer](../../../internal/ifmgr/modules/mainv4/mainv4.go)
+[The failover consumer](../../../gateway/internal/ifmgr/modules/mainv4/mainv4.go)
 uses the same lease events to apply addresses and a main-table default.
 Its `applyExpired` also leaves the address installed. The failover role
 selects this module, which remains inactive when DHCPv4 is disabled.
 
-[The prefix source](../../../internal/pd/source.go) defines `Source.Prefix`
+[The prefix source](../../../gateway/internal/pd/source.go) defines `Source.Prefix`
 as a prefix, presence flag, and error. `DefaultSource.Prefix` tries networkd
 D-Bus, networkctl, and kernel routes in order. This interface returns no
 renewal, preferred, or valid deadlines and performs no DHCP exchange.
 
 `Family.DHCP` and `FamilyV6.AcceptRA` in
-[the link specification](../../../internal/networkd/spec.go) configure
+[the link specification](../../../gateway/internal/networkd/spec.go) configure
 networkd behavior. `Delegation` includes `Hint`, `DUIDType`, `DUID`,
 `WithoutRA`, `UseDelegatedPrefix`, and `RouterLifetimeSeconds`. The typed
 delegation structure has no IAID field. These fields configure networkd;
 they do not implement a MWAN DHCPv6 client.
 
-[Router solicitation support](../../../internal/netif/ra.go) implements
+[Router solicitation support](../../../gateway/internal/netif/ra.go) implements
 `NewRAClient` and `RAClient.SolicitRA`. It sends a solicitation and returns
 the first parsed router advertisement. It does not apply automatic addresses
 or manage their lifetimes.
 
-[Host IPv6 policy](../../../internal/ifmgr/modules/hostipv6policy/hostipv6policy.go)
+[Host IPv6 policy](../../../gateway/internal/ifmgr/modules/hostipv6policy/hostipv6policy.go)
 uses `InterfacePolicy`, `reconcilePolicySysctls`, and `reconcileSysctl` to
 configure `accept_ra`, `autoconf`, and `accept_ra_defrtr`. It also checks or
 removes RA defaults and can solicit advertisements. This is an existing
 host-role policy boundary, not the complete provider acquisition contract.
 
-The [service unit](../../../cmd/mwan/mwan-ifmgr@.service) defaults to
+The [service unit](../../../gateway/cmd/mwan/mwan-ifmgr@.service) defaults to
 `ProtectKernelTunables=true`. Existing deployments that write IPv6 sysctls
 require a reviewed drop-in with appropriate writable paths.
 
@@ -146,7 +146,7 @@ owned address and route one writer during this integration.
 ### 3. Verify real DHCP behavior
 
 Create the proposed test file
-[cmd/mwan/dhcpv4_netns_test.go](../../../cmd/mwan/dhcpv4_netns_test.go).
+[gateway/cmd/mwan/dhcpv4_netns_test.go](../../../gateway/cmd/mwan/dhcpv4_netns_test.go).
 This file does not exist at the inspected baseline. Use the MWAN-522 runner
 with the production configuration loader, daemon, isolated Linux links, a
 real DHCPv4 server, and a downstream packet sender.
@@ -216,7 +216,7 @@ existing translation and source-rule behavior.
 ### 1. Establish the shared DHCPv6 lifecycle
 
 Create the proposed
-[internal/netif/dhcpv6.go](../../../internal/netif/dhcpv6.go). This is a new
+[gateway/internal/netif/dhcpv6.go](../../../gateway/internal/netif/dhcpv6.go). This is a new
 file, not an existing client. Integrate its lifecycle with
 `Daemon.Run` using the shared configuration
 and assignment interfaces.
@@ -239,7 +239,7 @@ and assignment interfaces.
 
 Modify `Source` and `DefaultSource.Prefix` through a compatible adapter in the
 existing prefix package. Create the proposed
-[internal/pd/assignment.go](../../../internal/pd/assignment.go) for the
+[gateway/internal/pd/assignment.go](../../../gateway/internal/pd/assignment.go) for the
 assignment-backed source if the reviewed API requires a separate adapter.
 
 1. Select the source from explicit connection ownership. Keep networkd
@@ -255,7 +255,7 @@ assignment-backed source if the reviewed API requires a separate adapter.
 ### 3. Verify actual delegation and translation
 
 Create the proposed
-[cmd/mwan/dhcpv6pd_netns_test.go](../../../cmd/mwan/dhcpv6pd_netns_test.go).
+[gateway/cmd/mwan/dhcpv6pd_netns_test.go](../../../gateway/cmd/mwan/dhcpv6pd_netns_test.go).
 Run the production daemon with a real DHCPv6 server, isolated Linux links,
 the assignment-backed source, and downstream IPv6 traffic.
 
@@ -294,13 +294,13 @@ Modify these sources:
 
 | Source | Required change |
 | --- | --- |
-| [Module environment](../../../internal/ifmgr/module.go) | Expose `Env.NPTAddresses` through the typed contract below. |
-| [Address module](../../../internal/ifmgr/modules/addresses/addresses.go) | Provide the authority and retain its journal for pending edge cleanup. |
-| [Owned address journal](../../../internal/netif/owned_addrs_routes.go) | Add a separate `npt-edge` scope without changing ordinary record identities. |
-| [Owned module configuration](../../../cmd/mwan/ifmgr_owned_config.go) | Require an explicit absolute address journal for owned families or configured NPT intent. |
-| [NPT reconciliation](../../../internal/ifmgr/modules/npt/npt.go) | Consume verified edge results and remove its direct address writer. |
-| [Translation inspection](../../../internal/ifmgr/modules/npt/inspect.go) | Verify relevant managed translation removal before releasing obsolete edges. |
-| [BPF translator](../../../internal/ifmgr/modules/npt/bpf/translator.go) | Inspect managed policies and attachments required by edge release. |
+| [Module environment](../../../gateway/internal/ifmgr/module.go) | Expose `Env.NPTAddresses` through the typed contract below. |
+| [Address module](../../../gateway/internal/ifmgr/modules/addresses/addresses.go) | Provide the authority and retain its journal for pending edge cleanup. |
+| [Owned address journal](../../../gateway/internal/netif/owned_addrs_routes.go) | Add a separate `npt-edge` scope without changing ordinary record identities. |
+| [Owned module configuration](../../../gateway/cmd/mwan/ifmgr_owned_config.go) | Require an explicit absolute address journal for owned families or configured NPT intent. |
+| [NPT reconciliation](../../../gateway/internal/ifmgr/modules/npt/npt.go) | Consume verified edge results and remove its direct address writer. |
+| [Translation inspection](../../../gateway/internal/ifmgr/modules/npt/inspect.go) | Verify relevant managed translation removal before releasing obsolete edges. |
+| [BPF translator](../../../gateway/internal/ifmgr/modules/npt/bpf/translator.go) | Inspect managed policies and attachments required by edge release. |
 
 Use one reconciler and one in-memory journal. Implement this interface:
 
@@ -390,7 +390,7 @@ type NPTAddressAuthority interface {
 
 ### 3. Prove the public edge lifecycle
 
-Extend the [mapped daemon regression](../../../cmd/mwan/ifmgr_owned_mapped_netns_test.go)
+Extend the [mapped daemon regression](../../../gateway/cmd/mwan/ifmgr_owned_mapped_netns_test.go)
 and the real systemd daemon suite. Run the production loader and `mwan ifmgr`
 with actual kernel networking, networkd, nftables, BPF, Kea, and router
 advertisements where the case requires acquisition. Supply each fixture with
@@ -415,7 +415,7 @@ an explicit private address journal; do not add a silent default.
    completes. Retain an original-main failing control and a focused removal
    control that fails when translation verification is disabled.
 
-Run `make docker-make TARGETS="check test"` and the affected privileged
+Run `make -C gateway docker-make TARGETS="check test"` and the affected privileged
 public suites without skips. Keep runtime tests with this behavior in one
 focused PR. The Configs companion must pair the explicit journal with the
 compatible published release under the deployment plan.
@@ -456,9 +456,9 @@ A userspace SLAAC engine is outside this approved work.
 ### 1. Apply shared per-interface kernel policy
 
 Reuse the existing host policy's sysctl boundary. Create the proposed
-[internal/ifmgr/modules/autoconfiguration/autoconfiguration.go](../../../internal/ifmgr/modules/autoconfiguration/autoconfiguration.go)
+[gateway/internal/ifmgr/modules/autoconfiguration/autoconfiguration.go](../../../gateway/internal/ifmgr/modules/autoconfiguration/autoconfiguration.go)
 for connection acquisition and register it through
-[daemon startup](../../../cmd/mwan/ifmgr.go). Extend the existing host policy
+[daemon startup](../../../gateway/cmd/mwan/ifmgr.go). Extend the existing host policy
 only where sharing the reviewed sysctl operation requires it.
 
 1. Apply configured advertisement acceptance, autoconfiguration, default
@@ -490,7 +490,7 @@ where the reviewed policy requires active solicitation.
 ### 3. Verify kernel behavior through the daemon
 
 Create the proposed
-[cmd/mwan/autoconfiguration_netns_test.go](../../../cmd/mwan/autoconfiguration_netns_test.go).
+[gateway/cmd/mwan/autoconfiguration_netns_test.go](../../../gateway/cmd/mwan/autoconfiguration_netns_test.go).
 Use the production loader and daemon, a real router advertisement daemon,
 isolated Linux interfaces, and downstream packet exchange. The proposed
 module and test do not exist at the inspected baseline.
@@ -545,9 +545,9 @@ from a DHCPv6 server address.
 Review address purpose with the translation consumer before implementation.
 The existing NPT address classification
 uses `extraGlobal128s` for intentional forwarding and BPF destination exceptions.
-[The DNAT rule builder](../../../internal/ifmgr/modules/npt/rules.go) forwards
+[The DNAT rule builder](../../../gateway/internal/ifmgr/modules/npt/rules.go) forwards
 those addresses to OPNsense. The
-[BPF packet processor](../../../internal/ifmgr/modules/npt/bpf/npt.c) translates
+[BPF packet processor](../../../gateway/internal/ifmgr/modules/npt/bpf/npt.c) translates
 destinations inside an external prefix unless they match an exception.
 The shared assignment contract must distinguish local interface assignments
 from intentional forwarding addresses. The reviewer must settle classification
@@ -599,7 +599,7 @@ inputs through the reviewed address-purpose contract.
 ### 3. Verify combined real-server assignments
 
 Create the proposed
-[cmd/mwan/dhcpv6ia_netns_test.go](../../../cmd/mwan/dhcpv6ia_netns_test.go).
+[gateway/cmd/mwan/dhcpv6ia_netns_test.go](../../../gateway/cmd/mwan/dhcpv6ia_netns_test.go).
 Use the production daemon and loader, a real DHCPv6 server, a real RA source,
 isolated Linux links, and downstream traffic. This test is new work.
 
