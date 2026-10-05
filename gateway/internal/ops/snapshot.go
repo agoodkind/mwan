@@ -26,7 +26,7 @@ import (
 // Proxmox cleans up after its own failures, but only while its process
 // lives. Killing it partway is therefore what turns a recoverable failure
 // into a stranded guest, and the two operations below exist to keep that
-// from happening: runQmDetached removes our ability to kill it, and the
+// from happening: runDetached removes our ability to kill it, and the
 // budget outlasts Proxmox's own limits so it always resolves first.
 
 const (
@@ -65,8 +65,8 @@ const scopeRunner = "systemd-run"
 // pveshRunner is the Proxmox API command-line client.
 const pveshRunner = "pvesh"
 
-// runQmDetached runs qm inside a transient systemd scope, so that stopping
-// the calling service cannot interrupt it.
+// runDetached runs a hypervisor command inside a transient systemd scope.
+// Stopping the calling service cannot interrupt it.
 //
 // The watchdog runs as a systemd service, and stopping a service signals
 // its whole control group. Every watchdog restart, and therefore every
@@ -80,37 +80,46 @@ const pveshRunner = "pvesh"
 // hypervisors run this code and they all run systemd, so the fallback keeps
 // unit tests and non-systemd hosts working rather than describing a
 // supported deployment.
-func runQmDetached(ctx context.Context, args ...string) ([]byte, error) {
+func runDetached(
+	ctx context.Context, binary string, args ...string,
+) ([]byte, error) {
 	if _, err := exec.LookPath(scopeRunner); err != nil {
 		slog.WarnContext(ctx,
-			"ops: systemd-run not found; running qm in this control group",
-			"args", args, "err", err)
-		return runQm(ctx, TimeoutQmLockHolding, args...)
+			"ops: systemd-run not found, using this control group",
+			"binary", binary, "args", args, "err", err)
+		return runHypervisor(ctx, binary, TimeoutQmLockHolding, args...)
 	}
-	slog.DebugContext(ctx, "ops: runQmDetached",
-		"args", args, "wait", TimeoutQmLockHolding)
+	slog.DebugContext(ctx, "ops: runDetached",
+		"binary", binary, "args", args, "wait", TimeoutQmLockHolding)
 	cctx, cancel := context.WithTimeout(ctx, TimeoutQmLockHolding)
 	defer cancel()
 	scopeArgs := append(
-		[]string{"--scope", "--quiet", "--collect", "qm"}, args...,
+		[]string{"--scope", "--quiet", "--collect", binary}, args...,
 	)
 	out, err := exec.CommandContext(cctx, scopeRunner, scopeArgs...).CombinedOutput()
 	if err != nil {
-		return out, fmt.Errorf("systemd-run scope qm %s: %w", args[0], err)
+		return out, fmt.Errorf("systemd-run scope %s %s: %w", binary, args[0], err)
 	}
 	return out, nil
 }
 
+// runGuestDetached runs one lock-holding guest operation through the
+// configured driver's binary in its own scope.
+func (r *RealOps) runGuestDetached(ctx context.Context, args []string) ([]byte, error) {
+	return runDetached(ctx, r.guest.binary(), args...)
+}
+
 // VMRollback rolls the VM back to the named snapshot via `qm rollback`.
 func (r *RealOps) VMRollback(ctx context.Context, vmid, snap string) error {
-	out, err := runQmDetached(ctx, "rollback", vmid, snap)
+	out, err := r.runGuestDetached(ctx, r.guest.rollbackArgs(vmid, snap))
 	if err != nil {
-		r.log.ErrorContext(ctx, "qm rollback failed",
+		r.log.ErrorContext(ctx, "guest rollback failed",
+			"binary", r.guest.binary(),
 			"vmid", vmid, "snapshot", snap, "err", err,
 			"output", strings.TrimSpace(string(out)))
 		return fmt.Errorf(
-			"qm rollback %s %s: %w: %s",
-			vmid, snap, err, strings.TrimSpace(string(out)),
+			"%s rollback %s %s: %w: %s",
+			r.guest.binary(), vmid, snap, err, strings.TrimSpace(string(out)),
 		)
 	}
 	return nil
@@ -119,14 +128,15 @@ func (r *RealOps) VMRollback(ctx context.Context, vmid, snap string) error {
 // VMSnapshot creates a new snapshot named snapName on the given VM via
 // `qm snapshot`.
 func (r *RealOps) VMSnapshot(ctx context.Context, vmid, snapName string) error {
-	out, err := runQmDetached(ctx, "snapshot", vmid, snapName)
+	out, err := r.runGuestDetached(ctx, r.guest.snapshotArgs(vmid, snapName))
 	if err != nil {
-		r.log.ErrorContext(ctx, "qm snapshot failed",
+		r.log.ErrorContext(ctx, "guest snapshot failed",
+			"binary", r.guest.binary(),
 			"vmid", vmid, "snapshot", snapName, "err", err,
 			"output", strings.TrimSpace(string(out)))
 		return fmt.Errorf(
-			"qm snapshot %s %s: %w: %s",
-			vmid, snapName, err, strings.TrimSpace(string(out)),
+			"%s snapshot %s %s: %w: %s",
+			r.guest.binary(), vmid, snapName, err, strings.TrimSpace(string(out)),
 		)
 	}
 	return nil
@@ -137,14 +147,15 @@ func (r *RealOps) VMSnapshot(ctx context.Context, vmid, snapName string) error {
 // reports why the delete failed there rather than in the exit status, and
 // callers decide what to do next from that reason.
 func (r *RealOps) VMDelSnapshot(ctx context.Context, vmid, snapName string) error {
-	out, err := runQmDetached(ctx, "delsnapshot", vmid, snapName)
+	out, err := r.runGuestDetached(ctx, r.guest.deleteSnapshotArgs(vmid, snapName, false))
 	if err != nil {
-		r.log.ErrorContext(ctx, "qm delsnapshot failed",
+		r.log.ErrorContext(ctx, "guest delsnapshot failed",
+			"binary", r.guest.binary(),
 			"vmid", vmid, "snapshot", snapName, "err", err,
 			"output", strings.TrimSpace(string(out)))
 		return fmt.Errorf(
-			"qm delsnapshot %s %s: %w: %s",
-			vmid, snapName, err, strings.TrimSpace(string(out)),
+			"%s delsnapshot %s %s: %w: %s",
+			r.guest.binary(), vmid, snapName, err, strings.TrimSpace(string(out)),
 		)
 	}
 	return nil
@@ -167,14 +178,15 @@ func (r *RealOps) VMDelSnapshot(ctx context.Context, vmid, snapName string) erro
 func (r *RealOps) VMDelSnapshotForce(
 	ctx context.Context, vmid, snapName string,
 ) error {
-	out, err := runQmDetached(ctx, "delsnapshot", vmid, snapName, "--force")
+	out, err := r.runGuestDetached(ctx, r.guest.deleteSnapshotArgs(vmid, snapName, true))
 	if err != nil {
-		r.log.ErrorContext(ctx, "qm delsnapshot --force failed",
+		r.log.ErrorContext(ctx, "guest delsnapshot --force failed",
+			"binary", r.guest.binary(),
 			"vmid", vmid, "snapshot", snapName, "err", err,
 			"output", strings.TrimSpace(string(out)))
 		return fmt.Errorf(
-			"qm delsnapshot --force %s %s: %w: %s",
-			vmid, snapName, err, strings.TrimSpace(string(out)),
+			"%s delsnapshot --force %s %s: %w: %s",
+			r.guest.binary(), vmid, snapName, err, strings.TrimSpace(string(out)),
 		)
 	}
 	return nil
@@ -183,9 +195,10 @@ func (r *RealOps) VMDelSnapshotForce(
 // VMLock reports the configuration lock currently set on the guest, or the
 // empty string when none is set.
 func (r *RealOps) VMLock(ctx context.Context, vmid string) (string, error) {
-	out, err := runQm(ctx, timeoutQmConfig, "config", vmid)
+	out, err := r.runGuest(ctx, timeoutQmConfig, r.guest.configArgs(vmid)...)
 	if err != nil {
-		r.log.ErrorContext(ctx, "qm config failed",
+		r.log.ErrorContext(ctx, "guest config failed",
+			"binary", r.guest.binary(),
 			"vmid", vmid, "err", err,
 			"output", strings.TrimSpace(string(out)))
 		// runQm already names the command and its arguments, so this adds
@@ -204,9 +217,10 @@ func (r *RealOps) VMLock(ctx context.Context, vmid string) (string, error) {
 // VMUnlock clears the guest's configuration lock via `qm unlock`. This
 // takes no lock of its own and returns immediately.
 func (r *RealOps) VMUnlock(ctx context.Context, vmid string) error {
-	out, err := runQm(ctx, timeoutQmUnlock, "unlock", vmid)
+	out, err := r.runGuest(ctx, timeoutQmUnlock, r.guest.unlockArgs(vmid)...)
 	if err != nil {
-		r.log.ErrorContext(ctx, "qm unlock failed",
+		r.log.ErrorContext(ctx, "guest unlock failed",
+			"binary", r.guest.binary(),
 			"vmid", vmid, "err", err,
 			"output", strings.TrimSpace(string(out)))
 		// runQm already names the command and its arguments, so this adds
