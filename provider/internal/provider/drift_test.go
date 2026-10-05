@@ -116,9 +116,59 @@ func TestProviderRoleMatchesMwanInstall(t *testing.T) {
 				}
 			}
 
-			wantEnable := enableMarker + strings.Join(data.EnableUnits, " ")
+			unitNames := make([]string, 0, len(data.Units))
+			for _, unit := range data.Units {
+				unitNames = append(unitNames, unit.Name)
+				if !unit.Enabled {
+					t.Errorf("unit %s is listed but not enabled", unit.Name)
+				}
+				for _, path := range unit.Files {
+					if _, written := installed[path]; !written {
+						t.Errorf("unit %s reads %s, which mwan install did not write", unit.Name, path)
+					}
+				}
+			}
+			wantEnable := enableMarker + strings.Join(unitNames, " ")
 			if !strings.Contains(string(output), wantEnable) {
 				t.Errorf("mwan install output:\n%s\nwant the line %q", output, wantEnable)
+			}
+
+			for path, file := range installed {
+				if !strings.HasPrefix(path, installspec.SystemdUnitDir+"/") || !strings.HasSuffix(path, ".service") {
+					continue
+				}
+				for line := range strings.SplitSeq(string(file.content), "\n") {
+					command, found := strings.CutPrefix(line, "ExecStart=")
+					if !found {
+						continue
+					}
+					program := strings.Fields(command)[0]
+					if filepath.Base(program) == "mwan" && program != data.BinaryPath {
+						t.Errorf("%s starts %s, the provider binary_path is %s", path, program, data.BinaryPath)
+					}
+				}
+			}
+
+			wantImport := ""
+			if len(data.SysrepoData) > 0 {
+				datastores := make([]string, 0, len(data.SysrepoData))
+				policy := installed[installspec.NACMPolicyPath]
+				for _, entry := range data.SysrepoData {
+					datastores = append(datastores, entry.Datastore)
+					if !bytes.Equal([]byte(entry.Content), policy.content) {
+						t.Errorf("sysrepo_data content for %s differs from the policy mwan install wrote", entry.Datastore)
+					}
+					if entry.Module != data.SysrepoData[0].Module {
+						t.Errorf("sysrepo_data modules differ: %s and %s", entry.Module, data.SysrepoData[0].Module)
+					}
+				}
+				wantImport = "imported the " + data.SysrepoData[0].Module + " policy into " + strings.Join(datastores, " and ")
+			}
+			if wantImport == "" && strings.Contains(string(output), "imported the") {
+				t.Errorf("mwan install imported a policy, and the provider lists no sysrepo_data:\n%s", output)
+			}
+			if wantImport != "" && !strings.Contains(string(output), wantImport) {
+				t.Errorf("mwan install output:\n%s\nwant the line %q", output, wantImport)
 			}
 		})
 	}

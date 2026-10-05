@@ -3,6 +3,7 @@ package provider_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -84,8 +85,19 @@ func TestReleaseReadsArchiveAddressesAndHashes(t *testing.T) {
 		t.Fatalf("architectures = %v, want %v", release.Architectures, want)
 	}
 	for name, wantArchives := range want {
-		if release.Architectures[name] != wantArchives {
-			t.Errorf("architecture %s = %+v, want %+v", name, release.Architectures[name], wantArchives)
+		got := release.Architectures[name]
+		debs := got.StackDebs
+		got.StackDebs = nil
+		if got.MwanURL != wantArchives.MwanURL || got.MwanSHA256 != wantArchives.MwanSHA256 ||
+			got.StackURL != wantArchives.StackURL || got.StackSHA256 != wantArchives.StackSHA256 {
+			t.Errorf("architecture %s = %+v, want %+v", name, got, wantArchives)
+		}
+		wantMember := "debs/libyang3_3.13.6-1_" + name + ".deb"
+		if debs["libyang3"] != wantMember {
+			t.Errorf("architecture %s stack_debs[libyang3] = %q, want %q", name, debs["libyang3"], wantMember)
+		}
+		if len(debs) != 7 {
+			t.Errorf("architecture %s lists %d stack packages, want 7", name, len(debs))
 		}
 	}
 }
@@ -155,8 +167,31 @@ func TestRoleWANListsFilesUnitsAndModules(t *testing.T) {
 			t.Errorf("file %s has mode %q, want 0644", wantPath, paths[wantPath])
 		}
 	}
-	if len(role.EnableUnits) < 2 || role.EnableUnits[1] != "mwan-ifmgr@wan.service" {
-		t.Errorf("enable units = %v, want the wan instance second", role.EnableUnits)
+	if role.BinaryPath != "/usr/local/bin/mwan" {
+		t.Errorf("binary path = %q, want /usr/local/bin/mwan", role.BinaryPath)
+	}
+	units := map[string]roleUnit{}
+	for _, unit := range role.Units {
+		units[unit.Name] = unit
+	}
+	instance := units["mwan-ifmgr@wan.service"]
+	wantInstanceFiles := []string{
+		"/etc/systemd/system/mwan-ifmgr@.service",
+		"/etc/systemd/system/mwan-ifmgr@wan.service.d/firewall.conf",
+	}
+	if !slices.Equal(instance.Files, wantInstanceFiles) {
+		t.Errorf("mwan-ifmgr@wan.service files = %v, want %v", instance.Files, wantInstanceFiles)
+	}
+	if !instance.Enabled || !instance.Active {
+		t.Errorf("mwan-ifmgr@wan.service enabled=%v active=%v, want both true", instance.Enabled, instance.Active)
+	}
+	if trace := units["mwan-trace-boot.service"]; !trace.Enabled || trace.Active {
+		t.Errorf("mwan-trace-boot.service enabled=%v active=%v, want enabled and not active", trace.Enabled, trace.Active)
+	}
+	if len(role.SysrepoData) != 2 || role.SysrepoData[0].Datastore != "startup" ||
+		role.SysrepoData[1].Datastore != "running" || role.SysrepoData[0].XPath != "/ietf-netconf-acm:nacm" ||
+		role.SysrepoData[0].Module != "ietf-netconf-acm" {
+		t.Errorf("sysrepo data = %+v, want the NACM policy into startup then running", role.SysrepoData)
 	}
 	var natFeatures []string
 	for _, module := range role.Modules {
@@ -181,8 +216,8 @@ func TestRoleHostHasNoYangModules(t *testing.T) {
 	if len(diagnostics) > 0 {
 		t.Fatalf("read failed: %s", diagnosticText(diagnostics))
 	}
-	if len(role.Modules) != 0 {
-		t.Errorf("host role lists %d YANG modules, want none", len(role.Modules))
+	if len(role.Modules) != 0 || len(role.SysrepoData) != 0 {
+		t.Errorf("host role lists %d YANG modules and %d sysrepo imports, want none", len(role.Modules), len(role.SysrepoData))
 	}
 	if len(role.Files) != 1 || role.Files[0].Path != "/etc/systemd/system/mwan-ifmgr.service" {
 		t.Errorf("host role files = %v, want the single interface manager unit", role.Files)

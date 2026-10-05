@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
+	"goodkind.io/mwan/internal/stackspec"
 	"goodkind.io/mwan/provider/internal/release"
 )
 
@@ -22,10 +23,11 @@ type releaseModel struct {
 }
 
 type architectureModel struct {
-	MwanURL     types.String `tfsdk:"mwan_url"`
-	MwanSHA256  types.String `tfsdk:"mwan_sha256"`
-	StackURL    types.String `tfsdk:"stack_url"`
-	StackSHA256 types.String `tfsdk:"stack_sha256"`
+	MwanURL     types.String      `tfsdk:"mwan_url"`
+	MwanSHA256  types.String      `tfsdk:"mwan_sha256"`
+	StackURL    types.String      `tfsdk:"stack_url"`
+	StackSHA256 types.String      `tfsdk:"stack_sha256"`
+	StackDebs   map[string]string `tfsdk:"stack_debs"`
 }
 
 func newReleaseDataSource() datasource.DataSource {
@@ -69,6 +71,12 @@ func (d *releaseDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 						"stack_sha256": schema.StringAttribute{
 							Computed:    true,
 							Description: "SHA-256 of the wanconfig stack archive as lowercase hex.",
+						},
+						"stack_debs": schema.MapAttribute{
+							Computed:    true,
+							ElementType: types.StringType,
+							Description: "Runtime packages of the wanconfig stack archive: package name to the " +
+								"archive member path, debs/<file>.deb.",
 						},
 					},
 				},
@@ -134,7 +142,12 @@ func (d *releaseDataSource) Read(ctx context.Context, req datasource.ReadRequest
 	model.ArchiveMember = types.StringValue(release.ArchiveMember)
 	model.Architectures = make(map[string]architectureModel, len(architectures))
 	for name, archives := range architectures {
+		debs := make(map[string]string, len(stackspec.Packages()))
+		for _, pkg := range stackspec.Packages() {
+			debs[pkg.Name] = pkg.Member(name)
+		}
 		model.Architectures[name] = architectureModel{
+			StackDebs:   debs,
 			MwanURL:     types.StringValue(archives.Mwan.URL),
 			MwanSHA256:  types.StringValue(archives.Mwan.SHA256),
 			StackURL:    types.StringValue(archives.Stack.URL),

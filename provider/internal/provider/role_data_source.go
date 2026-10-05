@@ -20,10 +20,26 @@ const fileModeFormat = "%04o"
 type roleDataSource struct{}
 
 type roleModel struct {
-	Role        types.String      `tfsdk:"role"`
-	Files       []roleFileModel   `tfsdk:"files"`
-	EnableUnits []string          `tfsdk:"enable_units"`
-	YangModules []yangModuleModel `tfsdk:"yang_modules"`
+	Role        types.String       `tfsdk:"role"`
+	BinaryPath  types.String       `tfsdk:"binary_path"`
+	Files       []roleFileModel    `tfsdk:"files"`
+	Units       []unitModel        `tfsdk:"units"`
+	YangModules []yangModuleModel  `tfsdk:"yang_modules"`
+	SysrepoData []sysrepoDataModel `tfsdk:"sysrepo_data"`
+}
+
+type unitModel struct {
+	Name    types.String `tfsdk:"name"`
+	Enabled types.Bool   `tfsdk:"enabled"`
+	Active  types.Bool   `tfsdk:"active"`
+	Files   []string     `tfsdk:"files"`
+}
+
+type sysrepoDataModel struct {
+	Datastore types.String `tfsdk:"datastore"`
+	Module    types.String `tfsdk:"module"`
+	XPath     types.String `tfsdk:"xpath"`
+	Content   types.String `tfsdk:"content"`
 }
 
 type roleFileModel struct {
@@ -79,10 +95,43 @@ func (d *roleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 					},
 				},
 			},
-			"enable_units": schema.ListAttribute{
+			"binary_path": schema.StringAttribute{
 				Computed:    true,
-				ElementType: types.StringType,
-				Description: "Unit names to enable. An instanced unit is a concrete instance.",
+				Description: "Install path of the mwan binary, which the units start.",
+			},
+			"units": schema.ListNestedAttribute{
+				Computed:    true,
+				Description: "Units the role enables, in enable order. An instanced unit is a concrete instance.",
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"name":    schema.StringAttribute{Computed: true, Description: "Unit name."},
+						"enabled": schema.BoolAttribute{Computed: true, Description: "Whether the unit is enabled."},
+						"active": schema.BoolAttribute{
+							Computed: true,
+							Description: "Whether the unit is running after the install. False for a oneshot unit " +
+								"without RemainAfterExit, which exits after it runs.",
+						},
+						"files": schema.ListAttribute{
+							Computed:    true,
+							ElementType: types.StringType,
+							Description: "Paths from files that the unit reads: its unit file, or the template of an " +
+								"instance, and the drop-ins of both.",
+						},
+					},
+				},
+			},
+			"sysrepo_data": schema.ListNestedAttribute{
+				Computed: true,
+				Description: "Configuration imports into sysrepo datastores, in import order. " +
+					"Only the wan role has any.",
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"datastore": schema.StringAttribute{Computed: true, Description: "startup or running."},
+						"module":    schema.StringAttribute{Computed: true, Description: "Module the import configures."},
+						"xpath":     schema.StringAttribute{Computed: true, Description: "Subtree the content defines."},
+						"content":   schema.StringAttribute{Computed: true, Description: "XML document to import."},
+					},
+				},
 			},
 			"yang_modules": schema.ListNestedAttribute{
 				Computed: true,
@@ -159,7 +208,35 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 			})
 		}
 	}
-	model.EnableUnits = spec.Enable
+	units, err := spec.Units()
+	if err != nil {
+		resp.Diagnostics.AddError("Cannot read the units", err.Error())
+		return
+	}
+	model.BinaryPath = types.StringValue(installspec.BinaryPath)
+	model.Units = make([]unitModel, 0, len(units))
+	for _, unit := range units {
+		model.Units = append(model.Units, unitModel{
+			Name:    types.StringValue(unit.Name),
+			Enabled: types.BoolValue(unit.Enabled),
+			Active:  types.BoolValue(unit.Active),
+			Files:   unit.Files,
+		})
+	}
+	imports, err := spec.SysrepoImports()
+	if err != nil {
+		resp.Diagnostics.AddError("Cannot read the sysrepo data", err.Error())
+		return
+	}
+	model.SysrepoData = make([]sysrepoDataModel, 0, len(imports))
+	for _, entry := range imports {
+		model.SysrepoData = append(model.SysrepoData, sysrepoDataModel{
+			Datastore: types.StringValue(string(entry.Datastore)),
+			Module:    types.StringValue(entry.Module),
+			XPath:     types.StringValue(entry.XPath),
+			Content:   types.StringValue(string(entry.Content)),
+		})
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 

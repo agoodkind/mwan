@@ -38,10 +38,26 @@ type roleModule struct {
 	Update   bool
 }
 
+type roleUnit struct {
+	Name    string
+	Enabled bool
+	Active  bool
+	Files   []string
+}
+
+type roleSysrepoData struct {
+	Datastore string
+	Module    string
+	XPath     string
+	Content   string
+}
+
 type roleData struct {
+	BinaryPath  string
 	Files       []roleFile
-	EnableUnits []string
+	Units       []roleUnit
 	Modules     []roleModule
+	SysrepoData []roleSysrepoData
 }
 
 type archives struct {
@@ -49,6 +65,7 @@ type archives struct {
 	MwanSHA256  string
 	StackURL    string
 	StackSHA256 string
+	StackDebs   map[string]string
 }
 
 type releaseData struct {
@@ -89,7 +106,7 @@ func (s *protocolServer) readRole(t *testing.T, role string) (roleData, []*tfpro
 		"role": tftypes.NewValue(tftypes.String, role),
 	})
 	if len(diagnostics) > 0 {
-		return roleData{Files: nil, EnableUnits: nil, Modules: nil}, diagnostics
+		return roleData{BinaryPath: "", Files: nil, Units: nil, Modules: nil, SysrepoData: nil}, diagnostics
 	}
 	return decodeRole(t, state), nil
 }
@@ -226,7 +243,7 @@ func stringList(t *testing.T, values []tftypes.Value) []string {
 
 func decodeRole(t *testing.T, state tftypes.Value) roleData {
 	t.Helper()
-	role := roleData{Files: nil, EnableUnits: nil, Modules: nil}
+	role := roleData{BinaryPath: text(t, state, "binary_path"), Files: nil, Units: nil, Modules: nil, SysrepoData: nil}
 	for _, file := range elements(t, state, "files") {
 		role.Files = append(role.Files, roleFile{
 			Path:    text(t, file, "path"),
@@ -234,7 +251,29 @@ func decodeRole(t *testing.T, state tftypes.Value) roleData {
 			Mode:    text(t, file, "mode"),
 		})
 	}
-	role.EnableUnits = stringList(t, elements(t, state, "enable_units"))
+	for _, unit := range elements(t, state, "units") {
+		var enabled, active bool
+		if err := attribute(t, unit, "enabled").As(&enabled); err != nil {
+			t.Fatalf("decode enabled: %v", err)
+		}
+		if err := attribute(t, unit, "active").As(&active); err != nil {
+			t.Fatalf("decode active: %v", err)
+		}
+		role.Units = append(role.Units, roleUnit{
+			Name:    text(t, unit, "name"),
+			Enabled: enabled,
+			Active:  active,
+			Files:   stringList(t, elements(t, unit, "files")),
+		})
+	}
+	for _, entry := range elements(t, state, "sysrepo_data") {
+		role.SysrepoData = append(role.SysrepoData, roleSysrepoData{
+			Datastore: text(t, entry, "datastore"),
+			Module:    text(t, entry, "module"),
+			XPath:     text(t, entry, "xpath"),
+			Content:   text(t, entry, "content"),
+		})
+	}
 	for _, module := range elements(t, state, "yang_modules") {
 		var update bool
 		if err := attribute(t, module, "update").As(&update); err != nil {
@@ -263,7 +302,20 @@ func decodeRelease(t *testing.T, state tftypes.Value) releaseData {
 		t.Fatalf("decode architectures: %v", err)
 	}
 	for name, pair := range architectures {
+		var debValues map[string]tftypes.Value
+		if err := attribute(t, pair, "stack_debs").As(&debValues); err != nil {
+			t.Fatalf("decode stack_debs: %v", err)
+		}
+		debs := make(map[string]string, len(debValues))
+		for packageName, member := range debValues {
+			var path string
+			if err := member.As(&path); err != nil {
+				t.Fatalf("decode a stack_debs member: %v", err)
+			}
+			debs[packageName] = path
+		}
 		release.Architectures[name] = archives{
+			StackDebs:   debs,
 			MwanURL:     text(t, pair, "mwan_url"),
 			MwanSHA256:  text(t, pair, "mwan_sha256"),
 			StackURL:    text(t, pair, "stack_url"),
