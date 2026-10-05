@@ -65,9 +65,6 @@ const scopeRunner = "systemd-run"
 // pveshRunner is the Proxmox API command-line client.
 const pveshRunner = "pvesh"
 
-// runDetached runs a hypervisor command inside a transient systemd scope.
-// Stopping the calling service cannot interrupt it.
-//
 // The watchdog runs as a systemd service, and stopping a service signals
 // its whole control group. Every watchdog restart, and therefore every
 // watchdog deploy, would otherwise be able to kill a snapshot in flight and
@@ -103,8 +100,6 @@ func runDetached(
 	return out, nil
 }
 
-// runGuestDetached runs one lock-holding guest operation through the
-// configured driver's binary in its own scope.
 func (r *RealOps) runGuestDetached(ctx context.Context, args []string) ([]byte, error) {
 	return runDetached(ctx, r.guest.binary(), args...)
 }

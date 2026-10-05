@@ -185,8 +185,6 @@ func NewRealOps(
 	}
 }
 
-// runHypervisor runs one hypervisor guest command, `qm` or `pct`, with a
-// context-bound timeout.
 func runHypervisor(
 	ctx context.Context,
 	binary string,
@@ -213,7 +211,6 @@ func runHypervisor(
 	return out, nil
 }
 
-// runQm runs `qm` for the operations that exist only on QEMU guests.
 func runQm(
 	ctx context.Context,
 	timeout time.Duration,
@@ -222,14 +219,12 @@ func runQm(
 	return runHypervisor(ctx, qmBinary, timeout, args...)
 }
 
-// runGuest runs one guest operation with the configured driver's binary.
 func (r *RealOps) runGuest(
 	ctx context.Context, timeout time.Duration, args ...string,
 ) ([]byte, error) {
 	return runHypervisor(ctx, r.guest.binary(), timeout, args...)
 }
 
-// VMStatus reports whether the guest with the given vmid is currently running.
 func (r *RealOps) VMStatus(ctx context.Context, vmid string) (bool, error) {
 	out, err := r.runGuest(ctx, TimeoutQmStatus, r.guest.statusArgs(vmid)...)
 	if err != nil {
@@ -238,19 +233,16 @@ func (r *RealOps) VMStatus(ctx context.Context, vmid string) (bool, error) {
 	return strings.Contains(string(out), "running"), nil
 }
 
-// VMStop stops the guest with the given vmid.
 func (r *RealOps) VMStop(ctx context.Context, vmid string) error {
 	_, err := r.runGuest(ctx, TimeoutQmStop, r.guest.stopArgs(vmid)...)
 	return err
 }
 
-// VMStart starts the guest with the given vmid.
 func (r *RealOps) VMStart(ctx context.Context, vmid string) error {
 	_, err := r.runGuest(ctx, TimeoutQmStart, r.guest.startArgs(vmid)...)
 	return err
 }
 
-// VMSnapshots returns the raw output of the snapshot listing for the vmid.
 func (r *RealOps) VMSnapshots(ctx context.Context, vmid string) ([]byte, error) {
 	return r.runGuest(ctx, timeoutQmListSnapshot, r.guest.listSnapshotsArgs(vmid)...)
 }

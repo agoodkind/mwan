@@ -11,10 +11,6 @@ import (
 	"time"
 )
 
-// execGuest runs command inside the container through `pct exec`, which
-// prints the command's raw stdout and stderr and exits with the command's
-// status. waitTimeout kills the process; agentTimeout is unused because
-// `pct exec` has no agent-side wait.
 func (lxcGuest) execGuest(
 	ctx context.Context,
 	log *slog.Logger,

@@ -688,8 +688,6 @@ func buildMwanBinary(t *testing.T) string {
 	return binaryPath
 }
 
-// installFakeHypervisorTool writes an executable named name with the given
-// script and returns its directory, which the caller puts first on PATH.
 func installFakeHypervisorTool(t *testing.T, name, script string) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -699,8 +697,6 @@ func installFakeHypervisorTool(t *testing.T, name, script string) string {
 	return dir
 }
 
-// runMwanBinary runs the built binary with toolDir first on PATH and returns
-// its combined output and exit code.
 func runMwanBinary(
 	t *testing.T, binaryPath, toolDir, configPath string, args ...string,
 ) (string, int) {
@@ -729,10 +725,6 @@ func writeTestFile(t *testing.T, name, content string) string {
 	return path
 }
 
-// TestDeployGateWaitRebootReadsTheBootIDThroughTheGuestDriver runs the built
-// wait-reboot gate with a fake hypervisor tool on PATH. An unusable read ends
-// the gate at the deadline with exit 2, a read of the old boot id ends it with
-// exit 1, and a read of a new boot id ends it with exit 0.
 func TestDeployGateWaitRebootReadsTheBootIDThroughTheGuestDriver(t *testing.T) {
 	binaryPath := buildMwanBinary(t)
 	qemuConfig := writeTestFile(t, "config.toml", "guest_type = \"qemu\"\n")

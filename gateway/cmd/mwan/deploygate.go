@@ -717,9 +717,6 @@ func readGuestOwnedCheck(
 	return result, nil
 }
 
-// withGatewayGuestReads binds the boot id and owned-address reads to the guest
-// type in the host configuration. The gate loads the configuration once per
-// run.
 func withGatewayGuestReads(deps deployGateDeps) (deployGateDeps, error) {
 	cfg, err := config.Load()
 	if err != nil {
@@ -913,7 +910,6 @@ func readGuestBootID(
 	return bootID, nil
 }
 
-// guestBootID extracts and validates the boot_id from a guest command result.
 func guestBootID(result ops.GuestCommandResult) (string, error) {
 	if result.ExitCode != 0 {
 		return "", fmt.Errorf(

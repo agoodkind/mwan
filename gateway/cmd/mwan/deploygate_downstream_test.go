@@ -80,9 +80,6 @@ func TestDeployGateAcceptsSingleFamilyProbeConfigs(t *testing.T) {
 	}
 }
 
-// TestDeployGateCheckEgressJudgesTheGuestReply runs the built check-egress gate
-// with a fake qm on PATH that answers the route probe and the HTTPS probe with
-// the given replies.
 func TestDeployGateCheckEgressJudgesTheGuestReply(t *testing.T) {
 	binaryPath := buildMwanBinary(t)
 	probePath := writeTestFile(t, "probe.json", testDownstreamProbeJSON)

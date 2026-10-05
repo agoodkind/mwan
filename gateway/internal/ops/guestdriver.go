@@ -13,13 +13,9 @@ const (
 	qmBinary  = "qm"
 	pctBinary = "pct"
 
-	// qmStopTimeoutSeconds is how long `qm stop` waits for the guest to halt
-	// before it kills the QEMU process.
 	qmStopTimeoutSeconds = "30"
 )
 
-// guestDriver builds the hypervisor command line for each guest operation.
-// RealOps runs the argv a driver returns and never branches on the guest type.
 type guestDriver interface {
 	guestLifecycleArgs
 	guestSnapshotArgs
@@ -58,8 +54,6 @@ type guestLockArgs interface {
 	thawArgs(vmid string) ([]string, error)
 }
 
-// newGuestDriver returns the driver for guestType. Config loading rejects every
-// other value, and the zero value of a hand-built Config is a QEMU guest.
 func newGuestDriver(guestType config.GuestType) guestDriver {
 	if guestType == config.GuestTypeLXC {
 		return lxcGuest{}
@@ -119,7 +113,7 @@ func (lxcGuest) statusArgs(vmid string) []string { return []string{"status", vmi
 
 func (lxcGuest) startArgs(vmid string) []string { return []string{"start", vmid} }
 
-// `pct stop` has no timeout option and stops the container immediately.
+// pct stop does not accept a timeout option.
 func (lxcGuest) stopArgs(vmid string) []string { return []string{"stop", vmid} }
 
 func (lxcGuest) listSnapshotsArgs(vmid string) []string {
@@ -138,7 +132,7 @@ func (lxcGuest) deleteSnapshotArgs(vmid, snapName string, force bool) []string {
 	return args
 }
 
-// The rollback callers start the container themselves; `--start` is omitted.
+// pct rollback does not start the container. The caller runs pct start afterward.
 func (lxcGuest) rollbackArgs(vmid, snapName string) []string {
 	return []string{"rollback", vmid, snapName}
 }
@@ -147,7 +141,7 @@ func (lxcGuest) configArgs(vmid string) []string { return []string{"config", vmi
 
 func (lxcGuest) unlockArgs(vmid string) []string { return []string{"unlock", vmid} }
 
-// A container has no guest agent, and `pct` has no freeze status query.
+// pct does not provide guest agent or freeze status queries.
 func (lxcGuest) freezeStatusArgs(string) ([]string, error) {
 	return nil, errors.New("lxc guest has no filesystem freeze status")
 }

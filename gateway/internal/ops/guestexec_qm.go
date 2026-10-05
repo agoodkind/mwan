@@ -13,8 +13,6 @@ import (
 	"goodkind.io/mwan/internal/config"
 )
 
-// GuestCommandResult is what one command run inside a guest from the
-// hypervisor printed and how it exited.
 type GuestCommandResult struct {
 	GuestExecResult
 	Stderr string

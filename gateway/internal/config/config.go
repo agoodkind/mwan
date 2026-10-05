@@ -237,15 +237,11 @@ type AgentSection struct {
 	Debug          bool   `toml:"debug"`
 }
 
-// GuestType is the Proxmox guest kind the gateway runs in. It selects the
-// hypervisor command set that drives the guest.
 type GuestType string
 
 const (
-	// GuestTypeQEMU is a QEMU virtual machine, driven with `qm`.
 	GuestTypeQEMU GuestType = "qemu"
-	// GuestTypeLXC is an LXC container, driven with `pct`.
-	GuestTypeLXC GuestType = "lxc"
+	GuestTypeLXC  GuestType = "lxc"
 )
 
 // Config is the single TOML configuration for the mwan monolith.
@@ -254,8 +250,7 @@ type Config struct {
 	Hostname     string `toml:"hostname"`
 	MwanVMID     string `toml:"mwan_vmid"`
 	MwanMgmtAddr string `toml:"mwan_mgmt_addr"`
-	// GuestType defaults to "qemu" because every site that predates it runs a
-	// QEMU guest.
+	// The configuration loader defaults guest_type to qemu.
 	GuestType GuestType `toml:"guest_type"`
 
 	Email   EmailConfig   `toml:"email"`

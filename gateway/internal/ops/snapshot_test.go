@@ -20,8 +20,6 @@ const (
 	scopeArgPrefix = "--scope\n--quiet\n--collect\n"
 )
 
-// installFakeCommand puts an executable named name first on PATH. It records
-// its arguments one per line, prints stdout, and exits with exitCode.
 func installFakeCommand(t *testing.T, name, stdout string, exitCode int) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -37,8 +35,6 @@ func installFakeCommand(t *testing.T, name, stdout string, exitCode int) string 
 	return argsFile
 }
 
-// installFakeScopeRunner puts a systemd-run first on PATH that records its
-// arguments and then runs the command after the three scope options.
 func installFakeScopeRunner(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -68,9 +64,6 @@ func readRecordedArgs(t *testing.T, path string) string {
 	return string(recorded)
 }
 
-// TestGuestOperationsRunTheDriverCommand runs each guest operation for both
-// guest types and checks the exact hypervisor command line. The QEMU rows are
-// the commands that ran before the guest type existed.
 func TestGuestOperationsRunTheDriverCommand(t *testing.T) {
 	cases := []struct {
 		name     string

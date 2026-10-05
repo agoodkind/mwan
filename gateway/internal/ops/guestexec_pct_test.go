@@ -19,9 +19,6 @@ const (
 	bootIDPath     = "/proc/sys/kernel/random/boot_id"
 )
 
-// installFakeGuestExec puts an executable named name first on PATH. It records
-// its arguments one per line, prints stdout and stderr on separate streams, and
-// exits with exitCode.
 func installFakeGuestExec(t *testing.T, name, stdout, stderr string, exitCode int) string {
 	t.Helper()
 	dir := t.TempDir()
