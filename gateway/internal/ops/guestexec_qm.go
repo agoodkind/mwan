@@ -13,16 +13,15 @@ import (
 	"goodkind.io/mwan/internal/config"
 )
 
+// GuestCommandResult includes stderr from commands executed through the hypervisor.
 type GuestCommandResult struct {
 	GuestExecResult
 	Stderr string
 }
 
-// RunInGuest runs command inside the guest through the hypervisor. The deploy
-// gate uses it on the Proxmox host; the integer vmid keeps the argv free of
-// caller-shaped strings. A command that exits non-zero is a result, not an
-// error. waitTimeout bounds the hypervisor process. agentTimeout applies to
-// QEMU guests only, because `pct exec` has no agent-side wait.
+// RunInGuest executes a command through the hypervisor. A guest command failure
+// returns an exit status; a hypervisor execution failure returns an error.
+// waitTimeout limits the hypervisor process. agentTimeout applies only to QEMU.
 func RunInGuest(
 	ctx context.Context,
 	guestType config.GuestType,
@@ -93,10 +92,8 @@ type qmGuestExecStatus struct {
 	OutTruncated agentFlag `json:"out-truncated"`
 }
 
-// execGuest runs command inside the guest through `qm guest exec`, which uses
-// QEMU's own channel to the guest agent instead of the guest network. A guest
-// agent that is down makes qm exit non-zero, and execGuest returns that exit as
-// an error.
+// execGuest uses the QEMU guest agent without requiring guest network access.
+// It returns an error if qm cannot execute the command.
 func (qemuGuest) execGuest(
 	ctx context.Context,
 	log *slog.Logger,
@@ -109,7 +106,6 @@ func (qemuGuest) execGuest(
 		log.ErrorContext(ctx, "qm guest exec failed",
 			"vmid", vmid, "err", err,
 			"output", strings.TrimSpace(string(out)))
-		// runQm returns the command line in its error; this adds the output.
 		return failedGuestCommand(),
 			fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
 	}
@@ -130,7 +126,7 @@ func (qemuGuest) execGuest(
 		return failedGuestCommand(),
 			errors.New("qm guest exec reported an exited command without an exit code")
 	}
-	// A truncated stdout would parse as a wrong value instead of failing.
+	// Reject truncated stdout before parsing a probe result.
 	if status.OutTruncated {
 		return failedGuestCommand(),
 			fmt.Errorf("guest command %q output was truncated by the guest agent",

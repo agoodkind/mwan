@@ -225,6 +225,7 @@ func (r *RealOps) runGuest(
 	return runHypervisor(ctx, r.guest.binary(), timeout, args...)
 }
 
+// VMStatus checks whether qm status or pct status reports a running guest.
 func (r *RealOps) VMStatus(ctx context.Context, vmid string) (bool, error) {
 	out, err := r.runGuest(ctx, TimeoutQmStatus, r.guest.statusArgs(vmid)...)
 	if err != nil {
@@ -233,16 +234,19 @@ func (r *RealOps) VMStatus(ctx context.Context, vmid string) (bool, error) {
 	return strings.Contains(string(out), "running"), nil
 }
 
+// VMStop gives qm stop a 30 second timeout. pct stop does not accept a timeout option.
 func (r *RealOps) VMStop(ctx context.Context, vmid string) error {
 	_, err := r.runGuest(ctx, TimeoutQmStop, r.guest.stopArgs(vmid)...)
 	return err
 }
 
+// VMStart selects qm start or pct start according to the guest type.
 func (r *RealOps) VMStart(ctx context.Context, vmid string) error {
 	_, err := r.runGuest(ctx, TimeoutQmStart, r.guest.startArgs(vmid)...)
 	return err
 }
 
+// VMSnapshots selects qm listsnapshot or pct listsnapshot according to the guest type.
 func (r *RealOps) VMSnapshots(ctx context.Context, vmid string) ([]byte, error) {
 	return r.runGuest(ctx, timeoutQmListSnapshot, r.guest.listSnapshotsArgs(vmid)...)
 }

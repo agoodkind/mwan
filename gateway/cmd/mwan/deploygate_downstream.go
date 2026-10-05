@@ -224,8 +224,7 @@ func readRouteGateway(output string) (netip.Addr, error) {
 	return gateway, nil
 }
 
-// readGuestProbeCommand runs command in the OPNsense guest, which is always a
-// QEMU VM whatever guest type the gateway uses.
+// The OPNsense guest uses qm even when the gateway uses LXC.
 func readGuestProbeCommand(ctx context.Context, vmid int, command ...string) (string, error) {
 	result, err := ops.RunInGuest(ctx, config.GuestTypeQEMU,
 		downstreamGuestExecTimeout+5*time.Second, downstreamGuestExecTimeout,

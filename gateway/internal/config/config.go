@@ -237,11 +237,14 @@ type AgentSection struct {
 	Debug          bool   `toml:"debug"`
 }
 
+// GuestType selects qm for QEMU guests and pct for LXC guests.
 type GuestType string
 
 const (
+	// GuestTypeQEMU selects qm for guest operations.
 	GuestTypeQEMU GuestType = "qemu"
-	GuestTypeLXC  GuestType = "lxc"
+	// GuestTypeLXC selects pct for guest operations.
+	GuestTypeLXC GuestType = "lxc"
 )
 
 // Config is the single TOML configuration for the mwan monolith.
