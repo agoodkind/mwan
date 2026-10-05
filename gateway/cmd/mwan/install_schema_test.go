@@ -16,6 +16,7 @@ import (
 
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/yangpub"
+	"goodkind.io/mwan/internal/yangpub/schema"
 )
 
 // sysrepo resolves its repository and shared-memory prefix once per process
@@ -94,7 +95,7 @@ func runSysrepoStep(step string, args []string) int {
 // for it, so the seeded repository is the one a deploy would have left.
 func seedFeatures(path string) []string {
 	name, _ := moduleFileNameRevision(filepath.Base(path))
-	for _, module := range yangpub.SchemaModules {
+	for _, module := range schema.Modules() {
 		if moduleName, _ := moduleFileNameRevision(module.File); moduleName == name {
 			return module.Features
 		}
@@ -213,7 +214,8 @@ func TestInstallApplyInstallsTheSchemaIntoSysrepo(t *testing.T) {
 	if _, err := yangpub.WriteSchema(embeddedDir); err != nil {
 		t.Fatalf("write the embedded schema: %v", err)
 	}
-	for _, module := range yangpub.SchemaModules {
+	modules := schema.Modules()
+	for _, module := range modules {
 		onDisk, err := os.ReadFile(filepath.Join(root, networkjson.DefaultSchemaDir, module.File))
 		if err != nil {
 			t.Errorf("read the installed %s: %v", module.File, err)
@@ -228,13 +230,13 @@ func TestInstallApplyInstallsTheSchemaIntoSysrepo(t *testing.T) {
 		}
 	}
 
-	modules := implementedModules(t, root, "a")
-	for _, module := range yangpub.SchemaModules {
+	implemented := implementedModules(t, root, "a")
+	for _, module := range modules {
 		name, revision := moduleFileNameRevision(module.File)
 		if !slices.Contains(gatewayModules, name) {
 			continue
 		}
-		got, found := modules[name]
+		got, found := implemented[name]
 		if !found {
 			t.Errorf("%s is not implemented in the repository", name)
 			continue
@@ -296,8 +298,8 @@ func TestInstallApplyUpdatesAnOlderSteeringRevision(t *testing.T) {
 
 	output := runInstallChild(t, root)
 
-	_, wantRevision := moduleFileNameRevision(
-		yangpub.SchemaModules[len(yangpub.SchemaModules)-1].File)
+	modules := schema.Modules()
+	_, wantRevision := moduleFileNameRevision(modules[len(modules)-1].File)
 	got := implementedModules(t, root, "after")["goodkind-mwan-steering"]
 	if got.revision != wantRevision {
 		t.Fatalf("steering revision after the run = %q, want %q", got.revision, wantRevision)

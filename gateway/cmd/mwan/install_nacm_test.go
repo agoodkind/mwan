@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"goodkind.io/mwan/internal/installspec"
 )
 
 // nacmTree is the part of the ietf-netconf-acm configuration these tests
@@ -83,7 +85,7 @@ func TestInstallApplyImportsTheNACMPolicy(t *testing.T) {
 			datastore, "/ietf-netconf-acm:nacm")
 		requireAnonymousPolicy(t, datastore, tree)
 	}
-	embedded, err := os.ReadFile("nacm-anonymous.xml")
+	embedded, err := installspec.NACMPolicy()
 	if err != nil {
 		t.Fatalf("read the embedded policy: %v", err)
 	}

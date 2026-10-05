@@ -2,13 +2,13 @@ package main
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 
 	"goodkind.io/mwan/internal/installfile"
+	"goodkind.io/mwan/internal/installspec"
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/yangpub"
 )
@@ -18,20 +18,8 @@ import (
 // root instead of touching the host's.
 const sysrepoRepositoryDir = "/etc/sysrepo"
 
-// nacmPolicy is the read-only RESTCONF access policy: NACM denies every write
-// and grants the anonymous user read access, the contract rousette serves
-// anonymous clients under.
-//
-//go:embed nacm-anonymous.xml
-var nacmPolicy []byte
-
-const (
-	// nacmPolicyPath is where the policy lands on the host, the path the
-	// deploy has always written it to.
-	nacmPolicyPath = "/etc/sysrepo-nacm-anonymous.xml"
-	// nacmModule is the module the policy configures.
-	nacmModule = "ietf-netconf-acm"
-)
+// nacmModule is the module the policy configures.
+const nacmModule = "ietf-netconf-acm"
 
 // nacmDatastores are the datastores the policy is imported into, in the order
 // the deploy imported it: startup first, so a restarted sysrepo loads the
@@ -68,12 +56,16 @@ func installSchema(ctx context.Context, log *slog.Logger, root string) (schemaOu
 	if err != nil {
 		return outcome, installFailed("write the schema into", schemaDir, err)
 	}
-	policyPath := filepath.Join(root, nacmPolicyPath)
+	policy, err := installspec.NACMPolicy()
+	if err != nil {
+		return outcome, installFailed("read the embedded file", installspec.NACMPolicyPath, err)
+	}
+	policyPath := filepath.Join(root, installspec.NACMPolicyPath)
 	if root == "" {
-		if err := applyDatastore(ctx, log, models, schemaDir, &outcome); err != nil {
+		if err := applyDatastore(ctx, log, models, schemaDir, policy, &outcome); err != nil {
 			return outcome, err
 		}
-		return outcome, writePolicy(policyPath, &outcome)
+		return outcome, writePolicy(policyPath, policy, &outcome)
 	}
 	repository := filepath.Join(root, sysrepoRepositoryDir)
 	if err := os.MkdirAll(repository, 0o750); err != nil {
@@ -102,16 +94,16 @@ func installSchema(ctx context.Context, log *slog.Logger, root string) (schemaOu
 			"sysrepo in this process is bound to repository %s, not the private repository %s",
 			bound, repository)
 	}
-	if err := applyDatastore(ctx, log, models, schemaDir, &outcome); err != nil {
+	if err := applyDatastore(ctx, log, models, schemaDir, policy, &outcome); err != nil {
 		return outcome, err
 	}
-	return outcome, writePolicy(policyPath, &outcome)
+	return outcome, writePolicy(policyPath, policy, &outcome)
 }
 
 // writePolicy writes the embedded policy to path and records it in outcome
 // when the content changed.
-func writePolicy(path string, outcome *schemaOutcome) error {
-	changed, err := installfile.Write(path, nacmPolicy, systemdUnitMode)
+func writePolicy(path string, policy []byte, outcome *schemaOutcome) error {
+	changed, err := installfile.Write(path, policy, installspec.FileMode)
 	if err != nil {
 		return installFailed("write the NACM policy", path, err)
 	}
@@ -129,6 +121,7 @@ func applyDatastore(
 	log *slog.Logger,
 	models []yangpub.Model,
 	searchDir string,
+	policy []byte,
 	outcome *schemaOutcome,
 ) error {
 	datastore, err := yangpub.New(log)
@@ -142,14 +135,14 @@ func applyDatastore(
 		return installFailed("install into sysrepo", "the schema modules", err)
 	}
 	for _, ds := range nacmDatastores {
-		matches, err := datastore.ConfigMatches(ctx, ds, nacmModule, nacmPolicy)
+		matches, err := datastore.ConfigMatches(ctx, ds, nacmModule, policy)
 		if err != nil {
 			return installFailed("read the NACM policy in", string(ds), err)
 		}
 		if matches {
 			continue
 		}
-		if err := datastore.ImportConfig(ctx, ds, nacmModule, nacmPolicy); err != nil {
+		if err := datastore.ImportConfig(ctx, ds, nacmModule, policy); err != nil {
 			return installFailed("import the NACM policy into", string(ds), err)
 		}
 		outcome.nacmImported = append(outcome.nacmImported, ds)

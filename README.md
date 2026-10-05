@@ -18,7 +18,8 @@ It also explains which commands still require the Configs checkout.
 
 | Path | What it holds |
 |---|---|
-| `gateway/cmd/mwan` | The binary: every subcommand, and the units, drop-ins and policy it embeds |
+| `gateway/cmd/mwan` | The binary: every subcommand |
+| `gateway/internal/installspec` | The role table and the units, drop-ins and policy that `mwan install` writes |
 | `gateway/internal` | The daemon: interface management modules, BGP, health, the agent, the wanconfig publisher |
 | `gateway/internal/yangpub/schema` | The eight YANG modules the binary embeds |
 | `gateway/proto`, `gateway/gen` | The `mwan.v1` wire contract and its generated code |

@@ -16,5 +16,5 @@ libyang prefers the newest revision it finds in a search directory, and here
 there is only one.
 
 To move a module to a newer revision, replace the file from the same upstream
-path, update the commit above, and update `SchemaModules` in
-[schema.go](../schema.go) if the file name changed.
+path, update the commit above, and update `Modules` in
+[schema.go](schema.go) if the file name changed.

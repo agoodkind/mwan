@@ -12,7 +12,8 @@ import (
 
 	systemddbus "github.com/coreos/go-systemd/v22/dbus"
 
-	"goodkind.io/mwan/internal/yangpub"
+	"goodkind.io/mwan/internal/installspec"
+	"goodkind.io/mwan/internal/yangpub/schema"
 )
 
 // recordingEnabler stands in for the system bus, which a test host does not
@@ -39,7 +40,7 @@ func TestInstallUnitsWritesTheWanRoleUnits(t *testing.T) {
 	root := t.TempDir()
 	enabler := &recordingEnabler{}
 
-	outcome, err := installUnits(t.Context(), roleWAN, root, enabler.enable)
+	outcome, err := installUnits(t.Context(), installspec.RoleWAN, root, enabler.enable)
 	if err != nil {
 		t.Fatalf("installUnits: %v", err)
 	}
@@ -56,12 +57,12 @@ func TestInstallUnitsWritesTheWanRoleUnits(t *testing.T) {
 		t.Fatalf("changed = %v, want %d files", outcome.changed, wantChanged)
 	}
 	for _, file := range wantFiles {
-		path := filepath.Join(root, systemdUnitDir, file)
+		path := filepath.Join(root, installspec.SystemdUnitDir, file)
 		onDisk, readErr := os.ReadFile(path)
 		if readErr != nil {
 			t.Fatalf("read %s: %v", path, readErr)
 		}
-		embedded, embedErr := unitFS.ReadFile(file)
+		embedded, embedErr := installspec.Read(file)
 		if embedErr != nil {
 			t.Fatalf("read embedded %s: %v", file, embedErr)
 		}
@@ -72,8 +73,8 @@ func TestInstallUnitsWritesTheWanRoleUnits(t *testing.T) {
 		if statErr != nil {
 			t.Fatalf("stat %s: %v", path, statErr)
 		}
-		if info.Mode().Perm() != systemdUnitMode {
-			t.Fatalf("%s mode = %v, want %v", file, info.Mode().Perm(), systemdUnitMode)
+		if info.Mode().Perm() != installspec.FileMode {
+			t.Fatalf("%s mode = %v, want %v", file, info.Mode().Perm(), installspec.FileMode)
 		}
 	}
 
@@ -104,16 +105,16 @@ func TestInstallUnitsIsIdempotent(t *testing.T) {
 	root := t.TempDir()
 	enabler := &recordingEnabler{}
 
-	if _, err := installUnits(t.Context(), roleWAN, root, enabler.enable); err != nil {
+	if _, err := installUnits(t.Context(), installspec.RoleWAN, root, enabler.enable); err != nil {
 		t.Fatalf("first installUnits: %v", err)
 	}
-	unitPath := filepath.Join(root, systemdUnitDir, "mwan-agent.service")
+	unitPath := filepath.Join(root, installspec.SystemdUnitDir, "mwan-agent.service")
 	before, err := os.Stat(unitPath)
 	if err != nil {
 		t.Fatalf("stat after the first run: %v", err)
 	}
 
-	second, err := installUnits(t.Context(), roleWAN, root, enabler.enable)
+	second, err := installUnits(t.Context(), installspec.RoleWAN, root, enabler.enable)
 	if err != nil {
 		t.Fatalf("second installUnits: %v", err)
 	}
@@ -121,8 +122,9 @@ func TestInstallUnitsIsIdempotent(t *testing.T) {
 	if len(second.changed) != 0 {
 		t.Fatalf("second run changed %v, want nothing", second.changed)
 	}
-	if strings.Join(second.enabled, " ") != strings.Join(installRoles[roleWAN].enable, " ") {
-		t.Fatalf("second run enabled %v, want %v", second.enabled, installRoles[roleWAN].enable)
+	wanSpec, _ := installspec.For(installspec.RoleWAN)
+	if strings.Join(second.enabled, " ") != strings.Join(wanSpec.Enable, " ") {
+		t.Fatalf("second run enabled %v, want %v", second.enabled, wanSpec.Enable)
 	}
 	if len(enabler.reloads) != 2 || !enabler.reloads[0] || enabler.reloads[1] {
 		t.Fatalf("reload requests across two runs = %v, want [true false]", enabler.reloads)
@@ -143,15 +145,15 @@ func TestInstallUnitsRewritesAChangedUnit(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	enabler := &recordingEnabler{}
-	if _, err := installUnits(t.Context(), roleHost, root, enabler.enable); err != nil {
+	if _, err := installUnits(t.Context(), installspec.RoleHost, root, enabler.enable); err != nil {
 		t.Fatalf("first installUnits: %v", err)
 	}
-	unitPath := filepath.Join(root, systemdUnitDir, "mwan-ifmgr.service")
+	unitPath := filepath.Join(root, installspec.SystemdUnitDir, "mwan-ifmgr.service")
 	if err := os.WriteFile(unitPath, []byte("[Service]\nExecStart=/bin/false\n"), 0o644); err != nil {
 		t.Fatalf("overwrite the unit: %v", err)
 	}
 
-	outcome, err := installUnits(t.Context(), roleHost, root, enabler.enable)
+	outcome, err := installUnits(t.Context(), installspec.RoleHost, root, enabler.enable)
 	if err != nil {
 		t.Fatalf("second installUnits: %v", err)
 	}
@@ -163,7 +165,7 @@ func TestInstallUnitsRewritesAChangedUnit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read %s: %v", unitPath, err)
 	}
-	embedded, err := unitFS.ReadFile("mwan-ifmgr.service")
+	embedded, err := installspec.Read("mwan-ifmgr.service")
 	if err != nil {
 		t.Fatalf("read the embedded unit: %v", err)
 	}
@@ -184,7 +186,7 @@ func TestInstallFailoverWritesTheUnitAndItsDropIn(t *testing.T) {
 	root := t.TempDir()
 	enabler := &recordingEnabler{}
 
-	outcome, err := installUnits(t.Context(), roleFailover, root, enabler.enable)
+	outcome, err := installUnits(t.Context(), installspec.RoleFailover, root, enabler.enable)
 	if err != nil {
 		t.Fatalf("installUnits: %v", err)
 	}
@@ -198,18 +200,18 @@ func TestInstallFailoverWritesTheUnitAndItsDropIn(t *testing.T) {
 		t.Fatalf("changed = %v, want %d files", outcome.changed, len(wantDests))
 	}
 	for _, dest := range wantDests {
-		if _, statErr := os.Stat(filepath.Join(root, systemdUnitDir, dest)); statErr != nil {
+		if _, statErr := os.Stat(filepath.Join(root, installspec.SystemdUnitDir, dest)); statErr != nil {
 			t.Fatalf("stat %s: %v", dest, statErr)
 		}
 	}
 
 	// The unit body must be the same one the hypervisor gets. A second body
 	// would put the sandbox defaults in two places.
-	shared, err := os.ReadFile(filepath.Join(root, systemdUnitDir, "mwan-ifmgr.service"))
+	shared, err := os.ReadFile(filepath.Join(root, installspec.SystemdUnitDir, "mwan-ifmgr.service"))
 	if err != nil {
 		t.Fatalf("read the installed unit: %v", err)
 	}
-	embedded, err := unitFS.ReadFile("mwan-ifmgr.service")
+	embedded, err := installspec.Read("mwan-ifmgr.service")
 	if err != nil {
 		t.Fatalf("read the embedded unit: %v", err)
 	}
@@ -223,7 +225,7 @@ func TestInstallFailoverWritesTheUnitAndItsDropIn(t *testing.T) {
 	// BindReadOnlyPaths keeps the base unit's /root/.ssh mount off a container
 	// whose modules never read it.
 	dropIn, err := os.ReadFile(
-		filepath.Join(root, systemdUnitDir, "mwan-ifmgr.service.d", "lxc-failover.conf"))
+		filepath.Join(root, installspec.SystemdUnitDir, "mwan-ifmgr.service.d", "lxc-failover.conf"))
 	if err != nil {
 		t.Fatalf("read the drop-in: %v", err)
 	}
@@ -262,11 +264,11 @@ func TestHostRoleGetsNoFailoverRelaxation(t *testing.T) {
 	root := t.TempDir()
 	enabler := &recordingEnabler{}
 
-	if _, err := installUnits(t.Context(), roleHost, root, enabler.enable); err != nil {
+	if _, err := installUnits(t.Context(), installspec.RoleHost, root, enabler.enable); err != nil {
 		t.Fatalf("installUnits: %v", err)
 	}
 
-	dropInDir := filepath.Join(root, systemdUnitDir, "mwan-ifmgr.service.d")
+	dropInDir := filepath.Join(root, installspec.SystemdUnitDir, "mwan-ifmgr.service.d")
 	if _, err := os.Stat(dropInDir); !os.IsNotExist(err) {
 		t.Fatalf("the host role created %s (err %v), want it absent", dropInDir, err)
 	}
@@ -388,7 +390,7 @@ func TestInstallReenablesWhenNoFileChanged(t *testing.T) {
 	enabler := func(ctx context.Context, units []string, reload bool) error {
 		return reenableUnits(ctx, manager, units, reload)
 	}
-	if _, err := installUnits(t.Context(), roleHost, root, enabler); err != nil {
+	if _, err := installUnits(t.Context(), installspec.RoleHost, root, enabler); err != nil {
 		t.Fatalf("first installUnits: %v", err)
 	}
 	const unitName = "mwan-ifmgr.service"
@@ -402,7 +404,7 @@ func TestInstallReenablesWhenNoFileChanged(t *testing.T) {
 	}
 	manager.calls = nil
 
-	outcome, err := installUnits(t.Context(), roleHost, root, enabler)
+	outcome, err := installUnits(t.Context(), installspec.RoleHost, root, enabler)
 	if err != nil {
 		t.Fatalf("second installUnits: %v", err)
 	}
@@ -479,12 +481,12 @@ func TestInstallApplyUnderARootTouchesNoSystemd(t *testing.T) {
 	if code != exitInstallOK {
 		t.Fatalf("exit code = %d, want %d", code, exitInstallOK)
 	}
-	unitPath := filepath.Join(root, systemdUnitDir, "mwan-ifmgr.service")
+	unitPath := filepath.Join(root, installspec.SystemdUnitDir, "mwan-ifmgr.service")
 	onDisk, err := os.ReadFile(unitPath)
 	if err != nil {
 		t.Fatalf("read %s: %v", unitPath, err)
 	}
-	embedded, err := unitFS.ReadFile("mwan-ifmgr.service")
+	embedded, err := installspec.Read("mwan-ifmgr.service")
 	if err != nil {
 		t.Fatalf("read the embedded unit: %v", err)
 	}
@@ -516,7 +518,7 @@ func TestInstallApplyWritesTheWanconfigAndHostFiles(t *testing.T) {
 			t.Errorf("read %s: %v", hostPath, err)
 			continue
 		}
-		embedded, err := unitFS.ReadFile(embeddedName)
+		embedded, err := installspec.Read(embeddedName)
 		if err != nil {
 			t.Errorf("read embedded %s: %v", embeddedName, err)
 			continue
@@ -529,8 +531,8 @@ func TestInstallApplyWritesTheWanconfigAndHostFiles(t *testing.T) {
 			t.Errorf("stat %s: %v", hostPath, err)
 			continue
 		}
-		if info.Mode().Perm() != systemdUnitMode {
-			t.Errorf("%s mode = %v, want %v", hostPath, info.Mode().Perm(), systemdUnitMode)
+		if info.Mode().Perm() != installspec.FileMode {
+			t.Errorf("%s mode = %v, want %v", hostPath, info.Mode().Perm(), installspec.FileMode)
 		}
 	}
 }
@@ -609,10 +611,11 @@ func TestInstallPrintSchemaWritesEveryModule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read %s: %v", dir, err)
 	}
-	if len(entries) != len(yangpub.SchemaModules) {
-		t.Fatalf("wrote %d files, want %d", len(entries), len(yangpub.SchemaModules))
+	modules := schema.Modules()
+	if len(entries) != len(modules) {
+		t.Fatalf("wrote %d files, want %d", len(entries), len(modules))
 	}
-	for _, module := range yangpub.SchemaModules {
+	for _, module := range modules {
 		path := filepath.Join(dir, module.File)
 		written, err := os.ReadFile(path)
 		if err != nil {
@@ -641,7 +644,8 @@ func TestInstalledUnitsAreTheOnesTheDaemonNames(t *testing.T) {
 		focus[name] = true
 	}
 
-	for _, unit := range installRoles[roleWAN].enable {
+	wanSpec, _ := installspec.For(installspec.RoleWAN)
+	for _, unit := range wanSpec.Enable {
 		switch unit {
 		case "mwan-trace-boot.service":
 			// The boot trace is a oneshot that has already exited by the time
