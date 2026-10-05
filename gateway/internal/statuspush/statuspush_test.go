@@ -2,12 +2,15 @@ package statuspush_test
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
+	"maps"
 	"net"
 	"testing"
 	"time"
 
+	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/statuspush"
 )
 
@@ -153,6 +156,97 @@ func TestMalformedLineLeavesTheLastGoodStatus(t *testing.T) {
 	}
 	if after.ActiveTier != good.ActiveTier {
 		t.Fatalf("active tier = %d, want the last good %d", after.ActiveTier, good.ActiveTier)
+	}
+}
+
+func TestUnmarshalStatusRoundTripsAnEncodedStatus(t *testing.T) {
+	t.Parallel()
+
+	sent := statuspush.Status{
+		SentAt:     time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC),
+		ActiveTier: 1,
+		Providers:  map[string]string{"att": "unhealthy", "webpass": "healthy"},
+	}
+	line, err := json.Marshal(sent)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+
+	got, err := statuspush.UnmarshalStatus(append(line, '\n'))
+	if err != nil {
+		t.Fatalf("UnmarshalStatus: %v", err)
+	}
+
+	if !got.SentAt.Equal(sent.SentAt) || got.ActiveTier != sent.ActiveTier {
+		t.Fatalf("decoded = %+v, want %+v", got, sent)
+	}
+	if !maps.Equal(got.Providers, sent.Providers) {
+		t.Fatalf("providers = %v, want %v", got.Providers, sent.Providers)
+	}
+}
+
+func TestUnmarshalStatusRejectsMalformedInput(t *testing.T) {
+	t.Parallel()
+
+	for _, input := range []string{"", "{not json", `"a string"`} {
+		status, err := statuspush.UnmarshalStatus([]byte(input))
+		if err == nil {
+			t.Errorf("UnmarshalStatus accepted %q", input)
+		}
+		if status.Providers != nil || status.ActiveTier != 0 || !status.SentAt.IsZero() {
+			t.Errorf("UnmarshalStatus(%q) returned a populated status: %+v", input, status)
+		}
+	}
+}
+
+func TestNewStatusPicksTheLowestHealthyTier(t *testing.T) {
+	t.Parallel()
+
+	members := []netif.TierMember{
+		{Name: "webpass", Tier: 0},
+		{Name: "att", Tier: 1},
+		{Name: "monkeybrains", Tier: 2},
+	}
+	states := netif.HealthStates{
+		"webpass":      "unhealthy",
+		"att":          "unhealthy",
+		"monkeybrains": "healthy",
+		"unlisted":     "healthy",
+	}
+	sentAt := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+
+	status := statuspush.NewStatus(sentAt, members, states)
+
+	if status.ActiveTier != 2 {
+		t.Fatalf("active tier = %d, want 2", status.ActiveTier)
+	}
+	if !status.SentAt.Equal(sentAt) {
+		t.Fatalf("sent_at = %s, want %s", status.SentAt, sentAt)
+	}
+	want := map[string]string{
+		"webpass": "unhealthy", "att": "unhealthy", "monkeybrains": "healthy",
+	}
+	if !maps.Equal(status.Providers, want) {
+		t.Fatalf("providers = %v, want %v", status.Providers, want)
+	}
+}
+
+func TestNewStatusReadsAnUnrecognizedVerdictAsUnknown(t *testing.T) {
+	t.Parallel()
+
+	members := []netif.TierMember{{Name: "webpass", Tier: 0}, {Name: "att", Tier: 1}}
+	states := netif.HealthStates{"webpass": "garbled"}
+
+	status := statuspush.NewStatus(time.Time{}, members, states)
+
+	if got := status.Providers["webpass"]; got != "unknown" {
+		t.Fatalf("webpass verdict = %q, want unknown", got)
+	}
+	if got := status.Providers["att"]; got != "unknown" {
+		t.Fatalf("att verdict = %q, want unknown", got)
+	}
+	if status.ActiveTier != 0 {
+		t.Fatalf("active tier = %d, want 0 because unknown reads healthy", status.ActiveTier)
 	}
 }
 

@@ -250,10 +250,23 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 	}, nil
 }
 
-func applyDefaults(cfg *Config) {
+func (cfg Config) StateFilePath() string {
 	if cfg.StateFile == "" {
-		cfg.StateFile = defaultStateFile
+		return defaultStateFile
 	}
+	return cfg.StateFile
+}
+
+func (cfg Config) TierMembers() []netif.TierMember {
+	members := make([]netif.TierMember, 0, len(cfg.WANs))
+	for _, wan := range cfg.WANs {
+		members = append(members, netif.TierMember{Name: wan.Key(), Tier: wan.Tier})
+	}
+	return members
+}
+
+func applyDefaults(cfg *Config) {
+	cfg.StateFile = cfg.StateFilePath()
 	if len(cfg.TargetsV4) == 0 {
 		cfg.TargetsV4 = defaultTargetsV4()
 	}

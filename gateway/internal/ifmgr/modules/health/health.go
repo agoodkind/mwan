@@ -515,27 +515,15 @@ func (m *Module) pushStatus(ctx context.Context, statuses map[string]wanStatus) 
 	if m.pusher == nil {
 		return
 	}
-	providers := make(map[string]string, len(m.cfg.WANs))
 	states := make(netif.HealthStates, len(m.cfg.WANs))
-	members := make([]netif.TierMember, 0, len(m.cfg.WANs))
 	for _, wan := range m.cfg.WANs {
 		state := StateUnknown
 		if status, ok := statuses[wan.Key()]; ok && status.State.Valid() {
 			state = status.State
 		}
-		providers[wan.Key()] = string(state)
 		states[wan.Key()] = string(state)
-		members = append(members, netif.TierMember{Name: wan.Key(), Tier: wan.Tier})
 	}
-	// ActiveTier reports false when nothing is healthy. The tier then carries
-	// no meaning and the provider map is what says so, with every entry
-	// unhealthy, so the message shape stays fixed and the reader checks the map.
-	activeTier, _ := netif.ActiveTier(members, states)
-	m.pusher.Send(ctx, statuspush.Status{
-		SentAt:     m.now(),
-		ActiveTier: activeTier,
-		Providers:  providers,
-	})
+	m.pusher.Send(ctx, statuspush.NewStatus(m.now(), m.cfg.TierMembers(), states))
 }
 
 // verdictOf maps the module's hysteresis state onto the management

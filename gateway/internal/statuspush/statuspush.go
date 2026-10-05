@@ -31,6 +31,7 @@ import (
 	"github.com/mdlayher/vsock"
 
 	internalclock "goodkind.io/mwan/internal/clock"
+	"goodkind.io/mwan/internal/netif"
 )
 
 const (
@@ -62,6 +63,41 @@ type Status struct {
 	SentAt     time.Time         `json:"sent_at"`
 	ActiveTier uint8             `json:"active_tier"`
 	Providers  map[string]string `json:"providers"`
+}
+
+func NewStatus(
+	sentAt time.Time,
+	members []netif.TierMember,
+	states netif.HealthStates,
+) Status {
+	verdicts := make(netif.HealthStates, len(members))
+	for _, member := range members {
+		verdict := states.State(member.Name)
+		switch verdict {
+		case netif.HealthStateHealthy, netif.HealthStateUnhealthy, netif.HealthStateUnknown:
+		default:
+			verdict = netif.HealthStateUnknown
+		}
+		verdicts[member.Name] = verdict
+	}
+	// netif.ActiveTier reports false when no member is healthy. The tier is then
+	// meaningless, and readers check that every provider entry reads unhealthy.
+	activeTier, _ := netif.ActiveTier(members, verdicts)
+	return Status{
+		SentAt:     sentAt,
+		ActiveTier: activeTier,
+		Providers:  verdicts,
+	}
+}
+
+func UnmarshalStatus(line []byte) (Status, error) {
+	var status Status
+	if err := json.Unmarshal(line, &status); err != nil {
+		slog.Warn("statuspush: unmarshal status failed", "err", err)
+		return Status{SentAt: time.Time{}, ActiveTier: 0, Providers: nil},
+			fmt.Errorf("decode status: %w", err)
+	}
+	return status, nil
 }
 
 // ListenFunc opens the socket the Listener accepts on.
@@ -184,8 +220,8 @@ func (l *Listener) readOne(ctx context.Context, conn net.Conn) {
 	if len(line) == 0 {
 		return
 	}
-	var status Status
-	if err := json.Unmarshal(line, &status); err != nil {
+	status, err := UnmarshalStatus(line)
+	if err != nil {
 		// A rejected line leaves the stored status alone. The watchdog would
 		// rather diagnose against a slightly older verdict than against none.
 		l.log.WarnContext(ctx, "statuspush: decode status failed", "err", err)
