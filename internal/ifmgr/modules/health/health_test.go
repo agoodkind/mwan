@@ -34,8 +34,15 @@ func TestAdvanceHealthAppliesConsecutiveThresholds(t *testing.T) {
 		want              []State
 	}{
 		{
-			name:              "unknown becomes healthy after consecutive successes",
+			name:              "unknown becomes healthy on the first success",
 			cycles:            []bool{true, true},
+			failureThreshold:  2,
+			recoveryThreshold: 2,
+			want:              []State{StateHealthy, StateHealthy},
+		},
+		{
+			name:              "unknown stays unknown after one failure and becomes healthy on the next success",
+			cycles:            []bool{false, true},
 			failureThreshold:  2,
 			recoveryThreshold: 2,
 			want:              []State{StateUnknown, StateHealthy},
@@ -49,16 +56,19 @@ func TestAdvanceHealthAppliesConsecutiveThresholds(t *testing.T) {
 		},
 		{
 			name:              "opposite result resets the active counter",
-			cycles:            []bool{true, false, true, true, false, false},
+			cycles:            []bool{true, false, true, false, false, true, false, true, true},
 			failureThreshold:  2,
 			recoveryThreshold: 2,
 			want: []State{
-				StateUnknown,
-				StateUnknown,
-				StateUnknown,
+				StateHealthy,
+				StateHealthy,
 				StateHealthy,
 				StateHealthy,
 				StateUnhealthy,
+				StateUnhealthy,
+				StateUnhealthy,
+				StateUnhealthy,
+				StateHealthy,
 			},
 		},
 		{
@@ -1120,6 +1130,61 @@ func TestReconcileRunsOnlyTheStartupProbe(t *testing.T) {
 	}
 	if callCount != 4 {
 		t.Fatalf("probe call count = %d, want 4 from one dual-family cycle", callCount)
+	}
+}
+
+func TestReconcileProbesUntilEveryProviderHasAVerdict(t *testing.T) {
+	t.Parallel()
+
+	callCount := 0
+	linkUp := false
+	probe := func(
+		_ context.Context,
+		_ string,
+		_ netip.Addr,
+		_ time.Duration,
+	) (time.Duration, error) {
+		callCount++
+		if !linkUp {
+			return 0, errors.New("network is unreachable")
+		}
+		return time.Millisecond, nil
+	}
+	module := testProbeModule(probe, probe)
+	module.cfg.StateFile = filepath.Join(t.TempDir(), "mwan-health.state")
+	module.cfg.FailureThreshold = 3
+	module.cfg.RecoveryThreshold = 2
+	module.statuses = map[string]wanStatus{
+		"att": {State: StateUnknown},
+	}
+	module.reconcilePending = true
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	if err := module.Reconcile(context.Background(), log); err != nil {
+		t.Fatalf("startup Reconcile: %v", err)
+	}
+	afterStartup := callCount
+	if got := module.statuses["att"].State; got != StateUnknown {
+		t.Fatalf("state after the failed startup probe = %s, want %s", got, StateUnknown)
+	}
+
+	linkUp = true
+	if err := module.Reconcile(context.Background(), log); err != nil {
+		t.Fatalf("Reconcile after link up: %v", err)
+	}
+	afterLinkUp := callCount
+	if afterLinkUp == afterStartup {
+		t.Fatal("Reconcile did not probe a provider that does not have a health verdict")
+	}
+	if got := module.statuses["att"].State; got != StateHealthy {
+		t.Fatalf("state after the first passing probe = %s, want %s", got, StateHealthy)
+	}
+
+	if err := module.Reconcile(context.Background(), log); err != nil {
+		t.Fatalf("Reconcile after the verdict: %v", err)
+	}
+	if callCount != afterLinkUp {
+		t.Fatalf("Reconcile probed %d more times after every provider had a verdict", callCount-afterLinkUp)
 	}
 }
 
