@@ -74,9 +74,9 @@ type Spec struct {
 	// Enable are the unit names to enable, which for an instanced unit is a
 	// concrete instance rather than the template.
 	Enable []string
-	// Schema is set for the role that runs the wanconfig datastore: after the
-	// units, the run writes the embedded modules and the NACM policy and
-	// installs the modules into sysrepo.
+	// Schema is set for the role that runs the wanconfig datastore. After it
+	// writes the units, `mwan install` writes the embedded modules and the NACM
+	// policy and installs the modules into sysrepo.
 	Schema bool
 	// NotOwned are units that the role does not enable and that read files the
 	// role writes. `mwan install` ignores them; Units lists them.
@@ -85,7 +85,6 @@ type Spec struct {
 
 // NotOwnedUnit is a system unit that reads files a role writes.
 type NotOwnedUnit struct {
-	// Name is the unit name.
 	Name string
 	// Files are the host paths of the role's files that the unit reads.
 	Files []string
@@ -182,7 +181,7 @@ func Roles() []Role {
 	return roles
 }
 
-// Read returns the bytes of one embedded file.
+// Read returns the embedded file that File.Embedded names.
 func Read(embedded string) ([]byte, error) {
 	content, err := unitFS.ReadFile(embedded)
 	if err != nil {

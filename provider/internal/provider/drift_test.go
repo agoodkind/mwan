@@ -186,7 +186,6 @@ func TestProviderRoleMatchesMwanInstall(t *testing.T) {
 	}
 }
 
-// enableLine returns the "would enable" line of the install output.
 func enableLine(output string) string {
 	for line := range strings.SplitSeq(output, "\n") {
 		if strings.HasPrefix(line, enableMarker) {

@@ -107,8 +107,6 @@ var components = []component{
 	},
 }
 
-// runtimePackages are the package names of the bundle, read from the list the
-// provider also reads.
 var runtimePackages = stackspec.Names()
 
 // debianArchs maps the Go architecture the tool was built for to Debian's

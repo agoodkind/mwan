@@ -1,9 +1,9 @@
 # `make help` is the canonical source of truth for every target this repo
-# supports. Run it before adding anything new. Lint, build, test, deadcode,
-# release, baseline, and service-install all live in the central go-makefile
-# pipeline fetched at parse time. Do NOT add project-local lint, deadcode,
-# audit, fmt, vet, or staticcheck targets here. They duplicate the central
-# pipeline and let agents bypass strict rules.
+# supports. Developers run it before adding a target. Lint, build, test,
+# deadcode, release, baseline, and service-install live in the central
+# go-makefile pipeline fetched at parse time. Project-local lint, deadcode,
+# audit, fmt, vet, and staticcheck targets are prohibited here, because they
+# duplicate the central pipeline and let agents bypass strict rules.
 
 # Identity. go-makefile stamps the release tag into gklog's version package,
 # which the provider compares with the release version a configuration asks for.

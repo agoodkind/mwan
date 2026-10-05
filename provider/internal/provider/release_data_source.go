@@ -40,43 +40,43 @@ func (d *releaseDataSource) Metadata(_ context.Context, req datasource.MetadataR
 
 func (d *releaseDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Archives of one mwan release. The version must equal the release tag " +
-			"of this provider build. The data source downloads checksums.txt of the release.",
+		Description: "The data source returns the archives of one mwan release. The version must equal the " +
+			"release tag of this provider build. The data source downloads checksums.txt of the release.",
 		Attributes: map[string]schema.Attribute{
 			"version": schema.StringAttribute{
 				Required:    true,
-				Description: "Release tag, for example 202610050808-b7-b5778cd.",
+				Description: "The release tag of the mwan release, for example 202610050808-b7-b5778cd.",
 			},
 			"archive_member": schema.StringAttribute{
 				Computed:    true,
-				Description: "Name of the mwan binary inside the mwan archive.",
+				Description: "The name of the mwan binary inside the mwan archive.",
 			},
 			"architectures": schema.MapNestedAttribute{
 				Computed:    true,
-				Description: "Archives by architecture, amd64 and arm64.",
+				Description: "The archives of the release, keyed by the architectures amd64 and arm64.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"mwan_url": schema.StringAttribute{
 							Computed:    true,
-							Description: "URL of mwan_linux_<arch>.tar.gz.",
+							Description: "The URL of mwan_linux_<arch>.tar.gz.",
 						},
 						"mwan_sha256": schema.StringAttribute{
 							Computed:    true,
-							Description: "SHA-256 of the mwan archive as lowercase hex.",
+							Description: "The SHA-256 of the mwan archive, as lowercase hex.",
 						},
 						"stack_url": schema.StringAttribute{
 							Computed:    true,
-							Description: "URL of wanconfig-stack_linux_<arch>.tar.gz.",
+							Description: "The URL of wanconfig-stack_linux_<arch>.tar.gz.",
 						},
 						"stack_sha256": schema.StringAttribute{
 							Computed:    true,
-							Description: "SHA-256 of the wanconfig stack archive as lowercase hex.",
+							Description: "The SHA-256 of the wanconfig stack archive, as lowercase hex.",
 						},
 						"stack_debs": schema.MapAttribute{
 							Computed:    true,
 							ElementType: types.StringType,
-							Description: "Runtime packages of the wanconfig stack archive: package name to the " +
-								"archive member path, debs/<file>.deb.",
+							Description: "This map gives the archive member path, debs/<file>.deb, " +
+								"of each runtime package of the wanconfig stack archive.",
 						},
 					},
 				},

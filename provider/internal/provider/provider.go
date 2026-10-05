@@ -29,7 +29,6 @@ type providerModel struct {
 	ReleaseBaseURL types.String `tfsdk:"release_base_url"`
 }
 
-// providerData is what the provider hands to its data sources.
 type providerData struct {
 	buildCommit    string
 	releaseBaseURL string

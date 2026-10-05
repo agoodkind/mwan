@@ -77,7 +77,7 @@ func Modules() []Module {
 	}
 }
 
-// Read returns the bytes of one embedded module file.
+// Read returns the module file that Module.File names.
 func Read(file string) ([]byte, error) {
 	content, err := files.ReadFile(file)
 	if err != nil {

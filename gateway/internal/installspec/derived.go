@@ -40,9 +40,9 @@ type SysrepoImport struct {
 	Content []byte
 }
 
-// SysrepoImports lists the imports the role makes, in import order. Startup
-// comes first, then running, the order the deploy imported in. Only the role
-// with a datastore has any.
+// SysrepoImports lists the role's imports in import order: the startup
+// datastore first, then the running datastore. Only a role with a schema has
+// imports.
 func (s Spec) SysrepoImports() ([]SysrepoImport, error) {
 	if !s.Schema {
 		return nil, nil
@@ -64,22 +64,21 @@ func (s Spec) SysrepoImports() ([]SysrepoImport, error) {
 
 // Unit is one unit the role enables.
 type Unit struct {
-	// Name is the unit name.
 	Name string
 	// Enabled is true for every listed unit, because `mwan install` enables each.
 	Enabled bool
 	// Active is the state the deploy expects after the install. It is false for
 	// a oneshot unit without RemainAfterExit, which exits after it runs.
 	Active bool
-	// Files are the host paths of the role's files that the unit reads: its own
+	// Files are the host paths of the role's files that configure the unit: its
 	// unit file, or the template of an instance, and the drop-ins of the unit
 	// and of the template.
 	Files []string
 }
 
 // Units lists the units of the role: the enabled units in enable order, then
-// the not-owned units. Both kinds are enabled and active. Only Enable feeds
-// `mwan install`.
+// the not-owned units. Both kinds are enabled. A oneshot unit without
+// RemainAfterExit is inactive after it exits. Only Enable feeds `mwan install`.
 func (s Spec) Units() ([]Unit, error) {
 	units := make([]Unit, 0, len(s.Enable)+len(s.NotOwned))
 	for _, name := range s.Enable {

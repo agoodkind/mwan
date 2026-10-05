@@ -217,7 +217,7 @@ func TestRoleWANListsFilesUnitsAndModules(t *testing.T) {
 	if len(role.SysrepoData) != 2 || role.SysrepoData[0].Datastore != "startup" ||
 		role.SysrepoData[1].Datastore != "running" ||
 		role.SysrepoData[0].Module != "ietf-netconf-acm" {
-		t.Errorf("sysrepo data = %+v, want the NACM policy into startup then running", role.SysrepoData)
+		t.Errorf("sysrepo data = %+v, want the NACM policy imports in startup and running datastores", role.SysrepoData)
 	}
 	var natFeatures []string
 	for _, module := range role.Modules {

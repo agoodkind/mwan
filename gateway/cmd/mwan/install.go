@@ -342,6 +342,6 @@ func printInstallUsage(out io.Writer) {
 	fmt.Fprintln(out, "updating a module installed at another revision. Under --root it uses")
 	fmt.Fprintln(out, "a private repository below the root. It also imports the read-only")
 	fmt.Fprintln(out, "NACM policy into each of startup and running that does not already")
-	fmt.Fprintln(out, "hold it, and writes it to "+installspec.NACMPolicyPath+". --print-schema")
+	fmt.Fprintln(out, "contain it, and writes it to "+installspec.NACMPolicyPath+". --print-schema")
 	fmt.Fprintln(out, "writes the modules to a directory for validation and touches nothing else.")
 }
