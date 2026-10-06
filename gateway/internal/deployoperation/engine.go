@@ -229,6 +229,7 @@ func (engine Engine) Commit(ctx context.Context, operationID, generation string)
 // Wait for passing observations before acquiring the rollback lock.
 // The deploy watch may need that lock to recover the operation.
 func (engine Engine) awaitWatchObservations(ctx context.Context, operationID, generation string) error {
+	start := engine.Store.Clock.Now()
 	for {
 		record, err := engine.exact(ctx, operationID, generation)
 		if err != nil {
@@ -242,7 +243,7 @@ func (engine Engine) awaitWatchObservations(ctx context.Context, operationID, ge
 			engine.Log.WarnContext(ctx, "deployment commit watch verification failed", "err", err)
 			return fmt.Errorf("deploy commit requires the active deploy watch: %w", err)
 		}
-		if record.MutationReady(now) {
+		if record.MutationReady(now) && observedAfter(record.Results, start) {
 			return nil
 		}
 		if err := wait(ctx, engine.Store.PollInterval); err != nil {
@@ -250,6 +251,18 @@ func (engine Engine) awaitWatchObservations(ctx context.Context, operationID, ge
 			return fmt.Errorf("wait for passing deploy watch observations: %w", err)
 		}
 	}
+}
+
+func observedAfter(results []observation.Result, start time.Time) bool {
+	if len(results) == 0 {
+		return false
+	}
+	for _, result := range results {
+		if !result.ObservedAt.After(start) {
+			return false
+		}
+	}
+	return true
 }
 
 // Recover owns the hypervisor coordinator throughout mutation drain and restoration.
