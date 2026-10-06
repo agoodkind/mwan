@@ -216,6 +216,9 @@ func (b *builder) build(ctx context.Context) error {
 			return err
 		}
 	}
+	if err := b.downloadDistribution(ctx); err != nil {
+		return err
+	}
 	return b.bundle(ctx)
 }
 

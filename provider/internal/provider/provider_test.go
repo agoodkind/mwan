@@ -97,8 +97,11 @@ func TestReleaseReadsArchiveAddressesAndHashes(t *testing.T) {
 		if debs["libyang3"] != wantMember {
 			t.Errorf("architecture %s stack_debs[libyang3] = %q, want %q", name, debs["libyang3"], wantMember)
 		}
-		if len(debs) != 7 {
-			t.Errorf("architecture %s lists %d stack packages, want 7", name, len(debs))
+		if len(debs) != 10 {
+			t.Errorf("architecture %s lists %d stack packages, want 10", name, len(debs))
+		}
+		if debs["libspdlog1.15"] != "debs/libspdlog1.15_1.15.2+ds-2_"+name+".deb" {
+			t.Errorf("architecture %s stack_debs[libspdlog1.15] = %q", name, debs["libspdlog1.15"])
 		}
 	}
 }
