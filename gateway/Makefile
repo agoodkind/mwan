@@ -44,7 +44,7 @@ GO_MK_MODULES := go-build.mk go-release.mk
 # its own single platform in the environment, and this must yield to it.
 # Forcing a list here made every job archive every platform, and release
 # 202608161945-4-9244335 then failed verification on an unattested archive.
-RELEASE_PLATFORMS ?= linux/amd64
+RELEASE_PLATFORMS ?= linux/amd64 linux/arm64
 RELEASE_BINS      := mwan:$(CMD):cgo=1,platforms=linux/amd64,platforms=linux/arm64
 
 # gobgp's only cgo symbol is a memory-reporting helper used solely by its
@@ -579,9 +579,10 @@ test-protocol-systemd: systemd-runner-image
 # pin the tool's dependencies. An unchanged stack is copied, not rebuilt.
 #
 # Each release compile leg sets RELEASE_PLATFORMS to its one platform, and the
-# stack architecture is that platform's architecture. A local run uses the
-# default RELEASE_PLATFORMS of linux/amd64, the production gateway's
-# architecture, and an arm64 host runs that container under emulation. Set
+# stack architecture is that platform's architecture.
+# RELEASE_PLATFORMS defaults to linux/amd64 linux/arm64. A local run selects
+# amd64 from the first entry. An arm64 host runs that container under
+# emulation. Set
 # WANCONFIG_STACK_ARCH=arm64 to build the arm64 bundle natively on an arm64
 # host.
 WANCONFIG_RELEASE_ARCH  := $(lastword $(subst /, ,$(firstword $(RELEASE_PLATFORMS))))

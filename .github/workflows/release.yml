@@ -4,11 +4,12 @@ name: Release
 # a published archive by version, so this workflow is the only place a shipped
 # binary is built.
 #
-# The shipped binary links libyang and libsysrepo through cgo. Every release
-# platform builds on a native Linux runner with a C compiler. The cgo input
-# sets CGO_ENABLED=1 for the compile job and passes the target architecture to
-# the Makefile. It also caches compiler output, the built C libraries, and the
-# stack packages between runs.
+# The gateway binary links libyang and libsysrepo through cgo. Each gateway
+# release platform builds on a native Linux runner with a C compiler.
+# The gateway entry in the modules JSON input sets cgo to true.
+# The compile job sets CGO_ENABLED=1 and passes the target architecture to
+# the Makefile. The workflow caches compiler output, the built C libraries,
+# and the stack packages between runs.
 
 on:
   push:
@@ -17,18 +18,15 @@ on:
 
 jobs:
   release:
-    uses: agoodkind/go-makefile/.github/workflows/_release.yml@main
+    uses: agoodkind/go-makefile/.github/workflows/_release_modules.yml@main
     permissions:
       contents: write
       id-token: write
       attestations: write
     secrets: inherit
     with:
-      working_directory: gateway
-      apt_packages: libpcre2-dev
-      cgo: true
-      platforms: linux/amd64 linux/arm64
-      # One binary name, verified after publish for every platform, so a
+      modules: '[{"working_directory":"gateway","cgo":true,"apt_packages":"libpcre2-dev"},{"working_directory":"provider"}]'
+      # The publish job verifies both asset prefixes for every platform. A
       # release that dropped an archive fails the run instead of shipping a
       # partial set.
-      binary: mwan
+      binary: mwan terraform-provider-mwan
