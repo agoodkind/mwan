@@ -35,6 +35,8 @@ The [downstream router design](superpowers/multirouter/spec.md)
 defines the BGP relationship with OPNsense.
 The [public address specification](downstream.md) defines untranslated
 IPv6 use by downstream BGP peers alongside synthetic-address clients.
+The [network planning specification](superpowers/networkplan/spec.md) defines
+how the MWAN OpenTofu provider plans network.json route changes by key.
 
 ## Implementation plans
 
