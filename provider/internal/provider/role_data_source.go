@@ -215,11 +215,15 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 			Files:   unit.Files,
 		})
 	}
-	imports, err := spec.SysrepoImports()
-	if err != nil {
-		resp.Diagnostics.AddError("Cannot read the sysrepo data", err.Error())
-		return
+	var policy []byte
+	if spec.Schema {
+		policy, err = installspec.NACMPolicy()
+		if err != nil {
+			resp.Diagnostics.AddError("Cannot read the sysrepo data", err.Error())
+			return
+		}
 	}
+	imports := spec.SysrepoImports(policy)
 	model.SysrepoData = make([]sysrepoDataModel, 0, len(imports))
 	for _, entry := range imports {
 		model.SysrepoData = append(model.SysrepoData, sysrepoDataModel{

@@ -38,10 +38,7 @@ func installSchema(ctx context.Context, log *slog.Logger, root string) (schemaOu
 		return outcome, installFailed("read the embedded file", installspec.NACMPolicyPath, err)
 	}
 	wanSpec, _ := installspec.For(installspec.RoleWAN)
-	imports, err := wanSpec.SysrepoImports()
-	if err != nil {
-		return outcome, installFailed("read the embedded file", installspec.NACMPolicyPath, err)
-	}
+	imports := wanSpec.SysrepoImports(policy)
 	policyPath := filepath.Join(root, installspec.NACMPolicyPath)
 	if root == "" {
 		if err := applyDatastore(ctx, log, models, schemaDir, imports, &outcome); err != nil {
@@ -106,18 +103,17 @@ func applyDatastore(
 		return installFailed("install into sysrepo", "the schema modules", err)
 	}
 	for _, entry := range imports {
-		ds := yangpub.Datastore(entry.Datastore)
-		matches, err := datastore.ConfigMatches(ctx, ds, entry.Module, entry.Content)
+		matches, err := datastore.ConfigMatches(ctx, entry.Datastore, entry.Module, entry.Content)
 		if err != nil {
-			return installFailed("read the NACM policy in", string(ds), err)
+			return installFailed("read the NACM policy in", string(entry.Datastore), err)
 		}
 		if matches {
 			continue
 		}
-		if err := datastore.ImportConfig(ctx, ds, entry.Module, entry.Content); err != nil {
-			return installFailed("import the NACM policy into", string(ds), err)
+		if err := datastore.ImportConfig(ctx, entry.Datastore, entry.Module, entry.Content); err != nil {
+			return installFailed("import the NACM policy into", string(entry.Datastore), err)
 		}
-		outcome.nacmImported = append(outcome.nacmImported, ds)
+		outcome.nacmImported = append(outcome.nacmImported, entry.Datastore)
 	}
 	return nil
 }

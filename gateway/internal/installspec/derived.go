@@ -41,13 +41,9 @@ type SysrepoImport struct {
 
 // SysrepoImports returns NACM imports when Schema is enabled.
 // The startup import precedes the running import.
-func (s Spec) SysrepoImports() ([]SysrepoImport, error) {
+func (s Spec) SysrepoImports(policy []byte) []SysrepoImport {
 	if !s.Schema {
-		return nil, nil
-	}
-	policy, err := NACMPolicy()
-	if err != nil {
-		return nil, err
+		return nil
 	}
 	imports := make([]SysrepoImport, 0, 2)
 	for _, datastore := range []Datastore{DatastoreStartup, DatastoreRunning} {
@@ -57,7 +53,7 @@ func (s Spec) SysrepoImports() ([]SysrepoImport, error) {
 			Content:   policy,
 		})
 	}
-	return imports, nil
+	return imports
 }
 
 // Unit specifies a service's desired state and configuration paths.
