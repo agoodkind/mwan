@@ -149,6 +149,11 @@ type RealOps struct {
 	tcpAddr string
 	tracker *ChannelTracker
 
+	// Route operations must select a gateway by its configured ID.
+	primaryVMID     string
+	failoverVMID    string
+	failoverTCPAddr string
+
 	// testTCPDialer, if set, replaces net.Dial in tcpExec (unit tests only).
 	testTCPDialer func(ctx context.Context, addr string) (net.Conn, error)
 }
@@ -172,6 +177,10 @@ func NewRealOps(
 		guest:     newGuestDriver(cfg.GuestType),
 		tcpAddr:   cfg.Watchdog.MwanAgentTCPAddr,
 		tracker:   NewChannelTracker(),
+
+		primaryVMID:     cfg.MwanVMID,
+		failoverVMID:    cfg.Failover.LXCID,
+		failoverTCPAddr: cfg.Failover.AgentTCPAddr,
 
 		// Production never overrides a dial or an exec; only tests do.
 		testVsockOverride: nil,
@@ -558,11 +567,11 @@ func (r *RealOps) GetConfigState(
 // BGP route control: vsock -> TCP fallback (same pattern as GetConfigState)
 // ---------------------------------------------------------------------------
 
-func (r *RealOps) vsockGetBGPStatus(
+// vsockAgent supports only the primary gateway because the failover container
+// has no vsock endpoint.
+func (r *RealOps) vsockAgent(
 	ctx context.Context,
-) (*mwanv1.GetBGPStatusResponse, error) {
-	cctx, cancel := context.WithTimeout(ctx, timeoutVsockRPC)
-	defer cancel()
+) (mwanv1.MWANAgentClient, func(), error) {
 	dialer := func(ctx context.Context, addr string) (net.Conn, error) {
 		return vsock.Dial(r.vsockCID, r.vsockPort, nil)
 	}
@@ -576,28 +585,20 @@ func (r *RealOps) vsockGetBGPStatus(
 	)
 	if err != nil {
 		r.log.WarnContext(ctx, "vsock grpc client failed", "err", err)
-		return nil, fmt.Errorf("vsock grpc client: %w", err)
+		return nil, nil, fmt.Errorf("vsock grpc client: %w", err)
 	}
-	defer func() { _ = conn.Close() }()
-	cli := mwanv1.NewMWANAgentClient(conn)
-	res, err := cli.GetBGPStatus(cctx, &mwanv1.GetBGPStatusRequest{})
-	if err != nil {
-		r.log.WarnContext(ctx, "vsock get bgp status failed", "err", err)
-		return nil, fmt.Errorf("vsock get bgp status: %w", err)
-	}
-	return res, nil
+	return mwanv1.NewMWANAgentClient(conn), func() { _ = conn.Close() }, nil
 }
 
-func (r *RealOps) tcpGetBGPStatus(
-	ctx context.Context,
-) (*mwanv1.GetBGPStatusResponse, error) {
-	if r.tcpAddr == "" {
-		return nil, fmt.Errorf("tcpGetBGPStatus: no tcp addr configured")
+// tcpAgent requires an explicit address for the selected gateway.
+func (r *RealOps) tcpAgent(
+	ctx context.Context, addr string,
+) (mwanv1.MWANAgentClient, func(), error) {
+	if addr == "" {
+		return nil, nil, fmt.Errorf("tcp agent: no tcp addr configured")
 	}
-	cctx, cancel := context.WithTimeout(ctx, timeoutTCPRPC)
-	defer cancel()
 	dialer := func(ctx context.Context, _ string) (net.Conn, error) {
-		return (&net.Dialer{}).DialContext(ctx, "tcp", r.tcpAddr)
+		return (&net.Dialer{}).DialContext(ctx, "tcp", addr)
 	}
 	if r.testTCPDialer != nil {
 		dialer = r.testTCPDialer
@@ -609,10 +610,39 @@ func (r *RealOps) tcpGetBGPStatus(
 	)
 	if err != nil {
 		r.log.ErrorContext(ctx, "tcp grpc client failed", "err", err)
-		return nil, fmt.Errorf("tcp grpc client: %w", err)
+		return nil, nil, fmt.Errorf("tcp grpc client: %w", err)
 	}
-	defer func() { _ = conn.Close() }()
-	cli := mwanv1.NewMWANAgentClient(conn)
+	return mwanv1.NewMWANAgentClient(conn), func() { _ = conn.Close() }, nil
+}
+
+func (r *RealOps) vsockGetBGPStatus(
+	ctx context.Context,
+) (*mwanv1.GetBGPStatusResponse, error) {
+	cctx, cancel := context.WithTimeout(ctx, timeoutVsockRPC)
+	defer cancel()
+	cli, closeConn, err := r.vsockAgent(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer closeConn()
+	res, err := cli.GetBGPStatus(cctx, &mwanv1.GetBGPStatusRequest{})
+	if err != nil {
+		r.log.WarnContext(ctx, "vsock get bgp status failed", "err", err)
+		return nil, fmt.Errorf("vsock get bgp status: %w", err)
+	}
+	return res, nil
+}
+
+func (r *RealOps) tcpGetBGPStatus(
+	ctx context.Context, addr string,
+) (*mwanv1.GetBGPStatusResponse, error) {
+	cctx, cancel := context.WithTimeout(ctx, timeoutTCPRPC)
+	defer cancel()
+	cli, closeConn, err := r.tcpAgent(ctx, addr)
+	if err != nil {
+		return nil, err
+	}
+	defer closeConn()
 	res, err := cli.GetBGPStatus(cctx, &mwanv1.GetBGPStatusRequest{})
 	if err != nil {
 		r.log.ErrorContext(ctx, "tcp get bgp status failed", "err", err)
@@ -621,15 +651,54 @@ func (r *RealOps) tcpGetBGPStatus(
 	return res, nil
 }
 
-// GetBGPStatus reports the guest's BGP sessions, trying vsock first and then
-// the management TCP address. Unlike GetConfigState it does not name the
-// channel that answered, because no caller reports it.
-//
-// vmid is accepted for symmetry with the rest of SysOps and is not used.
+// routeTarget rejects IDs outside the configured gateway pair to prevent
+// calls to an unintended gateway.
+func (r *RealOps) routeTarget(vmid string) (bool, error) {
+	if vmid != "" && vmid == r.failoverVMID {
+		return true, nil
+	}
+	if vmid != "" && vmid == r.primaryVMID {
+		return false, nil
+	}
+	return false, fmt.Errorf(
+		"vmid %q is neither the primary gateway %q nor the failover container %q",
+		vmid, r.primaryVMID, r.failoverVMID,
+	)
+}
+
+// routeResponse groups responses for operations that share gateway selection
+// and channel handling.
+type routeResponse interface {
+	*mwanv1.GetBGPStatusResponse |
+		*mwanv1.AnnounceRoutesResponse |
+		*mwanv1.WithdrawRoutesResponse
+}
+
+// callFailoverAgent excludes container calls from the primary gateway channel
+// tracker because container responses do not establish primary channel status.
+func callFailoverAgent[T routeResponse](
+	ctx context.Context,
+	r *RealOps,
+	operation, vmid string,
+	call func(ctx context.Context, addr string) (T, error),
+) (T, error) {
+	r.logAttemptStart(ctx, operation, ChanTCP, 1, vmid)
+	res, err := call(ctx, r.failoverTCPAddr)
+	r.logAttemptResult(ctx, operation, ChanTCP, 1, vmid, err)
+	return res, err
+}
+
+// GetBGPStatus omits the answering channel because no caller reports it.
 func (r *RealOps) GetBGPStatus(
 	ctx context.Context, vmid string,
 ) (*mwanv1.GetBGPStatusResponse, error) {
-	_ = vmid
+	isFailover, targetErr := r.routeTarget(vmid)
+	if targetErr != nil {
+		return nil, targetErr
+	}
+	if isFailover {
+		return callFailoverAgent(ctx, r, "get_bgp_status", vmid, r.tcpGetBGPStatus)
+	}
 	r.logAttemptStart(ctx, "get_bgp_status", ChanVsock, 1, vmid)
 	res, err := r.vsockGetBGPStatus(ctx)
 	if err == nil {
@@ -640,7 +709,7 @@ func (r *RealOps) GetBGPStatus(
 	r.tracker.recordFailure(ChanVsock, err)
 	r.logAttemptResult(ctx, "get_bgp_status", ChanVsock, 1, vmid, err)
 	r.logAttemptStart(ctx, "get_bgp_status", ChanTCP, 2, vmid)
-	res, err = r.tcpGetBGPStatus(ctx)
+	res, err = r.tcpGetBGPStatus(ctx, r.tcpAddr)
 	if err == nil {
 		r.tracker.recordSuccess(ChanTCP)
 		r.logAttemptResult(ctx, "get_bgp_status", ChanTCP, 2, vmid, nil)
@@ -656,23 +725,11 @@ func (r *RealOps) vsockAnnounceRoutes(
 ) (*mwanv1.AnnounceRoutesResponse, error) {
 	cctx, cancel := context.WithTimeout(ctx, timeoutVsockRPC)
 	defer cancel()
-	dialer := func(ctx context.Context, addr string) (net.Conn, error) {
-		return vsock.Dial(r.vsockCID, r.vsockPort, nil)
-	}
-	if r.testGrpcDialer != nil {
-		dialer = r.testGrpcDialer
-	}
-	conn, err := grpc.NewClient(
-		"passthrough:///mwan",
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithContextDialer(dialer),
-	)
+	cli, closeConn, err := r.vsockAgent(ctx)
 	if err != nil {
-		r.log.WarnContext(ctx, "vsock grpc client failed", "err", err)
-		return nil, fmt.Errorf("vsock grpc client: %w", err)
+		return nil, err
 	}
-	defer func() { _ = conn.Close() }()
-	cli := mwanv1.NewMWANAgentClient(conn)
+	defer closeConn()
 	res, err := cli.AnnounceRoutes(cctx, &mwanv1.AnnounceRoutesRequest{})
 	if err != nil {
 		r.log.WarnContext(ctx, "vsock announce routes failed", "err", err)
@@ -682,30 +739,15 @@ func (r *RealOps) vsockAnnounceRoutes(
 }
 
 func (r *RealOps) tcpAnnounceRoutes(
-	ctx context.Context,
+	ctx context.Context, addr string,
 ) (*mwanv1.AnnounceRoutesResponse, error) {
-	if r.tcpAddr == "" {
-		return nil, fmt.Errorf("tcpAnnounceRoutes: no tcp addr configured")
-	}
 	cctx, cancel := context.WithTimeout(ctx, timeoutTCPRPC)
 	defer cancel()
-	dialer := func(ctx context.Context, _ string) (net.Conn, error) {
-		return (&net.Dialer{}).DialContext(ctx, "tcp", r.tcpAddr)
-	}
-	if r.testTCPDialer != nil {
-		dialer = r.testTCPDialer
-	}
-	conn, err := grpc.NewClient(
-		"passthrough:///mwan-tcp",
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithContextDialer(dialer),
-	)
+	cli, closeConn, err := r.tcpAgent(ctx, addr)
 	if err != nil {
-		r.log.ErrorContext(ctx, "tcp grpc client failed", "err", err)
-		return nil, fmt.Errorf("tcp grpc client: %w", err)
+		return nil, err
 	}
-	defer func() { _ = conn.Close() }()
-	cli := mwanv1.NewMWANAgentClient(conn)
+	defer closeConn()
 	res, err := cli.AnnounceRoutes(cctx, &mwanv1.AnnounceRoutesRequest{})
 	if err != nil {
 		r.log.ErrorContext(ctx, "tcp announce routes failed", "err", err)
@@ -714,14 +756,23 @@ func (r *RealOps) tcpAnnounceRoutes(
 	return res, nil
 }
 
-// AnnounceRoutes tells the guest to announce its BGP routes, trying vsock
-// first and then the management TCP address. A channel that answers ends the
-// attempt even when the agent reports a failure, because the agent refusing is
-// an answer and retrying on the other channel would reach the same agent.
-//
-// vmid is accepted for symmetry with the rest of SysOps and is not used.
+// AnnounceRoutes does not retry a reported failure on the other channel
+// because both channels call the same primary gateway agent.
 func (r *RealOps) AnnounceRoutes(ctx context.Context, vmid string) error {
-	_ = vmid
+	isFailover, targetErr := r.routeTarget(vmid)
+	if targetErr != nil {
+		return targetErr
+	}
+	if isFailover {
+		res, err := callFailoverAgent(ctx, r, "announce_routes", vmid, r.tcpAnnounceRoutes)
+		if err != nil {
+			return err
+		}
+		if !res.GetSuccess() {
+			return fmt.Errorf("AnnounceRoutes: agent returned error: %s", res.GetError())
+		}
+		return nil
+	}
 	r.logAttemptStart(ctx, "announce_routes", ChanVsock, 1, vmid)
 	res, err := r.vsockAnnounceRoutes(ctx)
 	if err == nil {
@@ -735,7 +786,7 @@ func (r *RealOps) AnnounceRoutes(ctx context.Context, vmid string) error {
 	r.tracker.recordFailure(ChanVsock, err)
 	r.logAttemptResult(ctx, "announce_routes", ChanVsock, 1, vmid, err)
 	r.logAttemptStart(ctx, "announce_routes", ChanTCP, 2, vmid)
-	res, err = r.tcpAnnounceRoutes(ctx)
+	res, err = r.tcpAnnounceRoutes(ctx, r.tcpAddr)
 	if err == nil {
 		r.tracker.recordSuccess(ChanTCP)
 		r.logAttemptResult(ctx, "announce_routes", ChanTCP, 2, vmid, nil)
@@ -754,23 +805,11 @@ func (r *RealOps) vsockWithdrawRoutes(
 ) (*mwanv1.WithdrawRoutesResponse, error) {
 	cctx, cancel := context.WithTimeout(ctx, timeoutVsockRPC)
 	defer cancel()
-	dialer := func(ctx context.Context, addr string) (net.Conn, error) {
-		return vsock.Dial(r.vsockCID, r.vsockPort, nil)
-	}
-	if r.testGrpcDialer != nil {
-		dialer = r.testGrpcDialer
-	}
-	conn, err := grpc.NewClient(
-		"passthrough:///mwan",
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithContextDialer(dialer),
-	)
+	cli, closeConn, err := r.vsockAgent(ctx)
 	if err != nil {
-		r.log.WarnContext(ctx, "vsock grpc client failed", "err", err)
-		return nil, fmt.Errorf("vsock grpc client: %w", err)
+		return nil, err
 	}
-	defer func() { _ = conn.Close() }()
-	cli := mwanv1.NewMWANAgentClient(conn)
+	defer closeConn()
 	res, err := cli.WithdrawRoutes(cctx, &mwanv1.WithdrawRoutesRequest{})
 	if err != nil {
 		r.log.WarnContext(ctx, "vsock withdraw routes failed", "err", err)
@@ -780,30 +819,15 @@ func (r *RealOps) vsockWithdrawRoutes(
 }
 
 func (r *RealOps) tcpWithdrawRoutes(
-	ctx context.Context,
+	ctx context.Context, addr string,
 ) (*mwanv1.WithdrawRoutesResponse, error) {
-	if r.tcpAddr == "" {
-		return nil, fmt.Errorf("tcpWithdrawRoutes: no tcp addr configured")
-	}
 	cctx, cancel := context.WithTimeout(ctx, timeoutTCPRPC)
 	defer cancel()
-	dialer := func(ctx context.Context, _ string) (net.Conn, error) {
-		return (&net.Dialer{}).DialContext(ctx, "tcp", r.tcpAddr)
-	}
-	if r.testTCPDialer != nil {
-		dialer = r.testTCPDialer
-	}
-	conn, err := grpc.NewClient(
-		"passthrough:///mwan-tcp",
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithContextDialer(dialer),
-	)
+	cli, closeConn, err := r.tcpAgent(ctx, addr)
 	if err != nil {
-		r.log.ErrorContext(ctx, "tcp grpc client failed", "err", err)
-		return nil, fmt.Errorf("tcp grpc client: %w", err)
+		return nil, err
 	}
-	defer func() { _ = conn.Close() }()
-	cli := mwanv1.NewMWANAgentClient(conn)
+	defer closeConn()
 	res, err := cli.WithdrawRoutes(cctx, &mwanv1.WithdrawRoutesRequest{})
 	if err != nil {
 		r.log.ErrorContext(ctx, "tcp withdraw routes failed", "err", err)
@@ -812,13 +836,23 @@ func (r *RealOps) tcpWithdrawRoutes(
 	return res, nil
 }
 
-// WithdrawRoutes tells the guest to withdraw its BGP routes, trying vsock
-// first and then the management TCP address. It treats an answering channel
-// the same way AnnounceRoutes does.
-//
-// vmid is accepted for symmetry with the rest of SysOps and is not used.
+// WithdrawRoutes does not retry a reported failure on the other channel
+// because both channels call the same primary gateway agent.
 func (r *RealOps) WithdrawRoutes(ctx context.Context, vmid string) error {
-	_ = vmid
+	isFailover, targetErr := r.routeTarget(vmid)
+	if targetErr != nil {
+		return targetErr
+	}
+	if isFailover {
+		res, err := callFailoverAgent(ctx, r, "withdraw_routes", vmid, r.tcpWithdrawRoutes)
+		if err != nil {
+			return err
+		}
+		if !res.GetSuccess() {
+			return fmt.Errorf("WithdrawRoutes: agent returned error: %s", res.GetError())
+		}
+		return nil
+	}
 	r.logAttemptStart(ctx, "withdraw_routes", ChanVsock, 1, vmid)
 	res, err := r.vsockWithdrawRoutes(ctx)
 	if err == nil {
@@ -832,7 +866,7 @@ func (r *RealOps) WithdrawRoutes(ctx context.Context, vmid string) error {
 	r.tracker.recordFailure(ChanVsock, err)
 	r.logAttemptResult(ctx, "withdraw_routes", ChanVsock, 1, vmid, err)
 	r.logAttemptStart(ctx, "withdraw_routes", ChanTCP, 2, vmid)
-	res, err = r.tcpWithdrawRoutes(ctx)
+	res, err = r.tcpWithdrawRoutes(ctx, r.tcpAddr)
 	if err == nil {
 		r.tracker.recordSuccess(ChanTCP)
 		r.logAttemptResult(ctx, "withdraw_routes", ChanTCP, 2, vmid, nil)

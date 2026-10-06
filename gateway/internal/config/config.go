@@ -119,6 +119,8 @@ func (ws WatchdogSection) PostRollbackGrace() time.Duration {
 // FailoverSection holds BGP failover configuration.
 type FailoverSection struct {
 	LXCID string `toml:"lxc_id"`
+	// AgentTCPAddr is optional during configuration loading, but failover requires it.
+	AgentTCPAddr string `toml:"agent_tcp_addr"`
 }
 
 // OPNsenseSection holds OPNsense API credentials, endpoint, and its own BGP config.
