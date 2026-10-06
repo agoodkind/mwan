@@ -48,7 +48,8 @@ func Names() []string {
 	return names
 }
 
-// FileName returns <name>_<version>_<architecture>.deb.
+// FileName omits any Debian epoch and its separating colon from the version in
+// <name>_<version>_<architecture>.deb.
 func (p Package) FileName(arch string) string {
 	_, withoutEpoch, hasEpoch := strings.Cut(p.Version, ":")
 	if !hasEpoch {
