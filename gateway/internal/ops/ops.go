@@ -54,8 +54,7 @@ const (
 	guestCmdCat   guestCmd = "cat"
 )
 
-// GuestExecResult is what one command run inside the guest produced. Stdout is
-// empty for the commands whose exit code is the whole answer, such as ping.
+// GuestExecResult includes stderr only from the hypervisor command channel.
 type GuestExecResult struct {
 	ExitCode int
 	Stdout   string

@@ -279,7 +279,8 @@ type IfMgrHealthSection struct {
 	WAN                     map[string]IfMgrHealthWANSection `toml:"-"`
 }
 
-// ParseMaxStateAge returns the max_state_age duration and reports whether the setting is present.
+// ParseMaxStateAge rejects invalid or nonpositive max_state_age values.
+// An empty setting returns a false presence flag without an error.
 func (section IfMgrHealthSection) ParseMaxStateAge() (time.Duration, bool, error) {
 	if section.MaxStateAge == "" {
 		return 0, false, nil
