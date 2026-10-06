@@ -36,18 +36,26 @@ const (
 
 // Translator prevents use of closed program descriptors by serializing Reconcile and Close.
 type Translator struct {
-	mu      sync.Mutex
-	objects nptObjects
-	closed  bool
+	mu           sync.Mutex
+	objects      nptObjects
+	previous     *nptObjects
+	pinDirectory string
+	pinsSettled  bool
+	closed       bool
 }
 
 // New loads the embedded programs and creates their shared policy map.
 func New() (*Translator, error) {
-	translator := new(Translator)
+	return newTranslator(defaultPinDirectory)
+}
+
+func newTranslator(pinDirectory string) (*Translator, error) {
+	translator := &Translator{mu: sync.Mutex{}, objects: nptObjects{NptEgress: nil, NptIngress: nil, Policies: nil}, previous: nil, pinDirectory: pinDirectory, pinsSettled: false, closed: false}
 	if err := loadNptObjects(&translator.objects, nil); err != nil {
 		slog.Error("NPTv6 eBPF programs could not be loaded", "err", err)
 		return nil, fmt.Errorf("load NPTv6 programs: %w", err)
 	}
+	translator.adoptPinnedObjects()
 	return translator, nil
 }
 
@@ -387,16 +395,27 @@ func (translator *Translator) Reconcile(policies []InterfacePolicy) ([]Attachmen
 		slog.Error("NPTv6 reconciliation retained stale attachments after active policies failed", "failed_interfaces", len(failures), "err", err)
 		return states, err
 	}
-	return states, translator.removeStalePolicies(desired)
+	if err := translator.removeStalePolicies(desired); err != nil {
+		return states, err
+	}
+	translator.replacePins()
+	return states, nil
 }
 
-// Close leaves installed traffic-control filters active; the kernel retains their programs and maps.
-func (translator *Translator) Close() error {
+// Close releases descriptors for the current and previous pinned objects.
+// Installed traffic-control filters remain active because the kernel retains
+// their programs and maps.
+func (translator *Translator) Close() (resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			slog.Warn("NPTv6 translator could not close all descriptors", "err", resultErr)
+		}
+	}()
 	translator.mu.Lock()
 	defer translator.mu.Unlock()
 	if translator.closed {
 		return nil
 	}
 	translator.closed = true
-	return translator.objects.Close()
+	return errors.Join(translator.objects.Close(), translator.closePrevious())
 }
