@@ -15,7 +15,6 @@ import (
 // for triggerBGPFailover and triggerBGPRecovery to run end-to-end against the
 // mock ops surface.
 func recoveryTestCfgOverrides(cfg *config.Config) {
-	cfg.BGP = config.BGPSection{Enabled: true}
 	cfg.Failover = config.FailoverSection{LXCID: "203"}
 	cfg.Email = config.EmailConfig{
 		AlertEmail:    "test@test.com",
