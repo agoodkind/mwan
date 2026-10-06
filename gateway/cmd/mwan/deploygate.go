@@ -128,7 +128,7 @@ type deployGateDeps struct {
 	listAddrs       func(ctx context.Context, log *slog.Logger, iface string) ([]netif.CurrentAddr, error)
 	// runGuestOwnedCheck runs that check from the hypervisor through the guest
 	// agent.
-	runGuestOwnedCheck func(ctx context.Context, vmid int) (ops.GuestCommandResult, error)
+	runGuestOwnedCheck func(ctx context.Context, vmid int) (ops.GuestExecResult, error)
 	// alertOwnedMissing emails a failed owned-address verdict.
 	alertOwnedMissing func(ctx context.Context, alert ownedMissingAlert) error
 }
@@ -706,7 +706,7 @@ func ownedMissingEvent(alert ownedMissingAlert) notify.Event {
 // the QEMU guest agent and returns its exit code and report.
 func readGuestOwnedCheck(
 	ctx context.Context, guestType config.GuestType, vmid int,
-) (ops.GuestCommandResult, error) {
+) (ops.GuestExecResult, error) {
 	log := slog.With("component", "deploy-gate", "op", "readGuestOwnedCheck", "vmid", vmid)
 	result, err := execInGateGuest(ctx, guestType, vmid,
 		deployGateGuestBinary, "deploy-gate", string(gateModeCheckOwned))
@@ -727,7 +727,7 @@ func withGatewayGuestReads(deps deployGateDeps) (deployGateDeps, error) {
 	deps.readBootID = func(ctx context.Context, vmid int) (string, error) {
 		return readGuestBootID(ctx, guestType, vmid)
 	}
-	deps.runGuestOwnedCheck = func(ctx context.Context, vmid int) (ops.GuestCommandResult, error) {
+	deps.runGuestOwnedCheck = func(ctx context.Context, vmid int) (ops.GuestExecResult, error) {
 		return readGuestOwnedCheck(ctx, guestType, vmid)
 	}
 	return deps, nil
@@ -744,8 +744,8 @@ func onGatewayHost(deps deployGateDeps, run func(deployGateDeps) int) int {
 
 func execInGateGuest(
 	ctx context.Context, guestType config.GuestType, vmid int, command ...string,
-) (ops.GuestCommandResult, error) {
-	var none ops.GuestCommandResult
+) (ops.GuestExecResult, error) {
+	var none ops.GuestExecResult
 	result, err := ops.RunInGuest(ctx, guestType,
 		deployGateGuestExecTimeout+5*time.Second, deployGateGuestExecTimeout,
 		vmid, command...)
@@ -910,7 +910,7 @@ func readGuestBootID(
 	return bootID, nil
 }
 
-func guestBootID(result ops.GuestCommandResult) (string, error) {
+func guestBootID(result ops.GuestExecResult) (string, error) {
 	if result.ExitCode != 0 {
 		return "", fmt.Errorf(
 			"guest command exited %d (exit code from cat inside the guest)",

@@ -828,6 +828,7 @@ func (c *Config) Apply(cfg *config.Config) {
 			StateFile:               "",
 			StatusPushCID:           0,
 			StatusPushPort:          0,
+			MaxStateAge:             "",
 			ProbeTimeoutMillis:      0,
 			WAN:                     nil,
 		}

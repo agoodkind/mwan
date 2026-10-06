@@ -885,6 +885,15 @@ func (w *watchdog) run(ctx context.Context) {
 		}()
 	}
 
+	if len(w.cfg.Watchdog.StatusCommand) > 0 {
+		w.status = NewGuestStatusSource(
+			w.ops,
+			w.cfg.MwanVMID,
+			w.cfg.Watchdog.StatusCommand,
+			w.log.With("component", "guest_status"),
+		)
+	}
+
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
