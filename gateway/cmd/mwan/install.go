@@ -239,7 +239,8 @@ func parseInstallFlags(args []string) (installFlags, error) {
 // A rooted install must not use / or a symlink to /.
 // It would write host files without enabling host services and would open the
 // host's sysrepo repository with a separate shared-memory prefix.
-// Clean the path before resolving symlinks to match destination path handling.
+// Clean root before resolving symlinks because filepath.Join cleans destination
+// paths lexically without resolving symlinks.
 func rootIsHost(root string) bool {
 	cleaned := filepath.Clean(root)
 	if cleaned == "/" {
