@@ -87,6 +87,12 @@ func GitCommit() string {
 	return stampedOrUnknown(gklogversion.Commit)
 }
 
+// StampedCommit reports whether a linker-provided commit is available.
+func StampedCommit() (string, bool) {
+	commit := GitCommit()
+	return commit, commit != unknown
+}
+
 // GitDirty returns "clean", "dirty", or "unknown".
 func GitDirty() string {
 	switch dirtyStamp(gklogversion.Dirty) {

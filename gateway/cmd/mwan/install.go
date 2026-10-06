@@ -2,146 +2,22 @@ package main
 
 import (
 	"context"
-	"embed"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	systemddbus "github.com/coreos/go-systemd/v22/dbus"
 
 	"goodkind.io/mwan/internal/installfile"
+	"goodkind.io/mwan/internal/installspec"
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/yangpub"
 )
-
-// unitFS carries the files the install verb writes inside the binary, so the
-// file a host runs comes from the release its pin names. Each file is named
-// here rather than matched by a pattern, so a file added to this directory
-// never reaches the binary until someone says it should.
-//
-//go:embed mwan-agent.service mwan-ifmgr.service mwan-ifmgr@.service mwan-trace-boot.service mwan-ifmgr-failover.conf
-//go:embed rousette.service nghttpx-wanconfig.service systemd-networkd-override.conf mwan-ifmgr-wan.conf
-//go:embed 99-quiet-console.conf
-var unitFS embed.FS
-
-const (
-	// systemdUnitDir is where the units go. This is the administrator's unit
-	// directory, which outranks anything a package ships.
-	systemdUnitDir = "/etc/systemd/system"
-	// sysctlDir is where the kernel settings files go; systemd-sysctl reads
-	// them at boot.
-	sysctlDir = "/etc/sysctl.d"
-	// systemdUnitMode matches what the playbooks write today, for the units
-	// and for every other file the verb installs.
-	systemdUnitMode fs.FileMode = 0o644
-)
-
-// installRole is the set of units one kind of host runs.
-type installRole string
-
-const (
-	// roleWAN is the gateway VM: the agent, the instanced interface manager,
-	// the boot trace oneshot, the wanconfig RESTCONF server and its front-end
-	// proxy, the systemd-networkd drop-in, and the quiet console
-	// sysctl file.
-	roleWAN installRole = "wan"
-	// roleFailover is the failover container: the agent, plus the interface
-	// manager with the sandbox relaxation slaac_health needs.
-	roleFailover installRole = "failover"
-	// roleHost is a Proxmox hypervisor, which runs the single-instance
-	// interface manager in its out-of-band role.
-	roleHost installRole = "host"
-)
-
-// installedFile is one embedded file and where it lands on the host. A
-// drop-in names a path inside a unit's .d directory, so the destination
-// cannot always be the embedded file's own name.
-type installedFile struct {
-	// embedded is the file's name inside unitFS.
-	embedded string
-	// dest is the absolute host path to write; a run under --root writes it
-	// below the root.
-	dest string
-}
-
-// unit names an embedded unit file that installs under its own name in the
-// systemd unit directory.
-func unit(name string) installedFile {
-	return installedFile{embedded: name, dest: filepath.Join(systemdUnitDir, name)}
-}
-
-// roleUnits is one role's units: the files to write and the units to enable.
-type roleUnits struct {
-	// files are the embedded files this role installs, in write order.
-	files []installedFile
-	// enable are the unit names to enable, which for an instanced unit is a
-	// concrete instance rather than the template.
-	enable []string
-	// schema is set for the role that runs the wanconfig datastore: after the
-	// units, the run writes the embedded modules and installs them into
-	// sysrepo.
-	schema bool
-}
-
-// installRoles maps each role onto what it installs, matching what the
-// playbooks write and enable today.
-//
-// One interface-manager unit body serves every host, and a deployment that
-// needs its sandbox relaxed says so in a drop-in. mwan-ifmgr.service's own
-// ProtectKernelTunables comment prescribes exactly that, naming this file's
-// path, and the suburban hypervisor already relaxes the same setting the same
-// way through a drop-in configs deploys. Two full unit bodies would be the
-// novelty here.
-var installRoles = map[installRole]roleUnits{
-	roleWAN: {
-		files: []installedFile{
-			unit("mwan-agent.service"),
-			unit("mwan-ifmgr@.service"),
-			{
-				embedded: "mwan-ifmgr-wan.conf",
-				dest:     filepath.Join(systemdUnitDir, "mwan-ifmgr@wan.service.d", "firewall.conf"),
-			},
-			unit("mwan-trace-boot.service"),
-			unit("rousette.service"),
-			unit("nghttpx-wanconfig.service"),
-			{
-				embedded: "systemd-networkd-override.conf",
-				dest:     filepath.Join(systemdUnitDir, "systemd-networkd.service.d", "override.conf"),
-			},
-			{
-				embedded: "99-quiet-console.conf",
-				dest:     filepath.Join(sysctlDir, "99-quiet-console.conf"),
-			},
-		},
-		enable: []string{
-			"mwan-agent.service", "mwan-ifmgr@wan.service", "mwan-trace-boot.service",
-			"rousette.service", "nghttpx-wanconfig.service",
-		},
-		schema: true,
-	},
-	roleFailover: {
-		files: []installedFile{
-			unit("mwan-agent.service"),
-			unit("mwan-ifmgr.service"),
-			{
-				embedded: "mwan-ifmgr-failover.conf",
-				dest:     filepath.Join(systemdUnitDir, "mwan-ifmgr.service.d", "lxc-failover.conf"),
-			},
-		},
-		enable: []string{"mwan-agent.service", "mwan-ifmgr.service"},
-	},
-	roleHost: {
-		files:  []installedFile{unit("mwan-ifmgr.service")},
-		enable: []string{"mwan-ifmgr.service"},
-	},
-}
 
 const (
 	exitInstallOK     = 0
@@ -149,7 +25,6 @@ const (
 	exitInstallUsage  = 2
 )
 
-// installFlags is one parsed invocation of the subcommand.
 type installFlags struct {
 	role        string
 	apply       bool
@@ -157,23 +32,13 @@ type installFlags struct {
 	root        string
 }
 
-// installOutcome is what one install run did, so the caller reports it and a
-// test asserts on it rather than on printed text.
 type installOutcome struct {
-	// changed names every file whose content the run replaced, in the order
-	// it wrote them.
-	changed []string
-	// enabled names every unit the run asked systemd to enable.
-	enabled []string
-	// modules names every schema module the run installed into sysrepo or
-	// updated there. installUnits leaves it empty; runInstall fills it.
-	modules []yangpub.ModuleChange
-	// nacmImported names the datastores the run imported the NACM policy
-	// into. runInstall sets it.
+	changed      []string
+	enabled      []string
+	modules      []yangpub.ModuleChange
 	nacmImported []yangpub.Datastore
 }
 
-// runInstall is the `mwan install` entry point.
 func runInstall(args []string) int {
 	flags, err := parseInstallFlags(args)
 	if err != nil {
@@ -192,8 +57,9 @@ func runInstall(args []string) int {
 		printInstallUsage(os.Stdout)
 		return exitInstallOK
 	}
-	role := installRole(flags.role)
-	if _, known := installRoles[role]; !known {
+	role := installspec.Role(flags.role)
+	spec, known := installspec.For(role)
+	if !known {
 		fmt.Fprintf(os.Stderr, "mwan install: unknown role %q; want one of %s\n",
 			flags.role, strings.Join(knownInstallRoles(), ", "))
 		return exitInstallUsage
@@ -201,7 +67,7 @@ func runInstall(args []string) int {
 	rooted := flags.root != ""
 	ctx := context.Background()
 	outcome, err := installUnits(ctx, role, flags.root, enablerFor(rooted))
-	if err == nil && installRoles[role].schema {
+	if err == nil && spec.Schema {
 		var schema schemaOutcome
 		schema, err = installSchema(ctx, slog.Default(), flags.root)
 		outcome.changed = append(outcome.changed, schema.changed...)
@@ -216,10 +82,7 @@ func runInstall(args []string) int {
 	return exitInstallOK
 }
 
-// enablerFor picks the systemd side of the run. A run under --root writes
-// somewhere other than the host's unit directory, so enabling units on this
-// machine would act on files the run did not write. Such a run leaves systemd
-// alone and reports what it would have enabled.
+// A rooted install must not enable units on the host.
 func enablerFor(rooted bool) unitEnabler {
 	if !rooted {
 		return realUnitEnabler
@@ -227,61 +90,44 @@ func enablerFor(rooted bool) unitEnabler {
 	return func(_ context.Context, _ []string, _ bool) error { return nil }
 }
 
-// unitEnabler is the systemd side of an install: reload the manager when
-// reload is set, so it reads what was just written, then re-enable the named
-// units. It is a seam so the file writing can be exercised where no system bus
-// exists.
 type unitEnabler func(ctx context.Context, units []string, reload bool) error
 
-// installUnits writes the role's files under root and re-enables its units.
-// It returns what it did even when it fails, so the caller reports the
-// files that were already written before the failure.
-//
-// The units are re-enabled on every run, because a current unit file can still
-// sit behind a stale install symlink when something other than this verb wrote
-// it. systemd is asked to reload only when a file changed, so a second run
-// leaves the manager's loaded state alone.
+// Re-enable units even when files are unchanged to remove stale installation links.
+// Reload the manager only when a file changes.
 func installUnits(
 	ctx context.Context,
-	role installRole,
+	role installspec.Role,
 	root string,
 	enabler unitEnabler,
 ) (installOutcome, error) {
 	outcome := installOutcome{changed: nil, enabled: nil, modules: nil, nacmImported: nil}
-	units := installRoles[role]
-	for _, file := range units.files {
-		content, err := unitFS.ReadFile(file.embedded)
+	spec, known := installspec.For(role)
+	if !known {
+		return outcome, fmt.Errorf("unknown role %q", role)
+	}
+	for _, file := range spec.Files {
+		content, err := installspec.Read(file.Embedded)
 		if err != nil {
-			return outcome, installFailed("read the embedded file", file.embedded, err)
+			return outcome, installFailed("read the embedded file", file.Embedded, err)
 		}
-		path := filepath.Join(root, file.dest)
-		changed, err := installfile.Write(path, content, systemdUnitMode)
+		path := filepath.Join(root, file.Dest)
+		changed, err := installfile.Write(path, content, installspec.FileMode)
 		if err != nil {
-			return outcome, installFailed("install the file", file.dest, err)
+			return outcome, installFailed("install the file", file.Dest, err)
 		}
 		if changed {
 			outcome.changed = append(outcome.changed, path)
 		}
 	}
-	if err := enabler(ctx, units.enable, len(outcome.changed) > 0); err != nil {
+	if err := enabler(ctx, spec.Enable, len(outcome.changed) > 0); err != nil {
 		return outcome, err
 	}
-	outcome.enabled = units.enable
+	outcome.enabled = spec.Enable
 	return outcome, nil
 }
 
-// realUnitEnabler reloads systemd when reload is set, then removes each unit's existing install
-// symlinks and writes the ones its current [Install] section names. That pair
-// is what `systemctl reenable` does, and enabling alone is not enough: enable
-// only creates symlinks at the paths the current unit names, so a unit whose
-// WantedBy moved keeps the symlink under its old target and ends up wanted by
-// both. A gateway proved that on 2026-09-18, when mwan-ifmgr@.service moved
-// from multi-user.target to sysinit.target and the deployed host still
-// reported multi-user.target with a two month old symlink.
-//
-// Disabling changes no running state. It removes symlinks; it does not stop
-// the daemon, so the unit keeps running across this call and the deploy keeps
-// the restart decision.
+// Disabling and enabling unit files replaces old WantedBy links.
+// These operations do not stop or restart running services.
 func realUnitEnabler(ctx context.Context, units []string, reload bool) error {
 	conn, err := systemddbus.NewSystemConnectionContext(ctx)
 	if err != nil {
@@ -291,9 +137,6 @@ func realUnitEnabler(ctx context.Context, units []string, reload bool) error {
 	return reenableUnits(ctx, conn, units, reload)
 }
 
-// unitInstaller is the part of the systemd manager the enable path drives. It
-// is an interface so the call sequence can be exercised where no system bus
-// exists; *systemddbus.Conn is the only implementation that ships.
 type unitInstaller interface {
 	ReloadContext(ctx context.Context) error
 	DisableUnitFilesContext(
@@ -304,10 +147,7 @@ type unitInstaller interface {
 	) (bool, []systemddbus.EnableUnitFileChange, error)
 }
 
-// reenableUnits reloads the manager when reload is set, clears each unit's
-// install symlinks, and writes the ones the unit currently names. The symlinks
-// come from the unit files on disk, so re-enabling without a reload still
-// reads the current [Install] section.
+// systemd reads the current [Install] section when creating unit links.
 func reenableUnits(
 	ctx context.Context, manager unitInstaller, units []string, reload bool,
 ) error {
@@ -331,18 +171,11 @@ func reenableUnits(
 	return nil
 }
 
-// installFailed logs one failure where it happened and returns it wrapped
-// under the same words, so the cause reads the same in the journal and in the
-// message the command prints.
 func installFailed(operation string, name string, err error) error {
 	slog.Warn("install: "+operation+" failed", "name", name, "err", err)
 	return fmt.Errorf("%s %s: %w", operation, name, err)
 }
 
-// reportInstall prints one line per changed file, then the units enabled. A
-// run that changed no file says so, so an operator can tell "already correct"
-// from "did nothing because it failed early". A rooted run says what it would
-// have enabled, because it asked systemd for nothing.
 func reportInstall(out io.Writer, outcome installOutcome, rooted bool) {
 	if len(outcome.changed) == 0 {
 		fmt.Fprintln(out, "no change")
@@ -363,7 +196,7 @@ func reportInstall(out io.Writer, outcome installOutcome, rooted bool) {
 		for _, ds := range outcome.nacmImported {
 			names = append(names, string(ds))
 		}
-		fmt.Fprintf(out, "imported the %s policy into %s\n", nacmModule, strings.Join(names, " and "))
+		fmt.Fprintf(out, "imported the %s policy into %s\n", installspec.NACMModule, strings.Join(names, " and "))
 	}
 	if len(outcome.enabled) == 0 {
 		return
@@ -375,7 +208,6 @@ func reportInstall(out io.Writer, outcome installOutcome, rooted bool) {
 	fmt.Fprintf(out, "%s %s\n", verb, strings.Join(outcome.enabled, " "))
 }
 
-// parseInstallFlags reads the subcommand's flags.
 func parseInstallFlags(args []string) (installFlags, error) {
 	flags := installFlags{role: "", apply: false, printSchema: "", root: ""}
 	set := flag.NewFlagSet("install", flag.ContinueOnError)
@@ -404,16 +236,11 @@ func parseInstallFlags(args []string) (installFlags, error) {
 	return flags, nil
 }
 
-// rootIsHost reports whether root names the host's own root directory,
-// written directly or reached through a symlink. A rooted run skips systemd
-// and keeps a private sysrepo repository below the root, so a root of / would
-// write the host's files without enabling them and open the host's
-// repository under a second shared-memory prefix.
-//
-// The root is cleaned before it is resolved, because the install joins every
-// host path onto it and a join cleans lexically, so a/missing/.. writes under
-// a even though missing does not exist. Once cleaned, a root that does not exist cannot be the
-// host's root, because / always exists.
+// A rooted install must not use / or a symlink to /.
+// It would write host files without enabling host services and would open the
+// host's sysrepo repository with a separate shared-memory prefix.
+// Clean root before resolving symlinks because [filepath.Join] cleans destination
+// paths lexically without resolving symlinks.
 func rootIsHost(root string) bool {
 	cleaned := filepath.Clean(root)
 	if cleaned == "/" {
@@ -426,18 +253,15 @@ func rootIsHost(root string) bool {
 	return filepath.Clean(resolved) == "/"
 }
 
-// knownInstallRoles lists the roles in a stable order for help and errors.
 func knownInstallRoles() []string {
-	roles := make([]string, 0, len(installRoles))
-	for role := range installRoles {
+	known := installspec.Roles()
+	roles := make([]string, 0, len(known))
+	for _, role := range known {
 		roles = append(roles, string(role))
 	}
-	sort.Strings(roles)
 	return roles
 }
 
-// printInstallUsage explains what a run would do. This is what an operator
-// sees when they leave --apply off, which is the default.
 func printInstallUsage(out io.Writer) {
 	fmt.Fprintln(out, "usage: mwan install --role <"+strings.Join(knownInstallRoles(), "|")+"> --apply")
 	fmt.Fprintln(out, "       mwan install --print-schema <dir>")
@@ -448,13 +272,13 @@ func printInstallUsage(out io.Writer) {
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Files installed, by role:")
 	for _, name := range knownInstallRoles() {
-		units := installRoles[installRole(name)]
-		written := make([]string, 0, len(units.files))
-		for _, file := range units.files {
-			written = append(written, file.dest)
+		spec, _ := installspec.For(installspec.Role(name))
+		written := make([]string, 0, len(spec.Files))
+		for _, file := range spec.Files {
+			written = append(written, file.Dest)
 		}
 		fmt.Fprintf(out, "  %-9s writes %s\n", name, strings.Join(written, " "))
-		fmt.Fprintf(out, "  %-9s enables %s\n", "", strings.Join(units.enable, " "))
+		fmt.Fprintf(out, "  %-9s enables %s\n", "", strings.Join(spec.Enable, " "))
 	}
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "The YANG modules are embedded too. The wan role writes them to")
@@ -462,6 +286,6 @@ func printInstallUsage(out io.Writer) {
 	fmt.Fprintln(out, "updating a module installed at another revision. Under --root it uses")
 	fmt.Fprintln(out, "a private repository below the root. It also imports the read-only")
 	fmt.Fprintln(out, "NACM policy into each of startup and running that does not already")
-	fmt.Fprintln(out, "hold it, and writes it to "+nacmPolicyPath+". --print-schema")
+	fmt.Fprintln(out, "contain it, and writes it to "+installspec.NACMPolicyPath+". --print-schema")
 	fmt.Fprintln(out, "writes the modules to a directory for validation and touches nothing else.")
 }

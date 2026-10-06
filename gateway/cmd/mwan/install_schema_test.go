@@ -16,6 +16,7 @@ import (
 
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/yangpub"
+	"goodkind.io/mwan/internal/yangpub/schema"
 )
 
 // sysrepo resolves its repository and shared-memory prefix once per process
@@ -46,7 +47,6 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// runSysrepoStep is the child side of childSysrepoEnv.
 func runSysrepoStep(step string, args []string) int {
 	// The parent removes this child's shared memory, because it chose the
 	// prefix.
@@ -94,7 +94,7 @@ func runSysrepoStep(step string, args []string) int {
 // for it, so the seeded repository is the one a deploy would have left.
 func seedFeatures(path string) []string {
 	name, _ := moduleFileNameRevision(filepath.Base(path))
-	for _, module := range yangpub.SchemaModules {
+	for _, module := range schema.Modules() {
 		if moduleName, _ := moduleFileNameRevision(module.File); moduleName == name {
 			return module.Features
 		}
@@ -102,8 +102,6 @@ func seedFeatures(path string) []string {
 	return nil
 }
 
-// runChild runs the test binary as a child with env added, fails the test on
-// a non-zero exit, and returns what the child printed on stdout.
 func runChild(t *testing.T, env []string, args ...string) string {
 	t.Helper()
 	command := exec.Command(os.Args[0], args...)
@@ -161,13 +159,11 @@ type yangLibrary struct {
 	} `json:"ietf-yang-library:yang-library"`
 }
 
-// implementedModule is one row of yangLibrary.
 type implementedModule struct {
 	revision string
 	features []string
 }
 
-// implementedModules reads which modules the rooted repository implements.
 func implementedModules(t *testing.T, root string, prefix string) map[string]implementedModule {
 	t.Helper()
 	tree := runChild(t, sysrepoChildEnv(t, root, "library", prefix))
@@ -197,12 +193,6 @@ var gatewayModules = []string{
 // against a revision a gateway really carried.
 const olderSteeringFixture = "testdata/goodkind-mwan-steering@2026-09-13.yang"
 
-// TestInstallApplyInstallsTheSchemaIntoSysrepo runs `mwan install --apply
-// --role wan` under a root, then reads the rooted repository with real
-// sysrepo. Every gateway module must be implemented at its embedded revision,
-// ietf-nat must carry the four translation features the deploy enables, the
-// schema directory the daemon validates against must hold the embedded bytes,
-// and a second run must change nothing.
 func TestInstallApplyInstallsTheSchemaIntoSysrepo(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -213,7 +203,8 @@ func TestInstallApplyInstallsTheSchemaIntoSysrepo(t *testing.T) {
 	if _, err := yangpub.WriteSchema(embeddedDir); err != nil {
 		t.Fatalf("write the embedded schema: %v", err)
 	}
-	for _, module := range yangpub.SchemaModules {
+	modules := schema.Modules()
+	for _, module := range modules {
 		onDisk, err := os.ReadFile(filepath.Join(root, networkjson.DefaultSchemaDir, module.File))
 		if err != nil {
 			t.Errorf("read the installed %s: %v", module.File, err)
@@ -228,13 +219,13 @@ func TestInstallApplyInstallsTheSchemaIntoSysrepo(t *testing.T) {
 		}
 	}
 
-	modules := implementedModules(t, root, "a")
-	for _, module := range yangpub.SchemaModules {
+	implemented := implementedModules(t, root, "a")
+	for _, module := range modules {
 		name, revision := moduleFileNameRevision(module.File)
 		if !slices.Contains(gatewayModules, name) {
 			continue
 		}
-		got, found := modules[name]
+		got, found := implemented[name]
 		if !found {
 			t.Errorf("%s is not implemented in the repository", name)
 			continue
@@ -255,11 +246,6 @@ func TestInstallApplyInstallsTheSchemaIntoSysrepo(t *testing.T) {
 	}
 }
 
-// TestInstallApplyUpdatesAnOlderSteeringRevision covers a gateway whose
-// repository already carries the steering model at the revision before the
-// binary's, which is every gateway the first time a release bumps the model.
-// Installing alone matches the module by name and leaves the old revision in
-// place, so the run must update it.
 func TestInstallApplyUpdatesAnOlderSteeringRevision(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -296,8 +282,8 @@ func TestInstallApplyUpdatesAnOlderSteeringRevision(t *testing.T) {
 
 	output := runInstallChild(t, root)
 
-	_, wantRevision := moduleFileNameRevision(
-		yangpub.SchemaModules[len(yangpub.SchemaModules)-1].File)
+	modules := schema.Modules()
+	_, wantRevision := moduleFileNameRevision(modules[len(modules)-1].File)
 	got := implementedModules(t, root, "after")["goodkind-mwan-steering"]
 	if got.revision != wantRevision {
 		t.Fatalf("steering revision after the run = %q, want %q", got.revision, wantRevision)
@@ -308,7 +294,6 @@ func TestInstallApplyUpdatesAnOlderSteeringRevision(t *testing.T) {
 	}
 }
 
-// moduleFileNameRevision splits a module file name, name@revision.yang.
 func moduleFileNameRevision(file string) (name string, revision string) {
 	name, revision, _ = strings.Cut(strings.TrimSuffix(file, filepath.Ext(file)), "@")
 	return name, revision

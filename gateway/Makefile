@@ -387,6 +387,16 @@ test-docker: wanconfig-builder-image
 	$(WANCONFIG_DOCKER_RUN) \
 		go test -count=1 ./...
 
+# The drift test requires the Linux builder because the gateway links libsysrepo.
+# The temporary workspace includes both modules without modifying the checkout.
+.PHONY: test-provider-drift
+test-provider-drift: wanconfig-builder-image
+	$(WANCONFIG_DOCKER_RUN) sh -c ' \
+		go build $(GO_BUILD_EXTRA_FLAGS) -o /tmp/mwan $(CMD) \
+		&& cd /tmp && GOWORK=/tmp/go.work go work init /src/gateway /src/provider \
+		&& cd /src/provider && GOWORK=/tmp/go.work MWAN_BINARY=/tmp/mwan \
+			go test -v -count=1 -tags drift -run TestProviderRoleMatchesMwanInstall ./internal/provider'
+
 # The deploy gate test starts two network namespaces and blocks ICMPv4 in one.
 # The firewall validator applies the production writer in a private namespace.
 # WAN startup verifies protective rules before validation and tests packet

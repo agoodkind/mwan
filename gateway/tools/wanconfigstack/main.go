@@ -39,6 +39,8 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+
+	"goodkind.io/mwan/internal/stackspec"
 )
 
 // packaging names how a component becomes a Debian package.
@@ -105,12 +107,7 @@ var components = []component{
 	},
 }
 
-// runtimePackages are the packages the gateway installs. Development and
-// tool packages the gateway never runs stay out of the bundle.
-var runtimePackages = []string{
-	"libyang3", "libsysrepo7", "sysrepo-tools",
-	"mwan-wanconfig-libyang-cpp", "mwan-wanconfig-sysrepo-cpp", "mwan-wanconfig-nghttp2-asio", "mwan-wanconfig-rousette",
-}
+var runtimePackages = stackspec.Names()
 
 // debianArchs maps the Go architecture the tool was built for to Debian's
 // name for it. The tool runs natively in the container, so they agree.

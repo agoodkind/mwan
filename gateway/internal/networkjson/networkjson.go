@@ -24,15 +24,15 @@ import (
 	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/yangpub"
+	"goodkind.io/mwan/internal/yangpub/schema"
 )
 
 // DefaultPath is where the deploy writes the network configuration.
 const DefaultPath = "/etc/mwan/network.json"
 
 // DefaultSchemaDir is where the wanconfig stack deploy installs the model
-// files. The deploy validates the rendered file against the same files before
-// it lands here, so one schema serves both checkpoints.
-const DefaultSchemaDir = "/usr/local/share/wanconfig/yang"
+// files.
+const DefaultSchemaDir = schema.InstallDir
 
 // document mirrors the model's JSON encoding. Every scalar the daemon needs is
 // a pointer, so an absent leaf is distinguishable from a zero and can be

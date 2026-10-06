@@ -20,6 +20,7 @@ import (
 	"goodkind.io/mwan/internal/wanconfig"
 	"goodkind.io/mwan/internal/wanstate"
 	"goodkind.io/mwan/internal/yangpub"
+	"goodkind.io/mwan/internal/yangpub/schema"
 )
 
 // selftestTimeout bounds the whole publish-and-provide exercise.
@@ -210,7 +211,7 @@ var selftestModels = []struct {
 	{pattern: "iana-if-type@*.yang", features: nil},
 	{pattern: "ietf-ip@*.yang", features: nil},
 	{pattern: "ietf-nat@*.yang", features: []string{"basic-nat44", "napt44", "dst-nat", "nptv6"}},
-	{pattern: yangpub.SteeringSchemaFile, features: nil},
+	{pattern: schema.SteeringFile, features: nil},
 }
 
 // resolveSelftestModels finds exactly one file per model in dir.

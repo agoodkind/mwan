@@ -19,6 +19,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
+	"goodkind.io/mwan/internal/installspec"
 	"goodkind.io/mwan/internal/networkd"
 )
 
@@ -268,7 +269,7 @@ func installStartupDaemonUnit(t *testing.T, configPath string) {
 		{"mwan-ifmgr@.service", "/etc/systemd/system/mwan-ifmgr@.service"},
 		{"mwan-ifmgr-wan.conf", "/etc/systemd/system/mwan-ifmgr@wan.service.d/firewall.conf"},
 	} {
-		data, err := os.ReadFile(file.source)
+		data, err := installspec.Read(file.source)
 		if err != nil {
 			t.Fatal(err)
 		}

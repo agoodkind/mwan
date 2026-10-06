@@ -11,17 +11,21 @@
 // gates run, so the gates check these files fully.
 package yangpub
 
-import "context"
+import (
+	"context"
+
+	"goodkind.io/mwan/internal/installspec"
+)
 
 // Datastore names a sysrepo datastore a publish targets.
-type Datastore string
+type Datastore = installspec.Datastore
 
 const (
 	// DatastoreRunning is the running configuration datastore.
-	DatastoreRunning Datastore = "running"
+	DatastoreRunning = installspec.DatastoreRunning
 	// DatastoreStartup is the configuration datastore sysrepo loads into
 	// running when it starts with no running data.
-	DatastoreStartup Datastore = "startup"
+	DatastoreStartup = installspec.DatastoreStartup
 	// DatastoreOperational is the read-only operational datastore.
 	DatastoreOperational Datastore = "operational"
 )

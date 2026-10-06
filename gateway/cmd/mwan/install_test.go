@@ -12,13 +12,10 @@ import (
 
 	systemddbus "github.com/coreos/go-systemd/v22/dbus"
 
-	"goodkind.io/mwan/internal/yangpub"
+	"goodkind.io/mwan/internal/installspec"
+	"goodkind.io/mwan/internal/yangpub/schema"
 )
 
-// recordingEnabler stands in for the system bus, which a test host does not
-// have. It records what it was asked to enable and whether it was asked to
-// reload, and nothing else; the files on disk are what the assertions are
-// about.
 type recordingEnabler struct {
 	calls   [][]string
 	reloads []bool
@@ -30,16 +27,12 @@ func (r *recordingEnabler) enable(_ context.Context, units []string, reload bool
 	return nil
 }
 
-// TestInstallUnitsWritesTheWanRoleUnits proves a wan-role install puts the
-// three daemon units the gateway runs into the systemd directory with the bytes
-// the binary carries, and asks systemd to enable the wan instance rather than
-// the template, along with the wanconfig stack's two services.
 func TestInstallUnitsWritesTheWanRoleUnits(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	enabler := &recordingEnabler{}
 
-	outcome, err := installUnits(t.Context(), roleWAN, root, enabler.enable)
+	outcome, err := installUnits(t.Context(), installspec.RoleWAN, root, enabler.enable)
 	if err != nil {
 		t.Fatalf("installUnits: %v", err)
 	}
@@ -56,12 +49,12 @@ func TestInstallUnitsWritesTheWanRoleUnits(t *testing.T) {
 		t.Fatalf("changed = %v, want %d files", outcome.changed, wantChanged)
 	}
 	for _, file := range wantFiles {
-		path := filepath.Join(root, systemdUnitDir, file)
+		path := filepath.Join(root, installspec.SystemdUnitDir, file)
 		onDisk, readErr := os.ReadFile(path)
 		if readErr != nil {
 			t.Fatalf("read %s: %v", path, readErr)
 		}
-		embedded, embedErr := unitFS.ReadFile(file)
+		embedded, embedErr := installspec.Read(file)
 		if embedErr != nil {
 			t.Fatalf("read embedded %s: %v", file, embedErr)
 		}
@@ -72,8 +65,8 @@ func TestInstallUnitsWritesTheWanRoleUnits(t *testing.T) {
 		if statErr != nil {
 			t.Fatalf("stat %s: %v", path, statErr)
 		}
-		if info.Mode().Perm() != systemdUnitMode {
-			t.Fatalf("%s mode = %v, want %v", file, info.Mode().Perm(), systemdUnitMode)
+		if info.Mode().Perm() != installspec.FileMode {
+			t.Fatalf("%s mode = %v, want %v", file, info.Mode().Perm(), installspec.FileMode)
 		}
 	}
 
@@ -95,25 +88,21 @@ func TestInstallUnitsWritesTheWanRoleUnits(t *testing.T) {
 	}
 }
 
-// TestInstallUnitsIsIdempotent proves the second run of the same install
-// changes no file and does not reload systemd, which is what lets a deploy run
-// the verb every time without restarting anything. It still re-enables the
-// units, which changes only install symlinks.
 func TestInstallUnitsIsIdempotent(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	enabler := &recordingEnabler{}
 
-	if _, err := installUnits(t.Context(), roleWAN, root, enabler.enable); err != nil {
+	if _, err := installUnits(t.Context(), installspec.RoleWAN, root, enabler.enable); err != nil {
 		t.Fatalf("first installUnits: %v", err)
 	}
-	unitPath := filepath.Join(root, systemdUnitDir, "mwan-agent.service")
+	unitPath := filepath.Join(root, installspec.SystemdUnitDir, "mwan-agent.service")
 	before, err := os.Stat(unitPath)
 	if err != nil {
 		t.Fatalf("stat after the first run: %v", err)
 	}
 
-	second, err := installUnits(t.Context(), roleWAN, root, enabler.enable)
+	second, err := installUnits(t.Context(), installspec.RoleWAN, root, enabler.enable)
 	if err != nil {
 		t.Fatalf("second installUnits: %v", err)
 	}
@@ -121,8 +110,9 @@ func TestInstallUnitsIsIdempotent(t *testing.T) {
 	if len(second.changed) != 0 {
 		t.Fatalf("second run changed %v, want nothing", second.changed)
 	}
-	if strings.Join(second.enabled, " ") != strings.Join(installRoles[roleWAN].enable, " ") {
-		t.Fatalf("second run enabled %v, want %v", second.enabled, installRoles[roleWAN].enable)
+	wanSpec, _ := installspec.For(installspec.RoleWAN)
+	if strings.Join(second.enabled, " ") != strings.Join(wanSpec.Enable, " ") {
+		t.Fatalf("second run enabled %v, want %v", second.enabled, wanSpec.Enable)
 	}
 	if len(enabler.reloads) != 2 || !enabler.reloads[0] || enabler.reloads[1] {
 		t.Fatalf("reload requests across two runs = %v, want [true false]", enabler.reloads)
@@ -136,22 +126,19 @@ func TestInstallUnitsIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestInstallUnitsRewritesAChangedUnit proves the verb repairs a unit an
-// operator edited on the host, which is the case that makes the release pin
-// mean something: whatever is on disk, the run puts the release's bytes back.
 func TestInstallUnitsRewritesAChangedUnit(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	enabler := &recordingEnabler{}
-	if _, err := installUnits(t.Context(), roleHost, root, enabler.enable); err != nil {
+	if _, err := installUnits(t.Context(), installspec.RoleHost, root, enabler.enable); err != nil {
 		t.Fatalf("first installUnits: %v", err)
 	}
-	unitPath := filepath.Join(root, systemdUnitDir, "mwan-ifmgr.service")
+	unitPath := filepath.Join(root, installspec.SystemdUnitDir, "mwan-ifmgr.service")
 	if err := os.WriteFile(unitPath, []byte("[Service]\nExecStart=/bin/false\n"), 0o644); err != nil {
 		t.Fatalf("overwrite the unit: %v", err)
 	}
 
-	outcome, err := installUnits(t.Context(), roleHost, root, enabler.enable)
+	outcome, err := installUnits(t.Context(), installspec.RoleHost, root, enabler.enable)
 	if err != nil {
 		t.Fatalf("second installUnits: %v", err)
 	}
@@ -163,7 +150,7 @@ func TestInstallUnitsRewritesAChangedUnit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read %s: %v", unitPath, err)
 	}
-	embedded, err := unitFS.ReadFile("mwan-ifmgr.service")
+	embedded, err := installspec.Read("mwan-ifmgr.service")
 	if err != nil {
 		t.Fatalf("read the embedded unit: %v", err)
 	}
@@ -175,16 +162,12 @@ func TestInstallUnitsRewritesAChangedUnit(t *testing.T) {
 	}
 }
 
-// TestInstallFailoverWritesTheUnitAndItsDropIn proves the failover container
-// gets one shared unit body plus the drop-in that relaxes the sandbox, rather
-// than a second full unit. The drop-in path is the one mwan-ifmgr.service's
-// own ProtectKernelTunables comment prescribes.
 func TestInstallFailoverWritesTheUnitAndItsDropIn(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	enabler := &recordingEnabler{}
 
-	outcome, err := installUnits(t.Context(), roleFailover, root, enabler.enable)
+	outcome, err := installUnits(t.Context(), installspec.RoleFailover, root, enabler.enable)
 	if err != nil {
 		t.Fatalf("installUnits: %v", err)
 	}
@@ -198,18 +181,18 @@ func TestInstallFailoverWritesTheUnitAndItsDropIn(t *testing.T) {
 		t.Fatalf("changed = %v, want %d files", outcome.changed, len(wantDests))
 	}
 	for _, dest := range wantDests {
-		if _, statErr := os.Stat(filepath.Join(root, systemdUnitDir, dest)); statErr != nil {
+		if _, statErr := os.Stat(filepath.Join(root, installspec.SystemdUnitDir, dest)); statErr != nil {
 			t.Fatalf("stat %s: %v", dest, statErr)
 		}
 	}
 
 	// The unit body must be the same one the hypervisor gets. A second body
 	// would put the sandbox defaults in two places.
-	shared, err := os.ReadFile(filepath.Join(root, systemdUnitDir, "mwan-ifmgr.service"))
+	shared, err := os.ReadFile(filepath.Join(root, installspec.SystemdUnitDir, "mwan-ifmgr.service"))
 	if err != nil {
 		t.Fatalf("read the installed unit: %v", err)
 	}
-	embedded, err := unitFS.ReadFile("mwan-ifmgr.service")
+	embedded, err := installspec.Read("mwan-ifmgr.service")
 	if err != nil {
 		t.Fatalf("read the embedded unit: %v", err)
 	}
@@ -223,7 +206,7 @@ func TestInstallFailoverWritesTheUnitAndItsDropIn(t *testing.T) {
 	// BindReadOnlyPaths keeps the base unit's /root/.ssh mount off a container
 	// whose modules never read it.
 	dropIn, err := os.ReadFile(
-		filepath.Join(root, systemdUnitDir, "mwan-ifmgr.service.d", "lxc-failover.conf"))
+		filepath.Join(root, installspec.SystemdUnitDir, "mwan-ifmgr.service.d", "lxc-failover.conf"))
 	if err != nil {
 		t.Fatalf("read the drop-in: %v", err)
 	}
@@ -253,20 +236,16 @@ func TestInstallFailoverWritesTheUnitAndItsDropIn(t *testing.T) {
 	}
 }
 
-// TestHostRoleGetsNoFailoverRelaxation proves the hypervisor's install does
-// not carry the failover drop-in. The base unit keeps ProtectKernelTunables
-// true on purpose, and a drop-in leaking onto another role would silently
-// relax every ifmgr host.
 func TestHostRoleGetsNoFailoverRelaxation(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	enabler := &recordingEnabler{}
 
-	if _, err := installUnits(t.Context(), roleHost, root, enabler.enable); err != nil {
+	if _, err := installUnits(t.Context(), installspec.RoleHost, root, enabler.enable); err != nil {
 		t.Fatalf("installUnits: %v", err)
 	}
 
-	dropInDir := filepath.Join(root, systemdUnitDir, "mwan-ifmgr.service.d")
+	dropInDir := filepath.Join(root, installspec.SystemdUnitDir, "mwan-ifmgr.service.d")
 	if _, err := os.Stat(dropInDir); !os.IsNotExist(err) {
 		t.Fatalf("the host role created %s (err %v), want it absent", dropInDir, err)
 	}
@@ -336,11 +315,6 @@ func (m *symlinkManager) EnableUnitFilesContext(
 	return false, nil, nil
 }
 
-// TestReenableRemovesASymlinkUnderTheOldTarget proves the enable path
-// converges a unit whose WantedBy moved. Enabling alone creates symlinks only
-// at the paths the current unit names, so the one under the old target would
-// survive and the unit would be wanted by both. A gateway hit exactly this
-// when mwan-ifmgr@.service moved from multi-user.target to sysinit.target.
 func TestReenableRemovesASymlinkUnderTheOldTarget(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -376,10 +350,6 @@ func TestReenableRemovesASymlinkUnderTheOldTarget(t *testing.T) {
 	}
 }
 
-// TestInstallReenablesWhenNoFileChanged covers a host whose unit file is
-// already current but whose install symlink is stale, which is what a host
-// looks like after another tool wrote the new unit without re-enabling it. The
-// second run changes no file and must still move the symlink.
 func TestInstallReenablesWhenNoFileChanged(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -388,7 +358,7 @@ func TestInstallReenablesWhenNoFileChanged(t *testing.T) {
 	enabler := func(ctx context.Context, units []string, reload bool) error {
 		return reenableUnits(ctx, manager, units, reload)
 	}
-	if _, err := installUnits(t.Context(), roleHost, root, enabler); err != nil {
+	if _, err := installUnits(t.Context(), installspec.RoleHost, root, enabler); err != nil {
 		t.Fatalf("first installUnits: %v", err)
 	}
 	const unitName = "mwan-ifmgr.service"
@@ -402,7 +372,7 @@ func TestInstallReenablesWhenNoFileChanged(t *testing.T) {
 	}
 	manager.calls = nil
 
-	outcome, err := installUnits(t.Context(), roleHost, root, enabler)
+	outcome, err := installUnits(t.Context(), installspec.RoleHost, root, enabler)
 	if err != nil {
 		t.Fatalf("second installUnits: %v", err)
 	}
@@ -425,9 +395,6 @@ func TestInstallReenablesWhenNoFileChanged(t *testing.T) {
 	}
 }
 
-// TestReenableSucceedsOnAUnitThatWasNeverEnabled proves a first install is not
-// an error. Disabling a unit with no symlinks removes nothing and must not
-// fail the run.
 func TestReenableSucceedsOnAUnitThatWasNeverEnabled(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -447,8 +414,6 @@ func TestReenableSucceedsOnAUnitThatWasNeverEnabled(t *testing.T) {
 	}
 }
 
-// TestInstallWithoutApplyWritesNothing proves the default is safe: a run with
-// no --apply prints its help and leaves the host alone.
 func TestInstallWithoutApplyWritesNothing(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -467,9 +432,6 @@ func TestInstallWithoutApplyWritesNothing(t *testing.T) {
 	}
 }
 
-// TestInstallApplyUnderARootTouchesNoSystemd proves a rooted run writes the
-// units and leaves the running machine's systemd alone, which is what makes
-// --root safe to use on a host that is running the daemon.
 func TestInstallApplyUnderARootTouchesNoSystemd(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -479,12 +441,12 @@ func TestInstallApplyUnderARootTouchesNoSystemd(t *testing.T) {
 	if code != exitInstallOK {
 		t.Fatalf("exit code = %d, want %d", code, exitInstallOK)
 	}
-	unitPath := filepath.Join(root, systemdUnitDir, "mwan-ifmgr.service")
+	unitPath := filepath.Join(root, installspec.SystemdUnitDir, "mwan-ifmgr.service")
 	onDisk, err := os.ReadFile(unitPath)
 	if err != nil {
 		t.Fatalf("read %s: %v", unitPath, err)
 	}
-	embedded, err := unitFS.ReadFile("mwan-ifmgr.service")
+	embedded, err := installspec.Read("mwan-ifmgr.service")
 	if err != nil {
 		t.Fatalf("read the embedded unit: %v", err)
 	}
@@ -493,9 +455,6 @@ func TestInstallApplyUnderARootTouchesNoSystemd(t *testing.T) {
 	}
 }
 
-// TestInstallApplyWritesTheWanconfigAndHostFiles runs the WAN installer
-// against a private root. It checks each installed file against the embedded
-// bytes and verifies its path and mode. A child process isolates sysrepo.
 func TestInstallApplyWritesTheWanconfigAndHostFiles(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -516,7 +475,7 @@ func TestInstallApplyWritesTheWanconfigAndHostFiles(t *testing.T) {
 			t.Errorf("read %s: %v", hostPath, err)
 			continue
 		}
-		embedded, err := unitFS.ReadFile(embeddedName)
+		embedded, err := installspec.Read(embeddedName)
 		if err != nil {
 			t.Errorf("read embedded %s: %v", embeddedName, err)
 			continue
@@ -529,8 +488,8 @@ func TestInstallApplyWritesTheWanconfigAndHostFiles(t *testing.T) {
 			t.Errorf("stat %s: %v", hostPath, err)
 			continue
 		}
-		if info.Mode().Perm() != systemdUnitMode {
-			t.Errorf("%s mode = %v, want %v", hostPath, info.Mode().Perm(), systemdUnitMode)
+		if info.Mode().Perm() != installspec.FileMode {
+			t.Errorf("%s mode = %v, want %v", hostPath, info.Mode().Perm(), installspec.FileMode)
 		}
 	}
 }
@@ -562,8 +521,6 @@ func TestInstallApplyRejectsARootThatIsTheHost(t *testing.T) {
 	}
 }
 
-// TestInstallApplyNeedsARole proves a run that would change the host refuses
-// to guess which host it is on.
 func TestInstallApplyNeedsARole(t *testing.T) {
 	t.Parallel()
 
@@ -574,8 +531,6 @@ func TestInstallApplyNeedsARole(t *testing.T) {
 	}
 }
 
-// TestInstallRejectsAnUnknownRole proves a typo in --role fails loudly rather
-// than installing an empty set and reporting success.
 func TestInstallRejectsAnUnknownRole(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -609,10 +564,11 @@ func TestInstallPrintSchemaWritesEveryModule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read %s: %v", dir, err)
 	}
-	if len(entries) != len(yangpub.SchemaModules) {
-		t.Fatalf("wrote %d files, want %d", len(entries), len(yangpub.SchemaModules))
+	modules := schema.Modules()
+	if len(entries) != len(modules) {
+		t.Fatalf("wrote %d files, want %d", len(entries), len(modules))
 	}
-	for _, module := range yangpub.SchemaModules {
+	for _, module := range modules {
 		path := filepath.Join(dir, module.File)
 		written, err := os.ReadFile(path)
 		if err != nil {
@@ -641,7 +597,8 @@ func TestInstalledUnitsAreTheOnesTheDaemonNames(t *testing.T) {
 		focus[name] = true
 	}
 
-	for _, unit := range installRoles[roleWAN].enable {
+	wanSpec, _ := installspec.For(installspec.RoleWAN)
+	for _, unit := range wanSpec.Enable {
 		switch unit {
 		case "mwan-trace-boot.service":
 			// The boot trace is a oneshot that has already exited by the time
