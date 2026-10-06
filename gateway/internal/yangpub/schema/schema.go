@@ -37,7 +37,8 @@ type Module struct {
 
 // Modules orders extensions after the modules they augment.
 // The NAT module requires enabled nat-type features for its enum values.
-// Modules disables revision updates for the base types and interface registry.
+// Modules disables revision updates for the base type modules ietf-yang-types
+// and ietf-inet-types and the IANA interface-type registry iana-if-type.
 func Modules() []Module {
 	return []Module{
 		{File: "ietf-yang-types@2025-12-22.yang", Features: nil, Update: false},

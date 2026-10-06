@@ -58,8 +58,7 @@ func (s Spec) SysrepoImports(policy []byte) []SysrepoImport {
 
 // Unit specifies a service's desired state and configuration paths.
 type Unit struct {
-	Name string
-	// Enabled specifies the desired enablement state.
+	Name    string
 	Enabled bool
 	// Active is false for oneshot services without RemainAfterExit.
 	Active bool
