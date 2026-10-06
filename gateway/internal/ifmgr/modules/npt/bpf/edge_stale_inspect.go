@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"math"
 	"net/netip"
 	"slices"
 
@@ -82,76 +81,56 @@ func verifySurvivingEdgePolicy(index int, policy nptPolicy, address netip.Addr, 
 	return nil
 }
 
+// Only the current programs and one previous pinned generation have known
+// policy maps. An unmatched owned filter must block edge release until
+// Reconcile removes the filter.
+func (translator *Translator) policiesForProgram(programID int) (policies *ebpf.Map, resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			slog.Warn("Attached NPTv6 program has no known policy map", "program", programID, "err", resultErr)
+		}
+	}()
+	generations := []*nptObjects{&translator.objects}
+	if translator.previous != nil {
+		generations = append(generations, translator.previous)
+	}
+	for _, generation := range generations {
+		for _, program := range []*ebpf.Program{generation.NptIngress, generation.NptEgress} {
+			info, err := program.Info()
+			if err != nil {
+				return nil, fmt.Errorf("inspect known NPTv6 program: %w", err)
+			}
+			knownID, available := info.ID()
+			if !available {
+				return nil, fmt.Errorf("kernel did not report a known NPTv6 program identity")
+			}
+			if int(knownID) == programID {
+				return generation.Policies, nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("owned NPTv6 filter program %d matches no program this translator or its pinned predecessor loaded", programID)
+}
+
 func (translator *Translator) verifyAttachedEdgePolicy(index, programID int, address netip.Addr, desired map[int]preparedPolicy) (resultErr error) {
 	defer func() {
 		if resultErr != nil {
 			slog.Warn("Attached NPTv6 policy inspection failed", "interface", index, "program", programID, "err", resultErr)
 		}
 	}()
-	if programID <= 0 || uint64(programID) > math.MaxUint32 {
-		return fmt.Errorf("interface %d managed NPTv6 attachment has no program identity", index)
-	}
-	program, err := ebpf.NewProgramFromID(ebpf.ProgramID(programID))
+	policies, err := translator.policiesForProgram(programID)
 	if err != nil {
-		return fmt.Errorf("open attached NPTv6 program on interface %d: %w", index, err)
-	}
-	defer program.Close()
-	info, err := program.Info()
-	if err != nil {
-		return fmt.Errorf("inspect attached NPTv6 program on interface %d: %w", index, err)
-	}
-	mapIDs, available := info.MapIDs()
-	if !available {
-		return fmt.Errorf("interface %d attached NPTv6 program maps are unavailable", index)
-	}
-	expected, err := translator.objects.Policies.Info()
-	if err != nil {
-		return fmt.Errorf("inspect NPTv6 policy map schema: %w", err)
-	}
-	found := false
-	for _, mapID := range mapIDs {
-		matched, err := verifyAttachedMapEdge(mapID, index, address, desired, expected)
-		if err != nil {
-			return err
-		}
-		found = found || matched
-	}
-	if !found {
-		return fmt.Errorf("interface %d attached NPTv6 policy map is unavailable", index)
-	}
-	return nil
-}
-
-func verifyAttachedMapEdge(mapID ebpf.MapID, index int, address netip.Addr, desired map[int]preparedPolicy, expected *ebpf.MapInfo) (matched bool, resultErr error) {
-	defer func() {
-		if resultErr != nil {
-			slog.Warn("Attached NPTv6 map inspection failed", "interface", index, "map", mapID, "err", resultErr)
-		}
-	}()
-	policyMap, err := ebpf.NewMapFromID(mapID)
-	if err != nil {
-		return false, fmt.Errorf("open attached NPTv6 map: %w", err)
-	}
-	defer policyMap.Close()
-	info, err := policyMap.Info()
-	if err != nil {
-		return false, fmt.Errorf("inspect attached NPTv6 map: %w", err)
-	}
-	if info.Name != expected.Name {
-		return false, nil
-	}
-	if info.Type != expected.Type || info.KeySize != expected.KeySize || info.ValueSize != expected.ValueSize {
-		return true, fmt.Errorf("interface %d attached NPTv6 policy map schema differs", index)
+		return fmt.Errorf("interface %d: %w", index, err)
 	}
 	key, err := interfaceKey(index)
 	if err != nil {
-		return true, err
+		return err
 	}
 	var policy nptPolicy
-	if err := policyMap.Lookup(key, &policy); errors.Is(err, ebpf.ErrKeyNotExist) {
-		return true, nil
+	if err := policies.Lookup(key, &policy); errors.Is(err, ebpf.ErrKeyNotExist) {
+		return nil
 	} else if err != nil {
-		return true, fmt.Errorf("read attached NPTv6 policy on interface %d: %w", index, err)
+		return fmt.Errorf("read attached NPTv6 policy on interface %d: %w", index, err)
 	}
-	return true, verifySurvivingEdgePolicy(index, policy, address, desired)
+	return verifySurvivingEdgePolicy(index, policy, address, desired)
 }
