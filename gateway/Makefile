@@ -587,7 +587,7 @@ test-protocol-systemd: systemd-runner-image
 WANCONFIG_RELEASE_ARCH  := $(lastword $(subst /, ,$(firstword $(RELEASE_PLATFORMS))))
 WANCONFIG_STACK_ARCH    ?= $(if $(strip $(GO_MK_TARGET_GOARCH)),$(GO_MK_TARGET_GOARCH),$(WANCONFIG_RELEASE_ARCH))
 WANCONFIG_STACK_IMAGE   := debian:trixie
-WANCONFIG_STACK_SOURCES := $(wildcard tools/wanconfigstack/*.go) go.mod go.sum
+WANCONFIG_STACK_SOURCES := $(wildcard tools/wanconfigstack/*.go) $(wildcard internal/stackspec/*.go) go.mod go.sum
 WANCONFIG_STACK_BUNDLE  := wanconfig-stack_linux_$(WANCONFIG_STACK_ARCH).tar.gz
 WANCONFIG_STACK_CACHE   := $(GO_MK_CGO_PREFIX)/wanconfig-stack
 WANCONFIG_STACK_KEY     := $(shell printf '%s' '$(WANCONFIG_PINS) $(WANCONFIG_STACK_IMAGE)' | cat - $(WANCONFIG_STACK_SOURCES) | cksum | cut -d' ' -f1)
