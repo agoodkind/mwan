@@ -22,7 +22,6 @@ const (
 	arm64StackHash = "547ee05774f5c9be428ef2cf8c8cdc8fc1fe06e61be6362f84e1b9bb2f681fd6"
 )
 
-// releaseServer serves checksums.txt for releaseTag and counts the requests.
 func releaseServer(t *testing.T, checksums string) (*httptest.Server, *atomic.Int64) {
 	t.Helper()
 	var requests atomic.Int64

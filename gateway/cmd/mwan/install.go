@@ -25,7 +25,6 @@ const (
 	exitInstallUsage  = 2
 )
 
-// installFlags is one parsed invocation of the subcommand.
 type installFlags struct {
 	role        string
 	apply       bool
@@ -33,23 +32,13 @@ type installFlags struct {
 	root        string
 }
 
-// installOutcome is what one install run did, so the caller reports it and a
-// test asserts on it rather than on printed text.
 type installOutcome struct {
-	// changed names every file whose content the run replaced, in the order
-	// it wrote them.
-	changed []string
-	// enabled names every unit the run asked systemd to enable.
-	enabled []string
-	// modules names every schema module the run installed into sysrepo or
-	// updated there. installUnits leaves it empty; runInstall fills it.
-	modules []yangpub.ModuleChange
-	// nacmImported names the datastores the run imported the NACM policy
-	// into. runInstall sets it.
+	changed      []string
+	enabled      []string
+	modules      []yangpub.ModuleChange
 	nacmImported []yangpub.Datastore
 }
 
-// runInstall is the `mwan install` entry point.
 func runInstall(args []string) int {
 	flags, err := parseInstallFlags(args)
 	if err != nil {
@@ -93,10 +82,7 @@ func runInstall(args []string) int {
 	return exitInstallOK
 }
 
-// enablerFor picks the systemd side of the run. A run under --root writes
-// somewhere other than the host's unit directory, so enabling units on this
-// machine would act on files the run did not write. Such a run leaves systemd
-// alone and reports what it would have enabled.
+// A rooted install must not enable units on the host.
 func enablerFor(rooted bool) unitEnabler {
 	if !rooted {
 		return realUnitEnabler
@@ -104,20 +90,10 @@ func enablerFor(rooted bool) unitEnabler {
 	return func(_ context.Context, _ []string, _ bool) error { return nil }
 }
 
-// unitEnabler is the systemd side of an install: reload the manager when
-// reload is set, so it reads what was just written, then re-enable the named
-// units. It is a seam so the file writing can be exercised where no system bus
-// exists.
 type unitEnabler func(ctx context.Context, units []string, reload bool) error
 
-// installUnits writes the role's files under root and re-enables its units.
-// It returns what it did even when it fails, so the caller reports the
-// files that were already written before the failure.
-//
-// The units are re-enabled on every run, because a current unit file can still
-// sit behind a stale install symlink when something other than this verb wrote
-// it. systemd is asked to reload only when a file changed, so a second run
-// leaves the manager's loaded state alone.
+// Re-enable units even when files are unchanged to remove stale installation links.
+// Reload the manager only when a file changes.
 func installUnits(
 	ctx context.Context,
 	role installspec.Role,
@@ -150,18 +126,8 @@ func installUnits(
 	return outcome, nil
 }
 
-// realUnitEnabler reloads systemd when reload is set, then removes each unit's existing install
-// symlinks and writes the ones its current [Install] section names. That pair
-// is what `systemctl reenable` does, and enabling alone is not enough: enable
-// only creates symlinks at the paths the current unit names, so a unit whose
-// WantedBy moved keeps the symlink under its old target and ends up wanted by
-// both. A gateway proved that on 2026-09-18, when mwan-ifmgr@.service moved
-// from multi-user.target to sysinit.target and the deployed host still
-// reported multi-user.target with a two month old symlink.
-//
-// Disabling changes no running state. It removes symlinks; it does not stop
-// the daemon, so the unit keeps running across this call and the deploy keeps
-// the restart decision.
+// Disabling and enabling unit files replaces old WantedBy links.
+// These operations do not stop or restart running services.
 func realUnitEnabler(ctx context.Context, units []string, reload bool) error {
 	conn, err := systemddbus.NewSystemConnectionContext(ctx)
 	if err != nil {
@@ -171,9 +137,6 @@ func realUnitEnabler(ctx context.Context, units []string, reload bool) error {
 	return reenableUnits(ctx, conn, units, reload)
 }
 
-// unitInstaller is the part of the systemd manager the enable path drives. It
-// is an interface so the call sequence can be exercised where no system bus
-// exists; *systemddbus.Conn is the only implementation that ships.
 type unitInstaller interface {
 	ReloadContext(ctx context.Context) error
 	DisableUnitFilesContext(
@@ -184,10 +147,7 @@ type unitInstaller interface {
 	) (bool, []systemddbus.EnableUnitFileChange, error)
 }
 
-// reenableUnits reloads the manager when reload is set, clears each unit's
-// install symlinks, and writes the ones the unit currently names. The symlinks
-// come from the unit files on disk, so re-enabling without a reload still
-// reads the current [Install] section.
+// systemd reads the current [Install] section when creating unit links.
 func reenableUnits(
 	ctx context.Context, manager unitInstaller, units []string, reload bool,
 ) error {
@@ -211,18 +171,11 @@ func reenableUnits(
 	return nil
 }
 
-// installFailed logs one failure where it happened and returns it wrapped
-// under the same words, so the cause reads the same in the journal and in the
-// message the command prints.
 func installFailed(operation string, name string, err error) error {
 	slog.Warn("install: "+operation+" failed", "name", name, "err", err)
 	return fmt.Errorf("%s %s: %w", operation, name, err)
 }
 
-// reportInstall prints one line per changed file, then the units enabled. A
-// run that changed no file says so, so an operator can tell "already correct"
-// from "did nothing because it failed early". A rooted run says what it would
-// have enabled, because it asked systemd for nothing.
 func reportInstall(out io.Writer, outcome installOutcome, rooted bool) {
 	if len(outcome.changed) == 0 {
 		fmt.Fprintln(out, "no change")
@@ -255,7 +208,6 @@ func reportInstall(out io.Writer, outcome installOutcome, rooted bool) {
 	fmt.Fprintf(out, "%s %s\n", verb, strings.Join(outcome.enabled, " "))
 }
 
-// parseInstallFlags reads the subcommand's flags.
 func parseInstallFlags(args []string) (installFlags, error) {
 	flags := installFlags{role: "", apply: false, printSchema: "", root: ""}
 	set := flag.NewFlagSet("install", flag.ContinueOnError)
@@ -284,16 +236,10 @@ func parseInstallFlags(args []string) (installFlags, error) {
 	return flags, nil
 }
 
-// rootIsHost reports whether root names the host's own root directory,
-// written directly or reached through a symlink. A rooted run skips systemd
-// and keeps a private sysrepo repository below the root, so a root of / would
-// write the host's files without enabling them and open the host's
-// repository under a second shared-memory prefix.
-//
-// The root is cleaned before it is resolved, because the install joins every
-// host path onto it and a join cleans lexically, so a/missing/.. writes under
-// a even though missing does not exist. Once cleaned, a root that does not exist cannot be the
-// host's root, because / always exists.
+// A rooted install must not use / or a symlink to /.
+// It would write host files without enabling host services and would open the
+// host's sysrepo repository with a separate shared-memory prefix.
+// Clean the path before resolving symlinks to match destination path handling.
 func rootIsHost(root string) bool {
 	cleaned := filepath.Clean(root)
 	if cleaned == "/" {
@@ -306,7 +252,6 @@ func rootIsHost(root string) bool {
 	return filepath.Clean(resolved) == "/"
 }
 
-// knownInstallRoles lists the roles in a stable order for help and errors.
 func knownInstallRoles() []string {
 	known := installspec.Roles()
 	roles := make([]string, 0, len(known))
@@ -316,8 +261,6 @@ func knownInstallRoles() []string {
 	return roles
 }
 
-// printInstallUsage explains what a run would do. This is what an operator
-// sees when they leave --apply off, which is the default.
 func printInstallUsage(out io.Writer) {
 	fmt.Fprintln(out, "usage: mwan install --role <"+strings.Join(knownInstallRoles(), "|")+"> --apply")
 	fmt.Fprintln(out, "       mwan install --print-schema <dir>")

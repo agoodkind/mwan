@@ -6,11 +6,10 @@ import (
 )
 
 const (
-	// BinaryPath is the install path of the mwan binary. The ExecStart lines
-	// of the embedded units start it by this path.
+	// BinaryPath must match the path used by the embedded service commands.
 	BinaryPath = "/usr/local/bin/mwan"
 
-	// NACMModule is the sysrepo module the NACM policy configures.
+	// NACMModule selects the datastore module configured by the access policy.
 	NACMModule = "ietf-netconf-acm"
 
 	unitSuffix        = ".service"
@@ -20,29 +19,28 @@ const (
 	remainAfterExit   = "RemainAfterExit=yes"
 )
 
-// Datastore is the name of a sysrepo datastore.
+// Datastore selects a sysrepo configuration datastore.
 type Datastore string
 
 const (
-	// DatastoreStartup is the datastore sysrepo loads into running at start.
+	// DatastoreStartup stores the configuration that sysrepo loads into running at startup.
 	DatastoreStartup Datastore = "startup"
-	// DatastoreRunning is the running configuration datastore.
+	// DatastoreRunning contains the active configuration.
 	DatastoreRunning Datastore = "running"
 )
 
-// SysrepoImport is one configuration import into a sysrepo datastore.
+// SysrepoImport specifies a complete module configuration for one datastore.
 type SysrepoImport struct {
-	// Datastore receives the import.
+	// Datastore selects the import destination.
 	Datastore Datastore
-	// Module is the module that the import replaces the whole configuration of.
+	// Module selects the configuration for replacement.
 	Module string
-	// Content is the XML document to import.
+	// Content contains the XML document for the import.
 	Content []byte
 }
 
-// SysrepoImports lists the role's imports in import order: the startup
-// datastore first, then the running datastore. Only a role with a schema has
-// imports.
+// SysrepoImports returns NACM imports when Schema is enabled.
+// The startup import precedes the running import.
 func (s Spec) SysrepoImports() ([]SysrepoImport, error) {
 	if !s.Schema {
 		return nil, nil
@@ -62,23 +60,19 @@ func (s Spec) SysrepoImports() ([]SysrepoImport, error) {
 	return imports, nil
 }
 
-// Unit is one unit the role enables.
+// Unit specifies a service's desired state and configuration paths.
 type Unit struct {
 	Name string
-	// Enabled is true for every listed unit.
+	// Enabled specifies the desired enablement state.
 	Enabled bool
-	// Active is the state the deploy expects after the install. It is false for
-	// a oneshot unit without RemainAfterExit, which exits after it runs.
+	// Active is false for oneshot services without RemainAfterExit.
 	Active bool
-	// Files are the host paths of the role's files that configure the unit: its
-	// unit file, or the template of an instance, and the drop-ins of the unit
-	// and of the template.
+	// Files includes the unit or instance template and their drop-ins.
 	Files []string
 }
 
-// Units lists the units of the role: the enabled units in enable order, then
-// the not-owned units. Both kinds are enabled. A oneshot unit without
-// RemainAfterExit is inactive after it exits. Only Enable feeds `mwan install`.
+// Units returns the services in Enable followed by the services in NotOwned.
+// The installer enables only the services in Enable.
 func (s Spec) Units() ([]Unit, error) {
 	units := make([]Unit, 0, len(s.Enable)+len(s.NotOwned))
 	for _, name := range s.Enable {
@@ -121,8 +115,6 @@ func (s Spec) unitFor(name string) (Unit, error) {
 	return unit, nil
 }
 
-// exitsAfterRun reports whether a unit file declares a oneshot service that
-// does not stay active after its command exits.
 func exitsAfterRun(unitFile string) bool {
 	oneshot := false
 	remains := false

@@ -1,6 +1,5 @@
-// Command terraform-provider-mwan serves the mwan OpenTofu provider over the
-// plugin protocol. The provider exposes MWAN deploy data and writes nothing to
-// a host.
+// Command terraform-provider-mwan serves deployment data through the OpenTofu protocol.
+// It does not install files or manage services.
 package main
 
 import (

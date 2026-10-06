@@ -107,9 +107,8 @@ func (b *builder) collectRuntimeMembers(ctx context.Context, debs []string) ([]b
 	return members, nil
 }
 
-// checkAgainstSpec fails when a built package has a version or file name other
-// than the one stackspec lists, because the provider derives its member paths
-// from that list.
+// The provider derives archive paths from stackspec.
+// Validate package identity before publishing the bundle.
 func (b *builder) checkAgainstSpec(ctx context.Context, members []bundleMember) error {
 	for _, member := range members {
 		if err := stackspec.CheckBuilt(member.name, member.version, filepath.Base(member.path), b.arch); err != nil {

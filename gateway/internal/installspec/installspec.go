@@ -1,6 +1,5 @@
-// Package installspec is the one list of files and units that `mwan install`
-// writes for each host role. It embeds the file bodies and imports no cgo
-// package, which lets the OpenTofu provider read the list the binary installs.
+// Package installspec embeds the files used by the installer and OpenTofu provider.
+// The package does not require cgo.
 package installspec
 
 import (
@@ -12,98 +11,72 @@ import (
 	"slices"
 )
 
-// unitFS embeds the files the install verb writes. Each file is listed by name
-// instead of by pattern: a file added to this directory ships only after
-// someone adds it to this list.
+// Add new install assets to the explicit embed list.
 //
 //go:embed mwan-agent.service mwan-ifmgr.service mwan-ifmgr@.service mwan-trace-boot.service mwan-ifmgr-failover.conf
 //go:embed rousette.service nghttpx-wanconfig.service systemd-networkd-override.conf mwan-ifmgr-wan.conf
 //go:embed 99-quiet-console.conf nacm-anonymous.xml
 var unitFS embed.FS
 
-// nacmPolicyName is the embedded name of the read-only RESTCONF access policy:
-// NACM denies every write and grants the anonymous user read access, the
-// contract rousette serves anonymous clients under.
+// The anonymous RESTCONF policy permits reads and denies writes and execution.
 const nacmPolicyName = "nacm-anonymous.xml"
 
 const (
-	// SystemdUnitDir is the administrator's unit directory, which outranks
-	// anything a package ships.
+	// SystemdUnitDir takes precedence over package-provided unit directories.
 	SystemdUnitDir = "/etc/systemd/system"
-	// SysctlDir is the directory systemd-sysctl reads at boot.
+	// SysctlDir contains the settings read by systemd-sysctl at boot.
 	SysctlDir = "/etc/sysctl.d"
-	// NACMPolicyPath is where the wan role writes the policy on the host, the
-	// path the deploy has always written it to.
+	// NACMPolicyPath is the installer output path for the anonymous RESTCONF policy.
 	NACMPolicyPath = "/etc/sysrepo-nacm-anonymous.xml"
-	// FileMode matches what the playbooks write today, for the units and for
-	// every other file the verb installs.
+	// FileMode permits every user to read installed files.
 	FileMode fs.FileMode = 0o644
 )
 
-// Role is the set of units one kind of host runs.
+// Role selects an installation profile.
 type Role string
 
 const (
-	// RoleWAN is the gateway VM: the agent, the instanced interface manager,
-	// the boot trace oneshot, the wanconfig RESTCONF server and its front-end
-	// proxy, the systemd-networkd drop-in, and the quiet console
-	// sysctl file.
+	// RoleWAN selects the gateway services and schema.
 	RoleWAN Role = "wan"
-	// RoleFailover is the failover container: the agent, plus the interface
-	// manager with the sandbox relaxation slaac_health needs.
+	// RoleFailover selects agent and interface-manager settings for a failover container.
 	RoleFailover Role = "failover"
-	// RoleHost is a Proxmox hypervisor, which runs the single-instance
-	// interface manager in its out-of-band role.
+	// RoleHost selects the hypervisor interface manager.
 	RoleHost Role = "host"
 )
 
-// File is one embedded file and its host destination. A drop-in's destination
-// is a path inside a unit's .d directory, which differs from the embedded name.
+// File maps an embedded asset to its absolute installation path.
+// A systemd drop-in can use a different destination name.
 type File struct {
-	// Embedded is the file's name inside the embedded set.
+	// Embedded identifies an asset in the binary.
 	Embedded string
-	// Dest is the absolute host path to write; a run under --root writes it
-	// below the root.
+	// Dest is absolute; the installer prepends the selected root during a rooted install.
 	Dest string
 }
 
-// Spec is one role's install list: the files to write and the units to enable.
+// Spec defines a role's files, services, and schema requirements.
 type Spec struct {
-	// Files are the embedded files this role installs, in write order.
+	// Files preserves installation order.
 	Files []File
-	// Enable are the unit names to enable, which for an instanced unit is a
-	// concrete instance rather than the template.
+	// Enable uses concrete service instances rather than template names.
 	Enable []string
-	// Schema is set for the role that runs the wanconfig datastore. After it
-	// writes the units, `mwan install` writes the embedded modules and the NACM
-	// policy and installs the modules into sysrepo.
+	// Schema enables YANG installation and NACM imports after unit installation.
 	Schema bool
-	// NotOwned are units that the role does not enable and that read files the
-	// role writes. `mwan install` ignores them; Units lists them.
+	// NotOwned includes system services that read installed files.
+	// The installer does not enable these services; Units includes them for consumers.
 	NotOwned []NotOwnedUnit
 }
 
-// NotOwnedUnit is a system unit that reads files a role writes.
+// NotOwnedUnit lists configuration files read by a system service.
 type NotOwnedUnit struct {
 	Name string
-	// Files are the host paths of the role's files that the unit reads.
+	// Files uses absolute installation paths.
 	Files []string
 }
 
-// unit is an embedded unit file that installs under its own name in the
-// systemd unit directory.
 func unit(name string) File {
 	return File{Embedded: name, Dest: filepath.Join(SystemdUnitDir, name)}
 }
 
-// specs maps each role onto what it installs, matching what the playbooks
-// write and enable today.
-//
-// One interface-manager unit body serves every host, and a deployment that
-// needs its sandbox relaxed says so in a drop-in. mwan-ifmgr.service's own
-// ProtectKernelTunables comment prescribes exactly that, naming this file's
-// path, and the suburban hypervisor already relaxes the same setting the same
-// way through a drop-in configs deploys.
 func specs() map[Role]Spec {
 	return map[Role]Spec{
 		RoleWAN: {
@@ -164,13 +137,13 @@ func specs() map[Role]Spec {
 	}
 }
 
-// For returns the install list for a role and whether the role exists.
+// For returns a false presence result for an unknown role.
 func For(role Role) (Spec, bool) {
 	spec, known := specs()[role]
 	return spec, known
 }
 
-// Roles lists the roles in a stable order for help and errors.
+// Roles returns role names in sorted order.
 func Roles() []Role {
 	all := specs()
 	roles := make([]Role, 0, len(all))
@@ -181,7 +154,7 @@ func Roles() []Role {
 	return roles
 }
 
-// Read returns the embedded file that File.Embedded names.
+// Read returns an error when an embedded asset is absent.
 func Read(embedded string) ([]byte, error) {
 	content, err := unitFS.ReadFile(embedded)
 	if err != nil {
@@ -191,8 +164,7 @@ func Read(embedded string) ([]byte, error) {
 	return content, nil
 }
 
-// NACMPolicy returns the bytes of the read-only RESTCONF access policy the wan
-// role installs at NACMPolicyPath.
+// NACMPolicy returns the embedded anonymous RESTCONF access policy.
 func NACMPolicy() ([]byte, error) {
 	return Read(nacmPolicyName)
 }

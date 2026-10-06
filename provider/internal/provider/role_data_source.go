@@ -75,80 +75,80 @@ func roleNames() []string {
 
 func (d *roleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Files and units that `mwan install --role <role>` writes. " +
-			"The data source reads the same install list as the mwan binary.",
+		Description: "The data source returns role files, service settings, YANG modules, and sysrepo imports. " +
+			"The installer and provider use shared definitions.",
 		Attributes: map[string]schema.Attribute{
 			"role": schema.StringAttribute{
 				Required:    true,
-				Description: "Host role: wan, failover, or host.",
+				Description: "Select wan, failover, or host.",
 				Validators:  []validator.String{stringvalidator.OneOf(roleNames()...)},
 			},
 			"files": schema.ListNestedAttribute{
 				Computed:    true,
-				Description: "Files in write order, with absolute host paths.",
+				Description: "The data source lists files in installation order with absolute destination paths.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"path":    schema.StringAttribute{Computed: true, Description: "Absolute host path."},
-						"content": schema.StringAttribute{Computed: true, Description: "File content."},
-						"mode":    schema.StringAttribute{Computed: true, Description: "Octal file mode, for example 0644."},
+						"path":    schema.StringAttribute{Computed: true, Description: "The destination path is absolute."},
+						"content": schema.StringAttribute{Computed: true, Description: "The value contains the file content."},
+						"mode":    schema.StringAttribute{Computed: true, Description: "The file mode uses four octal digits, such as 0644."},
 					},
 				},
 			},
 			"binary_path": schema.StringAttribute{
 				Computed:    true,
-				Description: "Install path of the mwan binary, which the units start.",
+				Description: "The service commands execute the MWAN binary at this path.",
 			},
 			"units": schema.ListNestedAttribute{
 				Computed:    true,
-				Description: "Units the role enables, in enable order. An instanced unit is a concrete instance.",
+				Description: "The list includes role services and system services that read installed files. It uses instance names instead of service templates.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"name":    schema.StringAttribute{Computed: true, Description: "Unit name."},
-						"enabled": schema.BoolAttribute{Computed: true, Description: "Whether the unit is enabled."},
+						"name":    schema.StringAttribute{Computed: true, Description: "The name identifies a systemd unit."},
+						"enabled": schema.BoolAttribute{Computed: true, Description: "The value specifies the desired service enablement state."},
 						"active": schema.BoolAttribute{
 							Computed: true,
-							Description: "Whether the unit is running after the install. False for a oneshot unit " +
-								"without RemainAfterExit, which exits after it runs.",
+							Description: "The value specifies the desired active state. It is false for a oneshot unit " +
+								"without RemainAfterExit.",
 						},
 						"files": schema.ListAttribute{
 							Computed:    true,
 							ElementType: types.StringType,
-							Description: "Paths from files that the unit reads: its unit file, or the template of an " +
-								"instance, and the drop-ins of both.",
+							Description: "These installation paths configure the service: its unit or instance template " +
+								"and their drop-ins.",
 						},
 					},
 				},
 			},
 			"sysrepo_data": schema.ListNestedAttribute{
 				Computed: true,
-				Description: "Configuration imports into sysrepo datastores, in import order. " +
-					"Only the wan role has any.",
+				Description: "The data source returns sysrepo imports in order for the wan role. " +
+					"The data source returns an empty list for other roles.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"datastore": schema.StringAttribute{Computed: true, Description: "startup or running."},
-						"module":    schema.StringAttribute{Computed: true, Description: "Module the import configures."},
-						"content":   schema.StringAttribute{Computed: true, Description: "XML document to import."},
+						"datastore": schema.StringAttribute{Computed: true, Description: "The datastore is startup or running."},
+						"module":    schema.StringAttribute{Computed: true, Description: "The import configures this sysrepo module."},
+						"content":   schema.StringAttribute{Computed: true, Description: "The value contains the XML configuration to import."},
 					},
 				},
 			},
 			"yang_modules": schema.ListNestedAttribute{
 				Computed: true,
-				Description: "YANG modules the role installs into the wanconfig datastore, " +
-					"in install order. Only the wan role has any.",
+				Description: "The data source returns YANG modules in installation order for the wan role. " +
+					"The data source returns an empty list for other roles.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"file":    schema.StringAttribute{Computed: true, Description: "Module file name with its revision."},
-						"path":    schema.StringAttribute{Computed: true, Description: "Absolute host path of the module file."},
-						"content": schema.StringAttribute{Computed: true, Description: "Module source."},
-						"mode":    schema.StringAttribute{Computed: true, Description: "Octal file mode."},
+						"file":    schema.StringAttribute{Computed: true, Description: "The filename includes the YANG module revision."},
+						"path":    schema.StringAttribute{Computed: true, Description: "The module destination path is absolute."},
+						"content": schema.StringAttribute{Computed: true, Description: "The value contains the YANG module source."},
+						"mode":    schema.StringAttribute{Computed: true, Description: "The file mode uses four octal digits."},
 						"features": schema.ListAttribute{
 							Computed:    true,
 							ElementType: types.StringType,
-							Description: "Features to enable at install time.",
+							Description: "The installer enables these YANG features.",
 						},
 						"update": schema.BoolAttribute{
 							Computed:    true,
-							Description: "Whether an install replaces the module installed at another revision.",
+							Description: "The value permits replacement of a different installed module revision.",
 						},
 					},
 				},

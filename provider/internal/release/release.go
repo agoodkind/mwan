@@ -1,5 +1,4 @@
-// Package release resolves the files of one mwan GitHub release. The asset
-// names and the repository are the release contract of the mwan pipeline.
+// Package release resolves MWAN archive URLs and checksums from release assets.
 package release
 
 import (
@@ -14,25 +13,23 @@ import (
 )
 
 const (
-	// Repository is the GitHub repository that publishes the mwan release.
+	// Repository publishes the MWAN release assets.
 	Repository = "agoodkind/mwan"
-	// DefaultBaseURL is the GitHub download root of Repository. A release asset
-	// is at <base>/<tag>/<asset>.
+	// DefaultBaseURL prefixes asset URLs formatted as <base>/<tag>/<asset>.
 	DefaultBaseURL = "https://github.com/" + Repository + "/releases/download"
-	// ChecksumsAsset lists the SHA-256 of every archive of the release.
+	// ChecksumsAsset contains archive SHA-256 values in sha256sum format.
 	ChecksumsAsset = "checksums.txt"
-	// ArchiveMember is the name of the binary inside the mwan archive.
+	// ArchiveMember identifies the executable inside an MWAN archive.
 	ArchiveMember = "mwan"
 
-	// MwanAssetPattern is the name of the mwan archive for one architecture.
+	// MwanAssetPattern substitutes the architecture into the gateway archive name.
 	MwanAssetPattern = "mwan_linux_%s.tar.gz"
-	// StackAssetPattern is the name of the wanconfig stack archive for one
-	// architecture.
+	// StackAssetPattern substitutes the architecture into the stack archive name.
 	StackAssetPattern = "wanconfig-stack_linux_%s.tar.gz"
 
-	// ArchitectureAMD64 is the amd64 architecture name in asset names.
+	// ArchitectureAMD64 selects x86-64 release assets.
 	ArchitectureAMD64 = "amd64"
-	// ArchitectureARM64 is the arm64 architecture name in asset names.
+	// ArchitectureARM64 selects 64-bit ARM release assets.
 	ArchitectureARM64 = "arm64"
 
 	sha256HexLength  = 64
@@ -40,26 +37,25 @@ const (
 	maxChecksumsSize = 1 << 20
 )
 
-// Asset is one downloadable archive and its SHA-256 as lowercase hex.
+// Asset pairs an archive URL with its SHA-256 value from the release manifest.
 type Asset struct {
 	URL    string
 	SHA256 string
 }
 
-// Architecture is the pair of archives the release ships for one architecture.
+// Architecture groups the gateway and stack archives for one target.
 type Architecture struct {
 	Mwan  Asset
 	Stack Asset
 }
 
-// Architectures lists the architectures the release ships.
+// Architectures returns the targets required by Resolve.
 func Architectures() []string {
 	return []string{ArchitectureAMD64, ArchitectureARM64}
 }
 
-// CommitOf returns the commit of a release tag. The release pipeline names a
-// release <timestamp>-<run>-<short commit>, and stamps the same short commit
-// into the binaries it builds.
+// CommitOf returns the final hyphen-separated field of a release tag.
+// It rejects a missing or empty suffix but does not validate the commit format.
 func CommitOf(tag string) (string, error) {
 	index := strings.LastIndex(tag, "-")
 	if index < 0 || index == len(tag)-1 {
@@ -68,8 +64,8 @@ func CommitOf(tag string) (string, error) {
 	return tag[index+1:], nil
 }
 
-// Resolve downloads checksums.txt of the release and returns the archives of
-// every architecture. A release that omits one of the archives fails.
+// Resolve requires gateway and stack entries for every supported architecture.
+// It downloads the checksum manifest but does not download the archives.
 func Resolve(
 	ctx context.Context,
 	client *http.Client,
@@ -132,8 +128,7 @@ func fetchChecksums(ctx context.Context, client *http.Client, checksumsURL strin
 	return parseChecksums(io.LimitReader(response.Body, maxChecksumsSize))
 }
 
-// parseChecksums reads the sha256sum format: a hex hash, whitespace, and the
-// file name, with an optional leading * on the name for binary mode.
+// sha256sum prefixes binary-mode filenames with an asterisk.
 func parseChecksums(reader io.Reader) (map[string]string, error) {
 	checksums := make(map[string]string)
 	scanner := bufio.NewScanner(reader)

@@ -10,20 +10,14 @@ import (
 	"goodkind.io/mwan/internal/yangpub/schema"
 )
 
-// WriteSchema writes every embedded module into dir, creating dir when it is
-// absent, and returns the models in install order with the paths it wrote.
-// WriteSchema skips a file when its bytes match the embedded module, and does
-// not change that file's timestamp.
-//
-// The result is what InstallModules takes, and dir is the search directory
-// that resolves the imports between them.
+// WriteSchema preserves timestamps when installed module bytes already match.
+// The returned models use installation order and resolve imports from dir.
 func WriteSchema(dir string) ([]Model, error) {
 	models, _, err := WriteSchemaChanges(dir)
 	return models, err
 }
 
-// WriteSchemaChanges is WriteSchema that also returns the path of every file
-// it replaced, in the order it wrote them. The `mwan install` command reports these paths.
+// WriteSchemaChanges also returns changed file paths for installer reporting.
 func WriteSchemaChanges(dir string) ([]Model, []string, error) {
 	if err := os.MkdirAll(dir, schema.DirMode); err != nil {
 		return nil, nil, schemaFailed("create the schema directory", dir, err)
@@ -49,8 +43,6 @@ func WriteSchemaChanges(dir string) ([]Model, []string, error) {
 	return models, changed, nil
 }
 
-// schemaFailed logs one failure where it happened and returns it wrapped
-// under the same words. The journal and the printed message give the same cause.
 func schemaFailed(operation string, name string, err error) error {
 	slog.Warn("yangpub: "+operation+" failed", "name", name, "err", err)
 	return fmt.Errorf("%s %s: %w", operation, name, err)

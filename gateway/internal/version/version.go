@@ -87,8 +87,7 @@ func GitCommit() string {
 	return stampedOrUnknown(gklogversion.Commit)
 }
 
-// StampedCommit returns the git commit stamped at link time. The second result
-// is false for a binary without a stamp.
+// StampedCommit reports whether a linker-provided commit is available.
 func StampedCommit() (string, bool) {
 	commit := GitCommit()
 	return commit, commit != unknown

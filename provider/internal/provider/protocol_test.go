@@ -16,8 +16,6 @@ const (
 	roleDataSource    = "mwan_role"
 )
 
-// protocolServer is a configured provider behind the plugin protocol, the
-// boundary OpenTofu uses.
 type protocolServer struct {
 	server  tfprotov6.ProviderServer
 	schemas map[string]*tfprotov6.Schema
@@ -72,8 +70,7 @@ type releaseData struct {
 	Architectures map[string]archives
 }
 
-// newServer starts the provider with the given build commit and release base
-// URL. An empty releaseBaseURL keeps the provider default.
+// An empty release URL uses the provider default.
 func newServer(t *testing.T, buildCommit string, releaseBaseURL string) *protocolServer {
 	t.Helper()
 	ctx := context.Background()
@@ -97,8 +94,6 @@ func newServer(t *testing.T, buildCommit string, releaseBaseURL string) *protoco
 	return &protocolServer{server: server, schemas: schemaResponse.DataSourceSchemas}
 }
 
-// readRole reads the mwan_role data source. It returns the diagnostics of a
-// failed read.
 func (s *protocolServer) readRole(t *testing.T, role string) (roleData, []*tfprotov6.Diagnostic) {
 	t.Helper()
 	state, diagnostics := s.read(t, roleDataSource, map[string]tftypes.Value{
@@ -110,8 +105,6 @@ func (s *protocolServer) readRole(t *testing.T, role string) (roleData, []*tfpro
 	return decodeRole(t, state), nil
 }
 
-// readRelease reads the mwan_release data source. It returns the diagnostics of
-// a failed read.
 func (s *protocolServer) readRelease(t *testing.T, version string) (releaseData, []*tfprotov6.Diagnostic) {
 	t.Helper()
 	state, diagnostics := s.read(t, releaseDataSource, map[string]tftypes.Value{

@@ -38,8 +38,7 @@ jobs:
       release_platforms: linux/amd64 linux/arm64
       cgo: true
 
-  # The OpenTofu provider module imports packages of the gateway module and
-  # links no C code. It needs none of the cgo inputs above.
+  # The provider does not require the gateway's C libraries.
   provider:
     uses: agoodkind/go-makefile/.github/workflows/_ci.yml@main
     permissions:
@@ -52,10 +51,7 @@ jobs:
       go_version_file: provider/go.mod
       release_platforms: darwin/arm64 linux/amd64 linux/arm64
 
-  # The provider module runs on a runner without libsysrepo, which the mwan
-  # binary needs. This job builds the binary in the builder image and compares
-  # the files `mwan install --root` writes for every role with the provider's
-  # mwan_role data source.
+  # The drift comparison requires the gateway's libsysrepo builder image.
   drift:
     name: provider drift
     runs-on: ubuntu-latest

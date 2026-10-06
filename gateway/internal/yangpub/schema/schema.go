@@ -1,6 +1,5 @@
-// Package schema embeds the gateway's YANG modules and lists the order and
-// features they install with. It imports no cgo package, which lets the
-// OpenTofu provider read the same list the binary installs.
+// Package schema embeds YANG modules and defines their installation order and features.
+// The package does not require cgo.
 package schema
 
 import (
@@ -10,56 +9,35 @@ import (
 	"log/slog"
 )
 
-// files embeds the gateway's data model. A gateway serves the model its own
-// release was built from. The README in this directory records the source of
-// each file.
+// The binary embeds the schema used by this release.
 //
 //go:embed *.yang
 var files embed.FS
 
 const (
-	// InstallDir is where the wanconfig stack deploy installs the model files.
-	// The deploy validates the rendered network file against the same files
-	// before it writes the file.
+	// InstallDir contains the model files used to validate gateway configuration.
 	InstallDir = "/usr/local/share/wanconfig/yang"
-	// FileMode is the mode of each written module. The deploy installs these
-	// world readable, because sysrepo and rousette read them as their own
-	// users.
+	// FileMode permits sysrepo and rousette users to read the installed modules.
 	FileMode fs.FileMode = 0o644
-	// DirMode is the mode of the directory a write creates.
+	// DirMode permits directory traversal by module readers.
 	DirMode fs.FileMode = 0o755
-	// SteeringFile is the steering revision installed by this binary.
+	// SteeringFile identifies the embedded steering module revision.
 	SteeringFile = "goodkind-mwan-steering@2026-10-01.yang"
 )
 
-// Module is one module of the gateway's model, named by its file, with
-// the list of features to enable when it is installed.
+// Module defines an embedded YANG file and its installation options.
 type Module struct {
-	// File is the module's file name inside the embedded schema directory,
-	// including the revision date the YANG convention puts there.
+	// File includes the module revision in the YANG filename.
 	File string
-	// Features are the feature names to enable at install time. A module
-	// without feature-gated leaves has none.
+	// Features selects optional YANG features during installation.
 	Features []string
-	// Update lets an install replace this module when the repository has it
-	// at another revision.
+	// Update permits replacement of a different installed revision.
 	Update bool
 }
 
-// Modules lists the modules to install, in the order they install.
-// Imports resolve from the directory. The order only has to put a module
-// after anything it augments.
-//
-// ietf-nat guards every enum value behind its nat-type features. A module
-// installed with no features enabled leaves those leaves with no valid value
-// and libyang rejects it. The four named here are the translation types the
-// steering model uses.
-//
-// Update is set on the five modules the deploy installed and updated with
-// sysrepoctl. The deploy never updated the two base type modules or the
-// interface-type registry: libyang and sysrepo load their own revisions of
-// the base types, and the deploy installed the registry from rousette's model
-// directory without an update step.
+// Modules orders extensions after the modules they augment.
+// The NAT module requires enabled nat-type features for its enum values.
+// Modules disables revision updates for the base types and interface registry.
 func Modules() []Module {
 	return []Module{
 		{File: "ietf-yang-types@2025-12-22.yang", Features: nil, Update: false},
@@ -77,7 +55,7 @@ func Modules() []Module {
 	}
 }
 
-// Read returns the module file that Module.File names.
+// Read returns an error when an embedded module file is absent.
 func Read(file string) ([]byte, error) {
 	content, err := files.ReadFile(file)
 	if err != nil {

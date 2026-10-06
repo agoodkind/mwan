@@ -1,5 +1,5 @@
-// Package provider implements the mwan OpenTofu provider. It defines data
-// sources only and writes nothing to a host.
+// Package provider exposes MWAN deployment data to OpenTofu.
+// It does not install files or manage services.
 package provider
 
 import (
@@ -35,8 +35,7 @@ type providerData struct {
 	client         *http.Client
 }
 
-// New returns the factory of the mwan provider. buildCommit is the short git
-// commit stamped into the provider build, or empty for an unstamped build.
+// New accepts the stamped build commit, or an empty string for an unstamped build.
 func New(buildCommit string) func() provider.Provider {
 	return func() provider.Provider {
 		return &mwanProvider{buildCommit: buildCommit}
@@ -50,13 +49,13 @@ func (p *mwanProvider) Metadata(_ context.Context, _ provider.MetadataRequest, r
 
 func (p *mwanProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Reads the files, units, YANG modules, and release archives that an mwan release installs. " +
-			"The provider writes nothing to a host.",
+		Description: "The provider returns MWAN release and role configuration data. " +
+			"It does not install files or manage services.",
 		Attributes: map[string]schema.Attribute{
 			"release_base_url": schema.StringAttribute{
 				Optional: true,
-				Description: "This attribute sets the download root of the mwan release assets. The default is " +
-					release.DefaultBaseURL + ". An asset is at <root>/<version>/<asset>.",
+				Description: "Asset URLs use <base>/<version>/<asset>. The default base is " +
+					release.DefaultBaseURL + ".",
 			},
 		},
 	}

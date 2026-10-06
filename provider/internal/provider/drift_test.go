@@ -29,9 +29,7 @@ type installedFile struct {
 	mode    fs.FileMode
 }
 
-// walkInstalled lists the regular files below root by their path relative to
-// root, with a leading slash. The private sysrepo repository of a wan run is
-// not an installed file.
+// The private sysrepo repository is test state, not an installed file.
 func walkInstalled(t *testing.T, root string) map[string]installedFile {
 	t.Helper()
 	installed := map[string]installedFile{}
@@ -66,9 +64,6 @@ func walkInstalled(t *testing.T, root string) map[string]installedFile {
 	return installed
 }
 
-// TestProviderRoleMatchesMwanInstall runs the mwan binary's install verb under a
-// private root for every role and compares every file it wrote, and the units
-// it names, with the mwan_role data source.
 func TestProviderRoleMatchesMwanInstall(t *testing.T) {
 	binary := os.Getenv(binaryEnv)
 	if binary == "" {

@@ -13,33 +13,18 @@ import (
 	"goodkind.io/mwan/internal/yangpub"
 )
 
-// sysrepoRepositoryDir is the repository the gateway's sysrepo is compiled
-// to use. A run under --root keeps its own repository at this path below the
-// root instead of touching the host's.
+// A rooted install uses this repository path below its selected root.
 const sysrepoRepositoryDir = "/etc/sysrepo"
 
-// schemaOutcome is what the datastore half of an install did.
 type schemaOutcome struct {
-	// changed names the files it rewrote: schema modules and the policy.
-	changed []string
-	// modules names the schema modules it installed or updated.
-	modules []yangpub.ModuleChange
-	// nacmImported names the datastores it imported the policy into.
+	changed      []string
+	modules      []yangpub.ModuleChange
 	nacmImported []yangpub.Datastore
 }
 
-// installSchema writes the embedded modules into the schema directory the
-// daemon validates its network file against and installs or updates them in
-// sysrepo from that directory. It then imports the NACM policy into each of
-// startup and running whose ietf-netconf-acm configuration differs from the
-// embedded policy, and writes the policy file. It returns what it did, even
-// when it fails partway.
-//
-// The datastore decides the import, not the file: a repository reset under a
-// file left from an earlier deploy still needs the policy.
-//
-// A run under root writes below the root and uses a private repository below
-// the root, so it never touches the host's datastore.
+// A policy file does not prove that either datastore contains the policy.
+// Check both datastores even when that file exists after a repository reset.
+// A rooted install uses its own repository and shared-memory prefix.
 func installSchema(ctx context.Context, log *slog.Logger, root string) (schemaOutcome, error) {
 	outcome := schemaOutcome{changed: nil, modules: nil, nacmImported: nil}
 	schemaDir := filepath.Join(root, networkjson.DefaultSchemaDir)
@@ -68,20 +53,14 @@ func installSchema(ctx context.Context, log *slog.Logger, root string) (schemaOu
 	if err := os.MkdirAll(repository, 0o750); err != nil {
 		return outcome, installFailed("create the private repository", repository, err)
 	}
-	// sysrepo reads its repository path and shared-memory prefix from the
-	// environment at the process's first connection and keeps both for the
-	// life of the process. The command runs once per process, so setting them
-	// here reaches sysrepo; the check below refuses to go on when something
-	// earlier in the process already bound sysrepo to another repository.
-	// The separator after the process id keeps the shared-memory removal's
-	// glob from matching another run whose process id starts with this one.
+	// sysrepo selects its repository path and shared-memory prefix at the first connection.
+	// Configure both before opening the private repository.
+	// The underscore delimits the process ID in the cleanup pattern.
 	shmPrefix := fmt.Sprintf("mwaninstall%d_", os.Getpid())
 	restoreEnv := setSelftestEnv([]envSetting{
 		{name: "SYSREPO_REPOSITORY_PATH", value: repository},
 		{name: "SYSREPO_SHM_PREFIX", value: shmPrefix},
-		// The same reason as the private selftest: the rooted repository is
-		// this run's own, so sysrepo's group policy has nothing to protect,
-		// and without this the run needs a sysrepo group on every machine.
+		// The private repository does not require the host sysrepo group.
 		{name: "SR_ENV_RUN_TESTS", value: "1"},
 	})
 	defer restoreEnv()
@@ -97,8 +76,6 @@ func installSchema(ctx context.Context, log *slog.Logger, root string) (schemaOu
 	return outcome, writePolicy(policyPath, policy, &outcome)
 }
 
-// writePolicy writes the embedded policy to path and records it in outcome
-// when the content changed.
 func writePolicy(path string, policy []byte, outcome *schemaOutcome) error {
 	changed, err := installfile.Write(path, policy, installspec.FileMode)
 	if err != nil {
@@ -110,9 +87,6 @@ func writePolicy(path string, policy []byte, outcome *schemaOutcome) error {
 	return nil
 }
 
-// applyDatastore connects to the datastore the environment names, brings the
-// models in, imports the policy into each datastore that does not already
-// hold it, and disconnects. It records what it did in outcome.
 func applyDatastore(
 	ctx context.Context,
 	log *slog.Logger,

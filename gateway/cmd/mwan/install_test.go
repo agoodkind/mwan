@@ -16,10 +16,6 @@ import (
 	"goodkind.io/mwan/internal/yangpub/schema"
 )
 
-// recordingEnabler stands in for the system bus, which a test host does not
-// have. It records what it was asked to enable and whether it was asked to
-// reload, and nothing else; the files on disk are what the assertions are
-// about.
 type recordingEnabler struct {
 	calls   [][]string
 	reloads []bool
@@ -31,10 +27,6 @@ func (r *recordingEnabler) enable(_ context.Context, units []string, reload bool
 	return nil
 }
 
-// TestInstallUnitsWritesTheWanRoleUnits proves a wan-role install puts the
-// three daemon units the gateway runs into the systemd directory with the bytes
-// the binary carries, and asks systemd to enable the wan instance rather than
-// the template, along with the wanconfig stack's two services.
 func TestInstallUnitsWritesTheWanRoleUnits(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -96,10 +88,6 @@ func TestInstallUnitsWritesTheWanRoleUnits(t *testing.T) {
 	}
 }
 
-// TestInstallUnitsIsIdempotent proves the second run of the same install
-// changes no file and does not reload systemd, which is what lets a deploy run
-// the verb every time without restarting anything. It still re-enables the
-// units, which changes only install symlinks.
 func TestInstallUnitsIsIdempotent(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -138,9 +126,6 @@ func TestInstallUnitsIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestInstallUnitsRewritesAChangedUnit proves the verb repairs a unit an
-// operator edited on the host, which is the case that makes the release pin
-// mean something: whatever is on disk, the run puts the release's bytes back.
 func TestInstallUnitsRewritesAChangedUnit(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -177,10 +162,6 @@ func TestInstallUnitsRewritesAChangedUnit(t *testing.T) {
 	}
 }
 
-// TestInstallFailoverWritesTheUnitAndItsDropIn proves the failover container
-// gets one shared unit body plus the drop-in that relaxes the sandbox, rather
-// than a second full unit. The drop-in path is the one mwan-ifmgr.service's
-// own ProtectKernelTunables comment prescribes.
 func TestInstallFailoverWritesTheUnitAndItsDropIn(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -255,10 +236,6 @@ func TestInstallFailoverWritesTheUnitAndItsDropIn(t *testing.T) {
 	}
 }
 
-// TestHostRoleGetsNoFailoverRelaxation proves the hypervisor's install does
-// not carry the failover drop-in. The base unit keeps ProtectKernelTunables
-// true on purpose, and a drop-in leaking onto another role would silently
-// relax every ifmgr host.
 func TestHostRoleGetsNoFailoverRelaxation(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -338,11 +315,6 @@ func (m *symlinkManager) EnableUnitFilesContext(
 	return false, nil, nil
 }
 
-// TestReenableRemovesASymlinkUnderTheOldTarget proves the enable path
-// converges a unit whose WantedBy moved. Enabling alone creates symlinks only
-// at the paths the current unit names, so the one under the old target would
-// survive and the unit would be wanted by both. A gateway hit exactly this
-// when mwan-ifmgr@.service moved from multi-user.target to sysinit.target.
 func TestReenableRemovesASymlinkUnderTheOldTarget(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -378,10 +350,6 @@ func TestReenableRemovesASymlinkUnderTheOldTarget(t *testing.T) {
 	}
 }
 
-// TestInstallReenablesWhenNoFileChanged covers a host whose unit file is
-// already current but whose install symlink is stale, which is what a host
-// looks like after another tool wrote the new unit without re-enabling it. The
-// second run changes no file and must still move the symlink.
 func TestInstallReenablesWhenNoFileChanged(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -427,9 +395,6 @@ func TestInstallReenablesWhenNoFileChanged(t *testing.T) {
 	}
 }
 
-// TestReenableSucceedsOnAUnitThatWasNeverEnabled proves a first install is not
-// an error. Disabling a unit with no symlinks removes nothing and must not
-// fail the run.
 func TestReenableSucceedsOnAUnitThatWasNeverEnabled(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -449,8 +414,6 @@ func TestReenableSucceedsOnAUnitThatWasNeverEnabled(t *testing.T) {
 	}
 }
 
-// TestInstallWithoutApplyWritesNothing proves the default is safe: a run with
-// no --apply prints its help and leaves the host alone.
 func TestInstallWithoutApplyWritesNothing(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -469,9 +432,6 @@ func TestInstallWithoutApplyWritesNothing(t *testing.T) {
 	}
 }
 
-// TestInstallApplyUnderARootTouchesNoSystemd proves a rooted run writes the
-// units and leaves the running machine's systemd alone, which is what makes
-// --root safe to use on a host that is running the daemon.
 func TestInstallApplyUnderARootTouchesNoSystemd(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -495,9 +455,6 @@ func TestInstallApplyUnderARootTouchesNoSystemd(t *testing.T) {
 	}
 }
 
-// TestInstallApplyWritesTheWanconfigAndHostFiles runs the WAN installer
-// against a private root. It checks each installed file against the embedded
-// bytes and verifies its path and mode. A child process isolates sysrepo.
 func TestInstallApplyWritesTheWanconfigAndHostFiles(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -564,8 +521,6 @@ func TestInstallApplyRejectsARootThatIsTheHost(t *testing.T) {
 	}
 }
 
-// TestInstallApplyNeedsARole proves a run that would change the host refuses
-// to guess which host it is on.
 func TestInstallApplyNeedsARole(t *testing.T) {
 	t.Parallel()
 
@@ -576,8 +531,6 @@ func TestInstallApplyNeedsARole(t *testing.T) {
 	}
 }
 
-// TestInstallRejectsAnUnknownRole proves a typo in --role fails loudly rather
-// than installing an empty set and reporting success.
 func TestInstallRejectsAnUnknownRole(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
