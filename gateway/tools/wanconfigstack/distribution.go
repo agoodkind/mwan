@@ -15,7 +15,7 @@ var errDownloadedFile = errors.New("apt-get download did not leave exactly one .
 func (b *builder) downloadDistribution(ctx context.Context) error {
 	count := 0
 	for _, pkg := range stackspec.Packages() {
-		if !pkg.Distribution {
+		if pkg.Origin != stackspec.OriginDistribution {
 			continue
 		}
 		dir := filepath.Join(buildRoot, "pkgs", pkg.Name)
