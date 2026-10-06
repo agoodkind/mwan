@@ -233,10 +233,6 @@ func readGuestProbeCommand(ctx context.Context, vmid int, command ...string) (st
 		slog.WarnContext(ctx, "downstream guest command failed", "vmid", vmid, "err", err)
 		return "", fmt.Errorf("guest exec %d: %w", vmid, err)
 	}
-	return readGuestProbeResponse(result)
-}
-
-func readGuestProbeResponse(result ops.GuestCommandResult) (string, error) {
 	if result.ExitCode != 0 {
 		return "", fmt.Errorf("guest command exited %d", result.ExitCode)
 	}
