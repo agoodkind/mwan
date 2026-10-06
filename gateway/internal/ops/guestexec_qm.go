@@ -9,22 +9,37 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"goodkind.io/mwan/internal/config"
 )
 
-// GuestExecViaQm runs `qm guest exec` for the given VM with an agent-side
-// timeout and returns the raw JSON response. The deploy gate uses it to read
-// the guest boot_id from the hypervisor without the watchdog's richer
-// channels; the integer vmid keeps the argv free of caller-shaped strings.
-// Linux-only because its only caller, the deploy gate, runs on the Proxmox
-// host.
-func GuestExecViaQm(
+// GuestCommandResult includes stderr from commands executed through the hypervisor.
+type GuestCommandResult struct {
+	GuestExecResult
+	Stderr string
+}
+
+// RunInGuest executes a command through the hypervisor. A guest command failure
+// returns an exit status; a hypervisor execution failure returns an error.
+// waitTimeout limits the hypervisor process. agentTimeout applies only to QEMU.
+func RunInGuest(
 	ctx context.Context,
-	timeout time.Duration,
+	guestType config.GuestType,
+	waitTimeout time.Duration,
 	agentTimeout time.Duration,
 	vmid int,
 	command ...string,
-) ([]byte, error) {
-	return runQm(ctx, timeout, qmGuestExecArgs(strconv.Itoa(vmid), agentTimeout, command)...)
+) (GuestCommandResult, error) {
+	driver := newGuestDriver(guestType)
+	return driver.execGuest(
+		ctx, slog.Default(), strconv.Itoa(vmid), waitTimeout, agentTimeout, command)
+}
+
+func failedGuestCommand() GuestCommandResult {
+	return GuestCommandResult{
+		GuestExecResult: GuestExecResult{ExitCode: 1, Stdout: ""},
+		Stderr:          "",
+	}
 }
 
 // qmGuestExecArgs builds the `qm guest exec` argv. agentTimeout is how long qm
@@ -73,51 +88,52 @@ type qmGuestExecStatus struct {
 	Exited       agentFlag `json:"exited"`
 	ExitCode     *int      `json:"exitcode"`
 	OutData      string    `json:"out-data"`
+	ErrData      string    `json:"err-data"`
 	OutTruncated agentFlag `json:"out-truncated"`
 }
 
-// qmExec runs args inside the guest through `qm guest exec`, which reaches the
-// guest agent over QEMU's own channel rather than the guest's network. A guest
-// agent that is down makes qm exit non-zero, and that is returned as an error
-// so the caller records a failed attempt. A command that ran and exited
-// non-zero is a result, not an error.
-func (r *RealOps) qmExec(
-	ctx context.Context, vmid string, args ...string,
-) (GuestExecResult, error) {
-	out, err := runQm(ctx, timeoutQmGuestExecWait,
-		qmGuestExecArgs(vmid, timeoutQmGuestExec, args)...)
+// execGuest uses the QEMU guest agent without requiring guest network access.
+// It returns an error if qm cannot execute the command.
+func (qemuGuest) execGuest(
+	ctx context.Context,
+	log *slog.Logger,
+	vmid string,
+	waitTimeout, agentTimeout time.Duration,
+	command []string,
+) (GuestCommandResult, error) {
+	out, err := runQm(ctx, waitTimeout, qmGuestExecArgs(vmid, agentTimeout, command)...)
 	if err != nil {
-		r.log.ErrorContext(ctx, "qm guest exec failed",
+		log.ErrorContext(ctx, "qm guest exec failed",
 			"vmid", vmid, "err", err,
 			"output", strings.TrimSpace(string(out)))
-		// runQm already names the command and its arguments, so this adds
-		// only the output rather than repeating the prefix.
-		return GuestExecResult{ExitCode: 1, Stdout: ""},
+		return failedGuestCommand(),
 			fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
 	}
 	var status qmGuestExecStatus
 	if err := json.Unmarshal(out, &status); err != nil {
-		r.log.WarnContext(ctx, "qm guest exec output is not JSON",
+		log.WarnContext(ctx, "qm guest exec output is not JSON",
 			"vmid", vmid, "err", err,
 			"output", strings.TrimSpace(string(out)))
-		return GuestExecResult{ExitCode: 1, Stdout: ""},
+		return failedGuestCommand(),
 			fmt.Errorf("parse qm guest exec output: %w", err)
 	}
 	if !status.Exited {
-		return GuestExecResult{ExitCode: 1, Stdout: ""},
+		return failedGuestCommand(),
 			fmt.Errorf("guest command %q did not exit within %s",
-				strings.Join(args, " "), timeoutQmGuestExec)
+				strings.Join(command, " "), agentTimeout)
 	}
 	if status.ExitCode == nil {
-		return GuestExecResult{ExitCode: 1, Stdout: ""},
+		return failedGuestCommand(),
 			errors.New("qm guest exec reported an exited command without an exit code")
 	}
-	// A caller parses Stdout, and a truncated stdout would parse as a wrong
-	// value rather than fail, so the attempt fails instead.
+	// Reject truncated stdout before parsing a probe result.
 	if status.OutTruncated {
-		return GuestExecResult{ExitCode: 1, Stdout: ""},
+		return failedGuestCommand(),
 			fmt.Errorf("guest command %q output was truncated by the guest agent",
-				strings.Join(args, " "))
+				strings.Join(command, " "))
 	}
-	return GuestExecResult{ExitCode: *status.ExitCode, Stdout: status.OutData}, nil
+	return GuestCommandResult{
+		GuestExecResult: GuestExecResult{ExitCode: *status.ExitCode, Stdout: status.OutData},
+		Stderr:          status.ErrData,
+	}, nil
 }

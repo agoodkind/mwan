@@ -1,5 +1,4 @@
-// Package ops is the watchdog's access to everything outside its own process:
-// the guest agent, and the hypervisor's `qm` and `pvesh` commands.
+// Package ops executes guest commands and hypervisor operations for the watchdog.
 // The SysOps interface is the whole surface, so a test or a fault injector can
 // stand in for all of it.
 //
@@ -29,10 +28,8 @@ const (
 	// ChanTCP is the gRPC connection to the guest agent over the management
 	// network.
 	ChanTCP ChannelName = "tcp_mgmt"
-	// ChanPVE is `qm guest exec` on the hypervisor, which reaches the guest
-	// agent through QEMU rather than through the guest's network. The value
-	// predates the move off the Proxmox REST API and is kept so log lines and
-	// alert summaries stay comparable across that change.
+	// ChanPVE identifies qm guest exec for QEMU and pct exec for LXC.
+	// Logs and alert summaries use pve_rest for compatibility with earlier releases.
 	ChanPVE ChannelName = "pve_rest"
 )
 

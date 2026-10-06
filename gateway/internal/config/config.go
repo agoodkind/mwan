@@ -237,12 +237,24 @@ type AgentSection struct {
 	Debug          bool   `toml:"debug"`
 }
 
+// GuestType selects qm for QEMU guests and pct for LXC guests.
+type GuestType string
+
+const (
+	// GuestTypeQEMU selects qm for guest operations.
+	GuestTypeQEMU GuestType = "qemu"
+	// GuestTypeLXC selects pct for guest operations.
+	GuestTypeLXC GuestType = "lxc"
+)
+
 // Config is the single TOML configuration for the mwan monolith.
 // Default path: /etc/mwan/config.toml, override with --config or MWAN_CONFIG env.
 type Config struct {
 	Hostname     string `toml:"hostname"`
 	MwanVMID     string `toml:"mwan_vmid"`
 	MwanMgmtAddr string `toml:"mwan_mgmt_addr"`
+	// The configuration loader defaults guest_type to qemu.
+	GuestType GuestType `toml:"guest_type"`
 
 	Email   EmailConfig   `toml:"email"`
 	PVE     PVEConfig     `toml:"pve"`
@@ -358,6 +370,7 @@ func defaultConfigBase() Config {
 	// exhaustruct lint does not require enumerating every zero-value
 	// sub-section (OPNsense, IfMgr, and their many nested sub-structs).
 	var cfg Config
+	cfg.GuestType = GuestTypeQEMU
 	// The secrets and addresses left empty here come from the TOML file or
 	// the environment; a default would be wrong on every host.
 	cfg.Email = EmailConfig{
@@ -464,6 +477,10 @@ func loadConfig(path string) (*Config, error) {
 	if v := strings.TrimSpace(os.Getenv("OPNSENSE_API_SECRET")); v != "" {
 		cfg.OPNsense.APISecret = v
 	}
+	if err := validateGuestType(cfg.GuestType); err != nil {
+		slog.Error("validate guest type failed", "error", err)
+		return nil, fmt.Errorf("validate guest type: %w", err)
+	}
 	if err := validateBGPDynamicConfig(&cfg.BGP); err != nil {
 		slog.Error("validate BGP dynamic configuration failed", "error", err)
 		return nil, fmt.Errorf("validate BGP dynamic configuration: %w", err)
@@ -485,6 +502,13 @@ func validateBGPDynamicConfig(b *BGPSection) error {
 	}
 	if len(b.DynamicNeighbors) > 0 && b.LearnedRouteIface == "" {
 		return errors.New("[bgp] learned_route_iface is required when dynamic_neighbors is configured")
+	}
+	return nil
+}
+
+func validateGuestType(guestType GuestType) error {
+	if guestType != GuestTypeQEMU && guestType != GuestTypeLXC {
+		return fmt.Errorf("guest_type %q must be %q or %q", guestType, GuestTypeQEMU, GuestTypeLXC)
 	}
 	return nil
 }

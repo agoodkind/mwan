@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/netip"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,6 +17,7 @@ import (
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/notify"
+	"goodkind.io/mwan/internal/ops"
 )
 
 const (
@@ -169,8 +170,8 @@ func TestWaitDeployRecordsSuccessfulVerdict(t *testing.T) {
 	deps.readBootID = func(_ context.Context, _ int) (string, error) {
 		return testNewBootID, nil
 	}
-	deps.runGuestOwnedCheck = func(context.Context, int) (guestExecResponse, error) {
-		return guestExecResponse{ExitCode: exitDeployGateOK, OutData: "owned addresses: 2 present, 0 missing\n"}, nil
+	deps.runGuestOwnedCheck = func(context.Context, int) (ops.GuestCommandResult, error) {
+		return guestResult(exitDeployGateOK, "owned addresses: 2 present, 0 missing\n"), nil
 	}
 	deps.ping6 = func(context.Context, netip.Addr, time.Duration) (time.Duration, error) {
 		t.Fatal("host IPv6 ping ran during wait-deploy")
@@ -319,8 +320,8 @@ func TestWaitDeployReturnsFailureWhenVerdictWriteFails(t *testing.T) {
 	deps.readBootID = func(_ context.Context, _ int) (string, error) {
 		return testNewBootID, nil
 	}
-	deps.runGuestOwnedCheck = func(context.Context, int) (guestExecResponse, error) {
-		return guestExecResponse{ExitCode: exitDeployGateOK, OutData: "owned addresses: 2 present, 0 missing\n"}, nil
+	deps.runGuestOwnedCheck = func(context.Context, int) (ops.GuestCommandResult, error) {
+		return guestResult(exitDeployGateOK, "owned addresses: 2 present, 0 missing\n"), nil
 	}
 	deps.ping6 = func(context.Context, netip.Addr, time.Duration) (time.Duration, error) {
 		return time.Millisecond, nil
@@ -491,12 +492,12 @@ func TestWaitDeployRetriesOwnedAddressesUntilHeld(t *testing.T) {
 		return time.Millisecond, nil
 	}
 	checks := 0
-	deps.runGuestOwnedCheck = func(context.Context, int) (guestExecResponse, error) {
+	deps.runGuestOwnedCheck = func(context.Context, int) (ops.GuestCommandResult, error) {
 		checks++
 		if checks < 3 {
-			return guestExecResponse{ExitCode: exitDeployGateFailed, OutData: "owned addresses: 1 present, 1 missing\n"}, nil
+			return guestResult(exitDeployGateFailed, "owned addresses: 1 present, 1 missing\n"), nil
 		}
-		return guestExecResponse{ExitCode: exitDeployGateOK, OutData: "owned addresses: 2 present, 0 missing\n"}, nil
+		return guestResult(exitDeployGateOK, "owned addresses: 2 present, 0 missing\n"), nil
 	}
 	deps.alertOwnedMissing = func(context.Context, ownedMissingAlert) error {
 		t.Fatal("owned-address alert sent although the addresses were held within the budget")
@@ -531,11 +532,9 @@ func TestWaitDeployFailsOwnedAddressesAfterTheBudget(t *testing.T) {
 	deps.ping4 = func(context.Context, string, netip.Addr, time.Duration) (time.Duration, error) {
 		return time.Millisecond, nil
 	}
-	deps.runGuestOwnedCheck = func(context.Context, int) (guestExecResponse, error) {
-		return guestExecResponse{
-			ExitCode: exitDeployGateFailed,
-			OutData:  "owned address 203.0.113.4 on enwebpass0: missing\n",
-		}, nil
+	deps.runGuestOwnedCheck = func(context.Context, int) (ops.GuestCommandResult, error) {
+		return guestResult(exitDeployGateFailed,
+			"owned address 203.0.113.4 on enwebpass0: missing\n"), nil
 	}
 	verdictPath := filepath.Join(t.TempDir(), "verdict.json")
 	var alerts []ownedMissingAlert
@@ -585,8 +584,8 @@ func TestWaitDeployRecordsTheVerdictWhenTheAlertFails(t *testing.T) {
 	deps.ping4 = func(context.Context, string, netip.Addr, time.Duration) (time.Duration, error) {
 		return time.Millisecond, nil
 	}
-	deps.runGuestOwnedCheck = func(context.Context, int) (guestExecResponse, error) {
-		return guestExecResponse{ExitCode: exitDeployGateFailed, OutData: "owned addresses: 0 present, 1 missing\n"}, nil
+	deps.runGuestOwnedCheck = func(context.Context, int) (ops.GuestCommandResult, error) {
+		return guestResult(exitDeployGateFailed, "owned addresses: 0 present, 1 missing\n"), nil
 	}
 	deps.alertOwnedMissing = func(context.Context, ownedMissingAlert) error {
 		return errors.New("email unconfigured")
@@ -672,28 +671,150 @@ func TestWaitEgressRequiresEveryConfiguredFamilyInOneRound(t *testing.T) {
 	}
 }
 
-func TestUnmarshalGuestBootID(t *testing.T) {
-	valid := fmt.Sprintf(`{"exitcode": 0, "out-data": "%s\n"}`, testOldBootID)
-	bootID, err := unmarshalGuestBootID([]byte(valid))
-	if err != nil {
-		t.Fatalf("unmarshalGuestBootID(valid): %v", err)
+func guestResult(exitCode int, stdout string) ops.GuestCommandResult {
+	return ops.GuestCommandResult{
+		GuestExecResult: ops.GuestExecResult{ExitCode: exitCode, Stdout: stdout},
+		Stderr:          "",
 	}
-	if bootID != testOldBootID {
-		t.Fatalf("bootID = %q, want %q", bootID, testOldBootID)
-	}
+}
 
-	cases := map[string]string{
-		"nonzero exit": `{"exitcode": 1, "out-data": "boom"}`,
-		"not a uuid":   `{"exitcode": 0, "out-data": "hello"}`,
-		"empty out":    `{"exitcode": 0, "out-data": ""}`,
-		"malformed":    `QEMU guest agent is not running`,
-		"truncated":    `{"exitcode": 0, "out-data": "aaaaaaaa-bbbb"}`,
-		"upper hex":    `{"exitcode": 0, "out-data": "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"}`,
+func buildMwanBinary(t *testing.T) string {
+	t.Helper()
+	binaryPath := filepath.Join(t.TempDir(), "mwan")
+	build := exec.CommandContext(t.Context(), "go", "build", "-o", binaryPath, ".")
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("go build: %v\n%s", err, output)
 	}
-	for name, raw := range cases {
-		if _, err := unmarshalGuestBootID([]byte(raw)); err == nil {
-			t.Fatalf("unmarshalGuestBootID(%s) accepted %q", name, raw)
-		}
+	return binaryPath
+}
+
+func installFakeHypervisorTool(t *testing.T, name, script string) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func runMwanBinary(
+	t *testing.T, binaryPath, toolDir, configPath string, args ...string,
+) (string, int) {
+	t.Helper()
+	command := exec.CommandContext(t.Context(), binaryPath, args...)
+	command.Env = append(os.Environ(),
+		"PATH="+toolDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"MWAN_CONFIG="+configPath)
+	output, err := command.CombinedOutput()
+	if err == nil {
+		return string(output), 0
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("run %v: %v", args, err)
+	}
+	return string(output), exitErr.ExitCode()
+}
+
+func writeTestFile(t *testing.T, name, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestDeployGateWaitRebootReadsTheBootIDThroughTheGuestDriver(t *testing.T) {
+	binaryPath := buildMwanBinary(t)
+	qemuConfig := writeTestFile(t, "config.toml", "guest_type = \"qemu\"\n")
+	lxcConfig := writeTestFile(t, "config.toml", "guest_type = \"lxc\"\n")
+	cases := []struct {
+		name       string
+		tool       string
+		configPath string
+		reply      string
+		wantExit   int
+		wantOutput string
+	}{
+		{
+			name: "qemu new boot id", tool: "qm", configPath: qemuConfig,
+			reply:    `{"exitcode":0,"exited":1,"out-data":"` + testNewBootID + `\n","out-truncated":0}`,
+			wantExit: exitDeployGateOK, wantOutput: "rebooted",
+		},
+		{
+			name: "qemu same boot id", tool: "qm", configPath: qemuConfig,
+			reply:    `{"exitcode":0,"exited":1,"out-data":"` + testOldBootID + `\n","out-truncated":0}`,
+			wantExit: exitDeployGateFailed, wantOutput: "reboot never fired",
+		},
+		{
+			name: "qemu non-zero exit", tool: "qm", configPath: qemuConfig,
+			reply:    `{"exitcode":1,"exited":1,"out-data":"boom","out-truncated":0}`,
+			wantExit: exitDeployGateUnobservable, wantOutput: "guest command exited 1",
+		},
+		{
+			name: "qemu stdout is not a boot id", tool: "qm", configPath: qemuConfig,
+			reply:    `{"exitcode":0,"exited":1,"out-data":"hello","out-truncated":0}`,
+			wantExit: exitDeployGateUnobservable, wantOutput: "not a boot_id UUID",
+		},
+		{
+			name: "qemu empty stdout", tool: "qm", configPath: qemuConfig,
+			reply:    `{"exitcode":0,"exited":1}`,
+			wantExit: exitDeployGateUnobservable, wantOutput: "not a boot_id UUID",
+		},
+		{
+			name: "qemu partial boot id", tool: "qm", configPath: qemuConfig,
+			reply:    `{"exitcode":0,"exited":1,"out-data":"aaaaaaaa-bbbb","out-truncated":0}`,
+			wantExit: exitDeployGateUnobservable, wantOutput: "not a boot_id UUID",
+		},
+		{
+			name: "qemu upper-case boot id", tool: "qm", configPath: qemuConfig,
+			reply: `{"exitcode":0,"exited":1,` +
+				`"out-data":"AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE","out-truncated":0}`,
+			wantExit: exitDeployGateUnobservable, wantOutput: "not a boot_id UUID",
+		},
+		{
+			name: "qemu truncated reply", tool: "qm", configPath: qemuConfig,
+			reply:    `{"exitcode":0,"exited":1,"out-data":"` + testNewBootID + `","out-truncated":1}`,
+			wantExit: exitDeployGateUnobservable, wantOutput: "truncated",
+		},
+		{
+			name: "lxc new boot id", tool: "pct", configPath: lxcConfig,
+			reply:    testNewBootID + "\n",
+			wantExit: exitDeployGateOK, wantOutput: "rebooted",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			replyPath := writeTestFile(t, "reply", tc.reply)
+			toolDir := installFakeHypervisorTool(t, tc.tool, "#!/bin/sh\ncat '"+replyPath+"'\n")
+
+			output, exitCode := runMwanBinary(t, binaryPath, toolDir, tc.configPath,
+				"deploy-gate", "wait-reboot", "113", testOldBootID, "1")
+
+			if exitCode != tc.wantExit {
+				t.Fatalf("exit code = %d, want %d\noutput: %s", exitCode, tc.wantExit, output)
+			}
+			if !strings.Contains(output, tc.wantOutput) {
+				t.Fatalf("output does not contain %q: %s", tc.wantOutput, output)
+			}
+		})
+	}
+}
+
+func TestDeployGateWaitRebootFailsWhenTheHostConfigurationIsUnreadable(t *testing.T) {
+	binaryPath := buildMwanBinary(t)
+	missingConfig := filepath.Join(t.TempDir(), "absent.toml")
+
+	output, exitCode := runMwanBinary(t, binaryPath, t.TempDir(), missingConfig,
+		"deploy-gate", "wait-reboot", "113", testOldBootID, "1")
+
+	if exitCode != exitDeployGateFailed {
+		t.Fatalf("exit code = %d, want %d\noutput: %s", exitCode, exitDeployGateFailed, output)
+	}
+	if !strings.Contains(output, "load configuration") {
+		t.Fatalf("output does not name the configuration failure: %s", output)
 	}
 }
 

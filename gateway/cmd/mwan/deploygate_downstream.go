@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ops"
 )
 
@@ -190,8 +190,6 @@ func probeDownstreamFamily(
 		family = "-4"
 	}
 	url := "https://" + net.JoinHostPort(target.String(), "443") + "/"
-	// QEMU omits out-truncated when a command prints nothing. The HTTP status
-	// keeps the guest response parser's truncation check available.
 	_, err = readGuestProbeCommand(ctx, vmid,
 		"/usr/local/bin/curl", family, "--noproxy", "*", "--interface", source.String(),
 		"--connect-timeout", strconv.Itoa(int(downstreamHTTPSConnectTimeout.Seconds())),
@@ -226,55 +224,17 @@ func readRouteGateway(output string) (netip.Addr, error) {
 	return gateway, nil
 }
 
-type guestProbeResponse struct {
-	Exited       json.RawMessage `json:"exited"`
-	ExitCode     *int            `json:"exitcode"`
-	OutData      string          `json:"out-data"`
-	OutTruncated json.RawMessage `json:"out-truncated"`
-}
-
+// The OPNsense guest uses qm even when the gateway uses LXC.
 func readGuestProbeCommand(ctx context.Context, vmid int, command ...string) (string, error) {
-	raw, err := ops.GuestExecViaQm(ctx,
+	result, err := ops.RunInGuest(ctx, config.GuestTypeQEMU,
 		downstreamGuestExecTimeout+5*time.Second, downstreamGuestExecTimeout,
 		vmid, command...)
 	if err != nil {
 		slog.WarnContext(ctx, "downstream guest command failed", "vmid", vmid, "err", err)
-		return "", fmt.Errorf("qm guest exec %d: %w", vmid, err)
+		return "", fmt.Errorf("guest exec %d: %w", vmid, err)
 	}
-	return readGuestProbeResponse(raw)
-}
-
-func readGuestProbeResponse(raw []byte) (string, error) {
-	var response guestProbeResponse
-	if err := json.Unmarshal(raw, &response); err != nil {
-		slog.Warn("downstream guest response is invalid", "err", err)
-		return "", fmt.Errorf("parse qm guest exec response: %w", err)
+	if result.ExitCode != 0 {
+		return "", fmt.Errorf("guest command exited %d", result.ExitCode)
 	}
-	exited, err := parseGuestProbeFlag(response.Exited)
-	if err != nil || !exited || response.ExitCode == nil {
-		return "", fmt.Errorf("guest command did not report a complete exit")
-	}
-	truncated, err := parseGuestProbeFlag(response.OutTruncated)
-	if err != nil || truncated {
-		return "", fmt.Errorf("guest command output was truncated or invalid")
-	}
-	if *response.ExitCode != 0 {
-		return "", fmt.Errorf("guest command exited %d", *response.ExitCode)
-	}
-	return response.OutData, nil
-}
-
-func parseGuestProbeFlag(raw json.RawMessage) (bool, error) {
-	if len(raw) == 0 {
-		return false, fmt.Errorf("missing guest agent flag")
-	}
-	var value bool
-	if err := json.Unmarshal(raw, &value); err == nil {
-		return value, nil
-	}
-	var number int
-	if err := json.Unmarshal(raw, &number); err == nil {
-		return number != 0, nil
-	}
-	return false, fmt.Errorf("invalid guest agent flag %q", bytes.TrimSpace(raw))
+	return result.Stdout, nil
 }

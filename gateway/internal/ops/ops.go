@@ -127,20 +127,16 @@ type SysOps interface {
 	LockOps
 }
 
-// RealOps is the production SysOps. It reaches the guest agent over vsock
-// first, then over the management network, then through `qm guest exec`, and
-// drives the guest's lifecycle with `qm`. vsock comes first because it keeps
-// working when the guest's network does not, which is the case the watchdog
-// exists to handle.
-//
-// The test* fields replace one dial or one exec in unit tests. They are nil in
-// production, and each is checked at the single call site it overrides.
+// RealOps tries vsock, then management TCP, then a hypervisor command.
+// Vsock does not require guest network access. The guest driver selects qm
+// for QEMU and pct for LXC operations.
 type RealOps struct {
 	log       *slog.Logger
 	vsockCID  uint32
 	vsockPort uint32
 	pveNode   string
 	nc        config.NetworkConfig
+	guest     guestDriver
 
 	// testVsockOverride, if set, replaces vsockExec inside GuestExec (unit tests only).
 	testVsockOverride func(
@@ -173,6 +169,7 @@ func NewRealOps(
 		vsockPort: cfg.Watchdog.VsockPort,
 		pveNode:   cfg.PVE.Node,
 		nc:        cfg.Network,
+		guest:     newGuestDriver(cfg.GuestType),
 		tcpAddr:   cfg.Watchdog.MwanAgentTCPAddr,
 		tracker:   NewChannelTracker(),
 
@@ -183,81 +180,96 @@ func NewRealOps(
 	}
 }
 
-// runQm wraps qm with a context-bound timeout.
+func runHypervisor(
+	ctx context.Context,
+	binary string,
+	timeout time.Duration,
+	args ...string,
+) ([]byte, error) {
+	slog.DebugContext(ctx, "ops: runHypervisor",
+		"binary", binary, "args", args, "timeout", timeout)
+	cctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	out, err := exec.CommandContext(cctx, binary, args...).CombinedOutput()
+	if err != nil {
+		// The caller decides whether a command failure requires an Error log.
+		slog.WarnContext(ctx, "ops: hypervisor command failed",
+			"binary", binary, "args", args, "err", err,
+			"output", strings.TrimSpace(string(out)))
+		// The output is returned alongside the error because callers read the
+		// combined output to decide what failed.
+		return out, fmt.Errorf("%s %s: %w", binary, strings.Join(args, " "), err)
+	}
+	return out, nil
+}
+
 func runQm(
 	ctx context.Context,
 	timeout time.Duration,
 	args ...string,
 ) ([]byte, error) {
-	slog.DebugContext(ctx, "ops: runQm", "args", args, "timeout", timeout)
-	cctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	out, err := exec.CommandContext(cctx, "qm", args...).CombinedOutput()
-	if err != nil {
-		// Warn rather than Error: this is the command layer, and the caller
-		// decides whether a failed qm invocation is an incident. The callers
-		// that treat it as one log it again at Error with the guest and
-		// snapshot names this helper does not have.
-		slog.WarnContext(ctx, "ops: qm failed",
-			"args", args, "err", err,
-			"output", strings.TrimSpace(string(out)))
-		// The output is returned alongside the error because callers read the
-		// combined output to decide what failed.
-		return out, fmt.Errorf("qm %s: %w", strings.Join(args, " "), err)
-	}
-	return out, nil
+	return runHypervisor(ctx, qmBinary, timeout, args...)
 }
 
-// VMStatus reports whether the VM with the given vmid is currently running
-// according to `qm status`.
+func (r *RealOps) runGuest(
+	ctx context.Context, timeout time.Duration, args ...string,
+) ([]byte, error) {
+	return runHypervisor(ctx, r.guest.binary(), timeout, args...)
+}
+
+// VMStatus checks whether qm status or pct status reports a running guest.
 func (r *RealOps) VMStatus(ctx context.Context, vmid string) (bool, error) {
-	out, err := runQm(ctx, TimeoutQmStatus, "status", vmid)
+	out, err := r.runGuest(ctx, TimeoutQmStatus, r.guest.statusArgs(vmid)...)
 	if err != nil {
 		return false, err
 	}
 	return strings.Contains(string(out), "running"), nil
 }
 
-// VMStop stops the VM with the given vmid via `qm stop --timeout 30`.
+// VMStop gives qm stop a 30 second timeout. pct stop does not accept a timeout option.
 func (r *RealOps) VMStop(ctx context.Context, vmid string) error {
-	_, err := runQm(ctx, TimeoutQmStop, "stop", vmid, "--timeout", "30")
+	_, err := r.runGuest(ctx, TimeoutQmStop, r.guest.stopArgs(vmid)...)
 	return err
 }
 
-// VMStart starts the VM with the given vmid via `qm start`.
+// VMStart selects qm start or pct start according to the guest type.
 func (r *RealOps) VMStart(ctx context.Context, vmid string) error {
-	_, err := runQm(ctx, TimeoutQmStart, "start", vmid)
+	_, err := r.runGuest(ctx, TimeoutQmStart, r.guest.startArgs(vmid)...)
 	return err
 }
 
-// VMSnapshots returns the raw output of `qm listsnapshot` for the given vmid.
+// VMSnapshots selects qm listsnapshot or pct listsnapshot according to the guest type.
 func (r *RealOps) VMSnapshots(ctx context.Context, vmid string) ([]byte, error) {
-	return runQm(ctx, timeoutQmListSnapshot, "listsnapshot", vmid)
+	return r.runGuest(ctx, timeoutQmListSnapshot, r.guest.listSnapshotsArgs(vmid)...)
 }
 
-// VMFSFreezeStatus reports the guest agent's filesystem freeze state via
-// `qm agent fsfreeze-status` ("thawed" or "frozen"). Snapshots freeze the
-// guest through the agent, and a thaw that never lands leaves the guest
-// wedged with guest-exec disabled, so the watchdog checks this after every
-// snapshot and at startup.
+// VMFSFreezeStatus queries the QEMU guest agent for the filesystem freeze state.
+// It returns an error for LXC guests.
 func (r *RealOps) VMFSFreezeStatus(ctx context.Context, vmid string) (string, error) {
-	out, err := runQm(ctx, timeoutQmAgentFreeze, "agent", vmid, "fsfreeze-status")
+	args, err := r.guest.freezeStatusArgs(vmid)
+	if err != nil {
+		return "", err
+	}
+	out, err := r.runGuest(ctx, timeoutQmAgentFreeze, args...)
 	if err != nil {
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
 }
 
-// VMFSFreezeThaw releases a stuck filesystem freeze via
-// `qm agent fsfreeze-thaw`.
+// VMFSFreezeThaw asks the QEMU guest agent to thaw the filesystem.
+// It returns an error for LXC guests.
 func (r *RealOps) VMFSFreezeThaw(ctx context.Context, vmid string) error {
-	_, err := runQm(ctx, timeoutQmAgentFreeze, "agent", vmid, "fsfreeze-thaw")
+	args, err := r.guest.thawArgs(vmid)
+	if err != nil {
+		return err
+	}
+	_, err = r.runGuest(ctx, timeoutQmAgentFreeze, args...)
 	return err
 }
 
-// GuestExec tries all three channels in order: vsock -> TCP/mgmt -> qm guest
-// exec. Each channel's result is recorded in the channelTracker regardless of
-// outcome.
+// GuestExec tries vsock, then management TCP, then a hypervisor command.
+// ChannelTracker records whether each attempted transport succeeded.
 func (r *RealOps) GuestExec(
 	ctx context.Context, vmid string, args ...string,
 ) (GuestExecResult, error) {
@@ -267,7 +279,7 @@ func (r *RealOps) GuestExec(
 		if err == nil {
 			return res, nil
 		}
-		return r.qmExec(ctx, vmid, args...)
+		return r.hypervisorExec(ctx, vmid, args...)
 	}
 
 	// Channel 1: vsock
@@ -292,9 +304,8 @@ func (r *RealOps) GuestExec(
 	r.tracker.recordFailure(ChanTCP, tcpErr)
 	r.logAttemptResult(ctx, "guest_exec", ChanTCP, 2, vmid, tcpErr)
 
-	// Channel 3: qm guest exec on the hypervisor
 	r.logAttemptStart(ctx, "guest_exec", ChanPVE, 3, vmid)
-	qmRes, qmErr := r.qmExec(ctx, vmid, args...)
+	qmRes, qmErr := r.hypervisorExec(ctx, vmid, args...)
 	if qmErr == nil {
 		r.tracker.recordSuccess(ChanPVE)
 		r.logAttemptResult(ctx, "guest_exec", ChanPVE, 3, vmid, nil)
@@ -303,6 +314,14 @@ func (r *RealOps) GuestExec(
 		r.logAttemptResult(ctx, "guest_exec", ChanPVE, 3, vmid, qmErr)
 	}
 	return qmRes, qmErr
+}
+
+func (r *RealOps) hypervisorExec(
+	ctx context.Context, vmid string, args ...string,
+) (GuestExecResult, error) {
+	result, err := r.guest.execGuest(
+		ctx, r.log, vmid, timeoutQmGuestExecWait, timeoutQmGuestExec, args)
+	return result.GuestExecResult, err
 }
 
 func (r *RealOps) vsockExec(

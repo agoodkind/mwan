@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -79,35 +80,107 @@ func TestDeployGateAcceptsSingleFamilyProbeConfigs(t *testing.T) {
 	}
 }
 
-func TestDownstreamProbeRejectsIncompleteGuestResults(t *testing.T) {
-	for name, raw := range map[string]string{
-		"missing exit":            `{"exitcode":0,"out-data":"gateway: 10.240.240.3"}`,
-		"not exited":              `{"exited":0,"out-data":"gateway: 10.240.240.3"}`,
-		"nonzero exit":            `{"exited":1,"exitcode":1}`,
-		"missing truncation flag": `{"exited":1,"exitcode":0,"out-data":"gateway: 10.240.240.3"}`,
-		"truncated":               `{"exited":1,"exitcode":0,"out-truncated":1,"out-data":"gateway: 10.240.240.3"}`,
-		"invalid JSON":            `{"exited":`,
-	} {
-		if _, err := readGuestProbeResponse([]byte(raw)); err == nil {
-			t.Fatalf("%s response passed", name)
-		}
+func TestDeployGateCheckEgressJudgesTheGuestReply(t *testing.T) {
+	binaryPath := buildMwanBinary(t)
+	probePath := writeTestFile(t, "probe.json", testDownstreamProbeJSON)
+	configPath := writeTestFile(t, "config.toml", "")
+	const routeOK = `{"exitcode":0,"exited":1,"out-truncated":0,` +
+		`"out-data":"   route to: 1.1.1.1\n    gateway: 10.240.240.3\n"}`
+	const curlOK = `{"exitcode":0,"exited":1,"out-data":"200","out-truncated":0}`
+	cases := []struct {
+		name       string
+		route      string
+		curl       string
+		wantExit   int
+		wantOutput string
+	}{
+		{
+			name: "both replies complete", route: routeOK, curl: curlOK,
+			wantExit: exitDeployGateOK, wantOutput: "ipv4=yes",
+		},
+		{
+			name: "empty stdout without a truncation flag", route: routeOK,
+			curl:     `{"exitcode":0,"exited":1}`,
+			wantExit: exitDeployGateOK, wantOutput: "ipv4=yes",
+		},
+		{
+			name: "https probe exits non-zero", route: routeOK,
+			curl:     `{"exitcode":22,"exited":1}`,
+			wantExit: exitDeployGateFailed, wantOutput: "guest command exited 22",
+		},
+		{
+			name: "route probe exits non-zero", route: `{"exitcode":1,"exited":1}`, curl: curlOK,
+			wantExit: exitDeployGateFailed, wantOutput: "guest command exited 1",
+		},
+		{
+			name: "https probe has not exited", route: routeOK,
+			curl:     `{"exited":0,"pid":4242}`,
+			wantExit: exitDeployGateFailed, wantOutput: "did not exit within",
+		},
+		{
+			name:     "route reply lacks the exited flag",
+			route:    `{"exitcode":0,"out-data":"gateway: 10.240.240.3\n"}`,
+			curl:     curlOK,
+			wantExit: exitDeployGateFailed, wantOutput: "did not exit within",
+		},
+		{
+			name: "https reply lacks an exit code", route: routeOK,
+			curl:     `{"exited":1,"out-data":"200","out-truncated":0}`,
+			wantExit: exitDeployGateFailed, wantOutput: "without an exit code",
+		},
+		{
+			name: "https reply is truncated", route: routeOK,
+			curl:     `{"exitcode":0,"exited":1,"out-truncated":1,"out-data":"200"}`,
+			wantExit: exitDeployGateFailed, wantOutput: "truncated",
+		},
+		{
+			name: "https reply is not JSON", route: routeOK, curl: `{"exited":`,
+			wantExit: exitDeployGateFailed, wantOutput: "parse qm guest exec output",
+		},
+		{
+			name:     "route output has no gateway line",
+			route:    `{"exitcode":0,"exited":1,"out-truncated":0,"out-data":"route to: 1.1.1.1\n"}`,
+			curl:     curlOK,
+			wantExit: exitDeployGateFailed, wantOutput: "route output has no gateway",
+		},
+		{
+			name:     "route output has a partial gateway",
+			route:    `{"exitcode":0,"exited":1,"out-truncated":0,"out-data":"gateway: 10.240.240.\n"}`,
+			curl:     curlOK,
+			wantExit: exitDeployGateFailed, wantOutput: "route output gateway",
+		},
+		{
+			name: "route output repeats the gateway line",
+			route: `{"exitcode":0,"exited":1,"out-truncated":0,` +
+				`"out-data":"gateway: 10.240.240.3\ngateway: 10.240.240.3\n"}`,
+			curl:     curlOK,
+			wantExit: exitDeployGateFailed, wantOutput: "invalid gateway line",
+		},
+		{
+			name:     "route output names another next hop",
+			route:    `{"exitcode":0,"exited":1,"out-truncated":0,"out-data":"gateway: 10.240.240.9\n"}`,
+			curl:     curlOK,
+			wantExit: exitDeployGateFailed, wantOutput: "expected 10.240.240.3",
+		},
 	}
-	for name, output := range map[string]string{
-		"missing gateway":   "route to: 1.1.1.1\n",
-		"partial gateway":   "gateway: 10.240.240.\n",
-		"duplicate gateway": "gateway: 10.240.240.3\ngateway: 10.240.240.3\n",
-	} {
-		if _, err := readRouteGateway(output); err == nil {
-			t.Fatalf("%s route passed", name)
-		}
-	}
-	response := `{"exited":1,"exitcode":0,"out-truncated":0,"out-data":"gateway: 10.240.240.3\n"}`
-	output, err := readGuestProbeResponse([]byte(response))
-	if err != nil {
-		t.Fatal(err)
-	}
-	hop, err := readRouteGateway(output)
-	if err != nil || hop.String() != "10.240.240.3" {
-		t.Fatalf("gateway = %s, error = %v", hop, err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			routePath := writeTestFile(t, "route.reply", tc.route)
+			curlPath := writeTestFile(t, "curl.reply", tc.curl)
+			script := "#!/bin/sh\ncase \"$*\" in\n*/sbin/route*) cat '" + routePath +
+				"';;\n*curl*) cat '" + curlPath + "';;\nesac\n"
+			toolDir := installFakeHypervisorTool(t, "qm", script)
+
+			output, exitCode := runMwanBinary(t, binaryPath, toolDir, configPath,
+				"deploy-gate", "check-egress", "ipv4", probePath)
+
+			if exitCode != tc.wantExit {
+				t.Fatalf("exit code = %d, want %d\noutput: %s", exitCode, tc.wantExit, output)
+			}
+			if !strings.Contains(output, tc.wantOutput) {
+				t.Fatalf("output does not contain %q: %s", tc.wantOutput, output)
+			}
+		})
 	}
 }
