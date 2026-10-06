@@ -20,9 +20,6 @@ func (w *watchdog) triggerFailover(ctx context.Context, cfg *config.Config, reas
 	if cfg.Failover.LXCID == "" {
 		return fmt.Errorf("failover config has no lxc_id; cannot failover")
 	}
-	if !cfg.BGP.Enabled {
-		return fmt.Errorf("failover requires cfg.BGP.Enabled=true")
-	}
 	w.log.InfoContext(ctx, "FAILOVER: dispatching to BGP route control path", "reason", reason)
 	return w.triggerBGPFailover(ctx, cfg, reason)
 }
