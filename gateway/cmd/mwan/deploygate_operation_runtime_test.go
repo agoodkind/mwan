@@ -60,6 +60,30 @@ func TestDeployOperationWatchRuntime(t *testing.T) {
 	t.Run("expected-interruption", deployWatchExpectedInterruption)
 	t.Run("commit-during-observation", deployWatchCommitDuringObservation)
 	t.Run("commit-waits-for-observations", deployWatchCommitWaitsForObservations)
+	t.Run("commit-ignores-observations-before-start", deployWatchCommitIgnoresEarlierObservations)
+}
+
+func deployWatchCommitIgnoresEarlierObservations(t *testing.T) {
+	t.Helper()
+	binary, runtimePath, record, failed := startDeployWatchFixture(t, nil)
+	type commitResult struct {
+		output []byte
+		err    error
+	}
+	done := make(chan commitResult, 1)
+	go func() {
+		output, err := deployWatchCommand(binary, "deploy-gate", "commit", record.OperationID, record.Generation, "--config", runtimePath)
+		done <- commitResult{output: output, err: err}
+	}()
+	time.Sleep(200 * time.Millisecond)
+	failed["ipv4-inbound_application"].Store(true)
+	result := <-done
+	if result.err == nil {
+		t.Fatalf("commit succeeded after a failed application observation: %s", result.output)
+	}
+	if !strings.Contains(result.err.Error(), "deploy operation is not armed") {
+		t.Fatalf("commit used observations taken before it started: %v", result.err)
+	}
 }
 
 func deployWatchCommitWaitsForObservations(t *testing.T) {
