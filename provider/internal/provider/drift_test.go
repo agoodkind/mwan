@@ -157,6 +157,12 @@ func TestProviderRoleMatchesMwanInstall(t *testing.T) {
 				}
 			}
 
+			_, policyWritten := installed[installspec.NACMPolicyPath]
+			if policyWritten != (len(data.SysrepoData) > 0) {
+				t.Errorf("mwan install wrote the policy file = %t, the provider lists %d sysrepo_data entries",
+					policyWritten, len(data.SysrepoData))
+			}
+
 			wantImport := ""
 			if len(data.SysrepoData) > 0 {
 				datastores := make([]string, 0, len(data.SysrepoData))
