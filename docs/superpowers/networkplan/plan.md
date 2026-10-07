@@ -12,8 +12,6 @@ At baseline commit `37205aae3716c41c131f3d4cc24de7224a751918`, merged MWAN PR #2
 
 Limit documentation changes to this plan, the specification, and the network-planning index sentence. Do not review unchanged prose. Do not repeat the superseded portable-provider implementation sequence. Follow [AGENTS.md](../../../AGENTS.md) for implementation gates and repository conventions.
 
-The LAN LXC serves only as an iBGP peer fixture for the MWAN container. Do not serve real LAN client traffic from the fixture. Fixture use does not delay native package or plan acceptance.
-
 ## Assign ownership and dependencies
 
 | Workstream | Owner and scope | Dependencies |
