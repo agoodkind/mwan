@@ -4,16 +4,18 @@ import (
 	"encoding/json"
 )
 
-// SyntaxError supports errors.As matching in [networkload.Load] for the
+// SyntaxError supports [errors.As] matching in [networkload.Load] for the
 // "decode <path>: <err>" error format.
 type SyntaxError struct {
 	err error
 }
 
+// Error prefixes the JSON error with "decode: ".
 func (e *SyntaxError) Error() string {
 	return "decode: " + e.err.Error()
 }
 
+// Unwrap returns the JSON error for [networkload.Load] to format with the path.
 func (e *SyntaxError) Unwrap() error {
 	return e.err
 }
