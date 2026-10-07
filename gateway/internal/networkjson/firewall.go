@@ -41,6 +41,7 @@ type managementServiceWire struct {
 
 type baselineDocument struct {
 	Interfaces struct {
+		GuestType string `json:"goodkind-mwan-steering:guest-type"`
 		Interface []struct {
 			Name string          `json:"name"`
 			WAN  json.RawMessage `json:"goodkind-mwan-steering:wan"`
@@ -84,7 +85,12 @@ func LoadBaseline(path string) (*firewall.BaselineConfig, error) {
 			providers = append(providers, entry.Name)
 		}
 	}
-	baseline, err := buildBaseline(group.Firewall, group.Routes.InternalIface, declared, providers)
+	guestType, err := resolveGuestType(doc.Interfaces.GuestType)
+	if err != nil {
+		slog.Error("networkjson: firewall baseline guest type rejected", "path", path, "err", err)
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	baseline, err := buildBaseline(group.Firewall, guestType, group.Routes.InternalIface, declared, providers)
 	if err != nil {
 		slog.Error("networkjson: firewall baseline rejected", "path", path, "err", err)
 		return nil, fmt.Errorf("%s: %w", path, err)
@@ -92,7 +98,18 @@ func LoadBaseline(path string) (*firewall.BaselineConfig, error) {
 	return &baseline, nil
 }
 
-func buildBaseline(wire *baselineFirewallWire, internalInterface string, declared []string, providers []string) (firewall.BaselineConfig, error) {
+func resolveGuestType(raw string) (config.GuestType, error) {
+	switch config.GuestType(raw) {
+	case "", config.GuestTypeQEMU:
+		return config.GuestTypeQEMU, nil
+	case config.GuestTypeLXC:
+		return config.GuestTypeLXC, nil
+	default:
+		return "", fmt.Errorf("guest-type %q is not qemu or lxc", raw)
+	}
+}
+
+func buildBaseline(wire *baselineFirewallWire, guestType config.GuestType, internalInterface string, declared []string, providers []string) (firewall.BaselineConfig, error) {
 	if wire == nil {
 		return firewall.BaselineConfig{}, fmt.Errorf("steering-group/firewall is absent")
 	}
@@ -101,6 +118,7 @@ func buildBaseline(wire *baselineFirewallWire, internalInterface string, declare
 		return firewall.BaselineConfig{}, err
 	}
 	baseline := firewall.BaselineConfig{
+		ManagementOptional:  guestType == config.GuestTypeLXC,
 		ManagementInterface: wire.ManagementInterface,
 		ManagementServices:  services,
 		InternalInterface:   internalInterface,
@@ -137,7 +155,9 @@ func buildBaseline(wire *baselineFirewallWire, internalInterface string, declare
 		}
 		known[name] = true
 	}
-	if !known[baseline.ManagementInterface] || !known[baseline.InternalInterface] {
+	managementAbsent := baseline.ManagementOptional && baseline.ManagementInterface == ""
+	managementUndeclared := !managementAbsent && !known[baseline.ManagementInterface]
+	if managementUndeclared || !known[baseline.InternalInterface] {
 		return firewall.BaselineConfig{}, fmt.Errorf("firewall management or internal interface is not declared")
 	}
 	return baseline, nil
@@ -199,7 +219,7 @@ func buildFirewall(doc *document, loaded *Config) (firewall.Config, error) {
 		ManagementInterface: group.Firewall.ManagementInterface,
 		ManagementServices:  group.Firewall.ManagementServices,
 	}
-	baseline, err := buildBaseline(baselineWire, group.Routes.InternalIface, declared, providerInterfaces)
+	baseline, err := buildBaseline(baselineWire, loaded.GuestType, group.Routes.InternalIface, declared, providerInterfaces)
 	if err != nil {
 		return none, err
 	}
@@ -210,6 +230,7 @@ func buildFirewall(doc *document, loaded *Config) (firewall.Config, error) {
 	}
 	var cfg firewall.Config
 	cfg.Enabled = true
+	cfg.ManagementOptional = loaded.GuestType == config.GuestTypeLXC
 	cfg.InternalInterface = baseline.InternalInterface
 	cfg.InternalNetworkIPv4 = network
 	cfg.ManagementInterface = baseline.ManagementInterface

@@ -64,6 +64,7 @@ type Service struct {
 // Routing and tunnel configuration are projected into permits and paths.
 type Config struct {
 	Enabled               bool
+	ManagementOptional    bool
 	InternalInterface     string
 	InternalNetworkIPv4   netip.Prefix
 	ManagementInterface   string
@@ -88,6 +89,7 @@ func (Config) ModuleConfigName() string { return "firewall" }
 
 // BaselineConfig contains the local values needed before provider validation.
 type BaselineConfig struct {
+	ManagementOptional  bool
 	ManagementInterface string
 	ManagementServices  []Service
 	InternalInterface   string
@@ -97,16 +99,19 @@ type BaselineConfig struct {
 
 // Validate checks the local permits before baseline installation.
 func (c BaselineConfig) Validate() error {
-	if err := validInterface(c.ManagementInterface); err != nil {
-		slog.Warn("invalid baseline management interface", "err", err)
-		return fmt.Errorf("management interface: %w", err)
+	managementAbsent := c.ManagementOptional && c.ManagementInterface == ""
+	if !managementAbsent {
+		if err := validInterface(c.ManagementInterface); err != nil {
+			slog.Warn("invalid baseline management interface", "err", err)
+			return fmt.Errorf("management interface: %w", err)
+		}
 	}
 	if err := validInterface(c.InternalInterface); err != nil {
 		slog.Warn("invalid baseline internal interface", "err", err)
 		return fmt.Errorf("internal interface: %w", err)
 	}
-	if len(c.ManagementServices) == 0 {
-		return fmt.Errorf("at least one management service is required")
+	if err := validateManagementServiceCount(managementAbsent, len(c.ManagementServices)); err != nil {
+		return err
 	}
 	for _, service := range c.ManagementServices {
 		if service.Protocol != "tcp" && service.Protocol != "udp" || service.Port == 0 {
@@ -151,15 +156,18 @@ func (c Config) Validate() error {
 		slog.Warn("invalid firewall internal interface", "err", err)
 		return fmt.Errorf("internal interface: %w", err)
 	}
-	if err := validInterface(c.ManagementInterface); err != nil {
-		slog.Warn("invalid firewall management interface", "err", err)
-		return fmt.Errorf("management interface: %w", err)
+	managementAbsent := c.ManagementOptional && c.ManagementInterface == ""
+	if !managementAbsent {
+		if err := validInterface(c.ManagementInterface); err != nil {
+			slog.Warn("invalid firewall management interface", "err", err)
+			return fmt.Errorf("management interface: %w", err)
+		}
 	}
 	if !c.InternalNetworkIPv4.IsValid() || !c.InternalNetworkIPv4.Addr().Is4() {
 		return fmt.Errorf("internal IPv4 network is required")
 	}
-	if len(c.ManagementServices) == 0 {
-		return fmt.Errorf("at least one management service is required")
+	if err := validateManagementServiceCount(managementAbsent, len(c.ManagementServices)); err != nil {
+		return err
 	}
 	for _, service := range c.ManagementServices {
 		if service.Protocol != "tcp" && service.Protocol != "udp" {
@@ -182,6 +190,19 @@ func (c Config) Validate() error {
 		return err
 	}
 	return c.validateReferences()
+}
+
+func validateManagementServiceCount(managementAbsent bool, count int) error {
+	if managementAbsent {
+		if count != 0 {
+			return fmt.Errorf("management services require a management interface")
+		}
+		return nil
+	}
+	if count == 0 {
+		return fmt.Errorf("at least one management service is required")
+	}
+	return nil
 }
 
 func (c Config) validateProviders() (map[string]bool, error) {
@@ -269,7 +290,9 @@ func (c Config) validateReferences() error {
 			return fmt.Errorf("provider interface %q is not declared", provider.Interface)
 		}
 	}
-	if !known[c.ManagementInterface] || !known[c.InternalInterface] {
+	managementAbsent := c.ManagementOptional && c.ManagementInterface == ""
+	managementUndeclared := !managementAbsent && !known[c.ManagementInterface]
+	if managementUndeclared || !known[c.InternalInterface] {
 		return fmt.Errorf("management or internal interface is not declared")
 	}
 	for _, permit := range c.LocalPermits {

@@ -1,0 +1,60 @@
+{
+  "ietf-interfaces:interfaces": {
+    "goodkind-mwan-steering:guest-type": "lxc",
+    "interface": [
+      {
+        "name": "enuplink0",
+        "type": "iana-if-type:other",
+        "goodkind-mwan-steering:link-files": "rendered",
+        "goodkind-mwan-steering:link": {
+          "match": { "hardware-address": "02:00:5e:00:53:10" }
+        }
+      },
+      {
+        "name": "enuplink0v100",
+        "type": "iana-if-type:other",
+        "goodkind-mwan-steering:link-files": "rendered",
+        "goodkind-mwan-steering:link": {
+          "vlan": { "parent": "enuplink0", "id": 100 }
+        },
+        "ietf-ip:ipv4": {
+          "goodkind-mwan-steering:dhcp": true,
+          "goodkind-mwan-steering:translation": { "mode": "ietf-nat:napt44" }
+        },
+        "ietf-ip:ipv6": {
+          "goodkind-mwan-steering:dhcp": false,
+          "goodkind-mwan-steering:translation": { "mode": "native" }
+        },
+        "goodkind-mwan-steering:wan": {
+          "name": "uplink",
+          "table-id": 200,
+          "fw-mark": 2,
+          "fw-mark-prio": 200,
+          "from-prio": 56
+        },
+        "goodkind-mwan-steering:steering": {
+          "tier": 0,
+          "weight": 1
+        }
+      },
+      { "name": "enmwanbr0", "type": "iana-if-type:other" }
+    ],
+    "goodkind-mwan-steering:steering-group": {
+      "hash-mode": "source",
+      "translation": {
+        "internal-prefix": "2001:db8:b01::/60",
+        "opnsense-edge-v6": "2001:db8:b01:fe::2",
+        "mwanbr-edge-v6": "2001:db8:b01:fe::3"
+      },
+      "routes": {
+        "internal-iface": "enmwanbr0",
+        "internal-net-v4": "192.0.2.0/29"
+      },
+      "firewall": {
+        "pinned-set-v4-name": "uplink_pinned_v4",
+        "pinned-set-v6-name": "uplink_pinned_v6"
+      },
+      "health": { "probe-timeout": 2000 }
+    }
+  }
+}

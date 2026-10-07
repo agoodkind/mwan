@@ -415,7 +415,7 @@ test-firewall: wanconfig-builder-image
 		-e GIT_CONFIG_VALUE_0=/src \
 		$(WANCONFIG_BUILDER_IMAGE) \
 		go test -v -count=1 -tags 'netns firewallnetns' ./cmd/mwan \
-		-run '^(TestDeployGateEgressNetNS|TestCheckFirewallIsolatedKernel|TestWANStartupProtectsBeforeConfigValidation|TestWANFirewallRuntimePackets|TestOwnedStaticDaemonRuntime|TestOwnedMappedDaemonRuntime|TestSelectionExclusionDaemonRuntime|TestDistributionObservationDaemonRuntime)$$'
+		-run '^(TestDeployGateEgressNetNS|TestCheckFirewallIsolatedKernel|TestCheckFirewallIsolatedKernelLXC|TestWANStartupProtectsBeforeConfigValidation|TestWANFirewallRuntimePackets|TestOwnedStaticDaemonRuntime|TestOwnedMappedDaemonRuntime|TestSelectionExclusionDaemonRuntime|TestDistributionObservationDaemonRuntime)$$'
 
 .PHONY: test-legacy-upgrade
 test-legacy-upgrade: build-wanconfig systemd-runner-image

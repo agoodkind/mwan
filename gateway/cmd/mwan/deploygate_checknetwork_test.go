@@ -74,6 +74,11 @@ func TestCheckNetwork(t *testing.T) {
 			want:     exitDeployGateOK,
 			expect:   []string{"3 providers, 0 rejected"},
 		},
+		"lxc gateway with no management interface": {
+			document: func(*testing.T) string { return "../../yang/instances/network-lxc.json" },
+			want:     exitDeployGateOK,
+			expect:   []string{"1 providers, 0 rejected"},
+		},
 		"an ipv6 container with no dhcp": {
 			document: webpassIPv6NoDHCP,
 			want:     exitDeployGateFailed,

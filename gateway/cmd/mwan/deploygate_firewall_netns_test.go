@@ -13,6 +13,31 @@ import (
 
 // The command must apply the actual nftables policy in a private namespace.
 // The caller's namespace must have exactly the same rules afterward.
+func TestCheckFirewallIsolatedKernelLXC(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("network namespace test requires root")
+	}
+	binary := filepath.Join(t.TempDir(), "mwan")
+	build := exec.Command("go", "build", "-o", binary, ".")
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build public command: %v: %s", err, output)
+	}
+	fixture := filepath.Join("..", "..", "yang", "instances", "network-lxc.json")
+	schema := filepath.Join("..", "..", "internal", "yangpub", "schema")
+	output, err := exec.Command(binary, "deploy-gate", "check-firewall", fixture, schema).CombinedOutput()
+	if err != nil {
+		t.Fatalf("public firewall check: %v: %s", err, output)
+	}
+	if !strings.Contains(string(output), "inet filter input") {
+		t.Errorf("readback omits the input chain: %s", output)
+	}
+	for _, port := range []string{"dport 22 ", "dport 50052 "} {
+		if strings.Contains(string(output)+" ", port) {
+			t.Errorf("readback accepts a management port %q: %s", port, output)
+		}
+	}
+}
+
 func TestCheckFirewallIsolatedKernel(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("network namespace test requires root")

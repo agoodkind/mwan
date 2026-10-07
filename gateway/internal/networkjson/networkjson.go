@@ -42,6 +42,7 @@ type document struct {
 }
 
 type interfaces struct {
+	GuestType     string        `json:"goodkind-mwan-steering:guest-type"`
 	Interface     []ifaceEntry  `json:"interface"`
 	SteeringGroup steeringGroup `json:"goodkind-mwan-steering:steering-group"`
 }
@@ -265,6 +266,7 @@ type groupHealth struct {
 // Config is the network tree one file carries, in the shape the daemon's
 // configuration holds it.
 type Config struct {
+	GuestType             config.GuestType
 	Firewall              firewall.Config
 	PinnedConnectionID    string
 	InternalPrefix        string
@@ -348,8 +350,13 @@ var kernelReservedTables = []int{0, 253, 254, 255}
 // translation.
 func build(doc *document) (*Config, error) {
 	group := doc.Interfaces.SteeringGroup
+	guestType, err := resolveGuestType(doc.Interfaces.GuestType)
+	if err != nil {
+		return nil, err
+	}
 	var zeroFirewall firewall.Config
 	loaded := &Config{
+		GuestType:             guestType,
 		Firewall:              zeroFirewall,
 		PinnedConnectionID:    pinnedConnectionID(group.Firewall),
 		InternalPrefix:        group.Translation.InternalPrefix,
@@ -797,6 +804,7 @@ func ApplyDefault(cfg *config.Config) error {
 // filled before this file owned them. The health and routes sections keep the
 // filesystem paths TOML still owns. Apply writes only the network values.
 func (c *Config) Apply(cfg *config.Config) {
+	cfg.IfMgr.GuestType = c.GuestType
 	cfg.IfMgr.Firewall = c.Firewall
 	cfg.IfMgr.PinnedConnectionID = c.PinnedConnectionID
 	cfg.IfMgr.InternalPrefix = c.InternalPrefix
