@@ -12,6 +12,8 @@ At baseline commit `37205aae3716c41c131f3d4cc24de7224a751918`, merged MWAN PR #2
 
 Limit documentation changes to this plan, the specification, and the network-planning index sentence. Do not review unchanged prose. Do not repeat the superseded portable-provider implementation sequence. Follow [AGENTS.md](../../../AGENTS.md) for implementation gates and repository conventions.
 
+The LAN LXC serves only as an iBGP peer fixture for the MWAN container. Do not serve real LAN client traffic from the fixture. Fixture use does not delay native package or plan acceptance.
+
 ## Assign ownership and dependencies
 
 | Workstream | Owner and scope | Dependencies |
@@ -121,7 +123,7 @@ OpenTofu shows configured route and rule changes under stable keys. Canonical fi
 5. Verify typed equality for system-ordered lists, explicit defaults, and equivalent IPv6 spelling. Verify canonical file differences where source arrays or scalar spellings change.
 6. Verify no changes for whitespace and object-member ordering. Compare complete semantic results for accepted original and canonical bytes.
 7. Cover native-only rejection cases and initialization failures. Test unknown content through a genuinely unknown dependency.
-8. Preserve the plan-only lan0 negative case. Use accepted fixtures with allowed roles and no LAN client services or LAN client forwarding.
+8. Use fixtures for valid and invalid YANG documents and observable route and rule differences.
 
 ### Verification
 
@@ -186,11 +188,11 @@ Require passing evidence for every target. Record init success, valid-plan succe
 
 ### Files
 
-The migration owner must discover the existing gateway module in [Configs](https://github.com/agoodkind/configs). Modify that module's document writer, configured-state wiring, unit restart dependencies, and both lifecycle preconditions. Record exact discovered paths before editing; do not invent a module path.
+The migration owner must discover the existing gateway module in [Configs](https://github.com/agoodkind/configs). Modify that module's document writer, configured-state wiring, and unit restart dependencies. Record exact discovered paths before editing; do not invent a module path.
 
 ### Behavior
 
-Validated file installation precedes typed-state completion and startup. Both consumers restart after content writes. LAN client traffic remains disabled.
+Validated file installation precedes typed-state completion and startup. Both consumers restart after content writes.
 
 ### Steps
 
@@ -199,15 +201,14 @@ Validated file installation precedes typed-state completion and startup. Both co
 3. Preserve the prerequisite chain. Verify host kernel-module API support and required modules, container capabilities, binary/packages, installed schema and sysrepo role, staged validation, and unit startup. Verify current deployment state rather than relying on historical overlay claims.
 4. Retire the gateway's Ansible network document writer before first file adoption. Make the configured-state resource depend on successful pveguest_file installation.
 5. Include network write_id and existing binary/package write IDs in both unit restart dependencies. Prevent document mutations from replacing the guest.
-6. Preserve role and route preconditions on the file resource. Check container bindings and actual host bridge members for prohibited LAN ports on the container resource.
-7. Coordinate the target environment's deployment window and locks. Use configsctl deploy or configsctl tofu from the authorized Configs main checkout for real API operations.
-8. Perform a content write that passes both deployed checks inside the selected LXC before startup. A validate-only change is insufficient.
-9. Exercise a failed staged content write. Verify unchanged installed bytes, sha256, write_id, and typed state. Verify the next plan repeats pending changes.
-10. Verify file-drift detection and both consumer restarts. Keep live reload, kernel-drift management by this resource, and client LAN activation excluded.
+6. Coordinate the target environment's deployment window and locks. Use configsctl deploy or configsctl tofu from the authorized Configs main checkout for real API operations.
+7. Perform a content write that passes both deployed checks inside the selected LXC before startup. A validate-only change is insufficient.
+8. Exercise a failed staged content write. Verify unchanged installed bytes, sha256, write_id, and typed state. Verify the next plan repeats pending changes.
+9. Verify file-drift detection and both consumer restarts. Keep live reload and kernel-drift management by this resource excluded.
 
 ### Verification
 
-Require live LXC firewall evidence; userspace validation cannot prove namespace/nft acceptance. Require both lifecycle preconditions to fail on disallowed examples. Plan the negative LAN fixture without applying it. Record release commit, targets, content-write result, failure recovery, state behavior, and unit restart results.
+Require live LXC firewall evidence; userspace validation cannot prove namespace/nft acceptance. Record release commit, targets, content-write result, failure recovery, state behavior, and unit restart results.
 
 ## Task 8. Review and complete the workstreams
 

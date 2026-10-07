@@ -131,13 +131,9 @@ Retire each gateway's Ansible document writer before its first OpenTofu file ado
 
 Failed staged validation deletes the staged file and preserves the installed file, sha256, write_id, and prior typed state. The next plan must show the pending configured changes. A validate-only update does not establish staged-content acceptance. A failed service restart uses existing rollback and watchdog recovery.
 
-## Dormant LAN and acceptance
+## Acceptance
 
-Permit interfaces with provider, parent, internal, or management roles. Keep WAN and inter-LXC BGP available. Disable LAN client traffic, LAN client forwarding, and client-facing DHCP, DNS, and router advertisements.
-
-Preserve both Configs lifecycle preconditions. The file precondition rejects interfaces without allowed roles and routes referencing those interfaces. The container precondition rejects bindings to nic0, nic3, ens1f1, or bridges containing those ports. Read container bindings and actual host bridge membership. Warning-only check blocks are insufficient.
-
-Reuse [network-min.json](../../../gateway/yang/instances/network-min.json) and [network-freeform.json](../../../gateway/yang/instances/network-freeform.json) unchanged. Keep the negative lan0 fixture plan-only.
+Reuse [network-min.json](../../../gateway/yang/instances/network-min.json) and [network-freeform.json](../../../gateway/yang/instances/network-freeform.json) unchanged.
 
 | Public boundary | Required observable |
 | --- | --- |
@@ -149,6 +145,5 @@ Reuse [network-min.json](../../../gateway/yang/instances/network-min.json) and [
 | Published-format package with filesystem mirror | tofu init and plan succeed without compiler access or separately installed native libraries. |
 | Failed staged content write | Installed file and typed state retain prior values. |
 | Live LXC content write | Both deployed checks succeed before startup; both consumers restart from write_id. |
-| Configs lifecycle preconditions | Disallowed roles and direct or bridged LAN bindings fail planning. |
 
 Clean-host package and live deployment results are required evidence, not existing results. Coordinate deployment windows and locks per environment. Separate QA, production, and PowerEdge deployments do not block each other. Completion requires reviewed shared semantics, signed commits, current ruleset compliance, and evidence for each acceptance boundary.
