@@ -72,6 +72,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # The testdata copy must match the validated gateway fixture because staticcheck-extra rejects constant input paths outside testdata.
+      - name: Check network route fixture copies
+        run: cmp gateway/yang/instances/network-routes.json provider/internal/provider/testdata/networkplan/network-routes.json
       - uses: actions/setup-go@v7
         with:
           go-version-file: provider/go.mod
