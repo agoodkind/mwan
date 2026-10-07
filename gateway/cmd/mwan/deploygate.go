@@ -47,6 +47,7 @@ const (
 	deployGateAlertTimeout = 30 * time.Second
 	// deployGateAlertService identifies the gate on the outgoing alert email.
 	deployGateAlertService = "mwan-deploy-gate"
+	deployGateCommitAlias  = "commit"
 
 	exitDeployGateOK           = 0
 	exitDeployGateFailed       = 1
@@ -168,7 +169,15 @@ var (
 	deployGateTargetV4 = netip.MustParseAddr(deployGateEgressTargetV4)
 )
 
-// runDeployGate dispatches deploy-time gates from the Proxmox host.
+func runDeployGate(args []string) int {
+	if len(args) > 0 && args[0] == deployGateCommitAlias {
+		verifyArgs := append([]string{string(operationVerify)}, args[1:]...)
+		return runDeploy(verifyArgs)
+	}
+	return runDeploy(args)
+}
+
+// runDeploy dispatches deploy-time gates from the Proxmox host.
 // The host reads boot_id and starts the owned-address check through the
 // MWAN guest agent. Egress probes execute inside the OPNsense guest.
 //
@@ -179,10 +188,10 @@ var (
 // fail-without-rollback stop.
 //
 // args excludes the subcommand name itself.
-func runDeployGate(args []string) int {
+func runDeploy(args []string) int {
 	if len(args) > 0 {
 		switch operationMode(args[0]) {
-		case operationArm, operationWatch, operationStatus, operationLease, operationRelease, operationCommit, operationRecover:
+		case operationArm, operationWatch, operationStatus, operationLease, operationRelease, operationVerify, operationRecover:
 			return runDeployOperation(args)
 		}
 	}
@@ -223,17 +232,17 @@ func runDeployGate(args []string) int {
 		}
 		vmid, err := parseVMID(rest[0])
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+			fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
 			return exitDeployGateUsage
 		}
 		budget, err := parseBudgetSeconds(rest[2])
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+			fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
 			return exitDeployGateUsage
 		}
 		if !bootIDPattern.MatchString(rest[1]) {
 			fmt.Fprintf(os.Stderr,
-				"mwan deploy-gate: old_boot_id %q is not a boot_id UUID\n", rest[1])
+				"mwan deploy: old_boot_id %q is not a boot_id UUID\n", rest[1])
 			return exitDeployGateUsage
 		}
 		return onGatewayHost(deps, func(hostDeps deployGateDeps) int {
@@ -280,43 +289,43 @@ func parseWaitDeployArgs(rest []string) (waitDeployInputs, bool) {
 	}
 	vmid, err := parseVMID(rest[0])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
 		return waitDeployInputs{}, false
 	}
 	if !bootIDPattern.MatchString(rest[1]) {
 		fmt.Fprintf(os.Stderr,
-			"mwan deploy-gate: old_boot_id %q is not a boot_id UUID\n", rest[1])
+			"mwan deploy: old_boot_id %q is not a boot_id UUID\n", rest[1])
 		return waitDeployInputs{}, false
 	}
 	rebootBudget, err := parseBudgetSeconds(rest[2])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
 		return waitDeployInputs{}, false
 	}
 	egressBudget, err := parseBudgetSeconds(rest[3])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
 		return waitDeployInputs{}, false
 	}
 	if !traceIDPattern.MatchString(rest[4]) {
 		fmt.Fprintf(os.Stderr,
-			"mwan deploy-gate: trace_id %q must match %s\n",
+			"mwan deploy: trace_id %q must match %s\n",
 			rest[4], traceIDPattern.String())
 		return waitDeployInputs{}, false
 	}
 	families, err := parseRequiredEgressFamilies(rest[6])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
 		return waitDeployInputs{}, false
 	}
 	rounds, err := parseConsecutiveRounds(rest[7])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
 		return waitDeployInputs{}, false
 	}
 	probe, err := readDownstreamProbeConfig(rest[8], families)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
 		return waitDeployInputs{}, false
 	}
 	return waitDeployInputs{
@@ -339,17 +348,17 @@ func parseWaitEgressArgs(rest []string) (time.Duration, requiredEgressFamilies, 
 	}
 	budget, err := parseBudgetSeconds(rest[0])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
 		return 0, requiredEgressFamilies{}, 0, false
 	}
 	families, err := parseRequiredEgressFamilies(rest[1])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
 		return 0, requiredEgressFamilies{}, 0, false
 	}
 	rounds, err := parseConsecutiveRounds(rest[2])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
 		return 0, requiredEgressFamilies{}, 0, false
 	}
 	return budget, families, rounds, true
@@ -404,7 +413,7 @@ func waitDeploy(ctx context.Context, deps deployGateDeps, in waitDeployInputs) i
 		}
 	}
 	if writeErr != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy-gate: write verdict: %v\n", writeErr)
+		fmt.Fprintf(os.Stderr, "mwan deploy: write verdict: %v\n", writeErr)
 		return exitDeployGateFailed
 	}
 	log.InfoContext(ctx, "deploy-gate: verdict recorded",
@@ -478,7 +487,7 @@ func parseVMID(raw string) (int, error) {
 
 func printDeployGateUsage() {
 	fmt.Fprintln(os.Stderr,
-		"usage: mwan deploy-gate check-egress <families> <probe_config_path>"+
+		"usage: mwan deploy check-egress <families> <probe_config_path>"+
 			" | check-owned-addresses"+
 			" | check-network <network_json> <schema_dir>"+
 			" | check-networkd <network_json> <schema_dir> <unit_dir>"+
@@ -689,7 +698,7 @@ func ownedMissingEvent(alert ownedMissingAlert) notify.Event {
 		Message: message,
 		Fields: []slog.Attr{
 			slog.String("action", fmt.Sprintf(
-				"On gateway VM %d, run: mwan deploy-gate check-owned-addresses", alert.VMID)),
+				"On gateway VM %d, run: mwan deploy check-owned-addresses", alert.VMID)),
 			slog.String("deployment", "The postdeploy check failed after reboot. The gateway deploy is unhealthy. No rollback occurred; the deployed configuration remains active."),
 			slog.String("if missing", fmt.Sprintf(
 				"On gateway VM %d, run: journalctl -u mwan-ifmgr@wan -b --no-pager. Repair the cause, redeploy, then repeat the check.", alert.VMID)),
@@ -736,7 +745,7 @@ func withGatewayGuestReads(deps deployGateDeps) (deployGateDeps, error) {
 func onGatewayHost(deps deployGateDeps, run func(deployGateDeps) int) int {
 	hostDeps, err := withGatewayGuestReads(deps)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
 		return exitDeployGateFailed
 	}
 	return run(hostDeps)

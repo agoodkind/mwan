@@ -28,7 +28,7 @@ const (
 	operationStatus  operationMode = "status"
 	operationLease   operationMode = "lease"
 	operationRelease operationMode = "release"
-	operationCommit  operationMode = "commit"
+	operationVerify  operationMode = "verify"
 	operationRecover operationMode = "recover"
 )
 
@@ -41,11 +41,11 @@ type deployOperationStatus struct {
 func runDeployOperation(arguments []string) int {
 	cfg, args, err := config.LoadArguments(arguments)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy-gate operation: %v\n", err)
+		fmt.Fprintf(os.Stderr, "mwan deploy operation: %v\n", err)
 		return exitDeployGateUsage
 	}
 	if len(args) == 0 || cfg.Watchdog.ConnectivityTimeoutSeconds <= 0 || cfg.Watchdog.CheckIntervalDegraded <= 0 {
-		fmt.Fprintln(os.Stderr, "mwan deploy-gate operation: a mode and positive watchdog timeouts are required")
+		fmt.Fprintln(os.Stderr, "mwan deploy operation: a mode and positive watchdog timeouts are required")
 		return exitDeployGateUsage
 	}
 	logger, closer := logging.New(logging.Config{Handlers: []slog.Handler{slog.NewJSONHandler(os.Stderr, nil)}})
@@ -58,7 +58,7 @@ func runDeployOperation(arguments []string) int {
 		}
 	}
 	if args[0] == "arm" && !filepath.IsAbs(runtimePath) {
-		fmt.Fprintln(os.Stderr, "mwan deploy-gate arm requires --config with an absolute runtime configuration path")
+		fmt.Fprintln(os.Stderr, "mwan deploy arm requires --config with an absolute runtime configuration path")
 		return exitDeployGateUsage
 	}
 	engine := deployoperation.Engine{
@@ -83,7 +83,7 @@ func executeDeployOperation(ctx, signalContext context.Context, cfg *config.Conf
 			return deployOperationFailure(engine.Log, err)
 		}
 		return exitDeployGateOK
-	case operationWatch, operationStatus, operationLease, operationRelease, operationCommit, operationRecover:
+	case operationWatch, operationStatus, operationLease, operationRelease, operationVerify, operationRecover:
 		return executeCurrentDeployOperation(ctx, signalContext, cfg, engine, args)
 	default:
 		return deployOperationFailure(engine.Log, fmt.Errorf("unsupported deployment operation mode %s", args[0]))
@@ -139,12 +139,12 @@ func executeCurrentDeployOperation(ctx, signalContext context.Context, cfg *conf
 		if err := engine.Store.Release(ctx, record.OperationID, record.Generation, args[3]); err != nil {
 			return deployOperationFailure(engine.Log, fmt.Errorf("release deployment lease: %w", err))
 		}
-	case operationCommit:
+	case operationVerify:
 
 		commitContext, commitCancel := context.WithDeadline(signalContext, record.Deadline)
 		defer commitCancel()
 		if err := engine.Commit(commitContext, record.OperationID, record.Generation); err != nil {
-			return deployOperationFailure(engine.Log, fmt.Errorf("commit deployment operation: %w", err))
+			return deployOperationFailure(engine.Log, fmt.Errorf("verify deployment operation: %w", err))
 		}
 		if err := writeDeployOperationStatus(commitContext, engine); err != nil {
 			return deployOperationFailure(engine.Log, err)

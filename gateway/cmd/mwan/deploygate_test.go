@@ -627,7 +627,7 @@ func TestOwnedMissingAlertEmailExplainsRecovery(t *testing.T) {
 		"gateway deploy is unhealthy",
 		"No rollback occurred",
 		"deployed configuration remains active",
-		"On gateway VM 213, run: mwan deploy-gate check-owned-addresses",
+		"On gateway VM 213, run: mwan deploy check-owned-addresses",
 		"On gateway VM 213, run: journalctl -u mwan-ifmgr@wan -b --no-pager",
 		"Repair the cause, redeploy, then repeat the check",
 		"If a fresh check reports 0 missing after a later deploy, the current gateway state passes",
@@ -834,9 +834,54 @@ func TestRunDeployGateUsageErrors(t *testing.T) {
 		{"check-egress", "extra"},
 		{"check-owned-addresses", "extra"},
 	}
-	for _, args := range cases {
-		if code := runDeployGate(args); code != exitDeployGateUsage {
-			t.Fatalf("runDeployGate(%v) = %d, want %d", args, code, exitDeployGateUsage)
+	entrypoints := map[string]func([]string) int{
+		"deploy":      runDeploy,
+		"deploy-gate": runDeployGate,
+	}
+	for name, run := range entrypoints {
+		for _, args := range cases {
+			if code := run(args); code != exitDeployGateUsage {
+				t.Fatalf("%s %v = %d, want %d", name, args, code, exitDeployGateUsage)
+			}
 		}
+	}
+}
+
+func TestDeployVerifyModeNames(t *testing.T) {
+	binaryPath := buildMwanBinary(t)
+	root := t.TempDir()
+	configuration := "mwan_vmid = '999999'\n[watchdog]\n" +
+		"rollback_lock_file = '" + filepath.Join(root, "rollback") + "'\n" +
+		"rollback_state_file = '" + filepath.Join(root, "rollback-state") + "'\n" +
+		"check_interval_degraded_seconds = 1\nconnectivity_timeout_seconds = 5\n"
+	configPath := writeTestFile(t, "config.toml", configuration)
+	cases := []struct {
+		name       string
+		command    string
+		mode       string
+		wantExit   int
+		wantOutput string
+	}{
+		{"deploy verify", "deploy", "verify", exitDeployGateFailed, "read deployment operation"},
+		{"deploy-gate verify", "deploy-gate", "verify", exitDeployGateFailed, "read deployment operation"},
+		{"deploy-gate commit", "deploy-gate", "commit", exitDeployGateFailed, "read deployment operation"},
+		{"deploy commit", "deploy", "commit", exitDeployGateUsage, "usage: mwan deploy"},
+		{"deploy status", "deploy", "status", exitDeployGateFailed, "read deployment operation"},
+		{"deploy-gate status", "deploy-gate", "status", exitDeployGateFailed, "read deployment operation"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			output, exitCode := runMwanBinary(t, binaryPath, t.TempDir(), configPath,
+				tc.command, tc.mode, "operation-1", "generation-1", "--config", configPath)
+
+			if exitCode != tc.wantExit {
+				t.Fatalf("exit code = %d, want %d\noutput: %s", exitCode, tc.wantExit, output)
+			}
+			if !strings.Contains(output, tc.wantOutput) {
+				t.Fatalf("output does not contain %q: %s", tc.wantOutput, output)
+			}
+		})
 	}
 }

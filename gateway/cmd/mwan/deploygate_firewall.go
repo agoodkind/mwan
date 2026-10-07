@@ -27,7 +27,7 @@ func runFirewallCheck(args []string) int {
 		}
 	}
 	if len(args) != 2 && !isolated {
-		fmt.Fprintln(os.Stderr, "usage: mwan deploy-gate check-firewall <network.json> <schema-dir>")
+		fmt.Fprintln(os.Stderr, "usage: mwan deploy check-firewall <network.json> <schema-dir>")
 		return exitDeployGateUsage
 	}
 	loaded, err := networkjson.Load(args[0], args[1])
@@ -68,7 +68,7 @@ func runFirewallCheck(args []string) int {
 
 func runFirewallInspect(args []string) int {
 	if len(args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: mwan deploy-gate inspect-firewall <network.json> <schema-dir>")
+		fmt.Fprintln(os.Stderr, "usage: mwan deploy inspect-firewall <network.json> <schema-dir>")
 		return exitDeployGateUsage
 	}
 	loaded, err := networkjson.Load(args[0], args[1])
@@ -113,7 +113,7 @@ func runFirewallCheckChild(ctx context.Context, args []string) int {
 		Path: "/usr/bin/unshare",
 		Args: []string{
 			"unshare", "--net", "--", binary,
-			"deploy-gate", "check-firewall", args[0], args[1], "--isolated",
+			"deploy", "check-firewall", args[0], args[1], "--isolated",
 		},
 	}
 	command.ExtraFiles = []*os.File{parentNamespace}
