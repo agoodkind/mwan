@@ -13,6 +13,7 @@ import (
 
 	systemddbus "github.com/coreos/go-systemd/v22/dbus"
 
+	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/installfile"
 	"goodkind.io/mwan/internal/installspec"
 	"goodkind.io/mwan/internal/networkjson"
@@ -30,6 +31,7 @@ type installFlags struct {
 	apply       bool
 	printSchema string
 	root        string
+	guestType   string
 }
 
 type installOutcome struct {
@@ -66,16 +68,7 @@ func runInstall(args []string) int {
 	}
 	rooted := flags.root != ""
 	ctx := context.Background()
-	container := false
-	if roleInstallsSysctl(spec) {
-		inContainer, detectErr := detectContainer(ctx)
-		if detectErr != nil {
-			fmt.Fprintf(os.Stderr, "mwan install: %v\n", detectErr)
-			return exitInstallFailed
-		}
-		container = inContainer
-	}
-	outcome, err := installUnits(ctx, role, flags.root, container, enablerFor(rooted))
+	outcome, err := installUnits(ctx, role, flags.root, config.GuestType(flags.guestType), enablerFor(rooted))
 	if err == nil && spec.Schema {
 		var schema schemaOutcome
 		schema, err = installSchema(ctx, slog.Default(), flags.root)
@@ -107,7 +100,7 @@ func installUnits(
 	ctx context.Context,
 	role installspec.Role,
 	root string,
-	container bool,
+	guest config.GuestType,
 	enabler unitEnabler,
 ) (installOutcome, error) {
 	outcome := installOutcome{changed: nil, enabled: nil, modules: nil, nacmImported: nil}
@@ -116,15 +109,12 @@ func installUnits(
 		return outcome, fmt.Errorf("unknown role %q", role)
 	}
 	for _, file := range spec.Files {
-		content, err := installspec.Read(file.Embedded)
+		content, install, err := file.Content(guest)
 		if err != nil {
 			return outcome, installFailed("read the embedded file", file.Embedded, err)
 		}
-		if container && isSysctlFile(file) {
-			content = namespacedSysctlSettings(content)
-			if content == nil {
-				continue
-			}
+		if !install {
+			continue
 		}
 		path := filepath.Join(root, file.Dest)
 		changed, err := installfile.Write(path, content, installspec.FileMode)
@@ -225,7 +215,9 @@ func reportInstall(out io.Writer, outcome installOutcome, rooted bool) {
 }
 
 func parseInstallFlags(args []string) (installFlags, error) {
-	flags := installFlags{role: "", apply: false, printSchema: "", root: ""}
+	flags := installFlags{
+		role: "", apply: false, printSchema: "", root: "", guestType: string(config.GuestTypeQEMU),
+	}
 	set := flag.NewFlagSet("install", flag.ContinueOnError)
 	set.SetOutput(os.Stderr)
 	set.StringVar(&flags.role, "role", "",
@@ -236,8 +228,12 @@ func parseInstallFlags(args []string) (installFlags, error) {
 		"write the embedded YANG modules to this directory and exit, touching nothing else")
 	set.StringVar(&flags.root, "root", "",
 		"write under this directory instead of /, and name the units rather than enabling them")
+	set.StringVar(&flags.guestType, "guest-type", flags.guestType, "")
 	if err := set.Parse(args); err != nil {
 		return flags, installFailed("parse the flags of", "mwan install", err)
+	}
+	if _, err := config.ParseGuestType(flags.guestType); err != nil {
+		return flags, installFailed("parse the guest type", flags.guestType, err)
 	}
 	if flags.printSchema != "" && flags.apply {
 		return flags, errors.New("--print-schema writes no host files, so it does not take --apply")

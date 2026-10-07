@@ -1,20 +1,13 @@
-package main
+package installspec
 
 import (
-	"context"
-	"errors"
-	"log/slog"
-	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 
-	"goodkind.io/mwan/internal/installspec"
+	"goodkind.io/mwan/internal/config"
 )
 
 const (
-	containerDetectProgram = "systemd-detect-virt"
-	containerDetectFlag    = "--container"
 	// namespacedSysctlPrefix marks the keys a container can write. The keys
 	// under net. belong to the container's network namespace.
 	namespacedSysctlPrefix = "net."
@@ -22,26 +15,26 @@ const (
 	blockSeparator         = "\n\n"
 )
 
-// detectContainer reports whether systemd-detect-virt finds a container. A
-// non-zero exit means no container, and a failure to start the program fails
-// the install.
-func detectContainer(ctx context.Context) (bool, error) {
-	err := exec.CommandContext(ctx, containerDetectProgram, containerDetectFlag).Run()
-	var exitErr *exec.ExitError
-	if err != nil && !errors.As(err, &exitErr) {
-		return false, installFailed("detect a container with", containerDetectProgram, err)
+// IsSysctl reports true when the file's destination directory is SysctlDir.
+func (file File) IsSysctl() bool {
+	return filepath.Dir(file.Dest) == SysctlDir
+}
+
+// Content reads the embedded file. For an lxc guest, Content returns only the
+// net. settings of a sysctl file. Each setting includes the comment lines
+// above it. Content returns every other file and every qemu file unchanged.
+// Content returns false as the second result when an lxc sysctl file has no
+// net. setting. The caller then skips the file.
+func (file File) Content(guest config.GuestType) ([]byte, bool, error) {
+	content, err := Read(file.Embedded)
+	if err != nil {
+		return nil, false, err
 	}
-	inContainer := err == nil
-	slog.InfoContext(ctx, "install: container detection", "container", inContainer)
-	return inContainer, nil
-}
-
-func isSysctlFile(file installspec.File) bool {
-	return filepath.Dir(file.Dest) == installspec.SysctlDir
-}
-
-func roleInstallsSysctl(spec installspec.Spec) bool {
-	return slices.ContainsFunc(spec.Files, isSysctlFile)
+	if guest != config.GuestTypeLXC || !file.IsSysctl() {
+		return content, true, nil
+	}
+	kept := namespacedSysctlSettings(content)
+	return kept, kept != nil, nil
 }
 
 // namespacedSysctlSettings keeps the net. settings of a sysctl file, each with

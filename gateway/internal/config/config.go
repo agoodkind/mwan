@@ -536,11 +536,26 @@ func validateWatchdogStatusSource(section WatchdogSection) error {
 	return nil
 }
 
-func validateGuestType(guestType GuestType) error {
-	if guestType != GuestTypeQEMU && guestType != GuestTypeLXC {
-		return fmt.Errorf("guest_type %q must be %q or %q", guestType, GuestTypeQEMU, GuestTypeLXC)
+// GuestTypes lists the accepted qemu and lxc values in that order for
+// [ifmgr] guest_type, mwan install --guest-type, and the OpenTofu mwan_role
+// guest_type attribute.
+func GuestTypes() []GuestType {
+	return []GuestType{GuestTypeQEMU, GuestTypeLXC}
+}
+
+// ParseGuestType accepts only the exact lowercase names qemu and lxc.
+func ParseGuestType(name string) (GuestType, error) {
+	for _, guestType := range GuestTypes() {
+		if string(guestType) == name {
+			return guestType, nil
+		}
 	}
-	return nil
+	return "", fmt.Errorf("guest_type %q must be %q or %q", name, GuestTypeQEMU, GuestTypeLXC)
+}
+
+func validateGuestType(guestType GuestType) error {
+	_, err := ParseGuestType(string(guestType))
+	return err
 }
 
 func validateBGPDynamicNeighbors(prefixes []string) error {
