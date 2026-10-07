@@ -3,7 +3,9 @@
 package bpf
 
 import (
+	"errors"
 	"net/netip"
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -68,6 +70,107 @@ func mountPinTestBPFFS(t *testing.T) string {
 func pinTestPolicies(link netlink.Link) []InterfacePolicy {
 	pair := PrefixPair{ID: 1, Internal: netip.MustParsePrefix("fd00:1::/48"), External: netip.MustParsePrefix("2001:db8:1::/48")}
 	return []InterfacePolicy{{IfIndex: link.Attrs().Index, Pairs: []PrefixPair{pair}}}
+}
+
+func pinTestIngressID(t *testing.T, objects *nptObjects) uint32 {
+	t.Helper()
+	info, err := objects.NptIngress.Info()
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, available := info.ID()
+	if !available {
+		t.Fatal("kernel did not report the ingress program identity")
+	}
+	return uint32(identity)
+}
+
+func TestThirdGenerationAdoptsSecondGenerationPins(t *testing.T) {
+	link := isolatePinTestNetwork(t)
+	pinDirectory := mountPinTestBPFFS(t)
+	first, err := newTranslator(pinDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { first.Close() })
+	if _, err := first.Reconcile(pinTestPolicies(link)); err != nil {
+		t.Fatal(err)
+	}
+	second, err := newTranslator(pinDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { second.Close() })
+	if _, err := second.Reconcile(pinTestPolicies(link)); err != nil {
+		t.Fatal(err)
+	}
+	third, err := newTranslator(pinDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { third.Close() })
+	if third.previous == nil {
+		t.Fatal("third translator did not open the pinned objects")
+	}
+	firstID := pinTestIngressID(t, &first.objects)
+	secondID := pinTestIngressID(t, &second.objects)
+	previousID := pinTestIngressID(t, third.previous)
+	if previousID == firstID {
+		t.Fatal("third translator opened the first generation's program")
+	}
+	if previousID != secondID {
+		t.Fatalf("third translator opened program %d, want second generation program %d", previousID, secondID)
+	}
+	if err := third.VerifyUnused([]int{pinTestAbsentIndex}, netip.MustParseAddr("2001:db8:ffff::1"), nil); err != nil {
+		t.Fatalf("second generation program was not matched through the pins: %v", err)
+	}
+	if err := third.VerifyUnused([]int{pinTestAbsentIndex}, netip.MustParseAddr("2001:db8:1::1"), nil); err == nil {
+		t.Fatal("edge inside the second generation policy prefix was released")
+	}
+}
+
+func TestPinFailureDoesNotFailReconcileAndLaterReconcilePins(t *testing.T) {
+	link := isolatePinTestNetwork(t)
+	pinDirectory := mountPinTestBPFFS(t)
+	blockedPin := filepath.Join(pinDirectory, pinIngressName)
+	blocker := filepath.Join(blockedPin, "blocker")
+	if err := os.MkdirAll(blocker, pinDirectoryMode); err != nil {
+		t.Fatal(err)
+	}
+	translator, err := newTranslator(pinDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { translator.Close() })
+	if _, err := translator.Reconcile(pinTestPolicies(link)); err != nil {
+		t.Fatalf("pin failure failed Reconcile: %v", err)
+	}
+	for _, name := range []string{pinEgressName, pinPoliciesName} {
+		_, statErr := os.Stat(filepath.Join(pinDirectory, name))
+		if !errors.Is(statErr, os.ErrNotExist) {
+			t.Fatalf("pin %s exists while the pin path was blocked: %v", name, statErr)
+		}
+	}
+	if err := os.Remove(blocker); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(blockedPin); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := translator.Reconcile(pinTestPolicies(link)); err != nil {
+		t.Fatal(err)
+	}
+	next, err := newTranslator(pinDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { next.Close() })
+	if next.previous == nil {
+		t.Fatal("pins were not written by the later Reconcile")
+	}
+	if pinTestIngressID(t, next.previous) != pinTestIngressID(t, &translator.objects) {
+		t.Fatal("pins refer to a program other than the translator's current program")
+	}
 }
 
 func TestEdgeReleaseBlocksOnUnmatchedOwnedFilter(t *testing.T) {
