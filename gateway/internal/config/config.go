@@ -311,6 +311,7 @@ type NotifySection struct {
 // Each role is a list of modules (see internal/ifmgr/roles.go), and the
 // module config schema is explicitly modeled in IfMgrModulesSection.
 type IfMgrSection struct {
+	GuestType          GuestType       `toml:"-"`
 	Firewall           firewall.Config `toml:"-"`
 	PinnedConnectionID string          `toml:"-"`
 	Role               string          `toml:"role"`

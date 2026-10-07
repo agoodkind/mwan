@@ -65,3 +65,45 @@ func TestCheckFirewallIsolatedKernel(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckFirewallIsolatedKernelLXC(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("network namespace test requires root")
+	}
+	before, err := exec.Command("nft", "-j", "list", "ruleset").Output()
+	if err != nil {
+		t.Fatalf("read caller rules: %v", err)
+	}
+	binary := filepath.Join(t.TempDir(), "mwan")
+	build := exec.Command("go", "build", "-o", binary, ".")
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build public command: %v: %s", err, output)
+	}
+	fixture := filepath.Join("..", "..", "yang", "instances", "network-lxc.json")
+	schema := filepath.Join("..", "..", "internal", "yangpub", "schema")
+	output, err := exec.Command(binary, "deploy-gate", "check-firewall", fixture, schema).CombinedOutput()
+	if err != nil {
+		t.Fatalf("public firewall check: %v: %s", err, output)
+	}
+	readback := string(output) + " "
+	if !strings.Contains(readback, "inet filter input") {
+		t.Errorf("readback omits the input chain: %s", output)
+	}
+	for _, port := range []string{"dport 22 ", "dport 50052 "} {
+		if strings.Contains(readback, port) {
+			t.Errorf("readback accepts a management port %q: %s", port, output)
+		}
+	}
+	for _, port := range []string{"dport 179 ", "dport 3784 ", "dport 3785 "} {
+		if !strings.Contains(readback, port) {
+			t.Errorf("readback omits the routing session port %q: %s", port, output)
+		}
+	}
+	after, err := exec.Command("nft", "-j", "list", "ruleset").Output()
+	if err != nil {
+		t.Fatalf("read caller rules after check: %v", err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatalf("public firewall check changed caller nftables rules")
+	}
+}

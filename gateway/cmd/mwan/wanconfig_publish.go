@@ -330,13 +330,16 @@ func gatewayFromModuleConfigs(cfg *config.Config, configs ifmgr.ModuleConfigSet)
 		}
 	}
 	var pinnedConnectionID string
+	var guestType config.GuestType
 	var explicitConnectionIDs map[string]connectionid.ID
 	if cfg != nil {
+		guestType = cfg.IfMgr.GuestType
 		pinnedConnectionID = cfg.IfMgr.PinnedConnectionID
 		explicitConnectionIDs = cfg.IfMgr.ExplicitConnectionIDs
 	}
 
 	gateway := wanconfig.Gateway{
+		GuestType:          guestType,
 		InternalIface:      routesCfg.InternalIface,
 		Firewall:           firewallFromConfig(cfg),
 		PinnedConnectionID: pinnedConnectionID,

@@ -9,7 +9,10 @@ import (
 	"testing"
 )
 
-const minNetworkDocument = "../../yang/instances/network-min.json"
+const (
+	minNetworkDocument = "../../yang/instances/network-min.json"
+	lxcNetworkDocument = "../../yang/instances/network-lxc.json"
+)
 
 type networkReplacement struct {
 	old string
@@ -18,9 +21,14 @@ type networkReplacement struct {
 
 func modifiedNetwork(t *testing.T, replacements ...networkReplacement) string {
 	t.Helper()
-	body, err := os.ReadFile(minNetworkDocument)
+	return modifiedNetworkFrom(t, minNetworkDocument, replacements...)
+}
+
+func modifiedNetworkFrom(t *testing.T, base string, replacements ...networkReplacement) string {
+	t.Helper()
+	body, err := os.ReadFile(base)
 	if err != nil {
-		t.Fatalf("read %s: %v", minNetworkDocument, err)
+		t.Fatalf("read %s: %v", base, err)
 	}
 	mutated := string(body)
 	for _, replacement := range replacements {
@@ -73,6 +81,22 @@ func TestCheckNetwork(t *testing.T) {
 			document: func(*testing.T) string { return minNetworkDocument },
 			want:     exitDeployGateOK,
 			expect:   []string{"3 providers, 0 rejected"},
+		},
+		"lxc gateway with no management interface": {
+			document: func(*testing.T) string { return lxcNetworkDocument },
+			want:     exitDeployGateOK,
+			expect:   []string{"1 providers, 0 rejected"},
+		},
+		"lxc gateway with a management service and no management interface": {
+			document: func(t *testing.T) string {
+				t.Helper()
+				return modifiedNetworkFrom(t, lxcNetworkDocument, networkReplacement{
+					old: `"firewall": {`,
+					new: `"firewall": { "management-service": [{ "protocol": "tcp", "port": 22 }],`,
+				})
+			},
+			want:   exitDeployGateFailed,
+			expect: []string{"management services require a management interface"},
 		},
 		"an ipv6 container with no dhcp": {
 			document: webpassIPv6NoDHCP,

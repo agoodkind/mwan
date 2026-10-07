@@ -184,6 +184,7 @@ type DaemonSettings struct {
 
 // Gateway is the loaded configuration the surface publishes.
 type Gateway struct {
+	GuestType          config.GuestType
 	Firewall           firewall.Config
 	PinnedConnectionID string
 	ConnectionIDs      map[string]connectionid.ID
@@ -263,6 +264,7 @@ func ConfigItems(g Gateway) ([]Item, error) {
 	}
 
 	items := make([]Item, 0, itemsPerMember*len(g.Members)+itemsForGroup)
+	items = append(items, guestTypeItems(g)...)
 	for _, connection := range g.Connections {
 		items = append(items, connectionItems(connection, g.ConnectionIDs)...)
 	}
@@ -802,35 +804,6 @@ func steeringGroupItems(g Gateway) []Item {
 			Path:  steeringGroupPath + "/health/probe-timeout",
 			Value: uintValue(uint64(group.ProbeTimeoutMillis)),
 		})
-	}
-	return items
-}
-
-func firewallItems(g Gateway) []Item {
-	cfg := g.Firewall
-	if !cfg.Enabled {
-		return nil
-	}
-	base := steeringGroupPath + "/firewall"
-	items := []Item{
-		{Path: base + "/management-interface", Value: cfg.ManagementInterface},
-		{Path: base + "/pinned-set-v4-name", Value: cfg.PinnedSetV4Name},
-		{Path: base + "/pinned-set-v6-name", Value: cfg.PinnedSetV6Name},
-	}
-	for _, service := range cfg.ManagementServices {
-		path := base + "/management-service[protocol='" + service.Protocol +
-			"'][port='" + uintValue(uint64(service.Port)) + "']"
-		items = append(items, Item{Path: path, Value: ""})
-		for _, source := range service.Sources {
-			items = append(items, Item{Path: path + "/allowed-source", Value: source.String()})
-		}
-	}
-	items = append(items, firewallPinItems(g, base)...)
-	for _, prefix := range cfg.PinnedIPv4 {
-		items = append(items, Item{Path: base + "/pinned-v4", Value: prefix.String()})
-	}
-	for _, prefix := range cfg.PinnedIPv6 {
-		items = append(items, Item{Path: base + "/pinned-v6", Value: prefix.String()})
 	}
 	return items
 }
