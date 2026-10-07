@@ -120,6 +120,7 @@ func installUnits(
 			removeErr := os.Remove(path)
 			if removeErr == nil {
 				outcome.removed = append(outcome.removed, path)
+				slog.InfoContext(ctx, "install: removed sysctl file with no net. settings", "path", path, "guest_type", guest)
 			} else if !errors.Is(removeErr, fs.ErrNotExist) {
 				return outcome, installFailed("remove the file", file.Dest, removeErr)
 			}
@@ -131,6 +132,7 @@ func installUnits(
 		}
 		if changed {
 			outcome.changed = append(outcome.changed, path)
+			slog.InfoContext(ctx, "install: wrote changed file", "path", path, "guest_type", guest)
 		}
 	}
 	if err := enabler(ctx, spec.Enable, len(outcome.changed)+len(outcome.removed) > 0); err != nil {

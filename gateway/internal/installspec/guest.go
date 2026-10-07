@@ -15,7 +15,7 @@ const (
 	blockSeparator         = "\n\n"
 )
 
-func (file File) IsSysctl() bool {
+func (file File) isSysctl() bool {
 	return filepath.Dir(file.Dest) == SysctlDir
 }
 
@@ -29,7 +29,7 @@ func (file File) Content(guest config.GuestType) ([]byte, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	if guest != config.GuestTypeLXC || !file.IsSysctl() {
+	if guest != config.GuestTypeLXC || !file.isSysctl() {
 		return content, true, nil
 	}
 	kept := NamespacedSysctlSettings(content)
