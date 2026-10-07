@@ -40,7 +40,7 @@ type Translator struct {
 	objects      nptObjects
 	previous     *nptObjects
 	pinDirectory string
-	pinsSettled  bool
+	pinsReplaced bool
 	closed       bool
 }
 
@@ -50,7 +50,7 @@ func New() (*Translator, error) {
 }
 
 func newTranslator(pinDirectory string) (*Translator, error) {
-	translator := &Translator{mu: sync.Mutex{}, objects: nptObjects{NptEgress: nil, NptIngress: nil, Policies: nil}, previous: nil, pinDirectory: pinDirectory, pinsSettled: false, closed: false}
+	translator := &Translator{mu: sync.Mutex{}, objects: nptObjects{NptEgress: nil, NptIngress: nil, Policies: nil}, previous: nil, pinDirectory: pinDirectory, pinsReplaced: false, closed: false}
 	if err := loadNptObjects(&translator.objects, nil); err != nil {
 		slog.Error("NPTv6 eBPF programs could not be loaded", "err", err)
 		return nil, fmt.Errorf("load NPTv6 programs: %w", err)

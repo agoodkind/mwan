@@ -101,17 +101,18 @@ func (translator *Translator) adoptPinnedObjects() {
 	translator.previous = previous
 }
 
-// Previous pins must remain available for edge verification until the first
-// fully successful Reconcile. Each translator attempts replacement once.
-// A pin replacement failure logs a warning without stopping the wan role.
+// The previous pinned generation stays open for edge verification until
+// replacement succeeds. The next fully successful Reconcile retries a failed
+// pin replacement. Successful replacement ends retries. Pin failures log a
+// warning without stopping Reconcile or the wan role.
 func (translator *Translator) replacePins() {
-	if translator.pinsSettled {
+	if translator.pinsReplaced {
 		return
 	}
-	translator.pinsSettled = true
 	if err := translator.pinObjects(); err != nil {
 		return
 	}
+	translator.pinsReplaced = true
 	if err := translator.closePrevious(); err != nil {
 		slog.Warn("NPTv6 previous pinned objects could not be closed", "err", err)
 	}
