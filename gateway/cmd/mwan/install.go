@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -36,6 +37,7 @@ type installFlags struct {
 
 type installOutcome struct {
 	changed      []string
+	removed      []string
 	enabled      []string
 	modules      []yangpub.ModuleChange
 	nacmImported []yangpub.Datastore
@@ -113,10 +115,16 @@ func installUnits(
 		if err != nil {
 			return outcome, installFailed("read the embedded file", file.Embedded, err)
 		}
+		path := filepath.Join(root, file.Dest)
 		if !install {
+			removeErr := os.Remove(path)
+			if removeErr == nil {
+				outcome.removed = append(outcome.removed, path)
+			} else if !errors.Is(removeErr, fs.ErrNotExist) {
+				return outcome, installFailed("remove the file", file.Dest, removeErr)
+			}
 			continue
 		}
-		path := filepath.Join(root, file.Dest)
 		changed, err := installfile.Write(path, content, installspec.FileMode)
 		if err != nil {
 			return outcome, installFailed("install the file", file.Dest, err)
@@ -125,7 +133,7 @@ func installUnits(
 			outcome.changed = append(outcome.changed, path)
 		}
 	}
-	if err := enabler(ctx, spec.Enable, len(outcome.changed) > 0); err != nil {
+	if err := enabler(ctx, spec.Enable, len(outcome.changed)+len(outcome.removed) > 0); err != nil {
 		return outcome, err
 	}
 	outcome.enabled = spec.Enable
@@ -183,11 +191,14 @@ func installFailed(operation string, name string, err error) error {
 }
 
 func reportInstall(out io.Writer, outcome installOutcome, rooted bool) {
-	if len(outcome.changed) == 0 {
+	if len(outcome.changed)+len(outcome.removed) == 0 {
 		fmt.Fprintln(out, "no change")
 	}
 	for _, path := range outcome.changed {
 		fmt.Fprintf(out, "wrote %s\n", path)
+	}
+	for _, path := range outcome.removed {
+		fmt.Fprintf(out, "removed %s\n", path)
 	}
 	for _, module := range outcome.modules {
 		if module.Action == yangpub.ModuleUpdated {
@@ -228,7 +239,9 @@ func parseInstallFlags(args []string) (installFlags, error) {
 		"write the embedded YANG modules to this directory and exit, touching nothing else")
 	set.StringVar(&flags.root, "root", "",
 		"write under this directory instead of /, and name the units rather than enabling them")
-	set.StringVar(&flags.guestType, "guest-type", flags.guestType, "")
+	set.StringVar(&flags.guestType, "guest-type", flags.guestType,
+		"select qemu (default) or lxc. For lxc, the installer writes only net. keys from each sysctl file. "+
+			"For lxc, the installer skips sysctl files with no net. key")
 	if err := set.Parse(args); err != nil {
 		return flags, installFailed("parse the flags of", "mwan install", err)
 	}

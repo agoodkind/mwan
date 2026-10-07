@@ -97,6 +97,10 @@ func (d *roleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 			"guest_type": schema.StringAttribute{
 				Optional:   true,
 				Validators: []validator.String{stringvalidator.OneOf(guestTypeNames()...)},
+				Description: "Select qemu (default when absent) or lxc. " +
+					"For lxc, files lists sysctl files with only their net. keys. " +
+					"For lxc, files omits sysctl files with no net. key. " +
+					"The value must match the guest-type leaf in the gateway's network.json.",
 			},
 			"files": schema.ListNestedAttribute{
 				Computed:    true,
@@ -186,7 +190,12 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 
 	guest := config.GuestTypeQEMU
 	if !model.GuestType.IsNull() {
-		guest = config.GuestType(model.GuestType.ValueString())
+		parsedGuest, parseErr := config.ParseGuestType(model.GuestType.ValueString())
+		if parseErr != nil {
+			resp.Diagnostics.AddError("Invalid guest type", parseErr.Error())
+			return
+		}
+		guest = parsedGuest
 	}
 
 	model.Files = make([]roleFileModel, 0, len(spec.Files))

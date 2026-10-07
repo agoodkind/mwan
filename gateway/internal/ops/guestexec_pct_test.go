@@ -121,7 +121,9 @@ func TestGuestExecRunsPctExecFirstForLXC(t *testing.T) {
 	}
 	defer func() { _ = listener.Close() }()
 	accepted := make(chan struct{}, 1)
+	acceptDone := make(chan struct{})
 	go func() {
+		defer close(acceptDone)
 		connection, acceptErr := listener.Accept()
 		if acceptErr != nil {
 			return
@@ -146,6 +148,8 @@ func TestGuestExecRunsPctExecFirstForLXC(t *testing.T) {
 	if got := readRecordedArgs(t, argsFile); got != wantArgs {
 		t.Fatalf("pct args = %q, want %q", got, wantArgs)
 	}
+	_ = listener.Close()
+	<-acceptDone
 	select {
 	case <-accepted:
 		t.Fatal("GuestExec dialed the management TCP address for an LXC guest")

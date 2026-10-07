@@ -530,6 +530,42 @@ func TestInstallApplyForAnLXCGuestKeepsOnlyNamespacedSysctls(t *testing.T) {
 	}
 }
 
+func TestInstallForAnLXCGuestReplacesTheSysctlFileOfAQEMUInstall(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	enabler := &recordingEnabler{}
+	sysctlPath := filepath.Join(root, installspec.SysctlDir, "99-quiet-console.conf")
+	if _, err := installUnits(t.Context(), installspec.RoleWAN, root, config.GuestTypeQEMU, enabler.enable); err != nil {
+		t.Fatalf("qemu installUnits: %v", err)
+	}
+	qemuContent, err := os.ReadFile(sysctlPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", sysctlPath, err)
+	}
+	if !bytes.Contains(qemuContent, []byte("kernel.")) {
+		t.Fatalf("the qemu install wrote no kernel setting:\n%s", qemuContent)
+	}
+
+	outcome, err := installUnits(t.Context(), installspec.RoleWAN, root, config.GuestTypeLXC, enabler.enable)
+	if err != nil {
+		t.Fatalf("lxc installUnits: %v", err)
+	}
+
+	lxcContent, err := os.ReadFile(sysctlPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", sysctlPath, err)
+	}
+	if bytes.Contains(lxcContent, []byte("kernel.")) {
+		t.Errorf("the lxc rerun left a kernel setting:\n%s", lxcContent)
+	}
+	if len(outcome.changed) != 1 || outcome.changed[0] != sysctlPath {
+		t.Errorf("changed = %v, want just %s", outcome.changed, sysctlPath)
+	}
+	if len(enabler.reloads) != 2 || !enabler.reloads[1] {
+		t.Errorf("reload requests = %v, want a reload on the lxc rerun", enabler.reloads)
+	}
+}
+
 func TestInstallApplyRejectsAnUnknownGuestType(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()

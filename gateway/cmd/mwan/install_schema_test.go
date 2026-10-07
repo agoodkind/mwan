@@ -119,7 +119,8 @@ func runChild(t *testing.T, env []string, args ...string) string {
 
 func runInstallChild(t *testing.T, root string) string {
 	t.Helper()
-	return runInstallChildOn(t, root, config.GuestTypeQEMU)
+	env := []string{childMainEnv + "=1"}
+	return runChild(t, env, "install", "--apply", "--role", "wan", "--root", root)
 }
 
 func runInstallChildOn(t *testing.T, root string, guest config.GuestType) string {

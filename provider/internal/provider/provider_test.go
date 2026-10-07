@@ -269,8 +269,14 @@ func TestRoleLXCGuestKeepsOnlyNamespacedSysctls(t *testing.T) {
 		if !strings.Contains(file.Content, "net.netfilter.nf_conntrack_log_invalid = 0") {
 			t.Errorf("the lxc sysctl file dropped the conntrack setting:\n%s", file.Content)
 		}
-		if strings.Contains(file.Content, "kernel.") {
-			t.Errorf("the lxc sysctl file lists a kernel setting:\n%s", file.Content)
+		for line := range strings.SplitSeq(file.Content, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+				continue
+			}
+			if !strings.HasPrefix(trimmed, "net.") {
+				t.Errorf("the lxc sysctl file lists a key outside net.: %q", trimmed)
+			}
 		}
 		return
 	}

@@ -536,9 +536,9 @@ func validateWatchdogStatusSource(section WatchdogSection) error {
 	return nil
 }
 
-// GuestTypes lists the accepted qemu and lxc values in that order for
-// [ifmgr] guest_type, mwan install --guest-type, and the OpenTofu mwan_role
-// guest_type attribute.
+// GuestTypes returns the accepted values in the order qemu, lxc for the
+// top-level TOML guest_type key, mwan install --guest-type, and the OpenTofu
+// mwan_role attribute guest_type.
 func GuestTypes() []GuestType {
 	return []GuestType{GuestTypeQEMU, GuestTypeLXC}
 }

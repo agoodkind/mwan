@@ -15,16 +15,15 @@ const (
 	blockSeparator         = "\n\n"
 )
 
-// IsSysctl reports true when the file's destination directory is SysctlDir.
 func (file File) IsSysctl() bool {
 	return filepath.Dir(file.Dest) == SysctlDir
 }
 
 // Content reads the embedded file. For an lxc guest, Content returns only the
-// net. settings of a sysctl file. Each setting includes the comment lines
-// above it. Content returns every other file and every qemu file unchanged.
+// net. settings of a sysctl file, each with the comment lines directly above it.
+// Content returns every other file and every qemu file unchanged.
 // Content returns false as the second result when an lxc sysctl file has no
-// net. setting. The caller then skips the file.
+// net. setting. The caller removes or skips the file.
 func (file File) Content(guest config.GuestType) ([]byte, bool, error) {
 	content, err := Read(file.Embedded)
 	if err != nil {
@@ -33,30 +32,38 @@ func (file File) Content(guest config.GuestType) ([]byte, bool, error) {
 	if guest != config.GuestTypeLXC || !file.IsSysctl() {
 		return content, true, nil
 	}
-	kept := namespacedSysctlSettings(content)
+	kept := NamespacedSysctlSettings(content)
 	return kept, kept != nil, nil
 }
 
-// namespacedSysctlSettings keeps the net. settings of a sysctl file, each with
-// the comments above it. It returns nil when no setting remains.
-func namespacedSysctlSettings(content []byte) []byte {
+// NamespacedSysctlSettings keeps each net. setting of sysctl file content with
+// the comment lines directly above it. NamespacedSysctlSettings drops comments
+// above dropped settings and comments at the end of a block.
+// NamespacedSysctlSettings keeps blank-line separation between blocks that keep
+// a setting. NamespacedSysctlSettings returns nil when no net. setting remains.
+func NamespacedSysctlSettings(content []byte) []byte {
 	var keptBlocks []string
 	for block := range strings.SplitSeq(strings.TrimSpace(string(content)), blockSeparator) {
-		var comments []string
-		var settings []string
+		var keptLines []string
+		var pendingComments []string
 		for line := range strings.SplitSeq(block, "\n") {
 			trimmed := strings.TrimSpace(line)
 			switch {
+			case trimmed == "":
 			case strings.HasPrefix(trimmed, commentPrefix):
-				comments = append(comments, trimmed)
+				pendingComments = append(pendingComments, trimmed)
 			case strings.HasPrefix(trimmed, namespacedSysctlPrefix):
-				settings = append(settings, trimmed)
+				keptLines = append(keptLines, pendingComments...)
+				keptLines = append(keptLines, trimmed)
+				pendingComments = nil
+			default:
+				pendingComments = nil
 			}
 		}
-		if len(settings) == 0 {
+		if len(keptLines) == 0 {
 			continue
 		}
-		keptBlocks = append(keptBlocks, strings.Join(append(comments, settings...), "\n"))
+		keptBlocks = append(keptBlocks, strings.Join(keptLines, "\n"))
 	}
 	if len(keptBlocks) == 0 {
 		return nil
