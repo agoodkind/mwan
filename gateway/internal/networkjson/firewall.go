@@ -109,6 +109,13 @@ func resolveGuestType(raw string) (config.GuestType, error) {
 	}
 }
 
+func managementPolicy(guestType config.GuestType) firewall.ManagementPolicy {
+	if guestType == config.GuestTypeLXC {
+		return firewall.ManagementOptional
+	}
+	return firewall.ManagementRequired
+}
+
 func buildBaseline(wire *baselineFirewallWire, guestType config.GuestType, internalInterface string, declared []string, providers []string) (firewall.BaselineConfig, error) {
 	if wire == nil {
 		return firewall.BaselineConfig{}, fmt.Errorf("steering-group/firewall is absent")
@@ -118,7 +125,7 @@ func buildBaseline(wire *baselineFirewallWire, guestType config.GuestType, inter
 		return firewall.BaselineConfig{}, err
 	}
 	baseline := firewall.BaselineConfig{
-		ManagementOptional:  guestType == config.GuestTypeLXC,
+		ManagementPolicy:    managementPolicy(guestType),
 		ManagementInterface: wire.ManagementInterface,
 		ManagementServices:  services,
 		InternalInterface:   internalInterface,
@@ -155,7 +162,7 @@ func buildBaseline(wire *baselineFirewallWire, guestType config.GuestType, inter
 		}
 		known[name] = true
 	}
-	managementAbsent := baseline.ManagementOptional && baseline.ManagementInterface == ""
+	managementAbsent := baseline.ManagementPolicy.Absent(baseline.ManagementInterface)
 	managementUndeclared := !managementAbsent && !known[baseline.ManagementInterface]
 	if managementUndeclared || !known[baseline.InternalInterface] {
 		return firewall.BaselineConfig{}, fmt.Errorf("firewall management or internal interface is not declared")
@@ -230,7 +237,7 @@ func buildFirewall(doc *document, loaded *Config) (firewall.Config, error) {
 	}
 	var cfg firewall.Config
 	cfg.Enabled = true
-	cfg.ManagementOptional = loaded.GuestType == config.GuestTypeLXC
+	cfg.ManagementPolicy = baseline.ManagementPolicy
 	cfg.InternalInterface = baseline.InternalInterface
 	cfg.InternalNetworkIPv4 = network
 	cfg.ManagementInterface = baseline.ManagementInterface

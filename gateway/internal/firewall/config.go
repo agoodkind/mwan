@@ -60,11 +60,29 @@ type Service struct {
 	Sources  []netip.Prefix
 }
 
+// ManagementPolicy selects whether a firewall configuration must name a
+// management interface.
+type ManagementPolicy int
+
+const (
+	// ManagementRequired rejects an empty management interface.
+	// ManagementRequired is the zero value.
+	ManagementRequired ManagementPolicy = iota
+	// ManagementOptional accepts an empty management interface only when the
+	// configuration lists no management services.
+	ManagementOptional
+)
+
+// Absent returns true only for ManagementOptional with an empty interface.
+func (p ManagementPolicy) Absent(managementInterface string) bool {
+	return p == ManagementOptional && managementInterface == ""
+}
+
 // Config contains only inputs that affect the three firewall-owned tables.
 // Routing and tunnel configuration are projected into permits and paths.
 type Config struct {
 	Enabled               bool
-	ManagementOptional    bool
+	ManagementPolicy      ManagementPolicy
 	InternalInterface     string
 	InternalNetworkIPv4   netip.Prefix
 	ManagementInterface   string
@@ -89,7 +107,7 @@ func (Config) ModuleConfigName() string { return "firewall" }
 
 // BaselineConfig contains the local values needed before provider validation.
 type BaselineConfig struct {
-	ManagementOptional  bool
+	ManagementPolicy    ManagementPolicy
 	ManagementInterface string
 	ManagementServices  []Service
 	InternalInterface   string
@@ -99,7 +117,7 @@ type BaselineConfig struct {
 
 // Validate checks the local permits before baseline installation.
 func (c BaselineConfig) Validate() error {
-	managementAbsent := c.ManagementOptional && c.ManagementInterface == ""
+	managementAbsent := c.ManagementPolicy.Absent(c.ManagementInterface)
 	if !managementAbsent {
 		if err := validInterface(c.ManagementInterface); err != nil {
 			slog.Warn("invalid baseline management interface", "err", err)
@@ -156,7 +174,7 @@ func (c Config) Validate() error {
 		slog.Warn("invalid firewall internal interface", "err", err)
 		return fmt.Errorf("internal interface: %w", err)
 	}
-	managementAbsent := c.ManagementOptional && c.ManagementInterface == ""
+	managementAbsent := c.ManagementPolicy.Absent(c.ManagementInterface)
 	if !managementAbsent {
 		if err := validInterface(c.ManagementInterface); err != nil {
 			slog.Warn("invalid firewall management interface", "err", err)
@@ -290,7 +308,7 @@ func (c Config) validateReferences() error {
 			return fmt.Errorf("provider interface %q is not declared", provider.Interface)
 		}
 	}
-	managementAbsent := c.ManagementOptional && c.ManagementInterface == ""
+	managementAbsent := c.ManagementPolicy.Absent(c.ManagementInterface)
 	managementUndeclared := !managementAbsent && !known[c.ManagementInterface]
 	if managementUndeclared || !known[c.InternalInterface] {
 		return fmt.Errorf("management or internal interface is not declared")

@@ -249,7 +249,10 @@ func selftestGateway() wanconfig.Gateway {
 	firewallConfig.ManagementInterface = "enmgmt0"
 	firewallConfig.ManagementServices = []firewall.Service{{Protocol: "tcp", Port: 22, Sources: nil}}
 	firewallConfig.KnownInterfaces = []string{"eninternal0", "enmgmt0", "enexample0"}
-	firewallConfig.Providers = []firewall.Provider{{Interface: "enexample0", Mark: 1, ForcedDSCP: 8, MasqueradeIPv4: true, StaticMappings: nil}}
+	firewallConfig.Providers = []firewall.Provider{{
+		Interface: "enexample0", Mark: 1, ForcedDSCP: 8,
+		MasqueradeIPv4: true, StaticMappings: nil,
+	}}
 	firewallConfig.Paths = []firewall.ForwardingPath{{
 		InternalInterface: "eninternal0", ExternalInterface: "enexample0", IPv4: true, IPv6: true,
 	}}

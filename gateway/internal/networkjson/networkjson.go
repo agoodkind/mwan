@@ -35,8 +35,9 @@ const DefaultPath = "/etc/mwan/network.json"
 const DefaultSchemaDir = schema.InstallDir
 
 // document mirrors the model's JSON encoding. Every scalar the daemon needs is
-// a pointer, so an absent leaf is distinguishable from a zero and can be
-// rejected rather than defaulted.
+// a pointer so the loader can reject an absent leaf.
+// GuestType is the deliberate exception. The guest-type leaf uses a plain string.
+// An absent guest-type means qemu, matching the YANG default.
 type document struct {
 	Interfaces interfaces `json:"ietf-interfaces:interfaces"`
 }

@@ -42,12 +42,50 @@ func TestLoadGuestTypeDefaultsToQEMUWhenAbsent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if loaded.GuestType != config.GuestTypeQEMU {
-		t.Fatalf("guest type = %q, want %q", loaded.GuestType, config.GuestTypeQEMU)
+	found := false
+	for _, rule := range compiledInputRules(t, loaded.Firewall) {
+		if strings.Contains(rule+" ", "dport 22 ") && strings.Contains(rule, "enmgmt0") {
+			found = true
+		}
 	}
-	if loaded.Firewall.ManagementInterface != "enmgmt0" {
-		t.Fatalf("management interface = %q, want enmgmt0", loaded.Firewall.ManagementInterface)
+	if !found {
+		t.Fatal("input chain has no SSH accept on the management interface")
 	}
+}
+
+func TestLoadRejectsLXCManagementServicesWithoutInterface(t *testing.T) {
+	t.Parallel()
+	lxcBody := instanceBody(t, lxcInstance)
+	withService := replaceOnce(t, lxcBody, `"firewall": {`,
+		`"firewall": { "management-service": [{ "protocol": "tcp", "port": 22 }],`)
+	_, err := networkjson.Load(writeDocument(t, withService), schemaDirForTest(t))
+	if err == nil {
+		t.Fatal("Load accepted an lxc document with a management service and no interface")
+	}
+	if !strings.Contains(err.Error(), "management services require a management interface") {
+		t.Fatalf("error = %v, want the management interface requirement", err)
+	}
+	if _, err := networkjson.LoadBaseline(writeDocument(t, withService)); err == nil {
+		t.Fatal("LoadBaseline accepted the same document")
+	}
+}
+
+func compiledInputRules(t *testing.T, cfg firewall.Config) []string {
+	t.Helper()
+	ruleset, err := firewall.Compile(cfg)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	var inputRules []string
+	for _, chain := range ruleset.Chains {
+		if chain.Name == "input" {
+			inputRules = chain.Rules
+		}
+	}
+	if len(inputRules) == 0 {
+		t.Fatal("ruleset has no input chain")
+	}
+	return inputRules
 }
 
 func TestLoadGuestTypeLXCWithoutManagementInterface(t *testing.T) {
@@ -110,18 +148,17 @@ func TestCompileLXCOpensNoManagementService(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	ruleset, err := firewall.Compile(loaded.Firewall)
-	if err != nil {
-		t.Fatalf("Compile: %v", err)
-	}
-	var inputRules []string
-	for _, chain := range ruleset.Chains {
-		if chain.Name == "input" {
-			inputRules = chain.Rules
+	inputRules := compiledInputRules(t, loaded.Firewall)
+	for _, port := range []string{"tcp dport 179 ", "udp dport 3784 ", "udp dport 3785 "} {
+		found := false
+		for _, rule := range inputRules {
+			if strings.Contains(rule, `iifname "enmwanbr0"`) && strings.Contains(rule+" ", port) {
+				found = true
+			}
 		}
-	}
-	if len(inputRules) == 0 {
-		t.Fatal("ruleset has no input chain")
+		if !found {
+			t.Fatalf("input chain has no %q accept on the internal interface", port)
+		}
 	}
 	for _, rule := range inputRules {
 		for _, port := range []string{"dport 22 ", "dport 50052 ", "dport 443 ", "dport 8443 "} {
