@@ -31,10 +31,11 @@ var networkListKeys = map[string][]string{
 	"address":            {"ip"},
 	"forwarding-address": {"address"},
 	"goodkind-mwan-steering:forwarding-address": {"address"},
-	"file":               {"kind"},
-	"section":            {"index"},
-	"entry":              {"index"},
-	"management-service": {"protocol", "port"},
+	"goodkind-mwan-steering:route":              {"destination"},
+	"file":                                      {"kind"},
+	"section":                                   {"index"},
+	"entry":                                     {"index"},
+	"management-service":                        {"protocol", "port"},
 }
 
 // servedOnlyPaths match the leaves the tree publishes that a network document

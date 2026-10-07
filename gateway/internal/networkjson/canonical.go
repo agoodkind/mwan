@@ -1,0 +1,170 @@
+package networkjson
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"slices"
+	"strings"
+	"unicode/utf8"
+)
+
+// Canonicalize sorts object members by decoded name and emits compact JSON.
+// Array order, string values, and number literals remain unchanged.
+// Canonicalize rejects invalid JSON, invalid UTF-8, trailing data, and
+// duplicate member names within an object.
+func Canonicalize(data []byte) ([]byte, error) {
+	// The decoder would replace invalid UTF-8 with U+FFFD in string values.
+	if !utf8.Valid(data) {
+		err := errors.New("canonicalize: document is not valid UTF-8")
+		slog.Error("networkjson: canonicalize found invalid UTF-8", "err", err)
+		return nil, err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var output bytes.Buffer
+	if err := writeCanonicalValue(decoder, &output); err != nil {
+		slog.Error("networkjson: canonicalize failed", "err", err)
+		return nil, fmt.Errorf("canonicalize: %w", err)
+	}
+	if token, err := decoder.Token(); !errors.Is(err, io.EOF) {
+		slog.Error("networkjson: canonicalize found trailing data", "token", token, "err", err)
+		return nil, errors.New("canonicalize: trailing data after the top-level value")
+	}
+	return output.Bytes(), nil
+}
+
+func unexpectedEnd(err error) error {
+	if errors.Is(err, io.EOF) {
+		return io.ErrUnexpectedEOF
+	}
+	return err
+}
+
+func writeCanonicalValue(decoder *json.Decoder, output *bytes.Buffer) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return unexpectedEnd(err)
+	}
+	switch value := token.(type) {
+	case json.Delim:
+		if value == '{' {
+			return writeCanonicalObject(decoder, output)
+		}
+		if value == '[' {
+			return writeCanonicalArray(decoder, output)
+		}
+		slog.Warn("networkjson: canonicalize found an unexpected delimiter", "delimiter", value.String())
+		return fmt.Errorf("unexpected delimiter %s", value)
+	case string:
+		return writeCanonicalString(output, value)
+	case json.Number:
+		output.WriteString(value.String())
+	case bool:
+		if value {
+			output.WriteString("true")
+		} else {
+			output.WriteString("false")
+		}
+	case nil:
+		output.WriteString("null")
+	default:
+		slog.Warn("networkjson: canonicalize found an unexpected token", "token", token)
+		return fmt.Errorf("unexpected token %v", token)
+	}
+	return nil
+}
+
+type canonicalMember struct {
+	name  string
+	value []byte
+}
+
+func writeCanonicalObject(decoder *json.Decoder, output *bytes.Buffer) error {
+	var members []canonicalMember
+	seen := make(map[string]bool)
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return unexpectedEnd(err)
+		}
+		name, isName := token.(string)
+		if !isName {
+			slog.Warn("networkjson: canonicalize found a member name that is not a string", "token", token)
+			return fmt.Errorf("object member name %v is not a string", token)
+		}
+		if seen[name] {
+			slog.Warn("networkjson: canonicalize found a duplicate member", "member", name)
+			return fmt.Errorf("object member %q appears more than once", name)
+		}
+		seen[name] = true
+		var value bytes.Buffer
+		if err := writeCanonicalValue(decoder, &value); err != nil {
+			return err
+		}
+		members = append(members, canonicalMember{name: name, value: value.Bytes()})
+	}
+	if err := requireDelim(decoder, '}'); err != nil {
+		return err
+	}
+	slices.SortFunc(members, func(left canonicalMember, right canonicalMember) int {
+		return strings.Compare(left.name, right.name)
+	})
+	output.WriteByte('{')
+	for i, member := range members {
+		if i > 0 {
+			output.WriteByte(',')
+		}
+		if err := writeCanonicalString(output, member.name); err != nil {
+			return err
+		}
+		output.WriteByte(':')
+		output.Write(member.value)
+	}
+	output.WriteByte('}')
+	return nil
+}
+
+func writeCanonicalArray(decoder *json.Decoder, output *bytes.Buffer) error {
+	output.WriteByte('[')
+	for count := 0; decoder.More(); count++ {
+		if count > 0 {
+			output.WriteByte(',')
+		}
+		if err := writeCanonicalValue(decoder, output); err != nil {
+			return err
+		}
+	}
+	if err := requireDelim(decoder, ']'); err != nil {
+		return err
+	}
+	output.WriteByte(']')
+	return nil
+}
+
+func requireDelim(decoder *json.Decoder, want json.Delim) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return unexpectedEnd(err)
+	}
+	if token != want {
+		slog.Warn("networkjson: canonicalize found an unexpected token", "token", token, "want", want.String())
+		return fmt.Errorf("unexpected token %v, want %s", token, want)
+	}
+	return nil
+}
+
+func writeCanonicalString(output *bytes.Buffer, value string) error {
+	var encoded bytes.Buffer
+	encoder := json.NewEncoder(&encoded)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(value); err != nil {
+		slog.Error("networkjson: canonical string encoding failed", "err", err)
+		return fmt.Errorf("encode string: %w", err)
+	}
+	output.Write(bytes.TrimSuffix(encoded.Bytes(), []byte("\n")))
+	return nil
+}

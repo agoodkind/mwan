@@ -98,7 +98,7 @@ func rejectionText(loaded *networkjson.Config, err error) string {
 
 func TestDecodeMatchesLoadForValidDocuments(t *testing.T) {
 	schemaDir := schemaDirForTest(t)
-	for _, name := range []string{"network-min.json", "network-freeform.json"} {
+	for _, name := range []string{"network-min.json", "network-freeform.json", "network-routes.json"} {
 		t.Run(name, func(t *testing.T) {
 			path, data := readInstance(t, name)
 			loaded, err := networkjson.Load(path, schemaDir)
@@ -110,6 +110,15 @@ func TestDecodeMatchesLoadForValidDocuments(t *testing.T) {
 				t.Fatalf("Decode: %v", err)
 			}
 			requireSameConfig(t, loaded, decoded)
+			canonical, err := networkjson.Canonicalize(data)
+			if err != nil {
+				t.Fatalf("Canonicalize: %v", err)
+			}
+			loadedCanonical, err := networkjson.Load(writeDocument(t, string(canonical)), schemaDir)
+			if err != nil {
+				t.Fatalf("Load canonical: %v", err)
+			}
+			requireSameConfig(t, loaded, loadedCanonical)
 		})
 	}
 }
