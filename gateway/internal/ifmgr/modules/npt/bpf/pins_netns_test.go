@@ -3,6 +3,7 @@
 package bpf
 
 import (
+	"errors"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -144,8 +145,11 @@ func TestPinFailureDoesNotFailReconcileAndLaterReconcilePins(t *testing.T) {
 	if _, err := translator.Reconcile(pinTestPolicies(link)); err != nil {
 		t.Fatalf("pin failure failed Reconcile: %v", err)
 	}
-	if translator.pinsReplaced {
-		t.Fatal("pins were reported as replaced while the pin path was blocked")
+	for _, name := range []string{pinEgressName, pinPoliciesName} {
+		_, statErr := os.Stat(filepath.Join(pinDirectory, name))
+		if !errors.Is(statErr, os.ErrNotExist) {
+			t.Fatalf("pin %s exists while the pin path was blocked: %v", name, statErr)
+		}
 	}
 	if err := os.Remove(blocker); err != nil {
 		t.Fatal(err)
@@ -155,9 +159,6 @@ func TestPinFailureDoesNotFailReconcileAndLaterReconcilePins(t *testing.T) {
 	}
 	if _, err := translator.Reconcile(pinTestPolicies(link)); err != nil {
 		t.Fatal(err)
-	}
-	if !translator.pinsReplaced {
-		t.Fatal("later Reconcile did not replace the pins after the cause was removed")
 	}
 	next, err := newTranslator(pinDirectory)
 	if err != nil {
