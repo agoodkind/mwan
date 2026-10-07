@@ -15,7 +15,7 @@ import (
 )
 
 // Canonicalize sorts object members by decoded name and emits compact JSON.
-// Array order, string values, and number literals remain unchanged.
+// Canonicalize writes array elements in input order, re-encodes decoded strings with encoding/json and HTML escaping disabled, and writes numbers with their original literal text.
 // Canonicalize rejects invalid JSON, invalid UTF-8, trailing data, and lone
 // UTF-16 surrogate escapes. Canonicalize rejects objects containing two decoded
 // member names equal under [strings.EqualFold].

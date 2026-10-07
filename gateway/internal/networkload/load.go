@@ -64,8 +64,8 @@ func ApplyFrom(cfg *config.Config, path string, schemaDir string) error {
 	return nil
 }
 
-// ApplyDefault applies the network configuration from the paths the deploy
-// installs.
+// ApplyDefault loads /etc/mwan/network.json with schema models from
+// /usr/local/share/wanconfig/yang.
 func ApplyDefault(cfg *config.Config) error {
 	return ApplyFrom(cfg, networkjson.DefaultPath, networkjson.DefaultSchemaDir)
 }
