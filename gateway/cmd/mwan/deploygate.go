@@ -20,6 +20,7 @@ import (
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/internal/networkload"
 	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/ops"
 )
@@ -152,9 +153,9 @@ func newDeployGateDeps() deployGateDeps {
 		now:             time.Now,
 		sleep:           time.Sleep,
 		loadNetwork: func() (*networkjson.Config, error) {
-			return networkjson.Load(networkjson.DefaultPath, networkjson.DefaultSchemaDir)
+			return networkload.Load(networkjson.DefaultPath, networkjson.DefaultSchemaDir)
 		},
-		loadNetworkFrom:    networkjson.Load,
+		loadNetworkFrom:    networkload.Load,
 		listAddrs:          netif.ListAddrs,
 		runGuestOwnedCheck: nil,
 		alertOwnedMissing:  sendOwnedMissingAlert,

@@ -14,6 +14,7 @@ import (
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/internal/networkload"
 	"goodkind.io/mwan/internal/yangpub"
 )
 
@@ -197,7 +198,7 @@ func requireConnection(t *testing.T, connections []interfaceintent.Connection, n
 func TestLoadValidFile(t *testing.T) {
 	t.Parallel()
 
-	loaded, err := networkjson.Load(writeDocument(t, validDocument), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, validDocument), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -254,7 +255,7 @@ func TestLoadValidFile(t *testing.T) {
 func TestLoadDoesNotClaimRoutedMappingAsAnAddress(t *testing.T) {
 	t.Parallel()
 	body := strings.Replace(validDocument, `"external": "203.0.113.3"`, `"external": "198.51.100.193"`, 1)
-	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -275,7 +276,7 @@ func TestLoadRejectsUnsupportedRenderedSettings(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			body := strings.Replace(validDocument, change.old, change.replacement, 1)
-			loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+			loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 			if err != nil {
 				t.Fatalf("Load rejected all providers: %v", err)
 			}
@@ -290,7 +291,7 @@ func TestLoadRejectsCaseVariantDeviceMatch(t *testing.T) {
 	t.Parallel()
 	body := strings.Replace(validDocument, `"match": { "driver": "igc" }`, `"match": { "hardware-address": "02:00:5E:00:53:01" }`, 1)
 	body = strings.Replace(body, `{ "name": "enmwanbr0", "type": "iana-if-type:other" }`, `{ "name": "enmwanbr0", "type": "iana-if-type:other", "goodkind-mwan-steering:link-files": "rendered", "goodkind-mwan-steering:link": { "match": { "hardware-address": "02:00:5e:00:53:01" } } }`, 1)
-	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	_, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err == nil || !strings.Contains(err.Error(), "match the same device") {
 		t.Fatalf("case-variant MAC match error = %v", err)
 	}
@@ -302,7 +303,7 @@ func TestLoadUsesConnectionIdentityForSharedProviderLabel(t *testing.T) {
 	body = strings.Replace(body, `"name": "enatt0",`, `"name": "enatt0", "goodkind-mwan-steering:connection-id": "sonic-b",`, 1)
 	body = strings.Replace(body, `"name": "att",`, `"name": "webpass",`, 1)
 	body = strings.Replace(body, `"name": "enmwanbr0",`, `"name": "enmwanbr0", "goodkind-mwan-steering:connection-id": "internal",`, 1)
-	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -323,7 +324,7 @@ func TestLoadUsesConnectionIdentityForSharedProviderLabel(t *testing.T) {
 func TestLoadRejectsDuplicateNormalizedConnectionIdentity(t *testing.T) {
 	t.Parallel()
 	body := strings.Replace(validDocument, `"name": "enatt0",`, `"name": "enatt0", "goodkind-mwan-steering:connection-id": "webpass",`, 1)
-	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	_, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err == nil || !strings.Contains(err.Error(), `connection-id "webpass" is shared`) {
 		t.Fatalf("duplicate connection identity error = %v", err)
 	}
@@ -342,7 +343,7 @@ func TestLoadRejectsConnectionIdentityThatCannotRoundTrip(t *testing.T) {
 			t.Parallel()
 			body := strings.Replace(validDocument, `"name": "enwebpass0",`,
 				`"name": "enwebpass0", "goodkind-mwan-steering:connection-id": "`+value+`",`, 1)
-			_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+			_, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 			if err == nil || !strings.Contains(err.Error(), "invalid connection-id") {
 				t.Fatalf("connection-id %q: error = %v", value, err)
 			}
@@ -353,7 +354,7 @@ func TestLoadRejectsConnectionIdentityThatCannotRoundTrip(t *testing.T) {
 func TestLoadRejectsMalformedJSON(t *testing.T) {
 	t.Parallel()
 
-	_, err := networkjson.Load(writeDocument(t, "{not json"), schemaDirForTest(t))
+	_, err := networkload.Load(writeDocument(t, "{not json"), schemaDirForTest(t))
 	if err == nil {
 		t.Fatal("Load accepted a file that is not JSON")
 	}
@@ -365,7 +366,7 @@ func TestLoadRejectsSchemaViolation(t *testing.T) {
 	// The schema bounds fw-mark at 1 or higher, which is the check the daemon
 	// makes on every provider today.
 	body := strings.Replace(validDocument, `"fw-mark": 2,`, `"fw-mark": 0,`, 1)
-	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	_, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err == nil {
 		t.Fatal("Load accepted a zero firewall mark")
 	}
@@ -374,7 +375,7 @@ func TestLoadRejectsSchemaViolation(t *testing.T) {
 func TestLoadRejectsMissingFile(t *testing.T) {
 	t.Parallel()
 
-	_, err := networkjson.Load(filepath.Join(t.TempDir(), "absent.json"), schemaDirForTest(t))
+	_, err := networkload.Load(filepath.Join(t.TempDir(), "absent.json"), schemaDirForTest(t))
 	if err == nil {
 		t.Fatal("Load accepted a missing file")
 	}
@@ -387,7 +388,7 @@ func TestLoadRejectsMissingRequiredLeaf(t *testing.T) {
 	// whether the daemon needs it. The loader is where that requirement lives,
 	// so an absent table id must fail rather than default to zero.
 	body := strings.Replace(validDocument, `"table-id": 100,`, ``, 1)
-	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load failed the whole document over one provider's table id: %v", err)
 	}
@@ -401,7 +402,7 @@ func TestLoadFailsWhenEveryProviderIsRejected(t *testing.T) {
 	// and starting on it would silently route every LAN flow by the main table.
 	body := strings.Replace(validDocument, `"table-id": 100,`, ``, 1)
 	body = strings.Replace(body, `"table-id": 200,`, ``, 1)
-	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	_, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err == nil {
 		t.Fatal("Load accepted a document with no loadable provider")
 	}
@@ -418,7 +419,7 @@ func TestLoadAcceptsAnIPv4OnlyProvider(t *testing.T) {
 	if body == validDocument {
 		t.Fatal("IPv6 policy was not removed")
 	}
-	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -443,7 +444,7 @@ func TestLoadAcceptsADisabledProbeWithNoSettings(t *testing.T) {
 		`"from-prio": 55, "health": {"enabled": false}`,
 		1,
 	)
-	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load rejected a disabled probe with no settings: %v", err)
 	}
@@ -482,7 +483,7 @@ func TestLoadKeepsEverySettingOfADisabledProbe(t *testing.T) {
           }`,
 		1,
 	)
-	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load rejected a disabled probe carrying its settings: %v", err)
 	}
@@ -522,7 +523,7 @@ func TestLoadKeepsEverySettingOfADisabledProbe(t *testing.T) {
 func TestLoadCarriesStaticMappings(t *testing.T) {
 	t.Parallel()
 
-	loaded, err := networkjson.Load(writeDocument(t, validDocument), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, validDocument), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -548,7 +549,7 @@ func TestLoadRejectsAnExternalAddressMappedByTwoProviders(t *testing.T) {
 		`"goodkind-mwan-steering:translation": { "mode": "ietf-nat:napt44" }`,
 		`"goodkind-mwan-steering:translation": { "mode": "ietf-nat:napt44", "static-mapping": [{ "external": "203.0.113.3", "internal": "192.0.2.4" }] }`, 1)
 
-	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	_, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err == nil {
 		t.Fatal("Load accepted one external address mapped by two providers")
 	}
@@ -560,7 +561,7 @@ func TestLoadRejectsAnExternalAddressMappedByTwoProviders(t *testing.T) {
 func TestLoadCarriesSteeringAndTheGroupSettings(t *testing.T) {
 	t.Parallel()
 
-	loaded, err := networkjson.Load(writeDocument(t, validDocument), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, validDocument), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -597,7 +598,7 @@ func TestLoadRejectsAProviderWithNoSteeringContainer(t *testing.T) {
 		``,
 		1,
 	)
-	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load failed the whole document over one provider's steering container: %v", err)
 	}
@@ -616,7 +617,7 @@ func TestLoadRejectsAMissingWeight(t *testing.T) {
 		`"goodkind-mwan-steering:steering": { "tier": 0 },`,
 		1,
 	)
-	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load failed the whole document over one provider's weight: %v", err)
 	}
@@ -630,7 +631,7 @@ func TestLoadRejectsAMissingHashMode(t *testing.T) {
 	// on it, so an absent value is a rendering fault rather than a request for
 	// the schema default.
 	body := strings.Replace(validDocument, `"hash-mode": "source",`, ``, 1)
-	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	_, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err == nil {
 		t.Fatal("Load accepted a steering group with no hash mode")
 	}
@@ -671,7 +672,7 @@ func TestLoadRejectsDuplicateRoutingNumbers(t *testing.T) {
 			t.Parallel()
 
 			body := strings.Replace(validDocument, tc.from, tc.to, 1)
-			_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+			_, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 			if err == nil {
 				t.Fatalf("Load accepted a duplicate %s", tc.leaf)
 			}
@@ -696,7 +697,7 @@ func TestLoadAcceptsAForcedDSCP(t *testing.T) {
 		`"from-prio": 55, "forced-dscp": 8`,
 		1,
 	)
-	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load rejected a provider with a forced DSCP value: %v", err)
 	}
@@ -721,7 +722,7 @@ func TestLoadRejectsAZeroForcedDSCP(t *testing.T) {
 		`"from-prio": 55, "forced-dscp": 0`,
 		1,
 	)
-	if _, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t)); err == nil {
+	if _, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t)); err == nil {
 		t.Fatal("Load accepted a forced DSCP value of zero")
 	}
 }
@@ -743,7 +744,7 @@ func TestLoadRejectsADuplicateForcedDSCP(t *testing.T) {
 		`"from-prio": 56, "forced-dscp": 8,`,
 		1,
 	)
-	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	_, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err == nil {
 		t.Fatal("Load accepted two providers sharing a forced DSCP value")
 	}
@@ -759,7 +760,7 @@ func TestLoadRejectsAProviderOnAReservedTable(t *testing.T) {
 	// on either would install a default route the tunnel's own rules then
 	// select, which is an outage nobody would attribute to an inventory edit.
 	body := strings.Replace(validDocument, `"table-id": 100,`, `"table-id": 400,`, 1)
-	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	_, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err == nil {
 		t.Fatal("Load accepted a provider on a reserved table")
 	}
@@ -776,7 +777,7 @@ func TestLoadRejectsAProviderOnAKernelTable(t *testing.T) {
 	// there would replace the host's own default route.
 	body := strings.Replace(validDocument, `"table-id": 100,`, `"table-id": 254,`, 1)
 	body = strings.Replace(body, `"reserved-tables": [400, 500],`, ``, 1)
-	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	_, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err == nil {
 		t.Fatal("Load accepted a provider on a kernel table")
 	}
@@ -791,7 +792,7 @@ func TestLoadAcceptsAGroupWithNoReservedTables(t *testing.T) {
 	// An empty leaf-list renders as an absent key, so a gateway that reserves
 	// nothing beyond the kernel's own tables must load.
 	body := strings.Replace(validDocument, `"reserved-tables": [400, 500],`, ``, 1)
-	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load rejected a group with no reserved tables: %v", err)
 	}
@@ -820,7 +821,7 @@ func TestLoadCarriesADeclaredEmptyIPv6TargetList(t *testing.T) {
 	if body == validDocument {
 		t.Fatal("the document still carries webpass's IPv6 targets")
 	}
-	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load rejected a provider declaring no IPv6 targets: %v", err)
 	}
@@ -868,7 +869,7 @@ func TestLoadRejectsAKeySetByBothLayers(t *testing.T) {
 	// webpass types its delegation hint, so a free-form line naming the key
 	// that leaf renders to would either be read as a list or silently win.
 	body := withWebpassFreeForm("PrefixDelegationHint", "::/60")
-	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load failed the whole document over one provider's free-form section: %v", err)
 	}
@@ -880,7 +881,7 @@ func TestLoadCarriesAFreeFormSectionNoTypedLeafNames(t *testing.T) {
 	t.Parallel()
 
 	body := withWebpassFreeForm("UseDNS", "no")
-	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load rejected a free-form key no typed leaf names: %v", err)
 	}
@@ -902,7 +903,7 @@ func TestLoadCarriesAFreeFormSectionNoTypedLeafNames(t *testing.T) {
 func TestLoadCarriesTheLinkIdentity(t *testing.T) {
 	t.Parallel()
 
-	loaded, err := networkjson.Load(writeDocument(t, validDocument), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, validDocument), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -961,7 +962,7 @@ func TestLoadCarriesTheLinkIdentity(t *testing.T) {
 func TestLoadDerivesTheIPv4SourcePinFromTheStaticAddress(t *testing.T) {
 	t.Parallel()
 
-	loaded, err := networkjson.Load(writeDocument(t, validDocument), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, validDocument), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -980,7 +981,7 @@ func TestLoadDerivesTheIPv4SourcePinFromTheStaticAddress(t *testing.T) {
 	if leased == validDocument {
 		t.Fatal("the document still carries webpass's static address")
 	}
-	loaded, err = networkjson.Load(writeDocument(t, leased), schemaDirForTest(t))
+	loaded, err = networkload.Load(writeDocument(t, leased), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load rejected a leased link: %v", err)
 	}
@@ -1000,7 +1001,7 @@ func TestLoadRejectsATypedV4Source(t *testing.T) {
 		`"from-prio": 56, "v4-source": "203.0.113.2",`,
 		1,
 	)
-	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load failed the whole document over one provider's v4-source: %v", err)
 	}
@@ -1010,7 +1011,7 @@ func TestLoadRejectsATypedV4Source(t *testing.T) {
 func TestLoadInfersExternalOwnerWithoutLinkFiles(t *testing.T) {
 	t.Parallel()
 	body := strings.Replace(validDocument, `"goodkind-mwan-steering:link-files": "hand-authored",`, ``, 1)
-	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -1027,7 +1028,7 @@ func TestLoadRejectsNetworkdOwnerWithoutLinkFiles(t *testing.T) {
 	t.Parallel()
 	body := strings.Replace(validDocument, `"goodkind-mwan-steering:link-files": "hand-authored",`,
 		`"goodkind-mwan-steering:owner": "networkd",`, 1)
-	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load rejected the whole document: %v", err)
 	}
@@ -1042,7 +1043,7 @@ func TestLoadMWANOwnedLink(t *testing.T) {
         "goodkind-mwan-steering:link": { "match": { "hardware-address": "02:00:5e:00:53:77" } } },`
 	body := strings.Replace(validDocument, `{ "name": "enmwanbr0", "type": "iana-if-type:other" }`,
 		owned+` { "name": "enmwanbr0", "type": "iana-if-type:other" }`, 1)
-	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -1090,7 +1091,7 @@ func TestLoadMWANOwnedLink(t *testing.T) {
 					`"goodkind-mwan-steering:owner": "mwan",`,
 					`"goodkind-mwan-steering:owner": "mwan", `+testCase.field, 1)
 			}
-			if _, err := networkjson.Load(writeDocument(t, invalid), schemaDirForTest(t)); err == nil ||
+			if _, err := networkload.Load(writeDocument(t, invalid), schemaDirForTest(t)); err == nil ||
 				!strings.Contains(err.Error(), testCase.want) {
 				t.Fatalf("rejection error = %v, want %q", err, testCase.want)
 			}
@@ -1100,7 +1101,7 @@ func TestLoadMWANOwnedLink(t *testing.T) {
 		t.Parallel()
 		duplicate := strings.Replace(body, `"match": { "driver": "igc" }`,
 			`"match": { "hardware-address": "02:00:5e:00:53:77" }`, 1)
-		if _, err := networkjson.Load(writeDocument(t, duplicate), schemaDirForTest(t)); err == nil ||
+		if _, err := networkload.Load(writeDocument(t, duplicate), schemaDirForTest(t)); err == nil ||
 			!strings.Contains(err.Error(), "match the same device") {
 			t.Fatalf("duplicate match error = %v", err)
 		}
@@ -1109,7 +1110,7 @@ func TestLoadMWANOwnedLink(t *testing.T) {
 		t.Parallel()
 		invalid := strings.Replace(body, `"hardware-address": "02:00:5e:00:53:77"`,
 			`"driver": "igc"`, 1)
-		if _, err := networkjson.Load(writeDocument(t, invalid), schemaDirForTest(t)); err == nil ||
+		if _, err := networkload.Load(writeDocument(t, invalid), schemaDirForTest(t)); err == nil ||
 			!strings.Contains(err.Error(), "requires a hardware-address match") {
 			t.Fatalf("driver-only match error = %v", err)
 		}
@@ -1117,7 +1118,7 @@ func TestLoadMWANOwnedLink(t *testing.T) {
 	t.Run("invalid Linux link name", func(t *testing.T) {
 		t.Parallel()
 		invalid := strings.Replace(body, `"name": "enowned0"`, `"name": "enowned0\n[Link]"`, 1)
-		if _, err := networkjson.Load(writeDocument(t, invalid), schemaDirForTest(t)); err == nil ||
+		if _, err := networkload.Load(writeDocument(t, invalid), schemaDirForTest(t)); err == nil ||
 			!strings.Contains(err.Error(), "invalid character") {
 			t.Fatalf("unsafe link name error = %v", err)
 		}
@@ -1137,7 +1138,7 @@ func TestLoadMWANOwnedLink(t *testing.T) {
 				variant = strings.Replace(variant, `"name": "enowned0", "type": "iana-if-type:ethernetCsmacd"`,
 					`"name": "enowned0", "type": "iana-if-type:bridge"`, 1)
 			}
-			loaded, err := networkjson.Load(writeDocument(t, variant), schemaDirForTest(t))
+			loaded, err := networkload.Load(writeDocument(t, variant), schemaDirForTest(t))
 			if err != nil {
 				t.Fatalf("Load: %v", err)
 			}
@@ -1150,7 +1151,7 @@ func TestLoadMWANOwnedLink(t *testing.T) {
 	t.Run("physical link without match", func(t *testing.T) {
 		t.Parallel()
 		invalid := strings.Replace(body, `"match": { "hardware-address": "02:00:5e:00:53:77" }`, "", 1)
-		if _, err := networkjson.Load(writeDocument(t, invalid), schemaDirForTest(t)); err == nil ||
+		if _, err := networkload.Load(writeDocument(t, invalid), schemaDirForTest(t)); err == nil ||
 			!strings.Contains(err.Error(), "requires exactly one identity") {
 			t.Fatalf("physical identity error = %v", err)
 		}
@@ -1193,7 +1194,7 @@ func TestLoadRejectsARenderedLinkWithNoIdentity(t *testing.T) {
 			if body == validDocument {
 				t.Fatal("the document still carries webpass's link container")
 			}
-			loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+			loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 			if err != nil {
 				t.Fatalf("Load failed the whole document over one provider's link identity: %v", err)
 			}
@@ -1229,7 +1230,7 @@ func TestLoadCarriesAVLANOnAnInterfaceTheDocumentDescribes(t *testing.T) {
       { "name": "enmwanbr0", "type": "iana-if-type:other" }`,
 		1,
 	)
-	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load rejected a VLAN whose parent the document describes: %v", err)
 	}
@@ -1257,7 +1258,7 @@ func TestLoadRejectsAVLANParentWithoutARenderedLink(t *testing.T) {
       { "name": "enmwanbr0", "type": "iana-if-type:other" }`,
 		1,
 	)
-	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	_, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err == nil || !strings.Contains(err.Error(), "vlan parent ensonic0 needs a rendered networkd link") {
 		t.Fatalf("invalid shared parent error = %v", err)
 	}
@@ -1271,7 +1272,7 @@ func TestLoadRejectsAVLANParentTheDocumentDoesNotDescribe(t *testing.T) {
 	// absent with no error from any layer. The parent leaf is an interface
 	// reference, so the schema validation Load runs first is what refuses it.
 	body := withWebpassVLAN("ensonic0")
-	_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	_, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err == nil {
 		t.Fatal("Load accepted a VLAN whose parent no interface in the document describes")
 	}
@@ -1305,7 +1306,7 @@ func TestLoadRejectsOnlyTheEntryWithAFamilyThatOmitsDHCP(t *testing.T) {
 			if body == validDocument {
 				t.Fatalf("webpass's %s dhcp leaf is still in the document", name)
 			}
-			loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+			loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 			if err != nil {
 				t.Fatalf("Load failed the whole document over one provider's %s container: %v", name, err)
 			}
@@ -1327,7 +1328,7 @@ func TestLoadRejectsAHandAuthoredEntryThatDescribesItsLink(t *testing.T) {
         "goodkind-mwan-steering:link": { "match": { "driver": "i40e" } },`,
 		1,
 	)
-	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load failed the whole document over one provider's contradiction: %v", err)
 	}
@@ -1378,7 +1379,7 @@ func TestLoadRejectsInvalidTranslation(t *testing.T) {
 			if body == validDocument {
 				t.Fatal("document mutation did not match")
 			}
-			loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+			loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 			if err != nil {
 				t.Fatalf("provider-local error rejected document: %v", err)
 			}
@@ -1408,7 +1409,7 @@ func TestLoadAcceptsHandAuthoredDelegationMetadata(t *testing.T) {
               "expected-prefix": "2001:db8:beef:100::/60"
             }
           }`, 1)
-	loaded, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -1482,7 +1483,7 @@ func TestLoadMWANOwnedDHCPv4(t *testing.T) {
                 ` + testCase.gateway + `
                 "goodkind-mwan-steering:dhcpv4": { ` + testCase.clientID + testCase.routeSetting + `
                   "use-dns": false } }`
-			loaded, err := networkjson.Load(writeDocument(t, mwanDHCPv4Document(family)), schemaDirForTest(t))
+			loaded, err := networkload.Load(writeDocument(t, mwanDHCPv4Document(family)), schemaDirForTest(t))
 			if err != nil {
 				t.Fatalf("Load: %v", err)
 			}
@@ -1531,7 +1532,7 @@ func TestLoadMWANOwnedDHCPv4(t *testing.T) {
 func TestLoadMWANDHCPv4WithoutRoutesNeedsNoMetric(t *testing.T) {
 	t.Parallel()
 	family := `{ "goodkind-mwan-steering:dhcp": true, "goodkind-mwan-steering:dhcpv4": { "use-routes": false } }`
-	if _, err := networkjson.Load(writeDocument(t, mwanDHCPv4Document(family)), schemaDirForTest(t)); err != nil {
+	if _, err := networkload.Load(writeDocument(t, mwanDHCPv4Document(family)), schemaDirForTest(t)); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 }
@@ -1547,7 +1548,7 @@ func TestLoadRejectsDuplicateMWANDHCPv4DefaultMetric(t *testing.T) {
         "ietf-ip:ipv4": ` + family + ` },`
 	document = strings.Replace(document, `{ "name": "enmwanbr0", "type": "iana-if-type:other" }`,
 		second+` { "name": "enmwanbr0", "type": "iana-if-type:other" }`, 1)
-	_, err := networkjson.Load(writeDocument(t, document), schemaDirForTest(t))
+	_, err := networkload.Load(writeDocument(t, document), schemaDirForTest(t))
 	if err == nil || !strings.Contains(err.Error(), "resource main-route/ipv4/main/default/17 has writers") {
 		t.Fatalf("Load error = %v, want duplicate default route metric", err)
 	}
@@ -1556,7 +1557,7 @@ func TestLoadRejectsDuplicateMWANDHCPv4DefaultMetric(t *testing.T) {
 func TestLoadConfiguredRouteContract(t *testing.T) {
 	t.Parallel()
 	family := `{"goodkind-mwan-steering:route":[{"destination":"198.51.100.0/24"},{"destination":"203.0.113.0/24","gateway":"192.0.2.1","metric":17}]}`
-	loaded, err := networkjson.Load(writeDocument(t, mwanDHCPv4Document(family)), schemaDirForTest(t))
+	loaded, err := networkload.Load(writeDocument(t, mwanDHCPv4Document(family)), schemaDirForTest(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1573,7 +1574,7 @@ func TestLoadConfiguredRouteContract(t *testing.T) {
 		`{"destination":"0.0.0.0/0"}`,
 	} {
 		invalidFamily := `{"goodkind-mwan-steering:gateway":"192.0.2.1","goodkind-mwan-steering:route":[` + route + `]}`
-		if _, err := networkjson.Load(writeDocument(t, mwanDHCPv4Document(invalidFamily)), schemaDirForTest(t)); err == nil {
+		if _, err := networkload.Load(writeDocument(t, mwanDHCPv4Document(invalidFamily)), schemaDirForTest(t)); err == nil {
 			t.Fatalf("loader accepted invalid configured route %s", route)
 		}
 	}
@@ -1583,12 +1584,12 @@ func TestLoadRejectsEquivalentIPv6RouteMetrics(t *testing.T) {
 	t.Parallel()
 	family := `{"goodkind-mwan-steering:route":[{"destination":"2001:db8:521::/64"}]}`
 	document := strings.Replace(mwanDHCPv4Document(family), `"ietf-ip:ipv4": `+family, `"ietf-ip:ipv6": `+family, 1)
-	if _, err := networkjson.Load(writeDocument(t, document), schemaDirForTest(t)); err != nil {
+	if _, err := networkload.Load(writeDocument(t, document), schemaDirForTest(t)); err != nil {
 		t.Fatalf("first configured IPv6 route: %v", err)
 	}
 	second := `{"name":"enowned1","type":"iana-if-type:ethernetCsmacd","goodkind-mwan-steering:connection-id":"owned-link-2","goodkind-mwan-steering:owner":"mwan","goodkind-mwan-steering:link":{"match":{"hardware-address":"02:00:5e:00:53:78"}},"ietf-ip:ipv6":{"goodkind-mwan-steering:route":[{"destination":"2001:db8:521::/64","metric":1024}]}},`
 	document = strings.Replace(document, `{ "name": "enmwanbr0", "type": "iana-if-type:other" }`, second+`{ "name": "enmwanbr0", "type": "iana-if-type:other" }`, 1)
-	if _, err := networkjson.Load(writeDocument(t, document), schemaDirForTest(t)); err == nil || !strings.Contains(err.Error(), "main/2001:db8:521::/64/1024") {
+	if _, err := networkload.Load(writeDocument(t, document), schemaDirForTest(t)); err == nil || !strings.Contains(err.Error(), "main/2001:db8:521::/64/1024") {
 		t.Fatalf("effective metric collision: %v", err)
 	}
 }
@@ -1616,12 +1617,12 @@ func TestLoadConfiguredDefaultChecksLegacyGateways(t *testing.T) {
 				}
 				legacy := fmt.Sprintf(`{"name":"legacy521","type":"iana-if-type:ethernetCsmacd","goodkind-mwan-steering:connection-id":"legacy521","goodkind-mwan-steering:owner":%q,%s"goodkind-mwan-steering:link":{"match":{"hardware-address":"02:00:5e:00:53:79"}},"ietf-ip:%s":{"goodkind-mwan-steering:gateway":%q,"goodkind-mwan-steering:route-metric":%d}},`, owner, linkFiles, testCase.family, testCase.gateway, testCase.legacy)
 				document = strings.Replace(document, `{ "name": "enmwanbr0", "type": "iana-if-type:other" }`, legacy+`{ "name": "enmwanbr0", "type": "iana-if-type:other" }`, 1)
-				if _, err := networkjson.Load(writeDocument(t, document), schemaDirForTest(t)); err == nil || !strings.Contains(err.Error(), "conflicts with gateway") {
+				if _, err := networkload.Load(writeDocument(t, document), schemaDirForTest(t)); err == nil || !strings.Contains(err.Error(), "conflicts with gateway") {
 					t.Fatalf("configured default and legacy gateway: %v", err)
 				}
 				shorthand := fmt.Sprintf(`{"goodkind-mwan-steering:gateway":%q,"goodkind-mwan-steering:route-metric":%d}`, testCase.gateway, testCase.metric)
 				document = strings.Replace(document, family, shorthand, 1)
-				if _, err := networkjson.Load(writeDocument(t, document), schemaDirForTest(t)); err != nil {
+				if _, err := networkload.Load(writeDocument(t, document), schemaDirForTest(t)); err != nil {
 					t.Fatalf("existing shorthand-only configuration: %v", err)
 				}
 			})
@@ -1648,7 +1649,7 @@ func TestLoadRejectsUnsupportedMWANDHCPv4Options(t *testing.T) {
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := networkjson.Load(writeDocument(t, mwanDHCPv4Document(testCase.family)), schemaDirForTest(t))
+			_, err := networkload.Load(writeDocument(t, mwanDHCPv4Document(testCase.family)), schemaDirForTest(t))
 			if err == nil || !strings.Contains(err.Error(), testCase.want) {
 				t.Fatalf("Load error = %v, want %q", err, testCase.want)
 			}

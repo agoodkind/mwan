@@ -8,19 +8,28 @@ import (
 	"io"
 	"log/slog"
 	"slices"
+	"strconv"
 	"strings"
+	"unicode/utf16"
 	"unicode/utf8"
 )
 
 // Canonicalize sorts object members by decoded name and emits compact JSON.
 // Array order, string values, and number literals remain unchanged.
-// Canonicalize rejects invalid JSON, invalid UTF-8, trailing data, and
-// duplicate member names within an object.
+// Canonicalize rejects invalid JSON, invalid UTF-8, trailing data, and lone
+// UTF-16 surrogate escapes. Canonicalize rejects objects containing two decoded
+// member names equal under [strings.EqualFold].
 func Canonicalize(data []byte) ([]byte, error) {
 	// The decoder would replace invalid UTF-8 with U+FFFD in string values.
 	if !utf8.Valid(data) {
 		err := errors.New("canonicalize: document is not valid UTF-8")
 		slog.Error("networkjson: canonicalize found invalid UTF-8", "err", err)
+		return nil, err
+	}
+	// json.Decoder.Token replaces lone UTF-16 surrogate escapes with U+FFFD.
+	if offset, found := loneSurrogateOffset(data); found {
+		err := fmt.Errorf("canonicalize: lone UTF-16 surrogate escape at byte offset %d", offset)
+		slog.Error("networkjson: canonicalize found a lone surrogate escape", "err", err)
 		return nil, err
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
@@ -35,6 +44,45 @@ func Canonicalize(data []byte) ([]byte, error) {
 		return nil, errors.New("canonicalize: trailing data after the top-level value")
 	}
 	return output.Bytes(), nil
+}
+
+// The scan does not track string boundaries because valid JSON permits
+// backslashes only inside strings.
+func loneSurrogateOffset(data []byte) (int, bool) {
+	for i := 0; i < len(data); i++ {
+		if data[i] != '\\' {
+			continue
+		}
+		unit, isUnicode := unicodeEscape(data, i)
+		if !isUnicode {
+			i++
+			continue
+		}
+		if !utf16.IsSurrogate(unit) {
+			i += unicodeEscapeLength - 1
+			continue
+		}
+		low, hasLow := unicodeEscape(data, i+unicodeEscapeLength)
+		if !hasLow || utf16.DecodeRune(unit, low) == utf8.RuneError {
+			return i, true
+		}
+		i += 2*unicodeEscapeLength - 1
+	}
+	return 0, false
+}
+
+const unicodeEscapeLength = len(`\u0000`)
+
+func unicodeEscape(data []byte, offset int) (rune, bool) {
+	end := offset + unicodeEscapeLength
+	if end > len(data) || data[offset] != '\\' || data[offset+1] != 'u' {
+		return 0, false
+	}
+	unit, err := strconv.ParseUint(string(data[offset+2:end]), 16, 16)
+	if err != nil {
+		return 0, false
+	}
+	return rune(unit), true
 }
 
 func unexpectedEnd(err error) error {
@@ -85,7 +133,6 @@ type canonicalMember struct {
 
 func writeCanonicalObject(decoder *json.Decoder, output *bytes.Buffer) error {
 	var members []canonicalMember
-	seen := make(map[string]bool)
 	for decoder.More() {
 		token, err := decoder.Token()
 		if err != nil {
@@ -96,11 +143,9 @@ func writeCanonicalObject(decoder *json.Decoder, output *bytes.Buffer) error {
 			slog.Warn("networkjson: canonicalize found a member name that is not a string", "token", token)
 			return fmt.Errorf("object member name %v is not a string", token)
 		}
-		if seen[name] {
-			slog.Warn("networkjson: canonicalize found a duplicate member", "member", name)
-			return fmt.Errorf("object member %q appears more than once", name)
+		if err := checkMemberName(members, name); err != nil {
+			return err
 		}
-		seen[name] = true
 		var value bytes.Buffer
 		if err := writeCanonicalValue(decoder, &value); err != nil {
 			return err
@@ -125,6 +170,22 @@ func writeCanonicalObject(decoder *json.Decoder, output *bytes.Buffer) error {
 		output.Write(member.value)
 	}
 	output.WriteByte('}')
+	return nil
+}
+
+// Sorting case-variant members can change the value Decode assigns to a field
+// because encoding/json matches member names case-insensitively.
+func checkMemberName(members []canonicalMember, name string) error {
+	for _, member := range members {
+		if member.name == name {
+			slog.Warn("networkjson: canonicalize found a duplicate member", "member", name)
+			return fmt.Errorf("object member %q appears more than once", name)
+		}
+		if strings.EqualFold(member.name, name) {
+			slog.Warn("networkjson: canonicalize found case-variant members", "member", name, "prior", member.name)
+			return fmt.Errorf("object members %q and %q differ only in letter case", member.name, name)
+		}
+	}
 	return nil
 }
 

@@ -35,7 +35,7 @@ func TestCanonicalizeIgnoresWhitespaceAndMemberOrder(t *testing.T) {
 }
 
 func TestCanonicalizeSortsMembersByDecodedName(t *testing.T) {
-	requireCanonical(t, `{"b":1,"`+jsonEscape('a')+`":2,"B":3}`, `{"B":3,"a":2,"b":1}`)
+	requireCanonical(t, `{"b":1,"`+jsonEscape('a')+`":2,"C":3}`, `{"C":3,"a":2,"b":1}`)
 }
 
 func TestCanonicalizePreservesArrayOrder(t *testing.T) {
@@ -93,6 +93,44 @@ func TestCanonicalizeRejectsDuplicateMembers(t *testing.T) {
 			`canonicalize: object member "`+testCase.member+`" appears more than once`)
 	}
 	requireCanonical(t, `[{"a":1},{"a":2}]`, `[{"a":1},{"a":2}]`)
+}
+
+func TestCanonicalizeRejectsCaseVariantMembers(t *testing.T) {
+	kelvinSign := "K"
+	for _, testCase := range []struct {
+		input  string
+		first  string
+		second string
+	}{
+		{input: `{"destination":"x","Destination":"y"}`, first: "destination", second: "Destination"},
+		{input: `{"outer":{"Key":1,"kEY":2}}`, first: "Key", second: "kEY"},
+		{input: `{"k":1,"` + kelvinSign + `":2}`, first: "k", second: kelvinSign},
+	} {
+		requireCanonicalizeError(t, testCase.input,
+			`canonicalize: object members "`+testCase.first+`" and "`+testCase.second+`" differ only in letter case`)
+	}
+	requireCanonical(t, `[{"a":1},{"A":2}]`, `[{"a":1},{"A":2}]`)
+}
+
+func TestCanonicalizeRejectsLoneSurrogateEscapes(t *testing.T) {
+	const prefix = "canonicalize: lone UTF-16 surrogate escape at byte offset "
+	high := jsonEscape(0xd83d)
+	low := jsonEscape(0xde00)
+	for _, testCase := range []struct {
+		input  string
+		offset string
+	}{
+		{input: `"` + high + `"`, offset: "1"},
+		{input: `"` + low + `"`, offset: "1"},
+		{input: `"` + high + jsonEscape('A') + `"`, offset: "1"},
+		{input: `"` + low + high + `"`, offset: "1"},
+		{input: `["ok","` + high + low + `","` + high + ` "]`, offset: "22"},
+		{input: `{"` + low + `":1}`, offset: "2"},
+	} {
+		requireCanonicalizeError(t, testCase.input, prefix+testCase.offset)
+	}
+	escapedBackslash := `"x\\` + `ud83d"`
+	requireCanonical(t, escapedBackslash, escapedBackslash)
 }
 
 func TestCanonicalizeRejectsInvalidDocuments(t *testing.T) {

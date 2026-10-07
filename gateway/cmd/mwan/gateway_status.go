@@ -12,7 +12,7 @@ import (
 	"goodkind.io/mwan/internal/clock"
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/internal/networkload"
 	"goodkind.io/mwan/internal/statuspush"
 )
 
@@ -69,7 +69,7 @@ func readGatewayStatus(
 	if err != nil {
 		return none, gatewayStatusError("read health state age bound", err)
 	}
-	if err := networkjson.ApplyFrom(cfg, flags.networkPath, flags.schemaDir); err != nil {
+	if err := networkload.ApplyFrom(cfg, flags.networkPath, flags.schemaDir); err != nil {
 		return none, gatewayStatusError("load network configuration", err)
 	}
 	healthConfig, err := buildHealthConfig(buildWANRefs(cfg.IfMgr), cfg.IfMgr.Modules.Health)

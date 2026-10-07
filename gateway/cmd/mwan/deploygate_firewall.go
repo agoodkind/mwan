@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"goodkind.io/mwan/internal/firewall"
-	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/internal/networkload"
 )
 
 const firewallCheckTimeout = 30 * time.Second
@@ -30,7 +30,7 @@ func runFirewallCheck(args []string) int {
 		fmt.Fprintln(os.Stderr, "usage: mwan deploy-gate check-firewall <network.json> <schema-dir>")
 		return exitDeployGateUsage
 	}
-	loaded, err := networkjson.Load(args[0], args[1])
+	loaded, err := networkload.Load(args[0], args[1])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -71,7 +71,7 @@ func runFirewallInspect(args []string) int {
 		fmt.Fprintln(os.Stderr, "usage: mwan deploy-gate inspect-firewall <network.json> <schema-dir>")
 		return exitDeployGateUsage
 	}
-	loaded, err := networkjson.Load(args[0], args[1])
+	loaded, err := networkload.Load(args[0], args[1])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

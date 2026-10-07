@@ -14,7 +14,7 @@ import (
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ifmgr/modules/npt"
 	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/internal/networkload"
 	"goodkind.io/mwan/internal/pd"
 )
 
@@ -149,7 +149,7 @@ func runDebugWithWriters(
 // tree is left untouched on failure, which is what keeps the WAN lists visibly
 // empty rather than half filled.
 func loadDebugNetworkConfig(diagnostics io.Writer, cfg *config.Config) {
-	if err := networkjson.ApplyDefault(cfg); err != nil {
+	if err := networkload.ApplyDefault(cfg); err != nil {
 		fmt.Fprintf(
 			diagnostics,
 			"mwan debug: network configuration unreadable, "+

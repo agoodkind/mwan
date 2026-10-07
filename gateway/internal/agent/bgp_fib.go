@@ -12,6 +12,7 @@ import (
 	"goodkind.io/mwan/internal/bgp"
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/internal/networkload"
 )
 
 const staleSweepReconcileInterval = time.Minute
@@ -88,7 +89,7 @@ func configureBGPFIB(
 		// policy-routed into those tables would leave over the WAN instead of
 		// returning to the router. A host that declares it uses the wanconfig
 		// network configuration and cannot read it does not start.
-		if err := networkjson.ApplyFrom(cfg, networkPath, schemaDir); err != nil {
+		if err := networkload.ApplyFrom(cfg, networkPath, schemaDir); err != nil {
 			log.ErrorContext(
 				ctx,
 				"network configuration unusable, BGP route installer cannot own the per-provider tables",

@@ -8,6 +8,7 @@ import (
 	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/networkd"
 	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/internal/networkload"
 )
 
 func runNetworkdCheck(args []string) int {
@@ -19,7 +20,7 @@ func runNetworkdCheck(args []string) int {
 }
 
 func checkNetworkd(path string, schemaDir string, unitDir string) int {
-	loaded, err := networkjson.Load(path, schemaDir)
+	loaded, err := networkload.Load(path, schemaDir)
 	if err != nil {
 		fmt.Fprintf(os.Stdout, "network configuration rejected: %v\n", err)
 		return exitDeployGateFailed

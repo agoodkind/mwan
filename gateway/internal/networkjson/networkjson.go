@@ -7,7 +7,7 @@
 // serves describe one thing.
 //
 // Decode and semantic checks compile without cgo.
-// Load, ApplyFrom, and ApplyDefault require cgo for YANG schema validation.
+// Use [networkload.Load] when native file loading requires libyang validation.
 package networkjson
 
 import (

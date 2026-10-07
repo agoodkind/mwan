@@ -367,6 +367,8 @@ func TestNetworkReportsDocumentErrors(t *testing.T) {
 		name         string
 		replacements []string
 		want         []string
+		summary      string
+		detail       string
 	}{
 		{
 			name:         "host bits",
@@ -382,6 +384,12 @@ func TestNetworkReportsDocumentErrors(t *testing.T) {
 			name:         "rejected provider",
 			replacements: []string{`"from-prio": 57,`, ``},
 			want:         []string{"Rejected provider entry", "enmbrains0", "from-prio is required"},
+		},
+		{
+			name:         "provider table outside uint32",
+			replacements: []string{`"table-id": 200`, `"table-id": 4294967296`},
+			summary:      "Invalid provider default",
+			detail:       "wan webpass: table-id 4294967296 is outside 0 to 4294967295",
 		},
 	}
 	for _, test := range cases {
@@ -400,6 +408,18 @@ func TestNetworkReportsDocumentErrors(t *testing.T) {
 				if !strings.Contains(diagnosticText(diagnostics), want) {
 					t.Errorf("diagnostics = %q, want %q", diagnosticText(diagnostics), want)
 				}
+			}
+			if test.summary == "" {
+				return
+			}
+			if len(diagnostics) != 1 {
+				t.Fatalf("diagnostics = %q, want one diagnostic", diagnosticText(diagnostics))
+			}
+			if diagnostics[0].Summary != test.summary {
+				t.Errorf("summary = %q, want %q", diagnostics[0].Summary, test.summary)
+			}
+			if !strings.Contains(diagnostics[0].Detail, test.detail) {
+				t.Errorf("detail = %q, want %q", diagnostics[0].Detail, test.detail)
 			}
 		})
 	}

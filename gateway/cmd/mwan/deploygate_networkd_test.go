@@ -13,7 +13,7 @@ import (
 
 	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/networkd"
-	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/internal/networkload"
 )
 
 func runCheckNetworkdCommand(t *testing.T, arguments ...string) (int, string) {
@@ -80,7 +80,7 @@ func renderedNetworkdFixture(t *testing.T) (string, string) {
 	if err := os.WriteFile(path, []byte(document), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := networkjson.Load(path, networkSchemaDirForTest(t))
+	loaded, err := networkload.Load(path, networkSchemaDirForTest(t))
 	if err != nil || len(loaded.Rejected) != 0 {
 		t.Fatalf("load fixture: %v; rejected=%v", err, loaded)
 	}

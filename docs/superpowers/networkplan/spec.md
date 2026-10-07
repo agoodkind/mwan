@@ -55,13 +55,13 @@ Unknown or misspelled JSON members remain subject to strict libyang validation. 
 
 `Decode` uses `json.Unmarshal` without a duplicate-member check. Go `encoding/json` accepts duplicate object members with the last value winning and matches member names case-insensitively. `Canonicalize` and strict libyang parsing reject duplicate members. The provider must run `Canonicalize` before `Decode` to reject duplicate members at plan time.
 
-`Canonicalize` treats `Destination` and `destination` as distinct member names. `Decode` maps `Destination` to the destination field. Libyang rejects `Destination` as an unknown node. The parity test must label this case as a schema-layer rejection.
+`Canonicalize` rejects objects containing both `Destination` and `destination`. `Decode` assigns the last of these members to the destination field. Libyang rejects `Destination` as an unknown node. The parity tests must classify documents with duplicate or case-variant member names as schema-layer rejections.
 
 `Decode` must treat an explicit JSON null like an absent member. Go `encoding/json` sets pointers, maps, slices, and interfaces to nil for null and leaves other Go types unchanged. The document uses pointers for scalars that must distinguish absence from zero. Explicit null remains subject to libyang schema validation before installation.
 
 ### Canonical content and collection order
 
-`Canonicalize(data []byte) ([]byte, error)` must remove insignificant whitespace and sort object members by member name. It must reject invalid JSON and duplicate decoded member names within an object. For example, `"a"` and `"\u0061"` have the same decoded member name.
+`Canonicalize(data []byte) ([]byte, error)` must remove insignificant whitespace and sort object members by decoded member name. It must reject invalid JSON, invalid UTF-8, trailing data, lone UTF-16 surrogate escapes, and objects containing two decoded member names equal under `strings.EqualFold`.
 
 `Canonicalize` must preserve every array order, string value, and number literal. Number handling must use `json.Number`. Canonicalization must not interpret the schema.
 
@@ -393,7 +393,7 @@ The provider must import `gateway/internal/networkjson`. Gateway code must never
 
 `Decode(data []byte) (*Config, error)` must run the existing unmarshaling and build path without cgo. Identity, projection, and canonicalization helpers, including `ConfiguredRoute` and `RouteSource`, must also compile without cgo.
 
-`Load`, `ApplyFrom`, and `ApplyDefault` must remain behind a `cgo` build tag. `Load` must validate the file bytes with libyang and call `Decode` on those same bytes. Preserve existing load behavior, error text, and slog output.
+`networkload` must define `Load`, `ApplyFrom`, and `ApplyDefault` without a build tag. `Load` must validate the file bytes with libyang and call `networkjson.Decode` on those same bytes. Keep `yangpub` imports out of non-test `networkjson` files. Preserve existing load behavior, error text, and slog output.
 
 The package documentation must distinguish portable decoding and semantic checks from native schema validation.
 
@@ -403,7 +403,7 @@ The provider objects must make no network call or guest write. OpenTofu host and
 
 | Lane | Owns | Agreed interface |
 | --- | --- | --- |
-| `tofu-wanconfig-mwan-provider` | [decode.go](../../../gateway/internal/networkjson/decode.go), [load.go](../../../gateway/internal/networkjson/load.go), [plan.go](../../../gateway/internal/networkjson/plan.go), [canonical.go](../../../gateway/internal/networkjson/canonical.go), their tests, and moves out of `networkjson.go`; network objects and tests under [provider/internal/provider](../../../provider/internal/provider); network registrations; this specification and its plan | Implement `mwan_network`, `mwan_network_config`, shared identities, and the `Decode`/`Load` split. `poweredge-mwan-package-integration` owns the whole `guest-type` feature. Notify PowerEdge before editing provider registrations beyond `Resources()`, including `DataSources()`, or existing provider tests. Each lane must send a note to the peer lane before pushing a change to shared `networkjson.go`. The second lane to merge must rebase its branch. |
+| `tofu-wanconfig-mwan-provider` | [decode.go](../../../gateway/internal/networkjson/decode.go), [load.go](../../../gateway/internal/networkload/load.go), [plan.go](../../../gateway/internal/networkjson/plan.go), [canonical.go](../../../gateway/internal/networkjson/canonical.go), their tests, and moves out of [networkjson.go](../../../gateway/internal/networkjson/networkjson.go); network objects and tests under [provider/internal/provider](../../../provider/internal/provider); network registrations; this specification and its plan | Implement `mwan_network`, `mwan_network_config`, shared identities, and the `networkjson.Decode`/`networkload.Load` split. `poweredge-mwan-package-integration` owns the whole `guest-type` feature. Notify PowerEdge before editing provider registrations beyond `Resources()`, including `DataSources()`, or existing provider tests. Each lane must send a note to the peer lane before pushing a change to shared `networkjson.go`. The second lane to merge must rebase its branch. |
 | `mwan-network-cutover` | Watchdog and the cgo-free failover precondition package; no specification or provider edits here | Review schema, identity, ordering, validation, and future update compatibility. Use configured values only and the agreed route and provider default keys. |
 | `poweredge-mwan-package-integration` | PR 191 release and role foundation; packaging, BPF, PowerEdge gateway container configuration, PR 194 stack-offline, `npt-pinned-verify`, and `lxc-target-fixes`; the whole `guest-type` feature | Preserve cgo-free provider builds and use a configured-only resource. Coordinate shared provider and CI edits. Measure `check-firewall` in the PowerEdge gateway LXC. Implement the whole `guest-type` feature on one branch from main, including the YANG leaf, the `document` field in `networkjson.go`, firewall validation in [gateway/internal/networkjson/firewall.go](../../../gateway/internal/networkjson/firewall.go), and `firewall.Compile`. `mwan-network-cutover` reviews the feature. Each lane must send a note to the peer lane before pushing a change to shared `networkjson.go`. The second lane to merge must rebase its branch. |
 | `proxmox-guest-provider-migration` | pveguest provider, proxmox overlays, Configs guest and host wiring, and the Configs gueststate specification | Install canonical content through validated `pveguest_file`; restart from `write_id`; implement the role-based dormant-LAN precondition, container binding precondition, and prerequisite dependencies; remove the Ansible network document render and install task before first adoption. |
@@ -427,14 +427,14 @@ The [implementation plan](plan.md) must specify task order, file ownership, and 
 - AC6: New fixtures and acceptance plans must contain only interfaces with at least one role from `provider`, `parent`, `internal`, and `management`. New fixtures, plans, and acceptance steps must configure no LAN client route, LAN forwarding, or LAN-facing DHCP, DNS, or router-advertisement service. Existing parity fixtures must remain unchanged. The `lan.json` rejection case must expose `lan0` with no allowed role without applying it. A `lifecycle { precondition }` block on `pveguest_file.network` must reject interfaces with no allowed role and routes referencing those interfaces. A `lifecycle { precondition }` block on the gateway container resource must reject gateway bindings to `nic0`, `nic3`, `ens1f1`, or bridges containing those ports. The binding check must read container interface bindings and host bridge member ports.
 - AC7: Acceptance for this scope must include no apply against a real host.
 - AC8: Provider tests must verify required inputs, identity-derived map keys, configured defaults, nullable outputs, both route `source` values, interface gateway shorthand, provider internal routes and translation-family selection, projection error diagnostics, and state operations through the existing protocol 6 boundary.
-- AC9: Canonicalization tests must verify duplicate decoded-member rejection, distinct case-variant member names, preserved array order, unchanged string values, and exact number literals.
+- AC9: Canonicalization tests must verify rejection of duplicate decoded member names, case-variant member names, and lone UTF-16 surrogate escapes. The tests must verify preserved array order, unchanged string values, and exact number literals.
 - AC10: Configs acceptance must establish successful staged `check-network` and `check-firewall` validation during a content write before gateway unit startup. A validate-only change does not satisfy this criterion.
 
 ## Failure modes
 
 | Failure | Required outcome and recovery |
 | --- | --- |
-| JSON syntax error or duplicate member | `mwan_network` must fail the plan. `pveguest_file` must write no guest file. |
+| Invalid JSON, invalid UTF-8, trailing data, lone UTF-16 surrogate escape, or two decoded member names equal under `strings.EqualFold` within an object | `mwan_network` must fail the plan. `pveguest_file` must write no guest file. |
 | `Decode` error, `ProviderDefaults` error, or rejected provider entry | `mwan_network` must fail the plan with the interface or provider and reason when available. `pveguest_file` must write no guest file. |
 | Schema-only error | The plan may succeed. Apply must fail at `pveguest_file.validate` with `check-network` output. The staged file must be deleted. The installed document, running services, and prior `mwan_network_config` state must remain unchanged. Recovery requires correcting the Configs document, planning, and applying again. |
 | `check-firewall` cannot use `unshare` in the unprivileged LXC | File validation must fail every content write. The Configs acceptance owner must decide recovery after the PowerEdge lane supplies the measurement. |

@@ -1,6 +1,6 @@
-//go:build cgo
-
-package networkjson
+// Package networkload separates native network loading from networkjson
+// because the provider's cgo-disabled build graph cannot include yangpub.
+package networkload
 
 import (
 	"errors"
@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/yangpub"
 )
 
@@ -20,7 +21,7 @@ import (
 // loader records it in Rejected, logs it, and returns the remaining providers.
 // One provider's mistake never removes steering from the others. A document
 // with no loadable provider is fatal.
-func Load(path string, schemaDir string) (*Config, error) {
+func Load(path string, schemaDir string) (*networkjson.Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		slog.Error("networkjson: read failed", "err", err, "path", path)
@@ -36,12 +37,12 @@ func Load(path string, schemaDir string) (*Config, error) {
 		slog.Error("networkjson: schema validation failed", "err", err, "path", path)
 		return nil, fmt.Errorf("validate %s: %w", path, err)
 	}
-	loaded, err := Decode(data)
+	loaded, err := networkjson.Decode(data)
 	if err != nil {
-		var syntax *syntaxError
+		var syntax *networkjson.SyntaxError
 		if errors.As(err, &syntax) {
-			slog.Error("networkjson: decode failed", "err", syntax.err, "path", path)
-			return nil, fmt.Errorf("decode %s: %w", path, syntax.err)
+			slog.Error("networkjson: decode failed", "err", syntax.Unwrap(), "path", path)
+			return nil, fmt.Errorf("decode %s: %w", path, syntax.Unwrap())
 		}
 		// build returns a missing group-wide value, a provider-set conflict (a
 		// duplicate routing number, a reserved table), and a document with no
@@ -53,11 +54,7 @@ func Load(path string, schemaDir string) (*Config, error) {
 }
 
 // ApplyFrom loads the network configuration at path, validates it against the
-// models in schemaDir, and writes it onto cfg. Every process that reads the
-// network tree goes through here rather than repeating the sequence, so one
-// file owns each value and one implementation decides what a bad file means.
-// cfg is left untouched when the load fails, so a caller that carries on with a
-// diagnostic never shows a half-filled tree.
+// models in schemaDir, and updates cfg only after loading succeeds.
 func ApplyFrom(cfg *config.Config, path string, schemaDir string) error {
 	loaded, err := Load(path, schemaDir)
 	if err != nil {
@@ -70,5 +67,5 @@ func ApplyFrom(cfg *config.Config, path string, schemaDir string) error {
 // ApplyDefault applies the network configuration from the paths the deploy
 // installs.
 func ApplyDefault(cfg *config.Config) error {
-	return ApplyFrom(cfg, DefaultPath, DefaultSchemaDir)
+	return ApplyFrom(cfg, networkjson.DefaultPath, networkjson.DefaultSchemaDir)
 }

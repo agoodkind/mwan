@@ -34,7 +34,7 @@
 | Lane | Agreement |
 |---|---|
 | `poweredge-mwan-package-integration` | The lane owns the whole pending `guest-type` feature on one branch from `main`: the YANG leaf, the `document` field in [networkjson.go](../../../gateway/internal/networkjson/networkjson.go), the validation in [firewall.go](../../../gateway/internal/networkjson/firewall.go), and `firewall.Compile`. For `guest-type lxc`, the feature makes `steering-group/firewall/management-interface` optional. `mwan-network-cutover` reviews the feature. Each lane sends a note before pushing a change to the shared networkjson.go. The second lane to merge rebases its branch. |
-| `tofu-wanconfig-mwan-provider` | The lane owns [decode.go](../../../gateway/internal/networkjson/decode.go), [load.go](../../../gateway/internal/networkjson/load.go), [plan.go](../../../gateway/internal/networkjson/plan.go), [canonical.go](../../../gateway/internal/networkjson/canonical.go), their tests, and the moves out of networkjson.go. `poweredge-mwan-package-integration` owns the pending `guest-type` feature. Each lane sends a note before pushing a change to the shared networkjson.go. The second lane to merge rebases its branch. |
+| `tofu-wanconfig-mwan-provider` | The lane owns [decode.go](../../../gateway/internal/networkjson/decode.go), [load.go](../../../gateway/internal/networkload/load.go), [plan.go](../../../gateway/internal/networkjson/plan.go), [canonical.go](../../../gateway/internal/networkjson/canonical.go), their tests, and the moves out of [networkjson.go](../../../gateway/internal/networkjson/networkjson.go). `poweredge-mwan-package-integration` owns the pending `guest-type` feature. Each lane sends a note before pushing a change to shared `networkjson.go`. The second lane to merge rebases its branch. |
 
 ## 1. Separate portable decoding from native validation
 
@@ -49,7 +49,7 @@ Task 1 is complete in commit `ed1da56`. The gateway gate reported "All blocking 
 Create:
 
 - [gateway/internal/networkjson/decode.go](../../../gateway/internal/networkjson/decode.go).
-- [gateway/internal/networkjson/load.go](../../../gateway/internal/networkjson/load.go).
+- Task 6 moved the file to [gateway/internal/networkload/load.go](../../../gateway/internal/networkload/load.go).
 - [gateway/internal/networkjson/decode_parity_test.go](../../../gateway/internal/networkjson/decode_parity_test.go).
 
 Modify:
@@ -382,6 +382,36 @@ Verify that every active required status check passes and every review thread is
 ### Acceptance
 
 The pull request contains reviewed prose, signed commits, passing local gates, passing required CI checks, and resolved review threads. Record any unresolved acceptance evidence before merge.
+
+## 6. Move native loading into networkload and apply review fixes
+
+The working tree contains the implementation. The commit and the CI run that compiles the cgo gateway packages remain pending.
+
+### Files
+
+- Create [gateway/internal/networkload/load.go](../../../gateway/internal/networkload/load.go).
+- Update decoding, canonicalization, and tests under [gateway/internal/networkjson](../../../gateway/internal/networkjson).
+- Update native callers and tests under [gateway/cmd/mwan](../../../gateway/cmd/mwan).
+- Update [gateway/internal/agent/bgp_fib.go](../../../gateway/internal/agent/bgp_fib.go) and [gateway/internal/ifmgr/modules/health/health_test.go](../../../gateway/internal/ifmgr/modules/health/health_test.go).
+- Update [provider/internal/provider/network_test.go](../../../provider/internal/provider/network_test.go), this specification, and this plan.
+
+### Steps
+
+1. Move `Load`, `ApplyFrom`, and `ApplyDefault` into `networkload` without a build tag. Delete the former loading file from `networkjson`. Preserve behavior, error texts, and slog output.
+2. Export `SyntaxError` with an unexported field and `Error` and `Unwrap` methods. Match `SyntaxError` with `errors.As` in `networkload.Load`. Return `decode <path>: <err>` and log once with the path. Remove logging from `Decode`.
+3. Update native callers and tests to use `networkload`. Remove `yangpub` imports from non-test `networkjson` files while retaining `yangpub/schema` imports.
+4. Make `Canonicalize` reject lone UTF-16 surrogate escapes and member names equal under `strings.EqualFold`. Add regression cases for both conditions.
+5. Add duplicate-member and case-variant schema-layer parity cases. Add `TestDecodeKeepsTheLastDuplicateMember`.
+6. Add `//go:build cgo` to the DHCPv6 tests. Add a `ProviderDefaults` table-id diagnostic case.
+7. Update the specification and plan for the package move and canonicalization rules.
+
+### Verification
+
+`make -C provider check test` and `make -C provider build` pass locally, including the go-mk cgo stub check.
+
+CI run `37551702997` on PR #202 failed `provider / Compile` on darwin/arm64, linux/amd64, and linux/arm64 because go-mk included the cgo-tagged loading file's `yangpub` dependency in the provider build graph.
+
+The next CI run must compile the cgo gateway packages before this section is complete.
 
 ## Self-review
 

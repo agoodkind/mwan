@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/internal/networkload"
 )
 
 const (
@@ -21,10 +22,20 @@ const (
 	// The test edits the unpinned provider because rejecting the pinned provider
 	// would fail the firewall pin check first.
 	monkeybrainsSteering = `"tier": 2,` + "\n" + `          "weight": 1`
+
+	internalLink = `{ "name": "enmwanbr0", "type": "iana-if-type:other" }`
 )
 
 func monkeybrainsWeight(value string) documentEdit {
 	return documentEdit{old: monkeybrainsSteering, replacement: `"tier": 2,` + "\n" + `          "weight": ` + value}
+}
+
+func internalRouteMembers(members string) documentEdit {
+	return documentEdit{
+		old: internalLink,
+		replacement: `{ "name": "enmwanbr0", "type": "iana-if-type:other", "ietf-ip:ipv4": ` +
+			`{ "goodkind-mwan-steering:route": [{ ` + members + ` }] } }`,
+	}
 }
 
 type documentEdit struct {
@@ -101,7 +112,7 @@ func TestDecodeMatchesLoadForValidDocuments(t *testing.T) {
 	for _, name := range []string{"network-min.json", "network-freeform.json", "network-routes.json"} {
 		t.Run(name, func(t *testing.T) {
 			path, data := readInstance(t, name)
-			loaded, err := networkjson.Load(path, schemaDir)
+			loaded, err := networkload.Load(path, schemaDir)
 			if err != nil {
 				t.Fatalf("Load: %v", err)
 			}
@@ -114,7 +125,7 @@ func TestDecodeMatchesLoadForValidDocuments(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Canonicalize: %v", err)
 			}
-			loadedCanonical, err := networkjson.Load(writeDocument(t, string(canonical)), schemaDir)
+			loadedCanonical, err := networkload.Load(writeDocument(t, string(canonical)), schemaDir)
 			if err != nil {
 				t.Fatalf("Load canonical: %v", err)
 			}
@@ -127,21 +138,16 @@ func TestDecodeRejectsOnlySemanticDefects(t *testing.T) {
 	schemaDir := schemaDirForTest(t)
 	_, data := readInstance(t, "network-min.json")
 	base := string(data)
-	internalLink := `{ "name": "enmwanbr0", "type": "iana-if-type:other" }`
 	managementLink := `{ "name": "enmgmt0", "type": "iana-if-type:other" }`
 	internalRoute := func(destination string, gateway string) documentEdit {
-		return documentEdit{
-			old: internalLink,
-			replacement: `{ "name": "enmwanbr0", "type": "iana-if-type:other", "ietf-ip:ipv4": ` +
-				`{ "goodkind-mwan-steering:route": [{ "destination": "` + destination +
-				`", "gateway": "` + gateway + `" }] } }`,
-		}
+		return internalRouteMembers(`"destination": "` + destination + `", "gateway": "` + gateway + `"`)
 	}
 	cases := []struct {
-		name        string
-		layer       string
-		edit        documentEdit
-		decodeError string
+		name              string
+		layer             string
+		edit              documentEdit
+		decodeError       string
+		canonicalizeError string
 	}{
 		{
 			name:  "unknown member in an interface entry",
@@ -216,13 +222,33 @@ func TestDecodeRejectsOnlySemanticDefects(t *testing.T) {
 			edit:        documentEdit{old: `"probe-timeout": 2000`, replacement: `"probe-timeout": null`},
 			decodeError: "steering-group/health/probe-timeout is required",
 		},
+		{
+			name:  "duplicate route destination member",
+			layer: layerSchema,
+			edit: internalRouteMembers(
+				`"destination": "198.51.100.0/24", "destination": "203.0.113.0/24", "gateway": "192.0.2.1"`),
+			canonicalizeError: `object member "destination" appears more than once`,
+		},
+		{
+			name:  "case-variant route destination member",
+			layer: layerSchema,
+			edit: internalRouteMembers(
+				`"Destination": "198.51.100.0/24", "destination": "203.0.113.0/24", "gateway": "192.0.2.1"`),
+			canonicalizeError: `object members "Destination" and "destination" differ only in letter case`,
+		},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			document := editDocument(t, base, testCase.edit)
-			loaded, loadErr := networkjson.Load(writeDocument(t, document), schemaDir)
+			loaded, loadErr := networkload.Load(writeDocument(t, document), schemaDir)
 			if rejectionText(loaded, loadErr) == "" {
 				t.Fatalf("Load accepted the %s-layer defect", testCase.layer)
+			}
+			if testCase.canonicalizeError != "" {
+				_, canonicalizeErr := networkjson.Canonicalize([]byte(document))
+				if canonicalizeErr == nil || !strings.Contains(canonicalizeErr.Error(), testCase.canonicalizeError) {
+					t.Fatalf("Canonicalize error = %v, want it to contain %q", canonicalizeErr, testCase.canonicalizeError)
+				}
 			}
 			decoded, decodeErr := networkjson.Decode([]byte(document))
 			decodeRejection := rejectionText(decoded, decodeErr)
@@ -276,4 +302,24 @@ func TestDecodeTreatsNullAsAbsent(t *testing.T) {
 			requireSameConfig(t, withoutMember, withNull)
 		})
 	}
+}
+
+func TestDecodeKeepsTheLastDuplicateMember(t *testing.T) {
+	_, data := readInstance(t, "network-min.json")
+	base := string(data)
+	duplicate := internalRouteMembers(
+		`"destination": "198.51.100.0/24", "destination": "203.0.113.0/24", "gateway": "192.0.2.1"`)
+	lastValue := internalRouteMembers(`"destination": "203.0.113.0/24", "gateway": "192.0.2.1"`)
+	withDuplicate, err := networkjson.Decode([]byte(editDocument(t, base, duplicate)))
+	if err != nil {
+		t.Fatalf("Decode duplicate: %v", err)
+	}
+	withLastValue, err := networkjson.Decode([]byte(editDocument(t, base, lastValue)))
+	if err != nil {
+		t.Fatalf("Decode last value: %v", err)
+	}
+	if rejection := rejectionText(withDuplicate, nil); rejection != "" {
+		t.Fatalf("Decode rejected the duplicate member: %s", rejection)
+	}
+	requireSameConfig(t, withLastValue, withDuplicate)
 }

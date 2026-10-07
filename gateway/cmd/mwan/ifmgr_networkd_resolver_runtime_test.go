@@ -18,7 +18,7 @@ import (
 	"github.com/vishvananda/netns"
 	"golang.org/x/net/dns/dnsmessage"
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/internal/networkload"
 )
 
 func TestNetworkdResolverDaemonRuntime(t *testing.T) {
@@ -73,7 +73,7 @@ func TestNetworkdResolverDaemonRuntime(t *testing.T) {
 	writeNetworkdResolverFixture(t, networkDir, "")
 	for _, key := range []string{"DNS", "Domains"} {
 		writeNetworkdResolverFixture(t, networkDir, key)
-		loaded, err := networkjson.Load(filepath.Join(networkDir, "network.json"), schemaDir)
+		loaded, err := networkload.Load(filepath.Join(networkDir, "network.json"), schemaDir)
 		if err != nil {
 			t.Fatal(err)
 		}

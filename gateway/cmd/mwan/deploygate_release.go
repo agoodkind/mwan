@@ -13,10 +13,11 @@ import (
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/networkd"
 	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/internal/networkload"
 )
 
 func checkConnectionRelease(ctx context.Context, output io.Writer, cfg *config.Config, id connectionid.ID, previous interfaceintent.Owner) int {
-	loaded, err := networkjson.Load(networkjson.DefaultPath, networkjson.DefaultSchemaDir)
+	loaded, err := networkload.Load(networkjson.DefaultPath, networkjson.DefaultSchemaDir)
 	if err != nil {
 		fmt.Fprintf(output, "release verification failed: %v\n", err)
 		return exitDeployGateFailed

@@ -16,7 +16,7 @@ import (
 
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/netif"
-	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/internal/networkload"
 	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/statuspush"
 	"goodkind.io/mwan/internal/wanstate"
@@ -755,7 +755,7 @@ func TestConnectionIdentityStateFileRoundTrip(t *testing.T) {
 	if _, err := yangpub.WriteSchema(schemaDir); err != nil {
 		t.Fatalf("write schema: %v", err)
 	}
-	loaded, err := networkjson.Load(documentPath, schemaDir)
+	loaded, err := networkload.Load(documentPath, schemaDir)
 	if err != nil {
 		t.Fatalf("load network document: %v", err)
 	}

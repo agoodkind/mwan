@@ -2,20 +2,19 @@ package networkjson
 
 import (
 	"encoding/json"
-	"log/slog"
 )
 
-// Load uses this error type to preserve the "decode <path>: <err>" format
-// for JSON unmarshal failures.
-type syntaxError struct {
+// SyntaxError supports errors.As matching in [networkload.Load] for the
+// "decode <path>: <err>" error format.
+type SyntaxError struct {
 	err error
 }
 
-func (e *syntaxError) Error() string {
+func (e *SyntaxError) Error() string {
 	return "decode: " + e.err.Error()
 }
 
-func (e *syntaxError) Unwrap() error {
+func (e *SyntaxError) Unwrap() error {
 	return e.err
 }
 
@@ -25,8 +24,7 @@ func (e *syntaxError) Unwrap() error {
 func Decode(data []byte) (*Config, error) {
 	var doc document
 	if err := json.Unmarshal(data, &doc); err != nil {
-		slog.Error("networkjson: decode failed", "err", err)
-		return nil, &syntaxError{err: err}
+		return nil, &SyntaxError{err: err}
 	}
 	return build(&doc)
 }
