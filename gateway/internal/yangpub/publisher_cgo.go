@@ -22,6 +22,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"os/user"
 	"path/filepath"
 	"runtime/cgo"
 	"strings"
@@ -95,6 +97,9 @@ type notifReg struct {
 // connect leaves nothing behind; the caller keeps running without a
 // management surface.
 func New(log *slog.Logger) (Publisher, error) {
+	if groupErr := requireSysrepoGroup(log); groupErr != nil {
+		return nil, groupErr
+	}
 	var conn *C.sr_conn_ctx_t
 	if rc := C.sr_connect(C.sr_conn_options_t(0), &conn); srFailed(rc) {
 		connectErr := srError("sr_connect", rc)
@@ -108,6 +113,30 @@ func New(log *slog.Logger) (Publisher, error) {
 		closed:        false,
 		subscriptions: nil,
 	}, nil
+}
+
+const (
+	sysrepoGroupName    = "sysrepo"
+	sysrepoTestModeName = "SR_ENV_RUN_TESTS"
+)
+
+var errSysrepoGroupMissing = errors.New("yangpub: group \"" + sysrepoGroupName + "\" does not exist")
+
+func requireSysrepoGroup(log *slog.Logger) error {
+	if _, testMode := os.LookupEnv(sysrepoTestModeName); testMode {
+		return nil
+	}
+	_, lookupErr := user.LookupGroup(sysrepoGroupName)
+	if lookupErr == nil {
+		return nil
+	}
+	var unknownGroup user.UnknownGroupError
+	if errors.As(lookupErr, &unknownGroup) {
+		log.Error("sysrepo group missing", "group", sysrepoGroupName, "err", lookupErr)
+		return errSysrepoGroupMissing
+	}
+	log.Error("sysrepo group lookup failed", "group", sysrepoGroupName, "err", lookupErr)
+	return fmt.Errorf("yangpub: look up group %q: %w", sysrepoGroupName, lookupErr)
 }
 
 // RepositoryPath returns the repository sysrepo uses in this process. sysrepo
