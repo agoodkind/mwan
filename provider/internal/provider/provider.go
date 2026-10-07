@@ -86,12 +86,15 @@ func (p *mwanProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 }
 
 func (p *mwanProvider) Resources(_ context.Context) []func() resource.Resource {
-	return nil
+	return []func() resource.Resource{
+		newNetworkConfigResource,
+	}
 }
 
 func (p *mwanProvider) DataSources(_ context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		newReleaseDataSource,
 		newRoleDataSource,
+		newNetworkDataSource,
 	}
 }
