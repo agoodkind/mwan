@@ -20,7 +20,7 @@ import (
 	"github.com/vishvananda/netns"
 	"golang.org/x/net/ipv6"
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/internal/networkload"
 )
 
 func TestOwnedDHCPv6IAAddressOnlyRuntime(t *testing.T) {
@@ -81,7 +81,7 @@ func runOwnedDHCPv6IARuntime(t *testing.T, combined, unequal, duplicate bool) {
 	}
 	bindStartupDirectory(t, networkdDir, "/etc/systemd/network")
 	writeDHCPv6IARuntimeNetwork(t, networkDir, combined)
-	if _, err := networkjson.Load(filepath.Join(networkDir, "network.json"), schemaDir); err != nil {
+	if _, err := networkload.Load(filepath.Join(networkDir, "network.json"), schemaDir); err != nil {
 		t.Fatalf("load runtime network: %v", err)
 	}
 	configPath := filepath.Join(root, "config.toml")

@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/internal/networkload"
 	"goodkind.io/mwan/internal/wanconfig"
 	"goodkind.io/mwan/internal/yangpub"
 )
@@ -31,10 +31,11 @@ var networkListKeys = map[string][]string{
 	"address":            {"ip"},
 	"forwarding-address": {"address"},
 	"goodkind-mwan-steering:forwarding-address": {"address"},
-	"file":               {"kind"},
-	"section":            {"index"},
-	"entry":              {"index"},
-	"management-service": {"protocol", "port"},
+	"goodkind-mwan-steering:route":              {"destination"},
+	"file":                                      {"kind"},
+	"section":                                   {"index"},
+	"entry":                                     {"index"},
+	"management-service":                        {"protocol", "port"},
 }
 
 // servedOnlyPaths match the leaves the tree publishes that a network document
@@ -107,7 +108,7 @@ func networkSchemaDirForTest(t *testing.T) string {
 // published items.
 func servedConfigItems(t *testing.T, document string, schemaDir string) []wanconfig.Item {
 	t.Helper()
-	loaded, err := networkjson.Load(document, schemaDir)
+	loaded, err := networkload.Load(document, schemaDir)
 	if err != nil {
 		t.Fatalf("load %s: %v", document, err)
 	}

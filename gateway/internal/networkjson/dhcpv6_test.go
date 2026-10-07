@@ -1,3 +1,5 @@
+//go:build cgo
+
 package networkjson_test
 
 import (
@@ -5,7 +7,7 @@ import (
 	"testing"
 
 	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/internal/networkload"
 )
 
 const testDUID = "00:01:2a:5b:3c:4d:02:00:5e:00:53:01"
@@ -59,7 +61,7 @@ func TestLoadMWANOwnedDHCPv6RequestModes(t *testing.T) {
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
-			loaded, err := networkjson.Load(writeDocument(t, mwanDHCPv6Document(testCase.family)), schemaDirForTest(t))
+			loaded, err := networkload.Load(writeDocument(t, mwanDHCPv6Document(testCase.family)), schemaDirForTest(t))
 			if err != nil {
 				t.Fatalf("Load: %v", err)
 			}
@@ -123,7 +125,7 @@ func TestLoadRejectsInvalidMWANOwnedDHCPv6Requests(t *testing.T) {
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := networkjson.Load(writeDocument(t, mwanDHCPv6Document(testCase.family)), schemaDirForTest(t))
+			_, err := networkload.Load(writeDocument(t, mwanDHCPv6Document(testCase.family)), schemaDirForTest(t))
 			if err == nil || !strings.Contains(err.Error(), testCase.want) {
 				t.Fatalf("Load error = %v, want %q", err, testCase.want)
 			}

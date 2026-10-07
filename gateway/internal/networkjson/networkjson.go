@@ -6,24 +6,21 @@
 // read, so the file the daemon loads and the tree the management surface
 // serves describe one thing.
 //
-// The package is linux-only: validation binds libyang, which only the linux
-// build links, and the only role that reads the file runs there.
+// Decode and semantic checks compile without cgo.
+// Use [networkload.Load] when native file loading requires libyang validation.
 package networkjson
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/netip"
-	"os"
 	"slices"
 
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/interfaceintent"
-	"goodkind.io/mwan/internal/yangpub"
 	"goodkind.io/mwan/internal/yangpub/schema"
 )
 
@@ -293,46 +290,6 @@ type Rejection struct {
 	Interface string
 	Provider  string
 	Err       error
-}
-
-// Load reads path, validates it against the models in schemaDir, and returns
-// the network tree encoded in it. An unreadable file, a file the schema
-// rejects, a missing group-wide value, and a conflict between two providers
-// are fatal: none of them has a safe default and none of them belongs to one
-// entry. A defect inside one provider entry rejects that entry alone: the
-// loader records it in Rejected, logs it, and returns the remaining providers.
-// One provider's mistake never removes steering from the others. A document
-// with no loadable provider is fatal.
-func Load(path string, schemaDir string) (*Config, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		slog.Error("networkjson: read failed", "err", err, "path", path)
-		return nil, fmt.Errorf("read %s: %w", path, err)
-	}
-	schema, err := yangpub.LoadSchema(schemaDir)
-	if err != nil {
-		slog.Error("networkjson: schema load failed", "err", err, "schema_dir", schemaDir)
-		return nil, fmt.Errorf("load schema from %s: %w", schemaDir, err)
-	}
-	defer schema.Close()
-	if err := schema.ValidateConfigJSON(data); err != nil {
-		slog.Error("networkjson: schema validation failed", "err", err, "path", path)
-		return nil, fmt.Errorf("validate %s: %w", path, err)
-	}
-	var doc document
-	if err := json.Unmarshal(data, &doc); err != nil {
-		slog.Error("networkjson: decode failed", "err", err, "path", path)
-		return nil, fmt.Errorf("decode %s: %w", path, err)
-	}
-	loaded, err := build(&doc)
-	if err != nil {
-		// build returns a missing group-wide value, a provider-set conflict (a
-		// duplicate routing number, a reserved table), and a document with no
-		// loadable provider. The wrapped error text states which.
-		slog.Error("networkjson: configuration rejected", "err", err, "path", path)
-		return nil, fmt.Errorf("%s: %w", path, err)
-	}
-	return loaded, nil
 }
 
 // kernelReservedTables are the routing tables the kernel owns: unspecified,
@@ -778,27 +735,6 @@ func buildHealth(label string, probe *health) (*config.IfMgrHealthWANSection, er
 		}
 	}
 	return section, nil
-}
-
-// ApplyFrom loads the network configuration at path, validates it against the
-// models in schemaDir, and writes it onto cfg. Every process that reads the
-// network tree goes through here rather than repeating the sequence, so one
-// file owns each value and one implementation decides what a bad file means.
-// cfg is left untouched when the load fails, so a caller that carries on with a
-// diagnostic never shows a half-filled tree.
-func ApplyFrom(cfg *config.Config, path string, schemaDir string) error {
-	loaded, err := Load(path, schemaDir)
-	if err != nil {
-		return err
-	}
-	loaded.Apply(cfg)
-	return nil
-}
-
-// ApplyDefault applies the network configuration from the paths the deploy
-// installs.
-func ApplyDefault(cfg *config.Config) error {
-	return ApplyFrom(cfg, DefaultPath, DefaultSchemaDir)
 }
 
 // Apply writes the loaded tree onto cfg, filling the fields the TOML sections

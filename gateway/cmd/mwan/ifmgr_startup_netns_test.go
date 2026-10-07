@@ -17,7 +17,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"goodkind.io/mwan/internal/firewall"
-	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/internal/networkload"
 )
 
 const (
@@ -88,7 +88,7 @@ func runWANStartupChild(t *testing.T) {
 		t.Fatalf("protective management policy missing: %s", input)
 	}
 	schema := filepath.Join("..", "..", "internal", "yangpub", "schema")
-	loaded, err := networkjson.Load(networkPath, schema)
+	loaded, err := networkload.Load(networkPath, schema)
 	if err != nil {
 		t.Fatalf("load full firewall policy: %v", err)
 	}

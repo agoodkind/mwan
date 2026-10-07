@@ -22,7 +22,7 @@ import (
 	"github.com/vishvananda/netns"
 	"golang.org/x/net/ipv6"
 	"golang.org/x/sys/unix"
-	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/internal/networkload"
 )
 
 const (
@@ -41,7 +41,7 @@ func TestOwnedDHCPv6PDDaemonWaitsForRA(t *testing.T) {
 func TestOwnedDHCPv6PDRejectsInformationRequest(t *testing.T) {
 	directory := t.TempDir()
 	writeDHCPv6PDRuntimeNetwork(t, directory, "information-request")
-	_, err := networkjson.Load(filepath.Join(directory, "network.json"), filepath.Join("..", "..", "internal", "yangpub", "schema"))
+	_, err := networkload.Load(filepath.Join(directory, "network.json"), filepath.Join("..", "..", "internal", "yangpub", "schema"))
 	if err == nil || !strings.Contains(err.Error(), "without-ra information-request cannot acquire an IA_NA address or IA_PD prefix") {
 		t.Fatalf("information-request rejection = %v", err)
 	}

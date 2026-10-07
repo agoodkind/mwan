@@ -25,3 +25,22 @@ GO_MK_WORKSPACE_USE := . ../gateway
 include bootstrap.mk
 
 .DEFAULT_GOAL := check
+
+# The override address must match providerAddress to select the test build.
+TOFU                  ?= $(shell command -v tofu)
+TOFU_PROVIDER_ADDRESS := tofu.home.arpa/agoodkind/mwan
+
+# dev_overrides loads the temporary provider build without tofu init.
+.PHONY: test-tofu-plan
+test-tofu-plan: | $(GO_MK_PREREQS)
+	@if [ -z "$(TOFU)" ]; then \
+		echo "test-tofu-plan requires OpenTofu. Install tofu or set TOFU to its path." >&2; \
+		exit 1; \
+	fi
+	@tofu_dir=$$(mktemp -d) || exit 1; \
+	trap 'rm -rf "$$tofu_dir"' EXIT INT TERM; \
+	go build $(GO_BUILD_FLAGS) -o "$$tofu_dir/$(BINARY)" $(CMD) || exit 1; \
+	printf 'provider_installation {\n  dev_overrides {\n    "%s" = "%s"\n  }\n  direct {}\n}\n' \
+		"$(TOFU_PROVIDER_ADDRESS)" "$$tofu_dir" > "$$tofu_dir/tofurc" || exit 1; \
+	TOFU="$(TOFU)" TF_CLI_CONFIG_FILE="$$tofu_dir/tofurc" \
+		go test -tags tofu -count=1 -run TestTofuPlan ./internal/provider

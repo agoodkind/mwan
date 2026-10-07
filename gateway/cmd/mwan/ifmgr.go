@@ -28,6 +28,7 @@ import (
 	"goodkind.io/mwan/internal/logging"
 	"goodkind.io/mwan/internal/networkd"
 	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/internal/networkload"
 	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/tracing"
 	"goodkind.io/mwan/internal/version"
@@ -345,7 +346,7 @@ func parseNetworkConfig(
 	if !steers {
 		return nil, nil
 	}
-	loaded, err := networkjson.Load(networkjson.DefaultPath, networkjson.DefaultSchemaDir)
+	loaded, err := networkload.Load(networkjson.DefaultPath, networkjson.DefaultSchemaDir)
 	if err != nil {
 		log.ErrorContext(ctx, "ifmgr: load network configuration failed",
 			"path", networkjson.DefaultPath, "role", role, "err", err)

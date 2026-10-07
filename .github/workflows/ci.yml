@@ -67,6 +67,28 @@ jobs:
         working-directory: gateway
         run: make test-provider-drift WANCONFIG_DOCKER_ARCH=amd64
 
+  tofu-plan:
+    name: provider tofu plan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # The testdata copy must match the validated gateway fixture because staticcheck-extra rejects constant input paths outside testdata.
+      - name: Check network route fixture copies
+        run: cmp gateway/yang/instances/network-routes.json provider/internal/provider/testdata/networkplan/network-routes.json
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: provider/go.mod
+          cache-dependency-path: provider/go.sum
+      # Disable the wrapper because TestTofuPlan reads tofu output directly.
+      - uses: opentofu/setup-opentofu@v2.0.2
+        with:
+          tofu_version: 1.12.6
+          tofu_wrapper: false
+      - name: Plan network documents with OpenTofu
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: make -C provider test-tofu-plan
+
   # The go job above never runs these. The Makefile hangs the two schema gates
   # off `check`, and the go-makefile quality matrix runs a fixed list of
   # commands that does not include it, so without this job nothing validates
