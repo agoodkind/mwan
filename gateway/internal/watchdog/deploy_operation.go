@@ -36,13 +36,9 @@ func (w *watchdog) handleDeployOperation(ctx context.Context) bool {
 	return w.inspectDeployOperation(ctx, coordinator)
 }
 
-func (w *watchdog) deployOperationStore() deployoperation.Store {
-	return deployoperation.Store{Path: w.cfg.Watchdog.RollbackLockFile + ".operation", PollInterval: w.cfg.Watchdog.DegradedInterval(), Clock: clock.Real{}}
-}
-
 func (w *watchdog) inspectDeployOperation(ctx context.Context, coordinator *rollback.Coordinator) bool {
 	log := w.tracedLogger(ctx)
-	store := w.deployOperationStore()
+	store := deployoperation.Store{Path: w.cfg.Watchdog.RollbackLockFile + ".operation", PollInterval: w.cfg.Watchdog.DegradedInterval(), Clock: clock.Real{}}
 	record, err := store.Read(ctx)
 	if errors.Is(err, os.ErrNotExist) {
 		return false

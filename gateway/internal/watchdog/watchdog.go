@@ -340,12 +340,10 @@ func (w *watchdog) pruneSnapshots(ctx context.Context) error {
 	return firstErr
 }
 
-// prunePreDeploySnapshots never deletes the last listed pre-deploy-* snapshot
-// because watchdog rollback restores it. Pruning never deletes the recorded
-// snapshot because deployment recovery restores it.
-// Pruning acquires the rollback coordinator lock before the deployment
-// operation record read and releases it after deletes. Deployment arming
-// acquires the same lock before verifying its snapshot.
+// prunePreDeploySnapshots preserves the last listed pre-deploy-* snapshot
+// because watchdog rollback restores that snapshot. A deploy armed during
+// the snapshot cycle creates its snapshot last. Deployment recovery restores
+// that deployment's snapshot.
 func (w *watchdog) prunePreDeploySnapshots(
 	ctx context.Context, preDeploys []string, excess int,
 ) (deleted int, resultErr error) {
@@ -353,31 +351,9 @@ func (w *watchdog) prunePreDeploySnapshots(
 		return 0, nil
 	}
 	log := w.tracedLogger(ctx)
-	coordinator, err := rollback.Acquire(
-		ctx, w.cfg.Watchdog.RollbackLockFile, w.cfg.Watchdog.DegradedInterval(),
-	)
-	if err != nil {
-		log.ErrorContext(ctx, "deployment operation coordination failed", "err", err)
-		return 0, fmt.Errorf("acquire rollback coordinator lock before pruning pre-deploy snapshots: %w", err)
-	}
-	defer func() {
-		if closeErr := coordinator.Close(); closeErr != nil {
-			log.ErrorContext(ctx,
-				"deployment operation coordination release failed", "err", closeErr)
-		}
-	}()
-	record, err := w.deployOperationStore().Read(ctx)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		log.ErrorContext(ctx, "deployment operation read failed", "err", err)
-		return 0, fmt.Errorf("read deployment operation record before pruning pre-deploy snapshots: %w", err)
-	}
-	rollbackTarget := preDeploys[len(preDeploys)-1]
-	for _, name := range preDeploys {
+	for _, name := range preDeploys[:len(preDeploys)-1] {
 		if deleted >= excess {
 			break
-		}
-		if name == rollbackTarget || name == record.Snapshot {
-			continue
 		}
 		if err := w.deleteSnapshot(ctx, name); err != nil {
 			log.ErrorContext(ctx,
