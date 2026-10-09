@@ -97,9 +97,10 @@ type notifReg struct {
 // connect leaves nothing behind; the caller keeps running without a
 // management surface.
 func New(log *slog.Logger) (Publisher, error) {
-	_, testMode := os.LookupEnv(sysrepoTestModeName)
-	if groupErr := requireSysrepoGroup(log, testMode); groupErr != nil {
-		return nil, groupErr
+	if _, testMode := os.LookupEnv(sysrepoTestModeName); !testMode {
+		if groupErr := requireSysrepoGroup(); groupErr != nil {
+			return nil, groupErr
+		}
 	}
 	var conn *C.sr_conn_ctx_t
 	if rc := C.sr_connect(C.sr_conn_options_t(0), &conn); srFailed(rc) {
@@ -123,20 +124,15 @@ const (
 
 var errSysrepoGroupMissing = errors.New("yangpub: group \"" + sysrepoGroupName + "\" does not exist")
 
-func requireSysrepoGroup(log *slog.Logger, testMode bool) error {
-	if testMode {
-		return nil
-	}
+func requireSysrepoGroup() error {
 	_, lookupErr := user.LookupGroup(sysrepoGroupName)
 	if lookupErr == nil {
 		return nil
 	}
 	var unknownGroup user.UnknownGroupError
 	if errors.As(lookupErr, &unknownGroup) {
-		log.Error("sysrepo group missing", "group", sysrepoGroupName, "err", lookupErr)
 		return errSysrepoGroupMissing
 	}
-	log.Error("sysrepo group lookup failed", "group", sysrepoGroupName, "err", lookupErr)
 	return fmt.Errorf("yangpub: look up group %q: %w", sysrepoGroupName, lookupErr)
 }
 
