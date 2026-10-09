@@ -98,8 +98,14 @@ type notifReg struct {
 // management surface.
 func New(log *slog.Logger) (Publisher, error) {
 	if _, testMode := os.LookupEnv(sysrepoTestModeName); !testMode {
-		if groupErr := requireSysrepoGroup(); groupErr != nil {
-			return nil, groupErr
+		if _, lookupErr := user.LookupGroup(sysrepoGroupName); lookupErr != nil {
+			var unknownGroup user.UnknownGroupError
+			if errors.As(lookupErr, &unknownGroup) {
+				log.Error("sysrepo group missing", "group", sysrepoGroupName, "err", lookupErr)
+				return nil, errSysrepoGroupMissing
+			}
+			log.Error("sysrepo group lookup failed", "group", sysrepoGroupName, "err", lookupErr)
+			return nil, fmt.Errorf("yangpub: look up group %q: %w", sysrepoGroupName, lookupErr)
 		}
 	}
 	var conn *C.sr_conn_ctx_t
@@ -123,18 +129,6 @@ const (
 )
 
 var errSysrepoGroupMissing = errors.New("yangpub: group \"" + sysrepoGroupName + "\" does not exist")
-
-func requireSysrepoGroup() error {
-	_, lookupErr := user.LookupGroup(sysrepoGroupName)
-	if lookupErr == nil {
-		return nil
-	}
-	var unknownGroup user.UnknownGroupError
-	if errors.As(lookupErr, &unknownGroup) {
-		return errSysrepoGroupMissing
-	}
-	return fmt.Errorf("yangpub: look up group %q: %w", sysrepoGroupName, lookupErr)
-}
 
 // RepositoryPath returns the repository sysrepo uses in this process. sysrepo
 // resolves it from SYSREPO_REPOSITORY_PATH, or its compiled default, the
