@@ -583,14 +583,7 @@ func appendWANRules(
 	health netif.HealthStates,
 	translation wanstate.MemberTranslation,
 ) []netif.DesiredRule {
-	prefixTranslation := false
-	externalConfigured := false
-	external := netip.Prefix{}
-	if policy := wan.TranslationV6; policy != nil && policy.Mode == config.TranslationNPTv6 && policy.NPT != nil {
-		prefixTranslation = true
-		externalConfigured = policy.NPT.ExternalSource == config.PrefixConfigured
-		external = policy.NPT.ExternalPrefix
-	}
+	prefixTranslation, externalConfigured, external := wan.TranslationV6.PolicySource()
 	provider := interfaceintent.NewPolicyProvider(
 		connectionid.ID(wan.Key()), wan.TableID, wan.FwMark, wan.FwMarkPrio, wan.FromPrio,
 		wan.TranslationV4 != nil, wan.V4Source,

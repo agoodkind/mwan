@@ -238,6 +238,17 @@ type IPv6Translation struct {
 	NPT  *NPTv6Translation
 }
 
+// PolicySource returns whether NPTv6 is active, whether the external prefix is
+// explicitly configured, and the external prefix for the IPv6 source policy rule.
+// A nil receiver, a mode other than NPTv6, or nil NPT settings returns
+// false, false, and an invalid prefix.
+func (t *IPv6Translation) PolicySource() (bool, bool, netip.Prefix) {
+	if t == nil || t.Mode != TranslationNPTv6 || t.NPT == nil {
+		return false, false, netip.Prefix{}
+	}
+	return true, t.NPT.ExternalSource == PrefixConfigured, t.NPT.ExternalPrefix
+}
+
 // NPTv6Translation configures internal and external prefix selection.
 type NPTv6Translation struct {
 	InternalPrefix netip.Prefix

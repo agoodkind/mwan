@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
-	"net/netip"
 
-	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/interfaceintent"
 )
@@ -51,14 +49,7 @@ func (c *Config) PolicyRules() (map[PolicyRuleKey]interfaceintent.PolicyRule, er
 		if _, err := routingNumber(id, "from-prio", entry.FromPrio); err != nil {
 			return nil, err
 		}
-		prefixTranslation := false
-		externalConfigured := false
-		external := netip.Prefix{}
-		if policy := entry.TranslationV6; policy != nil && policy.Mode == config.TranslationNPTv6 && policy.NPT != nil {
-			prefixTranslation = true
-			externalConfigured = policy.NPT.ExternalSource == config.PrefixConfigured
-			external = policy.NPT.ExternalPrefix
-		}
+		prefixTranslation, externalConfigured, external := entry.TranslationV6.PolicySource()
 		provider := interfaceintent.NewPolicyProvider(
 			connectionid.ID(id), entry.TableID, mark, entry.FwMarkPrio, entry.FromPrio,
 			entry.TranslationV4 != nil, entry.V4Source,
