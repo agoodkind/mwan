@@ -24,6 +24,13 @@ const (
 	tofuActionUpdate  = "update"
 	tofuActionNoOp    = "no-op"
 	tofuDecodeError   = "must be a canonical same-family network prefix"
+
+	tofuModule         = "main.tf"
+	tofuDeferredModule = "deferred.tf"
+	tofuDataAddress    = "data.mwan_network.gateway"
+	tofuActionCreate   = "create"
+	tofuSchemaError    = "Invalid network schema"
+	tofuNull           = "null"
 )
 
 type tofuPlan struct {
@@ -40,12 +47,6 @@ type tofuChange struct {
 	Before       json.RawMessage `json:"before"`
 	After        json.RawMessage `json:"after"`
 	AfterUnknown json.RawMessage `json:"after_unknown"`
-}
-
-type tofuNetworkMaps struct {
-	Interfaces       map[string]json.RawMessage `json:"interfaces"`
-	Routes           map[string]json.RawMessage `json:"routes"`
-	ProviderDefaults map[string]json.RawMessage `json:"provider_defaults"`
 }
 
 type tofuWorkspace struct {
@@ -66,10 +67,26 @@ type tofuRejection struct {
 	want     []string
 }
 
+type tofuRule struct {
+	family      string
+	table       string
+	chain       string
+	purpose     string
+	scope       string
+	action      string
+	expression  string
+	source      string
+	destination string
+	iface       string
+	output      string
+	mark        string
+}
+
 func TestTofuPlan(t *testing.T) {
-	workspace := newTofuWorkspace(t)
+	workspace := newTofuWorkspace(t, tofuModule)
 	workspace.apply(t, tofuBaseDocument)
 	workspace.checkVariants(t, tofuVariants())
+	workspace.checkVariants(t, tofuRuleVariants())
 
 	for _, rejection := range tofuRejections() {
 		t.Run(strings.TrimSuffix(rejection.document, ".json"), func(t *testing.T) {
@@ -87,7 +104,7 @@ func TestTofuPlan(t *testing.T) {
 		})
 	}
 
-	shorthand := newTofuWorkspace(t)
+	shorthand := newTofuWorkspace(t, tofuModule)
 	shorthand.apply(t, "gateway.json")
 	shorthand.checkVariants(t, []tofuVariant{{
 		document:     "gatewaymetric.json",
@@ -102,6 +119,60 @@ func TestTofuPlan(t *testing.T) {
 	}})
 }
 
+func TestTofuPlanDefersUnknownContent(t *testing.T) {
+	const invalidDocument = "unknownmember.json"
+	workspace := newTofuWorkspace(t, tofuDeferredModule)
+
+	plan, text := workspace.plan(t, invalidDocument)
+
+	config := findTofuChange(t, plan, tofuConfigAddress)
+	checkTofuAction(t, config, tofuActionCreate)
+	unknown := flatTofuUnknown(t, config.Change.AfterUnknown)
+	for _, name := range networkMapNames() {
+		if !unknown[name] {
+			t.Errorf("%s.%s is known in the plan, want an unknown value", tofuConfigAddress, name)
+		}
+	}
+	wantLine := "# " + tofuDataAddress + " will be read during apply"
+	if !strings.Contains(normalizeTofuText(text), wantLine) {
+		t.Errorf("the rendered plan lacks %q:\n%s", wantLine, text)
+	}
+	if strings.Contains(text, tofuSchemaError) {
+		t.Errorf("the plan reports a schema error for unknown content:\n%s", text)
+	}
+
+	output, err := workspace.run(t, "apply", "-auto-approve", "-input=false", "-no-color",
+		"-var", "network_file="+tofuDocument(t, invalidDocument))
+	if err == nil {
+		t.Fatalf("tofu apply succeeded for %s:\n%s", invalidDocument, output)
+	}
+	for _, want := range []string{tofuSchemaError, "unknown-member"} {
+		if !strings.Contains(normalizeTofuText(output), want) {
+			t.Errorf("tofu apply output lacks %q:\n%s", want, output)
+		}
+	}
+
+	workspace.apply(t, tofuBaseDocument)
+	plan, text = workspace.plan(t, tofuBaseDocument)
+	checkTofuAction(t, findTofuChange(t, plan, tofuConfigAddress), tofuActionNoOp)
+	if !strings.HasPrefix(normalizeTofuText(text), "No changes.") {
+		t.Errorf("the rendered plan does not start with No changes.:\n%s", text)
+	}
+}
+
+func flatTofuUnknown(t *testing.T, afterUnknown json.RawMessage) map[string]bool {
+	t.Helper()
+	var attributes map[string]json.RawMessage
+	if err := json.Unmarshal(afterUnknown, &attributes); err != nil {
+		t.Fatalf("decode after_unknown %s: %v", afterUnknown, err)
+	}
+	unknown := map[string]bool{}
+	for name, value := range attributes {
+		unknown[name] = string(value) == "true"
+	}
+	return unknown
+}
+
 func tofuRejections() []tofuRejection {
 	return []tofuRejection{
 		{document: "invalid.json", want: []string{tofuDecodeError, `"198.18.1.1/24"`}},
@@ -114,7 +185,376 @@ func tofuRejections() []tofuRejection {
 			document: "rejected.json",
 			want:     []string{"Rejected provider entry", "enmbrains0", "from-prio is required"},
 		},
+		{document: "unknownmember.json", want: []string{tofuSchemaError, "unknown-member"}},
+		{document: "invalidenum.json", want: []string{tofuSchemaError, "bogus"}},
+		{document: "outofrange.json", want: []string{tofuSchemaError, "256"}},
+		{document: "missingmandatory.json", want: []string{tofuSchemaError, "type"}},
+		{document: "explicitnull.json", want: []string{tofuSchemaError, "uint8 value"}},
 	}
+}
+
+// tofuDocument generates these documents from edits instead of reading fixture files.
+func tofuEdits() map[string][]string {
+	return map[string][]string{
+		"unknownmember.json": {
+			networkManagementEntry,
+			`{ "name": "enmgmt0", "type": "iana-if-type:other", "unknown-member": true }`,
+		},
+		"invalidenum.json": {`"hash-mode": "source"`, `"hash-mode": "bogus"`},
+		"outofrange.json": {
+			`"ping-count": 3,` + "\n" + `            "success-threshold": 2,`,
+			`"ping-count": 256,` + "\n" + `            "success-threshold": 2,`,
+		},
+		"missingmandatory.json": {networkManagementEntry, `{ "name": "enmgmt0" }`},
+		"explicitnull.json":     {`"forced-dscp": 8`, `"forced-dscp": null`},
+		"policyadded.json": {
+			`"ietf-ip:ipv6": {` + "\n" + `          "goodkind-mwan-steering:translation": { "mode": "native" }`,
+			`"ietf-ip:ipv6": { "goodkind-mwan-steering:translation": { "mode": "ietf-nat:nptv6", "nptv6": { ` +
+				`"internal-prefix": "2001:db8:b01::/60", "external-source": "configured", ` +
+				`"external-prefix": "2001:db8:beef:100::/60" } }`,
+		},
+		"policyremoved.json": {
+			`"mode": "ietf-nat:nptv6",`, `"mode": "native"`,
+			`"nptv6": {` + "\n" +
+				`              "internal-prefix": "2001:db8:b01::/60",` + "\n" +
+				`              "external-source": "configured",` + "\n" +
+				`              "external-prefix": "2001:db8:beef:200::/60"` + "\n" +
+				`            }`, ``,
+		},
+		"policychanged.json": {`"fw-mark-prio": 100,`, `"fw-mark-prio": 110,`},
+		"policyrenamed.json": {
+			`"name": "att",`, `"name": "attfiber",`,
+			`"pinned-provider": "att",`, `"pinned-provider": "attfiber",`,
+		},
+		"ruleadded.json": {
+			`{ "protocol": "tcp", "port": 22 },`,
+			`{ "protocol": "tcp", "port": 22 }, { "protocol": "udp", "port": 161 },`,
+		},
+		"ruleremoved.json": {`{ "protocol": "tcp", "port": 22 },`, ``},
+		"masqueraded.json": {
+			`"ietf-ip:ipv4": {` + "\n" + `          "goodkind-mwan-steering:translation": { "mode": "native" }`,
+			`"ietf-ip:ipv4": { "goodkind-mwan-steering:translation": { "mode": "ietf-nat:napt44" }`,
+		},
+		"rulechanged.json": {`"fw-mark": 3,`, `"fw-mark": 5,`},
+		"rulereordered.json": {
+			`{ "external": "203.0.113.2", "internal": "192.0.2.2" },` + "\n" +
+				`              { "external": "203.0.113.3", "internal": "192.0.2.3" }`,
+			`{ "external": "203.0.113.3", "internal": "192.0.2.3" },` + "\n" +
+				`              { "external": "203.0.113.2", "internal": "192.0.2.2" }`,
+		},
+		"setchanged.json": {`"pinned-v4": ["198.51.100.0/24"],`, `"pinned-v4": ["198.51.100.0/24", "203.0.113.128/25"],`},
+	}
+}
+
+func tofuPriorEntries() map[string]map[string]string {
+	return map[string]map[string]string{
+		"policyremoved.json": {
+			"policy_rules[webpass|ipv6|source]": tofuSourceRule("webpass", "56", "2001:db8:beef:200::/60", "200"),
+		},
+		"policychanged.json": {
+			"policy_rules[att|ipv4|fwmark]": tofuFwmarkRule("att", "ipv4", "1", "100", "100"),
+			"policy_rules[att|ipv6|fwmark]": tofuFwmarkRule("att", "ipv6", "1", "100", "100"),
+		},
+		"policyrenamed.json": {
+			"policy_rules[att|ipv4|fwmark]": tofuFwmarkRule("att", "ipv4", "1", "100", "100"),
+			"policy_rules[att|ipv6|fwmark]": tofuFwmarkRule("att", "ipv6", "1", "100", "100"),
+		},
+		"ruleremoved.json": {
+			"firewall_rules[" + tofuServiceRule("tcp", "22", "ipv4").key() + "]": tofuServiceRule("tcp", "22", "ipv4").json(),
+			"firewall_rules[" + tofuServiceRule("tcp", "22", "ipv6").key() + "]": tofuServiceRule("tcp", "22", "ipv6").json(),
+		},
+		"rulechanged.json": {
+			"firewall_rules[" + tofuProviderMarkRule("enmbrains0", "3").key() + "]": tofuProviderMarkRule("enmbrains0", "3").json(),
+			"policy_rules[monkeybrains|ipv4|fwmark]":                                tofuFwmarkRule("monkeybrains", "ipv4", "3", "300", "300"),
+		},
+		"rulereordered.json": {
+			"firewall_chains[ip|nat|prerouting]": tofuChain("ip", "nat", "prerouting",
+				"ip|nat|prerouting|pinned-source-mark|ipv4",
+				"ip|nat|prerouting|static-mapping-dnat|enwebpass0,203.0.113.2",
+				"ip|nat|prerouting|static-mapping-dnat|enwebpass0,203.0.113.3"),
+		},
+		"setchanged.json": {
+			"firewall_sets[inet|mangle|att_pinned_v4]": tofuPinnedSet(`"198.51.100.0/24"`),
+		},
+	}
+}
+
+func tofuPolicyRule(connectionID string, family string, kind string, mark string, priority string, source string, tableID string) string {
+	conditions := `"translation-ready","default-gateway-discovered","provider-healthy"`
+	sourceKind := "none"
+	if kind == "source" {
+		conditions += `,"translated-source-published"`
+		sourceKind = "configured"
+	}
+	return `{"activation_conditions":[` + conditions + `],"connection_id":"` + connectionID +
+		`","family":"` + family + `","kind":"` + kind + `","mark":` + mark + `,"priority":` + priority +
+		`,"source":` + source + `,"source_kind":"` + sourceKind + `","table_id":` + tableID + `}`
+}
+
+func tofuFwmarkRule(connectionID string, family string, mark string, priority string, tableID string) string {
+	return tofuPolicyRule(connectionID, family, "fwmark", mark, priority, tofuNull, tableID)
+}
+
+func tofuSourceRule(connectionID string, priority string, source string, tableID string) string {
+	return tofuPolicyRule(connectionID, "ipv6", "source", tofuNull, priority, `"`+source+`"`, tableID)
+}
+
+func (r tofuRule) chainKey() string {
+	return r.family + "|" + r.table + "|" + r.chain
+}
+
+func (r tofuRule) key() string {
+	return r.chainKey() + "|" + r.purpose + "|" + r.scope
+}
+
+func (r tofuRule) json() string {
+	expression, err := json.Marshal(r.expression)
+	if err != nil {
+		panic(err)
+	}
+	return `{"action":"` + r.action + `","chain":"` + r.chain + `","destination":` + r.destination +
+		`,"expression":` + string(expression) + `,"family":"` + r.family + `","interface":` + r.iface +
+		`,"key":"` + r.key() + `","mark":` + r.mark + `,"output_interface":` + r.output + `,"purpose":"` + r.purpose + `","scope":"` + r.scope +
+		`","source":` + r.source + `,"table":"` + r.table + `"}`
+}
+
+func tofuServiceRule(protocol string, port string, family string) tofuRule {
+	return tofuRule{
+		family: "inet", table: "filter", chain: "input", purpose: "management-service",
+		scope: protocol + "," + port + "," + family, action: "accept",
+		expression: `iifname "enmgmt0" meta nfproto ` + family + ` meta l4proto ` + protocol + ` ` + protocol +
+			` dport ` + port + ` accept`,
+		source: tofuNull, destination: tofuNull, iface: `"enmgmt0"`, output: tofuNull, mark: tofuNull,
+	}
+}
+
+func tofuProviderMarkRule(iface string, mark string) tofuRule {
+	return tofuRule{
+		family: "inet", table: "mangle", chain: "prerouting", purpose: "provider-mark", scope: iface,
+		action: "mark", expression: `iifname "` + iface + `" ct state new meta mark set ` + mark,
+		source: tofuNull, destination: tofuNull, iface: `"` + iface + `"`, output: tofuNull, mark: mark,
+	}
+}
+
+func tofuMasqueradeRule(iface string, source string) tofuRule {
+	return tofuRule{
+		family: "ip", table: "nat", chain: "postrouting", purpose: "masquerade", scope: iface,
+		action: "masquerade", expression: `oifname "` + iface + `" ip saddr ` + source + ` masquerade`,
+		source: `"` + source + `"`, destination: tofuNull, iface: tofuNull, output: `"` + iface + `"`, mark: tofuNull,
+	}
+}
+
+func tofuChain(family string, table string, chain string, ruleOrder ...string) string {
+	return `{"chain":"` + chain + `","family":"` + family + `","rule_order":["` +
+		strings.Join(ruleOrder, `","`) + `"],"table":"` + table + `"}`
+}
+
+func tofuPinnedSet(elements string) string {
+	return `{"elements":[` + elements + `],"family":"inet","key_type":"ipv4_addr","set":"att_pinned_v4","table":"mangle"}`
+}
+
+func tofuInputChain(services ...string) string {
+	order := []string{
+		"inet|filter|input|established|all",
+		"inet|filter|input|loopback|all",
+		"inet|filter|input|icmp|ipv4",
+		"inet|filter|input|icmp|ipv6",
+	}
+	order = append(order, services...)
+	order = append(order, tofuInputPermits()...)
+	return tofuChain("inet", "filter", "input", order...)
+}
+
+func tofuInputPermits() []string {
+	const prefix = "inet|filter|input|local-permit|"
+	var order []string
+	for _, provider := range []string{"enwebpass0", "enatt0", "enmbrains0"} {
+		order = append(order, prefix+provider+",ipv4,udp,67,68", prefix+provider+",ipv6,udp,547,546")
+	}
+	for _, family := range []string{"ipv4", "ipv6"} {
+		internal := prefix + "enmwanbr0," + family
+		order = append(order, internal+",tcp,0,179", internal+",udp,0,3784", internal+",udp,0,3785")
+	}
+	return append(order, "inet|filter|input|drop-log|all")
+}
+
+func tofuRuleVariants() []tofuVariant {
+	sshIPv4, sshIPv6 := tofuServiceRule("tcp", "22", "ipv4"), tofuServiceRule("tcp", "22", "ipv6")
+	snmpIPv4, snmpIPv6 := tofuServiceRule("udp", "161", "ipv4"), tofuServiceRule("udp", "161", "ipv6")
+	agentRule := "inet|filter|input|management-service|tcp,50052,192.0.2.0/24"
+	markRule := tofuProviderMarkRule("enmbrains0", "5")
+	attMasquerade := tofuMasqueradeRule("enatt0", "192.0.2.0/29")
+	firstDNAT := "ip|nat|prerouting|static-mapping-dnat|enwebpass0,203.0.113.2"
+	secondDNAT := "ip|nat|prerouting|static-mapping-dnat|enwebpass0,203.0.113.3"
+	firstSNAT := "ip|nat|postrouting|static-mapping-snat|enwebpass0,203.0.113.2"
+	secondSNAT := "ip|nat|postrouting|static-mapping-snat|enwebpass0,203.0.113.3"
+	return []tofuVariant{
+		{
+			document:     "policyadded.json",
+			configAction: tofuActionUpdate,
+			fileAction:   tofuActionUpdate,
+			changed: map[string]string{
+				"policy_rules[att|ipv6|source]": tofuSourceRule("att", "55", "2001:db8:beef:100::/60", "100"),
+			},
+			lines: []string{
+				`~ policy_rules = {`,
+				`+ "att|ipv6|source" = {`,
+				`+ source = "2001:db8:beef:100::/60"`,
+			},
+		},
+		{
+			document:     "policyremoved.json",
+			configAction: tofuActionUpdate,
+			fileAction:   tofuActionUpdate,
+			changed:      map[string]string{"policy_rules[webpass|ipv6|source]": ""},
+			lines: []string{
+				`~ policy_rules = {`,
+				`- "webpass|ipv6|source" = {`,
+				`} -> null,`,
+			},
+		},
+		{
+			document:     "policychanged.json",
+			configAction: tofuActionUpdate,
+			fileAction:   tofuActionUpdate,
+			changed: map[string]string{
+				"policy_rules[att|ipv4|fwmark]": tofuFwmarkRule("att", "ipv4", "1", "110", "100"),
+				"policy_rules[att|ipv6|fwmark]": tofuFwmarkRule("att", "ipv6", "1", "110", "100"),
+			},
+			lines: []string{
+				`~ "att|ipv4|fwmark" = {`,
+				`~ "att|ipv6|fwmark" = {`,
+				`~ priority = 100 -> 110`,
+			},
+		},
+		{
+			document:     "policyrenamed.json",
+			configAction: tofuActionUpdate,
+			fileAction:   tofuActionUpdate,
+			changed: map[string]string{
+				"interfaces[enatt0]": `{"connection_id":"attfiber","enabled":null,"name":"enatt0","owner":"networkd",` +
+					`"provider_name":"attfiber","roles":["provider"],"type":"iana-if-type:other"}`,
+				"provider_defaults[att|ipv4|100]":      "",
+				"provider_defaults[att|ipv6|100]":      "",
+				"provider_defaults[attfiber|ipv4|100]": tofuProviderDefault("attfiber", "ipv4", "192.0.2.0/29"),
+				"provider_defaults[attfiber|ipv6|100]": tofuProviderDefault("attfiber", "ipv6", "2001:db8:b01:fe::2/128"),
+				"policy_rules[att|ipv4|fwmark]":        "",
+				"policy_rules[att|ipv6|fwmark]":        "",
+				"policy_rules[attfiber|ipv4|fwmark]":   tofuFwmarkRule("attfiber", "ipv4", "1", "100", "100"),
+				"policy_rules[attfiber|ipv6|fwmark]":   tofuFwmarkRule("attfiber", "ipv6", "1", "100", "100"),
+			},
+			lines: []string{
+				`- "att|ipv4|fwmark" = {`,
+				`+ "attfiber|ipv4|fwmark" = {`,
+				`+ connection_id = "attfiber"`,
+			},
+		},
+		{
+			document:     "ruleadded.json",
+			configAction: tofuActionUpdate,
+			fileAction:   tofuActionUpdate,
+			changed: map[string]string{
+				"firewall_rules[" + snmpIPv4.key() + "]": snmpIPv4.json(),
+				"firewall_rules[" + snmpIPv6.key() + "]": snmpIPv6.json(),
+				"firewall_chains[inet|filter|input]": tofuInputChain(
+					sshIPv4.key(), sshIPv6.key(), snmpIPv4.key(), snmpIPv6.key(), agentRule),
+			},
+			lines: []string{
+				`~ firewall_rules = {`,
+				`+ "inet|filter|input|management-service|udp,161,ipv4" = {`,
+				`+ "inet|filter|input|management-service|udp,161,ipv6" = {`,
+				`~ rule_order = [`,
+			},
+		},
+		{
+			document:     "ruleremoved.json",
+			configAction: tofuActionUpdate,
+			fileAction:   tofuActionUpdate,
+			changed: map[string]string{
+				"firewall_rules[" + sshIPv4.key() + "]": "",
+				"firewall_rules[" + sshIPv6.key() + "]": "",
+				"firewall_chains[inet|filter|input]":    tofuInputChain(agentRule),
+			},
+			lines: []string{
+				`- "inet|filter|input|management-service|tcp,22,ipv4" = {`,
+				`- "inet|filter|input|management-service|tcp,22,ipv6" = {`,
+				`~ rule_order = [`,
+			},
+		},
+		{
+			document:     "masqueraded.json",
+			configAction: tofuActionUpdate,
+			fileAction:   tofuActionUpdate,
+			changed: map[string]string{
+				"firewall_rules[" + attMasquerade.key() + "]": attMasquerade.json(),
+				"firewall_chains[ip|nat|postrouting]": tofuChain("ip", "nat", "postrouting",
+					firstSNAT, secondSNAT,
+					tofuMasqueradeRule("enwebpass0", "192.0.2.0/29").key(),
+					attMasquerade.key(),
+					tofuMasqueradeRule("enmbrains0", "192.0.2.0/29").key()),
+			},
+			lines: []string{
+				`+ "ip|nat|postrouting|masquerade|enatt0" = {`,
+				`+ action = "masquerade"`,
+				`+ output_interface = "enatt0"`,
+				`+ source = "192.0.2.0/29"`,
+			},
+		},
+		{
+			document:     "rulechanged.json",
+			configAction: tofuActionUpdate,
+			fileAction:   tofuActionUpdate,
+			changed: map[string]string{
+				"firewall_rules[" + markRule.key() + "]": markRule.json(),
+				"policy_rules[monkeybrains|ipv4|fwmark]": tofuFwmarkRule("monkeybrains", "ipv4", "5", "300", "300"),
+			},
+			lines: []string{
+				`~ "inet|mangle|prerouting|provider-mark|enmbrains0" = {`,
+				`~ expression = "iifname \"enmbrains0\" ct state new meta mark set 3" -> "iifname \"enmbrains0\" ct state new meta mark set 5"`,
+				`~ mark = 3 -> 5`,
+			},
+		},
+		{
+			document:     "rulereordered.json",
+			configAction: tofuActionUpdate,
+			fileAction:   tofuActionUpdate,
+			changed: map[string]string{
+				"firewall_chains[ip|nat|prerouting]": tofuChain("ip", "nat", "prerouting",
+					"ip|nat|prerouting|pinned-source-mark|ipv4", secondDNAT, firstDNAT),
+				"firewall_chains[ip|nat|postrouting]": tofuChain("ip", "nat", "postrouting",
+					secondSNAT, firstSNAT,
+					tofuMasqueradeRule("enwebpass0", "192.0.2.0/29").key(),
+					tofuMasqueradeRule("enmbrains0", "192.0.2.0/29").key()),
+			},
+			lines: []string{
+				`~ firewall_chains = {`,
+				`~ "ip|nat|prerouting" = {`,
+				`~ "ip|nat|postrouting" = {`,
+				`~ rule_order = [`,
+				`- "` + firstDNAT + `",`,
+				`+ "` + firstDNAT + `",`,
+				`# (6 unchanged attributes hidden)`,
+			},
+		},
+		{
+			document:     "setchanged.json",
+			configAction: tofuActionUpdate,
+			fileAction:   tofuActionUpdate,
+			changed: map[string]string{
+				"firewall_sets[inet|mangle|att_pinned_v4]": tofuPinnedSet(`"198.51.100.0/24","203.0.113.128/25"`),
+			},
+			lines: []string{
+				`~ firewall_sets = {`,
+				`~ "inet|mangle|att_pinned_v4" = {`,
+				`+ "203.0.113.128/25",`,
+			},
+		},
+	}
+}
+
+func tofuProviderDefault(connectionID string, family string, destination string) string {
+	return `{"connection_id":"` + connectionID + `","family":"` + family + `","interface":"enatt0",` +
+		`"internal_destination":"` + destination + `","internal_interface":"enmwanbr0","table_id":100}`
 }
 
 func tofuGatewayRoute(metric string) string {
@@ -230,6 +670,10 @@ func tofuVariants() []tofuVariant {
 				"provider_defaults[att|ipv4|100]":          tofuInternalDefault("att", "enatt0", "100"),
 				"provider_defaults[webpass|ipv4|200]":      tofuInternalDefault("webpass", "enwebpass0", "200"),
 				"provider_defaults[monkeybrains|ipv4|300]": tofuInternalDefault("monkeybrains", "enmbrains0", "300"),
+				"firewall_rules[ip|nat|postrouting|masquerade|enwebpass0]": tofuMasqueradeRule(
+					"enwebpass0", "192.0.2.0/28").json(),
+				"firewall_rules[ip|nat|postrouting|masquerade|enmbrains0]": tofuMasqueradeRule(
+					"enmbrains0", "192.0.2.0/28").json(),
 			},
 			lines: []string{
 				`~ provider_defaults = {`,
@@ -276,7 +720,7 @@ func tofuInternalDefault(connectionID string, iface string, tableID string) stri
 		`","internal_destination":"192.0.2.0/28","internal_interface":"enmwanbr0","table_id":` + tableID + `}`
 }
 
-func newTofuWorkspace(t *testing.T) *tofuWorkspace {
+func newTofuWorkspace(t *testing.T, moduleFile string) *tofuWorkspace {
 	t.Helper()
 	binary := os.Getenv("TOFU")
 	if binary == "" {
@@ -287,9 +731,9 @@ func newTofuWorkspace(t *testing.T) *tofuWorkspace {
 		t.Fatal("TF_CLI_CONFIG_FILE must contain the dev_overrides configuration; run make test-tofu-plan")
 	}
 	dir := t.TempDir()
-	module, err := os.ReadFile(filepath.Join(tofuFixtureDir, "main.tf"))
+	module, err := os.ReadFile(filepath.Join(tofuFixtureDir, moduleFile))
 	if err != nil {
-		t.Fatalf("read main.tf: %v", err)
+		t.Fatalf("read %s: %v", moduleFile, err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "main.tf"), module, 0o600); err != nil {
 		t.Fatalf("write main.tf: %v", err)
@@ -299,6 +743,13 @@ func newTofuWorkspace(t *testing.T) *tofuWorkspace {
 
 func tofuDocument(t *testing.T, name string) string {
 	t.Helper()
+	if replacements, edited := tofuEdits()[name]; edited {
+		document := filepath.Join(t.TempDir(), name)
+		if err := os.WriteFile(document, []byte(readNetworkDocument(t, replacements...)), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+		return document
+	}
 	document, err := filepath.Abs(filepath.Join(tofuFixtureDir, name))
 	if err != nil {
 		t.Fatalf("resolve %s: %v", name, err)
@@ -376,8 +827,14 @@ func checkTofuPlan(t *testing.T, plan tofuPlan, text string, variant tofuVariant
 	checkTofuAction(t, config, variant.configAction)
 	checkTofuAction(t, findTofuChange(t, plan, tofuFileAddress), variant.fileAction)
 
-	if got := changedTofuEntries(t, config.Change); !maps.Equal(got, variant.changed) {
+	before := flatTofuEntries(t, config.Change.Before)
+	if got := changedTofuEntries(before, flatTofuEntries(t, config.Change.After)); !maps.Equal(got, variant.changed) {
 		t.Errorf("%s changed entries:\ngot  %v\nwant %v", tofuConfigAddress, got, variant.changed)
+	}
+	for entry, want := range tofuPriorEntries()[variant.document] {
+		if got := before[entry]; got != want {
+			t.Errorf("%s before %s:\ngot  %s\nwant %s", tofuConfigAddress, entry, got, want)
+		}
 	}
 	if variant.configAction == tofuActionUpdate {
 		if hasUnknownTofuValue(t, config.Change.AfterUnknown) {
@@ -422,47 +879,35 @@ func checkTofuAction(t *testing.T, change tofuResourceChange, want string) {
 	}
 }
 
-func changedTofuEntries(t *testing.T, change tofuChange) map[string]string {
+func flatTofuEntries(t *testing.T, value json.RawMessage) map[string]string {
 	t.Helper()
-	before := decodeTofuNetworkMaps(t, change.Before)
-	after := decodeTofuNetworkMaps(t, change.After)
-	changed := map[string]string{}
-	compareTofuEntries(t, changed, "interfaces", before.Interfaces, after.Interfaces)
-	compareTofuEntries(t, changed, "routes", before.Routes, after.Routes)
-	compareTofuEntries(t, changed, "provider_defaults", before.ProviderDefaults, after.ProviderDefaults)
-	return changed
-}
-
-func decodeTofuNetworkMaps(t *testing.T, value json.RawMessage) tofuNetworkMaps {
-	t.Helper()
-	var decoded tofuNetworkMaps
+	var decoded map[string]map[string]json.RawMessage
 	if err := json.Unmarshal(value, &decoded); err != nil {
 		t.Fatalf("decode the network maps %s: %v", value, err)
 	}
-	return decoded
-}
-
-func compareTofuEntries(
-	t *testing.T,
-	changed map[string]string,
-	attribute string,
-	before map[string]json.RawMessage,
-	after map[string]json.RawMessage,
-) {
-	t.Helper()
-	keys := map[string]bool{}
-	for key := range before {
-		keys[key] = true
-	}
-	for key := range after {
-		keys[key] = true
-	}
-	for key := range keys {
-		beforeEntry, afterEntry := compactTofuJSON(t, before[key]), compactTofuJSON(t, after[key])
-		if beforeEntry != afterEntry {
-			changed[attribute+"["+key+"]"] = afterEntry
+	entries := map[string]string{}
+	for _, attribute := range networkMapNames() {
+		for key, entry := range decoded[attribute] {
+			entries[attribute+"["+key+"]"] = compactTofuJSON(t, entry)
 		}
 	}
+	return entries
+}
+
+// changedTofuEntries records an empty string for an entry absent from after.
+func changedTofuEntries(before map[string]string, after map[string]string) map[string]string {
+	changed := map[string]string{}
+	for name := range before {
+		if before[name] != after[name] {
+			changed[name] = after[name]
+		}
+	}
+	for name, entry := range after {
+		if before[name] != entry {
+			changed[name] = entry
+		}
+	}
+	return changed
 }
 
 func compactTofuJSON(t *testing.T, value json.RawMessage) string {

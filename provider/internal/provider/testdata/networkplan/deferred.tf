@@ -10,13 +10,13 @@ variable "network_file" {
   type = string
 }
 
-data "mwan_network" "gateway" {
-  content = file(var.network_file)
+# The pending source creation defers the data source read until apply.
+resource "terraform_data" "source" {
+  input = file(var.network_file)
 }
 
-# TestTofuPlan checks keyed route diffs while terraform_data.file has a pending update.
-resource "terraform_data" "file" {
-  input = data.mwan_network.gateway.canonical_content
+data "mwan_network" "gateway" {
+  content = terraform_data.source.output
 }
 
 resource "mwan_network_config" "gateway" {
@@ -27,5 +27,4 @@ resource "mwan_network_config" "gateway" {
   firewall_chains   = data.mwan_network.gateway.firewall_chains
   firewall_rules    = data.mwan_network.gateway.firewall_rules
   firewall_sets     = data.mwan_network.gateway.firewall_sets
-  depends_on        = [terraform_data.file]
 }
