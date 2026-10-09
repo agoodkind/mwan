@@ -9,6 +9,7 @@ import (
 // RulePurpose classifies compiled firewall rules.
 type RulePurpose string
 
+// Purpose and scope identify each rule that Compile emits within its chain.
 const (
 	PurposeEstablished           RulePurpose = "established"
 	PurposeLoopback              RulePurpose = "loopback"
@@ -34,7 +35,7 @@ const (
 // RuleAction classifies a rule's verdict, mark update, or address translation.
 type RuleAction string
 
-// ActionReturn includes the rule that clears the packet mark before returning.
+// ActionAccept through ActionMasquerade define the compiled rule action values.
 const (
 	ActionAccept     RuleAction = "accept"
 	ActionDrop       RuleAction = "drop"

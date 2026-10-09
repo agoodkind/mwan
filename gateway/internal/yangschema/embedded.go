@@ -46,7 +46,8 @@ func loadEmbeddedFrom(tempDir string) (*Schema, error) {
 	}
 	ctx, err := newContext(tempDir)
 	if err != nil {
-		return nil, embeddedFailed("load the embedded schema from", tempDir, err)
+		slog.Error("yangschema: load the embedded schema failed", "dir", tempDir, "err", err)
+		return nil, fmt.Errorf("yangschema: load the embedded schema from %s: %w", tempDir, err)
 	}
 	return &Schema{ctx: ctx, tempDir: tempDir}, nil
 }

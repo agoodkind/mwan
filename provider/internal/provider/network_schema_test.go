@@ -39,7 +39,7 @@ func TestNetworkAcceptsSchemaValidDocuments(t *testing.T) {
 				t.Errorf("canonical_content = %s, want %s", got, wantCanonical)
 			}
 			if got := objectMap(t, state, "interfaces"); len(got) == 0 {
-				t.Error("interfaces is empty")
+				t.Error("interfaces are empty")
 			}
 		})
 	}

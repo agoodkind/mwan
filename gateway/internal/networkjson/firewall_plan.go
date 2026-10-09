@@ -58,7 +58,6 @@ type FirewallPlan struct {
 	Sets   map[FirewallSetKey]firewall.Set
 }
 
-// FirewallPlan indexes the compiled firewall by chain, rule, and set keys.
 // FirewallPlan returns empty maps for configurations without firewall ownership.
 // FirewallPlan rejects duplicate keys.
 func (c *Config) FirewallPlan() (FirewallPlan, error) {

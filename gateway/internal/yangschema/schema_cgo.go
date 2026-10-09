@@ -33,8 +33,7 @@ const (
 
 const revisionSeparator = "@"
 
-// Schema is a libyang context holding the modules the gateway's configuration
-// is written against.
+// Schema is a libyang context containing the loaded YANG modules.
 type Schema struct {
 	ctx *C.struct_ly_ctx
 	// Close does not remove directories supplied to LoadSchema.

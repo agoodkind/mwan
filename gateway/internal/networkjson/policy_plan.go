@@ -23,28 +23,33 @@ func (k PolicyRuleKey) String() string {
 	return encodeKey(k.ConnectionID.String(), string(k.Family), string(k.Kind))
 }
 
-// PolicyRules derives policy rules from c.WAN.
-// Delegated IPv6 sources use an invalid prefix.
+func routingNumber(id string, leaf string, value int) (uint32, error) {
+	if value < 0 || uint64(value) > math.MaxUint32 {
+		err := fmt.Errorf("wan %s: %s %d is outside 0 to %d", id, leaf, value, uint32(math.MaxUint32))
+		slog.Error("networkjson: provider routing number outside uint32", "err", err)
+		return 0, err
+	}
+	return uint32(value), nil
+}
+
 // PolicyRules rejects routing numbers outside uint32.
 // PolicyRules rejects configured sources without valid prefixes.
+// Delegated IPv6 sources use an invalid prefix.
 func (c *Config) PolicyRules() (map[PolicyRuleKey]interfaceintent.PolicyRule, error) {
 	rules := make(map[PolicyRuleKey]interfaceintent.PolicyRule)
 	for id, entry := range c.WAN {
-		numbers := []struct {
-			leaf  string
-			value int
-		}{
-			{leaf: "table-id", value: entry.TableID},
-			{leaf: "fw-mark", value: entry.FwMark},
-			{leaf: "fw-mark-prio", value: entry.FwMarkPrio},
-			{leaf: "from-prio", value: entry.FromPrio},
+		if _, err := routingNumber(id, "table-id", entry.TableID); err != nil {
+			return nil, err
 		}
-		for _, number := range numbers {
-			if number.value < 0 || uint64(number.value) > math.MaxUint32 {
-				err := fmt.Errorf("wan %s: %s %d is outside 0 to %d", id, number.leaf, number.value, uint32(math.MaxUint32))
-				slog.Error("networkjson: provider routing number outside uint32", "err", err)
-				return nil, err
-			}
+		mark, markErr := routingNumber(id, "fw-mark", entry.FwMark)
+		if markErr != nil {
+			return nil, markErr
+		}
+		if _, err := routingNumber(id, "fw-mark-prio", entry.FwMarkPrio); err != nil {
+			return nil, err
+		}
+		if _, err := routingNumber(id, "from-prio", entry.FromPrio); err != nil {
+			return nil, err
 		}
 		prefixTranslation := false
 		externalConfigured := false
@@ -55,7 +60,7 @@ func (c *Config) PolicyRules() (map[PolicyRuleKey]interfaceintent.PolicyRule, er
 			external = policy.NPT.ExternalPrefix
 		}
 		provider := interfaceintent.NewPolicyProvider(
-			connectionid.ID(id), entry.TableID, uint32(entry.FwMark), entry.FwMarkPrio, entry.FromPrio,
+			connectionid.ID(id), entry.TableID, mark, entry.FwMarkPrio, entry.FromPrio,
 			entry.TranslationV4 != nil, entry.V4Source,
 			entry.TranslationV6 != nil, prefixTranslation, externalConfigured, external,
 		)

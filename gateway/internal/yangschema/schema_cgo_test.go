@@ -16,7 +16,8 @@ import (
 )
 
 const (
-	networkMinPath = "../../yang/instances/network-min.json"
+	// Acceptance and rejection tests use this network document.
+	networkMinPath = "testdata/network-min.json"
 
 	managementLink = `{ "name": "enmgmt0", "type": "iana-if-type:other" }`
 

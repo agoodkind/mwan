@@ -18,10 +18,12 @@ type JSONError struct {
 	err error
 }
 
+// Error prefixes [networkjson.Canonicalize] error text with "decode: ".
 func (e *JSONError) Error() string {
 	return "decode: " + e.err.Error()
 }
 
+// Unwrap returns the [networkjson.Canonicalize] error.
 func (e *JSONError) Unwrap() error {
 	return e.err
 }
@@ -32,17 +34,34 @@ type SchemaError struct {
 	err error
 }
 
+// Error prefixes schema validation error text with "validate: ".
 func (e *SchemaError) Error() string {
 	return "validate: " + e.err.Error()
 }
 
+// Unwrap returns the schema validation error.
 func (e *SchemaError) Unwrap() error {
+	return e.err
+}
+
+// SemanticError wraps [networkjson.Decode] errors for [errors.As] matching.
+type SemanticError struct {
+	err error
+}
+
+// Error returns the [networkjson.Decode] error text without a prefix.
+func (e *SemanticError) Error() string {
+	return e.err.Error()
+}
+
+// Unwrap returns the [networkjson.Decode] error.
+func (e *SemanticError) Unwrap() error {
 	return e.err
 }
 
 // ValidateAndDecode checks JSON, validates the document, then decodes its semantics.
 // Each stage reads the original bytes.
-// ValidateAndDecode returns errors from [networkjson.Decode] without wrapping them.
+// ValidateAndDecode wraps [networkjson.Decode] errors in [SemanticError].
 func ValidateAndDecode(data []byte, schema *yangschema.Schema) (*networkjson.Config, error) {
 	if _, err := networkjson.Canonicalize(data); err != nil {
 		return nil, &JSONError{err: err}
@@ -50,7 +69,11 @@ func ValidateAndDecode(data []byte, schema *yangschema.Schema) (*networkjson.Con
 	if err := schema.ValidateConfigJSON(data); err != nil {
 		return nil, &SchemaError{err: err}
 	}
-	return networkjson.Decode(data)
+	loaded, err := networkjson.Decode(data)
+	if err != nil {
+		return nil, &SemanticError{err: err}
+	}
+	return loaded, nil
 }
 
 // Load reads path, validates it against the models in schemaDir, and returns
