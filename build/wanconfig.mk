@@ -19,10 +19,10 @@ WANCONFIG_SYSREPO_CPP_VERSION  := v6
 WANCONFIG_NGHTTP2_ASIO_VERSION := e877868abe
 WANCONFIG_ROUSETTE_VERSION     := v2
 
-# Each version pin carries the full commit hash its tag pointed at when it was
-# reviewed. The packaging build refuses a tag that resolves elsewhere, so a
-# force-moved upstream tag cannot change what a release packages. A version
-# bump updates both lines together.
+# Each WANCONFIG_*_COMMIT records the full hash its version tag resolved to at
+# review time. The packaging build fails if a tag resolves to another commit.
+# Force-moving an upstream tag cannot change the packaged source.
+# Update both the version and commit lines for a version bump.
 WANCONFIG_LIBYANG_COMMIT      := c2ddd01b9b810a30d6a7d6749a3bc9adeb7b01fb
 WANCONFIG_SYSREPO_COMMIT      := 1b720b196f630f348d9e0c131d326b3fb8c6aca7
 WANCONFIG_LIBYANG_CPP_COMMIT  := 249da7280864fbda5fccb340b455b7000ebfe67d
