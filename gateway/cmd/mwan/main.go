@@ -26,6 +26,7 @@ const (
 	subcmdPD                subcommand = "pd"
 	subcmdDebug             subcommand = "debug"
 	subcmdTrace             subcommand = "trace-boot"
+	subcmdDeploy            subcommand = "deploy"
 	subcmdGate              subcommand = "deploy-gate"
 	subcmdWanconfigSelftest subcommand = "wanconfig-selftest"
 	subcmdVersion           subcommand = "version"
@@ -44,7 +45,7 @@ type dispatchResult struct {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: mwan <agent|watchdog|health|ifmgr|install|notify|pd|debug|trace-boot|deploy-gate|wanconfig-selftest|version|observe|gateway-status> [args]")
+		fmt.Fprintln(os.Stderr, "usage: mwan <agent|watchdog|health|ifmgr|install|notify|pd|debug|trace-boot|deploy|deploy-gate|wanconfig-selftest|version|observe|gateway-status> [args]")
 		os.Exit(1)
 	}
 	sub := os.Args[1]
@@ -98,6 +99,8 @@ func dispatchConfigLess(sub subcommand) dispatchResult {
 		return dispatchResult{handled: true, code: runPDProbe(os.Args[1:])}
 	case subcmdTrace:
 		return dispatchResult{handled: true, code: runTraceBoot()}
+	case subcmdDeploy:
+		return dispatchResult{handled: true, code: runDeploy(os.Args[1:])}
 	case subcmdGate:
 		return dispatchResult{handled: true, code: runDeployGate(os.Args[1:])}
 	case subcmdWanconfigSelftest:
@@ -138,7 +141,7 @@ func dispatchWithConfig(rawSub string, sub subcommand, cfg *config.Config, flags
 		return runDebug(os.Args[1:], cfg)
 	case subcmdGatewayStatus:
 		return runGatewayStatus(os.Args[1:], cfg, os.Stdout, os.Stderr)
-	case subcmdHealth, subcmdPD, subcmdTrace, subcmdGate,
+	case subcmdHealth, subcmdPD, subcmdTrace, subcmdDeploy, subcmdGate,
 		subcmdWanconfigSelftest, subcmdVersion, subcmdInstall, subcmdObserve:
 		fmt.Fprintf(os.Stderr, "internal dispatch error for subcommand %q\n", rawSub)
 		return 1

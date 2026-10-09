@@ -98,12 +98,12 @@ func runCheckDownstreamEgress(ctx context.Context, deps deployGateDeps, args []s
 	}
 	families, err := parseRequiredEgressFamilies(args[0])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
 		return exitDeployGateUsage
 	}
 	probe, err := readDownstreamProbeConfig(args[1], families)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy-gate: %v\n", err)
+		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
 		return exitDeployGateUsage
 	}
 	return checkDownstreamEgress(ctx, deps, probe, families)

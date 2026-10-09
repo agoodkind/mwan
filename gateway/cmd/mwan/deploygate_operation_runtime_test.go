@@ -72,7 +72,7 @@ func deployWatchCommitIgnoresEarlierObservations(t *testing.T) {
 	}
 	done := make(chan commitResult, 1)
 	go func() {
-		output, err := deployWatchCommand(binary, "deploy-gate", "commit", record.OperationID, record.Generation, "--config", runtimePath)
+		output, err := deployWatchCommand(binary, "deploy", "verify", record.OperationID, record.Generation, "--config", runtimePath)
 		done <- commitResult{output: output, err: err}
 	}()
 	time.Sleep(200 * time.Millisecond)
