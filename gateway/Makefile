@@ -60,51 +60,7 @@ GO_MK_PLATFORMS := linux/amd64
 # Wanconfig pins
 # ---------------------------------------------------------------------------
 
-# The six stack components are versioned here, not by the distribution, and
-# this block is the only place they are pinned. The cgo hook builds libyang
-# and sysrepo at these pins; the stack packaging builds all six, so a version
-# change rebuilds the packages on the next release. nghttp2-asio has no
-# release tags, so it pins a commit.
-#
-# libyang and sysrepo stay on the 3.x series: libyang-cpp v4 compiles against
-# the libyang 3.x API only (5.x renamed print/parse symbols), and sysrepo
-# v3.7.11 declares its libyang dependency as 3.13.x. The cpp bindings' ">="
-# bounds state a floor, not upper compatibility.
-#
-# The gateway deploy fails unless the libsysrepo version the installed binary
-# reports equals the inventory's wanconfig_sysrepo_soversion, so a sysrepo
-# bump here needs that inventory value updated before the release deploys.
-WANCONFIG_LIBYANG_VERSION      := v3.13.6
-WANCONFIG_SYSREPO_VERSION      := v3.7.11
-WANCONFIG_LIBYANG_CPP_VERSION  := v4
-WANCONFIG_SYSREPO_CPP_VERSION  := v6
-WANCONFIG_NGHTTP2_ASIO_VERSION := e877868abe
-WANCONFIG_ROUSETTE_VERSION     := v2
-
-# Each version pin carries the full commit hash its tag pointed at when it was
-# reviewed. The packaging build refuses a tag that resolves elsewhere, so a
-# force-moved upstream tag cannot change what a release packages. A version
-# bump updates both lines together.
-WANCONFIG_LIBYANG_COMMIT      := c2ddd01b9b810a30d6a7d6749a3bc9adeb7b01fb
-WANCONFIG_SYSREPO_COMMIT      := 1b720b196f630f348d9e0c131d326b3fb8c6aca7
-WANCONFIG_LIBYANG_CPP_COMMIT  := 249da7280864fbda5fccb340b455b7000ebfe67d
-WANCONFIG_SYSREPO_CPP_COMMIT  := 01bed8d91bfb746c20cc53ae4e8d64e2c78d2a9e
-WANCONFIG_NGHTTP2_ASIO_COMMIT := e877868abe06a83ed0a6ac6e245c07f6f20866b5
-WANCONFIG_ROUSETTE_COMMIT     := 4685b3379b259bc1b4aca79c92ca47d2b1e48e5e
-
-WANCONFIG_PINS := \
-	$(WANCONFIG_LIBYANG_VERSION) \
-	$(WANCONFIG_SYSREPO_VERSION) \
-	$(WANCONFIG_LIBYANG_CPP_VERSION) \
-	$(WANCONFIG_SYSREPO_CPP_VERSION) \
-	$(WANCONFIG_NGHTTP2_ASIO_VERSION) \
-	$(WANCONFIG_ROUSETTE_VERSION) \
-	$(WANCONFIG_LIBYANG_COMMIT) \
-	$(WANCONFIG_SYSREPO_COMMIT) \
-	$(WANCONFIG_LIBYANG_CPP_COMMIT) \
-	$(WANCONFIG_SYSREPO_CPP_COMMIT) \
-	$(WANCONFIG_NGHTTP2_ASIO_COMMIT) \
-	$(WANCONFIG_ROUSETTE_COMMIT)
+include ../build/wanconfig.mk
 
 # go-makefile's GO_MK_CGO_DEPS hook builds libyang and sysrepo into the
 # per-os/arch prefix before every gate, so the cgo files stay fully checked
