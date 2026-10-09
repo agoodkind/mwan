@@ -1,3 +1,6 @@
+// Package failovercheck validates failover preconditions for a loaded gateway
+// configuration. The check-failover deploy mode and watchdog call the package
+// with the same configuration type.
 package failovercheck
 
 import (
