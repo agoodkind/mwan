@@ -3,10 +3,16 @@ package watchdog
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/http"
+	"slices"
 	"testing"
 	"time"
 
+	"goodkind.io/mwan/internal/clock"
 	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/deployoperation"
+	"goodkind.io/mwan/internal/observation"
 )
 
 // snapshotTestWatchdog returns a watchdog whose snapshot cycle fires on the
@@ -301,5 +307,97 @@ func TestPruneContinuesPastOneFailingSnapshot(t *testing.T) {
 	if len(mock.delSnapshotCalls) != 3 {
 		t.Fatalf("delete attempts = %d, want 3: the pass must continue past"+
 			" the first failure", len(mock.delSnapshotCalls))
+	}
+}
+
+const (
+	pruneTestMachineID = "0123456789abcdef0123456789abcdef"
+	pruneTestBootID    = "01234567-89ab-4def-8123-456789abcdef"
+	pruneTestDigest    = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+)
+
+func armedOperationRecord(vmid, snapshot string) deployoperation.Record {
+	identity := deployoperation.Identity{
+		MachineID: pruneTestMachineID, BootID: pruneTestBootID,
+		ExecutableSHA256: pruneTestDigest, NetworkSHA256: pruneTestDigest,
+		RuntimeSHA256: pruneTestDigest,
+	}
+	var checks []observation.CheckSpec
+	for _, dimension := range []observation.Dimension{
+		observation.DimensionInboundApplication,
+		observation.DimensionDownstreamApplication,
+	} {
+		checks = append(checks, observation.CheckSpec{
+			ID: "ipv4-" + string(dimension), Dimension: dimension,
+			Operation: observation.OperationHTTP,
+			Observer: observation.Endpoint{
+				Kind: observation.EndpointLocal, MachineID: pruneTestMachineID,
+			},
+			Family:         observation.FamilyIPv4,
+			Target:         "http://192.0.2.10/" + string(dimension),
+			TimeoutSeconds: 2, MaxAgeSeconds: 10,
+			ExpectedHTTPStatus: []int{http.StatusOK},
+		})
+	}
+	return deployoperation.Record{
+		Manifest: deployoperation.Manifest{
+			OperationID: "prune-operation", Generation: "first",
+			VMID: vmid, Snapshot: snapshot,
+			Baseline: identity, Target: identity,
+			Paths: deployoperation.Paths{
+				Executable: "/usr/local/bin/mwan",
+				Network:    "/etc/mwan/network.json",
+				Runtime:    "/etc/mwan/config.toml",
+			},
+			Deadline:    time.Now().Add(time.Minute),
+			WatchUnit:   "mwan-deploy-watch-first.service",
+			PollSeconds: 1, ObservationTimeoutSeconds: 5,
+			RecoveryTimeoutSeconds: 10, FailureThreshold: 3,
+			RequiredFamilies: []observation.Family{observation.FamilyIPv4},
+			RequiredChecks:   checks, RestoredRequiredChecks: checks,
+			Observation: observation.RuntimeConfig{
+				MachineIDPath: "/etc/machine-id", ProbeBinary: "/usr/local/bin/mwan",
+			},
+		},
+		Status: deployoperation.Armed,
+	}
+}
+
+func TestPruneDeletesUnreferencedPreDeploySnapshotAtTotalLimit(t *testing.T) {
+	const preDeployCount = 15
+	now := time.Unix(1_700_000_000, 0)
+	knownGood := "known-good-" + now.Format("20060102-150405")
+	preDeploys := make([]string, 0, preDeployCount)
+	listing := ""
+	for i := range preDeployCount {
+		name := fmt.Sprintf("pre-deploy-20260809T1200%02d", i)
+		preDeploys = append(preDeploys, name)
+		listing += name + "\n"
+	}
+	listing += knownGood + "\n"
+	mock := &mockOps{snapshotsOut: []byte(listing)}
+	w := snapshotTestWatchdog(t, mock)
+	w.nowFn = func() time.Time { return now }
+	w.cfg.Watchdog.CheckIntervalDegraded = 1
+	w.cfg.Watchdog.MaxKnownGoodSnapshots = 3
+	w.cfg.Watchdog.MaxTotalSnapshots = preDeployCount
+	referenced := preDeploys[0]
+	store := deployoperation.Store{
+		Path:         w.cfg.Watchdog.RollbackLockFile + ".operation",
+		PollInterval: w.cfg.Watchdog.DegradedInterval(), Clock: clock.Real{},
+	}
+	record := armedOperationRecord(w.cfg.MwanVMID, referenced)
+	if err := store.Create(t.Context(), record); err != nil {
+		t.Fatal(err)
+	}
+
+	w.maybeSnapshot(context.Background())
+
+	want := []string{preDeploys[1]}
+	if !slices.Equal(mock.delSnapshotCalls, want) {
+		t.Fatalf("delSnapshotCalls = %v, want %v", mock.delSnapshotCalls, want)
+	}
+	if !w.lastSnapshotAt.Equal(now) {
+		t.Fatalf("lastSnapshotAt = %s, want %s", w.lastSnapshotAt, now)
 	}
 }

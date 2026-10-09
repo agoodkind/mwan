@@ -316,10 +316,15 @@ func (w *watchdog) pruneSnapshots(ctx context.Context) error {
 	}
 
 	if w.cfg.Watchdog.MaxTotalSnapshots <= 0 ||
-		total <= w.cfg.Watchdog.MaxTotalSnapshots || len(knownGoods) == 0 {
+		total <= w.cfg.Watchdog.MaxTotalSnapshots {
 		return firstErr
 	}
-	excess := min(total-w.cfg.Watchdog.MaxTotalSnapshots, len(knownGoods))
+	excess := total - w.cfg.Watchdog.MaxTotalSnapshots
+	preDeploysDeleted, err := w.prunePreDeploySnapshots(ctx, preDeploys, excess)
+	if err != nil && firstErr == nil {
+		firstErr = err
+	}
+	excess = min(excess-preDeploysDeleted, len(knownGoods))
 	for i := range excess {
 		if err := w.deleteSnapshot(ctx, knownGoods[i]); err != nil {
 			log.ErrorContext(ctx,
@@ -333,6 +338,61 @@ func (w *watchdog) pruneSnapshots(ctx context.Context) error {
 		}
 	}
 	return firstErr
+}
+
+// prunePreDeploySnapshots never deletes the last listed pre-deploy-* snapshot
+// because watchdog rollback restores it. Pruning never deletes the recorded
+// snapshot because deployment recovery restores it.
+// Pruning acquires the rollback coordinator lock before the deployment
+// operation record read and releases it after deletes. Deployment arming
+// acquires the same lock before verifying its snapshot.
+func (w *watchdog) prunePreDeploySnapshots(
+	ctx context.Context, preDeploys []string, excess int,
+) (deleted int, resultErr error) {
+	if len(preDeploys) == 0 {
+		return 0, nil
+	}
+	log := w.tracedLogger(ctx)
+	coordinator, err := rollback.Acquire(
+		ctx, w.cfg.Watchdog.RollbackLockFile, w.cfg.Watchdog.DegradedInterval(),
+	)
+	if err != nil {
+		log.ErrorContext(ctx, "deployment operation coordination failed", "err", err)
+		return 0, fmt.Errorf("acquire rollback coordinator lock before pruning pre-deploy snapshots: %w", err)
+	}
+	defer func() {
+		if closeErr := coordinator.Close(); closeErr != nil {
+			log.ErrorContext(ctx,
+				"deployment operation coordination release failed", "err", closeErr)
+		}
+	}()
+	record, err := w.deployOperationStore().Read(ctx)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		log.ErrorContext(ctx, "deployment operation read failed", "err", err)
+		return 0, fmt.Errorf("read deployment operation record before pruning pre-deploy snapshots: %w", err)
+	}
+	rollbackTarget := preDeploys[len(preDeploys)-1]
+	for _, name := range preDeploys {
+		if deleted >= excess {
+			break
+		}
+		if name == rollbackTarget || name == record.Snapshot {
+			continue
+		}
+		if err := w.deleteSnapshot(ctx, name); err != nil {
+			log.ErrorContext(ctx,
+				"vmDelSnapshot max total",
+				"snapshot", name,
+				"err", err,
+			)
+			if resultErr == nil {
+				resultErr = err
+			}
+			continue
+		}
+		deleted++
+	}
+	return deleted, resultErr
 }
 
 // executeRollbackVM performs the stop-rollback-start cycle on the MWAN VM.
