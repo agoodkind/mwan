@@ -63,6 +63,28 @@ func TestCheck(t *testing.T) {
 			mutate: func(cfg *config.Config) { cfg.Failover.AgentTCPAddr = ":50052" },
 			want:   []string{"agent_tcp_addr"},
 		},
+		"agent_tcp_addr with whitespace host": {
+			mutate: func(cfg *config.Config) { cfg.Failover.AgentTCPAddr = " :50052" },
+			want:   []string{"host is neither an ip address nor a dns hostname"},
+		},
+		"agent_tcp_addr with underscore in host": {
+			mutate: func(cfg *config.Config) { cfg.Failover.AgentTCPAddr = "failover_agent:50052" },
+			want:   []string{"host is neither an ip address nor a dns hostname"},
+		},
+		"agent_tcp_addr with hostname": {
+			mutate: func(cfg *config.Config) {
+				cfg.Failover.AgentTCPAddr = "failover-agent.example.net:50052"
+			},
+			want: nil,
+		},
+		"agent_tcp_addr with ipv4 address": {
+			mutate: func(cfg *config.Config) { cfg.Failover.AgentTCPAddr = "192.0.2.10:50052" },
+			want:   nil,
+		},
+		"agent_tcp_addr with bracketed ipv6 address": {
+			mutate: func(cfg *config.Config) { cfg.Failover.AgentTCPAddr = "[2001:db8::10]:50052" },
+			want:   nil,
+		},
 		"missing mwan_vmid": {
 			mutate: func(cfg *config.Config) { cfg.MwanVMID = "" },
 			want:   []string{"mwan_vmid is required"},
