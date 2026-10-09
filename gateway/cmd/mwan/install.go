@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 
 	systemddbus "github.com/coreos/go-systemd/v22/dbus"
 
+	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/installfile"
 	"goodkind.io/mwan/internal/installspec"
 	"goodkind.io/mwan/internal/networkjson"
@@ -30,10 +32,12 @@ type installFlags struct {
 	apply       bool
 	printSchema string
 	root        string
+	guestType   string
 }
 
 type installOutcome struct {
 	changed      []string
+	removed      []string
 	enabled      []string
 	modules      []yangpub.ModuleChange
 	nacmImported []yangpub.Datastore
@@ -66,7 +70,7 @@ func runInstall(args []string) int {
 	}
 	rooted := flags.root != ""
 	ctx := context.Background()
-	outcome, err := installUnits(ctx, role, flags.root, enablerFor(rooted))
+	outcome, err := installUnits(ctx, role, flags.root, config.GuestType(flags.guestType), enablerFor(rooted))
 	if err == nil && spec.Schema {
 		var schema schemaOutcome
 		schema, err = installSchema(ctx, slog.Default(), flags.root)
@@ -98,6 +102,7 @@ func installUnits(
 	ctx context.Context,
 	role installspec.Role,
 	root string,
+	guest config.GuestType,
 	enabler unitEnabler,
 ) (installOutcome, error) {
 	outcome := installOutcome{changed: nil, enabled: nil, modules: nil, nacmImported: nil}
@@ -106,11 +111,20 @@ func installUnits(
 		return outcome, fmt.Errorf("unknown role %q", role)
 	}
 	for _, file := range spec.Files {
-		content, err := installspec.Read(file.Embedded)
+		content, install, err := file.Content(guest)
 		if err != nil {
 			return outcome, installFailed("read the embedded file", file.Embedded, err)
 		}
 		path := filepath.Join(root, file.Dest)
+		if !install {
+			removeErr := os.Remove(path)
+			if removeErr == nil {
+				outcome.removed = append(outcome.removed, path)
+			} else if !errors.Is(removeErr, fs.ErrNotExist) {
+				return outcome, installFailed("remove the file", file.Dest, removeErr)
+			}
+			continue
+		}
 		changed, err := installfile.Write(path, content, installspec.FileMode)
 		if err != nil {
 			return outcome, installFailed("install the file", file.Dest, err)
@@ -119,7 +133,9 @@ func installUnits(
 			outcome.changed = append(outcome.changed, path)
 		}
 	}
-	if err := enabler(ctx, spec.Enable, len(outcome.changed) > 0); err != nil {
+	slog.InfoContext(ctx, "install: processed unit files",
+		"written", outcome.changed, "removed", outcome.removed, "guest_type", guest)
+	if err := enabler(ctx, spec.Enable, len(outcome.changed)+len(outcome.removed) > 0); err != nil {
 		return outcome, err
 	}
 	outcome.enabled = spec.Enable
@@ -177,11 +193,14 @@ func installFailed(operation string, name string, err error) error {
 }
 
 func reportInstall(out io.Writer, outcome installOutcome, rooted bool) {
-	if len(outcome.changed) == 0 {
+	if len(outcome.changed)+len(outcome.removed) == 0 {
 		fmt.Fprintln(out, "no change")
 	}
 	for _, path := range outcome.changed {
 		fmt.Fprintf(out, "wrote %s\n", path)
+	}
+	for _, path := range outcome.removed {
+		fmt.Fprintf(out, "removed %s\n", path)
 	}
 	for _, module := range outcome.modules {
 		if module.Action == yangpub.ModuleUpdated {
@@ -209,7 +228,9 @@ func reportInstall(out io.Writer, outcome installOutcome, rooted bool) {
 }
 
 func parseInstallFlags(args []string) (installFlags, error) {
-	flags := installFlags{role: "", apply: false, printSchema: "", root: ""}
+	flags := installFlags{
+		role: "", apply: false, printSchema: "", root: "", guestType: string(config.GuestTypeQEMU),
+	}
 	set := flag.NewFlagSet("install", flag.ContinueOnError)
 	set.SetOutput(os.Stderr)
 	set.StringVar(&flags.role, "role", "",
@@ -220,8 +241,14 @@ func parseInstallFlags(args []string) (installFlags, error) {
 		"write the embedded YANG modules to this directory and exit, touching nothing else")
 	set.StringVar(&flags.root, "root", "",
 		"write under this directory instead of /, and name the units rather than enabling them")
+	set.StringVar(&flags.guestType, "guest-type", flags.guestType,
+		"select qemu (default) or lxc. For lxc, the installer writes only settings with the net. prefix "+
+			"from each sysctl file and removes or does not write files without such settings")
 	if err := set.Parse(args); err != nil {
 		return flags, installFailed("parse the flags of", "mwan install", err)
+	}
+	if _, err := config.ParseGuestType(flags.guestType); err != nil {
+		return flags, installFailed("parse the guest type", flags.guestType, err)
 	}
 	if flags.printSchema != "" && flags.apply {
 		return flags, errors.New("--print-schema writes no host files, so it does not take --apply")

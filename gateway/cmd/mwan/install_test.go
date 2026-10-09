@@ -12,6 +12,7 @@ import (
 
 	systemddbus "github.com/coreos/go-systemd/v22/dbus"
 
+	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/installspec"
 	"goodkind.io/mwan/internal/yangpub/schema"
 )
@@ -32,7 +33,7 @@ func TestInstallUnitsWritesTheWanRoleUnits(t *testing.T) {
 	root := t.TempDir()
 	enabler := &recordingEnabler{}
 
-	outcome, err := installUnits(t.Context(), installspec.RoleWAN, root, enabler.enable)
+	outcome, err := installUnits(t.Context(), installspec.RoleWAN, root, config.GuestTypeQEMU, enabler.enable)
 	if err != nil {
 		t.Fatalf("installUnits: %v", err)
 	}
@@ -93,7 +94,7 @@ func TestInstallUnitsIsIdempotent(t *testing.T) {
 	root := t.TempDir()
 	enabler := &recordingEnabler{}
 
-	if _, err := installUnits(t.Context(), installspec.RoleWAN, root, enabler.enable); err != nil {
+	if _, err := installUnits(t.Context(), installspec.RoleWAN, root, config.GuestTypeQEMU, enabler.enable); err != nil {
 		t.Fatalf("first installUnits: %v", err)
 	}
 	unitPath := filepath.Join(root, installspec.SystemdUnitDir, "mwan-agent.service")
@@ -102,7 +103,7 @@ func TestInstallUnitsIsIdempotent(t *testing.T) {
 		t.Fatalf("stat after the first run: %v", err)
 	}
 
-	second, err := installUnits(t.Context(), installspec.RoleWAN, root, enabler.enable)
+	second, err := installUnits(t.Context(), installspec.RoleWAN, root, config.GuestTypeQEMU, enabler.enable)
 	if err != nil {
 		t.Fatalf("second installUnits: %v", err)
 	}
@@ -130,7 +131,7 @@ func TestInstallUnitsRewritesAChangedUnit(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	enabler := &recordingEnabler{}
-	if _, err := installUnits(t.Context(), installspec.RoleHost, root, enabler.enable); err != nil {
+	if _, err := installUnits(t.Context(), installspec.RoleHost, root, config.GuestTypeQEMU, enabler.enable); err != nil {
 		t.Fatalf("first installUnits: %v", err)
 	}
 	unitPath := filepath.Join(root, installspec.SystemdUnitDir, "mwan-ifmgr.service")
@@ -138,7 +139,7 @@ func TestInstallUnitsRewritesAChangedUnit(t *testing.T) {
 		t.Fatalf("overwrite the unit: %v", err)
 	}
 
-	outcome, err := installUnits(t.Context(), installspec.RoleHost, root, enabler.enable)
+	outcome, err := installUnits(t.Context(), installspec.RoleHost, root, config.GuestTypeQEMU, enabler.enable)
 	if err != nil {
 		t.Fatalf("second installUnits: %v", err)
 	}
@@ -167,7 +168,7 @@ func TestInstallFailoverWritesTheUnitAndItsDropIn(t *testing.T) {
 	root := t.TempDir()
 	enabler := &recordingEnabler{}
 
-	outcome, err := installUnits(t.Context(), installspec.RoleFailover, root, enabler.enable)
+	outcome, err := installUnits(t.Context(), installspec.RoleFailover, root, config.GuestTypeQEMU, enabler.enable)
 	if err != nil {
 		t.Fatalf("installUnits: %v", err)
 	}
@@ -241,7 +242,7 @@ func TestHostRoleGetsNoFailoverRelaxation(t *testing.T) {
 	root := t.TempDir()
 	enabler := &recordingEnabler{}
 
-	if _, err := installUnits(t.Context(), installspec.RoleHost, root, enabler.enable); err != nil {
+	if _, err := installUnits(t.Context(), installspec.RoleHost, root, config.GuestTypeQEMU, enabler.enable); err != nil {
 		t.Fatalf("installUnits: %v", err)
 	}
 
@@ -358,7 +359,7 @@ func TestInstallReenablesWhenNoFileChanged(t *testing.T) {
 	enabler := func(ctx context.Context, units []string, reload bool) error {
 		return reenableUnits(ctx, manager, units, reload)
 	}
-	if _, err := installUnits(t.Context(), installspec.RoleHost, root, enabler); err != nil {
+	if _, err := installUnits(t.Context(), installspec.RoleHost, root, config.GuestTypeQEMU, enabler); err != nil {
 		t.Fatalf("first installUnits: %v", err)
 	}
 	const unitName = "mwan-ifmgr.service"
@@ -372,7 +373,7 @@ func TestInstallReenablesWhenNoFileChanged(t *testing.T) {
 	}
 	manager.calls = nil
 
-	outcome, err := installUnits(t.Context(), installspec.RoleHost, root, enabler)
+	outcome, err := installUnits(t.Context(), installspec.RoleHost, root, config.GuestTypeQEMU, enabler)
 	if err != nil {
 		t.Fatalf("second installUnits: %v", err)
 	}
@@ -491,6 +492,83 @@ func TestInstallApplyWritesTheWanconfigAndHostFiles(t *testing.T) {
 		if info.Mode().Perm() != installspec.FileMode {
 			t.Errorf("%s mode = %v, want %v", hostPath, info.Mode().Perm(), installspec.FileMode)
 		}
+	}
+}
+
+func TestInstallApplyForAnLXCGuestKeepsOnlyNamespacedSysctls(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+
+	runInstallChildOn(t, root, config.GuestTypeLXC)
+
+	sysctlPath := filepath.Join(root, installspec.SysctlDir, "99-quiet-console.conf")
+	written, err := os.ReadFile(sysctlPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", sysctlPath, err)
+	}
+	if !bytes.Contains(written, []byte("# Silence nf_conntrack invalid packet logging\nnet.netfilter.nf_conntrack_log_invalid = 0\n")) {
+		t.Errorf("the container run dropped the conntrack setting:\n%s", written)
+	}
+	if bytes.Contains(written, []byte("kernel.")) {
+		t.Errorf("the container run wrote a kernel setting:\n%s", written)
+	}
+	overridePath := filepath.Join(root, installspec.SystemdUnitDir, "systemd-networkd.service.d", "override.conf")
+	onDisk, err := os.ReadFile(overridePath)
+	if err != nil {
+		t.Fatalf("read %s: %v", overridePath, err)
+	}
+	embedded, err := installspec.Read("systemd-networkd-override.conf")
+	if err != nil {
+		t.Fatalf("read the embedded override: %v", err)
+	}
+	if !bytes.Equal(onDisk, embedded) {
+		t.Error("the container run changed a file that is not a sysctl file")
+	}
+}
+
+func TestInstallForAnLXCGuestReplacesTheSysctlFileOfAQEMUInstall(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	sysctlPath := filepath.Join(root, installspec.SysctlDir, "99-quiet-console.conf")
+	runInstallChildOn(t, root, config.GuestTypeQEMU)
+	qemuContent, err := os.ReadFile(sysctlPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", sysctlPath, err)
+	}
+	if !bytes.Contains(qemuContent, []byte("kernel.")) {
+		t.Fatalf("the qemu install wrote no kernel setting:\n%s", qemuContent)
+	}
+
+	output := runInstallChildOn(t, root, config.GuestTypeLXC)
+
+	lxcContent, err := os.ReadFile(sysctlPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", sysctlPath, err)
+	}
+	if bytes.Contains(lxcContent, []byte("kernel.")) {
+		t.Errorf("the lxc rerun left a kernel setting:\n%s", lxcContent)
+	}
+	if !strings.Contains(output, "wrote "+sysctlPath) {
+		t.Errorf("the lxc rerun did not report writing %s:\n%s", sysctlPath, output)
+	}
+}
+
+func TestInstallApplyRejectsAnUnknownGuestType(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+
+	command := exec.Command(
+		os.Args[0], "install", "--apply", "--role", "wan", "--guest-type", "docker", "--root", root)
+	command.Env = append(os.Environ(), childMainEnv+"=1")
+
+	output, err := command.CombinedOutput()
+
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != exitInstallUsage {
+		t.Fatalf("err = %v, want exit code %d\n%s", err, exitInstallUsage, output)
+	}
+	if entries, err := os.ReadDir(root); err != nil || len(entries) != 0 {
+		t.Fatalf("an unknown guest type wrote %d entries (err %v)", len(entries), err)
 	}
 }
 

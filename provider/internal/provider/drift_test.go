@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/installspec"
 )
 
@@ -72,119 +73,132 @@ func TestProviderRoleMatchesMwanInstall(t *testing.T) {
 	provider := newServer(t, buildCommit, "")
 
 	for _, role := range installspec.Roles() {
-		t.Run(string(role), func(t *testing.T) {
-			root := t.TempDir()
-			command := exec.Command(binary, "install", "--apply", "--role", string(role), "--root", root)
-			output, err := command.CombinedOutput()
-			if err != nil {
-				t.Fatalf("mwan install --role %s: %v\n%s", role, err, output)
-			}
-			installed := walkInstalled(t, root)
+		for _, guest := range config.GuestTypes() {
+			t.Run(string(role)+"/"+string(guest), func(t *testing.T) {
+				checkRoleMatchesInstall(t, provider, binary, role, guest)
+			})
+		}
+	}
+}
 
-			data, diagnostics := provider.readRole(t, string(role))
-			if len(diagnostics) > 0 {
-				t.Fatalf("read mwan_role %s: %v", role, diagnostics[0].Detail)
-			}
+func checkRoleMatchesInstall(
+	t *testing.T,
+	provider *protocolServer,
+	binary string,
+	role installspec.Role,
+	guest config.GuestType,
+) {
+	root := t.TempDir()
+	command := exec.Command(
+		binary, "install", "--apply", "--role", string(role), "--guest-type", string(guest), "--root", root)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("mwan install --role %s --guest-type %s: %v\n%s", role, guest, err, output)
+	}
+	installed := walkInstalled(t, root)
 
-			want := map[string]installedFile{}
-			for _, file := range data.Files {
-				want[file.Path] = installedFile{content: []byte(file.Content), mode: parseMode(t, file.Mode)}
-			}
-			for _, module := range data.Modules {
-				want[module.Path] = installedFile{content: []byte(module.Content), mode: parseMode(t, module.Mode)}
-			}
+	data, diagnostics := provider.readRoleForGuest(t, string(role), string(guest))
+	if len(diagnostics) > 0 {
+		t.Fatalf("read mwan_role %s: %v", role, diagnostics[0].Detail)
+	}
 
-			for path, wantFile := range want {
-				gotFile, found := installed[path]
-				if !found {
-					t.Errorf("mwan install did not write %s", path)
-					continue
-				}
-				if !bytes.Equal(gotFile.content, wantFile.content) {
-					t.Errorf("%s differs between mwan install and the provider", path)
-				}
-				if gotFile.mode != wantFile.mode {
-					t.Errorf("%s mode = %v from mwan install, %v from the provider", path, gotFile.mode, wantFile.mode)
-				}
-			}
-			for path := range installed {
-				// The policy is compared with sysrepo_data below.
-				if path == installspec.NACMPolicyPath {
-					continue
-				}
-				if _, listed := want[path]; !listed {
-					t.Errorf("mwan install wrote %s, which the provider does not list", path)
-				}
-			}
+	want := map[string]installedFile{}
+	for _, file := range data.Files {
+		want[file.Path] = installedFile{content: []byte(file.Content), mode: parseMode(t, file.Mode)}
+	}
+	for _, module := range data.Modules {
+		want[module.Path] = installedFile{content: []byte(module.Content), mode: parseMode(t, module.Mode)}
+	}
 
-			spec, _ := installspec.For(role)
-			unitNames := make([]string, 0, len(data.Units))
-			for _, unit := range data.Units {
-				if !slices.Contains(spec.Enable, unit.Name) {
-					if slices.Contains(strings.Fields(enableLine(string(output))), unit.Name) {
-						t.Errorf("mwan install output enables the not-owned unit %s:\n%s", unit.Name, output)
-					}
-				} else {
-					unitNames = append(unitNames, unit.Name)
-				}
-				if !unit.Enabled {
-					t.Errorf("unit %s is listed but not enabled", unit.Name)
-				}
-				for _, path := range unit.Files {
-					if _, written := installed[path]; !written {
-						t.Errorf("unit %s reads %s, which mwan install did not write", unit.Name, path)
-					}
-				}
-			}
-			wantEnable := enableMarker + strings.Join(unitNames, " ")
-			if !strings.Contains(string(output), wantEnable) {
-				t.Errorf("mwan install output:\n%s\nwant the line %q", output, wantEnable)
-			}
+	for path, wantFile := range want {
+		gotFile, found := installed[path]
+		if !found {
+			t.Errorf("mwan install did not write %s", path)
+			continue
+		}
+		if !bytes.Equal(gotFile.content, wantFile.content) {
+			t.Errorf("%s differs between mwan install and the provider", path)
+		}
+		if gotFile.mode != wantFile.mode {
+			t.Errorf("%s mode = %v from mwan install, %v from the provider", path, gotFile.mode, wantFile.mode)
+		}
+	}
+	for path := range installed {
+		// The policy is compared with sysrepo_data below.
+		if path == installspec.NACMPolicyPath {
+			continue
+		}
+		if _, listed := want[path]; !listed {
+			t.Errorf("mwan install wrote %s, which the provider does not list", path)
+		}
+	}
 
-			for path, file := range installed {
-				if !strings.HasPrefix(path, installspec.SystemdUnitDir+"/") || !strings.HasSuffix(path, ".service") {
-					continue
-				}
-				for line := range strings.SplitSeq(string(file.content), "\n") {
-					command, found := strings.CutPrefix(line, "ExecStart=")
-					if !found {
-						continue
-					}
-					program := strings.Fields(command)[0]
-					if filepath.Base(program) == "mwan" && program != data.BinaryPath {
-						t.Errorf("%s starts %s, the provider binary_path is %s", path, program, data.BinaryPath)
-					}
-				}
+	spec, _ := installspec.For(role)
+	unitNames := make([]string, 0, len(data.Units))
+	for _, unit := range data.Units {
+		if !slices.Contains(spec.Enable, unit.Name) {
+			if slices.Contains(strings.Fields(enableLine(string(output))), unit.Name) {
+				t.Errorf("mwan install output enables the not-owned unit %s:\n%s", unit.Name, output)
 			}
+		} else {
+			unitNames = append(unitNames, unit.Name)
+		}
+		if !unit.Enabled {
+			t.Errorf("unit %s is listed but not enabled", unit.Name)
+		}
+		for _, path := range unit.Files {
+			if _, written := installed[path]; !written {
+				t.Errorf("unit %s reads %s, which mwan install did not write", unit.Name, path)
+			}
+		}
+	}
+	wantEnable := enableMarker + strings.Join(unitNames, " ")
+	if !strings.Contains(string(output), wantEnable) {
+		t.Errorf("mwan install output:\n%s\nwant the line %q", output, wantEnable)
+	}
 
-			_, policyWritten := installed[installspec.NACMPolicyPath]
-			if policyWritten != (len(data.SysrepoData) > 0) {
-				t.Errorf("mwan install wrote the policy file = %t, the provider lists %d sysrepo_data entries",
-					policyWritten, len(data.SysrepoData))
+	for path, file := range installed {
+		if !strings.HasPrefix(path, installspec.SystemdUnitDir+"/") || !strings.HasSuffix(path, ".service") {
+			continue
+		}
+		for line := range strings.SplitSeq(string(file.content), "\n") {
+			command, found := strings.CutPrefix(line, "ExecStart=")
+			if !found {
+				continue
 			}
+			program := strings.Fields(command)[0]
+			if filepath.Base(program) == "mwan" && program != data.BinaryPath {
+				t.Errorf("%s starts %s, the provider binary_path is %s", path, program, data.BinaryPath)
+			}
+		}
+	}
 
-			wantImport := ""
-			if len(data.SysrepoData) > 0 {
-				datastores := make([]string, 0, len(data.SysrepoData))
-				policy := installed[installspec.NACMPolicyPath]
-				for _, entry := range data.SysrepoData {
-					datastores = append(datastores, entry.Datastore)
-					if !bytes.Equal([]byte(entry.Content), policy.content) {
-						t.Errorf("sysrepo_data content for %s differs from the policy mwan install wrote", entry.Datastore)
-					}
-					if entry.Module != data.SysrepoData[0].Module {
-						t.Errorf("sysrepo_data modules differ: %s and %s", entry.Module, data.SysrepoData[0].Module)
-					}
-				}
-				wantImport = "imported the " + data.SysrepoData[0].Module + " policy into " + strings.Join(datastores, " and ")
+	_, policyWritten := installed[installspec.NACMPolicyPath]
+	if policyWritten != (len(data.SysrepoData) > 0) {
+		t.Errorf("mwan install wrote the policy file = %t, the provider lists %d sysrepo_data entries",
+			policyWritten, len(data.SysrepoData))
+	}
+
+	wantImport := ""
+	if len(data.SysrepoData) > 0 {
+		datastores := make([]string, 0, len(data.SysrepoData))
+		policy := installed[installspec.NACMPolicyPath]
+		for _, entry := range data.SysrepoData {
+			datastores = append(datastores, entry.Datastore)
+			if !bytes.Equal([]byte(entry.Content), policy.content) {
+				t.Errorf("sysrepo_data content for %s differs from the policy mwan install wrote", entry.Datastore)
 			}
-			if wantImport == "" && strings.Contains(string(output), "imported the") {
-				t.Errorf("mwan install imported a policy, and the provider lists no sysrepo_data:\n%s", output)
+			if entry.Module != data.SysrepoData[0].Module {
+				t.Errorf("sysrepo_data modules differ: %s and %s", entry.Module, data.SysrepoData[0].Module)
 			}
-			if wantImport != "" && !strings.Contains(string(output), wantImport) {
-				t.Errorf("mwan install output:\n%s\nwant the line %q", output, wantImport)
-			}
-		})
+		}
+		wantImport = "imported the " + data.SysrepoData[0].Module + " policy into " + strings.Join(datastores, " and ")
+	}
+	if wantImport == "" && strings.Contains(string(output), "imported the") {
+		t.Errorf("mwan install imported a policy, and the provider lists no sysrepo_data:\n%s", output)
+	}
+	if wantImport != "" && !strings.Contains(string(output), wantImport) {
+		t.Errorf("mwan install output:\n%s\nwant the line %q", output, wantImport)
 	}
 }
 

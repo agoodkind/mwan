@@ -3,6 +3,9 @@ package ops_test
 import (
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -107,6 +110,50 @@ func TestRunInGuestFailsWhenPctExecOutlivesTheWait(t *testing.T) {
 
 	if err == nil || !strings.Contains(err.Error(), "did not exit within") {
 		t.Fatalf("err = %v, want one containing %q", err, "did not exit within")
+	}
+}
+
+func TestGuestExecRunsPctExecFirstForLXC(t *testing.T) {
+	argsFile := installFakeGuestExec(t, "pct", "1700000000\n", "", 0)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = listener.Close() }()
+	accepted := make(chan struct{}, 1)
+	acceptDone := make(chan struct{})
+	go func() {
+		defer close(acceptDone)
+		connection, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			return
+		}
+		_ = connection.Close()
+		accepted <- struct{}{}
+	}()
+	var cfg config.Config
+	cfg.GuestType = config.GuestTypeLXC
+	cfg.Watchdog.MwanAgentTCPAddr = listener.Addr().String()
+	realOps := ops.NewRealOps(&cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	result, err := realOps.GuestExec(context.Background(), testVMID, "cat", bootIDPath)
+	if err != nil {
+		t.Fatalf("GuestExec: %v", err)
+	}
+
+	if result.Stdout != "1700000000\n" {
+		t.Fatalf("stdout = %q, want the pct exec output", result.Stdout)
+	}
+	wantArgs := "exec\n123\n--\ncat\n" + bootIDPath + "\n"
+	if got := readRecordedArgs(t, argsFile); got != wantArgs {
+		t.Fatalf("pct args = %q, want %q", got, wantArgs)
+	}
+	_ = listener.Close()
+	<-acceptDone
+	select {
+	case <-accepted:
+		t.Fatal("GuestExec dialed the management TCP address for an LXC guest")
+	default:
 	}
 }
 

@@ -24,6 +24,7 @@ type guestDriver interface {
 }
 
 type guestExecRunner interface {
+	hasGuestAgentChannels() bool
 	execGuest(
 		ctx context.Context,
 		log *slog.Logger,
@@ -62,6 +63,8 @@ func newGuestDriver(guestType config.GuestType) guestDriver {
 }
 
 type qemuGuest struct{}
+
+func (qemuGuest) hasGuestAgentChannels() bool { return true }
 
 func (qemuGuest) binary() string { return qmBinary }
 
@@ -106,6 +109,8 @@ func (qemuGuest) thawArgs(vmid string) ([]string, error) {
 }
 
 type lxcGuest struct{}
+
+func (lxcGuest) hasGuestAgentChannels() bool { return false }
 
 func (lxcGuest) binary() string { return pctBinary }
 

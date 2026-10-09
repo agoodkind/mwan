@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/yangpub"
 	"goodkind.io/mwan/internal/yangpub/schema"
@@ -116,12 +117,16 @@ func runChild(t *testing.T, env []string, args ...string) string {
 	return stdout.String()
 }
 
-// runInstallChild runs `mwan install --apply --role wan --root root` in a
-// child process and returns its stdout.
 func runInstallChild(t *testing.T, root string) string {
 	t.Helper()
-	return runChild(t, []string{childMainEnv + "=1"},
-		"install", "--apply", "--role", "wan", "--root", root)
+	env := []string{childMainEnv + "=1"}
+	return runChild(t, env, "install", "--apply", "--role", "wan", "--root", root)
+}
+
+func runInstallChildOn(t *testing.T, root string, guest config.GuestType) string {
+	t.Helper()
+	env := []string{childMainEnv + "=1"}
+	return runChild(t, env, "install", "--apply", "--role", "wan", "--guest-type", string(guest), "--root", root)
 }
 
 // sysrepoChildRuns numbers the sysrepo child steps, so parallel tests never

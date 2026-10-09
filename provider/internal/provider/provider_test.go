@@ -252,6 +252,48 @@ func TestRoleHostHasNoYangModules(t *testing.T) {
 	}
 }
 
+func TestRoleLXCGuestKeepsOnlyNamespacedSysctls(t *testing.T) {
+	t.Parallel()
+	provider := newServer(t, buildCommit, "")
+
+	role, diagnostics := provider.readRoleForGuest(t, "wan", "lxc")
+
+	if len(diagnostics) > 0 {
+		t.Fatalf("read failed: %s", diagnosticText(diagnostics))
+	}
+	const sysctlPath = "/etc/sysctl.d/99-quiet-console.conf"
+	for _, file := range role.Files {
+		if file.Path != sysctlPath {
+			continue
+		}
+		if !strings.Contains(file.Content, "net.netfilter.nf_conntrack_log_invalid = 0") {
+			t.Errorf("the lxc sysctl file dropped the conntrack setting:\n%s", file.Content)
+		}
+		for line := range strings.SplitSeq(file.Content, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+				continue
+			}
+			if !strings.HasPrefix(trimmed, "net.") {
+				t.Errorf("the lxc sysctl file lists a key outside net.: %q", trimmed)
+			}
+		}
+		return
+	}
+	t.Fatalf("the wan role for lxc lists no %s", sysctlPath)
+}
+
+func TestRoleRejectsAnUnknownGuestType(t *testing.T) {
+	t.Parallel()
+	provider := newServer(t, buildCommit, "")
+
+	_, diagnostics := provider.readRoleForGuest(t, "wan", "docker")
+
+	if len(diagnostics) == 0 {
+		t.Fatal("an unknown guest type was accepted")
+	}
+}
+
 func TestRoleRejectsAnUnknownRole(t *testing.T) {
 	t.Parallel()
 	provider := newServer(t, buildCommit, "")

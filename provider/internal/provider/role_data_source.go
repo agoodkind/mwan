@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
+	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/installspec"
 	moduleschema "goodkind.io/mwan/internal/yangpub/schema"
 )
@@ -21,6 +22,7 @@ type roleDataSource struct{}
 
 type roleModel struct {
 	Role        types.String       `tfsdk:"role"`
+	GuestType   types.String       `tfsdk:"guest_type"`
 	BinaryPath  types.String       `tfsdk:"binary_path"`
 	Files       []roleFileModel    `tfsdk:"files"`
 	Units       []unitModel        `tfsdk:"units"`
@@ -73,6 +75,15 @@ func roleNames() []string {
 	return names
 }
 
+func guestTypeNames() []string {
+	guests := config.GuestTypes()
+	names := make([]string, 0, len(guests))
+	for _, guest := range guests {
+		names = append(names, string(guest))
+	}
+	return names
+}
+
 func (d *roleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: "The data source returns role files, service settings, YANG modules, and sysrepo imports. " +
@@ -82,6 +93,15 @@ func (d *roleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 				Required:    true,
 				Description: "Select wan, failover, or host.",
 				Validators:  []validator.String{stringvalidator.OneOf(roleNames()...)},
+			},
+			"guest_type": schema.StringAttribute{
+				Optional:   true,
+				Validators: []validator.String{stringvalidator.OneOf(guestTypeNames()...)},
+				Description: "guest_type accepts qemu or lxc. A null guest_type means qemu. " +
+					"For lxc, the data source returns only settings with the net. prefix and " +
+					"the comment lines directly above each setting from each sysctl file. " +
+					"The data source omits files without such settings. " +
+					"guest_type must match the guest-type leaf in the gateway's network.json.",
 			},
 			"files": schema.ListNestedAttribute{
 				Computed:    true,
@@ -169,12 +189,25 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 		return
 	}
 
+	guest := config.GuestTypeQEMU
+	if !model.GuestType.IsNull() {
+		parsedGuest, parseErr := config.ParseGuestType(model.GuestType.ValueString())
+		if parseErr != nil {
+			resp.Diagnostics.AddError("Invalid guest type", parseErr.Error())
+			return
+		}
+		guest = parsedGuest
+	}
+
 	model.Files = make([]roleFileModel, 0, len(spec.Files))
 	for _, file := range spec.Files {
-		content, err := installspec.Read(file.Embedded)
+		content, install, err := file.Content(guest)
 		if err != nil {
 			resp.Diagnostics.AddError("Cannot read an embedded file", err.Error())
 			return
+		}
+		if !install {
+			continue
 		}
 		model.Files = append(model.Files, newRoleFile(file.Dest, content))
 	}
