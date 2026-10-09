@@ -81,8 +81,11 @@ func compiledInputRules(t *testing.T, cfg firewall.Config) []string {
 	}
 	var inputRules []string
 	for _, chain := range ruleset.Chains {
-		if chain.Name == "input" {
-			inputRules = chain.Rules
+		if chain.Name != "input" {
+			continue
+		}
+		for _, rule := range chain.Rules {
+			inputRules = append(inputRules, rule.Expression)
 		}
 	}
 	if len(inputRules) == 0 {

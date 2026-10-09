@@ -14,7 +14,9 @@ import (
 	"golang.org/x/sys/unix"
 
 	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/ifmgr"
+	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/wanstate"
 )
@@ -493,10 +495,41 @@ func familyReady(wan WAN, gateways gatewaySet, health netif.HealthStates, transl
 	if !familyConfigured(wan, family) {
 		return false
 	}
-	if family == familyV4 {
-		return translation.V4.Ready && wanEnabled(gateways.V4, health.State(wan.Key()))
+	return conditionsMet(interfaceintent.PolicyFamilyConditions(), wan, gateways, health, translation, family)
+}
+
+// Unsupported activation conditions evaluate to false.
+func conditionsMet(
+	conditions []interfaceintent.PolicyCondition,
+	wan WAN,
+	gateways gatewaySet,
+	health netif.HealthStates,
+	translation wanstate.MemberTranslation,
+	family string,
+) bool {
+	gateway := gateways.V4
+	translationReady := translation.V4.Ready
+	if family == familyV6 {
+		gateway = gateways.V6
+		translationReady = translation.V6.Ready
 	}
-	return translation.V6.Ready && wanEnabled(gateways.V6, health.State(wan.Key()))
+	for _, condition := range conditions {
+		met := false
+		switch condition {
+		case interfaceintent.PolicyConditionTranslation:
+			met = translationReady
+		case interfaceintent.PolicyConditionGateway:
+			met = gateway != ""
+		case interfaceintent.PolicyConditionHealth:
+			met = netif.HealthIsHealthy(health.State(wan.Key()))
+		case interfaceintent.PolicyConditionSourcePrefix:
+			met = sourcePrefixV6(wan, translation) != ""
+		}
+		if !met {
+			return false
+		}
+	}
+	return true
 }
 
 func appendWANDefaultRoutes(routes []netif.RouteSpec, wan WAN, gateways gatewaySet, health netif.HealthStates, translation wanstate.MemberTranslation) []netif.RouteSpec {
@@ -550,53 +583,45 @@ func appendWANRules(
 	health netif.HealthStates,
 	translation wanstate.MemberTranslation,
 ) []netif.DesiredRule {
-	if familyReady(wan, gateways, health, translation, familyV4) {
-		rules = append(rules, netif.DesiredRule{
-			Family:   familyV4,
-			Priority: wan.FwMarkPrio,
-			From:     "",
-			Mark:     wan.FwMark,
-			IifName:  "",
-			UIDRange: "",
-			Table:    "",
-			TableID:  wan.TableID,
-		})
-		if wan.V4Source != "" {
-			rules = append(rules, netif.DesiredRule{
-				Family:   familyV4,
-				Priority: wan.FromPrio,
-				From:     wan.V4Source,
-				Mark:     0,
-				IifName:  "",
-				UIDRange: "",
-				Table:    "",
-				TableID:  wan.TableID,
-			})
-		}
+	prefixTranslation := false
+	externalConfigured := false
+	external := netip.Prefix{}
+	if policy := wan.TranslationV6; policy != nil && policy.Mode == config.TranslationNPTv6 && policy.NPT != nil {
+		prefixTranslation = true
+		externalConfigured = policy.NPT.ExternalSource == config.PrefixConfigured
+		external = policy.NPT.ExternalPrefix
 	}
-	if familyReady(wan, gateways, health, translation, familyV6) {
+	provider := interfaceintent.NewPolicyProvider(
+		connectionid.ID(wan.Key()), wan.TableID, wan.FwMark, wan.FwMarkPrio, wan.FromPrio,
+		wan.TranslationV4 != nil, wan.V4Source,
+		wan.TranslationV6 != nil, prefixTranslation, externalConfigured, external,
+	)
+	for _, intent := range interfaceintent.ConfiguredPolicyRules(provider) {
+		family := familyV4
+		if intent.Family == interfaceintent.PolicyFamilyIPv6 {
+			family = familyV6
+		}
+		if !conditionsMet(intent.ActivationConditions, wan, gateways, health, translation, family) {
+			continue
+		}
+		from := ""
+		if intent.Kind == interfaceintent.PolicyRuleSource {
+			// IPv6 source rules use the external prefix from translation state.
+			from = wan.V4Source
+			if family == familyV6 {
+				from = sourcePrefixV6(wan, translation)
+			}
+		}
 		rules = append(rules, netif.DesiredRule{
-			Family:   familyV6,
-			Priority: wan.FwMarkPrio,
-			From:     "",
-			Mark:     wan.FwMark,
+			Family:   family,
+			Priority: intent.Priority,
+			From:     from,
+			Mark:     intent.Mark,
 			IifName:  "",
 			UIDRange: "",
 			Table:    "",
-			TableID:  wan.TableID,
+			TableID:  intent.TableID,
 		})
-		if prefix := sourcePrefixV6(wan, translation); prefix != "" {
-			rules = append(rules, netif.DesiredRule{
-				Family:   familyV6,
-				Priority: wan.FromPrio,
-				From:     prefix,
-				Mark:     0,
-				IifName:  "",
-				UIDRange: "",
-				Table:    "",
-				TableID:  wan.TableID,
-			})
-		}
 	}
 	return rules
 }
@@ -822,13 +847,6 @@ func isDefaultRouteEvent(event netif.Event) bool {
 		return false
 	}
 	return event.Kind == netif.EvRouteAdded || event.Kind == netif.EvRouteDeleted
-}
-
-func wanEnabled(gateway string, healthState string) bool {
-	if gateway == "" {
-		return false
-	}
-	return netif.HealthIsHealthy(healthState)
 }
 
 func withPrefix(value string, prefix string) string {

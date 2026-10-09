@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/netip"
 	"strconv"
+	"strings"
 
 	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/interfaceintent"
@@ -35,6 +36,16 @@ const (
 	keySeparator        = "|"
 	mainTableID  uint32 = 254
 )
+
+// encodeKey escapes "%" as "%25" before escaping "|" as "%7C".
+func encodeKey(components ...string) string {
+	encoded := make([]string, 0, len(components))
+	for _, component := range components {
+		component = strings.ReplaceAll(component, "%", "%25")
+		encoded = append(encoded, strings.ReplaceAll(component, keySeparator, "%7C"))
+	}
+	return strings.Join(encoded, keySeparator)
+}
 
 // RouteKey matches the YANG route key path of interface, family, and destination.
 type RouteKey struct {

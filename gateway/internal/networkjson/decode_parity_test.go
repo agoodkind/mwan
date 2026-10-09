@@ -121,6 +121,7 @@ func TestDecodeMatchesLoadForValidDocuments(t *testing.T) {
 				t.Fatalf("Decode: %v", err)
 			}
 			requireSameConfig(t, loaded, decoded)
+			requireSameProjections(t, loaded, decoded)
 			canonical, err := networkjson.Canonicalize(data)
 			if err != nil {
 				t.Fatalf("Canonicalize: %v", err)
@@ -130,6 +131,7 @@ func TestDecodeMatchesLoadForValidDocuments(t *testing.T) {
 				t.Fatalf("Load canonical: %v", err)
 			}
 			requireSameConfig(t, loaded, loadedCanonical)
+			requireSameProjections(t, loaded, loadedCanonical)
 		})
 	}
 }
