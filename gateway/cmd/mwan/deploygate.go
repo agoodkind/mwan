@@ -82,6 +82,7 @@ const (
 	gateModeCheckRelease    deployGateMode = "check-release"
 	gateModeCheckFirewall   deployGateMode = "check-firewall"
 	gateModeInspectFirewall deployGateMode = "inspect-firewall"
+	gateModeCheckFailover   deployGateMode = "check-failover"
 )
 
 // traceIDPattern limits trace IDs written to verdict files and systemd unit names.
@@ -218,14 +219,9 @@ func runDeploy(args []string) int {
 			return exitDeployGateUsage
 		}
 		return checkNetwork(deps, rest[0], rest[1])
-	case gateModeCheckNetworkd:
-		return runNetworkdCheck(rest)
-	case gateModeCheckRelease:
-		return runReleaseCheck(rest)
-	case gateModeCheckFirewall:
-		return runFirewallCheck(rest)
-	case gateModeInspectFirewall:
-		return runFirewallInspect(rest)
+	case gateModeCheckNetworkd, gateModeCheckRelease, gateModeCheckFirewall,
+		gateModeInspectFirewall, gateModeCheckFailover:
+		return runConfigurationGate(deployGateMode(args[0]), rest)
 	case gateModeWaitReboot:
 		if len(rest) != 3 {
 			printDeployGateUsage()
@@ -494,6 +490,7 @@ func printDeployGateUsage() {
 			" | check-networkd <network_json> <schema_dir> <unit_dir>"+
 			" | check-release <connection_id> <previous_owner> [--config <config_path>]"+
 			" | check-firewall <network_json> <schema_dir>"+
+			" | check-failover <config.toml>"+
 			" | inspect-firewall <network_json> <schema_dir>"+
 			" | wait-reboot <vmid> <old_boot_id> <seconds>"+
 			" | wait-egress <seconds> <families> <consecutive_rounds>"+
