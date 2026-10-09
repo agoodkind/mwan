@@ -76,9 +76,9 @@ Use `<family>|<table>|<chain>` for `firewall_chains`, `<family>|<table>|<chain>|
 
 Never identify rules by a hash of the complete expression, kernel handles, or whole-chain position. Include deterministic occurrence disambiguation in `scope` for indistinguishable duplicates within the same source group. Do not require new user JSON IDs. Do not promise distinct identities for indistinguishable duplicates across arbitrary edits.
 
-Expose `key`, `family`, `table`, `chain`, `purpose`, `scope`, `action`, and canonical `expression`. Include applicable typed match fields from existing compiler inputs, including `source`, `destination`, `interface`, and `mark` when applicable. Use null when a field does not apply. Each chain object must include an ordered `rule_order` list of rule keys. Rule order is separate from rule identity. Require every projected firewall rule key exactly once in its owning chain's `rule_order`. Reject missing, duplicated, or cross-chain keys. Require full compiler output coverage.
+Expose `key`, `family`, `table`, `chain`, `purpose`, `scope`, `action`, and canonical `expression`. Include applicable typed match fields from existing compiler inputs, including `source`, `destination`, `interface`, `output_interface`, and `mark` when applicable. Use `interface` for the input interface. Use null when a field does not apply. Each chain object must include an ordered `rule_order` list of rule keys. Rule order is separate from rule identity. Require every projected firewall rule key exactly once in its owning chain's `rule_order`. Reject missing, duplicated, or cross-chain keys. Require full compiler output coverage.
 
-Project configured set definitions and configured members when the compiler uses sets. Exclude observed kernel handles and runtime-populated membership. Preserve the compiler's distinction between configured definitions and runtime values.
+Project configured set definitions and configured members when the compiler uses sets. Require each `firewall_sets` entry to include `family`, `table`, `set`, `key_type` as the nftables element type, and `elements` as the set of configured prefixes. Exclude observed kernel handles and runtime-populated membership. Preserve the compiler's distinction between configured definitions and runtime values.
 
 ## Provider state and plan behavior
 
