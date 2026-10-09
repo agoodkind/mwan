@@ -495,10 +495,6 @@ func TestInstallApplyWritesTheWanconfigAndHostFiles(t *testing.T) {
 	}
 }
 
-// TestInstallApplyForAnLXCGuestKeepsOnlyNamespacedSysctls proves a wan install
-// with --guest-type lxc writes the conntrack setting of the quiet-console file and
-// none of its kernel settings, which a container cannot write, and still writes
-// the other files unchanged.
 func TestInstallApplyForAnLXCGuestKeepsOnlyNamespacedSysctls(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -510,7 +506,7 @@ func TestInstallApplyForAnLXCGuestKeepsOnlyNamespacedSysctls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read %s: %v", sysctlPath, err)
 	}
-	if !bytes.Contains(written, []byte("net.netfilter.nf_conntrack_log_invalid = 0")) {
+	if !bytes.Contains(written, []byte("# Silence nf_conntrack invalid packet logging\nnet.netfilter.nf_conntrack_log_invalid = 0\n")) {
 		t.Errorf("the container run dropped the conntrack setting:\n%s", written)
 	}
 	if bytes.Contains(written, []byte("kernel.")) {

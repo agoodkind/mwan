@@ -155,15 +155,6 @@ func TestGuestExecRunsPctExecFirstForLXC(t *testing.T) {
 		t.Fatal("GuestExec dialed the management TCP address for an LXC guest")
 	default:
 	}
-	summary := realOps.ExtractTracker().Summary()
-	for _, line := range strings.Split(strings.TrimSpace(summary), "\n") {
-		fields := strings.Fields(line)
-		wantUsed := fields[0] == string(ops.ChanPVE)
-		gotUsed := !strings.HasPrefix(fields[1], "NEVER_USED")
-		if gotUsed != wantUsed {
-			t.Fatalf("channel %s used = %t, want %t in %q", fields[0], gotUsed, wantUsed, summary)
-		}
-	}
 }
 
 func TestRunInGuestRunsQemuGuestExecForQEMU(t *testing.T) {

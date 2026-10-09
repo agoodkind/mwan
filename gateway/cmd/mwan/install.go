@@ -242,8 +242,8 @@ func parseInstallFlags(args []string) (installFlags, error) {
 	set.StringVar(&flags.root, "root", "",
 		"write under this directory instead of /, and name the units rather than enabling them")
 	set.StringVar(&flags.guestType, "guest-type", flags.guestType,
-		"select qemu (default) or lxc. For lxc, the installer writes only net. keys from each sysctl file. "+
-			"For lxc, the installer skips sysctl files with no net. key")
+		"select qemu (default) or lxc. For lxc, the installer writes only settings with the net. prefix "+
+			"from each sysctl file and removes or does not write files without such settings")
 	if err := set.Parse(args); err != nil {
 		return flags, installFailed("parse the flags of", "mwan install", err)
 	}

@@ -97,10 +97,11 @@ func (d *roleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 			"guest_type": schema.StringAttribute{
 				Optional:   true,
 				Validators: []validator.String{stringvalidator.OneOf(guestTypeNames()...)},
-				Description: "Select qemu (default when absent) or lxc. " +
-					"For lxc, files lists sysctl files with only their net. keys. " +
-					"For lxc, files omits sysctl files with no net. key. " +
-					"The value must match the guest-type leaf in the gateway's network.json.",
+				Description: "guest_type accepts qemu or lxc. A null guest_type means qemu. " +
+					"For lxc, the data source returns only settings with the net. prefix and " +
+					"the comment lines directly above each setting from each sysctl file. " +
+					"The data source omits files without such settings. " +
+					"guest_type must match the guest-type leaf in the gateway's network.json.",
 			},
 			"files": schema.ListNestedAttribute{
 				Computed:    true,

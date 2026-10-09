@@ -32,16 +32,16 @@ func (file File) Content(guest config.GuestType) ([]byte, bool, error) {
 	if guest != config.GuestTypeLXC || !file.isSysctl() {
 		return content, true, nil
 	}
-	kept := NamespacedSysctlSettings(content)
+	kept := namespacedSysctlSettings(content)
 	return kept, kept != nil, nil
 }
 
-// NamespacedSysctlSettings keeps each net. setting of sysctl file content with
-// the comment lines directly above it. NamespacedSysctlSettings drops comments
+// namespacedSysctlSettings keeps each net. setting of sysctl file content with
+// the comment lines directly above it. namespacedSysctlSettings drops comments
 // above dropped settings and comments at the end of a block.
-// NamespacedSysctlSettings keeps blank-line separation between blocks that keep
-// a setting. NamespacedSysctlSettings returns nil when no net. setting remains.
-func NamespacedSysctlSettings(content []byte) []byte {
+// namespacedSysctlSettings keeps blank-line separation between blocks that keep
+// a setting. namespacedSysctlSettings returns nil when no net. setting remains.
+func namespacedSysctlSettings(content []byte) []byte {
 	var keptBlocks []string
 	for block := range strings.SplitSeq(strings.TrimSpace(string(content)), blockSeparator) {
 		var keptLines []string

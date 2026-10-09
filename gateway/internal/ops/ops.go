@@ -277,9 +277,10 @@ func (r *RealOps) VMFSFreezeThaw(ctx context.Context, vmid string) error {
 	return err
 }
 
-// GuestExec tries vsock, then management TCP, then a hypervisor command.
-// ChannelTracker records whether each attempted transport succeeded.
-// An LXC guest runs the hypervisor command only.
+// GuestExec runs on the Proxmox host. For a VM, GuestExec tries vsock RPC,
+// management TCP RPC, then qm guest exec. For an LXC guest, GuestExec runs
+// only pct exec on the host and dials neither vsock nor TCP.
+// ChannelTracker records success or failure for each attempted channel.
 func (r *RealOps) GuestExec(
 	ctx context.Context, vmid string, args ...string,
 ) (GuestExecResult, error) {
