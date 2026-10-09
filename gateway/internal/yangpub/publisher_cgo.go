@@ -97,7 +97,8 @@ type notifReg struct {
 // connect leaves nothing behind; the caller keeps running without a
 // management surface.
 func New(log *slog.Logger) (Publisher, error) {
-	if groupErr := requireSysrepoGroup(log); groupErr != nil {
+	_, testMode := os.LookupEnv(sysrepoTestModeName)
+	if groupErr := requireSysrepoGroup(log, testMode); groupErr != nil {
 		return nil, groupErr
 	}
 	var conn *C.sr_conn_ctx_t
@@ -122,8 +123,8 @@ const (
 
 var errSysrepoGroupMissing = errors.New("yangpub: group \"" + sysrepoGroupName + "\" does not exist")
 
-func requireSysrepoGroup(log *slog.Logger) error {
-	if _, testMode := os.LookupEnv(sysrepoTestModeName); testMode {
+func requireSysrepoGroup(log *slog.Logger, testMode bool) error {
+	if testMode {
 		return nil
 	}
 	_, lookupErr := user.LookupGroup(sysrepoGroupName)
