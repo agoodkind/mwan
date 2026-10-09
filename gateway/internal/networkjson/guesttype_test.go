@@ -1,3 +1,5 @@
+//go:build cgo
+
 package networkjson_test
 
 import (
@@ -8,6 +10,7 @@ import (
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/internal/networkload"
 )
 
 const (
@@ -38,7 +41,7 @@ func replaceOnce(t *testing.T, body string, old string, replacement string) stri
 
 func TestLoadGuestTypeDefaultsToQEMUWhenAbsent(t *testing.T) {
 	t.Parallel()
-	loaded, err := networkjson.Load(qemuInstance, schemaDirForTest(t))
+	loaded, err := networkload.Load(qemuInstance, schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -58,7 +61,7 @@ func TestLoadRejectsLXCManagementServicesWithoutInterface(t *testing.T) {
 	lxcBody := instanceBody(t, lxcInstance)
 	withService := replaceOnce(t, lxcBody, `"firewall": {`,
 		`"firewall": { "management-service": [{ "protocol": "tcp", "port": 22 }],`)
-	_, err := networkjson.Load(writeDocument(t, withService), schemaDirForTest(t))
+	_, err := networkload.Load(writeDocument(t, withService), schemaDirForTest(t))
 	if err == nil {
 		t.Fatal("Load accepted an lxc document with a management service and no interface")
 	}
@@ -90,7 +93,7 @@ func compiledInputRules(t *testing.T, cfg firewall.Config) []string {
 
 func TestLoadGuestTypeLXCWithoutManagementInterface(t *testing.T) {
 	t.Parallel()
-	loaded, err := networkjson.Load(lxcInstance, schemaDirForTest(t))
+	loaded, err := networkload.Load(lxcInstance, schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -115,7 +118,7 @@ func TestLoadRejectsMissingManagementInterfaceUnlessLXC(t *testing.T) {
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			_, err := networkjson.Load(writeDocument(t, body), schemaDirForTest(t))
+			_, err := networkload.Load(writeDocument(t, body), schemaDirForTest(t))
 			if err == nil {
 				t.Fatal("Load accepted a document with no management interface")
 			}
@@ -144,7 +147,7 @@ func TestLoadBaselineRequiresManagementInterfaceUnlessLXC(t *testing.T) {
 
 func TestCompileLXCOpensNoManagementService(t *testing.T) {
 	t.Parallel()
-	loaded, err := networkjson.Load(lxcInstance, schemaDirForTest(t))
+	loaded, err := networkload.Load(lxcInstance, schemaDirForTest(t))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
