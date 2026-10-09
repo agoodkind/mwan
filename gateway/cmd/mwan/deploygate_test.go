@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net/http"
 	"net/netip"
 	"os"
 	"os/exec"
@@ -13,16 +14,25 @@ import (
 	"testing"
 	"time"
 
+	"goodkind.io/mwan/internal/clock"
 	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/deployoperation"
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/notify"
+	"goodkind.io/mwan/internal/observation"
 	"goodkind.io/mwan/internal/ops"
 )
 
 const (
 	testOldBootID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 	testNewBootID = "11111111-2222-3333-4444-555555555555"
+
+	testDeployOperationID   = "operation-1"
+	testDeployGeneration    = "generation-1"
+	testDeployOperationVMID = "999999"
+	testDeployMachineID     = "0123456789abcdef0123456789abcdef"
+	testDeployDigest        = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 )
 
 // fakeClock advances only when the gate sleeps, so the polling loops run
@@ -847,6 +857,44 @@ func TestRunDeployGateUsageErrors(t *testing.T) {
 	}
 }
 
+func writeDisarmedDeployOperation(t *testing.T, path string) {
+	t.Helper()
+	identity := deployoperation.Identity{
+		MachineID: testDeployMachineID, BootID: testOldBootID,
+		ExecutableSHA256: testDeployDigest, NetworkSHA256: testDeployDigest, RuntimeSHA256: testDeployDigest,
+	}
+	var checks []observation.CheckSpec
+	for _, dimension := range []observation.Dimension{observation.DimensionInboundApplication, observation.DimensionDownstreamApplication} {
+		checks = append(checks, observation.CheckSpec{
+			ID: "ipv4-" + string(dimension), Dimension: dimension, Operation: observation.OperationHTTP,
+			Observer: observation.Endpoint{Kind: observation.EndpointLocal, MachineID: testDeployMachineID},
+			Family:   observation.FamilyIPv4, Target: "http://192.0.2.10/" + string(dimension),
+			TimeoutSeconds: 2, MaxAgeSeconds: 10, ExpectedHTTPStatus: []int{http.StatusOK},
+		})
+	}
+	record := deployoperation.Record{
+		Manifest: deployoperation.Manifest{
+			OperationID: testDeployOperationID, Generation: testDeployGeneration,
+			VMID: testDeployOperationVMID, Snapshot: "baseline",
+			Baseline: identity, Target: identity,
+			Paths:    deployoperation.Paths{Executable: "/usr/local/bin/mwan", Network: "/etc/mwan/network.json", Runtime: "/etc/mwan/config.toml"},
+			Deadline: time.Now().Add(time.Hour), WatchUnit: "mwan-deploy-watch-" + testDeployGeneration + ".service",
+			PollSeconds: 1, ObservationTimeoutSeconds: 5, RecoveryTimeoutSeconds: 10, FailureThreshold: 3,
+			RequiredFamilies: []observation.Family{observation.FamilyIPv4},
+			RequiredChecks:   checks, RestoredRequiredChecks: checks,
+			Observation: observation.RuntimeConfig{MachineIDPath: "/etc/machine-id", ProbeBinary: "/usr/local/bin/mwan"},
+		},
+		Status: deployoperation.Armed,
+	}
+	store := deployoperation.Store{Path: path, PollInterval: time.Second, Clock: clock.Real{}}
+	if err := store.Create(t.Context(), record); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Disarm(t.Context(), record.OperationID, record.Generation, "deploy watch setup failed"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDeployVerifyModeNames(t *testing.T) {
 	binaryPath := buildMwanBinary(t)
 	root := t.TempDir()
@@ -855,26 +903,39 @@ func TestDeployVerifyModeNames(t *testing.T) {
 		"rollback_state_file = '" + filepath.Join(root, "rollback-state") + "'\n" +
 		"check_interval_degraded_seconds = 1\nconnectivity_timeout_seconds = 5\n"
 	configPath := writeTestFile(t, "config.toml", configuration)
+	disarmedRoot := t.TempDir()
+	disarmedLock := filepath.Join(disarmedRoot, "rollback")
+	disarmedConfiguration := "mwan_vmid = '" + testDeployOperationVMID + "'\n[watchdog]\n" +
+		"rollback_lock_file = '" + disarmedLock + "'\n" +
+		"rollback_state_file = '" + filepath.Join(disarmedRoot, "rollback-state") + "'\n" +
+		"check_interval_degraded_seconds = 1\nconnectivity_timeout_seconds = 5\n"
+	disarmedConfigPath := writeTestFile(t, "config.toml", disarmedConfiguration)
+	writeDisarmedDeployOperation(t, disarmedLock+".operation")
 	cases := []struct {
 		name       string
 		command    string
 		mode       string
 		wantExit   int
 		wantOutput string
+		configPath string
 	}{
-		{"deploy verify", "deploy", "verify", exitDeployGateFailed, "read deployment operation"},
-		{"deploy-gate verify", "deploy-gate", "verify", exitDeployGateFailed, "read deployment operation"},
-		{"deploy-gate commit", "deploy-gate", "commit", exitDeployGateFailed, "read deployment operation"},
-		{"deploy commit", "deploy", "commit", exitDeployGateUsage, "usage: mwan deploy"},
-		{"deploy status", "deploy", "status", exitDeployGateFailed, "read deployment operation"},
-		{"deploy-gate status", "deploy-gate", "status", exitDeployGateFailed, "read deployment operation"},
+		{"deploy verify", "deploy", "verify", exitDeployGateFailed, "read deployment operation", configPath},
+		{"deploy-gate verify", "deploy-gate", "verify", exitDeployGateFailed, "read deployment operation", configPath},
+		{"deploy commit", "deploy", "commit", exitDeployGateUsage, "usage: mwan deploy", configPath},
+		{"deploy status", "deploy", "status", exitDeployGateFailed, "read deployment operation", configPath},
+		{"deploy-gate status", "deploy-gate", "status", exitDeployGateFailed, "read deployment operation", configPath},
+		{"deploy verify disarmed", "deploy", "verify", exitDeployGateFailed, "verify deployment operation", disarmedConfigPath},
+		{"deploy-gate verify disarmed", "deploy-gate", "verify", exitDeployGateFailed, "verify deployment operation", disarmedConfigPath},
+		{"deploy-gate commit disarmed", "deploy-gate", "commit", exitDeployGateFailed, "verify deployment operation", disarmedConfigPath},
+		{"deploy status disarmed", "deploy", "status", exitDeployGateOK, `"status":"disarmed"`, disarmedConfigPath},
+		{"deploy-gate status disarmed", "deploy-gate", "status", exitDeployGateOK, `"status":"disarmed"`, disarmedConfigPath},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			output, exitCode := runMwanBinary(t, binaryPath, t.TempDir(), configPath,
-				tc.command, tc.mode, "operation-1", "generation-1", "--config", configPath)
+			output, exitCode := runMwanBinary(t, binaryPath, t.TempDir(), tc.configPath,
+				tc.command, tc.mode, testDeployOperationID, testDeployGeneration, "--config", tc.configPath)
 
 			if exitCode != tc.wantExit {
 				t.Fatalf("exit code = %d, want %d\noutput: %s", exitCode, tc.wantExit, output)
