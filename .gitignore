@@ -5,3 +5,6 @@
 /gateway/mwan-watchdog
 /gateway/mwan-change-detect
 .make/
+# A global build/ ignore hides the repository's top-level build directory
+# and its tracked Makefile fragments.
+!/build/
