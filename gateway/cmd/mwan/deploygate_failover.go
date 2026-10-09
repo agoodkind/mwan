@@ -10,27 +10,6 @@ import (
 
 const failoverCheckArgumentCount = 1
 
-func runConfigurationGate(mode deployGateMode, rest []string) int {
-	switch mode {
-	case gateModeCheckNetworkd:
-		return runNetworkdCheck(rest)
-	case gateModeCheckRelease:
-		return runReleaseCheck(rest)
-	case gateModeCheckFirewall:
-		return runFirewallCheck(rest)
-	case gateModeInspectFirewall:
-		return runFirewallInspect(rest)
-	case gateModeCheckFailover:
-		return runFailoverCheck(rest)
-	case gateModeCheckEgress, gateModeWaitReboot, gateModeWaitEgress,
-		gateModeWaitDeploy, gateModeCheckOwned, gateModeCheckNetwork:
-		printDeployGateUsage()
-		return exitDeployGateUsage
-	}
-	printDeployGateUsage()
-	return exitDeployGateUsage
-}
-
 func runFailoverCheck(args []string) int {
 	if len(args) != failoverCheckArgumentCount {
 		printDeployGateUsage()

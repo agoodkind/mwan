@@ -219,9 +219,16 @@ func runDeploy(args []string) int {
 			return exitDeployGateUsage
 		}
 		return checkNetwork(deps, rest[0], rest[1])
-	case gateModeCheckNetworkd, gateModeCheckRelease, gateModeCheckFirewall,
-		gateModeInspectFirewall, gateModeCheckFailover:
-		return runConfigurationGate(deployGateMode(args[0]), rest)
+	case gateModeCheckNetworkd:
+		return runNetworkdCheck(rest)
+	case gateModeCheckRelease:
+		return runReleaseCheck(rest)
+	case gateModeCheckFirewall:
+		return runFirewallCheck(rest)
+	case gateModeInspectFirewall:
+		return runFirewallInspect(rest)
+	case gateModeCheckFailover:
+		return runFailoverCheck(rest)
 	case gateModeWaitReboot:
 		if len(rest) != 3 {
 			printDeployGateUsage()
