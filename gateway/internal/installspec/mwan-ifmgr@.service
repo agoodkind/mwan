@@ -58,19 +58,18 @@ ProtectControlGroups=true
 # router discovery for MWAN-owned IPv6 links.
 ProtectKernelTunables=false
 # /var/lib/mwan is writable because the npt module's DHCPv6-PD source caches
-# each interface's delegated prefix in /var/lib/mwan/pd-<iface>. The
-# /var/lib/mwan entry keeps no leading dash, so systemd refuses to start the
-# unit when the directory is missing.
+# each interface's delegated prefix in /var/lib/mwan/pd-<iface>.
 #
 # The wanconfig publish opens a sysrepo connection, which writes lock and
 # state files under the repository directory; the leading dash skips the
 # entry on hosts without the wanconfig stack (sysrepo's shared memory under
 # /dev/shm is already writable, since ProtectSystem leaves /dev alone).
 #
-# StateDirectory is absent because it orders the unit after
-# systemd-tmpfiles-setup.service, and that ordering stalls the boot 90 seconds:
-# the service waits for local-fs.target, which waits for the /boot/efi device
-# the coldplug trigger creates. A tmpfiles rule creates /var/lib/mwan instead.
+# Guests start when /var/lib/mwan is missing because systemd creates it as root
+# (0755) before namespace setup. StateDirectory adds
+# RequiresMountsFor=/var/lib/mwan and After=systemd-remount-fs.service.
+# Only PrivateTmp adds After=systemd-tmpfiles-setup.service.
+StateDirectory=mwan
 ReadWritePaths=/var/log /var/run /run /var/lib/mwan /etc/systemd/network /proc/sys/net/ipv4/conf /proc/sys/net/ipv6/conf -/etc/sysrepo
 # The static sysrepo inside the binary follows the upstream access policy:
 # repository files are group sysrepo with umask 007. The daemon joins that
