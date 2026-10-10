@@ -48,6 +48,7 @@ func (s *Session) handlePeerEvent(
 	if !established && wasEstablished {
 		s.upSince = time.Time{}
 		clear(s.accepted)
+		s.withdrawExportsLocked(ctx)
 		if err := s.fib.WithdrawPeer(ctx, s.peerKey); err != nil {
 			s.log.ErrorContext(ctx, "remove bgp session routes failed", "error", err)
 		}

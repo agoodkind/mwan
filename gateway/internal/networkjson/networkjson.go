@@ -223,9 +223,10 @@ type wan struct {
 	// V4Source is decoded only to be refused: the daemon derives the source
 	// pin from the link's static address, and a document that still types the
 	// leaf would let inventory and the address disagree.
-	V4Source   string  `json:"v4-source"`
-	ForcedDSCP *int    `json:"forced-dscp"`
-	Health     *health `json:"health"`
+	V4Source    string           `json:"v4-source"`
+	ForcedDSCP  *int             `json:"forced-dscp"`
+	Health      *health          `json:"health"`
+	BGPSessions []bgpSessionWire `json:"bgp-session"`
 }
 
 type staticMapping struct {
@@ -547,6 +548,9 @@ func checkProviderSet(loaded *Config) error {
 	if err := checkMappedExternals(loaded, names); err != nil {
 		return err
 	}
+	if err := checkBGPSessionSet(loaded, names); err != nil {
+		return err
+	}
 
 	for _, name := range names {
 		entry := loaded.WAN[name]
@@ -647,6 +651,10 @@ func buildProvider(entry ifaceEntry) (config.IfMgrWANEntry, *config.IfMgrHealthW
 	if err != nil {
 		return config.IfMgrWANEntry{}, nil, err
 	}
+	sessions, err := buildBGPSessions(label, entry)
+	if err != nil {
+		return config.IfMgrWANEntry{}, nil, err
+	}
 	forcedDSCP := 0
 	if provider.ForcedDSCP != nil {
 		forcedDSCP = *provider.ForcedDSCP
@@ -668,6 +676,7 @@ func buildProvider(entry ifaceEntry) (config.IfMgrWANEntry, *config.IfMgrHealthW
 		SelectionEnabled: entry.Steering.Enabled,
 		Tier:             tier,
 		Weight:           weight,
+		BGPSessions:      sessions,
 	}
 	if provider.Health == nil {
 		return routing, nil, nil

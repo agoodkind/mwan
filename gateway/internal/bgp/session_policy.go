@@ -83,7 +83,7 @@ func exportPath(log *slog.Logger, cfg SessionConfig, rule ExportRule) (*apiutil.
 	if rule.MED != nil {
 		attributes = append(attributes, bgppkt.NewPathAttributeMultiExitDisc(*rule.MED))
 	}
-	if cfg.internal() && rule.LocalPreference != nil {
+	if cfg.Internal() && rule.LocalPreference != nil {
 		attributes = append(attributes, bgppkt.NewPathAttributeLocalPref(*rule.LocalPreference))
 	}
 	if len(rule.Communities) > 0 {

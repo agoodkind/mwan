@@ -32,7 +32,9 @@ func TestNetworkdOrderedDaemonStartup(t *testing.T) {
 		t.Fatalf("requires root and systemd PID 1: %q, %v", initName, err)
 	}
 	networkdResolverCommand(t, "systemctl", "start", "dbus", "systemd-udevd", "systemd-resolved")
-	networkdResolverCommand(t, "systemctl", "stop", "systemd-networkd", "systemd-networkd.socket")
+	// A listening netlink socket starts networkd again for queued link events after the service stops.
+	networkdResolverCommand(t, "systemctl", "stop", "systemd-networkd.socket")
+	networkdResolverCommand(t, "systemctl", "stop", "systemd-networkd")
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	gateway, err := netns.Get()

@@ -1,18 +1,19 @@
 package bgp
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 
 	"github.com/osrg/gobgp/v4/pkg/apiutil"
 )
 
 // SetAdvertisement originates or withdraws the export prefixes.
 // SetAdvertisement originates ExportAlways prefixes while eligible is true.
-// SetAdvertisement originates ExportBackup prefixes while eligible and
-// backupActive are both true. SetAdvertisement makes no GoBGP request for a
-// prefix already in the wanted state.
-func (s *Session) SetAdvertisement(eligible, backupActive bool) error {
+// SetAdvertisement originates an ExportBackup prefix while eligible is true
+// and backupActive is true for that prefix.
+func (s *Session) SetAdvertisement(eligible bool, backupActive map[netip.Prefix]bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.started {
@@ -21,7 +22,7 @@ func (s *Session) SetAdvertisement(eligible, backupActive bool) error {
 
 	var reconcileErr error
 	for _, rule := range s.cfg.Export {
-		wanted := exportAdvertised(rule.Mode, eligible, backupActive)
+		wanted := exportAdvertised(rule.Mode, eligible, backupActive[rule.Prefix])
 		_, advertised := s.advertised[rule.Prefix]
 		if wanted == advertised {
 			continue
@@ -31,6 +32,17 @@ func (s *Session) SetAdvertisement(eligible, backupActive bool) error {
 		}
 	}
 	return reconcileErr
+}
+
+func (s *Session) withdrawExportsLocked(ctx context.Context) {
+	for _, rule := range s.cfg.Export {
+		if _, advertised := s.advertised[rule.Prefix]; !advertised {
+			continue
+		}
+		if err := s.reconcileExportLocked(rule, false); err != nil {
+			s.log.ErrorContext(ctx, "withdraw bgp session prefix after peer loss failed", "prefix", rule.Prefix, "error", err)
+		}
+	}
 }
 
 func (s *Session) reconcileExportLocked(rule ExportRule, wanted bool) error {

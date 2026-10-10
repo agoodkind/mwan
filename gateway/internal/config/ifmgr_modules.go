@@ -29,6 +29,12 @@ type IfMgrModulesSection struct {
 	Autoconfiguration *IfMgrAutoconfigurationSection `toml:"autoconfiguration"`
 	Addresses         *IfMgrAddressesSection         `toml:"addresses"`
 	Resolver          *IfMgrResolverSection          `toml:"resolver"`
+	BGPSessions       *IfMgrBGPSessionsSection       `toml:"bgp_sessions"`
+}
+
+// IfMgrBGPSessionsSection configures the durable journal of the external BGP sessions that installed kernel routes.
+type IfMgrBGPSessionsSection struct {
+	StateFile string `toml:"state_file"`
 }
 
 // IfMgrResolverSection configures the durable per-link static DNS and domain journal.
@@ -196,7 +202,8 @@ type IfMgrWANEntry struct {
 	// Weight is this provider's share of its tier, at least one. The loader
 	// refuses a missing or smaller value rather than defaulting it, because a
 	// zero share would make the balancer's divisor wrong.
-	Weight int
+	Weight      int
+	BGPSessions []BGPSession
 }
 
 // ConnectionSelectionEnabled treats omitted selection permission as enabled.

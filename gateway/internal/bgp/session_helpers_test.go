@@ -283,7 +283,7 @@ func startSession(t *testing.T, cfg bgp.SessionConfig) *bgp.Session {
 		t.Fatalf("start session %q: %v", cfg.Name, err)
 	}
 	t.Cleanup(func() {
-		if err := session.Stop(); err != nil {
+		if err := session.Stop(t.Context()); err != nil {
 			t.Errorf("stop session %q: %v", cfg.Name, err)
 		}
 	})

@@ -36,6 +36,9 @@ var networkListKeys = map[string][]string{
 	"section":                                   {"index"},
 	"entry":                                     {"index"},
 	"management-service":                        {"protocol", "port"},
+	"bgp-session":                               {"name"},
+	"import":                                    {"prefix"},
+	"export":                                    {"prefix"},
 }
 
 // servedOnlyPaths match the leaves the tree publishes that a network document

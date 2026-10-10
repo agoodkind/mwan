@@ -75,6 +75,7 @@ func ownershipLiveItems(snapshot wanstate.Snapshot, gateway wanconfig.Gateway) [
 		}
 		items = append(items, ownershipFamilyItems(connection.Name, "ipv4", state.IPv4, state.Observation)...)
 		items = append(items, ownershipFamilyItems(connection.Name, "ipv6", state.IPv6, state.Observation)...)
+		items = append(items, bgpSessionLiveItems(connection.Name, snapshot.BGPSessions[connection.ID.String()])...)
 	}
 	items = append(items, pendingRemovalItems(snapshot.PendingRemovals)...)
 	return items

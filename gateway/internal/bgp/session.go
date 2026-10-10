@@ -12,6 +12,8 @@ import (
 	"github.com/osrg/gobgp/v4/pkg/apiutil"
 	bgppkt "github.com/osrg/gobgp/v4/pkg/packet/bgp"
 	"github.com/osrg/gobgp/v4/pkg/server"
+
+	"goodkind.io/mwan/internal/bgpsession"
 )
 
 // sessionListenPort disables the GoBGP listener because a session initiates
@@ -47,7 +49,7 @@ func NewSession(cfg SessionConfig, log *slog.Logger) (*Session, error) {
 	if log == nil {
 		log = slog.Default()
 	}
-	validated, err := validatedSessionConfig(cfg)
+	validated, err := bgpsession.Validated(cfg)
 	if err != nil {
 		log.Error("bgp session configuration rejected", "session", cfg.Name, "error", err)
 		return nil, fmt.Errorf("bgp session %q: %w", cfg.Name, err)
@@ -191,8 +193,8 @@ func (s *Session) peer() *apipb.Peer {
 
 // Stop shuts down the GoBGP server and removes the installed kernel routes. A
 // later Start can restart the stopped session after a route removal error.
-func (s *Session) Stop() error {
-	ctx := context.Background()
+func (s *Session) Stop(ctx context.Context) error {
+	ctx = context.WithoutCancel(ctx)
 	s.mu.Lock()
 	if !s.started {
 		s.mu.Unlock()

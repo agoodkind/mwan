@@ -91,11 +91,13 @@ type WAN struct {
 	MappedExternals      []netip.Addr
 	LocalMappedExternals []netip.Addr
 	Tunnel               *interfaceintent.Tunnel
+	BGPRouteMetrics      []int
 }
 
 type gatewaySet struct {
-	V4 string
-	V6 string
+	V4       string
+	V6       string
+	V6Routed bool
 }
 
 type gateways map[string]gatewaySet
@@ -232,6 +234,9 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 				err,
 			))
 		}
+	}
+	if err := m.reconcileBGPTables(ctx, log, currentGateways, health, translations); err != nil {
+		reconcileErr = errors.Join(reconcileErr, err)
 	}
 	rules, _ := m.desiredStateForPass(currentGateways, health, translations)
 	for _, rule := range rules {
@@ -538,10 +543,10 @@ func conditionsMet(
 	translation wanstate.MemberTranslation,
 	family string,
 ) bool {
-	gateway := gateways.V4
+	gatewayKnown := gateways.V4 != ""
 	translationReady := translation.V4.Ready
 	if family == familyV6 {
-		gateway = gateways.V6
+		gatewayKnown = gateways.V6 != "" || gateways.V6Routed
 		translationReady = translation.V6.Ready
 	}
 	for _, condition := range conditions {
@@ -550,7 +555,7 @@ func conditionsMet(
 		case interfaceintent.PolicyConditionTranslation:
 			met = translationReady
 		case interfaceintent.PolicyConditionGateway:
-			met = gateway != ""
+			met = gatewayKnown
 		case interfaceintent.PolicyConditionHealth:
 			met = netif.HealthIsHealthy(health.State(wan.Key()))
 		case interfaceintent.PolicyConditionSourcePrefix:
@@ -679,7 +684,10 @@ func (m *Module) discoverGateways(ctx context.Context, log *slog.Logger) (gatewa
 	discovery := gatewayDiscovery{gateways: make(gateways, len(m.cfg.WANs)), missingLinks: nil}
 	var gatewayErr error
 	for _, wan := range m.cfg.WANs {
-		wanGateways := gatewaySet{V4: "", V6: ""}
+		wanGateways := gatewaySet{
+			V4: "", V6: "",
+			V6Routed: wan.requiresBGP() && bgpReason(m.bgpSessionStates(wan)) == "",
+		}
 		for _, family := range []string{familyV4, familyV6} {
 			if !familyConfigured(wan, family) {
 				continue

@@ -50,7 +50,7 @@ func TestSessionImportAcceptsOnlyDeclaredPrefixes(t *testing.T) {
 		t.Fatalf("start session: %v", err)
 	}
 	t.Cleanup(func() {
-		if err := session.Stop(); err != nil {
+		if err := session.Stop(t.Context()); err != nil {
 			t.Errorf("stop session: %v", err)
 		}
 	})

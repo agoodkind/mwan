@@ -333,7 +333,10 @@ func waitNPTServiceForwarding(t *testing.T, metric int, previous map[string][2]i
 			}
 		}
 		output, err := exec.Command("nft", "list", "chain", "inet", "mwan_steer", "forward").CombinedOutput()
-		if attachmentsReady && err == nil && mappedRuntimeHasLine(string(output), []string{`iifname "enmwanbr0" oifname "enservice0" meta nfproto ipv6`, `meta mark != 0x00000005 drop`}) {
+		// Daemon startup replaces the filter forward chain with established-only rules until the firewall module reconciles.
+		filter, filterErr := exec.Command("nft", "list", "chain", "inet", "filter", "forward").CombinedOutput()
+		filterReady := filterErr == nil && mappedRuntimeHasLine(string(filter), []string{`iifname "enservice0" oifname "enmwanbr0" meta nfproto ipv6 accept`})
+		if attachmentsReady && filterReady && err == nil && mappedRuntimeHasLine(string(output), []string{`iifname "enmwanbr0" oifname "enservice0" meta nfproto ipv6`, `meta mark != 0x00000005 drop`}) {
 			link, err := netlink.LinkByName("enservice0")
 			if err != nil {
 				t.Fatal(err)
