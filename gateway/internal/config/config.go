@@ -20,6 +20,7 @@ import (
 	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/internal/notify"
 )
 
 // NetworkConfig holds site-specific topology values. It carries no provider
@@ -35,15 +36,7 @@ type NetworkConfig struct {
 }
 
 // EmailConfig holds email notification settings.
-type EmailConfig struct {
-	SMTP2GOAPIKey string `toml:"smtp2go_api_key"`
-	AlertEmail    string `toml:"alert_email"`
-	From          string `toml:"from"`
-	SubjectPrefix string `toml:"subject_prefix"`
-	BindIface     string `toml:"bind_iface"`
-	MinLevel      string `toml:"min_level"`
-	Cooldown      string `toml:"cooldown"`
-}
+type EmailConfig = notify.EmailConfig
 
 // PVEConfig names the Proxmox VE node the watchdog runs on, which the local
 // `pvesh` task query addresses.

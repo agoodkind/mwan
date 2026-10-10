@@ -4,7 +4,6 @@ import (
 	"log/slog"
 	"time"
 
-	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/notify"
 )
 
@@ -20,9 +19,9 @@ func NewAlertManager(log *slog.Logger, cfg AlertConfig) *AlertManager {
 	if log == nil {
 		log = slog.Default()
 	}
-	syntheticCfg := &config.Config{}
+	notifyCfg := notify.Config{RepeatEvery: 0, PerKind: nil}
 	if cfg.RepeatEvery > 0 {
-		syntheticCfg.Notify.RepeatEvery = cfg.RepeatEvery.String()
+		notifyCfg.RepeatEvery = cfg.RepeatEvery
 	}
-	return WrapNotifier(notify.FromConfig(syntheticCfg, log, "mwan-ifmgr"))
+	return WrapNotifier(notify.FromConfig(notify.EmailConfig{}, notifyCfg, log, "mwan-ifmgr"))
 }

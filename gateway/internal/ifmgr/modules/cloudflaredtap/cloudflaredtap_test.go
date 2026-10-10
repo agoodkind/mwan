@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"testing"
 
-	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/notify"
 )
@@ -120,7 +119,8 @@ func TestInitReturnsDisabledSentinelWhenUnitEmpty(t *testing.T) {
 		Iface: "lo",
 		Log:   slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Alerts: ifmgr.WrapNotifier(notify.FromConfig(
-			&config.Config{},
+			notify.EmailConfig{},
+			notify.Config{},
 			slog.New(slog.NewTextHandler(io.Discard, nil)),
 			"mwan-ifmgr",
 		)),

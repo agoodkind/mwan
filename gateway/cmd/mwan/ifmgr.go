@@ -106,7 +106,7 @@ func runIfMgr(cfg *config.Config, flags ifmgrFlags) error {
 		logger.Warn("ifmgr: build daemon config failed", "err", err)
 		return fmt.Errorf("build daemon config: %w", err)
 	}
-	dcfg.Notifier = notify.FromConfig(cfg, logger, "mwan-ifmgr")
+	dcfg.Notifier = notify.FromConfig(cfg.Email, cfg.NotifyConfig(), logger, "mwan-ifmgr")
 	dcfg.LiveState = wanstate.New()
 	dcfg.LiveState.SetTransitionLogger(runID, logger)
 	if role == "wan" && cfg.BGP.Enabled && cfg.BGP.UseWanconfig {

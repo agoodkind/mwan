@@ -181,7 +181,7 @@ func fireSelfTestEvent(cfg *config.Config, logger *slog.Logger, flags notifyFlag
 	if cfg == nil {
 		return fmt.Errorf("notify: cfg is nil")
 	}
-	notifier := notify.FromConfig(cfg, logger, "mwan-notify")
+	notifier := notify.FromConfig(cfg.Email, cfg.NotifyConfig(), logger, "mwan-notify")
 	if _, ok := notifier.(notify.NullNotifier); ok {
 		fmt.Fprintln(os.Stderr,
 			"notify: NullNotifier in use (cfg.Email unconfigured); event will be dropped silently")

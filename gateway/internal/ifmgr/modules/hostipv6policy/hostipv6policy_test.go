@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/mdlayher/ndp"
-	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/notify"
@@ -67,7 +66,7 @@ func newTestEnv(sysctl netif.SysctlRunner) *ifmgr.Env {
 		Iface:  "lo",
 		Sysctl: sysctl,
 		Log:    log,
-		Alerts: ifmgr.WrapNotifier(notify.FromConfig(&config.Config{}, log, "mwan-ifmgr")),
+		Alerts: ifmgr.WrapNotifier(notify.FromConfig(notify.EmailConfig{}, notify.Config{}, log, "mwan-ifmgr")),
 	}
 }
 
