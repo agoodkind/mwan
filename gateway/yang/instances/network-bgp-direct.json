@@ -1,0 +1,166 @@
+{
+  "ietf-interfaces:interfaces": {
+    "interface": [
+      {
+        "name": "enisp0",
+        "type": "iana-if-type:other",
+        "goodkind-mwan-steering:link-files": "hand-authored",
+        "ietf-ip:ipv4": {
+          "goodkind-mwan-steering:translation": { "mode": "ietf-nat:napt44" }
+        },
+        "goodkind-mwan-steering:wan": {
+          "name": "isp",
+          "table-id": 100,
+          "fw-mark": 1,
+          "fw-mark-prio": 100,
+          "from-prio": 55,
+          "health": {
+            "enabled": true,
+            "ping-count": 3,
+            "success-threshold": 1,
+            "failure-threshold": 2,
+            "recovery-threshold": 2,
+            "check-interval": 10,
+            "targets-v4": ["192.0.2.10"],
+            "targets-v6": []
+          }
+        },
+        "goodkind-mwan-steering:steering": {
+          "tier": 0,
+          "weight": 1
+        }
+      },
+      {
+        "name": "enbgp0",
+        "type": "iana-if-type:other",
+        "goodkind-mwan-steering:connection-id": "transit-a",
+        "goodkind-mwan-steering:link-files": "hand-authored",
+        "ietf-ip:ipv6": {
+          "goodkind-mwan-steering:translation": { "mode": "native" }
+        },
+        "goodkind-mwan-steering:wan": {
+          "name": "transit",
+          "table-id": 200,
+          "fw-mark": 2,
+          "fw-mark-prio": 200,
+          "from-prio": 56,
+          "health": {
+            "enabled": true,
+            "ping-count": 3,
+            "success-threshold": 1,
+            "failure-threshold": 2,
+            "recovery-threshold": 2,
+            "check-interval": 10,
+            "targets-v4": [],
+            "targets-v6": ["2001:db8:53::1"]
+          },
+          "bgp-session": [
+            {
+              "name": "upstream",
+              "peer-address": "2001:db8:179:a::1",
+              "peer-port": 179,
+              "local-address": "2001:db8:179:a::2",
+              "local-as": 64512,
+              "remote-as": 64513,
+              "router-id": "192.0.2.130",
+              "keepalive": 10,
+              "hold": 30,
+              "route-metric": 300,
+              "import": [{ "prefix": "::/0", "min-length": 0, "max-length": 0 }],
+              "export": [
+                {
+                  "prefix": "2001:db8:b01::/60",
+                  "mode": "always",
+                  "next-hop": "2001:db8:179:a::2",
+                  "med": 10,
+                  "community": ["64513:100"],
+                  "large-community": ["64512:1:2"]
+                }
+              ]
+            }
+          ]
+        },
+        "goodkind-mwan-steering:steering": {
+          "tier": 0,
+          "weight": 1
+        }
+      },
+      {
+        "name": "enbgp1",
+        "type": "iana-if-type:other",
+        "goodkind-mwan-steering:connection-id": "transit-b",
+        "goodkind-mwan-steering:link-files": "hand-authored",
+        "ietf-ip:ipv6": {
+          "goodkind-mwan-steering:translation": { "mode": "native" }
+        },
+        "goodkind-mwan-steering:wan": {
+          "name": "transit",
+          "table-id": 300,
+          "fw-mark": 3,
+          "fw-mark-prio": 300,
+          "from-prio": 57,
+          "health": {
+            "enabled": true,
+            "ping-count": 3,
+            "success-threshold": 1,
+            "failure-threshold": 2,
+            "recovery-threshold": 2,
+            "check-interval": 10,
+            "targets-v4": [],
+            "targets-v6": ["2001:db8:53::2"]
+          },
+          "bgp-session": [
+            {
+              "name": "upstream",
+              "peer-address": "2001:db8:179:b::1",
+              "peer-port": 179,
+              "local-as": 64512,
+              "remote-as": 64513,
+              "router-id": "192.0.2.131",
+              "multihop-ttl": 2,
+              "keepalive": 10,
+              "hold": 30,
+              "route-metric": 310,
+              "import": [{ "prefix": "::/0", "min-length": 0, "max-length": 0 }],
+              "export": [
+                {
+                  "prefix": "2001:db8:b01::/60",
+                  "mode": "backup",
+                  "backup-for": ["transit-a"],
+                  "next-hop": "2001:db8:179:b::2",
+                  "prepend-count": 2
+                }
+              ]
+            }
+          ]
+        },
+        "goodkind-mwan-steering:steering": {
+          "tier": 1,
+          "weight": 1
+        }
+      },
+      { "name": "enmwanbr0", "type": "iana-if-type:other" },
+      { "name": "enmgmt0", "type": "iana-if-type:other" }
+    ],
+    "goodkind-mwan-steering:steering-group": {
+      "hash-mode": "source",
+      "reserved-tables": [400, 500],
+      "translation": {
+        "internal-prefix": "2001:db8:b01::/60",
+        "opnsense-edge-v6": "2001:db8:b01:fe::2",
+        "mwanbr-edge-v6": "2001:db8:b01:fe::3"
+      },
+      "routes": {
+        "internal-iface": "enmwanbr0",
+        "internal-net-v4": "192.0.2.0/29"
+      },
+      "firewall": {
+        "management-interface": "enmgmt0",
+        "management-service": [{ "protocol": "tcp", "port": 22 }],
+        "pinned-set-v4-name": "isp_pinned_v4",
+        "pinned-set-v6-name": "isp_pinned_v6"
+      },
+      "health": { "probe-timeout": 2000 }
+    }
+  }
+}

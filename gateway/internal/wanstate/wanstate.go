@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"goodkind.io/mwan/internal/bgp"
 	"goodkind.io/mwan/internal/clock"
 	"goodkind.io/mwan/internal/observation/contract"
 )
@@ -132,6 +133,7 @@ type Store struct {
 	activeTier         uint8
 	tierValid          bool
 	bgp                BGP
+	bgpSessions        map[string][]bgp.SessionState
 	intendedRulesets   map[string]OwnedRuleset
 	observer           Observer
 	observerGeneration uint64
@@ -160,6 +162,7 @@ func NewWithClock(wallClock clock.Clock) *Store {
 		activeTier:         0,
 		tierValid:          false,
 		bgp:                BGP{Peers: nil, ReadAt: time.Time{}, Reached: false},
+		bgpSessions:        map[string][]bgp.SessionState{},
 		intendedRulesets:   map[string]OwnedRuleset{},
 		observer:           nil,
 		observerGeneration: 0,
@@ -323,6 +326,7 @@ type Snapshot struct {
 	ActiveTier        uint8
 	TierValid         bool
 	BGP               BGP
+	BGPSessions       map[string][]bgp.SessionState
 	IntendedRuleset   string
 	IntendedByOwner   map[string]OwnedRuleset
 }
@@ -343,6 +347,7 @@ func (s *Store) Snapshot() Snapshot {
 		ActiveTier:        s.activeTier,
 		TierValid:         s.tierValid,
 		BGP:               s.bgp,
+		BGPSessions:       make(map[string][]bgp.SessionState, len(s.bgpSessions)),
 		IntendedRuleset:   renderIntendedRulesets(s.intendedRulesets),
 		IntendedByOwner:   make(map[string]OwnedRuleset, len(s.intendedRulesets)),
 	}
@@ -366,6 +371,9 @@ func (s *Store) Snapshot() Snapshot {
 		snap.Routing[id] = member
 	}
 	maps.Copy(snap.Translation, s.translation)
+	for id, sessions := range s.bgpSessions {
+		snap.BGPSessions[id] = cloneBGPSessions(sessions)
+	}
 	maps.Copy(snap.IntendedByOwner, s.intendedRulesets)
 	peers := make([]BGPPeer, len(s.bgp.Peers))
 	copy(peers, s.bgp.Peers)

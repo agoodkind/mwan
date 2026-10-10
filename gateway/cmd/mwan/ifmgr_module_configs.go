@@ -193,6 +193,9 @@ func addWANRoleConfigs(
 	if want["npt"] {
 		moduleConfigs["npt"] = buildNPTConfig(shared)
 	}
+	if want["bgp_sessions"] {
+		moduleConfigs["bgp_sessions"] = buildBGPSessionsConfig(shared, ifmgrCfg.Modules.BGPSessions, ifmgrCfg.Connections)
+	}
 	if want["firewall"] {
 		moduleConfigs["firewall"] = ifmgrCfg.Firewall
 	}
@@ -786,6 +789,7 @@ type sharedWAN struct {
 	Tier          uint8
 	Weight        int
 	Tunnel        *interfaceintent.Tunnel
+	BGPSessions   []config.BGPSession
 }
 
 // sharedWANInputs is the runtime projection of the network configuration's WAN
@@ -858,6 +862,7 @@ func buildWANRefs(ifmgrCfg config.IfMgrSection) sharedWANInputs {
 			Weight:           entry.Weight,
 			SelectionEnabled: entry.SelectionEnabled,
 			Tunnel:           tunnels[name],
+			BGPSessions:      entry.BGPSessions,
 		})
 	}
 	return inputs
@@ -903,36 +908,10 @@ func buildWANRoutesConfig(
 			MappedExternals:      mappedExternals(wan.TranslationV4),
 			LocalMappedExternals: localMappedExternals(wan.TranslationV4),
 			Tunnel:               wan.Tunnel,
+			BGPRouteMetrics:      bgpRouteMetrics(wan.BGPSessions),
 		})
 	}
 	return cfg, nil
-}
-
-// mappedExternals returns mappings without explicit delivery for legacy inference.
-func mappedExternals(translation *config.IPv4Translation) []netip.Addr {
-	if translation == nil || len(translation.StaticMappings) == 0 {
-		return nil
-	}
-	externals := make([]netip.Addr, 0, len(translation.StaticMappings))
-	for _, mapping := range translation.StaticMappings {
-		if mapping.Delivery == "" {
-			externals = append(externals, mapping.External)
-		}
-	}
-	return externals
-}
-
-func localMappedExternals(translation *config.IPv4Translation) []netip.Addr {
-	if translation == nil {
-		return nil
-	}
-	var externals []netip.Addr
-	for _, mapping := range translation.StaticMappings {
-		if mapping.Delivery == interfaceintent.DeliveryLocal {
-			externals = append(externals, mapping.External)
-		}
-	}
-	return externals
 }
 
 // wanFwMark narrows one provider's firewall mark onto the kernel's width. The
