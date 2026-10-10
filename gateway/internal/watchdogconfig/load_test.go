@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/watchdogconfig"
@@ -114,6 +115,18 @@ func TestLoadMatchesGatewayLoaderForHypervisorSections(t *testing.T) {
 	}
 	if got.Watchdog.ServiceName != "mwan-watchdog-test" || !reflect.DeepEqual(got.Watchdog, want.Watchdog) {
 		t.Errorf("unexpected watchdog settings: %+v %+v", got.Watchdog, want.Watchdog)
+	}
+	if got.Network.LastDeployPath != "/var/lib/mwan/last-deploy" || got.Network.PingTargetIPv6 != "2606:4700:4700::1111" {
+		t.Errorf("unexpected network settings: %+v %+v", got.Network, want.Network)
+	}
+	if got.Watchdog.VsockCID != 42 || got.Watchdog.StatusListenPort != 50060 || got.Watchdog.CheckIntervalHealthy != 30 {
+		t.Errorf("unexpected watchdog settings: %+v %+v", got.Watchdog, want.Watchdog)
+	}
+	if got.Failover.AgentTCPAddr != "192.0.2.2:50052" {
+		t.Errorf("unexpected failover settings: %+v %+v", got.Failover, want.Failover)
+	}
+	if got.NotifyConfig().RepeatEvery != 30*time.Minute {
+		t.Errorf("notification cadence differs between loaders: %+v %+v", got.NotifyConfig(), want.NotifyConfig())
 	}
 	if got.Failover.LXCID != "203" || got.Failover != want.Failover {
 		t.Errorf("unexpected failover settings: %+v %+v", got.Failover, want.Failover)
