@@ -153,7 +153,6 @@ func (r *OwnedStaticReconciler) deleteEndpointRoute(ctx context.Context, log *sl
 }
 
 // ReleaseTunnelEndpointRoutes removes every recorded route of a connection absent from keep.
-// The method reads only the journal when the journal has no such record.
 func (r *OwnedStaticReconciler) ReleaseTunnelEndpointRoutes(ctx context.Context, log *slog.Logger, keep map[string]bool) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

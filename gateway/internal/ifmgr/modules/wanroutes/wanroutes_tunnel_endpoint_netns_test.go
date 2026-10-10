@@ -18,8 +18,6 @@ const (
 	tunnelRouteSecondMAC = "02:00:5e:00:53:03"
 )
 
-// The kernel selects the returned route entry for the tunnel's remote address with the underlay
-// provider's mark.
 func underlayTableMatch(t *testing.T) netlink.Route {
 	t.Helper()
 	matched, err := netlink.RouteGetWithOptions(net.ParseIP(tunnelRouteRemote), &netlink.RouteGetOptions{Mark: tunnelRouteUnderMark, FIBMatch: true})
@@ -83,8 +81,6 @@ func TestTunnelEndpointRouteFollowsTheUnderlayGateway(t *testing.T) {
 	}
 	requireOuterFrameTo(t, tunnelRouteUnderMAC)
 
-	// The route reconciler replaces the endpoint route's next hop in one pass after observing the changed
-	// gateway address.
 	replaceTunnelRouteDefault(t, tunnelRouteUnderlay, tunnelRouteSecondGW, tunnelRouteUnderMetric)
 	requireTunnelRouting(t, fixture.reconcile(ctx, t), true, "")
 	requireEndpointRouteSelected(t, tunnelRouteSecondGW)

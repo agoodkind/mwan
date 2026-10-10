@@ -25,8 +25,6 @@ func tunnelRuntimeProbeFault(t *testing.T, run tunnelRuntimeRun, daemon *runtime
 	requireTunnelRuntimeIPv4(t, daemon, run, 4104, "after the tunnel probe fault")
 }
 
-// The alternate provider transports IPv4 during the fault.
-// Both families of the faulted path recover in the same daemon process.
 func tunnelRuntimeUnderlayFault(t *testing.T, run tunnelRuntimeRun, daemon *runtimeDaemon) {
 	t.Helper()
 	topology := run.topology
@@ -49,7 +47,6 @@ func tunnelRuntimeUnderlayFault(t *testing.T, run tunnelRuntimeRun, daemon *runt
 	}
 }
 
-// The restarted daemon does not recreate the tunnel device.
 func tunnelRuntimeRestart(t *testing.T, run tunnelRuntimeRun, first *runtimeDaemon) *runtimeDaemon {
 	t.Helper()
 	device := waitOwnedRuntimeLink(t, first, tunnelRuntimeDevice, 10*time.Second)
@@ -66,8 +63,6 @@ func tunnelRuntimeRestart(t *testing.T, run tunnelRuntimeRun, first *runtimeDaem
 	return second
 }
 
-// The restarted daemon removes the device, the endpoint route, and the protocol 41 permit.
-// IPv4 readiness, IPv4 selection, and the IPv4 provider link equal the observations with the tunnel.
 func tunnelRuntimeRemoval(t *testing.T, run tunnelRuntimeRun, second *runtimeDaemon) {
 	t.Helper()
 	killOwnedRuntimeDaemon(t, second)

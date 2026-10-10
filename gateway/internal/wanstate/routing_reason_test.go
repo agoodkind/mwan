@@ -53,7 +53,6 @@ func TestSetRoutingRecordsNoTransitionForARepeatedStateAndReason(t *testing.T) {
 	store := wanstate.New()
 	store.SetConnections([]interfaceintent.Connection{{ID: "isp", Name: "enisp0"}})
 	type change struct{ family, previous, current, reason string }
-	// Each step repeats one routing result. The provider does not have a tunnel or a ready IPv6 family.
 	steps := []struct {
 		routing wanstate.MemberRouting
 		want    []change

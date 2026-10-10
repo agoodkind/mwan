@@ -26,7 +26,6 @@ func tunnelRuntimeClientsV4() []string {
 	return []string{tunnelRuntimeClientV4, "192.0.2.3", "192.0.2.4", "192.0.2.5", "192.0.2.6"}
 }
 
-// A failed chain read and a chain without an IPv4 assignment return an error.
 // Error reporting prevents a failed chain read or a chain without an IPv4 assignment from comparing
 // equal to every other empty selection.
 func tunnelRuntimeIPv4Selection() (string, error) {

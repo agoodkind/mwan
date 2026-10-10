@@ -22,9 +22,6 @@ func tunnelRuntimePayload(size int) []byte {
 	return payload
 }
 
-// The client in the source namespace sends size bytes to the listener in the destination namespace.
-// The listener returns the bytes sent by the client. The returned address is the client address the
-// listener observed.
 func tunnelRuntimeTransfer(t *testing.T, topology tunnelRuntimeTopology, destinationNamespace, sourceNamespace netns.NsHandle, network, destination, source string, size int) (netip.Addr, error) {
 	t.Helper()
 	defer setRuntimeNamespace(t, topology.gateway)

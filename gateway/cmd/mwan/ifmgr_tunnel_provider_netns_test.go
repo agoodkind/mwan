@@ -44,14 +44,13 @@ const (
 	tunnelRuntimeEtherIPv6    = 0x86dd
 	tunnelRuntimeProtocol41   = 41
 	tunnelRuntimeProtocolTCP  = 6
-	// The second IPv4 provider does not have a tunnel. Both providers can communicate with the remote endpoint.
-	tunnelRuntimeAlternate   = "enalt0"
-	tunnelRuntimeAltLink     = "alt-gw"
-	tunnelRuntimeAltLocal    = "203.0.113.6"
-	tunnelRuntimeAltGateway  = "203.0.113.5"
-	tunnelRuntimeAltFar      = "198.51.100.5"
-	tunnelRuntimeAltEndpoint = "198.51.100.6"
-	tunnelRuntimeAltMetric   = 100
+	tunnelRuntimeAlternate    = "enalt0"
+	tunnelRuntimeAltLink      = "alt-gw"
+	tunnelRuntimeAltLocal     = "203.0.113.6"
+	tunnelRuntimeAltGateway   = "203.0.113.5"
+	tunnelRuntimeAltFar       = "198.51.100.5"
+	tunnelRuntimeAltEndpoint  = "198.51.100.6"
+	tunnelRuntimeAltMetric    = 100
 	// The health policy reports a failure after two failed cycles. The health policy probes every second.
 	// Each failed cycle adds one probe timeout of 500 milliseconds.
 	tunnelRuntimeFailureWindow = 10 * time.Second
@@ -79,8 +78,7 @@ type tunnelRuntimeRun struct {
 	configPath string
 	root       string
 	networkDir string
-	// Every phase uses the pointer to read the IPv4 observations from the first transfer.
-	ipv4 *tunnelRuntimeIPv4
+	ipv4       *tunnelRuntimeIPv4
 }
 
 func (run tunnelRuntimeRun) start(t *testing.T, name string) *runtimeDaemon {

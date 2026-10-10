@@ -50,7 +50,6 @@ func openTunnelRuntimeLinkCapture(t *testing.T, topology tunnelRuntimeTopology, 
 	return fd
 }
 
-// Each capture socket supports one read, because the read closes the socket.
 func readTunnelRuntimeCapture(t *testing.T, fd int) []tunnelRuntimeFrame {
 	t.Helper()
 	defer func() { _ = unix.Close(fd) }()

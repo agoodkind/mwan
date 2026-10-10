@@ -14,10 +14,7 @@ import (
 )
 
 type tunnelRuntimeIPv4 struct {
-	// Providers maps each client address to the gateway interface of the provider link.
-	// The provider link transmitted the transfer from the client address.
 	Providers map[string]string
-	// Selection is the kernel's IPv4 assignment of new connections to provider marks.
 	Selection string
 	State     map[string]tunnelRuntimeIPv4State
 }
@@ -76,8 +73,6 @@ func observeTunnelRuntimeIPv4(t *testing.T, run tunnelRuntimeRun, port int) (tun
 	return observed, nil
 }
 
-// The first call records the provider link of each client address, the steering assignment, and the
-// published IPv4 state. Each later call compares the IPv4 transfers with the first call's records.
 func requireTunnelRuntimeIPv4(t *testing.T, daemon *runtimeDaemon, run tunnelRuntimeRun, port int, phase string) {
 	t.Helper()
 	observed, err := observeTunnelRuntimeIPv4(t, run, port)

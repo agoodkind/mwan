@@ -83,8 +83,6 @@ func TestTunnelEndpointRouteRemovedWithTheTunnel(t *testing.T) {
 		}
 	}
 
-	// The daemon reads the previous process's journal after restarting with the tunnel removed from the
-	// configuration.
 	module := restartTunnelRouteModule(t, fixture, false, openTunnelRouteJournal(t, fixture.journalPath))
 	for range 2 {
 		if err := module.Reconcile(ctx, module.Log); err != nil {
@@ -107,8 +105,6 @@ func TestRoutesAtTheEndpointDestinationOfAnotherWriterSurvive(t *testing.T) {
 	fixture := newTunnelRouteFixture(ctx, t)
 	addForeignTableRoute(t, tunnelRouteEndpoint, unix.RTPROT_ISIS)
 
-	// The daemon requires no journal when the configuration has no tunnel. The daemon returns no endpoint
-	// route error for the configuration.
 	withoutJournal := restartTunnelRouteModule(t, fixture, false, nil)
 	recorded := restartTunnelRouteModule(t, fixture, false, openTunnelRouteJournal(t, fixture.journalPath))
 	for _, module := range []*Module{withoutJournal, recorded, withoutJournal, recorded} {
@@ -118,8 +114,6 @@ func TestRoutesAtTheEndpointDestinationOfAnotherWriterSurvive(t *testing.T) {
 		requireForeignTableRoute(t, tunnelRouteEndpoint, unix.RTPROT_ISIS)
 	}
 
-	// The journal contains no record of the tunnel's endpoint route. The table continues to contain the
-	// other writer's route.
 	err := fixture.module.Reconcile(ctx, fixture.module.Log)
 	if err == nil || !strings.Contains(err.Error(), "conflicts with an unowned route") {
 		t.Fatalf("Reconcile with a foreign route at the endpoint destination = %v, want a conflict error", err)

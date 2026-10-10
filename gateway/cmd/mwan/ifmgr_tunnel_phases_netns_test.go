@@ -13,8 +13,6 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-// The remote endpoint drops protocol 41 while the daemon starts.
-// The new IPv6 path is not ready at startup. IPv4 works through the underlay.
 func tunnelRuntimeStartsNotReady(t *testing.T, run tunnelRuntimeRun) *runtimeDaemon {
 	t.Helper()
 	setTunnelRuntimeFault(t, run.topology, true)
@@ -40,8 +38,6 @@ func tunnelRuntimeStartsNotReady(t *testing.T, run tunnelRuntimeRun) *runtimeDae
 	return first
 }
 
-// The remote endpoint begins to accept protocol 41.
-// One successful IPv6 probe makes the path ready. The provider does not have an IPv4 probe.
 func tunnelRuntimeBecomesReady(t *testing.T, run tunnelRuntimeRun, daemon *runtimeDaemon) {
 	t.Helper()
 	setTunnelRuntimeFault(t, run.topology, false)
@@ -73,9 +69,6 @@ func tunnelRuntimeTransfers(t *testing.T, run tunnelRuntimeRun, daemon *runtimeD
 		}
 		t.Logf("ISP link frames during the failed exchange: %v", counts)
 	}()
-	// The first connection sends packets sized to the client's 1500-byte link MTU.
-	// The gateway answers with a packet-too-big response. The first connection completes without a
-	// second attempt.
 	firstPeer, err := tunnelRuntimeTransfer(t, topology, topology.remote, topology.client, "tcp6",
 		net.JoinHostPort(tunnelRuntimeRemoteClient, "4210"), net.JoinHostPort(tunnelRuntimeClientV6, "0"), tunnelRuntimeTransferSize)
 	if err != nil {
@@ -93,8 +86,6 @@ func tunnelRuntimeTransfers(t *testing.T, run tunnelRuntimeRun, daemon *runtimeD
 	requireTunnelRuntimeIPv4(t, daemon, run, 4102, "with the tunnel ready")
 }
 
-// The test deletes the endpoint route.
-// The daemon restores the endpoint route without a periodic pass.
 func tunnelRuntimeRepairsEndpointRoute(t *testing.T, daemon *runtimeDaemon) {
 	t.Helper()
 	owned := waitTunnelRuntimeEndpointRoute(t, daemon, true)

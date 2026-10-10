@@ -15,8 +15,6 @@ func (m *Module) tunnelLinkApplied(wan WAN) bool {
 
 // A default route through the tunnel does not show that the remote endpoint forwards packets.
 // A tunnel provider requires a healthy probe verdict before selection.
-// The routing module clears the IPv6 gateway of each excluded tunnel in current.
-// The returned map lists the unmet dependency of each excluded tunnel by connection ID.
 // Callers must lock the module.
 func (m *Module) excludeUnreadyTunnelFamilies(current gateways, health netif.HealthStates, translations map[string]wanstate.MemberTranslation) map[string]string {
 	reasons := make(map[string]string)
@@ -55,7 +53,6 @@ func (m *Module) endpointRouteInstalled(wan WAN) bool {
 	return installed
 }
 
-// The reason is empty for a ready family and for an unconfigured family.
 func familyReason(wan WAN, gateways gatewaySet, health netif.HealthStates, translation wanstate.MemberTranslation, family string, tunnelReason string) string {
 	if !familyConfigured(wan, family) {
 		return ""

@@ -352,8 +352,6 @@ func buildHealthConfig(
 	return cfg, nil
 }
 
-// The health module probes the module-wide IPv4 targets when a provider's list is nil.
-// A 6in4 tunnel does not transmit IPv4 packets.
 func tunnelTargetsV4(wan sharedWAN, configured []netip.Addr) []netip.Addr {
 	if wan.Tunnel != nil && configured == nil {
 		return []netip.Addr{}

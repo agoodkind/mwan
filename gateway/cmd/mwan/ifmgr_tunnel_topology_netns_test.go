@@ -12,9 +12,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// The internal client and the remote client exchange IPv6 through the tunnel.
-// The IPv4-only ISP router forwards the outer packets to the remote tunnel endpoint.
-// The alternate ISP router forwards IPv4 between the second provider link and the remote endpoint.
 type tunnelRuntimeTopology struct {
 	gateway   netns.NsHandle
 	client    netns.NsHandle
@@ -24,7 +21,6 @@ type tunnelRuntimeTopology struct {
 	remote    netns.NsHandle
 }
 
-// The preferred main-table default route uses the underlay link.
 // The gateway accepts replies on the alternate link because the reverse path filter is off on that link.
 func addTunnelRuntimeAlternate(t *testing.T, topology *tunnelRuntimeTopology) {
 	t.Helper()

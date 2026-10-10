@@ -65,11 +65,10 @@ type ownedStaticObject struct {
 }
 
 type ownedStaticJournal struct {
-	BootID    string                 `json:"boot_id"`
-	Objects   []ownedStaticObject    `json:"objects"`
-	Promotion []ownedStaticPromotion `json:"promotion,omitempty"`
-	// EndpointRoutes stores the tunnel endpoint routes that the routing module installs in provider tables.
-	EndpointRoutes []ownedEndpointRoute `json:"endpoint_routes,omitempty"`
+	BootID         string                 `json:"boot_id"`
+	Objects        []ownedStaticObject    `json:"objects"`
+	Promotion      []ownedStaticPromotion `json:"promotion,omitempty"`
+	EndpointRoutes []ownedEndpointRoute   `json:"endpoint_routes,omitempty"`
 }
 
 type ownedStaticPromotion struct {

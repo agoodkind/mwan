@@ -60,7 +60,6 @@ type MemberRouting struct {
 	Carrying bool
 	V4Ready  bool
 	V6Ready  bool
-	// V4Reason and V6Reason store the failed dependency of a configured family that is not ready.
 	V4Reason string
 	V6Reason string
 	// OwnedAddresses are the mapped addresses the routing module holds on the

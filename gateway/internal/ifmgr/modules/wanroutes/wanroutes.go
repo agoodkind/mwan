@@ -90,8 +90,7 @@ type WAN struct {
 	// nothing.
 	MappedExternals      []netip.Addr
 	LocalMappedExternals []netip.Addr
-	// A tunnel provider depends on the provider with the interface in Tunnel.Underlay.
-	Tunnel *interfaceintent.Tunnel
+	Tunnel               *interfaceintent.Tunnel
 }
 
 type gatewaySet struct {
@@ -128,11 +127,9 @@ type Module struct {
 	ownedAddresses map[string][]netip.Addr
 
 	// The mutex protects the last pass's tunnel results indexed by connection ID.
-	// endpointRoutes stores the endpoint routes that the pass installed or verified.
 	endpointRoutes map[string]netif.RouteSpec
-	// endpointWatch also stores the last installed route of a tunnel with a failed write.
-	endpointWatch map[string]netif.RouteSpec
-	tunnelReasons map[string]string
+	endpointWatch  map[string]netif.RouteSpec
+	tunnelReasons  map[string]string
 }
 
 // gatewayDiscovery is one pass's gateway read. A provider whose link does not
@@ -270,9 +267,6 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	return reconcileErr
 }
 
-// A failed route or rule write in the current pass can remove the underlay gateway.
-// Each desired-state computation first excludes the tunnels with an unmet dependency.
-// Callers must lock the module.
 func (m *Module) desiredStateForPass(currentGateways gateways, health netif.HealthStates, translations map[string]wanstate.MemberTranslation) ([]netif.DesiredRule, []netif.RouteSpec) {
 	m.tunnelReasons = m.excludeUnreadyTunnelFamilies(currentGateways, health, translations)
 	return desiredState(currentGateways, health, m.cfg, translations)

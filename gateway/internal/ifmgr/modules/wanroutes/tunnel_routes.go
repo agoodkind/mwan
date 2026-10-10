@@ -15,7 +15,6 @@ func endpointDestination(wan WAN) string {
 	return netip.PrefixFrom(wan.Tunnel.Remote, wan.Tunnel.Remote.BitLen()).String()
 }
 
-// The map key is the tunnel's connection ID. A tunnel has no route while the underlay provider has no IPv4 gateway.
 func endpointRoutes(cfg Config, current gateways) map[string]netif.RouteSpec {
 	routes := make(map[string]netif.RouteSpec)
 	for _, wan := range cfg.WANs {
@@ -44,8 +43,6 @@ func (m *Module) endpointJournal() ifmgr.TunnelEndpointRoutes {
 
 // The routing specification requires each tunnel's endpoint route in the underlay provider's table.
 // The sit device also restricts the outer route lookup to routes through the underlay interface.
-// The journal records each installed route. Cleanup deletes only routes recorded in the journal.
-// The module does not read a kernel route when the configuration has no tunnel and no recorded route.
 // Callers must lock the module.
 func (m *Module) reconcileEndpointRoutes(ctx context.Context, log *slog.Logger, current gateways) error {
 	desired := endpointRoutes(m.cfg, current)
@@ -85,10 +82,6 @@ func (m *Module) reconcileEndpointRoutes(ctx context.Context, log *slog.Logger, 
 	return reconcileErr
 }
 
-// A deletion event matches the routes installed in the last pass.
-// A deletion event also matches each tunnel's last installed route when the tunnel had a failed write
-// in the last pass.
-// The module's own deletion does not match an entry after a pass without that route.
 func (m *Module) ownsEndpointRouteDeletion(event netif.Event) bool {
 	if event.Family != familyV4 || event.Protocol != netif.TunnelEndpointRouteProtocol {
 		return false

@@ -81,7 +81,6 @@ func requireTunnelRuntimeEncapsulation(t *testing.T, frames []tunnelRuntimeFrame
 			t.Fatalf("protocol 41 frame between %s and %s, want the endpoints %s and %s", frame.source, frame.destination, local, remote)
 		}
 	}
-	// The traffic in each direction includes the payload of three transfers.
 	if outbound < 3*tunnelRuntimeTransferSize || inbound < 3*tunnelRuntimeTransferSize {
 		t.Fatalf("protocol 41 bytes between the clients: outbound=%d inbound=%d, want at least %d each", outbound, inbound, 3*tunnelRuntimeTransferSize)
 	}
