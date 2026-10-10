@@ -110,7 +110,7 @@ print_evidence() {
     printf '%s\n' "===== end of evidence ====="
     printf '%s\n' "===== plan excerpts ====="
     if [[ -n "${WORK_DIR}" && -f "${WORK_DIR}/excerpts.txt" ]]; then
-        sed -n 'p' "${WORK_DIR}/excerpts.txt"
+        cat "${WORK_DIR}/excerpts.txt"
     fi
     printf '%s\n' "===== end of plan excerpts ====="
 }
