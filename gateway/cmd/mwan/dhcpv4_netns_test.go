@@ -176,7 +176,7 @@ func runOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAd
 		return compact.String()
 	}
 	daemon := startRuntimeDaemon(t, os.Getenv(dhcpv4RuntimeBinaryEnv), configPath, root, "dhcpv4")
-	defer stopRuntimeDaemon(t, daemon)
+	defer func() { stopRuntimeDaemon(t, daemon) }()
 	prefix := "198.51.100.100/24"
 	if classless {
 		prefix = "198.51.100.100/32"
