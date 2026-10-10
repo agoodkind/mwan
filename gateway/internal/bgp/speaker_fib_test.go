@@ -17,7 +17,14 @@ func TestBestPathWatchInstallsRemotePathAndSkipsLocalPath(t *testing.T) {
 
 	fake := newFakeBGPServer()
 	cfg := baseGRConfig(true)
-	writer := &recordedRouteWriter{routes: make(map[int][]netif.CurrentRoute)}
+	writer := &recordedRouteWriter{
+		routes: make(map[int][]netif.CurrentRoute),
+		connected: []netif.CurrentRoute{
+			{Dest: "10.230.230.0/29", Dev: "vmbr250"},
+			{Dest: "3d06:bad:b01:3f0::/64", Dev: "vmbr250"},
+			{Dest: "10.250.250.0/29", Dev: "vmbr251"},
+		},
+	}
 	fib := newFIB(FIBConfig{Tables: []int{100}, InternalIface: "vmbr250"}, testFIBLogger(), writer)
 	speaker := newSpeakerWithFake(cfg, fake)
 	speaker.SetFIB(fib)
@@ -40,6 +47,69 @@ func TestBestPathWatchInstallsRemotePathAndSkipsLocalPath(t *testing.T) {
 	fake.emitBestPaths([]*apiutil.Path{local})
 	if got, want := len(writer.installs), 1; got != want {
 		t.Fatalf("local path install count = %d, want %d", got, want)
+	}
+
+	ipv4Peer := "10.230.230.5"
+	ipv4Remote := netip.MustParsePrefix("198.51.100.0/24")
+	fake.emitBestPaths([]*apiutil.Path{watchPathIPv4(t, ipv4Peer, ipv4Remote, false)})
+	if got, want := len(writer.installs), 2; got != want {
+		t.Fatalf("remote path install count = %d, want %d", got, want)
+	}
+	if got, want := writer.installs[1].Dest, ipv4Remote.String(); got != want {
+		t.Fatalf("remote path destination = %s, want %s", got, want)
+	}
+	if route := writer.installs[1]; route.Family != ipv4RouteFamily || route.Via != ipv4Peer {
+		t.Fatalf("install[%d] route = %#v", 1, route)
+	}
+
+	ipv4Default := netip.MustParsePrefix(ipv4DefaultPrefix)
+	ipv6Default := netip.MustParsePrefix(ipv6DefaultPrefix)
+	fake.emitBestPaths([]*apiutil.Path{
+		watchPathIPv4(t, ipv4Peer, ipv4Default, false),
+		watchPath(t, peer, ipv6Default, false),
+		watchPathIPv4(t, ipv4Peer, netip.MustParsePrefix("10.230.230.0/29"), false),
+		watchPathIPv4(t, ipv4Peer, netip.MustParsePrefix("10.230.0.0/16"), false),
+		watchPath(t, peer, netip.MustParsePrefix("3d06:bad:b01:3f0::/64"), false),
+		watchPath(t, peer, netip.MustParsePrefix("3d06:bad:b01::/48"), false),
+	})
+	if got, want := len(writer.installs), 2; got != want {
+		t.Fatalf("guarded install count = %d, want %d", got, want)
+	}
+	fake.emitBestPaths([]*apiutil.Path{
+		watchPathIPv4(t, ipv4Peer, ipv4Default, true),
+		watchPath(t, peer, ipv6Default, true),
+	})
+	if got, want := len(writer.deletes), 0; got != want {
+		t.Fatalf("delete count = %d, want %d", got, want)
+	}
+
+	otherDevice := netip.MustParsePrefix("10.250.250.0/29")
+	fake.emitBestPaths([]*apiutil.Path{watchPathIPv4(t, ipv4Peer, otherDevice, false)})
+	if got, want := len(writer.installs), 3; got != want {
+		t.Fatalf("remote path install count = %d, want %d", got, want)
+	}
+	if got, want := writer.installs[2].Dest, otherDevice.String(); got != want {
+		t.Fatalf("remote path destination = %s, want %s", got, want)
+	}
+}
+
+func watchPathIPv4(t *testing.T, peer string, prefix netip.Prefix, withdrawn bool) *apiutil.Path {
+	t.Helper()
+	nlri, err := bgppkt.NewIPAddrPrefix(prefix)
+	if err != nil {
+		t.Fatalf("create NLRI: %v", err)
+	}
+	nextHop := netip.MustParseAddr(peer)
+	attribute, err := bgppkt.NewPathAttributeNextHop(nextHop)
+	if err != nil {
+		t.Fatalf("build IPv4 NEXT_HOP path attribute: %v", err)
+	}
+	return &apiutil.Path{
+		Family:      bgppkt.RF_IPv4_UC,
+		Nlri:        nlri,
+		Attrs:       []bgppkt.PathAttributeInterface{attribute},
+		Withdrawal:  withdrawn,
+		PeerAddress: nextHop,
 	}
 }
 
@@ -66,6 +136,21 @@ func TestPeerDownWithdrawsTrackedRoutes(t *testing.T) {
 	}
 	if got, want := writer.deletes[0].Dest, prefix.String(); got != want {
 		t.Fatalf("peer-down deleted destination = %s, want %s", got, want)
+	}
+
+	ipv4Prefix := netip.MustParsePrefix("198.51.100.0/24")
+	ipv4Peer := "10.230.230.5"
+	fake.emitBestPaths([]*apiutil.Path{watchPathIPv4(t, ipv4Peer, ipv4Prefix, false)})
+	fake.emitPeerUpdate(peerStateEvent(ipv4Peer, bgppkt.BGP_FSM_IDLE))
+
+	if got, want := len(writer.deletes), 2; got != want {
+		t.Fatalf("peer-down delete count = %d, want %d", got, want)
+	}
+	if got, want := writer.deletes[1].Dest, ipv4Prefix.String(); got != want {
+		t.Fatalf("peer-down deleted destination = %s, want %s", got, want)
+	}
+	if got, want := writer.deletes[1].Family, ipv4RouteFamily; got != want {
+		t.Fatalf("delete[%d] family = %s, want %s", 1, got, want)
 	}
 }
 
@@ -114,6 +199,23 @@ func TestSweepStaleReinstallsRoutesDeletedByPeerFlap(t *testing.T) {
 	if got, want := writer.installs[1].Dest, prefix.String(); got != want {
 		t.Fatalf("reinstalled destination = %s, want %s", got, want)
 	}
+
+	ipv4Prefix := netip.MustParsePrefix("198.51.100.0/24")
+	ipv4Path := watchPathIPv4(t, "10.230.230.5", ipv4Prefix, false)
+	ipv4Path.Best = true
+	fake.setListPaths([]*apiutil.Path{path, ipv4Path})
+	if err := speaker.SweepStale(context.Background()); err != nil {
+		t.Fatalf("sweep after flap: %v", err)
+	}
+	if got, want := len(writer.installs), 4; got != want {
+		t.Fatalf("install count = %d, want %d", got, want)
+	}
+	if got, want := writer.installs[2].Dest, ipv4Prefix.String(); got != want {
+		t.Fatalf("reinstalled destination = %s, want %s", got, want)
+	}
+	if got, want := writer.installs[3].Dest, prefix.String(); got != want {
+		t.Fatalf("reinstalled destination = %s, want %s", got, want)
+	}
 }
 
 // TestSweepStaleSkipsStaleLocalAndNonBestPaths covers the re-apply
@@ -140,8 +242,12 @@ func TestSweepStaleSkipsStaleLocalAndNonBestPaths(t *testing.T) {
 	localPath.Best = true
 	localPath.PeerAddress = netip.Addr{}
 	nonBest := watchPath(t, peer, netip.MustParsePrefix("3d06:bad:b01:c::/64"), false)
+	ipv4Default := watchPathIPv4(t, "10.230.230.5", netip.MustParsePrefix(ipv4DefaultPrefix), false)
+	ipv4Default.Best = true
+	ipv6Default := watchPath(t, peer, netip.MustParsePrefix(ipv6DefaultPrefix), false)
+	ipv6Default.Best = true
 
-	fake.setListPaths([]*apiutil.Path{stalePath, localPath, nonBest})
+	fake.setListPaths([]*apiutil.Path{stalePath, localPath, nonBest, ipv4Default, ipv6Default})
 	if err := speaker.SweepStale(context.Background()); err != nil {
 		t.Fatalf("sweep: %v", err)
 	}

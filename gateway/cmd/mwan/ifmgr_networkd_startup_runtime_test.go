@@ -50,10 +50,13 @@ func TestNetworkdOrderedDaemonStartup(t *testing.T) {
 		}
 	})
 	networkDir, unitDir := filepath.Join(root, "network"), filepath.Join(root, "units")
-	for _, directory := range []string{networkDir, unitDir, "/var/lib/mwan"} {
+	for _, directory := range []string{networkDir, unitDir} {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := os.RemoveAll("/var/lib/mwan"); err != nil {
+		t.Fatal(err)
 	}
 	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "internal", "yangpub", "schema"))
 	if err != nil {
@@ -115,6 +118,13 @@ func TestNetworkdOrderedDaemonStartup(t *testing.T) {
 	writeNetworkdResolverFixture(t, networkDir, "")
 	// Cold boot must render before networkd starts without activating networkd through D-Bus.
 	startOrderedDaemon(t, "start")
+	stateDirectory, err := os.Stat("/var/lib/mwan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stateDirectory.IsDir() || stateDirectory.Mode().Perm() != 0o755 {
+		t.Fatal(stateDirectory.Mode())
+	}
 	state := networkdResolverCommand(t, "systemctl", "show", "systemd-networkd", "--property=ActiveState", "--value")
 	if strings.TrimSpace(state) != "inactive" {
 		t.Fatalf("cold startup activated networkd: %s", state)
