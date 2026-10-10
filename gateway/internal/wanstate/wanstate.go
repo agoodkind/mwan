@@ -60,6 +60,9 @@ type MemberRouting struct {
 	Carrying bool
 	V4Ready  bool
 	V6Ready  bool
+	// V4Reason and V6Reason store the failed dependency of a configured family that is not ready.
+	V4Reason string
+	V6Reason string
 	// OwnedAddresses are the mapped addresses the routing module holds on the
 	// member's link as host addresses, in configuration order.
 	OwnedAddresses []netip.Addr
@@ -240,13 +243,22 @@ func (s *Store) SetRouting(activeTier uint8, members map[string]MemberRouting) {
 		if member.V6Ready {
 			connection.IPv6.Routing = "ready"
 		}
-		for _, change := range []struct{ family, previous, current string }{
-			{"ipv4", oldV4, connection.IPv4.Routing}, {"ipv6", oldV6, connection.IPv6.Routing},
+		oldReasonV4, oldReasonV6 := connection.IPv4.routingReason, connection.IPv6.routingReason
+		connection.IPv4.routingReason, connection.IPv6.routingReason = member.V4Reason, member.V6Reason
+		for _, change := range []struct{ family, previous, current, previousReason, reason string }{
+			{"ipv4", oldV4, connection.IPv4.Routing, oldReasonV4, member.V4Reason},
+			{"ipv6", oldV6, connection.IPv6.Routing, oldReasonV6, member.V6Reason},
 		} {
-			if change.previous != "unknown" && change.previous != change.current {
-				value := s.addTransitionLocked(&connection, change.family, change.previous, change.current, "evaluate-routing", "wan-routes", "routing readiness changed", s.clock.Now())
-				transitions = append(transitions, routingTransition{id: id, value: value})
+			unchanged := change.previous == change.current && change.previousReason == change.reason
+			if change.previous == "unknown" || unchanged {
+				continue
 			}
+			reason := change.reason
+			if reason == "" {
+				reason = "routing readiness changed"
+			}
+			value := s.addTransitionLocked(&connection, change.family, change.previous, change.current, "evaluate-routing", "wan-routes", reason, s.clock.Now())
+			transitions = append(transitions, routingTransition{id: id, value: value})
 		}
 		s.connections[id] = connection
 	}

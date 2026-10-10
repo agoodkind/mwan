@@ -176,6 +176,7 @@ func (module *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	env.OwnedAddresses = &ifmgr.OwnedAddressResults{}
 	env.Delegations = netif.NewDHCPv6PDStore()
 	env.NPTAddresses = module
+	env.TunnelEndpointRoutes = module.reconciler
 	return nil
 }
 

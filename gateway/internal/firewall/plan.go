@@ -29,6 +29,7 @@ const (
 	PurposePinnedDestinationMark RulePurpose = "pinned-destination-mark"
 	PurposeForcedDSCPMark        RulePurpose = "forced-dscp-mark"
 	PurposeRestoreMark           RulePurpose = "restore-mark"
+	PurposeKeepRelatedMark       RulePurpose = "keep-related-mark"
 	PurposeSaveMark              RulePurpose = "save-mark"
 )
 

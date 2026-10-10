@@ -45,6 +45,11 @@ func buildIntentTunnel(entry ifaceEntry) (*interfaceintent.Tunnel, error) {
 	if err := rejectTunnelIPv4(entry); err != nil {
 		return nil, err
 	}
+	if entry.WAN != nil {
+		if err := validateTunnelProvider(entry); err != nil {
+			return nil, err
+		}
+	}
 	return &interfaceintent.Tunnel{
 		Protocol: interfaceintent.TunnelProtocol6in4, Underlay: wire.Underlay,
 		Remote: remote, Local: local, TTL: wire.TTL,
@@ -84,6 +89,42 @@ func rejectTunnelIPv4(entry ifaceEntry) error {
 			entry.Name)
 	}
 	return nil
+}
+
+// validateTunnelProvider rejects a 6in4 provider that the routing module cannot make ready.
+// The routing module reads the provider gateway from a main-table default route with a next hop.
+// The routing module requires one successful IPv6 probe before the provider becomes ready.
+func validateTunnelProvider(entry ifaceEntry) error {
+	if entry.IPv4 != nil {
+		return fmt.Errorf("interface %s: a 6in4 tunnel provider cannot include an ipv4 family", entry.Name)
+	}
+	if entry.IPv6 == nil {
+		return fmt.Errorf("interface %s: a 6in4 tunnel provider requires an ipv6 family", entry.Name)
+	}
+	if !tunnelDefaultGateway(entry.IPv6.familyWire) {
+		return fmt.Errorf("interface %s: a 6in4 tunnel provider requires an ipv6 default route with an explicit gateway", entry.Name)
+	}
+	probe := entry.WAN.Health
+	if probe == nil || probe.Enabled == nil || !*probe.Enabled || len(probe.TargetsV6) == 0 {
+		return fmt.Errorf("interface %s: a 6in4 tunnel provider requires an enabled health probe with targets-v6", entry.Name)
+	}
+	if len(probe.TargetsV4) != 0 {
+		return fmt.Errorf("interface %s: a 6in4 tunnel provider cannot probe targets-v4", entry.Name)
+	}
+	return nil
+}
+
+func tunnelDefaultGateway(family familyWire) bool {
+	if family.Gateway != "" {
+		return true
+	}
+	for _, route := range family.Routes {
+		destination, err := netip.ParsePrefix(route.Destination)
+		if err == nil && destination.Bits() == 0 && route.Gateway != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func parseTunnelEndpoint(name string, leaf string, raw string) (netip.Addr, error) {
@@ -135,6 +176,14 @@ func validateTunnels(connections []interfaceintent.Connection, declared map[stri
 		underlay := connections[index]
 		if underlay.Link != nil && underlay.Link.Kind == interfaceintent.KindTunnel {
 			return fmt.Errorf("interface %s: tunnel underlay %s is a tunnel", connection.Name, tunnel.Underlay)
+		}
+		if connection.Roles&interfaceintent.RoleProvider != 0 {
+			if underlay.Roles&interfaceintent.RoleProvider == 0 {
+				return fmt.Errorf("interface %s: tunnel provider underlay %s is not a provider", connection.Name, tunnel.Underlay)
+			}
+			if underlay.IPv4 == nil {
+				return fmt.Errorf("interface %s: tunnel provider underlay %s has no ipv4 family", connection.Name, tunnel.Underlay)
+			}
 		}
 		if underlay.Link != nil && underlay.Link.MTU != nil && connection.Link.MTU != nil &&
 			uint64(*connection.Link.MTU)+interfaceintent.Tunnel6in4Overhead > uint64(*underlay.Link.MTU) {

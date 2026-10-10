@@ -28,6 +28,7 @@ type FamilyState struct {
 	leasePersistenceReason string
 	Firewall               string
 	Routing                string
+	routingReason          string
 	Readiness              string
 	Assignments            []interfaceintent.Assignment
 	LastApply              ApplyResult
@@ -141,7 +142,7 @@ func cloneConnection(value ConnectionState) ConnectionState {
 }
 
 func newFamilyState() FamilyState {
-	return FamilyState{Acquisition: "unknown", AssignmentValid: "unknown", LeasePersistence: "unknown", leasePersistenceReason: "", Firewall: "unknown", Routing: "unknown", Readiness: "unknown", Assignments: nil, LastApply: ApplyResult{Operation: "", Dependency: "", Result: "", Reason: "", At: time.Time{}}, Addresses: nil, Routes: nil}
+	return FamilyState{Acquisition: "unknown", AssignmentValid: "unknown", LeasePersistence: "unknown", leasePersistenceReason: "", Firewall: "unknown", Routing: "unknown", routingReason: "", Readiness: "unknown", Assignments: nil, LastApply: ApplyResult{Operation: "", Dependency: "", Result: "", Reason: "", At: time.Time{}}, Addresses: nil, Routes: nil}
 }
 
 // SetLeasePersistence records lease storage separately from forwarding state.
@@ -254,7 +255,7 @@ func (s *Store) SetAssignment(id, family, acquisition, validity string, assignme
 	previous := state.Acquisition + "/" + state.AssignmentValid
 	state.Acquisition = acquisition
 	state.AssignmentValid = validity
-	state.Assignments = cloneFamily(FamilyState{Acquisition: "", AssignmentValid: "", LeasePersistence: "", leasePersistenceReason: "", Firewall: "", Routing: "", Readiness: "", Assignments: assignments, LastApply: ApplyResult{Operation: "", Dependency: "", Result: "", Reason: "", At: time.Time{}}, Addresses: nil, Routes: nil}).Assignments
+	state.Assignments = cloneFamily(FamilyState{Acquisition: "", AssignmentValid: "", LeasePersistence: "", leasePersistenceReason: "", Firewall: "", Routing: "", routingReason: "", Readiness: "", Assignments: assignments, LastApply: ApplyResult{Operation: "", Dependency: "", Result: "", Reason: "", At: time.Time{}}, Addresses: nil, Routes: nil}).Assignments
 	var transition *Transition
 	if next := acquisition + "/" + validity; next != previous {
 		value := s.addTransitionLocked(&current, family, previous, next, "acquire", "protocol", "assignment state changed", s.clock.Now())

@@ -50,6 +50,17 @@ func (receipts OwnedReleaseReceipts) Released() bool {
 	return !receipts.PreviousBoot && receipts.VirtualLinks == 0 && receipts.Memberships == 0 && receipts.OrdinaryObjects == 0 && receipts.Promotions == 0 && receipts.KernelFields == 0
 }
 
+// A tunnel connection with a recorded endpoint route still owns a kernel route in a provider table.
+func recordedEndpointRoutes(journal ownedStaticJournal, id connectionid.ID) int {
+	count := 0
+	for _, record := range journal.EndpointRoutes {
+		if record.ConnectionID == id.String() {
+			count++
+		}
+	}
+	return count
+}
+
 // InspectOwnedRelease reads persisted receipts without constructor boot normalization.
 func InspectOwnedRelease(id connectionid.ID, linksPath, addressesPath, kernelPath string) (result OwnedReleaseReceipts, failure error) {
 	defer func() {
@@ -105,6 +116,9 @@ func InspectOwnedRelease(id connectionid.ID, linksPath, addressesPath, kernelPat
 			result.PreviousBoot = result.PreviousBoot || strings.TrimSpace(addresses.BootID) != bootID
 		}
 	}
+	endpointRoutes := recordedEndpointRoutes(addresses, id)
+	result.OrdinaryObjects += endpointRoutes
+	result.PreviousBoot = result.PreviousBoot || endpointRoutes != 0 && strings.TrimSpace(addresses.BootID) != bootID
 	var kernel ownedKernelJournal
 	result.KernelPolicyPresent, err = readOwnedJournal(kernelPath, &kernel)
 	if err != nil {

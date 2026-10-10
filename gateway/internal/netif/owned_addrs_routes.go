@@ -68,6 +68,8 @@ type ownedStaticJournal struct {
 	BootID    string                 `json:"boot_id"`
 	Objects   []ownedStaticObject    `json:"objects"`
 	Promotion []ownedStaticPromotion `json:"promotion,omitempty"`
+	// EndpointRoutes stores the tunnel endpoint routes that the routing module installs in provider tables.
+	EndpointRoutes []ownedEndpointRoute `json:"endpoint_routes,omitempty"`
 }
 
 type ownedStaticPromotion struct {
@@ -110,13 +112,13 @@ func NewOwnedStaticReconciler(path string) (*OwnedStaticReconciler, error) {
 		slog.Warn("static ownership boot ID read failed", "err", err)
 		return nil, fmt.Errorf("read boot ID: %w", err)
 	}
-	r := &OwnedStaticReconciler{mu: sync.Mutex{}, path: path, journal: ownedStaticJournal{BootID: string(bootID), Objects: nil, Promotion: nil}, clock: internalclock.Real{}}
+	r := &OwnedStaticReconciler{mu: sync.Mutex{}, path: path, journal: ownedStaticJournal{BootID: string(bootID), Objects: nil, Promotion: nil, EndpointRoutes: nil}, clock: internalclock.Real{}}
 	if _, err := readOwnedJournal(path, &r.journal); err != nil {
 		slog.Warn("static ownership journal read failed", "path", path, "err", err)
 		return nil, fmt.Errorf("read static ownership journal: %w", err)
 	}
 	if r.journal.BootID != string(bootID) {
-		r.journal = ownedStaticJournal{BootID: string(bootID), Objects: nil, Promotion: nil}
+		r.journal = ownedStaticJournal{BootID: string(bootID), Objects: nil, Promotion: nil, EndpointRoutes: nil}
 	}
 	if err := validateScopedAddressRecords(r.journal.Objects); err != nil {
 		return nil, err

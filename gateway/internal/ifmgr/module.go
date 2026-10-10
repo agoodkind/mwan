@@ -118,6 +118,8 @@ type Env struct {
 	// OwnedAddresses contains address installation results from the current pass.
 	OwnedAddresses *OwnedAddressResults
 	NPTAddresses   NPTAddressAuthority
+	// TunnelEndpointRoutes is nil when the host configures no address ownership journal.
+	TunnelEndpointRoutes TunnelEndpointRoutes
 	// Delegations publishes MWAN-owned DHCPv6 addresses and prefixes.
 	Delegations *netif.DHCPv6PDStore
 	// PrepareLocalIPv6 protects new local DHCPv6 addresses from forwarding translation before installation.
@@ -136,6 +138,14 @@ type NPTAddressAuthority interface {
 	Recorded() []NPTEdgeRecord
 	RetainDuringRecovery(NPTEdgeRecord) bool
 	Release(context.Context, *slog.Logger, []NPTEdgeRecord) error
+}
+
+// TunnelEndpointRoutes records each tunnel endpoint route in the address ownership journal before the
+// kernel write.
+// The routing module deletes only the routes in the journal.
+type TunnelEndpointRoutes interface {
+	EnsureTunnelEndpointRoute(ctx context.Context, log *slog.Logger, connectionID string, want netif.RouteSpec) error
+	ReleaseTunnelEndpointRoutes(ctx context.Context, log *slog.Logger, keep map[string]bool) error
 }
 
 // OwnedAddressResults shares successful exact address writes with translation consumers.

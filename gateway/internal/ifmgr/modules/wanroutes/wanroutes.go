@@ -90,6 +90,8 @@ type WAN struct {
 	// nothing.
 	MappedExternals      []netip.Addr
 	LocalMappedExternals []netip.Addr
+	// A tunnel provider depends on the provider with the interface in Tunnel.Underlay.
+	Tunnel *interfaceintent.Tunnel
 }
 
 type gatewaySet struct {
@@ -124,6 +126,13 @@ type Module struct {
 
 	// The mutex protects the verified mapping snapshot published by addresses.
 	ownedAddresses map[string][]netip.Addr
+
+	// The mutex protects the last pass's tunnel results indexed by connection ID.
+	// endpointRoutes stores the endpoint routes that the pass installed or verified.
+	endpointRoutes map[string]netif.RouteSpec
+	// endpointWatch also stores the last installed route of a tunnel with a failed write.
+	endpointWatch map[string]netif.RouteSpec
+	tunnelReasons map[string]string
 }
 
 // gatewayDiscovery is one pass's gateway read. A provider whose link does not
@@ -150,6 +159,12 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	if err := validateConfig(m.cfg); err != nil {
 		log.WarnContext(ctx, "wan.routes: validateConfig failed", "err", err)
 		return err
+	}
+	for _, wan := range m.cfg.WANs {
+		if wan.Tunnel != nil && env.TunnelEndpointRoutes == nil {
+			log.WarnContext(ctx, "wan.routes: tunnel provider has no endpoint route journal", "connection_id", wan.Key())
+			return fmt.Errorf("wan.routes: tunnel provider %s requires the addresses module state_file", wan.Key())
+		}
 	}
 	if m.resolveNextHop == nil {
 		m.resolveNextHop = netif.NextHopResolves
@@ -193,9 +208,10 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		)
 	}
 	translations := m.translationState()
-	_, routes := desiredState(currentGateways, health, m.cfg, translations)
+	endpointErr := m.reconcileEndpointRoutes(ctx, log, currentGateways)
+	_, routes := m.desiredStateForPass(currentGateways, health, translations)
 
-	reconcileErr := discovery.missingLinks
+	reconcileErr := errors.Join(discovery.missingLinks, endpointErr)
 	for _, route := range routes {
 		if route.Dest == "default" {
 			if err := reconcileTableDefault(ctx, log, route); err != nil {
@@ -220,7 +236,7 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 			))
 		}
 	}
-	rules, _ := desiredState(currentGateways, health, m.cfg, translations)
+	rules, _ := m.desiredStateForPass(currentGateways, health, translations)
 	for _, rule := range rules {
 		if rule.Priority == catchAllPriority {
 			continue
@@ -231,7 +247,7 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		}
 	}
 	// Select fallback rules only after provider routes and rules have succeeded.
-	rules, _ = desiredState(currentGateways, health, m.cfg, translations)
+	rules, _ = m.desiredStateForPass(currentGateways, health, translations)
 	for _, rule := range rules {
 		if rule.Priority != catchAllPriority {
 			continue
@@ -243,7 +259,7 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 			reconcileErr = errors.Join(reconcileErr, fmt.Errorf("reconcile fallback rule: %w", err))
 		}
 	}
-	rules, _ = desiredState(currentGateways, health, m.cfg, translations)
+	rules, _ = m.desiredStateForPass(currentGateways, health, translations)
 	if err := removeDisabledRuleSlots(ctx, log, m.cfg, rules); err != nil {
 		// A stale policy rule can override any provider selected by steering.
 		clear(currentGateways)
@@ -252,6 +268,14 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	m.checkNextHopLocked(ctx, log)
 	m.publishLiveState(currentGateways, health, translations)
 	return reconcileErr
+}
+
+// A failed route or rule write in the current pass can remove the underlay gateway.
+// desiredStateForPass applies the tunnel dependencies before each computation.
+// Callers must lock the module.
+func (m *Module) desiredStateForPass(currentGateways gateways, health netif.HealthStates, translations map[string]wanstate.MemberTranslation) ([]netif.DesiredRule, []netif.RouteSpec) {
+	m.tunnelReasons = m.excludeUnreadyTunnelFamilies(currentGateways, health, translations)
+	return desiredState(currentGateways, health, m.cfg, translations)
 }
 
 func (m *Module) translationState() map[string]wanstate.MemberTranslation {
@@ -266,6 +290,7 @@ func (m *Module) publishLiveState(currentGateways gateways, health netif.HealthS
 	if m.Env == nil || m.Env.LiveState == nil {
 		return
 	}
+	m.tunnelReasons = m.excludeUnreadyTunnelFamilies(currentGateways, health, translations)
 	v4 := familyMembers(m.cfg, currentGateways, health, translations, familyV4)
 	v6 := familyMembers(m.cfg, currentGateways, health, translations, familyV6)
 	tierV4, readyV4 := netif.ActiveTier(v4, health)
@@ -282,6 +307,8 @@ func (m *Module) publishLiveState(currentGateways gateways, health netif.HealthS
 		members[wan.Key()] = wanstate.MemberRouting{
 			Carrying: selectionEnabled && ((readyV4 && wan.Tier == tierV4 && v4Ready) || (readyV6 && wan.Tier == tierV6 && v6Ready)),
 			V4Ready:  v4Ready, V6Ready: v6Ready,
+			V4Reason:       familyReason(wan, currentGateways[wan.Key()], health, translations[wan.Key()], familyV4, ""),
+			V6Reason:       familyReason(wan, currentGateways[wan.Key()], health, translations[wan.Key()], familyV6, m.tunnelReasons[wan.Key()]),
 			OwnedAddresses: slices.Clone(m.ownedAddresses[wan.Key()]),
 		}
 	}
@@ -349,6 +376,12 @@ func (m *Module) onMonitorEvent(ctx context.Context, log *slog.Logger, event net
 		m.requestRepair("owned return route deleted")
 		return
 	}
+	if event.Kind == netif.EvRouteDeleted && m.ownsEndpointRouteDeletion(event) {
+		log.WarnContext(ctx, "wan.routes: owned tunnel endpoint route removed",
+			"family", event.Family, "table_id", event.TableID, "dest", event.Dest)
+		m.requestRepair("owned tunnel endpoint route deleted")
+		return
+	}
 	if !isDefaultRouteEvent(event) {
 		return
 	}
@@ -404,7 +437,13 @@ func (m *Module) ownsDesiredRuleDeletion(ctx context.Context, log *slog.Logger, 
 		log.WarnContext(ctx, "wan.routes: rule deletion health read failed", "err", err)
 		return false
 	}
-	rules, _ := desiredState(discovery.gateways, health, m.cfg, m.translationState())
+	translations := m.translationState()
+	// Reconcile removes the rules of a tunnel with an unmet dependency.
+	// The unmet dependency exclusion classifies removal of the tunnel's rules as the module's own deletion.
+	m.Lock()
+	m.excludeUnreadyTunnelFamilies(discovery.gateways, health, translations)
+	m.Unlock()
+	rules, _ := desiredState(discovery.gateways, health, m.cfg, translations)
 	for _, desired := range rules {
 		if event.Family == desired.Family && event.Priority == desired.Priority &&
 			event.TableID == desired.TableID && event.From == desired.From &&
@@ -775,6 +814,9 @@ func validateConfig(cfg Config) error {
 		if err := validateWAN(wan); err != nil {
 			return fmt.Errorf("wan.routes.wan[%d]: %w", i, err)
 		}
+		if err := validateTunnelWAN(cfg, wan); err != nil {
+			return fmt.Errorf("wan.routes.wan[%d]: %w", i, err)
+		}
 		if seenIDs[wan.Key()] {
 			slog.Warn("wan.routes: duplicate connection ID", "connection_id", wan.Key())
 			return fmt.Errorf("wan.routes.wan[%d]: duplicate connection ID %q", i, wan.Key())
@@ -876,6 +918,9 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		resolveNextHop: nil,
 		nextHopMisses:  0,
 		ownedAddresses: nil,
+		endpointRoutes: nil,
+		endpointWatch:  nil,
+		tunnelReasons:  nil,
 	}, nil
 }
 

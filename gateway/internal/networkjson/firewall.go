@@ -10,6 +10,7 @@ import (
 
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/firewall"
+	"goodkind.io/mwan/internal/interfaceintent"
 )
 
 type firewallWire struct {
@@ -45,6 +46,9 @@ type baselineDocument struct {
 		Interface []struct {
 			Name string          `json:"name"`
 			WAN  json.RawMessage `json:"goodkind-mwan-steering:wan"`
+			Link struct {
+				Tunnel json.RawMessage `json:"tunnel"`
+			} `json:"goodkind-mwan-steering:link"`
 		} `json:"interface"`
 		SteeringGroup struct {
 			Routes struct {
@@ -58,6 +62,15 @@ type baselineDocument struct {
 type baselineFirewallWire struct {
 	ManagementInterface string                  `json:"management-interface"`
 	ManagementServices  []managementServiceWire `json:"management-service"`
+}
+
+type baselineProvider struct {
+	name   string
+	tunnel bool
+}
+
+func presentMember(raw json.RawMessage) bool {
+	return len(raw) > 0 && string(raw) != "null"
 }
 
 // LoadBaseline reads only the local settings needed before full network
@@ -77,12 +90,12 @@ func LoadBaseline(path string) (*firewall.BaselineConfig, error) {
 	if group.Firewall == nil {
 		return nil, nil
 	}
-	var providers []string
+	var providers []baselineProvider
 	var declared []string
 	for _, entry := range doc.Interfaces.Interface {
 		declared = append(declared, entry.Name)
-		if len(entry.WAN) > 0 && string(entry.WAN) != "null" {
-			providers = append(providers, entry.Name)
+		if presentMember(entry.WAN) {
+			providers = append(providers, baselineProvider{name: entry.Name, tunnel: presentMember(entry.Link.Tunnel)})
 		}
 	}
 	guestType, err := resolveGuestType(doc.Interfaces.GuestType)
@@ -116,7 +129,7 @@ func managementPolicy(guestType config.GuestType) firewall.ManagementPolicy {
 	return firewall.ManagementRequired
 }
 
-func buildBaseline(wire *baselineFirewallWire, guestType config.GuestType, internalInterface string, declared []string, providers []string) (firewall.BaselineConfig, error) {
+func buildBaseline(wire *baselineFirewallWire, guestType config.GuestType, internalInterface string, declared []string, providers []baselineProvider) (firewall.BaselineConfig, error) {
 	if wire == nil {
 		return firewall.BaselineConfig{}, fmt.Errorf("steering-group/firewall is absent")
 	}
@@ -133,12 +146,17 @@ func buildBaseline(wire *baselineFirewallWire, guestType config.GuestType, inter
 		LocalPermits:        nil,
 	}
 	seen := make(map[string]bool)
-	for _, name := range providers {
+	for _, provider := range providers {
+		name := provider.name
 		if seen[name] {
 			return firewall.BaselineConfig{}, fmt.Errorf("provider interface %q appears twice", name)
 		}
 		seen[name] = true
 		baseline.ProviderInterfaces = append(baseline.ProviderInterfaces, name)
+		if provider.tunnel {
+			// A 6in4 tunnel interface does not run a DHCP client.
+			continue
+		}
 		baseline.LocalPermits = append(baseline.LocalPermits,
 			newPermit(name, firewall.IPv4, "udp", 67, 68),
 			newPermit(name, firewall.IPv6, "udp", 547, 546),
@@ -214,12 +232,13 @@ func buildFirewall(doc *document, loaded *Config) (firewall.Config, error) {
 	if group.Firewall == nil {
 		return none, nil
 	}
-	var providerInterfaces []string
+	var providerInterfaces []baselineProvider
 	var declared []string
 	for _, entry := range doc.Interfaces.Interface {
 		declared = append(declared, entry.Name)
 		if entry.WAN != nil {
-			providerInterfaces = append(providerInterfaces, entry.Name)
+			tunnel := entry.Link != nil && entry.Link.Tunnel != nil
+			providerInterfaces = append(providerInterfaces, baselineProvider{name: entry.Name, tunnel: tunnel})
 		}
 	}
 	baselineWire := &baselineFirewallWire{
@@ -265,6 +284,7 @@ func populateFirewallProviders(cfg *firewall.Config, doc *document, loaded *Conf
 	if wire.PinnedProvider != "" && wire.PinnedConnectionID != "" {
 		return fmt.Errorf("firewall must select one of pinned-provider or pinned-connection-id")
 	}
+	tunnels := tunnelLinks(loaded.Connections)
 	matches := 0
 	for _, entry := range doc.Interfaces.Interface {
 		if entry.WAN == nil {
@@ -275,16 +295,23 @@ func populateFirewallProviders(cfg *firewall.Config, doc *document, loaded *Conf
 		if !accepted {
 			continue
 		}
+		tunnel := tunnels[entry.Name]
 		if wan.FwMark < 0 || uint64(wan.FwMark) > math.MaxUint32 {
 			return fmt.Errorf("firewall provider %s has invalid mark %d", entry.WAN.Name, wan.FwMark)
 		}
 		if wan.ForcedDSCP < 0 || wan.ForcedDSCP > 63 {
 			return fmt.Errorf("firewall provider %s has invalid DSCP %d", entry.WAN.Name, wan.ForcedDSCP)
 		}
+		pinned := (wire.PinnedConnectionID != "" && id == wire.PinnedConnectionID) ||
+			(wire.PinnedProvider != "" && entry.WAN.Name == wire.PinnedProvider)
+		if err := requireIPv4ForMarks(entry.WAN.Name, tunnel == nil, wan.ForcedDSCP != 0, pinned); err != nil {
+			return err
+		}
 		var provider firewall.Provider
 		provider.Interface = wan.Iface
 		provider.Mark = uint32(wan.FwMark)
 		provider.ForcedDSCP = uint8(wan.ForcedDSCP)
+		provider.ReducedMTU = tunnel != nil
 		if policy := wan.TranslationV4; policy != nil && policy.Mode == config.TranslationNAPT44 {
 			provider.MasqueradeIPv4 = true
 			for _, mapping := range policy.StaticMappings {
@@ -295,11 +322,13 @@ func populateFirewallProviders(cfg *firewall.Config, doc *document, loaded *Conf
 		cfg.Paths = append(cfg.Paths, firewall.ForwardingPath{
 			InternalInterface: cfg.InternalInterface,
 			ExternalInterface: wan.Iface,
-			IPv4:              true,
+			IPv4:              tunnel == nil,
 			IPv6:              true,
 		})
-		if (wire.PinnedConnectionID != "" && id == wire.PinnedConnectionID) ||
-			(wire.PinnedProvider != "" && entry.WAN.Name == wire.PinnedProvider) {
+		if tunnel != nil {
+			cfg.LocalPermits = append(cfg.LocalPermits, tunnelPermit(tunnel))
+		}
+		if pinned {
 			cfg.PinnedProvider = wan.Iface
 			matches++
 		}
@@ -308,6 +337,40 @@ func populateFirewallProviders(cfg *firewall.Config, doc *document, loaded *Conf
 		return fmt.Errorf("firewall pinned-provider %q matches multiple connections; use pinned-connection-id", wire.PinnedProvider)
 	}
 	return nil
+}
+
+// The forced DSCP rules and the pin rules mark IPv4 packets with the provider mark.
+// The main routing table would route IPv4 packets with the provider mark because the routing module does
+// not install an IPv4 policy rule for a 6in4 tunnel provider.
+// ipv4Forwarded equals the IPv4 value of the provider's forwarding path.
+func requireIPv4ForMarks(provider string, ipv4Forwarded bool, forcedDSCP bool, pinned bool) error {
+	if ipv4Forwarded {
+		return nil
+	}
+	if forcedDSCP {
+		return fmt.Errorf("firewall provider %s: forced-dscp requires an ipv4 family", provider)
+	}
+	if pinned {
+		return fmt.Errorf("firewall pin target %s has no ipv4 family", provider)
+	}
+	return nil
+}
+
+func tunnelLinks(connections []interfaceintent.Connection) map[string]*interfaceintent.Tunnel {
+	tunnels := make(map[string]*interfaceintent.Tunnel, len(connections))
+	for _, connection := range connections {
+		if connection.Link != nil && connection.Link.Tunnel != nil {
+			tunnels[connection.Name] = connection.Link.Tunnel
+		}
+	}
+	return tunnels
+}
+
+// tunnelPermit accepts the outer packets that the remote endpoint sends to the underlay interface.
+func tunnelPermit(tunnel *interfaceintent.Tunnel) firewall.TransportPermit {
+	permit := newPermit(tunnel.Underlay, firewall.IPv4, firewall.ProtocolIPv6InIPv4, 0, 0)
+	permit.Source = netip.PrefixFrom(tunnel.Remote, tunnel.Remote.BitLen())
+	return permit
 }
 
 func populateFirewallPins(cfg *firewall.Config, wire *firewallWire, opnsenseEdgeV6 string) error {

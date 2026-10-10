@@ -266,7 +266,7 @@ func buildHealthConfig(
 			cfg.WANs = append(cfg.WANs, health.WAN{
 				WANRef:            wan.WANRef,
 				Tier:              wan.Tier,
-				TargetsV4:         nil,
+				TargetsV4:         tunnelTargetsV4(wan, nil),
 				TargetsV6:         nil,
 				HTTPURLs:          nil,
 				PingCount:         0,
@@ -334,6 +334,7 @@ func buildHealthConfig(
 		if err != nil {
 			return health.Config{}, err
 		}
+		healthWAN.TargetsV4 = tunnelTargetsV4(wan, healthWAN.TargetsV4)
 		healthWAN.TargetsV6, err = parseHealthTargets(
 			wanSection.TargetsV6,
 			fieldPrefix+"/targets-v6",
@@ -349,6 +350,15 @@ func buildHealthConfig(
 		cfg.WANs = append(cfg.WANs, healthWAN)
 	}
 	return cfg, nil
+}
+
+// The health module probes the module-wide IPv4 targets when a provider's list is nil.
+// A 6in4 tunnel does not transmit IPv4 packets.
+func tunnelTargetsV4(wan sharedWAN, configured []netip.Addr) []netip.Addr {
+	if wan.Tunnel != nil && configured == nil {
+		return []netip.Addr{}
+	}
+	return configured
 }
 
 // validateHealthWANSection rejects an enabled health WAN that under-specifies
@@ -777,6 +787,7 @@ type sharedWAN struct {
 	V4Source      string
 	Tier          uint8
 	Weight        int
+	Tunnel        *interfaceintent.Tunnel
 }
 
 // sharedWANInputs is the runtime projection of the network configuration's WAN
@@ -822,8 +833,12 @@ func buildWANRefs(ifmgrCfg config.IfMgrSection) sharedWANInputs {
 	}
 	sort.Strings(names)
 	owned := make(map[string]bool)
+	tunnels := make(map[string]*interfaceintent.Tunnel)
 	for _, connection := range ifmgrCfg.Connections {
 		owned[connection.ID.String()] = connection.Owner == interfaceintent.OwnerMWAN
+		if connection.Link != nil && connection.Link.Tunnel != nil {
+			tunnels[connection.ID.String()] = connection.Link.Tunnel
+		}
 	}
 	for _, name := range names {
 		entry := ifmgrCfg.WAN[name]
@@ -844,6 +859,7 @@ func buildWANRefs(ifmgrCfg config.IfMgrSection) sharedWANInputs {
 			Tier:             entry.Tier,
 			Weight:           entry.Weight,
 			SelectionEnabled: entry.SelectionEnabled,
+			Tunnel:           tunnels[name],
 		})
 	}
 	return inputs
@@ -888,6 +904,7 @@ func buildWANRoutesConfig(
 			SelectionEnabled:     wan.SelectionEnabled,
 			MappedExternals:      mappedExternals(wan.TranslationV4),
 			LocalMappedExternals: localMappedExternals(wan.TranslationV4),
+			Tunnel:               wan.Tunnel,
 		})
 	}
 	return cfg, nil
