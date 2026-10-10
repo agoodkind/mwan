@@ -133,7 +133,7 @@ func runContinuousObservation(settingsPath, configPath string) int {
 	}
 	log, closer := logging.New(logging.Config{Handlers: []slog.Handler{slog.NewJSONHandler(os.Stderr, nil)}})
 	defer func() { _ = closer.Close() }()
-	notifier, err := notify.New(cfg, log, "mwan-observe")
+	notifier, err := notify.New(cfg.Email, cfg.NotifyConfig(), log, "mwan-observe")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
