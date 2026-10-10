@@ -15,16 +15,18 @@ const (
 	pathDependencyReconcile       = "reconcile"
 	pathDependencyForwarding      = "forwarding"
 
-	pathReasonStartup          = "first evaluation not complete"
-	pathReasonFamilyDisabled   = "address family disabled"
-	pathReasonRoutingFailed    = "routing evaluation failed"
-	pathReasonProbePending     = "probe pending"
-	pathReasonProbeFailed      = "probe failed"
-	pathReasonFirewallPending  = "firewall not evaluated"
-	pathReasonFirewallNotReady = "firewall protection not ready"
-	pathReasonInternalLink     = "internal link not ready"
-	pathReasonReconcileFailed  = "module reconcile failed"
-	pathReasonForwarding       = "forwarding not ready"
+	pathReasonStartup             = "first evaluation not complete"
+	pathReasonFamilyDisabled      = "address family disabled"
+	pathReasonRoutingFailed       = "routing evaluation failed"
+	pathReasonRoutingNotPublished = "routing evaluation not published"
+	pathReasonRoutingMemberAbsent = "routing evaluation has no result for the provider"
+	pathReasonProbePending        = "probe pending"
+	pathReasonProbeFailed         = "probe failed"
+	pathReasonFirewallPending     = "firewall not evaluated"
+	pathReasonFirewallNotReady    = "firewall protection not ready"
+	pathReasonInternalLink        = "internal link not ready"
+	pathReasonReconcileFailed     = "module reconcile failed"
+	pathReasonForwarding          = "forwarding not ready"
 
 	firewallUnknown = "unknown"
 	firewallReady   = "ready"
@@ -34,16 +36,62 @@ const (
 	familyNameIPv6 = "ipv6"
 )
 
+type routingState uint8
+
+const (
+	routingPublished routingState = iota + 1
+	routingFailed
+	routingNotPublished
+	routingMemberAbsent
+)
+
 type routingEvaluation struct {
-	published bool
-	failure   error
+	state   routingState
+	failure error
 }
 
-type familyHealth struct {
-	probed  bool
-	member  wanstate.Health
-	result  wanstate.ProbeResult
-	verdict wanstate.Health
+func newRoutingEvaluation(published bool, failure error) routingEvaluation {
+	switch {
+	case published:
+		return routingEvaluation{state: routingPublished, failure: nil}
+	case failure != nil:
+		return routingEvaluation{state: routingFailed, failure: failure}
+	}
+	return routingEvaluation{state: routingNotPublished, failure: nil}
+}
+
+func (evaluation routingEvaluation) forMember(memberPublished bool) routingEvaluation {
+	if evaluation.state == routingPublished && !memberPublished {
+		evaluation.state = routingMemberAbsent
+	}
+	return evaluation
+}
+
+type probeState uint8
+
+const (
+	probeNotConfigured probeState = iota + 1
+	probePending
+	probeFailed
+	probePassed
+)
+
+func familyProbeState(probed bool, member wanstate.Health, result wanstate.ProbeResult, family wanstate.Health) probeState {
+	memberStates := map[wanstate.Health]probeState{wanstate.HealthHealthy: probePassed, wanstate.HealthUnhealthy: probeFailed}
+	memberState, decided := memberStates[member]
+	familyState, familyDecided := memberStates[family]
+	familyProbed := result == wanstate.ProbePass || result == wanstate.ProbeFail
+	switch {
+	case !probed:
+		return probeNotConfigured
+	case !decided:
+		return probePending
+	case memberState == probeFailed || !familyProbed:
+		return memberState
+	case !familyDecided:
+		return probePending
+	}
+	return familyState
 }
 
 func met(name string) wanstate.DependencyResult {
@@ -65,31 +113,30 @@ func enabledResult(enabled bool) wanstate.DependencyResult {
 	return unmet(pathDependencyFamilyEnabled, pathReasonFamilyDisabled)
 }
 
-func routingResult(evaluation routingEvaluation, memberPublished bool) wanstate.DependencyResult {
-	switch {
-	case evaluation.published && memberPublished:
+func routingResult(evaluation routingEvaluation) wanstate.DependencyResult {
+	switch evaluation.state {
+	case routingPublished:
 		return met(pathDependencyRouting)
-	case evaluation.failure != nil:
+	case routingFailed:
 		return unmet(pathDependencyRouting, pathReasonRoutingFailed+": "+evaluation.failure.Error())
+	case routingNotPublished:
+		return pending(pathDependencyRouting, pathReasonRoutingNotPublished)
+	case routingMemberAbsent:
+		return unmet(pathDependencyRouting, pathReasonRoutingMemberAbsent)
 	}
 	return unmet(pathDependencyRouting, pathReasonRoutingFailed)
 }
 
-func probeResult(health familyHealth) wanstate.DependencyResult {
-	familyProbed := health.result == wanstate.ProbePass || health.result == wanstate.ProbeFail
-	switch {
-	case !health.probed:
+func probeResult(state probeState) wanstate.DependencyResult {
+	switch state {
+	case probeNotConfigured, probePassed:
 		return met(pathDependencyForwardingProbe)
-	case health.member == wanstate.HealthUnhealthy:
-		return unmet(pathDependencyForwardingProbe, pathReasonProbeFailed)
-	case health.member != wanstate.HealthHealthy:
+	case probePending:
 		return pending(pathDependencyForwardingProbe, pathReasonProbePending)
-	case familyProbed && health.verdict == wanstate.HealthUnhealthy:
+	case probeFailed:
 		return unmet(pathDependencyForwardingProbe, pathReasonProbeFailed)
-	case familyProbed && health.verdict != wanstate.HealthHealthy:
-		return pending(pathDependencyForwardingProbe, pathReasonProbePending)
 	}
-	return met(pathDependencyForwardingProbe)
+	return unmet(pathDependencyForwardingProbe, pathReasonProbeFailed)
 }
 
 func firewallResult(protection string) wanstate.DependencyResult {

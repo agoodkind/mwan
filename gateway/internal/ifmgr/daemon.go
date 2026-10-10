@@ -559,7 +559,7 @@ func (d *Daemon) reconcileAll(ctx context.Context, log *slog.Logger) {
 	}
 	if d.cfg.LiveState != nil {
 		snapshot := d.cfg.LiveState.Snapshot()
-		evaluation := routingEvaluation{published: snapshot.RoutingGeneration != routingGeneration, failure: routingFailure}
+		evaluation := newRoutingEvaluation(snapshot.RoutingGeneration != routingGeneration, routingFailure)
 		d.publishFamilyReadiness(snapshot, evaluation, failed)
 		for _, m := range d.modules {
 			if observer, ok := m.(FamilyReadinessObserver); ok {

@@ -8,8 +8,7 @@ import (
 	"time"
 )
 
-// GoBGP 4.7.0 keeps a session idle for five seconds after a session loss before the next connection attempt.
-const combinedIdleHold = 5 * time.Second
+const combinedGoBGPIdleHold = 5 * time.Second
 
 type combinedTimers struct {
 	check, timeout, retry, hold time.Duration
@@ -85,7 +84,7 @@ func (c *combinedRun) recoverBound(t *testing.T, device string) time.Duration {
 	if timers.retry == 0 {
 		return c.faultBound(t, device)
 	}
-	return combinedIdleHold + c.connectBound(t, device)
+	return combinedGoBGPIdleHold + c.connectBound(t, device)
 }
 
 func (r *bgpRuntimeRouter) firstReceipt(since time.Time) (time.Time, bool) {

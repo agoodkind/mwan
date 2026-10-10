@@ -16,37 +16,42 @@ const (
 	reasonFamilyNotRouted = "address family has no routing configuration"
 )
 
-func reasonDependency(reason string) string {
-	switch reason {
-	case reasonTunnelLinkAbsent:
-		return dependencyTunnel
-	case reasonUnderlayNotReady:
-		return dependencyUnderlay
-	case reasonEndpointRouteAbsent:
-		return dependencyEndpointRoute
-	case reasonBGPNotEstablished:
-		return dependencyBGPSession
-	case reasonBGPNoAcceptedRoute:
-		return dependencyBGPRoute
-	case reasonTranslationNotReady:
-		return dependencyTranslation
-	case reasonGatewayUnavailable:
-		return dependencyGateway
-	case reasonProbePending, reasonProbeFailed:
-		return dependencyProbe
-	}
-	return ""
+type dependencyRule struct {
+	name    string
+	applies func(wan WAN, family string) bool
+	states  map[string]wanstate.DependencyState
 }
 
-func dependencyOrder(wan WAN, family string) []string {
-	var order []string
-	if family == familyV6 && wan.Tunnel != nil {
-		order = append(order, dependencyTunnel, dependencyUnderlay, dependencyEndpointRoute)
+func appliesAlways(WAN, string) bool {
+	return true
+}
+
+func appliesV6Tunnel(wan WAN, family string) bool {
+	return family == familyV6 && wan.Tunnel != nil
+}
+
+func appliesV6BGP(wan WAN, family string) bool {
+	return family == familyV6 && wan.requiresBGP()
+}
+
+func unmetBy(reason string) map[string]wanstate.DependencyState {
+	return map[string]wanstate.DependencyState{reason: wanstate.DependencyUnmet}
+}
+
+func dependencyRules() []dependencyRule {
+	probeStates := map[string]wanstate.DependencyState{
+		reasonProbePending: wanstate.DependencyPending, reasonProbeFailed: wanstate.DependencyUnmet,
 	}
-	if family == familyV6 && wan.requiresBGP() {
-		order = append(order, dependencyBGPSession, dependencyBGPRoute)
+	return []dependencyRule{
+		{name: dependencyTunnel, applies: appliesV6Tunnel, states: unmetBy(reasonTunnelLinkAbsent)},
+		{name: dependencyUnderlay, applies: appliesV6Tunnel, states: unmetBy(reasonUnderlayNotReady)},
+		{name: dependencyEndpointRoute, applies: appliesV6Tunnel, states: unmetBy(reasonEndpointRouteAbsent)},
+		{name: dependencyBGPSession, applies: appliesV6BGP, states: unmetBy(reasonBGPNotEstablished)},
+		{name: dependencyBGPRoute, applies: appliesV6BGP, states: unmetBy(reasonBGPNoAcceptedRoute)},
+		{name: dependencyProbe, applies: appliesAlways, states: probeStates},
+		{name: dependencyTranslation, applies: appliesAlways, states: unmetBy(reasonTranslationNotReady)},
+		{name: dependencyGateway, applies: appliesAlways, states: unmetBy(reasonGatewayUnavailable)},
 	}
-	return append(order, dependencyProbe, dependencyTranslation, dependencyGateway)
 }
 
 func familyDependencies(wan WAN, family, reason string) []wanstate.DependencyResult {
@@ -54,19 +59,18 @@ func familyDependencies(wan WAN, family, reason string) []wanstate.DependencyRes
 		return []wanstate.DependencyResult{{Name: dependencyConfiguration, State: wanstate.DependencyUnmet, Reason: reasonFamilyNotRouted}}
 	}
 	results := []wanstate.DependencyResult{{Name: dependencyConfiguration, State: wanstate.DependencyMet, Reason: ""}}
-	unmet := reasonDependency(reason)
-	state := wanstate.DependencyMet
-	for _, name := range dependencyOrder(wan, family) {
-		if state == wanstate.DependencyMet && name == unmet {
-			result := wanstate.DependencyResult{Name: name, State: wanstate.DependencyUnmet, Reason: reason}
-			if reason == reasonProbePending {
-				result.State = wanstate.DependencyPending
-			}
-			results = append(results, result)
-			state = wanstate.DependencyNotEvaluated
+	following := wanstate.DependencyMet
+	for _, rule := range dependencyRules() {
+		if !rule.applies(wan, family) {
 			continue
 		}
-		results = append(results, wanstate.DependencyResult{Name: name, State: state, Reason: ""})
+		state, reported := rule.states[reason]
+		if following != wanstate.DependencyMet || !reported {
+			results = append(results, wanstate.DependencyResult{Name: rule.name, State: following, Reason: ""})
+			continue
+		}
+		results = append(results, wanstate.DependencyResult{Name: rule.name, State: state, Reason: reason})
+		following = wanstate.DependencyNotEvaluated
 	}
 	return results
 }
