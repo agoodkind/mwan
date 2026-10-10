@@ -109,7 +109,9 @@ func TestDeleteTableRouteMatchesDeviceMetricAndGateway(t *testing.T) {
 		t.Fatalf("route devices after two requests that match no route = %v, want both routes", links)
 	}
 
-	// A request without a device removes the lower-metric route on route-low0.
+	// The kernel removes the higher-metric route on route-high0 when the
+	// request specifies route-high0 without a metric or gateway. The kernel
+	// does not remove the lower-metric route on route-low0.
 	deviceOnly := netif.RouteSpec{
 		Family: "inet6", Dest: tableRouteDest, Dev: "route-high0",
 		TableID: tableRouteTestTable, Protocol: unix.RTPROT_BGP,
