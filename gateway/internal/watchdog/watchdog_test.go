@@ -15,10 +15,10 @@ import (
 
 	mwanv1 "goodkind.io/mwan/gen/mwan/v1"
 	"goodkind.io/mwan/internal/alert"
-	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/ops"
 	"goodkind.io/mwan/internal/statuspush"
+	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
 // ---------------------------------------------------------------------------
@@ -337,8 +337,8 @@ func (m *mockOps) GuestExec(ctx context.Context, vmid string, cmd ...string) (op
 // Helper functions
 // ---------------------------------------------------------------------------
 
-func testNC() config.NetworkConfig {
-	return config.NetworkConfig{
+func testNC() watchdogconfig.NetworkConfig {
+	return watchdogconfig.NetworkConfig{
 		PingTargetIPv4: "1.1.1.1",
 		PingTargetIPv6: "2606:4700:4700::1111",
 		PingTargets:    []string{"2606:4700:4700::1111", "2001:4860:4860::8888"},
@@ -349,17 +349,17 @@ func testNC() config.NetworkConfig {
 }
 
 func newTestWatchdog(
-	t *testing.T, ops ops.SysOps, cfgOverrides ...func(*config.Config),
+	t *testing.T, ops ops.SysOps, cfgOverrides ...func(*watchdogconfig.Config),
 ) *watchdog {
 	t.Helper()
 	tmp := t.TempDir()
-	cfg := &config.Config{
+	cfg := &watchdogconfig.Config{
 		MwanVMID: "113",
-		Email: config.EmailConfig{
+		Email: notify.EmailConfig{
 			AlertEmail: "test@test.com",
 		},
 		Network: testNC(),
-		Watchdog: config.WatchdogSection{
+		Watchdog: watchdogconfig.WatchdogSection{
 			DeployWindowMinutes:        30,
 			ConnectivityTimeoutSeconds: 0,
 			CheckIntervalHealthy:       0,
@@ -560,7 +560,7 @@ func TestMaybeSnapshotThawsAfterFailedSnapshot(t *testing.T) {
 		freezeStatus: "frozen",
 		vmSnapErr:    errors.New("snapshot task aborted"),
 	}
-	w := newTestWatchdog(t, mock, func(cfg *config.Config) {
+	w := newTestWatchdog(t, mock, func(cfg *watchdogconfig.Config) {
 		cfg.Watchdog.SnapshotHealthyThreshold = 1
 	})
 	w.consecutiveHealthy = 1

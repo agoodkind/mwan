@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
 // RunInGuest executes a command through the hypervisor. A guest command failure
@@ -18,7 +18,7 @@ import (
 // waitTimeout limits the hypervisor process. agentTimeout applies only to QEMU.
 func RunInGuest(
 	ctx context.Context,
-	guestType config.GuestType,
+	guestType watchdogconfig.GuestType,
 	waitTimeout time.Duration,
 	agentTimeout time.Duration,
 	vmid int,

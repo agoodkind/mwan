@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	mwanv1 "goodkind.io/mwan/gen/mwan/v1"
-	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/watchdog"
+	"goodkind.io/mwan/internal/watchdogconfig"
 	"google.golang.org/grpc"
 )
 
@@ -89,10 +89,10 @@ func startAgent(t *testing.T) (*recordingAgent, string) {
 	return agent, listener.Addr().String()
 }
 
-func failoverConfig(t *testing.T, primaryAddr, failoverAddr string) *config.Config {
+func failoverConfig(t *testing.T, primaryAddr, failoverAddr string) *watchdogconfig.Config {
 	t.Helper()
 	logDir := t.TempDir()
-	cfg := &config.Config{}
+	cfg := &watchdogconfig.Config{}
 	cfg.MwanVMID = primaryVMID
 	cfg.Watchdog.MwanAgentTCPAddr = primaryAddr
 	cfg.Watchdog.LogFile = filepath.Join(logDir, "watchdog.log")

@@ -21,100 +21,23 @@ import (
 	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/notify"
+	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
-// NetworkConfig holds site-specific topology values. It carries no provider
-// list: the gateway pushes its own per-provider verdict to the watchdog, so no
-// reader here has to be told which interfaces exist.
-type NetworkConfig struct {
-	PingTargetIPv4 string   `toml:"ping_target_ipv4"`
-	PingTargetIPv6 string   `toml:"ping_target_ipv6"`
-	PingTargets    []string `toml:"ping_targets"`
-	CurlTarget     string   `toml:"curl_target"`
-	LastDeployPath string   `toml:"last_deploy_path"`
-	LastChangePath string   `toml:"last_change_path"`
-}
+// NetworkConfig omits provider lists because the gateway supplies verdicts.
+type NetworkConfig = watchdogconfig.NetworkConfig
 
 // EmailConfig holds email notification settings.
 type EmailConfig = notify.EmailConfig
 
-// PVEConfig names the Proxmox VE node the watchdog runs on, which the local
-// `pvesh` task query addresses.
-type PVEConfig struct {
-	Node string `toml:"node"`
-}
+// PVEConfig selects the watchdog host for local pvesh task queries.
+type PVEConfig = watchdogconfig.PVEConfig
 
-// WatchdogSection holds watchdog-specific configuration.
-type WatchdogSection struct {
-	DeployWindowMinutes        int `toml:"deploy_window_minutes"`
-	ConnectivityTimeoutSeconds int `toml:"connectivity_timeout_seconds"`
-	CheckIntervalHealthy       int `toml:"check_interval_healthy_seconds"`
-	CheckIntervalDegraded      int `toml:"check_interval_degraded_seconds"`
-	PostRollbackGraceSeconds   int `toml:"post_rollback_grace_seconds"`
-	AlertCooldownSeconds       int `toml:"alert_cooldown_seconds"`
-	DeployGracePeriodSeconds   int `toml:"deploy_grace_period_seconds"`
-	MaxRollbackAttempts        int `toml:"max_rollback_attempts"`
-	MaxIterations              int `toml:"max_iterations"`
+// WatchdogSection configures hypervisor monitoring and guest rollback.
+type WatchdogSection = watchdogconfig.WatchdogSection
 
-	SnapshotHealthyThreshold   int `toml:"snapshot_healthy_threshold"`
-	MaxKnownGoodSnapshots      int `toml:"max_known_good_snapshots"`
-	HashCheckEveryNHealthy     int `toml:"hash_check_every_n_healthy"`
-	MinSnapshotIntervalSeconds int `toml:"min_snapshot_interval_seconds"`
-	MaxTotalSnapshots          int `toml:"max_total_snapshots"`
-
-	VsockCID         uint32 `toml:"vsock_cid"`
-	VsockPort        uint32 `toml:"vsock_port"`
-	MwanAgentTCPAddr string `toml:"mwan_agent_tcp_addr"`
-	// StatusListenPort is the vsock port the gateway pushes its provider
-	// verdict to. Zero, the default everywhere but the two hypervisors, starts
-	// no listener at all.
-	StatusListenPort uint32 `toml:"status_listen_port"`
-	// StatusCommand configures the guest status command arguments.
-	// Do not configure StatusCommand together with status_listen_port.
-	StatusCommand []string `toml:"status_command"`
-
-	LogFile           string `toml:"log_file"`
-	JSONLogFile       string `toml:"json_log_file"`
-	RollbackStateFile string `toml:"rollback_state_file"`
-	RollbackLockFile  string `toml:"rollback_lock_file"`
-
-	// ServiceName is the systemd unit name that watchdog subcommands target.
-	// Defaults to "mwan-watchdog" on production. Testbed sets this to
-	// "mwan-watchdog-testbed" so the same binary works against the
-	// per-environment unit.
-	ServiceName string `toml:"service_name"`
-}
-
-// The TOML fields are plain second counts, so these three methods are the only
-// place the unit is applied. Reading a raw field where a duration is wanted is
-// a bug these methods exist to prevent.
-
-// HealthyInterval is how long the watchdog waits between checks while
-// connectivity is healthy.
-func (ws WatchdogSection) HealthyInterval() time.Duration {
-	return time.Duration(ws.CheckIntervalHealthy) * time.Second
-}
-
-// DegradedInterval is how long the watchdog waits between checks once
-// connectivity is degraded. It is shorter than HealthyInterval so a developing
-// outage is diagnosed sooner.
-func (ws WatchdogSection) DegradedInterval() time.Duration {
-	return time.Duration(ws.CheckIntervalDegraded) * time.Second
-}
-
-// PostRollbackGrace is how long the watchdog withholds judgement after a
-// rollback, which gives the guest time to boot and its routes time to
-// converge before the next verdict.
-func (ws WatchdogSection) PostRollbackGrace() time.Duration {
-	return time.Duration(ws.PostRollbackGraceSeconds) * time.Second
-}
-
-// FailoverSection holds BGP failover configuration.
-type FailoverSection struct {
-	LXCID string `toml:"lxc_id"`
-	// AgentTCPAddr is optional during configuration loading, but failover requires it.
-	AgentTCPAddr string `toml:"agent_tcp_addr"`
-}
+// FailoverSection configures BGP failover for an LXC guest.
+type FailoverSection = watchdogconfig.FailoverSection
 
 // OPNsenseSection holds OPNsense API credentials, endpoint, and its own BGP config.
 // OPNsense is a BGP peer, not a speaker we control. Its BGP config is the inverse
@@ -236,13 +159,13 @@ type AgentSection struct {
 }
 
 // GuestType selects qm for QEMU guests and pct for LXC guests.
-type GuestType string
+type GuestType = watchdogconfig.GuestType
 
 const (
 	// GuestTypeQEMU selects qm for guest operations.
-	GuestTypeQEMU GuestType = "qemu"
+	GuestTypeQEMU = watchdogconfig.GuestTypeQEMU
 	// GuestTypeLXC selects pct for guest operations.
-	GuestTypeLXC GuestType = "lxc"
+	GuestTypeLXC = watchdogconfig.GuestTypeLXC
 )
 
 // Config is the single TOML configuration for the mwan monolith.
@@ -295,10 +218,7 @@ type WanconfigSection struct {
 //
 // Default behaviour with empty values: RepeatEvery == "0s" means
 // alerts fire once per transition only and never repeat.
-type NotifySection struct {
-	RepeatEvery string            `toml:"repeat_every"`
-	PerKind     map[string]string `toml:"per_kind"`
-}
+type NotifySection = watchdogconfig.NotifySection
 
 // IfMgrSection holds the mwan ifmgr daemon's role-pluggable configuration.
 // Each role is a list of modules (see internal/ifmgr/roles.go), and the
@@ -344,10 +264,7 @@ type IfMgrSection struct {
 //
 // Default behaviour with empty values: RepeatEvery == "0s" means alerts
 // fire once per transition only and never repeat.
-type IfMgrAlertsSection struct {
-	RepeatEvery string            `toml:"repeat_every"`
-	PerModule   map[string]string `toml:"per_module"`
-}
+type IfMgrAlertsSection = watchdogconfig.IfMgrAlertsSection
 
 // IfMgrIfaceSection holds one [ifmgr.iface.<name>] sub-table. The map
 // key is the conventional iface name (mbrains, eth0, ...); Name overrides
@@ -369,48 +286,12 @@ func defaultConfigBase() Config {
 	// exhaustruct lint does not require enumerating every zero-value
 	// sub-section (OPNsense, IfMgr, and their many nested sub-structs).
 	var cfg Config
-	cfg.GuestType = GuestTypeQEMU
-	// The secrets and addresses left empty here come from the TOML file or
-	// the environment; a default would be wrong on every host.
-	cfg.Email = EmailConfig{
-		MinLevel:      "ERROR",
-		Cooldown:      "5m",
-		SMTP2GOAPIKey: "",
-		AlertEmail:    "",
-		From:          "",
-		SubjectPrefix: "",
-		BindIface:     "",
-	}
-	cfg.PVE = PVEConfig{
-		Node: "",
-	}
-	cfg.Network = NetworkConfig{
-		PingTargetIPv4: "1.1.1.1",
-		PingTargetIPv6: "2606:4700:4700::1111",
-		PingTargets:    nil,
-		CurlTarget:     "",
-		LastDeployPath: "/var/lib/mwan/last-deploy",
-		LastChangePath: "/var/run/mwan-last-change",
-	}
-	cfg.Watchdog = WatchdogSection{
-		DeployWindowMinutes: 30, ConnectivityTimeoutSeconds: 60,
-		CheckIntervalHealthy: 30, CheckIntervalDegraded: 10,
-		PostRollbackGraceSeconds: 120, AlertCooldownSeconds: 300,
-		DeployGracePeriodSeconds: 60, MaxRollbackAttempts: 3,
-		MaxIterations:            0,
-		SnapshotHealthyThreshold: 20, MaxKnownGoodSnapshots: 3,
-		HashCheckEveryNHealthy: 10, MinSnapshotIntervalSeconds: 300,
-		MaxTotalSnapshots: 15,
-		VsockCID:          0,
-		VsockPort:         0,
-		MwanAgentTCPAddr:  "",
-		StatusListenPort:  0,
-		StatusCommand:     nil,
-		LogFile:           "/var/log/mwan-watchdog.log", JSONLogFile: "/var/log/mwan-watchdog.jsonl",
-		RollbackStateFile: "/run/mwan-rollback.state",
-		RollbackLockFile:  "/run/mwan-watchdog-rollback.lock",
-		ServiceName:       "mwan-watchdog",
-	}
+	watchdogDefaults := watchdogconfig.Default()
+	cfg.GuestType = watchdogDefaults.GuestType
+	cfg.Email = watchdogDefaults.Email
+	cfg.PVE = watchdogDefaults.PVE
+	cfg.Network = watchdogDefaults.Network
+	cfg.Watchdog = watchdogDefaults.Watchdog
 	cfg.Agent = AgentSection{
 		VsockPort: 50051, TCPAddr: "[::]:50052",
 		DeployFile:     "/var/lib/mwan/last-deploy",
@@ -436,18 +317,7 @@ func Load() (*Config, error) {
 
 // LoadArguments consumes --config without modifying process-global arguments.
 func LoadArguments(arguments []string) (*Config, []string, error) {
-	path := "/etc/mwan/config.toml"
-	if v := os.Getenv("MWAN_CONFIG"); v != "" {
-		path = v
-	}
-	remaining := append([]string(nil), arguments...)
-	for i, arg := range remaining {
-		if arg == "--config" && i+1 < len(remaining) {
-			path = remaining[i+1]
-			remaining = append(remaining[:i], remaining[i+2:]...)
-			break
-		}
-	}
+	path, remaining := watchdogconfig.ResolvePath(arguments)
 	cfg, err := loadConfig(path)
 	return cfg, remaining, err
 }
@@ -471,17 +341,15 @@ func loadConfig(path string) (*Config, error) {
 	}
 
 	// Env overrides for secrets
-	if v := strings.TrimSpace(os.Getenv("SMTP2GO_API_KEY")); v != "" {
-		cfg.Email.SMTP2GOAPIKey = v
-	}
+	watchdogconfig.ApplyEmailSecret(&cfg.Email)
 	if v := strings.TrimSpace(os.Getenv("OPNSENSE_API_SECRET")); v != "" {
 		cfg.OPNsense.APISecret = v
 	}
-	if err := validateGuestType(cfg.GuestType); err != nil {
+	if err := watchdogconfig.ValidateGuestType(cfg.GuestType); err != nil {
 		slog.Error("validate guest type failed", "error", err)
 		return nil, fmt.Errorf("validate guest type: %w", err)
 	}
-	if err := validateWatchdogStatusSource(cfg.Watchdog); err != nil {
+	if err := watchdogconfig.ValidateStatusSource(cfg.Watchdog); err != nil {
 		slog.Error("validate watchdog status source failed", "error", err)
 		return nil, fmt.Errorf("validate watchdog status source: %w", err)
 	}
@@ -514,35 +382,6 @@ func validateBGPDynamicConfig(b *BGPSection) error {
 		return errors.New("[bgp] learned_route_iface is required when dynamic_neighbors is configured")
 	}
 	return nil
-}
-
-func validateWatchdogStatusSource(section WatchdogSection) error {
-	if len(section.StatusCommand) > 0 && section.StatusListenPort != 0 {
-		return errors.New("[watchdog] status_command and status_listen_port are mutually exclusive")
-	}
-	return nil
-}
-
-// GuestTypes returns the accepted values in the order qemu, lxc for the
-// top-level TOML guest_type key, mwan install --guest-type, and the OpenTofu
-// mwan_role attribute guest_type.
-func GuestTypes() []GuestType {
-	return []GuestType{GuestTypeQEMU, GuestTypeLXC}
-}
-
-// ParseGuestType accepts only the exact lowercase names qemu and lxc.
-func ParseGuestType(name string) (GuestType, error) {
-	for _, guestType := range GuestTypes() {
-		if string(guestType) == name {
-			return guestType, nil
-		}
-	}
-	return "", fmt.Errorf("guest_type %q must be %q or %q", name, GuestTypeQEMU, GuestTypeLXC)
-}
-
-func validateGuestType(guestType GuestType) error {
-	_, err := ParseGuestType(string(guestType))
-	return err
 }
 
 func validateBGPDynamicNeighbors(prefixes []string) error {

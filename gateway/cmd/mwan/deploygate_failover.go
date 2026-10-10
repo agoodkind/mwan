@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/failovercheck"
+	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
 const failoverCheckArgumentCount = 1
@@ -15,7 +15,7 @@ func runFailoverCheck(args []string) int {
 		printDeployGateUsage()
 		return exitDeployGateUsage
 	}
-	cfg, _, err := config.LoadArguments([]string{"--config", args[0]})
+	cfg, _, err := watchdogconfig.LoadArguments([]string{"--config", args[0]})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failover configuration rejected: %v\n", err)
 		return exitDeployGateFailed

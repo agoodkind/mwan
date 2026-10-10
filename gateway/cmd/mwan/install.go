@@ -18,6 +18,7 @@ import (
 	"goodkind.io/mwan/internal/installfile"
 	"goodkind.io/mwan/internal/installspec"
 	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/internal/watchdogconfig"
 	"goodkind.io/mwan/internal/yangpub"
 )
 
@@ -247,7 +248,7 @@ func parseInstallFlags(args []string) (installFlags, error) {
 	if err := set.Parse(args); err != nil {
 		return flags, installFailed("parse the flags of", "mwan install", err)
 	}
-	if _, err := config.ParseGuestType(flags.guestType); err != nil {
+	if _, err := watchdogconfig.ParseGuestType(flags.guestType); err != nil {
 		return flags, installFailed("parse the guest type", flags.guestType, err)
 	}
 	if flags.printSchema != "" && flags.apply {

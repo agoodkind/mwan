@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
 const (
@@ -55,8 +55,8 @@ type guestLockArgs interface {
 	thawArgs(vmid string) ([]string, error)
 }
 
-func newGuestDriver(guestType config.GuestType) guestDriver {
-	if guestType == config.GuestTypeLXC {
+func newGuestDriver(guestType watchdogconfig.GuestType) guestDriver {
+	if guestType == watchdogconfig.GuestTypeLXC {
 		return lxcGuest{}
 	}
 	return qemuGuest{}

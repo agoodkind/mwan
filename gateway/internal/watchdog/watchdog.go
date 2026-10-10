@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"goodkind.io/mwan/internal/alert"
-	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/ops"
 	"goodkind.io/mwan/internal/rollback"
 	"goodkind.io/mwan/internal/statuspush"
 	"goodkind.io/mwan/internal/tracing"
+	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
 // statusSource is the gateway verdict a diagnosis reads. The watchdog depends
@@ -41,7 +41,7 @@ const (
 )
 
 type watchdog struct {
-	cfg     *config.Config
+	cfg     *watchdogconfig.Config
 	ops     ops.SysOps
 	notify  notify.Notifier
 	coord   *alert.Coord
@@ -103,7 +103,7 @@ type watchdog struct {
 // the loop relies on are stated rather than implied. Both the daemon and
 // the manual failover command construct through here.
 func newWatchdog(
-	cfg *config.Config,
+	cfg *watchdogconfig.Config,
 	sysOps ops.SysOps,
 	notifier notify.Notifier,
 	coord *alert.Coord,

@@ -6,14 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
 // snapshotTestWatchdog returns a watchdog whose snapshot cycle fires on the
 // first healthy probe, so a test drives one attempt per maybeSnapshot call.
 func snapshotTestWatchdog(t *testing.T, mock *mockOps) *watchdog {
 	t.Helper()
-	w := newTestWatchdog(t, mock, func(cfg *config.Config) {
+	w := newTestWatchdog(t, mock, func(cfg *watchdogconfig.Config) {
 		cfg.Watchdog.SnapshotHealthyThreshold = 1
 	})
 	w.consecutiveHealthy = 1
@@ -290,7 +290,7 @@ func TestPruneContinuesPastOneFailingSnapshot(t *testing.T) {
 		),
 		delSnapshotErr: errors.New("qm delsnapshot: exit status 255: storage is offline"),
 	}
-	w := newTestWatchdog(t, mock, func(cfg *config.Config) {
+	w := newTestWatchdog(t, mock, func(cfg *watchdogconfig.Config) {
 		cfg.Watchdog.MaxKnownGoodSnapshots = 1
 		cfg.Watchdog.MaxTotalSnapshots = 0
 	})

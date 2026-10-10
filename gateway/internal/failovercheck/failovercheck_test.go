@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/failovercheck"
+	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
 const (
@@ -17,8 +17,8 @@ const (
 	validVsockCID = 42
 )
 
-func validConfig() *config.Config {
-	cfg := &config.Config{}
+func validConfig() *watchdogconfig.Config {
+	cfg := &watchdogconfig.Config{}
 	cfg.MwanVMID = validVMID
 	cfg.Failover.LXCID = validLXCID
 	cfg.Failover.AgentTCPAddr = validAgent
@@ -30,76 +30,76 @@ func TestCheck(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]struct {
-		mutate func(*config.Config)
+		mutate func(*watchdogconfig.Config)
 		want   []string
 	}{
 		"valid configuration without bgp section": {
-			mutate: func(*config.Config) {},
+			mutate: func(*watchdogconfig.Config) {},
 			want:   nil,
 		},
 		"primary endpoint from vsock only": {
-			mutate: func(cfg *config.Config) {
+			mutate: func(cfg *watchdogconfig.Config) {
 				cfg.Watchdog.MwanAgentTCPAddr = ""
 				cfg.Watchdog.VsockCID = validVsockCID
 			},
 			want: nil,
 		},
 		"missing lxc_id": {
-			mutate: func(cfg *config.Config) { cfg.Failover.LXCID = "" },
+			mutate: func(cfg *watchdogconfig.Config) { cfg.Failover.LXCID = "" },
 			want:   []string{"lxc_id"},
 		},
 		"missing agent_tcp_addr": {
-			mutate: func(cfg *config.Config) { cfg.Failover.AgentTCPAddr = "" },
+			mutate: func(cfg *watchdogconfig.Config) { cfg.Failover.AgentTCPAddr = "" },
 			want:   []string{"agent_tcp_addr is required"},
 		},
 		"agent_tcp_addr without port": {
-			mutate: func(cfg *config.Config) { cfg.Failover.AgentTCPAddr = "10.0.0.2" },
+			mutate: func(cfg *watchdogconfig.Config) { cfg.Failover.AgentTCPAddr = "10.0.0.2" },
 			want:   []string{"agent_tcp_addr"},
 		},
 		"agent_tcp_addr with non-numeric port": {
-			mutate: func(cfg *config.Config) { cfg.Failover.AgentTCPAddr = "10.0.0.2:agent" },
+			mutate: func(cfg *watchdogconfig.Config) { cfg.Failover.AgentTCPAddr = "10.0.0.2:agent" },
 			want:   []string{"agent_tcp_addr"},
 		},
 		"agent_tcp_addr without host": {
-			mutate: func(cfg *config.Config) { cfg.Failover.AgentTCPAddr = ":50052" },
+			mutate: func(cfg *watchdogconfig.Config) { cfg.Failover.AgentTCPAddr = ":50052" },
 			want:   []string{"agent_tcp_addr"},
 		},
 		"agent_tcp_addr with whitespace host": {
-			mutate: func(cfg *config.Config) { cfg.Failover.AgentTCPAddr = " :50052" },
+			mutate: func(cfg *watchdogconfig.Config) { cfg.Failover.AgentTCPAddr = " :50052" },
 			want:   []string{"host is neither an ip address nor a dns hostname"},
 		},
 		"agent_tcp_addr with underscore in host": {
-			mutate: func(cfg *config.Config) { cfg.Failover.AgentTCPAddr = "failover_agent:50052" },
+			mutate: func(cfg *watchdogconfig.Config) { cfg.Failover.AgentTCPAddr = "failover_agent:50052" },
 			want:   []string{"host is neither an ip address nor a dns hostname"},
 		},
 		"agent_tcp_addr with hostname": {
-			mutate: func(cfg *config.Config) {
+			mutate: func(cfg *watchdogconfig.Config) {
 				cfg.Failover.AgentTCPAddr = "failover-agent.example.net:50052"
 			},
 			want: nil,
 		},
 		"agent_tcp_addr with ipv4 address": {
-			mutate: func(cfg *config.Config) { cfg.Failover.AgentTCPAddr = "192.0.2.10:50052" },
+			mutate: func(cfg *watchdogconfig.Config) { cfg.Failover.AgentTCPAddr = "192.0.2.10:50052" },
 			want:   nil,
 		},
 		"agent_tcp_addr with bracketed ipv6 address": {
-			mutate: func(cfg *config.Config) { cfg.Failover.AgentTCPAddr = "[2001:db8::10]:50052" },
+			mutate: func(cfg *watchdogconfig.Config) { cfg.Failover.AgentTCPAddr = "[2001:db8::10]:50052" },
 			want:   nil,
 		},
 		"missing mwan_vmid": {
-			mutate: func(cfg *config.Config) { cfg.MwanVMID = "" },
+			mutate: func(cfg *watchdogconfig.Config) { cfg.MwanVMID = "" },
 			want:   []string{"mwan_vmid is required"},
 		},
 		"equal guest identifiers": {
-			mutate: func(cfg *config.Config) { cfg.Failover.LXCID = cfg.MwanVMID },
+			mutate: func(cfg *watchdogconfig.Config) { cfg.Failover.LXCID = cfg.MwanVMID },
 			want:   []string{"must differ"},
 		},
 		"no primary endpoint": {
-			mutate: func(cfg *config.Config) { cfg.Watchdog.MwanAgentTCPAddr = "" },
+			mutate: func(cfg *watchdogconfig.Config) { cfg.Watchdog.MwanAgentTCPAddr = "" },
 			want:   []string{"no primary endpoint"},
 		},
 		"every precondition fails": {
-			mutate: func(cfg *config.Config) {
+			mutate: func(cfg *watchdogconfig.Config) {
 				cfg.Failover.LXCID = ""
 				cfg.Failover.AgentTCPAddr = ""
 				cfg.MwanVMID = ""

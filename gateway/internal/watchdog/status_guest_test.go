@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ops"
 	"goodkind.io/mwan/internal/watchdog"
+	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
 const (
@@ -41,7 +41,7 @@ func newGuestStatusSource(t *testing.T) *watchdog.GuestStatusSource {
 	t.Helper()
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	cfg := &config.Config{GuestType: config.GuestTypeLXC}
+	cfg := &watchdogconfig.Config{GuestType: watchdogconfig.GuestTypeLXC}
 	return watchdog.NewGuestStatusSource(
 		ops.NewRealOps(cfg, logger),
 		statusVMID,
