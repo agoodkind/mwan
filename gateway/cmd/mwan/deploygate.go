@@ -230,28 +230,7 @@ func runDeploy(args []string) int {
 	case gateModeCheckFailover:
 		return runFailoverCheck(rest)
 	case gateModeWaitReboot:
-		if len(rest) != 3 {
-			printDeployGateUsage()
-			return exitDeployGateUsage
-		}
-		vmid, err := parseVMID(rest[0])
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
-			return exitDeployGateUsage
-		}
-		budget, err := parseBudgetSeconds(rest[2])
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
-			return exitDeployGateUsage
-		}
-		if !bootIDPattern.MatchString(rest[1]) {
-			fmt.Fprintf(os.Stderr,
-				"mwan deploy: old_boot_id %q is not a boot_id UUID\n", rest[1])
-			return exitDeployGateUsage
-		}
-		return onGatewayHost(deps, func(hostDeps deployGateDeps) int {
-			return waitReboot(ctx, hostDeps, vmid, rest[1], budget)
-		})
+		return runWaitReboot(ctx, deps, rest)
 	case gateModeWaitEgress:
 		budget, families, rounds, ok := parseWaitEgressArgs(rest)
 		if !ok {
@@ -270,6 +249,31 @@ func runDeploy(args []string) int {
 		printDeployGateUsage()
 		return exitDeployGateUsage
 	}
+}
+
+func runWaitReboot(ctx context.Context, deps deployGateDeps, rest []string) int {
+	if len(rest) != 3 {
+		printDeployGateUsage()
+		return exitDeployGateUsage
+	}
+	vmid, err := parseVMID(rest[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
+		return exitDeployGateUsage
+	}
+	budget, err := parseBudgetSeconds(rest[2])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
+		return exitDeployGateUsage
+	}
+	if !bootIDPattern.MatchString(rest[1]) {
+		fmt.Fprintf(os.Stderr,
+			"mwan deploy: old_boot_id %q is not a boot_id UUID\n", rest[1])
+		return exitDeployGateUsage
+	}
+	return onGatewayHost(deps, func(hostDeps deployGateDeps) int {
+		return waitReboot(ctx, hostDeps, vmid, rest[1], budget)
+	})
 }
 
 // waitDeployInputs carries the wait-deploy arguments as one value, because
