@@ -85,8 +85,6 @@ func (r *OwnedLinkReconciler) resolveTunnelUpdateError(connection interfaceinten
 	return nil, false, fmt.Errorf("%w: %s; the next pass recreates %s", errTunnelEndpointsHeld, holder, connection.Name)
 }
 
-// tunnelEndpointHolder identifies the other device with the requested underlay and endpoints.
-// tunnelEndpointHolder reports whether the journal records that device.
 func (r *OwnedLinkReconciler) tunnelEndpointHolder(requested *netlink.Sittun) (string, bool, error) {
 	links, err := netlink.LinkList()
 	if err != nil {

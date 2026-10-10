@@ -57,23 +57,22 @@ func newOwnedLinkResult(id string, name string, status OwnedLinkStatus) OwnedLin
 }
 
 type virtualRecord struct {
-	BootID       string `json:"boot_id"`
-	ConnectionID string `json:"connection_id"`
-	Alias        string `json:"alias"`
-	TempName     string `json:"temp_name"`
-	Name         string `json:"name"`
-	Kind         string `json:"kind"`
-	VLANID       uint16 `json:"vlan_id,omitempty"`
-	Parent       string `json:"parent,omitempty"`
-	ParentMAC    string `json:"parent_mac,omitempty"`
-	ParentBoot   string `json:"parent_boot,omitempty"`
-	ParentKind   string `json:"parent_kind,omitempty"`
-	ParentName   string `json:"parent_name,omitempty"`
-	ParentIndex  int    `json:"parent_index,omitempty"`
-	LinkIndex    int    `json:"link_index,omitempty"`
-	Complete     bool   `json:"complete"`
-	Quarantined  bool   `json:"quarantined,omitempty"`
-	// TunnelProtocol selects the kernel link type of a tunnel record.
+	BootID         string `json:"boot_id"`
+	ConnectionID   string `json:"connection_id"`
+	Alias          string `json:"alias"`
+	TempName       string `json:"temp_name"`
+	Name           string `json:"name"`
+	Kind           string `json:"kind"`
+	VLANID         uint16 `json:"vlan_id,omitempty"`
+	Parent         string `json:"parent,omitempty"`
+	ParentMAC      string `json:"parent_mac,omitempty"`
+	ParentBoot     string `json:"parent_boot,omitempty"`
+	ParentKind     string `json:"parent_kind,omitempty"`
+	ParentName     string `json:"parent_name,omitempty"`
+	ParentIndex    int    `json:"parent_index,omitempty"`
+	LinkIndex      int    `json:"link_index,omitempty"`
+	Complete       bool   `json:"complete"`
+	Quarantined    bool   `json:"quarantined,omitempty"`
 	TunnelProtocol string `json:"tunnel_protocol,omitempty"`
 	TunnelRemote   string `json:"tunnel_remote,omitempty"`
 	TunnelLocal    string `json:"tunnel_local,omitempty"`
