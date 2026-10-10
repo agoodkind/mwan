@@ -366,7 +366,6 @@ func tunnelLinks(connections []interfaceintent.Connection) map[string]*interface
 	return tunnels
 }
 
-// tunnelPermit accepts the outer packets that the remote endpoint sends to the underlay interface.
 func tunnelPermit(tunnel *interfaceintent.Tunnel) firewall.TransportPermit {
 	permit := newPermit(tunnel.Underlay, firewall.IPv4, firewall.ProtocolIPv6InIPv4, 0, 0)
 	permit.Source = netip.PrefixFrom(tunnel.Remote, tunnel.Remote.BitLen())

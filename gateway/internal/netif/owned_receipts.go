@@ -50,7 +50,6 @@ func (receipts OwnedReleaseReceipts) Released() bool {
 	return !receipts.PreviousBoot && receipts.VirtualLinks == 0 && receipts.Memberships == 0 && receipts.OrdinaryObjects == 0 && receipts.Promotions == 0 && receipts.KernelFields == 0
 }
 
-// A tunnel connection with a recorded endpoint route still owns a kernel route in a provider table.
 func recordedEndpointRoutes(journal ownedStaticJournal, id connectionid.ID) int {
 	count := 0
 	for _, record := range journal.EndpointRoutes {

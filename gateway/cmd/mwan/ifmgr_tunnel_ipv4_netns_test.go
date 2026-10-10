@@ -22,10 +22,6 @@ type tunnelRuntimeIPv4 struct {
 	State     map[string]tunnelRuntimeIPv4State
 }
 
-// tunnelRuntimeIPv4Link runs one IPv4 TCP transfer from a client address to the remote endpoint.
-// tunnelRuntimeIPv4Link captures the transfer on each ISP router's link to the gateway.
-// tunnelRuntimeIPv4Link returns the gateway interface of the one provider link that transmitted the
-// TCP segments.
 func tunnelRuntimeIPv4Link(t *testing.T, run tunnelRuntimeRun, port int, client string) (string, error) {
 	t.Helper()
 	topology := run.topology

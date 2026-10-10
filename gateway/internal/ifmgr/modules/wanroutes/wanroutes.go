@@ -438,8 +438,6 @@ func (m *Module) ownsDesiredRuleDeletion(ctx context.Context, log *slog.Logger, 
 		return false
 	}
 	translations := m.translationState()
-	// Reconcile removes the rules of a tunnel with an unmet dependency.
-	// The unmet dependency exclusion classifies removal of the tunnel's rules as the module's own deletion.
 	m.Lock()
 	m.excludeUnreadyTunnelFamilies(discovery.gateways, health, translations)
 	m.Unlock()

@@ -41,8 +41,6 @@ func openTunnelRouteCapture(t *testing.T, iface string) int {
 	return fd
 }
 
-// The frame reader selects IPv4 protocol 41 frames. The frame reader returns after the first frame when
-// first is true.
 func readOuterFrames(t *testing.T, fd int, window time.Duration, first bool) []outerFrame {
 	t.Helper()
 	const ethernetHeader, ipv4Header = 14, 20

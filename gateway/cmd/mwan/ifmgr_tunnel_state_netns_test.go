@@ -89,8 +89,6 @@ func waitTunnelRuntimeFamily(t *testing.T, daemon *runtimeDaemon, read func() st
 	return 0
 }
 
-// waitTunnelRuntimeReason reads the published transition history until an IPv6 routing transition
-// after since reports the reason.
 func waitTunnelRuntimeReason(t *testing.T, daemon *runtimeDaemon, read func() string, since time.Time, reason string, window time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(window)

@@ -57,8 +57,6 @@ func tunnelRuntimeBecomesReady(t *testing.T, run tunnelRuntimeRun, daemon *runti
 	}
 }
 
-// tunnelRuntimeTransfers checks IPv6 TCP in both directions and encapsulation on the ISP link.
-// tunnelRuntimeTransfers checks path MTU discovery.
 func tunnelRuntimeTransfers(t *testing.T, run tunnelRuntimeRun, daemon *runtimeDaemon) {
 	t.Helper()
 	topology := run.topology

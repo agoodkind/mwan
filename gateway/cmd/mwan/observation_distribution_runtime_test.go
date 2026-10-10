@@ -292,6 +292,11 @@ func distributionRuntimeIPv6Ready(t *testing.T) bool {
 		if link.Attrs().Flags&net.FlagLoopback != 0 {
 			continue
 		}
+		// A loaded tunnel module adds a fallback device such as sit0 to every new namespace.
+		// The kernel assigns no link-local address to a link that is down.
+		if link.Attrs().Flags&net.FlagUp == 0 {
+			continue
+		}
 		addresses, err := netlink.AddrList(link, unix.AF_INET6)
 		if err != nil {
 			t.Fatal(err)

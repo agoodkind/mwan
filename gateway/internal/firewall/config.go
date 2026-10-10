@@ -56,7 +56,8 @@ type Provider struct {
 	MasqueradeIPv4 bool
 	StaticMappings []Mapping
 	// ReducedMTU marks an interface with an MTU below the internal interface MTU.
-	// The gateway sends a packet-too-big error for a forwarded packet that exceeds that MTU.
+	// The gateway sends a packet-too-big error to the sender of a forwarded packet that exceeds
+	// the ReducedMTU interface MTU.
 	ReducedMTU bool
 }
 
