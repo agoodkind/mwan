@@ -539,14 +539,14 @@ func (d *Daemon) reconcileAll(ctx context.Context, log *slog.Logger) {
 		routingGeneration = d.cfg.LiveState.Snapshot().RoutingGeneration
 	}
 	var failed forwardingready.State
-	routingFailure := ""
+	var routingFailure error
 	for _, m := range d.modules {
 		mlog := log.With("module", m.Name())
 		mlog.DebugContext(ctx, "ifmgr: Reconcile")
 		if err := m.Reconcile(ctx, mlog); err != nil {
 			mlog.WarnContext(ctx, "ifmgr: module Reconcile failed", "err", err)
 			if m.Name() == "wan.routes" {
-				routingFailure = err.Error()
+				routingFailure = err
 			} else {
 				impact := forwardingFailureImpact(m)
 				failed.IPv4 = failed.IPv4 || impact.IPv4
@@ -559,7 +559,8 @@ func (d *Daemon) reconcileAll(ctx context.Context, log *slog.Logger) {
 	}
 	if d.cfg.LiveState != nil {
 		snapshot := d.cfg.LiveState.Snapshot()
-		d.publishFamilyReadiness(snapshot, snapshot.RoutingGeneration != routingGeneration, failed, routingFailure)
+		evaluation := routingEvaluation{published: snapshot.RoutingGeneration != routingGeneration, failure: routingFailure}
+		d.publishFamilyReadiness(snapshot, evaluation, failed)
 		for _, m := range d.modules {
 			if observer, ok := m.(FamilyReadinessObserver); ok {
 				observer.OnFamilyReadiness(ctx, log.With("module", m.Name()))

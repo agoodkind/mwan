@@ -51,7 +51,7 @@ func combinedSinglePaths(t *testing.T, c *combinedRun) {
 	measured := waitCombinedUnavailable(t, c.daemon, read, combinedOrdinary, since, "probe", "gateway")
 	requireCombinedBound(t, "ordinary circuit loss to unavailable", measured, c.faultBound(t, combinedOrdinary))
 	requireCombinedPaths(t, c.daemon, read, c.topology, c.provider.device, tunnelRuntimeDevice)
-	c.requireIPv4Unchanged(t, since, tunnelRuntimeUnderlay, tunnelRuntimeAlternate)
+	c.requireIPv4PathsUnchanged(t, since, tunnelRuntimeUnderlay, tunnelRuntimeAlternate)
 
 	withdrawn := time.Now()
 	c.transit.withdrawAll(t)
@@ -65,7 +65,7 @@ func combinedSinglePaths(t *testing.T, c *combinedRun) {
 	setTunnelRuntimeFault(t, c.topology.tunnel, true)
 	waitCombinedUnavailable(t, c.daemon, read, tunnelRuntimeDevice, dropped, "probe", "bgp-session")
 	requireCombinedPaths(t, c.daemon, read, c.topology, c.provider.device)
-	c.requireIPv4Unchanged(t, since, tunnelRuntimeUnderlay, tunnelRuntimeAlternate)
+	c.requireIPv4PathsUnchanged(t, since, tunnelRuntimeUnderlay, tunnelRuntimeAlternate)
 
 	restored := time.Now()
 	setTunnelRuntimeFault(t, c.topology.tunnel, false)
@@ -75,7 +75,7 @@ func combinedSinglePaths(t *testing.T, c *combinedRun) {
 		requireCombinedBound(t, "ordinary "+family+" ready after the recovery", measured, c.faultBound(t, combinedOrdinary))
 	}
 	c.recovered(t, tunnelRuntimeDevice, restored, c.recoverBound(t, tunnelRuntimeDevice))
-	c.requireIPv4Unchanged(t, since, tunnelRuntimeUnderlay, tunnelRuntimeAlternate)
+	c.requireIPv4PathsUnchanged(t, since, tunnelRuntimeUnderlay, tunnelRuntimeAlternate)
 	waitTunnelRuntimeIPv4Selection(t, c.daemon, "the assignment before the ordinary circuit loss", func(selection string) bool {
 		return selection == c.ipv4
 	})

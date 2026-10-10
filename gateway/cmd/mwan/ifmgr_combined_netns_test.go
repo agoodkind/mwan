@@ -41,18 +41,23 @@ func (c *combinedRun) paths() []string {
 	return []string{combinedOrdinary, c.provider.device, tunnelRuntimeDevice}
 }
 
-func (c *combinedRun) requireIPv4Unchanged(t *testing.T, since time.Time, devices ...string) {
+func (c *combinedRun) requireIPv4PathsUnchanged(t *testing.T, since time.Time, devices ...string) {
 	t.Helper()
 	requireCombinedUnchanged(t, c.run.read, since, "ipv4", devices...)
+}
+
+func (c *combinedRun) requireIPv4Unchanged(t *testing.T, since time.Time) {
+	t.Helper()
+	c.requireIPv4PathsUnchanged(t, since, c.ipv4Providers()...)
 	selection, err := tunnelRuntimeIPv4Selection()
-	if len(devices) == len(c.ipv4Providers()) && (err != nil || selection != c.ipv4) {
+	if err != nil || selection != c.ipv4 {
 		t.Fatalf("IPv4 steering assignment = %q (%v), want the assignment before the fault %q", selection, err, c.ipv4)
 	}
 }
 
-func (c *combinedRun) requireOrdinaryUnchanged(t *testing.T, since time.Time, devices ...string) {
+func (c *combinedRun) requireOrdinaryUnchanged(t *testing.T, since time.Time) {
 	t.Helper()
-	c.requireIPv4Unchanged(t, since, devices...)
+	c.requireIPv4Unchanged(t, since)
 	requireCombinedUnchanged(t, c.run.read, since, "ipv6", combinedOrdinary)
 }
 

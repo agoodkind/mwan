@@ -22,6 +22,27 @@ const (
 	PathUnavailable PathState = "unavailable"
 )
 
+// DependencyState is the evaluation result of one dependency of a provider address family.
+type DependencyState string
+
+const (
+	// DependencyMet means the evaluation found the dependency satisfied.
+	DependencyMet DependencyState = "met"
+	// DependencyPending means the first evaluation of the dependency has not completed.
+	DependencyPending DependencyState = "pending"
+	// DependencyUnmet means the evaluation found the dependency not satisfied.
+	DependencyUnmet DependencyState = "unmet"
+	// DependencyNotEvaluated means an earlier dependency in the order is not met.
+	DependencyNotEvaluated DependencyState = "not-evaluated"
+)
+
+// DependencyResult is the state of one named dependency with the reason for a pending or unmet state.
+type DependencyResult struct {
+	Name   string
+	State  DependencyState
+	Reason string
+}
+
 // PathVerdict is one evaluation, and Dependency and Reason identify the first unmet dependency.
 type PathVerdict struct {
 	State      PathState

@@ -1,6 +1,10 @@
 package wanroutes
 
-import "goodkind.io/mwan/internal/wanstate"
+import (
+	"maps"
+
+	"goodkind.io/mwan/internal/wanstate"
+)
 
 type familyProbeReasons struct {
 	v4 string
@@ -22,29 +26,41 @@ func familyProbeReason(result wanstate.ProbeResult, verdict wanstate.Health) str
 	return reasonProbePending
 }
 
-// Callers must lock the module.
-func (m *Module) excludeUnhealthyFamilies(current gateways) {
-	m.probeReasons = make(map[string]familyProbeReasons, len(m.cfg.WANs))
+func (m *Module) familyHealth() map[string]wanstate.MemberHealth {
 	if m.Env == nil || m.Env.LiveState == nil {
-		return
+		return nil
 	}
-	health := m.Env.LiveState.Snapshot().Health
-	for _, wan := range m.cfg.WANs {
+	return m.Env.LiveState.Snapshot().Health
+}
+
+func probeExclusions(wans []WAN, health map[string]wanstate.MemberHealth) map[string]familyProbeReasons {
+	exclusions := make(map[string]familyProbeReasons, len(wans))
+	for _, wan := range wans {
 		member := health[wan.Key()]
-		reasons := familyProbeReasons{
+		exclusions[wan.Key()] = familyProbeReasons{
 			v4: familyProbeReason(member.V4, member.V4Verdict),
 			v6: familyProbeReason(member.V6, member.V6Verdict),
 		}
-		wanGateways := current[wan.Key()]
+	}
+	return exclusions
+}
+
+func withoutExcludedFamilies(current gateways, exclusions map[string]familyProbeReasons) gateways {
+	remaining := maps.Clone(current)
+	for key, reasons := range exclusions {
+		wanGateways, found := remaining[key]
+		if !found {
+			continue
+		}
 		if reasons.v4 != "" {
 			wanGateways.V4 = ""
 		}
 		if reasons.v6 != "" {
 			wanGateways = wanGateways.withoutV6()
 		}
-		current[wan.Key()] = wanGateways
-		m.probeReasons[wan.Key()] = reasons
+		remaining[key] = wanGateways
 	}
+	return remaining
 }
 
 func (m *Module) probeReasonV6(key string) string {

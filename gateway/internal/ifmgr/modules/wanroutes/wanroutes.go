@@ -199,7 +199,8 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	}
 	currentGateways := discovery.gateways
 	m.excludeUnreadyOwnedFamilies(currentGateways)
-	m.excludeUnhealthyFamilies(currentGateways)
+	m.probeReasons = probeExclusions(m.cfg.WANs, m.familyHealth())
+	currentGateways = withoutExcludedFamilies(currentGateways, m.probeReasons)
 	health, err := netif.ReadHealthState(m.cfg.HealthStateFile)
 	if err != nil {
 		log.WarnContext(ctx, "wan.routes: ReadHealthState failed", "err", err)
@@ -314,8 +315,8 @@ func (m *Module) publishLiveState(currentGateways gateways, health netif.HealthS
 			Carrying: selectionEnabled && ((readyV4 && wan.Tier == tierV4 && v4Ready) || (readyV6 && wan.Tier == tierV6 && v6Ready)),
 			V4Ready:  v4Ready, V6Ready: v6Ready,
 			V4Reason: v4Reason, V6Reason: v6Reason,
-			V4Dependency: reasonDependency(v4Reason), V6Dependency: reasonDependency(v6Reason),
-			V4Configured: familyConfigured(wan, familyV4), V6Configured: familyConfigured(wan, familyV6),
+			V4Dependencies: familyDependencies(wan, familyV4, v4Reason),
+			V6Dependencies: familyDependencies(wan, familyV6, v6Reason),
 			OwnedAddresses: slices.Clone(m.ownedAddresses[wan.Key()]),
 		}
 	}
@@ -445,8 +446,8 @@ func (m *Module) ownsDesiredRuleDeletion(ctx context.Context, log *slog.Logger, 
 		return false
 	}
 	translations := m.translationState()
+	discovery.gateways = withoutExcludedFamilies(discovery.gateways, probeExclusions(m.cfg.WANs, m.familyHealth()))
 	m.Lock()
-	m.excludeUnhealthyFamilies(discovery.gateways)
 	m.excludeUnreadyTunnelFamilies(discovery.gateways, health, translations)
 	m.Unlock()
 	rules, _ := desiredState(discovery.gateways, health, m.cfg, translations)

@@ -23,14 +23,14 @@ func combinedOrdinaryFamilyLoss(t *testing.T, c *combinedRun) {
 	setCombinedOrdinaryFault(t, c, "ip6", true)
 	waitCombinedFamilyUnavailable(t, c, "ipv6", since)
 	requireCombinedPaths(t, c.daemon, read, c.topology, c.provider.device, tunnelRuntimeDevice)
-	c.requireIPv4Unchanged(t, since, c.ipv4Providers()...)
+	c.requireIPv4Unchanged(t, since)
 
 	restored := time.Now()
 	setCombinedOrdinaryFault(t, c, "ip6", false)
 	measured := waitCombinedReady(t, c.daemon, read, combinedOrdinary, "ipv6", restored)
 	requireCombinedBound(t, "ordinary ipv6 ready after the probe recovery", measured, c.faultBound(t, combinedOrdinary))
 	requireCombinedPaths(t, c.daemon, read, c.topology, c.paths()...)
-	c.requireIPv4Unchanged(t, since, c.ipv4Providers()...)
+	c.requireIPv4Unchanged(t, since)
 
 	since = time.Now()
 	setCombinedOrdinaryFault(t, c, "ip", true)

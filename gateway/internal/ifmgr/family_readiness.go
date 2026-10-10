@@ -1,6 +1,8 @@
 package ifmgr
 
 import (
+	"slices"
+
 	"goodkind.io/mwan/internal/forwardingready"
 	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/wanstate"
@@ -24,62 +26,71 @@ func memberForwardingReadiness(routing wanstate.MemberRouting, health wanstate.M
 }
 
 type familyEvaluation struct {
-	settings *interfaceintent.Family
-	name     string
-	ready    bool
-	firewall string
-	inputs   pathInputs
+	name          string
+	enabled       bool
+	forwarding    bool
+	firewall      string
+	routing       []wanstate.DependencyResult
+	health        familyHealth
+	internalReady bool
+	moduleFailed  bool
 }
 
-func (d *Daemon) publishFamilyReadiness(snapshot wanstate.Snapshot, routingFresh bool, failed forwardingready.State, routingFailure string) {
+func (family familyEvaluation) ready(evaluation routingEvaluation) bool {
+	return family.forwarding && evaluation.published && family.internalReady && !family.moduleFailed &&
+		family.firewall == firewallReady && family.enabled
+}
+
+func (family familyEvaluation) dependencies(evaluation routingEvaluation, memberPublished bool) []wanstate.DependencyResult {
+	results := []wanstate.DependencyResult{enabledResult(family.enabled), routingResult(evaluation, memberPublished)}
+	results = append(results, family.routing...)
+	return append(results,
+		probeResult(family.health),
+		firewallResult(family.firewall),
+		flagResult(pathDependencyInternalLink, pathReasonInternalLink, family.internalReady),
+		flagResult(pathDependencyReconcile, pathReasonReconcileFailed, !family.moduleFailed),
+	)
+}
+
+func (d *Daemon) publishFamilyReadiness(snapshot wanstate.Snapshot, evaluation routingEvaluation, failed forwardingready.State) {
 	internal := d.internalForwardingReadiness(forwardingready.State{IPv4: true, IPv6: true})
 	for _, connection := range d.cfg.Connections {
 		id := connection.ID.String()
-		routing, routingKnown := snapshot.Routing[id]
-		health, healthKnown := snapshot.Health[id]
+		routing, memberPublished := snapshot.Routing[id]
+		health, probed := snapshot.Health[id]
 		provider := connection.Roles&interfaceintent.RoleProvider != 0
 		var ready forwardingready.State
 		switch {
 		case provider:
-			ready = memberForwardingReadiness(routing, health, healthKnown)
+			ready = memberForwardingReadiness(routing, health, probed)
 		case connection.Roles&interfaceintent.RoleInternal != 0 && connection.Owner == interfaceintent.OwnerMWAN:
 			ready = forwardingReadiness(snapshot)
 		default:
 			continue
 		}
 		state := snapshot.Connections[id]
-		shared := pathInputs{
-			enabled: false, configured: false, routingKnown: routingKnown, routingFresh: routingFresh, routingFailure: routingFailure,
-			routingReady: false, dependency: "", reason: "", healthKnown: healthKnown, health: health.Verdict,
-			probe: "", familyHealth: "", firewall: "", internalReady: false, moduleFailed: false,
-		}
 		var families []familyEvaluation
 		if connection.IPv4 != nil {
-			inputs := shared
-			inputs.routingReady, inputs.dependency, inputs.reason = routing.V4Ready, routing.V4Dependency, routing.V4Reason
-			inputs.probe, inputs.familyHealth = health.V4, health.V4Verdict
-			inputs.internalReady, inputs.moduleFailed, inputs.configured = internal.IPv4, failed.IPv4, routing.V4Configured
 			families = append(families, familyEvaluation{
-				settings: &connection.IPv4.Family, name: familyNameIPv4, firewall: state.IPv4.Firewall, inputs: inputs,
-				ready: ready.IPv4 && routingFresh && internal.IPv4 && !failed.IPv4,
+				name: familyNameIPv4, enabled: forwardingFamilyEnabled(connection, connection.IPv4.Family), forwarding: ready.IPv4,
+				firewall: state.IPv4.Firewall, routing: slices.Clone(routing.V4Dependencies),
+				health:        familyHealth{probed: probed, member: health.Verdict, result: health.V4, verdict: health.V4Verdict},
+				internalReady: internal.IPv4, moduleFailed: failed.IPv4,
 			})
 		}
 		if connection.IPv6 != nil {
-			inputs := shared
-			inputs.routingReady, inputs.dependency, inputs.reason = routing.V6Ready, routing.V6Dependency, routing.V6Reason
-			inputs.probe, inputs.familyHealth = health.V6, health.V6Verdict
-			inputs.internalReady, inputs.moduleFailed, inputs.configured = internal.IPv6, failed.IPv6, routing.V6Configured
 			families = append(families, familyEvaluation{
-				settings: &connection.IPv6.Family, name: familyNameIPv6, firewall: state.IPv6.Firewall, inputs: inputs,
-				ready: ready.IPv6 && routingFresh && internal.IPv6 && !failed.IPv6,
+				name: familyNameIPv6, enabled: forwardingFamilyEnabled(connection, connection.IPv6.Family), forwarding: ready.IPv6,
+				firewall: state.IPv6.Firewall, routing: slices.Clone(routing.V6Dependencies),
+				health:        familyHealth{probed: probed, member: health.Verdict, result: health.V6, verdict: health.V6Verdict},
+				internalReady: internal.IPv6, moduleFailed: failed.IPv6,
 			})
 		}
 		for _, family := range families {
-			family.inputs.enabled = forwardingFamilyEnabled(connection, *family.settings)
-			family.inputs.firewall = family.firewall
-			familyReady := family.ready && family.firewall == firewallReady && family.inputs.enabled
+			familyReady := family.ready(evaluation)
 			if provider {
-				d.cfg.LiveState.SetFamilyReadiness(id, family.name, readinessVerdict(familyReady), pathVerdict(familyReady, family.inputs))
+				verdict := pathVerdict(familyReady, family.dependencies(evaluation, memberPublished))
+				d.cfg.LiveState.SetFamilyReadiness(id, family.name, readinessVerdict(familyReady), verdict)
 				continue
 			}
 			d.cfg.LiveState.SetReadiness(id, family.name, readinessVerdict(familyReady))
