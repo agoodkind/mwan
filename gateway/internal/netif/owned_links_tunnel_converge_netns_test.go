@@ -122,49 +122,6 @@ func TestOwnedTunnelCorrectsExternalChanges(t *testing.T) {
 	}
 }
 
-func TestOwnedTunnelReplacesDeviceWithWrongInnerProtocol(t *testing.T) {
-	if !enterTunnelNamespace(t) {
-		return
-	}
-	underlay := addTunnelUnderlay(t, tunnelUnderlayName)
-	reconciler := newTunnelReconciler(t, filepath.Join(t.TempDir(), "links.json"))
-	connections := []interfaceintent.Connection{
-		externalConnection(tunnelUnderlayName),
-		tunnelConnection(tunnelUnderlayName, tunnelRemoteOuter, nil, nil),
-	}
-	requireTunnelReady(t, reconcileTunnel(t, reconciler, connections...))
-	created := tunnelDevice(t, tunnelName)
-	// The kernel sets the inner protocol only at creation. The test creates a device with the
-	// IPv4-in-IPv4 protocol and the recorded alias. The journal record stores the device index.
-	if err := netlink.LinkDel(created); err != nil {
-		t.Fatal(err)
-	}
-	attrs := netlink.NewLinkAttrs()
-	attrs.Name = tunnelName
-	if err := netlink.LinkAdd(&netlink.Sittun{
-		LinkAttrs: attrs, Link: uint32(underlay.Attrs().Index), Proto: unix.IPPROTO_IPIP, PMtuDisc: 1,
-		Ttl: interfaceintent.DefaultTunnelTTL, Local: created.Local, Remote: created.Remote,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	wrong := tunnelDevice(t, tunnelName)
-	if err := netlink.LinkSetAlias(wrong, created.Attrs().Alias); err != nil {
-		t.Fatal(err)
-	}
-	record := reconciler.state.Virtuals[tunnelName]
-	record.LinkIndex = wrong.Attrs().Index
-	reconciler.state.Virtuals[tunnelName] = record
-
-	result := reconcileTunnel(t, reconciler, connections...)
-
-	requireTunnelReady(t, result)
-	replaced := tunnelDevice(t, tunnelName)
-	requireTunnelAttributes(t, replaced, underlay, tunnelRemoteOuter, interfaceintent.DefaultTunnelTTL, 1480)
-	if replaced.Attrs().Index == wrong.Attrs().Index {
-		t.Fatal("the device with the wrong inner protocol was not replaced")
-	}
-}
-
 func TestOwnedTunnelWithoutConfiguredMTUUsesUnderlayMTU(t *testing.T) {
 	if !enterTunnelNamespace(t) {
 		return

@@ -125,6 +125,21 @@ func TestDecodeRejectsInvalidTunnels(t *testing.T) {
 			want: "link/tunnel/remote-address 255.255.255.255 must be a unicast IPv4 address",
 		},
 		{
+			name: "reserved remote-address",
+			edit: documentEdit{old: tunnelRemote, replacement: `"remote-address": "240.0.0.1",`},
+			want: "link/tunnel/remote-address 240.0.0.1 must be a unicast IPv4 address",
+		},
+		{
+			name: "current network remote-address",
+			edit: documentEdit{old: tunnelRemote, replacement: `"remote-address": "0.1.2.3",`},
+			want: "link/tunnel/remote-address 0.1.2.3 must be a unicast IPv4 address",
+		},
+		{
+			name: "loopback local-address",
+			edit: documentEdit{old: tunnelLocal, replacement: `"local-address": "127.0.0.1",`},
+			want: "link/tunnel/local-address 127.0.0.1 must be a unicast IPv4 address",
+		},
+		{
 			name: "two tunnels with one underlay, local, and remote",
 			edit: secondTunnel("enatt0", "198.51.100.1"),
 			want: "interfaces tun6in4 and tun6in4b configure the same tunnel",

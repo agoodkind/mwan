@@ -34,6 +34,18 @@ func TestLoadSchemaRejectsInvalidTunnels(t *testing.T) {
 			edit: documentEdit{old: tunnelRemote, replacement: `"remote-address": "255.255.255.255",`},
 		},
 		{
+			name: "reserved remote-address",
+			edit: documentEdit{old: tunnelRemote, replacement: `"remote-address": "240.0.0.1",`},
+		},
+		{
+			name: "current network remote-address",
+			edit: documentEdit{old: tunnelRemote, replacement: `"remote-address": "0.1.2.3",`},
+		},
+		{
+			name: "loopback local-address",
+			edit: documentEdit{old: tunnelLocal, replacement: `"local-address": "127.0.0.1",`},
+		},
+		{
 			name: "multicast local-address",
 			edit: documentEdit{old: tunnelLocal, replacement: `"local-address": "224.0.0.5",`},
 		},

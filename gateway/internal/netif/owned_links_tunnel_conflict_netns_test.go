@@ -4,7 +4,9 @@ package netif
 
 import (
 	"errors"
+	"fmt"
 	"net"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -72,10 +74,11 @@ func TestOwnedTunnelKeepsDeviceWhenUnrecordedTunnelHasEndpoints(t *testing.T) {
 		return
 	}
 	underlayLink := addTunnelUnderlay(t, tunnelUnderlayName)
-	reconciler := newTunnelReconciler(t, filepath.Join(t.TempDir(), "links.json"))
+	statePath := filepath.Join(t.TempDir(), "links.json")
+	reconciler := newTunnelReconciler(t, statePath)
 	underlay := externalConnection(tunnelUnderlayName)
-	requireTunnelReady(t, reconcileTunnel(t, reconciler, underlay,
-		tunnelConnection(tunnelUnderlayName, tunnelRemoteOuter, nil, nil)))
+	original := tunnelConnection(tunnelUnderlayName, tunnelRemoteOuter, nil, nil)
+	requireTunnelReady(t, reconcileTunnel(t, reconciler, underlay, original))
 	created := tunnelDevice(t, tunnelName)
 	foreign := netlink.NewLinkAttrs()
 	foreign.Name = "foreign-sit"
@@ -97,8 +100,11 @@ func TestOwnedTunnelKeepsDeviceWhenUnrecordedTunnelHasEndpoints(t *testing.T) {
 		t.Fatalf("failed update changed the device: index %d became %d, remote %s",
 			created.Attrs().Index, kept.Attrs().Index, kept.Remote)
 	}
-	if _, recorded := reconciler.state.Virtuals[tunnelName]; !recorded {
-		t.Fatal("failed update removed the journal record")
+	// A restarted link manager adopts the device only with the journal record of the device.
+	restarted := reconcileTunnel(t, newTunnelReconciler(t, statePath), underlay, original)
+	requireTunnelReady(t, restarted)
+	if restarted.Operation != "reconcile" || restarted.IfIndex != created.Attrs().Index {
+		t.Fatalf("restart after the failed update = %+v, want adoption of index %d", restarted, created.Attrs().Index)
 	}
 }
 
@@ -107,18 +113,23 @@ func TestOwnedTunnelRejectsForeignDeviceWithTemporaryName(t *testing.T) {
 		return
 	}
 	underlayLink := addTunnelUnderlay(t, tunnelUnderlayName)
-	reconciler := newTunnelReconciler(t, filepath.Join(t.TempDir(), "links.json"))
-	// The journal stores the reservation that an interrupted creation writes for the configured tunnel.
-	const temporaryName = "mw-foreign"
-	reconciler.state.Virtuals[tunnelName] = virtualRecord{
-		BootID: reconciler.bootID, ConnectionID: tunnelName, Alias: aliasFor(tunnelName) + ":reserved-token",
-		TempName: temporaryName, Name: tunnelName, Kind: string(interfaceintent.KindTunnel),
-		ParentIndex: underlayLink.Attrs().Index, TunnelProtocol: string(interfaceintent.TunnelProtocol6in4),
-		TunnelRemote: tunnelRemoteOuter, TunnelLocal: tunnelLocalOuter,
-	}
-	if err := reconciler.save(); err != nil {
+	bootID, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	if err != nil {
 		t.Fatal(err)
 	}
+	// An interrupted creation writes the configured tunnel's reservation to the journal file.
+	const temporaryName = "mw-foreign"
+	reservation := fmt.Sprintf(`{"virtuals":{%q:{"boot_id":%q,"connection_id":%q,`+
+		`"alias":"mwan-link:%s:reserved-token","temp_name":%q,"name":%q,"kind":"tunnel",`+
+		`"parent_index":%d,"complete":false,"tunnel_protocol":"6in4","tunnel_remote":%q,"tunnel_local":%q}},`+
+		`"memberships":{}}`,
+		tunnelName, strings.TrimSpace(string(bootID)), tunnelName, tunnelName, temporaryName, tunnelName,
+		underlayLink.Attrs().Index, tunnelRemoteOuter, tunnelLocalOuter)
+	statePath := filepath.Join(t.TempDir(), "links.json")
+	if err := os.WriteFile(statePath, []byte(reservation), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reconciler := newTunnelReconciler(t, statePath)
 	foreign := netlink.NewLinkAttrs()
 	foreign.Name = temporaryName
 	if err := netlink.LinkAdd(&netlink.Sittun{

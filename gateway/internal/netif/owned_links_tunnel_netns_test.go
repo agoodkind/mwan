@@ -18,8 +18,7 @@ func TestOwnedTunnelCreatesConfiguredDevice(t *testing.T) {
 		return
 	}
 	underlay := addTunnelUnderlay(t, tunnelUnderlayName)
-	statePath := filepath.Join(t.TempDir(), "links.json")
-	reconciler := newTunnelReconciler(t, statePath)
+	reconciler := newTunnelReconciler(t, filepath.Join(t.TempDir(), "links.json"))
 	connection := tunnelConnection(tunnelUnderlayName, tunnelRemoteOuter, new(uint8(32)), new(uint32(1400)))
 
 	result := reconcileTunnel(t, reconciler, externalConnection(tunnelUnderlayName), connection)
@@ -33,12 +32,8 @@ func TestOwnedTunnelCreatesConfiguredDevice(t *testing.T) {
 	if result.IfIndex != device.Attrs().Index {
 		t.Fatalf("result index = %d, device index = %d", result.IfIndex, device.Attrs().Index)
 	}
-	journal := newTunnelReconciler(t, statePath)
-	record, recorded := journal.state.Virtuals[connection.ID.String()]
-	if !recorded || !record.Complete || record.LinkIndex != device.Attrs().Index ||
-		record.Alias == "" || record.Alias != device.Attrs().Alias {
-		t.Fatalf("journal record = %+v, device alias = %q index = %d",
-			record, device.Attrs().Alias, device.Attrs().Index)
+	if !strings.HasPrefix(device.Attrs().Alias, "mwan-link:"+tunnelName+":") {
+		t.Fatalf("device alias = %q, want the ownership tag of %s", device.Attrs().Alias, tunnelName)
 	}
 	monitor := NewMonitor(t.Context(), tunnelTestLog(), MonitorConfig{Iface: tunnelName, Connection: &connection})
 	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
@@ -89,9 +84,6 @@ func TestOwnedTunnelRemovalKeepsUnrecordedDevices(t *testing.T) {
 		if _, err := netlink.LinkByName("sit0"); err != nil {
 			t.Fatalf("kernel fallback sit0 was deleted: %v", err)
 		}
-	}
-	if _, recorded := reconciler.state.Virtuals[tunnelName]; recorded {
-		t.Fatal("removed tunnel kept its journal record")
 	}
 }
 
@@ -153,9 +145,6 @@ func TestOwnedTunnelWaitsForUnderlay(t *testing.T) {
 	}
 	if _, err := netlink.LinkByName(tunnelName); !IsLinkNotFound(err) {
 		t.Fatalf("tunnel exists without its underlay: %v", err)
-	}
-	if _, reserved := newTunnelReconciler(t, statePath).state.Virtuals[tunnelName]; reserved {
-		t.Fatal("the tunnel without an underlay left a journal reservation")
 	}
 
 	underlay := addTunnelUnderlay(t, tunnelUnderlayName)

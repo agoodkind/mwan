@@ -24,8 +24,6 @@ const (
 	sitInnerProtocol = unix.IPPROTO_IPV6
 )
 
-// errTunnelEndpointsHeld reports a tunnel deletion caused by another owned tunnel using the deleted tunnel's
-// configured endpoints.
 var errTunnelEndpointsHeld = errors.New("another owned tunnel has the configured endpoints")
 
 func tunnelKernelType(protocol interfaceintent.TunnelProtocol) string {
@@ -55,7 +53,6 @@ func effectiveTunnelTTL(tunnel *interfaceintent.Tunnel) uint8 {
 	return *tunnel.TTL
 }
 
-// tunnelMTU returns the configured MTU, or the underlay MTU less the outer header when no MTU is configured.
 func tunnelMTU(connection interfaceintent.Connection, underlay netlink.Link) (int, error) {
 	limit := underlay.Attrs().MTU - interfaceintent.Tunnel6in4Overhead
 	if limit < interfaceintent.IPv6MinimumMTU {

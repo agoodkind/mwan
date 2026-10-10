@@ -30,9 +30,6 @@ const (
 	tunnelCaptureWindow = 5 * time.Second
 )
 
-// enterTunnelNamespace reruns the calling test in a child process with a
-// private network namespace. enterTunnelNamespace reports whether the caller is
-// the child process.
 func enterTunnelNamespace(t *testing.T) bool {
 	t.Helper()
 	if os.Getenv(tunnelChildEnv) == t.Name() {

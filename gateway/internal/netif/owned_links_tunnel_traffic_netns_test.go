@@ -20,7 +20,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// outerPacket stores one IPv4 packet from an underlay capture and the packet's inner IPv6 addresses.
 type outerPacket struct {
 	source      string
 	destination string
