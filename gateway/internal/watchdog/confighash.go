@@ -7,7 +7,9 @@ import (
 	"strconv"
 	"strings"
 
+	"goodkind.io/mwan/internal/configstate"
 	"goodkind.io/mwan/internal/notify"
+	"goodkind.io/mwan/internal/ops"
 )
 
 // routeChannelFallback bounds the per-cycle TCP-fallback warning to one
@@ -124,20 +126,44 @@ func manifestDiff(prev, curr map[string]string) string {
 	return sb.String()
 }
 
-func (w *watchdog) checkConfigHash(ctx context.Context) {
+func (w *watchdog) readConfigState(ctx context.Context) (configstate.State, string, bool) {
 	log := w.tracedLogger(ctx)
+	if len(w.cfg.Watchdog.ConfigStateCommand) > 0 {
+		source := NewGuestConfigStateSource(
+			w.ops,
+			w.cfg.MwanVMID,
+			w.cfg.Watchdog.ConfigStateCommand,
+			log,
+		)
+		state, ok := source.Latest(ctx)
+		return state, string(ops.ChanPVE), ok
+	}
 	resp, usedChannel, err := w.ops.GetConfigState(ctx, w.cfg.MwanVMID)
 	if err != nil {
 		log.WarnContext(ctx, "checkConfigHash getConfigState", "err", err)
+		return configstate.State{ConfigHash: "", ConfigManifest: "", LastDeployEpoch: 0}, "", false
+	}
+	w.routeChannelFallback(ctx, usedChannel)
+	state := configstate.State{
+		ConfigHash:      resp.GetConfigHash(),
+		ConfigManifest:  resp.GetConfigManifest(),
+		LastDeployEpoch: resp.GetLastDeployEpoch(),
+	}
+	return state, usedChannel, true
+}
+
+func (w *watchdog) checkConfigHash(ctx context.Context) {
+	log := w.tracedLogger(ctx)
+	state, usedChannel, ok := w.readConfigState(ctx)
+	if !ok {
 		w.lastHashCheckOK = false
 		return
 	}
-	w.routeChannelFallback(ctx, usedChannel)
-	h := strings.TrimSpace(resp.GetConfigHash())
+	h := strings.TrimSpace(state.ConfigHash)
 	if h == "" {
 		return
 	}
-	currentManifest := parseManifest(resp.GetConfigManifest())
+	currentManifest := parseManifest(state.ConfigManifest)
 
 	if w.lastConfigHash != "" && h != w.lastConfigHash {
 		if !w.postRollbackGraceUntil.IsZero() &&
@@ -154,7 +180,7 @@ func (w *watchdog) checkConfigHash(ctx context.Context) {
 			log.WarnContext(ctx,
 				"config hash drift detected",
 				"old_hash", w.lastConfigHash,
-				"new_hash", resp.GetConfigHash(),
+				"new_hash", state.ConfigHash,
 				"changed_files", diffSection,
 				"vm_id", w.cfg.MwanVMID,
 				"node", w.cfg.PVE.Node,
