@@ -179,8 +179,9 @@ func TestPublishedTreeRoundTripsThroughSysrepo(t *testing.T) {
 			if err != nil {
 				t.Fatalf("read %s: %v", document, err)
 			}
-			served := withoutServedOnlyPairs(flattenNetworkJSON(t, []byte(exported)))
-			compareLeafSets(t, flattenNetworkJSON(t, raw), served)
+			inFile := flattenNetworkJSON(t, raw)
+			served := withoutServedOnlyPairs(flattenNetworkJSON(t, []byte(exported)), inFile)
+			compareLeafSets(t, inFile, served)
 			if document == intentRoundtrip {
 				assertEmptyClientPresence(t, []byte(exported))
 			}

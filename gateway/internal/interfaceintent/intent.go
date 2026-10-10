@@ -44,6 +44,23 @@ const (
 	KindVLAN Kind = "vlan"
 	// KindBridge selects a bridge link.
 	KindBridge Kind = "bridge"
+	// KindTunnel selects an encapsulating tunnel link with outer endpoints.
+	KindTunnel Kind = "tunnel"
+)
+
+// TunnelProtocol is the encapsulation protocol used by a tunnel link.
+type TunnelProtocol string
+
+// TunnelProtocol6in4 selects IPv6 packets inside IPv4 packets.
+const TunnelProtocol6in4 TunnelProtocol = "6in4"
+
+const (
+	// IPv6MinimumMTU is the smallest MTU of an IPv6 link under RFC 8200 section 5.
+	IPv6MinimumMTU = 1280
+	// Tunnel6in4Overhead is the length in bytes of the outer IPv4 header of a 6in4 packet.
+	Tunnel6in4Overhead = 20
+	// DefaultTunnelTTL is the outer hop limit of a tunnel with no configured TTL.
+	DefaultTunnelTTL uint8 = 64
 )
 
 // AddressPurpose identifies how the gateway uses an address.
@@ -89,6 +106,18 @@ type Link struct {
 	MTU             *uint32
 	VLAN            *VLAN
 	BridgeMaster    string
+	Tunnel          *Tunnel
+}
+
+// Tunnel defines an encapsulating interface and its outer endpoints.
+// The kernel selects the source address when Local is invalid.
+// A nil TTL selects DefaultTunnelTTL.
+type Tunnel struct {
+	Protocol TunnelProtocol
+	Underlay string
+	Remote   netip.Addr
+	Local    netip.Addr
+	TTL      *uint8
 }
 
 // Match selects a physical device by driver or hardware address.

@@ -73,6 +73,8 @@ type virtualRecord struct {
 	LinkIndex    int    `json:"link_index,omitempty"`
 	Complete     bool   `json:"complete"`
 	Quarantined  bool   `json:"quarantined,omitempty"`
+	// TunnelProtocol selects the kernel link type of a tunnel record.
+	TunnelProtocol string `json:"tunnel_protocol,omitempty"`
 }
 
 type membershipRecord struct {
@@ -222,13 +224,10 @@ func (r *OwnedLinkReconciler) reconcileOne(ctx context.Context, connection inter
 		resolved[id] = result
 		return result
 	}
-	var parent netlink.Link
-	if connection.Link.Kind == interfaceintent.KindVLAN {
-		parent = r.vlanParent(ctx, connection, byName, resolved, visiting, &result)
-		if parent == nil {
-			resolved[id] = result
-			return result
-		}
+	parent, underlay, present := r.requiredLinks(ctx, connection, byName, resolved, visiting, &result)
+	if !present {
+		resolved[id] = result
+		return result
 	}
 	var link netlink.Link
 	var created bool
@@ -236,10 +235,13 @@ func (r *OwnedLinkReconciler) reconcileOne(ctx context.Context, connection inter
 	if connection.Link.Kind == interfaceintent.KindPhysical || connection.Link.Kind == "" {
 		link, err = physicalLink(connection)
 	} else {
-		link, created, err = r.virtualLink(connection, parent)
+		link, created, err = r.convergedVirtualLink(connection, parent, underlay)
 	}
 	if err != nil {
 		result.Status, result.Err, result.Operation = OwnedLinkFailed, err, "resolve"
+		if errors.Is(err, errTunnelEndpointsHeld) {
+			result.Status, result.Operation = OwnedLinkWaiting, "wait-for-tunnel"
+		}
 		resolved[id] = result
 		return result
 	}
@@ -427,10 +429,10 @@ func (r *OwnedLinkReconciler) matchesParentRecord(record virtualRecord, parent n
 func (r *OwnedLinkReconciler) matchesRecordedVirtual(link netlink.Link, record virtualRecord) bool {
 	if !record.Complete || record.Alias == "" || link.Attrs().Alias != record.Alias ||
 		record.BootID != r.bootID || record.LinkIndex == 0 ||
-		link.Attrs().Index != record.LinkIndex || link.Type() != record.Kind {
+		link.Attrs().Index != record.LinkIndex || link.Type() != record.kernelType() {
 		return false
 	}
-	if record.Kind == string(interfaceintent.KindBridge) {
+	if record.Kind == string(interfaceintent.KindBridge) || record.Kind == string(interfaceintent.KindTunnel) {
 		return true
 	}
 	if record.Kind != string(interfaceintent.KindVLAN) || link.Attrs().ParentIndex == 0 {
@@ -451,6 +453,9 @@ func validateVirtual(link netlink.Link, connection interfaceintent.Connection, p
 	if alias == "" || link.Attrs().Alias != alias {
 		return fmt.Errorf("%s has a different ownership tag", link.Attrs().Name)
 	}
+	if connection.Link.Kind == interfaceintent.KindTunnel {
+		return validateTunnelLink(link, connection)
+	}
 	if connection.Link.Kind == interfaceintent.KindBridge {
 		if link.Type() != "bridge" {
 			return fmt.Errorf("%s is not a bridge", link.Attrs().Name)
@@ -468,6 +473,9 @@ func validateTemporaryLink(link netlink.Link, connection interfaceintent.Connect
 	if alias == "" || link.Attrs().Alias != "" && link.Attrs().Alias != alias {
 		return fmt.Errorf("quarantined temporary link %s: foreign alias", link.Attrs().Name)
 	}
+	if connection.Link.Kind == interfaceintent.KindTunnel {
+		return validateTunnelLink(link, connection)
+	}
 	if connection.Link.Kind == interfaceintent.KindBridge {
 		if link.Type() != "bridge" {
 			return fmt.Errorf("quarantined temporary link %s: wrong kind", link.Attrs().Name)
@@ -482,8 +490,11 @@ func validateTemporaryLink(link netlink.Link, connection interfaceintent.Connect
 	return nil
 }
 
-func (r *OwnedLinkReconciler) virtualLink(connection interfaceintent.Connection, parent netlink.Link) (netlink.Link, bool, error) {
-	if connection.Link.Kind != interfaceintent.KindBridge && connection.Link.Kind != interfaceintent.KindVLAN {
+// The VLAN call to virtualLink uses the VLAN parent and a nil underlay.
+// The tunnel call to virtualLink uses the underlay and a nil VLAN parent.
+func (r *OwnedLinkReconciler) virtualLink(connection interfaceintent.Connection, parent netlink.Link, underlay netlink.Link) (netlink.Link, bool, error) {
+	if connection.Link.Kind != interfaceintent.KindBridge && connection.Link.Kind != interfaceintent.KindVLAN &&
+		connection.Link.Kind != interfaceintent.KindTunnel {
 		return nil, false, fmt.Errorf("unsupported link kind %s", connection.Link.Kind)
 	}
 	id := connection.ID.String()
@@ -522,13 +533,9 @@ func (r *OwnedLinkReconciler) virtualLink(connection interfaceintent.Connection,
 	if err != nil {
 		return nil, false, err
 	}
-	attrs := netlink.LinkAttrs{Name: record.TempName}
-	var requested netlink.Link
-	if connection.Link.Kind == interfaceintent.KindVLAN {
-		attrs.ParentIndex = parent.Attrs().Index
-		requested = &netlink.Vlan{LinkAttrs: attrs, VlanId: int(connection.Link.VLAN.ID), VlanProtocol: netlink.VLAN_PROTOCOL_8021Q}
-	} else {
-		requested = &netlink.Bridge{LinkAttrs: attrs}
+	requested, err := requestedVirtualLink(connection, record.TempName, parent, underlay)
+	if err != nil {
+		return r.handleVirtualAddError(connection, parent, record, err)
 	}
 	if err := netlink.LinkAdd(requested); err != nil {
 		return r.handleVirtualAddError(connection, parent, record, err)
@@ -551,6 +558,10 @@ func (r *OwnedLinkReconciler) reserveVirtual(connection interfaceintent.Connecti
 		Parent: "", ParentMAC: "", ParentBoot: "", ParentKind: "", ParentName: "",
 		ParentIndex: 0, LinkIndex: 0,
 		Complete: false, Quarantined: false,
+		TunnelProtocol: "",
+	}
+	if connection.Link.Tunnel != nil {
+		record.TunnelProtocol = string(connection.Link.Tunnel.Protocol)
 	}
 	if parent != nil {
 		record.VLANID = connection.Link.VLAN.ID
@@ -636,6 +647,7 @@ func (r *OwnedLinkReconciler) adoptVirtualLink(found netlink.Link, connection in
 		Parent: "", ParentMAC: "", ParentBoot: "", ParentKind: "", ParentName: "",
 		ParentIndex: 0, LinkIndex: found.Attrs().Index,
 		Complete: true, Quarantined: false,
+		TunnelProtocol: recorded.TunnelProtocol,
 	}
 	if parent != nil {
 		record.VLANID = connection.Link.VLAN.ID
@@ -897,7 +909,7 @@ func (r *OwnedLinkReconciler) pruneMemberships(owned map[string]interfaceintent.
 func (r *OwnedLinkReconciler) pruneVirtualPass(links []netlink.Link, owned map[string]interfaceintent.Connection) (bool, []OwnedLinkResult, error) {
 	var results []OwnedLinkResult
 	for _, link := range links {
-		if link.Type() != "vlan" && link.Type() != "bridge" || !strings.HasPrefix(link.Attrs().Alias, ownedAliasPrefix) {
+		if !isOwnedVirtualType(link.Type()) || !strings.HasPrefix(link.Attrs().Alias, ownedAliasPrefix) {
 			continue
 		}
 		id, record, recorded := r.recordForAlias(link.Attrs().Alias)
@@ -932,11 +944,11 @@ func (r *OwnedLinkReconciler) matchesPrunableVirtual(link netlink.Link, record v
 		return r.matchesRecordedVirtual(link, record)
 	}
 	if record.Quarantined || record.BootID != r.bootID || record.Alias == "" ||
-		link.Attrs().Alias != record.Alias || link.Type() != record.Kind ||
+		link.Attrs().Alias != record.Alias || link.Type() != record.kernelType() ||
 		link.Attrs().Name != record.TempName && link.Attrs().Name != record.Name {
 		return false
 	}
-	if record.Kind == string(interfaceintent.KindBridge) {
+	if record.Kind == string(interfaceintent.KindBridge) || record.Kind == string(interfaceintent.KindTunnel) {
 		return true
 	}
 	if record.Kind != string(interfaceintent.KindVLAN) || link.Attrs().ParentIndex != record.ParentIndex {
@@ -961,6 +973,7 @@ func (r *OwnedLinkReconciler) recordForAlias(alias string) (string, virtualRecor
 		VLANID: 0, Parent: "", ParentMAC: "", ParentBoot: "", ParentKind: "", ParentName: "",
 		ParentIndex: 0, LinkIndex: 0,
 		Complete: false, Quarantined: false,
+		TunnelProtocol: "",
 	}, false
 }
 

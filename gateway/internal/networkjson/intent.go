@@ -348,7 +348,15 @@ func buildIntentLink(entry ifaceEntry) (*interfaceintent.Link, error) {
 	link := &interfaceintent.Link{
 		Kind: interfaceintent.KindPhysical, Match: interfaceintent.Match{Driver: "", HardwareAddress: ""},
 		HardwareAddress: wire.HardwareAddress, MTU: wire.MTU,
-		VLAN: nil, BridgeMaster: wire.BridgeMaster,
+		VLAN: nil, BridgeMaster: wire.BridgeMaster, Tunnel: nil,
+	}
+	if wire.Tunnel != nil {
+		tunnel, err := buildIntentTunnel(entry)
+		if err != nil {
+			return nil, err
+		}
+		link.Kind, link.Tunnel = interfaceintent.KindTunnel, tunnel
+		return link, nil
 	}
 	if entry.Type == "iana-if-type:bridge" {
 		link.Kind = interfaceintent.KindBridge
@@ -598,6 +606,9 @@ func validateConnectionDependencies(connections []interfaceintent.Connection, de
 	if err := validateRequiredRoles(indexes, internal, firewall); err != nil {
 		return err
 	}
+	if err := validateTunnels(connections, declared, indexes); err != nil {
+		return err
+	}
 	for _, connection := range connections {
 		if connection.Link == nil {
 			continue
@@ -685,7 +696,7 @@ func validateActiveDependencies(connections []interfaceintent.Connection) error 
 		if connection.Link == nil {
 			continue
 		}
-		for _, parent := range []string{vlanParent(connection.Link), connection.Link.BridgeMaster} {
+		for _, parent := range linkDependencies(connection.Link) {
 			if parent != "" && !available[parent] {
 				return fmt.Errorf("interface %s requires rejected parent %s", connection.Name, parent)
 			}
@@ -704,7 +715,7 @@ func checkParentCycle(name string, connections []interfaceintent.Connection, ind
 	state[name] = 1
 	connection := connections[indexes[name]]
 	if connection.Link != nil {
-		for _, parent := range []string{vlanParent(connection.Link), connection.Link.BridgeMaster} {
+		for _, parent := range linkDependencies(connection.Link) {
 			if parent == "" {
 				continue
 			}

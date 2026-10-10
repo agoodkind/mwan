@@ -84,7 +84,7 @@ func TestPublishedTreeCarriesEveryNetworkLeaf(t *testing.T) {
 				t.Fatalf("read %s: %v", document, err)
 			}
 			inFile := flattenNetworkJSON(t, raw)
-			served := withoutServedOnlyPairs(itemPairs(servedConfigItems(t, document, schemaDir)))
+			served := withoutServedOnlyPairs(itemPairs(servedConfigItems(t, document, schemaDir)), inFile)
 			compareLeafSets(t, inFile, served)
 		})
 	}
@@ -141,14 +141,16 @@ func itemPairs(items []wanconfig.Item) []leafPair {
 	return pairs
 }
 
-// withoutServedOnlyPairs drops the leaves only the tree publishes.
-func withoutServedOnlyPairs(pairs []leafPair) []leafPair {
+// withoutServedOnlyPairs excludes served-only leaves published by the tree
+// unless the document specifies the same value. The document for an MWAN-owned
+// interface specifies the tree's owner leaf value.
+func withoutServedOnlyPairs(pairs []leafPair, inFile []leafPair) []leafPair {
 	kept := make([]leafPair, 0, len(pairs))
 	for _, pair := range pairs {
 		servedOnly := false
 		for _, pattern := range servedOnlyPaths {
 			if pattern.MatchString(pair.path) {
-				servedOnly = true
+				servedOnly = !slices.Contains(inFile, pair)
 				break
 			}
 		}
