@@ -91,6 +91,42 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: make -C provider test-tofu-plan
 
+  provider-package:
+    needs: provider
+    if: needs.provider.outputs.changed == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-amd64
+            runner: ubuntu-latest
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+          - platform: darwin-arm64
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: provider/go.mod
+          cache-dependency-path: provider/go.sum
+      - uses: opentofu/setup-opentofu@v2.0.2
+        with:
+          tofu_version: 1.12.6
+          tofu_wrapper: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-provider-${{ matrix.platform }}
+          path: ${{ runner.temp }}/provider-package
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_DIRECTORY: ${{ runner.temp }}/provider-package
+        run: |
+          package="$(find "$PACKAGE_DIRECTORY" -name 'terraform-provider-mwan_*.tar.gz' -print -quit)"
+          test -n "$package"
+          make -C provider test-release-package PROVIDER_PACKAGE="$package" TOFU="$(command -v tofu)" ALLOW_MISSING_CHECKSUMS=1
+
   # The go job above never runs these. The Makefile hangs the two schema gates
   # off `check`, and the go-makefile quality matrix runs a fixed list of
   # commands that does not include it, so without this job nothing validates

@@ -47,3 +47,24 @@ test-tofu-plan: | $(GO_MK_PREREQS)
 		"$(TOFU_PROVIDER_ADDRESS)" "$$tofu_dir" > "$$tofu_dir/tofurc" || exit 1; \
 	TOFU="$(TOFU)" TF_CLI_CONFIG_FILE="$$tofu_dir/tofurc" \
 		go test -tags tofu -count=1 -run TestTofuPlan ./internal/provider
+
+# PROVIDER_PACKAGE and TOFU must be absolute paths.
+# PROVIDER_VERSION optionally sets the mirror version.
+# Set ALLOW_MISSING_CHECKSUMS=1 to permit missing checksums.txt beside the archive.
+# Set EXPECTED_COMMIT to require a matching provider commit.
+RELEASE_PACKAGE_REQUIRED := test-release-package requires an absolute release archive path in PROVIDER_PACKAGE.
+RELEASE_TOFU_REQUIRED    := test-release-package requires an absolute OpenTofu executable path in TOFU.
+
+.PHONY: test-release-package
+test-release-package:
+	@if [ -z "$(PROVIDER_PACKAGE)" ]; then \
+		echo "$(RELEASE_PACKAGE_REQUIRED)" >&2; \
+		exit 1; \
+	fi
+	@if [ -z "$(TOFU)" ]; then \
+		echo "$(RELEASE_TOFU_REQUIRED)" >&2; \
+		exit 1; \
+	fi
+	@PROVIDER_PACKAGE="$(PROVIDER_PACKAGE)" TOFU="$(TOFU)" PROVIDER_VERSION="$(PROVIDER_VERSION)" \
+		ALLOW_MISSING_CHECKSUMS="$(ALLOW_MISSING_CHECKSUMS)" EXPECTED_COMMIT="$(EXPECTED_COMMIT)" \
+		scripts/test-release-package.sh
