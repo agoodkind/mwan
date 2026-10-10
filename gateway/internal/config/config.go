@@ -203,21 +203,7 @@ type WanconfigSection struct {
 	Publish bool `toml:"publish"`
 }
 
-// NotifySection controls the per-(kind, key) repeat cadence that the
-// internal/notify Manager applies on top of the state-change boundary.
-// The shape mirrors IfMgrAlertsSection because slice A introduces the
-// notify package by carving the state machine out of internal/ifmgr;
-// callers wired to the new package read cfg.Notify, callers still
-// wired to the ifmgr AlertManager continue to read cfg.IfMgr.Alerts
-// until slice B migrates them.
-//
-// RepeatEvery is the global default applied to every alert kind unless
-// overridden in PerKind. PerKind is keyed by alert kind (the Kind field
-// on notify.Event), not by module name. Both fields accept Go duration
-// strings like "30m" or "24h".
-//
-// Default behaviour with empty values: RepeatEvery == "0s" means
-// alerts fire once per transition only and never repeat.
+// NotifySection configures repeat cadence for each alert kind and key.
 type NotifySection = watchdogconfig.NotifySection
 
 // IfMgrSection holds the mwan ifmgr daemon's role-pluggable configuration.

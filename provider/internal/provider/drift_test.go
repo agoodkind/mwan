@@ -15,6 +15,7 @@ import (
 
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/installspec"
+	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
 const (
@@ -73,7 +74,7 @@ func TestProviderRoleMatchesMwanInstall(t *testing.T) {
 	provider := newServer(t, buildCommit, "")
 
 	for _, role := range installspec.Roles() {
-		for _, guest := range config.GuestTypes() {
+		for _, guest := range watchdogconfig.GuestTypes() {
 			t.Run(string(role)+"/"+string(guest), func(t *testing.T) {
 				checkRoleMatchesInstall(t, provider, binary, role, guest)
 			})
