@@ -233,7 +233,7 @@ func (s *Speaker) applyBestPath(ctx context.Context, path *apiutil.Path) {
 	if s.fib == nil {
 		return
 	}
-	if path == nil || path.Family != bgppkt.RF_IPv6_UC || path.Nlri == nil {
+	if path == nil || !learnedRouteFamily(path.Family) || path.Nlri == nil {
 		return
 	}
 	if !path.PeerAddress.IsValid() {
@@ -243,6 +243,10 @@ func (s *Speaker) applyBestPath(ctx context.Context, path *apiutil.Path) {
 	prefix, err := netip.ParsePrefix(path.Nlri.String())
 	if err != nil {
 		s.log.WarnContext(ctx, "ignore BGP best path with invalid prefix", "peer", peer, "error", err)
+		return
+	}
+	if prefix.Bits() == 0 {
+		s.log.DebugContext(ctx, "ignore learned default route", "peer", peer, "prefix", prefix)
 		return
 	}
 	event := PathEvent{
@@ -258,10 +262,23 @@ func (s *Speaker) applyBestPath(ctx context.Context, path *apiutil.Path) {
 			return
 		}
 		event.NextHop = nextHop
+		coversConnected, err := s.fib.coversConnected(ctx, prefix)
+		if err != nil {
+			s.log.ErrorContext(ctx, "reconcile BGP best path failed", "peer", peer, "prefix", prefix, "error", err)
+			return
+		}
+		if coversConnected {
+			s.log.DebugContext(ctx, "ignore learned prefix matching or covering connected network", "peer", peer, "prefix", prefix)
+			return
+		}
 	}
 	if err := s.fib.Apply(ctx, event); err != nil {
 		s.log.ErrorContext(ctx, "reconcile BGP best path failed", "peer", peer, "prefix", prefix, "error", err)
 	}
+}
+
+func learnedRouteFamily(family bgppkt.Family) bool {
+	return family == bgppkt.RF_IPv4_UC || family == bgppkt.RF_IPv6_UC
 }
 
 // reapplyBestPaths re-applies the table's current best paths into the FIB.
@@ -282,17 +299,23 @@ func (s *Speaker) reapplyBestPaths(ctx context.Context) {
 	if !started || srv == nil || fib == nil {
 		return
 	}
+	for _, family := range [...]bgppkt.Family{bgppkt.RF_IPv4_UC, bgppkt.RF_IPv6_UC} {
+		s.reapplyFamilyBestPaths(ctx, srv, family)
+	}
+}
+
+func (s *Speaker) reapplyFamilyBestPaths(ctx context.Context, srv bgpServerRIB, family bgppkt.Family) {
 	request := apiutil.ListPathRequest{
 		TableType:      apipb.TableType_TABLE_TYPE_GLOBAL,
 		Name:           "",
-		Family:         bgppkt.RF_IPv6_UC,
+		Family:         family,
 		Prefixes:       nil,
 		SortType:       0,
 		EnableFiltered: false,
 	}
 	err := srv.ListPath(request, func(_ bgppkt.NLRI, paths []*apiutil.Path) {
 		for _, path := range paths {
-			if path == nil || !path.Best || path.Stale || path.Withdrawal {
+			if path == nil || path.Family != family || !path.Best || path.Stale || path.Withdrawal {
 				continue
 			}
 			s.applyBestPath(ctx, path)
