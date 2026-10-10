@@ -25,7 +25,7 @@ jobs:
       attestations: write
     secrets: inherit
     with:
-      modules: '[{"working_directory":"gateway","cgo":true,"apt_packages":"libpcre2-dev"},{"working_directory":"provider"}]'
+      modules: '[{"working_directory":"gateway","cgo":true,"apt_packages":"libpcre2-dev"},{"working_directory":"provider","cgo":true,"apt_packages":"cmake pkg-config","darwin_runner":"macos-15"}]'
       # The publish job verifies both asset prefixes for every platform. A
       # release that dropped an archive fails the run instead of shipping a
       # partial set.
