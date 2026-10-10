@@ -249,7 +249,7 @@ func selftestGateway() wanconfig.Gateway {
 	firewallConfig.ManagementInterface = "enmgmt0"
 	firewallConfig.ManagementServices = []firewall.Service{{Protocol: "tcp", Port: 22, Sources: nil}}
 	firewallConfig.KnownInterfaces = []string{"eninternal0", "enmgmt0", "enexample0"}
-	firewallConfig.Providers = []firewall.Provider{{Interface: "enexample0", Mark: 1, ForcedDSCP: 8, MasqueradeIPv4: true, StaticMappings: nil}}
+	firewallConfig.Providers = []firewall.Provider{{Interface: "enexample0", Mark: 1, ForcedDSCP: 8, MasqueradeIPv4: true, StaticMappings: nil, ReducedMTU: false}}
 	firewallConfig.Paths = []firewall.ForwardingPath{{
 		InternalInterface: "eninternal0", ExternalInterface: "enexample0", IPv4: true, IPv6: true,
 	}}
@@ -363,6 +363,8 @@ func selftestStore() *wanstate.Store {
 		Carrying:       true,
 		V4Ready:        false,
 		V6Ready:        false,
+		V4Reason:       "",
+		V6Reason:       "",
 		OwnedAddresses: []netip.Addr{netip.MustParseAddr(selftestOwnedAddress)},
 	}})
 	store.SetTranslation(map[string]wanstate.MemberTranslation{
@@ -613,7 +615,7 @@ func checkSelftestNotifications(
 	// transition, and a routing pass that installs a different tier than
 	// the baseline selftestStore wrote.
 	store.NotifyHealthTransition("example", wanstate.HealthHealthy, wanstate.HealthUnhealthy)
-	store.SetRouting(1, map[string]wanstate.MemberRouting{"example": {Carrying: false, V4Ready: false, V6Ready: false, OwnedAddresses: nil}})
+	store.SetRouting(1, map[string]wanstate.MemberRouting{"example": {Carrying: false, V4Ready: false, V6Ready: false, V4Reason: "", V6Reason: "", OwnedAddresses: nil}})
 
 	byPath := map[string]string{}
 	for len(byPath) < 2 {

@@ -92,7 +92,8 @@ func Compile(config Config) (Ruleset, error) {
 	}
 	pinPorts := "udp sport " + strconv.Itoa(int(config.PinnedSourcePort)) + " udp dport " + strconv.Itoa(int(config.PinnedDestinationPort))
 	pinMarkText := strconv.FormatUint(uint64(pinMark), 10)
-	if config.PinnedProvider != "" {
+	pinIPv4 := config.PinnedProvider != "" && config.forwardsIPv4(config.PinnedProvider)
+	if pinIPv4 {
 		expression := "iifname " + internal + " ip saddr " + config.PinnedSourceIPv4.String() + " " + pinPorts + " ct state new meta mark set " + pinMarkText
 		preNAT.Rules = append(preNAT.Rules, newRule(PurposePinnedSourceMark, string(IPv4), ActionMark, expression).
 			in(config.InternalInterface).from(hostPrefix(config.PinnedSourceIPv4)).marked(pinMark))
@@ -121,33 +122,30 @@ func Compile(config Config) (Ruleset, error) {
 				out(provider.Interface).from(config.InternalNetworkIPv4))
 		}
 	}
+	if pinIPv4 {
+		preMangle.Rules = append(preMangle.Rules, newRule(PurposePinnedDestinationMark, string(IPv4), ActionMark,
+			"ip daddr @"+config.PinnedSetV4Name+" meta mark set "+pinMarkText).marked(pinMark))
+	}
 	if config.PinnedProvider != "" {
 		preMangle.Rules = append(preMangle.Rules,
-			newRule(PurposePinnedDestinationMark, string(IPv4), ActionMark,
-				"ip daddr @"+config.PinnedSetV4Name+" meta mark set "+pinMarkText).marked(pinMark),
 			newRule(PurposePinnedDestinationMark, string(IPv6), ActionMark,
 				"ip6 daddr @"+config.PinnedSetV6Name+" meta mark set "+pinMarkText).marked(pinMark),
 			newRule(PurposePinnedSourceMark, string(IPv6), ActionMark,
 				"ip6 saddr "+config.PinnedSourceIPv6.String()+"/128 "+pinPorts+" ct state new meta mark set "+pinMarkText).
 				from(hostPrefix(config.PinnedSourceIPv6)).marked(pinMark))
 	}
-	for _, provider := range config.Providers {
-		if provider.ForcedDSCP == 0 {
-			continue
-		}
-		dscp := strconv.Itoa(int(provider.ForcedDSCP))
-		mark := strconv.FormatUint(uint64(provider.Mark), 10)
-		preMangle.Rules = append(preMangle.Rules,
-			newRule(PurposeForcedDSCPMark, ruleScope(provider.Interface, string(IPv4)), ActionMark,
-				"iifname "+internal+" ip dscp "+dscp+" ct state new meta mark set "+mark).
-				in(config.InternalInterface).marked(provider.Mark),
-			newRule(PurposeForcedDSCPMark, ruleScope(provider.Interface, string(IPv6)), ActionMark,
-				"iifname "+internal+" ip6 dscp "+dscp+" ct state new meta mark set "+mark).
-				in(config.InternalInterface).marked(provider.Mark))
-	}
+	preMangle.Rules = append(preMangle.Rules, forcedDSCPRules(config)...)
 	preMangle.Rules = append(preMangle.Rules,
 		newRule(PurposeRestoreMark, stateNew, ActionMark, "ct state new ct mark != 0x00000000 meta mark set ct mark"),
 		newRule(PurposeRestoreMark, stateEstablished, ActionMark, "ct state established,related meta mark set ct mark"))
+	for _, provider := range config.Providers {
+		if !provider.ReducedMTU {
+			continue
+		}
+		postMangle.Rules = append(postMangle.Rules, newRule(PurposeKeepRelatedMark, scopeAll, ActionReturn,
+			"ct state related meta mark 0x00000000 return").marked(0))
+		break
+	}
 	postMangle.Rules = append(postMangle.Rules, newRule(PurposeSaveMark, scopeAll, ActionSaveMark, "ct mark set meta mark"))
 
 	rules := Ruleset{Chains: []Chain{input, forward, output, preNAT, postNAT, preMangle, postMangle}, Sets: nil}
@@ -158,6 +156,43 @@ func Compile(config Config) (Ruleset, error) {
 		}
 	}
 	return finishRuleset(rules), nil
+}
+
+func forcedDSCPRules(config Config) []Rule {
+	internal := strconv.Quote(config.InternalInterface)
+	var rules []Rule
+	for _, provider := range config.Providers {
+		if provider.ForcedDSCP == 0 {
+			continue
+		}
+		dscp := strconv.Itoa(int(provider.ForcedDSCP))
+		mark := strconv.FormatUint(uint64(provider.Mark), 10)
+		if config.forwardsIPv4(provider.Interface) {
+			rules = append(rules,
+				newRule(PurposeForcedDSCPMark, ruleScope(provider.Interface, string(IPv4)), ActionMark,
+					"iifname "+internal+" ip dscp "+dscp+" ct state new meta mark set "+mark).
+					in(config.InternalInterface).marked(provider.Mark))
+		}
+		rules = append(rules,
+			newRule(PurposeForcedDSCPMark, ruleScope(provider.Interface, string(IPv6)), ActionMark,
+				"iifname "+internal+" ip6 dscp "+dscp+" ct state new meta mark set "+mark).
+				in(config.InternalInterface).marked(provider.Mark))
+	}
+	return rules
+}
+
+func (c Config) forwardsIPv4(providerInterface string) bool {
+	restricted := false
+	for _, path := range c.Paths {
+		if path.ExternalInterface != providerInterface {
+			continue
+		}
+		if path.IPv4 {
+			return true
+		}
+		restricted = true
+	}
+	return !restricted
 }
 
 func finishRuleset(rules Ruleset) Ruleset {

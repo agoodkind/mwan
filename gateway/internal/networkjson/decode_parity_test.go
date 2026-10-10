@@ -109,7 +109,7 @@ func rejectionText(loaded *networkjson.Config, err error) string {
 
 func TestDecodeMatchesLoadForValidDocuments(t *testing.T) {
 	schemaDir := schemaDirForTest(t)
-	for _, name := range []string{"network-min.json", "network-freeform.json", "network-routes.json", "network-tunnel.json"} {
+	for _, name := range []string{"network-min.json", "network-freeform.json", "network-routes.json", "network-tunnel.json", "network-tunnel-provider.json"} {
 		t.Run(name, func(t *testing.T) {
 			path, data := readInstance(t, name)
 			loaded, err := networkload.Load(path, schemaDir)

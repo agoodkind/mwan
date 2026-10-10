@@ -459,6 +459,8 @@ func planFixtures() map[string]string {
 		"plan-base":   planBaseDocument,
 		"network-min": filepath.Join(planInstanceDir, "network-min.json"),
 		"network-lxc": filepath.Join(planInstanceDir, "network-lxc.json"),
+
+		"network-tunnel-provider": filepath.Join(planInstanceDir, "network-tunnel-provider.json"),
 	}
 }
 
@@ -489,7 +491,7 @@ func TestCompiledFirewallTextMatchesGolden(t *testing.T) {
 }
 
 func TestCompiledBaselineTextMatchesGolden(t *testing.T) {
-	for _, name := range []string{"plan-base", "network-lxc"} {
+	for _, name := range []string{"plan-base", "network-lxc", "network-tunnel-provider"} {
 		t.Run(name, func(t *testing.T) {
 			baseline, err := networkjson.LoadBaseline(planFixtures()[name])
 			if err != nil || baseline == nil {

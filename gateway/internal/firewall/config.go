@@ -18,6 +18,9 @@ const (
 	IPv6 Family = "ipv6"
 )
 
+// ProtocolIPv6InIPv4 is the number 41 because nft resolves protocol names using the host's protocol database.
+const ProtocolIPv6InIPv4 = "41"
+
 // TransportPermit allows packets addressed to the gateway. Source and
 // destination prefixes are optional. Ports apply only to TCP and UDP.
 type TransportPermit struct {
@@ -51,6 +54,7 @@ type Provider struct {
 	ForcedDSCP     uint8
 	MasqueradeIPv4 bool
 	StaticMappings []Mapping
+	ReducedMTU     bool
 }
 
 // Service permits a management port from selected source prefixes.
@@ -354,8 +358,11 @@ func validatePermit(permit TransportPermit) error {
 	if permit.Destination.IsValid() && familyOf(permit.Destination) != permit.Family {
 		return fmt.Errorf("local permit destination has the wrong family")
 	}
-	if permit.Protocol != "tcp" && permit.Protocol != "udp" && permit.Protocol != "icmp" && permit.Protocol != "icmpv6" && permit.Protocol != "gre" && permit.Protocol != "ipip" {
+	if permit.Protocol != "tcp" && permit.Protocol != "udp" && permit.Protocol != "icmp" && permit.Protocol != "icmpv6" && permit.Protocol != "gre" && permit.Protocol != "ipip" && permit.Protocol != ProtocolIPv6InIPv4 {
 		return fmt.Errorf("local permit protocol %q is unsupported", permit.Protocol)
+	}
+	if permit.Protocol == ProtocolIPv6InIPv4 && permit.Family != IPv4 {
+		return fmt.Errorf("local permit protocol %s requires the IPv4 family", permit.Protocol)
 	}
 	if (permit.Protocol != "tcp" && permit.Protocol != "udp") && (permit.SourcePort != 0 || permit.DestinationPort != 0) {
 		return fmt.Errorf("local permit %s cannot use ports", permit.Protocol)

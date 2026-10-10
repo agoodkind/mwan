@@ -1,0 +1,40 @@
+inet filter input: filter/input/filter policy drop
+  ct state established,related accept
+  iifname "lo" accept
+  ip protocol icmp accept
+  ip6 nexthdr icmpv6 accept
+  iifname "enmgmt0" meta nfproto ipv4 meta l4proto tcp tcp dport 22 accept
+  iifname "enmgmt0" meta nfproto ipv6 meta l4proto tcp tcp dport 22 accept
+  iifname "enisp0" meta nfproto ipv4 meta l4proto udp udp sport 67 udp dport 68 accept
+  iifname "enisp0" meta nfproto ipv6 meta l4proto udp udp sport 547 udp dport 546 accept
+  iifname "enmwanbr0" meta nfproto ipv4 meta l4proto tcp tcp dport 179 accept
+  iifname "enmwanbr0" meta nfproto ipv4 meta l4proto udp udp dport 3784 accept
+  iifname "enmwanbr0" meta nfproto ipv4 meta l4proto udp udp dport 3785 accept
+  iifname "enmwanbr0" meta nfproto ipv6 meta l4proto tcp tcp dport 179 accept
+  iifname "enmwanbr0" meta nfproto ipv6 meta l4proto udp udp dport 3784 accept
+  iifname "enmwanbr0" meta nfproto ipv6 meta l4proto udp udp dport 3785 accept
+  iifname "enisp0" meta nfproto ipv4 meta l4proto 41 ip saddr 198.51.100.1/32 accept
+  limit rate 1/second log prefix "nftables input drop: " drop
+inet filter forward: filter/forward/filter policy drop
+  ct state established,related accept
+  iifname "enmwanbr0" oifname "enmwanbr0" meta priority & 0xffff0000 == 0x4e500000 accept
+  iifname "enmwanbr0" oifname "enisp0" meta nfproto ipv4 accept
+  iifname "enisp0" oifname "enmwanbr0" meta nfproto ipv4 accept
+  iifname "enmwanbr0" oifname "enisp0" meta nfproto ipv6 accept
+  iifname "enisp0" oifname "enmwanbr0" meta nfproto ipv6 accept
+  iifname "enmwanbr0" oifname "tun6in4" meta nfproto ipv6 accept
+  iifname "tun6in4" oifname "enmwanbr0" meta nfproto ipv6 accept
+  limit rate 1/second log prefix "nftables forward drop: " drop
+inet filter output: filter/output/filter policy accept
+ip nat prerouting: nat/prerouting/dstnat policy accept
+ip nat postrouting: nat/postrouting/srcnat policy accept
+  oifname "enisp0" ip saddr 192.0.2.0/29 masquerade
+inet mangle prerouting: filter/prerouting/mangle policy accept
+  iifname "enmwanbr0" meta priority & 0xffff0000 == 0x4e500000 meta mark set 0 return
+  iifname "enisp0" ct state new meta mark set 1
+  iifname "tun6in4" ct state new meta mark set 2
+  ct state new ct mark != 0x00000000 meta mark set ct mark
+  ct state established,related meta mark set ct mark
+inet mangle postrouting: filter/postrouting/mangle policy accept
+  ct state related meta mark 0x00000000 return
+  ct mark set meta mark
