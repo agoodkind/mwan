@@ -62,7 +62,7 @@ func setTunnelRouteNeighbour(t *testing.T, iface, gateway, gatewayMAC string) {
 	}
 }
 
-// replaceTunnelRouteDefault changes the gateway of the main-table default route in one kernel operation.
+// One kernel operation changes the gateway of the main-table default route.
 func replaceTunnelRouteDefault(t *testing.T, iface, gateway string, metric int) {
 	t.Helper()
 	link, err := netlink.LinkByName(iface)
@@ -93,7 +93,7 @@ func setTunnelRouteDefault(t *testing.T, iface, gateway string, metric int, pres
 	}
 }
 
-// newTunnelRouteFixture builds two IPv4 providers and one 6in4 tunnel over one provider.
+// The fixture has two IPv4 providers and one 6in4 tunnel over one provider.
 // The tunnel uses the provider with the less preferred main-table default route. The link manager
 // creates the tunnel device.
 func newTunnelRouteFixture(ctx context.Context, t *testing.T) *tunnelRouteFixture {

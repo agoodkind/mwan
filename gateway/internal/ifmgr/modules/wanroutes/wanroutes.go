@@ -271,7 +271,7 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 }
 
 // A failed route or rule write in the current pass can remove the underlay gateway.
-// desiredStateForPass applies the tunnel dependencies before each computation.
+// Each desired-state computation first excludes the tunnels with an unmet dependency.
 // Callers must lock the module.
 func (m *Module) desiredStateForPass(currentGateways gateways, health netif.HealthStates, translations map[string]wanstate.MemberTranslation) ([]netif.DesiredRule, []netif.RouteSpec) {
 	m.tunnelReasons = m.excludeUnreadyTunnelFamilies(currentGateways, health, translations)

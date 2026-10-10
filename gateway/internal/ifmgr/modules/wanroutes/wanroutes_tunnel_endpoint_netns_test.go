@@ -18,8 +18,8 @@ const (
 	tunnelRouteSecondMAC = "02:00:5e:00:53:03"
 )
 
-// underlayTableMatch returns the route entry that the kernel selects for the tunnel's remote address.
-// The kernel uses the underlay provider's mark to select the route entry.
+// The kernel selects the returned route entry for the tunnel's remote address with the underlay
+// provider's mark.
 func underlayTableMatch(t *testing.T) netlink.Route {
 	t.Helper()
 	matched, err := netlink.RouteGetWithOptions(net.ParseIP(tunnelRouteRemote), &netlink.RouteGetOptions{Mark: tunnelRouteUnderMark, FIBMatch: true})

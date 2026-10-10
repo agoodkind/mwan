@@ -41,7 +41,7 @@ const (
 	ipProtocolIPv6InIPv4   = 41
 )
 
-// enterTunnelRouteNamespace reruns the calling test in a child process with a private network namespace.
+// The calling test reruns in a child process with a private network namespace.
 // Init starts monitors on other threads. A locked thread isolates only the calling goroutine.
 func enterTunnelRouteNamespace(t *testing.T) bool {
 	t.Helper()

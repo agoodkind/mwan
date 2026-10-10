@@ -91,7 +91,6 @@ func rejectTunnelIPv4(entry ifaceEntry) error {
 	return nil
 }
 
-// validateTunnelProvider rejects a 6in4 provider that the routing module cannot make ready.
 // The routing module reads the provider gateway from a main-table default route with a next hop.
 // The routing module requires one successful IPv6 probe before the provider becomes ready.
 func validateTunnelProvider(entry ifaceEntry) error {

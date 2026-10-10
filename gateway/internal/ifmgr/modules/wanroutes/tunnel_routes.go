@@ -85,9 +85,9 @@ func (m *Module) reconcileEndpointRoutes(ctx context.Context, log *slog.Logger, 
 	return reconcileErr
 }
 
-// ownsEndpointRouteDeletion matches a deletion against the routes installed in the last pass.
-// ownsEndpointRouteDeletion also matches a deletion against each tunnel's last installed route when the
-// tunnel had a failed write in the last pass.
+// A deletion event matches the routes installed in the last pass.
+// A deletion event also matches each tunnel's last installed route when the tunnel had a failed write
+// in the last pass.
 // The module's own deletion does not match an entry after a pass without that route.
 func (m *Module) ownsEndpointRouteDeletion(event netif.Event) bool {
 	if event.Family != familyV4 || event.Protocol != netif.TunnelEndpointRouteProtocol {

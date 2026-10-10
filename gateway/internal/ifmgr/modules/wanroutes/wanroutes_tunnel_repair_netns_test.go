@@ -28,8 +28,8 @@ func (fixture *tunnelRouteFixture) drainRepairs() {
 	}
 }
 
-// repairsUntil reads repair requests until a request includes the boundary reason.
-// repairsUntil returns the number of requests with the counted reason before the boundary.
+// The reader consumes repair requests until a request includes the boundary reason.
+// The result is the number of requests with the counted reason before the boundary.
 func (fixture *tunnelRouteFixture) repairsUntil(t *testing.T, boundary, counted string) int {
 	t.Helper()
 	expired := time.After(20 * time.Second)

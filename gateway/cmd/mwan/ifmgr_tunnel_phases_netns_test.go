@@ -13,7 +13,7 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-// tunnelRuntimeStartsNotReady starts the daemon while the remote endpoint drops protocol 41.
+// The remote endpoint drops protocol 41 while the daemon starts.
 // The new IPv6 path is not ready at startup. IPv4 works through the underlay.
 func tunnelRuntimeStartsNotReady(t *testing.T, run tunnelRuntimeRun) *runtimeDaemon {
 	t.Helper()
@@ -40,7 +40,7 @@ func tunnelRuntimeStartsNotReady(t *testing.T, run tunnelRuntimeRun) *runtimeDae
 	return first
 }
 
-// tunnelRuntimeBecomesReady enables the remote endpoint to accept protocol 41.
+// The remote endpoint begins to accept protocol 41.
 // One successful IPv6 probe makes the path ready. The provider does not have an IPv4 probe.
 func tunnelRuntimeBecomesReady(t *testing.T, run tunnelRuntimeRun, daemon *runtimeDaemon) {
 	t.Helper()
@@ -93,7 +93,7 @@ func tunnelRuntimeTransfers(t *testing.T, run tunnelRuntimeRun, daemon *runtimeD
 	requireTunnelRuntimeIPv4(t, daemon, run, 4102, "with the tunnel ready")
 }
 
-// tunnelRuntimeRepairsEndpointRoute deletes the endpoint route.
+// The test deletes the endpoint route.
 // The daemon restores the endpoint route without a periodic pass.
 func tunnelRuntimeRepairsEndpointRoute(t *testing.T, daemon *runtimeDaemon) {
 	t.Helper()

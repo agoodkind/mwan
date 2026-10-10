@@ -339,10 +339,8 @@ func populateFirewallProviders(cfg *firewall.Config, doc *document, loaded *Conf
 	return nil
 }
 
-// The forced DSCP rules and the pin rules mark IPv4 packets with the provider mark.
-// The main routing table would route IPv4 packets with the provider mark because the routing module does
+// The main routing table routes IPv4 packets with the provider mark because the routing module does
 // not install an IPv4 policy rule for a 6in4 tunnel provider.
-// ipv4Forwarded equals the IPv4 value of the provider's forwarding path.
 func requireIPv4ForMarks(provider string, ipv4Forwarded bool, forcedDSCP bool, pinned bool) error {
 	if ipv4Forwarded {
 		return nil

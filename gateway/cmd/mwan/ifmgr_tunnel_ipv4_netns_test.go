@@ -76,9 +76,8 @@ func observeTunnelRuntimeIPv4(t *testing.T, run tunnelRuntimeRun, port int) (tun
 	return observed, nil
 }
 
-// requireTunnelRuntimeIPv4 compares the IPv4 transfers with the transfers before the first tunnel fault.
-// requireTunnelRuntimeIPv4 records the provider link of each client address and the steering assignment
-// on the first call. requireTunnelRuntimeIPv4 records the published IPv4 state on the first call.
+// The first call records the provider link of each client address, the steering assignment, and the
+// published IPv4 state. Each later call compares the IPv4 transfers with the first call's records.
 func requireTunnelRuntimeIPv4(t *testing.T, daemon *runtimeDaemon, run tunnelRuntimeRun, port int, phase string) {
 	t.Helper()
 	observed, err := observeTunnelRuntimeIPv4(t, run, port)
