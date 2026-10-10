@@ -55,10 +55,7 @@ type Provider struct {
 	ForcedDSCP     uint8
 	MasqueradeIPv4 bool
 	StaticMappings []Mapping
-	// ReducedMTU marks an interface with an MTU below the internal interface MTU.
-	// The gateway sends a packet-too-big error to the sender of a forwarded packet that exceeds
-	// the ReducedMTU interface MTU.
-	ReducedMTU bool
+	ReducedMTU     bool
 }
 
 // Service permits a management port from selected source prefixes.

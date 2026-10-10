@@ -140,9 +140,7 @@ type NPTAddressAuthority interface {
 	Release(context.Context, *slog.Logger, []NPTEdgeRecord) error
 }
 
-// TunnelEndpointRoutes records each tunnel endpoint route in the address ownership journal before the
-// kernel write.
-// The routing module deletes only the routes in the journal.
+// TunnelEndpointRoutes deletes only the tunnel endpoint routes in the address ownership journal.
 type TunnelEndpointRoutes interface {
 	EnsureTunnelEndpointRoute(ctx context.Context, log *slog.Logger, connectionID string, want netif.RouteSpec) error
 	ReleaseTunnelEndpointRoutes(ctx context.Context, log *slog.Logger, keep map[string]bool) error
