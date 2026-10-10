@@ -53,6 +53,9 @@ type MemberHealth struct {
 	LastTransition      time.Time
 	V4                  ProbeResult
 	V6                  ProbeResult
+	// V4Verdict and V6Verdict apply the failure and recovery thresholds to one probed address family.
+	V4Verdict Health
+	V6Verdict Health
 }
 
 // MemberRouting is what the routing module decided for one member on
@@ -63,6 +66,12 @@ type MemberRouting struct {
 	V6Ready  bool
 	V4Reason string
 	V6Reason string
+	// V4Dependency and V6Dependency identify the dependency that V4Reason and V6Reason report as not met.
+	V4Dependency string
+	V6Dependency string
+	// V4Configured and V6Configured report the address families the routing module evaluates for the member.
+	V4Configured bool
+	V6Configured bool
 	// OwnedAddresses are the mapped addresses the routing module holds on the
 	// member's link as host addresses, in configuration order.
 	OwnedAddresses []netip.Addr

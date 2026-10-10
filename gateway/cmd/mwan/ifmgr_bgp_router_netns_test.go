@@ -37,6 +37,7 @@ type bgpRuntimeRouter struct {
 
 	mu        sync.Mutex
 	installed map[string]*netlink.Route
+	receipts  []time.Time
 }
 
 func startBGPRuntimeRouter(t *testing.T, namespace netns.NsHandle, device, routerID string, asn uint32, listen, neighbor netip.Addr, neighborASN uint32) *bgpRuntimeRouter {
@@ -105,6 +106,7 @@ func (r *bgpRuntimeRouter) apply(t *testing.T, paths []*apiutil.Path) {
 			r.remove(t, route)
 			continue
 		}
+		r.receipts = append(r.receipts, time.Now())
 		for _, attribute := range path.Attrs {
 			if nextHop, ok := attribute.(*bgppkt.PathAttributeMpReachNLRI); ok {
 				route.Gw = net.IP(nextHop.Nexthop.AsSlice())

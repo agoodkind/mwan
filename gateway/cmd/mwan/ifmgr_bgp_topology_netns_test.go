@@ -112,6 +112,19 @@ type bgpRuntimeTopology struct {
 	remotes map[string]netns.NsHandle
 }
 
+func addBGPRuntimeProvider(t *testing.T, gateway netns.NsHandle, provider bgpRuntimeProvider) (router, remote netns.NsHandle) {
+	t.Helper()
+	peer := newRuntimePeer(t, gateway, provider.device, provider.routerDevice,
+		[]string{provider.local().String() + "/64"}, []string{provider.peer().String() + "/64"}, "")
+	remote = newTunnelRuntimeNamespace(t)
+	linkTunnelRuntimeNamespaces(t, peer.namespace, provider.routerDevice+"-far", []string{provider.network + ":99::1/64"},
+		remote, "remote-host", []string{provider.remoteClient() + "/64"})
+	addRuntimeDefault(t, "remote-host", provider.network+":99::1")
+	setRuntimeNamespace(t, peer.namespace)
+	writeTunnelRuntimeSetting(t, "/proc/sys/net/ipv6/conf/all/forwarding", "1")
+	return peer.namespace, remote
+}
+
 func buildBGPRuntimeTopology(t *testing.T, gateway netns.NsHandle, providers ...bgpRuntimeProvider) bgpRuntimeTopology {
 	t.Helper()
 	management := newRuntimePeer(t, gateway, "enmgmt0", "mgmt-host", []string{"192.0.2.65/29"}, []string{"192.0.2.66/29"}, "")
@@ -125,16 +138,9 @@ func buildBGPRuntimeTopology(t *testing.T, gateway netns.NsHandle, providers ...
 	}
 	namespaces := []netns.NsHandle{management.namespace, client.namespace, isp.namespace}
 	for _, provider := range providers {
-		router := newRuntimePeer(t, gateway, provider.device, provider.routerDevice,
-			[]string{provider.local().String() + "/64"}, []string{provider.peer().String() + "/64"}, "")
-		remote := newTunnelRuntimeNamespace(t)
-		linkTunnelRuntimeNamespaces(t, router.namespace, provider.routerDevice+"-far", []string{provider.network + ":99::1/64"},
-			remote, "remote-host", []string{provider.remoteClient() + "/64"})
-		addRuntimeDefault(t, "remote-host", provider.network+":99::1")
-		setRuntimeNamespace(t, router.namespace)
-		writeTunnelRuntimeSetting(t, "/proc/sys/net/ipv6/conf/all/forwarding", "1")
-		topology.routers[provider.id], topology.remotes[provider.id] = router.namespace, remote
-		namespaces = append(namespaces, router.namespace, remote)
+		router, remote := addBGPRuntimeProvider(t, gateway, provider)
+		topology.routers[provider.id], topology.remotes[provider.id] = router, remote
+		namespaces = append(namespaces, router, remote)
 	}
 	for _, namespace := range namespaces {
 		t.Cleanup(func() { _ = namespace.Close() })

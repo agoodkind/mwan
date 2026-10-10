@@ -91,6 +91,12 @@ func TestDecodeRejectsInvalidBGPSessions(t *testing.T) {
 			want:  bgpTunnelSession + "keepalive 30 must be below hold 30",
 		},
 		{
+			name:  "connect-retry below two seconds",
+			path:  bgpTunnelFixture,
+			edits: []planEdit{{old: `"keepalive": 10,`, replacement: `"keepalive": 10, "connect-retry": 1,`}},
+			want:  bgpTunnelSession + "connect-retry 1 must be at least 2",
+		},
+		{
 			name:  "route-metric of zero",
 			path:  bgpTunnelFixture,
 			edits: []planEdit{{old: bgpTunnelMetric, replacement: `"route-metric": 0,`}},

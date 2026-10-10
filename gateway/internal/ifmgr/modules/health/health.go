@@ -165,6 +165,8 @@ type probeResult struct {
 	// zero counts below are the absence of a probe rather than a failed one.
 	V6Probed       bool
 	V4Probed       bool
+	V6Passed       bool
+	V4Passed       bool
 	V6Successes    int
 	V4Successes    int
 	HTTP6Successes int
@@ -201,6 +203,8 @@ type Module struct {
 	// lastTransition records when each WAN's verdict last changed, for
 	// the management surface. Guarded by cycleMu: only runCycle writes it.
 	lastTransition map[string]time.Time
+	// cycleMu guards families: only runCycle writes the map.
+	families map[string]familyStatuses
 
 	probeV4    pingFunc
 	probeV6    pingFunc
@@ -413,6 +417,7 @@ func (m *Module) runCycle(ctx context.Context, log *slog.Logger) error {
 	nextStatuses := m.snapshotStatuses()
 	transitions := make([]transition, 0, len(m.cfg.WANs))
 	results := make(map[string]probeResult, len(m.cfg.WANs))
+	familyChanged := false
 	for _, wan := range m.cfg.WANs {
 		result := m.probeWAN(ctx, wan, log)
 		results[wan.Key()] = result
@@ -424,6 +429,7 @@ func (m *Module) runCycle(ctx context.Context, log *slog.Logger) error {
 			wan.recoveryThreshold(m.cfg),
 		)
 		nextStatuses[wan.Key()] = next
+		familyChanged = m.advanceFamilies(wan, result) || familyChanged
 		if changed {
 			transitions = append(transitions, transition{
 				WAN: wan, From: current.State, To: next.State,
@@ -461,6 +467,9 @@ func (m *Module) runCycle(ctx context.Context, log *slog.Logger) error {
 	m.Unlock()
 	m.publishLiveState(nextStatuses, results)
 	m.emitTransitions(ctx, log, transitions)
+	if familyChanged && m.Env != nil && m.Env.RequestReconcile != nil {
+		m.Env.RequestReconcile("health address family verdict changed")
+	}
 	// One push per cycle, after the transitions are committed, so a verdict
 	// change reaches the watchdog in the cycle that made it and a transition
 	// cycle never sends the same thing twice.
@@ -490,6 +499,8 @@ func (m *Module) publishLiveState(
 			LastTransition:      m.lastTransition[wan.Key()],
 			V4:                  wanstate.ProbeNone,
 			V6:                  wanstate.ProbeNone,
+			V4Verdict:           verdictOf(m.families[wan.Key()].v4.State),
+			V6Verdict:           verdictOf(m.families[wan.Key()].v6.State),
 		}
 		if status.FailCount > 0 && status.FailCount <= math.MaxUint32 {
 			member.ConsecutiveFailures = uint32(status.FailCount)
@@ -565,6 +576,8 @@ func (m *Module) probeWAN(ctx context.Context, wan WAN, log *slog.Logger) probeR
 		Passed:         false,
 		V6Probed:       v6Probed,
 		V4Probed:       v4Probed,
+		V6Passed:       false,
+		V4Passed:       false,
 		V6Successes:    0,
 		V4Successes:    0,
 		HTTP6Successes: 0,
@@ -592,6 +605,7 @@ func (m *Module) probeWAN(ctx context.Context, wan WAN, log *slog.Logger) probeR
 		(result.V6Successes >= successThreshold || result.HTTP6Successes >= 1)
 	v4Passed := v4Probed &&
 		(result.V4Successes >= successThreshold || result.HTTP4Successes >= 1)
+	result.V6Passed, result.V4Passed = v6Passed, v4Passed
 	result.Passed = v6Passed || v4Passed
 	return result
 }

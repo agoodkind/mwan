@@ -49,6 +49,7 @@ module goodkind-mwan-steering {
      decides its verdict, the prefix-translation inputs, and the
      internal link the members route toward.";
 
+  revision 2026-10-12;
   revision 2026-10-11;
   revision 2026-10-10 {
     description
@@ -177,6 +178,10 @@ module goodkind-mwan-steering {
       "A member's combined health verdict.";
   }
 
+  typedef path-state {
+    type enumeration { enum starting; enum ready; enum unavailable; }
+  }
+
   augment "/if:interfaces/if:interface" {
     container ownership-state {
       config false;
@@ -262,6 +267,21 @@ module goodkind-mwan-steering {
     leaf firewall-protection { type string; }
     leaf routing { type string; }
     leaf readiness { type string; }
+    container path-readiness {
+      leaf state { type path-state; }
+      leaf dependency { type string; }
+      leaf reason { type string; }
+      leaf since { type yang:date-and-time; }
+      list transition {
+        key "id";
+        leaf id { type string; }
+        leaf at { type yang:date-and-time; }
+        leaf previous { type path-state; }
+        leaf current { type path-state; }
+        leaf dependency { type string; }
+        leaf reason { type string; }
+      }
+    }
     container last-apply {
       leaf operation { type string; }
       leaf dependency { type string; }
@@ -646,6 +666,12 @@ module goodkind-mwan-steering {
           must ". > ../keepalive" {
             error-message "The keepalive interval must be below the hold time.";
           }
+        }
+        leaf connect-retry {
+          type uint16 {
+            range "2..max";
+          }
+          units "seconds";
         }
         leaf route-metric {
           mandatory true;

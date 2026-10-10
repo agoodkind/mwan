@@ -132,6 +132,7 @@ type Module struct {
 	endpointRoutes map[string]netif.RouteSpec
 	endpointWatch  map[string]netif.RouteSpec
 	tunnelReasons  map[string]string
+	probeReasons   map[string]familyProbeReasons
 }
 
 // gatewayDiscovery is one pass's gateway read. A provider whose link does not
@@ -198,6 +199,7 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	}
 	currentGateways := discovery.gateways
 	m.excludeUnreadyOwnedFamilies(currentGateways)
+	m.excludeUnhealthyFamilies(currentGateways)
 	health, err := netif.ReadHealthState(m.cfg.HealthStateFile)
 	if err != nil {
 		log.WarnContext(ctx, "wan.routes: ReadHealthState failed", "err", err)
@@ -303,11 +305,17 @@ func (m *Module) publishLiveState(currentGateways gateways, health netif.HealthS
 		v4Ready := familyReady(wan, currentGateways[wan.Key()], health, translations[wan.Key()], familyV4)
 		v6Ready := familyReady(wan, currentGateways[wan.Key()], health, translations[wan.Key()], familyV6)
 		selectionEnabled := config.ConnectionSelectionEnabled(wan.SelectionEnabled)
+		v4Reason := familyReason(wan, currentGateways[wan.Key()], health, translations[wan.Key()], familyV4, "")
+		if probeReason := m.probeReasons[wan.Key()].v4; probeReason != "" && familyConfigured(wan, familyV4) {
+			v4Reason = probeReason
+		}
+		v6Reason := familyReason(wan, currentGateways[wan.Key()], health, translations[wan.Key()], familyV6, m.probeReasonV6(wan.Key()))
 		members[wan.Key()] = wanstate.MemberRouting{
 			Carrying: selectionEnabled && ((readyV4 && wan.Tier == tierV4 && v4Ready) || (readyV6 && wan.Tier == tierV6 && v6Ready)),
 			V4Ready:  v4Ready, V6Ready: v6Ready,
-			V4Reason:       familyReason(wan, currentGateways[wan.Key()], health, translations[wan.Key()], familyV4, ""),
-			V6Reason:       familyReason(wan, currentGateways[wan.Key()], health, translations[wan.Key()], familyV6, m.tunnelReasons[wan.Key()]),
+			V4Reason: v4Reason, V6Reason: v6Reason,
+			V4Dependency: reasonDependency(v4Reason), V6Dependency: reasonDependency(v6Reason),
+			V4Configured: familyConfigured(wan, familyV4), V6Configured: familyConfigured(wan, familyV6),
 			OwnedAddresses: slices.Clone(m.ownedAddresses[wan.Key()]),
 		}
 	}
@@ -438,6 +446,7 @@ func (m *Module) ownsDesiredRuleDeletion(ctx context.Context, log *slog.Logger, 
 	}
 	translations := m.translationState()
 	m.Lock()
+	m.excludeUnhealthyFamilies(discovery.gateways)
 	m.excludeUnreadyTunnelFamilies(discovery.gateways, health, translations)
 	m.Unlock()
 	rules, _ := desiredState(discovery.gateways, health, m.cfg, translations)
@@ -921,6 +930,7 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		endpointRoutes: nil,
 		endpointWatch:  nil,
 		tunnelReasons:  nil,
+		probeReasons:   nil,
 	}, nil
 }
 
