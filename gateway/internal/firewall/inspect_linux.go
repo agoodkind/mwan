@@ -173,8 +173,8 @@ func Inspect(ctx context.Context, desired Ruleset) (string, error) {
 			return "", fmt.Errorf("chain %s %s %s has %d rules, expected %d", chain.Table.Family, chain.Table.Name, chain.Name, len(actual), len(chain.Rules))
 		}
 		for index, rule := range chain.Rules {
-			if normalizeRule(actual[index]) != normalizeRule(rule) {
-				return "", fmt.Errorf("chain %s %s %s rule %d differs: got %q, expected %q", chain.Table.Family, chain.Table.Name, chain.Name, index+1, actual[index], rule)
+			if normalizeRule(actual[index]) != normalizeRule(rule.Expression) {
+				return "", fmt.Errorf("chain %s %s %s rule %d differs: got %q, expected %q", chain.Table.Family, chain.Table.Name, chain.Name, index+1, actual[index], rule.Expression)
 			}
 		}
 		normalized.WriteString(chain.Table.Family + " " + chain.Table.Name + " " + chain.Name + "\n")

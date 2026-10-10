@@ -65,7 +65,7 @@ func ApplyWithReport(ctx context.Context, desired Ruleset) (ApplyResult, error) 
 	for _, chain := range desired.Chains {
 		fmt.Fprintf(&script, "flush chain %s %s %s\n", chain.Table.Family, chain.Table.Name, chain.Name)
 		for _, rule := range chain.Rules {
-			fmt.Fprintf(&script, "add rule %s %s %s %s\n", chain.Table.Family, chain.Table.Name, chain.Name, rule)
+			fmt.Fprintf(&script, "add rule %s %s %s %s\n", chain.Table.Family, chain.Table.Name, chain.Name, rule.Expression)
 		}
 	}
 	if _, err := runNFT(ctx, []byte(script.String()), "-f", "-"); err != nil {

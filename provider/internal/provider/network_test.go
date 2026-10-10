@@ -36,32 +36,32 @@ type networkServer struct {
 }
 
 type networkInterface struct {
-	Name         string
-	Type         string
-	Enabled      *bool
-	Owner        string
-	ConnectionID string
-	Roles        []string
-	ProviderName *string
+	Name         string   `json:"name"`
+	Type         string   `json:"type"`
+	Enabled      *bool    `json:"enabled"`
+	Owner        string   `json:"owner"`
+	ConnectionID string   `json:"connection_id"`
+	Roles        []string `json:"roles"`
+	ProviderName *string  `json:"provider_name"`
 }
 
 type networkRoute struct {
-	Interface   string
-	Family      string
-	Destination string
-	Gateway     *string
-	TableID     int64
-	Metric      int64
-	Source      string
+	Interface   string  `json:"interface"`
+	Family      string  `json:"family"`
+	Destination string  `json:"destination"`
+	Gateway     *string `json:"gateway"`
+	TableID     int64   `json:"table_id"`
+	Metric      int64   `json:"metric"`
+	Source      string  `json:"source"`
 }
 
 type networkProviderDefault struct {
-	ConnectionID        string
-	Interface           string
-	Family              string
-	TableID             int64
-	InternalDestination string
-	InternalInterface   string
+	ConnectionID        string `json:"connection_id"`
+	Interface           string `json:"interface"`
+	Family              string `json:"family"`
+	TableID             int64  `json:"table_id"`
+	InternalDestination string `json:"internal_destination"`
+	InternalInterface   string `json:"internal_interface"`
 }
 
 func newNetworkServer(t *testing.T) *networkServer {
@@ -233,7 +233,7 @@ func decodeNetworkProviderDefaults(t *testing.T, state tftypes.Value) map[string
 	return result
 }
 
-func pointerTo[Value bool | string](value Value) *Value {
+func pointerTo[Value bool | int64 | string](value Value) *Value {
 	return &value
 }
 
@@ -352,7 +352,7 @@ func TestNetworkIgnoresWhitespaceAndMemberOrder(t *testing.T) {
 	original := server.mustReadNetwork(t, document)
 	for _, reformatted := range []string{string(canonical), indented.String()} {
 		state := server.mustReadNetwork(t, reformatted)
-		for _, name := range []string{"canonical_content", "interfaces", "routes", "provider_defaults"} {
+		for _, name := range append([]string{"canonical_content", "guest_type"}, networkMapNames()...) {
 			if got, want := attribute(t, state, name), attribute(t, original, name); !got.Equal(want) {
 				t.Errorf("%s differs after reformatting:\ngot  %s\nwant %s", name, got, want)
 			}
@@ -388,8 +388,8 @@ func TestNetworkReportsDocumentErrors(t *testing.T) {
 		{
 			name:         "provider table outside uint32",
 			replacements: []string{`"table-id": 200`, `"table-id": 4294967296`},
-			summary:      "Invalid provider default",
-			detail:       "wan webpass: table-id 4294967296 is outside 0 to 4294967295",
+			summary:      "Invalid network schema",
+			detail:       `Value "4294967296" is out of type uint32 min/max bounds`,
 		},
 	}
 	for _, test := range cases {
@@ -454,10 +454,17 @@ func TestNetworkValidatesContent(t *testing.T) {
 	}
 }
 
+func networkMapNames() []string {
+	return []string{
+		"interfaces", "routes", "provider_defaults",
+		"policy_rules", "firewall_chains", "firewall_rules", "firewall_sets",
+	}
+}
+
 func (s *networkServer) networkConfig(t *testing.T, state tftypes.Value) tftypes.Value {
 	t.Helper()
 	attributes := map[string]tftypes.Value{}
-	for _, name := range []string{"interfaces", "routes", "provider_defaults"} {
+	for _, name := range networkMapNames() {
 		attributes[name] = attribute(t, state, name)
 	}
 	return tftypes.NewValue(s.resource.ValueType(), attributes)
@@ -481,9 +488,19 @@ func replaceRoute(
 	edit func(routes map[string]tftypes.Value),
 ) tftypes.Value {
 	t.Helper()
-	routes := maps.Clone(objectMap(t, config, "routes"))
-	edit(routes)
-	return replaceAttribute(t, config, "routes", tftypes.NewValue(attribute(t, config, "routes").Type(), routes))
+	return replaceEntries(t, config, "routes", edit)
+}
+
+func replaceEntries(
+	t *testing.T,
+	config tftypes.Value,
+	name string,
+	edit func(entries map[string]tftypes.Value),
+) tftypes.Value {
+	t.Helper()
+	entries := maps.Clone(objectMap(t, config, name))
+	edit(entries)
+	return replaceAttribute(t, config, name, tftypes.NewValue(attribute(t, config, name).Type(), entries))
 }
 
 func (s *networkServer) dynamic(t *testing.T, value tftypes.Value) *tfprotov6.DynamicValue {

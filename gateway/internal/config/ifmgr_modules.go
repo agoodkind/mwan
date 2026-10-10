@@ -238,6 +238,16 @@ type IPv6Translation struct {
 	NPT  *NPTv6Translation
 }
 
+// PolicySource provides the values callers pass to interfaceintent.NewPolicyProvider.
+// The returned prefix is unmasked; interfaceintent.IPv6PolicySource masks the prefix.
+// A nil receiver is valid.
+func (t *IPv6Translation) PolicySource() (bool, bool, netip.Prefix) {
+	if t == nil || t.Mode != TranslationNPTv6 || t.NPT == nil {
+		return false, false, netip.Prefix{}
+	}
+	return true, t.NPT.ExternalSource == PrefixConfigured, t.NPT.ExternalPrefix
+}
+
 // NPTv6Translation configures internal and external prefix selection.
 type NPTv6Translation struct {
 	InternalPrefix netip.Prefix

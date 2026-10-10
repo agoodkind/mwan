@@ -38,7 +38,6 @@ jobs:
       release_platforms: linux/amd64 linux/arm64
       cgo: true
 
-  # The provider does not require the gateway's C libraries.
   provider:
     uses: agoodkind/go-makefile/.github/workflows/_ci.yml@main
     permissions:
@@ -50,6 +49,9 @@ jobs:
       working_directory: provider
       go_version_file: provider/go.mod
       release_platforms: darwin/arm64 linux/amd64 linux/arm64
+      apt_packages: cmake pkg-config
+      darwin_runner: macos-15
+      cgo: true
 
   # The drift comparison requires the gateway's libsysrepo builder image.
   drift:

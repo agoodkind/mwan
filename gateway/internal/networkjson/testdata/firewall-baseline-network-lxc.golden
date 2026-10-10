@@ -1,0 +1,18 @@
+inet filter input: filter/input/filter policy drop
+  ct state established,related accept
+  iifname "lo" accept
+  ip protocol icmp accept
+  ip6 nexthdr icmpv6 accept
+  iifname "enuplink0v100" meta nfproto ipv4 meta l4proto udp udp sport 67 udp dport 68 accept
+  iifname "enuplink0v100" meta nfproto ipv6 meta l4proto udp udp sport 547 udp dport 546 accept
+  iifname "enmwanbr0" meta nfproto ipv4 meta l4proto tcp tcp dport 179 accept
+  iifname "enmwanbr0" meta nfproto ipv4 meta l4proto udp udp dport 3784 accept
+  iifname "enmwanbr0" meta nfproto ipv4 meta l4proto udp udp dport 3785 accept
+  iifname "enmwanbr0" meta nfproto ipv6 meta l4proto tcp tcp dport 179 accept
+  iifname "enmwanbr0" meta nfproto ipv6 meta l4proto udp udp dport 3784 accept
+  iifname "enmwanbr0" meta nfproto ipv6 meta l4proto udp udp dport 3785 accept
+  limit rate 1/second log prefix "nftables input drop: " drop
+inet filter forward: filter/forward/filter policy drop
+  ct state established,related accept
+  limit rate 1/second log prefix "nftables forward drop: " drop
+inet filter output: filter/output/filter policy accept

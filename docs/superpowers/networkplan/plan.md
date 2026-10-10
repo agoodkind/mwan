@@ -1,439 +1,236 @@
-> Read the [repository context](../../README.md) before using copied commands or historical plans.
+# Implement native network validation and typed rule planning
 
-# Route-aware network planning implementation plan
+## Goal
 
-**Goal:** Make OpenTofu show keyed changes to configured routes from network.json.
+Implement native provider validation and stable configured rule projections under the approved [contract](spec.md). Extend the existing production paths.
 
-**Architecture:** Share portable decoding, configuration projections, and canonicalization in `networkjson`. Use `mwan_network` for plan-time decoding and `mwan_network_config` for configured state. Keep libyang validation in the guest file validation step.
+## Current behavior
 
-**Tech Stack:** Go, terraform-plugin-framework v1.19.0, protocol 6, OpenTofu 1.12.6, and libyang.
+At baseline commit `37205aae3716c41c131f3d4cc24de7224a751918`, merged MWAN PR #202 provides canonicalization, configured route projections, provider state, and local OpenTofu plan tests. Provider planning uses canonicalization and Go decoding. Apply and gateway startup use native network loading.
 
-**Spec:** [spec.md](spec.md)
+## Constraints
 
-## Global constraints
+Limit documentation changes to this plan, the specification, and the network-planning index sentence. Do not review unchanged prose. Do not repeat the superseded portable-provider implementation sequence. Follow [AGENTS.md](../../../AGENTS.md) for implementation gates and repository conventions.
 
-- Keep network.json as the configuration source. Require plan-time `file()` input for keyed route diffs.
-- Keep shared code in `gateway/internal/networkjson`. Do not create another package or module solely for imports.
-- Follow [AGENTS.md](../../../AGENTS.md). Use no globals, one type per fact, tight types, and comments that explain non-obvious constraints. Call `slog` before returning wrapped errors.
-- Run gateway gates on Darwin through `make -C gateway docker-make TARGETS="check test"`. Run one builder container at a time because worktrees share the lint cache volume.
-- Run provider gates with `make -C provider check test`. Preserve `CGO_ENABLED=0` for darwin/arm64, linux/amd64, and linux/arm64.
-- Enter tests through public boundaries with real dependencies. Do not use mocks, stubs, spies, or recorded responses.
-- Read each file immediately before editing. Preserve changes from other agents.
-- Coordinate with `poweredge-mwan-package-integration` before editing `provider.go` outside `Resources()`, including `DataSources()`. Coordinate before editing `provider_test.go` or `.github/workflows/ci.yml`.
-- Coordinate Docker use across lanes. All lanes share the local Docker engine.
-- Generate all committed prose through the gpt-6.1-sol Codex prose procedure. Include comments, commit messages, and pull request text.
-- Create signed commits with `git commit -S`. Fetch before branch comparisons. Verify every branch-local commit before pushing.
-- Run no plan or apply against real hosts. Restrict OpenTofu acceptance to temporary directories with local state.
-- Keep LAN client traffic dormant in every fixture and acceptance plan. Permit every interface with at least one role from `provider`, `parent`, `internal`, and `management` in accepted configurations. Create new accepted fixtures with only those interfaces and no LAN client route, LAN forwarding, or LAN-facing DHCP, DNS, or router-advertisement service. Reuse existing parity fixtures unchanged. Plan the `lan.json` negative case without applying it.
-- Keep provider objects independent of guest writes and kernel state. Defer live reload.
-- Keep the provider and mwan binary at one commit. Preserve `mwan_release` commit matching and `mwan_role` embedded schema output.
-- Keep Configs wiring with `proxmox-guest-provider-migration`. Do not edit host modules or the pveguest provider in this scope.
+## Assign ownership and dependencies
 
-## Peer agreements
+| Workstream | Owner and scope | Dependencies |
+| --- | --- | --- |
+| Shared library and provider | tofu-wanconfig-mwan-provider implements Tasks 1 through 4 and coordinates Go tooling and packaging. | Tasks 1 and 2 and the Task 5 native recipe foundation may proceed in parallel after ownership is agreed. Task 3 requires Tasks 1 and 2 and the Task 5 foundation. Task 4 follows Task 3. |
+| Release packaging | poweredge-mwan-package-integration implements Tasks 5 and 6 with the provider owner. | Task 5 native recipes may begin alongside Tasks 1 and 2 after ownership is agreed. Task 5 final release packaging follows Task 4. Task 6 follows Task 5 final packaging. |
+| Configs acceptance | proxmox-guest-provider-migration implements Task 7. | Module discovery and wiring preparation may begin early. Acceptance follows Tasks 4 and 6 and requires the selected release. |
+| Shared runtime review | mwan-network-cutover reviews validation, configured derivation, compiler semantics, and future mutable updates. | Review each shared interface before its consumers merge. |
 
-| Lane | Agreement |
-|---|---|
-| `poweredge-mwan-package-integration` | The lane owns the whole pending `guest-type` feature on one branch from `main`: the YANG leaf, the `document` field in [networkjson.go](../../../gateway/internal/networkjson/networkjson.go), the validation in [firewall.go](../../../gateway/internal/networkjson/firewall.go), and `firewall.Compile`. For `guest-type lxc`, the feature makes `steering-group/firewall/management-interface` optional. `mwan-network-cutover` reviews the feature. Each lane sends a note before pushing a change to the shared networkjson.go. The second lane to merge rebases its branch. |
-| `tofu-wanconfig-mwan-provider` | The lane owns [decode.go](../../../gateway/internal/networkjson/decode.go), [load.go](../../../gateway/internal/networkload/load.go), [plan.go](../../../gateway/internal/networkjson/plan.go), [canonical.go](../../../gateway/internal/networkjson/canonical.go), their tests, and the moves out of [networkjson.go](../../../gateway/internal/networkjson/networkjson.go). `poweredge-mwan-package-integration` owns the pending `guest-type` feature. Each lane sends a note before pushing a change to shared `networkjson.go`. The second lane to merge rebases its branch. |
+Coordinate shared-file edits and the local Docker engine. Serialize builder operations that share caches. Coordinate deployment windows with tack-deployment-hardening per target environment. Separate QA, production, and PowerEdge environments may proceed independently.
 
-## 1. Separate portable decoding from native validation
-
-Task 1 is complete in commit `ed1da56`. The gateway gate reported "All blocking checks passed." The networkjson tests reported `ok`.
-
-**Owner:** The `tofu-wanconfig-mwan-provider` lane delegates this task to one implementer.
-
-**Dependencies:** This task depends on the spec commit.
+## Task 1. Extract mandatory libyang validation
 
 ### Files
 
-Create:
+Modify [schema_cgo.go](../../../gateway/internal/yangpub/schema_cgo.go), affected yangpub callers, and [networkload/load.go](../../../gateway/internal/networkload/load.go). Reuse [schema/schema.go](../../../gateway/internal/yangpub/schema/schema.go).
 
-- [gateway/internal/networkjson/decode.go](../../../gateway/internal/networkjson/decode.go).
-- Task 6 moved the file to [gateway/internal/networkload/load.go](../../../gateway/internal/networkload/load.go).
-- [gateway/internal/networkjson/decode_parity_test.go](../../../gateway/internal/networkjson/decode_parity_test.go).
+Create [gateway/internal/yangschema/schema_cgo.go and gateway/internal/yangschema/schema_cgo_test.go, with optional gateway/internal/yangschema/embedded.go for shared embedded-module loading](../../../gateway/internal) in the new libyang-only package.
 
-Modify:
+### Behavior
 
-- [gateway/internal/networkjson/networkjson.go](../../../gateway/internal/networkjson/networkjson.go).
-
-### Required interfaces
-
-Task 2 requires `Decode(data []byte) (*Config, error)` without cgo. Native callers require unchanged `Load`, `ApplyFrom`, and `ApplyDefault` behavior.
-
-`Load` must validate and decode the same bytes. Portable decoding must retain the existing Go semantic checks.
-
-`Decode` treats explicit JSON null like an absent member. Libyang rejects every tested null leaf at apply time.
+Provider and gateway callers use one libyang-only implementation. Schema handles own their native context and any embedded-module temporary directory. Gateway loading retains path-qualified errors and existing entry-rejection behavior.
 
 ### Steps
 
-1. Move `Load`, `ApplyFrom`, and `ApplyDefault` into `load.go` with `//go:build cgo`.
-2. Implement `Decode` with `json.Unmarshal` into `document`, followed by `build`.
-3. Change `Load` to call `Decode` after libyang validation. Preserve existing path-qualified error text and `slog` lines.
-4. Update the package comment to distinguish portable decoding and semantic checks from validation requiring cgo and libyang.
-5. Add a cgo parity test through `Load` and `Decode`. Task 1 uses [network-min.json](../../../gateway/yang/instances/network-min.json) and [network-freeform.json](../../../gateway/yang/instances/network-freeform.json) unchanged; Task 2 adds network-routes.json to the parity test.
-6. Label invalid documents by rejecting layer. Cover schema-only unknown members, enums, ranges, and mandatory leaves. Cover decode failures for host bits and invalid gateways. Record the observed null-leaf results. Libyang rejects steering weight null, forced-dscp null, and probe-timeout null with "Invalid non-number-encoded uintN value". `Decode` rejects steering weight null and probe-timeout null and accepts forced-dscp null. Both paths reject wan fw-mark 0 because the firewall build check reports "zero or duplicated mark".
-7. Assert that `Load` rejects every invalid document. Assert that `Decode` rejects exactly the decode-labeled cases. Compare complete `Config` values for valid documents. Assert equal decoding results for explicit null and absent members.
-8. Run the existing networkjson tests to detect changed loader behavior or error text.
+1. Extract libyang context loading, feature selection, JSON validation, error handling, and Close from yangpub. Preserve operating-system-thread pinning around native calls and error retrieval.
+2. Implement `LoadSchema(schemaDir string)`, `LoadEmbedded()`, and `Schema.ValidateConfigJSON([]byte) error`. Derive embedded modules and features from `schema.Modules()` and `schema.Read()`.
+3. Preserve the current `Close` signature, error behavior, closed-handle rejection, and idempotent lifecycle behavior. Clean partially initialized contexts and temporary directories on failure.
+4. Update yangpub consumers without importing sysrepo into the new package. Keep gateway publishing and sysrepo lifecycle behavior unchanged.
+5. Create `networkload.ValidateAndDecode(data []byte, schema *yangschema.Schema) (*networkjson.Config, error)` through the common JSON rejection, native schema validation, and semantic decoding path. Decode precisely the bytes validated.
+6. Make `Load` use the helper. Preserve gateway path-qualified errors and read, schema-load, validation, syntax, and semantic error classification and logging. New JSON guards may change malformed-input messages.
 
 ### Verification
 
-Run:
+Run `make -C gateway docker-make TARGETS="check test"`. Exercise native validation with real embedded and path-loaded schemas. Verify closed handles, initialization failure cleanup, enabled features, strict/no-state/present semantics, compatible gateway load outcomes, and path-qualified errors. Inspect the provider dependency graph after Task 3 to establish that sysrepo and Linux services are absent.
 
-```bash
-make -C gateway docker-make TARGETS="check test"
-```
-
-Expect exit 0. The parity test must establish the layer-specific rejections and equal valid configurations. Null-leaf labels must match observed results. Existing tests must retain their loader results and error text.
-
-Task 3 provides the portable provider build proof.
-
-### Acceptance
-
-AC2 and AC3 pass. `Decode` uses the existing semantic rules and treats explicit null like absence. `Load` retains native schema validation.
-
-## 2. Add configured projections and canonical JSON
-
-Task 2 is complete in commit `e4c476f`. The gateway gate reported "All blocking checks passed." The `goodkind.io/mwan/internal/networkjson` and `goodkind.io/mwan/cmd/mwan` tests reported `ok`.
-
-**Owner:** The `tofu-wanconfig-mwan-provider` lane delegates this task to one implementer.
-
-**Dependencies:** This task depends on Task 1.
+## Task 2. Share configured rule derivation
 
 ### Files
 
-Create:
+Modify [networkjson/plan.go](../../../gateway/internal/networkjson/plan.go), [wanroutes.go](../../../gateway/internal/ifmgr/modules/wanroutes/wanroutes.go), [firewall/rules.go](../../../gateway/internal/firewall/rules.go), and [firewall/apply_linux.go](../../../gateway/internal/firewall/apply_linux.go).
 
-- [gateway/internal/networkjson/plan.go](../../../gateway/internal/networkjson/plan.go).
-- [gateway/internal/networkjson/canonical.go](../../../gateway/internal/networkjson/canonical.go).
-- [gateway/internal/networkjson/plan_test.go](../../../gateway/internal/networkjson/plan_test.go).
-- [gateway/internal/networkjson/canonical_test.go](../../../gateway/internal/networkjson/canonical_test.go).
-- [gateway/internal/networkjson/testdata/plan-base.json](../../../gateway/internal/networkjson/testdata/plan-base.json).
-- [gateway/yang/instances/network-routes.json](../../../gateway/yang/instances/network-routes.json).
+Create [gateway/internal/networkjson/policy_plan.go and gateway/internal/networkjson/firewall_plan.go](../../../gateway/internal/networkjson) for projections. Create [gateway/internal/interfaceintent/policy.go](../../../gateway/internal/interfaceintent) for configuration-only intent. Create [gateway/internal/firewall/plan.go](../../../gateway/internal/firewall) for compiler metadata. Extend [gateway/internal/networkjson/plan_test.go](../../../gateway/internal/networkjson/plan_test.go) and [gateway/internal/networkjson/decode_parity_test.go](../../../gateway/internal/networkjson/decode_parity_test.go). Extend provider public plan tests in Task 4. Move or reuse existing shared types; do not create mirrored Go structs.
 
-Modify:
+### Behavior
 
-- [gateway/internal/networkjson/decode_parity_test.go](../../../gateway/internal/networkjson/decode_parity_test.go).
-- [gateway/internal/networkjson/networkjson_test.go](../../../gateway/internal/networkjson/networkjson_test.go).
-- [gateway/cmd/mwan/wanconfig_roundtrip_test.go](../../../gateway/cmd/mwan/wanconfig_roundtrip_test.go).
-
-### Required interfaces
-
-Task 3 requires `Canonicalize(data []byte) ([]byte, error)`, configured routes, interface connections, and provider defaults.
-
-Route keys use `<interface>|<family>|<destination>`. Provider default keys use `<connection-id>|<family>|<table-id>`. The loader derives the connection ID from explicit `connection-id`, then provider name, then interface name.
-
-Reuse `interfaceintent.RouteIntent` and `interfaceintent.Connection`. `ConfiguredRoutes` returns `map[RouteKey]ConfiguredRoute`. `ConfiguredRoute` embeds `interfaceintent.RouteIntent` and adds `Source RouteSource`. `RouteSource` is a string type with constants `RouteSourceRoute = "route"` and `RouteSourceGateway = "gateway"`. Export the projection helpers for future live-update code.
-
-`ProviderDefaults` has the signature `func (c *Config) ProviderDefaults() (map[ProviderDefaultKey]ProviderDefault, error)`. `ProviderDefault` has fields `Interface`, `Family`, `TableID`, `InternalDestination` (`netip.Prefix`), and `InternalInterface`.
+Planning derives policy intent without runtime observations. Runtime rendering and provider firewall projection consume the same structured compiler result.
 
 ### Steps
 
-1. Define `Family` with constants `FamilyIPv4 = "ipv4"` and `FamilyIPv6 = "ipv6"`.
-2. Define `RouteKey` with interface name, family, and `netip.Prefix`. Make `String()` use `netip.Prefix.String()`.
-3. Implement `Config.ConfiguredRoutes()` across all connections and owners. Include configured route lists with `Source = RouteSourceRoute`. Include each interface gateway shorthand with `Source = RouteSourceGateway`, destination `0.0.0.0/0` or `::/0`, gateway equal to the interface gateway, table 254, and metric equal to `route-metric` when present or 0 otherwise. Use the same destination key for shorthand and a route-list default. Preserve the existing rejection when both configure that destination in one family.
-4. Define `ProviderDefaultKey` with `ConnectionID`, `Family`, and `TableID`. Implement `ProviderDefaults` for accepted providers. Include IPv4 only when `TranslationV4` is set and IPv6 only when `TranslationV6` is set. An ietf-ip container or DHCP alone does not add an entry. Use the provider's WAN table ID and derived connection ID.
-5. Project the IPv4 internal destination from `steering-group/routes/internal-net-v4`. Project the IPv6 internal destination from `steering-group/translation/opnsense-edge-v6` with prefix length 128. Use `steering-group/routes/internal-iface` for `InternalInterface` in both families. The daemon installs the provider-table default with metric 0 and discovers its gateway from the kernel at runtime. Keep interface gateway shorthand and `route-metric` in the main-table `routes` projection.
-6. Reject out-of-range WAN table IDs in `ProviderDefaults` with an error containing the provider and table ID. `Decode` does not enforce the uint32 range; libyang enforces that range during native loading. Return errors for invalid internal destinations.
-7. Preserve absent route gateways as zero `netip.Addr` values. Preserve absent shorthand metrics as nil pointers in the shared connection type; project their route metric as 0.
-8. Implement `Canonicalize` without schema interpretation. Remove insignificant whitespace and sort object members. Preserve array order, string values, and number literals with `json.Number`.
-9. Reject invalid JSON and duplicate decoded member names within an object. Treat escaped and unescaped spellings of the same decoded name as duplicates. Treat case-variant names as distinct names.
-10. Copy network-min.json to plan-base.json for the plan test base. Create the route fixture with only interfaces that have at least one allowed role. Include no LAN client route, LAN forwarding, or LAN-facing DHCP, DNS, or router-advertisement service.
-11. Test projections through `Decode`. Cover route keys, all owners, default table 254, default metric 0, lowercase IPv6, absent gateways, and provider defaults. Cover both gateway shorthand families, present and absent shorthand metrics, both `Source` values, and rejection of shorthand combined with a route-list default. Cover translation-policy family selection, derived connection IDs, both internal destinations, the internal interface, and out-of-range table ID errors.
-12. Test `Canonicalize` through its public function. Cover whitespace, object member order, duplicate decoded member names, case-variant names, array order, string values, and number literals.
-13. Extend the parity test with the route fixture, duplicate-member cases, and case-variant cases. Assert that `Load` accepts canonical output and returns the same `Config` as the original valid document. Record that `Decode` accepts duplicate members with the last value winning and matches member names case-insensitively. `Canonicalize` and libyang reject duplicate members. Label a case-variant member such as `Destination` as a schema-layer rejection because libyang rejects it as an unknown node.
-14. Add `//go:build cgo` to networkjson_test.go because the file calls `Load` and `yangpub.WriteSchema`.
-15. Add one `networkListKeys` entry for the route list key in wanconfig_roundtrip_test.go.
+1. Separate wanroutes configuration calculation from readiness, health, and runtime translation selection. Preserve runtime eligibility decisions in wanroutes.
+2. Return policy-rule metadata with `connection_id`, `family`, `kind`, `priority`, `table_id`, `mark`, `source`, `source_kind`, and `activation_conditions`. Derive activation conditions from shared daemon prerequisites. Represent unavailable concrete selectors as null in the provider projection.
+3. Derive policy identities with the shared encoder and the contract's key format. Keep mutable fields out of keys. Preserve existing route and provider-default keys, projections, and exclusions.
+4. Replace the compiler's string-only rule representation with structured rules containing stable source metadata and canonical expressions. Update Ruleset.String and ApplyWithReport to render that result.
+5. Derive firewall keys with the shared encoder and the contract's key formats. Use existing YANG source keys and logical compiler purposes for distinguishable source identities. Disambiguate indistinguishable duplicates by deterministic occurrence within the same source group. Exclude whole-chain position from identities. Document the limit for arbitrary edits to indistinguishable duplicates. Do not require JSON IDs.
+6. Return per-chain rule_order separately from rule fields. Project configured set definitions and exclude runtime membership.
+7. Validate renderer output through the existing production path. Preserve all generated rules and service, provider, forwarding, and management behavior.
 
 ### Verification
 
-Run:
+Run the gateway check and test gates. Test through decoded documents, firewall.Compile, and runtime rendering with real dependencies. Verify add, remove, mutable-field, source-identity, duplicate, and order outcomes. Exercise configured conditional policy selectors without supplying fabricated runtime values. Require runtime-owner review of both derivations.
 
-```bash
-make -C gateway docker-make TARGETS="check test"
-```
-
-Expect exit 0. Projection tests must establish stable keyed values for route-list entries, gateway shorthand, and provider-table internal routes. Canonicalization tests must establish exact preservation of meaningful array order and scalar values. Native parity tests must accept the canonical valid documents and establish duplicate-member and case-variant rejection layers.
-
-### Acceptance
-
-AC3 passes for the route fixture and canonical output after the gateway gate succeeds. Configured routes include gateway shorthand in table 254 with the required `source`. Provider defaults use the provider table and translation-policy family set. Provider defaults include the configured internal destination and interface. The projection excludes observed, learned, leased, delegated, router-advertisement, and BGP routes.
-
-## 3. Implement the provider objects
-
-Task 3 is complete in commit `3a2198e`. The provider gate reported "All checks passed." The `goodkind.io/mwan/provider/internal/provider` tests reported `ok`.
-
-**Owner:** The `tofu-wanconfig-mwan-provider` lane delegates this task to one implementer.
-
-**Dependencies:** This task depends on Task 2.
+## Task 3. Extend provider validation and state
 
 ### Files
 
-Create:
+Modify [network_data_source.go](../../../provider/internal/provider/network_data_source.go), [network_model.go](../../../provider/internal/provider/network_model.go), [network_config_resource.go](../../../provider/internal/provider/network_config_resource.go), and [network_test.go](../../../provider/internal/provider/network_test.go).
 
-- [provider/internal/provider/network_model.go](../../../provider/internal/provider/network_model.go).
-- [provider/internal/provider/network_data_source.go](../../../provider/internal/provider/network_data_source.go).
-- [provider/internal/provider/network_config_resource.go](../../../provider/internal/provider/network_config_resource.go).
-- [provider/internal/provider/network_test.go](../../../provider/internal/provider/network_test.go).
+Create [provider/internal/provider/network_state_upgrade_test.go](../../../provider/internal/provider) for migration coverage.
 
-Modify:
+### Behavior
 
-- [provider/internal/provider/provider.go](../../../provider/internal/provider/provider.go).
-
-### Required interfaces
-
-Task 4 requires the registered `mwan_network` data source and `mwan_network_config` resource over protocol 6.
-
-Configs requires `canonical_content`, `interfaces`, `routes`, and `provider_defaults`. The interface output must expose the fields needed for the dormant-LAN check.
-
-The `mwan_network` interfaces output applies no `guest-type` rule of its own. `Decode` returns the values that the shared rules accept. The provider output reflects the `guest-type` rule once the feature code is on `main`.
-
-The pending `guest-type` branch adds the top-level network.json leaf with a `qemu` default and an `lxc` value. `networkjson.Config.GuestType` uses `config.GuestType` with `config.GuestTypeQEMU`, `config.GuestTypeLXC`, `config.GuestTypes()`, and `config.ParseGuestType(name)`. The `lxc-target-fixes` branch adds optional `mwan_role.guest_type` with the same values and default.
-
-Task 3 adds the string output `mwan_network.guest_type` only when the guest-type code is on `main`. Otherwise, a follow-up task adds the output after that merge. The output uses the decoded leaf value with the `qemu` default applied by `Decode`. The Configs guest module passes `data.mwan_network.gateway.guest_type` to `mwan_role.guest_type`.
-
-A future live path reads route `source` to select the YANG node for a key.
+Known content receives native and semantic validation before output conversion. Existing route-only state upgrades without replacement. Official integration receives all configured maps.
 
 ### Steps
 
-1. Define shared object types and conversion in `network_model.go`. Use identical object types for both provider objects.
-2. Implement required string input `content` for `mwan_network`. Call `Canonicalize`, followed by `Decode`.
-3. Convert canonicalization errors, decode errors, projection errors, and each `Config.Rejected` entry into error diagnostics. Include the interface and reason for rejected entries. Include the provider and out-of-range table ID for `ProviderDefaults` range errors.
-4. Return `canonical_content` and the configured maps.
-
-   | Output | Key | Object attributes |
-   |---|---|---|
-   | `interfaces` | Interface name | `name`, `type`, `enabled`, `owner`, `connection_id`, `roles`, `provider_name` |
-   | `routes` | Route key string | `interface`, `family`, `destination`, `gateway`, `table_id`, `metric`, `source` |
-   | `provider_defaults` | Provider default key string | `connection_id`, `interface`, `family`, `table_id`, `internal_destination`, `internal_interface` |
-
-5. Encode absent `enabled`, non-provider `provider_name`, and absent route gateways as null. Encode roles as a set of `provider`, `parent`, `internal`, and `management`. Encode route `source` as `"route"` or `"gateway"` from the shared projection. Encode `internal_destination` with `netip.Prefix.String()` and `internal_interface` from the shared projection.
-6. Add the `guest_type` string output when the guest-type code is on `main`. Otherwise, record the follow-up task after that merge.
-7. Implement the resource maps as Required attributes with no Computed attributes. Validate every map key against the object's identity fields. Validate `source` against its allowed values.
-8. Make Create and Update store planned values. Make Read return prior state. Make Delete remove state.
-9. Add no import support or `RequiresReplace` modifier. Make no network call or guest write.
-10. Register the resource in `Resources()`. Coordinate with `poweredge-mwan-package-integration` before registering the data source in `DataSources()`.
-11. Test both objects through the protocol 6 public boundary using the existing harness style. Exercise diagnostics, key validation, null values, defaults, both route sources, gateway shorthand, provider internal destinations and interfaces, projection errors, and resource state operations. Test decoded `qemu` and `lxc` output values when `guest_type` is added.
-12. Test null content rejection and unknown content deferral. Keep every attribute non-sensitive.
+1. Load the embedded schema through yangschema and call ValidateAndDecode. Close the handle on every completed evaluation. Retain canonical_content from formatting-only canonicalization.
+2. Convert native errors, semantic errors, projection errors, and every rejected entry into diagnostics. Preserve interface/provider context and existing semantic messages.
+3. Extend networkMaps and shared object conversion with policy_rules, firewall_chains, firewall_rules, and firewall_sets. Return rule_order within each chain object.
+4. Preserve nullable values, uint32 checks, route source distinctions, translation-family selection, and provider-default runtime exclusions. Return guest_type from shared decoding.
+5. Set resource schema version 1. Add optional new maps with empty defaults and a version 0 upgrader. Preserve existing required maps and route keys.
+6. Validate keys and chain-order references. Keep Create/Update plan copying, prior-state Read, state removal on Delete, and absence of import or replacement modifiers.
+7. Exercise both objects through protocol 6 with actual schema loading. Cover null rejection, unknown deferral, schema diagnostics, identity validation, and state upgrades.
 
 ### Verification
 
-Run on Darwin:
+After the Task 5 native recipe foundation supplies developer dependencies, run `make -C provider check test`. Require migration tests with existing version 0 route-only state. Verify that upgraded routes retain identities and that new rule field updates require no replacement. Known unknown-member, enum, range, mandatory-node, duplicate, case-fold, and surrogate failures must fail provider evaluation.
 
-```bash
-make -C provider check test
-```
-
-Expect exit 0 with `CGO_ENABLED=0`. The provider must compile with `networkjson.Decode` without libyang.
-
-Run the Linux gateway gates separately:
-
-```bash
-make -C gateway docker-make TARGETS="check test"
-```
-
-Expect exit 0. Protocol tests must return the specified maps and diagnostics.
-
-Require provider build results for darwin/arm64, linux/amd64, and linux/arm64 before accepting AC1.
-
-### Acceptance
-
-AC1 passes after all platform builds succeed. Both objects expose configured values through the shared model. Resource updates require no replacement. `mwan_network` rejects duplicate members at plan time because it calls `Canonicalize` before `Decode`.
-
-## 4. Test OpenTofu plans through the provider binary
-
-Task 4 is complete in commit `3910073`. The provider gate reported "All checks passed." The OpenTofu 1.12.6 plan test reported `ok goodkind.io/mwan/provider/internal/provider` (9.539s). The `tofu-plan` CI job has not run on GitHub yet.
-
-**Owner:** The `tofu-wanconfig-mwan-provider` lane delegates this task to one implementer.
-
-**Dependencies:** This task depends on Task 3.
+## Task 4. Extend real OpenTofu plan acceptance
 
 ### Files
 
-Create:
+Modify [tofu_plan_test.go](../../../provider/internal/provider/tofu_plan_test.go), its existing fixtures under [testdata/networkplan](../../../provider/internal/provider/testdata/networkplan), and [provider/Makefile](../../../provider/Makefile).
 
-- [provider/internal/provider/tofu_plan_test.go](../../../provider/internal/provider/tofu_plan_test.go).
-- [provider/internal/provider/testdata/networkplan/main.tf](../../../provider/internal/provider/testdata/networkplan/main.tf).
-- [provider/internal/provider/testdata/networkplan/base.json](../../../provider/internal/provider/testdata/networkplan/base.json).
-- [provider/internal/provider/testdata/networkplan/added.json](../../../provider/internal/provider/testdata/networkplan/added.json).
-- [provider/internal/provider/testdata/networkplan/removed.json](../../../provider/internal/provider/testdata/networkplan/removed.json).
-- [provider/internal/provider/testdata/networkplan/changed.json](../../../provider/internal/provider/testdata/networkplan/changed.json).
-- [provider/internal/provider/testdata/networkplan/reformatted.json](../../../provider/internal/provider/testdata/networkplan/reformatted.json).
-- [provider/internal/provider/testdata/networkplan/invalid.json](../../../provider/internal/provider/testdata/networkplan/invalid.json).
-- [provider/internal/provider/testdata/networkplan/lan.json](../../../provider/internal/provider/testdata/networkplan/lan.json).
+Extend existing shared tests and unchanged baseline inputs [network-min.json](../../../gateway/yang/instances/network-min.json) and [network-freeform.json](../../../gateway/yang/instances/network-freeform.json) through temporary variants.
 
-Modify:
+### Behavior
 
-- [provider/Makefile](../../../provider/Makefile).
-- [.github/workflows/ci.yml](../../../.github/workflows/ci.yml).
-
-### Required interfaces
-
-The test requires the provider binary, OpenTofu 1.12.6, and local state. It must exercise `mwan_network` and `mwan_network_config` through OpenTofu.
-
-Pass `canonical_content` to `terraform_data` to observe document changes without pveguest. The test cannot prove pveguest validation, write IDs, or service restarts.
+OpenTofu shows configured route and rule changes under stable keys. Canonical file differences remain independently visible. Native validation rejects known schema errors during planning.
 
 ### Steps
 
-1. Add `//go:build tofu` to the test.
-2. Add `test-tofu-plan`. Build the provider and create a temporary CLI configuration with `dev_overrides`. Run `go test -tags tofu -run TestTofuPlan ./internal/provider` with `TOFU` set to the OpenTofu binary path.
-3. Make `main.tf` read a local JSON file through `mwan_network`. Assign the three configured maps to `mwan_network_config`. Give `mwan_network_config` a `depends_on` entry for the `terraform_data` resource that receives `canonical_content`.
-4. Use temporary directories and local state. Run `tofu init` and `tofu apply -auto-approve` for the base document. Use only interfaces with allowed roles in accepted fixtures.
-5. Run `tofu plan -out` and `tofu show -json` for each variant. Read the rendered plan text. Include a plan with a pending change to the `terraform_data` resource and assert that the keyed route diff for `mwan_network_config` renders in that plan.
-6. Assert actions and before and after values per route key. Assert the expected text for additions, deletions, gateway changes, metric changes, and on-link changes. Include `source = "route"` in route-list addition and deletion examples. Assert five unchanged attributes in the combined gateway and metric change example. Cover gateway shorthand with `source = "gateway"` under the family default key.
-7. Assert `~ gateway = "192.0.2.2" -> null` for gateway removal from a route-list entry. Change `steering-group/routes/internal-net-v4` from `192.168.10.0/24` to `192.168.20.0/24` and assert `~ internal_destination = "192.168.10.0/24" -> "192.168.20.0/24"` under each provider's IPv4 key, including `att|ipv4|101`. Assert that shorthand gateway and `route-metric` changes update only the corresponding main-table default route in `routes` with `source = "gateway"`.
-8. Assert no changes for whitespace and object member reformatting.
-9. Derive temporary variants for route and interface list reordering, uppercase IPv6, and explicit defaults. Assert unchanged configured state. Assert changed canonical content where the document's arrays or scalar representations differ.
-10. Assert an error containing the rejecting helper's message for invalid input. Cover JSON syntax errors, duplicate decoded member names, rejected provider entries, and out-of-range provider table IDs through the data source boundary.
-11. Assert that route changes update `mwan_network_config` in place. Assert that no variant replaces a resource.
-12. Plan the `lan.json` negative case without applying it. Add `lan0` with no allowed role and no LAN client route, LAN forwarding, or LAN-facing DHCP, DNS, or router-advertisement service. Assert that the interface map exposes `lan0` with no allowed role. Keep the Configs dormant-LAN preconditions with their owning lane.
-13. Coordinate the workflow edit with `poweredge-mwan-package-integration`. Install OpenTofu 1.12.6 in CI and run the new target.
+1. Preserve the real provider/OpenTofu/local-state harness and terraform_data.file dependency. Wire every new output to the configured-state resource.
+2. Retain route addition, removal, gateway, metric, on-link, shorthand, source, and provider-internal-destination cases. Assert structured before/after values and representative rendered text.
+3. Add policy and firewall add/remove/field-change cases. Change mutable fields under existing keys. Change natural source identities and assert removal/addition.
+4. Reorder firewall rules and assert rule_order changes without replacing rule identities. Exercise configured set changes when applicable.
+5. Verify typed equality for system-ordered lists, explicit defaults, and equivalent IPv6 spelling. Verify canonical file differences where source arrays or scalar spellings change.
+6. Verify no changes for whitespace and object-member ordering. Compare complete semantic results for accepted original and canonical bytes.
+7. Cover native-only rejection cases and initialization failures. Test unknown content through a genuinely unknown dependency.
+8. Use fixtures for valid and invalid YANG documents and observable route and rule differences.
 
 ### Verification
 
-Run on Darwin with OpenTofu 1.12.6:
+Run `make -C provider test-tofu-plan` with the selected OpenTofu executable. Assert no replacement actions and visible keyed changes while the file dependency has a pending update. Keep dev_overrides evidence separate from package acceptance. Local terraform_data tests establish neither guest validation nor service restart behavior.
 
-```bash
-make -C provider test-tofu-plan
-```
-
-Expect exit 0. OpenTofu must produce keyed route changes, both route sources, provider internal destination changes, no formatting-only changes, diagnostics, and no replacement actions. The keyed route diff must render when the `terraform_data` dependency has a pending change in the same plan.
-
-### Acceptance
-
-AC4 and AC5 pass. AC7 passes because every apply uses temporary local state.
-
-AC6 requires every new accepted fixture to contain only interfaces with at least one allowed role and no LAN client route, LAN forwarding, or LAN-facing DHCP, DNS, or router-advertisement service. Existing parity fixtures remain unchanged. The `lan.json` negative case exposes `lan0` without an allowed role and is planned without an apply.
-
-A `lifecycle { precondition }` block on `pveguest_file.network` must fail on an interface with no allowed role or a route that references such an interface. A separate `lifecycle { precondition }` block on the gateway container resource must fail on a gateway interface bound to `nic0`, `nic3`, `ens1f1`, or a bridge containing one of those LAN ports. `proxmox-guest-provider-migration` owns both preconditions. The binding precondition reads container interface bindings and host bridge member ports from the host node network configuration. The local negative plan does not prove those preconditions.
-
-## 5. Review prose, signed commits, and CI
-
-**Owner:** The `tofu-wanconfig-mwan-provider` lane delegates this task to one implementer.
-
-**Dependencies:** This task depends on Task 4.
+## Task 5. Build native provider release packages
 
 ### Files
 
-Create no additional files.
+Modify [gateway/Makefile](../../../gateway/Makefile), the provider Makefile assigned in Task 4, [.github/workflows/ci.yml](../../../.github/workflows/ci.yml), and [.github/workflows/release.yml](../../../.github/workflows/release.yml).
 
-Modify no additional files. Review prose in the files assigned by Tasks 1 through 4.
+[Create build/wanconfig.mk for shared authoritative pins and build/yang.mk for libyang/PCRE2-only native recipes](../../../) using the existing shared build hooks.
 
-### Required interfaces
+### Behavior
 
-The implementation review requires Task 4's plan evidence and the gateway and provider gate results.
-
-`mwan-network-cutover` reviews route identity, ordering, validation, and future update compatibility. `proxmox-guest-provider-migration` consumes the provider outputs for Configs wiring.
+Prebuilt providers include libyang/PCRE2 dependencies for all three targets. Gateway releases retain static libyang/sysrepo linkage. Provider releases exclude sysrepo.
 
 ### Steps
 
-1. Generate committed comments, commit messages, and pull request text through the gpt-6.1-sol Codex prose procedure.
-
-   Run each prose invocation with:
-
-   ```bash
-   gtimeout --signal=TERM --kill-after=10s 300s codex exec --ephemeral --model gpt-6.1-sol --sandbox read-only
-   ```
-
-   Copy both the responses and writing rule blocks verbatim into every input. Accept a result only when the command exits 0 and the result is nonempty. Apply accepted prose verbatim. Request corrections only through another bounded invocation of the same model.
-
-2. Create signed commits in logical groups.
-3. Fetch before inspecting `origin/main..HEAD`. Verify each commit with `git verify-commit <sha>` and inspect the raw `gpgsig` header with `git cat-file commit <sha>`.
-4. Request review of the shared runtime contract from `mwan-network-cutover`. Confirm the provider output contract with the Configs integration lane.
-5. Open a pull request to `main` with verified gate results and remaining acceptance dependencies.
-6. Read the active GitHub ruleset. The supplied 2026-10-06 ruleset requires a pull request, signed commits, resolved review threads, and zero required approvals. It permits merge and squash. Merge only after every required check passes and every review thread is resolved.
-
-   Require these status checks to pass:
-
-   - `GitGuardian Security Checks`
-   - `go / Build`
-   - `go / Prepare`
-   - `go / Quality / Format`
-   - `go / Quality / Go Version`
-   - `go / Quality / Gocyclo`
-   - `go / Quality / Golangci Lint`
-   - `go / Quality / Staticcheck Extra`
-   - `go / Quality / Test`
-   - `go / Quality / Vet`
+1. Extract existing authoritative pins without changing gateway versions or sysrepo behavior. Preserve libyang v3.13.6 at `c2ddd01b9b810a30d6a7d6749a3bc9adeb7b01fb`. Select and verify a PCRE2 source commit in the shared authoritative dependency version set.
+2. Reuse GO_MK_CGO_DEPS and go-mk-cgo-dep-libyang conventions. Separate provider dependency construction from Linux-only gateway/sysrepo construction.
+3. Enable cgo in provider builds and CI/release module configuration. Remove the provider's CGO_ENABLED=0 requirement. Provide native target runners and required developer build dependencies. Require native package builds and runtime smoke tests across the three existing targets. Preserve existing platform lint coverage. Do not widen platform lint matrices.
+4. Validate calls against the pinned libyang headers and library. Do not introduce optional native-validation stubs or a second diff engine.
+5. Attempt static libyang/PCRE2 linkage per target. Inspect linked libraries before selecting the packaging mode. Keep macOS system linkage compatible with Darwin.
+6. If a target requires bundled dynamic libraries, package them beside the provider with relative loader paths. Remove build-prefix references and verify the relocated archive.
+7. Preserve signatures, checksums, attestations, all platform assets, and provider/schema/mwan commit matching.
 
 ### Verification
 
-Run the gates separately:
+Run provider gates and target builds with native dependencies enabled. Run `make -C gateway test-provider-drift` and gateway builder gates. Inspect Linux packages with readelf/ldd and Darwin packages with otool. Record dependency paths and packaging decisions per target. Build success alone does not establish user installation acceptance.
 
-```bash
-make -C provider check test
-make -C provider test-tofu-plan
-make -C gateway docker-make TARGETS="check test"
-make -C gateway test-provider-drift
-```
-
-Expect exit 0 from each command. The drift gate must retain equality between installed role data and provider role data.
-
-For each branch-local commit, run:
-
-```bash
-git verify-commit <sha>
-git cat-file commit <sha>
-```
-
-Expect successful signature verification and a raw `gpgsig` header.
-
-Verify that every active required status check passes and every review thread is resolved before merging.
-
-### Acceptance
-
-The pull request contains reviewed prose, signed commits, passing local gates, passing required CI checks, and resolved review threads. Record any unresolved acceptance evidence before merge.
-
-## 6. Move native loading into networkload and apply review fixes
-
-The working tree contains the implementation. The commit and the CI run that compiles the cgo gateway packages remain pending.
+## Task 6. Test published-format packages without build dependencies
 
 ### Files
 
-- Create [gateway/internal/networkload/load.go](../../../gateway/internal/networkload/load.go).
-- Update decoding, canonicalization, and tests under [gateway/internal/networkjson](../../../gateway/internal/networkjson).
-- Update native callers and tests under [gateway/cmd/mwan](../../../gateway/cmd/mwan).
-- Update [gateway/internal/agent/bgp_fib.go](../../../gateway/internal/agent/bgp_fib.go) and [gateway/internal/ifmgr/modules/health/health_test.go](../../../gateway/internal/ifmgr/modules/health/health_test.go).
-- Update [provider/internal/provider/network_test.go](../../../provider/internal/provider/network_test.go), this specification, and this plan.
+Create [provider/scripts/test-release-package.sh and provider/internal/provider/release_package_test.go](../../../provider). Add the new `test-release-package` Make target and target-runtime CI jobs in the files assigned above.
+
+### Behavior
+
+A released-format archive installs through an OpenTofu filesystem mirror and performs native planning without compiler access or separately installed libyang/PCRE2.
 
 ### Steps
 
-1. Move `Load`, `ApplyFrom`, and `ApplyDefault` into `networkload` without a build tag. Delete the former loading file from `networkjson`. Preserve behavior, error texts, and slog output.
-2. Export `SyntaxError` with an unexported field and `Error` and `Unwrap` methods. Match `SyntaxError` with `errors.As` in `networkload.Load`. Return `decode <path>: <err>` and log once with the path. Remove logging from `Decode`.
-3. Update native callers and tests to use `networkload`. Remove `yangpub` imports from non-test `networkjson` files while retaining `yangpub/schema` imports.
-4. Make `Canonicalize` reject lone UTF-16 surrogate escapes and member names equal under `strings.EqualFold`. Add regression cases for both conditions.
-5. Add duplicate-member and case-variant schema-layer parity cases. Add `TestDecodeKeepsTheLastDuplicateMember`.
-6. Add `//go:build cgo` to the DHCPv6 tests. Add a `ProviderDefaults` table-id diagnostic case.
-7. Update the specification and plan for the package move and canonicalization rules.
+1. Require absolute PROVIDER_PACKAGE and TOFU inputs. Reject missing or relative paths. Do not compile during the target's runtime phase.
+2. Implement the shell harness in its own .sh file with a shebang, set -euo pipefail, interrupt handling, tracked child PIDs, and temporary-directory cleanup.
+3. Extract the supplied archive into the provider mirror layout. Use the actual provider address and packaged version. Generate isolated HOME and CLI configuration without dev_overrides or direct installation fallback.
+4. Run in native darwin/arm64, linux/amd64, and linux/arm64 runtime environments. Exclude compiler access, dependency-build prefixes, and separately installed libyang/PCRE2. Inspect loader dependencies, resolved library paths, and runtime filesystem contents. Hiding executables through PATH alone does not prove clean-host packaging.
+5. Execute real `tofu init` and `tofu plan` through the runtime shell harness. Never invoke `go test` or compilation at runtime. Precompile any Go test runner in build CI. Run plan against a native-only invalid document and require the schema diagnostic.
+6. Exercise relocation and archive metadata. Verify that unpacked signatures/checksum evidence corresponds to the archive tested.
 
 ### Verification
 
-`make -C provider check test` and `make -C provider build` pass locally, including the go-mk cgo stub check.
+Set `PROVIDER_PACKAGE` to the absolute release archive path from the build output. Set `TOFU` to the absolute path of the installed test OpenTofu executable. Run the new target with both required inputs.
 
-CI run `37551702997` on PR #202 failed `provider / Compile` on darwin/arm64, linux/amd64, and linux/arm64 because go-mk included the cgo-tagged loading file's `yangpub` dependency in the provider build graph.
+```bash
+make -C provider test-release-package PROVIDER_PACKAGE="$PROVIDER_PACKAGE" TOFU="$TOFU"
+```
 
-The next CI run must compile the cgo gateway packages before this section is complete.
+Require passing evidence for every target. Record init success, valid-plan success, native rejection, dependency inspection, isolated environment properties, archive identity, and exit status. Do not report clean-host acceptance until these runtime checks pass.
 
-## Self-review
+## Task 7. Complete Configs wiring and acceptance
 
-The implementation order is Task 1, Task 2, Task 3, Task 4, and Task 5. Each task requires the preceding task's public interface.
+### Files
 
-Portable decoding preserves Go semantic validation and treats explicit null like absence. Native validation remains necessary for schema-only failures. The Task 1 parity results establish schema-layer rejection for every tested null leaf.
+The migration owner must discover the existing gateway module in [Configs](https://github.com/agoodkind/configs). Modify that module's document writer, configured-state wiring, and unit restart dependencies. Record exact discovered paths before editing; do not invent a module path.
 
-`Decode` accepts duplicate object members with the last value winning and matches member names case-insensitively. `Canonicalize` rejects duplicate decoded member names before provider decoding. Libyang rejects case-variant members as unknown nodes.
+### Behavior
 
-Gateway shorthand and route-list defaults share destination identity. The `source` attribute selects the YANG node for a future live update. Provider defaults project provider-table default and internal route configuration for families with translation policies. The internal destination and interface are configured values. The daemon discovers the provider-table default gateway from the kernel at runtime.
+Validated file installation precedes typed-state completion and startup. Both consumers restart after content writes.
 
-The allowed roles include management, so `enmgmt0` does not conflict with the fixture requirements. Existing parity fixtures remain unchanged. The `lan.json` negative case is planned without an apply.
+### Steps
 
-On PowerEdge, `mwanbr` uses gateway-side VF `nic1v0` on the inter-LXC link to the single LAN LXC peer. The PowerEdge network document contains only interfaces with roles `provider`, `parent`, and `internal`. The Configs dormant-LAN precondition sees no management interface on PowerEdge.
+1. Select a published, package-tested release. Reconcile check-network and check-firewall syntax against its CLI. Keep the deploy-gate rename outside this workstream.
+2. Supply known per-gateway content through file(). Wire all maps, including new rule maps, and pass decoded guest_type to mwan_role.
+3. Preserve the prerequisite chain. Verify host kernel-module API support and required modules, container capabilities, binary/packages, installed schema and sysrepo role, staged validation, and unit startup. Verify current deployment state rather than relying on historical overlay claims.
+4. Retire the gateway's Ansible network document writer before first file adoption. Make the configured-state resource depend on successful pveguest_file installation.
+5. Include network write_id and existing binary/package write IDs in both unit restart dependencies. Prevent document mutations from replacing the guest.
+6. Coordinate the target environment's deployment window and locks. Use configsctl deploy or configsctl tofu from the authorized Configs main checkout for real API operations.
+7. Perform a content write that passes both deployed checks inside the selected LXC before startup. A validate-only change is insufficient.
+8. Exercise a failed staged content write. Verify unchanged installed bytes, sha256, write_id, and typed state. Verify the next plan repeats pending changes.
+9. Verify file-drift detection and both consumer restarts. Keep live reload and kernel-drift management by this resource excluded.
 
-The PowerEdge document depends on the pending `guest-type` feature, which makes `steering-group/firewall/management-interface` optional for `guest-type lxc`. `poweredge-mwan-package-integration` owns the feature. PowerEdge acceptance requires decision D2's guest-type feature in the mwan release that `pveguest_download` installs.
+### Verification
 
-Configs acceptance depends on the pending `check-firewall` measurement inside the unprivileged PowerEdge gateway LXC. `poweredge-mwan-package-integration` owns the measurement. `TestCheckFirewallIsolatedKernelLXC` passed in the builder container. The container test does not establish the live LXC measurement.
+Require live LXC firewall evidence; userspace validation cannot prove namespace/nft acceptance. Record release commit, targets, content-write result, failure recovery, state behavior, and unit restart results.
 
-The local OpenTofu test proves configured state and canonical document differences. Guest validation, failed-write recovery, write IDs, service restarts, and Configs dormant-LAN preconditions require separate Configs acceptance.
+## Task 8. Review and complete the workstreams
 
-Configs acceptance requires a network.json content write that passes both `check-network` and `check-firewall`. A validate-only change does not write or revalidate the installed file. The `restart_on` values for both `mwan-ifmgr@wan.service` and `mwan-agent.service` must include `pveguest_file.network.write_id` because the agent reads network.json at startup when `[bgp] use_wanconfig = true`.
+### Files
 
-Live reload and real-host operations remain outside this implementation plan.
+Create no additional documentation. Review only changed implementation prose and the scoped documents.
 
+### Behavior
+
+Completion claims correspond to passing public boundaries, reviewed semantics, signed commits, and current merge requirements.
+
+### Steps
+
+1. Generate every newly written non-code text fragment through the bounded ephemeral CLI procedure. Include comments, commit messages, and pull request text. Supply the responses and writing rules verbatim. Create a unique temporary directory with `mktemp -d` for each invocation. Assign `PROSE_INPUT`, `PROSE_RESULT`, `PROSE_EVENTS`, and `PROSE_STDERR` to distinct files in that directory. Set `REPO_ROOT` to the absolute repository root. Write the input to `PROSE_INPUT`. Start the command through the host's background facility.
+
+```bash
+gtimeout --signal=TERM --kill-after=10s 300s codex exec --ephemeral --model gpt-6.1-sol --config 'model_reasoning_effort="high"' --sandbox read-only --output-last-message "$PROSE_RESULT" --json --cd "$REPO_ROOT" - < "$PROSE_INPUT" > "$PROSE_EVENTS" 2> "$PROSE_STDERR"
+```
+
+2. Check progress every 15 seconds during the active invocation. Inspect exit status, events, stderr, and the complete result. Accept only exit 0 with a complete reviewed result. Apply accepted output verbatim. After a timeout, inspect the old worker and stop surviving processes before starting a narrower bounded replacement. Request corrections through another bounded invocation. Do not create recurring automation or review unchanged prose.
+3. Create commits in logical groups with `git commit -S` and the committing harness's exact `Co-authored-by` trailer. Codex prose drafting does not change commit attribution. Fetch before branch comparisons. Before pushing, verify every `origin/main..HEAD` commit signature and inspect its raw `gpgsig` header. Repeat after any signed rebase or restack.
+4. Obtain runtime-owner review and Configs contract confirmation. Read the live GitHub ruleset and required checks; do not reuse historical check-name inventories.
+5. Resolve review threads and satisfy current merge requirements. Report package and Configs acceptance independently when their evidence differs.
+
+### Verification
+
+Require passing gateway, provider, real-plan, state-migration, renderer, package-runtime, and Configs acceptance evidence. Record any missing boundary as incomplete. Do not claim deployment from a merged PR, local plan, or workspace message.

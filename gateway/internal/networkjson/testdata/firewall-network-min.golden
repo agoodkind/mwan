@@ -1,0 +1,63 @@
+inet filter input: filter/input/filter policy drop
+  ct state established,related accept
+  iifname "lo" accept
+  ip protocol icmp accept
+  ip6 nexthdr icmpv6 accept
+  iifname "enmgmt0" meta nfproto ipv4 meta l4proto tcp tcp dport 22 accept
+  iifname "enmgmt0" meta nfproto ipv6 meta l4proto tcp tcp dport 22 accept
+  iifname "enmgmt0" meta nfproto ipv4 meta l4proto tcp ip saddr 192.0.2.0/24 tcp dport 50052 accept
+  iifname "enwebpass0" meta nfproto ipv4 meta l4proto udp udp sport 67 udp dport 68 accept
+  iifname "enwebpass0" meta nfproto ipv6 meta l4proto udp udp sport 547 udp dport 546 accept
+  iifname "enatt0" meta nfproto ipv4 meta l4proto udp udp sport 67 udp dport 68 accept
+  iifname "enatt0" meta nfproto ipv6 meta l4proto udp udp sport 547 udp dport 546 accept
+  iifname "enmbrains0" meta nfproto ipv4 meta l4proto udp udp sport 67 udp dport 68 accept
+  iifname "enmbrains0" meta nfproto ipv6 meta l4proto udp udp sport 547 udp dport 546 accept
+  iifname "enmwanbr0" meta nfproto ipv4 meta l4proto tcp tcp dport 179 accept
+  iifname "enmwanbr0" meta nfproto ipv4 meta l4proto udp udp dport 3784 accept
+  iifname "enmwanbr0" meta nfproto ipv4 meta l4proto udp udp dport 3785 accept
+  iifname "enmwanbr0" meta nfproto ipv6 meta l4proto tcp tcp dport 179 accept
+  iifname "enmwanbr0" meta nfproto ipv6 meta l4proto udp udp dport 3784 accept
+  iifname "enmwanbr0" meta nfproto ipv6 meta l4proto udp udp dport 3785 accept
+  limit rate 1/second log prefix "nftables input drop: " drop
+inet filter forward: filter/forward/filter policy drop
+  ct state established,related accept
+  iifname "enmwanbr0" oifname "enmwanbr0" meta priority & 0xffff0000 == 0x4e500000 accept
+  iifname "enmwanbr0" oifname "enwebpass0" meta nfproto ipv4 accept
+  iifname "enwebpass0" oifname "enmwanbr0" meta nfproto ipv4 accept
+  iifname "enmwanbr0" oifname "enwebpass0" meta nfproto ipv6 accept
+  iifname "enwebpass0" oifname "enmwanbr0" meta nfproto ipv6 accept
+  iifname "enmwanbr0" oifname "enatt0" meta nfproto ipv4 accept
+  iifname "enatt0" oifname "enmwanbr0" meta nfproto ipv4 accept
+  iifname "enmwanbr0" oifname "enatt0" meta nfproto ipv6 accept
+  iifname "enatt0" oifname "enmwanbr0" meta nfproto ipv6 accept
+  iifname "enmwanbr0" oifname "enmbrains0" meta nfproto ipv4 accept
+  iifname "enmbrains0" oifname "enmwanbr0" meta nfproto ipv4 accept
+  iifname "enmwanbr0" oifname "enmbrains0" meta nfproto ipv6 accept
+  iifname "enmbrains0" oifname "enmwanbr0" meta nfproto ipv6 accept
+  limit rate 1/second log prefix "nftables forward drop: " drop
+inet filter output: filter/output/filter policy accept
+ip nat prerouting: nat/prerouting/dstnat policy accept
+  iifname "enmwanbr0" ip saddr 192.0.2.1 udp sport 51820 udp dport 51821 ct state new meta mark set 1
+  iifname "enwebpass0" ip daddr 203.0.113.2 dnat to 192.0.2.2
+  iifname "enwebpass0" ip daddr 203.0.113.3 dnat to 192.0.2.3
+ip nat postrouting: nat/postrouting/srcnat policy accept
+  oifname "enwebpass0" ip saddr 192.0.2.2 snat to 203.0.113.2
+  oifname "enwebpass0" ip saddr 192.0.2.3 snat to 203.0.113.3
+  oifname "enwebpass0" ip saddr 192.0.2.0/29 masquerade
+  oifname "enmbrains0" ip saddr 192.0.2.0/29 masquerade
+inet mangle prerouting: filter/prerouting/mangle policy accept
+  iifname "enmwanbr0" meta priority & 0xffff0000 == 0x4e500000 meta mark set 0 return
+  iifname "enwebpass0" ct state new meta mark set 2
+  iifname "enatt0" ct state new meta mark set 1
+  iifname "enmbrains0" ct state new meta mark set 3
+  ip daddr @att_pinned_v4 meta mark set 1
+  ip6 daddr @att_pinned_v6 meta mark set 1
+  ip6 saddr 2001:db8:b01:fe::2/128 udp sport 51820 udp dport 51821 ct state new meta mark set 1
+  iifname "enmwanbr0" ip dscp 8 ct state new meta mark set 1
+  iifname "enmwanbr0" ip6 dscp 8 ct state new meta mark set 1
+  ct state new ct mark != 0x00000000 meta mark set ct mark
+  ct state established,related meta mark set ct mark
+inet mangle postrouting: filter/postrouting/mangle policy accept
+  ct mark set meta mark
+inet mangle set att_pinned_v4: ipv4_addr interval auto-merge
+inet mangle set att_pinned_v6: ipv6_addr interval auto-merge
