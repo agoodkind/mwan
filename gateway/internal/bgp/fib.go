@@ -14,9 +14,13 @@ import (
 )
 
 // FIBConfig identifies the kernel routing tables owned by the BGP installer.
+// Use different metrics for installers that share a table because a kernel
+// route replacement identifies an IPv6 route by destination and metric. A zero
+// Metric selects the kernel default metric.
 type FIBConfig struct {
 	Tables        []int
 	InternalIface string
+	Metric        uint32
 }
 
 // PathEvent is the accepted best-path change received from a BGP peer.
@@ -84,6 +88,11 @@ type FIB struct {
 	sweep   sync.Once
 	armed   bool
 }
+
+const (
+	listedDefaultRoute = "default"
+	ipv6DefaultPrefix  = "::/0"
+)
 
 type desiredRoute struct {
 	peer    string
@@ -168,6 +177,15 @@ func (f *FIB) SweepStale(ctx context.Context) error {
 		}
 
 		for _, route := range routes {
+			// Another installer can write BGP routes for a different device
+			// in the same table.
+			if route.Dev != f.cfg.InternalIface {
+				continue
+			}
+			// The route listing reports the IPv6 default route as "default".
+			if route.Dest == listedDefaultRoute {
+				route.Dest = ipv6DefaultPrefix
+			}
 			if _, ok := f.desired[route.Dest]; ok {
 				continue
 			}
@@ -206,6 +224,20 @@ func (f *FIB) withdraw(ctx context.Context, peer string, prefix netip.Prefix) er
 		}
 	}
 	return withdrawErr
+}
+
+// WithdrawExact preserves the peer's more specific routes inside prefix when
+// removing the desired route for prefix. A withdrawal through Apply removes the
+// peer's more specific routes inside prefix.
+func (f *FIB) WithdrawExact(ctx context.Context, peer string, prefix netip.Prefix) error {
+	masked, err := pathPrefix(prefix)
+	if err != nil {
+		return err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.desired, masked.String())
+	return f.deletePrefix(ctx, peer, masked)
 }
 
 // WithdrawPeer removes every desired route that the disconnected peer announced.
@@ -308,7 +340,7 @@ func (f *FIB) route(prefix netip.Prefix, nextHop netip.Addr, tableID int) netif.
 		Via:      via,
 		Dev:      f.cfg.InternalIface,
 		TableID:  tableID,
-		Metric:   0,
+		Metric:   int(f.cfg.Metric),
 		Protocol: unix.RTPROT_BGP,
 	}
 }

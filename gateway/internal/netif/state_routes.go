@@ -306,11 +306,36 @@ func delTableRouteNetlink(ctx context.Context, log *slog.Logger, want RouteSpec)
 		return fmt.Errorf("ParseCIDR(%q): %w", want.Dest, err)
 	}
 
+	// The kernel matches only the fields a delete request sets. A request
+	// without a device, metric, or gateway removes the lowest-metric route for
+	// the destination on any device.
 	route := &netlink.Route{
 		Table:    want.TableID,
 		Dst:      destination,
 		Family:   familyToNetlink(want.Family),
 		Protocol: netlink.RouteProtocol(want.Protocol),
+		Priority: want.Metric,
+	}
+	if want.Dev != "" {
+		link, linkErr := linkByName(log, want.Dev)
+		if IsLinkNotFound(linkErr) {
+			// The kernel removes every route that uses a device when the kernel
+			// removes that device.
+			log.DebugContext(ctx, "route: nothing to delete (device absent)", "dev", want.Dev)
+			return nil
+		}
+		if linkErr != nil {
+			return linkErr
+		}
+		route.LinkIndex = link.Attrs().Index
+	}
+	if want.Via != "" {
+		gateway := net.ParseIP(want.Via)
+		if gateway == nil {
+			log.WarnContext(ctx, "route: parse gateway failed", "gateway", want.Via)
+			return fmt.Errorf("parse gateway %q: not a valid IP", want.Via)
+		}
+		route.Gw = gateway
 	}
 	start := realClock{}.Now()
 	err = netlink.RouteDel(route)
@@ -319,6 +344,7 @@ func delTableRouteNetlink(ctx context.Context, log *slog.Logger, want RouteSpec)
 		ctx,
 		"route: RouteDel (prefix)",
 		"family", want.Family, "table_id", want.TableID, "dest", want.Dest,
+		"via", want.Via, "dev", want.Dev, "metric", want.Metric,
 		"duration_ms", duration.Milliseconds(),
 		"err", err,
 	)
