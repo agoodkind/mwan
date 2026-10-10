@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/watchdog"
+	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
 const (
@@ -68,7 +68,7 @@ func runPruneChild(t *testing.T) {
 	t.Helper()
 
 	directory := os.Getenv(pruneDirectoryEnv)
-	cfg := &config.Config{}
+	cfg := &watchdogconfig.Config{}
 	cfg.MwanVMID = pruneVMID
 	cfg.Network.PingTargetIPv4 = "192.0.2.1"
 	cfg.Network.PingTargetIPv6 = "2001:db8::1"

@@ -12,8 +12,8 @@ import (
 
 	"github.com/mdlayher/vsock"
 	mwanv1 "goodkind.io/mwan/gen/mwan/v1"
-	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/tracing"
+	"goodkind.io/mwan/internal/watchdogconfig"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -135,7 +135,7 @@ type RealOps struct {
 	vsockCID  uint32
 	vsockPort uint32
 	pveNode   string
-	nc        config.NetworkConfig
+	nc        watchdogconfig.NetworkConfig
 	guest     guestDriver
 
 	// testVsockOverride, if set, replaces vsockExec inside GuestExec (unit tests only).
@@ -162,7 +162,7 @@ type RealOps struct {
 // nil logger becomes the slog default, so a caller that has not set one up
 // still gets output.
 func NewRealOps(
-	cfg *config.Config,
+	cfg *watchdogconfig.Config,
 	logger *slog.Logger,
 ) *RealOps {
 	if logger == nil {

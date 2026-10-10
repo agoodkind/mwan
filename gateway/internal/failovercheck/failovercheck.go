@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
 const (
@@ -33,7 +33,7 @@ var (
 // Check does not read [bgp]. Deploy mode check-failover and the watchdog's
 // triggerFailover call Check. A configuration that passes check-failover
 // also passes the watchdog's precondition check at failover time.
-func Check(cfg *config.Config) []error {
+func Check(cfg *watchdogconfig.Config) []error {
 	var failures []error
 
 	if cfg.Failover.LXCID == "" {

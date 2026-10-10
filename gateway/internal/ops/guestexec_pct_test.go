@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ops"
+	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
 const (
@@ -75,7 +75,7 @@ func TestRunInGuestRunsPctExecForLXC(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			argsFile := installFakeGuestExec(t, "pct", tc.stdout, tc.stderr, tc.exitCode)
 
-			result, err := ops.RunInGuest(context.Background(), config.GuestTypeLXC,
+			result, err := ops.RunInGuest(context.Background(), watchdogconfig.GuestTypeLXC,
 				guestExecWait, guestExecAgent, 123, "cat", bootIDPath)
 			if err != nil {
 				t.Fatalf("RunInGuest: %v", err)
@@ -105,7 +105,7 @@ func TestRunInGuestFailsWhenPctExecOutlivesTheWait(t *testing.T) {
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	_, err := ops.RunInGuest(context.Background(), config.GuestTypeLXC,
+	_, err := ops.RunInGuest(context.Background(), watchdogconfig.GuestTypeLXC,
 		200*time.Millisecond, guestExecAgent, 123, "sleep", "60")
 
 	if err == nil || !strings.Contains(err.Error(), "did not exit within") {
@@ -131,8 +131,8 @@ func TestGuestExecRunsPctExecFirstForLXC(t *testing.T) {
 		_ = connection.Close()
 		accepted <- struct{}{}
 	}()
-	var cfg config.Config
-	cfg.GuestType = config.GuestTypeLXC
+	var cfg watchdogconfig.Config
+	cfg.GuestType = watchdogconfig.GuestTypeLXC
 	cfg.Watchdog.MwanAgentTCPAddr = listener.Addr().String()
 	realOps := ops.NewRealOps(&cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
@@ -161,7 +161,7 @@ func TestRunInGuestRunsQemuGuestExecForQEMU(t *testing.T) {
 	qmOutput := `{"exitcode":2,"exited":1,"out-data":"partial","err-data":"boom\n","out-truncated":0}`
 	argsFile := installFakeGuestExec(t, "qm", qmOutput, "", 0)
 
-	result, err := ops.RunInGuest(context.Background(), config.GuestTypeQEMU,
+	result, err := ops.RunInGuest(context.Background(), watchdogconfig.GuestTypeQEMU,
 		guestExecWait, guestExecAgent, 123, "cat", bootIDPath)
 	if err != nil {
 		t.Fatalf("RunInGuest: %v", err)

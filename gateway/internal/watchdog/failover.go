@@ -8,17 +8,17 @@ import (
 	"time"
 
 	"goodkind.io/mwan/internal/alert"
-	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/failovercheck"
 	"goodkind.io/mwan/internal/logging"
 	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/ops"
 	"goodkind.io/mwan/internal/tracing"
 	"goodkind.io/mwan/internal/version"
+	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
 // triggerFailover dispatches to the BGP route-control failover path.
-func (w *watchdog) triggerFailover(ctx context.Context, cfg *config.Config, reason string) error {
+func (w *watchdog) triggerFailover(ctx context.Context, cfg *watchdogconfig.Config, reason string) error {
 	preconditionErr := errors.Join(failovercheck.Check(cfg)...)
 	if preconditionErr != nil {
 		return preconditionErr
@@ -31,7 +31,7 @@ func (w *watchdog) triggerFailover(ctx context.Context, cfg *config.Config, reas
 //  1. Withdraw routes from the primary MWAN VM
 //  2. Check BGP status on the failover LXC
 //  3. If the LXC is not yet announcing, tell it to announce
-func (w *watchdog) triggerBGPFailover(ctx context.Context, cfg *config.Config, reason string) error {
+func (w *watchdog) triggerBGPFailover(ctx context.Context, cfg *watchdogconfig.Config, reason string) error {
 	start := w.now()
 
 	// Notify about BGP failover initiation. The notify boundary owns
@@ -126,7 +126,7 @@ func (w *watchdog) triggerBGPFailover(ctx context.Context, cfg *config.Config, r
 
 // triggerBGPRecovery announces the primary after it is ready. The backup
 // remains advertised at lower priority while BGP installs the primary route.
-func (w *watchdog) triggerBGPRecovery(ctx context.Context, cfg *config.Config) error {
+func (w *watchdog) triggerBGPRecovery(ctx context.Context, cfg *watchdogconfig.Config) error {
 	start := w.now()
 
 	w.failoverMu.Lock()
@@ -216,7 +216,7 @@ func (w *watchdog) triggerBGPRecovery(ctx context.Context, cfg *config.Config) e
 
 // tryFailover attempts failover if the LXC has internet connectivity.
 // Returns true if failover was triggered, false if skipped (LXC also down).
-func (w *watchdog) tryFailover(ctx context.Context, cfg *config.Config, reason string) bool {
+func (w *watchdog) tryFailover(ctx context.Context, cfg *watchdogconfig.Config, reason string) bool {
 	if cfg.Failover.LXCID == "" {
 		w.log.WarnContext(ctx, "FAILOVER: no failover LXC configured; skipping")
 		return false
@@ -252,7 +252,7 @@ func (w *watchdog) tryFailover(ctx context.Context, cfg *config.Config, reason s
 // healthy branch of the run loop. Recovery state is cleared only on success
 // inside triggerBGPRecovery, so a retry happens on the next healthy cycle if
 // the primary's BGP session is not yet established.
-func (w *watchdog) maybeTriggerRecovery(ctx context.Context, cfg *config.Config) {
+func (w *watchdog) maybeTriggerRecovery(ctx context.Context, cfg *watchdogconfig.Config) {
 	w.failoverMu.Lock()
 	active := w.failoverActive
 	w.failoverMu.Unlock()
@@ -268,7 +268,7 @@ func (w *watchdog) maybeTriggerRecovery(ctx context.Context, cfg *config.Config)
 
 // FailoverRun is the entry point for `mwan watchdog failover`.
 // It triggers failover immediately without the monitoring loop.
-func FailoverRun(cfg *config.Config) error {
+func FailoverRun(cfg *watchdogconfig.Config) error {
 	handlers := []slog.Handler{logging.StdoutJSON()}
 	if p := cfg.Watchdog.LogFile; p != "" {
 		handlers = append(handlers, logging.FileText(p, "[watchdog]"))

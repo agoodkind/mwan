@@ -22,10 +22,10 @@ import (
 	"golang.org/x/sys/unix"
 
 	"goodkind.io/mwan/internal/clock"
-	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/ops"
 	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
 // PublicAssignment projects the current provider assignment and its acquisition lifetime.
@@ -72,7 +72,7 @@ func NewExecutor(cfg RuntimeConfig, log *slog.Logger) *Executor {
 		log = slog.Default()
 	}
 	if cfg.GuestOps == nil {
-		var daemonConfig config.Config
+		var daemonConfig watchdogconfig.Config
 		cfg.GuestOps = ops.NewRealOps(&daemonConfig, log)
 	}
 	if cfg.Clock == nil {

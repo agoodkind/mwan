@@ -8,15 +8,16 @@ import (
 
 	mwanv1 "goodkind.io/mwan/gen/mwan/v1"
 	"goodkind.io/mwan/internal/alert"
-	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/notify"
+	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
 // recoveryTestCfgOverrides applies the BGP failover and email plumbing required
 // for triggerBGPFailover and triggerBGPRecovery to run end-to-end against the
 // mock ops surface.
-func recoveryTestCfgOverrides(cfg *config.Config) {
-	cfg.Failover = config.FailoverSection{LXCID: "203"}
-	cfg.Email = config.EmailConfig{
+func recoveryTestCfgOverrides(cfg *watchdogconfig.Config) {
+	cfg.Failover = watchdogconfig.FailoverSection{LXCID: "203"}
+	cfg.Email = notify.EmailConfig{
 		AlertEmail:    "test@test.com",
 		SubjectPrefix: "MWAN",
 	}

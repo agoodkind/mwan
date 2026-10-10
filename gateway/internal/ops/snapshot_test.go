@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ops"
+	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
 const (
@@ -49,8 +49,8 @@ func installFakeScopeRunner(t *testing.T) string {
 	return argsFile
 }
 
-func newGuestOps(guestType config.GuestType) *ops.RealOps {
-	var cfg config.Config
+func newGuestOps(guestType watchdogconfig.GuestType) *ops.RealOps {
+	var cfg watchdogconfig.Config
 	cfg.GuestType = guestType
 	return ops.NewRealOps(&cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
@@ -137,17 +137,17 @@ func TestGuestOperationsRunTheDriverCommand(t *testing.T) {
 		},
 	}
 	guests := []struct {
-		guestType config.GuestType
+		guestType watchdogconfig.GuestType
 		binary    string
 		wantArgs  func(qemuArgs, lxcArgs string) string
 	}{
 		{
-			guestType: config.GuestTypeQEMU,
+			guestType: watchdogconfig.GuestTypeQEMU,
 			binary:    "qm",
 			wantArgs:  func(qemuArgs, _ string) string { return qemuArgs },
 		},
 		{
-			guestType: config.GuestTypeLXC,
+			guestType: watchdogconfig.GuestTypeLXC,
 			binary:    "pct",
 			wantArgs:  func(_, lxcArgs string) string { return lxcArgs },
 		},
@@ -180,11 +180,11 @@ func TestGuestOperationsRunTheDriverCommand(t *testing.T) {
 
 func TestGuestQueriesRunTheDriverCommand(t *testing.T) {
 	for _, guest := range []struct {
-		guestType config.GuestType
+		guestType watchdogconfig.GuestType
 		binary    string
 	}{
-		{guestType: config.GuestTypeQEMU, binary: "qm"},
-		{guestType: config.GuestTypeLXC, binary: "pct"},
+		{guestType: watchdogconfig.GuestTypeQEMU, binary: "qm"},
+		{guestType: watchdogconfig.GuestTypeLXC, binary: "pct"},
 	} {
 		t.Run(string(guest.guestType), func(t *testing.T) {
 			realOps := newGuestOps(guest.guestType)
@@ -223,7 +223,7 @@ func TestGuestQueriesRunTheDriverCommand(t *testing.T) {
 func TestFilesystemFreezeControl(t *testing.T) {
 	t.Run("qemu asks the guest agent", func(t *testing.T) {
 		statusArgs := installFakeCommand(t, "qm", "thawed\n", 0)
-		status, err := newGuestOps(config.GuestTypeQEMU).VMFSFreezeStatus(
+		status, err := newGuestOps(watchdogconfig.GuestTypeQEMU).VMFSFreezeStatus(
 			context.Background(), testVMID)
 		if err != nil || status != "thawed" {
 			t.Fatalf("VMFSFreezeStatus = %q, %v, want thawed, nil", status, err)
@@ -232,7 +232,7 @@ func TestFilesystemFreezeControl(t *testing.T) {
 			t.Fatalf("freeze status args = %q", got)
 		}
 		thawArgs := installFakeCommand(t, "qm", "", 0)
-		if err := newGuestOps(config.GuestTypeQEMU).VMFSFreezeThaw(
+		if err := newGuestOps(watchdogconfig.GuestTypeQEMU).VMFSFreezeThaw(
 			context.Background(), testVMID); err != nil {
 			t.Fatalf("VMFSFreezeThaw: %v", err)
 		}
@@ -242,7 +242,7 @@ func TestFilesystemFreezeControl(t *testing.T) {
 	})
 	t.Run("lxc reports no freeze control and runs no command", func(t *testing.T) {
 		pctArgs := installFakeCommand(t, "pct", "", 0)
-		realOps := newGuestOps(config.GuestTypeLXC)
+		realOps := newGuestOps(watchdogconfig.GuestTypeLXC)
 		if _, err := realOps.VMFSFreezeStatus(context.Background(), testVMID); err == nil {
 			t.Fatal("VMFSFreezeStatus succeeded on an LXC guest")
 		}

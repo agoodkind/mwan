@@ -11,13 +11,13 @@ import (
 	"syscall"
 
 	"goodkind.io/mwan/internal/alert"
-	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/logging"
 	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/ops"
 	"goodkind.io/mwan/internal/redteam"
 	"goodkind.io/mwan/internal/tracing"
 	"goodkind.io/mwan/internal/version"
+	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
 // watchdogFlags holds the parsed command-line flags for the watchdog subcommand.
@@ -89,7 +89,7 @@ func printScenarios() {
 // handler is intentionally not attached: notify owns email delivery
 // for the watchdog now, so attaching the handler would produce a
 // duplicate email per failover or recovery event.
-func buildOpsLayer(cfg *config.Config, f watchdogFlags) (*slog.Logger, ops.SysOps, notify.Notifier, error) {
+func buildOpsLayer(cfg *watchdogconfig.Config, f watchdogFlags) (*slog.Logger, ops.SysOps, notify.Notifier, error) {
 	handlers := []slog.Handler{logging.StdoutJSON()}
 	if p := cfg.Watchdog.LogFile; p != "" {
 		handlers = append(handlers, logging.FileText(p, "[watchdog]"))
@@ -131,7 +131,7 @@ func buildOpsLayer(cfg *config.Config, f watchdogFlags) (*slog.Logger, ops.SysOp
 
 // Run is the entry point for the watchdog subcommand.
 // It sets up flag parsing, logger, operations layer, and coordinates the watchdog loop.
-func Run(cfg *config.Config) error {
+func Run(cfg *watchdogconfig.Config) error {
 	f := parseFlags()
 	if f.showScenarios {
 		printScenarios()

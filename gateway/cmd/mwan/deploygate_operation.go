@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"goodkind.io/mwan/internal/clock"
-	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/deployoperation"
 	"goodkind.io/mwan/internal/logging"
 	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/ops"
+	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
 type operationMode string
@@ -39,7 +39,7 @@ type deployOperationStatus struct {
 }
 
 func runDeployOperation(arguments []string) int {
-	cfg, args, err := config.LoadArguments(arguments)
+	cfg, args, err := watchdogconfig.LoadArguments(arguments)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mwan deploy operation: %v\n", err)
 		return exitDeployGateUsage
@@ -76,7 +76,7 @@ func runDeployOperation(arguments []string) int {
 	return executeDeployOperation(ctx, signalContext, cfg, engine, args)
 }
 
-func executeDeployOperation(ctx, signalContext context.Context, cfg *config.Config, engine deployoperation.Engine, args []string) int {
+func executeDeployOperation(ctx, signalContext context.Context, cfg *watchdogconfig.Config, engine deployoperation.Engine, args []string) int {
 	switch operationMode(args[0]) {
 	case operationArm:
 		if err := armDeployOperation(signalContext, cfg, engine, args); err != nil {
@@ -95,7 +95,7 @@ func deployOperationFailure(logger *slog.Logger, err error) int {
 	return exitDeployGateFailed
 }
 
-func executeCurrentDeployOperation(ctx, signalContext context.Context, cfg *config.Config, engine deployoperation.Engine, args []string) int {
+func executeCurrentDeployOperation(ctx, signalContext context.Context, cfg *watchdogconfig.Config, engine deployoperation.Engine, args []string) int {
 	mode := operationMode(args[0])
 	if err := validateExistingOperationArguments(mode, args); err != nil {
 		return deployOperationFailure(engine.Log, err)
@@ -193,7 +193,7 @@ func writeDeployOperationStatus(ctx context.Context, engine deployoperation.Engi
 	return nil
 }
 
-func armDeployOperation(ctx context.Context, cfg *config.Config, engine deployoperation.Engine, args []string) (resultErr error) {
+func armDeployOperation(ctx context.Context, cfg *watchdogconfig.Config, engine deployoperation.Engine, args []string) (resultErr error) {
 	defer func() {
 		if resultErr != nil {
 			engine.Log.WarnContext(ctx, "deployment operation arm rejected")

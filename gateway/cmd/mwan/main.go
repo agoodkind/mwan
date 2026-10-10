@@ -12,6 +12,7 @@ import (
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/version"
 	"goodkind.io/mwan/internal/watchdog"
+	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
 // subcommand is the typed enum of top-level mwan subcommands.
@@ -74,6 +75,10 @@ func main() {
 		}
 	}
 
+	if subcommand(sub) == subcmdWatchdog {
+		os.Exit(runWatchdog(sub))
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mwan: %v\n", err)
@@ -83,6 +88,27 @@ func main() {
 	if code := dispatchWithConfig(sub, subcommand(sub), cfg, flags); code != 0 {
 		os.Exit(code)
 	}
+}
+
+func runWatchdog(rawSub string) int {
+	cfg, remaining, err := watchdogconfig.LoadArguments(os.Args)
+	os.Args = remaining
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mwan: %v\n", err)
+		return 1
+	}
+	var runErr error
+	if len(os.Args) > 1 && os.Args[1] == "failover" {
+		os.Args = append([]string{os.Args[0]}, os.Args[2:]...)
+		runErr = watchdog.FailoverRun(cfg)
+	} else {
+		runErr = watchdog.Run(cfg)
+	}
+	if runErr != nil {
+		fmt.Fprintf(os.Stderr, "mwan %s: %v\n", rawSub, runErr)
+		return 1
+	}
+	return 0
 }
 
 // dispatchConfigLess handles subcommands that do not load mwan config
@@ -126,13 +152,6 @@ func dispatchWithConfig(rawSub string, sub subcommand, cfg *config.Config, flags
 	switch sub {
 	case subcmdAgent:
 		runErr = agent.Run(cfg)
-	case subcmdWatchdog:
-		if len(os.Args) > 1 && os.Args[1] == "failover" {
-			os.Args = append([]string{os.Args[0]}, os.Args[2:]...)
-			runErr = watchdog.FailoverRun(cfg)
-		} else {
-			runErr = watchdog.Run(cfg)
-		}
 	case subcmdIfmgr:
 		runErr = runIfMgr(cfg, flags)
 	case subcmdNotify:
@@ -142,7 +161,8 @@ func dispatchWithConfig(rawSub string, sub subcommand, cfg *config.Config, flags
 	case subcmdGatewayStatus:
 		return runGatewayStatus(os.Args[1:], cfg, os.Stdout, os.Stderr)
 	case subcmdHealth, subcmdPD, subcmdTrace, subcmdDeploy, subcmdGate,
-		subcmdWanconfigSelftest, subcmdVersion, subcmdInstall, subcmdObserve:
+		subcmdWanconfigSelftest, subcmdVersion, subcmdInstall, subcmdObserve,
+		subcmdWatchdog:
 		fmt.Fprintf(os.Stderr, "internal dispatch error for subcommand %q\n", rawSub)
 		return 1
 	default:
