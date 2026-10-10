@@ -100,6 +100,9 @@ func linkMatchesConnection(link netlink.Link, connection interfaceintent.Connect
 	switch configured.Kind {
 	case interfaceintent.KindBridge:
 		return link.Type() == "bridge" && attrs.Name == connection.Name
+	case interfaceintent.KindTunnel:
+		return configured.Tunnel != nil && link.Type() == tunnelKernelType(configured.Tunnel.Protocol) &&
+			attrs.Name == connection.Name
 	case interfaceintent.KindVLAN:
 		vlan, ok := link.(*netlink.Vlan)
 		if !ok || configured.VLAN == nil || vlan.VlanId != int(configured.VLAN.ID) ||

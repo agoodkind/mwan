@@ -71,11 +71,20 @@ const (
 // set on it, and the VLAN it is created as. The vlan container has presence,
 // so a pointer distinguishes absent from present.
 type linkIdentity struct {
-	Match           *linkMatch `json:"match"`
-	HardwareAddress string     `json:"hardware-address"`
-	MTU             *uint32    `json:"mtu"`
-	VLAN            *linkVLAN  `json:"vlan"`
-	BridgeMaster    string     `json:"bridge-master"`
+	Match           *linkMatch  `json:"match"`
+	HardwareAddress string      `json:"hardware-address"`
+	MTU             *uint32     `json:"mtu"`
+	VLAN            *linkVLAN   `json:"vlan"`
+	BridgeMaster    string      `json:"bridge-master"`
+	Tunnel          *linkTunnel `json:"tunnel"`
+}
+
+type linkTunnel struct {
+	Protocol      string `json:"protocol"`
+	Underlay      string `json:"underlay"`
+	RemoteAddress string `json:"remote-address"`
+	LocalAddress  string `json:"local-address"`
+	TTL           *uint8 `json:"ttl"`
 }
 
 type linkMatch struct {

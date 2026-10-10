@@ -649,6 +649,7 @@ func linkItems(connection interfaceintent.Connection) []Item {
 			Item{Path: link + "/vlan/id", Value: uintValue(uint64(linkSpec.VLAN.ID))},
 		)
 	}
+	items = append(items, tunnelItems(link+"/tunnel", linkSpec.Tunnel)...)
 	if connection.IPv4 != nil {
 		family := base + "/ietf-ip:ipv4"
 		items = append(items, familyItems(family, connection.IPv4.Family)...)
@@ -673,6 +674,24 @@ func linkItems(connection interfaceintent.Connection) []Item {
 		}
 	}
 	items = append(items, freeFormItems(base+"/goodkind-mwan-steering:networkd", connection.Networkd)...)
+	return items
+}
+
+func tunnelItems(base string, tunnel *interfaceintent.Tunnel) []Item {
+	if tunnel == nil {
+		return nil
+	}
+	items := []Item{
+		{Path: base + "/protocol", Value: string(tunnel.Protocol)},
+		{Path: base + "/underlay", Value: tunnel.Underlay},
+		{Path: base + "/remote-address", Value: tunnel.Remote.String()},
+	}
+	if tunnel.Local.IsValid() {
+		items = append(items, Item{Path: base + "/local-address", Value: tunnel.Local.String()})
+	}
+	if tunnel.TTL != nil {
+		items = append(items, Item{Path: base + "/ttl", Value: uintValue(uint64(*tunnel.TTL))})
+	}
 	return items
 }
 

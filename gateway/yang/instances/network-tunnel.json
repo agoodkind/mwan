@@ -1,0 +1,62 @@
+{
+  "ietf-interfaces:interfaces": {
+    "interface": [
+      {
+        "name": "enatt0",
+        "type": "iana-if-type:other",
+        "goodkind-mwan-steering:link-files": "hand-authored",
+        "ietf-ip:ipv4": {
+          "goodkind-mwan-steering:translation": { "mode": "native" }
+        },
+        "ietf-ip:ipv6": {
+          "goodkind-mwan-steering:translation": { "mode": "native" }
+        },
+        "goodkind-mwan-steering:wan": {
+          "name": "att",
+          "table-id": 100,
+          "fw-mark": 1,
+          "fw-mark-prio": 100,
+          "from-prio": 55
+        },
+        "goodkind-mwan-steering:steering": {
+          "tier": 0,
+          "weight": 1
+        }
+      },
+      {
+        "name": "tun6in4",
+        "type": "iana-if-type:tunnel",
+        "goodkind-mwan-steering:connection-id": "tunnel-6in4",
+        "goodkind-mwan-steering:owner": "mwan",
+        "goodkind-mwan-steering:link": {
+          "mtu": 1480,
+          "tunnel": {
+            "protocol": "6in4",
+            "underlay": "enatt0",
+            "remote-address": "198.51.100.1",
+            "local-address": "192.0.2.130",
+            "ttl": 64
+          }
+        },
+        "ietf-ip:ipv6": {
+          "address": [{ "ip": "2001:db8:6::2", "prefix-length": 64 }]
+        }
+      },
+      { "name": "enmwanbr0", "type": "iana-if-type:other" }
+    ],
+    "goodkind-mwan-steering:steering-group": {
+      "hash-mode": "source",
+      "reserved-tables": [400, 500],
+      "translation": {
+        "internal-prefix": "2001:db8:b01::/60",
+        "opnsense-edge-v6": "2001:db8:b01:fe::2",
+        "mwanbr-edge-v6": "2001:db8:b01:fe::3"
+      },
+      "routes": {
+        "internal-iface": "enmwanbr0",
+        "internal-net-v4": "192.0.2.0/29"
+      },
+      "health": { "probe-timeout": 2000 }
+    }
+  }
+}

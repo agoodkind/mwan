@@ -85,6 +85,9 @@ func observedLinks(connections []interfaceintent.Connection) map[string]bool {
 		if connection.Link.BridgeMaster != "" {
 			observed[connection.Link.BridgeMaster] = true
 		}
+		if connection.Link.Tunnel != nil {
+			observed[connection.Link.Tunnel.Underlay] = true
+		}
 	}
 	return observed
 }
