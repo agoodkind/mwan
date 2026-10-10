@@ -103,7 +103,7 @@ func buildOpsLayer(cfg *config.Config, f watchdogFlags) (*slog.Logger, ops.SysOp
 	})
 	logger.Info("mwan watchdog starting", "version", version.BuildVersionString())
 
-	notifier := notify.FromConfig(cfg, logger, "mwan-watchdog")
+	notifier := notify.FromConfig(cfg.Email, cfg.NotifyConfig(), logger, "mwan-watchdog")
 
 	var baseOps ops.SysOps = ops.NewRealOps(cfg, logger)
 

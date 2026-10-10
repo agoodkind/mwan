@@ -292,7 +292,7 @@ func FailoverRun(cfg *config.Config) error {
 	// Construct the notify boundary the watchdog uses for failover and
 	// recovery emails. NullNotifier is returned when [email] is
 	// unconfigured so the call sites are always safe.
-	notifier := notify.FromConfig(cfg, logger, "mwan-watchdog")
+	notifier := notify.FromConfig(cfg.Email, cfg.NotifyConfig(), logger, "mwan-watchdog")
 
 	// Create watchdog instance
 	w := newWatchdog(

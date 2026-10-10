@@ -53,7 +53,7 @@ func Run(cfg *config.Config) error {
 		BuildVersion: version.BuildVersionString(),
 		Handlers:     handlers,
 	})
-	notifier := notify.FromConfig(cfg, logger, "mwan-agent")
+	notifier := notify.FromConfig(cfg.Email, cfg.NotifyConfig(), logger, "mwan-agent")
 	runID := tracing.NewID()
 	logger = logger.With(
 		slog.String(tracing.RunIDKey, runID),

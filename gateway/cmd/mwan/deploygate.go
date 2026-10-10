@@ -683,7 +683,7 @@ func sendOwnedMissingAlert(ctx context.Context, alert ownedMissingAlert) error {
 	}
 	sendCtx, cancel := context.WithTimeout(ctx, deployGateAlertTimeout)
 	defer cancel()
-	notifier := notify.FromConfig(cfg, log, deployGateAlertService)
+	notifier := notify.FromConfig(cfg.Email, cfg.NotifyConfig(), log, deployGateAlertService)
 	notifier.Notify(sendCtx, ownedMissingEvent(alert))
 	return nil
 }

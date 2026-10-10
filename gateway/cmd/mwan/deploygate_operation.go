@@ -66,7 +66,7 @@ func runDeployOperation(arguments []string) int {
 		RollbackLock: cfg.Watchdog.RollbackLockFile,
 		Operations:   operations,
 		Log:          logger,
-		Notify:       notify.FromConfig(cfg, logger, "mwan-deploy-gate"),
+		Notify:       notify.FromConfig(cfg.Email, cfg.NotifyConfig(), logger, "mwan-deploy-gate"),
 		RuntimePath:  runtimePath,
 	}
 	signalContext, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

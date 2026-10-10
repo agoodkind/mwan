@@ -16,7 +16,7 @@ import (
 func TestSnapshotReplayDoesNotRefreshLastRA(t *testing.T) {
 	ctx := context.Background()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	notifier, err := notify.New(nil, log, "bridge-probe-test")
+	notifier, err := notify.New(notify.EmailConfig{}, notify.Config{}, log, "bridge-probe-test")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/notify"
 )
@@ -207,7 +206,7 @@ func newModuleForReconcileTest(t *testing.T) (*Module, *captureHandler) {
 	t.Helper()
 	h := &captureHandler{}
 	log := slog.New(h)
-	alerts := ifmgr.WrapNotifier(notify.FromConfig(&config.Config{}, log, "mwan-ifmgr"))
+	alerts := ifmgr.WrapNotifier(notify.FromConfig(notify.EmailConfig{}, notify.Config{}, log, "mwan-ifmgr"))
 	env := &ifmgr.Env{
 		Iface:  "wg0",
 		Log:    log,
@@ -314,7 +313,8 @@ func TestInitReturnsDisabledSentinelWhenConfigNil(t *testing.T) {
 		Iface: "lo",
 		Log:   slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Alerts: ifmgr.WrapNotifier(notify.FromConfig(
-			&config.Config{},
+			notify.EmailConfig{},
+			notify.Config{},
 			slog.New(slog.NewTextHandler(io.Discard, nil)),
 			"mwan-ifmgr",
 		)),
@@ -343,7 +343,8 @@ func TestInitDoesNotDisableOnDefaultLocalExecConfig(t *testing.T) {
 		Iface: "lo",
 		Log:   slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Alerts: ifmgr.WrapNotifier(notify.FromConfig(
-			&config.Config{},
+			notify.EmailConfig{},
+			notify.Config{},
 			slog.New(slog.NewTextHandler(io.Discard, nil)),
 			"mwan-ifmgr",
 		)),

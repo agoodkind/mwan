@@ -129,7 +129,7 @@ func TestReconcileSLAACSrcRule_Disabled(t *testing.T) {
 
 func TestSnapshotReplayDoesNotReportSLAACRenumber(t *testing.T) {
 	log := testLog(t)
-	notifier, err := notify.New(nil, log, "oobv6-test")
+	notifier, err := notify.New(notify.EmailConfig{}, notify.Config{}, log, "oobv6-test")
 	if err != nil {
 		t.Fatal(err)
 	}
