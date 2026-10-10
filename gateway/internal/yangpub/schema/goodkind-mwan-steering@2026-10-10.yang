@@ -711,7 +711,8 @@ module goodkind-mwan-steering {
         leaf remote-address {
           mandatory true;
           type inet:ipv4-address-no-zone;
-          must ". != '0.0.0.0' and not(re-match(., '(22[4-9]|23[0-9])[.].*'))" {
+          must ". != '0.0.0.0' and . != '255.255.255.255' and "
+             + "not(re-match(., '(22[4-9]|23[0-9])[.].*'))" {
             error-message
               "The remote endpoint must be a unicast IPv4 address.";
           }
@@ -720,7 +721,8 @@ module goodkind-mwan-steering {
         }
         leaf local-address {
           type inet:ipv4-address-no-zone;
-          must ". != '0.0.0.0' and not(re-match(., '(22[4-9]|23[0-9])[.].*'))" {
+          must ". != '0.0.0.0' and . != '255.255.255.255' and "
+             + "not(re-match(., '(22[4-9]|23[0-9])[.].*'))" {
             error-message
               "The local endpoint must be a unicast IPv4 address.";
           }

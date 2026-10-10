@@ -91,7 +91,8 @@ func parseTunnelEndpoint(name string, leaf string, raw string) (netip.Addr, erro
 	if err != nil {
 		return netip.Addr{}, err
 	}
-	if !address.Is4() || address.IsUnspecified() || address.IsMulticast() {
+	limitedBroadcast := netip.AddrFrom4([4]byte{255, 255, 255, 255})
+	if !address.Is4() || address.IsUnspecified() || address.IsMulticast() || address == limitedBroadcast {
 		return netip.Addr{}, fmt.Errorf(
 			"interface %s: link/tunnel/%s %s must be a unicast IPv4 address for a 6in4 tunnel", name, leaf, raw)
 	}

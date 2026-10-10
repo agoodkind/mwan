@@ -58,8 +58,13 @@ func effectiveTunnelTTL(tunnel *interfaceintent.Tunnel) uint8 {
 // tunnelMTU returns the configured MTU, or the underlay MTU less the outer header when no MTU is configured.
 func tunnelMTU(connection interfaceintent.Connection, underlay netlink.Link) (int, error) {
 	limit := underlay.Attrs().MTU - interfaceintent.Tunnel6in4Overhead
+	if limit < interfaceintent.IPv6MinimumMTU {
+		return 0, fmt.Errorf("tunnel %s underlay %s MTU %d is below the required minimum %d",
+			connection.Name, underlay.Attrs().Name, underlay.Attrs().MTU,
+			interfaceintent.IPv6MinimumMTU+interfaceintent.Tunnel6in4Overhead)
+	}
 	if connection.Link.MTU == nil {
-		return max(limit, interfaceintent.IPv6MinimumMTU), nil
+		return limit, nil
 	}
 	configured := int(*connection.Link.MTU)
 	if configured > limit {

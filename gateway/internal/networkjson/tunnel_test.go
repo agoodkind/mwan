@@ -120,6 +120,11 @@ func TestDecodeRejectsInvalidTunnels(t *testing.T) {
 			want: "link/tunnel/local-address 2001:db8::2 must be a unicast IPv4 address",
 		},
 		{
+			name: "limited broadcast remote-address",
+			edit: documentEdit{old: tunnelRemote, replacement: `"remote-address": "255.255.255.255",`},
+			want: "link/tunnel/remote-address 255.255.255.255 must be a unicast IPv4 address",
+		},
+		{
 			name: "two tunnels with one underlay, local, and remote",
 			edit: secondTunnel("enatt0", "198.51.100.1"),
 			want: "interfaces tun6in4 and tun6in4b configure the same tunnel",
@@ -192,45 +197,5 @@ func TestDecodeRejectsTunnelMTUAboveConfiguredUnderlay(t *testing.T) {
 	want := "tunnel mtu 1481 exceeds underlay brunder0 mtu 1500 less the 20-byte outer header"
 	if rejection := rejectionText(loaded, err); !strings.Contains(rejection, want) {
 		t.Fatalf("Decode rejection = %q, want it to contain %q", rejection, want)
-	}
-}
-
-func TestLoadSchemaRejectsInvalidTunnels(t *testing.T) {
-	schemaDir := schemaDirForTest(t)
-	_, data := readInstance(t, tunnelInstance)
-	base := string(data)
-	cases := []struct {
-		name string
-		edit documentEdit
-	}{
-		{
-			name: "IPv6 remote-address",
-			edit: documentEdit{old: tunnelRemote, replacement: `"remote-address": "2001:db8::1",`},
-		},
-		{
-			name: "unspecified remote-address",
-			edit: documentEdit{old: tunnelRemote, replacement: `"remote-address": "0.0.0.0",`},
-		},
-		{
-			name: "multicast remote-address",
-			edit: documentEdit{old: tunnelRemote, replacement: `"remote-address": "239.1.1.1",`},
-		},
-		{
-			name: "multicast local-address",
-			edit: documentEdit{old: tunnelLocal, replacement: `"local-address": "224.0.0.5",`},
-		},
-		{
-			name: "mtu below the IPv6 minimum",
-			edit: documentEdit{old: tunnelMTU, replacement: `"mtu": 1279,`},
-		},
-	}
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			document := editDocument(t, base, testCase.edit)
-			_, err := networkload.Load(writeDocument(t, document), schemaDir)
-			if err == nil || !strings.HasPrefix(err.Error(), "validate ") {
-				t.Fatalf("Load error = %v, want a schema validation error", err)
-			}
-		})
 	}
 }

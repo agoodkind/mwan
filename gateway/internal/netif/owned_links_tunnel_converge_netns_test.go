@@ -38,7 +38,7 @@ func TestOwnedTunnelConvergesChangedConfiguration(t *testing.T) {
 			created.Attrs().Index, converged.Attrs().Index)
 	}
 
-	// The second change selects a different underlay. The second change removes the configured hop limit and MTU.
+	// The second change selects a different underlay and removes the configured hop limit and MTU.
 	rebound := tunnelConnection("tun-moved", "198.51.100.7", nil, nil)
 	requireTunnelReady(t, reconcileTunnel(t, reconciler, append(underlays, rebound)...))
 	moved := tunnelDevice(t, tunnelName)
@@ -185,6 +185,29 @@ func TestOwnedTunnelWithoutConfiguredMTUUsesUnderlayMTU(t *testing.T) {
 	requireTunnelAttributes(t, restored, underlay, tunnelRemoteOuter, 32, derived)
 	if restored.Attrs().Index != created.Attrs().Index {
 		t.Fatalf("MTU removal replaced the device: index %d became %d", created.Attrs().Index, restored.Attrs().Index)
+	}
+}
+
+func TestOwnedTunnelRejectsUnderlayBelowMinimumMTU(t *testing.T) {
+	if !enterTunnelNamespace(t) {
+		return
+	}
+	underlay := addTunnelUnderlay(t, tunnelUnderlayName)
+	const underlayMTU = interfaceintent.IPv6MinimumMTU + interfaceintent.Tunnel6in4Overhead - 1
+	if err := netlink.LinkSetMTU(underlay, underlayMTU); err != nil {
+		t.Fatal(err)
+	}
+	reconciler := newTunnelReconciler(t, filepath.Join(t.TempDir(), "links.json"))
+
+	result := reconcileTunnel(t, reconciler, externalConnection(tunnelUnderlayName),
+		tunnelConnection(tunnelUnderlayName, tunnelRemoteOuter, nil, nil))
+
+	want := "underlay " + tunnelUnderlayName + " MTU 1299 is below the required minimum 1300"
+	if result.Status != OwnedLinkFailed || result.Err == nil || !strings.Contains(result.Err.Error(), want) {
+		t.Fatalf("result for an underlay below the minimum MTU = %+v", result)
+	}
+	if _, err := netlink.LinkByName(tunnelName); !IsLinkNotFound(err) {
+		t.Fatalf("tunnel exists on an underlay below the minimum MTU: %v", err)
 	}
 }
 
