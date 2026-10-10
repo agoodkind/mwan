@@ -37,6 +37,7 @@ type Session struct {
 	established bool
 	upSince     time.Time
 	accepted    map[netip.Prefix]netip.Addr
+	unresolved  map[netip.Prefix]netip.Addr
 	advertised  map[netip.Prefix]struct{}
 	rejected    []Rejection
 	listeners   []func(SessionState)
@@ -56,9 +57,10 @@ func NewSession(cfg SessionConfig, log *slog.Logger) (*Session, error) {
 	}
 	log = log.With("session", validated.Name)
 	fibConfig := FIBConfig{
-		Tables:        validated.Tables,
-		InternalIface: validated.Interface,
-		Metric:        validated.RouteMetric,
+		Tables:         validated.Tables,
+		InternalIface:  validated.Interface,
+		Metric:         validated.RouteMetric,
+		ResolveNextHop: true,
 	}
 	return &Session{
 		cfg:         validated,
@@ -73,6 +75,7 @@ func NewSession(cfg SessionConfig, log *slog.Logger) (*Session, error) {
 		established: false,
 		upSince:     time.Time{},
 		accepted:    make(map[netip.Prefix]netip.Addr),
+		unresolved:  make(map[netip.Prefix]netip.Addr),
 		advertised:  make(map[netip.Prefix]struct{}),
 		rejected:    nil,
 		listeners:   nil,
@@ -216,6 +219,7 @@ func (s *Session) Stop(ctx context.Context) error {
 	s.established = false
 	s.upSince = time.Time{}
 	clear(s.accepted)
+	clear(s.unresolved)
 	clear(s.advertised)
 	if wasEstablished {
 		s.enqueueChangeLocked()

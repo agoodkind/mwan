@@ -48,6 +48,7 @@ func (s *Session) handlePeerEvent(
 	if !established && wasEstablished {
 		s.upSince = time.Time{}
 		clear(s.accepted)
+		clear(s.unresolved)
 		s.withdrawExportsLocked(ctx)
 		if err := s.fib.WithdrawPeer(ctx, s.peerKey); err != nil {
 			s.log.ErrorContext(ctx, "remove bgp session routes failed", "error", err)
@@ -98,6 +99,7 @@ func (s *Session) applyBestPathLocked(ctx context.Context, path *apiutil.Path) b
 	}
 	prefix = prefix.Masked()
 	if path.Withdrawal {
+		delete(s.unresolved, prefix)
 		return s.withdrawAcceptedLocked(ctx, prefix)
 	}
 
@@ -110,18 +112,7 @@ func (s *Session) applyBestPathLocked(ctx context.Context, path *apiutil.Path) b
 		s.rejectLocked(ctx, prefix, rejectedNoNextHop)
 		return true
 	}
-	event := PathEvent{Peer: s.peerKey, Prefix: prefix, NextHop: nextHop, Withdrawn: false}
-	if err := s.fib.Apply(ctx, event); err != nil {
-		s.log.ErrorContext(ctx, "install bgp session route failed", "prefix", prefix, "error", err)
-		// A failed replacement does not remove the earlier route for the prefix
-		// from the kernel. The peer no longer announces that route's next hop.
-		s.removeAcceptedLocked(ctx, prefix)
-		s.rejectLocked(ctx, prefix, fmt.Sprintf("%s: %v", rejectedNotInstall, err))
-		return true
-	}
-	previous, known := s.accepted[prefix]
-	s.accepted[prefix] = nextHop
-	return !known || previous != nextHop
+	return s.installLocked(ctx, prefix, nextHop)
 }
 
 func (s *Session) withdrawAcceptedLocked(ctx context.Context, prefix netip.Prefix) bool {
