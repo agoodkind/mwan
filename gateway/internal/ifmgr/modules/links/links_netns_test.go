@@ -34,8 +34,6 @@ const (
 	underlayEventQuiet = 500 * time.Millisecond
 )
 
-// awaitUnderlayEvent consumes reconcile requests until the underlay monitor
-// has requested one and no further request arrives within the quiet period.
 func awaitUnderlayEvent(t *testing.T, requests <-chan string) {
 	t.Helper()
 	limit := time.After(underlayEventLimit)

@@ -57,24 +57,25 @@ func newOwnedLinkResult(id string, name string, status OwnedLinkStatus) OwnedLin
 }
 
 type virtualRecord struct {
-	BootID       string `json:"boot_id"`
-	ConnectionID string `json:"connection_id"`
-	Alias        string `json:"alias"`
-	TempName     string `json:"temp_name"`
-	Name         string `json:"name"`
-	Kind         string `json:"kind"`
-	VLANID       uint16 `json:"vlan_id,omitempty"`
-	Parent       string `json:"parent,omitempty"`
-	ParentMAC    string `json:"parent_mac,omitempty"`
-	ParentBoot   string `json:"parent_boot,omitempty"`
-	ParentKind   string `json:"parent_kind,omitempty"`
-	ParentName   string `json:"parent_name,omitempty"`
-	ParentIndex  int    `json:"parent_index,omitempty"`
-	LinkIndex    int    `json:"link_index,omitempty"`
-	Complete     bool   `json:"complete"`
-	Quarantined  bool   `json:"quarantined,omitempty"`
-	// TunnelProtocol selects the kernel link type of a tunnel record.
+	BootID         string `json:"boot_id"`
+	ConnectionID   string `json:"connection_id"`
+	Alias          string `json:"alias"`
+	TempName       string `json:"temp_name"`
+	Name           string `json:"name"`
+	Kind           string `json:"kind"`
+	VLANID         uint16 `json:"vlan_id,omitempty"`
+	Parent         string `json:"parent,omitempty"`
+	ParentMAC      string `json:"parent_mac,omitempty"`
+	ParentBoot     string `json:"parent_boot,omitempty"`
+	ParentKind     string `json:"parent_kind,omitempty"`
+	ParentName     string `json:"parent_name,omitempty"`
+	ParentIndex    int    `json:"parent_index,omitempty"`
+	LinkIndex      int    `json:"link_index,omitempty"`
+	Complete       bool   `json:"complete"`
+	Quarantined    bool   `json:"quarantined,omitempty"`
 	TunnelProtocol string `json:"tunnel_protocol,omitempty"`
+	TunnelRemote   string `json:"tunnel_remote,omitempty"`
+	TunnelLocal    string `json:"tunnel_local,omitempty"`
 }
 
 type membershipRecord struct {
@@ -469,12 +470,12 @@ func validateVirtual(link netlink.Link, connection interfaceintent.Connection, p
 	return nil
 }
 
-func validateTemporaryLink(link netlink.Link, connection interfaceintent.Connection, parent netlink.Link, alias string) error {
-	if alias == "" || link.Attrs().Alias != "" && link.Attrs().Alias != alias {
+func validateTemporaryLink(link netlink.Link, connection interfaceintent.Connection, parent netlink.Link, record virtualRecord) error {
+	if record.Alias == "" || link.Attrs().Alias != "" && link.Attrs().Alias != record.Alias {
 		return fmt.Errorf("quarantined temporary link %s: foreign alias", link.Attrs().Name)
 	}
 	if connection.Link.Kind == interfaceintent.KindTunnel {
-		return validateTunnelLink(link, connection)
+		return validateTemporaryTunnel(link, connection, record)
 	}
 	if connection.Link.Kind == interfaceintent.KindBridge {
 		if link.Type() != "bridge" {
@@ -529,7 +530,7 @@ func (r *OwnedLinkReconciler) virtualLink(connection interfaceintent.Connection,
 			return nil, false, err
 		}
 	}
-	record, err = r.reserveVirtual(connection, parent, links)
+	record, err = r.reserveVirtual(connection, parent, underlay, links)
 	if err != nil {
 		return nil, false, err
 	}
@@ -543,7 +544,7 @@ func (r *OwnedLinkReconciler) virtualLink(connection interfaceintent.Connection,
 	return r.recoverVirtual(connection, parent, record)
 }
 
-func (r *OwnedLinkReconciler) reserveVirtual(connection interfaceintent.Connection, parent netlink.Link, links []netlink.Link) (virtualRecord, error) {
+func (r *OwnedLinkReconciler) reserveVirtual(connection interfaceintent.Connection, parent netlink.Link, underlay netlink.Link, links []netlink.Link) (virtualRecord, error) {
 	id := connection.ID.String()
 	var nonce [6]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
@@ -558,11 +559,9 @@ func (r *OwnedLinkReconciler) reserveVirtual(connection interfaceintent.Connecti
 		Parent: "", ParentMAC: "", ParentBoot: "", ParentKind: "", ParentName: "",
 		ParentIndex: 0, LinkIndex: 0,
 		Complete: false, Quarantined: false,
-		TunnelProtocol: "",
+		TunnelProtocol: "", TunnelRemote: "", TunnelLocal: "",
 	}
-	if connection.Link.Tunnel != nil {
-		record.TunnelProtocol = string(connection.Link.Tunnel.Protocol)
-	}
+	recordTunnelIdentity(&record, connection.Link.Tunnel, underlay)
 	if parent != nil {
 		record.VLANID = connection.Link.VLAN.ID
 		record.Parent, record.ParentMAC = parentRecord(parent)
@@ -596,7 +595,7 @@ func (r *OwnedLinkReconciler) handleVirtualAddError(connection interfaceintent.C
 	if lookupErr != nil {
 		return nil, false, errors.Join(addErr, lookupErr)
 	}
-	if identityErr := validateTemporaryLink(temporary, connection, parent, record.Alias); identityErr != nil {
+	if identityErr := validateTemporaryLink(temporary, connection, parent, record); identityErr != nil {
 		record.Quarantined = true
 		r.state.Virtuals[record.ConnectionID] = record
 		if saveErr := r.save(); saveErr != nil {
@@ -647,7 +646,7 @@ func (r *OwnedLinkReconciler) adoptVirtualLink(found netlink.Link, connection in
 		Parent: "", ParentMAC: "", ParentBoot: "", ParentKind: "", ParentName: "",
 		ParentIndex: 0, LinkIndex: found.Attrs().Index,
 		Complete: true, Quarantined: false,
-		TunnelProtocol: recorded.TunnelProtocol,
+		TunnelProtocol: recorded.TunnelProtocol, TunnelRemote: "", TunnelLocal: "",
 	}
 	if parent != nil {
 		record.VLANID = connection.Link.VLAN.ID
@@ -699,7 +698,7 @@ func (r *OwnedLinkReconciler) recoverVirtual(connection interfaceintent.Connecti
 	if err != nil {
 		return nil, false, fmt.Errorf("find reserved link %s: %w", record.TempName, err)
 	}
-	if err := validateTemporaryLink(link, connection, parent, record.Alias); err != nil {
+	if err := validateTemporaryLink(link, connection, parent, record); err != nil {
 		return nil, false, err
 	}
 	if link.Attrs().Alias == "" {
@@ -973,7 +972,7 @@ func (r *OwnedLinkReconciler) recordForAlias(alias string) (string, virtualRecor
 		VLANID: 0, Parent: "", ParentMAC: "", ParentBoot: "", ParentKind: "", ParentName: "",
 		ParentIndex: 0, LinkIndex: 0,
 		Complete: false, Quarantined: false,
-		TunnelProtocol: "",
+		TunnelProtocol: "", TunnelRemote: "", TunnelLocal: "",
 	}, false
 }
 
