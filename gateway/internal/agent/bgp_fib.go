@@ -106,6 +106,7 @@ func configureBGPFIB(
 	speaker.SetFIB(bgp.NewFIB(bgp.FIBConfig{
 		Tables:        tablesFromConfig(cfg),
 		InternalIface: cfg.BGP.LearnedRouteIface,
+		Metric:        0,
 	}, log))
 	startStaleSweepReconciler(ctx, speaker, log, realStaleSweepClock{})
 	return nil
