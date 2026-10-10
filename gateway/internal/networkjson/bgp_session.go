@@ -9,11 +9,7 @@ import (
 	"goodkind.io/mwan/internal/config"
 )
 
-const (
-	defaultBGPPeerPort      = 179
-	minimumBGPHoldSeconds   = 3
-	kernelDefaultIPv6Metric = 1024
-)
+const defaultBGPPeerPort = 179
 
 type bgpSessionWire struct {
 	Name         string          `json:"name"`
@@ -75,9 +71,9 @@ func buildBGPSession(label string, wire bgpSessionWire) (config.BGPSession, erro
 	if wire.RouteMetric == nil {
 		return none, fmt.Errorf("%s: route-metric is required", label)
 	}
-	if *wire.RouteMetric == 0 || *wire.RouteMetric == kernelDefaultIPv6Metric {
+	if *wire.RouteMetric == 0 || *wire.RouteMetric == bgpsession.KernelDefaultIPv6Metric {
 		return none, fmt.Errorf("%s: route-metric %d collides with the kernel default metric %d",
-			label, *wire.RouteMetric, kernelDefaultIPv6Metric)
+			label, *wire.RouteMetric, bgpsession.KernelDefaultIPv6Metric)
 	}
 	session.RouteMetric = *wire.RouteMetric
 	importRules, err := buildBGPImports(label, wire.Import)
@@ -163,8 +159,8 @@ func setBGPSessionTimers(label string, wire bgpSessionWire, session *bgpsession.
 		return fmt.Errorf("%s: keepalive is required", label)
 	}
 	hold := *wire.Hold
-	if hold != 0 && hold < minimumBGPHoldSeconds {
-		return fmt.Errorf("%s: hold %d must be 0 or between %d and 65535", label, hold, minimumBGPHoldSeconds)
+	if hold != 0 && hold < bgpsession.MinHoldSeconds {
+		return fmt.Errorf("%s: hold %d must be 0 or between %d and 65535", label, hold, bgpsession.MinHoldSeconds)
 	}
 	if hold == 0 {
 		return fmt.Errorf("%s: hold 0 disables the hold timer, and the embedded speaker cannot disable it", label)

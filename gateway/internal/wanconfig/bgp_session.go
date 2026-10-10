@@ -1,15 +1,8 @@
 package wanconfig
 
 import (
-	"fmt"
-
 	"goodkind.io/mwan/internal/bgpsession"
 	"goodkind.io/mwan/internal/config"
-)
-
-const (
-	bgpExportModeAlways = "always"
-	bgpExportModeBackup = "backup"
 )
 
 func bgpSessionItems(base string, sessions []config.BGPSession) []Item {
@@ -49,12 +42,8 @@ func bgpSessionItems(base string, sessions []config.BGPSession) []Item {
 
 func bgpExportItems(sessionPath string, rule bgpsession.ExportRule, configured config.BGPSession) []Item {
 	path := sessionPath + "/export[prefix='" + rule.Prefix.String() + "']"
-	mode := bgpExportModeAlways
-	if rule.Mode == bgpsession.ExportBackup {
-		mode = bgpExportModeBackup
-	}
 	items := []Item{
-		{Path: path + "/mode", Value: mode},
+		{Path: path + "/mode", Value: rule.Mode.String()},
 		{Path: path + "/next-hop", Value: rule.NextHop.String()},
 	}
 	for _, id := range configured.BackupFor[rule.Prefix] {
@@ -70,12 +59,10 @@ func bgpExportItems(sessionPath string, rule bgpsession.ExportRule, configured c
 		items = append(items, Item{Path: path + "/prepend-count", Value: uintValue(uint64(rule.PrependCount))})
 	}
 	for _, community := range rule.Communities {
-		value := fmt.Sprintf("%d:%d", community.ASN, community.Value)
-		items = append(items, Item{Path: path + "/community", Value: value})
+		items = append(items, Item{Path: path + "/community", Value: community.String()})
 	}
 	for _, community := range rule.LargeCommunities {
-		value := fmt.Sprintf("%d:%d:%d", community.GlobalAdmin, community.LocalData1, community.LocalData2)
-		items = append(items, Item{Path: path + "/large-community", Value: value})
+		items = append(items, Item{Path: path + "/large-community", Value: community.String()})
 	}
 	return items
 }
