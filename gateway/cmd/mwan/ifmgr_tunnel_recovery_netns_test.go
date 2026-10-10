@@ -16,7 +16,6 @@ func tunnelRuntimeProbeFault(t *testing.T, run tunnelRuntimeRun, daemon *runtime
 	elapsed := waitTunnelRuntimeFamily(t, daemon, run.read, tunnelRuntimeDevice, "ipv6", "not-ready", "not-ready", tunnelRuntimeFailureWindow)
 	t.Logf("tunnel IPv6 readiness reported not-ready %s after the remote endpoint dropped protocol 41", elapsed)
 	waitTunnelRuntimeReason(t, daemon, run.read, faultStarted, "probe failed", tunnelRuntimeFailureWindow)
-	// The transfer compares each provider's link, steering assignment, and published IPv4 state against observations recorded before the fault.
 	requireTunnelRuntimeIPv4(t, daemon, run, 4103, "during the tunnel probe fault")
 	requireTunnelRuntimeNotForwarded(t, topology, 4230, "during the tunnel probe fault")
 	setTunnelRuntimeFault(t, topology, false)

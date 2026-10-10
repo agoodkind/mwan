@@ -154,7 +154,6 @@ func buildBaseline(wire *baselineFirewallWire, guestType config.GuestType, inter
 		seen[name] = true
 		baseline.ProviderInterfaces = append(baseline.ProviderInterfaces, name)
 		if provider.tunnel {
-			// A 6in4 tunnel interface does not run a DHCP client.
 			continue
 		}
 		baseline.LocalPermits = append(baseline.LocalPermits,
@@ -339,8 +338,6 @@ func populateFirewallProviders(cfg *firewall.Config, doc *document, loaded *Conf
 	return nil
 }
 
-// The main routing table routes IPv4 packets with the provider mark because the routing module does
-// not install an IPv4 policy rule for a 6in4 tunnel provider.
 func requireIPv4ForMarks(provider string, ipv4Forwarded bool, forcedDSCP bool, pinned bool) error {
 	if ipv4Forwarded {
 		return nil

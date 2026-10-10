@@ -40,7 +40,6 @@ func openTunnelRuntimeLinkCapture(t *testing.T, topology tunnelRuntimeTopology, 
 	if err != nil {
 		t.Fatalf("open the ISP link capture: %v", err)
 	}
-	// The transfers exceed the default receive buffer of a packet socket.
 	if err := unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_RCVBUFFORCE, 64<<20); err != nil {
 		t.Fatalf("size the ISP link capture: %v", err)
 	}
@@ -68,7 +67,6 @@ func readTunnelRuntimeCapture(t *testing.T, fd int) []tunnelRuntimeFrame {
 		if errors.Is(err, unix.EAGAIN) {
 			return frames
 		}
-		// A packet socket bound to a link that is down reports ENETDOWN once and then reads frames.
 		if errors.Is(err, unix.EINTR) || errors.Is(err, unix.ENETDOWN) {
 			continue
 		}

@@ -57,9 +57,6 @@ func TestTunnelEndpointRouteDeletionRequestsRepair(t *testing.T) {
 	if err := fixture.module.Init(ctx, fixture.module.Env); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	// The route subscription of the underlay monitor starts after Init returns.
-	// The test repeats the deletion on the next attempt because a deletion before the underlay monitor's
-	// route subscription starts produces no event.
 	deadline := time.Now().Add(20 * time.Second)
 	requested := false
 	for !requested {
@@ -76,10 +73,6 @@ func TestTunnelEndpointRouteDeletionRequestsRepair(t *testing.T) {
 	requireTunnelRouting(t, fixture.reconcile(ctx, t), true, "")
 	requireTunnelEndpointRoute(t, tunnelRouteGateway)
 
-	// The underlay monitor delivers route events in kernel order.
-	// The pass after the first default route event deletes the endpoint route. The underlay monitor
-	// handles the endpoint route deletion before the second default route event.
-	// The underlay monitor requests one repair with the boundary reason for each default route event.
 	fixture.drainRepairs()
 	setTunnelRouteDefault(t, tunnelRouteUnderlay, tunnelRouteGateway, tunnelRouteUnderMetric, false)
 	fixture.repairsUntil(t, repairMainDefaultChanged, repairEndpointRouteDeleted)
@@ -126,7 +119,6 @@ func TestTunnelRuleRemovalByTheModuleRequestsNoRepair(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 	deleted := netif.RuleEvent{Family: familyV6, TableID: tunnelRouteTunnelTbl, Priority: tunnelRouteTunnelMarkPrio, Mark: tunnelRouteTunnelMark}
-	// The test repeats the deletion for a rule subscription that starts after Init returns.
 	deadline := time.Now().Add(20 * time.Second)
 	requested := false
 	for !requested {

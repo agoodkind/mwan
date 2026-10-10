@@ -45,7 +45,6 @@ func addTunnelRouteProvider(ctx context.Context, t *testing.T, fixture *tunnelRo
 	setTunnelRouteNeighbour(t, iface, gateway, gatewayMAC)
 }
 
-// The dummy link has no peer that answers ARP. The kernel transmits to a permanent neighbor entry.
 func setTunnelRouteNeighbour(t *testing.T, iface, gateway, gatewayMAC string) {
 	t.Helper()
 	link, err := netlink.LinkByName(iface)

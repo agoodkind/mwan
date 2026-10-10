@@ -34,7 +34,6 @@ func TestSetRoutingRecordsTheFailedDependency(t *testing.T) {
 		}
 		got = append(got, change{previous: transition.Previous, current: transition.Current, reason: transition.Reason})
 	}
-	// The first evaluation does not record a transition because the previous state is unknown.
 	want := []change{
 		{previous: "not-ready", current: "ready", reason: "routing readiness changed"},
 		{previous: "ready", current: "not-ready", reason: "probe failed"},

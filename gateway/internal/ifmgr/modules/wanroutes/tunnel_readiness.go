@@ -13,8 +13,6 @@ func (m *Module) tunnelLinkApplied(wan WAN) bool {
 	return found && result.Status == netif.OwnedLinkReady
 }
 
-// A default route through the tunnel does not show that the remote endpoint forwards packets.
-// A tunnel provider requires a healthy probe verdict before selection.
 // Callers must lock the module.
 func (m *Module) excludeUnreadyTunnelFamilies(current gateways, health netif.HealthStates, translations map[string]wanstate.MemberTranslation) map[string]string {
 	reasons := make(map[string]string)

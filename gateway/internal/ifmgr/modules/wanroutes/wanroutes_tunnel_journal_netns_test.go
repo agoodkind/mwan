@@ -52,8 +52,6 @@ func TestTunnelEndpointRouteAdoptedAfterAnOlderReleaseSavedTheJournal(t *testing
 	requireTunnelEndpointRoute(t, tunnelRouteGateway)
 	requireEndpointReceipts(t, fixture, 1)
 
-	// A release without endpoint route records saves the journal after decoding it without the endpoint
-	// route list.
 	journal := readTunnelRouteJournal(t, fixture.journalPath)
 	if _, recorded := journal[journalEndpointRoutesKey]; !recorded {
 		t.Fatalf("the journal has no endpoint route record: %v", journal)
@@ -93,7 +91,6 @@ func TestForeignRouteAfterARecordedFailedEndpointWriteSurvives(t *testing.T) {
 	ctx := t.Context()
 	fixture := newTunnelRouteFixture(ctx, t)
 	journal := openTunnelRouteJournal(t, fixture.journalPath)
-	// The kernel rejects a gateway outside every connected network after the journal write.
 	unreachable := netif.RouteSpec{
 		Family: familyV4, Dest: tunnelRouteEndpoint, Via: "10.9.9.9", Dev: tunnelRouteUnderlay,
 		TableID: tunnelRouteUnderTbl, Protocol: netif.TunnelEndpointRouteProtocol,
@@ -123,7 +120,6 @@ func TestEndpointRouteDeletionAfterAFailedWriteRequestsRepair(t *testing.T) {
 	if err := fixture.module.Init(ctx, fixture.module.Env); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	// The test repeats route deletion because a route subscription can start after Init returns.
 	deadline := time.Now().Add(20 * time.Second)
 	requested := false
 	for !requested {
@@ -140,8 +136,6 @@ func TestEndpointRouteDeletionAfterAFailedWriteRequestsRepair(t *testing.T) {
 	fixture.reconcile(ctx, t)
 	installed := requireTunnelEndpointRoute(t, tunnelRouteGateway)
 
-	// The journal write for the changed gateway fails because a directory occupies the journal path.
-	// The route through the first gateway still exists in the kernel.
 	if err := os.Remove(fixture.journalPath); err != nil {
 		t.Fatal(err)
 	}

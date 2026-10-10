@@ -18,8 +18,7 @@ const (
 	IPv6 Family = "ipv6"
 )
 
-// ProtocolIPv6InIPv4 is IP protocol 41 for encapsulating an IPv6 packet inside an IPv4 packet.
-// The rules use protocol number 41 because nft resolves protocol names using the host's protocol database.
+// ProtocolIPv6InIPv4 is the number 41 because nft resolves protocol names using the host's protocol database.
 const ProtocolIPv6InIPv4 = "41"
 
 // TransportPermit allows packets addressed to the gateway. Source and

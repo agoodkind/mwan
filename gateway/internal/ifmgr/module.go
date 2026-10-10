@@ -116,9 +116,8 @@ type Env struct {
 	// OwnedLinks contains the latest complete link reconcile result for this pass.
 	OwnedLinks *OwnedLinkResults
 	// OwnedAddresses contains address installation results from the current pass.
-	OwnedAddresses *OwnedAddressResults
-	NPTAddresses   NPTAddressAuthority
-	// TunnelEndpointRoutes is nil when the host configures no address ownership journal.
+	OwnedAddresses       *OwnedAddressResults
+	NPTAddresses         NPTAddressAuthority
 	TunnelEndpointRoutes TunnelEndpointRoutes
 	// Delegations publishes MWAN-owned DHCPv6 addresses and prefixes.
 	Delegations *netif.DHCPv6PDStore

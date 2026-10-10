@@ -142,9 +142,6 @@ func Compile(config Config) (Ruleset, error) {
 		if !provider.ReducedMTU {
 			continue
 		}
-		// The gateway sends a packet-too-big error for a forwarded packet that exceeds a reduced MTU.
-		// The kernel relates that error to the forwarded connection and gives the error packet mark zero.
-		// The save rule must not write that mark to the connection.
 		postMangle.Rules = append(postMangle.Rules, newRule(PurposeKeepRelatedMark, scopeAll, ActionReturn,
 			"ct state related meta mark 0x00000000 return").marked(0))
 		break
@@ -184,9 +181,6 @@ func forcedDSCPRules(config Config) []Rule {
 	return rules
 }
 
-// The routing module does not install an IPv4 policy rule for a provider without an IPv4 family.
-// The main routing table routes an IPv4 packet with that provider's mark.
-// A provider without a forwarding path has no family restriction.
 func (c Config) forwardsIPv4(providerInterface string) bool {
 	restricted := false
 	for _, path := range c.Paths {

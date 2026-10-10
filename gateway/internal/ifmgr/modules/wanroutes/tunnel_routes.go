@@ -41,8 +41,6 @@ func (m *Module) endpointJournal() ifmgr.TunnelEndpointRoutes {
 	return m.Env.TunnelEndpointRoutes
 }
 
-// The routing specification requires each tunnel's endpoint route in the underlay provider's table.
-// The sit device also restricts the outer route lookup to routes through the underlay interface.
 // Callers must lock the module.
 func (m *Module) reconcileEndpointRoutes(ctx context.Context, log *slog.Logger, current gateways) error {
 	desired := endpointRoutes(m.cfg, current)
@@ -60,13 +58,10 @@ func (m *Module) reconcileEndpointRoutes(ctx context.Context, log *slog.Logger, 
 	var reconcileErr error
 	keep := make(map[string]bool, len(desired))
 	for key, want := range desired {
-		// The release step does not delete the recorded route of the same tunnel after a failed write.
 		keep[key] = true
 		if err := journal.EnsureTunnelEndpointRoute(ctx, log, key, want); err != nil {
 			log.WarnContext(ctx, "wan.routes: tunnel endpoint route write failed", "table_id", want.TableID, "dest", want.Dest, "err", err)
 			reconcileErr = errors.Join(reconcileErr, fmt.Errorf("install tunnel endpoint route table=%d dest=%s: %w", want.TableID, want.Dest, err))
-			// The route of an earlier pass can still exist in the kernel. A deletion of that route by
-			// another writer must request a repair pass.
 			if last, known := previous[key]; known {
 				watched[key] = last
 			}

@@ -11,8 +11,6 @@ import (
 )
 
 // TunnelEndpointRouteProtocol identifies a tunnel endpoint route in kernel route dumps and route events.
-// The kernel's rtnetlink.h does not assign a routing daemon to TunnelEndpointRouteProtocol.
-// The gateway uses the ownership journal to select routes for deletion without using the protocol.
 const TunnelEndpointRouteProtocol = 147
 
 const tunnelEndpointRouteFamily = "inet"
@@ -34,7 +32,6 @@ func (record ownedEndpointRoute) spec() RouteSpec {
 	}
 }
 
-// The kernel stores one IPv4 route for each table, destination, and metric.
 func (record ownedEndpointRoute) sameSlot(other ownedEndpointRoute) bool {
 	return record.LinkName == other.LinkName && record.LinkIndex == other.LinkIndex &&
 		record.LinkIdentity == other.LinkIdentity && record.TableID == other.TableID &&
@@ -68,12 +65,6 @@ func kernelEndpointRoutes(ctx context.Context, log *slog.Logger, record ownedEnd
 
 // EnsureTunnelEndpointRoute records one IPv4 host route for a tunnel connection in the ownership journal
 // before writing the route to the kernel.
-// The gateway owns a kernel route at the same table and destination with TunnelEndpointRouteProtocol on
-// the endpoint link with or without a journal record.
-// An older release deletes the records from the journal. The older release does not delete the kernel
-// route.
-// EnsureTunnelEndpointRoute returns a conflict error without a kernel write because another writer owns
-// a route with another protocol or link.
 func (r *OwnedStaticReconciler) EnsureTunnelEndpointRoute(ctx context.Context, log *slog.Logger, connectionID string, want RouteSpec) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -123,7 +114,6 @@ func (r *OwnedStaticReconciler) EnsureTunnelEndpointRoute(ctx context.Context, l
 	return replaceTableRouteNetlink(ctx, log, want)
 }
 
-// The kernel removes every route through a link when the kernel removes that link.
 func (r *OwnedStaticReconciler) deleteEndpointRoute(ctx context.Context, log *slog.Logger, record ownedEndpointRoute) error {
 	link, err := netlink.LinkByIndex(record.LinkIndex)
 	if IsLinkNotFound(err) {

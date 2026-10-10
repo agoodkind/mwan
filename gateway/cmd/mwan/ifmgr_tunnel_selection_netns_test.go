@@ -21,13 +21,10 @@ func tunnelRuntimeIPv4Providers() map[string]string {
 	return map[string]string{tunnelRuntimeUnderlay: tunnelRuntimeLocal, tunnelRuntimeAlternate: tunnelRuntimeAltLocal}
 }
 
-// The steering hash of the source address assigns these client addresses to both IPv4 providers.
 func tunnelRuntimeClientsV4() []string {
 	return []string{tunnelRuntimeClientV4, "192.0.2.3", "192.0.2.4", "192.0.2.5", "192.0.2.6"}
 }
 
-// Error reporting prevents a failed chain read or a chain without an IPv4 assignment from comparing
-// equal to every other empty selection.
 func tunnelRuntimeIPv4Selection() (string, error) {
 	output, err := exec.Command("nft", "list", "chain", "inet", "mwan_steer", "prerouting").CombinedOutput()
 	if err != nil {
@@ -70,7 +67,6 @@ func waitTunnelRuntimeIPv4Selection(t *testing.T, daemon *runtimeDaemon, descrip
 }
 
 func TestTunnelRuntimeIPv4SelectionRejectsAMissingAssignment(t *testing.T) {
-	// The namespace of the test process has no steering chain.
 	if selection, err := tunnelRuntimeIPv4Selection(); err == nil {
 		t.Fatalf("a failed chain read returned selection %q without an error", selection)
 	}

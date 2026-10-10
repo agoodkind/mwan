@@ -16,32 +16,30 @@ import (
 )
 
 const (
-	tunnelRouteChildEnv  = "MWAN_WANROUTES_TUNNEL_CHILD"
-	tunnelRouteID        = "tunnel-6in4"
-	tunnelRouteIface     = "tun6in4"
-	tunnelRouteInternal  = "lan0"
-	tunnelRouteUnderlay  = "isp0"
-	tunnelRouteOther     = "other0"
-	tunnelRouteLocal     = "192.0.2.10"
-	tunnelRouteGateway   = "192.0.2.1"
-	tunnelRouteOtherGW   = "203.0.113.1"
-	tunnelRouteRemote    = "198.51.100.1"
-	tunnelRouteEndpoint  = tunnelRouteRemote + "/32"
-	tunnelRouteInnerGW   = "2001:db8:6::1"
-	tunnelRouteInnerPeer = "2001:db8:6::9"
-	tunnelRouteUnderMAC  = "02:00:5e:00:53:01"
-	tunnelRouteOtherMAC  = "02:00:5e:00:53:02"
-	tunnelRouteUnderTbl  = 100
-	tunnelRouteTunnelTbl = 200
-	tunnelRouteOtherTbl  = 300
-	// The preferred main-table default route uses the other provider.
+	tunnelRouteChildEnv    = "MWAN_WANROUTES_TUNNEL_CHILD"
+	tunnelRouteID          = "tunnel-6in4"
+	tunnelRouteIface       = "tun6in4"
+	tunnelRouteInternal    = "lan0"
+	tunnelRouteUnderlay    = "isp0"
+	tunnelRouteOther       = "other0"
+	tunnelRouteLocal       = "192.0.2.10"
+	tunnelRouteGateway     = "192.0.2.1"
+	tunnelRouteOtherGW     = "203.0.113.1"
+	tunnelRouteRemote      = "198.51.100.1"
+	tunnelRouteEndpoint    = tunnelRouteRemote + "/32"
+	tunnelRouteInnerGW     = "2001:db8:6::1"
+	tunnelRouteInnerPeer   = "2001:db8:6::9"
+	tunnelRouteUnderMAC    = "02:00:5e:00:53:01"
+	tunnelRouteOtherMAC    = "02:00:5e:00:53:02"
+	tunnelRouteUnderTbl    = 100
+	tunnelRouteTunnelTbl   = 200
+	tunnelRouteOtherTbl    = 300
 	tunnelRouteUnderMetric = 200
 	tunnelRouteOtherMetric = 100
 	tunnelRouteUnderMark   = 1
 	ipProtocolIPv6InIPv4   = 41
 )
 
-// Init starts monitors on other threads. A locked thread isolates only the calling goroutine.
 func enterTunnelRouteNamespace(t *testing.T) bool {
 	t.Helper()
 	if os.Getenv(tunnelRouteChildEnv) == t.Name() {

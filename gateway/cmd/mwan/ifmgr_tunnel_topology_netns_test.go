@@ -21,7 +21,6 @@ type tunnelRuntimeTopology struct {
 	remote    netns.NsHandle
 }
 
-// The gateway accepts replies on the alternate link because the reverse path filter is off on that link.
 func addTunnelRuntimeAlternate(t *testing.T, topology *tunnelRuntimeTopology) {
 	t.Helper()
 	alternate := newRuntimePeer(t, topology.gateway, tunnelRuntimeAlternate, tunnelRuntimeAltLink,
@@ -91,7 +90,6 @@ func writeTunnelRuntimeSetting(t *testing.T, path, value string) {
 	}
 }
 
-// The ISP link has IPv6 disabled at both ends because the ISP provides IPv4 only.
 func buildTunnelRuntimeTopology(t *testing.T, gateway netns.NsHandle) tunnelRuntimeTopology {
 	t.Helper()
 	management := newRuntimePeer(t, gateway, "enmgmt0", "mgmt-host", []string{"192.0.2.65/29"}, []string{"192.0.2.66/29"}, "")
