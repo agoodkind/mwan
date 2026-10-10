@@ -163,8 +163,88 @@ authorization is not an implementation prerequisite.
 WireGuard is excluded from MWAN-507. Additional encryption is not required.
 The selected tunnel protocol must demonstrate the required throughput;
 unencrypted encapsulation alone does not prove line-rate performance. The
-protocol, provider endpoints, packet-size limit, and throughput target remain
-open until the service requirements are known.
+production protocol, provider endpoints, packet-size limit, and throughput
+target remain open until the service requirements are known. The first
+testbed tunnel uses 6in4 without selecting the production protocol.
+
+## Persistent tunnel and BGP simulators
+
+MWAN-507 requires two simulator prerequisites: IPv6 over the IPv4-only Astound
+connection without BGP, followed by real BGP peers for Etheric and the three
+tunnel arrangements. These are planned capabilities, not deployed acceptance.
+Use thin Linux containers (LXCs) with real kernel networking and routing
+software. Declare the guests and networks in Configs OpenTofu and configure
+them through Ansible. Preserve existing provider and downstream-client roles.
+
+Keep every scenario provisioned at the same time. Give each tunnel variant
+its own endpoint LXC, stable endpoint address, and scenario identity. Select
+a variant through MWAN configuration rather than rewriting a shared remote
+router or destroying the previous scenario. Reuse templates and packages
+across the independent instances.
+
+Selecting a scenario applies its endpoint, tunnel settings, configured routes,
+peer settings, and routing policy as one compatible configuration. Changing
+only an endpoint address is insufficient when the peer arrangement changes.
+Use the supported deployment mechanism; this requirement does not depend on
+management writes or hot reload under MWAN-440. Keep unselected scenarios
+available without making their routes eligible on MWAN.
+
+### Astound tunnel without BGP
+
+Restore the ordinary managed Astound connection under MWAN-524 first. Keep
+that simulator IPv4-only. Configure a separate remote LXC as a 6in4 endpoint,
+which receives IPv6 packets encapsulated inside IPv4 packets. Configure IPv6
+routes in both directions without BGP on either endpoint or upstream.
+
+Verify traffic between a downstream client and a remote test client. Prove
+that outer packets use Astound, ordinary IPv4 still works, packet-size errors
+are handled, and forwarding recovers after tunnel restart. Preserve this
+no-BGP scenario when adding the BGP variants. The testbed must forward the
+actual encapsulated packets across the simulated ISP; a direct bridge between
+tunnel endpoints does not prove the ISP path.
+
+### Etheric and tunnel BGP scenarios
+
+Run real BGP implementations on the simulated routers. Give each BGP scenario
+its own upstream-router LXC. Keep each VPS separate from its upstream and
+isolate each scenario's test networks. A failed upstream in one scenario must
+not disable another scenario. Provide a remote test client beyond the upstream router and
+use the existing downstream clients without an out-of-band forwarding bypass.
+
+| Scenario | Required behavior |
+| --- | --- |
+| Etheric provides native BGP. | MWAN peers directly with a dedicated Etheric router LXC without a tunnel. |
+| Tunnel scenario 1 uses configured home routes. | MWAN uses configured IPv6 routes without a local BGP session. The VPS has a configured return route home and peers with its upstream. |
+| Tunnel scenario 2 uses an upstream peer. | MWAN peers with the upstream router through the tunnel and forwarding VPS. The VPS does not terminate that BGP session. |
+| Tunnel scenario 3 uses a VPS peer. | MWAN peers with the VPS through the tunnel. The VPS runs a separate upstream BGP session. |
+
+Configure ordinary Sonic ISP transport separately from the remote tunnel and
+BGP roles. Permit compatible tunnel scenarios over Astound as well. Configure
+prefixes, local and remote ASNs, and peer addresses independently of scenario
+identity. Support repeated ASNs and a second Sonic connection without merging
+their identities. External BGP exchanges IPv6 routes; ordinary IPv4 remains
+independent. Keep test announcements inside the testbed.
+
+### Prerequisites and acceptance
+
+Prepare the Astound endpoint before MWAN-510 tunnel and MWAN-511 configured
+route acceptance. Prepare the Etheric and remote BGP routers before MWAN-509
+and MWAN-512 acceptance. Simulator provisioning must not depend on those
+feature tickets being complete. Infrastructure checks verify the remote
+routers independently; feature acceptance then uses the production MWAN path.
+
+Verify each scenario's permitted announcements, installed routes, downstream
+traffic, and return traffic. Changing the selected variant must leave the
+other simulator configurations intact. Concurrent availability of simulator
+guests is distinct from selecting multiple MWAN paths. MWAN-513 verifies
+combined path selection, withdrawal, balancing, and failure recovery after
+the individual implementations pass. Reuse MWAN-522's applicable client and
+packet-test infrastructure without making BGP a prerequisite for MWAN-305.
+
+Record exact releases, configurations, selected scenario, observed packets,
+and interruption and recovery results. A passing 6in4 test proves that
+protocol only. Another tunnel protocol requires its own implementation and
+acceptance; simulator success does not establish production throughput.
 
 ## Shared routing requirements
 
