@@ -39,7 +39,6 @@ PLATFORM_OS=""
 PLATFORM_ARCH=""
 CHILD_PIDS=()
 INTERRUPTED=0
-RUN_STATUS=0
 
 EVIDENCE_ARCHIVE="not recorded"
 EVIDENCE_SHA256="not recorded"
@@ -430,6 +429,7 @@ run_tofu() {
     local log_file="$1"
     shift
     local pid
+    local status=0
     (
         cd "${MODULE_DIR}"
         exec env -i \
@@ -442,12 +442,9 @@ run_tofu() {
     ) >"${log_file}" 2>&1 &
     pid=$!
     CHILD_PIDS+=("${pid}")
-    if wait "${pid}"; then
-        RUN_STATUS=0
-    else
-        RUN_STATUS=$?
-    fi
+    wait "${pid}" || status=$?
     CHILD_PIDS=()
+    return "${status}"
 }
 
 show_log() {
@@ -572,12 +569,13 @@ expect_rejection() {
     local token="$5"
     local log_file="${WORK_DIR}/logs/${name}.log"
     local text
+    local status=0
     if [[ "${command}" == "apply" ]]; then
-        run_tofu "${log_file}" apply -auto-approve -input=false -no-color -var "network_file=${document}"
+        run_tofu "${log_file}" apply -auto-approve -input=false -no-color -var "network_file=${document}" || status=$?
     else
-        run_tofu "${log_file}" plan -input=false -no-color -var "network_file=${document}"
+        run_tofu "${log_file}" plan -input=false -no-color -var "network_file=${document}" || status=$?
     fi
-    if [[ "${RUN_STATUS}" -eq 0 ]]; then
+    if [[ "${status}" -eq 0 ]]; then
         fail_case "${name}" "tofu ${command} accepted the document" "${log_file}"
     fi
     text="$(normalized_log "${log_file}")"
@@ -587,7 +585,7 @@ expect_rejection() {
     if [[ "${text}" != *"${token}"* ]]; then
         fail_case "${name}" "the diagnostic lacks the token ${token}" "${log_file}"
     fi
-    record_case "${name}: tofu ${command} failed with status ${RUN_STATUS}; Error: ${summary}; token ${token}"
+    record_case "${name}: tofu ${command} failed with status ${status}; Error: ${summary}; token ${token}"
 }
 
 expect_update() {
@@ -597,9 +595,10 @@ expect_update() {
     shift 3
     local log_file="${WORK_DIR}/logs/${name}.log"
     local block token summary
-    run_tofu "${log_file}" plan -input=false -no-color -var "network_file=${document}"
-    if [[ "${RUN_STATUS}" -ne 0 ]]; then
-        fail_case "${name}" "tofu plan exited with status ${RUN_STATUS}" "${log_file}"
+    local status=0
+    run_tofu "${log_file}" plan -input=false -no-color -var "network_file=${document}" || status=$?
+    if [[ "${status}" -ne 0 ]]; then
+        fail_case "${name}" "tofu plan exited with status ${status}" "${log_file}"
     fi
     if grep -q -e "must be replaced" -e "will be destroyed" "${log_file}"; then
         fail_case "${name}" "the plan replaces or destroys a resource" "${log_file}"
@@ -628,9 +627,10 @@ expect_no_changes() {
     local document="$2"
     local log_file="${WORK_DIR}/logs/${name}.log"
     local line
-    run_tofu "${log_file}" plan -input=false -no-color -var "network_file=${document}"
-    if [[ "${RUN_STATUS}" -ne 0 ]]; then
-        fail_case "${name}" "tofu plan exited with status ${RUN_STATUS}" "${log_file}"
+    local status=0
+    run_tofu "${log_file}" plan -input=false -no-color -var "network_file=${document}" || status=$?
+    if [[ "${status}" -ne 0 ]]; then
+        fail_case "${name}" "tofu plan exited with status ${status}" "${log_file}"
     fi
     if ! line="$(grep -F "No changes." "${log_file}")"; then
         fail_case "${name}" "the plan reports changes" "${log_file}"
@@ -641,8 +641,11 @@ expect_no_changes() {
 
 run_rejection_cases() {
     local documents="${WORK_DIR}/documents"
+    local case_line
     expect_rejection unknown-member plan "${documents}/unknown-member.json" "${SCHEMA_ERROR}" "unknown-member"
-    EVIDENCE_REJECTION="tofu plan failed with status ${RUN_STATUS}; Error: ${SCHEMA_ERROR}"
+    # Reuse the unknown-member rejection text for the "schema rejection:" evidence line.
+    case_line="${EVIDENCE_CASES[${#EVIDENCE_CASES[@]} - 1]#unknown-member: }"
+    EVIDENCE_REJECTION="${case_line%; token *}"
     expect_rejection invalid-enum plan "${documents}/invalid-enum.json" "${SCHEMA_ERROR}" "bogus"
     expect_rejection out-of-range plan "${documents}/out-of-range.json" "${SCHEMA_ERROR}" "256"
     expect_rejection missing-mandatory plan "${documents}/missing-mandatory.json" "${SCHEMA_ERROR}" 'Mandatory node "type"'
@@ -654,12 +657,13 @@ run_rejection_cases() {
 run_update_cases() {
     local documents="${WORK_DIR}/documents"
     local log_file="${WORK_DIR}/logs/base-apply.log"
+    local status=0
     run_tofu "${log_file}" apply -auto-approve -input=false -no-color \
-        -var "network_file=${FIXTURE_DIR}/${VALID_DOCUMENT_NAME}"
-    if [[ "${RUN_STATUS}" -ne 0 ]]; then
-        EVIDENCE_BASE_APPLY="failed with status ${RUN_STATUS}"
+        -var "network_file=${FIXTURE_DIR}/${VALID_DOCUMENT_NAME}" || status=$?
+    if [[ "${status}" -ne 0 ]]; then
+        EVIDENCE_BASE_APPLY="failed with status ${status}"
         show_log "${log_file}"
-        fail "tofu apply exited with status ${RUN_STATUS} for the base document."
+        fail "tofu apply exited with status ${status} for the base document."
     fi
     EVIDENCE_BASE_APPLY="succeeded; $(grep -F "Apply complete!" "${log_file}")"
 
@@ -694,16 +698,17 @@ run_deferral_case() {
     local document="${WORK_DIR}/documents/unknown-member.json"
     local log_file="${WORK_DIR}/logs/${name}-plan.log"
     local read_line="# ${DATA_ADDRESS} will be read during apply"
+    local status=0
     MODULE_DIR="${WORK_DIR}/deferred"
     mkdir -p "${MODULE_DIR}"
     cp "${FIXTURE_DIR}/deferred.tf" "${MODULE_DIR}/main.tf"
-    run_tofu "${WORK_DIR}/logs/${name}-init.log" init -input=false -no-color
-    if [[ "${RUN_STATUS}" -ne 0 ]]; then
-        fail_case "${name}" "tofu init exited with status ${RUN_STATUS}" "${WORK_DIR}/logs/${name}-init.log"
+    run_tofu "${WORK_DIR}/logs/${name}-init.log" init -input=false -no-color || status=$?
+    if [[ "${status}" -ne 0 ]]; then
+        fail_case "${name}" "tofu init exited with status ${status}" "${WORK_DIR}/logs/${name}-init.log"
     fi
-    run_tofu "${log_file}" plan -input=false -no-color -var "network_file=${document}"
-    if [[ "${RUN_STATUS}" -ne 0 ]]; then
-        fail_case "${name}" "tofu plan exited with status ${RUN_STATUS} for unknown content" "${log_file}"
+    run_tofu "${log_file}" plan -input=false -no-color -var "network_file=${document}" || status=$?
+    if [[ "${status}" -ne 0 ]]; then
+        fail_case "${name}" "tofu plan exited with status ${status} for unknown content" "${log_file}"
     fi
     if ! grep -q -F "${read_line}" "${log_file}"; then
         fail_case "${name}" "the plan does not defer ${DATA_ADDRESS}" "${log_file}"
@@ -720,6 +725,7 @@ main() {
     local archive="${PROVIDER_PACKAGE:-}"
     local version="${PROVIDER_VERSION:-}"
     local package_dir binary valid_document tofu_version fixture
+    local status=0
 
     trap on_exit EXIT
     trap on_interrupt INT
@@ -767,19 +773,19 @@ main() {
 
     make_documents
 
-    run_tofu "${WORK_DIR}/version.log" version
-    if [[ "${RUN_STATUS}" -ne 0 ]]; then
+    run_tofu "${WORK_DIR}/version.log" version || status=$?
+    if [[ "${status}" -ne 0 ]]; then
         show_log "${WORK_DIR}/version.log"
-        fail "tofu version exited with status ${RUN_STATUS}."
+        fail "tofu version exited with status ${status}."
     fi
     tofu_version="$(sed -n '1p' "${WORK_DIR}/version.log")"
     EVIDENCE_TOFU="${TOFU} (${tofu_version})"
 
-    run_tofu "${WORK_DIR}/init.log" init -input=false -no-color
-    if [[ "${RUN_STATUS}" -ne 0 ]]; then
-        EVIDENCE_INIT="failed with status ${RUN_STATUS}"
+    run_tofu "${WORK_DIR}/init.log" init -input=false -no-color || status=$?
+    if [[ "${status}" -ne 0 ]]; then
+        EVIDENCE_INIT="failed with status ${status}"
         show_log "${WORK_DIR}/init.log"
-        fail "tofu init exited with status ${RUN_STATUS}."
+        fail "tofu init exited with status ${status}."
     fi
     if ! grep -q -F "${PROVIDER_ADDRESS} v${version}" "${WORK_DIR}/init.log"; then
         EVIDENCE_INIT="succeeded without installing ${PROVIDER_ADDRESS} v${version}"
@@ -788,11 +794,11 @@ main() {
     fi
     EVIDENCE_INIT="succeeded; installed ${PROVIDER_ADDRESS} v${version} from the filesystem mirror"
 
-    run_tofu "${WORK_DIR}/valid.log" plan -input=false -no-color -var "network_file=${valid_document}"
-    if [[ "${RUN_STATUS}" -ne 0 ]]; then
-        EVIDENCE_VALID_PLAN="failed with status ${RUN_STATUS}"
+    run_tofu "${WORK_DIR}/valid.log" plan -input=false -no-color -var "network_file=${valid_document}" || status=$?
+    if [[ "${status}" -ne 0 ]]; then
+        EVIDENCE_VALID_PLAN="failed with status ${status}"
         show_log "${WORK_DIR}/valid.log"
-        fail "tofu plan exited with status ${RUN_STATUS} for the valid document."
+        fail "tofu plan exited with status ${status} for the valid document."
     fi
     if ! grep -q -F "mwan_network_config.gateway will be created" "${WORK_DIR}/valid.log"; then
         EVIDENCE_VALID_PLAN="succeeded without planning mwan_network_config.gateway"
