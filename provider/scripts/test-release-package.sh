@@ -13,11 +13,18 @@ BUILD_TOOLS=(cc gcc clang go cmake pkg-config)
 VALID_DOCUMENT_NAME="network-routes.json"
 MANAGEMENT_ENTRY='{ "name": "enmgmt0", "type": "iana-if-type:other" }'
 UNKNOWN_MEMBER_ENTRY='{ "name": "enmgmt0", "type": "iana-if-type:other", "unknown-member": true }'
+REJECTED_ENTRY_ERROR="Rejected provider entry"
+CONFIG_ADDRESS="mwan_network_config.gateway"
+DATA_ADDRESS="data.mwan_network.gateway"
+FIXTURE_FILES=(main.tf deferred.tf network-routes.json changed.json added.json removed.json reformatted.json invalid.json)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FIXTURE_DIR="${SCRIPT_DIR}/../internal/provider/testdata/networkplan"
 
 WORK_DIR=""
+MODULE_DIR=""
+EVIDENCE_BASE_APPLY="not run"
+EVIDENCE_CASES=()
 PLATFORM_OS=""
 PLATFORM_ARCH=""
 CHILD_PIDS=()
@@ -63,7 +70,7 @@ remove_work_dir() {
 
 print_evidence() {
     local status="$1"
-    local dependency
+    local dependency case_line
     printf '%s\n' "===== release package evidence ====="
     printf 'archive: %s\n' "${EVIDENCE_ARCHIVE}"
     printf 'archive sha256: %s\n' "${EVIDENCE_SHA256}"
@@ -83,8 +90,18 @@ print_evidence() {
     printf 'tofu init: %s\n' "${EVIDENCE_INIT}"
     printf 'valid plan: %s\n' "${EVIDENCE_VALID_PLAN}"
     printf 'schema rejection: %s\n' "${EVIDENCE_REJECTION}"
+    printf 'base apply: %s\n' "${EVIDENCE_BASE_APPLY}"
+    printf '%s\n' "cases:"
+    for case_line in "${EVIDENCE_CASES[@]+"${EVIDENCE_CASES[@]}"}"; do
+        printf '  %s\n' "${case_line}"
+    done
     printf 'exit status: %s\n' "${status}"
     printf '%s\n' "===== end of evidence ====="
+    printf '%s\n' "===== plan excerpts ====="
+    if [[ -n "${WORK_DIR}" && -f "${WORK_DIR}/excerpts.txt" ]]; then
+        sed -n 'p' "${WORK_DIR}/excerpts.txt"
+    fi
+    printf '%s\n' "===== end of plan excerpts ====="
 }
 
 on_exit() {
@@ -334,7 +351,7 @@ run_tofu() {
     shift
     local pid
     (
-        cd "${WORK_DIR}/module"
+        cd "${MODULE_DIR}"
         exec env -i \
             HOME="${WORK_DIR}/home" \
             PATH="${RUNTIME_PATH}" \
@@ -358,10 +375,271 @@ show_log() {
     sed -e 's/^/    /' "${log_file}" >&2
 }
 
+record_case() {
+    EVIDENCE_CASES+=("$1")
+}
+
+fail_case() {
+    local name="$1"
+    local reason="$2"
+    local log_file="$3"
+    record_case "${name}: FAILED; ${reason}"
+    show_log "${log_file}"
+    fail "The case ${name} failed because ${reason}."
+}
+
+# Each replacement requires exactly one match in the source file.
+replace_once() {
+    local source_file="$1"
+    local target_file="$2"
+    local old_text="$3"
+    local new_text="$4"
+    local status
+    if OLD_TEXT="${old_text}" NEW_TEXT="${new_text}" awk '
+        BEGIN { old = ENVIRON["OLD_TEXT"]; replacement = ENVIRON["NEW_TEXT"] }
+        { content = content $0 "\n" }
+        END {
+            position = index(content, old)
+            if (position == 0) { exit 3 }
+            rest = substr(content, position + length(old))
+            if (index(rest, old) != 0) { exit 4 }
+            printf "%s%s%s", substr(content, 1, position - 1), replacement, rest
+        }' "${source_file}" >"${target_file}"; then
+        return 0
+    else
+        status=$?
+    fi
+    if [[ "${status}" -eq 3 ]]; then
+        fail "${source_file} does not contain the text ${old_text}."
+    fi
+    if [[ "${status}" -eq 4 ]]; then
+        fail "${source_file} contains the text ${old_text} more than once."
+    fi
+    fail "awk exited with status ${status} while editing ${source_file}."
+}
+
+make_variant() {
+    local name="$1"
+    shift
+    local target="${WORK_DIR}/documents/${name}.json"
+    cp "${FIXTURE_DIR}/${VALID_DOCUMENT_NAME}" "${target}"
+    while [[ "$#" -ge 2 ]]; do
+        replace_once "${target}" "${target}.next" "$1" "$2"
+        mv "${target}.next" "${target}"
+        shift 2
+    done
+}
+
+make_documents() {
+    local line_break=$'\n'
+    local mapping_indent="              "
+    mkdir -p "${WORK_DIR}/documents"
+    make_variant unknown-member "${MANAGEMENT_ENTRY}" "${UNKNOWN_MEMBER_ENTRY}"
+    make_variant invalid-enum '"hash-mode": "source"' '"hash-mode": "bogus"'
+    make_variant out-of-range \
+        "\"ping-count\": 3,${line_break}            \"success-threshold\": 2," \
+        "\"ping-count\": 256,${line_break}            \"success-threshold\": 2,"
+    make_variant missing-mandatory "${MANAGEMENT_ENTRY}" '{ "name": "enmgmt0" }'
+    make_variant explicit-null '"forced-dscp": 8' '"forced-dscp": null'
+    make_variant policy-changed '"fw-mark-prio": 100,' '"fw-mark-prio": 110,'
+    make_variant policy-added \
+        "\"ietf-ip:ipv6\": {${line_break}          \"goodkind-mwan-steering:translation\": { \"mode\": \"native\" }" \
+        '"ietf-ip:ipv6": { "goodkind-mwan-steering:translation": { "mode": "ietf-nat:nptv6", "nptv6": { "internal-prefix": "2001:db8:b01::/60", "external-source": "configured", "external-prefix": "2001:db8:beef:100::/60" } }'
+    make_variant policy-removed \
+        '"mode": "ietf-nat:nptv6",' '"mode": "native"' \
+        "\"nptv6\": {${line_break}${mapping_indent}\"internal-prefix\": \"2001:db8:b01::/60\",${line_break}${mapping_indent}\"external-source\": \"configured\",${line_break}${mapping_indent}\"external-prefix\": \"2001:db8:beef:200::/60\"${line_break}            }" \
+        ''
+    make_variant rule-removed '{ "protocol": "tcp", "port": 22 },' ''
+    make_variant rule-changed '"fw-mark": 3,' '"fw-mark": 5,'
+    make_variant rule-added \
+        '{ "protocol": "tcp", "port": 22 },' \
+        '{ "protocol": "tcp", "port": 22 }, { "protocol": "udp", "port": 161 },'
+    make_variant rule-reordered \
+        "{ \"external\": \"203.0.113.2\", \"internal\": \"192.0.2.2\" },${line_break}${mapping_indent}{ \"external\": \"203.0.113.3\", \"internal\": \"192.0.2.3\" }" \
+        "{ \"external\": \"203.0.113.3\", \"internal\": \"192.0.2.3\" },${line_break}${mapping_indent}{ \"external\": \"203.0.113.2\", \"internal\": \"192.0.2.2\" }"
+    make_variant set-changed \
+        '"pinned-v4": ["198.51.100.0/24"],' \
+        '"pinned-v4": ["198.51.100.0/24", "203.0.113.128/25"],'
+}
+
+# Whitespace normalization lets diagnostic comparisons match wrapped text.
+normalized_log() {
+    local log_file="$1"
+    tr -s '[:space:]' ' ' <"${log_file}"
+}
+
+# The first blank line ends the rendered resource change.
+resource_block() {
+    local log_file="$1"
+    local address="$2"
+    awk -v marker="# ${address} " '
+        index($0, marker) != 0 { printing = 1 }
+        printing && $0 ~ /^[[:space:]]*$/ { exit }
+        printing { print }' "${log_file}"
+}
+
+add_excerpt() {
+    local name="$1"
+    local text="$2"
+    printf -- '--- %s ---\n%s\n' "${name}" "${text}" >>"${WORK_DIR}/excerpts.txt"
+}
+
+expect_rejection() {
+    local name="$1"
+    local command="$2"
+    local document="$3"
+    local summary="$4"
+    local token="$5"
+    local log_file="${WORK_DIR}/logs/${name}.log"
+    local text
+    if [[ "${command}" == "apply" ]]; then
+        run_tofu "${log_file}" apply -auto-approve -input=false -no-color -var "network_file=${document}"
+    else
+        run_tofu "${log_file}" plan -input=false -no-color -var "network_file=${document}"
+    fi
+    if [[ "${RUN_STATUS}" -eq 0 ]]; then
+        fail_case "${name}" "tofu ${command} accepted the document" "${log_file}"
+    fi
+    text="$(normalized_log "${log_file}")"
+    if [[ "${text}" != *"Error: ${summary}"* ]]; then
+        fail_case "${name}" "tofu ${command} failed without the diagnostic ${summary}" "${log_file}"
+    fi
+    if [[ "${text}" != *"${token}"* ]]; then
+        fail_case "${name}" "the diagnostic lacks the token ${token}" "${log_file}"
+    fi
+    record_case "${name}: tofu ${command} failed with status ${RUN_STATUS}; Error: ${summary}; token ${token}"
+}
+
+expect_update() {
+    local name="$1"
+    local document="$2"
+    local absent="$3"
+    shift 3
+    local log_file="${WORK_DIR}/logs/${name}.log"
+    local block token summary
+    run_tofu "${log_file}" plan -input=false -no-color -var "network_file=${document}"
+    if [[ "${RUN_STATUS}" -ne 0 ]]; then
+        fail_case "${name}" "tofu plan exited with status ${RUN_STATUS}" "${log_file}"
+    fi
+    if grep -q -e "must be replaced" -e "will be destroyed" "${log_file}"; then
+        fail_case "${name}" "the plan replaces or destroys a resource" "${log_file}"
+    fi
+    if ! summary="$(grep -F "Plan: 0 to add, " "${log_file}")" || [[ "${summary}" != *" 0 to destroy."* ]]; then
+        fail_case "${name}" "the plan summary adds or destroys a resource" "${log_file}"
+    fi
+    if ! grep -q -F "# ${CONFIG_ADDRESS} will be updated in-place" "${log_file}"; then
+        fail_case "${name}" "the plan does not update ${CONFIG_ADDRESS} in place" "${log_file}"
+    fi
+    block="$(resource_block "${log_file}" "${CONFIG_ADDRESS}")"
+    for token in "$@"; do
+        if [[ "${block}" != *"${token}"* ]]; then
+            fail_case "${name}" "the rendered change lacks ${token}" "${log_file}"
+        fi
+    done
+    if [[ -n "${absent}" && "${block}" == *"${absent}"* ]]; then
+        fail_case "${name}" "the rendered change contains ${absent}" "${log_file}"
+    fi
+    add_excerpt "${name}" "${block}"
+    record_case "${name}: update in place; ${summary}; tokens $*"
+}
+
+expect_no_changes() {
+    local name="$1"
+    local document="$2"
+    local log_file="${WORK_DIR}/logs/${name}.log"
+    local line
+    run_tofu "${log_file}" plan -input=false -no-color -var "network_file=${document}"
+    if [[ "${RUN_STATUS}" -ne 0 ]]; then
+        fail_case "${name}" "tofu plan exited with status ${RUN_STATUS}" "${log_file}"
+    fi
+    if ! line="$(grep -F "No changes." "${log_file}")"; then
+        fail_case "${name}" "the plan reports changes" "${log_file}"
+    fi
+    add_excerpt "${name}" "${line}"
+    record_case "${name}: ${line}"
+}
+
+run_rejection_cases() {
+    local documents="${WORK_DIR}/documents"
+    expect_rejection unknown-member plan "${documents}/unknown-member.json" "${SCHEMA_ERROR}" "unknown-member"
+    EVIDENCE_REJECTION="tofu plan failed with status ${RUN_STATUS}; Error: ${SCHEMA_ERROR}"
+    expect_rejection invalid-enum plan "${documents}/invalid-enum.json" "${SCHEMA_ERROR}" "bogus"
+    expect_rejection out-of-range plan "${documents}/out-of-range.json" "${SCHEMA_ERROR}" "256"
+    expect_rejection missing-mandatory plan "${documents}/missing-mandatory.json" "${SCHEMA_ERROR}" 'Mandatory node "type"'
+    expect_rejection explicit-null plan "${documents}/explicit-null.json" "${SCHEMA_ERROR}" "uint8 value"
+    expect_rejection semantic-host-bits plan "${FIXTURE_DIR}/invalid.json" "${REJECTED_ENTRY_ERROR}" \
+        "must be a canonical same-family network prefix"
+}
+
+run_update_cases() {
+    local documents="${WORK_DIR}/documents"
+    local log_file="${WORK_DIR}/logs/base-apply.log"
+    run_tofu "${log_file}" apply -auto-approve -input=false -no-color \
+        -var "network_file=${FIXTURE_DIR}/${VALID_DOCUMENT_NAME}"
+    if [[ "${RUN_STATUS}" -ne 0 ]]; then
+        EVIDENCE_BASE_APPLY="failed with status ${RUN_STATUS}"
+        show_log "${log_file}"
+        fail "tofu apply exited with status ${RUN_STATUS} for the base document."
+    fi
+    EVIDENCE_BASE_APPLY="succeeded; $(grep -F "Apply complete!" "${log_file}")"
+
+    expect_update route-changed "${FIXTURE_DIR}/changed.json" "" \
+        '~ "enwebpass0|ipv4|198.18.0.0/24"' '"203.0.113.1" -> "203.0.113.9"'
+    expect_update route-added "${FIXTURE_DIR}/added.json" "" '+ "enwebpass0|ipv4|198.18.3.0/24"'
+    expect_update policy-changed "${documents}/policy-changed.json" "" '~ "att|ipv4|fwmark"' '100 -> 110'
+    expect_update policy-added "${documents}/policy-added.json" "" \
+        '+ "att|ipv6|source"' '"2001:db8:beef:100::/60"'
+    expect_update rule-changed "${documents}/rule-changed.json" "" \
+        '~ "inet|mangle|prerouting|provider-mark|enmbrains0"' '3 -> 5'
+    expect_update rule-added "${documents}/rule-added.json" "" \
+        '+ "inet|filter|input|management-service|udp,161,ipv4"' '~ rule_order'
+    expect_update rule-reordered "${documents}/rule-reordered.json" "firewall_rules" \
+        '~ "ip|nat|prerouting"' '~ rule_order' \
+        '- "ip|nat|prerouting|static-mapping-dnat|enwebpass0,203.0.113.2"'
+    expect_update route-removed "${FIXTURE_DIR}/removed.json" "" \
+        '- "enwebpass0|ipv4|198.18.2.0/24"' '} -> null'
+    expect_update policy-removed "${documents}/policy-removed.json" "" \
+        '- "webpass|ipv6|source"' '} -> null'
+    expect_update rule-removed "${documents}/rule-removed.json" "" \
+        '- "inet|filter|input|management-service|tcp,22,ipv4"' \
+        '- "inet|filter|input|management-service|tcp,22,ipv6"' '~ rule_order' '} -> null'
+    expect_update set-changed "${documents}/set-changed.json" "" \
+        '~ "inet|mangle|att_pinned_v4"' '+ "203.0.113.128/25"'
+    expect_no_changes formatting-only "${FIXTURE_DIR}/reformatted.json"
+}
+
+# Validation waits until apply when document content is unknown during plan.
+run_deferral_case() {
+    local name="deferred-content"
+    local document="${WORK_DIR}/documents/unknown-member.json"
+    local log_file="${WORK_DIR}/logs/${name}-plan.log"
+    local read_line="# ${DATA_ADDRESS} will be read during apply"
+    MODULE_DIR="${WORK_DIR}/deferred"
+    mkdir -p "${MODULE_DIR}"
+    cp "${FIXTURE_DIR}/deferred.tf" "${MODULE_DIR}/main.tf"
+    run_tofu "${WORK_DIR}/logs/${name}-init.log" init -input=false -no-color
+    if [[ "${RUN_STATUS}" -ne 0 ]]; then
+        fail_case "${name}" "tofu init exited with status ${RUN_STATUS}" "${WORK_DIR}/logs/${name}-init.log"
+    fi
+    run_tofu "${log_file}" plan -input=false -no-color -var "network_file=${document}"
+    if [[ "${RUN_STATUS}" -ne 0 ]]; then
+        fail_case "${name}" "tofu plan exited with status ${RUN_STATUS} for unknown content" "${log_file}"
+    fi
+    if ! grep -q -F "${read_line}" "${log_file}"; then
+        fail_case "${name}" "the plan does not defer ${DATA_ADDRESS}" "${log_file}"
+    fi
+    if grep -q -F "${SCHEMA_ERROR}" "${log_file}"; then
+        fail_case "${name}" "the plan reports ${SCHEMA_ERROR} for unknown content" "${log_file}"
+    fi
+    add_excerpt "${name}" "$(resource_block "${log_file}" "${DATA_ADDRESS}")"
+    record_case "${name}: tofu plan succeeded; ${read_line}"
+    expect_rejection "${name}-apply" apply "${document}" "${SCHEMA_ERROR}" "unknown-member"
+}
+
 main() {
     local archive="${PROVIDER_PACKAGE:-}"
     local version="${PROVIDER_VERSION:-}"
-    local package_dir binary valid_document invalid_document tofu_version
+    local package_dir binary valid_document tofu_version fixture
 
     trap on_exit EXIT
     trap on_interrupt INT
@@ -386,12 +664,15 @@ main() {
     verify_checksums "${archive}" "${EVIDENCE_SHA256}"
 
     valid_document="${FIXTURE_DIR}/${VALID_DOCUMENT_NAME}"
-    if [[ ! -f "${FIXTURE_DIR}/main.tf" || ! -f "${valid_document}" ]]; then
-        fail "The fixture directory ${FIXTURE_DIR} does not contain both main.tf and ${VALID_DOCUMENT_NAME}."
-    fi
+    for fixture in "${FIXTURE_FILES[@]}"; do
+        if [[ ! -f "${FIXTURE_DIR}/${fixture}" ]]; then
+            fail "The fixture directory ${FIXTURE_DIR} does not contain ${fixture}."
+        fi
+    done
 
     WORK_DIR="$(mktemp -d)"
-    mkdir -p "${WORK_DIR}/home" "${WORK_DIR}/tmp" "${WORK_DIR}/module"
+    MODULE_DIR="${WORK_DIR}/module"
+    mkdir -p "${WORK_DIR}/home" "${WORK_DIR}/tmp" "${WORK_DIR}/logs" "${MODULE_DIR}"
     package_dir="${WORK_DIR}/mirror/${PROVIDER_ADDRESS}/${version}/${PLATFORM_OS}_${PLATFORM_ARCH}"
     extract_archive "${archive}" "${package_dir}" "${version}"
     binary="${package_dir}/${PROVIDER_BINARY}_v${version}"
@@ -404,11 +685,7 @@ main() {
         "${WORK_DIR}/mirror" "${PROVIDER_ADDRESS}" >"${WORK_DIR}/tofurc"
     cp "${FIXTURE_DIR}/main.tf" "${WORK_DIR}/module/main.tf"
 
-    invalid_document="${WORK_DIR}/unknown-member.json"
-    sed "s/${MANAGEMENT_ENTRY}/${UNKNOWN_MEMBER_ENTRY}/" "${valid_document}" >"${invalid_document}"
-    if ! grep -q -F '"unknown-member": true' "${invalid_document}"; then
-        fail "The substitution of ${MANAGEMENT_ENTRY} in ${VALID_DOCUMENT_NAME} did not produce the unknown member."
-    fi
+    make_documents
 
     run_tofu "${WORK_DIR}/version.log" version
     if [[ "${RUN_STATUS}" -ne 0 ]]; then
@@ -444,18 +721,9 @@ main() {
     fi
     EVIDENCE_VALID_PLAN="succeeded; $(grep -F "Plan:" "${WORK_DIR}/valid.log")"
 
-    run_tofu "${WORK_DIR}/invalid.log" plan -input=false -no-color -var "network_file=${invalid_document}"
-    if [[ "${RUN_STATUS}" -eq 0 ]]; then
-        EVIDENCE_REJECTION="missing; tofu plan accepted the unknown member"
-        show_log "${WORK_DIR}/invalid.log"
-        fail "tofu plan accepted a document with an unknown member."
-    fi
-    if ! grep -q -F "${SCHEMA_ERROR}" "${WORK_DIR}/invalid.log"; then
-        EVIDENCE_REJECTION="tofu plan failed with status ${RUN_STATUS} without the schema diagnostic"
-        show_log "${WORK_DIR}/invalid.log"
-        fail "tofu plan failed without the diagnostic ${SCHEMA_ERROR}."
-    fi
-    EVIDENCE_REJECTION="tofu plan failed with status ${RUN_STATUS}; $(grep -F "${SCHEMA_ERROR}" "${WORK_DIR}/invalid.log" | sed -n '1p')"
+    run_rejection_cases
+    run_update_cases
+    run_deferral_case
 }
 
 main "$@"
