@@ -20,7 +20,7 @@ const (
 	kernelDefaultIPv6Metric = 1024
 )
 
-func addDummyLink(t *testing.T, name string, address string) netlink.Link {
+func addDummyLink(t *testing.T, name string, addresses ...string) netlink.Link {
 	t.Helper()
 	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: name}}); err != nil {
 		t.Fatalf("add link %s: %v", name, err)
@@ -29,15 +29,19 @@ func addDummyLink(t *testing.T, name string, address string) netlink.Link {
 	if err != nil {
 		t.Fatalf("find link %s: %v", name, err)
 	}
-	parsed, err := netlink.ParseAddr(address)
-	if err != nil {
-		t.Fatalf("parse address %s: %v", address, err)
-	}
-	// A tentative address cannot be a TCP source address. Duplicate address
-	// detection maintains a new address's tentative state.
-	parsed.Flags = unix.IFA_F_NODAD
-	if err := netlink.AddrAdd(link, parsed); err != nil {
-		t.Fatalf("add address %s to %s: %v", address, name, err)
+	for _, address := range addresses {
+		parsed, err := netlink.ParseAddr(address)
+		if err != nil {
+			t.Fatalf("parse address %s: %v", address, err)
+		}
+		if parsed.IP.To4() == nil {
+			// A tentative address cannot be a TCP source address. Duplicate address
+			// detection maintains a new address's tentative state.
+			parsed.Flags = unix.IFA_F_NODAD
+		}
+		if err := netlink.AddrAdd(link, parsed); err != nil {
+			t.Fatalf("add address %s to %s: %v", address, name, err)
+		}
 	}
 	if err := netlink.LinkSetUp(link); err != nil {
 		t.Fatalf("set link %s up: %v", name, err)
@@ -48,13 +52,19 @@ func addDummyLink(t *testing.T, name string, address string) netlink.Link {
 // The kernel reports the default route without a destination.
 func kernelRoute(t *testing.T, prefix netip.Prefix, link netlink.Link) (netlink.Route, bool) {
 	t.Helper()
+	family := unix.AF_INET6
+	defaultDestination := "::/0"
+	if prefix.Addr().Is4() {
+		family = unix.AF_INET
+		defaultDestination = "0.0.0.0/0"
+	}
 	filter := &netlink.Route{Table: sessionRouteTable}
-	routes, err := netlink.RouteListFiltered(unix.AF_INET6, filter, netlink.RT_FILTER_TABLE)
+	routes, err := netlink.RouteListFiltered(family, filter, netlink.RT_FILTER_TABLE)
 	if err != nil {
 		t.Fatalf("list table %d routes: %v", sessionRouteTable, err)
 	}
 	for _, route := range routes {
-		destination := "::/0"
+		destination := defaultDestination
 		if route.Dst != nil {
 			destination = route.Dst.String()
 		}

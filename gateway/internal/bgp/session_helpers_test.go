@@ -51,6 +51,16 @@ func unusedPort(t *testing.T, address netip.Addr) uint16 {
 	return port
 }
 
+type testPeerOptions struct {
+	asn          uint32
+	routerID     string
+	listen       netip.Addr
+	neighbor     netip.Addr
+	neighborASN  uint32
+	neighborPort uint16
+	families     []apipb.Family_Afi
+}
+
 func startTestPeer(
 	t *testing.T,
 	asn uint32,
@@ -60,20 +70,33 @@ func startTestPeer(
 	neighborASN uint32,
 ) *testPeer {
 	t.Helper()
+	return startTestPeerWithOptions(t, testPeerOptions{
+		asn:          asn,
+		routerID:     routerID,
+		listen:       listen,
+		neighbor:     neighbor,
+		neighborASN:  neighborASN,
+		neighborPort: 0,
+		families:     []apipb.Family_Afi{apipb.Family_AFI_IP6},
+	})
+}
+
+func startTestPeerWithOptions(t *testing.T, options testPeerOptions) *testPeer {
+	t.Helper()
 	// The test retries each failed start on a new port because another process
 	// can bind the reserved port before GoBGP binds that port.
 	var bgpServer *server.BgpServer
 	var port uint16
 	var startErr error
 	for range peerStartAttempts {
-		port = unusedPort(t, listen)
+		port = unusedPort(t, options.listen)
 		bgpServer = server.NewBgpServer()
 		go bgpServer.Serve()
 		global := &apipb.Global{
-			Asn:             asn,
-			RouterId:        routerID,
+			Asn:             options.asn,
+			RouterId:        options.routerID,
 			ListenPort:      int32(port),
-			ListenAddresses: []string{listen.String()},
+			ListenAddresses: []string{options.listen.String()},
 		}
 		startErr = bgpServer.StartBgp(t.Context(), &apipb.StartBgpRequest{Global: global})
 		if startErr == nil {
@@ -85,22 +108,66 @@ func startTestPeer(
 		t.Fatalf("start test peer after %d attempts: %v", peerStartAttempts, startErr)
 	}
 	t.Cleanup(bgpServer.Stop)
+	transport := &apipb.Transport{PassiveMode: true}
+	if options.neighborPort != 0 {
+		transport = &apipb.Transport{
+			LocalAddress: options.listen.String(),
+			RemotePort:   uint32(options.neighborPort),
+		}
+	}
+	afiSafis := make([]*apipb.AfiSafi, 0, len(options.families))
+	for _, family := range options.families {
+		afiSafis = append(afiSafis, &apipb.AfiSafi{Config: &apipb.AfiSafiConfig{
+			Family:  &apipb.Family{Afi: family, Safi: apipb.Family_SAFI_UNICAST},
+			Enabled: true,
+		}})
+	}
 	peer := &apipb.Peer{
-		Conf:      &apipb.PeerConf{NeighborAddress: neighbor.String(), PeerAsn: neighborASN},
-		Transport: &apipb.Transport{PassiveMode: true},
+		Conf: &apipb.PeerConf{
+			NeighborAddress: options.neighbor.String(),
+			PeerAsn:         options.neighborASN,
+		},
+		Transport: transport,
 		Timers: &apipb.Timers{Config: &apipb.TimersConfig{
 			KeepaliveInterval: uint64(keepaliveSeconds),
 			HoldTime:          uint64(holdSeconds),
 		}},
-		AfiSafis: []*apipb.AfiSafi{{Config: &apipb.AfiSafiConfig{
-			Family:  &apipb.Family{Afi: apipb.Family_AFI_IP6, Safi: apipb.Family_SAFI_UNICAST},
-			Enabled: true,
-		}}},
+		AfiSafis: afiSafis,
 	}
 	if err := bgpServer.AddPeer(t.Context(), &apipb.AddPeerRequest{Peer: peer}); err != nil {
 		t.Fatalf("add the session as a test peer neighbor: %v", err)
 	}
-	return &testPeer{server: bgpServer, port: port, neighbor: neighbor}
+	return &testPeer{server: bgpServer, port: port, neighbor: options.neighbor}
+}
+
+func prefixRouteFamily(prefix netip.Prefix) bgppkt.Family {
+	if prefix.Addr().Is4() {
+		return bgppkt.RF_IPv4_UC
+	}
+	return bgppkt.RF_IPv6_UC
+}
+
+func nextHopAttribute(
+	t *testing.T,
+	nlri bgppkt.NLRI,
+	prefix netip.Prefix,
+	nextHop netip.Addr,
+) bgppkt.PathAttributeInterface {
+	t.Helper()
+	if prefix.Addr().Is4() {
+		attribute, err := bgppkt.NewPathAttributeNextHop(nextHop)
+		if err != nil {
+			t.Fatalf("build IPv4 NEXT_HOP path attribute: %s: %v", prefix, err)
+		}
+		return attribute
+	}
+	mpReach, err := bgppkt.NewPathAttributeMpReachNLRI(
+		bgppkt.RF_IPv6_UC, []bgppkt.PathNLRI{{NLRI: nlri}}, nextHop,
+	)
+	if err != nil {
+		t.Fatalf("build MP_REACH_NLRI for %s: %v", prefix, err)
+	}
+	return mpReach
 }
 
 func (p *testPeer) announce(t *testing.T, prefix netip.Prefix, nextHop netip.Addr) {
@@ -116,18 +183,12 @@ func (p *testPeer) announceWithMED(t *testing.T, prefix netip.Prefix, nextHop ne
 	if err != nil {
 		t.Fatalf("build NLRI for %s: %v", prefix, err)
 	}
-	mpReach, err := bgppkt.NewPathAttributeMpReachNLRI(
-		bgppkt.RF_IPv6_UC, []bgppkt.PathNLRI{{NLRI: nlri}}, nextHop,
-	)
-	if err != nil {
-		t.Fatalf("build MP_REACH_NLRI for %s: %v", prefix, err)
-	}
 	path := &apiutil.Path{
-		Family: bgppkt.RF_IPv6_UC,
+		Family: prefixRouteFamily(prefix),
 		Nlri:   nlri,
 		Attrs: []bgppkt.PathAttributeInterface{
 			bgppkt.NewPathAttributeOrigin(bgppkt.BGP_ORIGIN_ATTR_TYPE_IGP),
-			mpReach,
+			nextHopAttribute(t, nlri, prefix, nextHop),
 			bgppkt.NewPathAttributeMultiExitDisc(med),
 		},
 	}
@@ -142,7 +203,7 @@ func (p *testPeer) withdraw(t *testing.T, prefix netip.Prefix) {
 	if err != nil {
 		t.Fatalf("build NLRI for %s: %v", prefix, err)
 	}
-	path := &apiutil.Path{Family: bgppkt.RF_IPv6_UC, Nlri: nlri, Withdrawal: true}
+	path := &apiutil.Path{Family: prefixRouteFamily(prefix), Nlri: nlri, Withdrawal: true}
 	request := apiutil.DeletePathRequest{Paths: []*apiutil.Path{path}}
 	if err := p.server.DeletePath(request); err != nil {
 		t.Fatalf("test peer withdraw %s: %v", prefix, err)

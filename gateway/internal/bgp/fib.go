@@ -91,7 +91,10 @@ type FIB struct {
 
 const (
 	listedDefaultRoute = "default"
+	ipv4DefaultPrefix  = "0.0.0.0/0"
 	ipv6DefaultPrefix  = "::/0"
+	ipv4RouteFamily    = "inet"
+	ipv6RouteFamily    = "inet6"
 )
 
 type desiredRoute struct {
@@ -164,37 +167,92 @@ func (f *FIB) SweepStale(ctx context.Context) error {
 
 	var sweepErr error
 	for _, tableID := range f.cfg.Tables {
-		routes, err := f.writer.ListProtocolRoutes(
-			ctx,
-			f.log,
-			"inet6",
-			tableID,
-			unix.RTPROT_BGP,
-		)
-		if err != nil {
-			sweepErr = errors.Join(sweepErr, fmt.Errorf("list table %d BGP routes: %w", tableID, err))
-			continue
-		}
-
-		for _, route := range routes {
-			// Another installer can write BGP routes for a different device
-			// in the same table.
-			if route.Dev != f.cfg.InternalIface {
-				continue
-			}
-			// The route listing reports the IPv6 default route as "default".
-			if route.Dest == listedDefaultRoute {
-				route.Dest = ipv6DefaultPrefix
-			}
-			if _, ok := f.desired[route.Dest]; ok {
-				continue
-			}
-			if err := f.deleteRoute(ctx, "", tableID, route); err != nil {
+		for _, family := range [...]string{ipv4RouteFamily, ipv6RouteFamily} {
+			if err := f.sweepFamily(ctx, tableID, family); err != nil {
 				sweepErr = errors.Join(sweepErr, err)
 			}
 		}
 	}
 	return sweepErr
+}
+
+func (f *FIB) sweepFamily(ctx context.Context, tableID int, family string) error {
+	routes, err := f.writer.ListProtocolRoutes(
+		ctx,
+		f.log,
+		family,
+		tableID,
+		unix.RTPROT_BGP,
+	)
+	if err != nil {
+		f.log.ErrorContext(ctx, "list BGP table routes", "err", err, "table_id", tableID)
+		return fmt.Errorf("list table %d BGP routes: %w", tableID, err)
+	}
+
+	var sweepErr error
+	for _, route := range routes {
+		// Another installer can write BGP routes for a different device
+		// in the same table.
+		if route.Dev != f.cfg.InternalIface {
+			continue
+		}
+		// Kernel route listings use default for each address family's default route
+		if route.Dest == listedDefaultRoute {
+			route.Dest = defaultPrefix(family)
+		}
+		if _, ok := f.desired[route.Dest]; ok {
+			continue
+		}
+		if err := f.deleteRoute(ctx, "", tableID, family, route); err != nil {
+			sweepErr = errors.Join(sweepErr, err)
+		}
+	}
+	return sweepErr
+}
+
+func (f *FIB) coversConnected(ctx context.Context, prefix netip.Prefix) (bool, error) {
+	masked, err := pathPrefix(prefix)
+	if err != nil {
+		return false, err
+	}
+	routes, err := f.writer.ListProtocolRoutes(
+		ctx,
+		f.log,
+		prefixFamily(masked),
+		unix.RT_TABLE_MAIN,
+		unix.RTPROT_KERNEL,
+	)
+	if err != nil {
+		f.log.ErrorContext(ctx, "list main table kernel routes failed", "err", err, "prefix", masked)
+		return false, fmt.Errorf("list main table kernel routes: %w", err)
+	}
+	for _, route := range routes {
+		if route.Dev != f.cfg.InternalIface {
+			continue
+		}
+		connected, err := netip.ParsePrefix(route.Dest)
+		if err != nil {
+			continue
+		}
+		if masked.Bits() <= connected.Bits() && masked.Contains(connected.Addr()) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func prefixFamily(prefix netip.Prefix) string {
+	if prefix.Addr().Is4() {
+		return ipv4RouteFamily
+	}
+	return ipv6RouteFamily
+}
+
+func defaultPrefix(family string) string {
+	if family == ipv4RouteFamily {
+		return ipv4DefaultPrefix
+	}
+	return ipv6DefaultPrefix
 }
 
 func (f *FIB) withdraw(ctx context.Context, peer string, prefix netip.Prefix) error {
@@ -263,8 +321,8 @@ func (f *FIB) WithdrawPeer(ctx context.Context, peer string) error {
 }
 
 func pathPrefix(prefix netip.Prefix) (netip.Prefix, error) {
-	if !prefix.IsValid() || !prefix.Addr().Is6() {
-		return netip.Prefix{}, fmt.Errorf("BGP path prefix %s is not a valid IPv6 prefix", prefix)
+	if !prefix.IsValid() {
+		return netip.Prefix{}, fmt.Errorf("invalid BGP path prefix: %s", prefix)
 	}
 	return prefix.Masked(), nil
 }
@@ -300,7 +358,7 @@ func (f *FIB) deletePrefix(ctx context.Context, peer string, prefix netip.Prefix
 			Type:     0,
 			NextHops: nil,
 		}
-		if err := f.deleteRoute(ctx, peer, tableID, current); err != nil {
+		if err := f.deleteRoute(ctx, peer, tableID, route.Family, current); err != nil {
 			deleteErr = errors.Join(deleteErr, err)
 		}
 	}
@@ -311,10 +369,11 @@ func (f *FIB) deleteRoute(
 	ctx context.Context,
 	peer string,
 	tableID int,
+	family string,
 	current netif.CurrentRoute,
 ) error {
 	route := netif.RouteSpec{
-		Family:   "inet6",
+		Family:   family,
 		Dest:     current.Dest,
 		Via:      current.Via,
 		Dev:      current.Dev,
@@ -335,7 +394,7 @@ func (f *FIB) route(prefix netip.Prefix, nextHop netip.Addr, tableID int) netif.
 		via = nextHop.String()
 	}
 	return netif.RouteSpec{
-		Family:   "inet6",
+		Family:   prefixFamily(prefix),
 		Dest:     prefix.String(),
 		Via:      via,
 		Dev:      f.cfg.InternalIface,
