@@ -82,6 +82,7 @@ const (
 	gateModeCheckRelease    deployGateMode = "check-release"
 	gateModeCheckFirewall   deployGateMode = "check-firewall"
 	gateModeInspectFirewall deployGateMode = "inspect-firewall"
+	gateModeCheckFailover   deployGateMode = "check-failover"
 )
 
 // traceIDPattern limits trace IDs written to verdict files and systemd unit names.
@@ -226,29 +227,10 @@ func runDeploy(args []string) int {
 		return runFirewallCheck(rest)
 	case gateModeInspectFirewall:
 		return runFirewallInspect(rest)
+	case gateModeCheckFailover:
+		return runFailoverCheck(rest)
 	case gateModeWaitReboot:
-		if len(rest) != 3 {
-			printDeployGateUsage()
-			return exitDeployGateUsage
-		}
-		vmid, err := parseVMID(rest[0])
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
-			return exitDeployGateUsage
-		}
-		budget, err := parseBudgetSeconds(rest[2])
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
-			return exitDeployGateUsage
-		}
-		if !bootIDPattern.MatchString(rest[1]) {
-			fmt.Fprintf(os.Stderr,
-				"mwan deploy: old_boot_id %q is not a boot_id UUID\n", rest[1])
-			return exitDeployGateUsage
-		}
-		return onGatewayHost(deps, func(hostDeps deployGateDeps) int {
-			return waitReboot(ctx, hostDeps, vmid, rest[1], budget)
-		})
+		return runWaitReboot(ctx, deps, rest)
 	case gateModeWaitEgress:
 		budget, families, rounds, ok := parseWaitEgressArgs(rest)
 		if !ok {
@@ -267,6 +249,31 @@ func runDeploy(args []string) int {
 		printDeployGateUsage()
 		return exitDeployGateUsage
 	}
+}
+
+func runWaitReboot(ctx context.Context, deps deployGateDeps, rest []string) int {
+	if len(rest) != 3 {
+		printDeployGateUsage()
+		return exitDeployGateUsage
+	}
+	vmid, err := parseVMID(rest[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
+		return exitDeployGateUsage
+	}
+	budget, err := parseBudgetSeconds(rest[2])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
+		return exitDeployGateUsage
+	}
+	if !bootIDPattern.MatchString(rest[1]) {
+		fmt.Fprintf(os.Stderr,
+			"mwan deploy: old_boot_id %q is not a boot_id UUID\n", rest[1])
+		return exitDeployGateUsage
+	}
+	return onGatewayHost(deps, func(hostDeps deployGateDeps) int {
+		return waitReboot(ctx, hostDeps, vmid, rest[1], budget)
+	})
 }
 
 // waitDeployInputs carries the wait-deploy arguments as one value, because
@@ -494,6 +501,7 @@ func printDeployGateUsage() {
 			" | check-networkd <network_json> <schema_dir> <unit_dir>"+
 			" | check-release <connection_id> <previous_owner> [--config <config_path>]"+
 			" | check-firewall <network_json> <schema_dir>"+
+			" | check-failover <config.toml>"+
 			" | inspect-firewall <network_json> <schema_dir>"+
 			" | wait-reboot <vmid> <old_boot_id> <seconds>"+
 			" | wait-egress <seconds> <families> <consecutive_rounds>"+

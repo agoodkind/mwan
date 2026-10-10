@@ -2,12 +2,14 @@ package watchdog
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"goodkind.io/mwan/internal/alert"
 	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/failovercheck"
 	"goodkind.io/mwan/internal/logging"
 	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/ops"
@@ -17,11 +19,9 @@ import (
 
 // triggerFailover dispatches to the BGP route-control failover path.
 func (w *watchdog) triggerFailover(ctx context.Context, cfg *config.Config, reason string) error {
-	if cfg.Failover.LXCID == "" {
-		return fmt.Errorf("failover config has no lxc_id; cannot failover")
-	}
-	if cfg.Failover.AgentTCPAddr == "" {
-		return fmt.Errorf("config has no [failover] agent_tcp_addr; cannot failover")
+	preconditionErr := errors.Join(failovercheck.Check(cfg)...)
+	if preconditionErr != nil {
+		return preconditionErr
 	}
 	w.log.InfoContext(ctx, "FAILOVER: dispatching to BGP route control path", "reason", reason)
 	return w.triggerBGPFailover(ctx, cfg, reason)

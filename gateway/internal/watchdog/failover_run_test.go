@@ -140,3 +140,24 @@ func TestFailoverRunRejectsMissingFailoverAgentAddress(t *testing.T) {
 		t.Fatalf("error %q does not mention agent_tcp_addr", err)
 	}
 }
+
+func TestFailoverRunRejectsEqualGuestIdentifiers(t *testing.T) {
+	primary, primaryAddr := startAgent(t)
+	failover, failoverAddr := startAgent(t)
+	cfg := failoverConfig(t, primaryAddr, failoverAddr)
+	cfg.Failover.LXCID = cfg.MwanVMID
+
+	err := watchdog.FailoverRun(cfg)
+	if err == nil {
+		t.Fatal("FailoverRun succeeded with [failover] lxc_id equal to mwan_vmid")
+	}
+	if !strings.Contains(err.Error(), "must differ") {
+		t.Fatalf("error %q does not mention must differ", err)
+	}
+	if primary.received("AnnounceRoutes") {
+		t.Error("primary agent received AnnounceRoutes")
+	}
+	if failover.received("AnnounceRoutes") {
+		t.Error("failover agent received AnnounceRoutes")
+	}
+}
