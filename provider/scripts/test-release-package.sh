@@ -10,6 +10,16 @@ SCHEMA_ERROR="Invalid network schema"
 CHECKSUMS_NAME="checksums.txt"
 RUNTIME_PATH="/usr/bin:/bin:/usr/sbin:/sbin"
 BUILD_TOOLS=(cc gcc clang go cmake pkg-config)
+NATIVE_LIBRARIES=(libyang libpcre2 libxxhash)
+DARWIN_DEPENDENCIES=(
+    /usr/lib/libresolv.9.dylib
+    /usr/lib/libSystem.B.dylib
+    /System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation
+    /System/Library/Frameworks/Security.framework/Versions/A/Security
+)
+LINUX_VIRTUAL_DEPENDENCIES=(linux-vdso.so.1 linux-gate.so.1)
+LINUX_LIBRARIES=(libc.so.6 libm.so.6)
+DEPENDENCY_LISTING=""
 VALID_DOCUMENT_NAME="network-routes.json"
 MANAGEMENT_ENTRY='{ "name": "enmgmt0", "type": "iana-if-type:other" }'
 UNKNOWN_MEMBER_ENTRY='{ "name": "enmgmt0", "type": "iana-if-type:other", "unknown-member": true }'
@@ -36,6 +46,7 @@ EVIDENCE_SHA256="not recorded"
 EVIDENCE_CHECKSUMS="not recorded"
 EVIDENCE_VERSION="not recorded"
 EVIDENCE_COMMIT="not recorded"
+EVIDENCE_EXPECTED_COMMIT="not recorded"
 EVIDENCE_PLATFORM="not recorded"
 EVIDENCE_TOFU="not recorded"
 EVIDENCE_LINKAGE="not recorded"
@@ -78,6 +89,7 @@ print_evidence() {
     printf 'provider address: %s\n' "${PROVIDER_ADDRESS}"
     printf 'provider mirror version: %s\n' "${EVIDENCE_VERSION}"
     printf 'provider stamped commit: %s\n' "${EVIDENCE_COMMIT}"
+    printf 'expected commit: %s\n' "${EVIDENCE_EXPECTED_COMMIT}"
     printf 'platform: %s\n' "${EVIDENCE_PLATFORM}"
     printf 'tofu: %s\n' "${EVIDENCE_TOFU}"
     printf 'linkage: %s\n' "${EVIDENCE_LINKAGE}"
@@ -190,8 +202,12 @@ verify_checksums() {
     checksums_file="$(dirname "${archive}")/${CHECKSUMS_NAME}"
     archive_name="$(basename "${archive}")"
     if [[ ! -f "${checksums_file}" ]]; then
-        EVIDENCE_CHECKSUMS="absent beside the archive"
-        log "The script skips checksum comparison because the archive directory lacks ${CHECKSUMS_NAME}."
+        if [[ "${ALLOW_MISSING_CHECKSUMS:-}" != "1" ]]; then
+            EVIDENCE_CHECKSUMS="absent beside the archive"
+            fail "The script requires ${CHECKSUMS_NAME} beside the archive unless ALLOW_MISSING_CHECKSUMS=1."
+        fi
+        EVIDENCE_CHECKSUMS="absent beside the archive; the caller allowed the absence with ALLOW_MISSING_CHECKSUMS=1"
+        log "The script skips comparison with missing ${CHECKSUMS_NAME} under ALLOW_MISSING_CHECKSUMS=1."
         return 0
     fi
     expected="$(awk -v name="${archive_name}" '{ file = $NF; sub(/^\*/, "", file); if (file == name) { print $1 } }' "${checksums_file}")"
@@ -228,33 +244,38 @@ extract_archive() {
     fi
 }
 
+# Run listing functions outside command substitution so fail exits the script.
 list_darwin_dependencies() {
     local binary="$1"
     local probe output
     if probe="$(xcode-select -p 2>&1)"; then
-        output="$(otool -L "${binary}")"
-        printf '%s\n' "${output}" | sed -n '2,$p' | sed -e 's/^[[:space:]]*//' -e 's/ (compatibility.*$//'
+        if ! output="$(otool -L "${binary}" 2>&1)"; then
+            fail "otool -L failed to inspect ${binary} with output ${output}."
+        fi
+        DEPENDENCY_LISTING="$(printf '%s\n' "${output}" | sed -n '2,$p' | sed -e 's/^[[:space:]]*//' -e 's/ (compatibility.*$//')"
         return 0
     fi
     log "The script uses dyld_info because xcode-select failed with output ${probe}."
-    output="$(dyld_info -dependents "${binary}")"
-    printf '%s\n' "${output}" | awk 'NR > 1 && $NF ~ /^[\/@]/ { print $NF }'
+    if ! output="$(dyld_info -dependents "${binary}" 2>&1)"; then
+        fail "dyld_info failed to inspect ${binary} with output ${output}."
+    fi
+    DEPENDENCY_LISTING="$(printf '%s\n' "${output}" | awk 'NR > 1 && $NF ~ /^[\/@]/ { print $NF }')"
 }
 
 list_linux_dependencies() {
     local binary="$1"
     local output
     if output="$(ldd "${binary}" 2>&1)"; then
-        printf '%s\n' "${output}" | awk '
+        DEPENDENCY_LISTING="$(printf '%s\n' "${output}" | awk '
             $2 == "=>" && $3 == "not" { print "missing:" $1; next }
             $2 == "=>" { print $3; next }
             $1 ~ /^\// { print $1; next }
-            { print "virtual:" $1 }'
+            { print "virtual:" $1 }')"
         return 0
     fi
     case "${output}" in
         *"not a dynamic executable"* | *"statically linked"*)
-            printf '%s\n' "static:"
+            DEPENDENCY_LISTING="static:"
             ;;
         *)
             fail "ldd failed to inspect ${binary} with output ${output}."
@@ -262,41 +283,81 @@ list_linux_dependencies() {
     esac
 }
 
-dependency_allowed() {
+dependency_in_package() {
     local dependency="$1"
     local package_dir="$2"
     case "${dependency}" in
-        static: | virtual:linux-vdso.so.1 | virtual:linux-gate.so.1) return 0 ;;
-        missing:* | virtual:*) return 1 ;;
         "${package_dir}"/*) return 0 ;;
         @loader_path/*)
             if [[ -f "${package_dir}/${dependency#@loader_path/}" ]]; then
                 return 0
             fi
-            return 1
             ;;
     esac
+    return 1
+}
+
+# The provider must link libyang, libpcre2, and libxxhash statically or load them from the package.
+dependency_is_native_library() {
+    local dependency="$1"
+    local library
+    for library in "${NATIVE_LIBRARIES[@]}"; do
+        if [[ "${dependency##*/}" == *"${library}"* ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+dependency_allowed() {
+    local dependency="$1"
+    local package_dir="$2"
+    local allowed directory triplet loader
+    if dependency_in_package "${dependency}" "${package_dir}"; then
+        return 0
+    fi
     if [[ "${PLATFORM_OS}" == "darwin" ]]; then
-        case "${dependency}" in
-            /usr/lib/* | /System/Library/*) return 0 ;;
-        esac
+        for allowed in "${DARWIN_DEPENDENCIES[@]}"; do
+            if [[ "${dependency}" == "${allowed}" ]]; then
+                return 0
+            fi
+        done
         return 1
     fi
-    case "${dependency}" in
-        /lib/* | /lib64/* | /usr/lib/* | /usr/lib64/*) return 0 ;;
-    esac
+    for allowed in "${LINUX_VIRTUAL_DEPENDENCIES[@]}"; do
+        if [[ "${dependency}" == "virtual:${allowed}" ]]; then
+            return 0
+        fi
+    done
+    if [[ "${PLATFORM_ARCH}" == "arm64" ]]; then
+        triplet="aarch64-linux-gnu"
+        loader="ld-linux-aarch64.so.1"
+    else
+        triplet="x86_64-linux-gnu"
+        loader="ld-linux-x86-64.so.2"
+    fi
+    # ldd can report /lib or /usr/lib paths for the same file on merged-usr distributions.
+    for directory in "/lib/${triplet}" "/usr/lib/${triplet}" /lib64 /usr/lib64 /lib /usr/lib; do
+        for allowed in "${LINUX_LIBRARIES[@]}" "${loader}"; do
+            if [[ "${dependency}" == "${directory}/${allowed}" ]]; then
+                return 0
+            fi
+        done
+    done
     return 1
 }
 
 check_dependencies() {
     local binary="$1"
     local package_dir="$2"
-    local listing dependency
+    local dependency
     local rejected=()
+    local native=()
+    DEPENDENCY_LISTING=""
     if [[ "${PLATFORM_OS}" == "darwin" ]]; then
-        listing="$(list_darwin_dependencies "${binary}")"
+        list_darwin_dependencies "${binary}"
     else
-        listing="$(list_linux_dependencies "${binary}")"
+        list_linux_dependencies "${binary}"
     fi
     EVIDENCE_LINKAGE="dynamic"
     while IFS= read -r dependency; do
@@ -308,20 +369,29 @@ check_dependencies() {
             continue
         fi
         EVIDENCE_DEPENDENCIES+=("${dependency}")
-        if ! dependency_allowed "${dependency}" "${package_dir}"; then
+        if dependency_is_native_library "${dependency}" && ! dependency_in_package "${dependency}" "${package_dir}"; then
+            native+=("${dependency}")
+        elif ! dependency_allowed "${dependency}" "${package_dir}"; then
             rejected+=("${dependency}")
         fi
-    done <<<"${listing}"
+    done <<<"${DEPENDENCY_LISTING}"
+    if [[ "${#native[@]}" -gt 0 ]]; then
+        fail "The provider depends on native libraries outside the package at ${native[*]}."
+    fi
     if [[ "${#rejected[@]}" -gt 0 ]]; then
         fail "The provider has unsupported loader dependencies ${rejected[*]}."
+    fi
+    if [[ "${EVIDENCE_LINKAGE}" == "dynamic" && "${#EVIDENCE_DEPENDENCIES[@]}" -eq 0 ]]; then
+        fail "The loader inspection found no dependencies for the dynamic binary ${binary}."
     fi
 }
 
 record_stamped_commit() {
     local binary="$1"
+    local expected="$2"
     local output commit
     # Commit extraction accepts output from a provider invocation that exits with an error.
-    if output="$("${binary}" 2>&1)"; then
+    if output="$(env -i HOME="${WORK_DIR}/home" PATH="${RUNTIME_PATH}" TMPDIR="${WORK_DIR}/tmp" "${binary}" 2>&1)"; then
         log "The provider exited with status 0 outside a plugin host."
     fi
     commit="$(printf '%s\n' "${output}" | sed -n 's/.*provider server starting.* commit=\([^ ]*\).*/\1/p')"
@@ -329,6 +399,16 @@ record_stamped_commit() {
         fail "The script found no stamped commit in the direct provider output ${output}."
     fi
     EVIDENCE_COMMIT="${commit}"
+    if [[ -z "${expected}" ]]; then
+        EVIDENCE_EXPECTED_COMMIT="not set"
+        return 0
+    fi
+    # EXPECTED_COMMIT matches when either commit value is a prefix of the other.
+    if [[ "${commit}" != "${expected}"* && "${expected}" != "${commit}"* ]]; then
+        EVIDENCE_EXPECTED_COMMIT="${expected}, which differs from the stamped commit ${commit}"
+        fail "The stamped commit ${commit} differs from EXPECTED_COMMIT ${expected}."
+    fi
+    EVIDENCE_EXPECTED_COMMIT="${expected}, which matches the stamped commit ${commit}"
 }
 
 record_build_tools() {
@@ -678,7 +758,7 @@ main() {
     binary="${package_dir}/${PROVIDER_BINARY}_v${version}"
 
     check_dependencies "${binary}" "${package_dir}"
-    record_stamped_commit "${binary}"
+    record_stamped_commit "${binary}" "${EXPECTED_COMMIT:-}"
     record_build_tools
 
     printf 'provider_installation {\n  filesystem_mirror {\n    path    = "%s"\n    include = ["%s"]\n  }\n}\n' \
