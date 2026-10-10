@@ -1,6 +1,7 @@
 package failovercheck_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -104,7 +105,12 @@ func TestCheck(t *testing.T) {
 				cfg.MwanVMID = ""
 				cfg.Watchdog.MwanAgentTCPAddr = ""
 			},
-			want: []string{"lxc_id", "mwan_vmid", "agent_tcp_addr", "no primary endpoint"},
+			want: []string{
+				"lxc_id is required",
+				"mwan_vmid is required",
+				"agent_tcp_addr is required",
+				"no primary endpoint",
+			},
 		},
 	}
 	for name, testCase := range cases {
@@ -119,10 +125,15 @@ func TestCheck(t *testing.T) {
 			if len(failures) != len(testCase.want) {
 				t.Fatalf("got %d failures %v, want %d", len(failures), failures, len(testCase.want))
 			}
-			for index, want := range testCase.want {
-				if !strings.Contains(failures[index].Error(), want) {
-					t.Fatalf("failure %d = %q, want it to contain %q", index, failures[index], want)
+			unmatched := slices.Clone(failures)
+			for _, want := range testCase.want {
+				matched := slices.IndexFunc(unmatched, func(failure error) bool {
+					return strings.Contains(failure.Error(), want)
+				})
+				if matched < 0 {
+					t.Fatalf("failures %v, want one to contain %q", unmatched, want)
 				}
+				unmatched = slices.Delete(unmatched, matched, matched+1)
 			}
 		})
 	}
