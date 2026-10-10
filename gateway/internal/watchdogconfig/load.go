@@ -61,14 +61,6 @@ func Default() Config {
 	return cfg
 }
 
-// Load removes a configuration path flag and its value from [os.Args] even
-// when configuration loading fails.
-func Load() (*Config, error) {
-	cfg, arguments, err := LoadArguments(os.Args)
-	os.Args = arguments
-	return cfg, err
-}
-
 // LoadArguments consumes --config without modifying process-global arguments.
 func LoadArguments(arguments []string) (*Config, []string, error) {
 	path, remaining := ResolvePath(arguments)

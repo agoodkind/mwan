@@ -102,21 +102,11 @@ const (
 	GuestTypeLXC GuestType = "lxc"
 )
 
-// NotifySection controls the per-(kind, key) repeat cadence that the
-// internal/notify Manager applies on top of the state-change boundary.
-// The shape mirrors IfMgrAlertsSection because slice A introduces the
-// notify package by carving the state machine out of internal/ifmgr;
-// callers wired to the new package read cfg.Notify, callers still
-// wired to the ifmgr AlertManager continue to read cfg.IfMgr.Alerts
-// until slice B migrates them.
-//
-// RepeatEvery is the global default applied to every alert kind unless
-// overridden in PerKind. PerKind is keyed by alert kind (the Kind field
-// on notify.Event), not by module name. Both fields accept Go duration
-// strings like "30m" or "24h".
-//
-// Default behaviour with empty values: RepeatEvery == "0s" means
-// alerts fire once per transition only and never repeat.
+// NotifySection configures repeat cadence for each alert kind and key.
+// RepeatEvery sets the default cadence.
+// PerKind overrides RepeatEvery by alert kind (notify.Event.Kind).
+// Both fields accept Go duration strings such as "30m" and "24h".
+// A "0s" cadence disables repeats between state transitions.
 type NotifySection struct {
 	RepeatEvery string            `toml:"repeat_every"`
 	PerKind     map[string]string `toml:"per_kind"`

@@ -91,7 +91,8 @@ func main() {
 }
 
 func runWatchdog(rawSub string) int {
-	cfg, err := watchdogconfig.Load()
+	cfg, remaining, err := watchdogconfig.LoadArguments(os.Args)
+	os.Args = remaining
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mwan: %v\n", err)
 		return 1

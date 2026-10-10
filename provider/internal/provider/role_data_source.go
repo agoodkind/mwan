@@ -13,6 +13,7 @@ import (
 
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/installspec"
+	"goodkind.io/mwan/internal/watchdogconfig"
 	moduleschema "goodkind.io/mwan/internal/yangpub/schema"
 )
 
@@ -76,7 +77,7 @@ func roleNames() []string {
 }
 
 func guestTypeNames() []string {
-	guests := config.GuestTypes()
+	guests := watchdogconfig.GuestTypes()
 	names := make([]string, 0, len(guests))
 	for _, guest := range guests {
 		names = append(names, string(guest))
@@ -191,7 +192,7 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 
 	guest := config.GuestTypeQEMU
 	if !model.GuestType.IsNull() {
-		parsedGuest, parseErr := config.ParseGuestType(model.GuestType.ValueString())
+		parsedGuest, parseErr := watchdogconfig.ParseGuestType(model.GuestType.ValueString())
 		if parseErr != nil {
 			resp.Diagnostics.AddError("Invalid guest type", parseErr.Error())
 			return
