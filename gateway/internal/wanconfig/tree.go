@@ -91,7 +91,8 @@ type Member struct {
 	// LinkFiles says who writes the member's unit files, as the link-files
 	// leaf spells it: rendered or hand-authored. Empty publishes nothing,
 	// which is what a caller holding no network configuration passes.
-	LinkFiles string
+	LinkFiles   string
+	BGPSessions []config.BGPSession
 }
 
 // ProbeSettings is one provider's health probe as the loaded configuration
@@ -564,6 +565,7 @@ func wanItems(member Member) []Item {
 	}
 	items = append(items, translationItems(member)...)
 	items = append(items, probeItems(base+"/health", member.Health)...)
+	items = append(items, bgpSessionItems(base, member.BGPSessions)...)
 	return items
 }
 

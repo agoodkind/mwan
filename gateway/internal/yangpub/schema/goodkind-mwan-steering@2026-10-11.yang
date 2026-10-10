@@ -49,6 +49,7 @@ module goodkind-mwan-steering {
      decides its verdict, the prefix-translation inputs, and the
      internal link the members route toward.";
 
+  revision 2026-10-11;
   revision 2026-10-10 {
     description
       "The link identity includes the tunnel container.";
@@ -233,6 +234,19 @@ module goodkind-mwan-steering {
         type enumeration { enum unknown; enum absent; enum present; }
         description
           "Whether a fresh observation includes a main-table IPv6 default route with RA protocol.";
+      }
+      list bgp-session {
+        key "name";
+        leaf name { type string; }
+        leaf state { type string; }
+        leaf established { type boolean; }
+        leaf-list accepted-prefix { type inet:ipv6-prefix; }
+        leaf-list advertised-prefix { type inet:ipv6-prefix; }
+        list rejection {
+          key "prefix";
+          leaf prefix { type inet:ipv6-prefix; }
+          leaf reason { type string; }
+        }
       }
     }
   }
@@ -570,6 +584,136 @@ module goodkind-mwan-steering {
             "The URLs the probe fetches. They are an alternative leg
              of the verdict, so a provider that answers pings or
              serves a fetch passes.";
+        }
+      }
+      list bgp-session {
+        key "name";
+        leaf name {
+          type string {
+            length "1..max";
+          }
+        }
+        leaf peer-address {
+          mandatory true;
+          type inet:ip-address-no-zone;
+        }
+        leaf peer-port {
+          type inet:port-number {
+            range "1..max";
+          }
+          default "179";
+        }
+        leaf local-address {
+          type inet:ip-address-no-zone;
+        }
+        leaf local-as {
+          mandatory true;
+          type inet:as-number {
+            range "1..max";
+          }
+        }
+        leaf remote-as {
+          mandatory true;
+          type inet:as-number {
+            range "1..max";
+          }
+        }
+        leaf router-id {
+          mandatory true;
+          type yang:dotted-quad;
+          must ". != '0.0.0.0'" {
+            error-message "The router ID must not be 0.0.0.0.";
+          }
+        }
+        leaf multihop-ttl {
+          type uint8 {
+            range "1..max";
+          }
+        }
+        leaf keepalive {
+          mandatory true;
+          type uint16 {
+            range "1..max";
+          }
+          units "seconds";
+        }
+        leaf hold {
+          mandatory true;
+          type uint16 {
+            range "3..max";
+          }
+          units "seconds";
+          must ". > ../keepalive" {
+            error-message "The keepalive interval must be below the hold time.";
+          }
+        }
+        leaf route-metric {
+          mandatory true;
+          type uint32 {
+            range "1..1023 | 1025..max";
+          }
+        }
+        list import {
+          key "prefix";
+          leaf prefix {
+            type inet:ipv6-prefix;
+          }
+          leaf min-length {
+            mandatory true;
+            type uint8 {
+              range "0..128";
+            }
+          }
+          leaf max-length {
+            mandatory true;
+            type uint8 {
+              range "0..128";
+            }
+          }
+        }
+        list export {
+          key "prefix";
+          must "(mode = 'backup') = boolean(backup-for)" {
+            error-message
+              "The mode backup requires backup-for, and backup-for requires the mode backup.";
+          }
+          leaf prefix {
+            type inet:ipv6-prefix;
+          }
+          leaf mode {
+            mandatory true;
+            type enumeration {
+              enum always;
+              enum backup;
+            }
+          }
+          leaf-list backup-for {
+            type string;
+          }
+          leaf next-hop {
+            mandatory true;
+            type inet:ipv6-address-no-zone;
+          }
+          leaf med {
+            type uint32;
+          }
+          leaf local-preference {
+            type uint32;
+          }
+          leaf prepend-count {
+            type uint8;
+            default "0";
+          }
+          leaf-list community {
+            type string {
+              pattern '[0-9]{1,5}:[0-9]{1,5}';
+            }
+          }
+          leaf-list large-community {
+            type string {
+              pattern '[0-9]{1,10}:[0-9]{1,10}:[0-9]{1,10}';
+            }
+          }
         }
       }
     }

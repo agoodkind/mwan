@@ -42,7 +42,7 @@ func TestSessionsWithSameASNsReportIndependentState(t *testing.T) {
 			slices.Equal(second.State().Accepted, []netip.Prefix{secondLearned})
 	})
 
-	if err := first.SetAdvertisement(true, false); err != nil {
+	if err := first.SetAdvertisement(true, nil); err != nil {
 		t.Fatalf("first SetAdvertisement: %v", err)
 	}
 	waitReceived(t, firstPeer, exported)
@@ -87,7 +87,7 @@ func TestSessionOutlivesStartContext(t *testing.T) {
 	}
 	cancelStart()
 	t.Cleanup(func() {
-		if err := session.Stop(); err != nil {
+		if err := session.Stop(t.Context()); err != nil {
 			t.Errorf("stop session: %v", err)
 		}
 	})
@@ -134,7 +134,7 @@ func TestSessionDeliversChangesOneAtATimeInOrder(t *testing.T) {
 	case <-time.After(waitTimeout):
 		t.Fatal("timed out waiting for the established change")
 	}
-	if err := session.Stop(); err != nil {
+	if err := session.Stop(t.Context()); err != nil {
 		t.Fatalf("stop session: %v", err)
 	}
 	close(release)

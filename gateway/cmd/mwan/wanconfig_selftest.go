@@ -306,7 +306,8 @@ func selftestGateway() wanconfig.Gateway {
 			},
 			// The selftest proves the serving contract, not the renderer, so
 			// the member states no link files and publishes no link.
-			LinkFiles: "",
+			LinkFiles:   "",
+			BGPSessions: nil,
 		}},
 		Daemon: wanconfig.DaemonSettings{
 			Watchdog: wanconfig.WatchdogSettings{

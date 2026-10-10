@@ -556,6 +556,11 @@ func (d *Daemon) reconcileAll(ctx context.Context, log *slog.Logger) {
 	if d.cfg.LiveState != nil {
 		snapshot := d.cfg.LiveState.Snapshot()
 		d.publishFamilyReadiness(snapshot, snapshot.RoutingGeneration != routingGeneration, failed)
+		for _, m := range d.modules {
+			if observer, ok := m.(FamilyReadinessObserver); ok {
+				observer.OnFamilyReadiness(ctx, log.With("module", m.Name()))
+			}
+		}
 	}
 	if d.cfg.ForwardingReadySocket == "" {
 		return

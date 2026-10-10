@@ -86,6 +86,7 @@ var roleModules = map[string][]string{
 		// npt resolves each IPv6 translation before routes select eligible WANs.
 		"npt",
 		"wan.routes",
+		"bgp_sessions",
 		// steering assigns each new connection to a provider of the active
 		// tier. It runs after wan.routes so the policy rules its marks select
 		// are installed before any mark is set. Self-disables when the network

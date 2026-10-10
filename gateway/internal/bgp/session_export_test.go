@@ -79,6 +79,7 @@ func TestSessionAdvertisesExportPrefixes(t *testing.T) {
 	loopback := netip.IPv6Loopback()
 	alwaysPrefix := netip.MustParsePrefix("2001:db8:a::/48")
 	backupPrefix := netip.MustParsePrefix("2001:db8:b::/48")
+	inactiveBackupPrefix := netip.MustParsePrefix("2001:db8:c::/48")
 	exportNextHop := netip.MustParseAddr("2001:db8:ffff::1")
 	med := uint32(50)
 	localPref := uint32(250)
@@ -116,6 +117,7 @@ func TestSessionAdvertisesExportPrefixes(t *testing.T) {
 					NextHop:          exportNextHop,
 				},
 				{Prefix: backupPrefix, Mode: bgp.ExportBackup, NextHop: exportNextHop},
+				{Prefix: inactiveBackupPrefix, Mode: bgp.ExportBackup, NextHop: exportNextHop},
 			}
 			session := startSession(t, cfg)
 			waitEstablished(t, session)
@@ -123,8 +125,8 @@ func TestSessionAdvertisesExportPrefixes(t *testing.T) {
 				t.Fatalf("prefixes received before the first SetAdvertisement = %v, want none", got)
 			}
 
-			if err := session.SetAdvertisement(true, false); err != nil {
-				t.Fatalf("SetAdvertisement(true, false): %v", err)
+			if err := session.SetAdvertisement(true, nil); err != nil {
+				t.Fatalf("SetAdvertisement(true, nil): %v", err)
 			}
 			waitReceived(t, peer, alwaysPrefix)
 			path := peer.received(t)[alwaysPrefix]
@@ -152,8 +154,9 @@ func TestSessionAdvertisesExportPrefixes(t *testing.T) {
 				t.Errorf("next hop = %s, want %s", got, exportNextHop)
 			}
 
-			if err := session.SetAdvertisement(true, true); err != nil {
-				t.Fatalf("SetAdvertisement(true, true): %v", err)
+			active := map[netip.Prefix]bool{backupPrefix: true, inactiveBackupPrefix: false}
+			if err := session.SetAdvertisement(true, active); err != nil {
+				t.Fatalf("SetAdvertisement(true, %v): %v", active, err)
 			}
 			waitReceived(t, peer, alwaysPrefix, backupPrefix)
 			wantAdvertised := []netip.Prefix{alwaysPrefix, backupPrefix}
@@ -161,8 +164,8 @@ func TestSessionAdvertisesExportPrefixes(t *testing.T) {
 				t.Errorf("advertised prefixes = %v, want %v", got, wantAdvertised)
 			}
 
-			if err := session.SetAdvertisement(false, false); err != nil {
-				t.Fatalf("SetAdvertisement(false, false): %v", err)
+			if err := session.SetAdvertisement(false, active); err != nil {
+				t.Fatalf("SetAdvertisement(false, %v): %v", active, err)
 			}
 			waitReceived(t, peer)
 			if got := session.State().Advertised; len(got) != 0 {

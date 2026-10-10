@@ -88,8 +88,17 @@ func (run tunnelRuntimeRun) start(t *testing.T, name string) *runtimeDaemon {
 
 func prepareTunnelRuntime(t *testing.T, gateway netns.NsHandle) tunnelRuntimeRun {
 	t.Helper()
-	root := t.TempDir()
-	networkDir := filepath.Join(root, "mwan")
+	root, networkDir, configPath := prepareRuntimeDirectories(t)
+	return tunnelRuntimeRun{
+		topology: buildTunnelRuntimeTopology(t, gateway), read: nil, binary: os.Getenv(tunnelRuntimeBinaryEnv),
+		configPath: configPath, root: root, networkDir: networkDir, ipv4: new(tunnelRuntimeIPv4),
+	}
+}
+
+func prepareRuntimeDirectories(t *testing.T) (root, networkDir, configPath string) {
+	t.Helper()
+	root = t.TempDir()
+	networkDir = filepath.Join(root, "mwan")
 	networkdDir := filepath.Join(root, "networkd")
 	for _, directory := range []string{networkDir, networkdDir} {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
@@ -103,19 +112,18 @@ func prepareTunnelRuntime(t *testing.T, gateway netns.NsHandle) tunnelRuntimeRun
 	bindStartupDirectory(t, networkDir, "/etc/mwan")
 	bindStartupDirectory(t, schemaDir, "/usr/local/share/wanconfig/yang")
 	bindStartupDirectory(t, networkdDir, "/etc/systemd/network")
-	configPath := filepath.Join(root, "config.toml")
+	configPath = filepath.Join(root, "config.toml")
 	config := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n"+
 		"[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n"+
-		"[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[wanconfig]\npublish = true\n",
-		filepath.Join(root, "owned-links.json"), filepath.Join(root, "owned-addresses.json"), filepath.Join(root, "kernel-policy.json"))
+		"[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[ifmgr.modules.bgp_sessions]\nstate_file = %q\n"+
+		"[wanconfig]\npublish = true\n",
+		filepath.Join(root, "owned-links.json"), filepath.Join(root, "owned-addresses.json"), filepath.Join(root, "kernel-policy.json"),
+		filepath.Join(root, bgpRuntimeStateFile))
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	setRuntimeLoopback(t)
-	return tunnelRuntimeRun{
-		topology: buildTunnelRuntimeTopology(t, gateway), read: nil, binary: os.Getenv(tunnelRuntimeBinaryEnv),
-		configPath: configPath, root: root, networkDir: networkDir, ipv4: new(tunnelRuntimeIPv4),
-	}
+	return root, networkDir, configPath
 }
 
 func runTunnelProviderDaemonRuntime(t *testing.T) {

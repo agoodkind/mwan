@@ -394,6 +394,7 @@ func memberFromWAN(
 		ForcedDSCP:       forcedDSCPFromConfig(cfg, wan.Key()),
 		Health:           probe,
 		LinkFiles:        linkFilesFromConfig(cfg, wan.Key()),
+		BGPSessions:      bgpSessionsFromConfig(cfg, wan.Key()),
 	}
 	if probed {
 		// The probe policy is named after the member: the health module

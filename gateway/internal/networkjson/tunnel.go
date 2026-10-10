@@ -98,7 +98,7 @@ func validateTunnelProvider(entry ifaceEntry) error {
 	if entry.IPv6 == nil {
 		return fmt.Errorf("interface %s: a 6in4 tunnel provider requires an ipv6 family", entry.Name)
 	}
-	if !tunnelDefaultGateway(entry.IPv6.familyWire) {
+	if len(entry.WAN.BGPSessions) == 0 && !tunnelDefaultGateway(entry.IPv6.familyWire) {
 		return fmt.Errorf("interface %s: a 6in4 tunnel provider requires an ipv6 default route with an explicit gateway", entry.Name)
 	}
 	probe := entry.WAN.Health
