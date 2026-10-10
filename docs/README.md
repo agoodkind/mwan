@@ -37,7 +37,7 @@ The [public address specification](downstream.md) defines untranslated
 IPv6 use by downstream BGP peers alongside synthetic-address clients.
 The [network planning contract](superpowers/networkplan/spec.md) requires native
 plan-time validation and stable configured interface, route, policy-rule, and
-firewall projections from network.json.
+firewall projections from `network.json`.
 
 ## Implementation plans
 

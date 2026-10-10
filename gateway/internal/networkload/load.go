@@ -59,9 +59,8 @@ func (e *SemanticError) Unwrap() error {
 	return e.err
 }
 
-// ValidateAndDecode checks JSON, validates the document, then decodes its semantics.
-// Each stage reads the original bytes.
 // ValidateAndDecode wraps [networkjson.Decode] errors in [SemanticError].
+// Each stage reads the original bytes.
 func ValidateAndDecode(data []byte, schema *yangschema.Schema) (*networkjson.Config, error) {
 	if _, err := networkjson.Canonicalize(data); err != nil {
 		return nil, &JSONError{err: err}

@@ -30,9 +30,8 @@ func routingNumber(id string, leaf string, value int) (uint32, error) {
 	return uint32(value), nil
 }
 
-// PolicyRules rejects routing numbers outside uint32.
-// PolicyRules rejects configured sources without valid prefixes.
-// Delegated IPv6 sources use an invalid prefix.
+// PolicyRules uses an invalid Source prefix for a rule with a delegated (runtime) IPv6
+// source because only the running daemon learns the delegated prefix.
 func (c *Config) PolicyRules() (map[PolicyRuleKey]interfaceintent.PolicyRule, error) {
 	rules := make(map[PolicyRuleKey]interfaceintent.PolicyRule)
 	for id, entry := range c.WAN {

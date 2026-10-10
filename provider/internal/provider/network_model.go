@@ -29,22 +29,26 @@ const (
 		"<connection-id>|<family>|<table-id>. The connection_id value is the derived connection identifier. Each entry contains interface, family, and table_id values. " +
 		"The family value is ipv4 or ipv6. The internal_destination value is internal-net-v4 for IPv4 or opnsense-edge-v6/128 for IPv6. The internal_interface value is internal-iface. The map omits the default gateway learned at runtime."
 	policyRulesDescription = "The map contains provider policy rules derived from the network configuration. " +
-		"Each key derives from the entry's connection_id, family, and kind values. " +
+		"Each key uses the entry's values in the format <connection-id>|<family>|<kind>. " +
+		"Key encoding replaces % with %25 and | with %7C inside each value. " +
 		"The family value is ipv4 or ipv6. The kind value is fwmark or source. Each entry contains priority and table_id values. " +
 		"The mark value is null for a source rule. The source_kind value identifies the rule's source kind. " +
 		"The source value contains the rule's source prefix or null when the prefix is invalid. " +
 		"The activation_conditions list contains the rule's conditions in their original order."
 	firewallChainsDescription = "The map contains firewall chains from the configuration's firewall plan. " +
-		"Each key derives from the entry's family, table, and chain values. " +
+		"Each key uses the entry's values in the format <family>|<table>|<chain>. " +
+		"Key encoding replaces % with %25 and | with %7C inside each value. " +
 		"The rule_order list contains firewall_rules keys in the order specified by the firewall plan."
 	firewallRulesDescription = "The map contains firewall rules from the configuration's firewall plan. " +
-		"Each key derives from the entry's family, table, chain, purpose, and scope values. " +
+		"Each key uses the entry's values in the format <family>|<table>|<chain>|<purpose>|<scope>. " +
+		"Key encoding replaces % with %25 and | with %7C inside each value. " +
 		"The key value equals the map key. The expression value contains the nftables rule text. " +
 		"The interface value selects the input interface. The output_interface value selects the output interface. " +
 		"The source and destination values are null for invalid prefixes. The interface, output_interface, and mark values are null when absent. " +
 		"The chain's rule_order list specifies the rule's position."
 	firewallSetsDescription = "The map contains firewall sets from the configuration's firewall plan. " +
-		"Each key derives from the entry's family, table, and set values. " +
+		"Each key uses the entry's values in the format <family>|<table>|<set>. " +
+		"Key encoding replaces % with %25 and | with %7C inside each value. " +
 		"The key_type value specifies the nftables element type. The elements set contains the plan's prefixes. " +
 		"The elements set does not preserve prefix order."
 	guestTypeDescription = "The guest_type attribute contains the decoded guest type."
