@@ -20,6 +20,8 @@ const (
 const (
 	// MinHoldSeconds is the shortest nonzero BGP hold time.
 	MinHoldSeconds = 3
+	// MinConnectRetrySeconds is the shortest wait between connection attempts that the embedded speaker applies.
+	MinConnectRetrySeconds = 2
 	// KernelDefaultIPv6Metric is the metric Linux assigns to an IPv6 route installed with metric 0.
 	KernelDefaultIPv6Metric = 1024
 
@@ -123,10 +125,12 @@ type Config struct {
 	MultihopTTL      uint8
 	KeepaliveSeconds uint32
 	HoldSeconds      uint32
-	Import           []ImportRule
-	Export           []ExportRule
-	Tables           []int
-	RouteMetric      uint32
+	// ConnectRetrySeconds is the wait between connection attempts, and zero selects the speaker default.
+	ConnectRetrySeconds uint32
+	Import              []ImportRule
+	Export              []ExportRule
+	Tables              []int
+	RouteMetric         uint32
 }
 
 // Internal reports whether the local and remote ASNs select an iBGP session.
@@ -199,6 +203,12 @@ func validateSessionTransport(cfg Config) error {
 		return fmt.Errorf(
 			"keepalive timer %d must be shorter than hold timer %d",
 			cfg.KeepaliveSeconds, cfg.HoldSeconds,
+		)
+	}
+	if cfg.ConnectRetrySeconds != 0 && cfg.ConnectRetrySeconds < MinConnectRetrySeconds {
+		return fmt.Errorf(
+			"connect retry timer %d must be at least %d",
+			cfg.ConnectRetrySeconds, MinConnectRetrySeconds,
 		)
 	}
 	if len(cfg.Tables) > 0 && cfg.Interface == "" {

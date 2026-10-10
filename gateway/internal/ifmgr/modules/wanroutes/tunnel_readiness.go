@@ -81,12 +81,12 @@ func familyReason(wan WAN, gateways gatewaySet, health netif.HealthStates, trans
 		}
 	}
 	switch {
+	case !netif.HealthIsHealthy(health.State(wan.Key())):
+		return reasonProbeFailed
 	case !translationReady:
 		return reasonTranslationNotReady
 	case !gatewayKnown:
 		return reasonGatewayUnavailable
-	case !netif.HealthIsHealthy(health.State(wan.Key())):
-		return reasonProbeFailed
 	}
 	return ""
 }

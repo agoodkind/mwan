@@ -23,6 +23,9 @@ func bgpSessionItems(base string, sessions []config.BGPSession) []Item {
 		if session.LocalAddress.IsValid() {
 			items = append(items, Item{Path: path + "/local-address", Value: session.LocalAddress.String()})
 		}
+		if session.ConnectRetrySeconds != 0 {
+			items = append(items, Item{Path: path + "/connect-retry", Value: uintValue(uint64(session.ConnectRetrySeconds))})
+		}
 		if session.MultihopTTL != 0 {
 			items = append(items, Item{Path: path + "/multihop-ttl", Value: uintValue(uint64(session.MultihopTTL))})
 		}

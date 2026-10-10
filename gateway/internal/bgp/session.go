@@ -173,6 +173,7 @@ func (s *Session) peer() *apipb.Peer {
 		},
 		Timers: &apipb.Timers{
 			Config: &apipb.TimersConfig{
+				ConnectRetry:      uint64(s.cfg.ConnectRetrySeconds),
 				KeepaliveInterval: uint64(s.cfg.KeepaliveSeconds),
 				HoldTime:          uint64(s.cfg.HoldSeconds),
 			},

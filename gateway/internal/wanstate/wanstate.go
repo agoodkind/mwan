@@ -53,16 +53,20 @@ type MemberHealth struct {
 	LastTransition      time.Time
 	V4                  ProbeResult
 	V6                  ProbeResult
+	V4Verdict           Health
+	V6Verdict           Health
 }
 
 // MemberRouting is what the routing module decided for one member on
 // its last pass.
 type MemberRouting struct {
-	Carrying bool
-	V4Ready  bool
-	V6Ready  bool
-	V4Reason string
-	V6Reason string
+	Carrying       bool
+	V4Ready        bool
+	V6Ready        bool
+	V4Reason       string
+	V6Reason       string
+	V4Dependencies []DependencyResult
+	V6Dependencies []DependencyResult
 	// OwnedAddresses are the mapped addresses the routing module holds on the
 	// member's link as host addresses, in configuration order.
 	OwnedAddresses []netip.Addr
@@ -223,6 +227,8 @@ func (s *Store) SetRouting(activeTier uint8, members map[string]MemberRouting) {
 	copied := make(map[string]MemberRouting, len(members))
 	for id, member := range members {
 		member.OwnedAddresses = slices.Clone(member.OwnedAddresses)
+		member.V4Dependencies = slices.Clone(member.V4Dependencies)
+		member.V6Dependencies = slices.Clone(member.V6Dependencies)
 		copied[id] = member
 	}
 	s.mu.Lock()
