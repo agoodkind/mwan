@@ -9,14 +9,6 @@ import (
 	"goodkind.io/mwan/internal/connectionid"
 )
 
-const (
-	bgpExportModeAlways = "always"
-	bgpExportModeBackup = "backup"
-
-	communityFormat      = "%d:%d"
-	largeCommunityFormat = "%d:%d:%d"
-)
-
 type bgpImportWire struct {
 	Prefix    string `json:"prefix"`
 	MinLength *uint8 `json:"min-length"`
@@ -74,22 +66,20 @@ func buildBGPExports(
 			return nil, nil, err
 		}
 		exportLabel := label + " export " + prefix.String()
-		rule := bgpsession.ExportRule{
-			Prefix: prefix, Mode: bgpsession.ExportAlways, LocalPreference: wire.LocalPreference, MED: wire.MED,
-			PrependCount: wire.PrependCount, Communities: nil, LargeCommunities: nil, NextHop: netip.Addr{},
-		}
-		if wire.Mode != bgpExportModeAlways && wire.Mode != bgpExportModeBackup {
+		mode, known := bgpsession.ParseExportMode(wire.Mode)
+		if !known {
 			return nil, nil, fmt.Errorf("%s: mode %q is not always or backup", exportLabel, wire.Mode)
 		}
-		backup := wire.Mode == bgpExportModeBackup
+		rule := bgpsession.ExportRule{
+			Prefix: prefix, Mode: mode, LocalPreference: wire.LocalPreference, MED: wire.MED,
+			PrependCount: wire.PrependCount, Communities: nil, LargeCommunities: nil, NextHop: netip.Addr{},
+		}
+		backup := mode == bgpsession.ExportBackup
 		if backup && len(wire.BackupFor) == 0 {
 			return nil, nil, fmt.Errorf("%s: mode backup requires backup-for", exportLabel)
 		}
 		if !backup && len(wire.BackupFor) != 0 {
 			return nil, nil, fmt.Errorf("%s: backup-for requires mode backup", exportLabel)
-		}
-		if backup {
-			rule.Mode = bgpsession.ExportBackup
 		}
 		for _, id := range wire.BackupFor {
 			backupFor[prefix.Masked()] = append(backupFor[prefix.Masked()], connectionid.ID(id))
@@ -114,9 +104,8 @@ func buildBGPExports(
 func parseCommunities(label string, raws []string) ([]bgpsession.Community, error) {
 	communities := make([]bgpsession.Community, 0, len(raws))
 	for _, raw := range raws {
-		community := bgpsession.Community{ASN: 0, Value: 0}
-		_, err := fmt.Sscanf(raw, communityFormat, &community.ASN, &community.Value)
-		if err != nil || fmt.Sprintf(communityFormat, community.ASN, community.Value) != raw {
+		community, canonical := bgpsession.ParseCommunity(raw)
+		if !canonical {
 			return nil, fmt.Errorf("%s: community %q is not ASN:value with two 16-bit decimal numbers", label, raw)
 		}
 		communities = append(communities, community)
@@ -127,10 +116,8 @@ func parseCommunities(label string, raws []string) ([]bgpsession.Community, erro
 func parseLargeCommunities(label string, raws []string) ([]bgpsession.LargeCommunity, error) {
 	communities := make([]bgpsession.LargeCommunity, 0, len(raws))
 	for _, raw := range raws {
-		community := bgpsession.LargeCommunity{GlobalAdmin: 0, LocalData1: 0, LocalData2: 0}
-		_, err := fmt.Sscanf(raw, largeCommunityFormat, &community.GlobalAdmin, &community.LocalData1, &community.LocalData2)
-		canonical := fmt.Sprintf(largeCommunityFormat, community.GlobalAdmin, community.LocalData1, community.LocalData2)
-		if err != nil || canonical != raw {
+		community, canonical := bgpsession.ParseLargeCommunity(raw)
+		if !canonical {
 			return nil, fmt.Errorf("%s: large-community %q is not three 32-bit decimal numbers separated by colons", label, raw)
 		}
 		communities = append(communities, community)

@@ -18,11 +18,41 @@ const (
 )
 
 const (
-	maxIPv6PrefixLength     = 128
-	minHoldSeconds          = 3
-	maxHoldSeconds          = 65535
-	kernelDefaultIPv6Metric = 1024
+	// MinHoldSeconds is the shortest nonzero BGP hold time.
+	MinHoldSeconds = 3
+	// KernelDefaultIPv6Metric is the metric Linux assigns to an IPv6 route installed with metric 0.
+	KernelDefaultIPv6Metric = 1024
+
+	maxIPv6PrefixLength = 128
+	maxHoldSeconds      = 65535
+
+	exportAlwaysText     = "always"
+	exportBackupText     = "backup"
+	communityFormat      = "%d:%d"
+	largeCommunityFormat = "%d:%d:%d"
 )
+
+// String returns the configuration text of the mode, and an invalid mode returns the empty string.
+func (m ExportMode) String() string {
+	switch m {
+	case ExportAlways:
+		return exportAlwaysText
+	case ExportBackup:
+		return exportBackupText
+	default:
+		return ""
+	}
+}
+
+// ParseExportMode converts configuration text to a mode.
+func ParseExportMode(text string) (ExportMode, bool) {
+	for _, mode := range []ExportMode{ExportAlways, ExportBackup} {
+		if mode.String() == text {
+			return mode, true
+		}
+	}
+	return 0, false
+}
 
 // Community is one standard BGP community in ASN:value form.
 type Community struct {
@@ -30,11 +60,35 @@ type Community struct {
 	Value uint16
 }
 
+// String returns the community in ASN:value form.
+func (c Community) String() string {
+	return fmt.Sprintf(communityFormat, c.ASN, c.Value)
+}
+
+// ParseCommunity accepts only the canonical ASN:value text.
+func ParseCommunity(text string) (Community, bool) {
+	var community Community
+	_, err := fmt.Sscanf(text, communityFormat, &community.ASN, &community.Value)
+	return community, err == nil && community.String() == text
+}
+
 // LargeCommunity is one large BGP community in global-administrator:local-data-1:local-data-2 form.
 type LargeCommunity struct {
 	GlobalAdmin uint32
 	LocalData1  uint32
 	LocalData2  uint32
+}
+
+// String returns the community as three decimal numbers separated by colons.
+func (c LargeCommunity) String() string {
+	return fmt.Sprintf(largeCommunityFormat, c.GlobalAdmin, c.LocalData1, c.LocalData2)
+}
+
+// ParseLargeCommunity accepts only the canonical text of three decimal numbers separated by colons.
+func ParseLargeCommunity(text string) (LargeCommunity, bool) {
+	var community LargeCommunity
+	_, err := fmt.Sscanf(text, largeCommunityFormat, &community.GlobalAdmin, &community.LocalData1, &community.LocalData2)
+	return community, err == nil && community.String() == text
 }
 
 // ImportRule accepts learned IPv6 prefixes inside Prefix with a prefix length between MinLength and MaxLength inclusive.
@@ -135,10 +189,10 @@ func validateSessionTransport(cfg Config) error {
 	if cfg.KeepaliveSeconds == 0 {
 		return errors.New("keepalive timer is required")
 	}
-	if cfg.HoldSeconds < minHoldSeconds || cfg.HoldSeconds > maxHoldSeconds {
+	if cfg.HoldSeconds < MinHoldSeconds || cfg.HoldSeconds > maxHoldSeconds {
 		return fmt.Errorf(
 			"hold timer %d is outside the range %d to %d",
-			cfg.HoldSeconds, minHoldSeconds, maxHoldSeconds,
+			cfg.HoldSeconds, MinHoldSeconds, maxHoldSeconds,
 		)
 	}
 	if cfg.KeepaliveSeconds >= cfg.HoldSeconds {
@@ -150,10 +204,10 @@ func validateSessionTransport(cfg Config) error {
 	if len(cfg.Tables) > 0 && cfg.Interface == "" {
 		return errors.New("interface is required when kernel tables are configured")
 	}
-	if len(cfg.Tables) > 0 && (cfg.RouteMetric == 0 || cfg.RouteMetric == kernelDefaultIPv6Metric) {
+	if len(cfg.Tables) > 0 && (cfg.RouteMetric == 0 || cfg.RouteMetric == KernelDefaultIPv6Metric) {
 		return fmt.Errorf(
 			"route metric %d collides with the kernel default metric %d",
-			cfg.RouteMetric, kernelDefaultIPv6Metric,
+			cfg.RouteMetric, KernelDefaultIPv6Metric,
 		)
 	}
 	for _, tableID := range cfg.Tables {
