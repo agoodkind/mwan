@@ -16,11 +16,13 @@ import (
 // FIBConfig identifies the kernel routing tables owned by the BGP installer.
 // Use different metrics for installers that share a table because a kernel
 // route replacement identifies an IPv6 route by destination and metric. A zero
-// Metric selects the kernel default metric.
+// Metric selects the kernel default metric. ResolveNextHop installs the gateway
+// of the kernel route to a BGP next hop that is not on a connected network.
 type FIBConfig struct {
-	Tables        []int
-	InternalIface string
-	Metric        uint32
+	Tables         []int
+	InternalIface  string
+	Metric         uint32
+	ResolveNextHop bool
 }
 
 // PathEvent is the accepted best-path change received from a BGP peer.
@@ -100,6 +102,7 @@ const (
 type desiredRoute struct {
 	peer    string
 	nextHop netip.Addr
+	gateway string
 }
 
 // NewFIB creates a learned-route installer.
@@ -151,7 +154,7 @@ func (f *FIB) Apply(ctx context.Context, event PathEvent) error {
 		return f.withdraw(ctx, event.Peer, prefix)
 	}
 
-	f.desired[prefix.String()] = desiredRoute{peer: event.Peer, nextHop: event.NextHop}
+	f.desired[prefix.String()] = desiredRoute{peer: event.Peer, nextHop: event.NextHop, gateway: ""}
 	return f.installPrefix(ctx, prefix, event.NextHop)
 }
 
@@ -332,12 +335,30 @@ func (f *FIB) installPrefix(
 	prefix netip.Prefix,
 	nextHop netip.Addr,
 ) error {
+	gateway, err := f.gateway(ctx, prefix, nextHop, make(map[netip.Addr]nextHopMatch))
+	if err != nil {
+		return err
+	}
+	return f.installGateway(ctx, prefix, nextHop, gateway)
+}
+
+func (f *FIB) installGateway(
+	ctx context.Context,
+	prefix netip.Prefix,
+	nextHop netip.Addr,
+	gateway string,
+) error {
 	var installErr error
 	for _, tableID := range f.cfg.Tables {
 		route := f.route(prefix, nextHop, tableID)
+		route.Via = gateway
 		if err := f.writer.ReconcileTableRoute(ctx, f.log, route); err != nil {
 			installErr = errors.Join(installErr, fmt.Errorf("install table %d route %s: %w", tableID, prefix, err))
 		}
+	}
+	if desired, known := f.desired[prefix.String()]; known && installErr == nil {
+		desired.gateway = gateway
+		f.desired[prefix.String()] = desired
 	}
 	return installErr
 }

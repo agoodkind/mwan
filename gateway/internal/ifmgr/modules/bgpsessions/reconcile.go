@@ -54,7 +54,11 @@ func (m *Module) reconcileSession(ctx context.Context, log *slog.Logger, entry *
 			"session", name, "previous", entry.transport, "current", transport)
 		m.stopLocked(ctx, log, entry)
 	}
-	if transport == "" || entry.running {
+	if entry.running {
+		entry.session.RefreshRoutes(ctx)
+		return nil
+	}
+	if transport == "" {
 		return nil
 	}
 	if err := m.recordOwner(ctx, log, sessionOwner(entry.cfg)); err != nil {
