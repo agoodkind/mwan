@@ -16,6 +16,11 @@ func runReleaseCheck(arguments []string) int {
 		fmt.Fprintf(os.Stdout, "release configuration rejected: %v\n", err)
 		return exitDeployGateFailed
 	}
+	watchdogSection, err := sharedWatchdogSection(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stdout, "release configuration rejected: %v\n", err)
+		return exitDeployGateFailed
+	}
 	if len(args) != 2 {
 		printDeployGateUsage()
 		return exitDeployGateUsage
@@ -30,5 +35,5 @@ func runReleaseCheck(arguments []string) int {
 		fmt.Fprintln(os.Stdout, "release arguments rejected: previous owner must be networkd or mwan")
 		return exitDeployGateUsage
 	}
-	return checkConnectionRelease(context.Background(), os.Stdout, cfg, id, previous)
+	return checkConnectionRelease(context.Background(), os.Stdout, cfg, watchdogSection.ConnectivityTimeout(), id, previous)
 }

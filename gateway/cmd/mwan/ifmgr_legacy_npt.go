@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/netip"
 	"slices"
+	"time"
 
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ifmgr/modules/npt"
@@ -29,7 +30,7 @@ func ifMgrRole(cfg *config.Config, flags ifmgrFlags) (string, error) {
 	return role, nil
 }
 
-func runLegacyNPTTransition(ctx context.Context, log *slog.Logger, cfg *config.Config, flags ifmgrFlags, role string) (resultErr error) {
+func runLegacyNPTTransition(ctx context.Context, log *slog.Logger, cfg *config.Config, flags ifmgrFlags, role string, timeout time.Duration) (resultErr error) {
 	defer func() {
 		if resultErr != nil {
 			log.ErrorContext(ctx, "legacy NPT transition rejected", "err", resultErr)
@@ -63,7 +64,7 @@ func runLegacyNPTTransition(ctx context.Context, log *slog.Logger, cfg *config.C
 	if err != nil {
 		return fmt.Errorf("read legacy NPT transition: %w", err)
 	}
-	mappings, err := readLegacyMappedTransition(ctx, log, cfg, nptConfig)
+	mappings, err := readLegacyMappedTransition(ctx, log, cfg, nptConfig, timeout)
 	if err != nil {
 		return fmt.Errorf("read legacy mapped transition: %w", err)
 	}
@@ -80,7 +81,7 @@ func runLegacyNPTTransition(ctx context.Context, log *slog.Logger, cfg *config.C
 	return nil
 }
 
-func readLegacyMappedTransition(ctx context.Context, log *slog.Logger, cfg *config.Config, settings npt.Config) ([]netif.LegacyMappedAddress, error) {
+func readLegacyMappedTransition(ctx context.Context, log *slog.Logger, cfg *config.Config, settings npt.Config, timeout time.Duration) ([]netif.LegacyMappedAddress, error) {
 	var result []netif.LegacyMappedAddress
 	for _, wan := range settings.WANs {
 		if wan.TranslationV4 == nil || len(wan.TranslationV4.StaticMappings) == 0 {
@@ -93,7 +94,7 @@ func readLegacyMappedTransition(ctx context.Context, log *slog.Logger, cfg *conf
 			if connection.Owner != interfaceintent.OwnerNetworkd {
 				return nil, fmt.Errorf("mapped producer transition requires unchanged networkd ownership for %s", connection.ID)
 			}
-			prefixes, err := legacyMappedTransitionPrefixes(ctx, log, cfg, connection, wan.TranslationV4.StaticMappings)
+			prefixes, err := legacyMappedTransitionPrefixes(ctx, log, connection, wan.TranslationV4.StaticMappings, timeout)
 			if err != nil {
 				return nil, err
 			}
@@ -116,12 +117,12 @@ func readLegacyMappedTransition(ctx context.Context, log *slog.Logger, cfg *conf
 	return result, nil
 }
 
-func legacyMappedTransitionPrefixes(ctx context.Context, log *slog.Logger, cfg *config.Config, connection interfaceintent.Connection, mappings []config.StaticMapping) ([]netip.Prefix, error) {
+func legacyMappedTransitionPrefixes(ctx context.Context, log *slog.Logger, connection interfaceintent.Connection, mappings []config.StaticMapping, timeout time.Duration) ([]netip.Prefix, error) {
 	current, err := netif.ListAddrs(ctx, log, connection.Name)
 	if err != nil {
 		return nil, netif.NewLegacyNPTError("read legacy mapping addresses", err)
 	}
-	primary, err := legacyMappedTransitionPrimary(ctx, cfg, connection, current)
+	primary, err := legacyMappedTransitionPrimary(ctx, connection, current, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +149,7 @@ func legacyMappedTransitionPrefixes(ctx context.Context, log *slog.Logger, cfg *
 	return prefixes, nil
 }
 
-func legacyMappedTransitionPrimary(ctx context.Context, cfg *config.Config, connection interfaceintent.Connection, current []netif.CurrentAddr) (map[netip.Addr]bool, error) {
+func legacyMappedTransitionPrimary(ctx context.Context, connection interfaceintent.Connection, current []netif.CurrentAddr, timeout time.Duration) (map[netip.Addr]bool, error) {
 	primary := make(map[netip.Addr]bool)
 	for _, address := range current {
 		if address.Family != "inet" {
@@ -171,7 +172,7 @@ func legacyMappedTransitionPrimary(ctx context.Context, cfg *config.Config, conn
 	if connection.IPv4.DHCP == nil || !*connection.IPv4.DHCP {
 		return primary, nil
 	}
-	acquired, err := legacyMappedAcquiredPrimary(ctx, cfg, connection.Name)
+	acquired, err := legacyMappedAcquiredPrimary(ctx, timeout, connection.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -181,11 +182,7 @@ func legacyMappedTransitionPrimary(ctx context.Context, cfg *config.Config, conn
 	return primary, nil
 }
 
-func legacyMappedAcquiredPrimary(ctx context.Context, cfg *config.Config, name string) ([]netip.Addr, error) {
-	timeout, err := networkdTimeout(cfg)
-	if err != nil {
-		return nil, err
-	}
+func legacyMappedAcquiredPrimary(ctx context.Context, timeout time.Duration, name string) ([]netip.Addr, error) {
 	if timeout <= 0 {
 		return nil, fmt.Errorf("legacy mapping observation requires a positive networkd timeout")
 	}

@@ -38,13 +38,48 @@ role = "wan"
 reconcile_interval = "30s"
 `
 
+const bothStatusSourcesText = `
+[watchdog]
+status_command = ["mwan", "gateway-status"]
+status_listen_port = 50060
+
+[bgp]
+enabled = false
+asn = 65001
+router_id = "192.0.2.3"
+
+[ifmgr]
+role = "wan"
+reconcile_interval = "30s"
+`
+
+func writeSharedFile(t *testing.T, text string) string {
+	t.Helper()
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(configPath, []byte(text), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	return configPath
+}
+
+func TestLoadArgumentsAcceptsBothWatchdogStatusSources(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeSharedFile(t, bothStatusSourcesText)
+
+	cfg, _, err := config.LoadArguments([]string{"mwan", "--config", configPath})
+	if err != nil {
+		t.Fatalf("load config with both watchdog status sources failed: %v", err)
+	}
+	if cfg.Path != configPath || cfg.IfMgr.Role != "wan" {
+		t.Errorf("config path or ifmgr role differs from expected values: %q %q", cfg.Path, cfg.IfMgr.Role)
+	}
+}
+
 func TestLoadArgumentsAcceptsHypervisorSections(t *testing.T) {
 	t.Parallel()
 
-	configPath := filepath.Join(t.TempDir(), "config.toml")
-	if err := os.WriteFile(configPath, []byte(sharedFileText), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	configPath := writeSharedFile(t, sharedFileText)
 
 	cfg, remaining, err := config.LoadArguments([]string{"mwan", "--config", configPath, "--dry-run"})
 	if err != nil {

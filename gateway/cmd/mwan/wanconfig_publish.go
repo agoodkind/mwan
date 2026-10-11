@@ -21,6 +21,7 @@ import (
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/wanconfig"
 	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/internal/watchdogconfig"
 	"goodkind.io/mwan/internal/yangpub"
 )
 
@@ -47,6 +48,7 @@ func startWanconfigSurface(
 	ctx context.Context,
 	logger *slog.Logger,
 	cfg *config.Config,
+	watchdogSection watchdogconfig.WatchdogSection,
 	moduleConfigs ifmgr.ModuleConfigSet,
 	rejections []networkjson.Rejection,
 	store *wanstate.Store,
@@ -55,7 +57,7 @@ func startWanconfigSurface(
 		return nil
 	}
 	log := logger.With("component", "wanconfig")
-	gateway, ok, err := gatewayFromModuleConfigs(cfg, moduleConfigs)
+	gateway, ok, err := gatewayFromModuleConfigs(cfg, watchdogSection, moduleConfigs)
 	if err != nil {
 		log.ErrorContext(ctx, "wanconfig: projection from module configs failed", "err", err)
 		return nil
@@ -161,30 +163,20 @@ func (s *wanconfigSurface) initialize(
 // the out-of-band and tap module configs when this role runs them. A
 // section the configuration does not carry stays absent, so the tree
 // never invents values another host owns.
-func daemonSettings(cfg *config.Config, configs ifmgr.ModuleConfigSet) (wanconfig.DaemonSettings, error) {
-	watchdog, err := watchdogSettings(cfg)
-	if err != nil {
-		var none wanconfig.DaemonSettings
-		return none, err
-	}
-	settings := wanconfig.DaemonSettings{
-		Watchdog: watchdog,
+func daemonSettings(cfg *config.Config, section watchdogconfig.WatchdogSection, configs ifmgr.ModuleConfigSet) wanconfig.DaemonSettings {
+	return wanconfig.DaemonSettings{
+		Watchdog: watchdogSettings(cfg, section),
 		OOB:      oobSettings(configs),
 		Tap:      tapSettings(configs),
 	}
-	return settings, nil
 }
 
 // watchdogSettings projects the watchdog section. The rendered section
 // always names the unit it drives, so the name doubles as presence.
-func watchdogSettings(cfg *config.Config) (wanconfig.WatchdogSettings, error) {
-	var none wanconfig.WatchdogSettings
-	section, err := sharedWatchdogSection(cfg)
-	if err != nil {
-		return none, err
-	}
+func watchdogSettings(cfg *config.Config, section watchdogconfig.WatchdogSection) wanconfig.WatchdogSettings {
 	if cfg == nil || section.ServiceName == "" {
-		return none, nil
+		var none wanconfig.WatchdogSettings
+		return none
 	}
 	watchdog := wanconfig.WatchdogSettings{
 		Present:                      true,
@@ -213,7 +205,7 @@ func watchdogSettings(cfg *config.Config) (wanconfig.WatchdogSettings, error) {
 		}
 		watchdog.PingTargets = append(watchdog.PingTargets, address)
 	}
-	return watchdog, nil
+	return watchdog
 }
 
 // oobSettings projects the out-of-band module configs this role runs.
@@ -320,7 +312,7 @@ func (r runningReplacer) ReplaceConfig(ctx context.Context, ownedPaths []string,
 // monolith configuration carries. It returns ok=false when the set carries no
 // wan.routes config, which is every role but wan; that is a quiet no-publish,
 // not an error.
-func gatewayFromModuleConfigs(cfg *config.Config, configs ifmgr.ModuleConfigSet) (wanconfig.Gateway, bool, error) {
+func gatewayFromModuleConfigs(cfg *config.Config, watchdogSection watchdogconfig.WatchdogSection, configs ifmgr.ModuleConfigSet) (wanconfig.Gateway, bool, error) {
 	var none wanconfig.Gateway
 	routesCfg, isRoutes := configs["wan.routes"].(wanroutes.Config)
 	if !isRoutes || len(routesCfg.WANs) == 0 {
@@ -346,10 +338,7 @@ func gatewayFromModuleConfigs(cfg *config.Config, configs ifmgr.ModuleConfigSet)
 		pinnedConnectionID = cfg.IfMgr.PinnedConnectionID
 		explicitConnectionIDs = cfg.IfMgr.ExplicitConnectionIDs
 	}
-	daemon, err := daemonSettings(cfg, configs)
-	if err != nil {
-		return none, false, err
-	}
+	daemon := daemonSettings(cfg, watchdogSection, configs)
 
 	gateway := wanconfig.Gateway{
 		GuestType:          guestType,

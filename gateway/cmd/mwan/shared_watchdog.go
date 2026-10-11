@@ -1,9 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/watchdogconfig"
@@ -11,8 +11,8 @@ import (
 
 func sharedWatchdogSection(cfg *config.Config) (watchdogconfig.WatchdogSection, error) {
 	var none watchdogconfig.WatchdogSection
-	if cfg == nil || cfg.Path == "" {
-		return none, nil
+	if cfg == nil {
+		return none, errors.New("shared watchdog configuration is required")
 	}
 	section, err := watchdogconfig.LoadWatchdogSection(cfg.Path)
 	if err != nil {
@@ -22,10 +22,10 @@ func sharedWatchdogSection(cfg *config.Config) (watchdogconfig.WatchdogSection, 
 	return section, nil
 }
 
-func networkdTimeout(cfg *config.Config) (time.Duration, error) {
-	section, err := sharedWatchdogSection(cfg)
+func runIfMgrCommand(cfg *config.Config, flags ifmgrFlags) error {
+	watchdogSection, err := sharedWatchdogSection(cfg)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	return time.Duration(section.ConnectivityTimeoutSeconds) * time.Second, nil
+	return runIfMgr(cfg, watchdogSection, flags)
 }

@@ -1,6 +1,7 @@
 package watchdogconfig_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -191,6 +192,30 @@ func TestLoadWatchdogSectionReturnsSectionWithDefaults(t *testing.T) {
 	wantWatchdog := mixedWatchdogSection()
 	if !reflect.DeepEqual(got, wantWatchdog) {
 		t.Errorf("unexpected watchdog settings: %+v %+v", got, wantWatchdog)
+	}
+}
+
+func TestLoadWatchdogSectionConnectivityTimeout(t *testing.T) {
+	configuredPath := writeConfig(t, "[watchdog]\nconnectivity_timeout_seconds = 17\n")
+	configured, err := watchdogconfig.LoadWatchdogSection(configuredPath)
+	if err != nil {
+		t.Fatalf("watchdog configuration load failed: %v", err)
+	}
+	if got := configured.ConnectivityTimeout(); got != 17*time.Second {
+		t.Errorf("configured connectivity timeout differs from 17 seconds: %v", got)
+	}
+
+	defaultPath := writeConfig(t, "[watchdog]\nservice_name = \"mwan-watchdog-test\"\n")
+	defaulted, err := watchdogconfig.LoadWatchdogSection(defaultPath)
+	if err != nil {
+		t.Fatalf("watchdog configuration load failed: %v", err)
+	}
+	if got := defaulted.ConnectivityTimeout(); got != 60*time.Second {
+		t.Errorf("default connectivity timeout differs from 60 seconds: %v", got)
+	}
+
+	if _, err := watchdogconfig.LoadWatchdogSection(""); !errors.Is(err, watchdogconfig.ErrEmptyPath) {
+		t.Errorf("empty watchdog path returned an unexpected error: %v", err)
 	}
 }
 

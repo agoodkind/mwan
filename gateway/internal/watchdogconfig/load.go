@@ -88,6 +88,9 @@ func ResolvePath(arguments []string) (string, []string) {
 	return path, remaining
 }
 
+// ErrEmptyPath indicates that LoadWatchdogSection received an empty path.
+var ErrEmptyPath = errors.New("watchdog config path is required")
+
 type watchdogFile struct {
 	Watchdog WatchdogSection `toml:"watchdog"`
 }
@@ -96,6 +99,9 @@ type watchdogFile struct {
 // validation because gateway consumers use timeout and policy values.
 func LoadWatchdogSection(path string) (WatchdogSection, error) {
 	var none WatchdogSection
+	if path == "" {
+		return none, ErrEmptyPath
+	}
 	path, data, err := readFile(path)
 	if err != nil {
 		return none, err
