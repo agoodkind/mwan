@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/installspec"
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/stackspec"
 	"goodkind.io/mwan/internal/yangpub"
@@ -262,13 +261,17 @@ func TestInstallApplyInstallsTheSchemaIntoSysrepo(t *testing.T) {
 		}
 	}
 
-	wanSpec, _ := installspec.For(installspec.RoleWAN)
-	stackModules := wanSpec.StackYangModules()
-	const wantStackModules = 5
-	if len(stackModules) != wantStackModules {
-		t.Fatalf("stack modules = %v, want %d", stackModules, wantStackModules)
+	wantStackModules := []struct {
+		Name     string
+		Revision string
+	}{
+		{Name: "ietf-restconf", Revision: "2017-01-26"},
+		{Name: "ietf-restconf-monitoring", Revision: "2017-01-26"},
+		{Name: "ietf-yang-patch", Revision: "2017-02-22"},
+		{Name: "ietf-subscribed-notifications", Revision: "2019-09-09"},
+		{Name: "ietf-restconf-subscribed-notifications", Revision: "2019-11-17"},
 	}
-	for _, module := range stackModules {
+	for _, module := range wantStackModules {
 		got, found := implemented[module.Name]
 		if !found {
 			t.Errorf("%s is not implemented in the repository", module.Name)

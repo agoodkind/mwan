@@ -48,15 +48,15 @@ func (m YangModule) Path() string {
 // Installation enables no features for these modules.
 func RousetteYangModules() []YangModule {
 	return []YangModule{
-		{Dir: RousetteYangDir, Name: "ietf-restconf", Revision: "2017-01-26", Features: nil},
-		{Dir: RousetteYangDir, Name: "ietf-restconf-monitoring", Revision: "2017-01-26", Features: nil},
-		{Dir: RousetteYangDir, Name: "ietf-yang-patch", Revision: "2017-02-22", Features: nil},
-		{Dir: RousetteYangDir, Name: "ietf-subscribed-notifications", Revision: "2019-09-09", Features: nil},
+		{Dir: RousetteYangDir, Name: "ietf-restconf", Revision: "2017-01-26", Features: []string{}},
+		{Dir: RousetteYangDir, Name: "ietf-restconf-monitoring", Revision: "2017-01-26", Features: []string{}},
+		{Dir: RousetteYangDir, Name: "ietf-yang-patch", Revision: "2017-02-22", Features: []string{}},
+		{Dir: RousetteYangDir, Name: "ietf-subscribed-notifications", Revision: "2019-09-09", Features: []string{}},
 		{
 			Dir:      RousetteYangDir,
 			Name:     "ietf-restconf-subscribed-notifications",
 			Revision: "2019-11-17",
-			Features: nil,
+			Features: []string{},
 		},
 	}
 }

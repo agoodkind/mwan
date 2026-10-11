@@ -307,15 +307,11 @@ func stackYangModuleModels(spec installspec.Spec) []stackYangModuleModel {
 	stackModules := spec.StackYangModules()
 	models := make([]stackYangModuleModel, 0, len(stackModules))
 	for _, module := range stackModules {
-		features := module.Features
-		if features == nil {
-			features = []string{}
-		}
 		models = append(models, stackYangModuleModel{
 			Name:     types.StringValue(module.Name),
 			Revision: types.StringValue(module.Revision),
 			Path:     types.StringValue(module.Path()),
-			Features: features,
+			Features: module.Features,
 		})
 	}
 	return models
