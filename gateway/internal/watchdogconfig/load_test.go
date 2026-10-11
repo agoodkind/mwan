@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -29,6 +30,7 @@ ping_target_ipv4 = "192.0.2.1"
 service_name = "mwan-watchdog-test"
 vsock_cid = 42
 status_listen_port = 50060
+config_state_command = ["/usr/local/bin/mwan", "config-state"]
 
 [failover]
 lxc_id = "203"
@@ -120,6 +122,10 @@ func TestLoadMatchesGatewayLoaderForHypervisorSections(t *testing.T) {
 		t.Errorf("unexpected network settings: %+v %+v", got.Network, want.Network)
 	}
 	if got.Watchdog.VsockCID != 42 || got.Watchdog.StatusListenPort != 50060 || got.Watchdog.CheckIntervalHealthy != 30 {
+		t.Errorf("unexpected watchdog settings: %+v %+v", got.Watchdog, want.Watchdog)
+	}
+	wantConfigStateCommand := []string{"/usr/local/bin/mwan", "config-state"}
+	if !slices.Equal(got.Watchdog.ConfigStateCommand, wantConfigStateCommand) {
 		t.Errorf("unexpected watchdog settings: %+v %+v", got.Watchdog, want.Watchdog)
 	}
 	if got.Failover.AgentTCPAddr != "192.0.2.2:50052" {

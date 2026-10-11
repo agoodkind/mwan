@@ -126,18 +126,17 @@ func manifestDiff(prev, curr map[string]string) string {
 
 func (w *watchdog) checkConfigHash(ctx context.Context) {
 	log := w.tracedLogger(ctx)
-	resp, usedChannel, err := w.ops.GetConfigState(ctx, w.cfg.MwanVMID)
+	state, usedChannel, err := w.configState.Latest(ctx)
 	if err != nil {
-		log.WarnContext(ctx, "checkConfigHash getConfigState", "err", err)
 		w.lastHashCheckOK = false
 		return
 	}
 	w.routeChannelFallback(ctx, usedChannel)
-	h := strings.TrimSpace(resp.GetConfigHash())
+	h := strings.TrimSpace(state.ConfigHash)
 	if h == "" {
 		return
 	}
-	currentManifest := parseManifest(resp.GetConfigManifest())
+	currentManifest := parseManifest(state.ConfigManifest)
 
 	if w.lastConfigHash != "" && h != w.lastConfigHash {
 		if !w.postRollbackGraceUntil.IsZero() &&
@@ -154,7 +153,7 @@ func (w *watchdog) checkConfigHash(ctx context.Context) {
 			log.WarnContext(ctx,
 				"config hash drift detected",
 				"old_hash", w.lastConfigHash,
-				"new_hash", resp.GetConfigHash(),
+				"new_hash", state.ConfigHash,
 				"changed_files", diffSection,
 				"vm_id", w.cfg.MwanVMID,
 				"node", w.cfg.PVE.Node,

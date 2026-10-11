@@ -376,13 +376,15 @@ func newTestWatchdog(
 		fn(cfg)
 	}
 
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	w := &watchdog{
-		cfg:    cfg,
-		ops:    ops,
-		notify: newFakeNotifier(),
-		log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
-		exitFn: os.Exit,
-		coord:  &alert.Coord{},
+		cfg:         cfg,
+		ops:         ops,
+		notify:      newFakeNotifier(),
+		log:         logger,
+		exitFn:      os.Exit,
+		coord:       &alert.Coord{},
+		configState: newConfigStateSource(cfg, ops, logger),
 	}
 	return w
 }
