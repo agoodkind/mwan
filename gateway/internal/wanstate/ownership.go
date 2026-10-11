@@ -30,6 +30,7 @@ type FamilyState struct {
 	Routing                string
 	routingReason          string
 	Readiness              string
+	Path                   PathReadiness
 	Assignments            []interfaceintent.Assignment
 	LastApply              ApplyResult
 	Addresses              []netif.CurrentAddr
@@ -124,6 +125,7 @@ func cloneAssignment(value interfaceintent.Assignment) interfaceintent.Assignmen
 func cloneFamily(value FamilyState) FamilyState {
 	value.Addresses = slices.Clone(value.Addresses)
 	value.Routes = slices.Clone(value.Routes)
+	value.Path.History = slices.Clone(value.Path.History)
 	for i := range value.Routes {
 		value.Routes[i].NextHops = slices.Clone(value.Routes[i].NextHops)
 	}
@@ -142,7 +144,7 @@ func cloneConnection(value ConnectionState) ConnectionState {
 }
 
 func newFamilyState() FamilyState {
-	return FamilyState{Acquisition: "unknown", AssignmentValid: "unknown", LeasePersistence: "unknown", leasePersistenceReason: "", Firewall: "unknown", Routing: "unknown", routingReason: "", Readiness: "unknown", Assignments: nil, LastApply: ApplyResult{Operation: "", Dependency: "", Result: "", Reason: "", At: time.Time{}}, Addresses: nil, Routes: nil}
+	return FamilyState{Acquisition: "unknown", AssignmentValid: "unknown", LeasePersistence: "unknown", leasePersistenceReason: "", Firewall: "unknown", Routing: "unknown", routingReason: "", Readiness: "unknown", Path: noPath(), Assignments: nil, LastApply: ApplyResult{Operation: "", Dependency: "", Result: "", Reason: "", At: time.Time{}}, Addresses: nil, Routes: nil}
 }
 
 // SetLeasePersistence records lease storage separately from forwarding state.
@@ -255,7 +257,7 @@ func (s *Store) SetAssignment(id, family, acquisition, validity string, assignme
 	previous := state.Acquisition + "/" + state.AssignmentValid
 	state.Acquisition = acquisition
 	state.AssignmentValid = validity
-	state.Assignments = cloneFamily(FamilyState{Acquisition: "", AssignmentValid: "", LeasePersistence: "", leasePersistenceReason: "", Firewall: "", Routing: "", routingReason: "", Readiness: "", Assignments: assignments, LastApply: ApplyResult{Operation: "", Dependency: "", Result: "", Reason: "", At: time.Time{}}, Addresses: nil, Routes: nil}).Assignments
+	state.Assignments = cloneFamily(FamilyState{Acquisition: "", AssignmentValid: "", LeasePersistence: "", leasePersistenceReason: "", Firewall: "", Routing: "", routingReason: "", Readiness: "", Path: noPath(), Assignments: assignments, LastApply: ApplyResult{Operation: "", Dependency: "", Result: "", Reason: "", At: time.Time{}}, Addresses: nil, Routes: nil}).Assignments
 	var transition *Transition
 	if next := acquisition + "/" + validity; next != previous {
 		value := s.addTransitionLocked(&current, family, previous, next, "acquire", "protocol", "assignment state changed", s.clock.Now())
@@ -285,13 +287,7 @@ func (s *Store) SetReadiness(id, family, readiness string) {
 		s.mu.Unlock()
 		return
 	}
-	previous := state.Readiness
-	state.Readiness = readiness
-	var transition *Transition
-	if previous != readiness {
-		value := s.addTransitionLocked(&current, family, previous, readiness, "evaluate-forwarding", "routing", "forwarding readiness changed", s.clock.Now())
-		transition = &value
-	}
+	transition := s.applyReadinessLocked(&current, state, family, readiness)
 	s.connections[id] = current
 	logger := s.transitionLog
 	s.mu.Unlock()

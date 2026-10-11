@@ -270,6 +270,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 		PrepareLocalIPv6:     nil,
 	}
 
+	d.publishStartingPaths()
 	if err := d.initModules(ctx); err != nil {
 		return err
 	}
@@ -538,12 +539,15 @@ func (d *Daemon) reconcileAll(ctx context.Context, log *slog.Logger) {
 		routingGeneration = d.cfg.LiveState.Snapshot().RoutingGeneration
 	}
 	var failed forwardingready.State
+	var routingFailure error
 	for _, m := range d.modules {
 		mlog := log.With("module", m.Name())
 		mlog.DebugContext(ctx, "ifmgr: Reconcile")
 		if err := m.Reconcile(ctx, mlog); err != nil {
 			mlog.WarnContext(ctx, "ifmgr: module Reconcile failed", "err", err)
-			if m.Name() != "wan.routes" {
+			if m.Name() == "wan.routes" {
+				routingFailure = err
+			} else {
 				impact := forwardingFailureImpact(m)
 				failed.IPv4 = failed.IPv4 || impact.IPv4
 				failed.IPv6 = failed.IPv6 || impact.IPv6
@@ -555,7 +559,8 @@ func (d *Daemon) reconcileAll(ctx context.Context, log *slog.Logger) {
 	}
 	if d.cfg.LiveState != nil {
 		snapshot := d.cfg.LiveState.Snapshot()
-		d.publishFamilyReadiness(snapshot, snapshot.RoutingGeneration != routingGeneration, failed)
+		evaluation := newRoutingEvaluation(snapshot.RoutingGeneration != routingGeneration, routingFailure)
+		d.publishFamilyReadiness(snapshot, evaluation, failed)
 		for _, m := range d.modules {
 			if observer, ok := m.(FamilyReadinessObserver); ok {
 				observer.OnFamilyReadiness(ctx, log.With("module", m.Name()))
@@ -610,7 +615,8 @@ func (d *Daemon) internalForwardingReadiness(state forwardingready.State) forwar
 func forwardingReadiness(snapshot wanstate.Snapshot) forwardingready.State {
 	var state forwardingready.State
 	for name, routing := range snapshot.Routing {
-		member := memberForwardingReadiness(routing, snapshot.Health[name])
+		health, known := snapshot.Health[name]
+		member := memberForwardingReadiness(routing, health, known)
 		state.IPv4 = state.IPv4 || member.IPv4
 		state.IPv6 = state.IPv6 || member.IPv6
 	}

@@ -22,6 +22,7 @@ type bgpSessionWire struct {
 	MultihopTTL  *uint8          `json:"multihop-ttl"`
 	Keepalive    *uint16         `json:"keepalive"`
 	Hold         *uint16         `json:"hold"`
+	ConnectRetry *uint16         `json:"connect-retry"`
 	RouteMetric  *uint32         `json:"route-metric"`
 	Import       []bgpImportWire `json:"import"`
 	Export       []bgpExportWire `json:"export"`
@@ -59,7 +60,7 @@ func buildBGPSession(label string, wire bgpSessionWire) (config.BGPSession, erro
 	session := bgpsession.Config{
 		Name: wire.Name, RouterID: netip.Addr{}, LocalASN: 0, RemoteASN: 0,
 		PeerAddress: netip.Addr{}, PeerPort: defaultBGPPeerPort, LocalAddress: netip.Addr{},
-		Interface: "", MultihopTTL: 0, KeepaliveSeconds: 0, HoldSeconds: 0,
+		Interface: "", MultihopTTL: 0, KeepaliveSeconds: 0, HoldSeconds: 0, ConnectRetrySeconds: 0,
 		Import: nil, Export: nil, Tables: nil, RouteMetric: 0,
 	}
 	if err := setBGPSessionPeers(label, wire, &session); err != nil {
@@ -170,5 +171,11 @@ func setBGPSessionTimers(label string, wire bgpSessionWire, session *bgpsession.
 	}
 	session.HoldSeconds = uint32(hold)
 	session.KeepaliveSeconds = uint32(*wire.Keepalive)
+	if wire.ConnectRetry != nil {
+		if *wire.ConnectRetry < bgpsession.MinConnectRetrySeconds {
+			return fmt.Errorf("%s: connect-retry %d must be at least %d", label, *wire.ConnectRetry, bgpsession.MinConnectRetrySeconds)
+		}
+		session.ConnectRetrySeconds = uint32(*wire.ConnectRetry)
+	}
 	return nil
 }

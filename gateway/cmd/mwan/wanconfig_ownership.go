@@ -118,6 +118,7 @@ func ownershipFamilyItems(name, family string, state wanstate.FamilyState, obser
 		items = append(items, yangpub.Item{Path: base + "/router-validity", Value: observedRARouterValidity(observation, state.Routes)})
 	}
 	items = append(items, ownershipFamilyApplyItems(base, state.LastApply)...)
+	items = append(items, pathReadinessItems(base, state.Path)...)
 	for _, assignment := range state.Assignments {
 		id := assignmentIdentity(assignment)
 		path := base + "/assignment[id='" + id + "']"

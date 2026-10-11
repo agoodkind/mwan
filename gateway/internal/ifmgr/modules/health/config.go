@@ -242,6 +242,7 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		reconcileCycleRunning: false,
 		statuses:              nil,
 		lastTransition:        nil,
+		families:              nil,
 		probeV4:               netif.Ping4,
 		probeV6:               netif.Ping6,
 		probeHTTP6:            netif.HTTPCheck6,

@@ -24,6 +24,7 @@ func TestLoadSchemaRejectsInvalidBGPSessions(t *testing.T) {
 		{name: "hold below three seconds", edit: documentEdit{old: bgpTunnelHold, replacement: `"hold": 2,`}},
 		{name: "keepalive equal to hold", edit: documentEdit{old: `"keepalive": 10,`, replacement: `"keepalive": 30,`}},
 		{name: "keepalive above hold", edit: documentEdit{old: `"keepalive": 10,`, replacement: `"keepalive": 31,`}},
+		{name: "connect-retry below two seconds", edit: documentEdit{old: `"keepalive": 10,`, replacement: `"keepalive": 10, "connect-retry": 1,`}},
 		{name: "unspecified router-id", edit: documentEdit{old: `"router-id": "192.0.2.130",`, replacement: `"router-id": "0.0.0.0",`}},
 		{
 			name: "backup-for with the mode always",
