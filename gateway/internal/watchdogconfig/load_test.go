@@ -31,6 +31,7 @@ ping_target_ipv4 = "192.0.2.1"
 service_name = "mwan-watchdog-test"
 vsock_cid = 42
 status_listen_port = 50060
+config_state_command = ["/usr/local/bin/mwan", "config-state"]
 
 [failover]
 lxc_id = "203"
@@ -110,6 +111,7 @@ func mixedWatchdogSection() watchdogconfig.WatchdogSection {
 		MwanAgentTCPAddr:           "",
 		StatusListenPort:           50060,
 		StatusCommand:              nil,
+		ConfigStateCommand:         []string{"/usr/local/bin/mwan", "config-state"},
 		LogFile:                    "/var/log/mwan-watchdog.log",
 		JSONLogFile:                "/var/log/mwan-watchdog.jsonl",
 		RollbackStateFile:          "/run/mwan-rollback.state",

@@ -26,10 +26,16 @@ const (
 func installGuestCommand(t *testing.T, stdout string, exitCode int) {
 	t.Helper()
 
+	installGuestVerb(t, statusVerb, stdout, exitCode)
+}
+
+func installGuestVerb(t *testing.T, verb string, stdout string, exitCode int) {
+	t.Helper()
+
 	directory := t.TempDir()
 	script := fmt.Sprintf(
 		"#!/bin/sh\n[ \"$*\" = \"exec %s -- %s %s\" ] || exit %d\nprintf '%%s\\n' '%s'\nexit %d\n",
-		statusVMID, statusBinary, statusVerb, argvMismatchExit, stdout, exitCode,
+		statusVMID, statusBinary, verb, argvMismatchExit, stdout, exitCode,
 	)
 	if err := os.WriteFile(filepath.Join(directory, "pct"), []byte(script), 0o755); err != nil {
 		t.Fatalf("write pct: %v", err)
