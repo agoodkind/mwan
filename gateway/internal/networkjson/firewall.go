@@ -303,8 +303,8 @@ func populateFirewallProviders(cfg *firewall.Config, doc *document, loaded *Conf
 		}
 		pinned := (wire.PinnedConnectionID != "" && id == wire.PinnedConnectionID) ||
 			(wire.PinnedProvider != "" && entry.WAN.Name == wire.PinnedProvider)
-		if err := requireIPv4ForMarks(entry.WAN.Name, tunnel == nil, wan.ForcedDSCP != 0, pinned); err != nil {
-			return err
+		if pinned && tunnel != nil {
+			return fmt.Errorf("firewall pin target %s has no ipv4 family", entry.WAN.Name)
 		}
 		var provider firewall.Provider
 		provider.Interface = wan.Iface
@@ -334,19 +334,6 @@ func populateFirewallProviders(cfg *firewall.Config, doc *document, loaded *Conf
 	}
 	if matches > 1 {
 		return fmt.Errorf("firewall pinned-provider %q matches multiple connections; use pinned-connection-id", wire.PinnedProvider)
-	}
-	return nil
-}
-
-func requireIPv4ForMarks(provider string, ipv4Forwarded bool, forcedDSCP bool, pinned bool) error {
-	if ipv4Forwarded {
-		return nil
-	}
-	if forcedDSCP {
-		return fmt.Errorf("firewall provider %s: forced-dscp requires an ipv4 family", provider)
-	}
-	if pinned {
-		return fmt.Errorf("firewall pin target %s has no ipv4 family", provider)
 	}
 	return nil
 }

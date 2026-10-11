@@ -117,6 +117,14 @@ func buildCombinedTopology(t *testing.T, run *bgpRuntimeRun, provider bgpRuntime
 	addMappedRuntimeRoute(t, destination, tunnelRuntimeRemoteClient, "far-lan")
 
 	setRuntimeNamespace(t, run.gateway)
+	addCombinedOrdinaryDefaults(t)
+	return combinedTopology{tunnel: tunnel, destinations: map[string]netns.NsHandle{
+		combinedOrdinary: ordinary.namespace, provider.device: remote, tunnelRuntimeDevice: tunnel.remote,
+	}}
+}
+
+func addCombinedOrdinaryDefaults(t *testing.T) {
+	t.Helper()
 	writeTunnelRuntimeSetting(t, "/proc/sys/net/ipv4/conf/"+combinedOrdinary+"/rp_filter", "0")
 	link, err := netlink.LinkByName(combinedOrdinary)
 	if err != nil {
@@ -127,7 +135,4 @@ func buildCombinedTopology(t *testing.T, run *bgpRuntimeRun, provider bgpRuntime
 		t.Fatalf("add the ordinary IPv4 default route: %v", err)
 	}
 	addRuntimeDefault(t, combinedOrdinary, combinedOrdinaryPeerV6)
-	return combinedTopology{tunnel: tunnel, destinations: map[string]netns.NsHandle{
-		combinedOrdinary: ordinary.namespace, provider.device: remote, tunnelRuntimeDevice: tunnel.remote,
-	}}
 }

@@ -100,11 +100,6 @@ func TestDecodeRejectsInvalidTunnelProviders(t *testing.T) {
 			}},
 			want: "firewall pin target tunnel has no ipv4 family",
 		},
-		{
-			name:  "forced DSCP on the tunnel provider",
-			edits: []planEdit{{old: `"fw-mark-prio": 200,`, replacement: `"fw-mark-prio": 200, "forced-dscp": 8,`}},
-			want:  "firewall provider tunnel: forced-dscp requires an ipv4 family",
-		},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {

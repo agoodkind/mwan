@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"goodkind.io/mwan/internal/firewall"
+	"goodkind.io/mwan/internal/networkjson"
 )
 
 func TestTunnelProviderFirewallProjection(t *testing.T) {
@@ -44,6 +45,48 @@ func TestTunnelProviderFirewallProjection(t *testing.T) {
 	wrongFamily.LocalPermits[0].Source = netip.Prefix{}
 	if err := wrongFamily.Validate(); err == nil || !strings.Contains(err.Error(), "requires the IPv4 family") {
 		t.Fatalf("Validate accepted protocol 41 in the IPv6 family: %v", err)
+	}
+}
+
+func TestDecodeAcceptsForcedDSCPOnTunnelProviders(t *testing.T) {
+	forced := planEdit{old: `"fw-mark-prio": 200,`, replacement: `"fw-mark-prio": 200, "forced-dscp": 8,`}
+	cases := []struct {
+		name   string
+		decode func(t *testing.T) *networkjson.Config
+		golden string
+	}{
+		{
+			name:   "6in4 tunnel provider",
+			decode: func(t *testing.T) *networkjson.Config { return decodeTunnelProvider(t, forced) },
+			golden: "firewall-network-tunnel-provider-forced-dscp",
+		},
+		{
+			name:   "tunnel provider with a BGP session",
+			decode: func(t *testing.T) *networkjson.Config { return decodeBGPDocument(t, bgpTunnelFixture, forced) },
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			loaded := testCase.decode(t)
+			if got := loaded.WAN["tunnel-6in4"].ForcedDSCP; got != 8 {
+				t.Fatalf("tunnel forced DSCP = %d, want 8", got)
+			}
+			compiled, err := firewall.Compile(loaded.Firewall)
+			if err != nil {
+				t.Fatalf("Compile: %v", err)
+			}
+			text := compiled.String()
+			if strings.Contains(text, "ip dscp") {
+				t.Fatalf("the ruleset matches the DSCP value on IPv4 packets:\n%s", text)
+			}
+			want := `  iifname "enmwanbr0" ip6 dscp 8 ct state new meta mark set 2` + "\n"
+			if strings.Count(text, want) != 1 {
+				t.Fatalf("the ruleset lacks exactly one %q:\n%s", want, text)
+			}
+			if testCase.golden != "" {
+				requireGolden(t, testCase.golden, text)
+			}
+		})
 	}
 }
 

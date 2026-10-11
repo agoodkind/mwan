@@ -9,8 +9,11 @@ import (
 	"net"
 	"slices"
 	"strconv"
+	"syscall"
 	"testing"
 	"time"
+
+	"github.com/vishvananda/netns"
 )
 
 const (
@@ -130,18 +133,23 @@ func requireCombinedUnchanged(t *testing.T, read func() string, since time.Time,
 
 func combinedTransferPath(t *testing.T, topology combinedTopology, source string) (string, error) {
 	t.Helper()
-	defer setRuntimeNamespace(t, topology.tunnel.gateway)
 	destination := net.JoinHostPort(combinedDestination, strconv.Itoa(combinedPort))
-	accepted := make(chan string, len(topology.destinations))
+	return runtimeTransferPath(t, topology.tunnel, topology.destinations, "tcp6", destination, source, nil)
+}
+
+func runtimeTransferPath(t *testing.T, topology tunnelRuntimeTopology, destinations map[string]netns.NsHandle, network, destination, source string, control func(string, string, syscall.RawConn) error) (string, error) {
+	t.Helper()
+	defer setRuntimeNamespace(t, topology.gateway)
+	accepted := make(chan string, len(destinations))
 	var listeners []net.Listener
 	defer func() {
 		for _, listener := range listeners {
 			_ = listener.Close()
 		}
 	}()
-	for device, namespace := range topology.destinations {
+	for device, namespace := range destinations {
 		setRuntimeNamespace(t, namespace)
-		listener, err := net.Listen("tcp6", destination)
+		listener, err := net.Listen(network, destination)
 		if err != nil {
 			t.Fatalf("listen on %s behind %s: %v", destination, device, err)
 		}
@@ -157,13 +165,13 @@ func combinedTransferPath(t *testing.T, topology combinedTopology, source string
 			}
 		}()
 	}
-	setRuntimeNamespace(t, topology.tunnel.client)
-	local, err := net.ResolveTCPAddr("tcp6", net.JoinHostPort(source, "0"))
+	setRuntimeNamespace(t, topology.client)
+	local, err := net.ResolveTCPAddr(network, net.JoinHostPort(source, "0"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	dialer := net.Dialer{LocalAddr: local, Timeout: time.Second}
-	connection, err := dialer.Dial("tcp6", destination)
+	dialer := net.Dialer{LocalAddr: local, Timeout: time.Second, Control: control}
+	connection, err := dialer.Dial(network, destination)
 	if err != nil {
 		return "", fmt.Errorf("dial %s from %s: %w", destination, source, err)
 	}
