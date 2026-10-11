@@ -2,7 +2,10 @@ package installspec
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
+
+	"goodkind.io/mwan/internal/stackspec"
 )
 
 const (
@@ -11,6 +14,8 @@ const (
 
 	// NACMModule selects the datastore module configured by the access policy.
 	NACMModule = "ietf-netconf-acm"
+
+	rousetteUnit = "rousette.service"
 
 	unitSuffix        = ".service"
 	dropInDirSuffix   = ".d"
@@ -54,6 +59,15 @@ func (s Spec) SysrepoImports(policy []byte) []SysrepoImport {
 		})
 	}
 	return imports
+}
+
+// StackYangModules returns package schemas required for rousette.service
+// startup when the role enables the service.
+func (s Spec) StackYangModules() []stackspec.YangModule {
+	if !slices.Contains(s.Enable, rousetteUnit) {
+		return nil
+	}
+	return stackspec.RousetteYangModules()
 }
 
 // Unit specifies a service's desired state and configuration paths.
