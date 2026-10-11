@@ -88,6 +88,11 @@ func (ws WatchdogSection) PostRollbackGrace() time.Duration {
 	return time.Duration(ws.PostRollbackGraceSeconds) * time.Second
 }
 
+// ConnectivityTimeout returns the networkd observation and release limit.
+func (ws WatchdogSection) ConnectivityTimeout() time.Duration {
+	return time.Duration(ws.ConnectivityTimeoutSeconds) * time.Second
+}
+
 // FailoverSection configures BGP failover for an LXC guest.
 type FailoverSection struct {
 	LXCID string `toml:"lxc_id"`

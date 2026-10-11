@@ -21,6 +21,7 @@ import (
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/wanconfig"
 	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/internal/watchdogconfig"
 	"goodkind.io/mwan/internal/yangpub"
 )
 
@@ -47,6 +48,7 @@ func startWanconfigSurface(
 	ctx context.Context,
 	logger *slog.Logger,
 	cfg *config.Config,
+	watchdogSection watchdogconfig.WatchdogSection,
 	moduleConfigs ifmgr.ModuleConfigSet,
 	rejections []networkjson.Rejection,
 	store *wanstate.Store,
@@ -55,7 +57,7 @@ func startWanconfigSurface(
 		return nil
 	}
 	log := logger.With("component", "wanconfig")
-	gateway, ok, err := gatewayFromModuleConfigs(cfg, moduleConfigs)
+	gateway, ok, err := gatewayFromModuleConfigs(cfg, watchdogSection, moduleConfigs)
 	if err != nil {
 		log.ErrorContext(ctx, "wanconfig: projection from module configs failed", "err", err)
 		return nil
@@ -161,34 +163,33 @@ func (s *wanconfigSurface) initialize(
 // the out-of-band and tap module configs when this role runs them. A
 // section the configuration does not carry stays absent, so the tree
 // never invents values another host owns.
-func daemonSettings(cfg *config.Config, configs ifmgr.ModuleConfigSet) wanconfig.DaemonSettings {
-	settings := wanconfig.DaemonSettings{
-		Watchdog: watchdogSettings(cfg),
+func daemonSettings(cfg *config.Config, section watchdogconfig.WatchdogSection, configs ifmgr.ModuleConfigSet) wanconfig.DaemonSettings {
+	return wanconfig.DaemonSettings{
+		Watchdog: watchdogSettings(cfg, section),
 		OOB:      oobSettings(configs),
 		Tap:      tapSettings(configs),
 	}
-	return settings
 }
 
 // watchdogSettings projects the watchdog section. The rendered section
 // always names the unit it drives, so the name doubles as presence.
-func watchdogSettings(cfg *config.Config) wanconfig.WatchdogSettings {
-	var none wanconfig.WatchdogSettings
-	if cfg == nil || cfg.Watchdog.ServiceName == "" {
+func watchdogSettings(cfg *config.Config, section watchdogconfig.WatchdogSection) wanconfig.WatchdogSettings {
+	if cfg == nil || section.ServiceName == "" {
+		var none wanconfig.WatchdogSettings
 		return none
 	}
 	watchdog := wanconfig.WatchdogSettings{
 		Present:                      true,
-		DeployWindowMinutes:          clampUint16(cfg.Watchdog.DeployWindowMinutes),
-		ConnectivityTimeoutSeconds:   clampUint16(cfg.Watchdog.ConnectivityTimeoutSeconds),
-		CheckIntervalHealthySeconds:  clampUint16(cfg.Watchdog.CheckIntervalHealthy),
-		CheckIntervalDegradedSeconds: clampUint16(cfg.Watchdog.CheckIntervalDegraded),
-		PostRollbackGraceSeconds:     clampUint16(cfg.Watchdog.PostRollbackGraceSeconds),
-		AlertCooldownSeconds:         clampUint16(cfg.Watchdog.AlertCooldownSeconds),
-		DeployGracePeriodSeconds:     clampUint16(cfg.Watchdog.DeployGracePeriodSeconds),
-		MaxRollbackAttempts:          clampUint8(cfg.Watchdog.MaxRollbackAttempts),
-		SnapshotHealthyThreshold:     clampUint16(cfg.Watchdog.SnapshotHealthyThreshold),
-		MaxKnownGoodSnapshots:        clampUint8(cfg.Watchdog.MaxKnownGoodSnapshots),
+		DeployWindowMinutes:          clampUint16(section.DeployWindowMinutes),
+		ConnectivityTimeoutSeconds:   clampUint16(section.ConnectivityTimeoutSeconds),
+		CheckIntervalHealthySeconds:  clampUint16(section.CheckIntervalHealthy),
+		CheckIntervalDegradedSeconds: clampUint16(section.CheckIntervalDegraded),
+		PostRollbackGraceSeconds:     clampUint16(section.PostRollbackGraceSeconds),
+		AlertCooldownSeconds:         clampUint16(section.AlertCooldownSeconds),
+		DeployGracePeriodSeconds:     clampUint16(section.DeployGracePeriodSeconds),
+		MaxRollbackAttempts:          clampUint8(section.MaxRollbackAttempts),
+		SnapshotHealthyThreshold:     clampUint16(section.SnapshotHealthyThreshold),
+		MaxKnownGoodSnapshots:        clampUint8(section.MaxKnownGoodSnapshots),
 		PingTargets:                  nil,
 	}
 	// The watchdog probes exactly these two targets, one per family.
@@ -311,7 +312,7 @@ func (r runningReplacer) ReplaceConfig(ctx context.Context, ownedPaths []string,
 // monolith configuration carries. It returns ok=false when the set carries no
 // wan.routes config, which is every role but wan; that is a quiet no-publish,
 // not an error.
-func gatewayFromModuleConfigs(cfg *config.Config, configs ifmgr.ModuleConfigSet) (wanconfig.Gateway, bool, error) {
+func gatewayFromModuleConfigs(cfg *config.Config, watchdogSection watchdogconfig.WatchdogSection, configs ifmgr.ModuleConfigSet) (wanconfig.Gateway, bool, error) {
 	var none wanconfig.Gateway
 	routesCfg, isRoutes := configs["wan.routes"].(wanroutes.Config)
 	if !isRoutes || len(routesCfg.WANs) == 0 {
@@ -337,6 +338,7 @@ func gatewayFromModuleConfigs(cfg *config.Config, configs ifmgr.ModuleConfigSet)
 		pinnedConnectionID = cfg.IfMgr.PinnedConnectionID
 		explicitConnectionIDs = cfg.IfMgr.ExplicitConnectionIDs
 	}
+	daemon := daemonSettings(cfg, watchdogSection, configs)
 
 	gateway := wanconfig.Gateway{
 		GuestType:          guestType,
@@ -348,7 +350,7 @@ func gatewayFromModuleConfigs(cfg *config.Config, configs ifmgr.ModuleConfigSet)
 		HashMode:           hashModeFromConfig(cfg),
 		Group:              group,
 		Members:            make([]wanconfig.Member, 0, len(routesCfg.WANs)),
-		Daemon:             daemonSettings(cfg, configs),
+		Daemon:             daemon,
 	}
 	for _, wan := range routesCfg.WANs {
 		member, err := memberFromWAN(cfg, wan, probed[wan.Key()])

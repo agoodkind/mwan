@@ -14,6 +14,7 @@ import (
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/networkload"
 	"goodkind.io/mwan/internal/wanconfig"
+	"goodkind.io/mwan/internal/watchdogconfig"
 	"goodkind.io/mwan/internal/yangpub"
 )
 
@@ -121,7 +122,7 @@ func servedConfigItems(t *testing.T, document string, schemaDir string) []wancon
 	if err != nil {
 		t.Fatalf("build wan module configs: %v", err)
 	}
-	gateway, ok, err := gatewayFromModuleConfigs(&cfg, moduleConfigs)
+	gateway, ok, err := gatewayFromModuleConfigs(&cfg, watchdogconfig.WatchdogSection{}, moduleConfigs)
 	if err != nil {
 		t.Fatalf("project gateway: %v", err)
 	}

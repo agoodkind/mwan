@@ -154,7 +154,7 @@ func dispatchWithConfig(rawSub string, sub subcommand, cfg *config.Config, flags
 	case subcmdAgent:
 		runErr = agent.Run(cfg)
 	case subcmdIfmgr:
-		runErr = runIfMgr(cfg, flags)
+		runErr = runIfMgrCommand(cfg, flags)
 	case subcmdNotify:
 		runErr = runNotify(cfg)
 	case subcmdDebug:
