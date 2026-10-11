@@ -126,8 +126,8 @@ func manifestDiff(prev, curr map[string]string) string {
 
 func (w *watchdog) checkConfigHash(ctx context.Context) {
 	log := w.tracedLogger(ctx)
-	state, usedChannel, ok := w.configState.Latest(ctx)
-	if !ok {
+	state, usedChannel, err := w.configState.Latest(ctx)
+	if err != nil {
 		w.lastHashCheckOK = false
 		return
 	}

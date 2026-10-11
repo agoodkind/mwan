@@ -217,9 +217,8 @@ func TestGuestConfigStateSourceDecodesTheCommandOutput(t *testing.T) {
 	installGuestVerb(t, configStateVerb, encodeConfigState(t, want), 0)
 	source := newGuestConfigStateSource(t)
 
-	state, _, ok := source.Latest(context.Background())
-
-	if !ok {
+	state, _, err := source.Latest(context.Background())
+	if err != nil {
 		t.Fatal("config state read failed")
 	}
 	if state != want {
@@ -248,8 +247,9 @@ func TestGuestConfigStateSourceReportsNothingOnFailure(t *testing.T) {
 			}
 			source := newGuestConfigStateSource(t)
 
-			state, _, ok := source.Latest(context.Background())
+			state, _, err := source.Latest(context.Background())
 
+			ok := err == nil
 			none := configstate.State{ConfigHash: "", ConfigManifest: "", LastDeployEpoch: 0}
 			if ok || state != none {
 				t.Fatalf("state = %+v, ok = %t, want %+v, false", state, ok, none)
