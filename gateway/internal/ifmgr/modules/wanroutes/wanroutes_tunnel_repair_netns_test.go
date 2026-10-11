@@ -3,6 +3,7 @@
 package wanroutes
 
 import (
+	"net"
 	"testing"
 	"time"
 
@@ -28,23 +29,31 @@ func (fixture *tunnelRouteFixture) drainRepairs() {
 	}
 }
 
-func (fixture *tunnelRouteFixture) repairsUntil(t *testing.T, boundary, counted string) int {
+// After Init, each interface monitor replays the main default route of its link, and the module
+// requests one repair with the main default reason for each replayed route.
+func (fixture *tunnelRouteFixture) repairsUntil(t *testing.T, boundary, counted, state string, settled func() bool) int {
 	t.Helper()
 	expired := time.After(20 * time.Second)
 	count := 0
 	for {
 		select {
 		case reason := <-fixture.repairs:
-			if reason == boundary {
+			if reason == boundary && settled() {
 				return count
 			}
 			if reason == counted {
 				count++
 			}
 		case <-expired:
-			t.Fatalf("no repair request with reason %q", boundary)
+			t.Fatalf("no repair request with reason %q and %s", boundary, state)
 		}
 	}
+}
+
+func endpointRouteUses(t *testing.T, gateway string) bool {
+	t.Helper()
+	endpoints := tunnelEndpointRoutes(t, tunnelRouteUnderTbl)
+	return len(endpoints) == 1 && endpoints[0].Gw.Equal(net.ParseIP(gateway))
 }
 
 func TestTunnelEndpointRouteDeletionRequestsRepair(t *testing.T) {
@@ -75,12 +84,15 @@ func TestTunnelEndpointRouteDeletionRequestsRepair(t *testing.T) {
 
 	fixture.drainRepairs()
 	setTunnelRouteDefault(t, tunnelRouteUnderlay, tunnelRouteGateway, tunnelRouteUnderMetric, false)
-	fixture.repairsUntil(t, repairMainDefaultChanged, repairEndpointRouteDeleted)
-	if endpoints := tunnelEndpointRoutes(t, tunnelRouteUnderTbl); len(endpoints) != 0 {
-		t.Fatalf("endpoint routes without an underlay gateway = %+v", endpoints)
-	}
+	fixture.repairsUntil(t, repairMainDefaultChanged, repairEndpointRouteDeleted, "no endpoint route without an underlay gateway", func() bool {
+		return len(tunnelEndpointRoutes(t, tunnelRouteUnderTbl)) == 0
+	})
 	setTunnelRouteDefault(t, tunnelRouteUnderlay, tunnelRouteSecondGW, tunnelRouteUnderMetric, true)
-	if own := fixture.repairsUntil(t, repairMainDefaultChanged, repairEndpointRouteDeleted); own != 0 {
+	replacedRoute := "the endpoint route through " + tunnelRouteSecondGW
+	own := fixture.repairsUntil(t, repairMainDefaultChanged, repairEndpointRouteDeleted, replacedRoute, func() bool {
+		return endpointRouteUses(t, tunnelRouteSecondGW)
+	})
+	if own != 0 {
 		t.Fatalf("the module's own deletion of the endpoint route requested %d repair passes, want none", own)
 	}
 
