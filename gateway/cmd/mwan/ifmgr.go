@@ -307,7 +307,11 @@ func buildIfMgrDaemonConfig(cfg *config.Config, role string) (ifmgr.DaemonConfig
 		return ifmgr.DaemonConfig{}, err
 	}
 	if settings, found := moduleConfigs["addresses"].(addresses.Config); found {
-		settings.NetworkdTimeout = time.Duration(cfg.Watchdog.ConnectivityTimeoutSeconds) * time.Second
+		timeout, err := networkdTimeout(cfg)
+		if err != nil {
+			return ifmgr.DaemonConfig{}, err
+		}
+		settings.NetworkdTimeout = timeout
 		moduleConfigs["addresses"] = settings
 	}
 

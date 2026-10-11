@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"net/netip"
 	"slices"
-	"time"
 
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ifmgr/modules/npt"
@@ -183,10 +182,14 @@ func legacyMappedTransitionPrimary(ctx context.Context, cfg *config.Config, conn
 }
 
 func legacyMappedAcquiredPrimary(ctx context.Context, cfg *config.Config, name string) ([]netip.Addr, error) {
-	if cfg.Watchdog.ConnectivityTimeoutSeconds <= 0 {
+	timeout, err := networkdTimeout(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if timeout <= 0 {
 		return nil, fmt.Errorf("legacy mapping observation requires a positive networkd timeout")
 	}
-	bounded, cancel := context.WithTimeout(ctx, time.Duration(cfg.Watchdog.ConnectivityTimeoutSeconds)*time.Second)
+	bounded, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	addresses, err := networkd.Addresses(bounded, name)
 	if err != nil {

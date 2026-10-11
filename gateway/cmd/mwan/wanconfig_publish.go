@@ -161,34 +161,43 @@ func (s *wanconfigSurface) initialize(
 // the out-of-band and tap module configs when this role runs them. A
 // section the configuration does not carry stays absent, so the tree
 // never invents values another host owns.
-func daemonSettings(cfg *config.Config, configs ifmgr.ModuleConfigSet) wanconfig.DaemonSettings {
+func daemonSettings(cfg *config.Config, configs ifmgr.ModuleConfigSet) (wanconfig.DaemonSettings, error) {
+	watchdog, err := watchdogSettings(cfg)
+	if err != nil {
+		var none wanconfig.DaemonSettings
+		return none, err
+	}
 	settings := wanconfig.DaemonSettings{
-		Watchdog: watchdogSettings(cfg),
+		Watchdog: watchdog,
 		OOB:      oobSettings(configs),
 		Tap:      tapSettings(configs),
 	}
-	return settings
+	return settings, nil
 }
 
 // watchdogSettings projects the watchdog section. The rendered section
 // always names the unit it drives, so the name doubles as presence.
-func watchdogSettings(cfg *config.Config) wanconfig.WatchdogSettings {
+func watchdogSettings(cfg *config.Config) (wanconfig.WatchdogSettings, error) {
 	var none wanconfig.WatchdogSettings
-	if cfg == nil || cfg.Watchdog.ServiceName == "" {
-		return none
+	section, err := sharedWatchdogSection(cfg)
+	if err != nil {
+		return none, err
+	}
+	if cfg == nil || section.ServiceName == "" {
+		return none, nil
 	}
 	watchdog := wanconfig.WatchdogSettings{
 		Present:                      true,
-		DeployWindowMinutes:          clampUint16(cfg.Watchdog.DeployWindowMinutes),
-		ConnectivityTimeoutSeconds:   clampUint16(cfg.Watchdog.ConnectivityTimeoutSeconds),
-		CheckIntervalHealthySeconds:  clampUint16(cfg.Watchdog.CheckIntervalHealthy),
-		CheckIntervalDegradedSeconds: clampUint16(cfg.Watchdog.CheckIntervalDegraded),
-		PostRollbackGraceSeconds:     clampUint16(cfg.Watchdog.PostRollbackGraceSeconds),
-		AlertCooldownSeconds:         clampUint16(cfg.Watchdog.AlertCooldownSeconds),
-		DeployGracePeriodSeconds:     clampUint16(cfg.Watchdog.DeployGracePeriodSeconds),
-		MaxRollbackAttempts:          clampUint8(cfg.Watchdog.MaxRollbackAttempts),
-		SnapshotHealthyThreshold:     clampUint16(cfg.Watchdog.SnapshotHealthyThreshold),
-		MaxKnownGoodSnapshots:        clampUint8(cfg.Watchdog.MaxKnownGoodSnapshots),
+		DeployWindowMinutes:          clampUint16(section.DeployWindowMinutes),
+		ConnectivityTimeoutSeconds:   clampUint16(section.ConnectivityTimeoutSeconds),
+		CheckIntervalHealthySeconds:  clampUint16(section.CheckIntervalHealthy),
+		CheckIntervalDegradedSeconds: clampUint16(section.CheckIntervalDegraded),
+		PostRollbackGraceSeconds:     clampUint16(section.PostRollbackGraceSeconds),
+		AlertCooldownSeconds:         clampUint16(section.AlertCooldownSeconds),
+		DeployGracePeriodSeconds:     clampUint16(section.DeployGracePeriodSeconds),
+		MaxRollbackAttempts:          clampUint8(section.MaxRollbackAttempts),
+		SnapshotHealthyThreshold:     clampUint16(section.SnapshotHealthyThreshold),
+		MaxKnownGoodSnapshots:        clampUint8(section.MaxKnownGoodSnapshots),
 		PingTargets:                  nil,
 	}
 	// The watchdog probes exactly these two targets, one per family.
@@ -204,7 +213,7 @@ func watchdogSettings(cfg *config.Config) wanconfig.WatchdogSettings {
 		}
 		watchdog.PingTargets = append(watchdog.PingTargets, address)
 	}
-	return watchdog
+	return watchdog, nil
 }
 
 // oobSettings projects the out-of-band module configs this role runs.
@@ -337,6 +346,10 @@ func gatewayFromModuleConfigs(cfg *config.Config, configs ifmgr.ModuleConfigSet)
 		pinnedConnectionID = cfg.IfMgr.PinnedConnectionID
 		explicitConnectionIDs = cfg.IfMgr.ExplicitConnectionIDs
 	}
+	daemon, err := daemonSettings(cfg, configs)
+	if err != nil {
+		return none, false, err
+	}
 
 	gateway := wanconfig.Gateway{
 		GuestType:          guestType,
@@ -348,7 +361,7 @@ func gatewayFromModuleConfigs(cfg *config.Config, configs ifmgr.ModuleConfigSet)
 		HashMode:           hashModeFromConfig(cfg),
 		Group:              group,
 		Members:            make([]wanconfig.Member, 0, len(routesCfg.WANs)),
-		Daemon:             daemonSettings(cfg, configs),
+		Daemon:             daemon,
 	}
 	for _, wan := range routesCfg.WANs {
 		member, err := memberFromWAN(cfg, wan, probed[wan.Key()])
