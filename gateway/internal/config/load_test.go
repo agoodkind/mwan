@@ -46,9 +46,6 @@ listen = "/var/run/mwan-opnsense-drain.sock"
 	if cfg.Hostname != "hypervisor-test" || cfg.MwanVMID != "4100" {
 		t.Errorf("hostname = %q mwan_vmid = %q, want hypervisor-test and 4100", cfg.Hostname, cfg.MwanVMID)
 	}
-	if cfg.Watchdog.ServiceName != "mwan-watchdog-test" {
-		t.Errorf("watchdog service_name = %q, want mwan-watchdog-test", cfg.Watchdog.ServiceName)
-	}
 }
 
 func TestLoadHealthMaxStateAge(t *testing.T) {

@@ -22,8 +22,11 @@ const (
 	binaryEnv    = "MWAN_BINARY"
 	privateRepo  = "etc/sysrepo"
 	enableMarker = "would enable "
-	octalBase    = 8
-	fileModeBits = 32
+	moduleMarker = "installed module "
+
+	stackFixtureDir = "../../../gateway/cmd/mwan/testdata/rousette"
+	octalBase       = 8
+	fileModeBits    = 32
 )
 
 type installedFile struct {
@@ -66,6 +69,27 @@ func walkInstalled(t *testing.T, root string) map[string]installedFile {
 	return installed
 }
 
+func seedStackModules(t *testing.T, root string, modules []roleStackModule) []string {
+	t.Helper()
+	dirs := []string{}
+	for _, module := range modules {
+		dir := filepath.Dir(module.Path)
+		if slices.Contains(dirs, dir) {
+			continue
+		}
+		dirs = append(dirs, dir)
+		if err := os.CopyFS(filepath.Join(root, dir), os.DirFS(stackFixtureDir)); err != nil {
+			t.Fatalf("copy %s to %s: %v", stackFixtureDir, dir, err)
+		}
+	}
+	for _, module := range modules {
+		if _, err := os.Stat(filepath.Join(root, module.Path)); err != nil {
+			t.Fatalf("stat %s: %v", module.Path, err)
+		}
+	}
+	return dirs
+}
+
 func TestProviderRoleMatchesMwanInstall(t *testing.T) {
 	binary := os.Getenv(binaryEnv)
 	if binary == "" {
@@ -90,6 +114,11 @@ func checkRoleMatchesInstall(
 	guest config.GuestType,
 ) {
 	root := t.TempDir()
+	data, diagnostics := provider.readRoleForGuest(t, string(role), string(guest))
+	if len(diagnostics) > 0 {
+		t.Fatalf("read mwan_role %s: %v", role, diagnostics[0].Detail)
+	}
+	stackDirs := seedStackModules(t, root, data.StackModules)
 	command := exec.Command(
 		binary, "install", "--apply", "--role", string(role), "--guest-type", string(guest), "--root", root)
 	output, err := command.CombinedOutput()
@@ -97,10 +126,11 @@ func checkRoleMatchesInstall(
 		t.Fatalf("mwan install --role %s --guest-type %s: %v\n%s", role, guest, err, output)
 	}
 	installed := walkInstalled(t, root)
-
-	data, diagnostics := provider.readRoleForGuest(t, string(role), string(guest))
-	if len(diagnostics) > 0 {
-		t.Fatalf("read mwan_role %s: %v", role, diagnostics[0].Detail)
+	for _, module := range data.StackModules {
+		wantInstall := moduleMarker + module.Name + "@" + module.Revision
+		if !strings.Contains(string(output), wantInstall) {
+			t.Errorf("mwan install output:\n%s\nwant the line %q", output, wantInstall)
+		}
 	}
 
 	want := map[string]installedFile{}
@@ -127,6 +157,9 @@ func checkRoleMatchesInstall(
 	for path := range installed {
 		// The policy is compared with sysrepo_data below.
 		if path == installspec.NACMPolicyPath {
+			continue
+		}
+		if slices.Contains(stackDirs, filepath.Dir(path)) {
 			continue
 		}
 		if _, listed := want[path]; !listed {

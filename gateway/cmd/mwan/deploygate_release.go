@@ -16,7 +16,7 @@ import (
 	"goodkind.io/mwan/internal/networkload"
 )
 
-func checkConnectionRelease(ctx context.Context, output io.Writer, cfg *config.Config, id connectionid.ID, previous interfaceintent.Owner) int {
+func checkConnectionRelease(ctx context.Context, output io.Writer, cfg *config.Config, timeout time.Duration, id connectionid.ID, previous interfaceintent.Owner) int {
 	loaded, err := networkload.Load(networkjson.DefaultPath, networkjson.DefaultSchemaDir)
 	if err != nil {
 		fmt.Fprintf(output, "release verification failed: %v\n", err)
@@ -39,7 +39,6 @@ func checkConnectionRelease(ctx context.Context, output io.Writer, cfg *config.C
 		return exitDeployGateFailed
 	}
 	if previous == interfaceintent.OwnerNetworkd {
-		timeout := time.Duration(cfg.Watchdog.ConnectivityTimeoutSeconds) * time.Second
 		if timeout <= 0 {
 			fmt.Fprintln(output, "release verification failed: watchdog connectivity timeout must be positive")
 			return exitDeployGateFailed

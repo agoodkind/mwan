@@ -73,6 +73,8 @@ type watchdog struct {
 	// hypervisors.
 	status statusSource
 
+	configState configStateSource
+
 	lastConfigHash        string
 	lastManifest          map[string]string // path -> sha256hex from previous run
 	hashChangeWindowStart int64
@@ -133,6 +135,8 @@ func newWatchdog(
 		probeLog: nil,
 		tracker:  nil,
 		status:   nil,
+
+		configState: newConfigStateSource(cfg, sysOps, logger),
 
 		lastConfigHash:        "",
 		lastManifest:          nil,

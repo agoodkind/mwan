@@ -49,12 +49,20 @@ type roleSysrepoData struct {
 	Content   string
 }
 
+type roleStackModule struct {
+	Name     string
+	Revision string
+	Path     string
+	Features []string
+}
+
 type roleData struct {
-	BinaryPath  string
-	Files       []roleFile
-	Units       []roleUnit
-	Modules     []roleModule
-	SysrepoData []roleSysrepoData
+	BinaryPath   string
+	Files        []roleFile
+	Units        []roleUnit
+	Modules      []roleModule
+	StackModules []roleStackModule
+	SysrepoData  []roleSysrepoData
 }
 
 type archives struct {
@@ -111,7 +119,10 @@ func (s *protocolServer) readRoleForGuest(
 	}
 	state, diagnostics := s.read(t, roleDataSource, attributes)
 	if len(diagnostics) > 0 {
-		return roleData{BinaryPath: "", Files: nil, Units: nil, Modules: nil, SysrepoData: nil}, diagnostics
+		empty := roleData{
+			BinaryPath: "", Files: nil, Units: nil, Modules: nil, StackModules: nil, SysrepoData: nil,
+		}
+		return empty, diagnostics
 	}
 	return decodeRole(t, state), nil
 }
@@ -246,7 +257,18 @@ func stringList(t *testing.T, values []tftypes.Value) []string {
 
 func decodeRole(t *testing.T, state tftypes.Value) roleData {
 	t.Helper()
-	role := roleData{BinaryPath: text(t, state, "binary_path"), Files: nil, Units: nil, Modules: nil, SysrepoData: nil}
+	role := roleData{
+		BinaryPath: text(t, state, "binary_path"),
+		Files:      nil, Units: nil, Modules: nil, StackModules: nil, SysrepoData: nil,
+	}
+	for _, module := range elements(t, state, "stack_yang_modules") {
+		role.StackModules = append(role.StackModules, roleStackModule{
+			Name:     text(t, module, "name"),
+			Revision: text(t, module, "revision"),
+			Path:     text(t, module, "path"),
+			Features: stringList(t, elements(t, module, "features")),
+		})
+	}
 	for _, file := range elements(t, state, "files") {
 		role.Files = append(role.Files, roleFile{
 			Path:    text(t, file, "path"),

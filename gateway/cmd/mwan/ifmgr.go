@@ -33,6 +33,7 @@ import (
 	"goodkind.io/mwan/internal/tracing"
 	"goodkind.io/mwan/internal/version"
 	"goodkind.io/mwan/internal/wanstate"
+	"goodkind.io/mwan/internal/watchdogconfig"
 
 	// Side-effect imports: each module package's init() registers itself
 	// with the ifmgr registry. Roles are resolved by name in roles.go.
@@ -59,7 +60,7 @@ import (
 )
 
 // runIfMgr configures the daemon with the flags parsed before firewall bootstrap.
-func runIfMgr(cfg *config.Config, flags ifmgrFlags) error {
+func runIfMgr(cfg *config.Config, watchdogSection watchdogconfig.WatchdogSection, flags ifmgrFlags) error {
 	role, err := ifMgrRole(cfg, flags)
 	if err != nil {
 		return err
@@ -87,7 +88,7 @@ func runIfMgr(cfg *config.Config, flags ifmgrFlags) error {
 		aliasSync.Wait()
 	}()
 	if flags.captureLegacyNPT != "" || flags.adoptLegacyNPT != "" {
-		return runLegacyNPTTransition(ctx, logger, cfg, flags, role)
+		return runLegacyNPTTransition(ctx, logger, cfg, flags, role, watchdogSection.ConnectivityTimeout())
 	}
 
 	if role == "wan" {
@@ -101,7 +102,7 @@ func runIfMgr(cfg *config.Config, flags ifmgrFlags) error {
 		return err
 	}
 
-	dcfg, err := buildIfMgrDaemonConfig(cfg, role)
+	dcfg, err := buildIfMgrDaemonConfig(cfg, role, watchdogSection.ConnectivityTimeout())
 	if err != nil {
 		logger.Warn("ifmgr: build daemon config failed", "err", err)
 		return fmt.Errorf("build daemon config: %w", err)
@@ -136,7 +137,7 @@ func runIfMgr(cfg *config.Config, flags ifmgrFlags) error {
 
 	// Runtime readiness uses the store even when the optional management
 	// datastore is unavailable.
-	surface := startWanconfigSurface(ctx, logger, cfg, dcfg.ModuleConfigs, rejections, dcfg.LiveState)
+	surface := startWanconfigSurface(ctx, logger, cfg, watchdogSection, dcfg.ModuleConfigs, rejections, dcfg.LiveState)
 	if surface != nil {
 		defer surface.Close()
 	}
@@ -245,7 +246,7 @@ func logShutdownReason(ctx context.Context, log *slog.Logger) {
 // buildIfMgrDaemonConfig translates cfg.IfMgr (the parsed TOML) into the
 // shape ifmgr.Daemon expects. Module configs are adapted from the explicit
 // TOML schema into typed runtime configs before daemon startup.
-func buildIfMgrDaemonConfig(cfg *config.Config, role string) (ifmgr.DaemonConfig, error) {
+func buildIfMgrDaemonConfig(cfg *config.Config, role string, timeout time.Duration) (ifmgr.DaemonConfig, error) {
 	logger := slog.Default().With("component", "ifmgr")
 	ifaceName := ""
 	enableDHCP := false
@@ -307,7 +308,7 @@ func buildIfMgrDaemonConfig(cfg *config.Config, role string) (ifmgr.DaemonConfig
 		return ifmgr.DaemonConfig{}, err
 	}
 	if settings, found := moduleConfigs["addresses"].(addresses.Config); found {
-		settings.NetworkdTimeout = time.Duration(cfg.Watchdog.ConnectivityTimeoutSeconds) * time.Second
+		settings.NetworkdTimeout = timeout
 		moduleConfigs["addresses"] = settings
 	}
 

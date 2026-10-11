@@ -47,13 +47,14 @@ func Default() Config {
 		MaxIterations:            0,
 		SnapshotHealthyThreshold: 20, MaxKnownGoodSnapshots: 3,
 		HashCheckEveryNHealthy: 10, MinSnapshotIntervalSeconds: 300,
-		MaxTotalSnapshots: 15,
-		VsockCID:          0,
-		VsockPort:         0,
-		MwanAgentTCPAddr:  "",
-		StatusListenPort:  0,
-		StatusCommand:     nil,
-		LogFile:           "/var/log/mwan-watchdog.log", JSONLogFile: "/var/log/mwan-watchdog.jsonl",
+		MaxTotalSnapshots:  15,
+		VsockCID:           0,
+		VsockPort:          0,
+		MwanAgentTCPAddr:   "",
+		StatusListenPort:   0,
+		StatusCommand:      nil,
+		ConfigStateCommand: nil,
+		LogFile:            "/var/log/mwan-watchdog.log", JSONLogFile: "/var/log/mwan-watchdog.jsonl",
 		RollbackStateFile: "/run/mwan-rollback.state",
 		RollbackLockFile:  "/run/mwan-watchdog-rollback.lock",
 		ServiceName:       "mwan-watchdog",
@@ -87,7 +88,32 @@ func ResolvePath(arguments []string) (string, []string) {
 	return path, remaining
 }
 
-func loadConfig(path string) (*Config, error) {
+// ErrEmptyPath indicates that LoadWatchdogSection received an empty path.
+var ErrEmptyPath = errors.New("watchdog config path is required")
+
+type watchdogFile struct {
+	Watchdog WatchdogSection `toml:"watchdog"`
+}
+
+// LoadWatchdogSection applies watchdog defaults and skips status source
+// validation because gateway consumers use timeout and policy values.
+func LoadWatchdogSection(path string) (WatchdogSection, error) {
+	var none WatchdogSection
+	if path == "" {
+		return none, ErrEmptyPath
+	}
+	path, data, err := readFile(path)
+	if err != nil {
+		return none, err
+	}
+	file := watchdogFile{Watchdog: Default().Watchdog}
+	if err := toml.Unmarshal(data, &file); err != nil {
+		return none, parseFailure(path, err)
+	}
+	return file.Watchdog, nil
+}
+
+func readFile(path string) (string, []byte, error) {
 	// The path comes from the unit file or the operator's command line, both
 	// already privileged, so cleaning it normalizes the value rather than
 	// defending a trust boundary.
@@ -96,13 +122,25 @@ func loadConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		slog.Error("read config failed", "path", path, "error", err)
-		return nil, fmt.Errorf("read config %s: %w", path, err)
+		return path, nil, fmt.Errorf("read config %s: %w", path, err)
+	}
+	return path, data, nil
+}
+
+func parseFailure(path string, err error) error {
+	slog.Error("parse config failed", "path", path, "error", err)
+	return fmt.Errorf("parse config %s: %w", path, err)
+}
+
+func loadConfig(path string) (*Config, error) {
+	path, data, err := readFile(path)
+	if err != nil {
+		return nil, err
 	}
 
 	cfg := Default()
 	if err := toml.Unmarshal(data, &cfg); err != nil {
-		slog.Error("parse config failed", "path", path, "error", err)
-		return nil, fmt.Errorf("parse config %s: %w", path, err)
+		return nil, parseFailure(path, err)
 	}
 
 	ApplyEmailSecret(&cfg.Email)

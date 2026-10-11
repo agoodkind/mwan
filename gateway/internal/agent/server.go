@@ -4,17 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,6 +19,7 @@ import (
 
 	mwanv1 "goodkind.io/mwan/gen/mwan/v1"
 	"goodkind.io/mwan/internal/bgp"
+	"goodkind.io/mwan/internal/configstate"
 	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/tracing"
 	"google.golang.org/grpc/codes"
@@ -285,23 +282,6 @@ func (a *Server) GetConfigState(
 	peerInfo, _ := peer.FromContext(ctx)
 	metadataMap, _ := metadata.FromIncomingContext(ctx)
 	ctx = a.enrichRPCContext(ctx, peerInfo, metadataMap)
-	composite := sha256.New()
-	var manifest strings.Builder
-	for _, p := range criticalPaths() {
-		data, err := os.ReadFile(p)
-		if err != nil {
-			continue
-		}
-		sum := sha256.Sum256(data)
-		fileSum := hex.EncodeToString(sum[:])
-		manifest.WriteString(fileSum)
-		manifest.WriteString("  ")
-		manifest.WriteString(p)
-		manifest.WriteByte('\n')
-		_, _ = composite.Write([]byte(p))
-		_, _ = composite.Write([]byte{0})
-		_, _ = composite.Write(data)
-	}
 
 	raw, err := os.ReadFile(a.deployFilePath)
 	if err != nil {
@@ -326,46 +306,14 @@ func (a *Server) GetConfigState(
 			slog.String("path", a.deployFilePath),
 		)
 	}
-	deployEpoch, _ := strconv.ParseInt(strings.TrimSpace(string(raw)), 10, 64)
+	state := configstate.Read("", raw)
 
 	return &mwanv1.GetConfigStateResponse{
-		ConfigHash:      hex.EncodeToString(composite.Sum(nil)),
-		ConfigManifest:  manifest.String(),
-		LastDeployEpoch: deployEpoch,
+		ConfigHash:      state.ConfigHash,
+		ConfigManifest:  state.ConfigManifest,
+		LastDeployEpoch: state.LastDeployEpoch,
 		LastChangeEpoch: a.clock.Now().Unix(),
 	}, nil
-}
-
-// criticalPaths returns the sorted list of files whose contents contribute to
-// the composite config hash. Glob patterns are expanded at call time so newly
-// created files under watched directories are automatically included.
-func criticalPaths() []string {
-	var paths []string
-	add := func(p string) { paths = append(paths, p) }
-	add("/etc/mwan/mwan.env")
-	add("/etc/mwan/config.toml")
-	add("/etc/mwan/network.json")
-	add("/etc/iproute2/rt_tables")
-	add("/etc/sysctl.d/99-mwan.conf")
-	add("/etc/wpa_supplicant/wpa_supplicant.conf")
-	for _, g := range []string{
-		"/etc/systemd/network/*",
-		"/etc/networkd-dispatcher/routable.d/*",
-	} {
-		matches, err := filepath.Glob(g)
-		if err != nil {
-			continue
-		}
-		for _, m := range matches {
-			st, err := os.Stat(m)
-			if err != nil || st.IsDir() {
-				continue
-			}
-			add(m)
-		}
-	}
-	sort.Strings(paths)
-	return paths
 }
 
 func (a *Server) GetSystemInfo(

@@ -16,6 +16,7 @@ import (
 
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/networkjson"
+	"goodkind.io/mwan/internal/stackspec"
 	"goodkind.io/mwan/internal/yangpub"
 	"goodkind.io/mwan/internal/yangpub/schema"
 )
@@ -117,14 +118,29 @@ func runChild(t *testing.T, env []string, args ...string) string {
 	return stdout.String()
 }
 
+const stackFixtureDir = "testdata/rousette"
+
+func seedStackModules(t *testing.T, root string) {
+	t.Helper()
+	dir := filepath.Join(root, stackspec.RousetteYangDir)
+	if _, err := os.Stat(dir); err == nil {
+		return
+	}
+	if err := os.CopyFS(dir, os.DirFS(stackFixtureDir)); err != nil {
+		t.Fatalf("copy %s to %s: %v", stackFixtureDir, dir, err)
+	}
+}
+
 func runInstallChild(t *testing.T, root string) string {
 	t.Helper()
+	seedStackModules(t, root)
 	env := []string{childMainEnv + "=1"}
 	return runChild(t, env, "install", "--apply", "--role", "wan", "--root", root)
 }
 
 func runInstallChildOn(t *testing.T, root string, guest config.GuestType) string {
 	t.Helper()
+	seedStackModules(t, root)
 	env := []string{childMainEnv + "=1"}
 	return runChild(t, env, "install", "--apply", "--role", "wan", "--guest-type", string(guest), "--root", root)
 }
@@ -202,7 +218,7 @@ func TestInstallApplyInstallsTheSchemaIntoSysrepo(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 
-	runInstallChild(t, root)
+	first := runInstallChild(t, root)
 
 	embeddedDir := t.TempDir()
 	if _, err := yangpub.WriteSchema(embeddedDir); err != nil {
@@ -242,6 +258,31 @@ func TestInstallApplyInstallsTheSchemaIntoSysrepo(t *testing.T) {
 			if !slices.Contains(got.features, feature) {
 				t.Errorf("%s does not have feature %s enabled; enabled: %v", name, feature, got.features)
 			}
+		}
+	}
+
+	wantStackModules := []struct {
+		Name     string
+		Revision string
+	}{
+		{Name: "ietf-restconf", Revision: "2017-01-26"},
+		{Name: "ietf-restconf-monitoring", Revision: "2017-01-26"},
+		{Name: "ietf-yang-patch", Revision: "2017-02-22"},
+		{Name: "ietf-subscribed-notifications", Revision: "2019-09-09"},
+		{Name: "ietf-restconf-subscribed-notifications", Revision: "2019-11-17"},
+	}
+	for _, module := range wantStackModules {
+		got, found := implemented[module.Name]
+		if !found {
+			t.Errorf("%s is not implemented in the repository", module.Name)
+			continue
+		}
+		if got.revision != module.Revision {
+			t.Errorf("%s revision = %q, want %q", module.Name, got.revision, module.Revision)
+		}
+		wantLine := "installed module " + module.Name + "@" + module.Revision
+		if !strings.Contains(first, wantLine) {
+			t.Errorf("run output:\n%s\nwant a line %q", first, wantLine)
 		}
 	}
 

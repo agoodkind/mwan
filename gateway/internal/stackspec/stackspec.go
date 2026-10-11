@@ -12,6 +12,55 @@ import (
 // MemberDir is the archive directory for Debian packages.
 const MemberDir = "debs"
 
+const (
+	// Prefix uses /opt to avoid conflicts with distribution libraries and
+	// administrator installations under /usr/local.
+	Prefix = "/opt/mwan-wanconfig"
+	// RousetteYangDir supplies package schemas required for rousette startup.
+	// mwan does not embed these files.
+	RousetteYangDir = Prefix + "/share/yang/modules/rousette"
+
+	yangRevisionSeparator = "@"
+	yangFileSuffix        = ".yang"
+)
+
+// YangModule records a required package schema revision and the features
+// to enable in sysrepo.
+type YangModule struct {
+	Dir      string
+	Name     string
+	Revision string
+	Features []string
+}
+
+// File uses name@revision.yang to match the stack package filenames.
+func (m YangModule) File() string {
+	return m.Name + yangRevisionSeparator + m.Revision + yangFileSuffix
+}
+
+// Path uses the stack installation directory because mwan does not embed
+// package schemas.
+func (m YangModule) Path() string {
+	return m.Dir + "/" + m.File()
+}
+
+// RousetteYangModules excludes iana-if-type because mwan already embeds it.
+// Installation enables no features for these modules.
+func RousetteYangModules() []YangModule {
+	return []YangModule{
+		{Dir: RousetteYangDir, Name: "ietf-restconf", Revision: "2017-01-26", Features: []string{}},
+		{Dir: RousetteYangDir, Name: "ietf-restconf-monitoring", Revision: "2017-01-26", Features: []string{}},
+		{Dir: RousetteYangDir, Name: "ietf-yang-patch", Revision: "2017-02-22", Features: []string{}},
+		{Dir: RousetteYangDir, Name: "ietf-subscribed-notifications", Revision: "2019-09-09", Features: []string{}},
+		{
+			Dir:      RousetteYangDir,
+			Name:     "ietf-restconf-subscribed-notifications",
+			Revision: "2019-11-17",
+			Features: []string{},
+		},
+	}
+}
+
 // Package identifies a runtime Debian package and its version.
 type Package struct {
 	// Name uses the Debian package identifier.

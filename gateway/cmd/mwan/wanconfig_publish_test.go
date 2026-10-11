@@ -14,6 +14,7 @@ import (
 	"goodkind.io/mwan/internal/ifmgr/modules/wanroutes"
 	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/wanconfig"
+	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
 func wanconfigTestConnections() []interfaceintent.Connection {
@@ -89,7 +90,7 @@ func TestGatewayFromModuleConfigs_ProjectsTheWANRole(t *testing.T) {
 	cfg.IfMgr.Connections = wanconfigTestConnections()
 	cfg.IfMgr.HashMode = "source"
 	cfg.IfMgr.ReservedTables = []int{400, 500}
-	gateway, ok, err := gatewayFromModuleConfigs(cfg, wanconfigTestModuleConfigs())
+	gateway, ok, err := gatewayFromModuleConfigs(cfg, watchdogconfig.WatchdogSection{}, wanconfigTestModuleConfigs())
 	if err != nil {
 		t.Fatalf("gatewayFromModuleConfigs: %v", err)
 	}
@@ -173,7 +174,7 @@ func TestGatewayFromModuleConfigs_CarriesWhatOnlyTheLoadedConfigHolds(t *testing
 		"monkeybrains": {Enabled: false, PingCount: new(4), CheckIntervalSeconds: new(0)},
 	}}
 
-	gateway, ok, err := gatewayFromModuleConfigs(cfg, wanconfigTestModuleConfigs())
+	gateway, ok, err := gatewayFromModuleConfigs(cfg, watchdogconfig.WatchdogSection{}, wanconfigTestModuleConfigs())
 	if err != nil || !ok {
 		t.Fatalf("gatewayFromModuleConfigs: ok=%v err=%v", ok, err)
 	}
@@ -241,7 +242,7 @@ func TestGatewayFromModuleConfigs_CarriesWhatOnlyTheLoadedConfigHolds(t *testing
 // so enabling the publish gate on such a host is a logged no-op.
 func TestGatewayFromModuleConfigs_QuietOutsideTheWANRole(t *testing.T) {
 	t.Parallel()
-	_, ok, err := gatewayFromModuleConfigs(nil, ifmgr.ModuleConfigSet{})
+	_, ok, err := gatewayFromModuleConfigs(nil, watchdogconfig.WatchdogSection{}, ifmgr.ModuleConfigSet{})
 	if err != nil {
 		t.Fatalf("gatewayFromModuleConfigs: %v", err)
 	}
@@ -257,7 +258,7 @@ func TestGatewayFromModuleConfigs_UnprobedMemberHasNoPolicy(t *testing.T) {
 	configs := wanconfigTestModuleConfigs()
 	configs["health"] = health.Config{}
 
-	gateway, ok, err := gatewayFromModuleConfigs(nil, configs)
+	gateway, ok, err := gatewayFromModuleConfigs(nil, watchdogconfig.WatchdogSection{}, configs)
 	if err != nil || !ok {
 		t.Fatalf("gatewayFromModuleConfigs: ok=%v err=%v", ok, err)
 	}
@@ -302,12 +303,12 @@ func TestGatewayFromModuleConfigs_RejectsAnUnparsableNetworkValue(t *testing.T) 
 			cfg := &config.Config{}
 			configs := wanconfigTestModuleConfigs()
 			breakValue(cfg, configs)
-			if _, _, err := gatewayFromModuleConfigs(cfg, configs); err == nil {
+			if _, _, err := gatewayFromModuleConfigs(cfg, watchdogconfig.WatchdogSection{}, configs); err == nil {
 				t.Fatal("err = nil, want a parse error")
 			}
 		})
 	}
-	if _, _, err := gatewayFromModuleConfigs(&config.Config{}, wanconfigTestModuleConfigs()); err != nil {
+	if _, _, err := gatewayFromModuleConfigs(&config.Config{}, watchdogconfig.WatchdogSection{}, wanconfigTestModuleConfigs()); err != nil {
 		t.Fatalf("the unbroken fixture every case starts from is rejected: %v", err)
 	}
 }

@@ -34,6 +34,7 @@ const (
 	subcmdInstall           subcommand = "install"
 	subcmdObserve           subcommand = "observe"
 	subcmdGatewayStatus     subcommand = "gateway-status"
+	subcmdConfigState       subcommand = "config-state"
 )
 
 // dispatchResult describes how dispatchConfigLess handled a subcommand.
@@ -46,7 +47,7 @@ type dispatchResult struct {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: mwan <agent|watchdog|health|ifmgr|install|notify|pd|debug|trace-boot|deploy|deploy-gate|wanconfig-selftest|version|observe|gateway-status> [args]")
+		fmt.Fprintln(os.Stderr, "usage: mwan <agent|watchdog|health|ifmgr|install|notify|pd|debug|trace-boot|deploy|deploy-gate|wanconfig-selftest|version|observe|gateway-status|config-state> [args]")
 		os.Exit(1)
 	}
 	sub := os.Args[1]
@@ -138,7 +139,7 @@ func dispatchConfigLess(sub subcommand) dispatchResult {
 	case subcmdObserve:
 		return dispatchResult{handled: true, code: runObservation(os.Args[1:])}
 	case subcmdAgent, subcmdWatchdog, subcmdIfmgr, subcmdNotify, subcmdDebug,
-		subcmdGatewayStatus:
+		subcmdGatewayStatus, subcmdConfigState:
 		return dispatchResult{handled: false}
 	}
 	return dispatchResult{handled: false}
@@ -153,13 +154,15 @@ func dispatchWithConfig(rawSub string, sub subcommand, cfg *config.Config, flags
 	case subcmdAgent:
 		runErr = agent.Run(cfg)
 	case subcmdIfmgr:
-		runErr = runIfMgr(cfg, flags)
+		runErr = runIfMgrCommand(cfg, flags)
 	case subcmdNotify:
 		runErr = runNotify(cfg)
 	case subcmdDebug:
 		return runDebug(os.Args[1:], cfg)
 	case subcmdGatewayStatus:
 		return runGatewayStatus(os.Args[1:], cfg, os.Stdout, os.Stderr)
+	case subcmdConfigState:
+		return runConfigState(os.Args[1:], cfg, os.Stdout, os.Stderr)
 	case subcmdHealth, subcmdPD, subcmdTrace, subcmdDeploy, subcmdGate,
 		subcmdWanconfigSelftest, subcmdVersion, subcmdInstall, subcmdObserve,
 		subcmdWatchdog:

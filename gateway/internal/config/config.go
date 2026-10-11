@@ -30,15 +30,6 @@ type NetworkConfig = watchdogconfig.NetworkConfig
 // EmailConfig holds email notification settings.
 type EmailConfig = notify.EmailConfig
 
-// PVEConfig selects the watchdog host for local pvesh task queries.
-type PVEConfig = watchdogconfig.PVEConfig
-
-// WatchdogSection configures hypervisor monitoring and guest rollback.
-type WatchdogSection = watchdogconfig.WatchdogSection
-
-// FailoverSection configures BGP failover for an LXC guest.
-type FailoverSection = watchdogconfig.FailoverSection
-
 // OPNsenseSection holds OPNsense API credentials, endpoint, and its own BGP config.
 // OPNsense is a BGP peer, not a speaker we control. Its BGP config is the inverse
 // of the agent's: different router-id, different neighbor list.
@@ -171,6 +162,7 @@ const (
 // Config is the single TOML configuration for the mwan monolith.
 // Default path: /etc/mwan/config.toml, override with --config or MWAN_CONFIG env.
 type Config struct {
+	Path         string `toml:"-"`
 	Hostname     string `toml:"hostname"`
 	MwanVMID     string `toml:"mwan_vmid"`
 	MwanMgmtAddr string `toml:"mwan_mgmt_addr"`
@@ -178,11 +170,8 @@ type Config struct {
 	GuestType GuestType `toml:"guest_type"`
 
 	Email   EmailConfig   `toml:"email"`
-	PVE     PVEConfig     `toml:"pve"`
 	Network NetworkConfig `toml:"network"`
 
-	Watchdog  WatchdogSection  `toml:"watchdog"`
-	Failover  FailoverSection  `toml:"failover"`
 	Agent     AgentSection     `toml:"agent"`
 	BGP       BGPSection       `toml:"bgp"`
 	OPNsense  OPNsenseSection  `toml:"opnsense"`
@@ -275,9 +264,7 @@ func defaultConfigBase() Config {
 	watchdogDefaults := watchdogconfig.Default()
 	cfg.GuestType = watchdogDefaults.GuestType
 	cfg.Email = watchdogDefaults.Email
-	cfg.PVE = watchdogDefaults.PVE
 	cfg.Network = watchdogDefaults.Network
-	cfg.Watchdog = watchdogDefaults.Watchdog
 	cfg.Agent = AgentSection{
 		VsockPort: 50051, TCPAddr: "[::]:50052",
 		DeployFile:     "/var/lib/mwan/last-deploy",
@@ -321,6 +308,7 @@ func loadConfig(path string) (*Config, error) {
 	}
 
 	cfg := defaultConfig()
+	cfg.Path = path
 	if err := toml.Unmarshal(data, &cfg); err != nil {
 		slog.Error("parse config failed", "path", path, "error", err)
 		return nil, fmt.Errorf("parse config %s: %w", path, err)
@@ -334,10 +322,6 @@ func loadConfig(path string) (*Config, error) {
 	if err := watchdogconfig.ValidateGuestType(cfg.GuestType); err != nil {
 		slog.Error("validate guest type failed", "error", err)
 		return nil, fmt.Errorf("validate guest type: %w", err)
-	}
-	if err := watchdogconfig.ValidateStatusSource(cfg.Watchdog); err != nil {
-		slog.Error("validate watchdog status source failed", "error", err)
-		return nil, fmt.Errorf("validate watchdog status source: %w", err)
 	}
 	if cfg.IfMgr.Modules.Health != nil {
 		if _, _, err := cfg.IfMgr.Modules.Health.ParseMaxStateAge(); err != nil {

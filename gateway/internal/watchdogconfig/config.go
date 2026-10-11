@@ -52,6 +52,9 @@ type WatchdogSection struct {
 	// StatusCommand configures the guest status command arguments.
 	// Do not configure StatusCommand together with status_listen_port.
 	StatusCommand []string `toml:"status_command"`
+	// ConfigStateCommand enables GuestExec for configuration state checks.
+	// The watchdog uses GetConfigState when the slice is empty.
+	ConfigStateCommand []string `toml:"config_state_command"`
 
 	LogFile           string `toml:"log_file"`
 	JSONLogFile       string `toml:"json_log_file"`
@@ -83,6 +86,11 @@ func (ws WatchdogSection) DegradedInterval() time.Duration {
 // converge before the next verdict.
 func (ws WatchdogSection) PostRollbackGrace() time.Duration {
 	return time.Duration(ws.PostRollbackGraceSeconds) * time.Second
+}
+
+// ConnectivityTimeout returns the networkd observation and release limit.
+func (ws WatchdogSection) ConnectivityTimeout() time.Duration {
+	return time.Duration(ws.ConnectivityTimeoutSeconds) * time.Second
 }
 
 // FailoverSection configures BGP failover for an LXC guest.
