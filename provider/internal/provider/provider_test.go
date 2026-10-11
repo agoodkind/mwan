@@ -3,6 +3,7 @@ package provider_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -233,6 +234,33 @@ func TestRoleWANListsFilesUnitsAndModules(t *testing.T) {
 	if len(natFeatures) != 4 {
 		t.Errorf("ietf-nat features = %v, want the four translation features", natFeatures)
 	}
+	const rousetteDir = "/opt/mwan-wanconfig/share/yang/modules/rousette/"
+	wantStackModules := []roleStackModule{
+		{
+			Name: "ietf-restconf", Revision: "2017-01-26",
+			Path: rousetteDir + "ietf-restconf@2017-01-26.yang", Features: []string{},
+		},
+		{
+			Name: "ietf-restconf-monitoring", Revision: "2017-01-26",
+			Path: rousetteDir + "ietf-restconf-monitoring@2017-01-26.yang", Features: []string{},
+		},
+		{
+			Name: "ietf-yang-patch", Revision: "2017-02-22",
+			Path: rousetteDir + "ietf-yang-patch@2017-02-22.yang", Features: []string{},
+		},
+		{
+			Name: "ietf-subscribed-notifications", Revision: "2019-09-09",
+			Path: rousetteDir + "ietf-subscribed-notifications@2019-09-09.yang", Features: []string{},
+		},
+		{
+			Name: "ietf-restconf-subscribed-notifications", Revision: "2019-11-17",
+			Path:     rousetteDir + "ietf-restconf-subscribed-notifications@2019-11-17.yang",
+			Features: []string{},
+		},
+	}
+	if !reflect.DeepEqual(role.StackModules, wantStackModules) {
+		t.Errorf("stack_yang_modules = %+v, want %+v", role.StackModules, wantStackModules)
+	}
 }
 
 func TestRoleHostHasNoYangModules(t *testing.T) {
@@ -246,6 +274,9 @@ func TestRoleHostHasNoYangModules(t *testing.T) {
 	}
 	if len(role.Modules) != 0 || len(role.SysrepoData) != 0 {
 		t.Errorf("host role lists %d YANG modules and %d sysrepo imports, want none", len(role.Modules), len(role.SysrepoData))
+	}
+	if len(role.StackModules) != 0 {
+		t.Errorf("stack_yang_modules = %+v, want none", role.StackModules)
 	}
 	if len(role.Files) != 1 || role.Files[0].Path != "/etc/systemd/system/mwan-ifmgr.service" {
 		t.Errorf("host role files = %v, want the single interface manager unit", role.Files)

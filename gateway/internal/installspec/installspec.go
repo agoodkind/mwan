@@ -88,7 +88,7 @@ func specs() map[Role]Spec {
 					Dest:     filepath.Join(SystemdUnitDir, "mwan-ifmgr@wan.service.d", "firewall.conf"),
 				},
 				unit("mwan-trace-boot.service"),
-				unit("rousette.service"),
+				unit(rousetteUnit),
 				unit("nghttpx-wanconfig.service"),
 				{
 					Embedded: "systemd-networkd-override.conf",
@@ -101,7 +101,7 @@ func specs() map[Role]Spec {
 			},
 			Enable: []string{
 				"mwan-agent.service", "mwan-ifmgr@wan.service", "mwan-trace-boot.service",
-				"rousette.service", "nghttpx-wanconfig.service",
+				rousetteUnit, "nghttpx-wanconfig.service",
 			},
 			Schema: true,
 			NotOwned: []NotOwnedUnit{

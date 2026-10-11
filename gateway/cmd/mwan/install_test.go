@@ -419,17 +419,46 @@ func TestInstallWithoutApplyWritesNothing(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 
-	code := runInstall([]string{"--role", "wan", "--root", root})
+	output := runChild(t, []string{childMainEnv + "=1"}, "install", "--role", "wan", "--root", root)
 
-	if code != exitInstallOK {
-		t.Fatalf("exit code = %d, want %d", code, exitInstallOK)
-	}
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		t.Fatalf("read the root: %v", err)
 	}
 	if len(entries) != 0 {
 		t.Fatalf("a run without --apply created %d entries under the root", len(entries))
+	}
+	const rousetteDir = "/opt/mwan-wanconfig/share/yang/modules/rousette/"
+	wantLine := "installs " + strings.Join([]string{
+		rousetteDir + "ietf-restconf@2017-01-26.yang",
+		rousetteDir + "ietf-restconf-monitoring@2017-01-26.yang",
+		rousetteDir + "ietf-yang-patch@2017-02-22.yang",
+		rousetteDir + "ietf-subscribed-notifications@2019-09-09.yang",
+		rousetteDir + "ietf-restconf-subscribed-notifications@2019-11-17.yang",
+	}, " ") + "\n"
+	if !strings.Contains(output, wantLine) {
+		t.Errorf("run output:\n%s\nwant a line %q", output, wantLine)
+	}
+	if count := strings.Count(output, rousetteDir+"ietf-restconf@"); count != 1 {
+		t.Errorf("run output:\n%s\nlines with %s = %d, want 1", output, rousetteDir, count)
+	}
+}
+
+func TestInstallApplyFailsWithoutTheStackModules(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+
+	command := exec.Command(os.Args[0], "install", "--apply", "--role", "wan", "--root", root)
+	command.Env = append(os.Environ(), childMainEnv+"=1")
+
+	output, err := command.CombinedOutput()
+
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != exitInstallFailed {
+		t.Fatalf("err = %v, want exit code %d\n%s", err, exitInstallFailed, output)
+	}
+	if !strings.Contains(string(output), "ietf-restconf@2017-01-26.yang") {
+		t.Errorf("run output:\n%s\nwant %s", output, "ietf-restconf@2017-01-26.yang")
 	}
 }
 

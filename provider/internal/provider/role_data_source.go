@@ -22,13 +22,21 @@ const fileModeFormat = "%04o"
 type roleDataSource struct{}
 
 type roleModel struct {
-	Role        types.String       `tfsdk:"role"`
-	GuestType   types.String       `tfsdk:"guest_type"`
-	BinaryPath  types.String       `tfsdk:"binary_path"`
-	Files       []roleFileModel    `tfsdk:"files"`
-	Units       []unitModel        `tfsdk:"units"`
-	YangModules []yangModuleModel  `tfsdk:"yang_modules"`
-	SysrepoData []sysrepoDataModel `tfsdk:"sysrepo_data"`
+	Role             types.String           `tfsdk:"role"`
+	GuestType        types.String           `tfsdk:"guest_type"`
+	BinaryPath       types.String           `tfsdk:"binary_path"`
+	Files            []roleFileModel        `tfsdk:"files"`
+	Units            []unitModel            `tfsdk:"units"`
+	YangModules      []yangModuleModel      `tfsdk:"yang_modules"`
+	SysrepoData      []sysrepoDataModel     `tfsdk:"sysrepo_data"`
+	StackYangModules []stackYangModuleModel `tfsdk:"stack_yang_modules"`
+}
+
+type stackYangModuleModel struct {
+	Name     types.String `tfsdk:"name"`
+	Revision types.String `tfsdk:"revision"`
+	Path     types.String `tfsdk:"path"`
+	Features []string     `tfsdk:"features"`
 }
 
 type unitModel struct {
@@ -152,6 +160,7 @@ func (d *roleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 					},
 				},
 			},
+			"stack_yang_modules": stackYangModulesAttribute(),
 			"yang_modules": schema.ListNestedAttribute{
 				Computed: true,
 				Description: "The data source returns YANG modules in installation order for the wan role. " +
@@ -234,6 +243,7 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 			})
 		}
 	}
+	model.StackYangModules = stackYangModuleModels(spec)
 	units, err := spec.Units()
 	if err != nil {
 		resp.Diagnostics.AddError("Cannot read the units", err.Error())
@@ -267,6 +277,48 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 		})
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
+}
+
+func stackYangModulesAttribute() schema.ListNestedAttribute {
+	return schema.ListNestedAttribute{
+		Computed: true,
+		Description: "The data source returns package YANG modules in installation order for the wan role. " +
+			"The stack packages supply these files; mwan does not embed them.",
+		NestedObject: schema.NestedAttributeObject{
+			Attributes: map[string]schema.Attribute{
+				"name":     schema.StringAttribute{Computed: true, Description: "Sysrepo installs the module with this name."},
+				"revision": schema.StringAttribute{Computed: true, Description: "Sysrepo installs this schema revision."},
+				"path": schema.StringAttribute{
+					Computed:    true,
+					Description: "The stack package installs the schema file at this absolute path.",
+				},
+				"features": schema.ListAttribute{
+					Computed:    true,
+					ElementType: types.StringType,
+					Description: "Sysrepo enables these features when installing the module. " +
+						"An empty list enables no features.",
+				},
+			},
+		},
+	}
+}
+
+func stackYangModuleModels(spec installspec.Spec) []stackYangModuleModel {
+	stackModules := spec.StackYangModules()
+	models := make([]stackYangModuleModel, 0, len(stackModules))
+	for _, module := range stackModules {
+		features := module.Features
+		if features == nil {
+			features = []string{}
+		}
+		models = append(models, stackYangModuleModel{
+			Name:     types.StringValue(module.Name),
+			Revision: types.StringValue(module.Revision),
+			Path:     types.StringValue(module.Path()),
+			Features: features,
+		})
+	}
+	return models
 }
 
 func newRoleFile(path string, content []byte) roleFileModel {

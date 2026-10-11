@@ -307,6 +307,15 @@ func printInstallUsage(out io.Writer) {
 		}
 		fmt.Fprintf(out, "  %-9s writes %s\n", name, strings.Join(written, " "))
 		fmt.Fprintf(out, "  %-9s enables %s\n", "", strings.Join(spec.Enable, " "))
+		stackModules := spec.StackYangModules()
+		if len(stackModules) == 0 {
+			continue
+		}
+		modulePaths := make([]string, 0, len(stackModules))
+		for _, module := range stackModules {
+			modulePaths = append(modulePaths, module.Path())
+		}
+		fmt.Fprintf(out, "  %-9s installs %s\n", "", strings.Join(modulePaths, " "))
 	}
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "The YANG modules are embedded too. The wan role writes them to")

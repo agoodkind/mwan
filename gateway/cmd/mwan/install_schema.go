@@ -39,9 +39,21 @@ func installSchema(ctx context.Context, log *slog.Logger, root string) (schemaOu
 	}
 	wanSpec, _ := installspec.For(installspec.RoleWAN)
 	imports := wanSpec.SysrepoImports(policy)
+	batches := []moduleBatch{{models: models, searchDir: schemaDir}}
+	for _, module := range wanSpec.StackYangModules() {
+		model := yangpub.Model{
+			Path:     filepath.Join(root, module.Path()),
+			Features: module.Features,
+			Update:   false,
+		}
+		batches = append(batches, moduleBatch{
+			models:    []yangpub.Model{model},
+			searchDir: filepath.Join(root, module.Dir),
+		})
+	}
 	policyPath := filepath.Join(root, installspec.NACMPolicyPath)
 	if root == "" {
-		if err := applyDatastore(ctx, log, models, schemaDir, imports, &outcome); err != nil {
+		if err := applyDatastore(ctx, log, batches, imports, &outcome); err != nil {
 			return outcome, err
 		}
 		return outcome, writePolicy(policyPath, policy, &outcome)
@@ -67,10 +79,15 @@ func installSchema(ctx context.Context, log *slog.Logger, root string) (schemaOu
 			"sysrepo in this process is bound to repository %s, not the private repository %s",
 			bound, repository)
 	}
-	if err := applyDatastore(ctx, log, models, schemaDir, imports, &outcome); err != nil {
+	if err := applyDatastore(ctx, log, batches, imports, &outcome); err != nil {
 		return outcome, err
 	}
 	return outcome, writePolicy(policyPath, policy, &outcome)
+}
+
+type moduleBatch struct {
+	models    []yangpub.Model
+	searchDir string
 }
 
 func writePolicy(path string, policy []byte, outcome *schemaOutcome) error {
@@ -87,8 +104,7 @@ func writePolicy(path string, policy []byte, outcome *schemaOutcome) error {
 func applyDatastore(
 	ctx context.Context,
 	log *slog.Logger,
-	models []yangpub.Model,
-	searchDir string,
+	batches []moduleBatch,
 	imports []installspec.SysrepoImport,
 	outcome *schemaOutcome,
 ) error {
@@ -97,10 +113,12 @@ func applyDatastore(
 		return installFailed("connect to sysrepo for", "the schema modules", err)
 	}
 	defer func() { _ = datastore.Close() }()
-	modules, err := datastore.InstallModules(ctx, models, searchDir)
-	outcome.modules = modules
-	if err != nil {
-		return installFailed("install into sysrepo", "the schema modules", err)
+	for _, batch := range batches {
+		modules, err := datastore.InstallModules(ctx, batch.models, batch.searchDir)
+		outcome.modules = append(outcome.modules, modules...)
+		if err != nil {
+			return installFailed("install into sysrepo", "the schema modules", err)
+		}
 	}
 	for _, entry := range imports {
 		matches, err := datastore.ConfigMatches(ctx, entry.Datastore, entry.Module, entry.Content)

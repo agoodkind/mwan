@@ -118,7 +118,7 @@ var errUnsupportedArch = errors.New("no Debian architecture mapping")
 // stackPrefix is the tree the nfpm packages install into. Debian policy
 // reserves /usr/local for the local administrator, and /usr would collide
 // with any distribution libyang package, so the stack takes its own prefix.
-const stackPrefix = "/opt/mwan-wanconfig"
+const stackPrefix = stackspec.Prefix
 
 // loaderConfPath makes the /opt tree's shared libraries resolvable.
 const loaderConfPath = "/etc/ld.so.conf.d/mwan-wanconfig.conf"
