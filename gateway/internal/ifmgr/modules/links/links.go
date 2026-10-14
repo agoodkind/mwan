@@ -109,12 +109,23 @@ func (module *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 }
 
 func (module *Module) onObservedEvent(_ context.Context, _ *slog.Logger, event netif.Event) {
-	if module.Env.RequestReconcile != nil && module.observed[event.Iface] {
+	if module.Env.RequestReconcile == nil || !module.observed[event.Iface] {
+		return
+	}
+	switch event.Kind {
+	case netif.EvLinkUp, netif.EvLinkDown, netif.EvResync:
 		module.Env.RequestReconcile("link event on " + event.Iface)
+	case netif.EvRouteAdded, netif.EvRouteDeleted:
+		// Other modules call RouteReplace on watched links in every reconcile pass.
+		// The kernel reports each replacement as a route event.
+		// A reconcile request for each route event starts a new pass after every pass.
+	case netif.EvUnknown, netif.EvAddrAdded, netif.EvAddrDeleted,
+		netif.EvObservationStale, netif.EvObservationFailed:
 	}
 }
 
-// OnKernelEvent requests reconciliation after a watched link changes.
+// OnKernelEvent requests a reconcile when a watched link goes up or down or
+// the monitor reports a resync.
 func (module *Module) OnKernelEvent(ctx context.Context, log *slog.Logger, event netif.Event) error {
 	module.onObservedEvent(ctx, log, event)
 	return nil
