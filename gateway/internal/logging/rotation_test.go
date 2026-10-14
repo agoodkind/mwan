@@ -22,10 +22,10 @@ const (
 	rotationTestLabel       = "[rotation-test]"
 )
 
-// TestFileJSONKeepsAtMostMaxRotatedFiles polls the directory for up to 30
+// TestFileRotationKeepsAtMostMaxRotatedFiles polls the directory for up to 30
 // seconds before it asserts the count. Lumberjack runs cleanup in the
 // background.
-func TestFileJSONKeepsAtMostMaxRotatedFiles(t *testing.T) {
+func TestFileRotationKeepsAtMostMaxRotatedFiles(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name       string
