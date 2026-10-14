@@ -6,6 +6,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net"
 	"net/netip"
 	"os"
 	"os/exec"
@@ -32,7 +33,69 @@ const (
 	underlayEvent      = "link event on " + underlayName
 	underlayEventLimit = 10 * time.Second
 	underlayEventQuiet = 500 * time.Millisecond
+	underlayRoute      = "192.0.2.0/24"
 )
+
+// runInNetns reports whether the caller is the isolated child that runs the test body.
+func runInNetns(t *testing.T, testName string) bool {
+	t.Helper()
+	if os.Getenv(tunnelChildEnv) == "1" {
+		return true
+	}
+	if os.Geteuid() != 0 {
+		t.Skip("network namespace requires root")
+	}
+	child := exec.Command(os.Args[0], "-test.run=^"+testName+"$")
+	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNET}
+	child.Env = append(os.Environ(), tunnelChildEnv+"=1")
+	if output, err := child.CombinedOutput(); err != nil {
+		t.Fatalf("isolated links module test: %v: %s", err, output)
+	}
+	return false
+}
+
+func tunnelConnections() []interfaceintent.Connection {
+	return []interfaceintent.Connection{
+		{ID: underlayName, Name: underlayName, Owner: interfaceintent.OwnerExternal},
+		{
+			ID: tunnelID, Name: tunnelName, Owner: interfaceintent.OwnerMWAN,
+			Link: &interfaceintent.Link{
+				Kind: interfaceintent.KindTunnel,
+				Tunnel: &interfaceintent.Tunnel{
+					Protocol: interfaceintent.TunnelProtocol6in4, Underlay: underlayName,
+					Remote: netip.MustParseAddr("198.51.100.1"),
+				},
+			},
+		},
+	}
+}
+
+// startLinksModule initializes the module and returns the reconcile reasons it requests.
+func startLinksModule(
+	ctx context.Context, t *testing.T, connections []interfaceintent.Connection,
+) (ifmgr.Module, *ifmgr.Env, *wanstate.Store, <-chan string) {
+	t.Helper()
+	module, err := links.New(links.Config{Connections: connections, StateFile: filepath.Join(t.TempDir(), "links.json")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := wanstate.New()
+	store.SetConnections(connections)
+	requests := make(chan string, 64)
+	env := &ifmgr.Env{
+		Connections: connections, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), LiveState: store,
+		RequestReconcile: func(reason string) {
+			select {
+			case requests <- reason:
+			default:
+			}
+		},
+	}
+	if err := module.Init(ctx, env); err != nil {
+		t.Fatal(err)
+	}
+	return module, env, store, requests
+}
 
 func awaitUnderlayEvent(t *testing.T, requests <-chan string) {
 	t.Helper()
@@ -55,53 +118,13 @@ func awaitUnderlayEvent(t *testing.T, requests <-chan string) {
 }
 
 func TestLinksModuleCreatesTunnelAfterUnderlayAppears(t *testing.T) {
-	if os.Getenv(tunnelChildEnv) != "1" {
-		if os.Geteuid() != 0 {
-			t.Skip("network namespace requires root")
-		}
-		child := exec.Command(os.Args[0], "-test.run=^TestLinksModuleCreatesTunnelAfterUnderlayAppears$")
-		child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNET}
-		child.Env = append(os.Environ(), tunnelChildEnv+"=1")
-		if output, err := child.CombinedOutput(); err != nil {
-			t.Fatalf("isolated links module test: %v: %s", err, output)
-		}
+	if !runInNetns(t, "TestLinksModuleCreatesTunnelAfterUnderlayAppears") {
 		return
-	}
-	connections := []interfaceintent.Connection{
-		{ID: underlayName, Name: underlayName, Owner: interfaceintent.OwnerExternal},
-		{
-			ID: tunnelID, Name: tunnelName, Owner: interfaceintent.OwnerMWAN,
-			Link: &interfaceintent.Link{
-				Kind: interfaceintent.KindTunnel,
-				Tunnel: &interfaceintent.Tunnel{
-					Protocol: interfaceintent.TunnelProtocol6in4, Underlay: underlayName,
-					Remote: netip.MustParseAddr("198.51.100.1"),
-				},
-			},
-		},
-	}
-	module, err := links.New(links.Config{Connections: connections, StateFile: filepath.Join(t.TempDir(), "links.json")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	store := wanstate.New()
-	store.SetConnections(connections)
-	requests := make(chan string, 64)
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	env := &ifmgr.Env{
-		Connections: connections, Log: log, LiveState: store,
-		RequestReconcile: func(reason string) {
-			select {
-			case requests <- reason:
-			default:
-			}
-		},
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	if err := module.Init(ctx, env); err != nil {
-		t.Fatal(err)
-	}
+	module, env, store, requests := startLinksModule(ctx, t, tunnelConnections())
+	log := env.Log
 
 	if err := module.Reconcile(ctx, log); err != nil {
 		t.Fatal(err)
@@ -135,4 +158,44 @@ func TestLinksModuleCreatesTunnelAfterUnderlayAppears(t *testing.T) {
 	if !published || result.Status != netif.OwnedLinkReady || result.IfIndex != device.Attrs().Index {
 		t.Fatalf("shared link result = %+v published=%t, device index = %d", result, published, device.Attrs().Index)
 	}
+}
+
+func TestLinksModuleRequestsReconcileForLinkStateButNotRoutes(t *testing.T) {
+	if !runInNetns(t, "TestLinksModuleRequestsReconcileForLinkStateButNotRoutes") {
+		return
+	}
+	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: underlayName}}); err != nil {
+		t.Fatal(err)
+	}
+	underlay, err := netlink.LinkByName(underlayName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.LinkSetUp(underlay); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	_, _, _, requests := startLinksModule(ctx, t, tunnelConnections())
+	awaitUnderlayEvent(t, requests)
+
+	_, destination, err := net.ParseCIDR(underlayRoute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.RouteAdd(&netlink.Route{
+		LinkIndex: underlay.Attrs().Index, Dst: destination, Scope: netlink.SCOPE_LINK,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case reason := <-requests:
+		t.Fatalf("route %s on %s requested a reconcile: %q", underlayRoute, underlayName, reason)
+	case <-time.After(underlayEventQuiet):
+	}
+
+	if err := netlink.LinkSetDown(underlay); err != nil {
+		t.Fatal(err)
+	}
+	awaitUnderlayEvent(t, requests)
 }
