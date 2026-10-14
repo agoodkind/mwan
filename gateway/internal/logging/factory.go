@@ -44,19 +44,27 @@ func New(cfg Config) (*slog.Logger, io.Closer) {
 	return wrapped, closer
 }
 
+// A zero gklog.RotationConfig sets lumberjack's MaxBackups and MaxAge to 0.
+// lumberjack deletes rotated files only when either value exceeds 0.
+// maxRotatedLogFiles limits retention to 20 rotated files.
+const maxRotatedLogFiles = 20
+
 // StdoutJSON returns a JSON-to-stdout handler at LevelDebug. Re-exports
 // gklog.StdoutJSON for short imports.
 func StdoutJSON() slog.Handler { return gklog.StdoutJSON(slog.LevelDebug) }
 
-// FileText returns a rotating, multi-process-locked text handler at
-// path with the given label. Re-exports gklog.FileText with default
-// rotation (5MB, keep forever, compressed).
+// FileText uses gklog.FileText to return a [slog.Handler] that writes text
+// records to the file at path with label.
 func FileText(path, label string) slog.Handler {
-	return gklog.FileText(path, label, gklog.RotationConfig{})
+	return gklog.FileText(path, label, rotationConfig())
 }
 
-// FileJSON returns a rotating, multi-process-locked JSON handler at
-// path. Re-exports gklog.FileJSON at LevelDebug with default rotation.
+// FileJSON uses gklog.FileJSON to return a [slog.Handler] that writes JSON
+// records at [slog.LevelDebug] to the file at path.
 func FileJSON(path string) slog.Handler {
-	return gklog.FileJSON(path, slog.LevelDebug, gklog.RotationConfig{})
+	return gklog.FileJSON(path, slog.LevelDebug, rotationConfig())
+}
+
+func rotationConfig() gklog.RotationConfig {
+	return gklog.RotationConfig{MaxBackups: maxRotatedLogFiles}
 }
