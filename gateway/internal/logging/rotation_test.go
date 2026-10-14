@@ -19,6 +19,7 @@ const (
 	rotationTestRecordCount = 120
 	rotationTestDeadline    = 30 * time.Second
 	rotationTestPollPeriod  = 50 * time.Millisecond
+	rotationTestLabel       = "[rotation-test]"
 )
 
 // TestFileJSONKeepsAtMostMaxRotatedFiles polls the directory for up to 30
@@ -26,10 +27,35 @@ const (
 // background.
 func TestFileJSONKeepsAtMostMaxRotatedFiles(t *testing.T) {
 	t.Parallel()
+	cases := []struct {
+		name       string
+		newHandler func(path string) slog.Handler
+	}{
+		{
+			name: "FileText",
+			newHandler: func(path string) slog.Handler {
+				return logging.FileText(path, rotationTestLabel)
+			},
+		},
+		{
+			name:       "FileJSON",
+			newHandler: logging.FileJSON,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertRotatedFilesCapped(t, tc.newHandler)
+		})
+	}
+}
+
+func assertRotatedFilesCapped(t *testing.T, newHandler func(path string) slog.Handler) {
+	t.Helper()
 	dir := t.TempDir()
 	activePath := filepath.Join(dir, "agent.log")
 	log, closer := logging.New(logging.Config{
-		Handlers: []slog.Handler{logging.FileJSON(activePath)},
+		Handlers: []slog.Handler{newHandler(activePath)},
 	})
 	payload := strings.Repeat("x", rotationTestPayloadBytes)
 	for range rotationTestRecordCount {
