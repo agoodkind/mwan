@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +21,8 @@ const (
 	rotationTestDeadline    = 30 * time.Second
 	rotationTestPollPeriod  = 50 * time.Millisecond
 	rotationTestLabel       = "[rotation-test]"
+	// Lumberjack removes the uncompressed source only after compression finishes.
+	compressedLogSuffix = ".gz"
 )
 
 // TestFileRotationKeepsAtMostMaxRotatedFiles polls the directory for up to 30
@@ -62,22 +65,46 @@ func assertRotatedFilesCapped(t *testing.T, newHandler func(path string) slog.Ha
 		log.Info("rotation probe", "payload", payload)
 	}
 
-	deadline := time.Now().Add(rotationTestDeadline)
-	rotated := rotatedLogFiles(t, dir)
-	for len(rotated) > wantMaxRotatedFiles && time.Now().Before(deadline) {
-		time.Sleep(rotationTestPollPeriod)
-		rotated = rotatedLogFiles(t, dir)
-	}
 	if err := closer.Close(); err != nil {
 		t.Fatalf("close: %v", err)
-	}
-	if len(rotated) > wantMaxRotatedFiles {
-		t.Fatalf("rotated files = %d, want at most %d: %v",
-			len(rotated), wantMaxRotatedFiles, rotated)
 	}
 	if _, err := os.Stat(activePath); err != nil {
 		t.Fatalf("active log file: %v", err)
 	}
+	waitForSettledRotation(t, dir)
+}
+
+// Close does not stop lumberjack's background compression and deletion.
+// TempDir cleanup must wait for both operations to finish.
+func waitForSettledRotation(t *testing.T, dir string) {
+	t.Helper()
+	deadline := time.Now().Add(rotationTestDeadline)
+	var previous []string
+	for {
+		rotated := rotatedLogFiles(t, dir)
+		if rotationSettled(rotated) && slices.Equal(rotated, previous) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("rotated files did not settle at most %d compressed files within %s: %d files %v",
+				wantMaxRotatedFiles, rotationTestDeadline, len(rotated), rotated)
+		}
+		previous = rotated
+		time.Sleep(rotationTestPollPeriod)
+	}
+}
+
+// Compression can still create files after the count meets the retention cap.
+func rotationSettled(rotated []string) bool {
+	if len(rotated) > wantMaxRotatedFiles {
+		return false
+	}
+	for _, name := range rotated {
+		if !strings.HasSuffix(name, compressedLogSuffix) {
+			return false
+		}
+	}
+	return true
 }
 
 // rotatedLogFiles excludes the active agent.log file from the retention
