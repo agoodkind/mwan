@@ -9,6 +9,8 @@ import (
 	"sort"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/netif"
@@ -116,16 +118,18 @@ func (module *Module) onObservedEvent(_ context.Context, _ *slog.Logger, event n
 	case netif.EvLinkUp, netif.EvLinkDown, netif.EvResync:
 		module.Env.RequestReconcile("link event on " + event.Iface)
 	case netif.EvRouteAdded, netif.EvRouteDeleted:
-		// Other modules call RouteReplace on watched links in every reconcile pass.
-		// The kernel reports each replacement as a route event.
-		// A reconcile request for each route event starts a new pass after every pass.
+		// Other modules rewrite policy-table routes on every pass.
+		// Reconciling their route events would start another pass each time.
+		if event.TableID == unix.RT_TABLE_MAIN || event.TableID == unix.RT_TABLE_LOCAL {
+			module.Env.RequestReconcile(fmt.Sprintf("route event in table %d on %s", event.TableID, event.Iface))
+		}
 	case netif.EvUnknown, netif.EvAddrAdded, netif.EvAddrDeleted,
 		netif.EvObservationStale, netif.EvObservationFailed:
 	}
 }
 
-// OnKernelEvent requests a reconcile when a watched link goes up or down or
-// the monitor reports a resync.
+// OnKernelEvent requests a reconcile when a watched link goes up or down, a
+// route changes in the main or local table, or the monitor reports a resync.
 func (module *Module) OnKernelEvent(ctx context.Context, log *slog.Logger, event netif.Event) error {
 	module.onObservedEvent(ctx, log, event)
 	return nil

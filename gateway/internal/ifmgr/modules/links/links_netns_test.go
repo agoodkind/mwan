@@ -4,6 +4,7 @@ package links_test
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -34,6 +35,8 @@ const (
 	underlayEventLimit = 10 * time.Second
 	underlayEventQuiet = 500 * time.Millisecond
 	underlayRoute      = "192.0.2.0/24"
+	underlayLocalRoute = "203.0.113.0/24"
+	policyTable        = 700
 )
 
 // runInNetns reports whether the caller is the isolated child that runs the test body.
@@ -117,6 +120,33 @@ func awaitUnderlayEvent(t *testing.T, requests <-chan string) {
 	}
 }
 
+func awaitRouteRequest(t *testing.T, requests <-chan string, table int) {
+	t.Helper()
+	want := fmt.Sprintf("route event in table %d on %s", table, underlayName)
+	limit := time.After(underlayEventLimit)
+	for {
+		select {
+		case reason := <-requests:
+			if reason == want {
+				return
+			}
+		case <-limit:
+			t.Fatalf("no reconcile request with reason %q", want)
+		}
+	}
+}
+
+// A request left from an earlier route would satisfy the next route assertion.
+func drainRequests(requests <-chan string) {
+	for {
+		select {
+		case <-requests:
+		case <-time.After(underlayEventQuiet):
+			return
+		}
+	}
+}
+
 func TestLinksModuleCreatesTunnelAfterUnderlayAppears(t *testing.T) {
 	if !runInNetns(t, "TestLinksModuleCreatesTunnelAfterUnderlayAppears") {
 		return
@@ -160,8 +190,8 @@ func TestLinksModuleCreatesTunnelAfterUnderlayAppears(t *testing.T) {
 	}
 }
 
-func TestLinksModuleRequestsReconcileForLinkStateButNotRoutes(t *testing.T) {
-	if !runInNetns(t, "TestLinksModuleRequestsReconcileForLinkStateButNotRoutes") {
+func TestLinksModuleRequestsReconcileForMainTableRoutesButNotPolicyTableRoutes(t *testing.T) {
+	if !runInNetns(t, "TestLinksModuleRequestsReconcileForMainTableRoutesButNotPolicyTableRoutes") {
 		return
 	}
 	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: underlayName}}); err != nil {
@@ -183,16 +213,36 @@ func TestLinksModuleRequestsReconcileForLinkStateButNotRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// This route represents the repeated policy-table writes that caused the loop.
 	if err := netlink.RouteAdd(&netlink.Route{
-		LinkIndex: underlay.Attrs().Index, Dst: destination, Scope: netlink.SCOPE_LINK,
+		LinkIndex: underlay.Attrs().Index, Dst: destination, Scope: netlink.SCOPE_LINK, Table: policyTable,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case reason := <-requests:
-		t.Fatalf("route %s on %s requested a reconcile: %q", underlayRoute, underlayName, reason)
+		t.Fatalf("route %s in table %d on %s requested a reconcile: %q", underlayRoute, policyTable, underlayName, reason)
 	case <-time.After(underlayEventQuiet):
 	}
+
+	if err := netlink.RouteAdd(&netlink.Route{
+		LinkIndex: underlay.Attrs().Index, Dst: destination, Scope: netlink.SCOPE_LINK, Table: unix.RT_TABLE_MAIN,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	awaitRouteRequest(t, requests, unix.RT_TABLE_MAIN)
+	drainRequests(requests)
+
+	_, localDestination, err := net.ParseCIDR(underlayLocalRoute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.RouteAdd(&netlink.Route{
+		LinkIndex: underlay.Attrs().Index, Dst: localDestination, Scope: netlink.SCOPE_LINK, Table: unix.RT_TABLE_LOCAL,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	awaitRouteRequest(t, requests, unix.RT_TABLE_LOCAL)
 
 	if err := netlink.LinkSetDown(underlay); err != nil {
 		t.Fatal(err)
