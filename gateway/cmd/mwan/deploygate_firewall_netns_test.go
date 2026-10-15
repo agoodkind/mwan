@@ -130,9 +130,16 @@ func runForcedDSCPMismatchChild(t *testing.T) {
 	if err == nil {
 		t.Fatalf("firewall readback accepted applied forced-dscp %d against expected %d: %s", forcedDSCPUnnamed, forcedDSCPNamed, output)
 	}
-	if !strings.Contains(string(output), "differs") {
-		t.Fatalf("firewall readback failed for a reason other than the DSCP rule: %v: %s", err, output)
+	appliedDSCP := "ip dscp 0x" + strconv.FormatInt(forcedDSCPUnnamed, 16) + " "
+	expectedDSCP := "ip dscp " + strconv.Itoa(forcedDSCPNamed) + " "
+	for line := range strings.SplitSeq(string(output), "\n") {
+		got, want, paired := strings.Cut(line, `", expected "`)
+		if strings.HasPrefix(line, "chain inet mangle prerouting rule ") && paired &&
+			strings.Contains(got, appliedDSCP) && strings.Contains(want, expectedDSCP) {
+			return
+		}
 	}
+	t.Fatalf("firewall readback did not report the forced DSCP rule as the difference: %v: %s", err, output)
 }
 
 func forcedDSCPFixture(t *testing.T, dscp int) string {
