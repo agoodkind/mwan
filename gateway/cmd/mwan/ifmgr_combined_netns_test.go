@@ -155,8 +155,11 @@ func combinedRestart(t *testing.T, c *combinedRun) {
 	}
 	c.requireAnnounced(t)
 	for device, router := range routers {
+		// The daemon records readiness on the wall clock.
+		// Monotonic readings can incorrectly place receipt before readiness.
 		receipt, received := router.firstReceipt(started)
-		if ready := started.Add(waitCombinedReady(t, c.daemon, c.run.read, device, "ipv6", started)); !received || receipt.Before(ready) {
+		receipt = receipt.Round(0)
+		if ready := started.Round(0).Add(waitCombinedReady(t, c.daemon, c.run.read, device, "ipv6", started)); !received || receipt.Before(ready) {
 			t.Fatalf("router behind %s first received a route at %s (received=%t), before the ipv6 path became ready at %s", device, receipt, received, ready)
 		}
 	}
