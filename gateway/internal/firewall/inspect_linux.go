@@ -220,9 +220,7 @@ func normalizeRule(rule string) string {
 	rule = strings.ReplaceAll(rule, "meta priority & ffff:0 == 4e50:0", "meta priority & 0xffff0000 == 0x4e500000")
 	rule = strings.ReplaceAll(rule, "/128 ", " ")
 	rule = strings.ReplaceAll(rule, "/32 ", " ")
-	for label, number := range dscpLabels {
-		rule = strings.ReplaceAll(rule, " dscp "+label+" ", " dscp "+strconv.Itoa(number)+" ")
-	}
+	rule = dscpMatch.ReplaceAllStringFunc(rule, decimalDSCP)
 	return markSetHex.ReplaceAllStringFunc(rule, func(match string) string {
 		parts := strings.Split(match, " ")
 		value, err := strconv.ParseUint(parts[len(parts)-1], 0, 32)
@@ -232,6 +230,21 @@ func normalizeRule(rule string) string {
 		return "meta mark set " + strconv.FormatUint(value, 10)
 	})
 }
+
+// nft and compiled rules can use different text for the same DSCP value.
+func decimalDSCP(match string) string {
+	value := strings.TrimPrefix(match, "dscp ")
+	if number, named := dscpLabels[value]; named {
+		return "dscp " + strconv.Itoa(number)
+	}
+	number, err := strconv.ParseUint(value, 0, 8)
+	if err != nil {
+		return match
+	}
+	return "dscp " + strconv.FormatUint(number, 10)
+}
+
+var dscpMatch = regexp.MustCompile(`\bdscp \S+`)
 
 var markSetHex = regexp.MustCompile(`meta mark set 0x[0-9a-fA-F]+`)
 
