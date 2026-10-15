@@ -121,7 +121,7 @@ func (module *Module) onObservedEvent(_ context.Context, _ *slog.Logger, event n
 		// Other modules rewrite policy-table routes on every pass.
 		// Reconciling their route events would start another pass each time.
 		if event.TableID == unix.RT_TABLE_MAIN || event.TableID == unix.RT_TABLE_LOCAL {
-			module.Env.RequestReconcile("route event on " + event.Iface)
+			module.Env.RequestReconcile(fmt.Sprintf("route event in table %d on %s", event.TableID, event.Iface))
 		}
 	case netif.EvUnknown, netif.EvAddrAdded, netif.EvAddrDeleted,
 		netif.EvObservationStale, netif.EvObservationFailed:

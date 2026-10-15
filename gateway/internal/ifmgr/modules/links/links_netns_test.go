@@ -4,6 +4,7 @@ package links_test
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -35,7 +36,6 @@ const (
 	underlayEventQuiet = 500 * time.Millisecond
 	underlayRoute      = "192.0.2.0/24"
 	underlayLocalRoute = "203.0.113.0/24"
-	underlayRouteEvent = "route event on " + underlayName
 	policyTable        = 700
 )
 
@@ -120,17 +120,18 @@ func awaitUnderlayEvent(t *testing.T, requests <-chan string) {
 	}
 }
 
-func awaitRouteRequest(t *testing.T, requests <-chan string, route string, table int) {
+func awaitRouteRequest(t *testing.T, requests <-chan string, table int) {
 	t.Helper()
+	want := fmt.Sprintf("route event in table %d on %s", table, underlayName)
 	limit := time.After(underlayEventLimit)
 	for {
 		select {
 		case reason := <-requests:
-			if reason == underlayRouteEvent {
+			if reason == want {
 				return
 			}
 		case <-limit:
-			t.Fatalf("route %s in table %d on %s did not request a reconcile", route, table, underlayName)
+			t.Fatalf("no reconcile request with reason %q", want)
 		}
 	}
 }
@@ -229,7 +230,7 @@ func TestLinksModuleRequestsReconcileForMainTableRoutesButNotPolicyTableRoutes(t
 	}); err != nil {
 		t.Fatal(err)
 	}
-	awaitRouteRequest(t, requests, underlayRoute, unix.RT_TABLE_MAIN)
+	awaitRouteRequest(t, requests, unix.RT_TABLE_MAIN)
 	drainRequests(requests)
 
 	_, localDestination, err := net.ParseCIDR(underlayLocalRoute)
@@ -241,7 +242,7 @@ func TestLinksModuleRequestsReconcileForMainTableRoutesButNotPolicyTableRoutes(t
 	}); err != nil {
 		t.Fatal(err)
 	}
-	awaitRouteRequest(t, requests, underlayLocalRoute, unix.RT_TABLE_LOCAL)
+	awaitRouteRequest(t, requests, unix.RT_TABLE_LOCAL)
 
 	if err := netlink.LinkSetDown(underlay); err != nil {
 		t.Fatal(err)
