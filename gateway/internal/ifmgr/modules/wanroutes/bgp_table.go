@@ -78,7 +78,8 @@ func reconcileBGPTable(ctx context.Context, log *slog.Logger, wan WAN, ready boo
 		return fmt.Errorf("list provider-table BGP routes: %w", err)
 	}
 	for _, route := range installed {
-		if route.Type == unix.RTN_UNREACHABLE || desired[bgpTableRouteKey(route)] {
+		// The agent BGP route installer adds internal return routes on other devices.
+		if route.Dev != wan.Iface || route.Type == unix.RTN_UNREACHABLE || desired[bgpTableRouteKey(route)] {
 			continue
 		}
 		stale := netif.RouteSpec{
