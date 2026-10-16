@@ -217,7 +217,14 @@ func parseIfMgrFlags() ifmgrFlags {
 }
 
 func buildIfMgrLogger(cfg *config.Config, debug bool) *slog.Logger {
-	handlers := []slog.Handler{logging.StdoutJSON()}
+	debugEnabled := debug || cfg.IfMgr.Debug
+	// rsyslog copies the unit's standard output into /var/log/syslog.
+	// DEBUG records there filled a gateway root filesystem.
+	stdoutLevel := slog.LevelInfo
+	if debugEnabled {
+		stdoutLevel = slog.LevelDebug
+	}
+	handlers := []slog.Handler{logging.StdoutJSONLevel(stdoutLevel)}
 	if p := cfg.IfMgr.LogFile; p != "" {
 		handlers = append(handlers, logging.FileText(p, "[mwan-ifmgr]"))
 	}
@@ -230,9 +237,8 @@ func buildIfMgrLogger(cfg *config.Config, debug bool) *slog.Logger {
 		BuildVersion: version.BuildVersionString(),
 		Handlers:     handlers,
 	})
-	if debug || cfg.IfMgr.Debug {
-		logger.Info("ifmgr: debug logging enabled")
-	}
+	logger.Info("ifmgr: standard output debug logging",
+		"enabled", debugEnabled, "stdout_level", stdoutLevel.String())
 	return logger
 }
 
