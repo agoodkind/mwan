@@ -51,7 +51,11 @@ const maxRotatedLogFiles = 20
 
 // StdoutJSON returns a JSON-to-stdout handler at LevelDebug. Re-exports
 // gklog.StdoutJSON for short imports.
-func StdoutJSON() slog.Handler { return gklog.StdoutJSON(slog.LevelDebug) }
+func StdoutJSON() slog.Handler { return StdoutJSONLevel(slog.LevelDebug) }
+
+// StdoutJSONLevel exists because some daemons need DEBUG off in syslog by default.
+// rsyslog copies those daemons' standard output into syslog.
+func StdoutJSONLevel(level slog.Level) slog.Handler { return gklog.StdoutJSON(level) }
 
 // FileText uses gklog.FileText to return a [slog.Handler] that writes text
 // records to the file at path with label.
