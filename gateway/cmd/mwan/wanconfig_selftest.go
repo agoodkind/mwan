@@ -361,7 +361,7 @@ func selftestStore() *wanstate.Store {
 		},
 	})
 	store.SetRouting(0, map[string]wanstate.MemberRouting{"example": {
-		Carrying: true, V4Ready: false, V6Ready: false, V4Dependencies: nil, V6Dependencies: nil,
+		Carrying: true, SelectionEnabled: true, V4Ready: false, V6Ready: false, V4Dependencies: nil, V6Dependencies: nil,
 		V4Reason: "", V6Reason: "",
 		OwnedAddresses: []netip.Addr{netip.MustParseAddr(selftestOwnedAddress)},
 	}})
@@ -613,7 +613,7 @@ func checkSelftestNotifications(
 	// transition, and a routing pass that installs a different tier than
 	// the baseline selftestStore wrote.
 	store.NotifyHealthTransition("example", wanstate.HealthHealthy, wanstate.HealthUnhealthy)
-	store.SetRouting(1, map[string]wanstate.MemberRouting{"example": {Carrying: false, V4Ready: false, V6Ready: false, V4Reason: "", V6Reason: "", V4Dependencies: nil, V6Dependencies: nil, OwnedAddresses: nil}})
+	store.SetRouting(1, map[string]wanstate.MemberRouting{"example": {Carrying: false, SelectionEnabled: true, V4Ready: false, V6Ready: false, V4Reason: "", V6Reason: "", V4Dependencies: nil, V6Dependencies: nil, OwnedAddresses: nil}})
 
 	byPath := map[string]string{}
 	for len(byPath) < 2 {

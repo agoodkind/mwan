@@ -312,8 +312,9 @@ func (m *Module) publishLiveState(currentGateways gateways, health netif.HealthS
 		}
 		v6Reason := familyReason(wan, currentGateways[wan.Key()], health, translations[wan.Key()], familyV6, m.probeReasonV6(wan.Key()))
 		members[wan.Key()] = wanstate.MemberRouting{
-			Carrying: selectionEnabled && ((readyV4 && wan.Tier == tierV4 && v4Ready) || (readyV6 && wan.Tier == tierV6 && v6Ready)),
-			V4Ready:  v4Ready, V6Ready: v6Ready,
+			Carrying:         selectionEnabled && ((readyV4 && wan.Tier == tierV4 && v4Ready) || (readyV6 && wan.Tier == tierV6 && v6Ready)),
+			SelectionEnabled: selectionEnabled,
+			V4Ready:          v4Ready, V6Ready: v6Ready,
 			V4Reason: v4Reason, V6Reason: v6Reason,
 			V4Dependencies: familyDependencies(wan, familyV4, v4Reason),
 			V6Dependencies: familyDependencies(wan, familyV6, v6Reason),

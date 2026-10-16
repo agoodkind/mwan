@@ -60,13 +60,15 @@ type MemberHealth struct {
 // MemberRouting is what the routing module decided for one member on
 // its last pass.
 type MemberRouting struct {
-	Carrying       bool
-	V4Ready        bool
-	V6Ready        bool
-	V4Reason       string
-	V6Reason       string
-	V4Dependencies []DependencyResult
-	V6Dependencies []DependencyResult
+	Carrying bool
+	// SelectionEnabled prevents excluded providers from making a family appear ready.
+	SelectionEnabled bool
+	V4Ready          bool
+	V6Ready          bool
+	V4Reason         string
+	V6Reason         string
+	V4Dependencies   []DependencyResult
+	V6Dependencies   []DependencyResult
 	// OwnedAddresses are the mapped addresses the routing module holds on the
 	// member's link as host addresses, in configuration order.
 	OwnedAddresses []netip.Addr

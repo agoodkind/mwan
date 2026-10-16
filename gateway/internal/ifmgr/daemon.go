@@ -615,6 +615,10 @@ func (d *Daemon) internalForwardingReadiness(state forwardingready.State) forwar
 func forwardingReadiness(snapshot wanstate.Snapshot) forwardingready.State {
 	var state forwardingready.State
 	for name, routing := range snapshot.Routing {
+		// Steering cannot select an active tier for ordinary traffic without a selectable member.
+		if !routing.SelectionEnabled {
+			continue
+		}
 		health, known := snapshot.Health[name]
 		member := memberForwardingReadiness(routing, health, known)
 		state.IPv4 = state.IPv4 || member.IPv4
