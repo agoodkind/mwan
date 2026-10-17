@@ -19,6 +19,7 @@ type bgpRuntimeSession struct {
 	Established bool     `json:"established"`
 	Accepted    []string `json:"accepted-prefix"`
 	Advertised  []string `json:"advertised-prefix"`
+	Retained    []string `json:"retained-prefix"`
 	Rejections  []struct {
 		Prefix string `json:"prefix"`
 		Reason string `json:"reason"`

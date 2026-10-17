@@ -28,12 +28,16 @@ const (
 	bgpRuntimeRouterMetric = 200
 )
 
+// A nonzero restartTime enables graceful restart for the neighbor. The router
+// then keeps its kernel routes after the session ends, and GoBGP removes the
+// stale paths after the restart time or the End-of-RIB marker.
 type bgpRuntimeRouter struct {
 	server      *server.BgpServer
 	handle      *netlink.Handle
 	device      int
 	neighbor    netip.Addr
 	neighborASN uint32
+	restartTime uint32
 
 	mu        sync.Mutex
 	installed map[string]*netlink.Route
@@ -41,6 +45,11 @@ type bgpRuntimeRouter struct {
 }
 
 func startBGPRuntimeRouter(t *testing.T, namespace netns.NsHandle, device, routerID string, asn uint32, listen, neighbor netip.Addr, neighborASN uint32) *bgpRuntimeRouter {
+	t.Helper()
+	return startBGPRuntimeRouterWithRestart(t, namespace, device, routerID, asn, listen, neighbor, neighborASN, 0)
+}
+
+func startBGPRuntimeRouterWithRestart(t *testing.T, namespace netns.NsHandle, device, routerID string, asn uint32, listen, neighbor netip.Addr, neighborASN, restartTime uint32) *bgpRuntimeRouter {
 	t.Helper()
 	handle, err := netlink.NewHandleAt(namespace)
 	if err != nil {
@@ -72,12 +81,12 @@ func startBGPRuntimeRouter(t *testing.T, namespace netns.NsHandle, device, route
 	t.Cleanup(bgpServer.Stop)
 	router := &bgpRuntimeRouter{
 		server: bgpServer, handle: handle, device: link.Attrs().Index, neighbor: neighbor, neighborASN: neighborASN,
-		installed: make(map[string]*netlink.Route),
+		restartTime: restartTime, installed: make(map[string]*netlink.Route),
 	}
 	callbacks := server.WatchEventMessageCallbacks{
 		OnBestPath: func(paths []*apiutil.Path, _ time.Time) { router.apply(t, paths) },
 		OnPeerUpdate: func(event *apiutil.WatchEventMessage_PeerEvent, _ time.Time) {
-			if event.Type == apiutil.PEER_EVENT_STATE && event.Peer.State.SessionState != bgppkt.BGP_FSM_ESTABLISHED {
+			if restartTime == 0 && event.Type == apiutil.PEER_EVENT_STATE && event.Peer.State.SessionState != bgppkt.BGP_FSM_ESTABLISHED {
 				router.flush(t)
 			}
 		},
@@ -145,6 +154,10 @@ func (r *bgpRuntimeRouter) addNeighbor(t *testing.T) {
 			Family: &apipb.Family{Afi: apipb.Family_AFI_IP6, Safi: apipb.Family_SAFI_UNICAST}, Enabled: true,
 		}}},
 	}
+	if r.restartTime > 0 {
+		peer.GracefulRestart = &apipb.GracefulRestart{Enabled: true, RestartTime: r.restartTime}
+		peer.AfiSafis[0].MpGracefulRestart = &apipb.MpGracefulRestart{Config: &apipb.MpGracefulRestartConfig{Enabled: true}}
+	}
 	if err := r.server.AddPeer(t.Context(), &apipb.AddPeerRequest{Peer: peer}); err != nil {
 		t.Fatalf("add the gateway as a router neighbor: %v", err)
 	}
@@ -172,6 +185,18 @@ func (r *bgpRuntimeRouter) announce(t *testing.T, prefix netip.Prefix, nextHop n
 	}}
 	if _, err := r.server.AddPath(apiutil.AddPathRequest{Paths: []*apiutil.Path{path}}); err != nil {
 		t.Fatalf("router announce %s: %v", prefix, err)
+	}
+}
+
+func (r *bgpRuntimeRouter) withdraw(t *testing.T, prefix netip.Prefix) {
+	t.Helper()
+	nlri, err := bgppkt.NewIPAddrPrefix(prefix)
+	if err != nil {
+		t.Fatalf("build NLRI for %s: %v", prefix, err)
+	}
+	path := &apiutil.Path{Family: bgppkt.RF_IPv6_UC, Nlri: nlri, Withdrawal: true}
+	if err := r.server.DeletePath(apiutil.DeletePathRequest{Paths: []*apiutil.Path{path}}); err != nil {
+		t.Fatalf("router withdraw %s: %v", prefix, err)
 	}
 }
 
