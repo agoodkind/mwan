@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -173,28 +172,44 @@ func isAliasForConnection(alias string, id string) bool {
 	return alias == base || strings.HasPrefix(alias, base+":")
 }
 
+// ownedLinkPass stores the inputs and the memoized results of one Reconcile call.
+type ownedLinkPass struct {
+	log      *slog.Logger
+	prepare  OwnedLinkPreparer
+	byName   map[string]interfaceintent.Connection
+	resolved map[string]OwnedLinkResult
+	visiting map[string]bool
+}
+
 // Reconcile applies MWAN-owned link intent and reports each connection separately.
-func (r *OwnedLinkReconciler) Reconcile(ctx context.Context, log *slog.Logger, connections []interfaceintent.Connection) ([]OwnedLinkResult, error) {
+// A nil prepare sets links up without preparation.
+func (r *OwnedLinkReconciler) Reconcile(ctx context.Context, log *slog.Logger, connections []interfaceintent.Connection, prepare OwnedLinkPreparer) ([]OwnedLinkResult, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	byName := make(map[string]interfaceintent.Connection, len(connections))
+	if log == nil {
+		log = slog.Default()
+	}
+	pass := &ownedLinkPass{
+		log: log, prepare: prepare,
+		byName:   make(map[string]interfaceintent.Connection, len(connections)),
+		resolved: make(map[string]OwnedLinkResult),
+		visiting: make(map[string]bool),
+	}
 	owned := make(map[string]interfaceintent.Connection)
 	for _, connection := range connections {
-		byName[connection.Name] = connection
+		pass.byName[connection.Name] = connection
 		if connection.Owner == interfaceintent.OwnerMWAN {
 			owned[connection.ID.String()] = connection
 		}
 	}
 	var results []OwnedLinkResult
-	resolved := make(map[string]OwnedLinkResult)
-	visiting := make(map[string]bool)
 	for _, connection := range connections {
 		if connection.Owner != interfaceintent.OwnerMWAN {
 			continue
 		}
-		result := r.reconcileOne(ctx, connection, byName, resolved, visiting)
-		if result.Err != nil && log != nil {
+		result := r.reconcileOne(ctx, connection, pass)
+		if result.Err != nil {
 			log.WarnContext(ctx, "owned link failed", "connection", result.ConnectionID, "operation", result.Operation, "err", result.Err)
 		}
 		results = append(results, result)
@@ -204,8 +219,9 @@ func (r *OwnedLinkReconciler) Reconcile(ctx context.Context, log *slog.Logger, c
 	return results, err
 }
 
-func (r *OwnedLinkReconciler) reconcileOne(ctx context.Context, connection interfaceintent.Connection, byName map[string]interfaceintent.Connection, resolved map[string]OwnedLinkResult, visiting map[string]bool) OwnedLinkResult {
+func (r *OwnedLinkReconciler) reconcileOne(ctx context.Context, connection interfaceintent.Connection, pass *ownedLinkPass) OwnedLinkResult {
 	id := connection.ID.String()
+	resolved := pass.resolved
 	if result, ok := resolved[id]; ok {
 		return result
 	}
@@ -214,18 +230,18 @@ func (r *OwnedLinkReconciler) reconcileOne(ctx context.Context, connection inter
 		result.Status, result.Err = OwnedLinkFailed, err
 		return result
 	}
-	if visiting[id] {
+	if pass.visiting[id] {
 		result.Status, result.Err = OwnedLinkFailed, fmt.Errorf("link dependency cycle at %s", id)
 		return result
 	}
-	visiting[id] = true
-	defer delete(visiting, id)
+	pass.visiting[id] = true
+	defer delete(pass.visiting, id)
 	if connection.Link == nil {
 		result.Status, result.Err = OwnedLinkFailed, fmt.Errorf("connection %s has no link intent", id)
 		resolved[id] = result
 		return result
 	}
-	parent, underlay, present := r.requiredLinks(ctx, connection, byName, resolved, visiting, &result)
+	parent, underlay, present := r.requiredLinks(ctx, connection, pass, &result)
 	if !present {
 		resolved[id] = result
 		return result
@@ -257,11 +273,11 @@ func (r *OwnedLinkReconciler) reconcileOne(ctx context.Context, connection inter
 	} else {
 		result.Operation = "reconcile"
 	}
-	if !r.reconcileMembership(ctx, connection, link, byName, resolved, visiting, &result) {
+	if !r.reconcileMembership(ctx, connection, link, pass, &result) {
 		resolved[id] = result
 		return result
 	}
-	if err := applyLinkSettings(link, connection); err != nil {
+	if err := applyLinkSettings(ctx, pass, link, connection, result); err != nil {
 		result.Status, result.Err, result.Operation = OwnedLinkFailed, err, "configure"
 		resolved[id] = result
 		return result
@@ -274,13 +290,13 @@ func (r *OwnedLinkReconciler) reconcileOne(ctx context.Context, connection inter
 	return result
 }
 
-func (r *OwnedLinkReconciler) vlanParent(ctx context.Context, connection interfaceintent.Connection, byName map[string]interfaceintent.Connection, resolved map[string]OwnedLinkResult, visiting map[string]bool, result *OwnedLinkResult) netlink.Link {
+func (r *OwnedLinkReconciler) vlanParent(ctx context.Context, connection interfaceintent.Connection, pass *ownedLinkPass, result *OwnedLinkResult) netlink.Link {
 	if connection.Link.VLAN == nil || connection.Link.VLAN.ID == 0 || connection.Link.VLAN.ID > 4094 {
 		result.Status, result.Err = OwnedLinkFailed, fmt.Errorf("connection %s has invalid VLAN intent", connection.ID)
 		return nil
 	}
 	result.Dependency = connection.Link.VLAN.Parent
-	parent, dependency := r.dependency(ctx, result.Dependency, byName, resolved, visiting)
+	parent, dependency := r.dependency(ctx, result.Dependency, pass)
 	if parent != nil {
 		return parent
 	}
@@ -295,7 +311,7 @@ func (r *OwnedLinkReconciler) vlanParent(ctx context.Context, connection interfa
 	return nil
 }
 
-func (r *OwnedLinkReconciler) reconcileMembership(ctx context.Context, connection interfaceintent.Connection, link netlink.Link, byName map[string]interfaceintent.Connection, resolved map[string]OwnedLinkResult, visiting map[string]bool, result *OwnedLinkResult) bool {
+func (r *OwnedLinkReconciler) reconcileMembership(ctx context.Context, connection interfaceintent.Connection, link netlink.Link, pass *ownedLinkPass, result *OwnedLinkResult) bool {
 	if connection.Link.BridgeMaster == "" {
 		if err := r.detach(connection.ID.String()); err != nil {
 			result.Status, result.Err, result.Operation = OwnedLinkFailed, err, "detach-bridge"
@@ -304,7 +320,7 @@ func (r *OwnedLinkReconciler) reconcileMembership(ctx context.Context, connectio
 		return true
 	}
 	result.Dependency = connection.Link.BridgeMaster
-	master, dependency := r.dependency(ctx, result.Dependency, byName, resolved, visiting)
+	master, dependency := r.dependency(ctx, result.Dependency, pass)
 	if master == nil {
 		result.Operation = "wait-for-bridge"
 		result.Err = fmt.Errorf("bridge master %s is not present", result.Dependency)
@@ -327,15 +343,15 @@ func (r *OwnedLinkReconciler) reconcileMembership(ctx context.Context, connectio
 	return true
 }
 
-func (r *OwnedLinkReconciler) dependency(ctx context.Context, name string, byName map[string]interfaceintent.Connection, resolved map[string]OwnedLinkResult, visiting map[string]bool) (netlink.Link, OwnedLinkResult) {
-	connection, ok := byName[name]
+func (r *OwnedLinkReconciler) dependency(ctx context.Context, name string, pass *ownedLinkPass) (netlink.Link, OwnedLinkResult) {
+	connection, ok := pass.byName[name]
 	if !ok {
 		result := newOwnedLinkResult("", name, OwnedLinkWaiting)
 		result.Dependency = name
 		return nil, result
 	}
 	if connection.Owner == interfaceintent.OwnerMWAN {
-		result := r.reconcileOne(ctx, connection, byName, resolved, visiting)
+		result := r.reconcileOne(ctx, connection, pass)
 		if result.Status != OwnedLinkReady && result.Status != OwnedLinkPendingRename {
 			return nil, result
 		}
@@ -732,49 +748,6 @@ func (r *OwnedLinkReconciler) recoverVirtual(connection interfaceintent.Connecti
 		return nil, true, err
 	}
 	return link, true, nil
-}
-
-func applyLinkSettings(link netlink.Link, connection interfaceintent.Connection) error {
-	settings := connection.Link
-	if settings.MTU != nil && link.Attrs().MTU != int(*settings.MTU) {
-		if err := netlink.LinkSetMTU(link, int(*settings.MTU)); err != nil {
-			slog.Warn("link MTU update failed", "link", link.Attrs().Name, "mtu", *settings.MTU, "err", err)
-			return fmt.Errorf("set MTU on %s: %w", link.Attrs().Name, err)
-		}
-	}
-	if settings.HardwareAddress != "" {
-		address, err := net.ParseMAC(settings.HardwareAddress)
-		if err != nil {
-			slog.Warn("configured link MAC is invalid", "link", link.Attrs().Name, "err", err)
-			return fmt.Errorf("parse configured MAC: %w", err)
-		}
-		if !strings.EqualFold(link.Attrs().HardwareAddr.String(), address.String()) {
-			if err := netlink.LinkSetHardwareAddr(link, address); err != nil {
-				slog.Warn("link MAC update failed", "link", link.Attrs().Name, "err", err)
-				return fmt.Errorf("set MAC on %s: %w", link.Attrs().Name, err)
-			}
-		}
-	}
-	return applyLinkEnabled(link, connection.Enabled)
-}
-
-func applyLinkEnabled(link netlink.Link, enabled *bool) error {
-	desired := enabled == nil || *enabled
-	if desired == (link.Attrs().Flags&net.FlagUp != 0) {
-		return nil
-	}
-	if desired {
-		if err := netlink.LinkSetUp(link); err != nil {
-			slog.Warn("link enable failed", "link", link.Attrs().Name, "err", err)
-			return fmt.Errorf("raise link %s: %w", link.Attrs().Name, err)
-		}
-		return nil
-	}
-	if err := netlink.LinkSetDown(link); err != nil {
-		slog.Warn("link disable failed", "link", link.Attrs().Name, "err", err)
-		return fmt.Errorf("lower link %s: %w", link.Attrs().Name, err)
-	}
-	return nil
 }
 
 func (r *OwnedLinkReconciler) attach(id string, slave netlink.Link, master netlink.Link) error {

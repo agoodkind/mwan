@@ -123,6 +123,8 @@ type Env struct {
 	Delegations *netif.DHCPv6PDStore
 	// PrepareLocalIPv6 protects new local DHCPv6 addresses from forwarding translation before installation.
 	PrepareLocalIPv6 func(context.Context, *slog.Logger, string, []netip.Addr) error
+	// PrepareOwnedLink applies per-link kernel policy to a down owned link before the links module sets it up.
+	PrepareOwnedLink netif.OwnedLinkPreparer
 }
 
 // NPTEdgeRequest authorizes one separately scoped translation address.

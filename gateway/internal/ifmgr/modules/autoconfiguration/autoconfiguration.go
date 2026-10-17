@@ -93,6 +93,7 @@ func (module *Module) Init(_ context.Context, env *ifmgr.Env) error {
 		return fmt.Errorf("initialize autoconfiguration kernel policy: %w", err)
 	}
 	module.reconciler = reconciler
+	env.PrepareOwnedLink = reconciler.PrepareLink
 	return nil
 }
 

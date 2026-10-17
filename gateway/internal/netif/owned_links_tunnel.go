@@ -86,7 +86,7 @@ func validateTunnelLink(link netlink.Link, connection interfaceintent.Connection
 	return nil
 }
 
-func (r *OwnedLinkReconciler) tunnelUnderlay(ctx context.Context, connection interfaceintent.Connection, byName map[string]interfaceintent.Connection, resolved map[string]OwnedLinkResult, visiting map[string]bool, result *OwnedLinkResult) netlink.Link {
+func (r *OwnedLinkReconciler) tunnelUnderlay(ctx context.Context, connection interfaceintent.Connection, pass *ownedLinkPass, result *OwnedLinkResult) netlink.Link {
 	tunnel := connection.Link.Tunnel
 	if tunnel == nil || tunnelKernelType(tunnel.Protocol) == "" || !tunnel.Remote.Is4() ||
 		tunnel.Local.IsValid() && !tunnel.Local.Is4() {
@@ -94,7 +94,7 @@ func (r *OwnedLinkReconciler) tunnelUnderlay(ctx context.Context, connection int
 		return nil
 	}
 	result.Dependency = tunnel.Underlay
-	underlay, dependency := r.dependency(ctx, result.Dependency, byName, resolved, visiting)
+	underlay, dependency := r.dependency(ctx, result.Dependency, pass)
 	if underlay != nil {
 		return underlay
 	}
@@ -109,13 +109,13 @@ func (r *OwnedLinkReconciler) tunnelUnderlay(ctx context.Context, connection int
 	return nil
 }
 
-func (r *OwnedLinkReconciler) requiredLinks(ctx context.Context, connection interfaceintent.Connection, byName map[string]interfaceintent.Connection, resolved map[string]OwnedLinkResult, visiting map[string]bool, result *OwnedLinkResult) (netlink.Link, netlink.Link, bool) {
+func (r *OwnedLinkReconciler) requiredLinks(ctx context.Context, connection interfaceintent.Connection, pass *ownedLinkPass, result *OwnedLinkResult) (netlink.Link, netlink.Link, bool) {
 	if connection.Link.Kind == interfaceintent.KindVLAN {
-		parent := r.vlanParent(ctx, connection, byName, resolved, visiting, result)
+		parent := r.vlanParent(ctx, connection, pass, result)
 		return parent, nil, parent != nil
 	}
 	if connection.Link.Kind == interfaceintent.KindTunnel {
-		underlay := r.tunnelUnderlay(ctx, connection, byName, resolved, visiting, result)
+		underlay := r.tunnelUnderlay(ctx, connection, pass, result)
 		return nil, underlay, underlay != nil
 	}
 	return nil, nil, true

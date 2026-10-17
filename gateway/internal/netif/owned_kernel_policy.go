@@ -158,6 +158,21 @@ func (r *OwnedKernelPolicyReconciler) Reconcile(ctx context.Context, connections
 	return err
 }
 
+// PrepareLink applies the policy of one owned link while the link is still
+// down. The ready link filter in Reconcile excludes a link that is not up yet.
+func (r *OwnedKernelPolicyReconciler) PrepareLink(ctx context.Context, log *slog.Logger, connection interfaceintent.Connection, link OwnedLinkResult) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		log.WarnContext(ctx, "kernel policy preparation canceled", "connection_id", connection.ID, "err", err)
+		return fmt.Errorf("kernel policy preparation canceled: %w", err)
+	}
+	if r.sysctl.DryRun() || connection.Owner != interfaceintent.OwnerMWAN {
+		return nil
+	}
+	return r.applyConnection(ctx, connection, link)
+}
+
 func kernelFieldKey(id, family, leaf string) string { return id + "/" + family + "/" + leaf }
 
 func kernelPolicySettings(connection interfaceintent.Connection) []kernelPolicySetting {
