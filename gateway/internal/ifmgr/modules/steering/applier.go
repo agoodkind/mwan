@@ -10,6 +10,7 @@ import (
 	"github.com/google/nftables"
 	"github.com/google/nftables/binaryutil"
 	"github.com/google/nftables/expr"
+	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
 )
 
@@ -73,6 +74,11 @@ const (
 	// hashKeyRegisterV6Second holds the IPv6 destination address, four 32-bit
 	// slots after the sixteen-byte source address.
 	hashKeyRegisterV6Second uint32 = unix.NFT_REG32_04
+
+	// Flush sends each batch before reading message acknowledgments and rule echoes.
+	// Replies overflowed the default buffer after commit; 8 MiB fits the largest
+	// batch's replies. The daemon's CAP_NET_ADMIN permits SO_RCVBUFFORCE past rmem_max.
+	steerReceiveBufferBytes = 8 << 20
 )
 
 // nftConn is the subset of *nftables.Conn the applier drives. Injecting it lets
@@ -107,7 +113,9 @@ func newNFTApplier() *nftApplier {
 }
 
 func defaultNFTConn() (nftConn, error) {
-	conn, err := nftables.New()
+	conn, err := nftables.New(nftables.WithSockOptions(func(socket *netlink.Conn) error {
+		return socket.SetReadBuffer(steerReceiveBufferBytes)
+	}))
 	if err != nil {
 		slog.Warn("steering: open nftables netlink connection failed", "err", err)
 		return nil, fmt.Errorf("nftables.New: %w", err)
