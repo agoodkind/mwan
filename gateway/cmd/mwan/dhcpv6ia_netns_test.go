@@ -175,6 +175,11 @@ func runOwnedDHCPv6IARuntime(t *testing.T, combined, unequal, duplicate bool) {
 	stopProtocolServices(t, []protocolService{service})
 	serviceRunning = false
 	addMappedRuntimeRoute(t, "2001:db8:30::/60", "2001:db8:2::1", "wan-vlan")
+	// The gateway removes its RA default route after a Neighbor Advertisement
+	// without the Router flag. A forwarding provider link sets that flag.
+	if err := os.WriteFile("/proc/sys/net/ipv6/conf/wan-vlan/forwarding", []byte("1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	served, stopServer := startDHCPv6IAUnequalServer(t)
 	defer stopServer()
 	stopRouter := startDHCPv6RuntimeRouter(t, true)
