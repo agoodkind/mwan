@@ -247,7 +247,11 @@ func assertDHCPv6ExpiryPublishedWhileAcquiring(t *testing.T, client *DHCPv6PDCli
 	deadline := expiry.Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		lease := client.LastLease()
+		observed := time.Now()
 		if len(lease.Prefixes) == 1 && lease.Prefixes[0].Prefix == remaining {
+			if observed.Before(expiry) {
+				t.Fatalf("prefix removed %s before its valid lifetime ended: %+v", expiry.Sub(observed), lease)
+			}
 			return
 		}
 		time.Sleep(20 * time.Millisecond)

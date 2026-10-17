@@ -28,6 +28,7 @@ type dhcpv6TimerObservation struct {
 	received      time.Time
 	answered      bool
 	validUntil    time.Time
+	replied       time.Time
 }
 
 // dhcpv6TimerLog stores the server observations and wakes a waiting test on each one.
@@ -37,10 +38,24 @@ type dhcpv6TimerLog struct {
 	changed chan struct{}
 }
 
-func (log *dhcpv6TimerLog) add(observation dhcpv6TimerObservation) {
+func (log *dhcpv6TimerLog) add(observation dhcpv6TimerObservation) int {
 	log.mu.Lock()
 	log.entries = append(log.entries, observation)
+	index := len(log.entries) - 1
 	log.mu.Unlock()
+	log.notify()
+	return index
+}
+
+// markReplied stores the time the server wrote the reply to one observed message.
+func (log *dhcpv6TimerLog) markReplied(index int, replied time.Time) {
+	log.mu.Lock()
+	log.entries[index].replied = replied
+	log.mu.Unlock()
+	log.notify()
+}
+
+func (log *dhcpv6TimerLog) notify() {
 	select {
 	case log.changed <- struct{}{}:
 	default:
@@ -138,9 +153,11 @@ func startDHCPv6TimerServer(t *testing.T, mode dhcpv6TimerMode) *dhcpv6TimerLog 
 			response := dhcpv6TimerResponse(request, serverID, prefix)
 			observation.answered = true
 			observation.validUntil = received.Add(delay + dhcpv6TimerValid)
-			observations.add(observation)
+			index := observations.add(observation)
 			time.AfterFunc(delay, func() {
-				_, _ = listener.WriteTo(response.ToBytes(), peer)
+				if _, err := listener.WriteTo(response.ToBytes(), peer); err == nil {
+					observations.markReplied(index, time.Now())
+				}
 			})
 		}
 	}()

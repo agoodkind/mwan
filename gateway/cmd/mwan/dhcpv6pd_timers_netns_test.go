@@ -103,7 +103,7 @@ func assertDHCPv6TimerLeaseHeld(t *testing.T, daemon *runtimeDaemon, observation
 		}
 		switch observation.messageType {
 		case dhcpv6.MessageTypeRenew, dhcpv6.MessageTypeRebind:
-			if observation.answered {
+			if !observation.replied.IsZero() && observation.replied.Sub(observation.received) >= dhcpv6TimerReplyDelay {
 				lateReplies++
 			}
 		case dhcpv6.MessageTypeSolicit:
