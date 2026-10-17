@@ -316,7 +316,7 @@ func answerAutoconfigurationSolicitations(t *testing.T, name string) (<-chan net
 		t.Fatal(err)
 	}
 	advertisement := &ndp.RouterAdvertisement{
-		RouterLifetime: 30 * time.Second,
+		RouterLifetime: 30 * time.Minute,
 		Options: []ndp.Option{&ndp.PrefixInformation{
 			PrefixLength: 64, Prefix: netip.MustParseAddr("2001:db8:517::"),
 			OnLink: true, AutonomousAddressConfiguration: true,
