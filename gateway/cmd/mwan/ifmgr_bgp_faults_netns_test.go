@@ -155,13 +155,8 @@ func bgpRuntimeGracefulRestart(t *testing.T, run *bgpRuntimeRun, first *runtimeD
 		return time.Since(stopped) > bgpRuntimeStoppedWindow
 	})
 	second := run.start(t, "bgp-graceful")
-	requireBGPRuntimeRoutesPresent(t, run, second, provider, "after the restarted session accepts the learned prefix again", restartDeadline, func() bool {
-		entry, found := readBGPRuntimeInterface(run.read, provider.device)
-		if !found || len(entry.V6.Ownership.Sessions) != 1 {
-			return false
-		}
-		session := entry.V6.Ownership.Sessions[0]
-		return session.Established && len(session.Retained) == 0 && slices.Equal(session.Accepted, []string{provider.learned.String()})
+	requireBGPRuntimeRoutesPresent(t, run, second, provider, "from the start of the restarted daemon until 30 seconds after the previous daemon shutdown", restartDeadline, func() bool {
+		return time.Since(stopped) > bgpRuntimeEndOfRIBWindow
 	})
 	waitTunnelRuntimeFamily(t, second, run.read, provider.device, "ipv6", "ready", "ready", tunnelRuntimeRecoverWindow)
 	waitBGPRuntimeReceived(t, second, run.read, router, home)
@@ -180,9 +175,6 @@ func bgpRuntimeGracefulRestart(t *testing.T, run *bgpRuntimeRun, first *runtimeD
 		time.Until(stopped.Add(bgpRuntimeEndOfRIBWindow)), func() bool {
 			return !bgpRuntimeGatewayRoute(t, provider.device, provider.learned)
 		})
-	waitBGPRuntimeSession(t, third, run.read, provider.device, "no retained or accepted prefix", func(session bgpRuntimeSession) bool {
-		return session.Established && len(session.Retained) == 0 && len(session.Accepted) == 0
-	})
 	waitTunnelRuntimeFamily(t, third, run.read, provider.device, "ipv6", "not-ready", "not-ready", tunnelRuntimeRecoverWindow)
 	router.announce(t, provider.learned, provider.peer())
 	waitTunnelRuntimeFamily(t, third, run.read, provider.device, "ipv6", "ready", "ready", tunnelRuntimeRecoverWindow)

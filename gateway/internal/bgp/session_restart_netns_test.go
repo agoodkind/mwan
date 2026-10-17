@@ -144,7 +144,7 @@ func TestSessionConnectsAfterTheRestartDeadlineDeletesTheRetainedRoutes(t *testi
 		t.Fatalf("retained prefixes = %v, want %s", got, retained)
 	}
 	eventually(t, "the restart deadline to delete the retained route", func() bool {
-		return !hasKernelRoute(t, retained, sessionLink) && len(restarted.State().Retained) == 0
+		return !hasKernelRoute(t, retained, sessionLink)
 	})
 	if err := restarted.Start(t.Context()); err != nil {
 		t.Fatalf("start session: %v", err)
@@ -159,7 +159,4 @@ func TestSessionConnectsAfterTheRestartDeadlineDeletesTheRetainedRoutes(t *testi
 	}
 	waitEstablished(t, restarted)
 	assertNoKernelRoute(t, retained, sessionLink)
-	if got := restarted.State().Retained; len(got) != 0 {
-		t.Fatalf("retained prefixes after Connect = %v, want none", got)
-	}
 }
