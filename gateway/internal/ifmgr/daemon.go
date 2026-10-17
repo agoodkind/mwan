@@ -268,6 +268,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 		Delegations:          nil,
 		TunnelEndpointRoutes: nil,
 		PrepareLocalIPv6:     nil,
+		PrepareOwnedLink:     nil,
 	}
 
 	d.publishStartingPaths()

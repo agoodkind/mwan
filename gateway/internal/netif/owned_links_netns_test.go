@@ -94,7 +94,7 @@ func TestOwnedLinkReservationFromOlderBoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	results, err := rebooted.Reconcile(context.Background(), log, []interfaceintent.Connection{connection})
+	results, err := rebooted.Reconcile(context.Background(), log, []interfaceintent.Connection{connection}, nil)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
 		t.Fatalf("reservation from an older boot blocked link creation: results=%+v err=%v", results, err)
 	}
@@ -107,7 +107,7 @@ func TestOwnedLinkReservationFromOlderBoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	results, err = restarted.Reconcile(context.Background(), log, []interfaceintent.Connection{connection})
+	results, err = restarted.Reconcile(context.Background(), log, []interfaceintent.Connection{connection}, nil)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady ||
 		results[0].IfIndex != bridge.Attrs().Index {
 		t.Fatalf("restart after the older boot recovery replaced the bridge: results=%+v err=%v index=%d",
@@ -168,7 +168,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	results, err := reconciler.Reconcile(context.Background(), log, connections)
+	results, err := reconciler.Reconcile(context.Background(), log, connections, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lostResults, err := lostJournal.Reconcile(context.Background(), log, connections)
+	lostResults, err := lostJournal.Reconcile(context.Background(), log, connections, nil)
 	if err != nil || len(lostResults) != 2 {
 		t.Fatalf("lost journal reconcile: results=%+v err=%v", lostResults, err)
 	}
@@ -220,18 +220,18 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	staleRecord := originalRecord
 	staleRecord.BootID = "previous-boot"
 	stale.state.Virtuals[bridgeConnection.ID.String()] = staleRecord
-	staleResults, err := stale.Reconcile(context.Background(), log, connections)
+	staleResults, err := stale.Reconcile(context.Background(), log, connections, nil)
 	if err != nil || len(staleResults) != 2 || staleResults[1].Status != OwnedLinkFailed {
 		t.Fatalf("stale boot journal adopted bridge: results=%+v err=%v", staleResults, err)
 	}
 	staleRecord.BootID = stale.bootID
 	staleRecord.LinkIndex = bridgeIndex + 1
 	stale.state.Virtuals[bridgeConnection.ID.String()] = staleRecord
-	staleResults, err = stale.Reconcile(context.Background(), log, connections)
+	staleResults, err = stale.Reconcile(context.Background(), log, connections, nil)
 	if err != nil || len(staleResults) != 2 || staleResults[1].Status != OwnedLinkFailed {
 		t.Fatalf("replaced bridge index adopted: results=%+v err=%v", staleResults, err)
 	}
-	staleResults, err = stale.Reconcile(context.Background(), log, []interfaceintent.Connection{vlanConnection, parentConnection})
+	staleResults, err = stale.Reconcile(context.Background(), log, []interfaceintent.Connection{vlanConnection, parentConnection}, nil)
 	if err != nil || len(staleResults) != 1 {
 		t.Fatalf("stale journal pruned bridge: results=%+v err=%v", staleResults, err)
 	}
@@ -246,7 +246,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := restarted.Reconcile(context.Background(), log, connections); err != nil {
+	if _, err := restarted.Reconcile(context.Background(), log, connections, nil); err != nil {
 		t.Fatal(err)
 	}
 	vlan, err = netlink.LinkByName("owned-vlan")
@@ -267,7 +267,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	renamedLink.BridgeMaster = renamedBridge.Name
 	renamedVLAN.Link = &renamedLink
 	results, err = restarted.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{renamedVLAN, parentConnection, renamedBridge})
+		[]interfaceintent.Connection{renamedVLAN, parentConnection, renamedBridge}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +283,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err := netlink.LinkSetName(bridge, "external-br"); err != nil {
 		t.Fatal(err)
 	}
-	results, err = restarted.Reconcile(context.Background(), log, []interfaceintent.Connection{parentConnection})
+	results, err = restarted.Reconcile(context.Background(), log, []interfaceintent.Connection{parentConnection}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -327,7 +327,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	results, err = recovered.Reconcile(context.Background(), log, []interfaceintent.Connection{recovery})
+	results, err = recovered.Reconcile(context.Background(), log, []interfaceintent.Connection{recovery}, nil)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
 		t.Fatalf("recover reserved bridge: results=%+v err=%v", results, err)
 	}
@@ -363,7 +363,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	results, err = crashRestart.Reconcile(context.Background(), log, []interfaceintent.Connection{recovery, interrupted})
+	results, err = crashRestart.Reconcile(context.Background(), log, []interfaceintent.Connection{recovery, interrupted}, nil)
 	if err != nil || len(results) != 2 || results[1].Status != OwnedLinkReady {
 		t.Fatalf("renamed before journal completion: results=%+v err=%v", results, err)
 	}
@@ -400,7 +400,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	results, err = collisionRestart.Reconcile(context.Background(), log, []interfaceintent.Connection{collision})
+	results, err = collisionRestart.Reconcile(context.Background(), log, []interfaceintent.Connection{collision}, nil)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkFailed {
 		t.Fatalf("predictable alias was adopted: results=%+v err=%v", results, err)
 	}
@@ -423,7 +423,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	results, err = untaggedState.Reconcile(context.Background(), log, []interfaceintent.Connection{untagged})
+	results, err = untaggedState.Reconcile(context.Background(), log, []interfaceintent.Connection{untagged}, nil)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkFailed {
 		t.Fatalf("foreign untagged name was accepted: results=%+v err=%v", results, err)
 	}
@@ -467,7 +467,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err := interruptedRemoval.save(); err != nil {
 		t.Fatal(err)
 	}
-	removedIncomplete, err := interruptedRemoval.Reconcile(context.Background(), log, nil)
+	removedIncomplete, err := interruptedRemoval.Reconcile(context.Background(), log, nil, nil)
 	if err != nil || len(removedIncomplete) != 2 {
 		t.Fatalf("interrupted tagged links not removed: results=%+v err=%v", removedIncomplete, err)
 	}
@@ -509,7 +509,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	retryResults, err := retryReconciler.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{retryParentConnection, retryConnection})
+		[]interfaceintent.Connection{retryParentConnection, retryConnection}, nil)
 	if err != nil || len(retryResults) != 1 || retryResults[0].Status != OwnedLinkWaiting ||
 		retryResults[0].Operation != "wait-for-parent" {
 		t.Fatalf("deleted parent result: results=%+v err=%v", retryResults, err)
@@ -532,7 +532,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	results, err = onDisk.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{retryParentConnection, retryConnection})
+		[]interfaceintent.Connection{retryParentConnection, retryConnection}, nil)
 	if err != nil || len(results) < 1 || results[0].Status != OwnedLinkReady {
 		t.Fatalf("retry after parent recreation: results=%+v err=%v", results, err)
 	}
@@ -543,7 +543,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		go func() {
 			defer waitGroup.Done()
 			results, err := onDisk.Reconcile(context.Background(), log,
-				[]interfaceintent.Connection{retryParentConnection, retryConnection})
+				[]interfaceintent.Connection{retryParentConnection, retryConnection}, nil)
 			if err != nil {
 				failures <- err
 				return
@@ -588,7 +588,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	results, err = bridgeChildState.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{bridgeParentConnection, bridgeChild})
+		[]interfaceintent.Connection{bridgeParentConnection, bridgeChild}, nil)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
 		t.Fatalf("bridge-parent VLAN creation: results=%+v err=%v", results, err)
 	}
@@ -620,12 +620,12 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	results, err = bridgeChildRestart.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{bridgeParentConnection, bridgeChild})
+		[]interfaceintent.Connection{bridgeParentConnection, bridgeChild}, nil)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
 		t.Fatalf("bridge-parent MAC drift blocked adoption: results=%+v err=%v", results, err)
 	}
 	results, err = bridgeChildRestart.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{bridgeParentConnection})
+		[]interfaceintent.Connection{bridgeParentConnection}, nil)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkRemoved {
 		t.Fatalf("bridge-parent MAC drift blocked removal: results=%+v err=%v", results, err)
 	}
@@ -646,7 +646,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	results, err = taggedState.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{taggedChild, taggedParent})
+		[]interfaceintent.Connection{taggedChild, taggedParent}, nil)
 	if err != nil || len(results) != 2 || results[0].Status != OwnedLinkReady || results[1].Status != OwnedLinkReady {
 		t.Fatalf("tagged parent creation: results=%+v err=%v", results, err)
 	}
@@ -661,7 +661,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	results, err = taggedRestart.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{renamedTaggedChild, renamedTaggedParent})
+		[]interfaceintent.Connection{renamedTaggedChild, renamedTaggedParent}, nil)
 	if err != nil || len(results) != 2 || results[0].Status != OwnedLinkReady || results[1].Status != OwnedLinkReady {
 		t.Fatalf("tagged parent rename blocked VLAN adoption: results=%+v err=%v", results, err)
 	}
@@ -700,7 +700,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	}
 	results, err = waiting.Reconcile(context.Background(), log, []interfaceintent.Connection{
 		waitingVLAN, waitingMember, independent, missingParent, missingMaster,
-	})
+	}, nil)
 	if err != nil || len(results) != 3 {
 		t.Fatalf("missing dependency reconcile: results=%+v err=%v", results, err)
 	}
@@ -739,7 +739,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	results, err = membership.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{parentConnection, masterConnection, memberConnection})
+		[]interfaceintent.Connection{parentConnection, masterConnection, memberConnection}, nil)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
 		t.Fatalf("attach owned VLAN: results=%+v err=%v", results, err)
 	}
@@ -776,7 +776,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	detachedLink.BridgeMaster = ""
 	detachedMember.Link = &detachedLink
 	results, err = membership.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{parentConnection, masterConnection, detachedMember})
+		[]interfaceintent.Connection{parentConnection, masterConnection, detachedMember}, nil)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
 		t.Fatalf("bridge MAC change blocked recorded detach: results=%+v err=%v", results, err)
 	}
@@ -788,7 +788,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		t.Fatal("detached VLAN retained a membership record")
 	}
 	results, err = membership.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{parentConnection, masterConnection, memberConnection})
+		[]interfaceintent.Connection{parentConnection, masterConnection, memberConnection}, nil)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
 		t.Fatalf("reattach owned VLAN: results=%+v err=%v", results, err)
 	}
@@ -813,12 +813,12 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	results, err = membership.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{parentConnection, masterConnection, memberConnection})
+		[]interfaceintent.Connection{parentConnection, masterConnection, memberConnection}, nil)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkFailed {
 		t.Fatalf("replacement bridge was accepted as recorded master: results=%+v err=%v", results, err)
 	}
 	results, err = membership.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{parentConnection, masterConnection, detachedMember})
+		[]interfaceintent.Connection{parentConnection, masterConnection, detachedMember}, nil)
 	if err == nil || len(results) != 1 || results[0].Status != OwnedLinkFailed {
 		t.Fatalf("replacement bridge membership was detached: results=%+v err=%v", results, err)
 	}
@@ -841,7 +841,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	results, err = unrecordedState.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{parentConnection, masterConnection, unrecordedConnection})
+		[]interfaceintent.Connection{parentConnection, masterConnection, unrecordedConnection}, nil)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
 		t.Fatalf("create unrecorded VLAN: results=%+v err=%v", results, err)
 	}
@@ -857,7 +857,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	unrecordedAttachedLink.BridgeMaster = masterConnection.Name
 	unrecordedAttached.Link = &unrecordedAttachedLink
 	results, err = unrecordedState.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{parentConnection, masterConnection, unrecordedAttached})
+		[]interfaceintent.Connection{parentConnection, masterConnection, unrecordedAttached}, nil)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkFailed {
 		t.Fatalf("unrecorded membership was accepted: results=%+v err=%v", results, err)
 	}
@@ -895,7 +895,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	results, err = tagMembership.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{parentConnection, tagMasterConnection, tagMemberConnection})
+		[]interfaceintent.Connection{parentConnection, tagMasterConnection, tagMemberConnection}, nil)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkReady {
 		t.Fatalf("attach VLAN to tagged bridge: results=%+v err=%v", results, err)
 	}
@@ -930,7 +930,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	results, err = tagMembership.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{parentConnection, tagMasterConnection, tagMemberConnection})
+		[]interfaceintent.Connection{parentConnection, tagMasterConnection, tagMemberConnection}, nil)
 	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkFailed {
 		t.Fatalf("replacement tagged bridge was accepted as recorded master: results=%+v err=%v", results, err)
 	}
@@ -939,7 +939,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	detachedTagLink.BridgeMaster = ""
 	detachedTagMember.Link = &detachedTagLink
 	results, err = tagMembership.Reconcile(context.Background(), log,
-		[]interfaceintent.Connection{parentConnection, tagMasterConnection, detachedTagMember})
+		[]interfaceintent.Connection{parentConnection, tagMasterConnection, detachedTagMember}, nil)
 	if err == nil || len(results) != 1 || results[0].Status != OwnedLinkFailed {
 		t.Fatalf("replacement tagged bridge membership was detached: results=%+v err=%v", results, err)
 	}
