@@ -71,6 +71,7 @@ func requiredTests(selected lane) ([]string, error) {
 			"TestOOBDHCPv4DaemonRestartRecovery", "TestOOBDHCPv4DaemonLateInterfaceRecovery",
 			"TestOOBDHCPv4DaemonRejectedRecovery", "TestOwnedDHCPv6DaemonRestartRecovery",
 			"TestAutoconfigurationDaemonRuntime", "TestRadvdAutoconfigurationDaemonRuntime",
+			"TestAutoconfigurationSolicitsRouterOnFreshStart",
 			"TestOwnedMappedDaemonRuntime", "TestSelectionExclusionDaemonRuntime",
 			"TestOwnedStaticDaemonRuntime", "TestWANFirewallRuntimePackets",
 			"TestStartupPolicyIgnoresUnansweredProbes",
