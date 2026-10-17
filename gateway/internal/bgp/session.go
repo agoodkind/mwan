@@ -106,9 +106,9 @@ func NewSession(cfg SessionConfig, log *slog.Logger) (*Session, error) {
 }
 
 // Start creates the GoBGP server, adds the peer, and begins connecting. After
-// KeepRoutes, Start initializes the server without adding the peer, and
-// Connect adds the peer later. The context bounds only the Start call. The context supplies logging values. The
-// session runs until Stop even after the context ends.
+// KeepRoutes, Start creates the server without adding the peer, and Connect
+// adds the peer later. The context bounds only the Start call and supplies
+// logging values. The session runs until Stop even after the context ends.
 func (s *Session) Start(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -275,17 +275,7 @@ func (s *Session) Stop(ctx context.Context) error {
 	stateChanged := s.established || len(s.retained) > 0
 	s.dropRetainedLocked(ctx)
 	withdrawErr := s.fib.WithdrawPeer(ctx, s.peerKey)
-	s.started = false
-	s.connected = false
-	s.server = nil
-	s.cancelWatch = nil
-	s.fsmState = bgppkt.BGP_FSM_IDLE
-	s.established = false
-	s.gracefulRestart = false
-	s.upSince = time.Time{}
-	clear(s.accepted)
-	clear(s.unresolved)
-	clear(s.advertised)
+	s.resetStoppedLocked()
 	if stateChanged {
 		s.enqueueChangeLocked()
 	}
@@ -298,4 +288,22 @@ func (s *Session) Stop(ctx context.Context) error {
 		return fmt.Errorf("remove bgp session %q routes: %w", s.cfg.Name, withdrawErr)
 	}
 	return nil
+}
+
+// resetStoppedLocked clears the server, peer, and route state after Stop or
+// StopRetaining ends the server. It does not change the kernel routes.
+func (s *Session) resetStoppedLocked() {
+	s.started = false
+	s.connected = false
+	s.retaining = false
+	s.server = nil
+	s.cancelWatch = nil
+	s.fsmState = bgppkt.BGP_FSM_IDLE
+	s.established = false
+	s.gracefulRestart = false
+	s.upSince = time.Time{}
+	clear(s.accepted)
+	clear(s.unresolved)
+	clear(s.advertised)
+	clear(s.retained)
 }

@@ -70,8 +70,8 @@ func (s *Session) endRetention(ctx context.Context, generation uint64) {
 	s.deliverChanges()
 }
 
-// endRetentionLocked adds the peer to a started session that still runs
-// without it, because the retained routes no longer delay the connection.
+// endRetentionLocked deletes the retained kernel routes and reports whether
+// the session was retaining routes. Connect adds the peer.
 func (s *Session) endRetentionLocked(ctx context.Context, reason string) bool {
 	if !s.retaining {
 		return false
@@ -79,11 +79,6 @@ func (s *Session) endRetentionLocked(ctx context.Context, reason string) bool {
 	withdrawn := len(s.retained)
 	s.dropRetainedLocked(ctx)
 	s.log.InfoContext(ctx, "bgp session deleted the retained routes", "reason", reason, "withdrawn", withdrawn)
-	if s.started && !s.connected {
-		if err := s.addPeer(ctx, s.server); err == nil {
-			s.connected = true
-		}
-	}
 	return true
 }
 

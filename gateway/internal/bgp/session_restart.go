@@ -22,7 +22,7 @@ func (s *Session) KeepRoutes(ctx context.Context, deadline time.Time) error {
 	}
 	installed, err := s.fib.Installed(ctx)
 	if err != nil {
-		s.log.ErrorContext(ctx, "read the retained bgp session routes failed", "error", err)
+		s.log.ErrorContext(ctx, "failed to read the retained BGP session routes", "error", err)
 		return fmt.Errorf("read bgp session %q retained routes: %w", s.cfg.Name, err)
 	}
 	timerContext := context.WithoutCancel(ctx)
@@ -116,19 +116,7 @@ func (s *Session) StopRetaining(ctx context.Context) error {
 	// without AllowGracefulRestart.
 	stopErr := s.server.StopBgp(ctx, &apipb.StopBgpRequest{AllowGracefulRestart: true})
 	wasEstablished := s.established
-	s.started = false
-	s.connected = false
-	s.retaining = false
-	s.server = nil
-	s.cancelWatch = nil
-	s.fsmState = bgppkt.BGP_FSM_IDLE
-	s.established = false
-	s.gracefulRestart = false
-	s.upSince = time.Time{}
-	clear(s.accepted)
-	clear(s.unresolved)
-	clear(s.advertised)
-	clear(s.retained)
+	s.resetStoppedLocked()
 	if wasEstablished {
 		s.enqueueChangeLocked()
 	}

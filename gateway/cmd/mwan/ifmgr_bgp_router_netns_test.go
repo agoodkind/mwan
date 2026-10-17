@@ -4,6 +4,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"runtime"
@@ -202,17 +203,28 @@ func (r *bgpRuntimeRouter) withdraw(t *testing.T, prefix netip.Prefix) {
 	}
 }
 
-func (r *bgpRuntimeRouter) received() []netip.Prefix {
+// received fails the test when the router cannot list its Adj-RIB-In. An
+// empty result comes only from a successful listing.
+func (r *bgpRuntimeRouter) received(t *testing.T) []netip.Prefix {
+	t.Helper()
+	prefixes, err := r.listReceived()
+	if err != nil {
+		t.Fatalf("list the paths that the router received from %s: %v", r.neighbor, err)
+	}
+	return prefixes
+}
+
+func (r *bgpRuntimeRouter) listReceived() ([]netip.Prefix, error) {
 	request := apiutil.ListPathRequest{TableType: apipb.TableType_TABLE_TYPE_ADJ_IN, Name: r.neighbor.String(), Family: bgppkt.RF_IPv6_UC}
 	prefixes := make([]netip.Prefix, 0)
 	err := r.server.ListPath(request, func(nlri bgppkt.NLRI, _ []*apiutil.Path) {
 		prefixes = append(prefixes, netip.MustParsePrefix(nlri.String()))
 	})
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("list the router Adj-RIB-In: %w", err)
 	}
 	slices.SortFunc(prefixes, netip.Prefix.Compare)
-	return prefixes
+	return prefixes, nil
 }
 
 func (r *bgpRuntimeRouter) kernelRoute(t *testing.T, prefix netip.Prefix) bool {

@@ -126,7 +126,7 @@ func requireBGPRuntimeRoutesPresent(t *testing.T, run *bgpRuntimeRun, daemon *ru
 		if !bgpRuntimeGatewayRoute(t, provider.device, provider.learned) {
 			t.Fatalf("gateway has no BGP route to %s %s; published state=%s", provider.learned, description, run.read())
 		}
-		if received := router.received(); !router.kernelRoute(t, home) || !slices.Equal(received, []netip.Prefix{home}) {
+		if received := router.received(t); !router.kernelRoute(t, home) || !slices.Equal(received, []netip.Prefix{home}) {
 			t.Fatalf("router has no route to %s %s; received=%v", home, description, received)
 		}
 		if done() {
@@ -221,7 +221,7 @@ func bgpRuntimeSessionRemoval(t *testing.T, run *bgpRuntimeRun, second *runtimeD
 	router := run.routers[provider.id]
 	waitBGPRuntime(t, third, run.read, "router without received prefixes",
 		time.Duration(provider.restartTime)*time.Second+tunnelRuntimeRecoverWindow, func() bool {
-			return len(router.received()) == 0
+			return len(router.received(t)) == 0
 		})
 	requireBGPRuntimeIPv4(t, run, third)
 }
