@@ -238,8 +238,10 @@ func testDHCPv6RestartWithServer(t *testing.T, requestPrefix, timeoutRecovery bo
 	}
 }
 
-// assertDHCPv6ExpiryPublishedWhileAcquiring requires the client to publish the expiry
-// of one prefix while the server leaves the Solicit for the missing IA_NA unanswered.
+// assertDHCPv6ExpiryPublishedWhileAcquiring requires the client to publish a lease with
+// only the remaining prefix after the other prefix expires. The published lease must not
+// contain the expired prefix. The server leaves the Solicit for the missing IA_NA
+// unanswered during the check.
 func assertDHCPv6ExpiryPublishedWhileAcquiring(t *testing.T, client *DHCPv6PDClient, remaining netip.Prefix, expiry time.Time) {
 	t.Helper()
 	deadline := expiry.Add(2 * time.Second)
