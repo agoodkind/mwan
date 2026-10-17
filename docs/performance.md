@@ -176,20 +176,61 @@ with 1.6208% packet loss. Container 314 recorded 200,253 receive-ring discards
 during that complete run. The different sampling intervals prevent a direct
 one-to-one comparison between driver discards and steady-state UDP loss.
 
+Both containers remained running after testing. WAN Internet and
+intercontainer ping checks each received all three replies. The test
+processes exited, and cleanup removed the temporary tools.
+
+## Meaning for the PowerEdge WAN and LAN
+
+Container 313 owns physical port 2 as its WAN interface. Container 314 owns
+physical port 0 as its LAN interface to the switch. Both physical links
+negotiate 10 Gbit/s full duplex. Simultaneous transfers at those link rates
+require about 20 Gbit/s combined interconnect capacity before accounting
+for protocol overhead. The final VF bidirectional measurement provides
+roughly three times that bulk TCP capacity. This result supports the VF
+interconnect choice for the two-container design.
+
 The parallel TCP tests used nearly all of each container's assigned CPU
 capacity. Their CPU measurements include traffic generation and reception.
+The host CPU figure already includes container work. A sum of the host and
+container columns would count container CPU use twice. These measurements
+do not predict the CPU cost of routing the same amount of external traffic.
+
+### Recommended offload baseline
+
+The measured bulk TCP benefit supports keeping segmentation and receive
+aggregation enabled. The current VF and physical-interface settings already
+match this baseline. Readback after an explicit reapplication confirmed
+the settings on both `mwanbr` interfaces, `wan`, and `lan`. Subsequent
+Internet and intercontainer ping checks each received all three replies.
+
+| Feature | Setting |
+| --- | --- |
+| Receive and transmit checksum offload | On |
+| Scatter-gather, TSO, and GSO | On |
+| GRO and hardware GRO | On |
+| Receive hashing | On |
+| Large receive offload | Off |
+| `tx-tcp-mangleid-segmentation` | Off, preserving the initial setting |
+
+This is the tested starting point for bulk TCP. The comparison changed
+several features together and did not identify the best value for each
+feature independently. The tests also did not optimize latency or establish
+a lossless UDP rate. A higher peak TCP result would not settle those
+questions.
+
 The results establish VF interconnect throughput and active offloads. They
 do not establish MWAN routing, NAT, firewall, BPF program offload, or external
 WAN-to-LAN forwarding performance. The tests did not compare the same
 workload over a software host bridge or demonstrate lossless saturation.
-
-Both containers remained running after testing. WAN Internet and
-intercontainer ping checks each received all three replies. The test
-processes exited, and cleanup removed the temporary tools.
+Acceptance for this deployment requires sustained forwarding at the intended
+WAN rate, packet-loss measurements, and latency under load with the actual
+routing and firewall policy active. The UDP loss result remains a limit of
+the measured endpoint workload. The tests did not isolate its cause.
 
 ## Remaining investigation
 
 MWAN-527 still needs a controlled bridge-versus-VF comparison and a routed
 workload with external LAN and WAN endpoints. Those measurements must
-separate endpoint CPU use from forwarding work and record packet loss
-alongside throughput.
+separate endpoint CPU use from forwarding work and record packet loss and
+latency alongside throughput.
