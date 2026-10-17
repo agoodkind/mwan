@@ -2,6 +2,7 @@ package bgpsessions
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"slices"
 	"time"
@@ -129,20 +130,24 @@ func (m *Module) retainRoutes(ctx context.Context, log *slog.Logger, entry *mana
 		"session", entry.cfg.Config.Name, "deadline", deadline, "connect_by", entry.connectBy)
 }
 
-func (m *Module) connectWhenDue(ctx context.Context, log *slog.Logger, entry *managedSession, now time.Time) {
+func (m *Module) connectWhenDue(ctx context.Context, log *slog.Logger, entry *managedSession, now time.Time) error {
 	if entry.connectBy.IsZero() || now.Before(entry.connectBy) {
-		return
+		return nil
 	}
-	m.connectLocked(ctx, log, entry, "the restart deadline is near")
+	return m.connectLocked(ctx, log, entry, "the restart deadline is near")
 }
 
-func (m *Module) connectLocked(ctx context.Context, log *slog.Logger, entry *managedSession, reason string) {
+// connectLocked keeps connectBy after a failed Connect, and the next
+// Reconcile or OnFamilyReadiness pass retries the connection.
+func (m *Module) connectLocked(ctx context.Context, log *slog.Logger, entry *managedSession, reason string) error {
+	name := entry.cfg.Config.Name
 	if err := entry.session.Connect(ctx); err != nil {
-		log.WarnContext(ctx, "bgp_sessions: session peer connection failed", "session", entry.cfg.Config.Name, "err", err)
-		return
+		log.WarnContext(ctx, "bgp_sessions: session peer connection failed", "session", name, "err", err)
+		return fmt.Errorf("connect bgp session %s to its peer: %w", name, err)
 	}
-	log.InfoContext(ctx, "bgp_sessions: session connects to the peer", "session", entry.cfg.Config.Name, "reason", reason)
+	log.InfoContext(ctx, "bgp_sessions: session connects to the peer", "session", name, "reason", reason)
 	entry.connectBy = time.Time{}
+	return nil
 }
 
 func (m *Module) stopRetainingLocked(ctx context.Context, log *slog.Logger, entry *managedSession) {

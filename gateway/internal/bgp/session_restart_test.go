@@ -131,10 +131,9 @@ func TestSessionRestartWithdrawsAPrefixThatTheNextProcessDoesNotAdvertise(t *tes
 	cfg := gracefulExportConfig("withdrawn", peer, exported)
 	advertiseThenStopRetaining(t, startSession(t, cfg), peer, exported)
 
-	// The next process exports no prefix. The peer restart time is longer than
-	// the wait, and it lets the stale path remain until the restarted session
-	// sends its End-of-RIB marker. Only that marker can remove the stale path
-	// before the wait ends.
+	// The next process exports no prefix. The test wait ends before the peer
+	// restart time expires. The stale path remains until the restarted session
+	// sends its End-of-RIB marker.
 	withoutExport := cfg
 	withoutExport.Export = nil
 	restarted := restartRetainingRoutes(t, withoutExport)

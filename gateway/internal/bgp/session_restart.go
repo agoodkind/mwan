@@ -46,7 +46,7 @@ func (s *Session) KeepRoutes(ctx context.Context, deadline time.Time) error {
 	s.mu.Unlock()
 
 	s.deliverChanges()
-	s.log.InfoContext(ctx, "bgp session retains the kernel routes of the previous process",
+	s.log.InfoContext(ctx, "kernel retains routes installed by the previous process during the BGP session restart",
 		"peer", s.peerKey, "retained", installed, "deadline", deadline)
 	return nil
 }

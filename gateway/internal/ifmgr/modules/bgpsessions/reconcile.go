@@ -60,9 +60,9 @@ func (m *Module) reconcileSession(ctx context.Context, log *slog.Logger, entry *
 		m.stopLocked(ctx, log, entry)
 	}
 	if entry.running {
-		m.connectWhenDue(ctx, log, entry, now)
+		connectErr := m.connectWhenDue(ctx, log, entry, now)
 		entry.session.RefreshRoutes(ctx)
-		return nil
+		return connectErr
 	}
 	if transport == "" {
 		return nil
@@ -75,8 +75,7 @@ func (m *Module) reconcileSession(ctx context.Context, log *slog.Logger, entry *
 		return fmt.Errorf("start bgp session %s: %w", name, err)
 	}
 	entry.running, entry.transport = true, transport
-	m.connectWhenDue(ctx, log, entry, now)
-	return nil
+	return m.connectWhenDue(ctx, log, entry, now)
 }
 
 func (m *Module) stopLocked(ctx context.Context, log *slog.Logger, entry *managedSession) {

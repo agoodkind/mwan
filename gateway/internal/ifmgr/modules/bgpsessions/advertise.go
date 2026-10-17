@@ -66,15 +66,22 @@ func (m *Module) OnFamilyReadiness(ctx context.Context, log *slog.Logger) {
 				return ipv6Ready(snapshot, id.String())
 			})
 		}
-		if err := entry.session.SetAdvertisement(eligible, backupActive); err != nil {
+		advertiseErr := entry.session.SetAdvertisement(eligible, backupActive)
+		if advertiseErr != nil {
 			log.WarnContext(ctx, "bgp_sessions: advertisement change failed",
-				"session", entry.cfg.Config.Name, "err", err)
+				"session", entry.cfg.Config.Name, "err", advertiseErr)
 		}
 		// A session that retains the kernel routes of the previous process
-		// adds its peer through connectLocked in restart.go after it sets the
-		// advertisement and after the IPv6 path has been evaluated.
-		if !entry.connectBy.IsZero() && ipv6PathEvaluated(snapshot, entry.cfg.Key()) {
-			m.connectLocked(ctx, log, entry, "the ipv6 path has a verdict")
+		// adds its peer through connectLocked in restart.go only after it sets
+		// the advertisement and after the IPv6 path has been evaluated. The
+		// FamilyReadinessObserver interface does not return an error.
+		// connectLocked logs a failed connection, and the next Reconcile pass
+		// reports the failure and retries it.
+		if advertiseErr == nil && !entry.connectBy.IsZero() && ipv6PathEvaluated(snapshot, entry.cfg.Key()) {
+			if err := m.connectLocked(ctx, log, entry, "the ipv6 path has a verdict"); err != nil {
+				log.DebugContext(ctx, "bgp_sessions: the next reconcile pass retries the peer connection",
+					"session", entry.cfg.Config.Name)
+			}
 		}
 		m.publish(entry.cfg.Key())
 	}
