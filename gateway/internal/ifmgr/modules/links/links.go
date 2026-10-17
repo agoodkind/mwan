@@ -138,7 +138,7 @@ func (module *Module) OnKernelEvent(ctx context.Context, log *slog.Logger, event
 // Reconcile applies owned links and publishes per-connection results.
 func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	module.Env.OwnedLinks.Replace(nil)
-	results, err := module.reconciler.Reconcile(ctx, log, module.connections)
+	results, err := module.reconciler.Reconcile(ctx, log, module.connections, module.Env.PrepareOwnedLink)
 	if err != nil {
 		log.ErrorContext(ctx, "links: reconcile pass failed", "err", err)
 		return fmt.Errorf("links: reconcile: %w", err)

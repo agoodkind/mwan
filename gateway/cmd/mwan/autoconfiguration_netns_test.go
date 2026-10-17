@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -32,17 +33,21 @@ const (
 )
 
 func TestAutoconfigurationDaemonRuntime(t *testing.T) {
-	runAutoconfigurationTest(t, false)
+	runAutoconfigurationTest(t, func(t *testing.T) { runAutoconfigurationDaemonRuntime(t, false) })
 }
 
 func TestRadvdAutoconfigurationDaemonRuntime(t *testing.T) {
-	runAutoconfigurationTest(t, true)
+	runAutoconfigurationTest(t, func(t *testing.T) { runAutoconfigurationDaemonRuntime(t, true) })
 }
 
-func runAutoconfigurationTest(t *testing.T, useRadvd bool) {
+func TestAutoconfigurationSolicitsRouterOnFreshStart(t *testing.T) {
+	runAutoconfigurationTest(t, runAutoconfigurationSolicitationRuntime)
+}
+
+func runAutoconfigurationTest(t *testing.T, run func(*testing.T)) {
 	t.Helper()
 	if os.Getenv(raRuntimeChildEnv) == "1" {
-		runAutoconfigurationDaemonRuntime(t, useRadvd)
+		run(t)
 		return
 	}
 	binary := protocolTestBinary(t)
@@ -54,17 +59,27 @@ func runAutoconfigurationTest(t *testing.T, useRadvd bool) {
 	}
 }
 
-func runAutoconfigurationDaemonRuntime(t *testing.T, useRadvd bool) {
+// autoconfigurationRuntime is the gateway namespace and the VLAN 397 router
+// peer that the autoconfiguration daemon tests share.
+type autoconfigurationRuntime struct {
+	gateway    netns.NsHandle
+	peer       runtimePeer
+	root       string
+	configPath string
+}
+
+// buildAutoconfigurationRuntime requires the caller to lock the OS thread,
+// because every namespace switch applies to the current thread.
+func buildAutoconfigurationRuntime(t *testing.T) autoconfigurationRuntime {
+	t.Helper()
 	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
 		t.Fatal(err)
 	}
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	gateway, err := netns.Get()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer gateway.Close()
+	t.Cleanup(func() { _ = gateway.Close() })
 	root := t.TempDir()
 	networkDir := filepath.Join(root, "mwan")
 	if err := os.MkdirAll(networkDir, 0o755); err != nil {
@@ -88,11 +103,11 @@ func runAutoconfigurationDaemonRuntime(t *testing.T, useRadvd bool) {
 	}
 	setRuntimeLoopback(t)
 	management := newRuntimePeer(t, gateway, "enmgmt0", "mgmt-host", []string{"203.0.113.1/24"}, []string{"203.0.113.2/24"}, "")
-	defer management.namespace.Close()
+	t.Cleanup(func() { _ = management.namespace.Close() })
 	lan := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29"}, []string{"192.0.2.2/29"}, "")
-	defer lan.namespace.Close()
+	t.Cleanup(func() { _ = lan.namespace.Close() })
 	peer := newRuntimePeer(t, gateway, "ownphys0", "owned-peer", nil, nil, ownedRuntimeParentMAC)
-	defer peer.namespace.Close()
+	t.Cleanup(func() { _ = peer.namespace.Close() })
 	setRuntimeNamespace(t, peer.namespace)
 	parent, err := netlink.LinkByName("owned-peer")
 	if err != nil {
@@ -108,7 +123,15 @@ func runAutoconfigurationDaemonRuntime(t *testing.T, useRadvd bool) {
 	}
 	writeOwnedRuntimeNetwork(t, networkDir, false, true)
 	writeAutoconfigurationRuntimeNetwork(t, networkDir)
-	daemon := startRuntimeDaemon(t, os.Getenv(raRuntimeBinaryEnv), configPath, root, "ra-runtime")
+	return autoconfigurationRuntime{gateway: gateway, peer: peer, root: root, configPath: configPath}
+}
+
+func runAutoconfigurationDaemonRuntime(t *testing.T, useRadvd bool) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	topology := buildAutoconfigurationRuntime(t)
+	gateway, peer, root := topology.gateway, topology.peer, topology.root
+	daemon := startRuntimeDaemon(t, os.Getenv(raRuntimeBinaryEnv), topology.configPath, root, "ra-runtime")
 	defer killOwnedRuntimeDaemon(t, daemon)
 	link := waitOwnedRuntimeLink(t, daemon, "owned397", 10*time.Second)
 	waitAutoconfigurationSysctls(t, daemon, "owned397")
@@ -217,6 +240,143 @@ func runAutoconfigurationDaemonRuntime(t *testing.T, useRadvd bool) {
 	assertAutoconfigurationRouteObservations(t, defaultGateway)
 	waitAutoconfigurationState(t, daemon, link, false, false, false)
 	waitStaticRuntimeAddress(t, daemon, "owned397", "10.39.7.1/24", true)
+}
+
+// runAutoconfigurationSolicitationRuntime uses a peer router that never
+// advertises unprompted. The gateway learns its IPv6 default route only after
+// the kernel sends a Router Solicitation on the freshly created owned link.
+func runAutoconfigurationSolicitationRuntime(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	topology := buildAutoconfigurationRuntime(t)
+	binary := os.Getenv(raRuntimeBinaryEnv)
+	setRuntimeNamespace(t, topology.peer.namespace)
+	// A Neighbor Advertisement without the router flag makes the gateway kernel
+	// delete every route through that neighbor, including the RA default route.
+	// The kernel sets the router flag only on a forwarding link.
+	if err := os.WriteFile("/proc/sys/net/ipv6/conf/peer397/forwarding", []byte("1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	waitAutoconfigurationLinkLocal(t, "peer397")
+	solicitations, stopResponder := answerAutoconfigurationSolicitations(t, "peer397")
+	defer stopResponder()
+	setRuntimeNamespace(t, topology.gateway)
+	// The kernel decides whether to solicit when duplicate address detection
+	// for the link-local address finishes. Without detection, the address is
+	// ready when the link comes up and before any later kernel policy pass,
+	// which reproduces a link that finishes detection before the policy write.
+	for _, scope := range []string{"all", "default"} {
+		if err := os.WriteFile("/proc/sys/net/ipv6/conf/"+scope+"/accept_dad", []byte("0"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first := startRuntimeDaemon(t, binary, topology.configPath, topology.root, "ra-solicit-first")
+	defer killOwnedRuntimeDaemon(t, first)
+	select {
+	case source := <-solicitations:
+		t.Logf("Router Solicitation from %s", source)
+	case <-time.After(10 * time.Second):
+		t.Fatalf("peer397 received no Router Solicitation within 10 s of daemon start: %s", runtimeLogTail(t, first, 40))
+	}
+	link := waitOwnedRuntimeLink(t, first, "owned397", 10*time.Second)
+	if sent := routerSolicitationsSent(t, "owned397"); sent == 0 {
+		t.Fatal("Icmp6OutRouterSolicits on owned397 is 0")
+	}
+	waitAutoconfigurationState(t, first, link, true, true, false)
+	killOwnedRuntimeDaemon(t, first)
+	second := startRuntimeDaemon(t, binary, topology.configPath, topology.root, "ra-solicit-restart")
+	defer killOwnedRuntimeDaemon(t, second)
+	restarted := waitOwnedRuntimeLink(t, second, "owned397", 10*time.Second)
+	if restarted.Attrs().Index != link.Attrs().Index {
+		t.Fatalf("restart recreated owned397: index %d, want %d", restarted.Attrs().Index, link.Attrs().Index)
+	}
+	if restarted.Attrs().Flags&net.FlagUp == 0 {
+		t.Fatal("restart left owned397 down")
+	}
+	waitAutoconfigurationState(t, second, restarted, true, true, false)
+}
+
+// answerAutoconfigurationSolicitations sends a Router Advertisement on name
+// only in reply to a Router Solicitation. The returned channel receives the
+// source of each solicitation, and the returned function stops the responder.
+func answerAutoconfigurationSolicitations(t *testing.T, name string) (<-chan netip.Addr, func()) {
+	t.Helper()
+	device, err := net.InterfaceByName(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, _, err := ndp.Listen(device, ndp.LinkLocal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The kernel drops multicast for a group that the link has not joined.
+	// Router Solicitations use the all-routers group.
+	if err := conn.JoinGroup(netip.MustParseAddr("ff02::2")); err != nil {
+		_ = conn.Close()
+		t.Fatal(err)
+	}
+	advertisement := &ndp.RouterAdvertisement{
+		RouterLifetime: 30 * time.Minute,
+		Options: []ndp.Option{&ndp.PrefixInformation{
+			PrefixLength: 64, Prefix: netip.MustParseAddr("2001:db8:517::"),
+			OnLink: true, AutonomousAddressConfiguration: true,
+			PreferredLifetime: 30 * time.Minute, ValidLifetime: time.Hour,
+		}},
+	}
+	solicitations := make(chan netip.Addr, 1)
+	done := make(chan error, 1)
+	go func() {
+		for {
+			message, _, source, err := conn.ReadFrom()
+			if err != nil {
+				done <- nil
+				return
+			}
+			if _, ok := message.(*ndp.RouterSolicitation); !ok {
+				continue
+			}
+			if err := conn.WriteTo(advertisement, nil, netip.MustParseAddr("ff02::1")); err != nil {
+				done <- fmt.Errorf("answer Router Solicitation from %s: %w", source, err)
+				return
+			}
+			select {
+			case solicitations <- source:
+			default:
+			}
+		}
+	}()
+	return solicitations, func() {
+		if err := conn.Close(); err != nil {
+			t.Errorf("close Router Solicitation responder: %v", err)
+		}
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+	}
+}
+
+// routerSolicitationsSent reads the counter from the namespace of the current
+// thread. The test thread switches namespaces, and /proc/net follows the main
+// thread instead.
+func routerSolicitationsSent(t *testing.T, name string) uint64 {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("/proc/thread-self/net/dev_snmp6", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 || fields[0] != "Icmp6OutRouterSolicits" {
+			continue
+		}
+		count, err := strconv.ParseUint(fields[1], 10, 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+	t.Fatalf("%s statistics lack Icmp6OutRouterSolicits", name)
+	return 0
 }
 
 func assertAutoconfigurationRouteObservations(t *testing.T, gateway string) {
