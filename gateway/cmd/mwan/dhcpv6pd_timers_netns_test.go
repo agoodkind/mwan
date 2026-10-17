@@ -133,7 +133,8 @@ func assertDHCPv6TimerSolicitAfterExpiry(t *testing.T, daemon *runtimeDaemon, ob
 		return observation.messageType == dhcpv6.MessageTypeSolicit && observation.received.After(first.received)
 	})
 	gap := second.received.Sub(first.received)
-	if second.transactionID != first.transactionID || second.elapsed <= first.elapsed || gap < dhcpv6TimerSolicitDelay-dhcpv6TimerScheduleMargin {
+	if second.transactionID != first.transactionID || second.elapsed <= first.elapsed ||
+		gap < dhcpv6TimerSolicitDelay-dhcpv6TimerScheduleMargin || gap > dhcpv6TimerSolicitMaxRT+dhcpv6TimerScheduleMargin {
 		t.Fatalf("Solicit retransmission broke RFC 8415 timing: first=%+v second=%+v gap=%s", first, second, gap)
 	}
 	observations.wait(t, dhcpv6TimerSolicitMaxRT+dhcpv6TimerScheduleMargin, func(observation dhcpv6TimerObservation) bool {
