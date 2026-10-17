@@ -37,9 +37,9 @@ func peerPath(t *testing.T, peer *testPeer, prefix netip.Prefix) (present, stale
 	return true, path.Stale
 }
 
-// stopKeepingExport stops an established session that advertises exported
-// with StopRetaining, and waits until the peer marks the path stale.
-func stopKeepingExport(t *testing.T, session *bgp.Session, peer *testPeer, exported netip.Prefix) {
+// advertiseThenStopRetaining advertises the exported prefix on an established
+// session, calls StopRetaining, and waits until the peer marks the path stale.
+func advertiseThenStopRetaining(t *testing.T, session *bgp.Session, peer *testPeer, exported netip.Prefix) {
 	t.Helper()
 	waitEstablished(t, session)
 	if err := session.SetAdvertisement(true, nil); err != nil {
@@ -55,8 +55,9 @@ func stopKeepingExport(t *testing.T, session *bgp.Session, peer *testPeer, expor
 	})
 }
 
-// restartKeepingRoutes creates and starts the session of the next process.
-func restartKeepingRoutes(t *testing.T, cfg bgp.SessionConfig) *bgp.Session {
+// restartRetainingRoutes creates the session of the next process, calls
+// KeepRoutes with a deadline one restart time from now, and starts the session.
+func restartRetainingRoutes(t *testing.T, cfg bgp.SessionConfig) *bgp.Session {
 	t.Helper()
 	session, err := bgp.NewSession(cfg, sessionLogger())
 	if err != nil {
@@ -87,9 +88,9 @@ func TestSessionRestartRefreshesTheAdvertisedPrefixAtThePeer(t *testing.T) {
 	exported := netip.MustParsePrefix("3fff:a::/48")
 	peer := startGracefulTestPeer(t, netip.IPv6Loopback())
 	cfg := gracefulExportConfig("restart", peer, exported)
-	stopKeepingExport(t, startSession(t, cfg), peer, exported)
+	advertiseThenStopRetaining(t, startSession(t, cfg), peer, exported)
 
-	restarted := restartKeepingRoutes(t, cfg)
+	restarted := restartRetainingRoutes(t, cfg)
 	if present, stale := peerPath(t, peer, exported); restarted.State().Established || !present || !stale {
 		t.Fatalf("restarted session established=%t, peer path present=%t stale=%t, want no connection before Connect",
 			restarted.State().Established, present, stale)
@@ -151,14 +152,15 @@ func TestSessionRestartWithdrawsAPrefixThatTheNextProcessDoesNotAdvertise(t *tes
 	exported := netip.MustParsePrefix("3fff:a::/48")
 	peer := startGracefulTestPeer(t, netip.IPv6Loopback())
 	cfg := gracefulExportConfig("withdrawn", peer, exported)
-	stopKeepingExport(t, startSession(t, cfg), peer, exported)
+	advertiseThenStopRetaining(t, startSession(t, cfg), peer, exported)
 
-	// The next process exports no prefix. The peer restart time exceeds the
-	// wait, and only the End-of-RIB marker of the restarted session removes
-	// the stale path.
+	// The next process exports no prefix. The peer restart time is longer than
+	// the wait, and it lets the stale path remain until the restarted session
+	// sends its End-of-RIB marker. Only that marker can remove the stale path
+	// before the wait ends.
 	withoutExport := cfg
 	withoutExport.Export = nil
-	restarted := restartKeepingRoutes(t, withoutExport)
+	restarted := restartRetainingRoutes(t, withoutExport)
 	if err := restarted.SetAdvertisement(true, nil); err != nil {
 		t.Fatalf("SetAdvertisement: %v", err)
 	}

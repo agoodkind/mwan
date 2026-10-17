@@ -2,6 +2,7 @@ package bgp
 
 import (
 	"context"
+	"fmt"
 	"net/netip"
 
 	apipb "github.com/osrg/gobgp/v4/api"
@@ -25,8 +26,14 @@ func (s *Session) handleEndOfRIB(ctx context.Context, path *apiutil.Path) {
 	}
 	// A peer that restarts sends paths that equal the stale paths in the
 	// table, and GoBGP reports no best-path change for them.
-	changed := s.reapplyBestPathsLocked(ctx)
-	if s.endRetentionLocked(ctx, retentionEndOfRIB) {
+	changed, err := s.reapplyBestPathsLocked(ctx)
+	if err != nil {
+		// Without the current best paths, the session cannot tell which
+		// retained prefixes the peer sent again. The retention stays active
+		// until the next End-of-RIB marker or the restart deadline.
+		s.log.WarnContext(ctx, "bgp session retains its routes after a failed best path listing",
+			"retained", len(s.retained), "error", err)
+	} else if s.endRetentionLocked(ctx, retentionEndOfRIB) {
 		changed = true
 	}
 	if changed {
@@ -48,7 +55,13 @@ func (s *Session) endRetention(ctx context.Context, generation uint64) {
 		return
 	}
 	if s.started {
-		s.reapplyBestPathsLocked(ctx)
+		// The restart deadline is the upper bound for retained routes. The
+		// session deletes them at the deadline even when the best path
+		// listing fails.
+		if _, err := s.reapplyBestPathsLocked(ctx); err != nil {
+			s.log.WarnContext(ctx, "bgp session deletes its retained routes at the deadline after a failed best path listing",
+				"error", err)
+		}
 	}
 	s.endRetentionLocked(ctx, retentionDeadline)
 	s.enqueueChangeLocked()
@@ -106,9 +119,8 @@ func (s *Session) withdrawRetainedLocked(ctx context.Context, prefix netip.Prefi
 	return true
 }
 
-// reapplyBestPathsLocked reports whether the accepted or rejected prefixes
-// changed.
-func (s *Session) reapplyBestPathsLocked(ctx context.Context) bool {
+// reapplyBestPathsLocked reports whether applying current best paths changed route state.
+func (s *Session) reapplyBestPathsLocked(ctx context.Context) (bool, error) {
 	request := apiutil.ListPathRequest{
 		TableType:      apipb.TableType_TABLE_TYPE_GLOBAL,
 		Name:           "",
@@ -127,7 +139,7 @@ func (s *Session) reapplyBestPathsLocked(ctx context.Context) bool {
 	})
 	if err != nil {
 		s.log.ErrorContext(ctx, "list bgp session best paths failed", "error", err)
-		return false
+		return false, fmt.Errorf("list bgp session %q IPv6 best paths: %w", s.cfg.Name, err)
 	}
 	changed := false
 	for _, path := range best {
@@ -135,5 +147,5 @@ func (s *Session) reapplyBestPathsLocked(ctx context.Context) bool {
 			changed = true
 		}
 	}
-	return changed
+	return changed, nil
 }

@@ -68,7 +68,7 @@ func TestSessionRestartRetainsKernelRoutesUntilTheEndOfRIB(t *testing.T) {
 	assertKernelRoute(t, withdrawn, sessionLink, nextHop, sessionRouteMetric)
 	peer.withdraw(t, withdrawn)
 
-	restarted := restartKeepingRoutes(t, cfg)
+	restarted := restartRetainingRoutes(t, cfg)
 	if got, want := restarted.State().Retained, []netip.Prefix{resent, withdrawn}; !slices.Equal(got, want) {
 		t.Fatalf("restarted session retained prefixes = %v, want %v", got, want)
 	}
