@@ -244,7 +244,7 @@ func (client *DHCPv6PDClient) run(ctx context.Context, log *slog.Logger, config 
 			continue
 		}
 		client.completeRecovery()
-		transport, err := nclient6.New(config.Iface, nclient6.WithRetry(1), nclient6.WithTimeout(time.Second))
+		transport, err := nclient6.New(config.Iface, dhcpv6TransportOptions()...)
 		if err != nil {
 			log.WarnContext(ctx, "dhcpv6: socket unavailable", "iface", config.Iface, "err", err)
 			if !waitDHCPv6(ctx) {
@@ -313,6 +313,9 @@ func (client *DHCPv6PDClient) negotiate(ctx context.Context, log *slog.Logger, t
 			lease = expireDHCPv6Assignments(lease, now)
 			client.publish(lease)
 			notifiedThrough = deadline
+			if len(lease.Prefixes) == 0 && len(lease.Addresses) == 0 {
+				backoff = time.Second
+			}
 			continue
 		}
 		if !now.Before(validUntil) {
@@ -331,28 +334,45 @@ func (client *DHCPv6PDClient) negotiate(ctx context.Context, log *slog.Logger, t
 			client.processDHCPv6Decline(ctx, log, transport, config, &lease, &reacquireAddress, &solicitMaxRT, address)
 			continue
 		}
-		rebinding := !now.Before(rebindAt)
-		replacement, err := renewDHCPv6(ctx, transport, config, link, lease, rebinding, &solicitMaxRT)
-		if err == nil {
-			lease = replacement
-			client.publish(lease)
-			notifiedThrough = lease.AcquiredAt
-			backoff = time.Second
-			continue
-		}
-		log.WarnContext(ctx, "dhcpv6: renewal failed", "iface", config.Iface, "err", err)
-		retryDeadline := rebindAt
-		if rebinding {
-			retryDeadline = validUntil
-		}
-		now = config.Clock.Now()
-		address, ok := client.waitDHCPv6OrDecline(ctx, dhcpv6WaitDuration(min(jitterDHCPv6(backoff), retryDeadline.Sub(now)), now, deadline))
-		if !ok {
+		if !client.renewInNegotiation(ctx, log, transport, config, link, &lease, &reacquireAddress, &backoff, &solicitMaxRT, &notifiedThrough, !now.Before(rebindAt), rebindAt) {
 			return
 		}
-		client.processDHCPv6Decline(ctx, log, transport, config, &lease, &reacquireAddress, &solicitMaxRT, address)
-		backoff = min(backoff*2, 120*time.Second)
 	}
+}
+
+// renewInNegotiation runs one Renew or Rebind exchange and reports whether negotiation continues.
+func (client *DHCPv6PDClient) renewInNegotiation(ctx context.Context, log *slog.Logger, transport *nclient6.Client, config DHCPv6PDConfig, link *net.Interface, lease *DHCPv6PDLease, reacquireAddress *bool, backoff, solicitMaxRT *time.Duration, notifiedThrough *time.Time, rebinding bool, rebindAt time.Time) bool {
+	service := client.renewalService(log, transport, config, lease, reacquireAddress, solicitMaxRT, notifiedThrough)
+	replacement, err := renewDHCPv6(ctx, log, transport, config, link, lease, rebinding, rebindAt, solicitMaxRT, service)
+	if err == nil {
+		*lease = replacement
+		client.publish(*lease)
+		*notifiedThrough = lease.AcquiredAt
+		*backoff = time.Second
+		return true
+	}
+	log.WarnContext(ctx, "dhcpv6: renewal failed", "iface", config.Iface, "rebinding", rebinding, "err", err)
+	if errors.Is(err, errDHCPv6ExchangeTimeout) || errors.Is(err, errDHCPv6ExchangeAbandoned) {
+		if len(lease.Prefixes) == 0 && len(lease.Addresses) == 0 {
+			*backoff = time.Second
+		}
+		return true
+	}
+	// A rejected reply ends the exchange early. The backoff spaces the next exchange.
+	_, rebindAt = dhcpv6AssociationTimers(*lease)
+	retryDeadline := rebindAt
+	if rebinding {
+		retryDeadline = latestDHCPv6Validity(*lease)
+	}
+	now := config.Clock.Now()
+	deadline := nextDHCPv6Deadline(*lease, *notifiedThrough)
+	address, ok := client.waitDHCPv6OrDecline(ctx, dhcpv6WaitDuration(min(jitterDHCPv6(*backoff), retryDeadline.Sub(now)), now, deadline))
+	if !ok {
+		return false
+	}
+	client.processDHCPv6Decline(ctx, log, transport, config, lease, reacquireAddress, solicitMaxRT, address)
+	*backoff = min(*backoff*2, 120*time.Second)
+	return true
 }
 
 func (client *DHCPv6PDClient) completeRecoveredDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.Client, config DHCPv6PDConfig, link *net.Interface, lease *DHCPv6PDLease, solicitMaxRT *time.Duration) {
@@ -380,7 +400,9 @@ func (client *DHCPv6PDClient) acquireMissingDHCPv6(ctx context.Context, log *slo
 	}
 	acquireCtx, cancel := context.WithDeadline(ctx, latestDHCPv6Validity(*lease))
 	defer cancel()
-	replacement, err := acquireDHCPv6(acquireCtx, transport, missing, link, solicitMaxRT, nil)
+	// The exchange ends at the next lifetime deadline, and the caller publishes that change.
+	end := nextDHCPv6Deadline(*lease, config.Clock.Now())
+	replacement, err := acquireDHCPv6(acquireCtx, log, transport, missing, link, solicitMaxRT, nil, end, 0)
 	*lease = expireDHCPv6Assignments(*lease, config.Clock.Now())
 	if err != nil {
 		if len(lease.Prefixes) == 0 && len(lease.Addresses) == 0 {
@@ -453,7 +475,7 @@ func validDHCPv6CachedDeadlines(cached DHCPv6PDLease) bool {
 	return true
 }
 
-func validateDHCPv6Restart(ctx context.Context, transport *nclient6.Client, config DHCPv6PDConfig, link *net.Interface, cached DHCPv6PDLease, solicitMaxRT *time.Duration) (DHCPv6PDLease, error) {
+func validateDHCPv6Restart(ctx context.Context, log *slog.Logger, transport *nclient6.Client, config DHCPv6PDConfig, link *net.Interface, cached DHCPv6PDLease, solicitMaxRT *time.Duration) (DHCPv6PDLease, error) {
 	cached = expireDHCPv6Assignments(cached, config.Clock.Now())
 	if len(cached.Prefixes) == 0 && len(cached.Addresses) == 0 {
 		return DHCPv6PDLease{}, errDHCPv6RestartRejected
@@ -461,7 +483,7 @@ func validateDHCPv6Restart(ctx context.Context, transport *nclient6.Client, conf
 	if len(cached.Prefixes) == 0 {
 		confirm := config
 		confirm.RequestPrefix = false
-		reply, err := exchangeDHCPv6Restart(ctx, transport, confirm, dhcpv6.MessageTypeConfirm, cached, solicitMaxRT)
+		reply, err := exchangeDHCPv6Restart(ctx, log, transport, confirm, dhcpv6.MessageTypeConfirm, cached, solicitMaxRT)
 		if err != nil {
 			return DHCPv6PDLease{}, err
 		}
@@ -477,7 +499,7 @@ func validateDHCPv6Restart(ctx context.Context, transport *nclient6.Client, conf
 		cached.LinkIndex = link.Index
 		return cached, nil
 	}
-	reply, err := exchangeDHCPv6Restart(ctx, transport, config, dhcpv6.MessageTypeRebind, cached, solicitMaxRT)
+	reply, err := exchangeDHCPv6Restart(ctx, log, transport, config, dhcpv6.MessageTypeRebind, cached, solicitMaxRT)
 	if err != nil {
 		return DHCPv6PDLease{}, err
 	}
@@ -499,7 +521,8 @@ func (client *DHCPv6PDClient) servicePrefixWhileAcquiringAddress(ctx context.Con
 		return false
 	}
 	rebinding := !now.Before(lease.RebindAt)
-	replacement, err := renewDHCPv6(ctx, transport, config, link, *lease, rebinding, solicitMaxRT)
+	service := client.renewalService(log, transport, config, lease, reacquireAddress, solicitMaxRT, notifiedThrough)
+	replacement, err := renewDHCPv6(ctx, log, transport, config, link, lease, rebinding, lease.RebindAt, solicitMaxRT, service)
 	if err != nil {
 		log.WarnContext(ctx, "dhcpv6: prefix renewal during address acquisition failed", "iface", config.Iface, "err", err)
 		return false
@@ -516,7 +539,20 @@ func (client *DHCPv6PDClient) acquireInNegotiation(ctx context.Context, log *slo
 	if *reacquireAddress {
 		previous = lease
 	}
-	replacement, err := acquireDHCPv6(ctx, transport, config, link, solicitMaxRT, previous)
+	// A held prefix ends the Solicit exchange at its renewal time. After that time, one
+	// transmission runs before the prefix renewal.
+	var end time.Time
+	solicitCount := 0
+	if len(lease.Prefixes) != 0 {
+		now := config.Clock.Now()
+		end = latestDHCPv6Validity(*lease)
+		if lease.RenewAt.After(now) {
+			end = earliestDHCPv6Time(end, lease.RenewAt)
+		} else {
+			solicitCount = 1
+		}
+	}
+	replacement, err := acquireDHCPv6(ctx, log, transport, config, link, solicitMaxRT, previous, end, solicitCount)
 	if err != nil {
 		log.WarnContext(ctx, "dhcpv6: acquisition failed", "iface", config.Iface, "err", err)
 	} else {
@@ -593,7 +629,8 @@ func (client *DHCPv6PDClient) processDHCPv6Decline(ctx context.Context, log *slo
 	*reacquireAddress = true
 	declined := *lease
 	declined.Addresses = []DelegatedAddress{{Address: address, PreferredUntil: time.Time{}, ValidUntil: time.Time{}}}
-	if _, err := exchangeDHCPv6(ctx, transport, config, dhcpv6.MessageTypeDecline, lease.ServerID, &declined, solicitMaxRT); err != nil {
+	timing := dhcpv6Retransmission{maxDelay: 0, initial: dhcpv6DeclineTimeout, maximum: 0, count: 1, duration: 0, end: time.Time{}}
+	if _, err := exchangeDHCPv6(ctx, log, transport, config, dhcpv6.MessageTypeDecline, timing, lease.ServerID, &declined, solicitMaxRT, nil); err != nil {
 		log.WarnContext(ctx, "dhcpv6: decline failed", "iface", config.Iface, "address", address, "err", err)
 	}
 }
@@ -655,86 +692,6 @@ func dhcpv6AssociationTimers(lease DHCPv6PDLease) (time.Time, time.Time) {
 		}
 	}
 	return renewAt, rebindAt
-}
-
-func acquireDHCPv6(ctx context.Context, transport *nclient6.Client, config DHCPv6PDConfig, link *net.Interface, solicitMaxRT *time.Duration, previous *DHCPv6PDLease) (DHCPv6PDLease, error) {
-	advertise, err := exchangeDHCPv6(ctx, transport, config, dhcpv6.MessageTypeSolicit, nil, previous, solicitMaxRT)
-	if err != nil {
-		return DHCPv6PDLease{}, err
-	}
-	if _, err := parseDHCPv6(advertise, config, nil, link, previous); err != nil {
-		return DHCPv6PDLease{}, err
-	}
-	return requestDHCPv6(ctx, transport, config, advertise, link, solicitMaxRT, previous)
-}
-
-func renewDHCPv6(ctx context.Context, transport *nclient6.Client, config DHCPv6PDConfig, link *net.Interface, lease DHCPv6PDLease, rebinding bool, solicitMaxRT *time.Duration) (DHCPv6PDLease, error) {
-	messageType := dhcpv6.MessageTypeRenew
-	serverID := lease.ServerID
-	if rebinding {
-		messageType = dhcpv6.MessageTypeRebind
-		serverID = nil
-	}
-	reply, err := exchangeDHCPv6(ctx, transport, config, messageType, serverID, &lease, solicitMaxRT)
-	if err != nil {
-		return DHCPv6PDLease{}, err
-	}
-	return parseDHCPv6(reply, config, serverID, link, &lease)
-}
-
-func requestDHCPv6(ctx context.Context, transport *nclient6.Client, config DHCPv6PDConfig, advertise *dhcpv6.Message, link *net.Interface, solicitMaxRT *time.Duration, previous *DHCPv6PDLease) (DHCPv6PDLease, error) {
-	server := advertise.Options.ServerID()
-	if server == nil {
-		return DHCPv6PDLease{}, errors.New("advertise has no server ID")
-	}
-	reply, err := exchangeDHCPv6(ctx, transport, config, dhcpv6.MessageTypeRequest, server.ToBytes(), previous, solicitMaxRT)
-	if err != nil {
-		return DHCPv6PDLease{}, err
-	}
-	return parseDHCPv6(reply, config, server.ToBytes(), link, previous)
-}
-
-func exchangeDHCPv6(ctx context.Context, transport *nclient6.Client, config DHCPv6PDConfig, messageType dhcpv6.MessageType, serverID []byte, previous *DHCPv6PDLease, solicitMaxRT *time.Duration) (*dhcpv6.Message, error) {
-	duid, err := dhcpv6.DUIDFromBytes(config.DUID)
-	if err != nil {
-		slog.WarnContext(ctx, "dhcpv6: invalid configured DUID", "err", err)
-		return nil, fmt.Errorf("decode DHCPv6 DUID: %w", err)
-	}
-	message, err := dhcpv6.NewMessage(dhcpv6.WithClientID(duid))
-	if err != nil {
-		slog.WarnContext(ctx, "dhcpv6: message creation failed", "err", err)
-		return nil, fmt.Errorf("create DHCPv6 message: %w", err)
-	}
-	if len(serverID) != 0 {
-		server, err := dhcpv6.DUIDFromBytes(serverID)
-		if err != nil {
-			slog.WarnContext(ctx, "dhcpv6: invalid server DUID", "err", err)
-			return nil, fmt.Errorf("decode DHCPv6 server DUID: %w", err)
-		}
-		dhcpv6.WithServerID(server)(message)
-	}
-	configureDHCPv6Message(message, config, messageType, previous)
-	expected := dhcpv6.MessageTypeReply
-	if messageType == dhcpv6.MessageTypeSolicit {
-		expected = dhcpv6.MessageTypeAdvertise
-	}
-	response, err := transport.SendAndRead(ctx, transport.RemoteAddr(), message, func(response *dhcpv6.Message) bool {
-		if response.MessageType != expected {
-			return false
-		}
-		client := response.Options.ClientID()
-		server := response.Options.ServerID()
-		if client == nil || server == nil || !bytes.Equal(client.ToBytes(), config.DUID) {
-			return false
-		}
-		return len(serverID) == 0 || bytes.Equal(server.ToBytes(), serverID)
-	})
-	if err != nil {
-		slog.WarnContext(ctx, "dhcpv6: exchange failed", "err", err)
-		return nil, fmt.Errorf("exchange DHCPv6 message: %w", err)
-	}
-	updateDHCPv6SolMaxRT(response, solicitMaxRT)
-	return response, nil
 }
 
 func configureDHCPv6Message(message *dhcpv6.Message, config DHCPv6PDConfig, messageType dhcpv6.MessageType, previous *DHCPv6PDLease) {
