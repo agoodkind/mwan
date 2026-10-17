@@ -701,8 +701,9 @@ module goodkind-mwan-steering {
              The restarted session sends the advertised prefixes again and
              waits for the peer to send its prefixes again or its End-of-RIB
              marker. The session then deletes the retained kernel routes that
-             the peer did not send again. When the peer does not negotiate graceful restart for IPv6
-             unicast, the daemon stop deletes the gateway kernel routes.";
+             the peer did not send again. When the peer does not negotiate
+             graceful restart for IPv6 unicast, the daemon stop deletes the
+             gateway kernel routes.";
           reference
             "RFC 4724: Graceful Restart Mechanism for BGP";
         }

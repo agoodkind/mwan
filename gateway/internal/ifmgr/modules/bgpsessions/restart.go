@@ -137,8 +137,8 @@ func (m *Module) connectWhenDue(ctx context.Context, log *slog.Logger, entry *ma
 	return m.connectLocked(ctx, log, entry, "the restart deadline is near")
 }
 
-// connectLocked keeps connectBy after a failed Connect, and the next
-// Reconcile or OnFamilyReadiness pass retries the connection.
+// connectBy remains set after Connect fails. Reconcile and OnFamilyReadiness
+// retry the connection.
 func (m *Module) connectLocked(ctx context.Context, log *slog.Logger, entry *managedSession, reason string) error {
 	name := entry.cfg.Config.Name
 	if err := entry.session.Connect(ctx); err != nil {

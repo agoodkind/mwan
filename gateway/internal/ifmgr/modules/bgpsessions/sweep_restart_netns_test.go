@@ -116,6 +116,11 @@ func TestSweepRetainsRoutesUntilTheRestartDeadline(t *testing.T) {
 		t.Fatalf("the second module shutdown deleted the retained route %s", sweepStale)
 	}
 
+	// The second shutdown writes a later deadline when its session
+	// established.
+	if second := journalDeadline(t, stateFile); second.After(deadline) {
+		deadline = second
+	}
 	time.Sleep(time.Until(deadline) + time.Second)
 	startModule(t, cfg)
 	if sweepRoutePresent(t, link, sweepStale) {

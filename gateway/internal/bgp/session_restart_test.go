@@ -55,8 +55,6 @@ func advertiseThenStopRetaining(t *testing.T, session *bgp.Session, peer *testPe
 	})
 }
 
-// restartRetainingRoutes creates the session of the next process, calls
-// KeepRoutes with a deadline one restart time from now, and starts the session.
 func restartRetainingRoutes(t *testing.T, cfg bgp.SessionConfig) *bgp.Session {
 	t.Helper()
 	session, err := bgp.NewSession(cfg, sessionLogger())
