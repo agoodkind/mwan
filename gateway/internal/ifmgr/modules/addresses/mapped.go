@@ -57,7 +57,8 @@ func (module *Module) reconcileLegacyMappings(ctx context.Context, log *slog.Log
 	if err := module.reconciler.ReconcileFamilyRoutes(ctx, connection, "ipv4", settings, nil, ready); err != nil {
 		return fmt.Errorf("reconcile mapped connection %s: %w", connection.ID, err)
 	}
-	return module.publishInstalled(ctx, log, connection, settings, ready, nil)
+	_, err = module.publishInstalled(ctx, log, connection, settings, ready, nil)
+	return err
 }
 
 func legacyMappedAddresses(connection interfaceintent.Connection, current []netif.CurrentAddr, translation *config.IPv4Translation, acquired map[netip.Addr]bool) ([]interfaceintent.Address, error) {

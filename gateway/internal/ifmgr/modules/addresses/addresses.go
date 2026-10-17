@@ -530,13 +530,7 @@ func (module *Module) reconcileFamily(ctx context.Context, log *slog.Logger, con
 		err = module.reconciler.ReconcileFamilyRoutesWithLifetimesRetaining(ctx, connection, family, settings, routes, ready, lifetimes, module.recoveryRetention(connection, family, ready))
 	}
 	if err == nil {
-		err = module.publishInstalled(ctx, log, connection, settings, ready, lifetimes)
-	}
-	if err == nil {
-		module.Env.OwnedAddresses.SetFamilyApplied(id, family)
-	}
-	if err == nil && leaseReady {
-		module.Env.OwnedAddresses.SetFamilyReady(id, family)
+		err = module.publishFamilyReadiness(ctx, log, connection, family, settings, ready, lifetimes, leaseReady)
 	}
 	result := "ready"
 	if !leaseReady {
@@ -664,41 +658,64 @@ func metricForFamily(family interfaceintent.Family) uint32 {
 	return *family.RouteMetric
 }
 
-func (module *Module) publishInstalled(ctx context.Context, log *slog.Logger, connection interfaceintent.Connection, settings interfaceintent.Family, ready netif.OwnedLinkResult, lifetimes map[netip.Prefix]netif.OwnedAddressLifetime) error {
+func (module *Module) publishFamilyReadiness(ctx context.Context, log *slog.Logger, connection interfaceintent.Connection, family string, settings interfaceintent.Family, ready netif.OwnedLinkResult, lifetimes map[netip.Prefix]netif.OwnedAddressLifetime, leaseReady bool) error {
+	id := connection.ID.String()
+	readyAddresses, err := module.publishInstalled(ctx, log, connection, settings, ready, lifetimes)
+	if err == nil {
+		module.Env.OwnedAddresses.SetFamilyApplied(id, family)
+	}
+	if err == nil && leaseReady {
+		module.Env.OwnedAddresses.SetFamilyReady(id, family)
+	}
+	if leaseReady && (err == nil || readyAddresses > 0) {
+		module.Env.OwnedAddresses.SetFamilyRoutable(id, family)
+	}
+	return err
+}
+
+func (module *Module) publishInstalled(ctx context.Context, log *slog.Logger, connection interfaceintent.Connection, settings interfaceintent.Family, ready netif.OwnedLinkResult, lifetimes map[netip.Prefix]netif.OwnedAddressLifetime) (int, error) {
 	link, err := netlink.LinkByName(ready.ActualName)
 	if err != nil || link.Attrs().Index != ready.IfIndex {
-		return fmt.Errorf("connection %s link identity changed during address verification", connection.ID)
+		return 0, fmt.Errorf("connection %s link identity changed during address verification", connection.ID)
 	}
 	addresses, err := netif.ListAddrs(ctx, log, ready.ActualName)
 	if err != nil {
 		log.WarnContext(ctx, "addresses: installed address read failed", "connection_id", connection.ID, "err", err)
-		return fmt.Errorf("verify installed addresses: %w", err)
+		return 0, fmt.Errorf("verify installed addresses: %w", err)
 	}
+	var unready error
 	verified := make([]string, 0, len(settings.Addresses))
 	for _, desired := range settings.Addresses {
 		found := false
+		dadFailed := false
 		for _, current := range addresses {
 			if current.CIDR != desired.Prefix.String() {
 				continue
 			}
 			if _, leased := lifetimes[desired.Prefix]; leased && current.Flags&unix.IFA_F_DADFAILED != 0 {
 				module.queueDHCPv6Decline(connection.ID.String(), nil, desired.Prefix.Addr())
-				return fmt.Errorf("DHCPv6 address %s failed duplicate address detection", desired.Prefix)
+				dadFailed = true
+				break
 			}
 			if current.Flags&(unix.IFA_F_TENTATIVE|unix.IFA_F_DADFAILED) == 0 {
 				found = true
 				break
 			}
 		}
+		if dadFailed {
+			unready = errors.Join(unready, fmt.Errorf("DHCPv6 address %s failed duplicate address detection", desired.Prefix))
+			continue
+		}
 		if !found {
-			return fmt.Errorf("address %s is not installed and ready on %s", desired.Prefix, connection.Name)
+			unready = errors.Join(unready, fmt.Errorf("address %s is not installed and ready on %s", desired.Prefix, connection.Name))
+			continue
 		}
 		verified = append(verified, desired.Prefix.String())
 	}
 	for _, prefix := range verified {
 		module.Env.OwnedAddresses.Set(connection.ID.String(), prefix)
 	}
-	return nil
+	return len(verified), unready
 }
 
 func (module *Module) queueDHCPv6Decline(id string, expected *dhcpv6Session, address netip.Addr) bool {
