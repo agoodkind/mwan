@@ -400,31 +400,42 @@ func (client *DHCPv6PDClient) acquireMissingDHCPv6(ctx context.Context, log *slo
 	}
 	acquireCtx, cancel := context.WithDeadline(ctx, latestDHCPv6Validity(*lease))
 	defer cancel()
-	// The exchange ends at the next lifetime deadline, and the caller publishes that change.
+	// The exchange ends at the next lifetime deadline. This function expires and
+	// publishes assignments after the exchange.
 	end := nextDHCPv6Deadline(*lease, config.Clock.Now())
 	replacement, err := acquireDHCPv6(acquireCtx, log, transport, missing, link, solicitMaxRT, nil, end, 0)
-	*lease = expireDHCPv6Assignments(*lease, config.Clock.Now())
+	expired = expireDHCPv6Assignments(*lease, config.Clock.Now())
+	changed := len(expired.Prefixes) != len(lease.Prefixes) || len(expired.Addresses) != len(lease.Addresses)
+	*lease = expired
 	if err != nil {
-		if len(lease.Prefixes) == 0 && len(lease.Addresses) == 0 {
+		if changed {
 			client.publish(*lease)
+		}
+		if len(lease.Prefixes) == 0 && len(lease.Addresses) == 0 {
 			return false
 		}
 		log.WarnContext(ctx, "dhcpv6: missing association acquisition failed", "iface", config.Iface, "err", err)
 	} else {
-		if missing.RequestPrefix {
-			lease.Prefixes, lease.RenewAt, lease.RebindAt = replacement.Prefixes, replacement.RenewAt, replacement.RebindAt
-		}
-		if missing.RequestAddress {
-			lease.Addresses, lease.IANARenewAt, lease.IANARebindAt = replacement.Addresses, replacement.IANARenewAt, replacement.IANARebindAt
-		}
-		lease.ServerID = bytes.Clone(replacement.ServerID)
-		lease.DNS = append([]netip.Addr(nil), replacement.DNS...)
+		mergeMissingDHCPv6(lease, replacement, missing)
 		client.publish(*lease)
 	}
 	if !waitDHCPv6(ctx) {
 		return false
 	}
 	return config.RequestPrefix && len(lease.Prefixes) == 0 || config.RequestAddress && len(lease.Addresses) == 0
+}
+
+// mergeMissingDHCPv6 keeps the held association and its timers. It copies only the
+// association that missing requested from replacement.
+func mergeMissingDHCPv6(lease *DHCPv6PDLease, replacement DHCPv6PDLease, missing DHCPv6PDConfig) {
+	if missing.RequestPrefix {
+		lease.Prefixes, lease.RenewAt, lease.RebindAt = replacement.Prefixes, replacement.RenewAt, replacement.RebindAt
+	}
+	if missing.RequestAddress {
+		lease.Addresses, lease.IANARenewAt, lease.IANARebindAt = replacement.Addresses, replacement.IANARenewAt, replacement.IANARebindAt
+	}
+	lease.ServerID = bytes.Clone(replacement.ServerID)
+	lease.DNS = append([]netip.Addr(nil), replacement.DNS...)
 }
 
 var errDHCPv6RestartRejected = errors.New("DHCPv6 restart assignment rejected")
