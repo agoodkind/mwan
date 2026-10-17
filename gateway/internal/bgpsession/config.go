@@ -22,6 +22,8 @@ const (
 	MinHoldSeconds = 3
 	// MinConnectRetrySeconds is the shortest wait between connection attempts that the embedded speaker applies.
 	MinConnectRetrySeconds = 2
+	// MaxGracefulRestartSeconds is the largest value of the 12-bit restart time field in the RFC 4724 capability.
+	MaxGracefulRestartSeconds = 4095
 	// KernelDefaultIPv6Metric is the metric Linux assigns to an IPv6 route installed with metric 0.
 	KernelDefaultIPv6Metric = 1024
 
@@ -127,10 +129,12 @@ type Config struct {
 	HoldSeconds      uint32
 	// ConnectRetrySeconds is the wait between connection attempts, and zero selects the speaker default.
 	ConnectRetrySeconds uint32
-	Import              []ImportRule
-	Export              []ExportRule
-	Tables              []int
-	RouteMetric         uint32
+	// GracefulRestartSeconds is the RFC 4724 restart time that the session advertises, and zero disables graceful restart.
+	GracefulRestartSeconds uint32
+	Import                 []ImportRule
+	Export                 []ExportRule
+	Tables                 []int
+	RouteMetric            uint32
 }
 
 // Internal reports whether the local and remote ASNs select an iBGP session.
@@ -209,6 +213,12 @@ func validateSessionTransport(cfg Config) error {
 		return fmt.Errorf(
 			"connect retry timer %d must be at least %d",
 			cfg.ConnectRetrySeconds, MinConnectRetrySeconds,
+		)
+	}
+	if cfg.GracefulRestartSeconds > MaxGracefulRestartSeconds {
+		return fmt.Errorf(
+			"graceful restart time %d must be at most %d",
+			cfg.GracefulRestartSeconds, MaxGracefulRestartSeconds,
 		)
 	}
 	if len(cfg.Tables) > 0 && cfg.Interface == "" {

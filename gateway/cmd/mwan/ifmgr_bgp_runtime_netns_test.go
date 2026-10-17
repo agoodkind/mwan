@@ -40,8 +40,8 @@ func (run *bgpRuntimeRun) start(t *testing.T, name string) *runtimeDaemon {
 
 func (run *bgpRuntimeRun) startRouter(t *testing.T, provider bgpRuntimeProvider) *bgpRuntimeRouter {
 	t.Helper()
-	router := startBGPRuntimeRouter(t, run.topology.routers[provider.id], provider.routerDevice, "198.51.100.1",
-		provider.remoteASN, provider.peer(), provider.local(), provider.localASN)
+	router := startBGPRuntimeRouterWithRestart(t, run.topology.routers[provider.id], provider.routerDevice, "198.51.100.1",
+		provider.remoteASN, provider.peer(), provider.local(), provider.localASN, uint32(provider.restartTime))
 	run.routers[provider.id] = router
 	return router
 }
