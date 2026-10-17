@@ -116,7 +116,7 @@ func prepareRuntimeDirectories(t *testing.T) (root, networkDir, configPath strin
 	config := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n"+
 		"[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n"+
 		"[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[ifmgr.modules.bgp_sessions]\nstate_file = %q\n"+
-		"[wanconfig]\npublish = true\n",
+		"[wanconfig]\npublish = true\n[bgp]\nrouter_id = \"192.0.2.1\"\n",
 		filepath.Join(root, "owned-links.json"), filepath.Join(root, "owned-addresses.json"), filepath.Join(root, "kernel-policy.json"),
 		filepath.Join(root, bgpRuntimeStateFile))
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {

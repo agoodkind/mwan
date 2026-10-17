@@ -276,6 +276,7 @@ func baseSessionConfig(name string, remoteASN uint32, peer *testPeer) bgp.Sessio
 	return bgp.SessionConfig{
 		Name:             name,
 		RouterID:         netip.MustParseAddr(sessionRouterID),
+		Families:         []bgp.Family{bgp.FamilyIPv6Unicast},
 		LocalASN:         sessionASN,
 		RemoteASN:        remoteASN,
 		PeerAddress:      peer.neighbor,

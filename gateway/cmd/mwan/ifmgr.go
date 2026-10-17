@@ -39,6 +39,7 @@ import (
 	// with the ifmgr registry. Roles are resolved by name in roles.go.
 	"goodkind.io/mwan/internal/ifmgr/modules/addresses"
 	_ "goodkind.io/mwan/internal/ifmgr/modules/autoconfiguration"
+	"goodkind.io/mwan/internal/ifmgr/modules/bgpsessions"
 	_ "goodkind.io/mwan/internal/ifmgr/modules/bridgeprobe"
 	_ "goodkind.io/mwan/internal/ifmgr/modules/cloudflaredtap"
 	_ "goodkind.io/mwan/internal/ifmgr/modules/connprobe"
@@ -316,6 +317,13 @@ func buildIfMgrDaemonConfig(cfg *config.Config, role string, timeout time.Durati
 	if settings, found := moduleConfigs["addresses"].(addresses.Config); found {
 		settings.NetworkdTimeout = timeout
 		moduleConfigs["addresses"] = settings
+	}
+	if settings, found := moduleConfigs["bgp_sessions"].(bgpsessions.Config); found {
+		settings, err = withSessionRouterID(settings, cfg.BGP.RouterID, logger)
+		if err != nil {
+			return ifmgr.DaemonConfig{}, err
+		}
+		moduleConfigs["bgp_sessions"] = settings
 	}
 
 	// The repeat cadence is consumed directly by notify.FromConfig from

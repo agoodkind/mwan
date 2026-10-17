@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 )
 
 // ExportMode selects the condition under which a session originates an export prefix, and validation rejects the zero value.
@@ -56,6 +57,43 @@ func ParseExportMode(text string) (ExportMode, bool) {
 		}
 	}
 	return 0, false
+}
+
+// Family keeps session configuration independent of GoBGP's protobuf types.
+type Family uint8
+
+const (
+	// FamilyIPv6Unicast selects the ipv6-unicast YANG value, the only supported session family.
+	FamilyIPv6Unicast Family = iota + 1
+)
+
+const familyIPv6UnicastText = "ipv6-unicast"
+
+// String returns the family's YANG enum text or an empty string for an unsupported value.
+func (f Family) String() string {
+	if f == FamilyIPv6Unicast {
+		return familyIPv6UnicastText
+	}
+	return ""
+}
+
+// ParseFamily accepts the YANG enum values for the bgp-session family leaf-list and returns false
+// for other text.
+func ParseFamily(text string) (Family, bool) {
+	if text == familyIPv6UnicastText {
+		return FamilyIPv6Unicast, true
+	}
+	return 0, false
+}
+
+// ValidateRouterID requires an IPv4 address other than 0.0.0.0.
+// Validated does not check the router ID because configuration supplies it separately from the
+// network document.
+func ValidateRouterID(routerID netip.Addr) error {
+	if !routerID.Is4() || routerID.IsUnspecified() {
+		return fmt.Errorf("router ID %s is not a usable IPv4 address", routerID)
+	}
+	return nil
 }
 
 // Community is one standard BGP community in ASN:value form.
@@ -116,8 +154,10 @@ type ExportRule struct {
 
 // Config configures one external BGP session, where equal ASNs select iBGP and empty Tables disable kernel route installation.
 type Config struct {
-	Name             string
+	Name string
+	// RouterID supplies the speaker identity that GoBGP requires.
 	RouterID         netip.Addr
+	Families         []Family
 	LocalASN         uint32
 	RemoteASN        uint32
 	PeerAddress      netip.Addr
@@ -154,6 +194,11 @@ func Validated(cfg Config) (Config, error) {
 	if err := validateSessionTransport(cfg); err != nil {
 		return none, err
 	}
+	families, err := validatedFamilies(cfg.Families)
+	if err != nil {
+		return none, err
+	}
+	cfg.Families = families
 	importRules, err := validatedImportRules(cfg.Import)
 	if err != nil {
 		return none, err
@@ -168,10 +213,24 @@ func Validated(cfg Config) (Config, error) {
 	return cfg, nil
 }
 
-func validateSessionIdentity(cfg Config) error {
-	if !cfg.RouterID.Is4() || cfg.RouterID.IsUnspecified() {
-		return fmt.Errorf("router ID %s is not a usable IPv4 address", cfg.RouterID)
+func validatedFamilies(families []Family) ([]Family, error) {
+	if len(families) == 0 {
+		return nil, errors.New("at least one address family is required")
 	}
+	validated := make([]Family, 0, len(families))
+	for _, family := range families {
+		if family.String() == "" {
+			return nil, fmt.Errorf("address family %d is not supported", family)
+		}
+		if slices.Contains(validated, family) {
+			return nil, fmt.Errorf("address family %s appears more than once", family)
+		}
+		validated = append(validated, family)
+	}
+	return validated, nil
+}
+
+func validateSessionIdentity(cfg Config) error {
 	if cfg.LocalASN == 0 {
 		return errors.New("local ASN is required")
 	}

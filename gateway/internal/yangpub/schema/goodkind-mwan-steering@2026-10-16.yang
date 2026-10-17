@@ -51,9 +51,13 @@ module goodkind-mwan-steering {
 
   revision 2026-10-16 {
     description
-      "This revision adds the BGP session graceful restart time and the
-       prefixes of kernel routes that remain installed after the previous
-       process exits.";
+      "This revision adds BGP session graceful restart time and the
+       prefixes of kernel routes that remain installed after the
+       previous process exits. It adds the bgp-session family
+       leaf-list and removes the bgp-session router-id leaf.
+       External BGP sessions use router_id in the [bgp] table of
+       config.toml as their BGP router ID. Network documents that
+       set router-id fail schema validation at load.";
   }
   revision 2026-10-12;
   revision 2026-10-11;
@@ -652,12 +656,14 @@ module goodkind-mwan-steering {
             range "1..max";
           }
         }
-        leaf router-id {
-          mandatory true;
-          type yang:dotted-quad;
-          must ". != '0.0.0.0'" {
-            error-message "The router ID must not be 0.0.0.0.";
+        leaf-list family {
+          min-elements 1;
+          type enumeration {
+            enum ipv6-unicast;
           }
+          description
+            "The session uses the BGP multiprotocol capability to
+             negotiate exactly these address families with its peer.";
         }
         leaf multihop-ttl {
           type uint8 {
