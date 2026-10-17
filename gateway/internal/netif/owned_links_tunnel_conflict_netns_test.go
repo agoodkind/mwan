@@ -29,7 +29,7 @@ func TestOwnedTunnelsExchangeRemoteEndpoints(t *testing.T) {
 			underlay,
 			tunnelConnection(tunnelUnderlayName, firstRemote, nil, nil),
 			namedTunnelConnection(secondName, tunnelUnderlayName, otherRemote, nil, nil),
-		})
+		}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

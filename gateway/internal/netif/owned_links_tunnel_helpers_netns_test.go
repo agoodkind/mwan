@@ -98,7 +98,7 @@ func newTunnelReconciler(t *testing.T, statePath string) *OwnedLinkReconciler {
 
 func reconcileTunnel(t *testing.T, reconciler *OwnedLinkReconciler, connections ...interfaceintent.Connection) OwnedLinkResult {
 	t.Helper()
-	results, err := reconciler.Reconcile(t.Context(), tunnelTestLog(), connections)
+	results, err := reconciler.Reconcile(t.Context(), tunnelTestLog(), connections, nil)
 	if err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}

@@ -66,7 +66,7 @@ func TestOwnedTunnelRemovalKeepsUnrecordedDevices(t *testing.T) {
 	_, fallbackErr := netlink.LinkByName("sit0")
 	fallbackPresent := fallbackErr == nil
 
-	results, err := reconciler.Reconcile(t.Context(), tunnelTestLog(), []interfaceintent.Connection{underlay})
+	results, err := reconciler.Reconcile(t.Context(), tunnelTestLog(), []interfaceintent.Connection{underlay}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestOwnedTunnelWaitsForUnderlay(t *testing.T) {
 		externalConnection(tunnelUnderlayName),
 	}
 
-	results, err := reconciler.Reconcile(t.Context(), tunnelTestLog(), connections)
+	results, err := reconciler.Reconcile(t.Context(), tunnelTestLog(), connections, nil)
 	if err != nil || len(results) != 2 {
 		t.Fatalf("missing underlay reconcile: results=%+v err=%v", results, err)
 	}

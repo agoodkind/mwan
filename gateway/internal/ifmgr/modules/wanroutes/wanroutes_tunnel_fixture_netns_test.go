@@ -125,7 +125,7 @@ func newTunnelRouteFixture(ctx context.Context, t *testing.T) *tunnelRouteFixtur
 			ID: tunnelRouteID, Name: tunnelRouteIface, Owner: interfaceintent.OwnerMWAN,
 			Link: &interfaceintent.Link{Kind: interfaceintent.KindTunnel, Tunnel: tunnelRouteIntent()},
 		},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("create the tunnel: %v", err)
 	}
