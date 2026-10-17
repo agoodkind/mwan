@@ -1,7 +1,6 @@
 package netif
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -98,14 +97,7 @@ func exchangeDHCPv6Restart(ctx context.Context, log *slog.Logger, transport *ncl
 		configureDHCPv6Message(message, requestConfig, messageType, &current)
 		return nil
 	}
-	match := func(response *dhcpv6.Message) bool {
-		if response.MessageType != dhcpv6.MessageTypeReply {
-			return false
-		}
-		client := response.Options.ClientID()
-		server := response.Options.ServerID()
-		return client != nil && server != nil && bytes.Equal(client.ToBytes(), config.DUID)
-	}
+	match := matchDHCPv6Response(config, dhcpv6.MessageTypeReply, nil)
 	response, err := exchangeDHCPv6Retransmitting(ctx, log, transport, config, messageType, timing, prepare, match, nil)
 	if err != nil {
 		return nil, &dhcpv6RestartExchangeError{operation: "DHCPv6 restart " + messageType.String(), cause: err}

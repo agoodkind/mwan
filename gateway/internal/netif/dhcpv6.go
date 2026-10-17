@@ -340,7 +340,6 @@ func (client *DHCPv6PDClient) negotiate(ctx context.Context, log *slog.Logger, t
 	}
 }
 
-// renewInNegotiation runs one Renew or Rebind exchange and reports whether negotiation continues.
 func (client *DHCPv6PDClient) renewInNegotiation(ctx context.Context, log *slog.Logger, transport *nclient6.Client, config DHCPv6PDConfig, link *net.Interface, lease *DHCPv6PDLease, reacquireAddress *bool, backoff, solicitMaxRT *time.Duration, notifiedThrough *time.Time, rebinding bool, rebindAt time.Time) bool {
 	service := client.renewalService(log, transport, config, lease, reacquireAddress, solicitMaxRT, notifiedThrough)
 	replacement, err := renewDHCPv6(ctx, log, transport, config, link, lease, rebinding, rebindAt, solicitMaxRT, service)
@@ -358,7 +357,8 @@ func (client *DHCPv6PDClient) renewInNegotiation(ctx context.Context, log *slog.
 		}
 		return true
 	}
-	// A rejected reply ends the exchange early. The backoff spaces the next exchange.
+	// Any renewal error other than a timeout or an abandoned exchange ends the exchange
+	// early. The backoff spaces the next exchange.
 	_, rebindAt = dhcpv6AssociationTimers(*lease)
 	retryDeadline := rebindAt
 	if rebinding {

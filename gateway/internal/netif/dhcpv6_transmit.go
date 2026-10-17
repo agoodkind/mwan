@@ -45,7 +45,8 @@ func transmitDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.C
 				due = dueTimer.C
 			}
 		}
-		// After a failed send, the wait continues until the next transmission is due.
+		// A failed send counts as a transmission. The wait ends at until, which is the
+		// time of the next scheduled retransmission or the end of the exchange.
 		var listening <-chan struct{}
 		if results == nil {
 			listening = attemptCtx.Done()
@@ -53,6 +54,10 @@ func transmitDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.C
 		select {
 		case result := <-results:
 			results = nil
+			if abandoned {
+				stopDHCPv6Timer(dueTimer)
+				return nil, endedDHCPv6Transmission(ctx, abandoned)
+			}
 			if result.err == nil {
 				stopDHCPv6Timer(dueTimer)
 				return result.response, nil

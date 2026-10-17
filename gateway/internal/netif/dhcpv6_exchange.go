@@ -37,14 +37,11 @@ const (
 	dhcpv6TransportTimeout = 48 * time.Hour
 )
 
-// errDHCPv6ExchangeTimeout reports an exchange that ended without a matching reply.
 var errDHCPv6ExchangeTimeout = errors.New("DHCPv6 exchange ended without a reply")
 
-// errDHCPv6ExchangeInterrupted reports an exchange that ended with its context.
 var errDHCPv6ExchangeInterrupted = errors.New("DHCPv6 exchange interrupted")
 
-// errDHCPv6ExchangeAbandoned reports an exchange that lost every assignment it renewed.
-var errDHCPv6ExchangeAbandoned = errors.New("DHCPv6 exchange has no remaining assignment")
+var errDHCPv6ExchangeAbandoned = errors.New("DHCPv6 exchange ended after a lease change")
 
 // dhcpv6Retransmission stores the RFC 8415 section 15 parameters of one exchange.
 // A zero count, duration, or end leaves that limit unset.
@@ -58,7 +55,7 @@ type dhcpv6Retransmission struct {
 }
 
 // dhcpv6ExchangeService runs lease work that must not wait for a long exchange to end.
-// Each callback reports whether any assignment remains for the exchange to renew.
+// The expire and decline callbacks return false to end the exchange.
 type dhcpv6ExchangeService struct {
 	next     func() time.Time
 	expire   func(ctx context.Context) bool
@@ -132,7 +129,8 @@ func exchangeDHCPv6Retransmitting(ctx context.Context, log *slog.Logger, transpo
 	return response, nil
 }
 
-// firstDHCPv6RT follows RFC 8415 section 15, where the first Solicit RT must exceed IRT.
+// RFC 8415 section 18.2.1 requires the first Solicit RT to be strictly greater than
+// IRT, so RAND for that RT is strictly greater than 0 instead of signed.
 func firstDHCPv6RT(messageType dhcpv6.MessageType, initial time.Duration) time.Duration {
 	if messageType != dhcpv6.MessageTypeSolicit {
 		return jitterDHCPv6(initial)

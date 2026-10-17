@@ -88,7 +88,19 @@ func exchangeDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.C
 	if messageType == dhcpv6.MessageTypeSolicit {
 		expected = dhcpv6.MessageTypeAdvertise
 	}
-	match := func(response *dhcpv6.Message) bool {
+	match := matchDHCPv6Response(config, expected, serverID)
+	response, err := exchangeDHCPv6Retransmitting(ctx, log, transport, config, messageType, timing, prepare, match, service)
+	if err != nil {
+		log.WarnContext(ctx, "dhcpv6: exchange failed", "iface", config.Iface, "message", messageType, "err", err)
+		return nil, fmt.Errorf("exchange DHCPv6 %s: %w", messageType, err)
+	}
+	updateDHCPv6SolMaxRT(response, solicitMaxRT)
+	return response, nil
+}
+
+// matchDHCPv6Response accepts a reply from any server when serverID is empty.
+func matchDHCPv6Response(config DHCPv6PDConfig, expected dhcpv6.MessageType, serverID []byte) nclient6.Matcher {
+	return func(response *dhcpv6.Message) bool {
 		if response.MessageType != expected {
 			return false
 		}
@@ -99,13 +111,6 @@ func exchangeDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.C
 		}
 		return len(serverID) == 0 || bytes.Equal(server.ToBytes(), serverID)
 	}
-	response, err := exchangeDHCPv6Retransmitting(ctx, log, transport, config, messageType, timing, prepare, match, service)
-	if err != nil {
-		log.WarnContext(ctx, "dhcpv6: exchange failed", "iface", config.Iface, "message", messageType, "err", err)
-		return nil, fmt.Errorf("exchange DHCPv6 %s: %w", messageType, err)
-	}
-	updateDHCPv6SolMaxRT(response, solicitMaxRT)
-	return response, nil
 }
 
 // renewalService publishes lifetime deadlines and withdraws declined addresses while
@@ -128,8 +133,11 @@ func (client *DHCPv6PDClient) renewalService(log *slog.Logger, transport *nclien
 		},
 		declines: client.declines,
 		decline: func(ctx context.Context, address netip.Addr) bool {
+			assigned := len(lease.Addresses)
 			client.processDHCPv6Decline(ctx, log, transport, config, lease, reacquireAddress, solicitMaxRT, address)
-			return len(lease.Prefixes) != 0 || len(lease.Addresses) != 0
+			// A reply to the current exchange can still assign the declined address.
+			// The next exchange starts from the lease without it.
+			return len(lease.Addresses) == assigned
 		},
 	}
 }
