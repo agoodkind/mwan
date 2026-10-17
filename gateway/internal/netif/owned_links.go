@@ -172,7 +172,6 @@ func isAliasForConnection(alias string, id string) bool {
 	return alias == base || strings.HasPrefix(alias, base+":")
 }
 
-// ownedLinkPass stores the inputs and the memoized results of one Reconcile call.
 type ownedLinkPass struct {
 	log      *slog.Logger
 	prepare  OwnedLinkPreparer
