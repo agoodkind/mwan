@@ -348,6 +348,206 @@ operated during routed TCP.
 | High UDP packet rates | Both configurations lost datagrams at the tested offered loads. The OPNsense software-queue trace identifies a guest queue limit during its final UDP trial. |
 | Offload configuration | Keep the verified Linux offload profile. The OPNsense results apply to the tested upstream driver and larger receive rings. |
 
+## Address translation comparison
+
+The translation tests use an isolated OPNsense VM and Linux peers on spare
+Broadcom virtual functions. Captures at the receiving peer verify translated
+addresses and replies before the throughput tests.
+
+| Translation | What the translator changes | What the comparison measures |
+| --- | --- | --- |
+| NAT64 | The translator converts IPv6 packets to IPv4 packets and converts replies back. | An IPv6 client communicates with an IPv4 server. |
+| Stateful NAT66 | The translator changes IPv6 addresses and may change ports. It remembers each connection to translate replies. | An IPv6 client communicates with an IPv6 server through an address mapping. |
+| NPT66 under RFC 6296 | The translator changes the network prefix, the beginning of an IPv6 address that identifies its network. It also adjusts the device part of the address to preserve the checksum, a value that detects packet errors. | An IPv6 client communicates with an IPv6 server through a reversible prefix mapping. |
+| OPNsense NPTv6 through PF BINAT | PF replaces the network prefix, keeps the device part of the address, and updates TCP or UDP checksums. | The OPNsense prefix-translation case uses a different address calculation from RFC 6296. |
+
+### Translation inside OPNsense
+
+[Tayga in OPNsense](https://docs.opnsense.org/manual/how-tos/tayga.html)
+provides NAT64. OPNsense uses its PF firewall for NAT66 and NPT66, as its
+[NAT documentation](https://docs.opnsense.org/manual/nat.html) specifies.
+Tayga supplies only the IPv6-to-IPv4 comparison. The OPNsense
+[NPTv6 rule generator](https://github.com/opnsense/core/blob/26.7.4/src/opnsense/mvc/app/library/OPNsense/Firewall/NptRule.php#L34-L42)
+emits PF BINAT rules. The PF kernel replaces the prefix and updates
+transport checksums; VPP uses RFC 6296 address correction.
+
+The internal NAT64 path uses Tayga to convert the packet and PF to apply
+outbound IPv4 NAT.
+
+```mermaid
+flowchart LR
+  client[IPv6 client] --> ingress
+  subgraph firewall[Same OPNsense VM]
+    ingress[OPNsense checks IPv6 traffic] --> tayga[Tayga converts IPv6 to IPv4]
+    tayga --> egress[PF applies outbound IPv4 NAT and OPNsense sends the packet]
+  end
+  egress --> server[IPv4 server]
+```
+
+### Translation in a VPP container
+
+Tayga, Jool, and Vector Packet Processing (VPP) use the PowerEdge processor
+to translate packets. VPP processes packets in groups and uses the Data
+Plane Development Kit (DPDK) to control the network card without the usual
+Linux network stack.
+
+The external comparison makes OPNsense route traffic to the VPP container.
+VPP translates the packet and sends it back to OPNsense. OPNsense then
+routes it to the server. The return traffic uses the reverse sequence.
+Both NAT64 configurations include PF outbound IPv4 NAT.
+
+```mermaid
+flowchart LR
+  client[Client] --> ingress
+  subgraph firewall[Same OPNsense VM]
+    ingress[OPNsense checks traffic and routes it to VPP]
+    egress[OPNsense receives the translated packet and routes it to the server]
+  end
+  ingress --> translator[VPP container translates the packet]
+  translator --> egress
+  egress --> server[Server]
+```
+
+Source and package inspection confirm the VPP implementations below.
+The comparison has not verified their runtime translation.
+
+| Comparison | OPNsense implementation | VPP implementation |
+| --- | --- | --- |
+| NAT64 | Tayga and PF outbound IPv4 NAT | [VPP NAT64](https://github.com/FDio/vpp/blob/v26.06/src/plugins/nat/nat64/nat64_cli.c) and PF outbound IPv4 NAT |
+| Stateful NAT66 | PF outbound IPv6 NAT | [VPP CNAT](https://github.com/FDio/vpp/blob/v26.06/src/plugins/cnat/cnat_node_snat.c), which tracks connections and rewrites addresses |
+| IPv6 prefix translation | PF BINAT for the OPNsense NPTv6 feature | [VPP NPT66](https://github.com/FDio/vpp/blob/v26.06/src/plugins/npt66/npt66_cli.c) |
+
+### Translation in the NIC
+
+The public driver interfaces do not establish hardware conversion between
+IPv6 and IPv4. Broadcom advertises address and port translation in the
+BCM5750x [TruFlow engine](https://docs.broadcom.com/doc/5750X-SB1XX).
+
+Software must calculate address mappings and install rules before the NIC
+can use those rules to rewrite packets. Stateful NAT66 also requires
+software to allocate ports, install rules for replies, and expire mappings.
+A fixed NPT66 test can calculate a translated address in software and test
+whether the NIC applies that complete address correctly.
+
+```mermaid
+flowchart LR
+  client[IPv6 client] --> ingress
+  subgraph firewall[Same OPNsense VM]
+    ingress[OPNsense checks traffic and routes it to the NIC rule]
+    egress[OPNsense receives the translated packet and routes it to the server]
+  end
+  ingress --> rewrite[NIC applies an IPv6 address rewrite rule]
+  rewrite --> egress
+  egress --> server[IPv6 server]
+  control[Software calculates mappings and installs rules] -.-> rewrite
+```
+
+The installed firmware rejected the virtual port allocation command needed
+for the Linux hardware test. The spare physical function remained in legacy
+mode, and the test did not install rewrite rules.
+The public [Linux bnxt TC driver](https://github.com/torvalds/linux/blob/master/drivers/net/ethernet/broadcom/bnxt/bnxt_tc.c)
+programs IPv6 address and port rewrites. The public
+[DPDK bnxt action table](https://github.com/DPDK/dpdk/blob/v26.03/drivers/net/bnxt/tf_ulp/ulp_rte_handler_tbl.c)
+exposes address rewriting and hop-limit decrement, which reduces the
+packet's remaining router count.
+
+| Hardware workload | Public interface support | Proof status |
+| --- | --- | --- |
+| NAT64 | The bnxt interfaces do not expose the required IPv6-to-IPv4 header conversion. The DPDK driver does not implement the NAT64 action and rejects raw header insertion and removal. | A hardware NAT64 implementation remains unproven. Custom code needs a documented way to perform the missing conversion. |
+| Stateful NAT66 | Linux TC and DPDK expose IPv6 address and TCP or UDP port rewriting. Software must manage the mappings and rules for each direction. | The installed firmware rejected virtual port allocation before rule installation. This setup does not establish hardware translation throughput. |
+| Fixed checksum-neutral NPT66 mappings | Software can calculate complete address pairs according to [RFC 6296](https://www.rfc-editor.org/rfc/rfc6296.html) and request address rewrite rules. The public interfaces do not expose the complete prefix translation algorithm. | The fixed mapping prototype could not create the required virtual port interfaces. It did not test general hardware NPT66. |
+
+A hardware result requires correct translated packets at the receiver and
+increasing NIC rule counters while software forwarding remains disabled.
+Assigning a VF, enabling checksum offload, or running DPDK does not prove
+that the NIC performs translation.
+
+### Translation test conditions
+
+| Test condition | Recorded setup |
+| --- | --- |
+| Date | October 17, 2026 |
+| OPNsense | `26.7.4_1`, FreeBSD `15.1-RELEASE-p3` |
+| Guest CPU allocation | 8 vCPUs, or 50.00% of host logical CPU capacity |
+| Guest memory | 8 GiB |
+| Attachment | Direct PCI passthrough of spare VFs on `0000:19:00.3`; the peers use separate VFs on that physical function. |
+| Physical network | The tests use the NIC's internal switch and do not exercise the external WAN or LAN links. |
+| OPNsense driver | The updated upstream `if_bnxt` module from the routed comparison |
+| Checksum offload and TCP segmentation offload | On for IPv4 and IPv6 |
+| Large receive offload | Off |
+| Receive-side scaling | On; 7 queue sets per OPNsense VF |
+| Regular receive descriptors | 1024 per queue set, confirmed by boot output |
+| Requested completion/data/aggregation descriptors | `8192,1024,1024`; the requested completion and aggregation counts do not prove their active allocation. |
+| MTU | 1500 bytes |
+| Traffic generator | Private `iperf3` 3.18 binary in the Linux peer network namespaces |
+| Management | SSH and file transfers use IPv6. |
+| PowerEdge management address | `3d06:bad:b01:300::254` |
+| TCP throughput | The sender does not limit its rate. |
+| UDP saturation | 8 uncapped streams from one client; the table records actual offered traffic and loss. |
+| Measured duration | 20 seconds after a 3-second warmup |
+| Idle baseline | 5 seconds before each run |
+| CPU sampling | 0.5-second host and cgroup intervals within the common client interval after warmup |
+| CPU denominator | All 16 host logical CPUs; component CPU already contributes to total host CPU. |
+| Configuration acceptance | Live rules, routes, addresses, queue settings, offloads, and configuration identity match before and after each accepted run. |
+| Processing paths | NAT64 includes Tayga and PF outbound IPv4 NAT. The IPv6 cases use PF without a user-space translator. The comparison does not isolate the cost of address translation. |
+| Client distribution | Parallel NAT64 and IPv6 cases use different client-address counts, as the result table records. |
+| Production scope | PF uses minimal benchmark rules. The tests do not exercise the production MWAN classifier, VPN, or IPS processing. |
+| Repetition | One accepted run per listed workload; these results do not establish measurement variance. |
+
+### Single TCP connection
+
+| Configuration | Received, Gbit/s | OPNsense CPU, % of host | Total host CPU | Retransmissions |
+| --- | ---: | ---: | ---: | ---: |
+| Tayga NAT64 and PF outbound IPv4 NAT | 3.84 | 23.69% | 32.12% | 42,389 |
+| PF stateful NAT66 | 6.21 | 22.31% | 31.79% | 485 |
+| PF BINAT prefix translation | 5.40 | 9.17% | 18.62% | 409 |
+
+### Parallel TCP connections
+
+| Configuration | Direction | Clients | Streams per direction | Forward, Gbit/s | Reverse, Gbit/s | OPNsense CPU, % of host | Total host CPU | Retransmissions |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Tayga NAT64 and PF | Forward | 8 | 32 | 3.12 | 0.00 | 48.79% | 63.42% | 93,327 |
+| Tayga NAT64 and PF | Reverse | 8 | 32 | 0.00 | 2.85 | 49.44% | 63.38% | 89,255 |
+| Tayga NAT64 and PF | Bidirectional | 8 | 32 | 1.48 | 1.62 | 49.75% | 64.18% | 120,867 |
+| PF stateful NAT66 | Forward | 1 | 32 | 20.02 | 0.00 | 44.26% | 64.62% | 52,300 |
+| PF stateful NAT66 | Reverse | 1 | 32 | 0.00 | 21.01 | 46.89% | 68.40% | 52,968 |
+| PF stateful NAT66 | Bidirectional | 1 | 32 | 11.45 | 9.30 | 48.61% | 71.53% | 81,424 |
+| PF BINAT prefix translation | Forward | 1 | 32 | 20.38 | 0.00 | 47.30% | 67.58% | 44,090 |
+| PF BINAT prefix translation | Reverse | 1 | 32 | 0.00 | 19.37 | 46.15% | 65.71% | 60,087 |
+| PF BINAT prefix translation | Bidirectional | 1 | 32 | 10.64 | 9.91 | 47.85% | 70.69% | 68,746 |
+
+### UDP at a fixed offered rate
+
+| Configuration | Clients | Streams | Payload, bytes | Target total, Gbit/s | Actual sent, Gbit/s | Received, Gbit/s | Datagram loss | OPNsense CPU, % of host | Total host CPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Tayga NAT64 and PF | 8 | 8 | 1400 | 1.00 | 1.00 | 1.00 | 0.0173% | 47.31% | 61.77% |
+
+### UDP saturation
+
+The UDP generators overload each configuration. The loss below prevents
+these received rates from establishing a sustainable low-loss capacity.
+The test does not isolate the location of every lost datagram.
+
+| Configuration | Payload, bytes | Actual sent, Gbit/s | Received, Gbit/s | Datagram loss | OPNsense CPU, % of host | Total host CPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Tayga NAT64 and PF | 1400 | 26.24 | 2.23 | 91.4149% | 32.78% | 93.96% |
+| PF stateful NAT66 | 1400 | 27.26 | 1.94 | 92.8632% | 37.14% | 96.71% |
+| PF BINAT prefix translation | 1400 | 29.19 | 1.63 | 94.4289% | 25.29% | 86.33% |
+| Tayga NAT64 and PF | 64 | 1.30 | 0.011 | 99.1767% | 43.37% | 97.89% |
+| PF stateful NAT66 | 64 | 1.39 | 0.125 | 90.9922% | 25.37% | 89.43% |
+| PF BINAT prefix translation | 64 | 1.27 | 0.219 | 82.7979% | 36.11% | 97.86% |
+
+### Hardware test acceptance
+
+| Check | Observed result |
+| --- | --- |
+| Switchdev request | The kernel returned `Link has been severed`. |
+| Firmware command | `HWRM_CFA_VFR_ALLOC`, request `0xfd` |
+| Firmware response | `HWRM_ERR_CODE_CMD_NOT_SUPPORTED`, error `0xffff` |
+| Physical function after the request | `0000:19:00.3` remained in `legacy` mode. |
+| Rewrite rules installed | 0 |
+| Hardware translation throughput | The firmware rejection prevented rule installation and measurement. |
+
 ## WAN and LAN capacity
 
 Endpoint VF throughput exceeded the combined physical-link rate with the
