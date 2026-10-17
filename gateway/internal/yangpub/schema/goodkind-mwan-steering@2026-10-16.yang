@@ -51,8 +51,9 @@ module goodkind-mwan-steering {
 
   revision 2026-10-16 {
     description
-      "Add the BGP session graceful restart time and the prefixes that a
-       restarted session keeps from the previous process.";
+      "This revision adds the BGP session graceful restart time and the
+       prefixes of kernel routes that remain installed after the previous
+       process exits.";
   }
   revision 2026-10-12;
   revision 2026-10-11;
@@ -255,9 +256,10 @@ module goodkind-mwan-steering {
         leaf-list retained-prefix {
           type inet:ipv6-prefix;
           description
-            "A kernel route that the previous process installed and that the
-             session keeps until the peer sends the prefix again, sends its
-             End-of-RIB marker, or the restart time ends.";
+            "The prefix of a kernel route that the previous process installed.
+             The kernel route remains installed while the restarted session
+             waits for the peer to send the prefix again or to send its
+             End-of-RIB marker, or until the graceful restart time expires.";
         }
         list rejection {
           key "prefix";
@@ -692,10 +694,13 @@ module goodkind-mwan-steering {
           units "seconds";
           description
             "The restart time that the session advertises in the RFC 4724
-             graceful restart capability. When this leaf is present, an
-             ordinary daemon stop keeps the routes in both directions, and
-             the next start sends the advertised prefixes again before it
-             removes the kept routes that the peer did not send again.";
+             graceful restart capability. When this leaf is present and the
+             peer negotiates graceful restart for IPv6 unicast, an ordinary
+             daemon stop keeps the routes in both directions. The next start
+             sends the advertised prefixes again before it removes the kept
+             routes that the peer did not send again. When the peer does not
+             negotiate graceful restart for IPv6 unicast, the daemon stop
+             removes the routes.";
           reference
             "RFC 4724: Graceful Restart Mechanism for BGP";
         }

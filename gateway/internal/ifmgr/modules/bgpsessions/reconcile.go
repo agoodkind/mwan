@@ -113,8 +113,8 @@ func sessionTransport(ctx context.Context, log *slog.Logger, cfg Session) (strin
 
 // The address module installs configured routes with the protocol number of
 // the session routes. The sweep must read only the interfaces and metrics in
-// the journal. The sweep leaves the routes of an owner with a future restart
-// deadline to the session that kept them.
+// the journal. The sweep does not delete routes for an owner with a future
+// restart deadline.
 func (m *Module) sweepStaleRoutes(ctx context.Context, log *slog.Logger, now time.Time) error {
 	if len(m.owners) == 0 {
 		return nil

@@ -9,8 +9,8 @@ import (
 	bgppkt "github.com/osrg/gobgp/v4/pkg/packet/bgp"
 )
 
-// KeepRoutes prepares a stopped session after StopRetaining ended the previous
-// process. The session keeps the kernel routes of the previous process on the
+// KeepRoutes prepares a stopped session after the previous process called
+// StopRetaining before it exited. The session keeps the kernel routes of the previous process on the
 // session interface and metric. The next Start runs the server without the
 // peer, and Connect adds the peer. The session removes each kept route that
 // the peer did not send again after the IPv6 End-of-RIB marker of the peer or
