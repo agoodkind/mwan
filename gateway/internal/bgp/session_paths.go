@@ -49,6 +49,7 @@ func (s *Session) handlePeerEvent(
 		s.upSince = time.Time{}
 		clear(s.accepted)
 		clear(s.unresolved)
+		s.dropRetainedLocked(ctx)
 		s.withdrawExportsLocked(ctx)
 		if err := s.fib.WithdrawPeer(ctx, s.peerKey); err != nil {
 			s.log.ErrorContext(ctx, "remove bgp session routes failed", "error", err)
@@ -100,7 +101,15 @@ func (s *Session) applyBestPathLocked(ctx context.Context, path *apiutil.Path) b
 	prefix = prefix.Masked()
 	if path.Withdrawal {
 		delete(s.unresolved, prefix)
+		if s.withdrawRetainedLocked(ctx, prefix) {
+			return true
+		}
 		return s.withdrawAcceptedLocked(ctx, prefix)
+	}
+	// GoBGP marks the paths of a peer that restarts as stale, and the
+	// session removes that peer's routes at the session loss.
+	if path.Stale {
+		return false
 	}
 
 	if reason := importRejection(s.cfg, prefix); reason != "" {

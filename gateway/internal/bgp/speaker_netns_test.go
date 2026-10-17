@@ -94,6 +94,7 @@ func TestSpeakerInstallsLearnedRoutesInKernel(t *testing.T) {
 		neighborASN:  sessionASN,
 		neighborPort: listenPort,
 		families:     []apipb.Family_Afi{apipb.Family_AFI_IP, apipb.Family_AFI_IP6},
+		restartTime:  0,
 	})
 	eventually(t, "speaker peer session established", func() bool {
 		return speaker.IsEstablished(t.Context())

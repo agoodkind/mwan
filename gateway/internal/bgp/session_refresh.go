@@ -20,6 +20,7 @@ func (s *Session) installLocked(ctx context.Context, prefix netip.Prefix, nextHo
 
 func (s *Session) acceptLocked(prefix netip.Prefix, nextHop netip.Addr) {
 	delete(s.unresolved, prefix)
+	delete(s.retained, prefix)
 	s.accepted[prefix] = nextHop
 	s.rejected = slices.DeleteFunc(s.rejected, func(rejection Rejection) bool {
 		return rejection.Prefix == prefix
