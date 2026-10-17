@@ -5,11 +5,9 @@ rules do not send packet bytes to the daemon. A host bridge uses host CPU to
 transfer packets between router and gateway guests. A NIC can instead switch
 packets between hardware virtual functions assigned to separate containers.
 
+OPNsense [requires disabled hardware offloads in IPS mode](https://docs.opnsense.org/manual/ips.html).
 OPNsense [disables several NIC offloads by default](https://docs.opnsense.org/manual/interfaces_settings.html)
 and [disables system-wide receive-side scaling by default](https://docs.opnsense.org/troubleshooting/performance.html).
-[IPS mode requires hardware offloads to be disabled](https://docs.opnsense.org/manual/ips.html).
-Available acceleration depends on the selected features, driver, and
-hardware.
 
 ## Attachment paths
 
@@ -73,101 +71,136 @@ flowchart LR
 
 ## Measurement on August 16, 2026
 
-A LAN client using ISP-1 measured 693 Mbit/s download and 1782 Mbit/s upload
-with a public speed test. At the upload peak, the two guest copy threads used
-1.11 CPU cores on a 12-core host.
+| Scope | Evidence |
+| --- | --- |
+| Client connection | ISP-1 public speed test |
+| Faster links | The test did not exercise faster links. |
+| Download bottleneck | The test did not isolate the bottleneck. |
 
-| CPU use | Before test | Upload peak |
+| Measurement | Result |
+| --- | ---: |
+| Client download | 693 Mbit/s |
+| Client upload | 1782 Mbit/s |
+| Host CPU cores | 12 |
+
+| CPU, % of recorded host | Before test | Upload peak |
 | --- | ---: | ---: |
-| Router guest copy thread | 0.01 cores | 0.59 cores |
-| Gateway guest copy thread | 0.01 cores | 0.52 cores |
-| Both copy threads | 0.02 cores | 1.11 cores |
-| Router guest forwarding | Not measured | 4.54 cores |
-| Gateway guest forwarding | Not measured | 2.01 cores |
-
-The guest forwarding measurements total 6.55 cores at the upload peak. The
-copy threads account for about 15% of the combined 7.66 cores. This test did
-not measure faster links or isolate the cause of the lower download result.
+| Router guest copy thread | 0.08% | 4.92% |
+| Gateway guest copy thread | 0.08% | 4.33% |
+| Both copy threads | 0.17% | 9.25% |
+| Router guest forwarding | Not measured | 37.83% |
+| Gateway guest forwarding | Not measured | 16.75% |
+| Both guests forwarding | Not measured | 54.58% |
+| Forwarding and copy threads | Not measured | 63.83% |
 
 ## XR11 measurement on October 17, 2026
 
-The PowerEdge XR11 used a Broadcom BCM57504 with the `bnxt_en` driver under
-Proxmox kernel `7.0.14-20-pve`. The host had an Intel Xeon Silver 4309Y with
-8 cores and 16 logical CPUs, and the NIC reported firmware
-`236.1.173.0/pkg 36.11.73.00`.
+The VF benchmark measures endpoint traffic between the containers through
+the NIC's internal switch.
 
-The containers' `mwanbr` VFs shared physical function `0000:19:00.1` and used
-a direct transit-subnet route. The physical port `nic1` did not detect a
-cable before or after the tests.
+| Claim | Boundary | Basis |
+| --- | --- | --- |
+| Routed capacity | Unmeasured | Endpoints used the VF transit subnet. |
+| Forwarding latency | Unmeasured | The test did not use routed probes. |
+| Forwarding CPU cost | Not isolated | CPU includes endpoint work. |
+| Per-feature gain | Not isolated | Four offloads changed together. |
+| UDP loss cause | Unidentified | The test did not trace lost datagrams. |
+| Bridge CPU savings | Unmeasured | The test did not use a host bridge. |
+| BPF hardware offload | Unverified | The test did not inspect NIC execution. |
 
-| Container | Role | Assigned CPUs | VF |
-| --- | --- | --- | --- |
-| 313 | WAN | 1-2 | `0000:1a:01.0` |
-| 314 | LAN | 13-14 | `0000:1a:01.1` |
+### Test conditions
 
-`iperf3` 3.18 used each container's network namespace and cgroup with a
-1500-byte MTU. The tests ran between 05:46 and 05:54 UTC, on October 16 in
-Pacific Daylight Time. TCP used eight streams per direction except for the
-single-stream test, while UDP used four streams at 2.5 Gbit/s each with
-1400-byte datagrams.
+| Condition | Value |
+| --- | --- |
+| Host | Dell PowerEdge XR11 |
+| CPU | Intel Xeon Silver 4309Y |
+| CPU topology | 8 cores, 16 logical CPUs |
+| Each container’s CPU allocation | 12.50% of host capacity |
+| Kernel | Proxmox `7.0.14-20-pve` |
+| NIC | Broadcom BCM57504 |
+| Driver | `bnxt_en` |
+| NIC firmware | `236.1.173.0/pkg 36.11.73.00` |
+| Physical function | `0000:19:00.1` |
+| `nic1` link | The port did not detect a cable before or after tests. |
+| UTC interval | 05:46 to 05:54 |
+| Pacific date | October 16, 2026 |
+| Tool | `iperf3` 3.18 |
+| Process placement | Container network namespace and cgroup |
+| VF MTU | 1500 bytes |
+| TCP streams | 8 per direction, except the single-stream test |
+| UDP streams | 4 at 2.5 Gbit/s each |
+| UDP datagram size | 1400 bytes |
+| Warmup | 3 seconds |
+| CPU sampling | 1-second host and cgroup samples; first 4 omitted |
+| Host CPU accounting | Includes all host work; does not subtract idle use |
+
+| Container | Role | CPUs | VF (`mwanbr`) | Physical port |
+| --- | --- | --- | --- | --- |
+| 313 | WAN | 1-2 | `0000:1a:01.0` | 2 (`wan`) |
+| 314 | LAN | 13-14 | `0000:1a:01.1` | 0 (`lan`) |
 
 ### Throughput and CPU use
 
-The receiver's throughput in Gbit/s and the test durations exclude a
-three-second warmup, while driver counter deltas cover the complete run.
+Receiver throughput and duration exclude warmup, while driver counter
+deltas cover the complete run. CPU percentages use the entire host’s logical
+CPU capacity as their denominator, including the container columns.
 
-CPU averages omit the first four one-second host and cgroup samples. A value
-of 1.00 represents one fully busy logical CPU, and the host figures include
-the containers and interrupt processing. The results do not subtract the
-preceding ten-second idle average of 0.96 host CPU units.
+| Test | Duration | 313 to 314 | 314 to 313 |
+| --- | ---: | ---: | ---: |
+| Single TCP stream | 30 s | 47.87 | 0.00 |
+| Parallel TCP | 60 s | 66.13 | 0.00 |
+| Reverse parallel TCP | 60 s | 0.00 | 69.74 |
+| Bidirectional TCP | 60 s | 31.31 | 30.42 |
+| Bidirectional, disabled | 30 s | 7.77 | 9.07 |
+| Bidirectional, re-enabled | 60 s | 32.79 | 31.53 |
+| UDP stress | 30 s | 9.54 | 0.00 |
+| Bidirectional, initial settings | 30 s | 32.59 | 27.91 |
 
-| Test | Duration | 313 to 314 | 314 to 313 | 313 CPU | 314 CPU | Host CPU |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Single TCP stream | 30 s | 47.87 | 0.00 | 1.70 | 0.94 | 3.25 |
-| Parallel TCP | 60 s | 66.13 | 0.00 | 2.00 | 1.80 | 4.38 |
-| Reverse parallel TCP | 60 s | 0.00 | 69.74 | 1.98 | 1.96 | 4.63 |
-| Bidirectional TCP | 60 s | 31.31 | 30.42 | 1.95 | 2.00 | 4.45 |
-| Bidirectional, disabled | 30 s | 7.77 | 9.07 | 1.50 | 1.51 | 5.75 |
-| Bidirectional, re-enabled | 60 s | 32.79 | 31.53 | 1.98 | 2.00 | 4.51 |
-| UDP stress | 30 s | 9.54 | 0.00 | 2.00 | 1.02 | 3.76 |
-| Bidirectional, initial settings | 30 s | 32.59 | 27.91 | 1.95 | 2.00 | 4.53 |
+| Test | 313 CPU % | 314 CPU % | Host CPU % |
+| --- | ---: | ---: | ---: |
+| Single TCP stream | 10.60% | 5.88% | 20.29% |
+| Parallel TCP | 12.48% | 11.27% | 27.40% |
+| Reverse parallel TCP | 12.38% | 12.24% | 28.93% |
+| Bidirectional TCP | 12.18% | 12.49% | 27.84% |
+| Bidirectional, disabled | 9.39% | 9.45% | 35.91% |
+| Bidirectional, re-enabled | 12.40% | 12.48% | 28.21% |
+| UDP stress | 12.49% | 6.37% | 23.50% |
+| Bidirectional, initial settings | 12.21% | 12.49% | 28.33% |
+
+Throughput columns use Gbit/s.
 
 ### Offloads
 
-The enabled column matches the current settings on the VFs and physical
-interfaces, while the disabled column applies only to the VF comparison.
+The current settings match the initial and final runs on both VFs and the
+physical interfaces. TSO splits outgoing TCP buffers into packets in the NIC,
+while GSO provides software segmentation. GRO combines received packets,
+and hardware GRO performs receive aggregation in the NIC.
 
-| Feature | Enabled run | Disabled run |
-| --- | --- | --- |
-| Receive and transmit checksum offload | On | On |
-| Scatter-gather | On | On |
-| TCP segmentation offload (TSO) | On | Off |
-| Generic segmentation offload (GSO) | On | Off |
-| Generic receive offload (GRO) | On | Off |
-| Hardware GRO | On | Off |
-| Receive hashing | On | On |
-| Large receive offload | Off | Off |
-| `tx-tcp-mangleid-segmentation` | Off | Off |
+| Feature | Current | VF disabled | VF re-enabled |
+| --- | --- | --- | --- |
+| Receive and transmit checksum offload | On | On | On |
+| Scatter-gather | On | On | On |
+| TCP segmentation offload (TSO) | On | Off | On |
+| Generic segmentation offload (GSO) | On | Off | On |
+| Generic receive offload (GRO) | On | Off | On |
+| Hardware GRO | On | Off | On |
+| Receive hashing | On | On | On |
+| Large receive offload | Off | Off | Off |
+| `tx-tcp-mangleid-segmentation` | Off | Off | On |
 
-TSO splits outgoing TCP buffers into packets in the NIC, while GSO provides
-software segmentation. GRO combines received packets, and hardware GRO
-performs receive aggregation in the NIC.
+| Measurement | Result |
+| --- | ---: |
+| Throughput ratio, first bidirectional / disabled | 3.67 |
+| Host CPU decrease, enabled vs disabled | 8.07 percentage points |
+| Software interrupt CPU, first bidirectional | 5.81% |
+| Software interrupt CPU, disabled | 23.05% |
+| Hardware aggregation bytes, single-stream receiver | 191,362,528,254 |
+| Idle host CPU, preceding ten-second average | 6.02% |
 
-The first bidirectional run delivered 3.67 times the throughput of the run
-with offloads disabled and used about 22% less host CPU. Software interrupt
-processing accounted for 0.93 CPU units with offloads enabled and 3.69 with
-offloads disabled. The comparison measures the combined effect of the
-features over different run durations and includes background host work.
+The [driver's hardware aggregation counter](https://github.com/torvalds/linux/blob/master/drivers/net/ethernet/broadcom/bnxt/bnxt_ethtool.c),
+`rx_tpa_bytes`, records bytes combined in the NIC before host processing.
 
-The single-stream receiver's
-[hardware aggregation counter](https://github.com/torvalds/linux/blob/master/drivers/net/ethernet/broadcom/bnxt/bnxt_ethtool.c),
-`rx_tpa_bytes`, increased by 191,362,528,254 bytes.
-
-The re-enabled run differed from the initial settings only in
-`tx-tcp-mangleid-segmentation`, which was on. The final repeat matched the
-initial settings on every interface.
-
-### Losses and test limits
+### Packet loss
 
 The receive counters belong to the receiving VF in each TCP test.
 
@@ -176,24 +209,26 @@ The receive counters belong to the receiving VF in each TCP test.
 | Single stream | 0 | 0 | 0 | 0 |
 | Reverse parallel | 19,823 | 12,792 | 5,865 | 33 |
 
-At an offered UDP load of 9.70 Gbit/s, the receiver lost 1.6208% of datagrams
-and its VF counted 200,253 receive drops over the run. The measurements do
-not identify the cause of UDP loss.
+| UDP measurement | Result |
+| --- | ---: |
+| Offered load | 9.70 Gbit/s |
+| Received throughput | 9.54 Gbit/s |
+| Datagram loss | 1.6208% |
+| Receiver VF drops over the complete run | 200,253 |
 
 ## WAN and LAN capacity
 
-Container 313 owns physical port 2 as `wan`, and container 314 owns port 0 as
-`lan` to the switch. Both physical links negotiate 10 Gbit/s full duplex,
-which permits simultaneous WAN-to-LAN and LAN-to-WAN transfers totaling
-20 Gbit/s. The final VF result is roughly three times the combined link rate.
+The VF interconnect has bulk TCP headroom above the physical-link capacity
+with the enabled offload configuration.
 
-The parallel TCP tests used nearly all of each container's assigned CPUs
-for traffic generation and reception. The CPU measurements do not isolate
-packet forwarding cost.
+| Measurement | Result |
+| --- | ---: |
+| WAN negotiated rate | 10 Gbit/s full duplex |
+| LAN negotiated rate | 10 Gbit/s full duplex |
+| Combined WAN-to-LAN and LAN-to-WAN link capacity | 20 Gbit/s |
+| Final combined VF throughput | 60.50 Gbit/s |
+| Final VF / combined physical-link rate | About 3.03 |
 
 ## Remaining investigation
 
-MWAN-527 covers a comparison with a software bridge and end-to-end forwarding
-tests. The VF measurements do not establish the capacity of the complete
-WAN-to-LAN path, and the tests did not measure latency or verify hardware
-execution of MWAN's BPF programs.
+MWAN-527 tracks the forwarding comparison with a software bridge.
