@@ -115,8 +115,9 @@ func assertDHCPv6TimerLeaseHeld(t *testing.T, daemon *runtimeDaemon, observation
 	}
 }
 
-// assertDHCPv6TimerSolicitAfterExpiry requires the first Solicit within SOL_MAX_DELAY of
-// expiry and its retransmission within the first Solicit RT.
+// assertDHCPv6TimerSolicitAfterExpiry requires the first Solicit at or after expiry and
+// no later than 1.5 s after it. The retransmission must keep the transaction ID, carry a
+// larger Elapsed Time, and arrive 0.5 s to 1.6 s after the first Solicit.
 func assertDHCPv6TimerSolicitAfterExpiry(t *testing.T, daemon *runtimeDaemon, observations *dhcpv6TimerLog) {
 	t.Helper()
 	request := observations.wait(t, dhcpv6TimerValid, func(observation dhcpv6TimerObservation) bool {
