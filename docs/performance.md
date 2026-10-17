@@ -408,9 +408,6 @@ flowchart LR
   egress --> server[Server]
 ```
 
-Source and package inspection confirm the VPP implementations below.
-The comparison has not verified their runtime translation.
-
 | Comparison | OPNsense implementation | VPP implementation |
 | --- | --- | --- |
 | NAT64 | Tayga and PF outbound IPv4 NAT | [VPP NAT64](https://github.com/FDio/vpp/blob/v26.06/src/plugins/nat/nat64/nat64_cli.c) and PF outbound IPv4 NAT |
@@ -445,7 +442,7 @@ flowchart LR
 The installed firmware rejected the virtual port allocation command needed
 for the Linux hardware test. The spare physical function remained in legacy
 mode, and the test did not install rewrite rules.
-The public [Linux bnxt TC driver](https://github.com/torvalds/linux/blob/master/drivers/net/ethernet/broadcom/bnxt/bnxt_tc.c)
+The public [Linux bnxt TC driver](https://github.com/torvalds/linux/blob/v7.0/drivers/net/ethernet/broadcom/bnxt/bnxt_tc.c)
 programs IPv6 address and port rewrites. The public
 [DPDK bnxt action table](https://github.com/DPDK/dpdk/blob/v26.03/drivers/net/bnxt/tf_ulp/ulp_rte_handler_tbl.c)
 exposes address rewriting and hop-limit decrement, which reduces the
@@ -473,69 +470,122 @@ that the NIC performs translation.
 | Attachment | Direct PCI passthrough of spare VFs on `0000:19:00.3`; the peers use separate VFs on that physical function. |
 | Physical network | The tests use the NIC's internal switch and do not exercise the external WAN or LAN links. |
 | OPNsense driver | The updated upstream `if_bnxt` module from the routed comparison |
-| Checksum offload and TCP segmentation offload | On for IPv4 and IPv6 |
+| OPNsense checksum offload and TCP segmentation offload | On for IPv4 and IPv6 |
 | Large receive offload | Off |
 | Receive-side scaling | On; 7 queue sets per OPNsense VF |
 | Regular receive descriptors | 1024 per queue set, confirmed by boot output |
 | Requested completion/data/aggregation descriptors | `8192,1024,1024`; the requested completion and aggregation counts do not prove their active allocation. |
 | MTU | 1500 bytes |
+| VPP software and compilers | Official VPP `26.06-release` core, compiled with Clang/LLVM `18.1.3`; custom DPDK plugin and DPDK `26.03`, compiled with GCC `13.2.0` |
+| VPP driver correction | The packaged plugin submitted an empty firmware command header. The custom driver copies each command word with `memcpy` before writing it to the device register. |
+| VPP queues | 4 receive queues and 4 transmit queues per VF, with 1024 descriptors per queue |
+| VPP packet processing | Scalar receive code uses receive scatter. The vector configuration disables receive scatter with `no-multi-seg` and uses AVX2 instructions to process groups of packets on the processor. Both configurations use scalar transmit code and translate packets on the processor. |
+| VPP configured offloads | IPv4, TCP, and UDP receive checksums; transmit checksums and TCP segmentation; receive-side scaling for IPv4 and IPv6 |
+| VPP observed offloads | TCP captures of scalar NAT64 and AVX2 vector NAT66 and NPT66 confirm receive transport checksum validation and receive-side scaling hashes. Their transmitted packets do not request transmit checksum or TCP segmentation offload. The comparison does not include a packet trace for vector NAT64. |
 | Traffic generator | Private `iperf3` 3.18 binary in the Linux peer network namespaces |
 | Management | SSH and file transfers use IPv6. |
 | PowerEdge management address | `3d06:bad:b01:300::254` |
 | TCP throughput | The sender does not limit its rate. |
 | UDP saturation | 8 uncapped streams from one client; the table records actual offered traffic and loss. |
+| UDP interpretation | Saturation loss prevents the received rates from establishing a sustainable capacity with low loss. The tests do not isolate the location of every lost datagram. |
 | Measured duration | 20 seconds after a 3-second warmup |
 | Idle baseline | 5 seconds before each run |
 | CPU sampling | 0.5-second host and cgroup intervals within the common client interval after warmup |
 | CPU denominator | All 16 host logical CPUs; component CPU already contributes to total host CPU. |
 | Configuration acceptance | Live rules, routes, addresses, queue settings, offloads, and configuration identity match before and after each accepted run. |
-| Processing paths | NAT64 includes Tayga and PF outbound IPv4 NAT. The IPv6 cases use PF without a user-space translator. The comparison does not isolate the cost of address translation. |
+| Processing paths | Both NAT64 paths include PF outbound IPv4 NAT. Tayga runs inside OPNsense; VPP runs in a separate container between OPNsense routing stages. The OPNsense IPv6 cases use PF without a user-space translator; the external IPv6 cases use VPP between OPNsense routing stages. The comparison does not isolate the cost of address translation. |
 | Client distribution | Parallel NAT64 and IPv6 cases use different client-address counts, as the result table records. |
 | Production scope | PF uses minimal benchmark rules. The tests do not exercise the production MWAN classifier, VPN, or IPS processing. |
-| Repetition | One accepted run per listed workload; these results do not establish measurement variance. |
+| Repetition | Each configuration and workload has one accepted run. The results do not establish measurement variance or a consistent ranking of receive modes. |
+
+### VPP idle CPU
+
+VPP polling workers repeatedly check receive queues during idle periods.
+The baseline below precedes each configuration’s bidirectional TCP run.
+Workload CPU includes the polling cost without subtracting this baseline.
+
+| Configuration | OPNsense CPU, % of host | VPP container CPU, % of host | Total host CPU |
+| --- | ---: | ---: | ---: |
+| VPP NAT64 and PF, scalar receive | 1.50% | 21.44% | 27.36% |
+| VPP NAT64 and PF, vector receive | 0.25% | 21.52% | 25.94% |
+| VPP stateful NAT66, vector receive | 0.27% | 21.63% | 26.39% |
+| VPP RFC 6296 NPT66, vector receive | 0.39% | 21.47% | 26.26% |
 
 ### Single TCP connection
 
-| Configuration | Received, Gbit/s | OPNsense CPU, % of host | Total host CPU | Retransmissions |
-| --- | ---: | ---: | ---: | ---: |
-| Tayga NAT64 and PF outbound IPv4 NAT | 3.84 | 23.69% | 32.12% | 42,389 |
-| PF stateful NAT66 | 6.21 | 22.31% | 31.79% | 485 |
-| PF BINAT prefix translation | 5.40 | 9.17% | 18.62% | 409 |
+| Configuration | Received, Gbit/s | OPNsense CPU, % of host | VPP container CPU, % of host | Total host CPU | Retransmissions |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Tayga NAT64 and PF outbound IPv4 NAT | 3.84 | 23.69% | Not used | 32.12% | 42,389 |
+| VPP NAT64 and PF, scalar receive | 4.31 | 29.44% | 20.76% | 59.27% | 559 |
+| VPP NAT64 and PF, vector receive | 3.55 | 19.72% | 21.08% | 49.27% | 343 |
+| PF stateful NAT66 | 6.21 | 22.31% | Not used | 31.79% | 485 |
+| VPP stateful NAT66, vector receive | 3.09 | 20.71% | 21.13% | 48.86% | 44 |
+| PF BINAT prefix translation | 5.40 | 9.17% | Not used | 18.62% | 409 |
+| VPP RFC 6296 NPT66, vector receive | 4.49 | 37.46% | 21.02% | 65.47% | 117 |
 
 ### Parallel TCP connections
 
-| Configuration | Direction | Clients | Streams per direction | Forward, Gbit/s | Reverse, Gbit/s | OPNsense CPU, % of host | Total host CPU | Retransmissions |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Tayga NAT64 and PF | Forward | 8 | 32 | 3.12 | 0.00 | 48.79% | 63.42% | 93,327 |
-| Tayga NAT64 and PF | Reverse | 8 | 32 | 0.00 | 2.85 | 49.44% | 63.38% | 89,255 |
-| Tayga NAT64 and PF | Bidirectional | 8 | 32 | 1.48 | 1.62 | 49.75% | 64.18% | 120,867 |
-| PF stateful NAT66 | Forward | 1 | 32 | 20.02 | 0.00 | 44.26% | 64.62% | 52,300 |
-| PF stateful NAT66 | Reverse | 1 | 32 | 0.00 | 21.01 | 46.89% | 68.40% | 52,968 |
-| PF stateful NAT66 | Bidirectional | 1 | 32 | 11.45 | 9.30 | 48.61% | 71.53% | 81,424 |
-| PF BINAT prefix translation | Forward | 1 | 32 | 20.38 | 0.00 | 47.30% | 67.58% | 44,090 |
-| PF BINAT prefix translation | Reverse | 1 | 32 | 0.00 | 19.37 | 46.15% | 65.71% | 60,087 |
-| PF BINAT prefix translation | Bidirectional | 1 | 32 | 10.64 | 9.91 | 47.85% | 70.69% | 68,746 |
+| Configuration | Direction | Clients | Streams per direction | Forward, Gbit/s | Reverse, Gbit/s | OPNsense CPU, % of host | VPP container CPU, % of host | Total host CPU | Retransmissions |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Tayga NAT64 and PF | Forward | 8 | 32 | 3.12 | 0.00 | 48.79% | Not used | 63.42% | 93,327 |
+| VPP NAT64 and PF, scalar receive | Forward | 8 | 32 | 9.64 | 0.00 | 44.71% | 20.34% | 81.26% | 44,398 |
+| VPP NAT64 and PF, vector receive | Forward | 8 | 32 | 9.83 | 0.00 | 44.25% | 20.48% | 80.76% | 43,866 |
+| Tayga NAT64 and PF | Reverse | 8 | 32 | 0.00 | 2.85 | 49.44% | Not used | 63.38% | 89,255 |
+| VPP NAT64 and PF, scalar receive | Reverse | 8 | 32 | 0.00 | 7.96 | 42.44% | 20.59% | 73.67% | 48,321 |
+| VPP NAT64 and PF, vector receive | Reverse | 8 | 32 | 0.00 | 7.65 | 43.70% | 20.65% | 74.54% | 33,125 |
+| Tayga NAT64 and PF | Bidirectional | 8 | 32 | 1.48 | 1.62 | 49.75% | Not used | 64.18% | 120,867 |
+| VPP NAT64 and PF, scalar receive | Bidirectional | 8 | 32 | 4.75 | 4.90 | 46.49% | 20.36% | 81.32% | 76,352 |
+| VPP NAT64 and PF, vector receive | Bidirectional | 8 | 32 | 5.11 | 4.58 | 46.53% | 20.18% | 82.17% | 76,917 |
+| PF stateful NAT66 | Forward | 1 | 32 | 20.02 | 0.00 | 44.26% | Not used | 64.62% | 52,300 |
+| VPP stateful NAT66, vector receive | Forward | 1 | 32 | 11.22 | 0.00 | 45.50% | 20.51% | 79.04% | 37,935 |
+| PF stateful NAT66 | Reverse | 1 | 32 | 0.00 | 21.01 | 46.89% | Not used | 68.40% | 52,968 |
+| VPP stateful NAT66, vector receive | Reverse | 1 | 32 | 0.00 | 9.25 | 46.53% | 20.56% | 78.78% | 37,190 |
+| PF stateful NAT66 | Bidirectional | 1 | 32 | 11.45 | 9.30 | 48.61% | Not used | 71.53% | 81,424 |
+| VPP stateful NAT66, vector receive | Bidirectional | 1 | 32 | 5.13 | 5.67 | 47.25% | 20.46% | 81.50% | 76,895 |
+| PF BINAT prefix translation | Forward | 1 | 32 | 20.38 | 0.00 | 47.30% | Not used | 67.58% | 44,090 |
+| VPP RFC 6296 NPT66, vector receive | Forward | 1 | 32 | 11.03 | 0.00 | 45.21% | 20.55% | 78.42% | 46,184 |
+| PF BINAT prefix translation | Reverse | 1 | 32 | 0.00 | 19.37 | 46.15% | Not used | 65.71% | 60,087 |
+| VPP RFC 6296 NPT66, vector receive | Reverse | 1 | 32 | 0.00 | 9.99 | 46.44% | 20.52% | 79.15% | 33,116 |
+| PF BINAT prefix translation | Bidirectional | 1 | 32 | 10.64 | 9.91 | 47.85% | Not used | 70.69% | 68,746 |
+| VPP RFC 6296 NPT66, vector receive | Bidirectional | 1 | 32 | 5.75 | 4.96 | 47.18% | 20.47% | 81.20% | 65,561 |
 
 ### UDP at a fixed offered rate
 
-| Configuration | Clients | Streams | Payload, bytes | Target total, Gbit/s | Actual sent, Gbit/s | Received, Gbit/s | Datagram loss | OPNsense CPU, % of host | Total host CPU |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Tayga NAT64 and PF | 8 | 8 | 1400 | 1.00 | 1.00 | 1.00 | 0.0173% | 47.31% | 61.77% |
+| Configuration | Clients | Streams | Payload, bytes | Target total, Gbit/s | Actual sent, Gbit/s | Received, Gbit/s | Datagram loss | OPNsense CPU, % of host | VPP container CPU, % of host | Total host CPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Tayga NAT64 and PF | 8 | 8 | 1400 | 1.00 | 1.00 | 1.00 | 0.0173% | 47.31% | Not used | 61.77% |
+| VPP NAT64 and PF, scalar receive | 8 | 8 | 1400 | 1.00 | 1.00 | 0.97 | 3.1777% | 45.46% | 20.85% | 77.19% |
+| VPP NAT64 and PF, vector receive | 8 | 8 | 1400 | 1.00 | 1.00 | 0.94 | 6.1586% | 48.05% | 20.96% | 79.42% |
 
 ### UDP saturation
 
-The UDP generators overload each configuration. The loss below prevents
-these received rates from establishing a sustainable low-loss capacity.
-The test does not isolate the location of every lost datagram.
+| Configuration | Payload, bytes | Actual sent, Gbit/s | Received, Gbit/s | Datagram loss | OPNsense CPU, % of host | VPP container CPU, % of host | Total host CPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Tayga NAT64 and PF | 1400 | 26.24 | 2.23 | 91.4149% | 32.78% | Not used | 93.96% |
+| VPP NAT64 and PF, scalar receive | 1400 | 23.08 | 0.87 | 96.2500% | 30.48% | 18.69% | 99.65% |
+| VPP NAT64 and PF, vector receive | 1400 | 21.45 | 1.70 | 92.0589% | 33.04% | 18.39% | 99.75% |
+| PF stateful NAT66 | 1400 | 27.26 | 1.94 | 92.8632% | 37.14% | Not used | 96.71% |
+| VPP stateful NAT66, vector receive | 1400 | 21.85 | 1.56 | 93.0689% | 33.70% | 18.30% | 99.88% |
+| PF BINAT prefix translation | 1400 | 29.19 | 1.63 | 94.4289% | 25.29% | Not used | 86.33% |
+| VPP RFC 6296 NPT66, vector receive | 1400 | 23.47 | 0.42 | 98.1824% | 29.50% | 19.75% | 99.81% |
+| Tayga NAT64 and PF | 64 | 1.30 | 0.011 | 99.1767% | 43.37% | Not used | 97.89% |
+| VPP NAT64 and PF, scalar receive | 64 | 1.08 | 0.051 | 95.2808% | 32.72% | 19.09% | 99.82% |
+| VPP NAT64 and PF, vector receive | 64 | 1.08 | 0.107 | 90.0500% | 31.68% | 18.92% | 99.90% |
+| PF stateful NAT66 | 64 | 1.39 | 0.125 | 90.9922% | 25.37% | Not used | 89.43% |
+| VPP stateful NAT66, vector receive | 64 | 1.16 | 0.037 | 96.7810% | 28.64% | 19.49% | 99.86% |
+| PF BINAT prefix translation | 64 | 1.27 | 0.219 | 82.7979% | 36.11% | Not used | 97.86% |
+| VPP RFC 6296 NPT66, vector receive | 64 | 1.07 | 0.046 | 95.7479% | 32.73% | 19.39% | 99.87% |
 
-| Configuration | Payload, bytes | Actual sent, Gbit/s | Received, Gbit/s | Datagram loss | OPNsense CPU, % of host | Total host CPU |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Tayga NAT64 and PF | 1400 | 26.24 | 2.23 | 91.4149% | 32.78% | 93.96% |
-| PF stateful NAT66 | 1400 | 27.26 | 1.94 | 92.8632% | 37.14% | 96.71% |
-| PF BINAT prefix translation | 1400 | 29.19 | 1.63 | 94.4289% | 25.29% | 86.33% |
-| Tayga NAT64 and PF | 64 | 1.30 | 0.011 | 99.1767% | 43.37% | 97.89% |
-| PF stateful NAT66 | 64 | 1.39 | 0.125 | 90.9922% | 25.37% | 89.43% |
-| PF BINAT prefix translation | 64 | 1.27 | 0.219 | 82.7979% | 36.11% | 97.86% |
+### Meaning for address translation
+
+| Use case | Supported conclusion |
+| --- | --- |
+| Parallel NAT64 TCP | The external VPP configuration delivered more throughput than Tayga and used more total host CPU in each direction. |
+| Stateful NAT66 | Direct PF delivered more TCP throughput and used less total host CPU than OPNsense routing through VPP. The measured results favor keeping this translation inside OPNsense. |
+| IPv6 prefix translation | PF BINAT delivered more TCP throughput and used less total host CPU than the external VPP RFC 6296 NPT66 configuration. |
+| Fixed-rate NAT64 UDP | Tayga lost less traffic and used less total host CPU than either VPP configuration. |
+| NAT64 receive mode | Vector reception delivered more saturated UDP traffic than scalar reception. Scalar reception delivered more traffic during the single TCP connection and fixed-rate UDP tests. |
+| Hardware translation | The firmware rejection prevents using the tested hardware rewrite path on the installed setup. |
 
 ### Hardware test acceptance
 
