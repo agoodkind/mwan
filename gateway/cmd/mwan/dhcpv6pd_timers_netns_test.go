@@ -126,7 +126,7 @@ func assertDHCPv6TimerSolicitAfterExpiry(t *testing.T, daemon *runtimeDaemon, ob
 	first := observations.wait(t, time.Until(expiry)+dhcpv6TimerSolicitDelay+dhcpv6TimerScheduleMargin, func(observation dhcpv6TimerObservation) bool {
 		return observation.messageType == dhcpv6.MessageTypeSolicit && observation.received.After(request.received)
 	})
-	if first.received.Before(expiry.Add(-dhcpv6TimerScheduleMargin)) {
+	if first.received.Before(expiry) {
 		t.Fatalf("Solicit at %s preceded lease expiry at %s", first.received, expiry)
 	}
 	second := observations.wait(t, dhcpv6TimerSolicitMaxRT+dhcpv6TimerScheduleMargin, func(observation dhcpv6TimerObservation) bool {

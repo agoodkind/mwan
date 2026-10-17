@@ -400,8 +400,8 @@ func (client *DHCPv6PDClient) acquireMissingDHCPv6(ctx context.Context, log *slo
 	}
 	acquireCtx, cancel := context.WithDeadline(ctx, latestDHCPv6Validity(*lease))
 	defer cancel()
-	// The exchange ends at the next lifetime deadline. This function expires and
-	// publishes assignments after the exchange.
+	// The exchange ends at the next lifetime deadline. This function expires assignments
+	// after the exchange and publishes them when they change.
 	end := nextDHCPv6Deadline(*lease, config.Clock.Now())
 	replacement, err := acquireDHCPv6(acquireCtx, log, transport, missing, link, solicitMaxRT, nil, end, 0)
 	expired = expireDHCPv6Assignments(*lease, config.Clock.Now())
@@ -425,8 +425,8 @@ func (client *DHCPv6PDClient) acquireMissingDHCPv6(ctx context.Context, log *slo
 	return config.RequestPrefix && len(lease.Prefixes) == 0 || config.RequestAddress && len(lease.Addresses) == 0
 }
 
-// mergeMissingDHCPv6 keeps the held association and its timers. It copies only the
-// association that missing requested from replacement.
+// mergeMissingDHCPv6 keeps the held association and its timers. It copies missing
+// requested associations, the server identifier, and DNS addresses from replacement.
 func mergeMissingDHCPv6(lease *DHCPv6PDLease, replacement DHCPv6PDLease, missing DHCPv6PDConfig) {
 	if missing.RequestPrefix {
 		lease.Prefixes, lease.RenewAt, lease.RebindAt = replacement.Prefixes, replacement.RenewAt, replacement.RebindAt
@@ -550,8 +550,8 @@ func (client *DHCPv6PDClient) acquireInNegotiation(ctx context.Context, log *slo
 	if *reacquireAddress {
 		previous = lease
 	}
-	// A held prefix ends the Solicit exchange at its renewal time. After that time, one
-	// transmission runs before the prefix renewal.
+	// The Solicit exchange ends at the renewal time of the held prefix. If that time has
+	// already passed, one transmission runs before the prefix renewal proceeds.
 	var end time.Time
 	solicitCount := 0
 	if len(lease.Prefixes) != 0 {
