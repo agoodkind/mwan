@@ -71,12 +71,16 @@ func (m *Module) OnFamilyReadiness(ctx context.Context, log *slog.Logger) {
 			log.WarnContext(ctx, "bgp_sessions: advertisement change failed",
 				"session", entry.cfg.Config.Name, "err", advertiseErr)
 		}
-		// A session that retains the kernel routes of the previous process
-		// adds its peer through connectLocked in restart.go only after it sets
-		// the advertisement and after the IPv6 path has been evaluated. The
-		// FamilyReadinessObserver interface does not return an error.
-		// connectLocked logs a failed connection, and the next Reconcile pass
-		// reports the failure and retries it.
+		// When the previous process stops with StopRetaining, the kernel retains
+		// its routes. A nonzero connectBy marks a session that starts without its
+		// peer because the previous process left those routes installed.
+		// For that session, connectLocked in restart.go adds the peer only after
+		// SetAdvertisement succeeds and the IPv6 path has a ready or unavailable
+		// verdict.
+		// connectLocked logs a failed connection. The next Reconcile pass calls
+		// connectLocked again and returns its error. The FamilyReadinessObserver
+		// interface does not return an error. OnFamilyReadiness only logs the
+		// failure.
 		if advertiseErr == nil && !entry.connectBy.IsZero() && ipv6PathEvaluated(snapshot, entry.cfg.Key()) {
 			if err := m.connectLocked(ctx, log, entry, "the ipv6 path has a verdict"); err != nil {
 				log.DebugContext(ctx, "bgp_sessions: the next reconcile pass retries the peer connection",
