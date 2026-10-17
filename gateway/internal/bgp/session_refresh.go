@@ -36,7 +36,7 @@ func (s *Session) failInstallLocked(ctx context.Context, prefix netip.Prefix, ne
 	s.unresolved[prefix] = nextHop
 }
 
-// RefreshRoutes reinstalls each accepted route that is absent from the kernel or uses another gateway than the kernel route to the BGP next hop, and retries each path that failed installation.
+// RefreshRoutes reinstalls each accepted route that is absent from the kernel or uses another gateway than the kernel route to the BGP next hop, retries each path that failed installation, and retries each retained route that failed deletion after the retention ended.
 func (s *Session) RefreshRoutes(ctx context.Context) {
 	s.mu.Lock()
 	if !s.started {
@@ -44,6 +44,11 @@ func (s *Session) RefreshRoutes(ctx context.Context) {
 		return
 	}
 	changed := false
+	if !s.retaining && len(s.retained) > 0 {
+		before := len(s.retained)
+		s.dropRetainedLocked(ctx)
+		changed = len(s.retained) != before
+	}
 	for prefix, nextHop := range s.unresolved {
 		event := PathEvent{Peer: s.peerKey, Prefix: prefix, NextHop: nextHop, Withdrawn: false}
 		if err := s.fib.Apply(ctx, event); err != nil {

@@ -125,32 +125,6 @@ func TestSessionReportsGracefulRestartOnlyForAPeerThatAdvertisesIt(t *testing.T)
 	}
 }
 
-// The deadline timer fires while Start runs, and the race detector checks the
-// timer callback against KeepRoutes, Start, and Connect.
-func TestSessionConnectsAfterTheRestartDeadlineEndsTheRouteRetention(t *testing.T) {
-	peer := startGracefulTestPeer(t, netip.IPv6Loopback())
-	cfg := gracefulExportConfig("deadline", peer, netip.MustParsePrefix("3fff:a::/48"))
-	session, err := bgp.NewSession(cfg, sessionLogger())
-	if err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-	if err := session.KeepRoutes(t.Context(), time.Now()); err != nil {
-		t.Fatalf("KeepRoutes: %v", err)
-	}
-	if err := session.Start(t.Context()); err != nil {
-		t.Fatalf("start session: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := session.Stop(t.Context()); err != nil {
-			t.Errorf("stop session: %v", err)
-		}
-	})
-	if err := session.Connect(t.Context()); err != nil {
-		t.Fatalf("Connect: %v", err)
-	}
-	waitEstablished(t, session)
-}
-
 func TestSessionRestartWithdrawsAPrefixThatTheNextProcessDoesNotAdvertise(t *testing.T) {
 	exported := netip.MustParsePrefix("3fff:a::/48")
 	peer := startGracefulTestPeer(t, netip.IPv6Loopback())

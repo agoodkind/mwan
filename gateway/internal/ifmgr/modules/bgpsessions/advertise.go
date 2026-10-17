@@ -48,7 +48,6 @@ func ipv6Ready(snapshot wanstate.Snapshot, connectionID string) bool {
 }
 
 // OnFamilyReadiness sets each running session's advertisement from the published IPv6 readiness of the connections.
-// A session that retains the kernel routes of the previous process adds its peer after the advertisement, once the IPv6 path has a first verdict.
 func (m *Module) OnFamilyReadiness(ctx context.Context, log *slog.Logger) {
 	m.Lock()
 	defer m.Unlock()
@@ -71,6 +70,9 @@ func (m *Module) OnFamilyReadiness(ctx context.Context, log *slog.Logger) {
 			log.WarnContext(ctx, "bgp_sessions: advertisement change failed",
 				"session", entry.cfg.Config.Name, "err", err)
 		}
+		// A session that retains the kernel routes of the previous process
+		// adds its peer through connectLocked in restart.go after it sets the
+		// advertisement and after the IPv6 path has been evaluated.
 		if !entry.connectBy.IsZero() && ipv6PathEvaluated(snapshot, entry.cfg.Key()) {
 			m.connectLocked(ctx, log, entry, "the ipv6 path has a verdict")
 		}

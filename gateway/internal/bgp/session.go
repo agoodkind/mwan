@@ -129,8 +129,8 @@ func (s *Session) Start(ctx context.Context) error {
 	return nil
 }
 
-// startServerLocked adds the peer only when connect is true. A session without
-// the peer runs no connection until Connect.
+// startServerLocked adds the peer only when connect is true. The GoBGP server
+// does not initiate a peer connection until Connect adds the peer.
 func (s *Session) startServerLocked(ctx context.Context, connect bool) error {
 	logLevel := new(slog.LevelVar)
 	logLevel.Set(slog.LevelInfo)

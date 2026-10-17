@@ -76,23 +76,27 @@ func (s *Session) endRetentionLocked(ctx context.Context, reason string) bool {
 	if !s.retaining {
 		return false
 	}
-	withdrawn := len(s.retained)
+	before := len(s.retained)
 	s.dropRetainedLocked(ctx)
-	s.log.InfoContext(ctx, "bgp session deleted the retained routes", "reason", reason, "withdrawn", withdrawn)
+	s.log.InfoContext(ctx, "bgp session deleted the retained routes", "reason", reason,
+		"withdrawn", before-len(s.retained), "failed", len(s.retained))
 	return true
 }
 
-// dropRetainedLocked deletes every retained kernel route. An accepted prefix
-// is not in the retained set.
+// dropRetainedLocked ends the retention and deletes every retained kernel
+// route. A prefix stays in the retained set until its withdrawal succeeds, and
+// RefreshRoutes retries the failed withdrawals. An accepted prefix is not in the
+// retained set.
 func (s *Session) dropRetainedLocked(ctx context.Context) {
 	s.retaining = false
 	s.stopRetainTimerLocked()
 	for prefix := range s.retained {
 		if err := s.fib.WithdrawExact(ctx, s.peerKey, prefix); err != nil {
 			s.log.ErrorContext(ctx, "remove retained bgp session route failed", "prefix", prefix, "error", err)
+			continue
 		}
+		delete(s.retained, prefix)
 	}
-	clear(s.retained)
 }
 
 func (s *Session) stopRetainTimerLocked() {
@@ -103,14 +107,17 @@ func (s *Session) stopRetainTimerLocked() {
 	s.retainTimer = nil
 }
 
+// withdrawRetainedLocked reports whether it deleted the retained kernel route
+// for prefix. A failed withdrawal leaves the prefix in the retained set.
 func (s *Session) withdrawRetainedLocked(ctx context.Context, prefix netip.Prefix) bool {
 	if _, retained := s.retained[prefix]; !retained {
 		return false
 	}
-	delete(s.retained, prefix)
 	if err := s.fib.WithdrawExact(ctx, s.peerKey, prefix); err != nil {
 		s.log.ErrorContext(ctx, "remove retained bgp session route failed", "prefix", prefix, "error", err)
+		return false
 	}
+	delete(s.retained, prefix)
 	return true
 }
 

@@ -84,7 +84,7 @@ func TestSessionRestartRetainsKernelRoutesUntilTheEndOfRIB(t *testing.T) {
 	assertNoKernelRoute(t, withdrawn, sessionLink)
 }
 
-func TestSessionDeletesRetainedKernelRoutesAtTheRestartDeadline(t *testing.T) {
+func TestSessionConnectsAfterTheRestartDeadlineDeletesTheRetainedRoutes(t *testing.T) {
 	const childEnv = "MWAN_BGP_SESSION_DEADLINE_CHILD"
 	if os.Getenv(childEnv) != "1" {
 		if os.Geteuid() != 0 {
@@ -99,31 +99,66 @@ func TestSessionDeletesRetainedKernelRoutesAtTheRestartDeadline(t *testing.T) {
 		return
 	}
 
+	loopback, err := netlink.LinkByName("lo")
+	if err != nil {
+		t.Fatalf("find the loopback link: %v", err)
+	}
+	if err := netlink.LinkSetUp(loopback); err != nil {
+		t.Fatalf("set the loopback link up: %v", err)
+	}
 	sessionLink := addDummyLink(t, "bgpext0", "2001:db8:ffff::1/64")
+	transport := netip.MustParseAddr("2001:db8:ffff::1")
 	nextHop := netip.MustParseAddr("2001:db8:ffff::2")
 	retained := netip.MustParsePrefix("2001:db8:100::/48")
-	previousFIB := bgp.NewFIB(bgp.FIBConfig{
-		Tables: []int{sessionRouteTable}, InternalIface: sessionLink.Attrs().Name, Metric: sessionRouteMetric,
-	}, sessionLogger())
-	applyFIB(t, previousFIB, bgp.PathEvent{Peer: "previous", Prefix: retained, NextHop: nextHop})
 
-	cfg := bgp.SessionConfig{
-		Name: "deadline", RouterID: netip.MustParseAddr(sessionRouterID), LocalASN: sessionASN, RemoteASN: externalPeerASN,
-		PeerAddress: nextHop, PeerPort: 179, Interface: sessionLink.Attrs().Name,
-		KeepaliveSeconds: keepaliveSeconds, HoldSeconds: holdSeconds, GracefulRestartSeconds: sessionRestartSeconds,
-		Tables: []int{sessionRouteTable}, RouteMetric: sessionRouteMetric,
+	peer := startGracefulTestPeer(t, transport)
+	cfg := baseSessionConfig("deadline", externalPeerASN, peer)
+	cfg.LocalAddress = transport
+	cfg.Interface = sessionLink.Attrs().Name
+	cfg.Tables = []int{sessionRouteTable}
+	cfg.RouteMetric = sessionRouteMetric
+	cfg.GracefulRestartSeconds = sessionRestartSeconds
+	cfg.Import = []bgp.ImportRule{{Prefix: netip.MustParsePrefix("2001:db8::/32"), MinLength: 32, MaxLength: 48}}
+
+	first := startSession(t, cfg)
+	waitEstablished(t, first)
+	peer.announce(t, retained, nextHop)
+	eventually(t, "the first session to install the learned route", func() bool {
+		return hasKernelRoute(t, retained, sessionLink)
+	})
+	if err := first.StopRetaining(t.Context()); err != nil {
+		t.Fatalf("StopRetaining: %v", err)
 	}
-	session, err := bgp.NewSession(cfg, sessionLogger())
+	assertKernelRoute(t, retained, sessionLink, nextHop, sessionRouteMetric)
+	peer.withdraw(t, retained)
+
+	restarted, err := bgp.NewSession(cfg, sessionLogger())
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	if err := session.KeepRoutes(t.Context(), time.Now().Add(500*time.Millisecond)); err != nil {
+	if err := restarted.KeepRoutes(t.Context(), time.Now().Add(500*time.Millisecond)); err != nil {
 		t.Fatalf("KeepRoutes: %v", err)
 	}
-	if got := session.State().Retained; !slices.Equal(got, []netip.Prefix{retained}) {
+	if got := restarted.State().Retained; !slices.Equal(got, []netip.Prefix{retained}) {
 		t.Fatalf("retained prefixes = %v, want %s", got, retained)
 	}
 	eventually(t, "the restart deadline to delete the retained route", func() bool {
-		return !hasKernelRoute(t, retained, sessionLink) && len(session.State().Retained) == 0
+		return !hasKernelRoute(t, retained, sessionLink) && len(restarted.State().Retained) == 0
 	})
+	if err := restarted.Start(t.Context()); err != nil {
+		t.Fatalf("start session: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := restarted.Stop(t.Context()); err != nil {
+			t.Errorf("stop session: %v", err)
+		}
+	})
+	if err := restarted.Connect(t.Context()); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	waitEstablished(t, restarted)
+	assertNoKernelRoute(t, retained, sessionLink)
+	if got := restarted.State().Retained; len(got) != 0 {
+		t.Fatalf("retained prefixes after Connect = %v, want none", got)
+	}
 }

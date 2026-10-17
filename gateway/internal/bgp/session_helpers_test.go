@@ -59,7 +59,7 @@ type testPeerOptions struct {
 	neighborASN  uint32
 	neighborPort uint16
 	families     []apipb.Family_Afi
-	// A nonzero restartTime enables graceful restart for the neighbor.
+	// A nonzero restartTime enables graceful restart on the test peer.
 	restartTime uint32
 }
 

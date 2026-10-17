@@ -33,8 +33,8 @@ func setLinkAddress(t *testing.T, handle *netlink.Handle, name, address string) 
 	}
 }
 
-// startSweepPeer creates the session link as a veth pair and starts a GoBGP
-// peer with graceful restart in a second namespace at the far end.
+// startSweepPeer creates a veth pair, assigns one interface to a second network
+// namespace, and starts a GoBGP peer in that namespace.
 func startSweepPeer(t *testing.T) (netlink.Link, *server.BgpServer) {
 	t.Helper()
 	runtime.LockOSThread()

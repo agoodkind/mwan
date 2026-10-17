@@ -108,8 +108,8 @@ func (s *Session) applyBestPathLocked(ctx context.Context, path *apiutil.Path) b
 		}
 		return s.withdrawAcceptedLocked(ctx, prefix)
 	}
-	// GoBGP marks the paths of a peer that restarts as stale, and the
-	// session removes that peer's routes at the session loss.
+	// GoBGP marks the paths of a peer that restarts as stale. The session
+	// removes non-retained peer routes when the session is lost.
 	if path.Stale {
 		return false
 	}

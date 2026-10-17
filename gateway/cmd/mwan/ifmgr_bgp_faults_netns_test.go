@@ -155,7 +155,7 @@ func bgpRuntimeGracefulRestart(t *testing.T, run *bgpRuntimeRun, first *runtimeD
 		return time.Since(stopped) > bgpRuntimeStoppedWindow
 	})
 	second := run.start(t, "bgp-graceful")
-	requireBGPRuntimeRoutesPresent(t, run, second, provider, "before the restarted session accepts the learned prefix again", restartDeadline, func() bool {
+	requireBGPRuntimeRoutesPresent(t, run, second, provider, "after the restarted session accepts the learned prefix again", restartDeadline, func() bool {
 		entry, found := readBGPRuntimeInterface(run.read, provider.device)
 		if !found || len(entry.V6.Ownership.Sessions) != 1 {
 			return false
