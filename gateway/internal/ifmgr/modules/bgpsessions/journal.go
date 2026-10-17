@@ -20,8 +20,8 @@ type routeOwner struct {
 	Metric    int    `json:"metric"`
 }
 
-// retention records a session after StopRetaining stops it. The kernel routes
-// for the owner remain until the peer's restart time expires.
+// retention records the route owner after StopRetaining stops the session. The
+// kernel routes for the owner remain until the peer's restart time expires.
 type retention struct {
 	routeOwner
 
