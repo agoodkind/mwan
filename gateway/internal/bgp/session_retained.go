@@ -3,7 +3,6 @@ package bgp
 import (
 	"context"
 	"net/netip"
-	"time"
 
 	apipb "github.com/osrg/gobgp/v4/api"
 	"github.com/osrg/gobgp/v4/pkg/apiutil"
@@ -38,12 +37,13 @@ func (s *Session) handleEndOfRIB(ctx context.Context, path *apiutil.Path) {
 	s.deliverChanges()
 }
 
-// endRetention ignores a timer that a stop or an earlier end replaced. A
+// endRetention ignores the timer of an earlier KeepRoutes call and a timer
+// that fires after a stop or an End-of-RIB marker ended the kept routes. A
 // session without a started server removes the kept routes without a table to
 // read.
-func (s *Session) endRetention(ctx context.Context, timer *time.Timer) {
+func (s *Session) endRetention(ctx context.Context, generation uint64) {
 	s.mu.Lock()
-	if s.retainTimer != timer {
+	if !s.retaining || s.retainGeneration != generation {
 		s.mu.Unlock()
 		return
 	}

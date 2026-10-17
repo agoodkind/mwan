@@ -43,10 +43,12 @@ func (s *Session) handlePeerEvent(
 	s.established = established
 	if established && !wasEstablished {
 		s.upSince = timestamp
-		s.log.InfoContext(ctx, "bgp session established", "peer", s.peerKey)
+		s.gracefulRestart = s.cfg.GracefulRestartSeconds > 0 && ipv6GracefulRestart(event.Peer.State.RemoteCap)
+		s.log.InfoContext(ctx, "bgp session established", "peer", s.peerKey, "graceful_restart", s.gracefulRestart)
 	}
 	if !established && wasEstablished {
 		s.upSince = time.Time{}
+		s.gracefulRestart = false
 		clear(s.accepted)
 		clear(s.unresolved)
 		s.dropRetainedLocked(ctx)

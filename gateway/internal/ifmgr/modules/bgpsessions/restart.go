@@ -26,19 +26,26 @@ func (m *Module) retentionDeadline(cfg Session, now time.Time) (time.Time, bool)
 
 // persistShutdownRetention writes a deadline for each graceful restart session
 // that keeps its routes and returns the owners of those sessions. An
-// established session gets a deadline one restart time from now. A session
-// that has not established since a start with kept routes keeps the earlier
-// deadline, because the peer started its restart timer at the earlier stop.
-// After a journal write failure every session removes its routes, because the
-// next process cannot read the deadline.
+// established session gets a deadline one restart time from now only when the
+// peer negotiated graceful restart for IPv6 unicast. Any other peer removes the
+// session routes at the stop, and the session then stops with route removal.
+// A session that has not established since a start with kept routes keeps the
+// earlier deadline, because the peer started its restart timer at the earlier
+// stop. After a journal write failure every session removes its routes,
+// because the next process cannot read the deadline.
 func (m *Module) persistShutdownRetention(ctx context.Context, log *slog.Logger, now time.Time) []routeOwner {
 	var records []retention
+	var unnegotiated []string
 	for _, entry := range m.sessions {
 		if entry.cfg.Config.GracefulRestartSeconds == 0 {
 			continue
 		}
 		owner := sessionOwner(entry.cfg)
 		if entry.running && entry.session.State().Established {
+			if !entry.session.GracefulRestartNegotiated() {
+				unnegotiated = append(unnegotiated, entry.cfg.Config.Name)
+				continue
+			}
 			restart := time.Duration(entry.cfg.Config.GracefulRestartSeconds) * time.Second
 			records = append(records, retention{routeOwner: owner, Deadline: now.Add(restart)})
 			continue
@@ -46,6 +53,10 @@ func (m *Module) persistShutdownRetention(ctx context.Context, log *slog.Logger,
 		if deadline, kept := m.retentionDeadline(entry.cfg, now); kept {
 			records = append(records, retention{routeOwner: owner, Deadline: deadline})
 		}
+	}
+	if len(unnegotiated) > 0 {
+		log.InfoContext(ctx, "bgp_sessions: the peers did not negotiate graceful restart; the sessions remove their routes",
+			"sessions", unnegotiated)
 	}
 	if len(records) == 0 && len(m.retaining) == 0 {
 		return nil

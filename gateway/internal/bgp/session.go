@@ -43,15 +43,20 @@ type Session struct {
 	unresolved  map[netip.Prefix]netip.Addr
 	advertised  map[netip.Prefix]struct{}
 	rejected    []Rejection
-	// retaining is true from StartRetaining until the IPv6 End-of-RIB marker
-	// or the restart deadline, and retained lists the kernel routes of the
-	// previous process that the peer has not sent again.
-	retaining   bool
-	retained    map[netip.Prefix]struct{}
-	retainTimer *time.Timer
-	listeners   []func(SessionState)
-	pending     []SessionState
-	delivering  bool
+	// gracefulRestart is true while the established peer advertises the RFC
+	// 4724 capability for IPv6 unicast.
+	gracefulRestart bool
+	// retaining is true from KeepRoutes until the IPv6 End-of-RIB marker or
+	// the restart deadline, and retained lists the kernel routes of the
+	// previous process that the peer has not sent again. retainGeneration
+	// identifies the deadline timer of the current KeepRoutes call.
+	retaining        bool
+	retained         map[netip.Prefix]struct{}
+	retainTimer      *time.Timer
+	retainGeneration uint64
+	listeners        []func(SessionState)
+	pending          []SessionState
+	delivering       bool
 }
 
 // NewSession validates cfg and creates a stopped session.
@@ -72,29 +77,31 @@ func NewSession(cfg SessionConfig, log *slog.Logger) (*Session, error) {
 		ResolveNextHop: true,
 	}
 	return &Session{
-		cfg:         validated,
-		log:         log,
-		fib:         NewFIB(fibConfig, log),
-		peerKey:     validated.PeerAddress.String(),
-		clock:       clock.Real{},
-		mu:          sync.Mutex{},
-		server:      nil,
-		cancelWatch: nil,
-		started:     false,
-		connected:   false,
-		fsmState:    bgppkt.BGP_FSM_IDLE,
-		established: false,
-		upSince:     time.Time{},
-		accepted:    make(map[netip.Prefix]netip.Addr),
-		unresolved:  make(map[netip.Prefix]netip.Addr),
-		advertised:  make(map[netip.Prefix]struct{}),
-		rejected:    nil,
-		retaining:   false,
-		retained:    make(map[netip.Prefix]struct{}),
-		retainTimer: nil,
-		listeners:   nil,
-		pending:     nil,
-		delivering:  false,
+		cfg:              validated,
+		log:              log,
+		fib:              NewFIB(fibConfig, log),
+		peerKey:          validated.PeerAddress.String(),
+		clock:            clock.Real{},
+		mu:               sync.Mutex{},
+		server:           nil,
+		cancelWatch:      nil,
+		started:          false,
+		connected:        false,
+		fsmState:         bgppkt.BGP_FSM_IDLE,
+		established:      false,
+		upSince:          time.Time{},
+		accepted:         make(map[netip.Prefix]netip.Addr),
+		unresolved:       make(map[netip.Prefix]netip.Addr),
+		advertised:       make(map[netip.Prefix]struct{}),
+		rejected:         nil,
+		gracefulRestart:  false,
+		retaining:        false,
+		retained:         make(map[netip.Prefix]struct{}),
+		retainTimer:      nil,
+		retainGeneration: 0,
+		listeners:        nil,
+		pending:          nil,
+		delivering:       false,
 	}, nil
 }
 
@@ -272,6 +279,7 @@ func (s *Session) Stop(ctx context.Context) error {
 	s.cancelWatch = nil
 	s.fsmState = bgppkt.BGP_FSM_IDLE
 	s.established = false
+	s.gracefulRestart = false
 	s.upSince = time.Time{}
 	clear(s.accepted)
 	clear(s.unresolved)

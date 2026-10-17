@@ -34,13 +34,13 @@ func (s *Session) KeepRoutes(ctx context.Context, deadline time.Time) error {
 	for _, prefix := range installed {
 		s.retained[prefix] = struct{}{}
 	}
-	// The callback locks the mutex, and it reads timer only after this
-	// function releases the mutex.
-	var timer *time.Timer
-	timer = time.AfterFunc(deadline.Sub(s.clock.Now()), func() {
-		s.endRetention(timerContext, timer)
+	// The callback receives the generation by value and compares it with the
+	// generation field only after it locks the mutex.
+	s.retainGeneration++
+	generation := s.retainGeneration
+	s.retainTimer = time.AfterFunc(deadline.Sub(s.clock.Now()), func() {
+		s.endRetention(timerContext, generation)
 	})
-	s.retainTimer = timer
 	s.enqueueChangeLocked()
 	s.mu.Unlock()
 
@@ -48,6 +48,30 @@ func (s *Session) KeepRoutes(ctx context.Context, deadline time.Time) error {
 	s.log.InfoContext(ctx, "bgp session keeps the routes of the previous process",
 		"peer", s.peerKey, "retained", installed, "deadline", deadline)
 	return nil
+}
+
+// GracefulRestartNegotiated reports whether the established peer advertised
+// the RFC 4724 capability for IPv6 unicast to a session with a restart time. A
+// peer without that capability removes the session routes at StopRetaining.
+func (s *Session) GracefulRestartNegotiated() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.established && s.gracefulRestart
+}
+
+func ipv6GracefulRestart(capabilities []bgppkt.ParameterCapabilityInterface) bool {
+	for _, capability := range capabilities {
+		gracefulRestart, ok := capability.(*bgppkt.CapGracefulRestart)
+		if !ok {
+			continue
+		}
+		for _, tuple := range gracefulRestart.Tuples {
+			if tuple.AFI == bgppkt.AFI_IP6 && tuple.SAFI == bgppkt.SAFI_UNICAST {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Connect adds the peer to a session that Start started after KeepRoutes, and
@@ -96,6 +120,7 @@ func (s *Session) StopRetaining(ctx context.Context) error {
 	s.cancelWatch = nil
 	s.fsmState = bgppkt.BGP_FSM_IDLE
 	s.established = false
+	s.gracefulRestart = false
 	s.upSince = time.Time{}
 	clear(s.accepted)
 	clear(s.unresolved)

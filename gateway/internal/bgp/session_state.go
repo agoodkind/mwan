@@ -21,8 +21,7 @@ type Rejection struct {
 // GoBGP finite state machine state name. UpSince is the zero time while the
 // session is not established. Accepted, Advertised, and Retained are sorted.
 // Retained lists the kernel routes of the previous process that the session
-// keeps after StartRetaining until the peer sends them again or the restart
-// ends. Rejected lists the most recent rejection last.
+// keeps after KeepRoutes until the peer sends them again or the restart ends. Rejected lists the most recent rejection last.
 type SessionState struct {
 	Name        string
 	FSMState    string

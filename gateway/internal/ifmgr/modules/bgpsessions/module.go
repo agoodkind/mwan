@@ -49,8 +49,8 @@ type ConfiguredRoute struct {
 // ModuleConfigName returns the registry key that the daemon uses to select this config.
 func (Config) ModuleConfigName() string { return moduleName }
 
-// A nonzero connectBy marks a session that StartRetaining started without the
-// peer, and Reconcile adds the peer at that time.
+// A nonzero connectBy marks a session that keeps routes after KeepRoutes and
+// starts without the peer, and Reconcile adds the peer at that time.
 type managedSession struct {
 	cfg       Session
 	session   *bgp.Session

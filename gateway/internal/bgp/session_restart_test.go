@@ -107,6 +107,46 @@ func TestSessionRestartRefreshesTheAdvertisedPrefixAtThePeer(t *testing.T) {
 	})
 }
 
+func TestSessionReportsGracefulRestartOnlyForAPeerThatAdvertisesIt(t *testing.T) {
+	for _, peerRestart := range []uint32{0, sessionRestartSeconds} {
+		peer := startTestPeerWithOptions(t, testPeerOptions{
+			asn: externalPeerASN, routerID: "192.0.2.2", listen: netip.IPv6Loopback(), neighbor: netip.IPv6Loopback(),
+			neighborASN: sessionASN, neighborPort: 0, families: []apipb.Family_Afi{apipb.Family_AFI_IP6},
+			restartTime: peerRestart,
+		})
+		cfg := baseSessionConfig("negotiated", externalPeerASN, peer)
+		cfg.GracefulRestartSeconds = sessionRestartSeconds
+		session := startSession(t, cfg)
+		waitEstablished(t, session)
+		if got, want := session.GracefulRestartNegotiated(), peerRestart > 0; got != want {
+			t.Errorf("peer restart time %d: GracefulRestartNegotiated = %t, want %t", peerRestart, got, want)
+		}
+	}
+}
+
+// The deadline timer fires while Start runs, and the race detector checks the
+// timer callback against KeepRoutes and Start.
+func TestSessionConnectsWhenTheRestartDeadlineEndsTheKeptRoutes(t *testing.T) {
+	peer := startGracefulTestPeer(t, netip.IPv6Loopback())
+	cfg := gracefulExportConfig("deadline", peer, netip.MustParsePrefix("3fff:a::/48"))
+	session, err := bgp.NewSession(cfg, sessionLogger())
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := session.KeepRoutes(t.Context(), time.Now()); err != nil {
+		t.Fatalf("KeepRoutes: %v", err)
+	}
+	if err := session.Start(t.Context()); err != nil {
+		t.Fatalf("start session: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := session.Stop(t.Context()); err != nil {
+			t.Errorf("stop session: %v", err)
+		}
+	})
+	waitEstablished(t, session)
+}
+
 func TestSessionRestartWithdrawsAPrefixThatTheNextProcessDoesNotAdvertise(t *testing.T) {
 	exported := netip.MustParsePrefix("3fff:a::/48")
 	peer := startGracefulTestPeer(t, netip.IPv6Loopback())
