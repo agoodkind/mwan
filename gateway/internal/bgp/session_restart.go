@@ -13,9 +13,9 @@ import (
 // StopRetaining before it exited. KeepRoutes records the kernel routes that
 // the previous process installed on the session interface and metric, and the
 // session does not delete them. The next Start runs the server without the
-// peer, and Connect adds the peer. After the IPv6 End-of-RIB marker of the
-// peer or at deadline, the session deletes each recorded route that the peer
-// did not send again.
+// peer, and Connect adds the peer. After the peer sends its IPv6 End-of-RIB
+// marker or the deadline expires, the session deletes each recorded route that
+// the peer did not send again.
 func (s *Session) KeepRoutes(ctx context.Context, deadline time.Time) error {
 	if s.cfg.GracefulRestartSeconds == 0 {
 		return fmt.Errorf("bgp session %q has no graceful restart time", s.cfg.Name)

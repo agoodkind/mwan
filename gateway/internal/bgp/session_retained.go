@@ -31,7 +31,7 @@ func (s *Session) handleEndOfRIB(ctx context.Context, path *apiutil.Path) {
 		// Without the current best paths, the session cannot tell which
 		// retained prefixes the peer sent again. The retention stays active
 		// until the next End-of-RIB marker or the restart deadline.
-		s.log.WarnContext(ctx, "bgp session retains its routes after a failed best path listing",
+		s.log.WarnContext(ctx, "bgp session preserves retained kernel routes after a failed best path listing",
 			"retained", len(s.retained), "error", err)
 	} else if s.endRetentionLocked(ctx, retentionEndOfRIB) {
 		changed = true
