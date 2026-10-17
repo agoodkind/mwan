@@ -19,7 +19,8 @@ func (m *Module) listener(cfg Session) func(bgp.SessionState) {
 	var previous bgp.SessionState
 	return func(state bgp.SessionState) {
 		m.publish(cfg.Key())
-		changed := state.Established != previous.Established || !slices.Equal(state.Accepted, previous.Accepted)
+		changed := state.Established != previous.Established || !slices.Equal(state.Accepted, previous.Accepted) ||
+			!slices.Equal(state.Retained, previous.Retained)
 		previous = state
 		if changed && m.Env.RequestReconcile != nil {
 			m.Env.RequestReconcile("bgp session " + cfg.Config.Name + " changed")
@@ -47,6 +48,7 @@ func ipv6Ready(snapshot wanstate.Snapshot, connectionID string) bool {
 }
 
 // OnFamilyReadiness sets each running session's advertisement from the published IPv6 readiness of the connections.
+// A session that kept the routes of the previous process adds its peer after the advertisement, once the IPv6 path has a first verdict.
 func (m *Module) OnFamilyReadiness(ctx context.Context, log *slog.Logger) {
 	m.Lock()
 	defer m.Unlock()
@@ -68,6 +70,9 @@ func (m *Module) OnFamilyReadiness(ctx context.Context, log *slog.Logger) {
 		if err := entry.session.SetAdvertisement(eligible, backupActive); err != nil {
 			log.WarnContext(ctx, "bgp_sessions: advertisement change failed",
 				"session", entry.cfg.Config.Name, "err", err)
+		}
+		if !entry.connectBy.IsZero() && ipv6PathEvaluated(snapshot, entry.cfg.Key()) {
+			m.connectLocked(ctx, log, entry, "the ipv6 path has a verdict")
 		}
 		m.publish(entry.cfg.Key())
 	}
