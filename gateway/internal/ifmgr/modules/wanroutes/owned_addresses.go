@@ -21,10 +21,10 @@ func (m *Module) excludeUnreadyOwnedFamilies(current gateways) {
 			continue
 		}
 		gateway := current[wan.Key()]
-		if m.Env == nil || m.Env.OwnedAddresses == nil || !m.Env.OwnedAddresses.FamilyReady(wan.Key(), "ipv4") {
+		if m.Env == nil || m.Env.OwnedAddresses == nil || !m.Env.OwnedAddresses.FamilyRoutable(wan.Key(), "ipv4") {
 			gateway.V4 = ""
 		}
-		if m.Env == nil || m.Env.OwnedAddresses == nil || !m.Env.OwnedAddresses.FamilyReady(wan.Key(), "ipv6") {
+		if m.Env == nil || m.Env.OwnedAddresses == nil || !m.Env.OwnedAddresses.FamilyRoutable(wan.Key(), "ipv6") {
 			gateway = gateway.withoutV6()
 		}
 		current[wan.Key()] = gateway
