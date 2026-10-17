@@ -139,35 +139,39 @@ the NIC's internal switch.
 | 313 | WAN | 1-2 | `0000:1a:01.0` | 2 (`wan`) |
 | 314 | LAN | 13-14 | `0000:1a:01.1` | 0 (`lan`) |
 
-### Throughput and CPU use
+### Endpoint throughput and CPU use
 
-Receiver throughput and duration exclude warmup, while driver counter
-deltas cover the complete run. CPU percentages use the entire host’s logical
-CPU capacity as their denominator, including the container columns.
+The endpoint tests generate and receive traffic in the containers. They do
+not measure routed forwarding. Receiver throughput excludes warmup, while driver counter deltas
+cover the complete run. Every CPU column uses total host capacity as its
+denominator.
 
-| Test | Duration | 313 to 314 | 314 to 313 |
-| --- | ---: | ---: | ---: |
-| Single TCP stream | 30 s | 47.87 | 0.00 |
-| Parallel TCP | 60 s | 66.13 | 0.00 |
-| Reverse parallel TCP | 60 s | 0.00 | 69.74 |
-| Bidirectional TCP | 60 s | 31.31 | 30.42 |
-| Bidirectional, disabled | 30 s | 7.77 | 9.07 |
-| Bidirectional, re-enabled | 60 s | 32.79 | 31.53 |
-| UDP stress | 30 s | 9.54 | 0.00 |
-| Bidirectional, initial settings | 30 s | 32.59 | 27.91 |
+#### TCP direction and stream count
 
-| Test | 313 CPU % | 314 CPU % | Host CPU % |
-| --- | ---: | ---: | ---: |
-| Single TCP stream | 10.60% | 5.88% | 20.29% |
-| Parallel TCP | 12.48% | 11.27% | 27.40% |
-| Reverse parallel TCP | 12.38% | 12.24% | 28.93% |
-| Bidirectional TCP | 12.18% | 12.49% | 27.84% |
-| Bidirectional, disabled | 9.39% | 9.45% | 35.91% |
-| Bidirectional, re-enabled | 12.40% | 12.48% | 28.21% |
-| UDP stress | 12.49% | 6.37% | 23.50% |
-| Bidirectional, initial settings | 12.21% | 12.49% | 28.33% |
+| Workload | Duration | Forward, Gbit/s | Reverse, Gbit/s | WAN container CPU | LAN container CPU | Host CPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Single TCP stream | 30 s | 47.87 | 0.00 | 10.60% | 5.88% | 20.29% |
+| Parallel TCP | 60 s | 66.13 | 0.00 | 12.48% | 11.27% | 27.40% |
+| Reverse parallel TCP | 60 s | 0.00 | 69.74 | 12.38% | 12.24% | 28.93% |
 
-Throughput columns use Gbit/s.
+#### Bidirectional TCP and offloads
+
+The re-enabled run also enabled `tx-tcp-mangleid-segmentation`. The initial
+settings repeat restored that flag to its original value. The comparison
+changes several offloads together and does not isolate a single feature.
+
+| VF configuration | Duration | Forward, Gbit/s | Reverse, Gbit/s | Combined, Gbit/s | WAN container CPU | LAN container CPU | Host CPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Initial settings | 60 s | 31.31 | 30.42 | 61.73 | 12.18% | 12.49% | 27.84% |
+| Segmentation and aggregation disabled | 30 s | 7.77 | 9.07 | 16.84 | 9.39% | 9.45% | 35.91% |
+| Segmentation and aggregation re-enabled | 60 s | 32.79 | 31.53 | 64.33 | 12.40% | 12.48% | 28.21% |
+| Initial settings repeat | 30 s | 32.59 | 27.91 | 60.50 | 12.21% | 12.49% | 28.33% |
+
+#### UDP stress
+
+| Workload | Duration | Received, Gbit/s | WAN container CPU | LAN container CPU | Host CPU |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Parallel UDP | 30 s | 9.54 | 12.49% | 6.37% | 23.50% |
 
 ### Offloads
 
