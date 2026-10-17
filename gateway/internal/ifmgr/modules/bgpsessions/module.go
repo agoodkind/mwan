@@ -49,8 +49,9 @@ type ConfiguredRoute struct {
 // ModuleConfigName returns the registry key that the daemon uses to select this config.
 func (Config) ModuleConfigName() string { return moduleName }
 
-// A nonzero connectBy marks a session that keeps routes after KeepRoutes and
-// starts without the peer, and Reconcile adds the peer at that time.
+// A nonzero connectBy marks a session that retains the kernel routes of the
+// previous process after KeepRoutes and starts without the peer. Reconcile
+// adds the peer at that time.
 type managedSession struct {
 	cfg       Session
 	session   *bgp.Session
@@ -108,7 +109,7 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	}
 	now := m.clock.Now()
 	for _, entry := range m.sessions {
-		m.keepRoutes(ctx, log, entry, now)
+		m.retainRoutes(ctx, log, entry, now)
 		m.publish(entry.cfg.Key())
 	}
 	done := make(chan struct{})
@@ -133,9 +134,9 @@ func (m *Module) stopOnShutdown(ctx context.Context, log *slog.Logger) {
 	m.Lock()
 	defer m.Unlock()
 	m.stopped = true
-	kept := m.persistShutdownRetention(stopContext, log, m.clock.Now())
+	retainedOwners := m.persistShutdownRetention(stopContext, log, m.clock.Now())
 	for _, entry := range m.sessions {
-		if entry.running && slices.Contains(kept, sessionOwner(entry.cfg)) {
+		if entry.running && slices.Contains(retainedOwners, sessionOwner(entry.cfg)) {
 			m.stopRetainingLocked(stopContext, log, entry)
 			continue
 		}

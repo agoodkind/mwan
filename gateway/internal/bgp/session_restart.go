@@ -10,25 +10,26 @@ import (
 )
 
 // KeepRoutes prepares a stopped session after the previous process called
-// StopRetaining before it exited. The session keeps the kernel routes of the previous process on the
-// session interface and metric. The next Start runs the server without the
-// peer, and Connect adds the peer. The session removes each kept route that
-// the peer did not send again after the IPv6 End-of-RIB marker of the peer or
-// at deadline.
+// StopRetaining before it exited. KeepRoutes records the kernel routes that
+// the previous process installed on the session interface and metric, and the
+// session does not delete them. The next Start runs the server without the
+// peer, and Connect adds the peer. After the IPv6 End-of-RIB marker of the
+// peer or at deadline, the session deletes each recorded route that the peer
+// did not send again.
 func (s *Session) KeepRoutes(ctx context.Context, deadline time.Time) error {
 	if s.cfg.GracefulRestartSeconds == 0 {
 		return fmt.Errorf("bgp session %q has no graceful restart time", s.cfg.Name)
 	}
 	installed, err := s.fib.Installed(ctx)
 	if err != nil {
-		s.log.ErrorContext(ctx, "read the kept bgp session routes failed", "error", err)
-		return fmt.Errorf("read bgp session %q kept routes: %w", s.cfg.Name, err)
+		s.log.ErrorContext(ctx, "read the retained bgp session routes failed", "error", err)
+		return fmt.Errorf("read bgp session %q retained routes: %w", s.cfg.Name, err)
 	}
 	timerContext := context.WithoutCancel(ctx)
 	s.mu.Lock()
 	if s.started || s.retaining {
 		s.mu.Unlock()
-		return fmt.Errorf("bgp session %q already started or keeps routes", s.cfg.Name)
+		return fmt.Errorf("bgp session %q already started or already retains routes", s.cfg.Name)
 	}
 	s.retaining = true
 	for _, prefix := range installed {
@@ -45,7 +46,7 @@ func (s *Session) KeepRoutes(ctx context.Context, deadline time.Time) error {
 	s.mu.Unlock()
 
 	s.deliverChanges()
-	s.log.InfoContext(ctx, "bgp session keeps the routes of the previous process",
+	s.log.InfoContext(ctx, "bgp session retains the kernel routes of the previous process",
 		"peer", s.peerKey, "retained", installed, "deadline", deadline)
 	return nil
 }
@@ -89,14 +90,16 @@ func (s *Session) Connect(ctx context.Context) error {
 		return err
 	}
 	s.connected = true
-	s.log.InfoContext(ctx, "bgp session connecting after a start with kept routes",
+	s.log.InfoContext(ctx, "bgp session connecting after a start with retained routes",
 		"peer", s.peerKey, "advertised", len(s.advertised), "retaining", s.retaining)
 	return nil
 }
 
-// StopRetaining ends the session without a NOTIFICATION message and keeps the
-// installed kernel routes. A peer that negotiated graceful restart keeps the
-// routes of the session for the restart time. Use Stop for a transport change.
+// StopRetaining ends the session without a NOTIFICATION message and does not
+// delete the installed kernel routes. A peer that negotiated graceful restart
+// marks the session paths stale and withdraws them only after the restart time
+// or after the End-of-RIB marker of the next session. Use Stop for a transport
+// change.
 func (s *Session) StopRetaining(ctx context.Context) error {
 	ctx = context.WithoutCancel(ctx)
 	if s.cfg.GracefulRestartSeconds == 0 {
@@ -133,9 +136,9 @@ func (s *Session) StopRetaining(ctx context.Context) error {
 
 	s.deliverChanges()
 	if stopErr != nil {
-		s.log.ErrorContext(ctx, "stop bgp session with kept routes failed", "error", stopErr)
-		return fmt.Errorf("stop bgp session %q with kept routes: %w", s.cfg.Name, stopErr)
+		s.log.ErrorContext(ctx, "stop bgp session with retained routes failed", "error", stopErr)
+		return fmt.Errorf("stop bgp session %q with retained routes: %w", s.cfg.Name, stopErr)
 	}
-	s.log.InfoContext(ctx, "bgp session stopped with kept routes")
+	s.log.InfoContext(ctx, "bgp session stopped with retained routes")
 	return nil
 }

@@ -28,9 +28,11 @@ const (
 	bgpRuntimeRouterMetric = 200
 )
 
-// A nonzero restartTime enables graceful restart for the neighbor. The router
-// then keeps its kernel routes after the session ends, and GoBGP removes the
-// stale paths after the restart time or the End-of-RIB marker.
+// A nonzero restartTime enables graceful restart for the neighbor. After the
+// session ends, the router GoBGP server marks the gateway paths stale instead
+// of withdrawing them, and the router does not delete its kernel routes. The
+// GoBGP server withdraws the stale paths after the restart time or after the
+// gateway End-of-RIB marker.
 type bgpRuntimeRouter struct {
 	server      *server.BgpServer
 	handle      *netlink.Handle

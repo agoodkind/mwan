@@ -17,7 +17,7 @@ import (
 	"goodkind.io/mwan/internal/bgp"
 )
 
-func TestSessionRestartKeepsKernelRoutesUntilTheEndOfRIB(t *testing.T) {
+func TestSessionRestartRetainsKernelRoutesUntilTheEndOfRIB(t *testing.T) {
 	const childEnv = "MWAN_BGP_SESSION_RESTART_CHILD"
 	if os.Getenv(childEnv) != "1" {
 		if os.Geteuid() != 0 {
@@ -76,7 +76,7 @@ func TestSessionRestartKeepsKernelRoutesUntilTheEndOfRIB(t *testing.T) {
 	if err := restarted.Connect(t.Context()); err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
-	eventually(t, "the End-of-RIB marker to end the kept routes", func() bool {
+	eventually(t, "the End-of-RIB marker to end the route retention", func() bool {
 		state := restarted.State()
 		return len(state.Retained) == 0 && slices.Equal(state.Accepted, []netip.Prefix{resent})
 	})
@@ -84,7 +84,7 @@ func TestSessionRestartKeepsKernelRoutesUntilTheEndOfRIB(t *testing.T) {
 	assertNoKernelRoute(t, withdrawn, sessionLink)
 }
 
-func TestSessionRemovesKeptKernelRoutesAtTheRestartDeadline(t *testing.T) {
+func TestSessionDeletesRetainedKernelRoutesAtTheRestartDeadline(t *testing.T) {
 	const childEnv = "MWAN_BGP_SESSION_DEADLINE_CHILD"
 	if os.Getenv(childEnv) != "1" {
 		if os.Geteuid() != 0 {
@@ -101,11 +101,11 @@ func TestSessionRemovesKeptKernelRoutesAtTheRestartDeadline(t *testing.T) {
 
 	sessionLink := addDummyLink(t, "bgpext0", "2001:db8:ffff::1/64")
 	nextHop := netip.MustParseAddr("2001:db8:ffff::2")
-	kept := netip.MustParsePrefix("2001:db8:100::/48")
+	retained := netip.MustParsePrefix("2001:db8:100::/48")
 	previousFIB := bgp.NewFIB(bgp.FIBConfig{
 		Tables: []int{sessionRouteTable}, InternalIface: sessionLink.Attrs().Name, Metric: sessionRouteMetric,
 	}, sessionLogger())
-	applyFIB(t, previousFIB, bgp.PathEvent{Peer: "previous", Prefix: kept, NextHop: nextHop})
+	applyFIB(t, previousFIB, bgp.PathEvent{Peer: "previous", Prefix: retained, NextHop: nextHop})
 
 	cfg := bgp.SessionConfig{
 		Name: "deadline", RouterID: netip.MustParseAddr(sessionRouterID), LocalASN: sessionASN, RemoteASN: externalPeerASN,
@@ -120,10 +120,10 @@ func TestSessionRemovesKeptKernelRoutesAtTheRestartDeadline(t *testing.T) {
 	if err := session.KeepRoutes(t.Context(), time.Now().Add(500*time.Millisecond)); err != nil {
 		t.Fatalf("KeepRoutes: %v", err)
 	}
-	if got := session.State().Retained; !slices.Equal(got, []netip.Prefix{kept}) {
-		t.Fatalf("retained prefixes = %v, want %s", got, kept)
+	if got := session.State().Retained; !slices.Equal(got, []netip.Prefix{retained}) {
+		t.Fatalf("retained prefixes = %v, want %s", got, retained)
 	}
-	eventually(t, "the restart deadline to remove the kept route", func() bool {
-		return !hasKernelRoute(t, kept, sessionLink) && len(session.State().Retained) == 0
+	eventually(t, "the restart deadline to delete the retained route", func() bool {
+		return !hasKernelRoute(t, retained, sessionLink) && len(session.State().Retained) == 0
 	})
 }

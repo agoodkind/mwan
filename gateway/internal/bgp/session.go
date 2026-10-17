@@ -105,9 +105,9 @@ func NewSession(cfg SessionConfig, log *slog.Logger) (*Session, error) {
 	}, nil
 }
 
-// Start creates the GoBGP server, adds the peer, and begins connecting. A
-// session that keeps routes after KeepRoutes adds the peer only at Connect. The
-// context bounds only the Start call. The context supplies logging values. The
+// Start creates the GoBGP server, adds the peer, and begins connecting. After
+// KeepRoutes, Start initializes the server without adding the peer, and
+// Connect adds the peer later. The context bounds only the Start call. The context supplies logging values. The
 // session runs until Stop even after the context ends.
 func (s *Session) Start(ctx context.Context) error {
 	s.mu.Lock()
@@ -238,9 +238,11 @@ func (s *Session) peer() *apipb.Peer {
 		}
 	}
 	if s.cfg.GracefulRestartSeconds > 0 {
-		// LocalRestarting sets the Restart State bit, and GoBGP then sends the
-		// session's paths only after the peer's End-of-RIB marker or the
-		// deferral time.
+		// LocalRestarting sets the Restart State bit in the OPEN message. GoBGP
+		// then withholds the session paths until the peer End-of-RIB marker
+		// arrives. When the session establishes without that marker, GoBGP
+		// v4.7.0 starts a DeferralTime timer. At its expiry, softResetOut
+		// clears LocalRestarting and sends the session paths to the peer.
 		peer.GracefulRestart = &apipb.GracefulRestart{
 			Enabled:         true,
 			RestartTime:     s.cfg.GracefulRestartSeconds,

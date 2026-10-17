@@ -48,7 +48,7 @@ func ipv6Ready(snapshot wanstate.Snapshot, connectionID string) bool {
 }
 
 // OnFamilyReadiness sets each running session's advertisement from the published IPv6 readiness of the connections.
-// A session that kept the routes of the previous process adds its peer after the advertisement, once the IPv6 path has a first verdict.
+// A session that retains the kernel routes of the previous process adds its peer after the advertisement, once the IPv6 path has a first verdict.
 func (m *Module) OnFamilyReadiness(ctx context.Context, log *slog.Logger) {
 	m.Lock()
 	defer m.Unlock()

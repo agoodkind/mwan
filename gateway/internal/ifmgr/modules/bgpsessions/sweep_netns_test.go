@@ -134,13 +134,13 @@ func TestSweepKeepsRoutesUntilTheRestartDeadline(t *testing.T) {
 	writeJournal(time.Now().Add(time.Minute))
 	reconcileModule(t, cfg)
 	if !sweepRoutePresent(t, link, sweepStale) {
-		t.Fatalf("the sweep deleted the kept route %s before the restart deadline", sweepStale)
+		t.Fatalf("the sweep deleted the retained route %s before the restart deadline", sweepStale)
 	}
 
 	writeJournal(time.Now().Add(-time.Second))
 	reconcileModule(t, cfg)
 	if sweepRoutePresent(t, link, sweepStale) {
-		t.Fatalf("the sweep kept the route %s after the restart deadline", sweepStale)
+		t.Fatalf("the sweep did not delete the route %s after the restart deadline", sweepStale)
 	}
 }
 

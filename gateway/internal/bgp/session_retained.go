@@ -38,9 +38,9 @@ func (s *Session) handleEndOfRIB(ctx context.Context, path *apiutil.Path) {
 }
 
 // endRetention ignores the timer of an earlier KeepRoutes call and a timer
-// that fires after a stop or an End-of-RIB marker ended the kept routes. A
-// session without a started server removes the kept routes without a table to
-// read.
+// that fires after a stop or an End-of-RIB marker ended the route retention.
+// A session without a started server deletes the retained routes without a
+// table to read.
 func (s *Session) endRetention(ctx context.Context, generation uint64) {
 	s.mu.Lock()
 	if !s.retaining || s.retainGeneration != generation {
@@ -58,14 +58,14 @@ func (s *Session) endRetention(ctx context.Context, generation uint64) {
 }
 
 // endRetentionLocked adds the peer to a started session that still runs
-// without it, because the kept routes no longer delay the connection.
+// without it, because the retained routes no longer delay the connection.
 func (s *Session) endRetentionLocked(ctx context.Context, reason string) bool {
 	if !s.retaining {
 		return false
 	}
 	withdrawn := len(s.retained)
 	s.dropRetainedLocked(ctx)
-	s.log.InfoContext(ctx, "bgp session ended the kept routes", "reason", reason, "withdrawn", withdrawn)
+	s.log.InfoContext(ctx, "bgp session deleted the retained routes", "reason", reason, "withdrawn", withdrawn)
 	if s.started && !s.connected {
 		if err := s.addPeer(ctx, s.server); err == nil {
 			s.connected = true
@@ -74,14 +74,14 @@ func (s *Session) endRetentionLocked(ctx context.Context, reason string) bool {
 	return true
 }
 
-// dropRetainedLocked removes every kept route. An accepted prefix is not in the
-// kept set.
+// dropRetainedLocked deletes every retained kernel route. An accepted prefix
+// is not in the retained set.
 func (s *Session) dropRetainedLocked(ctx context.Context) {
 	s.retaining = false
 	s.stopRetainTimerLocked()
 	for prefix := range s.retained {
 		if err := s.fib.WithdrawExact(ctx, s.peerKey, prefix); err != nil {
-			s.log.ErrorContext(ctx, "remove kept bgp session route failed", "prefix", prefix, "error", err)
+			s.log.ErrorContext(ctx, "remove retained bgp session route failed", "prefix", prefix, "error", err)
 		}
 	}
 	clear(s.retained)
@@ -96,12 +96,12 @@ func (s *Session) stopRetainTimerLocked() {
 }
 
 func (s *Session) withdrawRetainedLocked(ctx context.Context, prefix netip.Prefix) bool {
-	if _, kept := s.retained[prefix]; !kept {
+	if _, retained := s.retained[prefix]; !retained {
 		return false
 	}
 	delete(s.retained, prefix)
 	if err := s.fib.WithdrawExact(ctx, s.peerKey, prefix); err != nil {
-		s.log.ErrorContext(ctx, "remove kept bgp session route failed", "prefix", prefix, "error", err)
+		s.log.ErrorContext(ctx, "remove retained bgp session route failed", "prefix", prefix, "error", err)
 	}
 	return true
 }

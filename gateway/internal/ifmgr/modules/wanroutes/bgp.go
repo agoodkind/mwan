@@ -30,9 +30,10 @@ func bgpReason(sessions []bgp.SessionState) string {
 	}
 	acceptedCount := 0
 	for _, session := range sessions {
-		// A session that kept the routes of the previous process counts as
-		// established until the peer sends the routes again or the restart
-		// ends. The forwarding probe still decides readiness.
+		// A session with retained prefixes counts as established. The kernel
+		// retains the routes that the previous process installed until the
+		// peer sends the prefixes again or the restart time ends. The
+		// forwarding probe still decides readiness.
 		if !session.Established && len(session.Retained) == 0 {
 			return reasonBGPNotEstablished
 		}
