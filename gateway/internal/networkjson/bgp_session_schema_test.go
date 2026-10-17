@@ -25,6 +25,8 @@ func TestLoadSchemaRejectsInvalidBGPSessions(t *testing.T) {
 		{name: "keepalive equal to hold", edit: documentEdit{old: `"keepalive": 10,`, replacement: `"keepalive": 30,`}},
 		{name: "keepalive above hold", edit: documentEdit{old: `"keepalive": 10,`, replacement: `"keepalive": 31,`}},
 		{name: "connect-retry below two seconds", edit: documentEdit{old: `"keepalive": 10,`, replacement: `"keepalive": 10, "connect-retry": 1,`}},
+		{name: "graceful-restart-time of zero", edit: documentEdit{old: `"keepalive": 10,`, replacement: `"keepalive": 10, "graceful-restart-time": 0,`}},
+		{name: "graceful-restart-time above the capability field", edit: documentEdit{old: `"keepalive": 10,`, replacement: `"keepalive": 10, "graceful-restart-time": 4096,`}},
 		{name: "unspecified router-id", edit: documentEdit{old: `"router-id": "192.0.2.130",`, replacement: `"router-id": "0.0.0.0",`}},
 		{
 			name: "backup-for with the mode always",

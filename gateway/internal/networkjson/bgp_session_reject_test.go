@@ -97,6 +97,18 @@ func TestDecodeRejectsInvalidBGPSessions(t *testing.T) {
 			want:  bgpTunnelSession + "connect-retry 1 must be at least 2",
 		},
 		{
+			name:  "graceful-restart-time of zero",
+			path:  bgpTunnelFixture,
+			edits: []planEdit{{old: `"keepalive": 10,`, replacement: `"keepalive": 10, "graceful-restart-time": 0,`}},
+			want:  bgpTunnelSession + "graceful-restart-time 0 must be between 1 and 4095",
+		},
+		{
+			name:  "graceful-restart-time above the capability field",
+			path:  bgpTunnelFixture,
+			edits: []planEdit{{old: `"keepalive": 10,`, replacement: `"keepalive": 10, "graceful-restart-time": 4096,`}},
+			want:  bgpTunnelSession + "graceful-restart-time 4096 must be between 1 and 4095",
+		},
+		{
 			name:  "route-metric of zero",
 			path:  bgpTunnelFixture,
 			edits: []planEdit{{old: bgpTunnelMetric, replacement: `"route-metric": 0,`}},

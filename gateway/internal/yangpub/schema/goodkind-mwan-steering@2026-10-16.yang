@@ -49,6 +49,11 @@ module goodkind-mwan-steering {
      decides its verdict, the prefix-translation inputs, and the
      internal link the members route toward.";
 
+  revision 2026-10-16 {
+    description
+      "Add the BGP session graceful restart time and the prefixes that a
+       restarted session keeps from the previous process.";
+  }
   revision 2026-10-12;
   revision 2026-10-11;
   revision 2026-10-10 {
@@ -247,6 +252,13 @@ module goodkind-mwan-steering {
         leaf established { type boolean; }
         leaf-list accepted-prefix { type inet:ipv6-prefix; }
         leaf-list advertised-prefix { type inet:ipv6-prefix; }
+        leaf-list retained-prefix {
+          type inet:ipv6-prefix;
+          description
+            "A kernel route that the previous process installed and that the
+             session keeps until the peer sends the prefix again, sends its
+             End-of-RIB marker, or the restart time ends.";
+        }
         list rejection {
           key "prefix";
           leaf prefix { type inet:ipv6-prefix; }
@@ -672,6 +684,20 @@ module goodkind-mwan-steering {
             range "2..max";
           }
           units "seconds";
+        }
+        leaf graceful-restart-time {
+          type uint16 {
+            range "1..4095";
+          }
+          units "seconds";
+          description
+            "The restart time that the session advertises in the RFC 4724
+             graceful restart capability. When this leaf is present, an
+             ordinary daemon stop keeps the routes in both directions, and
+             the next start sends the advertised prefixes again before it
+             removes the kept routes that the peer did not send again.";
+          reference
+            "RFC 4724: Graceful Restart Mechanism for BGP";
         }
         leaf route-metric {
           mandatory true;

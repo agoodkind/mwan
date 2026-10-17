@@ -65,6 +65,7 @@
               "router-id": "192.0.2.130",
               "keepalive": 10,
               "hold": 30,
+              "graceful-restart-time": 120,
               "route-metric": 300,
               "import": [{ "prefix": "::/0", "min-length": 0, "max-length": 0 }],
               "export": [
