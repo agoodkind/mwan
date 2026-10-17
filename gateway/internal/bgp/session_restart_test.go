@@ -153,7 +153,15 @@ func TestSessionRestartWithdrawsAPrefixThatTheNextProcessDoesNotAdvertise(t *tes
 	cfg := gracefulExportConfig("withdrawn", peer, exported)
 	stopKeepingExport(t, startSession(t, cfg), peer, exported)
 
-	restarted := restartKeepingRoutes(t, cfg)
+	// The next process exports no prefix. The peer restart time exceeds the
+	// wait, and only the End-of-RIB marker of the restarted session removes
+	// the stale path.
+	withoutExport := cfg
+	withoutExport.Export = nil
+	restarted := restartKeepingRoutes(t, withoutExport)
+	if err := restarted.SetAdvertisement(true, nil); err != nil {
+		t.Fatalf("SetAdvertisement: %v", err)
+	}
 	if err := restarted.Connect(t.Context()); err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
