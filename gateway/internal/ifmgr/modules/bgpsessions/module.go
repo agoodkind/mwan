@@ -50,8 +50,8 @@ type ConfiguredRoute struct {
 func (Config) ModuleConfigName() string { return moduleName }
 
 // A nonzero connectBy marks a session that retains the kernel routes of the
-// previous process after KeepRoutes and starts without the peer. Reconcile
-// adds the peer at that time.
+// previous process after KeepRoutes and starts without the peer. Reconcile adds
+// the peer when the connection deadline of the retained session passes.
 type managedSession struct {
 	cfg       Session
 	session   *bgp.Session

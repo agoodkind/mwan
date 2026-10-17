@@ -71,7 +71,7 @@ func (s *Session) endRetention(ctx context.Context, generation uint64) {
 }
 
 // endRetentionLocked deletes the retained kernel routes and reports whether
-// the session was retaining routes. Connect adds the peer.
+// the session was retaining routes.
 func (s *Session) endRetentionLocked(ctx context.Context, reason string) bool {
 	if !s.retaining {
 		return false
