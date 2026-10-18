@@ -58,8 +58,8 @@ host bridge.
 
 ## Measurement on August 16, 2026
 
-During the ISP-1 upload, the router and gateway guests used host CPU to forward
-packets and copy them across their virtual bridge.
+The upload measurements compare CPU use for routing and NAT inside the router
+and gateway guests with the host CPU used to copy packets between those guests.
 
 | Measurement | Result |
 | --- | ---: |
