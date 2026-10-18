@@ -21,7 +21,9 @@ import (
 const (
 	dhcpv6TentativeLeasedAddress = "2001:db8:2::100/128"
 	dhcpv6TentativeEdge          = "2001:db8:30::1/128"
+	dhcpv6TentativeLinkLocal     = "fe80::5/64"
 	dhcpv6TentativeDADTransmits  = "3"
+	dhcpv6TentativeAddrGenNone   = "1"
 	dhcpv6TentativeWait          = 20 * time.Second
 )
 
@@ -114,30 +116,56 @@ func runOwnedDHCPv6IATentativeAddress(t *testing.T) {
 		setRuntimeNamespace(t, gateway)
 	}()
 	setRuntimeNamespace(t, gateway)
-	// The test extends duplicate address detection using the defaults that enatt0 copies at creation.
-	// It needs that window to check NPT edge installation while the IA_NA address remains tentative.
-	if err := os.WriteFile("/proc/sys/net/ipv6/conf/default/dad_transmits", []byte(dhcpv6TentativeDADTransmits), 0o600); err != nil {
-		t.Fatal(err)
+	// enatt0 must inherit these defaults when the daemon creates it. DHCPv6 must reply while the
+	// static address remains tentative. Kernel link local detection would otherwise delay the reply
+	// until the static address becomes ready and let the test pass on main despite the NPT defect.
+	for name, value := range map[string]string{"dad_transmits": dhcpv6TentativeDADTransmits, "addr_gen_mode": dhcpv6TentativeAddrGenNone} {
+		if err := os.WriteFile("/proc/sys/net/ipv6/conf/default/"+name, []byte(value), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	daemon := startRuntimeDaemon(t, os.Getenv(dhcpv6RuntimeBinaryEnv), configPath, root, "dhcpv6ia-tentative")
 	defer stopRuntimeDaemon(t, daemon)
-	waitNPTEdgeDuringTentativeAddress(t, daemon)
+	addDHCPv6TentativeLinkLocal(t, daemon)
+	waitNPTEdgeBeforeLeasedAddressReady(t, daemon)
 	waitStaticRuntimeAddress(t, daemon, "enatt0", dhcpv6TentativeEdge, true)
 }
 
-func waitNPTEdgeDuringTentativeAddress(t *testing.T, daemon *runtimeDaemon) {
+func addDHCPv6TentativeLinkLocal(t *testing.T, daemon *runtimeDaemon) {
+	t.Helper()
+	deadline := time.Now().Add(dhcpv6TentativeWait)
+	for time.Now().Before(deadline) {
+		link, err := netlink.LinkByName("enatt0")
+		if err == nil {
+			address, err := netlink.ParseAddr(dhcpv6TentativeLinkLocal)
+			if err != nil {
+				t.Fatal(err)
+			}
+			address.Flags = unix.IFA_F_NODAD
+			if err := netlink.AddrAdd(link, address); err != nil {
+				t.Fatalf("add link-local address to enatt0: %v", err)
+			}
+			return
+		}
+		assertRuntimeDaemonRunning(t, daemon)
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("daemon did not create enatt0: %s", runtimeLogTail(t, daemon, 60))
+}
+
+func waitNPTEdgeBeforeLeasedAddressReady(t *testing.T, daemon *runtimeDaemon) {
 	t.Helper()
 	deadline := time.Now().Add(dhcpv6TentativeWait)
 	for time.Now().Before(deadline) {
 		leasedFlags, leased := runtimeIPv6AddressFlags(t, "enatt0", dhcpv6TentativeLeasedAddress)
 		_, edged := runtimeIPv6AddressFlags(t, "enatt0", dhcpv6TentativeEdge)
-		tentative := leased && leasedFlags&unix.IFA_F_TENTATIVE != 0
-		if edged && tentative {
-			return
+		leasedReady := leased && leasedFlags&unix.IFA_F_TENTATIVE == 0
+		if leasedReady {
+			t.Fatalf("IA_NA address %s finished duplicate address detection before NPT edge %s was installed: edge=%t; daemon: %s",
+				dhcpv6TentativeLeasedAddress, dhcpv6TentativeEdge, edged, runtimeLogTail(t, daemon, 60))
 		}
-		if edged || leased && !tentative {
-			t.Fatalf("NPT edge %s was not installed while %s was tentative: edge=%t leased=%t flags=%d; daemon: %s",
-				dhcpv6TentativeEdge, dhcpv6TentativeLeasedAddress, edged, leased, leasedFlags, runtimeLogTail(t, daemon, 60))
+		if edged {
+			return
 		}
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(10 * time.Millisecond)
