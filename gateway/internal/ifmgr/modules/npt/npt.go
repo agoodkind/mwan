@@ -211,15 +211,7 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	for _, wan := range m.cfg.WANs {
 		rules[wan.Key()] = nil
 		if m.addressesNotApplied(wan) {
-			m.markDesiredEdges(desiredEdges, wan, "")
-			previous := m.activeRules[wan.Key()]
-			pair, hasPair := m.activePairs[wan.Key()]
-			rules[wan.Key()] = previous
-			desired.add(previous)
-			if hasPair {
-				pairs[wan.Key()] = pair
-				delegated[wan.Key()] = pair.External
-			}
+			m.retainCurrentTranslation(wan, desiredEdges, &desired, rules, pairs, delegated)
 			reconcileErr = errors.Join(reconcileErr,
 				fmt.Errorf("npt: %s IPv6 addresses are not ready; retaining current translation", wan.Key()))
 			continue
@@ -241,6 +233,12 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 			continue
 		}
 		ensureErr := m.ensureExternalAddress(ctx, log, wan, built.ensure[0])
+		if errors.Is(ensureErr, ifmgr.ErrOwnedLinkPending) {
+			m.retainCurrentTranslation(wan, desiredEdges, &desired, rules, pairs, delegated)
+			reconcileErr = errors.Join(reconcileErr,
+				fmt.Errorf("npt: %s owned link result is pending; retaining current translation: %w", wan.Key(), ensureErr))
+			continue
+		}
 		m.markDesiredEdges(desiredEdges, wan, built.ensure[0].CIDR)
 		if ensureErr != nil {
 			reconcileErr = errors.Join(reconcileErr,
@@ -288,6 +286,17 @@ func (m *Module) reconcileTranslator(ctx context.Context, log *slog.Logger, pair
 		ready[name] = internalReady && attachmentsReady(states, index)
 	}
 	return ready, err == nil, policies, policyErr
+}
+
+func (m *Module) retainCurrentTranslation(wan WAN, desiredEdges map[ifmgr.NPTEdgeRecord]bool, desired *desiredRules, rules map[string][]natRule, pairs map[string]bpf.PrefixPair, delegated map[string]netip.Prefix) {
+	m.markDesiredEdges(desiredEdges, wan, "")
+	previous := m.activeRules[wan.Key()]
+	rules[wan.Key()] = previous
+	desired.add(previous)
+	if pair, hasPair := m.activePairs[wan.Key()]; hasPair {
+		pairs[wan.Key()] = pair
+		delegated[wan.Key()] = pair.External
+	}
 }
 
 func (m *Module) checkUnappliedWANs() error {

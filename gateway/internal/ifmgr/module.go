@@ -2,6 +2,7 @@ package ifmgr
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/netip"
 	"sort"
@@ -132,6 +133,10 @@ type NPTEdgeRequest = netif.NPTEdgeRequest
 
 // NPTEdgeRecord identifies the journaled provider edge and its verified link.
 type NPTEdgeRecord = netif.NPTEdgeRecord
+
+// ErrOwnedLinkPending lets npt retain its current translation while links.Reconcile
+// republishes OwnedLinks after clearing its results.
+var ErrOwnedLinkPending = errors.New("owned link result is pending")
 
 // NPTAddressAuthority separates edge production from ordinary address acquisition.
 type NPTAddressAuthority interface {

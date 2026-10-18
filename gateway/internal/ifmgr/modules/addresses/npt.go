@@ -61,7 +61,10 @@ func (module *Module) nptLink(log *slog.Logger, connection interfaceintent.Conne
 		return nil, fmt.Errorf("NPT connection %s has no owned link result", connection.ID)
 	}
 	ready, ok := module.Env.OwnedLinks.Get(connection.ID.String())
-	if !ok || ready.Status != netif.OwnedLinkReady || ready.ConnectionID != connection.ID.String() || ready.Name != connection.Name {
+	if !ok {
+		return nil, fmt.Errorf("NPT connection %s link is not ready: %w", connection.ID, ifmgr.ErrOwnedLinkPending)
+	}
+	if ready.Status != netif.OwnedLinkReady || ready.ConnectionID != connection.ID.String() || ready.Name != connection.Name {
 		return nil, fmt.Errorf("NPT connection %s link is not ready", connection.ID)
 	}
 	link, err := netlink.LinkByIndex(ready.IfIndex)
