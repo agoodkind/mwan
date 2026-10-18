@@ -57,7 +57,7 @@ Failed tests lack complete reports, configuration verification, or valid measure
 | NAT64 UDP at the main table's payload and load | Tayga inside PowerEdge OPNsense | Tayga delivered more UDP traffic with lower delivery loss than the external VPP path. |
 | NAT66 | PF inside PowerEdge OPNsense | Direct PF delivered more TCP and UDP traffic than the external VPP path. |
 | IPv6 prefix translation | Select the required address mapping | PF BINAT delivered more TCP and UDP traffic. VPP applies the different RFC 6296 address calculation. |
-| Translation inside the NIC | DPDK reports that TruFlow is disabled on the spare NIC function. | Hardware rule testing requires the firmware to advertise TruFlow support. |
+| Hardware flow offload | DPDK TruFlow | Driver initialization and default hardware rule writes succeeded. |
 
 <details>
 <summary>Single connections, separate directions, idle CPU, and every UDP load</summary>
@@ -351,6 +351,7 @@ The requested rate applies separately to each direction. Every requested test ra
 | Client attachment | Intel 82599 NIC, switch, and Intel VF assigned to OPNsense | Broadcom BCM57504 VF and the NIC's internal switch |
 | Server attachment | Linux network namespace on the virtual WAN bridge | Linux network namespace on a separate Broadcom VF |
 | OPNsense checksum and TCP segmentation offloads | Disabled on the inspected LAN and WAN interfaces | Enabled |
+| TruFlow during the software throughput tests | Not applicable | Disabled |
 | Receive-side scaling | Enabled | Enabled |
 | Packet MTU | 1500 bytes | 1500 bytes |
 | Parallel TCP clients | 8 | 8 |
@@ -500,20 +501,22 @@ command. The [DPDK TruFlow driver](https://github.com/DPDK/dpdk/blob/v26.03/driv
 uses the replacement with its TruFlow pairing mode. The failed Linux test
 did not exercise that method.
 
-The probe checked the active firmware capability without reading the stored
-`enable_truflow` setting. DPDK initialized the spare physical function and
-queried its firmware successfully. The driver reported `TF is not enabled`
-and skipped the TruFlow rule engine. Its debug output and matching driver
-code establish that firmware did not advertise `CFA_TRUFLOW_SUPPORTED` for
-this function.
+iDRAC now stores `Broadcom_FlowOffload=Enabled` on every BCM57504 physical
+function. The configuration jobs completed during a controlled restart.
+Secure Boot remained enabled, and Clevis unlocked the disks automatically.
+The subsequent DPDK probe detected the firmware's TruFlow capability, opened
+its hardware flow session, and installed the default receive and transmit
+rules successfully.
 
-| DPDK capability probe | Observed result |
+| DPDK activation probe | Observed result |
 | --- | --- |
 | Physical function | `0000:19:00.3` |
 | DPDK version | 23.11.4 |
 | Firmware version | 236.1.173.0 |
 | Packet I/O initialization | Succeeded through VFIO with Secure Boot enabled |
-| TruFlow initialization | The driver skipped it because firmware did not advertise the required capability. |
+| Firmware capability | The driver reported `Host-based truflow feature enabled`. |
+| TruFlow initialization | The driver initialized its rule-management context and opened a hardware flow session. |
+| Default hardware rules | The driver wrote receive and transmit action records and a hardware match-table entry successfully. |
 | Hardware translation throughput | The probe did not install translation rules or run a throughput test. |
 
 The public [Linux bnxt TC driver](https://github.com/torvalds/linux/blob/v7.0/drivers/net/ethernet/broadcom/bnxt/bnxt_tc.c)
@@ -522,11 +525,11 @@ programs IPv6 address and port rewrites. The public
 exposes address rewriting and hop-limit decrement, which reduces the
 packet's remaining router count.
 
-| Hardware workload | Public interface support | Proof status |
-| --- | --- | --- |
-| NAT64 | The bnxt interfaces do not expose the required IPv6-to-IPv4 header conversion. The DPDK driver does not implement the NAT64 action and rejects raw header insertion and removal. | A hardware NAT64 implementation remains unproven. Custom code needs a documented way to perform the missing conversion. |
-| Stateful NAT66 | Linux TC and DPDK expose IPv6 address and TCP or UDP port rewriting. Software must manage the mappings and rules for each direction. | Linux switchdev failed on the deprecated command before rule installation. This result does not test DPDK TruFlow or establish hardware translation throughput. |
-| Fixed checksum-neutral NPT66 mappings | Software can calculate complete address pairs according to [RFC 6296](https://www.rfc-editor.org/rfc/rfc6296.html) and request address rewrite rules. The public interfaces do not expose the complete prefix translation algorithm. | The Linux prototype stopped at the same deprecated command. It did not test DPDK TruFlow or general hardware NPT66. |
+| Hardware workload | Public interface support |
+| --- | --- |
+| NAT64 | The bnxt interfaces do not expose the required IPv6-to-IPv4 header conversion. The DPDK driver does not implement the NAT64 action and rejects raw header insertion and removal. Custom code needs a documented way to perform the missing conversion. |
+| Stateful NAT66 | Linux TC and DPDK expose IPv6 address and TCP or UDP port rewriting. Software must manage the mappings and rules for each direction. |
+| Fixed checksum-neutral NPT66 mappings | Software can calculate complete address pairs according to [RFC 6296](https://www.rfc-editor.org/rfc/rfc6296.html) and request address rewrite rules. The public interfaces do not expose the complete prefix translation algorithm. |
 
 A hardware result requires correct translated packets at the receiver and
 increasing NIC rule counters while software forwarding remains disabled.
