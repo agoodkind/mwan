@@ -71,9 +71,9 @@ func (m *Module) OnFamilyReadiness(ctx context.Context, log *slog.Logger) {
 			log.WarnContext(ctx, "bgp_sessions: advertisement change failed",
 				"session", entry.cfg.Config.Name, "err", advertiseErr)
 		}
-		// When the previous process stops with StopRetaining, the kernel retains
-		// its routes. A nonzero connectBy marks a session that starts without its
-		// peer because the previous process left those routes installed.
+		// The previous process calls StopRetaining before it exits.
+		// The kernel keeps its routes. A nonzero connectBy marks a
+		// session starting without its peer because those routes remain.
 		// For that session, connectLocked in restart.go adds the peer only after
 		// SetAdvertisement succeeds and the IPv6 path has a ready or unavailable
 		// verdict.
