@@ -111,9 +111,10 @@ Test conditions:
 Efficiency divides combined received Mbps by routing/translation CPU percentage
 points, using the rounded measurements in the tables.
 
-### TCP
-
 TCP tests compare transfer capacity without a sender rate limit.
+UDP tests compare packet delivery under the same requested load.
+
+### NAT64
 
 TCP throughput and CPU use:
 
@@ -122,19 +123,6 @@ TCP throughput and CPU use:
 | Vault | NAT64 | Tayga | 0.93 / 0.35 | 36.90% | 75.69% | 35 |
 | PowerEdge | NAT64 | Tayga | 1.28 / 1.48 | 49.63% | 63.39% | 56 |
 | PowerEdge | NAT64 | OPNsense + VPP | 4.91 / 5.25 | 70.90% | 86.24% | 143 |
-| Vault | NAT66 | PF | 2.35 / 0.28 | 28.97% | 71.33% | 91 |
-| PowerEdge | NAT66 | PF | 10.22 / 11.29 | 48.62% | 72.74% | 442 |
-| PowerEdge | NAT66 | OPNsense + VPP | 5.10 / 5.64 | 71.90% | 86.61% | 149 |
-| PowerEdge | Fixed NAT66 | OPNsense + TruFlow | 6.27 / 5.92 | 48.54% | 65.28% | 251 |
-| PowerEdge | Fixed NAT66 | TruFlow without OPNsense | 31.81 / 36.97 | 0.0065% | 96.25% | Controller only |
-| Vault | NPT | PF BINAT | 2.33 / 0.22 | 28.95% | 72.02% | 88 |
-| PowerEdge | NPT | PF BINAT | 10.10 / 10.86 | 48.41% | 71.20% | 433 |
-| PowerEdge | NPT, RFC 6296 | OPNsense + VPP | 5.32 / 5.37 | 72.50% | 86.88% | 147 |
-| PowerEdge | Fixed NPT | OPNsense + TruFlow | 6.44 / 5.74 | 48.39% | 65.08% | 252 |
-
-### UDP
-
-UDP tests compare packet delivery under the same requested load.
 
 UDP throughput, loss, and CPU use:
 
@@ -143,11 +131,44 @@ UDP throughput, loss, and CPU use:
 | Vault | NAT64 | Tayga | Test failed | Test failed | Test failed | Not measured | Not measured | Not measured |
 | PowerEdge | NAT64 | Tayga | Invalid timing | Invalid timing | Invalid timing | Not measured | Not measured | Not measured |
 | PowerEdge | NAT64 | OPNsense + VPP | 5.00 / 5.00 | 1.03 / 1.16 | 79.35% / 76.79% | 70.34% | 98.54% | 31 |
+
+### NAT66
+
+TCP throughput and CPU use:
+
+| Host | Translation | Software | Received Gbit/s, forward / reverse | Routing / translation CPU | Total host CPU | Mbps per CPU percentage point |
+| --- | --- | --- | --- | --- | --- | --- |
+| Vault | NAT66 | PF | 2.35 / 0.28 | 28.97% | 71.33% | 91 |
+| PowerEdge | NAT66 | PF | 10.22 / 11.29 | 48.62% | 72.74% | 442 |
+| PowerEdge | NAT66 | OPNsense + VPP | 5.10 / 5.64 | 71.90% | 86.61% | 149 |
+| PowerEdge | Fixed NAT66 | OPNsense + TruFlow | 6.27 / 5.92 | 48.54% | 65.28% | 251 |
+| PowerEdge | Fixed NAT66 | TruFlow without OPNsense | 31.81 / 36.97 | 0.0065% | 96.25% | Controller only |
+
+UDP throughput, loss, and CPU use:
+
+| Host | Translation | Software | Sent Gbit/s | Received Gbit/s | Packets not received | Routing / translation CPU | Total host CPU | Mbps per CPU percentage point |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Vault | NAT66 | PF | 2.53 / 5.00 | 1.72 / 1.06 | 31.15% / 78.78% | 30.64% | 91.57% | 91 |
 | PowerEdge | NAT66 | PF | 5.00 / 5.00 | 4.58 / 3.21 | 8.39% / 35.86% | 48.06% | 92.22% | 162 |
 | PowerEdge | NAT66 | OPNsense + VPP | 5.00 / 5.00 | 2.88 / 1.11 | 42.11% / 77.84% | 68.36% | 98.59% | 58 |
 | PowerEdge | Fixed NAT66 | OPNsense + TruFlow | 5.00 / 5.00 | 3.70 / 3.60 | 25.96% / 27.96% | 48.70% | 91.50% | 150 |
 | PowerEdge | Fixed NAT66 | TruFlow without OPNsense | 5.00 / 5.00 | 4.99 / 4.99 | 0.13% / 0.16% | 0.0051% | 56.10% | Controller only |
+
+### NPT
+
+TCP throughput and CPU use:
+
+| Host | Translation | Software | Received Gbit/s, forward / reverse | Routing / translation CPU | Total host CPU | Mbps per CPU percentage point |
+| --- | --- | --- | --- | --- | --- | --- |
+| Vault | NPT | PF BINAT | 2.33 / 0.22 | 28.95% | 72.02% | 88 |
+| PowerEdge | NPT | PF BINAT | 10.10 / 10.86 | 48.41% | 71.20% | 433 |
+| PowerEdge | NPT, RFC 6296 | OPNsense + VPP | 5.32 / 5.37 | 72.50% | 86.88% | 147 |
+| PowerEdge | Fixed NPT | OPNsense + TruFlow | 6.44 / 5.74 | 48.39% | 65.08% | 252 |
+
+UDP throughput, loss, and CPU use:
+
+| Host | Translation | Software | Sent Gbit/s | Received Gbit/s | Packets not received | Routing / translation CPU | Total host CPU | Mbps per CPU percentage point |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Vault | NPT | PF BINAT | 2.35 / 5.00 | 1.27 / 1.17 | 45.50% / 76.66% | 27.96% | 96.32% | 87 |
 | PowerEdge | NPT | PF BINAT | 5.00 / 5.00 | 4.60 / 4.69 | 8.05% / 6.29% | 47.80% | 93.20% | 194 |
 | PowerEdge | NPT, RFC 6296 | OPNsense + VPP | 5.00 / 5.00 | 2.57 / 2.75 | 48.60% / 45.04% | 65.57% | 98.42% | 81 |
