@@ -118,7 +118,7 @@ TCP throughput and CPU use:
 | NAT66: PowerEdge / PF | 10.65 / 10.48 | 49.12% | 73.94% |
 | NAT66: PowerEdge / VPP | 5.49 / 5.41 | 67.79% | 81.77% |
 | Fixed NAT66: PowerEdge NIC + OPNsense | 6.27 / 5.92 | 48.54% | 65.28% |
-| Fixed NAT66: PowerEdge NIC directly | 31.81 / 36.97 | 0.0065% | 96.25% |
+| Fixed NAT66: PowerEdge NIC without OPNsense | 31.81 / 36.97 | 0.0065% | 96.25% |
 | NPT: Vault / PF BINAT | 2.33 / 0.22 | 28.95% | 72.02% |
 | NPT: PowerEdge / PF BINAT | 10.53 / 12.44 | 48.61% | 74.38% |
 | NPT: PowerEdge / VPP, RFC 6296 | 6.18 / 4.95 | 67.78% | 81.95% |
@@ -130,7 +130,7 @@ UDP tests compare packet delivery under the same requested load.
 
 UDP throughput, loss, and CPU use:
 
-| Setup / translation | Sent Gbit/s | Received Gbit/s | Delivery loss | Routing / translation CPU | Total host CPU |
+| Setup / translation | Sent Gbit/s | Received Gbit/s | Packets not received | Routing / translation CPU | Total host CPU |
 | --- | --- | --- | --- | --- | --- |
 | NAT64: Vault / Tayga | Test failed | Test failed | Test failed | Not measured | Not measured |
 | NAT64: PowerEdge / Tayga | 5.00 / 5.00 | 1.53 / 1.59 | 68.91% / 68.24% | 49.08% | 87.03% |
@@ -139,7 +139,7 @@ UDP throughput, loss, and CPU use:
 | NAT66: PowerEdge / PF | 5.00 / 5.00 | 4.50 / 2.59 | 9.66% / 48.17% | 46.11% | 89.80% |
 | NAT66: PowerEdge / VPP | 5.00 / 5.00 | 2.81 / 1.52 | 43.64% / 69.56% | 59.99% | 92.97% |
 | Fixed NAT66: PowerEdge NIC + OPNsense | 5.00 / 5.00 | 3.70 / 3.60 | 25.96% / 27.96% | 48.70% | 91.50% |
-| Fixed NAT66: PowerEdge NIC directly | 5.00 / 5.00 | 4.99 / 4.99 | 0.13% / 0.16% | 0.0051% | 56.10% |
+| Fixed NAT66: PowerEdge NIC without OPNsense | 5.00 / 5.00 | 4.99 / 4.99 | 0.13% / 0.16% | 0.0051% | 56.10% |
 | NPT: Vault / PF BINAT | 2.35 / 5.00 | 1.27 / 1.17 | 45.50% / 76.66% | 27.96% | 96.32% |
 | NPT: PowerEdge / PF BINAT | 5.00 / 5.00 | 4.58 / 4.60 | 8.37% / 7.91% | 47.88% | 93.73% |
 | NPT: PowerEdge / VPP, RFC 6296 | 5.00 / 5.00 | 2.49 / 2.62 | 50.22% / 47.53% | 63.63% | 96.84% |
@@ -149,10 +149,6 @@ Rate pairs list simultaneous traffic from client to server and from server to
 client, in that order. Routing/translation CPU combines OPNsense with its
 external translator or NIC rule controller, except that the direct NIC test
 counts only its controller.
-
-Delivery loss includes sent packets that the receiver did not record.
-
-The direct NIC test does not execute OPNsense or manage connections.
 
 PF BINAT replaces the prefix and updates checksums, while VPP applies the
 different [RFC 6296 address calculation](https://www.rfc-editor.org/rfc/rfc6296.html).
