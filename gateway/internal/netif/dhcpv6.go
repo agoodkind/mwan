@@ -296,7 +296,10 @@ func (client *DHCPv6PDClient) negotiate(ctx context.Context, log *slog.Logger, t
 		notifiedThrough = config.Clock.Now()
 		client.completeRecoveredDHCPv6(ctx, log, transport, config, link, &lease, &solicitMaxRT)
 	}
+	var raWake *dhcpv6RAWake
+	defer func() { raWake.stop() }()
 	for ctx.Err() == nil {
+		raWake = client.updateDHCPv6RAWake(ctx, log, config, lease, raWake)
 		if reacquireAddress && len(lease.Prefixes) != 0 &&
 			client.servicePrefixWhileAcquiringAddress(ctx, log, transport, config, link, &lease, &reacquireAddress, &solicitMaxRT, &notifiedThrough) {
 			continue
