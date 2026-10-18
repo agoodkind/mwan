@@ -1,14 +1,16 @@
 # MWAN packet forwarding performance
 
 MWAN forwards packets in the guest kernel. Routes, policy rules, and nftables
-rules do not send packet bytes to the daemon. Separate router and gateway guests
-still use host CPU to transfer packets across their virtual bridge.
+rules do not send packet bytes to the daemon. A host bridge uses host CPU to
+transfer packets between router and gateway guests. A NIC can instead switch
+packets between hardware virtual functions assigned to separate containers.
 
+Every CPU percentage uses the complete capacity of the experiment’s host.
+Host CPU includes guest work, traffic generation, and other active host work.
+
+OPNsense [requires disabled hardware offloads in IPS mode](https://docs.opnsense.org/manual/ips.html).
 OPNsense [disables several NIC offloads by default](https://docs.opnsense.org/manual/interfaces_settings.html)
 and [disables system-wide receive-side scaling by default](https://docs.opnsense.org/troubleshooting/performance.html).
-[IPS mode requires hardware offloads to be disabled](https://docs.opnsense.org/manual/ips.html).
-Available acceleration depends on the selected features, driver, and
-hardware.
 
 ## Attachment paths
 
@@ -56,7 +58,8 @@ host bridge.
 
 ## Measurement on August 16, 2026
 
-A LAN client used ISP-1 for a public speed test. The test did not measure faster links or isolate the cause of the lower download result.
+During the ISP-1 upload, the router and gateway guests used host CPU to forward
+packets and copy them across their virtual bridge.
 
 | Measurement | Result |
 | --- | ---: |
@@ -142,8 +145,6 @@ flowchart LR
   direct --> server
 ```
 
-## Planned investigation
+## Remaining investigation
 
-The proposed XR11 Broadcom 57504 deployment needs a decision on whether the
-host or an LXC owns routing and packet rules. MWAN-527 tracks measurements of
-bridge transfer cost and hardware offload for that decision.
+MWAN-527 tracks the forwarding comparison with a software bridge.
