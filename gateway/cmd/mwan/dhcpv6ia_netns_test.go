@@ -205,6 +205,9 @@ func runOwnedDHCPv6IARuntime(t *testing.T, combined, unequal, duplicate bool) {
 	mark("short_address_request_received")
 	waitMappedRuntimeRule(t, daemon, "ip6", "nat", "2001:db8:30::1", 10*time.Second)
 	waitDHCPv6RuntimeSourceRule(t, daemon, true)
+	// wan.routes installs source rule 55 before steering replaces the IPv6
+	// guard that drops the downstream reply during duplicate address detection.
+	waitDHCPv6RuntimeSteering(t, daemon)
 	mark("mapping_and_source_rule_installed")
 	assertMappedRuntimeReply(t, daemon, gateway, provider.namespace, downstream.namespace,
 		"udp6", "[2001:db8:30::1]:52227", "[2001:db8:b01:fe::2]:52227")
