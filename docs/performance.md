@@ -61,12 +61,18 @@ host bridge.
 The upload measurements compare CPU use for routing and NAT inside the router
 and gateway guests with the host CPU used to copy packets between those guests.
 
+Test measurements:
+
 | Measurement | Result |
 | --- | ---: |
 | Download | 693 Mbit/s |
 | Upload | 1782 Mbit/s |
 | Recorded host CPU capacity | 12 cores |
 | Copy threads' share of combined guest work at upload peak | About 15% |
+
+The CPU breakdown distinguishes guest processing from host packet copying.
+
+Host CPU use:
 
 | CPU use, % of entire host | Before test | Upload peak |
 | --- | ---: | ---: |
@@ -80,9 +86,10 @@ and gateway guests with the host CPU used to copy packets between those guests.
 
 ## Vault and PowerEdge translation performance
 
-PowerEdge PF delivered the strongest software results for NAT66 and OPNsense prefix translation. External VPP improved concurrent NAT64 TCP; Tayga lost fewer UDP packets at the tested load.
+The comparison evaluates PowerEdge translation options against Vault's
+installed OPNsense router under the recorded workload and CPU allocations.
 
-Rate pairs show client to server / server to client simultaneously. Every CPU percentage uses the entire host: routing/translation CPU counts OPNsense and its translator or NIC controller, while total host CPU also includes traffic generation.
+Test conditions:
 
 | Test condition | Value |
 | --- | --- |
@@ -97,6 +104,10 @@ Rate pairs show client to server / server to client simultaneously. Every CPU pe
 | Hardware scope | Fixed address mappings, with a separate source address per client; PF NAT66 combines sources. The tested driver rejects NAT64. |
 
 ### TCP
+
+TCP tests compare transfer capacity without a sender rate limit.
+
+TCP throughput and CPU use:
 
 | Setup / translation | Received Gbit/s, forward / reverse | Routing / translation CPU | Total host CPU |
 | --- | --- | --- | --- |
@@ -115,7 +126,9 @@ Rate pairs show client to server / server to client simultaneously. Every CPU pe
 
 ### UDP
 
-A failed test does not establish throughput; loss counts sent packets that the receiver did not record. The direct NIC test bypasses OPNsense and measures fixed rewrites, without dynamic connection management.
+UDP tests compare packet delivery under the same requested load.
+
+UDP throughput, loss, and CPU use:
 
 | Setup / translation | Sent Gbit/s | Received Gbit/s | Delivery loss | Routing / translation CPU | Total host CPU |
 | --- | --- | --- | --- | --- | --- |
@@ -132,7 +145,17 @@ A failed test does not establish throughput; loss counts sent packets that the r
 | NPT: PowerEdge / VPP, RFC 6296 | 5.00 / 5.00 | 2.49 / 2.62 | 50.22% / 47.53% | 63.63% | 96.84% |
 | Fixed NPT: PowerEdge NIC + OPNsense | 5.00 / 5.00 | 2.95 / 3.24 | 40.91% / 35.17% | 48.22% | 89.21% |
 
-The direct result does not establish the NIC maximum because the host also runs both traffic generators. PF BINAT changes the prefix and updates checksums; VPP applies the different RFC 6296 address calculation, and the NIC test uses precomputed address pairs.
+Rate pairs list simultaneous traffic from client to server and from server to
+client, in that order. Routing/translation CPU combines OPNsense with its
+external translator or NIC rule controller, except that the direct NIC test
+counts only its controller.
+
+Delivery loss includes sent packets that the receiver did not record.
+
+The direct NIC test does not execute OPNsense or manage connections.
+
+PF BINAT replaces the prefix and updates checksums, while VPP applies the
+different [RFC 6296 address calculation](https://www.rfc-editor.org/rfc/rfc6296.html).
 
 ```mermaid
 flowchart LR
