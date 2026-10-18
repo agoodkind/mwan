@@ -57,7 +57,7 @@ Failed tests lack complete reports, configuration verification, or valid measure
 | NAT64 UDP at the main table's payload and load | Tayga inside PowerEdge OPNsense | Tayga delivered more UDP traffic with lower delivery loss than the external VPP path. |
 | NAT66 | PF inside PowerEdge OPNsense | Direct PF delivered more TCP and UDP traffic than the external VPP path. |
 | IPv6 prefix translation | Select the required address mapping | PF BINAT delivered more TCP and UDP traffic. VPP applies the different RFC 6296 address calculation. |
-| Translation inside the NIC | The Linux switchdev test used a deprecated firmware command. | DPDK TruFlow uses a different command; the Linux failure does not establish the card's translation limit. |
+| Translation inside the NIC | DPDK reports that TruFlow is disabled on the spare NIC function. | Hardware rule testing requires the firmware to advertise TruFlow support. |
 
 <details>
 <summary>Single connections, separate directions, idle CPU, and every UDP load</summary>
@@ -499,6 +499,23 @@ replaced it with `HWRM_CFA_PAIR_ALLOC` because firmware deprecated the older
 command. The [DPDK TruFlow driver](https://github.com/DPDK/dpdk/blob/v26.03/drivers/net/bnxt/bnxt_hwrm.c#L7552-L7598)
 uses the replacement with its TruFlow pairing mode. The failed Linux test
 did not exercise that method.
+
+The probe checked the active firmware capability without reading the stored
+`enable_truflow` setting. DPDK initialized the spare physical function and
+queried its firmware successfully. The driver reported `TF is not enabled`
+and skipped the TruFlow rule engine. Its debug output and matching driver
+code establish that firmware did not advertise `CFA_TRUFLOW_SUPPORTED` for
+this function.
+
+| DPDK capability probe | Observed result |
+| --- | --- |
+| Physical function | `0000:19:00.3` |
+| DPDK version | 23.11.4 |
+| Firmware version | 236.1.173.0 |
+| Packet I/O initialization | Succeeded through VFIO with Secure Boot enabled |
+| TruFlow initialization | The driver skipped it because firmware did not advertise the required capability. |
+| Hardware translation throughput | The probe did not install translation rules or run a throughput test. |
+
 The public [Linux bnxt TC driver](https://github.com/torvalds/linux/blob/v7.0/drivers/net/ethernet/broadcom/bnxt/bnxt_tc.c)
 programs IPv6 address and port rewrites. The public
 [DPDK bnxt action table](https://github.com/DPDK/dpdk/blob/v26.03/drivers/net/bnxt/tf_ulp/ulp_rte_handler_tbl.c)
