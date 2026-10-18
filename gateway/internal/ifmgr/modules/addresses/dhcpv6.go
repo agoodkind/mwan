@@ -19,7 +19,8 @@ import (
 	"goodkind.io/mwan/internal/netif"
 )
 
-// Kernel lifetime rounding and early expiry can remove an address before ValidUntil.
+// leaseLifetimeSeconds rounds down to whole seconds, allowing expiry one second before ValidUntil.
+// The 2 second cutoff covers that rounding loss and adds one second of margin.
 // This margin prevents reinstallation from restarting duplicate address detection.
 const minimumKernelAddressLifetime = 2 * time.Second
 
