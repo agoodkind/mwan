@@ -75,9 +75,10 @@ const (
 	// slots after the sixteen-byte source address.
 	hashKeyRegisterV6Second uint32 = unix.NFT_REG32_04
 
-	// Flush sends each batch before reading message acknowledgments and rule echoes.
-	// Replies overflowed the default buffer after commit; 8 MiB fits the largest
-	// batch's replies. The daemon's CAP_NET_ADMIN permits SO_RCVBUFFORCE past rmem_max.
+	// Flush sends each batch before reading acknowledgments and rule echoes.
+	// The 203-rule test overflowed the default buffer but passed with 8 MiB.
+	// The daemon's CAP_NET_ADMIN permits SO_RCVBUFFORCE past net.core.rmem_max.
+	// SetReadBuffer falls back to SO_RCVBUF, which net.core.rmem_max caps.
 	steerReceiveBufferBytes = 8 << 20
 )
 
