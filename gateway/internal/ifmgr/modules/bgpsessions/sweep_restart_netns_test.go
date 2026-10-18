@@ -91,7 +91,8 @@ func TestSweepRetainsRoutesUntilTheRestartDeadline(t *testing.T) {
 	session := bgpsessions.Session{
 		WANRef: ifmgr.WANRef{ID: "transit", Name: "transit", Iface: sweepDevice},
 		Config: bgp.SessionConfig{
-			Name: "upstream", RouterID: netip.MustParseAddr("192.0.2.1"), LocalASN: sweepLocalASN, RemoteASN: sweepPeerASN,
+			Name: "upstream", RouterID: netip.MustParseAddr("192.0.2.1"), Families: []bgp.Family{bgp.FamilyIPv6Unicast},
+			LocalASN: sweepLocalASN, RemoteASN: sweepPeerASN,
 			PeerAddress: netip.MustParseAddr(sweepGateway), PeerPort: 179, KeepaliveSeconds: 1, HoldSeconds: 3,
 			GracefulRestartSeconds: sweepRestartTime, RouteMetric: sweepMetric,
 		},

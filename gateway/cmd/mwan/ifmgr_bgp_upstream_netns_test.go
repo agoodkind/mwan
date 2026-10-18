@@ -45,7 +45,7 @@ func (s bgpTunnelRuntimeSession) entry() string {
 		routes = fmt.Sprintf(`"goodkind-mwan-steering:route":[{"destination":%q,"gateway":%q}],`, s.routed, tunnelRuntimeInnerRemote)
 	}
 	session := fmt.Sprintf(`"bgp-session":[{"name":"remote","peer-address":%q,"local-address":%q,%s`+
-		`"local-as":%d,"remote-as":%d,"router-id":"192.0.2.1","keepalive":%d,"hold":%d,"route-metric":300,`+
+		`"local-as":%d,"remote-as":%d,"family":["ipv6-unicast"],"keepalive":%d,"hold":%d,"route-metric":300,`+
 		`"import":[{"prefix":"::/0","min-length":0,"max-length":0}],`+
 		`"export":[{"prefix":%q,"mode":"always","next-hop":%q}]}]`,
 		s.peer, tunnelRuntimeInnerLocal, multihop, bgpRuntimeLocalASN, s.remoteASN,

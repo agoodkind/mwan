@@ -15,9 +15,13 @@ type (
 	Community = bgpsession.Community
 	// LargeCommunity is one large BGP community in global-administrator:local-data-1:local-data-2 form.
 	LargeCommunity = bgpsession.LargeCommunity
+	// Family lets callers configure session address families without importing bgpsession.
+	Family = bgpsession.Family
 )
 
 const (
+	// FamilyIPv6Unicast selects the ipv6-unicast YANG value, the only supported session family.
+	FamilyIPv6Unicast = bgpsession.FamilyIPv6Unicast
 	// ExportAlways originates the prefix whenever the session is eligible.
 	ExportAlways = bgpsession.ExportAlways
 	// ExportBackup originates the prefix only while the session is eligible

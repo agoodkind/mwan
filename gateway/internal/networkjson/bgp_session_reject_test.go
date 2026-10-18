@@ -28,7 +28,7 @@ func bgpDecodeFailure(t *testing.T, document []byte) string {
 
 func TestDecodeRejectsInvalidBGPSessions(t *testing.T) {
 	secondSession := `{ "name": "vps", "peer-address": "2001:db8:6::9", "local-as": 64512, "remote-as": 64513, ` +
-		`"router-id": "192.0.2.130", "keepalive": 10, "hold": 30, "route-metric": 400 },` + "\n            {\n" +
+		`"family": ["ipv6-unicast"], "keepalive": 10, "hold": 30, "route-metric": 400 },` + "\n            {\n" +
 		`              "name": "vps",`
 	cases := []struct {
 		name  string
@@ -166,7 +166,7 @@ func TestDecodeRejectsInvalidBGPSessions(t *testing.T) {
 			edits: []planEdit{{
 				old: `"targets-v6": []` + "\n          }",
 				replacement: `"targets-v6": []` + "\n          }," + ` "bgp-session": [{ "name": "upstream", "peer-address": "2001:db8:179:c::1", ` +
-					`"local-as": 64512, "remote-as": 64513, "router-id": "192.0.2.132", "keepalive": 10, "hold": 30, "route-metric": 320 }]`,
+					`"local-as": 64512, "remote-as": 64513, "family": ["ipv6-unicast"], "keepalive": 10, "hold": 30, "route-metric": 320 }]`,
 			}},
 			want: "wan isp: a bgp-session requires an ipv6 family",
 		},

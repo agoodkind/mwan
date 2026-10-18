@@ -18,7 +18,7 @@ type bgpSessionWire struct {
 	LocalAddress        string          `json:"local-address"`
 	LocalAS             *uint32         `json:"local-as"`
 	RemoteAS            *uint32         `json:"remote-as"`
-	RouterID            string          `json:"router-id"`
+	Families            []string        `json:"family"`
 	MultihopTTL         *uint8          `json:"multihop-ttl"`
 	Keepalive           *uint16         `json:"keepalive"`
 	Hold                *uint16         `json:"hold"`
@@ -59,7 +59,7 @@ func buildBGPSessions(label string, entry ifaceEntry) ([]config.BGPSession, erro
 func buildBGPSession(label string, wire bgpSessionWire) (config.BGPSession, error) {
 	var none config.BGPSession
 	session := bgpsession.Config{
-		Name: wire.Name, RouterID: netip.Addr{}, LocalASN: 0, RemoteASN: 0,
+		Name: wire.Name, RouterID: netip.Addr{}, Families: nil, LocalASN: 0, RemoteASN: 0,
 		PeerAddress: netip.Addr{}, PeerPort: defaultBGPPeerPort, LocalAddress: netip.Addr{},
 		Interface: "", MultihopTTL: 0, KeepaliveSeconds: 0, HoldSeconds: 0, ConnectRetrySeconds: 0,
 		GracefulRestartSeconds: 0, Import: nil, Export: nil, Tables: nil, RouteMetric: 0,
@@ -67,6 +67,11 @@ func buildBGPSession(label string, wire bgpSessionWire) (config.BGPSession, erro
 	if err := setBGPSessionPeers(label, wire, &session); err != nil {
 		return none, err
 	}
+	families, err := buildBGPFamilies(label, wire.Families)
+	if err != nil {
+		return none, err
+	}
+	session.Families = families
 	if err := setBGPSessionTimers(label, wire, &session); err != nil {
 		return none, err
 	}
@@ -136,14 +141,6 @@ func setBGPSessionPeers(label string, wire bgpSessionWire, session *bgpsession.C
 		}
 		*number.target = *number.value
 	}
-	if wire.RouterID == "" {
-		return fmt.Errorf("%s: router-id is required", label)
-	}
-	routerID, err := parseAddress(label, "router-id", wire.RouterID)
-	if err != nil {
-		return err
-	}
-	session.RouterID = routerID
 	if wire.MultihopTTL != nil {
 		if *wire.MultihopTTL == 0 {
 			return fmt.Errorf("%s: multihop-ttl must be between 1 and 255", label)
@@ -151,6 +148,21 @@ func setBGPSessionPeers(label string, wire bgpSessionWire, session *bgpsession.C
 		session.MultihopTTL = *wire.MultihopTTL
 	}
 	return nil
+}
+
+func buildBGPFamilies(label string, raws []string) ([]bgpsession.Family, error) {
+	if len(raws) == 0 {
+		return nil, fmt.Errorf("%s: family requires at least one value", label)
+	}
+	families := make([]bgpsession.Family, 0, len(raws))
+	for _, raw := range raws {
+		family, known := bgpsession.ParseFamily(raw)
+		if !known {
+			return nil, fmt.Errorf("%s: family %q must be %s", label, raw, bgpsession.FamilyIPv6Unicast)
+		}
+		families = append(families, family)
+	}
+	return families, nil
 }
 
 func setBGPSessionTimers(label string, wire bgpSessionWire, session *bgpsession.Config) error {

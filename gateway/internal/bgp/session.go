@@ -65,6 +65,9 @@ func NewSession(cfg SessionConfig, log *slog.Logger) (*Session, error) {
 		log = slog.Default()
 	}
 	validated, err := bgpsession.Validated(cfg)
+	if err == nil {
+		err = bgpsession.ValidateRouterID(cfg.RouterID)
+	}
 	if err != nil {
 		log.Error("bgp session configuration rejected", "session", cfg.Name, "error", err)
 		return nil, fmt.Errorf("bgp session %q: %w", cfg.Name, err)
@@ -196,14 +199,29 @@ func (s *Session) configureServer(ctx context.Context, bgpServer *server.BgpServ
 }
 
 func (s *Session) addPeer(ctx context.Context, bgpServer *server.BgpServer) error {
-	if err := bgpServer.AddPeer(ctx, &apipb.AddPeerRequest{Peer: s.peer()}); err != nil {
+	peer, err := s.peer()
+	if err != nil {
+		s.log.ErrorContext(ctx, "build bgp session peer failed", "peer", s.peerKey, "error", err)
+		return fmt.Errorf("build bgp session %q peer %s: %w", s.cfg.Name, s.peerKey, err)
+	}
+	if err := bgpServer.AddPeer(ctx, &apipb.AddPeerRequest{Peer: peer}); err != nil {
 		s.log.ErrorContext(ctx, "add bgp session peer failed", "peer", s.peerKey, "error", err)
 		return fmt.Errorf("add bgp session %q peer %s: %w", s.cfg.Name, s.peerKey, err)
 	}
 	return nil
 }
 
-func (s *Session) peer() *apipb.Peer {
+func (s *Session) peer() (*apipb.Peer, error) {
+	afiSafis := make([]*apipb.AfiSafi, 0, len(s.cfg.Families))
+	for _, family := range s.cfg.Families {
+		gobgpFamily, err := apiFamily(family)
+		if err != nil {
+			return nil, err
+		}
+		afiSafis = append(afiSafis, &apipb.AfiSafi{
+			Config: &apipb.AfiSafiConfig{Family: gobgpFamily, Enabled: true},
+		})
+	}
 	transport := &apipb.Transport{
 		RemotePort:    uint32(s.cfg.PeerPort),
 		BindInterface: s.cfg.Interface,
@@ -224,12 +242,7 @@ func (s *Session) peer() *apipb.Peer {
 			},
 		},
 		Transport: transport,
-		AfiSafis: []*apipb.AfiSafi{{
-			Config: &apipb.AfiSafiConfig{
-				Family:  &apipb.Family{Afi: apipb.Family_AFI_IP6, Safi: apipb.Family_SAFI_UNICAST},
-				Enabled: true,
-			},
-		}},
+		AfiSafis:  afiSafis,
 	}
 	if s.cfg.MultihopTTL > 0 {
 		peer.EbgpMultihop = &apipb.EbgpMultihop{
@@ -249,11 +262,22 @@ func (s *Session) peer() *apipb.Peer {
 			DeferralTime:    s.cfg.GracefulRestartSeconds,
 			LocalRestarting: s.retaining,
 		}
-		peer.AfiSafis[0].MpGracefulRestart = &apipb.MpGracefulRestart{
-			Config: &apipb.MpGracefulRestartConfig{Enabled: true},
+		for _, afiSafi := range afiSafis {
+			afiSafi.MpGracefulRestart = &apipb.MpGracefulRestart{
+				Config: &apipb.MpGracefulRestartConfig{Enabled: true},
+			}
 		}
 	}
-	return peer
+	return peer, nil
+}
+
+func apiFamily(family Family) (*apipb.Family, error) {
+	switch family {
+	case FamilyIPv6Unicast:
+		return &apipb.Family{Afi: apipb.Family_AFI_IP6, Safi: apipb.Family_SAFI_UNICAST}, nil
+	default:
+		return nil, fmt.Errorf("bgp session family %d has no GoBGP mapping", family)
+	}
 }
 
 // Stop shuts down the GoBGP server and removes the installed kernel routes. A

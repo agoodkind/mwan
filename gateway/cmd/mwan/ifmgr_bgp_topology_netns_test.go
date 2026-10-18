@@ -66,7 +66,7 @@ func (p bgpRuntimeProvider) entry() string {
 			restart = fmt.Sprintf(`"graceful-restart-time":%d,`, p.restartTime)
 		}
 		sessions = fmt.Sprintf(`,"bgp-session":[{"name":"upstream","peer-address":%q,"local-address":%q,`+
-			`"local-as":%d,"remote-as":%d,"router-id":"192.0.2.1","keepalive":%d,"hold":%d,%s"route-metric":%d,`+
+			`"local-as":%d,"remote-as":%d,"family":["ipv6-unicast"],"keepalive":%d,"hold":%d,%s"route-metric":%d,`+
 			`"import":[{"prefix":%q,"min-length":%d,"max-length":%d}],`+
 			`"export":[%s]}]`,
 			p.peer(), p.local(), p.localASN, p.remoteASN, bgpRuntimeKeepalive, bgpRuntimeHold, restart, p.metric,
