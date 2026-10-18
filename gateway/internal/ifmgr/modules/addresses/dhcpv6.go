@@ -19,6 +19,10 @@ import (
 	"goodkind.io/mwan/internal/netif"
 )
 
+// Kernel lifetime rounding and early expiry can remove an address before ValidUntil.
+// This margin prevents reinstallation from restarting duplicate address detection.
+const minimumKernelAddressLifetime = 2 * time.Second
+
 func (module *Module) currentDHCPv6Client(ctx context.Context, log *slog.Logger, connection interfaceintent.Connection) {
 	id := connection.ID.String()
 	wantsDHCPv6 := connection.IPv6 != nil && connection.IPv6.DHCP != nil && *connection.IPv6.DHCP &&
@@ -439,7 +443,7 @@ func (module *Module) localDHCPv6Assignments(connection interfaceintent.Connecti
 	addresses := make([]interfaceintent.Address, 0, len(lease.Addresses))
 	assignments := make([]interfaceintent.Assignment, 0, len(lease.Addresses))
 	for _, leased := range lease.Addresses {
-		if !now.Before(leased.ValidUntil) {
+		if !leaseAddressInstallable(leased.ValidUntil, now) {
 			continue
 		}
 		prefix := netip.PrefixFrom(leased.Address, 128)
@@ -455,6 +459,10 @@ func (module *Module) localDHCPv6Assignments(connection interfaceintent.Connecti
 		})
 	}
 	return addresses, assignments
+}
+
+func leaseAddressInstallable(validUntil, now time.Time) bool {
+	return validUntil.Sub(now) >= minimumKernelAddressLifetime
 }
 
 func (module *Module) dhcpv6State(connection interfaceintent.Connection) (string, string, bool) {
@@ -485,7 +493,7 @@ func (module *Module) dhcpv6State(connection interfaceintent.Connection) (string
 	now := module.clock.Now()
 	hasAddress := false
 	for _, address := range lease.Addresses {
-		if now.Before(address.ValidUntil) {
+		if leaseAddressInstallable(address.ValidUntil, now) {
 			hasAddress = true
 			break
 		}
