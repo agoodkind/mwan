@@ -57,7 +57,7 @@ Failed tests lack complete reports, configuration verification, or valid measure
 | NAT64 UDP at the main table's payload and load | Tayga inside PowerEdge OPNsense | Tayga delivered more UDP traffic with lower delivery loss than the external VPP path. |
 | NAT66 | PF inside PowerEdge OPNsense | Direct PF delivered more TCP and UDP traffic than the external VPP path. |
 | IPv6 prefix translation | Select the required address mapping | PF BINAT delivered more TCP and UDP traffic. VPP applies the different RFC 6296 address calculation. |
-| Translation inside the NIC | Unavailable in the tested configuration | The installed firmware rejected the virtual ports required for the hardware rewrite test. |
+| Translation inside the NIC | The Linux switchdev test used a deprecated firmware command. | DPDK TruFlow uses a different command; the Linux failure does not establish the card's translation limit. |
 
 <details>
 <summary>Single connections, separate directions, idle CPU, and every UDP load</summary>
@@ -492,9 +492,13 @@ flowchart LR
   control[Software calculates mappings and installs rules] -.-> rewrite
 ```
 
-The installed firmware rejected the virtual port allocation command needed
-for the Linux hardware test. The spare physical function remained in legacy
-mode, and the test did not install rewrite rules.
+The installed Linux driver sent `HWRM_CFA_VFR_ALLOC` when creating virtual
+ports for switchdev, the Linux interface for controlling a hardware switch.
+Firmware rejected that command. Broadcom's [DPDK driver change](https://mails.dpdk.org/archives/dev/2020-October/188961.html)
+replaced it with `HWRM_CFA_PAIR_ALLOC` because firmware deprecated the older
+command. The [DPDK TruFlow driver](https://github.com/DPDK/dpdk/blob/v26.03/drivers/net/bnxt/bnxt_hwrm.c#L7552-L7598)
+uses the replacement with its TruFlow pairing mode. The failed Linux test
+did not exercise that method.
 The public [Linux bnxt TC driver](https://github.com/torvalds/linux/blob/v7.0/drivers/net/ethernet/broadcom/bnxt/bnxt_tc.c)
 programs IPv6 address and port rewrites. The public
 [DPDK bnxt action table](https://github.com/DPDK/dpdk/blob/v26.03/drivers/net/bnxt/tf_ulp/ulp_rte_handler_tbl.c)
@@ -504,8 +508,8 @@ packet's remaining router count.
 | Hardware workload | Public interface support | Proof status |
 | --- | --- | --- |
 | NAT64 | The bnxt interfaces do not expose the required IPv6-to-IPv4 header conversion. The DPDK driver does not implement the NAT64 action and rejects raw header insertion and removal. | A hardware NAT64 implementation remains unproven. Custom code needs a documented way to perform the missing conversion. |
-| Stateful NAT66 | Linux TC and DPDK expose IPv6 address and TCP or UDP port rewriting. Software must manage the mappings and rules for each direction. | The installed firmware rejected virtual port allocation before rule installation. This setup does not establish hardware translation throughput. |
-| Fixed checksum-neutral NPT66 mappings | Software can calculate complete address pairs according to [RFC 6296](https://www.rfc-editor.org/rfc/rfc6296.html) and request address rewrite rules. The public interfaces do not expose the complete prefix translation algorithm. | The fixed mapping prototype could not create the required virtual port interfaces. It did not test general hardware NPT66. |
+| Stateful NAT66 | Linux TC and DPDK expose IPv6 address and TCP or UDP port rewriting. Software must manage the mappings and rules for each direction. | Linux switchdev failed on the deprecated command before rule installation. This result does not test DPDK TruFlow or establish hardware translation throughput. |
+| Fixed checksum-neutral NPT66 mappings | Software can calculate complete address pairs according to [RFC 6296](https://www.rfc-editor.org/rfc/rfc6296.html) and request address rewrite rules. The public interfaces do not expose the complete prefix translation algorithm. | The Linux prototype stopped at the same deprecated command. It did not test DPDK TruFlow or general hardware NPT66. |
 
 A hardware result requires correct translated packets at the receiver and
 increasing NIC rule counters while software forwarding remains disabled.
@@ -526,7 +530,7 @@ Counter deltas cover the complete probe, including setup and teardown, and do no
 | IPv6 software queue drops | 4,720,547 | 458,822 |
 | Largest share of client-facing transmit packets | 99.9988% on queue 1 | 25.5551% on queue 3 |
 
-### Hardware test acceptance
+### Linux switchdev test result
 
 | Check | Observed result |
 | --- | --- |
@@ -535,7 +539,7 @@ Counter deltas cover the complete probe, including setup and teardown, and do no
 | Firmware response | `HWRM_ERR_CODE_CMD_NOT_SUPPORTED`, error `0xffff` |
 | Physical function after the request | `0000:19:00.3` remained in `legacy` mode. |
 | Rewrite rules installed | 0 |
-| Hardware translation throughput | The firmware rejection prevented rule installation and measurement. |
+| Hardware translation throughput | The deprecated-command rejection prevented the Linux test from installing rules or measuring throughput. |
 
 </details>
 
