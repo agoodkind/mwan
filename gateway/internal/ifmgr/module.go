@@ -2,6 +2,7 @@ package ifmgr
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/netip"
 	"sort"
@@ -133,6 +134,10 @@ type NPTEdgeRequest = netif.NPTEdgeRequest
 // NPTEdgeRecord identifies the journaled provider edge and its verified link.
 type NPTEdgeRecord = netif.NPTEdgeRecord
 
+// ErrOwnedLinkPending lets npt retain its current translation while links.Reconcile
+// republishes OwnedLinks after clearing its results.
+var ErrOwnedLinkPending = errors.New("owned link result is pending")
+
 // NPTAddressAuthority separates edge production from ordinary address acquisition.
 type NPTAddressAuthority interface {
 	Ensure(context.Context, *slog.Logger, NPTEdgeRequest) (NPTEdgeRecord, error)
@@ -152,6 +157,7 @@ type OwnedAddressResults struct {
 	mu        sync.RWMutex
 	addresses map[string]map[string]bool
 	families  map[string]map[string]bool
+	routable  map[string]map[string]bool
 	applied   map[string]map[string]bool
 }
 
@@ -160,6 +166,7 @@ func (s *OwnedAddressResults) Replace() {
 	s.mu.Lock()
 	s.addresses = make(map[string]map[string]bool)
 	s.families = make(map[string]map[string]bool)
+	s.routable = make(map[string]map[string]bool)
 	s.applied = make(map[string]map[string]bool)
 	s.mu.Unlock()
 }
@@ -196,6 +203,23 @@ func (s *OwnedAddressResults) FamilyReady(id, family string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.families[id][family]
+}
+
+// SetFamilyRoutable records that a family can support routing in the current pass.
+func (s *OwnedAddressResults) SetFamilyRoutable(id, family string) {
+	s.mu.Lock()
+	if s.routable[id] == nil {
+		s.routable[id] = make(map[string]bool)
+	}
+	s.routable[id][family] = true
+	s.mu.Unlock()
+}
+
+// FamilyRoutable reports whether a family can support routing in the current pass.
+func (s *OwnedAddressResults) FamilyRoutable(id, family string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.routable[id][family]
 }
 
 // SetFamilyApplied records a successful kernel address and route reconciliation.
