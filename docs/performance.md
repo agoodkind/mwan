@@ -57,7 +57,7 @@ Failed tests lack complete reports, configuration verification, or valid measure
 | NAT64 UDP at the main table's payload and load | Tayga inside PowerEdge OPNsense | Tayga delivered more UDP traffic with lower delivery loss than the external VPP path. |
 | NAT66 | PF inside PowerEdge OPNsense | Direct PF delivered more TCP and UDP traffic than the external VPP path. |
 | IPv6 prefix translation | Select the required address mapping | PF BINAT delivered more TCP and UDP traffic. VPP applies the different RFC 6296 address calculation. |
-| Hardware flow offload | DPDK TruFlow | Driver initialization and default hardware rule writes succeeded. |
+| Hardware flow offload | DPDK TruFlow for fixed IPv6 mappings | The direct VF test confirms NIC translation. It does not establish full router or dynamic NAT capacity. |
 
 <details>
 <summary>Single connections, separate directions, idle CPU, and every UDP load</summary>
@@ -470,71 +470,86 @@ flowchart LR
 
 ### Translation in the NIC
 
-The public driver interfaces do not establish hardware conversion between
-IPv6 and IPv4. Broadcom advertises address and port translation in the
-BCM5750x [TruFlow engine](https://docs.broadcom.com/doc/5750X-SB1XX).
+The tests do not implement dynamic stateful NAT, which requires software to create and retire mappings as connections change. The BCM57504 TruFlow engine applies address mappings and reverse rules that software installs before traffic begins. A separate packet proof also verified TCP and UDP port rewriting.
 
-Software must calculate address mappings and install rules before the NIC
-can use those rules to rewrite packets. Stateful NAT66 also requires
-software to allocate ports, install rules for replies, and expire mappings.
-A fixed NPT66 test can calculate a translated address in software and test
-whether the NIC applies that complete address correctly.
+| Operation | Verified scope |
+| --- | --- |
+| Fixed NAT66 | The NIC applies preinstalled IPv6 address mappings and reverse rules. |
+| Fixed checksum-neutral NPT66 | The rules do not implement a general prefix-translation algorithm. Software calculates complete address pairs according to [RFC 6296](https://www.rfc-editor.org/rfc/rfc6296.html), and the NIC applies those pairs while preserving transport checksum fields. |
+| NAT64 | The tested [BNXT driver](https://github.com/DPDK/dpdk/blob/v26.03/drivers/net/bnxt/tf_ulp/ulp_rte_parser.c) rejects the generic DPDK NAT64 action after testpmd parses the command. |
+
+DPDK used [HWRM_CFA_PAIR_ALLOC](https://github.com/DPDK/dpdk/blob/v26.03/drivers/net/bnxt/bnxt_hwrm.c#L7552-L7598) to create its TruFlow virtual ports. Receiver captures verified the rewritten addresses and transport checksums in both directions. Hardware rule counters increased while testpmd forwarding remained stopped. Removing the rules stopped the bound UDP probes, and reinstalling them restored replies.
+
+The OPNsense path applies routing and PF before and after the NIC rewrite. The direct path uses the same endpoint namespaces and bypasses guest data processing. Installed-rule captures confirmed that its benchmark data did not enter the OPNsense data interfaces. Replies use the reverse rules on each path.
 
 ```mermaid
 flowchart LR
-  client[IPv6 client] --> ingress
+  client[Linux client VF] --> ingress
   subgraph firewall[Same OPNsense VM]
-    ingress[OPNsense checks traffic and routes it to the NIC rule]
-    egress[OPNsense receives the translated packet and routes it to the server]
+    ingress[Routing and PF before translation]
+    egress[Routing and PF after translation]
   end
-  ingress --> rewrite[NIC applies an IPv6 address rewrite rule]
+  ingress --> rewrite[NIC applies fixed rewrite]
   rewrite --> egress
-  egress --> server[IPv6 server]
-  control[Software calculates mappings and installs rules] -.-> rewrite
+  egress --> server[Linux server VF]
+  control[DPDK installs rules] -.-> rewrite
 ```
 
-The installed Linux driver sent `HWRM_CFA_VFR_ALLOC` when creating virtual
-ports for switchdev, the Linux interface for controlling a hardware switch.
-Firmware rejected that command. Broadcom's [DPDK driver change](https://mails.dpdk.org/archives/dev/2020-October/188961.html)
-replaced it with `HWRM_CFA_PAIR_ALLOC` because firmware deprecated the older
-command. The [DPDK TruFlow driver](https://github.com/DPDK/dpdk/blob/v26.03/drivers/net/bnxt/bnxt_hwrm.c#L7552-L7598)
-uses the replacement with its TruFlow pairing mode. The failed Linux test
-did not exercise that method.
+```mermaid
+flowchart LR
+  client[Linux client VF] --> rewrite[NIC applies fixed rewrite]
+  rewrite --> server[Linux server VF]
+  control[DPDK installs rules] -.-> rewrite
+```
 
-iDRAC now stores `Broadcom_FlowOffload=Enabled` on every BCM57504 physical
-function. The configuration jobs completed during a controlled restart.
-Secure Boot remained enabled, and Clevis unlocked the disks automatically.
-The subsequent DPDK probe detected the firmware's TruFlow capability, opened
-its hardware flow session, and installed the default receive and transmit
-rules successfully.
+The hardware cases use the PowerEdge endpoint placement and measurement timing from the software comparison.
 
-| DPDK activation probe | Observed result |
+| Hardware condition | Recorded setup |
 | --- | --- |
-| Physical function | `0000:19:00.3` |
-| DPDK version | 23.11.4 |
-| Firmware version | 236.1.173.0 |
-| Packet I/O initialization | Succeeded through VFIO with Secure Boot enabled |
-| Firmware capability | The driver reported `Host-based truflow feature enabled`. |
-| TruFlow initialization | The driver initialized its rule-management context and opened a hardware flow session. |
-| Default hardware rules | The driver wrote receive and transmit action records and a hardware match-table entry successfully. |
-| Hardware translation throughput | The probe did not install translation rules or run a throughput test. |
+| TruFlow | Enabled |
+| Driver | DPDK 26.03 BNXT with corrected firmware command writes |
+| Spare physical function | `0000:19:00.3` |
+| Guest VF MSI-X capacity / receive queues | 16 entries / 8 queues per VF |
+| Client mappings | 8 fixed address pairs |
+| TCP workload | 4 streams per client in each direction simultaneously; uncapped senders |
+| UDP workload | 1 stream per client in each direction simultaneously; 1400-byte payload; 5 Gbit/s requested per direction |
 
-The public [Linux bnxt TC driver](https://github.com/torvalds/linux/blob/v7.0/drivers/net/ethernet/broadcom/bnxt/bnxt_tc.c)
-programs IPv6 address and port rewrites. The public
-[DPDK bnxt action table](https://github.com/DPDK/dpdk/blob/v26.03/drivers/net/bnxt/tf_ulp/ulp_rte_handler_tbl.c)
-exposes address rewriting and hop-limit decrement, which reduces the
-packet's remaining router count.
+The fixed NAT66 rules assign a distinct translated source address to each client, while PF stateful NAT66 combines the client sources. This comparison changes the address distribution as well as the processing path.
 
-| Hardware workload | Public interface support |
-| --- | --- |
-| NAT64 | The bnxt interfaces do not expose the required IPv6-to-IPv4 header conversion. The DPDK driver does not implement the NAT64 action and rejects raw header insertion and removal. Custom code needs a documented way to perform the missing conversion. |
-| Stateful NAT66 | Linux TC and DPDK expose IPv6 address and TCP or UDP port rewriting. Software must manage the mappings and rules for each direction. |
-| Fixed checksum-neutral NPT66 mappings | Software can calculate complete address pairs according to [RFC 6296](https://www.rfc-editor.org/rfc/rfc6296.html) and request address rewrite rules. The public interfaces do not expose the complete prefix translation algorithm. |
+The direct TCP result does not establish the NIC's maximum rate. Both traffic generators share the endpoint host, and the test uses most of its CPU capacity. Every CPU percentage below uses the complete PowerEdge host capacity; rule controller CPU measures the control program and testpmd.
 
-A hardware result requires correct translated packets at the receiver and
-increasing NIC rule counters while software forwarding remains disabled.
-Assigning a VF, enabling checksum offload, or running DPDK does not prove
-that the NIC performs translation.
+#### Hardware TCP
+
+Paired values list forward first and reverse second. Receiver throughput excludes TCP warmup.
+
+| Fixed mapping and path | Received Gbit/s, forward / reverse | OPNsense VM CPU | Rule controller CPU | Host CPU | Retransmissions, forward / reverse |
+| --- | --- | --- | --- | --- | --- |
+| Fixed NAT66, OPNsense path | 6.27 / 5.92 | 48.53% | 0.0049% | 65.28% | 37,940 / 38,111 |
+| Fixed checksum-neutral NPT66, OPNsense path | 6.44 / 5.74 | 48.38% | 0.0049% | 65.08% | 41,663 / 42,085 |
+| Fixed NAT66, direct VF path | 31.81 / 36.97 | 2.02% | 0.0065% | 96.25% | 203,082 / 235,469 |
+
+#### Hardware UDP
+
+Delivery loss uses the sender datagram count and includes packets that the receiver did not record at the end of the run. Every row uses the requested workload above and retains actual sent traffic.
+
+| Fixed mapping and path | Sent Gbit/s, forward / reverse | Received Gbit/s, forward / reverse | Delivery loss, forward / reverse | OPNsense VM CPU | Rule controller CPU | Host CPU |
+| --- | --- | --- | --- | --- | --- | --- |
+| Fixed NAT66, OPNsense path | 5.00 / 5.00 | 3.70 / 3.60 | 25.9563% / 27.9642% | 48.70% | 0.0050% | 91.50% |
+| Fixed checksum-neutral NPT66, OPNsense path | 5.00 / 5.00 | 2.95 / 3.24 | 40.9101% / 35.1688% | 48.22% | 0.0046% | 89.21% |
+| Fixed NAT66, direct VF path | 5.00 / 5.00 | 4.99 / 4.99 | 0.1301% / 0.1600% | 0.95% | 0.0051% | 56.10% |
+
+#### Hardware idle CPU
+
+Each idle baseline precedes its workload. Workload CPU includes that idle cost.
+
+| Fixed mapping and path | Workload | Idle OPNsense VM CPU | Idle rule controller CPU | Idle host CPU |
+| --- | --- | --- | --- | --- |
+| Fixed NAT66, OPNsense path | TCP | 0.56% | 0.0054% | 6.83% |
+| Fixed NAT66, OPNsense path | UDP | 0.49% | 0.0054% | 7.24% |
+| Fixed checksum-neutral NPT66, OPNsense path | TCP | 0.27% | 0.0052% | 6.61% |
+| Fixed checksum-neutral NPT66, OPNsense path | UDP | 0.47% | 0.0049% | 7.12% |
+| Fixed NAT66, direct VF path | TCP | 0.50% | 0.0051% | 6.46% |
+| Fixed NAT66, direct VF path | UDP | 0.54% | 0.0049% | 6.80% |
 
 ### IPv6 UDP queue distribution
 
