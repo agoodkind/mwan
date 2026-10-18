@@ -175,6 +175,11 @@ func runOwnedDHCPv6IARuntime(t *testing.T, combined, unequal, duplicate bool) {
 	stopProtocolServices(t, []protocolService{service})
 	serviceRunning = false
 	addMappedRuntimeRoute(t, "2001:db8:30::/60", "2001:db8:2::1", "wan-vlan")
+	// The gateway removes its RA default route after a Neighbor Advertisement
+	// without the Router flag. A forwarding provider link sets that flag.
+	if err := os.WriteFile("/proc/sys/net/ipv6/conf/wan-vlan/forwarding", []byte("1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	served, stopServer := startDHCPv6IAUnequalServer(t)
 	defer stopServer()
 	stopRouter := startDHCPv6RuntimeRouter(t, true)
@@ -200,6 +205,9 @@ func runOwnedDHCPv6IARuntime(t *testing.T, combined, unequal, duplicate bool) {
 	mark("short_address_request_received")
 	waitMappedRuntimeRule(t, daemon, "ip6", "nat", "2001:db8:30::1", 10*time.Second)
 	waitDHCPv6RuntimeSourceRule(t, daemon, true)
+	// wan.routes installs source rule 55 before steering replaces the IPv6
+	// guard that drops the downstream reply during duplicate address detection.
+	waitDHCPv6RuntimeSteering(t, daemon)
 	mark("mapping_and_source_rule_installed")
 	assertMappedRuntimeReply(t, daemon, gateway, provider.namespace, downstream.namespace,
 		"udp6", "[2001:db8:30::1]:52227", "[2001:db8:b01:fe::2]:52227")
@@ -479,26 +487,27 @@ func waitDHCPv6IALeaseRecord(t *testing.T, daemon *runtimeDaemon, path, address,
 	t.Fatalf("Kea did not record %s lease %s: %s; daemon: %s", leaseType, address, content, runtimeLogTail(t, daemon, 30))
 }
 
+// firewall.ApplyWithReport flushes inet filter input and deletes test rules.
+// An outbound exchange uses the ct state established,related accept rule
+// for the reply and proves that the gateway can use the IA_NA address.
 func assertDHCPv6IALocalPacket(t *testing.T, daemon *runtimeDaemon, gateway, upstream netns.NsHandle, address string) {
 	t.Helper()
-	setRuntimeNamespace(t, gateway)
-	host, port, err := net.SplitHostPort(address)
-	if err != nil {
-		t.Fatal(err)
-	}
-	permit := exec.Command("nft", "insert", "rule", "inet", "filter", "input",
-		"iifname", "enatt0", "ip6", "saddr", "2001:db8:2::2", "ip6", "daddr", host,
-		"udp", "dport", port, "accept")
-	if output, err := permit.CombinedOutput(); err != nil {
-		t.Fatalf("permit test IA_NA listener: %v: %s", err, output)
-	}
-	listener, err := net.ListenPacket("udp6", address)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer listener.Close()
 	setRuntimeNamespace(t, upstream)
-	connection, err := net.DialTimeout("udp6", address, time.Second)
+	server, err := net.ListenPacket("udp6", "[2001:db8:2::2]:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+	setRuntimeNamespace(t, gateway)
+	local, err := net.ResolveUDPAddr("udp6", address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote, ok := server.LocalAddr().(*net.UDPAddr)
+	if !ok {
+		t.Fatalf("provider listener address %v is not UDP", server.LocalAddr())
+	}
+	connection, err := net.DialUDP("udp6", local, remote)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -506,13 +515,22 @@ func assertDHCPv6IALocalPacket(t *testing.T, daemon *runtimeDaemon, gateway, ups
 	if _, err := connection.Write([]byte("local-ia-na")); err != nil {
 		t.Fatal(err)
 	}
-	setRuntimeNamespace(t, gateway)
-	if err := listener.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+	if err := server.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	buffer := make([]byte, 32)
-	count, _, err := listener.ReadFrom(buffer)
+	count, peer, err := server.ReadFrom(buffer)
+	if err != nil || string(buffer[:count]) != "local-ia-na" || peer.String() != address {
+		t.Fatalf("local IA_NA request: count=%d data=%q peer=%v error=%v: %s", count, buffer[:count], peer, err, runtimeLogTail(t, daemon, 30))
+	}
+	if _, err := server.WriteTo(buffer[:count], peer); err != nil {
+		t.Fatal(err)
+	}
+	if err := connection.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	count, err = connection.Read(buffer)
 	if err != nil || string(buffer[:count]) != "local-ia-na" {
-		t.Fatalf("local IA_NA packet: count=%d data=%q error=%v: %s", count, buffer[:count], err, runtimeLogTail(t, daemon, 30))
+		t.Fatalf("local IA_NA reply: count=%d data=%q error=%v: %s", count, buffer[:count], err, runtimeLogTail(t, daemon, 30))
 	}
 }
