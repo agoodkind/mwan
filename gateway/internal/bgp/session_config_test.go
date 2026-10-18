@@ -12,6 +12,7 @@ func TestNewSessionRejectsInvalidConfiguration(t *testing.T) {
 	valid := bgp.SessionConfig{
 		Name:             "invalid",
 		RouterID:         netip.MustParseAddr(sessionRouterID),
+		Families:         []bgp.Family{bgp.FamilyIPv6Unicast},
 		LocalASN:         sessionASN,
 		RemoteASN:        externalPeerASN,
 		PeerAddress:      netip.MustParseAddr("2001:db8:ffff::2"),
@@ -31,6 +32,7 @@ func TestNewSessionRejectsInvalidConfiguration(t *testing.T) {
 		{"zero remote ASN", func(c *bgp.SessionConfig) { c.RemoteASN = 0 }, "remote ASN is required"},
 		{"invalid peer address", func(c *bgp.SessionConfig) { c.PeerAddress = netip.Addr{} }, "peer address"},
 		{"zero peer port", func(c *bgp.SessionConfig) { c.PeerPort = 0 }, "peer port is required"},
+		{"no address family", func(c *bgp.SessionConfig) { c.Families = nil }, "at least one address family is required"},
 		{"IPv4 import prefix", func(c *bgp.SessionConfig) {
 			c.Import = []bgp.ImportRule{{Prefix: netip.MustParsePrefix("192.0.2.0/24"), MinLength: 24, MaxLength: 24}}
 		}, "is not an IPv6 prefix"},

@@ -30,10 +30,14 @@ func bgpReason(sessions []bgp.SessionState) string {
 	}
 	acceptedCount := 0
 	for _, session := range sessions {
-		if !session.Established {
+		// Retained prefixes satisfy the route-acceptance check. The kernel
+		// retains the routes installed by the previous process until the peer
+		// sends them again or the restart deadline passes. The forwarding probe
+		// still decides readiness.
+		if !session.Established && len(session.Retained) == 0 {
 			return reasonBGPNotEstablished
 		}
-		acceptedCount += len(session.Accepted)
+		acceptedCount += len(session.Accepted) + len(session.Retained)
 	}
 	if acceptedCount == 0 {
 		return reasonBGPNoAcceptedRoute

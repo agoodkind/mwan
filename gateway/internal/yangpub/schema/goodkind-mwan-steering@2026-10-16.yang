@@ -49,6 +49,16 @@ module goodkind-mwan-steering {
      decides its verdict, the prefix-translation inputs, and the
      internal link the members route toward.";
 
+  revision 2026-10-16 {
+    description
+      "This revision adds BGP session graceful restart time and the
+       prefixes of kernel routes that remain installed after the
+       previous process exits. It adds the bgp-session family
+       leaf-list and removes the bgp-session router-id leaf.
+       External BGP sessions use router_id in the [bgp] table of
+       config.toml as their BGP router ID. Network documents that
+       set router-id fail schema validation at load.";
+  }
   revision 2026-10-12;
   revision 2026-10-11;
   revision 2026-10-10 {
@@ -247,6 +257,14 @@ module goodkind-mwan-steering {
         leaf established { type boolean; }
         leaf-list accepted-prefix { type inet:ipv6-prefix; }
         leaf-list advertised-prefix { type inet:ipv6-prefix; }
+        leaf-list retained-prefix {
+          type inet:ipv6-prefix;
+          description
+            "The prefix of a kernel route that the previous process installed.
+             The kernel route remains installed while the restarted session
+             waits for the peer to send the prefix again or to send its
+             End-of-RIB marker, or until the graceful restart time expires.";
+        }
         list rejection {
           key "prefix";
           leaf prefix { type inet:ipv6-prefix; }
@@ -638,12 +656,14 @@ module goodkind-mwan-steering {
             range "1..max";
           }
         }
-        leaf router-id {
-          mandatory true;
-          type yang:dotted-quad;
-          must ". != '0.0.0.0'" {
-            error-message "The router ID must not be 0.0.0.0.";
+        leaf-list family {
+          min-elements 1;
+          type enumeration {
+            enum ipv6-unicast;
           }
+          description
+            "The session uses the BGP multiprotocol capability to
+             negotiate exactly these address families with its peer.";
         }
         leaf multihop-ttl {
           type uint8 {
@@ -672,6 +692,26 @@ module goodkind-mwan-steering {
             range "2..max";
           }
           units "seconds";
+        }
+        leaf graceful-restart-time {
+          type uint16 {
+            range "1..4095";
+          }
+          units "seconds";
+          description
+            "The restart time that the session advertises in the RFC 4724
+             graceful restart capability. When this leaf is present and the
+             peer negotiates graceful restart for IPv6 unicast, an ordinary
+             daemon stop does not delete the gateway kernel routes, and the
+             peer marks the session paths stale instead of withdrawing them.
+             The restarted session sends the advertised prefixes again and
+             waits for the peer to send its prefixes again or its End-of-RIB
+             marker. The session then deletes the retained kernel routes that
+             the peer did not send again. When the peer does not negotiate
+             graceful restart for IPv6 unicast, the daemon stop deletes the
+             gateway kernel routes.";
+          reference
+            "RFC 4724: Graceful Restart Mechanism for BGP";
         }
         leaf route-metric {
           mandatory true;

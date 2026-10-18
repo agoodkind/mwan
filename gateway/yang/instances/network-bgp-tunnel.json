@@ -72,7 +72,7 @@
               "local-address": "2001:db8:6::2",
               "local-as": 64512,
               "remote-as": 64512,
-              "router-id": "192.0.2.130",
+              "family": ["ipv6-unicast"],
               "keepalive": 10,
               "hold": 30,
               "route-metric": 300,

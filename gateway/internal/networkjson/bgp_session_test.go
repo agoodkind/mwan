@@ -61,11 +61,12 @@ func TestDecodeBuildsDirectBGPSessions(t *testing.T) {
 	home := netip.MustParsePrefix(bgpHomePrefix)
 	med := uint32(10)
 	want := bgpsession.Config{
-		Name: "upstream", RouterID: netip.MustParseAddr("192.0.2.130"), LocalASN: 64512, RemoteASN: 64513,
+		Name: "upstream", Families: []bgpsession.Family{bgpsession.FamilyIPv6Unicast}, LocalASN: 64512, RemoteASN: 64513,
 		PeerAddress: netip.MustParseAddr("2001:db8:179:a::1"), PeerPort: 179,
 		LocalAddress: netip.MustParseAddr("2001:db8:179:a::2"), KeepaliveSeconds: 10, HoldSeconds: 30,
-		Import:      []bgpsession.ImportRule{{Prefix: netip.MustParsePrefix("::/0"), MinLength: 0, MaxLength: 0}},
-		RouteMetric: 300,
+		GracefulRestartSeconds: 120,
+		Import:                 []bgpsession.ImportRule{{Prefix: netip.MustParsePrefix("::/0"), MinLength: 0, MaxLength: 0}},
+		RouteMetric:            300,
 		Export: []bgpsession.ExportRule{{
 			Prefix: home, Mode: bgpsession.ExportAlways, MED: &med, NextHop: netip.MustParseAddr("2001:db8:179:a::2"),
 			Communities:      []bgpsession.Community{{ASN: 64513, Value: 100}},

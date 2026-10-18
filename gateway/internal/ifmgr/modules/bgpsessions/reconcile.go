@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"slices"
+	"time"
 
 	"golang.org/x/sys/unix"
 
@@ -29,12 +30,16 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		return nil
 	}
 	var reconcileErr error
+	now := m.clock.Now()
 	for _, entry := range m.sessions {
-		if err := m.reconcileSession(ctx, log, entry); err != nil {
+		if err := m.reconcileSession(ctx, log, entry, now); err != nil {
 			reconcileErr = errors.Join(reconcileErr, err)
 		}
 	}
-	if err := m.sweepStaleRoutes(ctx, log); err != nil {
+	if err := m.pruneRetention(ctx, log, now); err != nil {
+		reconcileErr = errors.Join(reconcileErr, err)
+	}
+	if err := m.sweepStaleRoutes(ctx, log, now); err != nil {
 		reconcileErr = errors.Join(reconcileErr, err)
 	}
 	for _, entry := range m.sessions {
@@ -43,7 +48,7 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	return reconcileErr
 }
 
-func (m *Module) reconcileSession(ctx context.Context, log *slog.Logger, entry *managedSession) error {
+func (m *Module) reconcileSession(ctx context.Context, log *slog.Logger, entry *managedSession, now time.Time) error {
 	name := entry.cfg.Config.Name
 	transport, err := sessionTransport(ctx, log, entry.cfg)
 	if err != nil {
@@ -55,8 +60,9 @@ func (m *Module) reconcileSession(ctx context.Context, log *slog.Logger, entry *
 		m.stopLocked(ctx, log, entry)
 	}
 	if entry.running {
+		connectErr := m.connectWhenDue(ctx, log, entry, now)
 		entry.session.RefreshRoutes(ctx)
-		return nil
+		return connectErr
 	}
 	if transport == "" {
 		return nil
@@ -69,7 +75,7 @@ func (m *Module) reconcileSession(ctx context.Context, log *slog.Logger, entry *
 		return fmt.Errorf("start bgp session %s: %w", name, err)
 	}
 	entry.running, entry.transport = true, transport
-	return nil
+	return m.connectWhenDue(ctx, log, entry, now)
 }
 
 func (m *Module) stopLocked(ctx context.Context, log *slog.Logger, entry *managedSession) {
@@ -79,7 +85,7 @@ func (m *Module) stopLocked(ctx context.Context, log *slog.Logger, entry *manage
 	if err := entry.session.Stop(ctx); err != nil {
 		log.WarnContext(ctx, "bgp_sessions: session stop failed", "session", entry.cfg.Config.Name, "err", err)
 	}
-	entry.running, entry.transport = false, ""
+	entry.running, entry.transport, entry.connectBy = false, "", time.Time{}
 }
 
 func sessionTransport(ctx context.Context, log *slog.Logger, cfg Session) (string, error) {
@@ -106,8 +112,9 @@ func sessionTransport(ctx context.Context, log *slog.Logger, cfg Session) (strin
 
 // The address module installs configured routes with the protocol number of
 // the session routes. The sweep must read only the interfaces and metrics in
-// the journal.
-func (m *Module) sweepStaleRoutes(ctx context.Context, log *slog.Logger) error {
+// the journal. The sweep does not delete routes for an owner with a future
+// restart deadline.
+func (m *Module) sweepStaleRoutes(ctx context.Context, log *slog.Logger, now time.Time) error {
 	if len(m.owners) == 0 {
 		return nil
 	}
@@ -121,7 +128,8 @@ func (m *Module) sweepStaleRoutes(ctx context.Context, log *slog.Logger) error {
 	var sweepErr error
 	var staleDestinations []string
 	for _, route := range routes {
-		if !slices.Contains(m.owners, routeOwner{Interface: route.Dev, Metric: route.Metric}) {
+		owner := routeOwner{Interface: route.Dev, Metric: route.Metric}
+		if !slices.Contains(m.owners, owner) || m.retainedOwner(owner, now) {
 			continue
 		}
 		if route.Dest == listedDefaultRoute {
