@@ -91,6 +91,7 @@ Rate pairs show client to server / server to client simultaneously. Every CPU pe
 | Traffic | 8 clients; TCP: 4 streams each, uncapped; UDP: 1 stream each, 1400-byte payload, 5 Gbit/s per direction |
 | Measured duration | 20 seconds; TCP excludes 3 seconds of warmup |
 | Network | Vault uses its physical LAN; PowerEdge uses the NIC internal switch. |
+| DPDK driver | The test build includes the [submitted BNXT firmware-command fix](https://patches.dpdk.org/project/dpdk/patch/20261018022929.91865-1-alex@goodkind.io/). |
 | PowerEdge software settings | Earlier measurements: TruFlow disabled, VF MSI-X capacity 8; the enabled rerun is in progress. |
 | NIC test settings | TruFlow enabled; VF MSI-X capacity 16; OPNsense uses 8 queues. |
 | Hardware scope | Fixed address mappings, with a separate source address per client; PF NAT66 combines sources. The tested driver rejects NAT64. |
