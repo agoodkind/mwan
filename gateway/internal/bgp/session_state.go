@@ -19,8 +19,11 @@ type Rejection struct {
 
 // SessionState is a snapshot of one external BGP session. FSMState stores the
 // GoBGP finite state machine state name. UpSince is the zero time while the
-// session is not established. Accepted and Advertised are sorted. Rejected
-// lists the most recent rejection last.
+// session is not established. Accepted, Advertised, and Retained are sorted.
+// Retained lists the prefixes of kernel routes that the previous process
+// installed. After KeepRoutes, the session does not delete those routes until
+// the peer sends the prefixes again, sends its End-of-RIB marker, or the
+// restart time ends. Rejected lists the most recent rejection last.
 type SessionState struct {
 	Name        string
 	FSMState    string
@@ -28,6 +31,7 @@ type SessionState struct {
 	UpSince     time.Time
 	Accepted    []netip.Prefix
 	Advertised  []netip.Prefix
+	Retained    []netip.Prefix
 	Rejected    []Rejection
 }
 
@@ -54,20 +58,25 @@ func (s *Session) snapshotLocked() SessionState {
 		accepted = append(accepted, prefix)
 	}
 	slices.SortFunc(accepted, netip.Prefix.Compare)
-	advertised := make([]netip.Prefix, 0, len(s.advertised))
-	for prefix := range s.advertised {
-		advertised = append(advertised, prefix)
-	}
-	slices.SortFunc(advertised, netip.Prefix.Compare)
 	return SessionState{
 		Name:        s.cfg.Name,
 		FSMState:    s.fsmState.String(),
 		Established: s.established,
 		UpSince:     s.upSince,
 		Accepted:    accepted,
-		Advertised:  advertised,
+		Advertised:  sortedPrefixes(s.advertised),
+		Retained:    sortedPrefixes(s.retained),
 		Rejected:    slices.Clone(s.rejected),
 	}
+}
+
+func sortedPrefixes(set map[netip.Prefix]struct{}) []netip.Prefix {
+	prefixes := make([]netip.Prefix, 0, len(set))
+	for prefix := range set {
+		prefixes = append(prefixes, prefix)
+	}
+	slices.SortFunc(prefixes, netip.Prefix.Compare)
+	return prefixes
 }
 
 func (s *Session) enqueueChangeLocked() {

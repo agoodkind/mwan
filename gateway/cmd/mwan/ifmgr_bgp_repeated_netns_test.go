@@ -48,7 +48,7 @@ func requireBGPRepeatedIntact(t *testing.T, run *bgpRuntimeRun, session bgpRepea
 	if !bgpRuntimeGatewayRoute(t, session.device, session.learned) {
 		t.Fatalf("gateway has no BGP route to %s on %s", session.learned, session.device)
 	}
-	if received := session.router.received(); !slices.Equal(received, []netip.Prefix{netip.MustParsePrefix(bgpRuntimeHome)}) {
+	if received := session.router.received(t); !slices.Equal(received, []netip.Prefix{netip.MustParsePrefix(bgpRuntimeHome)}) {
 		t.Fatalf("router of %s received %v, want %s", session.device, received, bgpRuntimeHome)
 	}
 	requireBGPRuntimeIPv6Unchanged(t, run.read, session.device, since)

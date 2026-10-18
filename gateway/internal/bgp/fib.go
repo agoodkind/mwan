@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/netip"
+	"slices"
 	"sync"
 
 	"golang.org/x/sys/unix"
@@ -285,6 +286,28 @@ func (f *FIB) withdraw(ctx context.Context, peer string, prefix netip.Prefix) er
 		}
 	}
 	return withdrawErr
+}
+
+// Installed returns the sorted prefixes of the kernel BGP routes that use the
+// interface and the metric of the installer in any owned table.
+func (f *FIB) Installed(ctx context.Context) ([]netip.Prefix, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	counts, err := f.installedCounts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	prefixes := make([]netip.Prefix, 0, len(counts))
+	for destination := range counts {
+		prefix, err := netip.ParsePrefix(destination)
+		if err != nil {
+			f.log.WarnContext(ctx, "ignore installed BGP route with invalid destination", "destination", destination, "err", err)
+			continue
+		}
+		prefixes = append(prefixes, prefix.Masked())
+	}
+	slices.SortFunc(prefixes, netip.Prefix.Compare)
+	return prefixes, nil
 }
 
 // WithdrawExact preserves the peer's more specific routes inside prefix when

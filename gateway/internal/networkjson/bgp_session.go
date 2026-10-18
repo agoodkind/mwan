@@ -12,20 +12,21 @@ import (
 const defaultBGPPeerPort = 179
 
 type bgpSessionWire struct {
-	Name         string          `json:"name"`
-	PeerAddress  string          `json:"peer-address"`
-	PeerPort     *uint16         `json:"peer-port"`
-	LocalAddress string          `json:"local-address"`
-	LocalAS      *uint32         `json:"local-as"`
-	RemoteAS     *uint32         `json:"remote-as"`
-	RouterID     string          `json:"router-id"`
-	MultihopTTL  *uint8          `json:"multihop-ttl"`
-	Keepalive    *uint16         `json:"keepalive"`
-	Hold         *uint16         `json:"hold"`
-	ConnectRetry *uint16         `json:"connect-retry"`
-	RouteMetric  *uint32         `json:"route-metric"`
-	Import       []bgpImportWire `json:"import"`
-	Export       []bgpExportWire `json:"export"`
+	Name                string          `json:"name"`
+	PeerAddress         string          `json:"peer-address"`
+	PeerPort            *uint16         `json:"peer-port"`
+	LocalAddress        string          `json:"local-address"`
+	LocalAS             *uint32         `json:"local-as"`
+	RemoteAS            *uint32         `json:"remote-as"`
+	RouterID            string          `json:"router-id"`
+	MultihopTTL         *uint8          `json:"multihop-ttl"`
+	Keepalive           *uint16         `json:"keepalive"`
+	Hold                *uint16         `json:"hold"`
+	ConnectRetry        *uint16         `json:"connect-retry"`
+	GracefulRestartTime *uint16         `json:"graceful-restart-time"`
+	RouteMetric         *uint32         `json:"route-metric"`
+	Import              []bgpImportWire `json:"import"`
+	Export              []bgpExportWire `json:"export"`
 }
 
 func buildBGPSessions(label string, entry ifaceEntry) ([]config.BGPSession, error) {
@@ -61,7 +62,7 @@ func buildBGPSession(label string, wire bgpSessionWire) (config.BGPSession, erro
 		Name: wire.Name, RouterID: netip.Addr{}, LocalASN: 0, RemoteASN: 0,
 		PeerAddress: netip.Addr{}, PeerPort: defaultBGPPeerPort, LocalAddress: netip.Addr{},
 		Interface: "", MultihopTTL: 0, KeepaliveSeconds: 0, HoldSeconds: 0, ConnectRetrySeconds: 0,
-		Import: nil, Export: nil, Tables: nil, RouteMetric: 0,
+		GracefulRestartSeconds: 0, Import: nil, Export: nil, Tables: nil, RouteMetric: 0,
 	}
 	if err := setBGPSessionPeers(label, wire, &session); err != nil {
 		return none, err
@@ -176,6 +177,13 @@ func setBGPSessionTimers(label string, wire bgpSessionWire, session *bgpsession.
 			return fmt.Errorf("%s: connect-retry %d must be at least %d", label, *wire.ConnectRetry, bgpsession.MinConnectRetrySeconds)
 		}
 		session.ConnectRetrySeconds = uint32(*wire.ConnectRetry)
+	}
+	if wire.GracefulRestartTime != nil {
+		restart := *wire.GracefulRestartTime
+		if restart == 0 || restart > bgpsession.MaxGracefulRestartSeconds {
+			return fmt.Errorf("%s: graceful-restart-time %d must be between 1 and %d", label, restart, bgpsession.MaxGracefulRestartSeconds)
+		}
+		session.GracefulRestartSeconds = uint32(restart)
 	}
 	return nil
 }

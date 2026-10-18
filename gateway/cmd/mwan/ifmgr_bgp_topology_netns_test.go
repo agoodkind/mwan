@@ -31,6 +31,8 @@ type bgpRuntimeProvider struct {
 	learned                  netip.Prefix
 	exports                  []bgpRuntimeExport
 	session                  bool
+	// A nonzero restartTime configures graceful-restart-time on the session.
+	restartTime int
 }
 
 type bgpRuntimeExport struct {
@@ -59,11 +61,15 @@ func (p bgpRuntimeProvider) entry() string {
 	probe := `"enabled":true,"ping-count":1,"success-threshold":1,"failure-threshold":2,"recovery-threshold":1,"check-interval":1`
 	sessions := ""
 	if p.session {
+		restart := ""
+		if p.restartTime > 0 {
+			restart = fmt.Sprintf(`"graceful-restart-time":%d,`, p.restartTime)
+		}
 		sessions = fmt.Sprintf(`,"bgp-session":[{"name":"upstream","peer-address":%q,"local-address":%q,`+
-			`"local-as":%d,"remote-as":%d,"router-id":"192.0.2.1","keepalive":%d,"hold":%d,"route-metric":%d,`+
+			`"local-as":%d,"remote-as":%d,"router-id":"192.0.2.1","keepalive":%d,"hold":%d,%s"route-metric":%d,`+
 			`"import":[{"prefix":%q,"min-length":%d,"max-length":%d}],`+
 			`"export":[%s]}]`,
-			p.peer(), p.local(), p.localASN, p.remoteASN, bgpRuntimeKeepalive, bgpRuntimeHold, p.metric,
+			p.peer(), p.local(), p.localASN, p.remoteASN, bgpRuntimeKeepalive, bgpRuntimeHold, restart, p.metric,
 			p.learned, p.learned.Bits(), p.learned.Bits(), p.exportEntries())
 	}
 	return fmt.Sprintf(`{"name":%q,"type":"iana-if-type:other","goodkind-mwan-steering:owner":"external",`+

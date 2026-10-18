@@ -14,6 +14,7 @@ import (
 	"github.com/osrg/gobgp/v4/pkg/server"
 
 	"goodkind.io/mwan/internal/bgpsession"
+	"goodkind.io/mwan/internal/clock"
 )
 
 // sessionListenPort disables the GoBGP listener because a session initiates
@@ -28,11 +29,13 @@ type Session struct {
 	log     *slog.Logger
 	fib     *FIB
 	peerKey string
+	clock   clock.Clock
 
 	mu          sync.Mutex
 	server      *server.BgpServer
 	cancelWatch context.CancelFunc
 	started     bool
+	connected   bool
 	fsmState    bgppkt.FSMState
 	established bool
 	upSince     time.Time
@@ -40,9 +43,20 @@ type Session struct {
 	unresolved  map[netip.Prefix]netip.Addr
 	advertised  map[netip.Prefix]struct{}
 	rejected    []Rejection
-	listeners   []func(SessionState)
-	pending     []SessionState
-	delivering  bool
+	// gracefulRestart is true while the established peer advertises the RFC
+	// 4724 capability for IPv6 unicast.
+	gracefulRestart bool
+	// retaining is true from KeepRoutes until the IPv6 End-of-RIB marker or
+	// the restart deadline, and retained lists the kernel routes of the
+	// previous process that the peer has not sent again. retainGeneration
+	// identifies the deadline timer of the current KeepRoutes call.
+	retaining        bool
+	retained         map[netip.Prefix]struct{}
+	retainTimer      *time.Timer
+	retainGeneration uint64
+	listeners        []func(SessionState)
+	pending          []SessionState
+	delivering       bool
 }
 
 // NewSession validates cfg and creates a stopped session.
@@ -63,37 +77,61 @@ func NewSession(cfg SessionConfig, log *slog.Logger) (*Session, error) {
 		ResolveNextHop: true,
 	}
 	return &Session{
-		cfg:         validated,
-		log:         log,
-		fib:         NewFIB(fibConfig, log),
-		peerKey:     validated.PeerAddress.String(),
-		mu:          sync.Mutex{},
-		server:      nil,
-		cancelWatch: nil,
-		started:     false,
-		fsmState:    bgppkt.BGP_FSM_IDLE,
-		established: false,
-		upSince:     time.Time{},
-		accepted:    make(map[netip.Prefix]netip.Addr),
-		unresolved:  make(map[netip.Prefix]netip.Addr),
-		advertised:  make(map[netip.Prefix]struct{}),
-		rejected:    nil,
-		listeners:   nil,
-		pending:     nil,
-		delivering:  false,
+		cfg:              validated,
+		log:              log,
+		fib:              NewFIB(fibConfig, log),
+		peerKey:          validated.PeerAddress.String(),
+		clock:            clock.Real{},
+		mu:               sync.Mutex{},
+		server:           nil,
+		cancelWatch:      nil,
+		started:          false,
+		connected:        false,
+		fsmState:         bgppkt.BGP_FSM_IDLE,
+		established:      false,
+		upSince:          time.Time{},
+		accepted:         make(map[netip.Prefix]netip.Addr),
+		unresolved:       make(map[netip.Prefix]netip.Addr),
+		advertised:       make(map[netip.Prefix]struct{}),
+		rejected:         nil,
+		gracefulRestart:  false,
+		retaining:        false,
+		retained:         make(map[netip.Prefix]struct{}),
+		retainTimer:      nil,
+		retainGeneration: 0,
+		listeners:        nil,
+		pending:          nil,
+		delivering:       false,
 	}, nil
 }
 
-// Start creates the GoBGP server, adds the peer, and begins connecting. The
-// context bounds only the Start call. The context supplies logging values. The
-// session runs until Stop even after the context ends.
+// Start creates the GoBGP server, adds the peer, and begins connecting. After
+// KeepRoutes, Start creates the server without adding the peer, and Connect
+// adds the peer later. The context bounds only the Start call and supplies
+// logging values. The session runs until Stop even after the context ends.
 func (s *Session) Start(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.started {
 		return nil
 	}
+	if err := s.startServerLocked(ctx, !s.retaining); err != nil {
+		return err
+	}
+	s.log.InfoContext(
+		ctx, "bgp session started",
+		"local_asn", s.cfg.LocalASN,
+		"remote_asn", s.cfg.RemoteASN,
+		"peer", s.peerKey,
+		"peer_port", s.cfg.PeerPort,
+		"connected", s.connected,
+	)
+	return nil
+}
 
+// startServerLocked adds the peer only when connect is true. The GoBGP server
+// does not initiate a peer connection until Connect adds the peer.
+func (s *Session) startServerLocked(ctx context.Context, connect bool) error {
 	logLevel := new(slog.LevelVar)
 	logLevel.Set(slog.LevelInfo)
 	bgpServer := server.NewBgpServer(server.LoggerOption(s.log, logLevel))
@@ -108,7 +146,7 @@ func (s *Session) Start(ctx context.Context) error {
 	}()
 
 	watchContext, cancelWatch := context.WithCancel(context.WithoutCancel(ctx))
-	if err := s.configureServer(watchContext, bgpServer); err != nil {
+	if err := s.configureServer(watchContext, bgpServer, connect); err != nil {
 		cancelWatch()
 		bgpServer.Stop()
 		return err
@@ -118,17 +156,11 @@ func (s *Session) Start(ctx context.Context) error {
 	s.server = bgpServer
 	s.cancelWatch = cancelWatch
 	s.started = true
-	s.log.InfoContext(
-		ctx, "bgp session started",
-		"local_asn", s.cfg.LocalASN,
-		"remote_asn", s.cfg.RemoteASN,
-		"peer", s.peerKey,
-		"peer_port", s.cfg.PeerPort,
-	)
+	s.connected = connect
 	return nil
 }
 
-func (s *Session) configureServer(ctx context.Context, bgpServer *server.BgpServer) error {
+func (s *Session) configureServer(ctx context.Context, bgpServer *server.BgpServer, connect bool) error {
 	global := &apipb.Global{
 		Asn:        s.cfg.LocalASN,
 		RouterId:   s.cfg.RouterID.String(),
@@ -138,10 +170,6 @@ func (s *Session) configureServer(ctx context.Context, bgpServer *server.BgpServ
 		s.log.ErrorContext(ctx, "start bgp session server failed", "error", err)
 		return fmt.Errorf("start bgp session %q: %w", s.cfg.Name, err)
 	}
-	if err := bgpServer.AddPeer(ctx, &apipb.AddPeerRequest{Peer: s.peer()}); err != nil {
-		s.log.ErrorContext(ctx, "add bgp session peer failed", "peer", s.peerKey, "error", err)
-		return fmt.Errorf("add bgp session %q peer %s: %w", s.cfg.Name, s.peerKey, err)
-	}
 	callbacks := server.WatchEventMessageCallbacks{
 		OnPeerUpdate: func(event *apiutil.WatchEventMessage_PeerEvent, timestamp time.Time) {
 			s.handlePeerEvent(ctx, event, timestamp)
@@ -149,11 +177,28 @@ func (s *Session) configureServer(ctx context.Context, bgpServer *server.BgpServ
 		OnBestPath: func(paths []*apiutil.Path, _ time.Time) {
 			s.handleBestPaths(ctx, paths)
 		},
+		OnPathEor: func(path *apiutil.Path, _ time.Time) {
+			s.handleEndOfRIB(ctx, path)
+		},
 	}
-	err := bgpServer.WatchEvent(ctx, callbacks, server.WatchPeer(), server.WatchBestPath(true))
-	if err != nil {
+	options := []server.WatchOption{server.WatchPeer(), server.WatchBestPath(true)}
+	if s.cfg.GracefulRestartSeconds > 0 {
+		options = append(options, server.WatchEor(false))
+	}
+	if err := bgpServer.WatchEvent(ctx, callbacks, options...); err != nil {
 		s.log.ErrorContext(ctx, "bgp session watch registration failed", "error", err)
 		return fmt.Errorf("watch bgp session %q events: %w", s.cfg.Name, err)
+	}
+	if !connect {
+		return nil
+	}
+	return s.addPeer(ctx, bgpServer)
+}
+
+func (s *Session) addPeer(ctx context.Context, bgpServer *server.BgpServer) error {
+	if err := bgpServer.AddPeer(ctx, &apipb.AddPeerRequest{Peer: s.peer()}); err != nil {
+		s.log.ErrorContext(ctx, "add bgp session peer failed", "peer", s.peerKey, "error", err)
+		return fmt.Errorf("add bgp session %q peer %s: %w", s.cfg.Name, s.peerKey, err)
 	}
 	return nil
 }
@@ -192,6 +237,22 @@ func (s *Session) peer() *apipb.Peer {
 			MultihopTtl: uint32(s.cfg.MultihopTTL),
 		}
 	}
+	if s.cfg.GracefulRestartSeconds > 0 {
+		// LocalRestarting sets the Restart State bit in the OPEN message. GoBGP
+		// then withholds the session paths until the peer End-of-RIB marker
+		// arrives. When the session establishes without that marker, GoBGP
+		// v4.7.0 starts a DeferralTime timer. At its expiry, softResetOut
+		// clears LocalRestarting and sends the session paths to the peer.
+		peer.GracefulRestart = &apipb.GracefulRestart{
+			Enabled:         true,
+			RestartTime:     s.cfg.GracefulRestartSeconds,
+			DeferralTime:    s.cfg.GracefulRestartSeconds,
+			LocalRestarting: s.retaining,
+		}
+		peer.AfiSafis[0].MpGracefulRestart = &apipb.MpGracefulRestart{
+			Config: &apipb.MpGracefulRestartConfig{Enabled: true},
+		}
+	}
 	return peer
 }
 
@@ -211,18 +272,11 @@ func (s *Session) Stop(ctx context.Context) error {
 	// BgpServer.Stop logs a StopBgp failure. BgpServer.Stop ends the BFD loop.
 	// StopBgp alone does not stop the BFD loop.
 	s.server.Stop()
-	wasEstablished := s.established
+	stateChanged := s.established || len(s.retained) > 0
+	s.dropRetainedLocked(ctx)
 	withdrawErr := s.fib.WithdrawPeer(ctx, s.peerKey)
-	s.started = false
-	s.server = nil
-	s.cancelWatch = nil
-	s.fsmState = bgppkt.BGP_FSM_IDLE
-	s.established = false
-	s.upSince = time.Time{}
-	clear(s.accepted)
-	clear(s.unresolved)
-	clear(s.advertised)
-	if wasEstablished {
+	s.resetStoppedLocked()
+	if stateChanged {
 		s.enqueueChangeLocked()
 	}
 	s.mu.Unlock()
@@ -234,4 +288,22 @@ func (s *Session) Stop(ctx context.Context) error {
 		return fmt.Errorf("remove bgp session %q routes: %w", s.cfg.Name, withdrawErr)
 	}
 	return nil
+}
+
+// resetStoppedLocked clears the server, peer, and route state after Stop or
+// StopRetaining ends the server. It does not change the kernel routes.
+func (s *Session) resetStoppedLocked() {
+	s.started = false
+	s.connected = false
+	s.retaining = false
+	s.server = nil
+	s.cancelWatch = nil
+	s.fsmState = bgppkt.BGP_FSM_IDLE
+	s.established = false
+	s.gracefulRestart = false
+	s.upSince = time.Time{}
+	clear(s.accepted)
+	clear(s.unresolved)
+	clear(s.advertised)
+	clear(s.retained)
 }

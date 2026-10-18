@@ -26,6 +26,9 @@ func bgpSessionItems(base string, sessions []config.BGPSession) []Item {
 		if session.ConnectRetrySeconds != 0 {
 			items = append(items, Item{Path: path + "/connect-retry", Value: uintValue(uint64(session.ConnectRetrySeconds))})
 		}
+		if session.GracefulRestartSeconds != 0 {
+			items = append(items, Item{Path: path + "/graceful-restart-time", Value: uintValue(uint64(session.GracefulRestartSeconds))})
+		}
 		if session.MultihopTTL != 0 {
 			items = append(items, Item{Path: path + "/multihop-ttl", Value: uintValue(uint64(session.MultihopTTL))})
 		}
