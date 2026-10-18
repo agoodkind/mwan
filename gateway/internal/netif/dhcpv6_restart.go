@@ -1,13 +1,10 @@
 package netif
 
 import (
-	"bytes"
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"log/slog"
-	"math/big"
 	"net"
 	"time"
 
@@ -47,7 +44,7 @@ func (client *DHCPv6PDClient) recoverCachedDHCPv6(ctx context.Context, log *slog
 		if len(cached.Prefixes) == 0 && len(cached.Addresses) == 0 {
 			break
 		}
-		lease, err := validateDHCPv6Restart(ctx, transport, config, link, cached, solicitMaxRT)
+		lease, err := validateDHCPv6Restart(ctx, log, transport, config, link, cached, solicitMaxRT)
 		if err == nil {
 			client.publish(lease)
 			return lease
@@ -70,7 +67,7 @@ func (client *DHCPv6PDClient) recoverOnLink(ctx context.Context, log *slog.Logge
 	if config.CachedLease == nil || !compatibleDHCPv6Lease(config, link, *config.CachedLease) {
 		return empty, solicitMaxRT, nil
 	}
-	transport, err := nclient6.New(config.Iface, nclient6.WithRetry(1), nclient6.WithTimeout(5*time.Second))
+	transport, err := nclient6.New(config.Iface, dhcpv6TransportOptions()...)
 	if err != nil {
 		return empty, solicitMaxRT, fmt.Errorf("open DHCPv6 recovery socket on %s: %w", config.Iface, err)
 	}
@@ -81,82 +78,32 @@ func (client *DHCPv6PDClient) recoverOnLink(ctx context.Context, log *slog.Logge
 	return lease, solicitMaxRT, nil
 }
 
-func exchangeDHCPv6Restart(ctx context.Context, transport *nclient6.Client, config DHCPv6PDConfig, messageType dhcpv6.MessageType, cached DHCPv6PDLease, solicitMaxRT *time.Duration) (*dhcpv6.Message, error) {
-	duid, err := dhcpv6.DUIDFromBytes(config.DUID)
-	if err != nil {
-		return nil, &dhcpv6RestartExchangeError{operation: "decode DHCPv6 DUID", cause: err}
+func exchangeDHCPv6Restart(ctx context.Context, log *slog.Logger, transport *nclient6.Client, config DHCPv6PDConfig, messageType dhcpv6.MessageType, cached DHCPv6PDLease, solicitMaxRT *time.Duration) (*dhcpv6.Message, error) {
+	timing := dhcpv6Retransmission{
+		maxDelay: dhcpv6ConfirmMaxDelay, initial: dhcpv6ConfirmTimeout, maximum: dhcpv6ConfirmMaxRT,
+		count: 0, duration: dhcpv6ConfirmMaxDuration, end: latestDHCPv6Validity(cached),
 	}
-	initial, err := dhcpv6.NewMessage(dhcpv6.WithClientID(duid))
-	if err != nil {
-		return nil, &dhcpv6RestartExchangeError{operation: "create DHCPv6 restart message", cause: err}
-	}
-	delay, err := rand.Int(rand.Reader, big.NewInt(int64(time.Second)))
-	if err != nil {
-		return nil, &dhcpv6RestartExchangeError{operation: "choose DHCPv6 restart delay", cause: err}
-	}
-	if !waitDHCPv6Duration(ctx, time.Duration(delay.Int64())) {
-		return nil, &dhcpv6RestartExchangeError{operation: "wait before DHCPv6 restart", cause: ctx.Err()}
-	}
-	started := config.Clock.Now()
-	deadline := started.Add(10 * time.Second)
-	rt := jitterDHCPv6(time.Second)
-	for ctx.Err() == nil && config.Clock.Now().Before(deadline) {
+	prepare := func(message *dhcpv6.Message) error {
 		current := expireDHCPv6Assignments(cached, config.Clock.Now())
 		if len(current.Prefixes) == 0 && len(current.Addresses) == 0 {
-			return nil, errDHCPv6RestartRejected
+			return errDHCPv6RestartRejected
 		}
 		if messageType == dhcpv6.MessageTypeRebind && len(current.Prefixes) == 0 {
-			return nil, context.DeadlineExceeded
+			return context.DeadlineExceeded
 		}
-		message, err := dhcpv6.NewMessage(dhcpv6.WithClientID(duid))
-		if err != nil {
-			return nil, &dhcpv6RestartExchangeError{operation: "create DHCPv6 restart retransmission", cause: err}
-		}
-		message.TransactionID = initial.TransactionID
 		requestConfig := config
 		requestConfig.RequestPrefix = len(current.Prefixes) != 0
 		requestConfig.RequestAddress = len(current.Addresses) != 0
 		configureDHCPv6Message(message, requestConfig, messageType, &current)
-		message.UpdateOption(dhcpv6.OptElapsedTime(config.Clock.Now().Sub(started)))
-		wait := min(rt, deadline.Sub(config.Clock.Now()), latestDHCPv6Validity(current).Sub(config.Clock.Now()))
-		if wait <= 0 {
-			break
-		}
-		attemptStarted := config.Clock.Now()
-		attemptCtx, cancel := context.WithTimeout(ctx, wait)
-		response, exchangeErr := transport.SendAndRead(attemptCtx, transport.RemoteAddr(), message, func(response *dhcpv6.Message) bool {
-			if response.MessageType != dhcpv6.MessageTypeReply {
-				return false
-			}
-			client := response.Options.ClientID()
-			server := response.Options.ServerID()
-			return client != nil && server != nil && bytes.Equal(client.ToBytes(), config.DUID)
-		})
-		cancel()
-		if exchangeErr == nil {
-			updateDHCPv6SolMaxRT(response, solicitMaxRT)
-			return response, nil
-		}
-		if ctx.Err() != nil {
-			return nil, &dhcpv6RestartExchangeError{operation: "DHCPv6 restart interrupted", cause: ctx.Err()}
-		}
-		if !waitDHCPv6Duration(ctx, attemptStarted.Add(wait).Sub(config.Clock.Now())) {
-			return nil, &dhcpv6RestartExchangeError{operation: "DHCPv6 restart wait interrupted", cause: ctx.Err()}
-		}
-		rt = nextDHCPv6RestartRT(rt)
+		return nil
 	}
-	if ctx.Err() != nil {
-		return nil, &dhcpv6RestartExchangeError{operation: "DHCPv6 restart interrupted", cause: ctx.Err()}
+	match := matchDHCPv6Response(config, dhcpv6.MessageTypeReply, nil)
+	response, err := exchangeDHCPv6Retransmitting(ctx, log, transport, config, messageType, timing, prepare, match, nil)
+	if err != nil {
+		return nil, &dhcpv6RestartExchangeError{operation: "DHCPv6 restart " + messageType.String(), cause: err}
 	}
-	return nil, context.DeadlineExceeded
-}
-
-func nextDHCPv6RestartRT(previous time.Duration) time.Duration {
-	next := previous + jitterDHCPv6(previous)
-	if next > 4*time.Second {
-		return jitterDHCPv6(4 * time.Second)
-	}
-	return next
+	updateDHCPv6SolMaxRT(response, solicitMaxRT)
+	return response, nil
 }
 
 func waitDHCPv6Duration(ctx context.Context, duration time.Duration) bool {

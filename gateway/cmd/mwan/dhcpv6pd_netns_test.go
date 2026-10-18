@@ -62,67 +62,15 @@ func testOwnedDHCPv6PDDaemonRuntime(t *testing.T, waitForRA bool) {
 }
 
 func runOwnedDHCPv6PDDaemonRuntime(t *testing.T, waitForRA bool) {
-	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
-		t.Fatal(err)
-	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	gateway, err := netns.Get()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer gateway.Close()
-	root := t.TempDir()
-	networkDir := filepath.Join(root, "mwan")
-	if err := os.MkdirAll(networkDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	bindStartupDirectory(t, networkDir, "/etc/mwan")
-	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "internal", "yangpub", "schema"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	bindStartupDirectory(t, schemaDir, "/usr/local/share/wanconfig/yang")
-	networkdDir := filepath.Join(root, "networkd")
-	if err := os.MkdirAll(networkdDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	bindStartupDirectory(t, networkdDir, "/etc/systemd/network")
 	withoutRA := "solicit"
 	if waitForRA {
 		withoutRA = "no"
 	}
-	writeDHCPv6PDRuntimeNetwork(t, networkDir, withoutRA)
-	configPath := filepath.Join(root, "config.toml")
-	config := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[wanconfig]\npublish = true\n", filepath.Join(root, "owned-links.json"), filepath.Join(root, "owned-addresses.json"), filepath.Join(root, "kernel-policy.json"))
-	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	setRuntimeLoopback(t)
-	management := newRuntimePeer(t, gateway, "enmgmt0", "mgmt-host", []string{"203.0.113.1/24"}, []string{"203.0.113.2/24"}, "")
-	defer management.namespace.Close()
-	downstream := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29", "2001:db8:b01:fe::3/64"}, []string{"192.0.2.2/29", "2001:db8:b01:fe::2/64"}, "")
-	defer downstream.namespace.Close()
-	provider := newRuntimePeer(t, gateway, "wan-under", "wan-host", nil, nil, "")
-	defer provider.namespace.Close()
-	setRuntimeNamespace(t, provider.namespace)
-	parent, err := netlink.LinkByName("wan-host")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := netlink.LinkAdd(&netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "wan-vlan", ParentIndex: parent.Attrs().Index}, VlanId: 101}); err != nil {
-		t.Fatal(err)
-	}
-	configureRuntimeLink(t, "wan-vlan", []string{"2001:db8:2::2/64"})
-	waitAutoconfigurationLinkLocal(t, "wan-vlan")
-	setRuntimeNamespace(t, downstream.namespace)
-	addMappedRuntimeRoute(t, "2001:db8:2::/64", "2001:db8:b01:fe::3", "lan-host")
-	setRuntimeNamespace(t, gateway)
-	if err := os.WriteFile("/proc/sys/net/ipv6/conf/all/forwarding", []byte("1\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	addMappedRuntimeRoute(t, "2001:db8:b01::/60", "", "enmwanbr0")
-	setRuntimeNamespace(t, provider.namespace)
+	topology := buildDHCPv6PDRuntime(t, withoutRA)
+	gateway, provider, downstream := topology.gateway, topology.provider, topology.downstream
+	root, configPath := topology.root, topology.configPath
 	for _, directory := range []string{filepath.Join(root, "kea-run"), filepath.Join(root, "kea-state")} {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			t.Fatal(err)
@@ -145,7 +93,7 @@ func runOwnedDHCPv6PDDaemonRuntime(t *testing.T, waitForRA bool) {
 	serviceRunning := true
 	defer func() {
 		if serviceRunning {
-			setRuntimeNamespace(t, provider.namespace)
+			setRuntimeNamespace(t, provider)
 			stopProtocolServices(t, []protocolService{service})
 			setRuntimeNamespace(t, gateway)
 		}
@@ -163,7 +111,7 @@ func runOwnedDHCPv6PDDaemonRuntime(t *testing.T, waitForRA bool) {
 			t.Fatalf("Kea received Solicit before RA: %s", content)
 		}
 		waitDHCPv6RuntimeRASysctl(t, daemon)
-		setRuntimeNamespace(t, provider.namespace)
+		setRuntimeNamespace(t, provider)
 		addMappedRuntimeRoute(t, "2001:db8:30::/60", "2001:db8:2::1", "wan-vlan")
 		stopRouter := startDHCPv6RuntimeRouter(t, true)
 		defer stopRouter()
@@ -173,7 +121,7 @@ func runOwnedDHCPv6PDDaemonRuntime(t *testing.T, waitForRA bool) {
 	waitStaticRuntimeAddress(t, daemon, "enatt0", "2001:db8:2::1/64", true)
 	waitDHCPv6RuntimeRASysctl(t, daemon)
 	if !waitForRA {
-		setRuntimeNamespace(t, provider.namespace)
+		setRuntimeNamespace(t, provider)
 		addMappedRuntimeRoute(t, "2001:db8:30::/60", "2001:db8:2::1", "wan-vlan")
 		stopRouter := startDHCPv6RuntimeRouter(t, false)
 		defer stopRouter()
@@ -183,25 +131,25 @@ func runOwnedDHCPv6PDDaemonRuntime(t *testing.T, waitForRA bool) {
 	waitMappedRuntimeRule(t, daemon, "ip6", "nat", "2001:db8:30::1", 10*time.Second)
 	waitDHCPv6RuntimeSteering(t, daemon)
 	waitDHCPv6RuntimeSourceRule(t, daemon, true)
-	assertMappedRuntimeReply(t, daemon, gateway, provider.namespace, downstream.namespace, "udp6", "[2001:db8:30::1]:52227", "[2001:db8:b01:fe::2]:52227")
+	assertMappedRuntimeReply(t, daemon, gateway, provider, downstream, "udp6", "[2001:db8:30::1]:52227", "[2001:db8:b01:fe::2]:52227")
 	if waitForRA {
 		return
 	}
 	waitDHCPv6RuntimeLog(t, service.logPath, "RENEW (type 5)")
-	setRuntimeNamespace(t, provider.namespace)
+	setRuntimeNamespace(t, provider)
 	stopProtocolServices(t, []protocolService{service})
 	serviceRunning = false
 	listenDHCPv6RuntimeRebind(t)
 	setRuntimeNamespace(t, gateway)
 	waitStaticRuntimeAddress(t, daemon, "enatt0", "2001:db8:30::1/128", false)
 	waitDHCPv6RuntimeSourceRule(t, daemon, false)
-	setRuntimeNamespace(t, provider.namespace)
+	setRuntimeNamespace(t, provider)
 	service = startDHCPv6PDRuntimeKea(t, root, "2001:db8:40::", 60)
 	serviceRunning = true
 	setRuntimeNamespace(t, gateway)
 	waitDHCPv6RuntimeAddress(t, daemon, "2001:db8:40::1/128")
 	waitDHCPv6RuntimeNPTRule(t, daemon, false)
-	setRuntimeNamespace(t, provider.namespace)
+	setRuntimeNamespace(t, provider)
 	stopProtocolServices(t, []protocolService{service})
 	serviceRunning = false
 	served, stopServing := startDHCPv6RuntimeUnequalServer(t)
@@ -224,6 +172,76 @@ func runOwnedDHCPv6PDDaemonRuntime(t *testing.T, waitForRA bool) {
 	waitDHCPv6RuntimeSourceRule(t, daemon, false)
 	waitDHCPv6RuntimeNPTRule(t, daemon, false)
 	waitDHCPv6RuntimeAddress(t, daemon, "2001:db8:50::1/128")
+}
+
+type dhcpv6PDRuntime struct {
+	root       string
+	configPath string
+	gateway    netns.NsHandle
+	provider   netns.NsHandle
+	downstream netns.NsHandle
+}
+
+// buildDHCPv6PDRuntime returns with the provider namespace selected. The caller locks
+// the OS thread because each namespace switch applies to the current thread.
+func buildDHCPv6PDRuntime(t *testing.T, withoutRA string) dhcpv6PDRuntime {
+	t.Helper()
+	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
+		t.Fatal(err)
+	}
+	gateway, err := netns.Get()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = gateway.Close() })
+	root := t.TempDir()
+	networkDir := filepath.Join(root, "mwan")
+	if err := os.MkdirAll(networkDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bindStartupDirectory(t, networkDir, "/etc/mwan")
+	schemaDir, err := filepath.Abs(filepath.Join("..", "..", "internal", "yangpub", "schema"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindStartupDirectory(t, schemaDir, "/usr/local/share/wanconfig/yang")
+	networkdDir := filepath.Join(root, "networkd")
+	if err := os.MkdirAll(networkdDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bindStartupDirectory(t, networkdDir, "/etc/systemd/network")
+	writeDHCPv6PDRuntimeNetwork(t, networkDir, withoutRA)
+	configPath := filepath.Join(root, "config.toml")
+	config := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[wanconfig]\npublish = true\n", filepath.Join(root, "owned-links.json"), filepath.Join(root, "owned-addresses.json"), filepath.Join(root, "kernel-policy.json"))
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	setRuntimeLoopback(t)
+	management := newRuntimePeer(t, gateway, "enmgmt0", "mgmt-host", []string{"203.0.113.1/24"}, []string{"203.0.113.2/24"}, "")
+	t.Cleanup(func() { _ = management.namespace.Close() })
+	downstream := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29", "2001:db8:b01:fe::3/64"}, []string{"192.0.2.2/29", "2001:db8:b01:fe::2/64"}, "")
+	t.Cleanup(func() { _ = downstream.namespace.Close() })
+	provider := newRuntimePeer(t, gateway, "wan-under", "wan-host", nil, nil, "")
+	t.Cleanup(func() { _ = provider.namespace.Close() })
+	setRuntimeNamespace(t, provider.namespace)
+	parent, err := netlink.LinkByName("wan-host")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.LinkAdd(&netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "wan-vlan", ParentIndex: parent.Attrs().Index}, VlanId: 101}); err != nil {
+		t.Fatal(err)
+	}
+	configureRuntimeLink(t, "wan-vlan", []string{"2001:db8:2::2/64"})
+	waitAutoconfigurationLinkLocal(t, "wan-vlan")
+	setRuntimeNamespace(t, downstream.namespace)
+	addMappedRuntimeRoute(t, "2001:db8:2::/64", "2001:db8:b01:fe::3", "lan-host")
+	setRuntimeNamespace(t, gateway)
+	if err := os.WriteFile("/proc/sys/net/ipv6/conf/all/forwarding", []byte("1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	addMappedRuntimeRoute(t, "2001:db8:b01::/60", "", "enmwanbr0")
+	setRuntimeNamespace(t, provider.namespace)
+	return dhcpv6PDRuntime{root: root, configPath: configPath, gateway: gateway, provider: provider.namespace, downstream: downstream.namespace}
 }
 
 func waitDHCPv6RuntimePreferredDeadline(t *testing.T, daemon *runtimeDaemon) {

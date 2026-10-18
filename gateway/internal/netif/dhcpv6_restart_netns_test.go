@@ -203,6 +203,8 @@ func testDHCPv6RestartWithServer(t *testing.T, requestPrefix, timeoutRecovery bo
 	if err != nil {
 		t.Fatal(err)
 	}
+	shortPrefix := netip.MustParsePrefix("2001:db8:31::/56")
+	const shortLifetime = 3 * time.Second
 	reply.MessageType = dhcpv6.MessageTypeReply
 	reply.TransactionID = restartRequest.TransactionID
 	reply.AddOption(&dhcpv6.OptStatusCode{StatusCode: iana.StatusSuccess})
@@ -211,6 +213,8 @@ func testDHCPv6RestartWithServer(t *testing.T, requestPrefix, timeoutRecovery bo
 		binary.BigEndian.PutUint32(prefixIAID[:], cached.IAID)
 		association := &dhcpv6.OptIAPD{IaId: prefixIAID, T1: 30 * time.Second, T2: 60 * time.Second}
 		association.Options.Add(&dhcpv6.OptIAPrefix{Prefix: prefixToIPNet(cached.Prefixes[0].Prefix), PreferredLifetime: 90 * time.Second, ValidLifetime: 120 * time.Second})
+		// Equal lifetimes end the Solicit for the missing IA_NA at this prefix's valid deadline.
+		association.Options.Add(&dhcpv6.OptIAPrefix{Prefix: prefixToIPNet(shortPrefix), PreferredLifetime: shortLifetime, ValidLifetime: shortLifetime})
 		reply.AddOption(association)
 	}
 	if _, err := server.WriteToUDP(reply.ToBytes(), source); err != nil {
@@ -223,14 +227,36 @@ func testDHCPv6RestartWithServer(t *testing.T, requestPrefix, timeoutRecovery bo
 	}
 	validated := client.LastLease()
 	if requestPrefix {
-		if len(validated.Prefixes) != 1 || validated.Prefixes[0].Prefix != cached.Prefixes[0].Prefix || len(validated.Addresses) != 0 {
+		if len(validated.Prefixes) != 2 || validated.Prefixes[0].Prefix != cached.Prefixes[0].Prefix || len(validated.Addresses) != 0 {
 			t.Fatalf("Rebind published an unconfirmed association: %+v", validated)
 		}
+		assertDHCPv6ExpiryPublishedWhileAcquiring(t, client, cached.Prefixes[0].Prefix, validated.Prefixes[1].ValidUntil)
 		return
 	}
 	if len(validated.Addresses) != 1 || validated.Addresses[0] != cached.Addresses[0] || validated.LinkIndex != clientInterface.Index {
 		t.Fatalf("validated address or original deadlines changed: %+v", validated)
 	}
+}
+
+// assertDHCPv6ExpiryPublishedWhileAcquiring requires the client to publish a lease with
+// only the remaining prefix after the other prefix expires. The published lease must not
+// contain the expired prefix. The server leaves the Solicit for the missing IA_NA
+// unanswered during the check.
+func assertDHCPv6ExpiryPublishedWhileAcquiring(t *testing.T, client *DHCPv6PDClient, remaining netip.Prefix, expiry time.Time) {
+	t.Helper()
+	deadline := expiry.Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		lease := client.LastLease()
+		observed := time.Now()
+		if len(lease.Prefixes) == 1 && lease.Prefixes[0].Prefix == remaining {
+			if observed.Before(expiry) {
+				t.Fatalf("prefix removed %s before its valid lifetime ended: %+v", expiry.Sub(observed), lease)
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("expired prefix remained published %s after its valid lifetime: %+v", time.Since(expiry), client.LastLease())
 }
 
 func assertDHCPv6RestartRetransmission(t *testing.T, server *net.UDPConn, client *DHCPv6PDClient, first *dhcpv6.Message, validUntil time.Time, requestPrefix bool) (*dhcpv6.Message, *net.UDPAddr) {
