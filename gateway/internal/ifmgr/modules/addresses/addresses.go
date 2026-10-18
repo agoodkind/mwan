@@ -530,6 +530,7 @@ func (module *Module) reconcileFamily(ctx context.Context, log *slog.Logger, con
 		err = module.reconciler.ReconcileFamilyRoutesWithLifetimesRetaining(ctx, connection, family, settings, routes, ready, lifetimes, module.recoveryRetention(connection, family, ready))
 	}
 	if err == nil {
+		module.Env.OwnedAddresses.SetFamilyApplied(id, family)
 		err = module.publishFamilyReadiness(ctx, log, connection, family, settings, ready, lifetimes, leaseReady)
 	}
 	result := "ready"
@@ -661,9 +662,6 @@ func metricForFamily(family interfaceintent.Family) uint32 {
 func (module *Module) publishFamilyReadiness(ctx context.Context, log *slog.Logger, connection interfaceintent.Connection, family string, settings interfaceintent.Family, ready netif.OwnedLinkResult, lifetimes map[netip.Prefix]netif.OwnedAddressLifetime, leaseReady bool) error {
 	id := connection.ID.String()
 	readyAddresses, err := module.publishInstalled(ctx, log, connection, settings, ready, lifetimes)
-	if err == nil {
-		module.Env.OwnedAddresses.SetFamilyApplied(id, family)
-	}
 	if err == nil && leaseReady {
 		module.Env.OwnedAddresses.SetFamilyReady(id, family)
 	}
