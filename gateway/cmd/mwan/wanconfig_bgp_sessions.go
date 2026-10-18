@@ -21,6 +21,9 @@ func bgpSessionLiveItems(name string, sessions []bgp.SessionState) []yangpub.Ite
 		for _, prefix := range session.Advertised {
 			items = append(items, yangpub.Item{Path: base + "/advertised-prefix", Value: prefix.String()})
 		}
+		for _, prefix := range session.Retained {
+			items = append(items, yangpub.Item{Path: base + "/retained-prefix", Value: prefix.String()})
+		}
 		for _, rejection := range session.Rejected {
 			path := base + "/rejection[prefix='" + rejection.Prefix.String() + "']"
 			items = append(items,

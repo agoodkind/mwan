@@ -28,7 +28,7 @@ func bgpDecodeFailure(t *testing.T, document []byte) string {
 
 func TestDecodeRejectsInvalidBGPSessions(t *testing.T) {
 	secondSession := `{ "name": "vps", "peer-address": "2001:db8:6::9", "local-as": 64512, "remote-as": 64513, ` +
-		`"router-id": "192.0.2.130", "keepalive": 10, "hold": 30, "route-metric": 400 },` + "\n            {\n" +
+		`"family": ["ipv6-unicast"], "keepalive": 10, "hold": 30, "route-metric": 400 },` + "\n            {\n" +
 		`              "name": "vps",`
 	cases := []struct {
 		name  string
@@ -97,6 +97,18 @@ func TestDecodeRejectsInvalidBGPSessions(t *testing.T) {
 			want:  bgpTunnelSession + "connect-retry 1 must be at least 2",
 		},
 		{
+			name:  "graceful-restart-time of zero",
+			path:  bgpTunnelFixture,
+			edits: []planEdit{{old: `"keepalive": 10,`, replacement: `"keepalive": 10, "graceful-restart-time": 0,`}},
+			want:  bgpTunnelSession + "graceful-restart-time 0 must be between 1 and 4095",
+		},
+		{
+			name:  "graceful-restart-time above the capability field",
+			path:  bgpTunnelFixture,
+			edits: []planEdit{{old: `"keepalive": 10,`, replacement: `"keepalive": 10, "graceful-restart-time": 4096,`}},
+			want:  bgpTunnelSession + "graceful-restart-time 4096 must be between 1 and 4095",
+		},
+		{
 			name:  "route-metric of zero",
 			path:  bgpTunnelFixture,
 			edits: []planEdit{{old: bgpTunnelMetric, replacement: `"route-metric": 0,`}},
@@ -154,7 +166,7 @@ func TestDecodeRejectsInvalidBGPSessions(t *testing.T) {
 			edits: []planEdit{{
 				old: `"targets-v6": []` + "\n          }",
 				replacement: `"targets-v6": []` + "\n          }," + ` "bgp-session": [{ "name": "upstream", "peer-address": "2001:db8:179:c::1", ` +
-					`"local-as": 64512, "remote-as": 64513, "router-id": "192.0.2.132", "keepalive": 10, "hold": 30, "route-metric": 320 }]`,
+					`"local-as": 64512, "remote-as": 64513, "family": ["ipv6-unicast"], "keepalive": 10, "hold": 30, "route-metric": 320 }]`,
 			}},
 			want: "wan isp: a bgp-session requires an ipv6 family",
 		},

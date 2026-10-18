@@ -19,6 +19,7 @@ type bgpRuntimeSession struct {
 	Established bool     `json:"established"`
 	Accepted    []string `json:"accepted-prefix"`
 	Advertised  []string `json:"advertised-prefix"`
+	Retained    []string `json:"retained-prefix"`
 	Rejections  []struct {
 		Prefix string `json:"prefix"`
 		Reason string `json:"reason"`
@@ -115,14 +116,14 @@ func requireBGPRuntimeFamily(t *testing.T, read func() string, device, routing, 
 func waitBGPRuntimeReceived(t *testing.T, daemon *runtimeDaemon, read func() string, router *bgpRuntimeRouter, want ...netip.Prefix) {
 	t.Helper()
 	waitBGPRuntime(t, daemon, read, "router received prefixes", tunnelRuntimeRecoverWindow, func() bool {
-		return slices.Equal(router.received(), want)
+		return slices.Equal(router.received(t), want)
 	})
 }
 
 func bgpRuntimeGuardedRead(t *testing.T, read func() string, device string, router *bgpRuntimeRouter) func() string {
 	t.Helper()
 	return func() string {
-		received := router.received()
+		received := router.received(t)
 		published := read()
 		entry, found := readBGPRuntimeInterface(func() string { return published }, device)
 		if !found || entry.V6.Ownership.Readiness == "ready" {

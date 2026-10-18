@@ -7,11 +7,14 @@ import (
 	"fmt"
 	"log/slog"
 	"net/netip"
+	"slices"
 	"sync"
+	"time"
 
 	"golang.org/x/sys/unix"
 
 	"goodkind.io/mwan/internal/bgp"
+	"goodkind.io/mwan/internal/clock"
 	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/forwardingready"
 	"goodkind.io/mwan/internal/ifmgr"
@@ -46,11 +49,15 @@ type ConfiguredRoute struct {
 // ModuleConfigName returns the registry key that the daemon uses to select this config.
 func (Config) ModuleConfigName() string { return moduleName }
 
+// A nonzero connectBy marks a session that retains the kernel routes of the
+// previous process after KeepRoutes and starts without the peer. Reconcile adds
+// the peer when the connection deadline of the retained session passes.
 type managedSession struct {
 	cfg       Session
 	session   *bgp.Session
 	running   bool
 	transport string
+	connectBy time.Time
 }
 
 // Module starts, stops, and advertises through one bgp.Session for each configured session.
@@ -64,6 +71,8 @@ type Module struct {
 	// A listener must lock only publishMu.
 	publishMu sync.Mutex
 	owners    []routeOwner
+	retaining []retention
+	clock     clock.Clock
 	stopped   bool
 	done      chan struct{}
 }
@@ -80,12 +89,12 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 		log.DebugContext(ctx, "bgp_sessions: module disabled without a session and a state file")
 		return fmt.Errorf("%w: bgp_sessions: no session and no state_file", ifmgr.ErrModuleDisabled)
 	}
-	owners, err := loadJournal(m.cfg.StateFile)
+	document, err := loadJournal(m.cfg.StateFile)
 	if err != nil {
 		log.ErrorContext(ctx, "bgp_sessions: journal unusable; routes of an earlier process stay in the kernel", "err", err)
-		owners = nil
 	}
-	m.owners = owners
+	m.owners = document.Owners
+	m.retaining = document.Retaining
 	for _, cfg := range m.cfg.Sessions {
 		sessionConfig := cfg.Config
 		sessionConfig.Interface = cfg.Iface
@@ -96,9 +105,11 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 			return fmt.Errorf("bgp_sessions: connection %s: %w", cfg.Key(), err)
 		}
 		session.OnChange(m.listener(cfg))
-		m.sessions = append(m.sessions, &managedSession{cfg: cfg, session: session, running: false, transport: ""})
+		m.sessions = append(m.sessions, &managedSession{cfg: cfg, session: session, running: false, transport: "", connectBy: time.Time{}})
 	}
+	now := m.clock.Now()
 	for _, entry := range m.sessions {
+		m.retainRoutes(ctx, log, entry, now)
 		m.publish(entry.cfg.Key())
 	}
 	done := make(chan struct{})
@@ -119,11 +130,17 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 
 func (m *Module) stopOnShutdown(ctx context.Context, log *slog.Logger) {
 	<-ctx.Done()
+	stopContext := context.WithoutCancel(ctx)
 	m.Lock()
 	defer m.Unlock()
 	m.stopped = true
+	retainedOwners := m.persistShutdownRetention(stopContext, log, m.clock.Now())
 	for _, entry := range m.sessions {
-		m.stopLocked(context.WithoutCancel(ctx), log, entry)
+		if entry.running && slices.Contains(retainedOwners, sessionOwner(entry.cfg)) {
+			m.stopRetainingLocked(stopContext, log, entry)
+			continue
+		}
+		m.stopLocked(stopContext, log, entry)
 	}
 }
 
@@ -158,6 +175,8 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		sessions:   nil,
 		publishMu:  sync.Mutex{},
 		owners:     nil,
+		retaining:  nil,
+		clock:      clock.Real{},
 		stopped:    false,
 		done:       nil,
 	}, nil

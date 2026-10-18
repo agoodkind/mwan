@@ -79,8 +79,8 @@ func runOwnedDHCPv6PDTimerRuntime(t *testing.T, mode dhcpv6TimerMode) {
 	assertDHCPv6TimerSolicitAfterExpiry(t, daemon, observations)
 }
 
-// assertDHCPv6TimerLeaseHeld requires the address and the WAN table default for two
-// valid lifetimes while every Renew or Rebind reply arrives late.
+// assertDHCPv6TimerLeaseHeld requires the address and WAN table default for 2 valid
+// lifetimes plus T1 and at least 2 late Renew/Rebind replies. It does not allow Solicit.
 func assertDHCPv6TimerLeaseHeld(t *testing.T, daemon *runtimeDaemon, observations *dhcpv6TimerLog) {
 	t.Helper()
 	started := time.Now()
@@ -103,7 +103,7 @@ func assertDHCPv6TimerLeaseHeld(t *testing.T, daemon *runtimeDaemon, observation
 		}
 		switch observation.messageType {
 		case dhcpv6.MessageTypeRenew, dhcpv6.MessageTypeRebind:
-			if observation.answered {
+			if !observation.replied.IsZero() && observation.replied.Sub(observation.received) >= dhcpv6TimerReplyDelay {
 				lateReplies++
 			}
 		case dhcpv6.MessageTypeSolicit:

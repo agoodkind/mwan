@@ -59,6 +59,8 @@ type testPeerOptions struct {
 	neighborASN  uint32
 	neighborPort uint16
 	families     []apipb.Family_Afi
+	// A nonzero restartTime enables graceful restart on the test peer.
+	restartTime uint32
 }
 
 func startTestPeer(
@@ -78,6 +80,7 @@ func startTestPeer(
 		neighborASN:  neighborASN,
 		neighborPort: 0,
 		families:     []apipb.Family_Afi{apipb.Family_AFI_IP6},
+		restartTime:  0,
 	})
 }
 
@@ -117,12 +120,21 @@ func startTestPeerWithOptions(t *testing.T, options testPeerOptions) *testPeer {
 	}
 	afiSafis := make([]*apipb.AfiSafi, 0, len(options.families))
 	for _, family := range options.families {
-		afiSafis = append(afiSafis, &apipb.AfiSafi{Config: &apipb.AfiSafiConfig{
+		afiSafi := &apipb.AfiSafi{Config: &apipb.AfiSafiConfig{
 			Family:  &apipb.Family{Afi: family, Safi: apipb.Family_SAFI_UNICAST},
 			Enabled: true,
-		}})
+		}}
+		if options.restartTime > 0 {
+			afiSafi.MpGracefulRestart = &apipb.MpGracefulRestart{Config: &apipb.MpGracefulRestartConfig{Enabled: true}}
+		}
+		afiSafis = append(afiSafis, afiSafi)
+	}
+	var gracefulRestart *apipb.GracefulRestart
+	if options.restartTime > 0 {
+		gracefulRestart = &apipb.GracefulRestart{Enabled: true, RestartTime: options.restartTime}
 	}
 	peer := &apipb.Peer{
+		GracefulRestart: gracefulRestart,
 		Conf: &apipb.PeerConf{
 			NeighborAddress: options.neighbor.String(),
 			PeerAsn:         options.neighborASN,
@@ -264,6 +276,7 @@ func baseSessionConfig(name string, remoteASN uint32, peer *testPeer) bgp.Sessio
 	return bgp.SessionConfig{
 		Name:             name,
 		RouterID:         netip.MustParseAddr(sessionRouterID),
+		Families:         []bgp.Family{bgp.FamilyIPv6Unicast},
 		LocalASN:         sessionASN,
 		RemoteASN:        remoteASN,
 		PeerAddress:      peer.neighbor,

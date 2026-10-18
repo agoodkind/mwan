@@ -3,8 +3,6 @@
 package bgpsessions_test
 
 import (
-	"io"
-	"log/slog"
 	"net"
 	"os"
 	"os/exec"
@@ -15,9 +13,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
-	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/ifmgr/modules/bgpsessions"
-	"goodkind.io/mwan/internal/wanstate"
 )
 
 const (
@@ -53,55 +49,35 @@ func sweepRoutePresent(t *testing.T, link netlink.Link, destination string) bool
 
 func reconcileSweepModule(t *testing.T, stateFile string) {
 	t.Helper()
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	module, err := bgpsessions.New(bgpsessions.Config{
+	startModule(t, bgpsessions.Config{
 		StateFile: stateFile,
 		ConfiguredRoutes: []bgpsessions.ConfiguredRoute{
 			{Interface: sweepDevice, Dest: sweepConfigured, Via: sweepGateway, Metric: sweepMetric},
 		},
 	})
-	if err != nil {
-		t.Fatal(err)
+}
+
+// runSweepIsolated reports true in the child process, which runs in a new
+// network namespace.
+func runSweepIsolated(t *testing.T) bool {
+	t.Helper()
+	if os.Getenv(sweepChildEnv) == "1" {
+		return true
 	}
-	if err := module.Init(t.Context(), &ifmgr.Env{Log: log, LiveState: wanstate.New()}); err != nil {
-		t.Fatalf("Init: %v", err)
+	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
+	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET)}
+	child.Env = append(os.Environ(), sweepChildEnv+"=1")
+	if output, err := child.CombinedOutput(); err != nil {
+		t.Fatalf("isolated sweep test: %v: %s", err, output)
 	}
-	if err := module.Reconcile(t.Context(), log); err != nil {
-		t.Fatalf("Reconcile: %v", err)
-	}
+	return false
 }
 
 func TestSweepKeepsConfiguredRoutesOfARemovedSession(t *testing.T) {
-	if os.Getenv(sweepChildEnv) != "1" {
-		child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
-		child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET)}
-		child.Env = append(os.Environ(), sweepChildEnv+"=1")
-		if output, err := child.CombinedOutput(); err != nil {
-			t.Fatalf("isolated sweep test: %v: %s", err, output)
-		}
+	if !runSweepIsolated(t) {
 		return
 	}
-	attributes := netlink.NewLinkAttrs()
-	attributes.Name = sweepDevice
-	link := netlink.Link(&netlink.Dummy{LinkAttrs: attributes})
-	if err := netlink.LinkAdd(link); err != nil {
-		t.Fatal(err)
-	}
-	address, err := netlink.ParseAddr("2001:db8:1::2/64")
-	if err != nil {
-		t.Fatal(err)
-	}
-	address.Flags = unix.IFA_F_NODAD
-	if err := netlink.AddrAdd(link, address); err != nil {
-		t.Fatal(err)
-	}
-	if err := netlink.LinkSetUp(link); err != nil {
-		t.Fatal(err)
-	}
-	link, err = netlink.LinkByName(sweepDevice)
-	if err != nil {
-		t.Fatal(err)
-	}
+	link := addSweepLink(t)
 	stateFile := filepath.Join(t.TempDir(), "bgp-sessions.json")
 	journal := `{"owners":[{"interface":"` + sweepDevice + `","metric":300}]}`
 	if err := os.WriteFile(stateFile, []byte(journal), 0o600); err != nil {
@@ -128,4 +104,30 @@ func TestSweepKeepsConfiguredRoutesOfARemovedSession(t *testing.T) {
 	if !sweepRoutePresent(t, link, sweepLater) || !sweepRoutePresent(t, link, sweepConfigured) {
 		t.Fatal("the second process deleted a route after the first process dropped the journal record")
 	}
+}
+
+func addSweepLink(t *testing.T) netlink.Link {
+	t.Helper()
+	attributes := netlink.NewLinkAttrs()
+	attributes.Name = sweepDevice
+	link := netlink.Link(&netlink.Dummy{LinkAttrs: attributes})
+	if err := netlink.LinkAdd(link); err != nil {
+		t.Fatal(err)
+	}
+	address, err := netlink.ParseAddr("2001:db8:1::2/64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address.Flags = unix.IFA_F_NODAD
+	if err := netlink.AddrAdd(link, address); err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.LinkSetUp(link); err != nil {
+		t.Fatal(err)
+	}
+	link, err = netlink.LinkByName(sweepDevice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return link
 }

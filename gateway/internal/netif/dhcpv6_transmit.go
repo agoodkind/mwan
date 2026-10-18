@@ -50,8 +50,8 @@ func transmitDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.C
 		if dueTimer != nil {
 			due = dueTimer.C
 		}
-		// A failed send counts as a transmission. The wait ends at until, which is the
-		// time of the next scheduled retransmission or the end of the exchange.
+		// Any SendAndRead error, from the send or the receive, counts as the transmission.
+		// The wait ends at until, the next retransmission time or the end of the exchange.
 		var listening <-chan struct{}
 		if results == nil {
 			listening = attemptCtx.Done()

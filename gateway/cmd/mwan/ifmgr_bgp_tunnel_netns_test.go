@@ -25,7 +25,7 @@ func bgpTunnelRuntimeNetwork(t *testing.T) string {
 	t.Helper()
 	targets := `"targets-v6":["` + tunnelRuntimeRemoteClient + `"]}`
 	session := fmt.Sprintf(`,"bgp-session":[{"name":"endpoint","peer-address":%q,"local-address":%q,`+
-		`"local-as":%d,"remote-as":%d,"router-id":"192.0.2.1","keepalive":%d,"hold":%d,"route-metric":300,`+
+		`"local-as":%d,"remote-as":%d,"family":["ipv6-unicast"],"keepalive":%d,"hold":%d,"route-metric":300,`+
 		`"import":[{"prefix":"::/0","min-length":0,"max-length":0}],`+
 		`"export":[{"prefix":%q,"mode":"always","next-hop":%q}]}]`,
 		tunnelRuntimeInnerRemote, tunnelRuntimeInnerLocal, bgpRuntimeLocalASN, bgpRuntimeRemoteASN,

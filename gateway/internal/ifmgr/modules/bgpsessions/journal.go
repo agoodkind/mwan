@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"slices"
+	"time"
 
 	"github.com/google/renameio/v2"
 )
@@ -19,33 +20,42 @@ type routeOwner struct {
 	Metric    int    `json:"metric"`
 }
 
+// retention records the route owner after StopRetaining stops the session. The
+// kernel routes for the owner remain until the peer's restart time expires.
+type retention struct {
+	routeOwner
+
+	Deadline time.Time `json:"deadline"`
+}
+
 type journalDocument struct {
-	Owners []routeOwner `json:"owners"`
+	Owners    []routeOwner `json:"owners"`
+	Retaining []retention  `json:"retaining,omitempty"`
 }
 
 func sessionOwner(cfg Session) routeOwner {
 	return routeOwner{Interface: cfg.Iface, Metric: int(cfg.Config.RouteMetric)}
 }
 
-func loadJournal(path string) ([]routeOwner, error) {
+func loadJournal(path string) (journalDocument, error) {
+	var document journalDocument
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+		return document, nil
 	}
 	if err != nil {
 		slog.Error("bgp_sessions: journal read failed", "path", path, "err", err)
-		return nil, fmt.Errorf("read the session route journal %s: %w", path, err)
+		return document, fmt.Errorf("read the session route journal %s: %w", path, err)
 	}
-	var document journalDocument
 	if err := json.Unmarshal(data, &document); err != nil {
 		slog.Error("bgp_sessions: journal decode failed", "path", path, "err", err)
-		return nil, fmt.Errorf("decode the session route journal %s: %w", path, err)
+		return journalDocument{Owners: nil, Retaining: nil}, fmt.Errorf("decode the session route journal %s: %w", path, err)
 	}
-	return document.Owners, nil
+	return document, nil
 }
 
-func (m *Module) persistOwners(ctx context.Context, log *slog.Logger, owners []routeOwner) error {
-	data, err := json.Marshal(journalDocument{Owners: owners})
+func (m *Module) persistJournal(ctx context.Context, log *slog.Logger, document journalDocument) error {
+	data, err := json.Marshal(document)
 	if err != nil {
 		log.ErrorContext(ctx, "bgp_sessions: journal encode failed", "err", err)
 		return fmt.Errorf("encode the session route journal: %w", err)
@@ -54,8 +64,17 @@ func (m *Module) persistOwners(ctx context.Context, log *slog.Logger, owners []r
 		log.ErrorContext(ctx, "bgp_sessions: journal write failed", "path", m.cfg.StateFile, "err", err)
 		return fmt.Errorf("write the session route journal %s: %w", m.cfg.StateFile, err)
 	}
-	m.owners = owners
+	m.owners = document.Owners
+	m.retaining = document.Retaining
 	return nil
+}
+
+func (m *Module) persistOwners(ctx context.Context, log *slog.Logger, owners []routeOwner) error {
+	return m.persistJournal(ctx, log, journalDocument{Owners: owners, Retaining: m.retaining})
+}
+
+func (m *Module) persistRetaining(ctx context.Context, log *slog.Logger, retaining []retention) error {
+	return m.persistJournal(ctx, log, journalDocument{Owners: m.owners, Retaining: retaining})
 }
 
 func (m *Module) recordOwner(ctx context.Context, log *slog.Logger, owner routeOwner) error {

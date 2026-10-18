@@ -15,16 +15,21 @@ func bgpSessionItems(base string, sessions []config.BGPSession) []Item {
 			Item{Path: path + "/peer-port", Value: uintValue(uint64(session.PeerPort))},
 			Item{Path: path + "/local-as", Value: uintValue(uint64(session.LocalASN))},
 			Item{Path: path + "/remote-as", Value: uintValue(uint64(session.RemoteASN))},
-			Item{Path: path + "/router-id", Value: session.RouterID.String()},
 			Item{Path: path + "/keepalive", Value: uintValue(uint64(session.KeepaliveSeconds))},
 			Item{Path: path + "/hold", Value: uintValue(uint64(session.HoldSeconds))},
 			Item{Path: path + "/route-metric", Value: uintValue(uint64(session.RouteMetric))},
 		)
+		for _, family := range session.Families {
+			items = append(items, Item{Path: path + "/family", Value: family.String()})
+		}
 		if session.LocalAddress.IsValid() {
 			items = append(items, Item{Path: path + "/local-address", Value: session.LocalAddress.String()})
 		}
 		if session.ConnectRetrySeconds != 0 {
 			items = append(items, Item{Path: path + "/connect-retry", Value: uintValue(uint64(session.ConnectRetrySeconds))})
+		}
+		if session.GracefulRestartSeconds != 0 {
+			items = append(items, Item{Path: path + "/graceful-restart-time", Value: uintValue(uint64(session.GracefulRestartSeconds))})
 		}
 		if session.MultihopTTL != 0 {
 			items = append(items, Item{Path: path + "/multihop-ttl", Value: uintValue(uint64(session.MultihopTTL))})

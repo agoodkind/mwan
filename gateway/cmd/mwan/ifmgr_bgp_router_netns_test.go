@@ -4,6 +4,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"runtime"
@@ -28,12 +29,18 @@ const (
 	bgpRuntimeRouterMetric = 200
 )
 
+// A nonzero restartTime enables graceful restart for the neighbor. After the
+// session ends, the router GoBGP server marks the gateway paths stale instead
+// of withdrawing them, and the router does not delete its kernel routes. The
+// GoBGP server withdraws the stale paths after the restart time or after the
+// gateway End-of-RIB marker.
 type bgpRuntimeRouter struct {
 	server      *server.BgpServer
 	handle      *netlink.Handle
 	device      int
 	neighbor    netip.Addr
 	neighborASN uint32
+	restartTime uint32
 
 	mu        sync.Mutex
 	installed map[string]*netlink.Route
@@ -41,6 +48,11 @@ type bgpRuntimeRouter struct {
 }
 
 func startBGPRuntimeRouter(t *testing.T, namespace netns.NsHandle, device, routerID string, asn uint32, listen, neighbor netip.Addr, neighborASN uint32) *bgpRuntimeRouter {
+	t.Helper()
+	return startBGPRuntimeRouterWithRestart(t, namespace, device, routerID, asn, listen, neighbor, neighborASN, 0)
+}
+
+func startBGPRuntimeRouterWithRestart(t *testing.T, namespace netns.NsHandle, device, routerID string, asn uint32, listen, neighbor netip.Addr, neighborASN, restartTime uint32) *bgpRuntimeRouter {
 	t.Helper()
 	handle, err := netlink.NewHandleAt(namespace)
 	if err != nil {
@@ -72,12 +84,12 @@ func startBGPRuntimeRouter(t *testing.T, namespace netns.NsHandle, device, route
 	t.Cleanup(bgpServer.Stop)
 	router := &bgpRuntimeRouter{
 		server: bgpServer, handle: handle, device: link.Attrs().Index, neighbor: neighbor, neighborASN: neighborASN,
-		installed: make(map[string]*netlink.Route),
+		restartTime: restartTime, installed: make(map[string]*netlink.Route),
 	}
 	callbacks := server.WatchEventMessageCallbacks{
 		OnBestPath: func(paths []*apiutil.Path, _ time.Time) { router.apply(t, paths) },
 		OnPeerUpdate: func(event *apiutil.WatchEventMessage_PeerEvent, _ time.Time) {
-			if event.Type == apiutil.PEER_EVENT_STATE && event.Peer.State.SessionState != bgppkt.BGP_FSM_ESTABLISHED {
+			if restartTime == 0 && event.Type == apiutil.PEER_EVENT_STATE && event.Peer.State.SessionState != bgppkt.BGP_FSM_ESTABLISHED {
 				router.flush(t)
 			}
 		},
@@ -145,6 +157,10 @@ func (r *bgpRuntimeRouter) addNeighbor(t *testing.T) {
 			Family: &apipb.Family{Afi: apipb.Family_AFI_IP6, Safi: apipb.Family_SAFI_UNICAST}, Enabled: true,
 		}}},
 	}
+	if r.restartTime > 0 {
+		peer.GracefulRestart = &apipb.GracefulRestart{Enabled: true, RestartTime: r.restartTime}
+		peer.AfiSafis[0].MpGracefulRestart = &apipb.MpGracefulRestart{Config: &apipb.MpGracefulRestartConfig{Enabled: true}}
+	}
 	if err := r.server.AddPeer(t.Context(), &apipb.AddPeerRequest{Peer: peer}); err != nil {
 		t.Fatalf("add the gateway as a router neighbor: %v", err)
 	}
@@ -175,17 +191,40 @@ func (r *bgpRuntimeRouter) announce(t *testing.T, prefix netip.Prefix, nextHop n
 	}
 }
 
-func (r *bgpRuntimeRouter) received() []netip.Prefix {
+func (r *bgpRuntimeRouter) withdraw(t *testing.T, prefix netip.Prefix) {
+	t.Helper()
+	nlri, err := bgppkt.NewIPAddrPrefix(prefix)
+	if err != nil {
+		t.Fatalf("build NLRI for %s: %v", prefix, err)
+	}
+	path := &apiutil.Path{Family: bgppkt.RF_IPv6_UC, Nlri: nlri, Withdrawal: true}
+	if err := r.server.DeletePath(apiutil.DeletePathRequest{Paths: []*apiutil.Path{path}}); err != nil {
+		t.Fatalf("router withdraw %s: %v", prefix, err)
+	}
+}
+
+// received fails the test when the router cannot list its Adj-RIB-In. An
+// empty result comes only from a successful listing.
+func (r *bgpRuntimeRouter) received(t *testing.T) []netip.Prefix {
+	t.Helper()
+	prefixes, err := r.listReceived()
+	if err != nil {
+		t.Fatalf("list the paths that the router received from %s: %v", r.neighbor, err)
+	}
+	return prefixes
+}
+
+func (r *bgpRuntimeRouter) listReceived() ([]netip.Prefix, error) {
 	request := apiutil.ListPathRequest{TableType: apipb.TableType_TABLE_TYPE_ADJ_IN, Name: r.neighbor.String(), Family: bgppkt.RF_IPv6_UC}
 	prefixes := make([]netip.Prefix, 0)
 	err := r.server.ListPath(request, func(nlri bgppkt.NLRI, _ []*apiutil.Path) {
 		prefixes = append(prefixes, netip.MustParsePrefix(nlri.String()))
 	})
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("list the router Adj-RIB-In: %w", err)
 	}
 	slices.SortFunc(prefixes, netip.Prefix.Compare)
-	return prefixes
+	return prefixes, nil
 }
 
 func (r *bgpRuntimeRouter) kernelRoute(t *testing.T, prefix netip.Prefix) bool {
