@@ -82,6 +82,7 @@ type DHCPv6PDClient struct {
 	done         <-chan struct{}
 	recoveryDone chan struct{}
 	recoveryOnce sync.Once
+	wake         chan struct{}
 	Events       chan struct{}
 }
 
@@ -205,7 +206,7 @@ func StartDHCPv6PDClient(ctx context.Context, log *slog.Logger, config DHCPv6PDC
 		config.CachedLease = &cached
 	}
 	var emptyLease DHCPv6PDLease
-	client := &DHCPv6PDClient{mu: sync.RWMutex{}, lease: emptyLease, declines: make(chan netip.Addr, 16), pending: make(map[netip.Addr]bool), done: ctx.Done(), recoveryDone: make(chan struct{}), recoveryOnce: sync.Once{}, Events: make(chan struct{}, 1)}
+	client := &DHCPv6PDClient{mu: sync.RWMutex{}, lease: emptyLease, declines: make(chan netip.Addr, 16), pending: make(map[netip.Addr]bool), done: ctx.Done(), recoveryDone: make(chan struct{}), recoveryOnce: sync.Once{}, wake: make(chan struct{}, 1), Events: make(chan struct{}, 1)}
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
@@ -327,7 +328,7 @@ func (client *DHCPv6PDClient) negotiate(ctx context.Context, log *slog.Logger, t
 		}
 		renewAt, rebindAt := dhcpv6AssociationTimers(lease)
 		if now.Before(renewAt) {
-			address, ok := client.waitDHCPv6OrDecline(ctx, dhcpv6WaitDuration(min(renewAt.Sub(now), validUntil.Sub(now)), now, deadline))
+			address, ok, _ := client.waitDHCPv6OrDecline(ctx, dhcpv6WaitDuration(min(renewAt.Sub(now), validUntil.Sub(now)), now, deadline), nil)
 			if !ok {
 				return
 			}
@@ -366,7 +367,7 @@ func (client *DHCPv6PDClient) renewInNegotiation(ctx context.Context, log *slog.
 	}
 	now := config.Clock.Now()
 	deadline := nextDHCPv6Deadline(*lease, *notifiedThrough)
-	address, ok := client.waitDHCPv6OrDecline(ctx, dhcpv6WaitDuration(min(jitterDHCPv6(*backoff), retryDeadline.Sub(now)), now, deadline))
+	address, ok, _ := client.waitDHCPv6OrDecline(ctx, dhcpv6WaitDuration(min(jitterDHCPv6(*backoff), retryDeadline.Sub(now)), now, deadline), nil)
 	if !ok {
 		return false
 	}
@@ -403,7 +404,7 @@ func (client *DHCPv6PDClient) acquireMissingDHCPv6(ctx context.Context, log *slo
 	// The exchange ends at the next lifetime deadline. This function expires assignments
 	// after the exchange and publishes them when they change.
 	end := nextDHCPv6Deadline(*lease, config.Clock.Now())
-	replacement, err := acquireDHCPv6(acquireCtx, log, transport, missing, link, solicitMaxRT, nil, end, 0)
+	replacement, err := acquireDHCPv6(acquireCtx, log, transport, missing, link, solicitMaxRT, nil, end, 0, nil)
 	expired = expireDHCPv6Assignments(*lease, config.Clock.Now())
 	changed := len(expired.Prefixes) != len(lease.Prefixes) || len(expired.Addresses) != len(lease.Addresses)
 	*lease = expired
@@ -563,7 +564,13 @@ func (client *DHCPv6PDClient) acquireInNegotiation(ctx context.Context, log *slo
 			solicitCount = 1
 		}
 	}
-	replacement, err := acquireDHCPv6(ctx, log, transport, config, link, solicitMaxRT, previous, end, solicitCount)
+	wake := client.solicitWake(*lease)
+	replacement, err := acquireDHCPv6(ctx, log, transport, config, link, solicitMaxRT, previous, end, solicitCount, wake)
+	if errors.Is(err, errDHCPv6ExchangeWoken) {
+		log.InfoContext(ctx, "dhcpv6: Solicit schedule restarted", "iface", config.Iface)
+		*backoff = time.Second
+		return true
+	}
 	if err != nil {
 		log.WarnContext(ctx, "dhcpv6: acquisition failed", "iface", config.Iface, "err", err)
 	} else {
@@ -584,9 +591,15 @@ func (client *DHCPv6PDClient) acquireInNegotiation(ctx context.Context, log *slo
 			wait = min(wait, lease.RenewAt.Sub(now))
 		}
 	}
-	address, ok := client.waitDHCPv6OrDecline(ctx, wait)
+	log.InfoContext(ctx, "dhcpv6: Solicit wait scheduled", "iface", config.Iface, "wait", wait)
+	address, ok, woken := client.waitDHCPv6OrDecline(ctx, wait, wake)
 	if !ok {
 		return false
+	}
+	if woken {
+		log.InfoContext(ctx, "dhcpv6: Solicit schedule restarted", "iface", config.Iface)
+		*backoff = time.Second
+		return true
 	}
 	client.processDHCPv6Decline(ctx, log, transport, config, lease, reacquireAddress, solicitMaxRT, address)
 	*backoff = min(*backoff*2, *solicitMaxRT)
@@ -600,7 +613,7 @@ func dhcpv6WaitDuration(wait time.Duration, now, deadline time.Time) time.Durati
 	return wait
 }
 
-func (client *DHCPv6PDClient) waitDHCPv6OrDecline(ctx context.Context, duration time.Duration) (netip.Addr, bool) {
+func (client *DHCPv6PDClient) waitDHCPv6OrDecline(ctx context.Context, duration time.Duration, wake <-chan struct{}) (netip.Addr, bool, bool) {
 	if duration < 0 {
 		duration = 0
 	}
@@ -608,11 +621,13 @@ func (client *DHCPv6PDClient) waitDHCPv6OrDecline(ctx context.Context, duration 
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():
-		return netip.Addr{}, false
+		return netip.Addr{}, false, false
 	case <-timer.C:
-		return netip.Addr{}, true
+		return netip.Addr{}, true, false
 	case address := <-client.declines:
-		return address, true
+		return address, true, false
+	case <-wake:
+		return netip.Addr{}, true, true
 	}
 }
 

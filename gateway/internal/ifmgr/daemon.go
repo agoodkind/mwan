@@ -269,6 +269,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 		TunnelEndpointRoutes: nil,
 		PrepareLocalIPv6:     nil,
 		PrepareOwnedLink:     nil,
+		OwnedLinkUp:          &OwnedLinkUpHandler{mu: sync.RWMutex{}, handle: nil},
 	}
 
 	d.publishStartingPaths()

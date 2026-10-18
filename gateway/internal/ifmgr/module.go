@@ -125,6 +125,32 @@ type Env struct {
 	PrepareLocalIPv6 func(context.Context, *slog.Logger, string, []netip.Addr) error
 	// PrepareOwnedLink applies per-link kernel policy to a down owned link before the links module sets it up.
 	PrepareOwnedLink netif.OwnedLinkPreparer
+	// OwnedLinkUp lets the addresses module handle EvLinkUp events from link monitors.
+	OwnedLinkUp *OwnedLinkUpHandler
+}
+
+// OwnedLinkUpHandler stores one link-up handler. The links module starts its
+// monitors in Init before a later module sets the handler in its own Init.
+type OwnedLinkUpHandler struct {
+	mu     sync.RWMutex
+	handle func(iface string)
+}
+
+// Set is safe to call concurrently with Notify.
+func (h *OwnedLinkUpHandler) Set(handle func(iface string)) {
+	h.mu.Lock()
+	h.handle = handle
+	h.mu.Unlock()
+}
+
+// Notify ignores events until Set registers a handler.
+func (h *OwnedLinkUpHandler) Notify(iface string) {
+	h.mu.RLock()
+	handle := h.handle
+	h.mu.RUnlock()
+	if handle != nil {
+		handle(iface)
+	}
 }
 
 // NPTEdgeRequest authorizes one separately scoped translation address.
