@@ -118,14 +118,19 @@ func listedSteeringRules(t *testing.T) int {
 		t.Fatalf("nft list table inet %s: %v\n%s", steerTableName, err, output)
 	}
 	var listing struct {
-		Nftables []map[string]json.RawMessage `json:"nftables"`
+		Nftables []struct {
+			Rule *struct {
+				Family string `json:"family"`
+				Table  string `json:"table"`
+			} `json:"rule"`
+		} `json:"nftables"`
 	}
 	if err := json.Unmarshal(output, &listing); err != nil {
 		t.Fatalf("decode nft listing: %v\n%s", err, output)
 	}
 	count := 0
 	for _, object := range listing.Nftables {
-		if _, ok := object["rule"]; ok {
+		if object.Rule != nil && object.Rule.Family == "inet" && object.Rule.Table == steerTableName {
 			count++
 		}
 	}
