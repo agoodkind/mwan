@@ -1,4 +1,81 @@
-# Vault and PowerEdge translation performance
+# MWAN packet forwarding performance
+
+MWAN forwards packets in the guest kernel. Routes, policy rules, and nftables
+rules do not send packet bytes to the daemon. Separate router and gateway guests
+still use host CPU to transfer packets across their virtual bridge.
+
+OPNsense [disables several NIC offloads by default](https://docs.opnsense.org/manual/interfaces_settings.html)
+and [disables system-wide receive-side scaling by default](https://docs.opnsense.org/troubleshooting/performance.html).
+[IPS mode requires hardware offloads to be disabled](https://docs.opnsense.org/manual/ips.html).
+Available acceleration depends on the selected features, driver, and
+hardware.
+
+## Attachment paths
+
+The WAN attachment and the router attachment are independent. These diagrams
+show PCI passthrough, virtual WAN, and host bridge attachment.
+
+### ISP NIC passed to the gateway
+
+PCI passthrough assigns the physical NIC to the gateway guest. The WAN
+attachment does not use a host bridge for packet transfer.
+
+```mermaid
+flowchart LR
+  nic[ISP NIC] -->|PCI passthrough| gateway[Gateway guest kernel]
+```
+
+### ISP NIC attached to the host
+
+A virtual WAN attaches the ISP NIC to the host. The host transfers packets
+between that NIC and the gateway guest.
+
+```mermaid
+flowchart LR
+  nic[ISP NIC] --> host[Host kernel]
+  host --> bridge[Virtual bridge]
+  bridge --> gateway[Gateway guest kernel]
+```
+
+### Router and gateway on one host bridge
+
+Separate router and gateway guests use the host bridge for their shared
+attachment. PCI passthrough on a WAN NIC does not remove this transfer.
+
+```mermaid
+flowchart LR
+  lan[LAN] --> router[Router guest kernel]
+  router --> bridge[Host bridge]
+  bridge --> gateway[Gateway guest kernel]
+  gateway --> nic[Passed through ISP NIC]
+```
+
+In the architecture example, ISP-1 and ISP-2 use PCI passthrough. ISP-3 uses a
+virtual WAN. Every packet between the router and gateway guests uses their
+host bridge.
+
+## Measurement on August 16, 2026
+
+A LAN client used ISP-1 for a public speed test. The test did not measure faster links or isolate the cause of the lower download result.
+
+| Measurement | Result |
+| --- | ---: |
+| Download | 693 Mbit/s |
+| Upload | 1782 Mbit/s |
+| Recorded host CPU capacity | 12 cores |
+| Copy threads' share of combined guest work at upload peak | About 15% |
+
+| CPU use, % of entire host | Before test | Upload peak |
+| --- | ---: | ---: |
+| Router guest copy thread | 0.08% | 4.92% |
+| Gateway guest copy thread | 0.08% | 4.33% |
+| Both copy threads | 0.17% | 9.25% |
+| Router guest forwarding | Not measured | 37.83% |
+| Gateway guest forwarding | Not measured | 16.75% |
+| Both guests forwarding | Not measured | 54.58% |
+| Forwarding and copy threads | Not measured | 63.83% |
+
+## Vault and PowerEdge translation performance
 
 PowerEdge PF delivered the strongest software results for NAT66 and OPNsense prefix translation. External VPP improved concurrent NAT64 TCP; Tayga lost fewer UDP packets at the tested load.
 
@@ -15,7 +92,7 @@ Rate pairs show client to server / server to client simultaneously. Every CPU pe
 | NIC test settings | TruFlow enabled; VF MSI-X capacity 16; OPNsense uses 8 queues. |
 | Hardware scope | Fixed address mappings, with a separate source address per client; PF NAT66 combines sources. The tested driver rejects NAT64. |
 
-## TCP
+### TCP
 
 | Setup / translation | Received Gbit/s, forward / reverse | Routing / translation CPU | Total host CPU |
 | --- | --- | --- | --- |
@@ -32,7 +109,7 @@ Rate pairs show client to server / server to client simultaneously. Every CPU pe
 | NPT: PowerEdge / VPP, RFC 6296 | 6.18 / 4.95 | 67.78% | 81.95% |
 | Fixed NPT: PowerEdge NIC + OPNsense | 6.44 / 5.74 | 48.39% | 65.08% |
 
-## UDP
+### UDP
 
 A failed test does not establish throughput; loss counts sent packets that the receiver did not record. The direct NIC test bypasses OPNsense and measures fixed rewrites, without dynamic connection management.
 
@@ -64,3 +141,9 @@ flowchart LR
   client --> direct[Direct NIC rewrite]
   direct --> server
 ```
+
+## Planned investigation
+
+The proposed XR11 Broadcom 57504 deployment needs a decision on whether the
+host or an LXC owns routing and packet rules. MWAN-527 tracks measurements of
+bridge transfer cost and hardware offload for that decision.
