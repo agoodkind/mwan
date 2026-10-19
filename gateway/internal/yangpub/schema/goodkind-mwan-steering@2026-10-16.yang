@@ -54,10 +54,11 @@ module goodkind-mwan-steering {
       "This revision adds BGP session graceful restart time and the
        prefixes of kernel routes that remain installed after the
        previous process exits. It adds the bgp-session family
-       leaf-list and removes the bgp-session router-id leaf.
-       External BGP sessions use router_id in the [bgp] table of
-       config.toml as their BGP router ID. Network documents that
-       set router-id fail schema validation at load.";
+       leaf-list with a default of ipv6-unicast and restores the
+       bgp-session router-id leaf with status obsolete. External BGP
+       sessions use router_id in the [bgp] table of config.toml as
+       their BGP router ID. The network document loader rejects
+       documents that set bgp-session router-id.";
   }
   revision 2026-10-12;
   revision 2026-10-11;
@@ -656,14 +657,28 @@ module goodkind-mwan-steering {
             range "1..max";
           }
         }
+        leaf router-id {
+          status obsolete;
+          type yang:dotted-quad;
+          description
+            "Revision 2026-10-12 and earlier used this leaf for the
+             BGP router ID of an external session. External BGP
+             sessions use router_id in the [bgp] table of config.toml
+             as their BGP router ID. The network document loader
+             rejects documents that set this leaf. The module
+             retains this obsolete leaf only to validate stored
+             configuration from earlier revisions.";
+        }
         leaf-list family {
-          min-elements 1;
           type enumeration {
             enum ipv6-unicast;
           }
+          default "ipv6-unicast";
           description
             "The session uses the BGP multiprotocol capability to
-             negotiate exactly these address families with its peer.";
+             negotiate exactly these address families with its peer.
+             The session uses ipv6-unicast when the document omits
+             family or supplies an empty family leaf-list.";
         }
         leaf multihop-ttl {
           type uint8 {

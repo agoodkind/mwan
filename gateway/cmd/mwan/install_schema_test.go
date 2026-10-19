@@ -29,12 +29,14 @@ const (
 	// childMainEnv makes the child run the mwan command line with its
 	// arguments, the same entry point the installed binary has.
 	childMainEnv = "MWAN_INSTALL_TEST_MAIN"
-	// childSysrepoEnv makes the child run one sysrepo step against the
-	// repository SYSREPO_REPOSITORY_PATH names: "seed" installs the model
-	// files its arguments name, with the first argument as the search
-	// directory, "library" prints the ietf-yang-library tree, and "export"
-	// prints the subtree at its second argument in the datastore its first
-	// argument names, or nothing when the subtree is empty.
+	// Each child step must use the repository at SYSREPO_REPOSITORY_PATH.
+	// This variable selects the step. The "seed" step installs the module
+	// files in its arguments and uses the first argument as the search
+	// directory. The "library" step prints the ietf-yang-library tree. The
+	// "export" step reads the datastore in its first argument and prints the
+	// subtree at the path in its second argument. It does not print output
+	// when the subtree is empty. The "import" step calls yangpub.ImportConfig
+	// with the datastore name, module name, and XML file path, in that order.
 	childSysrepoEnv = "MWAN_INSTALL_TEST_SYSREPO"
 )
 
@@ -86,6 +88,18 @@ func runSysrepoStep(step string, args []string) int {
 			return 1
 		}
 		fmt.Fprint(os.Stdout, tree)
+		return 0
+	case "import":
+		document, err := os.ReadFile(args[2])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "read %s: %v\n", args[2], err)
+			return 1
+		}
+		if err := datastore.ImportConfig(
+			context.Background(), yangpub.Datastore(args[0]), args[1], document); err != nil {
+			fmt.Fprintf(os.Stderr, "import %s into %s: %v\n", args[2], args[0], err)
+			return 1
+		}
 		return 0
 	}
 	fmt.Fprintf(os.Stderr, "unknown step %q\n", step)
@@ -292,19 +306,91 @@ func TestInstallApplyInstallsTheSchemaIntoSysrepo(t *testing.T) {
 	}
 }
 
+// The upgrade test needs the exact schema that the release before revision
+// 2026-10-16 installed. This fixture copies revision 2026-10-12 byte for byte.
+const releasedSteeringFixture = "testdata/goodkind-mwan-steering@2026-10-12.yang"
+
+// The upgrade test needs configuration that a revision 2026-10-12 daemon would
+// store. This XML fixture sets bgp-session router-id and omits family.
+const storedSessionFixture = "testdata/running-bgp-session@2026-10-12.xml"
+
 func TestInstallApplyUpdatesAnOlderSteeringRevision(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
+	seedSteeringRevision(t, root, olderSteeringFixture)
+	if got := implementedModules(t, root, "before")["goodkind-mwan-steering"].revision; got != "2026-09-13" {
+		t.Fatalf("seeded steering revision = %q, want 2026-09-13", got)
+	}
+
+	output := runInstallChild(t, root)
+
+	modules := schema.Modules()
+	_, wantRevision := moduleFileNameRevision(modules[len(modules)-1].File)
+	got := implementedModules(t, root, "after")["goodkind-mwan-steering"]
+	if got.revision != wantRevision {
+		t.Fatalf("steering revision after the run = %q, want %q", got.revision, wantRevision)
+	}
+	wantLine := "updated module goodkind-mwan-steering from 2026-09-13 to " + wantRevision
+	if !strings.Contains(output, wantLine) {
+		t.Fatalf("run output:\n%s\nwant a line %q", output, wantLine)
+	}
+}
+
+// Release 202610191938-ed-eba46a4 failed on testbed VM 213 when
+// mwan install --role wan --apply called sr_update_module. During the update
+// from revision 2026-10-12 to 2026-10-16, sysrepo rejected the stored BGP session
+// while validating datastore data against the new revision.
+// Each test child process uses a new sysrepo shared-memory prefix. When sysrepo
+// creates shared memory, it copies startup into running. This test imports the
+// earlier BGP session into startup in a private sysrepo repository, runs
+// mwan install --apply --role wan --root <root>, and requires the update line
+// and an unchanged exported bgp-session.
+func TestInstallApplyUpdatesSteeringRevisionWithStoredBGPSession(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	seedSteeringRevision(t, root, releasedSteeringFixture)
+	runChild(t, sysrepoChildEnv(t, root, "import", "import"),
+		string(yangpub.DatastoreStartup), "ietf-interfaces", storedSessionFixture)
+	before := exportStoredSession(t, root, "before")
+	if !strings.Contains(before, `"router-id": "192.0.2.130"`) {
+		t.Fatalf("stored session before the run:\n%s\nwant router-id 192.0.2.130", before)
+	}
+
+	output := runInstallChild(t, root)
+
+	modules := schema.Modules()
+	_, wantRevision := moduleFileNameRevision(modules[len(modules)-1].File)
+	wantLine := "updated module goodkind-mwan-steering from 2026-10-12 to " + wantRevision
+	if !strings.Contains(output, wantLine) {
+		t.Fatalf("run output:\n%s\nwant a line %q", output, wantLine)
+	}
+	if after := exportStoredSession(t, root, "after"); after != before {
+		t.Fatalf("stored session after the run:\n%s\nwant the session before the run:\n%s", after, before)
+	}
+}
+
+func exportStoredSession(t *testing.T, root string, prefix string) string {
+	t.Helper()
+	return runChild(t, sysrepoChildEnv(t, root, "export", prefix),
+		string(yangpub.DatastoreStartup),
+		"/ietf-interfaces:interfaces/interface[name='tun6in4']/goodkind-mwan-steering:wan/bgp-session[name='vps']")
+}
+
+// The upgrade test needs the earlier steering revision alongside the embedded
+// modules. This helper installs those modules into the sysrepo repository below
+// root and substitutes fixture for the steering module file.
+func seedSteeringRevision(t *testing.T, root string, fixture string) {
+	t.Helper()
 	olderDir := t.TempDir()
 	models, err := yangpub.WriteSchema(olderDir)
 	if err != nil {
 		t.Fatalf("write the embedded schema: %v", err)
 	}
-	older, err := os.ReadFile(olderSteeringFixture)
+	older, err := os.ReadFile(fixture)
 	if err != nil {
 		t.Fatalf("read the older steering model: %v", err)
 	}
-	olderPath := filepath.Join(olderDir, filepath.Base(olderSteeringFixture))
+	olderPath := filepath.Join(olderDir, filepath.Base(fixture))
 	if err := os.WriteFile(olderPath, older, 0o644); err != nil {
 		t.Fatalf("write the older steering model: %v", err)
 	}
@@ -322,22 +408,6 @@ func TestInstallApplyUpdatesAnOlderSteeringRevision(t *testing.T) {
 		seedArgs = append(seedArgs, model.Path)
 	}
 	runChild(t, sysrepoChildEnv(t, root, "seed", "seed"), seedArgs...)
-	if got := implementedModules(t, root, "before")["goodkind-mwan-steering"].revision; got != "2026-09-13" {
-		t.Fatalf("seeded steering revision = %q, want 2026-09-13", got)
-	}
-
-	output := runInstallChild(t, root)
-
-	modules := schema.Modules()
-	_, wantRevision := moduleFileNameRevision(modules[len(modules)-1].File)
-	got := implementedModules(t, root, "after")["goodkind-mwan-steering"]
-	if got.revision != wantRevision {
-		t.Fatalf("steering revision after the run = %q, want %q", got.revision, wantRevision)
-	}
-	wantLine := "updated module goodkind-mwan-steering from 2026-09-13 to " + wantRevision
-	if !strings.Contains(output, wantLine) {
-		t.Fatalf("run output:\n%s\nwant a line %q", output, wantLine)
-	}
 }
 
 func moduleFileNameRevision(file string) (name string, revision string) {

@@ -4,9 +4,11 @@ package networkjson_test
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
+	"goodkind.io/mwan/internal/bgpsession"
 	"goodkind.io/mwan/internal/networkload"
 )
 
@@ -76,24 +78,37 @@ func requireSchemaFailure(t *testing.T, document string, want string) {
 func TestLoadRejectsBGPSessionRouterID(t *testing.T) {
 	_, data := readInstance(t, "network-bgp-tunnel.json")
 	document := withTunnelSessionMembers(t, string(data), `"router-id": "192.0.2.130",`)
-	requireSchemaFailure(t, document, `Node "router-id" not found as a child of "bgp-session" node`)
+	requireSchemaFailure(t, document, `Obsolete schema node "router-id" instantiated in data.`)
 }
 
 func TestLoadRejectsBGPSessionWithoutValidFamily(t *testing.T) {
+	_, data := readInstance(t, "network-bgp-tunnel.json")
+	document := withTunnelSessionMembers(t, string(data), `"family": ["ipv4-unicast"],`)
+	requireSchemaFailure(t, document, `Invalid enumeration value "ipv4-unicast"`)
+}
+
+func TestLoadDefaultsAbsentBGPSessionFamily(t *testing.T) {
 	_, data := readInstance(t, "network-bgp-tunnel.json")
 	base := string(data)
 	cases := []struct {
 		name    string
 		members string
-		want    string
 	}{
-		{name: "unknown family", members: `"family": ["ipv4-unicast"],`, want: `Invalid enumeration value "ipv4-unicast"`},
-		{name: "empty family", members: `"family": [],`, want: `Too few "family" instances`},
-		{name: "absent family", members: ``, want: `Too few "family" instances`},
+		{name: "empty family", members: `"family": [],`},
+		{name: "absent family", members: ``},
 	}
+	want := []bgpsession.Family{bgpsession.FamilyIPv6Unicast}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			requireSchemaFailure(t, withTunnelSessionMembers(t, base, testCase.members), testCase.want)
+			document := withTunnelSessionMembers(t, base, testCase.members)
+			loaded, err := networkload.Load(writeDocument(t, document), schemaDirForTest(t))
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			session := onlyBGPSession(t, loaded, "tunnel-6in4")
+			if !slices.Equal(session.Session.Families, want) {
+				t.Fatalf("families = %v, want %v", session.Session.Families, want)
+			}
 		})
 	}
 }
