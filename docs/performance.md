@@ -316,6 +316,8 @@ Profiled throughput and selected CPU costs:
 | TruFlow controller or Go daemon CPU | 0.0043% | 0.0125% | 0.0015% | 0.0045% |
 | Mbps per total host CPU percentage point | 478.59 | 414.08 | 123.64 | 114.65 |
 
+the Go controller is not consuming substantial CPU, and moving only prefix translation into the NIC would address a relatively small part of VPP’s measured cost.
+
 ## Remaining investigation
 
 MWAN-527 tracks the forwarding comparison with a software bridge.
