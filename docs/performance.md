@@ -320,8 +320,9 @@ the Go controller is not consuming substantial CPU, and moving only prefix trans
 
 ### Separate routing and WAN hashing
 
-These reruns identify route lookup and WAN hashing from instruction addresses
-in the unchanged optimized VPP build. CPU percentages use total host capacity.
+These reruns estimate route lookup and WAN hashing CPU from sampled instruction
+addresses in the unchanged optimized VPP build. CPU percentages use total host
+capacity.
 
 VPP + TruFlow routing and hashing results:
 
@@ -335,6 +336,53 @@ VPP + TruFlow routing and hashing results:
 | Forwarding and header rewrite CPU | 0.6417% | 0.1696% |
 | Other routing-node CPU | 0.3715% | 0.1340% |
 | Other VPP or kernel CPU | 20.7535% | 23.2011% |
+
+## PowerEdge hardware tunnel tests
+
+These tests measure the NIC's outbound address rewriting and VXLAN
+encapsulation with one shared public prefix. A fixture preinstalls exact
+connection rules and assigns WANs by connection index before traffic starts.
+
+Linux peers generate and receive traffic, decapsulate VXLAN, and enforce the
+WAN limits, including headers. Native hardware rules handle every reply.
+Total host CPU includes both endpoints and the Linux rate policers.
+
+Process rows include only intervals with complete counter readings. Host
+profiling cannot measure work inside the NIC, and kernel function samples
+undercounted native process CPU. The table uses direct host, process, and
+cgroup counters as shares of total PowerEdge capacity.
+
+Controller service CPU includes the Go rule manager and DPDK testpmd, which
+installs the NIC rules.
+
+Outbound throughput and CPU measurements:
+
+| Measurement | Native TCP | VXLAN TCP | Combined TCP | Native UDP | VXLAN UDP | Combined UDP |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Total WAN limit, Gbit/s | 1 | 1 | 2 | 1 | 1 | 2 |
+| Underlay / inner MTU, bytes | 1600 / 1500 | 1600 / 1500 | 1600 / 1500 | 1600 / 1500 | 1600 / 1500 | 1600 / 1500 |
+| Native / VXLAN data connections | 32 / 0 | 0 / 32 | 16 / 16 | 8 / 0 | 0 / 8 | 4 / 4 |
+| Sent Gbit/s | 0.926 | 0.827 | 1.509 | 1.000 | 1.000 | 2.000 |
+| Received Gbit/s | 0.922 | 0.823 | 1.505 | 0.967 | 0.923 | 1.890 |
+| Packets not received | Not applicable | Not applicable | Not applicable | 3.27% | 7.73% | 5.52% |
+| Total host CPU | 9.81% | 10.37% | 11.29% | 20.03% | 20.62% | 27.98% |
+| Matched idle host CPU | 6.24% | 6.55% | 5.94% | 6.13% | 6.16% | 6.61% |
+| Controller service CPU | 0.0130% | 0.0116% | 0.0122% | 0.0052% | 0.0052% | 0.0052% |
+| Observed sender process CPU | 0.52% | 0.42% | 0.78% | 6.91% | 7.53% | 8.91% |
+| Observed receiver process CPU | 1.27% | 1.41% | 1.80% | 3.97% | 3.71% | 5.05% |
+| Observed profiling process CPU | 0.17% | 0.18% | 0.17% | 0.15% | 0.14% | 0.11% |
+| Host counter window coverage | 97.43% | 97.45% | 97.42% | 97.48% | 97.48% | 97.46% |
+| Mbps per total host CPU percentage point | 93.93 | 79.32 | 133.33 | 48.30 | 44.75 | 67.54 |
+
+Native command output distinguishes rejected actions from installed rules.
+
+Hardware capability attempts:
+
+| Configuration | Native result |
+| --- | --- |
+| GRE, TCP and UDP | The installed DPDK driver rejected encapsulation alone with `Truflow parser does not support act 26` and full chains with `Truflow parser does not support act 27`, before throughput tests could start. |
+| Hardware per-packet WAN selection, TCP and UDP | The driver rejected RANDOM with `Truflow parser does not support type 69` and rejected SAMPLE ratio two with PMD error type `2`. |
+| Physical-ingress reverse VXLAN, without the outer-source match | The TCP and UDP rules installed, but this task did not send physical-ingress traffic. |
 
 ## Remaining investigation
 
