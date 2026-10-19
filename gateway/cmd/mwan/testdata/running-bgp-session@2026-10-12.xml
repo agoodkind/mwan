@@ -1,0 +1,134 @@
+<interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces">
+  <interface>
+    <name>enisp0</name>
+    <type xmlns:ianaift="urn:ietf:params:xml:ns:yang:iana-if-type">ianaift:other</type>
+    <steering xmlns="urn:goodkind:mwan-steering">
+      <tier>0</tier>
+      <weight>1</weight>
+    </steering>
+    <link-files xmlns="urn:goodkind:mwan-steering">hand-authored</link-files>
+    <wan xmlns="urn:goodkind:mwan-steering">
+      <name>isp</name>
+      <table-id>100</table-id>
+      <fw-mark>1</fw-mark>
+      <fw-mark-prio>100</fw-mark-prio>
+      <from-prio>55</from-prio>
+      <health>
+        <enabled>true</enabled>
+        <ping-count>3</ping-count>
+        <success-threshold>1</success-threshold>
+        <failure-threshold>2</failure-threshold>
+        <recovery-threshold>2</recovery-threshold>
+        <check-interval>10</check-interval>
+        <targets-v4>192.0.2.10</targets-v4>
+      </health>
+    </wan>
+    <ipv4 xmlns="urn:ietf:params:xml:ns:yang:ietf-ip">
+      <translation xmlns="urn:goodkind:mwan-steering">
+        <mode xmlns:nat="urn:ietf:params:xml:ns:yang:ietf-nat">nat:napt44</mode>
+      </translation>
+    </ipv4>
+  </interface>
+  <interface>
+    <name>enmgmt0</name>
+    <type xmlns:ianaift="urn:ietf:params:xml:ns:yang:iana-if-type">ianaift:other</type>
+  </interface>
+  <interface>
+    <name>enmwanbr0</name>
+    <type xmlns:ianaift="urn:ietf:params:xml:ns:yang:iana-if-type">ianaift:other</type>
+  </interface>
+  <interface>
+    <name>tun6in4</name>
+    <type xmlns:ianaift="urn:ietf:params:xml:ns:yang:iana-if-type">ianaift:tunnel</type>
+    <steering xmlns="urn:goodkind:mwan-steering">
+      <tier>0</tier>
+      <weight>1</weight>
+    </steering>
+    <connection-id xmlns="urn:goodkind:mwan-steering">tunnel-6in4</connection-id>
+    <owner xmlns="urn:goodkind:mwan-steering">mwan</owner>
+    <link xmlns="urn:goodkind:mwan-steering">
+      <mtu>1480</mtu>
+      <tunnel>
+        <protocol>6in4</protocol>
+        <underlay>enisp0</underlay>
+        <remote-address>198.51.100.1</remote-address>
+        <local-address>192.0.2.130</local-address>
+        <ttl>64</ttl>
+      </tunnel>
+    </link>
+    <wan xmlns="urn:goodkind:mwan-steering">
+      <name>tunnel</name>
+      <table-id>200</table-id>
+      <fw-mark>2</fw-mark>
+      <fw-mark-prio>200</fw-mark-prio>
+      <from-prio>56</from-prio>
+      <health>
+        <enabled>true</enabled>
+        <ping-count>3</ping-count>
+        <success-threshold>1</success-threshold>
+        <failure-threshold>2</failure-threshold>
+        <recovery-threshold>2</recovery-threshold>
+        <check-interval>10</check-interval>
+        <targets-v6>2001:db8:53::1</targets-v6>
+      </health>
+      <bgp-session>
+        <name>vps</name>
+        <peer-address>2001:db8:6::1</peer-address>
+        <peer-port>179</peer-port>
+        <local-address>2001:db8:6::2</local-address>
+        <local-as>64512</local-as>
+        <remote-as>64512</remote-as>
+        <router-id>192.0.2.130</router-id>
+        <keepalive>10</keepalive>
+        <hold>30</hold>
+        <route-metric>300</route-metric>
+        <import>
+          <prefix>2001:db8:50::/44</prefix>
+          <min-length>44</min-length>
+          <max-length>48</max-length>
+        </import>
+        <export>
+          <prefix>2001:db8:b01::/60</prefix>
+          <mode>always</mode>
+          <next-hop>2001:db8:6::2</next-hop>
+          <local-preference>200</local-preference>
+        </export>
+      </bgp-session>
+    </wan>
+    <ipv6 xmlns="urn:ietf:params:xml:ns:yang:ietf-ip">
+      <address>
+        <ip>2001:db8:6::2</ip>
+        <prefix-length>64</prefix-length>
+      </address>
+      <translation xmlns="urn:goodkind:mwan-steering">
+        <mode>native</mode>
+      </translation>
+    </ipv6>
+  </interface>
+  <steering-group xmlns="urn:goodkind:mwan-steering">
+    <hash-mode>source</hash-mode>
+    <reserved-tables>400</reserved-tables>
+    <reserved-tables>500</reserved-tables>
+    <translation>
+      <internal-prefix>2001:db8:b01::/60</internal-prefix>
+      <opnsense-edge-v6>2001:db8:b01:fe::2</opnsense-edge-v6>
+      <mwanbr-edge-v6>2001:db8:b01:fe::3</mwanbr-edge-v6>
+    </translation>
+    <routes>
+      <internal-iface>enmwanbr0</internal-iface>
+      <internal-net-v4>192.0.2.0/29</internal-net-v4>
+    </routes>
+    <firewall>
+      <management-interface>enmgmt0</management-interface>
+      <management-service>
+        <protocol>tcp</protocol>
+        <port>22</port>
+      </management-service>
+      <pinned-set-v4-name>isp_pinned_v4</pinned-set-v4-name>
+      <pinned-set-v6-name>isp_pinned_v6</pinned-set-v6-name>
+    </firewall>
+    <health>
+      <probe-timeout>2000</probe-timeout>
+    </health>
+  </steering-group>
+</interfaces>
