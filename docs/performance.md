@@ -5,8 +5,15 @@ rules do not send packet bytes to the daemon. A host bridge uses host CPU to
 transfer packets between router and gateway guests. A NIC can instead switch
 packets between hardware virtual functions assigned to separate containers.
 
-Every CPU percentage uses the complete capacity of the experiment’s host.
-Host CPU includes guest work, traffic generation, and other active host work.
+CPU usage adds the work across logical CPUs, or hardware threads. Host CPU
+includes guest work, traffic generation, and other active host work.
+
+CPU percentage scale:
+
+| Fully busy logical CPUs | Summed CPU usage |
+| --- | ---: |
+| 1 | 100% |
+| 8 | 800% |
 
 OPNsense [requires disabled hardware offloads in IPS mode](https://docs.opnsense.org/manual/ips.html).
 OPNsense [disables several NIC offloads by default](https://docs.opnsense.org/manual/interfaces_settings.html)
@@ -74,15 +81,15 @@ The CPU breakdown distinguishes guest processing from host packet copying.
 
 Host CPU use:
 
-| CPU use, % of entire host | Before test | Upload peak |
+| CPU usage, summed across logical CPUs | Before test | Upload peak |
 | --- | ---: | ---: |
-| Router guest copy thread | 0.08% | 4.92% |
-| Gateway guest copy thread | 0.08% | 4.33% |
-| Both copy threads | 0.17% | 9.25% |
-| Router guest forwarding | Not measured | 37.83% |
-| Gateway guest forwarding | Not measured | 16.75% |
-| Both guests forwarding | Not measured | 54.58% |
-| Forwarding and copy threads | Not measured | 63.83% |
+| Router guest copy thread | 1.00% | 59.00% |
+| Gateway guest copy thread | 1.00% | 52.00% |
+| Both copy threads | 2.00% | 111.00% |
+| Router guest forwarding | Not measured | 454.00% |
+| Gateway guest forwarding | Not measured | 201.00% |
+| Both guests forwarding | Not measured | 655.00% |
+| Forwarding and copy threads | Not measured | 766.00% |
 
 ## Vault and PowerEdge translation performance
 
@@ -93,8 +100,8 @@ Test conditions:
 
 | Test condition | Value |
 | --- | --- |
-| Host CPU capacity | Vault: 12 logical CPUs; PowerEdge: 16 |
-| OPNsense VM allocation | Vault: 33.33% of host CPU capacity; PowerEdge: 50.00% |
+| Host CPU capacity | Vault: 12 logical CPUs, maximum 1200%; PowerEdge: 16 logical CPUs, maximum 1600% |
+| OPNsense VM allocation | Vault: 4 vCPUs, maximum 400%; PowerEdge: 8 vCPUs, maximum 800% |
 | Traffic | 8 clients; TCP: 4 streams each, uncapped; UDP: 1 stream each, 1400-byte payload, 5 Gbit/s per direction |
 | Measured duration | 20 seconds; TCP excludes 3 seconds of warmup |
 | Network | Vault uses its physical LAN; PowerEdge uses the NIC internal switch. |
@@ -108,8 +115,8 @@ Test conditions:
 | VPP driver mode | VPP performs CPU translation and uses [app-id=255](https://github.com/DPDK/dpdk/blob/v26.03/drivers/net/bnxt/bnxt.h#L895-L896) to disable TruFlow for its interfaces. |
 | Tayga UDP timing | Recorded interval: 46.57 s. Required interval: 18 to 22 s. |
 
-Efficiency divides combined received Mbps by routing/translation CPU percentage
-points, using the rounded measurements in the tables.
+Efficiency divides combined received Mbps by summed routing/translation CPU
+percentage points, using the rounded measurements in these comparison tables.
 
 TCP tests compare transfer capacity without a sender rate limit.
 UDP tests compare packet delivery under the same requested load.
@@ -118,61 +125,61 @@ UDP tests compare packet delivery under the same requested load.
 
 TCP throughput and CPU use:
 
-| Host | Translation | Software | Received Gbit/s, forward / reverse | Routing / translation CPU | Total host CPU | Mbps per CPU percentage point |
+| Host | Translation | Software | Received Gbit/s, forward / reverse | Routing / translation CPU | Total host CPU | Mbps per routing / translation CPU percentage point |
 | --- | --- | --- | --- | --- | --- | --- |
-| Vault | NAT64 | Tayga | 0.93 / 0.35 | 36.90% | 75.69% | 35 |
-| PowerEdge | NAT64 | Tayga | 1.28 / 1.48 | 49.63% | 63.39% | 56 |
-| PowerEdge | NAT64 | OPNsense + VPP | 4.91 / 5.25 | 70.90% | 86.24% | 143 |
+| Vault | NAT64 | Tayga | 0.93 / 0.35 | 442.80% | 908.28% | 2.89 |
+| PowerEdge | NAT64 | Tayga | 1.28 / 1.48 | 794.08% | 1014.24% | 3.48 |
+| PowerEdge | NAT64 | OPNsense + VPP | 4.91 / 5.25 | 1134.40% | 1379.84% | 8.96 |
 
 UDP throughput, loss, and CPU use:
 
-| Host | Translation | Software | Sent Gbit/s | Received Gbit/s | Packets not received | Routing / translation CPU | Total host CPU | Mbps per CPU percentage point |
+| Host | Translation | Software | Sent Gbit/s | Received Gbit/s | Packets not received | Routing / translation CPU | Total host CPU | Mbps per routing / translation CPU percentage point |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Vault | NAT64 | Tayga | Test failed | Test failed | Test failed | Not measured | Not measured | Not measured |
 | PowerEdge | NAT64 | Tayga | Invalid timing | Invalid timing | Invalid timing | Not measured | Not measured | Not measured |
-| PowerEdge | NAT64 | OPNsense + VPP | 5.00 / 5.00 | 1.03 / 1.16 | 79.35% / 76.79% | 70.34% | 98.54% | 31 |
+| PowerEdge | NAT64 | OPNsense + VPP | 5.00 / 5.00 | 1.03 / 1.16 | 79.35% / 76.79% | 1125.44% | 1576.64% | 1.95 |
 
 ### NAT66
 
 TCP throughput and CPU use:
 
-| Host | Translation | Software | Received Gbit/s, forward / reverse | Routing / translation CPU | Total host CPU | Mbps per CPU percentage point |
+| Host | Translation | Software | Received Gbit/s, forward / reverse | Routing / translation CPU | Total host CPU | Mbps per routing / translation CPU percentage point |
 | --- | --- | --- | --- | --- | --- | --- |
-| Vault | NAT66 | PF | 2.35 / 0.28 | 28.97% | 71.33% | 91 |
-| PowerEdge | NAT66 | PF | 10.22 / 11.29 | 48.62% | 72.74% | 442 |
-| PowerEdge | NAT66 | OPNsense + VPP | 5.10 / 5.64 | 71.90% | 86.61% | 149 |
-| PowerEdge | Fixed NAT66 | OPNsense + TruFlow | 6.27 / 5.92 | 48.54% | 65.28% | 251 |
-| PowerEdge | Fixed NAT66 | TruFlow without OPNsense | 31.81 / 36.97 | 0.0065% | 96.25% | Controller only |
+| Vault | NAT66 | PF | 2.35 / 0.28 | 347.64% | 855.96% | 7.57 |
+| PowerEdge | NAT66 | PF | 10.22 / 11.29 | 777.92% | 1163.84% | 27.65 |
+| PowerEdge | NAT66 | OPNsense + VPP | 5.10 / 5.64 | 1150.40% | 1385.76% | 9.34 |
+| PowerEdge | Fixed NAT66 | OPNsense + TruFlow | 6.27 / 5.92 | 776.64% | 1044.48% | 15.70 |
+| PowerEdge | Fixed NAT66 | TruFlow without OPNsense | 31.81 / 36.97 | 0.1040% | 1540.00% | Controller only |
 
 UDP throughput, loss, and CPU use:
 
-| Host | Translation | Software | Sent Gbit/s | Received Gbit/s | Packets not received | Routing / translation CPU | Total host CPU | Mbps per CPU percentage point |
+| Host | Translation | Software | Sent Gbit/s | Received Gbit/s | Packets not received | Routing / translation CPU | Total host CPU | Mbps per routing / translation CPU percentage point |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Vault | NAT66 | PF | 2.53 / 5.00 | 1.72 / 1.06 | 31.15% / 78.78% | 30.64% | 91.57% | 91 |
-| PowerEdge | NAT66 | PF | 5.00 / 5.00 | 4.58 / 3.21 | 8.39% / 35.86% | 48.06% | 92.22% | 162 |
-| PowerEdge | NAT66 | OPNsense + VPP | 5.00 / 5.00 | 2.88 / 1.11 | 42.11% / 77.84% | 68.36% | 98.59% | 58 |
-| PowerEdge | Fixed NAT66 | OPNsense + TruFlow | 5.00 / 5.00 | 3.70 / 3.60 | 25.96% / 27.96% | 48.70% | 91.50% | 150 |
-| PowerEdge | Fixed NAT66 | TruFlow without OPNsense | 5.00 / 5.00 | 4.99 / 4.99 | 0.13% / 0.16% | 0.0051% | 56.10% | Controller only |
+| Vault | NAT66 | PF | 2.53 / 5.00 | 1.72 / 1.06 | 31.15% / 78.78% | 367.68% | 1098.84% | 7.56 |
+| PowerEdge | NAT66 | PF | 5.00 / 5.00 | 4.58 / 3.21 | 8.39% / 35.86% | 768.96% | 1475.52% | 10.13 |
+| PowerEdge | NAT66 | OPNsense + VPP | 5.00 / 5.00 | 2.88 / 1.11 | 42.11% / 77.84% | 1093.76% | 1577.44% | 3.65 |
+| PowerEdge | Fixed NAT66 | OPNsense + TruFlow | 5.00 / 5.00 | 3.70 / 3.60 | 25.96% / 27.96% | 779.20% | 1464.00% | 9.37 |
+| PowerEdge | Fixed NAT66 | TruFlow without OPNsense | 5.00 / 5.00 | 4.99 / 4.99 | 0.13% / 0.16% | 0.0816% | 897.60% | Controller only |
 
 ### NPT
 
 TCP throughput and CPU use:
 
-| Host | Translation | Software | Received Gbit/s, forward / reverse | Routing / translation CPU | Total host CPU | Mbps per CPU percentage point |
+| Host | Translation | Software | Received Gbit/s, forward / reverse | Routing / translation CPU | Total host CPU | Mbps per routing / translation CPU percentage point |
 | --- | --- | --- | --- | --- | --- | --- |
-| Vault | NPT | PF BINAT | 2.33 / 0.22 | 28.95% | 72.02% | 88 |
-| PowerEdge | NPT | PF BINAT | 10.10 / 10.86 | 48.41% | 71.20% | 433 |
-| PowerEdge | NPT, RFC 6296 | OPNsense + VPP | 5.32 / 5.37 | 72.50% | 86.88% | 147 |
-| PowerEdge | Fixed NPT | OPNsense + TruFlow | 6.44 / 5.74 | 48.39% | 65.08% | 252 |
+| Vault | NPT | PF BINAT | 2.33 / 0.22 | 347.40% | 864.24% | 7.34 |
+| PowerEdge | NPT | PF BINAT | 10.10 / 10.86 | 774.56% | 1139.20% | 27.06 |
+| PowerEdge | NPT, RFC 6296 | OPNsense + VPP | 5.32 / 5.37 | 1160.00% | 1390.08% | 9.22 |
+| PowerEdge | Fixed NPT | OPNsense + TruFlow | 6.44 / 5.74 | 774.24% | 1041.28% | 15.73 |
 
 UDP throughput, loss, and CPU use:
 
-| Host | Translation | Software | Sent Gbit/s | Received Gbit/s | Packets not received | Routing / translation CPU | Total host CPU | Mbps per CPU percentage point |
+| Host | Translation | Software | Sent Gbit/s | Received Gbit/s | Packets not received | Routing / translation CPU | Total host CPU | Mbps per routing / translation CPU percentage point |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Vault | NPT | PF BINAT | 2.35 / 5.00 | 1.27 / 1.17 | 45.50% / 76.66% | 27.96% | 96.32% | 87 |
-| PowerEdge | NPT | PF BINAT | 5.00 / 5.00 | 4.60 / 4.69 | 8.05% / 6.29% | 47.80% | 93.20% | 194 |
-| PowerEdge | NPT, RFC 6296 | OPNsense + VPP | 5.00 / 5.00 | 2.57 / 2.75 | 48.60% / 45.04% | 65.57% | 98.42% | 81 |
-| PowerEdge | Fixed NPT | OPNsense + TruFlow | 5.00 / 5.00 | 2.95 / 3.24 | 40.91% / 35.17% | 48.22% | 89.21% | 128 |
+| Vault | NPT | PF BINAT | 2.35 / 5.00 | 1.27 / 1.17 | 45.50% / 76.66% | 335.52% | 1155.84% | 7.27 |
+| PowerEdge | NPT | PF BINAT | 5.00 / 5.00 | 4.60 / 4.69 | 8.05% / 6.29% | 764.80% | 1491.20% | 12.15 |
+| PowerEdge | NPT, RFC 6296 | OPNsense + VPP | 5.00 / 5.00 | 2.57 / 2.75 | 48.60% / 45.04% | 1049.12% | 1574.72% | 5.07 |
+| PowerEdge | Fixed NPT | OPNsense + TruFlow | 5.00 / 5.00 | 2.95 / 3.24 | 40.91% / 35.17% | 771.52% | 1427.36% | 8.02 |
 
 Rate pairs list simultaneous traffic from client to server and from server to
 client, in that order. Routing/translation CPU combines OPNsense with its
@@ -208,7 +215,7 @@ steers packets in the hybrid test while VPP performs prefix translation on the C
 
 Bold software identifies the [NPT translator MWAN uses today](../gateway/internal/ifmgr/modules/npt/bpf/npt.c),
 not an exact reproduction of its WAN-selection configuration. Rows sort by
-combined received Mbps per total-host CPU percentage point within each prefix
+combined received Mbps per summed total-host CPU percentage point within each prefix
 policy. Bold rates and efficiency identify the best valid result in each policy.
 Kernel means the test did not measure translation CPU separately. Host CPU
 includes traffic generation, and VPP CPU includes polling and packet handling.
@@ -217,25 +224,25 @@ TCP measures uncapped transfer capacity with simultaneous traffic in both direct
 
 Single-prefix TCP throughput and CPU use:
 
-| Host | Translation | Software | Received Gbit/s, forward / reverse | Routing / translation CPU | Total host CPU | Mbps per host CPU percentage point |
+| Host | Translation | Software | Received Gbit/s, forward / reverse | Routing / translation CPU | Total host CPU | Mbps per total host CPU percentage point |
 | --- | --- | --- | --- | --- | --- | --- |
-| PowerEdge | Single prefix | VPP + TruFlow steering | **20.91 / 20.70** | 24.13% | 76.36% | **544.9** |
-| PowerEdge | Single prefix | VPP | 20.36 / 20.98 | 24.14% | 76.56% | 540.0 |
-| PowerEdge | Single prefix | **MWAN eBPF** | 19.71 / 18.86 | Kernel | 88.33% | 436.7 |
-| PowerEdge | Single prefix | nftables | 19.57 / 18.89 | Kernel | 89.01% | 432.1 |
-| PowerEdge | Single prefix | PF BINAT | 13.19 / 12.53 | 48.71% | 74.37% | 345.8 |
+| PowerEdge | Single prefix | VPP + TruFlow steering | **20.91 / 20.70** | 386.04% | 1221.79% | **34.05** |
+| PowerEdge | Single prefix | VPP | 20.36 / 20.98 | 386.16% | 1224.95% | 33.75 |
+| PowerEdge | Single prefix | **MWAN eBPF** | 19.71 / 18.86 | Kernel | 1413.34% | 27.29 |
+| PowerEdge | Single prefix | nftables | 19.57 / 18.89 | Kernel | 1424.13% | 27.00 |
+| PowerEdge | Single prefix | PF BINAT | 13.19 / 12.53 | 779.36% | 1189.90% | 21.61 |
 
 Dual-prefix load-balancing TCP throughput and CPU use:
 
-| Host | Translation | Software | Received Gbit/s, forward / reverse | Routing / translation CPU | Total host CPU | Mbps per host CPU percentage point |
+| Host | Translation | Software | Received Gbit/s, forward / reverse | Routing / translation CPU | Total host CPU | Mbps per total host CPU percentage point |
 | --- | --- | --- | --- | --- | --- | --- |
-| PowerEdge | Dual, connection | VPP + TruFlow steering | 20.56 / 20.50 | 22.30% | 84.69% | **484.8** |
-| PowerEdge | Dual, connection | VPP | **20.66 / 20.66** | 22.14% | 86.16% | 479.5 |
-| PowerEdge | Dual, connection | MWAN eBPF + nftables software flowtable | 17.56 / 18.23 | Kernel | 80.76% | 443.1 |
-| PowerEdge | Dual, connection | **MWAN eBPF** | 18.09 / 17.95 | Kernel | 84.40% | 427.1 |
-| PowerEdge | Dual, connection | nftables | 17.81 / 18.13 | Kernel | 84.52% | 425.3 |
-| PowerEdge | Dual, connection | PF BINAT | 9.30 / 13.91 | 49.13% | 75.05% | 309.2 |
-| PowerEdge | Dual, connection | OPNsense multi-WAN | 9.68 / 12.14 | 49.21% | 73.61% | 296.4 |
+| PowerEdge | Dual, connection | VPP + TruFlow steering | 20.56 / 20.50 | 356.76% | 1355.04% | **30.30** |
+| PowerEdge | Dual, connection | VPP | **20.66 / 20.66** | 354.32% | 1378.53% | 29.97 |
+| PowerEdge | Dual, connection | MWAN eBPF + nftables software flowtable | 17.56 / 18.23 | Kernel | 1292.24% | 27.69 |
+| PowerEdge | Dual, connection | **MWAN eBPF** | 18.09 / 17.95 | Kernel | 1350.39% | 26.69 |
+| PowerEdge | Dual, connection | nftables | 17.81 / 18.13 | Kernel | 1352.30% | 26.58 |
+| PowerEdge | Dual, connection | PF BINAT | 9.30 / 13.91 | 786.05% | 1200.86% | 19.33 |
+| PowerEdge | Dual, connection | OPNsense multi-WAN | 9.68 / 12.14 | 787.38% | 1177.76% | 18.53 |
 
 UDP compares packet delivery at the requested load rather than maximum capacity.
 The eBPF packet-selection sender failed its requested forward load. Packet
@@ -243,27 +250,27 @@ selection results do not rank as working alternatives for TCP connections.
 
 Single-prefix UDP throughput, loss, and CPU use:
 
-| Host | Translation | Software | Sent Gbit/s | Received Gbit/s, forward / reverse | Packets not received | Routing / translation CPU | Total host CPU | Mbps per host CPU percentage point |
+| Host | Translation | Software | Sent Gbit/s | Received Gbit/s, forward / reverse | Packets not received | Routing / translation CPU | Total host CPU | Mbps per total host CPU percentage point |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| PowerEdge | Single prefix | VPP | 5.00 / 5.00 | **4.99 / 4.97** | 0.16% / 0.54% | 24.08% | 75.06% | **132.7** |
-| PowerEdge | Single prefix | VPP + TruFlow steering | 5.00 / 5.00 | 4.98 / 4.99 | 0.43% / 0.29% | 23.86% | 75.15% | 132.6 |
-| PowerEdge | Single prefix | **MWAN eBPF** | 4.99 / 5.00 | 4.96 / 4.97 | 0.73% / 0.56% | Kernel | 80.43% | 123.5 |
-| PowerEdge | Single prefix | nftables | 5.00 / 5.00 | 4.96 / 4.93 | 0.87% / 1.32% | Kernel | 81.44% | 121.4 |
-| PowerEdge | Single prefix | PF BINAT | 5.00 / 5.00 | 4.70 / 4.77 | 5.98% / 4.63% | 42.94% | 90.31% | 104.9 |
+| PowerEdge | Single prefix | VPP | 5.00 / 5.00 | **4.99 / 4.97** | 0.16% / 0.54% | 385.26% | 1201.02% | **8.30** |
+| PowerEdge | Single prefix | VPP + TruFlow steering | 5.00 / 5.00 | 4.98 / 4.99 | 0.43% / 0.29% | 381.80% | 1202.43% | 8.29 |
+| PowerEdge | Single prefix | **MWAN eBPF** | 4.99 / 5.00 | 4.96 / 4.97 | 0.73% / 0.56% | Kernel | 1286.85% | 7.72 |
+| PowerEdge | Single prefix | nftables | 5.00 / 5.00 | 4.96 / 4.93 | 0.87% / 1.32% | Kernel | 1303.06% | 7.59 |
+| PowerEdge | Single prefix | PF BINAT | 5.00 / 5.00 | 4.70 / 4.77 | 5.98% / 4.63% | 687.03% | 1444.90% | 6.55 |
 
 Dual-prefix load-balancing UDP throughput, loss, and CPU use:
 
-| Host | Translation | Software | Sent Gbit/s | Received Gbit/s, forward / reverse | Packets not received | Routing / translation CPU | Total host CPU | Mbps per host CPU percentage point |
+| Host | Translation | Software | Sent Gbit/s | Received Gbit/s, forward / reverse | Packets not received | Routing / translation CPU | Total host CPU | Mbps per total host CPU percentage point |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| PowerEdge | Dual, connection | VPP | 5.00 / 5.00 | 4.99 / 4.93 | 0.24% / 1.33% | 23.76% | 79.27% | **125.2** |
-| PowerEdge | Dual, connection | VPP + TruFlow steering | 5.00 / 5.00 | 4.99 / 4.98 | 0.17% / 0.46% | 23.75% | 81.90% | 121.7 |
-| PowerEdge | Dual, connection | nftables | 5.00 / 5.00 | 4.84 / 4.92 | 3.24% / 1.66% | Kernel | 81.91% | 119.1 |
-| PowerEdge | Dual, connection | **MWAN eBPF** | 5.00 / 5.00 | 4.95 / 4.97 | 0.92% / 0.66% | Kernel | 84.11% | 118.0 |
-| PowerEdge | Dual, connection | MWAN eBPF + nftables software flowtable | 5.00 / 5.00 | **4.98 / 4.99** | 0.32% / 0.22% | Kernel | 84.56% | 117.9 |
-| PowerEdge | Dual, connection | PF BINAT | 5.00 / 5.00 | 4.61 / 4.80 | 7.78% / 3.97% | 45.39% | 91.25% | 103.1 |
-| PowerEdge | Dual, connection | OPNsense multi-WAN | 5.00 / 5.00 | 4.58 / 4.58 | 8.45% / 8.32% | 43.87% | 89.70% | 102.1 |
-| PowerEdge | Dual, packet | nftables | 4.98 / 5.00 | 2.44 / 4.93 | 51.07% / 1.43% | Kernel | 78.17% | 94.2 |
-| PowerEdge | Dual, packet | **MWAN eBPF** | 0.000098 / 5.00 | 0.000049 / 5.00 | 50.29% / 0.05% | Kernel | 34.15% | Forward load failed |
+| PowerEdge | Dual, connection | VPP | 5.00 / 5.00 | 4.99 / 4.93 | 0.24% / 1.33% | 380.11% | 1268.30% | **7.82** |
+| PowerEdge | Dual, connection | VPP + TruFlow steering | 5.00 / 5.00 | 4.99 / 4.98 | 0.17% / 0.46% | 380.07% | 1310.33% | 7.61 |
+| PowerEdge | Dual, connection | nftables | 5.00 / 5.00 | 4.84 / 4.92 | 3.24% / 1.66% | Kernel | 1310.61% | 7.44 |
+| PowerEdge | Dual, connection | **MWAN eBPF** | 5.00 / 5.00 | 4.95 / 4.97 | 0.92% / 0.66% | Kernel | 1345.71% | 7.37 |
+| PowerEdge | Dual, connection | MWAN eBPF + nftables software flowtable | 5.00 / 5.00 | **4.98 / 4.99** | 0.32% / 0.22% | Kernel | 1352.90% | 7.37 |
+| PowerEdge | Dual, connection | PF BINAT | 5.00 / 5.00 | 4.61 / 4.80 | 7.78% / 3.97% | 726.23% | 1460.08% | 6.45 |
+| PowerEdge | Dual, connection | OPNsense multi-WAN | 5.00 / 5.00 | 4.58 / 4.58 | 8.45% / 8.32% | 701.95% | 1435.24% | 6.38 |
+| PowerEdge | Dual, packet | nftables | 4.98 / 5.00 | 2.44 / 4.93 | 51.07% / 1.43% | Kernel | 1250.78% | 5.89 |
+| PowerEdge | Dual, packet | **MWAN eBPF** | 0.000098 / 5.00 | 0.000049 / 5.00 | 50.29% / 0.05% | Kernel | 546.42% | Forward load failed |
 
 Native command output and packet observations explain the unavailable policies.
 
