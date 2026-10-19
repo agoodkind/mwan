@@ -153,12 +153,65 @@ func (s *Schema) ValidateConfigJSON(data []byte) error {
 	parseErr := C.lyd_parse_data_mem(s.ctx, cData, C.LYD_JSON,
 		C.uint32_t(schemaParseOptions), C.uint32_t(schemaValidateOptions), &tree)
 	if tree != nil {
-		C.lyd_free_all(tree)
+		defer C.lyd_free_all(tree)
 	}
 	if lyFailed(parseErr) {
 		return fmt.Errorf("yangschema: %s", lastSchemaError(s.ctx))
 	}
+	if obsolete := firstObsoleteNode(tree); obsolete != nil {
+		return obsoleteNodeError(obsolete)
+	}
 	return nil
+}
+
+// libyang warns about obsolete nodes but does not reject the document.
+// ValidateConfigJSON must reject these nodes. This search returns the first
+// obsolete node in depth-first order, or nil if it does not find one.
+func firstObsoleteNode(first *C.struct_lyd_node) *C.struct_lyd_node {
+	for node := first; node != nil; node = node.next {
+		if instantiated(node) && obsoleteSchemaNode(node.schema) != nil {
+			return node
+		}
+		if found := firstObsoleteNode(C.lyd_child(node)); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+// libyang reports obsolete containers and lists only when they have children.
+// The document did not set nodes with LYD_DEFAULT. This check excludes those
+// nodes when deciding whether the document instantiated an obsolete node.
+func instantiated(node *C.struct_lyd_node) bool {
+	if node.schema == nil || node.flags&C.LYD_DEFAULT != 0 {
+		return false
+	}
+	return node.schema.nodetype&C.LYD_NODE_INNER == 0 || C.lyd_child(node) != nil
+}
+
+// Choices and cases do not appear as data nodes. Obsolete-node validation must
+// also check a node's choice and case ancestors. This check returns the obsolete
+// schema node, or nil if neither the node nor those ancestors are obsolete.
+func obsoleteSchemaNode(schemaNode *C.struct_lysc_node) *C.struct_lysc_node {
+	current := schemaNode
+	for current != nil {
+		if current.flags&C.LYS_STATUS_OBSLT != 0 {
+			return current
+		}
+		current = current.parent
+		if current == nil || current.nodetype&(C.LYS_CHOICE|C.LYS_CASE) == 0 {
+			return nil
+		}
+	}
+	return nil
+}
+
+func obsoleteNodeError(node *C.struct_lyd_node) error {
+	cPath := C.lyd_path(node, C.LYD_PATH_STD, nil, 0)
+	defer C.free(unsafe.Pointer(cPath))
+	schemaNode := obsoleteSchemaNode(node.schema)
+	return fmt.Errorf("yangschema: Obsolete schema node %q instantiated in data. (path %q)",
+		C.GoString(schemaNode.name), C.GoString(cPath))
 }
 
 func lastSchemaError(ctx *C.struct_ly_ctx) string {
