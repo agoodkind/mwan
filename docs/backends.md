@@ -202,8 +202,13 @@ uses ingress flow rules and exposes queue, drop, RSS, and mark actions. It does
 not implement the transfer-domain port-to-port rules used by the benchmark.
 Add the required C extension within the VPP service, using the existing DPDK
 device lifecycle and [BNXT TruFlow API](https://doc.dpdk.org/guides-26.03/nics/bnxt.html#generic-flow-offload).
-Do not run a production `testpmd` controller or initialize another DPDK owner
-for the same device.
+Do not initialize another DPDK owner for the same device.
+
+MWAN installs, inspects, repairs, and removes VPP rules through feature-specific,
+generated GoVPP binary API messages. The C extension calls DPDK
+`rte_flow` library functions directly. Backend rule operations must not execute
+`vppctl`, `testpmd`, or shell wrappers, send CLI command strings through VPP's
+API, or parse CLI output.
 
 The extension accepts typed steering intent through VPP's binary API. It
 resolves the configured physical function, trusted control VF, and represented
@@ -265,8 +270,7 @@ rules.
 Release the Go client with both backend implementations. Install VPP and the
 C plugin only for VPP deployments, with a compatibility manifest covering
 the VPP API, plugin, DPDK driver, and required firmware capabilities. Reject
-an incompatible manifest before enabling data interfaces. Use generated API
-bindings and typed replies rather than parsing VPP CLI output.
+an incompatible manifest before enabling data interfaces.
 
 ## Prove backend acceptance
 
@@ -278,6 +282,7 @@ Acceptance evidence:
 | Area | Required proof |
 | --- | --- |
 | Portable binary | Run the identical release artifact on a Linux-only gateway without VPP packages and on a VPP gateway. Verify both configured backends. |
+| Native rule management | Exercise rule installation, inspection, repair, and removal with `vppctl` and `testpmd` unavailable. Verify feature-specific API requests and native state readback without CLI command strings. |
 | Control protocols and device ownership | Exercise DHCP, renewal, RA/SLAAC, ND, probes, BGP, and local traffic on paired interfaces. Verify that unowned devices and management traffic remain unaffected. |
 | Routing | Add and withdraw learned and configured routes. Test full-width priorities, competing static and BGP routes, sibling IPv6 deletion, unreachable covering routes, mirror loss, replay, and effective VPP readback. |
 | Selection | Verify every configured selection mode, unequal weights, connection affinity, provider pins, tier fallback, and independent family failure. |
