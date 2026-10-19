@@ -383,7 +383,86 @@ Hardware capability attempts:
 | GRE, TCP and UDP | The installed DPDK driver rejected encapsulation alone with `Truflow parser does not support act 26` and full chains with `Truflow parser does not support act 27`, before throughput tests could start. |
 | Hardware per-packet WAN selection, TCP and UDP | The driver rejected RANDOM with `Truflow parser does not support type 69` and rejected SAMPLE ratio two with PMD error type `2`. |
 | Physical-ingress reverse VXLAN, without the outer-source match | The TCP and UDP rules installed, but this task did not send physical-ingress traffic. |
+| Physical TruFlow address rewrite, LAN and Sonic VFs | Both physical TCP probes timed out after DPDK installed the forward and reverse exact-address rewrite rules with software forwarding stopped. |
+
+## PowerEdge physical Internet tests
+
+The physical tests compare translation software against real Internet services.
+
+Test conditions:
+
+| Test condition | Value |
+| --- | --- |
+| Traffic generator | MacBook Air, outside PowerEdge |
+| LAN attachment | MacBook Air connects directly to PowerEdge `nic0` with a 10 Gbit/s DAC cable. |
+| Sonic attachment | PowerEdge `nic1` connects to the upstream Sonic LAN, which has competing traffic. |
+| Etheric attachment | PowerEdge `nic2` connects directly to the idle Etheric service. |
+| ISP service capacity | Sonic and Etheric each provide 1 Gbit/s download and upload. |
+| Measurement scope | Internet results include ISP capacity, competing Sonic LAN traffic, and remote-server constraints. They do not establish PowerEdge's maximum forwarding rate. |
+| Etheric IPv6 | Etheric does not provide IPv6. |
+| TCP and UDP services | Etheric uses `2.56.166.5:5201`; Sonic uses `[2a04:ff00:820:1::a]:5201`. |
+| NAT64 path | The Air uses `64:ff9b::238:a605` for the Etheric IPv4 test server. Standalone Tayga in CT314 translates through its `198.18.64.0/24` pool; CT313 applies IPv4 SNAT. |
+| Tayga CPU | Tayga-only values use its service cgroup and exclude shared kernel routing work. |
+| VPP attachment | VPP directly uses LAN VF0 (`0000:1a:00.0`) and Sonic VF1 (`0000:1a:01.1`). |
+| VPP settings | One worker and one receive queue per VF; polling receive; checksum and TCP segmentation offloads enabled; `app-id=255`. |
+| VPP CPU | VPP-only values use its service cgroup and include polling and packet processing. The physical-run profiles do not isolate CPU by function. |
+| VPP NAT64 path | VPP translates to its `198.18.64.2` pool address; CT313 applies IPv4 SNAT for the Etheric test server. |
+| iperf3 workload | Four streams; separate upload and download runs; 20 measured seconds after 3 seconds of warmup. UDP requests 275 Mbit/s per stream with 1400-byte payloads. |
+| CPU accounting | Percentages use all 16 PowerEdge logical CPUs and include concurrent host work. Ranges cover clock uncertainty and adjacent counter readings over the whole native process, including startup and warmup. |
+| CPU alignment | The audit applies the recorded clock-offset bounds to each run and assumes stable clocks between observations. The recordings do not isolate routing, translation, or download/upload phase CPU. |
+| NPT policy | MWAN's production eBPF program translates `fd00:316:100::/64` to `2001:5a8:4296:4f00::/64` on the Sonic path. This test uses one external prefix. |
+| NPT address proof | The Air's `fd00:316:100::2` becomes `2001:5a8:4296:4f00:49d7::2`; NAT66 instead uses `2001:5a8:4296:4f00:d246:cff:fe62:3683`. |
+
+Ookla Speedtest checks each Internet service against its selected server.
+Loaded latency averages the middle half of readings during each transfer.
+
+Speedtest throughput, latency, and CPU use:
+
+| Host | Translation | Software | Speedtest server | Download / upload Mbit/s | Idle / download / upload latency ms | Total host CPU |
+| --- | --- | --- | --- | --- | --- | --- |
+| PowerEdge | Etheric NAT44 | Linux SNAT | [Etheric Networks, Palo Alto, ID 64241](https://www.speedtest.net/result/c/70c6c5aa-6b62-45ae-9ccc-0e24ae20c377), `st5801.etheric.net` (`68.65.224.181`) | 866.03 / 924.87 | 3.960 / 8.218 / 19.512 | 6.37% to 7.55% |
+| PowerEdge | Sonic NAT66 | Linux SNAT66 | [Sonic, Santa Rosa, ID 62981](https://www.speedtest.net/result/c/dd4881f4-135e-4486-81bd-8419063a56b4), `speedtest.sr.sonic.net` (`2001:5a8:601:52::167`) | 927.30 / 925.62 | 2.005 / 23.390 / 7.838 | 5.64% to 7.04% |
+| PowerEdge | Sonic single-prefix NPT | MWAN eBPF | [Sonic, Santa Rosa, ID 62981](https://www.speedtest.net/result/c/7c270065-8bf8-4ca1-89d0-2f2e18093f4b), `speedtest.sr.sonic.net` (`2001:5a8:601:52::167`) | 925.55 / 925.87 | 2.246 / 23.157 / 7.383 | 6.07% to 7.57% |
+| PowerEdge | Sonic single-prefix NPT | VPP | [Sonic, Santa Rosa, ID 62981](https://www.speedtest.net/result/c/143bc4aa-e27b-4b69-b016-ac2ad3d5bb6e), `speedtest.sr.sonic.net` (`2001:5a8:601:52::167`) | 929.35 / 927.76 | 2.016 / 22.834 / 7.594 | 10.02% to 12.50% |
+
+TCP compares uncapped transfers to the public iperf3 services. Each pair lists
+a separate upload run followed by a download run, including CPU and efficiency.
+Efficiency divides each received rate by that run's total host CPU.
+
+TCP throughput and CPU use:
+
+| Host | Translation | Software | Received Gbit/s, forward / reverse | Routing / translation CPU | Total host CPU | Mbps per total host CPU percentage point |
+| --- | --- | --- | --- | --- | --- | --- |
+| PowerEdge | Etheric NAT44 | Linux SNAT | 0.940 / 0.897 | Not isolated | 6.43% to 6.99% / 6.33% to 6.92% | 134.47 to 146.06 / 129.63 to 141.77 |
+| PowerEdge | Etheric NAT64 | Tayga | 0.770 / 0.924 | Tayga only: 2.37% to 2.46% / 2.78% to 2.85% | 8.90% to 9.52% / 9.88% to 10.40% | 80.96 to 86.57 / 88.81 to 93.48 |
+| PowerEdge | Etheric NAT64 | VPP | 0.406 / 0.908 | VPP only: 6.21% to 6.63% / 6.21% to 6.62% | 11.12% to 12.00% / 11.21% to 12.02% | 33.83 to 36.49 / 75.52 to 80.96 |
+| PowerEdge | Sonic NAT66 | Linux SNAT66 | 0.444 / 0.927 | Not isolated | 5.95% to 6.56% / 6.60% to 7.10% | 67.63 to 74.61 / 130.57 to 140.51 |
+| PowerEdge | Sonic single-prefix NPT | MWAN eBPF | 0.430 / 0.928 | Not isolated | 6.23% to 6.74% / 6.61% to 7.15% | 63.83 to 69.03 / 129.71 to 140.43 |
+| PowerEdge | Sonic single-prefix NPT | VPP | 0.308 / 0.928 | VPP only: 6.15% to 6.57% / 6.15% to 6.56% | 10.92% to 11.72% / 10.82% to 11.64% | 26.24 to 28.17 / 79.70 to 85.77 |
+
+UDP compares delivery above the advertised service rate. The fixed payload size
+allows the audit to calculate packets not received from sender and receiver byte
+totals rather than the tool's different sequence-loss counters.
+
+UDP throughput, loss, and CPU use:
+
+| Host | Translation | Software | Sent Gbit/s | Received Gbit/s, forward / reverse | Packets not received | Routing / translation CPU | Total host CPU | Mbps per total host CPU percentage point |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| PowerEdge | Etheric NAT44 | Linux SNAT | 1.100 / 1.100 | 0.954 / 0.952 | 13.21% / 13.48% | Not isolated | 12.94% to 13.87% / 8.32% to 8.92% | 68.76 to 73.73 / 106.73 to 114.43 |
+| PowerEdge | Etheric NAT64 | Tayga | 1.100 / 1.100 | 0.955 / 0.953 | 13.10% / 13.44% | Tayga only: 2.65% to 2.76% / 3.09% to 3.22% | 12.21% to 12.89% / 12.42% to 13.13% | 74.09 to 78.22 / 72.58 to 76.75 |
+| PowerEdge | Etheric NAT64 | VPP | 1.100 / 1.100 | 0.954 / 0.955 | 13.21% / 13.28% | VPP only: 6.20% to 6.62% / 6.22% to 6.64% | 14.97% to 15.88% / 13.39% to 14.34% | 60.05 to 63.69 / 66.57 to 71.27 |
+| PowerEdge | Sonic NAT66 | Linux SNAT66 | 1.100 / 1.100 | 0.938 / 0.941 | 14.63% / 14.53% | Not isolated | 12.63% to 13.57% / 9.90% to 10.74% | 69.15 to 74.25 / 87.68 to 95.07 |
+| PowerEdge | Sonic single-prefix NPT | MWAN eBPF | 1.100 / 1.100 | 0.941 / 0.941 | 14.37% / 14.60% | Not isolated | 14.31% to 14.98% / 11.35% to 12.01% | 62.81 to 65.73 / 78.30 to 82.86 |
+| PowerEdge | Sonic single-prefix NPT | VPP | 1.100 / 1.100 | 0.941 / 0.941 | 14.37% / 14.54% | VPP only: 6.15% to 6.56% / 6.16% to 6.57% | 14.06% to 14.99% / 13.13% to 13.95% | 62.78 to 66.92 / 67.50 to 71.69 |
 
 ## Remaining investigation
 
 MWAN-527 tracks the forwarding comparison with a software bridge.
+
+Deferred physical-network tests:
+
+| Configuration | Status |
+| --- | --- |
+| Real dual-ISP aggregation and failover | Deferred |
+| Off-host VXLAN | Deferred |
+| Off-host GRE | Deferred |
