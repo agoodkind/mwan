@@ -287,6 +287,35 @@ Whole-prefix policy attempts:
 | PF BINAT, dual per packet | PF accepted the `no state` filter rule but created a UDP translation state with `MULTIPLE:SINGLE`, and the echo timed out. |
 | eBPF + software flowtable, dual per packet | The flowtable retained one WAN after connection setup. Disabling only the flowtable restored equal packet alternation. |
 
+### Dual-prefix CPU profiling
+
+The profiled reruns use the same workload with VPP + TruFlow steering and
+MWAN's native [Go controller](https://github.com/agoodkind/mwan/blob/b8056e16541c39a484d08113f0ab6fc81ebffff7/cmd/mwan/ifmgr.go).
+MWAN uses source-and-destination connection hashing and connected ULA return
+routes in both WAN policy tables.
+
+This table reports CPU use as a share of total host capacity, while earlier
+tables sum logical CPU usage. MWAN's kernel samples include traffic generation,
+while its program and service counters isolate NPT and controller execution.
+VPP's routing samples combine lookup and WAN hashing.
+
+Profiled throughput and selected CPU costs:
+
+| Measurement | VPP + TruFlow TCP | MWAN TCP | VPP + TruFlow UDP | MWAN UDP |
+| --- | ---: | ---: | ---: | ---: |
+| Received Gbit/s, forward / reverse | 20.65 / 20.49 | 18.32 / 17.71 | 4.96 / 4.94 | 4.64 / 4.85 |
+| Packets not received | Not applicable | Not applicable | 0.81% / 1.19% | 7.18% / 2.95% |
+| Total host CPU | 85.96% | 87.01% | 80.07% | 82.78% |
+| Idle host CPU | 29.68% | 6.17% | 29.42% | 6.28% |
+| VPP process CPU | 22.60% | Not applicable | 23.50% | Not applicable |
+| Receive and polling CPU | 4.17% | Not isolated | 7.33% | Not isolated |
+| Transmit CPU | 6.34% | Not isolated | 1.23% | Not isolated |
+| Routing and WAN selection CPU | 1.59% | Not isolated | 0.49% | Not isolated |
+| NPT execution CPU | 0.87% | 1.55% | 0.33% | 2.51% |
+| VPP worker scheduling and packet buffers CPU | 2.38% | Not applicable | 9.13% | Not applicable |
+| TruFlow controller or Go daemon CPU | 0.0043% | 0.0125% | 0.0015% | 0.0045% |
+| Mbps per total host CPU percentage point | 478.59 | 414.08 | 123.64 | 114.65 |
+
 ## Remaining investigation
 
 MWAN-527 tracks the forwarding comparison with a software bridge.
