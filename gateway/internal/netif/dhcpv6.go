@@ -594,7 +594,7 @@ func (client *DHCPv6PDClient) acquireInNegotiation(ctx context.Context, log *slo
 			wait = min(wait, lease.RenewAt.Sub(now))
 		}
 	}
-	log.InfoContext(ctx, "dhcpv6: Solicit wait scheduled", "iface", config.Iface, "wait", wait)
+	log.InfoContext(ctx, "dhcpv6: Client schedules backoff before next Solicit exchange", "iface", config.Iface, "wait", wait)
 	address, ok, woken := client.waitDHCPv6OrDecline(ctx, wait, wake)
 	if !ok {
 		return false

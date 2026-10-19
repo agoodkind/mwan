@@ -21,7 +21,7 @@ type dhcpv6TransmissionResult struct {
 // goroutine, and this goroutine runs the service work.
 func transmitDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.Client, config DHCPv6PDConfig, message *dhcpv6.Message, match nclient6.Matcher, until time.Time, service *dhcpv6ExchangeService) (*dhcpv6.Message, error) {
 	if message.MessageType == dhcpv6.MessageTypeSolicit {
-		log.InfoContext(ctx, "dhcpv6: Solicit wait scheduled", "iface", config.Iface, "xid", message.TransactionID, "wait", until.Sub(config.Clock.Now()))
+		log.InfoContext(ctx, "dhcpv6: Client schedules wait until next Solicit retransmission or exchange end", "iface", config.Iface, "xid", message.TransactionID, "wait", until.Sub(config.Clock.Now()))
 	}
 	attemptCtx, cancel := context.WithDeadline(ctx, until)
 	defer cancel()
