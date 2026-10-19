@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -28,6 +29,21 @@ const (
 	dhcpv6RestartChildEnv  = "MWAN_DHCPV6_RESTART_TEST_CHILD"
 	dhcpv6RestartBinaryEnv = "MWAN_DHCPV6_RESTART_TEST_BINARY"
 	dhcpv6RestartCaseEnv   = "MWAN_DHCPV6_RESTART_TEST_CASE"
+	dhcpv6RestartReadWait  = 90 * time.Second
+	dhcpv6RestartDrainWait = 200 * time.Millisecond
+	// Measured reply to stop times ranged from 0.37 to 1.01 seconds across 12 runs.
+	// T1 exceeds that range to prevent Renew before the daemon stops.
+	// Measured reply to restart Rebind times ranged from 1.11 to 6.73 seconds across 8 runs.
+	// The shorter valid lifetime exceeds that range to preserve both prefixes in the restart Rebind.
+	// The longer lifetime keeps 2001:db8:40::/56 valid while the test checks
+	// 2001:db8:30::/56 expiry and edge address release.
+	dhcpv6ExpiryT1             = 5 * time.Second
+	dhcpv6ExpiryT2             = 8 * time.Second
+	dhcpv6ExpiryPreferred      = 12 * time.Second
+	dhcpv6ExpiryValid          = 15 * time.Second
+	dhcpv6ExpiryOtherPreferred = 30 * time.Second
+	dhcpv6ExpiryOtherValid     = 45 * time.Second
+	dhcpv6EdgeReleaseWait      = 10 * time.Second
 )
 
 func TestOwnedDHCPv6DaemonRestartRecovery(t *testing.T) {
@@ -169,24 +185,28 @@ func runOwnedDHCPv6DaemonRestartRecovery(t *testing.T) {
 			stopRuntimeDaemon(t, daemon)
 			withdrawDHCPv6RestartNPT(t, networkDir)
 			daemon = startRuntimeDaemon(t, os.Getenv(dhcpv6RestartBinaryEnv), configPath, root, "dhcpv6-withdrawn-npt")
-			waitDHCPv6RestartEdgeReleased(t, daemon, filepath.Join(root, "owned-addresses.json"))
+			waitDHCPv6RestartEdgeReleased(t, daemon, filepath.Join(root, "owned-addresses.json"), dhcpv6EdgeReleaseWait)
 			waitDHCPv6RuntimeNPTRule(t, daemon, false)
 			return
 		}
 		replyDHCPv6Restart(t, observer, request, peer)
+		replied := time.Now()
 		waitDHCPv6RuntimeLog(t, daemon.logPath, "dhcpv6 recovery completed")
 		waitDHCPv6RuntimeLog(t, daemon.logPath, "dhcpv6 assignment changed")
 		waitStaticRuntimeAddress(t, daemon, "enatt0", "2001:db8:30::1/128", true)
 		waitMappedRuntimeRule(t, daemon, "ip6", "nat", "2001:db8:30::1", 5*time.Second)
 		stopWatching()
 		stopRuntimeDaemon(t, daemon)
+		stopped := time.Since(replied)
+		drained := drainDHCPv6RestartPackets(t, observer)
 		if os.Getenv(dhcpv6RestartCaseEnv) == "prefix-expiry" {
 			daemon = startRuntimeDaemon(t, os.Getenv(dhcpv6RestartBinaryEnv), configPath, root, "dhcpv6-own-prefix-expiry")
 			request, _ := readDHCPv6RestartPacket(t, observer)
+			t.Logf("prefix-expiry timing: daemon stopped %s after the reply, %d earlier packets drained, restart Rebind arrived %s after the reply", stopped, drained, time.Since(replied))
 			if request.MessageType != dhcpv6.MessageTypeRebind || len(request.Options.IAPD()) != 1 || len(request.Options.IAPD()[0].Options.Prefixes()) != 2 {
 				t.Fatalf("cached multi-prefix restart did not send both prefixes: %s", request)
 			}
-			waitDHCPv6RestartEdgeReleased(t, daemon, filepath.Join(root, "owned-addresses.json"))
+			waitDHCPv6RestartEdgeReleased(t, daemon, filepath.Join(root, "owned-addresses.json"), time.Until(replied.Add(dhcpv6ExpiryValid))+dhcpv6EdgeReleaseWait)
 			waitDHCPv6RuntimeNPTRule(t, daemon, false)
 			assertDHCPv6OtherPrefixValid(t, journalDirectory)
 			return
@@ -236,10 +256,10 @@ func runOwnedDHCPv6DaemonRestartRecovery(t *testing.T) {
 	assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"))
 }
 
-func waitDHCPv6RestartEdgeReleased(t *testing.T, daemon *runtimeDaemon, path string) {
+func waitDHCPv6RestartEdgeReleased(t *testing.T, daemon *runtimeDaemon, path string, wait time.Duration) {
 	t.Helper()
 	// Kernel deletion precedes receipt persistence in the address reconciler.
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(wait)
 	var data []byte
 	var addresses []netlink.Addr
 	for time.Now().Before(deadline) {
@@ -441,11 +461,34 @@ func listenDHCPv6Restart(t *testing.T) *net.UDPConn {
 		listener.Close()
 		t.Fatal(err)
 	}
-	if err := listener.SetReadDeadline(time.Now().Add(90 * time.Second)); err != nil {
+	if err := listener.SetReadDeadline(time.Now().Add(dhcpv6RestartReadWait)); err != nil {
 		listener.Close()
 		t.Fatal(err)
 	}
 	return listener
+}
+
+func drainDHCPv6RestartPackets(t *testing.T, listener *net.UDPConn) int {
+	t.Helper()
+	packet := make([]byte, 1500)
+	drained := 0
+	for {
+		if err := listener.SetReadDeadline(time.Now().Add(dhcpv6RestartDrainWait)); err != nil {
+			t.Fatal(err)
+		}
+		_, _, err := listener.ReadFromUDP(packet)
+		if errors.Is(err, os.ErrDeadlineExceeded) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("drain DHCPv6 restart packets: %v", err)
+		}
+		drained++
+	}
+	if err := listener.SetReadDeadline(time.Now().Add(dhcpv6RestartReadWait)); err != nil {
+		t.Fatal(err)
+	}
+	return drained
 }
 
 func readDHCPv6RestartPacket(t *testing.T, listener *net.UDPConn) (*dhcpv6.Message, *net.UDPAddr) {
@@ -486,13 +529,13 @@ func replyDHCPv6Restart(t *testing.T, listener *net.UDPConn, request *dhcpv6.Mes
 	association.Options.Add(&dhcpv6.OptIAPrefix{Prefix: prefix, PreferredLifetime: 16 * time.Second, ValidLifetime: 24 * time.Second})
 	if os.Getenv(dhcpv6RestartCaseEnv) == "prefix-expiry" {
 		association.Options = dhcpv6.PDOptions{}
-		association.T1, association.T2 = time.Second, 2*time.Second
-		association.Options.Add(&dhcpv6.OptIAPrefix{Prefix: prefix, PreferredLifetime: 3 * time.Second, ValidLifetime: 4 * time.Second})
+		association.T1, association.T2 = dhcpv6ExpiryT1, dhcpv6ExpiryT2
+		association.Options.Add(&dhcpv6.OptIAPrefix{Prefix: prefix, PreferredLifetime: dhcpv6ExpiryPreferred, ValidLifetime: dhcpv6ExpiryValid})
 		_, other, err := net.ParseCIDR("2001:db8:40::/56")
 		if err != nil {
 			t.Fatal(err)
 		}
-		association.Options.Add(&dhcpv6.OptIAPrefix{Prefix: other, PreferredLifetime: 16 * time.Second, ValidLifetime: 20 * time.Second})
+		association.Options.Add(&dhcpv6.OptIAPrefix{Prefix: other, PreferredLifetime: dhcpv6ExpiryOtherPreferred, ValidLifetime: dhcpv6ExpiryOtherValid})
 	}
 	response.AddOption(association)
 	if _, err := listener.WriteToUDP(response.ToBytes(), peer); err != nil {
