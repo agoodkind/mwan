@@ -163,6 +163,24 @@ func dhcpv6RecoveryExpiry(lease *netif.DHCPv6PDLease) time.Time {
 	return expiry
 }
 
+func (module *Module) wakeDHCPv6(iface string) {
+	module.sessionMu.Lock()
+	var client *netif.DHCPv6PDClient
+	connectionID := ""
+	for id, session := range module.dhcpv6Sessions {
+		if session.ready.Name == iface {
+			client, connectionID = session.client, id
+			break
+		}
+	}
+	module.sessionMu.Unlock()
+	if client == nil {
+		return
+	}
+	module.Log.Info("addresses: DHCPv6 link up", "connection_id", connectionID, "iface", iface)
+	client.Wake()
+}
+
 func (module *Module) startDHCPv6Watcher(ctx context.Context, log *slog.Logger, id, iface string, session *dhcpv6Session) {
 	go func() {
 		defer func() {

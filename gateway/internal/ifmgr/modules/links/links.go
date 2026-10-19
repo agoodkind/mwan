@@ -116,6 +116,9 @@ func (module *Module) onObservedEvent(_ context.Context, _ *slog.Logger, event n
 	}
 	switch event.Kind {
 	case netif.EvLinkUp, netif.EvLinkDown, netif.EvResync:
+		if event.Kind == netif.EvLinkUp && module.Env.OwnedLinkUp != nil {
+			module.Env.OwnedLinkUp.Notify(event.Iface)
+		}
 		module.Env.RequestReconcile("link event on " + event.Iface)
 	case netif.EvRouteAdded, netif.EvRouteDeleted:
 		// Other modules rewrite policy-table routes on every pass.

@@ -14,12 +14,16 @@ import (
 	"github.com/insomniacslk/dhcp/dhcpv6/nclient6"
 )
 
-func acquireDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.Client, config DHCPv6PDConfig, link *net.Interface, solicitMaxRT *time.Duration, previous *DHCPv6PDLease, end time.Time, solicitCount int) (DHCPv6PDLease, error) {
+func acquireDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.Client, config DHCPv6PDConfig, link *net.Interface, solicitMaxRT *time.Duration, previous *DHCPv6PDLease, end time.Time, solicitCount int, wake <-chan struct{}) (DHCPv6PDLease, error) {
 	solicit := dhcpv6Retransmission{
 		maxDelay: dhcpv6SolicitMaxDelay, initial: dhcpv6SolicitTimeout, maximum: *solicitMaxRT,
 		count: solicitCount, duration: 0, end: end,
 	}
-	advertise, err := exchangeDHCPv6(ctx, log, transport, config, dhcpv6.MessageTypeSolicit, solicit, nil, previous, solicitMaxRT, nil)
+	var service *dhcpv6ExchangeService
+	if wake != nil {
+		service = &dhcpv6ExchangeService{next: nil, expire: nil, declines: nil, decline: nil, wake: wake}
+	}
+	advertise, err := exchangeDHCPv6(ctx, log, transport, config, dhcpv6.MessageTypeSolicit, solicit, nil, previous, solicitMaxRT, service)
 	if err != nil {
 		return DHCPv6PDLease{}, err
 	}
@@ -139,5 +143,6 @@ func (client *DHCPv6PDClient) renewalService(log *slog.Logger, transport *nclien
 			// The next exchange starts from the lease without it.
 			return len(lease.Addresses) == assigned
 		},
+		wake: nil,
 	}
 }

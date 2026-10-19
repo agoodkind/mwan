@@ -43,6 +43,8 @@ var errDHCPv6ExchangeInterrupted = errors.New("DHCPv6 exchange interrupted")
 
 var errDHCPv6ExchangeAbandoned = errors.New("DHCPv6 exchange ended after a lease change")
 
+var errDHCPv6ExchangeWoken = errors.New("DHCPv6 Solicit schedule restarted")
+
 // dhcpv6Retransmission stores the RFC 8415 section 15 parameters of one exchange.
 // A zero count, duration, or end leaves that limit unset.
 type dhcpv6Retransmission struct {
@@ -61,6 +63,7 @@ type dhcpv6ExchangeService struct {
 	expire   func(ctx context.Context) bool
 	declines <-chan netip.Addr
 	decline  func(ctx context.Context, address netip.Addr) bool
+	wake     <-chan struct{}
 }
 
 func dhcpv6TransportOptions() []nclient6.ClientOpt {

@@ -20,6 +20,9 @@ type dhcpv6TransmissionResult struct {
 // nclient6 matches a reply only during SendAndRead. SendAndRead runs in its own
 // goroutine, and this goroutine runs the service work.
 func transmitDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.Client, config DHCPv6PDConfig, message *dhcpv6.Message, match nclient6.Matcher, until time.Time, service *dhcpv6ExchangeService) (*dhcpv6.Message, error) {
+	if message.MessageType == dhcpv6.MessageTypeSolicit {
+		log.InfoContext(ctx, "dhcpv6: Client schedules wait until next Solicit retransmission or exchange end", "iface", config.Iface, "xid", message.TransactionID, "wait", until.Sub(config.Clock.Now()))
+	}
 	attemptCtx, cancel := context.WithDeadline(ctx, until)
 	defer cancel()
 	results := make(chan dhcpv6TransmissionResult, 1)
@@ -34,16 +37,18 @@ func transmitDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.C
 		results <- dhcpv6TransmissionResult{response: response, err: err}
 	}()
 	abandoned := false
+	woken := false
 	for {
 		var dueTimer *time.Timer
 		var due <-chan time.Time
 		var declines <-chan netip.Addr
+		var wake <-chan struct{}
 		if service != nil && !abandoned {
-			declines = service.declines
-			if next := service.next(); !next.IsZero() {
-				dueTimer = time.NewTimer(max(next.Sub(config.Clock.Now()), 0))
-				due = dueTimer.C
-			}
+			declines, wake = service.declines, service.wake
+			dueTimer = service.dueTimer(config)
+		}
+		if dueTimer != nil {
+			due = dueTimer.C
 		}
 		// Any SendAndRead error, from the send or the receive, counts as the transmission.
 		// The wait ends at until, the next retransmission time or the end of the exchange.
@@ -56,7 +61,7 @@ func transmitDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.C
 			results = nil
 			if abandoned {
 				stopDHCPv6Timer(dueTimer)
-				return nil, endedDHCPv6Transmission(ctx, abandoned)
+				return nil, endedDHCPv6Transmission(ctx, abandoned, woken)
 			}
 			if result.err == nil {
 				stopDHCPv6Timer(dueTimer)
@@ -64,12 +69,12 @@ func transmitDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.C
 			}
 			if attemptCtx.Err() != nil {
 				stopDHCPv6Timer(dueTimer)
-				return nil, endedDHCPv6Transmission(ctx, abandoned)
+				return nil, endedDHCPv6Transmission(ctx, abandoned, woken)
 			}
 			log.WarnContext(ctx, "dhcpv6: transmission failed", "iface", config.Iface, "message", message.MessageType, "xid", message.TransactionID, "err", result.err)
 		case <-listening:
 			stopDHCPv6Timer(dueTimer)
-			return nil, endedDHCPv6Transmission(ctx, abandoned)
+			return nil, endedDHCPv6Transmission(ctx, abandoned, woken)
 		case <-due:
 			if !service.expire(ctx) {
 				abandoned = true
@@ -80,14 +85,31 @@ func transmitDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.C
 				abandoned = true
 				cancel()
 			}
+		case <-wake:
+			abandoned, woken = true, true
+			cancel()
 		}
 		stopDHCPv6Timer(dueTimer)
 	}
 }
 
-func endedDHCPv6Transmission(ctx context.Context, abandoned bool) error {
+func (service *dhcpv6ExchangeService) dueTimer(config DHCPv6PDConfig) *time.Timer {
+	if service.next == nil {
+		return nil
+	}
+	next := service.next()
+	if next.IsZero() {
+		return nil
+	}
+	return time.NewTimer(max(next.Sub(config.Clock.Now()), 0))
+}
+
+func endedDHCPv6Transmission(ctx context.Context, abandoned, woken bool) error {
 	if ctx.Err() != nil {
 		return errDHCPv6ExchangeInterrupted
+	}
+	if woken {
+		return errDHCPv6ExchangeWoken
 	}
 	if abandoned {
 		return errDHCPv6ExchangeAbandoned
