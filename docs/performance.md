@@ -318,6 +318,24 @@ Profiled throughput and selected CPU costs:
 
 the Go controller is not consuming substantial CPU, and moving only prefix translation into the NIC would address a relatively small part of VPP’s measured cost.
 
+### Separate routing and WAN hashing
+
+These reruns identify route lookup and WAN hashing from instruction addresses
+in the unchanged optimized VPP build. CPU percentages use total host capacity.
+
+VPP + TruFlow routing and hashing results:
+
+| Measurement | TCP | UDP |
+| --- | ---: | ---: |
+| Received Gbit/s, forward / reverse | 20.58 / 20.56 | 4.92 / 4.92 |
+| Total host CPU | 85.37% | 79.01% |
+| VPP process CPU | 22.33% | 23.75% |
+| Route lookup CPU | 0.3696% | 0.1139% |
+| WAN hashing CPU | 0.1495% | 0.0382% |
+| Forwarding and header rewrite CPU | 0.6417% | 0.1696% |
+| Other routing-node CPU | 0.3715% | 0.1340% |
+| Other VPP or kernel CPU | 20.7535% | 23.2011% |
+
 ## Remaining investigation
 
 MWAN-527 tracks the forwarding comparison with a software bridge.
