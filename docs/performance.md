@@ -194,6 +194,82 @@ flowchart LR
   direct --> server
 ```
 
+## PowerEdge whole-prefix translation
+
+These tests compare complete prefix translation with the NIC internal switch
+and peer VFs generating traffic. Single-prefix tests use VF1 and VF2. Dual-prefix
+tests use separate external prefixes on VF1 and VF2 and one ULA prefix on VF3.
+
+The workload matches the earlier TCP and UDP settings. VPP uses the
+[local checksum-fold correction](performance-vpp-checksum.patch) and equal-weight
+connection hashing. Linux alternates new connections between WANs and preserves
+the assignment, while native OPNsense uses equal-weight multi-WAN. TruFlow
+steers packets in the hybrid test while VPP performs prefix translation on the CPU.
+
+Bold software identifies the [NPT translator MWAN uses today](../gateway/internal/ifmgr/modules/npt/bpf/npt.c),
+not an exact reproduction of its WAN-selection configuration. Rows sort by
+combined received Mbps per total-host CPU percentage point within each prefix
+policy. Bold rates and efficiency identify the best valid result in each policy.
+Kernel means the test did not measure translation CPU separately. Host CPU
+includes traffic generation, and VPP CPU includes polling and packet handling.
+
+TCP measures uncapped transfer capacity with simultaneous traffic in both directions.
+
+Whole-prefix TCP throughput and CPU use:
+
+| Host | Translation | Software | Received Gbit/s, forward / reverse | Routing / translation CPU | Total host CPU | Mbps per host CPU percentage point |
+| --- | --- | --- | --- | --- | --- | --- |
+| PowerEdge | Single prefix | VPP + TruFlow steering | **20.91 / 20.70** | 24.13% | 76.36% | **544.9** |
+| PowerEdge | Single prefix | VPP | 20.36 / 20.98 | 24.14% | 76.56% | 540.0 |
+| PowerEdge | Single prefix | **MWAN eBPF** | 19.71 / 18.86 | Kernel | 88.33% | 436.7 |
+| PowerEdge | Single prefix | nftables | 19.57 / 18.89 | Kernel | 89.01% | 432.1 |
+| PowerEdge | Single prefix | PF BINAT | 13.19 / 12.53 | 48.71% | 74.37% | 345.8 |
+| PowerEdge | Dual, connection | VPP + TruFlow steering | 20.56 / 20.50 | 22.30% | 84.69% | **484.8** |
+| PowerEdge | Dual, connection | VPP | **20.66 / 20.66** | 22.14% | 86.16% | 479.5 |
+| PowerEdge | Dual, connection | MWAN eBPF + nftables software flowtable | 17.56 / 18.23 | Kernel | 80.76% | 443.1 |
+| PowerEdge | Dual, connection | **MWAN eBPF** | 18.09 / 17.95 | Kernel | 84.40% | 427.1 |
+| PowerEdge | Dual, connection | nftables | 17.81 / 18.13 | Kernel | 84.52% | 425.3 |
+| PowerEdge | Dual, connection | PF BINAT | 9.30 / 13.91 | 49.13% | 75.05% | 309.2 |
+| PowerEdge | Dual, connection | OPNsense multi-WAN | 9.68 / 12.14 | 49.21% | 73.61% | 296.4 |
+
+UDP compares packet delivery at the requested load rather than maximum capacity.
+The eBPF packet-selection sender failed its requested forward load. Packet
+selection results do not rank as working alternatives for TCP connections.
+
+Whole-prefix UDP throughput, loss, and CPU use:
+
+| Host | Translation | Software | Sent Gbit/s | Received Gbit/s, forward / reverse | Packets not received | Routing / translation CPU | Total host CPU | Mbps per host CPU percentage point |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| PowerEdge | Single prefix | VPP | 5.00 / 5.00 | **4.99 / 4.97** | 0.16% / 0.54% | 24.08% | 75.06% | **132.7** |
+| PowerEdge | Single prefix | VPP + TruFlow steering | 5.00 / 5.00 | 4.98 / 4.99 | 0.43% / 0.29% | 23.86% | 75.15% | 132.6 |
+| PowerEdge | Single prefix | **MWAN eBPF** | 4.99 / 5.00 | 4.96 / 4.97 | 0.73% / 0.56% | Kernel | 80.43% | 123.5 |
+| PowerEdge | Single prefix | nftables | 5.00 / 5.00 | 4.96 / 4.93 | 0.87% / 1.32% | Kernel | 81.44% | 121.4 |
+| PowerEdge | Single prefix | PF BINAT | 5.00 / 5.00 | 4.70 / 4.77 | 5.98% / 4.63% | 42.94% | 90.31% | 104.9 |
+| PowerEdge | Dual, connection | VPP | 5.00 / 5.00 | 4.99 / 4.93 | 0.24% / 1.33% | 23.76% | 79.27% | **125.2** |
+| PowerEdge | Dual, connection | VPP + TruFlow steering | 5.00 / 5.00 | 4.99 / 4.98 | 0.17% / 0.46% | 23.75% | 81.90% | 121.7 |
+| PowerEdge | Dual, connection | nftables | 5.00 / 5.00 | 4.84 / 4.92 | 3.24% / 1.66% | Kernel | 81.91% | 119.1 |
+| PowerEdge | Dual, connection | **MWAN eBPF** | 5.00 / 5.00 | 4.95 / 4.97 | 0.92% / 0.66% | Kernel | 84.11% | 118.0 |
+| PowerEdge | Dual, connection | MWAN eBPF + nftables software flowtable | 5.00 / 5.00 | **4.98 / 4.99** | 0.32% / 0.22% | Kernel | 84.56% | 117.9 |
+| PowerEdge | Dual, connection | PF BINAT | 5.00 / 5.00 | 4.61 / 4.80 | 7.78% / 3.97% | 45.39% | 91.25% | 103.1 |
+| PowerEdge | Dual, connection | OPNsense multi-WAN | 5.00 / 5.00 | 4.58 / 4.58 | 8.45% / 8.32% | 43.87% | 89.70% | 102.1 |
+| PowerEdge | Dual, packet | nftables | 4.98 / 5.00 | 2.44 / 4.93 | 51.07% / 1.43% | Kernel | 78.17% | 94.2 |
+| PowerEdge | Dual, packet | **MWAN eBPF** | 0.000098 / 5.00 | 0.000049 / 5.00 | 50.29% / 0.05% | Kernel | 34.15% | Forward load failed |
+
+Native command output and packet observations explain the unavailable policies.
+
+Whole-prefix policy attempts:
+
+| Configuration | Observed result |
+| --- | --- |
+| TruFlow only, single prefix | Source and destination prefix-action validation failed with `Truflow parser does not support act 50` before rule creation. |
+| TruFlow only, dual prefixes | Separate source and destination prefix-action attempts produced the same driver rejection. |
+| VPP, dual per packet | `set ip6 flow-hash` rejected `per-packet` with `unknown input`. |
+| VPP + TruFlow, dual per packet | The separate hybrid attempt produced the same native command rejection. |
+| MWAN eBPF, per-packet TCP | The capture showed different external source prefixes for SYN and ACK, and the receiver reset the connection. |
+| nftables, per-packet TCP | The separate capture also showed a source-prefix change during connection setup and a receiver reset. |
+| PF BINAT, dual per packet | PF accepted the `no state` filter rule but created a UDP translation state with `MULTIPLE:SINGLE`, and the echo timed out. |
+| eBPF + software flowtable, dual per packet | The flowtable retained one WAN after connection setup. Disabling only the flowtable restored equal packet alternation. |
+
 ## Remaining investigation
 
 MWAN-527 tracks the forwarding comparison with a software bridge.
