@@ -215,7 +215,7 @@ includes traffic generation, and VPP CPU includes polling and packet handling.
 
 TCP measures uncapped transfer capacity with simultaneous traffic in both directions.
 
-Whole-prefix TCP throughput and CPU use:
+Single-prefix TCP throughput and CPU use:
 
 | Host | Translation | Software | Received Gbit/s, forward / reverse | Routing / translation CPU | Total host CPU | Mbps per host CPU percentage point |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -224,6 +224,11 @@ Whole-prefix TCP throughput and CPU use:
 | PowerEdge | Single prefix | **MWAN eBPF** | 19.71 / 18.86 | Kernel | 88.33% | 436.7 |
 | PowerEdge | Single prefix | nftables | 19.57 / 18.89 | Kernel | 89.01% | 432.1 |
 | PowerEdge | Single prefix | PF BINAT | 13.19 / 12.53 | 48.71% | 74.37% | 345.8 |
+
+Dual-prefix load-balancing TCP throughput and CPU use:
+
+| Host | Translation | Software | Received Gbit/s, forward / reverse | Routing / translation CPU | Total host CPU | Mbps per host CPU percentage point |
+| --- | --- | --- | --- | --- | --- | --- |
 | PowerEdge | Dual, connection | VPP + TruFlow steering | 20.56 / 20.50 | 22.30% | 84.69% | **484.8** |
 | PowerEdge | Dual, connection | VPP | **20.66 / 20.66** | 22.14% | 86.16% | 479.5 |
 | PowerEdge | Dual, connection | MWAN eBPF + nftables software flowtable | 17.56 / 18.23 | Kernel | 80.76% | 443.1 |
@@ -236,7 +241,7 @@ UDP compares packet delivery at the requested load rather than maximum capacity.
 The eBPF packet-selection sender failed its requested forward load. Packet
 selection results do not rank as working alternatives for TCP connections.
 
-Whole-prefix UDP throughput, loss, and CPU use:
+Single-prefix UDP throughput, loss, and CPU use:
 
 | Host | Translation | Software | Sent Gbit/s | Received Gbit/s, forward / reverse | Packets not received | Routing / translation CPU | Total host CPU | Mbps per host CPU percentage point |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -245,6 +250,11 @@ Whole-prefix UDP throughput, loss, and CPU use:
 | PowerEdge | Single prefix | **MWAN eBPF** | 4.99 / 5.00 | 4.96 / 4.97 | 0.73% / 0.56% | Kernel | 80.43% | 123.5 |
 | PowerEdge | Single prefix | nftables | 5.00 / 5.00 | 4.96 / 4.93 | 0.87% / 1.32% | Kernel | 81.44% | 121.4 |
 | PowerEdge | Single prefix | PF BINAT | 5.00 / 5.00 | 4.70 / 4.77 | 5.98% / 4.63% | 42.94% | 90.31% | 104.9 |
+
+Dual-prefix load-balancing UDP throughput, loss, and CPU use:
+
+| Host | Translation | Software | Sent Gbit/s | Received Gbit/s, forward / reverse | Packets not received | Routing / translation CPU | Total host CPU | Mbps per host CPU percentage point |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PowerEdge | Dual, connection | VPP | 5.00 / 5.00 | 4.99 / 4.93 | 0.24% / 1.33% | 23.76% | 79.27% | **125.2** |
 | PowerEdge | Dual, connection | VPP + TruFlow steering | 5.00 / 5.00 | 4.99 / 4.98 | 0.17% / 0.46% | 23.75% | 81.90% | 121.7 |
 | PowerEdge | Dual, connection | nftables | 5.00 / 5.00 | 4.84 / 4.92 | 3.24% / 1.66% | Kernel | 81.91% | 119.1 |
