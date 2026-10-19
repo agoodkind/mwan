@@ -151,8 +151,11 @@ func setBGPSessionPeers(label string, wire bgpSessionWire, session *bgpsession.C
 }
 
 func buildBGPFamilies(label string, raws []string) ([]bgpsession.Family, error) {
+	// networkjson.Decode reads the raw JSON document, which does not include
+	// defaults that libyang adds to its parsed tree. An absent or empty family
+	// leaf-list needs the schema default of ipv6-unicast here.
 	if len(raws) == 0 {
-		return nil, fmt.Errorf("%s: family requires at least one value", label)
+		return []bgpsession.Family{bgpsession.FamilyIPv6Unicast}, nil
 	}
 	families := make([]bgpsession.Family, 0, len(raws))
 	for _, raw := range raws {
