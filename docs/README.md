@@ -39,6 +39,9 @@ The [network planning contract](superpowers/networkplan/spec.md) requires native
 plan-time validation and stable configured interface, route, policy-rule, and
 firewall projections from `network.json`.
 
+The [packet-processing backend specification](backends.md) defines runtime
+selection of Linux or VPP in the same binary and optional hardware steering.
+
 ## Implementation plans
 
 Follow the [MWAN-341 plan](plans/2026-09-26-mwan-341-firewall.md) and its
