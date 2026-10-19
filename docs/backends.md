@@ -200,9 +200,12 @@ proof establish it.
 VPP's existing [DPDK flow implementation](https://github.com/FDio/vpp/blob/v26.06/src/plugins/dpdk/device/flow.c)
 uses ingress flow rules and exposes queue, drop, RSS, and mark actions. It does
 not implement the transfer-domain port-to-port rules used by the benchmark.
-Add the required C extension within the VPP service, using the existing DPDK
-device lifecycle and [BNXT TruFlow API](https://doc.dpdk.org/guides-26.03/nics/bnxt.html#generic-flow-offload).
-Do not initialize another DPDK owner for the same device.
+Compile the steering extension and its generated binary API into VPP's
+existing `dpdk_plugin` target. The [DPDK plugin build](https://github.com/FDio/vpp/blob/v26.06/src/plugins/dpdk/CMakeLists.txt)
+can link DPDK statically, and VPP hides private plugin symbols. Building
+inside that target gives the extension access to the existing device
+lifecycle and DPDK instance. Do not link another DPDK copy or initialize
+another owner for the same device.
 
 MWAN installs, inspects, repairs, and removes VPP rules through feature-specific,
 generated GoVPP binary API messages. The C extension calls DPDK
@@ -210,9 +213,24 @@ generated GoVPP binary API messages. The C extension calls DPDK
 `vppctl`, `testpmd`, or shell wrappers, send CLI command strings through VPP's
 API, or parse CLI output.
 
-The extension accepts typed steering intent through VPP's binary API. It
-resolves the configured physical function, trusted control VF, and represented
-ports within the owned switch domain. Go does not submit raw DPDK structures.
+The deployment inventory distinguishes the trusted control VF from the VFs
+that process packets and supplies each device's startup arguments. Enable
+TruFlow on the control VF. The [BNXT initialization check](https://github.com/DPDK/dpdk/blob/v26.03/drivers/net/bnxt/bnxt_ethdev.c#L7247)
+disables TruFlow for `app-id=254` and `app-id=255`, so reject those values
+for that role. A data VF's configuration must not substitute for the
+control VF's configuration.
+
+Declare every required VF representor, the interface that controls a VF,
+when VPP initializes the trusted control VF. The [BNXT representor contract](https://doc.dpdk.org/guides-26.03/nics/bnxt.html#virtual-function-port-representors)
+does not support adding representors to an initialized device. Configs
+must restart VPP when a deployment changes that set. Ordinary rule updates
+reuse the existing representors.
+
+The extension accepts typed steering intent through VPP's binary API and
+uses the BNXT `rte_flow` API. Before enabling a provider, resolve and verify
+the configured physical function, trusted control VF, and represented
+ports within the owned switch domain. Reject missing ports or a different
+switch domain. Go does not submit raw DPDK structures.
 
 Hardware-rule operations:
 
@@ -269,7 +287,8 @@ rules.
 
 Release the Go client with both backend implementations. Install VPP and the
 C plugin only for VPP deployments, with a compatibility manifest covering
-the VPP API, plugin, DPDK driver, and required firmware capabilities. Reject
+the VPP API, extended `dpdk_plugin` build, DPDK driver, device startup
+configuration, and required firmware capabilities. Reject
 an incompatible manifest before enabling data interfaces.
 
 ## Prove backend acceptance
@@ -282,13 +301,14 @@ Acceptance evidence:
 | Area | Required proof |
 | --- | --- |
 | Portable binary | Run the identical release artifact on a Linux-only gateway without VPP packages and on a VPP gateway. Verify both configured backends. |
+| Extension build | Build and load the extended `dpdk_plugin`. Verify that its typed API operates on the devices initialized by that plugin without linking or initializing a second DPDK instance. |
 | Native rule management | Exercise rule installation, inspection, repair, and removal with `vppctl` and `testpmd` unavailable. Verify feature-specific API requests and native state readback without CLI command strings. |
 | Control protocols and device ownership | Exercise DHCP, renewal, RA/SLAAC, ND, probes, BGP, and local traffic on paired interfaces. Verify that unowned devices and management traffic remain unaffected. |
 | Routing | Add and withdraw learned and configured routes. Test full-width priorities, competing static and BGP routes, sibling IPv6 deletion, unreachable covering routes, mirror loss, replay, and effective VPP readback. |
 | Selection | Verify every configured selection mode, unequal weights, connection affinity, provider pins, tier fallback, and independent family failure. |
 | Translation and protection | Exercise both configured address families, static-map precedence, unsolicited inbound NPT, checksum edge cases, differing prefix lengths, exceptions, hairpin traffic, ICMP errors, and filtering. |
 | Lifecycle | Boot with VPP delayed or unavailable and verify early host protection. Restart the Go controller and VPP separately, delete owned state, expire prefixes, reject an unsupported rule, and verify cleanup and readiness. |
-| TruFlow | Demonstrate matching hardware-counter increments and controlled rule removal/recovery without bypassing VPP. Test required and preferred behavior separately. |
+| TruFlow | Verify controller arguments, representor inventory, and switch-domain identity before installing rules. Reject a disabled controller or missing representor. Demonstrate matching hardware-counter increments and controlled rule removal/recovery without bypassing VPP. Test required and preferred behavior separately, including a deployment restart that changes the representor set. |
 | Performance | Compare Linux, VPP, and VPP with verified steering under the same packet workload. Report TCP, UDP, packet loss, latency, summed CPU usage, polling cost, and traffic-generator cost in tables. |
 
 VPP becomes a selectable production backend only after the complete
