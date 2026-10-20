@@ -457,116 +457,195 @@ UDP throughput, loss, and CPU use:
 
 ## PowerEdge external traffic comparison
 
-External devices generate and receive every test payload, while PowerEdge
-forwards packets through VFs in LXCs. TCP and UDP tests use both directions. TCP runs without a sender cap, and
-UDP increases its offered load to measure capacity and loss. The external sender and receiver
-first establish their offered and received rates without PowerEdge processing,
-so a sender limit cannot count as PowerEdge's forwarding limit.
+The MacBook Pro runs both payload endpoints in separate Linux network namespaces,
+which provide separate network stacks. IPvlan VEPA interfaces require packets to
+use the physical link instead of switching directly between those namespaces.
+PowerEdge processes every measured payload with the selected implementation.
 
-Software comparisons retain the same checksum, segmentation, queue, and MTU
-settings as their paired NIC attempts. Each NIC candidate needs its own packet
-capture and rule-counter proof of the listed operations. VPP + TruFlow steering
-still performs NPT on the CPU. Prefix tests require new client addresses and
-paired forward and reverse rules, rather than one preinstalled address mapping.
-Flow tests compare WAN choices with MWAN's configured hash and record the split
-across both WANs. A rejected operation records its native command and error
-instead of a throughput value.
+External test conditions:
 
-Per-packet tests require a common exit outside PowerEdge that preserves one
-client address and its return routes across both WAN paths. The two WAN prefixes
-serve the paths to that exit, while the server observes one translated address.
-The [TCP connection definition](https://www.rfc-editor.org/rfc/rfc9293.html#section-3.4.1)
-requires stable endpoint addresses and ports. These cases check an open TCP
-connection, reverse traffic, packet distribution, and reordering with equal and
-unequal path delays. Etheric requires an IPv4 tunnel underlay for the IPv6 test
-payload.
+| Setting | Value |
+| --- | --- |
+| Physical path | MacBook Pro Thunderbolt Ethernet to PowerEdge nic3, then back to the MacBook Pro receiver |
+| Link and combined payload ceiling | One full-duplex 10 Gbit/s cable. Each payload uses both physical directions, limiting combined received throughput to 10 Gbit/s before overhead. |
+| Translation interfaces | Three separate nic3 VFs, with a ULA prefix on VF6 and separate external prefixes on VF5 and VF7. Single-prefix cases use VF6 and VF5. |
+| Software placement | Linux networking in CT314; temporary host VPP service using CT316's installed binaries; host testpmd for NIC rules |
+| External endpoints | Temporary Ubuntu VM on the MacBook Pro with separate client and server network namespaces; iperf3 3.22 |
+| TCP workload | 8 clients, 4 streams each per direction, uncapped; 20 measured seconds after 3 seconds of warmup |
+| UDP workload | 8 clients, 1 stream each per direction, 1400-byte payloads; 2 Gbit/s offered per direction for 20 seconds, plus the routing ramps below |
+| CPU denominator | All 16 PowerEdge logical CPUs total 100%. Counters include TCP warmup, profiling, and unrelated CT313 work. Efficiency uses combined received Mbps without subtracting idle CPU. |
+| CPU ranges | Clock alignment and counter quantization determine the bounds. The bounds do not describe variation across repeated trials. |
+| VPP configuration | VPP 26.06, one polling worker, one queue per VF, ordinary checksum and segmentation offloads; app-id=255 disables TruFlow in the data VFs |
+| Hybrid hardware proof | A separate app-id=0 control VF installs six steering rules. All rules report positive valid lifetime counts after TCP. Valid before/after queries show increases on every rule during UDP. VPP still translates prefixes and selects the WAN. |
+| WAN policy | MWAN eBPF with source-and-destination nftables Jenkins hashing; VPP hashes source, destination, ports, and protocol with equal path weights. Neither spike runs the Go daemon. |
+| Per-packet policy | nftables alternates individual packets and replaces prefixes with checksum updates. An external common exit restores one client address. These cases do not apply RFC 6296 identifier correction. |
+| Tunnel settings | IPv4 underlay and 1450-byte inner MTU. Literal per-packet cases disable receive aggregation and segmentation before their selectors. Per-flow VPP retains its normal offloads. |
 
-CPU percentages in this comparison use total PowerEdge capacity. Each run
-records the matched idle baseline, stage samples, and controller counters over
-the same transfer interval. Efficiency divides received Mbps by the recorded
-total-host CPU percentage. An unavailable stage measurement remains explicit,
-and overlapping process and kernel samples do not count twice.
+Routing / translation CPU uses translator process counters where available.
+Linux forwarding uses the shared kernel, which the container service counter
+does not isolate. The hybrid process total also includes its rule controller.
 
-TCP throughput and CPU placeholders:
+TCP throughput and CPU use:
 
 | Host | Translation | Software | Received Gbit/s, forward / reverse | Routing / translation CPU | Total host CPU | Mbps per total host CPU percentage point |
 | --- | --- | --- | --- | --- | --- | --- |
-| PowerEdge | Routing only | Linux routing | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | Routing only | TruFlow forwarding candidate | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6, one ULA / one external prefix | MWAN eBPF | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6, one ULA / one external prefix | VPP | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6, one ULA / one external prefix | TruFlow translation candidate | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6, two external prefixes, 50/50 per flow | MWAN eBPF | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6, two external prefixes, 50/50 per flow | VPP | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6, two external prefixes, 50/50 per flow | VPP + TruFlow steering | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6, two external prefixes, 50/50 per flow | TruFlow translation candidate | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6, two paths, 50/50 per packet, VXLAN common exit | nftables + software VXLAN | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6, two paths, 50/50 per packet, VXLAN common exit | TruFlow translation / selection / VXLAN candidate | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6, two paths, 50/50 per packet, GRE common exit | nftables + software GRE | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6, two paths, 50/50 per packet, GRE common exit | TruFlow translation / selection / GRE candidate | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NAT66 | Linux SNAT66 | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NAT66 | TruFlow translation candidate | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NAT64 | Tayga | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NAT64 | VPP | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NAT64 | TruFlow translation candidate | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6 + VXLAN, 50/50 per flow | VPP | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6 + VXLAN, 50/50 per flow | TruFlow translation / VXLAN candidate | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6 + GRE, 50/50 per flow | VPP | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6 + GRE, 50/50 per flow | TruFlow translation / GRE candidate | Not measured | Not measured | Not measured | Not measured |
+| PowerEdge | Routing only | Linux routing | 4.70 / 4.35 | Shared kernel, not isolated | 13.00% to 13.43% | 673.71 to 695.78 |
+| PowerEdge | Routing only | TruFlow forwarding candidate | Connection timed out | Not measured | Not measured | Not measured |
+| PowerEdge | NPT6, one ULA / one external prefix | MWAN eBPF | 4.26 / 4.28 | Shared kernel, not isolated | 13.10% to 13.60% | 628.20 to 651.89 |
+| PowerEdge | NPT6, one ULA / one external prefix | VPP | 4.50 / 4.46 | 6.25% to 6.68% | 10.97% to 11.84% | 756.69 to 816.47 |
+| PowerEdge | NPT6, one ULA / one external prefix | TruFlow translation candidate | `MODIFY_FIELD` rejected | Not measured | Not measured | Not measured |
+| PowerEdge | NPT6, two external prefixes, 50/50 per flow | MWAN eBPF | 4.50 / 4.41 | Shared kernel, not isolated | 14.85% to 15.27% | 583.69 to 599.69 |
+| PowerEdge | NPT6, two external prefixes, 50/50 per flow | VPP | 4.91 / 3.93 | 6.27% to 6.70% | 10.88% to 11.69% | 756.75 to 812.38 |
+| PowerEdge | NPT6, two external prefixes, 50/50 per flow | VPP + TruFlow steering | 4.96 / 4.07 | 6.27% to 6.56% | 10.85% to 11.42% | 791.69 to 832.25 |
+| PowerEdge | NPT6, two external prefixes, 50/50 per flow | TruFlow translation candidate | `MODIFY_FIELD` rejected | Not measured | Not measured | Not measured |
+| PowerEdge | NPT6, two paths, 50/50 per packet, VXLAN common exit | nftables + software VXLAN | 0.95 / 1.15 | Shared kernel, not isolated | 22.79% to 23.69% | 89.06 to 92.54 |
+| PowerEdge | NPT6, two paths, 50/50 per packet, VXLAN common exit | TruFlow translation / selection / VXLAN candidate | `RANDOM` rejected | Not measured | Not measured | Not measured |
+| PowerEdge | NPT6, two paths, 50/50 per packet, GRE common exit | nftables + software GRE | 1.02 / 1.21 | Shared kernel, not isolated | 22.92% to 23.85% | 93.48 to 97.23 |
+| PowerEdge | NPT6, two paths, 50/50 per packet, GRE common exit | TruFlow translation / selection / GRE candidate | `RANDOM` rejected | Not measured | Not measured | Not measured |
+| PowerEdge | NAT66 | Linux SNAT66 | 4.58 / 4.29 | Shared kernel, not isolated | 14.16% to 14.71% | 602.69 to 626.07 |
+| PowerEdge | NAT66 | TruFlow translation candidate | `CONNTRACK` rejected | Not measured | Not measured | Not measured |
+| PowerEdge | NAT64 | Tayga | 1.25 / 1.43 | 6.04% to 6.25% | 18.52% to 19.37% | 138.18 to 144.42 |
+| PowerEdge | NAT64 | VPP | 4.44 / 4.45 | 6.22% to 6.64% | 10.92% to 11.71% | 759.42 to 814.19 |
+| PowerEdge | NAT64 | TruFlow translation candidate | `NAT64` rejected | Not measured | Not measured | Not measured |
+| PowerEdge | NPT6 + VXLAN, 50/50 per flow | VPP | 3.36 / 3.34 | 6.27% to 6.70% | 10.89% to 11.75% | 570.25 to 614.82 |
+| PowerEdge | NPT6 + VXLAN, 50/50 per flow | TruFlow translation / VXLAN candidate | `MODIFY_FIELD` rejected | Not measured | Not measured | Not measured |
+| PowerEdge | NPT6 + GRE, 50/50 per flow | VPP | 4.51 / 3.91 | 6.27% to 6.56% | 10.94% to 11.52% | 730.73 to 768.38 |
+| PowerEdge | NPT6 + GRE, 50/50 per flow | TruFlow translation / GRE candidate | `MODIFY_FIELD` rejected | Not measured | Not measured | Not measured |
 
-UDP throughput, loss, and CPU placeholders:
+The UDP rows cannot establish each translator's loss-free limit because the
+native counters do not identify every location that loses packets. The routing-only
+baseline also records receive shortfalls under the matched offered load.
+
+UDP throughput, delivery, and CPU use:
 
 | Host | Translation | Software | Sent Gbit/s | Received Gbit/s, forward / reverse | Packets not received | Routing / translation CPU | Total host CPU | Mbps per total host CPU percentage point |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| PowerEdge | Routing only | Linux routing | Not measured | Not measured | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | Routing only | TruFlow forwarding candidate | Not measured | Not measured | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6, one ULA / one external prefix | MWAN eBPF | Not measured | Not measured | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6, one ULA / one external prefix | VPP | Not measured | Not measured | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6, one ULA / one external prefix | TruFlow translation candidate | Not measured | Not measured | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6, two external prefixes, 50/50 per flow | MWAN eBPF | Not measured | Not measured | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6, two external prefixes, 50/50 per flow | VPP | Not measured | Not measured | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6, two external prefixes, 50/50 per flow | VPP + TruFlow steering | Not measured | Not measured | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6, two external prefixes, 50/50 per flow | TruFlow translation candidate | Not measured | Not measured | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6, two paths, 50/50 per packet, VXLAN common exit | nftables + software VXLAN | Not measured | Not measured | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6, two paths, 50/50 per packet, VXLAN common exit | TruFlow translation / selection / VXLAN candidate | Not measured | Not measured | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6, two paths, 50/50 per packet, GRE common exit | nftables + software GRE | Not measured | Not measured | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6, two paths, 50/50 per packet, GRE common exit | TruFlow translation / selection / GRE candidate | Not measured | Not measured | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NAT66 | Linux SNAT66 | Not measured | Not measured | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NAT66 | TruFlow translation candidate | Not measured | Not measured | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NAT64 | Tayga | Not measured | Not measured | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NAT64 | VPP | Not measured | Not measured | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NAT64 | TruFlow translation candidate | Not measured | Not measured | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6 + VXLAN, 50/50 per flow | VPP | Not measured | Not measured | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6 + VXLAN, 50/50 per flow | TruFlow translation / VXLAN candidate | Not measured | Not measured | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6 + GRE, 50/50 per flow | VPP | Not measured | Not measured | Not measured | Not measured | Not measured | Not measured |
-| PowerEdge | NPT6 + GRE, 50/50 per flow | TruFlow translation / GRE candidate | Not measured | Not measured | Not measured | Not measured | Not measured | Not measured |
+| PowerEdge | Routing only | Linux routing | 2.00 / 2.00 | 1.33 / 1.27 | 33.59% / 36.62% | Shared kernel, not isolated | 16.54% to 17.33% | 149.73 to 156.80 |
+| PowerEdge | Routing only | TruFlow forwarding candidate | Not measured | Connection timed out | Not measured | Not measured | Not measured | Not measured |
+| PowerEdge | NPT6, one ULA / one external prefix | MWAN eBPF | 2.00 / 2.00 | 1.32 / 1.32 | 33.75% / 33.89% | Shared kernel, not isolated | 15.90% to 16.84% | 157.22 to 166.39 |
+| PowerEdge | NPT6, one ULA / one external prefix | VPP | 2.00 / 2.00 | 1.34 / 1.34 | 32.95% / 33.13% | 6.25% to 6.58% | 10.99% to 11.63% | 230.31 to 243.60 |
+| PowerEdge | NPT6, one ULA / one external prefix | TruFlow translation candidate | Not measured | `MODIFY_FIELD` rejected | Not measured | Not measured | Not measured | Not measured |
+| PowerEdge | NPT6, two external prefixes, 50/50 per flow | MWAN eBPF | 2.00 / 2.00 | 1.28 / 1.28 | 35.86% / 35.90% | Shared kernel, not isolated | 19.91% to 20.64% | 124.24 to 128.73 |
+| PowerEdge | NPT6, two external prefixes, 50/50 per flow | VPP | 2.00 / 2.00 | 1.31 / 1.31 | 34.44% / 34.55% | 6.25% to 6.58% | 10.86% to 11.50% | 227.93 to 241.11 |
+| PowerEdge | NPT6, two external prefixes, 50/50 per flow | VPP + TruFlow steering | 2.00 / 2.00 | 1.32 / 1.32 | 33.90% / 33.98% | 6.25% to 6.58% | 10.91% to 11.54% | 228.94 to 241.97 |
+| PowerEdge | NPT6, two external prefixes, 50/50 per flow | TruFlow translation candidate | Not measured | `MODIFY_FIELD` rejected | Not measured | Not measured | Not measured | Not measured |
+| PowerEdge | NPT6, two paths, 50/50 per packet, VXLAN common exit | nftables + software VXLAN | Not measured | UDP stream setup failed | Not measured | Not measured | Not measured | Not measured |
+| PowerEdge | NPT6, two paths, 50/50 per packet, VXLAN common exit | TruFlow translation / selection / VXLAN candidate | Not measured | `RANDOM` rejected | Not measured | Not measured | Not measured | Not measured |
+| PowerEdge | NPT6, two paths, 50/50 per packet, GRE common exit | nftables + software GRE | Not measured | UDP stream setup failed | Not measured | Not measured | Not measured | Not measured |
+| PowerEdge | NPT6, two paths, 50/50 per packet, GRE common exit | TruFlow translation / selection / GRE candidate | Not measured | `RANDOM` rejected | Not measured | Not measured | Not measured | Not measured |
+| PowerEdge | NAT66 | Linux SNAT66 | 2.00 / 2.00 | 1.22 / 1.22 | 38.78% / 38.82% | Shared kernel, not isolated | 17.14% to 17.76% | 137.81 to 142.76 |
+| PowerEdge | NAT66 | TruFlow translation candidate | Not measured | `CONNTRACK` rejected | Not measured | Not measured | Not measured | Not measured |
+| PowerEdge | NAT64 | Tayga | Not measured | UDP stream setup failed | Not measured | Not measured | Not measured | Not measured |
+| PowerEdge | NAT64 | VPP | 2.00 / 2.00 | 1.30 / 1.29 | 35.11% / 35.31% | 6.24% to 6.57% | 10.92% to 11.58% | 223.74 to 237.11 |
+| PowerEdge | NAT64 | TruFlow translation candidate | Not measured | `NAT64` rejected | Not measured | Not measured | Not measured | Not measured |
+| PowerEdge | NPT6 + VXLAN, 50/50 per flow | VPP | 2.00 / 2.00 | 1.29 / 1.28 | 35.56% / 35.77% | 6.26% to 6.59% | 10.98% to 11.61% | 221.77 to 234.26 |
+| PowerEdge | NPT6 + VXLAN, 50/50 per flow | TruFlow translation / VXLAN candidate | Not measured | `MODIFY_FIELD` rejected | Not measured | Not measured | Not measured | Not measured |
+| PowerEdge | NPT6 + GRE, 50/50 per flow | VPP | 2.00 / 2.00 | 1.33 / 1.33 | 33.47% / 33.60% | 6.26% to 6.75% | 10.95% to 11.87% | 224.06 to 242.65 |
+| PowerEdge | NPT6 + GRE, 50/50 per flow | TruFlow translation / GRE candidate | Not measured | `MODIFY_FIELD` rejected | Not measured | Not measured | Not measured | Not measured |
 
-Connection checks and CPU stages apply separately to each completed configuration.
+The sender did not achieve the higher requested routing rates. These attempts
+cannot establish PowerEdge's forwarding ceiling.
 
-Connection and CPU stage placeholders:
+Higher offered UDP load:
 
-| Measurement | Software TCP | NIC offload TCP | Software UDP | NIC offload UDP |
-| --- | ---: | ---: | ---: | ---: |
-| Single TCP connection received Gbit/s, forward / reverse | Not measured | Not measured | Not applicable | Not applicable |
-| TCP resets or reconnects | Not measured | Not measured | Not applicable | Not applicable |
-| Observed share per WAN, forward / reverse | Not measured | Not measured | Not measured | Not measured |
-| Packets received out of order | Not measured | Not measured | Not measured | Not measured |
-| Matched idle host CPU | Not measured | Not measured | Not measured | Not measured |
-| Total host CPU | Not measured | Not measured | Not measured | Not measured |
-| Receive processing CPU | Not measured | Not measured | Not measured | Not measured |
-| Interrupt and softirq CPU | Not measured | Not measured | Not measured | Not measured |
-| Receive polling CPU | Not measured | Not measured | Not measured | Not measured |
-| Route lookup CPU | Not measured | Not measured | Not measured | Not measured |
-| WAN hashing or per-packet selection CPU | Not measured | Not measured | Not measured | Not measured |
-| NPT or NAT execution CPU | Not measured | Not measured | Not measured | Not measured |
-| Tunnel encapsulation CPU | Not measured | Not measured | Not measured | Not measured |
-| Tunnel decapsulation CPU | Not measured | Not measured | Not measured | Not measured |
-| Forwarding and header rewrite CPU | Not measured | Not measured | Not measured | Not measured |
-| Transmit CPU | Not measured | Not measured | Not measured | Not measured |
-| Go controller or daemon CPU | Not measured | Not measured | Not measured | Not measured |
-| NIC rule programming CPU | Not measured | Not measured | Not measured | Not measured |
-| Profiling CPU | Not measured | Not measured | Not measured | Not measured |
-| Unattributed packet-processing CPU | Not measured | Not measured | Not measured | Not measured |
+| Host | Translation | Software | Sent Gbit/s | Received Gbit/s, forward / reverse | Packets not received | Routing / translation CPU | Total host CPU | Mbps per total host CPU percentage point |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| PowerEdge | Routing only | Linux, 4 Gbit/s requested per direction | 3.68 / 3.71 | 1.20 / 1.20 | 67.30% / 67.76% | Shared kernel, not isolated | 17.78% to 18.72% | 127.83 to 134.53 |
+| PowerEdge | Routing only | Linux, 6 Gbit/s requested per direction | 3.50 / 3.57 | 1.13 / 1.13 | 67.71% / 68.41% | Shared kernel, not isolated | 17.57% to 18.58% | 121.37 to 128.28 |
+
+The common exit preserves TCP endpoint addresses across both tunnel paths, as the
+[TCP connection definition](https://www.rfc-editor.org/rfc/rfc9293.html#section-3.4.1)
+requires. The unequal-path runs add delay only to path B at each tunnel endpoint.
+
+Per-packet TCP with path B delay:
+
+| Added egress delay at each endpoint | Software | Received Gbit/s, forward / reverse | Total host CPU | Mbps per total host CPU percentage point |
+| --- | --- | --- | --- | --- |
+| 5 ms | nftables + VXLAN | 0.38 / 1.25 | 22.11% to 22.85% | 71.47 to 73.86 |
+| 5 ms | nftables + GRE | 0.44 / 0.42 | 18.40% to 18.96% | 45.50 to 46.87 |
+
+The driver rejects the required translation and selection operations before
+installing rules.
+
+Native NIC attempts:
+
+| Configuration | Separate TCP and UDP attempts | Native result |
+| --- | --- | --- |
+| Direct routing | Both rules validated and installed; each workload failed connection setup | Forward COUNT records 83 packets and 7,874 bytes. Reverse COUNT remains invalid and cannot establish a valid zero. |
+| Single-prefix NPT | Prefix MODIFY_FIELD, including a separate offset form | `Truflow parser does not support act 50` |
+| Dual-prefix NPT | Fresh prefix MODIFY_FIELD validations | `Truflow parser does not support act 50` |
+| Per-flow NPT with VXLAN | Fresh composed translation and tunnel validations | `Truflow parser does not support act 50` before the tunnel action |
+| Per-flow NPT with GRE | Fresh composed translation and tunnel validations | `Truflow parser does not support act 50` before the tunnel action |
+| Per-packet NPT with VXLAN | Fresh RANDOM selector validations | Driver rejects pattern item 69 |
+| Per-packet NPT with GRE | Fresh RANDOM selector validations | Driver rejects pattern item 69 |
+| Stateful NAT66 | Fresh CONNTRACK validations | `Truflow parser does not support act 52` |
+| NAT64 | Separate IPv6-to-IPv4 and IPv4-to-IPv6 validations | `Truflow parser does not support act 64` |
+| Tayga UDP and both literal per-packet UDP cases | Each iperf3 3.22 workload starts its native listeners and clients | At least one client fails UDP stream setup with `unable to read from stream socket`. The run does not produce a complete comparison. |
+
+The separate older-tool run checks whether UDP setup can complete with a different
+iperf3 executable. It does not replace the matched iperf3 3.22 comparison.
+
+Separate iperf3 3.18 UDP diagnostic:
+
+| Software | Sent Gbit/s, forward / reverse | Received Gbit/s, forward / reverse | Packets not received, forward / reverse | Total host CPU |
+| --- | --- | --- | --- | --- |
+| nftables + VXLAN, literal per-packet selection | 2.00 / 2.00 | 1.18 / 1.17 | 41.04% / 41.26% | 22.22% to 23.25% |
+
+Native data streams confirm bidirectional payload delivery, while the receiver
+queue counters record TCP packets that arrive out of order. The counter snapshots
+include preparation and process shutdown and cannot isolate resets during the
+transfer. The concurrent workloads do not establish standalone single-connection
+capacity.
+
+TCP connection and ordering checks:
+
+| Software and policy | Completed data streams, forward / reverse | TCP data connections on WAN A / B, forward; reverse | Client out-of-order queue additions | Server out-of-order queue additions |
+| --- | --- | --- | --- | --- |
+| MWAN eBPF, per flow | 32 / 32 | 16 / 16; 16 / 16 | Not recorded | Not recorded |
+| VPP, per flow | 32 / 32 | 18 / 14; 15 / 17 | 11,087 | 7,867 |
+| VPP + TruFlow steering, per flow | 32 / 32 | 15 / 17; 13 / 19 | 13,037 | 8,730 |
+| nftables + VXLAN, per packet | 32 / 32 | Packets alternate within connections | Not recorded | Not recorded |
+| nftables + VXLAN, per packet, delayed path B | 32 / 32 | Packets alternate within connections | 1,253,767 | 426,902 |
+| nftables + GRE, per packet | 32 / 32 | Packets alternate within connections | 1,027,392 | 125,889 |
+| nftables + GRE, per packet, delayed path B | 32 / 32 | Packets alternate within connections | 439,744 | 451,654 |
+
+The selector observers distinguish individual packets from buffers that combine
+packets. Their cumulative zero counts cover the corrected per-packet runs.
+
+Per-packet selector checks:
+
+| Selector | Observed buffers | Buffers marked for segmentation | Oversize buffers |
+| --- | --- | --- | --- |
+| PowerEdge LAN ingress | 26,871,422 | 0 | 0 |
+| External common exit return ingress | 21,237,065 | 0 | 0 |
+
+Leaf samples estimate CPU from the function executing at each sample. Their
+ranges reflect clock-window membership rather than exact function CPU bounds,
+and sampled totals can differ from native host counters. The NPT
+entry or plugin row excludes helpers that the recording cannot associate with
+translation and does not measure complete NPT CPU. Other sampled work includes
+background activity. Process counters overlap these samples and must not be
+added to them. The instruction audit checks VPP build IDs, executable hashes,
+source locations, and the actual service PID before separating route lookup
+from WAN hashing.
+
+Dual-prefix CPU counters and stage estimates:
+
+| Measurement | MWAN eBPF TCP | VPP TCP | VPP + steering TCP | MWAN eBPF UDP | VPP UDP | VPP + steering UDP |
+| --- | --- | --- | --- | --- | --- | --- |
+| Matched idle host CPU | 5.37% to 7.03% | 10.30% to 12.66% | 10.61% to 12.94% | 5.42% to 7.64% | 10.52% to 12.79% | 10.37% to 12.69% |
+| Other active CT313 CPU | 5.22% to 5.46% | 4.37% to 4.68% | 4.45% to 4.66% | 4.77% to 5.04% | 4.41% to 4.65% | 4.44% to 4.67% |
+| Receive processing and polling CPU estimate | 1.1214% to 1.1291% | 2.2169% to 2.3294% | 2.2404% to 2.2889% | 1.5889% to 1.6071% | 2.5171% to 2.5578% | 2.5317% to 2.5887% |
+| Route lookup CPU estimate | 0.4457% to 0.4474% | 0.0700% to 0.0739% | 0.0793% to 0.0794% | 0.9717% to 0.9781% | 0.0337% to 0.0338% | 0.0362% to 0.0369% |
+| WAN hashing CPU estimate | Not isolated | 0.0282% to 0.0288% | 0.0293% to 0.0299% | Not isolated | 0.0112% to 0.0113% | 0.0112% to 0.0119% |
+| NPT entry or plugin CPU estimate, excluding unassociated helpers | 0.0690% to 0.0696% | 0.1716% to 0.1750% | 0.1771% to 0.1800% | 0.1875% to 0.1901% | 0.0907% to 0.0908% | 0.0856% to 0.0876% |
+| Forwarding and header rewrite CPU estimate | 0.2005% to 0.2017% | 0.0532% to 0.0549% | 0.0679% to 0.0685% | 0.4158% to 0.4209% | 0.0419% to 0.0420% | 0.0406% to 0.0407% |
+| Transmit CPU estimate | 0.6767% to 0.6812% | 0.2314% to 0.2320% | 0.2353% to 0.2370% | 1.0855% to 1.0969% | 0.1107% to 0.1139% | 0.1131% to 0.1138% |
+| VPP packet scheduling and buffers CPU estimate | Not applicable | 2.5580% to 2.6689% | 2.5834% to 2.6443% | Not applicable | 2.9093% to 2.9694% | 2.9550% to 3.0295% |
+| Other non-idle sampled CPU, including background work | 13.2456% to 13.4159% | 5.8006% to 6.0104% | 5.8092% to 5.9055% | 16.5323% to 16.7756% | 5.5484% to 5.6454% | 5.5130% to 5.6206% |
+| Controller CPU during transfer | Not running | Not running | 0.0015% to 0.0017% | Not running | Not running | 0.0015% to 0.0016% |
+| Profiler process CPU | 0.0217% to 0.0223% | 0.0061% to 0.0067% | 0.0076% to 0.0081% | 0.0122% to 0.0128% | 0.0054% to 0.0058% | 0.0087% to 0.0093% |
+| Interrupt context CPU / earlier NIC rule installation CPU | Not isolated | Not isolated | Not isolated | Not isolated | Not isolated | Not isolated |
 
 ## Remaining investigation
 
