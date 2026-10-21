@@ -11,6 +11,7 @@ require (
 	github.com/godbus/dbus/v5 v5.1.0
 	github.com/google/nftables v0.3.0
 	github.com/google/renameio/v2 v2.0.2
+	github.com/google/uuid v1.6.0
 	github.com/gopacket/gopacket v1.7.2
 	github.com/goreleaser/nfpm/v2 v2.47.0
 	github.com/insomniacslk/dhcp v0.0.0-20260719225207-c76316d4aa82
@@ -54,7 +55,6 @@ require (
 	github.com/gofrs/flock v0.13.0 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/goreleaser/chglog v0.7.4 // indirect
 	github.com/goreleaser/fileglob v1.4.0 // indirect
 	github.com/huandu/xstrings v1.5.0 // indirect
@@ -63,7 +63,7 @@ require (
 	github.com/k-sone/critbitgo v1.4.0 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/kjk/lzma v0.0.0-20161016003348-3fd93898850d // indirect
-	github.com/klauspost/compress v1.18.6 // indirect
+	github.com/klauspost/compress v1.18.7 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
