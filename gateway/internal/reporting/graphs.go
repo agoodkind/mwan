@@ -149,13 +149,12 @@ func wrapGraphLabel(text string, width int) []string {
 }
 
 func graphArguments(path string, definition graphDefinition, height int) []string {
-	padding := graphEdgePadding(definition)
 	axisFormat := "%4.2lf " + definition.unit + "  "
 	if definition.unit == "%" {
 		axisFormat = "%3.1lf%%  "
 	}
 	arguments := []string{
-		"graph", path, "--start", strconv.FormatInt(definition.start.Add(-padding).Unix(), 10), "--end", strconv.FormatInt(definition.end.Add(padding).Unix(), 10),
+		"graph", path, "--start", strconv.FormatInt(definition.start.Unix(), 10), "--end", strconv.FormatInt(definition.end.Unix(), 10),
 		"--full-size-mode", "--width", strconv.Itoa(graphWidth), "--height", strconv.Itoa(height), "--zoom", strconv.Itoa(graphScale),
 		"--title", definition.title, "--font", "DEFAULT:9:Liberation Mono", "--font", "TITLE:11:Liberation Mono Bold", "--font", "LEGEND:7:Liberation Mono",
 		"--color", "BACK#1E1E1E", "--color", "CANVAS#1E1E1E", "--color", "FONT#EEEEEE", "--color", "GRID#3A3A3A", "--color", "MGRID#555555",
@@ -175,26 +174,6 @@ func graphArguments(path string, definition graphDefinition, height int) []strin
 	}
 
 	return arguments
-}
-
-func graphEdgePadding(definition graphDefinition) time.Duration {
-	label := definition.start.Format("15:04")
-	if definition.filename == "usage.png" {
-		label = definition.start.Format("Jan 02")
-	} else if definition.end.Sub(definition.start) > 6*time.Hour {
-		label = definition.start.Format("Mon 15:04")
-	}
-	const (
-		axisGutter  = 110.0
-		labelGap    = 12.0
-		fontPoints  = 9.0
-		pointPixels = 4.0 / 3.0
-		monoAdvance = 0.6
-	)
-	labelWidth := float64(utf8.RuneCountInString(label)) * fontPoints * pointPixels * monoAdvance
-	edge := labelWidth/2 + labelGap
-	fraction := edge / (float64(graphWidth) - axisGutter - 2*edge)
-	return max(time.Second, time.Duration(float64(definition.end.Sub(definition.start))*fraction))
 }
 
 func graphDEF(name, path, source, function string, definition graphDefinition) string {
