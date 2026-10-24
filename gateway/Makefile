@@ -294,6 +294,9 @@ WANCONFIG_DOCKER_ARCH ?= amd64
 endif
 WANCONFIG_BUILDER_IMAGE := mwan-wanconfig-builder:$(WANCONFIG_DOCKER_ARCH)
 
+REPORTING_RRDTOOL_VERSION := 1.11.0
+REPORTING_RRDTOOL_SHA256 := 24c345b5c077c1b2b2fcbc1a364f1da051650fb6743ad5213096adc04c862ed4
+
 # Module sources are the same for every architecture, and both architectures
 # share one module cache volume. Build caches, lint caches, and cgo archives
 # differ by architecture, and each architecture has its own volumes for them.
@@ -322,6 +325,8 @@ WANCONFIG_DOCKER_RUN := docker run --rm --platform linux/$(WANCONFIG_DOCKER_ARCH
 .PHONY: wanconfig-builder-image
 wanconfig-builder-image:
 	docker build --platform linux/$(WANCONFIG_DOCKER_ARCH) \
+		--build-arg RRDTOOL_VERSION=$(REPORTING_RRDTOOL_VERSION) \
+		--build-arg RRDTOOL_SHA256=$(REPORTING_RRDTOOL_SHA256) \
 		--build-arg LIBYANG_VERSION=$(WANCONFIG_LIBYANG_VERSION) \
 		--build-arg SYSREPO_VERSION=$(WANCONFIG_SYSREPO_VERSION) \
 		--build-arg "LIBYANG_CMAKE_FLAGS=$(WANCONFIG_LIBYANG_CMAKE_FLAGS)" \

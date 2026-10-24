@@ -36,6 +36,32 @@ RUN git clone --depth 1 --branch "${LIBYANG_VERSION}" \
     && make -C /usr/local/src/libyang/build -j"$(nproc)" install \
     && ldconfig
 
+ARG RRDTOOL_VERSION
+ARG RRDTOOL_SHA256
+
+RUN test -n "${RRDTOOL_VERSION}" && test -n "${RRDTOOL_SHA256}"
+
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        curl libcairo2-dev libpango1.0-dev libxml2-dev fontconfig \
+        fonts-liberation poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl --fail --location --retry 3 \
+        "https://github.com/oetiker/rrdtool-1.x/releases/download/v${RRDTOOL_VERSION}/rrdtool-${RRDTOOL_VERSION}.tar.gz" \
+        --output /tmp/rrdtool.tar.gz \
+    && printf '%s  /tmp/rrdtool.tar.gz\n' "${RRDTOOL_SHA256}" | sha256sum --check - \
+    && mkdir /usr/local/src/rrdtool \
+    && tar -xzf /tmp/rrdtool.tar.gz --strip-components=1 -C /usr/local/src/rrdtool \
+    && cd /usr/local/src/rrdtool \
+    && ./configure --prefix=/usr/local --disable-perl --disable-python \
+        --disable-ruby --disable-tcl --disable-lua --disable-docs \
+    && make -j"$(nproc)" \
+    && make install \
+    && ldconfig \
+    && rrdtool --version \
+    && fc-match 'Liberation Mono'
+
 RUN git clone --depth 1 --branch "${SYSREPO_VERSION}" \
         https://github.com/sysrepo/sysrepo.git /usr/local/src/sysrepo \
     && cmake -S /usr/local/src/sysrepo -B /usr/local/src/sysrepo/build \
