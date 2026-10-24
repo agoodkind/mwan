@@ -25,8 +25,8 @@ documentation and deployment code remain in Configs.
 
 ## Architecture and configuration
 
-Read the [gateway architecture](mwan.md) for routing and provider behavior.
-Read [reporting](reporting.md) for WAN measurements, daily emails, and incident behavior.
+Read the [gateway architecture](mwan.md) for routing and provider behavior,
+and [reporting](reporting.md) for report measurements and incident handling.
 The [configuration specification](superpowers/wanconfig/spec.md) defines the
 provider model and links its detailed requirements. The
 [firewall specification](firewall.md) defines daemon ownership of firewall

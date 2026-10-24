@@ -58,7 +58,18 @@ decision stays with whatever called it.
 
 ## Reporting
 
-Reporting requires Linux, RRDtool, Liberation Mono, and configured email delivery. Set the reporting paths in the existing TOML configuration:
+The reporter uses the existing TOML configuration and WANCONFIG document. Its runtime requirements are:
+
+| Requirement | Purpose |
+|---|---|
+| Linux | Interface, connection, CPU, and memory counters. |
+| RRDtool | Graph history and image rendering. |
+| Liberation Mono | Graph text. |
+| Email configuration | Recipient and SMTP2GO credential or `msmtprc_path`. |
+| `CAP_NET_RAW` | WAN probes. |
+| `CAP_NET_ADMIN` | Linux connection accounting. |
+
+MWAN writes report history to `state_directory` and runs the executable at `rrdtool_path`. Both paths must be absolute:
 
 ```toml
 [report]
@@ -66,7 +77,7 @@ state_directory = "/var/lib/mwan/reporting"
 rrdtool_path = "/usr/local/bin/rrdtool"
 ```
 
-Use the installed RRDtool executable's absolute path. Reporting reuses the existing email recipient and SMTP2GO credential or `msmtprc_path`. The process needs `CAP_NET_RAW` for probes and `CAP_NET_ADMIN` for connection accounting. Disabled kernel byte accounting produces incomplete client attribution.
+Disabled kernel byte accounting makes client attribution incomplete. WAN interface measurements remain available independently of client accounting.
 
 Reporting commands:
 
@@ -75,7 +86,7 @@ Reporting commands:
 | `mwan report watch` | Collect measurements and send scheduled reports and incident emails. |
 | `mwan report send` | Send a summary from saved observations. |
 
-The commands accept `--network` and `--schema-dir` for the validated WANCONFIG document. Read [reporting behavior](docs/reporting.md) for measurement meanings and incident handling.
+The `--network` option selects the WANCONFIG document, and `--schema-dir` selects its YANG validation models. Read [reporting behavior](docs/reporting.md) for measurement meanings and incident handling.
 
 ## Building and testing
 
