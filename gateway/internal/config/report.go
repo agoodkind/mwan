@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"math"
+	"net/netip"
 	"path/filepath"
 	"time"
 )
@@ -14,6 +15,8 @@ type ReportSection struct {
 	TimeZone            string  `toml:"time_zone"`
 	SummaryHour         int     `toml:"summary_hour"`
 	CloudflareHost      string  `toml:"cloudflare_host"`
+	DNSv4               string  `toml:"dns_v4"`
+	DNSv6               string  `toml:"dns_v6"`
 	ProbeInterval       string  `toml:"probe_interval"`
 	SampleInterval      string  `toml:"sample_interval"`
 	ProbeTimeout        string  `toml:"probe_timeout"`
@@ -34,6 +37,7 @@ func DefaultReportSection() ReportSection {
 	return ReportSection{
 		ProcDirectory: "/proc", TimeZone: "America/Los_Angeles", SummaryHour: 20,
 		CloudflareHost: "one.one.one.one", ProbeInterval: "1s", SampleInterval: "1m",
+		DNSv4: "1.1.1.1:53", DNSv6: "[2606:4700:4700::1111]:53",
 		ProbeTimeout: "5s", PersistentRenewal: "15m", BreachWindow: "5m",
 		ReminderInterval: "15m", RecoveryInterval: "15m", MailTimeout: "45s",
 		MinProbeSeconds: 54, LossPercent: 1, DNSFailurePercent: 1,
@@ -59,6 +63,12 @@ func (settings ReportSection) Validate() error {
 	}
 	if settings.CloudflareHost == "" {
 		return fmt.Errorf("[report] cloudflare_host is required")
+	}
+	for key, text := range map[string]string{"dns_v4": settings.DNSv4, "dns_v6": settings.DNSv6} {
+		address, err := netip.ParseAddrPort(text)
+		if err != nil || address.Port() == 0 || address.Addr().Is4() != (key == "dns_v4") {
+			return fmt.Errorf("[report] %s requires a resolver address and port in its address family", key)
+		}
 	}
 	durations := make(map[string]time.Duration)
 	for key, text := range map[string]string{
