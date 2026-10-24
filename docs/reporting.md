@@ -16,7 +16,7 @@ Report measurements:
 | Packet loss | Failed probe attempts, in percent. | Separate WAN, target, and address-family lines. |
 | CPU and RAM | Used CPU and memory, in percent. | Overall CPU, each visible logical CPU, and RAM. |
 
-Overall CPU compares used and total CPU time across the visible cores, while each core's line uses only that core's counters. RAM usage excludes memory that Linux reports as available. The monitor draws gaps for unavailable measurements, including the initial CPU sample before a counter comparison exists.
+Overall CPU compares used and total CPU time across the visible cores, while each core's line uses only that core's counters. RAM usage excludes memory that Linux reports as available. The combined graph starts with the first valid CPU interval and ends with the last valid CPU interval. Missing measurements within that period appear as gaps.
 
 Daily emails cover the configured local reporting period across daylight-saving changes. Missing intervals or unavailable WAN counters make the report partial.
 

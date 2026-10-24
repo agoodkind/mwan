@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
 	"image/png"
 	"io"
 	"log/slog"
@@ -105,6 +107,9 @@ func TestMessageRendersAllWANSeriesWithUnits(t *testing.T) {
 		if inline.Filename == "cpu-ram.png" && configuration.Height != 4*(278+12*4) {
 			t.Fatalf("CPU/RAM graph height = %d, want overall CPU, CPU0, CPU1, and RAM legend rows", configuration.Height)
 		}
+		if inline.Filename == "cpu-ram.png" {
+			assertHostLinesUsePlotWidth(t, inline.Data)
+		}
 		if err := os.WriteFile(filepath.Join(settings.StateDirectory, inline.Filename), inline.Data, 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -152,6 +157,43 @@ func TestMessageRendersAllWANSeriesWithUnits(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+}
+
+func assertHostLinesUsePlotWidth(t *testing.T, data []byte) {
+	t.Helper()
+	graph, err := png.Decode(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ramStart, ramEnd := renderedTraceBounds(t, graph, color.RGBA{R: 0x4F, G: 0x9D, B: 0xE0, A: 0xFF})
+	for _, shade := range []color.RGBA{{R: 0x5B, G: 0xC8, B: 0x8A, A: 0xFF}, {R: 0xF2, G: 0xA0, B: 0x3D, A: 0xFF}, {R: 0xC0, G: 0x84, B: 0xFC, A: 0xFF}} {
+		start, end := renderedTraceBounds(t, graph, shade)
+		const tolerance = 12
+		if start > ramStart+tolerance || end < ramEnd-tolerance {
+			t.Fatalf("CPU line occupies pixels %d..%d, but RAM occupies %d..%d", start, end, ramStart, ramEnd)
+		}
+	}
+}
+
+func renderedTraceBounds(t *testing.T, graph image.Image, shade color.RGBA) (int, int) {
+	t.Helper()
+	bounds := graph.Bounds()
+	first, last := bounds.Max.X, -1
+	wantRed, wantGreen, wantBlue, _ := shade.RGBA()
+	// Exclude the legend when measuring the plotted lines.
+	for y := bounds.Min.Y; y < bounds.Max.Y*4/5; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			red, green, blue, _ := graph.At(x, y).RGBA()
+			if red == wantRed && green == wantGreen && blue == wantBlue {
+				first = min(first, x)
+				last = max(last, x)
+			}
+		}
+	}
+	if last < first {
+		t.Fatalf("graph does not contain line color %v", shade)
+	}
+	return first, last
 }
 
 func TestStorePreservesWANHistoryAndUnknownSamples(t *testing.T) {

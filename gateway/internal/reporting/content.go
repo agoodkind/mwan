@@ -181,7 +181,27 @@ func (renderer *Renderer) graphDefinitions(history []Minute, incident IncidentVi
 		}
 	}
 	definitions[3].traces = renderer.hostTraces(history)
+	definitions[3].start, definitions[3].end = hostGraphPeriod(history, start, end)
 	return definitions
+}
+
+func hostGraphPeriod(history []Minute, start, end time.Time) (time.Time, time.Time) {
+	var first, last time.Time
+	for _, minute := range history {
+		for _, cpu := range minute.Host.CPU {
+			if cpu.Name != "cpu" || !cpu.Available {
+				continue
+			}
+			if first.IsZero() {
+				first = minute.Start
+			}
+			last = minute.End
+		}
+	}
+	if first.IsZero() {
+		return start, end
+	}
+	return first, last
 }
 
 func probeAvailable(history []Minute, key ProbeKey) bool {
