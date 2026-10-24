@@ -8,7 +8,7 @@ The approved sample uses fictional measurements. It establishes the font, solid 
 
 ## Daily report
 
-The report uses these graphs. Every graph includes every configured WAN for which the relevant measurement exists.
+The network graphs compare every configured WAN for which the relevant measurement exists. A separate combined CPU/RAM graph measures the Linux environment running the monitor.
 
 Report graphs:
 
@@ -18,12 +18,13 @@ Report graphs:
 | Average speed | Observed download and upload traffic for each WAN, in Mbps. | Show the report day and average each measurement interval. Do not run speed tests. |
 | Latency | Gateway and Cloudflare response times for each WAN, in ms. | Show the report day, with separate target and IPv4/IPv6 series. |
 | Packet loss | Lost gateway and Cloudflare probes for each WAN, in percent. | Use the latency graph's period and series identities. |
+| CPU and RAM | Overall CPU, each visible logical CPU, and used RAM, in percent. | Show the report day using BerylAX's CPU and memory calculations. |
 
 Preserve the approved sample's usage-total and measurement-period tables. Place a top-talker table for each WAN after the graphs. Rank clients by downloaded plus uploaded bytes during the report day. Include device identity, downloaded data, uploaded data, and top destinations. Preserve BerylAX's distinction between verified attribution and accounting gaps independently for each WAN.
 
 A scheduled report covers the period from the preceding local report time through the current local report time. The initial collection period starts when collection begins and remains explicitly partial. Usage buckets follow UTC days independently of this report boundary.
 
-Do not add tables for probe results or Google probe series. Do not include CPU or RAM measurements, including system-statistic footer rows. Retain useful incident diagnostics as attachments without adding system-usage reporting.
+Do not add tables for probe results or Google probe series. Retain the combined CPU/RAM graph and the standard `send-email` footer. Keep useful incident diagnostics as attachments.
 
 ## Graph appearance
 
@@ -98,15 +99,15 @@ Use the existing MWAN configuration loader for reporting settings and mail confi
 
 Use Linux interface counters for WAN totals and BerylAX's connection-tracking accounting approach for client/destination attribution. Preserve original client identity across translation and select the WAN from actual connection/routing identity. Do not infer each client's share from the configured load-balancing weights. Mark missing or incomplete attribution explicitly when the available counters cannot establish it.
 
-Write reporting history into its own configured state directory. Keep per-WAN identities stable across interface renames. Preserve existing reporting history when another WAN is added. Do not rewrite BerylAX's RRD files or copy its device-specific routing, roaming, OpenWrt service management, or CPU/RAM collectors.
+Write reporting history into its own configured state directory. Keep per-WAN identities stable across interface renames. Preserve existing reporting history when another WAN is added. Port BerylAX's CPU/RAM collector for the monitor's Linux environment and enumerate its visible CPUs instead of assuming a router-specific core count. Do not rewrite BerylAX's RRD files or copy its device-specific routing, roaming, or OpenWrt service management.
 
-Use `send-email`'s existing rendering and transport code for the entire message. Add a generic, backward-compatible message option to omit system statistics rather than retaining the sample's edited template. Existing callers retain the current footer by default. Keep this library change and the MWAN port in local Git commits. Use a local Go workspace for unpublished dependency changes; do not commit absolute-path dependency replacements.
+Use the existing published `send-email` library for the entire message and retain its default footer. This work does not modify that library. Keep the MWAN changes in local Git commits.
 
 ## Acceptance and implementation choices
 
 The implementation must demonstrate the following outcomes through public command or package entry points with actual RRDtool files, actual Linux network observations, and a local SMTP receiver.
 
-- A daily report contains the required shared graphs and top-talker tables, without probe tables or CPU/RAM statistics.
+- A daily report contains the shared network graphs, the combined CPU/RAM graph, and top-talker tables, without probe tables.
 - Every rendered graph uses the selected font, explicit units, distinct solid lines, aligned legends, and the required physical/logical image sizes.
 - Simultaneous failures generate one opening alert, reminders compare all WANs, and recovery waits for all incident WANs.
 - A failed delivery does not discard pending reporting state, and a successful retry does not repeat an already acknowledged recipient.

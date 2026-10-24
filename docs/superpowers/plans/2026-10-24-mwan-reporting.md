@@ -8,7 +8,7 @@
 
 **Tech Stack:** The existing Go module and go-makefile, RRDtool 1.11.0, Liberation Mono, Linux netlink/connection tracking, and `goodkind.io/send-email/mailer`.
 
-**Spec:** Read the [reporting design](../specs/2026-10-24-mwan-reporting-design.md) and complete the [mailer dependency plan](2026-10-24-send-email-report-content.md) before Task 0.
+**Spec:** Read the [reporting design](../specs/2026-10-24-mwan-reporting-design.md) before implementing the tasks.
 
 The local BerylAX source revision is `a38621b4e2a5983e4b9f8595327c9f7c43e9e321`. Use its [daily report and period handling](/Users/agoodkind/Sites/berylax/wan/internal/wan/loss_daily.go), [alert evaluation](/Users/agoodkind/Sites/berylax/wan/internal/wan/loss_alert.go), and [connection-tracking collection](/Users/agoodkind/Sites/berylax/wan/internal/wan/talker_capture_linux.go) when porting behavior. Do not copy unrelated router operations.
 
@@ -19,7 +19,7 @@ The local BerylAX source revision is `a38621b4e2a5983e4b9f8595327c9f7c43e9e321`.
 - Keep WANCONFIG authoritative for WAN identity, interface, routing, and family policy. Use the existing configuration loader, logger, and notifier.
 - Use native RRDtool 1.11.0 or newer and Liberation Mono. Preserve solid anti-aliased lines, distinct colors, unit suffixes, aligned legends, and four-times raster scaling at a logical width of 500 CSS pixels.
 - Overlay all WANs on usage, observed traffic-rate, latency, and loss graphs. Separate gateway/Cloudflare and IPv4/IPv6 in the latency/loss series.
-- Include per-WAN top talkers. Exclude probe-result tables, Google series, CPU/RAM collection, and system-statistic footer rows.
+- Include per-WAN top talkers and BerylAX's combined CPU/RAM graph. Exclude probe-result tables and Google series. Keep `send-email` unchanged and retain its standard footer.
 - Preserve the specification's collection intervals, breach comparisons, daily boundary, reminder interval, and recovery rule.
 - Combine simultaneous WAN failures into one incident with explicit Current incident and Other WANs for comparison sections.
 - Use actual RRD files, Linux network observations, and local SMTP in tests. Do not send automated test email externally or call `op`.
@@ -41,7 +41,7 @@ File responsibilities:
 
 | Action | File | Responsibility |
 |---|---|---|
-| Modify | `gateway/Makefile`, `gateway/tools/wanconfigbuilder/Dockerfile`, `.gitignore` | Native RRD verification dependencies and unpublished local workspace support. |
+| Modify | `gateway/Makefile`, `gateway/tools/wanconfigbuilder/Dockerfile` | Native RRD and privileged reporting-test dependencies. |
 | Modify | `gateway/internal/config/config.go` | Add the reporting section to the canonical configuration. |
 | Create | `gateway/internal/config/report.go`, `gateway/internal/config/report_test.go` | Reporting fields, defaults, and command-scoped validation. |
 | Create | `gateway/internal/reporting/model.go` | Canonical measurement types and report kinds. |
@@ -51,6 +51,7 @@ File responsibilities:
 | Create | `gateway/internal/notify/report.go`, `gateway/internal/notify/report_test.go` | Structured report delivery with returned transport errors. |
 | Create | `gateway/internal/netif/echo_session.go`, `gateway/internal/netif/echo_session_netns_test.go` | Interface-bound persistent ICMP sessions and actual packet verification. |
 | Create | `gateway/internal/reporting/collector_linux.go`, `gateway/internal/reporting/talkers_linux.go`, `gateway/internal/reporting/collector_netns_test.go` | WAN probes, counter deltas, original-client attribution, and coverage. |
+| Create | `gateway/internal/reporting/host_linux.go`, `gateway/internal/reporting/host_test.go` | BerylAX-style overall CPU, per-core CPU, and RAM observations. |
 | Modify | `gateway/internal/netif/probe.go`, `gateway/internal/netif/probe_primitives.go` | Extract shared packet operations when introducing reusable echo sessions. Preserve existing probe behavior. |
 | Modify | `gateway/go.mod`, `gateway/go.sum` | Add the existing BerylAX conntrack dependencies for the Linux collector. |
 | Create | `gateway/internal/reporting/testdata/two-wan.json` | Valid WANCONFIG document for isolated test networks. |
@@ -63,11 +64,11 @@ File responsibilities:
 
 ---
 
-### Task 0: Prepare Native Verification and the Local Dependency
+### Task 0: Prepare Native Verification
 
-**Files:** Modify `gateway/Makefile`, `gateway/tools/wanconfigbuilder/Dockerfile`, and `.gitignore`.
+**Files:** Modify `gateway/Makefile` and `gateway/tools/wanconfigbuilder/Dockerfile`.
 
-**Interfaces:** Add optional `WANCONFIG_DOCKER_GOWORK ?= off` and `WANCONFIG_DOCKER_EXTRA_MOUNTS ?=` inputs to the existing `WANCONFIG_DOCKER_RUN`. Preserve its current behavior when both remain unset. Add RRDtool build arguments to the existing builder target.
+**Interfaces:** Add RRDtool build arguments to the existing builder target. Preserve the existing Docker runner and dependency configuration.
 
 Use the official source pin below for both Linux architectures.
 
@@ -80,9 +81,7 @@ RRDtool source:
 | SHA-256 | `24c345b5c077c1b2b2fcbc1a364f1da051650fb6743ad5213096adc04c862ed4` |
 
 - [ ] Build the native RRD CLI with PNG/Pango support in the existing Linux builder. Include Liberation Mono, fontconfig, `pdffonts`, and the required native libraries. Reuse the existing protocol-runner image for privileged reporting tests. Do not add another runner image or release workflow.
-- [ ] Ignore root `go.work` and `go.work.sum`. Create a local workspace containing `./gateway` and the completed `send-email` worktree. Do not commit that workspace or an absolute dependency replacement.
-- [ ] Mount the mailer worktree at its actual absolute path in Docker and set `WANCONFIG_DOCKER_GOWORK=/src/go.work`. Supply read-only common Git-directory mounts if the linked worktrees require them. Keep these path values outside committed configuration.
-- [ ] Run `make -C gateway wanconfig-builder-image`, then use the existing builder command to run `rrdtool --version` and `fc-match 'Liberation Mono'`. Require the pinned RRD version and the requested font. Run `git check-ignore go.work`; require the workspace path in its output.
+- [ ] Run `make -C gateway wanconfig-builder-image`, then use the existing builder command to run `rrdtool --version` and `fc-match 'Liberation Mono'`. Require the pinned RRD version and the requested font.
 - [ ] Stage only this task's files and commit with subject `Add native reporting dependencies to the Linux builder` and `Co-authored-by: Codex <noreply@openai.com>` as a separate commit-message paragraph.
 
 ### Task 1: Define Configuration and Measurements
@@ -97,6 +96,7 @@ Reporting fields:
 |---|---|---|
 | `StateDirectory string` | `state_directory` | Absolute path required for report commands. |
 | `RRDToolPath string` | `rrdtool_path` | Absolute executable path required for report commands. |
+| `ProcDirectory string` | `proc_directory` | `/proc`, read within the monitor's Linux environment. |
 | `TimeZone string` | `time_zone` | `America/Los_Angeles`. |
 | `SummaryHour int` | `summary_hour` | `20`. |
 | `CloudflareHost string` | `cloudflare_host` | `one.one.one.one`. |
@@ -173,12 +173,23 @@ type AttributionCoverage struct {
     Complete bool
     Reason string
 }
+type CPUUsage struct {
+    Name string
+    Percent float64
+    Available bool
+}
+type HostUsage struct {
+    CPU []CPUUsage
+    MemoryPercent float64
+    MemoryAvailable bool
+}
 type Minute struct {
     Start, End time.Time
     Partial bool
     Probes []ProbeMinute
     Traffic []WANTraffic
     Talkers []TalkerUsage
+    Host HostUsage
     Attribution []AttributionCoverage
     UDPSendFailures, DNSReceiveDrops uint64
 }
@@ -227,7 +238,7 @@ func (m *Manager) SendReport(ctx context.Context, msg mailer.Message) error
 
 Add optional `MsmtprcPath string` with TOML tag `msmtprc_path` to `notify.EmailConfig`. Keep `NewSender`, `Sender.Send`, `Notifier`, and `notify.New` signatures valid. The existing sender constructor supplies its prior defaults to the common constructor. Preserve the configured recipient and subject prefix.
 
-- [ ] Delegate the complete message to `mailer.New(...).Send(...)`, preserving ordered content, inline images, attachments, and `OmitSystemInfo`.
+- [ ] Update the MWAN dependency to the existing published `goodkind.io/send-email v0.0.0-20261003173351-a8500dc3c523`, matching BerylAX. Delegate the complete message to `mailer.New(...).Send(...)`, preserving ordered content, inline images, attachments, and the existing footer.
 - [ ] Preserve the existing HTTP default-route/configured-interface retry. Use the existing mailer SMTP transport when msmtprc is configured. Do not reimplement either protocol.
 - [ ] Retain the report sender in `notify.Manager`. Fill an empty report recipient from the existing email configuration, apply the subject prefix once, and return transport errors. Do not filter scheduled reports through event severity.
 - [ ] Add `TestSendMessagePreservesRichContent`, `TestSendReportReturnsAcceptance`, and `TestSendReportRejectsMissingTransport`. Use actual SMTP and a temporary msmtprc; parse accepted MIME content and reject a separate DATA transaction to exercise errors.
@@ -236,12 +247,12 @@ Add optional `MsmtprcPath string` with TOML tag `msmtprc_path` to `notify.EmailC
 if !strings.Contains(htmlBody, "cid:usage.png") || !strings.Contains(htmlBody, "Top talkers") {
     t.Fatal("the accepted message lost rich report content")
 }
-if strings.Contains(htmlBody, ">Memory<") || strings.Contains(htmlBody, ">Load<") {
-    t.Fatal("the accepted report includes excluded statistics")
+if !strings.Contains(htmlBody, ">Memory<") || !strings.Contains(htmlBody, ">Load<") {
+    t.Fatal("the accepted report lost the standard mailer footer")
 }
 ```
 
-- [ ] Run `go test ./internal/email ./internal/notify -count=1 -v` in the Linux builder with the local mailer workspace. Require PASS.
+- [ ] Run `go test ./internal/email ./internal/notify -count=1 -v` in the Linux builder. Require PASS.
 - [ ] Stage only this task's files and commit with subject `Add structured report delivery in the notification service` and the Codex trailer.
 
 ### Task 3: Collect WAN Measurements and Client Attribution
@@ -268,6 +279,8 @@ Define concrete `EchoSession` and `Collector` types with private resource/state 
 - [ ] Allocate successive fresh ICMP identifiers in the collector instance. Reuse one identifier/socket for each persistent probe until renewal. Keep this state outside package globals.
 - [ ] Add `github.com/ti-mo/conntrack v0.6.0` and `github.com/ti-mo/netfilter v0.5.3`, matching the source BerylAX module. Reuse existing netlink and system dependencies and avoid adding a Go plotting library.
 - [ ] Port BerylAX's conntrack startup baseline, counter deltas, destroyed-flow accounting, and attribution checks. Attribute original clients and destinations to observed WAN marks/routes. Do not infer each client's share from weights or assign unexplained bytes to an Other client.
+- [ ] Port BerylAX's `/proc/stat` and `/proc/meminfo` sampling into `host_linux.go`. Record overall CPU and every visible logical CPU independently. Preserve unknown CPU values until a valid preceding reading exists, and reset the baseline after a counter decrease. Read used RAM from total minus available memory. Include `HostUsage` in each `Minute`.
+- [ ] Add `TestHostSamplerReadsLinuxUsage` through `Collector.Sample` with actual Linux procfs observations. Verify that every reported CPU and RAM percentage falls within its BerylAX range and that a first reading does not invent CPU usage.
 - [ ] Mark unavailable families, resets, and accounting gaps explicitly in `Minute`. Do not change routing, firewall policy, offloads, or conntrack settings.
 - [ ] Add `TestEchoSessionKeepsItsIdentifier`, `TestCollectorBindsGatewayAndCloudflareByWAN`, and `TestCollectorAttributesClientsToActualWAN` through the public session/collector APIs in actual network namespaces. Use client-originated TCP transfers, then break one WAN/family and repeat after a reset/restart.
 
@@ -280,7 +293,7 @@ if gapMinute.Attribution[affectedWANIndex].Complete {
 }
 ```
 
-- [ ] Add `test-reporting-netns` to the existing Makefile. Use the existing privileged protocol-runner image, which inherits the RRD/font/cgo dependencies, and execute `go test -count=1 -tags netns ./internal/reporting`. Preserve Task 0's local workspace mounts. Keep reporting tests out of the thinner existing netns image that does not contain RRDtool.
+- [ ] Add `test-reporting-netns` to the existing Makefile. Use the existing privileged protocol-runner image, which inherits the RRD/font/cgo dependencies, and execute `go test -count=1 -tags netns ./internal/reporting`. Keep reporting tests out of the thinner existing netns image that does not contain RRDtool.
 - [ ] Run `make -C gateway test-reporting-netns` and the existing `make -C gateway test-netns` on native Linux/arm64. Require real packets, real connection accounting, and PASS. Do not claim policy-rule verification under amd64 emulation.
 - [ ] Stage only this task's files and commit with subject `Add per-WAN network reporting collection` and the Codex trailer.
 
@@ -299,7 +312,7 @@ func (s *Store) Close() error
 Define a concrete `Store` with private RRD and state-file resources. Keep query helpers private to reporting. Construct per-WAN file basenames from the connection ID's full hexadecimal SHA-256 digest. Limit RRD data-source identifiers to `[a-z][a-z0-9_]{0,18}`. Escape label text separately from RRD expressions.
 
 - [ ] Create/update per-WAN RRD files with the configured measurement interval in seconds and a heartbeat twice that interval. Keep the specified default retention. Preserve unknown values with `U`. Record both interval averages and observed latency peaks. Calculate the legend maximum from the observed peaks. Keep the stored unit convention explicit and convert traffic to Mbps during rendering.
-- [ ] Port UTC usage buckets and top-talker history. Preserve prior WAN history across interface renames, added WANs, and restart.
+- [ ] Port UTC usage buckets and top-talker history. Persist CPU/RAM series independently from WAN data and preserve their unknown samples. Preserve history across added CPUs, interface renames, added WANs, and restart.
 - [ ] Save the active local report period, combined incident, and pending delivery state with atomic replacement. Keep a closed report pending while collecting the next day. Preserve the configured local boundary across daylight-saving changes.
 - [ ] Add `TestStorePreservesWANHistoryAndUnknownSamples` and `TestStoreUsesUTCDaysAndLocalReportBoundaries`. Enter through `OpenStore` and `Record`, reopen the actual files, and inspect RRDtool fetch output and subsequent report queries.
 
@@ -330,13 +343,14 @@ Define a concrete `Renderer` with private references to the supplied settings, n
 
 - [ ] Execute native RRDtool with argument arrays and context deadlines. Use zoom, explicit fonts, normal anti-aliasing, left-axis unit formatting, and line legends. Derive image height from the plot/title/legend rows rather than shrinking the font when more series appear.
 - [ ] Render cumulative usage, observed traffic rate, gateway/Cloudflare latency, and packet loss. Preserve separate WAN, target, and family identities with distinct solid lines. Use totals for usage and aligned minimum/maximum/average values for other legends.
-- [ ] Build ordered `mailer.ContentHTML` graph blocks and informative text alternatives. Preserve the approved usage-total and measurement-period tables, and use `mailer.ContentTable` for the per-WAN top talkers. Do not add probe-result tables. Set `OmitSystemInfo: true` for every report.
+- [ ] Add the combined CPU/RAM graph with overall CPU, visible logical CPUs, and RAM, following BerylAX's percentage calculations and axis range. Keep every series distinct and solid.
+- [ ] Build ordered `mailer.ContentHTML` graph blocks and informative text alternatives. Preserve the approved usage-total and measurement-period tables, and use `mailer.ContentTable` for the per-WAN top talkers. Do not add probe-result tables or change the standard mailer footer.
 - [ ] Build incident text under Current incident, a visible divider, and Other WANs for comparison. Mark the current incident WANs in the legends while retaining all comparison WANs. Do not add probe tables.
 - [ ] Add `TestMessageRendersAllWANSeriesWithUnits` and `TestMessageMarksUnavailableFamilyAndAttribution`. Record actual RRD history through `Store.Record`, render through `Renderer.Message`, then send through the actual local SMTP path.
 
 ```go
-if len(message.Inlines) != 4 || !message.OmitSystemInfo {
-    t.Fatal("the report changed its graph count or footer policy")
+if len(message.Inlines) != 5 {
+    t.Fatal("the report omitted a network or CPU/RAM graph")
 }
 if imageConfig.Width != 4*500 {
     t.Fatal("the renderer changed the approved physical/logical width ratio")
@@ -412,11 +426,11 @@ if acceptedCount != 1 {
 ```
 
 - [ ] Document commands, report settings, and runtime dependencies in the existing README structure. Do not add deployment or service installation automation.
-- [ ] Run `make -C gateway docker-make TARGETS="check test"` with Task 0's workspace/mount inputs. Run the existing namespace suite and `test-reporting-netns` on native Linux/arm64. Compile and test Linux/amd64 using the existing architecture setting. Require applicable gates to pass without baseline edits; report any unrelated pre-existing failure explicitly.
+- [ ] Run `make -C gateway docker-make TARGETS="check test"` using the existing builder configuration. Run the existing namespace suite and `test-reporting-netns` on native Linux/arm64. Compile and test Linux/amd64 using the existing architecture setting. Require applicable gates to pass without baseline edits; report any unrelated pre-existing failure explicitly.
 - [ ] Stage only this task's files and commit with subject `Add MWAN reporting commands and usage documentation` and the Codex trailer.
 
 ## Review and Execution
 
 Use native execution through `executing-plans`, then one independent review of the completed branch. The tasks share measurement, store, and renderer contracts. Native execution keeps these coupled tasks in one implementation context.
 
-Before presenting the result, check the complete diff against the design, the public signatures against their consumers, and the actual Linux/RRD/SMTP results against Review Focus. Keep the mailer and MWAN commits local. Distinguish implemented code, local verification, and deployment in the report; this plan does not authorize deployment.
+Before presenting the result, check the complete diff against the design, the public signatures against their consumers, and the actual Linux/RRD/SMTP results against Review Focus. Keep MWAN commits local and leave the `send-email` repository unchanged. Distinguish implemented code, local verification, and deployment in the report; this plan does not authorize deployment.
