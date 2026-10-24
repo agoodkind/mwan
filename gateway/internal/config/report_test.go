@@ -30,6 +30,7 @@ func TestReportConfigLoadsAndValidates(t *testing.T) {
 		{"window", func(settings *config.ReportSection) { settings.BreachWindow = "61s" }},
 		{"cadence", func(settings *config.ReportSection) { settings.ProbeInterval = "7s" }},
 		{"completeness", func(settings *config.ReportSection) { settings.MinProbeSeconds = 61 }},
+		{"overflowing completeness", func(settings *config.ReportSection) { settings.MinProbeSeconds = 1 << 34 }},
 		{"percent", func(settings *config.ReportSection) { settings.LossPercent = 101 }},
 	} {
 		t.Run(entry.name, func(t *testing.T) {

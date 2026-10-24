@@ -103,7 +103,7 @@ func (settings ReportSection) Validate() error {
 			return fmt.Errorf("[report] %s must divide into sample intervals", key)
 		}
 	}
-	if settings.MinProbeSeconds <= 0 || time.Duration(settings.MinProbeSeconds)*time.Second > sample {
+	if settings.MinProbeSeconds <= 0 || int64(settings.MinProbeSeconds) > int64(sample/time.Second) {
 		return fmt.Errorf("[report] min_probe_seconds must fit sample_interval")
 	}
 	for key, value := range map[string]float64{
