@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"goodkind.io/mwan/internal/email"
 )
 
 // Manager is the concrete Notifier. It owns the per-(kind, key) state
@@ -22,8 +24,11 @@ type Manager struct {
 	sink  Sink
 	clock clock
 
-	mu    sync.Mutex
-	state map[string]alertState
+	mu              sync.Mutex
+	state           map[string]alertState
+	reportSender    *email.Sender
+	reportRecipient string
+	reportPrefix    string
 }
 
 // Sink is the email-delivery boundary. The Manager calls Send for each

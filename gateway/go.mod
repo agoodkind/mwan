@@ -24,7 +24,7 @@ require (
 	golang.org/x/net v0.58.0
 	golang.org/x/sys v0.47.0
 	goodkind.io/gklog v0.2.1
-	goodkind.io/send-email v0.0.0-20260604011720-40a2ede56cd9
+	goodkind.io/send-email v0.0.0-20261003173351-a8500dc3c523
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.11
 	pault.ag/go/debian v0.21.0
@@ -72,6 +72,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/pierrec/lz4/v4 v4.1.14 // indirect
 	github.com/pjbgf/sha1cd v0.6.0 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
 	github.com/segmentio/fasthash v1.0.3 // indirect
 	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect
@@ -83,6 +84,8 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/spf13/viper v1.21.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
+	github.com/ti-mo/conntrack v0.6.0 // indirect
+	github.com/ti-mo/netfilter v0.5.3 // indirect
 	github.com/tidwall/gjson v1.14.4 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
