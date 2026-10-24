@@ -46,4 +46,3 @@ The monitor saves pending delivery state before sending mail and acknowledges it
 
 RRDtool renders solid lines with distinct colors, explicit units, and aligned legends. Liberation Mono supplies the graph text. The existing `send-email` library renders the message, embeds the graphs, and preserves its standard system-information footer.
 
-The `mwan report watch` command collects observations and sends scheduled reports. The `mwan report send` command sends a summary from saved history. Both commands use the existing TOML configuration and validated WANCONFIG document.
