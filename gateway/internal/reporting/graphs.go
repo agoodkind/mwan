@@ -71,7 +71,7 @@ func (renderer *Renderer) renderGraph(ctx context.Context, directory string, def
 	}
 	height := 278 + 12*legendRows
 	path := filepath.Join(directory, definition.filename)
-	axisFormat, statFormat := "%3.0lf "+definition.unit, "%5.1lf "+definition.unit
+	axisFormat, statFormat := "%4.2lf "+definition.unit, "%6.2lf "+definition.unit
 	if definition.unit == "%" {
 		axisFormat, statFormat = "%3.1lf%%", "%5.2lf%%"
 	}
@@ -83,7 +83,7 @@ func (renderer *Renderer) renderGraph(ctx context.Context, directory string, def
 		"--color", "AXIS#999999", "--color", "ARROW#1E1E1E", "--color", "FRAME#1E1E1E", "--border", "0", "--slope-mode", "--graph-render-mode", "normal",
 		"--alt-autoscale-max", "--lower-limit", "0", "--units-exponent", "0", "--left-axis-format", axisFormat, "--units-length", "9", "--dynamic-labels", "--disable-rrdtool-tag",
 	}
-	if definition.filename == "cpu-ram.png" || definition.filename == "loss.png" {
+	if definition.filename == "cpu-ram.png" {
 		arguments = append(arguments, "--upper-limit", "100", "--rigid")
 	}
 	switch {
@@ -124,7 +124,9 @@ func (renderer *Renderer) renderGraph(ctx context.Context, directory string, def
 		} else {
 			arguments = append(arguments, fmt.Sprintf("LINE1.7:%s#%s:%s", name, seriesColor(index), rrdEscape(fmt.Sprintf("%-*s", labelWidth, trace.label))))
 		}
-		if definition.filename == "usage.png" {
+		if strings.HasSuffix(trace.label, "[unavailable]") {
+			arguments = append(arguments, "COMMENT:Measurements unavailable\\l")
+		} else if definition.filename == "usage.png" {
 			arguments = append(arguments, "GPRINT:"+name+"_last:  total "+statFormat+"\\l")
 		} else {
 			arguments = append(arguments, "GPRINT:"+name+"_min:  min "+statFormat, "GPRINT:"+name+"_max:  max "+statFormat, "GPRINT:"+name+"_avg:  avg "+statFormat+"\\l")
