@@ -29,6 +29,8 @@ type Server struct {
 	listener net.Listener
 	mu       sync.Mutex
 	reject   bool
+	paused   chan struct{}
+	resume   chan struct{}
 	Messages chan []byte
 	Path     string
 }
@@ -41,7 +43,7 @@ func Start(t *testing.T) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := &Server{listener: listener, mu: sync.Mutex{}, reject: false, Messages: make(chan []byte, 128), Path: filepath.Join(t.TempDir(), "msmtprc")}
+	server := &Server{listener: listener, mu: sync.Mutex{}, reject: false, paused: nil, resume: nil, Messages: make(chan []byte, 128), Path: filepath.Join(t.TempDir(), "msmtprc")}
 	address, ok := listener.Addr().(*net.TCPAddr)
 	if !ok {
 		t.Fatalf("SMTP listener returned address type %T", listener.Addr())
@@ -88,6 +90,23 @@ func (server *Server) Reject(reject bool) {
 	server.reject = reject
 }
 
+// PauseDelivery delays the DATA reply until release runs and signals receipt of a message.
+func (server *Server) PauseDelivery() (received <-chan struct{}, release func()) {
+	paused, resume := make(chan struct{}, 1), make(chan struct{})
+	server.mu.Lock()
+	server.paused, server.resume = paused, resume
+	server.mu.Unlock()
+	var once sync.Once
+	return paused, func() {
+		once.Do(func() {
+			server.mu.Lock()
+			server.paused, server.resume = nil, nil
+			close(resume)
+			server.mu.Unlock()
+		})
+	}
+}
+
 func (server *Server) receive(connection net.Conn) error {
 	defer connection.Close()
 	if err := connection.SetDeadline(clock.Real{}.Now().Add(30 * time.Second)); err != nil {
@@ -118,7 +137,15 @@ func (server *Server) receive(connection net.Conn) error {
 			}
 			server.mu.Lock()
 			reject := server.reject
+			paused, resume := server.paused, server.resume
 			server.mu.Unlock()
+			if resume != nil {
+				select {
+				case paused <- struct{}{}:
+				default:
+				}
+				<-resume
+			}
 			if reject {
 				err = protocol.PrintfLine("451 temporary delivery failure")
 			} else {

@@ -4,42 +4,31 @@ package reporting_test
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"golang.org/x/sys/unix"
-
-	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/reporting"
+	"goodkind.io/mwan/internal/testsmtp"
 )
 
 func TestWatchWaitsForWriterAndResumesCollection(t *testing.T) {
-	t.Setenv("RRD_LOCKING", "block")
-	settings := config.DefaultReportSection()
-	settings.StateDirectory = t.TempDir()
-	path, err := exec.LookPath("rrdtool")
-	if err != nil {
-		t.Fatal(err)
-	}
-	settings.RRDToolPath = path
+	t.Parallel()
+	settings := reportSettings(t)
 	settings.SampleInterval = "1s"
 	settings.BreachWindow = "1s"
 	settings.RecoveryInterval = "1s"
 	settings.MinProbeSeconds = 1
-	network := &networkjson.Config{}
+	network := reportNetwork()
+	server := testsmtp.Start(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	notifications, err := notify.New(notify.EmailConfig{}, notify.Config{}, logger, "mwan-report")
+	notifications, err := notify.New(notify.EmailConfig{MsmtprcPath: server.Path, AlertEmail: "recipient@example.com"}, notify.Config{}, logger, "mwan-report")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,20 +47,20 @@ func TestWatchWaitsForWriterAndResumesCollection(t *testing.T) {
 	finished := make(chan error, 1)
 	go func() { finished <- service.Watch(ctx, collector) }()
 	waitForReportingState(t, settings.StateDirectory, finished)
-	digest := sha256.Sum256([]byte("memory"))
-	locked, err := os.OpenFile(filepath.Join(settings.StateDirectory, "rrd", fmt.Sprintf("host-%x.rrd", digest)), os.O_RDWR, 0)
-	if err != nil {
-		t.Fatal(err)
+	received, release := server.PauseDelivery()
+	defer release()
+	delivery := make(chan error, 1)
+	go func() { delivery <- service.SendDaily(ctx) }()
+	select {
+	case <-received:
+	case <-time.After(5 * time.Second):
+		t.Fatal("SMTP did not receive the summary")
 	}
-	defer locked.Close()
-	// Delay actual RRD writes with a filesystem lock until the collection queue fills.
-	lock := unix.Flock_t{Type: unix.F_WRLCK, Whence: 0, Start: 0, Len: 0, Pid: 0}
-	if err := unix.FcntlFlock(locked.Fd(), unix.F_SETLK, &lock); err != nil {
-		t.Fatal(err)
-	}
+	// Delay the actual mail response until collection fills the writer queue.
 	time.Sleep(11 * time.Second)
-	if err := locked.Close(); err != nil {
-		t.Fatal(err)
+	release()
+	if err := <-delivery; err != nil {
+		t.Fatalf("summary delivery failed: %v", err)
 	}
 	select {
 	case err := <-finished:
