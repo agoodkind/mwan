@@ -94,9 +94,6 @@ func New(emailCfg EmailConfig, cfg Config, log *slog.Logger, serviceName string)
 		}
 		return nil, fmt.Errorf("notify new: %w", err)
 	}
-	m.reportSender = sender
-	m.reportRecipient = emailCfg.AlertEmail
-	m.reportPrefix = emailCfg.SubjectPrefix
 	return m, nil
 }
 

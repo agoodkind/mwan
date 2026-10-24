@@ -21,7 +21,7 @@ import (
 	"goodkind.io/mwan/internal/notify"
 )
 
-// Options supplies reporting settings and the shared delivery services.
+// Options reuses the gateway notifier instead of opening a separate mail transport.
 type Options struct {
 	Config        config.ReportSection
 	Network       *networkjson.Config
@@ -256,16 +256,28 @@ func (service *Service) Watch(ctx context.Context, collector *Collector) error {
 			return err
 		}
 		minute.Partial = end.Sub(start) != step
-		select {
-		case queue <- minute:
-		case err := <-writerErrors:
+		start, err = service.queueMinute(runContext, queue, writerErrors, minute)
+		if err != nil {
 			return err
-		case <-runContext.Done():
-			return fmt.Errorf("reporting collection stopped: %w", runContext.Err())
-		default:
-			return errors.New("reporting minute queue is full; collection cannot discard measurements")
 		}
-		start = end
+	}
+}
+
+func (service *Service) queueMinute(ctx context.Context, queue chan<- Minute, failures <-chan error, minute Minute) (time.Time, error) {
+	select {
+	case queue <- minute:
+		return minute.End, nil
+	default:
+	}
+	service.log.WarnContext(ctx, "reporting collection is waiting for the writer queue")
+	select {
+	case queue <- minute:
+		// Resume at the current time rather than inventing observations during the wait.
+		return service.clock.Now(), nil
+	case err := <-failures:
+		return time.Time{}, err
+	case <-ctx.Done():
+		return time.Time{}, fmt.Errorf("reporting collection stopped: %w", ctx.Err())
 	}
 }
 

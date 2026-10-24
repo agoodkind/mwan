@@ -7,51 +7,51 @@ import (
 	"goodkind.io/mwan/internal/connectionid"
 )
 
-// Family distinguishes IPv4 and IPv6 measurements for the same WAN.
+// Family uses IP version numbers in saved observations.
 type Family uint8
 
 const (
-	// IPv4 selects measurements that use IPv4 addresses.
+	// IPv4 keeps IPv4 failures separate from IPv6 results on a dual-stack WAN.
 	IPv4 Family = 4
-	// IPv6 selects measurements that use IPv6 addresses.
+	// IPv6 keeps IPv6 failures separate from IPv4 results on a dual-stack WAN.
 	IPv6 Family = 6
 )
 
-// Target distinguishes the first gateway from the external probe destination.
+// Target permits separate measurements for WAN gateway and external connectivity.
 type Target string
 
 const (
-	// Gateway checks the WAN's immediate routing neighbor.
+	// Gateway probes the next hop from the WAN routing table.
 	Gateway Target = "gateway"
-	// Cloudflare checks the configured external destination.
+	// Cloudflare resolves the configured host before probing its address.
 	Cloudflare Target = "cloudflare"
 )
 
-// ProbeMode separates new connections from connections reused across probes.
+// ProbeMode lets reports compare newly created and reused ICMP sessions.
 type ProbeMode string
 
 const (
-	// Fresh creates a connection for each probe.
+	// Fresh uses a new ICMP identifier for each attempt.
 	Fresh ProbeMode = "fresh"
-	// Persistent reuses a connection until its renewal deadline.
+	// Persistent reuses an ICMP identifier while its endpoints and renewal interval permit it.
 	Persistent ProbeMode = "persistent"
 )
 
-// Kind selects the report's delivery reason and presentation.
+// Kind selects daily reporting or an incident state transition.
 type Kind string
 
 const (
-	// Daily summarizes the scheduled reporting period.
+	// Daily uses the current scheduled reporting period.
 	Daily Kind = "daily"
-	// Incident reports a newly detected service failure.
+	// Incident starts an alert after a complete breach window.
 	Incident Kind = "incident"
-	// Reminder reports an incident that remains open.
+	// Reminder repeats an open alert after the configured interval.
 	Reminder Kind = "reminder"
-	// Recovery reports the end of an incident.
+	// Recovery follows a complete observation window without the active failures.
 	Recovery Kind = "recovery"
 )
 
-// ProbeKey identifies one independently measured probe series.
+// ProbeKey uses stable WAN identity rather than an interface name for saved history.
 type ProbeKey struct {
 	WAN    connectionid.ID `json:"WAN"`
 	Family Family          `json:"Family"`
@@ -59,7 +59,7 @@ type ProbeKey struct {
 	Mode   ProbeMode       `json:"Mode"`
 }
 
-// ProbeMinute retains counts and latency totals for one reporting interval.
+// ProbeMinute counts attempts independently of replies and sums only reply latencies.
 type ProbeMinute struct {
 	Key         ProbeKey      `json:"Key"`
 	Sent        uint64        `json:"Sent"`
@@ -72,7 +72,7 @@ type ProbeMinute struct {
 	Available   bool          `json:"Available"`
 }
 
-// WANTraffic records interface counter deltas for one reporting interval.
+// WANTraffic stores counter differences, not cumulative interface counters.
 type WANTraffic struct {
 	WAN        connectionid.ID `json:"WAN"`
 	Downloaded uint64          `json:"Downloaded"`
@@ -82,14 +82,14 @@ type WANTraffic struct {
 	Available  bool            `json:"Available"`
 }
 
-// DestinationUsage attributes client traffic to an external address.
+// DestinationUsage uses byte counts from the LAN client's perspective.
 type DestinationUsage struct {
 	Address    netip.Addr `json:"Address"`
 	Downloaded uint64     `json:"Downloaded"`
 	Uploaded   uint64     `json:"Uploaded"`
 }
 
-// TalkerUsage attributes WAN traffic to a LAN client and its destinations.
+// TalkerUsage keeps each client's byte counts separate for every selected WAN.
 type TalkerUsage struct {
 	WAN          connectionid.ID    `json:"WAN"`
 	Client       netip.Addr         `json:"Client"`
@@ -99,28 +99,28 @@ type TalkerUsage struct {
 	Destinations []DestinationUsage `json:"Destinations"`
 }
 
-// AttributionCoverage records whether client accounting covers a WAN interval.
+// AttributionCoverage marks missing client counters independently of interface totals.
 type AttributionCoverage struct {
 	WAN      connectionid.ID `json:"WAN"`
 	Complete bool            `json:"Complete"`
 	Reason   string          `json:"Reason"`
 }
 
-// CPUUsage separates missing CPU samples from measured idle time.
+// CPUUsage distinguishes unavailable readings from measured idle time.
 type CPUUsage struct {
 	Name      string  `json:"Name"`
 	Percent   float64 `json:"Percent"`
 	Available bool    `json:"Available"`
 }
 
-// HostUsage combines CPU samples with memory use for the reporting interval.
+// HostUsage measures memory use after subtracting available memory from total memory.
 type HostUsage struct {
 	CPU             []CPUUsage `json:"CPU"`
 	MemoryPercent   float64    `json:"MemoryPercent"`
 	MemoryAvailable bool       `json:"MemoryAvailable"`
 }
 
-// Minute groups measurements that share one collection interval.
+// Minute records explicit boundaries because startup can produce a partial interval.
 type Minute struct {
 	Start           time.Time             `json:"Start"`
 	End             time.Time             `json:"End"`
@@ -134,7 +134,7 @@ type Minute struct {
 	DNSReceiveDrops uint64                `json:"DNSReceiveDrops"`
 }
 
-// IncidentView supplies the incident context required to render a report.
+// IncidentView separates local gateway failures from failures attributed to a WAN.
 type IncidentView struct {
 	Open           bool              `json:"Open"`
 	Start          time.Time         `json:"Start"`

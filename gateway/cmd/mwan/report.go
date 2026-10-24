@@ -21,7 +21,10 @@ func runReport(ctx context.Context, arguments []string, cfg *config.Config, outp
 	if err == nil {
 		err = executeReport(ctx, flags, cfg)
 	}
-	if err != nil && !errors.Is(err, context.Canceled) {
+	if errors.Is(err, context.Canceled) && flags.action == "watch" {
+		return 0
+	}
+	if err != nil {
 		fmt.Fprintf(errorOutput, "mwan report: %v\n", err)
 		return 1
 	}
@@ -37,6 +40,9 @@ func executeReport(ctx context.Context, flags reportFlags, cfg *config.Config) (
 			slog.ErrorContext(ctx, "report command failed", "action", flags.action, "error", reportError)
 		}
 	}()
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("start reporting command: %w", err)
+	}
 	if cfg == nil {
 		return errors.New("reporting requires a configuration")
 	}

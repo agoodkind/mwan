@@ -63,10 +63,8 @@ func reportCommandConfig(t *testing.T, server *testsmtp.Server) (*config.Config,
 	return cfg, path, []string{"report", "send", "--network", "../../yang/instances/network-min.json", "--schema-dir", "../../internal/yangpub/schema"}
 }
 
-func TestReportCommandSendsPersistedSummary(t *testing.T) {
-	t.Parallel()
-	server := testsmtp.Start(t)
-	cfg, configPath, arguments := reportCommandConfig(t, server)
+func recordReportCommandHistory(t *testing.T, cfg *config.Config, arguments []string) {
+	t.Helper()
 	network, err := networkload.Load(arguments[3], arguments[5])
 	if err != nil {
 		t.Fatal(err)
@@ -98,6 +96,13 @@ func TestReportCommandSendsPersistedSummary(t *testing.T) {
 	if err := service.Close(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestReportCommandSendsPersistedSummary(t *testing.T) {
+	t.Parallel()
+	server := testsmtp.Start(t)
+	cfg, configPath, arguments := reportCommandConfig(t, server)
+	recordReportCommandHistory(t, cfg, arguments)
 	output, code := runReportCommand(t, configPath, arguments...)
 	if code != 0 {
 		t.Fatalf("report command failed: %s", output)

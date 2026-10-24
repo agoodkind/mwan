@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"goodkind.io/mwan/internal/email"
+	"goodkind.io/send-email/mailer"
 )
 
 // emailSink delivers each rendered alert to a single recipient via the
@@ -58,6 +59,20 @@ func (s *emailSink) Send(ctx context.Context, level slog.Level, msg string, fiel
 		slog.ErrorContext(ctx, "notify email send failed",
 			"err", err, "to", s.to, "alert_level", level.String(), "alert_msg", msg)
 		return fmt.Errorf("notify email send: %w", err)
+	}
+	return nil
+}
+
+func (s *emailSink) SendMessage(ctx context.Context, message mailer.Message) error {
+	if message.To == "" {
+		message.To = s.to
+	}
+	if s.subjectPrefix != "" && !strings.HasPrefix(message.Subject, s.subjectPrefix) {
+		message.Subject = s.subjectPrefix + " " + message.Subject
+	}
+	if err := s.sender.SendMessage(ctx, message); err != nil {
+		slog.WarnContext(ctx, "notify message delivery failed", "error", err, "to", message.To)
+		return fmt.Errorf("send email message: %w", err)
 	}
 	return nil
 }
