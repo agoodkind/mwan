@@ -30,7 +30,9 @@ func (sampler *hostSampler) sample() (HostUsage, error) {
 			continue
 		}
 		var ticks cpuTicks
-		for index, field := range fields[1:] {
+		// Linux already includes the trailing guest counters in user and nice time.
+		counterEnd := min(len(fields), 9)
+		for index, field := range fields[1:counterEnd] {
 			value, err := strconv.ParseUint(field, 10, 64)
 			if err != nil {
 				slog.Warn("parse reporting CPU ticks failed", "cpu", fields[0], "error", err)
