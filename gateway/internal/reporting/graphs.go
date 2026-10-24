@@ -71,28 +71,10 @@ func (renderer *Renderer) renderGraph(ctx context.Context, directory string, def
 	}
 	height := 278 + 12*legendRows
 	path := filepath.Join(directory, definition.filename)
-	axisFormat, statFormat := "%4.2lf "+definition.unit, "%6.2lf "+definition.unit
+	arguments := graphArguments(path, definition, height)
+	statFormat := "%6.2lf " + definition.unit
 	if definition.unit == "%" {
-		axisFormat, statFormat = "%3.1lf%%", "%5.2lf%%"
-	}
-	arguments := []string{
-		"graph", path, "--start", strconv.FormatInt(definition.start.Unix(), 10), "--end", strconv.FormatInt(definition.end.Unix(), 10),
-		"--full-size-mode", "--width", strconv.Itoa(graphWidth), "--height", strconv.Itoa(height), "--zoom", strconv.Itoa(graphScale),
-		"--title", definition.title, "--font", "DEFAULT:9:Liberation Mono", "--font", "TITLE:11:Liberation Mono Bold", "--font", "LEGEND:7:Liberation Mono",
-		"--color", "BACK#1E1E1E", "--color", "CANVAS#1E1E1E", "--color", "FONT#EEEEEE", "--color", "GRID#3A3A3A", "--color", "MGRID#555555",
-		"--color", "AXIS#999999", "--color", "ARROW#1E1E1E", "--color", "FRAME#1E1E1E", "--border", "0", "--slope-mode", "--graph-render-mode", "normal",
-		"--alt-autoscale-max", "--lower-limit", "0", "--units-exponent", "0", "--left-axis-format", axisFormat, "--units-length", "9", "--dynamic-labels", "--disable-rrdtool-tag",
-	}
-	if definition.filename == "cpu-ram.png" {
-		arguments = append(arguments, "--upper-limit", "100", "--rigid")
-	}
-	switch {
-	case definition.filename == "usage.png":
-		arguments = append(arguments, "--x-grid", "DAY:1:DAY:7:DAY:7:0:%b %d")
-	case definition.end.Sub(definition.start) > 6*time.Hour:
-		arguments = append(arguments, "--x-grid", "HOUR:1:HOUR:6:HOUR:6:0:%a %H:%M")
-	default:
-		arguments = append(arguments, "--x-grid", "MINUTE:1:MINUTE:5:MINUTE:5:0:%H:%M")
+		statFormat = "%5.2lf%%"
 	}
 	labelWidth := 17
 	for _, trace := range definition.traces {
@@ -103,15 +85,15 @@ func (renderer *Renderer) renderGraph(ctx context.Context, directory string, def
 	var legends []string
 	for index, trace := range definition.traces {
 		name := fmt.Sprintf("s%d", index)
-		arguments = append(arguments, fmt.Sprintf("DEF:%s_raw=%s:%s:AVERAGE", name, rrdEscape(trace.path), trace.source), fmt.Sprintf("CDEF:%s=%s_raw,%g,*", name, name, trace.scale))
+		arguments = append(arguments, graphDEF(name+"_raw", trace.path, trace.source, "AVERAGE", definition), fmt.Sprintf("CDEF:%s=%s_raw,%g,*", name, name, trace.scale))
 		minimum, peak := name, name
 		if trace.minimum != "" {
 			minimum = name + "_observed_min"
-			arguments = append(arguments, fmt.Sprintf("DEF:%s=%s:%s:MIN", minimum, rrdEscape(trace.path), trace.minimum))
+			arguments = append(arguments, graphDEF(minimum, trace.path, trace.minimum, "MIN", definition))
 		}
 		if trace.peak != "" {
 			peak = name + "_observed_peak"
-			arguments = append(arguments, fmt.Sprintf("DEF:%s=%s:%s:MAX", peak, rrdEscape(trace.path), trace.peak))
+			arguments = append(arguments, graphDEF(peak, trace.path, trace.peak, "MAX", definition))
 		}
 		arguments = append(arguments, "VDEF:"+name+"_min="+minimum+",MINIMUM", "VDEF:"+name+"_max="+peak+",MAXIMUM", "VDEF:"+name+"_avg="+name+",AVERAGE", "VDEF:"+name+"_last="+name+",LAST")
 		if utf8.RuneCountInString(trace.label) > 24 {
@@ -164,4 +146,57 @@ func wrapGraphLabel(text string, width int) []string {
 		rows = append(rows, string(current))
 	}
 	return rows
+}
+
+func graphArguments(path string, definition graphDefinition, height int) []string {
+	padding := graphEdgePadding(definition)
+	axisFormat := "%4.2lf " + definition.unit + "  "
+	if definition.unit == "%" {
+		axisFormat = "%3.1lf%%  "
+	}
+	arguments := []string{
+		"graph", path, "--start", strconv.FormatInt(definition.start.Add(-padding).Unix(), 10), "--end", strconv.FormatInt(definition.end.Add(padding).Unix(), 10),
+		"--full-size-mode", "--width", strconv.Itoa(graphWidth), "--height", strconv.Itoa(height), "--zoom", strconv.Itoa(graphScale),
+		"--title", definition.title, "--font", "DEFAULT:9:Liberation Mono", "--font", "TITLE:11:Liberation Mono Bold", "--font", "LEGEND:7:Liberation Mono",
+		"--color", "BACK#1E1E1E", "--color", "CANVAS#1E1E1E", "--color", "FONT#EEEEEE", "--color", "GRID#3A3A3A", "--color", "MGRID#555555",
+		"--color", "AXIS#999999", "--color", "ARROW#1E1E1E", "--color", "FRAME#1E1E1E", "--border", "0", "--slope-mode", "--graph-render-mode", "normal",
+		"--alt-autoscale-max", "--lower-limit", "0", "--units-exponent", "0", "--left-axis-format", axisFormat, "--units-length", "10", "--dynamic-labels", "--disable-rrdtool-tag",
+	}
+	if definition.filename == "cpu-ram.png" {
+		arguments = append(arguments, "--upper-limit", "100", "--rigid")
+	}
+	switch {
+	case definition.filename == "usage.png":
+		arguments = append(arguments, "--x-grid", "DAY:1:DAY:7:DAY:7:0:%b %d")
+	case definition.end.Sub(definition.start) > 6*time.Hour:
+		arguments = append(arguments, "--x-grid", "HOUR:1:HOUR:6:HOUR:6:0:%a %H:%M")
+	default:
+		arguments = append(arguments, "--x-grid", "MINUTE:1:MINUTE:5:MINUTE:5:0:%H:%M")
+	}
+
+	return arguments
+}
+
+func graphEdgePadding(definition graphDefinition) time.Duration {
+	label := definition.start.Format("15:04")
+	if definition.filename == "usage.png" {
+		label = definition.start.Format("Jan 02")
+	} else if definition.end.Sub(definition.start) > 6*time.Hour {
+		label = definition.start.Format("Mon 15:04")
+	}
+	const (
+		axisGutter  = 110.0
+		labelGap    = 12.0
+		fontPoints  = 9.0
+		pointPixels = 4.0 / 3.0
+		monoAdvance = 0.6
+	)
+	labelWidth := float64(utf8.RuneCountInString(label)) * fontPoints * pointPixels * monoAdvance
+	edge := labelWidth/2 + labelGap
+	fraction := edge / (float64(graphWidth) - axisGutter - 2*edge)
+	return max(time.Second, time.Duration(float64(definition.end.Sub(definition.start))*fraction))
+}
+
+func graphDEF(name, path, source, function string, definition graphDefinition) string {
+	return fmt.Sprintf("DEF:%s=%s:%s:%s:start=%d:end=%d", name, rrdEscape(path), source, function, definition.start.Unix(), definition.end.Unix())
 }
