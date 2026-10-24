@@ -70,9 +70,13 @@ func TestServiceCombinesWANIncidentsAndWaitsForRecovery(t *testing.T) {
 			t.Fatal(err)
 		}
 		if index == 1 {
-			opening := testsmtp.HTML(t, server.Next(t))
+			accepted := server.Next(t)
+			opening := testsmtp.HTML(t, accepted)
 			if !strings.Contains(opening, "Sonic") || !strings.Contains(opening, "Etheric") || !strings.Contains(opening, "Current incident") || !strings.Contains(opening, "Other WANs for comparison") {
 				t.Fatal("combined opening omitted a WAN or comparison section")
+			}
+			if !strings.Contains(opening, "packet-loss threshold") || !strings.Contains(string(accepted), "incident-observations.json") {
+				t.Fatal("incident omitted its triggering signal or diagnostic observations")
 			}
 		}
 		if index == 4 || index == 7 {

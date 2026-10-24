@@ -67,12 +67,15 @@ func newManager(log *slog.Logger, cfg Config, sink Sink) (*Manager, error) {
 		return nil, errLogRequired
 	}
 	return &Manager{
-		cfg:   cfg,
-		log:   log.With("component", "notify"),
-		sink:  sink,
-		clock: realClock{},
-		mu:    sync.Mutex{},
-		state: map[string]alertState{},
+		cfg:             cfg,
+		log:             log.With("component", "notify"),
+		sink:            sink,
+		clock:           realClock{},
+		mu:              sync.Mutex{},
+		state:           map[string]alertState{},
+		reportSender:    nil,
+		reportRecipient: "",
+		reportPrefix:    "",
 	}, nil
 }
 

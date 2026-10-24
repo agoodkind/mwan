@@ -30,7 +30,11 @@ func reportSettings(t *testing.T) config.ReportSection {
 	t.Helper()
 	settings := config.DefaultReportSection()
 	settings.StateDirectory = t.TempDir()
-	settings.RRDToolPath = "/usr/local/bin/rrdtool"
+	path, err := exec.LookPath("rrdtool")
+	if err != nil {
+		t.Fatalf("install RRDtool for reporting tests: %v", err)
+	}
+	settings.RRDToolPath = path
 	return settings
 }
 
@@ -52,7 +56,17 @@ func recordHistory(t *testing.T, settings config.ReportSection, network *network
 			minute.Talkers = append(minute.Talkers, reporting.TalkerUsage{WAN: id, Client: netip.MustParseAddr("fd06:fab::5"), Label: "fd06:fab::5", Downloaded: 500000, Uploaded: 100000, Destinations: []reporting.DestinationUsage{{Address: netip.MustParseAddr("2001:db8::8"), Downloaded: 500000, Uploaded: 100000}}})
 			for _, family := range []reporting.Family{reporting.IPv4, reporting.IPv6} {
 				for _, target := range []reporting.Target{reporting.Gateway, reporting.Cloudflare} {
-					minute.Probes = append(minute.Probes, reporting.ProbeMinute{Key: reporting.ProbeKey{WAN: id, Family: family, Target: target, Mode: reporting.Fresh}, Sent: 60, Replies: 60, LatencySum: 600 * time.Millisecond, LatencyMin: 5 * time.Millisecond, LatencyMax: 25 * time.Millisecond, Available: !(id == "stable-etheric" && family == reporting.IPv6)})
+					mean := time.Duration(8+index%3) * time.Millisecond
+					if id == "stable-etheric" {
+						mean += 15 * time.Millisecond
+					}
+					if target == reporting.Cloudflare {
+						mean += 4 * time.Millisecond
+					}
+					if family == reporting.IPv6 {
+						mean += time.Millisecond
+					}
+					minute.Probes = append(minute.Probes, reporting.ProbeMinute{Key: reporting.ProbeKey{WAN: id, Family: family, Target: target, Mode: reporting.Fresh}, Sent: 60, Replies: 60, LatencySum: 60 * mean, LatencyMin: mean - 2*time.Millisecond, LatencyMax: mean + 4*time.Millisecond, Available: !(id == "stable-etheric" && family == reporting.IPv6)})
 				}
 			}
 		}

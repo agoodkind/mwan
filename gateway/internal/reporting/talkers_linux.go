@@ -3,6 +3,7 @@ package reporting
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -18,11 +19,13 @@ import (
 
 const flowLimit = 32768
 
-type flowCount struct{ uploaded, downloaded uint64 }
-type talkerKey struct {
-	wan                 connectionid.ID
-	client, destination netip.Addr
-}
+type (
+	flowCount struct{ uploaded, downloaded uint64 }
+	talkerKey struct {
+		wan                 connectionid.ID
+		client, destination netip.Addr
+	}
+)
 
 type talkerAccounting struct {
 	mu        sync.Mutex
@@ -41,8 +44,17 @@ type talkerAccounting struct {
 }
 
 func newTalkerAccounting(network *networkjson.Config, proc string, local map[netip.Addr]bool) *talkerAccounting {
-	accounting := &talkerAccounting{marks: make(map[uint32]connectionid.ID), previous: make(map[string]flowCount), destroyed: make(map[string]struct{}), current: make(map[talkerKey]flowCount), local: local, gaps: make(map[connectionid.ID]string)}
+	accounting := &talkerAccounting{
+		mu: sync.Mutex{}, dumps: nil, events: nil, workers: sync.WaitGroup{},
+		marks: make(map[uint32]connectionid.ID), previous: make(map[string]flowCount),
+		destroyed: make(map[string]struct{}), current: make(map[talkerKey]flowCount),
+		local: local, prefixes: nil, gaps: make(map[connectionid.ID]string), failure: nil, closed: false,
+	}
 	for key, wan := range network.WAN {
+		if wan.FwMark < 1 || uint64(wan.FwMark) > 4294967295 {
+			accounting.failure = fmt.Errorf("WAN %s requires a valid connection mark for attribution", key)
+			continue
+		}
 		accounting.marks[uint32(wan.FwMark)] = connectionid.Resolve(network.ConnectionIDs[key].String(), key, wan.Iface)
 	}
 	for _, text := range []string{network.InternalPrefix, network.InternalNetV4} {
@@ -58,11 +70,18 @@ func newTalkerAccounting(network *networkjson.Config, proc string, local map[net
 	if len(network.WAN) == 0 {
 		return accounting
 	}
-	accounting.failure = accounting.open(proc)
+	if accounting.failure == nil {
+		accounting.failure = accounting.open(proc)
+	}
 	return accounting
 }
 
-func (accounting *talkerAccounting) open(proc string) error {
+func (accounting *talkerAccounting) open(proc string) (failure error) {
+	defer func() {
+		if failure != nil {
+			slog.Warn("open connection accounting failed", "error", failure)
+		}
+	}()
 	setting, err := os.ReadFile(filepath.Join(proc, "sys/net/netfilter/nf_conntrack_acct"))
 	if err != nil {
 		return fmt.Errorf("read conntrack accounting setting: %w", err)
@@ -72,26 +91,26 @@ func (accounting *talkerAccounting) open(proc string) error {
 	}
 	events, err := netfilter.Dial(nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("open connection accounting event socket: %w", err)
 	}
 	if err := events.SetReadBuffer(1048576); err != nil {
 		_ = events.Close()
-		return err
+		return fmt.Errorf("set connection accounting event buffer: %w", err)
 	}
 	if err := events.JoinGroups([]netfilter.NetlinkGroup{netfilter.GroupCTNew, netfilter.GroupCTDestroy}); err != nil {
 		_ = events.Close()
-		return err
+		return fmt.Errorf("subscribe to connection accounting events: %w", err)
 	}
 	dumps, err := conntrack.Dial(nil)
 	if err != nil {
 		_ = events.Close()
-		return err
+		return fmt.Errorf("open connection accounting dump socket: %w", err)
 	}
 	flows, err := dumps.Dump(nil)
 	if err != nil {
 		_ = events.Close()
 		_ = dumps.Close()
-		return err
+		return fmt.Errorf("read initial connection accounting table: %w", err)
 	}
 	if len(flows) > flowLimit {
 		_ = events.Close()
@@ -103,7 +122,17 @@ func (accounting *talkerAccounting) open(proc string) error {
 		accounting.observe(flow, true, false)
 	}
 	accounting.workers.Add(1)
-	go accounting.readEvents()
+	go func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				accounting.mu.Lock()
+				accounting.failure = fmt.Errorf("connection event reader panic: %v", recovered)
+				accounting.mu.Unlock()
+				slog.Error("connection event reader panic", "error", recovered)
+			}
+		}()
+		accounting.readEvents()
+	}()
 	return nil
 }
 
@@ -118,6 +147,7 @@ func (accounting *talkerAccounting) readEvents() {
 		accounting.mu.Lock()
 		if err != nil {
 			if !accounting.closed {
+				slog.Warn("receive connection accounting events failed", "error", err)
 				accounting.failure = fmt.Errorf("conntrack event accounting interrupted: %w", err)
 			}
 			accounting.mu.Unlock()
@@ -126,36 +156,51 @@ func (accounting *talkerAccounting) readEvents() {
 		for _, message := range messages {
 			var event conntrack.Event
 			if err := event.Unmarshal(message); err != nil {
+				slog.Warn("decode connection accounting event failed", "error", err)
 				accounting.failure = err
 				continue
 			}
-			if event.Flow == nil {
-				continue
-			}
-			if event.Type == conntrack.EventNew {
-				key := flowKey(*event.Flow)
-				if _, exists := accounting.previous[key]; !exists {
-					accounting.previous[key] = flowCount{}
-				}
-			}
-			if event.Type == conntrack.EventDestroy {
-				accounting.observe(*event.Flow, false, true)
-			}
+			accounting.observeEvent(event)
 		}
 		accounting.mu.Unlock()
 	}
 }
 
+func (accounting *talkerAccounting) observeEvent(event conntrack.Event) {
+	if event.Flow == nil {
+		return
+	}
+	switch event.Type {
+	case conntrack.EventNew:
+		client, _, _ := accounting.client(*event.Flow)
+		if !client.IsValid() {
+			return
+		}
+		if len(accounting.previous) >= flowLimit {
+			accounting.failure = errors.New("conntrack reporting state exceeds its limit")
+			return
+		}
+		key := flowKey(*event.Flow)
+		if _, exists := accounting.previous[key]; !exists {
+			accounting.previous[key] = flowCount{uploaded: 0, downloaded: 0}
+		}
+	case conntrack.EventDestroy:
+		accounting.observe(*event.Flow, false, true)
+	case conntrack.EventUnknown, conntrack.EventUpdate, conntrack.EventExpNew, conntrack.EventExpDestroy:
+		return
+	}
+}
+
 func (accounting *talkerAccounting) client(flow conntrack.Flow) (netip.Addr, netip.Addr, bool) {
 	source, destination := flow.TupleOrig.IP.SourceAddress.Unmap(), flow.TupleOrig.IP.DestinationAddress.Unmap()
-	if accounting.local[source] || accounting.local[destination] {
+	if accounting.local[source] {
 		return netip.Addr{}, netip.Addr{}, false
 	}
 	for _, prefix := range accounting.prefixes {
 		if prefix.Contains(source) {
 			return source, destination, true
 		}
-		if prefix.Contains(destination) {
+		if prefix.Contains(destination) && !accounting.local[destination] {
 			return destination, source, false
 		}
 		if prefix.Contains(flow.TupleReply.IP.SourceAddress.Unmap()) {
@@ -166,6 +211,9 @@ func (accounting *talkerAccounting) client(flow conntrack.Flow) (netip.Addr, net
 }
 
 func (accounting *talkerAccounting) observe(flow conntrack.Flow, baseline, destroyed bool) {
+	if destroyed {
+		defer delete(accounting.previous, flowKey(flow))
+	}
 	wan, matched := accounting.marks[flow.Mark]
 	client, destination, outbound := accounting.client(flow)
 	if !client.IsValid() {
@@ -182,6 +230,9 @@ func (accounting *talkerAccounting) observe(flow conntrack.Flow, baseline, destr
 		return
 	}
 	next := flowCount{uploaded: flow.CountersOrig.Bytes, downloaded: flow.CountersReply.Bytes}
+	if !flow.CountersReply.Direction {
+		accounting.gaps[wan] = "A connection does not provide byte-counter attributes."
+	}
 	previous, exists := accounting.previous[key]
 	if !exists && !baseline {
 		accounting.gaps[wan] = "A connection did not have a preceding accounting baseline."
@@ -224,11 +275,13 @@ func (accounting *talkerAccounting) sample() ([]TalkerUsage, []AttributionCovera
 	defer accounting.mu.Unlock()
 	if accounting.failure == nil && accounting.dumps != nil {
 		flows, err := accounting.dumps.Dump(nil)
-		if err != nil {
+		switch {
+		case err != nil:
+			slog.Warn("read connection accounting table failed", "error", err)
 			accounting.failure = err
-		} else if len(flows) > flowLimit {
+		case len(flows) > flowLimit:
 			accounting.failure = errors.New("conntrack table exceeds reporting limit")
-		} else {
+		default:
 			for _, flow := range flows {
 				accounting.observe(flow, false, false)
 			}
@@ -240,7 +293,7 @@ func (accounting *talkerAccounting) sample() ([]TalkerUsage, []AttributionCovera
 		clientKey.destination = netip.Addr{}
 		usage := byClient[clientKey]
 		if usage == nil {
-			usage = &TalkerUsage{WAN: key.wan, Client: key.client, Label: key.client.String()}
+			usage = &TalkerUsage{WAN: key.wan, Client: key.client, Label: key.client.String(), Downloaded: 0, Uploaded: 0, Destinations: nil}
 			byClient[clientKey] = usage
 		}
 		usage.Downloaded += counts.downloaded
@@ -277,5 +330,9 @@ func (accounting *talkerAccounting) close() error {
 		failures = append(failures, accounting.dumps.Close())
 	}
 	accounting.workers.Wait()
-	return errors.Join(failures...)
+	if err := errors.Join(failures...); err != nil {
+		slog.Warn("close connection accounting sockets failed", "error", err)
+		return fmt.Errorf("close connection accounting sockets: %w", err)
+	}
+	return nil
 }

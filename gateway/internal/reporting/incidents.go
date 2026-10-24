@@ -1,6 +1,7 @@
 package reporting
 
 import (
+	"fmt"
 	"slices"
 	"time"
 
@@ -8,43 +9,56 @@ import (
 )
 
 type incidentState struct {
-	View         IncidentView
-	LastBad      map[connectionid.ID]time.Time
-	LocalLastBad time.Time
-	LastReminder time.Time
+	View         IncidentView                  `json:"View"`
+	LastBad      map[connectionid.ID]time.Time `json:"LastBad"`
+	LocalLastBad time.Time                     `json:"LocalLastBad"`
+	LastReminder time.Time                     `json:"LastReminder"`
 }
 
-func (service *Service) breaches(ctxEnd time.Time) (map[connectionid.ID]bool, bool, map[connectionid.ID]bool, bool, error) {
-	window, _ := time.ParseDuration(service.settings.BreachWindow)
-	history, err := service.store.history(ctxEnd.Add(-window), ctxEnd)
-	if err != nil {
-		return nil, false, nil, false, err
-	}
-	step, _ := time.ParseDuration(service.settings.SampleInterval)
-	bad, observed := make(map[connectionid.ID]bool), make(map[connectionid.ID]bool)
+func completeBreachHistory(history []Minute, window, step time.Duration) bool {
 	if len(history) != int(window/step) {
-		return bad, false, observed, false, nil
+		return false
 	}
 	for index, minute := range history {
 		if minute.Partial || minute.End.Sub(minute.Start) != step {
-			return bad, false, observed, false, nil
+			return false
 		}
 		if index > 0 && !minute.Start.Equal(history[index-1].End) {
-			return bad, false, observed, false, nil
+			return false
 		}
+	}
+	return true
+}
+
+func (service *Service) breaches(ctxEnd time.Time) (map[connectionid.ID]bool, bool, map[connectionid.ID]bool, bool, []string, error) {
+	window, _ := time.ParseDuration(service.settings.BreachWindow)
+	history, err := service.store.history(ctxEnd.Add(-window), ctxEnd)
+	if err != nil {
+		return nil, false, nil, false, nil, err
+	}
+	step, _ := time.ParseDuration(service.settings.SampleInterval)
+	bad, observed := make(map[connectionid.ID]bool), make(map[connectionid.ID]bool)
+	if !completeBreachHistory(history, window, step) {
+		return bad, false, observed, false, nil, nil
 	}
 	probeInterval, _ := time.ParseDuration(service.settings.ProbeInterval)
 	byKey := make(map[ProbeKey]ProbeMinute)
 	keyMinutes := make(map[ProbeKey]int)
+	for _, key := range service.expectedProbeKeys() {
+		keyMinutes[key] = 0
+	}
 	traffic := make(map[connectionid.ID]WANTraffic)
 	trafficMinutes := make(map[connectionid.ID]int)
 	localBad := false
+	var signals []string
+	invalidWAN := make(map[connectionid.ID]bool)
 	for _, minute := range history {
 		if minute.UDPSendFailures > 0 || minute.DNSReceiveDrops > 0 {
 			localBad = true
+			signals = append(signals, "Local gateway UDP error counters increased.")
 		}
 		for _, probe := range minute.Probes {
-			if probe.Key.Mode != Fresh || !probe.Available || time.Duration(probe.Sent)*probeInterval < time.Duration(service.settings.MinProbeSeconds)*time.Second {
+			if probe.Key.Mode != Fresh || !probe.Available || float64(probe.Sent)*probeInterval.Seconds() < float64(service.settings.MinProbeSeconds) {
 				continue
 			}
 			total := byKey[probe.Key]
@@ -67,28 +81,58 @@ func (service *Service) breaches(ctxEnd time.Time) (map[connectionid.ID]bool, bo
 			trafficMinutes[sample.WAN]++
 		}
 	}
-	for key, probe := range byKey {
+	for key := range keyMinutes {
 		if keyMinutes[key] != len(history) {
+			invalidWAN[key.WAN] = true
 			continue
 		}
 		observed[key.WAN] = true
-		loss := 100 * float64(probe.Lost) / float64(probe.Sent)
-		dns := 100 * float64(probe.DNSFailures) / float64(probe.Sent)
-		latency := float64(probe.LatencySum) / float64(time.Millisecond) / float64(probe.Replies)
-		if loss > service.settings.LossPercent || dns > service.settings.DNSFailurePercent || (probe.Replies > 0 && latency >= service.settings.LatencyMilliseconds) {
+		probe := byKey[key]
+		reasons := service.probeReasons(key, probe)
+		if len(reasons) > 0 {
 			bad[key.WAN] = true
+			signals = append(signals, reasons...)
 		}
+	}
+	for id := range invalidWAN {
+		observed[id] = false
 	}
 	for id, total := range traffic {
 		if trafficMinutes[id] == len(history) && total.Drops >= service.settings.MinDrops && 100*float64(total.Drops)/float64(total.Packets+total.Drops) > service.settings.DropPercent {
 			bad[id] = true
+			signals = append(signals, service.renderer.label(id)+" interface drops exceeded the configured threshold.")
 		}
 	}
-	return bad, localBad, observed, true, nil
+	for _, id := range service.store.wanIDs() {
+		if trafficMinutes[id] != len(history) {
+			observed[id] = false
+		}
+	}
+	return bad, localBad, observed, true, signals, nil
+}
+
+func (service *Service) expectedProbeKeys() []ProbeKey {
+	var keys []ProbeKey
+	for name, wan := range service.store.network.WAN {
+		id := connectionid.Resolve(service.store.network.ConnectionIDs[name].String(), name, wan.Iface)
+		var families []Family
+		if wan.TranslationV4 != nil {
+			families = append(families, IPv4)
+		}
+		if wan.TranslationV6 != nil {
+			families = append(families, IPv6)
+		}
+		for _, family := range families {
+			for _, target := range []Target{Gateway, Cloudflare} {
+				keys = append(keys, ProbeKey{WAN: id, Family: family, Target: target, Mode: Fresh})
+			}
+		}
+	}
+	return keys
 }
 
 func (service *Service) evaluateIncident(end time.Time) error {
-	bad, localBad, observed, complete, err := service.breaches(end)
+	bad, localBad, observed, complete, signals, err := service.breaches(end)
 	if err != nil {
 		return err
 	}
@@ -97,6 +141,11 @@ func (service *Service) evaluateIncident(end time.Time) error {
 		state.LastBad = make(map[connectionid.ID]time.Time)
 	}
 	previouslyOpen := state.View.Open
+	for _, signal := range signals {
+		if !slices.Contains(state.View.Signals, signal) {
+			state.View.Signals = append(state.View.Signals, signal)
+		}
+	}
 	for id := range bad {
 		state.LastBad[id] = end
 		if !slices.Contains(state.View.Affected, id) {
@@ -143,7 +192,9 @@ func (service *Service) evaluateIncident(end time.Time) error {
 	if recovered {
 		state.View.Open = false
 		service.enqueue(Recovery, state.View, end)
-		*state = incidentState{LastBad: make(map[connectionid.ID]time.Time)}
+		var empty incidentState
+		empty.LastBad = make(map[connectionid.ID]time.Time)
+		*state = empty
 		return nil
 	}
 	reminder, _ := time.ParseDuration(service.settings.ReminderInterval)
@@ -152,4 +203,19 @@ func (service *Service) evaluateIncident(end time.Time) error {
 		state.LastReminder = end
 	}
 	return nil
+}
+
+func (service *Service) probeReasons(key ProbeKey, probe ProbeMinute) []string {
+	prefix := fmt.Sprintf("%s %s IPv%d probes", service.renderer.label(key.WAN), key.Target, key.Family)
+	var reasons []string
+	if 100*float64(probe.Lost)/float64(probe.Sent) > service.settings.LossPercent {
+		reasons = append(reasons, prefix+" exceeded the packet-loss threshold.")
+	}
+	if 100*float64(probe.DNSFailures)/float64(probe.Sent) > service.settings.DNSFailurePercent {
+		reasons = append(reasons, prefix+" exceeded the DNS-failure threshold.")
+	}
+	if probe.Replies > 0 && float64(probe.LatencySum)/float64(time.Millisecond)/float64(probe.Replies) >= service.settings.LatencyMilliseconds {
+		reasons = append(reasons, prefix+" exceeded the latency threshold.")
+	}
+	return reasons
 }

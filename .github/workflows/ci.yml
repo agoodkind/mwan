@@ -31,7 +31,7 @@ jobs:
       # libyang2-tools supplies yanglint for the YANG model gate, and
       # libpcre2-dev is what the pinned libyang links against when the
       # cgo-deps hook builds it.
-      apt_packages: libyang2-tools libpcre2-dev
+      apt_packages: libyang2-tools libpcre2-dev rrdtool fonts-liberation
       go_tool_packages: github.com/bufbuild/buf/cmd/buf@latest google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11 google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
       # Each module's Makefile sets its release platforms through RELEASE_PLATFORMS.
       # The build gate compiles the gateway platforms on native runners with cgo.
@@ -182,6 +182,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         working-directory: gateway
         run: make test-netns
+
+  reporting:
+    name: mwan reporting namespace tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: gateway/go.mod
+          cache-dependency-path: gateway/go.sum
+      - name: Verify WAN probes and client accounting
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: make -C gateway test-reporting-netns WANCONFIG_DOCKER_ARCH=amd64
 
   # The firewall tests need the privileged builder and cgo schema libraries.
   firewall:

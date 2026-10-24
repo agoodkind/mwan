@@ -1,0 +1,7 @@
+table inet report_blackhole {
+    chain output {
+        type filter hook output priority 0;
+        policy accept;
+        oifname "wan1" meta l4proto { icmp, ipv6-icmp } drop
+    }
+}

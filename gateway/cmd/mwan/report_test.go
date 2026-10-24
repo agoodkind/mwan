@@ -1,11 +1,10 @@
-package main
+package main_test
 
 import (
-	"bytes"
+	"errors"
 	"fmt"
-	"io"
-	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,17 +12,47 @@ import (
 
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/connectionid"
+	"goodkind.io/mwan/internal/logging"
 	"goodkind.io/mwan/internal/networkload"
 	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/reporting"
 	"goodkind.io/mwan/internal/testsmtp"
 )
 
-func reportCommandConfig(t *testing.T, server *testsmtp.Server) (*config.Config, []string) {
+func buildReportCommand(t *testing.T) string {
+	t.Helper()
+	binaryPath := filepath.Join(t.TempDir(), "mwan")
+	build := exec.CommandContext(t.Context(), "go", "build", "-o", binaryPath, ".")
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build mwan: %v\n%s", err, output)
+	}
+	return binaryPath
+}
+
+func runReportCommand(t *testing.T, configPath string, arguments ...string) (string, int) {
+	t.Helper()
+	command := exec.CommandContext(t.Context(), buildReportCommand(t), arguments...)
+	command.Env = append(os.Environ(), "MWAN_CONFIG="+configPath)
+	output, err := command.CombinedOutput()
+	if err == nil {
+		return string(output), 0
+	}
+	var exitError *exec.ExitError
+	if !errors.As(err, &exitError) {
+		t.Fatalf("run report command: %v\n%s", err, output)
+	}
+	return string(output), exitError.ExitCode()
+}
+
+func reportCommandConfig(t *testing.T, server *testsmtp.Server) (*config.Config, string, []string) {
 	t.Helper()
 	state := t.TempDir()
 	path := filepath.Join(t.TempDir(), "config.toml")
-	text := fmt.Sprintf("[report]\nstate_directory = %q\nrrdtool_path = %q\n[email]\nmsmtprc_path = %q\nalert_email = %q\n", state, "/usr/local/bin/rrdtool", server.Path, "recipient@example.com")
+	rrdtool, err := exec.LookPath("rrdtool")
+	if err != nil {
+		t.Fatalf("install RRDtool for reporting tests: %v", err)
+	}
+	text := fmt.Sprintf("[report]\nstate_directory = %q\nrrdtool_path = %q\n[email]\nmsmtprc_path = %q\nalert_email = %q\n", state, rrdtool, server.Path, "recipient@example.com")
 	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -31,18 +60,23 @@ func reportCommandConfig(t *testing.T, server *testsmtp.Server) (*config.Config,
 	if err != nil {
 		t.Fatal(err)
 	}
-	return cfg, []string{"send", "--network", "../../yang/instances/network-min.json", "--schema-dir", "../../internal/yangpub/schema"}
+	return cfg, path, []string{"report", "send", "--network", "../../yang/instances/network-min.json", "--schema-dir", "../../internal/yangpub/schema"}
 }
 
 func TestReportCommandSendsPersistedSummary(t *testing.T) {
 	t.Parallel()
 	server := testsmtp.Start(t)
-	cfg, arguments := reportCommandConfig(t, server)
-	network, err := networkload.Load(arguments[2], arguments[4])
+	cfg, configPath, arguments := reportCommandConfig(t, server)
+	network, err := networkload.Load(arguments[3], arguments[5])
 	if err != nil {
 		t.Fatal(err)
 	}
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger, closer := logging.New(logging.Config{BuildVersion: "test"})
+	t.Cleanup(func() {
+		if err := closer.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	manager, err := notify.New(cfg.Email, cfg.NotifyConfig(), logger, "mwan-report")
 	if err != nil {
 		t.Fatal(err)
@@ -64,20 +98,22 @@ func TestReportCommandSendsPersistedSummary(t *testing.T) {
 	if err := service.Close(); err != nil {
 		t.Fatal(err)
 	}
-	var output, diagnostics bytes.Buffer
-	if code := runReport(t.Context(), arguments, cfg, &output, &diagnostics); code != 0 {
-		t.Fatalf("report command failed: %s", diagnostics.String())
+	output, code := runReportCommand(t, configPath, arguments...)
+	if code != 0 {
+		t.Fatalf("report command failed: %s", output)
 	}
 	html := testsmtp.HTML(t, server.Next(t))
-	if !strings.Contains(html, "cpu-ram.png") || !strings.Contains(html, "Top talkers on") || !strings.Contains(output.String(), "accepted") {
+	if !strings.Contains(html, "cpu-ram.png") || !strings.Contains(html, "Top talkers on") || !strings.Contains(output, "accepted") {
 		t.Fatal("public command did not send the persisted report")
 	}
 }
 
 func TestReportCommandRejectsInvalidAction(t *testing.T) {
 	t.Parallel()
-	var output, diagnostics bytes.Buffer
-	if code := runReport(t.Context(), []string{"unknown"}, nil, &output, &diagnostics); code == 0 || !strings.Contains(diagnostics.String(), "usage:") {
+	server := testsmtp.Start(t)
+	_, configPath, _ := reportCommandConfig(t, server)
+	output, code := runReportCommand(t, configPath, "report", "unknown")
+	if code == 0 || !strings.Contains(output, "usage:") {
 		t.Fatal("unknown report action did not return usage and failure")
 	}
 }
@@ -85,9 +121,9 @@ func TestReportCommandRejectsInvalidAction(t *testing.T) {
 func TestReportCommandReportsMissingHistory(t *testing.T) {
 	t.Parallel()
 	server := testsmtp.Start(t)
-	cfg, arguments := reportCommandConfig(t, server)
-	var output, diagnostics bytes.Buffer
-	if code := runReport(t.Context(), arguments, cfg, &output, &diagnostics); code == 0 || !strings.Contains(diagnostics.String(), "history is empty") {
-		t.Fatalf("missing history did not fail clearly: %s", diagnostics.String())
+	_, configPath, arguments := reportCommandConfig(t, server)
+	output, code := runReportCommand(t, configPath, arguments...)
+	if code == 0 || !strings.Contains(output, "history is empty") {
+		t.Fatalf("missing history did not fail clearly: %s", output)
 	}
 }

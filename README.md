@@ -56,6 +56,27 @@ keeps its own sysrepo repository below the root, which is how to inspect a run
 without affecting the machine. The verb never restarts the daemon; that
 decision stays with whatever called it.
 
+## Reporting
+
+Reporting requires Linux, RRDtool, Liberation Mono, and configured email delivery. Set the reporting paths in the existing TOML configuration:
+
+```toml
+[report]
+state_directory = "/var/lib/mwan/reporting"
+rrdtool_path = "/usr/local/bin/rrdtool"
+```
+
+Use the installed RRDtool executable's absolute path. Reporting reuses the existing email recipient and SMTP2GO credential or `msmtprc_path`. The process needs `CAP_NET_RAW` for probes and `CAP_NET_ADMIN` for connection accounting. Disabled kernel byte accounting produces incomplete client attribution.
+
+Reporting commands:
+
+| Command | Operation |
+|---|---|
+| `mwan report watch` | Collect measurements and send scheduled reports and incident emails. |
+| `mwan report send` | Send a summary from saved observations. |
+
+The commands accept `--network` and `--schema-dir` for the validated WANCONFIG document. Read [reporting behavior](docs/reporting.md) for measurement meanings and incident handling.
+
 ## Building and testing
 
 The build and lint pipeline is [go-makefile](https://github.com/agoodkind/go-makefile),

@@ -2,12 +2,14 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"math"
 	"net/netip"
 	"path/filepath"
 	"time"
 )
 
+// ReportSection controls measurement collection, report storage, and delivery.
 type ReportSection struct {
 	StateDirectory      string  `toml:"state_directory"`
 	RRDToolPath         string  `toml:"rrdtool_path"`
@@ -33,8 +35,10 @@ type ReportSection struct {
 	MinDrops            uint64  `toml:"min_drops"`
 }
 
+// DefaultReportSection supplies collection policy before host settings load.
 func DefaultReportSection() ReportSection {
 	return ReportSection{
+		StateDirectory: "", RRDToolPath: "",
 		ProcDirectory: "/proc", TimeZone: "America/Los_Angeles", SummaryHour: 20,
 		CloudflareHost: "one.one.one.one", ProbeInterval: "1s", SampleInterval: "1m",
 		DNSv4: "1.1.1.1:53", DNSv6: "[2606:4700:4700::1111]:53",
@@ -45,6 +49,7 @@ func DefaultReportSection() ReportSection {
 	}
 }
 
+// Validate rejects settings that cannot produce complete reporting intervals.
 func (settings ReportSection) Validate() error {
 	for key, path := range map[string]string{
 		"state_directory": settings.StateDirectory,
@@ -56,6 +61,7 @@ func (settings ReportSection) Validate() error {
 		}
 	}
 	if _, err := time.LoadLocation(settings.TimeZone); err != nil {
+		slog.Error("load reporting time zone failed", "time_zone", settings.TimeZone, "error", err)
 		return fmt.Errorf("[report] time_zone: %w", err)
 	}
 	if settings.SummaryHour < 0 || settings.SummaryHour > 23 {
@@ -79,6 +85,7 @@ func (settings ReportSection) Validate() error {
 	} {
 		value, err := time.ParseDuration(text)
 		if err != nil {
+			slog.Error("parse reporting duration failed", "field", key, "error", err)
 			return fmt.Errorf("[report] %s: %w", key, err)
 		}
 		if value <= 0 {

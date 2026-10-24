@@ -491,6 +491,16 @@ test-netns:
 
 endif
 
+.PHONY: test-reporting-netns
+test-reporting-netns: protocol-runner-image
+	docker run --rm --privileged --platform linux/$(WANCONFIG_DOCKER_ARCH) \
+		-v $(REPO_ROOT):/src -w /src/gateway \
+		-v mwan-wanconfig-gomod:/go/pkg/mod \
+		-v mwan-wanconfig-cache-$(WANCONFIG_DOCKER_ARCH):/root/.cache \
+		-e GOWORK=off \
+		$(NETNS_PROTOCOL_IMAGE) \
+		go test -v -count=1 -tags netns ./internal/reporting
+
 protocol-runner-image: wanconfig-builder-image
 	docker build --platform linux/$(WANCONFIG_DOCKER_ARCH) \
 		--build-arg BASE_IMAGE=$(WANCONFIG_BUILDER_IMAGE) \

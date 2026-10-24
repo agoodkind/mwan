@@ -21,12 +21,14 @@ type Sender struct {
 	log *slog.Logger
 }
 
+// SenderConfig combines transport settings with sender identity and a delivery deadline.
 type SenderConfig struct {
 	Mail           mailer.Config
 	From, Caller   string
 	AttemptTimeout time.Duration
 }
 
+// NewSenderFromConfig requires a configured transport and a bounded delivery attempt.
 func NewSenderFromConfig(cfg SenderConfig, log *slog.Logger) (*Sender, error) {
 	if cfg.Mail.SMTP2GOAPIKey == "" && cfg.Mail.MsmtprcPath == "" {
 		return nil, errors.New("configure SMTP2GO credentials or msmtprc_path for email delivery")
@@ -65,6 +67,7 @@ func (s *Sender) Send(ctx context.Context, to, subject, body string) error {
 	return s.SendMessage(ctx, msg)
 }
 
+// SendMessage preserves MIME content while applying sender defaults and route retry policy.
 func (s *Sender) SendMessage(ctx context.Context, msg mailer.Message) error {
 	if s.cfg.Mail.SMTP2GOAPIKey == "" && s.cfg.Mail.MsmtprcPath == "" {
 		return errors.New("configure SMTP2GO credentials or msmtprc_path for email delivery")

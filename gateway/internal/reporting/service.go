@@ -15,11 +15,13 @@ import (
 	"github.com/gofrs/flock"
 	"github.com/google/renameio/v2"
 
+	"goodkind.io/mwan/internal/clock"
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/notify"
 )
 
+// Options supplies reporting settings and the shared delivery services.
 type Options struct {
 	Config        config.ReportSection
 	Network       *networkjson.Config
@@ -28,16 +30,20 @@ type Options struct {
 }
 
 type pendingDelivery struct {
-	Kind       Kind
-	Incident   IncidentView
-	Start, End time.Time
+	Kind     Kind         `json:"Kind"`
+	Incident IncidentView `json:"Incident"`
+	Start    time.Time    `json:"Start"`
+	End      time.Time    `json:"End"`
 }
 type reportingState struct {
-	PeriodStart, PeriodEnd, LastMinute time.Time
-	Incident                           incidentState
-	Pending                            []pendingDelivery
+	PeriodStart time.Time         `json:"PeriodStart"`
+	PeriodEnd   time.Time         `json:"PeriodEnd"`
+	LastMinute  time.Time         `json:"LastMinute"`
+	Incident    incidentState     `json:"Incident"`
+	Pending     []pendingDelivery `json:"Pending"`
 }
 
+// Service records observations and manages report delivery and incidents.
 type Service struct {
 	settings      config.ReportSection
 	store         *Store
@@ -47,6 +53,7 @@ type Service struct {
 	mu            sync.Mutex
 	state         reportingState
 	lock          *flock.Flock
+	clock         clock.Clock
 }
 
 type deliveryError struct{ err error }
@@ -56,6 +63,7 @@ func (failure *deliveryError) Error() string {
 }
 func (failure *deliveryError) Unwrap() error { return failure.err }
 
+// NewService opens reporting history and restores pending delivery state.
 func NewService(options Options) (*Service, error) {
 	if options.Notifications == nil || options.Log == nil {
 		return nil, errors.New("reporting service requires notifications and a logger")
@@ -69,14 +77,22 @@ func NewService(options Options) (*Service, error) {
 		_ = store.Close()
 		return nil, err
 	}
-	service := &Service{settings: options.Config, store: store, renderer: renderer, notifications: options.Notifications, log: options.Log}
+	service := new(Service)
+	service.settings = options.Config
+	service.store = store
+	service.renderer = renderer
+	service.notifications = options.Notifications
+	service.log = options.Log
+	service.clock = clock.Real{}
 	data, err := os.ReadFile(filepath.Join(options.Config.StateDirectory, "state.json"))
 	if err == nil {
 		if err := json.Unmarshal(data, &service.state); err != nil {
+			service.log.Warn("reporting delivery state is invalid", "error", err)
 			return nil, fmt.Errorf("read reporting delivery state: %w", err)
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, err
+		service.log.Warn("reporting delivery state read failed", "error", err)
+		return nil, fmt.Errorf("read reporting delivery state: %w", err)
 	}
 	return service, nil
 }
@@ -88,7 +104,8 @@ func (service *Service) acquire() error {
 	lock := flock.New(filepath.Join(service.settings.StateDirectory, "writer.lock"))
 	locked, err := lock.TryLock()
 	if err != nil {
-		return err
+		service.log.Warn("reporting writer lock failed", "error", err)
+		return fmt.Errorf("acquire reporting writer lock: %w", err)
 	}
 	if !locked {
 		return errors.New("another reporting monitor owns this state directory")
@@ -100,13 +117,19 @@ func (service *Service) acquire() error {
 func (service *Service) save() error {
 	data, err := json.Marshal(service.state)
 	if err != nil {
-		return err
+		service.log.Warn("reporting delivery state encoding failed", "error", err)
+		return fmt.Errorf("encode reporting delivery state: %w", err)
 	}
-	return renameio.WriteFile(filepath.Join(service.settings.StateDirectory, "state.json"), data, 0o600)
+	if err := renameio.WriteFile(filepath.Join(service.settings.StateDirectory, "state.json"), data, 0o600); err != nil {
+		service.log.Warn("reporting delivery state save failed", "error", err)
+		return fmt.Errorf("save reporting delivery state: %w", err)
+	}
+	return nil
 }
 
 func (service *Service) enqueue(kind Kind, incident IncidentView, end time.Time) {
 	incident.Affected = slices.Clone(incident.Affected)
+	incident.Signals = slices.Clone(incident.Signals)
 	start := service.state.PeriodStart
 	if kind != Daily {
 		start = end.Add(-24 * time.Hour)
@@ -118,6 +141,7 @@ func (service *Service) enqueue(kind Kind, incident IncidentView, end time.Time)
 	service.state.Pending = append(service.state.Pending, pendingDelivery{Kind: kind, Incident: incident, Start: start, End: end})
 }
 
+// RecordMinute stores one interval and evaluates scheduled reports and alerts.
 func (service *Service) RecordMinute(ctx context.Context, minute Minute) error {
 	service.mu.Lock()
 	defer service.mu.Unlock()
@@ -138,7 +162,16 @@ func (service *Service) RecordMinute(ctx context.Context, minute Minute) error {
 		return err
 	}
 	for !minute.End.Before(service.state.PeriodEnd) {
-		service.enqueue(Daily, IncidentView{}, service.state.PeriodEnd)
+		var incident IncidentView
+		history, err := service.store.history(service.state.PeriodStart, service.state.PeriodEnd)
+		if err != nil {
+			return err
+		}
+		if len(history) > 0 {
+			service.enqueue(Daily, incident, service.state.PeriodEnd)
+		} else {
+			service.log.WarnContext(ctx, "daily reporting period did not contain observations", "start", service.state.PeriodStart, "end", service.state.PeriodEnd)
+		}
 		service.state.PeriodStart = service.state.PeriodEnd
 		service.state.PeriodEnd = service.store.periodEnd(service.state.PeriodStart)
 	}
@@ -174,6 +207,7 @@ func (service *Service) deliverPending(ctx context.Context) error {
 	return nil
 }
 
+// Watch collects intervals while a separate writer renders and sends reports.
 func (service *Service) Watch(ctx context.Context, collector *Collector) error {
 	if collector == nil {
 		return errors.New("reporting watch requires a collector")
@@ -203,10 +237,13 @@ func (service *Service) Watch(ctx context.Context, collector *Collector) error {
 			}
 		}
 	})
-	defer writer.Wait()
-	defer close(queue)
+	defer func() {
+		cancel()
+		close(queue)
+		writer.Wait()
+	}()
 	step, _ := time.ParseDuration(service.settings.SampleInterval)
-	start := time.Now()
+	start := service.clock.Now()
 	for {
 		end := start.Truncate(step).Add(step)
 		minute, err := collector.Sample(runContext, start, end)
@@ -224,7 +261,7 @@ func (service *Service) Watch(ctx context.Context, collector *Collector) error {
 		case err := <-writerErrors:
 			return err
 		case <-runContext.Done():
-			return runContext.Err()
+			return fmt.Errorf("reporting collection stopped: %w", runContext.Err())
 		default:
 			return errors.New("reporting minute queue is full; collection cannot discard measurements")
 		}
@@ -232,6 +269,7 @@ func (service *Service) Watch(ctx context.Context, collector *Collector) error {
 	}
 }
 
+// SendDaily sends the current summary without closing its scheduled period.
 func (service *Service) SendDaily(ctx context.Context) error {
 	service.mu.Lock()
 	defer service.mu.Unlock()
@@ -239,13 +277,19 @@ func (service *Service) SendDaily(ctx context.Context) error {
 	if end.IsZero() {
 		return errors.New("reporting history is empty; run mwan report watch first")
 	}
-	message, err := service.renderer.Message(ctx, Daily, IncidentView{}, end)
+	var incident IncidentView
+	message, err := service.renderer.Message(ctx, Daily, incident, end)
 	if err != nil {
 		return err
 	}
-	return service.notifications.SendReport(ctx, message)
+	if err := service.notifications.SendReport(ctx, message); err != nil {
+		service.log.WarnContext(ctx, "daily report delivery failed", "error", err)
+		return fmt.Errorf("send daily report: %w", err)
+	}
+	return nil
 }
 
+// Close releases the writer lock and closes reporting history.
 func (service *Service) Close() error {
 	service.mu.Lock()
 	defer service.mu.Unlock()
@@ -254,5 +298,9 @@ func (service *Service) Close() error {
 		lockError = service.lock.Close()
 		service.lock = nil
 	}
-	return errors.Join(service.store.Close(), lockError)
+	err := errors.Join(service.store.Close(), lockError)
+	if err != nil {
+		service.log.Warn("reporting close failed", "error", err)
+	}
+	return err
 }

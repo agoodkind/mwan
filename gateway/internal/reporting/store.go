@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -17,12 +17,14 @@ import (
 	"time"
 
 	"github.com/google/renameio/v2"
+	"golang.org/x/sys/execabs"
 
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/networkjson"
 )
 
+// Store writes native RRD series and durable interval observations.
 type Store struct {
 	settings config.ReportSection
 	network  *networkjson.Config
@@ -31,28 +33,45 @@ type Store struct {
 	closed   bool
 }
 
+// OpenStore checks dependencies before opening reporting history.
 func OpenStore(settings config.ReportSection, network *networkjson.Config) (*Store, error) {
 	if err := settings.Validate(); err != nil {
-		return nil, err
+		slog.Warn("reporting history settings are invalid", "error", err)
+		return nil, fmt.Errorf("validate reporting history settings: %w", err)
 	}
 	if network == nil {
 		return nil, errors.New("reporting history requires a network configuration")
 	}
-	if _, err := exec.LookPath(settings.RRDToolPath); err != nil {
+	if _, err := execabs.LookPath(settings.RRDToolPath); err != nil {
+		slog.Warn("configured RRDtool is unavailable", "path", settings.RRDToolPath, "error", err)
 		return nil, fmt.Errorf("install RRDtool at rrdtool_path: %w", err)
 	}
 	for _, directory := range []string{settings.StateDirectory, filepath.Join(settings.StateDirectory, "history"), filepath.Join(settings.StateDirectory, "rrd")} {
 		if err := os.MkdirAll(directory, 0o700); err != nil {
-			return nil, err
+			slog.Warn("reporting directory creation failed", "directory", directory, "error", err)
+			return nil, fmt.Errorf("create reporting directory %s: %w", directory, err)
 		}
 	}
 	duration, _ := time.ParseDuration(settings.SampleInterval)
-	return &Store{settings: settings, network: network, step: int64(duration / time.Second)}, nil
+	store := new(Store)
+	store.settings = settings
+	store.network = network
+	store.step = int64(duration / time.Second)
+	return store, nil
 }
 
 func (store *Store) rrd(ctx context.Context, arguments ...string) ([]byte, error) {
-	output, err := exec.CommandContext(ctx, store.settings.RRDToolPath, arguments...).CombinedOutput()
+	slog.DebugContext(ctx, "execute RRDtool", "operation", arguments[0])
+	executable, err := execabs.LookPath(store.settings.RRDToolPath)
 	if err != nil {
+		slog.WarnContext(ctx, "configured RRDtool is unavailable", "path", store.settings.RRDToolPath, "error", err)
+		return nil, fmt.Errorf("resolve configured RRDtool executable: %w", err)
+	}
+	command := execabs.CommandContext(ctx, executable)
+	command.Args = append(command.Args, arguments...)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		slog.WarnContext(ctx, "RRDtool operation failed", "operation", arguments[0], "error", err, "output", strings.TrimSpace(string(output)))
 		return nil, fmt.Errorf("RRDtool %s: %w: %s", arguments[0], err, strings.TrimSpace(string(output)))
 	}
 	return output, nil
@@ -84,7 +103,7 @@ func wanSources() []string {
 	for _, family := range []Family{IPv4, IPv6} {
 		for _, target := range []Target{Gateway, Cloudflare} {
 			for _, mode := range []ProbeMode{Fresh, Persistent} {
-				name := probeName(ProbeKey{Family: family, Target: target, Mode: mode})
+				name := probeName(ProbeKey{WAN: "", Family: family, Target: target, Mode: mode})
 				for _, suffix := range []string{"mean", "min", "peak", "loss", "dns"} {
 					result = append(result, name+"_"+suffix)
 				}
@@ -98,7 +117,8 @@ func (store *Store) createRRD(ctx context.Context, path string, start time.Time,
 	if _, err := os.Stat(path); err == nil {
 		return nil
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
+		slog.WarnContext(ctx, "RRD history inspection failed", "path", path, "error", err)
+		return fmt.Errorf("inspect RRD history %s: %w", path, err)
 	}
 	arguments := []string{"create", path, "--start", strconv.FormatInt(start.Unix()-1, 10), "--step", strconv.FormatInt(store.step, 10)}
 	for _, source := range sources {
@@ -130,10 +150,20 @@ func (store *Store) updateRRD(ctx context.Context, path string, minute Minute, s
 	}
 	timestamp, err := strconv.ParseInt(strings.TrimSpace(string(last)), 10, 64)
 	if err != nil {
-		return err
+		slog.WarnContext(ctx, "RRD timestamp is invalid", "path", path, "error", err)
+		return fmt.Errorf("parse last RRD timestamp for %s: %w", path, err)
 	}
 	if timestamp >= minute.End.Unix() {
 		return nil
+	}
+	if timestamp < minute.Start.Unix() {
+		unknown := []string{strconv.FormatInt(minute.Start.Unix(), 10)}
+		for range sources {
+			unknown = append(unknown, "U")
+		}
+		if _, err := store.rrd(ctx, "update", path, "--template", strings.Join(sources, ":"), strings.Join(unknown, ":")); err != nil {
+			return err
+		}
 	}
 	update := []string{strconv.FormatInt(minute.End.Unix(), 10)}
 	for _, source := range sources {
@@ -147,6 +177,7 @@ func (store *Store) updateRRD(ctx context.Context, path string, minute Minute, s
 	return err
 }
 
+// Record preserves unavailable samples and commits one measurement interval.
 func (store *Store) Record(ctx context.Context, minute Minute) error {
 	store.mu.Lock()
 	defer store.mu.Unlock()
@@ -193,10 +224,15 @@ func (store *Store) Record(ctx context.Context, minute Minute) error {
 	}
 	data, err := json.Marshal(minute)
 	if err != nil {
-		return err
+		slog.WarnContext(ctx, "reporting interval encoding failed", "end", minute.End, "error", err)
+		return fmt.Errorf("encode reporting interval: %w", err)
 	}
 	path := filepath.Join(store.settings.StateDirectory, "history", fmt.Sprintf("%d.json", minute.End.Unix()))
-	return renameio.WriteFile(path, data, 0o600)
+	if err := renameio.WriteFile(path, data, 0o600); err != nil {
+		slog.WarnContext(ctx, "reporting interval save failed", "path", path, "error", err)
+		return fmt.Errorf("save reporting interval %s: %w", path, err)
+	}
+	return nil
 }
 
 func (store *Store) wanIDs() []connectionid.ID {
@@ -211,7 +247,8 @@ func (store *Store) wanIDs() []connectionid.ID {
 func (store *Store) history(start, end time.Time) ([]Minute, error) {
 	entries, err := os.ReadDir(filepath.Join(store.settings.StateDirectory, "history"))
 	if err != nil {
-		return nil, err
+		slog.Warn("reporting history listing failed", "directory", store.settings.StateDirectory, "error", err)
+		return nil, fmt.Errorf("list reporting history: %w", err)
 	}
 	var result []Minute
 	for _, entry := range entries {
@@ -220,6 +257,7 @@ func (store *Store) history(start, end time.Time) ([]Minute, error) {
 		}
 		timestamp, err := strconv.ParseInt(strings.TrimSuffix(entry.Name(), ".json"), 10, 64)
 		if err != nil {
+			slog.Warn("reporting history filename is invalid", "file", entry.Name(), "error", err)
 			return nil, fmt.Errorf("invalid reporting history filename %s: %w", entry.Name(), err)
 		}
 		if timestamp <= start.Unix() || timestamp > end.Unix() {
@@ -227,10 +265,12 @@ func (store *Store) history(start, end time.Time) ([]Minute, error) {
 		}
 		data, err := os.ReadFile(filepath.Join(store.settings.StateDirectory, "history", entry.Name()))
 		if err != nil {
-			return nil, err
+			slog.Warn("reporting interval read failed", "file", entry.Name(), "error", err)
+			return nil, fmt.Errorf("read reporting interval %s: %w", entry.Name(), err)
 		}
 		var minute Minute
 		if err := json.Unmarshal(data, &minute); err != nil {
+			slog.Warn("reporting interval decoding failed", "file", entry.Name(), "error", err)
 			return nil, fmt.Errorf("read reporting history %s: %w", entry.Name(), err)
 		}
 		result = append(result, minute)
@@ -249,6 +289,7 @@ func (store *Store) periodEnd(after time.Time) time.Time {
 	return end
 }
 
+// Close prevents later writes through this store instance.
 func (store *Store) Close() error {
 	store.mu.Lock()
 	defer store.mu.Unlock()

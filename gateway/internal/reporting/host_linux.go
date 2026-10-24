@@ -2,6 +2,7 @@ package reporting
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -19,6 +20,7 @@ func (sampler *hostSampler) sample() (HostUsage, error) {
 	var usage HostUsage
 	stat, err := os.ReadFile(filepath.Join(sampler.directory, "stat"))
 	if err != nil {
+		slog.Warn("read reporting CPU measurements failed", "proc_directory", sampler.directory, "error", err)
 		return usage, fmt.Errorf("read CPU measurements: %w", err)
 	}
 	next := make(map[string]cpuTicks)
@@ -31,6 +33,7 @@ func (sampler *hostSampler) sample() (HostUsage, error) {
 		for index, field := range fields[1:] {
 			value, err := strconv.ParseUint(field, 10, 64)
 			if err != nil {
+				slog.Warn("parse reporting CPU ticks failed", "cpu", fields[0], "error", err)
 				return usage, fmt.Errorf("parse %s ticks: %w", fields[0], err)
 			}
 			ticks.total += value
@@ -39,7 +42,7 @@ func (sampler *hostSampler) sample() (HostUsage, error) {
 			}
 		}
 		next[fields[0]] = ticks
-		cpu := CPUUsage{Name: fields[0]}
+		cpu := CPUUsage{Name: fields[0], Percent: 0, Available: false}
 		previous, exists := sampler.previous[fields[0]]
 		if exists && ticks.total > previous.total && ticks.idle >= previous.idle {
 			total, idle := ticks.total-previous.total, ticks.idle-previous.idle
@@ -56,6 +59,7 @@ func (sampler *hostSampler) sample() (HostUsage, error) {
 	sampler.previous = next
 	meminfo, err := os.ReadFile(filepath.Join(sampler.directory, "meminfo"))
 	if err != nil {
+		slog.Warn("read reporting memory measurements failed", "proc_directory", sampler.directory, "error", err)
 		return usage, fmt.Errorf("read memory measurements: %w", err)
 	}
 	values := make(map[string]uint64)
@@ -66,6 +70,7 @@ func (sampler *hostSampler) sample() (HostUsage, error) {
 		}
 		value, err := strconv.ParseUint(fields[1], 10, 64)
 		if err != nil {
+			slog.Warn("parse reporting memory counter failed", "counter", fields[0], "error", err)
 			return usage, fmt.Errorf("parse %s: %w", fields[0], err)
 		}
 		values[fields[0]] = value

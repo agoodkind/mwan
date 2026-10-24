@@ -1,0 +1,11 @@
+table inet report_accounting {
+    chain prerouting {
+        type nat hook prerouting priority dstnat;
+        iifname "wan0" tcp dport 45679 ct mark set 11 dnat ip to 10.77.0.2:45680
+    }
+    chain postrouting {
+        type nat hook postrouting priority srcnat;
+        iifname "lan0" oifname "wan0" ct mark set 11 masquerade
+        iifname "lan0" oifname "wan1" ct mark set 12 masquerade
+    }
+}
