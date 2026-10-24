@@ -104,9 +104,7 @@ func (service *Service) breaches(ctxEnd time.Time) (map[connectionid.ID]bool, bo
 		}
 	}
 	for _, id := range service.store.wanIDs() {
-		if trafficMinutes[id] != len(history) {
-			observed[id] = false
-		}
+		observed[id] = observed[id] && trafficMinutes[id] == len(history)
 	}
 	return bad, localBad, observed, true, signals, nil
 }
