@@ -9,8 +9,10 @@ require (
 	github.com/coreos/go-systemd/v22 v22.7.0
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/godbus/dbus/v5 v5.1.0
+	github.com/gofrs/flock v0.13.0
 	github.com/google/nftables v0.3.0
 	github.com/google/renameio/v2 v2.0.2
+	github.com/google/uuid v1.6.0
 	github.com/gopacket/gopacket v1.7.2
 	github.com/goreleaser/nfpm/v2 v2.47.0
 	github.com/insomniacslk/dhcp v0.0.0-20260719225207-c76316d4aa82
@@ -19,12 +21,14 @@ require (
 	github.com/mdlayher/packet v1.1.2
 	github.com/mdlayher/vsock v1.2.1
 	github.com/osrg/gobgp/v4 v4.7.0
+	github.com/ti-mo/conntrack v0.6.0
+	github.com/ti-mo/netfilter v0.5.3
 	github.com/vishvananda/netlink v1.3.2-0.20250829225123-b032ea08ecfd
 	github.com/vishvananda/netns v0.0.5
 	golang.org/x/net v0.58.0
 	golang.org/x/sys v0.47.0
 	goodkind.io/gklog v0.2.1
-	goodkind.io/send-email v0.0.0-20260604011720-40a2ede56cd9
+	goodkind.io/send-email v0.0.0-20261003173351-a8500dc3c523
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.11
 	pault.ag/go/debian v0.21.0
@@ -51,10 +55,8 @@ require (
 	github.com/go-git/go-billy/v5 v5.9.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
-	github.com/gofrs/flock v0.13.0 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/goreleaser/chglog v0.7.4 // indirect
 	github.com/goreleaser/fileglob v1.4.0 // indirect
 	github.com/huandu/xstrings v1.5.0 // indirect
@@ -72,6 +74,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/pierrec/lz4/v4 v4.1.14 // indirect
 	github.com/pjbgf/sha1cd v0.6.0 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
 	github.com/segmentio/fasthash v1.0.3 // indirect
 	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect

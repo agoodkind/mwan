@@ -178,6 +178,7 @@ type Config struct {
 	IfMgr     IfMgrSection     `toml:"ifmgr"`
 	Notify    NotifySection    `toml:"notify"`
 	Wanconfig WanconfigSection `toml:"wanconfig"`
+	Report    ReportSection    `toml:"report"`
 }
 
 // WanconfigSection gates the gateway's management surface: whether this
@@ -265,6 +266,7 @@ func defaultConfigBase() Config {
 	cfg.GuestType = watchdogDefaults.GuestType
 	cfg.Email = watchdogDefaults.Email
 	cfg.Network = watchdogDefaults.Network
+	cfg.Report = DefaultReportSection()
 	cfg.Agent = AgentSection{
 		VsockPort: 50051, TCPAddr: "[::]:50052",
 		DeployFile:     "/var/lib/mwan/last-deploy",

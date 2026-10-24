@@ -11,11 +11,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"time"
 
 	"goodkind.io/gklog"
 	"goodkind.io/mwan/internal/email"
+	"goodkind.io/send-email/mailer"
 )
 
 // EmailConfig uses compatible TOML tags so configuration loaders can
@@ -28,6 +28,7 @@ type EmailConfig struct {
 	BindIface     string `toml:"bind_iface"`
 	MinLevel      string `toml:"min_level"`
 	Cooldown      string `toml:"cooldown"`
+	MsmtprcPath   string `toml:"msmtprc_path"`
 }
 
 // Event is the structured payload one Notify call carries through the
@@ -74,15 +75,16 @@ type Config struct {
 // typically the systemd unit name (e.g. "mwan-watchdog", "mwan-agent").
 func New(emailCfg EmailConfig, cfg Config, log *slog.Logger, serviceName string) (*Manager, error) {
 	var sink Sink
-	if emailCfg.SMTP2GOAPIKey != "" && emailCfg.AlertEmail != "" {
-		bootLogger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-		sender := email.NewSender(
-			emailCfg.SMTP2GOAPIKey,
-			emailCfg.From,
-			emailCfg.BindIface,
-			serviceName,
-			bootLogger,
-		)
+	var sender *email.Sender
+	if (emailCfg.SMTP2GOAPIKey != "" || emailCfg.MsmtprcPath != "") && emailCfg.AlertEmail != "" {
+		var err error
+		sender, err = email.NewSenderFromConfig(email.SenderConfig{
+			Mail: mailer.Config{SMTP2GOAPIKey: emailCfg.SMTP2GOAPIKey, MsmtprcPath: emailCfg.MsmtprcPath, BindInterface: emailCfg.BindIface, Transport: mailer.MethodAuto},
+			From: emailCfg.From, Caller: serviceName, AttemptTimeout: 15 * time.Second,
+		}, log)
+		if err != nil {
+			return nil, fmt.Errorf("notify email: %w", err)
+		}
 		sink = newEmailSink(sender, emailCfg.AlertEmail, emailCfg.SubjectPrefix, parseMinLevel(emailCfg.MinLevel))
 	}
 	m, err := newManager(log, cfg, sink)

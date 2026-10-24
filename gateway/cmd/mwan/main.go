@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"goodkind.io/mwan/internal/agent"
 	"goodkind.io/mwan/internal/config"
@@ -35,6 +37,7 @@ const (
 	subcmdObserve           subcommand = "observe"
 	subcmdGatewayStatus     subcommand = "gateway-status"
 	subcmdConfigState       subcommand = "config-state"
+	subcmdReport            subcommand = "report"
 )
 
 // dispatchResult describes how dispatchConfigLess handled a subcommand.
@@ -47,7 +50,7 @@ type dispatchResult struct {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: mwan <agent|watchdog|health|ifmgr|install|notify|pd|debug|trace-boot|deploy|deploy-gate|wanconfig-selftest|version|observe|gateway-status|config-state> [args]")
+		fmt.Fprintln(os.Stderr, "usage: mwan <agent|watchdog|health|ifmgr|install|notify|pd|debug|trace-boot|deploy|deploy-gate|wanconfig-selftest|version|observe|gateway-status|config-state|report> [args]")
 		os.Exit(1)
 	}
 	sub := os.Args[1]
@@ -139,7 +142,7 @@ func dispatchConfigLess(sub subcommand) dispatchResult {
 	case subcmdObserve:
 		return dispatchResult{handled: true, code: runObservation(os.Args[1:])}
 	case subcmdAgent, subcmdWatchdog, subcmdIfmgr, subcmdNotify, subcmdDebug,
-		subcmdGatewayStatus, subcmdConfigState:
+		subcmdGatewayStatus, subcmdConfigState, subcmdReport:
 		return dispatchResult{handled: false}
 	}
 	return dispatchResult{handled: false}
@@ -163,6 +166,10 @@ func dispatchWithConfig(rawSub string, sub subcommand, cfg *config.Config, flags
 		return runGatewayStatus(os.Args[1:], cfg, os.Stdout, os.Stderr)
 	case subcmdConfigState:
 		return runConfigState(os.Args[1:], cfg, os.Stdout, os.Stderr)
+	case subcmdReport:
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		return runReport(ctx, os.Args[1:], cfg, os.Stdout, os.Stderr)
 	case subcmdHealth, subcmdPD, subcmdTrace, subcmdDeploy, subcmdGate,
 		subcmdWanconfigSelftest, subcmdVersion, subcmdInstall, subcmdObserve,
 		subcmdWatchdog:

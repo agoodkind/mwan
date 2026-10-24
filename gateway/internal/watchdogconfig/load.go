@@ -27,6 +27,7 @@ func Default() Config {
 		From:          "",
 		SubjectPrefix: "",
 		BindIface:     "",
+		MsmtprcPath:   "",
 	}
 	cfg.PVE = PVEConfig{
 		Node: "",

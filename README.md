@@ -56,6 +56,38 @@ keeps its own sysrepo repository below the root, which is how to inspect a run
 without affecting the machine. The verb never restarts the daemon; that
 decision stays with whatever called it.
 
+## Reporting
+
+The reporter uses the existing TOML configuration and WANCONFIG document. Its runtime requirements are:
+
+| Requirement | Purpose |
+|---|---|
+| Linux | Interface, connection, CPU, and memory counters. |
+| RRDtool | Graph history and image rendering. |
+| Liberation Mono | Graph text. |
+| Email configuration | Recipient and SMTP2GO credential or `msmtprc_path`. |
+| `CAP_NET_RAW` | WAN probes. |
+| `CAP_NET_ADMIN` | Linux connection accounting. |
+
+MWAN writes report history to `state_directory` and runs the executable at `rrdtool_path`. Both paths must be absolute:
+
+```toml
+[report]
+state_directory = "/var/lib/mwan/reporting"
+rrdtool_path = "/usr/local/bin/rrdtool"
+```
+
+Disabled kernel byte accounting makes client attribution incomplete. WAN interface measurements remain available independently of client accounting.
+
+Reporting commands:
+
+| Command | Operation |
+|---|---|
+| `mwan report watch` | Collect measurements and send scheduled reports and incident emails. |
+| `mwan report send` | Send a summary from saved observations. |
+
+The `--network` option selects the WANCONFIG document, and `--schema-dir` selects its YANG validation models. Read [reporting behavior](docs/reporting.md) for measurement meanings and incident handling.
+
 ## Building and testing
 
 The build and lint pipeline is [go-makefile](https://github.com/agoodkind/go-makefile),
