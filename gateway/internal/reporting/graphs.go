@@ -124,11 +124,12 @@ func (renderer *Renderer) renderGraph(ctx context.Context, directory string, def
 		} else {
 			arguments = append(arguments, fmt.Sprintf("LINE1.7:%s#%s:%s", name, seriesColor(index), rrdEscape(fmt.Sprintf("%-*s", labelWidth, trace.label))))
 		}
-		if strings.HasSuffix(trace.label, "[unavailable]") {
+		switch {
+		case strings.HasSuffix(trace.label, "[unavailable]"):
 			arguments = append(arguments, "COMMENT:Measurements unavailable\\l")
-		} else if definition.filename == "usage.png" {
+		case definition.filename == "usage.png":
 			arguments = append(arguments, "GPRINT:"+name+"_last:  total "+statFormat+"\\l")
-		} else {
+		default:
 			arguments = append(arguments, "GPRINT:"+name+"_min:  min "+statFormat, "GPRINT:"+name+"_max:  max "+statFormat, "GPRINT:"+name+"_avg:  avg "+statFormat+"\\l")
 		}
 		legends = append(legends, trace.label)
