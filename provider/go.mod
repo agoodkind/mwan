@@ -2,6 +2,8 @@ module goodkind.io/mwan/provider
 
 go 1.27.1
 
+toolchain go1.27.3
+
 require (
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
 	github.com/hashicorp/terraform-plugin-framework-validators v0.19.0

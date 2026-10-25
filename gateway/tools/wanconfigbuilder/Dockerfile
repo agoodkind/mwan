@@ -4,7 +4,7 @@
 # links the gateway's glibc generation and libsysrepo ABI. Version pins
 # arrive as build args from the caller; there are no defaults, so a bare
 # build fails loudly rather than drifting from the gateway.
-FROM golang:1.27-trixie
+FROM golang:1.27.3-trixie
 
 ARG LIBYANG_VERSION
 ARG SYSREPO_VERSION
