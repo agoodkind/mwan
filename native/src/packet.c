@@ -193,6 +193,8 @@ static bool eligible(const struct packet_view *view, const struct mwan_native_di
 			return true;
 		return rte_ipv4_udptcp_cksum_verify((const struct rte_ipv4_hdr *)view->ip, view->transport) == 0;
 	}
+	if (view->tuple.protocol == MWAN_NATIVE_PROTOCOL_UDP && !read16(view->transport + 6))
+		return false;
 	return rte_ipv6_udptcp_cksum_verify((const struct rte_ipv6_hdr *)view->ip, view->transport) == 0;
 }
 
