@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vishvananda/netlink"
+	"github.com/agoodkind/netlink"
 )
 
 func dhcpv6ExpiryMissingRouting() string {

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/vishvananda/netlink"
+	"github.com/agoodkind/netlink"
 	"goodkind.io/mwan/internal/installfile"
 	"goodkind.io/mwan/internal/netif"
 )

@@ -20,6 +20,7 @@ RUN test -n "${LIBYANG_VERSION}" && test -n "${SYSREPO_VERSION}"
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         build-essential cmake pkg-config git libpcre2-dev nftables util-linux \
+        meson ninja-build python3-pyelftools libnuma-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # The YANG gates of `make check` run yanglint. This shared build links it

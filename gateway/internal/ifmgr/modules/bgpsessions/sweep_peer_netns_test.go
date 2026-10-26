@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agoodkind/netlink"
 	apipb "github.com/osrg/gobgp/v4/api"
 	"github.com/osrg/gobgp/v4/pkg/server"
-	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
 )

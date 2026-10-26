@@ -14,13 +14,14 @@ import (
 	"slices"
 	"time"
 
-	"github.com/vishvananda/netlink"
+	"github.com/agoodkind/netlink"
 	"golang.org/x/sys/unix"
 	"goodkind.io/mwan/internal/clock"
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/ifmgr/modules/npt/bpf"
 	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/internal/nptpolicy"
 	"goodkind.io/mwan/internal/pd"
 	"goodkind.io/mwan/internal/wanstate"
 )
@@ -75,7 +76,7 @@ type Module struct {
 	listAddrs       listAddrsFunc
 	apply           applier
 	removeDNAT      func(context.Context, *slog.Logger, string, []netip.Addr) error
-	preparePolicies func(context.Context, *slog.Logger, map[string]bpf.PrefixPair) ([]bpf.InterfacePolicy, error)
+	preparePolicies func(context.Context, *slog.Logger, map[string]nptpolicy.PrefixPair) ([]bpf.InterfacePolicy, error)
 	translator      interface {
 		Reconcile([]bpf.InterfacePolicy) ([]bpf.AttachmentState, error)
 	}
@@ -84,7 +85,7 @@ type Module struct {
 	// reconcile, read by EvaluateAlerts. Guarded by the embedded mutex.
 	pdMissing     map[string]bool
 	previousLocal map[string]map[netip.Addr]bool
-	activePairs   map[string]bpf.PrefixPair
+	activePairs   map[string]nptpolicy.PrefixPair
 	activeRules   map[string][]natRule
 }
 
@@ -123,7 +124,7 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 		m.listAddrs = netif.ListAddrs
 	}
 	if m.preparePolicies == nil {
-		m.preparePolicies = func(ctx context.Context, log *slog.Logger, pairs map[string]bpf.PrefixPair) ([]bpf.InterfacePolicy, error) {
+		m.preparePolicies = func(ctx context.Context, log *slog.Logger, pairs map[string]nptpolicy.PrefixPair) ([]bpf.InterfacePolicy, error) {
 			policies, _, _, err := m.interfacePolicies(ctx, log, pairs)
 			return policies, err
 		}
@@ -203,7 +204,7 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	var desired desiredRules
 	missing := make(map[string]bool, len(m.cfg.WANs))
 	delegated := make(map[string]netip.Prefix, len(m.cfg.WANs))
-	pairs := make(map[string]bpf.PrefixPair, len(m.cfg.WANs))
+	pairs := make(map[string]nptpolicy.PrefixPair, len(m.cfg.WANs))
 	rules := make(map[string][]natRule, len(m.cfg.WANs))
 	var reconcileErr error
 	desiredEdges := make(map[ifmgr.NPTEdgeRecord]bool)
@@ -268,7 +269,7 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	return reconcileErr
 }
 
-func (m *Module) reconcileTranslator(ctx context.Context, log *slog.Logger, pairs map[string]bpf.PrefixPair) (map[string]bool, bool, []bpf.InterfacePolicy, error) {
+func (m *Module) reconcileTranslator(ctx context.Context, log *slog.Logger, pairs map[string]nptpolicy.PrefixPair) (map[string]bool, bool, []bpf.InterfacePolicy, error) {
 	ready := make(map[string]bool, len(pairs))
 	if m.translator == nil {
 		return ready, false, nil, nil
@@ -288,7 +289,7 @@ func (m *Module) reconcileTranslator(ctx context.Context, log *slog.Logger, pair
 	return ready, err == nil, policies, policyErr
 }
 
-func (m *Module) retainCurrentTranslation(wan WAN, desiredEdges map[ifmgr.NPTEdgeRecord]bool, desired *desiredRules, rules map[string][]natRule, pairs map[string]bpf.PrefixPair, delegated map[string]netip.Prefix) {
+func (m *Module) retainCurrentTranslation(wan WAN, desiredEdges map[ifmgr.NPTEdgeRecord]bool, desired *desiredRules, rules map[string][]natRule, pairs map[string]nptpolicy.PrefixPair, delegated map[string]netip.Prefix) {
 	m.markDesiredEdges(desiredEdges, wan, "")
 	previous := m.activeRules[wan.Key()]
 	rules[wan.Key()] = previous
@@ -389,8 +390,8 @@ func (m *Module) ownsTranslatedIface(iface string) bool {
 	return false
 }
 
-func (m *Module) preparationPairs(ctx context.Context, log *slog.Logger, iface string, local []netip.Addr) (map[string]bpf.PrefixPair, error) {
-	pairs := make(map[string]bpf.PrefixPair, len(m.cfg.WANs))
+func (m *Module) preparationPairs(ctx context.Context, log *slog.Logger, iface string, local []netip.Addr) (map[string]nptpolicy.PrefixPair, error) {
+	pairs := make(map[string]nptpolicy.PrefixPair, len(m.cfg.WANs))
 	for _, wan := range m.cfg.WANs {
 		built, present, err := m.buildWANDesired(ctx, log, wan, false)
 		if err != nil {
@@ -411,7 +412,7 @@ func (m *Module) preparationPairs(ctx context.Context, log *slog.Logger, iface s
 			if err != nil {
 				return nil, err
 			}
-			if err := bpf.ValidatePair(pair); err != nil {
+			if err := nptpolicy.ValidatePair(pair); err != nil {
 				log.ErrorContext(ctx, "npt: local IPv6 exception validation failed", "wan", wan.Key(), "err", err)
 				return nil, fmt.Errorf("npt: %s local IPv6 preparation: %w", wan.Key(), err)
 			}
@@ -421,7 +422,7 @@ func (m *Module) preparationPairs(ctx context.Context, log *slog.Logger, iface s
 	return pairs, nil
 }
 
-func addPendingExceptions(pair bpf.PrefixPair, local []netip.Addr) (bpf.PrefixPair, error) {
+func addPendingExceptions(pair nptpolicy.PrefixPair, local []netip.Addr) (nptpolicy.PrefixPair, error) {
 	for _, address := range local {
 		if !address.Is6() || address.Is4In6() || !address.IsGlobalUnicast() {
 			return pair, fmt.Errorf("npt: invalid local IPv6 address %s", address)
@@ -476,7 +477,7 @@ func attachmentsReady(states []bpf.AttachmentState, index int) bool {
 	return ingress && egress
 }
 
-func (m *Module) interfacePolicies(ctx context.Context, log *slog.Logger, pairs map[string]bpf.PrefixPair) ([]bpf.InterfacePolicy, map[string]int, int, error) {
+func (m *Module) interfacePolicies(ctx context.Context, log *slog.Logger, pairs map[string]nptpolicy.PrefixPair) ([]bpf.InterfacePolicy, map[string]int, int, error) {
 	indices := make(map[string]int, len(pairs))
 	if len(pairs) == 0 {
 		return nil, indices, 0, nil
@@ -510,7 +511,7 @@ func (m *Module) interfacePolicies(ctx context.Context, log *slog.Logger, pairs 
 			continue
 		}
 		indices[wan.Key()] = link.Attrs().Index
-		policies = append(policies, bpf.InterfacePolicy{IfIndex: link.Attrs().Index, Internal: false, Pairs: []bpf.PrefixPair{pair}})
+		policies = append(policies, bpf.InterfacePolicy{IfIndex: link.Attrs().Index, Internal: false, Pairs: []nptpolicy.PrefixPair{pair}})
 		internalPolicy.Pairs = append(internalPolicy.Pairs, pair)
 	}
 	if len(internalPolicy.Pairs) != 0 {
@@ -619,7 +620,7 @@ func ipv6TranslationReadiness(
 type wanDesired struct {
 	rules  []natRule
 	ensure []netif.AddrSpec
-	pair   bpf.PrefixPair
+	pair   nptpolicy.PrefixPair
 	// externalPrefix is the resolved provider prefix, retained for the management
 	// surface.
 	externalPrefix netip.Prefix
@@ -685,14 +686,14 @@ func (m *Module) buildWANDesired(
 			destinationExceptions = append(destinationExceptions, addr)
 		}
 	}
-	pair := bpf.PrefixPair{
+	pair := nptpolicy.PrefixPair{
 		ID:                    pairID(wan.Key()),
 		Internal:              policy.InternalPrefix.Masked(),
 		External:              externalPrefix,
 		SourceExceptions:      []netip.Addr{m.opnsenseEdge, m.mwanbrEdge},
 		DestinationExceptions: destinationExceptions,
 	}
-	if err := bpf.ValidatePair(pair); err != nil {
+	if err := nptpolicy.ValidatePair(pair); err != nil {
 		return empty, false, fmt.Errorf("npt: %s: %w", wan.Key(), err)
 	}
 	return wanDesired{rules: rules, ensure: ensure, pair: pair, externalPrefix: externalPrefix}, true, nil

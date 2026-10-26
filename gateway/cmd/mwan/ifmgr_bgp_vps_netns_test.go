@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vishvananda/netlink"
+	"github.com/agoodkind/netlink"
 )
 
 func TestBGPTunnelVPSPeerDaemonRuntime(t *testing.T) {

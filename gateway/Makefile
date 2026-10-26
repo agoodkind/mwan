@@ -66,8 +66,15 @@ include ../build/wanconfig.mk
 # per-os/arch prefix before every gate, so the cgo files stay fully checked
 # on linux CI.
 GO_MK_CGO_DEPS := libyang sysrepo
+MWAN_NATIVE ?= 0
+ifeq ($(MWAN_NATIVE),1)
+GO_MK_CGO_DEPS += native
+export GOFLAGS += -tags=nativeoffload
+MWAN_NATIVE_RELEASE_TAG := ,nativeoffload
+endif
 
 include bootstrap.mk
+include ../build/native.mk
 
 # The test gate runs the binary it just linked, which loads libyang and
 # libsysrepo at runtime from the per-target prefix.
@@ -78,7 +85,7 @@ export LD_LIBRARY_PATH := $(GO_MK_CGO_PREFIX)/lib$(if $(strip $(LD_LIBRARY_PATH)
 # build command. They attach to the release target only: a plain export
 # would hand a host tool the target's link flags, and building
 # golangci-lint on macOS then fails on a missing static libc.
-release: export GOFLAGS := -tags=osusergo,netgo$(if $(strip $(GOFLAGS)), $(GOFLAGS))
+release: export GOFLAGS := -tags=osusergo,netgo$(MWAN_NATIVE_RELEASE_TAG)$(if $(strip $(filter-out -tags=nativeoffload,$(GOFLAGS))), $(filter-out -tags=nativeoffload,$(GOFLAGS)))
 release: export CGO_LDFLAGS := -static
 
 .DEFAULT_GOAL := check
@@ -462,7 +469,7 @@ endif
 # On macOS it runs them in a native linux/arm64 container. An amd64 container
 # on Apple Silicon runs under qemu, and qemu does not translate policy rule
 # netlink messages.
-NETNS_TEST_PACKAGES := ./internal/ifmgr/modules/wanroutes/... ./internal/ifmgr/modules/npt/... ./internal/ifmgr/modules/steering/... ./internal/ifmgr/modules/firewall/... ./internal/ifmgr/modules/links/... ./internal/netif/... ./internal/bgp/... ./internal/ifmgr/modules/bgpsessions/...
+NETNS_TEST_PACKAGES := ./internal/ifmgr/modules/wanroutes/... ./internal/ifmgr/modules/npt/... ./internal/ifmgr/modules/steering/... ./internal/ifmgr/modules/firewall/... ./internal/ifmgr/modules/links/... ./internal/netif/... ./internal/bgp/... ./internal/ifmgr/modules/bgpsessions/... ./internal/offload/...
 NETNS_GO_VERSION    := $(shell awk '/^go /{print $$2}' go.mod)
 NETNS_RUNNER_IMAGE  := mwan-netns-runner
 NETNS_PROTOCOL_IMAGE := mwan-protocol-runner:$(WANCONFIG_DOCKER_ARCH)
@@ -588,6 +595,10 @@ GO_MK_CGO_CACHE_VERSIONS := \
 	nghttp2-asio=$(WANCONFIG_NGHTTP2_ASIO_VERSION) \
 	rousette=$(WANCONFIG_ROUSETTE_VERSION)
 GO_MK_CGO_CACHE_INPUTS := $(WANCONFIG_STACK_SOURCES)
+ifeq ($(MWAN_NATIVE),1)
+GO_MK_CGO_CACHE_VERSIONS += dpdk=$(MWAN_NATIVE_DPDK_VERSION)-$(MWAN_NATIVE_PATCH_SHA256)
+GO_MK_CGO_CACHE_INPUTS += $(MWAN_NATIVE_SOURCE_FILES) $(MWAN_NATIVE_PATCH) ../build/native.mk
+endif
 
 $(WANCONFIG_STACK_TOOL): $(WANCONFIG_STACK_SOURCES)
 	@mkdir -p $(WANCONFIG_STACK_CACHE)
