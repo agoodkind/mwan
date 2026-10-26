@@ -4,6 +4,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,6 +29,14 @@ int mwan_native_build_info(struct mwan_native_build_info *info)
 	info->abi_version = MWAN_NATIVE_ABI_VERSION;
 	info->config_size = sizeof(struct mwan_native_config);
 	info->pair_spec_size = sizeof(struct mwan_native_pair_spec);
+	info->direction_size = sizeof(struct mwan_native_direction);
+	info->controller_size = sizeof(struct mwan_native_controller);
+	info->receiver_size = sizeof(struct mwan_native_receiver);
+	info->data_size = sizeof(struct mwan_native_data);
+	info->origin_size = sizeof(struct mwan_native_origin);
+	info->error_size = sizeof(struct mwan_native_error);
+	info->worker_stats_size = sizeof(struct mwan_native_worker_stats);
+	info->pair_stats_size = sizeof(struct mwan_native_pair_stats);
 	snprintf(info->dpdk_version, sizeof(info->dpdk_version), "%s", rte_version());
 	snprintf(info->source_sha256, sizeof(info->source_sha256), "%s", MWAN_DPDK_SOURCE_SHA256);
 	snprintf(info->patch_sha256, sizeof(info->patch_sha256), "%s", MWAN_DPDK_PATCH_SHA256);
@@ -35,7 +44,7 @@ int mwan_native_build_info(struct mwan_native_build_info *info)
 }
 
 int mwn_error(struct mwan_native_error *error, int code, uint32_t operation,
-	      uint32_t endpoint, uint32_t direction, const char *message)
+	      uint32_t object_kind, uint32_t object_id, uint32_t direction, const char *message)
 {
 	if (code < 0)
 		code = -code;
@@ -45,7 +54,8 @@ int mwn_error(struct mwan_native_error *error, int code, uint32_t operation,
 		memset(error, 0, sizeof(*error));
 		error->code = code;
 		error->operation = operation;
-		error->endpoint = endpoint;
+		error->object_kind = object_kind;
+		error->object_id = object_id;
 		error->direction = direction;
 		snprintf(error->message, sizeof(error->message), "%s", message);
 	}
@@ -53,9 +63,9 @@ int mwn_error(struct mwan_native_error *error, int code, uint32_t operation,
 }
 
 int mwn_flow_error(struct mwan_native_error *error, int code, uint32_t operation,
-		   uint32_t endpoint, uint32_t direction, const struct rte_flow_error *detail)
+		   uint32_t object_kind, uint32_t object_id, uint32_t direction, const struct rte_flow_error *detail)
 {
-	int rc = mwn_error(error, code, operation, endpoint, direction,
+	int rc = mwn_error(error, code, operation, object_kind, object_id, direction,
 			   detail && detail->message ? detail->message : "DPDK flow operation failed");
 	if (error && detail)
 		error->flow_error_type = detail->type;
@@ -68,15 +78,15 @@ int mwn_owner(struct mwan_native *owner, struct mwan_native_error *error)
 		return -EINVAL;
 	memset(error, 0, sizeof(*error));
 	if (!owner)
-		return mwn_error(error, ENODEV, MWAN_NATIVE_OP_EAL, 0, 0, "EAL owner is unavailable");
+		return mwn_error(error, ENODEV, MWAN_NATIVE_OP_EAL, MWAN_NATIVE_OBJECT_NONE, 0, 0, "EAL owner is unavailable");
 	if (!pthread_equal(owner->thread, pthread_self()))
-		return mwn_error(error, EPERM, MWAN_NATIVE_OP_EAL, 0, 0, "Operation requires the EAL owner thread");
+		return mwn_error(error, EPERM, MWAN_NATIVE_OP_EAL, MWAN_NATIVE_OBJECT_NONE, 0, 0, "Operation requires the EAL owner thread");
 	if (owner->terminal_failure.code) {
 		*error = owner->terminal_failure;
 		return -error->code;
 	}
 	if (!owner->eal_ready)
-		return mwn_error(error, ENODEV, MWAN_NATIVE_OP_EAL, 0, 0, "EAL owner is unavailable");
+		return mwn_error(error, ENODEV, MWAN_NATIVE_OP_EAL, MWAN_NATIVE_OBJECT_NONE, 0, 0, "EAL owner is unavailable");
 	return 0;
 }
 
@@ -99,49 +109,137 @@ static void pci_name(char *out, size_t size, struct mwan_native_pci pci)
 	snprintf(out, size, "%04x:%02x:%02x.%x", pci.domain, pci.bus, pci.device, pci.function);
 }
 
-static int config_valid(const struct mwan_native_config *config, struct mwan_native_error *error)
+static bool mac_valid(const uint8_t mac[6])
 {
-	if (!config || config->abi_version != MWAN_NATIVE_ABI_VERSION || config->record_size != sizeof(*config) ||
-	    !config->endpoint_count || config->endpoint_count > MWAN_NATIVE_MAX_ENDPOINTS ||
-	    !config->pair_capacity || config->pair_capacity > 65536 || !config->memory_mb ||
-	    !config->drain_timeout_ms || !config->rx_descriptors || !config->tx_descriptors ||
-	    config->mbuf_count < config->rx_descriptors || config->mbuf_count > UINT32_C(1048576) ||
-	    config->mtu < RTE_ETHER_MIN_MTU || config->mtu > 9600 || config->reserved ||
-	    config->memory_mode > MWAN_NATIVE_MEMORY_ANONYMOUS ||
-	    !memchr(config->file_prefix, 0, sizeof(config->file_prefix)) || !config->file_prefix[0] ||
-	    !memchr(config->hugepage_directory, 0, sizeof(config->hugepage_directory)))
-		return mwn_error(error, EINVAL, MWAN_NATIVE_OP_CONFIG, 0, 0, "Invalid native configuration");
-	for (const char *p = config->file_prefix; *p; p++)
-		if (!isalnum((unsigned char)*p) && *p != '_' && *p != '-')
-			return mwn_error(error, EINVAL, MWAN_NATIVE_OP_CONFIG, 0, 0, "Invalid EAL file prefix");
-	if (config->hugepage_directory[0] && config->hugepage_directory[0] != '/')
-		return mwn_error(error, EINVAL, MWAN_NATIVE_OP_CONFIG, 0, 0, "Hugepage directory must be absolute");
-	for (uint32_t i = 0; i < config->endpoint_count; i++) {
-		const struct mwan_native_endpoint *ep = &config->endpoints[i];
-		if (ep->reserved || ep->mode > MWAN_NATIVE_ENDPOINT_OUTPUT_ONLY || !pci_valid(ep->data) ||
-		    (ep->mode == MWAN_NATIVE_ENDPOINT_INGRESS &&
-		     (!pci_valid(ep->controller) || ep->kernel_vf == ep->data_vf ||
-		      !memcmp(&ep->controller, &ep->data, sizeof(ep->data)))))
-			return mwn_error(error, EINVAL, MWAN_NATIVE_OP_CONFIG, i, 0, "Invalid endpoint ownership");
+	struct rte_ether_addr address;
+	memcpy(&address, mac, sizeof(address));
+	return rte_is_valid_assigned_ether_addr(&address);
+}
+
+static int controllers_valid(const struct mwan_native_config *c, struct mwan_native_error *e)
+{
+	for (uint32_t i = 0; i < c->controller_count; i++) {
+		const struct mwan_native_controller *controller = &c->controllers[i];
+		if (!pci_valid(controller->pci) || controller->reserved ||
+		    controller->physical_receiver >= c->receiver_count ||
+		    c->receivers[controller->physical_receiver].controller != i)
+			return mwn_error(e, EINVAL, MWAN_NATIVE_OP_CONFIG, MWAN_NATIVE_OBJECT_CONTROLLER, i, 0, "Invalid controller or physical miss receiver");
+		for (uint32_t j = 0; j < i; j++)
+			if (!memcmp(&controller->pci, &c->controllers[j].pci, sizeof(controller->pci)))
+				return mwn_error(e, EINVAL, MWAN_NATIVE_OP_CONFIG, MWAN_NATIVE_OBJECT_CONTROLLER, i, 0, "Controller PCI function appears more than once");
+	}
+	return 0;
+}
+
+static int receivers_valid(const struct mwan_native_config *c, struct mwan_native_error *e)
+{
+	for (uint32_t i = 0; i < c->receiver_count; i++) {
+		const struct mwan_native_receiver *receiver = &c->receivers[i];
+		if (receiver->controller >= c->controller_count || receiver->reserved ||
+		    receiver->padding[0] || receiver->padding[1] || !mac_valid(receiver->mac))
+			return mwn_error(e, EINVAL, MWAN_NATIVE_OP_CONFIG, MWAN_NATIVE_OBJECT_RECEIVER, i, 0, "Invalid kernel receiver");
 		for (uint32_t j = 0; j < i; j++) {
-			const struct mwan_native_endpoint *other = &config->endpoints[j];
-			if (!memcmp(&ep->data, &other->data, sizeof(ep->data)) ||
-			    (other->mode == MWAN_NATIVE_ENDPOINT_INGRESS &&
-			     !memcmp(&ep->data, &other->controller, sizeof(ep->data))) ||
-			    (ep->mode == MWAN_NATIVE_ENDPOINT_INGRESS &&
-			     !memcmp(&ep->controller, &other->data, sizeof(ep->controller))) ||
-			    (ep->mode == MWAN_NATIVE_ENDPOINT_INGRESS && other->mode == MWAN_NATIVE_ENDPOINT_INGRESS &&
-			     !memcmp(&ep->controller, &other->controller, sizeof(ep->controller))))
-				return mwn_error(error, EINVAL, MWAN_NATIVE_OP_CONFIG, i, 0, "Endpoint PCI functions overlap");
+			const struct mwan_native_receiver *other = &c->receivers[j];
+			if (receiver->controller == other->controller &&
+			    (receiver->vf == other->vf || !memcmp(receiver->mac, other->mac, 6)))
+				return mwn_error(e, EINVAL, MWAN_NATIVE_OP_CONFIG, MWAN_NATIVE_OBJECT_RECEIVER, i, 0, "Kernel receiver VF or MAC appears more than once on a controller");
 		}
 	}
 	return 0;
 }
 
+static int data_valid(const struct mwan_native_config *c, struct mwan_native_error *e)
+{
+	uint32_t port_count = c->controller_count + c->receiver_count + c->data_count;
+	for (uint32_t i = 0; i < c->data_count; i++) {
+		const struct mwan_native_data *data = &c->data[i];
+		if (!pci_valid(data->pci) || data->reserved || data->padding[0] || data->padding[1] ||
+		    !mac_valid(data->mac) ||
+		    (data->controller != MWAN_NATIVE_NO_ID && data->controller >= c->controller_count) ||
+		    (data->controller == MWAN_NATIVE_NO_ID && data->vf))
+			return mwn_error(e, EINVAL, MWAN_NATIVE_OP_CONFIG, MWAN_NATIVE_OBJECT_DATA, i, 0, "Invalid DATA device");
+		for (uint32_t j = 0; j < c->controller_count; j++)
+			if (!memcmp(&data->pci, &c->controllers[j].pci, sizeof(data->pci)))
+				return mwn_error(e, EINVAL, MWAN_NATIVE_OP_CONFIG, MWAN_NATIVE_OBJECT_DATA, i, 0, "DATA and controller PCI functions overlap");
+		for (uint32_t j = 0; j < i; j++) {
+			const struct mwan_native_data *other = &c->data[j];
+			if (!memcmp(&data->pci, &other->pci, sizeof(data->pci)) ||
+			    (data->controller != MWAN_NATIVE_NO_ID && data->controller == other->controller &&
+			     (data->vf == other->vf || !memcmp(data->mac, other->mac, 6))))
+				return mwn_error(e, EINVAL, MWAN_NATIVE_OP_CONFIG, MWAN_NATIVE_OBJECT_DATA, i, 0, "DATA device or represented VF appears more than once");
+		}
+		if (data->controller == MWAN_NATIVE_NO_ID)
+			continue;
+		port_count++;
+		for (uint32_t j = 0; j < c->receiver_count; j++)
+			if (data->controller == c->receivers[j].controller &&
+			    (data->vf == c->receivers[j].vf || !memcmp(data->mac, c->receivers[j].mac, 6)))
+				return mwn_error(e, EINVAL, MWAN_NATIVE_OP_CONFIG, MWAN_NATIVE_OBJECT_DATA, i, 0, "DATA and kernel receiver identities overlap");
+	}
+	if (port_count > RTE_MAX_ETHPORTS)
+		return mwn_error(e, ENOSPC, MWAN_NATIVE_OP_CONFIG, MWAN_NATIVE_OBJECT_NONE, 0, 0, "Graph exceeds the SDK ethdev limit");
+	return 0;
+}
+
+static int origins_valid(const struct mwan_native_config *c, struct mwan_native_error *e)
+{
+	for (uint32_t i = 0; i < c->origin_count; i++) {
+		const struct mwan_native_origin *origin = &c->origins[i];
+		if (origin->controller >= c->controller_count || origin->receiver >= c->receiver_count ||
+		    origin->data >= c->data_count || origin->reserved ||
+		    c->receivers[origin->receiver].controller != origin->controller ||
+		    c->data[origin->data].controller != origin->controller)
+			return mwn_error(e, EINVAL, MWAN_NATIVE_OP_CONFIG, MWAN_NATIVE_OBJECT_ORIGIN, i, 0, "Origin references do not identify one controller");
+		if (origin->kind != MWAN_NATIVE_ORIGIN_PHYSICAL || origin->return_mode != MWAN_NATIVE_RETURN_ORIGINAL)
+			return mwn_error(e, ENOTSUP, MWAN_NATIVE_OP_CONFIG, MWAN_NATIVE_OBJECT_ORIGIN, i, 0, "Only physical origins with original-frame return are supported");
+		if (origin->source_vf)
+			return mwn_error(e, EINVAL, MWAN_NATIVE_OP_CONFIG, MWAN_NATIVE_OBJECT_ORIGIN, i, 0, "Physical origin must not select a source VF");
+		for (uint32_t j = 0; j < i; j++)
+			if (origin->data == c->origins[j].data)
+				return mwn_error(e, EINVAL, MWAN_NATIVE_OP_CONFIG, MWAN_NATIVE_OBJECT_ORIGIN, i, 0, "Origins require distinct DATA RX bindings");
+	}
+	return 0;
+}
+
+static int config_valid(const struct mwan_native_config *c, struct mwan_native_error *e)
+{
+	if (!c || c->abi_version != MWAN_NATIVE_ABI_VERSION || c->record_size != sizeof(*c) ||
+	    c->controller_count > MWAN_NATIVE_MAX_CONTROLLERS || c->receiver_count > MWAN_NATIVE_MAX_RECEIVERS ||
+	    !c->data_count || c->data_count > MWAN_NATIVE_MAX_DATA || c->origin_count > MWAN_NATIVE_MAX_ORIGINS ||
+	    !c->pair_capacity || c->pair_capacity > 65536 || !c->memory_mb ||
+	    !c->drain_timeout_ms || !c->rx_descriptors || !c->tx_descriptors ||
+	    c->mbuf_count < c->rx_descriptors || c->mbuf_count > UINT32_C(1048576) ||
+	    c->mtu < RTE_ETHER_MIN_MTU || c->mtu > 9600 || c->reserved ||
+	    c->memory_mode > MWAN_NATIVE_MEMORY_ANONYMOUS ||
+	    !memchr(c->file_prefix, 0, sizeof(c->file_prefix)) || !c->file_prefix[0] ||
+	    !memchr(c->hugepage_directory, 0, sizeof(c->hugepage_directory)))
+		return mwn_error(e, EINVAL, MWAN_NATIVE_OP_CONFIG, MWAN_NATIVE_OBJECT_NONE, 0, 0, "Invalid native configuration or ABI");
+	for (const char *p = c->file_prefix; *p; p++)
+		if (!isalnum((unsigned char)*p) && *p != '_' && *p != '-')
+			return mwn_error(e, EINVAL, MWAN_NATIVE_OP_CONFIG, MWAN_NATIVE_OBJECT_NONE, 0, 0, "Invalid EAL file prefix");
+	if (c->hugepage_directory[0] && c->hugepage_directory[0] != '/')
+		return mwn_error(e, EINVAL, MWAN_NATIVE_OP_CONFIG, MWAN_NATIVE_OBJECT_NONE, 0, 0, "Hugepage directory must be absolute");
+	int rc = controllers_valid(c, e);
+	if (!rc)
+		rc = receivers_valid(c, e);
+	if (!rc)
+		rc = data_valid(c, e);
+	if (!rc)
+		rc = origins_valid(c, e);
+	return rc;
+}
+
+static int append_vf(char *list, size_t size, uint16_t vf)
+{
+	size_t used = strlen(list);
+	int written = snprintf(list + used, size - used, "%s%u", used ? "," : "", vf);
+	return written < 0 || (size_t)written >= size - used ? -E2BIG : 0;
+}
+
 static int start_eal(struct mwan_native *owner, struct mwan_native_error *error)
 {
-	char values[32][512];
-	char *args[32];
+	char values[12 + 2 * (MWAN_NATIVE_MAX_CONTROLLERS + MWAN_NATIVE_MAX_DATA)][512];
+	char *args[RTE_DIM(values)];
 	uint32_t n = 0;
 #define ARG(format, ...) do { \
 	snprintf(values[n], sizeof(values[n]), format, ##__VA_ARGS__); \
@@ -160,73 +258,169 @@ static int start_eal(struct mwan_native *owner, struct mwan_native_error *error)
 	} else if (owner->config.hugepage_directory[0]) {
 		ARG("--huge-dir=%s", owner->config.hugepage_directory);
 	}
-	for (uint32_t i = 0; i < owner->config.endpoint_count; i++) {
-		const struct mwan_native_endpoint *ep = &owner->config.endpoints[i];
-		char name[32];
-		if (ep->mode == MWAN_NATIVE_ENDPOINT_INGRESS) {
-			pci_name(name, sizeof(name), ep->controller);
-			ARG("-a");
-			ARG("%s,representor=[%u,%u],kernel-owned-representors=[%u],app-id=0", name, ep->kernel_vf, ep->data_vf, ep->kernel_vf);
+	for (uint32_t i = 0; i < owner->config.controller_count; i++) {
+		char name[32], representors[128] = "", kernels[128] = "";
+		for (uint32_t j = 0; j < owner->config.receiver_count; j++) {
+			const struct mwan_native_receiver *receiver = &owner->config.receivers[j];
+			if (receiver->controller != i)
+				continue;
+			if (append_vf(representors, sizeof(representors), receiver->vf) ||
+			    append_vf(kernels, sizeof(kernels), receiver->vf))
+				return mwn_error(error, E2BIG, MWAN_NATIVE_OP_CONFIG, MWAN_NATIVE_OBJECT_CONTROLLER, i, 0, "Representor argument exceeds its bound");
 		}
-		pci_name(name, sizeof(name), ep->data);
+		for (uint32_t j = 0; j < owner->config.data_count; j++)
+			if (owner->config.data[j].controller == i &&
+			    append_vf(representors, sizeof(representors), owner->config.data[j].vf))
+				return mwn_error(error, E2BIG, MWAN_NATIVE_OP_CONFIG, MWAN_NATIVE_OBJECT_CONTROLLER, i, 0, "Representor argument exceeds its bound");
+		pci_name(name, sizeof(name), owner->config.controllers[i].pci);
+		ARG("-a");
+		ARG("%s,representor=[%s],kernel-owned-representors=[%s],app-id=0", name, representors, kernels);
+	}
+	for (uint32_t i = 0; i < owner->config.data_count; i++) {
+		char name[32];
+		pci_name(name, sizeof(name), owner->config.data[i].pci);
 		ARG("-a");
 		ARG("%s,app-id=255", name);
 	}
 #undef ARG
 	int rc = rte_eal_init((int)n, args);
 	if (rc < 0)
-		return mwn_error(error, rte_errno, MWAN_NATIVE_OP_EAL, 0, 0, "EAL initialization failed; inspect DPDK diagnostics");
+		return mwn_error(error, rte_errno, MWAN_NATIVE_OP_EAL, MWAN_NATIVE_OBJECT_NONE, 0, 0, "EAL initialization failed; inspect DPDK diagnostics");
 	owner->eal_ready = true;
 	return 0;
 }
 
-static int port_id(const char *name, uint16_t *id, uint32_t endpoint, struct mwan_native_error *error)
+static int port_id(const char *name, uint16_t *id, uint32_t kind, uint32_t index, struct mwan_native_error *error)
 {
 	int rc = rte_eth_dev_get_port_by_name(name, id);
 	if (rc)
-		return mwn_error(error, -rc, MWAN_NATIVE_OP_PORT, endpoint, 0, name);
+		return mwn_error(error, -rc, MWAN_NATIVE_OP_PORT, kind, index, 0, name);
 	struct rte_eth_dev_info info;
 	rc = rte_eth_dev_info_get(*id, &info);
 	if (rc || !info.driver_name || strcmp(info.driver_name, "net_bnxt"))
-		return mwn_error(error, ENOTSUP, MWAN_NATIVE_OP_PORT, endpoint, 0, "Endpoint requires the BNXT PMD");
+		return mwn_error(error, ENOTSUP, MWAN_NATIVE_OP_PORT, kind, index, 0, "Graph requires the BNXT PMD");
 	return 0;
+}
+
+static int representor_id(struct mwan_native *owner, uint32_t controller, uint16_t vf,
+			  uint16_t *id, uint32_t kind, uint32_t index, struct mwan_native_error *error)
+{
+	char name[96], bdf[32];
+	pci_name(bdf, sizeof(bdf), owner->config.controllers[controller].pci);
+	snprintf(name, sizeof(name), "net_%s_representor_%u", bdf, vf);
+	return port_id(name, id, kind, index, error);
+}
+
+static int data_identity(struct mwan_native *owner, uint32_t i, struct mwan_native_error *error)
+{
+	const struct mwan_native_data *data = &owner->config.data[i];
+	char name[32], path[PATH_MAX + 32];
+	char controller[PATH_MAX], parent[PATH_MAX], expected[PATH_MAX], actual[PATH_MAX];
+	if (data->controller == MWAN_NATIVE_NO_ID)
+		return 0;
+	pci_name(name, sizeof(name), owner->config.controllers[data->controller].pci);
+	snprintf(path, sizeof(path), "/sys/bus/pci/devices/%s", name);
+	if (!realpath(path, controller))
+		goto unavailable;
+	snprintf(path, sizeof(path), "%s/physfn", controller);
+	if (!realpath(path, parent)) {
+		if (errno != ENOENT)
+			goto unavailable;
+		/* PF controllers have no physfn; virtfnN must still prove membership. */
+		memcpy(parent, controller, strlen(controller) + 1);
+	}
+	snprintf(path, sizeof(path), "%s/virtfn%u", parent, data->vf);
+	if (!realpath(path, expected))
+		goto unavailable;
+	pci_name(name, sizeof(name), data->pci);
+	snprintf(path, sizeof(path), "/sys/bus/pci/devices/%s", name);
+	if (!realpath(path, actual))
+		goto unavailable;
+	if (strcmp(expected, actual))
+		return mwn_error(error, EXDEV, MWAN_NATIVE_OP_PORT, MWAN_NATIVE_OBJECT_DATA, i, 0,
+			"DATA PCI function does not match its controller's represented VF");
+	return 0;
+unavailable:
+	return mwn_error(error, errno, MWAN_NATIVE_OP_PORT, MWAN_NATIVE_OBJECT_DATA, i, 0,
+		"Cannot verify DATA VF identity; expose the controller PCI, physfn and PF virtfn links in sysfs");
 }
 
 static int discover(struct mwan_native *owner, struct mwan_native_error *error)
 {
-	for (uint32_t i = 0; i < owner->config.endpoint_count; i++) {
-		const struct mwan_native_endpoint *ep = &owner->config.endpoints[i];
-		struct mwn_endpoint *runtime = &owner->endpoints[i];
-		char name[96], bdf[32];
-		pci_name(bdf, sizeof(bdf), ep->data);
-		int rc = port_id(bdf, &runtime->data, i, error);
+	for (uint32_t i = 0; i < owner->config.controller_count; i++) {
+		char name[32];
+		pci_name(name, sizeof(name), owner->config.controllers[i].pci);
+		int rc = port_id(name, &owner->controllers[i].port, MWAN_NATIVE_OBJECT_CONTROLLER, i, error);
+		if (rc)
+			return rc;
+	}
+	for (uint32_t i = 0; i < owner->config.receiver_count; i++) {
+		const struct mwan_native_receiver *receiver = &owner->config.receivers[i];
+		int rc = representor_id(owner, receiver->controller, receiver->vf, &owner->receivers[i], MWAN_NATIVE_OBJECT_RECEIVER, i, error);
+		if (rc)
+			return rc;
+	}
+	for (uint32_t i = 0; i < owner->config.data_count; i++) {
+		const struct mwan_native_data *data = &owner->config.data[i];
+		char name[32];
+		pci_name(name, sizeof(name), data->pci);
+		int rc = port_id(name, &owner->data[i].port, MWAN_NATIVE_OBJECT_DATA, i, error);
 		if (rc)
 			return rc;
 		struct rte_ether_addr mac;
-		rc = rte_eth_macaddr_get(runtime->data, &mac);
-		if (rc || memcmp(mac.addr_bytes, ep->data_mac, RTE_ETHER_ADDR_LEN))
-			return mwn_error(error, EINVAL, MWAN_NATIVE_OP_PORT, i, 0, "DATA VF MAC does not match its configured identity");
-		if (ep->mode == MWAN_NATIVE_ENDPOINT_OUTPUT_ONLY)
+		rc = rte_eth_macaddr_get(owner->data[i].port, &mac);
+		if (rc || memcmp(mac.addr_bytes, data->mac, RTE_ETHER_ADDR_LEN))
+			return mwn_error(error, EINVAL, MWAN_NATIVE_OP_PORT, MWAN_NATIVE_OBJECT_DATA, i, 0, "DATA VF MAC does not match its configured identity");
+		if (data->controller == MWAN_NATIVE_NO_ID)
 			continue;
-		pci_name(bdf, sizeof(bdf), ep->controller);
-		rc = port_id(bdf, &runtime->controller, i, error);
+		rc = representor_id(owner, data->controller, data->vf, &owner->data[i].representor, MWAN_NATIVE_OBJECT_DATA, i, error);
 		if (rc)
 			return rc;
-		snprintf(name, sizeof(name), "net_%s_representor_%u", bdf, ep->kernel_vf);
-		rc = port_id(name, &runtime->kernel_rep, i, error);
+	}
+	/* Retain every discovered port for cleanup before checking PCI membership. */
+	for (uint32_t i = 0; i < owner->config.data_count; i++) {
+		int rc = data_identity(owner, i, error);
 		if (rc)
 			return rc;
-		snprintf(name, sizeof(name), "net_%s_representor_%u", bdf, ep->data_vf);
-		rc = port_id(name, &runtime->data_rep, i, error);
+	}
+	/* Resolve the complete graph before changing any representor role. */
+	for (uint32_t i = 0; i < owner->config.receiver_count; i++) {
+		int rc = rte_pmd_bnxt_rep_role_set(owner->receivers[i], RTE_PMD_BNXT_REP_ROLE_KERNEL);
 		if (rc)
-			return rc;
-		rc = rte_pmd_bnxt_rep_role_set(runtime->kernel_rep, RTE_PMD_BNXT_REP_ROLE_KERNEL);
-		if (!rc)
-			rc = rte_pmd_bnxt_rep_role_set(runtime->data_rep, RTE_PMD_BNXT_REP_ROLE_DIRECT_DATA);
+			return mwn_error(error, -rc, MWAN_NATIVE_OP_PORT, MWAN_NATIVE_OBJECT_RECEIVER, i, 0, "Kernel receiver role configuration failed");
+	}
+	for (uint32_t i = 0; i < owner->config.data_count; i++) {
+		if (owner->data[i].representor == MWN_NO_PORT)
+			continue;
+		int rc = rte_pmd_bnxt_rep_role_set(owner->data[i].representor, RTE_PMD_BNXT_REP_ROLE_DIRECT_DATA);
 		if (rc)
-			return mwn_error(error, -rc, MWAN_NATIVE_OP_PORT, i, 0, "Representor role configuration failed");
+			return mwn_error(error, -rc, MWAN_NATIVE_OP_PORT, MWAN_NATIVE_OBJECT_DATA, i, 0, "DATA representor role configuration failed");
 	}
 	return 0;
+}
+
+#define MWN_MAX_PORTS (MWAN_NATIVE_MAX_CONTROLLERS + MWAN_NATIVE_MAX_RECEIVERS + 2 * MWAN_NATIVE_MAX_DATA)
+
+static uint32_t owned_ports(struct mwan_native *owner, uint16_t ports[MWN_MAX_PORTS], bool shutdown)
+{
+	uint32_t count = 0;
+	if (!shutdown)
+		for (uint32_t i = 0; i < owner->config.controller_count; i++)
+			ports[count++] = owner->controllers[i].port;
+	for (uint32_t i = 0; i < owner->config.data_count; i++)
+		ports[count++] = owner->data[i].port;
+	if (shutdown)
+		for (uint32_t i = 0; i < owner->config.data_count; i++)
+			ports[count++] = owner->data[i].representor;
+	for (uint32_t i = 0; i < owner->config.receiver_count; i++)
+		ports[count++] = owner->receivers[i];
+	if (!shutdown)
+		for (uint32_t i = 0; i < owner->config.data_count; i++)
+			ports[count++] = owner->data[i].representor;
+	if (shutdown)
+		for (uint32_t i = 0; i < owner->config.controller_count; i++)
+			ports[count++] = owner->controllers[i].port;
+	return count;
 }
 
 static int configure_port(struct mwan_native *owner, uint16_t port, struct mwan_native_error *error)
@@ -235,7 +429,7 @@ static int configure_port(struct mwan_native *owner, uint16_t port, struct mwan_
 	struct rte_eth_dev_info info;
 	int rc = rte_eth_dev_info_get(port, &info);
 	if (rc)
-		return mwn_error(error, -rc, MWAN_NATIVE_OP_PORT, port, 0, "Device information failed");
+		return mwn_error(error, -rc, MWAN_NATIVE_OP_PORT, MWAN_NATIVE_OBJECT_PORT, port, 0, "Device information failed");
 	conf.rxmode.mtu = owner->config.mtu;
 	rc = rte_eth_dev_configure(port, 1, 1, &conf);
 	uint16_t rx = owner->config.rx_descriptors, tx = owner->config.tx_descriptors;
@@ -249,7 +443,7 @@ static int configure_port(struct mwan_native *owner, uint16_t port, struct mwan_
 	if (!rc)
 		rc = rte_eth_tx_queue_setup(port, 0, tx, socket, &info.default_txconf);
 	if (rc)
-		return mwn_error(error, -rc, MWAN_NATIVE_OP_PORT, port, 0, "Port queue configuration failed");
+		return mwn_error(error, -rc, MWAN_NATIVE_OP_PORT, MWAN_NATIVE_OBJECT_PORT, port, 0, "Port queue configuration failed");
 	return 0;
 }
 
@@ -259,43 +453,42 @@ static int start_port(struct mwan_native *owner, uint16_t port, struct mwan_nati
 		return 0;
 	int rc = rte_eth_dev_start(port);
 	if (rc)
-		return mwn_error(error, -rc, MWAN_NATIVE_OP_PORT, port, 0, "Port start failed");
+		return mwn_error(error, -rc, MWAN_NATIVE_OP_PORT, MWAN_NATIVE_OBJECT_PORT, port, 0, "Port start failed");
 	owner->started[port] = true;
 	return 0;
 }
 
 static int miss(struct mwan_native *owner, uint32_t i, bool install, struct mwan_native_error *error)
 {
-	struct mwn_endpoint *ep = &owner->endpoints[i];
+	struct mwn_controller *controller = &owner->controllers[i];
+	uint32_t receiver = owner->config.controllers[i].physical_receiver;
 	struct rte_flow_group_attr attr = {.transfer = 1};
-	struct rte_flow_action_port_id destination = {.id = ep->kernel_rep};
+	struct rte_flow_action_port_id destination = {.id = owner->receivers[receiver]};
 	struct rte_flow_action actions[] = {
 		{.type = install ? RTE_FLOW_ACTION_TYPE_PORT_ID : RTE_FLOW_ACTION_TYPE_END, .conf = install ? &destination : NULL},
 		{.type = RTE_FLOW_ACTION_TYPE_END}
 	};
 	struct rte_flow_error detail = {0};
-	int rc = rte_flow_group_set_miss_actions(ep->controller, 0, &attr, actions, &detail);
+	int rc = rte_flow_group_set_miss_actions(controller->port, 0, &attr, actions, &detail);
 	if (rc)
-		return mwn_flow_error(error, rc, MWAN_NATIVE_OP_MISS, i, 0, &detail);
-	ep->miss = install;
+		return mwn_flow_error(error, rc, MWAN_NATIVE_OP_MISS, MWAN_NATIVE_OBJECT_CONTROLLER, i, 0, &detail);
+	controller->miss = install;
 	return 0;
 }
 
 static int activate(struct mwan_native *owner, struct mwan_native_error *error)
 {
-	for (uint32_t i = 0; i < owner->config.endpoint_count; i++) {
-		struct mwn_endpoint *ep = &owner->endpoints[i];
-		uint16_t ports[] = {ep->controller, ep->data, ep->kernel_rep, ep->data_rep};
-		for (uint32_t j = 0; j < RTE_DIM(ports); j++) {
-			int rc = start_port(owner, ports[j], error);
-			if (rc)
-				return rc;
-		}
-		if (ep->controller != MWN_NO_PORT) {
-			int rc = miss(owner, i, true, error);
-			if (rc)
-				return rc;
-		}
+	uint16_t ports[MWN_MAX_PORTS];
+	uint32_t count = owned_ports(owner, ports, false);
+	for (uint32_t i = 0; i < count; i++) {
+		int rc = start_port(owner, ports[i], error);
+		if (rc)
+			return rc;
+	}
+	for (uint32_t i = 0; i < owner->config.controller_count; i++) {
+		int rc = miss(owner, i, true, error);
+		if (rc)
+			return rc;
 	}
 	owner->quiescing = false;
 	owner->active = true;
@@ -316,16 +509,22 @@ int mwan_native_open(const struct mwan_native_config *config, struct mwan_native
 		if (rc)
 			return rc;
 		if (owner->faulted || memcmp(config, &owner->config, sizeof(*config)))
-			return mwn_error(error, EBUSY, MWAN_NATIVE_OP_CONFIG, 0, 0, "Reopen requires the identical healthy EAL configuration");
+			return mwn_error(error, EBUSY, MWAN_NATIVE_OP_CONFIG, MWAN_NATIVE_OBJECT_NONE, 0, 0, "Reopen requires the identical healthy EAL configuration");
 		return owner->active ? 0 : activate(owner, error);
 	}
 	struct mwan_native *owner = calloc(1, sizeof(*owner));
 	if (!owner)
-		return mwn_error(error, ENOMEM, MWAN_NATIVE_OP_EAL, 0, 0, "Owner allocation failed");
+		return mwn_error(error, ENOMEM, MWAN_NATIVE_OP_EAL, MWAN_NATIVE_OBJECT_NONE, 0, 0, "Owner allocation failed");
 	owner->config = *config;
 	owner->thread = pthread_self();
-	for (uint32_t i = 0; i < MWAN_NATIVE_MAX_ENDPOINTS; i++)
-		owner->endpoints[i] = (struct mwn_endpoint){.controller = MWN_NO_PORT, .kernel_rep = MWN_NO_PORT, .data_rep = MWN_NO_PORT, .data = MWN_NO_PORT};
+	for (uint32_t i = 0; i < MWAN_NATIVE_MAX_CONTROLLERS; i++)
+		owner->controllers[i].port = MWN_NO_PORT;
+	for (uint32_t i = 0; i < MWAN_NATIVE_MAX_RECEIVERS; i++)
+		owner->receivers[i] = MWN_NO_PORT;
+	for (uint32_t i = 0; i < MWAN_NATIVE_MAX_DATA; i++)
+		owner->data[i] = (struct mwn_data){.port = MWN_NO_PORT, .representor = MWN_NO_PORT, .origin = MWAN_NATIVE_NO_ID};
+	for (uint32_t i = 0; i < config->origin_count; i++)
+		owner->data[config->origins[i].data].origin = i;
 	rc = start_eal(owner, error);
 	if (rc) {
 		free(owner);
@@ -346,22 +545,20 @@ int mwan_native_open(const struct mwan_native_config *config, struct mwan_native
 		.key_len = sizeof(struct mwn_key), .hash_func = rte_jhash, .socket_id = SOCKET_ID_ANY};
 	owner->lookup = rte_hash_create(&hash);
 	if (!owner->pairs || !owner->pending || !owner->pool || !owner->lookup) {
-		rc = mwn_error(error, ENOMEM, MWAN_NATIVE_OP_EAL, 0, 0, "Packet or pair storage allocation failed");
+		rc = mwn_error(error, ENOMEM, MWAN_NATIVE_OP_EAL, MWAN_NATIVE_OBJECT_NONE, 0, 0, "Packet or pair storage allocation failed");
 		goto failed;
 	}
 	rc = discover(owner, error);
 	if (rc)
 		goto failed;
-	for (uint32_t i = 0; i < config->endpoint_count; i++) {
-		struct mwn_endpoint *ep = &owner->endpoints[i];
-		uint16_t ports[] = {ep->controller, ep->kernel_rep, ep->data_rep, ep->data};
-		for (uint32_t j = 0; j < RTE_DIM(ports); j++) {
-			if (ports[j] == MWN_NO_PORT)
-				continue;
-			rc = configure_port(owner, ports[j], error);
-			if (rc)
-				goto failed;
-		}
+	uint16_t ports[MWN_MAX_PORTS];
+	uint32_t count = owned_ports(owner, ports, false);
+	for (uint32_t i = 0; i < count; i++) {
+		if (ports[i] == MWN_NO_PORT)
+			continue;
+		rc = configure_port(owner, ports[i], error);
+		if (rc)
+			goto failed;
 	}
 	rc = activate(owner, error);
 	if (rc)
@@ -378,7 +575,7 @@ int mwn_drain(struct mwan_native *owner, struct mwan_native_error *error)
 	uint64_t quiet_since = 0;
 	do {
 		uint64_t before = owner->stats.received;
-		int rc = mwn_poll(owner, MWN_BURST * owner->config.endpoint_count, error);
+		int rc = mwn_poll(owner, MWN_BURST * owner->config.data_count, error);
 		if (rc)
 			return rc;
 		uint64_t now = mwn_now();
@@ -392,7 +589,7 @@ int mwn_drain(struct mwan_native *owner, struct mwan_native_error *error)
 		}
 		rte_delay_us_sleep(50);
 	} while (mwn_now() < deadline);
-	return mwn_error(error, ETIMEDOUT, MWAN_NATIVE_OP_DRAIN, 0, 0, "Packet drain did not become quiet; restoration records retained");
+	return mwn_error(error, ETIMEDOUT, MWAN_NATIVE_OP_DRAIN, MWAN_NATIVE_OBJECT_NONE, 0, 0, "Packet drain did not become quiet; restoration records retained");
 }
 
 int mwan_native_poll(struct mwan_native *owner, uint32_t budget,
@@ -402,7 +599,7 @@ int mwan_native_poll(struct mwan_native *owner, uint32_t budget,
 	if (rc)
 		return rc;
 	if (!stats || !budget)
-		return mwn_error(error, EINVAL, MWAN_NATIVE_OP_PACKET, 0, 0, "Packet budget and statistics are required");
+		return mwn_error(error, EINVAL, MWAN_NATIVE_OP_PACKET, MWAN_NATIVE_OBJECT_ORIGIN, 0, 0, "Packet budget and statistics are required");
 	if (owner->active)
 		rc = mwn_poll(owner, budget, error);
 	*stats = owner->stats;
@@ -432,27 +629,27 @@ int mwan_native_close(struct mwan_native **pointer, uint32_t mode, struct mwan_n
 		if (rc)
 			return rc;
 	}
-	for (uint32_t i = 0; i < owner->config.endpoint_count; i++) {
-		struct mwn_endpoint *ep = &owner->endpoints[i];
-		if (ep->miss) {
-			rc = miss(owner, i, false, error);
-			if (rc) {
-				owner->faulted = true;
-				return rc;
-			}
+	for (uint32_t i = 0; i < owner->config.controller_count; i++) {
+		if (!owner->controllers[i].miss)
+			continue;
+		rc = miss(owner, i, false, error);
+		if (rc) {
+			owner->faulted = true;
+			return rc;
 		}
-		uint16_t ports[] = {ep->data, ep->data_rep, ep->kernel_rep, ep->controller};
-		for (uint32_t j = 0; j < RTE_DIM(ports); j++) {
-			uint16_t port = ports[j];
-			if (port == MWN_NO_PORT || !owner->started[port])
-				continue;
-			rc = rte_eth_dev_stop(port);
-			if (rc) {
-				owner->faulted = true;
-				return mwn_error(error, -rc, MWAN_NATIVE_OP_PORT, i, 0, "Port stop failed");
-			}
-			owner->started[port] = false;
+	}
+	uint16_t ports[MWN_MAX_PORTS];
+	uint32_t count = owned_ports(owner, ports, true);
+	for (uint32_t i = 0; i < count; i++) {
+		uint16_t port = ports[i];
+		if (port == MWN_NO_PORT || !owner->started[port])
+			continue;
+		rc = rte_eth_dev_stop(port);
+		if (rc) {
+			owner->faulted = true;
+			return mwn_error(error, -rc, MWAN_NATIVE_OP_PORT, MWAN_NATIVE_OBJECT_PORT, port, 0, "Port stop failed");
 		}
+		owner->started[port] = false;
 	}
 	owner->active = false;
 	/* A successful DATA stop releases queued buffers before record reuse. */
@@ -461,19 +658,16 @@ int mwan_native_close(struct mwan_native **pointer, uint32_t mode, struct mwan_n
 			mwn_pair_forget(owner, i);
 	if (mode == MWAN_NATIVE_DISABLE)
 		return 0;
-	for (uint32_t i = 0; i < owner->config.endpoint_count; i++) {
-		struct mwn_endpoint *ep = &owner->endpoints[i];
-		uint16_t ports[] = {ep->data, ep->data_rep, ep->kernel_rep, ep->controller};
-		for (uint32_t j = 0; j < RTE_DIM(ports); j++) {
-			if (ports[j] == MWN_NO_PORT || !rte_eth_dev_is_valid_port(ports[j]))
-				continue;
-			rc = rte_eth_dev_close(ports[j]);
-			if (rc) {
-				rc = mwn_error(error, -rc, MWAN_NATIVE_OP_PORT, i, 0, "Port close failed; process recovery is required");
-				owner->terminal_failure = *error;
-				owner->faulted = true;
-				return rc;
-			}
+	for (uint32_t i = 0; i < count; i++) {
+		uint16_t port = ports[i];
+		if (port == MWN_NO_PORT || !rte_eth_dev_is_valid_port(port))
+			continue;
+		rc = rte_eth_dev_close(port);
+		if (rc) {
+			rc = mwn_error(error, -rc, MWAN_NATIVE_OP_PORT, MWAN_NATIVE_OBJECT_PORT, port, 0, "Port close failed; process recovery is required");
+			owner->terminal_failure = *error;
+			owner->faulted = true;
+			return rc;
 		}
 	}
 	rte_hash_free(owner->lookup);
@@ -483,7 +677,7 @@ int mwan_native_close(struct mwan_native **pointer, uint32_t mode, struct mwan_n
 	rc = rte_eal_cleanup();
 	owner->eal_ready = false;
 	if (rc) {
-		rc = mwn_error(error, -rc, MWAN_NATIVE_OP_EAL, 0, 0, "Final EAL cleanup failed; process recovery is required");
+		rc = mwn_error(error, -rc, MWAN_NATIVE_OP_EAL, MWAN_NATIVE_OBJECT_NONE, 0, 0, "Final EAL cleanup failed; process recovery is required");
 		owner->terminal_failure = *error;
 		owner->faulted = true;
 		return rc;

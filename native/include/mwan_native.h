@@ -8,8 +8,12 @@
 extern "C" {
 #endif
 
-#define MWAN_NATIVE_ABI_VERSION 1U
-#define MWAN_NATIVE_MAX_ENDPOINTS 4U
+#define MWAN_NATIVE_ABI_VERSION 2U
+#define MWAN_NATIVE_MAX_CONTROLLERS 4U
+#define MWAN_NATIVE_MAX_RECEIVERS 8U
+#define MWAN_NATIVE_MAX_DATA 8U
+#define MWAN_NATIVE_MAX_ORIGINS 8U
+#define MWAN_NATIVE_NO_ID UINT32_MAX
 #define MWAN_NATIVE_TEXT_SIZE 192U
 #define MWAN_NATIVE_PATH_SIZE 256U
 #define MWAN_NATIVE_PREFIX_SIZE 64U
@@ -35,9 +39,9 @@ enum mwan_native_close_mode {
 	MWAN_NATIVE_FINAL_SHUTDOWN = 1
 };
 
-enum mwan_native_endpoint_mode {
-	MWAN_NATIVE_ENDPOINT_INGRESS = 0,
-	MWAN_NATIVE_ENDPOINT_OUTPUT_ONLY = 1
+enum mwan_native_return_mode {
+	MWAN_NATIVE_RETURN_ORIGINAL = 0,
+	MWAN_NATIVE_RETURN_PEER_UNICAST = 1
 };
 
 enum mwan_native_ingress_origin {
@@ -66,6 +70,16 @@ enum mwan_native_operation {
 	MWAN_NATIVE_OP_PACKET = 10
 };
 
+enum mwan_native_object_kind {
+	MWAN_NATIVE_OBJECT_NONE = 0,
+	MWAN_NATIVE_OBJECT_CONTROLLER = 1,
+	MWAN_NATIVE_OBJECT_RECEIVER = 2,
+	MWAN_NATIVE_OBJECT_DATA = 3,
+	MWAN_NATIVE_OBJECT_ORIGIN = 4,
+	MWAN_NATIVE_OBJECT_PORT = 5,
+	MWAN_NATIVE_OBJECT_PAIR = 6
+};
+
 struct mwan_native_pci {
 	uint16_t domain;
 	uint8_t bus;
@@ -74,19 +88,42 @@ struct mwan_native_pci {
 	uint8_t reserved[3];
 };
 
-/* An ingress controller manages its KERNEL and DIRECT_DATA representors.
- * data is the actual VF used for packet RX/TX. Output-only endpoints open
- * only data; their controller, kernel_vf and data_vf fields remain zero.
- */
-struct mwan_native_endpoint {
-	uint32_t mode;
+/* References are array indexes. Each controller owns one physical miss. */
+struct mwan_native_controller {
+	struct mwan_native_pci pci;
+	uint32_t physical_receiver;
 	uint32_t reserved;
-	struct mwan_native_pci controller;
-	struct mwan_native_pci data;
-	uint16_t kernel_vf;
-	uint16_t data_vf;
-	uint8_t kernel_mac[6];
-	uint8_t data_mac[6];
+};
+
+struct mwan_native_receiver {
+	uint32_t controller;
+	uint16_t vf;
+	uint16_t reserved;
+	uint8_t mac[6];
+	uint8_t padding[2];
+};
+
+/* Output-only DATA uses controller=MWAN_NATIVE_NO_ID and vf=0. */
+struct mwan_native_data {
+	struct mwan_native_pci pci;
+	uint32_t controller;
+	uint16_t vf;
+	uint16_t reserved;
+	uint8_t mac[6];
+	uint8_t padding[2];
+};
+
+/* Each origin requires a distinct DATA RX binding. Source VF interception
+ * and peer-unicast return remain unsupported in this ABI implementation.
+ */
+struct mwan_native_origin {
+	uint32_t controller;
+	uint32_t kind;
+	uint32_t receiver;
+	uint32_t data;
+	uint32_t return_mode;
+	uint16_t source_vf;
+	uint16_t reserved;
 };
 
 struct mwan_native_config {
@@ -95,7 +132,10 @@ struct mwan_native_config {
 	uint32_t cpu;
 	uint32_t memory_mb;
 	uint32_t memory_mode;
-	uint32_t endpoint_count;
+	uint32_t controller_count;
+	uint32_t receiver_count;
+	uint32_t data_count;
+	uint32_t origin_count;
 	uint32_t pair_capacity;
 	uint32_t mbuf_count;
 	uint32_t drain_timeout_ms;
@@ -105,7 +145,10 @@ struct mwan_native_config {
 	uint16_t reserved;
 	char hugepage_directory[MWAN_NATIVE_PATH_SIZE];
 	char file_prefix[MWAN_NATIVE_PREFIX_SIZE];
-	struct mwan_native_endpoint endpoints[MWAN_NATIVE_MAX_ENDPOINTS];
+	struct mwan_native_controller controllers[MWAN_NATIVE_MAX_CONTROLLERS];
+	struct mwan_native_receiver receivers[MWAN_NATIVE_MAX_RECEIVERS];
+	struct mwan_native_data data[MWAN_NATIVE_MAX_DATA];
+	struct mwan_native_origin origins[MWAN_NATIVE_MAX_ORIGINS];
 };
 
 struct mwan_native_tuple {
@@ -122,10 +165,8 @@ struct mwan_native_tuple {
  * rules do not constrain flags; the worker inspects them before forwarding.
  */
 struct mwan_native_direction {
-	uint32_t ingress_endpoint;
-	uint32_t egress_endpoint;
-	uint32_t ingress_origin;
-	uint32_t origin_reserved;
+	uint32_t origin_id;
+	uint32_t egress_data_id;
 	struct mwan_native_tuple original;
 	struct mwan_native_tuple translated;
 	uint8_t original_source_mac[6];
@@ -188,10 +229,10 @@ struct mwan_native_packet_diagnostic {
 struct mwan_native_error {
 	int32_t code;
 	uint32_t operation;
-	uint32_t endpoint;
+	uint32_t object_id;
 	uint32_t direction;
 	uint32_t flow_error_type;
-	uint32_t reserved;
+	uint32_t object_kind;
 	char message[MWAN_NATIVE_TEXT_SIZE];
 	struct mwan_native_packet_diagnostic packet;
 };
@@ -228,6 +269,14 @@ struct mwan_native_build_info {
 	uint32_t abi_version;
 	uint32_t config_size;
 	uint32_t pair_spec_size;
+	uint32_t direction_size;
+	uint32_t controller_size;
+	uint32_t receiver_size;
+	uint32_t data_size;
+	uint32_t origin_size;
+	uint32_t error_size;
+	uint32_t worker_stats_size;
+	uint32_t pair_stats_size;
 	uint32_t reserved;
 	char dpdk_version[32];
 	char source_sha256[65];
@@ -238,7 +287,7 @@ uint32_t mwan_native_abi_version(void);
 int mwan_native_build_info(struct mwan_native_build_info *info);
 
 /* The owner calls every operation on one OS thread. A null owner initializes
- * EAL once. A disabled owner reopens only the identical endpoint configuration.
+ * EAL once. A disabled owner reopens only the identical graph configuration.
  */
 int mwan_native_open(const struct mwan_native_config *config,
 		     struct mwan_native **owner, struct mwan_native_error *error);

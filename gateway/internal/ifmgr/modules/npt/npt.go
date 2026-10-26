@@ -254,6 +254,12 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	}
 	m.pdMissing = missing
 
+	changed, finish, guardErr := m.beginPolicyChange(ctx, log, pairs)
+	if guardErr != nil {
+		return guardErr
+	}
+	published := false
+	defer m.finishPolicyChange(changed, finish, &published)
 	applyErr := m.apply.Apply(ctx, log, desired)
 	if applyErr != nil {
 		reconcileErr = errors.Join(reconcileErr, fmt.Errorf("apply: %w", applyErr))
@@ -265,7 +271,8 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	if err := m.releaseObsoleteEdges(ctx, log, desiredEdges, bpfReady, desiredPolicies); err != nil {
 		reconcileErr = errors.Join(reconcileErr, err)
 	}
-	m.publishLiveState(ctx, log, delegated, desired, applyErr == nil, bpfReady, nativeReady)
+	m.publishLiveState(ctx, log, delegated, desired, applyErr == nil, bpfReady, nativeReady, pairs)
+	published = true
 	return reconcileErr
 }
 
@@ -334,6 +341,12 @@ func (m *Module) prepareLocalIPv6(ctx context.Context, log *slog.Logger, iface s
 	if err != nil {
 		return err
 	}
+	changed, finish, err := m.beginPolicyChange(ctx, log, pairs)
+	if err != nil {
+		return err
+	}
+	published := false
+	defer m.finishPolicyChange(changed, finish, &published)
 	if _, err := m.translator.Reconcile(policies); err != nil {
 		log.ErrorContext(ctx, "npt: prepare NPTv6 exceptions failed", "iface", iface, "err", err)
 		return fmt.Errorf("prepare NPTv6 exceptions: %w", err)
@@ -366,6 +379,8 @@ func (m *Module) prepareLocalIPv6(ctx context.Context, log *slog.Logger, iface s
 		m.activeRules[wan.Key()] = retained
 		break
 	}
+	m.publishPreparedPolicy(iface, pairs, changed)
+	published = true
 	return nil
 }
 
@@ -546,6 +561,7 @@ func (m *Module) publishLiveState(
 	applied bool,
 	bpfReady map[string]bool,
 	nativeReady bool,
+	pairs map[string]nptpolicy.PrefixPair,
 ) {
 	if m.Env == nil || m.Env.LiveState == nil {
 		return
@@ -560,6 +576,7 @@ func (m *Module) publishLiveState(
 			"err", inspectErr)
 	}
 	members := make(map[string]wanstate.MemberTranslation, len(m.cfg.WANs))
+	verifiedPairs := make(map[string]nptpolicy.PrefixPair, len(pairs))
 	internalV4, internalV4Err := netip.ParsePrefix(m.cfg.InternalNetV4)
 	for _, wan := range m.cfg.WANs {
 		var member wanstate.MemberTranslation
@@ -578,9 +595,17 @@ func (m *Module) publishLiveState(
 			wan, delegated[wan.Key()], applied && rendered.HasInterface(wan.Iface),
 			bpfReady[wan.Key()], nativeReady && inspectErr == nil && rendered.interfaceAbsent(wan.Iface),
 		)
+		if pair, found := pairs[wan.Key()]; found && member.V6.Ready {
+			if pair.Internal == member.V6.InternalPrefix && pair.External == member.V6.ExternalPrefix {
+				verifiedPairs[wan.Key()] = pair
+			} else {
+				member.V6.Ready = false
+				member.V6.Reason = "NPT prefixes differ from the verified policy"
+			}
+		}
 		members[wan.Key()] = member
 	}
-	if m.Env.LiveState.SetTranslation(members) && m.Env.RequestReconcile != nil {
+	if m.Env.LiveState.SetNPTTranslation(members, verifiedPairs) && m.Env.RequestReconcile != nil {
 		m.Env.RequestReconcile("NPT translation readiness changed")
 	}
 }
