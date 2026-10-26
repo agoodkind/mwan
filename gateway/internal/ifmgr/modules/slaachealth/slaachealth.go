@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vishvananda/netlink"
+	"github.com/agoodkind/netlink"
 	"golang.org/x/sys/unix"
 
 	internalclock "goodkind.io/mwan/internal/clock"

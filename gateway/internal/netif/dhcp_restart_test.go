@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agoodkind/netlink"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/dhcpv4/server4"
-	"github.com/vishvananda/netlink"
 )
 
 func TestDHCPRestartClientWithServer(t *testing.T) {

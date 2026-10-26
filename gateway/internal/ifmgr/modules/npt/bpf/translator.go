@@ -10,8 +10,8 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/agoodkind/netlink"
 	"github.com/cilium/ebpf"
-	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	"goodkind.io/mwan/internal/nptpolicy"
 )

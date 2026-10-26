@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"net/netip"
 
+	"github.com/agoodkind/netlink"
 	"github.com/google/nftables"
-	"github.com/vishvananda/netlink"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/ifmgr/modules/npt/bpf"
 	"goodkind.io/mwan/internal/netif"

@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agoodkind/netlink"
 	"github.com/gopacket/gopacket"
 	"github.com/gopacket/gopacket/layers"
 	"github.com/mdlayher/packet"
-	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/interfaceintent"

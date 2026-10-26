@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vishvananda/netlink"
+	"github.com/agoodkind/netlink"
 
 	"goodkind.io/mwan/internal/bgp"
 	"goodkind.io/mwan/internal/ifmgr"

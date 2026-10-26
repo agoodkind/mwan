@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vishvananda/netlink"
+	"github.com/agoodkind/netlink"
 	"github.com/vishvananda/netns"
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ifmgr"

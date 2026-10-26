@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/vishvananda/netlink"
+	"github.com/agoodkind/netlink"
 	"goodkind.io/mwan/internal/installfile"
 	"goodkind.io/mwan/internal/interfaceintent"
 )

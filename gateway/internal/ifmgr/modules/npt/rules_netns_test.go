@@ -10,7 +10,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/vishvananda/netlink"
+	"github.com/agoodkind/netlink"
 )
 
 const (

@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/vishvananda/netlink/nl"
+	"github.com/agoodkind/netlink/nl"
 	"golang.org/x/sys/unix"
 )
 

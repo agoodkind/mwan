@@ -1,6 +1,6 @@
 package netif
 
-import "github.com/vishvananda/netlink"
+import "github.com/agoodkind/netlink"
 
 // LinkOwnershipIdentity prefers an ownership alias, then the permanent MAC address.
 // The current MAC address identifies links without either value.
