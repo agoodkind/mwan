@@ -512,7 +512,6 @@ func (worker *NativeRuntime) closedError() error {
 func (worker *NativeRuntime) closeUpdater() {
 	err := worker.updater.Close()
 	if err != nil {
-		worker.log.Error("native conntrack updater closure failed", "err", err)
 		worker.mu.Lock()
 		if !errors.Is(worker.terminalError, err) {
 			worker.terminalError = errors.Join(worker.terminalError, err)
