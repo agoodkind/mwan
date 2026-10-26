@@ -104,3 +104,5 @@ require (
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	pault.ag/go/topsort v0.1.1 // indirect
 )
+
+replace github.com/vishvananda/netlink => github.com/agoodkind/netlink v1.3.2-0.20261026194636-4dd1b8cc423a
