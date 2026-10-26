@@ -29,32 +29,38 @@ static bool same_addresses(const struct mwan_native_tuple *a, const struct mwan_
 static int direction_valid(struct mwan_native *o, const struct mwan_native_direction *s,
 			   struct mwan_native_error *e, uint32_t i)
 {
-	if (s->ingress_origin != MWAN_NATIVE_ORIGIN_PHYSICAL || s->origin_reserved)
-		return mwn_error(e, ENOTSUP, MWAN_NATIVE_OP_VALIDATE, s->ingress_endpoint, i, "Only proven physical ingress is supported");
-	if (s->ingress_endpoint >= o->config.endpoint_count || s->egress_endpoint >= o->config.endpoint_count || s->reserved ||
-	    o->config.endpoints[s->ingress_endpoint].mode != MWAN_NATIVE_ENDPOINT_INGRESS ||
+	if (s->origin_id >= o->config.origin_count || s->egress_data_id >= o->config.data_count || s->reserved ||
 	    tuple_valid(&s->original) || tuple_valid(&s->translated) ||
 	    s->original.family != s->translated.family || s->original.protocol != s->translated.protocol ||
 	    s->output_mtu < RTE_ETHER_MIN_MTU || s->output_mtu > o->config.mtu)
-		return mwn_error(e, EINVAL, MWAN_NATIVE_OP_VALIDATE, s->ingress_endpoint, i, "Invalid exact direction");
+		return mwn_error(e, EINVAL, MWAN_NATIVE_OP_VALIDATE, MWAN_NATIVE_OBJECT_ORIGIN, s->origin_id, i, "Invalid exact direction");
 	if ((s->original.family != MWAN_NATIVE_FAMILY_IPV4 || s->original.protocol != MWAN_NATIVE_PROTOCOL_TCP) &&
 	    memcmp(&s->original, &s->translated, sizeof(s->original)))
-		return mwn_error(e, ENOTSUP, MWAN_NATIVE_OP_VALIDATE, s->ingress_endpoint, i, "Translation requires IPv4 TCP");
+		return mwn_error(e, ENOTSUP, MWAN_NATIVE_OP_VALIDATE, MWAN_NATIVE_OBJECT_ORIGIN, s->origin_id, i, "Translation requires IPv4 TCP");
 	const uint8_t *macs[] = {s->original_source_mac, s->original_destination_mac, s->output_source_mac, s->output_destination_mac};
 	for (uint32_t n = 0; n < RTE_DIM(macs); n++) {
 		struct rte_ether_addr address;
 		memcpy(&address, macs[n], sizeof(address));
 		if (!rte_is_valid_assigned_ether_addr(&address))
-			return mwn_error(e, EINVAL, MWAN_NATIVE_OP_VALIDATE, s->ingress_endpoint, i, "Direction requires unicast MAC addresses");
+			return mwn_error(e, EINVAL, MWAN_NATIVE_OP_VALIDATE, MWAN_NATIVE_OBJECT_ORIGIN, s->origin_id, i, "Direction requires unicast MAC addresses");
 	}
-	if (memcmp(s->original_destination_mac, o->config.endpoints[s->ingress_endpoint].kernel_mac, RTE_ETHER_ADDR_LEN))
-		return mwn_error(e, EINVAL, MWAN_NATIVE_OP_VALIDATE, s->ingress_endpoint, i, "Original destination must identify the kernel VF");
+	const struct mwan_native_origin *origin = &o->config.origins[s->origin_id];
+	if (memcmp(s->original_destination_mac, o->config.receivers[origin->receiver].mac, RTE_ETHER_ADDR_LEN))
+		return mwn_error(e, EINVAL, MWAN_NATIVE_OP_VALIDATE, MWAN_NATIVE_OBJECT_ORIGIN, s->origin_id, i, "Original destination must identify the origin's kernel receiver");
 	return 0;
 }
 
-static bool collision(const struct mwan_native_direction *a, const struct mwan_native_direction *b)
+static bool collision(struct mwan_native *o, const struct mwan_native_direction *a, const struct mwan_native_direction *b)
 {
-	if (a->ingress_endpoint != b->ingress_endpoint)
+	const struct mwan_native_origin *first = &o->config.origins[a->origin_id];
+	const struct mwan_native_origin *second = &o->config.origins[b->origin_id];
+	/* Software origin IDs do not distinguish identical physical selectors. */
+	if (first->controller == second->controller &&
+	    !memcmp(&a->original, &b->original, sizeof(a->original)) &&
+	    !memcmp(a->original_source_mac, b->original_source_mac, RTE_ETHER_ADDR_LEN) &&
+	    !memcmp(a->original_destination_mac, b->original_destination_mac, RTE_ETHER_ADDR_LEN))
+		return true;
+	if (a->origin_id != b->origin_id)
 		return false;
 	if (!memcmp(&a->original, &b->original, sizeof(a->original)) || !memcmp(&a->translated, &b->translated, sizeof(a->translated)))
 		return true;
@@ -77,7 +83,7 @@ static int build_flow(struct mwan_native *o, struct mwn_leg *leg, bool validate,
 	struct rte_flow_item items[4] = {0};
 	struct rte_flow_action actions[7] = {0};
 	struct rte_flow_action_count count = {0};
-	struct rte_flow_action_port_id port = {.id = o->endpoints[s->ingress_endpoint].data_rep};
+	struct rte_flow_action_port_id port = {.id = o->data[o->config.origins[s->origin_id].data].representor};
 	struct rte_flow_action_set_ipv4 src4 = {0}, dst4 = {0};
 	struct rte_flow_action_set_tp srcp = {0}, dstp = {0};
 	struct rte_flow_error detail = {0};
@@ -139,13 +145,13 @@ static int build_flow(struct mwan_native *o, struct mwn_leg *leg, bool validate,
 	actions[n++] = (struct rte_flow_action){.type = RTE_FLOW_ACTION_TYPE_COUNT, .conf = &count};
 	actions[n++] = (struct rte_flow_action){.type = RTE_FLOW_ACTION_TYPE_PORT_ID, .conf = &port};
 	actions[n].type = RTE_FLOW_ACTION_TYPE_END;
-	uint16_t controller = o->endpoints[s->ingress_endpoint].controller;
+	uint16_t controller = o->controllers[o->config.origins[s->origin_id].controller].port;
 	if (validate) {
 		int rc = rte_flow_validate(controller, &attr, items, actions, &detail);
-		return rc ? mwn_flow_error(e, rc, MWAN_NATIVE_OP_VALIDATE, s->ingress_endpoint, leg->index, &detail) : 0;
+		return rc ? mwn_flow_error(e, rc, MWAN_NATIVE_OP_VALIDATE, MWAN_NATIVE_OBJECT_ORIGIN, s->origin_id, leg->index, &detail) : 0;
 	}
 	leg->flow = rte_flow_create(controller, &attr, items, actions, &detail);
-	return leg->flow ? 0 : mwn_flow_error(e, -rte_errno, MWAN_NATIVE_OP_CREATE, s->ingress_endpoint, leg->index, &detail);
+	return leg->flow ? 0 : mwn_flow_error(e, -rte_errno, MWAN_NATIVE_OP_CREATE, MWAN_NATIVE_OBJECT_ORIGIN, s->origin_id, leg->index, &detail);
 }
 
 void mwn_pair_result(struct mwan_native *o, uint32_t slot, struct mwan_native_pair_result *r)
@@ -169,7 +175,7 @@ void mwn_pair_result(struct mwan_native *o, uint32_t slot, struct mwan_native_pa
 static int handle_slot(struct mwan_native *o, struct mwan_native_handle h, struct mwan_native_error *e)
 {
 	if (h.reserved || h.instance != o->instance || h.slot >= o->config.pair_capacity || !h.generation || o->pairs[h.slot].generation != h.generation)
-		return mwn_error(e, ESTALE, MWAN_NATIVE_OP_CONFIG, 0, 0, "Stale pair handle");
+		return mwn_error(e, ESTALE, MWAN_NATIVE_OP_CONFIG, MWAN_NATIVE_OBJECT_PAIR, h.slot, 0, "Stale pair handle");
 	return 0;
 }
 
@@ -195,18 +201,18 @@ int mwn_pair_delete(struct mwan_native *o, uint32_t slot, struct mwan_native_err
 	for (uint32_t i = 0; i < MWAN_NATIVE_DIRECTION_COUNT; i++) {
 		struct mwn_leg *leg = &p->legs[i];
 		if (leg->delete_failed) {
-			failure = mwn_error(e, EIO, MWAN_NATIVE_OP_DESTROY, leg->spec.ingress_endpoint, i, "Consumed flow handle cannot be retried");
+			failure = mwn_error(e, EIO, MWAN_NATIVE_OP_DESTROY, MWAN_NATIVE_OBJECT_ORIGIN, leg->spec.origin_id, i, "Consumed flow handle cannot be retried");
 			continue;
 		}
 		if (!leg->flow)
 			continue;
 		struct rte_flow_error detail = {0};
-		int rc = rte_flow_destroy(o->endpoints[leg->spec.ingress_endpoint].controller, leg->flow, &detail);
+		int rc = rte_flow_destroy(o->controllers[o->config.origins[leg->spec.origin_id].controller].port, leg->flow, &detail);
 		/* BNXT can consume the FID even when hardware deletion fails. */
 		leg->flow = NULL;
 		if (rc) {
 			leg->delete_failed = true;
-			failure = mwn_flow_error(e, rc, MWAN_NATIVE_OP_DESTROY, leg->spec.ingress_endpoint, i, &detail);
+			failure = mwn_flow_error(e, rc, MWAN_NATIVE_OP_DESTROY, MWAN_NATIVE_OBJECT_ORIGIN, leg->spec.origin_id, i, &detail);
 		}
 	}
 	if (failure) {
@@ -224,9 +230,16 @@ int mwan_native_pair_install(struct mwan_native *o, const struct mwan_native_pai
 		return rc;
 	if (!s || !r || !o->active || o->faulted || o->quiescing ||
 	    !s->requested_direction_mask || s->requested_direction_mask > 3 || s->reserved)
-		return mwn_error(e, EINVAL, MWAN_NATIVE_OP_CREATE, 0, 0, "Worker cannot admit a pair");
+		return mwn_error(e, EINVAL, MWAN_NATIVE_OP_CREATE, MWAN_NATIVE_OBJECT_PAIR, 0, 0, "Worker cannot admit a pair");
 	static const uint32_t masks[MWAN_NATIVE_DIRECTION_COUNT] = {1U, 2U};
 	memset(r, 0, sizeof(*r));
+	for (uint32_t i = 0; i < MWAN_NATIVE_DIRECTION_COUNT; i++) {
+		if (!(s->requested_direction_mask & masks[i]))
+			continue;
+		rc = direction_valid(o, &s->directions[i], e, i);
+		if (rc)
+			return rc;
+	}
 	uint32_t slot = o->config.pair_capacity;
 	for (uint32_t i = 0; i < o->config.pair_capacity; i++) {
 		struct mwn_pair *p = &o->pairs[i];
@@ -238,13 +251,13 @@ int mwan_native_pair_install(struct mwan_native *o, const struct mwan_native_pai
 		for (uint32_t a = 0; a < MWAN_NATIVE_DIRECTION_COUNT; a++)
 			for (uint32_t b = 0; b < MWAN_NATIVE_DIRECTION_COUNT; b++)
 				if ((s->requested_direction_mask & masks[a]) && (p->requested_mask & masks[b]) &&
-				    collision(&s->directions[a], &p->legs[b].spec))
-					return mwn_error(e, EEXIST, MWAN_NATIVE_OP_VALIDATE, 0, a, "Direction conflicts with an existing packet or restoration key");
+				    collision(o, &s->directions[a], &p->legs[b].spec))
+					return mwn_error(e, EEXIST, MWAN_NATIVE_OP_VALIDATE, MWAN_NATIVE_OBJECT_ORIGIN, s->directions[a].origin_id, a, "Direction conflicts with an existing packet or restoration key");
 	}
 	if (slot == o->config.pair_capacity)
-		return mwn_error(e, ENOSPC, MWAN_NATIVE_OP_CREATE, 0, 0, "Pair capacity exhausted");
-	if (s->requested_direction_mask == 3 && collision(&s->directions[0], &s->directions[1]))
-		return mwn_error(e, EEXIST, MWAN_NATIVE_OP_VALIDATE, 0, 0, "Pair directions overlap");
+		return mwn_error(e, ENOSPC, MWAN_NATIVE_OP_CREATE, MWAN_NATIVE_OBJECT_PAIR, MWAN_NATIVE_NO_ID, 0, "Pair capacity exhausted");
+	if (s->requested_direction_mask == 3 && collision(o, &s->directions[0], &s->directions[1]))
+		return mwn_error(e, EEXIST, MWAN_NATIVE_OP_VALIDATE, MWAN_NATIVE_OBJECT_ORIGIN, s->directions[0].origin_id, 0, "Pair directions overlap");
 	struct mwn_pair *p = &o->pairs[slot];
 	uint64_t generation = p->generation + 1;
 	memset(p, 0, sizeof(*p));
@@ -257,12 +270,10 @@ int mwan_native_pair_install(struct mwan_native *o, const struct mwan_native_pai
 		leg->spec = s->directions[i];
 		leg->pair = p;
 		leg->index = i;
-		leg->key = (struct mwn_key){.ingress = leg->spec.ingress_endpoint, .tuple = leg->spec.translated};
+		leg->key = (struct mwn_key){.origin = leg->spec.origin_id, .tuple = leg->spec.translated};
 		if (!(p->requested_mask & masks[i]))
 			continue;
-		rc = direction_valid(o, &leg->spec, e, i);
-		if (!rc)
-			rc = build_flow(o, leg, true, e);
+		rc = build_flow(o, leg, true, e);
 		if (rc)
 			return rc;
 	}
@@ -273,7 +284,7 @@ int mwan_native_pair_install(struct mwan_native *o, const struct mwan_native_pai
 			continue;
 		rc = rte_hash_add_key_data(o->lookup, &leg->key, leg);
 		if (rc < 0) {
-			mwn_error(e, -rc, MWAN_NATIVE_OP_CREATE, leg->spec.ingress_endpoint, i, "Packet lookup allocation failed");
+			mwn_error(e, -rc, MWAN_NATIVE_OP_CREATE, MWAN_NATIVE_OBJECT_ORIGIN, leg->spec.origin_id, i, "Packet lookup allocation failed");
 			goto rollback;
 		}
 		leg->hash_added = true;
@@ -306,7 +317,7 @@ int mwan_native_pair_remove(struct mwan_native *o, struct mwan_native_handle h,
 	if (rc)
 		return rc;
 	if (!r)
-		return mwn_error(e, EINVAL, MWAN_NATIVE_OP_DESTROY, 0, 0, "Pair result is required");
+		return mwn_error(e, EINVAL, MWAN_NATIVE_OP_DESTROY, MWAN_NATIVE_OBJECT_PAIR, h.slot, 0, "Pair result is required");
 	rc = handle_slot(o, h, e);
 	if (rc)
 		return rc;
@@ -322,7 +333,7 @@ int mwan_native_pair_query(struct mwan_native *o, struct mwan_native_handle h,
 	if (rc)
 		return rc;
 	if (!s)
-		return mwn_error(e, EINVAL, MWAN_NATIVE_OP_QUERY, 0, 0, "Counter result is required");
+		return mwn_error(e, EINVAL, MWAN_NATIVE_OP_QUERY, MWAN_NATIVE_OBJECT_PAIR, h.slot, 0, "Counter result is required");
 	memset(s, 0, sizeof(*s));
 	rc = handle_slot(o, h, e);
 	if (rc)
@@ -343,13 +354,13 @@ int mwan_native_pair_query(struct mwan_native *o, struct mwan_native_handle h,
 		if (p->state != MWAN_NATIVE_PAIR_INSTALLED || !leg->flow)
 			rc = -ENOENT;
 		else
-			rc = rte_flow_query(o->endpoints[leg->spec.ingress_endpoint].controller, leg->flow, &action, &count, &detail);
+			rc = rte_flow_query(o->controllers[o->config.origins[leg->spec.origin_id].controller].port, leg->flow, &action, &count, &detail);
 		if (!rc && (!count.hits_set || !count.bytes_set))
 			rc = -EAGAIN;
 		out->error = rc;
 		if (rc) {
 			if (!failure)
-				failure = mwn_flow_error(e, rc, MWAN_NATIVE_OP_QUERY, leg->spec.ingress_endpoint, i, &detail);
+				failure = mwn_flow_error(e, rc, MWAN_NATIVE_OP_QUERY, MWAN_NATIVE_OBJECT_ORIGIN, leg->spec.origin_id, i, &detail);
 			continue;
 		}
 		out->packets = count.hits;

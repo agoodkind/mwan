@@ -23,14 +23,29 @@ import (
 	"github.com/ti-mo/conntrack"
 )
 
-// NativeEndpointMode selects controller ingress or a DATA VF used only for output.
-type NativeEndpointMode uint32
+// NativeControllerID references one controller in NativeConfig.
+type NativeControllerID uint32
+
+// NativeReceiverID references one kernel receiver in NativeConfig.
+type NativeReceiverID uint32
+
+// NativeDataID references one actual DATA device in NativeConfig.
+type NativeDataID uint32
+
+// NativeOriginID references one ingress binding in NativeConfig.
+type NativeOriginID uint32
+
+// NativeNoController identifies an output-only DATA device.
+const NativeNoController NativeControllerID = C.MWAN_NATIVE_NO_ID
+
+// NativeReturnMode selects the disposition of an exceptional packet.
+type NativeReturnMode uint32
 
 const (
-	// NativeIngress opens a controller, its representors, and the actual DATA VF.
-	NativeIngress NativeEndpointMode = C.MWAN_NATIVE_ENDPOINT_INGRESS
-	// NativeOutputOnly opens only the actual DATA VF.
-	NativeOutputOnly NativeEndpointMode = C.MWAN_NATIVE_ENDPOINT_OUTPUT_ONLY
+	// NativeReturnOriginal restores the frame for its original kernel receiver.
+	NativeReturnOriginal NativeReturnMode = C.MWAN_NATIVE_RETURN_ORIGINAL
+	// NativeReturnPeerUnicast remains unsupported until source return passes hardware acceptance.
+	NativeReturnPeerUnicast NativeReturnMode = C.MWAN_NATIVE_RETURN_PEER_UNICAST
 )
 
 // NativeIngressOrigin identifies the source port that hardware must classify.
@@ -61,23 +76,46 @@ type NativePCIAddress struct {
 	Function uint8
 }
 
-// NativeEndpoint specifies the PCI functions and VF identities that the owner opens.
-type NativeEndpoint struct {
-	Mode       NativeEndpointMode
-	Controller NativePCIAddress
-	Data       NativePCIAddress
-	KernelVF   uint16
-	DataVF     uint16
-	KernelMAC  [6]byte
-	DataMAC    [6]byte
+// NativeController owns one PCI function and its physical group-zero miss.
+type NativeController struct {
+	PCI              NativePCIAddress
+	PhysicalReceiver NativeReceiverID
 }
 
-// NativeConfig specifies EAL resources, endpoints, capacity, and polling limits.
+// NativeKernelReceiver identifies a kernel-owned VF on one controller.
+type NativeKernelReceiver struct {
+	Controller NativeControllerID
+	VF         uint16
+	MAC        [6]byte
+}
+
+// NativeDataDevice identifies one actual DATA function and its optional representor.
+type NativeDataDevice struct {
+	PCI        NativePCIAddress
+	Controller NativeControllerID
+	VF         uint16
+	MAC        [6]byte
+}
+
+// NativeOrigin binds an ingress source to one receiver and one distinct DATA RX device.
+type NativeOrigin struct {
+	Controller NativeControllerID
+	Kind       NativeIngressOrigin
+	Receiver   NativeReceiverID
+	Data       NativeDataID
+	ReturnMode NativeReturnMode
+	SourceVF   uint16
+}
+
+// NativeConfig specifies the ownership graph, EAL resources, and polling limits.
 type NativeConfig struct {
 	CPU               uint32
 	MemoryMiB         uint32
 	MemoryMode        NativeMemoryMode
-	Endpoints         []NativeEndpoint
+	Controllers       []NativeController
+	Receivers         []NativeKernelReceiver
+	Data              []NativeDataDevice
+	Origins           []NativeOrigin
 	PairCapacity      uint32
 	MbufCount         uint32
 	DrainTimeout      time.Duration
@@ -92,9 +130,8 @@ type NativeConfig struct {
 
 // NativeDirection supplies an exact mapping and the caller's resolved output path.
 type NativeDirection struct {
-	IngressEndpoint        uint32
-	EgressEndpoint         uint32
-	IngressOrigin          NativeIngressOrigin
+	Origin                 NativeOriginID
+	EgressData             NativeDataID
 	Original               conntrack.Tuple
 	Translated             conntrack.Tuple
 	OriginalSourceMAC      [6]byte
@@ -183,11 +220,32 @@ type NativeBuildInfo struct {
 	PatchSHA256  string
 }
 
+// NativeObjectKind identifies the graph object associated with an operation.
+type NativeObjectKind uint32
+
+const (
+	// NativeObjectNone reports a process-wide operation.
+	NativeObjectNone NativeObjectKind = C.MWAN_NATIVE_OBJECT_NONE
+	// NativeObjectController reports a controller array index.
+	NativeObjectController NativeObjectKind = C.MWAN_NATIVE_OBJECT_CONTROLLER
+	// NativeObjectReceiver reports a kernel receiver array index.
+	NativeObjectReceiver NativeObjectKind = C.MWAN_NATIVE_OBJECT_RECEIVER
+	// NativeObjectData reports a DATA device array index.
+	NativeObjectData NativeObjectKind = C.MWAN_NATIVE_OBJECT_DATA
+	// NativeObjectOrigin reports an origin array index.
+	NativeObjectOrigin NativeObjectKind = C.MWAN_NATIVE_OBJECT_ORIGIN
+	// NativeObjectPort reports a discovered DPDK ethdev port ID.
+	NativeObjectPort NativeObjectKind = C.MWAN_NATIVE_OBJECT_PORT
+	// NativeObjectPair reports a logical pair slot.
+	NativeObjectPair NativeObjectKind = C.MWAN_NATIVE_OBJECT_PAIR
+)
+
 // NativeError identifies the failed operation and preserves its errno.
 type NativeError struct {
 	Code          syscall.Errno
 	Operation     uint32
-	Endpoint      uint32
+	ObjectKind    NativeObjectKind
+	ObjectID      uint32
 	Direction     uint32
 	FlowErrorType uint32
 	Message       string
@@ -210,9 +268,9 @@ type NativePacketDiagnostic struct {
 	DestinationMAC         [6]byte
 }
 
-// Error formats the native operation, endpoint, direction, and failure.
+// Error formats the native operation, graph object, direction, and failure.
 func (e *NativeError) Error() string {
-	return fmt.Sprintf("native operation %d endpoint %d direction %d: %s: %s", e.Operation, e.Endpoint, e.Direction, e.Message, e.Code)
+	return fmt.Sprintf("native operation %d object %d/%d direction %d: %s: %s", e.Operation, e.ObjectKind, e.ObjectID, e.Direction, e.Message, e.Code)
 }
 
 // Unwrap permits [errors.Is] to compare the underlying errno.
@@ -260,6 +318,9 @@ type NativeRuntime struct {
 
 // ReadNativeBuild reads the linked library's version and verifies its ABI sizes.
 func ReadNativeBuild() (NativeBuildInfo, error) {
+	if C.mwan_native_abi_version() != C.MWAN_NATIVE_ABI_VERSION {
+		return NativeBuildInfo{}, errors.New("native library ABI does not match the Go binding")
+	}
 	var info C.struct_mwan_native_build_info
 	if result := C.mwan_native_build_info(&info); result != 0 {
 		err := fmt.Errorf("read native build: %w", syscall.Errno(-result))
@@ -268,7 +329,15 @@ func ReadNativeBuild() (NativeBuildInfo, error) {
 	}
 	if info.abi_version != C.MWAN_NATIVE_ABI_VERSION ||
 		info.config_size != C.sizeof_struct_mwan_native_config ||
-		info.pair_spec_size != C.sizeof_struct_mwan_native_pair_spec {
+		info.pair_spec_size != C.sizeof_struct_mwan_native_pair_spec ||
+		info.direction_size != C.sizeof_struct_mwan_native_direction ||
+		info.controller_size != C.sizeof_struct_mwan_native_controller ||
+		info.receiver_size != C.sizeof_struct_mwan_native_receiver ||
+		info.data_size != C.sizeof_struct_mwan_native_data ||
+		info.origin_size != C.sizeof_struct_mwan_native_origin ||
+		info.error_size != C.sizeof_struct_mwan_native_error ||
+		info.worker_stats_size != C.sizeof_struct_mwan_native_worker_stats ||
+		info.pair_stats_size != C.sizeof_struct_mwan_native_pair_stats {
 		return NativeBuildInfo{}, errors.New("native library ABI does not match the Go binding")
 	}
 	return NativeBuildInfo{
@@ -544,7 +613,7 @@ func nativeCallError(rc C.int, detail C.struct_mwan_native_error) error {
 		code = syscall.Errno(-rc)
 	}
 	return &NativeError{
-		Code: code, Operation: uint32(detail.operation), Endpoint: uint32(detail.endpoint),
+		Code: code, Operation: uint32(detail.operation), ObjectKind: NativeObjectKind(detail.object_kind), ObjectID: uint32(detail.object_id),
 		Direction: uint32(detail.direction), FlowErrorType: uint32(detail.flow_error_type), Message: C.GoString(&detail.message[0]),
 		Packet: decodeNativePacket(detail.packet),
 	}
@@ -591,13 +660,17 @@ func encodeNativePCI(address NativePCIAddress) C.struct_mwan_native_pci {
 
 func encodeNativeConfig(config NativeConfig) (C.struct_mwan_native_config, error) {
 	var result C.struct_mwan_native_config
-	if len(config.Endpoints) == 0 || len(config.Endpoints) > C.MWAN_NATIVE_MAX_ENDPOINTS || config.PollBudget == 0 ||
-		config.IdleWait < 0 || config.DrainTimeout < time.Millisecond || config.DrainTimeout/time.Millisecond > time.Duration(^uint32(0)) {
-		return result, errors.New("invalid native endpoint count, poll budget, or timeout")
+	if len(config.Controllers) > C.MWAN_NATIVE_MAX_CONTROLLERS || len(config.Receivers) > C.MWAN_NATIVE_MAX_RECEIVERS ||
+		len(config.Data) == 0 || len(config.Data) > C.MWAN_NATIVE_MAX_DATA || len(config.Origins) > C.MWAN_NATIVE_MAX_ORIGINS ||
+		config.PollBudget == 0 || config.IdleWait < 0 || config.DrainTimeout < time.Millisecond ||
+		config.DrainTimeout/time.Millisecond > time.Duration(^uint32(0)) {
+		return result, errors.New("invalid native graph count, poll budget, or timeout")
 	}
 	result.abi_version, result.record_size = C.MWAN_NATIVE_ABI_VERSION, C.sizeof_struct_mwan_native_config
 	result.cpu, result.memory_mb = C.uint32_t(config.CPU), C.uint32_t(config.MemoryMiB)
-	result.memory_mode, result.endpoint_count = C.uint32_t(config.MemoryMode), C.uint32_t(len(config.Endpoints))
+	result.memory_mode = C.uint32_t(config.MemoryMode)
+	result.controller_count, result.receiver_count = C.uint32_t(len(config.Controllers)), C.uint32_t(len(config.Receivers))
+	result.data_count, result.origin_count = C.uint32_t(len(config.Data)), C.uint32_t(len(config.Origins))
 	result.pair_capacity, result.mbuf_count = C.uint32_t(config.PairCapacity), C.uint32_t(config.MbufCount)
 	result.drain_timeout_ms = C.uint32_t(config.DrainTimeout / time.Millisecond)
 	result.rx_descriptors, result.tx_descriptors = C.uint16_t(config.RXDescriptors), C.uint16_t(config.TXDescriptors)
@@ -608,14 +681,29 @@ func encodeNativeConfig(config NativeConfig) (C.struct_mwan_native_config, error
 	if err := nativeText(result.file_prefix[:], config.FilePrefix); err != nil {
 		return result, err
 	}
-	for i, endpoint := range config.Endpoints {
-		out := &result.endpoints[i]
-		out.mode = C.uint32_t(endpoint.Mode)
-		out.controller, out.data = encodeNativePCI(endpoint.Controller), encodeNativePCI(endpoint.Data)
-		out.kernel_vf, out.data_vf = C.uint16_t(endpoint.KernelVF), C.uint16_t(endpoint.DataVF)
-		for n := range endpoint.KernelMAC {
-			out.kernel_mac[n], out.data_mac[n] = C.uint8_t(endpoint.KernelMAC[n]), C.uint8_t(endpoint.DataMAC[n])
+	for i, controller := range config.Controllers {
+		result.controllers[i].pci = encodeNativePCI(controller.PCI)
+		result.controllers[i].physical_receiver = C.uint32_t(controller.PhysicalReceiver)
+	}
+	for i, receiver := range config.Receivers {
+		out := &result.receivers[i]
+		out.controller, out.vf = C.uint32_t(receiver.Controller), C.uint16_t(receiver.VF)
+		for n := range receiver.MAC {
+			out.mac[n] = C.uint8_t(receiver.MAC[n])
 		}
+	}
+	for i, data := range config.Data {
+		out := &result.data[i]
+		out.pci, out.controller, out.vf = encodeNativePCI(data.PCI), C.uint32_t(data.Controller), C.uint16_t(data.VF)
+		for n := range data.MAC {
+			out.mac[n] = C.uint8_t(data.MAC[n])
+		}
+	}
+	for i, origin := range config.Origins {
+		out := &result.origins[i]
+		out.controller, out.kind = C.uint32_t(origin.Controller), C.uint32_t(origin.Kind)
+		out.receiver, out.data = C.uint32_t(origin.Receiver), C.uint32_t(origin.Data)
+		out.return_mode, out.source_vf = C.uint32_t(origin.ReturnMode), C.uint16_t(origin.SourceVF)
 	}
 	return result, nil
 }
@@ -673,8 +761,7 @@ func encodeNativePair(spec NativePairSpec) (C.struct_mwan_native_pair_spec, erro
 			continue
 		}
 		out := &result.directions[i]
-		out.ingress_endpoint, out.egress_endpoint = C.uint32_t(direction.IngressEndpoint), C.uint32_t(direction.EgressEndpoint)
-		out.ingress_origin = C.uint32_t(direction.IngressOrigin)
+		out.origin_id, out.egress_data_id = C.uint32_t(direction.Origin), C.uint32_t(direction.EgressData)
 		var err error
 		out.original, err = encodeNativeTuple(direction.Original)
 		if err != nil {

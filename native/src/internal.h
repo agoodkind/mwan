@@ -10,12 +10,16 @@
 #include <rte_mbuf.h>
 #define MWN_BURST 32U
 #define MWN_NO_PORT UINT16_MAX
-struct mwn_endpoint {
-	uint16_t controller, kernel_rep, data_rep, data;
+struct mwn_controller {
+	uint16_t port;
 	bool miss;
 };
+struct mwn_data {
+	uint16_t port, representor;
+	uint32_t origin;
+};
 struct mwn_key {
-	uint32_t ingress;
+	uint32_t origin;
 	struct mwan_native_tuple tuple;
 };
 struct mwn_pair;
@@ -42,7 +46,9 @@ struct mwan_native {
 	pthread_t thread;
 	struct mwan_native_config config;
 	uint64_t instance;
-	struct mwn_endpoint endpoints[MWAN_NATIVE_MAX_ENDPOINTS];
+	struct mwn_controller controllers[MWAN_NATIVE_MAX_CONTROLLERS];
+	uint16_t receivers[MWAN_NATIVE_MAX_RECEIVERS];
+	struct mwn_data data[MWAN_NATIVE_MAX_DATA];
 	struct rte_mempool *pool;
 	struct rte_hash *lookup;
 	struct mwn_pair *pairs;
@@ -55,8 +61,8 @@ struct mwan_native {
 	bool eal_ready, active, quiescing, faulted;
 	bool started[RTE_MAX_ETHPORTS];
 };
-int mwn_error(struct mwan_native_error *, int, uint32_t, uint32_t, uint32_t, const char *);
-int mwn_flow_error(struct mwan_native_error *, int, uint32_t, uint32_t, uint32_t, const struct rte_flow_error *);
+int mwn_error(struct mwan_native_error *, int, uint32_t, uint32_t, uint32_t, uint32_t, const char *);
+int mwn_flow_error(struct mwan_native_error *, int, uint32_t, uint32_t, uint32_t, uint32_t, const struct rte_flow_error *);
 int mwn_owner(struct mwan_native *, struct mwan_native_error *);
 uint64_t mwn_now(void);
 void mwn_pair_result(struct mwan_native *, uint32_t, struct mwan_native_pair_result *);

@@ -119,9 +119,9 @@ static int decode(struct rte_mbuf *packet, struct packet_view *view)
 	return 0;
 }
 
-static struct mwn_leg *packet_leg(struct mwan_native *owner, uint32_t endpoint, const struct packet_view *view)
+static struct mwn_leg *packet_leg(struct mwan_native *owner, uint32_t origin, const struct packet_view *view)
 {
-	struct mwn_key key = {.ingress = endpoint, .tuple = view->tuple};
+	struct mwn_key key = {.origin = origin, .tuple = view->tuple};
 	void *value = NULL;
 	if (view->ports && rte_hash_lookup_data(owner->lookup, &key, &value) >= 0)
 		return value;
@@ -134,7 +134,7 @@ static struct mwn_leg *packet_leg(struct mwan_native *owner, uint32_t endpoint, 
 		for (uint32_t j = 0; j < MWAN_NATIVE_DIRECTION_COUNT; j++) {
 			struct mwn_leg *leg = &pair->legs[j];
 			const struct mwan_native_tuple *tuple = &leg->spec.translated;
-			if (leg->hash_added && leg->spec.ingress_endpoint == endpoint && tuple->family == view->tuple.family &&
+			if (leg->hash_added && leg->spec.origin_id == origin && tuple->family == view->tuple.family &&
 			    tuple->protocol == view->tuple.protocol && !memcmp(tuple->source, view->tuple.source, 16) &&
 			    !memcmp(tuple->destination, view->tuple.destination, 16))
 				return leg;
@@ -225,7 +225,7 @@ static void flush_pending(struct mwan_native *owner)
 	owner->stats.pending_packets = owner->pending_count;
 }
 
-static int process_packet(struct mwan_native *owner, uint32_t endpoint,
+static int process_packet(struct mwan_native *owner, uint32_t origin,
 			  struct rte_mbuf *packet, struct mwan_native_error *error)
 {
 	struct rte_ether_hdr header;
@@ -255,7 +255,7 @@ static int process_packet(struct mwan_native *owner, uint32_t endpoint,
 		owner->stats.malformed++;
 		goto quarantine;
 	}
-	struct mwn_leg *leg = packet_leg(owner, endpoint, &view);
+	struct mwn_leg *leg = packet_leg(owner, origin, &view);
 	if (!leg) {
 		diagnostic.failure_flags |= MWAN_NATIVE_PACKET_KEY_MISSING;
 	} else {
@@ -270,14 +270,14 @@ static int process_packet(struct mwan_native *owner, uint32_t endpoint,
 		goto quarantine;
 	}
 	bool kernel = owner->quiescing || owner->faulted || leg->pair->state != MWAN_NATIVE_PAIR_INSTALLED || !eligible(&view, &leg->spec);
-	uint16_t output = owner->endpoints[leg->spec.egress_endpoint].data;
+	uint16_t output = owner->data[leg->spec.egress_data_id].port;
 	struct rte_eth_link link;
 	if (!kernel && (rte_eth_link_get_nowait(output, &link) || !link.link_status))
 		kernel = true;
 	if (kernel) {
 		owner->stats.unsupported++;
 		restore(&view, &leg->spec);
-		output = owner->endpoints[endpoint].data;
+		output = owner->data[owner->config.origins[origin].data].port;
 	} else {
 		if (view.tuple.family == MWAN_NATIVE_FAMILY_IPV4) {
 			uint8_t ttl_protocol[] = {(uint8_t)(view.ttl - 1), view.ip[9]};
@@ -303,7 +303,7 @@ quarantine:
 	owner->quarantined = packet;
 	owner->stats.quarantined_packets++;
 	owner->faulted = true;
-	int failure = mwn_error(error, -rc, MWAN_NATIVE_OP_PACKET, endpoint, 0, "Packet lacks a verified inverse; retained for recovery and admissions stopped");
+	int failure = mwn_error(error, -rc, MWAN_NATIVE_OP_PACKET, MWAN_NATIVE_OBJECT_ORIGIN, origin, 0, "Packet lacks a verified inverse; retained for recovery and admissions stopped");
 	error->packet = diagnostic;
 	return failure;
 }
@@ -311,21 +311,22 @@ quarantine:
 int mwn_poll(struct mwan_native *owner, uint32_t budget, struct mwan_native_error *error)
 {
 	if (owner->quarantined)
-		return mwn_error(error, EIO, MWAN_NATIVE_OP_PACKET, 0, 0, "Unrecoverable packet retained; controller recovery is required");
+		return mwn_error(error, EIO, MWAN_NATIVE_OP_PACKET, MWAN_NATIVE_OBJECT_NONE, 0, 0, "Unrecoverable packet retained; controller recovery is required");
 	flush_pending(owner);
 	if (owner->pending_count)
 		return 0;
-	for (uint32_t visited = 0; visited < owner->config.endpoint_count && budget; visited++) {
-		uint32_t endpoint = owner->next_rx++ % owner->config.endpoint_count;
-		struct mwn_endpoint *ep = &owner->endpoints[endpoint];
-		if (ep->controller == MWN_NO_PORT || ep->data == MWN_NO_PORT || !owner->started[ep->data])
+	for (uint32_t visited = 0; visited < owner->config.data_count && budget; visited++) {
+		uint32_t data_id = owner->next_rx++ % owner->config.data_count;
+		struct mwn_data *data = &owner->data[data_id];
+		if (data->origin == MWAN_NATIVE_NO_ID || data->port == MWN_NO_PORT || !owner->started[data->port])
 			continue;
+		uint32_t origin = data->origin;
 		struct rte_mbuf *packets[MWN_BURST];
-		uint16_t count = rte_eth_rx_burst(ep->data, 0, packets, (uint16_t)RTE_MIN(budget, MWN_BURST));
+		uint16_t count = rte_eth_rx_burst(data->port, 0, packets, (uint16_t)RTE_MIN(budget, MWN_BURST));
 		budget -= count;
 		owner->stats.received += count;
 		for (uint16_t i = 0; i < count; i++) {
-			int rc = process_packet(owner, endpoint, packets[i], error);
+			int rc = process_packet(owner, origin, packets[i], error);
 			if (rc) {
 				/* Preserve every packet already dequeued from this burst. */
 				for (uint16_t j = i + 1; j < count; j++) {
