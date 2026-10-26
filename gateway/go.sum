@@ -21,6 +21,8 @@ github.com/ProtonMail/gopenpgp/v2 v2.7.1 h1:Awsg7MPc2gD3I7IFac2qE3Gdls0lZW8SzrFZ
 github.com/ProtonMail/gopenpgp/v2 v2.7.1/go.mod h1:/BU5gfAVwqyd8EfC3Eu7zmuhwYQpKs+cGD8M//iiaxs=
 github.com/agoodkind/netlink v1.3.2-0.20261026204005-6dffb166dac6 h1:HFDKJsN8YwCDizkJbX1i0fWsGFQ700w7c3le/iHLLgo=
 github.com/agoodkind/netlink v1.3.2-0.20261026204005-6dffb166dac6/go.mod h1:fqjL1hgi2Lvgg05XwPvkBfSWnH1NV/sj0BO40+4bvXQ=
+github.com/agoodkind/netlink v1.3.2-0.20261026213358-01659f2e85a9 h1:ROsbCjZMiTZKyM+qcm0zzm2hd9uypOFWTtBnbZXw9xI=
+github.com/agoodkind/netlink v1.3.2-0.20261026213358-01659f2e85a9/go.mod h1:F3KqZfxypZ0PRiH/0wOxnsxhSCF3PjP0X58zP9oclv0=
 github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be h1:9AeTilPcZAjCFIImctFaOjnTIavg87rW78vTPkQqLI8=
 github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be/go.mod h1:ySMOLuWl6zY27l47sB3qLNK6tF2fkHG55UZxx8oIVo4=
 github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5 h1:0CwZNZbxp69SHPdPJAN/hZIm0C4OItdklCFmMRWYpio=

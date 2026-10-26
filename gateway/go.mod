@@ -4,7 +4,7 @@ go 1.27.1
 
 require (
 	github.com/BurntSushi/toml v1.6.0
-	github.com/agoodkind/netlink v1.3.2-0.20261026204005-6dffb166dac6
+	github.com/agoodkind/netlink v1.3.2-0.20261026213358-01659f2e85a9
 	github.com/cilium/ebpf v0.22.0
 	github.com/cloudflare/cloudflare-go/v7 v7.12.0
 	github.com/coreos/go-systemd/v22 v22.7.0
