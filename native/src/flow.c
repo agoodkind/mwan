@@ -26,6 +26,17 @@ static bool same_addresses(const struct mwan_native_tuple *a, const struct mwan_
 	       !memcmp(a->source, b->source, 16) && !memcmp(a->destination, b->destination, 16);
 }
 
+static uint16_t ipv6_sum(const uint8_t address[16])
+{
+	uint32_t sum = 0;
+	for (uint32_t i = 0; i < 16; i += 2)
+		sum += (uint32_t)address[i] * 256U + address[i + 1];
+	while (sum > UINT16_MAX)
+		sum = (sum & UINT16_MAX) + (sum / 65536U);
+	/* One's-complement arithmetic represents zero as either 0 or 0xffff. */
+	return sum == UINT16_MAX ? 0 : (uint16_t)sum;
+}
+
 static int direction_valid(struct mwan_native *o, const struct mwan_native_direction *s,
 			   struct mwan_native_error *e, uint32_t i)
 {
@@ -34,9 +45,17 @@ static int direction_valid(struct mwan_native *o, const struct mwan_native_direc
 	    s->original.family != s->translated.family || s->original.protocol != s->translated.protocol ||
 	    s->output_mtu < RTE_ETHER_MIN_MTU || s->output_mtu > o->config.mtu)
 		return mwn_error(e, EINVAL, MWAN_NATIVE_OP_VALIDATE, MWAN_NATIVE_OBJECT_ORIGIN, s->origin_id, i, "Invalid exact direction");
-	if ((s->original.family != MWAN_NATIVE_FAMILY_IPV4 || s->original.protocol != MWAN_NATIVE_PROTOCOL_TCP) &&
-	    memcmp(&s->original, &s->translated, sizeof(s->original)))
+	if (s->original.family == MWAN_NATIVE_FAMILY_IPV6) {
+		if (s->original.source_port != s->translated.source_port ||
+		    s->original.destination_port != s->translated.destination_port ||
+		    ipv6_sum(s->original.source) != ipv6_sum(s->translated.source) ||
+		    ipv6_sum(s->original.destination) != ipv6_sum(s->translated.destination))
+			return mwn_error(e, ENOTSUP, MWAN_NATIVE_OP_VALIDATE, MWAN_NATIVE_OBJECT_ORIGIN, s->origin_id, i,
+				"IPv6 translation requires unchanged ports and independently neutral addresses");
+	} else if (s->original.protocol != MWAN_NATIVE_PROTOCOL_TCP &&
+		   memcmp(&s->original, &s->translated, sizeof(s->original))) {
 		return mwn_error(e, ENOTSUP, MWAN_NATIVE_OP_VALIDATE, MWAN_NATIVE_OBJECT_ORIGIN, s->origin_id, i, "Translation requires IPv4 TCP");
+	}
 	const uint8_t *macs[] = {s->original_source_mac, s->original_destination_mac, s->output_source_mac, s->output_destination_mac};
 	for (uint32_t n = 0; n < RTE_DIM(macs); n++) {
 		struct rte_ether_addr address;
@@ -85,6 +104,7 @@ static int build_flow(struct mwan_native *o, struct mwn_leg *leg, bool validate,
 	struct rte_flow_action_count count = {0};
 	struct rte_flow_action_port_id port = {.id = o->data[o->config.origins[s->origin_id].data].representor};
 	struct rte_flow_action_set_ipv4 src4 = {0}, dst4 = {0};
+	struct rte_flow_action_set_ipv6 src6 = {0}, dst6 = {0};
 	struct rte_flow_action_set_tp srcp = {0}, dstp = {0};
 	struct rte_flow_error detail = {0};
 	uint32_t n = 0;
@@ -127,12 +147,22 @@ static int build_flow(struct mwan_native *o, struct mwn_leg *leg, bool validate,
 	}
 	items[3].type = RTE_FLOW_ITEM_TYPE_END;
 	if (memcmp(s->original.source, s->translated.source, 16)) {
-		memcpy(&src4.ipv4_addr, s->translated.source, 4);
-		actions[n++] = (struct rte_flow_action){.type = RTE_FLOW_ACTION_TYPE_SET_IPV4_SRC, .conf = &src4};
+		if (s->original.family == MWAN_NATIVE_FAMILY_IPV6) {
+			memcpy(&src6.ipv6_addr, s->translated.source, 16);
+			actions[n++] = (struct rte_flow_action){.type = RTE_FLOW_ACTION_TYPE_SET_IPV6_SRC, .conf = &src6};
+		} else {
+			memcpy(&src4.ipv4_addr, s->translated.source, 4);
+			actions[n++] = (struct rte_flow_action){.type = RTE_FLOW_ACTION_TYPE_SET_IPV4_SRC, .conf = &src4};
+		}
 	}
 	if (memcmp(s->original.destination, s->translated.destination, 16)) {
-		memcpy(&dst4.ipv4_addr, s->translated.destination, 4);
-		actions[n++] = (struct rte_flow_action){.type = RTE_FLOW_ACTION_TYPE_SET_IPV4_DST, .conf = &dst4};
+		if (s->original.family == MWAN_NATIVE_FAMILY_IPV6) {
+			memcpy(&dst6.ipv6_addr, s->translated.destination, 16);
+			actions[n++] = (struct rte_flow_action){.type = RTE_FLOW_ACTION_TYPE_SET_IPV6_DST, .conf = &dst6};
+		} else {
+			memcpy(&dst4.ipv4_addr, s->translated.destination, 4);
+			actions[n++] = (struct rte_flow_action){.type = RTE_FLOW_ACTION_TYPE_SET_IPV4_DST, .conf = &dst4};
+		}
 	}
 	if (s->original.source_port != s->translated.source_port) {
 		srcp.port = rte_cpu_to_be_16(s->translated.source_port);

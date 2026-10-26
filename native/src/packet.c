@@ -167,6 +167,10 @@ static void restore(struct packet_view *view, const struct mwan_native_direction
 				checksum_replace(tcp_checksum, view->transport, ports, sizeof(ports));
 			memcpy(view->transport, ports, sizeof(ports));
 		}
+	} else if (view->tuple.family == MWAN_NATIVE_FAMILY_IPV6) {
+		/* Neutral mappings preserve transport bytes, including invalid checksums. */
+		memcpy(view->ip + 8, original->source, 16);
+		memcpy(view->ip + 24, original->destination, 16);
 	}
 	memcpy(view->frame, direction->original_destination_mac, RTE_ETHER_ADDR_LEN);
 	memcpy(view->frame + RTE_ETHER_ADDR_LEN, direction->original_source_mac, RTE_ETHER_ADDR_LEN);
