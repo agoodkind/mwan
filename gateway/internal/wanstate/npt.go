@@ -3,6 +3,7 @@ package wanstate
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"maps"
 	"slices"
 	"sync"
@@ -46,6 +47,11 @@ func (s *Store) RegisterNPTGuard(guard NPTGuard) (func(), error) {
 // Callbacks may read Snapshot; the writer must publish success or failed readiness
 // before completion. An unchanged semantic policy does not acquire an admission fence.
 func (s *Store) BeginNPTChange(ctx context.Context, next map[string]nptpolicy.PrefixPair) (changed []string, finish func(), resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			slog.WarnContext(ctx, "NPT mutation guard rejected policy change", "connections", changed, "err", resultErr)
+		}
+	}()
 	s.nptGuardMu.RLock()
 	locked := true
 	defer func() {
