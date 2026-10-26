@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"os"
 	"os/exec"
 	"slices"
@@ -89,9 +90,17 @@ func TestNativeSingleDirection(t *testing.T) {
 			{Controller: 0, Kind: offload.NativePhysicalOrigin, Receiver: 1, Data: 1, ReturnMode: offload.NativeReturnOriginal},
 		},
 		PairCapacity: 1, MbufCount: 255, DrainTimeout: time.Second,
-		RXDescriptors: 64, TXDescriptors: 64, MTU: 1500,
+		ConntrackUpdateTimeout: conntrackTestTimeout,
+		RXDescriptors:          64, TXDescriptors: 64, MTU: 1500,
 		FilePrefix: "mwan-native-binding-" + strconv.Itoa(os.Getpid()),
 		PollBudget: 32, IdleWait: time.Millisecond,
+	}
+	for _, timeout := range []time.Duration{0, -time.Second} {
+		invalid := config
+		invalid.ConntrackUpdateTimeout = timeout
+		if rejected, rejectErr := offload.NewNativeRuntime(invalid, slog.Default()); rejectErr == nil || rejected != nil {
+			t.Fatalf("nonpositive conntrack timeout initialized native runtime: %v", rejectErr)
+		}
 	}
 	checkNativeGraphRejections(t, config)
 	owner, err := offload.NewNativeRuntime(config, slog.Default())
@@ -115,21 +124,78 @@ func TestNativeSingleDirection(t *testing.T) {
 			t.Errorf("close conntrack socket: %v", closeErr)
 		}
 	})
-	flow := createTrackedFlow(t, connection, [2]string{"192.0.2.1", "198.51.100.2"}, unix.IPPROTO_TCP, 0)
+	for _, addresses := range [][2]string{{"192.0.2.1", "198.51.100.2"}, {"2001:db8:1::1", "2001:db8:2::2"}} {
+		checkNativeTCPAdmission(t, owner, connection, addresses)
+	}
+	if err := owner.Close(t.Context()); err != nil {
+		t.Fatalf("final native cleanup failed: %v", err)
+	}
+	if err := owner.Close(t.Context()); err != nil {
+		t.Fatalf("repeated native cleanup failed: %v", err)
+	}
+	flow := createTrackedFlow(t, connection, [2]string{"192.0.2.3", "198.51.100.4"}, unix.IPPROTO_TCP, 0)
+	spec := offload.NativePairSpec{RequestedDirections: 1}
+	spec.Directions[0] = offload.NativeDirection{Original: flow.TupleOrig, Translated: flow.TupleOrig}
+	if _, err := owner.Install(t.Context(), flow, spec); !errors.Is(err, net.ErrClosed) {
+		t.Fatalf("closed native runtime accepted admission: %v", err)
+	}
+	requireSameTrackedFlow(t, flow, readTrackedFlow(t, connection, flow), false)
+}
+
+func checkNativeTCPAdmission(t *testing.T, owner *offload.NativeRuntime, connection *conntrack.Conn, addresses [2]string) {
+	t.Helper()
+	flow := createTrackedFlow(t, connection, addresses, unix.IPPROTO_TCP, 0)
+	stale := flow
+	stale.ID++
+	if stale.ID == 0 {
+		stale.ID++
+	}
+	var spec offload.NativePairSpec
+	spec.RequestedDirections = 1
+	spec.Directions[0] = offload.NativeDirection{Origin: 0, EgressData: 0, Original: stale.TupleOrig, Translated: stale.TupleOrig}
+	_, staleErr := owner.Install(t.Context(), stale, spec)
+	var nativeError *offload.NativeError
+	if (!errors.Is(staleErr, unix.ENOENT) && !errors.Is(staleErr, unix.ESTALE)) || errors.As(staleErr, &nativeError) {
+		t.Fatalf("stale conntrack identity did not reject before C admission: %v", staleErr)
+	}
+	requireSameTrackedFlow(t, flow, readTrackedFlow(t, connection, flow), false)
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := owner.Install(canceled, flow, spec); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled native admission: %v", err)
+	}
+	requireSameTrackedFlow(t, flow, readTrackedFlow(t, connection, flow), false)
+	udp := createTrackedFlow(t, connection, addresses, unix.IPPROTO_UDP, 0)
+	if _, err := owner.Install(t.Context(), udp, spec); err == nil {
+		t.Fatal("TCP direction accepted a UDP conntrack identity")
+	}
+	requireSameTrackedFlow(t, udp, readTrackedFlow(t, connection, udp), false)
+	// Stale caller metadata must not overwrite the current kernel entry.
+	input := flow
+	input.Timeout, input.Mark, input.Status = 1, 999, 0
+	input.ProtoInfo.TCP = &conntrack.ProtoInfoTCP{State: 1}
 	for index, mask := range [2]uint32{1, 2} {
-		spec := offload.NativePairSpec{RequestedDirections: mask}
+		spec = offload.NativePairSpec{RequestedDirections: mask}
 		tuple := flow.TupleOrig
 		if index == 1 {
 			tuple = flow.TupleReply
 		}
 		spec.Directions[index] = offload.NativeDirection{Origin: offload.NativeOriginID(index), EgressData: 0, Original: tuple, Translated: tuple}
-		_, installErr := owner.Install(t.Context(), flow, spec)
+		_, installErr := owner.Install(t.Context(), input, spec)
 		nativeError = nil
 		// OP_CREATE proves the zero unused direction did not fail Go encoding.
 		if !errors.As(installErr, &nativeError) || nativeError.Operation != nativeCreateOperation || !errors.Is(installErr, unix.EINVAL) {
 			t.Fatalf("mask %d did not enter the C create-state guard: %v", mask, installErr)
 		}
+		requireSameTrackedFlow(t, flow, readTrackedFlow(t, connection, flow), true)
 	}
+	spec.RequestedDirections = 1
+	spec.Directions[0] = offload.NativeDirection{Original: udp.TupleOrig, Translated: udp.TupleOrig}
+	_, udpErr := owner.Install(t.Context(), udp, spec)
+	if !errors.As(udpErr, &nativeError) || nativeError.Operation != nativeCreateOperation {
+		t.Fatalf("UDP admission attempted a TCP flag update: %v", udpErr)
+	}
+	requireSameTrackedFlow(t, udp, readTrackedFlow(t, connection, udp), false)
 }
 
 func checkNativeGraphRejections(t *testing.T, config offload.NativeConfig) {

@@ -109,23 +109,24 @@ type NativeOrigin struct {
 
 // NativeConfig specifies the ownership graph, EAL resources, and polling limits.
 type NativeConfig struct {
-	CPU               uint32
-	MemoryMiB         uint32
-	MemoryMode        NativeMemoryMode
-	Controllers       []NativeController
-	Receivers         []NativeKernelReceiver
-	Data              []NativeDataDevice
-	Origins           []NativeOrigin
-	PairCapacity      uint32
-	MbufCount         uint32
-	DrainTimeout      time.Duration
-	RXDescriptors     uint16
-	TXDescriptors     uint16
-	MTU               uint16
-	HugepageDirectory string
-	FilePrefix        string
-	PollBudget        uint32
-	IdleWait          time.Duration
+	CPU                    uint32
+	MemoryMiB              uint32
+	MemoryMode             NativeMemoryMode
+	Controllers            []NativeController
+	Receivers              []NativeKernelReceiver
+	Data                   []NativeDataDevice
+	Origins                []NativeOrigin
+	PairCapacity           uint32
+	MbufCount              uint32
+	DrainTimeout           time.Duration
+	ConntrackUpdateTimeout time.Duration
+	RXDescriptors          uint16
+	TXDescriptors          uint16
+	MTU                    uint16
+	HugepageDirectory      string
+	FilePrefix             string
+	PollBudget             uint32
+	IdleWait               time.Duration
 }
 
 // NativeDirection supplies an exact mapping and the caller's resolved output path.
@@ -292,6 +293,7 @@ type nativeRequest struct {
 	config    C.struct_mwan_native_config
 	pair      C.struct_mwan_native_pair_spec
 	handle    C.struct_mwan_native_handle
+	flow      conntrack.Flow
 	reply     chan nativeReply
 }
 
@@ -310,6 +312,9 @@ type NativeRuntime struct {
 	log           *slog.Logger
 	pollBudget    uint32
 	idleWait      time.Duration
+	updater       *ConntrackUpdater
+	updateTimeout time.Duration
+	shuttingDown  bool
 	mu            sync.RWMutex
 	stats         NativeWorkerStats
 	pollError     error
@@ -347,6 +352,7 @@ func ReadNativeBuild() (NativeBuildInfo, error) {
 }
 
 // NewNativeRuntime creates the owner thread and initializes its configured ports.
+// The conntrack socket uses the constructor caller's network namespace.
 // An initialization error can return a runtime that still owns EAL resources.
 // The caller must retain that runtime and report any final Close error.
 func NewNativeRuntime(config NativeConfig, log *slog.Logger) (*NativeRuntime, error) {
@@ -360,12 +366,17 @@ func NewNativeRuntime(config NativeConfig, log *slog.Logger) (*NativeRuntime, er
 	if err != nil {
 		return nil, err
 	}
+	updater, err := NewConntrackUpdater(config.ConntrackUpdateTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("open native conntrack updater: %w", err)
+	}
 	worker := new(NativeRuntime)
 	worker.requests = make(chan nativeRequest)
 	worker.done = make(chan struct{})
 	worker.log = log
 	worker.pollBudget = config.PollBudget
 	worker.idleWait = config.IdleWait
+	worker.updater, worker.updateTimeout = updater, config.ConntrackUpdateTimeout
 	ready := make(chan nativeReply, 1)
 	go func() {
 		defer func() {
@@ -376,6 +387,7 @@ func NewNativeRuntime(config NativeConfig, log *slog.Logger) (*NativeRuntime, er
 				worker.terminalError = err
 				worker.mu.Unlock()
 			}
+			worker.closeUpdater()
 			close(worker.done)
 		}()
 		runtime.LockOSThread()
@@ -394,15 +406,15 @@ func NewNativeRuntime(config NativeConfig, log *slog.Logger) (*NativeRuntime, er
 	}
 	if result.err != nil && !result.ownerExists {
 		<-worker.done
-		return nil, result.err
+		return nil, errors.Join(result.err, worker.shutdownError())
 	}
 	return worker, result.err
 }
 
 // Enable restarts a disabled owner with its identical configuration.
 func (worker *NativeRuntime) Enable(ctx context.Context, config NativeConfig) error {
-	if config.PollBudget != worker.pollBudget || config.IdleWait != worker.idleWait {
-		return errors.New("native reopen requires identical polling settings")
+	if config.PollBudget != worker.pollBudget || config.IdleWait != worker.idleWait || config.ConntrackUpdateTimeout != worker.updateTimeout {
+		return errors.New("native reopen requires identical polling and conntrack update settings")
 	}
 	encoded, err := encodeNativeConfig(config)
 	if err != nil {
@@ -422,8 +434,15 @@ func (worker *NativeRuntime) Install(ctx context.Context, flow conntrack.Flow, s
 	if err != nil {
 		return NativePairResult{}, err
 	}
+	for i, direction := range spec.Directions {
+		if spec.RequestedDirections&(1<<i) != 0 &&
+			(direction.Original.Proto.Protocol != flow.TupleOrig.Proto.Protocol || direction.Translated.Proto.Protocol != flow.TupleOrig.Proto.Protocol) {
+			return NativePairResult{}, errors.New("native direction protocol does not match the connection")
+		}
+	}
 	var request nativeRequest
 	request.operation, request.pair = nativeInstall, encoded
+	request.flow = conntrack.Flow{ID: flow.ID, Zone: flow.Zone, TupleOrig: flow.TupleOrig, TupleReply: flow.TupleReply}
 	result := worker.call(ctx, request)
 	return result.pair, result.err
 }
@@ -462,7 +481,7 @@ func (worker *NativeRuntime) Close(ctx context.Context) error {
 	request.operation = nativeShutdown
 	err := worker.call(ctx, request).err
 	if errors.Is(err, net.ErrClosed) {
-		return nil
+		return worker.shutdownError()
 	}
 	return err
 }
@@ -490,6 +509,18 @@ func (worker *NativeRuntime) closedError() error {
 	return net.ErrClosed
 }
 
+func (worker *NativeRuntime) closeUpdater() {
+	err := worker.updater.Close()
+	if err != nil {
+		worker.log.Error("native conntrack updater closure failed", "err", err)
+		worker.mu.Lock()
+		if !errors.Is(worker.terminalError, err) {
+			worker.terminalError = errors.Join(worker.terminalError, err)
+		}
+		worker.mu.Unlock()
+	}
+}
+
 // Cancellation bounds queue admission. An accepted operation returns its actual
 // result so cancellation cannot discard a newly installed hardware handle.
 func (worker *NativeRuntime) call(ctx context.Context, request nativeRequest) nativeReply {
@@ -505,7 +536,11 @@ func (worker *NativeRuntime) call(ctx context.Context, request nativeRequest) na
 		case result = <-request.reply:
 			return result
 		case <-worker.done:
-			result.err = worker.closedError()
+			select {
+			case result = <-request.reply:
+			default:
+				result.err = worker.closedError()
+			}
 		}
 	case <-worker.done:
 		result.err = worker.closedError()
@@ -569,6 +604,10 @@ func (worker *NativeRuntime) run(config C.struct_mwan_native_config, ready chan<
 
 func (worker *NativeRuntime) execute(owner **C.struct_mwan_native, request nativeRequest, active *bool) (nativeReply, bool) {
 	var result nativeReply
+	if worker.shuttingDown && request.operation != nativeShutdown {
+		result.err = worker.closedError()
+		return result, false
+	}
 	var detail C.struct_mwan_native_error
 	var pair C.struct_mwan_native_pair_result
 	var stats C.struct_mwan_native_pair_stats
@@ -580,6 +619,13 @@ func (worker *NativeRuntime) execute(owner **C.struct_mwan_native, request nativ
 			*active = true
 		}
 	case nativeInstall:
+		if request.flow.TupleOrig.Proto.Protocol == syscall.IPPROTO_TCP {
+			// Accepted operations use the configured socket deadline, independent of caller cancellation.
+			if err := worker.updater.SetLiberal(context.Background(), request.flow); err != nil {
+				result.err = fmt.Errorf("prepare native TCP tracking: %w", err)
+				return result, false
+			}
+		}
 		rc = C.mwan_native_pair_install(*owner, &request.pair, &pair, &detail)
 		result.pair = decodeNativePairResult(pair)
 	case nativeQuery:
@@ -598,6 +644,14 @@ func (worker *NativeRuntime) execute(owner **C.struct_mwan_native, request nativ
 	}
 	result.err = nativeCallError(rc, detail)
 	result.ownerExists = *owner != nil
+	if request.operation == nativeShutdown {
+		worker.shuttingDown = true
+		worker.mu.Lock()
+		worker.terminalError = result.err
+		worker.mu.Unlock()
+		worker.closeUpdater()
+		result.err = worker.shutdownError()
+	}
 	if result.err != nil {
 		worker.log.Warn("native operation failed", "operation", request.operation, "err", result.err)
 	}
@@ -663,6 +717,7 @@ func encodeNativeConfig(config NativeConfig) (C.struct_mwan_native_config, error
 	if len(config.Controllers) > C.MWAN_NATIVE_MAX_CONTROLLERS || len(config.Receivers) > C.MWAN_NATIVE_MAX_RECEIVERS ||
 		len(config.Data) == 0 || len(config.Data) > C.MWAN_NATIVE_MAX_DATA || len(config.Origins) > C.MWAN_NATIVE_MAX_ORIGINS ||
 		config.PollBudget == 0 || config.IdleWait < 0 || config.DrainTimeout < time.Millisecond ||
+		config.ConntrackUpdateTimeout <= 0 ||
 		config.DrainTimeout/time.Millisecond > time.Duration(^uint32(0)) {
 		return result, errors.New("invalid native graph count, poll budget, or timeout")
 	}
