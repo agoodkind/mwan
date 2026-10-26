@@ -1,0 +1,3 @@
+option('dpdk_source_sha256', type: 'string', value: '')
+option('dpdk_patch_sha256', type: 'string', value: '')
+option('hardware_test_driver', type: 'boolean', value: false)

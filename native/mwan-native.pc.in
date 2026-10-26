@@ -1,0 +1,9 @@
+prefix=@PREFIX@
+libdir=@LIBDIR@
+includedir=@INCLUDEDIR@
+
+Name: mwan-native
+Description: MWAN in-process native packet worker
+Version: 1.0.0
+Libs: -L${libdir} -lmwan_native @LINK_ARGS@
+Cflags: -I${includedir}
