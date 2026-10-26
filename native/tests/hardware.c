@@ -230,10 +230,57 @@ static uint64_t report_counters(const char *label, const struct mwan_native_pair
 	return hits;
 }
 
+static int reject_swapped_data(const char *path)
+{
+	struct mwan_native_config config = {0};
+	if (read_config(path, &config)) {
+		fprintf(stderr, "Invalid hardware identity test configuration\n");
+		return EXIT_FAILURE;
+	}
+	uint32_t first = config.data_count, second = config.data_count;
+	for (uint32_t i = 0; i < config.data_count && first == config.data_count; i++) {
+		if (config.data[i].controller == MWAN_NATIVE_NO_ID)
+			continue;
+		for (uint32_t j = i + 1; j < config.data_count; j++) {
+			if (config.data[i].controller == config.data[j].controller) {
+				first = i;
+				second = j;
+				break;
+			}
+		}
+	}
+	if (first == config.data_count) {
+		fprintf(stderr, "Identity test requires two DATA devices on one controller\n");
+		return EXIT_FAILURE;
+	}
+	uint16_t vf = config.data[first].vf;
+	config.data[first].vf = config.data[second].vf;
+	config.data[second].vf = vf;
+	struct mwan_native *owner = NULL;
+	struct mwan_native_error error = {0};
+	int rc = mwan_native_open(&config, &owner, &error);
+	bool passed = rc == -EXDEV && owner && error.operation == MWAN_NATIVE_OP_PORT &&
+		error.object_kind == MWAN_NATIVE_OBJECT_DATA && error.object_id == first;
+	if (!passed) {
+		fprintf(stderr, "Swapped DATA VF identities did not produce the required PCI mismatch\n");
+		report_error(&error);
+	}
+	if (owner && mwan_native_close(&owner, MWAN_NATIVE_FINAL_SHUTDOWN, &error)) {
+		report_error(&error);
+		passed = false;
+	}
+	if (passed)
+		puts("PASS swapped DATA VF identities rejected before activation; final shutdown succeeded");
+	return passed ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
 int main(int argc, char **argv)
 {
+	if (argc == 3 && !strcmp(argv[1], "--reject-swapped-data"))
+		return reject_swapped_data(argv[2]);
 	if (argc != 6 && argc != 7) {
 		fprintf(stderr, "Usage: %s CONFIG PAIR SECONDS MIN_FORWARDED MIN_RETURNED [CONTINUING_PAIR]\n", argv[0]);
+		fprintf(stderr, "       %s --reject-swapped-data CONFIG\n", argv[0]);
 		fprintf(stderr, "CONFIG starts with MWAN_NATIVE_CONFIG 2\n");
 		fprintf(stderr, "Resources: cpu memory_mb memory_mode pair_capacity mbuf_count drain_ms rx_desc tx_desc mtu file_prefix hugepage_directory\n");
 		fprintf(stderr, "Counts: controllers receivers data_devices origins\n");

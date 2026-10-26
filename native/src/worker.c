@@ -4,6 +4,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -310,6 +311,40 @@ static int representor_id(struct mwan_native *owner, uint32_t controller, uint16
 	return port_id(name, id, kind, index, error);
 }
 
+static int data_identity(struct mwan_native *owner, uint32_t i, struct mwan_native_error *error)
+{
+	const struct mwan_native_data *data = &owner->config.data[i];
+	char name[32], path[PATH_MAX + 32];
+	char controller[PATH_MAX], parent[PATH_MAX], expected[PATH_MAX], actual[PATH_MAX];
+	if (data->controller == MWAN_NATIVE_NO_ID)
+		return 0;
+	pci_name(name, sizeof(name), owner->config.controllers[data->controller].pci);
+	snprintf(path, sizeof(path), "/sys/bus/pci/devices/%s", name);
+	if (!realpath(path, controller))
+		goto unavailable;
+	snprintf(path, sizeof(path), "%s/physfn", controller);
+	if (!realpath(path, parent)) {
+		if (errno != ENOENT)
+			goto unavailable;
+		/* PF controllers have no physfn; virtfnN must still prove membership. */
+		memcpy(parent, controller, strlen(controller) + 1);
+	}
+	snprintf(path, sizeof(path), "%s/virtfn%u", parent, data->vf);
+	if (!realpath(path, expected))
+		goto unavailable;
+	pci_name(name, sizeof(name), data->pci);
+	snprintf(path, sizeof(path), "/sys/bus/pci/devices/%s", name);
+	if (!realpath(path, actual))
+		goto unavailable;
+	if (strcmp(expected, actual))
+		return mwn_error(error, EXDEV, MWAN_NATIVE_OP_PORT, MWAN_NATIVE_OBJECT_DATA, i, 0,
+			"DATA PCI function does not match its controller's represented VF");
+	return 0;
+unavailable:
+	return mwn_error(error, errno, MWAN_NATIVE_OP_PORT, MWAN_NATIVE_OBJECT_DATA, i, 0,
+		"Cannot verify DATA VF identity; expose the controller PCI, physfn and PF virtfn links in sysfs");
+}
+
 static int discover(struct mwan_native *owner, struct mwan_native_error *error)
 {
 	for (uint32_t i = 0; i < owner->config.controller_count; i++) {
@@ -339,6 +374,12 @@ static int discover(struct mwan_native *owner, struct mwan_native_error *error)
 		if (data->controller == MWAN_NATIVE_NO_ID)
 			continue;
 		rc = representor_id(owner, data->controller, data->vf, &owner->data[i].representor, MWAN_NATIVE_OBJECT_DATA, i, error);
+		if (rc)
+			return rc;
+	}
+	/* Retain every discovered port for cleanup before checking PCI membership. */
+	for (uint32_t i = 0; i < owner->config.data_count; i++) {
+		int rc = data_identity(owner, i, error);
 		if (rc)
 			return rc;
 	}
