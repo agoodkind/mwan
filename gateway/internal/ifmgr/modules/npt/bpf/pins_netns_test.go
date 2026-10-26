@@ -13,6 +13,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
+	"goodkind.io/mwan/internal/nptpolicy"
 )
 
 const (
@@ -68,8 +69,8 @@ func mountPinTestBPFFS(t *testing.T) string {
 }
 
 func pinTestPolicies(link netlink.Link) []InterfacePolicy {
-	pair := PrefixPair{ID: 1, Internal: netip.MustParsePrefix("fd00:1::/48"), External: netip.MustParsePrefix("2001:db8:1::/48")}
-	return []InterfacePolicy{{IfIndex: link.Attrs().Index, Pairs: []PrefixPair{pair}}}
+	pair := nptpolicy.PrefixPair{ID: 1, Internal: netip.MustParsePrefix("fd00:1::/48"), External: netip.MustParsePrefix("2001:db8:1::/48")}
+	return []InterfacePolicy{{IfIndex: link.Attrs().Index, Pairs: []nptpolicy.PrefixPair{pair}}}
 }
 
 func pinTestIngressID(t *testing.T, objects *nptObjects) uint32 {

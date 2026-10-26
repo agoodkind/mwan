@@ -19,6 +19,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"goodkind.io/mwan/internal/ifmgr/modules/npt/bpf"
+	"goodkind.io/mwan/internal/nptpolicy"
 )
 
 func TestHairpinPacketKeepsInternalRoute(t *testing.T) {
@@ -47,7 +48,7 @@ func TestHairpinPacketKeepsInternalRoute(t *testing.T) {
 	internal := netip.MustParseAddr("fd01:203:405:1::1234")
 	secondInternal := netip.MustParseAddr("fd01:203:405:2::5678")
 	secondExternal := netip.MustParseAddr("2001:db8:1:d551::5678")
-	pair := bpf.PrefixPair{
+	pair := nptpolicy.PrefixPair{
 		ID: 7, Internal: netip.MustParsePrefix("fd01:203:405::/48"),
 		External: netip.MustParsePrefix("2001:db8:1::/48"),
 	}
@@ -84,7 +85,7 @@ func TestHairpinPacketKeepsInternalRoute(t *testing.T) {
 	}
 	defer translator.Close()
 	states, err := translator.Reconcile([]bpf.InterfacePolicy{{
-		IfIndex: lan.Attrs().Index, Internal: true, Pairs: []bpf.PrefixPair{pair},
+		IfIndex: lan.Attrs().Index, Internal: true, Pairs: []nptpolicy.PrefixPair{pair},
 	}})
 	if err != nil {
 		t.Fatal(err)

@@ -13,6 +13,7 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
+	"goodkind.io/mwan/internal/nptpolicy"
 )
 
 type packetHeader string
@@ -100,10 +101,11 @@ func policyValue(policy InterfacePolicy, link netlink.Link) (nptPolicy, error) {
 	return value, nil
 }
 
-func pairValue(pair PrefixPair) (nptPair, error) {
+func pairValue(pair nptpolicy.PrefixPair) (nptPair, error) {
 	var mapped nptPair
-	if err := ValidatePair(pair); err != nil {
-		return mapped, err
+	if err := nptpolicy.ValidatePair(pair); err != nil {
+		slog.Error("NPTv6 pair validation failed", "err", err)
+		return mapped, fmt.Errorf("validate NPTv6 pair: %w", err)
 	}
 	internalBits, externalBits := pair.Internal.Bits(), pair.External.Bits()
 	if internalBits < 0 || internalBits > 64 || externalBits < 0 || externalBits > 64 {
@@ -114,8 +116,8 @@ func pairValue(pair PrefixPair) (nptPair, error) {
 	mapped.ID = pair.ID
 	mapped.InternalBits = uint8(internalBits)
 	mapped.ExternalBits = uint8(externalBits)
-	mapped.ForwardAdjustment = adjustment(pair.Internal, pair.External)
-	mapped.ReverseAdjustment = adjustment(pair.External, pair.Internal)
+	mapped.ForwardAdjustment = nptpolicy.Adjustment(pair.Internal, pair.External)
+	mapped.ReverseAdjustment = nptpolicy.Adjustment(pair.External, pair.Internal)
 	for bit := range max(internalBits, externalBits) {
 		mapped.Mask[bit/8] |= 1 << (7 - bit%8)
 	}
