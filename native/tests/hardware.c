@@ -274,13 +274,97 @@ static int reject_swapped_data(const char *path)
 	return passed ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
+static void adjust_address_sum(uint8_t address[16], uint16_t adjustment)
+{
+	uint32_t word = (uint32_t)address[14] * 256U + address[15] + adjustment;
+	word = (word & UINT16_MAX) + (word / 65536U);
+	address[14] = (uint8_t)(word / 256U);
+	address[15] = (uint8_t)word;
+}
+
+static int reject_ipv6_mappings(const char *config_path, const char *pair_path)
+{
+	struct mwan_native_config config = {0};
+	struct mwan_native_pair_spec pair = {0};
+	if (read_config(config_path, &config) || read_pair(pair_path, &pair)) {
+		fprintf(stderr, "Invalid IPv6 mapping rejection configuration\n");
+		return EXIT_FAILURE;
+	}
+	uint32_t direction = pair.requested_direction_mask & 1U ? 0 : 1;
+	if (pair.directions[direction].original.family != MWAN_NATIVE_FAMILY_IPV6 ||
+	    pair.directions[direction].translated.family != MWAN_NATIVE_FAMILY_IPV6) {
+		fprintf(stderr, "Mapping rejection test requires an IPv6 pair\n");
+		return EXIT_FAILURE;
+	}
+	struct mwan_native *owner = NULL;
+	struct mwan_native_error error = {0};
+	struct mwan_native_pair_result result = {0};
+	bool passed = false;
+	if (mwan_native_open(&config, &owner, &error))
+		goto cleanup;
+	const char *cases[] = {"source", "destination", "cancelling-deltas", "source-port", "destination-port"};
+	for (uint32_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+		struct mwan_native_pair_spec invalid = pair;
+		struct mwan_native_tuple *translated = &invalid.directions[direction].translated;
+		switch (i) {
+		case 0:
+			adjust_address_sum(translated->source, 1);
+			break;
+		case 1:
+			adjust_address_sum(translated->destination, 1);
+			break;
+		case 2:
+			adjust_address_sum(translated->source, 1);
+			adjust_address_sum(translated->destination, UINT16_MAX - 1U);
+			break;
+		case 3:
+			translated->source_port = translated->source_port == UINT16_MAX ? 1 : translated->source_port + 1;
+			break;
+		case 4:
+			translated->destination_port = translated->destination_port == UINT16_MAX ? 1 : translated->destination_port + 1;
+			break;
+		}
+		memset(&result, 0, sizeof(result));
+		int rc = mwan_native_pair_install(owner, &invalid, &result, &error);
+		if (rc != -ENOTSUP || error.operation != MWAN_NATIVE_OP_VALIDATE ||
+		    error.object_kind != MWAN_NATIVE_OBJECT_ORIGIN ||
+		    error.object_id != invalid.directions[direction].origin_id || error.direction != direction ||
+		    result.state != MWAN_NATIVE_PAIR_ABSENT || result.installed_mask ||
+		    result.restoration_mask || result.cleanup_failed_mask) {
+			fprintf(stderr, "IPv6 %s mapping did not reject before admission\n", cases[i]);
+			goto cleanup;
+		}
+		printf("REJECTED %s installed=%u retained=%u\n", cases[i], result.installed_mask, result.restoration_mask);
+	}
+	if (mwan_native_pair_install(owner, &pair, &result, &error) ||
+	    result.state != MWAN_NATIVE_PAIR_INSTALLED || result.installed_mask != pair.requested_direction_mask ||
+	    mwan_native_pair_remove(owner, result.handle, &result, &error) ||
+	    result.state != MWAN_NATIVE_PAIR_DRAINING || result.installed_mask ||
+	    result.restoration_mask != pair.requested_direction_mask)
+		goto cleanup;
+	passed = true;
+cleanup:
+	if (!passed && error.code)
+		report_error(&error);
+	if (owner && mwan_native_close(&owner, MWAN_NATIVE_FINAL_SHUTDOWN, &error)) {
+		report_error(&error);
+		passed = false;
+	}
+	if (passed)
+		puts("PASS IPv6 mapping rejection, valid admission, owned removal and final shutdown");
+	return passed ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
 int main(int argc, char **argv)
 {
 	if (argc == 3 && !strcmp(argv[1], "--reject-swapped-data"))
 		return reject_swapped_data(argv[2]);
+	if (argc == 4 && !strcmp(argv[1], "--reject-ipv6-mappings"))
+		return reject_ipv6_mappings(argv[2], argv[3]);
 	if (argc != 6 && argc != 7) {
 		fprintf(stderr, "Usage: %s CONFIG PAIR SECONDS MIN_FORWARDED MIN_RETURNED [CONTINUING_PAIR]\n", argv[0]);
 		fprintf(stderr, "       %s --reject-swapped-data CONFIG\n", argv[0]);
+		fprintf(stderr, "       %s --reject-ipv6-mappings CONFIG PAIR\n", argv[0]);
 		fprintf(stderr, "CONFIG starts with MWAN_NATIVE_CONFIG 2\n");
 		fprintf(stderr, "Resources: cpu memory_mb memory_mode pair_capacity mbuf_count drain_ms rx_desc tx_desc mtu file_prefix hugepage_directory\n");
 		fprintf(stderr, "Counts: controllers receivers data_devices origins\n");
