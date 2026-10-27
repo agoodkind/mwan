@@ -74,6 +74,8 @@ export GOFLAGS += -tags=nativeoffload
 MWAN_NATIVE_RELEASE_TAG := ,nativeoffload
 endif
 
+GOVULNCHECK_INSTALL := golang.org/x/vuln/cmd/govulncheck@v1.9.0
+
 include bootstrap.mk
 include ../build/native.mk
 
@@ -467,7 +469,7 @@ endif
 # on Apple Silicon runs under qemu, and qemu does not translate policy rule
 # netlink messages.
 NETNS_TEST_PACKAGES := ./internal/ifmgr/modules/wanroutes/... ./internal/ifmgr/modules/npt/... ./internal/ifmgr/modules/steering/... ./internal/ifmgr/modules/firewall/... ./internal/ifmgr/modules/links/... ./internal/netif/... ./internal/bgp/... ./internal/ifmgr/modules/bgpsessions/... ./internal/offload/...
-NETNS_GO_VERSION    := $(shell awk '/^go /{print $$2}' go.mod)
+NETNS_GO_VERSION    := 1.27.3
 NETNS_RUNNER_IMAGE  := mwan-netns-runner
 NETNS_PROTOCOL_IMAGE := mwan-protocol-runner:$(WANCONFIG_DOCKER_ARCH)
 SYSTEMD_RUNNER_IMAGE := mwan-systemd-runner:$(WANCONFIG_DOCKER_ARCH)

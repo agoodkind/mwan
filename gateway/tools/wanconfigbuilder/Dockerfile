@@ -1,13 +1,10 @@
-# Builder for the publishing-enabled linux gateway binary (MWAN-358).
-# The image carries the same pinned libyang and sysrepo the gateway runs,
-# built from source on a Debian trixie base so the produced cgo binary
-# links the gateway's glibc generation and libsysrepo ABI. Version pins
-# arrive as build args from the caller; there are no defaults, so a bare
-# build fails loudly rather than drifting from the gateway.
+# Build the Linux gateway with libyang and libsysrepo (MWAN-358).
+# Debian trixie matches the gateway's glibc and libsysrepo ABI.
+# The caller must supply pinned dependency versions as build arguments.
 ARG RUST_VERSION
 FROM rust:${RUST_VERSION}-slim-trixie AS native-rust-toolchain
 
-FROM golang:1.27-trixie
+FROM golang:1.27.3-trixie
 
 COPY --from=native-rust-toolchain /usr/local/cargo/ /usr/local/cargo/
 COPY --from=native-rust-toolchain /usr/local/rustup/ /usr/local/rustup/
@@ -19,10 +16,8 @@ RUN rustup component add clippy rustfmt
 
 ARG LIBYANG_VERSION
 ARG SYSREPO_VERSION
-# The build flags have one home, the Makefile's WANCONFIG_*_CMAKE_FLAGS, and
-# arrive here as build args so the dev-lane libraries carry the same compile
-# options as the release's static archives (sysrepo's REPO_PATH and the
-# compiled-out dlopen plugin machinery included).
+# The Makefile supplies WANCONFIG_*_CMAKE_FLAGS for both development and
+# release archives, including sysrepo's repository path and plugin settings.
 ARG LIBYANG_CMAKE_FLAGS
 ARG SYSREPO_CMAKE_FLAGS
 
@@ -34,10 +29,8 @@ RUN apt-get update \
         meson ninja-build python3-pyelftools libnuma-dev clang libclang-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# The YANG gates of `make check` run yanglint. This shared build links it
-# against the pinned libyang, so ENABLE_TOOLS=ON follows the Makefile flags
-# and replaces their ENABLE_TOOLS=OFF, which only the static release archive
-# needs.
+# The YANG gates require yanglint. Development builds enable its tools;
+# release builds use the Makefile's static archive settings.
 RUN git clone --depth 1 --branch "${LIBYANG_VERSION}" \
         https://github.com/CESNET/libyang.git /usr/local/src/libyang \
     && cmake -S /usr/local/src/libyang -B /usr/local/src/libyang/build \
