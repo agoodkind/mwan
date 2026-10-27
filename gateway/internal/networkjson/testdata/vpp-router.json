@@ -1,0 +1,64 @@
+{
+  "ietf-interfaces:interfaces": {
+    "goodkind-mwan-steering:guest-type": "lxc",
+    "interface": [
+      {
+        "name": "tap64",
+        "type": "iana-if-type:ethernetCsmacd",
+        "enabled": true,
+        "goodkind-mwan-steering:connection-id": "router-vpp-inside",
+        "goodkind-mwan-steering:owner": "external",
+        "ietf-ip:ipv6": {
+          "enabled": true,
+          "forwarding": true,
+          "address": [{"ip": "fd06:fab:6464::2", "prefix-length": 64}]
+        }
+      },
+      {
+        "name": "tap65",
+        "type": "iana-if-type:ethernetCsmacd",
+        "enabled": true,
+        "goodkind-mwan-steering:connection-id": "router-vpp-outside",
+        "goodkind-mwan-steering:owner": "external",
+        "ietf-ip:ipv4": {
+          "enabled": true,
+          "forwarding": true,
+          "address": [{"ip": "10.230.230.5", "prefix-length": 31}]
+        }
+      },
+      {
+        "name": "nat64-in",
+        "type": "iana-if-type:ethernetCsmacd",
+        "enabled": true,
+        "goodkind-mwan-steering:connection-id": "router-host-inside",
+        "goodkind-mwan-steering:owner": "external",
+        "goodkind-mwan-steering:link": {"hardware-address": "02:64:00:00:00:01"},
+        "ietf-ip:ipv6": {"address": [{"ip": "fd06:fab:6464::1", "prefix-length": 64}]}
+      },
+      {
+        "name": "nat64-out",
+        "type": "iana-if-type:ethernetCsmacd",
+        "enabled": true,
+        "goodkind-mwan-steering:connection-id": "router-host-outside",
+        "goodkind-mwan-steering:owner": "external",
+        "ietf-ip:ipv4": {"address": [{"ip": "10.230.230.4", "prefix-length": 31}]}
+      }
+    ]
+  },
+  "goodkind-mwan-vpp:vpp": {
+    "route": [
+      {"interface": "tap64", "destination": "3d06:bad:b01:300::/64", "gateway": "fd06:fab:6464::1", "table-id": 0},
+      {"interface": "tap64", "destination": "3d06:bad:b01:305::/64", "gateway": "fd06:fab:6464::1", "table-id": 0},
+      {"interface": "tap65", "destination": "0.0.0.0/0", "gateway": "10.230.230.4", "table-id": 0}
+    ],
+    "nat64": {
+      "inside-interface": "tap64",
+      "outside-interface": "tap65",
+      "prefix": "3d06:bad:6464::/96",
+      "pool-address": ["10.230.231.254"],
+      "table-id": 0,
+      "pool-table-id": 4294967295
+    },
+    "neighbor": [{"interface": "tap64", "address": "fd06:fab:6464::1", "mac": "02:64:00:00:00:01"}]
+  }
+}

@@ -87,12 +87,18 @@ func (renderer *Renderer) messagePeriod(ctx context.Context, kind Kind, incident
 		return message, fmt.Errorf("create report rendering directory: %w", err)
 	}
 	defer os.RemoveAll(directory)
-	usage, totals, err := renderer.usageGraph(ctx, directory, end)
-	if err != nil {
-		return message, err
-	}
 	definitions := renderer.graphDefinitions(minuteHistory, incident, start, end)
-	definitions = append([]graphDefinition{usage}, definitions...)
+	var totals [][]string
+	if len(renderer.network.WAN) > 0 {
+		usage, usageTotals, err := renderer.usageGraph(ctx, directory, end)
+		if err != nil {
+			return message, err
+		}
+		totals = usageTotals
+		definitions = append([]graphDefinition{usage}, definitions...)
+	} else {
+		definitions = definitions[3:]
+	}
 	for _, definition := range definitions {
 		inline, block, err := renderer.renderGraph(ctx, directory, definition)
 		if err != nil {
@@ -112,6 +118,7 @@ func (renderer *Renderer) messagePeriod(ctx context.Context, kind Kind, incident
 		}
 	}
 	message.Content = append(message.Content, renderer.talkerContent(minuteHistory)...)
+	message.Content = append(message.Content, renderer.vppContent(minuteHistory)...)
 	if kind != Daily {
 		data, err := json.MarshalIndent(minuteHistory, "", "  ")
 		if err != nil {

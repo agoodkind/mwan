@@ -81,6 +81,9 @@ func executeReport(ctx context.Context, flags reportFlags, cfg *config.Config) (
 		return fmt.Errorf("open reporting collector: %w", err)
 	}
 	defer collector.Close()
+	if err := collector.ConfigureVPP(cfg.IfMgr.Modules.VPP); err != nil {
+		return fmt.Errorf("configure VPP reporting: %w", err)
+	}
 	if err := service.Watch(ctx, collector); err != nil {
 		return fmt.Errorf("watch reporting measurements: %w", err)
 	}

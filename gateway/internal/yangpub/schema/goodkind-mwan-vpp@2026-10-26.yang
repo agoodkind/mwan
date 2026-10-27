@@ -1,0 +1,45 @@
+module goodkind-mwan-vpp {
+  yang-version 1.1;
+  namespace "urn:goodkind:mwan-vpp";
+  prefix mwan-vpp;
+
+  import ietf-interfaces { prefix if; }
+  import ietf-inet-types { prefix inet; }
+  import ietf-yang-types { prefix yang; }
+
+  revision 2026-10-26 {
+    description "Configure a separate VPP process on the router.";
+  }
+
+  container vpp {
+    presence "The router uses VPP.";
+    description "Network policy for the optional router VPP process.";
+    container nat64 {
+      presence "VPP translates IPv6 clients to IPv4 servers.";
+      leaf inside-interface { type if:interface-ref; mandatory true; }
+      leaf outside-interface { type if:interface-ref; mandatory true; }
+      leaf prefix { type inet:ipv6-prefix; mandatory true; }
+      leaf table-id { type uint32; mandatory true; }
+      leaf pool-table-id {
+        type uint32;
+        mandatory true;
+        description "Use 4294967295 for a pool shared by all tables.";
+      }
+      leaf-list pool-address { type inet:ipv4-address; min-elements 1; }
+    }
+    list neighbor {
+      key "interface address";
+      leaf interface { type if:interface-ref; }
+      leaf address { type inet:ip-address; }
+      leaf mac { type yang:mac-address; mandatory true; }
+    }
+    list route {
+      key "interface destination table-id";
+      description "VPP forwarding tables use a separate namespace from Linux tables.";
+      leaf interface { type if:interface-ref; }
+      leaf destination { type inet:ip-prefix; }
+      leaf gateway { type inet:ip-address; mandatory true; }
+      leaf table-id { type uint32; }
+    }
+  }
+}

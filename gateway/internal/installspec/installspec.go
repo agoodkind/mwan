@@ -16,6 +16,7 @@ import (
 //go:embed mwan-agent.service mwan-ifmgr.service mwan-ifmgr@.service mwan-trace-boot.service mwan-ifmgr-failover.conf
 //go:embed rousette.service nghttpx-wanconfig.service systemd-networkd-override.conf mwan-ifmgr-wan.conf
 //go:embed 99-quiet-console.conf nacm-anonymous.xml
+//go:embed mwan-ifmgr-router.conf
 var unitFS embed.FS
 
 // The anonymous RESTCONF policy permits reads and denies writes and execution.
@@ -42,6 +43,8 @@ const (
 	RoleFailover Role = "failover"
 	// RoleHost selects the hypervisor interface manager.
 	RoleHost Role = "host"
+	// RoleRouter installs the router VPP interface manager and validation schema.
+	RoleRouter Role = "router"
 )
 
 // File maps an embedded asset to its absolute installation path.
@@ -61,6 +64,8 @@ type Spec struct {
 	Enable []string
 	// Schema enables YANG installation and NACM imports after unit installation.
 	Schema bool
+	// ValidationSchema writes validation files without importing a datastore.
+	ValidationSchema bool
 	// NotOwned includes system services that read installed files.
 	// The installer does not enable these services; Units includes them for consumers.
 	NotOwned []NotOwnedUnit
@@ -103,7 +108,8 @@ func specs() map[Role]Spec {
 				"mwan-agent.service", "mwan-ifmgr@wan.service", "mwan-trace-boot.service",
 				rousetteUnit, "nghttpx-wanconfig.service",
 			},
-			Schema: true,
+			Schema:           true,
+			ValidationSchema: false,
 			NotOwned: []NotOwnedUnit{
 				{
 					Name:  "systemd-networkd.service",
@@ -124,15 +130,27 @@ func specs() map[Role]Spec {
 					Dest:     filepath.Join(SystemdUnitDir, "mwan-ifmgr.service.d", "lxc-failover.conf"),
 				},
 			},
-			Enable:   []string{"mwan-agent.service", "mwan-ifmgr.service"},
-			Schema:   false,
-			NotOwned: nil,
+			Enable:           []string{"mwan-agent.service", "mwan-ifmgr.service"},
+			Schema:           false,
+			ValidationSchema: false,
+			NotOwned:         nil,
 		},
 		RoleHost: {
-			Files:    []File{unit("mwan-ifmgr.service")},
-			Enable:   []string{"mwan-ifmgr.service"},
-			Schema:   false,
-			NotOwned: nil,
+			Files:            []File{unit("mwan-ifmgr.service")},
+			Enable:           []string{"mwan-ifmgr.service"},
+			Schema:           false,
+			ValidationSchema: false,
+			NotOwned:         nil,
+		},
+		RoleRouter: {
+			Files: []File{
+				unit("mwan-ifmgr@.service"),
+				{Embedded: "mwan-ifmgr-router.conf", Dest: filepath.Join(SystemdUnitDir, "mwan-ifmgr@router.service.d", "router.conf")},
+			},
+			Enable:           []string{"mwan-ifmgr@router.service"},
+			Schema:           false,
+			ValidationSchema: true,
+			NotOwned:         nil,
 		},
 	}
 }
