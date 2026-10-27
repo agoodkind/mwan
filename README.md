@@ -14,6 +14,9 @@ The [documentation guide](docs/README.md) includes MWAN specifications,
 implementation plans, runbooks, and execution records copied from Configs.
 It also explains which commands still require the Configs checkout.
 
+The [router VPP reference](docs/vpp.md) covers optional binary API control,
+shared memory counters, and native CPU profiling.
+
 ## Layout
 
 | Path | What it holds |
@@ -21,7 +24,7 @@ It also explains which commands still require the Configs checkout.
 | `gateway/cmd/mwan` | The binary: every subcommand |
 | `gateway/internal/installspec` | The role table and the units, drop-ins and policy that `mwan install` writes |
 | `gateway/internal` | The daemon: interface management modules, BGP, health, the agent, the wanconfig publisher |
-| `gateway/internal/yangpub/schema` | The eight YANG modules the binary embeds |
+| `gateway/internal/yangpub/schema` | The YANG modules the binary embeds |
 | `gateway/proto`, `gateway/gen` | The `mwan.v1` wire contract and its generated code |
 | `gateway/yang/instances` | The network documents the instance gate validates |
 | `gateway/tools` | The wanconfig stack packaging tool and its builder image |
@@ -43,7 +46,7 @@ What a role installs:
 
 - Every role writes its systemd units and drop-ins, then re-enables them, so a
   unit whose `WantedBy` moved loses the symlink under its old target.
-- The `wan` role installs or updates the eight YANG modules in sysrepo and
+- The `wan` role installs or updates the YANG modules in sysrepo and
   imports the read-only NACM policy into each of startup and running that does
   not already hold it.
 

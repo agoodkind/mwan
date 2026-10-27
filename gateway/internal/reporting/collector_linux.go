@@ -42,6 +42,7 @@ type Collector struct {
 	persistent map[ProbeKey]persistentEcho
 	udp        map[string]uint64
 	clock      internalclock.Clock
+	vpp        *vppReportingSettings
 }
 
 // NewCollector requires readable host measurements before starting WAN collection.
@@ -61,7 +62,7 @@ func NewCollector(settings config.ReportSection, network *networkjson.Config, lo
 		settings: settings, network: network, log: log,
 		host:    hostSampler{directory: settings.ProcDirectory, previous: nil},
 		talkers: nil, identifier: 0, mu: sync.Mutex{},
-		persistent: make(map[ProbeKey]persistentEcho), udp: nil, clock: internalclock.Real{},
+		persistent: make(map[ProbeKey]persistentEcho), udp: nil, clock: internalclock.Real{}, vpp: nil,
 	}
 	if _, err := os.Stat(filepath.Join(settings.ProcDirectory, "stat")); err != nil {
 		return nil, fmt.Errorf("open procfs CPU measurements: %w", err)
@@ -104,6 +105,8 @@ func (collector *Collector) Sample(ctx context.Context, start, end time.Time) (M
 	}
 	minute.Start, minute.End = start, end
 	before := collector.linkCounters()
+	vppBefore := collector.vppCounters(ctx)
+	vppProfile := collector.profileVPP(ctx)
 	interval, _ := time.ParseDuration(collector.settings.ProbeInterval)
 	results := make(chan ProbeMinute, len(collector.network.WAN)*8)
 	var workers sync.WaitGroup
@@ -139,6 +142,11 @@ func (collector *Collector) Sample(ctx context.Context, start, end time.Time) (M
 			traffic.Available = true
 		}
 		minute.Traffic = append(minute.Traffic, traffic)
+	}
+	minute.VPPTraffic = collector.vppTraffic(vppBefore, collector.vppCounters(ctx))
+	if vppProfile != nil {
+		profile := <-vppProfile
+		minute.VPPProfile = &profile
 	}
 	var err error
 	minute.Host, err = collector.host.sample()

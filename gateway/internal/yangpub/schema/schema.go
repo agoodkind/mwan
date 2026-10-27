@@ -53,6 +53,7 @@ func Modules() []Module {
 			Update:   true,
 		},
 		{File: SteeringFile, Features: nil, Update: true},
+		{File: "goodkind-mwan-vpp@2026-10-26.yang", Features: nil, Update: true},
 	}
 }
 

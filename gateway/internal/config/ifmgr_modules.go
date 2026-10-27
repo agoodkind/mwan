@@ -12,6 +12,7 @@ import (
 // IfMgrModulesSection is the explicit TOML schema for [ifmgr.modules].
 // Each field maps to one supported module table.
 type IfMgrModulesSection struct {
+	VPP               *VPPSection                    `toml:"vpp"`
 	WG                *IfMgrWGHealthSection          `toml:"wg"`
 	OOBV6             *IfMgrOOBV6Section             `toml:"oobv6"`
 	OOBV4             *IfMgrOOBV4Section             `toml:"oobv4"`

@@ -74,7 +74,8 @@ func runSysrepoStep(step string, args []string) int {
 		return 0
 	case "library":
 		tree, found, err := datastore.ExportJSON(
-			context.Background(), yangpub.DatastoreOperational, "/ietf-yang-library:yang-library")
+			context.Background(), yangpub.DatastoreOperational, "/ietf-yang-library:yang-library",
+		)
 		if err != nil || !found {
 			fmt.Fprintf(os.Stderr, "read the yang library: found=%v err=%v\n", found, err)
 			return 1
@@ -96,7 +97,8 @@ func runSysrepoStep(step string, args []string) int {
 			return 1
 		}
 		if err := datastore.ImportConfig(
-			context.Background(), yangpub.Datastore(args[0]), args[1], document); err != nil {
+			context.Background(), yangpub.Datastore(args[0]), args[1], document,
+		); err != nil {
 			fmt.Fprintf(os.Stderr, "import %s into %s: %v\n", args[2], args[0], err)
 			return 1
 		}
@@ -324,8 +326,7 @@ func TestInstallApplyUpdatesAnOlderSteeringRevision(t *testing.T) {
 
 	output := runInstallChild(t, root)
 
-	modules := schema.Modules()
-	_, wantRevision := moduleFileNameRevision(modules[len(modules)-1].File)
+	_, wantRevision := moduleFileNameRevision(schema.SteeringFile)
 	got := implementedModules(t, root, "after")["goodkind-mwan-steering"]
 	if got.revision != wantRevision {
 		t.Fatalf("steering revision after the run = %q, want %q", got.revision, wantRevision)
@@ -358,8 +359,7 @@ func TestInstallApplyUpdatesSteeringRevisionWithStoredBGPSession(t *testing.T) {
 
 	output := runInstallChild(t, root)
 
-	modules := schema.Modules()
-	_, wantRevision := moduleFileNameRevision(modules[len(modules)-1].File)
+	_, wantRevision := moduleFileNameRevision(schema.SteeringFile)
 	wantLine := "updated module goodkind-mwan-steering from 2026-10-12 to " + wantRevision
 	if !strings.Contains(output, wantLine) {
 		t.Fatalf("run output:\n%s\nwant a line %q", output, wantLine)
