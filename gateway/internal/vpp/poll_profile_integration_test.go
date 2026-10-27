@@ -7,13 +7,19 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/agoodkind/netlink"
 	"go.fd.io/govpp"
 	interfaces "go.fd.io/govpp/binapi/interface"
 	"go.fd.io/govpp/binapi/interface_types"
 	"go.fd.io/govpp/binapi/tapv2"
+	"go.fd.io/govpp/core"
+	"golang.org/x/sys/unix"
 
 	vppclient "goodkind.io/mwan/internal/vpp"
 	pollapi "goodkind.io/mwan/internal/vpp/pollapi/virtio_poll"
@@ -58,6 +64,10 @@ func verifyQueuePolling(t *testing.T, endpoints vppclient.Endpoints, counters ma
 		if empty == 0 {
 			t.Fatal("polling TAP queues did not record strict empty checks")
 		}
+	})
+
+	t.Run("busy and empty queues on one worker", func(t *testing.T) {
+		verifyMixedQueuePolling(t, connection, endpoints)
 	})
 
 	service := pollapi.NewServiceClient(connection)
@@ -128,6 +138,124 @@ func verifyQueuePolling(t *testing.T, endpoints vppclient.Endpoints, counters ma
 			t.Fatalf("cancellation did not release profile ownership: %v, %+v", err, profile)
 		}
 	})
+}
+
+func createPollingTAP(t *testing.T, connection *core.Connection, timeout time.Duration, id uint32, host string) (interface_types.InterfaceIndex, netlink.Link) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), timeout)
+	defer cancel()
+	service := tapv2.NewServiceClient(connection)
+	created, err := service.TapCreateV3(ctx, &tapv2.TapCreateV3{ID: id, Tag: "mwan-queue-profile-test", UseRandomMac: true, NumRxQueues: 1, NumTxQueues: 1, RxRingSz: 256, TxRingSz: 256, HostIfNameSet: true, HostIfName: host})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cleanup, stop := context.WithTimeout(context.WithoutCancel(t.Context()), timeout)
+		defer stop()
+		if _, err := service.TapDeleteV2(cleanup, &tapv2.TapDeleteV2{SwIfIndex: created.SwIfIndex}); err != nil {
+			t.Errorf("remove the mixed queue TAP %s: %v", host, err)
+		}
+	})
+	link, err := netlink.LinkByName(host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join("/proc/sys/net/ipv6/conf", host, "disable_ipv6"), []byte("1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := netlink.LinkSetUp(link); err != nil {
+		t.Fatal(err)
+	}
+	interfaceService := interfaces.NewServiceClient(connection)
+	if _, err := interfaceService.SwInterfaceSetFlags(ctx, &interfaces.SwInterfaceSetFlags{SwIfIndex: created.SwIfIndex, Flags: interface_types.IF_STATUS_API_FLAG_ADMIN_UP}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := interfaceService.SwInterfaceSetRxPlacement(ctx, &interfaces.SwInterfaceSetRxPlacement{SwIfIndex: created.SwIfIndex, QueueID: 0, WorkerID: 0, IsMain: false}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := interfaceService.SwInterfaceSetRxMode(ctx, &interfaces.SwInterfaceSetRxMode{SwIfIndex: created.SwIfIndex, Mode: interface_types.RX_MODE_API_POLLING}); err != nil {
+		t.Fatal(err)
+	}
+	return created.SwIfIndex, link
+}
+
+func verifyMixedQueuePolling(t *testing.T, connection *core.Connection, endpoints vppclient.Endpoints) {
+	t.Helper()
+	busyIndex, busyLink := createPollingTAP(t, connection, endpoints.Timeout, 906, "gvpp-poll-busy")
+	idleIndex, _ := createPollingTAP(t, connection, endpoints.Timeout, 907, "gvpp-poll-idle")
+	const etherType = 0x88b5
+	var protocolBytes [2]byte
+	binary.BigEndian.PutUint16(protocolBytes[:], etherType)
+	protocol := binary.NativeEndian.Uint16(protocolBytes[:])
+	socket, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW|unix.SOCK_CLOEXEC|unix.SOCK_NONBLOCK, int(protocol))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unix.Close(socket)
+	address := &unix.SockaddrLinklayer{Ifindex: busyLink.Attrs().Index, Protocol: protocol}
+	if err := unix.Bind(socket, address); err != nil {
+		t.Fatal(err)
+	}
+	frame := make([]byte, 64)
+	for index := range 6 {
+		frame[index] = 0xff
+	}
+	copy(frame[6:12], busyLink.Attrs().HardwareAddr)
+	binary.BigEndian.PutUint16(frame[12:14], etherType)
+	ctx, cancel := context.WithTimeout(t.Context(), endpoints.Timeout)
+	defer cancel()
+	senderContext, stopSender := context.WithCancel(ctx)
+	senderResult := make(chan error, 1)
+	go func() { senderResult <- sendQueueFrames(senderContext, socket, address, frame) }()
+	defer func() {
+		stopSender()
+		select {
+		case err := <-senderResult:
+			if err != nil {
+				t.Errorf("send mixed queue Ethernet frames: %v", err)
+			}
+		case <-time.After(endpoints.Timeout):
+			t.Error("the mixed queue sender did not stop after cancellation")
+		}
+	}()
+	profile, err := vppclient.ProfileQueuePolling(ctx, endpoints, 250*time.Millisecond)
+	if err != nil || !profile.Available {
+		t.Fatalf("profile a busy queue beside an empty queue: %v, %+v", err, profile)
+	}
+	var busy, idle vppclient.QueuePollCounter
+	var busyFound, idleFound bool
+	for _, queue := range profile.Queues {
+		if queue.QueueID != 0 {
+			continue
+		}
+		if queue.InterfaceIndex == uint32(busyIndex) && queue.Packets > 0 {
+			busy, busyFound = queue, true
+		}
+		if queue.InterfaceIndex == uint32(idleIndex) && queue.EmptyCalls > 0 {
+			idle, idleFound = queue, true
+		}
+	}
+	if !busyFound || !idleFound || busy.ThreadID != idle.ThreadID || busy.NonemptyCalls == 0 || idle.Packets != 0 || idle.NonemptyCalls != 0 {
+		t.Fatalf("receive queues did not separate busy and empty work: busy=%+v, idle=%+v, queues=%+v", busy, idle, profile.Queues)
+	}
+	t.Logf("same-worker queue counters: busy=%+v, idle=%+v", busy, idle)
+}
+
+func sendQueueFrames(ctx context.Context, socket int, address *unix.SockaddrLinklayer, frame []byte) error {
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			for range 8 {
+				if err := unix.Sendto(socket, frame, unix.MSG_DONTWAIT, address); err != nil {
+					return fmt.Errorf("send a raw Ethernet frame: %w", err)
+				}
+			}
+		}
+	}
 }
 
 func queueProfileToken(t *testing.T) uint64 {
