@@ -5,7 +5,8 @@
 use crate::abi::{
     MWAN_NATIVE_FAMILY_IPV4, MWAN_NATIVE_FAMILY_IPV6, MWAN_NATIVE_PACKET_ETHERNET_VALID,
     MWAN_NATIVE_PACKET_IP_VALID, MWAN_NATIVE_PACKET_PORTS_VALID, MWAN_NATIVE_PROTOCOL_TCP,
-    MWAN_NATIVE_PROTOCOL_UDP, MwanNativeDirection, MwanNativePacketDiagnostic, MwanNativeTuple,
+    MWAN_NATIVE_PROTOCOL_UDP, MwanNativeDirection, MwanNativeObservation,
+    MwanNativePacketDiagnostic, MwanNativeTuple,
 };
 use std::fmt;
 
@@ -40,6 +41,8 @@ pub struct ParsedPacket {
     pub(crate) network_length: usize,
     pub(crate) ttl: u8,
     pub(crate) flags: u8,
+    pub(crate) traffic_class: u8,
+    pub(crate) flow_label: u32,
     pub(crate) fragment: bool,
     pub(crate) noninitial_fragment: bool,
     pub(crate) extended: bool,
@@ -48,6 +51,7 @@ pub struct ParsedPacket {
     pub(crate) ether_type: u16,
     pub(crate) source_mac: [u8; ETHERNET_ADDRESS_LENGTH],
     pub(crate) destination_mac: [u8; ETHERNET_ADDRESS_LENGTH],
+    ipv4_checksum: u16,
     frame_length: usize,
     ethernet_valid: bool,
 }
@@ -122,6 +126,34 @@ pub fn decode(frame: &[u8]) -> Result<ParsedPacket, DecodeError> {
     };
     decode_headers(frame, &mut view).map_err(|code| view.error(code))?;
     Ok(view)
+}
+
+pub fn observe(frame: &[u8]) -> MwanNativeObservation {
+    let mut observation = MwanNativeObservation::default();
+    let view = match decode(frame) {
+        Ok(view) => view,
+        Err(error) => {
+            observation.tuple = error.diagnostic.tuple;
+            observation.source_mac = error.diagnostic.source_mac;
+            observation.destination_mac = error.diagnostic.destination_mac;
+            observation.decode_status = -error.code;
+            return observation;
+        }
+    };
+    observation.tuple = view.tuple;
+    observation.source_mac = view.source_mac;
+    observation.destination_mac = view.destination_mac;
+    observation.network_length = view.network_length as u32;
+    observation.flow_label = view.flow_label;
+    observation.traffic_class = view.traffic_class;
+    observation.tcp_flags = view.flags;
+    observation.ttl = view.ttl;
+    let direction = MwanNativeDirection {
+        output_mtu: u16::MAX,
+        ..MwanNativeDirection::default()
+    };
+    observation.eligible = u8::from(eligible(frame, &view, &direction));
+    observation
 }
 
 fn decode_headers(frame: &[u8], view: &mut ParsedPacket) -> Result<(), i32> {
@@ -208,6 +240,8 @@ fn decode_ipv4(network: &[u8], view: &mut ParsedPacket) -> Result<(), i32> {
     view.noninitial_fragment = fragment & IPV4_FRAGMENT_OFFSET_MASK != 0;
     view.extended |= view.ip_header_length != IPV4_HEADER_LENGTH;
     view.ttl = *header.get(8).ok_or(libc::EBADMSG)?;
+    view.ipv4_checksum = read_u16(header, 10).ok_or(libc::EBADMSG)?;
+    view.traffic_class = *header.get(1).ok_or(libc::EBADMSG)?;
     view.tuple.family = MWAN_NATIVE_FAMILY_IPV4 as u8;
     view.tuple.protocol = *header.get(9).ok_or(libc::EBADMSG)?;
     let source: [u8; 4] = read_array(header, 12).ok_or(libc::EBADMSG)?;
@@ -236,6 +270,9 @@ fn decode_ipv6(network: &[u8], view: &mut ParsedPacket) -> Result<(), i32> {
         .ok_or(libc::EBADMSG)?;
     view.malformed = view.network_length > network.len();
     view.ttl = *header.get(7).ok_or(libc::EBADMSG)?;
+    view.traffic_class = ((header[0] & 15) * 16) | (header[1] >> 4);
+    view.flow_label =
+        (u32::from(header[1] & 15) * 65_536) | (u32::from(header[2]) * 256) | u32::from(header[3]);
     view.tuple.family = MWAN_NATIVE_FAMILY_IPV6 as u8;
     view.tuple.protocol = *header.get(6).ok_or(libc::EBADMSG)?;
     view.tuple.source = read_array(header, 8).ok_or(libc::EBADMSG)?;
@@ -485,6 +522,59 @@ pub fn forward(
         .ttl
         .checked_sub(1)
         .ok_or_else(|| view.error(libc::EBADMSG))?;
+    set_hop_limit(frame, view, ttl)?;
+    write_bytes(frame, 0, &direction.output_destination_mac, view)?;
+    write_bytes(
+        frame,
+        ETHERNET_ADDRESS_LENGTH,
+        &direction.output_source_mac,
+        view,
+    )
+}
+
+pub fn restore_forwarded(
+    frame: &mut [u8],
+    view: &ParsedPacket,
+    direction: &MwanNativeDirection,
+) -> Result<(), DecodeError> {
+    validate_edit(frame, view, direction)?;
+    let forwarded_ttl = view
+        .ttl
+        .checked_sub(1)
+        .ok_or_else(|| view.error(libc::EBADMSG))?;
+    let ttl_field = match u32::from(view.tuple.family) {
+        MWAN_NATIVE_FAMILY_IPV4 => 8,
+        MWAN_NATIVE_FAMILY_IPV6 => 7,
+        _ => return Err(view.error(libc::EPROTONOSUPPORT)),
+    };
+    let ttl_offset = view
+        .network_offset
+        .checked_add(ttl_field)
+        .ok_or_else(|| view.error(libc::EBADMSG))?;
+    if frame.get(ttl_offset) != Some(&forwarded_ttl)
+        || frame.get(..ETHERNET_ADDRESS_LENGTH) != Some(direction.output_destination_mac.as_slice())
+        || read_range(frame, ETHERNET_ADDRESS_LENGTH, ETHERNET_ADDRESS_LENGTH)
+            != Some(direction.output_source_mac.as_slice())
+    {
+        return Err(view.error(libc::EBADMSG));
+    }
+    write_bytes(frame, ttl_offset, &[view.ttl], view)?;
+    if u32::from(view.tuple.family) == MWAN_NATIVE_FAMILY_IPV4 {
+        let checksum_offset = view
+            .network_offset
+            .checked_add(10)
+            .ok_or_else(|| view.error(libc::EBADMSG))?;
+        write_bytes(
+            frame,
+            checksum_offset,
+            &view.ipv4_checksum.to_be_bytes(),
+            view,
+        )?;
+    }
+    restore(frame, view, direction)
+}
+
+fn set_hop_limit(frame: &mut [u8], view: &ParsedPacket, ttl: u8) -> Result<(), DecodeError> {
     match u32::from(view.tuple.family) {
         MWAN_NATIVE_FAMILY_IPV4 => {
             let ttl_offset = view
@@ -514,13 +604,7 @@ pub fn forward(
         }
         _ => return Err(view.error(libc::EPROTONOSUPPORT)),
     }
-    write_bytes(frame, 0, &direction.output_destination_mac, view)?;
-    write_bytes(
-        frame,
-        ETHERNET_ADDRESS_LENGTH,
-        &direction.output_source_mac,
-        view,
-    )
+    Ok(())
 }
 
 fn validate_edit(

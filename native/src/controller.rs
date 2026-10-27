@@ -84,6 +84,7 @@ struct Pair {
     generation: u64,
     state: PairState,
     spec: MwanNativePairSpec,
+    guards: Option<[MwanNativePacketGuard; 2]>,
     legs: [Leg; 2],
 }
 
@@ -96,7 +97,16 @@ struct InverseKey {
 #[derive(Clone, Copy)]
 struct LegId {
     slot: usize,
+    generation: u64,
     direction: usize,
+}
+
+#[derive(Clone, Copy)]
+struct PacketLeg {
+    spec: MwanNativeDirection,
+    guard: Option<MwanNativePacketGuard>,
+    handle: Option<MwanNativeHandle>,
+    installed: bool,
 }
 
 /// This value owns one received mbuf until a successful transmit transfers it.
@@ -215,6 +225,15 @@ struct Pending {
     packet: PacketBuffer,
     port: u16,
     kernel: bool,
+    prepared: Option<PreparedForward>,
+}
+
+#[derive(Clone, Copy)]
+struct PreparedForward {
+    handle: MwanNativeHandle,
+    view: packet::ParsedPacket,
+    direction: MwanNativeDirection,
+    return_port: u16,
 }
 
 struct Owner {
@@ -231,6 +250,7 @@ struct OwnerState {
     ports: Vec<Port>,
     pool: Option<NonNull<dpdk::rte_mempool>>,
     pairs: Vec<Pair>,
+    retained: HashMap<MwanNativeHandle, Pair>,
     inverses: HashMap<InverseKey, LegId>,
     pending: VecDeque<Pending>,
     received: VecDeque<Received>,
@@ -266,6 +286,17 @@ fn fault(
     };
     write_text(&mut error.message, message.as_bytes());
     Box::new(error)
+}
+
+fn stale_handle(handle: MwanNativeHandle) -> Box<MwanNativeError> {
+    fault(
+        libc::ESTALE,
+        MWAN_NATIVE_OP_CONFIG,
+        MWAN_NATIVE_OBJECT_PAIR,
+        handle.slot,
+        0,
+        "Stale pair handle",
+    )
 }
 
 fn write_text<const LENGTH: usize>(destination: &mut [c_char; LENGTH], source: &[u8]) {
@@ -620,11 +651,15 @@ impl OwnerState {
         pairs.resize_with(config.pair_capacity as usize, Pair::default);
         let mut inverses = HashMap::new();
         inverses
-            .try_reserve(config.pair_capacity as usize * 2)
+            .try_reserve(config.pair_capacity as usize * 4)
+            .map_err(|_| allocation())?;
+        let mut retained = HashMap::new();
+        retained
+            .try_reserve(config.pair_capacity as usize)
             .map_err(|_| allocation())?;
         let mut pending = VecDeque::new();
         pending
-            .try_reserve_exact(config.mbuf_count as usize)
+            .try_reserve_exact(BURST.min(config.mbuf_count as usize))
             .map_err(|_| allocation())?;
         let mut received = VecDeque::new();
         received
@@ -643,6 +678,7 @@ impl OwnerState {
             ports,
             pool: None,
             pairs,
+            retained,
             inverses,
             pending,
             received,
@@ -1653,7 +1689,10 @@ impl OwnerState {
     }
 
     fn pair_result(&self, slot: usize) -> MwanNativePairResult {
-        let pair = &self.pairs[slot];
+        self.result_for(&self.pairs[slot], slot)
+    }
+
+    fn result_for(&self, pair: &Pair, slot: usize) -> MwanNativePairResult {
         let mut result = MwanNativePairResult {
             handle: MwanNativeHandle {
                 instance: self.instance,
@@ -1679,24 +1718,79 @@ impl OwnerState {
         result
     }
 
-    fn handle_slot(&self, handle: MwanNativeHandle) -> NativeResult<usize> {
+    fn handle_pair(&self, handle: MwanNativeHandle) -> NativeResult<&Pair> {
         let slot = handle.slot as usize;
         if handle.reserved != 0
             || handle.instance != self.instance
             || slot >= self.pairs.len()
             || handle.generation == 0
-            || self.pairs[slot].generation != handle.generation
+        {
+            return Err(stale_handle(handle));
+        }
+        if self.pairs[slot].generation == handle.generation {
+            return Ok(&self.pairs[slot]);
+        }
+        self.retained
+            .get(&handle)
+            .ok_or_else(|| stale_handle(handle))
+    }
+
+    fn retain_pair(&mut self, slot: usize) -> NativeResult<()> {
+        let pair = &self.pairs[slot];
+        if pair.state != PairState::Draining
+            || pair
+                .legs
+                .iter()
+                .any(|leg| leg.flow.is_some() || leg.delete_failed)
         {
             return Err(fault(
-                libc::ESTALE,
-                MWAN_NATIVE_OP_CONFIG,
+                libc::EBUSY,
+                MWAN_NATIVE_OP_CREATE,
                 MWAN_NATIVE_OBJECT_PAIR,
-                handle.slot,
+                slot as u32,
                 0,
-                "Stale pair handle",
+                "Pair hardware cleanup has not completed",
             ));
         }
-        Ok(slot)
+        if self.retained.len() >= self.config.pair_capacity as usize {
+            return Err(fault(
+                libc::ENOSPC,
+                MWAN_NATIVE_OP_CREATE,
+                MWAN_NATIVE_OBJECT_PAIR,
+                slot as u32,
+                0,
+                "Retained inverse capacity exhausted; DATA ports must retire before reclamation",
+            ));
+        }
+        let handle = self.pair_result(slot).handle;
+        let generation = self.pairs[slot].generation;
+        let pair = mem::replace(
+            &mut self.pairs[slot],
+            Pair {
+                generation,
+                ..Pair::default()
+            },
+        );
+        self.retained.insert(handle, pair);
+        Ok(())
+    }
+
+    fn retirement_stats(&self) -> MwanNativeRetirementStats {
+        MwanNativeRetirementStats {
+            active_pair_capacity: self.config.pair_capacity,
+            retained_pair_capacity: self.config.pair_capacity,
+            retained_pairs: self.retained.len() as u32,
+            draining_pairs: self
+                .pairs
+                .iter()
+                .filter(|pair| pair.state == PairState::Draining)
+                .count() as u32,
+            retained_directions: self
+                .retained
+                .values()
+                .map(|pair| pair.legs.iter().filter(|leg| leg.inverse).count() as u64)
+                .sum(),
+        }
     }
 
     fn forget_pair(&mut self, slot: usize) {
@@ -1719,18 +1813,20 @@ impl OwnerState {
             return Ok(());
         }
         self.pairs[slot].state = PairState::Draining;
-        let mut failure = None;
+        let mut failure = self.restore_pending().err();
         for index in 0..2 {
             let spec = self.pairs[slot].spec.directions[index];
             if self.pairs[slot].legs[index].delete_failed {
-                failure = Some(fault(
-                    libc::EIO,
-                    MWAN_NATIVE_OP_DESTROY,
-                    MWAN_NATIVE_OBJECT_ORIGIN,
-                    spec.origin_id,
-                    index as u32,
-                    "Consumed flow handle cannot be retried",
-                ));
+                if failure.is_none() {
+                    failure = Some(fault(
+                        libc::EIO,
+                        MWAN_NATIVE_OP_DESTROY,
+                        MWAN_NATIVE_OBJECT_ORIGIN,
+                        spec.origin_id,
+                        index as u32,
+                        "Consumed flow handle cannot be retried",
+                    ));
+                }
                 continue;
             }
             let Some(flow) = self.pairs[slot].legs[index].flow else {
@@ -1747,14 +1843,16 @@ impl OwnerState {
             self.pairs[slot].legs[index].flow = None;
             if result != 0 {
                 self.pairs[slot].legs[index].delete_failed = true;
-                failure = Some(flow_fault(
-                    result,
-                    MWAN_NATIVE_OP_DESTROY,
-                    MWAN_NATIVE_OBJECT_ORIGIN,
-                    spec.origin_id,
-                    index as u32,
-                    &detail,
-                ));
+                if failure.is_none() {
+                    failure = Some(flow_fault(
+                        result,
+                        MWAN_NATIVE_OP_DESTROY,
+                        MWAN_NATIVE_OBJECT_ORIGIN,
+                        spec.origin_id,
+                        index as u32,
+                        &detail,
+                    ));
+                }
             }
         }
         if let Some(error) = failure {
@@ -1768,6 +1866,7 @@ impl OwnerState {
     fn install_pair(
         &mut self,
         spec: MwanNativePairSpec,
+        guards: Option<[MwanNativePacketGuard; 2]>,
         result: &mut MwanNativePairResult,
     ) -> NativeResult<()> {
         if !self.active
@@ -1790,15 +1889,40 @@ impl OwnerState {
         for (index, mask) in DIRECTION_MASKS.iter().enumerate() {
             if spec.requested_direction_mask & mask != 0 {
                 self.direction_valid(&spec.directions[index], index)?;
+                if let Some(guards) = guards {
+                    let guard = guards[index];
+                    if guard.reserved != [0; 3]
+                        || guard.flow_label > 0x000f_ffff
+                        || (u32::from(spec.directions[index].original.family)
+                            == MWAN_NATIVE_FAMILY_IPV4
+                            && guard.flow_label != 0)
+                    {
+                        return Err(fault(
+                            libc::EINVAL,
+                            MWAN_NATIVE_OP_VALIDATE,
+                            MWAN_NATIVE_OBJECT_ORIGIN,
+                            spec.directions[index].origin_id,
+                            index as u32,
+                            "Invalid observed packet selector guard",
+                        ));
+                    }
+                }
             }
         }
         let mut free = None;
+        let mut draining = None;
         for (slot, pair) in self.pairs.iter().enumerate() {
             if pair.state == PairState::Absent {
                 if free.is_none() && pair.generation != u64::MAX {
                     free = Some(slot);
                 }
                 continue;
+            }
+            if draining.is_none()
+                && pair.state == PairState::Draining
+                && pair.generation != u64::MAX
+            {
+                draining = Some(slot);
             }
             for (first, first_mask) in DIRECTION_MASKS.iter().enumerate() {
                 for (second, second_mask) in DIRECTION_MASKS.iter().enumerate() {
@@ -1818,7 +1942,26 @@ impl OwnerState {
                 }
             }
         }
-        let slot = free.ok_or_else(|| {
+        for pair in self.retained.values() {
+            for (first, first_mask) in DIRECTION_MASKS.iter().enumerate() {
+                for (second, second_mask) in DIRECTION_MASKS.iter().enumerate() {
+                    if spec.requested_direction_mask & first_mask != 0
+                        && pair.spec.requested_direction_mask & second_mask != 0
+                        && self.collision(&spec.directions[first], &pair.spec.directions[second])
+                    {
+                        return Err(fault(
+                            libc::EEXIST,
+                            MWAN_NATIVE_OP_VALIDATE,
+                            MWAN_NATIVE_OBJECT_ORIGIN,
+                            spec.directions[first].origin_id,
+                            first as u32,
+                            "Direction conflicts with a retained restoration mapping",
+                        ));
+                    }
+                }
+            }
+        }
+        let slot = free.or(draining).ok_or_else(|| {
             fault(
                 libc::ENOSPC,
                 MWAN_NATIVE_OP_CREATE,
@@ -1840,17 +1983,21 @@ impl OwnerState {
                 "Pair directions overlap",
             ));
         }
-        let generation = self.pairs[slot].generation + 1;
-        self.pairs[slot] = Pair {
-            generation,
-            spec,
-            ..Pair::default()
-        };
         for (index, mask) in DIRECTION_MASKS.iter().enumerate() {
             if spec.requested_direction_mask & mask != 0 {
                 self.build_flow(&spec.directions[index], index, true)?;
             }
         }
+        if self.pairs[slot].state == PairState::Draining {
+            self.retain_pair(slot)?;
+        }
+        let generation = self.pairs[slot].generation + 1;
+        self.pairs[slot] = Pair {
+            generation,
+            spec,
+            guards,
+            ..Pair::default()
+        };
         self.pairs[slot].state = PairState::Draining;
         for (index, mask) in DIRECTION_MASKS.iter().enumerate() {
             if spec.requested_direction_mask & mask == 0 {
@@ -1878,11 +2025,100 @@ impl OwnerState {
                 key,
                 LegId {
                     slot,
+                    generation,
                     direction: index,
                 },
             );
             self.pairs[slot].legs[index].inverse = true;
         }
+        self.activate_pair(slot, result)
+    }
+
+    fn resume_pair(
+        &mut self,
+        handle: MwanNativeHandle,
+        spec: MwanNativePairSpec,
+        guards: [MwanNativePacketGuard; 2],
+        result: &mut MwanNativePairResult,
+    ) -> NativeResult<()> {
+        *result = MwanNativePairResult::default();
+        let pair = self.handle_pair(handle)?;
+        let slot = handle.slot as usize;
+        *result = self.result_for(pair, slot);
+        if self.pairs[slot].generation != handle.generation {
+            return Err(stale_handle(handle));
+        }
+        if !self.active
+            || self.faulted
+            || self.quiescing
+            || pair.state != PairState::Draining
+            || pair
+                .legs
+                .iter()
+                .any(|leg| leg.flow.is_some() || leg.delete_failed)
+        {
+            return Err(fault(
+                libc::EBUSY,
+                MWAN_NATIVE_OP_CREATE,
+                MWAN_NATIVE_OBJECT_PAIR,
+                handle.slot,
+                0,
+                "Pair resumption requires complete hardware cleanup and an active owner",
+            ));
+        }
+        let mut expected = pair.spec;
+        expected.policy_generation = spec.policy_generation;
+        if spec.policy_generation < pair.spec.policy_generation
+            || spec != expected
+            || pair.guards != Some(guards)
+        {
+            return Err(fault(
+                libc::EINVAL,
+                MWAN_NATIVE_OP_VALIDATE,
+                MWAN_NATIVE_OBJECT_PAIR,
+                handle.slot,
+                0,
+                "Pair resumption requires identical connection, direction and selector records",
+            ));
+        }
+        for (index, mask) in DIRECTION_MASKS.iter().enumerate() {
+            if spec.requested_direction_mask & mask == 0 {
+                continue;
+            }
+            let direction = spec.directions[index];
+            let key = InverseKey {
+                origin: direction.origin_id,
+                tuple: direction.translated,
+            };
+            let inverse_owned = pair.legs[index].inverse
+                && self.inverses.get(&key).is_some_and(|leg| {
+                    leg.slot == slot
+                        && leg.generation == handle.generation
+                        && leg.direction == index
+                });
+            if !inverse_owned {
+                return Err(fault(
+                    libc::ESTALE,
+                    MWAN_NATIVE_OP_VALIDATE,
+                    MWAN_NATIVE_OBJECT_PAIR,
+                    handle.slot,
+                    index as u32,
+                    "Pair inverse ownership changed before resumption",
+                ));
+            }
+            self.build_flow(&direction, index, true)?;
+        }
+        self.activate_pair(slot, result)?;
+        self.pairs[slot].spec.policy_generation = spec.policy_generation;
+        Ok(())
+    }
+
+    fn activate_pair(
+        &mut self,
+        slot: usize,
+        result: &mut MwanNativePairResult,
+    ) -> NativeResult<()> {
+        let spec = self.pairs[slot].spec;
         for (index, mask) in DIRECTION_MASKS.iter().enumerate() {
             if spec.requested_direction_mask & mask == 0 {
                 continue;
@@ -1907,9 +2143,8 @@ impl OwnerState {
         stats: &mut MwanNativePairStats,
     ) -> NativeResult<()> {
         *stats = MwanNativePairStats::default();
-        let slot = self.handle_slot(handle)?;
-        stats.result = self.pair_result(slot);
-        let pair = &self.pairs[slot];
+        let pair = self.handle_pair(handle)?;
+        stats.result = self.result_for(pair, handle.slot as usize);
         let mut failure = None;
         for (index, mask) in DIRECTION_MASKS.iter().enumerate() {
             let out = &mut stats.directions[index];
@@ -1994,7 +2229,54 @@ impl OwnerState {
         self.stats.pending_packets = (self.pending.len() + self.received.len()) as u64;
     }
 
+    fn restore_pending(&mut self) -> NativeResult<()> {
+        for index in 0..self.pending.len() {
+            let Some(prepared) = self.pending[index].prepared else {
+                continue;
+            };
+            let installed = prepared.handle.instance == self.instance
+                && self
+                    .pairs
+                    .get(prepared.handle.slot as usize)
+                    .is_some_and(|pair| {
+                        pair.generation == prepared.handle.generation
+                            && pair.state == PairState::Installed
+                    });
+            if installed && !self.quiescing && !self.faulted {
+                continue;
+            }
+            let restored = match self.pending[index].packet.frame() {
+                Ok(frame) => packet::restore_forwarded(frame, &prepared.view, &prepared.direction)
+                    .map_err(|error| error.code),
+                Err(code) => Err(code),
+            };
+            if let Err(code) = restored {
+                let mut error = fault(
+                    code,
+                    MWAN_NATIVE_OP_PACKET,
+                    MWAN_NATIVE_OBJECT_PAIR,
+                    prepared.handle.slot,
+                    0,
+                    "Pending packet restoration failed; buffer and owner retained",
+                );
+                error.packet = packet::diagnostic(&prepared.view);
+                self.quiescing = true;
+                self.faulted = true;
+                self.terminal_failure = Some(*error);
+                self.update_pending_stats();
+                return Err(error);
+            }
+            let pending = &mut self.pending[index];
+            pending.port = prepared.return_port;
+            pending.kernel = true;
+            pending.prepared = None;
+            self.stats.unsupported = self.stats.unsupported.wrapping_add(1);
+        }
+        Ok(())
+    }
+
     fn flush_pending(&mut self) -> NativeResult<()> {
+        self.restore_pending()?;
         while let Some(front) = self.pending.front() {
             let port = front.port;
             let mut pointers = [ptr::null_mut(); BURST];
@@ -2045,20 +2327,33 @@ impl OwnerState {
         Ok(())
     }
 
-    fn packet_leg(&self, origin: usize, view: &packet::ParsedPacket) -> Option<LegId> {
+    fn packet_leg(&self, origin: usize, view: &packet::ParsedPacket) -> Option<PacketLeg> {
         if view.ports {
-            return self
+            let leg = self
                 .inverses
                 .get(&InverseKey {
                     origin: origin as u32,
                     tuple: view.tuple,
                 })
-                .copied();
+                .copied()?;
+            let handle = MwanNativeHandle {
+                instance: self.instance,
+                generation: leg.generation,
+                slot: leg.slot as u32,
+                reserved: 0,
+            };
+            let pair = self.handle_pair(handle).ok()?;
+            return Some(PacketLeg {
+                spec: pair.spec.directions[leg.direction],
+                guard: pair.guards.map(|guards| guards[leg.direction]),
+                handle: Some(handle),
+                installed: pair.state == PairState::Installed,
+            });
         }
         if !view.fragment {
             return None;
         }
-        for (slot, pair) in self.pairs.iter().enumerate() {
+        for pair in self.pairs.iter().chain(self.retained.values()) {
             if pair.state == PairState::Absent {
                 continue;
             }
@@ -2068,9 +2363,11 @@ impl OwnerState {
                     && direction.origin_id == origin as u32
                     && same_addresses(&direction.translated, &view.tuple)
                 {
-                    return Some(LegId {
-                        slot,
-                        direction: index,
+                    return Some(PacketLeg {
+                        spec: direction,
+                        guard: pair.guards.map(|guards| guards[index]),
+                        handle: None,
+                        installed: pair.state == PairState::Installed,
                     });
                 }
             }
@@ -2170,7 +2467,7 @@ impl OwnerState {
         let mut diagnostic = packet::diagnostic(&view);
         let leg = self.packet_leg(origin, &view);
         if let Some(leg) = leg {
-            let spec = self.pairs[leg.slot].spec.directions[leg.direction];
+            let spec = leg.spec;
             if view.source_mac != spec.original_source_mac {
                 diagnostic.failure_flags |= MWAN_NATIVE_PACKET_SOURCE_MAC_MISMATCH;
             }
@@ -2194,9 +2491,12 @@ impl OwnerState {
                 "Packet inverse is unavailable",
             )
         })?;
-        let spec = self.pairs[leg.slot].spec.directions[leg.direction];
-        let mut kernel =
-            self.quiescing || self.faulted || self.pairs[leg.slot].state != PairState::Installed;
+        let spec = leg.spec;
+        let mut kernel = self.quiescing || self.faulted || !leg.installed;
+        if let Some(guard) = leg.guard {
+            kernel |=
+                guard.traffic_class != view.traffic_class || guard.flow_label != view.flow_label;
+        }
         if !kernel {
             let eligibility = match self
                 .received
@@ -2241,13 +2541,27 @@ impl OwnerState {
             };
             kernel = !up;
         }
-        if self.pending.len() >= self.config.mbuf_count as usize {
+        if self.pending.len() >= BURST.min(self.config.mbuf_count as usize) {
             return Err(self.quarantine_front(libc::ENOBUFS, diagnostic));
         }
+        let return_port = self.data_port(self.config.origins[origin].data as usize)?;
         if kernel {
-            output = self.data_port(self.config.origins[origin].data as usize)?;
+            output = return_port;
             self.stats.unsupported = self.stats.unsupported.wrapping_add(1);
         }
+        let prepared = if kernel {
+            None
+        } else {
+            let Some(handle) = leg.handle else {
+                return Err(self.quarantine_front(libc::ESTALE, diagnostic));
+            };
+            Some(PreparedForward {
+                handle,
+                view,
+                direction: spec,
+                return_port,
+            })
+        };
         let edited = match self
             .received
             .front_mut()
@@ -2292,6 +2606,7 @@ impl OwnerState {
             packet: received.packet,
             port: output,
             kernel,
+            prepared,
         });
         self.update_pending_stats();
         Ok(())
@@ -2416,6 +2731,7 @@ impl OwnerState {
             if self.pool.is_some()
                 || !self.ports.is_empty()
                 || !self.inverses.is_empty()
+                || !self.retained.is_empty()
                 || !self.pending.is_empty()
                 || !self.received.is_empty()
                 || self.quarantined.is_some()
@@ -2481,6 +2797,8 @@ impl OwnerState {
         for slot in 0..self.pairs.len() {
             self.forget_pair(slot);
         }
+        self.retained.clear();
+        self.inverses.clear();
         if mode == MWAN_NATIVE_DISABLE {
             return Ok(());
         }
@@ -2796,9 +3114,90 @@ pub unsafe extern "C" fn mwan_native_pair_install(
         // SAFETY: The input record remains readable; the owner copies it.
         let input = unsafe { spec.read() };
         let mut output = MwanNativePairResult::default();
-        let outcome = state.install_pair(input, &mut output);
+        let outcome = state.install_pair(input, None, &mut output);
         // SAFETY: The separate result slot remains writable even on failure,
         // including when cleanup retains inverse records or consumed handles.
+        unsafe { result.write(output) };
+        outcome
+    })
+}
+
+/// # Safety
+/// The owner must remain live for this exclusive owner-thread call. Input,
+/// guard array, result and error pointers must identify separate valid records.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mwan_native_pair_install_observed(
+    owner: *mut MwanNative,
+    spec: *const MwanNativePairSpec,
+    guards: *const MwanNativePacketGuard,
+    result: *mut MwanNativePairResult,
+    error: *mut MwanNativeError,
+) -> i32 {
+    boundary(owner, error, MWAN_NATIVE_OP_CREATE, || {
+        // SAFETY: The ABI caller supplies this library's live exclusive owner.
+        let state = unsafe { state_for(owner) }?;
+        if spec.is_null() || guards.is_null() || result.is_null() {
+            return Err(fault(
+                libc::EINVAL,
+                MWAN_NATIVE_OP_CREATE,
+                MWAN_NATIVE_OBJECT_PAIR,
+                0,
+                0,
+                "Observed pair, selector guards and result are required",
+            ));
+        }
+        // SAFETY: The caller supplies a complete pair and two complete guard
+        // records. Copies end every input borrow before hardware mutation.
+        let (input, guards) = unsafe {
+            (
+                spec.read(),
+                guards.cast::<[MwanNativePacketGuard; 2]>().read(),
+            )
+        };
+        let mut output = MwanNativePairResult::default();
+        let outcome = state.install_pair(input, Some(guards), &mut output);
+        // SAFETY: The separate result remains writable after partial failure.
+        unsafe { result.write(output) };
+        outcome
+    })
+}
+
+/// # Safety
+/// The owner must remain live for this exclusive owner-thread call. Input,
+/// guard array, result and error pointers must identify separate valid records.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mwan_native_pair_resume_observed(
+    owner: *mut MwanNative,
+    handle: MwanNativeHandle,
+    spec: *const MwanNativePairSpec,
+    guards: *const MwanNativePacketGuard,
+    result: *mut MwanNativePairResult,
+    error: *mut MwanNativeError,
+) -> i32 {
+    boundary(owner, error, MWAN_NATIVE_OP_CREATE, || {
+        // SAFETY: The ABI caller supplies this library's live exclusive owner.
+        let state = unsafe { state_for(owner) }?;
+        if spec.is_null() || guards.is_null() || result.is_null() {
+            return Err(fault(
+                libc::EINVAL,
+                MWAN_NATIVE_OP_CREATE,
+                MWAN_NATIVE_OBJECT_PAIR,
+                handle.slot,
+                0,
+                "Resumed pair, selector guards and result are required",
+            ));
+        }
+        // SAFETY: The caller supplies a complete pair and two complete guard
+        // records. Copies end every input borrow before hardware mutation.
+        let (input, guards) = unsafe {
+            (
+                spec.read(),
+                guards.cast::<[MwanNativePacketGuard; 2]>().read(),
+            )
+        };
+        let mut output = MwanNativePairResult::default();
+        let outcome = state.resume_pair(handle, input, guards, &mut output);
+        // SAFETY: The separate result remains writable after partial failure.
         unsafe { result.write(output) };
         outcome
     })
@@ -2858,12 +3257,45 @@ pub unsafe extern "C" fn mwan_native_pair_remove(
                 "Pair result is required",
             ));
         }
-        let slot = state.handle_slot(handle)?;
-        let outcome = state.delete_pair(slot);
-        let output = state.pair_result(slot);
+        state.handle_pair(handle)?;
+        let slot = handle.slot as usize;
+        let outcome = if state.pairs[slot].generation == handle.generation {
+            state.delete_pair(slot)
+        } else {
+            Ok(())
+        };
+        let output = state.result_for(state.handle_pair(handle)?, slot);
         // SAFETY: The separate result remains writable after failed deletion.
         unsafe { result.write(output) };
         outcome
+    })
+}
+
+/// # Safety
+/// The owner must remain live for this exclusive owner-thread call. Output
+/// and error pointers must identify separate writable ABI records.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mwan_native_retirement_query(
+    owner: *mut MwanNative,
+    stats: *mut MwanNativeRetirementStats,
+    error: *mut MwanNativeError,
+) -> i32 {
+    boundary(owner, error, MWAN_NATIVE_OP_QUERY, || {
+        // SAFETY: The ABI caller supplies this library's live exclusive owner.
+        let state = unsafe { state_for(owner) }?;
+        if stats.is_null() {
+            return Err(fault(
+                libc::EINVAL,
+                MWAN_NATIVE_OP_QUERY,
+                MWAN_NATIVE_OBJECT_PAIR,
+                0,
+                0,
+                "Retirement statistics are required",
+            ));
+        }
+        // SAFETY: The caller supplies the separate writable output record.
+        unsafe { stats.write(state.retirement_stats()) };
+        Ok(())
     })
 }
 

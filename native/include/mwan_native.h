@@ -22,6 +22,8 @@ extern "C" {
 #define MWAN_NATIVE_FAMILY_IPV6 6U
 #define MWAN_NATIVE_PROTOCOL_TCP 6U
 #define MWAN_NATIVE_PROTOCOL_UDP 17U
+#define MWAN_NATIVE_OBSERVATION_BATCH_LIMIT 256U
+#define MWAN_NATIVE_OBSERVATION_FRAME_LIMIT 65536U
 
 /* Integers use host byte order. Address and MAC arrays use network byte order.
  * IPv4 addresses occupy the first four bytes; the remaining bytes are zero.
@@ -161,6 +163,31 @@ struct mwan_native_tuple {
 	uint16_t destination_port;
 };
 
+struct mwan_native_frame {
+	const uint8_t *data;
+	uint32_t length;
+	uint32_t reserved;
+};
+
+struct mwan_native_observation {
+	struct mwan_native_tuple tuple;
+	uint8_t source_mac[6];
+	uint8_t destination_mac[6];
+	uint32_t network_length;
+	uint32_t flow_label;
+	uint8_t traffic_class;
+	uint8_t tcp_flags;
+	uint8_t ttl;
+	uint8_t eligible;
+	int32_t decode_status;
+};
+
+struct mwan_native_packet_guard {
+	uint32_t flow_label;
+	uint8_t traffic_class;
+	uint8_t reserved[3];
+};
+
 /* Ports use host byte order. TCP flags use their eight wire bits. Hardware
  * rules do not constrain flags; the worker inspects them before forwarding.
  */
@@ -265,6 +292,17 @@ struct mwan_native_worker_stats {
 	uint64_t discarded_group_frames;
 };
 
+/* Retained pair storage has the same bound as configured pair_capacity.
+ * DRAINING generations retain their inverse mappings after hardware-slot reuse.
+ */
+struct mwan_native_retirement_stats {
+	uint32_t active_pair_capacity;
+	uint32_t retained_pair_capacity;
+	uint32_t retained_pairs;
+	uint32_t draining_pairs;
+	uint64_t retained_directions;
+};
+
 struct mwan_native_build_info {
 	uint32_t abi_version;
 	uint32_t config_size;
@@ -285,6 +323,9 @@ struct mwan_native_build_info {
 
 uint32_t mwan_native_abi_version(void);
 int mwan_native_build_info(struct mwan_native_build_info *info);
+int mwan_native_observe_batch(const struct mwan_native_frame *frames,
+			      struct mwan_native_observation *observations,
+			      uint32_t count);
 
 /* The owner calls every operation on one OS thread. A null owner initializes
  * EAL once. A disabled owner reopens only the identical graph configuration.
@@ -295,12 +336,29 @@ int mwan_native_pair_install(struct mwan_native *owner,
 			     const struct mwan_native_pair_spec *spec,
 			     struct mwan_native_pair_result *result,
 			     struct mwan_native_error *error);
+int mwan_native_pair_install_observed(struct mwan_native *owner,
+				      const struct mwan_native_pair_spec *spec,
+				      const struct mwan_native_packet_guard guards[MWAN_NATIVE_DIRECTION_COUNT],
+				      struct mwan_native_pair_result *result,
+				      struct mwan_native_error *error);
+/* Callers revalidate the connection and forwarding evidence before resuming.
+ * Only an active owner's fully cleaned primary DRAINING pair can resume.
+ * Resume preserves the current primary generation and its inverse records.
+ * Only policy_generation may advance; every other spec and guard field must match.
+ */
+int mwan_native_pair_resume_observed(struct mwan_native *owner,
+				     struct mwan_native_handle handle,
+				     const struct mwan_native_pair_spec *spec,
+				     const struct mwan_native_packet_guard guards[MWAN_NATIVE_DIRECTION_COUNT],
+				     struct mwan_native_pair_result *result,
+				     struct mwan_native_error *error);
 int mwan_native_pair_query(struct mwan_native *owner,
 			   struct mwan_native_handle handle,
 			   struct mwan_native_pair_stats *stats,
 			   struct mwan_native_error *error);
 /* Removal deletes hardware rules and retains inverse records in DRAINING.
- * Retained records consume pair capacity until disable stops the DATA queues.
+ * A later install can reuse the hardware slot after copying its old generation
+ * into bounded retained storage. Retained handles remain DRAINING after reuse.
  */
 int mwan_native_pair_remove(struct mwan_native *owner,
 			    struct mwan_native_handle handle,
@@ -309,6 +367,9 @@ int mwan_native_pair_remove(struct mwan_native *owner,
 int mwan_native_poll(struct mwan_native *owner, uint32_t packet_budget,
 		     struct mwan_native_worker_stats *stats,
 		     struct mwan_native_error *error);
+int mwan_native_retirement_query(struct mwan_native *owner,
+				 struct mwan_native_retirement_stats *stats,
+				 struct mwan_native_error *error);
 
 /* Disable drains owned flows and stops ports while retaining EAL and owner.
  * Final shutdown also closes ports, cleans EAL and clears owner on success.

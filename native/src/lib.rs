@@ -1,4 +1,5 @@
 pub mod abi;
+mod observation;
 pub mod packet;
 
 #[cfg(feature = "dpdk")]

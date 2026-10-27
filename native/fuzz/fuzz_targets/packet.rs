@@ -3,7 +3,7 @@
 use libfuzzer_sys::fuzz_target;
 use mwan_native::{
     abi::{MWAN_NATIVE_FAMILY_IPV4, MWAN_NATIVE_FAMILY_IPV6, MwanNativeDirection},
-    packet::{decode, eligible, forward, restore},
+    packet::{decode, eligible, forward, restore, restore_forwarded},
 };
 
 const MAXIMUM_FRAME_LENGTH: usize = 14 + 8 + 40 + u16::MAX as usize;
@@ -31,6 +31,7 @@ fuzz_target!(|input: &[u8]| {
         output_mtu: u16::MAX,
         ..MwanNativeDirection::default()
     };
+    let identity_direction = direction;
     match u32::from(tuple.family) {
         MWAN_NATIVE_FAMILY_IPV4 => {
             if let Some(first) = direction.original.source.first_mut() {
@@ -53,5 +54,13 @@ fuzz_target!(|input: &[u8]| {
         forward(&mut forwarded, &parsed, &direction)
             .expect("eligible headers permit bounded forwarding");
         assert_eq!(forwarded.len(), input.len());
+        restore_forwarded(&mut forwarded, &parsed, &direction)
+            .expect("prepared headers permit bounded restoration");
+        assert_eq!(forwarded, returned);
+        let mut round_trip = input.to_vec();
+        forward(&mut round_trip, &parsed, &identity_direction).expect("prepare the original tuple");
+        restore_forwarded(&mut round_trip, &parsed, &identity_direction)
+            .expect("restore the original tuple");
+        assert_eq!(round_trip, input);
     }
 });

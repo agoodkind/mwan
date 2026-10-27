@@ -195,14 +195,19 @@ static void report_error(const struct mwan_native_error *error)
 	}
 }
 
-static int positive(const char *text, uint64_t *value)
+static int unsigned_value(const char *text, uint64_t *value)
 {
 	char *end;
 	if (!text[0] || text[0] == '-')
 		return -1;
 	errno = 0;
 	*value = strtoull(text, &end, 10);
-	return errno || *end || !*value ? -1 : 0;
+	return errno || *end ? -1 : 0;
+}
+
+static int positive(const char *text, uint64_t *value)
+{
+	return unsigned_value(text, value) || !*value ? -1 : 0;
 }
 
 static int reject_overlap(const struct mwan_native_config *config)
@@ -355,16 +360,586 @@ cleanup:
 	return passed ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
+static int reuse_slots(const char *config_path, const char *first_path,
+		      const char *second_path, const char *third_path,
+		      uint64_t seconds, uint64_t minimum_forwarded,
+		      uint64_t minimum_returned)
+{
+	struct mwan_native_config config = {0};
+	struct mwan_native_pair_spec first = {0}, second = {0}, third = {0};
+	if (read_config(config_path, &config) || read_pair(first_path, &first) ||
+	    read_pair(second_path, &second) || read_pair(third_path, &third) ||
+	    config.pair_capacity != 1) {
+		fprintf(stderr, "Slot reuse requires pair_capacity=1 and three distinct valid pairs\n");
+		return EXIT_FAILURE;
+	}
+	struct mwan_native *owner = NULL;
+	struct mwan_native_error error = {0};
+	struct mwan_native_pair_result first_result = {0}, second_result = {0}, retired = {0}, rejected = {0};
+	struct mwan_native_pair_stats counters = {0};
+	struct mwan_native_retirement_stats retirement = {0};
+	struct mwan_native_worker_stats stats = {0};
+	bool passed = false;
+	if (mwan_native_open(&config, &owner, &error) ||
+	    mwan_native_pair_install(owner, &first, &first_result, &error))
+		goto cleanup;
+	printf("READY_REUSE_FIRST seconds=%" PRIu64 " slot=%u generation=%" PRIu64 "\n",
+		seconds, first_result.handle.slot, first_result.handle.generation);
+	fflush(stdout);
+	uint64_t deadline = now_ns() + seconds * UINT64_C(1000000000);
+	while (now_ns() < deadline)
+		if (mwan_native_poll(owner, 64, &stats, &error))
+			goto cleanup;
+	if (mwan_native_pair_query(owner, first_result.handle, &counters, &error) ||
+	    report_counters("REUSE_FIRST_COUNTER", &counters) < minimum_forwarded)
+		goto cleanup;
+	uint64_t before_forwarded = stats.forwarded;
+	uint64_t before_returned = stats.returned_to_kernel;
+	puts("QUEUE_REUSE_FIRST: continue the first pair during the 100 ms RX pause");
+	fflush(stdout);
+	struct timespec pause = {.tv_nsec = 100000000};
+	if (nanosleep(&pause, NULL) ||
+	    mwan_native_pair_remove(owner, first_result.handle, &retired, &error) ||
+	    mwan_native_pair_install(owner, &second, &second_result, &error))
+		goto cleanup;
+	if (second_result.handle.slot != first_result.handle.slot ||
+	    second_result.handle.generation <= first_result.handle.generation ||
+	    mwan_native_pair_remove(owner, first_result.handle, &retired, &error) ||
+	    retired.state != MWAN_NATIVE_PAIR_DRAINING || retired.installed_mask ||
+	    retired.restoration_mask != first.requested_direction_mask ||
+	    mwan_native_retirement_query(owner, &retirement, &error) ||
+	    retirement.active_pair_capacity != 1 || retirement.retained_pair_capacity != 1 ||
+	    retirement.retained_pairs != 1 || retirement.draining_pairs)
+		goto cleanup;
+	struct mwan_native_pair_spec conflict = first;
+	conflict.policy_generation++;
+	conflict.cookie++;
+	if (mwan_native_pair_install(owner, &conflict, &rejected, &error) != -EEXIST ||
+	    rejected.installed_mask || rejected.restoration_mask)
+		goto cleanup;
+	struct mwan_native_packet_guard retained_guards[MWAN_NATIVE_DIRECTION_COUNT] = {0};
+	struct mwan_native_pair_result resumed_retained = {0};
+	if (mwan_native_pair_resume_observed(owner, first_result.handle, &first, retained_guards,
+					    &resumed_retained, &error) != -ESTALE ||
+	    resumed_retained.handle.instance != first_result.handle.instance ||
+	    resumed_retained.handle.generation != first_result.handle.generation ||
+	    resumed_retained.handle.slot != first_result.handle.slot || resumed_retained.handle.reserved ||
+	    resumed_retained.state != MWAN_NATIVE_PAIR_DRAINING || resumed_retained.installed_mask ||
+	    resumed_retained.cleanup_failed_mask ||
+	    resumed_retained.restoration_mask != first.requested_direction_mask) {
+		fprintf(stderr, "Retained generation resumed after its hardware slot changed ownership\n");
+		goto cleanup;
+	}
+	printf("REUSE_REJECTED_RESUME slot=%u generation=%" PRIu64 " state=%u retained=%u\n",
+		resumed_retained.handle.slot, resumed_retained.handle.generation,
+		resumed_retained.state, retirement.retained_pairs);
+	printf("READY_REUSE_SECOND seconds=%" PRIu64 " slot=%u generation=%" PRIu64 " retained=%u\n",
+		seconds, second_result.handle.slot, second_result.handle.generation, retirement.retained_pairs);
+	fflush(stdout);
+	deadline = now_ns() + seconds * UINT64_C(1000000000);
+	while (now_ns() < deadline)
+		if (mwan_native_poll(owner, 64, &stats, &error))
+			goto cleanup;
+	if (mwan_native_pair_query(owner, second_result.handle, &counters, &error) ||
+	    report_counters("REUSE_SECOND_COUNTER", &counters) < minimum_forwarded ||
+	    stats.forwarded - before_forwarded < minimum_forwarded ||
+	    stats.returned_to_kernel - before_returned < minimum_returned ||
+	    stats.pending_packets || stats.quarantined_packets)
+		goto cleanup;
+	if (mwan_native_pair_query(owner, first_result.handle, &counters, &error) != -ENOENT ||
+	    counters.result.state != MWAN_NATIVE_PAIR_DRAINING || counters.result.installed_mask ||
+	    counters.result.restoration_mask != first.requested_direction_mask ||
+	    mwan_native_pair_remove(owner, second_result.handle, &retired, &error) ||
+	    mwan_native_pair_install(owner, &third, &rejected, &error) != -ENOSPC ||
+	    rejected.installed_mask || rejected.restoration_mask ||
+	    mwan_native_pair_remove(owner, first_result.handle, &retired, &error) ||
+	    retired.state != MWAN_NATIVE_PAIR_DRAINING ||
+	    retired.restoration_mask != first.requested_direction_mask ||
+	    mwan_native_retirement_query(owner, &retirement, &error) ||
+	    retirement.retained_pairs != 1 || retirement.draining_pairs != 1)
+		goto cleanup;
+	printf("REUSE verified_slot=%u first_generation=%" PRIu64 " second_generation=%" PRIu64
+		" forwarded=%" PRIu64 " returned=%" PRIu64 " retained=%u draining=%u\n",
+		first_result.handle.slot, first_result.handle.generation, second_result.handle.generation,
+		stats.forwarded - before_forwarded, stats.returned_to_kernel - before_returned,
+		retirement.retained_pairs, retirement.draining_pairs);
+	passed = true;
+cleanup:
+	if (!passed)
+		report_error(&error);
+	if (owner && mwan_native_close(&owner, MWAN_NATIVE_FINAL_SHUTDOWN, &error)) {
+		report_error(&error);
+		passed = false;
+	}
+	if (passed)
+		puts("PASS hardware-slot reuse, retained inverse restoration, conflict rejection and bounded admission");
+	return passed ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
+static int guarded_pair(const char *config_path, const char *pair_path,
+			uint64_t seconds, uint64_t minimum_forwarded,
+			uint64_t minimum_returned, uint8_t traffic_class,
+			uint32_t flow_label)
+{
+	struct mwan_native_config config = {0};
+	struct mwan_native_pair_spec pair = {0};
+	if (read_config(config_path, &config) || read_pair(pair_path, &pair)) {
+		fprintf(stderr, "Invalid guarded pair configuration\n");
+		return EXIT_FAILURE;
+	}
+	struct mwan_native *owner = NULL;
+	struct mwan_native_error error = {0};
+	struct mwan_native_pair_result result = {0};
+	struct mwan_native_pair_stats counters = {0};
+	struct mwan_native_worker_stats stats = {0};
+	struct mwan_native_packet_guard guards[MWAN_NATIVE_DIRECTION_COUNT] = {0};
+	bool passed = false;
+	for (uint32_t i = 0; i < MWAN_NATIVE_DIRECTION_COUNT; i++) {
+		guards[i].traffic_class = traffic_class;
+		guards[i].flow_label = flow_label;
+	}
+	if (mwan_native_open(&config, &owner, &error))
+		goto cleanup;
+	uint32_t requested = pair.requested_direction_mask & 1U ? 0 : 1;
+	guards[requested].reserved[0] = 1;
+	if (mwan_native_pair_install_observed(owner, &pair, guards, &result, &error) != -EINVAL ||
+	    result.installed_mask || result.restoration_mask)
+		goto cleanup;
+	guards[requested].reserved[0] = 0;
+	if (mwan_native_pair_install_observed(owner, &pair, guards, &result, &error))
+		goto cleanup;
+	printf("READY_GUARDED seconds=%" PRIu64 " traffic_class=%u flow_label=%u\n",
+		seconds, traffic_class, flow_label);
+	fflush(stdout);
+	uint64_t deadline = now_ns() + seconds * UINT64_C(1000000000);
+	while (now_ns() < deadline)
+		if (mwan_native_poll(owner, 64, &stats, &error))
+			goto cleanup;
+	if (mwan_native_pair_query(owner, result.handle, &counters, &error) ||
+	    report_counters("GUARDED_COUNTER", &counters) < minimum_forwarded + minimum_returned ||
+	    stats.forwarded < minimum_forwarded || stats.returned_to_kernel < minimum_returned ||
+	    stats.pending_packets || stats.quarantined_packets)
+		goto cleanup;
+	printf("GUARDED forwarded=%" PRIu64 " returned=%" PRIu64 "\n",
+		stats.forwarded, stats.returned_to_kernel);
+	passed = true;
+cleanup:
+	if (!passed)
+		report_error(&error);
+	if (owner && mwan_native_close(&owner, MWAN_NATIVE_FINAL_SHUTDOWN, &error)) {
+		report_error(&error);
+		passed = false;
+	}
+	if (passed)
+		puts("PASS observed selector admission and Linux return for packet exceptions");
+	return passed ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
+static bool same_resume_handle(struct mwan_native_handle first,
+			       struct mwan_native_handle second)
+{
+	return first.instance == second.instance && first.generation == second.generation &&
+	       first.slot == second.slot && first.reserved == second.reserved;
+}
+
+static bool same_resume_retirement(const struct mwan_native_retirement_stats *first,
+				   const struct mwan_native_retirement_stats *second)
+{
+	return first->active_pair_capacity == second->active_pair_capacity &&
+	       first->retained_pair_capacity == second->retained_pair_capacity &&
+	       first->retained_pairs == second->retained_pairs &&
+	       first->draining_pairs == second->draining_pairs &&
+	       first->retained_directions == second->retained_directions;
+}
+
+static int resume_poll_phase(struct mwan_native *owner, uint64_t seconds,
+			     const char *phase, struct mwan_native_worker_stats *stats,
+			     struct mwan_native_error *error)
+{
+	uint64_t started = now_ns();
+	uint64_t duration = seconds * UINT64_C(1000000000);
+	if (!started || UINT64_MAX - started < duration) {
+		fprintf(stderr, "Cannot establish the %s phase deadline\n", phase);
+		return -1;
+	}
+	uint64_t deadline = started + duration;
+	for (;;) {
+		uint64_t now = now_ns();
+		if (!now) {
+			fprintf(stderr, "Cannot read the %s phase clock\n", phase);
+			return -1;
+		}
+		if (now >= deadline)
+			return 0;
+		if (mwan_native_poll(owner, 64, stats, error))
+			return -1;
+	}
+}
+
+static int resume_installed_counters(struct mwan_native *owner,
+				     struct mwan_native_handle handle, uint32_t mask,
+				     const char *label, uint64_t minimum,
+				     struct mwan_native_error *error)
+{
+	struct mwan_native_pair_stats counters = {0};
+	if (mwan_native_pair_query(owner, handle, &counters, error))
+		return -1;
+	if (!same_resume_handle(counters.result.handle, handle) ||
+	    counters.result.state != MWAN_NATIVE_PAIR_INSTALLED ||
+	    counters.result.requested_direction_mask != mask || counters.result.installed_mask != mask ||
+	    counters.result.restoration_mask != mask || counters.result.cleanup_failed_mask) {
+		fprintf(stderr, "%s did not report the installed generation and inverse mapping\n", label);
+		return -1;
+	}
+	const uint32_t masks[MWAN_NATIVE_DIRECTION_COUNT] = {1U, 2U};
+	for (uint32_t i = 0; i < MWAN_NATIVE_DIRECTION_COUNT; i++) {
+		if (!(mask & masks[i]))
+			continue;
+		const struct mwan_native_counter *counter = &counters.directions[i];
+		if (!counter->packets_valid || !counter->bytes_valid || counter->error ||
+		    !counter->observed_monotonic_ns || (counter->packets && !counter->bytes)) {
+			fprintf(stderr, "%s direction %u does not provide valid hardware counters\n", label, i);
+			return -1;
+		}
+	}
+	if (report_counters(label, &counters) < minimum) {
+		fprintf(stderr, "%s did not record the required hardware packets\n", label);
+		return -1;
+	}
+	return 0;
+}
+
+static int resume_still_draining(struct mwan_native *owner,
+				 struct mwan_native_handle handle, uint32_t mask,
+				 const struct mwan_native_retirement_stats *retired,
+				 struct mwan_native_error *error)
+{
+	struct mwan_native_pair_stats counters = {0};
+	struct mwan_native_retirement_stats current = {0};
+	int rc = mwan_native_pair_query(owner, handle, &counters, error);
+	if (rc != -ENOENT || !same_resume_handle(counters.result.handle, handle) ||
+	    counters.result.state != MWAN_NATIVE_PAIR_DRAINING ||
+	    counters.result.requested_direction_mask != mask || counters.result.installed_mask ||
+	    counters.result.cleanup_failed_mask || counters.result.restoration_mask != mask) {
+		fprintf(stderr, "Rejected resumption changed the draining generation or inverse mapping\n");
+		return -1;
+	}
+	if (mwan_native_retirement_query(owner, &current, error))
+		return -1;
+	if (!same_resume_retirement(&current, retired)) {
+		fprintf(stderr, "Rejected resumption changed retirement storage\n");
+		return -1;
+	}
+	return 0;
+}
+
+static int resume_identical(const char *config_path, const char *pair_path,
+			    uint64_t seconds, uint64_t minimum_forwarded,
+			    uint64_t minimum_returned, uint8_t traffic_class,
+			    uint32_t flow_label)
+{
+	struct mwan_native_config config = {0};
+	struct mwan_native_pair_spec pair = {0};
+	if (read_config(config_path, &config) || read_pair(pair_path, &pair)) {
+		fprintf(stderr, "Invalid identical resumption configuration\n");
+		return EXIT_FAILURE;
+	}
+	if (!pair.policy_generation || pair.policy_generation == UINT64_MAX) {
+		fprintf(stderr, "Identical resumption requires policy_generation between 1 and UINT64_MAX minus 1\n");
+		return EXIT_FAILURE;
+	}
+	struct mwan_native *owner = NULL;
+	struct mwan_native_error error = {0};
+	struct mwan_native_pair_result result = {0};
+	struct mwan_native_worker_stats stats = {0};
+	struct mwan_native_retirement_stats installed = {0}, retired = {0}, resumed = {0};
+	struct mwan_native_packet_guard guards[MWAN_NATIVE_DIRECTION_COUNT] = {0};
+	bool passed = false;
+	for (uint32_t i = 0; i < MWAN_NATIVE_DIRECTION_COUNT; i++) {
+		guards[i].traffic_class = traffic_class;
+		guards[i].flow_label = flow_label;
+	}
+	if (mwan_native_open(&config, &owner, &error) ||
+	    mwan_native_pair_install_observed(owner, &pair, guards, &result, &error) ||
+	    mwan_native_retirement_query(owner, &installed, &error))
+		goto cleanup;
+	struct mwan_native_handle handle = result.handle;
+	printf("READY_RESUME_INSTALLED seconds=%" PRIu64 " slot=%u generation=%" PRIu64
+	       " policy=%" PRIu64 " traffic_class=%u flow_label=%u\n",
+		seconds, handle.slot, handle.generation, pair.policy_generation, traffic_class, flow_label);
+	fflush(stdout);
+	if (resume_poll_phase(owner, seconds, "installed", &stats, &error) ||
+	    resume_installed_counters(owner, handle, pair.requested_direction_mask,
+				  "RESUME_INITIAL_COUNTER", minimum_forwarded, &error))
+		goto cleanup;
+	if (stats.forwarded < minimum_forwarded || stats.pending_packets || stats.quarantined_packets) {
+		fprintf(stderr, "Initial resumption phase did not forward the required packets\n");
+		goto cleanup;
+	}
+	uint64_t forwarded_before = stats.forwarded;
+	uint64_t returned_before = stats.returned_to_kernel;
+	puts("QUEUE_RESUME_RETIRE: continue the exact pair during the 100 ms RX pause");
+	fflush(stdout);
+	struct timespec pause = {.tv_nsec = 100000000};
+	if (nanosleep(&pause, NULL)) {
+		fprintf(stderr, "Cannot complete the resumption RX pause\n");
+		goto cleanup;
+	}
+	if (mwan_native_pair_remove(owner, handle, &result, &error) ||
+	    !same_resume_handle(result.handle, handle) || result.state != MWAN_NATIVE_PAIR_DRAINING ||
+	    result.installed_mask || result.cleanup_failed_mask ||
+	    result.restoration_mask != pair.requested_direction_mask ||
+	    mwan_native_retirement_query(owner, &retired, &error))
+		goto cleanup;
+	if (retired.active_pair_capacity != installed.active_pair_capacity ||
+	    retired.retained_pair_capacity != installed.retained_pair_capacity ||
+	    retired.retained_pairs != installed.retained_pairs ||
+	    retired.retained_directions != installed.retained_directions ||
+	    retired.draining_pairs != installed.draining_pairs + 1) {
+		fprintf(stderr, "Removal changed the primary generation's retirement storage\n");
+		goto cleanup;
+	}
+	printf("READY_RESUME_REMOVED seconds=%" PRIu64 " slot=%u generation=%" PRIu64 "\n",
+		seconds, handle.slot, handle.generation);
+	fflush(stdout);
+	if (resume_poll_phase(owner, seconds, "removed", &stats, &error))
+		goto cleanup;
+	uint64_t returned_removed = stats.returned_to_kernel - returned_before;
+	if (stats.forwarded != forwarded_before || returned_removed < minimum_returned ||
+	    stats.pending_packets || stats.quarantined_packets) {
+		fprintf(stderr, "Removed resumption phase did not return the required packets without forwarding\n");
+		goto cleanup;
+	}
+	printf("RESUME_REMOVED forwarded=%" PRIu64 " returned=%" PRIu64 "\n",
+		stats.forwarded - forwarded_before, returned_removed);
+	uint32_t requested = pair.requested_direction_mask & 1U ? 0 : 1;
+	const char *rejections[] = {"cookie", "output-mtu", "output-mac", "guard", "pair-reserved",
+				    "direction-reserved", "guard-reserved", "handle-reserved", "policy-regression"};
+	for (uint32_t i = 0; i < sizeof(rejections) / sizeof(rejections[0]); i++) {
+		struct mwan_native_pair_spec invalid = pair;
+		struct mwan_native_packet_guard invalid_guards[MWAN_NATIVE_DIRECTION_COUNT];
+		struct mwan_native_handle invalid_handle = handle;
+		struct mwan_native_pair_result rejected = {0};
+		memcpy(invalid_guards, guards, sizeof(invalid_guards));
+		switch (i) {
+		case 0:
+			invalid.cookie ^= UINT64_C(1);
+			break;
+		case 1:
+			if (invalid.directions[requested].output_mtu > 68)
+				invalid.directions[requested].output_mtu--;
+			else
+				invalid.directions[requested].output_mtu++;
+			break;
+		case 2:
+			invalid.directions[requested].output_destination_mac[5] ^= 1U;
+			break;
+		case 3:
+			invalid_guards[requested].traffic_class ^= 1U;
+			break;
+		case 4:
+			invalid.reserved = 1;
+			break;
+		case 5:
+			invalid.directions[requested].reserved = 1;
+			break;
+		case 6:
+			invalid_guards[requested].reserved[0] = 1;
+			break;
+		case 7:
+			invalid_handle.reserved = 1;
+			break;
+		case 8:
+			invalid.policy_generation--;
+			break;
+		}
+		int expected = -EINVAL;
+		if (i == 7)
+			expected = -ESTALE;
+		int rc = mwan_native_pair_resume_observed(owner, invalid_handle, &invalid, invalid_guards,
+						&rejected, &error);
+		bool valid_result = i == 7 ||
+			(same_resume_handle(rejected.handle, handle) &&
+			 rejected.state == MWAN_NATIVE_PAIR_DRAINING &&
+			 rejected.requested_direction_mask == pair.requested_direction_mask &&
+			 !rejected.installed_mask && !rejected.cleanup_failed_mask &&
+			 rejected.restoration_mask == pair.requested_direction_mask);
+		if (rc != expected || !valid_result ||
+		    resume_still_draining(owner, handle, pair.requested_direction_mask, &retired, &error)) {
+			fprintf(stderr, "Identical resumption did not reject %s while retaining the original pair\n", rejections[i]);
+			goto cleanup;
+		}
+		printf("RESUME_REJECTED %s state=%u retained=%u\n",
+			rejections[i], MWAN_NATIVE_PAIR_DRAINING, retired.retained_pairs);
+	}
+	pair.policy_generation++;
+	if (mwan_native_pair_resume_observed(owner, handle, &pair, guards, &result, &error) ||
+	    !same_resume_handle(result.handle, handle) || result.state != MWAN_NATIVE_PAIR_INSTALLED ||
+	    result.installed_mask != pair.requested_direction_mask || result.cleanup_failed_mask ||
+	    result.restoration_mask != pair.requested_direction_mask ||
+	    mwan_native_retirement_query(owner, &resumed, &error))
+		goto cleanup;
+	if (!same_resume_retirement(&installed, &resumed)) {
+		fprintf(stderr, "Exact resumption allocated another generation or changed retirement storage\n");
+		goto cleanup;
+	}
+	uint64_t forwarded_resumed = stats.forwarded;
+	printf("READY_RESUME_IDENTICAL seconds=%" PRIu64 " slot=%u generation=%" PRIu64
+	       " policy=%" PRIu64 " retained=%u\n",
+		seconds, result.handle.slot, result.handle.generation, pair.policy_generation, resumed.retained_pairs);
+	fflush(stdout);
+	if (resume_poll_phase(owner, seconds, "resumed", &stats, &error) ||
+	    resume_installed_counters(owner, handle, pair.requested_direction_mask,
+				  "RESUME_FINAL_COUNTER", minimum_forwarded, &error))
+		goto cleanup;
+	if (stats.forwarded - forwarded_resumed < minimum_forwarded ||
+	    stats.pending_packets || stats.quarantined_packets) {
+		fprintf(stderr, "Exact resumption did not restore forwarding for the same pair\n");
+		goto cleanup;
+	}
+	printf("RESUME_IDENTICAL initial_forwarded=%" PRIu64 " removed_returned=%" PRIu64
+	       " resumed_forwarded=%" PRIu64 " slot=%u generation=%" PRIu64 "\n",
+		forwarded_before, returned_removed, stats.forwarded - forwarded_resumed,
+		handle.slot, handle.generation);
+	passed = true;
+cleanup:
+	if (!passed && error.code)
+		report_error(&error);
+	if (owner && mwan_native_close(&owner, MWAN_NATIVE_FINAL_SHUTDOWN, &error)) {
+		report_error(&error);
+		passed = false;
+	}
+	if (passed)
+		puts("PASS identical pair resumption, retained inverse mapping and unchanged generation");
+	return passed ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
+static int retire_pending(const char *config_path, const char *pair_path,
+			  uint64_t seconds, uint64_t minimum_pending,
+			  uint64_t minimum_returned)
+{
+	struct mwan_native_config config = {0};
+	struct mwan_native_pair_spec pair = {0};
+	if (read_config(config_path, &config) || read_pair(pair_path, &pair)) {
+		fprintf(stderr, "Invalid pending retirement configuration\n");
+		return EXIT_FAILURE;
+	}
+	struct mwan_native *owner = NULL;
+	struct mwan_native_error error = {0};
+	struct mwan_native_pair_result result = {0};
+	struct mwan_native_worker_stats stats = {0};
+	bool passed = false;
+	if (mwan_native_open(&config, &owner, &error) ||
+	    mwan_native_pair_install(owner, &pair, &result, &error))
+		goto cleanup;
+	printf("READY_PENDING_RETIRE seconds=%" PRIu64 " minimum_pending=%" PRIu64 "\n",
+		seconds, minimum_pending);
+	fflush(stdout);
+	uint64_t deadline = now_ns() + seconds * UINT64_C(1000000000);
+	while (stats.pending_packets < minimum_pending && now_ns() < deadline) {
+		if (mwan_native_poll(owner, 64, &stats, &error))
+			goto cleanup;
+		if (stats.unsupported || stats.returned_to_kernel || stats.malformed || stats.quarantined_packets) {
+			fprintf(stderr, "Pending pressure requires only eligible forwarded packets before retirement\n");
+			goto cleanup;
+		}
+	}
+	if (stats.pending_packets < minimum_pending) {
+		fprintf(stderr, "External traffic did not create the required unsent forwarded queue\n");
+		goto cleanup;
+	}
+	uint64_t pending_before = stats.pending_packets;
+	uint64_t forwarded_before = stats.forwarded;
+	uint64_t returned_before = stats.returned_to_kernel;
+	if (mwan_native_pair_remove(owner, result.handle, &result, &error) ||
+	    result.state != MWAN_NATIVE_PAIR_DRAINING || result.installed_mask ||
+	    result.restoration_mask != pair.requested_direction_mask)
+		goto cleanup;
+	printf("PENDING_RETIRED queued=%" PRIu64 " forwarded_before=%" PRIu64 "\n",
+		pending_before, forwarded_before);
+	fflush(stdout);
+	deadline = now_ns() + seconds * UINT64_C(1000000000);
+	while (now_ns() < deadline)
+		if (mwan_native_poll(owner, 64, &stats, &error))
+			goto cleanup;
+	uint64_t returned = stats.returned_to_kernel - returned_before;
+	if (stats.forwarded != forwarded_before || returned < pending_before ||
+	    returned < minimum_returned || stats.pending_packets || stats.quarantined_packets) {
+		fprintf(stderr, "Retired pending frames did not complete kernel return without further forwarding\n");
+		goto cleanup;
+	}
+	printf("PENDING_RETIRE queued=%" PRIu64 " returned=%" PRIu64 " forwarded_after=%" PRIu64 "\n",
+		pending_before, returned, stats.forwarded - forwarded_before);
+	passed = true;
+cleanup:
+	if (!passed && error.code)
+		report_error(&error);
+	if (owner && mwan_native_close(&owner, MWAN_NATIVE_FINAL_SHUTDOWN, &error)) {
+		report_error(&error);
+		passed = false;
+	}
+	if (passed)
+		puts("PASS pending forwarded frame retirement and kernel return");
+	return passed ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
 int main(int argc, char **argv)
 {
 	if (argc == 3 && !strcmp(argv[1], "--reject-swapped-data"))
 		return reject_swapped_data(argv[2]);
 	if (argc == 4 && !strcmp(argv[1], "--reject-ipv6-mappings"))
 		return reject_ipv6_mappings(argv[2], argv[3]);
+	if (argc == 7 && !strcmp(argv[1], "--pending-retire")) {
+		uint64_t seconds, minimum_pending, minimum_returned;
+		if (positive(argv[4], &seconds) || seconds > 3600 ||
+		    positive(argv[5], &minimum_pending) || positive(argv[6], &minimum_returned)) {
+			fprintf(stderr, "Invalid pending retirement duration or packet minimum\n");
+			return EXIT_FAILURE;
+		}
+		return retire_pending(argv[2], argv[3], seconds, minimum_pending, minimum_returned);
+	}
+	if (argc == 9 && !strcmp(argv[1], "--reuse-slots")) {
+		uint64_t seconds, minimum_forwarded, minimum_returned;
+		if (positive(argv[6], &seconds) || seconds > 3600 ||
+		    positive(argv[7], &minimum_forwarded) || positive(argv[8], &minimum_returned)) {
+			fprintf(stderr, "Invalid slot reuse duration or packet minimum\n");
+			return EXIT_FAILURE;
+		}
+		return reuse_slots(argv[2], argv[3], argv[4], argv[5], seconds,
+				  minimum_forwarded, minimum_returned);
+	}
+	if (argc == 9 && !strcmp(argv[1], "--guarded-pair")) {
+		uint64_t seconds, minimum_forwarded, minimum_returned, traffic_class, flow_label;
+		if (positive(argv[4], &seconds) || seconds > 3600 ||
+		    positive(argv[5], &minimum_forwarded) || positive(argv[6], &minimum_returned) ||
+		    unsigned_value(argv[7], &traffic_class) || traffic_class > UINT8_MAX ||
+		    unsigned_value(argv[8], &flow_label) || flow_label > UINT32_C(0xfffff)) {
+			fprintf(stderr, "Invalid guarded pair duration, packet minimum or selector\n");
+			return EXIT_FAILURE;
+		}
+		return guarded_pair(argv[2], argv[3], seconds, minimum_forwarded, minimum_returned,
+				    (uint8_t)traffic_class, (uint32_t)flow_label);
+	}
+	if (argc == 9 && !strcmp(argv[1], "--resume-identical")) {
+		uint64_t seconds, minimum_forwarded, minimum_returned, traffic_class, flow_label;
+		if (positive(argv[4], &seconds) || seconds > 3600 ||
+		    positive(argv[5], &minimum_forwarded) || positive(argv[6], &minimum_returned) ||
+		    unsigned_value(argv[7], &traffic_class) || traffic_class > UINT8_MAX ||
+		    unsigned_value(argv[8], &flow_label) || flow_label > UINT32_C(0xfffff)) {
+			fprintf(stderr, "Invalid identical resumption duration, packet minimum or selector\n");
+			return EXIT_FAILURE;
+		}
+		return resume_identical(argv[2], argv[3], seconds, minimum_forwarded, minimum_returned,
+					(uint8_t)traffic_class, (uint32_t)flow_label);
+	}
 	if (argc != 6 && argc != 7) {
 		fprintf(stderr, "Usage: %s CONFIG PAIR SECONDS MIN_FORWARDED MIN_RETURNED [CONTINUING_PAIR]\n", argv[0]);
 		fprintf(stderr, "       %s --reject-swapped-data CONFIG\n", argv[0]);
 		fprintf(stderr, "       %s --reject-ipv6-mappings CONFIG PAIR\n", argv[0]);
+		fprintf(stderr, "       %s --pending-retire CONFIG PAIR SECONDS MIN_PENDING MIN_RETURNED\n", argv[0]);
+		fprintf(stderr, "       %s --reuse-slots CONFIG FIRST_PAIR SECOND_PAIR THIRD_PAIR SECONDS MIN_FORWARDED MIN_RETURNED\n", argv[0]);
+		fprintf(stderr, "       %s --guarded-pair CONFIG PAIR SECONDS MIN_FORWARDED MIN_RETURNED TRAFFIC_CLASS FLOW_LABEL\n", argv[0]);
+		fprintf(stderr, "       %s --resume-identical CONFIG PAIR SECONDS MIN_FORWARDED MIN_RETURNED TRAFFIC_CLASS FLOW_LABEL\n", argv[0]);
 		fprintf(stderr, "CONFIG starts with MWAN_NATIVE_CONFIG 2\n");
 		fprintf(stderr, "Resources: cpu memory_mb memory_mode pair_capacity mbuf_count drain_ms rx_desc tx_desc mtu file_prefix hugepage_directory\n");
 		fprintf(stderr, "Counts: controllers receivers data_devices origins\n");

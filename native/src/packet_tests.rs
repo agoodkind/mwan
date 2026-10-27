@@ -355,6 +355,118 @@ fn editing_rejects_a_different_frame_length_before_mutation() {
     assert_eq!(frame, before);
     assert!(forward(&mut frame, &parsed, &direction).is_err());
     assert_eq!(frame, before);
+    assert!(restore_forwarded(&mut frame, &parsed, &direction).is_err());
+    assert_eq!(frame, before);
+}
+
+#[test]
+fn retiring_prepared_packets_restores_exact_original_frames() {
+    let cases = [
+        Corpus {
+            input: include_bytes!("../tests/malformed/tcp4-input.pcap"),
+            output: &[],
+            kernel: &[],
+            source: None,
+            destination: None,
+            mtu: 1500,
+        },
+        Corpus {
+            input: include_bytes!("../tests/packet/tcp-both-input.pcap"),
+            output: &[],
+            kernel: &[],
+            source: Some("2001:db8:7702:0:fffe::11"),
+            destination: Some("2001:db8:9901:0:fffe::12"),
+            mtu: 128,
+        },
+        Corpus {
+            input: include_bytes!("../tests/packet/udp-both-input.pcap"),
+            output: &[],
+            kernel: &[],
+            source: Some("2001:db8:7702:0:fffe::11"),
+            destination: Some("2001:db8:9901:0:fffe::12"),
+            mtu: 128,
+        },
+        Corpus {
+            input: include_bytes!("../tests/packet/ipv4-udp-input.pcap"),
+            output: &[],
+            kernel: &[],
+            source: None,
+            destination: None,
+            mtu: 1500,
+        },
+    ];
+    for case in cases {
+        let mut restored = 0;
+        for original in frames(case.input) {
+            let mut direction = direction(original, &case);
+            let mut received = if u32::from(direction.original.family) == MWAN_NATIVE_FAMILY_IPV4
+                && u32::from(direction.original.protocol) == MWAN_NATIVE_PROTOCOL_UDP
+            {
+                direction.translated = direction.original;
+                original.to_vec()
+            } else {
+                hardware_translation(original, &direction)
+            };
+            let parsed = decode(&received).expect("captured translated headers");
+            if !eligible(&received, &parsed, &direction) {
+                continue;
+            }
+            forward(&mut received, &parsed, &direction).expect("prepare owned TX frame");
+            assert_ne!(received, original);
+            let ttl_field = if u32::from(parsed.tuple.family) == MWAN_NATIVE_FAMILY_IPV4 {
+                8
+            } else {
+                7
+            };
+            for offset in [
+                0,
+                ETHERNET_ADDRESS_LENGTH,
+                parsed.network_offset + ttl_field,
+            ] {
+                let mut invalid = received.clone();
+                *invalid.get_mut(offset).expect("prepared header field") ^= 1;
+                let before = invalid.clone();
+                assert!(restore_forwarded(&mut invalid, &parsed, &direction).is_err());
+                assert_eq!(invalid, before);
+            }
+            restore_forwarded(&mut received, &parsed, &direction)
+                .expect("restore retired TX frame");
+            assert_eq!(received, original);
+            let before = received.clone();
+            assert!(restore_forwarded(&mut received, &parsed, &direction).is_err());
+            assert_eq!(received, before);
+            restored += 1;
+        }
+        assert!(
+            restored > 0,
+            "captured input must exercise prepared forwarding"
+        );
+    }
+}
+
+#[test]
+fn retiring_prepared_ipv4_preserves_wire_zero_header_checksums() {
+    let input = frames(include_bytes!("../tests/malformed/tcp4-input.pcap"));
+    let mut original = input.first().expect("captured IPv4 TCP frame").to_vec();
+    let parsed = decode(&original).expect("captured IPv4 headers");
+    let checksum_offset = parsed.network_offset + 10;
+    let identifier_offset = parsed.network_offset + 4;
+    original[checksum_offset..checksum_offset + 2].fill(0);
+    original[identifier_offset..identifier_offset + 2].fill(0);
+    let header = read_range(&original, parsed.network_offset, parsed.ip_header_length)
+        .expect("complete IPv4 header");
+    let identifier = !fold_checksum(sum_words(header));
+    original[identifier_offset..identifier_offset + 2].copy_from_slice(&identifier.to_be_bytes());
+    for checksum in [0_u16, u16::MAX] {
+        original[checksum_offset..checksum_offset + 2].copy_from_slice(&checksum.to_be_bytes());
+        let parsed = decode(&original).expect("wire-zero IPv4 headers");
+        let direction = identity_direction(&parsed);
+        assert!(eligible(&original, &parsed, &direction));
+        let mut prepared = original.clone();
+        forward(&mut prepared, &parsed, &direction).expect("prepare wire-zero TX frame");
+        restore_forwarded(&mut prepared, &parsed, &direction).expect("restore wire-zero TX frame");
+        assert_eq!(prepared, original);
+    }
 }
 
 fn frames(bytes: &[u8]) -> Vec<&[u8]> {

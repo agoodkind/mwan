@@ -69,6 +69,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .no_default("mwan_native_config|MwanNativeConfig")
         .no_default("mwan_native_error|MwanNativeError")
         .no_default("mwan_native_build_info|MwanNativeBuildInfo")
+        .no_default("mwan_native_frame|MwanNativeFrame")
         .derive_eq(true)
         .derive_partialeq(true)
         .derive_hash(true)
