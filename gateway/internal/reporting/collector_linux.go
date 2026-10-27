@@ -42,7 +42,7 @@ type Collector struct {
 	persistent map[ProbeKey]persistentEcho
 	udp        map[string]uint64
 	clock      internalclock.Clock
-	vpp        *config.VPPSection
+	vpp        *vppReportingSettings
 }
 
 // NewCollector requires readable host measurements before starting WAN collection.

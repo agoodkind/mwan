@@ -12,18 +12,28 @@ import (
 	"goodkind.io/send-email/mailer"
 )
 
+type vppReportingSettings struct {
+	endpoints           vpp.Endpoints
+	profileExecutable   string
+	profileDuration     time.Duration
+	profileQueuePolling bool
+	interfaces          []config.VPPTAPSection
+}
+
 // ConfigureVPP requires complete settings before optional VPP measurements can start.
 func (collector *Collector) ConfigureVPP(section *config.VPPSection) error {
 	if section == nil {
 		return nil
 	}
-	if err := section.Validate(); err != nil {
+	endpoints, err := section.ValidatedEndpoints()
+	if err != nil {
 		failure := fmt.Errorf("validate VPP reporting settings: %w", err)
 		collector.log.Error("VPP reporting settings rejected", "error", failure)
 		return failure
 	}
+	var duration time.Duration
 	if section.Profile {
-		duration, _ := time.ParseDuration(section.ProfileDuration)
+		duration, _ = time.ParseDuration(section.ProfileDuration)
 		interval, _ := time.ParseDuration(collector.settings.SampleInterval)
 		if duration > interval {
 			failure := fmt.Errorf("configure VPP reporting: profile_duration must not exceed the reporting sample interval")
@@ -31,12 +41,16 @@ func (collector *Collector) ConfigureVPP(section *config.VPPSection) error {
 			return failure
 		}
 	}
-	collector.vpp = section
+	collector.vpp = &vppReportingSettings{
+		endpoints: endpoints, profileExecutable: section.ProfileExecutable,
+		profileDuration: duration, interfaces: slices.Clone(section.Interface),
+		profileQueuePolling: section.ProfileQueuePolling,
+	}
 	return nil
 }
 
 func (collector *Collector) profileVPP(ctx context.Context) <-chan vpp.ProfileResult {
-	if collector.vpp == nil || !collector.vpp.Profile {
+	if collector.vpp == nil || collector.vpp.profileDuration <= 0 {
 		return nil
 	}
 	results := make(chan vpp.ProfileResult, 1)
@@ -51,15 +65,8 @@ func (collector *Collector) profileVPP(ctx context.Context) <-chan vpp.ProfileRe
 			}
 			results <- result
 		}()
-		settings, err := collector.vpp.Endpoints()
-		if err != nil {
-			failure := fmt.Errorf("configure VPP CPU profile connection: %w", err)
-			collector.log.ErrorContext(ctx, "VPP CPU profiling configuration failed", "error", failure)
-			result.Reason = failure.Error()
-			return
-		}
-		duration, _ := time.ParseDuration(collector.vpp.ProfileDuration)
-		result, err = vpp.ProfileWithOptions(ctx, settings, collector.vpp.ProfileExecutable, duration, vpp.ProfileOptions{QueuePolling: collector.vpp.ProfileQueuePolling})
+		var err error
+		result, err = vpp.ProfileWithOptions(ctx, collector.vpp.endpoints, collector.vpp.profileExecutable, collector.vpp.profileDuration, vpp.ProfileOptions{QueuePolling: collector.vpp.profileQueuePolling})
 		if err != nil {
 			failure := fmt.Errorf("collect VPP CPU profile: %w", err)
 			collector.log.WarnContext(ctx, "VPP CPU profile unavailable", "error", failure)
@@ -74,13 +81,7 @@ func (collector *Collector) vppCounters(ctx context.Context) map[string]vpp.Inte
 	if collector.vpp == nil {
 		return nil
 	}
-	settings, err := collector.vpp.Endpoints()
-	if err != nil {
-		failure := fmt.Errorf("configure VPP interface counter connection: %w", err)
-		collector.log.ErrorContext(ctx, "VPP reporting configuration failed", "error", failure)
-		return nil
-	}
-	counters, err := vpp.ReadInterfaceCounters(ctx, settings)
+	counters, err := vpp.ReadInterfaceCounters(ctx, collector.vpp.endpoints)
 	if err != nil {
 		failure := fmt.Errorf("collect VPP interface counters: %w", err)
 		collector.log.WarnContext(ctx, "VPP reporting counters unavailable", "error", failure)
@@ -94,7 +95,7 @@ func (collector *Collector) vppTraffic(previous, next map[string]vpp.InterfaceCo
 		return nil
 	}
 	var result []WANTraffic
-	for _, resource := range collector.vpp.Interface {
+	for _, resource := range collector.vpp.interfaces {
 		for _, connection := range collector.network.VPP.Connections {
 			if connection.ID.String() != resource.ConnectionID {
 				continue
