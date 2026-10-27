@@ -21,6 +21,8 @@ import (
 	"time"
 
 	"github.com/ti-mo/conntrack"
+
+	"goodkind.io/mwan/internal/interfaceintent"
 )
 
 // NativeControllerID references one controller in NativeConfig.
@@ -69,12 +71,7 @@ const (
 )
 
 // NativePCIAddress identifies one PCI function.
-type NativePCIAddress struct {
-	Domain   uint16
-	Bus      uint8
-	Device   uint8
-	Function uint8
-}
+type NativePCIAddress = interfaceintent.PCIAddress
 
 // NativeController owns one PCI function and its physical group-zero miss.
 type NativeController struct {

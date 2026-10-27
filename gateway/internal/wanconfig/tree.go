@@ -652,6 +652,7 @@ func linkItems(connection interfaceintent.Connection) []Item {
 		)
 	}
 	items = append(items, tunnelItems(link+"/tunnel", linkSpec.Tunnel)...)
+	items = append(items, nativeOffloadItems(link+"/native-offload", linkSpec.NativeOffload)...)
 	if connection.IPv4 != nil {
 		family := base + "/ietf-ip:ipv4"
 		items = append(items, familyItems(family, connection.IPv4.Family)...)

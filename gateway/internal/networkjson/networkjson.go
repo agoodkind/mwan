@@ -71,12 +71,13 @@ const (
 // set on it, and the VLAN it is created as. The vlan container has presence,
 // so a pointer distinguishes absent from present.
 type linkIdentity struct {
-	Match           *linkMatch  `json:"match"`
-	HardwareAddress string      `json:"hardware-address"`
-	MTU             *uint32     `json:"mtu"`
-	VLAN            *linkVLAN   `json:"vlan"`
-	BridgeMaster    string      `json:"bridge-master"`
-	Tunnel          *linkTunnel `json:"tunnel"`
+	Match           *linkMatch         `json:"match"`
+	HardwareAddress string             `json:"hardware-address"`
+	MTU             *uint32            `json:"mtu"`
+	VLAN            *linkVLAN          `json:"vlan"`
+	BridgeMaster    string             `json:"bridge-master"`
+	Tunnel          *linkTunnel        `json:"tunnel"`
+	NativeOffload   *nativeOffloadWire `json:"native-offload"`
 }
 
 type linkTunnel struct {
@@ -770,7 +771,7 @@ func (c *Config) Apply(cfg *config.Config) {
 	cfg.IfMgr.WAN = c.WAN
 	cfg.IfMgr.ConnectionIDs = c.ConnectionIDs
 	cfg.IfMgr.ExplicitConnectionIDs = c.ExplicitConnectionIDs
-	cfg.IfMgr.Connections = c.Connections
+	cfg.IfMgr.Connections = interfaceintent.CloneNativeBindings(c.Connections)
 
 	if cfg.IfMgr.Modules.WAN == nil {
 		cfg.IfMgr.Modules.WAN = &config.IfMgrModulesWANSection{Routes: nil}

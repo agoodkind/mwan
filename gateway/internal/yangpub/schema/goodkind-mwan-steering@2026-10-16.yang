@@ -850,6 +850,53 @@ module goodkind-mwan-steering {
       description
         "What the device is, what it is named, and how it is created.";
 
+      container native-offload {
+        presence "This kernel connection has an explicit native DATA binding.";
+        must "not(../vlan) and not(../tunnel) and not(../bridge-master)" {
+          error-message "Native offload requires an untagged physical link outside a bridge.";
+        }
+        description
+          "The binding identifies hardware for native forwarding. The connection retains its network policy.";
+        leaf data-pci {
+          type string {
+            pattern '[0-9a-f]{4}:[0-9a-f]{2}:[01][0-9a-f]\.[0-7]';
+          }
+          mandatory true;
+          description "This field selects the PCI function of the separately owned DATA device.";
+        }
+        leaf data-mac {
+          type yang:mac-address;
+          mandatory true;
+          description "This field specifies the expected unicast DATA MAC, including devices without a Linux netdev.";
+        }
+        container controller {
+          presence "This connection supplies a physical ingress receiver.";
+          description "The controller registers separate kernel and DATA representors.";
+          leaf pci {
+            type string {
+              pattern '[0-9a-f]{4}:[0-9a-f]{2}:[01][0-9a-f]\.[0-7]';
+            }
+            mandatory true;
+            description "This field selects the PCI function of the trusted controller.";
+          }
+          leaf receiver-vf {
+            type uint16;
+            mandatory true;
+            description "This field selects the VF index of the connection's kernel receiver.";
+          }
+          leaf data-vf {
+            type uint16;
+            mandatory true;
+            description "This field selects the VF index represented by data-pci under this controller.";
+          }
+          leaf physical-miss {
+            type boolean;
+            mandatory true;
+            description "This field selects whether this receiver owns the controller's physical miss action.";
+          }
+        }
+      }
+
       leaf mtu {
         type uint32 {
           range "68..max";

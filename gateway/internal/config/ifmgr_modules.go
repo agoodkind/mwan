@@ -30,6 +30,7 @@ type IfMgrModulesSection struct {
 	Addresses         *IfMgrAddressesSection         `toml:"addresses"`
 	Resolver          *IfMgrResolverSection          `toml:"resolver"`
 	BGPSessions       *IfMgrBGPSessionsSection       `toml:"bgp_sessions"`
+	NativeOffload     *IfMgrNativeOffloadSection     `toml:"nativeoffload"`
 }
 
 // IfMgrBGPSessionsSection configures the durable journal of the external BGP sessions that installed kernel routes.

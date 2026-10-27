@@ -107,6 +107,7 @@ type Link struct {
 	VLAN            *VLAN
 	BridgeMaster    string
 	Tunnel          *Tunnel
+	NativeOffload   *NativeOffloadBinding
 }
 
 // Tunnel defines an encapsulating interface and its outer endpoints.
