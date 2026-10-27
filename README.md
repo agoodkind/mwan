@@ -115,6 +115,12 @@ Docker targets need Docker. They use the host architecture unless
 `WANCONFIG_DOCKER_ARCH` sets `amd64` or `arm64`, and the other architecture
 runs under emulation.
 
+The builder and firewall tests use Docker Compose. Each invocation creates
+its own project and temporary cache volumes. The runner removes its test
+containers, network, volumes, and temporary directory after success,
+failure, or interruption. Host source files and test results remain
+available. Docker retains its images and build layers.
+
 The container lints its own architecture, which is linux/arm64 on Apple
 Silicon.
 
@@ -172,6 +178,11 @@ make -C gateway native-sdk-check MWAN_NATIVE_DPDK_PREFIX="$MWAN_NATIVE_DPDK_PREF
 This target checks Rust with the DPDK feature, builds the hardware regression
 driver, and builds and tests Go with the `nativeoffload` tag. Use
 `native-library` with the same SDK setting to build only the library.
+
+To run the SDK checks through Docker Compose, use `docker-make` with the
+same host SDK path. The runner mounts the SDK read-only. If the SDK's
+pkg-config files specify a different installation path, set
+`MWAN_NATIVE_DPDK_CONTAINER_PREFIX` to that path inside the container.
 
 The SDK build does not run hardware traffic tests. Follow the
 [malformed-packet procedure](native/tests/malformed/README.md) with external

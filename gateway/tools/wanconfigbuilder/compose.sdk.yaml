@@ -1,0 +1,11 @@
+services:
+  builder:
+    environment:
+      MWAN_NATIVE_DPDK_PREFIX: ${MWAN_NATIVE_DPDK_CONTAINER_PREFIX:?Set MWAN_NATIVE_DPDK_CONTAINER_PREFIX}
+    volumes:
+      - type: bind
+        source: ${MWAN_NATIVE_DPDK_PREFIX:?Set MWAN_NATIVE_DPDK_PREFIX}
+        target: ${MWAN_NATIVE_DPDK_CONTAINER_PREFIX:?Set MWAN_NATIVE_DPDK_CONTAINER_PREFIX}
+        read_only: true
+        bind:
+          create_host_path: false

@@ -307,31 +307,20 @@ WANCONFIG_BUILDER_IMAGE := mwan-wanconfig-builder:$(WANCONFIG_DOCKER_ARCH)
 REPORTING_RRDTOOL_VERSION := 1.11.0
 REPORTING_RRDTOOL_SHA256 := 24c345b5c077c1b2b2fcbc1a364f1da051650fb6743ad5213096adc04c862ed4
 
-# Module sources are the same for every architecture, and both architectures
-# share one module cache volume. Build caches, lint caches, and cgo archives
-# differ by architecture, and each architecture has its own volumes for them.
-# The host's gateway/.make contains a darwin engine, and the container mounts
-# its own .make volume over it.
-#
-# The container runs as root. On a Linux host a non-root user owns the
-# mounted checkout, and git refuses a repository another user owns. Go then
-# fails the build when it stamps version-control data. The safe.directory
-# entry lets git read /src.
-WANCONFIG_DOCKER_RUN := docker run --rm --platform linux/$(WANCONFIG_DOCKER_ARCH) \
-	-v $(REPO_ROOT):/src -w /src/gateway \
-	-v mwan-wanconfig-gomod:/go/pkg/mod \
-	-v mwan-wanconfig-cache-$(WANCONFIG_DOCKER_ARCH):/root/.cache \
-	-v mwan-wanconfig-gomk-$(WANCONFIG_DOCKER_ARCH):/src/gateway/.make \
-	-e GOWORK=off \
-	-e GIT_CONFIG_COUNT=1 \
-	-e GIT_CONFIG_KEY_0=safe.directory \
-	-e GIT_CONFIG_VALUE_0=/src \
-	$(WANCONFIG_BUILDER_IMAGE)
+# Each invocation owns a Compose project and temporary cache volumes. The
+# runner removes them on exit without removing images or host artifacts.
+MWAN_NATIVE_DPDK_CONTAINER_PREFIX ?= $(MWAN_NATIVE_DPDK_PREFIX)
+WANCONFIG_DOCKER_RUN := env \
+	WANCONFIG_DOCKER_SOURCE="$(REPO_ROOT)" \
+	WANCONFIG_DOCKER_ARCH="$(WANCONFIG_DOCKER_ARCH)" \
+	WANCONFIG_BUILDER_IMAGE="$(WANCONFIG_BUILDER_IMAGE)" \
+	MWAN_NATIVE="$(MWAN_NATIVE)" \
+	MWAN_NATIVE_DPDK_PREFIX="$(MWAN_NATIVE_DPDK_PREFIX)" \
+	MWAN_NATIVE_DPDK_CONTAINER_PREFIX="$(MWAN_NATIVE_DPDK_CONTAINER_PREFIX)" \
+	bash tools/wanconfigbuilder/run.sh
 
-# The image is built here and published nowhere, so `docker run` cannot pull
-# it: every target that runs the image must build it first or fail on a clean
-# checkout. Layer cache makes a repeat build a few seconds, and a changed
-# Dockerfile still rebuilds.
+# Every target builds the local image before Compose starts its container.
+# Docker preserves its image layers between runs.
 .PHONY: wanconfig-builder-image
 wanconfig-builder-image:
 	docker build --platform linux/$(WANCONFIG_DOCKER_ARCH) \
@@ -376,16 +365,7 @@ test-provider-drift: wanconfig-builder-image
 # These tests require the privileged builder with nftables and the cgo schema libs.
 .PHONY: test-firewall
 test-firewall: wanconfig-builder-image
-	docker run --rm --privileged --platform linux/$(WANCONFIG_DOCKER_ARCH) \
-		-v $(REPO_ROOT):/src -w /src/gateway \
-		-v mwan-wanconfig-gomod:/go/pkg/mod \
-		-v mwan-wanconfig-cache-$(WANCONFIG_DOCKER_ARCH):/root/.cache \
-		-v mwan-wanconfig-gomk-$(WANCONFIG_DOCKER_ARCH):/src/gateway/.make \
-		-e GOWORK=off \
-		-e GIT_CONFIG_COUNT=1 \
-		-e GIT_CONFIG_KEY_0=safe.directory \
-		-e GIT_CONFIG_VALUE_0=/src \
-		$(WANCONFIG_BUILDER_IMAGE) \
+	WANCONFIG_DOCKER_PRIVILEGED=true $(WANCONFIG_DOCKER_RUN) \
 		go test -v -count=1 -tags 'netns firewallnetns' ./cmd/mwan \
 		-run '^(TestDeployGateEgressNetNS|TestCheckFirewallIsolatedKernel|TestCheckFirewallIsolatedKernelLXC|TestCheckFirewallForcedDSCPReadback|TestWANStartupProtectsBeforeConfigValidation|TestWANFirewallRuntimePackets|TestOwnedStaticDaemonRuntime|TestOwnedMappedDaemonRuntime|TestSelectionExclusionDaemonRuntime|TestSelectionExcludedReadinessDaemonRuntime|TestDistributionObservationDaemonRuntime|TestTunnelProviderDaemonRuntime|TestTunnelForcedDSCPDaemonRuntime|TestTunnelRuntimeIPv4SelectionRejectsAMissingAssignment|TestBGPDirectDaemonRuntime|TestBGPDirectIBGPDaemonRuntime|TestBGPBackupDaemonRuntime|TestBGPBackupSetsDaemonRuntime|TestBGPTunnelDaemonRuntime|TestBGPSpecificPrefixDaemonRuntime|TestBGPTunnelVPSPeerDaemonRuntime|TestBGPTunnelMultihopDaemonRuntime|TestBGPRepeatedASNDaemonRuntime|TestBGPTableKeepsInternalReturnRoutesDaemonRuntime|TestCombinedPathsDaemonRuntime|TestPathRoutingFailureDaemonRuntime|TestPathHealthDisabledDaemonRuntime)$$'
 
@@ -414,8 +394,8 @@ test-docker-all:
 	done
 
 # docker-make runs any make targets inside the builder container. The
-# container builds the cgo dependencies for its own architecture and keeps
-# them in its .make volume.
+# container builds the cgo dependencies for its own architecture in a temporary
+# .make volume. Set MWAN_NATIVE_DPDK_PREFIX to mount a prepared SDK read-only.
 #
 #   make docker-make TARGETS="build-check test check-yang"
 #   make docker-make TARGETS=build-check
