@@ -1,8 +1,8 @@
 package main
 
 import (
+	"errors"
 	"fmt"
-	"log/slog"
 
 	"go.fd.io/govpp/binapi/ethernet_types"
 	"go.fd.io/govpp/binapi/interface_types"
@@ -17,12 +17,7 @@ import (
 	"goodkind.io/mwan/internal/vpp"
 )
 
-func buildVPPConfig(settings config.IfMgrSection) (result vppmodule.Config, failure error) {
-	defer func() {
-		if failure != nil {
-			slog.Error("build router VPP module configuration failed", "error", failure)
-		}
-	}()
+func buildVPPConfig(settings config.IfMgrSection) (vppmodule.Config, error) {
 	section := settings.Modules.VPP
 	if section == nil {
 		return vppmodule.Config{Settings: nil, Policy: nil}, nil
@@ -32,7 +27,7 @@ func buildVPPConfig(settings config.IfMgrSection) (result vppmodule.Config, fail
 	}
 	endpoints, err := section.Endpoints()
 	if err != nil {
-		return vppmodule.Config{Settings: nil, Policy: nil}, fmt.Errorf("read VPP module transport settings: %w", err)
+		return vppmodule.Config{Settings: nil, Policy: nil}, errors.New("VPP module transport settings: " + err.Error())
 	}
 	runtime := &vpp.Settings{Endpoints: endpoints, StateFile: section.StateFile, TAPs: nil, NAT64: nil}
 	connections := make(map[string]interfaceintent.Connection, len(settings.VPPPolicy.Connections))
@@ -50,7 +45,7 @@ func buildVPPConfig(settings config.IfMgrSection) (result vppmodule.Config, fail
 		}
 		request, err := buildTAPRequest(resource, connection, host)
 		if err != nil {
-			return vppmodule.Config{Settings: nil, Policy: nil}, fmt.Errorf("build VPP TAP %d resource request: %w", resource.ID, err)
+			return vppmodule.Config{Settings: nil, Policy: nil}, err
 		}
 		var mode interface_types.RxMode
 		switch resource.RXMode {
@@ -78,19 +73,13 @@ func addVPPModuleConfig(configs ifmgr.ModuleConfigSet, enabled bool, settings co
 	}
 	moduleConfig, err := buildVPPConfig(settings)
 	if err != nil {
-		slog.Error("configure optional VPP module failed", "error", err)
-		return fmt.Errorf("configure optional VPP module: %w", err)
+		return err
 	}
 	configs["vpp"] = moduleConfig
 	return nil
 }
 
-func buildTAPRequest(resource config.VPPTAPSection, connection, host interfaceintent.Connection) (result tapv2.TapCreateV3, failure error) {
-	defer func() {
-		if failure != nil {
-			slog.Error("convert VPP TAP network policy failed", "tap_id", resource.ID, "error", failure)
-		}
-	}()
+func buildTAPRequest(resource config.VPPTAPSection, connection, host interfaceintent.Connection) (tapv2.TapCreateV3, error) {
 	request := tapv2.TapCreateV3{
 		ID: resource.ID, UseRandomMac: true, HostIfNameSet: true, HostIfName: host.Name,
 		NumRxQueues: resource.RXQueues, NumTxQueues: resource.TXQueues,
@@ -99,7 +88,7 @@ func buildTAPRequest(resource config.VPPTAPSection, connection, host interfacein
 	if connection.Link != nil && connection.Link.HardwareAddress != "" {
 		mac, err := ethernet_types.ParseMacAddress(connection.Link.HardwareAddress)
 		if err != nil {
-			return request, fmt.Errorf("VPP TAP MAC: %w", err)
+			return request, errors.New(fmt.Sprintf("VPP TAP %d MAC: ", resource.ID) + err.Error())
 		}
 		request.UseRandomMac, request.MacAddress = false, mac
 	}
@@ -110,28 +99,28 @@ func buildTAPRequest(resource config.VPPTAPSection, connection, host interfacein
 		if host.Link.HardwareAddress != "" {
 			mac, err := ethernet_types.ParseMacAddress(host.Link.HardwareAddress)
 			if err != nil {
-				return request, fmt.Errorf("VPP TAP host MAC: %w", err)
+				return request, errors.New(fmt.Sprintf("VPP TAP %d host MAC: ", resource.ID) + err.Error())
 			}
 			request.HostMacAddrSet, request.HostMacAddr = true, mac
 		}
 	}
 	if host.IPv4 != nil {
 		if len(host.IPv4.Addresses) != 1 {
-			return request, fmt.Errorf("VPP TAP host %s requires one IPv4 address when IPv4 is present", host.Name)
+			return request, fmt.Errorf("VPP TAP %d host %s requires one IPv4 address when IPv4 is present", resource.ID, host.Name)
 		}
 		prefix, err := ip_types.ParseIP4Prefix(host.IPv4.Addresses[0].Prefix.String())
 		if err != nil {
-			return request, fmt.Errorf("VPP TAP host IPv4: %w", err)
+			return request, errors.New(fmt.Sprintf("VPP TAP %d host IPv4: ", resource.ID) + err.Error())
 		}
 		request.HostIP4PrefixSet, request.HostIP4Prefix = true, ip_types.IP4AddressWithPrefix(prefix)
 	}
 	if host.IPv6 != nil {
 		if len(host.IPv6.Addresses) != 1 {
-			return request, fmt.Errorf("VPP TAP host %s requires one IPv6 address when IPv6 is present", host.Name)
+			return request, fmt.Errorf("VPP TAP %d host %s requires one IPv6 address when IPv6 is present", resource.ID, host.Name)
 		}
 		prefix, err := ip_types.ParseIP6Prefix(host.IPv6.Addresses[0].Prefix.String())
 		if err != nil {
-			return request, fmt.Errorf("VPP TAP host IPv6: %w", err)
+			return request, errors.New(fmt.Sprintf("VPP TAP %d host IPv6: ", resource.ID) + err.Error())
 		}
 		request.HostIP6PrefixSet, request.HostIP6Prefix = true, ip_types.IP6AddressWithPrefix(prefix)
 	}

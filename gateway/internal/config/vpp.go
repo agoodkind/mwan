@@ -1,8 +1,8 @@
 package config
 
 import (
+	"errors"
 	"fmt"
-	"log/slog"
 	"path/filepath"
 	"time"
 
@@ -57,33 +57,37 @@ type VPPNAT64Section struct {
 }
 
 // Endpoints rejects invalid transport settings before any socket connection.
-func (section VPPSection) Endpoints() (settings vpp.Endpoints, failure error) {
-	defer func() {
-		if failure != nil {
-			slog.Error("read VPP transport settings failed", "error", failure)
-		}
-	}()
+func (section VPPSection) Endpoints() (vpp.Endpoints, error) {
 	timeout, err := time.ParseDuration(section.RequestTimeout)
 	if err != nil {
-		return vpp.Endpoints{}, fmt.Errorf("VPP request_timeout: %w", err)
+		return vpp.Endpoints{}, errors.New("VPP request_timeout: " + err.Error())
 	}
-	settings = vpp.Endpoints{APISocket: section.APISocket, StatsSocket: section.StatsSocket, ExpectedVersion: section.ExpectedVersion, Timeout: timeout}
+	settings := vpp.Endpoints{APISocket: section.APISocket, StatsSocket: section.StatsSocket, ExpectedVersion: section.ExpectedVersion, Timeout: timeout}
 	if err := settings.Validate(); err != nil {
-		return settings, fmt.Errorf("validate VPP transport settings: %w", err)
+		return settings, errors.New("validate VPP transport settings: " + err.Error())
 	}
 	return settings, nil
 }
 
 // Validate rejects incomplete process resources before a daemon can apply them.
-func (section VPPSection) Validate() (failure error) {
-	defer func() {
-		if failure != nil {
-			slog.Error("validate VPP process resources failed", "error", failure)
-		}
-	}()
-	if _, err := section.Endpoints(); err != nil {
-		return fmt.Errorf("validate VPP process transport: %w", err)
+func (section VPPSection) Validate() error {
+	_, err := section.ValidatedEndpoints()
+	return err
+}
+
+// ValidatedEndpoints preserves transport settings after checking all process resources.
+func (section VPPSection) ValidatedEndpoints() (vpp.Endpoints, error) {
+	settings, err := section.Endpoints()
+	if err != nil {
+		return settings, err
 	}
+	if err := section.validateResources(); err != nil {
+		return settings, err
+	}
+	return settings, nil
+}
+
+func (section VPPSection) validateResources() error {
 	if !filepath.IsAbs(section.StateFile) {
 		return fmt.Errorf("VPP state_file must be an absolute path")
 	}

@@ -10,13 +10,52 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/reporting"
 	"goodkind.io/mwan/internal/testsmtp"
+	"goodkind.io/mwan/internal/vpp"
 )
+
+func TestCollectorRetainsVPPProfileSettings(t *testing.T) {
+	t.Parallel()
+	settings := reportSettings(t)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	collector, err := reporting.NewCollector(settings, &networkjson.Config{}, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer collector.Close()
+	directory := t.TempDir()
+	section := &config.VPPSection{
+		APISocket: filepath.Join(directory, "api.sock"), StatsSocket: filepath.Join(directory, "stats.sock"),
+		ExpectedVersion: vpp.BindingVersion, RequestTimeout: "1s", StateFile: filepath.Join(directory, "state.json"),
+		Profile: true, ProfileExecutable: filepath.Join(directory, "vpp"), ProfileDuration: "1ms",
+	}
+	if err := collector.ConfigureVPP(section); err != nil {
+		t.Fatal(err)
+	}
+	section.RequestTimeout = "invalid"
+	section.ProfileDuration = "invalid"
+	section.ProfileExecutable = "relative"
+	start := time.Now()
+	minute, err := collector.Sample(t.Context(), start, start.Add(time.Millisecond))
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := minute.VPPProfile
+	if profile == nil || profile.Available || profile.Duration != time.Millisecond {
+		t.Fatalf("unavailable VPP process did not preserve the configured profile duration: %+v", profile)
+	}
+	if !strings.Contains(profile.Reason, section.APISocket) {
+		t.Fatalf("VPP profiling did not attempt the configured socket: %q", profile.Reason)
+	}
+}
 
 func TestWatchWaitsForWriterAndResumesCollection(t *testing.T) {
 	t.Parallel()

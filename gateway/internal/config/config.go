@@ -335,6 +335,7 @@ func loadConfig(path string) (*Config, error) {
 	}
 	if cfg.IfMgr.Modules.VPP != nil {
 		if err := cfg.IfMgr.Modules.VPP.Validate(); err != nil {
+			slog.Error("validate VPP process resources failed", "path", path, "error", err)
 			return nil, fmt.Errorf("validate [ifmgr.modules.vpp]: %w", err)
 		}
 	}
