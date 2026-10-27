@@ -5,6 +5,7 @@ package offload
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -28,7 +29,9 @@ const (
 	ctMessageNew       netfilter.MessageType = 0
 	ctMessageGet       netfilter.MessageType = 1
 	ctTupleOriginal    uint16                = 1
+	ctTupleReply       uint16                = 2
 	ctProtocolInfo     uint16                = 4
+	ctTimeout          uint16                = 7
 	ctID               uint16                = 12
 	ctZone             uint16                = 18
 	ctTupleIP          uint16                = 1
@@ -50,7 +53,7 @@ const (
 // ConntrackUpdater serializes requests and socket closure in one network namespace.
 type ConntrackUpdater struct {
 	mu       sync.Mutex
-	socket   *netfilter.Conn
+	socket   *netlink.Conn
 	timeout  time.Duration
 	clock    clock.Clock
 	closed   bool
@@ -67,9 +70,12 @@ func NewConntrackUpdater(timeout time.Duration) (updater *ConntrackUpdater, resu
 	if timeout <= 0 {
 		return nil, fmt.Errorf("conntrack update timeout must be positive")
 	}
-	socket, err := netfilter.Dial(nil)
+	socket, err := netlink.Dial(unix.NETLINK_NETFILTER, nil)
 	if err != nil {
 		return nil, fmt.Errorf("open conntrack update socket: %w", err)
+	}
+	if err := socket.SetReadBuffer(conntrackReceiveBytes); err != nil {
+		return nil, errors.Join(fmt.Errorf("set conntrack update socket capacity: %w", err), socket.Close())
 	}
 	return &ConntrackUpdater{
 		mu: sync.Mutex{}, socket: socket, timeout: timeout, clock: clock.Real{},
@@ -92,31 +98,11 @@ func (u *ConntrackUpdater) SetLiberal(ctx context.Context, flow conntrack.Flow) 
 	}
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	if u.closed {
-		return fmt.Errorf("conntrack updater: %w", net.ErrClosed)
+	finish, err := u.beginRequest(ctx)
+	if err != nil {
+		return err
 	}
-	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("conntrack update context: %w", err)
-	}
-	deadline := u.clock.Now().Add(u.timeout)
-	if limit, ok := ctx.Deadline(); ok && limit.Before(deadline) {
-		deadline = limit
-	}
-	if err := u.socket.SetDeadline(deadline); err != nil {
-		return fmt.Errorf("set conntrack update deadline: %w", err)
-	}
-	finished := make(chan struct{})
-	stop := context.AfterFunc(ctx, func() {
-		if err := u.socket.SetDeadline(u.clock.Now()); err != nil {
-			slog.WarnContext(ctx, "interrupt conntrack update failed", "err", err)
-		}
-		close(finished)
-	})
-	defer func() {
-		if !stop() {
-			<-finished
-		}
-	}()
+	defer finish()
 
 	family, identity := conntrackIdentity(flow)
 	if _, err := u.readIdentity(family, identity, flow); err != nil {
@@ -148,6 +134,81 @@ func (u *ConntrackUpdater) SetLiberal(ctx context.Context, flow conntrack.Flow) 
 		return fmt.Errorf("conntrack %d did not retain both liberal TCP flags", flow.ID)
 	}
 	return nil
+}
+
+// Refresh updates only expiry after the caller verifies hardware activity.
+func (u *ConntrackUpdater) Refresh(ctx context.Context, flow conntrack.Flow, timeoutSeconds uint32) (resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			slog.WarnContext(ctx, "conntrack timeout refresh failed", "id", flow.ID, "zone", flow.Zone, "err", resultErr)
+		}
+	}()
+	if timeoutSeconds == 0 || flow.ID == 0 {
+		return fmt.Errorf("conntrack refresh requires a connection ID and positive timeout")
+	}
+	if err := validateConntrackLookupTuple(flow.TupleOrig); err != nil {
+		return err
+	}
+	if err := validateConntrackLookupTuple(flow.TupleReply); err != nil {
+		return err
+	}
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	finish, err := u.beginRequest(ctx)
+	if err != nil {
+		return err
+	}
+	defer finish()
+	family, identity := conntrackIdentity(flow)
+	if _, err := u.readIdentity(family, identity, flow); err != nil {
+		return fmt.Errorf("verify conntrack before timeout refresh: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("conntrack refresh context: %w", err)
+	}
+	attributes := slices.Clone(identity)
+	attributes = append(attributes, netfilter.Attribute{Type: ctTimeout, Data: netfilter.Uint32Bytes(timeoutSeconds)})
+	started := u.clock.Now()
+	if _, err := u.query(family, ctMessageNew, attributes); err != nil {
+		return fmt.Errorf("refresh conntrack timeout: %w", err)
+	}
+	current, err := u.readIdentity(family, identity, flow)
+	if err != nil {
+		return fmt.Errorf("verify conntrack after timeout refresh: %w", err)
+	}
+	elapsedSeconds := uint64(u.clock.Now().Sub(started)/time.Second) + 1
+	if current.Timeout > timeoutSeconds || uint64(current.Timeout)+elapsedSeconds < uint64(timeoutSeconds) {
+		return fmt.Errorf("conntrack %d did not retain the requested timeout", flow.ID)
+	}
+	return nil
+}
+
+func (u *ConntrackUpdater) beginRequest(ctx context.Context) (func(), error) {
+	if u.closed {
+		return nil, fmt.Errorf("conntrack updater: %w", net.ErrClosed)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("conntrack update context: %w", err)
+	}
+	deadline := u.clock.Now().Add(u.timeout)
+	if limit, ok := ctx.Deadline(); ok && limit.Before(deadline) {
+		deadline = limit
+	}
+	if err := u.socket.SetDeadline(deadline); err != nil {
+		return nil, fmt.Errorf("set conntrack update deadline: %w", err)
+	}
+	finished := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		if err := u.socket.SetDeadline(u.clock.Now()); err != nil {
+			slog.WarnContext(ctx, "interrupt conntrack update failed", "err", err)
+		}
+		close(finished)
+	})
+	return func() {
+		if !stop() {
+			<-finished
+		}
+	}, nil
 }
 
 // Close waits for the bounded active update and retains the first close result.
@@ -202,20 +263,28 @@ func validateTCPTuple(tuple conntrack.Tuple, direction string) error {
 }
 
 func conntrackIdentity(flow conntrack.Flow) (netfilter.ProtoFamily, []netfilter.Attribute) {
+	family, tuple := conntrackTupleAttribute(flow.TupleOrig, ctTupleOriginal)
+	return family, []netfilter.Attribute{
+		tuple,
+		{Type: ctID, Data: netfilter.Uint32Bytes(flow.ID)},
+		{Type: ctZone, Data: netfilter.Uint16Bytes(flow.Zone)},
+	}
+}
+
+func conntrackTupleAttribute(tuple conntrack.Tuple, kind uint16) (netfilter.ProtoFamily, netfilter.Attribute) {
 	family := netfilter.ProtoIPv4
 	source, destination := ctIPv4Source, ctIPv4Destination
-	if flow.TupleOrig.IP.SourceAddress.Is6() {
+	if tuple.IP.SourceAddress.Is6() {
 		family = netfilter.ProtoIPv6
 		source, destination = ctIPv6Source, ctIPv6Destination
 	}
-	tuple := flow.TupleOrig
 	children := []netfilter.Attribute{
 		{Type: ctTupleIP, Nested: true, Children: []netfilter.Attribute{
 			{Type: source, Data: tuple.IP.SourceAddress.AsSlice()},
 			{Type: destination, Data: tuple.IP.DestinationAddress.AsSlice()},
 		}},
 		{Type: ctTupleProtocol, Nested: true, Children: []netfilter.Attribute{
-			{Type: ctProtocolNumber, Data: []byte{unix.IPPROTO_TCP}},
+			{Type: ctProtocolNumber, Data: []byte{tuple.Proto.Protocol}},
 			{Type: ctSourcePort, Data: netfilter.Uint16Bytes(tuple.Proto.SourcePort)},
 			{Type: ctDestinationPort, Data: netfilter.Uint16Bytes(tuple.Proto.DestinationPort)},
 		}},
@@ -223,11 +292,7 @@ func conntrackIdentity(flow conntrack.Flow) (netfilter.ProtoFamily, []netfilter.
 	if tuple.Zone != 0 {
 		children = append(children, netfilter.Attribute{Type: ctTupleZone, Data: netfilter.Uint16Bytes(tuple.Zone)})
 	}
-	return family, []netfilter.Attribute{
-		{Type: ctTupleOriginal, Nested: true, Children: children},
-		{Type: ctID, Data: netfilter.Uint32Bytes(flow.ID)},
-		{Type: ctZone, Data: netfilter.Uint16Bytes(flow.Zone)},
-	}
+	return family, netfilter.Attribute{Type: kind, Nested: true, Children: children}
 }
 
 func (u *ConntrackUpdater) query(family netfilter.ProtoFamily, kind netfilter.MessageType, attributes []netfilter.Attribute) (messages []netlink.Message, resultErr error) {
@@ -243,7 +308,7 @@ func (u *ConntrackUpdater) query(family netfilter.ProtoFamily, kind netfilter.Me
 	if err != nil {
 		return nil, fmt.Errorf("encode conntrack request: %w", err)
 	}
-	messages, err = u.socket.Query(message)
+	messages, err = queryBoundedConntrack(u.socket, message, kind == ctMessageGet)
 	if err != nil {
 		return nil, fmt.Errorf("query conntrack socket: %w", err)
 	}
@@ -277,6 +342,9 @@ func (u *ConntrackUpdater) readIdentity(family netfilter.ProtoFamily, attributes
 	}
 	if current == nil || current.ID != expected.ID || current.Zone != expected.Zone || current.TupleOrig != expected.TupleOrig {
 		return conntrack.Flow{}, fmt.Errorf("conntrack identity changed: %w", unix.ESTALE)
+	}
+	if expected.TupleReply.IP.SourceAddress.IsValid() && current.TupleReply != expected.TupleReply {
+		return conntrack.Flow{}, fmt.Errorf("conntrack reply identity changed: %w", unix.ESTALE)
 	}
 	return *current, nil
 }
