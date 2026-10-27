@@ -11,7 +11,7 @@ struct packet_view {
 	uint32_t network_length, transport_length;
 	uint16_t network_offset;
 	uint8_t ttl, flags;
-	bool fragment, noninitial_fragment, extended, ports;
+	bool fragment, noninitial_fragment, extended, ports, malformed;
 	struct mwan_native_tuple tuple;
 };
 
@@ -56,8 +56,9 @@ static int decode(struct rte_mbuf *packet, struct packet_view *view)
 			return -EBADMSG;
 		header_length = (view->ip[0] & 15U) * 4U;
 		view->network_length = read16(view->ip + 2);
-		if (header_length < sizeof(struct rte_ipv4_hdr) || view->network_length < header_length || view->network_length > available)
+		if (header_length < sizeof(struct rte_ipv4_hdr) || view->network_length < header_length || header_length > available)
 			return -EBADMSG;
+		view->malformed = view->network_length > available;
 		uint16_t fragment = read16(view->ip + 6);
 		view->fragment = (fragment & UINT16_C(0x3fff)) != 0;
 		view->noninitial_fragment = (fragment & UINT16_C(0x1fff)) != 0;
@@ -72,8 +73,7 @@ static int decode(struct rte_mbuf *packet, struct packet_view *view)
 			return -EBADMSG;
 		header_length = sizeof(struct rte_ipv6_hdr);
 		view->network_length = header_length + read16(view->ip + 4);
-		if (view->network_length > available)
-			return -EBADMSG;
+		view->malformed = view->network_length > available;
 		view->ttl = view->ip[7];
 		view->tuple.family = MWAN_NATIVE_FAMILY_IPV6;
 		view->tuple.protocol = view->ip[6];
@@ -83,7 +83,8 @@ static int decode(struct rte_mbuf *packet, struct packet_view *view)
 			uint8_t protocol = view->tuple.protocol;
 			if (protocol != IPPROTO_HOPOPTS && protocol != IPPROTO_ROUTING && protocol != IPPROTO_DSTOPTS && protocol != IPPROTO_FRAGMENT && protocol != IPPROTO_AH)
 				break;
-			if (view->network_length - header_length < 8)
+			uint32_t remaining = RTE_MIN(view->network_length, available) - header_length;
+			if (remaining < 8)
 				return -EBADMSG;
 			uint8_t *extension = view->ip + header_length;
 			uint32_t size = (extension[1] + 1U) * 8U;
@@ -94,7 +95,7 @@ static int decode(struct rte_mbuf *packet, struct packet_view *view)
 				view->fragment = true;
 				view->noninitial_fragment = (read16(extension + 2) & UINT16_C(0xfff8)) != 0;
 			}
-			if (size > view->network_length - header_length)
+			if (size > remaining)
 				return -EBADMSG;
 			header_length += size;
 			view->tuple.protocol = extension[0];
@@ -106,9 +107,14 @@ static int decode(struct rte_mbuf *packet, struct packet_view *view)
 		return -EPROTONOSUPPORT;
 	}
 	view->transport = view->ip + header_length;
-	view->transport_length = view->network_length - header_length;
+	/* Declared lengths cannot authorize reads beyond the received frame. */
+	view->transport_length = RTE_MIN(view->network_length, available) - header_length;
 	if (view->tuple.protocol != MWAN_NATIVE_PROTOCOL_TCP && view->tuple.protocol != MWAN_NATIVE_PROTOCOL_UDP)
 		return -EPROTONOSUPPORT;
+	if (view->malformed && !view->noninitial_fragment &&
+	    ((view->tuple.protocol == MWAN_NATIVE_PROTOCOL_TCP && view->transport_length < sizeof(struct rte_tcp_hdr)) ||
+	     (view->tuple.protocol == MWAN_NATIVE_PROTOCOL_UDP && view->transport_length < sizeof(struct rte_udp_hdr))))
+		return -EBADMSG;
 	if (!view->noninitial_fragment && view->transport_length >= 4) {
 		view->tuple.source_port = read16(view->transport);
 		view->tuple.destination_port = read16(view->transport + 2);
@@ -178,7 +184,7 @@ static void restore(struct packet_view *view, const struct mwan_native_direction
 
 static bool eligible(const struct packet_view *view, const struct mwan_native_direction *direction)
 {
-	if (view->extended || view->fragment || view->ttl <= 1 || view->network_length > direction->output_mtu || !view->ports)
+	if (view->malformed || view->extended || view->fragment || view->ttl <= 1 || view->network_length > direction->output_mtu || !view->ports)
 		return false;
 	if (view->tuple.protocol == MWAN_NATIVE_PROTOCOL_TCP) {
 		if (view->transport_length < sizeof(struct rte_tcp_hdr) ||
@@ -257,10 +263,10 @@ static int process_packet(struct mwan_native *owner, uint32_t origin,
 	}
 	if (view.ports)
 		diagnostic.validity |= MWAN_NATIVE_PACKET_PORTS_VALID;
-	if (rc) {
+	if (rc || view.malformed)
 		owner->stats.malformed++;
+	if (rc)
 		goto quarantine;
-	}
 	struct mwn_leg *leg = packet_leg(owner, origin, &view);
 	if (!leg) {
 		diagnostic.failure_flags |= MWAN_NATIVE_PACKET_KEY_MISSING;

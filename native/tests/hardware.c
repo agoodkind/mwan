@@ -420,9 +420,9 @@ int main(int argc, char **argv)
 			goto cleanup;
 		}
 	}
-	printf("WORKER received=%" PRIu64 " forwarded=%" PRIu64 " returned=%" PRIu64 " pending=%" PRIu64 " quarantined=%" PRIu64 " discarded_group=%" PRIu64 "\n",
+	printf("WORKER received=%" PRIu64 " forwarded=%" PRIu64 " returned=%" PRIu64 " pending=%" PRIu64 " quarantined=%" PRIu64 " discarded_group=%" PRIu64 " malformed=%" PRIu64 "\n",
 		stats.received, stats.forwarded, stats.returned_to_kernel, stats.pending_packets, stats.quarantined_packets,
-		stats.discarded_group_frames);
+		stats.discarded_group_frames, stats.malformed);
 	if (stats.forwarded < minimum_forwarded || stats.returned_to_kernel < minimum_returned ||
 	    hits < minimum_forwarded + minimum_returned || stats.pending_packets || stats.quarantined_packets) {
 		fprintf(stderr, "Hardware traffic did not satisfy the requested packet minima\n");
