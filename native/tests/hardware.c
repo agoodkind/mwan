@@ -355,16 +355,95 @@ cleanup:
 	return passed ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
+static int retire_pending(const char *config_path, const char *pair_path,
+                          uint64_t seconds, uint64_t minimum_pending,
+                          uint64_t minimum_returned)
+{
+	struct mwan_native_config config = {0};
+	struct mwan_native_pair_spec pair = {0};
+	if (read_config(config_path, &config) || read_pair(pair_path, &pair)) {
+		fprintf(stderr, "Invalid pending retirement configuration\n");
+		return EXIT_FAILURE;
+	}
+	struct mwan_native *owner = NULL;
+	struct mwan_native_error error = {0};
+	struct mwan_native_pair_result result = {0};
+	struct mwan_native_worker_stats stats = {0};
+	bool passed = false;
+	if (mwan_native_open(&config, &owner, &error) ||
+	    mwan_native_pair_install(owner, &pair, &result, &error))
+		goto cleanup;
+	printf("READY_PENDING_RETIRE seconds=%" PRIu64 " minimum_pending=%" PRIu64 "\n",
+		seconds, minimum_pending);
+	fflush(stdout);
+	uint64_t deadline = now_ns() + seconds * UINT64_C(1000000000);
+	while (stats.pending_packets < minimum_pending && now_ns() < deadline) {
+		if (mwan_native_poll(owner, 64, &stats, &error))
+			goto cleanup;
+		if (stats.unsupported || stats.returned_to_kernel || stats.malformed || stats.quarantined_packets) {
+			fprintf(stderr, "Pending pressure requires only eligible forwarded packets before retirement\n");
+			goto cleanup;
+		}
+	}
+	if (stats.pending_packets < minimum_pending) {
+		fprintf(stderr, "External traffic did not create the required unsent forwarded queue\n");
+		goto cleanup;
+	}
+	uint64_t pending_before = stats.pending_packets;
+	uint64_t forwarded_before = stats.forwarded;
+	uint64_t returned_before = stats.returned_to_kernel;
+	if (mwan_native_pair_remove(owner, result.handle, &result, &error) ||
+	    result.state != MWAN_NATIVE_PAIR_DRAINING || result.installed_mask ||
+	    result.restoration_mask != pair.requested_direction_mask)
+		goto cleanup;
+	printf("PENDING_RETIRED queued=%" PRIu64 " forwarded_before=%" PRIu64 "\n",
+		pending_before, forwarded_before);
+	fflush(stdout);
+	deadline = now_ns() + seconds * UINT64_C(1000000000);
+	while (now_ns() < deadline)
+		if (mwan_native_poll(owner, 64, &stats, &error))
+			goto cleanup;
+	uint64_t returned = stats.returned_to_kernel - returned_before;
+	if (stats.forwarded != forwarded_before || returned < pending_before ||
+	    returned < minimum_returned || stats.pending_packets || stats.quarantined_packets) {
+		fprintf(stderr, "Retired pending frames did not complete kernel return without further forwarding\n");
+		goto cleanup;
+	}
+	printf("PENDING_RETIRE queued=%" PRIu64 " returned=%" PRIu64 " forwarded_after=%" PRIu64 "\n",
+		pending_before, returned, stats.forwarded - forwarded_before);
+	passed = true;
+cleanup:
+	if (!passed && error.code)
+		report_error(&error);
+	if (owner && mwan_native_close(&owner, MWAN_NATIVE_FINAL_SHUTDOWN, &error)) {
+		report_error(&error);
+		passed = false;
+	}
+	if (passed)
+		puts("PASS pending forwarded frame retirement and kernel return");
+	return passed ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
 int main(int argc, char **argv)
 {
 	if (argc == 3 && !strcmp(argv[1], "--reject-swapped-data"))
 		return reject_swapped_data(argv[2]);
 	if (argc == 4 && !strcmp(argv[1], "--reject-ipv6-mappings"))
 		return reject_ipv6_mappings(argv[2], argv[3]);
+	if (argc == 7 && !strcmp(argv[1], "--pending-retire")) {
+		uint64_t seconds, minimum_pending, minimum_returned;
+		if (positive(argv[4], &seconds) || seconds > 3600 ||
+		    positive(argv[5], &minimum_pending) || positive(argv[6], &minimum_returned)) {
+			fprintf(stderr, "Invalid pending retirement duration or packet minimum\n");
+			return EXIT_FAILURE;
+		}
+		return retire_pending(argv[2], argv[3], seconds, minimum_pending, minimum_returned);
+	}
 	if (argc != 6 && argc != 7) {
 		fprintf(stderr, "Usage: %s CONFIG PAIR SECONDS MIN_FORWARDED MIN_RETURNED [CONTINUING_PAIR]\n", argv[0]);
 		fprintf(stderr, "       %s --reject-swapped-data CONFIG\n", argv[0]);
 		fprintf(stderr, "       %s --reject-ipv6-mappings CONFIG PAIR\n", argv[0]);
+		fprintf(stderr, "       %s --pending-retire CONFIG PAIR SECONDS MIN_PENDING MIN_RETURNED\n", argv[0]);
 		fprintf(stderr, "CONFIG starts with MWAN_NATIVE_CONFIG 2\n");
 		fprintf(stderr, "Resources: cpu memory_mb memory_mode pair_capacity mbuf_count drain_ms rx_desc tx_desc mtu file_prefix hugepage_directory\n");
 		fprintf(stderr, "Counts: controllers receivers data_devices origins\n");
@@ -420,9 +499,9 @@ int main(int argc, char **argv)
 			goto cleanup;
 		}
 	}
-	printf("WORKER received=%" PRIu64 " forwarded=%" PRIu64 " returned=%" PRIu64 " pending=%" PRIu64 " quarantined=%" PRIu64 " discarded_group=%" PRIu64 "\n",
+	printf("WORKER received=%" PRIu64 " forwarded=%" PRIu64 " returned=%" PRIu64 " pending=%" PRIu64 " quarantined=%" PRIu64 " discarded_group=%" PRIu64 " malformed=%" PRIu64 "\n",
 		stats.received, stats.forwarded, stats.returned_to_kernel, stats.pending_packets, stats.quarantined_packets,
-		stats.discarded_group_frames);
+		stats.discarded_group_frames, stats.malformed);
 	if (stats.forwarded < minimum_forwarded || stats.returned_to_kernel < minimum_returned ||
 	    hits < minimum_forwarded + minimum_returned || stats.pending_packets || stats.quarantined_packets) {
 		fprintf(stderr, "Hardware traffic did not satisfy the requested packet minima\n");
