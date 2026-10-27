@@ -215,6 +215,15 @@ struct Pending {
     packet: PacketBuffer,
     port: u16,
     kernel: bool,
+    prepared: Option<PreparedForward>,
+}
+
+#[derive(Clone, Copy)]
+struct PreparedForward {
+    handle: MwanNativeHandle,
+    view: packet::ParsedPacket,
+    direction: MwanNativeDirection,
+    return_port: u16,
 }
 
 struct Owner {
@@ -1719,26 +1728,36 @@ impl OwnerState {
             return Ok(());
         }
         self.pairs[slot].state = PairState::Draining;
-        let mut failure = None;
+        let mut failure = self.restore_pending().err();
         for index in 0..2 {
             let spec = self.pairs[slot].spec.directions[index];
             if self.pairs[slot].legs[index].delete_failed {
-                failure = Some(fault(
-                    libc::EIO,
-                    MWAN_NATIVE_OP_DESTROY,
-                    MWAN_NATIVE_OBJECT_ORIGIN,
-                    spec.origin_id,
-                    index as u32,
-                    "Consumed flow handle cannot be retried",
-                ));
+                if failure.is_none() {
+                    failure = Some(fault(
+                        libc::EIO,
+                        MWAN_NATIVE_OP_DESTROY,
+                        MWAN_NATIVE_OBJECT_ORIGIN,
+                        spec.origin_id,
+                        index as u32,
+                        "Consumed flow handle cannot be retried",
+                    ));
+                }
                 continue;
             }
             let Some(flow) = self.pairs[slot].legs[index].flow else {
                 continue;
             };
-            let controller = self.controller_port(
-                self.config.origins[spec.origin_id as usize].controller as usize,
-            )?;
+            let controller = match self
+                .controller_port(self.config.origins[spec.origin_id as usize].controller as usize)
+            {
+                Ok(controller) => controller,
+                Err(error) => {
+                    if failure.is_none() {
+                        failure = Some(error);
+                    }
+                    continue;
+                }
+            };
             let mut detail = dpdk::rte_flow_error::default();
             // SAFETY: This live handle belongs to this controller. The SDK
             // consumes it once; Rust clears it immediately after the call.
@@ -1747,14 +1766,16 @@ impl OwnerState {
             self.pairs[slot].legs[index].flow = None;
             if result != 0 {
                 self.pairs[slot].legs[index].delete_failed = true;
-                failure = Some(flow_fault(
-                    result,
-                    MWAN_NATIVE_OP_DESTROY,
-                    MWAN_NATIVE_OBJECT_ORIGIN,
-                    spec.origin_id,
-                    index as u32,
-                    &detail,
-                ));
+                if failure.is_none() {
+                    failure = Some(flow_fault(
+                        result,
+                        MWAN_NATIVE_OP_DESTROY,
+                        MWAN_NATIVE_OBJECT_ORIGIN,
+                        spec.origin_id,
+                        index as u32,
+                        &detail,
+                    ));
+                }
             }
         }
         if let Some(error) = failure {
@@ -1994,7 +2015,57 @@ impl OwnerState {
         self.stats.pending_packets = (self.pending.len() + self.received.len()) as u64;
     }
 
+    fn restore_pending(&mut self) -> NativeResult<()> {
+        for index in 0..self.pending.len() {
+            let Some(prepared) = self.pending[index].prepared else {
+                continue;
+            };
+            let installed = prepared.handle.instance == self.instance
+                && self
+                    .pairs
+                    .get(prepared.handle.slot as usize)
+                    .is_some_and(|pair| {
+                        pair.generation == prepared.handle.generation
+                            && pair.state == PairState::Installed
+                    });
+            if installed && !self.quiescing && !self.faulted {
+                continue;
+            }
+            let restored = match self.pending[index].packet.frame() {
+                Ok(frame) => packet::restore_forwarded(frame, &prepared.view, &prepared.direction)
+                    .map_err(|error| error.code),
+                Err(code) => Err(code),
+            };
+            if let Err(code) = restored {
+                let mut error = fault(
+                    code,
+                    MWAN_NATIVE_OP_PACKET,
+                    MWAN_NATIVE_OBJECT_PAIR,
+                    prepared.handle.slot,
+                    0,
+                    "Pending packet restoration failed; buffer and owner retained",
+                );
+                error.packet = packet::diagnostic(&prepared.view);
+                error.packet.decode_status = -code;
+                self.quiescing = true;
+                self.faulted = true;
+                if self.terminal_failure.is_none() {
+                    self.terminal_failure = Some(*error);
+                }
+                self.update_pending_stats();
+                return Err(error);
+            }
+            let pending = &mut self.pending[index];
+            pending.port = prepared.return_port;
+            pending.kernel = true;
+            pending.prepared = None;
+            self.stats.unsupported = self.stats.unsupported.wrapping_add(1);
+        }
+        Ok(())
+    }
+
     fn flush_pending(&mut self) -> NativeResult<()> {
+        self.restore_pending()?;
         while let Some(front) = self.pending.front() {
             let port = front.port;
             let mut pointers = [ptr::null_mut(); BURST];
@@ -2244,10 +2315,26 @@ impl OwnerState {
         if self.pending.len() >= self.config.mbuf_count as usize {
             return Err(self.quarantine_front(libc::ENOBUFS, diagnostic));
         }
+        let return_port = self.data_port(self.config.origins[origin].data as usize)?;
         if kernel {
-            output = self.data_port(self.config.origins[origin].data as usize)?;
+            output = return_port;
             self.stats.unsupported = self.stats.unsupported.wrapping_add(1);
         }
+        let prepared = if kernel {
+            None
+        } else {
+            Some(PreparedForward {
+                handle: MwanNativeHandle {
+                    instance: self.instance,
+                    generation: self.pairs[leg.slot].generation,
+                    slot: leg.slot as u32,
+                    reserved: 0,
+                },
+                view,
+                direction: spec,
+                return_port,
+            })
+        };
         let edited = match self
             .received
             .front_mut()
@@ -2292,6 +2379,7 @@ impl OwnerState {
             packet: received.packet,
             port: output,
             kernel,
+            prepared,
         });
         self.update_pending_stats();
         Ok(())
@@ -2409,10 +2497,10 @@ impl OwnerState {
     }
 
     fn close(&mut self, mode: u32) -> NativeResult<()> {
-        if let Some(error) = self.terminal_failure {
-            return Err(Box::new(error));
-        }
         if !self.eal_ready {
+            if let Some(error) = self.terminal_failure {
+                return Err(Box::new(error));
+            }
             if self.pool.is_some()
                 || !self.ports.is_empty()
                 || !self.inverses.is_empty()
@@ -2439,8 +2527,16 @@ impl OwnerState {
             return Ok(());
         }
         self.quiescing = true;
+        let mut failure = self.terminal_failure.map(Box::new);
         for slot in 0..self.pairs.len() {
-            self.delete_pair(slot)?;
+            if let Err(error) = self.delete_pair(slot)
+                && failure.is_none()
+            {
+                failure = Some(error);
+            }
+        }
+        if let Some(error) = failure {
+            return Err(error);
         }
         if self.pool.is_some() {
             self.drain()?;

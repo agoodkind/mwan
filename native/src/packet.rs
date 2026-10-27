@@ -48,6 +48,7 @@ pub struct ParsedPacket {
     pub(crate) ether_type: u16,
     pub(crate) source_mac: [u8; ETHERNET_ADDRESS_LENGTH],
     pub(crate) destination_mac: [u8; ETHERNET_ADDRESS_LENGTH],
+    ipv4_checksum: u16,
     frame_length: usize,
     ethernet_valid: bool,
 }
@@ -208,6 +209,7 @@ fn decode_ipv4(network: &[u8], view: &mut ParsedPacket) -> Result<(), i32> {
     view.noninitial_fragment = fragment & IPV4_FRAGMENT_OFFSET_MASK != 0;
     view.extended |= view.ip_header_length != IPV4_HEADER_LENGTH;
     view.ttl = *header.get(8).ok_or(libc::EBADMSG)?;
+    view.ipv4_checksum = read_u16(header, 10).ok_or(libc::EBADMSG)?;
     view.tuple.family = MWAN_NATIVE_FAMILY_IPV4 as u8;
     view.tuple.protocol = *header.get(9).ok_or(libc::EBADMSG)?;
     let source: [u8; 4] = read_array(header, 12).ok_or(libc::EBADMSG)?;
@@ -485,6 +487,59 @@ pub fn forward(
         .ttl
         .checked_sub(1)
         .ok_or_else(|| view.error(libc::EBADMSG))?;
+    set_hop_limit(frame, view, ttl)?;
+    write_bytes(frame, 0, &direction.output_destination_mac, view)?;
+    write_bytes(
+        frame,
+        ETHERNET_ADDRESS_LENGTH,
+        &direction.output_source_mac,
+        view,
+    )
+}
+
+pub fn restore_forwarded(
+    frame: &mut [u8],
+    view: &ParsedPacket,
+    direction: &MwanNativeDirection,
+) -> Result<(), DecodeError> {
+    validate_edit(frame, view, direction)?;
+    let forwarded_ttl = view
+        .ttl
+        .checked_sub(1)
+        .ok_or_else(|| view.error(libc::EBADMSG))?;
+    let ttl_field = match u32::from(view.tuple.family) {
+        MWAN_NATIVE_FAMILY_IPV4 => 8,
+        MWAN_NATIVE_FAMILY_IPV6 => 7,
+        _ => return Err(view.error(libc::EPROTONOSUPPORT)),
+    };
+    let ttl_offset = view
+        .network_offset
+        .checked_add(ttl_field)
+        .ok_or_else(|| view.error(libc::EBADMSG))?;
+    if frame.get(ttl_offset) != Some(&forwarded_ttl)
+        || frame.get(..ETHERNET_ADDRESS_LENGTH) != Some(direction.output_destination_mac.as_slice())
+        || read_range(frame, ETHERNET_ADDRESS_LENGTH, ETHERNET_ADDRESS_LENGTH)
+            != Some(direction.output_source_mac.as_slice())
+    {
+        return Err(view.error(libc::EBADMSG));
+    }
+    write_bytes(frame, ttl_offset, &[view.ttl], view)?;
+    if u32::from(view.tuple.family) == MWAN_NATIVE_FAMILY_IPV4 {
+        let checksum_offset = view
+            .network_offset
+            .checked_add(10)
+            .ok_or_else(|| view.error(libc::EBADMSG))?;
+        write_bytes(
+            frame,
+            checksum_offset,
+            &view.ipv4_checksum.to_be_bytes(),
+            view,
+        )?;
+    }
+    restore(frame, view, direction)
+}
+
+fn set_hop_limit(frame: &mut [u8], view: &ParsedPacket, ttl: u8) -> Result<(), DecodeError> {
     match u32::from(view.tuple.family) {
         MWAN_NATIVE_FAMILY_IPV4 => {
             let ttl_offset = view
@@ -514,13 +569,7 @@ pub fn forward(
         }
         _ => return Err(view.error(libc::EPROTONOSUPPORT)),
     }
-    write_bytes(frame, 0, &direction.output_destination_mac, view)?;
-    write_bytes(
-        frame,
-        ETHERNET_ADDRESS_LENGTH,
-        &direction.output_source_mac,
-        view,
-    )
+    Ok(())
 }
 
 fn validate_edit(
