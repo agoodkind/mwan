@@ -98,6 +98,38 @@ a missing delegation disables that provider's IPv6 path.
 The [packet example](mwan-example.md) shows translation and provider
 selection with illustrative addresses.
 
+## Native offload
+
+The optional `nativeoffload` module observes Linux connections and Ethernet
+packets after the WAN role applies its policy. Go reads each connection's
+existing provider mark and NAT44 mapping. Go calculates IPv6 addresses from
+applied NPTv6 records. Go reads the output interface, MAC addresses and MTU
+from fresh kernel route and neighbor queries.
+
+Rust installs the eligible hardware rules and processes their packet
+batches. It checks packet headers, checksums, traffic class and IPv6 flow
+label before forwarding. It restores exceptional packets with a verified
+inverse for Linux forwarding. Rust retains the packet and stops admission
+when it cannot verify an inverse. Admission leaves unsupported ingress
+origins and mappings in Linux.
+
+Successive valid hardware counters establish activity. Counter increases
+refresh the Linux connection timeout. Idle rules expire, and a full hardware
+table can replace its least recently active rule. Missing, decreasing or
+invalid counters remove a rule without classifying the connection as idle.
+
+Forwarding writers remove hardware rules before changing policy, addresses,
+links or routes. After the complete reconciliation publishes family
+readiness, Go checks each suspended connection against current Linux
+identity, policy, route and neighbor state. Rust can resume the same
+generation only when its cookie, mapping, MACs, MTU and packet guards remain
+identical. A new hardware counter object requires a fresh counter baseline.
+
+Removed rules retain their inverse mappings for late packets. Hardware slots
+can accept new generations while a separate bounded store retains those
+mappings. Capacity exhaustion leaves new connections in Linux. A timer does
+not clear the retained mappings or establish device completion.
+
 ## BGP and gateway failover
 
 The `mwan agent` process runs Border Gateway Protocol (BGP) sessions and

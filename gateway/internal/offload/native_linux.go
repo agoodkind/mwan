@@ -148,6 +148,27 @@ type NativePairSpec struct {
 	Directions          [2]NativeDirection
 }
 
+// NativePacketGuard requires the observed route selectors before forwarding.
+type NativePacketGuard struct {
+	FlowLabel    uint32
+	TrafficClass uint8
+}
+
+// NativeEvidenceGuard checks Go policy and namespace generations between batches.
+// Check must read memory without network operations or calls to NativeRuntime.
+type NativeEvidenceGuard struct {
+	Check func() error
+}
+
+// NativeRetirementStats separates hardware capacity from retained inverse mappings.
+type NativeRetirementStats struct {
+	ActivePairCapacity   uint32
+	RetainedPairCapacity uint32
+	RetainedPairs        uint32
+	DrainingPairs        uint32
+	RetainedDirections   uint64
+}
+
 // NativePairHandle is valid only in the process and slot generation that created it.
 type NativePairHandle struct {
 	instance   uint64
@@ -283,20 +304,26 @@ const (
 	nativeRemove
 	nativeDisable
 	nativeShutdown
+	nativeRetirement
+	nativeResume
 )
 
 type nativeRequest struct {
 	operation nativeOperation
 	config    C.struct_mwan_native_config
 	pair      C.struct_mwan_native_pair_spec
+	guards    [2]C.struct_mwan_native_packet_guard
+	observed  bool
+	evidence  *NativeEvidenceGuard
+	deadline  time.Time
 	handle    C.struct_mwan_native_handle
-	flow      conntrack.Flow
 	reply     chan nativeReply
 }
 
 type nativeReply struct {
 	pair        NativePairResult
 	stats       NativePairStats
+	retirement  NativeRetirementStats
 	err         error
 	ownerExists bool
 }
@@ -316,6 +343,8 @@ type NativeRuntime struct {
 	stats         NativeWorkerStats
 	pollError     error
 	terminalError error
+	evidence      map[*NativeEvidenceGuard]map[NativePairHandle]struct{}
+	pairEvidence  map[NativePairHandle]*NativeEvidenceGuard
 }
 
 // ReadNativeBuild reads the linked library's version and verifies its ABI sizes.
@@ -374,6 +403,8 @@ func NewNativeRuntime(config NativeConfig, log *slog.Logger) (*NativeRuntime, er
 	worker.pollBudget = config.PollBudget
 	worker.idleWait = config.IdleWait
 	worker.updater, worker.updateTimeout = updater, config.ConntrackUpdateTimeout
+	worker.evidence = make(map[*NativeEvidenceGuard]map[NativePairHandle]struct{})
+	worker.pairEvidence = make(map[NativePairHandle]*NativeEvidenceGuard)
 	ready := make(chan nativeReply, 1)
 	go func() {
 		defer func() {
@@ -424,6 +455,27 @@ func (worker *NativeRuntime) Enable(ctx context.Context, config NativeConfig) er
 
 // Install consumes an existing kernel identity; provider selection stays with the caller.
 func (worker *NativeRuntime) Install(ctx context.Context, flow conntrack.Flow, spec NativePairSpec) (NativePairResult, error) {
+	return worker.install(ctx, flow, spec, nil, nil, nil)
+}
+
+func (worker *NativeRuntime) InstallObserved(ctx context.Context, flow conntrack.Flow, spec NativePairSpec, guards [2]NativePacketGuard) (NativePairResult, error) {
+	return worker.install(ctx, flow, spec, &guards, nil, nil)
+}
+
+func (worker *NativeRuntime) InstallObservedWithEvidence(ctx context.Context, flow conntrack.Flow, spec NativePairSpec, guards [2]NativePacketGuard, evidence *NativeEvidenceGuard) (NativePairResult, error) {
+	return worker.install(ctx, flow, spec, &guards, nil, evidence)
+}
+
+// ResumeObserved preserves the suspended generation and its existing inverse.
+func (worker *NativeRuntime) ResumeObserved(ctx context.Context, flow conntrack.Flow, handle NativePairHandle, spec NativePairSpec, guards [2]NativePacketGuard) (NativePairResult, error) {
+	return worker.install(ctx, flow, spec, &guards, &handle, nil)
+}
+
+func (worker *NativeRuntime) ResumeObservedWithEvidence(ctx context.Context, flow conntrack.Flow, handle NativePairHandle, spec NativePairSpec, guards [2]NativePacketGuard, evidence *NativeEvidenceGuard) (NativePairResult, error) {
+	return worker.install(ctx, flow, spec, &guards, &handle, evidence)
+}
+
+func (worker *NativeRuntime) install(ctx context.Context, flow conntrack.Flow, spec NativePairSpec, guards *[2]NativePacketGuard, resume *NativePairHandle, evidence *NativeEvidenceGuard) (NativePairResult, error) {
 	if flow.ID == 0 || flow.Zone != 0 {
 		return NativePairResult{}, errors.New("native admission requires an existing zone-zero connection")
 	}
@@ -432,16 +484,57 @@ func (worker *NativeRuntime) Install(ctx context.Context, flow conntrack.Flow, s
 		return NativePairResult{}, err
 	}
 	for i, direction := range spec.Directions {
-		if spec.RequestedDirections&(1<<i) != 0 &&
+		if spec.RequestedDirections&[2]uint32{1, 2}[i] != 0 &&
 			(direction.Original.Proto.Protocol != flow.TupleOrig.Proto.Protocol || direction.Translated.Proto.Protocol != flow.TupleOrig.Proto.Protocol) {
 			return NativePairResult{}, errors.New("native direction protocol does not match the connection")
 		}
 	}
 	var request nativeRequest
 	request.operation, request.pair = nativeInstall, encoded
-	request.flow = conntrack.Flow{ID: flow.ID, Zone: flow.Zone, TupleOrig: flow.TupleOrig, TupleReply: flow.TupleReply}
+	request.evidence = evidence
+	if resume != nil {
+		request.operation = nativeResume
+		request.handle = encodeNativeHandle(*resume)
+	}
+	request.deadline, _ = ctx.Deadline()
+	if err := worker.prepareInstall(ctx, flow, guards != nil); err != nil {
+		return NativePairResult{}, err
+	}
+	if guards != nil {
+		request.observed = true
+		for index, guard := range *guards {
+			request.guards[index].flow_label = C.uint32_t(guard.FlowLabel)
+			request.guards[index].traffic_class = C.uint8_t(guard.TrafficClass)
+		}
+	}
 	result := worker.call(ctx, request)
 	return result.pair, result.err
+}
+
+func (worker *NativeRuntime) prepareInstall(ctx context.Context, flow conntrack.Flow, observed bool) error {
+	lookupContext, cancel := context.WithTimeout(ctx, worker.updateTimeout)
+	defer cancel()
+	if observed {
+		current, err := FreshConntrackFlow(lookupContext, flow)
+		if err != nil {
+			return fmt.Errorf("verify observed connection before native install: %w", err)
+		}
+		if current.Mark != flow.Mark || current.Status != flow.Status ||
+			current.ProtoInfo.TCP != nil && flow.ProtoInfo.TCP != nil && current.ProtoInfo.TCP.State != flow.ProtoInfo.TCP.State {
+			return fmt.Errorf("observed connection policy changed: %w", syscall.ESTALE)
+		}
+	}
+	if flow.TupleOrig.Proto.Protocol == syscall.IPPROTO_TCP {
+		if err := worker.updater.SetLiberal(lookupContext, flow); err != nil {
+			return fmt.Errorf("prepare native TCP tracking: %w", err)
+		}
+	}
+	return nil
+}
+
+func (worker *NativeRuntime) Retirement(ctx context.Context) (NativeRetirementStats, error) {
+	result := worker.call(ctx, nativeRequest{operation: nativeRetirement})
+	return result.retirement, result.err
 }
 
 // Query reads hardware counters without treating unavailable counters as zero.
@@ -565,19 +658,13 @@ func (worker *NativeRuntime) run(config C.struct_mwan_native_config, ready chan<
 			select {
 			case request = <-worker.requests:
 			default:
-				var stats C.struct_mwan_native_worker_stats
-				rc = C.mwan_native_poll(owner, C.uint32_t(worker.pollBudget), &stats, &detail)
-				worker.mu.Lock()
-				previous := worker.stats.Received
-				worker.stats = decodeNativeWorkerStats(stats)
-				worker.pollError = nativeCallError(rc, detail)
-				worker.mu.Unlock()
-				if rc != 0 {
-					worker.log.Error("native packet worker stopped admitting packets", "err", nativeCallError(rc, detail))
+				received, err := worker.poll(owner)
+				if err != nil {
+					worker.log.Error("native packet worker stopped admitting packets", "err", err)
 					active = false
 					continue
 				}
-				if uint64(stats.received) == previous && worker.idleWait > 0 {
+				if !received && worker.idleWait > 0 {
 					timer := time.NewTimer(worker.idleWait)
 					select {
 					case request = <-worker.requests:
@@ -594,6 +681,12 @@ func (worker *NativeRuntime) run(config C.struct_mwan_native_config, ready chan<
 		request.reply <- response
 		if shutdown {
 			return
+		}
+		if active {
+			if _, err := worker.poll(owner); err != nil {
+				worker.log.Error("native packet worker stopped admitting packets", "err", err)
+				active = false
+			}
 		}
 	}
 }
@@ -614,16 +707,31 @@ func (worker *NativeRuntime) execute(owner **C.struct_mwan_native, request nativ
 		if rc == 0 {
 			*active = true
 		}
-	case nativeInstall:
-		if request.flow.TupleOrig.Proto.Protocol == syscall.IPPROTO_TCP {
-			// Accepted operations use the configured socket deadline, independent of caller cancellation.
-			if err := worker.updater.SetLiberal(context.Background(), request.flow); err != nil {
-				result.err = fmt.Errorf("prepare native TCP tracking: %w", err)
-				return result, false
-			}
+	case nativeInstall, nativeResume:
+		if !request.deadline.IsZero() && time.Now().After(request.deadline) {
+			result.err = context.DeadlineExceeded
+			return result, false
 		}
-		rc = C.mwan_native_pair_install(*owner, &request.pair, &pair, &detail)
+		if err := checkNativeEvidence(request.evidence); err != nil {
+			result.err = err
+			return result, false
+		}
+		if request.operation == nativeResume {
+			rc = C.mwan_native_pair_resume_observed(*owner, request.handle, &request.pair, &request.guards[0], &pair, &detail)
+		} else if request.observed {
+			rc = C.mwan_native_pair_install_observed(*owner, &request.pair, &request.guards[0], &pair, &detail)
+		} else {
+			rc = C.mwan_native_pair_install(*owner, &request.pair, &pair, &detail)
+		}
 		result.pair = decodeNativePairResult(pair)
+	case nativeRetirement:
+		var retirement C.struct_mwan_native_retirement_stats
+		rc = C.mwan_native_retirement_query(*owner, &retirement, &detail)
+		result.retirement = NativeRetirementStats{
+			ActivePairCapacity: uint32(retirement.active_pair_capacity), RetainedPairCapacity: uint32(retirement.retained_pair_capacity),
+			RetainedPairs: uint32(retirement.retained_pairs), DrainingPairs: uint32(retirement.draining_pairs),
+			RetainedDirections: uint64(retirement.retained_directions),
+		}
 	case nativeQuery:
 		rc = C.mwan_native_pair_query(*owner, request.handle, &stats, &detail)
 		result.stats = decodeNativePairStats(stats)
@@ -639,6 +747,28 @@ func (worker *NativeRuntime) execute(owner **C.struct_mwan_native, request nativ
 		rc = C.mwan_native_close(owner, C.MWAN_NATIVE_FINAL_SHUTDOWN, &detail)
 	}
 	result.err = nativeCallError(rc, detail)
+	if (request.operation == nativeInstall || request.operation == nativeResume) && result.pair.InstalledDirections != 0 && request.evidence != nil {
+		worker.registerEvidence(result.pair.Handle, request.evidence)
+		if err := checkNativeEvidence(request.evidence); err != nil {
+			installed := result.pair
+			var removed C.struct_mwan_native_pair_result
+			rc = C.mwan_native_pair_remove(*owner, encodeNativeHandle(result.pair.Handle), &removed, &detail)
+			if decoded := decodeNativePairResult(removed); decoded.Handle == installed.Handle {
+				result.pair = decoded
+			}
+			result.err = errors.Join(result.err, err, nativeCallError(rc, detail))
+			if rc == 0 {
+				worker.unregisterEvidence(installed.Handle)
+			}
+		}
+	}
+	if request.operation == nativeRemove && result.err == nil {
+		worker.unregisterEvidence(result.pair.Handle)
+	}
+	if (request.operation == nativeDisable || request.operation == nativeShutdown) && result.err == nil {
+		clear(worker.evidence)
+		clear(worker.pairEvidence)
+	}
 	result.ownerExists = *owner != nil
 	if request.operation == nativeShutdown {
 		worker.shuttingDown = true
@@ -648,10 +778,14 @@ func (worker *NativeRuntime) execute(owner **C.struct_mwan_native, request nativ
 		worker.closeUpdater()
 		result.err = worker.shutdownError()
 	}
-	if result.err != nil {
+	if result.err != nil && (!request.observed || !nativeAdmissionFallback(result.err)) {
 		worker.log.Warn("native operation failed", "operation", request.operation, "err", result.err)
 	}
 	return result, request.operation == nativeShutdown && rc == 0
+}
+
+func nativeAdmissionFallback(err error) bool {
+	return errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.ENOTSUP) || errors.Is(err, syscall.EEXIST) || errors.Is(err, syscall.EINVAL)
 }
 
 func nativeCallError(rc C.int, detail C.struct_mwan_native_error) error {

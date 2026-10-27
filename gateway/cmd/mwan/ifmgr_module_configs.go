@@ -199,6 +199,14 @@ func addWANRoleConfigs(
 	if want["firewall"] {
 		moduleConfigs["firewall"] = ifmgrCfg.Firewall
 	}
+	if want["nativeoffload"] {
+		settings, err := buildNativeOffloadConfig(shared, ifmgrCfg.Modules.NativeOffload)
+		if err != nil {
+			return err
+		}
+		settings.Firewall = ifmgrCfg.Firewall
+		moduleConfigs["nativeoffload"] = settings
+	}
 	return nil
 }
 

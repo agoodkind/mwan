@@ -35,6 +35,7 @@ func TestLoadNativeOffloadProcessSettings(t *testing.T) {
 		ObservationMaxAge: 500 * time.Millisecond, RequestTimeout: 500 * time.Millisecond,
 		ResyncInterval: 30 * time.Second, CounterInterval: time.Second,
 		ResyncTimeout: 3 * time.Second, ShutdownTimeout: 10 * time.Second,
+		IdleTimeout: 30 * time.Second, IdleWait: 10 * time.Microsecond,
 	}
 	if settings != want {
 		t.Fatalf("resolved settings = %+v, want %+v", settings, want)
@@ -65,6 +66,8 @@ func TestLoadNativeOffloadRejectsInvalidSettings(t *testing.T) {
 		{"duration-invalid", "", `counter_interval = "soon"`},
 		{"resync-zero", "", `resync_interval = "0s"`},
 		{"observation-negative", "", `observation_max_age = "-1s"`},
+		{"idle-too-short", "", `idle_timeout = "1s"`},
+		{"idle-wait-negative", "", `idle_wait = "-1us"`},
 	} {
 		t.Run(check.name, func(t *testing.T) {
 			t.Parallel()

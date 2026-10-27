@@ -402,6 +402,13 @@ func (s *Store) Snapshot() Snapshot {
 	return snap
 }
 
+// ForwardingGenerations avoids cloning policy records for an evidence check.
+func (s *Store) ForwardingGenerations() (routing, npt uint64) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.routingGeneration, s.nptPolicyGeneration
+}
+
 func renderIntendedRulesets(owners map[string]OwnedRuleset) string {
 	if len(owners) == 0 {
 		return ""

@@ -92,6 +92,7 @@ var roleModules = map[string][]string{
 		// are installed before any mark is set. Self-disables when the network
 		// configuration lists no providers.
 		"steering",
+		"nativeoffload",
 	},
 }
 

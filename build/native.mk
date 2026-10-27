@@ -18,7 +18,7 @@ MWAN_NATIVE_PKG_PATH := $(MWAN_NATIVE_DPDK_PREFIX)/lib/pkgconfig:$(MWAN_NATIVE_D
 MWAN_NATIVE_CARGO_ENV = PKG_CONFIG_PATH="$(MWAN_NATIVE_PKG_PATH)" MWAN_DPDK_SOURCE_SHA256="$(MWAN_NATIVE_DPDK_SHA256)" MWAN_DPDK_PATCH_SHA256="$(MWAN_NATIVE_PATCH_SHA256)" CARGO_TARGET_DIR="$(MWAN_NATIVE_CARGO_TARGET)" RUSTUP_TOOLCHAIN="$(MWAN_NATIVE_RUST_TOOLCHAIN)"
 MWAN_NATIVE_FUZZ_RUNS ?= 100000
 
-.PHONY: go-mk-cgo-dep-native native-sdk-required native-library native-hardware-driver native-rust-check native-rust-sdk-check native-rust-test-toolchain native-rust-miri native-rust-fuzz native-sdk-check
+.PHONY: go-mk-cgo-dep-native native-sdk-required native-library native-hardware-driver native-rust-check native-rust-sdk-check native-rust-test-toolchain native-rust-miri native-rust-fuzz native-sdk-check native-admission-kernel-check
 go-mk-cgo-dep-native: native-library
 
 native-sdk-required:
@@ -64,6 +64,9 @@ native-sdk-check: native-sdk-required
 	$(MAKE) native-rust-sdk-check
 	$(MAKE) native-hardware-driver
 	$(MAKE) MWAN_NATIVE=1 build test
+
+native-admission-kernel-check: native-library go-mk-cgo-dep-libyang go-mk-cgo-dep-sysrepo
+	PKG_CONFIG_PATH="$(GO_MK_CGO_PREFIX)/lib/pkgconfig:$(MWAN_NATIVE_PKG_PATH)" go test -tags 'nativeoffload netns' ./internal/offload ./internal/ifmgr/modules/nativeoffload -run 'Test(Conntrack|Forwarding|NativeSingleDirection|NativePacketObservation|NativeAdmission)' -count=1 -v
 
 native-hardware-driver: native-library
 	PKG_CONFIG_PATH=$(MWAN_NATIVE_PKG_PATH) meson configure $(MWAN_NATIVE_BUILD) -Dhardware_test_driver=true

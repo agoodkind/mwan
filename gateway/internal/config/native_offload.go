@@ -27,6 +27,8 @@ type IfMgrNativeOffloadSection struct {
 	RequestTimeout      string  `toml:"request_timeout"`
 	ResyncTimeout       string  `toml:"resync_timeout"`
 	ShutdownTimeout     string  `toml:"shutdown_timeout"`
+	IdleTimeout         string  `toml:"idle_timeout"`
+	IdleWait            string  `toml:"idle_wait"`
 }
 
 // NativeOffloadProcessSettings contains checked values shared by the loader and module.
@@ -47,6 +49,8 @@ type NativeOffloadProcessSettings struct {
 	RequestTimeout      time.Duration
 	ResyncTimeout       time.Duration
 	ShutdownTimeout     time.Duration
+	IdleTimeout         time.Duration
+	IdleWait            time.Duration
 }
 
 const (
@@ -66,6 +70,8 @@ const (
 	nativeDefaultCounterInterval            = time.Second
 	nativeDefaultResyncTimeout              = 3 * time.Second
 	nativeDefaultShutdownTimeout            = 10 * time.Second
+	nativeDefaultIdleTimeout                = 30 * time.Second
+	nativeDefaultIdleWait                   = 10 * time.Microsecond
 )
 
 // Resolve rejects enabled settings before the command can change kernel state.
@@ -142,6 +148,8 @@ func (section *IfMgrNativeOffloadSection) resolveDurations(settings *NativeOfflo
 		{"request_timeout", section.RequestTimeout, nativeDefaultRequestTimeout, &settings.RequestTimeout},
 		{"resync_timeout", section.ResyncTimeout, nativeDefaultResyncTimeout, &settings.ResyncTimeout},
 		{"shutdown_timeout", section.ShutdownTimeout, nativeDefaultShutdownTimeout, &settings.ShutdownTimeout},
+		{"idle_timeout", section.IdleTimeout, nativeDefaultIdleTimeout, &settings.IdleTimeout},
+		{"idle_wait", section.IdleWait, nativeDefaultIdleWait, &settings.IdleWait},
 	} {
 		value := field.fallback
 		if field.input != "" {
@@ -156,6 +164,9 @@ func (section *IfMgrNativeOffloadSection) resolveDurations(settings *NativeOfflo
 			return fmt.Errorf("nativeoffload %s must be positive", field.name)
 		}
 		*field.output = value
+	}
+	if settings.IdleTimeout <= settings.CounterInterval {
+		return fmt.Errorf("nativeoffload idle_timeout must exceed counter_interval")
 	}
 	return nil
 }

@@ -5,6 +5,7 @@ package offload_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agoodkind/netlink"
 	"github.com/ti-mo/conntrack"
 	"golang.org/x/sys/unix"
 
@@ -22,11 +24,12 @@ import (
 )
 
 const (
-	nativeTestChild       = "MWAN_NATIVE_BINDING_TEST_CHILD"
-	nativeConfigOperation = 1
-	nativePortOperation   = 3
-	nativeCreateOperation = 6
-	nativeCPUSetSize      = 1024
+	nativeTestChild           = "MWAN_NATIVE_BINDING_TEST_CHILD"
+	nativeConfigOperation     = 1
+	nativePortOperation       = 3
+	nativeCreateOperation     = 6
+	nativeCPUSetSize          = 1024
+	nativeEvidenceBufferBytes = 65536
 )
 
 func TestNativeSingleDirection(t *testing.T) {
@@ -127,6 +130,7 @@ func TestNativeSingleDirection(t *testing.T) {
 	for _, addresses := range [][2]string{{"192.0.2.1", "198.51.100.2"}, {"2001:db8:1::1", "2001:db8:2::2"}} {
 		checkNativeTCPAdmission(t, owner, connection, addresses)
 	}
+	checkNativeEvidenceAdmission(t, owner, connection)
 	if err := owner.Close(t.Context()); err != nil {
 		t.Fatalf("final native cleanup failed: %v", err)
 	}
@@ -140,6 +144,53 @@ func TestNativeSingleDirection(t *testing.T) {
 		t.Fatalf("closed native runtime accepted admission: %v", err)
 	}
 	requireSameTrackedFlow(t, flow, readTrackedFlow(t, connection, flow), false)
+}
+
+func checkNativeEvidenceAdmission(t *testing.T, owner *offload.NativeRuntime, connection *conntrack.Conn) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), conntrackTestTimeout)
+	defer cancel()
+	source, err := offload.NewForwardingEvents(ctx, nativeEvidenceBufferBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := source.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	expected := source.Generation()
+	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "native-evidence"}}); err != nil {
+		t.Fatal(err)
+	}
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for source.Generation() == expected {
+		select {
+		case failure := <-source.Errors:
+			t.Fatal(failure)
+		case <-ctx.Done():
+			t.Fatal("kernel mutation did not invalidate native forwarding evidence")
+		case <-ticker.C:
+		}
+	}
+	flow := createTrackedFlow(t, connection, [2]string{"192.0.2.21", "198.51.100.22"}, unix.IPPROTO_TCP, 0)
+	spec := offload.NativePairSpec{RequestedDirections: 1}
+	spec.Directions[0] = offload.NativeDirection{Original: flow.TupleOrig, Translated: flow.TupleOrig}
+	evidence := &offload.NativeEvidenceGuard{Check: func() error {
+		if failure := source.Err(); failure != nil {
+			return failure
+		}
+		if source.Generation() != expected {
+			return fmt.Errorf("forwarding namespace generation changed: %w", unix.ESTALE)
+		}
+		return nil
+	}}
+	_, err = owner.InstallObservedWithEvidence(ctx, flow, spec, [2]offload.NativePacketGuard{}, evidence)
+	var nativeError *offload.NativeError
+	if !errors.Is(err, unix.ESTALE) || errors.As(err, &nativeError) {
+		t.Fatalf("stale kernel evidence did not reject before native creation: %v", err)
+	}
 }
 
 func checkNativeTCPAdmission(t *testing.T, owner *offload.NativeRuntime, connection *conntrack.Conn, addresses [2]string) {
