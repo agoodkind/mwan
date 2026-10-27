@@ -7,7 +7,8 @@
 # This Makefile defines the protobuf codegen, the YANG model gates, and the cgo
 # dependency recipes for the publishing binding. It also defines the docker
 # lane that runs the linux pipeline for amd64 and arm64, the wanconfig stack
-# packaging, and a govulncheck target that fails on every reachable advisory.
+# packaging, and a govulncheck-strict target that fails when the scanner
+# reports a vulnerability.
 #
 # Shipped binaries come only from the CI release. The one cross build here is
 # the packaging tool, which runs inside a container and never ships.
@@ -73,6 +74,8 @@ export GOFLAGS += -tags=nativeoffload
 MWAN_NATIVE_RELEASE_TAG := ,nativeoffload
 endif
 
+GOVULNCHECK_INSTALL := golang.org/x/vuln/cmd/govulncheck@v1.9.0
+
 include bootstrap.mk
 include ../build/native.mk
 
@@ -88,7 +91,7 @@ export LD_LIBRARY_PATH := $(GO_MK_CGO_PREFIX)/lib$(if $(strip $(LD_LIBRARY_PATH)
 release: export GOFLAGS := -tags=osusergo,netgo$(MWAN_NATIVE_RELEASE_TAG)$(if $(strip $(filter-out -tags=nativeoffload,$(GOFLAGS))), $(filter-out -tags=nativeoffload,$(GOFLAGS)))
 release: export CGO_LDFLAGS := -static
 
-.DEFAULT_GOAL := check
+.DEFAULT_GOAL := help
 
 # ---------------------------------------------------------------------------
 # Protobuf
@@ -304,31 +307,20 @@ WANCONFIG_BUILDER_IMAGE := mwan-wanconfig-builder:$(WANCONFIG_DOCKER_ARCH)
 REPORTING_RRDTOOL_VERSION := 1.11.0
 REPORTING_RRDTOOL_SHA256 := 24c345b5c077c1b2b2fcbc1a364f1da051650fb6743ad5213096adc04c862ed4
 
-# Module sources are the same for every architecture, and both architectures
-# share one module cache volume. Build caches, lint caches, and cgo archives
-# differ by architecture, and each architecture has its own volumes for them.
-# The host's gateway/.make contains a darwin engine, and the container mounts
-# its own .make volume over it.
-#
-# The container runs as root. On a Linux host a non-root user owns the
-# mounted checkout, and git refuses a repository another user owns. Go then
-# fails the build when it stamps version-control data. The safe.directory
-# entry lets git read /src.
-WANCONFIG_DOCKER_RUN := docker run --rm --platform linux/$(WANCONFIG_DOCKER_ARCH) \
-	-v $(REPO_ROOT):/src -w /src/gateway \
-	-v mwan-wanconfig-gomod:/go/pkg/mod \
-	-v mwan-wanconfig-cache-$(WANCONFIG_DOCKER_ARCH):/root/.cache \
-	-v mwan-wanconfig-gomk-$(WANCONFIG_DOCKER_ARCH):/src/gateway/.make \
-	-e GOWORK=off \
-	-e GIT_CONFIG_COUNT=1 \
-	-e GIT_CONFIG_KEY_0=safe.directory \
-	-e GIT_CONFIG_VALUE_0=/src \
-	$(WANCONFIG_BUILDER_IMAGE)
+# Each invocation owns a Compose project and temporary cache volumes. The
+# runner removes them on exit without removing images or host artifacts.
+MWAN_NATIVE_DPDK_CONTAINER_PREFIX ?= $(MWAN_NATIVE_DPDK_PREFIX)
+WANCONFIG_DOCKER_RUN := env \
+	WANCONFIG_DOCKER_SOURCE="$(REPO_ROOT)" \
+	WANCONFIG_DOCKER_ARCH="$(WANCONFIG_DOCKER_ARCH)" \
+	WANCONFIG_BUILDER_IMAGE="$(WANCONFIG_BUILDER_IMAGE)" \
+	MWAN_NATIVE="$(MWAN_NATIVE)" \
+	MWAN_NATIVE_DPDK_PREFIX="$(MWAN_NATIVE_DPDK_PREFIX)" \
+	MWAN_NATIVE_DPDK_CONTAINER_PREFIX="$(MWAN_NATIVE_DPDK_CONTAINER_PREFIX)" \
+	bash tools/wanconfigbuilder/run.sh
 
-# The image is built here and published nowhere, so `docker run` cannot pull
-# it: every target that runs the image must build it first or fail on a clean
-# checkout. Layer cache makes a repeat build a few seconds, and a changed
-# Dockerfile still rebuilds.
+# Every target builds the local image before Compose starts its container.
+# Docker preserves its image layers between runs.
 .PHONY: wanconfig-builder-image
 wanconfig-builder-image:
 	docker build --platform linux/$(WANCONFIG_DOCKER_ARCH) \
@@ -336,6 +328,7 @@ wanconfig-builder-image:
 		--build-arg RRDTOOL_SHA256=$(REPORTING_RRDTOOL_SHA256) \
 		--build-arg LIBYANG_VERSION=$(WANCONFIG_LIBYANG_VERSION) \
 		--build-arg SYSREPO_VERSION=$(WANCONFIG_SYSREPO_VERSION) \
+		--build-arg RUST_VERSION=$(MWAN_NATIVE_RUST_TOOLCHAIN) \
 		--build-arg "LIBYANG_CMAKE_FLAGS=$(WANCONFIG_LIBYANG_CMAKE_FLAGS)" \
 		--build-arg "SYSREPO_CMAKE_FLAGS=$(WANCONFIG_SYSREPO_CMAKE_FLAGS)" \
 		-t $(WANCONFIG_BUILDER_IMAGE) tools/wanconfigbuilder
@@ -372,16 +365,7 @@ test-provider-drift: wanconfig-builder-image
 # These tests require the privileged builder with nftables and the cgo schema libs.
 .PHONY: test-firewall
 test-firewall: wanconfig-builder-image
-	docker run --rm --privileged --platform linux/$(WANCONFIG_DOCKER_ARCH) \
-		-v $(REPO_ROOT):/src -w /src/gateway \
-		-v mwan-wanconfig-gomod:/go/pkg/mod \
-		-v mwan-wanconfig-cache-$(WANCONFIG_DOCKER_ARCH):/root/.cache \
-		-v mwan-wanconfig-gomk-$(WANCONFIG_DOCKER_ARCH):/src/gateway/.make \
-		-e GOWORK=off \
-		-e GIT_CONFIG_COUNT=1 \
-		-e GIT_CONFIG_KEY_0=safe.directory \
-		-e GIT_CONFIG_VALUE_0=/src \
-		$(WANCONFIG_BUILDER_IMAGE) \
+	WANCONFIG_DOCKER_PRIVILEGED=true $(WANCONFIG_DOCKER_RUN) \
 		go test -v -count=1 -tags 'netns firewallnetns' ./cmd/mwan \
 		-run '^(TestDeployGateEgressNetNS|TestCheckFirewallIsolatedKernel|TestCheckFirewallIsolatedKernelLXC|TestCheckFirewallForcedDSCPReadback|TestWANStartupProtectsBeforeConfigValidation|TestWANFirewallRuntimePackets|TestOwnedStaticDaemonRuntime|TestOwnedMappedDaemonRuntime|TestSelectionExclusionDaemonRuntime|TestSelectionExcludedReadinessDaemonRuntime|TestDistributionObservationDaemonRuntime|TestTunnelProviderDaemonRuntime|TestTunnelForcedDSCPDaemonRuntime|TestTunnelRuntimeIPv4SelectionRejectsAMissingAssignment|TestBGPDirectDaemonRuntime|TestBGPDirectIBGPDaemonRuntime|TestBGPBackupDaemonRuntime|TestBGPBackupSetsDaemonRuntime|TestBGPTunnelDaemonRuntime|TestBGPSpecificPrefixDaemonRuntime|TestBGPTunnelVPSPeerDaemonRuntime|TestBGPTunnelMultihopDaemonRuntime|TestBGPRepeatedASNDaemonRuntime|TestBGPTableKeepsInternalReturnRoutesDaemonRuntime|TestCombinedPathsDaemonRuntime|TestPathRoutingFailureDaemonRuntime|TestPathHealthDisabledDaemonRuntime)$$'
 
@@ -410,16 +394,16 @@ test-docker-all:
 	done
 
 # docker-make runs any make targets inside the builder container. The
-# container builds the cgo dependencies for its own architecture and keeps
-# them in its .make volume.
+# container builds the cgo dependencies for its own architecture in a temporary
+# .make volume. Set MWAN_NATIVE_DPDK_PREFIX to mount a prepared SDK read-only.
 #
-#   make docker-make TARGETS="check test"
+#   make docker-make TARGETS="build-check test check-yang"
 #   make docker-make TARGETS=build-check
 #
 # The lint gates check the publishing binding only when the lint platform
 # matches the container architecture. go-makefile disables cgo for any other
 # platform. CI lints linux/amd64. The Mac container lints linux/arm64.
-DOCKER_MAKE_TARGETS ?= check test
+DOCKER_MAKE_TARGETS ?= build-check test check-yang
 TARGETS             ?= $(DOCKER_MAKE_TARGETS)
 
 .PHONY: docker-make
@@ -432,30 +416,25 @@ docker-make: wanconfig-builder-image
 # host the container runs under emulation. It lints linux/amd64, the platform
 # CI lints.
 #
-#   make docker-make-amd64 TARGETS="check test"
+#   make docker-make-amd64 TARGETS="build-check test check-yang"
 .PHONY: docker-make-amd64
 docker-make-amd64:
 	@$(MAKE) docker-make WANCONFIG_DOCKER_ARCH=amd64 TARGETS="$(TARGETS)"
 
-# darwin cannot build the cgo sysrepo binding. A host run compiles out every
-# package that uses the binding and passes without testing them. On darwin,
-# the entry points below run inside the builder container instead. go.mk
-# defines `check: lint`, so `lint` runs in the container first, and the check
-# recipe then runs the YANG gates there. These recipes replace the go.mk
-# recipes on darwin only. Make prints an "overriding commands" warning for
-# each.
-DARWIN_DOCKER_TARGETS := build build-check lint test vet
-YANG_GATES            := yang-validate yang-validate-instances
+# Darwin cannot build the cgo sysrepo binding. Run these separate Docker
+# targets to check the packages that require the binding on Linux.
+DOCKER_GATE_TARGETS := build-docker build-check-docker lint-docker vet-docker
+YANG_GATES          := yang-validate yang-validate-instances
+
+.PHONY: check-yang $(DOCKER_GATE_TARGETS)
+$(DOCKER_GATE_TARGETS):
+	@$(MAKE) docker-make TARGETS=$(patsubst %-docker,%,$@)
 
 ifeq ($(shell uname -s),Darwin)
-.PHONY: check $(DARWIN_DOCKER_TARGETS)
-$(DARWIN_DOCKER_TARGETS):
-	@$(MAKE) docker-make TARGETS=$@
-
-check:
+check-yang:
 	@$(MAKE) docker-make TARGETS="$(YANG_GATES)"
 else
-check: $(YANG_GATES)
+check-yang: $(YANG_GATES)
 endif
 
 # ---------------------------------------------------------------------------
@@ -470,7 +449,7 @@ endif
 # on Apple Silicon runs under qemu, and qemu does not translate policy rule
 # netlink messages.
 NETNS_TEST_PACKAGES := ./internal/ifmgr/modules/wanroutes/... ./internal/ifmgr/modules/npt/... ./internal/ifmgr/modules/steering/... ./internal/ifmgr/modules/firewall/... ./internal/ifmgr/modules/links/... ./internal/netif/... ./internal/bgp/... ./internal/ifmgr/modules/bgpsessions/... ./internal/offload/...
-NETNS_GO_VERSION    := $(shell awk '/^go /{print $$2}' go.mod)
+NETNS_GO_VERSION    := 1.27.3
 NETNS_RUNNER_IMAGE  := mwan-netns-runner
 NETNS_PROTOCOL_IMAGE := mwan-protocol-runner:$(WANCONFIG_DOCKER_ARCH)
 SYSTEMD_RUNNER_IMAGE := mwan-systemd-runner:$(WANCONFIG_DOCKER_ARCH)
@@ -652,16 +631,14 @@ endif
 # Maintenance
 # ---------------------------------------------------------------------------
 
-.PHONY: tidy govulncheck clean
+.PHONY: tidy govulncheck-strict clean
 
 tidy:
 	go mod tidy
 
-# govulncheck runs the scanner directly and fails on any advisory the code
-# reaches. It replaces go.mk's recipe, which reports findings as advisory and
-# exits zero. GO-2026-4736 in gobgp has no fixed release, so this fails until
-# gobgp ships one.
-govulncheck:
+# govulncheck-strict runs the scanner directly and fails when it
+# reports a vulnerability.
+govulncheck-strict:
 	go run $(GOVULNCHECK_INSTALL) ./...
 
 clean: clean-dist

@@ -182,6 +182,11 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	m.Lock()
 	defer m.Unlock()
+	ctx, finish, err := m.Env.BeginForwardingChange(ctx)
+	if err != nil {
+		return fmt.Errorf("prepare WAN routing change: %w", err)
+	}
+	defer finish()
 
 	log = log.With("op", "reconcile")
 	log.DebugContext(ctx, "wan.routes: Reconcile entry")

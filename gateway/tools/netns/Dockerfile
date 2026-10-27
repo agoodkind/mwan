@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=golang:1.27.1
+ARG BASE_IMAGE=golang:1.27.3
 FROM ${BASE_IMAGE}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

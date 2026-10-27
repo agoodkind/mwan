@@ -93,12 +93,17 @@ func (module *Module) Init(_ context.Context, env *ifmgr.Env) error {
 		return fmt.Errorf("initialize autoconfiguration kernel policy: %w", err)
 	}
 	module.reconciler = reconciler
-	env.PrepareOwnedLink = reconciler.PrepareLink
+	env.PrepareOwnedLink = module.prepareOwnedLink
 	return nil
 }
 
 // Reconcile applies configured policy to ready owned links.
 func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
+	ctx, finish, err := module.Env.BeginForwardingChange(ctx)
+	if err != nil {
+		return fmt.Errorf("prepare kernel forwarding policy change: %w", err)
+	}
+	defer finish()
 	results := make([]netif.OwnedLinkResult, 0, len(module.connections))
 	for _, connection := range module.connections {
 		if result, found := module.Env.OwnedLinks.Get(connection.ID.String()); found {
@@ -108,6 +113,23 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	if err := module.reconciler.Reconcile(ctx, module.connections, results); err != nil {
 		log.WarnContext(ctx, "autoconfiguration: kernel policy reconciliation failed", "err", err)
 		return fmt.Errorf("reconcile autoconfiguration kernel policy: %w", err)
+	}
+	return nil
+}
+
+func (module *Module) prepareOwnedLink(ctx context.Context, log *slog.Logger, connection interfaceintent.Connection, link netif.OwnedLinkResult) (resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			log.WarnContext(ctx, "autoconfiguration: owned link preparation failed", "connection_id", connection.ID, "err", resultErr)
+		}
+	}()
+	ctx, finish, err := module.Env.BeginForwardingChange(ctx)
+	if err != nil {
+		return fmt.Errorf("prepare owned link policy change: %w", err)
+	}
+	defer finish()
+	if err := module.reconciler.PrepareLink(ctx, log, connection, link); err != nil {
+		return fmt.Errorf("prepare owned link kernel policy: %w", err)
 	}
 	return nil
 }

@@ -20,6 +20,11 @@ func (module *Module) Ensure(ctx context.Context, log *slog.Logger, request ifmg
 			log.WarnContext(ctx, "addresses: NPT edge installation failed", "connection", request.ConnectionID, "err", resultErr)
 		}
 	}()
+	ctx, finish, err := module.Env.BeginForwardingChange(ctx)
+	if err != nil {
+		return ifmgr.NPTEdgeRecord{}, fmt.Errorf("prepare NPT edge change: %w", err)
+	}
+	defer finish()
 	if err := ctx.Err(); err != nil {
 		return ifmgr.NPTEdgeRecord{}, fmt.Errorf("ensure NPT edge: %w", err)
 	}
@@ -124,6 +129,11 @@ func (module *Module) Release(ctx context.Context, log *slog.Logger, records []i
 			log.WarnContext(ctx, "addresses: NPT edge release failed", "err", resultErr)
 		}
 	}()
+	ctx, finish, err := module.Env.BeginForwardingChange(ctx)
+	if err != nil {
+		return fmt.Errorf("prepare NPT edge removal: %w", err)
+	}
+	defer finish()
 	var failures error
 	for _, record := range records {
 		if err := ctx.Err(); err != nil {

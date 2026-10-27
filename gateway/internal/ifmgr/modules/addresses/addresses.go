@@ -176,7 +176,7 @@ func (module *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	env.OwnedAddresses = &ifmgr.OwnedAddressResults{}
 	env.Delegations = netif.NewDHCPv6PDStore()
 	env.NPTAddresses = module
-	env.TunnelEndpointRoutes = module.reconciler
+	env.TunnelEndpointRoutes = module
 	if env.OwnedLinkUp != nil {
 		env.OwnedLinkUp.Set(module.wakeDHCPv6)
 	}
@@ -187,6 +187,11 @@ func (module *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	module.reconcileMu.Lock()
 	defer module.reconcileMu.Unlock()
+	ctx, finish, err := module.Env.BeginForwardingChange(ctx)
+	if err != nil {
+		return fmt.Errorf("prepare owned address change: %w", err)
+	}
+	defer finish()
 	module.Env.OwnedAddresses.Replace()
 	desiredFamilies := make(map[string]map[string]bool)
 	var mappingErr error
@@ -204,7 +209,7 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		}
 		desiredFamilies[connection.ID.String()] = module.reconcileConnection(ctx, log, connection)
 	}
-	err := errors.Join(mappingErr, module.reconciler.PruneRemoved(desiredFamilies))
+	err = errors.Join(mappingErr, module.reconciler.PruneRemoved(desiredFamilies))
 	var pending []wanstate.PendingRemoval
 	if err != nil {
 		var failure *netif.OwnedStaticPruneError
@@ -322,7 +327,7 @@ func (module *Module) currentDHCPClient(ctx context.Context, log *slog.Logger, c
 	module.sessionMu.Unlock()
 	cached, recoveryRejected := module.loadDHCPv4Recovery(ctx, log, id, ready)
 	module.sessionMu.Lock()
-	clientContext, cancel := context.WithCancel(ctx)
+	clientContext, cancel := context.WithCancel(ifmgr.WithoutForwardingChange(ctx))
 	module.nextGeneration++
 	client := netif.StartDHCPClient(clientContext, log, netif.DHCPConfig{
 		Iface: ready.ActualName, InitialBackoff: 0, MaxBackoff: 0,

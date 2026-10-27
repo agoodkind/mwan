@@ -32,7 +32,7 @@ jobs:
       # libpcre2-dev is what the pinned libyang links against when the
       # cgo-deps hook builds it.
       apt_packages: libyang2-tools libpcre2-dev rrdtool fonts-liberation
-      go_tool_packages: github.com/bufbuild/buf/cmd/buf@latest google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11 google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+      go_tool_packages: github.com/bufbuild/buf/cmd/buf@latest google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12 google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
       # Each module's Makefile sets its release platforms through RELEASE_PLATFORMS.
       # The build gate compiles the gateway platforms on native runners with cgo.
       release_platforms: linux/amd64 linux/arm64
@@ -127,16 +127,10 @@ jobs:
           test -n "$package"
           make -C provider test-release-package PROVIDER_PACKAGE="$package" TOFU="$(command -v tofu)" ALLOW_MISSING_CHECKSUMS=1
 
-  # The go job above never runs these. The Makefile hangs the two schema gates
-  # off `check`, and the go-makefile quality matrix runs a fixed list of
-  # commands that does not include it, so without this job nothing validates
-  # the model outside a developer's own machine. The gates run here as their
-  # own named check, because a schema failure and a Go failure are different
-  # problems and a red check should say which one broke.
-  #
-  # The deploy runs this same yanglint validation against the rendered network
-  # configuration before it writes anything to the gateway, so a model or an
-  # instance document that fails here would fail a deploy instead.
+  # The go-makefile quality matrix does not run check-yang.
+  # Run the schema gates separately to report schema failures independently
+  # of Go failures. Deployment validates the rendered network configuration
+  # with yanglint before writing it to the gateway.
   yang:
     name: yang gates
     runs-on: ubuntu-latest
@@ -159,7 +153,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         working-directory: gateway
-        run: make yang-validate yang-validate-instances
+        run: make check-yang
 
   # This job exists because the netns-tagged tests create a private network
   # namespace and build links, routes and policy rules inside it, which needs
