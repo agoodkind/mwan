@@ -72,6 +72,11 @@ func runInstall(args []string) int {
 	rooted := flags.root != ""
 	ctx := context.Background()
 	outcome, err := installUnits(ctx, role, flags.root, config.GuestType(flags.guestType), enablerFor(rooted))
+	if err == nil && spec.ValidationSchema {
+		var changed []string
+		_, changed, err = yangpub.WriteSchemaChanges(filepath.Join(flags.root, networkjson.DefaultSchemaDir))
+		outcome.changed = append(outcome.changed, changed...)
+	}
 	if err == nil && spec.Schema {
 		var schema schemaOutcome
 		schema, err = installSchema(ctx, slog.Default(), flags.root)
@@ -259,7 +264,8 @@ func parseInstallFlags(args []string) (installFlags, error) {
 	}
 	if flags.root != "" && rootIsHost(flags.root) {
 		return flags, fmt.Errorf(
-			"--root %s is the host's root; leave --root off to install on this host", flags.root)
+			"--root %s is the host's root; leave --root off to install on this host", flags.root,
+		)
 	}
 	return flags, nil
 }

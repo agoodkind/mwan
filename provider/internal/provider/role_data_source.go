@@ -100,7 +100,7 @@ func (d *roleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 		Attributes: map[string]schema.Attribute{
 			"role": schema.StringAttribute{
 				Required:    true,
-				Description: "Select wan, failover, or host.",
+				Description: "Select wan, failover, host, or router.",
 				Validators:  []validator.String{stringvalidator.OneOf(roleNames()...)},
 			},
 			"guest_type": schema.StringAttribute{
@@ -222,12 +222,21 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 		model.Files = append(model.Files, newRoleFile(file.Dest, content))
 	}
 	model.YangModules = make([]yangModuleModel, 0, len(moduleschema.Modules()))
-	if spec.Schema {
+	if spec.Schema || spec.ValidationSchema {
 		for _, module := range moduleschema.Modules() {
 			content, err := moduleschema.Read(module.File)
 			if err != nil {
 				resp.Diagnostics.AddError("Cannot read an embedded YANG module", err.Error())
 				return
+			}
+			path := filepath.Join(moduleschema.InstallDir, module.File)
+			if !spec.Schema {
+				model.Files = append(model.Files, roleFileModel{
+					Path:    types.StringValue(path),
+					Content: types.StringValue(string(content)),
+					Mode:    types.StringValue(fmt.Sprintf(fileModeFormat, moduleschema.FileMode.Perm())),
+				})
+				continue
 			}
 			features := module.Features
 			if features == nil {
@@ -235,7 +244,7 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 			}
 			model.YangModules = append(model.YangModules, yangModuleModel{
 				File:     types.StringValue(module.File),
-				Path:     types.StringValue(filepath.Join(moduleschema.InstallDir, module.File)),
+				Path:     types.StringValue(path),
 				Content:  types.StringValue(string(content)),
 				Mode:     types.StringValue(fmt.Sprintf(fileModeFormat, moduleschema.FileMode.Perm())),
 				Features: features,

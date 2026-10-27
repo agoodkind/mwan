@@ -358,7 +358,7 @@ func parseNetworkConfig(
 	if err != nil {
 		return nil, err
 	}
-	if !steers {
+	if !steers && role != "router" {
 		return nil, nil
 	}
 	loaded, err := networkload.Load(networkjson.DefaultPath, networkjson.DefaultSchemaDir)
@@ -373,6 +373,9 @@ func parseNetworkConfig(
 			"provider", rejected.Provider, "err", rejected.Err)
 	}
 	loaded.Apply(cfg)
+	if role == "router" && loaded.VPP == nil {
+		return nil, fmt.Errorf("router role requires goodkind-mwan-vpp:vpp network metadata")
+	}
 	return loaded, nil
 }
 
@@ -381,7 +384,7 @@ func writeInterfaceConfig(
 	log *slog.Logger,
 	loaded *networkjson.Config,
 ) ([]networkjson.Rejection, error) {
-	if loaded == nil {
+	if loaded == nil || loaded.VPP != nil {
 		return nil, nil
 	}
 	tables := make(map[connectionid.ID]int, len(loaded.WAN))
