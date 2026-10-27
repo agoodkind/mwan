@@ -66,6 +66,7 @@ type Module struct {
 	ifmgr.BaseModule
 	cfg                  Config
 	runtime              *offload.NativeRuntime
+	startupFailed        bool
 	updater              *offload.ConntrackUpdater
 	links                map[int]boundLink
 	flows                map[connectionIdentity]*admittedFlow
@@ -184,6 +185,7 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	}
 	module.runtime, err = offload.NewNativeRuntime(configuration, log)
 	if err != nil {
+		module.startupFailed = true
 		return module.fail(ctx, fmt.Errorf("initialize native packet worker: %w", err))
 	}
 	log.InfoContext(ctx, "native automatic admission enabled", "pair_capacity", module.cfg.Settings.PairCapacity, "flow_capacity", module.cfg.Settings.FlowCapacity, "observation_capacity", module.cfg.Settings.ObservationCapacity)
@@ -192,6 +194,11 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 
 func (module *Module) guardForwarding(ctx context.Context) (func(), error) {
 	module.Lock()
+	if module.startupFailed && module.runtime != nil {
+		failure := module.stats.Failure
+		module.Unlock()
+		return nil, fmt.Errorf("native startup retains resources: %w", failure)
+	}
 	if err := module.suspendAll(ctx, "forwarding change"); err != nil {
 		module.Unlock()
 		return nil, err

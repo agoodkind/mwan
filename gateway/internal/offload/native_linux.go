@@ -381,6 +381,7 @@ func ReadNativeBuild() (NativeBuildInfo, error) {
 // The conntrack socket uses the constructor caller's network namespace.
 // An initialization error can return a runtime that still owns EAL resources.
 // The caller must retain that runtime and report any final Close error.
+// A nil runtime confirms that startup did not retain a native owner.
 func NewNativeRuntime(config NativeConfig, log *slog.Logger) (*NativeRuntime, error) {
 	if log == nil {
 		return nil, errors.New("native runtime requires a logger")
@@ -429,12 +430,15 @@ func NewNativeRuntime(config NativeConfig, log *slog.Logger) (*NativeRuntime, er
 		select {
 		case result = <-ready:
 		default:
-			return nil, worker.closedError()
+			return worker, worker.closedError()
 		}
 	}
 	if result.err != nil && !result.ownerExists {
 		<-worker.done
-		return nil, errors.Join(result.err, worker.shutdownError())
+		if cleanupError := worker.shutdownError(); cleanupError != nil {
+			return worker, errors.Join(result.err, cleanupError)
+		}
+		return nil, result.err
 	}
 	return worker, result.err
 }
