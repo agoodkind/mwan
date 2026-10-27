@@ -1,0 +1,61 @@
+name: Native Rust
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - native/**
+      - build/native.mk
+      - rust-toolchain.toml
+      - gateway/internal/offload/native*.go
+      - gateway/tools/wanconfigbuilder/Dockerfile
+      - .github/workflows/native.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_name != github.event.repository.default_branch }}
+
+jobs:
+  rust:
+    name: Rust safety (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-amd64
+            runner: ubuntu-latest
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: gateway/go.mod
+          cache-dependency-path: gateway/go.sum
+      - name: Update package metadata
+        run: sudo apt-get update
+      - name: Install native build dependencies
+        run: sudo apt-get install -y build-essential clang cmake libclang-dev libnuma-dev libpcre2-dev libyang2-tools meson ninja-build pkg-config
+      - name: Install the pinned Rust toolchain
+        run: rustup show active-toolchain
+      - name: Check formatting, Clippy, parser behavior, and ABI layouts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: make -C gateway native-rust-check
+      - name: Install the pinned Miri and fuzz tools
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: make -C gateway native-rust-test-toolchain
+      - name: Check parser behavior with Miri
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: make -C gateway native-rust-miri
+      - name: Fuzz bounded packet decoding and editing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: make -C gateway native-rust-fuzz
+

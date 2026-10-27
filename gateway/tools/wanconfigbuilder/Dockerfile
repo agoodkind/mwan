@@ -4,7 +4,18 @@
 # links the gateway's glibc generation and libsysrepo ABI. Version pins
 # arrive as build args from the caller; there are no defaults, so a bare
 # build fails loudly rather than drifting from the gateway.
+ARG RUST_VERSION
+FROM rust:${RUST_VERSION}-slim-trixie AS native-rust-toolchain
+
 FROM golang:1.27-trixie
+
+COPY --from=native-rust-toolchain /usr/local/cargo/ /usr/local/cargo/
+COPY --from=native-rust-toolchain /usr/local/rustup/ /usr/local/rustup/
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo
+ENV PATH=/usr/local/cargo/bin:${PATH}
+
+RUN rustup component add clippy rustfmt
 
 ARG LIBYANG_VERSION
 ARG SYSREPO_VERSION
@@ -20,7 +31,7 @@ RUN test -n "${LIBYANG_VERSION}" && test -n "${SYSREPO_VERSION}"
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         build-essential cmake pkg-config git libpcre2-dev nftables util-linux \
-        meson ninja-build python3-pyelftools libnuma-dev \
+        meson ninja-build python3-pyelftools libnuma-dev clang libclang-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # The YANG gates of `make check` run yanglint. This shared build links it

@@ -125,6 +125,62 @@ those checks.
 On a Linux host, the YANG gates need `yanglint` from the `libyang2-tools`
 package.
 
+### Build and test the Rust native worker
+
+MWAN keeps WAN policy and connection state in Go and calls the Rust library
+through ABI2, its C-compatible native interface. Rust implements DPDK access,
+packet parsing, buffer ownership, forwarding, kernel return, and resource
+cleanup. It receives and transmits packet batches inside the library. DPDK
+and its Broadcom driver remain C dependencies; small C helpers expose DPDK
+macros, inline functions, and field access.
+
+Install Rust through rustup, a C compiler, and Clang with libclang. Run these
+commands from the repository root. Rustup selects the toolchain in
+[rust-toolchain.toml](rust-toolchain.toml).
+
+1. Check Rust formatting, Clippy, parser behavior, and native ABI layouts.
+
+   ```sh
+   make -C gateway native-rust-check
+   ```
+
+2. Install the pinned Miri and fuzzing tools, then run each check separately.
+
+   ```sh
+   make -C gateway native-rust-test-toolchain
+   make -C gateway native-rust-miri
+   make -C gateway native-rust-fuzz
+   ```
+
+The Native Rust workflow runs these checks on Linux amd64 and arm64 without
+the DPDK SDK. Miri checks the parser's executed Rust operations for undefined
+behavior. Fuzzing uses varied packet inputs and AddressSanitizer to check
+decoding, restoration, and forwarding. These checks do not execute the DPDK
+interface or instrument the C helpers, DPDK, or Broadcom driver. Go's race
+detector does not check Rust or C memory safety.
+
+Run SDK-dependent checks manually on a Linux lab machine for each
+architecture. Install Meson, Ninja, and pkg-config, and prepare the SDK using
+the [required manual patches](native/patches/README.md). Set
+`MWAN_NATIVE_DPDK_PREFIX` to its absolute installation directory before
+running this command:
+
+```sh
+make -C gateway native-sdk-check MWAN_NATIVE_DPDK_PREFIX="$MWAN_NATIVE_DPDK_PREFIX"
+```
+
+This target checks Rust with the DPDK feature, builds the hardware regression
+driver, and builds and tests Go with the `nativeoffload` tag. Use
+`native-library` with the same SDK setting to build only the library.
+
+The SDK build does not run hardware traffic tests. Follow the
+[malformed-packet procedure](native/tests/malformed/README.md) with external
+clients on different physical ports. Compare exact packet bytes and
+checksums, kernel return, forwarding after the malformed packet, rule
+removal, reopen, and final shutdown. Run one workload at a time. Compare
+throughput and CPU against the C worker under matching conditions, with
+100% CPU meaning one logical CPU.
+
 ## Releasing
 
 Pushing to `main` builds, signs, attests, and publishes the release the deploy

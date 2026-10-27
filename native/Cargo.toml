@@ -1,0 +1,38 @@
+[package]
+name = "mwan-native"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.95"
+license = "BSD-3-Clause"
+publish = false
+links = "mwan_native"
+
+[lib]
+name = "mwan_native"
+crate-type = ["staticlib", "rlib"]
+
+[features]
+default = []
+dpdk = []
+
+[dependencies]
+libc = "=0.2.191"
+
+[build-dependencies]
+bindgen = "=0.73.2"
+cc = "=1.10.0"
+pkg-config = "=0.3.34"
+shlex = "=2.0.1"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+undocumented_unsafe_blocks = "deny"
+missing_safety_doc = "deny"
+
+[profile.dev]
+panic = "unwind"
+
+[profile.release]
+panic = "unwind"
