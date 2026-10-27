@@ -171,21 +171,27 @@ func (renderer *Renderer) vppContent(history []Minute) []mailer.ContentBlock {
 			samples = append(samples, []string{thread.Thread.Name, clock, strconv.FormatUint(thread.Counts.PacketWork, 10), strconv.FormatUint(thread.Counts.Other, 10), strconv.FormatUint(thread.Counts.Unresolved, 10), strconv.FormatUint(thread.Counts.Lost, 10), threadStatus})
 		}
 		blocks = append(blocks, tableBlock("Native VPP instruction samples", []string{"Thread", "CPU clock", "Recognized packet function samples", "Other samples", "Unresolved samples", "Lost samples", "Status"}, samples))
-		if polling := profile.QueuePolling; polling != nil {
-			status := "Available"
-			if !polling.Available {
-				status = "Unavailable: " + polling.Reason
-			}
-			blocks = append(blocks, tableBlock("VPP receive queue intervals", []string{"Status", "Duration", "Measurement limit"}, [][]string{{status, polling.Duration.String(), "Elapsed receive intervals include preemption. They do not measure consumed CPU time."}}))
-			if polling.Available {
-				var queues [][]string
-				for _, queue := range polling.Queues {
-					queues = append(queues, []string{strconv.FormatUint(uint64(queue.ThreadID), 10), strconv.FormatUint(uint64(queue.InterfaceIndex), 10), strconv.FormatUint(uint64(queue.QueueID), 10), strconv.FormatUint(queue.EmptyCalls, 10), queue.EmptyElapsed.String(), strconv.FormatUint(queue.NonemptyCalls, 10), queue.NonemptyElapsed.String(), strconv.FormatUint(queue.Packets, 10), queue.RefillElapsed.String()})
-				}
-				blocks = append(blocks, tableBlock("VPP receive queue checks", []string{"Thread", "Interface index", "Queue", "Empty checks", "Empty elapsed", "Nonempty checks", "Nonempty elapsed", "Packets", "Refill elapsed"}, queues))
-			}
-		}
+		blocks = append(blocks, vppQueueContent(profile.QueuePolling)...)
 		break
 	}
 	return blocks
+}
+
+func vppQueueContent(polling *vpp.QueuePollProfile) []mailer.ContentBlock {
+	if polling == nil {
+		return nil
+	}
+	status := "Available"
+	if !polling.Available {
+		status = "Unavailable: " + polling.Reason
+	}
+	blocks := []mailer.ContentBlock{tableBlock("VPP receive queue intervals", []string{"Status", "Duration", "Measurement limit"}, [][]string{{status, polling.Duration.String(), "Elapsed receive intervals include preemption. They do not measure consumed CPU time."}})}
+	if !polling.Available {
+		return blocks
+	}
+	var queues [][]string
+	for _, queue := range polling.Queues {
+		queues = append(queues, []string{strconv.FormatUint(uint64(queue.ThreadID), 10), strconv.FormatUint(uint64(queue.InterfaceIndex), 10), strconv.FormatUint(uint64(queue.QueueID), 10), strconv.FormatUint(queue.EmptyCalls, 10), queue.EmptyElapsed.String(), strconv.FormatUint(queue.NonemptyCalls, 10), queue.NonemptyElapsed.String(), strconv.FormatUint(queue.Packets, 10), queue.RefillElapsed.String()})
+	}
+	return append(blocks, tableBlock("VPP receive queue checks", []string{"Thread", "Interface index", "Queue", "Empty checks", "Empty elapsed", "Nonempty checks", "Nonempty elapsed", "Packets", "Refill elapsed"}, queues))
 }

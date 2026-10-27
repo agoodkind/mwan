@@ -71,13 +71,13 @@ type loadSegment struct {
 // Profile samples native threads reported by VPP and verifies their executable identity.
 // Symbol coverage remains explicit when packet and polling work share a function.
 func Profile(ctx context.Context, endpoints Endpoints, executable string, duration time.Duration) (ProfileResult, error) {
-	return ProfileWithOptions(ctx, endpoints, executable, duration, ProfileOptions{})
+	return ProfileWithOptions(ctx, endpoints, executable, duration, ProfileOptions{QueuePolling: false})
 }
 
 // ProfileWithOptions keeps optional queue intervals independent of sampled CPU time.
 func ProfileWithOptions(ctx context.Context, endpoints Endpoints, executable string, duration time.Duration, options ProfileOptions) (result ProfileResult, failure error) {
 	var counts SampleCounts
-	result = ProfileResult{Available: false, Reason: profileLimitation, Duration: duration, SamplePeriod: profileSamplePeriod, EmptyPollingAvailable: false, Counts: counts, Threads: nil}
+	result = ProfileResult{Available: false, Reason: profileLimitation, Duration: duration, SamplePeriod: profileSamplePeriod, EmptyPollingAvailable: false, Counts: counts, Threads: nil, QueuePolling: nil}
 	if duration <= 0 {
 		return result, fmt.Errorf("VPP profile duration must be positive")
 	}
@@ -103,7 +103,7 @@ func ProfileWithOptions(ctx context.Context, endpoints Endpoints, executable str
 	if options.QueuePolling {
 		polling, err = openQueuePollSession(ctx, endpoints)
 		if err != nil {
-			result.QueuePolling = &QueuePollProfile{Reason: err.Error()}
+			result.QueuePolling = &QueuePollProfile{Available: false, Reason: err.Error(), Duration: 0, Session: 0, Sequence: 0, Queues: nil}
 			return result, err
 		}
 		defer func() {
@@ -123,7 +123,7 @@ func ProfileWithOptions(ctx context.Context, endpoints Endpoints, executable str
 
 func profileThreads(ctx context.Context, executable string, threads []vlib.ThreadData, duration time.Duration, polling *queuePollSession) (ProfileResult, error) {
 	var counts SampleCounts
-	result := ProfileResult{Available: false, Reason: profileLimitation, Duration: duration, SamplePeriod: profileSamplePeriod, EmptyPollingAvailable: false, Counts: counts, Threads: nil}
+	result := ProfileResult{Available: false, Reason: profileLimitation, Duration: duration, SamplePeriod: profileSamplePeriod, EmptyPollingAvailable: false, Counts: counts, Threads: nil, QueuePolling: nil}
 	var samplers []*perfSampler
 	var openFailures []error
 	defer func() {
@@ -146,7 +146,7 @@ func profileThreads(ctx context.Context, executable string, threads []vlib.Threa
 	}
 	if polling != nil {
 		if err := polling.start(ctx); err != nil {
-			result.QueuePolling = &QueuePollProfile{Reason: err.Error()}
+			result.QueuePolling = &QueuePollProfile{Available: false, Reason: err.Error(), Duration: 0, Session: 0, Sequence: 0, Queues: nil}
 			return result, err
 		}
 	}
