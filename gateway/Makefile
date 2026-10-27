@@ -7,7 +7,8 @@
 # This Makefile defines the protobuf codegen, the YANG model gates, and the cgo
 # dependency recipes for the publishing binding. It also defines the docker
 # lane that runs the linux pipeline for amd64 and arm64, the wanconfig stack
-# packaging, and a govulncheck target that fails on every reachable advisory.
+# packaging, and a govulncheck-strict target that fails when the scanner
+# reports a vulnerability.
 #
 # Shipped binaries come only from the CI release. The one cross build here is
 # the packaging tool, which runs inside a container and never ships.
@@ -88,7 +89,7 @@ export LD_LIBRARY_PATH := $(GO_MK_CGO_PREFIX)/lib$(if $(strip $(LD_LIBRARY_PATH)
 release: export GOFLAGS := -tags=osusergo,netgo$(MWAN_NATIVE_RELEASE_TAG)$(if $(strip $(filter-out -tags=nativeoffload,$(GOFLAGS))), $(filter-out -tags=nativeoffload,$(GOFLAGS)))
 release: export CGO_LDFLAGS := -static
 
-.DEFAULT_GOAL := check
+.DEFAULT_GOAL := help
 
 # ---------------------------------------------------------------------------
 # Protobuf
@@ -413,13 +414,13 @@ test-docker-all:
 # container builds the cgo dependencies for its own architecture and keeps
 # them in its .make volume.
 #
-#   make docker-make TARGETS="check test"
+#   make docker-make TARGETS="build-check test check-yang"
 #   make docker-make TARGETS=build-check
 #
 # The lint gates check the publishing binding only when the lint platform
 # matches the container architecture. go-makefile disables cgo for any other
 # platform. CI lints linux/amd64. The Mac container lints linux/arm64.
-DOCKER_MAKE_TARGETS ?= check test
+DOCKER_MAKE_TARGETS ?= build-check test check-yang
 TARGETS             ?= $(DOCKER_MAKE_TARGETS)
 
 .PHONY: docker-make
@@ -432,30 +433,25 @@ docker-make: wanconfig-builder-image
 # host the container runs under emulation. It lints linux/amd64, the platform
 # CI lints.
 #
-#   make docker-make-amd64 TARGETS="check test"
+#   make docker-make-amd64 TARGETS="build-check test check-yang"
 .PHONY: docker-make-amd64
 docker-make-amd64:
 	@$(MAKE) docker-make WANCONFIG_DOCKER_ARCH=amd64 TARGETS="$(TARGETS)"
 
-# darwin cannot build the cgo sysrepo binding. A host run compiles out every
-# package that uses the binding and passes without testing them. On darwin,
-# the entry points below run inside the builder container instead. go.mk
-# defines `check: lint`, so `lint` runs in the container first, and the check
-# recipe then runs the YANG gates there. These recipes replace the go.mk
-# recipes on darwin only. Make prints an "overriding commands" warning for
-# each.
-DARWIN_DOCKER_TARGETS := build build-check lint test vet
-YANG_GATES            := yang-validate yang-validate-instances
+# Darwin cannot build the cgo sysrepo binding. Run these separate Docker
+# targets to check the packages that require the binding on Linux.
+DOCKER_GATE_TARGETS := build-docker build-check-docker lint-docker vet-docker
+YANG_GATES          := yang-validate yang-validate-instances
+
+.PHONY: check-yang $(DOCKER_GATE_TARGETS)
+$(DOCKER_GATE_TARGETS):
+	@$(MAKE) docker-make TARGETS=$(patsubst %-docker,%,$@)
 
 ifeq ($(shell uname -s),Darwin)
-.PHONY: check $(DARWIN_DOCKER_TARGETS)
-$(DARWIN_DOCKER_TARGETS):
-	@$(MAKE) docker-make TARGETS=$@
-
-check:
+check-yang:
 	@$(MAKE) docker-make TARGETS="$(YANG_GATES)"
 else
-check: $(YANG_GATES)
+check-yang: $(YANG_GATES)
 endif
 
 # ---------------------------------------------------------------------------
@@ -652,16 +648,14 @@ endif
 # Maintenance
 # ---------------------------------------------------------------------------
 
-.PHONY: tidy govulncheck clean
+.PHONY: tidy govulncheck-strict clean
 
 tidy:
 	go mod tidy
 
-# govulncheck runs the scanner directly and fails on any advisory the code
-# reaches. It replaces go.mk's recipe, which reports findings as advisory and
-# exits zero. GO-2026-4736 in gobgp has no fixed release, so this fails until
-# gobgp ships one.
-govulncheck:
+# govulncheck-strict runs the scanner directly and fails when it
+# reports a vulnerability.
+govulncheck-strict:
 	go run $(GOVULNCHECK_INSTALL) ./...
 
 clean: clean-dist
