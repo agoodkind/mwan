@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -102,5 +103,34 @@ func TestNativeOffloadInvalidProviderDoesNotDisappear(t *testing.T) {
 	path := writeNativeNetworkDocument(t, document)
 	if _, err := networkload.Load(path, networkSchemaDirForTest(t)); err == nil {
 		t.Fatal("invalid native binding silently removed a provider from the loaded policy")
+	}
+}
+
+func TestNativeOffloadBindingValidationPrecedesProviderFiltering(t *testing.T) {
+	t.Parallel()
+	schema := networkSchemaDirForTest(t)
+	const weight = ",\n          \"weight\": 1"
+	raw, err := os.ReadFile("../../internal/networkjson/testdata/plan-base.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ordinary := strings.Replace(string(raw), weight, "", 1)
+	if ordinary == string(raw) {
+		t.Fatal("test did not remove the provider weight")
+	}
+	loaded, err := networkload.Load(writeNativeNetworkDocument(t, ordinary), schema)
+	if err != nil {
+		t.Fatalf("ordinary provider rejection failed: %v", err)
+	}
+	if len(loaded.Rejected) != 1 || loaded.Rejected[0].Interface != "enwebpass0" || len(loaded.WAN) != 2 {
+		t.Fatalf("ordinary provider rejection changed: rejected=%+v providers=%+v", loaded.Rejected, loaded.WAN)
+	}
+	document := strings.Replace(nativeNetworkDocument(t), weight, "", 1)
+	document = strings.Replace(document, `"native-offload":{"data-pci":"0000:1a:03.1", "data-mac":"02:57:50:04:03:01"}`, "", 1)
+	document = strings.Replace(document, `"data-vf":2`, `"data-vf":1`, 1)
+	loaded, err = networkload.Load(writeNativeNetworkDocument(t, document), schema)
+	var semantic *networkload.SemanticError
+	if loaded != nil || !errors.As(err, &semantic) || !strings.Contains(err.Error(), "native receiver and DATA VF overlap") {
+		t.Fatalf("native binding did not fail after YANG validation and before provider filtering: loaded=%v error=%v", loaded != nil, err)
 	}
 }

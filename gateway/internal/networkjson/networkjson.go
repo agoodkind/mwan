@@ -421,6 +421,11 @@ func build(doc *document) (*Config, error) {
 }
 
 func compileProviderProjections(entries []ifaceEntry, byName map[string]interfaceintent.Connection, loaded *Config) error {
+	// Provider rejection must not hide malformed bindings from graph validation.
+	if err := interfaceintent.ValidateNativeBindings(loaded.Connections); err != nil {
+		slog.Warn("networkjson: declared native hardware graph invalid", "err", err)
+		return fmt.Errorf("native offload bindings: %w", err)
+	}
 	dscpOwners := make(map[int]string, len(entries))
 	for _, entry := range entries {
 		if entry.WAN == nil {
