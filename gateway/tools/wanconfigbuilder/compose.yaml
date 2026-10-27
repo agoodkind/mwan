@@ -1,0 +1,36 @@
+services:
+  builder:
+    image: ${WANCONFIG_BUILDER_IMAGE:?Set WANCONFIG_BUILDER_IMAGE}
+    pull_policy: never
+    platform: linux/${WANCONFIG_DOCKER_ARCH:?Set WANCONFIG_DOCKER_ARCH}
+    cpus: ${WANCONFIG_DOCKER_CPUS:-3}
+    mem_limit: ${WANCONFIG_DOCKER_MEMORY:-6g}
+    working_dir: /src/gateway
+    init: true
+    privileged: ${WANCONFIG_DOCKER_PRIVILEGED:-false}
+    environment:
+      GOWORK: "off"
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: safe.directory
+      GIT_CONFIG_VALUE_0: /src
+      MWAN_NATIVE: "${MWAN_NATIVE:-0}"
+      MWAN_NATIVE_DPDK_PREFIX: ""
+    volumes:
+      - type: bind
+        source: ${WANCONFIG_DOCKER_SOURCE:?Set WANCONFIG_DOCKER_SOURCE}
+        target: /src
+        bind:
+          create_host_path: false
+      - gomod:/go/pkg/mod
+      - cache:/root/.cache
+      - gomk:/src/gateway/.make
+
+volumes:
+  gomod:
+  cache:
+  gomk:
+
+networks:
+  default:
+    enable_ipv4: true
+    enable_ipv6: true

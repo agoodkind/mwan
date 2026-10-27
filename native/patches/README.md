@@ -1,8 +1,11 @@
 # Required DPDK patches
 
-The physical-ingress worker requires DPDK 26.03 and the
-[reviewed patch set](dpdk-26.03.patch). The build consumes an existing SDK.
-It does not download DPDK or apply patches.
+The Rust native worker requires DPDK 26.03 and the
+[reviewed patch set](dpdk-26.03.patch). The build consumes an existing SDK
+selected by `MWAN_NATIVE_DPDK_PREFIX`. Prepare the SDK and apply its patches
+manually for each lab architecture. The build does not download DPDK or
+apply patches. Replacing the custom worker with Rust does not replace the
+DPDK library or its Broadcom driver.
 
 The patch set provides these native-worker requirements:
 
