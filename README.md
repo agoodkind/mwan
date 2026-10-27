@@ -91,23 +91,25 @@ The `--network` option selects the WANCONFIG document, and `--schema-dir` select
 ## Building and testing
 
 The build and lint pipeline is [go-makefile](https://github.com/agoodkind/go-makefile),
-fetched at parse time by `gateway/bootstrap.mk`. Run `make -C gateway help` for the full target
-list.
+fetched at parse time. Run `make -C gateway help` for the shared targets.
 
 ```
-make -C gateway check                   # lint, vet, staticcheck, deadcode, and the YANG model gates
+make -C gateway build-check             # vet, lint, govulncheck, and the Go version gate
+make -C gateway check-yang              # the YANG model and instance gates
 make -C gateway test                    # the suite
-make -C gateway build                   # the linux binary
+make -C gateway build                   # build on a Linux host
 make -C gateway docker-make TARGETS=... # any make targets in the builder container
 make -C gateway docker-make-amd64 TARGETS=... # the same in the amd64 container, emulated on arm64
 make -C gateway build-wanconfig-all     # the linux binary for amd64 and for arm64
 make -C gateway test-docker-all         # the suite in the amd64 and the arm64 container
 ```
 
-Darwin cannot build the sysrepo binding, and a host run would compile out every
-package that uses it. On macOS, `make -C gateway check`, `make -C gateway test`, `make -C gateway build`,
-`make -C gateway build-check`, and `make -C gateway vet` run in the builder container. The container
-is a Debian image with the pinned libyang and sysrepo and `yanglint`
+Darwin cannot build the sysrepo binding. Run `make -C gateway docker-make` on
+macOS to run the quality gate, test suite, and YANG gates in the builder
+container. Run `build-docker`, `build-check-docker`, `lint-docker`,
+`vet-docker`, or `test-docker` separately with `make -C gateway` to select one
+Docker target. `check-yang` also uses the builder container on macOS.
+The container is a Debian image with the pinned libyang and sysrepo and `yanglint`
 installed, and it builds the cgo dependencies for its own architecture. The
 Docker targets need Docker. They use the host architecture unless
 `WANCONFIG_DOCKER_ARCH` sets `amd64` or `arm64`, and the other architecture

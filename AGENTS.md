@@ -75,7 +75,7 @@ arm64 on Apple Silicon. The container builds the cgo dependencies for
 linux/arm64 and runs the named make targets:
 
 ```bash
-make -C gateway docker-make TARGETS="check test"
+make -C gateway docker-make TARGETS="build-check test check-yang"
 ```
 
 `TARGETS` accepts any make target. The first run builds the image and the cgo
