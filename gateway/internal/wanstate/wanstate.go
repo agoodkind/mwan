@@ -18,6 +18,7 @@ import (
 
 	"goodkind.io/mwan/internal/bgp"
 	"goodkind.io/mwan/internal/clock"
+	"goodkind.io/mwan/internal/nptpolicy"
 	"goodkind.io/mwan/internal/observation/contract"
 )
 
@@ -124,25 +125,29 @@ type Observer interface {
 // Store is the concurrent snapshot store. The zero value is unusable;
 // construct with New.
 type Store struct {
-	mu                 sync.RWMutex
-	clock              clock.Clock
-	connections        map[string]ConnectionState
-	pendingRemovals    map[string]PendingRemoval
-	runID              string
-	transitionSequence uint64
-	transitionLog      *slog.Logger
-	health             map[string]MemberHealth
-	checks             map[string]CheckState
-	routing            map[string]MemberRouting
-	translation        map[string]MemberTranslation
-	routingGeneration  uint64
-	activeTier         uint8
-	tierValid          bool
-	bgp                BGP
-	bgpSessions        map[string][]bgp.SessionState
-	intendedRulesets   map[string]OwnedRuleset
-	observer           Observer
-	observerGeneration uint64
+	mu                  sync.RWMutex
+	clock               clock.Clock
+	connections         map[string]ConnectionState
+	pendingRemovals     map[string]PendingRemoval
+	runID               string
+	transitionSequence  uint64
+	transitionLog       *slog.Logger
+	health              map[string]MemberHealth
+	checks              map[string]CheckState
+	routing             map[string]MemberRouting
+	translation         map[string]MemberTranslation
+	nptPolicies         map[string]nptpolicy.PrefixPair
+	nptPolicyGeneration uint64
+	nptGuardMu          sync.RWMutex
+	nptGuard            *nptGuardRegistration
+	routingGeneration   uint64
+	activeTier          uint8
+	tierValid           bool
+	bgp                 BGP
+	bgpSessions         map[string][]bgp.SessionState
+	intendedRulesets    map[string]OwnedRuleset
+	observer            Observer
+	observerGeneration  uint64
 }
 
 // New returns an empty store.
@@ -153,25 +158,29 @@ func New() *Store {
 // NewWithClock constructs a store with an injected wall clock.
 func NewWithClock(wallClock clock.Clock) *Store {
 	return &Store{
-		mu:                 sync.RWMutex{},
-		clock:              wallClock,
-		connections:        map[string]ConnectionState{},
-		pendingRemovals:    map[string]PendingRemoval{},
-		runID:              "",
-		transitionSequence: 0,
-		transitionLog:      nil,
-		health:             map[string]MemberHealth{},
-		checks:             map[string]CheckState{},
-		routing:            map[string]MemberRouting{},
-		translation:        map[string]MemberTranslation{},
-		routingGeneration:  0,
-		activeTier:         0,
-		tierValid:          false,
-		bgp:                BGP{Peers: nil, ReadAt: time.Time{}, Reached: false},
-		bgpSessions:        map[string][]bgp.SessionState{},
-		intendedRulesets:   map[string]OwnedRuleset{},
-		observer:           nil,
-		observerGeneration: 0,
+		mu:                  sync.RWMutex{},
+		clock:               wallClock,
+		connections:         map[string]ConnectionState{},
+		pendingRemovals:     map[string]PendingRemoval{},
+		runID:               "",
+		transitionSequence:  0,
+		transitionLog:       nil,
+		health:              map[string]MemberHealth{},
+		checks:              map[string]CheckState{},
+		routing:             map[string]MemberRouting{},
+		translation:         map[string]MemberTranslation{},
+		nptPolicies:         map[string]nptpolicy.PrefixPair{},
+		nptPolicyGeneration: 0,
+		nptGuardMu:          sync.RWMutex{},
+		nptGuard:            nil,
+		routingGeneration:   0,
+		activeTier:          0,
+		tierValid:           false,
+		bgp:                 BGP{Peers: nil, ReadAt: time.Time{}, Reached: false},
+		bgpSessions:         map[string][]bgp.SessionState{},
+		intendedRulesets:    map[string]OwnedRuleset{},
+		observer:            nil,
+		observerGeneration:  0,
 	}
 }
 
@@ -323,20 +332,22 @@ func (s *Store) SetBGP(bgp BGP) {
 
 // Snapshot is a complete, consistent copy of the store for one read.
 type Snapshot struct {
-	Connections       map[string]ConnectionState
-	PendingRemovals   map[string]PendingRemoval
-	Health            map[string]MemberHealth
-	Checks            map[string]CheckState
-	ObservationError  error `json:"-"`
-	Routing           map[string]MemberRouting
-	RoutingGeneration uint64
-	Translation       map[string]MemberTranslation
-	ActiveTier        uint8
-	TierValid         bool
-	BGP               BGP
-	BGPSessions       map[string][]bgp.SessionState
-	IntendedRuleset   string
-	IntendedByOwner   map[string]OwnedRuleset
+	Connections         map[string]ConnectionState
+	PendingRemovals     map[string]PendingRemoval
+	Health              map[string]MemberHealth
+	Checks              map[string]CheckState
+	ObservationError    error `json:"-"`
+	Routing             map[string]MemberRouting
+	RoutingGeneration   uint64
+	Translation         map[string]MemberTranslation
+	NPTPolicies         map[string]nptpolicy.PrefixPair
+	NPTPolicyGeneration uint64
+	ActiveTier          uint8
+	TierValid           bool
+	BGP                 BGP
+	BGPSessions         map[string][]bgp.SessionState
+	IntendedRuleset     string
+	IntendedByOwner     map[string]OwnedRuleset
 }
 
 // Snapshot returns a copy the caller may read without further locking.
@@ -344,20 +355,22 @@ func (s *Store) Snapshot() Snapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	snap := Snapshot{
-		Connections:       make(map[string]ConnectionState, len(s.connections)),
-		PendingRemovals:   make(map[string]PendingRemoval, len(s.pendingRemovals)),
-		Health:            make(map[string]MemberHealth, len(s.health)),
-		Checks:            make(map[string]CheckState, len(s.checks)),
-		ObservationError:  nil,
-		Routing:           make(map[string]MemberRouting, len(s.routing)),
-		RoutingGeneration: s.routingGeneration,
-		Translation:       make(map[string]MemberTranslation, len(s.translation)),
-		ActiveTier:        s.activeTier,
-		TierValid:         s.tierValid,
-		BGP:               s.bgp,
-		BGPSessions:       make(map[string][]bgp.SessionState, len(s.bgpSessions)),
-		IntendedRuleset:   renderIntendedRulesets(s.intendedRulesets),
-		IntendedByOwner:   make(map[string]OwnedRuleset, len(s.intendedRulesets)),
+		Connections:         make(map[string]ConnectionState, len(s.connections)),
+		PendingRemovals:     make(map[string]PendingRemoval, len(s.pendingRemovals)),
+		Health:              make(map[string]MemberHealth, len(s.health)),
+		Checks:              make(map[string]CheckState, len(s.checks)),
+		ObservationError:    nil,
+		Routing:             make(map[string]MemberRouting, len(s.routing)),
+		RoutingGeneration:   s.routingGeneration,
+		Translation:         make(map[string]MemberTranslation, len(s.translation)),
+		NPTPolicies:         cloneNPTPolicies(s.nptPolicies),
+		NPTPolicyGeneration: s.nptPolicyGeneration,
+		ActiveTier:          s.activeTier,
+		TierValid:           s.tierValid,
+		BGP:                 s.bgp,
+		BGPSessions:         make(map[string][]bgp.SessionState, len(s.bgpSessions)),
+		IntendedRuleset:     renderIntendedRulesets(s.intendedRulesets),
+		IntendedByOwner:     make(map[string]OwnedRuleset, len(s.intendedRulesets)),
 	}
 	maps.Copy(snap.Health, s.health)
 	for id, check := range s.checks {

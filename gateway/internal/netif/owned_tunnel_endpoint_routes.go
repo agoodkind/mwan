@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"slices"
 
-	"github.com/vishvananda/netlink"
+	"github.com/agoodkind/netlink"
 )
 
 // TunnelEndpointRouteProtocol identifies a tunnel endpoint route in kernel route dumps and route events.

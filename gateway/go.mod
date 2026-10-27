@@ -6,6 +6,7 @@ toolchain go1.27.3
 
 require (
 	github.com/BurntSushi/toml v1.6.0
+	github.com/agoodkind/netlink v1.3.2-0.20261026213358-01659f2e85a9
 	github.com/cilium/ebpf v0.22.0
 	github.com/cloudflare/cloudflare-go/v7 v7.13.1
 	github.com/coreos/go-systemd/v22 v22.7.0
@@ -25,7 +26,6 @@ require (
 	github.com/osrg/gobgp/v4 v4.10.0
 	github.com/ti-mo/conntrack v0.6.0
 	github.com/ti-mo/netfilter v0.5.3
-	github.com/vishvananda/netlink v1.3.2-0.20250829225123-b032ea08ecfd
 	github.com/vishvananda/netns v0.0.5
 	golang.org/x/net v0.61.0
 	golang.org/x/sys v0.49.0
@@ -92,6 +92,7 @@ require (
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/u-root/uio v0.0.0-20230220225925-ffce2a382923 // indirect
 	github.com/ulikunitz/xz v0.5.17 // indirect
+	github.com/vishvananda/netlink v1.3.2-0.20250829225123-b032ea08ecfd // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8 // indirect
 	gitlab.com/digitalxero/go-conventional-commit v1.0.7 // indirect

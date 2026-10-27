@@ -15,6 +15,7 @@ import (
 	"goodkind.io/mwan/internal/ifmgr/modules/npt/bpf"
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/notify"
+	"goodkind.io/mwan/internal/nptpolicy"
 )
 
 // fakeSource is an injected pd.Source: it returns a canned prefix/ok/err per
@@ -120,20 +121,20 @@ func TestPrepareLocalIPv6RetainsOtherWANPairWhenPrefixLookupFails(t *testing.T) 
 		ok:       map[string]bool{"enatt0.3242": true},
 	}
 	m.listAddrs = func(_ context.Context, _ *slog.Logger, _ string) ([]netif.CurrentAddr, error) { return nil, nil }
-	previous := bpf.PrefixPair{
+	previous := nptpolicy.PrefixPair{
 		ID: pairID("webpass"), Internal: netip.MustParsePrefix("3d06:bad:b01::/60"),
 		External:              netip.MustParsePrefix("2001:db8:1:20::/60"),
 		DestinationExceptions: []netip.Addr{netip.MustParseAddr("2001:db8:1:20::1")},
 	}
-	m.activePairs = map[string]bpf.PrefixPair{"webpass": previous}
-	m.preparePolicies = func(_ context.Context, _ *slog.Logger, pairs map[string]bpf.PrefixPair) ([]bpf.InterfacePolicy, error) {
+	m.activePairs = map[string]nptpolicy.PrefixPair{"webpass": previous}
+	m.preparePolicies = func(_ context.Context, _ *slog.Logger, pairs map[string]nptpolicy.PrefixPair) ([]bpf.InterfacePolicy, error) {
 		if !reflect.DeepEqual(pairs["webpass"], previous) {
 			t.Fatalf("unresolved WAN policy changed: %v", pairs["webpass"])
 		}
 		if _, ok := pairs["att"]; !ok {
 			t.Fatal("target WAN pair missing")
 		}
-		return []bpf.InterfacePolicy{{IfIndex: 1, Pairs: []bpf.PrefixPair{pairs["att"], pairs["webpass"]}}}, nil
+		return []bpf.InterfacePolicy{{IfIndex: 1, Pairs: []nptpolicy.PrefixPair{pairs["att"], pairs["webpass"]}}}, nil
 	}
 	var steps []string
 	m.translator = &recordingTranslator{steps: &steps}
@@ -161,8 +162,8 @@ func TestPrepareLocalIPv6StopsBeforeDNATOnBPFError(t *testing.T) {
 		ok:       map[string]bool{"enatt0.3242": true},
 	}
 	m.listAddrs = func(_ context.Context, _ *slog.Logger, _ string) ([]netif.CurrentAddr, error) { return nil, nil }
-	m.preparePolicies = func(_ context.Context, _ *slog.Logger, pairs map[string]bpf.PrefixPair) ([]bpf.InterfacePolicy, error) {
-		return []bpf.InterfacePolicy{{IfIndex: 1, Pairs: []bpf.PrefixPair{pairs["att"]}}}, nil
+	m.preparePolicies = func(_ context.Context, _ *slog.Logger, pairs map[string]nptpolicy.PrefixPair) ([]bpf.InterfacePolicy, error) {
+		return []bpf.InterfacePolicy{{IfIndex: 1, Pairs: []nptpolicy.PrefixPair{pairs["att"]}}}, nil
 	}
 	var steps []string
 	m.translator = &recordingTranslator{steps: &steps, err: errors.New("BPF failed")}

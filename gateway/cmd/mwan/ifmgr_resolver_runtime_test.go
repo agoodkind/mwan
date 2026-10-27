@@ -20,9 +20,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agoodkind/netlink"
 	"github.com/godbus/dbus/v5"
 	"github.com/mdlayher/ndp"
-	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/net/dns/dnsmessage"
 	"golang.org/x/sys/unix"

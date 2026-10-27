@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/vishvananda/netlink"
+	"github.com/agoodkind/netlink"
 
 	internalclock "goodkind.io/mwan/internal/clock"
 	"goodkind.io/mwan/internal/config"

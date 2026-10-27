@@ -12,13 +12,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vishvananda/netlink"
+	"github.com/agoodkind/netlink"
 	"golang.org/x/sys/unix"
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/ifmgr/modules/addresses"
 	"goodkind.io/mwan/internal/ifmgr/modules/npt/bpf"
 	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/internal/nptpolicy"
 	"goodkind.io/mwan/internal/wanstate"
 )
 
@@ -55,8 +56,8 @@ func TestNativeIPv6ReadinessAfterNFTFailure(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			pair := bpf.PrefixPair{ID: 1, Internal: netip.MustParsePrefix("fd01:203:405::/48"), External: netip.MustParsePrefix("2001:db8:1::/48")}
-			if _, err := seed.Reconcile([]bpf.InterfacePolicy{{IfIndex: wan.Attrs().Index, Pairs: []bpf.PrefixPair{pair}}}); err != nil {
+			pair := nptpolicy.PrefixPair{ID: 1, Internal: netip.MustParsePrefix("fd01:203:405::/48"), External: netip.MustParsePrefix("2001:db8:1::/48")}
+			if _, err := seed.Reconcile([]bpf.InterfacePolicy{{IfIndex: wan.Attrs().Index, Pairs: []nptpolicy.PrefixPair{pair}}}); err != nil {
 				t.Fatal(err)
 			}
 			if err := seed.Close(); err != nil {

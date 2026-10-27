@@ -4,7 +4,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/vishvananda/netlink"
+	"github.com/agoodkind/netlink"
 )
 
 func TestAddrUpdateToEventOtherIfaceFiltered(t *testing.T) {

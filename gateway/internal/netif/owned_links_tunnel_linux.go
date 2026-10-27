@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/vishvananda/netlink"
+	"github.com/agoodkind/netlink"
 )
 
 func modifyTunnel(requested *netlink.Sittun) error {

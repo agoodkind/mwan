@@ -11,8 +11,8 @@ import (
 	"net/netip"
 	"slices"
 
+	"github.com/agoodkind/netlink"
 	"github.com/google/nftables"
-	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/interfaceintent"

@@ -14,9 +14,10 @@ import (
 
 	"github.com/cilium/ebpf"
 
-	"github.com/vishvananda/netlink"
+	"github.com/agoodkind/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
+	"goodkind.io/mwan/internal/nptpolicy"
 )
 
 func TestKernelTranslation(t *testing.T) {
@@ -42,7 +43,7 @@ func TestKernelTranslation(t *testing.T) {
 	}
 	lan, client := testVeth(t, "lan", "client")
 	wan, internet := testVeth(t, "wan", "internet")
-	pair := PrefixPair{ID: 7, Internal: netip.MustParsePrefix("fd01:203:405::/48"), External: netip.MustParsePrefix("2001:db8:1::/48")}
+	pair := nptpolicy.PrefixPair{ID: 7, Internal: netip.MustParsePrefix("fd01:203:405::/48"), External: netip.MustParsePrefix("2001:db8:1::/48")}
 	internal := netip.MustParseAddr("fd01:203:405:1::1234")
 	external := netip.MustParseAddr("2001:db8:1:d550::1234")
 	remote := netip.MustParseAddr("2001:db8:ffff::10")
@@ -59,7 +60,7 @@ func TestKernelTranslation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { translator.Close() }()
-	policies := []InterfacePolicy{{IfIndex: wan.Attrs().Index, Pairs: []PrefixPair{pair}}, {IfIndex: lan.Attrs().Index, Internal: true, Pairs: []PrefixPair{pair}}}
+	policies := []InterfacePolicy{{IfIndex: wan.Attrs().Index, Pairs: []nptpolicy.PrefixPair{pair}}, {IfIndex: lan.Attrs().Index, Internal: true, Pairs: []nptpolicy.PrefixPair{pair}}}
 	states, err := translator.Reconcile(policies)
 	if err != nil {
 		t.Fatal(err)
@@ -91,16 +92,16 @@ func TestKernelTranslation(t *testing.T) {
 	inNamespace(t, namespace, "unequal-prefix", func(t *testing.T) {
 		unequal := pair
 		unequal.External = netip.MustParsePrefix("2001:db8:1:aa00::/56")
-		policies[0].Pairs = []PrefixPair{unequal}
-		policies[1].Pairs = []PrefixPair{unequal}
+		policies[0].Pairs = []nptpolicy.PrefixPair{unequal}
+		policies[1].Pairs = []nptpolicy.PrefixPair{unequal}
 		if _, err := translator.Reconcile(policies); err != nil {
 			t.Fatal(err)
 		}
 		want := netip.MustParseAddr("2001:db8:1:aa01:2b4f::1234")
 		testExchange(t, clientSocket, internetSocket, client, lan, internal, remote, want, remote)
 		testExchange(t, internetSocket, clientSocket, internet, wan, remote, want, remote, internal)
-		policies[0].Pairs = []PrefixPair{pair}
-		policies[1].Pairs = []PrefixPair{pair}
+		policies[0].Pairs = []nptpolicy.PrefixPair{pair}
+		policies[1].Pairs = []nptpolicy.PrefixPair{pair}
 		if _, err := translator.Reconcile(policies); err != nil {
 			t.Fatal(err)
 		}
@@ -113,14 +114,14 @@ func TestKernelTranslation(t *testing.T) {
 		second := pair
 		second.ID = 8
 		second.External = netip.MustParsePrefix("2001:db8:2::/48")
-		policies[1].Pairs = []PrefixPair{pair, second}
+		policies[1].Pairs = []nptpolicy.PrefixPair{pair, second}
 		if _, err := translator.Reconcile(policies); err != nil {
 			t.Fatal(err)
 		}
 		target := netip.MustParseAddr("2001:db8:2:d550::5678")
 		wantSource := netip.MustParseAddr("2001:db8:2:d54f::1234")
 		testExchange(t, clientSocket, clientSocket, client, lan, internal, target, wantSource, secondInternal)
-		policies[1].Pairs = []PrefixPair{pair}
+		policies[1].Pairs = []nptpolicy.PrefixPair{pair}
 		if _, err := translator.Reconcile(policies); err != nil {
 			t.Fatal(err)
 		}
@@ -152,7 +153,7 @@ func TestKernelTranslation(t *testing.T) {
 		if err := netlink.FilterAdd(conflict); err != nil {
 			t.Fatal(err)
 		}
-		replacementPolicies := []InterfacePolicy{{IfIndex: replacement.Attrs().Index, Pairs: []PrefixPair{pair}}, policies[1]}
+		replacementPolicies := []InterfacePolicy{{IfIndex: replacement.Attrs().Index, Pairs: []nptpolicy.PrefixPair{pair}}, policies[1]}
 		if _, err := translator.Reconcile(replacementPolicies); err == nil {
 			t.Fatal("conflicting attachment unexpectedly succeeded")
 		}
@@ -194,7 +195,7 @@ func TestKernelTranslation(t *testing.T) {
 	inNamespace(t, namespace, "stateful-exceptions", func(t *testing.T) {
 		excepted := pair
 		excepted.SourceExceptions = []netip.Addr{internal}
-		policies[0].Pairs = []PrefixPair{excepted}
+		policies[0].Pairs = []nptpolicy.PrefixPair{excepted}
 		if _, err := translator.Reconcile(policies); err != nil {
 			t.Fatal(err)
 		}
@@ -359,7 +360,10 @@ func packetChecksum(frame []byte) uint16 {
 	for i := 54; i < len(frame); i += 2 {
 		sum += uint32(binary.BigEndian.Uint16(frame[i : i+2]))
 	}
-	return ^fold(sum)
+	for sum > 0xffff {
+		sum = sum&0xffff + sum>>16
+	}
+	return ^uint16(sum)
 }
 
 func inNamespace(t *testing.T, namespace netns.NsHandle, name string, test func(*testing.T)) {

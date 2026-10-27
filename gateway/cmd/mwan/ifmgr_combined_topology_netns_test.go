@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vishvananda/netlink"
+	"github.com/agoodkind/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
 )

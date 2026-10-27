@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agoodkind/netlink"
 	"github.com/insomniacslk/dhcp/dhcpv6"
 	"github.com/insomniacslk/dhcp/iana"
-	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/net/ipv6"
 	"golang.org/x/sys/unix"

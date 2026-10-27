@@ -13,11 +13,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vishvananda/netlink"
+	"github.com/agoodkind/netlink"
 	"github.com/vishvananda/netns"
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/ifmgr/modules/npt/bpf"
+	"goodkind.io/mwan/internal/nptpolicy"
 	"goodkind.io/mwan/internal/wanstate"
 )
 
@@ -125,8 +126,8 @@ func TestNativeIPv6WaitsForStaleTranslationCleanup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pair := bpf.PrefixPair{ID: 1, Internal: netip.MustParsePrefix("fd00:1::/48"), External: netip.MustParsePrefix("2001:db8:1::/48")}
-	if _, err := translator.Reconcile([]bpf.InterfacePolicy{{IfIndex: link.Attrs().Index, Pairs: []bpf.PrefixPair{pair}}}); err != nil {
+	pair := nptpolicy.PrefixPair{ID: 1, Internal: netip.MustParsePrefix("fd00:1::/48"), External: netip.MustParsePrefix("2001:db8:1::/48")}
+	if _, err := translator.Reconcile([]bpf.InterfacePolicy{{IfIndex: link.Attrs().Index, Pairs: []nptpolicy.PrefixPair{pair}}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := translator.Close(); err != nil {
