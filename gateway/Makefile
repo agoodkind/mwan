@@ -67,6 +67,8 @@ include ../build/wanconfig.mk
 # on linux CI.
 GO_MK_CGO_DEPS := libyang sysrepo
 
+GOVULNCHECK_INSTALL := golang.org/x/vuln/cmd/govulncheck@v1.9.0
+
 include bootstrap.mk
 
 # The test gate runs the binary it just linked, which loads libyang and
