@@ -277,6 +277,9 @@ func TestControllerRealVPP(t *testing.T) {
 			t.Fatal("native instruction samples must not claim exact empty polling attribution")
 		}
 	})
+	t.Run("optional receive queue accounting", func(t *testing.T) {
+		verifyQueuePolling(t, settings, stats)
+	})
 	foreign, err := govpp.Connect(settings.APISocket)
 	if err != nil {
 		t.Fatal(err)

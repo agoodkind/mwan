@@ -44,14 +44,15 @@ type ThreadProfile struct {
 	Symbols           []SymbolSamples `json:"Symbols"`
 }
 
-// ProfileResult reports native sampling coverage. PacketWork counts recognized
-// packet functions; receive functions do not establish exact empty polling time.
+// ProfileResult keeps sampled CPU and optional elapsed queue intervals separate.
+// EmptyPollingAvailable remains false because neither measures an exact CPU split.
 type ProfileResult struct {
-	Available             bool            `json:"Available"`
-	Reason                string          `json:"Reason"`
-	Duration              time.Duration   `json:"Duration"`
-	SamplePeriod          time.Duration   `json:"SamplePeriod"`
-	EmptyPollingAvailable bool            `json:"EmptyPollingAvailable"`
-	Counts                SampleCounts    `json:"Counts"`
-	Threads               []ThreadProfile `json:"Threads"`
+	Available             bool              `json:"Available"`
+	Reason                string            `json:"Reason"`
+	Duration              time.Duration     `json:"Duration"`
+	SamplePeriod          time.Duration     `json:"SamplePeriod"`
+	EmptyPollingAvailable bool              `json:"EmptyPollingAvailable"`
+	Counts                SampleCounts      `json:"Counts"`
+	Threads               []ThreadProfile   `json:"Threads"`
+	QueuePolling          *QueuePollProfile `json:"QueuePolling,omitempty"`
 }

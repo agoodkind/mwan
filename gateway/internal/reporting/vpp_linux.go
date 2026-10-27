@@ -59,7 +59,7 @@ func (collector *Collector) profileVPP(ctx context.Context) <-chan vpp.ProfileRe
 			return
 		}
 		duration, _ := time.ParseDuration(collector.vpp.ProfileDuration)
-		result, err = vpp.Profile(ctx, settings, collector.vpp.ProfileExecutable, duration)
+		result, err = vpp.ProfileWithOptions(ctx, settings, collector.vpp.ProfileExecutable, duration, vpp.ProfileOptions{QueuePolling: collector.vpp.ProfileQueuePolling})
 		if err != nil {
 			failure := fmt.Errorf("collect VPP CPU profile: %w", err)
 			collector.log.WarnContext(ctx, "VPP CPU profile unavailable", "error", failure)
@@ -170,6 +170,20 @@ func (renderer *Renderer) vppContent(history []Minute) []mailer.ContentBlock {
 			samples = append(samples, []string{thread.Thread.Name, clock, strconv.FormatUint(thread.Counts.PacketWork, 10), strconv.FormatUint(thread.Counts.Other, 10), strconv.FormatUint(thread.Counts.Unresolved, 10), strconv.FormatUint(thread.Counts.Lost, 10), threadStatus})
 		}
 		blocks = append(blocks, tableBlock("Native VPP instruction samples", []string{"Thread", "CPU clock", "Recognized packet function samples", "Other samples", "Unresolved samples", "Lost samples", "Status"}, samples))
+		if polling := profile.QueuePolling; polling != nil {
+			status := "Available"
+			if !polling.Available {
+				status = "Unavailable: " + polling.Reason
+			}
+			blocks = append(blocks, tableBlock("VPP receive queue intervals", []string{"Status", "Duration", "Measurement limit"}, [][]string{{status, polling.Duration.String(), "Elapsed receive intervals include preemption. They do not measure consumed CPU time."}}))
+			if polling.Available {
+				var queues [][]string
+				for _, queue := range polling.Queues {
+					queues = append(queues, []string{strconv.FormatUint(uint64(queue.ThreadID), 10), strconv.FormatUint(uint64(queue.InterfaceIndex), 10), strconv.FormatUint(uint64(queue.QueueID), 10), strconv.FormatUint(queue.EmptyCalls, 10), queue.EmptyElapsed.String(), strconv.FormatUint(queue.NonemptyCalls, 10), queue.NonemptyElapsed.String(), strconv.FormatUint(queue.Packets, 10), queue.RefillElapsed.String()})
+				}
+				blocks = append(blocks, tableBlock("VPP receive queue checks", []string{"Thread", "Interface index", "Queue", "Empty checks", "Empty elapsed", "Nonempty checks", "Nonempty elapsed", "Packets", "Refill elapsed"}, queues))
+			}
+		}
 		break
 	}
 	return blocks

@@ -61,6 +61,7 @@ expected_version = "26.06"
 request_timeout = "5s"
 state_file = "/var/lib/mwan/vpp.json"
 profile = false
+profile_queue_polling = false
 
 [[ifmgr.modules.vpp.interface]]
 connection_id = "router-vpp-inside"
@@ -121,8 +122,24 @@ instruction samples, ELF symbols, lost samples, and per-thread availability.
 The host must permit the performance event operation.
 
 Recognized NAT64 packet functions identify sampled packet work. Receive
-functions can process both packets and empty polls. Their aggregate clocks
-and symbol samples cannot establish exact empty polling CPU time. Profiles
-record this limit explicitly. Exact separation requires VPP instrumentation
-that records receive poll cycles separately for zero packets and nonzero
-packets.
+functions process both packets and empty polls. Their aggregate clocks and
+symbol samples cannot establish exact empty polling CPU time.
+
+The optional local VPP queue accounting patch adds separate counters for strict
+empty receive checks, nonempty receive processing and buffer refill. Setting
+`profile_queue_polling = true` requires `profile = true` and the matching
+extension API. MWAN acquires a session, requests an immediate baseline, and
+stops the session before reading the final shared memory snapshot. These
+snapshots do not depend on VPP's normal statistics update interval. Cleanup
+releases only the owned session. VPP also releases the session when the API
+client disconnects. A missing extension, changed queue topology,
+stale snapshot or counter reset makes the measurement unavailable.
+
+Each queue measurement retains its thread ID, interface index, queue ID,
+cumulative call and tick counts, and that thread's seconds per tick. Profiling
+adds clock reads and counter updates. Elapsed receive intervals include
+preemption. They do not measure consumed CPU time
+or establish an exact CPU split. Reports display these intervals separately
+from the Linux CPU clock. The queue interval also includes the short API
+operations before and after instruction sampling; its own duration records
+that interval.
