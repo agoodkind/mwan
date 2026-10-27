@@ -1126,6 +1126,14 @@ impl OwnerState {
         let mut config = dpdk::rte_eth_conf::default();
         // SAFETY: The writable opaque record has the SDK's generated layout.
         unsafe { dpdk::mwn_eth_conf_set_mtu(&mut config, u32::from(self.config.mtu)) };
+        // Representors do not advertise link status change interrupts.
+        if self.data[..self.config.data_count as usize]
+            .iter()
+            .any(|port| port.id == Some(id))
+        {
+            // SAFETY: The mutable configuration is a live, aligned SDK record.
+            unsafe { dpdk::mwn_eth_conf_enable_lsc(&mut config) };
+        }
         let mut info = dpdk::rte_eth_dev_info::default();
         // SAFETY: Discovery identified this owned port and info is writable.
         let mut result = unsafe { dpdk::rte_eth_dev_info_get(id, &mut info) };

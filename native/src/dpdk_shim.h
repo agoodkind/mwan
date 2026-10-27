@@ -37,6 +37,8 @@ uint16_t mwn_mbuf_data_offset(const struct rte_mbuf *packet);
 uint16_t mwn_mbuf_data_length(const struct rte_mbuf *packet);
 uint16_t mwn_mbuf_buffer_length(const struct rte_mbuf *packet);
 void mwn_eth_conf_set_mtu(struct rte_eth_conf *configuration, uint32_t mtu);
+/* configuration must identify a live, writable, aligned rte_eth_conf record. */
+void mwn_eth_conf_enable_lsc(struct rte_eth_conf *configuration);
 const char *mwn_eth_driver_name(const struct rte_eth_dev_info *information);
 const struct rte_eth_rxconf *mwn_eth_default_rxconf(const struct rte_eth_dev_info *information);
 const struct rte_eth_txconf *mwn_eth_default_txconf(const struct rte_eth_dev_info *information);

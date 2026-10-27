@@ -102,6 +102,11 @@ void mwn_eth_conf_set_mtu(struct rte_eth_conf *configuration, uint32_t mtu)
 	configuration->rxmode.mtu = mtu;
 }
 
+void mwn_eth_conf_enable_lsc(struct rte_eth_conf *configuration)
+{
+	configuration->intr_conf.lsc = 1;
+}
+
 const char *mwn_eth_driver_name(const struct rte_eth_dev_info *information)
 {
 	return information->driver_name;
