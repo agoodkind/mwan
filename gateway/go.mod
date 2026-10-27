@@ -20,7 +20,7 @@ require (
 	github.com/goreleaser/nfpm/v2 v2.48.0
 	github.com/insomniacslk/dhcp v0.0.0-20260719225207-c76316d4aa82
 	github.com/mdlayher/ndp v1.1.0
-	github.com/mdlayher/netlink v1.11.2
+	github.com/mdlayher/netlink v1.9.0 // v1.11.2 blocks conntrack replies; see https://github.com/mdlayher/netlink/pull/315.
 	github.com/mdlayher/packet v1.2.0
 	github.com/mdlayher/vsock v1.3.0
 	github.com/osrg/gobgp/v4 v4.10.0
