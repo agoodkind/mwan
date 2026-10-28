@@ -56,7 +56,8 @@ func (module *Module) removeRules(ctx context.Context, identity connectionIdenti
 		entry.uncertain = true
 	}
 	if err != nil {
-		module.logRuleCounters(ctx, slog.LevelWarn, "native connection rule removal failed", entry, reason, err)
+		log := module.ruleCounterLogger(entry, reason)
+		log.WarnContext(ctx, "native connection rule removal failed", "err", err)
 		return fmt.Errorf("remove native connection %d for %s: %w", identity.id, reason, err)
 	}
 	if result.InstalledDirections != 0 || result.CleanupFailedDirections != 0 || result.State != offload.NativePairDraining {

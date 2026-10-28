@@ -10,8 +10,16 @@ import (
 )
 
 func (module *Module) logRuleCounters(ctx context.Context, level slog.Level, message string, entry *admittedFlow, reason string, failure error) {
+	log := module.ruleCounterLogger(entry, reason)
+	if failure != nil {
+		log = log.With("err", failure)
+	}
+	log.Log(ctx, level, message)
+}
+
+func (module *Module) ruleCounterLogger(entry *admittedFlow, reason string) *slog.Logger {
 	counters, sampledAt, sampled := entry.counters.Latest()
-	attributes := []slog.Attr{
+	attributes := []any{
 		slog.Uint64("connection_id", uint64(entry.flow.ID)), slog.Uint64("connection_zone", uint64(entry.flow.Zone)),
 		slog.Any("original_tuple", entry.flow.TupleOrig), slog.Any("reply_tuple", entry.flow.TupleReply),
 		slog.String("wan", entry.wan), slog.String("reason", reason), slog.Any("handle", entry.result.Handle),
@@ -26,10 +34,7 @@ func (module *Module) logRuleCounters(ctx context.Context, level slog.Level, mes
 		attributes = append(attributes,
 			slog.String("counter_observation", "latest_complete_hardware"), slog.Time("counter_sampled_at", sampledAt))
 	}
-	if failure != nil {
-		attributes = append(attributes, slog.Any("err", failure))
-	}
-	module.Log.LogAttrs(ctx, level, message, attributes...)
+	return module.Log.With(attributes...)
 }
 
 func nativeCounterLogValue(requested bool, counter offload.NativeCounter, sampled bool) slog.Value {
