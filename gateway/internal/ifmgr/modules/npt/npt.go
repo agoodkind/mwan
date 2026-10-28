@@ -130,6 +130,7 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 		}
 	}
 	env.PrepareLocalIPv6 = m.prepareLocalIPv6
+	env.InspectNativePacketPolicy = m.inspectNativePacketPolicy
 
 	ifmgr.StartIfaceMonitors(ctx, log, moduleName, watchedIfaces(m.cfg), env.Connections, m.onMonitorEvent)
 

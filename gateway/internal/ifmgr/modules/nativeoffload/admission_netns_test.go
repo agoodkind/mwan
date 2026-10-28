@@ -189,10 +189,11 @@ func TestNativeAdmissionNPTv6(t *testing.T) {
 	pair := nptpolicy.PrefixPair{
 		ID: 1, Internal: netip.MustParsePrefix(admissionInternalPrefixV6), External: netip.MustParsePrefix(admissionExternalPrefixV6),
 	}
-	states, err := translator.Reconcile([]bpf.InterfacePolicy{
+	policies := []bpf.InterfacePolicy{
 		{IfIndex: fixture.input.Index, Internal: true, Pairs: []nptpolicy.PrefixPair{pair}},
 		{IfIndex: fixture.output.Index, Pairs: []nptpolicy.PrefixPair{pair}},
-	})
+	}
+	states, err := translator.Reconcile(policies)
 	if err != nil || len(states) != 4 {
 		t.Fatalf("NPT policy did not install both hooks on both interfaces: states=%+v error=%v", states, err)
 	}
@@ -208,6 +209,9 @@ func TestNativeAdmissionNPTv6(t *testing.T) {
 	}
 	translations[admissionWANID] = member
 	fixture.store.SetNPTTranslation(translations, map[string]nptpolicy.PrefixPair{admissionWANID: pair})
+	fixture.module.Env.InspectNativePacketPolicy = func(ctx context.Context, indices []int) error {
+		return translator.InspectNativePolicy(ctx, indices, policies)
+	}
 	flow := fixture.flow(t, admissionInternalClientV6, admissionRemoteV6, "")
 	translated := flow.TupleOrig
 	translated.IP.SourceAddress = netip.MustParseAddr(admissionExternalClientV6)
@@ -219,6 +223,7 @@ func TestNativeAdmissionNPTv6(t *testing.T) {
 	if _, err := translator.Reconcile(nil); err != nil {
 		t.Fatal(err)
 	}
+	policies = nil
 	for _, link := range []*net.Interface{fixture.input, fixture.output} {
 		current, err := netlink.LinkByIndex(link.Index)
 		if err != nil {
@@ -441,6 +446,15 @@ func newAdmissionFixture(t *testing.T, mode config.TranslationMode) admissionFix
 		store.SetReadiness(id, "ipv4", "ready")
 		store.SetReadiness(id, "ipv6", "ready")
 	}
+	module.forwarding, err = offload.NewForwardingEvents(ctx, nativeCaptureSocketBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := module.forwarding.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	return fixture
 }
 
