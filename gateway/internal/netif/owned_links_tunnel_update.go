@@ -33,6 +33,9 @@ func tunnelNeedsUpdate(observed *netlink.Sittun, tunnel *interfaceintent.Tunnel,
 func (r *OwnedLinkReconciler) convergeTunnel(connection interfaceintent.Connection, link netlink.Link, underlay netlink.Link) (netlink.Link, bool, error) {
 	id := connection.ID.String()
 	tunnel := connection.Link.Tunnel
+	if tunnel.Protocol == interfaceintent.TunnelProtocolVXLAN {
+		return r.convergeVXLAN(connection, link, underlay)
+	}
 	observed, ok := link.(*netlink.Sittun)
 	if !ok {
 		return nil, false, fmt.Errorf("%s is not a %s device", link.Attrs().Name, sitLinkType)

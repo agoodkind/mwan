@@ -30,6 +30,9 @@ func tunnelKernelType(protocol interfaceintent.TunnelProtocol) string {
 	if protocol == interfaceintent.TunnelProtocol6in4 {
 		return sitLinkType
 	}
+	if protocol == interfaceintent.TunnelProtocolVXLAN {
+		return vxlanLinkType
+	}
 	return ""
 }
 
@@ -41,7 +44,7 @@ func (record virtualRecord) kernelType() string {
 }
 
 func isOwnedVirtualType(linkType string) bool {
-	return linkType == "vlan" || linkType == "bridge" || linkType == sitLinkType
+	return linkType == "vlan" || linkType == "bridge" || linkType == sitLinkType || linkType == vxlanLinkType
 }
 
 // effectiveTunnelTTL returns the hop limit for every create and update request because the kernel applies
@@ -54,11 +57,15 @@ func effectiveTunnelTTL(tunnel *interfaceintent.Tunnel) uint8 {
 }
 
 func tunnelMTU(connection interfaceintent.Connection, underlay netlink.Link) (int, error) {
-	limit := underlay.Attrs().MTU - interfaceintent.Tunnel6in4Overhead
+	overhead := interfaceintent.Tunnel6in4Overhead
+	if connection.Link.Tunnel.Protocol == interfaceintent.TunnelProtocolVXLAN {
+		overhead = interfaceintent.TunnelVXLANOverhead
+	}
+	limit := underlay.Attrs().MTU - overhead
 	if limit < interfaceintent.IPv6MinimumMTU {
 		return 0, fmt.Errorf("tunnel %s underlay %s MTU %d is below the required minimum %d",
 			connection.Name, underlay.Attrs().Name, underlay.Attrs().MTU,
-			interfaceintent.IPv6MinimumMTU+interfaceintent.Tunnel6in4Overhead)
+			interfaceintent.IPv6MinimumMTU+overhead)
 	}
 	if connection.Link.MTU == nil {
 		return limit, nil
@@ -66,7 +73,7 @@ func tunnelMTU(connection interfaceintent.Connection, underlay netlink.Link) (in
 	configured := int(*connection.Link.MTU)
 	if configured > limit {
 		return 0, fmt.Errorf("tunnel %s MTU %d exceeds underlay %s MTU %d less the %d-byte outer header",
-			connection.Name, configured, underlay.Attrs().Name, underlay.Attrs().MTU, interfaceintent.Tunnel6in4Overhead)
+			connection.Name, configured, underlay.Attrs().Name, underlay.Attrs().MTU, overhead)
 	}
 	return configured, nil
 }
@@ -92,6 +99,12 @@ func (r *OwnedLinkReconciler) tunnelUnderlay(ctx context.Context, connection int
 		tunnel.Local.IsValid() && !tunnel.Local.Is4() {
 		result.Status, result.Err = OwnedLinkFailed, fmt.Errorf("connection %s has invalid tunnel intent", connection.ID)
 		return nil
+	}
+	if tunnel.Protocol == interfaceintent.TunnelProtocolVXLAN {
+		if err := validateVXLANIntent(connection); err != nil {
+			result.Status, result.Err = OwnedLinkFailed, err
+			return nil
+		}
 	}
 	result.Dependency = tunnel.Underlay
 	underlay, dependency := r.dependency(ctx, result.Dependency, pass)
@@ -123,6 +136,9 @@ func (r *OwnedLinkReconciler) requiredLinks(ctx context.Context, connection inte
 
 func requestedVirtualLink(connection interfaceintent.Connection, name string, parent netlink.Link, underlay netlink.Link) (netlink.Link, error) {
 	if connection.Link.Kind == interfaceintent.KindTunnel {
+		if connection.Link.Tunnel.Protocol == interfaceintent.TunnelProtocolVXLAN {
+			return requestedVXLAN(name, 0, connection.Link.Tunnel, underlay)
+		}
 		return requestedTunnel(name, 0, connection.Link.Tunnel, underlay)
 	}
 	attrs := netlink.LinkAttrs{Name: name}
@@ -192,6 +208,12 @@ func recordTunnelIdentity(record *virtualRecord, tunnel *interfaceintent.Tunnel,
 	}
 	record.TunnelProtocol, record.ParentIndex = string(tunnel.Protocol), underlay.Attrs().Index
 	record.TunnelRemote, record.TunnelLocal = tunnel.Remote.String(), local.String()
+	if tunnel.Protocol == interfaceintent.TunnelProtocolVXLAN {
+		record.VXLAN = new(*tunnel.VXLAN)
+		record.TunnelTTL = effectiveTunnelTTL(tunnel)
+		record.Parent, record.ParentMAC = parentRecord(underlay)
+		record.ParentBoot, record.ParentKind, record.ParentName = record.BootID, underlay.Type(), underlay.Attrs().Name
+	}
 }
 
 // validateTemporaryTunnel accepts a device with the reserved temporary name only when the underlay and
@@ -200,6 +222,12 @@ func recordTunnelIdentity(record *virtualRecord, tunnel *interfaceintent.Tunnel,
 func validateTemporaryTunnel(link netlink.Link, connection interfaceintent.Connection, record virtualRecord) error {
 	if err := validateTunnelLink(link, connection); err != nil {
 		return err
+	}
+	if connection.Link.Tunnel.Protocol == interfaceintent.TunnelProtocolVXLAN {
+		if !matchesVXLANRecord(link, record) {
+			return fmt.Errorf("quarantined temporary link %s: wrong tunnel identity", link.Attrs().Name)
+		}
+		return nil
 	}
 	observed, ok := link.(*netlink.Sittun)
 	if !ok || observed.ParentIndex != record.ParentIndex ||
