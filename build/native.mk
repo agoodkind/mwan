@@ -66,7 +66,7 @@ native-sdk-check: native-sdk-required
 	$(MAKE) MWAN_NATIVE=1 build test
 
 native-admission-kernel-check: native-library go-mk-cgo-dep-libyang go-mk-cgo-dep-sysrepo
-	PKG_CONFIG_PATH="$(GO_MK_CGO_PREFIX)/lib/pkgconfig:$(MWAN_NATIVE_PKG_PATH)" go test -tags 'nativeoffload netns' ./internal/offload ./internal/ifmgr/modules/nativeoffload -run 'Test(Conntrack|Forwarding|NativeSingleDirection|NativePacketObservation|NativeAdmission|NativeVXLAN)' -count=1 -v
+	PKG_CONFIG_PATH="$(GO_MK_CGO_PREFIX)/lib/pkgconfig:$(MWAN_NATIVE_PKG_PATH)" go test -tags 'nativeoffload netns' ./internal/offload ./internal/firewall ./internal/ifmgr/modules/nativeoffload -run 'Test(Conntrack|Forwarding|NativeSingleDirection|NativePacketObservation|NativeAdmission|NativeVXLAN|InspectNative|RulesetEvents)' -count=1 -v
 
 native-admission-startup-check: native-library go-mk-cgo-dep-libyang go-mk-cgo-dep-sysrepo
 	PKG_CONFIG_PATH="$(GO_MK_CGO_PREFIX)/lib/pkgconfig:$(MWAN_NATIVE_PKG_PATH)" GOFLAGS="$(GOFLAGS) -tags=nativeoffload" go test -tags 'nativeoffload netns firewallnetns' ./cmd/mwan -run '^TestNativeStartup' -count=1 -v
