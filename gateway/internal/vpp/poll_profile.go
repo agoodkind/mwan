@@ -20,14 +20,47 @@ import (
 	pollapi "goodkind.io/mwan/internal/vpp/pollapi/virtio_poll"
 )
 
+type pollAction uint8
+
 const (
-	pollStart    uint8 = 1
-	pollSnapshot uint8 = 2
-	pollStop     uint8 = 3
-	pollRelease  uint8 = 4
-	pollFields         = 6
-	pollRoot           = "/mwan/virtio-poll/"
+	pollStart    pollAction = 1
+	pollSnapshot pollAction = 2
+	pollStop     pollAction = 3
+	pollRelease  pollAction = 4
+	pollFields              = 6
+	pollRoot                = "/mwan/virtio-poll/"
 )
+
+type pollSessionState uint8
+
+const (
+	pollUnowned pollSessionState = iota
+	pollMayOwn
+	pollConfirmedStopped
+)
+
+type pollControlError struct {
+	action  pollAction
+	session uint64
+	cause   error
+}
+
+func (failure *pollControlError) Error() string {
+	return fmt.Sprintf("VPP queue profile action %d session %d: %v", failure.action, failure.session, failure.cause)
+}
+
+func (failure *pollControlError) Unwrap() error {
+	return failure.cause
+}
+
+func (failure *pollControlError) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("operation", "VPP queue profile control"),
+		slog.Any("action", failure.action),
+		slog.Uint64("session", failure.session),
+		slog.Any("error", failure.cause),
+	)
+}
 
 // ProfileOptions keeps optional receive instrumentation separate from CPU sampling.
 type ProfileOptions struct {
@@ -67,8 +100,7 @@ type queuePollSession struct {
 	statistics *statsclient.StatsClient
 	generation string
 	token      uint64
-	started    bool
-	stopped    bool
+	state      pollSessionState
 	baseline   QueuePollProfile
 	threads    []vlib.ThreadData
 }
@@ -117,7 +149,6 @@ func ProfileQueuePolling(ctx context.Context, endpoints Endpoints, duration time
 	select {
 	case <-ctx.Done():
 		failure = fmt.Errorf("collect VPP queue profile: %w", ctx.Err())
-		slog.WarnContext(ctx, "collect VPP queue profile interrupted", "error", failure)
 	case <-timer.C:
 	}
 	result, err = session.finish(ctx)
@@ -170,35 +201,36 @@ func openQueuePollSession(ctx context.Context, endpoints Endpoints) (*queuePollS
 		client.Close()
 		return nil, errors.Join(fmt.Errorf("VPP queue profile owner token must be nonzero"), cleanupError)
 	}
-	return &queuePollSession{client: client, statistics: statistics, generation: generation, token: token, started: false, stopped: false, baseline: QueuePollProfile{Available: false, Reason: "", Duration: 0, Session: 0, Sequence: 0, Queues: nil}, threads: threads.ThreadData}, nil
+	return &queuePollSession{client: client, statistics: statistics, generation: generation, token: token, state: pollUnowned, baseline: QueuePollProfile{Available: false, Reason: "", Duration: 0, Session: 0, Sequence: 0, Queues: nil}, threads: threads.ThreadData}, nil
 }
 
-func (session *queuePollSession) control(ctx context.Context, action uint8) (*pollapi.VirtioPollProfileReply, error) {
+func (session *queuePollSession) control(ctx context.Context, action pollAction) (*pollapi.VirtioPollProfileReply, error) {
 	requestContext, cancel := session.client.requestContext(ctx)
 	defer cancel()
-	reply, err := pollapi.NewServiceClient(session.client.connection).VirtioPollProfile(requestContext, &pollapi.VirtioPollProfile{Session: session.token, Action: action})
+	reply, err := pollapi.NewServiceClient(session.client.connection).VirtioPollProfile(requestContext, &pollapi.VirtioPollProfile{Session: session.token, Action: uint8(action)})
 	if err != nil {
-		slog.WarnContext(ctx, "control VPP queue profiling failed", "session", session.token, "action", action, "error", err)
-		return nil, fmt.Errorf("VPP queue profile action %d: %w", action, err)
+		return nil, &pollControlError{action: action, session: session.token, cause: err}
 	}
 	if reply.Session != session.token {
-		return nil, fmt.Errorf("VPP queue profile action %d returned another session", action)
+		return nil, &pollControlError{action: action, session: session.token, cause: fmt.Errorf("reply reports session %d", reply.Session)}
 	}
 	if action == pollStop && !reply.Active {
-		session.stopped = true
+		session.state = pollConfirmedStopped
+	}
+	if action == pollRelease {
+		session.state = pollUnowned
 	}
 	return reply, nil
 }
 
 func (session *queuePollSession) start(ctx context.Context) error {
 	// A timed out start can still acquire ownership. Cleanup must attempt this token.
-	session.started = true
-	session.stopped = false
+	session.state = pollMayOwn
 	reply, err := session.control(ctx, pollStart)
 	if err != nil {
 		var rejected api.VPPApiError
 		if errors.As(err, &rejected) {
-			session.started = false
+			session.state = pollUnowned
 		}
 		return err
 	}
@@ -412,10 +444,10 @@ func validateQueueDelta(before, after QueuePollProfile) error {
 
 func (session *queuePollSession) close(ctx context.Context) error {
 	var failure error
-	if session.started {
+	if session.state != pollUnowned {
 		cleanupContext := context.WithoutCancel(ctx)
 		var stopError error
-		if !session.stopped {
+		if session.state != pollConfirmedStopped {
 			_, stopError = session.control(cleanupContext, pollStop)
 		}
 		_, releaseError := session.control(cleanupContext, pollRelease)
