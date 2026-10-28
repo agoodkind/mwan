@@ -1,11 +1,14 @@
 package steering
 
 import (
+	"encoding/binary"
 	"fmt"
 	"log/slog"
 	"net/netip"
 	"strconv"
 	"strings"
+
+	"github.com/google/nftables/binaryutil"
 
 	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/netif"
@@ -81,14 +84,22 @@ func (rule steerRule) policyExpression() string {
 	}
 	expression.WriteString(rule.policyGenerator(family))
 	expression.WriteString(" map { ")
-	for slot, mark := range rule.Assign.Slots {
+	slot := uint32(0)
+	for _, mark := range rule.Assign.Slots {
 		if slot != 0 {
 			expression.WriteString(", ")
 		}
-		fmt.Fprintf(&expression, "%d : 0x%08x", slot, mark)
+		fmt.Fprintf(&expression, "%d : 0x%08x", anonymousMapReadbackWord(slot), anonymousMapReadbackWord(mark))
+		slot++
 	}
 	expression.WriteString(" }")
 	return expression.String()
+}
+
+// Remove this conversion after the pinned library fixes key and data metadata:
+// https://github.com/google/nftables/pull/355.
+func anonymousMapReadbackWord(value uint32) uint32 {
+	return binary.BigEndian.Uint32(binaryutil.NativeEndian.PutUint32(value))
 }
 
 func (rule steerRule) policyGenerator(family string) string {

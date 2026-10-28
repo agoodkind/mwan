@@ -120,6 +120,7 @@ func testSteeringMapRoutes(t *testing.T, mode hashMode, family int) {
 		t.Fatal(err)
 	}
 	markProofPackets(t, ctx, input, sender, []netlink.Link{firstPeer, secondPeer}, destination)
+	markProofReadback(t, ctx, writer, policy, store.Snapshot())
 }
 
 func markProofPolicy(t *testing.T, mode hashMode, input, first, second netlink.Link) Config {
