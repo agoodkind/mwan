@@ -84,6 +84,10 @@ func (r *OwnedLinkReconciler) matchesVXLANUnderlay(record virtualRecord) bool {
 	return err == nil && r.matchesParentRecord(record, underlay)
 }
 
+func (r *OwnedLinkReconciler) matchesVXLANReservation(link netlink.Link, record virtualRecord) bool {
+	return record.VXLAN == nil || matchesVXLANRecord(link, record) && r.matchesVXLANUnderlay(record)
+}
+
 func (r *OwnedLinkReconciler) vxlanReceiverHolder(requested *netlink.Vxlan, links []netlink.Link) (string, bool) {
 	for _, link := range links {
 		observed, ok := link.(*netlink.Vxlan)

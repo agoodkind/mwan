@@ -646,7 +646,7 @@ func (r *OwnedLinkReconciler) adoptVirtualLink(found netlink.Link, connection in
 			connection.Link.Kind == interfaceintent.KindVLAN && recorded.VLANID != connection.Link.VLAN.ID {
 			return nil, false, fmt.Errorf("renamed link %s differs from its reservation", found.Attrs().Name)
 		}
-		if recorded.VXLAN != nil && (!matchesVXLANRecord(found, recorded) || !r.matchesVXLANUnderlay(recorded)) {
+		if !r.matchesVXLANReservation(found, recorded) {
 			return nil, false, fmt.Errorf("renamed link %s differs from its VXLAN reservation", found.Attrs().Name)
 		}
 		if err := validateVirtual(found, connection, parent, recorded.Alias); err != nil {
