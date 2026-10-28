@@ -177,6 +177,15 @@ type NativePairHandle struct {
 	slot       uint32
 }
 
+// LogValue keeps native identity visible without exporting writable fields.
+func (handle NativePairHandle) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.Uint64("instance", handle.instance),
+		slog.Uint64("generation", handle.generation),
+		slog.Uint64("slot", uint64(handle.slot)),
+	)
+}
+
 // NativePairState reports hardware installation and inverse-record retention.
 type NativePairState uint32
 

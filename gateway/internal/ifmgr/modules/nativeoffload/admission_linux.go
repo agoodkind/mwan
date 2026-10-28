@@ -171,6 +171,7 @@ func (module *Module) completeInstallation(ctx context.Context, identity connect
 		return
 	}
 	module.stats.Installed++
+	module.logAdmittedFlow(ctx, "native rule installed", module.flows[identity])
 	if evidence.guard.Check() != nil {
 		module.invalidateEvidence(ctx)
 	}

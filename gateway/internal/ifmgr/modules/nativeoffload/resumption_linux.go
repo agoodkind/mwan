@@ -168,6 +168,7 @@ func (module *Module) resumeEntry(ctx, requestContext context.Context, identity 
 	entry.flow, entry.spec, entry.guards = current, spec, guards
 	module.startCounters(entry, counterStarted)
 	module.stats.Resumed++
+	module.logAdmittedFlow(ctx, "native rule resumed", entry)
 }
 
 func (module *Module) rememberCandidate(identity connectionIdentity, entry *admittedFlow) {

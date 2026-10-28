@@ -207,6 +207,13 @@ func (module *Module) evictLRU(ctx context.Context) bool {
 	return true
 }
 
+func (module *Module) logAdmittedFlow(ctx context.Context, message string, entry *admittedFlow) {
+	module.Log.DebugContext(ctx, message,
+		"connection_id", entry.flow.ID, "wan", entry.wan,
+		"handle", entry.result.Handle, "requested_directions", entry.spec.RequestedDirections,
+		"directions", entry.spec.Directions, "packet_guards", entry.guards)
+}
+
 func (module *Module) logCounters(ctx context.Context) {
 	stats, err := module.runtime.Stats()
 	if err != nil {
@@ -223,6 +230,8 @@ func (module *Module) logCounters(ctx context.Context) {
 		"expired", control.Expired, "fallback", control.Fallback,
 		"counter_failures", control.CounterFailures, "counter_pending_queries", control.CounterPendingQueries,
 		"received", stats.Received, "forwarded", stats.Forwarded,
-		"returned_to_kernel", stats.ReturnedToKernel, "pending", stats.Pending,
-		"quarantined", stats.Quarantined)
+		"returned_to_kernel", stats.ReturnedToKernel, "unsupported", stats.Unsupported,
+		"lookup_misses", stats.LookupMisses, "malformed", stats.Malformed,
+		"transmit_dropped", stats.TransmitDropped, "pending", stats.Pending,
+		"quarantined", stats.Quarantined, "discarded_group_frames", stats.DiscardedGroupFrames)
 }
