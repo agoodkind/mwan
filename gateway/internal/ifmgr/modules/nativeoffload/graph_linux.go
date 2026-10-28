@@ -64,6 +64,9 @@ func (module *Module) resolveGraph() (configuration offload.NativeConfig, links 
 		if err != nil {
 			return configuration, nil, fmt.Errorf("inspect native kernel receiver %s: %w", connection.Name, err)
 		}
+		if link.Attrs().MasterIndex != 0 {
+			return configuration, nil, fmt.Errorf("native receiver %s belongs to a live master interface", connection.Name)
+		}
 		kernel, err := net.InterfaceByIndex(link.Attrs().Index)
 		if err != nil {
 			return configuration, nil, fmt.Errorf("read native receiver identity: %w", err)
@@ -114,6 +117,9 @@ func (module *Module) verifyLinks() (resultErr error) {
 			return fmt.Errorf("inspect native receiver %s: %w", binding.kernel.Name, err)
 		}
 		attributes := link.Attrs()
+		if attributes.MasterIndex != 0 {
+			return fmt.Errorf("native receiver %s belongs to a live master interface", binding.kernel.Name)
+		}
 		if !netif.LinkMatchesIdentity(link, index, binding.identity) || attributes.HardwareAddr.String() != binding.kernel.HardwareAddr.String() || attributes.MTU != binding.kernel.MTU || attributes.Flags&net.FlagUp == 0 || attributes.RawFlags&unix.IFF_LOWER_UP == 0 {
 			return fmt.Errorf("native receiver %s changed its kernel identity or forwarding attributes", binding.kernel.Name)
 		}
