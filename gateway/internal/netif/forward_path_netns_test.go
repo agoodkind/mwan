@@ -29,6 +29,8 @@ const (
 	forwardPathTable                     = 420
 	forwardPathSourcePort                = 40000
 	forwardPathDestinationPort           = 443
+	forwardPathPolicyDSCP         uint8  = 4
+	forwardPathECNValues                 = 4
 	forwardPathNexthopGroupID     uint32 = 10
 	forwardPathBlackholeNexthopID uint32 = 20
 	// The pinned x/sys does not expose Linux RTA_NH_ID.
@@ -212,6 +214,59 @@ func TestForwardPathLookupPreservesPacketSelectors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestForwardPathLookupPreservesECNIndependentRouting(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Fatal("ECN routing proof requires a privileged network namespace")
+	}
+	if !forwardPathNamespace(t, "MWAN_FORWARD_PATH_ECN_CHILD") {
+		return
+	}
+	for index, family := range []int{unix.AF_INET, unix.AF_INET6} {
+		t.Run(fmt.Sprintf("family%d", family), func(t *testing.T) {
+			fixture := newForwardPathFixture(t, family, fmt.Sprintf("e%d", index))
+			fixture.selector.Protocol = unix.IPPROTO_TCP
+			dscpRule := addForwardPathDSCPRule(t, family, fixture)
+			for _, dscp := range []uint8{0, forwardPathPolicyDSCP} {
+				for ecn := uint8(0); ecn < forwardPathECNValues; ecn++ {
+					trafficClass := dscp*forwardPathECNValues | ecn
+					t.Run(fmt.Sprintf("traffic-class-%02x", trafficClass), func(t *testing.T) {
+						selector := fixture.selector
+						selector.TrafficClass = trafficClass
+						expected := 0
+						if dscpRule && dscp == forwardPathPolicyDSCP {
+							expected = 1
+						}
+						assertForwardPath(t, fixture, selector, expected)
+						t.Logf("traffic_class=%#02x selected_output=%s", trafficClass, fixture.outputs[expected].Attrs().Name)
+					})
+				}
+			}
+		})
+	}
+}
+
+func addForwardPathDSCPRule(t *testing.T, family int, fixture forwardPathFixture) bool {
+	t.Helper()
+	rule := netlink.NewRule()
+	rule.Family, rule.Priority, rule.Table = family, 90, unix.RT_TABLE_MAIN
+	rule.IifName, rule.Mark, rule.IPProto = fixture.input.Attrs().Name, forwardPathMark, unix.IPPROTO_TCP
+	rule.Sport = netlink.NewRulePortRange(forwardPathSourcePort, forwardPathSourcePort)
+	rule.Dport = netlink.NewRulePortRange(forwardPathDestinationPort, forwardPathDestinationPort)
+	if err := netlink.RuleAdd(rule); err != nil {
+		t.Fatalf("install the wildcard traffic-class TCP rule for family %d: %v", family, err)
+	}
+	rule.Priority, rule.Table, rule.Tos = 80, forwardPathTable, uint(forwardPathPolicyDSCP*forwardPathECNValues)
+	if err := netlink.RuleAdd(rule); err != nil {
+		if family != unix.AF_INET6 || !errors.Is(err, unix.EINVAL) && !errors.Is(err, unix.EOPNOTSUPP) {
+			t.Fatalf("install the DSCP TCP rule for family %d: %v", family, err)
+		}
+		t.Logf("family=%d kernel rejected nonzero legacy TOS %#02x after accepting the wildcard rule: %v", family, rule.Tos, err)
+		return false
+	}
+	t.Logf("family=%d kernel accepted nonzero legacy TOS %#02x", family, rule.Tos)
+	return true
 }
 
 func TestForwardPathLookupRejectsUnavailablePaths(t *testing.T) {
