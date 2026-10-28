@@ -140,25 +140,26 @@ func markProofPolicy(t *testing.T, mode hashMode, input, first, second netlink.L
 
 func markProofRoutes(t *testing.T, family int, destination netip.Addr, providers, peers []netlink.Link) {
 	t.Helper()
+	defaultRoute := netip.PrefixFrom(destination, 0).Masked()
 	for index, provider := range providers {
 		route := netlink.Route{
 			Family: family, Table: markProofTable + index, LinkIndex: provider.Attrs().Index,
-			Dst: &net.IPNet{IP: destination.AsSlice(), Mask: net.CIDRMask(0, destination.BitLen())},
+			Dst: &net.IPNet{IP: defaultRoute.Addr().AsSlice(), Mask: net.CIDRMask(0, destination.BitLen())},
 		}
 		if err := netlink.RouteAdd(&route); err != nil {
-			t.Fatal(err)
+			t.Fatalf("install packet proof route family=%d table=%d interface=%s destination=%s: %v", family, route.Table, provider.Attrs().Name, route.Dst, err)
 		}
 		rule := netlink.NewRule()
 		rule.Family, rule.Priority, rule.Table = family, markProofPriority+index, route.Table
 		rule.Mark = []uint32{markProofFirstMark, markProofSecondMark}[index]
 		if err := netlink.RuleAdd(rule); err != nil {
-			t.Fatal(err)
+			t.Fatalf("install packet proof rule family=%d table=%d mark=%d: %v", family, rule.Table, rule.Mark, err)
 		}
 		if err := netlink.NeighSet(&netlink.Neigh{
 			LinkIndex: provider.Attrs().Index, Family: family, IP: destination.AsSlice(),
 			HardwareAddr: peers[index].Attrs().HardwareAddr, State: unix.NUD_PERMANENT,
 		}); err != nil {
-			t.Fatal(err)
+			t.Fatalf("install packet proof neighbor family=%d interface=%s destination=%s: %v", family, provider.Attrs().Name, destination, err)
 		}
 	}
 }
