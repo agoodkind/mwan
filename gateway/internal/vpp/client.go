@@ -81,7 +81,11 @@ func Open(ctx context.Context, settings Endpoints, messages ...api.Message) (res
 		connection.Disconnect()
 		return nil, fmt.Errorf("read VPP version from %s: %w", settings.APISocket, err)
 	}
-	if version.Version != settings.ExpectedVersion && !strings.HasPrefix(version.Version, settings.ExpectedVersion+"-") {
+	// VPP adds an implicit .0 for builds after an initial release tag.
+	release, _, _ := strings.Cut(version.Version, "-")
+	point, hasPoint := strings.CutPrefix(release, settings.ExpectedVersion+".")
+	validPoint := hasPoint && point != "" && strings.Trim(point, "0123456789") == ""
+	if release != settings.ExpectedVersion && !validPoint {
 		connection.Disconnect()
 		return nil, fmt.Errorf("VPP API %s reports version %q; expected %s", settings.APISocket, version.Version, settings.ExpectedVersion)
 	}
