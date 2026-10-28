@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -20,7 +21,10 @@ import (
 	"goodkind.io/mwan/internal/clock"
 )
 
-const rulesetHeaderBytes = 4
+const (
+	rulesetHeaderBytes = 4
+	rulesetSerialHalf  = uint32(1 << 31)
+)
 
 type rulesetRequest struct {
 	sequence uint32
@@ -34,7 +38,10 @@ type RulesetEvents struct {
 	Errors  <-chan error
 
 	socket     *netlink.Conn
+	portID     uint32
 	generation atomic.Uint64
+	kernelID   uint32
+	identified bool
 	sequence   atomic.Uint32
 	requests   chan struct{}
 	replyMu    sync.Mutex
@@ -74,10 +81,14 @@ func NewRulesetEvents(ctx context.Context, socketBytes int) (result *RulesetEven
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("inspect nftables observation socket: %w", err), socket.Close())
 	}
+	portID, err := rulesetSocketPortID(raw)
+	if err != nil {
+		return nil, errors.Join(err, socket.Close())
+	}
 	changes := make(chan struct{}, 1)
 	failures := make(chan error, 1)
 	source := &RulesetEvents{
-		Changes: changes, Errors: failures, socket: socket,
+		Changes: changes, Errors: failures, socket: socket, portID: portID, kernelID: 0, identified: false,
 		generation: atomic.Uint64{}, sequence: atomic.Uint32{}, requests: make(chan struct{}, 1),
 		replyMu: sync.Mutex{}, pending: nil, failureMu: sync.RWMutex{}, failure: nil,
 		done: make(chan struct{}), stopping: make(chan struct{}), closeOnce: sync.Once{}, closeErr: nil,
@@ -108,7 +119,7 @@ func NewRulesetEvents(ctx context.Context, socketBytes int) (result *RulesetEven
 	return source, nil
 }
 
-// Generation counts complete nftables transaction notifications.
+// Generation is a monotonic token for the latest observed kernel ruleset.
 func (source *RulesetEvents) Generation() uint64 { return source.generation.Load() }
 
 // Err preserves an observation gap after channel closure.
@@ -269,12 +280,13 @@ func (source *RulesetEvents) message(message syscall.NetlinkMessage, changes cha
 	}
 	attributes.ByteOrder = binary.BigEndian
 	generation := false
+	var identifier uint32
 	for attributes.Next() {
 		if message.Header.Type&0xff == unix.NFT_MSG_NEWGEN && attributes.Type() == unix.NFTA_GEN_ID {
 			if generation {
 				return errors.New("nftables generation message repeated its generation ID")
 			}
-			_ = attributes.Uint32()
+			identifier = attributes.Uint32()
 			generation = true
 		}
 	}
@@ -287,9 +299,16 @@ func (source *RulesetEvents) message(message syscall.NetlinkMessage, changes cha
 	if !generation {
 		return errors.New("nftables generation message omitted its generation ID")
 	}
-	if message.Header.Seq == 0 {
-		source.generation.Add(1)
+	changed, err := source.observeGeneration(identifier)
+	if err != nil {
+		return err
+	}
+	if changed {
 		source.changed(changes)
+	}
+	// Notifications retain the writer's port and sequence. Only this socket's
+	// port and pending sequence identify a GETGEN response.
+	if message.Header.Pid != source.portID {
 		return nil
 	}
 	source.replyMu.Lock()
@@ -299,4 +318,52 @@ func (source *RulesetEvents) message(message syscall.NetlinkMessage, changes cha
 		source.pending = nil
 	}
 	return nil
+}
+
+func rulesetSocketPortID(raw syscall.RawConn) (uint32, error) {
+	var portID uint32
+	var inspection error
+	if err := raw.Control(func(descriptor uintptr) {
+		if descriptor > uintptr(math.MaxInt) {
+			inspection = errors.New("nftables socket descriptor exceeds the system range")
+			return
+		}
+		address, err := unix.Getsockname(int(descriptor))
+		if err != nil {
+			inspection = err
+			return
+		}
+		bound, valid := address.(*unix.SockaddrNetlink)
+		if !valid || bound.Pid == 0 {
+			inspection = errors.New("nftables observation socket lacks a userspace port ID")
+			return
+		}
+		portID = bound.Pid
+	}); err != nil {
+		return 0, fmt.Errorf("inspect nftables socket descriptor: %w", err)
+	}
+	if inspection != nil {
+		return 0, fmt.Errorf("read nftables observation port: %w", inspection)
+	}
+	return portID, nil
+}
+
+func (source *RulesetEvents) observeGeneration(identifier uint32) (bool, error) {
+	if !source.identified {
+		source.identified = true
+		source.kernelID = identifier
+		source.generation.Store(uint64(identifier))
+		return true, nil
+	}
+	difference := identifier - source.kernelID
+	if difference == rulesetSerialHalf {
+		return false, errors.New("nftables generation ordering became ambiguous")
+	}
+	if difference == 0 || difference > rulesetSerialHalf {
+		// A notification can follow a query that already observed a newer commit.
+		return false, nil
+	}
+	source.kernelID = identifier
+	source.generation.Add(uint64(difference))
+	return true, nil
 }

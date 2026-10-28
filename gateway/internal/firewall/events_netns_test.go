@@ -64,9 +64,10 @@ func TestRulesetEventsCheckpointPolicy(t *testing.T) {
 	if err := firewall.Apply(ctx, policy); err != nil {
 		t.Fatal(err)
 	}
+	observed := awaitRulesetNotification(t, ctx, events, initial)
 	changed, err := events.Barrier(ctx)
-	if err != nil || changed <= initial {
-		t.Fatalf("policy transaction did not advance its observation checkpoint: before=%d after=%d error=%v", initial, changed, err)
+	if err != nil || changed != observed {
+		t.Fatalf("checkpoint did not confirm the unsolicited notification: observed=%d checkpoint=%d error=%v", observed, changed, err)
 	}
 	stable, err := events.Barrier(ctx)
 	if err != nil || stable != changed {
@@ -76,11 +77,27 @@ func TestRulesetEventsCheckpointPolicy(t *testing.T) {
 	if err := firewall.Apply(ctx, policy); err != nil {
 		t.Fatal(err)
 	}
+	observed = awaitRulesetNotification(t, ctx, events, stable)
 	unsafeGeneration, err := events.Barrier(ctx)
-	if err != nil || unsafeGeneration <= stable {
-		t.Fatalf("header policy change did not invalidate the checkpoint: before=%d after=%d error=%v", stable, unsafeGeneration, err)
+	if err != nil || unsafeGeneration != observed {
+		t.Fatalf("header policy checkpoint differs from notification: observed=%d checkpoint=%d error=%v", observed, unsafeGeneration, err)
 	}
 	if err := events.Err(); err != nil {
 		t.Fatalf("nftables notifications lost certification: %v", err)
 	}
+}
+
+func awaitRulesetNotification(t *testing.T, ctx context.Context, events *offload.RulesetEvents, previous uint64) uint64 {
+	t.Helper()
+	for events.Generation() <= previous {
+		select {
+		case <-events.Changes:
+		case err := <-events.Errors:
+			t.Fatalf("nftables notification failed: %v", err)
+		case <-ctx.Done():
+			t.Fatalf("unsolicited nftables notification did not advance generation %d: %v", previous, ctx.Err())
+		}
+	}
+	t.Logf("unsolicited nftables notification advanced generation from %d to %d", previous, events.Generation())
+	return events.Generation()
 }
