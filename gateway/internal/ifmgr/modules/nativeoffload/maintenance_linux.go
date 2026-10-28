@@ -117,20 +117,7 @@ func (module *Module) sweepEntry(ctx context.Context, generation uint64, identit
 		return true
 	}
 	if observation == offload.NativeCounterInvalid || observation == offload.NativeCounterPending || observation == offload.NativeCounterReadinessExpired {
-		module.stats.CounterFailures++
-		reason := "hardware counter evidence became unavailable"
-		if observation == offload.NativeCounterReadinessExpired {
-			reason = "initial hardware counter readiness deadline elapsed"
-		}
-		if observation == offload.NativeCounterPending {
-			reason = "kernel timeout cannot wait for initial hardware counters"
-		}
-		module.Log.WarnContext(ctx, "native counter evidence rejected", "connection_id", identity.id, "wan", entry.wan,
-			"reason", reason, "err", counterErr, "result", stats.Result,
-			"original_counter", stats.Directions[0], "reply_counter", stats.Directions[1])
-		if err := module.retire(ctx, identity, reason); err != nil {
-			_ = module.fail(ctx, err)
-		}
+		module.rejectCounters(ctx, identity, entry, stats, counterErr, observation)
 		return true
 	}
 	active := observation == offload.NativeCounterActive
@@ -154,6 +141,23 @@ func (module *Module) sweepEntry(ctx context.Context, generation uint64, identit
 		}
 	}
 	return true
+}
+
+func (module *Module) rejectCounters(ctx context.Context, identity connectionIdentity, entry *admittedFlow, stats offload.NativePairStats, counterErr error, observation offload.NativeCounterObservation) {
+	module.stats.CounterFailures++
+	reason := "hardware counter evidence became unavailable"
+	if observation == offload.NativeCounterReadinessExpired {
+		reason = "initial hardware counter readiness deadline elapsed"
+	}
+	if observation == offload.NativeCounterPending {
+		reason = "kernel timeout cannot wait for initial hardware counters"
+	}
+	module.Log.WarnContext(ctx, "native counter evidence rejected", "connection_id", identity.id, "wan", entry.wan,
+		"reason", reason, "err", counterErr, "result", stats.Result,
+		"original_counter", stats.Directions[0], "reply_counter", stats.Directions[1])
+	if err := module.retire(ctx, identity, reason); err != nil {
+		_ = module.fail(ctx, err)
+	}
 }
 
 func (module *Module) startCounters(entry *admittedFlow, started time.Time) {

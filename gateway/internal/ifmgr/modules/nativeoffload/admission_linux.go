@@ -116,12 +116,16 @@ func (module *Module) admit(ctx context.Context, observation packetObservation) 
 		return
 	}
 	result, err := module.runtime.InstallObservedWithEvidence(requestContext, current, spec, guards, &evidence.guard)
+	module.retainInstallation(identity, entry, current, result, counterStarted)
+	module.completeInstallation(ctx, identity, spec, result, err, evidence)
+}
+
+func (module *Module) retainInstallation(identity connectionIdentity, entry *admittedFlow, current conntrack.Flow, result offload.NativePairResult, counterStarted time.Time) {
 	if result.RestorationDirections != 0 || result.InstalledDirections != 0 || result.CleanupFailedDirections != 0 {
 		entry.flow, entry.timeout, entry.result = current, current.Timeout, result
 		module.startCounters(entry, counterStarted)
 		module.flows[identity] = entry
 	}
-	module.completeInstallation(ctx, identity, spec, result, err, evidence)
 }
 
 func newAdmittedFlow(flow conntrack.Flow, spec offload.NativePairSpec, guards [2]offload.NativePacketGuard, wan WAN, observation packetObservation, now time.Time) *admittedFlow {
