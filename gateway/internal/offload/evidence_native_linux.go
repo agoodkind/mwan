@@ -70,7 +70,7 @@ func (worker *NativeRuntime) retireInvalidEvidence(owner *C.struct_mwan_native) 
 }
 
 func (worker *NativeRuntime) poll(owner *C.struct_mwan_native) (bool, error) {
-	if err := worker.retireInvalidEvidence(owner); err != nil {
+	if err := errors.Join(worker.retireInvalidEvidence(owner), worker.retireInvalidVXLANEvidence(owner)); err != nil {
 		worker.mu.Lock()
 		worker.pollError = err
 		worker.mu.Unlock()

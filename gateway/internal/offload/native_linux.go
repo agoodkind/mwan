@@ -306,24 +306,34 @@ const (
 	nativeShutdown
 	nativeRetirement
 	nativeResume
+	nativeVXLANOpen
+	nativeVXLANInstall
+	nativeVXLANQuery
+	nativeVXLANRemove
+	nativeVXLANClose
 )
 
 type nativeRequest struct {
-	operation nativeOperation
-	config    C.struct_mwan_native_config
-	pair      C.struct_mwan_native_pair_spec
-	guards    [2]C.struct_mwan_native_packet_guard
-	observed  bool
-	evidence  *NativeEvidenceGuard
-	deadline  time.Time
-	handle    C.struct_mwan_native_handle
-	reply     chan nativeReply
+	operation     nativeOperation
+	config        C.struct_mwan_native_config
+	pair          C.struct_mwan_native_pair_spec
+	guards        [2]C.struct_mwan_native_packet_guard
+	observed      bool
+	evidence      *NativeEvidenceGuard
+	deadline      time.Time
+	handle        C.struct_mwan_native_handle
+	vxlanEndpoint C.struct_mwan_native_vxlan_endpoint
+	vxlanPlan     C.struct_mwan_native_vxlan_plan
+	vxlanRule     C.struct_mwan_native_vxlan_result
+	reply         chan nativeReply
 }
 
 type nativeReply struct {
 	pair        NativePairResult
 	stats       NativePairStats
 	retirement  NativeRetirementStats
+	vxlan       NativeVXLANResult
+	vxlanStats  NativeVXLANStats
 	err         error
 	ownerExists bool
 }
@@ -346,6 +356,7 @@ type NativeRuntime struct {
 	terminalError error
 	evidence      map[*NativeEvidenceGuard]map[NativePairHandle]struct{}
 	pairEvidence  map[NativePairHandle]*NativeEvidenceGuard
+	vxlan         map[NativeVXLANContext]nativeVXLANOwnership
 }
 
 // ReadNativeBuild reads the linked library's version and verifies its ABI sizes.
@@ -408,6 +419,7 @@ func NewNativeRuntime(config NativeConfig, log *slog.Logger) (*NativeRuntime, er
 	worker.clock = clock.Real{}
 	worker.evidence = make(map[*NativeEvidenceGuard]map[NativePairHandle]struct{})
 	worker.pairEvidence = make(map[NativePairHandle]*NativeEvidenceGuard)
+	worker.vxlan = make(map[NativeVXLANContext]nativeVXLANOwnership)
 	ready := make(chan nativeReply, 1)
 	go func() {
 		defer func() {
@@ -851,13 +863,19 @@ func decodeNativePairStats(stats C.struct_mwan_native_pair_stats) NativePairStat
 	var result NativePairStats
 	result.Result = decodeNativePairResult(stats.result)
 	for i, counter := range stats.directions {
-		out := &result.Directions[i]
-		out.Packets, out.Bytes = uint64(counter.packets), uint64(counter.bytes)
-		out.ObservedMonotonicNS = uint64(counter.observed_monotonic_ns)
-		out.PacketsValid, out.BytesValid = counter.packets_valid != 0, counter.bytes_valid != 0
-		if counter.error != 0 {
-			out.Error = syscall.Errno(-counter.error)
-		}
+		result.Directions[i] = decodeNativeCounter(counter)
+	}
+	return result
+}
+
+func decodeNativeCounter(counter C.struct_mwan_native_counter) NativeCounter {
+	result := NativeCounter{
+		Packets: uint64(counter.packets), Bytes: uint64(counter.bytes),
+		ObservedMonotonicNS: uint64(counter.observed_monotonic_ns),
+		PacketsValid:        counter.packets_valid != 0, BytesValid: counter.bytes_valid != 0,
+	}
+	if counter.error != 0 {
+		result.Error = syscall.Errno(-counter.error)
 	}
 	return result
 }

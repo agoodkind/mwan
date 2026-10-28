@@ -118,6 +118,7 @@ func TestNativeSingleDirection(t *testing.T) {
 	if owner == nil || !errors.As(err, &nativeError) || nativeError.Operation != nativePortOperation {
 		t.Fatalf("expected retained EAL owner after unavailable-device discovery: owner=%v error=%v", owner != nil, err)
 	}
+	checkNativeVXLANRejectedLifecycle(t, owner)
 	connection, err := conntrack.Dial(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -137,6 +138,7 @@ func TestNativeSingleDirection(t *testing.T) {
 	if err := owner.Close(t.Context()); err != nil {
 		t.Fatalf("repeated native cleanup failed: %v", err)
 	}
+	checkNativeVXLANClosedLifecycle(t, owner)
 	flow := createTrackedFlow(t, connection, [2]string{"192.0.2.3", "198.51.100.4"}, unix.IPPROTO_TCP, 0)
 	spec := offload.NativePairSpec{RequestedDirections: 1}
 	spec.Directions[0] = offload.NativeDirection{Original: flow.TupleOrig, Translated: flow.TupleOrig}
@@ -190,6 +192,10 @@ func checkNativeEvidenceAdmission(t *testing.T, owner *offload.NativeRuntime, co
 	var nativeError *offload.NativeError
 	if !errors.Is(err, unix.ESTALE) || errors.As(err, &nativeError) {
 		t.Fatalf("stale kernel evidence did not reject before native creation: %v", err)
+	}
+	_, err = owner.InstallVXLAN(ctx, offload.NativeVXLANContext{}, nativeVXLANPlan(), evidence)
+	if !errors.Is(err, unix.ESTALE) || errors.As(err, &nativeError) {
+		t.Fatalf("stale kernel evidence did not reject before VXLAN creation: %v", err)
 	}
 }
 

@@ -99,6 +99,8 @@ func (worker *NativeRuntime) execute(owner **C.struct_mwan_native, request nativ
 	case nativeRemove:
 		rc = C.mwan_native_pair_remove(*owner, request.handle, &pair, &detail)
 		result.pair = decodeNativePairResult(pair)
+	case nativeVXLANOpen, nativeVXLANInstall, nativeVXLANQuery, nativeVXLANRemove, nativeVXLANClose:
+		result = worker.executeVXLAN(*owner, request)
 	case nativeDisable:
 		rc = C.mwan_native_close(owner, C.MWAN_NATIVE_DISABLE, &detail)
 		if rc == 0 {
@@ -188,6 +190,7 @@ func (worker *NativeRuntime) completeEvidence(operation nativeOperation, result 
 	case nativeDisable, nativeShutdown:
 		clear(worker.evidence)
 		clear(worker.pairEvidence)
+		clear(worker.vxlan)
 	}
 }
 
