@@ -66,7 +66,12 @@ func (translator *Translator) InspectNativePolicy(ctx context.Context, indices [
 }
 
 // ReadNativeProgramID requires kernel proof that the current classifier references its exact policy map.
-func ReadNativeProgramID(program *ebpf.Program, policies *ebpf.Map) (uint32, error) {
+func ReadNativeProgramID(program *ebpf.Program, policies *ebpf.Map) (result uint32, resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			slog.Warn("native NPT program identity read failed", "program_fd", program.FD(), "policy_map_fd", policies.FD(), "err", resultErr)
+		}
+	}()
 	info, err := program.Info()
 	if err != nil {
 		return 0, fmt.Errorf("inspect current NPTv6 program: %w", err)

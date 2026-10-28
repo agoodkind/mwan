@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 
 	mdnetlink "github.com/mdlayher/netlink"
@@ -34,6 +35,11 @@ type nativeTC struct {
 
 // ReadNativeTC requires a complete bounded kernel dump and rejects malformed policy records.
 func ReadNativeTC(ctx context.Context, index int, kind uint16, parent uint32) (records []nativeTC, resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			slog.WarnContext(ctx, "native traffic-control read failed", "interface", index, "request_type", kind, "parent", parent, "err", resultErr)
+		}
+	}()
 	if index < 1 || index > math.MaxInt32 {
 		return nil, fmt.Errorf("traffic-control interface index %d exceeds the kernel range", index)
 	}
@@ -79,8 +85,13 @@ func ReadNativeTC(ctx context.Context, index int, kind uint16, parent uint32) (r
 }
 
 // UnmarshalNativeTC rejects duplicate, unsupported and truncated Linux TC attributes.
-func UnmarshalNativeTC(header nl.TcMsg, data []byte) (nativeTC, error) {
-	record := nativeTC{header: header, kind: tcUnknown, options: nil}
+func UnmarshalNativeTC(header nl.TcMsg, data []byte) (record nativeTC, resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			slog.Warn("native traffic-control record decoding failed", "interface", header.Ifindex, "parent", header.Parent, "handle", header.Handle, "err", resultErr)
+		}
+	}()
+	record = nativeTC{header: header, kind: tcUnknown, options: nil}
 	attributes, err := mdnetlink.NewAttributeDecoder(data)
 	if err != nil {
 		return record, fmt.Errorf("decode traffic-control attribute list: %w", err)

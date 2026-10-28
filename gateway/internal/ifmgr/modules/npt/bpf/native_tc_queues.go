@@ -16,6 +16,10 @@ import (
 )
 
 func inspectNativeQueues(ctx context.Context, link netlink.Link) (resultErr error) {
+	allocated := link.Attrs().NumTxQueues
+	if allocated < 1 || allocated > math.MaxInt32 {
+		return fmt.Errorf("native queue count %d exceeds the kernel range", allocated)
+	}
 	queues, err := ReadNativeTC(ctx, link.Attrs().Index, unix.RTM_GETQDISC, 0)
 	if err != nil {
 		return err
@@ -47,7 +51,7 @@ func inspectNativeQueues(ctx context.Context, link netlink.Link) (resultErr erro
 			}
 			continue
 		}
-		if queue.header.Parent == 0 || queue.header.Parent > uint32(link.Attrs().NumTxQueues) || leaves[queue.header.Parent] {
+		if queue.header.Parent == 0 || queue.header.Parent > uint32(allocated) || leaves[queue.header.Parent] {
 			return fmt.Errorf("native admission cannot certify queue topology")
 		}
 		if err := inspectDefaultLeaf(queue, link.Attrs().MTU); err != nil {
@@ -74,6 +78,8 @@ func inspectDefaultLeaf(queue nativeTC, mtu int) error {
 			return fmt.Errorf("pfifo_fast options differ from the kernel default")
 		}
 		return nil
+	case tcUnknown, tcNoQueue, tcMQ, tcClsact, tcBPF:
+		return fmt.Errorf("native admission cannot certify leaf qdisc %s", queue.kind)
 	default:
 		return fmt.Errorf("native admission cannot certify leaf qdisc %s", queue.kind)
 	}
@@ -85,7 +91,7 @@ func inspectNativeMQ(ctx context.Context, link netlink.Link, leaves map[uint32]b
 		return err
 	}
 	allocated := link.Attrs().NumTxQueues
-	if allocated < 1 || len(classes) != allocated || len(leaves) == 0 || len(leaves) > allocated {
+	if allocated < 1 || allocated > math.MaxInt32 || len(classes) != allocated || len(leaves) == 0 || len(leaves) > allocated {
 		return fmt.Errorf("mq class readback is incomplete: allocated=%d classes=%d active_leaves=%d", allocated, len(classes), len(leaves))
 	}
 	seen := make(map[uint32]bool, len(classes))
