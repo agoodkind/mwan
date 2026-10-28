@@ -183,7 +183,8 @@ func (worker *NativeRuntime) completeEvidence(operation nativeOperation, result 
 		return
 	}
 	switch operation {
-	case nativeEnable, nativeInstall, nativeQuery, nativeRetirement, nativeResume:
+	case nativeEnable, nativeInstall, nativeQuery, nativeRetirement, nativeResume,
+		nativeVXLANOpen, nativeVXLANInstall, nativeVXLANQuery, nativeVXLANRemove, nativeVXLANClose:
 		return
 	case nativeRemove:
 		worker.unregisterEvidence(result.pair.Handle)

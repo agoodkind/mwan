@@ -873,6 +873,7 @@ func decodeNativeCounter(counter C.struct_mwan_native_counter) NativeCounter {
 		Packets: uint64(counter.packets), Bytes: uint64(counter.bytes),
 		ObservedMonotonicNS: uint64(counter.observed_monotonic_ns),
 		PacketsValid:        counter.packets_valid != 0, BytesValid: counter.bytes_valid != 0,
+		Error: nil,
 	}
 	if counter.error != 0 {
 		result.Error = syscall.Errno(-counter.error)

@@ -11,12 +11,12 @@ import "C"
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/netip"
 
 	"github.com/ti-mo/conntrack"
 )
 
+// NativeVXLANEndpoint identifies a declared kernel VF by PCI function and Linux interface index.
 type NativeVXLANEndpoint struct {
 	Receiver     NativeReceiverID
 	LinuxIfIndex uint32
@@ -24,15 +24,20 @@ type NativeVXLANEndpoint struct {
 	PCI          NativePCIAddress
 }
 
-// A separate handle type prevents accidental use of plain-flow pair handles.
+// NativeVXLANContext prevents accidental use of plain-flow pair handles.
 type NativeVXLANContext NativePairHandle
 
+// NativeVXLANState distinguishes ready contexts, installed rules and uncertain cleanup.
 type NativeVXLANState uint32
 
 const (
+	// NativeVXLANContextAbsent permits opening another context for the receiver.
 	NativeVXLANContextAbsent NativeVXLANState = C.MWAN_NATIVE_VXLAN_CONTEXT_ABSENT
-	NativeVXLANContextReady  NativeVXLANState = C.MWAN_NATIVE_VXLAN_CONTEXT_READY
+	// NativeVXLANContextReady permits an exact outbound rule installation.
+	NativeVXLANContextReady NativeVXLANState = C.MWAN_NATIVE_VXLAN_CONTEXT_READY
+	// NativeVXLANRuleInstalled reports ownership of a hardware encapsulation rule.
 	NativeVXLANRuleInstalled NativeVXLANState = C.MWAN_NATIVE_VXLAN_RULE_INSTALLED
+	// NativeVXLANCleanupFailed blocks reuse after uncertain hardware removal.
 	NativeVXLANCleanupFailed NativeVXLANState = C.MWAN_NATIVE_VXLAN_CLEANUP_FAILED
 )
 
@@ -55,12 +60,14 @@ type NativeVXLANPlan struct {
 	OuterTOS            uint8
 }
 
+// NativeVXLANResult retains context and rule identity after partial failures.
 type NativeVXLANResult struct {
 	Context        NativeVXLANContext
 	RuleGeneration uint64
 	State          NativeVXLANState
 }
 
+// NativeVXLANStats distinguishes unavailable counter evidence from a valid zero count.
 type NativeVXLANStats struct {
 	Result  NativeVXLANResult
 	Counter NativeCounter
@@ -112,6 +119,7 @@ func (worker *NativeRuntime) InstallVXLAN(ctx context.Context, handle NativeVXLA
 	return result.vxlan, result.err
 }
 
+// QueryVXLAN preserves counter validity and errno when hardware sampling fails.
 func (worker *NativeRuntime) QueryVXLAN(ctx context.Context, rule NativeVXLANResult) (NativeVXLANStats, error) {
 	var request nativeRequest
 	request.operation, request.vxlanRule = nativeVXLANQuery, encodeNativeVXLANResult(rule)
@@ -142,7 +150,7 @@ func encodeNativeVXLANPlan(plan NativeVXLANPlan) (C.struct_mwan_native_vxlan_pla
 	var result C.struct_mwan_native_vxlan_plan
 	inner, err := encodeNativeTuple(plan.Inner)
 	if err != nil {
-		return result, fmt.Errorf("encode VXLAN inner tuple: %w", err)
+		return result, err
 	}
 	if !plan.OuterSource.Addr().Is4() || !plan.OuterDestination.Addr().Is4() {
 		return result, errors.New("VXLAN outer endpoints require IPv4 addresses")
