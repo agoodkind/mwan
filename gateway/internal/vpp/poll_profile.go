@@ -68,6 +68,7 @@ type queuePollSession struct {
 	generation string
 	token      uint64
 	started    bool
+	stopped    bool
 	baseline   QueuePollProfile
 	threads    []vlib.ThreadData
 }
@@ -169,7 +170,7 @@ func openQueuePollSession(ctx context.Context, endpoints Endpoints) (*queuePollS
 		client.Close()
 		return nil, errors.Join(fmt.Errorf("VPP queue profile owner token must be nonzero"), cleanupError)
 	}
-	return &queuePollSession{client: client, statistics: statistics, generation: generation, token: token, started: false, baseline: QueuePollProfile{Available: false, Reason: "", Duration: 0, Session: 0, Sequence: 0, Queues: nil}, threads: threads.ThreadData}, nil
+	return &queuePollSession{client: client, statistics: statistics, generation: generation, token: token, started: false, stopped: false, baseline: QueuePollProfile{Available: false, Reason: "", Duration: 0, Session: 0, Sequence: 0, Queues: nil}, threads: threads.ThreadData}, nil
 }
 
 func (session *queuePollSession) control(ctx context.Context, action uint8) (*pollapi.VirtioPollProfileReply, error) {
@@ -183,12 +184,16 @@ func (session *queuePollSession) control(ctx context.Context, action uint8) (*po
 	if reply.Session != session.token {
 		return nil, fmt.Errorf("VPP queue profile action %d returned another session", action)
 	}
+	if action == pollStop && !reply.Active {
+		session.stopped = true
+	}
 	return reply, nil
 }
 
 func (session *queuePollSession) start(ctx context.Context) error {
 	// A timed out start can still acquire ownership. Cleanup must attempt this token.
 	session.started = true
+	session.stopped = false
 	reply, err := session.control(ctx, pollStart)
 	if err != nil {
 		var rejected api.VPPApiError
@@ -409,7 +414,10 @@ func (session *queuePollSession) close(ctx context.Context) error {
 	var failure error
 	if session.started {
 		cleanupContext := context.WithoutCancel(ctx)
-		_, stopError := session.control(cleanupContext, pollStop)
+		var stopError error
+		if !session.stopped {
+			_, stopError = session.control(cleanupContext, pollStop)
+		}
 		_, releaseError := session.control(cleanupContext, pollRelease)
 		failure = errors.Join(stopError, releaseError)
 	}
