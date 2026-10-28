@@ -11,16 +11,17 @@ import (
 
 // VPPSection requires explicit process resources instead of host defaults.
 type VPPSection struct {
-	APISocket         string           `toml:"api_socket"`
-	StatsSocket       string           `toml:"stats_socket"`
-	ExpectedVersion   string           `toml:"expected_version"`
-	RequestTimeout    string           `toml:"request_timeout"`
-	StateFile         string           `toml:"state_file"`
-	Profile           bool             `toml:"profile"`
-	ProfileExecutable string           `toml:"profile_executable"`
-	ProfileDuration   string           `toml:"profile_duration"`
-	Interface         []VPPTAPSection  `toml:"interface"`
-	NAT64             *VPPNAT64Section `toml:"nat64"`
+	APISocket           string           `toml:"api_socket"`
+	StatsSocket         string           `toml:"stats_socket"`
+	ExpectedVersion     string           `toml:"expected_version"`
+	RequestTimeout      string           `toml:"request_timeout"`
+	StateFile           string           `toml:"state_file"`
+	Profile             bool             `toml:"profile"`
+	ProfileExecutable   string           `toml:"profile_executable"`
+	ProfileDuration     string           `toml:"profile_duration"`
+	ProfileQueuePolling bool             `toml:"profile_queue_polling"`
+	Interface           []VPPTAPSection  `toml:"interface"`
+	NAT64               *VPPNAT64Section `toml:"nat64"`
 }
 
 // VPPRXMode preserves the receive mode stored in TOML until the VPP API adapter runs.
@@ -90,6 +91,9 @@ func (section VPPSection) ValidatedEndpoints() (vpp.Endpoints, error) {
 func (section VPPSection) validateResources() error {
 	if !filepath.IsAbs(section.StateFile) {
 		return fmt.Errorf("VPP state_file must be an absolute path")
+	}
+	if section.ProfileQueuePolling && !section.Profile {
+		return fmt.Errorf("VPP profile_queue_polling requires profile = true")
 	}
 	if section.Profile {
 		if !filepath.IsAbs(section.ProfileExecutable) {

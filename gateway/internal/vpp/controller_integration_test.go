@@ -42,20 +42,27 @@ var integrationFiles embed.FS
 
 func TestControllerRealVPP(t *testing.T) {
 	if !slices.Contains(os.Args, "mwan-vpp-integration-child") {
-		command := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestControllerRealVPP$", "-test.v", "--", "mwan-vpp-integration-child")
-		command.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNET}
-		output, err := command.CombinedOutput()
-		if err != nil {
-			t.Fatalf("run VPP integration in a private network namespace: %v\n%s", err, output)
+		for _, idleWaitUsec := range []uint32{0, 10} {
+			t.Run(fmt.Sprintf("idle wait %d microseconds", idleWaitUsec), func(t *testing.T) {
+				runVPPIntegrationChild(t, idleWaitUsec)
+			})
 		}
-		t.Log(string(output))
 		return
+	}
+	var idleWaitUsec uint32
+	switch os.Args[len(os.Args)-1] {
+	case "0":
+		idleWaitUsec = 0
+	case "10":
+		idleWaitUsec = 10
+	default:
+		t.Fatal("the VPP integration child requires an idle wait of 0 or 10 microseconds")
 	}
 	executable, err := exec.LookPath("vpp")
 	if err != nil {
 		t.Fatalf("install VPP 26.06 and its TAP and NAT64 plugins: %v", err)
 	}
-	directory, err := os.MkdirTemp("/tmp", "mwan-vpp-")
+	directory, err := os.MkdirTemp("", "mwan-vpp-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +77,10 @@ func TestControllerRealVPP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := startup.Execute(configuration, struct{ Directory, APISocket, StatsSocket, Prefix string }{directory, settings.APISocket, settings.StatsSocket, filepath.Base(directory)}); err != nil {
+	if err := startup.Execute(configuration, struct {
+		Directory, APISocket, StatsSocket, Prefix string
+		IdleWaitUsec                              uint32
+	}{directory, settings.APISocket, settings.StatsSocket, filepath.Base(directory), idleWaitUsec}); err != nil {
 		_ = configuration.Close()
 		t.Fatal(err)
 	}
@@ -277,6 +287,12 @@ func TestControllerRealVPP(t *testing.T) {
 			t.Fatal("native instruction samples must not claim exact empty polling attribution")
 		}
 	})
+	t.Run("optional receive queue accounting", func(t *testing.T) {
+		verifyQueuePolling(t, settings, stats)
+	})
+	t.Run("optional queue profiling CPU cost", func(t *testing.T) {
+		verifyQueueProfileCost(t, settings, executable, idleWaitUsec)
+	})
 	foreign, err := govpp.Connect(settings.APISocket)
 	if err != nil {
 		t.Fatal(err)
@@ -351,6 +367,17 @@ func TestControllerRealVPP(t *testing.T) {
 			t.Fatalf("removed VPP interface must not produce an available zero measurement: %+v", traffic)
 		}
 	}
+}
+
+func runVPPIntegrationChild(t *testing.T, idleWaitUsec uint32) {
+	t.Helper()
+	command := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestControllerRealVPP$", "-test.v", "--", "mwan-vpp-integration-child", fmt.Sprint(idleWaitUsec))
+	command.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNET}
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run VPP integration with %d microsecond idle waiting in a private network namespace: %v\n%s", idleWaitUsec, err, output)
+	}
+	t.Log(string(output))
 }
 
 func waitHostIPv6(t *testing.T, name string, address netip.Addr) {

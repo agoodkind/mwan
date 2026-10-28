@@ -16,6 +16,8 @@ stats_socket = "/run/vpp/stats.sock"
 expected_version = "26.06"
 request_timeout = "5s"
 state_file = "/var/lib/mwan/vpp.json"
+profile = false
+profile_queue_polling = false
 [[ifmgr.modules.vpp.interface]]
 connection_id = "inside"
 host_connection_id = "host-inside"
@@ -37,6 +39,8 @@ rx_mode = "adaptive"
 		{name: "missing timeout", old: `request_timeout = "5s"`, fail: true},
 		{name: "zero queue count", old: `rx_queues = 1`, replacement: `rx_queues = 0`, fail: true},
 		{name: "missing RX mode", old: `rx_mode = "adaptive"`, fail: true},
+		{name: "queue profiling requires native profiling", old: `profile_queue_polling = false`, replacement: `profile_queue_polling = true`, fail: true},
+		{name: "optional queue profiling", old: "profile = false\nprofile_queue_polling = false", replacement: "profile = true\nprofile_queue_polling = true\nprofile_executable = \"/usr/bin/vpp\"\nprofile_duration = \"250ms\""},
 	} {
 		t.Run(item.name, func(t *testing.T) {
 			text := base
