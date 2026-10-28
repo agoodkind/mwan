@@ -20,7 +20,8 @@ const (
 	vxlanChildEnv        = "MWAN_OWNED_VXLAN_CHILD"
 	vxlanName            = "mwan-vxlan"
 	vxlanUnderlayName    = "vx-under"
-	vxlanSourcePort      = 49152
+	vxlanSourcePortMin   = 49152
+	vxlanSourcePortMax   = 49153
 	vxlanDestinationPort = 4789
 	vxlanOuterTOS        = 32
 	vxlanOuterTTL        = 48
@@ -57,7 +58,7 @@ func vxlanConnection() interfaceintent.Connection {
 	connection := namedTunnelConnection(vxlanName, vxlanUnderlayName, tunnelRemoteOuter, new(uint8(vxlanOuterTTL)), nil)
 	connection.Link.Tunnel.Protocol = interfaceintent.TunnelProtocolVXLAN
 	connection.Link.Tunnel.VXLAN = &interfaceintent.VXLAN{
-		VNI: 0, SourcePort: vxlanSourcePort, DestinationPort: vxlanDestinationPort, TOS: vxlanOuterTOS,
+		VNI: 0, SourcePortMin: vxlanSourcePortMin, SourcePortMax: vxlanSourcePortMax, DestinationPort: vxlanDestinationPort, TOS: vxlanOuterTOS,
 	}
 	return connection
 }
@@ -95,7 +96,7 @@ func requireVXLANAttributes(t *testing.T, device *netlink.Vxlan, connection inte
 	tunnel := connection.Link.Tunnel
 	settings := tunnel.VXLAN
 	if device.VxlanId != int(settings.VNI) || device.VtepDevIndex != underlay.Attrs().Index ||
-		device.Port != int(settings.DestinationPort) || device.PortLow != int(settings.SourcePort) || device.PortHigh != int(settings.SourcePort) ||
+		device.Port != int(settings.DestinationPort) || device.PortLow != int(settings.SourcePortMin) || device.PortHigh != int(settings.SourcePortMax) ||
 		device.TTL != int(*tunnel.TTL) || device.TOS != int(settings.TOS) || device.Learning || device.MasterIndex != 0 || !device.UDPCSum ||
 		tunnelEndpoint(device.SrcAddr) != tunnel.Local || tunnelEndpoint(device.Group) != tunnel.Remote {
 		t.Fatalf("VXLAN device differs from configured fields: device=%+v tunnel=%+v settings=%+v", device, tunnel, settings)

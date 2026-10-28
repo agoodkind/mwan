@@ -270,7 +270,7 @@ func requireVXLANEnvelope(t *testing.T, decoded gopacket.Packet, encapsulation *
 	if !bytes.Equal(ethernet.SrcMAC, sourceMAC) || !bytes.Equal(ethernet.DstMAC, destinationMAC) ||
 		!ipv4.SrcIP.Equal(net.ParseIP(sourceIP)) || !ipv4.DstIP.Equal(net.ParseIP(destinationIP)) ||
 		ipv4.Version != 4 || ipv4.IHL != 5 || ipv4.Protocol != layers.IPProtocolUDP || ipv4.TTL != vxlanOuterTTL || ipv4.TOS != vxlanOuterTOS ||
-		udp.SrcPort != vxlanSourcePort || udp.DstPort != vxlanDestinationPort ||
+		udp.SrcPort < vxlanSourcePortMin || udp.SrcPort > vxlanSourcePortMax || udp.DstPort != vxlanDestinationPort ||
 		encapsulation.VNI != 0 || !encapsulation.ValidIDFlag || !bytes.Equal(encapsulation.Contents, []byte{8, 0, 0, 0, 0, 0, 0, 0}) {
 		t.Fatalf("VXLAN outer envelope differs from configured fields: Ethernet=%+v IPv4=%+v UDP=%+v VXLAN=%+v", ethernet, ipv4, udp, encapsulation)
 	}

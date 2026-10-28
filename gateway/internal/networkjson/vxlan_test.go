@@ -10,7 +10,7 @@ import (
 	"goodkind.io/mwan/internal/networkjson"
 )
 
-const vxlanSettings = `"vxlan":{"vni":0,"source-port":49152,"destination-port":4789,"tos":2},`
+const vxlanSettings = `"vxlan":{"vni":0,"source-port-min":49152,"source-port-max":49153,"destination-port":4789,"tos":2},`
 
 func vxlanDocument(t *testing.T) string {
 	t.Helper()
@@ -32,7 +32,7 @@ func TestDecodeVXLANIdentity(t *testing.T) {
 	}{
 		{name: "duplicate", protocol: "vxlan", settings: vxlanSettings, accepted: false, rejection: "configure the same tunnel"},
 		{name: "different-VNI", protocol: "vxlan", settings: strings.Replace(vxlanSettings, `"vni":0`, `"vni":1`, 1), accepted: true, rejection: ""},
-		{name: "different-source-port", protocol: "vxlan", settings: strings.Replace(vxlanSettings, `"source-port":49152`, `"source-port":49153`, 1), accepted: false, rejection: "share VXLAN receiver"},
+		{name: "different-source-range", protocol: "vxlan", settings: strings.Replace(vxlanSettings, `"source-port-max":49153`, `"source-port-max":49154`, 1), accepted: false, rejection: "share VXLAN receiver"},
 		{name: "different-destination-port", protocol: "vxlan", settings: strings.Replace(vxlanSettings, `"destination-port":4789`, `"destination-port":4790`, 1), accepted: true, rejection: ""},
 		{name: "different-protocol", protocol: "6in4", settings: "", accepted: true, rejection: ""},
 	} {
@@ -63,7 +63,7 @@ func TestDecodeVXLANTransport(t *testing.T) {
 		}
 		tunnel := connection.Link.Tunnel
 		if tunnel.Protocol != interfaceintent.TunnelProtocolVXLAN || tunnel.VXLAN == nil ||
-			*tunnel.VXLAN != (interfaceintent.VXLAN{VNI: 0, SourcePort: 49152, DestinationPort: 4789, TOS: 2}) {
+			*tunnel.VXLAN != (interfaceintent.VXLAN{VNI: 0, SourcePortMin: 49152, SourcePortMax: 49153, DestinationPort: 4789, TOS: 2}) {
 			t.Fatalf("decoded VXLAN settings changed: %+v", tunnel)
 		}
 		return
@@ -75,13 +75,19 @@ func TestDecodeVXLANRequiresTypedSettings(t *testing.T) {
 	for _, entry := range []struct{ name, before, after string }{
 		{"missing-container", vxlanSettings, ""},
 		{"missing-vni", `"vni":0,`, ""},
-		{"missing-source-port", `"source-port":49152,`, ""},
+		{"missing-source-min", `"source-port-min":49152,`, ""},
+		{"missing-source-max", `"source-port-max":49153,`, ""},
+		{"unsupported-fixed-source", `"source-port-min":49152,"source-port-max":49153,`, `"source-port":49152,`},
 		{"missing-destination-port", `"destination-port":4789,`, ""},
 		{"missing-tos", `,"tos":2`, ""},
 		{"vni-overflow", `"vni":0`, `"vni":16777216`},
-		{"zero-source-port", `"source-port":49152`, `"source-port":0`},
+		{"zero-source-min", `"source-port-min":49152`, `"source-port-min":0`},
+		{"zero-source-max", `"source-port-max":49153`, `"source-port-max":0`},
+		{"equal-source-limits", `"source-port-max":49153`, `"source-port-max":49152`},
+		{"reversed-source-limits", `"source-port-min":49152`, `"source-port-min":49154`},
 		{"zero-destination-port", `"destination-port":4789`, `"destination-port":0`},
-		{"port-overflow", `"source-port":49152`, `"source-port":65536`},
+		{"source-min-overflow", `"source-port-min":49152`, `"source-port-min":65536`},
+		{"source-max-overflow", `"source-port-max":49153`, `"source-port-max":65536`},
 		{"tos-overflow", `"tos":2`, `"tos":256`},
 		{"SIT-container", `"protocol":"vxlan"`, `"protocol":"6in4"`},
 	} {

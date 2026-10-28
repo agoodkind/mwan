@@ -8,7 +8,8 @@ import (
 
 type linkVXLAN struct {
 	VNI             *uint32 `json:"vni"`
-	SourcePort      *uint16 `json:"source-port"`
+	SourcePortMin   *uint16 `json:"source-port-min"`
+	SourcePortMax   *uint16 `json:"source-port-max"`
 	DestinationPort *uint16 `json:"destination-port"`
 	TOS             *uint8  `json:"tos"`
 }
@@ -46,14 +47,18 @@ func buildTunnelVXLAN(name string, wire *linkTunnel) (*interfaceintent.VXLAN, er
 		return nil, fmt.Errorf("interface %s: link/tunnel/protocol %q is not supported", name, wire.Protocol)
 	}
 	settings := wire.VXLAN
-	if settings.VNI == nil || settings.SourcePort == nil || settings.DestinationPort == nil || settings.TOS == nil {
-		return nil, fmt.Errorf("interface %s: link/tunnel/vxlan requires vni, source-port, destination-port and tos", name)
+	if settings.VNI == nil || settings.SourcePortMin == nil || settings.SourcePortMax == nil || settings.DestinationPort == nil || settings.TOS == nil {
+		return nil, fmt.Errorf("interface %s: link/tunnel/vxlan requires vni, source-port-min, source-port-max, destination-port and tos", name)
 	}
-	if *settings.VNI > interfaceintent.MaximumVXLANVNI || *settings.SourcePort == 0 || *settings.DestinationPort == 0 {
+	if *settings.VNI > interfaceintent.MaximumVXLANVNI || *settings.SourcePortMin == 0 || *settings.DestinationPort == 0 {
 		return nil, fmt.Errorf("interface %s: link/tunnel/vxlan requires a 24-bit VNI and nonzero UDP ports", name)
 	}
+	if *settings.SourcePortMin >= *settings.SourcePortMax {
+		return nil, fmt.Errorf("interface %s: link/tunnel/vxlan requires source-port-min less than source-port-max", name)
+	}
 	return &interfaceintent.VXLAN{
-		VNI: *settings.VNI, SourcePort: *settings.SourcePort, DestinationPort: *settings.DestinationPort, TOS: *settings.TOS,
+		VNI: *settings.VNI, SourcePortMin: *settings.SourcePortMin, SourcePortMax: *settings.SourcePortMax,
+		DestinationPort: *settings.DestinationPort, TOS: *settings.TOS,
 	}, nil
 }
 

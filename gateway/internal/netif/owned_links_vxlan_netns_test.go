@@ -31,7 +31,8 @@ func TestOwnedVXLANReconcilesAndRestarts(t *testing.T) {
 		t.Fatal("repeat reconciliation or restart replaced the owned VXLAN")
 	}
 	connection.Link.Tunnel.VXLAN.VNI = 16777215
-	connection.Link.Tunnel.VXLAN.SourcePort = 49153
+	connection.Link.Tunnel.VXLAN.SourcePortMin = 49154
+	connection.Link.Tunnel.VXLAN.SourcePortMax = 49155
 	connection.Link.Tunnel.VXLAN.DestinationPort = 4790
 	connection.Link.Tunnel.VXLAN.TOS = 64
 	connection.Link.Tunnel.TTL = new(uint8(32))
@@ -115,5 +116,39 @@ func TestOwnedVXLANDisablesAndRemovesOnlyOwnedDevice(t *testing.T) {
 	}
 	if _, err := netlink.LinkByName(vxlanUnderlayName); err != nil {
 		t.Fatalf("external underlay changed: %v", err)
+	}
+}
+
+func TestOwnedVXLANRejectsInvalidSourcePortRanges(t *testing.T) {
+	if !enterVXLANNamespace(t) {
+		return
+	}
+	addTunnelUnderlay(t, vxlanUnderlayName)
+	external := externalConnection(vxlanUnderlayName)
+	reconciler := newTunnelReconciler(t, filepath.Join(t.TempDir(), "links.json"))
+	requireTunnelReady(t, reconcileVXLAN(t, reconciler, vxlanConnection(), external))
+	created := vxlanDevice(t, vxlanName)
+	for _, entry := range []struct {
+		name             string
+		minimum, maximum uint16
+	}{
+		{name: "zero-minimum", minimum: 0, maximum: vxlanSourcePortMax},
+		{name: "zero-maximum", minimum: vxlanSourcePortMin, maximum: 0},
+		{name: "equal", minimum: vxlanSourcePortMin, maximum: vxlanSourcePortMin},
+		{name: "reversed", minimum: vxlanSourcePortMax, maximum: vxlanSourcePortMin},
+	} {
+		t.Run(entry.name, func(t *testing.T) {
+			connection := vxlanConnection()
+			connection.Link.Tunnel.VXLAN.SourcePortMin = entry.minimum
+			connection.Link.Tunnel.VXLAN.SourcePortMax = entry.maximum
+			result := reconcileVXLAN(t, reconciler, connection, external)
+			if result.Status != OwnedLinkFailed || result.Err == nil {
+				t.Fatalf("invalid VXLAN source-port range %d..%d accepted: %+v", entry.minimum, entry.maximum, result)
+			}
+			if kept := vxlanDevice(t, vxlanName); kept.Index != created.Index || kept.Alias != created.Alias ||
+				kept.PortLow != vxlanSourcePortMin || kept.PortHigh != vxlanSourcePortMax {
+				t.Fatal("invalid source-port range changed the owned VXLAN")
+			}
+		})
 	}
 }

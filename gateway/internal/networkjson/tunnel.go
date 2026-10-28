@@ -163,7 +163,8 @@ type tunnelEndpoints struct {
 	local           netip.Addr
 	remote          netip.Addr
 	vni             uint32
-	sourcePort      uint16
+	sourcePortMin   uint16
+	sourcePortMax   uint16
 	destinationPort uint16
 }
 
@@ -213,9 +214,10 @@ func validateTunnels(connections []interfaceintent.Connection, declared map[stri
 
 func validateTunnelIdentity(connection interfaceintent.Connection, owners map[tunnelEndpoints]string, receivers map[vxlanReceiver]string) error {
 	tunnel := connection.Link.Tunnel
-	endpoints := tunnelEndpoints{protocol: tunnel.Protocol, underlay: tunnel.Underlay, local: tunnel.Local, remote: tunnel.Remote, vni: 0, sourcePort: 0, destinationPort: 0}
+	endpoints := tunnelEndpoints{protocol: tunnel.Protocol, underlay: tunnel.Underlay, local: tunnel.Local, remote: tunnel.Remote, vni: 0, sourcePortMin: 0, sourcePortMax: 0, destinationPort: 0}
 	if tunnel.VXLAN != nil {
-		endpoints.vni, endpoints.sourcePort, endpoints.destinationPort = tunnel.VXLAN.VNI, tunnel.VXLAN.SourcePort, tunnel.VXLAN.DestinationPort
+		endpoints.vni, endpoints.destinationPort = tunnel.VXLAN.VNI, tunnel.VXLAN.DestinationPort
+		endpoints.sourcePortMin, endpoints.sourcePortMax = tunnel.VXLAN.SourcePortMin, tunnel.VXLAN.SourcePortMax
 	}
 	if prior, taken := owners[endpoints]; taken {
 		local := "unspecified"

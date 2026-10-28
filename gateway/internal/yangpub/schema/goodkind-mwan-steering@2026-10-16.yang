@@ -982,15 +982,23 @@ module goodkind-mwan-steering {
         }
         container vxlan {
           presence "The tunnel uses an explicit VXLAN identifier and UDP envelope.";
+          must "source-port-min < source-port-max" {
+            error-message "The source-port-min must be less than source-port-max.";
+          }
           leaf vni {
             type uint32 { range "0..16777215"; }
             mandatory true;
             description "The VXLAN network identifier.";
           }
-          leaf source-port {
+          leaf source-port-min {
             type uint16 { range "1..65535"; }
             mandatory true;
-            description "The fixed source UDP port.";
+            description "The lowest source UDP port the kernel can select.";
+          }
+          leaf source-port-max {
+            type uint16 { range "1..65535"; }
+            mandatory true;
+            description "The highest source UDP port the kernel can select.";
           }
           leaf destination-port {
             type uint16 { range "1..65535"; }

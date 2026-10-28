@@ -9,10 +9,11 @@ const (
 	MaximumVXLANVNI = 16777215
 )
 
-// VXLAN specifies the fixed UDP envelope of one routed point-to-point tunnel.
+// VXLAN specifies the UDP envelope and inclusive source-port range of one routed tunnel.
 type VXLAN struct {
 	VNI             uint32 `json:"vni"`
-	SourcePort      uint16 `json:"source_port"`
+	SourcePortMin   uint16 `json:"source_port_min"`
+	SourcePortMax   uint16 `json:"source_port_max"`
 	DestinationPort uint16 `json:"destination_port"`
 	TOS             uint8  `json:"tos"`
 }

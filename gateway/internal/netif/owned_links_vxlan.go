@@ -16,8 +16,12 @@ const vxlanLinkType = "vxlan"
 
 func validateVXLANIntent(connection interfaceintent.Connection) error {
 	settings := connection.Link.Tunnel.VXLAN
-	if settings == nil || settings.VNI > interfaceintent.MaximumVXLANVNI || settings.SourcePort == 0 || settings.DestinationPort == 0 {
+	if settings == nil || settings.VNI > interfaceintent.MaximumVXLANVNI || settings.SourcePortMin == 0 || settings.DestinationPort == 0 {
 		return fmt.Errorf("connection %s requires a 24-bit VXLAN VNI and nonzero UDP ports", connection.ID)
+	}
+	// Linux uses the ephemeral range when the configured limits are equal or reversed.
+	if settings.SourcePortMin >= settings.SourcePortMax {
+		return fmt.Errorf("connection %s requires VXLAN source-port-min less than source-port-max", connection.ID)
 	}
 	if connection.Link.BridgeMaster != "" {
 		return fmt.Errorf("connection %s requires a routed VXLAN interface without a bridge", connection.ID)
@@ -45,7 +49,7 @@ func requestedVXLAN(name string, index int, tunnel *interfaceintent.Tunnel, unde
 		Learning: false, Proxy: false, RSC: false, L2miss: false, L3miss: false,
 		UDPCSum: true, UDP6ZeroCSumTx: false, UDP6ZeroCSumRx: false,
 		NoAge: false, GBP: false, FlowBased: false, Age: 0, Limit: 0,
-		Port: int(settings.DestinationPort), PortLow: int(settings.SourcePort), PortHigh: int(settings.SourcePort),
+		Port: int(settings.DestinationPort), PortLow: int(settings.SourcePortMin), PortHigh: int(settings.SourcePortMax),
 	}
 	if tunnel.Local.IsValid() {
 		requested.SrcAddr = net.IP(tunnel.Local.AsSlice())
@@ -59,7 +63,7 @@ func matchesVXLANSettings(observed *netlink.Vxlan, settings *interfaceintent.VXL
 	}
 	return observed.VxlanId == int(settings.VNI) && observed.VtepDevIndex == parent && observed.MasterIndex == 0 &&
 		tunnelEndpoint(observed.SrcAddr) == local && tunnelEndpoint(observed.Group) == remote &&
-		observed.Port == int(settings.DestinationPort) && observed.PortLow == int(settings.SourcePort) && observed.PortHigh == int(settings.SourcePort) &&
+		observed.Port == int(settings.DestinationPort) && observed.PortLow == int(settings.SourcePortMin) && observed.PortHigh == int(settings.SourcePortMax) &&
 		observed.TTL == int(ttl) && observed.TOS == int(settings.TOS) &&
 		!observed.Learning && !observed.Proxy && !observed.RSC && !observed.L2miss && !observed.L3miss &&
 		observed.UDPCSum && !observed.UDP6ZeroCSumTx && !observed.UDP6ZeroCSumRx && !observed.GBP && !observed.FlowBased

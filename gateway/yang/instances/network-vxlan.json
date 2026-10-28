@@ -27,7 +27,7 @@
           "tunnel": {
             "protocol": "vxlan", "underlay": "enatt0",
             "remote-address": "198.51.100.1", "local-address": "192.0.2.130", "ttl": 64,
-            "vxlan": { "vni": 0, "source-port": 49152, "destination-port": 4789, "tos": 2 }
+            "vxlan": { "vni": 0, "source-port-min": 49152, "source-port-max": 49153, "destination-port": 4789, "tos": 2 }
           }
         },
         "ietf-ip:ipv4": {
