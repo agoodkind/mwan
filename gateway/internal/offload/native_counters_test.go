@@ -147,6 +147,40 @@ func TestNativeCountersSingleDirectionAndResumption(t *testing.T) {
 	}
 }
 
+func TestNativeCounterLatestRequiresCompleteCurrentRuleEvidence(t *testing.T) {
+	started := time.Unix(1, 0)
+	history := offload.NewNativeCounterHistory(started, 3*time.Second)
+	if _, sampledAt, valid := history.Latest(); valid || !sampledAt.IsZero() {
+		t.Fatal("new rules reported a valid hardware observation")
+	}
+	pending := [2]offload.NativeCounter{{Error: syscall.EAGAIN}, {Error: syscall.EAGAIN}}
+	if got := history.Observe(3, pending, syscall.EAGAIN, started.Add(time.Second)); got != offload.NativeCounterPending {
+		t.Fatalf("initial counters did not remain pending: %d", got)
+	}
+	if _, _, valid := history.Latest(); valid {
+		t.Fatal("pending counters reported a valid hardware observation")
+	}
+	baseline := [2]offload.NativeCounter{nativeCounter(0, 0, 1), nativeCounter(12, 120, 1)}
+	collectedAt := started.Add(2 * time.Second)
+	if got := history.Observe(3, baseline, nil, collectedAt); got != offload.NativeCounterIdle {
+		t.Fatalf("complete counter baseline did not initialize: %d", got)
+	}
+	if actual, sampledAt, valid := history.Latest(); !valid || sampledAt != collectedAt || actual != baseline {
+		t.Fatalf("latest hardware observation changed its evidence: counters=%+v time=%s valid=%v", actual, sampledAt, valid)
+	}
+	rejected := [2]offload.NativeCounter{nativeCounter(99, 990, 2), {Error: syscall.EIO}}
+	if got := history.Observe(3, rejected, syscall.EIO, started.Add(3*time.Second)); got != offload.NativeCounterInvalid {
+		t.Fatalf("failed counter observation did not reject: %d", got)
+	}
+	if actual, sampledAt, valid := history.Latest(); !valid || sampledAt != collectedAt || actual != baseline {
+		t.Fatal("a rejected partial read replaced the latest complete hardware evidence")
+	}
+	history.Restart(started.Add(4*time.Second), time.Second)
+	if _, sampledAt, valid := history.Latest(); valid || !sampledAt.IsZero() {
+		t.Fatal("restarted rules reported the previous rule set's counters")
+	}
+}
+
 func nativeCounter(packets, bytes, observed uint64) offload.NativeCounter {
 	return offload.NativeCounter{Packets: packets, Bytes: bytes, ObservedMonotonicNS: observed, PacketsValid: true, BytesValid: true}
 }

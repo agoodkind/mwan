@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"goodkind.io/mwan/internal/clock"
@@ -40,7 +41,7 @@ func (module *Module) retire(ctx context.Context, identity connectionIdentity, r
 	delete(module.flows, identity)
 	module.rememberCandidate(identity, entry)
 	module.stats.Retired++
-	module.Log.DebugContext(ctx, "native rule retired", "connection_id", identity.id, "wan", entry.wan, "reason", reason)
+	module.logRuleCounters(ctx, slog.LevelDebug, "native rule retired", entry, reason, nil)
 	return nil
 }
 
@@ -55,11 +56,13 @@ func (module *Module) removeRules(ctx context.Context, identity connectionIdenti
 		entry.uncertain = true
 	}
 	if err != nil {
-		module.Log.WarnContext(ctx, "native connection rule removal failed", "connection_id", identity.id, "reason", reason, "err", err)
+		module.logRuleCounters(ctx, slog.LevelWarn, "native connection rule removal failed", entry, reason, err)
 		return fmt.Errorf("remove native connection %d for %s: %w", identity.id, reason, err)
 	}
 	if result.InstalledDirections != 0 || result.CleanupFailedDirections != 0 || result.State != offload.NativePairDraining {
-		return fmt.Errorf("native removal did not confirm retained restoration for connection %d", identity.id)
+		failure := fmt.Errorf("native removal did not confirm retained restoration for connection %d", identity.id)
+		module.logRuleCounters(ctx, slog.LevelWarn, "native connection rule removal failed", entry, reason, failure)
+		return failure
 	}
 	return nil
 }

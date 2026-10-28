@@ -139,6 +139,13 @@ func (history *NativeCounterHistory) LastActive() time.Time {
 	return history.lastActive
 }
 
+// Latest returns the last complete hardware observation and its collection time
+// for the current rule set. The boolean is false before a valid observation and
+// after Restart. Pending and rejected reads do not replace this evidence.
+func (history *NativeCounterHistory) Latest() ([2]NativeCounter, time.Time, bool) {
+	return history.previous, history.lastSample, history.samples != 0
+}
+
 // Evictable requires two complete samples and a last sample no older than
 // counterInterval. Pending and rejected reads do not supply new eviction evidence.
 func (history *NativeCounterHistory) Evictable(now time.Time, counterInterval time.Duration) bool {
