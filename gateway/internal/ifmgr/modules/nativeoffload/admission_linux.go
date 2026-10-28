@@ -74,7 +74,7 @@ func (module *Module) admit(ctx context.Context, observation packetObservation) 
 		return
 	}
 	identity := flowIdentity(flow)
-	if _, exists := module.flows[identity]; exists {
+	if module.observeTrackedSelectors(ctx, requestContext, identity, observation, guards, evidence) {
 		return
 	}
 	entry := newAdmittedFlow(flow, spec, guards, wan, observation, now)
@@ -135,6 +135,7 @@ func newAdmittedFlow(flow conntrack.Flow, spec offload.NativePairSpec, guards [2
 		flow: flow, spec: spec, guards: guards, result: result,
 		uncertain: false, wan: wan.Key(), timeout: flow.Timeout,
 		counters: offload.NewNativeCounterHistory(now, 0), observation: observation,
+		selectorAttemptAt: time.Time{}, selectorsPending: false,
 	}
 }
 
@@ -143,12 +144,16 @@ func (module *Module) resumeCandidate(ctx, requestContext context.Context, ident
 	if !retired {
 		return false
 	}
-	if !sameConnectionPolicy(entry.flow, candidate.flow) || !sameNativeMapping(entry.spec, candidate.spec) || candidate.guards != entry.guards || len(module.flows) >= int(module.cfg.Settings.PairCapacity) {
+	if !sameConnectionPolicy(entry.flow, candidate.flow) || !sameNativeMapping(entry.spec, candidate.spec) || candidate.wan != entry.wan || len(module.flows) >= int(module.cfg.Settings.PairCapacity) {
 		module.stats.Fallback++
 		return true
 	}
 	module.flows[identity] = entry
 	delete(module.resumeCandidates, identity)
+	if candidate.guards != entry.guards || entry.selectorsPending {
+		module.reobserveEntry(ctx, requestContext, identity, entry, candidate.observation, evidence)
+		return true
+	}
 	entry.observation, entry.counters = candidate.observation, candidate.counters
 	module.resumeEntry(ctx, requestContext, identity, entry, evidence)
 	if evidence.guard.Check() != nil {

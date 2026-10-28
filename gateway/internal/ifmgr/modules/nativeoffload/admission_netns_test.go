@@ -782,15 +782,20 @@ func admissionObservation(t *testing.T, sender, input *net.Interface, tuple conn
 
 func admissionReplyFrame(t *testing.T, sender, input *net.Interface, tuple conntrack.Tuple) []byte {
 	t.Helper()
+	return admissionSelectorFrame(t, sender, input, tuple, admissionTrafficClass, nativeCaptureFlowLabel)
+}
+
+func admissionSelectorFrame(t *testing.T, sender, input *net.Interface, tuple conntrack.Tuple, trafficClass uint8, flowLabel uint32) []byte {
+	t.Helper()
 	ethernet := &layers.Ethernet{SrcMAC: sender.HardwareAddr, DstMAC: input.HardwareAddr, EthernetType: layers.EthernetTypeIPv4}
 	var network gopacket.NetworkLayer
 	var serialized gopacket.SerializableLayer
 	if tuple.IP.SourceAddress.Is4() {
-		ipv4 := &layers.IPv4{Version: 4, IHL: 5, TTL: 64, TOS: admissionTrafficClass, SrcIP: tuple.IP.SourceAddress.AsSlice(), DstIP: tuple.IP.DestinationAddress.AsSlice(), Protocol: layers.IPProtocol(tuple.Proto.Protocol)}
+		ipv4 := &layers.IPv4{Version: 4, IHL: 5, TTL: 64, TOS: trafficClass, SrcIP: tuple.IP.SourceAddress.AsSlice(), DstIP: tuple.IP.DestinationAddress.AsSlice(), Protocol: layers.IPProtocol(tuple.Proto.Protocol)}
 		network, serialized = ipv4, ipv4
 	} else {
 		ethernet.EthernetType = layers.EthernetTypeIPv6
-		ipv6 := &layers.IPv6{Version: 6, HopLimit: 64, TrafficClass: admissionTrafficClass, FlowLabel: nativeCaptureFlowLabel, SrcIP: tuple.IP.SourceAddress.AsSlice(), DstIP: tuple.IP.DestinationAddress.AsSlice(), NextHeader: layers.IPProtocol(tuple.Proto.Protocol)}
+		ipv6 := &layers.IPv6{Version: 6, HopLimit: 64, TrafficClass: trafficClass, FlowLabel: flowLabel, SrcIP: tuple.IP.SourceAddress.AsSlice(), DstIP: tuple.IP.DestinationAddress.AsSlice(), NextHeader: layers.IPProtocol(tuple.Proto.Protocol)}
 		network, serialized = ipv6, ipv6
 	}
 	var transport gopacket.SerializableLayer

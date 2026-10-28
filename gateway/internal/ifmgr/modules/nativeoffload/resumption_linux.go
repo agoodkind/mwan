@@ -138,6 +138,9 @@ func (module *Module) resumeOne(ctx context.Context) {
 }
 
 func (module *Module) resumeEntry(ctx, requestContext context.Context, identity connectionIdentity, entry *admittedFlow, evidence *evidenceCheck) {
+	if entry.selectorsPending {
+		return
+	}
 	counterStarted := clock.Real{}.Now()
 	spec, guards, current, _, decision, err := module.candidate(requestContext, entry.observation)
 	if err != nil || decision != EligibilityReady || !sameConnectionPolicy(entry.flow, current) || !sameNativeMapping(entry.spec, spec) || guards != entry.guards {

@@ -433,6 +433,21 @@ static int reuse_slots(const char *config_path, const char *first_path,
 	printf("REUSE_REJECTED_RESUME slot=%u generation=%" PRIu64 " state=%u retained=%u\n",
 		resumed_retained.handle.slot, resumed_retained.handle.generation,
 		resumed_retained.state, retirement.retained_pairs);
+	struct mwan_native_pair_result reobserved_retained = {0};
+	if (mwan_native_pair_reobserve(owner, first_result.handle, &first, retained_guards,
+				       &reobserved_retained, &error) != -ESTALE ||
+	    reobserved_retained.handle.instance != first_result.handle.instance ||
+	    reobserved_retained.handle.generation != first_result.handle.generation ||
+	    reobserved_retained.handle.slot != first_result.handle.slot || reobserved_retained.handle.reserved ||
+	    reobserved_retained.state != MWAN_NATIVE_PAIR_DRAINING ||
+	    reobserved_retained.installed_mask || reobserved_retained.cleanup_failed_mask ||
+	    reobserved_retained.restoration_mask != first.requested_direction_mask) {
+		fprintf(stderr, "Selector replacement accepted an old hardware-slot generation\n");
+		goto cleanup;
+	}
+	printf("REUSE_REJECTED_REOBSERVE slot=%u generation=%" PRIu64 " state=%u retained=%u\n",
+		reobserved_retained.handle.slot, reobserved_retained.handle.generation,
+		reobserved_retained.state, retirement.retained_pairs);
 	printf("READY_REUSE_SECOND seconds=%" PRIu64 " slot=%u generation=%" PRIu64 " retained=%u\n",
 		seconds, second_result.handle.slot, second_result.handle.generation, retirement.retained_pairs);
 	fflush(stdout);
@@ -664,6 +679,15 @@ static int resume_identical(const char *config_path, const char *pair_path,
 	    mwan_native_retirement_query(owner, &installed, &error))
 		goto cleanup;
 	struct mwan_native_handle handle = result.handle;
+	struct mwan_native_pair_result rejected_active = {0};
+	if (mwan_native_pair_reobserve(owner, handle, &pair, guards, &rejected_active, &error) != -EBUSY ||
+	    !same_resume_handle(rejected_active.handle, handle) ||
+	    rejected_active.state != MWAN_NATIVE_PAIR_INSTALLED ||
+	    rejected_active.installed_mask != pair.requested_direction_mask ||
+	    rejected_active.cleanup_failed_mask) {
+		fprintf(stderr, "Selector replacement accepted an installed pair or changed its ownership\n");
+		goto cleanup;
+	}
 	printf("READY_RESUME_INSTALLED seconds=%" PRIu64 " slot=%u generation=%" PRIu64
 	       " policy=%" PRIu64 " traffic_class=%u flow_label=%u\n",
 		seconds, handle.slot, handle.generation, pair.policy_generation, traffic_class, flow_label);
@@ -771,7 +795,60 @@ static int resume_identical(const char *config_path, const char *pair_path,
 		}
 		printf("RESUME_REJECTED %s state=%u retained=%u\n",
 			rejections[i], MWAN_NATIVE_PAIR_DRAINING, retired.retained_pairs);
+		if (i != 3) {
+			memset(&rejected, 0, sizeof(rejected));
+			rc = mwan_native_pair_reobserve(owner, invalid_handle, &invalid, invalid_guards,
+						 &rejected, &error);
+			valid_result = i == 7 ||
+				(same_resume_handle(rejected.handle, handle) &&
+				 rejected.state == MWAN_NATIVE_PAIR_DRAINING &&
+				 rejected.requested_direction_mask == pair.requested_direction_mask &&
+				 !rejected.installed_mask && !rejected.cleanup_failed_mask &&
+				 rejected.restoration_mask == pair.requested_direction_mask);
+			if (rc != expected || !valid_result ||
+			    resume_still_draining(owner, handle, pair.requested_direction_mask, &retired, &error)) {
+				fprintf(stderr, "Selector replacement did not reject %s while retaining the pair\n", rejections[i]);
+				goto cleanup;
+			}
+			printf("REOBSERVE_REJECTED %s state=%u retained=%u\n",
+				rejections[i], rejected.state, retired.retained_pairs);
+		}
 	}
+	struct mwan_native_pair_result unchanged = {0};
+	if (mwan_native_pair_resume_observed(owner, handle, &pair, guards, &unchanged, &error) ||
+	    !same_resume_handle(unchanged.handle, handle) ||
+	    unchanged.installed_mask != pair.requested_direction_mask || unchanged.cleanup_failed_mask ||
+	    mwan_native_pair_remove(owner, handle, &unchanged, &error) ||
+	    resume_still_draining(owner, handle, pair.requested_direction_mask, &retired, &error)) {
+		fprintf(stderr, "Rejected selector changes altered the original guards\n");
+		goto cleanup;
+	}
+	struct mwan_native_packet_guard changed_guards[MWAN_NATIVE_DIRECTION_COUNT];
+	memcpy(changed_guards, guards, sizeof(changed_guards));
+	if (pair.directions[requested].original.family == MWAN_NATIVE_FAMILY_IPV6)
+		changed_guards[requested].flow_label ^= 1U;
+	else
+		changed_guards[requested].traffic_class ^= 4U;
+	struct mwan_native_pair_result changed = {0};
+	if (mwan_native_pair_resume_observed(owner, handle, &pair, changed_guards, &changed, &error) != -EINVAL ||
+	    resume_still_draining(owner, handle, pair.requested_direction_mask, &retired, &error) ||
+	    mwan_native_pair_reobserve(owner, handle, &pair, changed_guards, &changed, &error) ||
+	    !same_resume_handle(changed.handle, handle) || changed.state != MWAN_NATIVE_PAIR_INSTALLED ||
+	    changed.installed_mask != pair.requested_direction_mask || changed.cleanup_failed_mask ||
+	    changed.restoration_mask != pair.requested_direction_mask ||
+	    mwan_native_pair_remove(owner, handle, &changed, &error) ||
+	    resume_still_draining(owner, handle, pair.requested_direction_mask, &retired, &error)) {
+		fprintf(stderr, "Explicit selector replacement did not preserve the cleaned primary generation\n");
+		goto cleanup;
+	}
+	if (mwan_native_pair_resume_observed(owner, handle, &pair, guards, &changed, &error) != -EINVAL ||
+	    mwan_native_pair_reobserve(owner, handle, &pair, guards, &changed, &error) ||
+	    mwan_native_pair_remove(owner, handle, &changed, &error) ||
+	    resume_still_draining(owner, handle, pair.requested_direction_mask, &retired, &error)) {
+		fprintf(stderr, "Selector replacement did not commit new guards or restore the original guards explicitly\n");
+		goto cleanup;
+	}
+	printf("REOBSERVE_BOUNDARIES slot=%u generation=%" PRIu64 " api_only=1\n", handle.slot, handle.generation);
 	pair.policy_generation++;
 	if (mwan_native_pair_resume_observed(owner, handle, &pair, guards, &result, &error) ||
 	    !same_resume_handle(result.handle, handle) || result.state != MWAN_NATIVE_PAIR_INSTALLED ||

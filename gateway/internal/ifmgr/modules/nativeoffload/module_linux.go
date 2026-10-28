@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/ti-mo/conntrack"
 
@@ -28,15 +29,17 @@ type connectionIdentity struct {
 }
 
 type admittedFlow struct {
-	flow        conntrack.Flow
-	spec        offload.NativePairSpec
-	guards      [2]offload.NativePacketGuard
-	result      offload.NativePairResult
-	uncertain   bool
-	wan         string
-	timeout     uint32
-	counters    offload.NativeCounterHistory
-	observation packetObservation
+	flow              conntrack.Flow
+	spec              offload.NativePairSpec
+	guards            [2]offload.NativePacketGuard
+	result            offload.NativePairResult
+	uncertain         bool
+	wan               string
+	timeout           uint32
+	counters          offload.NativeCounterHistory
+	observation       packetObservation
+	selectorAttemptAt time.Time
+	selectorsPending  bool
 }
 
 // AdmissionStats counts runtime decisions without packet-by-packet logs.
