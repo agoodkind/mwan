@@ -79,7 +79,7 @@ func (module *Module) scheduleResumption() {
 }
 
 func (module *Module) requestResumeReconcile() {
-	if module.runtime == nil || module.stats.Failure != nil {
+	if module.runtime == nil || module.stats.Failure != nil || module.policyBlocked {
 		return
 	}
 	if module.Env.RequestReconcile != nil {
