@@ -416,7 +416,7 @@ func (module *Module) ipv4MappingAllowed(wan WAN, flow conntrack.Flow) bool {
 	if wan.TranslationV4.Mode == config.TranslationNative {
 		return original == translated
 	}
-	if wan.TranslationV4.Mode != config.TranslationNAPT44 || original.Proto.Protocol != unix.IPPROTO_TCP {
+	if wan.TranslationV4.Mode != config.TranslationNAPT44 || original.Proto.Protocol != unix.IPPROTO_TCP && original.Proto.Protocol != unix.IPPROTO_UDP {
 		return false
 	}
 	if original.IP.DestinationAddress != translated.IP.DestinationAddress {

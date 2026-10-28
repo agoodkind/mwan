@@ -1424,17 +1424,6 @@ impl OwnerState {
                     "IPv6 translation requires unchanged ports and independently neutral addresses",
                 ));
             }
-        } else if u32::from(direction.original.protocol) != MWAN_NATIVE_PROTOCOL_TCP
-            && direction.original != direction.translated
-        {
-            return Err(fault(
-                libc::ENOTSUP,
-                MWAN_NATIVE_OP_VALIDATE,
-                MWAN_NATIVE_OBJECT_ORIGIN,
-                direction.origin_id,
-                index as u32,
-                "Translation requires IPv4 TCP",
-            ));
         }
         for address in [
             &direction.original_source_mac,

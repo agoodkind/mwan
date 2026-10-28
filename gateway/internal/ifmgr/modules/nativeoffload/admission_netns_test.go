@@ -119,6 +119,28 @@ func TestNativeAdmissionStaticSNAT44(t *testing.T) {
 	fixture.requireCandidate(t, admissionObservation(t, fixture.peer, fixture.output, flow.TupleReply), flow, reply, 1, fixture.input, fixture.sender)
 }
 
+func TestNativeAdmissionUDPStaticSNAT44(t *testing.T) {
+	if !nativeCaptureNamespace(t) {
+		return
+	}
+	fixture := newAdmissionFixture(t, config.TranslationNAPT44)
+	rule := netlink.NewRule()
+	rule.Family, rule.Priority, rule.Table = unix.AF_INET, admissionRoutePriority, admissionRouteTable
+	rule.IifName, rule.Mark, rule.IPProto, rule.Tos = fixture.input.Name, admissionMark, unix.IPPROTO_UDP, admissionTrafficClass
+	rule.Sport = netlink.NewRulePortRange(nativeCaptureSourcePort, nativeCaptureSourcePort)
+	rule.Dport = netlink.NewRulePortRange(nativeCaptureDestinationPort, nativeCaptureDestinationPort)
+	if err := netlink.RuleAdd(rule); err != nil {
+		t.Fatal(err)
+	}
+	flow := fixture.flowProtocol(t, admissionClientV4, admissionRemoteV4, admissionExternalClientV4, unix.IPPROTO_UDP)
+	translated := flow.TupleOrig
+	translated.IP.SourceAddress = netip.MustParseAddr(admissionExternalClientV4)
+	fixture.requireCandidate(t, admissionObservation(t, fixture.sender, fixture.input, flow.TupleOrig), flow, translated, 0, fixture.output, fixture.peer)
+	reply := flow.TupleReply
+	reply.IP.DestinationAddress = netip.MustParseAddr(admissionClientV4)
+	fixture.requireCandidate(t, admissionObservation(t, fixture.peer, fixture.output, flow.TupleReply), flow, reply, 1, fixture.input, fixture.sender)
+}
+
 func TestNativeAdmissionIPv6(t *testing.T) {
 	if !nativeCaptureNamespace(t) {
 		return
@@ -498,9 +520,16 @@ func (fixture admissionFixture) publishObservation(t *testing.T, connection inte
 
 func (fixture admissionFixture) flow(t *testing.T, source, destination, translatedSource string) conntrack.Flow {
 	t.Helper()
+	return fixture.flowProtocol(t, source, destination, translatedSource, unix.IPPROTO_TCP)
+}
+
+func (fixture admissionFixture) flowProtocol(t *testing.T, source, destination, translatedSource string, protocol uint8) conntrack.Flow {
+	t.Helper()
 	status := conntrack.StatusConfirmed | conntrack.StatusSeenReply | conntrack.StatusAssured
-	flow := conntrack.NewFlow(unix.IPPROTO_TCP, status, netip.MustParseAddr(source), netip.MustParseAddr(destination), nativeCaptureSourcePort, nativeCaptureDestinationPort, admissionFlowTimeout, admissionMark)
-	flow.ProtoInfo.TCP = &conntrack.ProtoInfoTCP{State: conntrackEstablished}
+	flow := conntrack.NewFlow(protocol, status, netip.MustParseAddr(source), netip.MustParseAddr(destination), nativeCaptureSourcePort, nativeCaptureDestinationPort, admissionFlowTimeout, admissionMark)
+	if protocol == unix.IPPROTO_TCP {
+		flow.ProtoInfo.TCP = &conntrack.ProtoInfoTCP{State: conntrackEstablished}
+	}
 	if translatedSource != "" {
 		flow.TupleReply.IP.DestinationAddress = netip.MustParseAddr(translatedSource)
 		flow.Status |= conntrack.StatusSrcNAT | conntrack.StatusSrcNATDone
@@ -537,24 +566,27 @@ func admissionCreateSNAT(t *testing.T, ctx context.Context, flow conntrack.Flow)
 	}
 	reply := flow.TupleReply
 	reply.IP.DestinationAddress = flow.TupleOrig.IP.SourceAddress
-	message, err := netfilter.MarshalNetlink(netfilter.Header{
-		SubsystemID: netfilter.NFSubsysCTNetlink, MessageType: admissionCTNew,
-		Family: netfilter.ProtoIPv4, Flags: mdnetlink.Request | mdnetlink.Acknowledge | mdnetlink.Create | mdnetlink.Excl,
-	}, []netfilter.Attribute{
+	attributes := []netfilter.Attribute{
 		admissionConntrackTuple(flow.TupleOrig, admissionCTTupleOriginal),
 		admissionConntrackTuple(reply, admissionCTTupleReply),
 		{Type: admissionCTStatus, Data: netfilter.Uint32Bytes(uint32(flow.Status))},
 		{Type: admissionCTTimeout, Data: netfilter.Uint32Bytes(flow.Timeout)},
 		{Type: admissionCTMark, Data: netfilter.Uint32Bytes(flow.Mark)},
-		{Type: admissionCTProtocolInfo, Nested: true, Children: []netfilter.Attribute{
+	}
+	if flow.TupleOrig.Proto.Protocol == unix.IPPROTO_TCP {
+		attributes = append(attributes, netfilter.Attribute{Type: admissionCTProtocolInfo, Nested: true, Children: []netfilter.Attribute{
 			{Type: admissionCTTCPInfo, Nested: true, Children: []netfilter.Attribute{
 				{Type: admissionCTTCPState, Data: []byte{conntrackEstablished}},
 			}},
-		}},
-		{Type: admissionCTNATSource, Nested: true, Children: []netfilter.Attribute{
-			{Type: admissionCTNATMinimumIP, Data: flow.TupleReply.IP.DestinationAddress.AsSlice()},
-		}},
-	})
+		}})
+	}
+	attributes = append(attributes, netfilter.Attribute{Type: admissionCTNATSource, Nested: true, Children: []netfilter.Attribute{
+		{Type: admissionCTNATMinimumIP, Data: flow.TupleReply.IP.DestinationAddress.AsSlice()},
+	}})
+	message, err := netfilter.MarshalNetlink(netfilter.Header{
+		SubsystemID: netfilter.NFSubsysCTNetlink, MessageType: admissionCTNew,
+		Family: netfilter.ProtoIPv4, Flags: mdnetlink.Request | mdnetlink.Acknowledge | mdnetlink.Create | mdnetlink.Excl,
+	}, attributes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -686,19 +718,29 @@ func admissionReplyFrame(t *testing.T, sender, input *net.Interface, tuple connt
 	var network gopacket.NetworkLayer
 	var serialized gopacket.SerializableLayer
 	if tuple.IP.SourceAddress.Is4() {
-		ipv4 := &layers.IPv4{Version: 4, IHL: 5, TTL: 64, TOS: admissionTrafficClass, SrcIP: tuple.IP.SourceAddress.AsSlice(), DstIP: tuple.IP.DestinationAddress.AsSlice(), Protocol: layers.IPProtocolTCP}
+		ipv4 := &layers.IPv4{Version: 4, IHL: 5, TTL: 64, TOS: admissionTrafficClass, SrcIP: tuple.IP.SourceAddress.AsSlice(), DstIP: tuple.IP.DestinationAddress.AsSlice(), Protocol: layers.IPProtocol(tuple.Proto.Protocol)}
 		network, serialized = ipv4, ipv4
 	} else {
 		ethernet.EthernetType = layers.EthernetTypeIPv6
-		ipv6 := &layers.IPv6{Version: 6, HopLimit: 64, TrafficClass: admissionTrafficClass, FlowLabel: nativeCaptureFlowLabel, SrcIP: tuple.IP.SourceAddress.AsSlice(), DstIP: tuple.IP.DestinationAddress.AsSlice(), NextHeader: layers.IPProtocolTCP}
+		ipv6 := &layers.IPv6{Version: 6, HopLimit: 64, TrafficClass: admissionTrafficClass, FlowLabel: nativeCaptureFlowLabel, SrcIP: tuple.IP.SourceAddress.AsSlice(), DstIP: tuple.IP.DestinationAddress.AsSlice(), NextHeader: layers.IPProtocol(tuple.Proto.Protocol)}
 		network, serialized = ipv6, ipv6
 	}
-	tcp := &layers.TCP{SrcPort: layers.TCPPort(tuple.Proto.SourcePort), DstPort: layers.TCPPort(tuple.Proto.DestinationPort), ACK: true, Seq: 1, Ack: 1, Window: 1024}
-	if err := tcp.SetNetworkLayerForChecksum(network); err != nil {
-		t.Fatal(err)
+	var transport gopacket.SerializableLayer
+	if tuple.Proto.Protocol == unix.IPPROTO_UDP {
+		udp := &layers.UDP{SrcPort: layers.UDPPort(tuple.Proto.SourcePort), DstPort: layers.UDPPort(tuple.Proto.DestinationPort)}
+		if err := udp.SetNetworkLayerForChecksum(network); err != nil {
+			t.Fatal(err)
+		}
+		transport = udp
+	} else {
+		tcp := &layers.TCP{SrcPort: layers.TCPPort(tuple.Proto.SourcePort), DstPort: layers.TCPPort(tuple.Proto.DestinationPort), ACK: true, Seq: 1, Ack: 1, Window: 1024}
+		if err := tcp.SetNetworkLayerForChecksum(network); err != nil {
+			t.Fatal(err)
+		}
+		transport = tcp
 	}
 	buffer := gopacket.NewSerializeBuffer()
-	if err := gopacket.SerializeLayers(buffer, gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}, ethernet, serialized, tcp, gopacket.Payload("native admission")); err != nil {
+	if err := gopacket.SerializeLayers(buffer, gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}, ethernet, serialized, transport, gopacket.Payload("native admission")); err != nil {
 		t.Fatal(err)
 	}
 	return buffer.Bytes()

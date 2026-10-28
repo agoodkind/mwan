@@ -481,27 +481,9 @@ fn restore_ipv4(
     let [source_high, source_low] = direction.original.source_port.to_be_bytes();
     let [destination_high, destination_low] = direction.original.destination_port.to_be_bytes();
     let ports = [source_high, source_low, destination_high, destination_low];
-    let tcp_checksum = if view.ports
-        && u32::from(view.tuple.protocol) == MWAN_NATIVE_PROTOCOL_TCP
-        && view.transport_length >= 18
-    {
-        let offset = view
-            .transport_offset
-            .checked_add(16)
-            .ok_or_else(|| view.error(libc::EBADMSG))?;
-        let checksum = read_u16(frame, offset).ok_or_else(|| view.error(libc::EBADMSG))?;
-        let previous_ports = read_range(frame, view.transport_offset, ports.len())
-            .ok_or_else(|| view.error(libc::EBADMSG))?;
-        let checksum = checksum_replace(checksum, translated_source, original_source)
-            .and_then(|value| checksum_replace(value, translated_destination, original_destination))
-            .and_then(|value| checksum_replace(value, previous_ports, &ports))
-            .ok_or_else(|| view.error(libc::EBADMSG))?;
-        Some((offset, checksum))
-    } else {
-        None
-    };
+    let transport_checksum = inverse_transport_checksum(frame, view, direction, &ports)?;
     write_bytes(frame, checksum_offset, &ip_checksum.to_be_bytes(), view)?;
-    if let Some((offset, checksum)) = tcp_checksum {
+    if let Some((offset, checksum)) = transport_checksum {
         write_bytes(frame, offset, &checksum.to_be_bytes(), view)?;
     }
     write_bytes(frame, source_offset, original_source, view)?;
@@ -510,6 +492,55 @@ fn restore_ipv4(
         write_bytes(frame, view.transport_offset, &ports, view)?;
     }
     Ok(())
+}
+
+fn inverse_transport_checksum(
+    frame: &[u8],
+    view: &ParsedPacket,
+    direction: &MwanNativeDirection,
+    ports: &[u8; 4],
+) -> Result<Option<(usize, u16)>, DecodeError> {
+    if !view.ports {
+        return Ok(None);
+    }
+    let udp = u32::from(view.tuple.protocol) == MWAN_NATIVE_PROTOCOL_UDP;
+    let field = match u32::from(view.tuple.protocol) {
+        MWAN_NATIVE_PROTOCOL_TCP if view.transport_length >= 18 => 16,
+        MWAN_NATIVE_PROTOCOL_UDP if view.transport_length >= UDP_HEADER_LENGTH => 6,
+        _ => return Ok(None),
+    };
+    let offset = view
+        .transport_offset
+        .checked_add(field)
+        .ok_or_else(|| view.error(libc::EBADMSG))?;
+    let checksum = read_u16(frame, offset).ok_or_else(|| view.error(libc::EBADMSG))?;
+    // IPv4 UDP wire zero disables the checksum and must survive inverse NAT.
+    if udp && checksum == 0 {
+        return Ok(None);
+    }
+    let previous_ports = read_range(frame, view.transport_offset, ports.len())
+        .ok_or_else(|| view.error(libc::EBADMSG))?;
+    let checksum = checksum_replace(
+        checksum,
+        &direction.translated.source[..4],
+        &direction.original.source[..4],
+    )
+    .and_then(|value| {
+        checksum_replace(
+            value,
+            &direction.translated.destination[..4],
+            &direction.original.destination[..4],
+        )
+    })
+    .and_then(|value| checksum_replace(value, previous_ports, ports))
+    .ok_or_else(|| view.error(libc::EBADMSG))?;
+    // UDP transmits a computed zero as all ones, preserving checksum presence.
+    let checksum = if udp && checksum == 0 {
+        u16::MAX
+    } else {
+        checksum
+    };
+    Ok(Some((offset, checksum)))
 }
 
 pub fn forward(
@@ -695,3 +726,7 @@ fn checksum_replace(checksum: u16, before: &[u8], after: &[u8]) -> Option<u16> {
 #[cfg(test)]
 #[path = "packet_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "udp4_tests.rs"]
+mod udp4_tests;
