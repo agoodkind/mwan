@@ -206,6 +206,10 @@ func (module *Module) candidate(ctx context.Context, observation packetObservati
 	if !ready {
 		return spec, guards, flow, wan, EligibilityPolicyUnavailable, nil
 	}
+	if err := module.inspectPolicy(ctx); err != nil {
+		module.Log.DebugContext(ctx, "native candidate policy is ineligible", "connection_id", flow.ID, "wan", wan.Key(), "err", err)
+		return spec, guards, flow, wan, EligibilityPolicyUnavailable, err
+	}
 	translated, index, decision := candidateDirection(flow, kernelTuple)
 	if decision != EligibilityReady {
 		return spec, guards, flow, wan, decision, nil
