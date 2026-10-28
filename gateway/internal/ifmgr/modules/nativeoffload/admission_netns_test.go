@@ -350,8 +350,10 @@ func newAdmissionFixture(t *testing.T, mode config.TranslationMode) admissionFix
 	}
 	store := wanstate.New()
 	store.SetConnections(connections)
+	var processSettings ProcessSettings
+	processSettings.RequestTimeout = admissionTimeout
 	created, err := New(Config{
-		Enabled: true, Firewall: firewallConfig,
+		Enabled: true, Firewall: firewallConfig, Settings: processSettings,
 		WANs: []WAN{
 			{WANRef: ifmgr.WANRef{ID: admissionOtherID, Name: admissionOtherID, Iface: other.Name}, Mark: admissionOtherMark, TranslationV4: &config.IPv4Translation{Mode: config.TranslationNative}},
 			{WANRef: ifmgr.WANRef{ID: admissionWANID, Name: admissionWANID, Iface: output.Name}, Mark: admissionMark, TranslationV4: policy},
@@ -362,6 +364,15 @@ func newAdmissionFixture(t *testing.T, mode config.TranslationMode) admissionFix
 	}
 	module := created.(*Module)
 	module.InitBase(&ifmgr.Env{Log: log, LiveState: store, Connections: connections})
+	module.rules, err = offload.NewRulesetEvents(ctx, nativeCaptureSocketBytes)
+	if err != nil {
+		t.Fatalf("start admission nftables observations: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := module.rules.Close(); err != nil {
+			t.Errorf("close admission nftables observations: %v", err)
+		}
+	})
 	module.policyGeneration.Store(1)
 	module.links = make(map[int]boundLink)
 	for index, link := range []*net.Interface{input, output, other} {

@@ -17,6 +17,7 @@ type evidenceEpoch struct {
 	routing    uint64
 	npt        uint64
 	forwarding uint64
+	rules      uint64
 }
 
 func (module *Module) invalidateEvidence(ctx context.Context) {
@@ -38,7 +39,7 @@ func (module *Module) currentEvidenceEpoch() evidenceEpoch {
 	routing, npt := module.Env.LiveState.ForwardingGenerations()
 	return evidenceEpoch{
 		policy: module.policyGeneration.Load(), routing: routing,
-		npt: npt, forwarding: module.forwarding.Generation(),
+		npt: npt, forwarding: module.forwarding.Generation(), rules: module.rules.Generation(),
 	}
 }
 
@@ -48,7 +49,7 @@ func (module *Module) evidenceFor(epoch evidenceEpoch) *evidenceCheck {
 	}
 	check := &evidenceCheck{epoch: epoch, guard: offload.NativeEvidenceGuard{Check: nil}}
 	check.guard.Check = func() error {
-		if err := errors.Join(module.events.Err(), module.forwarding.Err()); err != nil {
+		if err := errors.Join(module.events.Err(), module.forwarding.Err(), module.rules.Err()); err != nil {
 			slog.Warn("native kernel evidence became unavailable", "err", err)
 			return fmt.Errorf("read native kernel evidence: %w", err)
 		}

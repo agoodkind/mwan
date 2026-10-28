@@ -46,6 +46,9 @@ func (module *Module) OnFamilyReadiness(ctx context.Context, _ *slog.Logger) {
 	if module.runtime == nil || module.stats.Failure != nil || ctx.Err() != nil {
 		return
 	}
+	if !module.refreshPolicy(ctx) {
+		return
+	}
 	if !module.checkEvidence(ctx) {
 		return
 	}
@@ -82,7 +85,7 @@ func (module *Module) requestResumeReconcile() {
 }
 
 func (module *Module) resumeEvidence(ctx context.Context, pass *resumption) bool {
-	if err := errors.Join(module.events.Err(), module.forwarding.Err()); err != nil {
+	if err := errors.Join(module.events.Err(), module.forwarding.Err(), module.rules.Err()); err != nil {
 		_ = module.fail(ctx, err)
 		return false
 	}

@@ -23,6 +23,7 @@ func (module *Module) run(ctx context.Context) {
 	defer resync.Stop()
 	events, failures := module.events.Events, module.events.Errors
 	changes, forwardingFailures := module.forwarding.Changes, module.forwarding.Errors
+	rules, rulesFailures := module.rules.Changes, module.rules.Errors
 	for {
 		select {
 		case <-ctx.Done():
@@ -53,6 +54,21 @@ func (module *Module) run(ctx context.Context) {
 				continue
 			}
 			module.handleFailure(ctx, failure)
+		case _, open := <-rules:
+			if !open {
+				rules = nil
+				continue
+			}
+			module.withLock(func() {
+				module.refreshPolicy(ctx)
+				module.checkEvidence(ctx)
+			})
+		case failure, open := <-rulesFailures:
+			if !open {
+				rulesFailures = nil
+				continue
+			}
+			module.handleFailure(ctx, failure)
 		case observation := <-module.observations:
 			module.withLock(func() {
 				if module.readyForWork(ctx) {
@@ -70,7 +86,7 @@ func (module *Module) run(ctx context.Context) {
 }
 
 func (module *Module) readyForWork(ctx context.Context) bool {
-	return module.stats.Failure == nil && module.runtime != nil && module.checkEvidence(ctx)
+	return module.stats.Failure == nil && module.runtime != nil && module.checkEvidence(ctx) && !module.policyBlocked
 }
 
 func (module *Module) maintain(ctx context.Context) {

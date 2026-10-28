@@ -74,6 +74,9 @@ type Module struct {
 	failures             chan error
 	events               *offload.ConntrackEvents
 	forwarding           *offload.ForwardingEvents
+	rules                *offload.RulesetEvents
+	policyCertificate    *policyCertificate
+	policyBlocked        bool
 	evidenceGeneration   uint64
 	attempts             observationCache
 	admissionPaused      atomic.Bool
@@ -149,6 +152,10 @@ func (module *Module) Init(ctx context.Context, env *ifmgr.Env) (resultErr error
 	if err != nil {
 		return fmt.Errorf("start native forwarding observations: %w", err)
 	}
+	module.rules, err = offload.NewRulesetEvents(workerContext, int(module.cfg.Settings.SocketBufferBytes))
+	if err != nil {
+		return fmt.Errorf("start native policy observations: %w", err)
+	}
 	module.events, err = offload.NewConntrackEvents(workerContext, int(module.cfg.Settings.EventCapacity), int(module.cfg.Settings.SocketBufferBytes))
 	if err != nil {
 		return fmt.Errorf("start native conntrack observations: %w", err)
@@ -196,6 +203,9 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	defer module.Unlock()
 	if module.stats.Failure != nil {
 		return module.stats.Failure
+	}
+	if !module.refreshPolicy(ctx) {
+		return nil
 	}
 	if module.runtime != nil {
 		if err := module.verifyLinks(); err != nil {
@@ -306,7 +316,7 @@ func (module *Module) Stats() AdmissionStats {
 }
 
 func (module *Module) checkEvidence(ctx context.Context) bool {
-	if err := errors.Join(module.events.Err(), module.forwarding.Err()); err != nil {
+	if err := errors.Join(module.events.Err(), module.forwarding.Err(), module.rules.Err()); err != nil {
 		_ = module.fail(ctx, err)
 		return false
 	}
@@ -345,6 +355,9 @@ func (module *Module) Shutdown(ctx context.Context, _ *slog.Logger) error {
 		}
 		if module.forwarding != nil {
 			module.shutdownErr = errors.Join(module.shutdownErr, module.forwarding.Close())
+		}
+		if module.rules != nil {
+			module.shutdownErr = errors.Join(module.shutdownErr, module.rules.Close())
 		}
 		for _, capture := range module.captureSnapshot() {
 			module.shutdownErr = errors.Join(module.shutdownErr, capture.close())
