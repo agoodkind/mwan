@@ -120,7 +120,8 @@ func (worker *NativeRuntime) execute(owner **C.struct_mwan_native, request nativ
 		worker.closeUpdater()
 		result.err = worker.shutdownError()
 	}
-	if result.err != nil && (!request.observed || !nativeAdmissionFallback(result.err)) {
+	// Admission logs rejected counter evidence with its connection identity.
+	if result.err != nil && request.operation != nativeQuery && (!request.observed || !nativeAdmissionFallback(result.err)) {
 		worker.log.Warn("native operation failed", "operation", request.operation, "err", result.err)
 	}
 	return result, request.operation == nativeShutdown && rc == 0

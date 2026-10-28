@@ -100,6 +100,7 @@ func (module *Module) admit(ctx context.Context, observation packetObservation) 
 			return
 		}
 	}
+	counterStarted := clock.Real{}.Now()
 	current, err := offload.FreshConntrackFlow(requestContext, flow)
 	if err != nil || !sameConnectionPolicy(flow, current) {
 		module.stats.Fallback++
@@ -117,6 +118,7 @@ func (module *Module) admit(ctx context.Context, observation packetObservation) 
 	result, err := module.runtime.InstallObservedWithEvidence(requestContext, current, spec, guards, &evidence.guard)
 	if result.RestorationDirections != 0 || result.InstalledDirections != 0 || result.CleanupFailedDirections != 0 {
 		entry.flow, entry.timeout, entry.result = current, current.Timeout, result
+		module.startCounters(entry, counterStarted)
 		module.flows[identity] = entry
 	}
 	module.completeInstallation(ctx, identity, spec, result, err, evidence)
@@ -127,8 +129,7 @@ func newAdmittedFlow(flow conntrack.Flow, spec offload.NativePairSpec, guards [2
 	return &admittedFlow{
 		flow: flow, spec: spec, guards: guards, result: result,
 		uncertain: false, wan: wan.Key(), timeout: flow.Timeout,
-		lastActive: now, lastSample: time.Time{}, previous: [2]offload.NativeCounter{},
-		samples: 0, observation: observation,
+		counters: offload.NewNativeCounterHistory(now, 0), observation: observation,
 	}
 }
 
@@ -143,7 +144,7 @@ func (module *Module) resumeCandidate(ctx, requestContext context.Context, ident
 	}
 	module.flows[identity] = entry
 	delete(module.resumeCandidates, identity)
-	entry.observation, entry.lastActive = candidate.observation, candidate.lastActive
+	entry.observation, entry.counters = candidate.observation, candidate.counters
 	module.resumeEntry(ctx, requestContext, identity, entry, evidence)
 	if evidence.guard.Check() != nil {
 		module.invalidateEvidence(ctx)

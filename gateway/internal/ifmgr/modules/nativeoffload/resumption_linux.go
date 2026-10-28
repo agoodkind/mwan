@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"goodkind.io/mwan/internal/clock"
 	"goodkind.io/mwan/internal/offload"
 )
 
@@ -130,6 +131,7 @@ func (module *Module) resumeOne(ctx context.Context) {
 }
 
 func (module *Module) resumeEntry(ctx, requestContext context.Context, identity connectionIdentity, entry *admittedFlow, evidence *evidenceCheck) {
+	counterStarted := clock.Real{}.Now()
 	spec, guards, current, _, decision, err := module.candidate(requestContext, entry.observation)
 	if err != nil || decision != EligibilityReady || !sameConnectionPolicy(entry.flow, current) || !sameNativeMapping(entry.spec, spec) || guards != entry.guards {
 		module.stats.Fallback++
@@ -164,9 +166,7 @@ func (module *Module) resumeEntry(ctx, requestContext context.Context, identity 
 		return
 	}
 	entry.flow, entry.spec, entry.guards = current, spec, guards
-	entry.samples = 0
-	entry.previous = [2]offload.NativeCounter{}
-	entry.lastSample = time.Time{}
+	module.startCounters(entry, counterStarted)
 	module.stats.Resumed++
 }
 
@@ -175,8 +175,8 @@ func (module *Module) rememberCandidate(identity connectionIdentity, entry *admi
 		var oldest connectionIdentity
 		var observed time.Time
 		for key, candidate := range module.resumeCandidates {
-			if observed.IsZero() || candidate.lastActive.Before(observed) {
-				oldest, observed = key, candidate.lastActive
+			if observed.IsZero() || candidate.counters.LastActive().Before(observed) {
+				oldest, observed = key, candidate.counters.LastActive()
 			}
 		}
 		delete(module.resumeCandidates, oldest)

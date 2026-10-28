@@ -201,16 +201,6 @@ type NativePairResult struct {
 	RestorationDirections   uint32
 }
 
-// NativeCounter reports cumulative hardware counts only when its validity bits are true.
-type NativeCounter struct {
-	Packets             uint64
-	Bytes               uint64
-	ObservedMonotonicNS uint64
-	PacketsValid        bool
-	BytesValid          bool
-	Error               error
-}
-
 // NativePairStats reports each requested direction's hardware counters.
 type NativePairStats struct {
 	Result     NativePairResult

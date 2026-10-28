@@ -12,8 +12,6 @@ import (
 	"goodkind.io/mwan/internal/offload"
 )
 
-const counterSampleMinimum uint8 = 2
-
 func (module *Module) observeConnection(ctx context.Context, event offload.ConntrackEvent) {
 	identity := flowIdentity(event.Flow)
 	if event.Destroyed {
@@ -101,9 +99,6 @@ func (module *Module) sweepEntry(ctx context.Context, generation uint64, identit
 	}
 	current, currentErr := offload.FreshConntrackFlow(requestContext, entry.flow)
 	stats, counterErr := module.runtime.Query(requestContext, entry.result.Handle)
-	if stats.Result.Handle == entry.result.Handle {
-		entry.result = stats.Result
-	}
 	cancel()
 	if module.forwarding.Generation() != generation || module.forwarding.Err() != nil || module.events.Err() != nil {
 		module.checkEvidence(ctx)
@@ -116,14 +111,29 @@ func (module *Module) sweepEntry(ctx context.Context, generation uint64, identit
 		return true
 	}
 	sampledAt := clock.Real{}.Now()
-	active, valid := observeCounters(entry, stats, counterErr, sampledAt)
-	if !valid {
+	observation := observeCounters(entry, stats, counterErr, sampledAt)
+	if observation == offload.NativeCounterPending && time.Duration(current.Timeout)*time.Second > module.cfg.Settings.CounterInterval {
+		module.stats.CounterPendingQueries++
+		return true
+	}
+	if observation == offload.NativeCounterInvalid || observation == offload.NativeCounterPending || observation == offload.NativeCounterReadinessExpired {
 		module.stats.CounterFailures++
-		if err := module.retire(ctx, identity, "hardware counter evidence became unavailable"); err != nil {
+		reason := "hardware counter evidence became unavailable"
+		if observation == offload.NativeCounterReadinessExpired {
+			reason = "initial hardware counter readiness deadline elapsed"
+		}
+		if observation == offload.NativeCounterPending {
+			reason = "kernel timeout cannot wait for initial hardware counters"
+		}
+		module.Log.WarnContext(ctx, "native counter evidence rejected", "connection_id", identity.id, "wan", entry.wan,
+			"reason", reason, "err", counterErr, "result", stats.Result,
+			"original_counter", stats.Directions[0], "reply_counter", stats.Directions[1])
+		if err := module.retire(ctx, identity, reason); err != nil {
 			_ = module.fail(ctx, err)
 		}
 		return true
 	}
+	active := observation == offload.NativeCounterActive
 	if active {
 		refreshContext, cancel := context.WithTimeout(ctx, module.cfg.Settings.RequestTimeout)
 		err := module.updater.Refresh(refreshContext, current, entry.timeout)
@@ -136,7 +146,7 @@ func (module *Module) sweepEntry(ctx context.Context, generation uint64, identit
 			return true
 		}
 	}
-	if sampledAt.Sub(entry.lastActive) >= module.cfg.Settings.IdleTimeout || !active && time.Duration(current.Timeout)*time.Second <= module.cfg.Settings.CounterInterval {
+	if sampledAt.Sub(entry.counters.LastActive()) >= module.cfg.Settings.IdleTimeout || !active && time.Duration(current.Timeout)*time.Second <= module.cfg.Settings.CounterInterval {
 		if err := module.retire(ctx, identity, "valid counters confirmed inactivity"); err != nil {
 			_ = module.fail(ctx, err)
 		} else {
@@ -146,36 +156,19 @@ func (module *Module) sweepEntry(ctx context.Context, generation uint64, identit
 	return true
 }
 
-func observeCounters(entry *admittedFlow, stats offload.NativePairStats, queryError error, now time.Time) (bool, bool) {
-	if queryError != nil || stats.Result.State != offload.NativePairInstalled || stats.Result.InstalledDirections != entry.spec.RequestedDirections {
-		return false, false
+func (module *Module) startCounters(entry *admittedFlow, started time.Time) {
+	// Leave one sweep interval before the observed kernel timeout expires.
+	readiness := min(module.cfg.Settings.IdleTimeout, time.Duration(entry.flow.Timeout)*time.Second-module.cfg.Settings.CounterInterval)
+	entry.counters.Restart(started, readiness)
+}
+
+func observeCounters(entry *admittedFlow, stats offload.NativePairStats, queryError error, now time.Time) offload.NativeCounterObservation {
+	if stats.Result.Handle != entry.result.Handle || stats.Result.State != offload.NativePairInstalled ||
+		stats.Result.RequestedDirections != entry.spec.RequestedDirections || stats.Result.InstalledDirections != entry.spec.RequestedDirections ||
+		stats.Result.RestorationDirections != entry.spec.RequestedDirections || stats.Result.CleanupFailedDirections != 0 {
+		return offload.NativeCounterInvalid
 	}
-	active := false
-	for index, mask := range [2]uint32{1, 2} {
-		if entry.spec.RequestedDirections&mask == 0 {
-			continue
-		}
-		counter := stats.Directions[index]
-		previous := entry.previous[index]
-		if counter.Error != nil || !counter.PacketsValid || !counter.BytesValid || counter.ObservedMonotonicNS == 0 {
-			return false, false
-		}
-		if entry.samples != 0 {
-			if counter.ObservedMonotonicNS <= previous.ObservedMonotonicNS || counter.Packets < previous.Packets || counter.Bytes < previous.Bytes {
-				return false, false
-			}
-			active = active || counter.Packets > previous.Packets || counter.Bytes > previous.Bytes
-		}
-		entry.previous[index] = counter
-	}
-	if entry.samples == 0 || active {
-		entry.lastActive = now
-	}
-	entry.lastSample = now
-	if entry.samples < counterSampleMinimum {
-		entry.samples++
-	}
-	return active, true
+	return entry.counters.Observe(entry.spec.RequestedDirections, stats.Directions, queryError, now)
 }
 
 func (module *Module) evictLRU(ctx context.Context) bool {
@@ -189,11 +182,11 @@ func (module *Module) evictLRU(ctx context.Context) bool {
 	var oldest connectionIdentity
 	var lastActive time.Time
 	for identity, entry := range module.flows {
-		if entry.result.InstalledDirections == 0 || entry.samples < counterSampleMinimum || now.Sub(entry.lastSample) > module.cfg.Settings.CounterInterval {
+		if entry.result.InstalledDirections == 0 || !entry.counters.Evictable(now, module.cfg.Settings.CounterInterval) {
 			continue
 		}
-		if lastActive.IsZero() || entry.lastActive.Before(lastActive) {
-			oldest, lastActive = identity, entry.lastActive
+		if lastActive.IsZero() || entry.counters.LastActive().Before(lastActive) {
+			oldest, lastActive = identity, entry.counters.LastActive()
 		}
 	}
 	if lastActive.IsZero() {
@@ -224,7 +217,7 @@ func (module *Module) logCounters(ctx context.Context) {
 		"suspended", control.Suspended, "resumed", control.Resumed, "observation_frames_skipped", control.ObservationSkipped,
 		"retired", control.Retired, "evicted", control.Evicted,
 		"expired", control.Expired, "fallback", control.Fallback,
-		"counter_failures", control.CounterFailures,
+		"counter_failures", control.CounterFailures, "counter_pending_queries", control.CounterPendingQueries,
 		"received", stats.Received, "forwarded", stats.Forwarded,
 		"returned_to_kernel", stats.ReturnedToKernel, "pending", stats.Pending,
 		"quarantined", stats.Quarantined)

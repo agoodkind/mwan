@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/ti-mo/conntrack"
 
@@ -36,30 +35,28 @@ type admittedFlow struct {
 	uncertain   bool
 	wan         string
 	timeout     uint32
-	lastActive  time.Time
-	lastSample  time.Time
-	previous    [2]offload.NativeCounter
-	samples     uint8
+	counters    offload.NativeCounterHistory
 	observation packetObservation
 }
 
 // AdmissionStats counts runtime decisions without packet-by-packet logs.
 type AdmissionStats struct {
-	Installed          uint64
-	Retired            uint64
-	Suspended          uint64
-	Resumed            uint64
-	Evicted            uint64
-	Expired            uint64
-	Fallback           uint64
-	CounterFailures    uint64
-	Active             uint32
-	Tracked            uint32
-	ResumeCandidates   uint32
-	CleanupUncertain   uint32
-	ObservationSkipped uint64
-	Paused             bool
-	Failure            error
+	Installed             uint64
+	Retired               uint64
+	Suspended             uint64
+	Resumed               uint64
+	Evicted               uint64
+	Expired               uint64
+	Fallback              uint64
+	CounterFailures       uint64
+	CounterPendingQueries uint64
+	Active                uint32
+	Tracked               uint32
+	ResumeCandidates      uint32
+	CleanupUncertain      uint32
+	ObservationSkipped    uint64
+	Paused                bool
+	Failure               error
 }
 
 // Module keeps native ownership behind the daemon's forwarding mutation guards.
