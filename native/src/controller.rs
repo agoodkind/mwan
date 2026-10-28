@@ -9,6 +9,8 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr::{self, NonNull};
 use std::time::Duration;
 
+mod vxlan;
+
 const BURST: usize = 32;
 const MINIMUM_MTU: u16 = 68;
 const MAXIMUM_MTU: u16 = 9600;
@@ -250,6 +252,7 @@ struct OwnerState {
     ports: Vec<Port>,
     pool: Option<NonNull<dpdk::rte_mempool>>,
     pairs: Vec<Pair>,
+    vxlan: [vxlan::Context; MWAN_NATIVE_MAX_RECEIVERS as usize],
     retained: HashMap<MwanNativeHandle, Pair>,
     inverses: HashMap<InverseKey, LegId>,
     pending: VecDeque<Pending>,
@@ -678,6 +681,7 @@ impl OwnerState {
             ports,
             pool: None,
             pairs,
+            vxlan: std::array::from_fn(|_| vxlan::Context::default()),
             retained,
             inverses,
             pending,
@@ -2742,6 +2746,7 @@ impl OwnerState {
                 || !self.pending.is_empty()
                 || !self.received.is_empty()
                 || self.quarantined.is_some()
+                || self.vxlan.iter().any(vxlan::Context::owns_resources)
                 || self.pairs.iter().any(|pair| {
                     pair.legs
                         .iter()
@@ -2763,6 +2768,11 @@ impl OwnerState {
         }
         self.quiescing = true;
         let mut failure = self.terminal_failure.map(Box::new);
+        if let Err(error) = self.close_vxlan_contexts()
+            && failure.is_none()
+        {
+            failure = Some(error);
+        }
         for slot in 0..self.pairs.len() {
             if let Err(error) = self.delete_pair(slot)
                 && failure.is_none()
@@ -2975,8 +2985,45 @@ fn boundary(
     unsafe { error.write(MwanNativeError::default()) };
     match catch_unwind(AssertUnwindSafe(action)) {
         Ok(Ok(())) => 0,
-        Ok(Err(failure)) => write_failure(error, &failure),
-        Err(_) => write_failure(error, &panic_failure(owner, operation)),
+        Ok(Err(failure)) => write_failure(error, &retire_faulted_vxlan(owner, failure)),
+        Err(_) => {
+            let failure = Box::new(panic_failure(owner, operation));
+            write_failure(error, &retire_faulted_vxlan(owner, failure))
+        }
+    }
+}
+
+fn retire_faulted_vxlan(
+    pointer: *mut MwanNative,
+    failure: Box<MwanNativeError>,
+) -> Box<MwanNativeError> {
+    let Some(pointer) = NonNull::new(pointer.cast::<Owner>()) else {
+        return failure;
+    };
+    // SAFETY: Failed ABI operations retain the caller's live owner allocation.
+    // The immutable OS thread identity does not borrow mutable owner state.
+    let owner = unsafe { pointer.as_ref() };
+    // SAFETY: Both identities identify live OS threads. A foreign thread must
+    // return its original failure without reading or mutating the owner state.
+    if unsafe { libc::pthread_equal(owner.thread, libc::pthread_self()) } == 0 {
+        return failure;
+    }
+    let cleanup = catch_unwind(AssertUnwindSafe(|| {
+        // SAFETY: The failed action released its exclusive state borrow before
+        // this owner-thread cleanup creates another mutable state borrow.
+        let state = unsafe { &mut *owner.state.get() };
+        if state.faulted || state.quiescing {
+            state.suspend_vxlan_rules()?;
+        }
+        Ok(())
+    }));
+    match cleanup {
+        Ok(Ok(())) => failure,
+        Ok(Err(cleanup_failure)) => cleanup_failure,
+        Err(_) => Box::new(panic_failure(
+            pointer.as_ptr().cast(),
+            MWAN_NATIVE_OP_DESTROY,
+        )),
     }
 }
 
@@ -3425,6 +3472,7 @@ mod tests {
             !owner.is_null(),
             "failed initialization lost its Rust owner"
         );
+        check_rejected_vxlan_context(owner, libc::ENODEV);
 
         let address = owner as usize;
         let (result, retained) = std::thread::spawn(move || {
@@ -3466,6 +3514,7 @@ mod tests {
             error
         );
         assert!(!owner.is_null());
+        check_rejected_vxlan_context(owner, libc::EBUSY);
         // SAFETY: EAL initialized on this thread. The retained owner records
         // every acquired SDK resource for ordered final cleanup.
         let result =
@@ -3476,6 +3525,27 @@ mod tests {
             error
         );
         assert!(owner.is_null());
+    }
+
+    fn check_rejected_vxlan_context(owner: *mut MwanNative, expected_error: i32) {
+        let endpoint = MwanNativeVxlanEndpoint {
+            version: MWAN_NATIVE_VXLAN_VERSION,
+            record_size: size_of::<MwanNativeVxlanEndpoint>() as u32,
+            linux_ifindex: 1,
+            ..MwanNativeVxlanEndpoint::default()
+        };
+        let mut output = MwanNativeVxlanResult::default();
+        let mut error = MwanNativeError::default();
+        // SAFETY: The public open operation returned this retained live owner.
+        // These complete records remain separate during the owner-thread call.
+        let result = unsafe {
+            vxlan::mwan_native_vxlan_context_open(owner, &endpoint, &mut output, &mut error)
+        };
+        assert_eq!(result, -expected_error, "{:?}", error);
+        assert_eq!(output, MwanNativeVxlanResult::default());
+        // SAFETY: The owner remains live and this is its exclusive owner thread.
+        let state = unsafe { owner_state(owner) }.expect("read retained owner state");
+        assert!(!state.vxlan.iter().any(vxlan::Context::owns_resources));
     }
 
     fn input_configuration() -> MwanNativeConfig {

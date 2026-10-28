@@ -48,6 +48,8 @@ void mwn_flow_group_attr_set_transfer(struct rte_flow_group_attr *attributes, bo
 void mwn_flow_port_id_set(struct rte_flow_action_port_id *destination, uint32_t port);
 void mwn_flow_eth_set(struct rte_flow_item_eth *item, const uint8_t source[6], const uint8_t destination[6], uint16_t ether_type);
 void mwn_flow_ipv4_set(struct rte_flow_item_ipv4 *item, uint32_t source, uint32_t destination, uint8_t protocol);
+void mwn_flow_ipv4_envelope_set(struct rte_flow_item_ipv4 *item, uint8_t ttl, uint8_t tos);
+void mwn_flow_vxlan_set(struct rte_flow_item_vxlan *item, const uint8_t vni[3]);
 void mwn_flow_ipv6_set(struct rte_flow_item_ipv6 *item, const uint8_t source[16], const uint8_t destination[16], uint8_t protocol);
 void mwn_flow_tcp_set(struct rte_flow_item_tcp *item, uint16_t source, uint16_t destination);
 void mwn_flow_udp_set(struct rte_flow_item_udp *item, uint16_t source, uint16_t destination);

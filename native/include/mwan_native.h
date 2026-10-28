@@ -24,6 +24,11 @@ extern "C" {
 #define MWAN_NATIVE_PROTOCOL_UDP 17U
 #define MWAN_NATIVE_OBSERVATION_BATCH_LIMIT 256U
 #define MWAN_NATIVE_OBSERVATION_FRAME_LIMIT 65536U
+#define MWAN_NATIVE_VXLAN_VERSION 1U
+#define MWAN_NATIVE_VXLAN_CONTEXT_ABSENT 0U
+#define MWAN_NATIVE_VXLAN_CONTEXT_READY 1U
+#define MWAN_NATIVE_VXLAN_RULE_INSTALLED 2U
+#define MWAN_NATIVE_VXLAN_CLEANUP_FAILED 3U
 
 /* Integers use host byte order. Address and MAC arrays use network byte order.
  * IPv4 addresses occupy the first four bytes; the remaining bytes are zero.
@@ -88,6 +93,19 @@ struct mwan_native_pci {
 	uint8_t device;
 	uint8_t function;
 	uint8_t reserved[3];
+};
+
+/* Additional records do not change ABI2 layouts. Endpoint identity includes
+ * the declared receiver index, represented VF, PCI function and Linux ifindex.
+ */
+struct mwan_native_vxlan_endpoint {
+	uint32_t version;
+	uint32_t record_size;
+	uint32_t receiver_id;
+	uint32_t linux_ifindex;
+	uint16_t source_vf;
+	uint16_t reserved;
+	struct mwan_native_pci pci;
 };
 
 /* References are array indexes. Each controller owns one physical miss. */
@@ -274,6 +292,45 @@ struct mwan_native_counter {
 	uint8_t reserved[2];
 };
 
+/* The fixed envelope contains Ethernet, IPv4, UDP and VXLAN without options.
+ * Inner addresses and ports remain unchanged. inner_mtu excludes Ethernet.
+ * The source Linux VF MTU must not exceed inner_mtu. The underlay MTU must
+ * include the 50 bytes between the outer IP header and inner IP packet.
+ */
+struct mwan_native_vxlan_plan {
+	uint32_t version;
+	uint32_t record_size;
+	uint64_t cookie;
+	uint64_t policy_generation;
+	struct mwan_native_tuple inner;
+	uint8_t inner_source_mac[6];
+	uint8_t inner_destination_mac[6];
+	uint8_t outer_source_mac[6];
+	uint8_t outer_destination_mac[6];
+	uint8_t outer_source[4];
+	uint8_t outer_destination[4];
+	uint32_t vni;
+	uint16_t outer_source_port;
+	uint16_t outer_destination_port;
+	uint16_t inner_mtu;
+	uint16_t underlay_mtu;
+	uint8_t outer_ttl;
+	uint8_t outer_tos;
+	uint16_t reserved;
+};
+
+struct mwan_native_vxlan_result {
+	struct mwan_native_handle context;
+	uint64_t rule_generation;
+	uint32_t state;
+	uint32_t reserved;
+};
+
+struct mwan_native_vxlan_stats {
+	struct mwan_native_vxlan_result result;
+	struct mwan_native_counter counter;
+};
+
 struct mwan_native_pair_stats {
 	struct mwan_native_pair_result result;
 	struct mwan_native_counter directions[MWAN_NATIVE_DIRECTION_COUNT];
@@ -377,6 +434,38 @@ int mwan_native_retirement_query(struct mwan_native *owner,
  */
 int mwan_native_close(struct mwan_native **owner, uint32_t mode,
 		      struct mwan_native_error *error);
+
+/* These calls require the ABI2 owner thread and separate, aligned, valid records.
+ * Validation copies the complete plan and does not require DPDK or EAL.
+ * Each context owns at most one outbound rule on its declared kernel VF TX.
+ * Close removes the rule before releasing its context. ABI2 disable/final
+ * shutdown also remove these rules before stopping any port. Failed removal
+ * retains the context, plan and uncertain hardware ownership and blocks reuse.
+ * Removal does not establish Linux VXLAN fallback or TCP continuation.
+ */
+int mwan_native_vxlan_plan_validate(const struct mwan_native_vxlan_plan *plan,
+				    struct mwan_native_error *error);
+int mwan_native_vxlan_context_open(struct mwan_native *owner,
+				   const struct mwan_native_vxlan_endpoint *endpoint,
+				   struct mwan_native_vxlan_result *result,
+				   struct mwan_native_error *error);
+int mwan_native_vxlan_install(struct mwan_native *owner,
+			      struct mwan_native_handle context,
+			      const struct mwan_native_vxlan_plan *plan,
+			      struct mwan_native_vxlan_result *result,
+			      struct mwan_native_error *error);
+int mwan_native_vxlan_query(struct mwan_native *owner,
+			    struct mwan_native_vxlan_result rule,
+			    struct mwan_native_vxlan_stats *stats,
+			    struct mwan_native_error *error);
+int mwan_native_vxlan_remove(struct mwan_native *owner,
+			     struct mwan_native_vxlan_result rule,
+			     struct mwan_native_vxlan_result *result,
+			     struct mwan_native_error *error);
+int mwan_native_vxlan_context_close(struct mwan_native *owner,
+				    struct mwan_native_handle context,
+				    struct mwan_native_vxlan_result *result,
+				    struct mwan_native_error *error);
 
 #ifdef __cplusplus
 }
