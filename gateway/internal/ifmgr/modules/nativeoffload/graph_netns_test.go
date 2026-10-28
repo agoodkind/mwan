@@ -50,6 +50,9 @@ func TestNativeAdmissionRejectsLiveBridge(t *testing.T) {
 		Kind: interfaceintent.KindPhysical,
 		NativeOffload: &interfaceintent.NativeOffloadBinding{
 			DataPCI: dataPCI, DataMAC: [6]byte{2, 0, 0, 0, 0, 99},
+			Controller: &interfaceintent.NativeOffloadController{
+				PCI: interfaceintent.PCIAddress{Bus: 1}, ReceiverVF: 1, DataVF: 2, PhysicalMiss: true,
+			},
 		},
 	}
 	if err := fixture.module.Reconcile(fixture.ctx, fixture.module.Log); err == nil || !strings.Contains(err.Error(), "live master interface") {

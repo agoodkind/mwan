@@ -125,6 +125,46 @@ func TestForwardingEventsCoalesceWithoutLosingGeneration(t *testing.T) {
 	}
 }
 
+func TestForwardingEventsObserveTrafficControl(t *testing.T) {
+	if !forwardingEventsNamespace(t) {
+		return
+	}
+	link := forwardingEventsLink(t)
+	ctx, cancel := context.WithTimeout(t.Context(), forwardingEventsTimeout)
+	defer cancel()
+	source := forwardingEventsSource(t, ctx)
+	qdisc := &netlink.Clsact{QdiscAttrs: netlink.QdiscAttrs{
+		LinkIndex: link.Attrs().Index, Handle: netlink.MakeHandle(0xffff, 0), Parent: netlink.HANDLE_CLSACT,
+	}}
+	previous := source.Generation()
+	if err := netlink.QdiscAdd(qdisc); err != nil {
+		t.Fatal(err)
+	}
+	awaitForwardingGeneration(t, ctx, source, previous)
+	filter := &netlink.MatchAll{FilterAttrs: netlink.FilterAttrs{
+		LinkIndex: link.Attrs().Index, Parent: netlink.HANDLE_MIN_EGRESS,
+		Handle: 1, Priority: 1, Protocol: unix.ETH_P_ALL,
+	}, Actions: []netlink.Action{&netlink.GenericAction{ActionAttrs: netlink.ActionAttrs{Action: netlink.TC_ACT_SHOT}}}}
+	previous = source.Generation()
+	if err := netlink.FilterAdd(filter); err != nil {
+		t.Fatal(err)
+	}
+	awaitForwardingGeneration(t, ctx, source, previous)
+	previous = source.Generation()
+	if err := netlink.FilterDel(filter); err != nil {
+		t.Fatal(err)
+	}
+	awaitForwardingGeneration(t, ctx, source, previous)
+	previous = source.Generation()
+	if err := netlink.QdiscDel(qdisc); err != nil {
+		t.Fatal(err)
+	}
+	awaitForwardingGeneration(t, ctx, source, previous)
+	if err := source.Err(); err != nil {
+		t.Fatalf("valid traffic-control mutations stopped forwarding observations: %v", err)
+	}
+}
+
 func TestForwardingEventsPublishStickyKernelFailure(t *testing.T) {
 	if !forwardingEventsNamespace(t) {
 		return

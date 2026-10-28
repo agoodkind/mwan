@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/mdlayher/netlink"
+	"github.com/vishvananda/netlink/nl"
 	"golang.org/x/sys/unix"
 )
 
@@ -74,6 +75,7 @@ func NewForwardingEvents(ctx context.Context, socketBufferBytes int) (result *Fo
 		unix.RTNLGRP_IPV4_ROUTE, unix.RTNLGRP_IPV6_ROUTE,
 		unix.RTNLGRP_IPV4_RULE, unix.RTNLGRP_IPV6_RULE,
 		unix.RTNLGRP_NEIGH, unix.RTNLGRP_IPV6_IFINFO, unix.RTNLGRP_NEXTHOP,
+		unix.RTNLGRP_TC,
 	}
 	for _, group := range groups {
 		if err := socket.JoinGroup(group); err != nil {
@@ -235,6 +237,11 @@ func unmarshalForwardingMutation(message syscall.NetlinkMessage) (changed bool, 
 		headerBytes = forwardingNeighborTableHeaderBytes
 	case unix.RTM_NEWNEXTHOP, unix.RTM_DELNEXTHOP, unix.RTM_NEWNEXTHOPBUCKET, unix.RTM_DELNEXTHOPBUCKET:
 		headerBytes = forwardingNextHopHeaderBytes
+	case unix.RTM_NEWQDISC, unix.RTM_DELQDISC, unix.RTM_NEWTCLASS, unix.RTM_DELTCLASS,
+		unix.RTM_NEWTFILTER, unix.RTM_DELTFILTER:
+		headerBytes = nl.SizeofTcMsg
+	case unix.RTM_NEWACTION, unix.RTM_DELACTION:
+		headerBytes = nl.SizeofTcActionMsg
 	default:
 		return false, fmt.Errorf("forwarding event has unsupported message type %d", message.Header.Type)
 	}

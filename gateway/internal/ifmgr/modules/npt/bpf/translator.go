@@ -146,7 +146,11 @@ func ownedFilter(filter netlink.Filter, direction Direction) bool {
 	return ok && bpfFilter.Name == filterName(direction) && bpfFilter.Handle == filterHandle && bpfFilter.Priority == filterPriority
 }
 
-func installFilter(link netlink.Link, direction Direction, program *ebpf.Program) error {
+func installFilter(link netlink.Link, direction Direction, program *ebpf.Program, policies *ebpf.Map) error {
+	identity, err := nativeProgramID(program, policies)
+	if err != nil {
+		return err
+	}
 	filters, err := netlink.FilterList(link, filterParent(direction))
 	if err != nil {
 		slog.Error("NPTv6 filters could not be read", "interface", link.Attrs().Index, "direction", direction, "err", err)
@@ -155,6 +159,9 @@ func installFilter(link netlink.Link, direction Direction, program *ebpf.Program
 	for _, filter := range filters {
 		if filter.Attrs().Priority == filterPriority && !ownedFilter(filter, direction) {
 			return fmt.Errorf("interface %d %s priority %d is already used", link.Attrs().Index, direction, filterPriority)
+		}
+		if actual, ok := filter.(*netlink.BpfFilter); ok && ownedFilter(actual, direction) && actual.Id == int(identity) && actual.DirectAction && actual.Protocol == unix.ETH_P_ALL && actual.ClassId == 0 && (actual.Chain == nil || *actual.Chain == 0) {
+			return nil
 		}
 	}
 	if err := netlink.FilterReplace(&netlink.BpfFilter{
@@ -279,6 +286,13 @@ func (translator *Translator) reconcileInterface(policy preparedPolicy) ([]Attac
 	if updateErr == nil {
 		updateErr = translator.objects.Policies.Update(policy.key, policy.value, ebpf.UpdateAny)
 	}
+	if updateErr == nil {
+		var actual nptPolicy
+		updateErr = translator.objects.Policies.Lookup(policy.key, &actual)
+		if updateErr == nil && actual != policy.value {
+			updateErr = fmt.Errorf("interface %d policy map differs from desired policy", policy.link.Attrs().Index)
+		}
+	}
 	var states []AttachmentState
 	var failures []error
 	for _, direction := range []Direction{Ingress, Egress} {
@@ -289,7 +303,7 @@ func (translator *Translator) reconcileInterface(policy preparedPolicy) ([]Attac
 		state := AttachmentState{IfIndex: policy.link.Attrs().Index, Direction: direction, Ready: false, Reason: ""}
 		err := updateErr
 		if err == nil {
-			err = installFilter(policy.link, direction, program)
+			err = installFilter(policy.link, direction, program, translator.objects.Policies)
 		}
 		if err == nil {
 			err = readFilter(policy.link, direction, program)
