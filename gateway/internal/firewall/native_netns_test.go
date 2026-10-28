@@ -53,7 +53,7 @@ func TestInspectNativeEstablishedPolicy(t *testing.T) {
 	}
 	for _, family := range []string{"ip", "ip6"} {
 		t.Run(family, func(t *testing.T) {
-			ecnDrop := family + " ecn 2 drop"
+			ecnDrop := family + " ecn ect0 drop"
 			cases := []struct {
 				name       string
 				rules      []string
