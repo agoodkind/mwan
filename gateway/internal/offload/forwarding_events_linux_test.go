@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agoodkind/netlink"
 	mdnetlink "github.com/mdlayher/netlink"
+	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 )
 

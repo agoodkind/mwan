@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/agoodkind/netlink"
+	"github.com/vishvananda/netlink"
 )
 
 // RouteMatch returns the kernel route that forwards target through dev and reports false when no route through dev matches.

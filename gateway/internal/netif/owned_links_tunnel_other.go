@@ -2,7 +2,7 @@
 
 package netif
 
-import "github.com/agoodkind/netlink"
+import "github.com/vishvananda/netlink"
 
 func modifyTunnel(*netlink.Sittun) error {
 	return netlink.ErrNotImplemented

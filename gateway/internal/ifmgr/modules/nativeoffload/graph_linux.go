@@ -8,7 +8,7 @@ import (
 	"math"
 	"net"
 
-	"github.com/agoodkind/netlink"
+	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
 	"goodkind.io/mwan/internal/interfaceintent"

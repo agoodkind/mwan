@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/agoodkind/netlink"
+	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	internalclock "goodkind.io/mwan/internal/clock"
 	"goodkind.io/mwan/internal/installfile"

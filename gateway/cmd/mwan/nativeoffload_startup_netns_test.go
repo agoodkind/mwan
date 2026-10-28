@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agoodkind/netlink"
 	"github.com/google/nftables"
+	"github.com/vishvananda/netlink"
 )
 
 func TestNativeStartupPreservesLinuxReadiness(t *testing.T) {

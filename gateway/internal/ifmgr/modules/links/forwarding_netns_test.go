@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/agoodkind/netlink"
+	"github.com/vishvananda/netlink"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/ifmgr/modules/autoconfiguration"
 	"goodkind.io/mwan/internal/interfaceintent"

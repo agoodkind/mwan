@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agoodkind/netlink"
 	"github.com/gopacket/gopacket"
 	"github.com/gopacket/gopacket/layers"
+	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 )
 

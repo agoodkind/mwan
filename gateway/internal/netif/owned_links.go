@@ -13,7 +13,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/agoodkind/netlink"
+	"github.com/vishvananda/netlink"
 	"goodkind.io/mwan/internal/installfile"
 	"goodkind.io/mwan/internal/interfaceintent"
 )

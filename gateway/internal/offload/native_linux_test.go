@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agoodkind/netlink"
 	"github.com/ti-mo/conntrack"
+	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
 	"goodkind.io/mwan/internal/offload"

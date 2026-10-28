@@ -20,10 +20,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agoodkind/netlink"
 	"github.com/gopacket/gopacket"
 	"github.com/gopacket/gopacket/layers"
 	"github.com/mdlayher/packet"
+	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
 

@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agoodkind/netlink"
+	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/interfaceintent"

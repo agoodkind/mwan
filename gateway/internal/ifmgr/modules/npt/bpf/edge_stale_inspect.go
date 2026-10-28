@@ -9,8 +9,8 @@ import (
 	"net/netip"
 	"slices"
 
-	"github.com/agoodkind/netlink"
 	"github.com/cilium/ebpf"
+	"github.com/vishvananda/netlink"
 )
 
 func (translator *Translator) verifySurvivingEdgeReferences(indices []int, address netip.Addr, desired map[int]preparedPolicy) (resultErr error) {
