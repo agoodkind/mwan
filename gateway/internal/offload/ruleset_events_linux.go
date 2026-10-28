@@ -62,7 +62,7 @@ func NewRulesetEvents(ctx context.Context, socketBytes int) (result *RulesetEven
 		}
 	}()
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("start nftables observations: %w", err)
 	}
 	if socketBytes <= 0 {
 		return nil, errors.New("nftables observations require a positive socket capacity")
