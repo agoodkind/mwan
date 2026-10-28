@@ -33,6 +33,7 @@ func (module *Module) suspendAll(ctx context.Context, reason string) error {
 		}
 		if wasInstalled {
 			module.stats.Suspended++
+			module.logRuleCounters(ctx, slog.LevelDebug, "native rule suspended", entry, reason, nil)
 		}
 	}
 	return failures
