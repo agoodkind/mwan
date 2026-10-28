@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"syscall"
 
 	"goodkind.io/mwan/internal/offload"
@@ -45,12 +46,14 @@ func (module *Module) evidenceFor(epoch evidenceEpoch) *evidenceCheck {
 	if module.cachedEvidence != nil && module.cachedEvidence.epoch == epoch {
 		return module.cachedEvidence
 	}
-	check := &evidenceCheck{epoch: epoch}
+	check := &evidenceCheck{epoch: epoch, guard: offload.NativeEvidenceGuard{Check: nil}}
 	check.guard.Check = func() error {
 		if err := errors.Join(module.events.Err(), module.forwarding.Err()); err != nil {
-			return err
+			slog.Warn("native kernel evidence became unavailable", "err", err)
+			return fmt.Errorf("read native kernel evidence: %w", err)
 		}
 		if module.currentEvidenceEpoch() != epoch {
+			slog.Warn("native forwarding evidence changed", "expected", epoch)
 			return fmt.Errorf("native forwarding evidence changed: %w", syscall.ESTALE)
 		}
 		return nil

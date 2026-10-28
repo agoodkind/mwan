@@ -4,7 +4,7 @@ package nativeoffload
 
 import "goodkind.io/mwan/internal/forwardingready"
 
-// A rejected startup without a native owner leaves Linux policy authoritative.
+// ForwardingFailureImpact preserves Linux readiness after startup rejects an owner-free runtime.
 // The daemon still verifies its routing, protection and address dependencies.
 func (module *Module) ForwardingFailureImpact() forwardingready.State {
 	module.Lock()

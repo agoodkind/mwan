@@ -4,6 +4,7 @@ package nativeoffload
 
 import (
 	"context"
+	"errors"
 	"math/bits"
 	"net"
 	"net/netip"
@@ -158,6 +159,61 @@ func TestNativePacketObservationCapacityFallback(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("capture did not resume after the forwarding pass")
 	}
+	requireNativeUDPDelivery(t, server)
+}
+
+func TestNativePacketObservationPanicPreservesLinuxDelivery(t *testing.T) {
+	if !nativeCaptureNamespace(t) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), nativeCaptureTimeout)
+	defer cancel()
+	input, sender := nativeCaptureLinks(t)
+	admissionAddress(t, input, "192.0.2.1/24")
+	server, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("192.0.2.1"), Port: nativeCaptureDestinationPort})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := server.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	if err := server.SetReadDeadline(time.Now().Add(nativeCaptureTimeout)); err != nil {
+		t.Fatal(err)
+	}
+	var paused atomic.Bool
+	observations := make(chan packetObservation, 1)
+	failures := make(chan error, 1)
+	capture, err := openPacketCapture(ctx, input, nativeCaptureSocketBytes, observations, failures, &paused)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := capture.close(); err != nil {
+			t.Error(err)
+		}
+		<-capture.done
+	})
+	close(observations)
+	frame := nativeCaptureFrame(t, sender, input, [2]string{"192.0.2.2", "192.0.2.1"}, unix.IPPROTO_UDP)
+	nativeCaptureSend(t, sender, frame)
+	select {
+	case failure := <-failures:
+		var panicked *nativePanicError
+		if !errors.As(failure, &panicked) || !paused.Load() {
+			t.Fatalf("capture panic did not stop admission and publish failure: paused=%v failure=%v", paused.Load(), failure)
+		}
+	case <-ctx.Done():
+		t.Fatal("capture panic did not publish failure")
+	}
+	select {
+	case <-capture.done:
+	case <-ctx.Done():
+		t.Fatal("capture panic did not stop the failed reader")
+	}
+	requireNativeUDPDelivery(t, server)
+	nativeCaptureSend(t, sender, frame)
 	requireNativeUDPDelivery(t, server)
 }
 

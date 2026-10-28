@@ -298,9 +298,13 @@ func newAdmissionFixture(t *testing.T, mode config.TranslationMode) admissionFix
 		link    *net.Interface
 		address string
 	}{
-		{input, "192.0.2.1/24"}, {input, "2001:db8:1::1/64"}, {input, "fd01:203:405::1/64"},
-		{output, "198.51.100.1/24"}, {output, "2001:db8:2::1/64"},
-		{other, "198.51.101.1/24"}, {other, "2001:db8:3::1/64"},
+		{input, "192.0.2.1/24"},
+		{input, "2001:db8:1::1/64"},
+		{input, "fd01:203:405::1/64"},
+		{output, "198.51.100.1/24"},
+		{output, "2001:db8:2::1/64"},
+		{other, "198.51.101.1/24"},
+		{other, "2001:db8:3::1/64"},
 	} {
 		admissionAddress(t, entry.link, entry.address)
 	}

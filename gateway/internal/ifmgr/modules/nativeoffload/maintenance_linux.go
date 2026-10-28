@@ -57,6 +57,7 @@ func (module *Module) removeRules(ctx context.Context, identity connectionIdenti
 		entry.uncertain = true
 	}
 	if err != nil {
+		module.Log.WarnContext(ctx, "native connection rule removal failed", "connection_id", identity.id, "reason", reason, "err", err)
 		return fmt.Errorf("remove native connection %d for %s: %w", identity.id, reason, err)
 	}
 	if result.InstalledDirections != 0 || result.CleanupFailedDirections != 0 || result.State != offload.NativePairDraining {
@@ -82,59 +83,67 @@ func (module *Module) sweep(ctx context.Context) {
 		if entry.result.InstalledDirections == 0 {
 			continue
 		}
-		requestContext, cancel := context.WithTimeout(ctx, module.cfg.Settings.RequestTimeout)
-		mapping, _, observed, _, decision, mappingErr := module.candidate(requestContext, entry.observation)
-		if mappingErr != nil || decision != EligibilityReady || flowIdentity(observed) != identity || mapping != entry.spec {
-			cancel()
-			if err := module.retire(ctx, identity, "forwarding evidence changed"); err != nil {
-				_ = module.fail(ctx, err)
-			}
-			continue
-		}
-		current, currentErr := offload.FreshConntrackFlow(requestContext, entry.flow)
-		stats, counterErr := module.runtime.Query(requestContext, entry.result.Handle)
-		if stats.Result.Handle == entry.result.Handle {
-			entry.result = stats.Result
-		}
-		cancel()
-		if module.forwarding.Generation() != generation || module.forwarding.Err() != nil || module.events.Err() != nil {
-			module.checkEvidence(ctx)
+		if !module.sweepEntry(ctx, generation, identity, entry) {
 			return
 		}
-		if currentErr != nil || !sameConnectionPolicy(entry.flow, current) {
-			if err := module.retire(ctx, identity, "kernel connection identity became unavailable"); err != nil {
-				_ = module.fail(ctx, err)
-			}
-			continue
+	}
+}
+
+func (module *Module) sweepEntry(ctx context.Context, generation uint64, identity connectionIdentity, entry *admittedFlow) bool {
+	requestContext, cancel := context.WithTimeout(ctx, module.cfg.Settings.RequestTimeout)
+	mapping, _, observed, _, decision, mappingErr := module.candidate(requestContext, entry.observation)
+	if mappingErr != nil || decision != EligibilityReady || flowIdentity(observed) != identity || mapping != entry.spec {
+		cancel()
+		if err := module.retire(ctx, identity, "forwarding evidence changed"); err != nil {
+			_ = module.fail(ctx, err)
 		}
-		sampledAt := clock.Real{}.Now()
-		active, valid := observeCounters(entry, stats, counterErr, sampledAt)
-		if !valid {
-			module.stats.CounterFailures++
-			if err := module.retire(ctx, identity, "hardware counter evidence became unavailable"); err != nil {
-				_ = module.fail(ctx, err)
-			}
-			continue
+		return true
+	}
+	current, currentErr := offload.FreshConntrackFlow(requestContext, entry.flow)
+	stats, counterErr := module.runtime.Query(requestContext, entry.result.Handle)
+	if stats.Result.Handle == entry.result.Handle {
+		entry.result = stats.Result
+	}
+	cancel()
+	if module.forwarding.Generation() != generation || module.forwarding.Err() != nil || module.events.Err() != nil {
+		module.checkEvidence(ctx)
+		return false
+	}
+	if currentErr != nil || !sameConnectionPolicy(entry.flow, current) {
+		if err := module.retire(ctx, identity, "kernel connection identity became unavailable"); err != nil {
+			_ = module.fail(ctx, err)
 		}
-		if active {
-			refreshContext, cancel := context.WithTimeout(ctx, module.cfg.Settings.RequestTimeout)
-			err := module.updater.Refresh(refreshContext, current, entry.timeout)
-			cancel()
-			if err != nil {
-				if retireErr := module.retire(ctx, identity, "kernel timeout refresh failed"); retireErr != nil {
-					_ = module.fail(ctx, errors.Join(err, retireErr))
-				}
-				continue
-			}
+		return true
+	}
+	sampledAt := clock.Real{}.Now()
+	active, valid := observeCounters(entry, stats, counterErr, sampledAt)
+	if !valid {
+		module.stats.CounterFailures++
+		if err := module.retire(ctx, identity, "hardware counter evidence became unavailable"); err != nil {
+			_ = module.fail(ctx, err)
 		}
-		if sampledAt.Sub(entry.lastActive) >= module.cfg.Settings.IdleTimeout || !active && time.Duration(current.Timeout)*time.Second <= module.cfg.Settings.CounterInterval {
-			if err := module.retire(ctx, identity, "valid counters confirmed inactivity"); err != nil {
-				_ = module.fail(ctx, err)
-			} else {
-				module.stats.Expired++
+		return true
+	}
+	if active {
+		refreshContext, cancel := context.WithTimeout(ctx, module.cfg.Settings.RequestTimeout)
+		err := module.updater.Refresh(refreshContext, current, entry.timeout)
+		cancel()
+		if err != nil {
+			module.Log.WarnContext(ctx, "native conntrack timeout refresh failed", "connection_id", identity.id, "err", err)
+			if retireErr := module.retire(ctx, identity, "kernel timeout refresh failed"); retireErr != nil {
+				_ = module.fail(ctx, errors.Join(err, retireErr))
 			}
+			return true
 		}
 	}
+	if sampledAt.Sub(entry.lastActive) >= module.cfg.Settings.IdleTimeout || !active && time.Duration(current.Timeout)*time.Second <= module.cfg.Settings.CounterInterval {
+		if err := module.retire(ctx, identity, "valid counters confirmed inactivity"); err != nil {
+			_ = module.fail(ctx, err)
+		} else {
+			module.stats.Expired++
+		}
+	}
+	return true
 }
 
 func observeCounters(entry *admittedFlow, stats offload.NativePairStats, queryError error, now time.Time) (bool, bool) {
@@ -204,9 +213,7 @@ func (module *Module) evictLRU(ctx context.Context) bool {
 func (module *Module) logCounters(ctx context.Context) {
 	stats, err := module.runtime.Stats()
 	if err != nil {
-		module.Lock()
-		_ = module.fail(ctx, fmt.Errorf("native packet worker failed: %w", err))
-		module.Unlock()
+		module.handleFailure(ctx, fmt.Errorf("native packet worker failed: %w", err))
 		return
 	}
 	control := module.Stats()

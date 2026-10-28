@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/netip"
 	"slices"
+	"time"
 
 	"github.com/agoodkind/netlink"
 	"github.com/ti-mo/conntrack"
@@ -30,10 +31,15 @@ const (
 type Eligibility uint8
 
 const (
+	// EligibilityReady permits installation after every required kernel observation agrees.
 	EligibilityReady Eligibility = iota
+	// EligibilityUnsupported leaves packet classes outside the native contract in Linux.
 	EligibilityUnsupported
+	// EligibilityStale requires fresh connection or forwarding evidence before another attempt.
 	EligibilityStale
+	// EligibilityPolicyUnavailable prevents admission before provider policy becomes ready.
 	EligibilityPolicyUnavailable
+	// EligibilityCapacity preserves Linux forwarding when native storage cannot accept a mapping.
 	EligibilityCapacity
 )
 
@@ -48,7 +54,12 @@ func (module *Module) admit(ctx context.Context, observation packetObservation) 
 		module.stats.Fallback++
 		return
 	}
-	if !module.attempts.admit(observation, now, module.cfg.Settings.CounterInterval) {
+	allowed, err := module.attempts.admit(observation, now, module.cfg.Settings.CounterInterval)
+	if err != nil {
+		_ = module.fail(ctx, err)
+		return
+	}
+	if !allowed {
 		return
 	}
 	evidence := module.evidenceFor(module.currentEvidenceEpoch())
@@ -65,18 +76,8 @@ func (module *Module) admit(ctx context.Context, observation packetObservation) 
 	if _, exists := module.flows[identity]; exists {
 		return
 	}
-	if entry, retired := module.resumeCandidates[identity]; retired {
-		if !sameConnectionPolicy(entry.flow, flow) || !sameNativeMapping(entry.spec, spec) || guards != entry.guards || len(module.flows) >= int(module.cfg.Settings.PairCapacity) {
-			module.stats.Fallback++
-			return
-		}
-		module.flows[identity] = entry
-		delete(module.resumeCandidates, identity)
-		entry.observation, entry.lastActive = observation, now
-		module.resumeEntry(ctx, requestContext, identity, entry, evidence)
-		if evidence.guard.Check() != nil {
-			module.invalidateEvidence(ctx)
-		}
+	entry := newAdmittedFlow(flow, spec, guards, wan, observation, now)
+	if module.resumeCandidate(ctx, requestContext, identity, entry, evidence) {
 		return
 	}
 	retirement, err := module.runtime.Retirement(requestContext)
@@ -84,7 +85,12 @@ func (module *Module) admit(ctx context.Context, observation packetObservation) 
 		module.stats.Fallback++
 		return
 	}
-	if retirement.RetainedPairs >= retirement.RetainedPairCapacity && uint32(len(module.flows))+retirement.DrainingPairs >= retirement.ActivePairCapacity {
+	flowCount, err := checkedNativeIndex(len(module.flows))
+	if err != nil {
+		_ = module.fail(ctx, err)
+		return
+	}
+	if retirement.RetainedPairs >= retirement.RetainedPairCapacity && uint64(flowCount)+uint64(retirement.DrainingPairs) >= uint64(retirement.ActivePairCapacity) {
 		module.stats.Fallback++
 		return
 	}
@@ -110,8 +116,42 @@ func (module *Module) admit(ctx context.Context, observation packetObservation) 
 	}
 	result, err := module.runtime.InstallObservedWithEvidence(requestContext, current, spec, guards, &evidence.guard)
 	if result.RestorationDirections != 0 || result.InstalledDirections != 0 || result.CleanupFailedDirections != 0 {
-		module.flows[identity] = &admittedFlow{flow: current, spec: spec, guards: guards, result: result, wan: wan.Key(), timeout: current.Timeout, lastActive: now, observation: observation}
+		entry.flow, entry.timeout, entry.result = current, current.Timeout, result
+		module.flows[identity] = entry
 	}
+	module.completeInstallation(ctx, identity, spec, result, err, evidence)
+}
+
+func newAdmittedFlow(flow conntrack.Flow, spec offload.NativePairSpec, guards [2]offload.NativePacketGuard, wan WAN, observation packetObservation, now time.Time) *admittedFlow {
+	var result offload.NativePairResult
+	return &admittedFlow{
+		flow: flow, spec: spec, guards: guards, result: result,
+		uncertain: false, wan: wan.Key(), timeout: flow.Timeout,
+		lastActive: now, lastSample: time.Time{}, previous: [2]offload.NativeCounter{},
+		samples: 0, observation: observation,
+	}
+}
+
+func (module *Module) resumeCandidate(ctx, requestContext context.Context, identity connectionIdentity, candidate *admittedFlow, evidence *evidenceCheck) bool {
+	entry, retired := module.resumeCandidates[identity]
+	if !retired {
+		return false
+	}
+	if !sameConnectionPolicy(entry.flow, candidate.flow) || !sameNativeMapping(entry.spec, candidate.spec) || candidate.guards != entry.guards || len(module.flows) >= int(module.cfg.Settings.PairCapacity) {
+		module.stats.Fallback++
+		return true
+	}
+	module.flows[identity] = entry
+	delete(module.resumeCandidates, identity)
+	entry.observation, entry.lastActive = candidate.observation, candidate.lastActive
+	module.resumeEntry(ctx, requestContext, identity, entry, evidence)
+	if evidence.guard.Check() != nil {
+		module.invalidateEvidence(ctx)
+	}
+	return true
+}
+
+func (module *Module) completeInstallation(ctx context.Context, identity connectionIdentity, spec offload.NativePairSpec, result offload.NativePairResult, err error, evidence *evidenceCheck) {
 	if err != nil {
 		module.stats.Fallback++
 		if _, retained := module.flows[identity]; retained {
@@ -150,35 +190,19 @@ func (module *Module) candidate(ctx context.Context, observation packetObservati
 	}
 	flow, err := offload.LookupConntrackFlow(ctx, kernelTuple, 0)
 	if err != nil {
-		return spec, guards, emptyFlow, wan, EligibilityStale, err
+		module.Log.WarnContext(ctx, "native candidate conntrack lookup failed", "err", err)
+		return spec, guards, emptyFlow, wan, EligibilityStale, fmt.Errorf("look up native candidate connection: %w", err)
 	}
 	if !connectionEligible(flow) {
 		return spec, guards, flow, wan, EligibilityUnsupported, nil
 	}
-	for _, member := range module.cfg.WANs {
-		if member.Mark == flow.Mark {
-			if wan.Key() != "" {
-				return spec, guards, flow, wan, EligibilityPolicyUnavailable, nil
-			}
-			wan = member
-		}
-	}
-	if wan.Key() == "" || !module.policyReady(snapshot, wan, kernelTuple.IP.SourceAddress.Is4()) {
+	wan, ready := module.candidateWAN(snapshot, flow, kernelTuple.IP.SourceAddress.Is4())
+	if !ready {
 		return spec, guards, flow, wan, EligibilityPolicyUnavailable, nil
 	}
-	index := 0
-	translated := reverseTuple(flow.TupleReply)
-	if kernelTuple == flow.TupleReply {
-		index = 1
-		translated = reverseTuple(flow.TupleOrig)
-	} else if kernelTuple != flow.TupleOrig {
-		return spec, guards, flow, wan, EligibilityStale, nil
-	}
-	if kernelTuple.IP.SourceAddress.Is6() {
-		if reverseTuple(flow.TupleReply) != flow.TupleOrig {
-			return spec, guards, flow, wan, EligibilityUnsupported, nil
-		}
-		translated = kernelTuple
+	translated, index, decision := candidateDirection(flow, kernelTuple)
+	if decision != EligibilityReady {
+		return spec, guards, flow, wan, decision, nil
 	}
 	selector := netif.PacketSelector{
 		Source:      netip.AddrPortFrom(kernelTuple.IP.SourceAddress, kernelTuple.Proto.SourcePort),
@@ -187,8 +211,12 @@ func (module *Module) candidate(ctx context.Context, observation packetObservati
 		Mark: flow.Mark, TrafficClass: observation.TrafficClass, FlowLabel: observation.FlowLabel,
 	}
 	path, usable, err := netif.ForwardPathLookup(ctx, module.Log, selector)
-	if err != nil || !usable {
-		return spec, guards, flow, wan, EligibilityUnsupported, err
+	if err != nil {
+		module.Log.WarnContext(ctx, "native candidate forwarding lookup failed", "err", err)
+		return spec, guards, flow, wan, EligibilityUnsupported, fmt.Errorf("resolve native candidate forwarding path: %w", err)
+	}
+	if !usable {
+		return spec, guards, flow, wan, EligibilityUnsupported, nil
 	}
 	output, bound := module.links[path.Link.Attrs().Index]
 	if !bound || !module.pathAllowed(input, output, wan, kernelTuple.IP.SourceAddress.Is4()) {
@@ -208,7 +236,12 @@ func (module *Module) candidate(ctx context.Context, observation packetObservati
 	if path.Route.MTU > 0 {
 		mtu = min(mtu, path.Route.MTU)
 	}
-	if observation.NetworkLength > uint32(mtu) {
+	outputMTU, err := checkedNativeMTU(mtu)
+	if err != nil {
+		module.Log.WarnContext(ctx, "native candidate MTU is invalid", "mtu", mtu, "err", err)
+		return spec, guards, flow, wan, EligibilityUnsupported, fmt.Errorf("check native candidate output MTU: %w", err)
+	}
+	if observation.NetworkLength > uint32(outputMTU) {
 		return spec, guards, flow, wan, EligibilityUnsupported, nil
 	}
 	current := module.Env.LiveState.Snapshot()
@@ -223,10 +256,42 @@ func (module *Module) candidate(ctx context.Context, observation packetObservati
 		Origin: input.origin, EgressData: output.data,
 		Original: observation.Tuple, Translated: translated,
 		OriginalSourceMAC: observation.SourceMAC, OriginalDestinationMAC: observation.DestinationMAC,
-		OutputSourceMAC: [6]byte(path.Link.Attrs().HardwareAddr), OutputDestinationMAC: [6]byte(path.Neighbor.HardwareAddr), OutputMTU: uint16(mtu),
+		OutputSourceMAC: [6]byte(path.Link.Attrs().HardwareAddr), OutputDestinationMAC: [6]byte(path.Neighbor.HardwareAddr), OutputMTU: outputMTU,
 	}
 	guards[index] = offload.NativePacketGuard{TrafficClass: observation.TrafficClass, FlowLabel: observation.FlowLabel}
 	return spec, guards, flow, wan, EligibilityReady, nil
+}
+
+func candidateDirection(flow conntrack.Flow, kernelTuple conntrack.Tuple) (conntrack.Tuple, int, Eligibility) {
+	index := 0
+	translated := reverseTuple(flow.TupleReply)
+	if kernelTuple == flow.TupleReply {
+		index = 1
+		translated = reverseTuple(flow.TupleOrig)
+	} else if kernelTuple != flow.TupleOrig {
+		return translated, index, EligibilityStale
+	}
+	if kernelTuple.IP.SourceAddress.Is6() {
+		if reverseTuple(flow.TupleReply) != flow.TupleOrig {
+			return translated, index, EligibilityUnsupported
+		}
+		translated = kernelTuple
+	}
+	return translated, index, EligibilityReady
+}
+
+func (module *Module) candidateWAN(snapshot wanstate.Snapshot, flow conntrack.Flow, ipv4 bool) (WAN, bool) {
+	var wan WAN
+	for _, member := range module.cfg.WANs {
+		if member.Mark != flow.Mark {
+			continue
+		}
+		if wan.Key() != "" {
+			return wan, false
+		}
+		wan = member
+	}
+	return wan, wan.Key() != "" && module.policyReady(snapshot, wan, ipv4)
 }
 
 func connectionEligible(flow conntrack.Flow) bool {

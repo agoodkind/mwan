@@ -7,6 +7,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"log/slog"
+	"math"
 	"math/bits"
 	"net"
 	"os"
@@ -39,6 +41,7 @@ type packetObservation struct {
 
 type packetCapture struct {
 	file          *os.File
+	cancel        context.CancelFunc
 	done          chan struct{}
 	closeOnce     sync.Once
 	closeErr      error
@@ -54,13 +57,24 @@ type captureMetadata struct {
 	dropsValid    bool
 }
 
-func openPacketCapture(ctx context.Context, link *net.Interface, socketBytes int, observations chan<- packetObservation, failures chan<- error, paused *atomic.Bool) (*packetCapture, error) {
+func openPacketCapture(ctx context.Context, link *net.Interface, socketBytes int, observations chan<- packetObservation, failures chan<- error, paused *atomic.Bool) (result *packetCapture, resultErr error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer func() {
+		if resultErr != nil {
+			cancel()
+			slog.WarnContext(ctx, "native packet observation startup failed", "interface", link.Name, "err", resultErr)
+		}
+	}()
 	descriptor, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW|unix.SOCK_NONBLOCK|unix.SOCK_CLOEXEC, int(bits.ReverseBytes16(unix.ETH_P_ALL)))
 	if err != nil {
 		return nil, fmt.Errorf("open native packet observation socket: %w", err)
 	}
 	file := os.NewFile(uintptr(descriptor), "native-observation-"+link.Name)
-	capture := &packetCapture{file: file, done: make(chan struct{}), paused: paused}
+	capture := &packetCapture{
+		file: file, cancel: cancel, done: make(chan struct{}),
+		closeOnce: sync.Once{}, closeErr: nil, paused: paused,
+		skipped: atomic.Uint64{}, previousDrops: 0,
+	}
 	for _, option := range []struct{ level, name, value int }{
 		{unix.SOL_SOCKET, unix.SO_RCVBUF, socketBytes},
 		{unix.SOL_SOCKET, unix.SO_TIMESTAMPNS, 1},
@@ -87,6 +101,28 @@ func openPacketCapture(ctx context.Context, link *net.Interface, socketBytes int
 			// Shutdown reports the retained close result.
 			_ = capture.close()
 		}()
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				var cause error
+				switch value := recovered.(type) {
+				case error:
+					cause = value
+				case string:
+					cause = errors.New("panic value: " + value)
+				default:
+					cause = fmt.Errorf("panic value: %v", value)
+				}
+				failure := panicFailure("native packet observation", cause)
+				if paused != nil {
+					paused.Store(true)
+				}
+				slog.ErrorContext(ctx, "native packet observation panicked", "err", failure)
+				select {
+				case failures <- failure:
+				case <-ctx.Done():
+				}
+			}
+		}()
 		if err := capture.receive(ctx, raw, link.Index, observations); err != nil && ctx.Err() == nil {
 			select {
 			case failures <- err:
@@ -98,11 +134,19 @@ func openPacketCapture(ctx context.Context, link *net.Interface, socketBytes int
 }
 
 func (capture *packetCapture) close() error {
+	if capture.cancel != nil {
+		capture.cancel()
+	}
 	capture.closeOnce.Do(func() { capture.closeErr = capture.file.Close() })
 	return capture.closeErr
 }
 
-func (capture *packetCapture) receive(ctx context.Context, raw syscall.RawConn, ifindex int, observations chan<- packetObservation) error {
+func (capture *packetCapture) receive(ctx context.Context, raw syscall.RawConn, ifindex int, observations chan<- packetObservation) (resultErr error) {
+	defer func() {
+		if resultErr != nil && ctx.Err() == nil {
+			slog.WarnContext(ctx, "native packet observation receive failed", "ifindex", ifindex, "err", resultErr)
+		}
+	}()
 	frame := make([]byte, observationFrameBytes)
 	control := make([]byte, observationControlBytes)
 	for {
@@ -158,12 +202,16 @@ func (capture *packetCapture) receive(ctx context.Context, raw syscall.RawConn, 
 	}
 }
 
-func observationControl(data []byte) (captureMetadata, error) {
+func observationControl(data []byte) (metadata captureMetadata, resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			slog.Warn("native packet observation metadata is invalid", "err", resultErr)
+		}
+	}()
 	messages, err := unix.ParseSocketControlMessage(data)
 	if err != nil {
-		return captureMetadata{}, fmt.Errorf("decode native observation control: %w", err)
+		return metadata, fmt.Errorf("decode native observation control: %w", err)
 	}
-	var metadata captureMetadata
 	auxiliaryValid := false
 	for _, message := range messages {
 		switch {
@@ -171,9 +219,12 @@ func observationControl(data []byte) (captureMetadata, error) {
 			if len(message.Data) != observationTimestampBytes {
 				return metadata, fmt.Errorf("native observation timestamp has an invalid size")
 			}
-			seconds := int64(binary.NativeEndian.Uint64(message.Data[:8]))
-			nanoseconds := int64(binary.NativeEndian.Uint64(message.Data[8:]))
-			metadata.at = time.Unix(seconds, nanoseconds)
+			seconds := binary.NativeEndian.Uint64(message.Data[:8])
+			nanoseconds := binary.NativeEndian.Uint64(message.Data[8:])
+			if seconds > math.MaxInt64 || nanoseconds >= uint64(time.Second) {
+				return metadata, fmt.Errorf("native observation timestamp exceeds its clock range")
+			}
+			metadata.at = time.Unix(int64(seconds), int64(nanoseconds))
 		case message.Header.Level == unix.SOL_SOCKET && message.Header.Type == unix.SO_RXQ_OVFL:
 			if len(message.Data) != observationCounterBytes {
 				return metadata, fmt.Errorf("native observation drop counter has an invalid size")

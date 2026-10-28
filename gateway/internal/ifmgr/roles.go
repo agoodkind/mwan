@@ -21,6 +21,7 @@ import (
 // every OOB-style module while each host enables only the subset it
 // actually configures.
 var roleModules = map[string][]string{
+	"router": {"vpp"},
 	// oob is the unified OOB role for vault and the suburban hypervisor.
 	// Module list is the union of every OOB-style module. Per-host
 	// selection is driven by which [ifmgr.modules.X] sections render in

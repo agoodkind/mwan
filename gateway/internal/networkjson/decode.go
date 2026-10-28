@@ -28,5 +28,8 @@ func Decode(data []byte) (*Config, error) {
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return nil, &SyntaxError{err: err}
 	}
+	if doc.VPP != nil {
+		return buildVPPNetwork(&doc)
+	}
 	return build(&doc)
 }

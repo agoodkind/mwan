@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"goodkind.io/mwan/internal/connectionid"
+	"goodkind.io/mwan/internal/vpp"
 )
 
 // Family uses IP version numbers in saved observations.
@@ -122,6 +123,8 @@ type HostUsage struct {
 
 // Minute records explicit boundaries because startup can produce a partial interval.
 type Minute struct {
+	VPPProfile      *vpp.ProfileResult    `json:"VPPProfile,omitempty"`
+	VPPTraffic      []WANTraffic          `json:"VPPTraffic,omitempty"`
 	Start           time.Time             `json:"Start"`
 	End             time.Time             `json:"End"`
 	Partial         bool                  `json:"Partial"`

@@ -88,8 +88,9 @@ func NewConntrackUpdater(timeout time.Duration) (updater *ConntrackUpdater, resu
 // identities and detect replacement, but cannot make tuple reuse atomic
 // with the update. Callers must not treat this as a compare-and-swap.
 func (u *ConntrackUpdater) SetLiberal(ctx context.Context, flow conntrack.Flow) (resultErr error) {
+	delegatedFailure := false
 	defer func() {
-		if resultErr != nil {
+		if resultErr != nil && !delegatedFailure {
 			slog.WarnContext(ctx, "conntrack TCP flag update failed", "id", flow.ID, "zone", flow.Zone, "err", resultErr)
 		}
 	}()
@@ -106,6 +107,7 @@ func (u *ConntrackUpdater) SetLiberal(ctx context.Context, flow conntrack.Flow) 
 
 	family, identity := conntrackIdentity(flow)
 	if _, err := u.readIdentity(family, identity, flow); err != nil {
+		delegatedFailure = true
 		return fmt.Errorf("verify conntrack before update: %w", err)
 	}
 	if err := ctx.Err(); err != nil {
@@ -121,10 +123,12 @@ func (u *ConntrackUpdater) SetLiberal(ctx context.Context, flow conntrack.Flow) 
 		}},
 	})
 	if _, err := u.query(family, ctMessageNew, attributes); err != nil {
+		delegatedFailure = true
 		return fmt.Errorf("set conntrack liberal TCP flags: %w", err)
 	}
 	current, err := u.readIdentity(family, identity, flow)
 	if err != nil {
+		delegatedFailure = true
 		return fmt.Errorf("verify conntrack after update: %w", err)
 	}
 	// The dependency decodes the two-byte {flags, mask} payload as big endian.
@@ -138,8 +142,9 @@ func (u *ConntrackUpdater) SetLiberal(ctx context.Context, flow conntrack.Flow) 
 
 // Refresh updates only expiry after the caller verifies hardware activity.
 func (u *ConntrackUpdater) Refresh(ctx context.Context, flow conntrack.Flow, timeoutSeconds uint32) (resultErr error) {
+	delegatedFailure := false
 	defer func() {
-		if resultErr != nil {
+		if resultErr != nil && !delegatedFailure {
 			slog.WarnContext(ctx, "conntrack timeout refresh failed", "id", flow.ID, "zone", flow.Zone, "err", resultErr)
 		}
 	}()
@@ -161,6 +166,7 @@ func (u *ConntrackUpdater) Refresh(ctx context.Context, flow conntrack.Flow, tim
 	defer finish()
 	family, identity := conntrackIdentity(flow)
 	if _, err := u.readIdentity(family, identity, flow); err != nil {
+		delegatedFailure = true
 		return fmt.Errorf("verify conntrack before timeout refresh: %w", err)
 	}
 	if err := ctx.Err(); err != nil {
@@ -170,13 +176,19 @@ func (u *ConntrackUpdater) Refresh(ctx context.Context, flow conntrack.Flow, tim
 	attributes = append(attributes, netfilter.Attribute{Type: ctTimeout, Data: netfilter.Uint32Bytes(timeoutSeconds)})
 	started := u.clock.Now()
 	if _, err := u.query(family, ctMessageNew, attributes); err != nil {
+		delegatedFailure = true
 		return fmt.Errorf("refresh conntrack timeout: %w", err)
 	}
 	current, err := u.readIdentity(family, identity, flow)
 	if err != nil {
+		delegatedFailure = true
 		return fmt.Errorf("verify conntrack after timeout refresh: %w", err)
 	}
-	elapsedSeconds := uint64(u.clock.Now().Sub(started)/time.Second) + 1
+	elapsed := u.clock.Now().Sub(started)
+	if elapsed < 0 {
+		return fmt.Errorf("conntrack timeout verification clock moved backward")
+	}
+	elapsedSeconds := uint64(elapsed/time.Second) + 1
 	if current.Timeout > timeoutSeconds || uint64(current.Timeout)+elapsedSeconds < uint64(timeoutSeconds) {
 		return fmt.Errorf("conntrack %d did not retain the requested timeout", flow.ID)
 	}
@@ -296,8 +308,9 @@ func conntrackTupleAttribute(tuple conntrack.Tuple, kind uint16) (netfilter.Prot
 }
 
 func (u *ConntrackUpdater) query(family netfilter.ProtoFamily, kind netfilter.MessageType, attributes []netfilter.Attribute) (messages []netlink.Message, resultErr error) {
+	delegatedFailure := false
 	defer func() {
-		if resultErr != nil {
+		if resultErr != nil && !delegatedFailure {
 			slog.Warn("conntrack request failed", "type", kind, "err", resultErr)
 		}
 	}()
@@ -308,21 +321,24 @@ func (u *ConntrackUpdater) query(family netfilter.ProtoFamily, kind netfilter.Me
 	if err != nil {
 		return nil, fmt.Errorf("encode conntrack request: %w", err)
 	}
-	messages, err = queryBoundedConntrack(u.socket, message, kind == ctMessageGet)
+	messages, err = readConntrackReplies(u.socket, message, kind == ctMessageGet)
 	if err != nil {
+		delegatedFailure = true
 		return nil, fmt.Errorf("query conntrack socket: %w", err)
 	}
 	return messages, nil
 }
 
 func (u *ConntrackUpdater) readIdentity(family netfilter.ProtoFamily, attributes []netfilter.Attribute, expected conntrack.Flow) (flow conntrack.Flow, resultErr error) {
+	delegatedFailure := false
 	defer func() {
-		if resultErr != nil {
+		if resultErr != nil && !delegatedFailure {
 			slog.Warn("conntrack identity verification failed", "id", expected.ID, "zone", expected.Zone, "err", resultErr)
 		}
 	}()
 	messages, err := u.query(family, ctMessageGet, attributes)
 	if err != nil {
+		delegatedFailure = true
 		return conntrack.Flow{}, err
 	}
 	var current *conntrack.Flow

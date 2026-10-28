@@ -21,6 +21,7 @@ import (
 	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/notify"
+	"goodkind.io/mwan/internal/vpp"
 	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
@@ -200,6 +201,7 @@ type NotifySection = watchdogconfig.NotifySection
 // Each role is a list of modules (see internal/ifmgr/roles.go), and the
 // module config schema is explicitly modeled in IfMgrModulesSection.
 type IfMgrSection struct {
+	VPPPolicy          *vpp.Policy     `toml:"-"`
 	GuestType          GuestType       `toml:"-"`
 	Firewall           firewall.Config `toml:"-"`
 	PinnedConnectionID string          `toml:"-"`
@@ -329,6 +331,12 @@ func loadConfig(path string) (*Config, error) {
 		if _, _, err := cfg.IfMgr.Modules.Health.ParseMaxStateAge(); err != nil {
 			slog.Error("validate health max state age failed", "error", err)
 			return nil, fmt.Errorf("validate [ifmgr.modules.health]: %w", err)
+		}
+	}
+	if cfg.IfMgr.Modules.VPP != nil {
+		if err := cfg.IfMgr.Modules.VPP.Validate(); err != nil {
+			slog.Error("validate VPP process resources failed", "path", path, "error", err)
+			return nil, fmt.Errorf("validate [ifmgr.modules.vpp]: %w", err)
 		}
 	}
 	if err := validateBGPDynamicConfig(&cfg.BGP); err != nil {

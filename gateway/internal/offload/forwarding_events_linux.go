@@ -4,9 +4,9 @@ package offload
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -21,17 +21,20 @@ const (
 	forwardingNeighborTableHeaderBytes = 4
 )
 
+// ForwardingEventLossError invalidates evidence after a notification gap.
 type ForwardingEventLossError struct {
 	Cause error
 }
 
+// Error reports the failure that interrupted forwarding notifications.
 func (failure *ForwardingEventLossError) Error() string {
 	return fmt.Sprintf("forwarding events may be incomplete: %v", failure.Cause)
 }
 
+// Unwrap preserves the underlying socket or decoding failure.
 func (failure *ForwardingEventLossError) Unwrap() error { return failure.Cause }
 
-// Generation preserves change detection when several notifications coalesce.
+// ForwardingEvents retains every observed generation when change notifications coalesce.
 type ForwardingEvents struct {
 	Changes <-chan struct{}
 	Errors  <-chan error
@@ -46,7 +49,13 @@ type ForwardingEvents struct {
 	terminalError error
 }
 
-func NewForwardingEvents(ctx context.Context, socketBufferBytes int) (*ForwardingEvents, error) {
+// NewForwardingEvents subscribes to kernel changes that invalidate forwarding evidence.
+func NewForwardingEvents(ctx context.Context, socketBufferBytes int) (result *ForwardingEvents, resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			slog.WarnContext(ctx, "start forwarding events failed", "err", resultErr)
+		}
+	}()
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("start forwarding events: %w", err)
 	}
@@ -80,6 +89,8 @@ func NewForwardingEvents(ctx context.Context, socketBufferBytes int) (*Forwardin
 	source := &ForwardingEvents{
 		Changes: changes, Errors: failures, socket: socket,
 		done: make(chan struct{}), stopping: make(chan struct{}),
+		generation: atomic.Uint64{}, closeOnce: sync.Once{}, closeErr: nil,
+		failureMu: sync.RWMutex{}, terminalError: nil,
 	}
 	stop := context.AfterFunc(ctx, func() { source.closeSocket() })
 	go func() {
@@ -88,20 +99,30 @@ func NewForwardingEvents(ctx context.Context, socketBufferBytes int) (*Forwardin
 		defer close(failures)
 		defer stop()
 		defer source.closeSocket()
-		if err := source.receive(ctx, raw, changes); err != nil {
-			failure := &ForwardingEventLossError{Cause: err}
-			source.failureMu.Lock()
-			source.terminalError = failure
-			source.failureMu.Unlock()
-			source.changed(changes)
-			failures <- failure
-		}
+		var receiveErr error
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				receiveErr = fmt.Errorf("forwarding event receiver panicked: %v", recovered)
+				slog.ErrorContext(ctx, "forwarding event receiver panicked", "err", receiveErr)
+			}
+			if receiveErr != nil {
+				failure := &ForwardingEventLossError{Cause: receiveErr}
+				source.failureMu.Lock()
+				source.terminalError = failure
+				source.failureMu.Unlock()
+				source.changed(changes)
+				failures <- failure
+			}
+		}()
+		receiveErr = source.receive(ctx, raw, changes)
 	}()
 	return source, nil
 }
 
+// Generation counts changes even when the pending notification coalesces them.
 func (source *ForwardingEvents) Generation() uint64 { return source.generation.Load() }
 
+// Err retains notification loss after the source closes its channels.
 func (source *ForwardingEvents) Err() error {
 	source.failureMu.RLock()
 	defer source.failureMu.RUnlock()
@@ -115,11 +136,14 @@ func (source *ForwardingEvents) closeSocket() {
 	})
 }
 
+// Close interrupts the receive and waits for failure publication and channel closure.
 func (source *ForwardingEvents) Close() error {
 	source.closeSocket()
 	<-source.done
 	if source.closeErr != nil {
-		return fmt.Errorf("close forwarding event socket: %w", source.closeErr)
+		failure := fmt.Errorf("close forwarding event socket: %w", source.closeErr)
+		slog.Warn("close forwarding events failed", "err", failure)
+		return failure
 	}
 	return nil
 }
@@ -132,15 +156,22 @@ func (source *ForwardingEvents) changed(changes chan<- struct{}) {
 	}
 }
 
-func (source *ForwardingEvents) receive(ctx context.Context, raw syscall.RawConn, changes chan<- struct{}) error {
+func (source *ForwardingEvents) receive(ctx context.Context, raw syscall.RawConn, changes chan<- struct{}) (resultErr error) {
+	delegatedFailure := false
+	defer func() {
+		if resultErr != nil && !delegatedFailure {
+			slog.WarnContext(ctx, "forwarding event receive failed", "err", resultErr)
+		}
+	}()
 	buffer := make([]byte, conntrackReceiveBytes)
 	for {
-		count, err := receiveConntrackDatagram(raw, buffer)
+		count, err := readNetlinkDatagram(raw, buffer)
 		if err != nil {
 			select {
 			case <-source.stopping:
 				return nil
 			default:
+				delegatedFailure = true
 				return fmt.Errorf("receive forwarding event: %w", err)
 			}
 		}
@@ -150,8 +181,9 @@ func (source *ForwardingEvents) receive(ctx context.Context, raw syscall.RawConn
 		}
 		mutation := false
 		for _, message := range messages {
-			changed, err := forwardingMutation(message)
+			changed, err := unmarshalForwardingMutation(message)
 			if err != nil {
+				delegatedFailure = true
 				return err
 			}
 			mutation = mutation || changed
@@ -159,13 +191,20 @@ func (source *ForwardingEvents) receive(ctx context.Context, raw syscall.RawConn
 		if mutation {
 			source.changed(changes)
 		}
-		if err := ctx.Err(); err != nil {
+		select {
+		case <-ctx.Done():
 			return nil
+		default:
 		}
 	}
 }
 
-func forwardingMutation(message syscall.NetlinkMessage) (bool, error) {
+func unmarshalForwardingMutation(message syscall.NetlinkMessage) (changed bool, resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			slog.Warn("kernel forwarding notification validation failed", "type", message.Header.Type, "sequence", message.Header.Seq, "err", resultErr)
+		}
+	}()
 	if message.Header.Flags&unix.NLM_F_MULTI != 0 {
 		return false, fmt.Errorf("forwarding event unexpectedly contains a table dump")
 	}
@@ -176,12 +215,12 @@ func forwardingMutation(message syscall.NetlinkMessage) (bool, error) {
 	case unix.NLMSG_OVERRUN:
 		return false, fmt.Errorf("kernel forwarding event overrun: %w", unix.ENOBUFS)
 	case unix.NLMSG_ERROR:
-		if len(message.Data) < conntrackErrorBytes {
-			return false, fmt.Errorf("forwarding event error omitted its code")
+		errno, err := unmarshalNetlinkErrorCode(message.Data)
+		if err != nil {
+			return false, err
 		}
-		code := int32(binary.NativeEndian.Uint32(message.Data[:conntrackErrorBytes]))
-		if code < 0 {
-			return false, fmt.Errorf("kernel forwarding event failed: %w", syscall.Errno(-code))
+		if errno != 0 {
+			return false, fmt.Errorf("kernel forwarding event failed: %w", errno)
 		}
 		return false, fmt.Errorf("forwarding event unexpectedly contains an acknowledgment")
 	case unix.RTM_NEWLINK, unix.RTM_DELLINK, unix.RTM_SETLINK, unix.RTM_NEWLINKPROP, unix.RTM_DELLINKPROP:

@@ -290,7 +290,7 @@ func TestConntrackReceiveRejectsTruncatedDatagram(t *testing.T) {
 	if err := unix.Sendmsg(sender, make([]byte, conntrackReceiveBytes+1), nil, &unix.SockaddrNetlink{Family: unix.AF_NETLINK, Pid: receiver.PID()}, 0); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := receiveConntrackDatagram(raw, make([]byte, conntrackReceiveBytes)); !errors.Is(err, unix.EMSGSIZE) {
+	if _, err := readNetlinkDatagram(raw, make([]byte, conntrackReceiveBytes)); !errors.Is(err, unix.EMSGSIZE) {
 		t.Fatalf("oversized netlink datagram did not report truncation: %v", err)
 	}
 }

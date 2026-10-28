@@ -11,6 +11,7 @@ import "C"
 
 import (
 	"fmt"
+	"log/slog"
 	"syscall"
 	"unsafe"
 
@@ -31,7 +32,13 @@ type NativeObservation struct {
 	DecodeError    error
 }
 
-func ObserveNativeFrames(frames [][]byte) ([]NativeObservation, error) {
+// ObserveNativeFrames copies bounded Ethernet frames for Rust header validation.
+func ObserveNativeFrames(frames [][]byte) (result []NativeObservation, resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			slog.Warn("native packet observation failed", "frames", len(frames), "err", resultErr)
+		}
+	}()
 	if len(frames) == 0 || len(frames) > C.MWAN_NATIVE_OBSERVATION_BATCH_LIMIT {
 		return nil, fmt.Errorf("native observation batch requires between 1 and %d frames", C.MWAN_NATIVE_OBSERVATION_BATCH_LIMIT)
 	}

@@ -21,6 +21,7 @@ import (
 	"goodkind.io/mwan/internal/connectionid"
 	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/interfaceintent"
+	"goodkind.io/mwan/internal/vpp"
 	"goodkind.io/mwan/internal/yangpub/schema"
 )
 
@@ -37,6 +38,7 @@ const DefaultSchemaDir = schema.InstallDir
 // An absent guest-type means qemu, matching the YANG default.
 type document struct {
 	Interfaces interfaces `json:"ietf-interfaces:interfaces"`
+	VPP        *vppWire   `json:"goodkind-mwan-vpp:vpp"`
 }
 
 type interfaces struct {
@@ -275,6 +277,7 @@ type groupHealth struct {
 // Config is the network tree one file carries, in the shape the daemon's
 // configuration holds it.
 type Config struct {
+	VPP                   *vpp.Policy
 	GuestType             config.GuestType
 	Firewall              firewall.Config
 	PinnedConnectionID    string
@@ -318,32 +321,11 @@ var kernelReservedTables = []int{0, 253, 254, 255}
 // every module that reads one already treats an absent prefix as no
 // translation.
 func build(doc *document) (*Config, error) {
-	group := doc.Interfaces.SteeringGroup
-	guestType, err := resolveGuestType(doc.Interfaces.GuestType)
+	loaded, err := newWANNetworkConfig(doc)
 	if err != nil {
 		return nil, err
 	}
-	var zeroFirewall firewall.Config
-	loaded := &Config{
-		GuestType:             guestType,
-		Firewall:              zeroFirewall,
-		PinnedConnectionID:    pinnedConnectionID(group.Firewall),
-		InternalPrefix:        group.Translation.InternalPrefix,
-		OpnsenseEdgeV6:        group.Translation.OpnsenseEdgeV6,
-		MwanbrEdgeV6:          group.Translation.MwanbrEdgeV6,
-		InternalIface:         group.Routes.InternalIface,
-		InternalNetV4:         group.Routes.InternalNetV4,
-		HashMode:              group.HashMode,
-		ReservedTables:        group.ReservedTables,
-		ProbeTimeoutMillis:    0,
-		WAN:                   make(map[string]config.IfMgrWANEntry, len(doc.Interfaces.Interface)),
-		Health:                make(map[string]config.IfMgrHealthWANSection, len(doc.Interfaces.Interface)),
-		ConnectionIDs:         make(map[string]connectionid.ID, len(doc.Interfaces.Interface)),
-		ExplicitConnectionIDs: make(map[string]connectionid.ID),
-		Connections:           nil,
-		Claims:                nil,
-		Rejected:              nil,
-	}
+	group := doc.Interfaces.SteeringGroup
 	required := []struct {
 		leaf  string
 		value string
@@ -418,6 +400,36 @@ func build(doc *document) (*Config, error) {
 	}
 	loaded.Firewall = firewallConfig
 	return loaded, nil
+}
+
+func newWANNetworkConfig(doc *document) (*Config, error) {
+	guestType, err := resolveGuestType(doc.Interfaces.GuestType)
+	if err != nil {
+		return nil, err
+	}
+	group := doc.Interfaces.SteeringGroup
+	var zeroFirewall firewall.Config
+	return &Config{
+		VPP:                   nil,
+		GuestType:             guestType,
+		Firewall:              zeroFirewall,
+		PinnedConnectionID:    pinnedConnectionID(group.Firewall),
+		InternalPrefix:        group.Translation.InternalPrefix,
+		OpnsenseEdgeV6:        group.Translation.OpnsenseEdgeV6,
+		MwanbrEdgeV6:          group.Translation.MwanbrEdgeV6,
+		InternalIface:         group.Routes.InternalIface,
+		InternalNetV4:         group.Routes.InternalNetV4,
+		HashMode:              group.HashMode,
+		ReservedTables:        group.ReservedTables,
+		ProbeTimeoutMillis:    0,
+		WAN:                   make(map[string]config.IfMgrWANEntry, len(doc.Interfaces.Interface)),
+		Health:                make(map[string]config.IfMgrHealthWANSection, len(doc.Interfaces.Interface)),
+		ConnectionIDs:         make(map[string]connectionid.ID, len(doc.Interfaces.Interface)),
+		ExplicitConnectionIDs: make(map[string]connectionid.ID),
+		Connections:           nil,
+		Claims:                nil,
+		Rejected:              nil,
+	}, nil
 }
 
 func compileProviderProjections(entries []ifaceEntry, byName map[string]interfaceintent.Connection, loaded *Config) error {
@@ -765,6 +777,7 @@ func buildHealth(label string, probe *health) (*config.IfMgrHealthWANSection, er
 // filled before this file owned them. The health and routes sections keep the
 // filesystem paths TOML still owns. Apply writes only the network values.
 func (c *Config) Apply(cfg *config.Config) {
+	cfg.IfMgr.VPPPolicy = c.VPP
 	cfg.IfMgr.GuestType = c.GuestType
 	cfg.IfMgr.Firewall = c.Firewall
 	cfg.IfMgr.PinnedConnectionID = c.PinnedConnectionID

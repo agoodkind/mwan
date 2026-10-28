@@ -55,6 +55,9 @@ func buildIfMgrModuleConfigs(
 	}
 
 	moduleConfigs := make(ifmgr.ModuleConfigSet)
+	if err := addVPPModuleConfig(moduleConfigs, want["vpp"], ifmgrCfg); err != nil {
+		return nil, err
+	}
 
 	if want["wg"] {
 		wgConfig, err := buildWGConfig(modules.WG)

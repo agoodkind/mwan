@@ -37,7 +37,7 @@ func (module *Module) suspendAll(ctx context.Context, reason string) error {
 	return failures
 }
 
-// The daemon publishes complete family readiness before scheduling resumption.
+// OnFamilyReadiness permits resumption only after the daemon publishes complete family readiness.
 func (module *Module) OnFamilyReadiness(ctx context.Context, _ *slog.Logger) {
 	module.Lock()
 	defer module.Unlock()
@@ -49,6 +49,7 @@ func (module *Module) OnFamilyReadiness(ctx context.Context, _ *slog.Logger) {
 	}
 	pass := &resumption{
 		keys:     make([]connectionIdentity, 0, len(module.flows)),
+		index:    0,
 		evidence: module.evidenceFor(module.currentEvidenceEpoch()),
 	}
 	for identity, entry := range module.flows {

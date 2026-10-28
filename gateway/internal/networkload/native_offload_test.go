@@ -1,20 +1,20 @@
-package main
+package networkload_test
 
 import (
 	"errors"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/networkload"
+	"goodkind.io/mwan/internal/wanconfig"
 )
 
 func nativeNetworkDocument(t *testing.T) string {
 	t.Helper()
-	raw, err := os.ReadFile("../../internal/networkjson/testdata/plan-base.json")
+	raw, err := os.ReadFile("../networkjson/testdata/plan-base.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,41 +29,98 @@ func nativeNetworkDocument(t *testing.T) string {
 
 func writeNativeNetworkDocument(t *testing.T, document string) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "network.json")
-	if err := os.WriteFile(path, []byte(document), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	return path
+	return writeDocument(t, []byte(document))
 }
 
-func TestNativeOffloadNetworkRoundTrip(t *testing.T) {
+func TestNativeOffloadNetworkLoadAndApply(t *testing.T) {
 	t.Parallel()
 	document := nativeNetworkDocument(t)
 	path := writeNativeNetworkDocument(t, document)
-	schema := networkSchemaDirForTest(t)
-	inFile := flattenNetworkJSON(t, []byte(document))
-	served := withoutServedOnlyPairs(itemPairs(servedConfigItems(t, path, schema)), inFile)
-	compareLeafSets(t, inFile, served)
+	schema := writeSchemaDir(t)
 	loaded, err := networkload.Load(path, schema)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var cfg config.Config
 	loaded.Apply(&cfg)
+	configuredBindings := 0
+	for _, connection := range cfg.IfMgr.Connections {
+		if connection.Link != nil && connection.Link.NativeOffload != nil {
+			configuredBindings++
+		}
+	}
+	if configuredBindings != 2 {
+		t.Fatalf("Apply omitted native bindings: %d", configuredBindings)
+	}
+	mutatedControllers := 0
 	for _, connection := range loaded.Connections {
 		if connection.Link != nil && connection.Link.NativeOffload != nil && connection.Link.NativeOffload.Controller != nil {
 			connection.Link.NativeOffload.Controller.DataVF = 1
+			mutatedControllers++
 		}
+	}
+	if mutatedControllers != 1 {
+		t.Fatalf("the loaded configuration did not expose its native controller: %d", mutatedControllers)
 	}
 	if err := interfaceintent.ValidateNativeBindings(cfg.IfMgr.Connections); err != nil {
 		t.Fatalf("Apply shared mutable native bindings: %v", err)
 	}
 }
 
+func TestNativeOffloadPublishedConfiguration(t *testing.T) {
+	t.Parallel()
+	path := writeNativeNetworkDocument(t, nativeNetworkDocument(t))
+	loaded, err := networkload.Load(path, writeSchemaDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg config.Config
+	loaded.Apply(&cfg)
+	var gateway wanconfig.Gateway
+	gateway.GuestType = cfg.IfMgr.GuestType
+	gateway.InternalIface = loaded.InternalIface
+	gateway.ConnectionIDs = cfg.IfMgr.ExplicitConnectionIDs
+	gateway.Connections = cfg.IfMgr.Connections
+	items, err := wanconfig.ConfigItems(gateway)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const wanPath = "/ietf-interfaces:interfaces/interface[name='enwebpass0']/goodkind-mwan-steering:link/native-offload"
+	const lanPath = "/ietf-interfaces:interfaces/interface[name='enmwanbr0']/goodkind-mwan-steering:link/native-offload"
+	want := map[string]string{
+		wanPath + "/data-pci":                 "0000:1a:00.2",
+		wanPath + "/data-mac":                 "02:57:50:04:00:04",
+		wanPath + "/controller/pci":           "0000:1a:00.0",
+		wanPath + "/controller/receiver-vf":   "1",
+		wanPath + "/controller/data-vf":       "2",
+		wanPath + "/controller/physical-miss": "true",
+		lanPath + "/data-pci":                 "0000:1a:03.1",
+		lanPath + "/data-mac":                 "02:57:50:04:03:01",
+	}
+	seen := make(map[string]string)
+	for _, item := range items {
+		if !strings.Contains(item.Path, "/native-offload/") {
+			continue
+		}
+		if _, duplicate := seen[item.Path]; duplicate {
+			t.Fatalf("published native configuration contains a duplicate leaf: %s", item.Path)
+		}
+		seen[item.Path] = item.Value
+	}
+	if len(seen) != len(want) {
+		t.Fatalf("published native configuration omitted or added leaves: %+v", seen)
+	}
+	for path, value := range want {
+		if seen[path] != value {
+			t.Fatalf("published native leaf %s = %q, want %q", path, seen[path], value)
+		}
+	}
+}
+
 func TestNativeOffloadNetworkRejectsInvalidBindings(t *testing.T) {
 	t.Parallel()
 	document := nativeNetworkDocument(t)
-	schema := networkSchemaDirForTest(t)
+	schema := writeSchemaDir(t)
 	for _, check := range []struct{ name, before, after string }{
 		{"PCI-device", "0000:1a:00.2", "0000:1a:20.2"},
 		{"PCI-function", "0000:1a:00.2", "0000:1a:00.8"},
@@ -101,16 +158,16 @@ func TestNativeOffloadInvalidProviderDoesNotDisappear(t *testing.T) {
 	document = strings.Replace(document, `"native-offload":{"data-pci":"0000:1a:03.1", "data-mac":"02:57:50:04:03:01"}`, "", 1)
 	document = strings.Replace(document, "02:57:50:04:00:04", "01:00:5e:00:00:04", 1)
 	path := writeNativeNetworkDocument(t, document)
-	if _, err := networkload.Load(path, networkSchemaDirForTest(t)); err == nil {
+	if _, err := networkload.Load(path, writeSchemaDir(t)); err == nil {
 		t.Fatal("invalid native binding silently removed a provider from the loaded policy")
 	}
 }
 
 func TestNativeOffloadBindingValidationPrecedesProviderFiltering(t *testing.T) {
 	t.Parallel()
-	schema := networkSchemaDirForTest(t)
+	schema := writeSchemaDir(t)
 	const weight = ",\n          \"weight\": 1"
-	raw, err := os.ReadFile("../../internal/networkjson/testdata/plan-base.json")
+	raw, err := os.ReadFile("../networkjson/testdata/plan-base.json")
 	if err != nil {
 		t.Fatal(err)
 	}

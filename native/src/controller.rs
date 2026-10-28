@@ -1153,6 +1153,14 @@ impl OwnerState {
         let mut config = dpdk::rte_eth_conf::default();
         // SAFETY: The writable opaque record has the SDK's generated layout.
         unsafe { dpdk::mwn_eth_conf_set_mtu(&mut config, u32::from(self.config.mtu)) };
+        // Representors do not advertise link status change interrupts.
+        if self.data[..self.config.data_count as usize]
+            .iter()
+            .any(|port| port.id == Some(id))
+        {
+            // SAFETY: The mutable configuration is a live, aligned SDK record.
+            unsafe { dpdk::mwn_eth_conf_enable_lsc(&mut config) };
+        }
         let mut info = dpdk::rte_eth_dev_info::default();
         // SAFETY: Discovery identified this owned port and info is writable.
         let mut result = unsafe { dpdk::rte_eth_dev_info_get(id, &mut info) };
@@ -1832,9 +1840,17 @@ impl OwnerState {
             let Some(flow) = self.pairs[slot].legs[index].flow else {
                 continue;
             };
-            let controller = self.controller_port(
-                self.config.origins[spec.origin_id as usize].controller as usize,
-            )?;
+            let controller = match self
+                .controller_port(self.config.origins[spec.origin_id as usize].controller as usize)
+            {
+                Ok(controller) => controller,
+                Err(error) => {
+                    if failure.is_none() {
+                        failure = Some(error);
+                    }
+                    continue;
+                }
+            };
             let mut detail = dpdk::rte_flow_error::default();
             // SAFETY: This live handle belongs to this controller. The SDK
             // consumes it once; Rust clears it immediately after the call.
@@ -2260,9 +2276,12 @@ impl OwnerState {
                     "Pending packet restoration failed; buffer and owner retained",
                 );
                 error.packet = packet::diagnostic(&prepared.view);
+                error.packet.decode_status = -code;
                 self.quiescing = true;
                 self.faulted = true;
-                self.terminal_failure = Some(*error);
+                if self.terminal_failure.is_none() {
+                    self.terminal_failure = Some(*error);
+                }
                 self.update_pending_stats();
                 return Err(error);
             }
@@ -2724,10 +2743,10 @@ impl OwnerState {
     }
 
     fn close(&mut self, mode: u32) -> NativeResult<()> {
-        if let Some(error) = self.terminal_failure {
-            return Err(Box::new(error));
-        }
         if !self.eal_ready {
+            if let Some(error) = self.terminal_failure {
+                return Err(Box::new(error));
+            }
             if self.pool.is_some()
                 || !self.ports.is_empty()
                 || !self.inverses.is_empty()
@@ -2755,8 +2774,16 @@ impl OwnerState {
             return Ok(());
         }
         self.quiescing = true;
+        let mut failure = self.terminal_failure.map(Box::new);
         for slot in 0..self.pairs.len() {
-            self.delete_pair(slot)?;
+            if let Err(error) = self.delete_pair(slot)
+                && failure.is_none()
+            {
+                failure = Some(error);
+            }
+        }
+        if let Some(error) = failure {
+            return Err(error);
         }
         if self.pool.is_some() {
             self.drain()?;
