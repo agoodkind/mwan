@@ -20,6 +20,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
+	"goodkind.io/mwan/internal/clock"
 	"goodkind.io/mwan/internal/netif"
 )
 
@@ -51,6 +52,13 @@ func forwardPathNamespace(t *testing.T, environment string) bool {
 		t.Skip("forwarding lookup requires a privileged network namespace")
 	}
 	child := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^"+t.Name()+"$", "-test.v")
+	if deadline, ok := t.Deadline(); ok {
+		remaining := deadline.Sub(clock.Real{}.Now())
+		if remaining <= 0 {
+			t.Fatal("network namespace child started after the test deadline")
+		}
+		child.Args = append(child.Args, "-test.timeout="+remaining.String())
+	}
 	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNET}
 	child.Env = append(os.Environ(), environment+"=1")
 	output, err := child.CombinedOutput()

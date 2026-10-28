@@ -6,11 +6,15 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"reflect"
 	"syscall"
 
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 )
+
+// Linux UAPI defines IP6_RT_PRIO_USER as the metric for an omitted IPv6 metric.
+const ipv6UserRouteMetric = 1024
 
 // Linux can retain expired routes in dumps after rejecting them for forwarding.
 func listUsableRoutes(family int, filter *netlink.Route, mask uint64) ([]netlink.Route, error) {
@@ -204,7 +208,6 @@ func replaceTableDefaultNetlink(
 func replaceTableRouteNetlink(
 	ctx context.Context, log *slog.Logger, want RouteSpec,
 ) error {
-	_ = ctx
 	link, err := linkByName(log, want.Dev)
 	if err != nil {
 		return err
@@ -212,6 +215,17 @@ func replaceTableRouteNetlink(
 	route, err := buildTableRoute(log, want, link)
 	if err != nil {
 		return err
+	}
+	desired := normalizedTableRouteRequest(*route)
+	current, err := listUsableRoutes(desired.Family, &desired, netlink.RT_FILTER_TABLE|netlink.RT_FILTER_DST)
+	if err != nil && !errors.Is(err, syscall.ENOENT) {
+		return err
+	}
+	for _, existing := range current {
+		if reflect.DeepEqual(normalizedTableRoute(existing), desired) {
+			log.DebugContext(ctx, "route: prefix already correct", "dest", want.Dest, "dev", want.Dev)
+			return nil
+		}
 	}
 
 	start := realClock{}.Now()
@@ -231,6 +245,39 @@ func replaceTableRouteNetlink(
 		return fmt.Errorf("RouteReplace(prefix,%s,%d,%s): %w", want.Family, want.TableID, want.Dest, err)
 	}
 	return nil
+}
+
+func normalizedTableRouteRequest(route netlink.Route) netlink.Route {
+	if route.Type == 0 {
+		route.Type = unix.RTN_UNICAST
+	}
+	if route.Protocol == 0 {
+		route.Protocol = unix.RTPROT_BOOT
+	}
+	if route.Table == 0 {
+		route.Table = unix.RT_TABLE_MAIN
+	}
+	if route.Family == unix.AF_INET6 {
+		// IPv6 route dumps report universe scope even for an on-link request.
+		route.Scope = netlink.SCOPE_UNIVERSE
+		if route.Priority == 0 {
+			route.Priority = ipv6UserRouteMetric
+		}
+	}
+	return normalizedTableRoute(route)
+}
+
+func normalizedTableRoute(route netlink.Route) netlink.Route {
+	if route.Dst != nil {
+		route.Dst = &net.IPNet{IP: route.Dst.IP.To16(), Mask: route.Dst.Mask}
+	}
+	route.Src = route.Src.To16()
+	route.Gw = route.Gw.To16()
+	// Cache usage and age do not change a permanent route's forwarding policy.
+	if route.CacheInfo != nil && route.CacheInfo.Expires == 0 {
+		route.CacheInfo = nil
+	}
+	return route
 }
 
 func buildTableRoute(log *slog.Logger, want RouteSpec, link netlink.Link) (*netlink.Route, error) {
