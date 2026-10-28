@@ -147,7 +147,7 @@ func ownedFilter(filter netlink.Filter, direction Direction) bool {
 }
 
 func installFilter(link netlink.Link, direction Direction, program *ebpf.Program, policies *ebpf.Map) error {
-	identity, err := nativeProgramID(program, policies)
+	identity, err := ReadNativeProgramID(program, policies)
 	if err != nil {
 		return err
 	}

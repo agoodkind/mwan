@@ -7,28 +7,43 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 
 	mdnetlink "github.com/mdlayher/netlink"
 	"github.com/vishvananda/netlink/nl"
 	"golang.org/x/sys/unix"
 )
 
+type tcKind string
+
+const (
+	tcUnknown   tcKind = ""
+	tcNoQueue   tcKind = "noqueue"
+	tcMQ        tcKind = "mq"
+	tcClsact    tcKind = "clsact"
+	tcFQCodel   tcKind = "fq_codel"
+	tcPFIFOFast tcKind = "pfifo_fast"
+	tcBPF       tcKind = "bpf"
+)
+
 type nativeTC struct {
 	header  nl.TcMsg
-	kind    string
+	kind    tcKind
 	options []byte
 }
 
-func readNativeTC(ctx context.Context, index int, kind uint16, parent uint32) (records []nativeTC, resultErr error) {
-	if _, err := interfaceKey(index); err != nil {
-		return nil, err
+// ReadNativeTC requires a complete bounded kernel dump and rejects malformed policy records.
+func ReadNativeTC(ctx context.Context, index int, kind uint16, parent uint32) (records []nativeTC, resultErr error) {
+	if index < 1 || index > math.MaxInt32 {
+		return nil, fmt.Errorf("traffic-control interface index %d exceeds the kernel range", index)
 	}
+	ifindex := int32(index)
 	deadline, present := ctx.Deadline()
 	if !present {
 		return nil, fmt.Errorf("traffic-control inspection requires a deadline")
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("start traffic-control inspection: %w", err)
 	}
 	socket, err := mdnetlink.Dial(unix.NETLINK_ROUTE, nil)
 	if err != nil {
@@ -38,7 +53,7 @@ func readNativeTC(ctx context.Context, index int, kind uint16, parent uint32) (r
 	if err := socket.SetDeadline(deadline); err != nil {
 		return nil, fmt.Errorf("set traffic-control inspection deadline: %w", err)
 	}
-	header := nl.TcMsg{Ifindex: int32(index), Parent: parent}
+	header := nl.TcMsg{Ifindex: ifindex, Parent: parent}
 	messages, err := socket.Execute(mdnetlink.Message{
 		Header: mdnetlink.Header{Type: mdnetlink.HeaderType(kind), Flags: mdnetlink.Request | mdnetlink.Dump},
 		Data:   header.Serialize(),
@@ -51,10 +66,10 @@ func readNativeTC(ctx context.Context, index int, kind uint16, parent uint32) (r
 			return nil, fmt.Errorf("traffic-control dump returned an invalid record")
 		}
 		actual := *nl.DeserializeTcMsg(message.Data)
-		if actual.Ifindex != int32(index) {
+		if actual.Ifindex != ifindex {
 			continue
 		}
-		record, err := decodeNativeTC(actual, message.Data[nl.SizeofTcMsg:])
+		record, err := UnmarshalNativeTC(actual, message.Data[nl.SizeofTcMsg:])
 		if err != nil {
 			return nil, err
 		}
@@ -63,11 +78,12 @@ func readNativeTC(ctx context.Context, index int, kind uint16, parent uint32) (r
 	return records, nil
 }
 
-func decodeNativeTC(header nl.TcMsg, data []byte) (nativeTC, error) {
-	record := nativeTC{header: header, kind: "", options: nil}
+// UnmarshalNativeTC rejects duplicate, unsupported and truncated Linux TC attributes.
+func UnmarshalNativeTC(header nl.TcMsg, data []byte) (nativeTC, error) {
+	record := nativeTC{header: header, kind: tcUnknown, options: nil}
 	attributes, err := mdnetlink.NewAttributeDecoder(data)
 	if err != nil {
-		return record, err
+		return record, fmt.Errorf("decode traffic-control attribute list: %w", err)
 	}
 	seen := make(map[uint16]bool)
 	for attributes.Next() {
@@ -82,7 +98,7 @@ func decodeNativeTC(header nl.TcMsg, data []byte) (nativeTC, error) {
 			if len(value) < 2 || bytes.IndexByte(value, 0) != len(value)-1 {
 				return record, fmt.Errorf("traffic-control kind is not a terminated string")
 			}
-			record.kind = string(value[:len(value)-1])
+			record.kind = tcKind(value[:len(value)-1])
 		case nl.TCA_OPTIONS:
 			record.options = attributes.Bytes()
 		case nl.TCA_STATS, nl.TCA_XSTATS, nl.TCA_STATS2, nl.TCA_PAD:
@@ -102,7 +118,7 @@ func decodeNativeTC(header nl.TcMsg, data []byte) (nativeTC, error) {
 	if err := attributes.Err(); err != nil {
 		return record, fmt.Errorf("decode traffic-control attributes: %w", err)
 	}
-	if record.kind == "" || header.Family != unix.AF_UNSPEC || header.Pad != [3]byte{} {
+	if record.kind == tcUnknown || header.Family != unix.AF_UNSPEC || header.Pad != [3]byte{} {
 		return record, fmt.Errorf("traffic-control record lacks a supported header or kind")
 	}
 	return record, nil

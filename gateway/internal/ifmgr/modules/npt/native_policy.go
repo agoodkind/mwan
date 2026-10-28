@@ -23,5 +23,9 @@ func (m *Module) inspectNativePacketPolicy(ctx context.Context, indices []int) e
 	}
 	// Avoid the module lock: policy writers acquire the native guard before
 	// acquiring the translator lock, and this inspector already owns that guard.
-	return inspector.InspectNativePolicy(ctx, indices, policies)
+	if err := inspector.InspectNativePolicy(ctx, indices, policies); err != nil {
+		m.Env.Log.WarnContext(ctx, "applied NPT packet policy inspection failed", "interfaces", indices, "err", err)
+		return fmt.Errorf("inspect applied NPT packet policy: %w", err)
+	}
+	return nil
 }

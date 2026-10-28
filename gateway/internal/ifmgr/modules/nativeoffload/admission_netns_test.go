@@ -333,6 +333,7 @@ func newAdmissionFixture(t *testing.T, mode config.TranslationMode) admissionFix
 	for key, value := range map[string]string{
 		"net.ipv4.conf.all.rp_filter": "0", "net.ipv4.conf.default.rp_filter": "0",
 		"net.ipv4.conf.all.forwarding": "1", "net.ipv6.conf.all.forwarding": "1",
+		"net.ipv6.conf.default.addr_gen_mode": "1",
 	} {
 		if err := settings.Set(ctx, key, value); err != nil {
 			t.Fatalf("set admission sysctl %s=%s: %v", key, value, err)
@@ -355,6 +356,7 @@ func newAdmissionFixture(t *testing.T, mode config.TranslationMode) admissionFix
 	} {
 		admissionAddress(t, entry.link, entry.address)
 	}
+	admissionIPv6Ready(t, input, sender, output, peer, other, otherPeer)
 	connections := []interfaceintent.Connection{
 		{ID: admissionLANID, Name: input.Name, Owner: interfaceintent.OwnerMWAN, Roles: interfaceintent.RoleInternal},
 		{ID: admissionWANID, Name: output.Name, Owner: interfaceintent.OwnerMWAN, Roles: interfaceintent.RoleProvider},
@@ -456,6 +458,27 @@ func newAdmissionFixture(t *testing.T, mode config.TranslationMode) admissionFix
 		}
 	})
 	return fixture
+}
+
+func admissionIPv6Ready(t *testing.T, links ...*net.Interface) {
+	t.Helper()
+	// Only the explicit global addresses participate in these policy tests.
+	// Automatic link-local DAD would create unrelated later route notifications.
+	for _, link := range links {
+		current, err := netlink.LinkByIndex(link.Index)
+		if err != nil {
+			t.Fatalf("inspect admission IPv6 interface %s: %v", link.Name, err)
+		}
+		addresses, err := netlink.AddrList(current, unix.AF_INET6)
+		if err != nil {
+			t.Fatalf("read admission IPv6 readiness on %s: %v", link.Name, err)
+		}
+		for _, address := range addresses {
+			if address.Flags&(unix.IFA_F_TENTATIVE|unix.IFA_F_DADFAILED) != 0 {
+				t.Fatalf("admission IPv6 address is not ready on %s: %+v", link.Name, address)
+			}
+		}
+	}
 }
 
 func (fixture admissionFixture) preparePaths(t *testing.T) {

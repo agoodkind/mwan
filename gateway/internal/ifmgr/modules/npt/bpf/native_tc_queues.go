@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
+	"math"
 
 	mdnetlink "github.com/mdlayher/netlink"
 	"github.com/vishvananda/netlink"
@@ -14,7 +16,7 @@ import (
 )
 
 func inspectNativeQueues(ctx context.Context, link netlink.Link) (resultErr error) {
-	queues, err := readNativeTC(ctx, link.Attrs().Index, unix.RTM_GETQDISC, 0)
+	queues, err := ReadNativeTC(ctx, link.Attrs().Index, unix.RTM_GETQDISC, 0)
 	if err != nil {
 		return err
 	}
@@ -24,10 +26,10 @@ func inspectNativeQueues(ctx context.Context, link netlink.Link) (resultErr erro
 		}
 	}()
 	roots, hooks := 0, 0
-	rootKind := ""
+	rootKind := tcUnknown
 	leaves := make(map[uint32]bool)
 	for _, queue := range queues {
-		if queue.kind == "clsact" {
+		if queue.kind == tcClsact {
 			hooks++
 			if queue.header.Handle != netlink.MakeHandle(0xffff, 0) || queue.header.Parent != netlink.HANDLE_CLSACT || len(queue.options) != 0 {
 				return fmt.Errorf("native clsact attachment has unsupported attributes")
@@ -40,7 +42,7 @@ func inspectNativeQueues(ctx context.Context, link netlink.Link) (resultErr erro
 		if queue.header.Parent == netlink.HANDLE_ROOT {
 			roots++
 			rootKind = queue.kind
-			if rootKind != "noqueue" && rootKind != "mq" || len(queue.options) != 0 {
+			if rootKind != tcNoQueue && rootKind != tcMQ || len(queue.options) != 0 {
 				return fmt.Errorf("native admission cannot certify root qdisc %s", rootKind)
 			}
 			continue
@@ -53,10 +55,10 @@ func inspectNativeQueues(ctx context.Context, link netlink.Link) (resultErr erro
 		}
 		leaves[queue.header.Parent] = true
 	}
-	if roots != 1 || hooks > 1 || rootKind == "noqueue" && len(leaves) != 0 {
+	if roots != 1 || hooks > 1 || rootKind == tcNoQueue && len(leaves) != 0 {
 		return fmt.Errorf("native admission requires a complete kernel-default queue topology")
 	}
-	if rootKind == "mq" {
+	if rootKind == tcMQ {
 		return inspectNativeMQ(ctx, link, leaves)
 	}
 	return nil
@@ -64,9 +66,9 @@ func inspectNativeQueues(ctx context.Context, link netlink.Link) (resultErr erro
 
 func inspectDefaultLeaf(queue nativeTC, mtu int) error {
 	switch queue.kind {
-	case "fq_codel":
+	case tcFQCodel:
 		return inspectDefaultFQCodel(queue.options, mtu)
-	case "pfifo_fast":
+	case tcPFIFOFast:
 		defaults := nl.TcPrioMap{Bands: 3, Priomap: [netlink.PRIORITY_MAP_LEN]uint8{1, 2, 2, 2, 1, 2, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1}}
 		if !bytes.Equal(queue.options, defaults.Serialize()) {
 			return fmt.Errorf("pfifo_fast options differ from the kernel default")
@@ -78,7 +80,7 @@ func inspectDefaultLeaf(queue nativeTC, mtu int) error {
 }
 
 func inspectNativeMQ(ctx context.Context, link netlink.Link, leaves map[uint32]bool) error {
-	classes, err := readNativeTC(ctx, link.Attrs().Index, unix.RTM_GETTCLASS, 0)
+	classes, err := ReadNativeTC(ctx, link.Attrs().Index, unix.RTM_GETTCLASS, 0)
 	if err != nil {
 		return err
 	}
@@ -88,7 +90,7 @@ func inspectNativeMQ(ctx context.Context, link netlink.Link, leaves map[uint32]b
 	}
 	seen := make(map[uint32]bool, len(classes))
 	for _, class := range classes {
-		if class.kind != "mq" || class.header.Parent != netlink.HANDLE_ROOT || class.header.Info != 0 || len(class.options) != 0 || class.header.Handle == 0 || class.header.Handle > uint32(allocated) || seen[class.header.Handle] {
+		if class.kind != tcMQ || class.header.Parent != netlink.HANDLE_ROOT || class.header.Info != 0 || len(class.options) != 0 || class.header.Handle == 0 || class.header.Handle > uint32(allocated) || seen[class.header.Handle] {
 			return fmt.Errorf("mq class differs from the default zero-handle child contract: %+v", class)
 		}
 		seen[class.header.Handle] = true
@@ -103,7 +105,7 @@ func inspectNativeMQ(ctx context.Context, link netlink.Link, leaves map[uint32]b
 	return nil
 }
 
-func inspectDefaultFQCodel(data []byte, mtu int) error {
+func inspectDefaultFQCodel(data []byte, mtu int) (resultErr error) {
 	const (
 		defaultLimit        = 10240
 		defaultFlows        = 1024
@@ -111,9 +113,17 @@ func inspectDefaultFQCodel(data []byte, mtu int) error {
 		defaultMemory       = 32 * 1024 * 1024
 		ethernetHeaderBytes = 14
 	)
+	defer func() {
+		if resultErr != nil {
+			slog.Warn("native fq_codel policy inspection failed", "mtu", mtu, "err", resultErr)
+		}
+	}()
+	if mtu < 1 || mtu > math.MaxUint16 {
+		return fmt.Errorf("native fq_codel MTU %d exceeds the supported range", mtu)
+	}
 	options, err := mdnetlink.NewAttributeDecoder(data)
 	if err != nil {
-		return err
+		return fmt.Errorf("decode fq_codel option list: %w", err)
 	}
 	expected := map[uint16]uint32{
 		nl.TCA_FQ_CODEL_LIMIT: defaultLimit, nl.TCA_FQ_CODEL_FLOWS: defaultFlows,
@@ -135,7 +145,7 @@ func inspectDefaultFQCodel(data []byte, mtu int) error {
 		delete(expected, kind)
 	}
 	if err := options.Err(); err != nil {
-		return err
+		return fmt.Errorf("decode fq_codel option value: %w", err)
 	}
 	if len(expected) != 0 {
 		return fmt.Errorf("fq_codel inspection omitted required default options")

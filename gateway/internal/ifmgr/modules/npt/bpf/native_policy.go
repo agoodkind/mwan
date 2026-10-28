@@ -52,11 +52,11 @@ func (translator *Translator) InspectNativePolicy(ctx context.Context, indices [
 		if actual != policy.value {
 			return fmt.Errorf("interface %d native NPTv6 map differs from applied policy", index)
 		}
-		ingress, err := nativeProgramID(translator.objects.NptIngress, translator.objects.Policies)
+		ingress, err := ReadNativeProgramID(translator.objects.NptIngress, translator.objects.Policies)
 		if err != nil {
 			return err
 		}
-		egress, err := nativeProgramID(translator.objects.NptEgress, translator.objects.Policies)
+		egress, err := ReadNativeProgramID(translator.objects.NptEgress, translator.objects.Policies)
 		if err != nil {
 			return err
 		}
@@ -65,7 +65,8 @@ func (translator *Translator) InspectNativePolicy(ctx context.Context, indices [
 	return inspectNativeInterfaces(ctx, indices, programs)
 }
 
-func nativeProgramID(program *ebpf.Program, policies *ebpf.Map) (uint32, error) {
+// ReadNativeProgramID requires kernel proof that the current classifier references its exact policy map.
+func ReadNativeProgramID(program *ebpf.Program, policies *ebpf.Map) (uint32, error) {
 	info, err := program.Info()
 	if err != nil {
 		return 0, fmt.Errorf("inspect current NPTv6 program: %w", err)
@@ -89,10 +90,15 @@ func nativeProgramID(program *ebpf.Program, policies *ebpf.Map) (uint32, error) 
 	return uint32(identity), nil
 }
 
-func inspectNativeInterfaces(ctx context.Context, indices []int, programs map[int]nativePrograms) error {
+func inspectNativeInterfaces(ctx context.Context, indices []int, programs map[int]nativePrograms) (resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			slog.WarnContext(ctx, "native interface packet policy inspection failed", "interfaces", indices, "err", resultErr)
+		}
+	}()
 	for _, index := range indices {
 		if err := ctx.Err(); err != nil {
-			return err
+			return fmt.Errorf("inspect native interface packet policy: %w", err)
 		}
 		link, err := netlink.LinkByIndex(index)
 		if err != nil {
