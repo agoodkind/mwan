@@ -169,6 +169,7 @@ type tunnelEndpoints struct {
 
 func validateTunnels(connections []interfaceintent.Connection, declared map[string]bool, indexes map[string]int) error {
 	owners := make(map[tunnelEndpoints]string)
+	receivers := make(map[vxlanReceiver]string)
 	for _, connection := range connections {
 		if connection.Link == nil || connection.Link.Tunnel == nil {
 			continue
@@ -203,19 +204,26 @@ func validateTunnels(connections []interfaceintent.Connection, declared map[stri
 				connection.Name, *connection.Link.MTU, tunnel.Underlay, *underlay.Link.MTU,
 				overhead)
 		}
-		endpoints := tunnelEndpoints{protocol: tunnel.Protocol, underlay: tunnel.Underlay, local: tunnel.Local, remote: tunnel.Remote, vni: 0, sourcePort: 0, destinationPort: 0}
-		if tunnel.VXLAN != nil {
-			endpoints.vni, endpoints.sourcePort, endpoints.destinationPort = tunnel.VXLAN.VNI, tunnel.VXLAN.SourcePort, tunnel.VXLAN.DestinationPort
+		if err := validateTunnelIdentity(connection, owners, receivers); err != nil {
+			return err
 		}
-		if prior, taken := owners[endpoints]; taken {
-			local := "unspecified"
-			if tunnel.Local.IsValid() {
-				local = tunnel.Local.String()
-			}
-			return fmt.Errorf("interfaces %s and %s configure the same tunnel (underlay %s, local %s, remote %s)",
-				prior, connection.Name, tunnel.Underlay, local, tunnel.Remote)
-		}
-		owners[endpoints] = connection.Name
 	}
 	return nil
+}
+
+func validateTunnelIdentity(connection interfaceintent.Connection, owners map[tunnelEndpoints]string, receivers map[vxlanReceiver]string) error {
+	tunnel := connection.Link.Tunnel
+	endpoints := tunnelEndpoints{protocol: tunnel.Protocol, underlay: tunnel.Underlay, local: tunnel.Local, remote: tunnel.Remote, vni: 0, sourcePort: 0, destinationPort: 0}
+	if tunnel.VXLAN != nil {
+		endpoints.vni, endpoints.sourcePort, endpoints.destinationPort = tunnel.VXLAN.VNI, tunnel.VXLAN.SourcePort, tunnel.VXLAN.DestinationPort
+	}
+	if prior, taken := owners[endpoints]; taken {
+		local := "unspecified"
+		if tunnel.Local.IsValid() {
+			local = tunnel.Local.String()
+		}
+		return fmt.Errorf("interfaces %s and %s configure the same tunnel (underlay %s, local %s, remote %s)", prior, connection.Name, tunnel.Underlay, local, tunnel.Remote)
+	}
+	owners[endpoints] = connection.Name
+	return validateVXLANReceiver(connection.Name, tunnel.VXLAN, receivers)
 }

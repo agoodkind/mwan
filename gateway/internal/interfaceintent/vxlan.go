@@ -1,11 +1,15 @@
 package interfaceintent
 
 const (
+	// TunnelProtocolVXLAN selects an Ethernet tunnel with a fixed remote IPv4 endpoint.
 	TunnelProtocolVXLAN TunnelProtocol = "vxlan"
-	TunnelVXLANOverhead                = 50
-	MaximumVXLANVNI                    = 16777215
+	// TunnelVXLANOverhead includes outer IPv4, UDP, VXLAN and inner Ethernet headers.
+	TunnelVXLANOverhead = 50
+	// MaximumVXLANVNI bounds the network identifier to its 24-bit wire field.
+	MaximumVXLANVNI = 16777215
 )
 
+// VXLAN specifies the fixed UDP envelope of one routed point-to-point tunnel.
 type VXLAN struct {
 	VNI             uint32 `json:"vni"`
 	SourcePort      uint16 `json:"source_port"`
@@ -13,6 +17,7 @@ type VXLAN struct {
 	TOS             uint8  `json:"tos"`
 }
 
+// Clone gives each configuration consumer independent TTL and VXLAN settings.
 func (tunnel *Tunnel) Clone() *Tunnel {
 	if tunnel == nil {
 		return nil

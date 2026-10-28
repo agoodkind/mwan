@@ -13,6 +13,24 @@ type linkVXLAN struct {
 	TOS             *uint8  `json:"tos"`
 }
 
+type vxlanReceiver struct {
+	vni  uint32
+	port uint16
+}
+
+func validateVXLANReceiver(name string, settings *interfaceintent.VXLAN, receivers map[vxlanReceiver]string) error {
+	if settings == nil {
+		return nil
+	}
+	// Fixed IPv4 VXLAN receivers share the namespace's VNI and UDP port lookup.
+	key := vxlanReceiver{vni: settings.VNI, port: settings.DestinationPort}
+	if prior, found := receivers[key]; found {
+		return fmt.Errorf("interfaces %s and %s share VXLAN receiver VNI %d and destination UDP port %d", prior, name, key.vni, key.port)
+	}
+	receivers[key] = name
+	return nil
+}
+
 func buildTunnelVXLAN(name string, wire *linkTunnel) (*interfaceintent.VXLAN, error) {
 	switch interfaceintent.TunnelProtocol(wire.Protocol) {
 	case interfaceintent.TunnelProtocol6in4:
