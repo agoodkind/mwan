@@ -204,13 +204,11 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	if module.stats.Failure != nil {
 		return module.stats.Failure
 	}
-	if !module.refreshPolicy(ctx) {
-		return nil
-	}
 	if module.runtime != nil {
 		if err := module.verifyLinks(); err != nil {
 			return module.fail(ctx, err)
 		}
+		module.refreshPolicy(ctx)
 		return nil
 	}
 	configuration, links, err := module.resolveGraph()
@@ -239,6 +237,7 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		module.startupFailed = true
 		return module.fail(ctx, fmt.Errorf("initialize native packet worker: %w", err))
 	}
+	module.refreshPolicy(ctx)
 	log.InfoContext(ctx, "native automatic admission enabled", "pair_capacity", module.cfg.Settings.PairCapacity, "flow_capacity", module.cfg.Settings.FlowCapacity, "observation_capacity", module.cfg.Settings.ObservationCapacity)
 	return nil
 }
@@ -276,6 +275,13 @@ func (module *Module) guardForwarding(ctx context.Context) (func(), error) {
 func (module *Module) OnKernelEvent(ctx context.Context, _ *slog.Logger, _ netif.Event) error {
 	module.Lock()
 	defer module.Unlock()
+	if module.stats.Failure != nil {
+		return nil
+	}
+	if module.runtime == nil || len(module.flows) == 0 {
+		module.rebaseEvidence()
+		return nil
+	}
 	module.policyGeneration.Add(1)
 	if err := module.suspendAll(ctx, "kernel forwarding observation changed"); err != nil {
 		return err
@@ -316,6 +322,9 @@ func (module *Module) Stats() AdmissionStats {
 }
 
 func (module *Module) checkEvidence(ctx context.Context) bool {
+	if module.stats.Failure != nil {
+		return false
+	}
 	if err := errors.Join(module.events.Err(), module.forwarding.Err(), module.rules.Err()); err != nil {
 		_ = module.fail(ctx, err)
 		return false

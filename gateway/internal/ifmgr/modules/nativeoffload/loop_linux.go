@@ -59,10 +59,7 @@ func (module *Module) run(ctx context.Context) {
 				rules = nil
 				continue
 			}
-			module.withLock(func() {
-				module.refreshPolicy(ctx)
-				module.checkEvidence(ctx)
-			})
+			module.withLock(func() { module.observePolicyChange(ctx) })
 		case failure, open := <-rulesFailures:
 			if !open {
 				rulesFailures = nil

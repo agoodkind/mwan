@@ -62,6 +62,9 @@ func (module *Module) policyCached(rules, configured uint64) bool {
 }
 
 func (module *Module) refreshPolicy(ctx context.Context) bool {
+	if module.stats.Failure != nil {
+		return false
+	}
 	failure := module.certifyPolicy(ctx, true)
 	blocked := failure != nil
 	if blocked == module.policyBlocked {
@@ -80,7 +83,19 @@ func (module *Module) refreshPolicy(ctx context.Context) bool {
 		module.Log.DebugContext(ctx, "native policy became ineligible", "err", failure)
 	} else {
 		module.Log.DebugContext(ctx, "native policy certification restored")
+		module.requestResumeReconcile()
 	}
-	module.requestResumeReconcile()
 	return !blocked
+}
+
+func (module *Module) observePolicyChange(ctx context.Context) {
+	if module.stats.Failure != nil {
+		return
+	}
+	if module.runtime == nil {
+		module.policyCertificate = nil
+	} else if !module.policyCached(module.rules.Generation(), module.policyGeneration.Load()) {
+		module.refreshPolicy(ctx)
+	}
+	module.checkEvidence(ctx)
 }

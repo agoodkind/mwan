@@ -21,6 +21,10 @@ type evidenceEpoch struct {
 }
 
 func (module *Module) invalidateEvidence(ctx context.Context) {
+	if module.runtime == nil || len(module.flows) == 0 {
+		module.rebaseEvidence()
+		return
+	}
 	if err := module.suspendAll(ctx, "forwarding evidence changed"); err != nil {
 		_ = module.fail(ctx, err)
 		return
@@ -28,6 +32,12 @@ func (module *Module) invalidateEvidence(ctx context.Context) {
 	module.evidenceGeneration = module.forwarding.Generation()
 	module.policyGeneration.Add(1)
 	module.requestResumeReconcile()
+}
+
+func (module *Module) rebaseEvidence() {
+	module.evidenceGeneration = module.forwarding.Generation()
+	module.cachedEvidence = nil
+	module.resumePass = nil
 }
 
 type evidenceCheck struct {

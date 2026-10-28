@@ -79,6 +79,9 @@ func (module *Module) scheduleResumption() {
 }
 
 func (module *Module) requestResumeReconcile() {
+	if module.runtime == nil || module.stats.Failure != nil {
+		return
+	}
 	if module.Env.RequestReconcile != nil {
 		module.Env.RequestReconcile("native rules require fresh family readiness")
 	}
