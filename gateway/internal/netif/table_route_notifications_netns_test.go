@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"log/slog"
 	"net"
+	"net/netip"
 	"testing"
 
 	mdnetlink "github.com/mdlayher/netlink"
@@ -15,6 +16,17 @@ import (
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/offload"
 )
+
+type tableRouteNotification struct {
+	messageType mdnetlink.HeaderType
+	destination netip.Prefix
+	table       uint32
+	routeType   uint8
+	outputIndex uint32
+	gateway     netip.Addr
+	metric      uint32
+	protocol    uint8
+}
 
 func tableRouteNotificationSocket(t *testing.T) *mdnetlink.Conn {
 	t.Helper()
@@ -40,7 +52,68 @@ func tableRouteNotificationSocket(t *testing.T) *mdnetlink.Conn {
 	return socket
 }
 
-func tableRouteNotificationCount(t *testing.T, socket *mdnetlink.Conn) int {
+func tableRouteNotificationAddress(t *testing.T, data []byte, attribute uint16) netip.Addr {
+	t.Helper()
+	address, valid := netip.AddrFromSlice(data)
+	if !valid || len(data) != net.IPv6len {
+		t.Fatalf("IPv6 route attribute %d has an invalid address: %x", attribute, data)
+	}
+	return address
+}
+
+func unmarshalTableRouteNotification(t *testing.T, message mdnetlink.Message) tableRouteNotification {
+	t.Helper()
+	if len(message.Data) < unix.SizeofRtMsg {
+		t.Fatalf("route notification omitted its Linux header: %+v", message)
+	}
+	var header unix.RtMsg
+	if _, err := binary.Decode(message.Data[:unix.SizeofRtMsg], binary.NativeEndian, &header); err != nil {
+		t.Fatalf("decode route notification header: %v", err)
+	}
+	if header.Family != unix.AF_INET6 || header.Dst_len > net.IPv6len*8 || header.Src_len > net.IPv6len*8 {
+		t.Fatalf("invalid IPv6 route notification header: %+v", header)
+	}
+	notification := tableRouteNotification{
+		messageType: message.Header.Type, destination: netip.Prefix{}, table: uint32(header.Table),
+		routeType: header.Type, outputIndex: 0, gateway: netip.Addr{}, metric: 0, protocol: header.Protocol,
+	}
+	attributes, err := mdnetlink.NewAttributeDecoder(message.Data[unix.SizeofRtMsg:])
+	if err != nil {
+		t.Fatalf("decode route notification attributes: %v", err)
+	}
+	attributes.ByteOrder = binary.NativeEndian
+	address := netip.IPv6Unspecified()
+	seen := make(map[uint16]bool)
+	for attributes.Next() {
+		attribute := attributes.Type()
+		if seen[attribute] {
+			t.Fatalf("route notification repeated attribute %d: header=%+v", attribute, header)
+		}
+		seen[attribute] = true
+		switch attribute {
+		case unix.RTA_DST:
+			address = tableRouteNotificationAddress(t, attributes.Bytes(), attribute)
+		case unix.RTA_TABLE:
+			notification.table = attributes.Uint32()
+		case unix.RTA_OIF:
+			notification.outputIndex = attributes.Uint32()
+		case unix.RTA_GATEWAY:
+			notification.gateway = tableRouteNotificationAddress(t, attributes.Bytes(), attribute)
+		case unix.RTA_PRIORITY:
+			notification.metric = attributes.Uint32()
+		}
+	}
+	if err := attributes.Err(); err != nil {
+		t.Fatalf("decode route notification attribute value: %v", err)
+	}
+	if header.Dst_len != 0 && !seen[unix.RTA_DST] {
+		t.Fatalf("route notification omitted its destination: header=%+v", header)
+	}
+	notification.destination = netip.PrefixFrom(address, int(header.Dst_len)).Masked()
+	return notification
+}
+
+func tableRouteNotificationCount(t *testing.T, socket *mdnetlink.Conn, destination netip.Prefix, table uint32) (int, []tableRouteNotification) {
 	t.Helper()
 	// This socket's acknowledgment follows its already queued multicast messages.
 	barrier, err := socket.Send(mdnetlink.Message{
@@ -50,6 +123,7 @@ func tableRouteNotificationCount(t *testing.T, socket *mdnetlink.Conn) int {
 		t.Fatalf("send route notification barrier: %v", err)
 	}
 	count := 0
+	notifications := make([]tableRouteNotification, 0)
 	for {
 		messages, err := socket.Receive()
 		if err != nil {
@@ -58,12 +132,19 @@ func tableRouteNotificationCount(t *testing.T, socket *mdnetlink.Conn) int {
 		for _, message := range messages {
 			switch message.Header.Type {
 			case unix.RTM_NEWROUTE, unix.RTM_DELROUTE:
-				count++
+				notification := unmarshalTableRouteNotification(t, message)
+				notifications = append(notifications, notification)
+				t.Logf("IPv6 route notification: message_type=%d destination=%s table=%d route_type=%d output=%d gateway=%s metric=%d protocol=%d",
+					notification.messageType, notification.destination, notification.table, notification.routeType,
+					notification.outputIndex, notification.gateway, notification.metric, notification.protocol)
+				if notification.destination == destination && notification.table == table {
+					count++
+				}
 			case mdnetlink.Error:
 				if message.Header.Sequence != barrier.Header.Sequence || len(message.Data) < 4 || binary.NativeEndian.Uint32(message.Data[:4]) != 0 {
 					t.Fatalf("route notification barrier failed: %+v", message)
 				}
-				return count
+				return count, notifications
 			case mdnetlink.Overrun:
 				t.Fatal("kernel route notifications lost messages")
 			case mdnetlink.Noop, mdnetlink.Done:
@@ -121,22 +202,23 @@ func TestReconcileTableRoutePreservesForwardingEvidence(t *testing.T) {
 		}
 	}
 	socket := tableRouteNotificationSocket(t)
+	destination := netip.PrefixFrom(fixture.selector.Destination.Addr(), net.IPv6len*8)
 	want := netif.RouteSpec{
-		Family: "inet6", Dest: fixture.selector.Destination.Addr().String() + "/128", Via: "", Dev: fixture.outputs[0].Attrs().Name,
+		Family: "inet6", Dest: destination.String(), Via: "", Dev: fixture.outputs[0].Attrs().Name,
 		TableID: unix.RT_TABLE_MAIN, Metric: 0, Protocol: 0,
 	}
 	if err := netif.ReconcileTableRoute(t.Context(), log, want); err != nil {
 		t.Fatalf("install prefix route: %v", err)
 	}
-	if count := tableRouteNotificationCount(t, socket); count != 1 {
-		t.Fatalf("initial prefix route notifications = %d, want 1", count)
+	if count, notifications := tableRouteNotificationCount(t, socket, destination, unix.RT_TABLE_MAIN); count != 1 {
+		t.Fatalf("initial prefix route notifications = %d, want 1: target=%s table=%d notifications=%+v", count, destination, unix.RT_TABLE_MAIN, notifications)
 	}
 	assertTableRoutePath(t, fixture, 0, nil)
 	if err := netif.ReconcileTableRoute(t.Context(), log, want); err != nil {
 		t.Fatalf("reconcile unchanged prefix route: %v", err)
 	}
-	if count := tableRouteNotificationCount(t, socket); count != 0 {
-		t.Fatalf("unchanged prefix route emitted %d notifications", count)
+	if count, notifications := tableRouteNotificationCount(t, socket, destination, unix.RT_TABLE_MAIN); count != 0 {
+		t.Fatalf("unchanged prefix route emitted %d target notifications: target=%s table=%d notifications=%+v", count, destination, unix.RT_TABLE_MAIN, notifications)
 	}
 	// A fresh production observer measures the change independently of the barrier.
 	events, err := offload.NewForwardingEvents(t.Context(), 1<<20)
@@ -153,15 +235,15 @@ func TestReconcileTableRoutePreservesForwardingEvidence(t *testing.T) {
 	if err := netif.ReconcileTableRoute(t.Context(), log, want); err != nil {
 		t.Fatalf("change prefix forwarding path: %v", err)
 	}
-	if count := tableRouteNotificationCount(t, socket); count == 0 {
-		t.Fatal("changed prefix route did not emit a notification")
+	if count, notifications := tableRouteNotificationCount(t, socket, destination, unix.RT_TABLE_MAIN); count == 0 {
+		t.Fatalf("changed prefix route did not emit a target notification: target=%s table=%d notifications=%+v", destination, unix.RT_TABLE_MAIN, notifications)
 	}
 	t.Logf("changed prefix route advanced forwarding generation from %d to %d", previous, waitTableRouteGeneration(t, events, previous))
 	assertTableRoutePath(t, fixture, 1, fixture.gateways[1])
 	if err := netif.ReconcileTableRoute(t.Context(), log, want); err != nil {
 		t.Fatalf("reconcile unchanged gateway route: %v", err)
 	}
-	if count := tableRouteNotificationCount(t, socket); count != 0 {
-		t.Fatalf("unchanged gateway route emitted %d notifications", count)
+	if count, notifications := tableRouteNotificationCount(t, socket, destination, unix.RT_TABLE_MAIN); count != 0 {
+		t.Fatalf("unchanged gateway route emitted %d target notifications: target=%s table=%d notifications=%+v", count, destination, unix.RT_TABLE_MAIN, notifications)
 	}
 }
