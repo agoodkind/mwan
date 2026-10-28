@@ -5,6 +5,7 @@ package bpf
 import (
 	"context"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 
@@ -124,20 +125,20 @@ func TestNativePacketPolicyKernelDefaultMQ(t *testing.T) {
 	t.Cleanup(func() {
 		for _, descriptor := range link.Fds {
 			if err := descriptor.Close(); err != nil {
-				t.Error(err)
+				t.Errorf("close multiqueue TAP queue descriptor: %v", err)
 			}
 		}
 	})
 	if err := netlink.LinkSetUp(link); err != nil {
-		t.Fatal(err)
+		t.Fatalf("enable multiqueue TAP %s: %v", link.Name, err)
 	}
 	actual, err := netlink.LinkByName(link.Name)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("inspect multiqueue TAP %s: %v", link.Name, err)
 	}
 	queues, err := netlink.QdiscList(actual)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("read default queues on %s: %v", actual.Attrs().Name, err)
 	}
 	multiqueue := false
 	for _, queue := range queues {
@@ -149,14 +150,24 @@ func TestNativePacketPolicyKernelDefaultMQ(t *testing.T) {
 	if err := InspectNativePolicy(ctx, []int{actual.Attrs().Index}); err != nil {
 		t.Fatalf("kernel-default mq topology failed inspection: %v", err)
 	}
-	configured := &netlink.GenericQdisc{
-		QdiscAttrs: netlink.QdiscAttrs{LinkIndex: actual.Attrs().Index, Parent: 1, Handle: netlink.MakeHandle(1, 0)},
-		QdiscType:  "pfifo_fast",
-	}
+	configured := netlink.NewPrio(netlink.QdiscAttrs{
+		LinkIndex: actual.Attrs().Index, Parent: netlink.HANDLE_ROOT, Handle: netlink.MakeHandle(1, 0),
+	})
 	if err := netlink.QdiscReplace(configured); err != nil {
-		t.Fatal(err)
+		t.Fatalf("replace mq root on %s with explicit three-band prio handle 1:0: %v", actual.Attrs().Name, err)
 	}
-	if err := InspectNativePolicy(ctx, []int{actual.Attrs().Index}); err == nil {
-		t.Fatal("native inspection accepted an explicitly configured mq leaf")
+	queues, err = netlink.QdiscList(actual)
+	if err != nil {
+		t.Fatalf("read explicit root replacement on %s: %v", actual.Attrs().Name, err)
+	}
+	installed := false
+	for _, queue := range queues {
+		installed = installed || queue.Type() == configured.Type() && queue.Attrs().Parent == configured.Parent && queue.Attrs().Handle == configured.Handle
+	}
+	if !installed {
+		t.Fatalf("kernel did not confirm the explicit prio root on %s: %+v", actual.Attrs().Name, queues)
+	}
+	if err := InspectNativePolicy(ctx, []int{actual.Attrs().Index}); err == nil || !strings.Contains(err.Error(), "cannot bypass an explicitly configured qdisc") {
+		t.Fatalf("native inspection did not reject the confirmed explicit root policy: %v", err)
 	}
 }
