@@ -12,11 +12,16 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func inspectNativeQueues(ctx context.Context, link netlink.Link) error {
+func inspectNativeQueues(ctx context.Context, link netlink.Link) (resultErr error) {
 	queues, err := readNativeTC(ctx, link.Attrs().Index, unix.RTM_GETQDISC, 0)
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if resultErr != nil {
+			resultErr = fmt.Errorf("%w: link=%+v queues=%+v", resultErr, link.Attrs(), queues)
+		}
+	}()
 	roots, hooks := 0, 0
 	rootKind := ""
 	leaves := make(map[uint32]bool)

@@ -17,6 +17,9 @@ const nativePolicyTestTimeout = 10 * time.Second
 
 func TestNativePacketPolicyRejectsForeignFilters(t *testing.T) {
 	link := isolatePinTestNetwork(t)
+	if err := netlink.LinkSetUp(link); err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithTimeout(t.Context(), nativePolicyTestTimeout)
 	defer cancel()
 	indices := []int{link.Attrs().Index}
@@ -55,11 +58,14 @@ func TestNativePacketPolicyRejectsForeignFilters(t *testing.T) {
 
 func TestNativePacketPolicyNPTIdentity(t *testing.T) {
 	link := isolatePinTestNetwork(t)
+	if err := netlink.LinkSetUp(link); err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithTimeout(t.Context(), nativePolicyTestTimeout)
 	defer cancel()
 	indices := []int{link.Attrs().Index}
 	policies := pinTestPolicies(link)
-	first, err := newTranslator(t.TempDir())
+	first, err := newTranslator(mountPinTestBPFFS(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +79,7 @@ func TestNativePacketPolicyNPTIdentity(t *testing.T) {
 	if err := InspectNativePolicy(ctx, indices); err == nil {
 		t.Fatal("native inspection trusted an NPT label without its owner")
 	}
-	second, err := newTranslator(t.TempDir())
+	second, err := newTranslator(mountPinTestBPFFS(t))
 	if err != nil {
 		t.Fatal(err)
 	}

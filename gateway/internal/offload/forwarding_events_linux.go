@@ -238,7 +238,7 @@ func unmarshalForwardingMutation(message syscall.NetlinkMessage) (changed bool, 
 	case unix.RTM_NEWNEXTHOP, unix.RTM_DELNEXTHOP, unix.RTM_NEWNEXTHOPBUCKET, unix.RTM_DELNEXTHOPBUCKET:
 		headerBytes = forwardingNextHopHeaderBytes
 	case unix.RTM_NEWQDISC, unix.RTM_DELQDISC, unix.RTM_NEWTCLASS, unix.RTM_DELTCLASS,
-		unix.RTM_NEWTFILTER, unix.RTM_DELTFILTER:
+		unix.RTM_NEWTFILTER, unix.RTM_DELTFILTER, unix.RTM_NEWCHAIN, unix.RTM_DELCHAIN:
 		headerBytes = nl.SizeofTcMsg
 	case unix.RTM_NEWACTION, unix.RTM_DELACTION:
 		headerBytes = nl.SizeofTcActionMsg
