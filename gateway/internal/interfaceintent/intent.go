@@ -119,6 +119,7 @@ type Tunnel struct {
 	Remote   netip.Addr
 	Local    netip.Addr
 	TTL      *uint8
+	VXLAN    *VXLAN
 }
 
 // Match selects a physical device by driver or hardware address.

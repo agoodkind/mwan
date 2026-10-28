@@ -959,7 +959,7 @@ module goodkind-mwan-steering {
            encapsulates packets for transport between two endpoints.";
         must "not(../mtu) or ../mtu >= 1280" {
           error-message
-            "A 6in4 tunnel requires an MTU of at least 1280 bytes.";
+            "A tunnel requires an MTU of at least 1280 bytes.";
           description
             "RFC 8200 section 5 requires every IPv6 link to transport
              1280-byte packets.";
@@ -971,8 +971,37 @@ module goodkind-mwan-steering {
               description
                 "The tunnel transports IPv6 packets inside IPv4 packets.";
             }
+            enum vxlan {
+              description "The tunnel transports Ethernet frames inside UDP over IPv4.";
+            }
           }
           description "This field selects the encapsulation protocol.";
+        }
+        must "(protocol = 'vxlan' and vxlan) or (protocol != 'vxlan' and not(vxlan))" {
+          error-message "The vxlan container is required only for protocol vxlan.";
+        }
+        container vxlan {
+          presence "The tunnel uses an explicit VXLAN identifier and UDP envelope.";
+          leaf vni {
+            type uint32 { range "0..16777215"; }
+            mandatory true;
+            description "The VXLAN network identifier.";
+          }
+          leaf source-port {
+            type uint16 { range "1..65535"; }
+            mandatory true;
+            description "The fixed source UDP port.";
+          }
+          leaf destination-port {
+            type uint16 { range "1..65535"; }
+            mandatory true;
+            description "The remote UDP port.";
+          }
+          leaf tos {
+            type uint8;
+            mandatory true;
+            description "The outer IPv4 type of service byte.";
+          }
         }
         leaf underlay {
           mandatory true;

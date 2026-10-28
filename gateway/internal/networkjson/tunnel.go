@@ -15,8 +15,9 @@ func buildIntentTunnel(entry ifaceEntry) (*interfaceintent.Tunnel, error) {
 	if err := rejectTunnelLinkLeaves(entry); err != nil {
 		return nil, err
 	}
-	if wire.Protocol != string(interfaceintent.TunnelProtocol6in4) {
-		return nil, fmt.Errorf("interface %s: link/tunnel/protocol %q is not supported", entry.Name, wire.Protocol)
+	vxlan, err := buildTunnelVXLAN(entry.Name, wire)
+	if err != nil {
+		return nil, err
 	}
 	if wire.Underlay == "" {
 		return nil, fmt.Errorf("interface %s: link/tunnel/underlay is required", entry.Name)
@@ -39,20 +40,22 @@ func buildIntentTunnel(entry ifaceEntry) (*interfaceintent.Tunnel, error) {
 		return nil, fmt.Errorf("interface %s: link/tunnel/ttl must be between 1 and 255", entry.Name)
 	}
 	if entry.Link.MTU != nil && *entry.Link.MTU < interfaceintent.IPv6MinimumMTU {
-		return nil, fmt.Errorf("interface %s: 6in4 tunnel mtu %d is below the IPv6 minimum %d",
-			entry.Name, *entry.Link.MTU, interfaceintent.IPv6MinimumMTU)
+		return nil, fmt.Errorf("interface %s: %s tunnel mtu %d is below the IPv6 minimum %d",
+			entry.Name, wire.Protocol, *entry.Link.MTU, interfaceintent.IPv6MinimumMTU)
 	}
-	if err := rejectTunnelIPv4(entry); err != nil {
-		return nil, err
-	}
-	if entry.WAN != nil {
-		if err := validateTunnelProvider(entry); err != nil {
+	if wire.Protocol == string(interfaceintent.TunnelProtocol6in4) {
+		if err := rejectTunnelIPv4(entry); err != nil {
 			return nil, err
+		}
+		if entry.WAN != nil {
+			if err := validateTunnelProvider(entry); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return &interfaceintent.Tunnel{
-		Protocol: interfaceintent.TunnelProtocol6in4, Underlay: wire.Underlay,
-		Remote: remote, Local: local, TTL: wire.TTL,
+		Protocol: interfaceintent.TunnelProtocol(wire.Protocol), Underlay: wire.Underlay,
+		Remote: remote, Local: local, TTL: wire.TTL, VXLAN: vxlan,
 	}, nil
 }
 
@@ -86,7 +89,8 @@ func rejectTunnelIPv4(entry ifaceEntry) error {
 		len(family.Routes) != 0 || len(family.SourceAddresses) != 0 {
 		return fmt.Errorf(
 			"interface %s: a 6in4 tunnel transports only IPv6 and cannot include ipv4 addresses, DHCP, a gateway, or routes",
-			entry.Name)
+			entry.Name,
+		)
 	}
 	return nil
 }
@@ -136,7 +140,8 @@ func parseTunnelEndpoint(name string, leaf string, raw string) (netip.Addr, erro
 	}
 	if rejected {
 		return netip.Addr{}, fmt.Errorf(
-			"interface %s: link/tunnel/%s %s must be a unicast IPv4 address for a 6in4 tunnel", name, leaf, raw)
+			"interface %s: link/tunnel/%s %s must be a unicast IPv4 address", name, leaf, raw,
+		)
 	}
 	return address, nil
 }
@@ -153,9 +158,13 @@ func linkDependencies(link *interfaceintent.Link) []string {
 }
 
 type tunnelEndpoints struct {
-	underlay string
-	local    netip.Addr
-	remote   netip.Addr
+	protocol        interfaceintent.TunnelProtocol
+	underlay        string
+	local           netip.Addr
+	remote          netip.Addr
+	vni             uint32
+	sourcePort      uint16
+	destinationPort uint16
 }
 
 func validateTunnels(connections []interfaceintent.Connection, declared map[string]bool, indexes map[string]int) error {
@@ -187,13 +196,17 @@ func validateTunnels(connections []interfaceintent.Connection, declared map[stri
 				return fmt.Errorf("interface %s: tunnel provider underlay %s has no ipv4 family", connection.Name, tunnel.Underlay)
 			}
 		}
+		overhead := tunnelOverhead(tunnel.Protocol)
 		if underlay.Link != nil && underlay.Link.MTU != nil && connection.Link.MTU != nil &&
-			uint64(*connection.Link.MTU)+interfaceintent.Tunnel6in4Overhead > uint64(*underlay.Link.MTU) {
+			uint64(*connection.Link.MTU)+overhead > uint64(*underlay.Link.MTU) {
 			return fmt.Errorf("interface %s: tunnel mtu %d exceeds underlay %s mtu %d less the %d-byte outer header",
 				connection.Name, *connection.Link.MTU, tunnel.Underlay, *underlay.Link.MTU,
-				interfaceintent.Tunnel6in4Overhead)
+				overhead)
 		}
-		endpoints := tunnelEndpoints{underlay: tunnel.Underlay, local: tunnel.Local, remote: tunnel.Remote}
+		endpoints := tunnelEndpoints{protocol: tunnel.Protocol, underlay: tunnel.Underlay, local: tunnel.Local, remote: tunnel.Remote, vni: 0, sourcePort: 0, destinationPort: 0}
+		if tunnel.VXLAN != nil {
+			endpoints.vni, endpoints.sourcePort, endpoints.destinationPort = tunnel.VXLAN.VNI, tunnel.VXLAN.SourcePort, tunnel.VXLAN.DestinationPort
+		}
 		if prior, taken := owners[endpoints]; taken {
 			local := "unspecified"
 			if tunnel.Local.IsValid() {

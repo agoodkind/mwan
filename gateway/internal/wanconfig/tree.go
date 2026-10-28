@@ -695,6 +695,15 @@ func tunnelItems(base string, tunnel *interfaceintent.Tunnel) []Item {
 	if tunnel.TTL != nil {
 		items = append(items, Item{Path: base + "/ttl", Value: uintValue(uint64(*tunnel.TTL))})
 	}
+	if tunnel.VXLAN != nil {
+		items = append(
+			items,
+			Item{Path: base + "/vxlan/vni", Value: uintValue(uint64(tunnel.VXLAN.VNI))},
+			Item{Path: base + "/vxlan/source-port", Value: uintValue(uint64(tunnel.VXLAN.SourcePort))},
+			Item{Path: base + "/vxlan/destination-port", Value: uintValue(uint64(tunnel.VXLAN.DestinationPort))},
+			Item{Path: base + "/vxlan/tos", Value: uintValue(uint64(tunnel.VXLAN.TOS))},
+		)
+	}
 	return items
 }
 

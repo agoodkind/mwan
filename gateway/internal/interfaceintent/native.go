@@ -84,6 +84,7 @@ func CloneNativeBindings(connections []Connection) []Connection {
 		if cloned[i].Link != nil {
 			link := *cloned[i].Link
 			link.NativeOffload = link.NativeOffload.Clone()
+			link.Tunnel = link.Tunnel.Clone()
 			cloned[i].Link = &link
 		}
 	}
