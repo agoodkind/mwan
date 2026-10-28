@@ -7,6 +7,15 @@ import (
 	"fmt"
 )
 
+type establishedAcceptance string
+
+const (
+	acceptAllForwarded       establishedAcceptance = "accept"
+	acceptEstablished        establishedAcceptance = "ct state established accept"
+	acceptEstablishedRelated establishedAcceptance = "ct state established,related accept"
+	acceptRelatedEstablished establishedAcceptance = "ct state related,established accept"
+)
+
 // InspectNative checks additional hooks for the confirmed established flows
 // admitted by the native worker. It never changes another writer's policy.
 func InspectNative(ctx context.Context, desired Ruleset) error {
@@ -58,8 +67,8 @@ func inspectNativeExtraChain(ctx context.Context, item kernelItem) error {
 	}
 	if layer3 && chain.Type == "filter" && chain.Hook == "forward" && len(rules) != 0 {
 		// No earlier condition may select a different verdict or packet mark.
-		switch normalizeRule(rules[0]) {
-		case "accept", "ct state established accept", "ct state established,related accept", "ct state related,established accept":
+		switch establishedAcceptance(normalizeRule(rules[0])) {
+		case acceptAllForwarded, acceptEstablished, acceptEstablishedRelated, acceptRelatedEstablished:
 			return nil
 		}
 	}

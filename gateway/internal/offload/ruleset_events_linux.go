@@ -147,7 +147,8 @@ func (source *RulesetEvents) Close() error {
 // supplies a deadline so a blocked send cannot outlive policy certification.
 func (source *RulesetEvents) Barrier(ctx context.Context) (uint64, error) {
 	if err := ctx.Err(); err != nil {
-		return 0, err
+		slog.WarnContext(ctx, "nftables checkpoint canceled before admission", "err", err)
+		return 0, fmt.Errorf("admit nftables generation checkpoint: %w", err)
 	}
 	if _, present := ctx.Deadline(); !present {
 		return 0, errors.New("nftables generation checkpoint requires a context deadline")
@@ -156,7 +157,9 @@ func (source *RulesetEvents) Barrier(ctx context.Context) (uint64, error) {
 	case source.requests <- struct{}{}:
 		defer func() { <-source.requests }()
 	case <-ctx.Done():
-		return 0, ctx.Err()
+		err := ctx.Err()
+		slog.WarnContext(ctx, "nftables checkpoint canceled while queued", "err", err)
+		return 0, fmt.Errorf("queue nftables generation checkpoint: %w", err)
 	case <-source.done:
 		return 0, source.closedError()
 	}
@@ -179,7 +182,9 @@ func (source *RulesetEvents) Barrier(ctx context.Context) (uint64, error) {
 	case reply := <-request.reply:
 		return reply, source.Err()
 	case <-ctx.Done():
-		return 0, ctx.Err()
+		err := ctx.Err()
+		slog.WarnContext(ctx, "nftables checkpoint canceled before reply", "sequence", sequence, "err", err)
+		return 0, fmt.Errorf("wait for nftables generation checkpoint %d: %w", sequence, err)
 	case <-source.done:
 		return 0, source.closedError()
 	}
@@ -203,6 +208,7 @@ func (source *RulesetEvents) clearRequest(request *rulesetRequest) {
 func (source *RulesetEvents) sendBarrier(ctx context.Context, sequence uint32) error {
 	deadline, _ := ctx.Deadline()
 	if err := source.socket.SetWriteDeadline(deadline); err != nil {
+		slog.WarnContext(ctx, "nftables request deadline failed", "sequence", sequence, "err", err)
 		return fmt.Errorf("bound nftables generation request: %w", err)
 	}
 	interrupted := make(chan error, 1)
@@ -219,9 +225,14 @@ func (source *RulesetEvents) sendBarrier(ctx context.Context, sequence uint32) e
 	}
 	resetErr := source.socket.SetWriteDeadline(time.Time{})
 	if err := errors.Join(sendErr, interruptErr, resetErr); err != nil {
+		slog.WarnContext(ctx, "nftables generation request failed", "sequence", sequence, "err", err)
 		return fmt.Errorf("request nftables generation: %w", err)
 	}
-	return ctx.Err()
+	if err := ctx.Err(); err != nil {
+		slog.WarnContext(ctx, "nftables generation request canceled", "sequence", sequence, "err", err)
+		return fmt.Errorf("complete nftables generation request %d: %w", sequence, err)
+	}
+	return nil
 }
 
 func (source *RulesetEvents) changed(changes chan<- struct{}) {
@@ -240,11 +251,13 @@ func (source *RulesetEvents) receive(raw syscall.RawConn, changes chan<- struct{
 			case <-source.stopping:
 				return nil
 			default:
+				slog.Warn("nftables observation receive failed", "err", err)
 				return fmt.Errorf("receive nftables observations: %w", err)
 			}
 		}
 		messages, err := syscall.ParseNetlinkMessage(buffer[:count])
 		if err != nil {
+			slog.Warn("nftables observation datagram invalid", "bytes", count, "err", err)
 			return fmt.Errorf("decode nftables observation datagram: %w", err)
 		}
 		for _, message := range messages {
@@ -260,6 +273,7 @@ func (source *RulesetEvents) message(message syscall.NetlinkMessage, changes cha
 	case unix.NLMSG_NOOP, unix.NFNL_MSG_BATCH_BEGIN, unix.NFNL_MSG_BATCH_END:
 		return nil
 	case unix.NLMSG_OVERRUN:
+		slog.Warn("nftables observation overrun", "err", unix.ENOBUFS)
 		return fmt.Errorf("nftables observation overrun: %w", unix.ENOBUFS)
 	case unix.NLMSG_ERROR:
 		errno, err := unmarshalNetlinkErrorCode(message.Data)
@@ -269,6 +283,7 @@ func (source *RulesetEvents) message(message syscall.NetlinkMessage, changes cha
 		if errno == 0 {
 			return errors.New("unexpected nftables observation acknowledgment")
 		}
+		slog.Warn("nftables observation request rejected", "sequence", message.Header.Seq, "err", errno)
 		return fmt.Errorf("nftables observation request failed: %w", errno)
 	}
 	if message.Header.Type>>8 != unix.NFNL_SUBSYS_NFTABLES || len(message.Data) < rulesetHeaderBytes {
@@ -276,6 +291,7 @@ func (source *RulesetEvents) message(message syscall.NetlinkMessage, changes cha
 	}
 	attributes, err := netlink.NewAttributeDecoder(message.Data[rulesetHeaderBytes:])
 	if err != nil {
+		slog.Warn("nftables observation attributes invalid", "type", message.Header.Type, "sequence", message.Header.Seq, "err", err)
 		return fmt.Errorf("decode nftables observation attributes: %w", err)
 	}
 	attributes.ByteOrder = binary.BigEndian
@@ -291,6 +307,7 @@ func (source *RulesetEvents) message(message syscall.NetlinkMessage, changes cha
 		}
 	}
 	if err := attributes.Err(); err != nil {
+		slog.Warn("nftables observation value invalid", "type", message.Header.Type, "sequence", message.Header.Seq, "err", err)
 		return fmt.Errorf("decode nftables observation attribute value: %w", err)
 	}
 	if message.Header.Type&0xff != unix.NFT_MSG_NEWGEN {
@@ -340,9 +357,11 @@ func rulesetSocketPortID(raw syscall.RawConn) (uint32, error) {
 		}
 		portID = bound.Pid
 	}); err != nil {
+		slog.Warn("nftables socket descriptor inspection failed", "err", err)
 		return 0, fmt.Errorf("inspect nftables socket descriptor: %w", err)
 	}
 	if inspection != nil {
+		slog.Warn("nftables socket port inspection failed", "err", inspection)
 		return 0, fmt.Errorf("read nftables observation port: %w", inspection)
 	}
 	return portID, nil

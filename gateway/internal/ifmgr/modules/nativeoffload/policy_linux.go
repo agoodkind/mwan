@@ -22,7 +22,8 @@ func (module *Module) inspectPolicy(ctx context.Context) error {
 
 func (module *Module) certifyPolicy(ctx context.Context, checkpoint bool) error {
 	if err := module.rules.Err(); err != nil {
-		return err
+		module.Log.WarnContext(ctx, "native policy observations unavailable", "err", err)
+		return fmt.Errorf("observe nftables policy for native certification: %w", err)
 	}
 	configured := module.policyGeneration.Load()
 	if !checkpoint && module.policyCached(module.rules.Generation(), configured) {
@@ -33,7 +34,8 @@ func (module *Module) certifyPolicy(ctx context.Context, checkpoint bool) error 
 	before, err := module.rules.Barrier(requestContext)
 	if err != nil {
 		module.policyCertificate = nil
-		return err
+		module.Log.WarnContext(ctx, "native policy checkpoint failed", "phase", "before inspection", "err", err)
+		return fmt.Errorf("checkpoint nftables before native policy inspection: %w", err)
 	}
 	if module.policyCached(before, configured) {
 		return module.policyCertificate.failure
@@ -41,17 +43,24 @@ func (module *Module) certifyPolicy(ctx context.Context, checkpoint bool) error 
 	desired, err := firewall.Compile(module.cfg.Firewall)
 	if err != nil {
 		module.policyCertificate = nil
-		return err
+		module.Log.WarnContext(ctx, "native policy compilation failed", "err", err)
+		return fmt.Errorf("compile expected native forwarding policy: %w", err)
 	}
 	inspection := firewall.InspectNative(requestContext, desired)
 	after, err := module.rules.Barrier(requestContext)
 	if err != nil {
 		module.policyCertificate = nil
-		return err
+		module.Log.WarnContext(ctx, "native policy checkpoint failed", "phase", "after inspection", "err", err)
+		return fmt.Errorf("checkpoint nftables after native policy inspection: %w", err)
 	}
 	if before != after || configured != module.policyGeneration.Load() {
 		module.policyCertificate = nil
+		module.Log.WarnContext(ctx, "native policy changed during certification", "rules_before", before, "rules_after", after, "configured", configured)
 		return fmt.Errorf("nftables policy changed during native certification: %w", syscall.ESTALE)
+	}
+	if inspection != nil {
+		module.Log.WarnContext(ctx, "native forwarding policy certification failed", "err", inspection)
+		inspection = fmt.Errorf("inspect native forwarding policy: %w", inspection)
 	}
 	module.policyCertificate = &policyCertificate{rules: after, configured: configured, failure: inspection}
 	return inspection
