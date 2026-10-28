@@ -1408,22 +1408,21 @@ impl OwnerState {
                 "Invalid exact direction",
             ));
         }
-        if u32::from(direction.original.family) == MWAN_NATIVE_FAMILY_IPV6 {
-            if direction.original.source_port != direction.translated.source_port
+        if u32::from(direction.original.family) == MWAN_NATIVE_FAMILY_IPV6
+            && (direction.original.source_port != direction.translated.source_port
                 || direction.original.destination_port != direction.translated.destination_port
                 || ipv6_sum(&direction.original.source) != ipv6_sum(&direction.translated.source)
                 || ipv6_sum(&direction.original.destination)
-                    != ipv6_sum(&direction.translated.destination)
-            {
-                return Err(fault(
-                    libc::ENOTSUP,
-                    MWAN_NATIVE_OP_VALIDATE,
-                    MWAN_NATIVE_OBJECT_ORIGIN,
-                    direction.origin_id,
-                    index as u32,
-                    "IPv6 translation requires unchanged ports and independently neutral addresses",
-                ));
-            }
+                    != ipv6_sum(&direction.translated.destination))
+        {
+            return Err(fault(
+                libc::ENOTSUP,
+                MWAN_NATIVE_OP_VALIDATE,
+                MWAN_NATIVE_OBJECT_ORIGIN,
+                direction.origin_id,
+                index as u32,
+                "IPv6 translation requires unchanged ports and independently neutral addresses",
+            ));
         }
         for address in [
             &direction.original_source_mac,
