@@ -883,6 +883,357 @@ cleanup:
 	return passed ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
+enum {
+	RECYCLE_MIN_CYCLES = 3,
+	RECYCLE_MAX_CYCLES = 16,
+	RECYCLE_MAX_PHASE_SECONDS = 30,
+	RECYCLE_EXTERNAL_PROOF_REQUIRED = 2,
+	RECYCLE_RX_PAUSE_NS = 100000000
+};
+
+static int recycle_pair_state(uint64_t cycle, const char *phase,
+			      const struct mwan_native_pair_result *result,
+			      uint32_t state, uint32_t mask)
+{
+	printf("RECYCLE_PAIR cycle=%" PRIu64 " phase=%s instance=%" PRIu64
+	       " slot=%u generation=%" PRIu64 " state=%u requested=%u installed=%u"
+	       " restoration=%u cleanup_failed=%u\n", cycle, phase, result->handle.instance,
+	       result->handle.slot, result->handle.generation, result->state,
+	       result->requested_direction_mask, result->installed_mask,
+	       result->restoration_mask, result->cleanup_failed_mask);
+	fflush(stdout);
+	uint32_t installed = state == MWAN_NATIVE_PAIR_INSTALLED ? mask : 0;
+	if (!result->handle.instance || !result->handle.generation || result->handle.slot ||
+	    result->handle.reserved || result->state != state ||
+	    result->requested_direction_mask != mask || result->installed_mask != installed ||
+	    result->restoration_mask != mask || result->cleanup_failed_mask) {
+		fprintf(stderr, "Cycle %" PRIu64 " %s did not preserve the expected pair ownership\n", cycle, phase);
+		return -1;
+	}
+	return 0;
+}
+
+static int recycle_storage(struct mwan_native *owner, uint64_t cycle, const char *phase,
+			   uint32_t retained, uint32_t draining, struct mwan_native_error *error)
+{
+	struct mwan_native_retirement_stats current = {0};
+	if (mwan_native_retirement_query(owner, &current, error))
+		return -1;
+	printf("RECYCLE_STORAGE cycle=%" PRIu64 " phase=%s active_capacity=%u retained_capacity=%u"
+	       " retained=%u draining=%u retained_directions=%" PRIu64 "\n", cycle, phase,
+	       current.active_pair_capacity, current.retained_pair_capacity, current.retained_pairs,
+	       current.draining_pairs, current.retained_directions);
+	fflush(stdout);
+	if (current.active_pair_capacity != 1 || current.retained_pair_capacity != 1 ||
+	    current.retained_pairs != retained || current.draining_pairs != draining ||
+	    current.retained_directions != retained) {
+		fprintf(stderr, "Cycle %" PRIu64 " %s reported unexpected retained storage\n", cycle, phase);
+		return -1;
+	}
+	return 0;
+}
+
+static int recycle_worker(uint64_t cycle, const char *phase,
+			  const struct mwan_native_worker_stats *before,
+			  const struct mwan_native_worker_stats *current)
+{
+	if (current->forwarded < before->forwarded ||
+	    current->returned_to_kernel < before->returned_to_kernel ||
+	    current->received < before->received) {
+		fprintf(stderr, "Cycle %" PRIu64 " %s reset worker counters across the same owner\n", cycle, phase);
+		return -1;
+	}
+	printf("RECYCLE_WORKER cycle=%" PRIu64 " phase=%s received=%" PRIu64
+	       " forwarded=%" PRIu64 " returned=%" PRIu64 " phase_forwarded=%" PRIu64
+	       " phase_returned=%" PRIu64 " pending=%" PRIu64 " quarantined=%" PRIu64
+	       " malformed=%" PRIu64 " lookup_misses=%" PRIu64 " transmit_dropped=%" PRIu64 "\n",
+	       cycle, phase, current->received, current->forwarded, current->returned_to_kernel,
+	       current->forwarded - before->forwarded,
+	       current->returned_to_kernel - before->returned_to_kernel,
+	       current->pending_packets, current->quarantined_packets,
+	       current->malformed, current->lookup_misses, current->transmit_dropped);
+	fflush(stdout);
+	if (current->pending_packets || current->quarantined_packets ||
+	    current->lookup_misses != before->lookup_misses ||
+	    current->transmit_dropped != before->transmit_dropped) {
+		fprintf(stderr, "Cycle %" PRIu64 " %s retained, lost or failed to identify a packet\n", cycle, phase);
+		return -1;
+	}
+	return 0;
+}
+
+static int recycle_counters(struct mwan_native *owner, uint64_t cycle, const char *phase,
+			    struct mwan_native_handle handle, uint32_t mask, uint64_t minimum,
+			    struct mwan_native_error *error)
+{
+	struct mwan_native_pair_stats counters = {0};
+	if (mwan_native_pair_query(owner, handle, &counters, error))
+		return -1;
+	if (!same_resume_handle(counters.result.handle, handle) ||
+	    recycle_pair_state(cycle, phase, &counters.result, MWAN_NATIVE_PAIR_INSTALLED, mask)) {
+		fprintf(stderr, "Counter query did not preserve the requested recycle generation\n");
+		return -1;
+	}
+	uint32_t direction = mask == 1U ? 0U : 1U;
+	const struct mwan_native_counter *counter = &counters.directions[direction];
+	printf("RECYCLE_COUNTER cycle=%" PRIu64 " phase=%s instance=%" PRIu64
+	       " slot=%u generation=%" PRIu64 " direction=%u valid=%u/%u error=%d"
+	       " observed_monotonic_ns=%" PRIu64 " packets=%" PRIu64 " bytes=%" PRIu64 "\n",
+	       cycle, phase, handle.instance, handle.slot, handle.generation, direction,
+	       counter->packets_valid, counter->bytes_valid, counter->error,
+	       counter->observed_monotonic_ns, counter->packets, counter->bytes);
+	fflush(stdout);
+	if (!counter->packets_valid || !counter->bytes_valid || counter->error ||
+	    !counter->observed_monotonic_ns || !counter->bytes || counter->packets < minimum) {
+		fprintf(stderr, "Cycle %" PRIu64 " %s did not provide the required valid hardware counts\n", cycle, phase);
+		return -1;
+	}
+	return 0;
+}
+
+static int recycle_stale(struct mwan_native *owner, uint64_t cycle, const char *phase,
+			 struct mwan_native_handle handle, const struct mwan_native_pair_spec *pair,
+			 struct mwan_native_error *error)
+{
+	struct mwan_native_pair_stats counters = {0};
+	struct mwan_native_pair_result removed = {0}, resumed = {0};
+	struct mwan_native_packet_guard guards[MWAN_NATIVE_DIRECTION_COUNT] = {0};
+	int query = mwan_native_pair_query(owner, handle, &counters, error);
+	int remove = mwan_native_pair_remove(owner, handle, &removed, error);
+	int resume = mwan_native_pair_resume_observed(owner, handle, pair, guards, &resumed, error);
+	printf("RECYCLE_STALE cycle=%" PRIu64 " phase=%s instance=%" PRIu64
+	       " slot=%u generation=%" PRIu64 " query_rc=%d remove_rc=%d resume_rc=%d\n",
+	       cycle, phase, handle.instance, handle.slot, handle.generation, query, remove, resume);
+	fflush(stdout);
+	if (query != -ESTALE || remove != -ESTALE || resume != -ESTALE ||
+	    counters.result.installed_mask || counters.result.restoration_mask ||
+	    counters.result.cleanup_failed_mask ||
+	    removed.installed_mask || removed.restoration_mask ||
+	    removed.cleanup_failed_mask || resumed.installed_mask || resumed.restoration_mask ||
+	    resumed.cleanup_failed_mask) {
+		fprintf(stderr, "A stale generation operated on the replacement during cycle %" PRIu64 "\n", cycle);
+		return -1;
+	}
+	return 0;
+}
+
+static int recycle_slots(const char *config_path, const char *first_path,
+			  const char *second_path, const char *reused_path,
+			  uint64_t cycles, uint64_t seconds,
+			  uint64_t minimum_forwarded, uint64_t minimum_returned)
+{
+	struct mwan_native_config config = {0};
+	struct mwan_native_pair_spec first = {0}, second = {0}, reused = {0};
+	if (read_config(config_path, &config) || read_pair(first_path, &first) ||
+	    read_pair(second_path, &second) || read_pair(reused_path, &reused)) {
+		fprintf(stderr, "Invalid recycle-slot configuration\n");
+		return EXIT_FAILURE;
+	}
+	uint32_t mask = first.requested_direction_mask;
+	uint32_t direction = mask == 1U ? 0U : 1U;
+	if (config.pair_capacity != 1 || (mask != 1U && mask != 2U) ||
+	    second.requested_direction_mask != mask || reused.requested_direction_mask != mask ||
+	    first.cookie == reused.cookie ||
+	    first.directions[direction].origin_id != reused.directions[direction].origin_id ||
+	    memcmp(&first.directions[direction].translated, &reused.directions[direction].translated,
+		   sizeof(first.directions[direction].translated)) ||
+	    !memcmp(&first.directions[direction].original, &reused.directions[direction].original,
+		    sizeof(first.directions[direction].original)) ||
+	    memcmp(first.directions[direction].original_source_mac,
+		   reused.directions[direction].original_source_mac, 6) ||
+	    memcmp(first.directions[direction].original_destination_mac,
+		   reused.directions[direction].original_destination_mac, 6)) {
+		fprintf(stderr, "Recycle slots requires P=1, one common direction, and FIRST/REUSED with different cookies/original tuples but identical translated tuples, origins and input MACs\n");
+		return EXIT_FAILURE;
+	}
+	struct mwan_native *owner = NULL;
+	struct mwan_native_error error = {0};
+	struct mwan_native_pair_result current = {0}, bridge = {0}, retired = {0}, rejected = {0};
+	struct mwan_native_worker_stats stats = {0}, before = {0};
+	const struct mwan_native_pair_spec *active_pair = &first;
+	const char *active_name = "FIRST";
+	bool complete = false;
+	if (mwan_native_open(&config, &owner, &error) ||
+	    mwan_native_pair_install(owner, active_pair, &current, &error))
+		goto cleanup;
+	struct mwan_native *identity = owner;
+	uint64_t instance = current.handle.instance;
+	puts("RECYCLE_CONTRACT external_unique_packet_ids=required boundary_proven=0 source=external_only");
+	fflush(stdout);
+	for (uint64_t cycle = 1; cycle <= cycles; cycle++) {
+		const struct mwan_native_pair_spec *replacement = active_pair == &first ? &reused : &first;
+		const char *replacement_name = active_pair == &first ? "REUSED" : "FIRST";
+		if (recycle_pair_state(cycle, "current", &current, MWAN_NATIVE_PAIR_INSTALLED, mask))
+			goto cleanup;
+		printf("READY_RECYCLE_CURRENT cycle=%" PRIu64 " pair=%s seconds=%" PRIu64
+		       " cookie=%" PRIu64 " policy=%" PRIu64 "\n", cycle, active_name, seconds,
+		       active_pair->cookie, active_pair->policy_generation);
+		fflush(stdout);
+		before = stats;
+		if (resume_poll_phase(owner, seconds, "recycle current", &stats, &error) ||
+		    recycle_worker(cycle, "current", &before, &stats) ||
+		    recycle_counters(owner, cycle, "current", current.handle, mask, minimum_forwarded, &error))
+			goto cleanup;
+		if (stats.forwarded - before.forwarded < minimum_forwarded) {
+			fprintf(stderr, "Current pair did not forward the required fresh packets\n");
+			goto cleanup;
+		}
+		printf("QUEUE_RECYCLE_OLD cycle=%" PRIu64 " pair=%s rx_pause_ns=%u purpose=queue_external_old_packets_not_fence\n",
+		       cycle, active_name, RECYCLE_RX_PAUSE_NS);
+		fflush(stdout);
+		struct timespec pause = {.tv_nsec = RECYCLE_RX_PAUSE_NS};
+		if (nanosleep(&pause, NULL)) {
+			perror("queue recycle old packets");
+			goto cleanup;
+		}
+		struct mwan_native_handle old_handle = current.handle;
+		if (mwan_native_pair_remove(owner, old_handle, &retired, &error) ||
+		    recycle_pair_state(cycle, "old_removed", &retired, MWAN_NATIVE_PAIR_DRAINING, mask) ||
+		    mwan_native_pair_install(owner, &second, &bridge, &error) ||
+		    recycle_pair_state(cycle, "bridge", &bridge, MWAN_NATIVE_PAIR_INSTALLED, mask) ||
+		    recycle_storage(owner, cycle, "retained_old", 1, 0, &error))
+			goto cleanup;
+		if (bridge.handle.instance != instance || bridge.handle.generation <= old_handle.generation) {
+			fprintf(stderr, "Bridge pair did not reuse the same owner's slot with a newer generation\n");
+			goto cleanup;
+		}
+		memset(&rejected, 0, sizeof(rejected));
+		int collision = mwan_native_pair_install(owner, replacement, &rejected, &error);
+		printf("RECYCLE_COLLISION cycle=%" PRIu64 " replacement=%s rc=%d\n",
+		       cycle, replacement_name, collision);
+		fflush(stdout);
+		if (collision != -EEXIST || rejected.installed_mask || rejected.restoration_mask) {
+			fprintf(stderr, "Tuple reuse did not reject while its old inverse remained owned\n");
+			goto cleanup;
+		}
+		printf("READY_RECYCLE_BRIDGE cycle=%" PRIu64 " pair=SECOND old_pair=%s seconds=%" PRIu64
+		       " cookie=%" PRIu64 " policy=%" PRIu64 " send_second_and_stop_old_after_queue=required\n",
+		       cycle, active_name, seconds, second.cookie, second.policy_generation);
+		fflush(stdout);
+		before = stats;
+		if (resume_poll_phase(owner, seconds, "recycle bridge", &stats, &error) ||
+		    recycle_worker(cycle, "bridge", &before, &stats) ||
+		    recycle_counters(owner, cycle, "bridge", bridge.handle, mask, minimum_forwarded, &error))
+			goto cleanup;
+		if (stats.forwarded - before.forwarded < minimum_forwarded ||
+		    stats.returned_to_kernel - before.returned_to_kernel < minimum_returned) {
+			fprintf(stderr, "Bridge phase did not meet forwarding and kernel-return minima; external IDs must identify the restored old packets\n");
+			goto cleanup;
+		}
+		struct mwan_native_pair_stats old_counters = {0};
+		int old_query = mwan_native_pair_query(owner, old_handle, &old_counters, &error);
+		printf("RECYCLE_OLD_QUERY cycle=%" PRIu64 " rc=%d\n", cycle, old_query);
+		fflush(stdout);
+		if (old_query != -ENOENT || !same_resume_handle(old_counters.result.handle, old_handle) ||
+		    recycle_pair_state(cycle, "retained_old", &old_counters.result, MWAN_NATIVE_PAIR_DRAINING, mask)) {
+			fprintf(stderr, "The old retained handle lost its inverse ownership before recycling\n");
+			goto cleanup;
+		}
+		if (mwan_native_pair_remove(owner, bridge.handle, &retired, &error) ||
+		    recycle_pair_state(cycle, "bridge_removed", &retired, MWAN_NATIVE_PAIR_DRAINING, mask) ||
+		    recycle_storage(owner, cycle, "before_disable", 1, 1, &error))
+			goto cleanup;
+		printf("READY_RECYCLE_STOP cycle=%" PRIu64 " seconds=%" PRIu64
+		       " stop_all_generators=required observation_is_not_fence=1\n", cycle, seconds);
+		fflush(stdout);
+		before = stats;
+		if (resume_poll_phase(owner, seconds, "recycle stop", &stats, &error) ||
+		    recycle_worker(cycle, "stop", &before, &stats))
+			goto cleanup;
+		if (stats.forwarded != before.forwarded) {
+			fprintf(stderr, "Removed rules forwarded packets during the stop phase\n");
+			goto cleanup;
+		}
+		if (mwan_native_close(&owner, MWAN_NATIVE_DISABLE, &error) ||
+		    owner != identity || recycle_storage(owner, cycle, "disabled", 0, 0, &error)) {
+			fprintf(stderr, "Disable did not preserve the owner and reclaim software inverse storage\n");
+			goto cleanup;
+		}
+		before = stats;
+		if (mwan_native_poll(owner, 64, &stats, &error) ||
+		    recycle_worker(cycle, "disabled", &before, &stats) || stats.forwarded != before.forwarded) {
+			fprintf(stderr, "Disabled-owner snapshot did not preserve the removal boundary\n");
+			goto cleanup;
+		}
+		if (mwan_native_open(&config, &owner, &error) ||
+		    owner != identity || recycle_storage(owner, cycle, "enabled", 0, 0, &error)) {
+			fprintf(stderr, "Identical enable did not preserve the native owner\n");
+			goto cleanup;
+		}
+		printf("READY_RECYCLE_UNMAPPED cycle=%" PRIu64 " seconds=%" PRIu64
+		       " old_pair=%s old_original_kernel_probes=required unexpected_data_must_fail=1\n", cycle, seconds, active_name);
+		fflush(stdout);
+		before = stats;
+		if (resume_poll_phase(owner, seconds, "recycle unmapped", &stats, &error) ||
+		    recycle_worker(cycle, "unmapped", &before, &stats))
+			goto cleanup;
+		if (stats.forwarded != before.forwarded ||
+		    stats.returned_to_kernel != before.returned_to_kernel) {
+			fprintf(stderr, "Unmapped phase processed old DATA traffic after reclamation\n");
+			goto cleanup;
+		}
+		if (mwan_native_pair_install(owner, replacement, &current, &error) ||
+		    recycle_pair_state(cycle, "replacement", &current, MWAN_NATIVE_PAIR_INSTALLED, mask) ||
+		    recycle_storage(owner, cycle, "replacement", 0, 0, &error))
+			goto cleanup;
+		if (current.handle.instance != instance ||
+		    current.handle.generation <= bridge.handle.generation) {
+			fprintf(stderr, "Recycled tuple did not receive a newer generation on the same owner\n");
+			goto cleanup;
+		}
+		if (recycle_stale(owner, cycle, "old", old_handle, active_pair, &error) ||
+		    recycle_stale(owner, cycle, "bridge", bridge.handle, &second, &error))
+			goto cleanup;
+		printf("READY_RECYCLE_REUSED cycle=%" PRIu64 " pair=%s seconds=%" PRIu64
+		       " cookie=%" PRIu64 " policy=%" PRIu64 " compare_external_unique_ids=required\n",
+		       cycle, replacement_name, seconds, replacement->cookie, replacement->policy_generation);
+		fflush(stdout);
+		before = stats;
+		if (resume_poll_phase(owner, seconds, "recycle replacement", &stats, &error) ||
+		    recycle_worker(cycle, "replacement", &before, &stats) ||
+		    recycle_counters(owner, cycle, "replacement", current.handle, mask, minimum_forwarded, &error))
+			goto cleanup;
+		if (stats.forwarded - before.forwarded < minimum_forwarded) {
+			fprintf(stderr, "Reused tuple did not forward fresh packets after stale operations\n");
+			goto cleanup;
+		}
+		active_pair = replacement;
+		active_name = replacement_name;
+	}
+	if (mwan_native_pair_remove(owner, current.handle, &retired, &error) ||
+	    recycle_pair_state(cycles, "final_removed", &retired, MWAN_NATIVE_PAIR_DRAINING, mask))
+		goto cleanup;
+	printf("READY_RECYCLE_FINAL_STOP seconds=%" PRIu64 " stop_all_generators=required\n", seconds);
+	fflush(stdout);
+	before = stats;
+	if (resume_poll_phase(owner, seconds, "recycle final stop", &stats, &error) ||
+	    recycle_worker(cycles, "final_stop", &before, &stats))
+		goto cleanup;
+	if (stats.forwarded != before.forwarded) {
+		fprintf(stderr, "Removed final rules forwarded packets during final stop\n");
+		goto cleanup;
+	}
+	complete = true;
+cleanup:
+	if (!complete && error.code)
+		report_error(&error);
+	if (owner && mwan_native_close(&owner, MWAN_NATIVE_FINAL_SHUTDOWN, &error)) {
+		report_error(&error);
+		complete = false;
+	}
+	if (owner) {
+		fprintf(stderr, "Final shutdown retained the native owner\n");
+		complete = false;
+	}
+	if (!complete)
+		return EXIT_FAILURE;
+	printf("RECYCLE_API_COMPLETE cycles=%" PRIu64 " successful_installs=%" PRIu64
+	       " owner_released=1 boundary_proven=0 external_packet_proof=required\n",
+	       cycles, 1 + 2 * cycles);
+	fprintf(stderr, "Public native APIs do not certify device completion or external packet completeness; the reclamation fence claim remains unproved.\n");
+	return RECYCLE_EXTERNAL_PROOF_REQUIRED;
+}
+
 int main(int argc, char **argv)
 {
 	if (argc == 3 && !strcmp(argv[1], "--reject-swapped-data"))
@@ -907,6 +1258,21 @@ int main(int argc, char **argv)
 		}
 		return reuse_slots(argv[2], argv[3], argv[4], argv[5], seconds,
 				  minimum_forwarded, minimum_returned);
+	}
+	if (argc > 1 && !strcmp(argv[1], "--recycle-slots")) {
+		if (argc != 10) {
+			fprintf(stderr, "Usage: %s --recycle-slots CONFIG FIRST_PAIR SECOND_PAIR REUSED_PAIR CYCLES PHASE_SECONDS MIN_FORWARDED MIN_RETURNED\n", argv[0]);
+			return EXIT_FAILURE;
+		}
+		uint64_t cycles, seconds, minimum_forwarded, minimum_returned;
+		if (positive(argv[6], &cycles) || cycles < RECYCLE_MIN_CYCLES || cycles > RECYCLE_MAX_CYCLES ||
+		    positive(argv[7], &seconds) || seconds > RECYCLE_MAX_PHASE_SECONDS ||
+		    positive(argv[8], &minimum_forwarded) || positive(argv[9], &minimum_returned)) {
+			fprintf(stderr, "Recycle slots requires 3-16 cycles, 1-30 seconds per phase and positive packet minima\n");
+			return EXIT_FAILURE;
+		}
+		return recycle_slots(argv[2], argv[3], argv[4], argv[5], cycles, seconds,
+				     minimum_forwarded, minimum_returned);
 	}
 	if (argc == 9 && !strcmp(argv[1], "--guarded-pair")) {
 		uint64_t seconds, minimum_forwarded, minimum_returned, traffic_class, flow_label;
@@ -938,6 +1304,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "       %s --reject-ipv6-mappings CONFIG PAIR\n", argv[0]);
 		fprintf(stderr, "       %s --pending-retire CONFIG PAIR SECONDS MIN_PENDING MIN_RETURNED\n", argv[0]);
 		fprintf(stderr, "       %s --reuse-slots CONFIG FIRST_PAIR SECOND_PAIR THIRD_PAIR SECONDS MIN_FORWARDED MIN_RETURNED\n", argv[0]);
+		fprintf(stderr, "       %s --recycle-slots CONFIG FIRST_PAIR SECOND_PAIR REUSED_PAIR CYCLES PHASE_SECONDS MIN_FORWARDED MIN_RETURNED\n", argv[0]);
 		fprintf(stderr, "       %s --guarded-pair CONFIG PAIR SECONDS MIN_FORWARDED MIN_RETURNED TRAFFIC_CLASS FLOW_LABEL\n", argv[0]);
 		fprintf(stderr, "       %s --resume-identical CONFIG PAIR SECONDS MIN_FORWARDED MIN_RETURNED TRAFFIC_CLASS FLOW_LABEL\n", argv[0]);
 		fprintf(stderr, "CONFIG starts with MWAN_NATIVE_CONFIG 2\n");
