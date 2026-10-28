@@ -15,6 +15,7 @@ type unavailableModule struct {
 	cfg Config
 }
 
+// New defers rejection of enabled native configuration to the Init support check.
 func New(configuration ifmgr.ModuleConfig) (ifmgr.Module, error) {
 	var settings Config
 	if configuration != nil {
