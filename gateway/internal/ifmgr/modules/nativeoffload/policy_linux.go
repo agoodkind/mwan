@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"goodkind.io/mwan/internal/firewall"
+	"goodkind.io/mwan/internal/ifmgr/modules/steering"
 )
 
 type policyCertificate struct {
@@ -45,6 +46,15 @@ func (module *Module) certifyPolicy(ctx context.Context, checkpoint bool) error 
 		module.policyCertificate = nil
 		module.Log.WarnContext(ctx, "native policy compilation failed", "err", err)
 		return fmt.Errorf("compile expected native forwarding policy: %w", err)
+	}
+	if module.cfg.Steering != nil {
+		projection, err := steering.CompilePolicy(*module.cfg.Steering, module.Env.LiveState.Snapshot())
+		if err != nil {
+			module.policyCertificate = nil
+			module.Log.WarnContext(ctx, "native steering policy compilation failed", "err", err)
+			return fmt.Errorf("compile expected native steering policy: %w", err)
+		}
+		desired.Chains = append(desired.Chains, projection.Chains...)
 	}
 	inspection := firewall.InspectNative(requestContext, desired)
 	after, err := module.rules.Barrier(requestContext)

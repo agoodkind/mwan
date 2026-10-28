@@ -5,6 +5,7 @@ import (
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/ifmgr"
+	"goodkind.io/mwan/internal/ifmgr/modules/steering"
 )
 
 // ProcessSettings reuses the loader's checked process resources and deadlines.
@@ -16,6 +17,7 @@ type Config struct {
 	Settings ProcessSettings
 	WANs     []WAN
 	Firewall firewall.Config
+	Steering *steering.Config
 }
 
 // WAN preserves the connection identity and existing mark and IPv4 translation.

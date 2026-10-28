@@ -186,12 +186,16 @@ func addWANRoleConfigs(
 		}
 		moduleConfigs["wan.routes"] = wanRoutesConfig
 	}
+	var steeringPolicy *steering.Config
 	if want["steering"] {
 		steeringConfig, err := buildSteeringConfig(shared, ifmgrCfg, routesSection)
 		if err != nil {
 			return err
 		}
 		moduleConfigs["steering"] = steeringConfig
+		if len(steeringConfig.Members) != 0 {
+			steeringPolicy = &steeringConfig
+		}
 	}
 	if want["npt"] {
 		moduleConfigs["npt"] = buildNPTConfig(shared)
@@ -208,6 +212,7 @@ func addWANRoleConfigs(
 			return err
 		}
 		settings.Firewall = ifmgrCfg.Firewall
+		settings.Steering = steeringPolicy
 		moduleConfigs["nativeoffload"] = settings
 	}
 	return nil

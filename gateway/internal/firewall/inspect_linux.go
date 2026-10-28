@@ -218,6 +218,7 @@ func normalizeRule(rule string) string {
 	rule = strings.ReplaceAll(rule, "meta l4proto ipv6 ", "meta l4proto "+ProtocolIPv6InIPv4+" ")
 	rule = strings.ReplaceAll(rule, "limit rate 1/second burst 5 packets", "limit rate 1/second")
 	rule = strings.ReplaceAll(rule, "meta priority & ffff:0 == 4e50:0", "meta priority & 0xffff0000 == 0x4e500000")
+	rule = strings.ReplaceAll(rule, "meta priority & ffff:0 != 4e50:0", "meta priority & 0xffff0000 != 0x4e500000")
 	rule = strings.ReplaceAll(rule, "/128 ", " ")
 	rule = strings.ReplaceAll(rule, "/32 ", " ")
 	rule = dscpMatch.ReplaceAllStringFunc(rule, decimalDSCP)
