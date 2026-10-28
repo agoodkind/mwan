@@ -31,7 +31,7 @@ func (module *unavailableModule) Init(_ context.Context, _ *ifmgr.Env) error {
 	if err := ValidateSupport(module.cfg); err != nil {
 		return err
 	}
-	return fmt.Errorf("%w: native offload is disabled", ifmgr.ErrModuleDisabled)
+	return ifmgr.ErrModuleDisabled
 }
 
 func (*unavailableModule) Reconcile(context.Context, *slog.Logger) error { return nil }
