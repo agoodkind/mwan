@@ -2121,6 +2121,99 @@ impl OwnerState {
         Ok(())
     }
 
+    fn reobserve_pair(
+        &mut self,
+        handle: MwanNativeHandle,
+        spec: MwanNativePairSpec,
+        guards: [MwanNativePacketGuard; 2],
+        result: &mut MwanNativePairResult,
+    ) -> NativeResult<()> {
+        *result = MwanNativePairResult::default();
+        let pair = self.handle_pair(handle)?;
+        let slot = handle.slot as usize;
+        *result = self.result_for(pair, slot);
+        if self.pairs[slot].generation != handle.generation {
+            return Err(stale_handle(handle));
+        }
+        if !self.active
+            || self.faulted
+            || self.quiescing
+            || pair.state != PairState::Draining
+            || pair
+                .legs
+                .iter()
+                .any(|leg| leg.flow.is_some() || leg.delete_failed)
+        {
+            return Err(fault(
+                libc::EBUSY,
+                MWAN_NATIVE_OP_CREATE,
+                MWAN_NATIVE_OBJECT_PAIR,
+                handle.slot,
+                0,
+                "Pair selector replacement requires complete hardware cleanup and an active owner",
+            ));
+        }
+        let mut expected = pair.spec;
+        expected.policy_generation = spec.policy_generation;
+        if spec.policy_generation < pair.spec.policy_generation || spec != expected {
+            return Err(fault(
+                libc::EINVAL,
+                MWAN_NATIVE_OP_VALIDATE,
+                MWAN_NATIVE_OBJECT_PAIR,
+                handle.slot,
+                0,
+                "Pair selector replacement requires identical connection and direction records",
+            ));
+        }
+        for (index, mask) in DIRECTION_MASKS.iter().enumerate() {
+            if spec.requested_direction_mask & mask == 0 {
+                continue;
+            }
+            let direction = spec.directions[index];
+            let guard = guards[index];
+            if guard.reserved != [0; 3]
+                || guard.flow_label > 0x000f_ffff
+                || (u32::from(direction.original.family) == MWAN_NATIVE_FAMILY_IPV4
+                    && guard.flow_label != 0)
+            {
+                return Err(fault(
+                    libc::EINVAL,
+                    MWAN_NATIVE_OP_VALIDATE,
+                    MWAN_NATIVE_OBJECT_ORIGIN,
+                    direction.origin_id,
+                    index as u32,
+                    "Invalid replacement packet selector guard",
+                ));
+            }
+            let key = InverseKey {
+                origin: direction.origin_id,
+                tuple: direction.translated,
+            };
+            let inverse_owned = pair.legs[index].inverse
+                && self.inverses.get(&key).is_some_and(|leg| {
+                    leg.slot == slot
+                        && leg.generation == handle.generation
+                        && leg.direction == index
+                });
+            if !inverse_owned {
+                return Err(fault(
+                    libc::ESTALE,
+                    MWAN_NATIVE_OP_VALIDATE,
+                    MWAN_NATIVE_OBJECT_PAIR,
+                    handle.slot,
+                    index as u32,
+                    "Pair inverse ownership changed before selector replacement",
+                ));
+            }
+            self.build_flow(&direction, index, true)?;
+        }
+        self.restore_pending()?;
+        self.activate_pair(slot, result)?;
+        self.pairs[slot].guards = Some(guards);
+        self.pairs[slot].spec.policy_generation = spec.policy_generation;
+        Ok(())
+    }
+
     fn activate_pair(
         &mut self,
         slot: usize,
@@ -3258,6 +3351,47 @@ pub unsafe extern "C" fn mwan_native_pair_resume_observed(
         };
         let mut output = MwanNativePairResult::default();
         let outcome = state.resume_pair(handle, input, guards, &mut output);
+        // SAFETY: The separate result remains writable after partial failure.
+        unsafe { result.write(output) };
+        outcome
+    })
+}
+
+/// # Safety
+/// The owner must remain live for this exclusive owner-thread call. Input,
+/// guard array, result and error pointers must identify separate valid records.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mwan_native_pair_reobserve(
+    owner: *mut MwanNative,
+    handle: MwanNativeHandle,
+    spec: *const MwanNativePairSpec,
+    guards: *const MwanNativePacketGuard,
+    result: *mut MwanNativePairResult,
+    error: *mut MwanNativeError,
+) -> i32 {
+    boundary(owner, error, MWAN_NATIVE_OP_CREATE, || {
+        // SAFETY: The ABI caller supplies this library's live exclusive owner.
+        let state = unsafe { state_for(owner) }?;
+        if spec.is_null() || guards.is_null() || result.is_null() {
+            return Err(fault(
+                libc::EINVAL,
+                MWAN_NATIVE_OP_CREATE,
+                MWAN_NATIVE_OBJECT_PAIR,
+                handle.slot,
+                0,
+                "Reobserved pair, selector guards and result are required",
+            ));
+        }
+        // SAFETY: The caller supplies a complete pair and two complete guard
+        // records. Copies end every input borrow before hardware mutation.
+        let (input, guards) = unsafe {
+            (
+                spec.read(),
+                guards.cast::<[MwanNativePacketGuard; 2]>().read(),
+            )
+        };
+        let mut output = MwanNativePairResult::default();
+        let outcome = state.reobserve_pair(handle, input, guards, &mut output);
         // SAFETY: The separate result remains writable after partial failure.
         unsafe { result.write(output) };
         outcome

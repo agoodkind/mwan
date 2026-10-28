@@ -311,6 +311,7 @@ const (
 	nativeVXLANQuery
 	nativeVXLANRemove
 	nativeVXLANClose
+	nativeReobserve
 )
 
 type nativeRequest struct {
@@ -473,30 +474,42 @@ func (worker *NativeRuntime) Enable(ctx context.Context, config NativeConfig) er
 
 // Install consumes an existing kernel identity; provider selection stays with the caller.
 func (worker *NativeRuntime) Install(ctx context.Context, flow conntrack.Flow, spec NativePairSpec) (NativePairResult, error) {
-	return worker.install(ctx, flow, spec, nil, nil, nil)
+	return worker.install(ctx, flow, spec, nil, nil, nil, nativeInstall)
 }
 
 // InstallObserved applies the packet guards captured with the connection.
 func (worker *NativeRuntime) InstallObserved(ctx context.Context, flow conntrack.Flow, spec NativePairSpec, guards [2]NativePacketGuard) (NativePairResult, error) {
-	return worker.install(ctx, flow, spec, &guards, nil, nil)
+	return worker.install(ctx, flow, spec, &guards, nil, nil, nativeInstall)
 }
 
 // InstallObservedWithEvidence rechecks forwarding evidence around rule installation.
 func (worker *NativeRuntime) InstallObservedWithEvidence(ctx context.Context, flow conntrack.Flow, spec NativePairSpec, guards [2]NativePacketGuard, evidence *NativeEvidenceGuard) (NativePairResult, error) {
-	return worker.install(ctx, flow, spec, &guards, nil, evidence)
+	return worker.install(ctx, flow, spec, &guards, nil, evidence, nativeInstall)
 }
 
 // ResumeObserved preserves the suspended generation and its existing inverse.
 func (worker *NativeRuntime) ResumeObserved(ctx context.Context, flow conntrack.Flow, handle NativePairHandle, spec NativePairSpec, guards [2]NativePacketGuard) (NativePairResult, error) {
-	return worker.install(ctx, flow, spec, &guards, &handle, nil)
+	return worker.install(ctx, flow, spec, &guards, &handle, nil, nativeResume)
 }
 
 // ResumeObservedWithEvidence requires current evidence for the retained generation.
 func (worker *NativeRuntime) ResumeObservedWithEvidence(ctx context.Context, flow conntrack.Flow, handle NativePairHandle, spec NativePairSpec, guards [2]NativePacketGuard, evidence *NativeEvidenceGuard) (NativePairResult, error) {
-	return worker.install(ctx, flow, spec, &guards, &handle, evidence)
+	return worker.install(ctx, flow, spec, &guards, &handle, evidence, nativeResume)
 }
 
-func (worker *NativeRuntime) install(ctx context.Context, flow conntrack.Flow, spec NativePairSpec, guards *[2]NativePacketGuard, resume *NativePairHandle, evidence *NativeEvidenceGuard) (NativePairResult, error) {
+// ReobserveWithEvidence replaces selectors only after the retained pair has completed removal.
+// Current connection and forwarding proof must authorize the unchanged mapping.
+func (worker *NativeRuntime) ReobserveWithEvidence(ctx context.Context, flow conntrack.Flow, handle NativePairHandle, spec NativePairSpec, guards [2]NativePacketGuard, evidence *NativeEvidenceGuard) (NativePairResult, error) {
+	if evidence == nil {
+		return NativePairResult{}, errors.New("native selector replacement requires forwarding evidence")
+	}
+	if _, present := ctx.Deadline(); !present {
+		return NativePairResult{}, errors.New("native selector replacement requires a request deadline")
+	}
+	return worker.install(ctx, flow, spec, &guards, &handle, evidence, nativeReobserve)
+}
+
+func (worker *NativeRuntime) install(ctx context.Context, flow conntrack.Flow, spec NativePairSpec, guards *[2]NativePacketGuard, resume *NativePairHandle, evidence *NativeEvidenceGuard, operation nativeOperation) (NativePairResult, error) {
 	if flow.ID == 0 || flow.Zone != 0 {
 		return NativePairResult{}, errors.New("native admission requires an existing zone-zero connection")
 	}
@@ -511,10 +524,9 @@ func (worker *NativeRuntime) install(ctx context.Context, flow conntrack.Flow, s
 		}
 	}
 	var request nativeRequest
-	request.operation, request.pair = nativeInstall, encoded
+	request.operation, request.pair = operation, encoded
 	request.evidence = evidence
 	if resume != nil {
-		request.operation = nativeResume
 		request.handle = encodeNativeHandle(*resume)
 	}
 	request.deadline, _ = ctx.Deadline()

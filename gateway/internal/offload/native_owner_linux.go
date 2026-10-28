@@ -83,7 +83,7 @@ func (worker *NativeRuntime) execute(owner **C.struct_mwan_native, request nativ
 		if rc == 0 {
 			*active = true
 		}
-	case nativeInstall, nativeResume:
+	case nativeInstall, nativeResume, nativeReobserve:
 		result = worker.installOnOwner(*owner, request)
 	case nativeRetirement:
 		var retirement C.struct_mwan_native_retirement_stats
@@ -143,6 +143,8 @@ func (worker *NativeRuntime) installOnOwner(owner *C.struct_mwan_native, request
 	var detail C.struct_mwan_native_error
 	var rc C.int
 	switch {
+	case request.operation == nativeReobserve:
+		rc = C.mwan_native_pair_reobserve(owner, request.handle, &request.pair, &request.guards[0], &pair, &detail)
 	case request.operation == nativeResume:
 		rc = C.mwan_native_pair_resume_observed(owner, request.handle, &request.pair, &request.guards[0], &pair, &detail)
 	case request.observed:
@@ -183,7 +185,7 @@ func (worker *NativeRuntime) completeEvidence(operation nativeOperation, result 
 		return
 	}
 	switch operation {
-	case nativeEnable, nativeInstall, nativeQuery, nativeRetirement, nativeResume,
+	case nativeEnable, nativeInstall, nativeQuery, nativeRetirement, nativeResume, nativeReobserve,
 		nativeVXLANOpen, nativeVXLANInstall, nativeVXLANQuery, nativeVXLANRemove, nativeVXLANClose:
 		return
 	case nativeRemove:

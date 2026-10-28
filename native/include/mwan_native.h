@@ -416,6 +416,17 @@ int mwan_native_pair_query(struct mwan_native *owner,
 			   struct mwan_native_handle handle,
 			   struct mwan_native_pair_stats *stats,
 			   struct mwan_native_error *error);
+/* Reobservation requires complete removal and fresh connection and policy proof.
+ * It preserves the primary handle, inverse records and every mapping field.
+ * Only policy_generation may advance and packet guards may change.
+ * Failed validation or hardware replacement preserves the previous guards.
+ */
+int mwan_native_pair_reobserve(struct mwan_native *owner,
+			      struct mwan_native_handle handle,
+			      const struct mwan_native_pair_spec *spec,
+			      const struct mwan_native_packet_guard guards[MWAN_NATIVE_DIRECTION_COUNT],
+			      struct mwan_native_pair_result *result,
+			      struct mwan_native_error *error);
 /* Removal deletes hardware rules and retains inverse records in DRAINING.
  * A later install can reuse the hardware slot after copying its old generation
  * into bounded retained storage. Retained handles remain DRAINING after reuse.
