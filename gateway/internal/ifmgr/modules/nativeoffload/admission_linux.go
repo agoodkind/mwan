@@ -25,6 +25,7 @@ import (
 const (
 	conntrackEstablished                      = 3
 	conntrackHardwareOffload conntrack.Status = 0x8000
+	nativeDSCPMask           uint8            = 0xfc
 )
 
 // Eligibility separates a usable mapping from unsupported or stale evidence.
@@ -268,7 +269,7 @@ func (module *Module) candidate(ctx context.Context, observation packetObservati
 		OriginalSourceMAC: observation.SourceMAC, OriginalDestinationMAC: observation.DestinationMAC,
 		OutputSourceMAC: [6]byte(path.Link.Attrs().HardwareAddr), OutputDestinationMAC: [6]byte(path.Neighbor.HardwareAddr), OutputMTU: outputMTU,
 	}
-	guards[index] = offload.NativePacketGuard{TrafficClass: observation.TrafficClass, FlowLabel: observation.FlowLabel}
+	guards[index] = offload.NativePacketGuard{TrafficClass: observation.TrafficClass & nativeDSCPMask, FlowLabel: observation.FlowLabel}
 	return spec, guards, flow, wan, EligibilityReady, nil
 }
 

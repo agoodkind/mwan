@@ -201,6 +201,9 @@ struct mwan_native_observation {
 };
 
 struct mwan_native_packet_guard {
+	/* Packet policy must be certified independently of ECN. The traffic class
+	 * comparison uses its DSCP bits; flow_label still requires an exact match.
+	 */
 	uint32_t flow_label;
 	uint8_t traffic_class;
 	uint8_t reserved[3];

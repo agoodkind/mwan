@@ -2505,8 +2505,7 @@ impl OwnerState {
         let spec = leg.spec;
         let mut kernel = self.quiescing || self.faulted || !leg.installed;
         if let Some(guard) = leg.guard {
-            kernel |=
-                guard.traffic_class != view.traffic_class || guard.flow_label != view.flow_label;
+            kernel |= !packet::guard_matches(&view, &guard);
         }
         if !kernel {
             let eligibility = match self

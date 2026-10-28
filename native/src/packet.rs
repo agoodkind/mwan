@@ -6,7 +6,7 @@ use crate::abi::{
     MWAN_NATIVE_FAMILY_IPV4, MWAN_NATIVE_FAMILY_IPV6, MWAN_NATIVE_PACKET_ETHERNET_VALID,
     MWAN_NATIVE_PACKET_IP_VALID, MWAN_NATIVE_PACKET_PORTS_VALID, MWAN_NATIVE_PROTOCOL_TCP,
     MWAN_NATIVE_PROTOCOL_UDP, MwanNativeDirection, MwanNativeObservation,
-    MwanNativePacketDiagnostic, MwanNativeTuple,
+    MwanNativePacketDiagnostic, MwanNativePacketGuard, MwanNativeTuple,
 };
 use std::fmt;
 
@@ -329,6 +329,14 @@ fn decode_ipv6(network: &[u8], view: &mut ParsedPacket) -> Result<(), i32> {
         }
     }
     Ok(())
+}
+
+/// ECN is packet congestion state; the guard compares DSCP and the flow label.
+/// Packet bytes retain their original congestion marking.
+pub fn guard_matches(view: &ParsedPacket, guard: &MwanNativePacketGuard) -> bool {
+    const DSCP_MASK: u8 = 0xfc;
+    (view.traffic_class ^ guard.traffic_class) & DSCP_MASK == 0
+        && view.flow_label == guard.flow_label
 }
 
 pub fn eligible(frame: &[u8], view: &ParsedPacket, direction: &MwanNativeDirection) -> bool {

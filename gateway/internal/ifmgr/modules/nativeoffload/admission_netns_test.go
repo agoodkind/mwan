@@ -21,6 +21,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
+	"goodkind.io/mwan/internal/clock"
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/firewall"
 	"goodkind.io/mwan/internal/ifmgr"
@@ -149,6 +150,25 @@ func TestNativeAdmissionIPv6(t *testing.T) {
 	flow := fixture.flow(t, admissionClientV6, admissionRemoteV6, "")
 	fixture.requireCandidate(t, admissionObservation(t, fixture.sender, fixture.input, flow.TupleOrig), flow, flow.TupleOrig, 0, fixture.output, fixture.peer)
 	fixture.requireCandidate(t, admissionObservation(t, fixture.peer, fixture.output, flow.TupleReply), flow, flow.TupleReply, 1, fixture.input, fixture.sender)
+}
+
+func TestNativeAdmissionECNGuards(t *testing.T) {
+	if !nativeCaptureNamespace(t) {
+		return
+	}
+	fixture := newAdmissionFixture(t, config.TranslationNative)
+	for _, addresses := range [][2]string{{admissionClientV4, admissionRemoteV4}, {admissionClientV6, admissionRemoteV6}} {
+		flow := fixture.flow(t, addresses[0], addresses[1], "")
+		for ecn := uint8(0); ecn < 4; ecn++ {
+			frame := nativeCaptureFrameSelectors(t, fixture.sender, fixture.input, addresses, unix.IPPROTO_TCP, admissionTrafficClass|ecn)
+			observed, err := offload.ObserveNativeFrames([][]byte{frame})
+			if err != nil || len(observed) != 1 || !observed[0].Eligible || observed[0].TrafficClass != admissionTrafficClass|ecn {
+				t.Fatalf("Rust changed the packet traffic class or eligibility: ECN=%d observations=%+v error=%v", ecn, observed, err)
+			}
+			observation := packetObservation{NativeObservation: observed[0], ifindex: fixture.input.Index, at: clock.Real{}.Now()}
+			fixture.requireCandidate(t, observation, flow, flow.TupleOrig, 0, fixture.output, fixture.peer)
+		}
+	}
 }
 
 func TestNativeAdmissionNPTv6(t *testing.T) {
