@@ -47,7 +47,7 @@ func TestNativePacketPolicyRejectsForeignFilters(t *testing.T) {
 			t.Fatalf("native policy did not recover after exact %s filter removal: %v", direction, err)
 		}
 	}
-	queue := &netlink.Prio{QdiscAttrs: netlink.QdiscAttrs{LinkIndex: link.Attrs().Index, Parent: netlink.HANDLE_ROOT, Handle: netlink.MakeHandle(1, 0)}, Bands: 1}
+	queue := netlink.NewPrio(netlink.QdiscAttrs{LinkIndex: link.Attrs().Index, Parent: netlink.HANDLE_ROOT, Handle: netlink.MakeHandle(1, 0)})
 	if err := netlink.QdiscReplace(queue); err != nil {
 		t.Fatal(err)
 	}
@@ -147,6 +147,16 @@ func TestNativePacketPolicyKernelDefaultMQ(t *testing.T) {
 		t.Fatalf("kernel did not create the required default mq topology: %+v", queues)
 	}
 	if err := InspectNativePolicy(ctx, []int{actual.Attrs().Index}); err != nil {
-		t.Fatalf("kernel-default mq/fq_codel topology failed inspection: %v", err)
+		t.Fatalf("kernel-default mq topology failed inspection: %v", err)
+	}
+	configured := &netlink.GenericQdisc{
+		QdiscAttrs: netlink.QdiscAttrs{LinkIndex: actual.Attrs().Index, Parent: 1, Handle: netlink.MakeHandle(1, 0)},
+		QdiscType:  "pfifo_fast",
+	}
+	if err := netlink.QdiscReplace(configured); err != nil {
+		t.Fatal(err)
+	}
+	if err := InspectNativePolicy(ctx, []int{actual.Attrs().Index}); err == nil {
+		t.Fatal("native inspection accepted an explicitly configured mq leaf")
 	}
 }

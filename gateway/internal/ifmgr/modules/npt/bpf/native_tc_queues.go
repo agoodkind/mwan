@@ -3,6 +3,7 @@
 package bpf
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 
@@ -44,16 +45,60 @@ func inspectNativeQueues(ctx context.Context, link netlink.Link) (resultErr erro
 			}
 			continue
 		}
-		if queue.kind != "fq_codel" || queue.header.Parent == 0 || queue.header.Parent > uint32(link.Attrs().NumTxQueues) || leaves[queue.header.Parent] {
+		if queue.header.Parent == 0 || queue.header.Parent > uint32(link.Attrs().NumTxQueues) || leaves[queue.header.Parent] {
 			return fmt.Errorf("native admission cannot certify queue topology")
 		}
-		if err := inspectDefaultFQCodel(queue.options, link.Attrs().MTU); err != nil {
+		if err := inspectDefaultLeaf(queue, link.Attrs().MTU); err != nil {
 			return err
 		}
 		leaves[queue.header.Parent] = true
 	}
-	if roots != 1 || hooks > 1 || rootKind == "noqueue" && len(leaves) != 0 || rootKind == "mq" && (link.Attrs().NumTxQueues < 1 || len(leaves) != link.Attrs().NumTxQueues) {
+	if roots != 1 || hooks > 1 || rootKind == "noqueue" && len(leaves) != 0 {
 		return fmt.Errorf("native admission requires a complete kernel-default queue topology")
+	}
+	if rootKind == "mq" {
+		return inspectNativeMQ(ctx, link, leaves)
+	}
+	return nil
+}
+
+func inspectDefaultLeaf(queue nativeTC, mtu int) error {
+	switch queue.kind {
+	case "fq_codel":
+		return inspectDefaultFQCodel(queue.options, mtu)
+	case "pfifo_fast":
+		defaults := nl.TcPrioMap{Bands: 3, Priomap: [netlink.PRIORITY_MAP_LEN]uint8{1, 2, 2, 2, 1, 2, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1}}
+		if !bytes.Equal(queue.options, defaults.Serialize()) {
+			return fmt.Errorf("pfifo_fast options differ from the kernel default")
+		}
+		return nil
+	default:
+		return fmt.Errorf("native admission cannot certify leaf qdisc %s", queue.kind)
+	}
+}
+
+func inspectNativeMQ(ctx context.Context, link netlink.Link, leaves map[uint32]bool) error {
+	classes, err := readNativeTC(ctx, link.Attrs().Index, unix.RTM_GETTCLASS, 0)
+	if err != nil {
+		return err
+	}
+	allocated := link.Attrs().NumTxQueues
+	if allocated < 1 || len(classes) != allocated || len(leaves) == 0 || len(leaves) > allocated {
+		return fmt.Errorf("mq class readback is incomplete: allocated=%d classes=%d active_leaves=%d", allocated, len(classes), len(leaves))
+	}
+	seen := make(map[uint32]bool, len(classes))
+	for _, class := range classes {
+		if class.kind != "mq" || class.header.Parent != netlink.HANDLE_ROOT || class.header.Info != 0 || len(class.options) != 0 || class.header.Handle == 0 || class.header.Handle > uint32(allocated) || seen[class.header.Handle] {
+			return fmt.Errorf("mq class differs from the default zero-handle child contract: %+v", class)
+		}
+		seen[class.header.Handle] = true
+	}
+	// mq_walk reports all allocated classes. mq_attach hashes only active
+	// queue qdiscs, which the completed qdisc dump reports as a dense prefix.
+	for index := range len(leaves) {
+		if !leaves[uint32(index+1)] || !seen[uint32(index+1)] {
+			return fmt.Errorf("mq active queue readback has a gap")
+		}
 	}
 	return nil
 }
