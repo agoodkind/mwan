@@ -47,7 +47,7 @@ func (module *Module) run(ctx context.Context) {
 				changes = nil
 				continue
 			}
-			module.withLock(func() { module.checkEvidence(ctx) })
+			module.withLock(func() { module.observeForwardingChange(ctx) })
 		case failure, open := <-forwardingFailures:
 			if !open {
 				forwardingFailures = nil
@@ -86,6 +86,12 @@ func (module *Module) readyForWork(ctx context.Context) bool {
 	return module.stats.Failure == nil && module.runtime != nil && module.checkEvidence(ctx) && !module.policyBlocked
 }
 
+func (module *Module) observeForwardingChange(ctx context.Context) {
+	if module.checkEvidence(ctx) && module.policyBlocked {
+		module.refreshPolicy(ctx)
+	}
+}
+
 func (module *Module) maintain(ctx context.Context) {
 	sampled := false
 	module.withLock(func() {
@@ -96,6 +102,8 @@ func (module *Module) maintain(ctx context.Context) {
 	})
 	if sampled {
 		module.logCounters(ctx)
+	} else if control := module.Stats(); control.PolicyBlocked && control.Failure == nil {
+		module.logBlockedControl(ctx, control)
 	}
 }
 

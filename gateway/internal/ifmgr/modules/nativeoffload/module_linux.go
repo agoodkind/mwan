@@ -56,6 +56,7 @@ type AdmissionStats struct {
 	CleanupUncertain      uint32
 	ObservationSkipped    uint64
 	Paused                bool
+	PolicyBlocked         bool
 	Failure               error
 }
 
@@ -295,6 +296,7 @@ func (module *Module) Stats() AdmissionStats {
 	module.Lock()
 	defer module.Unlock()
 	result := module.stats
+	result.PolicyBlocked = module.policyBlocked
 	tracked, trackedErr := checkedNativeIndex(len(module.flows))
 	resumable, resumableErr := checkedNativeIndex(len(module.resumeCandidates))
 	if err := errors.Join(trackedErr, resumableErr); err != nil {

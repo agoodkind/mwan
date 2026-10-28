@@ -228,7 +228,7 @@ func (module *Module) logCounters(ctx context.Context) {
 	module.Log.DebugContext(ctx, "native admission counters",
 		"active_pairs", control.Active, "tracked_pairs", control.Tracked, "installed", control.Installed,
 		"resume_candidates", control.ResumeCandidates,
-		"cleanup_uncertain_pairs", control.CleanupUncertain, "paused", control.Paused,
+		"cleanup_uncertain_pairs", control.CleanupUncertain, "paused", control.Paused, "policy_blocked", control.PolicyBlocked,
 		"suspended", control.Suspended, "resumed", control.Resumed, "observation_frames_skipped", control.ObservationSkipped,
 		"retired", control.Retired, "evicted", control.Evicted,
 		"expired", control.Expired, "fallback", control.Fallback,
@@ -238,4 +238,12 @@ func (module *Module) logCounters(ctx context.Context) {
 		"lookup_misses", stats.LookupMisses, "malformed", stats.Malformed,
 		"transmit_dropped", stats.TransmitDropped, "pending", stats.Pending,
 		"quarantined", stats.Quarantined, "discarded_group_frames", stats.DiscardedGroupFrames)
+}
+
+func (module *Module) logBlockedControl(ctx context.Context, control AdmissionStats) {
+	module.Log.DebugContext(ctx, "native admission control",
+		"policy_blocked", control.PolicyBlocked, "paused", control.Paused,
+		"active_pairs", control.Active, "tracked_pairs", control.Tracked,
+		"resume_candidates", control.ResumeCandidates, "cleanup_uncertain_pairs", control.CleanupUncertain,
+		"suspended", control.Suspended, "resumed", control.Resumed, "retired", control.Retired)
 }
