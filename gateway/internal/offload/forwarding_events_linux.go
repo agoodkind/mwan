@@ -160,6 +160,7 @@ func (source *ForwardingEvents) changed(changes chan<- struct{}) uint64 {
 }
 
 func (source *ForwardingEvents) receive(ctx context.Context, raw syscall.RawConn, changes chan<- struct{}) (resultErr error) {
+	log := slog.Default()
 	delegatedFailure := false
 	defer func() {
 		if resultErr != nil && !delegatedFailure {
@@ -193,7 +194,7 @@ func (source *ForwardingEvents) receive(ctx context.Context, raw syscall.RawConn
 		}
 		if mutation {
 			generation := source.changed(changes)
-			logForwardingMutations(ctx, generation, messages)
+			logForwardingMutations(ctx, log, generation, messages)
 		}
 		select {
 		case <-ctx.Done():

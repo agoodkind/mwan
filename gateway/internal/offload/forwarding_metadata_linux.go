@@ -38,8 +38,8 @@ type forwardingField struct {
 	format forwardingFieldFormat
 }
 
-func logForwardingMutations(ctx context.Context, generation uint64, messages []syscall.NetlinkMessage) {
-	if !slog.Default().Enabled(ctx, slog.LevelInfo) {
+func logForwardingMutations(ctx context.Context, log *slog.Logger, generation uint64, messages []syscall.NetlinkMessage) {
+	if !log.Enabled(ctx, slog.LevelInfo) {
 		return
 	}
 	mutations := make([]slog.Attr, 0, min(len(messages), forwardingMetadataEntries))
@@ -62,7 +62,7 @@ func logForwardingMutations(ctx context.Context, generation uint64, messages []s
 			),
 		})
 	}
-	slog.LogAttrs(ctx, slog.LevelInfo, "kernel forwarding generation advanced",
+	log.LogAttrs(ctx, slog.LevelInfo, "kernel forwarding generation advanced",
 		slog.Uint64("generation", generation), slog.Int("mutation_count", len(mutations)+omitted),
 		slog.Int("omitted_mutations", omitted), slog.Attr{Key: "mutations", Value: slog.GroupValue(mutations...)})
 }
