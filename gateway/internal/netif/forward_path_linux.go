@@ -201,9 +201,13 @@ func forwardingNeighbor(neighbors []netlink.Neigh, index int, nextHop net.IP) (n
 		if neighbor.LinkIndex != index || !neighbor.IP.Equal(nextHop) {
 			continue
 		}
-		resolved := neighStateResolved(neighbor.State) && neighbor.State&(unix.NUD_FAILED|unix.NUD_INCOMPLETE) == 0 &&
-			neighbor.Flags&unix.NTF_PROXY == 0 && forwardingMACValid(neighbor.HardwareAddr)
-		return neighbor, resolved
+		return neighbor, ForwardingNeighborUsable(neighbor)
 	}
 	return netlink.Neigh{}, false
+}
+
+// ForwardingNeighborUsable requires the usable Ethernet identity certified by forwarding lookups.
+func ForwardingNeighborUsable(neighbor netlink.Neigh) bool {
+	return neighStateResolved(neighbor.State) && neighbor.State&(unix.NUD_FAILED|unix.NUD_INCOMPLETE) == 0 &&
+		neighbor.Flags&unix.NTF_PROXY == 0 && forwardingMACValid(neighbor.HardwareAddr)
 }
