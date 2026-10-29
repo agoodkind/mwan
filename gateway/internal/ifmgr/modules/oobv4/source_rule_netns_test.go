@@ -54,7 +54,7 @@ func TestDHCPSourceRuleLifecycle(t *testing.T) {
 	}
 	foreignRule := netlink.NewRule()
 	foreignRule.Family, foreignRule.Priority, foreignRule.Table = unix.AF_INET, priority, table
-	foreignRule.Src = &net.IPNet{IP: net.IPv4(198, 51, 100, 8), Mask: net.CIDRMask(32, 32)}
+	foreignRule.Src = &net.IPNet{IP: net.IPv4(192, 0, 2, 8), Mask: net.CIDRMask(32, 32)}
 	if err := netlink.RuleAdd(foreignRule); err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func assertSourceRules(t *testing.T, priority, table int, source string) {
 		if rule.UIDRange != nil && rule.UIDRange.Start == 1000 && rule.UIDRange.End == 1000 {
 			uid++
 		}
-		if rule.Src != nil && rule.Src.String() == "198.51.100.8/32" && rule.Protocol != sourceRuleProtocol {
+		if rule.Src != nil && rule.Src.String() == "192.0.2.8/32" && rule.Protocol != sourceRuleProtocol {
 			foreign++
 		}
 		if rule.Protocol == sourceRuleProtocol && rule.Src != nil {
