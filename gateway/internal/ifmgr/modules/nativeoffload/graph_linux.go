@@ -60,30 +60,9 @@ func (module *Module) resolveGraph() (configuration offload.NativeConfig, links 
 			continue
 		}
 		binding := connection.Link.NativeOffload
-		link, err := netlink.LinkByName(connection.Name)
+		link, kernel, mtu, err := nativeKernelReceiver(connection)
 		if err != nil {
-			return configuration, nil, fmt.Errorf("inspect native kernel receiver %s: %w", connection.Name, err)
-		}
-		if link.Attrs().MasterIndex != 0 {
-			return configuration, nil, fmt.Errorf("native receiver %s belongs to a live master interface", connection.Name)
-		}
-		kernel, err := net.InterfaceByIndex(link.Attrs().Index)
-		if err != nil {
-			return configuration, nil, fmt.Errorf("read native receiver identity: %w", err)
-		}
-		if kernel.Flags&net.FlagUp == 0 || link.Attrs().RawFlags&unix.IFF_LOWER_UP == 0 || len(kernel.HardwareAddr) != 6 || kernel.HardwareAddr[0]&1 != 0 || [6]byte(kernel.HardwareAddr) == [6]byte{} {
-			return configuration, nil, fmt.Errorf("native receiver %s requires an active Ethernet link with a valid MTU", connection.Name)
-		}
-		mtu, err := checkedNativeMTU(kernel.MTU)
-		if err != nil {
-			return configuration, nil, fmt.Errorf("check native receiver %s MTU: %w", connection.Name, err)
-		}
-		expectedMAC := connection.Link.HardwareAddress
-		if expectedMAC == "" {
-			expectedMAC = connection.Link.Match.HardwareAddress
-		}
-		if expectedMAC != "" && kernel.HardwareAddr.String() != expectedMAC {
-			return configuration, nil, fmt.Errorf("native receiver %s does not match its configured MAC", connection.Name)
+			return configuration, nil, err
 		}
 		dataIndex, err := checkedNativeIndex(len(configuration.Data))
 		if err != nil {
@@ -110,6 +89,40 @@ func (module *Module) resolveGraph() (configuration offload.NativeConfig, links 
 		return configuration, nil, fmt.Errorf("native automatic admission requires a physical-miss ingress binding")
 	}
 	return configuration, links, nil
+}
+
+func nativeKernelReceiver(connection interfaceintent.Connection) (link netlink.Link, kernel *net.Interface, mtu uint16, resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			slog.Warn("native kernel receiver resolution failed", "interface", connection.Name, "err", resultErr)
+		}
+	}()
+	link, err := netlink.LinkByName(connection.Name)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("inspect native kernel receiver %s: %w", connection.Name, err)
+	}
+	if link.Attrs().MasterIndex != 0 {
+		return nil, nil, 0, fmt.Errorf("native receiver %s belongs to a live master interface", connection.Name)
+	}
+	kernel, err = net.InterfaceByIndex(link.Attrs().Index)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("read native receiver identity: %w", err)
+	}
+	if kernel.Flags&net.FlagUp == 0 || link.Attrs().RawFlags&unix.IFF_LOWER_UP == 0 || len(kernel.HardwareAddr) != 6 || kernel.HardwareAddr[0]&1 != 0 || [6]byte(kernel.HardwareAddr) == [6]byte{} {
+		return nil, nil, 0, fmt.Errorf("native receiver %s requires an active Ethernet link with a valid MTU", connection.Name)
+	}
+	mtu, err = checkedNativeMTU(kernel.MTU)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("check native receiver %s MTU: %w", connection.Name, err)
+	}
+	expectedMAC := connection.Link.HardwareAddress
+	if expectedMAC == "" {
+		expectedMAC = connection.Link.Match.HardwareAddress
+	}
+	if expectedMAC != "" && kernel.HardwareAddr.String() != expectedMAC {
+		return nil, nil, 0, fmt.Errorf("native receiver %s does not match its configured MAC", connection.Name)
+	}
+	return link, kernel, mtu, nil
 }
 
 func (module *Module) verifyLinks() (resultErr error) {

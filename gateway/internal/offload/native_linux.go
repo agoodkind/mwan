@@ -58,8 +58,11 @@ type NativeIngressOrigin uint32
 type NativeIPv6RestoreField uint32
 
 const (
-	NativeIPv6RestoreLegacy      NativeIPv6RestoreField = C.MWAN_NATIVE_IPV6_RESTORE_LEGACY
-	NativeIPv6RestoreSource      NativeIPv6RestoreField = C.MWAN_NATIVE_IPV6_RESTORE_SOURCE
+	// NativeIPv6RestoreLegacy retains each pair's complete inverse mapping.
+	NativeIPv6RestoreLegacy NativeIPv6RestoreField = C.MWAN_NATIVE_IPV6_RESTORE_LEGACY
+	// NativeIPv6RestoreSource shares exact source-address inverses for the origin.
+	NativeIPv6RestoreSource NativeIPv6RestoreField = C.MWAN_NATIVE_IPV6_RESTORE_SOURCE
+	// NativeIPv6RestoreDestination shares exact destination-address inverses for the origin.
 	NativeIPv6RestoreDestination NativeIPv6RestoreField = C.MWAN_NATIVE_IPV6_RESTORE_DESTINATION
 )
 

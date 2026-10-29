@@ -77,7 +77,8 @@ func (module *Module) releaseShared(ctx context.Context, identity connectionIden
 	}
 	if err != nil {
 		entry.uncertain = true
-		module.logRuleCounters(ctx, slog.LevelWarn, "native shared release failed", entry, reason, err)
+		log := module.ruleCounterLogger(entry, reason)
+		log.WarnContext(ctx, "native shared release failed", "err", err)
 		return fmt.Errorf("release native connection %d for %s: %w", identity.id, reason, err)
 	}
 	delete(module.resumeCandidates, identity)

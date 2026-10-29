@@ -105,12 +105,7 @@ func (worker *NativeRuntime) execute(owner **C.struct_mwan_native, request nativ
 		rc = C.mwan_native_pair_remove(*owner, request.handle, &pair, &detail)
 		result.pair = decodeNativePairResult(pair)
 	case nativeReleaseShared:
-		if !request.deadline.IsZero() && worker.clock.Now().After(request.deadline) {
-			result.err = context.DeadlineExceeded
-			break
-		}
-		rc = C.mwan_native_pair_release_shared(*owner, request.handle, &pair, &detail)
-		result.pair = decodeNativePairResult(pair)
+		result = worker.releaseSharedOnOwner(*owner, request)
 	case nativeVXLANOpen, nativeVXLANInstall, nativeVXLANQuery, nativeVXLANRemove, nativeVXLANClose:
 		result = worker.executeVXLAN(*owner, request)
 	case nativeDisable:
@@ -122,13 +117,6 @@ func (worker *NativeRuntime) execute(owner **C.struct_mwan_native, request nativ
 	}
 	if result.err == nil {
 		result.err = nativeCallError(rc, detail)
-	}
-	if request.operation == nativeReleaseShared && result.err == nil &&
-		(encodeNativeHandle(result.pair.Handle) != request.handle || result.pair.State != NativePairReleased ||
-			result.pair.RequestedDirections == 0 || result.pair.InstalledDirections != 0 || result.pair.CleanupFailedDirections != 0 ||
-			result.pair.RestorationDirections != result.pair.RequestedDirections ||
-			result.pair.SharedRestorationDirections != result.pair.RequestedDirections) {
-		result.err = errors.New("native shared release did not confirm consumed ownership")
 	}
 	worker.completeEvidence(request.operation, result)
 	result.ownerExists = *owner != nil
@@ -145,6 +133,29 @@ func (worker *NativeRuntime) execute(owner **C.struct_mwan_native, request nativ
 		worker.log.Warn("native operation failed", "operation", request.operation, "err", result.err)
 	}
 	return result, request.operation == nativeShutdown && rc == 0
+}
+
+func (worker *NativeRuntime) releaseSharedOnOwner(owner *C.struct_mwan_native, request nativeRequest) nativeReply {
+	var result nativeReply
+	if !request.deadline.IsZero() && worker.clock.Now().After(request.deadline) {
+		result.err = context.DeadlineExceeded
+		return result
+	}
+	var pair C.struct_mwan_native_pair_result
+	var detail C.struct_mwan_native_error
+	rc := C.mwan_native_pair_release_shared(owner, request.handle, &pair, &detail)
+	result.pair = decodeNativePairResult(pair)
+	result.err = nativeCallError(rc, detail)
+	if result.err != nil {
+		return result
+	}
+	if encodeNativeHandle(result.pair.Handle) != request.handle || result.pair.State != NativePairReleased ||
+		result.pair.RequestedDirections == 0 || result.pair.InstalledDirections != 0 || result.pair.CleanupFailedDirections != 0 ||
+		result.pair.RestorationDirections != result.pair.RequestedDirections ||
+		result.pair.SharedRestorationDirections != result.pair.RequestedDirections {
+		result.err = errors.New("native shared release did not confirm consumed ownership")
+	}
+	return result
 }
 
 func (worker *NativeRuntime) installOnOwner(owner *C.struct_mwan_native, request nativeRequest) nativeReply {
