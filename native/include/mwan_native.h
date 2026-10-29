@@ -22,6 +22,13 @@ extern "C" {
 #define MWAN_NATIVE_FAMILY_IPV6 6U
 #define MWAN_NATIVE_PROTOCOL_TCP 6U
 #define MWAN_NATIVE_PROTOCOL_UDP 17U
+#define MWAN_NATIVE_OBSERVATION_BATCH_LIMIT 256U
+#define MWAN_NATIVE_OBSERVATION_FRAME_LIMIT 65536U
+#define MWAN_NATIVE_VXLAN_VERSION 1U
+#define MWAN_NATIVE_VXLAN_CONTEXT_ABSENT 0U
+#define MWAN_NATIVE_VXLAN_CONTEXT_READY 1U
+#define MWAN_NATIVE_VXLAN_RULE_INSTALLED 2U
+#define MWAN_NATIVE_VXLAN_CLEANUP_FAILED 3U
 
 /* Integers use host byte order. Address and MAC arrays use network byte order.
  * IPv4 addresses occupy the first four bytes; the remaining bytes are zero.
@@ -86,6 +93,19 @@ struct mwan_native_pci {
 	uint8_t device;
 	uint8_t function;
 	uint8_t reserved[3];
+};
+
+/* Additional records do not change ABI2 layouts. Endpoint identity includes
+ * the declared receiver index, represented VF, PCI function and Linux ifindex.
+ */
+struct mwan_native_vxlan_endpoint {
+	uint32_t version;
+	uint32_t record_size;
+	uint32_t receiver_id;
+	uint32_t linux_ifindex;
+	uint16_t source_vf;
+	uint16_t reserved;
+	struct mwan_native_pci pci;
 };
 
 /* References are array indexes. Each controller owns one physical miss. */
@@ -159,6 +179,34 @@ struct mwan_native_tuple {
 	uint8_t destination[16];
 	uint16_t source_port;
 	uint16_t destination_port;
+};
+
+struct mwan_native_frame {
+	const uint8_t *data;
+	uint32_t length;
+	uint32_t reserved;
+};
+
+struct mwan_native_observation {
+	struct mwan_native_tuple tuple;
+	uint8_t source_mac[6];
+	uint8_t destination_mac[6];
+	uint32_t network_length;
+	uint32_t flow_label;
+	uint8_t traffic_class;
+	uint8_t tcp_flags;
+	uint8_t ttl;
+	uint8_t eligible;
+	int32_t decode_status;
+};
+
+struct mwan_native_packet_guard {
+	/* Packet policy must be certified independently of ECN. The traffic class
+	 * comparison uses its DSCP bits; flow_label still requires an exact match.
+	 */
+	uint32_t flow_label;
+	uint8_t traffic_class;
+	uint8_t reserved[3];
 };
 
 /* Ports use host byte order. TCP flags use their eight wire bits. Hardware
@@ -247,6 +295,45 @@ struct mwan_native_counter {
 	uint8_t reserved[2];
 };
 
+/* The fixed envelope contains Ethernet, IPv4, UDP and VXLAN without options.
+ * Inner addresses and ports remain unchanged. inner_mtu excludes Ethernet.
+ * The source Linux VF MTU must not exceed inner_mtu. The underlay MTU must
+ * include the 50 bytes between the outer IP header and inner IP packet.
+ */
+struct mwan_native_vxlan_plan {
+	uint32_t version;
+	uint32_t record_size;
+	uint64_t cookie;
+	uint64_t policy_generation;
+	struct mwan_native_tuple inner;
+	uint8_t inner_source_mac[6];
+	uint8_t inner_destination_mac[6];
+	uint8_t outer_source_mac[6];
+	uint8_t outer_destination_mac[6];
+	uint8_t outer_source[4];
+	uint8_t outer_destination[4];
+	uint32_t vni;
+	uint16_t outer_source_port;
+	uint16_t outer_destination_port;
+	uint16_t inner_mtu;
+	uint16_t underlay_mtu;
+	uint8_t outer_ttl;
+	uint8_t outer_tos;
+	uint16_t reserved;
+};
+
+struct mwan_native_vxlan_result {
+	struct mwan_native_handle context;
+	uint64_t rule_generation;
+	uint32_t state;
+	uint32_t reserved;
+};
+
+struct mwan_native_vxlan_stats {
+	struct mwan_native_vxlan_result result;
+	struct mwan_native_counter counter;
+};
+
 struct mwan_native_pair_stats {
 	struct mwan_native_pair_result result;
 	struct mwan_native_counter directions[MWAN_NATIVE_DIRECTION_COUNT];
@@ -263,6 +350,17 @@ struct mwan_native_worker_stats {
 	uint64_t pending_packets;
 	uint64_t quarantined_packets;
 	uint64_t discarded_group_frames;
+};
+
+/* Retained pair storage has the same bound as configured pair_capacity.
+ * DRAINING generations retain their inverse mappings after hardware-slot reuse.
+ */
+struct mwan_native_retirement_stats {
+	uint32_t active_pair_capacity;
+	uint32_t retained_pair_capacity;
+	uint32_t retained_pairs;
+	uint32_t draining_pairs;
+	uint64_t retained_directions;
 };
 
 struct mwan_native_build_info {
@@ -285,6 +383,9 @@ struct mwan_native_build_info {
 
 uint32_t mwan_native_abi_version(void);
 int mwan_native_build_info(struct mwan_native_build_info *info);
+int mwan_native_observe_batch(const struct mwan_native_frame *frames,
+			      struct mwan_native_observation *observations,
+			      uint32_t count);
 
 /* The owner calls every operation on one OS thread. A null owner initializes
  * EAL once. A disabled owner reopens only the identical graph configuration.
@@ -295,12 +396,40 @@ int mwan_native_pair_install(struct mwan_native *owner,
 			     const struct mwan_native_pair_spec *spec,
 			     struct mwan_native_pair_result *result,
 			     struct mwan_native_error *error);
+int mwan_native_pair_install_observed(struct mwan_native *owner,
+				      const struct mwan_native_pair_spec *spec,
+				      const struct mwan_native_packet_guard guards[MWAN_NATIVE_DIRECTION_COUNT],
+				      struct mwan_native_pair_result *result,
+				      struct mwan_native_error *error);
+/* Callers revalidate the connection and forwarding evidence before resuming.
+ * Only an active owner's fully cleaned primary DRAINING pair can resume.
+ * Resume preserves the current primary generation and its inverse records.
+ * Only policy_generation may advance; every other spec and guard field must match.
+ */
+int mwan_native_pair_resume_observed(struct mwan_native *owner,
+				     struct mwan_native_handle handle,
+				     const struct mwan_native_pair_spec *spec,
+				     const struct mwan_native_packet_guard guards[MWAN_NATIVE_DIRECTION_COUNT],
+				     struct mwan_native_pair_result *result,
+				     struct mwan_native_error *error);
 int mwan_native_pair_query(struct mwan_native *owner,
 			   struct mwan_native_handle handle,
 			   struct mwan_native_pair_stats *stats,
 			   struct mwan_native_error *error);
+/* Reobservation requires complete removal and fresh connection and policy proof.
+ * It preserves the primary handle, inverse records and every mapping field.
+ * Only policy_generation may advance and packet guards may change.
+ * Failed validation or hardware replacement preserves the previous guards.
+ */
+int mwan_native_pair_reobserve(struct mwan_native *owner,
+			      struct mwan_native_handle handle,
+			      const struct mwan_native_pair_spec *spec,
+			      const struct mwan_native_packet_guard guards[MWAN_NATIVE_DIRECTION_COUNT],
+			      struct mwan_native_pair_result *result,
+			      struct mwan_native_error *error);
 /* Removal deletes hardware rules and retains inverse records in DRAINING.
- * Retained records consume pair capacity until disable stops the DATA queues.
+ * A later install can reuse the hardware slot after copying its old generation
+ * into bounded retained storage. Retained handles remain DRAINING after reuse.
  */
 int mwan_native_pair_remove(struct mwan_native *owner,
 			    struct mwan_native_handle handle,
@@ -309,6 +438,9 @@ int mwan_native_pair_remove(struct mwan_native *owner,
 int mwan_native_poll(struct mwan_native *owner, uint32_t packet_budget,
 		     struct mwan_native_worker_stats *stats,
 		     struct mwan_native_error *error);
+int mwan_native_retirement_query(struct mwan_native *owner,
+				 struct mwan_native_retirement_stats *stats,
+				 struct mwan_native_error *error);
 
 /* Disable drains owned flows and stops ports while retaining EAL and owner.
  * Final shutdown also closes ports, cleans EAL and clears owner on success.
@@ -316,6 +448,38 @@ int mwan_native_poll(struct mwan_native *owner, uint32_t packet_budget,
  */
 int mwan_native_close(struct mwan_native **owner, uint32_t mode,
 		      struct mwan_native_error *error);
+
+/* These calls require the ABI2 owner thread and separate, aligned, valid records.
+ * Validation copies the complete plan and does not require DPDK or EAL.
+ * Each context owns at most one outbound rule on its declared kernel VF TX.
+ * Close removes the rule before releasing its context. ABI2 disable/final
+ * shutdown also remove these rules before stopping any port. Failed removal
+ * retains the context, plan and uncertain hardware ownership and blocks reuse.
+ * Removal does not establish Linux VXLAN fallback or TCP continuation.
+ */
+int mwan_native_vxlan_plan_validate(const struct mwan_native_vxlan_plan *plan,
+				    struct mwan_native_error *error);
+int mwan_native_vxlan_context_open(struct mwan_native *owner,
+				   const struct mwan_native_vxlan_endpoint *endpoint,
+				   struct mwan_native_vxlan_result *result,
+				   struct mwan_native_error *error);
+int mwan_native_vxlan_install(struct mwan_native *owner,
+			      struct mwan_native_handle context,
+			      const struct mwan_native_vxlan_plan *plan,
+			      struct mwan_native_vxlan_result *result,
+			      struct mwan_native_error *error);
+int mwan_native_vxlan_query(struct mwan_native *owner,
+			    struct mwan_native_vxlan_result rule,
+			    struct mwan_native_vxlan_stats *stats,
+			    struct mwan_native_error *error);
+int mwan_native_vxlan_remove(struct mwan_native *owner,
+			     struct mwan_native_vxlan_result rule,
+			     struct mwan_native_vxlan_result *result,
+			     struct mwan_native_error *error);
+int mwan_native_vxlan_context_close(struct mwan_native *owner,
+				    struct mwan_native_handle context,
+				    struct mwan_native_vxlan_result *result,
+				    struct mwan_native_error *error);
 
 #ifdef __cplusplus
 }

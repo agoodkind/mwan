@@ -3,6 +3,7 @@
 package reporting_test
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -66,7 +68,7 @@ func TestWatchWaitsForWriterAndResumesCollection(t *testing.T) {
 	settings.MinProbeSeconds = 1
 	network := reportNetwork()
 	server := testsmtp.Start(t)
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger, writerWaiting, logErrors := reportingWatchLogger(t)
 	notifications, err := notify.New(notify.EmailConfig{MsmtprcPath: server.Path, AlertEmail: "recipient@example.com"}, notify.Config{}, logger, "mwan-report")
 	if err != nil {
 		t.Fatal(err)
@@ -81,28 +83,62 @@ func TestWatchWaitsForWriterAndResumesCollection(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer collector.Close()
-	ctx, cancel := context.WithCancel(t.Context())
+	var testContext context.Context
+	var finishTest context.CancelFunc
+	if deadline, limited := t.Deadline(); limited {
+		testContext, finishTest = context.WithDeadline(t.Context(), deadline)
+	} else {
+		testContext, finishTest = context.WithCancel(t.Context())
+	}
+	defer finishTest()
+	ctx, cancel := context.WithCancel(testContext)
 	defer cancel()
 	finished := make(chan error, 1)
-	go func() { finished <- service.Watch(ctx, collector) }()
-	waitForReportingState(t, settings.StateDirectory, finished)
+	var workers sync.WaitGroup
+	workers.Go(func() { finished <- service.Watch(ctx, collector) })
+	defer func() {
+		cancel()
+		workers.Wait()
+	}()
+	waitForReportingState(t, testContext, settings.StateDirectory, finished)
 	received, release := server.PauseDelivery()
 	defer release()
 	delivery := make(chan error, 1)
-	go func() { delivery <- service.SendDaily(ctx) }()
+	workers.Go(func() { delivery <- service.SendDaily(ctx) })
 	select {
 	case <-received:
-	case <-time.After(5 * time.Second):
-		t.Fatal("SMTP did not receive the summary")
+	case err := <-delivery:
+		t.Fatalf("summary completed before SMTP paused delivery: %v", err)
+	case err := <-finished:
+		t.Fatalf("monitor stopped before SMTP received the summary: %v", err)
+	case err := <-logErrors:
+		t.Fatalf("reporting log capture stopped before SMTP received the summary: %v", err)
+	case <-testContext.Done():
+		t.Fatalf("SMTP did not receive the summary before the test deadline: %v", testContext.Err())
 	}
-	// Delay the actual mail response until collection fills the writer queue.
-	time.Sleep(11 * time.Second)
+	// The warning follows a failed nonblocking write to the real writer queue.
+	select {
+	case <-writerWaiting:
+	case err := <-delivery:
+		t.Fatalf("summary completed before collection waited for the writer: %v", err)
+	case err := <-finished:
+		t.Fatalf("monitor stopped before collection waited for the writer: %v", err)
+	case err := <-logErrors:
+		t.Fatalf("reporting log capture stopped before collection waited for the writer: %v", err)
+	case <-testContext.Done():
+		t.Fatalf("collection did not wait for the writer before the test deadline: %v", testContext.Err())
+	}
 	releasedAt := time.Now()
 	release()
-	if err := <-delivery; err != nil {
-		t.Fatalf("summary delivery failed: %v", err)
+	select {
+	case err := <-delivery:
+		if err != nil {
+			t.Fatalf("summary delivery failed: %v", err)
+		}
+	case <-testContext.Done():
+		t.Fatalf("summary did not complete before the test deadline: %v", testContext.Err())
 	}
-	resumed := waitForReportingRecovery(t, settings.StateDirectory, finished, releasedAt)
+	resumed := waitForReportingRecovery(t, testContext, settings.StateDirectory, finished, releasedAt)
 	if duration := resumed.End.Sub(resumed.Start); duration <= 0 || duration >= time.Second {
 		t.Fatalf("resumed interval must contain only the observed part of the second: %+v", resumed)
 	}
@@ -112,23 +148,52 @@ func TestWatchWaitsForWriterAndResumesCollection(t *testing.T) {
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("monitor cancellation returned %v", err)
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("monitor did not stop after cancellation")
+	case <-testContext.Done():
+		t.Fatalf("monitor did not stop after cancellation before the test deadline: %v", testContext.Err())
 	}
 }
 
-func waitForReportingRecovery(t *testing.T, directory string, finished <-chan error, releasedAt time.Time) reporting.Minute {
+func reportingWatchLogger(t *testing.T) (*slog.Logger, <-chan struct{}, <-chan error) {
+	t.Helper()
+	reader, writer := io.Pipe()
+	waiting := make(chan struct{}, 1)
+	failures := make(chan error, 1)
+	var workers sync.WaitGroup
+	workers.Go(func() {
+		defer reader.Close()
+		scanner := bufio.NewScanner(reader)
+		for scanner.Scan() {
+			if strings.Contains(scanner.Text(), `msg="reporting collection is waiting for the writer queue"`) {
+				select {
+				case waiting <- struct{}{}:
+				default:
+				}
+			}
+		}
+		failures <- scanner.Err()
+	})
+	t.Cleanup(func() {
+		if err := writer.Close(); err != nil {
+			t.Error(err)
+		}
+		if err := reader.Close(); err != nil {
+			t.Error(err)
+		}
+		workers.Wait()
+	})
+	return slog.New(slog.NewTextHandler(writer, nil)), waiting, failures
+}
+
+func waitForReportingRecovery(t *testing.T, ctx context.Context, directory string, finished <-chan error, releasedAt time.Time) reporting.Minute {
 	t.Helper()
 	ticker := time.NewTicker(20 * time.Millisecond)
 	defer ticker.Stop()
-	timeout := time.NewTimer(10 * time.Second)
-	defer timeout.Stop()
 	for {
 		select {
 		case err := <-finished:
 			t.Fatalf("monitor stopped after writer contention: %v", err)
-		case <-timeout.C:
-			t.Fatal("monitor did not persist a partial interval collected after SMTP release")
+		case <-ctx.Done():
+			t.Fatalf("monitor did not persist a partial interval collected after SMTP release before the test deadline: %v", ctx.Err())
 		case <-ticker.C:
 			data, err := os.ReadFile(filepath.Join(directory, "state.json"))
 			if err != nil {
@@ -165,18 +230,16 @@ func waitForReportingRecovery(t *testing.T, directory string, finished <-chan er
 	}
 }
 
-func waitForReportingState(t *testing.T, directory string, finished <-chan error) {
+func waitForReportingState(t *testing.T, ctx context.Context, directory string, finished <-chan error) {
 	t.Helper()
 	ticker := time.NewTicker(20 * time.Millisecond)
 	defer ticker.Stop()
-	timeout := time.NewTimer(5 * time.Second)
-	defer timeout.Stop()
 	for {
 		select {
 		case err := <-finished:
 			t.Fatalf("monitor stopped before recording: %v", err)
-		case <-timeout.C:
-			t.Fatal("monitor did not record an interval")
+		case <-ctx.Done():
+			t.Fatalf("monitor did not record an interval before the test deadline: %v", ctx.Err())
 		case <-ticker.C:
 			_, err := os.Stat(filepath.Join(directory, "state.json"))
 			if err == nil {

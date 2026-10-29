@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/agoodkind/netlink"
+	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 )
 

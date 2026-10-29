@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agoodkind/netlink"
+	"github.com/vishvananda/netlink"
 )
 
 func tunnelRuntimeNetwork(withTunnel bool) string {

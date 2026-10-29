@@ -69,6 +69,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .no_default("mwan_native_config|MwanNativeConfig")
         .no_default("mwan_native_error|MwanNativeError")
         .no_default("mwan_native_build_info|MwanNativeBuildInfo")
+        .no_default("mwan_native_frame|MwanNativeFrame")
         .derive_eq(true)
         .derive_partialeq(true)
         .derive_hash(true)
@@ -134,6 +135,7 @@ fn build_dpdk(output: &Path) -> Result<(), Box<dyn Error>> {
         "rte_flow_item_ipv6",
         "rte_flow_item_tcp",
         "rte_flow_item_udp",
+        "rte_flow_item_vxlan",
         "rte_flow_query_count",
         "rte_mbuf",
         "rte_mempool",
@@ -176,7 +178,12 @@ fn build_dpdk(output: &Path) -> Result<(), Box<dyn Error>> {
             .no_default(name)
             .no_default(rust_type_name(name));
     }
-    for name in ["rte_flow_action", "rte_flow_error", "rte_flow_item"] {
+    for name in [
+        "rte_flow_action",
+        "rte_flow_action_vxlan_encap",
+        "rte_flow_error",
+        "rte_flow_item",
+    ] {
         builder = builder.no_default(name).no_default(rust_type_name(name));
     }
     for name in [
@@ -189,6 +196,7 @@ fn build_dpdk(output: &Path) -> Result<(), Box<dyn Error>> {
         "rte_flow",
         "rte_flow_action",
         "rte_flow_action_count",
+        "rte_flow_action_vxlan_encap",
         "rte_flow_action_port_id",
         "rte_flow_action_set_ipv4",
         "rte_flow_action_set_ipv6",
@@ -204,6 +212,8 @@ fn build_dpdk(output: &Path) -> Result<(), Box<dyn Error>> {
         "rte_flow_item_ipv6",
         "rte_flow_item_tcp",
         "rte_flow_item_udp",
+        "rte_flow_item_vxlan",
+        "rte_flow_item_port_id",
         "rte_flow_item_type",
         "rte_flow_query_count",
         "rte_mbuf",

@@ -21,7 +21,7 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/agoodkind/netlink"
+	"github.com/vishvananda/netlink"
 	"go.fd.io/govpp"
 	"go.fd.io/govpp/binapi/interface_types"
 	"go.fd.io/govpp/binapi/ip_types"

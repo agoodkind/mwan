@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agoodkind/netlink"
+	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
 )

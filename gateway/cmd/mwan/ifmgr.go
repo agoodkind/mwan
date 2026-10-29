@@ -66,6 +66,9 @@ func runIfMgr(cfg *config.Config, watchdogSection watchdogconfig.WatchdogSection
 	if err != nil {
 		return err
 	}
+	if err := validateNativeOffloadStartup(role, cfg.IfMgr); err != nil {
+		return err
+	}
 
 	logger := buildIfMgrLogger(cfg, flags.debug)
 	runID := tracing.NewID()

@@ -12,9 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agoodkind/netlink"
+	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	"goodkind.io/mwan/internal/clock"
+	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/netif"
 )
@@ -84,7 +85,7 @@ func (module *Module) currentDHCPv6Client(ctx context.Context, log *slog.Logger,
 			return
 		}
 	}
-	clientContext, cancel := context.WithCancel(ctx)
+	clientContext, cancel := context.WithCancel(ifmgr.WithoutForwardingChange(ctx))
 	client, err := netif.StartDHCPv6PDClient(clientContext, log, clientConfig)
 	if err != nil {
 		cancel()

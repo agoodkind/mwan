@@ -17,6 +17,7 @@ import (
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/netif"
+	"goodkind.io/mwan/internal/wanstate"
 )
 
 const (
@@ -209,6 +210,11 @@ func validateConfig(cfg Config) error {
 func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	m.Lock()
 	defer m.Unlock()
+	ctx, finish, err := m.Env.BeginForwardingChange(ctx)
+	if err != nil {
+		return fmt.Errorf("prepare steering forwarding change: %w", err)
+	}
+	defer finish()
 
 	log = log.With("op", "reconcile")
 
@@ -230,6 +236,10 @@ func (m *Module) desiredRules(health netif.HealthStates) []steerRule {
 		return nil
 	}
 	snapshot := m.Env.LiveState.Snapshot()
+	return m.rulesForSnapshot(health, snapshot)
+}
+
+func (m *Module) rulesForSnapshot(health netif.HealthStates, snapshot wanstate.Snapshot) []steerRule {
 	v4 := make([]Member, 0, len(m.cfg.Members))
 	v6 := make([]Member, 0, len(m.cfg.Members))
 	eligibleV4 := make(map[uint32]bool, len(m.cfg.Members))
@@ -293,19 +303,23 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		}
 		c = typedConfig
 	}
-	if c.HealthStateFile == "" && len(c.Members) > 0 {
-		c.HealthStateFile = netif.DefaultHealthStatePath
+	return newConfiguredModule(c), nil
+}
+
+func newConfiguredModule(configuration Config) *Module {
+	if configuration.HealthStateFile == "" && len(configuration.Members) > 0 {
+		configuration.HealthStateFile = netif.DefaultHealthStatePath
 	}
 	return &Module{
 		BaseModule:     ifmgr.NewBaseModule(moduleName),
-		cfg:            c,
+		cfg:            configuration,
 		internalNetV4:  netip.Prefix{},
 		internalPrefix: netip.Prefix{},
 		opnsenseEdge:   netip.Addr{},
 		mode:           "",
 		apply:          nil,
 		readHealth:     nil,
-	}, nil
+	}
 }
 
 func init() { ifmgr.Register(moduleName, New) }

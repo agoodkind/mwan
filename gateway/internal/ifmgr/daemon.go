@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -32,13 +33,13 @@ import (
 //  3. Main loop selects on ctx.Done, monitor events, DHCP lease events,
 //     and a periodic ticker. Each tick: Reconcile every module then
 //     EvaluateAlerts every module.
-//  4. Run returns when ctx is cancelled. Modules' kernel state is left
-//     in place (no Cleanup hook); the daemon is restart-safe.
+//  4. Cancellation requests worker shutdown. Shutdown hooks release process-owned resources.
 type Daemon struct {
 	cfg               DaemonConfig
 	log               *slog.Logger
 	role              string
 	modules           []Module
+	attemptedModules  []Module
 	clock             internalclock.Clock
 	env               *Env
 	primaryConnection *interfaceintent.Connection
@@ -170,6 +171,7 @@ func NewDaemon(log *slog.Logger, cfg DaemonConfig) (*Daemon, error) {
 		log:               dlog,
 		role:              cfg.Role,
 		modules:           modules,
+		attemptedModules:  nil,
 		clock:             nil,
 		env:               nil,
 		primaryConnection: primaryConnection,
@@ -184,17 +186,14 @@ func NewDaemon(log *slog.Logger, cfg DaemonConfig) (*Daemon, error) {
 
 // Run starts the kernel monitor, optional DHCP+RA clients, calls Init on
 // every module, runs an initial Reconcile, then enters the main loop.
-// Blocks until ctx is cancelled. Returns the first error from Init or
-// the main loop; transient Reconcile errors are logged but do not exit.
-func (d *Daemon) Run(ctx context.Context) error {
+// Run joins initialization, loop, and final shutdown errors. Transient
+// Reconcile errors do not stop the daemon.
+func (d *Daemon) Run(ctx context.Context) (resultErr error) {
 	ctx, cancel := context.WithCancel(ctx)
+	d.attemptedModules = nil
 	defer func() {
 		cancel()
-		for _, module := range d.modules {
-			if worker, ok := module.(interface{ Wait() }); ok {
-				worker.Wait()
-			}
-		}
+		resultErr = errors.Join(resultErr, d.shutdownModules(context.WithoutCancel(ctx)))
 	}()
 	if d.clock == nil {
 		d.clock = internalclock.Real{}
@@ -251,25 +250,27 @@ func (d *Daemon) Run(ctx context.Context) error {
 	}
 
 	d.env = &Env{
-		Iface:                d.cfg.Iface,
-		Connections:          d.cfg.Connections,
-		Sysctl:               netif.NewProcSysctlRunner(d.log, false),
-		Log:                  d.log,
-		Alerts:               WrapNotifier(d.cfg.Notifier),
-		Monitor:              mon,
-		DHCP:                 dhcp.client,
-		DHCPRecoveryPending:  dhcp.cached,
-		RA:                   raClient,
-		RequestReconcile:     d.requestReconcile,
-		LiveState:            d.cfg.LiveState,
-		OwnedLinks:           nil,
-		OwnedAddresses:       nil,
-		NPTAddresses:         nil,
-		Delegations:          nil,
-		TunnelEndpointRoutes: nil,
-		PrepareLocalIPv6:     nil,
-		PrepareOwnedLink:     nil,
-		OwnedLinkUp:          &OwnedLinkUpHandler{mu: sync.RWMutex{}, handle: nil},
+		Iface:                     d.cfg.Iface,
+		Connections:               d.cfg.Connections,
+		Sysctl:                    netif.NewProcSysctlRunner(d.log, false),
+		Log:                       d.log,
+		Alerts:                    WrapNotifier(d.cfg.Notifier),
+		Monitor:                   mon,
+		DHCP:                      dhcp.client,
+		DHCPRecoveryPending:       dhcp.cached,
+		RA:                        raClient,
+		RequestReconcile:          d.requestReconcile,
+		ForwardingChanges:         &ForwardingChanges{mu: sync.RWMutex{}, registration: nil, requestReconcile: d.requestReconcile},
+		LiveState:                 d.cfg.LiveState,
+		OwnedLinks:                nil,
+		OwnedAddresses:            nil,
+		NPTAddresses:              nil,
+		Delegations:               nil,
+		TunnelEndpointRoutes:      nil,
+		PrepareLocalIPv6:          nil,
+		InspectNativePacketPolicy: nil,
+		PrepareOwnedLink:          nil,
+		OwnedLinkUp:               &OwnedLinkUpHandler{mu: sync.RWMutex{}, handle: nil},
 	}
 
 	d.publishStartingPaths()
@@ -395,6 +396,7 @@ func (d *Daemon) initModules(ctx context.Context) error {
 	for _, m := range d.modules {
 		mlog := d.log.With("module", m.Name(), "phase", "init")
 		mlog.DebugContext(ctx, "ifmgr: module Init")
+		d.attemptedModules = append(d.attemptedModules, m)
 		err := m.Init(ctx, d.env)
 		if errors.Is(err, ErrModuleDisabled) {
 			mlog.DebugContext(ctx, "ifmgr: module disabled, skipping for daemon lifetime",
@@ -409,6 +411,23 @@ func (d *Daemon) initModules(ctx context.Context) error {
 	}
 	d.modules = enabledModules
 	return nil
+}
+
+func (d *Daemon) shutdownModules(ctx context.Context) error {
+	var failures error
+	for _, module := range slices.Backward(d.attemptedModules) {
+		if closer, ok := module.(ModuleShutdown); ok {
+			if err := closer.Shutdown(ctx, d.log.With("module", module.Name(), "phase", "shutdown")); err != nil {
+				failures = errors.Join(failures, fmt.Errorf("module %s Shutdown: %w", module.Name(), err))
+			}
+		}
+	}
+	for _, module := range slices.Backward(d.attemptedModules) {
+		if worker, ok := module.(interface{ Wait() }); ok {
+			worker.Wait()
+		}
+	}
+	return failures
 }
 
 func (d *Daemon) runLoop(
@@ -536,6 +555,8 @@ func (d *Daemon) requestReconcile(reason string) {
 // returning an error is logged at WARN; the loop continues so that one
 // flaky module does not silence the others.
 func (d *Daemon) reconcileAll(ctx context.Context, log *slog.Logger) {
+	ctx, finish := forwardingReconcileContext(ctx)
+	defer finish()
 	var routingGeneration uint64
 	if d.cfg.LiveState != nil {
 		routingGeneration = d.cfg.LiveState.Snapshot().RoutingGeneration

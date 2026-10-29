@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/agoodkind/netlink"
+	"github.com/vishvananda/netlink"
 	"goodkind.io/mwan/internal/interfaceintent"
 )
 

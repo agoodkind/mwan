@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agoodkind/netlink"
+	"github.com/vishvananda/netlink"
 )
 
 func tunnelRuntimeStartsNotReady(t *testing.T, run tunnelRuntimeRun) *runtimeDaemon {

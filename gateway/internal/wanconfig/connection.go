@@ -22,6 +22,9 @@ func validateFirewall(g Gateway) error {
 }
 
 func validateConnections(connections []interfaceintent.Connection) (map[string]bool, error) {
+	if err := interfaceintent.ValidateNativeBindings(connections); err != nil {
+		return nil, invalid(fmt.Sprintf("native offload bindings: %v", err))
+	}
 	seen := make(map[string]bool, len(connections))
 	for _, connection := range connections {
 		if err := validateKey("connection name", connection.Name); err != nil {

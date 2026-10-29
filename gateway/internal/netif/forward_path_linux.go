@@ -11,8 +11,9 @@ import (
 	"math"
 	"net"
 	"net/netip"
+	"runtime"
 
-	"github.com/agoodkind/netlink"
+	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 )
 
@@ -46,6 +47,8 @@ const (
 	EgressObservationNexthopGroup
 	// EgressObservationMultipleRoutes rejects an arbitrary choice between replies.
 	EgressObservationMultipleRoutes
+	// EgressObservationUIDMapping rejects an unmapped or ambiguous IPv6 input UID.
+	EgressObservationUIDMapping
 )
 
 // EgressObservationRequiredError prevents a synthetic route query from certifying
@@ -57,6 +60,9 @@ type EgressObservationRequiredError struct {
 
 // Error reports the packet evidence that route lookup cannot establish.
 func (e *EgressObservationRequiredError) Error() string {
+	if e.Reason == EgressObservationUIDMapping {
+		return "forwarding path requires an actual egress observation: IPv6 input UID has no unambiguous mapping in the caller's user namespace"
+	}
 	return fmt.Sprintf("forwarding path requires an actual egress observation: reason=%d nexthop_id=%d", e.Reason, e.NexthopID)
 }
 
@@ -77,11 +83,21 @@ func ForwardPathLookup(ctx context.Context, log *slog.Logger, packet PacketSelec
 	if err := ctx.Err(); err != nil {
 		return path, false, fmt.Errorf("start forwarding path lookup: %w", err)
 	}
+	if packet.Source.Addr().Is6() {
+		// UID projection, policy inspection and sends share the caller's namespaces.
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+	}
 	handle, err := netlink.NewHandle(unix.NETLINK_ROUTE)
 	if err != nil {
 		return path, false, fmt.Errorf("open forwarding route socket: %w", err)
 	}
-	defer handle.Close()
+	defer func() {
+		if err := handle.Close(); err != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("close forwarding route socket: %w", err))
+			usable = false
+		}
+	}()
 	if deadline, ok := ctx.Deadline(); ok {
 		remaining := deadline.Sub(realClock{}.Now())
 		if remaining <= 0 {
@@ -94,9 +110,16 @@ func ForwardPathLookup(ctx context.Context, log *slog.Logger, packet PacketSelec
 	if _, err := handle.LinkByIndex(packet.InputInterface); err != nil {
 		return path, false, fmt.Errorf("inspect input interface: %w", err)
 	}
-	selected, requirement, supported, err := resolveForwardingRoute(ctx, log, handle, packet)
-	if err != nil || !supported {
+	uid, err := forwardingPacketUID(handle, packet.family())
+	if err != nil {
 		return path, false, err
+	}
+	selected, requirement, supported, err := resolveForwardingRoute(ctx, packet, uid)
+	if err != nil {
+		return path, false, fmt.Errorf("resolve forwarding route: %w", err)
+	}
+	if !supported {
+		return path, false, nil
 	}
 	link, err := handle.LinkByIndex(selected.LinkIndex)
 	if err != nil {
@@ -110,10 +133,11 @@ func ForwardPathLookup(ctx context.Context, log *slog.Logger, packet PacketSelec
 	if len(nextHop) == 0 {
 		nextHop = packet.Destination.Addr().AsSlice()
 	}
-	neighbor, resolved, err := forwardingNeighbor(ctx, log, handle, selected.LinkIndex, packet.family(), nextHop)
+	neighbors, err := handle.NeighList(selected.LinkIndex, packet.family())
 	if err != nil {
-		return path, false, err
+		return path, false, fmt.Errorf("inspect forwarding neighbor on interface %d for %s: %w", selected.LinkIndex, nextHop, err)
 	}
+	neighbor, resolved := forwardingNeighbor(neighbors, selected.LinkIndex, nextHop)
 	if !resolved {
 		return path, false, nil
 	}
@@ -121,6 +145,9 @@ func ForwardPathLookup(ctx context.Context, log *slog.Logger, packet PacketSelec
 		return path, false, fmt.Errorf("complete forwarding path lookup: %w", err)
 	}
 	path = ForwardingPath{Route: selected, Link: link, Neighbor: neighbor}
+	if err := uid.verify(handle); err != nil {
+		return path, false, err
+	}
 	if requirement != nil {
 		return path, false, requirement
 	}
@@ -155,23 +182,6 @@ func (p PacketSelector) family() int {
 	return unix.AF_INET6
 }
 
-func (p PacketSelector) routeOptions() *netlink.RouteGetOptions {
-	sourcePort, destinationPort := p.Source.Port(), p.Destination.Port()
-	options := &netlink.RouteGetOptions{
-		IifIndex: p.InputInterface,
-		SrcAddr:  p.Source.Addr().AsSlice(),
-		Mark:     p.Mark,
-		IPProto:  &p.Protocol,
-		SrcPort:  &sourcePort,
-		DstPort:  &destinationPort,
-		TOS:      p.TrafficClass,
-	}
-	if p.Source.Addr().Is6() {
-		options.FlowLabel = &p.FlowLabel
-	}
-	return options
-}
-
 func forwardingRouteAbsent(err error) bool {
 	return isNoRouteError(err) || errors.Is(err, unix.EACCES)
 }
@@ -186,19 +196,14 @@ func forwardingMACValid(address net.HardwareAddr) bool {
 	return len(address) == forwardingMACLength && address[0]&1 == 0 && !bytes.Equal(address, zero[:])
 }
 
-func forwardingNeighbor(ctx context.Context, log *slog.Logger, handle *netlink.Handle, index, family int, nextHop net.IP) (netlink.Neigh, bool, error) {
-	neighbors, err := handle.NeighList(index, family)
-	if err != nil {
-		log.WarnContext(ctx, "forwarding neighbor read failed", "output_interface", index, "next_hop", nextHop, "err", err)
-		return netlink.Neigh{}, false, fmt.Errorf("inspect forwarding neighbor: %w", err)
-	}
+func forwardingNeighbor(neighbors []netlink.Neigh, index int, nextHop net.IP) (netlink.Neigh, bool) {
 	for _, neighbor := range neighbors {
 		if neighbor.LinkIndex != index || !neighbor.IP.Equal(nextHop) {
 			continue
 		}
 		resolved := neighStateResolved(neighbor.State) && neighbor.State&(unix.NUD_FAILED|unix.NUD_INCOMPLETE) == 0 &&
 			neighbor.Flags&unix.NTF_PROXY == 0 && forwardingMACValid(neighbor.HardwareAddr)
-		return neighbor, resolved, nil
+		return neighbor, resolved
 	}
-	return netlink.Neigh{}, false, nil
+	return netlink.Neigh{}, false
 }

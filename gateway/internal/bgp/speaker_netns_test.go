@@ -9,8 +9,8 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/agoodkind/netlink"
 	apipb "github.com/osrg/gobgp/v4/api"
+	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
 	"goodkind.io/mwan/internal/bgp"

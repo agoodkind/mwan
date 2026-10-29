@@ -8,8 +8,8 @@ import (
 	"log/slog"
 	"net/netip"
 
-	"github.com/agoodkind/netlink"
 	"github.com/cilium/ebpf"
+	"github.com/vishvananda/netlink"
 )
 
 // VerifyUnused inspects current policies and surviving managed attachments before edge release.

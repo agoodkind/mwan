@@ -2,6 +2,16 @@
 
 include!(concat!(env!("OUT_DIR"), "/abi_bindings.rs"));
 
+impl Default for MwanNativeFrame {
+    fn default() -> Self {
+        Self {
+            data: std::ptr::null(),
+            length: 0,
+            reserved: 0,
+        }
+    }
+}
+
 impl Default for MwanNativeConfig {
     fn default() -> Self {
         Self {

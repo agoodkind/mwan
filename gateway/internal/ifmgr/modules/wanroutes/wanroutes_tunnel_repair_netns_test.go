@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agoodkind/netlink"
+	"github.com/vishvananda/netlink"
 	"goodkind.io/mwan/internal/netif"
 )
 

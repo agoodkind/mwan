@@ -156,6 +156,19 @@ void mwn_flow_ipv4_set(struct rte_flow_item_ipv4 *item, uint32_t source, uint32_
 	item->hdr.next_proto_id = protocol;
 }
 
+void mwn_flow_ipv4_envelope_set(struct rte_flow_item_ipv4 *item, uint8_t ttl, uint8_t tos)
+{
+	item->hdr.version_ihl = 0x45;
+	item->hdr.time_to_live = ttl;
+	item->hdr.type_of_service = tos;
+}
+
+void mwn_flow_vxlan_set(struct rte_flow_item_vxlan *item, const uint8_t vni[3])
+{
+	item->hdr.flags = 0x08;
+	memcpy(item->hdr.vni, vni, sizeof(item->hdr.vni));
+}
+
 void mwn_flow_ipv6_set(struct rte_flow_item_ipv6 *item, const uint8_t source[16], const uint8_t destination[16], uint8_t protocol)
 {
 	memcpy(item->hdr.src_addr.a, source, sizeof(item->hdr.src_addr.a));

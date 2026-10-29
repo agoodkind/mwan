@@ -55,6 +55,12 @@ type Module interface {
 	EvaluateAlerts(ctx context.Context, log *slog.Logger, now time.Time)
 }
 
+// ModuleShutdown releases process-owned resources after cancellation, including
+// resources acquired by an Init that returned an error or disabled the module.
+type ModuleShutdown interface {
+	Shutdown(context.Context, *slog.Logger) error
+}
+
 // ModuleConfig is the typed runtime config surface each module constructor reads.
 type ModuleConfig interface {
 	ModuleConfigName() string
@@ -108,6 +114,8 @@ type Env struct {
 	// The call is non-blocking and coalescing. It is nil in unit tests that
 	// construct an Env without a daemon; callers must nil-check.
 	RequestReconcile func(reason string)
+	// ForwardingChanges retires optional acceleration before an owned writer mutates forwarding.
+	ForwardingChanges *ForwardingChanges
 	// LiveState is the snapshot store the management surface serves from.
 	// Modules write what they just reconciled; the operational-datastore
 	// provider reads it at request time. It is nil when the host does not
@@ -124,6 +132,8 @@ type Env struct {
 	Delegations *netif.DHCPv6PDStore
 	// PrepareLocalIPv6 protects new local DHCPv6 addresses from forwarding translation before installation.
 	PrepareLocalIPv6 func(context.Context, *slog.Logger, string, []netip.Addr) error
+	// InspectNativePacketPolicy verifies current queueing and translation attachments without changing them.
+	InspectNativePacketPolicy func(context.Context, []int) error
 	// PrepareOwnedLink applies per-link kernel policy to a down owned link before the links module sets it up.
 	PrepareOwnedLink netif.OwnedLinkPreparer
 	// OwnedLinkUp lets the addresses module handle EvLinkUp events from link monitors.

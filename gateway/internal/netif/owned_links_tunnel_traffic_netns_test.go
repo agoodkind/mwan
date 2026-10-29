@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agoodkind/netlink"
 	"github.com/mdlayher/packet"
+	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"

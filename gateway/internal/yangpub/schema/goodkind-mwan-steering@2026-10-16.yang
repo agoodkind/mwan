@@ -850,6 +850,53 @@ module goodkind-mwan-steering {
       description
         "What the device is, what it is named, and how it is created.";
 
+      container native-offload {
+        presence "This kernel connection has an explicit native DATA binding.";
+        must "not(../vlan) and not(../tunnel) and not(../bridge-master)" {
+          error-message "Native offload requires an untagged physical link outside a bridge.";
+        }
+        description
+          "The binding identifies hardware for native forwarding. The connection retains its network policy.";
+        leaf data-pci {
+          type string {
+            pattern '[0-9a-f]{4}:[0-9a-f]{2}:[01][0-9a-f]\.[0-7]';
+          }
+          mandatory true;
+          description "This field selects the PCI function of the separately owned DATA device.";
+        }
+        leaf data-mac {
+          type yang:mac-address;
+          mandatory true;
+          description "This field specifies the expected unicast DATA MAC, including devices without a Linux netdev.";
+        }
+        container controller {
+          presence "This connection supplies a physical ingress receiver.";
+          description "The controller registers separate kernel and DATA representors.";
+          leaf pci {
+            type string {
+              pattern '[0-9a-f]{4}:[0-9a-f]{2}:[01][0-9a-f]\.[0-7]';
+            }
+            mandatory true;
+            description "This field selects the PCI function of the trusted controller.";
+          }
+          leaf receiver-vf {
+            type uint16;
+            mandatory true;
+            description "This field selects the VF index of the connection's kernel receiver.";
+          }
+          leaf data-vf {
+            type uint16;
+            mandatory true;
+            description "This field selects the VF index represented by data-pci under this controller.";
+          }
+          leaf physical-miss {
+            type boolean;
+            mandatory true;
+            description "This field selects whether this receiver owns the controller's physical miss action.";
+          }
+        }
+      }
+
       leaf mtu {
         type uint32 {
           range "68..max";
@@ -912,7 +959,7 @@ module goodkind-mwan-steering {
            encapsulates packets for transport between two endpoints.";
         must "not(../mtu) or ../mtu >= 1280" {
           error-message
-            "A 6in4 tunnel requires an MTU of at least 1280 bytes.";
+            "A tunnel requires an MTU of at least 1280 bytes.";
           description
             "RFC 8200 section 5 requires every IPv6 link to transport
              1280-byte packets.";
@@ -924,8 +971,45 @@ module goodkind-mwan-steering {
               description
                 "The tunnel transports IPv6 packets inside IPv4 packets.";
             }
+            enum vxlan {
+              description "The tunnel transports Ethernet frames inside UDP over IPv4.";
+            }
           }
           description "This field selects the encapsulation protocol.";
+        }
+        must "(protocol = 'vxlan' and vxlan) or (protocol != 'vxlan' and not(vxlan))" {
+          error-message "The vxlan container is required only for protocol vxlan.";
+        }
+        container vxlan {
+          presence "The tunnel uses an explicit VXLAN identifier and UDP envelope.";
+          must "source-port-min < source-port-max" {
+            error-message "The source-port-min must be less than source-port-max.";
+          }
+          leaf vni {
+            type uint32 { range "0..16777215"; }
+            mandatory true;
+            description "The VXLAN network identifier.";
+          }
+          leaf source-port-min {
+            type uint16 { range "1..65535"; }
+            mandatory true;
+            description "The lowest source UDP port the kernel can select.";
+          }
+          leaf source-port-max {
+            type uint16 { range "1..65535"; }
+            mandatory true;
+            description "The highest source UDP port the kernel can select.";
+          }
+          leaf destination-port {
+            type uint16 { range "1..65535"; }
+            mandatory true;
+            description "The remote UDP port.";
+          }
+          leaf tos {
+            type uint8;
+            mandatory true;
+            description "The outer IPv4 type of service byte.";
+          }
         }
         leaf underlay {
           mandatory true;

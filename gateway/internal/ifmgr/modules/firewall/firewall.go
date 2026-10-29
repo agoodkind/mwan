@@ -47,6 +47,11 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	m.Lock()
 	defer m.Unlock()
+	ctx, finish, err := m.Env.BeginForwardingChange(ctx)
+	if err != nil {
+		return fmt.Errorf("prepare firewall forwarding change: %w", err)
+	}
+	defer finish()
 	protection := "not-ready"
 	defer func() { m.publishProtection(protection) }()
 

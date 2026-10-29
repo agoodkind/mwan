@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/agoodkind/netlink"
+	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	"goodkind.io/mwan/internal/interfaceintent"
 )
@@ -754,14 +754,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: "low-slave", HardwareAddr: net.HardwareAddr{2, 0, 94, 0, 57, 1}}, PeerName: "low-peer"}); err != nil {
-		t.Fatal(err)
-	}
-	lowSlave, err := netlink.LinkByName("low-slave")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := netlink.LinkSetMasterByIndex(lowSlave, oldMaster.Attrs().Index); err != nil {
+	if err := netlink.LinkSetHardwareAddr(firstMaster, net.HardwareAddr{2, 0, 94, 0, 57, 1}); err != nil {
 		t.Fatal(err)
 	}
 	secondMaster, err := netlink.LinkByName("replace-br")
@@ -769,7 +762,7 @@ func TestOwnedLinksCreateRestartAndRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	if firstMaster.Attrs().HardwareAddr.String() == secondMaster.Attrs().HardwareAddr.String() {
-		t.Fatal("second member did not change the bridge MAC")
+		t.Fatal("the kernel did not apply the external bridge MAC update")
 	}
 	detachedMember := memberConnection
 	detachedLink := *memberConnection.Link

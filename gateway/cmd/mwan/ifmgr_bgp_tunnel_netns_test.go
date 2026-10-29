@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agoodkind/netlink"
+	"github.com/vishvananda/netlink"
 )
 
 func TestBGPTunnelDaemonRuntime(t *testing.T) {

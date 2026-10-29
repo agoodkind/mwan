@@ -4,6 +4,7 @@ package netif_test
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -15,18 +16,25 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/agoodkind/netlink"
-	"github.com/agoodkind/netlink/nl"
+	mdnetlink "github.com/mdlayher/netlink"
+	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
+	"goodkind.io/mwan/internal/clock"
 	"goodkind.io/mwan/internal/netif"
 )
 
 const (
-	forwardPathMark            = 0x42
-	forwardPathTable           = 420
-	forwardPathSourcePort      = 40000
-	forwardPathDestinationPort = 443
+	forwardPathMark                      = 0x42
+	forwardPathTable                     = 420
+	forwardPathSourcePort                = 40000
+	forwardPathDestinationPort           = 443
+	forwardPathPolicyDSCP         uint8  = 4
+	forwardPathECNValues                 = 4
+	forwardPathNexthopGroupID     uint32 = 10
+	forwardPathBlackholeNexthopID uint32 = 20
+	// The pinned x/sys does not expose Linux RTA_NH_ID.
+	forwardPathRouteNexthopAttribute = 30
 )
 
 type forwardPathFixture struct {
@@ -46,6 +54,13 @@ func forwardPathNamespace(t *testing.T, environment string) bool {
 		t.Skip("forwarding lookup requires a privileged network namespace")
 	}
 	child := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^"+t.Name()+"$", "-test.v")
+	if deadline, ok := t.Deadline(); ok {
+		remaining := deadline.Sub(clock.Real{}.Now())
+		if remaining <= 0 {
+			t.Fatal("network namespace child started after the test deadline")
+		}
+		child.Args = append(child.Args, "-test.timeout="+remaining.String())
+	}
 	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNET}
 	child.Env = append(os.Environ(), environment+"=1")
 	output, err := child.CombinedOutput()
@@ -201,6 +216,59 @@ func TestForwardPathLookupPreservesPacketSelectors(t *testing.T) {
 	}
 }
 
+func TestForwardPathLookupPreservesECNIndependentRouting(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Fatal("ECN routing proof requires a privileged network namespace")
+	}
+	if !forwardPathNamespace(t, "MWAN_FORWARD_PATH_ECN_CHILD") {
+		return
+	}
+	for index, family := range []int{unix.AF_INET, unix.AF_INET6} {
+		t.Run(fmt.Sprintf("family%d", family), func(t *testing.T) {
+			fixture := newForwardPathFixture(t, family, fmt.Sprintf("e%d", index))
+			fixture.selector.Protocol = unix.IPPROTO_TCP
+			dscpRule := addForwardPathDSCPRule(t, family, fixture)
+			for _, dscp := range []uint8{0, forwardPathPolicyDSCP} {
+				for ecn := uint8(0); ecn < forwardPathECNValues; ecn++ {
+					trafficClass := dscp*forwardPathECNValues | ecn
+					t.Run(fmt.Sprintf("traffic-class-%02x", trafficClass), func(t *testing.T) {
+						selector := fixture.selector
+						selector.TrafficClass = trafficClass
+						expected := 0
+						if dscpRule && dscp == forwardPathPolicyDSCP {
+							expected = 1
+						}
+						assertForwardPath(t, fixture, selector, expected)
+						t.Logf("traffic_class=%#02x selected_output=%s", trafficClass, fixture.outputs[expected].Attrs().Name)
+					})
+				}
+			}
+		})
+	}
+}
+
+func addForwardPathDSCPRule(t *testing.T, family int, fixture forwardPathFixture) bool {
+	t.Helper()
+	rule := netlink.NewRule()
+	rule.Family, rule.Priority, rule.Table = family, 90, unix.RT_TABLE_MAIN
+	rule.IifName, rule.Mark, rule.IPProto = fixture.input.Attrs().Name, forwardPathMark, unix.IPPROTO_TCP
+	rule.Sport = netlink.NewRulePortRange(forwardPathSourcePort, forwardPathSourcePort)
+	rule.Dport = netlink.NewRulePortRange(forwardPathDestinationPort, forwardPathDestinationPort)
+	if err := netlink.RuleAdd(rule); err != nil {
+		t.Fatalf("install the wildcard traffic-class TCP rule for family %d: %v", family, err)
+	}
+	rule.Priority, rule.Table, rule.Tos = 80, forwardPathTable, uint(forwardPathPolicyDSCP*forwardPathECNValues)
+	if err := netlink.RuleAdd(rule); err != nil {
+		if family != unix.AF_INET6 || !errors.Is(err, unix.EINVAL) && !errors.Is(err, unix.EOPNOTSUPP) {
+			t.Fatalf("install the DSCP TCP rule for family %d: %v", family, err)
+		}
+		t.Logf("family=%d kernel rejected nonzero legacy TOS %#02x after accepting the wildcard rule: %v", family, rule.Tos, err)
+		return false
+	}
+	t.Logf("family=%d kernel accepted nonzero legacy TOS %#02x", family, rule.Tos)
+	return true
+}
+
 func TestForwardPathLookupRejectsUnavailablePaths(t *testing.T) {
 	if !forwardPathNamespace(t, "MWAN_FORWARD_PATH_REJECT_CHILD") {
 		return
@@ -265,15 +333,69 @@ func TestForwardPathLookupRejectsUnavailablePaths(t *testing.T) {
 	}
 }
 
-func addForwardPathNexthop(t *testing.T, header *nl.Nhmsg, attributes ...*nl.RtAttr) {
+func addForwardPathNexthop(t *testing.T, header unix.Nhmsg, attributes *mdnetlink.AttributeEncoder) {
 	t.Helper()
-	request := nl.NewNetlinkRequest(unix.RTM_NEWNEXTHOP, unix.NLM_F_CREATE|unix.NLM_F_EXCL|unix.NLM_F_ACK)
-	request.AddData(header)
-	for _, attribute := range attributes {
-		request.AddData(attribute)
+	executeForwardPathMessage(t, mdnetlink.Message{
+		Header: mdnetlink.Header{
+			Type: unix.RTM_NEWNEXTHOP, Flags: mdnetlink.Request | mdnetlink.Create | mdnetlink.Excl | mdnetlink.Acknowledge,
+		},
+		Data: forwardPathMessagePayload(t, header, attributes),
+	})
+}
+
+func replaceForwardPathNexthopRoute(t *testing.T, selector netif.PacketSelector, id uint32) {
+	t.Helper()
+	destination := selector.Destination.Addr()
+	family := uint8(unix.AF_INET6)
+	if destination.Is4() {
+		family = unix.AF_INET
 	}
-	if _, err := request.Execute(unix.NETLINK_ROUTE, 0); err != nil {
-		t.Fatal(err)
+	header := unix.RtMsg{
+		Family: family, Dst_len: uint8(destination.BitLen()), Table: unix.RT_TABLE_MAIN,
+		Protocol: unix.RTPROT_BGP, Scope: unix.RT_SCOPE_UNIVERSE, Type: unix.RTN_UNICAST,
+	}
+	attributes := mdnetlink.NewAttributeEncoder()
+	attributes.Bytes(unix.RTA_DST, destination.AsSlice())
+	attributes.Uint32(forwardPathRouteNexthopAttribute, id)
+	executeForwardPathMessage(t, mdnetlink.Message{
+		Header: mdnetlink.Header{
+			Type: unix.RTM_NEWROUTE, Flags: mdnetlink.Request | mdnetlink.Create | mdnetlink.Replace | mdnetlink.Acknowledge,
+		},
+		Data: forwardPathMessagePayload(t, header, attributes),
+	})
+}
+
+func forwardPathMessagePayload[Header unix.Nhmsg | unix.RtMsg](t *testing.T, header Header, attributes *mdnetlink.AttributeEncoder) []byte {
+	t.Helper()
+	payload, err := binary.Append(nil, binary.NativeEndian, header)
+	if err != nil {
+		t.Fatalf("encode the forwarding fixture header: %v", err)
+	}
+	encodedAttributes, err := attributes.Encode()
+	if err != nil {
+		t.Fatalf("encode the forwarding fixture attributes: %v", err)
+	}
+	return append(payload, encodedAttributes...)
+}
+
+func executeForwardPathMessage(t *testing.T, message mdnetlink.Message) {
+	t.Helper()
+	socket, err := mdnetlink.Dial(unix.NETLINK_ROUTE, nil)
+	if err != nil {
+		t.Fatalf("open the forwarding fixture socket: %v", err)
+	}
+	defer func() {
+		if err := socket.Close(); err != nil {
+			t.Errorf("close the forwarding fixture socket: %v", err)
+		}
+	}()
+	if deadline, ok := t.Deadline(); ok {
+		if err := socket.SetDeadline(deadline); err != nil {
+			t.Fatalf("set the forwarding fixture deadline: %v", err)
+		}
+	}
+	if _, err := socket.Execute(message); err != nil {
+		t.Fatalf("configure the forwarding fixture with message type %d: %v", message.Header.Type, err)
 	}
 }
 
@@ -296,27 +418,30 @@ func TestForwardPathLookupRequiresActualMultipathObservation(t *testing.T) {
 		t.Fatalf("multipath admission did not require actual egress: path=%+v usable=%v err=%v", path, usable, err)
 	}
 	for index, output := range fixture.outputs {
-		addForwardPathNexthop(t, &nl.Nhmsg{Nhmsg: unix.Nhmsg{Family: unix.AF_INET, Protocol: unix.RTPROT_BGP}},
-			nl.NewRtAttr(unix.NHA_ID, nl.Uint32Attr(uint32(index+1))), nl.NewRtAttr(unix.NHA_OIF, nl.Uint32Attr(uint32(output.Attrs().Index))), nl.NewRtAttr(unix.NHA_GATEWAY, fixture.gateways[index].To4()))
+		attributes := mdnetlink.NewAttributeEncoder()
+		attributes.Uint32(unix.NHA_ID, uint32(index+1))
+		attributes.Uint32(unix.NHA_OIF, uint32(output.Attrs().Index))
+		attributes.Bytes(unix.NHA_GATEWAY, fixture.gateways[index].To4())
+		addForwardPathNexthop(t, unix.Nhmsg{Family: unix.AF_INET, Protocol: unix.RTPROT_BGP}, attributes)
 	}
 	settings := netif.NewProcSysctlRunner(slog.Default(), false)
 	if err := settings.Set(t.Context(), "net.ipv4.nexthop_compat_mode", "0"); err != nil {
 		t.Fatal(err)
 	}
-	group := make([]byte, 16)
-	nl.NativeEndian().PutUint32(group[:4], 1)
-	nl.NativeEndian().PutUint32(group[8:12], 2)
-	addForwardPathNexthop(t, &nl.Nhmsg{}, nl.NewRtAttr(unix.NHA_ID, nl.Uint32Attr(10)), nl.NewRtAttr(unix.NHA_GROUP, group))
-	if err := netlink.RouteReplace(&netlink.Route{Family: unix.AF_INET, Dst: destination, NHID: 10}); err != nil {
-		t.Fatal(err)
+	group, err := binary.Append(nil, binary.NativeEndian, []unix.NexthopGrp{{Id: 1}, {Id: 2}})
+	if err != nil {
+		t.Fatalf("encode the nexthop group members: %v", err)
 	}
+	attributes := mdnetlink.NewAttributeEncoder()
+	attributes.Uint32(unix.NHA_ID, forwardPathNexthopGroupID)
+	attributes.Bytes(unix.NHA_GROUP, group)
+	addForwardPathNexthop(t, unix.Nhmsg{}, attributes)
+	replaceForwardPathNexthopRoute(t, selector, forwardPathNexthopGroupID)
 	path, usable, err = netif.ForwardPathLookup(t.Context(), slog.Default(), selector)
-	if usable || !errors.As(err, &requirement) || requirement.Reason != netif.EgressObservationNexthopGroup || requirement.NexthopID != 10 || path.Link == nil {
+	if usable || !errors.As(err, &requirement) || requirement.Reason != netif.EgressObservationNexthopGroup || requirement.NexthopID != forwardPathNexthopGroupID || path.Link == nil {
 		t.Fatalf("hidden nexthop group admitted a synthetic path: %+v %v %v", path, usable, err)
 	}
-	if err := netlink.RouteReplace(&netlink.Route{Family: unix.AF_INET, Dst: destination, NHID: 1}); err != nil {
-		t.Fatal(err)
-	}
+	replaceForwardPathNexthopRoute(t, selector, 1)
 	assertForwardPath(t, fixture, selector, 0)
 }
 

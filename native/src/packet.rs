@@ -5,7 +5,8 @@
 use crate::abi::{
     MWAN_NATIVE_FAMILY_IPV4, MWAN_NATIVE_FAMILY_IPV6, MWAN_NATIVE_PACKET_ETHERNET_VALID,
     MWAN_NATIVE_PACKET_IP_VALID, MWAN_NATIVE_PACKET_PORTS_VALID, MWAN_NATIVE_PROTOCOL_TCP,
-    MWAN_NATIVE_PROTOCOL_UDP, MwanNativeDirection, MwanNativePacketDiagnostic, MwanNativeTuple,
+    MWAN_NATIVE_PROTOCOL_UDP, MwanNativeDirection, MwanNativeObservation,
+    MwanNativePacketDiagnostic, MwanNativePacketGuard, MwanNativeTuple,
 };
 use std::fmt;
 
@@ -40,6 +41,8 @@ pub struct ParsedPacket {
     pub(crate) network_length: usize,
     pub(crate) ttl: u8,
     pub(crate) flags: u8,
+    pub(crate) traffic_class: u8,
+    pub(crate) flow_label: u32,
     pub(crate) fragment: bool,
     pub(crate) noninitial_fragment: bool,
     pub(crate) extended: bool,
@@ -123,6 +126,34 @@ pub fn decode(frame: &[u8]) -> Result<ParsedPacket, DecodeError> {
     };
     decode_headers(frame, &mut view).map_err(|code| view.error(code))?;
     Ok(view)
+}
+
+pub fn observe(frame: &[u8]) -> MwanNativeObservation {
+    let mut observation = MwanNativeObservation::default();
+    let view = match decode(frame) {
+        Ok(view) => view,
+        Err(error) => {
+            observation.tuple = error.diagnostic.tuple;
+            observation.source_mac = error.diagnostic.source_mac;
+            observation.destination_mac = error.diagnostic.destination_mac;
+            observation.decode_status = -error.code;
+            return observation;
+        }
+    };
+    observation.tuple = view.tuple;
+    observation.source_mac = view.source_mac;
+    observation.destination_mac = view.destination_mac;
+    observation.network_length = view.network_length as u32;
+    observation.flow_label = view.flow_label;
+    observation.traffic_class = view.traffic_class;
+    observation.tcp_flags = view.flags;
+    observation.ttl = view.ttl;
+    let direction = MwanNativeDirection {
+        output_mtu: u16::MAX,
+        ..MwanNativeDirection::default()
+    };
+    observation.eligible = u8::from(eligible(frame, &view, &direction));
+    observation
 }
 
 fn decode_headers(frame: &[u8], view: &mut ParsedPacket) -> Result<(), i32> {
@@ -210,6 +241,7 @@ fn decode_ipv4(network: &[u8], view: &mut ParsedPacket) -> Result<(), i32> {
     view.extended |= view.ip_header_length != IPV4_HEADER_LENGTH;
     view.ttl = *header.get(8).ok_or(libc::EBADMSG)?;
     view.ipv4_checksum = read_u16(header, 10).ok_or(libc::EBADMSG)?;
+    view.traffic_class = *header.get(1).ok_or(libc::EBADMSG)?;
     view.tuple.family = MWAN_NATIVE_FAMILY_IPV4 as u8;
     view.tuple.protocol = *header.get(9).ok_or(libc::EBADMSG)?;
     let source: [u8; 4] = read_array(header, 12).ok_or(libc::EBADMSG)?;
@@ -238,6 +270,9 @@ fn decode_ipv6(network: &[u8], view: &mut ParsedPacket) -> Result<(), i32> {
         .ok_or(libc::EBADMSG)?;
     view.malformed = view.network_length > network.len();
     view.ttl = *header.get(7).ok_or(libc::EBADMSG)?;
+    view.traffic_class = ((header[0] & 15) * 16) | (header[1] >> 4);
+    view.flow_label =
+        (u32::from(header[1] & 15) * 65_536) | (u32::from(header[2]) * 256) | u32::from(header[3]);
     view.tuple.family = MWAN_NATIVE_FAMILY_IPV6 as u8;
     view.tuple.protocol = *header.get(6).ok_or(libc::EBADMSG)?;
     view.tuple.source = read_array(header, 8).ok_or(libc::EBADMSG)?;
@@ -294,6 +329,14 @@ fn decode_ipv6(network: &[u8], view: &mut ParsedPacket) -> Result<(), i32> {
         }
     }
     Ok(())
+}
+
+/// ECN is packet congestion state; the guard compares DSCP and the flow label.
+/// Packet bytes retain their original congestion marking.
+pub fn guard_matches(view: &ParsedPacket, guard: &MwanNativePacketGuard) -> bool {
+    const DSCP_MASK: u8 = 0xfc;
+    (view.traffic_class ^ guard.traffic_class) & DSCP_MASK == 0
+        && view.flow_label == guard.flow_label
 }
 
 pub fn eligible(frame: &[u8], view: &ParsedPacket, direction: &MwanNativeDirection) -> bool {
@@ -446,27 +489,9 @@ fn restore_ipv4(
     let [source_high, source_low] = direction.original.source_port.to_be_bytes();
     let [destination_high, destination_low] = direction.original.destination_port.to_be_bytes();
     let ports = [source_high, source_low, destination_high, destination_low];
-    let tcp_checksum = if view.ports
-        && u32::from(view.tuple.protocol) == MWAN_NATIVE_PROTOCOL_TCP
-        && view.transport_length >= 18
-    {
-        let offset = view
-            .transport_offset
-            .checked_add(16)
-            .ok_or_else(|| view.error(libc::EBADMSG))?;
-        let checksum = read_u16(frame, offset).ok_or_else(|| view.error(libc::EBADMSG))?;
-        let previous_ports = read_range(frame, view.transport_offset, ports.len())
-            .ok_or_else(|| view.error(libc::EBADMSG))?;
-        let checksum = checksum_replace(checksum, translated_source, original_source)
-            .and_then(|value| checksum_replace(value, translated_destination, original_destination))
-            .and_then(|value| checksum_replace(value, previous_ports, &ports))
-            .ok_or_else(|| view.error(libc::EBADMSG))?;
-        Some((offset, checksum))
-    } else {
-        None
-    };
+    let transport_checksum = inverse_transport_checksum(frame, view, direction, &ports)?;
     write_bytes(frame, checksum_offset, &ip_checksum.to_be_bytes(), view)?;
-    if let Some((offset, checksum)) = tcp_checksum {
+    if let Some((offset, checksum)) = transport_checksum {
         write_bytes(frame, offset, &checksum.to_be_bytes(), view)?;
     }
     write_bytes(frame, source_offset, original_source, view)?;
@@ -475,6 +500,55 @@ fn restore_ipv4(
         write_bytes(frame, view.transport_offset, &ports, view)?;
     }
     Ok(())
+}
+
+fn inverse_transport_checksum(
+    frame: &[u8],
+    view: &ParsedPacket,
+    direction: &MwanNativeDirection,
+    ports: &[u8; 4],
+) -> Result<Option<(usize, u16)>, DecodeError> {
+    if !view.ports {
+        return Ok(None);
+    }
+    let udp = u32::from(view.tuple.protocol) == MWAN_NATIVE_PROTOCOL_UDP;
+    let field = match u32::from(view.tuple.protocol) {
+        MWAN_NATIVE_PROTOCOL_TCP if view.transport_length >= 18 => 16,
+        MWAN_NATIVE_PROTOCOL_UDP if view.transport_length >= UDP_HEADER_LENGTH => 6,
+        _ => return Ok(None),
+    };
+    let offset = view
+        .transport_offset
+        .checked_add(field)
+        .ok_or_else(|| view.error(libc::EBADMSG))?;
+    let checksum = read_u16(frame, offset).ok_or_else(|| view.error(libc::EBADMSG))?;
+    // IPv4 UDP wire zero disables the checksum and must survive inverse NAT.
+    if udp && checksum == 0 {
+        return Ok(None);
+    }
+    let previous_ports = read_range(frame, view.transport_offset, ports.len())
+        .ok_or_else(|| view.error(libc::EBADMSG))?;
+    let checksum = checksum_replace(
+        checksum,
+        &direction.translated.source[..4],
+        &direction.original.source[..4],
+    )
+    .and_then(|value| {
+        checksum_replace(
+            value,
+            &direction.translated.destination[..4],
+            &direction.original.destination[..4],
+        )
+    })
+    .and_then(|value| checksum_replace(value, previous_ports, ports))
+    .ok_or_else(|| view.error(libc::EBADMSG))?;
+    // UDP transmits a computed zero as all ones, preserving checksum presence.
+    let checksum = if udp && checksum == 0 {
+        u16::MAX
+    } else {
+        checksum
+    };
+    Ok(Some((offset, checksum)))
 }
 
 pub fn forward(
@@ -660,3 +734,7 @@ fn checksum_replace(checksum: u16, before: &[u8], after: &[u8]) -> Option<u16> {
 #[cfg(test)]
 #[path = "packet_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "udp4_tests.rs"]
+mod udp4_tests;

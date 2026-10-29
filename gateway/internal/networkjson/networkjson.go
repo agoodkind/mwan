@@ -73,20 +73,22 @@ const (
 // set on it, and the VLAN it is created as. The vlan container has presence,
 // so a pointer distinguishes absent from present.
 type linkIdentity struct {
-	Match           *linkMatch  `json:"match"`
-	HardwareAddress string      `json:"hardware-address"`
-	MTU             *uint32     `json:"mtu"`
-	VLAN            *linkVLAN   `json:"vlan"`
-	BridgeMaster    string      `json:"bridge-master"`
-	Tunnel          *linkTunnel `json:"tunnel"`
+	Match           *linkMatch         `json:"match"`
+	HardwareAddress string             `json:"hardware-address"`
+	MTU             *uint32            `json:"mtu"`
+	VLAN            *linkVLAN          `json:"vlan"`
+	BridgeMaster    string             `json:"bridge-master"`
+	Tunnel          *linkTunnel        `json:"tunnel"`
+	NativeOffload   *nativeOffloadWire `json:"native-offload"`
 }
 
 type linkTunnel struct {
-	Protocol      string `json:"protocol"`
-	Underlay      string `json:"underlay"`
-	RemoteAddress string `json:"remote-address"`
-	LocalAddress  string `json:"local-address"`
-	TTL           *uint8 `json:"ttl"`
+	Protocol      string     `json:"protocol"`
+	Underlay      string     `json:"underlay"`
+	RemoteAddress string     `json:"remote-address"`
+	LocalAddress  string     `json:"local-address"`
+	TTL           *uint8     `json:"ttl"`
+	VXLAN         *linkVXLAN `json:"vxlan"`
 }
 
 type linkMatch struct {
@@ -432,6 +434,11 @@ func newWANNetworkConfig(doc *document) (*Config, error) {
 }
 
 func compileProviderProjections(entries []ifaceEntry, byName map[string]interfaceintent.Connection, loaded *Config) error {
+	// Provider rejection must not hide malformed bindings from graph validation.
+	if err := interfaceintent.ValidateNativeBindings(loaded.Connections); err != nil {
+		slog.Warn("networkjson: declared native hardware graph invalid", "err", err)
+		return fmt.Errorf("native offload bindings: %w", err)
+	}
 	dscpOwners := make(map[int]string, len(entries))
 	for _, entry := range entries {
 		if entry.WAN == nil {
@@ -783,7 +790,7 @@ func (c *Config) Apply(cfg *config.Config) {
 	cfg.IfMgr.WAN = c.WAN
 	cfg.IfMgr.ConnectionIDs = c.ConnectionIDs
 	cfg.IfMgr.ExplicitConnectionIDs = c.ExplicitConnectionIDs
-	cfg.IfMgr.Connections = c.Connections
+	cfg.IfMgr.Connections = interfaceintent.CloneNativeBindings(c.Connections)
 
 	if cfg.IfMgr.Modules.WAN == nil {
 		cfg.IfMgr.Modules.WAN = &config.IfMgrModulesWANSection{Routes: nil}
