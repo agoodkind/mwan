@@ -5,7 +5,9 @@ package nativeoffload
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"math/bits"
 	"net"
@@ -130,6 +132,7 @@ func TestNativePacketObservationDiagnostics(t *testing.T) {
 		<-capture.done
 	})
 	frame := nativeCaptureFrame(t, sender, input, [2]string{"192.0.2.10", "198.51.100.20"}, unix.IPPROTO_TCP)
+	sentAt := time.Now()
 	for range 3 {
 		nativeCaptureSend(t, sender, frame)
 	}
@@ -139,6 +142,10 @@ func TestNativePacketObservationDiagnostics(t *testing.T) {
 	module.Log = slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	module.logCaptureDiagnostics(ctx)
 	report := output.String()
+	observedAt := captureDiagnosticTimestamp(t, report, "paused")
+	if observedAt.Before(sentAt) || observedAt.After(time.Now()) {
+		t.Fatalf("paused diagnostic timestamp does not identify a transmitted frame: sent=%s observed=%s", sentAt, observedAt)
+	}
 	if strings.Count(report, `"stage":"paused"`) != 1 || !strings.Contains(report, `"paused":3`) || !strings.Contains(report, `"eligible":true`) || !strings.Contains(report, `"auxiliary_status":`) || !strings.Contains(report, `"192.0.2.10"`) {
 		t.Fatalf("capture report did not include the paused frame and counter: %s", report)
 	}
@@ -174,6 +181,9 @@ func TestNativePacketObservationDiagnostics(t *testing.T) {
 		if !observation.Eligible {
 			t.Fatalf("capture admitted an ineligible observation: %+v", observation)
 		}
+		if !observation.at.Equal(captureDiagnosticTimestamp(t, output.String(), "queued")) {
+			t.Fatalf("queued diagnostic changed the kernel observation timestamp: observation=%s report=%s", observation.at, output.String())
+		}
 	default:
 		t.Fatal("capture did not admit the eligible frame")
 	}
@@ -188,6 +198,33 @@ func TestNativePacketObservationDiagnostics(t *testing.T) {
 	module.logCaptureDiagnostics(ctx)
 	if !strings.Contains(output.String(), `"decoder_ineligible":1`) || !strings.Contains(output.String(), `"stage":"decoder_ineligible"`) || !strings.Contains(output.String(), `"eligible":false`) {
 		t.Fatalf("capture did not report the decoder rejection: %s", output.String())
+	}
+}
+
+func captureDiagnosticTimestamp(t *testing.T, report, stage string) time.Time {
+	t.Helper()
+	decoder := json.NewDecoder(strings.NewReader(report))
+	for {
+		var record struct {
+			Stage  string `json:"stage"`
+			Sample struct {
+				ObservedAt time.Time `json:"observed_at"`
+				Valid      bool      `json:"observed_at_valid"`
+			} `json:"sample"`
+		}
+		err := decoder.Decode(&record)
+		if errors.Is(err, io.EOF) {
+			t.Fatalf("capture omitted the %s diagnostic timestamp: %s", stage, report)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if record.Stage == stage {
+			if !record.Sample.Valid || record.Sample.ObservedAt.IsZero() {
+				t.Fatalf("capture omitted valid kernel time for %s: %s", stage, report)
+			}
+			return record.Sample.ObservedAt
+		}
 	}
 }
 

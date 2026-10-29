@@ -96,6 +96,7 @@ type Module struct {
 	unregisterNPT        func()
 	policyGeneration     atomic.Uint64
 	stats                AdmissionStats
+	admissionDiagnostics *admissionDiagnostics
 	shutdownOnce         sync.Once
 	shutdownErr          error
 }

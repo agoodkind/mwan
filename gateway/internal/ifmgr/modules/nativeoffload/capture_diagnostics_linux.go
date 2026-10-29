@@ -6,6 +6,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"time"
 
 	"golang.org/x/sys/unix"
 
@@ -30,14 +31,16 @@ const (
 )
 
 type captureSample struct {
-	sender        unix.SockaddrLinklayer
-	senderValid   bool
-	status        uint32
-	statusValid   bool
-	metadataError error
-	decoded       offload.NativeObservation
-	decodedValid  bool
-	decodeError   error
+	observedAt      time.Time
+	observedAtValid bool
+	sender          unix.SockaddrLinklayer
+	senderValid     bool
+	status          uint32
+	statusValid     bool
+	metadataError   error
+	decoded         offload.NativeObservation
+	decodedValid    bool
+	decodeError     error
 }
 
 type captureDiagnostics struct {
@@ -69,6 +72,7 @@ func (diagnostics *captureDiagnostics) record(stage captureStage, frame []byte, 
 		metadata, sample.metadataError = observationControl(control)
 	}
 	sample.status, sample.statusValid = metadata.status, metadata.auxiliaryValid
+	sample.observedAt, sample.observedAtValid = metadata.at, sample.metadataError == nil && !metadata.at.IsZero()
 	if decoded != nil {
 		sample.decoded, sample.decodedValid = *decoded, true
 	} else {
@@ -92,9 +96,13 @@ func (diagnostics *captureDiagnostics) snapshot() ([captureStageCount]uint64, [c
 
 func (sample *captureSample) logValue() slog.Value {
 	attributes := []slog.Attr{
+		slog.Bool("observed_at_valid", sample.observedAtValid),
 		slog.Bool("sender_valid", sample.senderValid),
 		slog.Bool("auxiliary_valid", sample.statusValid),
 		slog.Bool("decoded_valid", sample.decodedValid),
+	}
+	if sample.observedAtValid {
+		attributes = append(attributes, slog.Time("observed_at", sample.observedAt))
 	}
 	if sample.senderValid {
 		attributes = append(attributes, slog.Int("sender_ifindex", sample.sender.Ifindex), slog.Uint64("sender_protocol", uint64(sample.sender.Protocol)), slog.Uint64("sender_hatype", uint64(sample.sender.Hatype)), slog.Uint64("sender_packet_type", uint64(sample.sender.Pkttype)), slog.Uint64("sender_address_length", uint64(sample.sender.Halen)), slog.Any("sender_address", sample.sender.Addr))

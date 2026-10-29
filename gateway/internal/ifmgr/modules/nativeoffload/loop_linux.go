@@ -70,6 +70,8 @@ func (module *Module) run(ctx context.Context) {
 			module.withLock(func() {
 				if module.readyForWork(ctx) {
 					module.admit(ctx, observation)
+				} else {
+					module.recordAdmission(admissionNotReady, observation, nil, module.stats.Failure)
 				}
 			})
 		case <-module.resumeWake:
@@ -107,6 +109,7 @@ func (module *Module) maintain(ctx context.Context) {
 	}
 	if module.cfg.Settings.ObservationDiagnostics {
 		module.logCaptureDiagnostics(ctx)
+		module.logAdmissionDiagnostics(ctx)
 	}
 }
 
