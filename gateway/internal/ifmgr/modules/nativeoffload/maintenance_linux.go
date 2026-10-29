@@ -208,6 +208,9 @@ func (module *Module) logCounters(ctx context.Context) {
 		return
 	}
 	control := module.Stats()
+	requestContext, cancel := context.WithTimeout(ctx, module.cfg.Settings.RequestTimeout)
+	retirementStats, retirementErr := module.runtime.Retirement(requestContext)
+	cancel()
 	module.Log.DebugContext(ctx, "native admission counters",
 		"active_pairs", control.Active, "tracked_pairs", control.Tracked, "installed", control.Installed,
 		"resume_candidates", control.ResumeCandidates,
@@ -221,17 +224,14 @@ func (module *Module) logCounters(ctx context.Context) {
 		"lookup_misses", stats.LookupMisses, "malformed", stats.Malformed,
 		"transmit_dropped", stats.TransmitDropped, "pending", stats.Pending,
 		"quarantined", stats.Quarantined, "discarded_group_frames", stats.DiscardedGroupFrames,
-		module.retirementStatsAttr(ctx))
+		"retirement", retirementStatsValue(retirementStats, retirementErr))
 }
 
-func (module *Module) retirementStatsAttr(ctx context.Context) slog.Attr {
-	requestContext, cancel := context.WithTimeout(ctx, module.cfg.Settings.RequestTimeout)
-	stats, err := module.runtime.Retirement(requestContext)
-	cancel()
+func retirementStatsValue(stats offload.NativeRetirementStats, err error) slog.Value {
 	if err != nil {
-		return slog.Group("retirement", slog.Bool("valid", false), slog.Any("err", err))
+		return slog.GroupValue(slog.Bool("valid", false), slog.Any("err", err))
 	}
-	return slog.Group("retirement",
+	return slog.GroupValue(
 		slog.Bool("valid", true),
 		slog.Uint64("active_pair_capacity", uint64(stats.ActivePairCapacity)),
 		slog.Uint64("retained_pair_capacity", uint64(stats.RetainedPairCapacity)),
