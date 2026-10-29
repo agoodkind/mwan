@@ -10,47 +10,49 @@ import (
 
 // IfMgrNativeOffloadSection configures process resources without duplicating network policy.
 type IfMgrNativeOffloadSection struct {
-	Enabled             bool    `toml:"enabled"`
-	CPU                 *uint32 `toml:"cpu"`
-	MemoryMiB           uint32  `toml:"memory_mib"`
-	HugepageDirectory   string  `toml:"hugepage_directory"`
-	FilePrefix          string  `toml:"file_prefix"`
-	PairCapacity        *uint32 `toml:"pair_capacity"`
-	MbufCount           *uint32 `toml:"mbuf_count"`
-	FlowCapacity        *uint32 `toml:"flow_capacity"`
-	EventCapacity       *uint32 `toml:"event_capacity"`
-	ObservationCapacity *uint32 `toml:"observation_capacity"`
-	SocketBufferBytes   *uint32 `toml:"socket_buffer_bytes"`
-	ObservationMaxAge   string  `toml:"observation_max_age"`
-	ResyncInterval      string  `toml:"resync_interval"`
-	CounterInterval     string  `toml:"counter_interval"`
-	RequestTimeout      string  `toml:"request_timeout"`
-	ResyncTimeout       string  `toml:"resync_timeout"`
-	ShutdownTimeout     string  `toml:"shutdown_timeout"`
-	IdleTimeout         string  `toml:"idle_timeout"`
-	IdleWait            string  `toml:"idle_wait"`
+	Enabled                bool    `toml:"enabled"`
+	CPU                    *uint32 `toml:"cpu"`
+	MemoryMiB              uint32  `toml:"memory_mib"`
+	HugepageDirectory      string  `toml:"hugepage_directory"`
+	FilePrefix             string  `toml:"file_prefix"`
+	PairCapacity           *uint32 `toml:"pair_capacity"`
+	MbufCount              *uint32 `toml:"mbuf_count"`
+	FlowCapacity           *uint32 `toml:"flow_capacity"`
+	EventCapacity          *uint32 `toml:"event_capacity"`
+	ObservationCapacity    *uint32 `toml:"observation_capacity"`
+	ObservationDiagnostics bool    `toml:"observation_diagnostics"`
+	SocketBufferBytes      *uint32 `toml:"socket_buffer_bytes"`
+	ObservationMaxAge      string  `toml:"observation_max_age"`
+	ResyncInterval         string  `toml:"resync_interval"`
+	CounterInterval        string  `toml:"counter_interval"`
+	RequestTimeout         string  `toml:"request_timeout"`
+	ResyncTimeout          string  `toml:"resync_timeout"`
+	ShutdownTimeout        string  `toml:"shutdown_timeout"`
+	IdleTimeout            string  `toml:"idle_timeout"`
+	IdleWait               string  `toml:"idle_wait"`
 }
 
 // NativeOffloadProcessSettings contains checked values shared by the loader and module.
 type NativeOffloadProcessSettings struct {
-	CPU                 uint32
-	MemoryMiB           uint32
-	HugepageDirectory   string
-	FilePrefix          string
-	PairCapacity        uint32
-	MbufCount           uint32
-	FlowCapacity        uint32
-	EventCapacity       uint32
-	ObservationCapacity uint32
-	SocketBufferBytes   uint32
-	ObservationMaxAge   time.Duration
-	ResyncInterval      time.Duration
-	CounterInterval     time.Duration
-	RequestTimeout      time.Duration
-	ResyncTimeout       time.Duration
-	ShutdownTimeout     time.Duration
-	IdleTimeout         time.Duration
-	IdleWait            time.Duration
+	CPU                    uint32
+	MemoryMiB              uint32
+	HugepageDirectory      string
+	FilePrefix             string
+	PairCapacity           uint32
+	MbufCount              uint32
+	FlowCapacity           uint32
+	EventCapacity          uint32
+	ObservationCapacity    uint32
+	ObservationDiagnostics bool
+	SocketBufferBytes      uint32
+	ObservationMaxAge      time.Duration
+	ResyncInterval         time.Duration
+	CounterInterval        time.Duration
+	RequestTimeout         time.Duration
+	ResyncTimeout          time.Duration
+	ShutdownTimeout        time.Duration
+	IdleTimeout            time.Duration
+	IdleWait               time.Duration
 }
 
 const (
@@ -96,6 +98,7 @@ func (section *IfMgrNativeOffloadSection) Resolve() (NativeOffloadProcessSetting
 	}
 	settings.CPU, settings.MemoryMiB = *section.CPU, section.MemoryMiB
 	settings.HugepageDirectory, settings.FilePrefix = section.HugepageDirectory, section.FilePrefix
+	settings.ObservationDiagnostics = section.ObservationDiagnostics
 	if err := section.resolveLimits(&settings); err != nil {
 		return NativeOffloadProcessSettings{}, err
 	}

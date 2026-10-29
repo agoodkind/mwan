@@ -105,6 +105,9 @@ func (module *Module) maintain(ctx context.Context) {
 	} else if control := module.Stats(); control.PolicyBlocked && control.Failure == nil {
 		module.logBlockedControl(ctx, control)
 	}
+	if module.cfg.Settings.ObservationDiagnostics {
+		module.logCaptureDiagnostics(ctx)
+	}
 }
 
 func (module *Module) resync(ctx context.Context) {

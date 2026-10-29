@@ -3,13 +3,16 @@
 package nativeoffload
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"math/bits"
 	"net"
 	"net/netip"
 	"os"
 	"os/exec"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -41,9 +44,12 @@ func TestNativePacketObservation(t *testing.T) {
 	input, sender := nativeCaptureLinks(t)
 	observations := make(chan packetObservation, nativeCaptureCapacity)
 	failures := make(chan error, 1)
-	capture, err := openPacketCapture(ctx, input, nativeCaptureSocketBytes, observations, failures, nil)
+	capture, err := openPacketCapture(ctx, input, nativeCaptureSocketBytes, observations, failures, nil, false)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if capture.diagnostics != nil {
+		t.Fatal("disabled capture allocated diagnostics")
 	}
 	t.Cleanup(func() {
 		cancel()
@@ -80,6 +86,118 @@ func TestNativePacketObservation(t *testing.T) {
 			}
 		}
 	}
+	var output bytes.Buffer
+	module := &Module{captures: []*packetCapture{capture}}
+	module.Log = slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	module.maintain(ctx)
+	if strings.Contains(output.String(), "native capture diagnostic") {
+		t.Fatalf("disabled capture emitted diagnostics: %s", output.String())
+	}
+}
+
+func TestNativePacketObservationDiagnostics(t *testing.T) {
+	if !nativeCaptureNamespace(t) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), nativeCaptureTimeout)
+	defer cancel()
+	input, sender := nativeCaptureLinks(t)
+	var paused atomic.Bool
+	paused.Store(true)
+	observations := make(chan packetObservation, 1)
+	failures := make(chan error, 1)
+	capture, err := openPacketCapture(ctx, input, nativeCaptureSocketBytes, observations, failures, &paused, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cancel()
+		if err := capture.close(); err != nil {
+			t.Error(err)
+		}
+		<-capture.done
+	})
+	frame := nativeCaptureFrame(t, sender, input, [2]string{"192.0.2.10", "198.51.100.20"}, unix.IPPROTO_TCP)
+	for range 3 {
+		nativeCaptureSend(t, sender, frame)
+	}
+	awaitCaptureDiagnostic(t, ctx, capture, capturePaused, 3, failures)
+	var output bytes.Buffer
+	module := &Module{captures: []*packetCapture{capture}}
+	module.Log = slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	module.logCaptureDiagnostics(ctx)
+	report := output.String()
+	if strings.Count(report, `"stage":"paused"`) != 1 || !strings.Contains(report, `"paused":3`) || !strings.Contains(report, `"eligible":true`) || !strings.Contains(report, `"auxiliary_status":`) || !strings.Contains(report, `"192.0.2.10"`) {
+		t.Fatalf("capture report did not include the paused frame and counter: %s", report)
+	}
+	output.Reset()
+	module.logCaptureDiagnostics(ctx)
+	if strings.Contains(output.String(), `"stage":"paused"`) {
+		t.Fatalf("capture repeated a sample without a new frame: %s", output.String())
+	}
+	nativeCaptureSend(t, sender, frame)
+	awaitCaptureDiagnostic(t, ctx, capture, capturePaused, 4, failures)
+	output.Reset()
+	module.logCaptureDiagnostics(ctx)
+	if strings.Count(output.String(), `"stage":"paused"`) != 1 || !strings.Contains(output.String(), `"paused":4`) {
+		t.Fatalf("capture did not report a fresh sample and monotonic counter: %s", output.String())
+	}
+	select {
+	case observation := <-observations:
+		t.Fatalf("paused capture admitted an observation: %+v", observation)
+	default:
+	}
+	paused.Store(false)
+	for range 2 {
+		nativeCaptureSend(t, sender, frame)
+	}
+	awaitCaptureDiagnostic(t, ctx, capture, captureQueueFull, 1, failures)
+	output.Reset()
+	module.logCaptureDiagnostics(ctx)
+	if !strings.Contains(output.String(), `"queued":1`) || !strings.Contains(output.String(), `"queue_full":1`) || !strings.Contains(output.String(), `"stage":"queue_full"`) {
+		t.Fatalf("capture did not report queue admission and overflow: %s", output.String())
+	}
+	select {
+	case observation := <-observations:
+		if !observation.Eligible {
+			t.Fatalf("capture admitted an ineligible observation: %+v", observation)
+		}
+	default:
+		t.Fatal("capture did not admit the eligible frame")
+	}
+	ethernet := &layers.Ethernet{SrcMAC: sender.HardwareAddr, DstMAC: input.HardwareAddr, EthernetType: layers.EthernetTypeARP}
+	buffer := gopacket.NewSerializeBuffer()
+	if err := gopacket.SerializeLayers(buffer, gopacket.SerializeOptions{FixLengths: true}, ethernet, gopacket.Payload("native observation")); err != nil {
+		t.Fatal(err)
+	}
+	nativeCaptureSend(t, sender, buffer.Bytes())
+	awaitCaptureDiagnostic(t, ctx, capture, captureDecoderIneligible, 1, failures)
+	output.Reset()
+	module.logCaptureDiagnostics(ctx)
+	if !strings.Contains(output.String(), `"decoder_ineligible":1`) || !strings.Contains(output.String(), `"stage":"decoder_ineligible"`) || !strings.Contains(output.String(), `"eligible":false`) {
+		t.Fatalf("capture did not report the decoder rejection: %s", output.String())
+	}
+}
+
+func awaitCaptureDiagnostic(t *testing.T, ctx context.Context, capture *packetCapture, stage captureStage, minimum uint64, failures <-chan error) {
+	t.Helper()
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		capture.diagnostics.mu.Lock()
+		count := capture.diagnostics.counts[stage]
+		capture.diagnostics.mu.Unlock()
+		if count >= minimum {
+			return
+		}
+		select {
+		case failure := <-failures:
+			t.Fatal(failure)
+		case <-ctx.Done():
+			t.Fatal("capture did not report the expected frames")
+		case <-ticker.C:
+		}
+	}
 }
 
 func TestNativePacketObservationCapacityFallback(t *testing.T) {
@@ -105,7 +223,7 @@ func TestNativePacketObservationCapacityFallback(t *testing.T) {
 	var paused atomic.Bool
 	observations := make(chan packetObservation, 1)
 	failures := make(chan error, 1)
-	capture, err := openPacketCapture(ctx, input, nativeCaptureSocketBytes, observations, failures, &paused)
+	capture, err := openPacketCapture(ctx, input, nativeCaptureSocketBytes, observations, failures, &paused, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +303,7 @@ func TestNativePacketObservationPanicPreservesLinuxDelivery(t *testing.T) {
 	var paused atomic.Bool
 	observations := make(chan packetObservation, 1)
 	failures := make(chan error, 1)
-	capture, err := openPacketCapture(ctx, input, nativeCaptureSocketBytes, observations, failures, &paused)
+	capture, err := openPacketCapture(ctx, input, nativeCaptureSocketBytes, observations, failures, &paused, false)
 	if err != nil {
 		t.Fatal(err)
 	}

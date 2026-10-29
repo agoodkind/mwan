@@ -48,16 +48,19 @@ type packetCapture struct {
 	paused        *atomic.Bool
 	skipped       atomic.Uint64
 	previousDrops uint32
+	diagnostics   *captureDiagnostics
 }
 
 type captureMetadata struct {
-	at            time.Time
-	checksumReady bool
-	drops         uint32
-	dropsValid    bool
+	at             time.Time
+	checksumReady  bool
+	drops          uint32
+	dropsValid     bool
+	status         uint32
+	auxiliaryValid bool
 }
 
-func openPacketCapture(ctx context.Context, link *net.Interface, socketBytes int, observations chan<- packetObservation, failures chan<- error, paused *atomic.Bool) (result *packetCapture, resultErr error) {
+func openPacketCapture(ctx context.Context, link *net.Interface, socketBytes int, observations chan<- packetObservation, failures chan<- error, paused *atomic.Bool, diagnosticsEnabled bool) (result *packetCapture, resultErr error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer func() {
 		if resultErr != nil {
@@ -74,6 +77,9 @@ func openPacketCapture(ctx context.Context, link *net.Interface, socketBytes int
 		file: file, cancel: cancel, done: make(chan struct{}),
 		closeOnce: sync.Once{}, closeErr: nil, paused: paused,
 		skipped: atomic.Uint64{}, previousDrops: 0,
+	}
+	if diagnosticsEnabled {
+		capture.diagnostics = &captureDiagnostics{name: link.Name, ifindex: link.Index}
 	}
 	for _, option := range []struct{ level, name, value int }{
 		{unix.SOL_SOCKET, unix.SO_RCVBUF, socketBytes},
@@ -162,11 +168,23 @@ func (capture *packetCapture) receive(ctx context.Context, raw syscall.RawConn, 
 		if receiveErr != nil {
 			return fmt.Errorf("receive native packet observations: %w", receiveErr)
 		}
+		if capture.diagnostics != nil {
+			capture.diagnostics.count(captureReceived, 1)
+		}
 		if flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) != 0 || count == 0 {
 			return fmt.Errorf("native packet observation truncated: %w", unix.EMSGSIZE)
 		}
 		address, ok := sender.(*unix.SockaddrLinklayer)
 		if !ok || address.Ifindex != ifindex || address.Pkttype == unix.PACKET_OUTGOING {
+			if capture.diagnostics != nil {
+				stage := captureSenderRejected
+				if ok && address.Ifindex != ifindex {
+					stage = captureInterfaceRejected
+				} else if ok && address.Pkttype == unix.PACKET_OUTGOING {
+					stage = captureOutgoingRejected
+				}
+				capture.diagnostics.record(stage, frame[:count], sender, captureMetadata{}, control[:controlCount], nil)
+			}
 			continue
 		}
 		metadata, err := observationControl(control[:controlCount])
@@ -174,14 +192,29 @@ func (capture *packetCapture) receive(ctx context.Context, raw syscall.RawConn, 
 			return err
 		}
 		if metadata.dropsValid {
-			capture.skipped.Add(uint64(metadata.drops - capture.previousDrops))
+			drops := uint64(metadata.drops - capture.previousDrops)
+			capture.skipped.Add(drops)
+			if capture.diagnostics != nil {
+				capture.diagnostics.count(captureSocketOverflow, drops)
+			}
 			capture.previousDrops = metadata.drops
 		}
 		if capture.paused != nil && capture.paused.Load() {
 			capture.skipped.Add(1)
+			if capture.diagnostics != nil {
+				capture.diagnostics.record(capturePaused, frame[:count], sender, metadata, nil, nil)
+			}
 			continue
 		}
 		if !metadata.checksumReady {
+			if capture.diagnostics != nil {
+				if metadata.status&observationChecksumPending != 0 {
+					capture.diagnostics.record(captureChecksumPending, frame[:count], sender, metadata, nil, nil)
+				}
+				if metadata.status&observationVLANPresent != 0 {
+					capture.diagnostics.record(captureVLAN, frame[:count], sender, metadata, nil, nil)
+				}
+			}
 			continue
 		}
 		decoded, err := offload.ObserveNativeFrames([][]byte{frame[:count]})
@@ -189,15 +222,24 @@ func (capture *packetCapture) receive(ctx context.Context, raw syscall.RawConn, 
 			return fmt.Errorf("decode native packet observations: %w", err)
 		}
 		if !decoded[0].Eligible {
+			if capture.diagnostics != nil {
+				capture.diagnostics.record(captureDecoderIneligible, frame[:count], sender, metadata, nil, &decoded[0])
+			}
 			continue
 		}
 		observation := packetObservation{NativeObservation: decoded[0], ifindex: ifindex, at: metadata.at}
 		select {
 		case observations <- observation:
+			if capture.diagnostics != nil {
+				capture.diagnostics.record(captureQueued, frame[:count], sender, metadata, nil, &decoded[0])
+			}
 		case <-ctx.Done():
 			return nil
 		default:
 			capture.skipped.Add(1)
+			if capture.diagnostics != nil {
+				capture.diagnostics.record(captureQueueFull, frame[:count], sender, metadata, nil, &decoded[0])
+			}
 		}
 	}
 }
@@ -236,6 +278,8 @@ func observationControl(data []byte) (metadata captureMetadata, resultErr error)
 				return metadata, fmt.Errorf("native packet observation auxiliary data has an invalid size")
 			}
 			status := binary.NativeEndian.Uint32(message.Data[:4])
+			metadata.status = status
+			metadata.auxiliaryValid = true
 			metadata.checksumReady = status&(observationChecksumPending|observationVLANPresent) == 0
 			auxiliaryValid = true
 		}
