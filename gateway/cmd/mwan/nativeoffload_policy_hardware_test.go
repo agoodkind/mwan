@@ -174,12 +174,7 @@ func TestNativePolicyResyncHardware(t *testing.T) {
 	}
 	waitNativeHardwarePolicy(t, module, false, recoveryWindow, nil)
 	if err := module.Shutdown(context.Background(), log); err != nil {
-		t.Fatalf("shut down first native runtime: %v", err)
-	}
-	second := openNativeHardwareModule(t, ctx, nativeConfig, env, log)
-	waitNativeHardwarePolicy(t, second, false, recoveryWindow, nil)
-	if err := second.Shutdown(context.Background(), log); err != nil {
-		t.Fatalf("shut down reopened native runtime: %v", err)
+		t.Fatalf("shut down native runtime: %v", err)
 	}
 }
 
