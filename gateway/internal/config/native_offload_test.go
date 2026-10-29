@@ -61,6 +61,11 @@ func TestLoadNativeOffloadRejectsInvalidSettings(t *testing.T) {
 		{"socket-int-overflow", "", "socket_buffer_bytes = 2147483648"},
 		{"cpu-uint-overflow", "cpu = 0", "cpu = 4294967296"},
 		{"duration-zero", "", `request_timeout = "0s"`},
+		{"observation-zero", "", `observation_max_age = "0s"`},
+		{"counter-zero", "", `counter_interval = "0s"`},
+		{"resync-timeout-zero", "", `resync_timeout = "0s"`},
+		{"shutdown-zero", "", `shutdown_timeout = "0s"`},
+		{"idle-timeout-zero", "", `idle_timeout = "0s"`},
 		{"duration-negative", "", `resync_timeout = "-1s"`},
 		{"duration-overflow", "", `shutdown_timeout = "999999999999h"`},
 		{"duration-invalid", "", `counter_interval = "soon"`},
@@ -68,6 +73,7 @@ func TestLoadNativeOffloadRejectsInvalidSettings(t *testing.T) {
 		{"observation-negative", "", `observation_max_age = "-1s"`},
 		{"idle-too-short", "", `idle_timeout = "1s"`},
 		{"idle-wait-negative", "", `idle_wait = "-1us"`},
+		{"idle-wait-invalid", "", `idle_wait = "soon"`},
 	} {
 		t.Run(check.name, func(t *testing.T) {
 			t.Parallel()
@@ -78,6 +84,32 @@ func TestLoadNativeOffloadRejectsInvalidSettings(t *testing.T) {
 			path := writeSharedFile(t, sharedFileText+text)
 			if _, _, err := config.LoadArguments([]string{"mwan", "--config", path}); err == nil {
 				t.Fatalf("loader accepted invalid native settings: %s", text)
+			}
+		})
+	}
+}
+
+func TestLoadNativeOffloadIdleWait(t *testing.T) {
+	t.Parallel()
+	for _, check := range []struct {
+		name  string
+		input string
+		want  time.Duration
+	}{
+		{name: "omitted", input: "", want: 10 * time.Microsecond},
+		{name: "zero", input: `idle_wait = "0s"`, want: 0},
+		{name: "positive", input: `idle_wait = "1us"`, want: time.Microsecond},
+	} {
+		t.Run(check.name, func(t *testing.T) {
+			t.Parallel()
+			path := writeSharedFile(t, sharedFileText+nativeProcessTOML+check.input)
+			loaded, _, err := config.LoadArguments([]string{"mwan", "--config", path})
+			if err != nil {
+				t.Fatal(err)
+			}
+			settings, err := loaded.IfMgr.Modules.NativeOffload.Resolve()
+			if err != nil || settings.IdleWait != check.want {
+				t.Fatalf("resolved native idle wait = %v, want %v: %v", settings.IdleWait, check.want, err)
 			}
 		})
 	}

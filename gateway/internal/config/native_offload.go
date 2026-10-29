@@ -140,16 +140,17 @@ func (section *IfMgrNativeOffloadSection) resolveDurations(settings *NativeOfflo
 		name     string
 		input    string
 		fallback time.Duration
+		minimum  time.Duration
 		output   *time.Duration
 	}{
-		{"observation_max_age", section.ObservationMaxAge, nativeDefaultObservationMaxAge, &settings.ObservationMaxAge},
-		{"resync_interval", section.ResyncInterval, nativeDefaultResyncInterval, &settings.ResyncInterval},
-		{"counter_interval", section.CounterInterval, nativeDefaultCounterInterval, &settings.CounterInterval},
-		{"request_timeout", section.RequestTimeout, nativeDefaultRequestTimeout, &settings.RequestTimeout},
-		{"resync_timeout", section.ResyncTimeout, nativeDefaultResyncTimeout, &settings.ResyncTimeout},
-		{"shutdown_timeout", section.ShutdownTimeout, nativeDefaultShutdownTimeout, &settings.ShutdownTimeout},
-		{"idle_timeout", section.IdleTimeout, nativeDefaultIdleTimeout, &settings.IdleTimeout},
-		{"idle_wait", section.IdleWait, nativeDefaultIdleWait, &settings.IdleWait},
+		{"observation_max_age", section.ObservationMaxAge, nativeDefaultObservationMaxAge, time.Nanosecond, &settings.ObservationMaxAge},
+		{"resync_interval", section.ResyncInterval, nativeDefaultResyncInterval, time.Nanosecond, &settings.ResyncInterval},
+		{"counter_interval", section.CounterInterval, nativeDefaultCounterInterval, time.Nanosecond, &settings.CounterInterval},
+		{"request_timeout", section.RequestTimeout, nativeDefaultRequestTimeout, time.Nanosecond, &settings.RequestTimeout},
+		{"resync_timeout", section.ResyncTimeout, nativeDefaultResyncTimeout, time.Nanosecond, &settings.ResyncTimeout},
+		{"shutdown_timeout", section.ShutdownTimeout, nativeDefaultShutdownTimeout, time.Nanosecond, &settings.ShutdownTimeout},
+		{"idle_timeout", section.IdleTimeout, nativeDefaultIdleTimeout, time.Nanosecond, &settings.IdleTimeout},
+		{"idle_wait", section.IdleWait, nativeDefaultIdleWait, 0, &settings.IdleWait},
 	} {
 		value := field.fallback
 		if field.input != "" {
@@ -160,8 +161,8 @@ func (section *IfMgrNativeOffloadSection) resolveDurations(settings *NativeOfflo
 			}
 			value = parsed
 		}
-		if value <= 0 {
-			return fmt.Errorf("nativeoffload %s must be positive", field.name)
+		if value < field.minimum {
+			return fmt.Errorf("nativeoffload %s must be at least %s", field.name, field.minimum)
 		}
 		*field.output = value
 	}
