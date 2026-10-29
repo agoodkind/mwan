@@ -13,23 +13,6 @@ import (
 	"goodkind.io/mwan/internal/offload"
 )
 
-func (module *Module) observeConnection(ctx context.Context, event offload.ConntrackEvent) {
-	identity := flowIdentity(event.Flow)
-	if event.Destroyed {
-		delete(module.resumeCandidates, identity)
-	}
-	entry, installed := module.flows[identity]
-	if !installed {
-		return
-	}
-	if event.Destroyed || !sameConnectionPolicy(entry.flow, event.Flow) {
-		if err := module.retire(ctx, identity, "connection state changed"); err != nil {
-			_ = module.fail(ctx, err)
-		}
-		delete(module.resumeCandidates, identity)
-	}
-}
-
 func (module *Module) retire(ctx context.Context, identity connectionIdentity, reason string) error {
 	entry, installed := module.flows[identity]
 	if !installed {

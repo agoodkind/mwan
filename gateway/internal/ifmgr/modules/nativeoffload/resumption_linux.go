@@ -170,7 +170,7 @@ func (module *Module) resumeEntry(ctx, requestContext context.Context, identity 
 		module.stats.Fallback++
 		if removeErr := module.retire(ctx, identity, "native resumption did not complete"); removeErr != nil {
 			_ = module.fail(ctx, errors.Join(err, removeErr))
-		} else if errors.Is(err, syscall.ESTALE) {
+		} else if nativeHandleStale(err) {
 			delete(module.resumeCandidates, identity)
 		}
 		return
@@ -179,6 +179,11 @@ func (module *Module) resumeEntry(ctx, requestContext context.Context, identity 
 	module.startCounters(entry, counterStarted)
 	module.stats.Resumed++
 	module.logAdmittedFlow(ctx, "native rule resumed", entry)
+}
+
+func nativeHandleStale(err error) bool {
+	var failure *offload.NativeError
+	return errors.As(err, &failure) && failure.ObjectKind == offload.NativeObjectPair && errors.Is(err, syscall.ESTALE)
 }
 
 func (module *Module) rememberCandidate(identity connectionIdentity, entry *admittedFlow) {
