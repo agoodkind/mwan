@@ -92,7 +92,14 @@ func (module *Module) resolveGraph() (configuration offload.NativeConfig, links 
 		dataID := offload.NativeDataID(dataIndex)
 		data := offload.NativeDataDevice{PCI: binding.DataPCI, MAC: binding.DataMAC, Controller: offload.NativeNoController, VF: 0}
 		bound := boundLink{connection: connection, kernel: *kernel, identity: netif.LinkOwnershipIdentity(link), data: dataID, origin: 0, hasOrigin: false}
-		if err := appendNativeController(&configuration, controllers, binding, kernel, &bound, &data); err != nil {
+		field := offload.NativeIPv6RestoreLegacy
+		if binding.Controller != nil && binding.Controller.PhysicalMiss {
+			field, err = module.ipv6RestoreField(connection)
+			if err != nil {
+				return configuration, nil, err
+			}
+		}
+		if err := appendNativeController(&configuration, controllers, binding, kernel, &bound, &data, field); err != nil {
 			return configuration, nil, err
 		}
 		configuration.Data = append(configuration.Data, data)
@@ -127,7 +134,7 @@ func (module *Module) verifyLinks() (resultErr error) {
 	return nil
 }
 
-func appendNativeController(configuration *offload.NativeConfig, controllers map[interfaceintent.PCIAddress]offload.NativeControllerID, binding *interfaceintent.NativeOffloadBinding, kernel *net.Interface, bound *boundLink, data *offload.NativeDataDevice) (resultErr error) {
+func appendNativeController(configuration *offload.NativeConfig, controllers map[interfaceintent.PCIAddress]offload.NativeControllerID, binding *interfaceintent.NativeOffloadBinding, kernel *net.Interface, bound *boundLink, data *offload.NativeDataDevice, field offload.NativeIPv6RestoreField) (resultErr error) {
 	if binding.Controller == nil {
 		return nil
 	}
@@ -162,10 +169,41 @@ func appendNativeController(configuration *offload.NativeConfig, controllers map
 		}
 		bound.origin = offload.NativeOriginID(originIndex)
 		bound.hasOrigin = true
-		configuration.Origins = append(configuration.Origins, offload.NativeOrigin{Controller: controllerID, Kind: offload.NativePhysicalOrigin, Receiver: receiverID, Data: bound.data, ReturnMode: offload.NativeReturnOriginal, SourceVF: 0})
+		configuration.Origins = append(configuration.Origins, offload.NativeOrigin{Controller: controllerID, Kind: offload.NativePhysicalOrigin, Receiver: receiverID, Data: bound.data, ReturnMode: offload.NativeReturnOriginal, SourceVF: 0, IPv6RestoreField: field})
 	}
 
 	return nil
+}
+
+func (module *Module) ipv6RestoreField(connection interfaceintent.Connection) (offload.NativeIPv6RestoreField, error) {
+	internal := connection.Roles&interfaceintent.RoleInternal != 0
+	provider := connection.Roles&interfaceintent.RoleProvider != 0
+	if internal == provider {
+		return offload.NativeIPv6RestoreLegacy, fmt.Errorf("native ingress %s requires one internal or provider role", connection.Name)
+	}
+	if provider {
+		configured := false
+		for _, wan := range module.cfg.WANs {
+			if wan.Key() == connection.ID.String() && wan.Iface == connection.Name {
+				configured = true
+			}
+		}
+		if !configured {
+			return offload.NativeIPv6RestoreLegacy, fmt.Errorf("native ingress %s requires a configured WAN", connection.Name)
+		}
+	}
+	for _, path := range module.cfg.Firewall.Paths {
+		if !path.IPv4 && !path.IPv6 {
+			continue
+		}
+		if internal && path.InternalInterface == connection.Name {
+			return offload.NativeIPv6RestoreSource, nil
+		}
+		if provider && path.ExternalInterface == connection.Name {
+			return offload.NativeIPv6RestoreDestination, nil
+		}
+	}
+	return offload.NativeIPv6RestoreLegacy, fmt.Errorf("native ingress %s requires an allowed forwarding path", connection.Name)
 }
 
 func checkedNativeIndex(index int) (uint32, error) {

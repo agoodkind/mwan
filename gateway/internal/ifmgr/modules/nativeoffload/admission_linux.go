@@ -86,17 +86,9 @@ func (module *Module) admit(ctx context.Context, observation packetObservation) 
 		module.stats.Fallback++
 		return
 	}
-	flowCount, err := checkedNativeIndex(len(module.flows))
-	if err != nil {
-		_ = module.fail(ctx, err)
-		return
-	}
-	if retirement.RetainedPairs >= retirement.RetainedPairCapacity && uint64(flowCount)+uint64(retirement.DrainingPairs) >= uint64(retirement.ActivePairCapacity) {
-		module.stats.Fallback++
-		return
-	}
-	if len(module.flows) >= int(module.cfg.Settings.PairCapacity) {
-		if !module.evictLRU(requestContext) {
+	requireShared := retirement.RetainedPairs >= retirement.RetainedPairCapacity && retirement.ReusableSharedSlots == 0
+	if requireShared || len(module.flows) >= int(module.cfg.Settings.PairCapacity) {
+		if !module.evictLRU(requestContext, requireShared) {
 			module.stats.Fallback++
 			return
 		}

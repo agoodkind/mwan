@@ -21,8 +21,14 @@ func (module *Module) retire(ctx context.Context, identity connectionIdentity, r
 	if err := module.removeRules(ctx, identity, entry, reason); err != nil {
 		return err
 	}
+	if entry.result.SharedRestorationDirections == entry.spec.RequestedDirections {
+		if err := module.releaseShared(ctx, identity, entry, reason); err != nil {
+			return err
+		}
+	} else {
+		module.rememberCandidate(identity, entry)
+	}
 	delete(module.flows, identity)
-	module.rememberCandidate(identity, entry)
 	module.stats.Retired++
 	module.logRuleCounters(ctx, slog.LevelDebug, "native rule retired", entry, reason, nil)
 	return nil
@@ -35,19 +41,46 @@ func (module *Module) removeRules(ctx context.Context, identity connectionIdenti
 	if result.Handle == entry.result.Handle {
 		entry.result = result
 		entry.uncertain = result.CleanupFailedDirections != 0
-	} else if err != nil {
+	} else {
 		entry.uncertain = true
 	}
 	if err != nil {
+		entry.uncertain = true
 		log := module.ruleCounterLogger(entry, reason)
 		log.WarnContext(ctx, "native connection rule removal failed", "err", err)
 		return fmt.Errorf("remove native connection %d for %s: %w", identity.id, reason, err)
 	}
-	if result.InstalledDirections != 0 || result.CleanupFailedDirections != 0 || result.State != offload.NativePairDraining {
+	if result.Handle != entry.result.Handle || result.RequestedDirections != entry.spec.RequestedDirections ||
+		result.RestorationDirections != entry.spec.RequestedDirections || result.SharedRestorationDirections&^entry.spec.RequestedDirections != 0 ||
+		result.InstalledDirections != 0 || result.CleanupFailedDirections != 0 || result.State != offload.NativePairDraining {
+		entry.uncertain = true
 		failure := fmt.Errorf("native removal did not confirm retained restoration for connection %d", identity.id)
 		module.logRuleCounters(ctx, slog.LevelWarn, "native connection rule removal failed", entry, reason, failure)
 		return failure
 	}
+	return nil
+}
+
+func (module *Module) releaseShared(ctx context.Context, identity connectionIdentity, entry *admittedFlow, reason string) error {
+	handle := entry.result.Handle
+	requestContext, cancel := context.WithTimeout(ctx, module.cfg.Settings.RequestTimeout)
+	defer cancel()
+	result, err := module.runtime.ReleaseShared(requestContext, handle)
+	if result.Handle == handle {
+		entry.result = result
+	}
+	if err == nil && (result.Handle != handle || result.State != offload.NativePairReleased ||
+		result.RequestedDirections != entry.spec.RequestedDirections || result.InstalledDirections != 0 ||
+		result.CleanupFailedDirections != 0 || result.SharedRestorationDirections != entry.spec.RequestedDirections ||
+		result.RestorationDirections != entry.spec.RequestedDirections) {
+		err = fmt.Errorf("native release did not confirm consumed shared restoration for connection %d", identity.id)
+	}
+	if err != nil {
+		entry.uncertain = true
+		module.logRuleCounters(ctx, slog.LevelWarn, "native shared release failed", entry, reason, err)
+		return fmt.Errorf("release native connection %d for %s: %w", identity.id, reason, err)
+	}
+	delete(module.resumeCandidates, identity)
 	return nil
 }
 
@@ -162,17 +195,20 @@ func observeCounters(entry *admittedFlow, stats offload.NativePairStats, queryEr
 	return entry.counters.Observe(entry.spec.RequestedDirections, stats.Directions, queryError, now)
 }
 
-func (module *Module) evictLRU(ctx context.Context) bool {
+func (module *Module) evictLRU(ctx context.Context, requireShared bool) bool {
 	now := clock.Real{}.Now()
 	if module.stats.Failure != nil {
 		return false
 	}
-	if len(module.flows) < int(module.cfg.Settings.PairCapacity) {
+	if !requireShared && len(module.flows) < int(module.cfg.Settings.PairCapacity) {
 		return true
 	}
 	var oldest connectionIdentity
 	var lastActive time.Time
 	for identity, entry := range module.flows {
+		if requireShared && entry.result.SharedRestorationDirections != entry.spec.RequestedDirections {
+			continue
+		}
 		if entry.result.InstalledDirections == 0 || !entry.counters.Evictable(now, module.cfg.Settings.CounterInterval) {
 			continue
 		}
@@ -237,7 +273,14 @@ func retirementStatsValue(stats offload.NativeRetirementStats, err error) slog.V
 		slog.Uint64("retained_pair_capacity", uint64(stats.RetainedPairCapacity)),
 		slog.Uint64("retained_pairs", uint64(stats.RetainedPairs)),
 		slog.Uint64("draining_pairs", uint64(stats.DrainingPairs)),
-		slog.Uint64("retained_directions", stats.RetainedDirections))
+		slog.Uint64("retained_directions", stats.RetainedDirections),
+		slog.Uint64("shared_binding_capacity", uint64(stats.SharedBindingCapacity)),
+		slog.Uint64("shared_bindings", uint64(stats.SharedBindings)),
+		slog.Uint64("shared_identity_bindings", uint64(stats.SharedIdentityBindings)),
+		slog.Uint64("reusable_shared_slots", uint64(stats.ReusableSharedSlots)),
+		slog.Uint64("shared_binding_conflicts", stats.SharedBindingConflicts),
+		slog.Uint64("shared_binding_capacity_rejections", stats.SharedBindingCapacityRejections),
+		slog.Uint64("shared_pair_releases", stats.SharedPairReleases))
 }
 
 func (module *Module) logBlockedControl(ctx context.Context, control AdmissionStats) {
