@@ -189,7 +189,8 @@ func (u *ConntrackUpdater) Refresh(ctx context.Context, flow conntrack.Flow, tim
 		return fmt.Errorf("conntrack timeout verification clock moved backward")
 	}
 	elapsedSeconds := uint64(elapsed/time.Second) + 1
-	if current.Timeout > timeoutSeconds || uint64(current.Timeout)+elapsedSeconds < uint64(timeoutSeconds) {
+	// Kernel packets can extend expiry between the update and readback.
+	if uint64(current.Timeout)+elapsedSeconds < uint64(timeoutSeconds) {
 		return &ConntrackTimeoutVerificationError{
 			ConnectionID: flow.ID, RequestedSeconds: timeoutSeconds,
 			ObservedSeconds: current.Timeout, Elapsed: elapsed, AllowanceSeconds: elapsedSeconds,
