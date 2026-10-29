@@ -73,6 +73,7 @@ func TestDecodeAcceptsTunnelProviders(t *testing.T) {
 	}{
 		{name: "native translation with the gateway shorthand", wantMode: config.TranslationNative, wantDestination: "::/0"},
 		{name: "NPTv6 translation", edits: []planEdit{nptv6}, wantMode: config.TranslationNPTv6, wantDestination: "::/0"},
+		{name: "IPv6 masquerade", edits: []planEdit{{old: tunnelProviderNative, replacement: strings.Replace(tunnelProviderNative, `"native"`, `"masquerade"`, 1)}}, wantMode: config.TranslationMasquerade, wantDestination: "::/0"},
 		{
 			name: "configured default route with a gateway", edits: []planEdit{configuredDefault},
 			wantMode: config.TranslationNative, wantDestination: "::/0",

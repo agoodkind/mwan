@@ -223,6 +223,8 @@ const (
 	TranslationNAPT44 TranslationMode = "ietf-nat:napt44"
 	// TranslationNPTv6 translates IPv6 prefixes without connection state.
 	TranslationNPTv6 TranslationMode = "ietf-nat:nptv6"
+	// TranslationMasquerade translates IPv6 sources to the outgoing address.
+	TranslationMasquerade TranslationMode = "masquerade"
 )
 
 // PrefixSource selects how an IPv6 external prefix is obtained.

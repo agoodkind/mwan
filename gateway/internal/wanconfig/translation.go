@@ -65,7 +65,7 @@ func natInstanceItems(member Member) []Item {
 			)
 		}
 	}
-	if policy := member.TranslationV6; policy != nil && policy.Mode != config.TranslationNative {
+	if policy := member.TranslationV6; policy != nil && policy.Mode == config.TranslationNPTv6 {
 		base := natPath + "/instances/instance[id='" + uintValue(uint64(member.TranslationIDV6)) + "']"
 		items = append(items, Item{Path: base + "/name", Value: member.Name + "/ipv6"}, Item{Path: base + "/type", Value: string(policy.Mode)}, Item{Path: base + "/enable", Value: boolTrue})
 		if prefix := policy.NPT; prefix != nil && prefix.ExternalSource == config.PrefixConfigured {
@@ -93,7 +93,7 @@ func validateTranslationV4(name string, policy *config.IPv4Translation) error {
 			return invalid("member " + name + " native IPv4 cannot include mappings")
 		}
 	case config.TranslationNAPT44:
-	case config.TranslationNPTv6:
+	case config.TranslationNPTv6, config.TranslationMasquerade:
 		return invalid("member " + name + " has unsupported IPv4 translation mode")
 	default:
 		return invalid("member " + name + " has unsupported IPv4 translation mode")
@@ -106,9 +106,9 @@ func validateTranslationV6(name string, policy *config.IPv6Translation) error {
 		return nil
 	}
 	switch policy.Mode {
-	case config.TranslationNative:
+	case config.TranslationNative, config.TranslationMasquerade:
 		if policy.NPT != nil {
-			return invalid("member " + name + " native IPv6 cannot include NPT")
+			return invalid("member " + name + " IPv6 mode cannot include NPT")
 		}
 	case config.TranslationNPTv6:
 		return validateNPT(name, policy.NPT)

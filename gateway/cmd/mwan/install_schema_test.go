@@ -337,6 +337,25 @@ func TestInstallApplyUpdatesAnOlderSteeringRevision(t *testing.T) {
 	}
 }
 
+func TestInstallApplyUpdatesSteeringForMasquerade(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	seedSteeringRevision(t, root, "testdata/goodkind-mwan-steering@2026-10-16.yang")
+	runChild(t, sysrepoChildEnv(t, root, "import", "import"), string(yangpub.DatastoreStartup), "ietf-interfaces", storedSessionFixture)
+	before := exportStoredSession(t, root, "before")
+	output := runInstallChild(t, root)
+	_, wantRevision := moduleFileNameRevision(schema.SteeringFile)
+	if got := implementedModules(t, root, "after")["goodkind-mwan-steering"].revision; got != wantRevision {
+		t.Fatalf("steering revision = %q, want %q", got, wantRevision)
+	}
+	if !strings.Contains(output, "updated module goodkind-mwan-steering from 2026-10-16 to "+wantRevision) {
+		t.Fatalf("steering update missing: %s", output)
+	}
+	if after := exportStoredSession(t, root, "after"); after != before {
+		t.Fatalf("stored session changed: before=%s after=%s", before, after)
+	}
+}
+
 // Release 202610191938-ed-eba46a4 failed on testbed VM 213 when
 // mwan install --role wan --apply called sr_update_module. During the update
 // from revision 2026-10-12 to 2026-10-16, sysrepo rejected the stored BGP session

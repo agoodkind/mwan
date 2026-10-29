@@ -58,6 +58,17 @@ func addDummyLink(t *testing.T, name string) netlink.Link {
 // TestNPTRulesRenderFromKernel applies rules to a real kernel and reads them
 // back through the production RenderTable.
 func TestNPTRulesRenderFromKernel(t *testing.T) {
+	t.Run("IPv6 masquerade applies and reads back", func(t *testing.T) {
+		inIPv4Namespace(t)
+		desired := desiredRules{Postrouting: []natRule{{
+			Chain: chainPostrouting, Iface: "tertiary",
+			Match: netip.MustParsePrefix("::/0"), Op: opMasquerade,
+		}}}
+		if err := newNFTApplier().Apply(context.Background(), slog.Default(), desired); err != nil {
+			t.Fatal(err)
+		}
+		assertRendered(t, renderFromKernel(t), []string{}, []string{`oif "tertiary" ip6 saddr ::/0 masquerade`})
+	})
 	t.Run("applied guard, single SNAT, and DNAT rules", func(t *testing.T) {
 		inIPv4Namespace(t)
 		if err := newNFTApplier().Apply(context.Background(), slog.Default(), desiredForTest()); err != nil {

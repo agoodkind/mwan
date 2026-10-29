@@ -1,0 +1,1919 @@
+module goodkind-mwan-steering {
+  yang-version 1.1;
+  namespace "urn:goodkind:mwan-steering";
+  prefix mwan-steer;
+
+  import ietf-interfaces {
+    prefix if;
+    revision-date 2018-02-20;
+    reference
+      "RFC 8343: A YANG Data Model for Interface Management";
+  }
+  import ietf-ip {
+    prefix ip;
+    revision-date 2018-02-22;
+    reference
+      "RFC 8344: A YANG Data Model for IP Management";
+  }
+  import ietf-nat {
+    prefix nat;
+    revision-date 2019-01-10;
+    reference
+      "RFC 8512: A YANG Module for Network Address Translation (NAT)
+       and Network Prefix Translation (NPT)";
+  }
+  import ietf-inet-types {
+    prefix inet;
+    reference
+      "RFC 6991: Common YANG Data Types";
+  }
+  import ietf-yang-types {
+    prefix yang;
+    reference
+      "RFC 6991: Common YANG Data Types";
+  }
+
+  organization
+    "goodkind.io";
+  contact
+    "alex@goodkind.io";
+  description
+    "Steering properties for the MWAN gateway that no published model
+     covers. A member is an interface with steering properties, not a
+     parallel object, so this module augments the interface list and
+     adds the group's hash mode beside it. State nodes carry what is
+     true right now, served from the running daemon.
+
+     The module also carries the gateway's network configuration: the
+     provider inventory each member rides, the health probe that
+     decides its verdict, the prefix-translation inputs, and the
+     internal link the members route toward.";
+
+  revision 2026-10-29 {
+    description "Add IPv6 masquerade translation.";
+  }
+
+  revision 2026-10-16 {
+    description
+      "This revision adds BGP session graceful restart time and the
+       prefixes of kernel routes that remain installed after the
+       previous process exits. It adds the bgp-session family
+       leaf-list with a default of ipv6-unicast and restores the
+       bgp-session router-id leaf with status obsolete. External BGP
+       sessions use router_id in the [bgp] table of config.toml as
+       their BGP router ID. The network document loader rejects
+       documents that set bgp-session router-id.";
+  }
+  revision 2026-10-12;
+  revision 2026-10-11;
+  revision 2026-10-10 {
+    description
+      "The link identity includes the tunnel container.";
+  }
+  revision 2026-10-06;
+  revision 2026-10-01 {
+    description
+      "Add administrative connection selection exclusion.";
+  }
+  revision 2026-09-30 {
+    description
+      "Add configured main-table routes for each address family.";
+  }
+  revision 2026-09-29 {
+    description
+      "Add observed IPv6 address phase and router validity.";
+  }
+  revision 2026-09-28 {
+    description
+      "Add operational interface ownership, observation, assignment, and transition state.";
+  }
+  revision 2026-09-27 {
+    description
+      "Add stable connection identity, an explicit firewall pin target,
+       and typed interface ownership, addressing, and resolver settings.";
+  }
+  revision 2026-09-26 {
+    description
+      "Add the gateway firewall ownership, local management permissions,
+       and packet pin configuration.";
+  }
+  revision 2026-09-22 {
+    description
+      "Replace provider-level translation fields with explicit family policies.";
+  }
+  revision 2026-09-21 {
+    description
+      "This revision adds the rejected-provider operational list under
+       steering-group state. No existing node changes name, type, or shape.";
+  }
+  revision 2026-09-19 {
+    description
+      "Carry each interface's link identity and any unit-file content the
+       typed leaves do not name, so the daemon renders the network
+       manager's unit files from this model rather than from a per-provider
+       template. Every addition is a new node: no node defined by an
+       earlier revision changes name, type, or shape.";
+  }
+  revision 2026-09-14 {
+    description
+      "Carry each provider's static address mappings, so the gateway reads
+       which external addresses it translates from the model rather than
+       from the firewall template alone, and serve the addresses a
+       provider link answers for because they sit inside that link's
+       connected subnet. Every addition is a new node: no node defined by
+       an earlier revision changes name, type, or shape.";
+  }
+  revision 2026-09-13 {
+    description
+      "Carry the DSCP value that forces a new flow onto one provider, so a
+       downstream host pins a flow to a provider by stamping that value. Every
+       addition is a new node: no node defined by an earlier revision changes
+       name, type, or shape.";
+  }
+  revision 2026-09-02 {
+    description
+      "Carry the routing tables no provider may take, so the gateway checks a
+       provider's table against the set the operator typed rather than against
+       a copy each reader holds. Every addition is a new node: no node defined
+       by an earlier revision changes name, type, or shape.";
+  }
+  revision 2026-08-30 {
+    description
+      "Carry the gateway's network configuration, so the model's own
+       JSON encoding holds what the daemon reads about its providers.
+       Adds the per-member provider entry beside the steering
+       container, with the interface's routing table, firewall mark,
+       rule priorities, translation prefix, IPv4 source pin, and the
+       health probe that decides the member's verdict; and adds the
+       group-wide translation inputs, the internal link and network,
+       and the probe timeout. Every addition is a new node: no node
+       defined by an earlier revision changes name, type, or shape.";
+  }
+  revision 2026-08-29 {
+    description
+      "Add the daemon container carrying the settings no published
+       model covers: the rollback watchdog's thresholds and probe
+       targets, the out-of-band access policy, and the tunnel tap.";
+  }
+  revision 2026-08-28 {
+    description
+      "Add the health-transition and tier-change notifications the
+       daemon sends at the moment the verdict or the active tier
+       changes, and name the shared verdict type health-state.";
+  }
+  revision 2026-08-20 {
+    description
+      "Add the live-state nodes the daemon serves from the operational
+       datastore: per-member health with its probe evidence, the live
+       delegated prefix, the active tier and traffic carrier, kernel
+       presence per translation instance, routing session state, and
+       the intended firewall ruleset.";
+  }
+  revision 2026-08-13 {
+    description
+      "Initial revision.";
+  }
+
+  typedef health-state {
+    type enumeration {
+      enum healthy {
+        description
+          "The member passed its probes and is usable.";
+      }
+      enum unhealthy {
+        description
+          "The member failed its probes and carries no new traffic.";
+      }
+      enum unknown {
+        description
+          "No verdict has been recorded for the member.";
+      }
+    }
+    description
+      "A member's combined health verdict.";
+  }
+
+  typedef path-state {
+    type enumeration { enum starting; enum ready; enum unavailable; }
+  }
+
+  augment "/if:interfaces/if:interface" {
+    container ownership-state {
+      config false;
+      description "This node reports configured ownership and observed device state.";
+      leaf connection-id { type string; }
+      leaf configured-owner { type string; }
+      leaf actual-name { type string; }
+      leaf actual-index { type uint32; }
+      leaf link-state { type enumeration { enum unknown; enum absent; enum down; enum up; } }
+      leaf observation { type enumeration { enum unknown; enum fresh; enum stale; enum failed; } }
+      leaf observation-at { type yang:date-and-time; }
+      leaf observation-reason { type string; }
+      leaf observed-at { type yang:date-and-time; }
+      container last-apply {
+        leaf operation { type string; }
+        leaf dependency { type string; }
+        leaf result { type string; }
+        leaf reason { type string; }
+        leaf at { type yang:date-and-time; }
+      }
+      list recent-transition {
+        key "id";
+        leaf id { type string; }
+        leaf at { type yang:date-and-time; }
+        leaf family { type string; }
+        leaf previous { type string; }
+        leaf current { type string; }
+        leaf operation { type string; }
+        leaf dependency { type string; }
+        leaf reason { type string; }
+      }
+    }
+  }
+
+  augment "/if:interfaces/if:interface/ip:ipv4" {
+    container ownership-family-state {
+      config false;
+      uses ownership-family-fields;
+    }
+  }
+
+  augment "/if:interfaces/if:interface/ip:ipv6" {
+    container ownership-family-state {
+      config false;
+      uses ownership-family-fields {
+        augment "observed-address" {
+          leaf phase {
+            type enumeration { enum unknown; enum tentative; enum usable; enum deprecated; enum invalid; enum dad-failed; }
+            description
+              "IPv6 address usability derived from fresh kernel flags and lifetimes. An address with zero valid lifetime is invalid while present; removal ends its observation.";
+          }
+        }
+      }
+      leaf router-validity {
+        type enumeration { enum unknown; enum absent; enum present; }
+        description
+          "Whether a fresh observation includes a main-table IPv6 default route with RA protocol.";
+      }
+      list bgp-session {
+        key "name";
+        leaf name { type string; }
+        leaf state { type string; }
+        leaf established { type boolean; }
+        leaf-list accepted-prefix { type inet:ipv6-prefix; }
+        leaf-list advertised-prefix { type inet:ipv6-prefix; }
+        leaf-list retained-prefix {
+          type inet:ipv6-prefix;
+          description
+            "The prefix of a kernel route that the previous process installed.
+             The kernel route remains installed while the restarted session
+             waits for the peer to send the prefix again or to send its
+             End-of-RIB marker, or until the graceful restart time expires.";
+        }
+        list rejection {
+          key "prefix";
+          leaf prefix { type inet:ipv6-prefix; }
+          leaf reason { type string; }
+        }
+      }
+    }
+  }
+
+  grouping ownership-family-fields {
+    leaf acquisition { type string; }
+    leaf assignment-validity { type string; }
+    leaf lease-persistence {
+      type enumeration { enum unknown; enum saved; enum failed; enum rejected; enum retired; }
+      description
+        "The last lease storage or recovery record result. This value does not determine forwarding readiness.";
+    }
+    leaf firewall-protection { type string; }
+    leaf routing { type string; }
+    leaf readiness { type string; }
+    container path-readiness {
+      leaf state { type path-state; }
+      leaf dependency { type string; }
+      leaf reason { type string; }
+      leaf since { type yang:date-and-time; }
+      list transition {
+        key "id";
+        leaf id { type string; }
+        leaf at { type yang:date-and-time; }
+        leaf previous { type path-state; }
+        leaf current { type path-state; }
+        leaf dependency { type string; }
+        leaf reason { type string; }
+      }
+    }
+    container last-apply {
+      leaf operation { type string; }
+      leaf dependency { type string; }
+      leaf result { type enumeration { enum ready; enum waiting; enum failed; } }
+      leaf reason { type string; }
+      leaf at { type yang:date-and-time; }
+    }
+    list assignment {
+      key "id";
+      leaf id { type string; }
+      leaf kind { type string; }
+      leaf source { type string; }
+      leaf value { type string; }
+      container route {
+        leaf destination { type inet:ip-prefix; }
+        leaf gateway { type inet:ip-address; }
+        leaf table-id { type uint32; }
+        leaf metric { type uint32; }
+      }
+      leaf valid { type boolean; }
+      leaf acquired-at { type yang:date-and-time; }
+      leaf renew-at { type yang:date-and-time; }
+      leaf rebind-at { type yang:date-and-time; }
+      leaf preferred-until { type yang:date-and-time; }
+      leaf valid-until { type yang:date-and-time; }
+    }
+    list observed-address {
+      key "id";
+      leaf id { type string; }
+      leaf cidr { type string; }
+      leaf origin { type string; }
+      leaf flags { type uint32; }
+      leaf preferred-lifetime { type int64; }
+      leaf valid-lifetime { type int64; }
+    }
+    list observed-route {
+      key "id";
+      leaf id { type string; }
+      leaf destination { type string; }
+      leaf via { type string; }
+      leaf device { type string; }
+      leaf table-id { type uint32; }
+      leaf protocol { type uint32; }
+      leaf metric { type uint32; }
+      leaf scope { type uint32; }
+      leaf route-type { type uint32; }
+      list next-hop {
+        key "id";
+        leaf id { type string; }
+        leaf via { type string; }
+        leaf device { type string; }
+        leaf index { type uint32; }
+        leaf weight { type uint32; }
+      }
+    }
+  }
+
+  augment "/if:interfaces/if:interface" {
+    description
+      "Marks an interface as a steering member.";
+    container steering {
+      presence
+        "This interface is a steering member.";
+      description
+        "The member's steering properties.";
+      leaf enabled {
+        type boolean;
+        default "true";
+        description
+          "This setting permits selection for both address families.
+           False excludes the connection from selection regardless of health or readiness
+           and does not stop acquisition, translation, or address ownership.";
+      }
+      leaf tier {
+        type uint8;
+        mandatory true;
+        description
+          "Preference tier. Lower is preferred. The active tier is the
+           lowest-numbered tier holding at least one healthy member.";
+      }
+      leaf weight {
+        type uint16 {
+          range "1..max";
+        }
+        default "1";
+        description
+          "Weight for unequal balancing among members of one tier. A
+           positive integer, so the slot sum the balancer divides by is
+           never zero.";
+      }
+      leaf probe-policy {
+        type string;
+        description
+          "Names the health probes that decide the member's state. Sits
+           on the interface and covers both address families, because
+           the health verdict is combined.";
+      }
+      container state {
+        config false;
+        description
+          "The member's live steering state, answered by the running
+           daemon at request time.";
+        leaf administratively-enabled {
+          type boolean;
+          description
+            "This leaf reports configured selection permission independently
+             of observed health or forwarding readiness.";
+        }
+        leaf health {
+          type health-state;
+          description
+            "The member's combined health verdict.";
+        }
+        leaf carrying {
+          type boolean;
+          description
+            "Whether new connections are steered to this member under
+             the last reconciled decision. Existing flows pinned by
+             connection tracking may keep riding a member after this
+             turns false, until they end.";
+        }
+        leaf last-transition {
+          type yang:date-and-time;
+          description
+            "When the health verdict last changed.";
+        }
+        leaf consecutive-failures {
+          type uint32;
+          description
+            "How many combined probe cycles in a row have failed. The
+             verdict's hysteresis counts whole cycles, not families, so
+             the counter sits beside the verdict.";
+        }
+        list probe {
+          key "family";
+          description
+            "The per-family probe evidence behind the verdict.";
+          leaf family {
+            type enumeration {
+              enum ipv4 {
+                description
+                  "The IPv4 probe.";
+              }
+              enum ipv6 {
+                description
+                  "The IPv6 probe.";
+              }
+            }
+            description
+              "The address family the probe exercises.";
+          }
+          leaf last-result {
+            type enumeration {
+              enum pass {
+                description
+                  "The most recent probe succeeded.";
+              }
+              enum fail {
+                description
+                  "The most recent probe failed.";
+              }
+              enum none {
+                description
+                  "No probe has completed yet.";
+              }
+            }
+            description
+              "The most recent probe outcome.";
+          }
+        }
+      }
+    }
+  }
+
+  augment "/if:interfaces/if:interface" {
+    description
+      "The provider this interface carries, and how the gateway routes
+       and probes it.";
+    container wan {
+      presence
+        "This interface carries a provider the gateway steers.";
+      description
+        "The provider entry for this link: the name the gateway knows
+         the provider by, the routing slots that steer traffic onto
+         it, the prefix it translates onto, and the probe that decides
+         whether it is usable.";
+      leaf name {
+        type string;
+        mandatory true;
+        description
+          "This field gives the provider a display name. Connection
+           identity selects routing, health, translation, and steering state.";
+      }
+      leaf table-id {
+        type uint32 {
+          range "1..max";
+        }
+        description
+          "The routing table that holds this provider's default
+           route.";
+      }
+      leaf fw-mark {
+        type uint32 {
+          range "1..max";
+        }
+        description
+          "The firewall mark that selects this provider's routing
+           table. Traffic the firewall marks with it leaves over this
+           link.";
+      }
+      leaf fw-mark-prio {
+        type uint32;
+        description
+          "The priority of the routing policy rule that matches this
+           provider's firewall mark.";
+      }
+      leaf from-prio {
+        type uint32;
+        description
+          "The priority of the routing policy rule that matches
+           traffic the gateway sources from this provider's own
+           address or translated prefix.";
+      }
+      leaf v4-source {
+        type union {
+          type inet:ipv4-address;
+          type inet:ipv4-prefix;
+        }
+        description
+          "This provider's static IPv4 link address. The daemon fills it
+           from the link's static address, so the served tree reports the
+           value while inventory does not type it. When present, traffic
+           the gateway sources from it is pinned to this provider's
+           routing table, which is the IPv4 counterpart of the translated
+           prefix's IPv6 source rule. Only a provider on a static link
+           carries one.";
+      }
+      leaf forced-dscp {
+        type inet:dscp {
+          range "1..63";
+        }
+        description
+          "The DSCP value that forces a new flow onto this provider. A
+           flow arriving from the internal link with this value takes
+           this provider's firewall mark before steering runs, so it
+           leaves over this link whichever member the balancer would
+           have chosen. Zero is excluded because every unmarked packet
+           carries it, and no two providers may share a value.";
+      }
+      leaf-list owned-address {
+        config false;
+        type inet:ipv4-address;
+        description
+          "The mapped external addresses the gateway holds on this link
+           as host addresses on its last reconcile, because each sits
+           inside a subnet the link is connected to. The link's own
+           address is not listed, because the link already holds it with
+           its subnet prefix. A mapped address outside every connected
+           subnet is routed to the gateway and is not listed either.";
+      }
+      container health {
+        presence
+          "The gateway holds a health probe for this provider.";
+        description
+          "The probe that decides this provider's verdict. A provider
+           with no probe holds no verdict and the gateway does not
+           steer on its state.";
+        leaf enabled {
+          type boolean;
+          description
+            "Whether the gateway runs the probe. A probe that is
+             present but not enabled is kept and not run, so the
+             provider holds no verdict.";
+        }
+        leaf ping-count {
+          type uint8;
+          description
+            "How many echo requests each attempt sends to a target.";
+        }
+        leaf success-threshold {
+          type uint8;
+          description
+            "How many of a cycle's targets must answer in an address
+             family for that family to pass. It cannot exceed the
+             number of targets configured for either family.";
+        }
+        leaf failure-threshold {
+          type uint8;
+          description
+            "How many consecutive failed cycles turn a healthy
+             provider unhealthy.";
+        }
+        leaf recovery-threshold {
+          type uint8;
+          description
+            "How many consecutive passing cycles turn an unhealthy
+             provider healthy again.";
+        }
+        leaf check-interval {
+          type uint32;
+          units "seconds";
+          description
+            "How long the gateway waits between probe cycles for this
+             provider. The shortest interval any provider asks for
+             sets the cadence the probe loop runs at.";
+        }
+        leaf-list targets-v4 {
+          type inet:ipv4-address;
+          description
+            "The IPv4 addresses the probe pings.";
+        }
+        leaf-list targets-v6 {
+          type inet:ipv6-address;
+          description
+            "The IPv6 addresses the probe pings.";
+        }
+        leaf-list http-urls {
+          type inet:uri;
+          description
+            "The URLs the probe fetches. They are an alternative leg
+             of the verdict, so a provider that answers pings or
+             serves a fetch passes.";
+        }
+      }
+      list bgp-session {
+        key "name";
+        leaf name {
+          type string {
+            length "1..max";
+          }
+        }
+        leaf peer-address {
+          mandatory true;
+          type inet:ip-address-no-zone;
+        }
+        leaf peer-port {
+          type inet:port-number {
+            range "1..max";
+          }
+          default "179";
+        }
+        leaf local-address {
+          type inet:ip-address-no-zone;
+        }
+        leaf local-as {
+          mandatory true;
+          type inet:as-number {
+            range "1..max";
+          }
+        }
+        leaf remote-as {
+          mandatory true;
+          type inet:as-number {
+            range "1..max";
+          }
+        }
+        leaf router-id {
+          status obsolete;
+          type yang:dotted-quad;
+          description
+            "Revision 2026-10-12 and earlier used this leaf for the
+             BGP router ID of an external session. External BGP
+             sessions use router_id in the [bgp] table of config.toml
+             as their BGP router ID. The network document loader
+             rejects documents that set this leaf. The module
+             retains this obsolete leaf only to validate stored
+             configuration from earlier revisions.";
+        }
+        leaf-list family {
+          type enumeration {
+            enum ipv6-unicast;
+          }
+          default "ipv6-unicast";
+          description
+            "The session uses the BGP multiprotocol capability to
+             negotiate exactly these address families with its peer.
+             The session uses ipv6-unicast when the document omits
+             family or supplies an empty family leaf-list.";
+        }
+        leaf multihop-ttl {
+          type uint8 {
+            range "1..max";
+          }
+        }
+        leaf keepalive {
+          mandatory true;
+          type uint16 {
+            range "1..max";
+          }
+          units "seconds";
+        }
+        leaf hold {
+          mandatory true;
+          type uint16 {
+            range "3..max";
+          }
+          units "seconds";
+          must ". > ../keepalive" {
+            error-message "The keepalive interval must be below the hold time.";
+          }
+        }
+        leaf connect-retry {
+          type uint16 {
+            range "2..max";
+          }
+          units "seconds";
+        }
+        leaf graceful-restart-time {
+          type uint16 {
+            range "1..4095";
+          }
+          units "seconds";
+          description
+            "The restart time that the session advertises in the RFC 4724
+             graceful restart capability. When this leaf is present and the
+             peer negotiates graceful restart for IPv6 unicast, an ordinary
+             daemon stop does not delete the gateway kernel routes, and the
+             peer marks the session paths stale instead of withdrawing them.
+             The restarted session sends the advertised prefixes again and
+             waits for the peer to send its prefixes again or its End-of-RIB
+             marker. The session then deletes the retained kernel routes that
+             the peer did not send again. When the peer does not negotiate
+             graceful restart for IPv6 unicast, the daemon stop deletes the
+             gateway kernel routes.";
+          reference
+            "RFC 4724: Graceful Restart Mechanism for BGP";
+        }
+        leaf route-metric {
+          mandatory true;
+          type uint32 {
+            range "1..1023 | 1025..max";
+          }
+        }
+        list import {
+          key "prefix";
+          leaf prefix {
+            type inet:ipv6-prefix;
+          }
+          leaf min-length {
+            mandatory true;
+            type uint8 {
+              range "0..128";
+            }
+          }
+          leaf max-length {
+            mandatory true;
+            type uint8 {
+              range "0..128";
+            }
+          }
+        }
+        list export {
+          key "prefix";
+          must "(mode = 'backup') = boolean(backup-for)" {
+            error-message
+              "The mode backup requires backup-for, and backup-for requires the mode backup.";
+          }
+          leaf prefix {
+            type inet:ipv6-prefix;
+          }
+          leaf mode {
+            mandatory true;
+            type enumeration {
+              enum always;
+              enum backup;
+            }
+          }
+          leaf-list backup-for {
+            type string;
+          }
+          leaf next-hop {
+            mandatory true;
+            type inet:ipv6-address-no-zone;
+          }
+          leaf med {
+            type uint32;
+          }
+          leaf local-preference {
+            type uint32;
+          }
+          leaf prepend-count {
+            type uint8;
+            default "0";
+          }
+          leaf-list community {
+            type string {
+              pattern '[0-9]{1,5}:[0-9]{1,5}';
+            }
+          }
+          leaf-list large-community {
+            type string {
+              pattern '[0-9]{1,10}:[0-9]{1,10}:[0-9]{1,10}';
+            }
+          }
+        }
+      }
+    }
+  }
+
+  augment "/if:interfaces/if:interface" {
+    description
+      "How the network manager brings this interface up. The published
+       models name an interface and its addresses. They do not name the
+       device the interface is bound to, the tag a VLAN carries, or the
+       identity a delegation is requested with.";
+
+    leaf connection-id {
+      type string;
+      description
+        "This field assigns a stable connection identity. When absent,
+         a provider uses its provider name and another interface uses
+         its interface name.";
+    }
+
+    leaf link-files {
+      type enumeration {
+        enum rendered;
+        enum hand-authored;
+      }
+      description
+        "Who writes this interface's unit files. An interface carrying a
+         wan container states one or the other: rendered means it carries a
+         link container the daemon writes files from, and hand-authored
+         means its files are in the repository and this model says nothing
+         about how the link comes up. An interface that states neither
+         fails the load, so an unwritten link container is caught rather
+         than read as an exemption.";
+    }
+
+    leaf owner {
+      type enumeration {
+        enum external;
+        enum networkd;
+        enum mwan;
+      }
+      description
+        "This field identifies the component that configures the interface.";
+    }
+    leaf lease-store {
+      type string {
+        pattern '/.*';
+      }
+      description "This field specifies the absolute directory path for DHCP lease files.";
+    }
+
+    container link {
+      description
+        "What the device is, what it is named, and how it is created.";
+
+      container native-offload {
+        presence "This kernel connection has an explicit native DATA binding.";
+        must "not(../vlan) and not(../tunnel) and not(../bridge-master)" {
+          error-message "Native offload requires an untagged physical link outside a bridge.";
+        }
+        description
+          "The binding identifies hardware for native forwarding. The connection retains its network policy.";
+        leaf data-pci {
+          type string {
+            pattern '[0-9a-f]{4}:[0-9a-f]{2}:[01][0-9a-f]\.[0-7]';
+          }
+          mandatory true;
+          description "This field selects the PCI function of the separately owned DATA device.";
+        }
+        leaf data-mac {
+          type yang:mac-address;
+          mandatory true;
+          description "This field specifies the expected unicast DATA MAC, including devices without a Linux netdev.";
+        }
+        container controller {
+          presence "This connection supplies a physical ingress receiver.";
+          description "The controller registers separate kernel and DATA representors.";
+          leaf pci {
+            type string {
+              pattern '[0-9a-f]{4}:[0-9a-f]{2}:[01][0-9a-f]\.[0-7]';
+            }
+            mandatory true;
+            description "This field selects the PCI function of the trusted controller.";
+          }
+          leaf receiver-vf {
+            type uint16;
+            mandatory true;
+            description "This field selects the VF index of the connection's kernel receiver.";
+          }
+          leaf data-vf {
+            type uint16;
+            mandatory true;
+            description "This field selects the VF index represented by data-pci under this controller.";
+          }
+          leaf physical-miss {
+            type boolean;
+            mandatory true;
+            description "This field selects whether this receiver owns the controller's physical miss action.";
+          }
+        }
+      }
+
+      leaf mtu {
+        type uint32 {
+          range "68..max";
+        }
+        description "This field sets the maximum transmission unit in bytes.";
+      }
+      leaf bridge-master {
+        type if:interface-ref;
+        description "This field specifies the bridge interface containing this link.";
+      }
+      container match {
+        description
+          "How the network manager recognizes the device. An interface
+           that carries a wan container sets exactly one of these leaves
+           or a vlan container; the daemon fails the load otherwise.";
+        leaf driver {
+          type string;
+          description
+            "The kernel driver the device presents, for a device whose
+             address is not stable across a rebuild.";
+        }
+        leaf hardware-address {
+          type yang:mac-address;
+          description
+            "The device's address, for a device whose driver is shared
+             with another interface.";
+        }
+      }
+
+      leaf hardware-address {
+        type yang:mac-address;
+        description
+          "The address to set on the device, which is not always the
+           address it is matched by.";
+      }
+
+      container vlan {
+        presence "The interface is a VLAN on another interface.";
+        description
+          "The interface is created as a VLAN rather than bound to a
+           device. The parent interface carries its own unit files.";
+        leaf parent {
+          mandatory true;
+          type if:interface-ref;
+          description "The interface the VLAN is created on.";
+        }
+        leaf id {
+          mandatory true;
+          type uint16 {
+            range "1..4094";
+          }
+          description "The VLAN tag.";
+        }
+      }
+
+      container tunnel {
+        presence "The interface is a tunnel over another interface.";
+        description
+          "The gateway creates the interface as a tunnel. A tunnel
+           encapsulates packets for transport between two endpoints.";
+        must "not(../mtu) or ../mtu >= 1280" {
+          error-message
+            "A tunnel requires an MTU of at least 1280 bytes.";
+          description
+            "RFC 8200 section 5 requires every IPv6 link to transport
+             1280-byte packets.";
+        }
+        leaf protocol {
+          mandatory true;
+          type enumeration {
+            enum 6in4 {
+              description
+                "The tunnel transports IPv6 packets inside IPv4 packets.";
+            }
+            enum vxlan {
+              description "The tunnel transports Ethernet frames inside UDP over IPv4.";
+            }
+          }
+          description "This field selects the encapsulation protocol.";
+        }
+        must "(protocol = 'vxlan' and vxlan) or (protocol != 'vxlan' and not(vxlan))" {
+          error-message "The vxlan container is required only for protocol vxlan.";
+        }
+        container vxlan {
+          presence "The tunnel uses an explicit VXLAN identifier and UDP envelope.";
+          must "source-port-min < source-port-max" {
+            error-message "The source-port-min must be less than source-port-max.";
+          }
+          leaf vni {
+            type uint32 { range "0..16777215"; }
+            mandatory true;
+            description "The VXLAN network identifier.";
+          }
+          leaf source-port-min {
+            type uint16 { range "1..65535"; }
+            mandatory true;
+            description "The lowest source UDP port the kernel can select.";
+          }
+          leaf source-port-max {
+            type uint16 { range "1..65535"; }
+            mandatory true;
+            description "The highest source UDP port the kernel can select.";
+          }
+          leaf destination-port {
+            type uint16 { range "1..65535"; }
+            mandatory true;
+            description "The remote UDP port.";
+          }
+          leaf tos {
+            type uint8;
+            mandatory true;
+            description "The outer IPv4 type of service byte.";
+          }
+        }
+        leaf underlay {
+          mandatory true;
+          type if:interface-ref;
+          description
+            "This field selects the interface that transports the outer packets.";
+        }
+        leaf remote-address {
+          mandatory true;
+          type inet:ipv4-address-no-zone;
+          must "not(re-match(., '(0|127|22[4-9]|2[3-5][0-9])[.].*'))" {
+            error-message
+              "The remote endpoint must be a unicast IPv4 address.";
+          }
+          description
+            "This field sets the outer address of the remote endpoint.";
+        }
+        leaf local-address {
+          type inet:ipv4-address-no-zone;
+          must "not(re-match(., '(0|127|22[4-9]|2[3-5][0-9])[.].*'))" {
+            error-message
+              "The local endpoint must be a unicast IPv4 address.";
+          }
+          description
+            "The kernel uses the configured outer source address or selects
+             the source address when this field is absent.";
+        }
+        leaf ttl {
+          type uint8 {
+            range "1..max";
+          }
+          description
+            "This field sets the hop limit of the outer packets. The hop
+             limit is 64 when this field is absent.";
+        }
+      }
+    }
+
+    container networkd {
+      description
+        "Unit-file content the typed leaves do not name, written as the
+         network manager reads it. The schema validates the structure and
+         the network manager validates the keys, because it is the thing
+         that knows them. A key named here and by a typed leaf is a
+         load-time failure.";
+      list file {
+        key "kind";
+        description "One entry per unit file kind.";
+        leaf kind {
+          type enumeration {
+            enum link;
+            enum network;
+            enum netdev;
+          }
+          description "Which unit file these sections are written to.";
+        }
+        list section {
+          key "index";
+          ordered-by user;
+          description
+            "A heading and its lines, in file order. The key is positional
+             because the network manager reads a repeated heading as one
+             section and a repeated key within a section as a list, so
+             neither the heading nor the key is unique.";
+          leaf index {
+            type uint16;
+            description "Position in the file.";
+          }
+          leaf name {
+            mandatory true;
+            type string;
+            description "The heading, without its brackets.";
+          }
+          list entry {
+            key "index";
+            ordered-by user;
+            description "One line, in section order.";
+            leaf index {
+              type uint16;
+              description "Position in the section.";
+            }
+            leaf key {
+              mandatory true;
+              type string;
+              description "The name left of the equals sign.";
+            }
+            leaf value {
+              mandatory true;
+              type string;
+              description "The text right of the equals sign.";
+            }
+          }
+        }
+      }
+    }
+  }
+
+  grouping translation-policy {
+    container translation {
+      presence "The family has an explicit translation policy.";
+      container state {
+        config false;
+        leaf ready { type boolean; }
+        leaf reason { type string; }
+        leaf resolved-internal-prefix { type inet:ipv6-prefix; }
+        leaf resolved-external-prefix { type inet:ipv6-prefix; }
+      }
+      leaf mode {
+        mandatory true;
+        type union {
+          type enumeration { enum native; enum masquerade; }
+          type identityref { base nat:nat-type; }
+        }
+        description "Native routing, IPv6 masquerade, or an RFC 8512 translation type.";
+      }
+      list static-mapping {
+        key "external";
+        ordered-by user;
+        leaf external { type inet:ipv4-address; }
+        leaf internal { mandatory true; type inet:ipv4-address; }
+        leaf delivery {
+          type enumeration {
+            enum local;
+            enum routed;
+          }
+          description
+            "The gateway assigns the external address locally when this field
+             is local. The upstream network routes the address to the gateway
+             when this field is routed.";
+        }
+        description "IPv4 mappings take precedence over NAPT44 masquerade.";
+      }
+      container nptv6 {
+        presence "The policy translates IPv6 prefixes.";
+        leaf internal-prefix { type inet:ipv6-prefix; }
+        leaf external-source {
+          type enumeration {
+            enum configured;
+            enum delegated;
+          }
+        }
+        leaf external-prefix { type inet:ipv6-prefix; }
+        leaf expected-prefix { type inet:ipv6-prefix; }
+        description "Configured prefixes or a live DHCP delegated prefix.";
+      }
+    }
+  }
+
+  augment "/if:interfaces/if:interface/ip:ipv4" {
+    uses translation-policy;
+    description "How this family is addressed on this interface.";
+    leaf dhcp {
+      type boolean;
+      description
+        "Whether the network manager runs a DHCPv4 client here. An
+         interface carrying a wan container states it either way; the
+         daemon fails the load when it is absent.";
+    }
+    container dhcpv4 {
+      presence "Enable explicit DHCPv4 client settings.";
+      description "This container configures DHCPv4 client options on this interface.";
+      leaf client-id {
+        type string;
+        description "The client sends this identifier to the DHCP server.";
+      }
+      leaf use-dns {
+        type boolean;
+        description "This field selects whether the client installs DNS servers from the lease.";
+      }
+      leaf use-routes {
+        type boolean;
+        description "This field selects whether the client installs routes from the lease.";
+      }
+    }
+    container resolver {
+      description "This container configures resolver settings for this address family.";
+      leaf-list dns {
+        type inet:ipv4-address;
+        description "This list contains DNS servers configured for this interface.";
+      }
+      leaf-list search {
+        type string;
+        description "This list contains DNS search domains configured for this interface.";
+      }
+    }
+    leaf gateway {
+      type inet:ipv4-address;
+      description
+        "The next hop for a statically addressed interface. Absent when
+         the address is leased, because the lease carries it.";
+    }
+    leaf route-metric {
+      type uint32;
+      description
+        "The metric on the default route this interface contributes to
+         the main table. Lower is preferred.";
+    }
+    list route {
+      key "destination";
+      description "This list configures one main-table route per destination.";
+      leaf destination { type inet:ipv4-prefix; }
+      leaf gateway {
+        type inet:ipv4-address;
+        description "This next hop is optional. An omitted gateway selects an on-link route.";
+      }
+      leaf table-id { type uint32 { range "254"; } default 254; }
+      leaf metric { type uint32; default 0; }
+    }
+    leaf-list source-addresses {
+      type inet:ipv4-address;
+      description
+        "Addresses beyond the link's own that traffic sourced from this
+         interface's provider may carry. The routing module pins the
+         link's static address on its own; this list adds to it and
+         never replaces it, because a source the provider does not route
+         back is dropped at its edge.";
+    }
+  }
+
+  augment "/if:interfaces/if:interface/ip:ipv6" {
+    uses translation-policy;
+    description
+      "The delegation the provider on this interface currently holds,
+       and how this family is addressed on this interface.";
+    leaf delegated-prefix {
+      config false;
+      type inet:ipv6-prefix;
+      description
+        "The IPv6 prefix currently delegated to this interface, as the
+         daemon's prefix tracking sees it. Absent when the provider
+         holds no delegation.";
+    }
+    leaf dhcp {
+      type boolean;
+      description
+        "Whether the network manager runs a DHCPv6 client here. An
+         interface carrying a wan container states it either way; the
+         daemon fails the load when it is absent.";
+    }
+    container dhcpv6-client {
+      presence "Enable explicit DHCPv6 client settings.";
+      description "This container configures DHCPv6 client options on this interface.";
+      leaf duid-type {
+        type enumeration {
+          enum link-layer-time;
+          enum link-layer;
+          enum vendor;
+          enum uuid;
+          enum raw;
+        }
+        description "This field selects how the DHCPv6 client forms its identity.";
+      }
+      leaf duid {
+        type string {
+          pattern '([0-9a-fA-F]{2}:)*[0-9a-fA-F]{2}';
+        }
+        description "This field specifies the raw client identity as colon-separated octets.";
+      }
+      leaf address-iaid {
+        type uint32;
+        description "This field specifies the identity association ID for requested addresses.";
+      }
+      leaf prefix-iaid {
+        type uint32;
+        description "This field specifies the identity association ID for requested prefixes.";
+      }
+      leaf request-address {
+        type boolean;
+        description "This field selects whether the client requests an address.";
+      }
+      leaf request-prefix {
+        type boolean;
+        description "This field selects whether the client requests a prefix.";
+      }
+      leaf without-ra {
+        type enumeration {
+          enum no;
+          enum solicit;
+          enum information-request;
+        }
+        description
+          "This field selects whether and how the client starts DHCPv6
+           without a router advertisement.";
+      }
+      leaf use-dns {
+        type boolean;
+        description "This field selects whether the client installs DNS servers from DHCPv6.";
+      }
+    }
+    container resolver {
+      description "This container configures resolver settings for this address family.";
+      leaf-list dns {
+        type inet:ipv6-address;
+        description "This list contains DNS servers configured for this interface.";
+      }
+      leaf-list search {
+        type string;
+        description "This list contains DNS search domains configured for this interface.";
+      }
+    }
+    leaf gateway {
+      type inet:ipv6-address;
+      description
+        "The next hop for a statically addressed interface. Absent when
+         the address is leased, because the lease carries it.";
+    }
+    leaf route-metric {
+      type uint32;
+      description
+        "The metric on the default route this interface contributes to
+         the main table. Lower is preferred.";
+    }
+    list route {
+      key "destination";
+      description "This list configures one main-table route per destination.";
+      leaf destination { type inet:ipv6-prefix; }
+      leaf gateway {
+        type inet:ipv6-address;
+        description "This next hop is optional. An omitted gateway selects an on-link route.";
+      }
+      leaf table-id { type uint32 { range "254"; } default 254; }
+      leaf metric { type uint32; default 0; }
+    }
+    leaf accept-ra {
+      type boolean;
+      description
+        "This field selects whether the network manager accepts router
+         advertisements on this interface.";
+    }
+    leaf autoconf {
+      type boolean;
+      description "This field selects whether the interface configures addresses from router advertisements.";
+    }
+    leaf accept-ra-default-route {
+      type boolean;
+      description "This field selects whether the interface installs a default route from router advertisements.";
+    }
+    leaf use-ra-dns {
+      type boolean;
+      description "This field selects whether the interface installs DNS servers from router advertisements.";
+    }
+    list forwarding-address {
+      key "address";
+      description
+        "This list contains IPv6 addresses assigned to the gateway locally
+         or routed to the gateway by the upstream network.";
+      leaf address {
+        type inet:ipv6-address;
+        description "This field specifies the IPv6 address.";
+      }
+      leaf delivery {
+        type enumeration {
+          enum local;
+          enum routed;
+        }
+        description
+          "The gateway assigns this address locally when this field is local.
+           The upstream network routes it to the gateway when this field is routed.";
+      }
+    }
+    container delegation {
+      presence "The interface requests a delegated prefix.";
+      description
+        "This container configures the requested delegation and client identity.
+         The client identity is a public identifier, not a secret.";
+      leaf hint {
+        type inet:ipv6-prefix;
+        description "This field specifies the delegated prefix hint the client requests.";
+      }
+      leaf iaid {
+        type uint32;
+        description "This field sets the identity association ID for the delegation.";
+      }
+      leaf duid-type {
+        type enumeration {
+          enum link-layer-time;
+          enum link-layer;
+          enum vendor;
+          enum uuid;
+        }
+        description "This field selects how the client forms its identity.";
+      }
+      leaf duid {
+        type string {
+          pattern '([0-9a-fA-F]{2}:)*[0-9a-fA-F]{2}';
+        }
+        description "This field specifies the client identity as colon-separated octets.";
+      }
+      leaf without-ra {
+        type enumeration {
+          enum no;
+          enum solicit;
+          enum information-request;
+        }
+        description
+          "This field selects whether and how the client starts DHCPv6
+           without a router advertisement.";
+      }
+      leaf use-delegated-prefix {
+        type boolean;
+        description
+          "This field selects whether the network manager applies the
+           delegated prefix to this link.";
+      }
+      leaf router-lifetime-seconds {
+        type uint32;
+        description
+          "This field sets the lifetime, in seconds, that the link
+           advertises to downstream routers.";
+      }
+    }
+  }
+
+  augment "/nat:nat/nat:instances/nat:instance" {
+    description
+      "Whether the translation instance is realized in the kernel.";
+    leaf kernel-present {
+      config false;
+      type boolean;
+      description
+        "Whether the daemon found this instance's rules present in the
+         kernel on its last reconcile pass.";
+    }
+  }
+
+  augment "/if:interfaces" {
+    leaf guest-type {
+      type enumeration {
+        enum qemu;
+        enum lxc;
+      }
+      default "qemu";
+    }
+  }
+
+  augment "/if:interfaces" {
+    description
+      "Group-wide steering settings.";
+    container steering-group {
+      description
+        "Settings that apply to the member group as a whole.";
+      leaf hash-mode {
+        type enumeration {
+          enum random {
+            description
+              "A new connection is assigned to a member at random.";
+          }
+          enum source {
+            description
+              "Assignment is derived from the source address.";
+          }
+          enum source-destination {
+            description
+              "Assignment is derived from source and destination.";
+          }
+        }
+        default "random";
+        description
+          "How a new connection is assigned to a member of the active
+           tier.";
+      }
+      leaf-list reserved-tables {
+        type uint32;
+        description
+          "Routing tables the gateway holds for something other than a
+           provider: the tunnel table and the out-of-band table today. A
+           provider whose table is in this set is a configuration error, and
+           the gateway stops before it writes to the kernel. The kernel's own
+           tables are not listed here, because they are fixed rather than
+           configured.";
+      }
+      container translation {
+        description
+          "The prefix translation the gateway applies on the way out.
+           One internal prefix is translated onto whichever provider
+           carries the traffic, so the internal network keeps one set
+           of addresses across a provider change.";
+        leaf internal-prefix {
+          type inet:ipv6-prefix;
+          description
+            "The IPv6 prefix the internal network holds. It is the
+             internal half of every member's translation.";
+        }
+        leaf opnsense-edge-v6 {
+          type inet:ipv6-address;
+          description
+            "The router's address on the internal link. Routes toward
+             the internal network are installed via it, so a member's
+             routing table reaches the router.";
+        }
+        leaf mwanbr-edge-v6 {
+          type inet:ipv6-address;
+          description
+            "The gateway's own address on the internal link.";
+        }
+      }
+      container routes {
+        description
+          "The internal side every member's routing table must
+           reach.";
+        leaf internal-iface {
+          type string;
+          description
+            "The link that faces the internal network.";
+        }
+        leaf internal-net-v4 {
+          type inet:ipv4-prefix;
+          description
+            "The internal IPv4 network, routed into every member's
+             table so the internal side stays reachable whichever
+             member carries traffic.";
+        }
+      }
+      container firewall {
+        presence
+          "The gateway daemon owns its firewall tables.";
+        description
+          "The gateway daemon configures management access and
+           control-plane packet pins from these settings.";
+        leaf management-interface {
+          type if:interface-ref;
+          description "The interface accepting management services.";
+        }
+        list management-service {
+          key "protocol port";
+          description "A management service permitted on the management-interface.";
+          leaf protocol {
+            type enumeration {
+              enum tcp;
+              enum udp;
+            }
+          }
+          leaf port {
+            type inet:port-number;
+          }
+          leaf-list allowed-source {
+            type inet:ip-prefix;
+            description
+              "Optional source networks. An empty list permits every source
+               on the management interface.";
+          }
+        }
+        leaf pinned-provider {
+          type string;
+          description "This field selects a provider by name for the control-plane pin.";
+        }
+        leaf pinned-connection-id {
+          type string;
+          description "This field selects a connection by ID for the control-plane pin.";
+        }
+        leaf pinned-source-v4 {
+          type inet:ipv4-address;
+        }
+        leaf pinned-source-port {
+          type inet:port-number;
+        }
+        leaf pinned-destination-port {
+          type inet:port-number;
+        }
+        leaf pinned-set-v4-name {
+          type string;
+          mandatory true;
+        }
+        leaf pinned-set-v6-name {
+          type string;
+          mandatory true;
+        }
+        leaf-list pinned-v4 {
+          type inet:ipv4-prefix;
+        }
+        leaf-list pinned-v6 {
+          type inet:ipv6-prefix;
+        }
+      }
+      container health {
+        description
+          "Probe settings shared by every member. What each member is
+           probed with sits on that member.";
+        leaf probe-timeout {
+          type uint32 {
+            range "1..max";
+          }
+          units "milliseconds";
+          description
+            "How long one probe attempt may take before it counts as
+             failed. The unit is milliseconds because a probe timeout
+             is the one setting here an operator tunes below a
+             second.";
+        }
+      }
+      container state {
+        config false;
+        description
+          "The group's live steering state.";
+        leaf active-tier {
+          type uint8;
+          description
+            "The lowest-numbered tier currently holding at least one
+             healthy member.";
+        }
+      list rejected-provider {
+          key "interface";
+          description
+            "The loader omitted this provider entry and continued with the
+             remaining providers.";
+          leaf interface {
+            type string;
+            description "The interface key from the rejected entry.";
+          }
+          leaf provider {
+            type string;
+            description "The provider name, when the rejected entry supplied one.";
+          }
+          leaf reason {
+            type string;
+            mandatory true;
+            description "The loader error that caused the rejection.";
+          }
+      }
+      list pending-removal {
+        key "id";
+        leaf id { type string; }
+        leaf connection-id { type string; }
+        leaf family { type enumeration { enum ipv4; enum ipv6; } }
+        leaf interface { type string; }
+        leaf result { type enumeration { enum failed; } }
+        leaf reason { type string; }
+        leaf at { type yang:date-and-time; }
+      }
+      list bgp-peer {
+          key "address";
+          description
+            "The routing sessions the gateway's speaker holds. The
+             speaker runs in the agent process, so these values are
+             read over its local RPC and cached briefly.";
+          leaf address {
+            type inet:ip-address;
+            description
+              "The peer's address.";
+          }
+          leaf established {
+            type boolean;
+            description
+              "Whether the session is established.";
+          }
+          leaf stale {
+            type boolean;
+            description
+              "Whether this answer came from an expired cache because
+               the agent could not be reached; a stale answer reports
+               the last known state, not the current one.";
+          }
+        }
+        leaf intended-ruleset {
+          type string;
+          description
+            "The firewall ruleset the daemon intends, rendered in its
+             own text form. Served opaquely; modeling firewall rules
+             structurally is out of scope for this module.";
+        }
+      }
+    }
+  }
+
+  grouping application-observation-result {
+    leaf availability { type enumeration { enum complete; enum missing; enum stale; enum error; } }
+    leaf outcome { type enumeration { enum pass; enum fail; enum unknown; } }
+    leaf reason { type string; }
+    leaf observed-at { type yang:date-and-time; }
+    leaf observer-kind { type enumeration { enum local; enum qemu; enum lxc; } }
+    leaf machine-id { type string; }
+    leaf host-machine-id { type string; }
+    leaf vmid { type uint32; }
+    leaf source { type inet:ip-address; }
+    leaf destination { type inet:ip-address; }
+    leaf next-hop { type inet:ip-address; }
+    leaf interface { type string; }
+    leaf connection-id { type string; }
+    leaf router { type string; }
+    leaf public-ip { type inet:ip-address; }
+    leaf http-status { type uint16; }
+    leaf ssh-version { type string; }
+    leaf evidence-json {
+      type string;
+      description "The complete shared result includes protocol and distribution evidence.";
+    }
+  }
+
+  container daemon {
+    container observation {
+      config false;
+      description "Recurring application results remain separate from provider selection probes.";
+      list check {
+        key "id";
+        leaf id { type string; }
+        leaf dimension { type enumeration {
+          enum downstream_application; enum inbound_application; enum connection_distribution;
+          enum inbound_pool; enum provider_egress; enum ping_path; enum public_ip;
+        } }
+        leaf operation { type string; }
+        leaf family { type enumeration { enum ipv4; enum ipv6; } }
+        leaf target { type string; }
+        leaf interval-seconds { type uint32; }
+        leaf timeout-seconds { type uint32; }
+        leaf max-age-seconds { type uint32; }
+        leaf definition-json { type string; }
+        container result { uses application-observation-result; }
+        list recent-transition {
+          key "id";
+          leaf id { type string; }
+          leaf previous { type string; }
+          container result { uses application-observation-result; }
+        }
+      }
+    }
+    description
+      "The daemon settings no published model covers, published from
+       the configuration the daemon loaded at startup. A host whose
+       configuration does not carry a section publishes nothing under
+       it, so the tree never invents values another host owns.";
+    container watchdog {
+      description
+        "The rollback watchdog's thresholds and probe targets, as the
+         gateway's configuration carries them. The watchdog process
+         itself runs beside the hypervisor; these are the values it
+         acts on.";
+      leaf deploy-window-minutes {
+        type uint16;
+        description
+          "How long after a deploy the watchdog treats instability as
+           deploy-caused and eligible for rollback.";
+      }
+      leaf connectivity-timeout-seconds {
+        type uint16;
+        description
+          "How long a connectivity probe may run before it counts as
+           failed.";
+      }
+      leaf check-interval-healthy-seconds {
+        type uint16;
+        description
+          "Seconds between probe cycles while the gateway is healthy.";
+      }
+      leaf check-interval-degraded-seconds {
+        type uint16;
+        description
+          "Seconds between probe cycles while the gateway is degraded.";
+      }
+      leaf post-rollback-grace-seconds {
+        type uint16;
+        description
+          "How long after a rollback the watchdog holds off before
+           judging the gateway again.";
+      }
+      leaf alert-cooldown-seconds {
+        type uint16;
+        description
+          "Minimum seconds between repeated watchdog alerts.";
+      }
+      leaf deploy-grace-period-seconds {
+        type uint16;
+        description
+          "How long after a deploy the watchdog waits before probing.";
+      }
+      leaf max-rollback-attempts {
+        type uint8;
+        description
+          "How many rollbacks the watchdog attempts before freezing.";
+      }
+      leaf snapshot-healthy-threshold {
+        type uint16;
+        description
+          "How many consecutive healthy cycles qualify the running
+           state for a known-good snapshot.";
+      }
+      leaf max-known-good-snapshots {
+        type uint8;
+        description
+          "How many known-good snapshots the watchdog retains.";
+      }
+      container probe-targets {
+        description
+          "What the watchdog probes to judge the gateway.";
+        leaf-list ping {
+          type inet:ip-address;
+          description
+            "Addresses the watchdog pings, both families.";
+        }
+      }
+    }
+    container oob {
+      description
+        "The out-of-band access policy: how the host that carries the
+         OOB tunnel steers management traffic when the data path is
+         down.";
+      container ipv6 {
+        description
+          "The IPv6 half of the policy.";
+        leaf interface {
+          type string;
+          description
+            "The OOB tunnel interface.";
+        }
+        leaf address {
+          type inet:ipv6-address;
+          description
+            "The OOB address management traffic originates from.";
+        }
+        leaf table-id {
+          type uint32;
+          description
+            "The routing table the OOB policy rules select.";
+        }
+        leaf manage-slaac-rule {
+          type boolean;
+          description
+            "Whether the daemon manages the SLAAC source rule that
+             keeps OOB-sourced traffic on the OOB table.";
+        }
+        leaf slaac-rule-priority {
+          type uint32;
+          description
+            "The priority of that SLAAC source rule.";
+        }
+      }
+      container ipv4 {
+        description
+          "The IPv4 half of the policy.";
+        leaf interface {
+          type string;
+          description
+            "The OOB tunnel interface.";
+        }
+        leaf table-id {
+          type uint32;
+          description
+            "The routing table the OOB policy rules select.";
+        }
+      }
+    }
+    container tap {
+      description
+        "The tunnel tap: the daemon tails the named tunnel unit's
+         journal and re-emits its entries through the daemon's own
+         logging and alert pipeline.";
+      leaf unit {
+        type string;
+        description
+          "The systemd unit whose journal is tailed.";
+      }
+      leaf-list downgrade-pattern {
+        type string;
+        description
+          "Message patterns whose entries are downgraded below alert
+           level.";
+      }
+    }
+  }
+
+  notification health-transition {
+    description
+      "Sent at the moment a member's combined health verdict changes.
+       The verdict's hysteresis has already been applied, so every
+       notification is a committed transition, not a raw probe result.";
+    leaf interface {
+      type string;
+      mandatory true;
+      description
+        "The name of the member interface whose verdict changed.";
+    }
+    leaf health {
+      type health-state;
+      mandatory true;
+      description
+        "The verdict the member transitioned to.";
+    }
+    leaf previous-health {
+      type health-state;
+      mandatory true;
+      description
+        "The verdict the member transitioned from.";
+    }
+  }
+
+  notification tier-change {
+    description
+      "Sent at the moment the active tier changes: the lowest-numbered
+       tier holding at least one healthy member is now a different
+       tier, so new connections steer to a different member set.";
+    leaf active-tier {
+      type uint8;
+      mandatory true;
+      description
+        "The tier that is now active.";
+    }
+    leaf previous-tier {
+      type uint8;
+      mandatory true;
+      description
+        "The tier that was active before the change.";
+    }
+  }
+}
