@@ -20,6 +20,14 @@ type evidenceEpoch struct {
 	rules      uint64
 }
 
+func (epoch evidenceEpoch) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.Uint64("policy", epoch.policy), slog.Uint64("routing", epoch.routing),
+		slog.Uint64("npt", epoch.npt), slog.Uint64("forwarding", epoch.forwarding),
+		slog.Uint64("rules", epoch.rules),
+	)
+}
+
 func (module *Module) invalidateEvidence(ctx context.Context) {
 	if module.runtime == nil || len(module.flows) == 0 {
 		module.rebaseEvidence()
@@ -63,8 +71,8 @@ func (module *Module) evidenceFor(epoch evidenceEpoch) *evidenceCheck {
 			slog.Warn("native kernel evidence became unavailable", "err", err)
 			return fmt.Errorf("read native kernel evidence: %w", err)
 		}
-		if module.currentEvidenceEpoch() != epoch {
-			slog.Warn("native forwarding evidence changed", "expected", epoch)
+		if current := module.currentEvidenceEpoch(); current != epoch {
+			module.Log.Warn("native forwarding evidence changed", "expected", epoch, "current", current)
 			return fmt.Errorf("native forwarding evidence changed: %w", syscall.ESTALE)
 		}
 		return nil

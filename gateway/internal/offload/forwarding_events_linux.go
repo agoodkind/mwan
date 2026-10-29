@@ -150,12 +150,13 @@ func (source *ForwardingEvents) Close() error {
 	return nil
 }
 
-func (source *ForwardingEvents) changed(changes chan<- struct{}) {
-	source.generation.Add(1)
+func (source *ForwardingEvents) changed(changes chan<- struct{}) uint64 {
+	generation := source.generation.Add(1)
 	select {
 	case changes <- struct{}{}:
 	default:
 	}
+	return generation
 }
 
 func (source *ForwardingEvents) receive(ctx context.Context, raw syscall.RawConn, changes chan<- struct{}) (resultErr error) {
@@ -191,7 +192,8 @@ func (source *ForwardingEvents) receive(ctx context.Context, raw syscall.RawConn
 			mutation = mutation || changed
 		}
 		if mutation {
-			source.changed(changes)
+			generation := source.changed(changes)
+			logForwardingMutations(ctx, generation, messages)
 		}
 		select {
 		case <-ctx.Done():
