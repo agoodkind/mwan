@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/mdlayher/netlink"
+	rtnetlink "github.com/vishvananda/netlink"
 	"github.com/vishvananda/netlink/nl"
 	"golang.org/x/sys/unix"
 )
@@ -48,6 +49,12 @@ type ForwardingEvents struct {
 	closeErr      error
 	failureMu     sync.RWMutex
 	terminalError error
+	neighbors     forwardingNeighborCache
+}
+
+type forwardingMutation struct {
+	message     syscall.NetlinkMessage
+	invalidates bool
 }
 
 // NewForwardingEvents subscribes to kernel changes that invalidate forwarding evidence.
@@ -94,6 +101,7 @@ func NewForwardingEvents(ctx context.Context, socketBufferBytes int) (result *Fo
 		done: make(chan struct{}), stopping: make(chan struct{}),
 		generation: atomic.Uint64{}, closeOnce: sync.Once{}, closeErr: nil,
 		failureMu: sync.RWMutex{}, terminalError: nil,
+		neighbors: forwardingNeighborCache{entries: make(map[forwardingNeighborKey]rtnetlink.Neigh)},
 	}
 	stop := context.AfterFunc(ctx, func() { source.closeSocket() })
 	go func() {
@@ -184,17 +192,26 @@ func (source *ForwardingEvents) receive(ctx context.Context, log *slog.Logger, r
 			return fmt.Errorf("decode forwarding event datagram: %w", err)
 		}
 		mutation := false
+		mutations := make([]forwardingMutation, 0, len(messages))
 		for _, message := range messages {
 			changed, err := unmarshalForwardingMutation(message)
 			if err != nil {
 				delegatedFailure = true
 				return err
 			}
-			mutation = mutation || changed
+			if !changed {
+				continue
+			}
+			invalidates := source.neighbors.observe(message)
+			mutation = mutation || invalidates
+			mutations = append(mutations, forwardingMutation{message: message, invalidates: invalidates})
 		}
-		if mutation {
-			generation := source.changed(changes)
-			logForwardingMutations(ctx, log, generation, messages)
+		if len(mutations) != 0 {
+			generation := source.Generation()
+			if mutation {
+				generation = source.changed(changes)
+			}
+			logForwardingMutations(ctx, log, generation, mutations)
 		}
 		select {
 		case <-ctx.Done():

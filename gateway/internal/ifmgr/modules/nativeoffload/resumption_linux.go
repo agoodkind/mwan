@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"syscall"
 	"time"
 
 	"goodkind.io/mwan/internal/clock"
@@ -170,8 +169,6 @@ func (module *Module) resumeEntry(ctx, requestContext context.Context, identity 
 		module.stats.Fallback++
 		if removeErr := module.retire(ctx, identity, "native resumption did not complete"); removeErr != nil {
 			_ = module.fail(ctx, errors.Join(err, removeErr))
-		} else if errors.Is(err, syscall.ESTALE) {
-			delete(module.resumeCandidates, identity)
 		}
 		return
 	}

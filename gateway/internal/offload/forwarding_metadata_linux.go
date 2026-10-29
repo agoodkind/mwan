@@ -38,16 +38,23 @@ type forwardingField struct {
 	format forwardingFieldFormat
 }
 
-func logForwardingMutations(ctx context.Context, log *slog.Logger, generation uint64, messages []syscall.NetlinkMessage) {
+func logForwardingMutations(ctx context.Context, log *slog.Logger, generation uint64, messages []forwardingMutation) {
 	if !log.Enabled(ctx, slog.LevelInfo) {
 		return
 	}
 	mutations := make([]slog.Attr, 0, min(len(messages), forwardingMetadataEntries))
 	omitted := 0
-	for _, message := range messages {
+	invalidating, suppressed := 0, 0
+	for _, mutation := range messages {
+		message := mutation.message
 		changed, err := unmarshalForwardingMutation(message)
 		if err != nil || !changed {
 			continue
+		}
+		if mutation.invalidates {
+			invalidating++
+		} else {
+			suppressed++
 		}
 		if len(mutations) == forwardingMetadataEntries {
 			omitted++
@@ -58,12 +65,14 @@ func logForwardingMutations(ctx context.Context, log *slog.Logger, generation ui
 			Value: slog.GroupValue(
 				slog.Int("message_type", int(message.Header.Type)),
 				slog.Uint64("sequence", uint64(message.Header.Seq)),
+				slog.Bool("invalidates", mutation.invalidates),
 				slog.Attr{Key: "object", Value: forwardingIdentity(message)},
 			),
 		})
 	}
-	log.LogAttrs(ctx, slog.LevelInfo, "kernel forwarding generation advanced",
+	log.LogAttrs(ctx, slog.LevelInfo, "kernel forwarding notifications processed",
 		slog.Uint64("generation", generation), slog.Int("mutation_count", len(mutations)+omitted),
+		slog.Int("invalidating_mutations", invalidating), slog.Int("suppressed_mutations", suppressed),
 		slog.Int("omitted_mutations", omitted), slog.Attr{Key: "mutations", Value: slog.GroupValue(mutations...)})
 }
 
