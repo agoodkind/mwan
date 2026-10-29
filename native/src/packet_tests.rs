@@ -664,3 +664,78 @@ fn extension_chain(original: &[u8], count: usize) -> Vec<u8> {
     frame.extend_from_slice(original.get(54..).expect("UDP segment"));
     frame
 }
+
+#[test]
+fn shared_ipv6_restoration_preserves_complete_frames_for_each_profile() {
+    for corpus in [
+        include_bytes!("../tests/packet/tcp-both-probes-input.pcap").as_slice(),
+        include_bytes!("../tests/packet/udp-both-probes-input.pcap").as_slice(),
+        include_bytes!("../tests/malformed/tcp6-input.pcap").as_slice(),
+        include_bytes!("../tests/malformed/udp6-input.pcap").as_slice(),
+    ] {
+        for field in [
+            MWAN_NATIVE_IPV6_RESTORE_SOURCE,
+            MWAN_NATIVE_IPV6_RESTORE_DESTINATION,
+        ] {
+            for frame in frames(corpus) {
+                let mut original = frame.to_vec();
+                original.extend_from_slice(&[0xa5; 17]);
+                let headers = decode(&original).expect("complete captured IPv6 headers");
+                original[headers.network_offset..headers.network_offset + 4]
+                    .copy_from_slice(&[0x6b, 0x37, 0x12, 0x34]);
+                if headers.ports {
+                    let checksum_field =
+                        if u32::from(headers.tuple.protocol) == MWAN_NATIVE_PROTOCOL_TCP {
+                            16
+                        } else {
+                            6
+                        };
+                    original[headers.transport_offset + checksum_field] ^= 0x5a;
+                }
+                let view = decode(&original).expect("modified captured IPv6 headers");
+                if !view.ports && !view.fragment {
+                    continue;
+                }
+                let mut direction = identity_direction(&view);
+                let (relative, address) = if field == MWAN_NATIVE_IPV6_RESTORE_SOURCE {
+                    (8, &mut direction.translated.source)
+                } else {
+                    (24, &mut direction.translated.destination)
+                };
+                // Swap complete words to preserve the address checksum sum.
+                address.swap(4, 6);
+                address.swap(5, 7);
+                let mut received = original.clone();
+                let offset = view.network_offset + relative;
+                received[offset..offset + 16].copy_from_slice(address);
+                let translated = decode(&received).expect("translated captured IPv6 headers");
+                restore_ipv6_field(&mut received, &translated, field, &direction)
+                    .expect("restore selected address without changing other bytes");
+                assert_eq!(received, original);
+            }
+        }
+    }
+}
+
+#[test]
+fn shared_ipv6_restoration_rejects_stale_bytes_without_partial_edits() {
+    let input = frames(include_bytes!("../tests/packet/tcp-source-input.pcap"));
+    let original = input.first().expect("captured TCP IPv6 packet");
+    let parsed = decode(original).expect("captured IPv6 headers");
+    let direction = identity_direction(&parsed);
+    for offset in [0, ETHERNET_ADDRESS_LENGTH, parsed.network_offset + 8] {
+        let mut changed = original.to_vec();
+        changed[offset] ^= 2;
+        let before = changed.clone();
+        assert!(
+            restore_ipv6_field(
+                &mut changed,
+                &parsed,
+                MWAN_NATIVE_IPV6_RESTORE_SOURCE,
+                &direction
+            )
+            .is_err()
+        );
+        assert_eq!(changed, before);
+    }
+}

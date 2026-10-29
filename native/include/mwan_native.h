@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-#define MWAN_NATIVE_ABI_VERSION 2U
+#define MWAN_NATIVE_ABI_VERSION 3U
 #define MWAN_NATIVE_MAX_CONTROLLERS 4U
 #define MWAN_NATIVE_MAX_RECEIVERS 8U
 #define MWAN_NATIVE_MAX_DATA 8U
@@ -60,7 +60,14 @@ enum mwan_native_pair_state {
 	MWAN_NATIVE_PAIR_ABSENT = 0,
 	MWAN_NATIVE_PAIR_INSTALLED = 1,
 	MWAN_NATIVE_PAIR_DRAINING = 2,
-	MWAN_NATIVE_PAIR_FAULTED = 3
+	MWAN_NATIVE_PAIR_FAULTED = 3,
+	MWAN_NATIVE_PAIR_RELEASED = 4
+};
+
+enum mwan_native_ipv6_restore_field {
+	MWAN_NATIVE_IPV6_RESTORE_LEGACY = 0,
+	MWAN_NATIVE_IPV6_RESTORE_SOURCE = 1,
+	MWAN_NATIVE_IPV6_RESTORE_DESTINATION = 2
 };
 
 enum mwan_native_operation {
@@ -144,6 +151,7 @@ struct mwan_native_origin {
 	uint32_t return_mode;
 	uint16_t source_vf;
 	uint16_t reserved;
+	uint32_t ipv6_restore_field;
 };
 
 struct mwan_native_config {
@@ -248,6 +256,8 @@ struct mwan_native_pair_result {
 	uint32_t requested_direction_mask;
 	uint32_t restoration_mask;
 	uint32_t reserved;
+	uint32_t shared_restoration_mask;
+	uint32_t padding;
 };
 
 enum mwan_native_packet_validity {
@@ -361,6 +371,13 @@ struct mwan_native_retirement_stats {
 	uint32_t retained_pairs;
 	uint32_t draining_pairs;
 	uint64_t retained_directions;
+	uint32_t shared_binding_capacity;
+	uint32_t shared_bindings;
+	uint32_t shared_identity_bindings;
+	uint32_t reusable_shared_slots;
+	uint64_t shared_binding_conflicts;
+	uint64_t shared_binding_capacity_rejections;
+	uint64_t shared_pair_releases;
 };
 
 struct mwan_native_build_info {
@@ -435,6 +452,13 @@ int mwan_native_pair_remove(struct mwan_native *owner,
 			    struct mwan_native_handle handle,
 			    struct mwan_native_pair_result *result,
 			    struct mwan_native_error *error);
+/* Release consumes a fully cleaned primary DRAINING handle and preserves all
+ * shared IPv6 bindings. Every requested direction must use shared restoration.
+ */
+int mwan_native_pair_release_shared(struct mwan_native *owner,
+				    struct mwan_native_handle handle,
+				    struct mwan_native_pair_result *result,
+				    struct mwan_native_error *error);
 int mwan_native_poll(struct mwan_native *owner, uint32_t packet_budget,
 		     struct mwan_native_worker_stats *stats,
 		     struct mwan_native_error *error);

@@ -3,7 +3,8 @@
 #![forbid(unsafe_code)]
 
 use crate::abi::{
-    MWAN_NATIVE_FAMILY_IPV4, MWAN_NATIVE_FAMILY_IPV6, MWAN_NATIVE_PACKET_ETHERNET_VALID,
+    MWAN_NATIVE_FAMILY_IPV4, MWAN_NATIVE_FAMILY_IPV6, MWAN_NATIVE_IPV6_RESTORE_DESTINATION,
+    MWAN_NATIVE_IPV6_RESTORE_SOURCE, MWAN_NATIVE_PACKET_ETHERNET_VALID,
     MWAN_NATIVE_PACKET_IP_VALID, MWAN_NATIVE_PACKET_PORTS_VALID, MWAN_NATIVE_PROTOCOL_TCP,
     MWAN_NATIVE_PROTOCOL_UDP, MwanNativeDirection, MwanNativeObservation,
     MwanNativePacketDiagnostic, MwanNativePacketGuard, MwanNativeTuple,
@@ -410,6 +411,50 @@ fn eligible_headers(frame: &[u8], view: &ParsedPacket) -> Option<bool> {
     }
     sum += sum_words(transport);
     Some(fold_checksum(sum) == u16::MAX)
+}
+
+pub fn restore_ipv6_field(
+    frame: &mut [u8],
+    view: &ParsedPacket,
+    field: u32,
+    direction: &MwanNativeDirection,
+) -> Result<(), DecodeError> {
+    validate_edit(frame, view, direction)?;
+    let (relative, translated, original) = match field {
+        MWAN_NATIVE_IPV6_RESTORE_SOURCE => {
+            (8, &direction.translated.source, &direction.original.source)
+        }
+        MWAN_NATIVE_IPV6_RESTORE_DESTINATION => (
+            24,
+            &direction.translated.destination,
+            &direction.original.destination,
+        ),
+        _ => return Err(view.error(libc::EINVAL)),
+    };
+    let offset = view
+        .network_offset
+        .checked_add(relative)
+        .ok_or_else(|| view.error(libc::EBADMSG))?;
+    if u32::from(view.tuple.family) != MWAN_NATIVE_FAMILY_IPV6
+        || (!view.ports && !view.fragment)
+        || read_range(frame, offset, original.len()) != Some(translated.as_slice())
+        || view.source_mac != direction.original_source_mac
+        || view.destination_mac != direction.original_destination_mac
+        || frame.get(..ETHERNET_ADDRESS_LENGTH)
+            != Some(direction.original_destination_mac.as_slice())
+        || read_range(frame, ETHERNET_ADDRESS_LENGTH, ETHERNET_ADDRESS_LENGTH)
+            != Some(direction.original_source_mac.as_slice())
+    {
+        return Err(view.error(libc::EBADMSG));
+    }
+    write_bytes(frame, offset, original, view)?;
+    write_bytes(frame, 0, &direction.original_destination_mac, view)?;
+    write_bytes(
+        frame,
+        ETHERNET_ADDRESS_LENGTH,
+        &direction.original_source_mac,
+        view,
+    )
 }
 
 pub fn restore(
