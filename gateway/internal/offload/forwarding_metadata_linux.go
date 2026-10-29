@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"strconv"
 	"syscall"
 
 	"github.com/mdlayher/netlink"
@@ -21,6 +22,7 @@ type forwardingFieldFormat uint8
 const (
 	forwardingRouteNextHopID    = 30
 	forwardingNeighborTableName = 1
+	forwardingMetadataEntries   = 32
 )
 
 const (
@@ -40,15 +42,29 @@ func logForwardingMutations(ctx context.Context, generation uint64, messages []s
 	if !slog.Default().Enabled(ctx, slog.LevelInfo) {
 		return
 	}
+	mutations := make([]slog.Attr, 0, min(len(messages), forwardingMetadataEntries))
+	omitted := 0
 	for _, message := range messages {
 		changed, err := unmarshalForwardingMutation(message)
 		if err != nil || !changed {
 			continue
 		}
-		slog.InfoContext(ctx, "kernel forwarding mutation observed", "generation", generation,
-			"message_type", message.Header.Type, "sequence", message.Header.Seq,
-			"object", forwardingIdentity(message))
+		if len(mutations) == forwardingMetadataEntries {
+			omitted++
+			continue
+		}
+		mutations = append(mutations, slog.Attr{
+			Key: strconv.Itoa(len(mutations)),
+			Value: slog.GroupValue(
+				slog.Int("message_type", int(message.Header.Type)),
+				slog.Uint64("sequence", uint64(message.Header.Seq)),
+				slog.Attr{Key: "object", Value: forwardingIdentity(message)},
+			),
+		})
 	}
+	slog.LogAttrs(ctx, slog.LevelInfo, "kernel forwarding generation advanced",
+		slog.Uint64("generation", generation), slog.Int("mutation_count", len(mutations)+omitted),
+		slog.Int("omitted_mutations", omitted), slog.Attr{Key: "mutations", Value: slog.GroupValue(mutations...)})
 }
 
 func forwardingIdentity(message syscall.NetlinkMessage) slog.Value {
