@@ -5,7 +5,9 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/google/nftables"
 	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/firewall"
@@ -146,6 +149,11 @@ func TestNativePolicyResyncHardware(t *testing.T) {
 	observeNativeHardwarePolicy(t, module, false, stableWindow, unchanged)
 
 	requireNativeHardwareEmptyEgress(t, link)
+	t.Cleanup(func() {
+		if err := removeNativeHardwareDrop(link, nativeConfig.Settings.RequestTimeout); err != nil {
+			t.Error(err)
+		}
+	})
 	filterContext, filterCancel := context.WithTimeout(ctx, nativeConfig.Settings.RequestTimeout)
 	output, err := exec.CommandContext(filterContext, "tc", "filter", "add", "dev", link.Attrs().Name,
 		"egress", "protocol", "ip", "pref", nativePolicyHardwareDropPriority,
@@ -155,31 +163,15 @@ func TestNativePolicyResyncHardware(t *testing.T) {
 	if err != nil {
 		t.Fatalf("install lab egress DROP on %s: %v: %s", link.Attrs().Name, err, output)
 	}
-	deleteFilter := func() ([]byte, error) {
-		cleanupContext, cleanupCancel := context.WithTimeout(context.Background(), nativeConfig.Settings.RequestTimeout)
-		defer cleanupCancel()
-		return exec.CommandContext(cleanupContext, "tc", "filter", "del", "dev", link.Attrs().Name,
-			"egress", "protocol", "ip", "pref", nativePolicyHardwareDropPriority,
-			"handle", nativePolicyHardwareDropHandle, "flower").CombinedOutput()
-	}
-	filterInstalled := true
-	t.Cleanup(func() {
-		if filterInstalled {
-			if output, err := deleteFilter(); err != nil {
-				t.Errorf("delete lab egress DROP on %s: %v: %s", link.Attrs().Name, err, output)
-			}
-		}
-	})
 	if err := module.Reconcile(ctx, log); err != nil {
 		t.Fatalf("certify selective lab DROP: %v", err)
 	}
 	requireNativeHardwareBlocked(t, module)
 	waitNativeHardwarePolicy(t, module, true, recoveryWindow, nil)
 	observeNativeHardwarePolicy(t, module, true, 3*nativeConfig.Settings.ResyncInterval+2*nativeConfig.Settings.RequestTimeout, nil)
-	if output, err := deleteFilter(); err != nil {
-		t.Fatalf("delete lab egress DROP on %s: %v: %s", link.Attrs().Name, err, output)
+	if err := removeNativeHardwareDrop(link, nativeConfig.Settings.RequestTimeout); err != nil {
+		t.Fatal(err)
 	}
-	filterInstalled = false
 	waitNativeHardwarePolicy(t, module, false, recoveryWindow, nil)
 	if err := module.Shutdown(context.Background(), log); err != nil {
 		t.Fatalf("shut down first native runtime: %v", err)
@@ -253,6 +245,17 @@ func prepareNativeHardwareClsact(t *testing.T, link netlink.Link) {
 		t.Fatalf("create lab clsact on %s: %v", link.Attrs().Name, err)
 	}
 	t.Cleanup(func() {
+		for _, parent := range []uint32{netlink.HANDLE_MIN_INGRESS, netlink.HANDLE_MIN_EGRESS} {
+			filters, err := netlink.FilterList(link, parent)
+			if err != nil {
+				t.Errorf("inspect lab clsact before deletion on %s: %v", link.Attrs().Name, err)
+				return
+			}
+			if len(filters) != 0 {
+				t.Errorf("preserve lab clsact on %s with remaining filters: %v", link.Attrs().Name, filters)
+				return
+			}
+		}
 		if err := netlink.QdiscDel(qdisc); err != nil {
 			t.Errorf("delete lab clsact on %s: %v", link.Attrs().Name, err)
 		}
@@ -271,6 +274,50 @@ func requireNativeHardwareEmptyEgress(t *testing.T, link netlink.Link) {
 	}
 }
 
+func removeNativeHardwareDrop(link netlink.Link, timeout time.Duration) error {
+	filters, err := netlink.FilterList(link, netlink.HANDLE_MIN_EGRESS)
+	if err != nil {
+		return fmt.Errorf("inspect lab egress DROP on %s: %w", link.Attrs().Name, err)
+	}
+	if len(filters) == 0 {
+		return nil
+	}
+	if len(filters) != 1 {
+		return fmt.Errorf("preserve unexpected egress filters on %s: %v", link.Attrs().Name, filters)
+	}
+	filter := filters[0]
+	attributes := filter.Attrs()
+	if attributes.LinkIndex != link.Attrs().Index || attributes.Parent != netlink.HANDLE_MIN_EGRESS ||
+		attributes.Protocol != unix.ETH_P_IP || fmt.Sprint(attributes.Priority) != nativePolicyHardwareDropPriority ||
+		fmt.Sprintf("0x%x", attributes.Handle) != nativePolicyHardwareDropHandle || attributes.Chain != nil && *attributes.Chain != 0 {
+		return fmt.Errorf("preserve mismatched lab egress filter on %s: %v", link.Attrs().Name, attributes)
+	}
+	flower, ok := filter.(*netlink.Flower)
+	if !ok {
+		return fmt.Errorf("preserve unexpected classifier %s on %s", filter.Type(), link.Attrs().Name)
+	}
+	target := netip.MustParsePrefix(nativePolicyHardwareDropTarget)
+	destination, valid := netip.AddrFromSlice(flower.DestIP)
+	ones, bits := flower.DestIPMask.Size()
+	if !valid || destination.Unmap() != target.Addr() || ones != target.Bits() || bits != target.Addr().BitLen() ||
+		flower.EthType != unix.ETH_P_IP || len(flower.Actions) != 1 {
+		return fmt.Errorf("preserve mismatched Flower selector on %s: %+v", link.Attrs().Name, flower)
+	}
+	action, ok := flower.Actions[0].(*netlink.GenericAction)
+	if !ok || action.Action != netlink.TC_ACT_SHOT {
+		return fmt.Errorf("preserve mismatched Flower action on %s: %v", link.Attrs().Name, flower.Actions)
+	}
+	cleanupContext, cleanupCancel := context.WithTimeout(context.Background(), timeout)
+	defer cleanupCancel()
+	output, err := exec.CommandContext(cleanupContext, "tc", "filter", "del", "dev", link.Attrs().Name,
+		"egress", "protocol", "ip", "pref", nativePolicyHardwareDropPriority,
+		"handle", nativePolicyHardwareDropHandle, "flower").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("delete lab egress DROP on %s: %w: %s", link.Attrs().Name, err, output)
+	}
+	return nil
+}
+
 func installNativeHardwarePolicy(t *testing.T, desired firewall.Ruleset, timeout time.Duration) {
 	t.Helper()
 	tables := make(map[firewall.Table]bool)
@@ -284,6 +331,7 @@ func installNativeHardwarePolicy(t *testing.T, desired firewall.Ruleset, timeout
 	if err != nil {
 		t.Fatal(err)
 	}
+	families := make(map[firewall.Table]nftables.TableFamily, len(tables))
 	for table := range tables {
 		var family nftables.TableFamily
 		switch table.Family {
@@ -296,27 +344,38 @@ func installNativeHardwarePolicy(t *testing.T, desired firewall.Ruleset, timeout
 		default:
 			t.Fatalf("unsupported fixture table family %s", table.Family)
 		}
+		families[table] = family
 		for _, present := range existing {
 			if present.Family == family && present.Name == table.Name {
 				t.Fatalf("lab fixture table %s %s already exists", table.Family, table.Name)
 			}
 		}
 	}
+	t.Cleanup(func() {
+		present, err := (&nftables.Conn{}).ListTables()
+		if err != nil {
+			t.Errorf("inspect lab tables before deletion: %v", err)
+			return
+		}
+		for table, family := range families {
+			for _, actual := range present {
+				if actual.Family != family || actual.Name != table.Name {
+					continue
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), timeout)
+				output, err := exec.CommandContext(ctx, "nft", "delete", "table", table.Family, table.Name).CombinedOutput()
+				cancel()
+				if err != nil {
+					t.Errorf("delete lab table %s %s: %v: %s", table.Family, table.Name, err, output)
+				}
+			}
+		}
+	})
 	ctx, cancel := context.WithTimeout(t.Context(), timeout)
 	defer cancel()
 	if err := firewall.Apply(ctx, desired); err != nil {
 		t.Fatalf("install lab firewall fixture: %v", err)
 	}
-	t.Cleanup(func() {
-		for table := range tables {
-			ctx, cancel := context.WithTimeout(context.Background(), timeout)
-			output, err := exec.CommandContext(ctx, "nft", "delete", "table", table.Family, table.Name).CombinedOutput()
-			cancel()
-			if err != nil {
-				t.Errorf("delete lab table %s %s: %v: %s", table.Family, table.Name, err, output)
-			}
-		}
-	})
 	if err := firewall.InspectNative(ctx, desired); err != nil {
 		t.Fatalf("certify lab firewall fixture: %v", err)
 	}
