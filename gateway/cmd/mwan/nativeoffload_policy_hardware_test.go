@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,7 +14,6 @@ import (
 
 	"github.com/google/nftables"
 	"github.com/vishvananda/netlink"
-	"golang.org/x/sys/unix"
 
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/firewall"
@@ -30,10 +28,10 @@ import (
 )
 
 const (
-	nativePolicyHardwarePoll           = 20 * time.Millisecond
-	nativePolicyHardwareDropHandle     = 0x4e50
-	nativePolicyHardwareDropPriority   = 49123
-	nativePolicyHardwareDropPrefixBits = 32
+	nativePolicyHardwarePoll         = 20 * time.Millisecond
+	nativePolicyHardwareDropHandle   = "0x4e50"
+	nativePolicyHardwareDropPriority = "49123"
+	nativePolicyHardwareDropTarget   = "198.18.254.254/32"
 )
 
 // The hardware tag permits fixture tables and a selective DROP in the prepared lab.
@@ -148,20 +146,27 @@ func TestNativePolicyResyncHardware(t *testing.T) {
 	observeNativeHardwarePolicy(t, module, false, stableWindow, unchanged)
 
 	requireNativeHardwareEmptyEgress(t, link)
-	filter := &netlink.Flower{FilterAttrs: netlink.FilterAttrs{
-		LinkIndex: link.Attrs().Index, Parent: netlink.HANDLE_MIN_EGRESS,
-		Handle: nativePolicyHardwareDropHandle, Priority: nativePolicyHardwareDropPriority, Protocol: unix.ETH_P_IP,
-	}, DestIP: net.IPv4(198, 18, 254, 254), DestIPMask: net.CIDRMask(nativePolicyHardwareDropPrefixBits, nativePolicyHardwareDropPrefixBits),
-		EthType: unix.ETH_P_IP, SkipHw: true,
-		Actions: []netlink.Action{&netlink.GenericAction{ActionAttrs: netlink.ActionAttrs{Action: netlink.TC_ACT_SHOT}}}}
-	if err := netlink.FilterAdd(filter); err != nil {
-		t.Fatalf("install lab egress DROP on %s: %v", link.Attrs().Name, err)
+	filterContext, filterCancel := context.WithTimeout(ctx, nativeConfig.Settings.RequestTimeout)
+	output, err := exec.CommandContext(filterContext, "tc", "filter", "add", "dev", link.Attrs().Name,
+		"egress", "protocol", "ip", "pref", nativePolicyHardwareDropPriority,
+		"handle", nativePolicyHardwareDropHandle, "flower", "skip_hw",
+		"dst_ip", nativePolicyHardwareDropTarget, "action", "drop").CombinedOutput()
+	filterCancel()
+	if err != nil {
+		t.Fatalf("install lab egress DROP on %s: %v: %s", link.Attrs().Name, err, output)
+	}
+	deleteFilter := func() ([]byte, error) {
+		cleanupContext, cleanupCancel := context.WithTimeout(context.Background(), nativeConfig.Settings.RequestTimeout)
+		defer cleanupCancel()
+		return exec.CommandContext(cleanupContext, "tc", "filter", "del", "dev", link.Attrs().Name,
+			"egress", "protocol", "ip", "pref", nativePolicyHardwareDropPriority,
+			"handle", nativePolicyHardwareDropHandle, "flower").CombinedOutput()
 	}
 	filterInstalled := true
 	t.Cleanup(func() {
 		if filterInstalled {
-			if err := netlink.FilterDel(filter); err != nil {
-				t.Errorf("delete lab egress DROP on %s: %v", link.Attrs().Name, err)
+			if output, err := deleteFilter(); err != nil {
+				t.Errorf("delete lab egress DROP on %s: %v: %s", link.Attrs().Name, err, output)
 			}
 		}
 	})
@@ -171,8 +176,8 @@ func TestNativePolicyResyncHardware(t *testing.T) {
 	requireNativeHardwareBlocked(t, module)
 	waitNativeHardwarePolicy(t, module, true, recoveryWindow, nil)
 	observeNativeHardwarePolicy(t, module, true, 3*nativeConfig.Settings.ResyncInterval+2*nativeConfig.Settings.RequestTimeout, nil)
-	if err := netlink.FilterDel(filter); err != nil {
-		t.Fatalf("delete lab egress DROP on %s: %v", link.Attrs().Name, err)
+	if output, err := deleteFilter(); err != nil {
+		t.Fatalf("delete lab egress DROP on %s: %v: %s", link.Attrs().Name, err, output)
 	}
 	filterInstalled = false
 	waitNativeHardwarePolicy(t, module, false, recoveryWindow, nil)
