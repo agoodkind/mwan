@@ -52,6 +52,7 @@ type ForwardingEvents struct {
 
 // NewForwardingEvents subscribes to kernel changes that invalidate forwarding evidence.
 func NewForwardingEvents(ctx context.Context, socketBufferBytes int) (result *ForwardingEvents, resultErr error) {
+	log := slog.Default()
 	defer func() {
 		if resultErr != nil {
 			slog.WarnContext(ctx, "start forwarding events failed", "err", resultErr)
@@ -116,7 +117,7 @@ func NewForwardingEvents(ctx context.Context, socketBufferBytes int) (result *Fo
 				failures <- failure
 			}
 		}()
-		receiveErr = source.receive(ctx, raw, changes)
+		receiveErr = source.receive(ctx, log, raw, changes)
 	}()
 	return source, nil
 }
@@ -159,8 +160,7 @@ func (source *ForwardingEvents) changed(changes chan<- struct{}) uint64 {
 	return generation
 }
 
-func (source *ForwardingEvents) receive(ctx context.Context, raw syscall.RawConn, changes chan<- struct{}) (resultErr error) {
-	log := slog.Default()
+func (source *ForwardingEvents) receive(ctx context.Context, log *slog.Logger, raw syscall.RawConn, changes chan<- struct{}) (resultErr error) {
 	delegatedFailure := false
 	defer func() {
 		if resultErr != nil && !delegatedFailure {
