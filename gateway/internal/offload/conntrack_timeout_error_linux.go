@@ -17,10 +17,12 @@ type ConntrackTimeoutVerificationError struct {
 	AllowanceSeconds uint64
 }
 
+// Error preserves the warning text that existing callers report.
 func (failure *ConntrackTimeoutVerificationError) Error() string {
 	return fmt.Sprintf("conntrack %d did not retain the requested timeout", failure.ConnectionID)
 }
 
+// LogValue exposes rejected timeout values for structured diagnostic logs.
 func (failure *ConntrackTimeoutVerificationError) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("operation", "verify_timeout"),
