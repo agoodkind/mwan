@@ -1376,19 +1376,143 @@ static int shared_release_pair(struct mwan_native *owner, struct mwan_native_han
 	return 0;
 }
 
-static void shared_counter_sample(const char *operation, const char *phase, int cycle,
-				  const char *pair, const char *batch, uint32_t direction,
-				  const struct mwan_native_counter *counter)
+enum { SHARED_COUNTER_QUERY_INTERVAL_NS = 10000000 };
+
+struct shared_counter_request {
+	const char *operation;
+	const char *phase;
+	int cycle;
+	const char *pair;
+	const char *batch;
+	struct mwan_native_handle handle;
+	uint32_t mask;
+	uint32_t direction;
+	uint64_t seconds;
+	uint64_t minimum_packets;
+	const struct mwan_native_counter *baseline;
+};
+
+static void shared_counter_sample(const struct shared_counter_request *request,
+				  const struct mwan_native_pair_stats *sample,
+				  const char *observation, uint64_t reads,
+				  uint64_t elapsed_ns, int query)
 {
+	const struct mwan_native_counter *counter = &sample->directions[request->direction];
 	printf("SHARED_COUNTER_SAMPLE operation=%s phase=%s pair=%s batch=%s",
-	       operation, phase, pair, batch);
-	if (cycle >= 0)
-		printf(" cycle=%d", cycle);
+	       request->operation, request->phase, request->pair, request->batch);
+	if (request->cycle >= 0)
+		printf(" cycle=%d", request->cycle);
 	printf(" direction=%u packets=%" PRIu64 " bytes=%" PRIu64
-	       " packets_valid=%u bytes_valid=%u error=%d observed_monotonic_ns=%" PRIu64 "\n",
-	       direction, counter->packets, counter->bytes, counter->packets_valid,
-	       counter->bytes_valid, counter->error, counter->observed_monotonic_ns);
+	       " packets_valid=%u bytes_valid=%u error=%d observed_monotonic_ns=%" PRIu64
+	       " observation=%s reads=%" PRIu64 " elapsed_ns=%" PRIu64 " query_rc=%d"
+	       " instance=%" PRIu64 " slot=%u generation=%" PRIu64 " state=%u"
+	       " requested=%u installed=%u restoration=%u shared=%u cleanup_failed=%u\n",
+	       request->direction, counter->packets, counter->bytes, counter->packets_valid,
+	       counter->bytes_valid, counter->error, counter->observed_monotonic_ns,
+	       observation, reads, elapsed_ns, query, sample->result.handle.instance,
+	       sample->result.handle.slot, sample->result.handle.generation, sample->result.state,
+	       sample->result.requested_direction_mask, sample->result.installed_mask,
+	       sample->result.restoration_mask, sample->result.shared_restoration_mask,
+	       sample->result.cleanup_failed_mask);
 	fflush(stdout);
+}
+
+static int shared_counter_wait(struct mwan_native *owner,
+			       const struct shared_counter_request *request,
+			       struct mwan_native_pair_stats *sample,
+			       struct mwan_native_error *error)
+{
+	uint64_t started = now_ns();
+	uint64_t duration = request->seconds * UINT64_C(1000000000);
+	if (!started || UINT64_MAX - started < duration) {
+		fprintf(stderr, "Cannot establish the %s %s counter deadline\n", request->operation, request->phase);
+		return -1;
+	}
+	uint64_t reads = 0, elapsed_ns = 0;
+	int query = 0;
+	bool accepted = false;
+	const char *failure = "Counter observation exceeded its time budget";
+	for (;;) {
+		uint64_t now = now_ns();
+		if (!now || now < started) {
+			failure = "Cannot read the counter observation clock";
+			break;
+		}
+		elapsed_ns = now - started;
+		if (elapsed_ns >= duration)
+			break;
+		memset(sample, 0, sizeof(*sample));
+		memset(error, 0, sizeof(*error));
+		query = mwan_native_pair_query(owner, request->handle, sample, error);
+		reads++;
+		now = now_ns();
+		if (now && now >= started)
+			elapsed_ns = now - started;
+		if (reads == 1)
+			shared_counter_sample(request, sample, "first", reads, elapsed_ns, query);
+		if (!now || now < started) {
+			failure = "Cannot read the counter observation clock";
+			break;
+		}
+		const struct mwan_native_counter *counter = &sample->directions[request->direction];
+		if (query && query != -EAGAIN && query != -ESTALE) {
+			failure = "Counter query failed";
+			break;
+		}
+		if (counter->error && counter->error != -EAGAIN && counter->error != -ESTALE) {
+			failure = "Hardware counter reported an error";
+			break;
+		}
+		if (!query) {
+			const struct mwan_native_pair_result *result = &sample->result;
+			if (!same_resume_handle(result->handle, request->handle) ||
+			    result->state != MWAN_NATIVE_PAIR_INSTALLED ||
+			    result->requested_direction_mask != request->mask ||
+			    result->installed_mask != request->mask || result->restoration_mask != request->mask ||
+			    result->shared_restoration_mask != request->mask || result->cleanup_failed_mask) {
+				failure = "Counter query changed the expected installed rule or inverse ownership";
+				break;
+			}
+			if (!counter->error && counter->packets_valid && counter->bytes_valid &&
+			    counter->observed_monotonic_ns) {
+				uint64_t packets = counter->packets;
+				if (request->baseline) {
+					const struct mwan_native_counter *baseline = request->baseline;
+					if (counter->packets < baseline->packets || counter->bytes < baseline->bytes ||
+					    counter->observed_monotonic_ns <= baseline->observed_monotonic_ns) {
+						failure = "Queued counter counts decreased or its observation time did not advance";
+						break;
+					}
+					packets -= baseline->packets;
+				}
+				if (elapsed_ns < duration && packets >= request->minimum_packets) {
+					accepted = true;
+					break;
+				}
+			}
+		}
+		if (elapsed_ns >= duration)
+			break;
+		uint64_t pause_ns = duration - elapsed_ns;
+		if (pause_ns > SHARED_COUNTER_QUERY_INTERVAL_NS)
+			pause_ns = SHARED_COUNTER_QUERY_INTERVAL_NS;
+		struct timespec pause = {.tv_nsec = (long)pause_ns};
+		if (nanosleep(&pause, NULL)) {
+			perror("Cannot pause between shared counter queries");
+			failure = "Counter query interval sleep failed";
+			now = now_ns();
+			if (now && now >= started)
+				elapsed_ns = now - started;
+			break;
+		}
+	}
+	if (accepted) {
+		shared_counter_sample(request, sample, "accepted", reads, elapsed_ns, query);
+		return 0;
+	}
+	shared_counter_sample(request, sample, "rejected", reads, elapsed_ns, query);
+	fprintf(stderr, "%s %s: %s\n", request->operation, request->phase, failure);
+	return -1;
 }
 
 static int shared_capacity(const char *config_path, uint32_t field, const char *pair_path)
@@ -1470,11 +1594,15 @@ static int shared_conflict(const char *config_path, uint32_t field,
 	uint32_t direction = first.requested_direction_mask == 1 ? 0 : 1;
 	bool complete = false;
 	if (mwan_native_open(&config, &owner, &error) ||
-	    mwan_native_pair_install(owner, &first, &result, &error) ||
-	    mwan_native_pair_query(owner, result.handle, &baseline, &error))
+	    mwan_native_pair_install(owner, &first, &result, &error))
 		goto cleanup;
-	shared_counter_sample("shared_conflict", "baseline", -1, first_path, "FIRST", direction,
-			      &baseline.directions[direction]);
+	struct shared_counter_request counter_request = {
+		.operation = "shared_conflict", .phase = "baseline", .cycle = -1,
+		.pair = first_path, .batch = "FIRST", .handle = result.handle,
+		.mask = first.requested_direction_mask, .direction = direction, .seconds = seconds
+	};
+	if (shared_counter_wait(owner, &counter_request, &baseline, &error))
+		goto cleanup;
 	puts("QUEUE_SHARED_CONFLICT_OLD acknowledgment=QUEUED_CONFLICT polling=paused");
 	fflush(stdout);
 	char acknowledgment[64];
@@ -1482,17 +1610,13 @@ static int shared_conflict(const char *config_path, uint32_t field,
 		fprintf(stderr, "Send the finite FIRST batch, then write QUEUED_CONFLICT to stdin\n");
 		goto cleanup;
 	}
-	if (mwan_native_pair_query(owner, result.handle, &queued, &error))
+	counter_request.phase = "queued";
+	counter_request.minimum_packets = minimum_returned;
+	counter_request.baseline = &baseline.directions[direction];
+	if (shared_counter_wait(owner, &counter_request, &queued, &error))
 		goto cleanup;
-	shared_counter_sample("shared_conflict", "queued", -1, first_path, "FIRST", direction,
-			      &queued.directions[direction]);
 	const struct mwan_native_counter *before = &baseline.directions[direction];
 	const struct mwan_native_counter *after = &queued.directions[direction];
-	if (!before->packets_valid || before->error || !after->packets_valid || after->error ||
-	    after->packets < before->packets || after->packets - before->packets < minimum_returned) {
-		fprintf(stderr, "The accepted rule did not count the required finite batch\n");
-		goto cleanup;
-	}
 	printf("SHARED_CONFLICT_COUNTER baseline=%" PRIu64 " queued=%" PRIu64 "\n", before->packets, after->packets);
 	struct mwan_native_handle handle = result.handle;
 	if (shared_release_pair(owner, handle, first.requested_direction_mask, &error) ||
@@ -1592,10 +1716,14 @@ static int shared_release(const char *config_path, uint32_t field, uint64_t seco
 		    shared_storage(owner, 1, (uint64_t)cycle, false, &error))
 			goto cleanup;
 		struct mwan_native_pair_stats baseline = {0}, queued = {0};
-		if (mwan_native_pair_query(owner, current.handle, &baseline, &error))
+		struct shared_counter_request counter_request = {
+			.operation = "shared_release", .phase = "baseline", .cycle = cycle,
+			.pair = pair_paths[cycle], .batch = "old_rule", .handle = current.handle,
+			.mask = mask, .direction = direction_index, .seconds = seconds,
+			.minimum_packets = minimum_forwarded
+		};
+		if (shared_counter_wait(owner, &counter_request, &baseline, &error))
 			goto cleanup;
-		shared_counter_sample("shared_release", "baseline", cycle, pair_paths[cycle], "old_rule",
-				      direction_index, &baseline.directions[direction_index]);
 		printf("QUEUE_SHARED_OLD cycle=%d pair=%s acknowledgment=QUEUED_%d polling=paused\n",
 		       cycle, pair_paths[cycle], cycle);
 		fflush(stdout);
@@ -1605,18 +1733,13 @@ static int shared_release(const char *config_path, uint32_t field, uint64_t seco
 			fprintf(stderr, "Send the finite old-rule batch, then write %s to stdin\n", expected);
 			goto cleanup;
 		}
-		if (mwan_native_pair_query(owner, current.handle, &queued, &error))
+		counter_request.phase = "queued";
+		counter_request.minimum_packets = minimum_returned;
+		counter_request.baseline = &baseline.directions[direction_index];
+		if (shared_counter_wait(owner, &counter_request, &queued, &error))
 			goto cleanup;
-		shared_counter_sample("shared_release", "queued", cycle, pair_paths[cycle], "old_rule",
-				      direction_index, &queued.directions[direction_index]);
 		const struct mwan_native_counter *first_counter = &baseline.directions[direction_index];
 		const struct mwan_native_counter *queued_counter = &queued.directions[direction_index];
-		if (!first_counter->packets_valid || first_counter->error || !queued_counter->packets_valid ||
-		    queued_counter->error || queued_counter->packets < first_counter->packets ||
-		    queued_counter->packets - first_counter->packets < minimum_returned) {
-			fprintf(stderr, "The old hardware rule did not count the required finite batch\n");
-			goto cleanup;
-		}
 		printf("SHARED_OLD_COUNTER cycle=%d baseline=%" PRIu64 " queued=%" PRIu64 "\n",
 		       cycle, first_counter->packets, queued_counter->packets);
 		struct mwan_native_handle old = current.handle;
