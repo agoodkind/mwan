@@ -3,7 +3,13 @@
 package nativeoffload
 
 import (
+	"errors"
+	"syscall"
 	"testing"
+	"time"
+
+	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 
 	"goodkind.io/mwan/internal/clock"
 	"goodkind.io/mwan/internal/config"
@@ -51,6 +57,7 @@ func TestNativeAdmissionConntrackUpdateVerification(t *testing.T) {
 		if err != nil || decision != EligibilityReady || fresh.ID != flow.ID || fresh.Mark != admissionMark {
 			t.Fatalf("older kernel notification rejected current admitted policy: current=%+v decision=%d error=%v", fresh, decision, err)
 		}
+		evidence = requireConntrackEvidenceRefresh(t, fixture, old, entry, evidence)
 		if err := fixture.tracking.Update(changed); err != nil {
 			t.Fatal(err)
 		}
@@ -62,7 +69,61 @@ func TestNativeAdmissionConntrackUpdateVerification(t *testing.T) {
 		if err := fixture.tracking.Delete(flow); err != nil {
 			t.Fatal(err)
 		}
-		awaitAdmissionConntrackPolicy(t, fixture, events, flow.ID, admissionOtherMark, true)
+		destroyed := awaitAdmissionConntrackPolicy(t, fixture, events, flow.ID, admissionOtherMark, true)
+		fresh, decision, err = fixture.module.verifyConnectionUpdate(fixture.ctx, destroyed, entry, evidence)
+		if !errors.Is(err, syscall.ENOENT) || decision != EligibilityUnsupported {
+			t.Fatalf("deleted kernel connection passed fresh verification: current=%+v decision=%d error=%v", fresh, decision, err)
+		}
+	}
+}
+
+func requireConntrackEvidenceRefresh(t *testing.T, fixture admissionFixture, event offload.ConntrackEvent, entry *admittedFlow, stale *evidenceCheck) *evidenceCheck {
+	t.Helper()
+	family := unix.AF_INET
+	if entry.flow.TupleOrig.IP.SourceAddress.Is6() {
+		family = unix.AF_INET6
+	}
+	neighbor, present := fixture.neighbors[family]
+	if !present {
+		t.Fatalf("the real admission fixture omitted neighbor family %d", family)
+	}
+	changed := neighbor
+	changed.HardwareAddr = fixture.otherPeer.HardwareAddr
+	previous := fixture.module.forwarding.Generation()
+	if err := netlink.NeighSet(&changed); err != nil {
+		t.Fatal(err)
+	}
+	awaitConntrackForwardingGeneration(t, fixture, previous)
+	previous = fixture.module.forwarding.Generation()
+	if err := netlink.NeighSet(&neighbor); err != nil {
+		t.Fatal(err)
+	}
+	awaitConntrackForwardingGeneration(t, fixture, previous)
+	current, decision, err := fixture.module.verifyConnectionUpdate(fixture.ctx, event, entry, stale)
+	if !errors.Is(err, syscall.ESTALE) || decision != EligibilityStale {
+		t.Fatalf("obsolete forwarding evidence passed otherwise restored mapping verification: current=%+v decision=%d error=%v", current, decision, err)
+	}
+	fresh := fixture.module.evidenceFor(fixture.module.currentEvidenceEpoch())
+	current, decision, err = fixture.module.verifyConnectionUpdate(fixture.ctx, event, entry, fresh)
+	if err != nil || decision != EligibilityReady || current.ID != entry.flow.ID || current.Mark != entry.flow.Mark {
+		t.Fatalf("current evidence rejected the restored admitted mapping: current=%+v decision=%d error=%v", current, decision, err)
+	}
+	return fresh
+}
+
+func awaitConntrackForwardingGeneration(t *testing.T, fixture admissionFixture, previous uint64) {
+	t.Helper()
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for fixture.module.forwarding.Generation() <= previous {
+		select {
+		case <-ticker.C:
+		case <-fixture.ctx.Done():
+			t.Fatalf("real neighbor update did not advance forwarding generation %d: %v", previous, fixture.ctx.Err())
+		}
+	}
+	if err := fixture.module.forwarding.Err(); err != nil {
+		t.Fatalf("real neighbor update lost forwarding evidence: %v", err)
 	}
 }
 
