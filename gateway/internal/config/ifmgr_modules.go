@@ -99,8 +99,9 @@ type IfMgrOOBV6Section struct {
 // DHCP-learned default route into the out-of-band routing table, which is the
 // IPv4 counterpart of what oobv6 does from router advertisements.
 type IfMgrOOBV4Section struct {
-	Iface      string `toml:"iface"`
-	OOBTableID int    `toml:"oob_table_id"`
+	Iface              string `toml:"iface"`
+	OOBTableID         int    `toml:"oob_table_id"`
+	SourceRulePriority int    `toml:"source_rule_priority"`
 }
 
 // IfMgrSLAACHealthSection is the [ifmgr.modules.slaac_health] table. The
