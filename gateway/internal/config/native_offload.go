@@ -137,20 +137,20 @@ func (section *IfMgrNativeOffloadSection) resolveLimits(settings *NativeOffloadP
 
 func (section *IfMgrNativeOffloadSection) resolveDurations(settings *NativeOffloadProcessSettings) error {
 	for _, field := range []struct {
-		name      string
-		input     string
-		fallback  time.Duration
-		allowZero bool
-		output    *time.Duration
+		name     string
+		input    string
+		fallback time.Duration
+		minimum  time.Duration
+		output   *time.Duration
 	}{
-		{"observation_max_age", section.ObservationMaxAge, nativeDefaultObservationMaxAge, false, &settings.ObservationMaxAge},
-		{"resync_interval", section.ResyncInterval, nativeDefaultResyncInterval, false, &settings.ResyncInterval},
-		{"counter_interval", section.CounterInterval, nativeDefaultCounterInterval, false, &settings.CounterInterval},
-		{"request_timeout", section.RequestTimeout, nativeDefaultRequestTimeout, false, &settings.RequestTimeout},
-		{"resync_timeout", section.ResyncTimeout, nativeDefaultResyncTimeout, false, &settings.ResyncTimeout},
-		{"shutdown_timeout", section.ShutdownTimeout, nativeDefaultShutdownTimeout, false, &settings.ShutdownTimeout},
-		{"idle_timeout", section.IdleTimeout, nativeDefaultIdleTimeout, false, &settings.IdleTimeout},
-		{"idle_wait", section.IdleWait, nativeDefaultIdleWait, true, &settings.IdleWait},
+		{"observation_max_age", section.ObservationMaxAge, nativeDefaultObservationMaxAge, time.Nanosecond, &settings.ObservationMaxAge},
+		{"resync_interval", section.ResyncInterval, nativeDefaultResyncInterval, time.Nanosecond, &settings.ResyncInterval},
+		{"counter_interval", section.CounterInterval, nativeDefaultCounterInterval, time.Nanosecond, &settings.CounterInterval},
+		{"request_timeout", section.RequestTimeout, nativeDefaultRequestTimeout, time.Nanosecond, &settings.RequestTimeout},
+		{"resync_timeout", section.ResyncTimeout, nativeDefaultResyncTimeout, time.Nanosecond, &settings.ResyncTimeout},
+		{"shutdown_timeout", section.ShutdownTimeout, nativeDefaultShutdownTimeout, time.Nanosecond, &settings.ShutdownTimeout},
+		{"idle_timeout", section.IdleTimeout, nativeDefaultIdleTimeout, time.Nanosecond, &settings.IdleTimeout},
+		{"idle_wait", section.IdleWait, nativeDefaultIdleWait, 0, &settings.IdleWait},
 	} {
 		value := field.fallback
 		if field.input != "" {
@@ -161,11 +161,8 @@ func (section *IfMgrNativeOffloadSection) resolveDurations(settings *NativeOfflo
 			}
 			value = parsed
 		}
-		if value < 0 || value == 0 && !field.allowZero {
-			if field.allowZero {
-				return fmt.Errorf("nativeoffload %s must not be negative", field.name)
-			}
-			return fmt.Errorf("nativeoffload %s must be positive", field.name)
+		if value < field.minimum {
+			return fmt.Errorf("nativeoffload %s must be at least %s", field.name, field.minimum)
 		}
 		*field.output = value
 	}
