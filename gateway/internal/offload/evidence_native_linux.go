@@ -76,8 +76,10 @@ func (worker *NativeRuntime) poll(owner *C.struct_mwan_native, stats *C.struct_m
 		worker.mu.Unlock()
 		return false, err
 	}
-	*stats = C.struct_mwan_native_worker_stats{}
-	*detail = C.struct_mwan_native_error{}
+	var emptyStats C.struct_mwan_native_worker_stats
+	var emptyDetail C.struct_mwan_native_error
+	*stats = emptyStats
+	*detail = emptyDetail
 	rc := C.mwan_native_poll(owner, C.uint32_t(worker.pollBudget), stats, detail)
 	err := nativeCallError(rc, *detail)
 	worker.mu.Lock()
