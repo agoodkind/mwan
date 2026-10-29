@@ -55,7 +55,7 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 		return fmt.Errorf("oobv4: oob_table_id must be > 0")
 	}
 	if m.cfg.SourceRulePriority < 0 || m.cfg.SourceRulePriority >= 32766 {
-		return fmt.Errorf("oobv4: source_rule_priority must be between 1 and 32765 when enabled")
+		return fmt.Errorf("oobv4: source_rule_priority must be 0 or between 1 and 32765, got %d", m.cfg.SourceRulePriority)
 	}
 	if env.DHCP == nil {
 		return fmt.Errorf("oobv4: requires DHCP client (set ifmgr.iface.<name>.dhcp_v4 = true)")
