@@ -52,6 +52,7 @@ type ForwardingEvents struct {
 
 // NewForwardingEvents subscribes to kernel changes that invalidate forwarding evidence.
 func NewForwardingEvents(ctx context.Context, socketBufferBytes int) (result *ForwardingEvents, resultErr error) {
+	log := slog.Default()
 	defer func() {
 		if resultErr != nil {
 			slog.WarnContext(ctx, "start forwarding events failed", "err", resultErr)
@@ -116,7 +117,7 @@ func NewForwardingEvents(ctx context.Context, socketBufferBytes int) (result *Fo
 				failures <- failure
 			}
 		}()
-		receiveErr = source.receive(ctx, raw, changes)
+		receiveErr = source.receive(ctx, log, raw, changes)
 	}()
 	return source, nil
 }
@@ -150,15 +151,16 @@ func (source *ForwardingEvents) Close() error {
 	return nil
 }
 
-func (source *ForwardingEvents) changed(changes chan<- struct{}) {
-	source.generation.Add(1)
+func (source *ForwardingEvents) changed(changes chan<- struct{}) uint64 {
+	generation := source.generation.Add(1)
 	select {
 	case changes <- struct{}{}:
 	default:
 	}
+	return generation
 }
 
-func (source *ForwardingEvents) receive(ctx context.Context, raw syscall.RawConn, changes chan<- struct{}) (resultErr error) {
+func (source *ForwardingEvents) receive(ctx context.Context, log *slog.Logger, raw syscall.RawConn, changes chan<- struct{}) (resultErr error) {
 	delegatedFailure := false
 	defer func() {
 		if resultErr != nil && !delegatedFailure {
@@ -191,7 +193,8 @@ func (source *ForwardingEvents) receive(ctx context.Context, raw syscall.RawConn
 			mutation = mutation || changed
 		}
 		if mutation {
-			source.changed(changes)
+			generation := source.changed(changes)
+			logForwardingMutations(ctx, log, generation, messages)
 		}
 		select {
 		case <-ctx.Done():
