@@ -69,20 +69,25 @@ func (worker *NativeRuntime) retireInvalidEvidence(owner *C.struct_mwan_native) 
 	return failures
 }
 
-func (worker *NativeRuntime) poll(owner *C.struct_mwan_native) (bool, error) {
+func (worker *NativeRuntime) poll(owner *C.struct_mwan_native, stats *C.struct_mwan_native_worker_stats, detail *C.struct_mwan_native_error) (bool, error) {
 	if err := errors.Join(worker.retireInvalidEvidence(owner), worker.retireInvalidVXLANEvidence(owner)); err != nil {
 		worker.mu.Lock()
 		worker.pollError = err
 		worker.mu.Unlock()
 		return false, err
 	}
-	var stats C.struct_mwan_native_worker_stats
-	var detail C.struct_mwan_native_error
-	rc := C.mwan_native_poll(owner, C.uint32_t(worker.pollBudget), &stats, &detail)
-	err := nativeCallError(rc, detail)
+	var emptyStats C.struct_mwan_native_worker_stats
+	var emptyDetail C.struct_mwan_native_error
+	*stats = emptyStats
+	*detail = emptyDetail
+	rc := C.mwan_native_poll(owner, C.uint32_t(worker.pollBudget), stats, detail)
+	var err error
+	if rc != 0 {
+		err = nativeCallError(rc, *detail)
+	}
 	worker.mu.Lock()
 	previous := worker.stats.Received
-	worker.stats = decodeNativeWorkerStats(stats)
+	worker.stats = decodeNativeWorkerStats(*stats)
 	worker.pollError = err
 	worker.mu.Unlock()
 	return uint64(stats.received) != previous, err

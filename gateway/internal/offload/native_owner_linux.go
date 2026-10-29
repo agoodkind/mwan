@@ -25,6 +25,7 @@ func (worker *NativeRuntime) run(config C.struct_mwan_native_config, ready chan<
 	if owner == nil {
 		return
 	}
+	var stats C.struct_mwan_native_worker_stats
 	active := rc == 0
 	for {
 		var request nativeRequest
@@ -34,7 +35,7 @@ func (worker *NativeRuntime) run(config C.struct_mwan_native_config, ready chan<
 			select {
 			case request = <-worker.requests:
 			default:
-				received, err := worker.poll(owner)
+				received, err := worker.poll(owner, &stats, &detail)
 				if err != nil {
 					worker.log.Error("native packet worker stopped admitting packets", "err", err)
 					active = false
@@ -59,7 +60,7 @@ func (worker *NativeRuntime) run(config C.struct_mwan_native_config, ready chan<
 			return
 		}
 		if active {
-			if _, err := worker.poll(owner); err != nil {
+			if _, err := worker.poll(owner, &stats, &detail); err != nil {
 				worker.log.Error("native packet worker stopped admitting packets", "err", err)
 				active = false
 			}
