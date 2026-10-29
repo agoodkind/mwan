@@ -23,7 +23,6 @@ import (
 type forwardingNeighborLog struct {
 	Message    string                             `json:"msg"`
 	Generation uint64                             `json:"generation"`
-	Count      int                                `json:"mutation_count"`
 	Mutations  map[string]forwardingNeighborEntry `json:"mutations"`
 	readError  error
 }
@@ -68,30 +67,29 @@ func checkEquivalentForwardingNeighbors(t *testing.T, family int) {
 	}
 	previous := source.Generation()
 	batch, entry := changeForwardingNeighbor(t, ctx, records, neighbor, unix.RTM_NEWNEIGH)
-	if !entry.Invalidates || batch.Generation <= previous {
-		t.Fatal("first neighbor observation did not invalidate forwarding evidence")
+	if err := source.Err(); err != nil || source.Generation() <= previous {
+		t.Fatalf("first neighbor observation did not invalidate forwarding evidence: generation=%d previous=%d error=%v batch=%+v entry=%+v", source.Generation(), previous, err, batch, entry)
 	}
-	baseline := batch.Generation
+	baseline := source.Generation()
 	for _, state := range []int{unix.NUD_NOARP, unix.NUD_REACHABLE, unix.NUD_STALE, unix.NUD_DELAY, unix.NUD_PROBE, unix.NUD_PERMANENT} {
 		neighbor.State = state
 		batch, entry = changeForwardingNeighbor(t, ctx, records, neighbor, unix.RTM_NEWNEIGH)
-		if entry.Invalidates || batch.Generation != baseline || source.Generation() != baseline {
-			t.Fatalf("equivalent state %d invalidated evidence: batch=%+v entry=%+v generation=%d", state, batch, entry, source.Generation())
+		if err := source.Err(); err != nil || source.Generation() != baseline {
+			t.Fatalf("equivalent state %d changed forwarding evidence: generation=%d baseline=%d error=%v batch=%+v entry=%+v", state, source.Generation(), baseline, err, batch, entry)
 		}
 		assertForwardingNeighborPath(t, ctx, selector, neighbor, true)
 	}
 	neighbor.HardwareAddr = net.HardwareAddr{2, 0, 0, 0, 0, 3}
 	batch, entry = changeForwardingNeighbor(t, ctx, records, neighbor, unix.RTM_NEWNEIGH)
-	if !entry.Invalidates || batch.Generation <= baseline {
-		t.Fatalf("changed MAC did not invalidate its exact neighbor notification: %+v %+v", batch, entry)
+	if err := source.Err(); err != nil || source.Generation() <= baseline {
+		t.Fatalf("changed MAC did not invalidate its exact neighbor notification: generation=%d baseline=%d error=%v batch=%+v entry=%+v", source.Generation(), baseline, err, batch, entry)
 	}
-	baseline = batch.Generation
+	baseline = source.Generation()
 	neighbor.State = unix.NUD_NOARP
 	batch, entry = changeForwardingNeighbor(t, ctx, records, neighbor, unix.RTM_NEWNEIGH)
-	if entry.Invalidates || batch.Generation != baseline || source.Generation() != baseline {
-		t.Fatalf("equivalent update changed the confirmed MAC-change generation: %+v %+v", batch, entry)
+	if err := source.Err(); err != nil || source.Generation() != baseline {
+		t.Fatalf("equivalent update changed the confirmed MAC-change generation: generation=%d baseline=%d error=%v batch=%+v entry=%+v", source.Generation(), baseline, err, batch, entry)
 	}
-	t.Logf("ordered neighbor notification summary contained %d records", batch.Count)
 	assertForwardingNeighborPath(t, ctx, selector, neighbor, true)
 	for _, state := range []int{unix.NUD_FAILED, unix.NUD_INCOMPLETE} {
 		previous = source.Generation()
@@ -99,25 +97,27 @@ func checkEquivalentForwardingNeighbors(t *testing.T, family int) {
 		unusable := neighbor
 		unusable.HardwareAddr = nil
 		batch, entry = changeForwardingNeighbor(t, ctx, records, unusable, unix.RTM_NEWNEIGH)
-		if !entry.Invalidates || batch.Generation <= previous {
-			t.Fatalf("unusable neighbor state %d did not invalidate evidence", state)
+		if err := source.Err(); err != nil || source.Generation() <= previous {
+			t.Fatalf("unusable neighbor state %d did not invalidate evidence: generation=%d previous=%d error=%v batch=%+v entry=%+v", state, source.Generation(), previous, err, batch, entry)
 		}
 		assertForwardingNeighborPath(t, ctx, selector, neighbor, false)
 		neighbor.State = unix.NUD_PERMANENT
+		previous = source.Generation()
 		batch, entry = changeForwardingNeighbor(t, ctx, records, neighbor, unix.RTM_NEWNEIGH)
-		if !entry.Invalidates {
-			t.Fatal("recovery after unusable state reused a revoked baseline")
+		if err := source.Err(); err != nil || source.Generation() <= previous {
+			t.Fatalf("recovery after unusable state reused a revoked baseline: generation=%d previous=%d error=%v batch=%+v entry=%+v", source.Generation(), previous, err, batch, entry)
 		}
 	}
 	previous = source.Generation()
 	batch, entry = changeForwardingNeighbor(t, ctx, records, neighbor, unix.RTM_DELNEIGH)
-	if !entry.Invalidates || batch.Generation <= previous {
-		t.Fatal("neighbor deletion did not invalidate evidence")
+	if err := source.Err(); err != nil || source.Generation() <= previous {
+		t.Fatalf("neighbor deletion did not invalidate evidence: generation=%d previous=%d error=%v batch=%+v entry=%+v", source.Generation(), previous, err, batch, entry)
 	}
 	assertForwardingNeighborPath(t, ctx, selector, neighbor, false)
+	previous = source.Generation()
 	batch, entry = changeForwardingNeighbor(t, ctx, records, neighbor, unix.RTM_NEWNEIGH)
-	if !entry.Invalidates {
-		t.Fatal("neighbor creation after deletion reused a revoked baseline")
+	if err := source.Err(); err != nil || source.Generation() <= previous {
+		t.Fatalf("neighbor creation after deletion reused a revoked baseline: generation=%d previous=%d error=%v batch=%+v entry=%+v", source.Generation(), previous, err, batch, entry)
 	}
 }
 
