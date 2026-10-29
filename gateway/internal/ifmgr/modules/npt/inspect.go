@@ -386,6 +386,11 @@ func decodePrefixMask(bitwise *expr.Bitwise, register uint32) (int, bool) {
 }
 
 func decodeAction(expressions []expr.Any) (natOp, netip.Addr, netip.Prefix, bool) {
+	if len(expressions) == 1 {
+		if _, ok := expressions[0].(*expr.Masq); ok {
+			return opMasquerade, netip.Addr{}, netip.Prefix{}, true
+		}
+	}
 	if isGuardAction(expressions) {
 		return opGuard, netip.Addr{}, netip.Prefix{}, true
 	}
@@ -594,6 +599,8 @@ func formatRule(rule natRule) string {
 		action = "snat prefix to " + rule.ToPfx.String()
 	case opDNATPrefix:
 		action = "dnat prefix to " + rule.ToPfx.String()
+	case opMasquerade:
+		action = "masquerade"
 	case opGuard:
 	}
 	return fmt.Sprintf(

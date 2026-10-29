@@ -211,7 +211,9 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	desiredEdges := make(map[ifmgr.NPTEdgeRecord]bool)
 
 	for _, wan := range m.cfg.WANs {
-		rules[wan.Key()] = nil
+		if addMasqueradeRules(wan, &desired, rules) {
+			continue
+		}
 		if m.addressesNotApplied(wan) {
 			m.retainCurrentTranslation(wan, desiredEdges, &desired, rules, pairs, delegated)
 			reconcileErr = errors.Join(reconcileErr,
@@ -596,6 +598,7 @@ func (m *Module) publishLiveState(
 			wan, delegated[wan.Key()], applied && rendered.HasInterface(wan.Iface),
 			bpfReady[wan.Key()], nativeReady && inspectErr == nil && rendered.interfaceAbsent(wan.Iface),
 		)
+		m.updateMasqueradeReadiness(wan, &member.V6, rendered, applied && inspectErr == nil && nativeReady)
 		if pair, found := pairs[wan.Key()]; found && member.V6.Ready {
 			if pair.Internal == member.V6.InternalPrefix && pair.External == member.V6.ExternalPrefix {
 				verifiedPairs[wan.Key()] = pair
@@ -608,6 +611,39 @@ func (m *Module) publishLiveState(
 	}
 	if m.Env.LiveState.SetNPTTranslation(members, verifiedPairs) && m.Env.RequestReconcile != nil {
 		m.Env.RequestReconcile("NPT translation readiness changed")
+	}
+}
+
+func isMasquerade(wan WAN) bool {
+	return wan.Translation != nil && wan.Translation.Mode == config.TranslationMasquerade
+}
+
+func addMasqueradeRules(wan WAN, desired *desiredRules, rules map[string][]natRule) bool {
+	rules[wan.Key()] = nil
+	if !isMasquerade(wan) {
+		return false
+	}
+	rules[wan.Key()] = []natRule{masqueradeRule(wan.Iface)}
+	desired.add(rules[wan.Key()])
+	return true
+}
+
+func masqueradeRule(iface string) natRule {
+	return natRule{Chain: chainPostrouting, Iface: iface, Match: netip.MustParsePrefix("::/0"), Op: opMasquerade, ToAddr: netip.Addr{}, ToPfx: netip.Prefix{}}
+}
+
+func (m *Module) updateMasqueradeReadiness(wan WAN, state *wanstate.FamilyTranslation, rendered RenderedTable, verified bool) {
+	if !isMasquerade(wan) {
+		return
+	}
+	expected := formatRule(masqueradeRule(wan.Iface))
+	state.Ready = verified && slices.Contains(rendered.Postrouting, expected)
+	if !state.Ready {
+		state.Reason = "IPv6 masquerade is not verified"
+	}
+	if wan.Owned && (m.Env.OwnedAddresses == nil || !m.Env.OwnedAddresses.FamilyReady(wan.Key(), "ipv6")) {
+		state.Ready = false
+		state.Reason = "MWAN-owned IPv6 addresses are not verified"
 	}
 }
 

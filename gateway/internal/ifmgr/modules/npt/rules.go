@@ -23,6 +23,7 @@ const (
 	opSNATPrefix
 	// opDNATPrefix NETMAP-translates the matched destination prefix onto ToPfx.
 	opDNATPrefix
+	opMasquerade
 )
 
 func (o natOp) String() string {
@@ -37,6 +38,8 @@ func (o natOp) String() string {
 		return "snat-prefix"
 	case opDNATPrefix:
 		return "dnat-prefix"
+	case opMasquerade:
+		return "masquerade"
 	}
 	return fmt.Sprintf("op(%d)", int(o))
 }
@@ -79,6 +82,8 @@ func (r natRule) String() string {
 		return fmt.Sprintf("%s %s match=%s %s to %s", r.Chain, r.Iface, r.Match, r.Op, r.ToAddr)
 	case opSNATPrefix, opDNATPrefix:
 		return fmt.Sprintf("%s %s match=%s %s to %s", r.Chain, r.Iface, r.Match, r.Op, r.ToPfx)
+	case opMasquerade:
+		return fmt.Sprintf("%s %s match=%s masquerade", r.Chain, r.Iface, r.Match)
 	}
 	return fmt.Sprintf("%s %s match=%s %s", r.Chain, r.Iface, r.Match, r.Op)
 }

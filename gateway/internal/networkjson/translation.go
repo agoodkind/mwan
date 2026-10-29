@@ -81,7 +81,7 @@ func buildTranslationV6(label string, entry ifaceEntry) (*config.IPv6Translation
 	if policy == nil {
 		return nil, fmt.Errorf("%s: translation policy is required", label)
 	}
-	if policy.Mode != config.TranslationNative && policy.Mode != config.TranslationNPTv6 {
+	if policy.Mode != config.TranslationNative && policy.Mode != config.TranslationNPTv6 && policy.Mode != config.TranslationMasquerade {
 		return nil, fmt.Errorf("%s: translation mode %q is not supported", label, policy.Mode)
 	}
 	if err := translationInterface(label, entry.Name, policy.Mode); err != nil {
@@ -90,9 +90,9 @@ func buildTranslationV6(label string, entry ifaceEntry) (*config.IPv6Translation
 	if len(policy.StaticMappings) != 0 {
 		return nil, fmt.Errorf("%s: IPv4 static mappings are not valid for IPv6", label)
 	}
-	if policy.Mode == config.TranslationNative {
+	if policy.Mode == config.TranslationNative || policy.Mode == config.TranslationMasquerade {
 		if policy.NPT != nil {
-			return nil, fmt.Errorf("%s: native mode cannot configure NPTv6", label)
+			return nil, fmt.Errorf("%s: mode %s cannot configure NPTv6", label, policy.Mode)
 		}
 		return &config.IPv6Translation{Mode: policy.Mode, NPT: nil}, nil
 	}

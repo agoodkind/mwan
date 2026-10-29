@@ -296,6 +296,8 @@ func actionExprs(rule natRule) ([]expr.Any, error) {
 		return prefixNATExprs(expr.NATTypeSourceNAT, rule.ToPfx), nil
 	case opDNATPrefix:
 		return prefixNATExprs(expr.NATTypeDestNAT, rule.ToPfx), nil
+	case opMasquerade:
+		return []expr.Any{&expr.Masq{}}, nil
 	}
 	return nil, fmt.Errorf("npt: unknown nat op %s", rule.Op)
 }

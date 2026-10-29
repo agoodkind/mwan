@@ -531,6 +531,9 @@ func (module *Module) reconcileFamily(ctx context.Context, log *slog.Logger, con
 		}
 	}
 	ready, ok := module.Env.OwnedLinks.Get(id)
+	if family == "ipv6" && !leaseReady && ok {
+		leaseReady = module.hasUsableAutoconfiguredAddress(ctx, log, connection, ready.ActualName)
+	}
 	err := errors.Join(leaseError, preparationErr)
 	if err == nil && !ok {
 		err = fmt.Errorf("current link result is absent")
@@ -554,6 +557,27 @@ func (module *Module) reconcileFamily(ctx context.Context, log *slog.Logger, con
 	if module.Env.LiveState != nil {
 		module.Env.LiveState.SetFamilyApplyResult(id, family, wanstate.ApplyResult{Operation: "reconcile-addresses", Dependency: "link", Result: result, Reason: reason, At: time.Time{}})
 	}
+}
+
+func (module *Module) hasUsableAutoconfiguredAddress(ctx context.Context, log *slog.Logger, connection interfaceintent.Connection, name string) bool {
+	if connection.IPv6 == nil || connection.IPv6.AutoConf == nil || !*connection.IPv6.AutoConf {
+		return false
+	}
+	provider := module.providers[connection.ID.String()]
+	if provider.IPv6 == nil || provider.IPv6.Mode != config.TranslationMasquerade {
+		return false
+	}
+	addresses, err := netif.ListAddrs(ctx, log, name)
+	if err != nil {
+		return false
+	}
+	for _, address := range addresses {
+		prefix, parseErr := netip.ParsePrefix(address.CIDR)
+		if parseErr == nil && prefix.Addr().Is6() && prefix.Addr().IsGlobalUnicast() && address.Flags&(unix.IFA_F_TENTATIVE|unix.IFA_F_DADFAILED|unix.IFA_F_DEPRECATED) == 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (module *Module) recoveryRetention(connection interfaceintent.Connection, family string, ready netif.OwnedLinkResult) netif.RecordedRetention {
