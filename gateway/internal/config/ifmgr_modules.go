@@ -101,6 +101,10 @@ type IfMgrOOBV6Section struct {
 type IfMgrOOBV4Section struct {
 	Iface      string `toml:"iface"`
 	OOBTableID int    `toml:"oob_table_id"`
+	// SourceRulePriority enables the lease source rule when nonzero. Keep the
+	// priority and table stable while the rule exists. A change does not remove
+	// a rule installed with the previous values.
+	SourceRulePriority int `toml:"source_rule_priority"`
 }
 
 // IfMgrSLAACHealthSection is the [ifmgr.modules.slaac_health] table. The

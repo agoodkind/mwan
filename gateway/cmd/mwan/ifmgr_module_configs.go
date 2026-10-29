@@ -537,15 +537,14 @@ func buildOOBV6Config(section *config.IfMgrOOBV6Section) oobv6.Config {
 
 func buildOOBV4Config(section *config.IfMgrOOBV4Section) oobv4.Config {
 	cfg := oobv4.Config{
-		Iface:      "",
-		OOBTableID: 0,
-		StateFile:  "",
+		Iface: "", OOBTableID: 0, StateFile: "", SourceRulePriority: 0,
 	}
 	if section == nil {
 		return cfg
 	}
 	cfg.Iface = section.Iface
 	cfg.OOBTableID = section.OOBTableID
+	cfg.SourceRulePriority = section.SourceRulePriority
 	return cfg
 }
 
