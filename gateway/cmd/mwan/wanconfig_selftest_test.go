@@ -10,7 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/wanconfig"
+	"goodkind.io/mwan/internal/wanstate"
 	"goodkind.io/mwan/internal/yangpub"
 )
 
@@ -245,4 +247,75 @@ func TestPublishedTreeRoundTripsThroughSysrepo(t *testing.T) {
 			}
 		}
 	}
+	t.Run("IPv6 masquerade operational state", func(t *testing.T) {
+		gateway.Members[0].TranslationV6 = &config.IPv6Translation{Mode: config.TranslationMasquerade}
+		if err := wanconfig.Publish(ctx, log, runningReplacer{pub: daemon}, gateway); err != nil {
+			t.Fatalf("publish masquerade: %v", err)
+		}
+		for _, module := range publishedModules {
+			if err := daemon.OwnModule(ctx, module); err != nil {
+				t.Fatal(err)
+			}
+		}
+		store := selftestStore()
+		store.SetTranslation(map[string]wanstate.MemberTranslation{"example": {
+			V4: wanstate.FamilyTranslation{Mode: string(config.TranslationNAPT44), Ready: true},
+			V6: wanstate.FamilyTranslation{Mode: string(config.TranslationMasquerade), Ready: true},
+		}})
+		if err := registerLiveStateProviders(ctx, log, daemon, store, gateway, nil); err != nil {
+			t.Fatal(err)
+		}
+		interfaces, found, err := reader.ExportJSON(ctx, yangpub.DatastoreOperational, "/ietf-interfaces:*")
+		if err != nil || !found {
+			t.Fatalf("read operational interfaces: found=%v err=%v", found, err)
+		}
+		var tree struct {
+			Interfaces struct {
+				Interface []struct {
+					Name string `json:"name"`
+					IPv6 struct {
+						Translation struct {
+							Mode  string `json:"mode"`
+							State struct {
+								Ready bool `json:"ready"`
+							} `json:"state"`
+						} `json:"goodkind-mwan-steering:translation"`
+					} `json:"ietf-ip:ipv6"`
+				} `json:"interface"`
+			} `json:"ietf-interfaces:interfaces"`
+		}
+		if err := json.Unmarshal([]byte(interfaces), &tree); err != nil {
+			t.Fatal(err)
+		}
+		matched := false
+		for _, entry := range tree.Interfaces.Interface {
+			if entry.Name == gateway.Members[0].Iface {
+				matched = entry.IPv6.Translation.Mode == "masquerade" && entry.IPv6.Translation.State.Ready
+			}
+		}
+		if !matched {
+			t.Fatalf("operational IPv6 masquerade and readiness missing: %s", interfaces)
+		}
+		nat, found, err := reader.ExportJSON(ctx, yangpub.DatastoreOperational, "/ietf-nat:*")
+		if err != nil || !found {
+			t.Fatalf("read operational NAT: found=%v err=%v", found, err)
+		}
+		var natTree struct {
+			NAT struct {
+				Instances struct {
+					Instance []struct {
+						ID   uint32 `json:"id"`
+						Name string `json:"name"`
+					} `json:"instance"`
+				} `json:"instances"`
+			} `json:"ietf-nat:nat"`
+		}
+		if err := json.Unmarshal([]byte(nat), &natTree); err != nil {
+			t.Fatal(err)
+		}
+		instances := natTree.NAT.Instances.Instance
+		if len(instances) != 1 || instances[0].Name != "example/ipv4" || instances[0].ID != gateway.Members[0].TranslationIDV4 {
+			t.Fatalf("unexpected NAT instances: %s", nat)
+		}
+	})
 }

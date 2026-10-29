@@ -1120,7 +1120,7 @@ module goodkind-mwan-steering {
       leaf mode {
         mandatory true;
         type union {
-          type enumeration { enum native; enum masquerade; }
+          type enumeration { enum native; }
           type identityref { base nat:nat-type; }
         }
         description "Native routing or an RFC 8512 translation type.";

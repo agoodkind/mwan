@@ -532,7 +532,7 @@ func (module *Module) reconcileFamily(ctx context.Context, log *slog.Logger, con
 	}
 	ready, ok := module.Env.OwnedLinks.Get(id)
 	if family == "ipv6" && !leaseReady && ok {
-		leaseReady = module.hasUsableAutoconfiguredAddress(ctx, log, connection, ready.ActualName)
+		leaseReady, leaseError = module.hasUsableAutoconfiguredAddress(ctx, log, connection, ready.ActualName)
 	}
 	err := errors.Join(leaseError, preparationErr)
 	if err == nil && !ok {
@@ -559,25 +559,26 @@ func (module *Module) reconcileFamily(ctx context.Context, log *slog.Logger, con
 	}
 }
 
-func (module *Module) hasUsableAutoconfiguredAddress(ctx context.Context, log *slog.Logger, connection interfaceintent.Connection, name string) bool {
+func (module *Module) hasUsableAutoconfiguredAddress(ctx context.Context, log *slog.Logger, connection interfaceintent.Connection, name string) (bool, error) {
 	if connection.IPv6 == nil || connection.IPv6.AutoConf == nil || !*connection.IPv6.AutoConf {
-		return false
+		return false, nil
 	}
 	provider := module.providers[connection.ID.String()]
 	if provider.IPv6 == nil || provider.IPv6.Mode != config.TranslationMasquerade {
-		return false
+		return false, nil
 	}
 	addresses, err := netif.ListAddrs(ctx, log, name)
 	if err != nil {
-		return false
+		log.WarnContext(ctx, "addresses: IPv6 address lookup failed", "interface", name, "err", err)
+		return false, fmt.Errorf("list IPv6 addresses on %s: %w", name, err)
 	}
 	for _, address := range addresses {
 		prefix, parseErr := netip.ParsePrefix(address.CIDR)
 		if parseErr == nil && prefix.Addr().Is6() && prefix.Addr().IsGlobalUnicast() && address.Flags&(unix.IFA_F_TENTATIVE|unix.IFA_F_DADFAILED|unix.IFA_F_DEPRECATED) == 0 {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 func (module *Module) recoveryRetention(connection interfaceintent.Connection, family string, ready netif.OwnedLinkResult) netif.RecordedRetention {
