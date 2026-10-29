@@ -88,12 +88,32 @@ func (stage admissionStage) outcome() admissionOutcome {
 		return admissionHandled
 	case admissionInstalled, candidateReady:
 		return admissionAccepted
-	default:
+	case admissionNotReady, admissionPaused, admissionObservationAge, admissionObservationIneligible,
+		admissionAttemptFailed, admissionAttemptThrottled, admissionCandidateRejected, admissionRetirementFailed,
+		admissionStorageRejected, admissionFreshLookupFailed, admissionFreshPolicyMismatch, admissionObservationExpired,
+		admissionEvidenceChanged, admissionInstallationFailed, admissionInstallationIncomplete,
+		candidateIngressUnbound, candidateOriginAbsent, candidateDestinationMAC, candidateLinksChanged,
+		candidateIngressTranslation, candidateConntrackLookup, candidateConnectionIneligible, candidateWANNotReady,
+		candidatePolicyRejected, candidateTupleDirection, candidateRouteLookup, candidateRouteUnusable,
+		candidateOutputUnbound, candidatePathRejected, candidateIPv4Mapping, candidateIPv6Translation,
+		candidateMTUInvalid, candidateLengthAboveMTU, candidateGenerationChanged, candidatePolicyBecameUnready,
+		admissionStageCount:
 		return admissionRejected
 	}
+	return admissionRejected
 }
 
 const admissionErrorBytes = 512
+
+func installationStage(result offload.NativePairResult, requested uint32, err error) admissionStage {
+	if err != nil {
+		return admissionInstallationFailed
+	}
+	if result.State != offload.NativePairInstalled || result.InstalledDirections != requested {
+		return admissionInstallationIncomplete
+	}
+	return admissionInstalled
+}
 
 type admissionError struct {
 	text      [admissionErrorBytes]byte
@@ -102,14 +122,16 @@ type admissionError struct {
 	present   bool
 }
 
-func (detail *admissionError) freeze(err error) {
+func freezeAdmissionError(err error) admissionError {
+	var detail admissionError
 	if err == nil {
-		return
+		return detail
 	}
 	message := err.Error()
 	detail.present = true
 	detail.length = copy(detail.text[:], message)
 	detail.truncated = len(message) > len(detail.text)
+	return detail
 }
 
 func (detail admissionError) LogValue() slog.Value {
@@ -131,7 +153,7 @@ type admissionConnection struct {
 }
 
 func freezeAdmissionConnection(flow conntrack.Flow) admissionConnection {
-	result := admissionConnection{Valid: true, ID: flow.ID, Mark: flow.Mark, Timeout: flow.Timeout, Status: flow.Status, Zone: flow.Zone, Original: flow.TupleOrig, Reply: flow.TupleReply}
+	result := admissionConnection{Valid: true, ID: flow.ID, Mark: flow.Mark, Timeout: flow.Timeout, Status: flow.Status, Zone: flow.Zone, TCPPresent: false, TCPState: 0, Original: flow.TupleOrig, Reply: flow.TupleReply}
 	if flow.ProtoInfo.TCP != nil {
 		result.TCPPresent, result.TCPState = true, flow.ProtoInfo.TCP.State
 	}
@@ -155,7 +177,8 @@ type admissionRoute struct {
 }
 
 func freezeAdmissionRoute(selector netif.PacketSelector, path netif.ForwardingPath, usable bool) admissionRoute {
-	result := admissionRoute{Queried: true, Usable: usable, Selector: selector}
+	var result admissionRoute
+	result.Queried, result.Usable, result.Selector = true, usable, selector
 	if path.Link == nil {
 		return result
 	}
@@ -235,7 +258,7 @@ func (module *Module) recordAdmission(stage admissionStage, observation packetOb
 		*sample = *details
 	}
 	sample.observation, sample.observedAt = observation.NativeObservation, observation.at
-	sample.decodeFailure.freeze(sample.observation.DecodeError)
+	sample.decodeFailure = freezeAdmissionError(sample.observation.DecodeError)
 	sample.observation.DecodeError = nil
 	if !sample.ageChecked {
 		sample.age = (clock.Real{}).Now().Sub(observation.at)
@@ -247,7 +270,7 @@ func (module *Module) recordAdmission(stage admissionStage, observation packetOb
 	sample.inputName = input.kernel.Name
 	copy(sample.inputMAC[:], input.kernel.HardwareAddr)
 	sample.runtimePresent, sample.policyBlocked, sample.paused = module.runtime != nil, module.policyBlocked, module.admissionPaused.Load()
-	sample.failure.freeze(err)
+	sample.failure = freezeAdmissionError(err)
 	diagnostics.present[stage] = true
 }
 
@@ -298,11 +321,13 @@ func (module *Module) logAdmissionDiagnostics(ctx context.Context) {
 	for stage, count := range snapshot.counts {
 		attributes = append(attributes, slog.Uint64(admissionStage(stage).String(), count))
 	}
-	module.Log.InfoContext(ctx, "native admission diagnostics", "counters", slog.GroupValue(attributes...))
+	samples := make([]slog.Attr, 0, admissionStageCount)
 	for stage, present := range snapshot.present {
 		if present {
 			sample := snapshot.samples[stage]
-			module.Log.InfoContext(ctx, "native admission diagnostic sample", "stage", admissionStage(stage).String(), "outcome", admissionStage(stage).outcome(), "interface", sample.inputName, "ifindex", sample.ifindex, "sample", sample.logValue())
+			value := slog.GroupValue(slog.String("outcome", string(admissionStage(stage).outcome())), slog.String("interface", sample.inputName), slog.Int("ifindex", sample.ifindex), slog.Attr{Key: "sample", Value: sample.logValue()})
+			samples = append(samples, slog.Attr{Key: admissionStage(stage).String(), Value: value})
 		}
 	}
+	module.Log.InfoContext(ctx, "native admission diagnostics", "counters", slog.GroupValue(attributes...), "samples", slog.GroupValue(samples...))
 }

@@ -21,12 +21,15 @@ import (
 )
 
 type admissionDiagnosticRecord struct {
-	Message   string            `json:"msg"`
-	Stage     string            `json:"stage"`
-	Outcome   admissionOutcome  `json:"outcome"`
-	Interface string            `json:"interface"`
-	Ifindex   int               `json:"ifindex"`
-	Counters  map[string]uint64 `json:"counters"`
+	Message  string                               `json:"msg"`
+	Counters map[string]uint64                    `json:"counters"`
+	Samples  map[string]admissionDiagnosticSample `json:"samples"`
+}
+
+type admissionDiagnosticSample struct {
+	Outcome   admissionOutcome `json:"outcome"`
+	Interface string           `json:"interface"`
+	Ifindex   int              `json:"ifindex"`
 	Sample    struct {
 		ObservedAt  time.Time                 `json:"observed_at"`
 		Age         time.Duration             `json:"age"`
@@ -67,7 +70,7 @@ func TestNativeAdmissionDiagnostics(t *testing.T) {
 	if ready.Outcome != admissionAccepted || rejected.Outcome != admissionRejected {
 		t.Fatalf("candidate diagnostics changed the admission outcome: ready=%+v rejected=%+v", ready, rejected)
 	}
-	for _, record := range []admissionDiagnosticRecord{ready, rejected} {
+	for _, record := range []admissionDiagnosticSample{ready, rejected} {
 		connection := record.Sample.Connection
 		if record.Ifindex != fixture.input.Index || record.Interface != fixture.input.Name || !record.Sample.ObservedAt.Equal(observation.at) || record.Sample.Age < 0 || record.Sample.Observation.Tuple != observation.Tuple || !connection.Valid || connection.ID != flow.ID || connection.Original != flow.TupleOrig || connection.Reply != flow.TupleReply || connection.Timeout == 0 || connection.Status != flow.Status || !connection.TCPPresent || connection.TCPState != conntrackEstablished {
 			t.Fatalf("candidate diagnostic lost the observed packet or kernel evidence: %+v", record)
@@ -219,24 +222,27 @@ func readAdmissionDiagnostics(t *testing.T, output *bytes.Buffer) []admissionDia
 		var record admissionDiagnosticRecord
 		err := decoder.Decode(&record)
 		if errors.Is(err, io.EOF) {
+			if len(records) > 1 {
+				t.Fatalf("one reporting interval emitted %d admission summaries", len(records))
+			}
 			return records
 		}
 		if err != nil {
 			t.Fatal(err)
 		}
-		if record.Message == "native admission diagnostic sample" || record.Message == "native admission diagnostics" {
+		if record.Message == "native admission diagnostics" {
 			records = append(records, record)
 		}
 	}
 }
 
-func requireAdmissionSample(t *testing.T, records []admissionDiagnosticRecord, stage string, expected int) admissionDiagnosticRecord {
+func requireAdmissionSample(t *testing.T, records []admissionDiagnosticRecord, stage string, expected int) admissionDiagnosticSample {
 	t.Helper()
 	count := 0
-	var sample admissionDiagnosticRecord
+	var sample admissionDiagnosticSample
 	for _, record := range records {
-		if record.Message == "native admission diagnostic sample" && record.Stage == stage {
-			sample = record
+		if current, present := record.Samples[stage]; present {
+			sample = current
 			count++
 		}
 	}

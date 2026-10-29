@@ -64,7 +64,7 @@ func (diagnostics *captureDiagnostics) record(stage captureStage, frame []byte, 
 	if diagnostics.samples[stage] != nil {
 		return
 	}
-	sample := &captureSample{}
+	sample := new(captureSample)
 	if address, ok := sender.(*unix.SockaddrLinklayer); ok {
 		sample.sender, sample.senderValid = *address, true
 	}
@@ -128,18 +128,25 @@ func (sample *captureSample) logValue() slog.Value {
 
 func (module *Module) logCaptureDiagnostics(ctx context.Context) {
 	stages := [captureStageCount]string{"received", "sender_rejected", "interface_rejected", "outgoing_rejected", "socket_overflow", "paused", "checksum_pending", "vlan", "decoder_ineligible", "queued", "queue_full"}
-	for _, capture := range module.captureSnapshot() {
+	captures := module.captureSnapshot()
+	interfaces := make([]slog.Attr, 0, len(captures))
+	for _, capture := range captures {
 		diagnostics := capture.diagnostics
 		counts, samples := diagnostics.snapshot()
 		attributes := make([]slog.Attr, 0, captureStageCount)
 		for stage, count := range counts {
 			attributes = append(attributes, slog.Uint64(stages[stage], count))
 		}
-		module.Log.InfoContext(ctx, "native capture diagnostics", "interface", diagnostics.name, "ifindex", diagnostics.ifindex, "counters", slog.GroupValue(attributes...))
+		sampleAttributes := make([]slog.Attr, 0, captureStageCount)
 		for stage, sample := range samples {
 			if sample != nil {
-				module.Log.InfoContext(ctx, "native capture diagnostic sample", "interface", diagnostics.name, "ifindex", diagnostics.ifindex, "stage", stages[stage], "sample", sample.logValue())
+				sampleAttributes = append(sampleAttributes, slog.Attr{Key: stages[stage], Value: sample.logValue()})
 			}
 		}
+		value := slog.GroupValue(slog.Int("ifindex", diagnostics.ifindex), slog.Attr{Key: "counters", Value: slog.GroupValue(attributes...)}, slog.Attr{Key: "samples", Value: slog.GroupValue(sampleAttributes...)})
+		interfaces = append(interfaces, slog.Attr{Key: diagnostics.name, Value: value})
+	}
+	if len(interfaces) != 0 {
+		module.Log.InfoContext(ctx, "native capture diagnostics", "interfaces", slog.GroupValue(interfaces...))
 	}
 }

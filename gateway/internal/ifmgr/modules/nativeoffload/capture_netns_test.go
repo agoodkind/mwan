@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"log/slog"
 	"math/bits"
 	"net"
@@ -22,6 +21,7 @@ import (
 
 	"github.com/gopacket/gopacket"
 	"github.com/gopacket/gopacket/layers"
+	"github.com/ti-mo/conntrack"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 )
@@ -142,23 +142,26 @@ func TestNativePacketObservationDiagnostics(t *testing.T) {
 	module.Log = slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	module.logCaptureDiagnostics(ctx)
 	report := output.String()
-	observedAt := captureDiagnosticTimestamp(t, report, "paused")
+	reported := readCaptureDiagnosticReport(t, report, input)
+	pausedSample := reported.Samples["paused"]
+	observedAt := pausedSample.ObservedAt
 	if observedAt.Before(sentAt) || observedAt.After(time.Now()) {
 		t.Fatalf("paused diagnostic timestamp does not identify a transmitted frame: sent=%s observed=%s", sentAt, observedAt)
 	}
-	if strings.Count(report, `"stage":"paused"`) != 1 || !strings.Contains(report, `"paused":3`) || !strings.Contains(report, `"eligible":true`) || !strings.Contains(report, `"auxiliary_status":`) || !strings.Contains(report, `"192.0.2.10"`) {
+	if len(reported.Samples) != 1 || reported.Counters["paused"] != 3 || !pausedSample.Eligible || !pausedSample.AuxiliaryValid || pausedSample.AuxiliaryStatus == nil || !pausedSample.ObservedAtValid || pausedSample.Tuple.IP.SourceAddress != netip.MustParseAddr("192.0.2.10") {
 		t.Fatalf("capture report did not include the paused frame and counter: %s", report)
 	}
 	output.Reset()
 	module.logCaptureDiagnostics(ctx)
-	if strings.Contains(output.String(), `"stage":"paused"`) {
+	if len(readCaptureDiagnosticReport(t, output.String(), input).Samples) != 0 {
 		t.Fatalf("capture repeated a sample without a new frame: %s", output.String())
 	}
 	nativeCaptureSend(t, sender, frame)
 	awaitCaptureDiagnostic(t, ctx, capture, capturePaused, 4, failures)
 	output.Reset()
 	module.logCaptureDiagnostics(ctx)
-	if strings.Count(output.String(), `"stage":"paused"`) != 1 || !strings.Contains(output.String(), `"paused":4`) {
+	reported = readCaptureDiagnosticReport(t, output.String(), input)
+	if len(reported.Samples) != 1 || !reported.Samples["paused"].ObservedAtValid || reported.Counters["paused"] != 4 {
 		t.Fatalf("capture did not report a fresh sample and monotonic counter: %s", output.String())
 	}
 	select {
@@ -173,7 +176,8 @@ func TestNativePacketObservationDiagnostics(t *testing.T) {
 	awaitCaptureDiagnostic(t, ctx, capture, captureQueueFull, 1, failures)
 	output.Reset()
 	module.logCaptureDiagnostics(ctx)
-	if !strings.Contains(output.String(), `"queued":1`) || !strings.Contains(output.String(), `"queue_full":1`) || !strings.Contains(output.String(), `"stage":"queue_full"`) {
+	reported = readCaptureDiagnosticReport(t, output.String(), input)
+	if reported.Counters["queued"] != 1 || reported.Counters["queue_full"] != 1 || !reported.Samples["queue_full"].ObservedAtValid {
 		t.Fatalf("capture did not report queue admission and overflow: %s", output.String())
 	}
 	select {
@@ -181,7 +185,7 @@ func TestNativePacketObservationDiagnostics(t *testing.T) {
 		if !observation.Eligible {
 			t.Fatalf("capture admitted an ineligible observation: %+v", observation)
 		}
-		if !observation.at.Equal(captureDiagnosticTimestamp(t, output.String(), "queued")) {
+		if !reported.Samples["queued"].ObservedAtValid || !observation.at.Equal(reported.Samples["queued"].ObservedAt) {
 			t.Fatalf("queued diagnostic changed the kernel observation timestamp: observation=%s report=%s", observation.at, output.String())
 		}
 	default:
@@ -196,36 +200,42 @@ func TestNativePacketObservationDiagnostics(t *testing.T) {
 	awaitCaptureDiagnostic(t, ctx, capture, captureDecoderIneligible, 1, failures)
 	output.Reset()
 	module.logCaptureDiagnostics(ctx)
-	if !strings.Contains(output.String(), `"decoder_ineligible":1`) || !strings.Contains(output.String(), `"stage":"decoder_ineligible"`) || !strings.Contains(output.String(), `"eligible":false`) {
+	reported = readCaptureDiagnosticReport(t, output.String(), input)
+	if reported.Counters["decoder_ineligible"] != 1 || !reported.Samples["decoder_ineligible"].ObservedAtValid || reported.Samples["decoder_ineligible"].Eligible {
 		t.Fatalf("capture did not report the decoder rejection: %s", output.String())
 	}
 }
 
-func captureDiagnosticTimestamp(t *testing.T, report, stage string) time.Time {
+type captureDiagnosticReport struct {
+	Ifindex  int               `json:"ifindex"`
+	Counters map[string]uint64 `json:"counters"`
+	Samples  map[string]struct {
+		ObservedAt      time.Time       `json:"observed_at"`
+		ObservedAtValid bool            `json:"observed_at_valid"`
+		AuxiliaryValid  bool            `json:"auxiliary_valid"`
+		AuxiliaryStatus *uint32         `json:"auxiliary_status"`
+		Eligible        bool            `json:"eligible"`
+		Tuple           conntrack.Tuple `json:"tuple"`
+	} `json:"samples"`
+}
+
+func readCaptureDiagnosticReport(t *testing.T, report string, input *net.Interface) captureDiagnosticReport {
 	t.Helper()
-	decoder := json.NewDecoder(strings.NewReader(report))
-	for {
-		var record struct {
-			Stage  string `json:"stage"`
-			Sample struct {
-				ObservedAt time.Time `json:"observed_at"`
-				Valid      bool      `json:"observed_at_valid"`
-			} `json:"sample"`
-		}
-		err := decoder.Decode(&record)
-		if errors.Is(err, io.EOF) {
-			t.Fatalf("capture omitted the %s diagnostic timestamp: %s", stage, report)
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		if record.Stage == stage {
-			if !record.Sample.Valid || record.Sample.ObservedAt.IsZero() {
-				t.Fatalf("capture omitted valid kernel time for %s: %s", stage, report)
-			}
-			return record.Sample.ObservedAt
-		}
+	var summary struct {
+		Message    string                             `json:"msg"`
+		Interfaces map[string]captureDiagnosticReport `json:"interfaces"`
 	}
+	if err := json.Unmarshal([]byte(report), &summary); err != nil {
+		t.Fatalf("capture did not emit one JSON summary: %v: %s", err, report)
+	}
+	if summary.Message != "native capture diagnostics" || len(summary.Interfaces) != 1 {
+		t.Fatalf("capture omitted its interface summary: %s", report)
+	}
+	current, present := summary.Interfaces[input.Name]
+	if !present || current.Ifindex != input.Index {
+		t.Fatalf("capture changed the observed interface: %s", report)
+	}
+	return current
 }
 
 func awaitCaptureDiagnostic(t *testing.T, ctx context.Context, capture *packetCapture, stage captureStage, minimum uint64, failures <-chan error) {

@@ -161,11 +161,7 @@ func (module *Module) admit(ctx context.Context, observation packetObservation) 
 	if module.cfg.Settings.ObservationDiagnostics {
 		diagnostic.installation, diagnostic.installationValid, diagnostic.requestedDirections = result, true, spec.RequestedDirections
 	}
-	if err != nil {
-		stage, diagnosticErr = admissionInstallationFailed, err
-	} else if result.State != offload.NativePairInstalled || result.InstalledDirections != spec.RequestedDirections {
-		stage = admissionInstallationIncomplete
-	}
+	stage, diagnosticErr = installationStage(result, spec.RequestedDirections, err), err
 	module.retainInstallation(identity, entry, current, result, counterStarted)
 	module.completeInstallation(ctx, identity, spec, result, err, evidence)
 }
@@ -250,17 +246,8 @@ func (module *Module) candidate(ctx context.Context, observation packetObservati
 	var guards [2]offload.NativePacketGuard
 	var emptyFlow conntrack.Flow
 	var wan WAN
-	input, bound := module.links[observation.ifindex]
-	if !bound {
-		stage = candidateIngressUnbound
-		return spec, guards, emptyFlow, wan, EligibilityUnsupported, nil
-	}
-	if !input.hasOrigin {
-		stage = candidateOriginAbsent
-		return spec, guards, emptyFlow, wan, EligibilityUnsupported, nil
-	}
-	if observation.DestinationMAC != [6]byte(input.kernel.HardwareAddr) {
-		stage = candidateDestinationMAC
+	input, stage := module.candidateInput(observation)
+	if stage != candidateReady {
 		return spec, guards, emptyFlow, wan, EligibilityUnsupported, nil
 	}
 	if err := module.verifyLinks(); err != nil {
@@ -359,24 +346,8 @@ func (module *Module) candidate(ctx context.Context, observation packetObservati
 		stage = candidateLengthAboveMTU
 		return spec, guards, flow, wan, EligibilityUnsupported, nil
 	}
-	current := module.Env.LiveState.Snapshot()
-	generationChanged := current.NPTPolicyGeneration != snapshot.NPTPolicyGeneration || current.RoutingGeneration != snapshot.RoutingGeneration
-	policyReady := false
-	if !generationChanged {
-		policyReady = module.policyReady(current, wan, kernelTuple.IP.SourceAddress.Is4())
-	}
-	if module.cfg.Settings.ObservationDiagnostics {
-		diagnostic.generationChecked = true
-		diagnostic.nptBefore, diagnostic.nptAfter = snapshot.NPTPolicyGeneration, current.NPTPolicyGeneration
-		diagnostic.routingBefore, diagnostic.routingAfter = snapshot.RoutingGeneration, current.RoutingGeneration
-		diagnostic.policyChecked, diagnostic.policyReady = !generationChanged, policyReady
-	}
-	if generationChanged {
-		stage = candidateGenerationChanged
-		return spec, guards, flow, wan, EligibilityStale, nil
-	}
-	if !policyReady {
-		stage = candidatePolicyBecameUnready
+	stage = module.candidatePolicyGeneration(snapshot, wan, kernelTuple.IP.SourceAddress.Is4(), &diagnostic)
+	if stage != candidateReady {
 		return spec, guards, flow, wan, EligibilityStale, nil
 	}
 	mask := [2]uint32{1, 2}
@@ -391,6 +362,42 @@ func (module *Module) candidate(ctx context.Context, observation packetObservati
 	}
 	guards[index] = offload.NativePacketGuard{TrafficClass: observation.TrafficClass & nativeDSCPMask, FlowLabel: observation.FlowLabel}
 	return spec, guards, flow, wan, EligibilityReady, nil
+}
+
+func (module *Module) candidateInput(observation packetObservation) (boundLink, admissionStage) {
+	input, bound := module.links[observation.ifindex]
+	if !bound {
+		return input, candidateIngressUnbound
+	}
+	if !input.hasOrigin {
+		return input, candidateOriginAbsent
+	}
+	if observation.DestinationMAC != [6]byte(input.kernel.HardwareAddr) {
+		return input, candidateDestinationMAC
+	}
+	return input, candidateReady
+}
+
+func (module *Module) candidatePolicyGeneration(snapshot wanstate.Snapshot, wan WAN, ipv4 bool, diagnostic *admissionSample) admissionStage {
+	current := module.Env.LiveState.Snapshot()
+	generationChanged := current.NPTPolicyGeneration != snapshot.NPTPolicyGeneration || current.RoutingGeneration != snapshot.RoutingGeneration
+	policyReady := false
+	if !generationChanged {
+		policyReady = module.policyReady(current, wan, ipv4)
+	}
+	if module.cfg.Settings.ObservationDiagnostics {
+		diagnostic.generationChecked = true
+		diagnostic.nptBefore, diagnostic.nptAfter = snapshot.NPTPolicyGeneration, current.NPTPolicyGeneration
+		diagnostic.routingBefore, diagnostic.routingAfter = snapshot.RoutingGeneration, current.RoutingGeneration
+		diagnostic.policyChecked, diagnostic.policyReady = !generationChanged, policyReady
+	}
+	if generationChanged {
+		return candidateGenerationChanged
+	}
+	if !policyReady {
+		return candidatePolicyBecameUnready
+	}
+	return candidateReady
 }
 
 func candidateDirection(flow conntrack.Flow, kernelTuple conntrack.Tuple) (conntrack.Tuple, int, Eligibility) {
