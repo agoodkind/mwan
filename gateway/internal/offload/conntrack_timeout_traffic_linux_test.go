@@ -27,8 +27,10 @@ const (
 	conntrackTrafficFamilyTimeout      = 30 * time.Second
 	conntrackTrafficRequestTimeout     = time.Second
 	conntrackTrafficIdlePause          = 100 * time.Millisecond
+	conntrackTrafficBurstPause         = 2 * time.Millisecond
 	conntrackTrafficMaximumRefreshes   = 10000
-	conntrackTrafficExchanges          = 10000
+	conntrackTrafficBurstsPerDirection = 1000
+	conntrackTrafficControlBursts      = 1
 	conntrackTrafficPayloadBytes       = 4096
 	conntrackTrafficPayloadValue       = 0xa5
 	conntrackTrafficEstablishedSeconds = 432000
@@ -137,16 +139,7 @@ func conntrackTrafficFamily(t *testing.T, network, address string) {
 		}
 	}
 	payload := bytes.Repeat([]byte{conntrackTrafficPayloadValue}, conntrackTrafficPayloadBytes)
-	if _, err := conntrackTrafficExchange(client, server, payload, 1, nil); err != nil {
-		t.Fatalf("establish bidirectional TCP payload traffic: %v", err)
-	}
-	timer := time.NewTimer(conntrackTrafficIdlePause)
-	defer timer.Stop()
-	select {
-	case <-timer.C:
-	case <-ctx.Done():
-		t.Fatal(ctx.Err())
-	}
+	conntrackTrafficPause(t, ctx)
 	original := client.LocalAddr().(*net.TCPAddr).AddrPort()
 	destination := client.RemoteAddr().(*net.TCPAddr).AddrPort()
 	tuple := conntrack.Tuple{
@@ -180,13 +173,32 @@ func conntrackTrafficFamily(t *testing.T, network, address string) {
 		t.Fatalf("idle refresh did not retain the requested timeout: observed=%d requested=%d", idle.Timeout, conntrackTrafficRequestedSeconds)
 	}
 	t.Logf("idle TCP refresh: id=%d state=%d observed_seconds=%d", idle.ID, idle.ProtoInfo.TCP.State, idle.Timeout)
+	controlHash, err := conntrackTrafficTransfer(ctx, server, client, payload, conntrackTrafficControlBursts, nil)
+	if err != nil {
+		t.Fatalf("send one-way TCP expiry control: %v", err)
+	}
+	expectedControlHash := sha256.Sum256(payload)
+	if !bytes.Equal(controlHash, expectedControlHash[:]) {
+		t.Fatalf("one-way TCP expiry control changed payload bytes: expected=%x observed=%x", expectedControlHash, controlHash)
+	}
+	// A pause permits a pure ACK before the readback without another payload reply.
+	conntrackTrafficPause(t, ctx)
+	exposed, err := FreshConntrackFlow(ctx, flow)
+	if err != nil {
+		t.Fatalf("read packet-driven TCP expiry control: %v", err)
+	}
+	conntrackTrafficEstablished(t, exposed)
+	if exposed.Timeout <= conntrackTrafficRequestedSeconds {
+		t.Skipf("inconclusive fixture: one-way TCP traffic did not expose expiry above %d seconds after idle refresh; observed_seconds=%d; active refresh did not run", conntrackTrafficRequestedSeconds, exposed.Timeout)
+	}
+	t.Logf("packet-driven TCP expiry exposure: id=%d idle_seconds=%d after_one_way_seconds=%d", exposed.ID, idle.Timeout, exposed.Timeout)
 	started := make(chan struct{})
 	finished := make(chan struct{})
 	var trafficResult conntrackTrafficResult
 	var trafficErr error
 	go func() {
 		defer close(finished)
-		trafficResult, trafficErr = conntrackTrafficExchange(client, server, payload, conntrackTrafficExchanges, started)
+		trafficResult, trafficErr = conntrackTrafficPhases(ctx, client, server, payload, started)
 	}()
 	defer func() {
 		// Closing the sockets interrupts every read or write before joining the worker.
@@ -236,7 +248,7 @@ refreshLoop:
 		t.Fatalf("original TCP payload exchange failed: %v", trafficErr)
 	}
 	expectedHash := sha256.New()
-	for range conntrackTrafficExchanges {
+	for range conntrackTrafficBurstsPerDirection {
 		if _, err := expectedHash.Write(payload); err != nil {
 			t.Fatal(err)
 		}
@@ -257,7 +269,7 @@ refreshLoop:
 		return
 	}
 	if refreshErr == nil {
-		t.Skipf("inconclusive baseline: %d refresh calls did not reject active TCP traffic", refreshes)
+		t.Skipf("inconclusive baseline after packet-driven expiry exposure: %d refresh calls did not reject rate-limited one-way TCP traffic", refreshes)
 	}
 }
 
@@ -267,36 +279,62 @@ type conntrackTrafficResult struct {
 	bytesPerDirection int
 }
 
-func conntrackTrafficExchange(client, server net.Conn, payload []byte, exchanges int, started chan<- struct{}) (conntrackTrafficResult, error) {
-	originalHash, replyHash := sha256.New(), sha256.New()
-	original, reply := make([]byte, len(payload)), make([]byte, len(payload))
-	for index := range exchanges {
-		if written, err := client.Write(payload); err != nil || written != len(payload) {
-			return conntrackTrafficResult{}, fmt.Errorf("write original payload: bytes=%d: %w", written, errors.Join(err, io.ErrShortWrite))
+func conntrackTrafficPhases(ctx context.Context, client, server net.Conn, payload []byte, started chan<- struct{}) (conntrackTrafficResult, error) {
+	replyHash, err := conntrackTrafficTransfer(ctx, server, client, payload, conntrackTrafficBurstsPerDirection, started)
+	if err != nil {
+		return conntrackTrafficResult{}, fmt.Errorf("complete original TCP download: %w", err)
+	}
+	originalHash, err := conntrackTrafficTransfer(ctx, client, server, payload, conntrackTrafficBurstsPerDirection, nil)
+	if err != nil {
+		return conntrackTrafficResult{}, fmt.Errorf("complete original TCP upload: %w", err)
+	}
+	return conntrackTrafficResult{
+		originalHash: originalHash, replyHash: replyHash,
+		bytesPerDirection: conntrackTrafficBurstsPerDirection * len(payload),
+	}, nil
+}
+
+func conntrackTrafficTransfer(ctx context.Context, sender, receiver net.Conn, payload []byte, bursts int, started chan<- struct{}) ([]byte, error) {
+	receivedHash := sha256.New()
+	received := make([]byte, len(payload))
+	timer := time.NewTimer(conntrackTrafficBurstPause)
+	defer timer.Stop()
+	for index := range bursts {
+		written, err := sender.Write(payload)
+		if err != nil {
+			return nil, fmt.Errorf("write one-way payload: %w", err)
 		}
-		if _, err := io.ReadFull(server, original); err != nil {
-			return conntrackTrafficResult{}, fmt.Errorf("read original payload: %w", err)
+		if written != len(payload) {
+			return nil, fmt.Errorf("write one-way payload: bytes=%d: %w", written, io.ErrShortWrite)
 		}
-		if _, err := originalHash.Write(original); err != nil {
-			return conntrackTrafficResult{}, err
+		if _, err := io.ReadFull(receiver, received); err != nil {
+			return nil, fmt.Errorf("read one-way payload: %w", err)
 		}
-		if written, err := server.Write(original); err != nil || written != len(original) {
-			return conntrackTrafficResult{}, fmt.Errorf("write reply payload: bytes=%d: %w", written, errors.Join(err, io.ErrShortWrite))
-		}
-		if _, err := io.ReadFull(client, reply); err != nil {
-			return conntrackTrafficResult{}, fmt.Errorf("read reply payload: %w", err)
-		}
-		if _, err := replyHash.Write(reply); err != nil {
-			return conntrackTrafficResult{}, err
+		if _, err := receivedHash.Write(received); err != nil {
+			return nil, err
 		}
 		if index == 0 && started != nil {
 			close(started)
 		}
+		timer.Reset(conntrackTrafficBurstPause)
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			return nil, fmt.Errorf("pace one-way payload: %w", ctx.Err())
+		}
 	}
-	return conntrackTrafficResult{
-		originalHash: originalHash.Sum(nil), replyHash: replyHash.Sum(nil),
-		bytesPerDirection: exchanges * len(payload),
-	}, nil
+	return receivedHash.Sum(nil), nil
+}
+
+func conntrackTrafficPause(t *testing.T, ctx context.Context) {
+	t.Helper()
+	timer := time.NewTimer(conntrackTrafficIdlePause)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
 }
 
 func conntrackTrafficEstablished(t *testing.T, flow conntrack.Flow) {
