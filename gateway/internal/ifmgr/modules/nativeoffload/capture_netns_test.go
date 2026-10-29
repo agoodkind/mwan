@@ -99,9 +99,21 @@ func TestNativePacketObservationDiagnostics(t *testing.T) {
 	if !nativeCaptureNamespace(t) {
 		return
 	}
+	if err := os.WriteFile("/proc/sys/net/ipv6/conf/default/disable_ipv6", []byte("1"), 0o644); err != nil {
+		t.Fatalf("disable IPv6 for new capture links: %v", err)
+	}
 	ctx, cancel := context.WithTimeout(t.Context(), nativeCaptureTimeout)
 	defer cancel()
 	input, sender := nativeCaptureLinks(t)
+	for _, link := range []*net.Interface{input, sender} {
+		value, err := os.ReadFile("/proc/sys/net/ipv6/conf/" + link.Name + "/disable_ipv6")
+		if err != nil {
+			t.Fatalf("read IPv6 setting for %s: %v", link.Name, err)
+		}
+		if strings.TrimSpace(string(value)) != "1" {
+			t.Fatalf("IPv6 remains enabled on %s: %q", link.Name, value)
+		}
+	}
 	var paused atomic.Bool
 	paused.Store(true)
 	observations := make(chan packetObservation, 1)
