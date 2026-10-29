@@ -1376,6 +1376,21 @@ static int shared_release_pair(struct mwan_native *owner, struct mwan_native_han
 	return 0;
 }
 
+static void shared_counter_sample(const char *operation, const char *phase, int cycle,
+				  const char *pair, const char *batch, uint32_t direction,
+				  const struct mwan_native_counter *counter)
+{
+	printf("SHARED_COUNTER_SAMPLE operation=%s phase=%s pair=%s batch=%s",
+	       operation, phase, pair, batch);
+	if (cycle >= 0)
+		printf(" cycle=%d", cycle);
+	printf(" direction=%u packets=%" PRIu64 " bytes=%" PRIu64
+	       " packets_valid=%u bytes_valid=%u error=%d observed_monotonic_ns=%" PRIu64 "\n",
+	       direction, counter->packets, counter->bytes, counter->packets_valid,
+	       counter->bytes_valid, counter->error, counter->observed_monotonic_ns);
+	fflush(stdout);
+}
+
 static int shared_capacity(const char *config_path, uint32_t field, const char *pair_path)
 {
 	struct mwan_native_config config = {0};
@@ -1458,6 +1473,8 @@ static int shared_conflict(const char *config_path, uint32_t field,
 	    mwan_native_pair_install(owner, &first, &result, &error) ||
 	    mwan_native_pair_query(owner, result.handle, &baseline, &error))
 		goto cleanup;
+	shared_counter_sample("shared_conflict", "baseline", -1, first_path, "FIRST", direction,
+			      &baseline.directions[direction]);
 	puts("QUEUE_SHARED_CONFLICT_OLD acknowledgment=QUEUED_CONFLICT polling=paused");
 	fflush(stdout);
 	char acknowledgment[64];
@@ -1467,6 +1484,8 @@ static int shared_conflict(const char *config_path, uint32_t field,
 	}
 	if (mwan_native_pair_query(owner, result.handle, &queued, &error))
 		goto cleanup;
+	shared_counter_sample("shared_conflict", "queued", -1, first_path, "FIRST", direction,
+			      &queued.directions[direction]);
 	const struct mwan_native_counter *before = &baseline.directions[direction];
 	const struct mwan_native_counter *after = &queued.directions[direction];
 	if (!before->packets_valid || before->error || !after->packets_valid || after->error ||
@@ -1575,6 +1594,8 @@ static int shared_release(const char *config_path, uint32_t field, uint64_t seco
 		struct mwan_native_pair_stats baseline = {0}, queued = {0};
 		if (mwan_native_pair_query(owner, current.handle, &baseline, &error))
 			goto cleanup;
+		shared_counter_sample("shared_release", "baseline", cycle, pair_paths[cycle], "old_rule",
+				      direction_index, &baseline.directions[direction_index]);
 		printf("QUEUE_SHARED_OLD cycle=%d pair=%s acknowledgment=QUEUED_%d polling=paused\n",
 		       cycle, pair_paths[cycle], cycle);
 		fflush(stdout);
@@ -1586,6 +1607,8 @@ static int shared_release(const char *config_path, uint32_t field, uint64_t seco
 		}
 		if (mwan_native_pair_query(owner, current.handle, &queued, &error))
 			goto cleanup;
+		shared_counter_sample("shared_release", "queued", cycle, pair_paths[cycle], "old_rule",
+				      direction_index, &queued.directions[direction_index]);
 		const struct mwan_native_counter *first_counter = &baseline.directions[direction_index];
 		const struct mwan_native_counter *queued_counter = &queued.directions[direction_index];
 		if (!first_counter->packets_valid || first_counter->error || !queued_counter->packets_valid ||
