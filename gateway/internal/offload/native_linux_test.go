@@ -119,6 +119,7 @@ func TestNativeSingleDirection(t *testing.T) {
 		t.Fatalf("expected retained EAL owner after unavailable-device discovery: owner=%v error=%v", owner != nil, err)
 	}
 	checkNativeVXLANRejectedLifecycle(t, owner)
+	checkNativeSharedReleaseRejection(t, owner)
 	connection, err := conntrack.Dial(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -139,6 +140,9 @@ func TestNativeSingleDirection(t *testing.T) {
 		t.Fatalf("repeated native cleanup failed: %v", err)
 	}
 	checkNativeVXLANClosedLifecycle(t, owner)
+	if _, err := owner.ReleaseShared(t.Context(), offload.NativePairHandle{}); !errors.Is(err, net.ErrClosed) {
+		t.Fatalf("closed native runtime accepted shared release: %v", err)
+	}
 	flow := createTrackedFlow(t, connection, [2]string{"192.0.2.3", "198.51.100.4"}, unix.IPPROTO_TCP, 0)
 	spec := offload.NativePairSpec{RequestedDirections: 1}
 	spec.Directions[0] = offload.NativeDirection{Original: flow.TupleOrig, Translated: flow.TupleOrig}
@@ -146,6 +150,20 @@ func TestNativeSingleDirection(t *testing.T) {
 		t.Fatalf("closed native runtime accepted admission: %v", err)
 	}
 	requireSameTrackedFlow(t, flow, readTrackedFlow(t, connection, flow), false)
+}
+
+func checkNativeSharedReleaseRejection(t *testing.T, owner *offload.NativeRuntime) {
+	t.Helper()
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := owner.ReleaseShared(canceled, offload.NativePairHandle{}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled shared release entered the owner: %v", err)
+	}
+	ctx, expire := context.WithTimeout(t.Context(), conntrackTestTimeout)
+	defer expire()
+	if _, err := owner.ReleaseShared(ctx, offload.NativePairHandle{}); !errors.Is(err, unix.ESTALE) {
+		t.Fatalf("shared release accepted a handle without a current generation: %v", err)
+	}
 }
 
 func checkNativeEvidenceAdmission(t *testing.T, owner *offload.NativeRuntime, connection *conntrack.Conn) {
@@ -297,6 +315,9 @@ func checkNativeGraphRejections(t *testing.T, config offload.NativeConfig) {
 		}, offload.NativeObjectOrigin, 0, unix.EINVAL},
 		{"origin-controller-reference", func(c *offload.NativeConfig) {
 			c.Origins[0].Controller = 4
+		}, offload.NativeObjectOrigin, 0, unix.EINVAL},
+		{"unknown-restoration-profile", func(c *offload.NativeConfig) {
+			c.Origins[0].IPv6RestoreField = offload.NativeIPv6RestoreField(3)
 		}, offload.NativeObjectOrigin, 0, unix.EINVAL},
 		{"receiver-on-another-controller", func(c *offload.NativeConfig) {
 			c.Controllers = append(c.Controllers, offload.NativeController{PCI: offload.NativePCIAddress{Domain: 65535, Bus: 255, Device: 31, Function: 4}, PhysicalReceiver: 2})

@@ -54,6 +54,15 @@ const (
 // NativeIngressOrigin identifies the source port that hardware must classify.
 type NativeIngressOrigin uint32
 
+// NativeIPv6RestoreField selects the immutable address inverse for an origin.
+type NativeIPv6RestoreField uint32
+
+const (
+	NativeIPv6RestoreLegacy      NativeIPv6RestoreField = C.MWAN_NATIVE_IPV6_RESTORE_LEGACY
+	NativeIPv6RestoreSource      NativeIPv6RestoreField = C.MWAN_NATIVE_IPV6_RESTORE_SOURCE
+	NativeIPv6RestoreDestination NativeIPv6RestoreField = C.MWAN_NATIVE_IPV6_RESTORE_DESTINATION
+)
+
 const (
 	// NativePhysicalOrigin selects packets from the physical port.
 	NativePhysicalOrigin NativeIngressOrigin = C.MWAN_NATIVE_ORIGIN_PHYSICAL
@@ -97,12 +106,13 @@ type NativeDataDevice struct {
 
 // NativeOrigin binds an ingress source to one receiver and one distinct DATA RX device.
 type NativeOrigin struct {
-	Controller NativeControllerID
-	Kind       NativeIngressOrigin
-	Receiver   NativeReceiverID
-	Data       NativeDataID
-	ReturnMode NativeReturnMode
-	SourceVF   uint16
+	Controller       NativeControllerID
+	Kind             NativeIngressOrigin
+	Receiver         NativeReceiverID
+	Data             NativeDataID
+	ReturnMode       NativeReturnMode
+	SourceVF         uint16
+	IPv6RestoreField NativeIPv6RestoreField
 }
 
 // NativeConfig specifies the ownership graph, EAL resources, and polling limits.
@@ -163,11 +173,18 @@ type NativeEvidenceGuard struct {
 
 // NativeRetirementStats separates hardware capacity from retained inverse mappings.
 type NativeRetirementStats struct {
-	ActivePairCapacity   uint32
-	RetainedPairCapacity uint32
-	RetainedPairs        uint32
-	DrainingPairs        uint32
-	RetainedDirections   uint64
+	ActivePairCapacity              uint32
+	RetainedPairCapacity            uint32
+	RetainedPairs                   uint32
+	DrainingPairs                   uint32
+	RetainedDirections              uint64
+	SharedBindingCapacity           uint32
+	SharedBindings                  uint32
+	SharedIdentityBindings          uint32
+	ReusableSharedSlots             uint32
+	SharedBindingConflicts          uint64
+	SharedBindingCapacityRejections uint64
+	SharedPairReleases              uint64
 }
 
 // NativePairHandle is valid only in the process and slot generation that created it.
@@ -198,16 +215,19 @@ const (
 	NativePairDraining NativePairState = C.MWAN_NATIVE_PAIR_DRAINING
 	// NativePairFaulted requires recovery after a hardware deletion failure.
 	NativePairFaulted NativePairState = C.MWAN_NATIVE_PAIR_FAULTED
+	// NativePairReleased confirms consumption of a handle with shared restoration.
+	NativePairReleased NativePairState = C.MWAN_NATIVE_PAIR_RELEASED
 )
 
 // NativePairResult reports installed rules separately from retained inverse records.
 type NativePairResult struct {
-	Handle                  NativePairHandle
-	State                   NativePairState
-	RequestedDirections     uint32
-	InstalledDirections     uint32
-	CleanupFailedDirections uint32
-	RestorationDirections   uint32
+	Handle                      NativePairHandle
+	State                       NativePairState
+	RequestedDirections         uint32
+	InstalledDirections         uint32
+	CleanupFailedDirections     uint32
+	RestorationDirections       uint32
+	SharedRestorationDirections uint32
 }
 
 // NativePairStats reports each requested direction's hardware counters.
@@ -312,6 +332,7 @@ const (
 	nativeVXLANRemove
 	nativeVXLANClose
 	nativeReobserve
+	nativeReleaseShared
 )
 
 type nativeRequest struct {
@@ -583,10 +604,19 @@ func (worker *NativeRuntime) Query(ctx context.Context, handle NativePairHandle)
 	return result.stats, result.err
 }
 
-// Remove deletes hardware rules and retains inverse records until Disable.
+// Remove deletes hardware rules and retains the handle for resumption or release.
 func (worker *NativeRuntime) Remove(ctx context.Context, handle NativePairHandle) (NativePairResult, error) {
 	var request nativeRequest
 	request.operation, request.handle = nativeRemove, encodeNativeHandle(handle)
+	result := worker.call(ctx, request)
+	return result.pair, result.err
+}
+
+// ReleaseShared consumes a cleaned handle while retaining permanent IPv6 inverses.
+func (worker *NativeRuntime) ReleaseShared(ctx context.Context, handle NativePairHandle) (NativePairResult, error) {
+	var request nativeRequest
+	request.operation, request.handle = nativeReleaseShared, encodeNativeHandle(handle)
+	request.deadline, _ = ctx.Deadline()
 	result := worker.call(ctx, request)
 	return result.pair, result.err
 }
@@ -778,6 +808,7 @@ func encodeNativeConfig(config NativeConfig) (C.struct_mwan_native_config, error
 		out.controller, out.kind = C.uint32_t(origin.Controller), C.uint32_t(origin.Kind)
 		out.receiver, out.data = C.uint32_t(origin.Receiver), C.uint32_t(origin.Data)
 		out.return_mode, out.source_vf = C.uint32_t(origin.ReturnMode), C.uint16_t(origin.SourceVF)
+		out.ipv6_restore_field = C.uint32_t(origin.IPv6RestoreField)
 	}
 	return result, nil
 }
@@ -867,7 +898,8 @@ func decodeNativePairResult(result C.struct_mwan_native_pair_result) NativePairR
 		Handle: NativePairHandle{instance: uint64(result.handle.instance), generation: uint64(result.handle.generation), slot: uint32(result.handle.slot)},
 		State:  NativePairState(result.state), RequestedDirections: uint32(result.requested_direction_mask),
 		InstalledDirections: uint32(result.installed_mask), CleanupFailedDirections: uint32(result.cleanup_failed_mask),
-		RestorationDirections: uint32(result.restoration_mask),
+		RestorationDirections:       uint32(result.restoration_mask),
+		SharedRestorationDirections: uint32(result.shared_restoration_mask),
 	}
 }
 

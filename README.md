@@ -137,7 +137,7 @@ package.
 ### Build and test the Rust native worker
 
 MWAN keeps WAN policy and connection state in Go and calls the Rust library
-through ABI2, its C-compatible native interface. Rust implements DPDK access,
+through ABI3, its C-compatible native interface. Rust implements DPDK access,
 packet parsing, buffer ownership, forwarding, kernel return, and resource
 cleanup. It receives and transmits packet batches inside the library. DPDK
 and its Broadcom driver remain C dependencies; small C helpers expose DPDK

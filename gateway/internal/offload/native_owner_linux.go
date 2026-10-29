@@ -92,13 +92,24 @@ func (worker *NativeRuntime) execute(owner **C.struct_mwan_native, request nativ
 		result.retirement = NativeRetirementStats{
 			ActivePairCapacity: uint32(retirement.active_pair_capacity), RetainedPairCapacity: uint32(retirement.retained_pair_capacity),
 			RetainedPairs: uint32(retirement.retained_pairs), DrainingPairs: uint32(retirement.draining_pairs),
-			RetainedDirections: uint64(retirement.retained_directions),
+			RetainedDirections:    uint64(retirement.retained_directions),
+			SharedBindingCapacity: uint32(retirement.shared_binding_capacity), SharedBindings: uint32(retirement.shared_bindings),
+			SharedIdentityBindings: uint32(retirement.shared_identity_bindings), ReusableSharedSlots: uint32(retirement.reusable_shared_slots),
+			SharedBindingConflicts: uint64(retirement.shared_binding_conflicts), SharedBindingCapacityRejections: uint64(retirement.shared_binding_capacity_rejections),
+			SharedPairReleases: uint64(retirement.shared_pair_releases),
 		}
 	case nativeQuery:
 		rc = C.mwan_native_pair_query(*owner, request.handle, &stats, &detail)
 		result.stats = decodeNativePairStats(stats)
 	case nativeRemove:
 		rc = C.mwan_native_pair_remove(*owner, request.handle, &pair, &detail)
+		result.pair = decodeNativePairResult(pair)
+	case nativeReleaseShared:
+		if !request.deadline.IsZero() && worker.clock.Now().After(request.deadline) {
+			result.err = context.DeadlineExceeded
+			break
+		}
+		rc = C.mwan_native_pair_release_shared(*owner, request.handle, &pair, &detail)
 		result.pair = decodeNativePairResult(pair)
 	case nativeVXLANOpen, nativeVXLANInstall, nativeVXLANQuery, nativeVXLANRemove, nativeVXLANClose:
 		result = worker.executeVXLAN(*owner, request)
@@ -111,6 +122,13 @@ func (worker *NativeRuntime) execute(owner **C.struct_mwan_native, request nativ
 	}
 	if result.err == nil {
 		result.err = nativeCallError(rc, detail)
+	}
+	if request.operation == nativeReleaseShared && result.err == nil &&
+		(encodeNativeHandle(result.pair.Handle) != request.handle || result.pair.State != NativePairReleased ||
+			result.pair.RequestedDirections == 0 || result.pair.InstalledDirections != 0 || result.pair.CleanupFailedDirections != 0 ||
+			result.pair.RestorationDirections != result.pair.RequestedDirections ||
+			result.pair.SharedRestorationDirections != result.pair.RequestedDirections) {
+		result.err = errors.New("native shared release did not confirm consumed ownership")
 	}
 	worker.completeEvidence(request.operation, result)
 	result.ownerExists = *owner != nil
@@ -188,7 +206,7 @@ func (worker *NativeRuntime) completeEvidence(operation nativeOperation, result 
 	case nativeEnable, nativeInstall, nativeQuery, nativeRetirement, nativeResume, nativeReobserve,
 		nativeVXLANOpen, nativeVXLANInstall, nativeVXLANQuery, nativeVXLANRemove, nativeVXLANClose:
 		return
-	case nativeRemove:
+	case nativeRemove, nativeReleaseShared:
 		worker.unregisterEvidence(result.pair.Handle)
 	case nativeDisable, nativeShutdown:
 		clear(worker.evidence)

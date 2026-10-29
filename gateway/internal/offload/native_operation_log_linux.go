@@ -15,6 +15,8 @@ func (operation nativeOperation) LogValue() slog.Value {
 		return slog.StringValue("query")
 	case nativeRemove:
 		return slog.StringValue("remove")
+	case nativeReleaseShared:
+		return slog.StringValue("release-shared")
 	case nativeDisable:
 		return slog.StringValue("disable")
 	case nativeShutdown:
