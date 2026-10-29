@@ -109,10 +109,15 @@ func (module *Module) maintain(ctx context.Context) {
 
 func (module *Module) resync(ctx context.Context) {
 	module.withLock(func() {
-		if module.stats.Failure == nil && module.runtime != nil {
-			if err := module.verifyLinks(); err != nil {
-				_ = module.fail(ctx, err)
-			}
+		if module.stats.Failure != nil || module.runtime == nil {
+			return
+		}
+		if err := module.verifyLinks(); err != nil {
+			_ = module.fail(ctx, err)
+			return
+		}
+		if module.policyBlocked && module.checkEvidence(ctx) {
+			module.refreshPolicy(ctx)
 		}
 	})
 }
