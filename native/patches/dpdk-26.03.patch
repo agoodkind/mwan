@@ -7209,7 +7209,7 @@ index f38ebce..7a71db6 100644
  	struct ulp_rte_hdr_bitmap	enc_hdr_bitmap;
  	struct ulp_rte_hdr_bitmap	hdr_fp_bit;
 diff --git a/official/drivers/net/bnxt/bnxt_mpc.c b/target/drivers/net/bnxt/bnxt_mpc.c
-index d77f9dd3..415659ad 100644
+index d77f9dd..634d230 100644
 --- a/official/drivers/net/bnxt/bnxt_mpc.c
 +++ b/target/drivers/net/bnxt/bnxt_mpc.c
 @@ -112,3 +112,3 @@ static void bnxt_mpc_queue_release_one(struct bnxt_mpc_txq *mpc_queue)
@@ -7231,7 +7231,7 @@ index d77f9dd3..415659ad 100644
 +	if (rc)
 +		return rc;
  
-@@ -126,14 +128,10 @@ static void bnxt_mpc_ring_free_one(struct bnxt_mpc_txq *mpc_queue)
+@@ -126,12 +128,11 @@ static void bnxt_mpc_ring_free_one(struct bnxt_mpc_txq *mpc_queue)
  	ring = mpr->mpc_ring_struct;
 -	if (ring->fw_ring_id == INVALID_HW_RING_ID)
 -		return;
@@ -7246,10 +7246,9 @@ index d77f9dd3..415659ad 100644
 +		return rc;
  	memset(mpr->mpc_desc_ring, 0,
  	       mpr->mpc_ring_struct->ring_size * sizeof(*mpr->mpc_desc_ring));
--	memset(mpr->mpc_buf_ring, 0,
--	       mpr->mpc_ring_struct->ring_size * sizeof(*mpr->mpc_buf_ring));
- 	mpr->raw_prod = 0;
-@@ -141,4 +139,6 @@ static void bnxt_mpc_ring_free_one(struct bnxt_mpc_txq *mpc_queue)
++	/* The software ring borrows caller command records, including stack objects. */
+ 	memset(mpr->mpc_buf_ring, 0,
+@@ -141,4 +142,6 @@ static void bnxt_mpc_ring_free_one(struct bnxt_mpc_txq *mpc_queue)
  
 -	bnxt_free_cp_ring(mpc_queue->bp, cpr);
 -	bnxt_hwrm_stat_ctx_free(mpc_queue->bp, cpr);
@@ -7258,14 +7257,14 @@ index d77f9dd3..415659ad 100644
 +		return rc;
 +	return bnxt_hwrm_stat_ctx_free(mpc_queue->bp, cpr);
  }
-@@ -166,3 +166,5 @@ int bnxt_mpc_close(struct bnxt *bp)
+@@ -166,3 +169,5 @@ int bnxt_mpc_close(struct bnxt *bp)
  			continue;
 -		bnxt_mpc_ring_free_one(mpc_queue);
 +		rc = bnxt_mpc_ring_free_one(mpc_queue);
 +		if (rc)
 +			return rc;
  		bnxt_mpc_queue_release_one(mpc_queue);
-@@ -519,5 +521,24 @@ static int bnxt_mpc_ring_alloc_one(struct bnxt *bp, enum bnxt_mpc_chnl chnl_id)
+@@ -519,5 +524,24 @@ static int bnxt_mpc_ring_alloc_one(struct bnxt *bp, enum bnxt_mpc_chnl chnl_id)
  bnxt_mpc_ring_alloc_one_err1:
 -	bnxt_free_cp_ring(bp, cpr);
 +	{

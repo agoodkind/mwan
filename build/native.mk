@@ -1,7 +1,7 @@
 # Native builds consume an explicitly selected SDK; SDK preparation is separate.
 MWAN_NATIVE_DPDK_VERSION := 26.03.0
 MWAN_NATIVE_DPDK_SHA256 := 84989202bbe0fbaeeb62f8fdc63f691880ac0b66cd0dc64c167843c59db29d2c
-MWAN_NATIVE_PATCH_SHA256 := 1f42c4a39bb5587245d92a2e85fced2bc792d7a81ab721ab4f995ae7c7b0d3e5
+MWAN_NATIVE_PATCH_SHA256 := 68115966f29cba02550e9b992732e8c805c2cf6dd0c344d133b9fa6abd848c8b
 MWAN_NATIVE_ROOT := $(abspath $(CURDIR)/../native)
 MWAN_NATIVE_PATCH := $(MWAN_NATIVE_ROOT)/patches/dpdk-26.03.patch
 MWAN_NATIVE_BUILD := $(GO_MK_CGO_PREFIX)/mwan-native-build
