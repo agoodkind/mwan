@@ -291,6 +291,25 @@ fn fault(
     Box::new(error)
 }
 
+fn retain_cleanup_failure(failure: &mut Option<Box<MwanNativeError>>, error: Box<MwanNativeError>) {
+    if failure.is_none() {
+        *failure = Some(error);
+    } else {
+        let bytes = error.message.map(|value| value.to_ne_bytes()[0]);
+        let message = String::from_utf8_lossy(&bytes);
+        eprintln!(
+            "Native cleanup failed: code={} operation={} object={}/{} direction={} flow_error={} message={}",
+            error.code,
+            error.operation,
+            error.object_kind,
+            error.object_id,
+            error.direction,
+            error.flow_error_type,
+            message.trim_end_matches('\0')
+        );
+    }
+}
+
 fn stale_handle(handle: MwanNativeHandle) -> Box<MwanNativeError> {
     fault(
         libc::ESTALE,
@@ -1817,16 +1836,17 @@ impl OwnerState {
         for index in 0..2 {
             let spec = self.pairs[slot].spec.directions[index];
             if self.pairs[slot].legs[index].delete_failed {
-                if failure.is_none() {
-                    failure = Some(fault(
+                retain_cleanup_failure(
+                    &mut failure,
+                    fault(
                         libc::EIO,
                         MWAN_NATIVE_OP_DESTROY,
                         MWAN_NATIVE_OBJECT_ORIGIN,
                         spec.origin_id,
                         index as u32,
                         "Consumed flow handle cannot be retried",
-                    ));
-                }
+                    ),
+                );
                 continue;
             }
             let Some(flow) = self.pairs[slot].legs[index].flow else {
@@ -1837,9 +1857,7 @@ impl OwnerState {
             {
                 Ok(controller) => controller,
                 Err(error) => {
-                    if failure.is_none() {
-                        failure = Some(error);
-                    }
+                    retain_cleanup_failure(&mut failure, error);
                     continue;
                 }
             };
@@ -1851,16 +1869,17 @@ impl OwnerState {
             self.pairs[slot].legs[index].flow = None;
             if result != 0 {
                 self.pairs[slot].legs[index].delete_failed = true;
-                if failure.is_none() {
-                    failure = Some(flow_fault(
+                retain_cleanup_failure(
+                    &mut failure,
+                    flow_fault(
                         result,
                         MWAN_NATIVE_OP_DESTROY,
                         MWAN_NATIVE_OBJECT_ORIGIN,
                         spec.origin_id,
                         index as u32,
                         &detail,
-                    ));
-                }
+                    ),
+                );
             }
         }
         if let Some(error) = failure {
@@ -2860,16 +2879,12 @@ impl OwnerState {
         }
         self.quiescing = true;
         let mut failure = self.terminal_failure.map(Box::new);
-        if let Err(error) = self.close_vxlan_contexts()
-            && failure.is_none()
-        {
-            failure = Some(error);
+        if let Err(error) = self.suspend_vxlan_rules() {
+            retain_cleanup_failure(&mut failure, error);
         }
         for slot in 0..self.pairs.len() {
-            if let Err(error) = self.delete_pair(slot)
-                && failure.is_none()
-            {
-                failure = Some(error);
+            if let Err(error) = self.delete_pair(slot) {
+                retain_cleanup_failure(&mut failure, error);
             }
         }
         if let Some(error) = failure {
@@ -2883,11 +2898,18 @@ impl OwnerState {
                 && let Err(error) = self.miss(index, false)
             {
                 self.faulted = true;
-                return Err(error);
+                retain_cleanup_failure(&mut failure, error);
             }
+        }
+        if let Some(error) = failure {
+            return Err(error);
         }
         let ports = self.ordered_ports(true)?;
         for id in &ports {
+            // Controller teardown depends on completed DATA and representor stops.
+            if failure.is_some() && self.controllers.iter().any(|port| port.id == Some(*id)) {
+                continue;
+            }
             let Some(port) = self.ports.iter_mut().find(|port| port.id == *id) else {
                 continue;
             };
@@ -2899,27 +2921,34 @@ impl OwnerState {
             let result = unsafe { dpdk::rte_eth_dev_stop(*id) };
             if result != 0 {
                 self.faulted = true;
-                return Err(fault(
-                    result,
-                    MWAN_NATIVE_OP_PORT,
-                    MWAN_NATIVE_OBJECT_PORT,
-                    u32::from(*id),
-                    0,
-                    "Port stop failed",
-                ));
+                retain_cleanup_failure(
+                    &mut failure,
+                    fault(
+                        result,
+                        MWAN_NATIVE_OP_PORT,
+                        MWAN_NATIVE_OBJECT_PORT,
+                        u32::from(*id),
+                        0,
+                        "Port stop failed; restoration records retained",
+                    ),
+                );
+                continue;
             }
             port.state = PortState::Stopped;
         }
-        self.active = false;
-        for slot in 0..self.pairs.len() {
-            self.forget_pair(slot);
+        if let Some(error) = failure {
+            self.terminal_failure = Some(*error);
+            return Err(error);
         }
-        self.retained.clear();
-        self.inverses.clear();
+        self.active = false;
         if mode == MWAN_NATIVE_DISABLE {
+            self.forget_restoration();
             return Ok(());
         }
         for id in ports {
+            if failure.is_some() && self.controllers.iter().any(|port| port.id == Some(id)) {
+                continue;
+            }
             // SAFETY: The SDK owns its ethdev validity table for this EAL thread.
             if unsafe { dpdk::rte_eth_dev_is_valid_port(id) } == 0 {
                 continue;
@@ -2935,14 +2964,19 @@ impl OwnerState {
                     0,
                     "Port close failed; process recovery is required",
                 );
-                self.terminal_failure = Some(*error);
                 self.faulted = true;
-                return Err(error);
+                retain_cleanup_failure(&mut failure, error);
+                continue;
             }
             if let Some(port) = self.ports.iter_mut().find(|port| port.id == id) {
                 port.state = PortState::Closed;
             }
         }
+        if let Some(error) = failure {
+            self.terminal_failure = Some(*error);
+            return Err(error);
+        }
+        self.forget_restoration();
         if let Some(pool) = self.pool.take() {
             // SAFETY: Queues are closed and Rust retains neither pending nor
             // quarantined mbufs. The pool has a single owning SDK allocation.
@@ -2965,6 +2999,15 @@ impl OwnerState {
             return Err(error);
         }
         Ok(())
+    }
+
+    fn forget_restoration(&mut self) {
+        for slot in 0..self.pairs.len() {
+            self.forget_pair(slot);
+        }
+        self.retained.clear();
+        self.inverses.clear();
+        self.forget_vxlan_contexts();
     }
 }
 

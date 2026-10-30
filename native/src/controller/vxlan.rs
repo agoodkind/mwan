@@ -333,23 +333,19 @@ impl OwnerState {
         Ok(())
     }
 
-    pub(super) fn close_vxlan_contexts(&mut self) -> NativeResult<()> {
-        self.suspend_vxlan_rules()?;
+    pub(super) fn forget_vxlan_contexts(&mut self) {
         for context in &mut self.vxlan {
             context.endpoint = None;
             context.interface = None;
             context.plan = None;
         }
-        Ok(())
     }
 
     pub(super) fn suspend_vxlan_rules(&mut self) -> NativeResult<()> {
         let mut failure = None;
         for slot in 0..self.vxlan.len() {
-            match self.remove_vxlan(slot) {
-                Ok(()) => {}
-                Err(error) if failure.is_none() => failure = Some(error),
-                Err(_) => {}
+            if let Err(error) = self.remove_vxlan(slot) {
+                retain_cleanup_failure(&mut failure, error);
             }
         }
         match failure {

@@ -1097,7 +1097,8 @@ static int recycle_stale(struct mwan_native *owner, uint64_t cycle, const char *
 static int recycle_slots(const char *config_path, const char *first_path,
 			  const char *second_path, const char *reused_path,
 			  uint64_t cycles, uint64_t seconds,
-			  uint64_t minimum_forwarded, uint64_t minimum_returned)
+			  uint64_t minimum_forwarded, uint64_t minimum_returned,
+			  bool shutdown_queued)
 {
 	struct mwan_native_config config = {0};
 	struct mwan_native_pair_spec first = {0}, second = {0}, reused = {0};
@@ -1164,6 +1165,47 @@ static int recycle_slots(const char *config_path, const char *first_path,
 			goto cleanup;
 		}
 		struct mwan_native_handle old_handle = current.handle;
+		if (shutdown_queued) {
+			before = stats;
+			int stop_rc = mwan_native_close(&owner, MWAN_NATIVE_DISABLE, &error);
+			printf("SHUTDOWN_API cycle=%" PRIu64 " mode=disable rc=%d owner_retained=%u\n",
+			       cycle, stop_rc, owner == identity);
+			fflush(stdout);
+			if (stop_rc) {
+				struct mwan_native_error retry_error = {0};
+				int retry_rc = mwan_native_close(&owner, MWAN_NATIVE_DISABLE, &retry_error);
+				printf("SHUTDOWN_RETRY cycle=%" PRIu64 " rc=%d owner_retained=%u\n",
+				       cycle, retry_rc, owner == identity);
+				if (owner != identity || retry_rc != stop_rc || retry_error.code != error.code)
+					fprintf(stderr, "Failed shutdown lost its owner or original error\n");
+				goto cleanup;
+			}
+			if (owner != identity || recycle_storage(owner, cycle, "disabled", 0, 0, &error) ||
+			    mwan_native_poll(owner, 64, &stats, &error) ||
+			    recycle_worker(cycle, "shutdown_drain", &before, &stats) ||
+			    stats.returned_to_kernel - before.returned_to_kernel < minimum_returned) {
+				fprintf(stderr, "Disable did not restore the required queued packets and retain its owner\n");
+				goto cleanup;
+			}
+			if (mwan_native_open(&config, &owner, &error) || owner != identity ||
+			    recycle_stale(owner, cycle, "shutdown_old", old_handle, active_pair, &error) ||
+			    mwan_native_pair_install(owner, replacement, &current, &error) ||
+			    recycle_pair_state(cycle, "replacement", &current, MWAN_NATIVE_PAIR_INSTALLED, mask) ||
+			    current.handle.instance != instance || current.handle.generation <= old_handle.generation)
+				goto cleanup;
+			printf("READY_RECYCLE_REUSED cycle=%" PRIu64 " pair=%s seconds=%" PRIu64
+			       " compare_external_unique_ids=required\n", cycle, replacement_name, seconds);
+			fflush(stdout);
+			before = stats;
+			if (resume_poll_phase(owner, seconds, "shutdown replacement", &stats, &error) ||
+			    recycle_worker(cycle, "replacement", &before, &stats) ||
+			    recycle_counters(owner, cycle, "replacement", current.handle, mask, minimum_forwarded, &error) ||
+			    stats.forwarded - before.forwarded < minimum_forwarded)
+				goto cleanup;
+			active_pair = replacement;
+			active_name = replacement_name;
+			continue;
+		}
 		if (mwan_native_pair_remove(owner, old_handle, &retired, &error) ||
 		    recycle_pair_state(cycle, "old_removed", &retired, MWAN_NATIVE_PAIR_DRAINING, mask) ||
 		    mwan_native_pair_install(owner, &second, &bridge, &error) ||
@@ -1277,6 +1319,18 @@ static int recycle_slots(const char *config_path, const char *first_path,
 		active_pair = replacement;
 		active_name = replacement_name;
 	}
+	if (shutdown_queued) {
+		printf("QUEUE_SHUTDOWN_FINAL pair=%s rx_pause_ns=%u\n", active_name, RECYCLE_RX_PAUSE_NS);
+		fflush(stdout);
+		struct timespec pause = {.tv_nsec = RECYCLE_RX_PAUSE_NS};
+		if (nanosleep(&pause, NULL))
+			goto cleanup;
+		int final_rc = mwan_native_close(&owner, MWAN_NATIVE_FINAL_SHUTDOWN, &error);
+		printf("SHUTDOWN_API mode=final rc=%d owner_released=%u\n", final_rc, owner == NULL);
+		fflush(stdout);
+		complete = final_rc == 0 && owner == NULL;
+		goto cleanup;
+	}
 	if (mwan_native_pair_remove(owner, current.handle, &retired, &error) ||
 	    recycle_pair_state(cycles, "final_removed", &retired, MWAN_NATIVE_PAIR_DRAINING, mask))
 		goto cleanup;
@@ -1336,9 +1390,9 @@ int main(int argc, char **argv)
 		return reuse_slots(argv[2], argv[3], argv[4], argv[5], seconds,
 				  minimum_forwarded, minimum_returned);
 	}
-	if (argc > 1 && !strcmp(argv[1], "--recycle-slots")) {
+	if (argc > 1 && (!strcmp(argv[1], "--recycle-slots") || !strcmp(argv[1], "--shutdown-reuse"))) {
 		if (argc != 10) {
-			fprintf(stderr, "Usage: %s --recycle-slots CONFIG FIRST_PAIR SECOND_PAIR REUSED_PAIR CYCLES PHASE_SECONDS MIN_FORWARDED MIN_RETURNED\n", argv[0]);
+			fprintf(stderr, "Usage: %s %s CONFIG FIRST_PAIR SECOND_PAIR REUSED_PAIR CYCLES PHASE_SECONDS MIN_FORWARDED MIN_RETURNED\n", argv[0], argv[1]);
 			return EXIT_FAILURE;
 		}
 		uint64_t cycles, seconds, minimum_forwarded, minimum_returned;
@@ -1349,7 +1403,8 @@ int main(int argc, char **argv)
 			return EXIT_FAILURE;
 		}
 		return recycle_slots(argv[2], argv[3], argv[4], argv[5], cycles, seconds,
-				     minimum_forwarded, minimum_returned);
+				     minimum_forwarded, minimum_returned,
+				     !strcmp(argv[1], "--shutdown-reuse"));
 	}
 	if (argc == 9 && !strcmp(argv[1], "--guarded-pair")) {
 		uint64_t seconds, minimum_forwarded, minimum_returned, traffic_class, flow_label;
