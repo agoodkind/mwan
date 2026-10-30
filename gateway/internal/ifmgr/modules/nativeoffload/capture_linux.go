@@ -4,11 +4,9 @@ package nativeoffload
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"log/slog"
-	"math"
 	"math/bits"
 	"net"
 	"os"
@@ -19,24 +17,20 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"goodkind.io/mwan/internal/clock"
 	"goodkind.io/mwan/internal/offload"
 )
 
 const (
-	observationFrameBytes      = 65536
-	observationControlBytes    = 128
-	observationTimestampBytes  = 16
-	observationCounterBytes    = 4
-	observationAuxdataBytes    = 20
-	observationChecksumPending = 0x08
-	observationVLANPresent     = 0x10
+	observationFrameBytes   = 65536
+	observationControlBytes = 128
+	observationVnetBytes    = 10
 )
 
 type packetObservation struct {
 	offload.NativeObservation
-	ifindex int
-	at      time.Time
+	EffectiveNetworkLength uint32
+	ifindex                int
+	at                     time.Time
 }
 
 type packetCapture struct {
@@ -48,16 +42,19 @@ type packetCapture struct {
 	paused        *atomic.Bool
 	skipped       atomic.Uint64
 	previousDrops uint32
+	diagnostics   *captureDiagnostics
 }
 
 type captureMetadata struct {
-	at            time.Time
-	checksumReady bool
-	drops         uint32
-	dropsValid    bool
+	kernel         offload.NativeKernelMetadata
+	at             time.Time
+	drops          uint32
+	dropsValid     bool
+	auxiliaryValid bool
+	vnetValid      bool
 }
 
-func openPacketCapture(ctx context.Context, link *net.Interface, socketBytes int, observations chan<- packetObservation, failures chan<- error, paused *atomic.Bool) (result *packetCapture, resultErr error) {
+func openPacketCapture(ctx context.Context, link *net.Interface, socketBytes int, observations chan<- packetObservation, failures chan<- error, paused *atomic.Bool, diagnosticsEnabled bool) (result *packetCapture, resultErr error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer func() {
 		if resultErr != nil {
@@ -73,18 +70,14 @@ func openPacketCapture(ctx context.Context, link *net.Interface, socketBytes int
 	capture := &packetCapture{
 		file: file, cancel: cancel, done: make(chan struct{}),
 		closeOnce: sync.Once{}, closeErr: nil, paused: paused,
-		skipped: atomic.Uint64{}, previousDrops: 0,
+		skipped: atomic.Uint64{}, previousDrops: 0, diagnostics: nil,
 	}
-	for _, option := range []struct{ level, name, value int }{
-		{unix.SOL_SOCKET, unix.SO_RCVBUF, socketBytes},
-		{unix.SOL_SOCKET, unix.SO_TIMESTAMPNS, 1},
-		{unix.SOL_SOCKET, unix.SO_RXQ_OVFL, 1},
-		{unix.SOL_PACKET, unix.PACKET_AUXDATA, 1},
-		{unix.SOL_PACKET, unix.PACKET_IGNORE_OUTGOING, 1},
-	} {
-		if err := unix.SetsockoptInt(descriptor, option.level, option.name, option.value); err != nil {
-			return nil, errors.Join(fmt.Errorf("configure native packet observations: %w", err), capture.close())
-		}
+	if diagnosticsEnabled {
+		capture.diagnostics = new(captureDiagnostics)
+		capture.diagnostics.name, capture.diagnostics.ifindex = link.Name, link.Index
+	}
+	if err := configureObservationSocket(descriptor, socketBytes); err != nil {
+		return nil, errors.Join(err, capture.close())
 	}
 	if err := unix.Bind(descriptor, &unix.SockaddrLinklayer{Protocol: bits.ReverseBytes16(unix.ETH_P_ALL), Ifindex: link.Index}); err != nil {
 		return nil, errors.Join(fmt.Errorf("bind native packet observations: %w", err), capture.close())
@@ -147,7 +140,7 @@ func (capture *packetCapture) receive(ctx context.Context, raw syscall.RawConn, 
 			slog.WarnContext(ctx, "native packet observation receive failed", "ifindex", ifindex, "err", resultErr)
 		}
 	}()
-	frame := make([]byte, observationFrameBytes)
+	frame := make([]byte, observationFrameBytes+observationVnetBytes)
 	control := make([]byte, observationControlBytes)
 	for {
 		var count, controlCount, flags int
@@ -162,89 +155,103 @@ func (capture *packetCapture) receive(ctx context.Context, raw syscall.RawConn, 
 		if receiveErr != nil {
 			return fmt.Errorf("receive native packet observations: %w", receiveErr)
 		}
+		if capture.diagnostics != nil {
+			capture.diagnostics.count(captureReceived, 1)
+		}
 		if flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) != 0 || count == 0 {
 			return fmt.Errorf("native packet observation truncated: %w", unix.EMSGSIZE)
 		}
-		address, ok := sender.(*unix.SockaddrLinklayer)
-		if !ok || address.Ifindex != ifindex || address.Pkttype == unix.PACKET_OUTGOING {
-			continue
-		}
-		metadata, err := observationControl(control[:controlCount])
+		keepReading, err := capture.observeFrame(ctx, ifindex, frame[:count], sender, control[:controlCount], observations)
 		if err != nil {
 			return err
 		}
-		if metadata.dropsValid {
-			capture.skipped.Add(uint64(metadata.drops - capture.previousDrops))
-			capture.previousDrops = metadata.drops
-		}
-		if capture.paused != nil && capture.paused.Load() {
-			capture.skipped.Add(1)
-			continue
-		}
-		if !metadata.checksumReady {
-			continue
-		}
-		decoded, err := offload.ObserveNativeFrames([][]byte{frame[:count]})
-		if err != nil {
-			return fmt.Errorf("decode native packet observations: %w", err)
-		}
-		if !decoded[0].Eligible {
-			continue
-		}
-		observation := packetObservation{NativeObservation: decoded[0], ifindex: ifindex, at: metadata.at}
-		select {
-		case observations <- observation:
-		case <-ctx.Done():
+		if !keepReading {
 			return nil
-		default:
-			capture.skipped.Add(1)
 		}
 	}
 }
 
-func observationControl(data []byte) (metadata captureMetadata, resultErr error) {
-	defer func() {
-		if resultErr != nil {
-			slog.Warn("native packet observation metadata is invalid", "err", resultErr)
+func (capture *packetCapture) senderAllowed(ifindex int, frame []byte, sender unix.Sockaddr, control []byte) bool {
+	address, ok := sender.(*unix.SockaddrLinklayer)
+	if ok && address.Ifindex == ifindex && address.Pkttype == unix.PACKET_HOST && address.Hatype == unix.ARPHRD_ETHER && address.Halen == 6 {
+		return true
+	}
+	if capture.diagnostics == nil {
+		return false
+	}
+	stage := captureSenderRejected
+	if ok && address.Ifindex != ifindex {
+		stage = captureInterfaceRejected
+	} else if ok && address.Pkttype == unix.PACKET_OUTGOING {
+		stage = captureOutgoingRejected
+	}
+	var metadata captureMetadata
+	capture.diagnostics.record(stage, frame, sender, metadata, control, nil)
+	return false
+}
+
+func (capture *packetCapture) metadataAllowed(frame []byte, sender unix.Sockaddr, metadata captureMetadata) bool {
+	if metadata.dropsValid {
+		drops := uint64(metadata.drops - capture.previousDrops)
+		capture.skipped.Add(drops)
+		if capture.diagnostics != nil {
+			capture.diagnostics.count(captureSocketOverflow, drops)
 		}
-	}()
-	messages, err := unix.ParseSocketControlMessage(data)
+		capture.previousDrops = metadata.drops
+	}
+	if capture.paused != nil && capture.paused.Load() {
+		capture.skipped.Add(1)
+		if capture.diagnostics != nil {
+			capture.diagnostics.record(capturePaused, frame, sender, metadata, nil, nil)
+		}
+		return false
+	}
+	return true
+}
+
+func (capture *packetCapture) observeFrame(ctx context.Context, ifindex int, frame []byte, sender unix.Sockaddr, control []byte, observations chan<- packetObservation) (bool, error) {
+	if len(frame) <= observationVnetBytes || len(frame) > observationFrameBytes+observationVnetBytes {
+		return false, &nativeOperationError{operation: "read native virtual network header", connectionID: 0, ifindex: ifindex, cause: unix.EMSGSIZE}
+	}
+	prefix := frame[:observationVnetBytes]
+	frame = frame[observationVnetBytes:]
+	if !capture.senderAllowed(ifindex, frame, sender, control) {
+		return true, nil
+	}
+	metadata, err := observationControl(control)
 	if err != nil {
-		return metadata, fmt.Errorf("decode native observation control: %w", err)
+		return false, &nativeOperationError{operation: "read native observation metadata", connectionID: 0, ifindex: ifindex, cause: err}
 	}
-	auxiliaryValid := false
-	for _, message := range messages {
-		switch {
-		case message.Header.Level == unix.SOL_SOCKET && message.Header.Type == unix.SO_TIMESTAMPNS:
-			if len(message.Data) != observationTimestampBytes {
-				return metadata, fmt.Errorf("native observation timestamp has an invalid size")
-			}
-			seconds := binary.NativeEndian.Uint64(message.Data[:8])
-			nanoseconds := binary.NativeEndian.Uint64(message.Data[8:])
-			if seconds > math.MaxInt64 || nanoseconds >= uint64(time.Second) {
-				return metadata, fmt.Errorf("native observation timestamp exceeds its clock range")
-			}
-			metadata.at = time.Unix(int64(seconds), int64(nanoseconds))
-		case message.Header.Level == unix.SOL_SOCKET && message.Header.Type == unix.SO_RXQ_OVFL:
-			if len(message.Data) != observationCounterBytes {
-				return metadata, fmt.Errorf("native observation drop counter has an invalid size")
-			}
-			metadata.drops = binary.NativeEndian.Uint32(message.Data)
-			metadata.dropsValid = true
-		case message.Header.Level == unix.SOL_PACKET && message.Header.Type == unix.PACKET_AUXDATA:
-			if len(message.Data) != observationAuxdataBytes {
-				return metadata, fmt.Errorf("native packet observation auxiliary data has an invalid size")
-			}
-			status := binary.NativeEndian.Uint32(message.Data[:4])
-			metadata.checksumReady = status&(observationChecksumPending|observationVLANPresent) == 0
-			auxiliaryValid = true
+	metadata.setVnet(prefix)
+	if !capture.metadataAllowed(frame, sender, metadata) {
+		return true, nil
+	}
+	decoded, err := offload.ObserveNativeKernelFrames([]offload.NativeKernelFrame{{Frame: frame, Metadata: metadata.kernel}})
+	if err != nil {
+		return false, &nativeOperationError{operation: "decode native packet observations", connectionID: 0, ifindex: ifindex, cause: err}
+	}
+	if !decoded[0].Eligible {
+		if capture.diagnostics != nil {
+			capture.diagnostics.record(captureDecoderIneligible, frame, sender, metadata, nil, &decoded[0])
+		}
+		return true, nil
+	}
+	observation := packetObservation{NativeObservation: decoded[0].NativeObservation, EffectiveNetworkLength: decoded[0].EffectiveNetworkLength, ifindex: ifindex, at: metadata.at}
+	if capture.diagnostics != nil && observation.NetworkLength > observation.EffectiveNetworkLength {
+		capture.diagnostics.record(captureKernelAggregate, frame, sender, metadata, nil, &decoded[0])
+	}
+	select {
+	case observations <- observation:
+		if capture.diagnostics != nil {
+			capture.diagnostics.record(captureQueued, frame, sender, metadata, nil, &decoded[0])
+		}
+	case <-ctx.Done():
+		return false, nil
+	default:
+		capture.skipped.Add(1)
+		if capture.diagnostics != nil {
+			capture.diagnostics.record(captureQueueFull, frame, sender, metadata, nil, &decoded[0])
 		}
 	}
-	if metadata.at.IsZero() || metadata.at.After(clock.Real{}.Now()) {
-		return metadata, fmt.Errorf("native packet observation does not include a valid kernel timestamp")
-	}
-	if !auxiliaryValid {
-		return metadata, fmt.Errorf("native packet observation does not include required auxiliary data")
-	}
-	return metadata, nil
+	return true, nil
 }

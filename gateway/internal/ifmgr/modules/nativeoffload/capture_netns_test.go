@@ -3,13 +3,17 @@
 package nativeoffload
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"log/slog"
 	"math/bits"
 	"net"
 	"net/netip"
 	"os"
 	"os/exec"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -17,6 +21,7 @@ import (
 
 	"github.com/gopacket/gopacket"
 	"github.com/gopacket/gopacket/layers"
+	"github.com/ti-mo/conntrack"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 )
@@ -41,9 +46,12 @@ func TestNativePacketObservation(t *testing.T) {
 	input, sender := nativeCaptureLinks(t)
 	observations := make(chan packetObservation, nativeCaptureCapacity)
 	failures := make(chan error, 1)
-	capture, err := openPacketCapture(ctx, input, nativeCaptureSocketBytes, observations, failures, nil)
+	capture, err := openPacketCapture(ctx, input, nativeCaptureSocketBytes, observations, failures, nil, false)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if capture.diagnostics != nil {
+		t.Fatal("disabled capture allocated diagnostics")
 	}
 	t.Cleanup(func() {
 		cancel()
@@ -64,6 +72,9 @@ func TestNativePacketObservation(t *testing.T) {
 				if observation.ifindex != input.Index || observation.at.IsZero() || !observation.Eligible || observation.DecodeError != nil {
 					t.Fatalf("kernel capture did not provide an eligible Rust observation: %+v", observation)
 				}
+				if observation.NetworkLength != uint32(len(frame)-14) || observation.EffectiveNetworkLength != observation.NetworkLength {
+					t.Fatalf("ordinary capture changed the complete IP length: %+v", observation)
+				}
 				if observation.Tuple.IP.SourceAddress != netip.MustParseAddr(addresses[0]) || observation.Tuple.IP.DestinationAddress != netip.MustParseAddr(addresses[1]) || observation.Tuple.Proto.Protocol != protocol || observation.Tuple.Proto.SourcePort != nativeCaptureSourcePort || observation.Tuple.Proto.DestinationPort != nativeCaptureDestinationPort {
 					t.Fatalf("Rust observation changed the transmitted tuple: %+v", observation)
 				}
@@ -78,6 +89,186 @@ func TestNativePacketObservation(t *testing.T) {
 			case <-ctx.Done():
 				t.Fatal("native observation did not capture the transmitted frame")
 			}
+		}
+	}
+	var output bytes.Buffer
+	module := &Module{captures: []*packetCapture{capture}}
+	module.Log = slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	module.maintain(ctx)
+	if strings.Contains(output.String(), "native capture diagnostic") {
+		t.Fatalf("disabled capture emitted diagnostics: %s", output.String())
+	}
+}
+
+func TestNativePacketObservationDiagnostics(t *testing.T) {
+	if !nativeCaptureNamespace(t) {
+		return
+	}
+	if err := os.WriteFile("/proc/sys/net/ipv6/conf/default/disable_ipv6", []byte("1"), 0o644); err != nil {
+		t.Fatalf("disable IPv6 for new capture links: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), nativeCaptureTimeout)
+	defer cancel()
+	input, sender := nativeCaptureLinks(t)
+	for _, link := range []*net.Interface{input, sender} {
+		value, err := os.ReadFile("/proc/sys/net/ipv6/conf/" + link.Name + "/disable_ipv6")
+		if err != nil {
+			t.Fatalf("read IPv6 setting for %s: %v", link.Name, err)
+		}
+		if strings.TrimSpace(string(value)) != "1" {
+			t.Fatalf("IPv6 remains enabled on %s: %q", link.Name, value)
+		}
+	}
+	var paused atomic.Bool
+	paused.Store(true)
+	observations := make(chan packetObservation, 1)
+	failures := make(chan error, 1)
+	capture, err := openPacketCapture(ctx, input, nativeCaptureSocketBytes, observations, failures, &paused, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cancel()
+		if err := capture.close(); err != nil {
+			t.Error(err)
+		}
+		<-capture.done
+	})
+	frame := nativeCaptureFrame(t, sender, input, [2]string{"192.0.2.10", "198.51.100.20"}, unix.IPPROTO_TCP)
+	sentAt := time.Now()
+	for range 3 {
+		nativeCaptureSend(t, sender, frame)
+	}
+	awaitCaptureDiagnostic(t, ctx, capture, capturePaused, 3, failures)
+	var output bytes.Buffer
+	module := &Module{captures: []*packetCapture{capture}}
+	module.Log = slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	module.logCaptureDiagnostics(ctx)
+	report := output.String()
+	reported := readCaptureDiagnosticReport(t, report, input)
+	pausedSample := reported.Samples["paused"]
+	observedAt := pausedSample.ObservedAt
+	if observedAt.Before(sentAt) || observedAt.After(time.Now()) {
+		t.Fatalf("paused diagnostic timestamp does not identify a transmitted frame: sent=%s observed=%s", sentAt, observedAt)
+	}
+	if len(reported.Samples) != 1 || reported.Counters["paused"] != 3 || !pausedSample.Eligible || !pausedSample.AuxiliaryValid || pausedSample.AuxiliaryStatus == nil || !pausedSample.ObservedAtValid || pausedSample.Tuple.IP.SourceAddress != netip.MustParseAddr("192.0.2.10") {
+		t.Fatalf("capture report did not include the paused frame and counter: %s", report)
+	}
+	output.Reset()
+	module.logCaptureDiagnostics(ctx)
+	if len(readCaptureDiagnosticReport(t, output.String(), input).Samples) != 0 {
+		t.Fatalf("capture repeated a sample without a new frame: %s", output.String())
+	}
+	nativeCaptureSend(t, sender, frame)
+	awaitCaptureDiagnostic(t, ctx, capture, capturePaused, 4, failures)
+	output.Reset()
+	module.logCaptureDiagnostics(ctx)
+	reported = readCaptureDiagnosticReport(t, output.String(), input)
+	if len(reported.Samples) != 1 || !reported.Samples["paused"].ObservedAtValid || reported.Counters["paused"] != 4 {
+		t.Fatalf("capture did not report a fresh sample and monotonic counter: %s", output.String())
+	}
+	select {
+	case observation := <-observations:
+		t.Fatalf("paused capture admitted an observation: %+v", observation)
+	default:
+	}
+	paused.Store(false)
+	for range 2 {
+		nativeCaptureSend(t, sender, frame)
+	}
+	awaitCaptureDiagnostic(t, ctx, capture, captureQueueFull, 1, failures)
+	output.Reset()
+	module.logCaptureDiagnostics(ctx)
+	reported = readCaptureDiagnosticReport(t, output.String(), input)
+	if reported.Counters["queued"] != 1 || reported.Counters["queue_full"] != 1 || !reported.Samples["queue_full"].ObservedAtValid {
+		t.Fatalf("capture did not report queue admission and overflow: %s", output.String())
+	}
+	select {
+	case observation := <-observations:
+		if !observation.Eligible {
+			t.Fatalf("capture admitted an ineligible observation: %+v", observation)
+		}
+		if !reported.Samples["queued"].ObservedAtValid || !observation.at.Equal(reported.Samples["queued"].ObservedAt) {
+			t.Fatalf("queued diagnostic changed the kernel observation timestamp: observation=%s report=%s", observation.at, output.String())
+		}
+	default:
+		t.Fatal("capture did not admit the eligible frame")
+	}
+	ethernet := &layers.Ethernet{SrcMAC: sender.HardwareAddr, DstMAC: input.HardwareAddr, EthernetType: layers.EthernetTypeARP}
+	buffer := gopacket.NewSerializeBuffer()
+	if err := gopacket.SerializeLayers(buffer, gopacket.SerializeOptions{FixLengths: true}, ethernet, gopacket.Payload("native observation")); err != nil {
+		t.Fatal(err)
+	}
+	nativeCaptureSend(t, sender, buffer.Bytes())
+	awaitCaptureDiagnostic(t, ctx, capture, captureDecoderIneligible, 1, failures)
+	output.Reset()
+	module.logCaptureDiagnostics(ctx)
+	reported = readCaptureDiagnosticReport(t, output.String(), input)
+	if reported.Counters["decoder_ineligible"] != 1 || !reported.Samples["decoder_ineligible"].ObservedAtValid || reported.Samples["decoder_ineligible"].Eligible {
+		t.Fatalf("capture did not report the decoder rejection: %s", output.String())
+	}
+}
+
+type captureDiagnosticReport struct {
+	Ifindex  int               `json:"ifindex"`
+	Counters map[string]uint64 `json:"counters"`
+	Samples  map[string]struct {
+		ObservedAt             time.Time       `json:"observed_at"`
+		ObservedAtValid        bool            `json:"observed_at_valid"`
+		AuxiliaryValid         bool            `json:"auxiliary_valid"`
+		AuxiliaryStatus        *uint32         `json:"auxiliary_status"`
+		NetworkLength          uint32          `json:"ip_length"`
+		EffectiveNetworkLength uint32          `json:"effective_ip_length"`
+		GSOType                uint8           `json:"gso_type"`
+		GSOSize                uint16          `json:"gso_size"`
+		PacketLength           uint32          `json:"packet_length"`
+		CapturedLength         uint32          `json:"captured_length"`
+		Eligible               bool            `json:"eligible"`
+		Tuple                  conntrack.Tuple `json:"tuple"`
+	} `json:"samples"`
+}
+
+func readCaptureDiagnosticReport(t *testing.T, report string, input *net.Interface) captureDiagnosticReport {
+	t.Helper()
+	var summary struct {
+		Message    string                             `json:"msg"`
+		Interfaces map[string]captureDiagnosticReport `json:"interfaces"`
+	}
+	if err := json.Unmarshal([]byte(report), &summary); err != nil {
+		t.Fatalf("capture did not emit one JSON summary: %v: %s", err, report)
+	}
+	if summary.Message != "native capture diagnostics" || len(summary.Interfaces) != 1 {
+		t.Fatalf("capture omitted its interface summary: %s", report)
+	}
+	current, present := summary.Interfaces[input.Name]
+	if !present || current.Ifindex != input.Index {
+		t.Fatalf("capture changed the observed interface: %s", report)
+	}
+	for _, sample := range current.Samples {
+		if sample.Eligible && (sample.EffectiveNetworkLength == 0 || sample.EffectiveNetworkLength > sample.NetworkLength || sample.CapturedLength != sample.PacketLength) {
+			t.Fatalf("capture report omitted valid effective length or complete metadata: %s", report)
+		}
+	}
+	return current
+}
+
+func awaitCaptureDiagnostic(t *testing.T, ctx context.Context, capture *packetCapture, stage captureStage, minimum uint64, failures <-chan error) {
+	t.Helper()
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		capture.diagnostics.mu.Lock()
+		count := capture.diagnostics.counts[stage]
+		capture.diagnostics.mu.Unlock()
+		if count >= minimum {
+			return
+		}
+		select {
+		case failure := <-failures:
+			t.Fatal(failure)
+		case <-ctx.Done():
+			t.Fatal("capture did not report the expected frames")
+		case <-ticker.C:
 		}
 	}
 }
@@ -105,7 +296,7 @@ func TestNativePacketObservationCapacityFallback(t *testing.T) {
 	var paused atomic.Bool
 	observations := make(chan packetObservation, 1)
 	failures := make(chan error, 1)
-	capture, err := openPacketCapture(ctx, input, nativeCaptureSocketBytes, observations, failures, &paused)
+	capture, err := openPacketCapture(ctx, input, nativeCaptureSocketBytes, observations, failures, &paused, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +376,7 @@ func TestNativePacketObservationPanicPreservesLinuxDelivery(t *testing.T) {
 	var paused atomic.Bool
 	observations := make(chan packetObservation, 1)
 	failures := make(chan error, 1)
-	capture, err := openPacketCapture(ctx, input, nativeCaptureSocketBytes, observations, failures, &paused)
+	capture, err := openPacketCapture(ctx, input, nativeCaptureSocketBytes, observations, failures, &paused, false)
 	if err != nil {
 		t.Fatal(err)
 	}

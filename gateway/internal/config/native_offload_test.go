@@ -42,6 +42,32 @@ func TestLoadNativeOffloadProcessSettings(t *testing.T) {
 	}
 }
 
+func TestLoadNativeOffloadObservationDiagnostics(t *testing.T) {
+	t.Parallel()
+	for _, check := range []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{name: "omitted", input: "", want: false},
+		{name: "enabled", input: "observation_diagnostics = true\n", want: true},
+		{name: "disabled", input: "observation_diagnostics = false\n", want: false},
+	} {
+		t.Run(check.name, func(t *testing.T) {
+			t.Parallel()
+			path := writeSharedFile(t, sharedFileText+nativeProcessTOML+check.input)
+			loaded, _, err := config.LoadArguments([]string{"mwan", "--config", path})
+			if err != nil {
+				t.Fatal(err)
+			}
+			settings, err := loaded.IfMgr.Modules.NativeOffload.Resolve()
+			if err != nil || settings.ObservationDiagnostics != check.want {
+				t.Fatalf("resolved observation diagnostics = %v, want %v: %v", settings.ObservationDiagnostics, check.want, err)
+			}
+		})
+	}
+}
+
 func TestLoadNativeOffloadRejectsInvalidSettings(t *testing.T) {
 	t.Parallel()
 	for _, check := range []struct{ name, before, after string }{

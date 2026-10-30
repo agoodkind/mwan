@@ -9,6 +9,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr::{self, NonNull};
 use std::time::Duration;
 
+mod shared_ipv6;
 mod vxlan;
 
 const BURST: usize = 32;
@@ -95,6 +96,19 @@ struct Pair {
 struct InverseKey {
     origin: u32,
     tuple: MwanNativeTuple,
+    source_mac: [u8; 6],
+    destination_mac: [u8; 6],
+}
+
+impl InverseKey {
+    fn direction(direction: &MwanNativeDirection) -> Self {
+        Self {
+            origin: direction.origin_id,
+            tuple: direction.translated,
+            source_mac: direction.original_source_mac,
+            destination_mac: direction.original_destination_mac,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -256,6 +270,7 @@ struct OwnerState {
     vxlan: [vxlan::Context; MWAN_NATIVE_MAX_RECEIVERS as usize],
     retained: HashMap<MwanNativeHandle, Pair>,
     inverses: HashMap<InverseKey, LegId>,
+    shared_ipv6: shared_ipv6::Bindings,
     pending: VecDeque<Pending>,
     received: VecDeque<Received>,
     quarantined: Option<Received>,
@@ -604,6 +619,7 @@ fn validate_config(config: &MwanNativeConfig) -> NativeResult<()> {
             || origin.receiver >= config.receiver_count
             || origin.data >= config.data_count
             || origin.reserved != 0
+            || origin.ipv6_restore_field > MWAN_NATIVE_IPV6_RESTORE_DESTINATION
             || receivers[origin.receiver as usize].controller != origin.controller
             || data[origin.data as usize].controller != origin.controller
         {
@@ -704,6 +720,7 @@ impl OwnerState {
             vxlan: std::array::from_fn(|_| vxlan::Context::default()),
             retained,
             inverses,
+            shared_ipv6: shared_ipv6::Bindings::new(config.pair_capacity)?,
             pending,
             received,
             quarantined: None,
@@ -1468,6 +1485,21 @@ impl OwnerState {
             }
         }
         let origin = self.config.origins[direction.origin_id as usize];
+        if u32::from(direction.original.family) == MWAN_NATIVE_FAMILY_IPV6
+            && ((origin.ipv6_restore_field == MWAN_NATIVE_IPV6_RESTORE_SOURCE
+                && direction.original.destination != direction.translated.destination)
+                || (origin.ipv6_restore_field == MWAN_NATIVE_IPV6_RESTORE_DESTINATION
+                    && direction.original.source != direction.translated.source))
+        {
+            return Err(fault(
+                libc::ENOTSUP,
+                MWAN_NATIVE_OP_VALIDATE,
+                MWAN_NATIVE_OBJECT_ORIGIN,
+                direction.origin_id,
+                index as u32,
+                "Shared IPv6 restoration requires an unchanged opposite address",
+            ));
+        }
         if direction.original_destination_mac != self.config.receivers[origin.receiver as usize].mac
         {
             return Err(fault(
@@ -1494,6 +1526,14 @@ impl OwnerState {
         }
         if first.origin_id != second.origin_id {
             return false;
+        }
+        if u32::from(first.original.family) == MWAN_NATIVE_FAMILY_IPV6
+            && u32::from(second.original.family) == MWAN_NATIVE_FAMILY_IPV6
+            && left.ipv6_restore_field != MWAN_NATIVE_IPV6_RESTORE_LEGACY
+        {
+            return first.translated == second.translated
+                && first.original_source_mac == second.original_source_mac
+                && first.original_destination_mac == second.original_destination_mac;
         }
         first.original == second.original
             || first.translated == second.translated
@@ -1732,6 +1772,12 @@ impl OwnerState {
             }
             if pair.legs[index].inverse {
                 result.restoration_mask |= mask;
+                if self
+                    .shared_ipv6
+                    .contains(&self.config, &pair.spec.directions[index])
+                {
+                    result.shared_restoration_mask |= mask;
+                }
             }
             if pair.legs[index].delete_failed {
                 result.cleanup_failed_mask |= mask;
@@ -1749,7 +1795,9 @@ impl OwnerState {
         {
             return Err(stale_handle(handle));
         }
-        if self.pairs[slot].generation == handle.generation {
+        if self.pairs[slot].generation == handle.generation
+            && self.pairs[slot].state != PairState::Absent
+        {
             return Ok(&self.pairs[slot]);
         }
         self.retained
@@ -1798,7 +1846,7 @@ impl OwnerState {
     }
 
     fn retirement_stats(&self) -> MwanNativeRetirementStats {
-        MwanNativeRetirementStats {
+        let mut stats = MwanNativeRetirementStats {
             active_pair_capacity: self.config.pair_capacity,
             retained_pair_capacity: self.config.pair_capacity,
             retained_pairs: self.retained.len() as u32,
@@ -1812,7 +1860,15 @@ impl OwnerState {
                 .values()
                 .map(|pair| pair.legs.iter().filter(|leg| leg.inverse).count() as u64)
                 .sum(),
-        }
+            reusable_shared_slots: self
+                .pairs
+                .iter()
+                .filter(|pair| pair.state == PairState::Absent && pair.generation != u64::MAX)
+                .count() as u32,
+            ..MwanNativeRetirementStats::default()
+        };
+        self.shared_ipv6.stats(&mut stats);
+        stats
     }
 
     fn forget_pair(&mut self, slot: usize) {
@@ -1820,10 +1876,7 @@ impl OwnerState {
         for index in 0..2 {
             if pair.legs[index].inverse {
                 let spec = pair.spec.directions[index];
-                self.inverses.remove(&InverseKey {
-                    origin: spec.origin_id,
-                    tuple: spec.translated,
-                });
+                self.inverses.remove(&InverseKey::direction(&spec));
             }
             pair.legs[index].inverse = false;
         }
@@ -1893,6 +1946,46 @@ impl OwnerState {
         Ok(())
     }
 
+    fn release_shared(
+        &mut self,
+        handle: MwanNativeHandle,
+        result: &mut MwanNativePairResult,
+    ) -> NativeResult<()> {
+        let pair = self.handle_pair(handle)?;
+        let slot = handle.slot as usize;
+        *result = self.result_for(pair, slot);
+        if pair.generation != self.pairs[slot].generation
+            || self.pairs[slot].state == PairState::Absent
+        {
+            return Err(stale_handle(handle));
+        }
+        if self.faulted
+            || pair.state != PairState::Draining
+            || result.installed_mask != 0
+            || result.cleanup_failed_mask != 0
+            || result.shared_restoration_mask != result.requested_direction_mask
+            || result.requested_direction_mask == 0
+        {
+            return Err(fault(
+                libc::EBUSY,
+                MWAN_NATIVE_OP_DESTROY,
+                MWAN_NATIVE_OBJECT_PAIR,
+                handle.slot,
+                0,
+                "Shared release requires a fully cleaned primary pair and all shared inverses",
+            ));
+        }
+        self.restore_pending()?;
+        self.forget_pair(slot);
+        self.pairs[slot] = Pair {
+            generation: handle.generation,
+            ..Pair::default()
+        };
+        result.state = MWAN_NATIVE_PAIR_RELEASED;
+        self.shared_ipv6.releases = self.shared_ipv6.releases.wrapping_add(1);
+        Ok(())
+    }
+
     fn install_pair(
         &mut self,
         spec: MwanNativePairSpec,
@@ -1939,6 +2032,7 @@ impl OwnerState {
                 }
             }
         }
+        let shared_reservation = self.shared_ipv6.prepare(&self.config, &spec)?;
         let mut free = None;
         let mut draining = None;
         for (slot, pair) in self.pairs.iter().enumerate() {
@@ -2021,6 +2115,7 @@ impl OwnerState {
         if self.pairs[slot].state == PairState::Draining {
             self.retain_pair(slot)?;
         }
+        self.shared_ipv6.publish(shared_reservation);
         let generation = self.pairs[slot].generation + 1;
         self.pairs[slot] = Pair {
             generation,
@@ -2034,10 +2129,7 @@ impl OwnerState {
                 continue;
             }
             let direction = spec.directions[index];
-            let key = InverseKey {
-                origin: direction.origin_id,
-                tuple: direction.translated,
-            };
+            let key = InverseKey::direction(&direction);
             if self.inverses.contains_key(&key) {
                 let original = fault(
                     libc::EEXIST,
@@ -2116,10 +2208,7 @@ impl OwnerState {
                 continue;
             }
             let direction = spec.directions[index];
-            let key = InverseKey {
-                origin: direction.origin_id,
-                tuple: direction.translated,
-            };
+            let key = InverseKey::direction(&direction);
             let inverse_owned = pair.legs[index].inverse
                 && self.inverses.get(&key).is_some_and(|leg| {
                     leg.slot == slot
@@ -2207,10 +2296,7 @@ impl OwnerState {
                     "Invalid replacement packet selector guard",
                 ));
             }
-            let key = InverseKey {
-                origin: direction.origin_id,
-                tuple: direction.translated,
-            };
+            let key = InverseKey::direction(&direction);
             let inverse_owned = pair.legs[index].inverse
                 && self.inverses.get(&key).is_some_and(|leg| {
                     leg.slot == slot
@@ -2454,14 +2540,25 @@ impl OwnerState {
     }
 
     fn packet_leg(&self, origin: usize, view: &packet::ParsedPacket) -> Option<PacketLeg> {
+        let shared = self.shared_ipv6.packet(&self.config, origin, view);
+        let shared_profile = u32::from(view.tuple.family) == MWAN_NATIVE_FAMILY_IPV6
+            && self.config.origins[origin].ipv6_restore_field != MWAN_NATIVE_IPV6_RESTORE_LEGACY;
+        if shared_profile && shared.is_none() {
+            return None;
+        }
         if view.ports {
-            let leg = self
+            let Some(leg) = self
                 .inverses
                 .get(&InverseKey {
                     origin: origin as u32,
                     tuple: view.tuple,
+                    source_mac: view.source_mac,
+                    destination_mac: view.destination_mac,
                 })
-                .copied()?;
+                .copied()
+            else {
+                return shared;
+            };
             let handle = MwanNativeHandle {
                 instance: self.instance,
                 generation: leg.generation,
@@ -2469,6 +2566,13 @@ impl OwnerState {
                 reserved: 0,
             };
             let pair = self.handle_pair(handle).ok()?;
+            if shared_profile
+                && !self
+                    .shared_ipv6
+                    .contains(&self.config, &pair.spec.directions[leg.direction])
+            {
+                return None;
+            }
             return Some(PacketLeg {
                 spec: pair.spec.directions[leg.direction],
                 guard: pair.guards.map(|guards| guards[leg.direction]),
@@ -2479,6 +2583,9 @@ impl OwnerState {
         if !view.fragment {
             return None;
         }
+        if shared_profile {
+            return shared;
+        }
         for pair in self.pairs.iter().chain(self.retained.values()) {
             if pair.state == PairState::Absent {
                 continue;
@@ -2488,6 +2595,8 @@ impl OwnerState {
                 if pair.legs[index].inverse
                     && direction.origin_id == origin as u32
                     && same_addresses(&direction.translated, &view.tuple)
+                    && direction.original_source_mac == view.source_mac
+                    && direction.original_destination_mac == view.destination_mac
                 {
                     return Some(PacketLeg {
                         spec: direction,
@@ -2694,7 +2803,14 @@ impl OwnerState {
         {
             Some(Ok(frame)) => {
                 if kernel {
-                    packet::restore(frame, &view, &spec)
+                    let field = self.config.origins[origin].ipv6_restore_field;
+                    if u32::from(view.tuple.family) == MWAN_NATIVE_FAMILY_IPV6
+                        && field != MWAN_NATIVE_IPV6_RESTORE_LEGACY
+                    {
+                        packet::restore_ipv6_field(frame, &view, field, &spec)
+                    } else {
+                        packet::restore(frame, &view, &spec)
+                    }
                 } else {
                     packet::forward(frame, &view, &spec)
                 }
@@ -3062,6 +3178,7 @@ impl OwnerState {
         }
         self.retained.clear();
         self.inverses.clear();
+        self.shared_ipv6.clear();
         self.forget_vxlan_contexts();
     }
 }
@@ -3559,6 +3676,36 @@ pub unsafe extern "C" fn mwan_native_pair_remove(
         };
         let output = state.result_for(state.handle_pair(handle)?, slot);
         // SAFETY: The separate result remains writable after failed deletion.
+        unsafe { result.write(output) };
+        outcome
+    })
+}
+
+/// # Safety
+/// The caller supplies a live exclusive owner and separate writable output records.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mwan_native_pair_release_shared(
+    owner: *mut MwanNative,
+    handle: MwanNativeHandle,
+    result: *mut MwanNativePairResult,
+    error: *mut MwanNativeError,
+) -> i32 {
+    boundary(owner, error, MWAN_NATIVE_OP_DESTROY, || {
+        // SAFETY: The ABI caller supplies this library's live exclusive owner.
+        let state = unsafe { state_for(owner) }?;
+        if result.is_null() {
+            return Err(fault(
+                libc::EINVAL,
+                MWAN_NATIVE_OP_DESTROY,
+                MWAN_NATIVE_OBJECT_PAIR,
+                handle.slot,
+                0,
+                "Pair result is required",
+            ));
+        }
+        let mut output = MwanNativePairResult::default();
+        let outcome = state.release_shared(handle, &mut output);
+        // SAFETY: The caller supplies the separate writable output record.
         unsafe { result.write(output) };
         outcome
     })

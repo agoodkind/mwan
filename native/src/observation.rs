@@ -1,6 +1,6 @@
 use crate::abi::{
     MWAN_NATIVE_OBSERVATION_BATCH_LIMIT, MWAN_NATIVE_OBSERVATION_FRAME_LIMIT, MwanNativeFrame,
-    MwanNativeObservation,
+    MwanNativeKernelFrame, MwanNativeKernelObservation, MwanNativeObservation,
 };
 use crate::packet;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -48,6 +48,61 @@ pub unsafe extern "C" fn mwan_native_observe_batch(
         Err(_) => -libc::EFAULT,
     }
 }
+
+/// # Safety
+/// The caller supplies aligned, live arrays for count initialized descriptors
+/// and count writable observations. Every nonnull frame pointer identifies
+/// its declared readable length for the entire call. Inputs remain immutable,
+/// outputs have exclusive access, and input arrays and buffers cannot overlap
+/// outputs. Metadata must come from the same trusted kernel capture as bytes.
+/// This synchronous call does not retain pointers or authorize forwarding.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mwan_native_observe_kernel_batch(
+    frames: *const MwanNativeKernelFrame,
+    observations: *mut MwanNativeKernelObservation,
+    count: u32,
+) -> i32 {
+    if frames.is_null()
+        || observations.is_null()
+        || count == 0
+        || count > MWAN_NATIVE_OBSERVATION_BATCH_LIMIT
+    {
+        return -libc::EINVAL;
+    }
+    match catch_unwind(AssertUnwindSafe(|| {
+        // SAFETY: The caller supplies the complete aligned descriptor array.
+        let frames = unsafe { std::slice::from_raw_parts(frames, count as usize) };
+        if frames.iter().any(|input| {
+            input.frame.data.is_null()
+                || input.frame.length == 0
+                || input.frame.length > MWAN_NATIVE_OBSERVATION_FRAME_LIMIT
+                || input.frame.reserved != 0
+                || input.metadata.reserved16 != 0
+                || input.metadata.reserved32 != 0
+        }) {
+            return -libc::EINVAL;
+        }
+        for (index, input) in frames.iter().enumerate() {
+            // SAFETY: All descriptors passed validation. The caller supplies
+            // immutable readable bytes separate from the output array.
+            let bytes = unsafe {
+                std::slice::from_raw_parts(input.frame.data, input.frame.length as usize)
+            };
+            let observation = packet::observe_kernel(bytes, &input.metadata);
+            // SAFETY: The caller grants exclusive access to count aligned
+            // output records. The descriptor array bounds this index.
+            unsafe { observations.add(index).write(observation) };
+        }
+        0
+    })) {
+        Ok(result) => result,
+        Err(_) => -libc::EFAULT,
+    }
+}
+
+#[cfg(test)]
+#[path = "observation_kernel_tests.rs"]
+mod kernel_tests;
 
 #[cfg(test)]
 mod tests {

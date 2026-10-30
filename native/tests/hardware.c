@@ -564,7 +564,14 @@ static bool same_resume_retirement(const struct mwan_native_retirement_stats *fi
 	       first->retained_pair_capacity == second->retained_pair_capacity &&
 	       first->retained_pairs == second->retained_pairs &&
 	       first->draining_pairs == second->draining_pairs &&
-	       first->retained_directions == second->retained_directions;
+	       first->retained_directions == second->retained_directions &&
+	       first->shared_binding_capacity == second->shared_binding_capacity &&
+	       first->shared_bindings == second->shared_bindings &&
+	       first->shared_identity_bindings == second->shared_identity_bindings &&
+	       first->reusable_shared_slots == second->reusable_shared_slots &&
+	       first->shared_binding_conflicts == second->shared_binding_conflicts &&
+	       first->shared_binding_capacity_rejections == second->shared_binding_capacity_rejections &&
+	       first->shared_pair_releases == second->shared_pair_releases;
 }
 
 static int resume_poll_phase(struct mwan_native *owner, uint64_t seconds,
@@ -1311,8 +1318,512 @@ cleanup:
 	return RECYCLE_EXTERNAL_PROOF_REQUIRED;
 }
 
+static int shared_storage(struct mwan_native *owner, uint32_t expected_bindings,
+			  uint64_t releases, bool reusable, struct mwan_native_error *error)
+{
+	struct mwan_native_retirement_stats stats = {0};
+	if (mwan_native_retirement_query(owner, &stats, error))
+		return -1;
+	printf("SHARED_STORAGE bindings=%u capacity=%u identity_bindings=%u reusable=%u"
+	       " retained=%u retained_directions=%" PRIu64 " releases=%" PRIu64
+	       " conflicts=%" PRIu64 " capacity_rejections=%" PRIu64 "\n",
+	       stats.shared_bindings, stats.shared_binding_capacity, stats.shared_identity_bindings,
+	       stats.reusable_shared_slots, stats.retained_pairs, stats.retained_directions,
+	       stats.shared_pair_releases, stats.shared_binding_conflicts, stats.shared_binding_capacity_rejections);
+	fflush(stdout);
+	if (stats.shared_bindings != expected_bindings || stats.shared_binding_capacity != 2 ||
+	    stats.retained_pairs || stats.retained_directions ||
+	    stats.reusable_shared_slots != (reusable ? 1U : 0U) ||
+	    stats.shared_pair_releases != releases) {
+		fprintf(stderr, "Shared release changed the bounded storage contract\n");
+		return -1;
+	}
+	return 0;
+}
+
+static int shared_stale(struct mwan_native *owner, uint64_t cycle,
+			struct mwan_native_handle handle, const struct mwan_native_pair_spec *spec,
+			struct mwan_native_error *error)
+{
+	struct mwan_native_pair_result released = {0}, reobserved = {0};
+	struct mwan_native_packet_guard guards[MWAN_NATIVE_DIRECTION_COUNT] = {0};
+	if (recycle_stale(owner, cycle, "released_before_replacement", handle, spec, error))
+		return -1;
+	int release = mwan_native_pair_release_shared(owner, handle, &released, error);
+	int reobserve = mwan_native_pair_reobserve(owner, handle, spec, guards, &reobserved, error);
+	if (release != -ESTALE || reobserve != -ESTALE || released.installed_mask ||
+	    released.restoration_mask || reobserved.installed_mask || reobserved.restoration_mask) {
+		fprintf(stderr, "A released handle remained usable before replacement\n");
+		return -1;
+	}
+	return 0;
+}
+
+static int shared_release_pair(struct mwan_native *owner, struct mwan_native_handle handle,
+			       uint32_t mask, struct mwan_native_error *error)
+{
+	struct mwan_native_pair_result result = {0};
+	if (mwan_native_pair_remove(owner, handle, &result, error) ||
+	    result.state != MWAN_NATIVE_PAIR_DRAINING || result.installed_mask ||
+	    result.cleanup_failed_mask || result.shared_restoration_mask != mask ||
+	    result.restoration_mask != mask || !same_resume_handle(result.handle, handle))
+		return -1;
+	if (mwan_native_pair_release_shared(owner, handle, &result, error) ||
+	    result.state != MWAN_NATIVE_PAIR_RELEASED || result.installed_mask ||
+	    result.cleanup_failed_mask || result.shared_restoration_mask != mask ||
+	    !same_resume_handle(result.handle, handle))
+		return -1;
+	return 0;
+}
+
+enum { SHARED_COUNTER_QUERY_INTERVAL_NS = 10000000 };
+
+struct shared_counter_request {
+	const char *operation;
+	const char *phase;
+	int cycle;
+	const char *pair;
+	const char *batch;
+	struct mwan_native_handle handle;
+	uint32_t mask;
+	uint32_t direction;
+	uint64_t seconds;
+	uint64_t minimum_packets;
+	const struct mwan_native_counter *baseline;
+};
+
+static void shared_counter_sample(const struct shared_counter_request *request,
+				  const struct mwan_native_pair_stats *sample,
+				  const char *observation, uint64_t reads,
+				  uint64_t elapsed_ns, int query)
+{
+	const struct mwan_native_counter *counter = &sample->directions[request->direction];
+	printf("SHARED_COUNTER_SAMPLE operation=%s phase=%s pair=%s batch=%s",
+	       request->operation, request->phase, request->pair, request->batch);
+	if (request->cycle >= 0)
+		printf(" cycle=%d", request->cycle);
+	printf(" direction=%u packets=%" PRIu64 " bytes=%" PRIu64
+	       " packets_valid=%u bytes_valid=%u error=%d observed_monotonic_ns=%" PRIu64
+	       " observation=%s reads=%" PRIu64 " elapsed_ns=%" PRIu64 " query_rc=%d"
+	       " instance=%" PRIu64 " slot=%u generation=%" PRIu64 " state=%u"
+	       " requested=%u installed=%u restoration=%u shared=%u cleanup_failed=%u\n",
+	       request->direction, counter->packets, counter->bytes, counter->packets_valid,
+	       counter->bytes_valid, counter->error, counter->observed_monotonic_ns,
+	       observation, reads, elapsed_ns, query, sample->result.handle.instance,
+	       sample->result.handle.slot, sample->result.handle.generation, sample->result.state,
+	       sample->result.requested_direction_mask, sample->result.installed_mask,
+	       sample->result.restoration_mask, sample->result.shared_restoration_mask,
+	       sample->result.cleanup_failed_mask);
+	fflush(stdout);
+}
+
+static int shared_counter_wait(struct mwan_native *owner,
+			       const struct shared_counter_request *request,
+			       struct mwan_native_pair_stats *sample,
+			       struct mwan_native_error *error)
+{
+	uint64_t started = now_ns();
+	uint64_t duration = request->seconds * UINT64_C(1000000000);
+	if (!started || UINT64_MAX - started < duration) {
+		fprintf(stderr, "Cannot establish the %s %s counter deadline\n", request->operation, request->phase);
+		return -1;
+	}
+	uint64_t reads = 0, elapsed_ns = 0;
+	int query = 0;
+	bool accepted = false;
+	const char *failure = "Counter observation exceeded its time budget";
+	for (;;) {
+		uint64_t now = now_ns();
+		if (!now || now < started) {
+			failure = "Cannot read the counter observation clock";
+			break;
+		}
+		elapsed_ns = now - started;
+		if (elapsed_ns >= duration)
+			break;
+		memset(sample, 0, sizeof(*sample));
+		memset(error, 0, sizeof(*error));
+		query = mwan_native_pair_query(owner, request->handle, sample, error);
+		reads++;
+		now = now_ns();
+		if (now && now >= started)
+			elapsed_ns = now - started;
+		if (reads == 1)
+			shared_counter_sample(request, sample, "first", reads, elapsed_ns, query);
+		if (!now || now < started) {
+			failure = "Cannot read the counter observation clock";
+			break;
+		}
+		const struct mwan_native_counter *counter = &sample->directions[request->direction];
+		if (query && query != -EAGAIN && query != -ESTALE) {
+			failure = "Counter query failed";
+			break;
+		}
+		if (counter->error && counter->error != -EAGAIN && counter->error != -ESTALE) {
+			failure = "Hardware counter reported an error";
+			break;
+		}
+		if (!query) {
+			const struct mwan_native_pair_result *result = &sample->result;
+			if (!same_resume_handle(result->handle, request->handle) ||
+			    result->state != MWAN_NATIVE_PAIR_INSTALLED ||
+			    result->requested_direction_mask != request->mask ||
+			    result->installed_mask != request->mask || result->restoration_mask != request->mask ||
+			    result->shared_restoration_mask != request->mask || result->cleanup_failed_mask) {
+				failure = "Counter query changed the expected installed rule or inverse ownership";
+				break;
+			}
+			if (!counter->error && counter->packets_valid && counter->bytes_valid &&
+			    counter->observed_monotonic_ns) {
+				uint64_t packets = counter->packets;
+				if (request->baseline) {
+					const struct mwan_native_counter *baseline = request->baseline;
+					if (counter->packets < baseline->packets || counter->bytes < baseline->bytes ||
+					    counter->observed_monotonic_ns <= baseline->observed_monotonic_ns) {
+						failure = "Queued counter counts decreased or its observation time did not advance";
+						break;
+					}
+					packets -= baseline->packets;
+				}
+				if (elapsed_ns < duration && packets >= request->minimum_packets) {
+					accepted = true;
+					break;
+				}
+			}
+		}
+		if (elapsed_ns >= duration)
+			break;
+		uint64_t pause_ns = duration - elapsed_ns;
+		if (pause_ns > SHARED_COUNTER_QUERY_INTERVAL_NS)
+			pause_ns = SHARED_COUNTER_QUERY_INTERVAL_NS;
+		struct timespec pause = {.tv_nsec = (long)pause_ns};
+		if (nanosleep(&pause, NULL)) {
+			perror("Cannot pause between shared counter queries");
+			failure = "Counter query interval sleep failed";
+			now = now_ns();
+			if (now && now >= started)
+				elapsed_ns = now - started;
+			break;
+		}
+	}
+	if (accepted) {
+		shared_counter_sample(request, sample, "accepted", reads, elapsed_ns, query);
+		return 0;
+	}
+	shared_counter_sample(request, sample, "rejected", reads, elapsed_ns, query);
+	fprintf(stderr, "%s %s: %s\n", request->operation, request->phase, failure);
+	return -1;
+}
+
+static int shared_capacity(const char *config_path, uint32_t field, const char *pair_path)
+{
+	struct mwan_native_config config = {0};
+	struct mwan_native_pair_spec first = {0}, second = {0}, third = {0};
+	if (read_config(config_path, &config) || config.pair_capacity != 1 || read_pair(pair_path, &first) ||
+	    (first.requested_direction_mask != 1 && first.requested_direction_mask != 2)) {
+		fprintf(stderr, "Shared capacity requires P=1 and one exact IPv6 direction\n");
+		return EXIT_FAILURE;
+	}
+	for (uint32_t i = 0; i < config.origin_count; i++)
+		config.origins[i].ipv6_restore_field = field;
+	uint32_t direction = first.requested_direction_mask == 1 ? 0 : 1;
+	if (first.directions[direction].original.family != MWAN_NATIVE_FAMILY_IPV6) {
+		fprintf(stderr, "Shared capacity requires an IPv6 pair\n");
+		return EXIT_FAILURE;
+	}
+	second = first;
+	third = first;
+	second.directions[direction].original_source_mac[5] ^= 1;
+	third.directions[direction].original_source_mac[5] ^= 2;
+	struct mwan_native *owner = NULL;
+	struct mwan_native_pair_result result = {0}, rejected = {0};
+	struct mwan_native_error error = {0};
+	struct mwan_native_retirement_stats stats = {0};
+	bool complete = false;
+	if (mwan_native_open(&config, &owner, &error) ||
+	    mwan_native_pair_install(owner, &first, &result, &error) ||
+	    shared_release_pair(owner, result.handle, first.requested_direction_mask, &error) ||
+	    mwan_native_pair_install(owner, &second, &result, &error) ||
+	    shared_release_pair(owner, result.handle, first.requested_direction_mask, &error) ||
+	    shared_storage(owner, 2, 2, true, &error))
+		goto cleanup;
+	int capacity = mwan_native_pair_install(owner, &third, &rejected, &error);
+	if (capacity != -ENOSPC || rejected.installed_mask || rejected.restoration_mask ||
+	    mwan_native_retirement_query(owner, &stats, &error) ||
+	    stats.shared_binding_capacity_rejections != 1 || stats.shared_bindings != 2 ||
+	    mwan_native_pair_install(owner, &first, &result, &error) ||
+	    shared_release_pair(owner, result.handle, first.requested_direction_mask, &error) ||
+	    shared_storage(owner, 2, 3, true, &error)) {
+		fprintf(stderr, "Full shared capacity did not reject a new MAC key and accept an existing key\n");
+		goto cleanup;
+	}
+	complete = true;
+cleanup:
+	if (!complete && error.code)
+		report_error(&error);
+	if (owner && mwan_native_close(&owner, MWAN_NATIVE_FINAL_SHUTDOWN, &error)) {
+		report_error(&error);
+		complete = false;
+	}
+	if (complete)
+		puts("PASS shared capacity rejection, separate MAC bindings and existing-key admission at capacity");
+	return complete && !owner ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
+static int shared_conflict(const char *config_path, uint32_t field,
+			   const char *first_path, const char *conflict_path,
+			   uint64_t seconds, uint64_t minimum_returned)
+{
+	struct mwan_native_config config = {0};
+	struct mwan_native_pair_spec first = {0}, conflict = {0};
+	if (read_config(config_path, &config) || config.pair_capacity != 1 ||
+	    read_pair(first_path, &first) || read_pair(conflict_path, &conflict) ||
+	    (first.requested_direction_mask != 1 && first.requested_direction_mask != 2) ||
+	    conflict.requested_direction_mask != first.requested_direction_mask) {
+		fprintf(stderr, "Shared conflict requires P=1 and one common requested direction\n");
+		return EXIT_FAILURE;
+	}
+	for (uint32_t i = 0; i < config.origin_count; i++)
+		config.origins[i].ipv6_restore_field = field;
+	struct mwan_native *owner = NULL;
+	struct mwan_native_pair_result result = {0}, rejected = {0};
+	struct mwan_native_error error = {0};
+	struct mwan_native_pair_stats baseline = {0}, queued = {0};
+	struct mwan_native_retirement_stats retirement = {0};
+	struct mwan_native_worker_stats stats = {0};
+	uint32_t direction = first.requested_direction_mask == 1 ? 0 : 1;
+	bool complete = false;
+	if (mwan_native_open(&config, &owner, &error) ||
+	    mwan_native_pair_install(owner, &first, &result, &error))
+		goto cleanup;
+	struct shared_counter_request counter_request = {
+		.operation = "shared_conflict", .phase = "baseline", .cycle = -1,
+		.pair = first_path, .batch = "FIRST", .handle = result.handle,
+		.mask = first.requested_direction_mask, .direction = direction, .seconds = seconds
+	};
+	if (shared_counter_wait(owner, &counter_request, &baseline, &error))
+		goto cleanup;
+	puts("QUEUE_SHARED_CONFLICT_OLD acknowledgment=QUEUED_CONFLICT polling=paused");
+	fflush(stdout);
+	char acknowledgment[64];
+	if (!fgets(acknowledgment, sizeof(acknowledgment), stdin) || strcmp(acknowledgment, "QUEUED_CONFLICT\n")) {
+		fprintf(stderr, "Send the finite FIRST batch, then write QUEUED_CONFLICT to stdin\n");
+		goto cleanup;
+	}
+	counter_request.phase = "queued";
+	counter_request.minimum_packets = minimum_returned;
+	counter_request.baseline = &baseline.directions[direction];
+	if (shared_counter_wait(owner, &counter_request, &queued, &error))
+		goto cleanup;
+	const struct mwan_native_counter *before = &baseline.directions[direction];
+	const struct mwan_native_counter *after = &queued.directions[direction];
+	printf("SHARED_CONFLICT_COUNTER baseline=%" PRIu64 " queued=%" PRIu64 "\n", before->packets, after->packets);
+	struct mwan_native_handle handle = result.handle;
+	if (shared_release_pair(owner, handle, first.requested_direction_mask, &error) ||
+	    shared_stale(owner, 0, handle, &first, &error))
+		goto cleanup;
+	int collision = mwan_native_pair_install(owner, &conflict, &rejected, &error);
+	if (collision != -EEXIST || rejected.installed_mask || rejected.restoration_mask ||
+	    mwan_native_retirement_query(owner, &retirement, &error) ||
+	    retirement.shared_binding_conflicts != 1 || retirement.shared_bindings != 1 ||
+	    retirement.shared_pair_releases != 1 || retirement.retained_pairs ||
+	    retirement.reusable_shared_slots != 1) {
+		fprintf(stderr, "The public ABI did not reject a permanent inverse conflict before creation\n");
+		goto cleanup;
+	}
+	printf("READY_SHARED_CONFLICT_RETURN seconds=%" PRIu64 " original_replay=forbidden\n", seconds);
+	fflush(stdout);
+	if (resume_poll_phase(owner, seconds, "shared conflict return", &stats, &error) ||
+	    stats.returned_to_kernel < minimum_returned || stats.forwarded || stats.pending_packets ||
+	    stats.quarantined_packets || stats.lookup_misses)
+		goto cleanup;
+	printf("SHARED_CONFLICT_COMPLETE returned=%" PRIu64 " identities=%u external_exact_frame_capture=required\n",
+	       stats.returned_to_kernel, retirement.shared_identity_bindings);
+	complete = true;
+cleanup:
+	if (!complete && error.code)
+		report_error(&error);
+	if (owner && mwan_native_close(&owner, MWAN_NATIVE_FINAL_SHUTDOWN, &error)) {
+		report_error(&error);
+		complete = false;
+	}
+	return complete && !owner ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
+static int shared_release(const char *config_path, uint32_t field, uint64_t seconds,
+			  uint64_t minimum_forwarded, uint64_t minimum_returned,
+			  int pair_count, char **pair_paths)
+{
+	struct mwan_native_config config = {0};
+	struct mwan_native_pair_spec *pairs = calloc((size_t)pair_count, sizeof(*pairs));
+	if (!pairs || read_config(config_path, &config) || config.pair_capacity != 1) {
+		fprintf(stderr, "Shared release requires a valid configuration with pair_capacity=1\n");
+		free(pairs);
+		return EXIT_FAILURE;
+	}
+	for (uint32_t i = 0; i < config.origin_count; i++)
+		config.origins[i].ipv6_restore_field = field;
+	uint32_t mask = 0, direction_index = 0;
+	for (int i = 0; i < pair_count; i++) {
+		if (read_pair(pair_paths[i], &pairs[i])) {
+			fprintf(stderr, "Cannot read exact shared pair %s\n", pair_paths[i]);
+			free(pairs);
+			return EXIT_FAILURE;
+		}
+		if (i == 0) {
+			mask = pairs[i].requested_direction_mask;
+			direction_index = mask == 1 ? 0 : 1;
+		}
+		const struct mwan_native_direction *first = &pairs[0].directions[direction_index];
+		const struct mwan_native_direction *current = &pairs[i].directions[direction_index];
+		const uint8_t *first_original = field == MWAN_NATIVE_IPV6_RESTORE_SOURCE ? first->original.source : first->original.destination;
+		const uint8_t *first_translated = field == MWAN_NATIVE_IPV6_RESTORE_SOURCE ? first->translated.source : first->translated.destination;
+		const uint8_t *current_original = field == MWAN_NATIVE_IPV6_RESTORE_SOURCE ? current->original.source : current->original.destination;
+		const uint8_t *current_translated = field == MWAN_NATIVE_IPV6_RESTORE_SOURCE ? current->translated.source : current->translated.destination;
+		if ((mask != 1 && mask != 2) || pairs[i].requested_direction_mask != mask ||
+		    current->original.family != MWAN_NATIVE_FAMILY_IPV6 || current->origin_id != first->origin_id ||
+		    memcmp(current_original, first_original, 16) || memcmp(current_translated, first_translated, 16) ||
+		    memcmp(current->original_source_mac, first->original_source_mac, 6) ||
+		    memcmp(current->original_destination_mac, first->original_destination_mac, 6)) {
+			fprintf(stderr, "Shared release requires one fixed address binding and MAC context across all exact pairs\n");
+			free(pairs);
+			return EXIT_FAILURE;
+		}
+		for (int j = 0; j < i; j++) {
+			if (!memcmp(&current->translated, &pairs[j].directions[direction_index].translated, sizeof(current->translated))) {
+				fprintf(stderr, "Shared release requires distinct translated full tuples\n");
+				free(pairs);
+				return EXIT_FAILURE;
+			}
+		}
+	}
+	struct mwan_native *owner = NULL;
+	struct mwan_native_error error = {0};
+	struct mwan_native_pair_result current = {0};
+	struct mwan_native_worker_stats stats = {0}, before = {0};
+	bool complete = false;
+	if (mwan_native_open(&config, &owner, &error) || mwan_native_pair_install(owner, &pairs[0], &current, &error))
+		goto cleanup;
+	uint64_t instance = current.handle.instance;
+	for (int cycle = 0; cycle < pair_count; cycle++) {
+		printf("READY_SHARED_ACTIVE cycle=%d pair=%s seconds=%" PRIu64 " generation=%" PRIu64 "\n",
+		       cycle, pair_paths[cycle], seconds, current.handle.generation);
+		fflush(stdout);
+		before = stats;
+		if (resume_poll_phase(owner, seconds, "shared active", &stats, &error) ||
+		    recycle_worker((uint64_t)cycle, "shared_active", &before, &stats) ||
+		    stats.forwarded - before.forwarded < minimum_forwarded ||
+		    shared_storage(owner, 1, (uint64_t)cycle, false, &error))
+			goto cleanup;
+		struct mwan_native_pair_stats baseline = {0}, queued = {0};
+		struct shared_counter_request counter_request = {
+			.operation = "shared_release", .phase = "baseline", .cycle = cycle,
+			.pair = pair_paths[cycle], .batch = "old_rule", .handle = current.handle,
+			.mask = mask, .direction = direction_index, .seconds = seconds,
+			.minimum_packets = minimum_forwarded
+		};
+		if (shared_counter_wait(owner, &counter_request, &baseline, &error))
+			goto cleanup;
+		printf("QUEUE_SHARED_OLD cycle=%d pair=%s acknowledgment=QUEUED_%d polling=paused\n",
+		       cycle, pair_paths[cycle], cycle);
+		fflush(stdout);
+		char acknowledgment[64], expected[64];
+		snprintf(expected, sizeof(expected), "QUEUED_%d\n", cycle);
+		if (!fgets(acknowledgment, sizeof(acknowledgment), stdin) || strcmp(acknowledgment, expected)) {
+			fprintf(stderr, "Send the finite old-rule batch, then write %s to stdin\n", expected);
+			goto cleanup;
+		}
+		counter_request.phase = "queued";
+		counter_request.minimum_packets = minimum_returned;
+		counter_request.baseline = &baseline.directions[direction_index];
+		if (shared_counter_wait(owner, &counter_request, &queued, &error))
+			goto cleanup;
+		const struct mwan_native_counter *first_counter = &baseline.directions[direction_index];
+		const struct mwan_native_counter *queued_counter = &queued.directions[direction_index];
+		printf("SHARED_OLD_COUNTER cycle=%d baseline=%" PRIu64 " queued=%" PRIu64 "\n",
+		       cycle, first_counter->packets, queued_counter->packets);
+		struct mwan_native_handle old = current.handle;
+		if (shared_release_pair(owner, old, mask, &error) ||
+		    shared_stale(owner, (uint64_t)cycle, old, &pairs[cycle], &error) ||
+		    shared_storage(owner, 1, (uint64_t)cycle + 1, true, &error))
+			goto cleanup;
+		int next = (cycle + 1) % pair_count;
+		if (mwan_native_pair_install(owner, &pairs[next], &current, &error) ||
+		    current.handle.instance != instance || current.handle.generation <= old.generation ||
+		    shared_storage(owner, 1, (uint64_t)cycle + 1, false, &error))
+			goto cleanup;
+		printf("READY_SHARED_DELAYED cycle=%d replacement=%s seconds=%" PRIu64 " original_replay=forbidden\n",
+		       cycle, pair_paths[next], seconds);
+		fflush(stdout);
+		before = stats;
+		if (resume_poll_phase(owner, seconds, "shared delayed", &stats, &error) ||
+		    recycle_worker((uint64_t)cycle, "shared_delayed", &before, &stats) ||
+		    stats.returned_to_kernel - before.returned_to_kernel < minimum_returned)
+			goto cleanup;
+		printf("SHARED_DELAYED_COMPLETE cycle=%d returned=%" PRIu64 " external_capture=required\n",
+		       cycle, stats.returned_to_kernel - before.returned_to_kernel);
+		fflush(stdout);
+	}
+	if (shared_release_pair(owner, current.handle, mask, &error) ||
+	    shared_stale(owner, (uint64_t)pair_count, current.handle, &pairs[0], &error) ||
+	    shared_storage(owner, 1, (uint64_t)pair_count + 1, true, &error))
+		goto cleanup;
+	complete = true;
+cleanup:
+	if (!complete && error.code)
+		report_error(&error);
+	if (owner && mwan_native_close(&owner, MWAN_NATIVE_FINAL_SHUTDOWN, &error)) {
+		report_error(&error);
+		complete = false;
+	}
+	free(pairs);
+	if (!complete || owner)
+		return EXIT_FAILURE;
+	printf("SHARED_API_COMPLETE cycles=%d external_exact_frame_capture=required\n", pair_count);
+	return EXIT_SUCCESS;
+}
+
 int main(int argc, char **argv)
 {
+	if (argc == 5 && !strcmp(argv[1], "--shared-capacity")) {
+		uint32_t field = 0;
+		if (!strcmp(argv[3], "source"))
+			field = MWAN_NATIVE_IPV6_RESTORE_SOURCE;
+		if (!strcmp(argv[3], "destination"))
+			field = MWAN_NATIVE_IPV6_RESTORE_DESTINATION;
+		if (!field) {
+			fprintf(stderr, "Shared capacity requires source or destination as its profile\n");
+			return EXIT_FAILURE;
+		}
+		return shared_capacity(argv[2], field, argv[4]);
+	}
+	if (argc == 8 && !strcmp(argv[1], "--shared-conflict")) {
+		uint32_t field = 0;
+		uint64_t seconds, minimum_returned;
+		if (!strcmp(argv[3], "source"))
+			field = MWAN_NATIVE_IPV6_RESTORE_SOURCE;
+		if (!strcmp(argv[3], "destination"))
+			field = MWAN_NATIVE_IPV6_RESTORE_DESTINATION;
+		if (!field || positive(argv[6], &seconds) || seconds > 30 || positive(argv[7], &minimum_returned)) {
+			fprintf(stderr, "Shared conflict requires source or destination, 1-30 seconds and a positive return minimum\n");
+			return EXIT_FAILURE;
+		}
+		return shared_conflict(argv[2], field, argv[4], argv[5], seconds, minimum_returned);
+	}
+	if (argc > 1 && !strcmp(argv[1], "--shared-release")) {
+		uint64_t seconds, minimum_forwarded, minimum_returned;
+		uint32_t field = MWAN_NATIVE_IPV6_RESTORE_LEGACY;
+		if (argc >= 15 && !strcmp(argv[3], "source"))
+			field = MWAN_NATIVE_IPV6_RESTORE_SOURCE;
+		if (argc >= 15 && !strcmp(argv[3], "destination"))
+			field = MWAN_NATIVE_IPV6_RESTORE_DESTINATION;
+		if (argc < 15 || argc > 263 || !field || positive(argv[4], &seconds) || seconds > 30 ||
+		    positive(argv[5], &minimum_forwarded) || positive(argv[6], &minimum_returned)) {
+			fprintf(stderr, "Usage: %s --shared-release CONFIG source|destination SECONDS MIN_FORWARD MIN_RETURN PAIR... (8-256 pairs)\n", argv[0]);
+			return EXIT_FAILURE;
+		}
+		return shared_release(argv[2], field, seconds, minimum_forwarded, minimum_returned, argc - 7, &argv[7]);
+	}
 	if (argc == 3 && !strcmp(argv[1], "--reject-swapped-data"))
 		return reject_swapped_data(argv[2]);
 	if (argc == 4 && !strcmp(argv[1], "--reject-ipv6-mappings"))
@@ -1384,13 +1895,16 @@ int main(int argc, char **argv)
 		fprintf(stderr, "       %s --recycle-slots CONFIG FIRST_PAIR SECOND_PAIR REUSED_PAIR CYCLES PHASE_SECONDS MIN_FORWARDED MIN_RETURNED\n", argv[0]);
 		fprintf(stderr, "       %s --guarded-pair CONFIG PAIR SECONDS MIN_FORWARDED MIN_RETURNED TRAFFIC_CLASS FLOW_LABEL\n", argv[0]);
 		fprintf(stderr, "       %s --resume-identical CONFIG PAIR SECONDS MIN_FORWARDED MIN_RETURNED TRAFFIC_CLASS FLOW_LABEL\n", argv[0]);
-		fprintf(stderr, "CONFIG starts with MWAN_NATIVE_CONFIG 2\n");
+		fprintf(stderr, "       %s --shared-release CONFIG source|destination SECONDS MIN_FORWARD MIN_RETURN PAIR... (8-256 pairs)\n", argv[0]);
+		fprintf(stderr, "       %s --shared-conflict CONFIG source|destination FIRST_PAIR CONFLICT_PAIR SECONDS MIN_RETURN\n", argv[0]);
+		fprintf(stderr, "       %s --shared-capacity CONFIG source|destination PAIR\n", argv[0]);
+		fprintf(stderr, "CONFIG starts with MWAN_NATIVE_CONFIG 3\n");
 		fprintf(stderr, "Resources: cpu memory_mb memory_mode pair_capacity mbuf_count drain_ms rx_desc tx_desc mtu file_prefix hugepage_directory\n");
 		fprintf(stderr, "Counts: controllers receivers data_devices origins\n");
 		fprintf(stderr, "Controller rows: pci physical_receiver_id\nReceiver rows: controller_id vf mac\n");
 		fprintf(stderr, "DATA rows: pci controller_id vf mac; controller_id=4294967295 and vf=0 select output-only\n");
 		fprintf(stderr, "Origin rows: controller_id kind receiver_id data_id return_mode source_vf; kind=0 return_mode=0 source_vf=0 select the supported physical path\n");
-		fprintf(stderr, "PAIR starts with MWAN_NATIVE_PAIR 2, followed by requested_direction_mask cookie policy_generation\n");
+		fprintf(stderr, "PAIR starts with MWAN_NATIVE_PAIR 3, followed by requested_direction_mask cookie policy_generation\n");
 		fprintf(stderr, "Each requested direction, in bit order: origin_id egress_data_id family protocol original_src original_dst original_sport original_dport translated_src translated_dst translated_sport translated_dport original_src_mac original_dst_mac output_src_mac output_dst_mac mtu\n");
 		fprintf(stderr, "Memory mode 0 uses hugepages; 1 uses anonymous memory. Use - for an empty hugepage directory. Unrequested directions do not have rows.\n");
 		return EXIT_FAILURE;

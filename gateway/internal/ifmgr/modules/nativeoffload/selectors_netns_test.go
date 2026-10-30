@@ -125,7 +125,7 @@ func selectorPacketObservation(t *testing.T, fixture admissionFixture, tuple con
 	if err != nil || len(observed) != 1 || !observed[0].Eligible || observed[0].Tuple != tuple || observed[0].TrafficClass != trafficClass {
 		t.Fatalf("public Rust packet decoding rejected the selector fixture: observations=%+v error=%v", observed, err)
 	}
-	return packetObservation{NativeObservation: observed[0], ifindex: fixture.output.Index, at: clock.Real{}.Now()}
+	return packetObservation{NativeObservation: observed[0], EffectiveNetworkLength: observed[0].NetworkLength, ifindex: fixture.output.Index, at: clock.Real{}.Now()}
 }
 
 func selectorFixtureEntry(t *testing.T, fixture admissionFixture, observation packetObservation) *admittedFlow {

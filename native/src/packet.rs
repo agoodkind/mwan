@@ -3,12 +3,16 @@
 #![forbid(unsafe_code)]
 
 use crate::abi::{
-    MWAN_NATIVE_FAMILY_IPV4, MWAN_NATIVE_FAMILY_IPV6, MWAN_NATIVE_PACKET_ETHERNET_VALID,
+    MWAN_NATIVE_FAMILY_IPV4, MWAN_NATIVE_FAMILY_IPV6, MWAN_NATIVE_IPV6_RESTORE_DESTINATION,
+    MWAN_NATIVE_IPV6_RESTORE_SOURCE, MWAN_NATIVE_PACKET_ETHERNET_VALID,
     MWAN_NATIVE_PACKET_IP_VALID, MWAN_NATIVE_PACKET_PORTS_VALID, MWAN_NATIVE_PROTOCOL_TCP,
     MWAN_NATIVE_PROTOCOL_UDP, MwanNativeDirection, MwanNativeObservation,
     MwanNativePacketDiagnostic, MwanNativePacketGuard, MwanNativeTuple,
 };
 use std::fmt;
+
+mod kernel;
+pub(crate) use kernel::observe_kernel;
 
 const ETHERNET_HEADER_LENGTH: usize = 14;
 const ETHERNET_ADDRESS_LENGTH: usize = 6;
@@ -140,20 +144,27 @@ pub fn observe(frame: &[u8]) -> MwanNativeObservation {
             return observation;
         }
     };
-    observation.tuple = view.tuple;
-    observation.source_mac = view.source_mac;
-    observation.destination_mac = view.destination_mac;
-    observation.network_length = view.network_length as u32;
-    observation.flow_label = view.flow_label;
-    observation.traffic_class = view.traffic_class;
-    observation.tcp_flags = view.flags;
-    observation.ttl = view.ttl;
+    observation = observation_headers(&view);
     let direction = MwanNativeDirection {
         output_mtu: u16::MAX,
         ..MwanNativeDirection::default()
     };
     observation.eligible = u8::from(eligible(frame, &view, &direction));
     observation
+}
+
+fn observation_headers(view: &ParsedPacket) -> MwanNativeObservation {
+    MwanNativeObservation {
+        tuple: view.tuple,
+        source_mac: view.source_mac,
+        destination_mac: view.destination_mac,
+        network_length: view.network_length as u32,
+        flow_label: view.flow_label,
+        traffic_class: view.traffic_class,
+        tcp_flags: view.flags,
+        ttl: view.ttl,
+        ..MwanNativeObservation::default()
+    }
 }
 
 fn decode_headers(frame: &[u8], view: &mut ParsedPacket) -> Result<(), i32> {
@@ -352,13 +363,12 @@ pub fn eligible(frame: &[u8], view: &ParsedPacket, direction: &MwanNativeDirecti
     eligible_headers(frame, view).unwrap_or(false)
 }
 
-fn eligible_headers(frame: &[u8], view: &ParsedPacket) -> Option<bool> {
-    let network = read_range(frame, view.network_offset, view.network_length)?;
+fn transport_header_length(frame: &[u8], view: &ParsedPacket) -> Option<usize> {
     let transport = read_range(frame, view.transport_offset, view.transport_length)?;
     match u32::from(view.tuple.protocol) {
         MWAN_NATIVE_PROTOCOL_TCP => {
             if transport.len() < TCP_HEADER_LENGTH {
-                return Some(false);
+                return None;
             }
             let length_and_reserved = *transport.get(12)?;
             let header_length = usize::from(length_and_reserved >> 4).checked_mul(4)?;
@@ -368,18 +378,26 @@ fn eligible_headers(frame: &[u8], view: &ParsedPacket) -> Option<bool> {
                 || view.flags & TCP_ACK_FLAG == 0
                 || view.flags & TCP_EXCEPTION_FLAGS != 0
             {
-                return Some(false);
+                return None;
             }
+            Some(header_length)
         }
         MWAN_NATIVE_PROTOCOL_UDP => {
             if transport.len() < UDP_HEADER_LENGTH
                 || usize::from(read_u16(transport, 4)?) != transport.len()
             {
-                return Some(false);
+                return None;
             }
+            Some(UDP_HEADER_LENGTH)
         }
-        _ => return Some(false),
+        _ => None,
     }
+}
+
+fn eligible_headers(frame: &[u8], view: &ParsedPacket) -> Option<bool> {
+    transport_header_length(frame, view)?;
+    let network = read_range(frame, view.network_offset, view.network_length)?;
+    let transport = read_range(frame, view.transport_offset, view.transport_length)?;
     let mut sum;
     match u32::from(view.tuple.family) {
         MWAN_NATIVE_FAMILY_IPV4 => {
@@ -410,6 +428,50 @@ fn eligible_headers(frame: &[u8], view: &ParsedPacket) -> Option<bool> {
     }
     sum += sum_words(transport);
     Some(fold_checksum(sum) == u16::MAX)
+}
+
+pub fn restore_ipv6_field(
+    frame: &mut [u8],
+    view: &ParsedPacket,
+    field: u32,
+    direction: &MwanNativeDirection,
+) -> Result<(), DecodeError> {
+    validate_edit(frame, view, direction)?;
+    let (relative, translated, original) = match field {
+        MWAN_NATIVE_IPV6_RESTORE_SOURCE => {
+            (8, &direction.translated.source, &direction.original.source)
+        }
+        MWAN_NATIVE_IPV6_RESTORE_DESTINATION => (
+            24,
+            &direction.translated.destination,
+            &direction.original.destination,
+        ),
+        _ => return Err(view.error(libc::EINVAL)),
+    };
+    let offset = view
+        .network_offset
+        .checked_add(relative)
+        .ok_or_else(|| view.error(libc::EBADMSG))?;
+    if u32::from(view.tuple.family) != MWAN_NATIVE_FAMILY_IPV6
+        || (!view.ports && !view.fragment)
+        || read_range(frame, offset, original.len()) != Some(translated.as_slice())
+        || view.source_mac != direction.original_source_mac
+        || view.destination_mac != direction.original_destination_mac
+        || frame.get(..ETHERNET_ADDRESS_LENGTH)
+            != Some(direction.original_destination_mac.as_slice())
+        || read_range(frame, ETHERNET_ADDRESS_LENGTH, ETHERNET_ADDRESS_LENGTH)
+            != Some(direction.original_source_mac.as_slice())
+    {
+        return Err(view.error(libc::EBADMSG));
+    }
+    write_bytes(frame, offset, original, view)?;
+    write_bytes(frame, 0, &direction.original_destination_mac, view)?;
+    write_bytes(
+        frame,
+        ETHERNET_ADDRESS_LENGTH,
+        &direction.original_source_mac,
+        view,
+    )
 }
 
 pub fn restore(
