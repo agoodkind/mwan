@@ -22,7 +22,7 @@ The source artifacts have these identities:
 | Artifact | SHA256 |
 | --- | --- |
 | Official DPDK 26.03 archive | `84989202bbe0fbaeeb62f8fdc63f691880ac0b66cd0dc64c167843c59db29d2c` |
-| Required patch set | `a41559acfdff7f47663828ccb645ba8f4379a8c04202f8c3f982b46a8c259487` |
+| Required patch set | `093636de26bb271706071b5820cbc8c1048ede4797a81784fd89b14558eb769e` |
 
 The patch set also contains shared Router translation work. The native worker
 does not configure NAT64. VF-source interception requires a separate SOURCE_TX

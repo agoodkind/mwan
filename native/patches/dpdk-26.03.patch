@@ -7337,7 +7337,7 @@ index 91b3555d..c8a4cc15 100644
 +		return rc;
  	rc = bnxt_alloc_hwrm_rx_ring(bp, rx_queue_id);
 diff --git a/official/drivers/net/bnxt/bnxt_rxr.c b/target/drivers/net/bnxt/bnxt_rxr.c
-index 73fee404..c3608bdb 100644
+index 73fee404..35d0cd53 100644
 --- a/official/drivers/net/bnxt/bnxt_rxr.c
 +++ b/target/drivers/net/bnxt/bnxt_rxr.c
 @@ -1714,3 +1714,3 @@ int bnxt_init_one_rx_ring(struct bnxt_rx_queue *rxq)
@@ -7345,19 +7345,35 @@ index 73fee404..c3608bdb 100644
 -int bnxt_flush_rx_cmp(struct bnxt_cp_ring_info *cpr)
 +int bnxt_flush_rx_cmp(struct bnxt_cp_ring_info *cpr, uint16_t sequence_id)
  {
-@@ -1730,6 +1730,9 @@ int bnxt_flush_rx_cmp(struct bnxt_cp_ring_info *cpr)
+@@ -1724,2 +1724,5 @@ int bnxt_flush_rx_cmp(struct bnxt_cp_ring_info *cpr)
+ 	do {
++		uint32_t entries;
++		struct rx_pkt_cmpl *last;
++
+ 		cons = RING_CMP(cpr->cp_ring_struct, raw_cons);
+@@ -1730,7 +1733,18 @@ int bnxt_flush_rx_cmp(struct bnxt_cp_ring_info *cpr)
  
 -		if (CMP_TYPE(rxcmp) == CMPL_BASE_TYPE_HWRM_DONE)
--			return 1;
--
- 		raw_cons = NEXT_RAW_CMP(raw_cons);
++		/* The HSI type's low bit distinguishes 16-byte and 32-byte records. */
++		entries = 1 + (CMP_TYPE(rxcmp) & 1);
++		if (entries == 2) {
++			cons = RING_CMP(cpr->cp_ring_struct, NEXT_RAW_CMP(raw_cons));
++			last = (struct rx_pkt_cmpl *)&cpr->cp_desc_ring[cons];
++			if (!bnxt_cpr_cmp_valid(last, NEXT_RAW_CMP(raw_cons), ring_mask + 1))
++				break;
++		}
++		raw_cons += entries;
 +		if (CMP_TYPE(rxcmp) == CMPL_BASE_TYPE_HWRM_DONE &&
 +		    ((struct hwrm_cmpl *)rxcmp)->sequence_id == sequence_id) {
 +			cpr->cp_raw_cons = raw_cons;
 +			bnxt_db_cq(cpr);
-+			return 1;
+ 			return 1;
+-
+-		raw_cons = NEXT_RAW_CMP(raw_cons);
+-		nb_rx++;
 +		}
- 		nb_rx++;
++		nb_rx += entries;
+ 	} while (nb_rx < ring_mask);
 diff --git a/official/drivers/net/bnxt/bnxt_rxr.h b/target/drivers/net/bnxt/bnxt_rxr.h
 index 2a28fa20..fc6a2701 100644
 --- a/official/drivers/net/bnxt/bnxt_rxr.h
@@ -7383,7 +7399,7 @@ index 7752f06e..b8aa3f49 100644
 +			return -EBUSY;
  	}
 diff --git a/official/drivers/net/bnxt/bnxt_txr.c b/target/drivers/net/bnxt/bnxt_txr.c
-index 27758898..443a4ecf 100644
+index 27758898..d4caf621 100644
 --- a/official/drivers/net/bnxt/bnxt_txr.c
 +++ b/target/drivers/net/bnxt/bnxt_txr.c
 @@ -721,3 +721,5 @@ int bnxt_tx_queue_start(struct rte_eth_dev *dev, uint16_t tx_queue_id)
@@ -7393,21 +7409,67 @@ index 27758898..443a4ecf 100644
 +	if (rc)
 +		return rc;
  	rc = bnxt_alloc_hwrm_tx_ring(bp, tx_queue_id);
-@@ -776,3 +778,3 @@ static bool bnxt_is_tx_mpc_flush_cmpl_type(uint16_t type)
+@@ -763,11 +765,2 @@ int bnxt_tx_queue_stop(struct rte_eth_dev *dev, uint16_t tx_queue_id)
+ 
+-static bool bnxt_is_tx_mpc_flush_cmpl_type(uint16_t type)
+-{
+-	return (type == CMPL_BASE_TYPE_TX_L2_PKT_TS ||
+-		type == CMPL_BASE_TYPE_TX_L2_COAL ||
+-		type == CMPL_BASE_TYPE_TX_L2 ||
+-		type == CMPL_BASE_TYPE_MID_PATH_SHORT ||
+-		type == CMPL_BASE_TYPE_MID_PATH_LONG);
+-}
+-
+ /* Sweep the Tx completion queue till HWRM_DONE for ring flush is received.
+@@ -776,3 +769,3 @@ static bool bnxt_is_tx_mpc_flush_cmpl_type(uint16_t type)
   */
 -int bnxt_flush_tx_cmp(struct bnxt_cp_ring_info *cpr)
 +int bnxt_flush_tx_cmp(struct bnxt_cp_ring_info *cpr, uint16_t sequence_id)
  {
-@@ -799,4 +801,8 @@ int bnxt_flush_tx_cmp(struct bnxt_cp_ring_info *cpr)
- 			nb_tx_pkts += opaque;
+@@ -780,3 +773,3 @@ int bnxt_flush_tx_cmp(struct bnxt_cp_ring_info *cpr)
+ 	uint32_t cons;
+-	uint32_t nb_tx_pkts = 0;
++	uint32_t completed_entries = 0;
+ 	struct tx_cmpl *txcmp;
+@@ -785,5 +778,7 @@ int bnxt_flush_tx_cmp(struct bnxt_cp_ring_info *cpr)
+ 	uint32_t ring_mask = cp_ring_struct->ring_mask;
+-	uint32_t opaque = 0;
+ 
+ 	do {
++		uint32_t entries;
++		struct tx_cmpl *last;
++
+ 		cons = RING_CMPL(ring_mask, raw_cons);
+@@ -794,12 +789,22 @@ int bnxt_flush_tx_cmp(struct bnxt_cp_ring_info *cpr)
+ 
+-		opaque = rte_cpu_to_le_32(txcmp->opaque);
+-		raw_cons = NEXT_RAW_CMP(raw_cons);
++		/* The HSI type's low bit distinguishes 16-byte and 32-byte records. */
++		entries = 1 + (CMP_TYPE(txcmp) & 1);
++		if (entries == 2) {
++			cons = RING_CMPL(ring_mask, NEXT_RAW_CMP(raw_cons));
++			last = (struct tx_cmpl *)&cp_desc_ring[cons];
++			if (!bnxt_cpr_cmp_valid(last, NEXT_RAW_CMP(raw_cons), ring_mask + 1))
++				break;
++		}
++		raw_cons += entries;
++		completed_entries += entries;
+ 
+-		if (bnxt_is_tx_mpc_flush_cmpl_type(CMP_TYPE(txcmp)))
+-			nb_tx_pkts += opaque;
 -		else if (CMP_TYPE(txcmp) == HWRM_CMPL_TYPE_HWRM_DONE)
-+		else if (CMP_TYPE(txcmp) == HWRM_CMPL_TYPE_HWRM_DONE &&
++		if (CMP_TYPE(txcmp) == HWRM_CMPL_TYPE_HWRM_DONE &&
 +			 ((struct hwrm_cmpl *)txcmp)->sequence_id == sequence_id) {
 +			cpr->cp_raw_cons = raw_cons;
 +			bnxt_db_cq(cpr);
  			return 1;
+-	} while (nb_tx_pkts < ring_mask);
 +		}
- 	} while (nb_tx_pkts < ring_mask);
++	} while (completed_entries < ring_mask);
+ 
+-	if (nb_tx_pkts) {
++	if (completed_entries) {
+ 		cpr->cp_raw_cons = raw_cons;
 diff --git a/official/drivers/net/bnxt/bnxt_txr.h b/target/drivers/net/bnxt/bnxt_txr.h
 index fd92a242..5fb9ca9a 100644
 --- a/official/drivers/net/bnxt/bnxt_txr.h
