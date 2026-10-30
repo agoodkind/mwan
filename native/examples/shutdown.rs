@@ -294,6 +294,34 @@ struct Case {
     minimum_returned: u64,
 }
 impl Case {
+    fn continuity(arguments: &[String]) -> CheckResult<Self> {
+        let config = configuration(&arguments[2])?;
+        let configured = pair(&arguments[3])?;
+        let direction = configured.requested_direction_mask.trailing_zeros() as usize;
+        let mapping = configured.directions[direction];
+        require(
+            config.pair_capacity == 1
+                && u32::from(mapping.original.protocol) == MWAN_NATIVE_PROTOCOL_TCP
+                && mapping.original == mapping.translated,
+            "TCP continuity requires one slot and an identity address and port mapping",
+        )?;
+        let case = Self {
+            config,
+            pairs: [configured; 2],
+            cycles: arguments[4].parse()?,
+            seconds: arguments[5].parse()?,
+            minimum_forwarded: arguments[6].parse()?,
+            minimum_returned: 0,
+        };
+        require(
+            (3..=16).contains(&case.cycles)
+                && (1..=30).contains(&case.seconds)
+                && case.minimum_forwarded > 0,
+            "TCP continuity requires 3 to 16 cycles, 1 to 30 seconds, and a positive forwarding minimum",
+        )?;
+        Ok(case)
+    }
+
     fn read(arguments: &[String]) -> CheckResult<Self> {
         let config = configuration(&arguments[2])?;
         let first = pair(&arguments[3])?;
@@ -625,6 +653,28 @@ fn run(case: &Case) -> CheckResult<()> {
 }
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().collect();
+    if arguments.len() == 7
+        && matches!(
+            arguments[1].as_str(),
+            "--shutdown-continuity" | "--check-continuity-fixtures"
+        )
+    {
+        let result = Case::continuity(&arguments).and_then(|case| {
+            if arguments[1] == "--check-continuity-fixtures" {
+                Ok(())
+            } else {
+                run(&case)
+            }
+        });
+        return match result {
+            Ok(()) if arguments[1] == "--check-continuity-fixtures" => ExitCode::SUCCESS,
+            Ok(()) => ExitCode::from(2),
+            Err(error) => {
+                eprintln!("{error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     if arguments.len() != 10
         || !matches!(
             arguments[1].as_str(),
@@ -633,6 +683,9 @@ fn main() -> ExitCode {
     {
         eprintln!(
             "Usage: shutdown --shutdown-reuse|--check-fixtures CONFIG FIRST_PAIR SECOND_PAIR REUSED_PAIR CYCLES PHASE_SECONDS MIN_FORWARDED MIN_RETURNED"
+        );
+        eprintln!(
+            "       shutdown --shutdown-continuity|--check-continuity-fixtures CONFIG PAIR CYCLES PHASE_SECONDS MIN_FORWARDED"
         );
         return ExitCode::FAILURE;
     }
