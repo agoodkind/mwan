@@ -170,7 +170,7 @@ index 7515f056..bc2c6dfd 100644
 +void bnxt_restore_fastpath(struct rte_eth_dev *dev);
  bool bnxt_stratus_device(struct bnxt *bp);
 diff --git a/official/drivers/net/bnxt/bnxt_ethdev.c b/target/drivers/net/bnxt/bnxt_ethdev.c
-index b677f949..ac08d930 100644
+index b677f949..6eadb9ea 100644
 --- a/official/drivers/net/bnxt/bnxt_ethdev.c
 +++ b/target/drivers/net/bnxt/bnxt_ethdev.c
 @@ -99,2 +99,3 @@ static const struct rte_pci_id bnxt_pci_id_map[] = {
@@ -657,8 +657,8 @@ index b677f949..ac08d930 100644
 +		if (cleanup_ret) {
 +			PMD_DRV_LOG_LINE(ERR, "Representor rollback failed: probe=%d cleanup=%d",
 +					 ret, cleanup_ret);
-+			rte_errno = -cleanup_ret;
-+			return cleanup_ret;
++			rte_errno = -ret;
++			return ret;
 +		}
 +	}
 +	rte_errno = -ret;
@@ -741,22 +741,24 @@ index b677f949..ac08d930 100644
  			return ret;
 +		backing_created = true;
  
-@@ -7157,3 +7431,8 @@ static int bnxt_pci_probe(struct rte_pci_driver *pci_drv __rte_unused,
+@@ -7157,3 +7431,10 @@ static int bnxt_pci_probe(struct rte_pci_driver *pci_drv __rte_unused,
  	ret = bnxt_rep_port_probe(pci_dev, &eth_da, backing_eth_dev,
 -				  pci_dev->device.devargs->args);
 +				  pci_dev->device.devargs->args, roles.owned);
 +	if (ret && backing_created) {
 +		cleanup_ret = bnxt_pci_remove_dev_with_reps(backing_eth_dev);
 +		if (cleanup_ret)
-+			return cleanup_ret;
++			PMD_DRV_LOG_LINE(ERR,
++				"Representor probe failed for %s: primary=%d cleanup=%d",
++				pci_dev->device.name, ret, cleanup_ret);
 +	}
  
-@@ -7165,4 +7444,2 @@ static int bnxt_pci_remove(struct rte_pci_device *pci_dev)
+@@ -7165,4 +7446,2 @@ static int bnxt_pci_remove(struct rte_pci_device *pci_dev)
  	struct rte_eth_dev *eth_dev;
 -	uint16_t port_id;
 -	int rc = 0;
  
-@@ -7177,15 +7454,3 @@ static int bnxt_pci_remove(struct rte_pci_device *pci_dev)
+@@ -7177,15 +7456,3 @@ static int bnxt_pci_remove(struct rte_pci_device *pci_dev)
  	if (rte_eal_process_type() == RTE_PROC_PRIMARY) {
 -		RTE_ETH_FOREACH_DEV_OF(port_id, &pci_dev->device) {
 -			PMD_DRV_LOG_LINE(DEBUG, "BNXT Port:%d pci remove", port_id);
@@ -7466,10 +7468,28 @@ index 2a28fa20..fc6a2701 100644
 +int bnxt_flush_rx_cmp(struct bnxt_cp_ring_info *cpr, uint16_t sequence_id);
  
 diff --git a/official/drivers/net/bnxt/bnxt_txq.c b/target/drivers/net/bnxt/bnxt_txq.c
-index 7752f06e..dc736cc9 100644
+index 7752f06..c325d67 100644
 --- a/official/drivers/net/bnxt/bnxt_txq.c
 +++ b/target/drivers/net/bnxt/bnxt_txq.c
-@@ -89,9 +89,14 @@ void bnxt_tx_queue_release_op(struct rte_eth_dev *dev, uint16_t queue_idx)
+@@ -56,6 +56,6 @@ void bnxt_free_txq_stats(struct bnxt_tx_queue *txq)
+ 
+-static void bnxt_tx_queue_release_mbufs(struct bnxt_tx_queue *txq)
++void bnxt_tx_queue_release_mbufs(struct bnxt_tx_queue *txq)
+ {
+ 	struct rte_mbuf **sw_ring;
+-	uint16_t i;
++	uint16_t i, released = 0;
+ 
+@@ -70,2 +70,3 @@ static void bnxt_tx_queue_release_mbufs(struct bnxt_tx_queue *txq)
+ 				sw_ring[i] = NULL;
++				released++;
+ 			}
+@@ -73,2 +74,4 @@ static void bnxt_tx_queue_release_mbufs(struct bnxt_tx_queue *txq)
+ 	}
++	PMD_DRV_LOG_LINE(DEBUG, "Port %u TX queue %u released %u packet segments",
++			 txq->port_id, txq->queue_id, released);
+ }
+@@ -89,9 +92,14 @@ void bnxt_tx_queue_release_op(struct rte_eth_dev *dev, uint16_t queue_idx)
  	struct bnxt_tx_queue *txq = dev->data->tx_queues[queue_idx];
 +	int rc;
  
@@ -7488,26 +7508,34 @@ index 7752f06e..dc736cc9 100644
 +			return;
 +		}
  		bnxt_tx_queue_release_mbufs(txq);
-@@ -117,2 +122,3 @@ void bnxt_tx_queue_release_op(struct rte_eth_dev *dev, uint16_t queue_idx)
+@@ -117,2 +125,3 @@ void bnxt_tx_queue_release_op(struct rte_eth_dev *dev, uint16_t queue_idx)
  		pthread_mutex_destroy(&txq->txq_lock);
 +		txq->bp->tx_queues[queue_idx] = NULL;
  		rte_free(txq);
-@@ -152,2 +158,4 @@ int bnxt_tx_queue_setup_op(struct rte_eth_dev *eth_dev,
+@@ -152,2 +161,4 @@ int bnxt_tx_queue_setup_op(struct rte_eth_dev *eth_dev,
  			bnxt_tx_queue_release_op(eth_dev, queue_idx);
 +		if (eth_dev->data->tx_queues[queue_idx])
 +			return -EBUSY;
  	}
-@@ -161,2 +169,4 @@ int bnxt_tx_queue_setup_op(struct rte_eth_dev *eth_dev,
+@@ -161,2 +172,4 @@ int bnxt_tx_queue_setup_op(struct rte_eth_dev *eth_dev,
  	txq->bp = bp;
 +	txq->queue_id = queue_idx;
 +	bp->tx_queues[queue_idx] = txq;
  	eth_dev->data->tx_queues[queue_idx] = txq;
-@@ -189,3 +199,2 @@ int bnxt_tx_queue_setup_op(struct rte_eth_dev *eth_dev,
+@@ -189,3 +202,2 @@ int bnxt_tx_queue_setup_op(struct rte_eth_dev *eth_dev,
  
 -	txq->queue_id = queue_idx;
  	txq->port_id = eth_dev->data->port_id;
+diff --git a/official/drivers/net/bnxt/bnxt_txq.h b/target/drivers/net/bnxt/bnxt_txq.h
+index ac8af91..a380f91 100644
+--- a/official/drivers/net/bnxt/bnxt_txq.h
++++ b/target/drivers/net/bnxt/bnxt_txq.h
+@@ -42,2 +42,3 @@ void bnxt_free_txq_stats(struct bnxt_tx_queue *txq);
+ void bnxt_free_tx_mbufs(struct bnxt *bp);
++void bnxt_tx_queue_release_mbufs(struct bnxt_tx_queue *txq);
+ void bnxt_tx_queue_release_op(struct rte_eth_dev *dev, uint16_t queue_idx);
 diff --git a/official/drivers/net/bnxt/bnxt_txr.c b/target/drivers/net/bnxt/bnxt_txr.c
-index 27758898..47d30661 100644
+index 2775889..fcfe114 100644
 --- a/official/drivers/net/bnxt/bnxt_txr.c
 +++ b/target/drivers/net/bnxt/bnxt_txr.c
 @@ -45,2 +45,4 @@ void bnxt_free_tx_rings(struct bnxt *bp)
@@ -7515,14 +7543,17 @@ index 27758898..47d30661 100644
 +		if (bp->eth_dev->data->tx_queues)
 +			bp->eth_dev->data->tx_queues[i] = NULL;
  	}
-@@ -721,3 +723,5 @@ int bnxt_tx_queue_start(struct rte_eth_dev *dev, uint16_t tx_queue_id)
+@@ -721,3 +723,8 @@ int bnxt_tx_queue_start(struct rte_eth_dev *dev, uint16_t tx_queue_id)
  
 -	bnxt_free_hwrm_tx_ring(bp, tx_queue_id);
++	PMD_DRV_LOG_LINE(DEBUG, "Port %u TX queue %u restart: retained_descriptors=%u",
++			 dev->data->port_id, tx_queue_id, bnxt_tx_bds_in_hw(txq));
 +	rc = bnxt_free_hwrm_tx_ring(bp, tx_queue_id);
 +	if (rc)
 +		return rc;
++	bnxt_tx_queue_release_mbufs(txq);
  	rc = bnxt_alloc_hwrm_tx_ring(bp, tx_queue_id);
-@@ -763,11 +767,2 @@ int bnxt_tx_queue_stop(struct rte_eth_dev *dev, uint16_t tx_queue_id)
+@@ -763,11 +770,2 @@ int bnxt_tx_queue_stop(struct rte_eth_dev *dev, uint16_t tx_queue_id)
  
 -static bool bnxt_is_tx_mpc_flush_cmpl_type(uint16_t type)
 -{
@@ -7534,17 +7565,17 @@ index 27758898..47d30661 100644
 -}
 -
  /* Sweep the Tx completion queue till HWRM_DONE for ring flush is received.
-@@ -776,3 +771,3 @@ static bool bnxt_is_tx_mpc_flush_cmpl_type(uint16_t type)
+@@ -776,3 +774,3 @@ static bool bnxt_is_tx_mpc_flush_cmpl_type(uint16_t type)
   */
 -int bnxt_flush_tx_cmp(struct bnxt_cp_ring_info *cpr)
 +int bnxt_flush_tx_cmp(struct bnxt_cp_ring_info *cpr, uint16_t sequence_id)
  {
-@@ -780,3 +775,3 @@ int bnxt_flush_tx_cmp(struct bnxt_cp_ring_info *cpr)
+@@ -780,3 +778,3 @@ int bnxt_flush_tx_cmp(struct bnxt_cp_ring_info *cpr)
  	uint32_t cons;
 -	uint32_t nb_tx_pkts = 0;
 +	uint32_t completed_entries = 0;
  	struct tx_cmpl *txcmp;
-@@ -785,5 +780,7 @@ int bnxt_flush_tx_cmp(struct bnxt_cp_ring_info *cpr)
+@@ -785,5 +783,7 @@ int bnxt_flush_tx_cmp(struct bnxt_cp_ring_info *cpr)
  	uint32_t ring_mask = cp_ring_struct->ring_mask;
 -	uint32_t opaque = 0;
  
@@ -7553,7 +7584,7 @@ index 27758898..47d30661 100644
 +		struct tx_cmpl *last;
 +
  		cons = RING_CMPL(ring_mask, raw_cons);
-@@ -794,12 +791,22 @@ int bnxt_flush_tx_cmp(struct bnxt_cp_ring_info *cpr)
+@@ -794,12 +794,22 @@ int bnxt_flush_tx_cmp(struct bnxt_cp_ring_info *cpr)
  
 -		opaque = rte_cpu_to_le_32(txcmp->opaque);
 -		raw_cons = NEXT_RAW_CMP(raw_cons);

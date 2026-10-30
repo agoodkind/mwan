@@ -1,6 +1,6 @@
 use mwan_native::abi::*;
 use std::error::Error;
-use std::ffi::{c_char, c_int};
+use std::ffi::{CString, c_char, c_int};
 use std::fs;
 use std::io::{self, Write};
 use std::mem::size_of;
@@ -16,6 +16,11 @@ const PACKET_BUDGET: u32 = 64;
 const QUEUE_PAUSE: Duration = Duration::from_millis(100);
 const DIRECTION_MASKS: [u32; 2] = [1, 2];
 type CheckResult<T> = Result<T, Box<dyn Error>>;
+
+#[repr(C)]
+struct RteMempool {
+    _private: [u8; 0],
+}
 
 // These declarations use the existing public C ABI and its generated Rust types.
 unsafe extern "C" {
@@ -70,6 +75,11 @@ unsafe extern "C" {
     fn rte_log_set_level_pattern(pattern: *const c_char, level: u32) -> c_int;
     fn rte_log_get_stream() -> *mut libc::FILE;
     fn rte_log_dump(stream: *mut libc::FILE);
+    fn rte_eth_dev_get_port_by_name(name: *const c_char, port: *mut u16) -> c_int;
+    fn rte_eth_dev_tx_queue_stop(port: u16, queue: u16) -> c_int;
+    fn rte_eth_dev_tx_queue_start(port: u16, queue: u16) -> c_int;
+    fn rte_mempool_lookup(name: *const c_char) -> *mut RteMempool;
+    fn rte_mempool_avail_count(pool: *const RteMempool) -> u32;
 }
 
 fn require(condition: bool, message: &str) -> CheckResult<()> {
@@ -388,11 +398,14 @@ impl Owner {
         Ok(result)
     }
     fn poll(&self) -> CheckResult<MwanNativeWorkerStats> {
+        self.poll_budget(PACKET_BUDGET)
+    }
+    fn poll_budget(&self, budget: u32) -> CheckResult<MwanNativeWorkerStats> {
         let mut stats = MwanNativeWorkerStats::default();
         let mut error = MwanNativeError::default();
         native_result(
             // SAFETY: The owner and both writable output records remain on the owner thread.
-            unsafe { mwan_native_poll(self.0, PACKET_BUDGET, &mut stats, &mut error) },
+            unsafe { mwan_native_poll(self.0, budget, &mut stats, &mut error) },
             &error,
         )?;
         require(
@@ -651,8 +664,136 @@ fn run(case: &Case) -> CheckResult<()> {
     );
     Ok(())
 }
+
+fn restart_tx_queue(port: u16, pool: &RteMempool, cycle: u64, phase: &str) -> CheckResult<u32> {
+    // SAFETY: The native owner initialized this DATA port and queue on this thread.
+    let stopped = unsafe { rte_eth_dev_tx_queue_stop(port, 0) };
+    println!("TX_QUEUE_STOP cycle={cycle} phase={phase} port={port} queue=0 rc={stopped}");
+    require(stopped == 0, "Public TX queue stop failed")?;
+    // SAFETY: The owner retains this live pool; it uses neither a per-core cache
+    // nor another polling thread during these queue operations.
+    let before = unsafe { rte_mempool_avail_count(pool) };
+    io::stdout().flush()?;
+    // SAFETY: This public call restarts only the stopped queue on the owner thread.
+    let started = unsafe { rte_eth_dev_tx_queue_start(port, 0) };
+    println!("TX_QUEUE_START cycle={cycle} phase={phase} port={port} queue=0 rc={started}");
+    require(started == 0, "Public TX queue restart failed")?;
+    // SAFETY: Successful queue restart preserves the same owner and packet pool.
+    let after = unsafe { rte_mempool_avail_count(pool) };
+    let released = after
+        .checked_sub(before)
+        .ok_or_else(|| io::Error::other("TX restart consumed additional packet buffers"))?;
+    println!(
+        "TX_QUEUE_POOL cycle={cycle} phase={phase} port={port} queue=0 before={before} after={after} released={released}"
+    );
+    io::stdout().flush()?;
+    Ok(released)
+}
+
+fn exercise_tx_queue(owner: &mut Owner, case: &Case) -> CheckResult<()> {
+    owner.open(&case.config)?;
+    diagnostics()?;
+    let installed = owner.install(&case.pairs[0])?;
+    let direction = case.pairs[0].requested_direction_mask.trailing_zeros() as usize;
+    let egress = case.pairs[0].directions[direction].egress_data_id as usize;
+    require(
+        egress < case.config.data_count as usize && egress < case.config.data.len(),
+        "TX queue case requires a configured egress DATA device",
+    )?;
+    let pci = case.config.data[egress].pci;
+    let name = CString::new(format!(
+        "{:04x}:{:02x}:{:02x}.{:x}",
+        pci.domain, pci.bus, pci.device, pci.function
+    ))?;
+    let mut port = 0;
+    // SAFETY: The complete name and output are live; native open probed this device.
+    let found = unsafe { rte_eth_dev_get_port_by_name(name.as_ptr(), &mut port) };
+    require(found == 0, "Cannot resolve the configured egress DATA port")?;
+    let pool_name = CString::new(format!("mwn_pool_{:x}", installed.handle.instance))?;
+    // SAFETY: The pool name follows the live native owner's instance identity.
+    let pool = unsafe { rte_mempool_lookup(pool_name.as_ptr()) };
+    // SAFETY: A successful lookup identifies the pool retained until final close.
+    let pool = unsafe { pool.as_ref() }
+        .ok_or_else(|| io::Error::other("Cannot inspect the native owner's packet pool"))?;
+    let mut stats = MwanNativeWorkerStats::default();
+    for cycle in 1..=case.cycles {
+        restart_tx_queue(port, pool, cycle, "baseline")?;
+        let before = stats;
+        println!("READY_TX_QUEUE cycle={cycle} port={port} queue=0 external_packets=required");
+        io::stdout().flush()?;
+        let deadline = Instant::now() + Duration::from_secs(case.seconds);
+        loop {
+            stats = owner.poll_budget(1)?;
+            if stats.forwarded > before.forwarded {
+                break;
+            }
+            require(
+                Instant::now() < deadline,
+                "The external packet did not arrive",
+            )?;
+        }
+        require(
+            stats.forwarded == before.forwarded + 1 && stats.pending_packets == 0,
+            "TX queue case requires exactly one forwarded packet before restart",
+        )?;
+        let released = restart_tx_queue(port, pool, cycle, "measured")?;
+        require(
+            released == 1,
+            "TX restart did not release the one retained packet; inspect the completion threshold and ring receipts",
+        )?;
+        println!("TX_QUEUE_RELEASE_PROOF cycle={cycle} forwarded=1 released=1");
+        let before = stats;
+        stats = owner.phase(case.seconds)?;
+        worker(cycle, "queue_restart", &before, &stats)?;
+        require(
+            stats.forwarded - before.forwarded >= case.minimum_forwarded,
+            "Restarted TX queue did not continue forwarding external traffic",
+        )?;
+        owner.counters(installed.handle, case.minimum_forwarded)?;
+    }
+    Ok(())
+}
+
+fn run_tx_queue(case: &Case) -> CheckResult<()> {
+    let mut owner = Owner(ptr::null_mut());
+    let result = exercise_tx_queue(&mut owner, case);
+    let cleanup = owner.close(MWAN_NATIVE_FINAL_SHUTDOWN, case.cycles);
+    if let Err(error) = &result {
+        eprintln!("TX queue case failed: {error}");
+    }
+    cleanup?;
+    result?;
+    println!(
+        "TX_QUEUE_API_COMPLETE cycles={} owner_released=1 external_file_verification=required",
+        case.cycles
+    );
+    Ok(())
+}
+
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().collect();
+    if arguments.len() == 7
+        && matches!(
+            arguments[1].as_str(),
+            "--tx-queue-restart" | "--check-tx-queue-fixtures"
+        )
+    {
+        let result = Case::continuity(&arguments).and_then(|case| {
+            if arguments[1] == "--check-tx-queue-fixtures" {
+                Ok(())
+            } else {
+                run_tx_queue(&case)
+            }
+        });
+        return match result {
+            Ok(()) if arguments[1] == "--check-tx-queue-fixtures" => ExitCode::SUCCESS,
+            Ok(()) => ExitCode::from(2),
+            Err(error) => {
+                eprintln!("{error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     if arguments.len() == 7
         && matches!(
             arguments[1].as_str(),
@@ -686,6 +827,9 @@ fn main() -> ExitCode {
         );
         eprintln!(
             "       shutdown --shutdown-continuity|--check-continuity-fixtures CONFIG PAIR CYCLES PHASE_SECONDS MIN_FORWARDED"
+        );
+        eprintln!(
+            "       shutdown --tx-queue-restart|--check-tx-queue-fixtures CONFIG PAIR CYCLES PHASE_SECONDS MIN_FORWARDED"
         );
         return ExitCode::FAILURE;
     }

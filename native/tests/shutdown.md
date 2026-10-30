@@ -1,4 +1,4 @@
-# Test TCP continuity during native shutdown
+# Test TCP continuity during native cleanup
 
 Use one isolated hardware graph, one test owner, and a separate management
 connection. Record the exact source, SDK, executable, configuration, and input
@@ -90,3 +90,33 @@ file hashes before the run. Prepare the SDK with the
    verify hardware removal, and check management and household connectivity.
    Preserve the receipts. This successful case does not prove behavior
    during a firmware timeout; record unavailable failure injection separately.
+
+## Test TX queue restart
+
+Use the preceding build, fixture, download, and connection preparation. Replace
+the lifecycle command in step 6 with this public TX queue restart case:
+
+```sh
+"$SHUTDOWN_DRIVER" --check-tx-queue-fixtures "$CONFIG" "$PAIR" 3 5 20
+sudo "$SHUTDOWN_DRIVER" --tx-queue-restart "$CONFIG" "$PAIR" 3 5 20
+```
+
+The case resolves the pair's egress DATA port and restarts only queue zero on
+the native owner thread. Each cycle first restarts that queue to establish an
+empty TX ring. It then forwards exactly one external packet with a polling
+budget of one and measures a second restart before resuming continuous
+forwarding. The case uses the native owner's uncached packet pool and does not
+allocate test packets.
+
+Require positive `retained_descriptors` in the BNXT DEBUG receipt for each
+measured restart. Preserve the matching ring-free completion and successful
+firmware response before the receipt that releases one packet segment. Each
+`TX_QUEUE_RELEASE_PROOF` must report one forwarded packet and one returned
+pool buffer. A zero release does not exercise retained packet ownership;
+inspect the completion threshold and receipts rather than accepting that run.
+Require continued forwarding after each restart and successful final close.
+
+Expected exit status 2 still requires the original connection, complete file,
+hash comparison, and cleanup checks in step 7. The three five-second forwarding
+phases must finish before the paced download completes. These queue restarts
+do not substitute for the separate Disable/Enable lifecycle case.
