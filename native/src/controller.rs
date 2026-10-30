@@ -2908,9 +2908,11 @@ impl OwnerState {
             return Err(error);
         }
         let ports = self.ordered_ports(true)?;
+        let mut subordinate_stop_failed = false;
         for id in &ports {
+            let is_controller = self.controllers.iter().any(|port| port.id == Some(*id));
             // Controller teardown depends on completed DATA and representor stops.
-            if failure.is_some() && self.controllers.iter().any(|port| port.id == Some(*id)) {
+            if subordinate_stop_failed && is_controller {
                 continue;
             }
             let Some(port) = self.ports.iter_mut().find(|port| port.id == *id) else {
@@ -2923,6 +2925,7 @@ impl OwnerState {
             // packet pool or inverse records required by queued buffers.
             let result = unsafe { dpdk::rte_eth_dev_stop(*id) };
             if result != 0 {
+                subordinate_stop_failed |= !is_controller;
                 self.faulted = true;
                 retain_cleanup_failure(
                     &mut failure,
@@ -2964,8 +2967,10 @@ impl OwnerState {
             self.forget_restoration();
             return Ok(());
         }
+        let mut subordinate_close_failed = false;
         for id in ports {
-            if failure.is_some() && self.controllers.iter().any(|port| port.id == Some(id)) {
+            let is_controller = self.controllers.iter().any(|port| port.id == Some(id));
+            if subordinate_close_failed && is_controller {
                 continue;
             }
             // SAFETY: The SDK owns its ethdev validity table for this EAL thread.
@@ -2975,6 +2980,7 @@ impl OwnerState {
             // SAFETY: Owned rules have retired and all started queues stopped.
             let result = unsafe { dpdk::rte_eth_dev_close(id) };
             if result != 0 {
+                subordinate_close_failed |= !is_controller;
                 let error = fault(
                     result,
                     MWAN_NATIVE_OP_PORT,
