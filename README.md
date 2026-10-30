@@ -195,6 +195,9 @@ removal, reopen, and final shutdown. Run one workload at a time. Compare
 throughput and CPU against the C worker under matching conditions, with
 100% CPU meaning one logical CPU.
 
+Use the [TCP shutdown procedure](native/tests/shutdown.md) to verify one
+connection across Disable, Enable, and final close with the Rust fixture.
+
 ## Releasing
 
 Pushing to `main` builds, signs, attests, and publishes the release the deploy
