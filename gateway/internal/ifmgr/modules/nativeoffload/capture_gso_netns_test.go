@@ -24,6 +24,9 @@ import (
 
 const nativeGSOPayloadBytes = 2 * 1024 * 1024
 
+// Linux UAPI defines TCPI_OPT_TIMESTAMPS in linux/tcp.h; x/sys omits it.
+const nativeTCPInfoTimestamps = 1
+
 func TestNativeKernelGSOAdmissionIPv4(t *testing.T) {
 	if !nativeCaptureNamespace(t) {
 		return
@@ -304,7 +307,7 @@ func requireNativeGSOSample(t *testing.T, fixture admissionFixture, sample captu
 		t.Fatalf("kernel aggregate changed checksum or capture offsets: %+v", metadata)
 	}
 	tcpHeader := uint32(20)
-	if information.Options&unix.TCPI_OPT_TIMESTAMPS != 0 {
+	if information.Options&nativeTCPInfoTimestamps != 0 {
 		tcpHeader += 12
 	}
 	if uint32(metadata.GSOSize) != information.Snd_mss || observation.EffectiveNetworkLength != ipHeader+tcpHeader+information.Snd_mss || uint32(metadata.HeaderLength) < 14+ipHeader+tcpHeader || uint32(metadata.HeaderLength) > metadata.PacketLength {
