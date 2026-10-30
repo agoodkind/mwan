@@ -109,11 +109,14 @@ func (module *Module) admit(ctx context.Context, observation packetObservation) 
 		stage = admissionResumptionHandled
 		return
 	}
+	stage, diagnosticErr = module.installCandidate(ctx, requestContext, identity, entry, evidence, &diagnostic)
+}
+
+func (module *Module) installCandidate(ctx, requestContext context.Context, identity connectionIdentity, entry *admittedFlow, evidence *evidenceCheck, diagnostic *admissionSample) (admissionStage, error) {
 	retirement, err := module.runtime.Retirement(requestContext)
 	if err != nil {
-		stage, diagnosticErr = admissionRetirementFailed, err
 		module.stats.Fallback++
-		return
+		return admissionRetirementFailed, err
 	}
 	requireShared := retirement.RetainedPairs >= retirement.RetainedPairCapacity && retirement.ReusableSharedSlots == 0
 	if module.cfg.Settings.ObservationDiagnostics {
@@ -122,48 +125,44 @@ func (module *Module) admit(ctx context.Context, observation packetObservation) 
 	}
 	if requireShared || len(module.flows) >= int(module.cfg.Settings.PairCapacity) {
 		if !module.evictLRU(requestContext, requireShared) {
-			stage, diagnosticErr = admissionStorageRejected, module.stats.Failure
 			module.stats.Fallback++
-			return
+			return admissionStorageRejected, module.stats.Failure
 		}
 	}
 	counterStarted := clock.Real{}.Now()
-	current, err := offload.FreshConntrackFlow(requestContext, flow)
+	current, err := offload.FreshConntrackFlow(requestContext, entry.flow)
 	if err != nil {
-		stage, diagnosticErr = admissionFreshLookupFailed, err
 		module.stats.Fallback++
-		return
+		return admissionFreshLookupFailed, err
 	}
 	if module.cfg.Settings.ObservationDiagnostics {
 		diagnostic.currentConnection = freezeAdmissionConnection(current)
 	}
-	if !sameConnectionPolicy(flow, current) {
-		stage = admissionFreshPolicyMismatch
+	if !sameConnectionPolicy(entry.flow, current) {
 		module.stats.Fallback++
-		return
+		return admissionFreshPolicyMismatch, nil
 	}
-	ageAfterLookup := (clock.Real{}).Now().Sub(observation.at)
+	ageAfterLookup := (clock.Real{}).Now().Sub(entry.observation.at)
 	if module.cfg.Settings.ObservationDiagnostics {
 		diagnostic.age = ageAfterLookup
 	}
 	if ageAfterLookup > module.cfg.Settings.ObservationMaxAge {
-		stage = admissionObservationExpired
 		module.stats.Fallback++
-		return
+		return admissionObservationExpired, nil
 	}
 	if err := evidence.guard.Check(); err != nil {
-		stage, diagnosticErr = admissionEvidenceChanged, err
 		module.stats.Fallback++
 		module.invalidateEvidence(ctx)
-		return
+		return admissionEvidenceChanged, err
 	}
-	result, err := module.runtime.InstallObservedWithEvidence(requestContext, current, spec, guards, &evidence.guard)
+	result, err := module.runtime.InstallObservedWithEvidence(requestContext, current, entry.spec, entry.guards, &evidence.guard)
 	if module.cfg.Settings.ObservationDiagnostics {
-		diagnostic.installation, diagnostic.installationValid, diagnostic.requestedDirections = result, true, spec.RequestedDirections
+		diagnostic.installation, diagnostic.installationValid, diagnostic.requestedDirections = result, true, entry.spec.RequestedDirections
 	}
-	stage, diagnosticErr = installationStage(result, spec.RequestedDirections, err), err
+	stage := installationStage(result, entry.spec.RequestedDirections, err)
 	module.retainInstallation(identity, entry, current, result, counterStarted)
-	module.completeInstallation(ctx, identity, spec, result, err, evidence)
+	module.completeInstallation(ctx, identity, entry.spec, result, err, evidence)
+	return stage, err
 }
 
 func (module *Module) retainInstallation(identity connectionIdentity, entry *admittedFlow, current conntrack.Flow, result offload.NativePairResult, counterStarted time.Time) {
@@ -284,10 +283,16 @@ func (module *Module) candidate(ctx context.Context, observation packetObservati
 		module.Log.DebugContext(ctx, "native candidate policy is ineligible", "connection_id", flow.ID, "wan", wan.Key(), "err", err)
 		return spec, guards, flow, wan, EligibilityPolicyUnavailable, err
 	}
+	spec, guards, stage, decision, err := module.candidateMapping(ctx, observation, input, snapshot, flow, wan, kernelTuple, &diagnostic)
+	return spec, guards, flow, wan, decision, err
+}
+
+func (module *Module) candidateMapping(ctx context.Context, observation packetObservation, input boundLink, snapshot wanstate.Snapshot, flow conntrack.Flow, wan WAN, kernelTuple conntrack.Tuple, diagnostic *admissionSample) (offload.NativePairSpec, [2]offload.NativePacketGuard, admissionStage, Eligibility, error) {
+	var spec offload.NativePairSpec
+	var guards [2]offload.NativePacketGuard
 	translated, index, decision := candidateDirection(flow, kernelTuple)
 	if decision != EligibilityReady {
-		stage = candidateTupleDirection
-		return spec, guards, flow, wan, decision, nil
+		return spec, guards, candidateTupleDirection, decision, nil
 	}
 	selector := netif.PacketSelector{
 		Source:      netip.AddrPortFrom(kernelTuple.IP.SourceAddress, kernelTuple.Proto.SourcePort),
@@ -300,33 +305,28 @@ func (module *Module) candidate(ctx context.Context, observation packetObservati
 		diagnostic.route = freezeAdmissionRoute(selector, path, usable)
 	}
 	if err != nil {
-		stage = candidateRouteLookup
 		module.Log.WarnContext(ctx, "native candidate forwarding lookup failed", "err", err)
-		return spec, guards, flow, wan, EligibilityUnsupported, fmt.Errorf("resolve native candidate forwarding path: %w", err)
+		return spec, guards, candidateRouteLookup, EligibilityUnsupported, fmt.Errorf("resolve native candidate forwarding path: %w", err)
 	}
 	if !usable {
-		stage = candidateRouteUnusable
-		return spec, guards, flow, wan, EligibilityUnsupported, nil
+		return spec, guards, candidateRouteUnusable, EligibilityUnsupported, nil
 	}
 	output, bound := module.links[path.Link.Attrs().Index]
 	if !bound {
-		stage = candidateOutputUnbound
-		return spec, guards, flow, wan, EligibilityUnsupported, nil
+		return spec, guards, candidateOutputUnbound, EligibilityUnsupported, nil
 	}
 	if !module.pathAllowed(input, output, wan, kernelTuple.IP.SourceAddress.Is4()) {
-		stage = candidatePathRejected
-		return spec, guards, flow, wan, EligibilityUnsupported, nil
+		return spec, guards, candidatePathRejected, EligibilityUnsupported, nil
 	}
 	if kernelTuple.IP.SourceAddress.Is4() {
 		if !module.ipv4MappingAllowed(wan, flow) {
-			stage = candidateIPv4Mapping
-			return spec, guards, flow, wan, EligibilityUnsupported, nil
+			return spec, guards, candidateIPv4Mapping, EligibilityUnsupported, nil
 		}
 	} else if output.connection.ID.String() == wan.Key() {
+		var supported bool
 		translated, supported = translateSource(snapshot, wan.Key(), translated)
 		if !supported {
-			stage = candidateIPv6Translation
-			return spec, guards, flow, wan, EligibilityUnsupported, nil
+			return spec, guards, candidateIPv6Translation, EligibilityUnsupported, nil
 		}
 	}
 	mtu := output.kernel.MTU
@@ -338,17 +338,15 @@ func (module *Module) candidate(ctx context.Context, observation packetObservati
 		diagnostic.outputMTU, diagnostic.mtuChecked = mtu, true
 	}
 	if err != nil {
-		stage = candidateMTUInvalid
 		module.Log.WarnContext(ctx, "native candidate MTU is invalid", "mtu", mtu, "err", err)
-		return spec, guards, flow, wan, EligibilityUnsupported, fmt.Errorf("check native candidate output MTU: %w", err)
+		return spec, guards, candidateMTUInvalid, EligibilityUnsupported, fmt.Errorf("check native candidate output MTU: %w", err)
 	}
 	if observation.NetworkLength > uint32(outputMTU) {
-		stage = candidateLengthAboveMTU
-		return spec, guards, flow, wan, EligibilityUnsupported, nil
+		return spec, guards, candidateLengthAboveMTU, EligibilityUnsupported, nil
 	}
-	stage = module.candidatePolicyGeneration(snapshot, wan, kernelTuple.IP.SourceAddress.Is4(), &diagnostic)
+	stage := module.candidatePolicyGeneration(snapshot, wan, kernelTuple.IP.SourceAddress.Is4(), diagnostic)
 	if stage != candidateReady {
-		return spec, guards, flow, wan, EligibilityStale, nil
+		return spec, guards, stage, EligibilityStale, nil
 	}
 	mask := [2]uint32{1, 2}
 	spec.Cookie = uint64(flow.ID)
@@ -361,7 +359,7 @@ func (module *Module) candidate(ctx context.Context, observation packetObservati
 		OutputSourceMAC: [6]byte(path.Link.Attrs().HardwareAddr), OutputDestinationMAC: [6]byte(path.Neighbor.HardwareAddr), OutputMTU: outputMTU,
 	}
 	guards[index] = offload.NativePacketGuard{TrafficClass: observation.TrafficClass & nativeDSCPMask, FlowLabel: observation.FlowLabel}
-	return spec, guards, flow, wan, EligibilityReady, nil
+	return spec, guards, candidateReady, EligibilityReady, nil
 }
 
 func (module *Module) candidateInput(observation packetObservation) (boundLink, admissionStage) {
