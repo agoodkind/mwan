@@ -75,8 +75,13 @@ func requireNativeKernelGSOAdmission(t *testing.T, source, destination, gateway 
 		t.Fatal(err)
 	}
 	fixture.publishFirewall(t)
-	if err := fixture.tracking.Update(conntrack.Flow{TupleOrig: observation.Tuple, Mark: admissionMark}); err != nil {
-		t.Fatal(err)
+	current, err := fixture.tracking.Get(conntrack.Flow{TupleOrig: observation.Tuple})
+	if err != nil {
+		t.Fatalf("read captured connection before mark update: %v", err)
+	}
+	// Conntrack Update requires both IPv6 tuples to select the IPv6 family.
+	if err := fixture.tracking.Update(conntrack.Flow{TupleOrig: current.TupleOrig, TupleReply: current.TupleReply, Mark: admissionMark}); err != nil {
+		t.Fatalf("update captured connection mark: %v", err)
 	}
 	requireNativeGSOCandidate(t, fixture, observation)
 }
