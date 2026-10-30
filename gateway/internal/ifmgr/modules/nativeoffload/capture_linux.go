@@ -175,11 +175,8 @@ func (capture *packetCapture) receive(ctx context.Context, raw syscall.RawConn, 
 		if flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) != 0 || count == 0 {
 			return fmt.Errorf("native packet observation truncated: %w", unix.EMSGSIZE)
 		}
-		keepReading, decodeFailed, err := capture.observeFrame(ctx, ifindex, frame[:count], sender, control[:controlCount], observations)
+		keepReading, err := capture.observeFrame(ctx, ifindex, frame[:count], sender, control[:controlCount], observations)
 		if err != nil {
-			if decodeFailed {
-				return fmt.Errorf("decode native packet observations: %w", err)
-			}
 			return err
 		}
 		if !keepReading {
@@ -238,26 +235,26 @@ func (capture *packetCapture) metadataAllowed(frame []byte, sender unix.Sockaddr
 	return false
 }
 
-func (capture *packetCapture) observeFrame(ctx context.Context, ifindex int, frame []byte, sender unix.Sockaddr, control []byte, observations chan<- packetObservation) (keepReading, decodeFailed bool, resultErr error) {
+func (capture *packetCapture) observeFrame(ctx context.Context, ifindex int, frame []byte, sender unix.Sockaddr, control []byte, observations chan<- packetObservation) (bool, error) {
 	if !capture.senderAllowed(ifindex, frame, sender, control) {
-		return true, false, nil
+		return true, nil
 	}
 	metadata, err := observationControl(control)
 	if err != nil {
-		return false, false, err
+		return false, err
 	}
 	if !capture.metadataAllowed(frame, sender, metadata) {
-		return true, false, nil
+		return true, nil
 	}
 	decoded, err := offload.ObserveNativeFrames([][]byte{frame})
 	if err != nil {
-		return false, true, err
+		return false, &nativeOperationError{operation: "decode native packet observations", connectionID: 0, ifindex: ifindex, cause: err}
 	}
 	if !decoded[0].Eligible {
 		if capture.diagnostics != nil {
 			capture.diagnostics.record(captureDecoderIneligible, frame, sender, metadata, nil, &decoded[0])
 		}
-		return true, false, nil
+		return true, nil
 	}
 	observation := packetObservation{NativeObservation: decoded[0], ifindex: ifindex, at: metadata.at}
 	select {
@@ -266,14 +263,14 @@ func (capture *packetCapture) observeFrame(ctx context.Context, ifindex int, fra
 			capture.diagnostics.record(captureQueued, frame, sender, metadata, nil, &decoded[0])
 		}
 	case <-ctx.Done():
-		return false, false, nil
+		return false, nil
 	default:
 		capture.skipped.Add(1)
 		if capture.diagnostics != nil {
 			capture.diagnostics.record(captureQueueFull, frame, sender, metadata, nil, &decoded[0])
 		}
 	}
-	return true, false, nil
+	return true, nil
 }
 
 func observationControl(data []byte) (metadata captureMetadata, resultErr error) {

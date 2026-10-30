@@ -116,7 +116,7 @@ func (module *Module) installCandidate(ctx, requestContext context.Context, iden
 	retirement, err := module.runtime.Retirement(requestContext)
 	if err != nil {
 		module.stats.Fallback++
-		return admissionRetirementFailed, err
+		return admissionRetirementFailed, &nativeOperationError{operation: "query native retirement storage", connectionID: identity.id, ifindex: 0, cause: err}
 	}
 	requireShared := retirement.RetainedPairs >= retirement.RetainedPairCapacity && retirement.ReusableSharedSlots == 0
 	if module.cfg.Settings.ObservationDiagnostics {
@@ -133,7 +133,7 @@ func (module *Module) installCandidate(ctx, requestContext context.Context, iden
 	current, err := offload.FreshConntrackFlow(requestContext, entry.flow)
 	if err != nil {
 		module.stats.Fallback++
-		return admissionFreshLookupFailed, err
+		return admissionFreshLookupFailed, &nativeOperationError{operation: "refresh native candidate connection", connectionID: identity.id, ifindex: 0, cause: err}
 	}
 	if module.cfg.Settings.ObservationDiagnostics {
 		diagnostic.currentConnection = freezeAdmissionConnection(current)
@@ -153,7 +153,7 @@ func (module *Module) installCandidate(ctx, requestContext context.Context, iden
 	if err := evidence.guard.Check(); err != nil {
 		module.stats.Fallback++
 		module.invalidateEvidence(ctx)
-		return admissionEvidenceChanged, err
+		return admissionEvidenceChanged, &nativeOperationError{operation: "verify native admission evidence", connectionID: identity.id, ifindex: 0, cause: err}
 	}
 	result, err := module.runtime.InstallObservedWithEvidence(requestContext, current, entry.spec, entry.guards, &evidence.guard)
 	if module.cfg.Settings.ObservationDiagnostics {
@@ -162,7 +162,10 @@ func (module *Module) installCandidate(ctx, requestContext context.Context, iden
 	stage := installationStage(result, entry.spec.RequestedDirections, err)
 	module.retainInstallation(identity, entry, current, result, counterStarted)
 	module.completeInstallation(ctx, identity, entry.spec, result, err, evidence)
-	return stage, err
+	if err != nil {
+		return stage, &nativeOperationError{operation: "install native candidate", connectionID: identity.id, ifindex: 0, cause: err}
+	}
+	return stage, nil
 }
 
 func (module *Module) retainInstallation(identity connectionIdentity, entry *admittedFlow, current conntrack.Flow, result offload.NativePairResult, counterStarted time.Time) {
