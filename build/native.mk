@@ -13,10 +13,13 @@ MWAN_NATIVE_CARGO_FUZZ_VERSION := 0.13.2
 MWAN_NATIVE_CARGO_TARGET := $(GO_MK_CGO_PREFIX)/mwan-native-cargo
 MWAN_NATIVE_RUST_ARCHIVE = $(MWAN_NATIVE_CARGO_TARGET)/$(MWAN_NATIVE_RUST_TARGET)/release/libmwan_native.a
 MWAN_NATIVE_RUST_LINK_FLAGS := $(GO_MK_CGO_PREFIX)/rust-native-link-flags.txt
-MWAN_NATIVE_SOURCE_FILES := $(wildcard $(MWAN_NATIVE_ROOT)/src/*.rs) $(wildcard $(MWAN_NATIVE_ROOT)/src/controller/*.rs) $(MWAN_NATIVE_ROOT)/src/dpdk_shim.c $(MWAN_NATIVE_ROOT)/src/dpdk_shim.h $(wildcard $(MWAN_NATIVE_ROOT)/include/*.h) $(wildcard $(MWAN_NATIVE_ROOT)/*.in) $(MWAN_NATIVE_ROOT)/Cargo.toml $(MWAN_NATIVE_ROOT)/Cargo.lock $(MWAN_NATIVE_ROOT)/build.rs $(MWAN_NATIVE_ROOT)/../rust-toolchain.toml $(MWAN_NATIVE_ROOT)/meson.build $(MWAN_NATIVE_ROOT)/meson_options.txt
+MWAN_NATIVE_SOURCE_FILES := $(wildcard $(MWAN_NATIVE_ROOT)/src/*.rs) $(wildcard $(MWAN_NATIVE_ROOT)/src/controller/*.rs) $(wildcard $(MWAN_NATIVE_ROOT)/src/packet/*.rs) $(MWAN_NATIVE_ROOT)/src/dpdk_shim.c $(MWAN_NATIVE_ROOT)/src/dpdk_shim.h $(wildcard $(MWAN_NATIVE_ROOT)/include/*.h) $(wildcard $(MWAN_NATIVE_ROOT)/*.in) $(MWAN_NATIVE_ROOT)/Cargo.toml $(MWAN_NATIVE_ROOT)/Cargo.lock $(MWAN_NATIVE_ROOT)/build.rs $(MWAN_NATIVE_ROOT)/../rust-toolchain.toml $(MWAN_NATIVE_ROOT)/meson.build $(MWAN_NATIVE_ROOT)/meson_options.txt
 MWAN_NATIVE_PKG_PATH := $(MWAN_NATIVE_DPDK_PREFIX)/lib/pkgconfig:$(MWAN_NATIVE_DPDK_PREFIX)/lib/$(shell $(CC) -dumpmachine)/pkgconfig
 MWAN_NATIVE_CARGO_ENV = PKG_CONFIG_PATH="$(MWAN_NATIVE_PKG_PATH)" MWAN_DPDK_SOURCE_SHA256="$(MWAN_NATIVE_DPDK_SHA256)" MWAN_DPDK_PATCH_SHA256="$(MWAN_NATIVE_PATCH_SHA256)" CARGO_TARGET_DIR="$(MWAN_NATIVE_CARGO_TARGET)" RUSTUP_TOOLCHAIN="$(MWAN_NATIVE_RUST_TOOLCHAIN)"
 MWAN_NATIVE_FUZZ_RUNS ?= 100000
+MWAN_NATIVE_FUZZ_DIR ?= $(MWAN_NATIVE_ROOT)/fuzz
+MWAN_NATIVE_FUZZ_CORPUS_DIR ?= $(MWAN_NATIVE_FUZZ_DIR)/corpus
+MWAN_NATIVE_FUZZ_ARTIFACT_DIR ?= $(MWAN_NATIVE_FUZZ_DIR)/artifacts
 
 .PHONY: go-mk-cgo-dep-native native-sdk-required native-library native-hardware-driver native-rust-check native-rust-sdk-check native-rust-test-toolchain native-rust-miri native-rust-fuzz native-sdk-check native-admission-kernel-check native-admission-startup-check
 go-mk-cgo-dep-native: native-library
@@ -58,7 +61,9 @@ native-rust-miri:
 	cargo +$(MWAN_NATIVE_TEST_TOOLCHAIN) miri test --locked --manifest-path "$(MWAN_NATIVE_ROOT)/Cargo.toml" --no-default-features
 
 native-rust-fuzz:
-	cargo +$(MWAN_NATIVE_TEST_TOOLCHAIN) fuzz run --fuzz-dir "$(MWAN_NATIVE_ROOT)/fuzz" packet -- -runs=$(MWAN_NATIVE_FUZZ_RUNS) -max_len=65597
+	mkdir -p "$(MWAN_NATIVE_FUZZ_ARTIFACT_DIR)/packet" "$(MWAN_NATIVE_FUZZ_ARTIFACT_DIR)/kernel_observation"
+	cargo +$(MWAN_NATIVE_TEST_TOOLCHAIN) fuzz run --sanitizer address --fuzz-dir "$(MWAN_NATIVE_FUZZ_DIR)" packet "$(MWAN_NATIVE_FUZZ_CORPUS_DIR)/packet" -- -runs=$(MWAN_NATIVE_FUZZ_RUNS) -max_len=65597 -artifact_prefix="$(MWAN_NATIVE_FUZZ_ARTIFACT_DIR)/packet/"
+	cargo +$(MWAN_NATIVE_TEST_TOOLCHAIN) fuzz run --sanitizer address --fuzz-dir "$(MWAN_NATIVE_FUZZ_DIR)" kernel_observation "$(MWAN_NATIVE_FUZZ_CORPUS_DIR)/kernel_observation" -- -runs=$(MWAN_NATIVE_FUZZ_RUNS) -max_len=65568 -artifact_prefix="$(MWAN_NATIVE_FUZZ_ARTIFACT_DIR)/kernel_observation/"
 
 native-sdk-check: native-sdk-required
 	$(MAKE) native-rust-sdk-check
