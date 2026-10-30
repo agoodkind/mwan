@@ -39,29 +39,44 @@ func ObserveNativeFrames(frames [][]byte) (result []NativeObservation, resultErr
 			slog.Warn("native packet observation failed", "frames", len(frames), "err", resultErr)
 		}
 	}()
-	if len(frames) == 0 || len(frames) > C.MWAN_NATIVE_OBSERVATION_BATCH_LIMIT {
-		return nil, fmt.Errorf("native observation batch requires between 1 and %d frames", C.MWAN_NATIVE_OBSERVATION_BATCH_LIMIT)
+	payload, inputs, err := copyNativeObservationFrames(frames)
+	if err != nil {
+		return nil, err
 	}
-	for _, frame := range frames {
-		if len(frame) == 0 || len(frame) > C.MWAN_NATIVE_OBSERVATION_FRAME_LIMIT {
-			return nil, fmt.Errorf("native observation frame requires between 1 and %d bytes", C.MWAN_NATIVE_OBSERVATION_FRAME_LIMIT)
-		}
-	}
+	defer C.free(payload)
 	descriptors := C.calloc(C.size_t(len(frames)), C.sizeof_struct_mwan_native_frame)
 	if descriptors == nil {
 		return nil, syscall.ENOMEM
 	}
 	defer C.free(descriptors)
-	inputs := unsafe.Slice((*C.struct_mwan_native_frame)(descriptors), len(frames))
+	copy(unsafe.Slice((*C.struct_mwan_native_frame)(descriptors), len(frames)), inputs)
+	observations := make([]C.struct_mwan_native_observation, len(frames))
+	if result := C.mwan_native_observe_batch((*C.struct_mwan_native_frame)(descriptors), &observations[0], C.uint32_t(len(frames))); result != 0 {
+		return nil, fmt.Errorf("decode native observations: %w", syscall.Errno(-result))
+	}
+	decoded := make([]NativeObservation, len(frames))
+	for index, observation := range observations {
+		decoded[index] = decodeNativeObservation(observation)
+	}
+	return decoded, nil
+}
+
+func copyNativeObservationFrames(frames [][]byte) (unsafe.Pointer, []C.struct_mwan_native_frame, error) {
+	if len(frames) == 0 || len(frames) > C.MWAN_NATIVE_OBSERVATION_BATCH_LIMIT {
+		return nil, nil, fmt.Errorf("native observation batch requires between 1 and %d frames", C.MWAN_NATIVE_OBSERVATION_BATCH_LIMIT)
+	}
 	totalBytes := 0
 	for _, frame := range frames {
+		if len(frame) == 0 || len(frame) > C.MWAN_NATIVE_OBSERVATION_FRAME_LIMIT {
+			return nil, nil, fmt.Errorf("native observation frame requires between 1 and %d bytes", C.MWAN_NATIVE_OBSERVATION_FRAME_LIMIT)
+		}
 		totalBytes += len(frame)
 	}
 	payload := C.malloc(C.size_t(totalBytes))
 	if payload == nil {
-		return nil, syscall.ENOMEM
+		return nil, nil, syscall.ENOMEM
 	}
-	defer C.free(payload)
+	inputs := make([]C.struct_mwan_native_frame, len(frames))
 	storage := unsafe.Slice((*byte)(payload), totalBytes)
 	offset := 0
 	for index, frame := range frames {
@@ -70,29 +85,27 @@ func ObserveNativeFrames(frames [][]byte) (result []NativeObservation, resultErr
 		inputs[index].length = C.uint32_t(len(frame))
 		offset += len(frame)
 	}
-	observations := make([]C.struct_mwan_native_observation, len(frames))
-	if result := C.mwan_native_observe_batch((*C.struct_mwan_native_frame)(descriptors), &observations[0], C.uint32_t(len(frames))); result != 0 {
-		return nil, fmt.Errorf("decode native observations: %w", syscall.Errno(-result))
+	return payload, inputs, nil
+}
+
+func decodeNativeObservation(observation C.struct_mwan_native_observation) NativeObservation {
+	var decoded NativeObservation
+	var diagnostic C.struct_mwan_native_packet_diagnostic
+	diagnostic.validity = C.MWAN_NATIVE_PACKET_ETHERNET_VALID | C.MWAN_NATIVE_PACKET_IP_VALID | C.MWAN_NATIVE_PACKET_PORTS_VALID
+	diagnostic.tuple = observation.tuple
+	decoded.Tuple = decodeNativePacket(diagnostic).Tuple
+	for octet := range decoded.SourceMAC {
+		decoded.SourceMAC[octet] = byte(observation.source_mac[octet])
+		decoded.DestinationMAC[octet] = byte(observation.destination_mac[octet])
 	}
-	decoded := make([]NativeObservation, len(frames))
-	for index, observation := range observations {
-		var diagnostic C.struct_mwan_native_packet_diagnostic
-		diagnostic.validity = C.MWAN_NATIVE_PACKET_ETHERNET_VALID | C.MWAN_NATIVE_PACKET_IP_VALID | C.MWAN_NATIVE_PACKET_PORTS_VALID
-		diagnostic.tuple = observation.tuple
-		decoded[index].Tuple = decodeNativePacket(diagnostic).Tuple
-		for octet := range decoded[index].SourceMAC {
-			decoded[index].SourceMAC[octet] = byte(observation.source_mac[octet])
-			decoded[index].DestinationMAC[octet] = byte(observation.destination_mac[octet])
-		}
-		decoded[index].NetworkLength = uint32(observation.network_length)
-		decoded[index].FlowLabel = uint32(observation.flow_label)
-		decoded[index].TrafficClass = uint8(observation.traffic_class)
-		decoded[index].TCPFlags = uint8(observation.tcp_flags)
-		decoded[index].TTL = uint8(observation.ttl)
-		decoded[index].Eligible = observation.eligible != 0
-		if observation.decode_status != 0 {
-			decoded[index].DecodeError = syscall.Errno(-observation.decode_status)
-		}
+	decoded.NetworkLength = uint32(observation.network_length)
+	decoded.FlowLabel = uint32(observation.flow_label)
+	decoded.TrafficClass = uint8(observation.traffic_class)
+	decoded.TCPFlags = uint8(observation.tcp_flags)
+	decoded.TTL = uint8(observation.ttl)
+	decoded.Eligible = observation.eligible != 0
+	if observation.decode_status != 0 {
+		decoded.DecodeError = syscall.Errno(-observation.decode_status)
 	}
-	return decoded, nil
+	return decoded
 }

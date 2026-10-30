@@ -72,6 +72,9 @@ func TestNativePacketObservation(t *testing.T) {
 				if observation.ifindex != input.Index || observation.at.IsZero() || !observation.Eligible || observation.DecodeError != nil {
 					t.Fatalf("kernel capture did not provide an eligible Rust observation: %+v", observation)
 				}
+				if observation.NetworkLength != uint32(len(frame)-14) || observation.EffectiveNetworkLength != observation.NetworkLength {
+					t.Fatalf("ordinary capture changed the complete IP length: %+v", observation)
+				}
 				if observation.Tuple.IP.SourceAddress != netip.MustParseAddr(addresses[0]) || observation.Tuple.IP.DestinationAddress != netip.MustParseAddr(addresses[1]) || observation.Tuple.Proto.Protocol != protocol || observation.Tuple.Proto.SourcePort != nativeCaptureSourcePort || observation.Tuple.Proto.DestinationPort != nativeCaptureDestinationPort {
 					t.Fatalf("Rust observation changed the transmitted tuple: %+v", observation)
 				}
@@ -210,12 +213,18 @@ type captureDiagnosticReport struct {
 	Ifindex  int               `json:"ifindex"`
 	Counters map[string]uint64 `json:"counters"`
 	Samples  map[string]struct {
-		ObservedAt      time.Time       `json:"observed_at"`
-		ObservedAtValid bool            `json:"observed_at_valid"`
-		AuxiliaryValid  bool            `json:"auxiliary_valid"`
-		AuxiliaryStatus *uint32         `json:"auxiliary_status"`
-		Eligible        bool            `json:"eligible"`
-		Tuple           conntrack.Tuple `json:"tuple"`
+		ObservedAt             time.Time       `json:"observed_at"`
+		ObservedAtValid        bool            `json:"observed_at_valid"`
+		AuxiliaryValid         bool            `json:"auxiliary_valid"`
+		AuxiliaryStatus        *uint32         `json:"auxiliary_status"`
+		NetworkLength          uint32          `json:"ip_length"`
+		EffectiveNetworkLength uint32          `json:"effective_ip_length"`
+		GSOType                uint8           `json:"gso_type"`
+		GSOSize                uint16          `json:"gso_size"`
+		PacketLength           uint32          `json:"packet_length"`
+		CapturedLength         uint32          `json:"captured_length"`
+		Eligible               bool            `json:"eligible"`
+		Tuple                  conntrack.Tuple `json:"tuple"`
 	} `json:"samples"`
 }
 
@@ -234,6 +243,11 @@ func readCaptureDiagnosticReport(t *testing.T, report string, input *net.Interfa
 	current, present := summary.Interfaces[input.Name]
 	if !present || current.Ifindex != input.Index {
 		t.Fatalf("capture changed the observed interface: %s", report)
+	}
+	for _, sample := range current.Samples {
+		if sample.Eligible && (sample.EffectiveNetworkLength == 0 || sample.EffectiveNetworkLength > sample.NetworkLength || sample.CapturedLength != sample.PacketLength) {
+			t.Fatalf("capture report omitted valid effective length or complete metadata: %s", report)
+		}
 	}
 	return current
 }

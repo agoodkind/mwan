@@ -53,6 +53,7 @@ const (
 	candidateIPv4Mapping
 	candidateIPv6Translation
 	candidateMTUInvalid
+	candidateLengthInvalid
 	candidateLengthAboveMTU
 	candidateGenerationChanged
 	candidatePolicyBecameUnready
@@ -69,7 +70,7 @@ func (stage admissionStage) String() string {
 		"ingress_unbound", "origin_absent", "destination_mac_mismatch", "links_changed", "ingress_translation_rejected",
 		"conntrack_lookup_failed", "connection_ineligible", "wan_not_ready", "policy_rejected", "tuple_direction_rejected",
 		"route_lookup_failed", "route_unusable", "output_unbound", "path_rejected", "ipv4_mapping_rejected", "ipv6_translation_rejected",
-		"mtu_invalid", "length_above_mtu", "generation_changed", "policy_became_unready", "candidate_ready",
+		"mtu_invalid", "length_invalid", "length_above_mtu", "generation_changed", "policy_became_unready", "candidate_ready",
 	}
 	return stages[stage]
 }
@@ -96,7 +97,7 @@ func (stage admissionStage) outcome() admissionOutcome {
 		candidateIngressTranslation, candidateConntrackLookup, candidateConnectionIneligible, candidateWANNotReady,
 		candidatePolicyRejected, candidateTupleDirection, candidateRouteLookup, candidateRouteUnusable,
 		candidateOutputUnbound, candidatePathRejected, candidateIPv4Mapping, candidateIPv6Translation,
-		candidateMTUInvalid, candidateLengthAboveMTU, candidateGenerationChanged, candidatePolicyBecameUnready,
+		candidateMTUInvalid, candidateLengthInvalid, candidateLengthAboveMTU, candidateGenerationChanged, candidatePolicyBecameUnready,
 		admissionStageCount:
 		return admissionRejected
 	}
@@ -192,46 +193,47 @@ func freezeAdmissionRoute(selector netif.PacketSelector, path netif.ForwardingPa
 }
 
 type admissionSample struct {
-	observation         offload.NativeObservation
-	observedAt          time.Time
-	age                 time.Duration
-	ageChecked          bool
-	maxAge              time.Duration
-	ifindex             int
-	inputName           string
-	inputBound          bool
-	hasOrigin           bool
-	inputMAC            [6]byte
-	connection          admissionConnection
-	currentConnection   admissionConnection
-	route               admissionRoute
-	outputMTU           int
-	mtuChecked          bool
-	kernelTuple         conntrack.Tuple
-	kernelTupleValid    bool
-	wan                 string
-	generationChecked   bool
-	nptBefore           uint64
-	nptAfter            uint64
-	routingBefore       uint64
-	routingAfter        uint64
-	policyReady         bool
-	policyChecked       bool
-	eligibility         Eligibility
-	eligibilityValid    bool
-	retirement          offload.NativeRetirementStats
-	retirementValid     bool
-	requireShared       bool
-	tracked             int
-	capacity            uint32
-	installation        offload.NativePairResult
-	installationValid   bool
-	requestedDirections uint32
-	runtimePresent      bool
-	policyBlocked       bool
-	paused              bool
-	failure             admissionError
-	decodeFailure       admissionError
+	observation            offload.NativeObservation
+	effectiveNetworkLength uint32
+	observedAt             time.Time
+	age                    time.Duration
+	ageChecked             bool
+	maxAge                 time.Duration
+	ifindex                int
+	inputName              string
+	inputBound             bool
+	hasOrigin              bool
+	inputMAC               [6]byte
+	connection             admissionConnection
+	currentConnection      admissionConnection
+	route                  admissionRoute
+	outputMTU              int
+	mtuChecked             bool
+	kernelTuple            conntrack.Tuple
+	kernelTupleValid       bool
+	wan                    string
+	generationChecked      bool
+	nptBefore              uint64
+	nptAfter               uint64
+	routingBefore          uint64
+	routingAfter           uint64
+	policyReady            bool
+	policyChecked          bool
+	eligibility            Eligibility
+	eligibilityValid       bool
+	retirement             offload.NativeRetirementStats
+	retirementValid        bool
+	requireShared          bool
+	tracked                int
+	capacity               uint32
+	installation           offload.NativePairResult
+	installationValid      bool
+	requestedDirections    uint32
+	runtimePresent         bool
+	policyBlocked          bool
+	paused                 bool
+	failure                admissionError
+	decodeFailure          admissionError
 }
 
 // The module lock protects these fixed slots and their monotonic counts.
@@ -258,6 +260,7 @@ func (module *Module) recordAdmission(stage admissionStage, observation packetOb
 		*sample = *details
 	}
 	sample.observation, sample.observedAt = observation.NativeObservation, observation.at
+	sample.effectiveNetworkLength = observation.EffectiveNetworkLength
 	sample.decodeFailure = freezeAdmissionError(sample.observation.DecodeError)
 	sample.observation.DecodeError = nil
 	if !sample.ageChecked {
@@ -278,6 +281,7 @@ func (sample admissionSample) logValue() slog.Value {
 	attributes := []slog.Attr{
 		slog.Time("observed_at", sample.observedAt), slog.Duration("age", sample.age), slog.Duration("max_age", sample.maxAge),
 		slog.Any("observation", sample.observation), slog.Any("decode_error", sample.decodeFailure),
+		slog.Uint64("effective_ip_length", uint64(sample.effectiveNetworkLength)),
 		slog.Bool("input_bound", sample.inputBound), slog.Bool("has_origin", sample.hasOrigin), slog.Any("input_mac", sample.inputMAC),
 		slog.Any("connection", sample.connection), slog.Any("current_connection", sample.currentConnection),
 		slog.Bool("runtime_present", sample.runtimePresent), slog.Bool("policy_blocked", sample.policyBlocked), slog.Bool("paused", sample.paused),

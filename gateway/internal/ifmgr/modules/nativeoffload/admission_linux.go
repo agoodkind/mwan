@@ -344,7 +344,10 @@ func (module *Module) candidateMapping(ctx context.Context, observation packetOb
 		module.Log.WarnContext(ctx, "native candidate MTU is invalid", "mtu", mtu, "err", err)
 		return spec, guards, candidateMTUInvalid, EligibilityUnsupported, fmt.Errorf("check native candidate output MTU: %w", err)
 	}
-	if observation.NetworkLength > uint32(outputMTU) {
+	if observation.EffectiveNetworkLength == 0 || observation.EffectiveNetworkLength > observation.NetworkLength {
+		return spec, guards, candidateLengthInvalid, EligibilityUnsupported, nil
+	}
+	if observation.EffectiveNetworkLength > uint32(outputMTU) {
 		return spec, guards, candidateLengthAboveMTU, EligibilityUnsupported, nil
 	}
 	stage := module.candidatePolicyGeneration(snapshot, wan, kernelTuple.IP.SourceAddress.Is4(), diagnostic)
