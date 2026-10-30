@@ -208,6 +208,37 @@ struct mwan_native_observation {
 	int32_t decode_status;
 };
 
+/* Only a trusted kernel capture supplies these host-order scalar fields.
+ * Frame bytes exclude the 10-byte virtual network header. Both lengths
+ * describe Ethernet bytes. Callers zero both reserved fields.
+ */
+struct mwan_native_kernel_metadata {
+	uint32_t auxiliary_status;
+	uint32_t packet_length;
+	uint32_t captured_length;
+	uint16_t mac_offset;
+	uint16_t network_offset;
+	uint8_t vnet_flags;
+	uint8_t gso_type;
+	uint16_t header_length;
+	uint16_t gso_size;
+	uint16_t checksum_start;
+	uint16_t checksum_offset;
+	uint16_t reserved16;
+	uint32_t reserved32;
+};
+
+struct mwan_native_kernel_frame {
+	struct mwan_native_frame frame;
+	struct mwan_native_kernel_metadata metadata;
+};
+
+struct mwan_native_kernel_observation {
+	struct mwan_native_observation observation;
+	uint32_t effective_network_length;
+	uint32_t reserved;
+};
+
 struct mwan_native_packet_guard {
 	/* Packet policy must be certified independently of ECN. The traffic class
 	 * comparison uses its DSCP bits; flow_label still requires an exact match.
@@ -403,6 +434,16 @@ int mwan_native_build_info(struct mwan_native_build_info *info);
 int mwan_native_observe_batch(const struct mwan_native_frame *frames,
 			      struct mwan_native_observation *observations,
 			      uint32_t count);
+/* Callers provide aligned, live arrays for count records and readable frame
+ * buffers for the synchronous call. Inputs cannot overlap writable outputs.
+ * Callers keep inputs immutable and grant exclusive access to outputs.
+ * The library retains no pointers. Invalid descriptors reject the batch
+ * without writes. Unsupported content rejects only its observation, with
+ * effective_network_length zero. The result never authorizes forwarding.
+ */
+int mwan_native_observe_kernel_batch(const struct mwan_native_kernel_frame *frames,
+				     struct mwan_native_kernel_observation *observations,
+				     uint32_t count);
 
 /* The owner calls every operation on one OS thread. A null owner initializes
  * EAL once. A disabled owner reopens only the identical graph configuration.

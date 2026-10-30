@@ -11,6 +11,9 @@ use crate::abi::{
 };
 use std::fmt;
 
+mod kernel;
+pub(crate) use kernel::observe_kernel;
+
 const ETHERNET_HEADER_LENGTH: usize = 14;
 const ETHERNET_ADDRESS_LENGTH: usize = 6;
 const VLAN_HEADER_LENGTH: usize = 4;
@@ -141,20 +144,27 @@ pub fn observe(frame: &[u8]) -> MwanNativeObservation {
             return observation;
         }
     };
-    observation.tuple = view.tuple;
-    observation.source_mac = view.source_mac;
-    observation.destination_mac = view.destination_mac;
-    observation.network_length = view.network_length as u32;
-    observation.flow_label = view.flow_label;
-    observation.traffic_class = view.traffic_class;
-    observation.tcp_flags = view.flags;
-    observation.ttl = view.ttl;
+    observation = observation_headers(&view);
     let direction = MwanNativeDirection {
         output_mtu: u16::MAX,
         ..MwanNativeDirection::default()
     };
     observation.eligible = u8::from(eligible(frame, &view, &direction));
     observation
+}
+
+fn observation_headers(view: &ParsedPacket) -> MwanNativeObservation {
+    MwanNativeObservation {
+        tuple: view.tuple,
+        source_mac: view.source_mac,
+        destination_mac: view.destination_mac,
+        network_length: view.network_length as u32,
+        flow_label: view.flow_label,
+        traffic_class: view.traffic_class,
+        tcp_flags: view.flags,
+        ttl: view.ttl,
+        ..MwanNativeObservation::default()
+    }
 }
 
 fn decode_headers(frame: &[u8], view: &mut ParsedPacket) -> Result<(), i32> {
@@ -353,13 +363,12 @@ pub fn eligible(frame: &[u8], view: &ParsedPacket, direction: &MwanNativeDirecti
     eligible_headers(frame, view).unwrap_or(false)
 }
 
-fn eligible_headers(frame: &[u8], view: &ParsedPacket) -> Option<bool> {
-    let network = read_range(frame, view.network_offset, view.network_length)?;
+fn transport_header_length(frame: &[u8], view: &ParsedPacket) -> Option<usize> {
     let transport = read_range(frame, view.transport_offset, view.transport_length)?;
     match u32::from(view.tuple.protocol) {
         MWAN_NATIVE_PROTOCOL_TCP => {
             if transport.len() < TCP_HEADER_LENGTH {
-                return Some(false);
+                return None;
             }
             let length_and_reserved = *transport.get(12)?;
             let header_length = usize::from(length_and_reserved >> 4).checked_mul(4)?;
@@ -369,18 +378,26 @@ fn eligible_headers(frame: &[u8], view: &ParsedPacket) -> Option<bool> {
                 || view.flags & TCP_ACK_FLAG == 0
                 || view.flags & TCP_EXCEPTION_FLAGS != 0
             {
-                return Some(false);
+                return None;
             }
+            Some(header_length)
         }
         MWAN_NATIVE_PROTOCOL_UDP => {
             if transport.len() < UDP_HEADER_LENGTH
                 || usize::from(read_u16(transport, 4)?) != transport.len()
             {
-                return Some(false);
+                return None;
             }
+            Some(UDP_HEADER_LENGTH)
         }
-        _ => return Some(false),
+        _ => None,
     }
+}
+
+fn eligible_headers(frame: &[u8], view: &ParsedPacket) -> Option<bool> {
+    transport_header_length(frame, view)?;
+    let network = read_range(frame, view.network_offset, view.network_length)?;
+    let transport = read_range(frame, view.transport_offset, view.transport_length)?;
     let mut sum;
     match u32::from(view.tuple.family) {
         MWAN_NATIVE_FAMILY_IPV4 => {
