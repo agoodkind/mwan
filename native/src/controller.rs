@@ -2909,10 +2909,11 @@ impl OwnerState {
         }
         let ports = self.ordered_ports(true)?;
         let mut subordinate_stop_failed = false;
+        let mut subordinate_requires_close = false;
         for id in &ports {
             let is_controller = self.controllers.iter().any(|port| port.id == Some(*id));
             // Controller teardown depends on completed DATA and representor stops.
-            if subordinate_stop_failed && is_controller {
+            if (subordinate_stop_failed || subordinate_requires_close) && is_controller {
                 continue;
             }
             let Some(port) = self.ports.iter_mut().find(|port| port.id == *id) else {
@@ -2944,6 +2945,8 @@ impl OwnerState {
             // start left dev_started clear. Only final close resolves that case.
             if port.state == PortState::Started {
                 port.state = PortState::Stopped;
+            } else {
+                subordinate_requires_close |= !is_controller;
             }
         }
         if let Some(error) = failure {
@@ -2976,6 +2979,33 @@ impl OwnerState {
             // SAFETY: The SDK owns its ethdev validity table for this EAL thread.
             if unsafe { dpdk::rte_eth_dev_is_valid_port(id) } == 0 {
                 continue;
+            }
+            if is_controller
+                && subordinate_requires_close
+                && let Some(port) = self.ports.iter_mut().find(|port| port.id == id)
+                && matches!(port.state, PortState::Started | PortState::StartFailed(_))
+            {
+                // SAFETY: Checked subordinate closes completed before this
+                // deferred controller stop. This owner still owns the port.
+                let result = unsafe { dpdk::rte_eth_dev_stop(id) };
+                if result != 0 {
+                    self.faulted = true;
+                    retain_cleanup_failure(
+                        &mut failure,
+                        fault(
+                            result,
+                            MWAN_NATIVE_OP_PORT,
+                            MWAN_NATIVE_OBJECT_PORT,
+                            u32::from(id),
+                            0,
+                            "Port stop failed; restoration records retained",
+                        ),
+                    );
+                    continue;
+                }
+                if port.state == PortState::Started {
+                    port.state = PortState::Stopped;
+                }
             }
             // SAFETY: Owned rules have retired and all started queues stopped.
             let result = unsafe { dpdk::rte_eth_dev_close(id) };
