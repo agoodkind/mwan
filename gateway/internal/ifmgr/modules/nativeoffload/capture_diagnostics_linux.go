@@ -73,16 +73,17 @@ func (diagnostics *captureDiagnostics) record(stage captureStage, frame []byte, 
 	}
 	sample.kernel, sample.statusValid, sample.vnetValid = metadata.kernel, metadata.auxiliaryValid, metadata.vnetValid
 	sample.observedAt, sample.observedAtValid = metadata.at, sample.metadataError == nil && !metadata.at.IsZero()
-	if decoded != nil {
+	switch {
+	case decoded != nil:
 		sample.decoded, sample.decodedValid = *decoded, true
-	} else if stage >= capturePaused && metadata.vnetValid {
+	case stage >= capturePaused && metadata.vnetValid:
 		observations, err := offload.ObserveNativeKernelFrames([]offload.NativeKernelFrame{{Frame: frame, Metadata: metadata.kernel}})
 		if err != nil {
 			sample.decodeError = err
 		} else {
 			sample.decoded, sample.decodedValid = observations[0], true
 		}
-	} else {
+	default:
 		observations, err := offload.ObserveNativeFrames([][]byte{frame})
 		if err != nil {
 			sample.decodeError = err

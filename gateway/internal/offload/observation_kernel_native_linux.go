@@ -34,11 +34,13 @@ type NativeKernelMetadata struct {
 	Reserved32      uint32
 }
 
+// NativeKernelFrame pairs Ethernet bytes with metadata from the same kernel capture.
 type NativeKernelFrame struct {
 	Frame    []byte
 	Metadata NativeKernelMetadata
 }
 
+// NativeKernelObservation includes the maximum segment IP length for admission.
 type NativeKernelObservation struct {
 	NativeObservation
 	EffectiveNetworkLength uint32
