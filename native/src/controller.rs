@@ -50,6 +50,7 @@ impl PairState {
 enum PortState {
     Discovered,
     Configured,
+    StartFailed(i32),
     Started,
     Stopped,
     Closed,
@@ -1277,6 +1278,8 @@ impl OwnerState {
         // SAFETY: The configured port belongs to this EAL owner thread.
         let result = unsafe { dpdk::rte_eth_dev_start(id) };
         if result != 0 {
+            port.state = PortState::StartFailed(result);
+            self.faulted = true;
             return Err(fault(
                 result,
                 MWAN_NATIVE_OP_PORT,
@@ -2913,7 +2916,7 @@ impl OwnerState {
             let Some(port) = self.ports.iter_mut().find(|port| port.id == *id) else {
                 continue;
             };
-            if port.state != PortState::Started {
+            if !matches!(port.state, PortState::Started | PortState::StartFailed(_)) {
                 continue;
             }
             // SAFETY: This owner stops its own live port before releasing any
@@ -2934,7 +2937,11 @@ impl OwnerState {
                 );
                 continue;
             }
-            port.state = PortState::Stopped;
+            // Public stop can return zero without calling the PMD when a failed
+            // start left dev_started clear. Only final close resolves that case.
+            if port.state == PortState::Started {
+                port.state = PortState::Stopped;
+            }
         }
         if let Some(error) = failure {
             self.terminal_failure = Some(*error);
@@ -2942,6 +2949,18 @@ impl OwnerState {
         }
         self.active = false;
         if mode == MWAN_NATIVE_DISABLE {
+            for port in &self.ports {
+                if let PortState::StartFailed(code) = port.state {
+                    return Err(fault(
+                        code,
+                        MWAN_NATIVE_OP_PORT,
+                        MWAN_NATIVE_OBJECT_PORT,
+                        u32::from(port.id),
+                        0,
+                        "Port start failed; final port close is required",
+                    ));
+                }
+            }
             self.forget_restoration();
             return Ok(());
         }
