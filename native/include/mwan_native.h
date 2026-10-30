@@ -437,7 +437,7 @@ int mwan_native_observe_batch(const struct mwan_native_frame *frames,
 /* Callers provide aligned, live arrays for count records and readable frame
  * buffers for the synchronous call. Inputs cannot overlap writable outputs.
  * Callers keep inputs immutable and grant exclusive access to outputs.
- * The library retains no pointers. Invalid descriptors reject the batch
+ * The library does not retain pointers. Invalid descriptors reject the batch
  * without writes. Unsupported content rejects only its observation, with
  * effective_network_length zero. The result never authorizes forwarding.
  */
