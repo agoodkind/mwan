@@ -1,17 +1,21 @@
 //go:build linux && cgo && nativeoffload
 
-package offload
+package offload_test
 
-import "testing"
+import (
+	"testing"
+
+	"goodkind.io/mwan/internal/offload"
+)
 
 func TestNativeKernelObservationBounds(t *testing.T) {
-	for _, frames := range [][]NativeKernelFrame{
+	for _, frames := range [][]offload.NativeKernelFrame{
 		nil,
-		make([]NativeKernelFrame, 257),
+		make([]offload.NativeKernelFrame, 257),
 		{{Frame: nil}},
 		{{Frame: make([]byte, 65537)}},
 	} {
-		if observations, err := ObserveNativeKernelFrames(frames); err == nil || observations != nil {
+		if observations, err := offload.ObserveNativeKernelFrames(frames); err == nil || observations != nil {
 			t.Fatalf("kernel observation accepted invalid allocation bounds: count=%d observations=%+v error=%v", len(frames), observations, err)
 		}
 	}

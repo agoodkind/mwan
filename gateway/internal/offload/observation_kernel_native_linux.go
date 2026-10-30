@@ -66,7 +66,10 @@ func ObserveNativeKernelFrames(frames []NativeKernelFrame) ([]NativeKernelObserv
 	defer C.free(payload)
 	descriptors := C.calloc(C.size_t(len(frames)), C.sizeof_struct_mwan_native_kernel_frame)
 	if descriptors == nil {
-		return nil, fmt.Errorf("allocate native kernel descriptors: %w", syscall.ENOMEM)
+		return nil, &NativeError{
+			Code: syscall.ENOMEM, Operation: C.MWAN_NATIVE_OP_PACKET, ObjectKind: NativeObjectNone,
+			ObjectID: 0, Direction: 0, FlowErrorType: 0, Message: "allocate native kernel descriptors", Packet: NativePacketDiagnostic{},
+		}
 	}
 	defer C.free(descriptors)
 	inputs := unsafe.Slice((*C.struct_mwan_native_kernel_frame)(descriptors), len(frames))
@@ -76,7 +79,10 @@ func ObserveNativeKernelFrames(frames []NativeKernelFrame) ([]NativeKernelObserv
 	}
 	observations := make([]C.struct_mwan_native_kernel_observation, len(frames))
 	if result := C.mwan_native_observe_kernel_batch((*C.struct_mwan_native_kernel_frame)(descriptors), &observations[0], C.uint32_t(len(frames))); result != 0 {
-		return nil, fmt.Errorf("decode native kernel observations: %w", syscall.Errno(-result))
+		return nil, &NativeError{
+			Code: syscall.Errno(-result), Operation: C.MWAN_NATIVE_OP_PACKET, ObjectKind: NativeObjectNone,
+			ObjectID: 0, Direction: 0, FlowErrorType: 0, Message: "decode native kernel observations", Packet: NativePacketDiagnostic{},
+		}
 	}
 	decoded := make([]NativeKernelObservation, len(frames))
 	for index, observation := range observations {

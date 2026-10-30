@@ -35,12 +35,12 @@ func configureObservationSocket(descriptor, socketBytes int) error {
 		{unix.SOL_PACKET, unix.PACKET_VNET_HDR, 1},
 	} {
 		if err := unix.SetsockoptInt(descriptor, option.level, option.name, option.value); err != nil {
-			return fmt.Errorf("configure native packet socket option %d/%d: %w", option.level, option.name, err)
+			return &nativeOperationError{operation: fmt.Sprintf("configure native packet socket option %d/%d", option.level, option.name), connectionID: 0, ifindex: 0, cause: err}
 		}
 	}
 	size, err := unix.GetsockoptInt(descriptor, unix.SOL_PACKET, observationVnetHeaderSizeOption)
 	if err != nil {
-		return fmt.Errorf("read native packet virtual header size: %w", err)
+		return &nativeOperationError{operation: "read native packet virtual header size", connectionID: 0, ifindex: 0, cause: err}
 	}
 	if size != observationVnetBytes {
 		return fmt.Errorf("native packet virtual header size is %d, expected %d", size, observationVnetBytes)
@@ -62,7 +62,7 @@ func observationControl(data []byte) (captureMetadata, error) {
 	var metadata captureMetadata
 	messages, err := unix.ParseSocketControlMessage(data)
 	if err != nil {
-		return metadata, fmt.Errorf("decode native observation control: %w", err)
+		return metadata, &nativeOperationError{operation: "decode native observation control", connectionID: 0, ifindex: 0, cause: err}
 	}
 	for _, message := range messages {
 		if err := metadata.readControl(message); err != nil {
