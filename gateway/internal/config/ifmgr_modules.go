@@ -13,7 +13,6 @@ import (
 // Each field maps to one supported module table.
 type IfMgrModulesSection struct {
 	VPP               *VPPSection                    `toml:"vpp"`
-	WG                *IfMgrWGHealthSection          `toml:"wg"`
 	OOBV6             *IfMgrOOBV6Section             `toml:"oobv6"`
 	OOBV4             *IfMgrOOBV4Section             `toml:"oobv4"`
 	SLAACHealth       *IfMgrSLAACHealthSection       `toml:"slaac_health"`
@@ -65,22 +64,6 @@ type IfMgrAddressesSection struct {
 // [ifmgr.modules.wan.routes].
 type IfMgrModulesWANSection struct {
 	Routes *IfMgrWANRoutesSection `toml:"routes"`
-}
-
-// IfMgrWGHealthSection is the [ifmgr.modules.wg] table. The module observes
-// WireGuard peer handshake ages and alerts when one goes stale. SSHHost selects
-// the mode: set, the module reads a remote host's peers over SSH; empty, it
-// reads the local interface.
-type IfMgrWGHealthSection struct {
-	SSHHost           string   `toml:"ssh_host"`
-	SSHPort           *int     `toml:"ssh_port"`
-	IdentityFile      string   `toml:"identity_file"`
-	Iface             string   `toml:"iface"`
-	Sudo              bool     `toml:"sudo"`
-	WarnHandshakeAge  string   `toml:"warn_handshake_age"`
-	ErrorHandshakeAge string   `toml:"error_handshake_age"`
-	Timeout           string   `toml:"timeout"`
-	IgnorePeers       []string `toml:"ignore_peers"`
 }
 
 // IfMgrOOBV6Section is the [ifmgr.modules.oobv6] table. The module holds the

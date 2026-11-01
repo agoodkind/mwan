@@ -24,7 +24,6 @@ func TestModulesForRoleOOB(t *testing.T) {
 		"oobv4",
 		"ra_lost",
 		"cloudflared_tap",
-		"wg",
 		"health",
 	}
 	if len(got) != len(want) {
@@ -113,7 +112,6 @@ func TestKnownRolesDropsLegacyNames(t *testing.T) {
 	legacy := []string{
 		"vault-oob",
 		"suburban-oob",
-		"suburban-wg",
 		"lxc-failover-backup",
 	}
 	for _, role := range legacy {
@@ -130,20 +128,6 @@ func TestKnownRolesDropsLegacyNames(t *testing.T) {
 	_, err = modulesForRole("lxc-failover-backup")
 	if err == nil {
 		t.Error("modulesForRole(\"lxc-failover-backup\") returned nil err; legacy role should be gone")
-	}
-}
-
-// TestLookupDoesNotResolveLegacyWGHealthName confirms the wg_health
-// module-name string from the pre-slice-1 registry is gone. The wg
-// module is registered by its package's init() function which only fires
-// when the wg package is imported (cmd/mwan does that via side-effect
-// import); here we only assert the negative case to avoid an import
-// cycle from internal/ifmgr to internal/ifmgr/modules/wg.
-func TestLookupDoesNotResolveLegacyWGHealthName(t *testing.T) {
-	t.Parallel()
-
-	if _, ok := Lookup("wg_health"); ok {
-		t.Errorf("Lookup(\"wg_health\") resolved; legacy module name should not be registered")
 	}
 }
 

@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	globalKind   = "wg-reconcile-failed"
-	overrideKind = "wg-peer-stalled"
+	globalKind   = "check-failed"
+	overrideKind = "service-unavailable"
 )
 
 type emitCounter struct {
@@ -48,16 +48,16 @@ func TestNotifyConfigRepeatCadence(t *testing.T) {
 	}{
 		{
 			name: "notify section",
-			text: "[notify]\nrepeat_every = \"30m\"\n\n[notify.per_kind]\nwg-peer-stalled = \"2h\"\n",
+			text: "[notify]\nrepeat_every = \"30m\"\n\n[notify.per_kind]\nservice-unavailable = \"2h\"\n",
 		},
 		{
 			name: "ifmgr alerts fallback",
-			text: "[ifmgr.alerts]\nrepeat_every = \"30m\"\n\n[ifmgr.alerts.per_module]\nwg-peer-stalled = \"2h\"\n",
+			text: "[ifmgr.alerts]\nrepeat_every = \"30m\"\n\n[ifmgr.alerts.per_module]\nservice-unavailable = \"2h\"\n",
 		},
 		{
 			name: "notify section over ifmgr alerts",
-			text: "[notify]\nrepeat_every = \"30m\"\n\n[notify.per_kind]\nwg-peer-stalled = \"2h\"\n\n" +
-				"[ifmgr.alerts]\nrepeat_every = \"1m\"\n\n[ifmgr.alerts.per_module]\nwg-peer-stalled = \"1m\"\n",
+			text: "[notify]\nrepeat_every = \"30m\"\n\n[notify.per_kind]\nservice-unavailable = \"2h\"\n\n" +
+				"[ifmgr.alerts]\nrepeat_every = \"1m\"\n\n[ifmgr.alerts.per_module]\nservice-unavailable = \"1m\"\n",
 		},
 	}
 	for _, tc := range cases {

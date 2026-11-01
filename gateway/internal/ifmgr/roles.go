@@ -15,7 +15,7 @@ import (
 // Adding a new role: append the entry here and ensure the named modules
 // are registered (their package is imported by main.go).
 //
-// Per-host opt-in modules: cloudflared_tap, host_ipv6_policy, and wg
+// Per-host opt-in modules: cloudflared_tap and host_ipv6_policy
 // self-disable via ifmgr.ErrModuleDisabled when their TOML section is
 // absent from the rendered config. That lets the single oob role list
 // every OOB-style module while each host enables only the subset it
@@ -30,7 +30,7 @@ var roleModules = map[string][]string{
 	// daemon's dispatch list.
 	//
 	// Vault enables policy_rules, oobv6, oobv4, ra_lost, cloudflared_tap.
-	// Suburban enables policy_rules, host_ipv6_policy, wg (local-exec).
+	// Suburban enables policy_rules, host_ipv6_policy.
 	"oob": {
 		"policy_rules",
 		"host_ipv6_policy",
@@ -43,11 +43,6 @@ var roleModules = map[string][]string{
 		// the same JSON log file and email pipeline as everything else.
 		// Pure log forwarder: no kernel state.
 		"cloudflared_tap",
-		// wg polls a WireGuard interface and alerts when any peer's
-		// handshake age crosses configured thresholds. Two modes: remote
-		// SSH (vault polls OPNsense) or local exec (suburban polls its
-		// own wg0). Read-only observer; no kernel state.
-		"wg",
 		"health",
 	},
 	// host is the hypervisor role for a Proxmox host with no OOB tunnel.
@@ -56,7 +51,6 @@ var roleModules = map[string][]string{
 	"host": {
 		"policy_rules",
 		"host_ipv6_policy",
-		"wg",
 		"health",
 	},
 	// failover is the iface-monitor role for prod LXC 116 and testbed

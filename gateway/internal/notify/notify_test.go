@@ -16,18 +16,18 @@ func recordFromAttrs(msg string, attrs ...slog.Attr) slog.Record {
 }
 
 // TestBuildEmailBodyShape covers the canonical case from the plan: a
-// wg failure with the full attr set. The expected layout uses
+// service failure with the full attr set. The expected layout uses
 // the goal shape verbatim because formatting is the contract here.
 func TestBuildEmailBodyShape(t *testing.T) {
 	t.Parallel()
 	r := recordFromAttrs(
-		"wg: remote wg show failed",
+		"Service status check failed",
 		slog.String("daemon", "ifmgr"),
 		slog.String("role", "oob"),
 		slog.String("iface", "mbrains"),
 		slog.String("trace", "4df84777"),
 		slog.String("phase", "periodic-reconcile"),
-		slog.String("module", "wg"),
+		slog.String("module", "service-check"),
 		slog.String("err", "ssh agoodkind@host: exit status 255 (stderr=\"Permission denied (publickey)\")"),
 		slog.String("level", "ERROR"),
 	)
@@ -39,7 +39,7 @@ func TestBuildEmailBodyShape(t *testing.T) {
 	}
 
 	got := BuildEmailBody(r, bound)
-	want := "wg: remote wg show failed\n\n" +
+	want := "Service status check failed\n\n" +
 		"What:    ssh agoodkind@host: exit status 255\n" +
 		"         stderr: Permission denied (publickey)\n\n" +
 		"Where:   iface=mbrains, role=oob, daemon=ifmgr, phase=periodic-reconcile\n\n" +
@@ -120,7 +120,7 @@ func TestBuildEmailBodyDropsSubjectAndFooterDups(t *testing.T) {
 	r := recordFromAttrs(
 		"alert",
 		slog.String("level", "ERROR"),
-		slog.String("module", "wg"),
+		slog.String("module", "service-check"),
 		slog.String("time", "2026-05-06T22:33:06-07:00"),
 		slog.String("caller", "agent.go:42"),
 		slog.String("trace", "t1"),

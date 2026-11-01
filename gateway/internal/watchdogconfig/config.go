@@ -123,8 +123,8 @@ type NotifySection struct {
 // IfMgrAlertsSection controls the per-alert repeat cadence for the
 // AlertManager. RepeatEvery is the global default applied to every alert
 // kind unless overridden in PerModule. PerModule is keyed by alert kind
-// (the first arg to AlertManager.Notify, e.g. "wg-peer-stalled" or
-// "wg-reconcile-failed"), not by module name. Keying on alert kind lets
+// (the first arg to AlertManager.Notify, e.g. "service-unavailable" or
+// "check-failed"), not by module name. Keying on alert kind lets
 // one module emit multiple kinds and get a separate cadence for each.
 //
 // Default behaviour with empty values: RepeatEvery == "0s" means alerts
