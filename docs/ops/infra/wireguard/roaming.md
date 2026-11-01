@@ -82,9 +82,5 @@ It would therefore replace multi-WAN failover with a single fixed path.
 Forcing every inbound packet onto one provider would discard the ingress choice
 and break reply symmetry for other services that use the same public addresses.
 
-## Current visibility
-
-An operator must inspect both peers to reconstruct the path.
-
-To diagnose and reconcile a stalled tunnel, follow
+To inspect both peers and recover a stalled tunnel, follow
 [Recover a WireGuard roaming failure](recovery.md).
