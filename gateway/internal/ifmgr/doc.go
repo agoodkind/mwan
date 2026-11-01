@@ -18,10 +18,7 @@
 //     [ifmgr.modules.host_ipv6_policy]), oobv6 (static OOB v6 addr,
 //     RA-default sync into oob table), oobv4 (DHCP-learned default into
 //     oob table), ra_lost (alert when RA stops arriving), cloudflared_tap
-//     (log forwarder; opt-in via [ifmgr.modules.cloudflared_tap]), wg
-//     (WireGuard peer-handshake observer; opt-in via [ifmgr.modules.wg],
-//     remote-SSH mode on vault, local-exec mode on the suburban
-//     hypervisor against its own wg0 endpoint).
+//     (log forwarder; opt-in via [ifmgr.modules.cloudflared_tap]).
 //
 //   - "failover": prod LXC 116, testbed LXC 100. Modules: slaac_health
 //     (detect deprecated SLAAC, send RS, fall back to disable_ipv6

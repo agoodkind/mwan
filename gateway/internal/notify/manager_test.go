@@ -66,8 +66,8 @@ func TestResolveEmitsAtNotifyLevelWarn(t *testing.T) {
 	m, h := newManagerForTest()
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 
-	m.notifyAt(context.Background(), now, slog.LevelWarn, "wg", "peer-EYvlZyou", "stalled")
-	m.resolveAt(context.Background(), now.Add(time.Minute), "wg", "peer-EYvlZyou", "back to good")
+	m.notifyAt(context.Background(), now, slog.LevelWarn, "service-check", "target-one", "stalled")
+	m.resolveAt(context.Background(), now.Add(time.Minute), "service-check", "target-one", "back to good")
 
 	records := h.snapshot()
 	if len(records) != 2 {
@@ -87,8 +87,8 @@ func TestResolveEmitsAtNotifyLevelError(t *testing.T) {
 	m, h := newManagerForTest()
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 
-	m.notifyAt(context.Background(), now, slog.LevelError, "wg", "peer-jz3eKGui", "remote wg show failed")
-	m.resolveAt(context.Background(), now.Add(time.Minute), "wg", "peer-jz3eKGui", "remote wg show ok")
+	m.notifyAt(context.Background(), now, slog.LevelError, "service-check", "target-two", "service status check failed")
+	m.resolveAt(context.Background(), now.Add(time.Minute), "service-check", "target-two", "service status check succeeded")
 
 	records := h.snapshot()
 	if len(records) != 2 {
@@ -98,7 +98,7 @@ func TestResolveEmitsAtNotifyLevelError(t *testing.T) {
 	if resolve.Level != slog.LevelError {
 		t.Errorf("resolve level=%v, want ERROR", resolve.Level)
 	}
-	wantMsg := "RECOVERED: remote wg show ok"
+	wantMsg := "RECOVERED: service status check succeeded"
 	if resolve.Message != wantMsg {
 		t.Errorf("resolve message=%q, want %q", resolve.Message, wantMsg)
 	}
@@ -110,7 +110,7 @@ func TestResolveOnUnknownKeyIsNoOp(t *testing.T) {
 
 	// Must not panic and must emit nothing: there is no active alert
 	// for this (kind, key), so Resolve has no recovery to announce.
-	m.resolveAt(context.Background(), now, "wg", "never-fired", "spurious")
+	m.resolveAt(context.Background(), now, "service-check", "never-fired", "spurious")
 
 	if got := len(h.snapshot()); got != 0 {
 		t.Errorf("emitted %d records on unknown-key Resolve, want 0", got)
@@ -146,7 +146,7 @@ func TestManager_StateChangeOnlyByDefault(t *testing.T) {
 	start := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	for i := range 240 {
 		now := start.Add(time.Duration(i) * time.Minute)
-		m.notifyAt(context.Background(), now, slog.LevelWarn, "wg-peer-stalled", "peer1", "stalled")
+		m.notifyAt(context.Background(), now, slog.LevelWarn, "service-unavailable", "target-one", "stalled")
 	}
 
 	if got := h.count(); got != 1 {
@@ -168,7 +168,7 @@ func TestManager_RepeatEveryGlobal(t *testing.T) {
 	start := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	for i := range 120 {
 		now := start.Add(time.Duration(i) * time.Minute)
-		m.notifyAt(context.Background(), now, slog.LevelWarn, "wg-peer-stalled", "peer1", "stalled")
+		m.notifyAt(context.Background(), now, slog.LevelWarn, "service-unavailable", "target-one", "stalled")
 	}
 
 	if got := h.count(); got != 4 {
@@ -178,7 +178,7 @@ func TestManager_RepeatEveryGlobal(t *testing.T) {
 
 // TestManager_PerKindOverride verifies that the PerKind map
 // short-circuits the global RepeatEvery on a per-alert-kind basis.
-// PerKind says wg-peer-stalled repeats every 24h, so during a 2h
+// PerKind says service-unavailable repeats every 24h, so during a 2h
 // window only the transition emit fires. A different kind under the
 // same window falls back to the 30m global cadence and emits 4 times.
 func TestManager_PerKindOverride(t *testing.T) {
@@ -188,28 +188,28 @@ func TestManager_PerKindOverride(t *testing.T) {
 	m := mustManager(log, Config{
 		RepeatEvery: 30 * time.Minute,
 		PerKind: map[string]time.Duration{
-			"wg-peer-stalled": 24 * time.Hour,
+			"service-unavailable": 24 * time.Hour,
 		},
 	}, nil)
 
 	start := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	for i := range 120 {
 		now := start.Add(time.Duration(i) * time.Minute)
-		m.notifyAt(context.Background(), now, slog.LevelWarn, "wg-peer-stalled", "peer1", "stalled")
+		m.notifyAt(context.Background(), now, slog.LevelWarn, "service-unavailable", "target-one", "stalled")
 	}
 	stalledCount := h.count()
 	if stalledCount != 1 {
-		t.Fatalf("wg-peer-stalled with 24h override: expected 1 emit, got %d", stalledCount)
+		t.Fatalf("service-unavailable with 24h override: expected 1 emit, got %d", stalledCount)
 	}
 
 	for i := range 120 {
 		now := start.Add(time.Duration(i) * time.Minute)
-		m.notifyAt(context.Background(), now, slog.LevelWarn, "wg-reconcile-failed", "peer1", "reconcile failed")
+		m.notifyAt(context.Background(), now, slog.LevelWarn, "check-failed", "target-one", "reconcile failed")
 	}
 	totalCount := h.count()
 	reconcileCount := totalCount - stalledCount
 	if reconcileCount != 4 {
-		t.Fatalf("wg-reconcile-failed using global 30m: expected 4 emits, got %d", reconcileCount)
+		t.Fatalf("check-failed using global 30m: expected 4 emits, got %d", reconcileCount)
 	}
 }
 

@@ -82,12 +82,5 @@ It would therefore replace multi-WAN failover with a single fixed path.
 Forcing every inbound packet onto one provider would discard the ingress choice
 and break reply symmetry for other services that use the same public addresses.
 
-## Current visibility
-
-The interface manager on suburban reads `wg0`, records each peer's learned
-endpoint and handshake age, and alerts when a previously active handshake
-becomes stale. It does not poll OPNsense or correlate the two directions, so an
-operator must inspect both peers to reconstruct the path.
-
-To diagnose and reconcile a stalled tunnel, follow
+To inspect both peers and recover a stalled tunnel, follow
 [Recover a WireGuard roaming failure](recovery.md).

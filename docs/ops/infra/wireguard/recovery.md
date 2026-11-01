@@ -20,15 +20,6 @@ Each endpoint names the remote peer, so the two values should not be equal.
 Suburban should show one public address for `home.goodkind.io`, while OPNsense
 should show suburban's current public address and port.
 
-Capture the suburban observer log. A `wg-peer-stalled` alert confirms that a
-previously active peer crossed the handshake-age threshold, but it does not
-identify which WAN path failed.
-
-```bash
-ssh suburban \
-  'journalctl -u mwan-ifmgr@host -n 200 --no-pager'
-```
-
 ## 2. Verify MWAN steering
 
 Read the live rules on the production MWAN gateway:

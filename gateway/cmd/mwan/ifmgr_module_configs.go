@@ -25,7 +25,6 @@ import (
 	slaachealth "goodkind.io/mwan/internal/ifmgr/modules/slaachealth"
 	steering "goodkind.io/mwan/internal/ifmgr/modules/steering"
 	wanroutes "goodkind.io/mwan/internal/ifmgr/modules/wanroutes"
-	wg "goodkind.io/mwan/internal/ifmgr/modules/wg"
 	"goodkind.io/mwan/internal/interfaceintent"
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/observation"
@@ -57,14 +56,6 @@ func buildIfMgrModuleConfigs(
 	moduleConfigs := make(ifmgr.ModuleConfigSet)
 	if err := addVPPModuleConfig(moduleConfigs, want["vpp"], ifmgrCfg); err != nil {
 		return nil, err
-	}
-
-	if want["wg"] {
-		wgConfig, err := buildWGConfig(modules.WG)
-		if err != nil {
-			return nil, err
-		}
-		moduleConfigs["wg"] = wgConfig
 	}
 
 	if want["oobv6"] {
@@ -449,67 +440,6 @@ func buildNPTConfig(shared sharedWANInputs) npt.Config {
 		MwanbrEdgeV6:   shared.MwanbrEdgeV6,
 		WANs:           shared.nptWANs(),
 	}
-}
-
-// buildWGConfig returns nil when section is nil so the wg module's
-// constructor (wg.New) flips its disabled flag and Init returns the
-// ifmgr.ErrModuleDisabled sentinel. A present but defaulted section
-// renders local-exec mode on wg0, which is a valid configuration on
-// suburban and must NOT trip the disabled sentinel.
-func buildWGConfig(section *config.IfMgrWGHealthSection) (ifmgr.ModuleConfig, error) {
-	if section == nil {
-		return nil, nil
-	}
-	cfg := wg.Config{
-		SSHHost:           "",
-		SSHPort:           0,
-		IdentityFile:      "",
-		Iface:             "wg0",
-		Sudo:              false,
-		WarnHandshakeAge:  180 * time.Second,
-		ErrorHandshakeAge: 300 * time.Second,
-		Timeout:           10 * time.Second,
-		IgnorePeers:       map[string]bool{},
-	}
-	cfg.SSHHost = section.SSHHost
-	if section.SSHPort != nil {
-		cfg.SSHPort = *section.SSHPort
-	}
-	cfg.IdentityFile = section.IdentityFile
-	if section.Iface != "" {
-		cfg.Iface = section.Iface
-	}
-	cfg.Sudo = section.Sudo
-
-	var err error
-	cfg.WarnHandshakeAge, err = parseDurationSetting(
-		section.WarnHandshakeAge,
-		cfg.WarnHandshakeAge,
-		"ifmgr.modules.wg.warn_handshake_age",
-	)
-	if err != nil {
-		return nil, err
-	}
-	cfg.ErrorHandshakeAge, err = parseDurationSetting(
-		section.ErrorHandshakeAge,
-		cfg.ErrorHandshakeAge,
-		"ifmgr.modules.wg.error_handshake_age",
-	)
-	if err != nil {
-		return nil, err
-	}
-	cfg.Timeout, err = parseDurationSetting(
-		section.Timeout,
-		cfg.Timeout,
-		"ifmgr.modules.wg.timeout",
-	)
-	if err != nil {
-		return nil, err
-	}
-	for _, peer := range section.IgnorePeers {
-		cfg.IgnorePeers[peer] = true
-	}
-	return cfg, nil
 }
 
 func buildOOBV6Config(section *config.IfMgrOOBV6Section) oobv6.Config {
