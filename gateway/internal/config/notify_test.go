@@ -68,7 +68,7 @@ func TestNotifyConfigRepeatCadence(t *testing.T) {
 			}
 			t.Setenv("MWAN_CONFIG", configPath)
 
-			cfg, err := config.Load()
+			cfg, err := config.LoadPath("")
 			if err != nil {
 				t.Fatalf("Load: %v", err)
 			}

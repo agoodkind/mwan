@@ -17,6 +17,21 @@ It also explains which commands still require the Configs checkout.
 The [router VPP reference](docs/vpp.md) covers optional binary API control,
 shared memory counters, and native CPU profiling.
 
+## Command help
+
+Run `mwan` to list commands. Each command provides its arguments, flags,
+defaults, and examples through `--help`:
+
+```sh
+mwan ifmgr --help
+mwan help deploy wait-deploy
+```
+
+Help does not read configuration or start gateway operations. Commands that
+use TOML accept `--config`; the first supplied path overrides `MWAN_CONFIG`.
+The CLI also accepts the existing single-hyphen flag spelling, such as
+`-config`.
+
 ## Layout
 
 | Path | What it holds |

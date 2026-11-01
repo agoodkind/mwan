@@ -3,7 +3,6 @@ package config_test
 import (
 	"os"
 	"path/filepath"
-	"slices"
 	"testing"
 
 	"goodkind.io/mwan/internal/config"
@@ -62,12 +61,12 @@ func writeSharedFile(t *testing.T, text string) string {
 	return configPath
 }
 
-func TestLoadArgumentsAcceptsBothWatchdogStatusSources(t *testing.T) {
+func TestLoadPathAcceptsBothWatchdogStatusSources(t *testing.T) {
 	t.Parallel()
 
 	configPath := writeSharedFile(t, bothStatusSourcesText)
 
-	cfg, _, err := config.LoadArguments([]string{"mwan", "--config", configPath})
+	cfg, err := config.LoadPath(configPath)
 	if err != nil {
 		t.Fatalf("load config with both watchdog status sources failed: %v", err)
 	}
@@ -76,20 +75,16 @@ func TestLoadArgumentsAcceptsBothWatchdogStatusSources(t *testing.T) {
 	}
 }
 
-func TestLoadArgumentsAcceptsHypervisorSections(t *testing.T) {
+func TestLoadPathAcceptsHypervisorSections(t *testing.T) {
 	t.Parallel()
 
 	configPath := writeSharedFile(t, sharedFileText)
 
-	cfg, remaining, err := config.LoadArguments([]string{"mwan", "--config", configPath, "--dry-run"})
+	cfg, err := config.LoadPath(configPath)
 	if err != nil {
 		t.Fatalf("load config with hypervisor sections failed: %v", err)
 	}
 
-	wantRemaining := []string{"mwan", "--dry-run"}
-	if !slices.Equal(remaining, wantRemaining) {
-		t.Errorf("remaining arguments differ from expected arguments: %v %v", remaining, wantRemaining)
-	}
 	if cfg.Hostname != "gateway-test" || cfg.MwanVMID != "4100" {
 		t.Errorf("hostname = %q mwan_vmid = %q, want gateway-test and 4100", cfg.Hostname, cfg.MwanVMID)
 	}

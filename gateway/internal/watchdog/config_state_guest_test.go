@@ -138,7 +138,7 @@ func runConfigDriftChild(t *testing.T) {
 	cfg.Watchdog.DeployWindowMinutes = configDriftWindowMinutes
 	cfg.Watchdog.ConfigStateCommand = []string{statusBinary, configStateVerb}
 
-	if err := watchdog.Run(cfg); err != nil {
+	if err := watchdog.Run(cfg, watchdog.Options{}); err != nil {
 		t.Fatalf("watchdog.Run failed: %v", err)
 	}
 }

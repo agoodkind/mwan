@@ -466,7 +466,7 @@ func TestInstallApplyUnderARootTouchesNoSystemd(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 
-	code := runInstall([]string{"--apply", "--role", "host", "--root", root})
+	_, code := runMwanBinary(t, buildMwanBinary(t), t.TempDir(), "", "install", "--apply", "--role", "host", "--root", root)
 
 	if code != exitInstallOK {
 		t.Fatalf("exit code = %d, want %d", code, exitInstallOK)
@@ -631,7 +631,7 @@ func TestInstallApplyRejectsARootThatIsTheHost(t *testing.T) {
 func TestInstallApplyNeedsARole(t *testing.T) {
 	t.Parallel()
 
-	code := runInstall([]string{"--apply", "--root", t.TempDir()})
+	_, code := runMwanBinary(t, buildMwanBinary(t), t.TempDir(), "", "install", "--apply", "--root", t.TempDir())
 
 	if code != exitInstallUsage {
 		t.Fatalf("exit code = %d, want %d", code, exitInstallUsage)
@@ -642,7 +642,7 @@ func TestInstallRejectsAnUnknownRole(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 
-	code := runInstall([]string{"--apply", "--role", "gateway", "--root", root})
+	_, code := runMwanBinary(t, buildMwanBinary(t), t.TempDir(), "", "install", "--apply", "--role", "gateway", "--root", root)
 
 	if code != exitInstallUsage {
 		t.Fatalf("exit code = %d, want %d", code, exitInstallUsage)
@@ -662,7 +662,7 @@ func TestInstallPrintSchemaWritesEveryModule(t *testing.T) {
 	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "schema")
 
-	code := runInstall([]string{"--print-schema", dir})
+	_, code := runMwanBinary(t, buildMwanBinary(t), t.TempDir(), "", "install", "--print-schema", dir)
 
 	if code != exitInstallOK {
 		t.Fatalf("exit code = %d, want %d", code, exitInstallOK)

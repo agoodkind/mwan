@@ -62,7 +62,7 @@ func TestLoadRequiresLearnedRouteIfaceForDynamicNeighbors(t *testing.T) {
 	}
 	t.Setenv("MWAN_CONFIG", configPath)
 
-	_, err := Load()
+	_, err := LoadPath("")
 	if err == nil {
 		t.Fatal("Load succeeded without learned_route_iface")
 	}

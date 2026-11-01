@@ -16,17 +16,7 @@ import (
 	"goodkind.io/mwan/internal/statuspush"
 )
 
-func runGatewayStatus(
-	args []string,
-	cfg *config.Config,
-	output io.Writer,
-	diagnostics io.Writer,
-) int {
-	flags, err := parseGatewayStatusFlags(args, diagnostics)
-	if err != nil {
-		fmt.Fprintf(diagnostics, "mwan gateway-status: %v\n", err)
-		return 1
-	}
+func runGatewayStatusOptions(flags gatewayStatusFlags, cfg *config.Config, output, diagnostics io.Writer) int {
 	status, err := readGatewayStatus(cfg, flags, clock.Real{})
 	if err != nil {
 		fmt.Fprintf(diagnostics, "mwan gateway-status: %v\n", err)

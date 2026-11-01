@@ -82,7 +82,7 @@ func runPruneChild(t *testing.T) {
 	cfg.Watchdog.MaxKnownGoodSnapshots = 3
 	cfg.Watchdog.MaxTotalSnapshots = prunePreDeployCount
 
-	if err := watchdog.Run(cfg); err != nil {
+	if err := watchdog.Run(cfg, watchdog.Options{}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 }

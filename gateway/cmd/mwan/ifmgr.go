@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
-	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -203,20 +202,6 @@ type ifmgrFlags struct {
 	adoptLegacyNPT   string
 	producerPID      int
 	producerSHA256   string
-}
-
-func parseIfMgrFlags() ifmgrFlags {
-	fs := flag.NewFlagSet("ifmgr", flag.ContinueOnError)
-	role := fs.String("role", "", "ifmgr role (overrides cfg.IfMgr.Role; valid: see --help)")
-	_ = fs.String("config", "", "Set the TOML path for the top-level loader.")
-	debug := fs.Bool("debug", false, "enable DEBUG logging")
-	dryRun := fs.Bool("dry-run", false, "log mutating ops instead of applying (TODO: not yet plumbed to netif)")
-	capture := fs.String("capture-legacy-npt", "", "Capture verified original NPT producer state to an absolute manifest path.")
-	transition := fs.String("adopt-legacy-npt", "", "Persist exact captured NPT receipts after original producer termination, then exit.")
-	producerPID := fs.Int("producer-pid", 0, "Original WAN service PID required for capture.")
-	producerSHA256 := fs.String("producer-sha256", "", "Verified original release SHA256 required for capture.")
-	_ = fs.Parse(os.Args[1:])
-	return ifmgrFlags{role: *role, debug: *debug, dryRun: *dryRun, captureLegacyNPT: *capture, adoptLegacyNPT: *transition, producerPID: *producerPID, producerSHA256: *producerSHA256}
 }
 
 func buildIfMgrLogger(cfg *config.Config, debug bool) *slog.Logger {

@@ -89,15 +89,15 @@ enabled = true
 				t.Fatalf("write config: %v", err)
 			}
 			t.Setenv("MWAN_CONFIG", configPath)
-			cfg, err := Load()
+			cfg, err := LoadPath("")
 			if test.wantError != "" {
 				if err == nil || !strings.Contains(err.Error(), test.wantError) {
-					t.Fatalf("Load() error = %v, want %q", err, test.wantError)
+					t.Fatalf("LoadPath error = %v, want %q", err, test.wantError)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("Load(): %v", err)
+				t.Fatalf("LoadPath: %v", err)
 			}
 			if test.wantConfig {
 				readiness := cfg.BGP.ForwardingReadiness

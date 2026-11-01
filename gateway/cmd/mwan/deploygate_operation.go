@@ -4,11 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
-	"os"
 	"os/signal"
 	"path/filepath"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -38,27 +37,32 @@ type deployOperationStatus struct {
 	WatchError    string `json:"watch_error,omitempty"`
 }
 
-func runDeployOperation(arguments []string) int {
-	cfg, args, err := watchdogconfig.LoadArguments(arguments)
+type deployOperationOptions struct {
+	mode          operationMode
+	manifestPath  string
+	operationID   string
+	generation    string
+	leaseID       string
+	phase         string
+	leaseDuration time.Duration
+	runtimePath   string
+}
+
+func runDeployOperationOptions(options deployOperationOptions, output, diagnostics io.Writer) int {
+	cfg, err := watchdogconfig.LoadPath(options.runtimePath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy operation: %v\n", err)
+		fmt.Fprintf(diagnostics, "mwan deploy operation: %v\n", err)
 		return exitDeployGateUsage
 	}
-	if len(args) == 0 || cfg.Watchdog.ConnectivityTimeoutSeconds <= 0 || cfg.Watchdog.CheckIntervalDegraded <= 0 {
-		fmt.Fprintln(os.Stderr, "mwan deploy operation: a mode and positive watchdog timeouts are required")
+	if cfg.Watchdog.ConnectivityTimeoutSeconds <= 0 || cfg.Watchdog.CheckIntervalDegraded <= 0 {
+		fmt.Fprintln(diagnostics, "mwan deploy operation: a mode and positive watchdog timeouts are required")
 		return exitDeployGateUsage
 	}
-	logger, closer := logging.New(logging.Config{Handlers: []slog.Handler{slog.NewJSONHandler(os.Stderr, nil)}})
+	logger, closer := logging.New(logging.Config{Handlers: []slog.Handler{slog.NewJSONHandler(diagnostics, nil)}})
 	defer func() { _ = closer.Close() }()
 	operations := ops.NewRealOps(cfg, logger)
-	runtimePath := ""
-	for index, argument := range arguments {
-		if argument == "--config" && index+1 < len(arguments) {
-			runtimePath = arguments[index+1]
-		}
-	}
-	if args[0] == "arm" && !filepath.IsAbs(runtimePath) {
-		fmt.Fprintln(os.Stderr, "mwan deploy arm requires --config with an absolute runtime configuration path")
+	if options.mode == operationArm && !filepath.IsAbs(options.runtimePath) {
+		fmt.Fprintln(diagnostics, "mwan deploy arm requires --config with an absolute runtime configuration path")
 		return exitDeployGateUsage
 	}
 	engine := deployoperation.Engine{
@@ -67,26 +71,26 @@ func runDeployOperation(arguments []string) int {
 		Operations:   operations,
 		Log:          logger,
 		Notify:       notify.FromConfig(cfg.Email, cfg.NotifyConfig(), logger, "mwan-deploy-gate"),
-		RuntimePath:  runtimePath,
+		RuntimePath:  options.runtimePath,
 	}
 	signalContext, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	ctx, cancel := context.WithTimeout(signalContext, time.Duration(cfg.Watchdog.ConnectivityTimeoutSeconds)*time.Second)
 	defer cancel()
-	return executeDeployOperation(ctx, signalContext, cfg, engine, args)
+	return executeDeployOperation(ctx, signalContext, cfg, engine, options, output)
 }
 
-func executeDeployOperation(ctx, signalContext context.Context, cfg *watchdogconfig.Config, engine deployoperation.Engine, args []string) int {
-	switch operationMode(args[0]) {
+func executeDeployOperation(ctx, signalContext context.Context, cfg *watchdogconfig.Config, engine deployoperation.Engine, options deployOperationOptions, output io.Writer) int {
+	switch options.mode {
 	case operationArm:
-		if err := armDeployOperation(signalContext, cfg, engine, args); err != nil {
+		if err := armDeployOperation(signalContext, cfg, engine, options.manifestPath, output); err != nil {
 			return deployOperationFailure(engine.Log, err)
 		}
 		return exitDeployGateOK
 	case operationWatch, operationStatus, operationLease, operationRelease, operationVerify, operationRecover:
-		return executeCurrentDeployOperation(ctx, signalContext, cfg, engine, args)
+		return executeCurrentDeployOperation(ctx, signalContext, cfg, engine, options, output)
 	default:
-		return deployOperationFailure(engine.Log, fmt.Errorf("unsupported deployment operation mode %s", args[0]))
+		return deployOperationFailure(engine.Log, fmt.Errorf("unsupported deployment operation mode %s", options.mode))
 	}
 }
 
@@ -95,16 +99,13 @@ func deployOperationFailure(logger *slog.Logger, err error) int {
 	return exitDeployGateFailed
 }
 
-func executeCurrentDeployOperation(ctx, signalContext context.Context, cfg *watchdogconfig.Config, engine deployoperation.Engine, args []string) int {
-	mode := operationMode(args[0])
-	if err := validateExistingOperationArguments(mode, args); err != nil {
-		return deployOperationFailure(engine.Log, err)
-	}
+func executeCurrentDeployOperation(ctx, signalContext context.Context, cfg *watchdogconfig.Config, engine deployoperation.Engine, options deployOperationOptions, output io.Writer) int {
+	mode := options.mode
 	record, err := engine.Store.Read(ctx)
 	if err != nil {
 		return deployOperationFailure(engine.Log, fmt.Errorf("read deployment operation: %w", err))
 	}
-	if record.OperationID != args[1] || record.Generation != args[2] || record.VMID != cfg.MwanVMID {
+	if record.OperationID != options.operationID || record.Generation != options.generation || record.VMID != cfg.MwanVMID {
 		return deployOperationFailure(engine.Log, fmt.Errorf("deployment operation identity differs from request or configured gateway"))
 	}
 	switch mode {
@@ -122,21 +123,17 @@ func executeCurrentDeployOperation(ctx, signalContext context.Context, cfg *watc
 		return exitDeployGateOK
 	case operationLease:
 
-		seconds, err := strconv.Atoi(args[4])
-		if err != nil || seconds <= 0 {
-			return deployOperationFailure(engine.Log, fmt.Errorf("lease duration must be positive integer seconds"))
-		}
-		lease, err := engine.Store.Grant(ctx, record.OperationID, record.Generation, args[3], engine.Store.Clock.Now().Add(time.Duration(seconds)*time.Second))
+		lease, err := engine.Store.Grant(ctx, record.OperationID, record.Generation, options.phase, engine.Store.Clock.Now().Add(options.leaseDuration))
 		if err != nil {
 			return deployOperationFailure(engine.Log, fmt.Errorf("grant deployment lease: %w", err))
 		}
-		if err := json.NewEncoder(os.Stdout).Encode(lease); err != nil {
+		if err := json.NewEncoder(output).Encode(lease); err != nil {
 			return deployOperationFailure(engine.Log, fmt.Errorf("write deployment lease: %w", err))
 		}
 		return exitDeployGateOK
 	case operationRelease:
 
-		if err := engine.Store.Release(ctx, record.OperationID, record.Generation, args[3]); err != nil {
+		if err := engine.Store.Release(ctx, record.OperationID, record.Generation, options.leaseID); err != nil {
 			return deployOperationFailure(engine.Log, fmt.Errorf("release deployment lease: %w", err))
 		}
 	case operationVerify:
@@ -146,7 +143,7 @@ func executeCurrentDeployOperation(ctx, signalContext context.Context, cfg *watc
 		if err := engine.Commit(commitContext, record.OperationID, record.Generation); err != nil {
 			return deployOperationFailure(engine.Log, fmt.Errorf("verify deployment operation: %w", err))
 		}
-		if err := writeDeployOperationStatus(commitContext, engine); err != nil {
+		if err := writeDeployOperationStatus(commitContext, engine, output); err != nil {
 			return deployOperationFailure(engine.Log, err)
 		}
 		return exitDeployGateOK
@@ -157,20 +154,20 @@ func executeCurrentDeployOperation(ctx, signalContext context.Context, cfg *watc
 		if err := engine.Recover(recoveryContext, record.OperationID, record.Generation, "explicit exact-operation recovery requested"); err != nil {
 			return deployOperationFailure(engine.Log, fmt.Errorf("recover deployment operation: %w", err))
 		}
-		if err := writeDeployOperationStatus(recoveryContext, engine); err != nil {
+		if err := writeDeployOperationStatus(recoveryContext, engine, output); err != nil {
 			return deployOperationFailure(engine.Log, err)
 		}
 		return exitDeployGateOK
 	default:
 		return deployOperationFailure(engine.Log, fmt.Errorf("unsupported deployment operation mode %s", mode))
 	}
-	if err := writeDeployOperationStatus(ctx, engine); err != nil {
+	if err := writeDeployOperationStatus(ctx, engine, output); err != nil {
 		return deployOperationFailure(engine.Log, err)
 	}
 	return exitDeployGateOK
 }
 
-func writeDeployOperationStatus(ctx context.Context, engine deployoperation.Engine) (resultErr error) {
+func writeDeployOperationStatus(ctx context.Context, engine deployoperation.Engine, output io.Writer) (resultErr error) {
 	defer func() {
 		if resultErr != nil {
 			engine.Log.WarnContext(ctx, "deployment operation status read failed")
@@ -187,22 +184,19 @@ func writeDeployOperationStatus(ctx context.Context, engine deployoperation.Engi
 			status.WatchError = err.Error()
 		}
 	}
-	if err := json.NewEncoder(os.Stdout).Encode(status); err != nil {
+	if err := json.NewEncoder(output).Encode(status); err != nil {
 		return fmt.Errorf("write deployment status: %w", err)
 	}
 	return nil
 }
 
-func armDeployOperation(ctx context.Context, cfg *watchdogconfig.Config, engine deployoperation.Engine, args []string) (resultErr error) {
+func armDeployOperation(ctx context.Context, cfg *watchdogconfig.Config, engine deployoperation.Engine, manifestPath string, output io.Writer) (resultErr error) {
 	defer func() {
 		if resultErr != nil {
 			engine.Log.WarnContext(ctx, "deployment operation arm rejected")
 		}
 	}()
-	if len(args) != 2 {
-		return fmt.Errorf("arm requires one manifest path")
-	}
-	manifest, err := deployoperation.ReadManifest(args[1])
+	manifest, err := deployoperation.ReadManifest(manifestPath)
 	if err != nil {
 		return fmt.Errorf("execute deployment operation: %w", err)
 	}
@@ -214,19 +208,5 @@ func armDeployOperation(ctx context.Context, cfg *watchdogconfig.Config, engine 
 	if err := engine.Arm(armContext, manifest); err != nil {
 		return fmt.Errorf("execute deployment operation: %w", err)
 	}
-	return writeDeployOperationStatus(armContext, engine)
-}
-
-func validateExistingOperationArguments(mode operationMode, args []string) error {
-	count := 3
-	if mode == operationLease {
-		count = 5
-	}
-	if mode == operationRelease {
-		count = 4
-	}
-	if len(args) != count {
-		return fmt.Errorf("deployment operation %s requires %d arguments", mode, count-1)
-	}
-	return nil
+	return writeDeployOperationStatus(armContext, engine, output)
 }

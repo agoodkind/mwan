@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	"goodkind.io/mwan/internal/wanconfig"
 	"goodkind.io/mwan/internal/wanstate"
 	"goodkind.io/mwan/internal/yangpub"
+	"goodkind.io/mwan/internal/yangpub/schema"
 )
 
 func assertEmptyClientPresence(t *testing.T, exported []byte) {
@@ -56,64 +58,6 @@ func selftestModelsDir(t *testing.T) string {
 		t.Fatalf("write the embedded schema: %v", err)
 	}
 	return modelsDir
-}
-
-// TestWanconfigSelftest_PrivateRepository runs the private selftest the
-// way an operator would, against a repository and model directory the
-// test assembles. It is the end-to-end proof of the serving contract:
-// with real libyang and sysrepo, one operational read over a second
-// connection carries the published configuration and the provided live
-// state together, and Close releases both. It is not parallel because
-// sysrepo reads its repository location from the process environment.
-func TestWanconfigSelftest_PrivateRepository(t *testing.T) {
-	modelsDir := selftestModelsDir(t)
-	olderModule := "goodkind-mwan-steering@2026-09-13.yang"
-	olderData, err := os.ReadFile(filepath.Join("testdata", olderModule))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(modelsDir, olderModule), olderData, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	repository := filepath.Join(t.TempDir(), "repository")
-
-	// The run must hand the process environment back the way it found it,
-	// or a later connection in this binary reaches the private repository.
-	// Two variables start set and one starts absent, so both restore paths
-	// are exercised.
-	const priorRepositoryPath = "/prior/repository"
-	const priorSHMPrefix = "priorprefix"
-	t.Setenv("SYSREPO_REPOSITORY_PATH", priorRepositoryPath)
-	t.Setenv("SYSREPO_SHM_PREFIX", priorSHMPrefix)
-	t.Setenv("SR_ENV_RUN_TESTS", "")
-	if err := os.Unsetenv("SR_ENV_RUN_TESTS"); err != nil {
-		t.Fatalf("unset SR_ENV_RUN_TESTS: %v", err)
-	}
-
-	code := runWanconfigSelftest([]string{"--repository", repository, "--models-dir", modelsDir})
-	if code != 0 {
-		t.Fatalf("private selftest exit code = %d, want 0", code)
-	}
-
-	if got := os.Getenv("SYSREPO_REPOSITORY_PATH"); got != priorRepositoryPath {
-		t.Fatalf("SYSREPO_REPOSITORY_PATH after the run = %q, want %q", got, priorRepositoryPath)
-	}
-	if got := os.Getenv("SYSREPO_SHM_PREFIX"); got != priorSHMPrefix {
-		t.Fatalf("SYSREPO_SHM_PREFIX after the run = %q, want %q", got, priorSHMPrefix)
-	}
-	if value, present := os.LookupEnv("SR_ENV_RUN_TESTS"); present {
-		t.Fatalf("SR_ENV_RUN_TESTS after the run = %q, want it unset", value)
-	}
-
-	// The run's shared-memory segments carry this process's prefix and
-	// must be gone, or every run leaves a set behind on the host.
-	leftovers, err := filepath.Glob(filepath.Join(sysrepoSHMDir, fmt.Sprintf("mwanselftest%d*", os.Getpid())))
-	if err != nil {
-		t.Fatalf("list shared memory: %v", err)
-	}
-	if len(leftovers) != 0 {
-		t.Fatalf("shared memory left behind: %v", leftovers)
-	}
 }
 
 // TestPublishedTreeRoundTripsThroughSysrepo publishes each network document's
@@ -318,4 +262,35 @@ func TestPublishedTreeRoundTripsThroughSysrepo(t *testing.T) {
 			t.Fatalf("unexpected NAT instances: %s", nat)
 		}
 	})
+}
+
+func TestWanconfigSelftest_PrivateRepository(t *testing.T) {
+	modelsDir := selftestModelsDir(t)
+	olderModule := "goodkind-mwan-steering@2026-09-13.yang"
+	olderData, err := os.ReadFile(filepath.Join("testdata", olderModule))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(modelsDir, olderModule), olderData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	repository := filepath.Join(root, "etc", "sysrepo")
+	command := exec.CommandContext(t.Context(), buildMwanBinary(t), "wanconfig-selftest", "--repository", repository, "--models-dir", modelsDir)
+	command.Env = append(os.Environ(), "SYSREPO_REPOSITORY_PATH=/prior/repository", "SYSREPO_SHM_PREFIX=priorprefix")
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("private selftest failed: %v: %s", err, output)
+	}
+	name, revision := moduleFileNameRevision(schema.SteeringFile)
+	installed := implementedModules(t, root, "private-selftest")
+	if module, present := installed[name]; !present || module.revision != revision {
+		t.Fatalf("private repository steering module = %+v, want revision %s", module, revision)
+	}
+	leftovers, err := filepath.Glob(filepath.Join(sysrepoSHMDir, fmt.Sprintf("mwanselftest%d*", command.Process.Pid)))
+	if err != nil {
+		t.Fatalf("list shared memory: %v", err)
+	}
+	if len(leftovers) != 0 {
+		t.Fatalf("private selftest left shared memory segments: %v", leftovers)
+	}
 }

@@ -294,7 +294,7 @@ func TestDebugPingViewsUseExpectedIfaceTargetsAndAttempts(t *testing.T) {
 				&output,
 				debugProbeTestLogger(),
 				debugProbeTestConfig(),
-				testCase.view,
+				debugView(testCase.view),
 				testCase.args,
 				dependencies,
 			)
@@ -395,7 +395,7 @@ func TestDebugCurlViewsForceFamilyAndContinueAfterFailure(t *testing.T) {
 				&output,
 				debugProbeTestLogger(),
 				debugProbeTestConfig(),
-				testCase.view,
+				debugView(testCase.view),
 				testCase.args,
 				dependencies,
 			)
@@ -476,7 +476,7 @@ func TestDebugLoadBalanceViewsUseSixSequentialUnboundRequests(t *testing.T) {
 				&output,
 				debugProbeTestLogger(),
 				debugProbeTestConfig(),
-				testCase.view,
+				debugView(testCase.view),
 				nil,
 				dependencies,
 			)
@@ -548,7 +548,7 @@ func TestDebugLoadBalanceIfaceViewsRotateConfiguredWANs(t *testing.T) {
 				&output,
 				debugProbeTestLogger(),
 				debugProbeTestConfig(),
-				testCase.view,
+				debugView(testCase.view),
 				nil,
 				dependencies,
 			)
@@ -635,7 +635,7 @@ func TestDebugProbeViewValidatesArguments(t *testing.T) {
 				io.Discard,
 				debugProbeTestLogger(),
 				debugProbeTestConfig(),
-				testCase.view,
+				debugView(testCase.view),
 				testCase.args,
 				debugProbeDependencies{},
 			)

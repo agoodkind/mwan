@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -19,128 +18,95 @@ import (
 	"goodkind.io/mwan/internal/observation"
 )
 
-// A target failure is a JSON result. Invalid input or failed output is a command error.
-func runObservation(args []string) int {
-	flags := flag.NewFlagSet("observe", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
-	checkJSON := flags.String("check", "", "CheckSpec JSON; empty reads standard input")
-	pathsJSON := flags.String("paths", "[]", "current typed path identities as JSON")
-	runtimeFile := flags.String("runtime-settings", "", "nonsecret RuntimeConfig JSON file")
-	continuous := flags.Bool("continuous", false, "observe scheduled checks until cancellation")
-	settingsFile := flags.String("settings", "", "strict recurring observation settings JSON")
-	configFile := flags.String("config", "", "existing TOML configuration for notifications")
-	if err := flags.Parse(args); err != nil {
-		return 2
-	}
-	if flags.NArg() != 0 {
-		fmt.Fprintln(os.Stderr, "observe accepts no positional arguments")
-		return 2
-	}
-	if *continuous {
-		pathsSpecified := false
-		flags.Visit(func(value *flag.Flag) {
-			if value.Name == "paths" {
-				pathsSpecified = true
-			}
-		})
-		if *checkJSON != "" || *runtimeFile != "" || pathsSpecified {
-			fmt.Fprintln(os.Stderr, "continuous observations use --settings")
-			return 2
-		}
-		return runContinuousObservation(*settingsFile, *configFile)
-	}
-	if *settingsFile != "" || *configFile != "" {
-		fmt.Fprintln(os.Stderr, "--settings and --config require --continuous")
-		return 2
-	}
-	return runSingleObservation(flags, checkJSON, pathsJSON, runtimeFile)
+type observationOptions struct {
+	check          string
+	paths          string
+	runtimePath    string
+	pathsSpecified bool
 }
 
-func runSingleObservation(flags *flag.FlagSet, checkJSON, pathsJSON, runtimeFile *string) int {
-	if len(*checkJSON) > 64*1024 || len(*pathsJSON) > 64*1024 {
-		fmt.Fprintln(os.Stderr, "observe JSON input exceeds 64 KiB")
+func runSingleObservation(options observationOptions, input io.Reader, output, diagnostics io.Writer) int {
+	if len(options.check) > 64*1024 || len(options.paths) > 64*1024 {
+		fmt.Fprintln(diagnostics, "observe JSON input exceeds 64 KiB")
 		return 2
 	}
 	var paths []observation.PathIdentity
-	pathDecoder := json.NewDecoder(strings.NewReader(*pathsJSON))
+	pathDecoder := json.NewDecoder(strings.NewReader(options.paths))
 	pathDecoder.DisallowUnknownFields()
 	if err := pathDecoder.Decode(&paths); err != nil {
-		fmt.Fprintln(os.Stderr, "observe requires valid path identities JSON")
+		fmt.Fprintln(diagnostics, "observe requires valid path identities JSON")
 		return 2
 	}
 	var remaining json.RawMessage
 	if err := pathDecoder.Decode(&remaining); err != io.EOF {
-		fmt.Fprintln(os.Stderr, "observe requires exactly one path identities JSON array")
+		fmt.Fprintln(diagnostics, "observe requires exactly one path identities JSON array")
 		return 2
 	}
-	var input io.Reader = strings.NewReader(*checkJSON)
-	if *checkJSON == "" {
-		input = io.LimitReader(os.Stdin, 64*1024)
+	if options.check == "" {
+		input = io.LimitReader(input, 64*1024)
+	} else {
+		input = strings.NewReader(options.check)
 	}
 	decoder := json.NewDecoder(input)
 	decoder.DisallowUnknownFields()
 	var spec observation.CheckSpec
 	if err := decoder.Decode(&spec); err != nil {
-		fmt.Fprintln(os.Stderr, "observe requires a valid CheckSpec JSON object")
+		fmt.Fprintln(diagnostics, "observe requires a valid CheckSpec JSON object")
 		return 2
 	}
 	var trailing json.RawMessage
 	if err := decoder.Decode(&trailing); err != io.EOF {
-		fmt.Fprintln(os.Stderr, "observe requires exactly one CheckSpec JSON object")
+		fmt.Fprintln(diagnostics, "observe requires exactly one CheckSpec JSON object")
 		return 2
 	}
 	if err := observation.Validate(spec); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(diagnostics, err)
 		return 2
 	}
 	binary, err := os.Executable()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "observe executable identity is unavailable")
+		fmt.Fprintln(diagnostics, "observe executable identity is unavailable")
 		return 1
 	}
-	log, closer := logging.New(logging.Config{Handlers: []slog.Handler{slog.NewJSONHandler(os.Stderr, nil)}})
+	log, closer := logging.New(logging.Config{Handlers: []slog.Handler{slog.NewJSONHandler(diagnostics, nil)}})
 	defer func() { _ = closer.Close() }()
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
-	runtimeConfig, err := observationRuntime(flags, *runtimeFile, binary, paths)
+	runtimeConfig, err := observationRuntime(options.pathsSpecified, options.runtimePath, binary, paths)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(diagnostics, err)
 		return 2
 	}
 	executor := observation.NewExecutor(runtimeConfig, log)
 	result := executor.Run(ctx, spec)
-	if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
-		fmt.Fprintln(os.Stderr, "observe result output failed")
+	if err := json.NewEncoder(output).Encode(result); err != nil {
+		fmt.Fprintln(diagnostics, "observe result output failed")
 		return 1
 	}
 	return 0
 }
 
-func runContinuousObservation(settingsPath, configPath string) int {
+func runContinuousObservation(settingsPath, configPath string, output, diagnostics io.Writer) int {
 	settings, err := observation.LoadContinuousSettings(settingsPath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(diagnostics, err)
 		return 2
 	}
-	var arguments []string
-	if configPath != "" {
-		arguments = []string{"--config", configPath}
-	}
-	cfg, _, err := config.LoadArguments(arguments)
+	cfg, err := config.LoadPath(configPath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(diagnostics, err)
 		return 2
 	}
-	log, closer := logging.New(logging.Config{Handlers: []slog.Handler{slog.NewJSONHandler(os.Stderr, nil)}})
+	log, closer := logging.New(logging.Config{Handlers: []slog.Handler{slog.NewJSONHandler(diagnostics, nil)}})
 	defer func() { _ = closer.Close() }()
 	notifier, err := notify.New(cfg.Email, cfg.NotifyConfig(), log, "mwan-observe")
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(diagnostics, err)
 		return 1
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
-	encoder := json.NewEncoder(os.Stdout)
+	encoder := json.NewEncoder(output)
 	summary, runError := observation.RunContinuous(ctx, settings, notifier, log, func(_ observation.CheckSpec, result observation.Result) error {
 		return encoder.Encode(struct {
 			Result observation.Result `json:"result"`
@@ -149,17 +115,17 @@ func runContinuousObservation(settingsPath, configPath string) int {
 	if err := encoder.Encode(struct {
 		Summary observation.Summary `json:"summary"`
 	}{Summary: summary}); err != nil {
-		fmt.Fprintln(os.Stderr, "observe terminal output failed")
+		fmt.Fprintln(diagnostics, "observe terminal output failed")
 		return 1
 	}
 	if runError != nil {
-		fmt.Fprintln(os.Stderr, runError)
+		fmt.Fprintln(diagnostics, runError)
 		return 1
 	}
 	return 0
 }
 
-func observationRuntime(flags *flag.FlagSet, runtimeFile, binary string, paths []observation.PathIdentity) (observation.RuntimeConfig, error) {
+func observationRuntime(pathsSpecified bool, runtimeFile, binary string, paths []observation.PathIdentity) (observation.RuntimeConfig, error) {
 	var runtimeConfig observation.RuntimeConfig
 	if runtimeFile != "" {
 		settings, loadErr := loadObservationRuntime(runtimeFile)
@@ -174,11 +140,9 @@ func observationRuntime(flags *flag.FlagSet, runtimeFile, binary string, paths [
 	if runtimeConfig.ProbeBinary == "" {
 		runtimeConfig.ProbeBinary = binary
 	}
-	flags.Visit(func(option *flag.Flag) {
-		if option.Name == "paths" {
-			runtimeConfig.Paths = paths
-		}
-	})
+	if pathsSpecified {
+		runtimeConfig.Paths = paths
+	}
 	return runtimeConfig, nil
 }
 

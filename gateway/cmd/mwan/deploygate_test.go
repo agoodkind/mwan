@@ -47,9 +47,10 @@ func (c *fakeClock) Sleep(d time.Duration) { c.now = c.now.Add(d) }
 
 func newTestDeps(out *strings.Builder, clock *fakeClock) deployGateDeps {
 	return deployGateDeps{
-		out:   out,
-		now:   clock.Now,
-		sleep: clock.Sleep,
+		out:         out,
+		diagnostics: os.Stderr,
+		now:         clock.Now,
+		sleep:       clock.Sleep,
 		probeDownstream: func(context.Context, downstreamProbeConfig, requiredEgressFamilies) (bool, string) {
 			return true, "ipv6=yes ipv4=yes"
 		},
@@ -826,6 +827,7 @@ func TestDeployGateWaitRebootFailsWhenTheHostConfigurationIsUnreadable(t *testin
 }
 
 func TestRunDeployGateUsageErrors(t *testing.T) {
+	binary := buildMwanBinary(t)
 	cases := [][]string{
 		{},
 		{"bogus-mode"},
@@ -844,13 +846,10 @@ func TestRunDeployGateUsageErrors(t *testing.T) {
 		{"check-egress", "extra"},
 		{"check-owned-addresses", "extra"},
 	}
-	entrypoints := map[string]func([]string) int{
-		"deploy":      runDeploy,
-		"deploy-gate": runDeployGate,
-	}
-	for name, run := range entrypoints {
+	for _, name := range []string{"deploy", "deploy-gate"} {
 		for _, args := range cases {
-			if code := run(args); code != exitDeployGateUsage {
+			_, code := runMwanBinary(t, binary, t.TempDir(), "", append([]string{name}, args...)...)
+			if code != exitDeployGateUsage {
 				t.Fatalf("%s %v = %d, want %d", name, args, code, exitDeployGateUsage)
 			}
 		}
@@ -921,7 +920,7 @@ func TestDeployVerifyModeNames(t *testing.T) {
 	}{
 		{"deploy verify", "deploy", "verify", exitDeployGateFailed, "read deployment operation", configPath},
 		{"deploy-gate verify", "deploy-gate", "verify", exitDeployGateFailed, "read deployment operation", configPath},
-		{"deploy commit", "deploy", "commit", exitDeployGateUsage, "usage: mwan deploy", configPath},
+		{"deploy commit", "deploy", "commit", exitDeployGateUsage, "Usage:", configPath},
 		{"deploy status", "deploy", "status", exitDeployGateFailed, "read deployment operation", configPath},
 		{"deploy-gate status", "deploy-gate", "status", exitDeployGateFailed, "read deployment operation", configPath},
 		{"deploy verify disarmed", "deploy", "verify", exitDeployGateFailed, "verify deployment operation", disarmedConfigPath},

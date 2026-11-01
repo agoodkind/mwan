@@ -10,17 +10,7 @@ import (
 	"goodkind.io/mwan/internal/configstate"
 )
 
-func runConfigState(
-	args []string,
-	cfg *config.Config,
-	output io.Writer,
-	diagnostics io.Writer,
-) int {
-	flags, err := parseConfigStateFlags(args, diagnostics)
-	if err != nil {
-		fmt.Fprintf(diagnostics, "mwan config-state: %v\n", err)
-		return 1
-	}
+func runConfigStateOptions(flags configStateFlags, cfg *config.Config, output, diagnostics io.Writer) int {
 	// A missing deploy file produces LastDeployEpoch 0.
 	deployFile, _ := os.ReadFile(cfg.Agent.DeployFile)
 	state := configstate.Read(flags.root, deployFile)

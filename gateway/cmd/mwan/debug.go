@@ -7,12 +7,12 @@ import (
 	"log/slog"
 	"math"
 	"net/netip"
-	"os"
 	"sort"
 	"strings"
 
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ifmgr/modules/npt"
+	"goodkind.io/mwan/internal/logging"
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/networkload"
 	"goodkind.io/mwan/internal/pd"
@@ -51,43 +51,23 @@ const (
 	debugViewTraceTail    debugView = "trace-tail"
 )
 
-type debugProbeDispatcher func(
-	context.Context,
-	io.Writer,
-	*slog.Logger,
-	*config.Config,
-	string,
-	[]string,
-) error
-
-func runDebug(args []string, cfg *config.Config) int {
-	return runDebugWithWriters(
-		args,
-		cfg,
-		os.Stdout,
-		os.Stderr,
-		runDebugProbeView,
-	)
+type debugOptions struct {
+	view      debugView
+	arguments []string
 }
 
-func runDebugWithWriters(
-	args []string,
+func runDebugOptions(
+	options debugOptions,
 	cfg *config.Config,
 	output io.Writer,
 	diagnostics io.Writer,
-	probeDispatcher debugProbeDispatcher,
 ) int {
-	logger := slog.New(slog.NewTextHandler(diagnostics, &slog.HandlerOptions{
-		Level: slog.LevelWarn,
-	}))
-	if len(args) < 1 || args[0] == "" {
-		printDebugUsage(diagnostics)
-		return 1
-	}
+	logger, closer := logging.New(logging.Config{Handlers: []slog.Handler{slog.NewTextHandler(diagnostics, &slog.HandlerOptions{Level: slog.LevelWarn})}})
+	defer closer.Close()
 	loadDebugNetworkConfig(diagnostics, cfg)
 
 	ctx := context.Background()
-	view := debugView(args[0])
+	view, args := options.view, options.arguments
 	var err error
 	switch view {
 	case debugViewNPT:
@@ -109,9 +89,9 @@ func runDebugWithWriters(
 	case debugViewSystemd:
 		err = showDebugSystemd(ctx, output, logger)
 	case debugViewTraceStart:
-		err = showDebugTraceStart(ctx, output, logger, cfg, args[1:])
+		err = showDebugTraceStart(ctx, output, logger, cfg, args)
 	case debugViewTraceTail:
-		err = showDebugTraceTail(ctx, output, logger, cfg, args[1:])
+		err = showDebugTraceTail(ctx, output, logger, cfg, args)
 	case debugViewTraceStop:
 		err = showDebugTraceStop(output)
 	case debugViewConnectivity,
@@ -123,16 +103,16 @@ func runDebugWithWriters(
 		debugViewLB6,
 		debugViewLB4Ifaces,
 		debugViewLB6Ifaces:
-		err = probeDispatcher(
+		err = runDebugProbeView(
 			ctx,
 			output,
 			logger,
 			cfg,
-			string(view),
-			args[1:],
+			view,
+			args,
 		)
 	default:
-		printDebugUsage(diagnostics)
+		fmt.Fprintf(diagnostics, "unknown debug view %q\n", view)
 		return 1
 	}
 	if err != nil {
@@ -157,17 +137,6 @@ func loadDebugNetworkConfig(diagnostics io.Writer, cfg *config.Config) {
 			err,
 		)
 	}
-}
-
-func printDebugUsage(output io.Writer) {
-	fmt.Fprintln(
-		output,
-		"usage: mwan debug "+
-			"<npt|prefixes|routes|policy|status|stats|sim4|sim6|"+
-			"connectivity|ping4|ping6|curl4|curl6|lb4|lb6|"+
-			"lb4-ifaces|lb6-ifaces|systemd|"+
-			"trace-start|trace-tail|trace-stop>",
-	)
 }
 
 func showDebugNPT(

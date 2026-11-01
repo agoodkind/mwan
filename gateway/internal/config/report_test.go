@@ -11,7 +11,7 @@ func TestReportConfigLoadsAndValidates(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()
 	text := fmt.Sprintf("[report]\nstate_directory = %q\nrrdtool_path = %q\n", directory, "/usr/local/bin/rrdtool")
-	cfg, _, err := config.LoadArguments([]string{"mwan", "--config", writeSharedFile(t, text)})
+	cfg, err := config.LoadPath(writeSharedFile(t, text))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestReportConfigLoadsAndValidates(t *testing.T) {
 			}
 		})
 	}
-	if _, _, err := config.LoadArguments([]string{"mwan", "--config", writeSharedFile(t, sharedFileText)}); err != nil {
+	if _, err := config.LoadPath(writeSharedFile(t, sharedFileText)); err != nil {
 		t.Fatalf("existing configuration requires reporting settings: %v", err)
 	}
 }

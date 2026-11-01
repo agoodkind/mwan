@@ -25,20 +25,6 @@ const (
 	debugNoValue              = "<none>"
 )
 
-type activeDebugProbeView string
-
-const (
-	activeDebugViewConnectivity activeDebugProbeView = "connectivity"
-	activeDebugViewCurl4        activeDebugProbeView = "curl4"
-	activeDebugViewCurl6        activeDebugProbeView = "curl6"
-	activeDebugViewLB4          activeDebugProbeView = "lb4"
-	activeDebugViewLB4Ifaces    activeDebugProbeView = "lb4-ifaces"
-	activeDebugViewLB6          activeDebugProbeView = "lb6"
-	activeDebugViewLB6Ifaces    activeDebugProbeView = "lb6-ifaces"
-	activeDebugViewPing4        activeDebugProbeView = "ping4"
-	activeDebugViewPing6        activeDebugProbeView = "ping6"
-)
-
 type debugPingFunc func(
 	context.Context,
 	string,
@@ -101,7 +87,7 @@ func runDebugProbeView(
 	output io.Writer,
 	logger *slog.Logger,
 	cfg *config.Config,
-	view string,
+	view debugView,
 	args []string,
 ) error {
 	dependencies := newDebugProbeDependencies(logger)
@@ -121,17 +107,17 @@ func runDebugProbeViewWithDependencies(
 	output io.Writer,
 	logger *slog.Logger,
 	cfg *config.Config,
-	view string,
+	view debugView,
 	args []string,
 	dependencies debugProbeDependencies,
 ) error {
-	switch activeDebugProbeView(view) {
-	case activeDebugViewConnectivity:
+	switch view {
+	case debugViewConnectivity:
 		if err := debugProbeNoArgs(view, args); err != nil {
 			return err
 		}
 		return showDebugConnectivity(ctx, output, logger, cfg, dependencies)
-	case activeDebugViewPing4:
+	case debugViewPing4:
 		return dispatchDebugPing(
 			ctx,
 			output,
@@ -141,7 +127,7 @@ func runDebugProbeViewWithDependencies(
 			debugFamilyV4,
 			dependencies.ping4,
 		)
-	case activeDebugViewPing6:
+	case debugViewPing6:
 		return dispatchDebugPing(
 			ctx,
 			output,
@@ -151,7 +137,7 @@ func runDebugProbeViewWithDependencies(
 			debugFamilyV6,
 			dependencies.ping6,
 		)
-	case activeDebugViewCurl4:
+	case debugViewCurl4:
 		return dispatchDebugCurl(
 			ctx,
 			output,
@@ -161,7 +147,7 @@ func runDebugProbeViewWithDependencies(
 			debugFamilyV4,
 			dependencies.httpGet,
 		)
-	case activeDebugViewCurl6:
+	case debugViewCurl6:
 		return dispatchDebugCurl(
 			ctx,
 			output,
@@ -171,7 +157,7 @@ func runDebugProbeViewWithDependencies(
 			debugFamilyV6,
 			dependencies.httpGet,
 		)
-	case activeDebugViewLB4:
+	case debugViewLB4:
 		return dispatchDebugLoadBalance(
 			ctx,
 			output,
@@ -180,7 +166,7 @@ func runDebugProbeViewWithDependencies(
 			debugFamilyV4,
 			dependencies.httpGet,
 		)
-	case activeDebugViewLB6:
+	case debugViewLB6:
 		return dispatchDebugLoadBalance(
 			ctx,
 			output,
@@ -189,7 +175,7 @@ func runDebugProbeViewWithDependencies(
 			debugFamilyV6,
 			dependencies.httpGet,
 		)
-	case activeDebugViewLB4Ifaces:
+	case debugViewLB4Ifaces:
 		return dispatchDebugLoadBalanceIfaces(
 			ctx,
 			output,
@@ -199,7 +185,7 @@ func runDebugProbeViewWithDependencies(
 			debugFamilyV4,
 			dependencies.httpGet,
 		)
-	case activeDebugViewLB6Ifaces:
+	case debugViewLB6Ifaces:
 		return dispatchDebugLoadBalanceIfaces(
 			ctx,
 			output,
@@ -209,6 +195,10 @@ func runDebugProbeViewWithDependencies(
 			debugFamilyV6,
 			dependencies.httpGet,
 		)
+	case debugViewNPT, debugViewPolicy, debugViewPrefixes, debugViewRoutes,
+		debugViewSim4, debugViewSim6, debugViewStats, debugViewStatus,
+		debugViewSystemd, debugViewTraceStart, debugViewTraceStop, debugViewTraceTail:
+		return fmt.Errorf("debug view %q does not run an active probe", view)
 	default:
 		return fmt.Errorf("unknown active debug probe view %q", view)
 	}
@@ -395,7 +385,7 @@ func dispatchDebugPing(
 	ctx context.Context,
 	output io.Writer,
 	cfg *config.Config,
-	view string,
+	view debugView,
 	args []string,
 	family string,
 	probe debugPingFunc,
@@ -411,7 +401,7 @@ func dispatchDebugPing(
 func showDebugPing(
 	ctx context.Context,
 	output io.Writer,
-	view string,
+	view debugView,
 	iface string,
 	family string,
 	probe debugPingFunc,
@@ -456,7 +446,7 @@ func dispatchDebugCurl(
 	ctx context.Context,
 	output io.Writer,
 	cfg *config.Config,
-	view string,
+	view debugView,
 	args []string,
 	family string,
 	httpGet debugHTTPGetFunc,
@@ -486,7 +476,7 @@ func dispatchDebugCurl(
 func dispatchDebugLoadBalance(
 	ctx context.Context,
 	output io.Writer,
-	view string,
+	view debugView,
 	args []string,
 	family string,
 	httpGet debugHTTPGetFunc,
@@ -520,7 +510,7 @@ func dispatchDebugLoadBalanceIfaces(
 	ctx context.Context,
 	output io.Writer,
 	cfg *config.Config,
-	view string,
+	view debugView,
 	args []string,
 	family string,
 	httpGet debugHTTPGetFunc,
@@ -580,7 +570,7 @@ func debugPrintHTTPResult(
 
 func debugProbeIface(
 	cfg *config.Config,
-	view string,
+	view debugView,
 	args []string,
 ) (string, error) {
 	if len(args) > 1 {
@@ -608,7 +598,7 @@ func debugProbeIface(
 	return lowest.Iface, nil
 }
 
-func debugProbeNoArgs(view string, args []string) error {
+func debugProbeNoArgs(view debugView, args []string) error {
 	if len(args) != 0 {
 		return fmt.Errorf("%s accepts no positional arguments", view)
 	}
@@ -650,7 +640,7 @@ func debugHTTPTargets() []string {
 	}
 }
 
-func debugPingHeading(view string) string {
+func debugPingHeading(view debugView) string {
 	if view == "ping6" {
 		return "Ping6"
 	}

@@ -124,24 +124,15 @@ func mixedWatchdogSection() watchdogconfig.WatchdogSection {
 func TestLoadMatchesGatewayLoaderForHypervisorSections(t *testing.T) {
 	configPath := writeConfig(t, mixedConfigText)
 	t.Setenv("SMTP2GO_API_KEY", " key-from-environment ")
-	arguments := []string{"mwan", "--config", configPath, "--dry-run"}
-
-	got, gotRemaining, err := watchdogconfig.LoadArguments(arguments)
+	got, err := watchdogconfig.LoadPath(configPath)
 	if err != nil {
 		t.Fatalf("watchdog configuration load failed: %v", err)
 	}
-	want, gatewayRemaining, err := config.LoadArguments(arguments)
+	want, err := config.LoadPath(configPath)
 	if err != nil {
 		t.Fatalf("gateway configuration load failed: %v", err)
 	}
 
-	wantRemaining := []string{"mwan", "--dry-run"}
-	if !reflect.DeepEqual(gotRemaining, wantRemaining) {
-		t.Errorf("remaining arguments differ between loaders: %v %v", gotRemaining, wantRemaining)
-	}
-	if !reflect.DeepEqual(gatewayRemaining, wantRemaining) {
-		t.Errorf("remaining arguments differ between loaders: %v %v", gatewayRemaining, wantRemaining)
-	}
 	if got.MwanVMID != "4100" || got.MwanVMID != want.MwanVMID {
 		t.Errorf("unexpected virtual machine identifier: %q %q", got.MwanVMID, want.MwanVMID)
 	}
@@ -221,9 +212,7 @@ func TestLoadWatchdogSectionConnectivityTimeout(t *testing.T) {
 
 func TestLoadRejectsConflictingStatusSource(t *testing.T) {
 	writeConfig(t, conflictingStatusText)
-	arguments := []string{"mwan"}
-
-	_, _, err := watchdogconfig.LoadArguments(arguments)
+	_, err := watchdogconfig.LoadPath("")
 	if err == nil {
 		t.Fatalf("watchdog loader accepted conflicting status sources: %s", conflictingStatusText)
 	}
@@ -237,7 +226,7 @@ func TestLoadAcceptsEitherStatusSourceAlone(t *testing.T) {
 [watchdog]
 status_command = ["/usr/local/bin/mwan", "gateway-status"]
 `)
-	command, _, err := watchdogconfig.LoadArguments([]string{"mwan"})
+	command, err := watchdogconfig.LoadPath("")
 	if err != nil {
 		t.Fatalf("Load rejected status_command alone: %v", err)
 	}
@@ -250,7 +239,7 @@ status_command = ["/usr/local/bin/mwan", "gateway-status"]
 [watchdog]
 status_listen_port = 50053
 `)
-	port, _, err := watchdogconfig.LoadArguments([]string{"mwan"})
+	port, err := watchdogconfig.LoadPath("")
 	if err != nil {
 		t.Fatalf("Load rejected status_listen_port alone: %v", err)
 	}

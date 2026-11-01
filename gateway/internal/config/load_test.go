@@ -39,7 +39,7 @@ listen = "/var/run/mwan-opnsense-drain.sock"
 	}
 	t.Setenv("MWAN_CONFIG", configPath)
 
-	cfg, err := Load()
+	cfg, err := LoadPath("")
 	if err != nil {
 		t.Fatalf("Load rejected a host config carrying [opnsense.*] tables: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestLoadHealthMaxStateAge(t *testing.T) {
 			}
 			t.Setenv("MWAN_CONFIG", configPath)
 
-			cfg, err := Load()
+			cfg, err := LoadPath("")
 
 			if tc.wantFail {
 				if err == nil {
@@ -150,7 +150,7 @@ func TestLoadGuestType(t *testing.T) {
 			}
 			t.Setenv("MWAN_CONFIG", configPath)
 
-			cfg, err := Load()
+			cfg, err := LoadPath("")
 
 			if tc.wantFail {
 				if err == nil {

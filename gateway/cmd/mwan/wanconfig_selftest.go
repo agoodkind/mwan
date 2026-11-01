@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"log/slog"
 	"net/netip"
@@ -73,33 +72,11 @@ func failStep(log *slog.Logger, step string, err error) error {
 	return fmt.Errorf("%s: %w", step, err)
 }
 
-func parseSelftestFlags(log *slog.Logger, args []string) (selftestFlags, error) {
-	flags := selftestFlags{repository: "", modelsDir: ""}
-	set := flag.NewFlagSet("wanconfig-selftest", flag.ContinueOnError)
-	set.SetOutput(os.Stderr)
-	set.StringVar(&flags.repository, "repository", "",
-		"private sysrepo repository directory to create and test against, instead of the host's")
-	set.StringVar(&flags.modelsDir, "models-dir", "",
-		"directory holding the gateway's model files, installed into the private repository")
-	if err := set.Parse(args); err != nil {
-		return flags, failStep(log, "parse flags", err)
-	}
-	if (flags.repository == "") != (flags.modelsDir == "") {
-		return flags, errors.New("--repository and --models-dir go together")
-	}
-	return flags, nil
-}
-
 // runWanconfigSelftest exercises the publishing binding end to end. On
 // builds without the binding it reports unavailability and exits nonzero
 // without touching anything.
-func runWanconfigSelftest(args []string) int {
-	log := slog.Default()
-	flags, err := parseSelftestFlags(log, args)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan wanconfig-selftest: %v\n", err)
-		return 2
-	}
+
+func runWanconfigSelftestOptions(log *slog.Logger, flags selftestFlags) int {
 	if flags.repository != "" {
 		return runPrivateSelftest(log, flags)
 	}
