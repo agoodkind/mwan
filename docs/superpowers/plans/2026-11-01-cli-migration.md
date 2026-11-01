@@ -6,12 +6,12 @@ Implement the [approved CLI design](../specs/2026-11-01-cli-migration-design.md)
 
 Use branch `codex/mwan-cli-cobra`, based on `main`.
 
-- [ ] Register every current command and nested action in Cobra, including all debug views, both deployment command trees, watchdog failover, and report watch and send.
-- [ ] Preserve names, accepted arguments and flag spellings, defaults, command-specific exit codes, machine output, and actual operational paths.
-- [ ] Separate parsing from business logic. Pass concrete options and streams explicitly instead of mutating process arguments or parsing them twice.
-- [ ] Add complete descriptions, argument documentation, flags, and examples. Make root help and command help work before configuration loading and operational setup.
-- [ ] Preserve daemon startup, signals, readiness, WAN firewall bootstrap ordering, legacy NPT transition conditions, observation JSON contracts, deployment verdict files, and the deploy-gate commit alias.
-- [ ] Extend process tests for help, invalid input, and existing machine contracts. Run Linux builder checks and review this layer.
+- [x] Register every current command and nested action in Cobra, including all debug views, both deployment command trees, watchdog failover, and report watch and send.
+- [x] Preserve names, accepted arguments and flag spellings, defaults, command-specific exit codes, machine output, and actual operational paths.
+- [x] Separate parsing from business logic. Pass concrete options and streams explicitly instead of mutating process arguments or parsing them twice.
+- [x] Add complete descriptions, argument documentation, flags, and examples. Make root help and command help work before configuration loading and operational setup.
+- [x] Preserve daemon startup, signals, readiness, WAN firewall bootstrap ordering, legacy NPT transition conditions, observation JSON contracts, deployment verdict files, and the deploy-gate commit alias.
+- [x] Extend process tests for help, invalid input, and existing machine contracts. Run Linux builder checks and review this layer.
 
 ## Format source results
 
