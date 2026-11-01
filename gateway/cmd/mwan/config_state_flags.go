@@ -1,3 +1,3 @@
 package main
 
-type configStateFlags struct{ root string }
+type configStateFlags struct{ root, outputFormat string }

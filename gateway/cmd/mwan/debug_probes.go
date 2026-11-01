@@ -406,9 +406,13 @@ func showDebugPing(
 	family string,
 	probe debugPingFunc,
 ) {
+	attempts := collectDebugPing(ctx, iface, family, probe)
+	writeDebugPingText(output, view, attempts)
+}
+
+func collectDebugPing(ctx context.Context, iface, family string, probe debugPingFunc) []netif.PingAttempt {
+	attempts := make([]netif.PingAttempt, 0, len(debugPingTargets(family))*debugPingAttempts)
 	for _, target := range debugPingTargets(family) {
-		fmt.Fprintf(output, "%s %s via %s\n", debugPingHeading(view), target, iface)
-		receivedCount := 0
 		for attemptIndex := range debugPingAttempts {
 			roundTripTime, err := probe(
 				ctx,
@@ -416,30 +420,50 @@ func showDebugPing(
 				target,
 				debugActiveProbeTimeout,
 			)
+			attempt := netif.PingAttempt{Interface: iface, Family: family, Target: target.String(), Attempt: attemptIndex + 1, Timeout: debugActiveProbeTimeout, RTT: roundTripTime, Error: ""}
 			if err != nil {
-				fmt.Fprintf(
-					output,
-					"attempt %d: FAIL: %v\n",
-					attemptIndex+1,
-					err,
-				)
-				continue
+				attempt.Error = err.Error()
 			}
-			receivedCount++
-			fmt.Fprintf(
-				output,
-				"attempt %d: %s\n",
-				attemptIndex+1,
-				roundTripTime,
-			)
+			attempts = append(attempts, attempt)
 		}
-		fmt.Fprintf(
-			output,
-			"%d transmitted, %d received\n\n",
-			debugPingAttempts,
-			receivedCount,
-		)
 	}
+	return attempts
+}
+
+func writeDebugPingText(output io.Writer, view debugView, attempts []netif.PingAttempt) {
+	received := 0
+	for _, attempt := range attempts {
+		if attempt.Attempt == 1 {
+			fmt.Fprintf(output, "%s %s via %s\n", debugPingHeading(view), attempt.Target, attempt.Interface)
+			received = 0
+		}
+		if attempt.Error != "" {
+			fmt.Fprintf(output, "attempt %d: FAIL: %s\n", attempt.Attempt, attempt.Error)
+		} else {
+			received++
+			fmt.Fprintf(output, "attempt %d: %s\n", attempt.Attempt, attempt.RTT)
+		}
+		if attempt.Attempt == debugPingAttempts {
+			fmt.Fprintf(output, "%d transmitted, %d received\n\n", debugPingAttempts, received)
+		}
+	}
+}
+
+func runDebugPing(ctx context.Context, output io.Writer, cfg *config.Config, view debugView, args []string, format string) error {
+	iface, err := debugProbeIface(cfg, view, args)
+	if err != nil {
+		return err
+	}
+	family, probe := debugFamilyV4, debugPingFunc(netif.Ping4)
+	if view == debugViewPing6 {
+		family, probe = debugFamilyV6, netif.Ping6
+	}
+	attempts := collectDebugPing(ctx, iface, family, probe)
+	if format == "json" {
+		return WriteJSON(output, attempts)
+	}
+	writeDebugPingText(output, view, attempts)
+	return nil
 }
 
 func dispatchDebugCurl(

@@ -52,8 +52,9 @@ const (
 )
 
 type debugOptions struct {
-	view      debugView
-	arguments []string
+	view         debugView
+	arguments    []string
+	outputFormat string
 }
 
 func runDebugOptions(
@@ -94,15 +95,9 @@ func runDebugOptions(
 		err = showDebugTraceTail(ctx, output, logger, cfg, args)
 	case debugViewTraceStop:
 		err = showDebugTraceStop(output)
-	case debugViewConnectivity,
-		debugViewPing4,
-		debugViewPing6,
-		debugViewCurl4,
-		debugViewCurl6,
-		debugViewLB4,
-		debugViewLB6,
-		debugViewLB4Ifaces,
-		debugViewLB6Ifaces:
+	case debugViewPing4, debugViewPing6:
+		err = runDebugPing(ctx, output, cfg, view, args, options.outputFormat)
+	case debugViewConnectivity, debugViewCurl4, debugViewCurl6, debugViewLB4, debugViewLB6, debugViewLB4Ifaces, debugViewLB6Ifaces:
 		err = runDebugProbeView(
 			ctx,
 			output,

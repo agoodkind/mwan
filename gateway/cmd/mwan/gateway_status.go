@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -22,7 +21,12 @@ func runGatewayStatusOptions(flags gatewayStatusFlags, cfg *config.Config, outpu
 		fmt.Fprintf(diagnostics, "mwan gateway-status: %v\n", err)
 		return 1
 	}
-	if err := json.NewEncoder(output).Encode(status); err != nil {
+	if flags.outputFormat == "text" {
+		err = WriteGatewayStatusText(output, status)
+	} else {
+		err = WriteJSON(output, status)
+	}
+	if err != nil {
 		fmt.Fprintf(diagnostics, "mwan gateway-status: write status: %v\n", err)
 		return 1
 	}

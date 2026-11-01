@@ -219,6 +219,7 @@ func newGatewayStatusCommand() *cobra.Command {
 	var options gatewayStatusFlags
 	configFlag(command, &path)
 	networkFlags(command, &options.networkPath, &options.schemaDir)
+	outputFormatFlag(command, &options.outputFormat, "json")
 	command.RunE = func(current *cobra.Command, _ []string) error {
 		return withConfig(current, path, func(cfg *config.Config) error {
 			return commandResult(runGatewayStatusOptions(options, cfg, current.OutOrStdout(), current.ErrOrStderr()))
@@ -233,6 +234,7 @@ func newConfigStateCommand() *cobra.Command {
 	var options configStateFlags
 	configFlag(command, &path)
 	command.Flags().StringVar(&options.root, "root", "", "Read configuration files below this directory.")
+	outputFormatFlag(command, &options.outputFormat, "json")
 	command.RunE = func(current *cobra.Command, _ []string) error {
 		return withConfig(current, path, func(cfg *config.Config) error {
 			return commandResult(runConfigStateOptions(options, cfg, current.OutOrStdout(), current.ErrOrStderr()))

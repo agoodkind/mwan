@@ -1,3 +1,3 @@
 package main
 
-type gatewayStatusFlags struct{ networkPath, schemaDir string }
+type gatewayStatusFlags struct{ networkPath, schemaDir, outputFormat string }

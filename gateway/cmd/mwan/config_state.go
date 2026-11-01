@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -14,7 +13,13 @@ func runConfigStateOptions(flags configStateFlags, cfg *config.Config, output, d
 	// A missing deploy file produces LastDeployEpoch 0.
 	deployFile, _ := os.ReadFile(cfg.Agent.DeployFile)
 	state := configstate.Read(flags.root, deployFile)
-	if err := json.NewEncoder(output).Encode(state); err != nil {
+	var err error
+	if flags.outputFormat == "text" {
+		err = WriteConfigStateText(output, state)
+	} else {
+		err = WriteJSON(output, state)
+	}
+	if err != nil {
 		fmt.Fprintf(diagnostics, "mwan config-state: encode config state: %v\n", err)
 		return 1
 	}
