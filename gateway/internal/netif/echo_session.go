@@ -81,7 +81,7 @@ func OpenEchoSession(ctx context.Context, iface string, source, target netip.Add
 func openEcho4(ctx context.Context, iface string, source netip.Addr) (net.PacketConn, *ipv4.PacketConn, error) {
 	configuration := net.ListenConfig{}
 	if iface != "" {
-		configuration.Control = bindToDevice(iface)
+		configuration.Control = bindToDevice(iface, slog.Default())
 	}
 	address := "0.0.0.0"
 	if source.IsValid() {

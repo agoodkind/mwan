@@ -54,7 +54,7 @@ func DNSProbe(ctx context.Context, spec DNSProbeSpec) (observed DNSProbeResult, 
 	resolver := &net.Resolver{PreferGo: true, StrictErrors: true, Dial: func(dialContext context.Context, network, _ string) (net.Conn, error) {
 		dialer := &net.Dialer{Timeout: spec.Timeout}
 		if spec.Interface != "" {
-			dialer.Control = bindToDevice(spec.Interface)
+			dialer.Control = bindToDevice(spec.Interface, slog.Default())
 		}
 		if spec.Source.IsValid() {
 			if network == "tcp" {

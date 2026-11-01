@@ -144,7 +144,7 @@ func (p *V6Probe) pingICMP6Source(ctx context.Context, source, target netip.Addr
 		}
 		dur := p.clock.Now().Sub(startTime)
 		if err != nil {
-			return PingProbeResult{}, classifyPingReadError(ctx, err)
+			return PingProbeResult{}, classifyPingReadError(ctx, p.log, err)
 		}
 		if !matchesProbeReply6(rb[:n], id, seq) {
 			continue

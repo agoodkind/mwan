@@ -48,6 +48,12 @@ func Ping4(
 	return ping4(ctx, iface, target, timeout, realClock{})
 }
 
+// Ping4WithLogger lets operator probes control diagnostic output.
+func Ping4WithLogger(ctx context.Context, logger *slog.Logger, iface string, target netip.Addr, timeout time.Duration) (time.Duration, error) {
+	result, err := ping4Source(ctx, logger, iface, netip.Addr{}, target, timeout, realClock{}, false)
+	return result.RoundTripTime, err
+}
+
 func ping4(
 	ctx context.Context,
 	iface string,
@@ -55,7 +61,7 @@ func ping4(
 	timeout time.Duration,
 	probeClock clock,
 ) (time.Duration, error) {
-	result, err := ping4Source(ctx, iface, netip.Addr{}, target, timeout, probeClock, false)
+	result, err := ping4Source(ctx, slog.Default(), iface, netip.Addr{}, target, timeout, probeClock, false)
 	return result.RoundTripTime, err
 }
 
@@ -68,13 +74,13 @@ type PingProbeResult struct {
 // PingProbe binds an optional source and records matched echo reply metadata.
 func PingProbe(ctx context.Context, iface string, source, target netip.Addr, timeout time.Duration) (PingProbeResult, error) {
 	if target.Is4() {
-		return ping4Source(ctx, iface, source, target, timeout, realClock{}, true)
+		return ping4Source(ctx, slog.Default(), iface, source, target, timeout, realClock{}, true)
 	}
 	return NewV6Probe(iface, slog.Default()).pingICMP6Source(ctx, source, target, timeout, true)
 }
 
-func ping4Source(ctx context.Context, iface string, source, target netip.Addr, timeout time.Duration, probeClock clock, observe bool) (PingProbeResult, error) {
-	log := slog.With(
+func ping4Source(ctx context.Context, logger *slog.Logger, iface string, source, target netip.Addr, timeout time.Duration, probeClock clock, observe bool) (PingProbeResult, error) {
+	log := logger.With(
 		"component", "ping4",
 		"iface", iface,
 		"target", target.String(),
@@ -89,7 +95,7 @@ func ping4Source(ctx context.Context, iface string, source, target netip.Addr, t
 
 	listenConfig := net.ListenConfig{}
 	if iface != "" {
-		listenConfig.Control = bindToDevice(iface)
+		listenConfig.Control = bindToDevice(iface, logger)
 	}
 	listenAddress := "0.0.0.0"
 	if source.IsValid() {
@@ -152,7 +158,7 @@ func ping4Source(ctx context.Context, iface string, source, target netip.Addr, t
 		}
 		roundTripTime := probeClock.Now().Sub(startTime)
 		if readError != nil {
-			return PingProbeResult{}, classifyPingReadError(ctx, readError)
+			return PingProbeResult{}, classifyPingReadError(ctx, logger, readError)
 		}
 		// Require the reply to come from the target. Two concurrent probes
 		// from this process can collide on id and the 15-bit sequence, so the
@@ -181,12 +187,17 @@ func Ping6(
 	return NewV6Probe(iface, slog.Default()).PingICMP6(ctx, target, timeout)
 }
 
+// Ping6WithLogger lets operator probes control diagnostic output.
+func Ping6WithLogger(ctx context.Context, logger *slog.Logger, iface string, target netip.Addr, timeout time.Duration) (time.Duration, error) {
+	return NewV6Probe(iface, logger).PingICMP6(ctx, target, timeout)
+}
+
 // HTTPCheck uses the probe interface for outbound connections so HTTP and
 // ICMP checks observe the same source-routing behavior.
 func HTTPCheck(
 	ctx context.Context, iface string, url string, timeout time.Duration,
 ) (int, error) {
-	result, err := httpGet(ctx, iface, "", url, timeout, false, "HTTPCheck")
+	result, err := httpGet(ctx, slog.Default(), iface, "", url, timeout, false, "HTTPCheck")
 	if err != nil {
 		return 0, err
 	}
@@ -200,7 +211,7 @@ func HTTPCheck6(
 	ctx context.Context, iface string, url string, timeout time.Duration,
 ) (int, error) {
 	result, err := httpGet(
-		ctx, iface, string(httpFamilyV6), url, timeout, false, "HTTPCheck6",
+		ctx, slog.Default(), iface, string(httpFamilyV6), url, timeout, false, "HTTPCheck6",
 	)
 	if err != nil {
 		return 0, err
@@ -213,7 +224,7 @@ func HTTPCheck4(
 	ctx context.Context, iface string, url string, timeout time.Duration,
 ) (int, error) {
 	result, err := httpGet(
-		ctx, iface, string(httpFamilyV4), url, timeout, false, "HTTPCheck4",
+		ctx, slog.Default(), iface, string(httpFamilyV4), url, timeout, false, "HTTPCheck4",
 	)
 	if err != nil {
 		return 0, err
@@ -231,7 +242,12 @@ func HTTPGet(
 	url string,
 	timeout time.Duration,
 ) (HTTPResult, error) {
-	return httpGet(ctx, iface, family, url, timeout, true, "HTTPGet")
+	return httpGet(ctx, slog.Default(), iface, family, url, timeout, true, "HTTPGet")
+}
+
+// HTTPGetWithLogger lets operator probes control diagnostic output.
+func HTTPGetWithLogger(ctx context.Context, logger *slog.Logger, iface, family, url string, timeout time.Duration) (HTTPResult, error) {
+	return httpGet(ctx, logger, iface, family, url, timeout, true, "HTTPGet")
 }
 
 // HTTPProbeSpec configures a direct request and its socket binding.
@@ -262,7 +278,7 @@ func DialProbe(ctx context.Context, iface string, source netip.Addr, family, add
 	}
 	dialer := &net.Dialer{Timeout: timeout}
 	if iface != "" {
-		dialer.Control = bindToDevice(iface)
+		dialer.Control = bindToDevice(iface, slog.Default())
 	}
 	if source.IsValid() {
 		dialer.LocalAddr = &net.TCPAddr{IP: source.AsSlice(), Zone: source.Zone(), Port: 0}
@@ -277,24 +293,24 @@ func DialProbe(ctx context.Context, iface string, source netip.Addr, family, add
 
 // HTTPProbe records socket endpoints and disables proxies and redirects.
 func HTTPProbe(ctx context.Context, spec HTTPProbeSpec) (HTTPProbeResult, error) {
-	return httpRequest(ctx, spec, true, true)
+	return httpRequest(ctx, slog.Default(), spec, true, true)
 }
 
-func httpGet(ctx context.Context, iface, family, url string, timeout time.Duration, readBody bool, operation string) (HTTPResult, error) {
-	result, err := httpRequest(ctx, HTTPProbeSpec{
+func httpGet(ctx context.Context, logger *slog.Logger, iface, family, url string, timeout time.Duration, readBody bool, operation string) (HTTPResult, error) {
+	result, err := httpRequest(ctx, logger, HTTPProbeSpec{
 		Interface: iface, Family: family, Source: netip.Addr{}, URL: url, Method: http.MethodGet, Timeout: timeout,
 	}, readBody, false)
 	if err != nil {
-		slog.WarnContext(ctx, "HTTP probe failed", "operation", operation, "err", err)
+		logger.WarnContext(ctx, "HTTP probe failed", "operation", operation, "err", err)
 		return HTTPResult{}, fmt.Errorf("%s: %w", operation, err)
 	}
 	return result.HTTPResult, nil
 }
 
-func httpRequest(ctx context.Context, spec HTTPProbeSpec, readBody, direct bool) (observed HTTPProbeResult, requestError error) {
+func httpRequest(ctx context.Context, logger *slog.Logger, spec HTTPProbeSpec, readBody, direct bool) (observed HTTPProbeResult, requestError error) {
 	defer func() {
 		if requestError != nil {
-			slog.WarnContext(ctx, "HTTP request failed", "method", spec.Method, "err", requestError)
+			logger.WarnContext(ctx, "HTTP request failed", "method", spec.Method, "err", requestError)
 		}
 	}()
 	network, err := httpNetwork(spec.Family)
@@ -328,7 +344,7 @@ func httpRequest(ctx context.Context, spec HTTPProbeSpec, readBody, direct bool)
 	if spec.Interface != "" || spec.Family != "" || spec.Source.IsValid() || direct {
 		dialer := &net.Dialer{}
 		if spec.Interface != "" {
-			dialer.Control = bindToDevice(spec.Interface)
+			dialer.Control = bindToDevice(spec.Interface, logger)
 		}
 		if spec.Source.IsValid() {
 			dialer.LocalAddr = &net.TCPAddr{IP: spec.Source.AsSlice(), Zone: spec.Source.Zone(), Port: 0}
@@ -386,6 +402,7 @@ func httpNetwork(family string) (string, error) {
 
 func bindToDevice(
 	iface string,
+	logger *slog.Logger,
 ) func(network string, address string, connection syscall.RawConn) error {
 	return func(_ string, _ string, connection syscall.RawConn) error {
 		var bindError error
@@ -398,7 +415,7 @@ func bindToDevice(
 			)
 		})
 		if controlError != nil {
-			slog.Warn(
+			logger.Warn(
 				"netif: bindToDevice socket control failed",
 				"iface", iface,
 				"err", controlError,
@@ -406,7 +423,7 @@ func bindToDevice(
 			return fmt.Errorf("access socket for interface %q: %w", iface, controlError)
 		}
 		if bindError != nil {
-			slog.Warn(
+			logger.Warn(
 				"netif: bindToDevice setsockopt failed",
 				"iface", iface,
 				"err", bindError,
@@ -457,16 +474,16 @@ func peerMatchesTarget(peer net.Addr, target netip.Addr) bool {
 	return from.Unmap() == target.Unmap()
 }
 
-func classifyPingReadError(ctx context.Context, err error) error {
+func classifyPingReadError(ctx context.Context, logger *slog.Logger, err error) error {
 	var networkError net.Error
 	if errors.As(err, &networkError) && networkError.Timeout() {
 		if ctx.Err() != nil {
-			slog.WarnContext(ctx, "ICMP observation canceled", "err", ctx.Err())
+			logger.WarnContext(ctx, "ICMP observation canceled", "err", ctx.Err())
 			return fmt.Errorf("ICMP observation: %w", ctx.Err())
 		}
 		return context.DeadlineExceeded
 	}
-	slog.WarnContext(ctx, "ICMP reply read failed", "err", err)
+	logger.WarnContext(ctx, "ICMP reply read failed", "err", err)
 	return fmt.Errorf("ICMP reply read: %w", err)
 }
 
