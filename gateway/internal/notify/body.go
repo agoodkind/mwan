@@ -20,6 +20,7 @@ var dropKeys = map[string]struct{}{
 	"alert_key":    {},
 	"resolved":     {},
 	"transition":   {},
+	"notice":       {},
 	"last_failure": {},
 }
 
@@ -323,6 +324,12 @@ func titleKey(k string) string {
 	}
 	if k == "iface" {
 		return "Interface"
+	}
+	if strings.HasSuffix(k, "_s") {
+		k = strings.TrimSuffix(k, "_s") + " (seconds)"
+	}
+	if strings.HasSuffix(k, "_ms") {
+		k = strings.TrimSuffix(k, "_ms") + " (milliseconds)"
 	}
 	k = strings.ReplaceAll(k, "_", " ")
 	return strings.ToUpper(k[:1]) + k[1:]

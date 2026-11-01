@@ -34,8 +34,9 @@ type alertID struct {
 }
 
 type alertState struct {
-	active   bool
-	lastEmit time.Time
+	eventType EventType
+	active    bool
+	lastEmit  time.Time
 	// Recovery uses the last emitted severity for minimum-level delivery filtering.
 	lastLevel    slog.Level
 	firstFailure time.Time
@@ -67,11 +68,11 @@ func (m *Manager) Notify(ctx context.Context, ev Event) {
 	if now.IsZero() {
 		now = m.clock.Now()
 	}
-	if ev.IsRecovery {
+	if ev.IsRecovery && ev.Type != Notice {
 		m.resolveAt(ctx, now, ev.Kind, ev.Key, ev.Message, ev.Fields...)
 		return
 	}
-	m.notifyAt(ctx, now, ev.Level, ev.Kind, ev.Key, ev.Message, ev.Fields...)
+	m.notifyAt(ctx, now, ev)
 }
 
 // Resolve uses the last emitted alert severity for minimum-level delivery filtering.
@@ -79,40 +80,44 @@ func (m *Manager) Resolve(ctx context.Context, kind, key, msg string, fields ...
 	m.resolveAt(ctx, m.clock.Now(), kind, key, msg, fields...)
 }
 
+// Active reports unresolved incidents independently of notice suppression state.
 func (m *Manager) Active(kind, key string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	st, ok := m.state[alertID{kind: kind, key: key}]
-	return ok && st.active
+	return ok && st.active && st.eventType == Incident
 }
 
-func (m *Manager) notifyAt(
-	ctx context.Context, now time.Time, level slog.Level, kind, key, msg string, fields ...slog.Attr,
-) {
+func (m *Manager) notifyAt(ctx context.Context, now time.Time, ev Event) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	id := alertID{kind: kind, key: key}
+	id := alertID{kind: ev.Kind, key: ev.Key}
 	st, exists := m.state[id]
-	transition := !exists || !st.active
+	transition := !exists || !st.active || st.eventType != ev.Type
 	shouldEmit := transition
 	repeatEvery := m.cfg.RepeatEvery
-	if duration, ok := m.cfg.PerKind[kind]; ok {
+	if duration, ok := m.cfg.PerKind[ev.Kind]; ok {
 		repeatEvery = duration
 	}
 	if !shouldEmit && repeatEvery > 0 && now.Sub(st.lastEmit) >= repeatEvery {
 		shouldEmit = true
 	}
 	if transition {
-		st.firstFailure = now
+		st = alertState{eventType: ev.Type}
+		if ev.Type == Incident {
+			st.firstFailure = now
+		}
 	}
 	st.active = true
-	st.lastFailure = now
-	st.lastMessage = msg
-	st.lastFields = slices.Clone(fields)
+	if ev.Type == Incident {
+		st.lastFailure = now
+		st.lastMessage = ev.Message
+		st.lastFields = slices.Clone(ev.Fields)
+	}
 	if shouldEmit {
 		st.lastEmit = now
-		st.lastLevel = level
-		m.emit(ctx, level, kind, key, msg, transition, false, st.observations(now, fields))
+		st.lastLevel = ev.Level
+		m.emit(ctx, ev.Level, ev.Kind, ev.Key, ev.Message, transition, ev.IsRecovery, ev.Type, st.observations(now, ev.Fields))
 	}
 	m.state[id] = st
 }
@@ -132,13 +137,18 @@ func (m *Manager) resolveAt(
 		msg = "RECOVERED: " + msg
 	}
 	fields = st.observations(now, fields)
-	previous := append([]slog.Attr{slog.String("message", st.lastMessage)}, st.lastFields...)
-	fields = append(fields, slog.GroupAttrs("last_failure", previous...))
-	m.emit(ctx, st.lastLevel, kind, key, msg, false, true, fields)
+	if st.eventType == Incident {
+		previous := append([]slog.Attr{slog.String("message", st.lastMessage)}, st.lastFields...)
+		fields = append(fields, slog.GroupAttrs("last_failure", previous...))
+	}
+	m.emit(ctx, st.lastLevel, kind, key, msg, false, true, st.eventType, fields)
 }
 
 func (st alertState) observations(now time.Time, fields []slog.Attr) []slog.Attr {
 	attrs := slices.Clone(fields)
+	if st.eventType == Notice {
+		return append(attrs, slog.Time("observed_at", now))
+	}
 	return append(attrs,
 		slog.Time("first_failure_observed", st.firstFailure),
 		slog.Time("last_failure_observed", st.lastFailure),
@@ -154,14 +164,16 @@ func (m *Manager) emit(
 	level slog.Level,
 	kind, key, msg string,
 	transition, resolved bool,
+	eventType EventType,
 	fields []slog.Attr,
 ) {
-	attrs := make([]slog.Attr, 0, len(fields)+4)
+	attrs := make([]slog.Attr, 0, len(fields)+5)
 	attrs = append(attrs,
 		slog.String("alert_kind", kind),
 		slog.String("alert_key", key),
 		slog.Bool("resolved", resolved),
 		slog.Bool("transition", transition),
+		slog.Bool("notice", eventType == Notice),
 	)
 	attrs = append(attrs, fields...)
 	m.log.LogAttrs(ctx, level, msg, attrs...)

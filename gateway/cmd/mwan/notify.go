@@ -192,6 +192,7 @@ func fireSelfTestEvent(cfg *config.Config, logger *slog.Logger, flags notifyFlag
 		Now:     time.Now(),
 		Level:   flags.level,
 		Kind:    flags.kind,
+		Type:    notify.Notice,
 		Key:     flags.key,
 		Message: flags.message,
 		Fields: []slog.Attr{

@@ -31,13 +31,20 @@ type EmailConfig struct {
 	MsmtprcPath   string `toml:"msmtprc_path"`
 }
 
-// Event is the structured payload one Notify call carries through the
-// boundary. Kind is required and identifies the alert type; Key is the
-// optional sub-key (e.g. peer pubkey, vmid, iface). Now is supplied by
-// the caller so tests can drive a deterministic clock. IsRecovery flips
-// the Manager into the Resolve path; callers normally use Notify or
-// Resolve directly rather than building Event by hand.
+// EventType distinguishes failed observations from standalone notices.
+type EventType uint8
+
+const (
+	Incident EventType = iota
+	Notice
+)
+
+// Event uses Kind and Key for suppression and repeat timing.
+// Event.Now records the caller's observation time.
+// The zero Type tracks incident history. Notice omits failure history.
+// Incident recovery requires an active incident; notice recovery does not.
 type Event struct {
+	Type       EventType
 	Now        time.Time
 	Level      slog.Level
 	Kind       string

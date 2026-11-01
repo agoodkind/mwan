@@ -100,9 +100,10 @@ func (w *watchdog) triggerBGPFailover(ctx context.Context, cfg *watchdogconfig.C
 	completeMsg := fmt.Sprintf("BGP FAILOVER COMPLETE: LXC %s announcing", cfg.Failover.LXCID)
 	elapsed := w.since(start).Round(time.Second)
 	w.notify.Notify(ctx, notify.Event{
-		Now:     time.Time{},
+		Now:     w.now(),
 		Level:   slog.LevelError,
 		Kind:    "bgp-failover-complete",
+		Type:    notify.Notice,
 		Key:     cfg.MwanVMID,
 		Message: completeMsg,
 		Fields: []slog.Attr{
@@ -185,9 +186,10 @@ func (w *watchdog) triggerBGPRecovery(ctx context.Context, cfg *watchdogconfig.C
 	// Also emit a dedicated "bgp-recovered" event so dashboards or tests that
 	// gate on the explicit recovery kind see the transition.
 	w.notify.Notify(ctx, notify.Event{
-		Now:     time.Time{},
+		Now:     w.now(),
 		Level:   slog.LevelError,
 		Kind:    "bgp-recovered",
+		Type:    notify.Notice,
 		Key:     cfg.MwanVMID,
 		Message: recoveryMsg,
 		Fields: []slog.Attr{
@@ -197,7 +199,7 @@ func (w *watchdog) triggerBGPRecovery(ctx context.Context, cfg *watchdogconfig.C
 			slog.String("lxc", cfg.Failover.LXCID),
 			slog.String("vmid", cfg.MwanVMID),
 		},
-		IsRecovery: false,
+		IsRecovery: true,
 	})
 
 	w.failoverMu.Lock()

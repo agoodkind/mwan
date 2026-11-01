@@ -148,8 +148,8 @@ func TestPeerEmailsIdentifyWireGuardAndHandshake(t *testing.T) {
 	module.lastRunAt = now
 	module.lastPeers = map[string]peerState{"peer-key": {endpoint: "192.0.2.1:51820", handshake: now.Add(-6 * time.Minute)}}
 	module.EvaluateAlerts(t.Context(), module.Log, now)
-	requireEmailText(t, server, "WireGuard peer peer-key exceeded the handshake error threshold", "Interface: wg-peers", "Target: operator@router", "Endpoint: 192.0.2.1:51820", "Handshake age s: 360", "Threshold s: 300", "Last handshake: 2026-10-31 11:54:00 UTC (UTC+00:00)")
+	requireEmailText(t, server, "WireGuard peer peer-key exceeded the handshake error threshold", "Interface: wg-peers", "Target: operator@router", "Endpoint: 192.0.2.1:51820", "Handshake age (seconds): 360", "Threshold (seconds): 300", "Last handshake: 2026-10-31 11:54:00 UTC (UTC+00:00)")
 	module.lastPeers = map[string]peerState{"peer-key": {endpoint: "192.0.2.1:51820", handshake: now.Add(time.Minute)}}
 	module.EvaluateAlerts(t.Context(), module.Log, now.Add(2*time.Minute))
-	requireEmailText(t, server, "Recovered: WireGuard peer peer-key completed a recent handshake", "Handshake age s: 60", "Handshake age s: 360")
+	requireEmailText(t, server, "Recovered: WireGuard peer peer-key completed a recent handshake", "Handshake age (seconds): 60", "Handshake age (seconds): 360")
 }

@@ -66,7 +66,7 @@ func TestResolveEmitsAtNotifyLevelWarn(t *testing.T) {
 	m, h := newManagerForTest()
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 
-	m.notifyAt(context.Background(), now, slog.LevelWarn, "wg", "peer-EYvlZyou", "stalled")
+	m.Notify(context.Background(), Event{Now: now, Level: slog.LevelWarn, Kind: "wg", Key: "peer-EYvlZyou", Message: "stalled"})
 	m.resolveAt(context.Background(), now.Add(time.Minute), "wg", "peer-EYvlZyou", "back to good")
 
 	records := h.snapshot()
@@ -87,7 +87,7 @@ func TestResolveEmitsAtNotifyLevelError(t *testing.T) {
 	m, h := newManagerForTest()
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 
-	m.notifyAt(context.Background(), now, slog.LevelError, "wg", "peer-jz3eKGui", "remote wg show failed")
+	m.Notify(context.Background(), Event{Now: now, Level: slog.LevelError, Kind: "wg", Key: "peer-jz3eKGui", Message: "remote wg show failed"})
 	m.resolveAt(context.Background(), now.Add(time.Minute), "wg", "peer-jz3eKGui", "remote wg show ok")
 
 	records := h.snapshot()
@@ -121,7 +121,7 @@ func TestResolveDoesNotDoublePrefixRecovered(t *testing.T) {
 	m, h := newManagerForTest()
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 
-	m.notifyAt(context.Background(), now, slog.LevelError, "kind", "key", "broken")
+	m.Notify(context.Background(), Event{Now: now, Level: slog.LevelError, Kind: "kind", Key: "key", Message: "broken"})
 	// Caller has already added the prefix; Manager must not stack it.
 	m.resolveAt(context.Background(), now.Add(time.Minute), "kind", "key", "RECOVERED: fixed itself")
 
@@ -146,7 +146,7 @@ func TestManager_StateChangeOnlyByDefault(t *testing.T) {
 	start := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	for i := range 240 {
 		now := start.Add(time.Duration(i) * time.Minute)
-		m.notifyAt(context.Background(), now, slog.LevelWarn, "wg-peer-stalled", "peer1", "stalled")
+		m.Notify(context.Background(), Event{Now: now, Level: slog.LevelWarn, Kind: "wg-peer-stalled", Key: "peer1", Message: "stalled"})
 	}
 
 	if got := h.count(); got != 1 {
@@ -168,7 +168,7 @@ func TestManager_RepeatEveryGlobal(t *testing.T) {
 	start := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	for i := range 120 {
 		now := start.Add(time.Duration(i) * time.Minute)
-		m.notifyAt(context.Background(), now, slog.LevelWarn, "wg-peer-stalled", "peer1", "stalled")
+		m.Notify(context.Background(), Event{Now: now, Level: slog.LevelWarn, Kind: "wg-peer-stalled", Key: "peer1", Message: "stalled"})
 	}
 
 	if got := h.count(); got != 4 {
@@ -195,7 +195,7 @@ func TestManager_PerKindOverride(t *testing.T) {
 	start := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	for i := range 120 {
 		now := start.Add(time.Duration(i) * time.Minute)
-		m.notifyAt(context.Background(), now, slog.LevelWarn, "wg-peer-stalled", "peer1", "stalled")
+		m.Notify(context.Background(), Event{Now: now, Level: slog.LevelWarn, Kind: "wg-peer-stalled", Key: "peer1", Message: "stalled"})
 	}
 	stalledCount := h.count()
 	if stalledCount != 1 {
@@ -204,7 +204,7 @@ func TestManager_PerKindOverride(t *testing.T) {
 
 	for i := range 120 {
 		now := start.Add(time.Duration(i) * time.Minute)
-		m.notifyAt(context.Background(), now, slog.LevelWarn, "wg-reconcile-failed", "peer1", "reconcile failed")
+		m.Notify(context.Background(), Event{Now: now, Level: slog.LevelWarn, Kind: "wg-reconcile-failed", Key: "peer1", Message: "reconcile failed"})
 	}
 	totalCount := h.count()
 	reconcileCount := totalCount - stalledCount

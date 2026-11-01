@@ -40,25 +40,26 @@ func newEmailSink(sender *email.Sender, to, subjectPrefix string, minLevel slog.
 	}
 }
 
-// Send delivers one record. Records below minLevel are dropped so a
-// daemon configured with min_level=ERROR does not ship every WARN to
-// the inbox. The subject is composed as "[prefix] LEVEL: message" or
-// "LEVEL: message" when no prefix is configured. The function name
-// matches the [io.Writer]-style Send shape so the wrapped-error rule
-// recognises it as a transport boundary.
+// Delivery uses the original severity even when the subject uses a status label.
 func (s *emailSink) Send(ctx context.Context, level slog.Level, msg string, fields []slog.Attr) error {
 	if level < s.minLevel {
 		return nil
 	}
 	resolved := false
+	notice := false
 	for _, field := range fields {
 		if field.Key == "resolved" {
 			resolved = field.Value.Bool()
 		}
+		if field.Key == "notice" {
+			notice = field.Value.Bool()
+		}
 	}
-	subject := buildSubject(s.subjectPrefix, level, msg, resolved)
+	subject := buildSubject(s.subjectPrefix, level, msg, resolved, notice)
 	if resolved {
 		msg = "Recovered: " + strings.TrimSpace(strings.TrimPrefix(msg, "RECOVERED:"))
+	} else if notice {
+		msg = "Notice: " + msg
 	}
 	r := slog.NewRecord(s.clock.Now(), level, msg, 0)
 	r.AddAttrs(fields...)
@@ -86,13 +87,11 @@ func (s *emailSink) SendMessage(ctx context.Context, message mailer.Message) err
 	return nil
 }
 
-// buildSubject composes the email subject line as "[prefix] LEVEL:
-// message" or "LEVEL: message" if prefix is empty. The level token
-// matches the upper-case [slog.Level.String] output so subjects sort
-// the same way the original logging email_handler subjects did.
-// Recovery subjects use Recovered while the sender filters the original severity.
-func buildSubject(prefix string, level slog.Level, msg string, resolved bool) string {
+func buildSubject(prefix string, level slog.Level, msg string, resolved, notice bool) string {
 	lvl := strings.ToUpper(level.String())
+	if notice {
+		lvl = "Notice"
+	}
 	if resolved {
 		lvl = "Recovered"
 		msg = strings.TrimSpace(strings.TrimPrefix(msg, "RECOVERED:"))

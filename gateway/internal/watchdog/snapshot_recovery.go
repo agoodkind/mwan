@@ -183,10 +183,12 @@ func (w *watchdog) clearStaleGuestLock(ctx context.Context, phase string) {
 		Now:     w.now(),
 		Level:   slog.LevelWarn,
 		Kind:    alertKindGuestLocked,
+		Type:    notify.Notice,
 		Key:     w.cfg.MwanVMID,
 		Message: "cleared a guest lock left behind by a failed snapshot operation",
 		Fields: []slog.Attr{
 			slog.String("lock", lock),
+			slog.String("vmid", w.cfg.MwanVMID),
 			slog.String("phase", phase),
 		},
 		IsRecovery: false,
@@ -225,11 +227,13 @@ func (w *watchdog) deleteSnapshot(ctx context.Context, name string) error {
 		Now:     w.now(),
 		Level:   slog.LevelWarn,
 		Kind:    alertKindSnapshotForced,
+		Type:    notify.Notice,
 		Key:     w.cfg.MwanVMID,
 		Message: "removed a snapshot entry whose disk snapshot was already gone",
 		Fields: []slog.Attr{
 			slog.String("snapshot", name),
 			slog.Int("forced_deletes", w.forcedDeletes),
+			slog.String("vmid", w.cfg.MwanVMID),
 		},
 		IsRecovery: false,
 	})
