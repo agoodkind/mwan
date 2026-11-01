@@ -10,7 +10,7 @@
 // The module emits one structured log entry per peer per Reconcile pass
 // at DEBUG. Threshold-based alerts fire at WARN when a peer handshake
 // goes stale and at ERROR when it crosses a higher threshold. Recovery
-// emits INFO and clears the alert.
+// uses the previous alert severity and clears the alert.
 //
 // For bidirectional split-brain detection (each side's view of the same
 // peer should agree on endpoint after NAT normalization), run wg on
@@ -153,7 +153,6 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	if m.clock == nil {
 		m.clock = internalclock.Real{}
 	}
-	now := m.clock.Now()
 	runner := m.runWGShow
 	if runner == nil {
 		runner = m.runRemoteWGShow
@@ -164,22 +163,31 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		// single transition email plus one recovery email when SSH comes
 		// back, instead of one log.Error per ~6 minutes governed by the
 		// gklog email subject cooldown.
+		message := fmt.Sprintf("WireGuard status check failed for %s.", m.checkLocation())
+		if errors.Is(err, context.DeadlineExceeded) {
+			message = fmt.Sprintf("WireGuard status check timed out for %s.", m.checkLocation())
+		}
+		fields := append(m.alertContext(), slog.String("err", err.Error()))
 		m.Env.Alerts.NotifyContext(
-			ctx, now, slog.LevelError,
+			ctx, m.clock.Now(), slog.LevelError,
 			"wg-reconcile-failed", "remote-wg-show",
-			"wg: remote wg show failed",
-			slog.String("err", err.Error()),
+			message,
+			fields...,
 		)
 		return nil // do not fail the whole reconcile loop
 	}
 	peers, parseErr := parseWGShowDump(out)
+	now := m.clock.Now()
 	if parseErr != nil {
+		fields := append(m.alertContext(),
+			slog.String("err", parseErr.Error()),
+			slog.Int("raw_lines", strings.Count(out, "\n")),
+		)
 		m.Env.Alerts.NotifyContext(
 			ctx, now, slog.LevelError,
 			"wg-reconcile-failed", "parse-wg-dump",
-			"wg: parse wg dump failed",
-			slog.String("err", parseErr.Error()),
-			slog.Int("raw_lines", strings.Count(out, "\n")),
+			fmt.Sprintf("WireGuard status check returned an invalid peer table for %s.", m.checkLocation()),
+			fields...,
 		)
 		return nil
 	}
@@ -188,12 +196,14 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	m.Env.Alerts.ResolveContext(
 		ctx, now,
 		"wg-reconcile-failed", "remote-wg-show",
-		"wg: remote wg show recovered",
+		fmt.Sprintf("WireGuard status check succeeded for %s.", m.checkLocation()),
+		m.alertContext()...,
 	)
 	m.Env.Alerts.ResolveContext(
 		ctx, now,
 		"wg-reconcile-failed", "parse-wg-dump",
-		"wg: parse wg dump recovered",
+		fmt.Sprintf("WireGuard status check succeeded for %s.", m.checkLocation()),
+		m.alertContext()...,
 	)
 	m.Lock()
 	m.lastPeers = peers
@@ -221,6 +231,30 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	}
 	log.DebugContext(ctx, "wg: reconcile complete", "peer_count", len(peers))
 	return nil
+}
+
+func (m *Module) checkLocation() string {
+	if m.cfg.SSHHost != "" {
+		return fmt.Sprintf("interface %s on SSH target %s", m.cfg.Iface, m.cfg.SSHHost)
+	}
+	return "local interface " + m.cfg.Iface
+}
+
+func (m *Module) alertContext() []slog.Attr {
+	mode, target := "local", "local host"
+	if m.cfg.SSHHost != "" {
+		mode, target = "SSH", m.cfg.SSHHost
+	}
+	command := fmt.Sprintf("wg show %s dump", m.cfg.Iface)
+	if m.cfg.Sudo {
+		command = "sudo -n " + command
+	}
+	return []slog.Attr{
+		slog.String("iface", m.cfg.Iface),
+		slog.String("check_mode", mode),
+		slog.String("target", target),
+		slog.String("command", command),
+	}
 }
 
 // EvaluateAlerts emits per-peer WARN/ERROR/recovery transitions.
@@ -253,28 +287,28 @@ func (m *Module) EvaluateAlerts(ctx context.Context, log *slog.Logger, now time.
 			continue
 		}
 		age := now.Sub(p.handshake)
+		fields := append(m.alertContext(),
+			slog.String("peer", key),
+			slog.String("endpoint", p.endpoint),
+			slog.Time("last_handshake", p.handshake),
+			slog.Int("handshake_age_s", int(age.Seconds())),
+		)
 		switch {
 		case age >= m.cfg.ErrorHandshakeAge:
 			m.Env.Alerts.NotifyContext(
 				ctx,
 				now, slog.LevelError,
 				"wg-peer-stalled", key,
-				"wg: peer handshake stalled past error threshold",
-				slog.String("peer", key),
-				slog.String("endpoint", p.endpoint),
-				slog.Int("handshake_age_s", int(age.Seconds())),
-				slog.Int("threshold_s", int(m.cfg.ErrorHandshakeAge.Seconds())),
+				fmt.Sprintf("WireGuard peer %s exceeded the handshake error threshold for %s.", key, m.checkLocation()),
+				append(fields, slog.Int("threshold_s", int(m.cfg.ErrorHandshakeAge.Seconds())))...,
 			)
 		case age >= m.cfg.WarnHandshakeAge:
 			m.Env.Alerts.NotifyContext(
 				ctx,
 				now, slog.LevelWarn,
 				"wg-peer-stalled", key,
-				"wg: peer handshake stalled past warn threshold",
-				slog.String("peer", key),
-				slog.String("endpoint", p.endpoint),
-				slog.Int("handshake_age_s", int(age.Seconds())),
-				slog.Int("threshold_s", int(m.cfg.WarnHandshakeAge.Seconds())),
+				fmt.Sprintf("WireGuard peer %s exceeded the handshake warning threshold for %s.", key, m.checkLocation()),
+				append(fields, slog.Int("threshold_s", int(m.cfg.WarnHandshakeAge.Seconds())))...,
 			)
 		default:
 			if m.Env.Alerts.Active("wg-peer-stalled", key) {
@@ -282,10 +316,8 @@ func (m *Module) EvaluateAlerts(ctx context.Context, log *slog.Logger, now time.
 					ctx,
 					now,
 					"wg-peer-stalled", key,
-					"wg: peer handshake recovered",
-					slog.String("peer", key),
-					slog.String("endpoint", p.endpoint),
-					slog.Int("handshake_age_s", int(age.Seconds())),
+					fmt.Sprintf("WireGuard peer %s completed a recent handshake for %s.", key, m.checkLocation()),
+					fields...,
 				)
 			}
 		}
@@ -349,6 +381,9 @@ func (m *Module) runRemoteWGShow(ctx context.Context, log *slog.Logger) (string,
 			"err", err,
 			"stderr", stderr,
 		)
+		if cctx.Err() != nil {
+			err = cctx.Err()
+		}
 		return "", fmt.Errorf("ssh %s: %w (stderr=%q)", m.cfg.SSHHost, err, stderr)
 	}
 	log.DebugContext(
@@ -389,6 +424,9 @@ func (m *Module) runLocalWGShow(ctx context.Context, log *slog.Logger, timeout t
 			"err", err,
 			"stderr", stderr,
 		)
+		if cctx.Err() != nil {
+			err = cctx.Err()
+		}
 		return "", fmt.Errorf("local wg show %s: %w (stderr=%q)", m.cfg.Iface, err, stderr)
 	}
 	log.DebugContext(
