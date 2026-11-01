@@ -1,19 +1,26 @@
 package notify
 
 import (
+	"fmt"
 	"log/slog"
 	"sort"
 	"strings"
+	"time"
 )
 
 // dropKeys are slog attrs that already appear in the email subject or
 // in the host-snapshot footer rendered by send-email, so they are
 // stripped from the body to avoid duplication.
 var dropKeys = map[string]struct{}{
-	"level":  {},
-	"module": {},
-	"time":   {},
-	"caller": {},
+	"level":        {},
+	"module":       {},
+	"time":         {},
+	"caller":       {},
+	"alert_kind":   {},
+	"alert_key":    {},
+	"resolved":     {},
+	"transition":   {},
+	"last_failure": {},
 }
 
 // buildKeys collapse into a single Build: line.
@@ -37,6 +44,9 @@ func BuildEmailBody(r slog.Record, boundAttrs []slog.Attr) string {
 
 	var sections []string
 	sections = append(sections, r.Message)
+	if observations := buildObservations(merged, recordResolved(r)); observations != "" {
+		sections = append(sections, observations)
+	}
 
 	if what := buildWhat(merged); what != "" {
 		sections = append(sections, what)
@@ -50,6 +60,25 @@ func BuildEmailBody(r slog.Record, boundAttrs []slog.Attr) string {
 	if extras := buildExtras(merged); extras != "" {
 		sections = append(sections, extras)
 	}
+	r.Attrs(func(attr slog.Attr) bool {
+		if attr.Key != "last_failure" || attr.Value.Kind() != slog.KindGroup {
+			return true
+		}
+		previous := slog.NewRecord(time.Time{}, r.Level, "", 0)
+		current := mergeAttrs(boundAttrs, r)
+		for _, field := range attr.Value.Group() {
+			if field.Key == "message" {
+				previous.Message = field.Value.String()
+				continue
+			}
+			if value, exists := current[field.Key]; exists && value == emailValue(field.Value) {
+				continue
+			}
+			previous.AddAttrs(field)
+		}
+		sections = append(sections, "Last failed observation:\n"+BuildEmailBody(previous, nil))
+		return true
+	})
 
 	return strings.Join(sections, "\n\n")
 }
@@ -63,21 +92,89 @@ func mergeAttrs(bound []slog.Attr, r slog.Record) map[string]string {
 		if _, drop := dropKeys[a.Key]; drop {
 			continue
 		}
-		out[a.Key] = a.Value.String()
+		out[a.Key] = emailValue(a.Value)
 	}
 	r.Attrs(func(a slog.Attr) bool {
 		if _, drop := dropKeys[a.Key]; drop {
 			return true
 		}
-		out[a.Key] = a.Value.String()
+		out[a.Key] = emailValue(a.Value)
 		return true
 	})
 	return out
 }
 
-// buildWhat renders the What: block from the err attr. If err contains
-// a stderr=... substring, the stderr is split onto its own line under
-// the main message line for readability.
+func emailValue(value slog.Value) string {
+	if value.Kind() == slog.KindTime {
+		return value.Time().Format("2006-01-02 15:04:05 MST (UTC-07:00)")
+	}
+	if value.Kind() == slog.KindDuration {
+		return formatDuration(value.Duration())
+	}
+	return value.String()
+}
+
+func formatDuration(duration time.Duration) string {
+	if duration > 0 && duration < time.Second {
+		return "less than 1 second"
+	}
+	remaining := duration.Round(time.Second)
+	var parts []string
+	for _, unit := range []struct {
+		duration time.Duration
+		label    string
+	}{
+		{24 * time.Hour, "day"}, {time.Hour, "hour"}, {time.Minute, "minute"}, {time.Second, "second"},
+	} {
+		count := remaining / unit.duration
+		remaining %= unit.duration
+		if count == 0 {
+			continue
+		}
+		label := unit.label
+		if count != 1 {
+			label += "s"
+		}
+		parts = append(parts, fmt.Sprintf("%d %s", count, label))
+	}
+	if len(parts) == 0 {
+		return "0 seconds"
+	}
+	return strings.Join(parts, ", ")
+}
+
+func recordResolved(record slog.Record) bool {
+	resolved := false
+	record.Attrs(func(attr slog.Attr) bool {
+		if attr.Key == "resolved" {
+			resolved = attr.Value.Bool()
+		}
+		return true
+	})
+	return resolved
+}
+
+func buildObservations(attrs map[string]string, resolved bool) string {
+	observationLabel := "Current observation"
+	if resolved {
+		observationLabel = "Recovery observed"
+	}
+	var lines []string
+	for _, item := range []struct{ key, label string }{
+		{"first_failure_observed", "First failure observed"},
+		{"last_failure_observed", "Latest failure observed"},
+		{"observed_at", observationLabel},
+		{"incident_duration", "Observed duration"},
+	} {
+		if value, ok := attrs[item.key]; ok {
+			lines = append(lines, item.label+": "+value)
+			delete(attrs, item.key)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// Command error output appears separately from the main error detail.
 func buildWhat(attrs map[string]string) string {
 	errVal, ok := attrs["err"]
 	if !ok {
@@ -86,9 +183,9 @@ func buildWhat(attrs map[string]string) string {
 	delete(attrs, "err")
 	main, stderrPart := splitStderr(errVal)
 	if stderrPart == "" {
-		return "What:    " + main
+		return "Error: " + main
 	}
-	return "What:    " + main + "\n         stderr: " + stderrPart
+	return "Error: " + main + "\nCommand error output: " + stderrPart
 }
 
 // splitStderr extracts a stderr="..." (or unquoted stderr=...) fragment
@@ -113,8 +210,7 @@ func splitStderr(err string) (string, string) {
 	return main, rest
 }
 
-// buildWhere renders the Where: line. Skips any of (iface, role,
-// daemon, phase) that are not in attrs.
+// Operational context precedes build and diagnostic metadata.
 func buildWhere(attrs map[string]string) string {
 	var parts []string
 	for _, k := range whereKeys {
@@ -122,13 +218,13 @@ func buildWhere(attrs map[string]string) string {
 		if !ok {
 			continue
 		}
-		parts = append(parts, k+"="+v)
+		parts = append(parts, titleKey(k)+": "+v)
 		delete(attrs, k)
 	}
 	if len(parts) == 0 {
 		return ""
 	}
-	return "Where:   " + strings.Join(parts, ", ")
+	return strings.Join(parts, "\n")
 }
 
 // buildTraceLine renders Trace: <id>    Build: <commit> (dirty). Either
@@ -220,14 +316,14 @@ func buildExtras(attrs map[string]string) string {
 	return strings.Join(lines, "\n")
 }
 
-// titleKey upper-cases the first rune so extra-attr labels read like
-// the other section headers. Multi-word keys with underscores are left
-// as-is because they tend to be machine identifiers (e.g.
-// "remote_addr") and the underscore reads better than space-separated
-// capitalization.
+// Reader labels use spaces while logs retain the original field keys.
 func titleKey(k string) string {
 	if k == "" {
 		return k
 	}
+	if k == "iface" {
+		return "Interface"
+	}
+	k = strings.ReplaceAll(k, "_", " ")
 	return strings.ToUpper(k[:1]) + k[1:]
 }

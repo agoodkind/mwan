@@ -68,11 +68,14 @@ func (a *AlertManager) ResolveContext(
 	msg string,
 	fields ...slog.Attr,
 ) {
-	// notify.Notifier.Resolve does not take a now; the wrapped Manager
-	// reads its clock internally. The now argument is preserved on this
-	// adapter only so module call sites stay unchanged.
-	_ = now
-	a.n.Resolve(ctx, kind, key, msg, fields...)
+	a.n.Notify(ctx, notify.Event{
+		Now:        now,
+		Kind:       kind,
+		Key:        key,
+		Message:    msg,
+		Fields:     fields,
+		IsRecovery: true,
+	})
 }
 
 // Resolve clears the (kind, key) so the next Notify is treated as a

@@ -50,7 +50,16 @@ func (s *emailSink) Send(ctx context.Context, level slog.Level, msg string, fiel
 	if level < s.minLevel {
 		return nil
 	}
-	subject := buildSubject(s.subjectPrefix, level, msg)
+	resolved := false
+	for _, field := range fields {
+		if field.Key == "resolved" {
+			resolved = field.Value.Bool()
+		}
+	}
+	subject := buildSubject(s.subjectPrefix, level, msg, resolved)
+	if resolved {
+		msg = "Recovered: " + strings.TrimSpace(strings.TrimPrefix(msg, "RECOVERED:"))
+	}
 	r := slog.NewRecord(s.clock.Now(), level, msg, 0)
 	r.AddAttrs(fields...)
 	body := BuildEmailBody(r, nil)
@@ -81,8 +90,13 @@ func (s *emailSink) SendMessage(ctx context.Context, message mailer.Message) err
 // message" or "LEVEL: message" if prefix is empty. The level token
 // matches the upper-case [slog.Level.String] output so subjects sort
 // the same way the original logging email_handler subjects did.
-func buildSubject(prefix string, level slog.Level, msg string) string {
+// Recovery subjects use Recovered while the sender filters the original severity.
+func buildSubject(prefix string, level slog.Level, msg string, resolved bool) string {
 	lvl := strings.ToUpper(level.String())
+	if resolved {
+		lvl = "Recovered"
+		msg = strings.TrimSpace(strings.TrimPrefix(msg, "RECOVERED:"))
+	}
 	prefix = strings.TrimSpace(prefix)
 	if prefix == "" {
 		return lvl + ": " + msg

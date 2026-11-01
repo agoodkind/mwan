@@ -40,9 +40,9 @@ func TestBuildEmailBodyShape(t *testing.T) {
 
 	got := BuildEmailBody(r, bound)
 	want := "wg: remote wg show failed\n\n" +
-		"What:    ssh agoodkind@host: exit status 255\n" +
-		"         stderr: Permission denied (publickey)\n\n" +
-		"Where:   iface=mbrains, role=oob, daemon=ifmgr, phase=periodic-reconcile\n\n" +
+		"Error: ssh agoodkind@host: exit status 255\n" +
+		"Command error output: Permission denied (publickey)\n\n" +
+		"Interface: mbrains\nRole: oob\nDaemon: ifmgr\nPhase: periodic-reconcile\n\n" +
 		"Trace:   4df84777    Build: bcf4019 (dirty) binhash=b80490fd54b5"
 
 	if got != want {
@@ -62,7 +62,7 @@ func TestBuildEmailBodyMissingOptionalWhere(t *testing.T) {
 	)
 
 	got := BuildEmailBody(r, nil)
-	if !strings.Contains(got, "Where:   role=primary, phase=switchover") {
+	if !strings.Contains(got, "Role: primary\nPhase: switchover") {
 		t.Fatalf("Where line missing or malformed:\n%s", got)
 	}
 	if strings.Contains(got, "iface=") || strings.Contains(got, "daemon=") {
@@ -83,11 +83,11 @@ func TestBuildEmailBodyExtraKey(t *testing.T) {
 	)
 
 	got := BuildEmailBody(r, nil)
-	if !strings.Contains(got, "Remote_addr: 10.0.0.1") {
+	if !strings.Contains(got, "Remote addr: 10.0.0.1") {
 		t.Fatalf("extra key not rendered:\n%s", got)
 	}
 	traceIdx := strings.Index(got, "Trace:")
-	extraIdx := strings.Index(got, "Remote_addr:")
+	extraIdx := strings.Index(got, "Remote addr:")
 	if traceIdx < 0 || extraIdx < 0 || traceIdx > extraIdx {
 		t.Fatalf("section order wrong (trace=%d extra=%d):\n%s", traceIdx, extraIdx, got)
 	}
@@ -104,7 +104,7 @@ func TestBuildEmailBodyErrWithoutStderr(t *testing.T) {
 	)
 
 	got := BuildEmailBody(r, nil)
-	if !strings.Contains(got, "What:    context deadline exceeded") {
+	if !strings.Contains(got, "Error: context deadline exceeded") {
 		t.Fatalf("plain err not rendered cleanly:\n%s", got)
 	}
 	if strings.Contains(got, "stderr:") {
