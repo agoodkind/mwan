@@ -107,7 +107,7 @@ func newCheckOwnedCommand() *cobra.Command {
 }
 
 func newCheckNetworkCommand() *cobra.Command {
-	command := leafCommand(string(gateModeCheckNetwork)+" <network_json> <schema_dir>", "Validate network intent and provider configuration.", "  mwan deploy check-network /etc/mwan/network.json /usr/local/share/wanconfig/yang", requiredArguments(2))
+	command := leafCommand(string(gateModeCheckNetwork)+" <network_json> <schema_dir>", "Validate network intent and provider configuration.", "  mwan deploy check-network /etc/mwan/network.json /usr/local/share/wanconfig/yang", cobra.ExactArgs(2))
 	command.Long = "Validate network intent and provider configuration. network_json selects the WANCONFIG JSON document. schema_dir selects the YANG model directory."
 	command.RunE = func(current *cobra.Command, arguments []string) error {
 		deps := newDeployGateDeps(current.OutOrStdout(), current.ErrOrStderr())
@@ -117,7 +117,7 @@ func newCheckNetworkCommand() *cobra.Command {
 }
 
 func newCheckNetworkdCommand() *cobra.Command {
-	command := leafCommand(string(gateModeCheckNetworkd)+" <network_json> <schema_dir> <unit_dir>", "Compare networkd units with configured network intent.", "  mwan deploy check-networkd /etc/mwan/network.json /usr/local/share/wanconfig/yang /etc/systemd/network", requiredArguments(3))
+	command := leafCommand(string(gateModeCheckNetworkd)+" <network_json> <schema_dir> <unit_dir>", "Compare networkd units with configured network intent.", "  mwan deploy check-networkd /etc/mwan/network.json /usr/local/share/wanconfig/yang /etc/systemd/network", cobra.ExactArgs(3))
 	command.Long = "Compare networkd units with configured network intent. network_json selects the WANCONFIG JSON document. schema_dir selects its YANG model directory. unit_dir selects the systemd-networkd unit directory to inspect."
 	command.RunE = func(current *cobra.Command, arguments []string) error {
 		return commandResult(checkNetworkd(arguments[0], arguments[1], arguments[2], current.OutOrStdout()))
@@ -159,7 +159,7 @@ func newCheckReleaseCommand() *cobra.Command {
 }
 
 func newCheckFirewallCommand() *cobra.Command {
-	command := leafCommand(string(gateModeCheckFirewall)+" <network_json> <schema_dir>", "Apply and inspect firewall rules in a separate network namespace.", "  mwan deploy check-firewall /etc/mwan/network.json /usr/local/share/wanconfig/yang", requiredArguments(2))
+	command := leafCommand(string(gateModeCheckFirewall)+" <network_json> <schema_dir>", "Apply and inspect firewall rules in a separate network namespace.", "  mwan deploy check-firewall /etc/mwan/network.json /usr/local/share/wanconfig/yang", cobra.ExactArgs(2))
 	var isolated bool
 	command.Flags().BoolVar(&isolated, "isolated", false, "Run inside the caller-created network namespace.")
 	command.RunE = func(current *cobra.Command, arguments []string) error {
@@ -169,7 +169,7 @@ func newCheckFirewallCommand() *cobra.Command {
 }
 
 func newInspectFirewallCommand() *cobra.Command {
-	command := leafCommand(string(gateModeInspectFirewall)+" <network_json> <schema_dir>", "Inspect current firewall rules against network intent.", "  mwan deploy inspect-firewall /etc/mwan/network.json /usr/local/share/wanconfig/yang", requiredArguments(2))
+	command := leafCommand(string(gateModeInspectFirewall)+" <network_json> <schema_dir>", "Inspect current firewall rules against network intent.", "  mwan deploy inspect-firewall /etc/mwan/network.json /usr/local/share/wanconfig/yang", cobra.ExactArgs(2))
 	command.RunE = func(current *cobra.Command, arguments []string) error {
 		return commandResult(inspectFirewall(arguments[0], arguments[1], current.OutOrStdout(), current.ErrOrStderr()))
 	}
@@ -177,7 +177,7 @@ func newInspectFirewallCommand() *cobra.Command {
 }
 
 func newCheckFailoverCommand() *cobra.Command {
-	command := leafCommand(string(gateModeCheckFailover)+" <config.toml>", "Validate failover configuration and preconditions.", "  mwan deploy check-failover /etc/mwan/config.toml", requiredArguments(1))
+	command := leafCommand(string(gateModeCheckFailover)+" <config.toml>", "Validate failover configuration and preconditions.", "  mwan deploy check-failover /etc/mwan/config.toml", cobra.ExactArgs(1))
 	command.Long = "Validate failover configuration and preconditions. config.toml selects the TOML configuration with the primary and failover guest identifiers and agent addresses."
 	command.RunE = func(current *cobra.Command, arguments []string) error {
 		return commandResult(checkFailover(arguments[0], current.ErrOrStderr()))

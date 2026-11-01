@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 
 	"goodkind.io/mwan/internal/config"
@@ -18,51 +17,7 @@ import (
 	"goodkind.io/mwan/internal/observation"
 )
 
-type observationOptions struct {
-	check          string
-	paths          string
-	runtimePath    string
-	pathsSpecified bool
-}
-
-func runSingleObservation(options observationOptions, input io.Reader, output, diagnostics io.Writer) int {
-	if len(options.check) > 64*1024 || len(options.paths) > 64*1024 {
-		fmt.Fprintln(diagnostics, "observe JSON input exceeds 64 KiB")
-		return 2
-	}
-	var paths []observation.PathIdentity
-	pathDecoder := json.NewDecoder(strings.NewReader(options.paths))
-	pathDecoder.DisallowUnknownFields()
-	if err := pathDecoder.Decode(&paths); err != nil {
-		fmt.Fprintln(diagnostics, "observe requires valid path identities JSON")
-		return 2
-	}
-	var remaining json.RawMessage
-	if err := pathDecoder.Decode(&remaining); err != io.EOF {
-		fmt.Fprintln(diagnostics, "observe requires exactly one path identities JSON array")
-		return 2
-	}
-	if options.check == "" {
-		input = io.LimitReader(input, 64*1024)
-	} else {
-		input = strings.NewReader(options.check)
-	}
-	decoder := json.NewDecoder(input)
-	decoder.DisallowUnknownFields()
-	var spec observation.CheckSpec
-	if err := decoder.Decode(&spec); err != nil {
-		fmt.Fprintln(diagnostics, "observe requires a valid CheckSpec JSON object")
-		return 2
-	}
-	var trailing json.RawMessage
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		fmt.Fprintln(diagnostics, "observe requires exactly one CheckSpec JSON object")
-		return 2
-	}
-	if err := observation.Validate(spec); err != nil {
-		fmt.Fprintln(diagnostics, err)
-		return 2
-	}
+func runSingleObservation(input singleObservationInput, runtimePath string, pathsSpecified bool, output, diagnostics io.Writer) int {
 	binary, err := os.Executable()
 	if err != nil {
 		fmt.Fprintln(diagnostics, "observe executable identity is unavailable")
@@ -72,13 +27,13 @@ func runSingleObservation(options observationOptions, input io.Reader, output, d
 	defer func() { _ = closer.Close() }()
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
-	runtimeConfig, err := observationRuntime(options.pathsSpecified, options.runtimePath, binary, paths)
+	runtimeConfig, err := observationRuntime(pathsSpecified, runtimePath, binary, input.paths)
 	if err != nil {
 		fmt.Fprintln(diagnostics, err)
 		return 2
 	}
 	executor := observation.NewExecutor(runtimeConfig, log)
-	result := executor.Run(ctx, spec)
+	result := executor.Run(ctx, input.check)
 	if err := json.NewEncoder(output).Encode(result); err != nil {
 		fmt.Fprintln(diagnostics, "observe result output failed")
 		return 1

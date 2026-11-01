@@ -10,6 +10,7 @@ import (
 
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/installspec"
+	"goodkind.io/mwan/internal/observation"
 	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
@@ -82,6 +83,7 @@ func newObservationCommand() *cobra.Command {
 	command.Long = "Run a typed observation and print JSON results. Read exactly one CheckSpec JSON object from --check or standard input. --paths supplies a JSON array of current path identities.\n\nWith --continuous, --settings supplies recurring observation settings and --config selects notification configuration. Each completed check prints a result record. Cancellation prints a terminal summary. Continuous mode rejects --check, --paths, and --runtime-settings."
 	var check, paths, runtimePath, settingsPath, configPath string
 	var continuous bool
+	var prepared singleObservationInput
 	flags := command.Flags()
 	flags.StringVar(&check, "check", "", "Read CheckSpec JSON from this value; an empty value reads standard input.")
 	flags.StringVar(&paths, "paths", "[]", "Set current typed path identities as a JSON array.")
@@ -89,12 +91,23 @@ func newObservationCommand() *cobra.Command {
 	flags.BoolVar(&continuous, "continuous", false, "Run scheduled checks until cancellation, then print terminal counts.")
 	flags.StringVar(&settingsPath, "settings", "", "Read recurring observation settings as JSON.")
 	configFlag(command, &configPath)
-	command.PreRunE = func(_ *cobra.Command, _ []string) error {
+	command.PreRunE = func(current *cobra.Command, _ []string) error {
 		if continuous && (check != "" || runtimePath != "" || flags.Changed("paths")) {
 			return fmt.Errorf("continuous observations use --settings")
 		}
 		if !continuous && (settingsPath != "" || configPath != "") {
 			return fmt.Errorf("--settings and --config require --continuous")
+		}
+		if !continuous {
+			decoded, err := prepareSingleObservation(check, paths, current.InOrStdin())
+			if err == nil {
+				err = observation.Validate(decoded.check)
+			}
+			if err != nil {
+				fmt.Fprintln(current.ErrOrStderr(), err)
+				return commandResult(2)
+			}
+			prepared = decoded
 		}
 		return nil
 	}
@@ -102,12 +115,7 @@ func newObservationCommand() *cobra.Command {
 		if continuous {
 			return commandResult(runContinuousObservation(settingsPath, configPath, current.OutOrStdout(), current.ErrOrStderr()))
 		}
-		options := observationOptions{check: check, paths: paths, runtimePath: runtimePath, pathsSpecified: flags.Changed("paths")}
-		code := runSingleObservation(options, current.InOrStdin(), current.OutOrStdout(), current.ErrOrStderr())
-		if code == 2 {
-			current.SilenceUsage = false
-		}
-		return commandResult(code)
+		return commandResult(runSingleObservation(prepared, runtimePath, flags.Changed("paths"), current.OutOrStdout(), current.ErrOrStderr()))
 	}
 	return command
 }

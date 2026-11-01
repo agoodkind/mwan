@@ -158,7 +158,6 @@ func TestCLIUsageAndRuntimeErrors(t *testing.T) {
 		{[]string{"watchdog", "--red-team", "not-a-scenario"}, 1, "mwan watchdog"},
 		{[]string{"agent", "--config", ""}, 1, "mwan agent"},
 		{[]string{"pd", ""}, 1, "mwan pd"},
-		{[]string{"deploy", "check-failover", ""}, 64, "mwan deploy check-failover"},
 		{[]string{"observe", "--unknown"}, 2, "mwan observe"},
 		{[]string{"install", "--apply"}, 2, "mwan install"},
 		{[]string{"version", "extra"}, 2, "mwan version"},
@@ -315,6 +314,94 @@ func TestCLICheckReleaseConfigurationFailuresUseStdout(t *testing.T) {
 		output, diagnostics, code := runCLIProcess(t, binary, "deploy", "check-release", "provider-1", "mwan", "--config", path)
 		if code != 1 || !strings.HasPrefix(output, "release configuration rejected: ") || strings.Contains(output, "Usage:") || strings.Contains(diagnostics, "Usage:") || strings.Contains(diagnostics, "mwan deploy check-release:") {
 			t.Fatalf("release configuration %s exit=%d output=%s diagnostics=%s", path, code, output, diagnostics)
+		}
+	}
+}
+
+func TestCLIDeploymentEmptyFilePathsPreserveRuntimeFailures(t *testing.T) {
+	binary := buildReportCommand(t)
+	validConfig := filepath.Join(t.TempDir(), "valid.toml")
+	if err := os.WriteFile(validConfig, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	schema := filepath.Join("..", "..", "internal", "yangpub", "schema")
+	for _, parent := range []string{"deploy", "deploy-gate"} {
+		for _, test := range []struct {
+			action    string
+			arguments []string
+			stdout    string
+			stderr    string
+		}{
+			{"check-network", []string{"", schema}, "network configuration rejected: ", ""},
+			{"check-networkd", []string{"", schema, t.TempDir()}, "network configuration rejected: ", ""},
+			{"check-firewall", []string{"", schema}, "", "no such file or directory"},
+			{"inspect-firewall", []string{"", schema}, "", "no such file or directory"},
+			{"check-failover", []string{""}, "", "failover configuration rejected: read config .:"},
+		} {
+			t.Run(parent+"/"+test.action, func(t *testing.T) {
+				arguments := append([]string{parent, test.action}, test.arguments...)
+				command := exec.CommandContext(t.Context(), binary, arguments...)
+				command.Env = append(os.Environ(), "MWAN_CONFIG="+validConfig)
+				var output, diagnostics bytes.Buffer
+				command.Stdout, command.Stderr = &output, &diagnostics
+				err := command.Run()
+				var exitError *exec.ExitError
+				if !errors.As(err, &exitError) || exitError.ExitCode() != 1 {
+					t.Fatalf("empty path %v returned %v: stdout=%s stderr=%s", arguments, err, output.String(), diagnostics.String())
+				}
+				if test.stdout != "" && !strings.HasPrefix(output.String(), test.stdout) {
+					t.Fatalf("stdout=%q, want prefix %q", output.String(), test.stdout)
+				}
+				if test.stdout == "" && output.Len() != 0 {
+					t.Fatalf("unexpected stdout: %s", output.String())
+				}
+				if test.stderr != "" && !strings.Contains(diagnostics.String(), test.stderr) {
+					t.Fatalf("stderr=%q, want %q", diagnostics.String(), test.stderr)
+				}
+				if strings.Contains(output.String(), "Usage:") || strings.Contains(diagnostics.String(), "Usage:") {
+					t.Fatalf("runtime failure appended help: stdout=%s stderr=%s", output.String(), diagnostics.String())
+				}
+			})
+			_, diagnostics, code := runCLIProcess(t, binary, parent, test.action)
+			if code != 64 || strings.Count(diagnostics, "Usage:") != 1 {
+				t.Fatalf("invalid argument count for %s %s returned %d: %s", parent, test.action, code, diagnostics)
+			}
+		}
+	}
+}
+
+func TestCLIObservationRuntimeFileFailureDoesNotPrintHelp(t *testing.T) {
+	binary := buildReportCommand(t)
+	spec := observation.CheckSpec{
+		ID: "runtime-file", Dimension: observation.DimensionDownstreamApplication,
+		Operation: observation.OperationHTTP, Observer: observation.Endpoint{Kind: observation.EndpointLocal, MachineID: "runtime-file-observer"},
+		Family: observation.FamilyIPv4, Source: netip.MustParseAddr("127.0.0.1"), Target: "http://127.0.0.1:1",
+		TimeoutSeconds: 2, MaxAgeSeconds: 10, ExpectedHTTPStatus: []int{http.StatusOK},
+	}
+	request, err := json.Marshal(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, standardInput := range []bool{false, true} {
+		arguments := []string{"observe", "--runtime-settings", filepath.Join(t.TempDir(), "missing.json")}
+		input := ""
+		if standardInput {
+			input = string(request)
+		} else {
+			arguments = append(arguments, "--check", string(request))
+		}
+		output, diagnostics, code := runCLIProcessInput(t, binary, input, arguments...)
+		if code != 2 || output != "" || !strings.Contains(diagnostics, "observe runtime settings cannot be opened") || strings.Contains(diagnostics, "Usage:") {
+			t.Fatalf("runtime file failure returned %d: stdout=%s stderr=%s", code, output, diagnostics)
+		}
+	}
+	for _, arguments := range [][]string{
+		{"observe", "--check", "{"},
+		{"observe", "--check", string(request), "--paths", "{"},
+	} {
+		_, diagnostics, code := runCLIProcess(t, binary, arguments...)
+		if code != 2 || strings.Count(diagnostics, "Usage:") != 1 {
+			t.Fatalf("invalid observation input returned %d: %s", code, diagnostics)
 		}
 	}
 }
