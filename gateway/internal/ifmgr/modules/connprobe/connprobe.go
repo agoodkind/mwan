@@ -62,8 +62,8 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	if m.cfg.Iface == "" {
 		return fmt.Errorf("connectivity_probe: iface is required")
 	}
-	if len(m.cfg.TargetsV6) == 0 {
-		return fmt.Errorf("connectivity_probe: at least one targets_v6 entry is required")
+	if len(m.cfg.TargetsV4) == 0 && len(m.cfg.TargetsV6) == 0 {
+		return fmt.Errorf("connectivity_probe: add at least one entry to targets_v4 or targets_v6")
 	}
 	m.lastResult = map[string]bool{}
 	m.firstFailedAt = map[string]time.Time{}
