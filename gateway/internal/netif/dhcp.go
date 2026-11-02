@@ -240,7 +240,8 @@ func (c *DHCPClient) LastLease() LeaseInfo {
 	return last
 }
 
-// LinkChanged requests a bound client to check its interface against its lease without blocking.
+// LinkChanged wakes a bound client to check its lease interface. An acquiring
+// client can retry when its interface comes back up.
 func (c *DHCPClient) LinkChanged() {
 	select {
 	case c.linkChanged <- struct{}{}:
