@@ -64,7 +64,7 @@ func TestPeerMatchesTarget(t *testing.T) {
 	}
 }
 
-func TestHTTPCheckReturnsStatusCode(t *testing.T) {
+func TestHTTPCheck4ReturnsStatusCode(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(
@@ -74,7 +74,7 @@ func TestHTTPCheckReturnsStatusCode(t *testing.T) {
 	}))
 	defer server.Close()
 
-	statusCode, err := HTTPCheck(context.Background(), "", server.URL, time.Second)
+	statusCode, err := HTTPCheck4(context.Background(), "", server.URL, time.Second)
 	if err != nil {
 		t.Fatalf("HTTPCheck: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestHTTPGetRejectsResponseBodyOverLimit(t *testing.T) {
 	}
 }
 
-func TestHTTPCheckDoesNotApplyHTTPGetBodyLimit(t *testing.T) {
+func TestHTTPCheck4DoesNotApplyHTTPGetBodyLimit(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(
@@ -149,7 +149,7 @@ func TestHTTPCheckDoesNotApplyHTTPGetBodyLimit(t *testing.T) {
 	}))
 	defer server.Close()
 
-	statusCode, err := HTTPCheck(context.Background(), "", server.URL, time.Second)
+	statusCode, err := HTTPCheck4(context.Background(), "", server.URL, time.Second)
 	if err != nil {
 		t.Fatalf("HTTPCheck: %v", err)
 	}

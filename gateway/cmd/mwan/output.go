@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"goodkind.io/mwan/internal/configstate"
+	"goodkind.io/mwan/internal/healthcheck"
 	"goodkind.io/mwan/internal/ifmgr/modules/npt"
 	"goodkind.io/mwan/internal/logging"
 	"goodkind.io/mwan/internal/netif"
@@ -36,7 +37,7 @@ func outputFormatFlag(command *cobra.Command, format *string, defaultFormat stri
 }
 
 type outputValue interface {
-	configstate.State | statuspush.Status | []netif.PingAttempt | []debugConnectivityWANResult | []debugHTTPObservation | npt.RenderedTable | debugPrefixesResult | debugRoutesResult | debugPolicyResult | debugStatusResult | debugStatsResult | debugSimulationResult | debugSystemdResult
+	configstate.State | statuspush.Status | []netif.PingAttempt | []debugConnectivityWANResult | []debugHTTPObservation | npt.RenderedTable | debugPrefixesResult | debugRoutesResult | debugPolicyResult | debugStatusResult | debugStatsResult | debugSimulationResult | debugSystemdResult | healthcheck.Record | []healthcheck.Record
 }
 
 // WriteJSON encodes a finite result as one JSON record.

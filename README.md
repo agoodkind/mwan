@@ -37,6 +37,36 @@ accept `--output-format text` or `--output-format json`. The status commands
 default to JSON, and debug views default to text. Finite JSON output contains
 one object or array. Use `--verbose` to print diagnostic logs to standard error.
 
+## Check WAN health
+
+Run `mwan health` to probe each enabled WAN with its configured ping targets,
+attempt count, HTTP URLs, and timeout from WANCONFIG. Linux requires raw socket
+permission for ICMP probes. TOML supplies application settings through the
+existing `--config` option. Health probes do not load optional application
+observation files or write daemon health state.
+
+```sh
+mwan health --config /etc/mwan/config.toml
+mwan health --watch --output-format json
+```
+
+The command checks every configured target in a complete sweep and sends the
+configured number of ping attempts per target. Each address family with ping
+targets also receives one HTTP request per configured URL. Empty families and
+disabled policies do not trigger probes.
+
+The command defaults to text and exits after a complete sweep. Finite JSON
+contains one array of raw probe records. `--watch` starts each WAN independently
+and waits for that WAN's configured interval after its previous sweep finishes.
+Watched JSON contains one record per line as attempts complete. Interrupting
+the command cancels probes and waits for workers to finish.
+
+Records include WAN identity, interface, family, target, attempt, timestamp,
+returned measurements, and probe errors. Completed failed probes remain result
+data. Argument, configuration, and output errors cause a nonzero exit. Use
+`--network` and `--schema-dir` to select the existing WANCONFIG document and
+validation models, and `--verbose` for diagnostic logs on standard error.
+
 ## Layout
 
 | Path | What it holds |

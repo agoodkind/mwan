@@ -14,7 +14,6 @@ import (
 
 	"goodkind.io/mwan/internal/agent"
 	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/healthcheck"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/networkjson"
 	"goodkind.io/mwan/internal/redteam"
@@ -143,13 +142,18 @@ func newIfmgrCommand() *cobra.Command {
 }
 
 func newHealthCommand() *cobra.Command {
-	command := leafCommand("health", "Continuously probe IPv4, IPv6, and HTTP connectivity.", "  mwan health", cobra.NoArgs)
-	command.RunE = func(_ *cobra.Command, _ []string) error {
-		if err := healthcheck.Run(); err != nil {
-			slog.Error("health command failed", "err", err)
-			return fmt.Errorf("health: %w", err)
-		}
-		return nil
+	command := leafCommand("health", "Probe each configured WAN once or repeat with --watch.", "  mwan health --config /etc/mwan/config.toml\n  mwan health --watch --output-format json", cobra.NoArgs)
+	var path string
+	var options healthFlags
+	configFlag(command, &path)
+	networkFlags(command, &options.networkPath, &options.schemaDir)
+	outputFormatFlag(command, &options.outputFormat, "text")
+	command.Flags().BoolVar(&options.watch, "watch", false, "Repeat each WAN sweep after its configured check interval.")
+	command.Flags().BoolVar(&options.verbose, "verbose", false, "Print diagnostic logs to standard error.")
+	command.RunE = func(current *cobra.Command, _ []string) error {
+		ctx, cancel := signal.NotifyContext(current.Context(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		return runHealthOptions(ctx, path, options, current.OutOrStdout(), current.ErrOrStderr())
 	}
 	return command
 }

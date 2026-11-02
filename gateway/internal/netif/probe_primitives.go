@@ -192,18 +192,6 @@ func Ping6WithLogger(ctx context.Context, logger *slog.Logger, iface string, tar
 	return NewV6Probe(iface, logger).PingICMP6(ctx, target, timeout)
 }
 
-// HTTPCheck uses the probe interface for outbound connections so HTTP and
-// ICMP checks observe the same source-routing behavior.
-func HTTPCheck(
-	ctx context.Context, iface string, url string, timeout time.Duration,
-) (int, error) {
-	result, err := httpGet(ctx, slog.Default(), iface, "", url, timeout, false, "HTTPCheck")
-	if err != nil {
-		return 0, err
-	}
-	return result.StatusCode, nil
-}
-
 // HTTPCheck6 forces the probe over IPv6 (tcp6) so the HTTP leg contributes to
 // the same address family as the ping leg it backs, matching the shell's
 // separate curl -6 probe.
