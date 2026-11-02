@@ -297,7 +297,6 @@ func debugProbeIface(cfg *config.Config, view debugView, args []string) (string,
 	if len(wans) == 0 {
 		return "", fmt.Errorf("%s: no configured WAN has a usable interface", view)
 	}
-	// Firewall mark order defines the existing default provider selection.
 	lowest := wans[0]
 	for _, wan := range wans[1:] {
 		if wan.FwMark < lowest.FwMark {
