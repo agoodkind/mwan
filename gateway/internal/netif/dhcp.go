@@ -134,6 +134,7 @@ type DHCPClient struct {
 	origin         LeaseInfo
 	epoch          uint64
 	expiryPending  bool
+	linkChanged    chan struct{}
 	recoveryLoader func(context.Context) (*LeaseInfo, error)
 
 	Events chan LeaseInfo
@@ -203,6 +204,7 @@ func startDHCPClient(ctx context.Context, log *slog.Logger, cfg DHCPConfig, load
 		origin:         leaseState(LeaseInit, time.Time{}, nil),
 		epoch:          0,
 		expiryPending:  false,
+		linkChanged:    make(chan struct{}, 1),
 		recoveryLoader: loader,
 		Events:         make(chan LeaseInfo, 1),
 	}
@@ -228,6 +230,14 @@ func (c *DHCPClient) LastLease() LeaseInfo {
 	last.LinkHardwareAddr = append(net.HardwareAddr(nil), last.LinkHardwareAddr...)
 	last.DNS = slices.Clone(last.DNS)
 	return last
+}
+
+// LinkChanged requests a bound client to check its interface against its lease without blocking.
+func (c *DHCPClient) LinkChanged() {
+	select {
+	case c.linkChanged <- struct{}{}:
+	default:
+	}
 }
 
 func (c *DHCPClient) emit(info LeaseInfo) {
@@ -572,10 +582,8 @@ func (c *DHCPClient) bound(
 		}
 		deadline := c.renewalWaitDeadline(now, current, state)
 		wait := max(deadline.Sub(c.clock.Now()), 0)
-		select {
-		case <-ctx.Done():
+		if !c.waitForRenewal(ctx, wait) {
 			return
-		case <-time.After(wait):
 		}
 		now = c.clock.Now()
 		if !now.Before(current.ExpiresAt) {
@@ -622,6 +630,23 @@ func (c *DHCPClient) bound(
 		c.emit(current)
 		current = c.LastLease()
 		state = LeaseBound
+	}
+}
+
+func (c *DHCPClient) waitForRenewal(ctx context.Context, wait time.Duration) bool {
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-c.linkChanged:
+			if !c.originMatches() {
+				return true
+			}
+		case <-timer.C:
+			return true
+		}
 	}
 }
 

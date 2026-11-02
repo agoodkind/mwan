@@ -482,6 +482,9 @@ func (d *Daemon) runLoop(
 				"iface", ev.Iface,
 			)
 			d.dispatchEvent(eventCtx, elog, ev)
+			if dhcpClient != nil && (ev.Kind == netif.EvLinkUp || ev.Kind == netif.EvLinkDown || ev.Kind == netif.EvResync) {
+				dhcpClient.LinkChanged()
+			}
 			if ev.Kind == netif.EvResync {
 				d.reconcileAll(eventCtx, elog)
 			}
