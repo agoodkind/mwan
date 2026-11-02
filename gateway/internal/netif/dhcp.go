@@ -134,6 +134,7 @@ type DHCPClient struct {
 	origin         LeaseInfo
 	epoch          uint64
 	expiryPending  bool
+	linkDownSeen   bool
 	linkChanged    chan struct{}
 	recoveryLoader func(context.Context) (*LeaseInfo, error)
 
@@ -210,6 +211,7 @@ func startDHCPClient(ctx context.Context, log *slog.Logger, cfg DHCPConfig, load
 		origin:         leaseState(LeaseInit, time.Time{}, nil),
 		epoch:          0,
 		expiryPending:  false,
+		linkDownSeen:   false,
 		linkChanged:    make(chan struct{}, 1),
 		recoveryLoader: loader,
 		Events:         make(chan LeaseInfo, 1),
@@ -238,12 +240,29 @@ func (c *DHCPClient) LastLease() LeaseInfo {
 	return last
 }
 
-// LinkChanged requests a bound client to check its interface against its lease without blocking.
+// LinkChanged wakes a bound client to check its lease interface. An acquiring
+// client can retry when its interface comes back up.
 func (c *DHCPClient) LinkChanged() {
 	select {
 	case c.linkChanged <- struct{}{}:
 	default:
 	}
+}
+
+// LinkDown records that the DHCP interface went down. After a failed
+// acquisition, only its return ends the retry wait early.
+func (c *DHCPClient) LinkDown() {
+	c.mu.Lock()
+	c.linkDownSeen = true
+	c.mu.Unlock()
+}
+
+func (c *DHCPClient) takeLinkDown() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	linkDownSeen := c.linkDownSeen
+	c.linkDownSeen = false
+	return linkDownSeen
 }
 
 func (c *DHCPClient) emit(info LeaseInfo) {
@@ -319,18 +338,47 @@ func (c *DHCPClient) run(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
+		select {
+		case <-c.linkChanged:
+		default:
+		}
+		c.takeLinkDown()
 		lease, err := c.acquire(ctx)
 		if err != nil {
 			logger.WarnContext(ctx, "dhcp: acquire failed; will retry",
 				"err", err, "backoff", backoff.String())
 			c.emit(leaseState(LeaseSelecting, time.Time{}, err))
-			sleepOrCancel(ctx, backoff)
+			c.waitForAcquireRetry(ctx, backoff)
 			backoff = nextBackoff(backoff, c.cfg.MaxBackoff)
 			continue
 		}
 		backoff = c.cfg.InitialBackoff
 
 		c.bound(ctx, logger, lease)
+	}
+}
+
+func (c *DHCPClient) linkReady() bool {
+	link, err := net.InterfaceByName(c.cfg.Iface)
+	return err == nil && link.Flags&net.FlagUp != 0 && link.Flags&net.FlagRunning != 0
+}
+
+func (c *DHCPClient) waitForAcquireRetry(ctx context.Context, wait time.Duration) {
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	linkWasDown := !c.linkReady()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			return
+		case <-c.linkChanged:
+			linkWasDown = c.takeLinkDown() || linkWasDown
+			if linkWasDown && c.linkReady() {
+				return
+			}
+		}
 	}
 }
 
