@@ -27,12 +27,40 @@ func (w *watchdog) triggerFailover(ctx context.Context, cfg *watchdogconfig.Conf
 	return w.triggerBGPFailover(ctx, cfg, reason)
 }
 
-// triggerBGPFailover performs failover using BGP route control:
-//  1. Withdraw routes from the primary MWAN VM
-//  2. Check BGP status on the failover LXC
-//  3. If the LXC is not yet announcing, tell it to announce
+// triggerBGPFailover must perform BGP failover in this order:
+//  1. Check BGP status on the failover LXC.
+//  2. Tell the LXC to announce routes when needed.
+//  3. Withdraw routes from the primary MWAN VM.
+//
+// This order must leave the primary routes in place if the announcement fails.
 func (w *watchdog) triggerBGPFailover(ctx context.Context, cfg *watchdogconfig.Config, reason string) error {
 	start := w.now()
+
+	// Step 1: Check BGP status on the failover LXC.
+	w.log.InfoContext(ctx, "BGP_FAILOVER: checking BGP status on failover LXC", "lxc", cfg.Failover.LXCID)
+	status, err := w.ops.GetBGPStatus(ctx, cfg.Failover.LXCID)
+	if err != nil {
+		w.log.ErrorContext(ctx, "BGP_FAILOVER: failed to get BGP status on LXC", "lxc", cfg.Failover.LXCID, "err", err)
+		// Announce anyway because the LXC agent may still accept the command.
+	}
+
+	// Step 2: Tell the failover LXC to announce if it is not established or not already announcing.
+	needsAnnounce := true
+	if status != nil && status.GetAllEstablished() && status.GetAnnouncing() {
+		w.log.InfoContext(ctx, "BGP_FAILOVER: LXC already established and announcing; no action needed",
+			"lxc", cfg.Failover.LXCID)
+		needsAnnounce = false
+	}
+
+	if needsAnnounce {
+		w.log.InfoContext(ctx, "BGP_FAILOVER: announcing routes on failover LXC", "lxc", cfg.Failover.LXCID)
+		if err := w.ops.AnnounceRoutes(ctx, cfg.Failover.LXCID); err != nil {
+			w.log.ErrorContext(ctx, "BGP_FAILOVER: announce routes failed on LXC",
+				"lxc", cfg.Failover.LXCID, "err", err, "elapsed", w.since(start))
+			return fmt.Errorf("BGP failover AnnounceRoutes on LXC %s: %w", cfg.Failover.LXCID, err)
+		}
+		w.log.InfoContext(ctx, "BGP_FAILOVER: routes announced on failover LXC", "lxc", cfg.Failover.LXCID)
+	}
 
 	// Notify about BGP failover initiation. The notify boundary owns
 	// per-(kind, key) state-change suppression so a stuck watchdog cannot
@@ -54,39 +82,13 @@ func (w *watchdog) triggerBGPFailover(ctx context.Context, cfg *watchdogconfig.C
 		IsRecovery: false,
 	})
 
-	// Step 1: Withdraw routes from primary VM.
+	// Step 3: Withdraw routes from the primary VM.
 	w.log.InfoContext(ctx, "BGP_FAILOVER: withdrawing routes from primary VM", "vmid", cfg.MwanVMID)
 	if err := w.ops.WithdrawRoutes(ctx, cfg.MwanVMID); err != nil {
 		w.log.ErrorContext(ctx, "BGP_FAILOVER: withdraw routes failed on primary", "vmid", cfg.MwanVMID, "err", err)
 		// Continue because the primary may already be unreachable.
 	} else {
 		w.log.InfoContext(ctx, "BGP_FAILOVER: routes withdrawn from primary VM", "vmid", cfg.MwanVMID)
-	}
-
-	// Step 2: Check BGP status on the failover LXC.
-	w.log.InfoContext(ctx, "BGP_FAILOVER: checking BGP status on failover LXC", "lxc", cfg.Failover.LXCID)
-	status, err := w.ops.GetBGPStatus(ctx, cfg.Failover.LXCID)
-	if err != nil {
-		w.log.ErrorContext(ctx, "BGP_FAILOVER: failed to get BGP status on LXC", "lxc", cfg.Failover.LXCID, "err", err)
-		// Announce anyway because the LXC agent may still accept the command.
-	}
-
-	// Step 3: If LXC is not established or not already announcing, tell it to announce.
-	needsAnnounce := true
-	if status != nil && status.GetAllEstablished() && status.GetAnnouncing() {
-		w.log.InfoContext(ctx, "BGP_FAILOVER: LXC already established and announcing; no action needed",
-			"lxc", cfg.Failover.LXCID)
-		needsAnnounce = false
-	}
-
-	if needsAnnounce {
-		w.log.InfoContext(ctx, "BGP_FAILOVER: announcing routes on failover LXC", "lxc", cfg.Failover.LXCID)
-		if err := w.ops.AnnounceRoutes(ctx, cfg.Failover.LXCID); err != nil {
-			w.log.ErrorContext(ctx, "BGP_FAILOVER: announce routes failed on LXC",
-				"lxc", cfg.Failover.LXCID, "err", err, "elapsed", w.since(start))
-			return fmt.Errorf("BGP failover AnnounceRoutes on LXC %s: %w", cfg.Failover.LXCID, err)
-		}
-		w.log.InfoContext(ctx, "BGP_FAILOVER: routes announced on failover LXC", "lxc", cfg.Failover.LXCID)
 	}
 
 	w.log.InfoContext(ctx, "BGP_FAILOVER: complete",
