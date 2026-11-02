@@ -103,11 +103,10 @@ func (worker *NativeRuntime) execute(owner **C.struct_mwan_native, request nativ
 	case nativeVXLANOpen, nativeVXLANInstall, nativeVXLANQuery, nativeVXLANRemove, nativeVXLANClose:
 		result = worker.executeVXLAN(*owner, request)
 	case nativeDisable:
+		*active = false
 		rc = C.mwan_native_close(owner, C.MWAN_NATIVE_DISABLE, &detail)
-		if rc == 0 {
-			*active = false
-		}
 	case nativeShutdown:
+		*active = false
 		rc = C.mwan_native_close(owner, C.MWAN_NATIVE_FINAL_SHUTDOWN, &detail)
 	}
 	if result.err == nil {

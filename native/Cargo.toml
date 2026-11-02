@@ -11,6 +11,10 @@ links = "mwan_native"
 name = "mwan_native"
 crate-type = ["staticlib", "rlib"]
 
+[[example]]
+name = "shutdown"
+required-features = ["dpdk"]
+
 [features]
 default = []
 dpdk = []
