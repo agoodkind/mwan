@@ -4,7 +4,6 @@ package healthcheck
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -21,20 +20,12 @@ func Run(ctx context.Context, options Options, logger *slog.Logger, emit func(Re
 	var workers sync.WaitGroup
 	for _, wan := range options.WANs {
 		workers.Go(func() {
-			var failure error
-			defer func() {
-				if recovered := recover(); recovered != nil {
-					failure = fmt.Errorf("health worker %s panicked: %v", wan.Key(), recovered)
-					logger.ErrorContext(ctx, "health worker failed", "wan", wan.Key(), "err", failure)
-					cancel()
-				}
-				completed <- failure
-			}()
-			failure = runWAN(ctx, wan, options, logger, records)
+			failure := runWAN(ctx, wan, options, logger, records)
 			if failure != nil {
 				logger.WarnContext(ctx, "health worker stopped", "wan", wan.Key(), "interface", wan.Iface, "err", failure)
 				cancel()
 			}
+			completed <- failure
 		})
 	}
 	var outputError error
