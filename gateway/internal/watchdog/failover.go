@@ -62,6 +62,17 @@ func (w *watchdog) triggerBGPFailover(ctx context.Context, cfg *watchdogconfig.C
 		w.log.InfoContext(ctx, "BGP_FAILOVER: routes announced on failover LXC", "lxc", cfg.Failover.LXCID)
 	}
 
+	// Stop manual failover because WithdrawRoutes would remove a working primary address family that the LXC cannot replace.
+	if w.requireCompleteBackup {
+		status, err = w.ops.GetBGPStatus(ctx, cfg.Failover.LXCID)
+		if err != nil {
+			w.log.ErrorContext(ctx, "BGP_FAILOVER: failed to get BGP status on LXC", "lxc", cfg.Failover.LXCID, "err", err)
+		}
+		if err != nil || !status.GetAnnouncing() {
+			return fmt.Errorf("BGP failover on LXC %s: LXC does not announce every configured address family", cfg.Failover.LXCID)
+		}
+	}
+
 	// Notify about BGP failover initiation. The notify boundary owns
 	// per-(kind, key) state-change suppression so a stuck watchdog cannot
 	// flood the inbox; the key is the primary vmid so a different vmid
@@ -300,6 +311,7 @@ func FailoverRun(cfg *watchdogconfig.Config) error {
 	w := newWatchdog(
 		cfg, ops.NewRealOps(cfg, logger), notifier, &alert.Coord{}, logger, runID,
 	)
+	w.requireCompleteBackup = true
 
 	ctx := context.Background()
 	logger.InfoContext(ctx, "Manual failover requested")

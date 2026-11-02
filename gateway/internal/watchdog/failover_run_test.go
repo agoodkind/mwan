@@ -27,9 +27,11 @@ const (
 type recordingAgent struct {
 	mwanv1.UnimplementedMWANAgentServer
 
-	mu            sync.Mutex
-	calls         []string
-	announceError string
+	mu              sync.Mutex
+	calls           []string
+	announceError   string
+	partialAnnounce bool
+	announcing      bool
 }
 
 func (a *recordingAgent) record(method string) {
@@ -53,7 +55,9 @@ func (a *recordingAgent) GetBGPStatus(
 	_ context.Context, _ *mwanv1.GetBGPStatusRequest,
 ) (*mwanv1.GetBGPStatusResponse, error) {
 	a.record("GetBGPStatus")
-	return &mwanv1.GetBGPStatusResponse{}, nil
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return &mwanv1.GetBGPStatusResponse{Announcing: a.announcing}, nil
 }
 
 func (a *recordingAgent) AnnounceRoutes(
@@ -65,6 +69,7 @@ func (a *recordingAgent) AnnounceRoutes(
 	if a.announceError != "" {
 		return &mwanv1.AnnounceRoutesResponse{Success: false, Error: a.announceError}, nil
 	}
+	a.announcing = !a.partialAnnounce
 	return &mwanv1.AnnounceRoutesResponse{Success: true}, nil
 }
 
@@ -139,6 +144,22 @@ func TestFailoverRunKeepsPrimaryRoutesWhenFailoverAgentRejectsAnnounce(t *testin
 	failover, failoverAddr := startAgent(t)
 	failover.mu.Lock()
 	failover.announceError = "forwarding is not ready"
+	failover.mu.Unlock()
+	cfg := failoverConfig(t, primaryAddr, failoverAddr)
+
+	if err := watchdog.FailoverRun(cfg); err == nil {
+		t.Fatal("FailoverRun error = nil")
+	}
+	if primary.received("WithdrawRoutes") {
+		t.Error("primary WithdrawRoutes")
+	}
+}
+
+func TestFailoverRunKeepsPrimaryRoutesWhenFailoverAgentAnnouncesPartialFamilies(t *testing.T) {
+	primary, primaryAddr := startAgent(t)
+	failover, failoverAddr := startAgent(t)
+	failover.mu.Lock()
+	failover.partialAnnounce = true
 	failover.mu.Unlock()
 	cfg := failoverConfig(t, primaryAddr, failoverAddr)
 
