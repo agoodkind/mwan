@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -19,10 +20,20 @@ func runHealthOptions(ctx context.Context, path string, flags healthFlags, outpu
 		logger.Warn("health configuration rejected", "err", err)
 		return fmt.Errorf("load health configuration: %w", err)
 	}
-	if err := networkload.ApplyFrom(cfg, flags.networkPath, flags.schemaDir); err != nil {
+	loaded, err := networkload.Load(flags.networkPath, flags.schemaDir)
+	if err != nil {
 		logger.Warn("health network configuration rejected", "err", err)
 		return fmt.Errorf("load health network configuration: %w", err)
 	}
+	var rejectionError error
+	for _, rejected := range loaded.Rejected {
+		logger.Warn("health provider configuration rejected", "provider", rejected.Provider, "interface", rejected.Interface, "err", rejected.Err)
+		rejectionError = errors.Join(rejectionError, fmt.Errorf("provider %q on interface %q: %w", rejected.Provider, rejected.Interface, rejected.Err))
+	}
+	if rejectionError != nil {
+		return fmt.Errorf("health network configuration rejected: %w", rejectionError)
+	}
+	loaded.Apply(cfg)
 	policy, err := buildHealthProviderConfig(buildWANRefs(cfg.IfMgr), cfg.IfMgr.Modules.Health)
 	if err != nil {
 		logger.Warn("health provider policy rejected", "err", err)

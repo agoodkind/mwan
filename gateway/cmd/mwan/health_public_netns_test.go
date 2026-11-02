@@ -36,7 +36,7 @@ type healthFixture struct {
 
 type healthPolicyFixture struct {
 	Enabled   bool     `json:"enabled"`
-	PingCount int      `json:"ping-count"`
+	PingCount *int     `json:"ping-count,omitempty"`
 	Success   int      `json:"success-threshold"`
 	Failure   int      `json:"failure-threshold"`
 	Recovery  int      `json:"recovery-threshold"`
@@ -170,7 +170,7 @@ func (fixture *healthFixture) save(t *testing.T, timeoutMillis int) {
 }
 
 func healthPolicy(urls []string) healthPolicyFixture {
-	return healthPolicyFixture{Enabled: true, PingCount: 2, Success: 1, Failure: 1, Recovery: 1, Interval: 1, TargetsV4: []string{"127.0.0.1", "127.0.0.2"}, TargetsV6: []string{"::1"}, HTTPURLs: urls}
+	return healthPolicyFixture{Enabled: true, PingCount: new(2), Success: 1, Failure: 1, Recovery: 1, Interval: 1, TargetsV4: []string{"127.0.0.1", "127.0.0.2"}, TargetsV6: []string{"::1"}, HTTPURLs: urls}
 }
 
 func healthCommand(t *testing.T, binary string, fixture *healthFixture, arguments ...string) *exec.Cmd {
@@ -367,7 +367,7 @@ func runConfiguredHealthNamespaceRuntime(t *testing.T, binary string) {
 		t.Errorf("disabled policy issued HTTP requests: before=%d after=%d", requestCount, current)
 	}
 	mutex.Unlock()
-	policy.Enabled, policy.PingCount = true, 0
+	policy.Enabled, policy.PingCount = true, new(0)
 	fixture.policy(t, "webpass", "lo", policy)
 	fixture.save(t, 100)
 	command = healthCommand(t, binary, fixture)
@@ -376,7 +376,7 @@ func runConfiguredHealthNamespaceRuntime(t *testing.T, binary string) {
 	if err := command.Run(); err == nil || !strings.Contains(rejected.String(), "ping-count must be > 0") {
 		t.Fatalf("invalid policy error=%v diagnostics=%s", err, rejected.String())
 	}
-	policy.PingCount = 2
+	policy.PingCount = new(2)
 	fixture.policy(t, "webpass", "lo", policy)
 	fixture.save(t, 100)
 	daemonContext, cancelDaemon := context.WithTimeout(t.Context(), 5*time.Second)
@@ -386,6 +386,43 @@ func runConfiguredHealthNamespaceRuntime(t *testing.T, binary string) {
 	command.Stderr = &rejected
 	if output, err := command.Output(); err == nil || !strings.Contains(string(output)+rejected.String(), "load health observations") {
 		t.Fatalf("daemon observation validation error=%v output=%s diagnostics=%s", err, output, rejected.String())
+	}
+	assertHealthRejectedProvider(t, binary, fixture, urls, &mutex, counts)
+}
+
+func assertHealthRejectedProvider(t *testing.T, binary string, fixture *healthFixture, urls []string, mutex *sync.Mutex, counts map[string]int) {
+	t.Helper()
+	policy := healthPolicy(urls)
+	fixture.policy(t, "att", "lo", policy)
+	policy.PingCount = nil
+	fixture.policy(t, "webpass", "health-bad0", policy)
+	fixture.save(t, 100)
+	mutex.Lock()
+	before := counts["/418"] + counts["/503"] + counts["/close"]
+	mutex.Unlock()
+	for _, watch := range []bool{false, true} {
+		for _, format := range []string{"text", "json"} {
+			arguments := []string{"--output-format", format}
+			if watch {
+				arguments = append(arguments, "--watch")
+			}
+			command := healthCommand(t, binary, fixture, arguments...)
+			var output, diagnostics bytes.Buffer
+			command.Stdout, command.Stderr = &output, &diagnostics
+			err := command.Run()
+			var exitError *exec.ExitError
+			if !errors.As(err, &exitError) || exitError.ExitCode() != 1 || output.Len() != 0 || strings.Contains(diagnostics.String(), "Usage:") {
+				t.Fatalf("rejected provider watch=%t format=%s error=%v output=%s diagnostics=%s", watch, format, err, output.String(), diagnostics.String())
+			}
+			if !strings.Contains(diagnostics.String(), "webpass") || !strings.Contains(diagnostics.String(), "health-bad0") || !strings.Contains(diagnostics.String(), "health/ping-count is required") {
+				t.Fatalf("provider rejection omitted configuration facts: %s", diagnostics.String())
+			}
+		}
+	}
+	mutex.Lock()
+	defer mutex.Unlock()
+	if after := counts["/418"] + counts["/503"] + counts["/close"]; after != before {
+		t.Fatalf("rejected configuration issued HTTP probes: before=%d after=%d", before, after)
 	}
 }
 
