@@ -131,6 +131,7 @@ type DHCPClient struct {
 	origin         LeaseInfo
 	epoch          uint64
 	expiryPending  bool
+	linkChanged    chan struct{}
 	recoveryLoader func(context.Context) (*LeaseInfo, error)
 
 	Events chan LeaseInfo
@@ -197,6 +198,7 @@ func startDHCPClient(ctx context.Context, log *slog.Logger, cfg DHCPConfig, load
 		origin:         leaseState(LeaseInit, time.Time{}, nil),
 		epoch:          0,
 		expiryPending:  false,
+		linkChanged:    make(chan struct{}, 1),
 		recoveryLoader: loader,
 		Events:         make(chan LeaseInfo, 1),
 	}
@@ -222,6 +224,14 @@ func (c *DHCPClient) LastLease() LeaseInfo {
 	last.LinkHardwareAddr = append(net.HardwareAddr(nil), last.LinkHardwareAddr...)
 	last.DNS = slices.Clone(last.DNS)
 	return last
+}
+
+// LinkChanged requests a bound client to check its interface against its lease without blocking.
+func (c *DHCPClient) LinkChanged() {
+	select {
+	case c.linkChanged <- struct{}{}:
+	default:
+	}
 }
 
 func (c *DHCPClient) emit(info LeaseInfo) {
@@ -525,6 +535,10 @@ func (c *DHCPClient) bound(
 		select {
 		case <-ctx.Done():
 			return
+		case <-c.linkChanged:
+			if c.originMatches() {
+				continue
+			}
 		case <-time.After(wait):
 		}
 		now = c.clock.Now()

@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -36,6 +37,8 @@ const (
 	dhcpRecoveryRenameFastRebind
 	dhcpRecoveryRenameBeforeStart
 	dhcpRecoveryRenameAfterBound
+	dhcpRecoveryRenameAfterBoundLongLease
+	dhcpRecoveryFlapAfterBoundLongLease
 )
 
 func TestOOBDHCPv4RecoveryWithdrawsRenamedLinkAddress(t *testing.T) {
@@ -60,6 +63,14 @@ func TestOOBDHCPv4RecoveryRenamedLinkBeforeStart(t *testing.T) {
 
 func TestOOBDHCPv4BoundRenamedLink(t *testing.T) {
 	testOOBDHCPv4RecoveryLinkChange(t, dhcpRecoveryRenameAfterBound)
+}
+
+func TestOOBDHCPv4BoundRenamedLinkLongLease(t *testing.T) {
+	testOOBDHCPv4RecoveryLinkChange(t, dhcpRecoveryRenameAfterBoundLongLease)
+}
+
+func TestOOBDHCPv4BoundLinkFlapKeepsLease(t *testing.T) {
+	testOOBDHCPv4RecoveryLinkChange(t, dhcpRecoveryFlapAfterBoundLongLease)
 }
 
 func renameDHCPRecoveryLink(t *testing.T, oldLink netlink.Link) {
@@ -162,7 +173,30 @@ func runOOBDHCPv4RecoveryLinkChange(t *testing.T, change dhcpRecoveryLinkChange)
 	waitStaticRuntimeAddress(t, daemon, "enatt0", dhcpRenamedLinkAddress, true)
 	waitRoleDHCPv4Route(t, daemon, 100, true)
 	waitDHCPRecoveryRecord(t, daemon, filepath.Join(leaseDirectory, "roles"))
-	if change == dhcpRecoveryRenameAfterBound {
+	if change == dhcpRecoveryFlapAfterBoundLongLease {
+		flappedLink, err := netlink.LinkByName("enatt0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		logBefore := runtimeDaemonLog(t, daemon)
+		if err := netlink.LinkSetDown(flappedLink); err != nil {
+			t.Fatal(err)
+		}
+		if err := netlink.LinkSetUp(flappedLink); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(5 * time.Second)
+		assertRuntimeDaemonRunning(t, daemon)
+		logAfter := runtimeDaemonLog(t, daemon)
+		for _, entry := range []string{"state=EXPIRED", "dhcp: DISCOVER", "state=RENEWING", "dhcp: renewal attempt failed"} {
+			if before, after := strings.Count(logBefore, entry), strings.Count(logAfter, entry); after != before {
+				t.Fatalf("%s count = %d, want %d: %s", entry, after, before, runtimeLogTail(t, daemon, 30))
+			}
+		}
+		waitStaticRuntimeAddress(t, daemon, "enatt0", dhcpRenamedLinkAddress, true)
+		return
+	}
+	if change == dhcpRecoveryRenameAfterBound || change == dhcpRecoveryRenameAfterBoundLongLease {
 		boundLink, err := netlink.LinkByName("enatt0")
 		if err != nil {
 			t.Fatal(err)
