@@ -301,7 +301,7 @@ func (d *Daemon) startDHCP(ctx context.Context) (dhcpStartup, error) {
 	dhcpConfig := netif.DHCPConfig{
 		Iface: d.cfg.Iface, InitialBackoff: d.cfg.DHCPInitial, MaxBackoff: d.cfg.DHCPMax,
 		DiscoverTimeout: 0, RequestTimeout: 0, RenewTimeout: 0, ClientID: nil,
-		CachedLease: nil,
+		CachedLease: nil, RestartWindow: 0,
 	}
 	if recoveryLoader != nil {
 		startup.client = netif.StartDHCPClientWithRecovery(ctx, d.log, dhcpConfig, recoveryLoader)

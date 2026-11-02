@@ -156,6 +156,127 @@ func TestDHCPRestartClientWithServer(t *testing.T) {
 			}
 		})
 	}
+	t.Run("INIT-REBOOT-DISCOVER", func(t *testing.T) {
+		logs := &dhcpRestartLog{}
+		offered := net.IPv4(192, 0, 2, 9)
+		serverIdentifier := net.IPv4(192, 0, 2, 1)
+		server, err := server4.NewServer(serverInterface,
+			&net.UDPAddr{IP: net.IPv4zero, Port: 67},
+			func(conn net.PacketConn, peer net.Addr, packet *dhcpv4.DHCPv4) {
+				responseType := dhcpv4.MessageTypeOffer
+				if packet.MessageType() == dhcpv4.MessageTypeRequest {
+					if !packet.Options.Has(dhcpv4.OptionServerIdentifier) {
+						return
+					}
+					responseType = dhcpv4.MessageTypeAck
+				}
+				reply, replyErr := dhcpv4.NewReplyFromRequest(packet,
+					dhcpv4.WithMessageType(responseType),
+					dhcpv4.WithYourIP(offered),
+					dhcpv4.WithOption(dhcpv4.OptServerIdentifier(serverIdentifier)),
+					dhcpv4.WithOption(dhcpv4.OptSubnetMask(net.CIDRMask(24, 32))),
+					dhcpv4.WithOption(dhcpv4.OptIPAddressLeaseTime(time.Minute)),
+				)
+				if replyErr == nil {
+					_, _ = conn.WriteTo(reply.ToBytes(), peer)
+				}
+			})
+		if err != nil {
+			t.Fatal(err)
+		}
+		go func() { _ = server.Serve() }()
+		t.Cleanup(func() { _ = server.Close() })
+		cached := LeaseInfo{
+			IP:               append(net.IP(nil), address...),
+			LinkHardwareAddr: append(net.HardwareAddr(nil), clientLink.HardwareAddr...),
+			ExpiresAt:        time.Now().Add(time.Hour),
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+		client := StartDHCPClient(ctx, slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})), DHCPConfig{
+			Iface: clientInterface, CachedLease: &cached, ClientID: append(append([]byte(nil), clientID...), 0xfe),
+			RequestTimeout: 5 * time.Second, InitialBackoff: 3 * time.Second,
+			DiscoverTimeout: time.Second, RestartWindow: 300 * time.Millisecond,
+		})
+		started := time.Now()
+		deadline := time.After(10 * time.Second)
+		for {
+			select {
+			case event := <-client.Events:
+				if event.State != LeaseBound {
+					continue
+				}
+				if !event.IP.Equal(offered) {
+					t.Fatalf("LeaseBound event = %+v", event)
+				}
+				if elapsed := time.Since(started); elapsed > 2*time.Second {
+					t.Fatalf("LeaseBound elapsed = %s", elapsed)
+				}
+				return
+			case <-deadline:
+				t.Fatalf("LeaseBound deadline: %+v; %s", client.LastLease(), logs.String())
+			}
+		}
+	})
+	for _, delayedType := range []dhcpv4.MessageType{dhcpv4.MessageTypeDiscover, dhcpv4.MessageTypeRequest} {
+		t.Run("INIT-REBOOT-DISCOVER-expiry-"+delayedType.String(), func(t *testing.T) {
+			logs := &dhcpRestartLog{}
+			const responseDelay = 4 * time.Second
+			server, err := server4.NewServer(serverInterface,
+				&net.UDPAddr{IP: net.IPv4zero, Port: 67},
+				func(conn net.PacketConn, peer net.Addr, packet *dhcpv4.DHCPv4) {
+					responseType := dhcpv4.MessageTypeOffer
+					if packet.MessageType() == dhcpv4.MessageTypeRequest {
+						if !packet.Options.Has(dhcpv4.OptionServerIdentifier) {
+							return
+						}
+						responseType = dhcpv4.MessageTypeAck
+					}
+					if packet.MessageType() == delayedType {
+						time.Sleep(responseDelay)
+					}
+					reply, replyErr := dhcpv4.NewReplyFromRequest(packet,
+						dhcpv4.WithMessageType(responseType),
+						dhcpv4.WithYourIP(net.IPv4(192, 0, 2, 9)),
+						dhcpv4.WithOption(dhcpv4.OptServerIdentifier(net.IPv4(192, 0, 2, 1))),
+						dhcpv4.WithOption(dhcpv4.OptSubnetMask(net.CIDRMask(24, 32))),
+						dhcpv4.WithOption(dhcpv4.OptIPAddressLeaseTime(time.Minute)),
+					)
+					if replyErr == nil {
+						_, _ = conn.WriteTo(reply.ToBytes(), peer)
+					}
+				})
+			if err != nil {
+				t.Fatal(err)
+			}
+			go func() { _ = server.Serve() }()
+			t.Cleanup(func() { _ = server.Close() })
+			expiresAt := time.Now().Add(2 * time.Second)
+			cached := LeaseInfo{
+				IP:               append(net.IP(nil), address...),
+				LinkHardwareAddr: append(net.HardwareAddr(nil), clientLink.HardwareAddr...),
+				ExpiresAt:        expiresAt,
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+			client := StartDHCPClient(ctx, slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})), DHCPConfig{
+				Iface: clientInterface, CachedLease: &cached, ClientID: append(append([]byte(nil), clientID...), byte(delayedType), 0xfd),
+				RequestTimeout: 100 * time.Millisecond, InitialBackoff: 50 * time.Millisecond,
+				DiscoverTimeout: 10 * time.Second, RestartWindow: 300 * time.Millisecond,
+			})
+			select {
+			case event := <-client.Events:
+				if event.State != LeaseExpired {
+					t.Fatalf("Events = %+v", event)
+				}
+				if elapsed := time.Since(expiresAt); elapsed > time.Second {
+					t.Fatalf("LeaseExpired elapsed after ExpiresAt = %s", elapsed)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatalf("LeaseExpired deadline: %+v; %s", client.LastLease(), logs.String())
+			}
+		})
+	}
 }
 
 type dhcpRestartLog struct {
