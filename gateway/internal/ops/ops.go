@@ -949,18 +949,15 @@ func (r *RealOps) logAttemptResult(
 // ---------------------------------------------------------------------------
 
 func pingTarget(args []string) string {
-	for i, a := range args {
+	for i := 1; i < len(args); i++ {
+		a := args[i]
 		if a == "-I" || a == "-c" || a == "-W" {
 			i++
-			_ = i
 			continue
 		}
-		if !strings.HasPrefix(a, "-") && i > 0 {
+		if !strings.HasPrefix(a, "-") {
 			return a
 		}
-	}
-	if len(args) > 0 {
-		return args[len(args)-1]
 	}
 	return ""
 }

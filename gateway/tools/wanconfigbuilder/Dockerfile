@@ -25,7 +25,7 @@ RUN test -n "${LIBYANG_VERSION}" && test -n "${SYSREPO_VERSION}"
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        build-essential cmake pkg-config git libpcre2-dev nftables util-linux \
+        build-essential cmake pkg-config git libpcre2-dev nftables util-linux iputils-ping \
         meson ninja-build python3-pyelftools libnuma-dev clang libclang-dev \
     && rm -rf /var/lib/apt/lists/*
 
