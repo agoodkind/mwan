@@ -64,6 +64,7 @@ func requiredTests(selected lane) ([]string, error) {
 			"TestOwnedDHCPv4RebindDaemonRuntime", "TestOwnedDHCPv4NAKDaemonRuntime",
 			"TestOwnedDHCPv4RejectedRecoveryRuntime", "TestOOBDHCPv4DaemonRuntime",
 			"TestFailoverDHCPv4DaemonRuntime", "TestFailoverDHCPv4DisabledRuntime",
+			"TestFailoverForwardingSelectsWorkingGateway",
 			"TestOwnedDHCPv6PDDaemonRuntime", "TestOwnedDHCPv6PDDaemonWaitsForRA",
 			"TestOwnedDHCPv6PDRejectsInformationRequest",
 			"TestOwnedDHCPv6PDLateRenewReplyRuntime", "TestOwnedDHCPv6PDSolicitAfterExpiryRuntime",

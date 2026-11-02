@@ -76,6 +76,13 @@ func TestBackupBGPAnnouncesEachReadyFamily(t *testing.T) {
 	if !status.AnnouncingV4 || status.AnnouncingV6 {
 		t.Fatalf("Status IPv4: %+v", status)
 	}
+	reported, err := client.GetBGPStatus(ctx, &mwanv1.GetBGPStatusRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reported.GetAnnouncing() || !reported.GetAnnouncingIpv4() || reported.GetAnnouncingIpv6() {
+		t.Fatalf("GetBGPStatus IPv4: %+v", reported)
+	}
 	ipv4Ready.Store(false)
 	ipv6Ready.Store(true)
 	response, err = client.AnnounceRoutes(ctx, request)

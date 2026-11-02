@@ -473,6 +473,8 @@ func (a *Server) GetBGPStatus(
 	st := a.bgp.Status(ctx)
 	resp := &mwanv1.GetBGPStatusResponse{
 		Announcing:     st.Announcing,
+		AnnouncingIpv4: st.AnnouncingV4,
+		AnnouncingIpv6: st.AnnouncingV6,
 		AllEstablished: a.bgp.IsEstablished(ctx),
 	}
 	for _, p := range st.Peers {

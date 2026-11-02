@@ -70,7 +70,12 @@ func (w *watchdog) triggerBGPFailover(ctx context.Context, cfg *watchdogconfig.C
 	if err != nil || !status.GetAllEstablished() {
 		return fmt.Errorf("BGP failover on LXC %s: cannot confirm that every BGP session is established", cfg.Failover.LXCID)
 	}
-	// Stop manual failover because WithdrawRoutes would remove a working primary address family that the LXC cannot replace.
+	// Keep primary routes when the LXC does not announce an address family.
+	// Manual failover also requires every configured family.
+	announcesAnyFamily := status.GetAnnouncing() || status.GetAnnouncingIpv4() || status.GetAnnouncingIpv6()
+	if !announcesAnyFamily {
+		return fmt.Errorf("BGP failover on LXC %s: LXC does not announce any configured address family", cfg.Failover.LXCID)
+	}
 	if w.requireCompleteBackup && !status.GetAnnouncing() {
 		return fmt.Errorf("BGP failover on LXC %s: LXC does not announce every configured address family", cfg.Failover.LXCID)
 	}
