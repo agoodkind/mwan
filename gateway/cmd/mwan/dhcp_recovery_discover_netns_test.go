@@ -45,6 +45,7 @@ func testOOBDHCPv4RecoveryDiscover(t *testing.T, offeredAddress, offeredGateway 
 		runOOBDHCPv4RecoveryDiscover(t, net.ParseIP(offeredAddress), net.ParseIP(offeredGateway))
 		return
 	}
+	t.Parallel()
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
 	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
