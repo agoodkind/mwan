@@ -17,11 +17,11 @@ Use branch `codex/mwan-cli-cobra`, based on `main`.
 
 Use branch `codex/mwan-cli-output`, based on `codex/mwan-cli-cobra`.
 
-- [ ] Separate typed collection from text and JSON rendering. Reuse existing result types instead of mirroring them.
-- [ ] Format raw source values using tables or indented records. Preserve original statuses, identifiers, booleans, timestamps, response bodies, and error messages.
-- [ ] Add --output-format text|json to structured inspection commands and active probe views. Keep existing machine defaults and reject unsupported formats.
-- [ ] Separate diagnostics from results. Keep daemon logging behavior and make verbose operator diagnostics explicit.
-- [ ] Verify text and JSON preserve identical facts, including unknown states and errors. Run relevant Linux checks and review this layer.
+- [x] Separate typed collection from text and JSON rendering. Reuse existing result types instead of mirroring them.
+- [x] Format raw source values using tables or indented records. Preserve original statuses, identifiers, booleans, timestamps, response bodies, and error messages.
+- [x] Add --output-format text|json to structured inspection commands and active probe views. Keep existing machine defaults and reject unsupported formats.
+- [x] Separate diagnostics from results. Keep daemon logging behavior and make verbose operator diagnostics explicit.
+- [x] Verify text and JSON preserve identical facts, including unknown states and errors. Run relevant Linux checks and review this layer.
 
 ## Run configured health probes
 
