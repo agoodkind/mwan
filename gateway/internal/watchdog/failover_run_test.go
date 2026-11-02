@@ -27,12 +27,9 @@ const (
 type recordingAgent struct {
 	mwanv1.UnimplementedMWANAgentServer
 
-	mu              sync.Mutex
-	calls           []string
-	announceError   string
-	partialAnnounce bool
-	announcing      bool
-	sessionsDown    bool
+	mu         sync.Mutex
+	calls      []string
+	announcing bool
 }
 
 func (a *recordingAgent) record(method string) {
@@ -58,7 +55,7 @@ func (a *recordingAgent) GetBGPStatus(
 	a.record("GetBGPStatus")
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return &mwanv1.GetBGPStatusResponse{Announcing: a.announcing, AllEstablished: !a.sessionsDown}, nil
+	return &mwanv1.GetBGPStatusResponse{Announcing: a.announcing, AllEstablished: true}, nil
 }
 
 func (a *recordingAgent) AnnounceRoutes(
@@ -67,10 +64,7 @@ func (a *recordingAgent) AnnounceRoutes(
 	a.record("AnnounceRoutes")
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.announceError != "" {
-		return &mwanv1.AnnounceRoutesResponse{Success: false, Error: a.announceError}, nil
-	}
-	a.announcing = !a.partialAnnounce
+	a.announcing = true
 	return &mwanv1.AnnounceRoutesResponse{Success: true}, nil
 }
 
@@ -137,57 +131,6 @@ func TestFailoverRunWithdrawsOnPrimaryAndAnnouncesOnFailoverAgent(t *testing.T) 
 	}
 	if failover.received("WithdrawRoutes") {
 		t.Error("failover agent received WithdrawRoutes")
-	}
-}
-
-func TestFailoverRunKeepsPrimaryRoutesWhenFailoverAgentRejectsAnnounce(t *testing.T) {
-	primary, primaryAddr := startAgent(t)
-	failover, failoverAddr := startAgent(t)
-	failover.mu.Lock()
-	failover.announceError = "forwarding is not ready"
-	failover.mu.Unlock()
-	cfg := failoverConfig(t, primaryAddr, failoverAddr)
-
-	if err := watchdog.FailoverRun(cfg); err == nil {
-		t.Fatal("FailoverRun error = nil")
-	}
-	if primary.received("WithdrawRoutes") {
-		t.Error("primary WithdrawRoutes")
-	}
-}
-
-func TestFailoverRunKeepsPrimaryRoutesWhenFailoverAgentAnnouncesPartialFamilies(t *testing.T) {
-	primary, primaryAddr := startAgent(t)
-	failover, failoverAddr := startAgent(t)
-	failover.mu.Lock()
-	failover.partialAnnounce = true
-	failover.mu.Unlock()
-	cfg := failoverConfig(t, primaryAddr, failoverAddr)
-
-	if err := watchdog.FailoverRun(cfg); err == nil {
-		t.Fatal("FailoverRun error = nil")
-	}
-	if primary.received("WithdrawRoutes") {
-		t.Error("primary WithdrawRoutes")
-	}
-}
-
-func TestFailoverRunKeepsPrimaryRoutesWhenFailoverSessionsAreDown(t *testing.T) {
-	primary, primaryAddr := startAgent(t)
-	failover, failoverAddr := startAgent(t)
-	failover.mu.Lock()
-	failover.sessionsDown = true
-	failover.mu.Unlock()
-	cfg := failoverConfig(t, primaryAddr, failoverAddr)
-
-	if err := watchdog.FailoverRun(cfg); err == nil {
-		t.Fatal("FailoverRun error = nil")
-	}
-	if !failover.received("AnnounceRoutes") {
-		t.Error("failover AnnounceRoutes")
-	}
-	if primary.received("WithdrawRoutes") {
-		t.Error("primary WithdrawRoutes")
 	}
 }
 

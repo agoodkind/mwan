@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -40,6 +41,7 @@ const (
 	forwardingClient4     = "192.0.2.34"
 	forwardingClient6     = "2001:db8:c::2"
 	forwardingPort        = 30611
+	forwardingAgentPort   = 50052
 )
 
 type forwardingNamespaces struct {
@@ -86,16 +88,17 @@ func TestFailoverForwardingSelectsWorkingGateway(t *testing.T) {
 	failoverConfig := writeForwardingConfig(t, root, "failover", true)
 	primaryConfig := writeForwardingConfig(t, root, "primary", false)
 	startForwardingProcess(t, namespaces, namespaces.failover, root, "failover-ifmgr", failoverConfig, "ifmgr", "--role", "failover")
-	startForwardingProcess(t, namespaces, namespaces.failover, root, "failover-agent", failoverConfig, "agent", "--tcp-addr", "127.0.0.1:0", "--vsock-port", "0")
+	startForwardingProcess(t, namespaces, namespaces.failover, root, "failover-agent", failoverConfig, "agent", "--tcp-addr", fmt.Sprintf("%s:%d", forwardingFailoverNH4, forwardingAgentPort), "--vsock-port", "0")
 	waitForwardingDefault(t, netlink.FAMILY_V4, forwardingFailoverNH4, 60*time.Second)
 	waitForwardingDefault(t, netlink.FAMILY_V6, forwardingFailoverNH6, 60*time.Second)
 	assertForwardingDial(t, namespaces, "tcp4", forwardingTarget4)
 	assertForwardingDial(t, namespaces, "tcp6", forwardingTarget6)
-	startForwardingProcess(t, namespaces, namespaces.primary, root, "primary-agent", primaryConfig, "agent", "--tcp-addr", "127.0.0.1:0", "--vsock-port", "0")
+	startForwardingProcess(t, namespaces, namespaces.primary, root, "primary-agent", primaryConfig, "agent", "--tcp-addr", fmt.Sprintf("%s:%d", forwardingPrimaryNH4, forwardingAgentPort), "--vsock-port", "0")
 	waitForwardingPathCount(t, router, bgppkt.RF_IPv4_UC, 2)
 	waitForwardingPathCount(t, router, bgppkt.RF_IPv6_UC, 2)
 	waitForwardingDefault(t, netlink.FAMILY_V4, forwardingFailoverNH4, 10*time.Second)
 	waitForwardingDefault(t, netlink.FAMILY_V6, forwardingFailoverNH6, 10*time.Second)
+	watchdogConfig := writeForwardingWatchdogConfig(t, root)
 	cases := []struct {
 		family        int
 		network       string
@@ -118,12 +121,61 @@ func TestFailoverForwardingSelectsWorkingGateway(t *testing.T) {
 		waitForwardingDefault(t, testCase.family, testCase.primary, 20*time.Second)
 		assertForwardingDial(t, namespaces, "tcp4", forwardingTarget4)
 		assertForwardingDial(t, namespaces, "tcp6", forwardingTarget6)
+		assertForwardingFailoverRejected(t, watchdogConfig, "does not announce every configured address family")
+		assertForwardingDial(t, namespaces, "tcp4", forwardingTarget4)
+		assertForwardingDial(t, namespaces, "tcp6", forwardingTarget6)
 		forwardingInNamespace(t, namespaces, namespaces.upstream, func() {
 			setForwardingUpstreamAddress(t, testCase.upstreamCIDR, true)
 			forwardingRoute(t, testCase.clientNetwork, testCase.viaFailover)
 		})
 		waitForwardingDefault(t, testCase.family, testCase.failover, 20*time.Second)
 		assertForwardingDial(t, namespaces, testCase.network, testCase.target)
+	}
+	forwardingInNamespace(t, namespaces, namespaces.upstream, func() {
+		setForwardingUpstreamAddress(t, "198.51.100.2/30", false)
+		setForwardingUpstreamAddress(t, "2001:db8:f1::2/64", false)
+		forwardingRoute(t, "192.0.2.32/29", "198.51.100.5")
+		forwardingRoute(t, "2001:db8:c::/64", "2001:db8:f2::1")
+	})
+	waitForwardingDefault(t, netlink.FAMILY_V4, forwardingPrimaryNH4, 20*time.Second)
+	waitForwardingDefault(t, netlink.FAMILY_V6, forwardingPrimaryNH6, 20*time.Second)
+	assertForwardingFailoverRejected(t, watchdogConfig, "no announced address families are ready")
+	assertForwardingDial(t, namespaces, "tcp4", forwardingTarget4)
+	assertForwardingDial(t, namespaces, "tcp6", forwardingTarget6)
+	forwardingInNamespace(t, namespaces, namespaces.upstream, func() {
+		setForwardingUpstreamAddress(t, "198.51.100.2/30", true)
+		setForwardingUpstreamAddress(t, "2001:db8:f1::2/64", true)
+	})
+	waitForwardingPathCount(t, router, bgppkt.RF_IPv4_UC, 2)
+	waitForwardingPathCount(t, router, bgppkt.RF_IPv6_UC, 2)
+	for _, address := range []string{forwardingFailoverNH4, forwardingFailoverNH6} {
+		if err := router.DeletePeer(context.Background(), &apipb.DeletePeerRequest{Address: address}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	waitForwardingDefault(t, netlink.FAMILY_V4, forwardingPrimaryNH4, 20*time.Second)
+	waitForwardingDefault(t, netlink.FAMILY_V6, forwardingPrimaryNH6, 20*time.Second)
+	assertForwardingFailoverRejected(t, watchdogConfig, "cannot confirm that every BGP session is established")
+	assertForwardingDial(t, namespaces, "tcp4", forwardingTarget4)
+	assertForwardingDial(t, namespaces, "tcp6", forwardingTarget6)
+}
+
+func writeForwardingWatchdogConfig(t *testing.T, root string) string {
+	t.Helper()
+	path := filepath.Join(root, "watchdog.toml")
+	config := fmt.Sprintf("mwan_vmid = \"301\"\n[watchdog]\nmwan_agent_tcp_addr = \"%s:%d\"\n[failover]\nlxc_id = \"203\"\nagent_tcp_addr = \"%s:%d\"\n", forwardingPrimaryNH4, forwardingAgentPort, forwardingFailoverNH4, forwardingAgentPort)
+	if err := os.WriteFile(path, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func assertForwardingFailoverRejected(t *testing.T, configPath, expected string) {
+	t.Helper()
+	command := exec.Command(os.Getenv(forwardingBinaryEnv), "watchdog", "failover", "--config", configPath)
+	output, err := command.CombinedOutput()
+	if err == nil || !strings.Contains(string(output), expected) {
+		t.Fatalf("watchdog failover error = %v, want %q: %s", err, expected, output)
 	}
 }
 

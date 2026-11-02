@@ -26,12 +26,21 @@ const (
 )
 
 func TestFailoverForwardingReadinessDaemonRuntime(t *testing.T) {
+	testFailoverForwardingReadiness(t, false)
+}
+
+func TestFailoverForwardingReadinessIPv4OnlyDaemonRuntime(t *testing.T) {
+	testFailoverForwardingReadiness(t, true)
+}
+
+func testFailoverForwardingReadiness(t *testing.T, ipv4Only bool) {
+	t.Helper()
 	if os.Getenv(failoverReadinessChildEnv) == "1" {
-		runFailoverForwardingReadinessDaemonRuntime(t)
+		runFailoverForwardingReadinessDaemonRuntime(t, ipv4Only)
 		return
 	}
 	binary := protocolTestBinary(t)
-	child := exec.Command(os.Args[0], "-test.run=^TestFailoverForwardingReadinessDaemonRuntime$")
+	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
 	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
 	child.Env = append(os.Environ(), failoverReadinessChildEnv+"=1", failoverReadinessBinaryEnv+"="+binary)
 	if output, err := child.CombinedOutput(); err != nil {
@@ -39,7 +48,7 @@ func TestFailoverForwardingReadinessDaemonRuntime(t *testing.T) {
 	}
 }
 
-func runFailoverForwardingReadinessDaemonRuntime(t *testing.T) {
+func runFailoverForwardingReadinessDaemonRuntime(t *testing.T, ipv4Only bool) {
 	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -63,6 +72,12 @@ func runFailoverForwardingReadinessDaemonRuntime(t *testing.T) {
 	defer upstream.namespace.Close()
 	socket := filepath.Join(root, "forwarding.sock")
 	configPath := filepath.Join(root, "config.toml")
+	ipv6Target := `targets_v6 = ["2001:db8:116::2"]`
+	ipv6Announcement := `ipv6 = ["::/0"]`
+	if ipv4Only {
+		ipv6Target = ""
+		ipv6Announcement = ""
+	}
 	configuration := fmt.Sprintf(`[ifmgr]
 role = "failover"
 reconcile_interval = "200ms"
@@ -74,7 +89,7 @@ iface = "enatt0"
 [ifmgr.modules.connectivity_probe]
 iface = "enatt0"
 targets_v4 = ["198.51.100.2"]
-targets_v6 = ["2001:db8:116::2"]
+%s
 timeout = "100ms"
 unhealthy_after = %q
 [ifmgr.modules.ra_lost]
@@ -85,17 +100,21 @@ iface = "enatt0"
 enabled = true
 [bgp.announce]
 ipv4 = ["0.0.0.0/0"]
-ipv6 = ["::/0"]
+%s
 [bgp.forwarding_readiness]
 socket_path = %q
 poll_interval_milliseconds = 100
 read_timeout_milliseconds = 500
-`, failoverUnhealthyAfter, socket)
+`, ipv6Target, failoverUnhealthyAfter, ipv6Announcement, socket)
 	if err := os.WriteFile(configPath, []byte(configuration), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	daemon := startRoleDHCPv4RuntimeDaemon(t, os.Getenv(failoverReadinessBinaryEnv), configPath, root, "failover")
 	defer stopRuntimeDaemon(t, daemon)
+	if ipv4Only {
+		waitOwnedRoleForwarding(t, daemon, socket, forwardingready.State{IPv4: true, IPv6: false})
+		return
+	}
 	waitOwnedRoleForwarding(t, daemon, socket, forwardingready.State{IPv4: true, IPv6: true})
 
 	setRuntimeNamespace(t, upstream.namespace)
