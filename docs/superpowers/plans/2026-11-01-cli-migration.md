@@ -37,7 +37,7 @@ Use branch `codex/mwan-health-once`, based on `codex/mwan-cli-output`.
 
 ## Verify and publish
 
-- [ ] Run `make -C gateway docker-make TARGETS="build-check test check-yang"` on Darwin.
-- [ ] Review the complete stack against the design and preserve unrelated checkout changes.
-- [ ] Publish three dependent pull requests ready for review. Verify required Linux CI checks for both architectures.
-- [ ] Report pull requests and verified checks separately from deployment. Do not deploy or change production configuration.
+- [x] Run `make -C gateway docker-make TARGETS="build-check test check-yang"` on Darwin.
+- [x] Review the complete stack against the design and preserve unrelated checkout changes.
+- [x] Publish three dependent pull requests ready for review. Verify required Linux CI checks for both architectures.
+- [x] Report pull requests and verified checks separately from deployment. Do not deploy or change production configuration.
