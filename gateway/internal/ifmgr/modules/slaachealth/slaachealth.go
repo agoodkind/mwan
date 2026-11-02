@@ -1,7 +1,7 @@
 // Package slaachealth implements the failover SLAAC health
 // module: detects when a global IPv6 SLAAC address has gone "deprecated"
-// (preferred_lft 0) or when probes to upstream targets fail, then escalates
-// in stages: gentle Router Solicitation, then disable_ipv6 toggle.
+// (preferred_lft 0) or when probes to upstream targets fail, then sends
+// Router Solicitations and alerts.
 //
 // Registers as "slaac_health".
 package slaachealth
@@ -29,21 +29,16 @@ type Module struct {
 	cfg   Config
 	clock internalclock.Clock
 
-	degradedSince   time.Time
-	lastToggle      time.Time
-	togglesThisHour int
-	hourBucketStart time.Time
+	degradedSince time.Time
 }
 
 // Config is the parsed [ifmgr.modules.slaac_health] sub-config.
 type Config struct {
-	Iface             string
-	DegradedAfter     time.Duration
-	EscalateAfter     time.Duration
-	AlertAfter        time.Duration
-	MaxTogglesPerHour int
-	ProbeTargetsV6    []netip.Addr
-	ProbeTimeout      time.Duration
+	Iface          string
+	DegradedAfter  time.Duration
+	AlertAfter     time.Duration
+	ProbeTargetsV6 []netip.Addr
+	ProbeTimeout   time.Duration
 }
 
 // ModuleConfigName returns the registry key for this module's config block.
@@ -58,9 +53,7 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	log.InfoContext(
 		ctx, "slaac_health: Init",
 		"degraded_after", m.cfg.DegradedAfter.String(),
-		"escalate_after", m.cfg.EscalateAfter.String(),
 		"alert_after", m.cfg.AlertAfter.String(),
-		"max_toggles_per_hour", m.cfg.MaxTogglesPerHour,
 		"probe_targets", len(m.cfg.ProbeTargetsV6),
 	)
 	if m.cfg.Iface == "" {
@@ -76,8 +69,7 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 //     v6 gateway link-local responds; configured probe targets respond.
 //  2. Degraded for > DegradedAfter: send Router Solicitation if RA client
 //     is available.
-//  3. Degraded for > EscalateAfter: toggle disable_ipv6 (throttled).
-//  4. Degraded for > AlertAfter: emit WARN alert (idempotent).
+//  3. Degraded for > AlertAfter: emit WARN alert (idempotent).
 func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	log = log.With("op", "reconcile")
 
@@ -165,8 +157,7 @@ func (m *Module) handleDegraded(ctx context.Context, now time.Time, log *slog.Lo
 	age := now.Sub(since)
 	log.DebugContext(ctx, "slaac_health: degraded", "age_s", int(age.Seconds()))
 
-	switch {
-	case age >= m.cfg.AlertAfter:
+	if age >= m.cfg.AlertAfter {
 		m.Env.Alerts.NotifyContext(
 			ctx, now, slog.LevelWarn,
 			"slaac-degraded", m.cfg.Iface,
@@ -174,10 +165,8 @@ func (m *Module) handleDegraded(ctx context.Context, now time.Time, log *slog.Lo
 			slog.Int("age_s", int(age.Seconds())),
 			slog.Int("alert_after_s", int(m.cfg.AlertAfter.Seconds())),
 		)
-		fallthrough
-	case age >= m.cfg.EscalateAfter:
-		m.tryToggle(ctx, now, log)
-	case age >= m.cfg.DegradedAfter:
+	}
+	if age >= m.cfg.DegradedAfter {
 		m.trySolicit(ctx, log)
 	}
 }
@@ -195,63 +184,14 @@ func (m *Module) trySolicit(ctx context.Context, log *slog.Logger) {
 	log.InfoContext(ctx, "slaac_health: sent Router Solicitation", "err", err)
 }
 
-// tryToggle performs disable_ipv6=1; sleep 1; disable_ipv6=0 to force
-// the kernel to discard SLAAC state and accept fresh RAs. Throttled to
-// MaxTogglesPerHour to prevent flapping.
-func (m *Module) tryToggle(ctx context.Context, now time.Time, log *slog.Logger) {
-	m.Lock()
-	if now.Sub(m.hourBucketStart) >= time.Hour {
-		m.hourBucketStart = now
-		m.togglesThisHour = 0
-	}
-	if m.togglesThisHour >= m.cfg.MaxTogglesPerHour {
-		m.Unlock()
-		log.WarnContext(
-			ctx, "slaac_health: throttled (max toggles per hour reached)",
-			"toggles", m.togglesThisHour,
-			"max", m.cfg.MaxTogglesPerHour,
-		)
-		return
-	}
-	m.togglesThisHour++
-	m.lastToggle = now
-	count := m.togglesThisHour
-	m.Unlock()
-
-	log.WarnContext(ctx, "slaac_health: toggling disable_ipv6 to refresh SLAAC",
-		"toggle_count_this_hour", count)
-	key := "net.ipv6.conf." + m.cfg.Iface + ".disable_ipv6"
-	if err := m.Env.Sysctl.Set(ctx, key, "1"); err != nil {
-		log.ErrorContext(ctx, "slaac_health: failed to set disable_ipv6=1", "err", err)
-		return
-	}
-	timer := time.NewTimer(1 * time.Second)
-	select {
-	case <-ctx.Done():
-		if !timer.Stop() {
-			<-timer.C
-		}
-	case <-timer.C:
-	}
-	// Restore IPv6 without cancellation because daemon shutdown can cancel the original context during the wait.
-	if err := m.Env.Sysctl.Set(context.WithoutCancel(ctx), key, "0"); err != nil {
-		log.ErrorContext(ctx, "slaac_health: failed to set disable_ipv6=0", "err", err)
-		return
-	}
-	// Re-issue RS so the kernel relearns immediately.
-	m.trySolicit(ctx, log)
-}
-
 // New is the Constructor.
 func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 	c := Config{
-		Iface:             "",
-		DegradedAfter:     0,
-		EscalateAfter:     0,
-		AlertAfter:        0,
-		MaxTogglesPerHour: 4,
-		ProbeTargetsV6:    nil,
-		ProbeTimeout:      2 * time.Second,
+		Iface:          "",
+		DegradedAfter:  0,
+		AlertAfter:     0,
+		ProbeTargetsV6: nil,
+		ProbeTimeout:   2 * time.Second,
 	}
 	if cfg != nil {
 		typedConfig, ok := cfg.(Config)
@@ -261,13 +201,10 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		c = typedConfig
 	}
 	return &Module{
-		BaseModule:      ifmgr.NewBaseModule("slaac_health"),
-		cfg:             c,
-		clock:           nil,
-		degradedSince:   time.Time{},
-		lastToggle:      time.Time{},
-		togglesThisHour: 0,
-		hourBucketStart: time.Time{},
+		BaseModule:    ifmgr.NewBaseModule("slaac_health"),
+		cfg:           c,
+		clock:         nil,
+		degradedSince: time.Time{},
 	}, nil
 }
 

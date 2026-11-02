@@ -354,7 +354,6 @@ func loadConfig(path string) (*Config, error) {
 		slog.Error("validate BGP forwarding readiness failed", "error", err)
 		return nil, fmt.Errorf("validate BGP forwarding readiness: %w", err)
 	}
-
 	return &cfg, nil
 }
 
