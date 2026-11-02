@@ -492,32 +492,31 @@ func buildOOBV4Config(section *config.IfMgrOOBV4Section) oobv4.Config {
 
 func buildSLAACHealthConfig(section *config.IfMgrSLAACHealthSection) (slaachealth.Config, error) {
 	cfg := slaachealth.Config{
-		Iface:             "",
-		DegradedAfter:     0,
-		EscalateAfter:     0,
-		AlertAfter:        0,
-		MaxTogglesPerHour: 4,
-		ProbeTargetsV6:    nil,
-		ProbeTimeout:      2 * time.Second,
+		Iface:          "",
+		DegradedAfter:  0,
+		AlertAfter:     0,
+		ProbeTargetsV6: nil,
+		ProbeTimeout:   2 * time.Second,
 	}
 	if section == nil {
 		return cfg, nil
 	}
 	cfg.Iface = section.Iface
+	if section.MaxTogglesPerHour != nil && *section.MaxTogglesPerHour != 0 {
+		slog.Warn("[ifmgr.modules.slaac_health] max_toggles_per_hour has no effect", "max_toggles_per_hour", *section.MaxTogglesPerHour)
+	}
+	if section.EscalateAfter != "" {
+		if _, err := parseDurationSetting(section.EscalateAfter, 0, "ifmgr.modules.slaac_health.escalate_after"); err != nil {
+			return slaachealth.Config{}, err
+		}
+		slog.Warn("[ifmgr.modules.slaac_health] escalate_after has no effect", "escalate_after", section.EscalateAfter)
+	}
 
 	var err error
 	cfg.DegradedAfter, err = parseDurationSetting(
 		section.DegradedAfter,
 		30*time.Second,
 		"ifmgr.modules.slaac_health.degraded_after",
-	)
-	if err != nil {
-		return slaachealth.Config{}, err
-	}
-	cfg.EscalateAfter, err = parseDurationSetting(
-		section.EscalateAfter,
-		90*time.Second,
-		"ifmgr.modules.slaac_health.escalate_after",
 	)
 	if err != nil {
 		return slaachealth.Config{}, err
@@ -537,9 +536,6 @@ func buildSLAACHealthConfig(section *config.IfMgrSLAACHealthSection) (slaachealt
 	)
 	if err != nil {
 		return slaachealth.Config{}, err
-	}
-	if section.MaxTogglesPerHour != nil {
-		cfg.MaxTogglesPerHour = *section.MaxTogglesPerHour
 	}
 	cfg.ProbeTargetsV6, err = parseAddrList(
 		section.ProbeTargetsV6,

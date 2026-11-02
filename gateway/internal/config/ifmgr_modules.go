@@ -91,10 +91,16 @@ type IfMgrOOBV4Section struct {
 }
 
 // IfMgrSLAACHealthSection is the [ifmgr.modules.slaac_health] table. The
-// module detects a deprecated SLAAC address, sends a router solicitation, and
-// escalates to toggling disable_ipv6 when solicitation does not restore the
-// address. MaxTogglesPerHour bounds that last resort, because the toggle drops
-// every IPv6 address on the interface.
+// module detects a deprecated SLAAC address or a failed probe. After the
+// condition persists for degraded_after, the module sends a Router Solicitation
+// if the router advertisement client is available. After the condition
+// persists for alert_after, the module sends an alert. The module does not
+// change disable_ipv6.
+//
+// Existing configurations may retain escalate_after and max_toggles_per_hour.
+// Neither setting affects the module. The failover role warns when
+// escalate_after is set or max_toggles_per_hour is nonzero, and rejects an
+// invalid escalate_after value.
 type IfMgrSLAACHealthSection struct {
 	Iface             string   `toml:"iface"`
 	DegradedAfter     string   `toml:"degraded_after"`
