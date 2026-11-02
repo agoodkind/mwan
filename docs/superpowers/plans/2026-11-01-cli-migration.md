@@ -27,13 +27,13 @@ Use branch `codex/mwan-cli-output`, based on `codex/mwan-cli-cobra`.
 
 Use branch `codex/mwan-health-once`, based on `codex/mwan-cli-output`.
 
-- [ ] Share pure provider-policy construction with the daemon. Keep optional application observation settings out of the operator WAN probe dependency.
-- [ ] Read existing WANCONFIG health policy through the configuration loader. Do not introduce public targets, configuration fallbacks, or another configuration schema.
-- [ ] Execute production ping and HTTP probes once by default. Preserve configured attempts, family target lists, disabled policies, timeouts, and URLs.
-- [ ] Add --watch with independent per-WAN configured intervals and signal cancellation.
-- [ ] Render raw per-probe results in text or JSON. Keep failed probes as data and report setup, configuration, input, and output failures as command errors.
-- [ ] Keep operator probes independent of daemon lifecycle, state writes, notifications, and watchdog pushes.
-- [ ] Verify through real local servers and network namespaces. Run Linux builder checks and review this layer.
+- [x] Share pure provider-policy construction with the daemon. Keep optional application observation settings out of the operator WAN probe dependency.
+- [x] Read existing WANCONFIG health policy through the configuration loader. Do not introduce public targets, configuration fallbacks, or another configuration schema.
+- [x] Execute production ping and HTTP probes once by default. Preserve configured attempts, family target lists, disabled policies, timeouts, and URLs.
+- [x] Add --watch with independent per-WAN configured intervals and signal cancellation.
+- [x] Render raw per-probe results in text or JSON. Keep failed probes as data and report setup, configuration, input, and output failures as command errors.
+- [x] Keep operator probes independent of daemon lifecycle, state writes, notifications, and watchdog pushes.
+- [x] Verify through real local servers and network namespaces. Run Linux builder checks and review this layer.
 
 ## Verify and publish
 
