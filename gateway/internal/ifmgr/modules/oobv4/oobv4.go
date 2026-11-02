@@ -157,23 +157,23 @@ func (m *Module) OnDHCPLease(
 	}
 
 	switch lease.State {
-	case netif.LeaseBound:
+	case netif.LeaseBound, netif.LeaseRenewing, netif.LeaseRebinding:
 		return m.applyBound(ctx, lease)
 	case netif.LeaseExpired:
 		return m.applyExpired(ctx, log)
-	case netif.LeaseRenewing, netif.LeaseRebinding:
-		m.Lock()
-		applied := m.hasApplied
-		m.Unlock()
-		if !applied {
-			lease.State = netif.LeaseBound
-			return m.applyBound(ctx, lease)
-		}
-		return nil
 	case netif.LeaseInit, netif.LeaseSelecting, netif.LeaseRequesting:
 		return nil
 	}
 	return nil
+}
+
+// OnKernelEvent restores the DHCPv4 route when the interface comes back.
+// Linux removes the route when the interface goes down.
+func (m *Module) OnKernelEvent(ctx context.Context, log *slog.Logger, event netif.Event) error {
+	if event.Kind != netif.EvLinkUp || event.Iface != m.cfg.Iface {
+		return nil
+	}
+	return m.Reconcile(ctx, log)
 }
 
 func (m *Module) applyBound(ctx context.Context, lease netif.LeaseInfo) error {
@@ -185,6 +185,8 @@ func (m *Module) applyBound(ctx context.Context, lease netif.LeaseInfo) error {
 	if !lease.ExpiresAt.IsZero() && !m.clock.Now().Before(lease.ExpiresAt) {
 		return nil
 	}
+	updateLastBound := lease.State == netif.LeaseBound || !m.hasApplied
+	lease.State = netif.LeaseBound
 	if err := m.owner.Reconcile(ctx, "oobv4", m.cfg.Iface, m.cfg.Iface, m.cfg.OOBTableID, 0, &lease); err != nil {
 		m.Log.WarnContext(ctx, "oobv4: assignment application failed", "err", err)
 		return fmt.Errorf("oobv4: apply DHCPv4 assignment: %w", err)
@@ -192,7 +194,9 @@ func (m *Module) applyBound(ctx context.Context, lease netif.LeaseInfo) error {
 	if err := m.reconcileSourceRule(ctx, lease.IP); err != nil {
 		return err
 	}
-	m.lastBound = m.clock.Now()
+	if updateLastBound {
+		m.lastBound = m.clock.Now()
+	}
 	m.appliedExpiresAt = lease.ExpiresAt
 	m.appliedEpoch = lease.InvalidationEpoch
 	m.hasApplied = true
