@@ -10,11 +10,11 @@ import (
 )
 
 type debugWAN struct {
-	ID      string
-	Name    string
-	Iface   string
-	TableID int
-	FwMark  int
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Iface   string `json:"interface"`
+	TableID int    `json:"table_id"`
+	FwMark  int    `json:"fw_mark"`
 }
 
 func debugWANs(cfg *config.Config) []debugWAN {

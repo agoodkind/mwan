@@ -20,7 +20,7 @@ file_prefix = "mwan-native-test"
 func TestLoadNativeOffloadProcessSettings(t *testing.T) {
 	t.Parallel()
 	path := writeSharedFile(t, sharedFileText+nativeProcessTOML)
-	loaded, _, err := config.LoadArguments([]string{"mwan", "--config", path})
+	loaded, err := config.LoadPath(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestLoadNativeOffloadRejectsInvalidSettings(t *testing.T) {
 				text = strings.Replace(nativeProcessTOML, check.before, check.after, 1)
 			}
 			path := writeSharedFile(t, sharedFileText+text)
-			if _, _, err := config.LoadArguments([]string{"mwan", "--config", path}); err == nil {
+			if _, err := config.LoadPath(path); err == nil {
 				t.Fatalf("loader accepted invalid native settings: %s", text)
 			}
 		})
@@ -103,7 +103,7 @@ func TestLoadNativeOffloadIdleWait(t *testing.T) {
 		t.Run(check.name, func(t *testing.T) {
 			t.Parallel()
 			path := writeSharedFile(t, sharedFileText+nativeProcessTOML+check.input)
-			loaded, _, err := config.LoadArguments([]string{"mwan", "--config", path})
+			loaded, err := config.LoadPath(path)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -119,7 +119,7 @@ func TestLoadNativeOffloadDisabled(t *testing.T) {
 	t.Parallel()
 	for _, text := range []string{"", "[ifmgr.modules.nativeoffload]\nenabled = false\n"} {
 		path := writeSharedFile(t, sharedFileText+text)
-		loaded, _, err := config.LoadArguments([]string{"mwan", "--config", path})
+		loaded, err := config.LoadPath(path)
 		if err != nil {
 			t.Fatal(err)
 		}

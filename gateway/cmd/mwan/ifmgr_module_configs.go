@@ -250,8 +250,35 @@ func buildSteeringConfig(
 	return cfg, nil
 }
 
-// buildHealthConfig joins shared WAN identities with keyed health policy.
 func buildHealthConfig(
+	shared sharedWANInputs,
+	section *config.IfMgrHealthSection,
+) (health.Config, error) {
+	var observations *observation.ContinuousSettings
+	if section != nil && section.ObservationSettingsFile != "" {
+		settings, err := observation.LoadContinuousSettings(section.ObservationSettingsFile)
+		if err != nil {
+			slog.Warn("health observation settings rejected", "path", section.ObservationSettingsFile, "err", err)
+			return health.Config{}, fmt.Errorf("load health observations: %w", err)
+		}
+		observations = &settings
+	}
+	cfg, err := buildHealthProviderConfig(shared, section)
+	if err != nil {
+		slog.Warn("health provider policy rejected", "err", err)
+		return health.Config{}, err
+	}
+	if section != nil {
+		cfg.Observations = observations
+		cfg.StateFile = section.StateFile
+		cfg.StatusPushCID = section.StatusPushCID
+		cfg.StatusPushPort = section.StatusPushPort
+	}
+	return cfg, nil
+}
+
+// The operator shares provider policy without loading daemon observation files or writing daemon state.
+func buildHealthProviderConfig(
 	shared sharedWANInputs,
 	section *config.IfMgrHealthSection,
 ) (health.Config, error) {
@@ -288,21 +315,6 @@ func buildHealthConfig(
 		}
 		return cfg, nil
 	}
-
-	cfg.StateFile = section.StateFile
-	if section.ObservationSettingsFile != "" {
-		settings, err := observation.LoadContinuousSettings(section.ObservationSettingsFile)
-		if err != nil {
-			slog.Warn("health observation settings rejected", "path", section.ObservationSettingsFile, "err", err)
-			return cfg, fmt.Errorf("load health observations: %w", err)
-		}
-		cfg.Observations = &settings
-	}
-	// The watchdog's address, not a network value: it addresses a vsock endpoint
-	// on this machine's hypervisor, which is why TOML owns it alongside the state
-	// file rather than the network tree.
-	cfg.StatusPushCID = section.StatusPushCID
-	cfg.StatusPushPort = section.StatusPushPort
 
 	cfg.Timeout = time.Duration(section.ProbeTimeoutMillis) * time.Millisecond
 
@@ -892,16 +904,35 @@ func parseDurationSetting(
 	return durationValue, nil
 }
 
-// parseHealthTargets parses one ping-target family, keeping a family the
-// provider left out distinguishable from one it declared empty. The health
-// module inherits its module-wide targets for a nil list and probes nothing for
-// an empty one, so flattening the two would ping public resolvers out a link
-// that carries no address in that family.
+// Keep omitted and explicitly empty families distinct for both policy consumers.
 func parseHealthTargets(values []string, fieldName string) ([]netip.Addr, error) {
 	if values == nil {
 		return nil, nil
 	}
-	return parseAddrList(values, fieldName)
+	addresses := make([]netip.Addr, 0, len(values))
+	for index, value := range values {
+		address, err := netip.ParseAddr(value)
+		if err != nil {
+			return nil, healthTargetError{field: fieldName, index: index, value: value, cause: err}
+		}
+		addresses = append(addresses, address)
+	}
+	return addresses, nil
+}
+
+type healthTargetError struct {
+	field string
+	index int
+	value string
+	cause error
+}
+
+func (failure healthTargetError) Error() string {
+	return fmt.Sprintf("%s[%d] %q: %v", failure.field, failure.index, failure.value, failure.cause)
+}
+
+func (failure healthTargetError) Unwrap() error {
+	return failure.cause
 }
 
 func parseAddrList(values []string, fieldName string) ([]netip.Addr, error) {

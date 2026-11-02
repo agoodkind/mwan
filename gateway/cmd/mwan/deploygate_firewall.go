@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -19,114 +20,101 @@ const firewallCheckTimeout = 30 * time.Second
 
 // runFirewallCheck validates the firewall configuration and applies its rules
 // only in a separate network namespace created by unshare.
-func runFirewallCheck(args []string) int {
-	isolated := false
-	for index, argument := range args {
-		if index == 2 && len(args) == 3 {
-			isolated = argument == "--isolated"
-		}
-	}
-	if len(args) != 2 && !isolated {
-		fmt.Fprintln(os.Stderr, "usage: mwan deploy check-firewall <network.json> <schema-dir>")
-		return exitDeployGateUsage
-	}
-	loaded, err := networkload.Load(args[0], args[1])
+
+func checkFirewall(path, schemaDir string, isolated bool, output, diagnostics io.Writer) int {
+	loaded, err := networkload.Load(path, schemaDir)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(diagnostics, err)
 		return 1
 	}
 	desired, err := firewall.Compile(loaded.Firewall)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(diagnostics, err)
 		return 1
 	}
 	if !loaded.Firewall.Enabled {
-		fmt.Fprintln(os.Stderr, "firewall ownership is disabled")
+		fmt.Fprintln(diagnostics, "firewall ownership is disabled")
 		return 1
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), firewallCheckTimeout)
 	defer cancel()
 	if !isolated {
-		return runFirewallCheckChild(ctx, args)
+		return runFirewallCheckChild(ctx, path, schemaDir, output, diagnostics)
 	}
 	if err := verifyDifferentNamespace(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(diagnostics, err)
 		return 1
 	}
 	if err := firewall.Apply(ctx, desired); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(diagnostics, err)
 		return 1
 	}
 	readback, err := firewall.Inspect(ctx, desired)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(diagnostics, err)
 		return 1
 	}
-	fmt.Print(readback)
+	fmt.Fprint(output, readback)
 	return 0
 }
 
-func runFirewallInspect(args []string) int {
-	if len(args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: mwan deploy inspect-firewall <network.json> <schema-dir>")
-		return exitDeployGateUsage
-	}
-	loaded, err := networkload.Load(args[0], args[1])
+func inspectFirewall(path, schemaDir string, output, diagnostics io.Writer) int {
+	loaded, err := networkload.Load(path, schemaDir)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(diagnostics, err)
 		return 1
 	}
 	if !loaded.Firewall.Enabled {
-		fmt.Fprintln(os.Stderr, "firewall ownership is disabled")
+		fmt.Fprintln(diagnostics, "firewall ownership is disabled")
 		return 1
 	}
 	desired, err := firewall.Compile(loaded.Firewall)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(diagnostics, err)
 		return 1
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), firewallCheckTimeout)
 	defer cancel()
 	readback, err := firewall.Inspect(ctx, desired)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(diagnostics, err)
 		return 1
 	}
-	fmt.Print(readback)
+	fmt.Fprint(output, readback)
 	return 0
 }
 
-func runFirewallCheckChild(ctx context.Context, args []string) int {
+func runFirewallCheckChild(ctx context.Context, path, schemaDir string, output, diagnostics io.Writer) int {
 	slog.InfoContext(ctx, "start isolated firewall check")
 	parentNamespace, err := os.Open("/proc/self/ns/net")
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(diagnostics, err)
 		return 1
 	}
 	defer parentNamespace.Close()
 	binary, err := os.Executable()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(diagnostics, err)
 		return 1
 	}
 	command := &exec.Cmd{
 		Path: "/usr/bin/unshare",
 		Args: []string{
 			"unshare", "--net", "--", binary,
-			"deploy", "check-firewall", args[0], args[1], "--isolated",
+			"deploy", "check-firewall", path, schemaDir, "--isolated",
 		},
 	}
 	command.ExtraFiles = []*os.File{parentNamespace}
-	command.Stdout = os.Stdout
-	command.Stderr = os.Stderr
+	command.Stdout = output
+	command.Stderr = diagnostics
 	if err := command.Start(); err != nil {
-		fmt.Fprintf(os.Stderr, "start isolated firewall check: %v\n", err)
+		fmt.Fprintf(diagnostics, "start isolated firewall check: %v\n", err)
 		return 1
 	}
 	stopKill := context.AfterFunc(ctx, func() { _ = command.Process.Kill() })
 	defer stopKill()
 	if err := command.Wait(); err != nil {
-		fmt.Fprintf(os.Stderr, "isolated firewall check failed: %v\n", err)
+		fmt.Fprintf(diagnostics, "isolated firewall check failed: %v\n", err)
 		return 1
 	}
 	return 0

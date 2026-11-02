@@ -145,6 +145,7 @@ func TestDebugConnectivityRendersOrderedWANStateAndSequentialProbes(t *testing.T
 		"connectivity",
 		nil,
 		dependencies,
+		"text",
 	)
 	if err != nil {
 		t.Fatalf("connectivity returned error: %v", err)
@@ -222,6 +223,7 @@ func TestDebugConnectivityPropagatesInspectionErrors(t *testing.T) {
 		"connectivity",
 		nil,
 		dependencies,
+		"text",
 	)
 	if !errors.Is(err, expectedError) {
 		t.Fatalf("connectivity error = %v, want wrapped %v", err, expectedError)
@@ -294,9 +296,10 @@ func TestDebugPingViewsUseExpectedIfaceTargetsAndAttempts(t *testing.T) {
 				&output,
 				debugProbeTestLogger(),
 				debugProbeTestConfig(),
-				testCase.view,
+				debugView(testCase.view),
 				testCase.args,
 				dependencies,
+				"text",
 			)
 			if err != nil {
 				t.Fatalf("%s returned error: %v", testCase.view, err)
@@ -395,9 +398,10 @@ func TestDebugCurlViewsForceFamilyAndContinueAfterFailure(t *testing.T) {
 				&output,
 				debugProbeTestLogger(),
 				debugProbeTestConfig(),
-				testCase.view,
+				debugView(testCase.view),
 				testCase.args,
 				dependencies,
+				"text",
 			)
 			if err != nil {
 				t.Fatalf("%s returned error: %v", testCase.view, err)
@@ -476,9 +480,10 @@ func TestDebugLoadBalanceViewsUseSixSequentialUnboundRequests(t *testing.T) {
 				&output,
 				debugProbeTestLogger(),
 				debugProbeTestConfig(),
-				testCase.view,
+				debugView(testCase.view),
 				nil,
 				dependencies,
+				"text",
 			)
 			if err != nil {
 				t.Fatalf("%s returned error: %v", testCase.view, err)
@@ -548,9 +553,10 @@ func TestDebugLoadBalanceIfaceViewsRotateConfiguredWANs(t *testing.T) {
 				&output,
 				debugProbeTestLogger(),
 				debugProbeTestConfig(),
-				testCase.view,
+				debugView(testCase.view),
 				nil,
 				dependencies,
+				"text",
 			)
 			if err != nil {
 				t.Fatalf("%s returned error: %v", testCase.view, err)
@@ -601,6 +607,7 @@ func TestDebugLoadBalanceIfaceViewRequiresUsableWAN(t *testing.T) {
 		"lb4-ifaces",
 		nil,
 		debugProbeDependencies{},
+		"text",
 	)
 	if err == nil || !strings.Contains(err.Error(), "no usable WAN interfaces") {
 		t.Fatalf("lb4-ifaces error = %v, want usable-WAN configuration error", err)
@@ -635,9 +642,10 @@ func TestDebugProbeViewValidatesArguments(t *testing.T) {
 				io.Discard,
 				debugProbeTestLogger(),
 				debugProbeTestConfig(),
-				testCase.view,
+				debugView(testCase.view),
 				testCase.args,
 				debugProbeDependencies{},
+				"text",
 			)
 			if err == nil || !strings.Contains(err.Error(), "positional") {
 				t.Fatalf("%s error = %v, want positional argument error", testCase.view, err)
@@ -680,6 +688,7 @@ func TestDebugProbeDefaultIfaceIsTheLowestMark(t *testing.T) {
 		"ping4",
 		nil,
 		dependencies,
+		"text",
 	)
 	if err != nil {
 		t.Fatalf("ping4 returned error: %v", err)
@@ -712,6 +721,7 @@ func TestDebugProbeDefaultIfaceRequiresAConfiguredProvider(t *testing.T) {
 		"ping4",
 		nil,
 		debugProbeDependencies{},
+		"text",
 	)
 	if err == nil || !strings.Contains(err.Error(), "no configured WAN has a usable interface") {
 		t.Fatalf("ping4 error = %v, want the no-usable-WAN error", err)

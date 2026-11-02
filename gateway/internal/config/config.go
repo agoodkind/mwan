@@ -259,6 +259,11 @@ func defaultConfig() Config {
 	return defaultConfigBase()
 }
 
+// AgentDefaults avoids a second set of CLI flag defaults.
+func AgentDefaults() AgentSection {
+	return defaultConfigBase().Agent
+}
+
 func defaultConfigBase() Config {
 	// Assign field-by-field instead of via a struct literal so the
 	// exhaustruct lint does not require enumerating every zero-value
@@ -284,19 +289,12 @@ func defaultConfigBase() Config {
 	return cfg
 }
 
-// Load loads the single TOML config.
-// Path: --config flag > MWAN_CONFIG env > /etc/mwan/config.toml
-func Load() (*Config, error) {
-	cfg, arguments, err := LoadArguments(os.Args)
-	os.Args = arguments
-	return cfg, err
-}
-
-// LoadArguments consumes --config without modifying process-global arguments.
-func LoadArguments(arguments []string) (*Config, []string, error) {
-	path, remaining := watchdogconfig.ResolvePath(arguments)
-	cfg, err := loadConfig(path)
-	return cfg, remaining, err
+// LoadPath validates gateway settings from the selected TOML file.
+func LoadPath(path string) (*Config, error) {
+	if path == "" {
+		path = watchdogconfig.DefaultPath()
+	}
+	return loadConfig(path)
 }
 
 func loadConfig(path string) (*Config, error) {

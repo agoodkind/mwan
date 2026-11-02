@@ -51,7 +51,7 @@ rx_mode = "adaptive"
 			if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			loaded, _, err := config.LoadArguments([]string{"mwan", "--config", path})
+			loaded, err := config.LoadPath(path)
 			if item.fail {
 				if err == nil {
 					t.Fatal("LoadArguments accepted invalid VPP resources")

@@ -118,6 +118,7 @@ var bootIDPattern = regexp.MustCompile(
 // newDeployGateDeps; tests substitute canned readers and probes.
 type deployGateDeps struct {
 	out             io.Writer
+	diagnostics     io.Writer
 	ping6           func(context.Context, netip.Addr, time.Duration) (time.Duration, error)
 	ping4           func(context.Context, string, netip.Addr, time.Duration) (time.Duration, error)
 	probeDownstream func(context.Context, downstreamProbeConfig, requiredEgressFamilies) (bool, string)
@@ -144,10 +145,11 @@ type ownedMissingAlert struct {
 	Report  string
 }
 
-func newDeployGateDeps() deployGateDeps {
+func newDeployGateDeps(output, diagnostics io.Writer) deployGateDeps {
 	probe := netif.NewV6Probe("", nil)
 	return deployGateDeps{
-		out:             os.Stdout,
+		out:             output,
+		diagnostics:     diagnostics,
 		ping6:           probe.PingICMP6,
 		ping4:           netif.Ping4,
 		probeDownstream: probeDownstreamEgressRound,
@@ -160,7 +162,7 @@ func newDeployGateDeps() deployGateDeps {
 		loadNetworkFrom:    networkload.Load,
 		listAddrs:          netif.ListAddrs,
 		runGuestOwnedCheck: nil,
-		alertOwnedMissing:  sendOwnedMissingAlert,
+		alertOwnedMissing:  nil,
 	}
 }
 
@@ -170,111 +172,6 @@ var (
 	deployGateTargetV6 = netip.MustParseAddr(deployGateEgressTargetV6)
 	deployGateTargetV4 = netip.MustParseAddr(deployGateEgressTargetV4)
 )
-
-func runDeployGate(args []string) int {
-	if len(args) > 0 && args[0] == deployGateCommitAlias {
-		verifyArgs := append([]string{string(operationVerify)}, args[1:]...)
-		return runDeploy(verifyArgs)
-	}
-	return runDeploy(args)
-}
-
-// runDeploy dispatches deploy-time gates from the Proxmox host.
-// The host reads boot_id and starts the owned-address check through the
-// MWAN guest agent. Egress probes execute inside the OPNsense guest.
-//
-// Exit codes: 0 on success, 1 on a definitive failure, 64 on a usage error,
-// and, for wait-reboot only, 2 when the guest is unobservable at the
-// deadline. Exit 2 means the verdict belongs to the egress gate: a guest
-// that went down and never came back must reach the rollback chain, not a
-// fail-without-rollback stop.
-//
-// args excludes the subcommand name itself.
-func runDeploy(args []string) int {
-	if len(args) > 0 {
-		switch operationMode(args[0]) {
-		case operationArm, operationWatch, operationStatus, operationLease, operationRelease, operationVerify, operationRecover:
-			return runDeployOperation(args)
-		}
-	}
-	deps := newDeployGateDeps()
-	ctx := context.Background()
-	if len(args) < 1 {
-		printDeployGateUsage()
-		return exitDeployGateUsage
-	}
-	rest := args[1:]
-	switch deployGateMode(args[0]) {
-	case gateModeCheckEgress:
-		return runCheckDownstreamEgress(ctx, deps, rest)
-	case gateModeCheckOwned:
-		if len(rest) != 0 {
-			printDeployGateUsage()
-			return exitDeployGateUsage
-		}
-		return checkOwnedAddresses(ctx, deps)
-	case gateModeCheckNetwork:
-		if len(rest) != 2 {
-			printDeployGateUsage()
-			return exitDeployGateUsage
-		}
-		return checkNetwork(deps, rest[0], rest[1])
-	case gateModeCheckNetworkd:
-		return runNetworkdCheck(rest)
-	case gateModeCheckRelease:
-		return runReleaseCheck(rest)
-	case gateModeCheckFirewall:
-		return runFirewallCheck(rest)
-	case gateModeInspectFirewall:
-		return runFirewallInspect(rest)
-	case gateModeCheckFailover:
-		return runFailoverCheck(rest)
-	case gateModeWaitReboot:
-		return runWaitReboot(ctx, deps, rest)
-	case gateModeWaitEgress:
-		budget, families, rounds, ok := parseWaitEgressArgs(rest)
-		if !ok {
-			return exitDeployGateUsage
-		}
-		return waitEgress(ctx, deps, budget, families, rounds)
-	case gateModeWaitDeploy:
-		inputs, ok := parseWaitDeployArgs(rest)
-		if !ok {
-			return exitDeployGateUsage
-		}
-		return onGatewayHost(deps, func(hostDeps deployGateDeps) int {
-			return waitDeploy(ctx, hostDeps, inputs)
-		})
-	default:
-		printDeployGateUsage()
-		return exitDeployGateUsage
-	}
-}
-
-func runWaitReboot(ctx context.Context, deps deployGateDeps, rest []string) int {
-	if len(rest) != 3 {
-		printDeployGateUsage()
-		return exitDeployGateUsage
-	}
-	vmid, err := parseVMID(rest[0])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
-		return exitDeployGateUsage
-	}
-	budget, err := parseBudgetSeconds(rest[2])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
-		return exitDeployGateUsage
-	}
-	if !bootIDPattern.MatchString(rest[1]) {
-		fmt.Fprintf(os.Stderr,
-			"mwan deploy: old_boot_id %q is not a boot_id UUID\n", rest[1])
-		return exitDeployGateUsage
-	}
-	return onGatewayHost(deps, func(hostDeps deployGateDeps) int {
-		return waitReboot(ctx, hostDeps, vmid, rest[1], budget)
-	})
-}
 
 // waitDeployInputs carries the wait-deploy arguments as one value, because
 // positional parameters invite transposition bugs at the call site.
@@ -288,88 +185,6 @@ type waitDeployInputs struct {
 	families     requiredEgressFamilies
 	rounds       int
 	probe        downstreamProbeConfig
-}
-
-func parseWaitDeployArgs(rest []string) (waitDeployInputs, bool) {
-	if len(rest) != 9 {
-		printDeployGateUsage()
-		return waitDeployInputs{}, false
-	}
-	vmid, err := parseVMID(rest[0])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
-		return waitDeployInputs{}, false
-	}
-	if !bootIDPattern.MatchString(rest[1]) {
-		fmt.Fprintf(os.Stderr,
-			"mwan deploy: old_boot_id %q is not a boot_id UUID\n", rest[1])
-		return waitDeployInputs{}, false
-	}
-	rebootBudget, err := parseBudgetSeconds(rest[2])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
-		return waitDeployInputs{}, false
-	}
-	egressBudget, err := parseBudgetSeconds(rest[3])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
-		return waitDeployInputs{}, false
-	}
-	if !traceIDPattern.MatchString(rest[4]) {
-		fmt.Fprintf(os.Stderr,
-			"mwan deploy: trace_id %q must match %s\n",
-			rest[4], traceIDPattern.String())
-		return waitDeployInputs{}, false
-	}
-	families, err := parseRequiredEgressFamilies(rest[6])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
-		return waitDeployInputs{}, false
-	}
-	rounds, err := parseConsecutiveRounds(rest[7])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
-		return waitDeployInputs{}, false
-	}
-	probe, err := readDownstreamProbeConfig(rest[8], families)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
-		return waitDeployInputs{}, false
-	}
-	return waitDeployInputs{
-		vmid:         vmid,
-		oldBootID:    rest[1],
-		rebootBudget: rebootBudget,
-		egressBudget: egressBudget,
-		traceID:      rest[4],
-		verdictPath:  rest[5],
-		families:     families,
-		rounds:       rounds,
-		probe:        probe,
-	}, true
-}
-
-func parseWaitEgressArgs(rest []string) (time.Duration, requiredEgressFamilies, int, bool) {
-	if len(rest) != 3 {
-		printDeployGateUsage()
-		return 0, requiredEgressFamilies{}, 0, false
-	}
-	budget, err := parseBudgetSeconds(rest[0])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
-		return 0, requiredEgressFamilies{}, 0, false
-	}
-	families, err := parseRequiredEgressFamilies(rest[1])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
-		return 0, requiredEgressFamilies{}, 0, false
-	}
-	rounds, err := parseConsecutiveRounds(rest[2])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
-		return 0, requiredEgressFamilies{}, 0, false
-	}
-	return budget, families, rounds, true
 }
 
 // waitDeploy chains the reboot, egress, and owned-address verdicts and records
@@ -421,7 +236,7 @@ func waitDeploy(ctx context.Context, deps deployGateDeps, in waitDeployInputs) i
 		}
 	}
 	if writeErr != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy: write verdict: %v\n", writeErr)
+		fmt.Fprintf(deps.diagnostics, "mwan deploy: write verdict: %v\n", writeErr)
 		return exitDeployGateFailed
 	}
 	log.InfoContext(ctx, "deploy-gate: verdict recorded",
@@ -491,23 +306,6 @@ func parseVMID(raw string) (int, error) {
 		return 0, fmt.Errorf("vmid %q is not a positive integer", raw)
 	}
 	return vmid, nil
-}
-
-func printDeployGateUsage() {
-	fmt.Fprintln(os.Stderr,
-		"usage: mwan deploy check-egress <families> <probe_config_path>"+
-			" | check-owned-addresses"+
-			" | check-network <network_json> <schema_dir>"+
-			" | check-networkd <network_json> <schema_dir> <unit_dir>"+
-			" | check-release <connection_id> <previous_owner> [--config <config_path>]"+
-			" | check-firewall <network_json> <schema_dir>"+
-			" | check-failover <config.toml>"+
-			" | inspect-firewall <network_json> <schema_dir>"+
-			" | wait-reboot <vmid> <old_boot_id> <seconds>"+
-			" | wait-egress <seconds> <families> <consecutive_rounds>"+
-			" | wait-deploy <vmid> <old_boot_id> <reboot_seconds>"+
-			" <egress_seconds> <trace_id> <verdict_path> <families> <consecutive_rounds> <probe_config_path>"+
-			" (families: ipv4, ipv6, or ipv4,ipv6)")
 }
 
 func parseRequiredEgressFamilies(raw string) (requiredEgressFamilies, error) {
@@ -666,16 +464,9 @@ func waitOwnedAddresses(
 // from its configuration. The gate runs on that hypervisor, so it reuses the
 // alert path the watchdog already sends through rather than carrying mail
 // settings of its own.
-func sendOwnedMissingAlert(ctx context.Context, alert ownedMissingAlert) error {
-	log := slog.With("component", "deploy-gate", "op", "sendOwnedMissingAlert",
-		"vmid", alert.VMID, "trace_id", alert.TraceID)
-	cfg, err := config.Load()
-	if err != nil {
-		log.ErrorContext(ctx, "deploy-gate: configuration unreadable; alert not sent", "err", err)
-		return fmt.Errorf("load configuration: %w", err)
-	}
-	// notify.FromConfig degrades to a journal-only notifier when email is
-	// unconfigured, which would drop the alert silently, so that case is named.
+
+func sendOwnedMissingAlertWithConfig(ctx context.Context, alert ownedMissingAlert, cfg *config.Config) error {
+	log := slog.With("component", "deploy-gate", "op", "sendOwnedMissingAlert", "vmid", alert.VMID, "trace_id", alert.TraceID)
 	if cfg.Email.SMTP2GOAPIKey == "" || cfg.Email.AlertEmail == "" {
 		unconfigured := errors.New("email unconfigured in the hypervisor configuration")
 		log.ErrorContext(ctx, "deploy-gate: alert not sent", "err", unconfigured)
@@ -735,12 +526,7 @@ func readGuestOwnedCheck(
 	return result, nil
 }
 
-func withGatewayGuestReads(deps deployGateDeps) (deployGateDeps, error) {
-	cfg, err := config.Load()
-	if err != nil {
-		slog.Error("deploy-gate: configuration unreadable", "err", err)
-		return deps, fmt.Errorf("load configuration: %w", err)
-	}
+func gatewayGuestReads(deps deployGateDeps, cfg *config.Config) deployGateDeps {
 	guestType := cfg.GuestType
 	deps.readBootID = func(ctx context.Context, vmid int) (string, error) {
 		return readGuestBootID(ctx, guestType, vmid)
@@ -748,16 +534,10 @@ func withGatewayGuestReads(deps deployGateDeps) (deployGateDeps, error) {
 	deps.runGuestOwnedCheck = func(ctx context.Context, vmid int) (ops.GuestExecResult, error) {
 		return readGuestOwnedCheck(ctx, guestType, vmid)
 	}
-	return deps, nil
-}
-
-func onGatewayHost(deps deployGateDeps, run func(deployGateDeps) int) int {
-	hostDeps, err := withGatewayGuestReads(deps)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
-		return exitDeployGateFailed
+	deps.alertOwnedMissing = func(ctx context.Context, alert ownedMissingAlert) error {
+		return sendOwnedMissingAlertWithConfig(ctx, alert, cfg)
 	}
-	return run(hostDeps)
+	return deps
 }
 
 func execInGateGuest(

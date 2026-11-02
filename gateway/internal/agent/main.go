@@ -3,7 +3,6 @@ package agent
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log/slog"
 	"net"
@@ -23,27 +22,14 @@ import (
 )
 
 // Run is the entry point for the agent subcommand.
-// It parses flags, sets up logging, and starts the gRPC server.
-func Run(cfg *config.Config) error {
-	vsockPort := flag.Uint("vsock-port", uint(cfg.Agent.VsockPort), "virtio-vsock listen port (0 disables)")
-	tcpAddr := flag.String("tcp-addr", cfg.Agent.TCPAddr, "TCP listen address for gRPC")
-	deployFile := flag.String(
-		"deploy-file",
-		cfg.Agent.DeployFile,
-		"path to last deploy timestamp file",
-	)
-	deployExpected := flag.Bool(
-		"deploy-expected",
-		cfg.Agent.DeployExpected,
-		"emit deploy-file-missing notify when the deploy file is absent",
-	)
-	logFile := flag.String("log-file", cfg.Agent.LogFile, "path to JSON log file")
-	debug := flag.Bool(
-		"debug",
-		cfg.Agent.Debug,
-		"enable gRPC reflection service for ad-hoc grpcurl inspection",
-	)
-	flag.Parse()
+// It starts logging and the gRPC server with explicit options.
+func Run(cfg *config.Config, options config.AgentSection) error {
+	vsockPort := &options.VsockPort
+	tcpAddr := &options.TCPAddr
+	deployFile := &options.DeployFile
+	deployExpected := &options.DeployExpected
+	logFile := &options.LogFile
+	debug := &options.Debug
 
 	handlers := []slog.Handler{logging.StdoutJSON()}
 	if *logFile != "" {
@@ -60,11 +46,7 @@ func Run(cfg *config.Config) error {
 		slog.String(tracing.ComponentKey, "agent"),
 	)
 
-	if *vsockPort != 0 && *vsockPort > 0xffffffff {
-		logger.Error("vsock port out of range", "vsock_port", *vsockPort, "err", "vsock_port exceeds uint32 max")
-		return fmt.Errorf("vsock port %d exceeds uint32 max", *vsockPort)
-	}
-	port := uint32(*vsockPort)
+	port := *vsockPort
 
 	logger.Info(
 		"mwan-agent starting",

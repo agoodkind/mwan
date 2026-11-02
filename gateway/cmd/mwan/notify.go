@@ -2,14 +2,15 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strings"
 	"time"
 
 	"goodkind.io/mwan/internal/config"
+	"goodkind.io/mwan/internal/logging"
 	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/version"
 )
@@ -20,16 +21,13 @@ import (
 // `notify-email-path-intact` check shells out to `mwan notify
 // --self-test --dry-run`, so this subcommand is also the back-end for
 // that monitor.
-func runNotify(cfg *config.Config) error {
-	flags, err := parseNotifyFlags()
-	if err != nil {
-		return err
-	}
+func runNotifyOptions(cfg *config.Config, flags notifyFlags, output, diagnostics io.Writer) error {
 	if !flags.selfTest {
 		return fmt.Errorf("notify: --self-test is required (no other modes implemented yet)")
 	}
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger, closer := logging.New(logging.Config{Handlers: []slog.Handler{slog.NewJSONHandler(output, &slog.HandlerOptions{Level: slog.LevelInfo})}})
+	defer closer.Close()
 	logger = logger.With(slog.String("component", "notify-cli"))
 	logger.Info("notify self-test",
 		"build", version.BuildVersionString(),
@@ -41,9 +39,9 @@ func runNotify(cfg *config.Config) error {
 	)
 
 	if flags.dryRun {
-		return printPlannedEvent(cfg, flags)
+		return printPlannedEvent(cfg, flags, output)
 	}
-	return fireSelfTestEvent(cfg, logger, flags)
+	return fireSelfTestEvent(cfg, logger, flags, output, diagnostics)
 }
 
 type notifyFlags struct {
@@ -53,37 +51,6 @@ type notifyFlags struct {
 	kind     string
 	key      string
 	message  string
-}
-
-// parseNotifyFlags parses the notify subcommand flags. Defaults are
-// chosen so a bare `mwan notify --self-test` emits at ERROR level (the
-// default `min_level` in the email sink), with a kind and key that
-// won't collide with real alerts and a message that is obvious to
-// recognise in the inbox.
-func parseNotifyFlags() (notifyFlags, error) {
-	fs := flag.NewFlagSet("notify", flag.ContinueOnError)
-	selfTest := fs.Bool("self-test", false, "emit a single self-test event through notify.FromConfig")
-	dryRun := fs.Bool("dry-run", false, "print the planned event instead of sending")
-	levelStr := fs.String("level", "ERROR", "event level (DEBUG|INFO|WARN|ERROR)")
-	kind := fs.String("kind", "self-test", "event kind string (notify.Event.Kind)")
-	key := fs.String("key", defaultSelfTestKey(), "event key (notify.Event.Key); defaults to hostname")
-	message := fs.String("message", defaultSelfTestMessage(), "single-line subject-friendly summary")
-	if err := fs.Parse(os.Args[1:]); err != nil {
-		slog.Error("notify: parse flags failed", "err", err)
-		return notifyFlags{}, fmt.Errorf("parse flags: %w", err)
-	}
-	lvl, err := parseLevel(*levelStr)
-	if err != nil {
-		return notifyFlags{}, err
-	}
-	return notifyFlags{
-		selfTest: *selfTest,
-		dryRun:   *dryRun,
-		level:    lvl,
-		kind:     *kind,
-		key:      *key,
-		message:  *message,
-	}, nil
 }
 
 // levelToken is the named string enum the notify CLI accepts via
@@ -137,25 +104,25 @@ func defaultSelfTestMessage() string {
 // printPlannedEvent describes what the notifier would have done without
 // touching the sink. Useful for the validate/monitoring health check
 // that needs to confirm the CLI is present without actually sending.
-func printPlannedEvent(cfg *config.Config, flags notifyFlags) error {
-	fmt.Println("notify self-test (dry-run): no event sent")
-	fmt.Printf("  level         = %s\n", flags.level.String())
-	fmt.Printf("  kind          = %s\n", flags.kind)
-	fmt.Printf("  key           = %s\n", flags.key)
-	fmt.Printf("  message       = %s\n", flags.message)
+func printPlannedEvent(cfg *config.Config, flags notifyFlags, output io.Writer) error {
+	fmt.Fprintln(output, "notify self-test (dry-run): no event sent")
+	fmt.Fprintf(output, "  level         = %s\n", flags.level.String())
+	fmt.Fprintf(output, "  kind          = %s\n", flags.kind)
+	fmt.Fprintf(output, "  key           = %s\n", flags.key)
+	fmt.Fprintf(output, "  message       = %s\n", flags.message)
 	if cfg == nil {
-		fmt.Println("  email sink    = (cfg nil)")
+		fmt.Fprintln(output, "  email sink    = (cfg nil)")
 		return nil
 	}
 	if cfg.Email.AlertEmail == "" || cfg.Email.SMTP2GOAPIKey == "" {
-		fmt.Println("  email sink    = NullNotifier (cfg.Email unconfigured)")
+		fmt.Fprintln(output, "  email sink    = NullNotifier (cfg.Email unconfigured)")
 		return nil
 	}
-	fmt.Printf("  email to      = %s\n", cfg.Email.AlertEmail)
-	fmt.Printf("  subject prefix= %s\n", cfg.Email.SubjectPrefix)
-	fmt.Printf("  min_level     = %s\n", cfg.Email.MinLevel)
+	fmt.Fprintf(output, "  email to      = %s\n", cfg.Email.AlertEmail)
+	fmt.Fprintf(output, "  subject prefix= %s\n", cfg.Email.SubjectPrefix)
+	fmt.Fprintf(output, "  min_level     = %s\n", cfg.Email.MinLevel)
 	if flags.level < parseMinLevelOrError(cfg.Email.MinLevel) {
-		fmt.Println("  NOTE: event level is below cfg.Email.min_level; the sink would drop it.")
+		fmt.Fprintln(output, "  NOTE: event level is below cfg.Email.min_level; the sink would drop it.")
 	}
 	return nil
 }
@@ -177,13 +144,13 @@ func parseMinLevelOrError(s string) slog.Level {
 // surfaced through Notify, so the exit code is best-effort: zero
 // means "no construction error and the event was dispatched", not
 // "the SMTP2GO API returned 2xx".
-func fireSelfTestEvent(cfg *config.Config, logger *slog.Logger, flags notifyFlags) error {
+func fireSelfTestEvent(cfg *config.Config, logger *slog.Logger, flags notifyFlags, output, diagnostics io.Writer) error {
 	if cfg == nil {
 		return fmt.Errorf("notify: cfg is nil")
 	}
 	notifier := notify.FromConfig(cfg.Email, cfg.NotifyConfig(), logger, "mwan-notify")
 	if _, ok := notifier.(notify.NullNotifier); ok {
-		fmt.Fprintln(os.Stderr,
+		fmt.Fprintln(diagnostics,
 			"notify: NullNotifier in use (cfg.Email unconfigured); event will be dropped silently")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -204,6 +171,6 @@ func fireSelfTestEvent(cfg *config.Config, logger *slog.Logger, flags notifyFlag
 	// Immediately resolve so the self-test does not leave a stale open
 	// alert in the Manager state map.
 	notifier.Resolve(ctx, flags.kind, flags.key, "self-test complete")
-	fmt.Println("notify self-test dispatched (check journald + inbox for delivery)")
+	fmt.Fprintln(output, "notify self-test dispatched (check journald + inbox for delivery)")
 	return nil
 }

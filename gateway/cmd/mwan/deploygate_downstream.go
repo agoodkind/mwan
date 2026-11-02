@@ -91,24 +91,6 @@ func readDownstreamProbeConfig(
 	return probe, nil
 }
 
-func runCheckDownstreamEgress(ctx context.Context, deps deployGateDeps, args []string) int {
-	if len(args) != 2 {
-		printDeployGateUsage()
-		return exitDeployGateUsage
-	}
-	families, err := parseRequiredEgressFamilies(args[0])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
-		return exitDeployGateUsage
-	}
-	probe, err := readDownstreamProbeConfig(args[1], families)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan deploy: %v\n", err)
-		return exitDeployGateUsage
-	}
-	return checkDownstreamEgress(ctx, deps, probe, families)
-}
-
 func parseProbeAddress(field string, value string, ipv4 bool) (netip.Addr, error) {
 	address, err := netip.ParseAddr(value)
 	if err != nil || !address.IsGlobalUnicast() || address.Is4() != ipv4 {

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -18,7 +17,6 @@ import (
 	"goodkind.io/mwan/internal/installfile"
 	"goodkind.io/mwan/internal/installspec"
 	"goodkind.io/mwan/internal/networkjson"
-	"goodkind.io/mwan/internal/watchdogconfig"
 	"goodkind.io/mwan/internal/yangpub"
 )
 
@@ -44,28 +42,19 @@ type installOutcome struct {
 	nacmImported []yangpub.Datastore
 }
 
-func runInstall(args []string) int {
-	flags, err := parseInstallFlags(args)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan install: %v\n", err)
-		return exitInstallUsage
-	}
+func runInstallOptions(flags installFlags, output, diagnostics io.Writer) int {
 	if flags.printSchema != "" {
 		if _, err := yangpub.WriteSchema(flags.printSchema); err != nil {
-			fmt.Fprintf(os.Stderr, "mwan install: %v\n", err)
+			fmt.Fprintf(diagnostics, "mwan install: %v\n", err)
 			return exitInstallFailed
 		}
-		fmt.Fprintf(os.Stdout, "schema written to %s\n", flags.printSchema)
-		return exitInstallOK
-	}
-	if !flags.apply {
-		printInstallUsage(os.Stdout)
+		fmt.Fprintf(output, "schema written to %s\n", flags.printSchema)
 		return exitInstallOK
 	}
 	role := installspec.Role(flags.role)
 	spec, known := installspec.For(role)
 	if !known {
-		fmt.Fprintf(os.Stderr, "mwan install: unknown role %q; want one of %s\n",
+		fmt.Fprintf(diagnostics, "mwan install: unknown role %q; want one of %s\n",
 			flags.role, strings.Join(knownInstallRoles(), ", "))
 		return exitInstallUsage
 	}
@@ -84,9 +73,9 @@ func runInstall(args []string) int {
 		outcome.modules = schema.modules
 		outcome.nacmImported = schema.nacmImported
 	}
-	reportInstall(os.Stdout, outcome, rooted)
+	reportInstall(output, outcome, rooted)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan install: %v\n", err)
+		fmt.Fprintf(diagnostics, "mwan install: %v\n", err)
 		return exitInstallFailed
 	}
 	return exitInstallOK
@@ -233,43 +222,6 @@ func reportInstall(out io.Writer, outcome installOutcome, rooted bool) {
 	fmt.Fprintf(out, "%s %s\n", verb, strings.Join(outcome.enabled, " "))
 }
 
-func parseInstallFlags(args []string) (installFlags, error) {
-	flags := installFlags{
-		role: "", apply: false, printSchema: "", root: "", guestType: string(config.GuestTypeQEMU),
-	}
-	set := flag.NewFlagSet("install", flag.ContinueOnError)
-	set.SetOutput(os.Stderr)
-	set.StringVar(&flags.role, "role", "",
-		"which host this is: "+strings.Join(knownInstallRoles(), ", "))
-	set.BoolVar(&flags.apply, "apply", false,
-		"write the files and enable the units; without it, print this help and exit")
-	set.StringVar(&flags.printSchema, "print-schema", "",
-		"write the embedded YANG modules to this directory and exit, touching nothing else")
-	set.StringVar(&flags.root, "root", "",
-		"write under this directory instead of /, and name the units rather than enabling them")
-	set.StringVar(&flags.guestType, "guest-type", flags.guestType,
-		"select qemu (default) or lxc. For lxc, the installer writes only settings with the net. prefix "+
-			"from each sysctl file and removes or does not write files without such settings")
-	if err := set.Parse(args); err != nil {
-		return flags, installFailed("parse the flags of", "mwan install", err)
-	}
-	if _, err := watchdogconfig.ParseGuestType(flags.guestType); err != nil {
-		return flags, installFailed("parse the guest type", flags.guestType, err)
-	}
-	if flags.printSchema != "" && flags.apply {
-		return flags, errors.New("--print-schema writes no host files, so it does not take --apply")
-	}
-	if flags.apply && flags.role == "" {
-		return flags, errors.New("--apply needs --role")
-	}
-	if flags.root != "" && rootIsHost(flags.root) {
-		return flags, fmt.Errorf(
-			"--root %s is the host's root; leave --root off to install on this host", flags.root,
-		)
-	}
-	return flags, nil
-}
-
 // A rooted install must not use / or a symlink to /.
 // It would write host files without enabling host services and would open the
 // host's sysrepo repository with a separate shared-memory prefix.
@@ -294,41 +246,4 @@ func knownInstallRoles() []string {
 		roles = append(roles, string(role))
 	}
 	return roles
-}
-
-func printInstallUsage(out io.Writer) {
-	fmt.Fprintln(out, "usage: mwan install --role <"+strings.Join(knownInstallRoles(), "|")+"> --apply")
-	fmt.Fprintln(out, "       mwan install --print-schema <dir>")
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Writes the files this binary owns onto the host and enables its units.")
-	fmt.Fprintln(out, "Without --apply nothing is written. A second run writes no file and")
-	fmt.Fprintln(out, "re-enables the units without reloading systemd.")
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Files installed, by role:")
-	for _, name := range knownInstallRoles() {
-		spec, _ := installspec.For(installspec.Role(name))
-		written := make([]string, 0, len(spec.Files))
-		for _, file := range spec.Files {
-			written = append(written, file.Dest)
-		}
-		fmt.Fprintf(out, "  %-9s writes %s\n", name, strings.Join(written, " "))
-		fmt.Fprintf(out, "  %-9s enables %s\n", "", strings.Join(spec.Enable, " "))
-		stackModules := spec.StackYangModules()
-		if len(stackModules) == 0 {
-			continue
-		}
-		modulePaths := make([]string, 0, len(stackModules))
-		for _, module := range stackModules {
-			modulePaths = append(modulePaths, module.Path())
-		}
-		fmt.Fprintf(out, "  %-9s installs %s\n", "", strings.Join(modulePaths, " "))
-	}
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "The YANG modules are embedded too. The wan role writes them to")
-	fmt.Fprintln(out, networkjson.DefaultSchemaDir+" and installs them into sysrepo,")
-	fmt.Fprintln(out, "updating a module installed at another revision. Under --root it uses")
-	fmt.Fprintln(out, "a private repository below the root. It also imports the read-only")
-	fmt.Fprintln(out, "NACM policy into each of startup and running that does not already")
-	fmt.Fprintln(out, "contain it, and writes it to "+installspec.NACMPolicyPath+". --print-schema")
-	fmt.Fprintln(out, "writes the modules to a directory for validation and touches nothing else.")
 }

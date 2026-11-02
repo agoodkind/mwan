@@ -16,11 +16,8 @@ import (
 	"goodkind.io/mwan/internal/version"
 )
 
-func runReport(ctx context.Context, arguments []string, cfg *config.Config, output, errorOutput io.Writer) int {
-	flags, err := parseReportFlags(arguments, errorOutput)
-	if err == nil {
-		err = executeReport(ctx, flags, cfg)
-	}
+func runReportOptions(ctx context.Context, flags reportFlags, cfg *config.Config, output, errorOutput io.Writer) int {
+	err := executeReport(ctx, flags, cfg)
 	if errors.Is(err, context.Canceled) && flags.action == "watch" {
 		return 0
 	}

@@ -63,30 +63,20 @@ func Default() Config {
 	return cfg
 }
 
-// LoadArguments consumes --config without modifying process-global arguments.
-func LoadArguments(arguments []string) (*Config, []string, error) {
-	path, remaining := ResolvePath(arguments)
-	cfg, err := loadConfig(path)
-	return cfg, remaining, err
+// LoadPath validates watchdog status source settings before startup.
+func LoadPath(path string) (*Config, error) {
+	if path == "" {
+		path = DefaultPath()
+	}
+	return loadConfig(path)
 }
 
-// ResolvePath selects the first configuration path flag with a value over
-// MWAN_CONFIG and /etc/mwan/config.toml. The returned arguments omit
-// that flag and its value.
-func ResolvePath(arguments []string) (string, []string) {
-	path := "/etc/mwan/config.toml"
+// DefaultPath avoids separate path defaults in the gateway and watchdog.
+func DefaultPath() string {
 	if v := os.Getenv("MWAN_CONFIG"); v != "" {
-		path = v
+		return v
 	}
-	remaining := append([]string(nil), arguments...)
-	for i, arg := range remaining {
-		if arg == "--config" && i+1 < len(remaining) {
-			path = remaining[i+1]
-			remaining = append(remaining[:i], remaining[i+2:]...)
-			break
-		}
-	}
-	return path, remaining
+	return "/etc/mwan/config.toml"
 }
 
 // ErrEmptyPath indicates that LoadWatchdogSection received an empty path.

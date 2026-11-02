@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
-	"os"
 
+	"goodkind.io/mwan/internal/logging"
 	"goodkind.io/mwan/internal/pd"
 )
 
@@ -14,27 +15,20 @@ import (
 // find-pd-prefixes.sh: it reads the live systemd-networkd lease over
 // D-Bus, with networkctl and kernel-route fallbacks. Diagnostics go to stderr
 // so stdout contains only the prefix for callers that read the command output.
-func runPDProbe(args []string) int {
-	if len(args) < 1 || args[0] == "" {
-		fmt.Fprintln(os.Stderr, "usage: mwan pd <iface>")
-		return 1
-	}
-	iface := args[0]
-
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: slog.LevelWarn,
-	}))
+func runPDProbe(iface string, output, diagnostics io.Writer) int {
+	logger, closer := logging.New(logging.Config{Handlers: []slog.Handler{slog.NewTextHandler(diagnostics, &slog.HandlerOptions{Level: slog.LevelWarn})}})
+	defer closer.Close()
 
 	prefix, ok, err := pd.New(logger).Prefix(context.Background(), iface)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mwan pd: %s: %v\n", iface, err)
+		fmt.Fprintf(diagnostics, "mwan pd: %s: %v\n", iface, err)
 		return 1
 	}
 	if !ok {
-		fmt.Fprintf(os.Stderr, "mwan pd: no delegated prefix found for %s\n", iface)
+		fmt.Fprintf(diagnostics, "mwan pd: no delegated prefix found for %s\n", iface)
 		return 1
 	}
 
-	fmt.Println(prefix.String())
+	fmt.Fprintln(output, prefix.String())
 	return 0
 }

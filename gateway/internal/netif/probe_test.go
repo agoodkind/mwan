@@ -2,6 +2,7 @@ package netif
 
 import (
 	"context"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -63,7 +64,7 @@ func TestPeerMatchesTarget(t *testing.T) {
 	}
 }
 
-func TestHTTPCheckReturnsStatusCode(t *testing.T) {
+func TestHTTPCheck4ReturnsStatusCode(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(
@@ -73,7 +74,7 @@ func TestHTTPCheckReturnsStatusCode(t *testing.T) {
 	}))
 	defer server.Close()
 
-	statusCode, err := HTTPCheck(context.Background(), "", server.URL, time.Second)
+	statusCode, err := HTTPCheck4(context.Background(), "", server.URL, time.Second)
 	if err != nil {
 		t.Fatalf("HTTPCheck: %v", err)
 	}
@@ -97,6 +98,7 @@ func TestHTTPGetReturnsStatusAndTrimmedBody(t *testing.T) {
 
 	result, err := HTTPGet(
 		context.Background(),
+		slog.Default(),
 		"",
 		"inet",
 		server.URL,
@@ -129,13 +131,13 @@ func TestHTTPGetRejectsResponseBodyOverLimit(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := HTTPGet(context.Background(), "", "", server.URL, time.Second)
+	_, err := HTTPGet(context.Background(), slog.Default(), "", "", server.URL, time.Second)
 	if err == nil {
 		t.Fatal("HTTPGet accepted a response body larger than 4 KiB")
 	}
 }
 
-func TestHTTPCheckDoesNotApplyHTTPGetBodyLimit(t *testing.T) {
+func TestHTTPCheck4DoesNotApplyHTTPGetBodyLimit(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(
@@ -147,7 +149,7 @@ func TestHTTPCheckDoesNotApplyHTTPGetBodyLimit(t *testing.T) {
 	}))
 	defer server.Close()
 
-	statusCode, err := HTTPCheck(context.Background(), "", server.URL, time.Second)
+	statusCode, err := HTTPCheck4(context.Background(), "", server.URL, time.Second)
 	if err != nil {
 		t.Fatalf("HTTPCheck: %v", err)
 	}

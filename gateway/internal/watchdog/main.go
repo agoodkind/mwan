@@ -3,7 +3,6 @@ package watchdog
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log/slog"
 	"os"
@@ -20,53 +19,13 @@ import (
 	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
-// watchdogFlags holds the parsed command-line flags for the watchdog subcommand.
-type watchdogFlags struct {
-	dryRun        bool
-	redTeam       string
-	redTeamLive   bool
-	redTeamIters  int
-	showScenarios bool
-}
-
-// parseFlags parses command-line flags for the watchdog subcommand.
-func parseFlags() watchdogFlags {
-	dryRun := flag.Bool(
-		"dry-run", false,
-		"Skip destructive ops and emails; log decisions only",
-	)
-	redTeam := flag.String(
-		"red-team", "",
-		"Run a fault-injection scenario (implies --dry-run)",
-	)
-	redTeamLive := flag.Bool(
-		"red-team-live", false,
-		"Run red-team fault injection WITHOUT --dry-run (real VM operations)",
-	)
-	redTeamIters := flag.Int(
-		"red-team-iterations", 10,
-		"Number of loop iterations in red-team mode",
-	)
-	listScenarios := flag.Bool(
-		"list-scenarios", false,
-		"List available red-team scenarios and exit",
-	)
-	flag.Parse()
-
-	f := watchdogFlags{
-		dryRun:        *dryRun,
-		redTeam:       *redTeam,
-		redTeamLive:   *redTeamLive,
-		redTeamIters:  *redTeamIters,
-		showScenarios: *listScenarios,
-	}
-	if f.redTeam != "" && !f.redTeamLive {
-		f.dryRun = true
-	}
-	if os.Getenv("DRY_RUN") == "1" {
-		f.dryRun = true
-	}
-	return f
+// Options separates argument parsing from watchdog startup.
+type Options struct {
+	DryRun            bool
+	RedTeam           string
+	RedTeamLive       bool
+	RedTeamIterations int
+	ListScenarios     bool
 }
 
 func printScenarios() {
@@ -89,7 +48,7 @@ func printScenarios() {
 // handler is intentionally not attached: notify owns email delivery
 // for the watchdog now, so attaching the handler would produce a
 // duplicate email per failover or recovery event.
-func buildOpsLayer(cfg *watchdogconfig.Config, f watchdogFlags) (*slog.Logger, ops.SysOps, notify.Notifier, error) {
+func buildOpsLayer(cfg *watchdogconfig.Config, f Options) (*slog.Logger, ops.SysOps, notify.Notifier, error) {
 	handlers := []slog.Handler{logging.StdoutJSON()}
 	if p := cfg.Watchdog.LogFile; p != "" {
 		handlers = append(handlers, logging.FileText(p, "[watchdog]"))
@@ -107,21 +66,21 @@ func buildOpsLayer(cfg *watchdogconfig.Config, f watchdogFlags) (*slog.Logger, o
 
 	var baseOps ops.SysOps = ops.NewRealOps(cfg, logger)
 
-	if f.dryRun {
+	if f.DryRun {
 		logger.Info("[MODE] Dry-run enabled; destructive ops will be logged only")
 		baseOps = &dryRunOps{inner: baseOps, log: logger}
 	}
 
-	if f.redTeam != "" {
-		preset, ok := redteam.Presets[f.redTeam]
+	if f.RedTeam != "" {
+		preset, ok := redteam.Presets[f.RedTeam]
 		if !ok {
-			return nil, nil, nil, fmt.Errorf("unknown scenario %q (use --list-scenarios)", f.redTeam)
+			return nil, nil, nil, fmt.Errorf("unknown scenario %q (use --list-scenarios)", f.RedTeam)
 		}
 		logger.Info(
 			"[MODE] Red-team scenario",
-			"scenario", f.redTeam,
+			"scenario", f.RedTeam,
 			"description", preset.Description,
-			"live", f.redTeamLive,
+			"live", f.RedTeamLive,
 		)
 		baseOps = redteam.NewOps(baseOps, preset, logger)
 	}
@@ -130,10 +89,16 @@ func buildOpsLayer(cfg *watchdogconfig.Config, f watchdogFlags) (*slog.Logger, o
 }
 
 // Run is the entry point for the watchdog subcommand.
-// It sets up flag parsing, logger, operations layer, and coordinates the watchdog loop.
-func Run(cfg *watchdogconfig.Config) error {
-	f := parseFlags()
-	if f.showScenarios {
+// It starts the watchdog with explicit options.
+func Run(cfg *watchdogconfig.Config, options Options) error {
+	f := options
+	if f.RedTeam != "" && !f.RedTeamLive {
+		f.DryRun = true
+	}
+	if os.Getenv("DRY_RUN") == "1" {
+		f.DryRun = true
+	}
+	if f.ListScenarios {
 		printScenarios()
 		return nil
 	}
@@ -149,8 +114,8 @@ func Run(cfg *watchdogconfig.Config) error {
 	)
 
 	// Override config for red-team mode
-	if f.redTeam != "" {
-		cfg.Watchdog.MaxIterations = f.redTeamIters
+	if f.RedTeam != "" {
+		cfg.Watchdog.MaxIterations = f.RedTeamIterations
 		cfg.Watchdog.CheckIntervalHealthy = 1
 		cfg.Watchdog.CheckIntervalDegraded = 1
 		cfg.Watchdog.ConnectivityTimeoutSeconds = 3

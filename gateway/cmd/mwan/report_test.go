@@ -56,7 +56,7 @@ func reportCommandConfig(t *testing.T, server *testsmtp.Server) (*config.Config,
 	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg, _, err := config.LoadArguments([]string{"mwan", "--config", path})
+	cfg, err := config.LoadPath(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestReportCommandRejectsInvalidAction(t *testing.T) {
 	server := testsmtp.Start(t)
 	_, configPath, _ := reportCommandConfig(t, server)
 	output, code := runReportCommand(t, configPath, "report", "unknown")
-	if code == 0 || !strings.Contains(output, "usage:") {
+	if code == 0 || !strings.Contains(output, "Usage:") {
 		t.Fatal("unknown report action did not return usage and failure")
 	}
 }

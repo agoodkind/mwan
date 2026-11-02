@@ -2,107 +2,73 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"log/slog"
 	"math"
 	"sort"
-	"text/tabwriter"
 	"time"
 
 	systemddbus "github.com/coreos/go-systemd/v22/dbus"
 )
 
-// debugSystemdSlowestCount bounds the slowest-starters table, matching the
-// shell's systemd-analyze blame | head -20.
-const debugSystemdSlowestCount = 20
-
 // debugSystemdFocusUnits are the units whose startup timing prints
 // individually, the same set the shell's critical-chain loop covered.
-var debugSystemdFocusUnits = []string{
-	"mwan-agent.service",
-	"mwan-ifmgr@wan.service",
-	"systemd-networkd.service",
-	"cloudflared.service",
-	"nftables.service",
+func debugSystemdFocusUnits() []string {
+	return []string{
+		"mwan-agent.service",
+		"mwan-ifmgr@wan.service",
+		"systemd-networkd.service",
+		"cloudflared.service",
+		"nftables.service",
+	}
 }
 
 // unitTiming is one unit's startup duration derived from its monotonic
 // activation timestamps.
 type unitTiming struct {
-	Name     string
-	Duration time.Duration
+	Name     string        `json:"name"`
+	Duration time.Duration `json:"duration_ns"`
 }
 
-// showDebugSystemd renders failed units, activating units, the slowest
-// starters, and the mwan-relevant unit timings over the systemd D-Bus API,
-// with no systemctl or systemd-analyze subprocess.
-func showDebugSystemd(
+type debugFocusTiming struct {
+	unitTiming
+	Present bool `json:"present"`
+}
+
+type debugSystemdResult struct {
+	Units   []systemddbus.UnitStatus `json:"units"`
+	Timings []unitTiming             `json:"timings"`
+	Focus   []debugFocusTiming       `json:"focus"`
+}
+
+func collectDebugSystemd(
 	ctx context.Context,
-	output io.Writer,
 	logger *slog.Logger,
-) error {
+) (debugSystemdResult, error) {
 	conn, err := systemddbus.NewSystemConnectionContext(ctx)
 	if err != nil {
-		return debugWrappedError(logger, "connect to systemd dbus", err)
+		return debugSystemdResult{}, debugWrappedError(logger, "connect to systemd dbus", err)
 	}
 	defer conn.Close()
 
 	units, err := conn.ListUnitsContext(ctx)
 	if err != nil {
-		return debugWrappedError(logger, "list systemd units", err)
+		return debugSystemdResult{}, debugWrappedError(logger, "list systemd units", err)
 	}
-
-	fmt.Fprintln(output, "== failed units ==")
-	printUnitsInState(output, units, "failed")
-	fmt.Fprintln(output, "\n== units stuck in activating ==")
-	printUnitsInState(output, units, "activating")
-
 	timings := unitTimings(ctx, conn, units, logger)
-	fmt.Fprintf(output, "\n== slowest starters (top %d) ==\n", debugSystemdSlowestCount)
-	writer := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
-	for i, timing := range timings {
-		if i >= debugSystemdSlowestCount {
-			break
+	focusUnits := debugSystemdFocusUnits()
+	result := debugSystemdResult{Units: units, Timings: timings, Focus: make([]debugFocusTiming, 0, len(focusUnits))}
+	for _, name := range focusUnits {
+		focus := debugFocusTiming{unitTiming: unitTiming{Name: name}}
+		for _, timing := range timings {
+			if timing.Name == name {
+				focus.unitTiming = timing
+				focus.Present = true
+				break
+			}
 		}
-		fmt.Fprintf(writer, "%s\t%s\n", timing.Duration.Round(time.Millisecond), timing.Name)
+		result.Focus = append(result.Focus, focus)
 	}
-	_ = writer.Flush()
-
-	fmt.Fprintln(output, "\n== mwan unit timings ==")
-	byName := make(map[string]time.Duration, len(timings))
-	for _, timing := range timings {
-		byName[timing.Name] = timing.Duration
-	}
-	focusWriter := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
-	for _, name := range debugSystemdFocusUnits {
-		duration, ok := byName[name]
-		value := "not measured"
-		if ok {
-			value = duration.Round(time.Millisecond).String()
-		}
-		fmt.Fprintf(focusWriter, "%s\t%s\n", name, value)
-	}
-	_ = focusWriter.Flush()
-	return nil
-}
-
-func printUnitsInState(
-	output io.Writer,
-	units []systemddbus.UnitStatus,
-	state string,
-) {
-	count := 0
-	for _, unit := range units {
-		if unit.ActiveState != state {
-			continue
-		}
-		fmt.Fprintf(output, "%s %s (%s)\n", unit.Name, unit.ActiveState, unit.SubState)
-		count++
-	}
-	if count == 0 {
-		fmt.Fprintln(output, "none")
-	}
+	return result, nil
 }
 
 // unitTimings derives each active unit's startup duration from the monotonic

@@ -466,7 +466,7 @@ func TestInstallApplyUnderARootTouchesNoSystemd(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 
-	code := runInstall([]string{"--apply", "--role", "host", "--root", root})
+	_, code := runMwanBinary(t, buildMwanBinary(t), t.TempDir(), "", "install", "--apply", "--role", "host", "--root", root)
 
 	if code != exitInstallOK {
 		t.Fatalf("exit code = %d, want %d", code, exitInstallOK)
@@ -631,7 +631,7 @@ func TestInstallApplyRejectsARootThatIsTheHost(t *testing.T) {
 func TestInstallApplyNeedsARole(t *testing.T) {
 	t.Parallel()
 
-	code := runInstall([]string{"--apply", "--root", t.TempDir()})
+	_, code := runMwanBinary(t, buildMwanBinary(t), t.TempDir(), "", "install", "--apply", "--root", t.TempDir())
 
 	if code != exitInstallUsage {
 		t.Fatalf("exit code = %d, want %d", code, exitInstallUsage)
@@ -642,7 +642,7 @@ func TestInstallRejectsAnUnknownRole(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 
-	code := runInstall([]string{"--apply", "--role", "gateway", "--root", root})
+	_, code := runMwanBinary(t, buildMwanBinary(t), t.TempDir(), "", "install", "--apply", "--role", "gateway", "--root", root)
 
 	if code != exitInstallUsage {
 		t.Fatalf("exit code = %d, want %d", code, exitInstallUsage)
@@ -662,7 +662,7 @@ func TestInstallPrintSchemaWritesEveryModule(t *testing.T) {
 	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "schema")
 
-	code := runInstall([]string{"--print-schema", dir})
+	_, code := runMwanBinary(t, buildMwanBinary(t), t.TempDir(), "", "install", "--print-schema", dir)
 
 	if code != exitInstallOK {
 		t.Fatalf("exit code = %d, want %d", code, exitInstallOK)
@@ -690,35 +690,6 @@ func TestInstallPrintSchemaWritesEveryModule(t *testing.T) {
 		}
 		if !bytes.Contains(written, []byte("revision "+wantRevision)) {
 			t.Errorf("%s does not carry revision %s", module.File, wantRevision)
-		}
-	}
-}
-
-// TestInstalledUnitsAreTheOnesTheDaemonNames proves every unit the install
-// verb enables for the wan role is a unit the binary's own debug output
-// reports on, so the two lists cannot drift apart silently.
-func TestInstalledUnitsAreTheOnesTheDaemonNames(t *testing.T) {
-	t.Parallel()
-	focus := make(map[string]bool, len(debugSystemdFocusUnits))
-	for _, name := range debugSystemdFocusUnits {
-		focus[name] = true
-	}
-
-	wanSpec, _ := installspec.For(installspec.RoleWAN)
-	for _, unit := range wanSpec.Enable {
-		switch unit {
-		case "mwan-trace-boot.service":
-			// The boot trace is a oneshot that has already exited by the time
-			// anything inspects the running system, so it is not a unit the
-			// debug view times.
-			continue
-		case "rousette.service", "nghttpx-wanconfig.service":
-			// The wanconfig stack serves the management surface; it is not
-			// on the forwarding path whose startup the debug view times.
-			continue
-		}
-		if !focus[unit] {
-			t.Errorf("the wan role enables %s, which the debug view does not name", unit)
 		}
 	}
 }
