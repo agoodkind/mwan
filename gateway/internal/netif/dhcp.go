@@ -339,7 +339,8 @@ func (c *DHCPClient) recoverLease(ctx context.Context, cached LeaseInfo) *nclien
 	attemptDeadline := earlier(discoverAt, cached.ExpiresAt)
 	discoverStarted := false
 	for c.clock.Now().Before(cached.ExpiresAt) && ctx.Err() == nil {
-		// RFC 2131 section 3.2 allows continued use of the saved address until its lease expires, so retain it while DISCOVER runs.
+		// RFC 2131 section 3.2 permits use of the saved address until its lease
+		// expires. Retain the address during DISCOVER.
 		if !c.clock.Now().Before(discoverAt) {
 			discoverStarted = true
 			attemptDeadline = cached.ExpiresAt
