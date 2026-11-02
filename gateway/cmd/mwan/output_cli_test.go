@@ -33,6 +33,20 @@ func TestCLIConfigStateFormats(t *testing.T) {
 	}
 }
 
+func TestCLIConfigStateVerboseDiagnostics(t *testing.T) {
+	binary := buildReportCommand(t)
+	inputs := writeConfigStateInputs(t, configStateDeployText)
+	output, diagnostics, code := runCLIProcess(t, binary, inputs.args...)
+	if code != 0 || diagnostics != "" {
+		t.Fatalf("default exit=%d diagnostics=%q", code, diagnostics)
+	}
+	args := append(append([]string{}, inputs.args...), "--verbose")
+	verboseOutput, diagnostics, code := runCLIProcess(t, binary, args...)
+	if code != 0 || verboseOutput != output || !strings.Contains(diagnostics, "mwan boundary") {
+		t.Fatalf("verbose exit=%d output=%q diagnostics=%q", code, verboseOutput, diagnostics)
+	}
+}
+
 func TestCLIDebugPingJSON(t *testing.T) {
 	binary := buildReportCommand(t)
 	path := filepath.Join(t.TempDir(), "config.toml")
@@ -66,6 +80,12 @@ func TestCLIOutputFormatRejectedBeforeConfiguration(t *testing.T) {
 			t.Fatalf("%s exit=%d output=%q diagnostics=%q", command, code, output, diagnostics)
 		}
 	}
+	for _, view := range []string{"connectivity", "curl4", "curl6", "lb4", "lb6", "lb4-ifaces", "lb6-ifaces", "ping4", "ping6", "npt", "prefixes", "routes", "policy", "status", "stats", "sim4", "sim6", "systemd"} {
+		output, diagnostics, code := runCLIProcess(t, binary, "debug", view, "--config", missing, "--output-format", "invalid")
+		if code == 0 || output != "" || !strings.Contains(diagnostics, "invalid output format") || strings.Contains(diagnostics, missing) {
+			t.Fatalf("debug %s exit=%d output=%q diagnostics=%q", view, code, output, diagnostics)
+		}
+	}
 }
 
 func TestCLIGatewayStatusFormats(t *testing.T) {
@@ -88,5 +108,19 @@ func TestCLIGatewayStatusFormats(t *testing.T) {
 	textOutput, diagnostics, code := runCLIProcess(t, binary, textArgs...)
 	if code != 0 || !strings.Contains(textOutput, "webpass") || !strings.Contains(textOutput, "unknown") || !strings.Contains(textOutput, "monkeybrains") || !strings.Contains(textOutput, "healthy") {
 		t.Fatalf("text exit=%d output=%q diagnostics=%s", code, textOutput, diagnostics)
+	}
+}
+
+func TestCLIGatewayStatusVerboseDiagnostics(t *testing.T) {
+	binary := buildReportCommand(t)
+	args := writeGatewayStatusInputs(t, filepath.Join(t.TempDir(), "health.state"), "")
+	output, diagnostics, code := runCLIProcess(t, binary, args...)
+	if code != 1 || output != "" || strings.Contains(diagnostics, "gateway-status: operation failed") || !strings.Contains(diagnostics, "ifmgr.modules.health.max_state_age is not set") {
+		t.Fatalf("default exit=%d output=%q diagnostics=%q", code, output, diagnostics)
+	}
+	args = append(args, "--verbose")
+	output, diagnostics, code = runCLIProcess(t, binary, args...)
+	if code != 1 || output != "" || !strings.Contains(diagnostics, "gateway-status: operation failed") || !strings.Contains(diagnostics, "ifmgr.modules.health.max_state_age is not set") {
+		t.Fatalf("verbose exit=%d output=%q diagnostics=%q", code, output, diagnostics)
 	}
 }

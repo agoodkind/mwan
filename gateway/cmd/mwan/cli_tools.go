@@ -155,14 +155,16 @@ func newDebugCommand() *cobra.Command {
 	for _, view := range views {
 		child := leafCommand(string(view.view)+view.arguments, view.description, "  mwan debug "+string(view.view)+" --config /etc/mwan/config.toml", cobra.MaximumNArgs(view.maximum))
 		var outputFormat string
+		var verbose bool
 		switch view.view {
-		case debugViewPing4, debugViewPing6:
+		case debugViewPing4, debugViewPing6, debugViewConnectivity, debugViewCurl4, debugViewCurl6, debugViewLB4, debugViewLB6, debugViewLB4Ifaces, debugViewLB6Ifaces, debugViewNPT, debugViewPrefixes, debugViewRoutes, debugViewPolicy, debugViewSim4, debugViewSim6, debugViewStats, debugViewStatus, debugViewSystemd:
 			outputFormatFlag(child, &outputFormat, "text")
-		case debugViewConnectivity, debugViewCurl4, debugViewCurl6, debugViewLB4, debugViewLB6, debugViewLB4Ifaces, debugViewLB6Ifaces, debugViewNPT, debugViewPrefixes, debugViewRoutes, debugViewPolicy, debugViewSim4, debugViewSim6, debugViewStats, debugViewStatus, debugViewSystemd, debugViewTraceStart, debugViewTraceStop, debugViewTraceTail:
+			child.Flags().BoolVar(&verbose, "verbose", false, "Print diagnostic logs to standard error.")
+		case debugViewTraceStart, debugViewTraceStop, debugViewTraceTail:
 		}
 		child.RunE = func(current *cobra.Command, arguments []string) error {
 			return withConfig(current, path, func(cfg *config.Config) error {
-				options := debugOptions{view: view.view, arguments: arguments, outputFormat: outputFormat}
+				options := debugOptions{view: view.view, arguments: arguments, outputFormat: outputFormat, verbose: verbose}
 				return commandResult(runDebugOptions(options, cfg, current.OutOrStdout(), current.ErrOrStderr()))
 			})
 		}

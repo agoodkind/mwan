@@ -693,32 +693,3 @@ func TestInstallPrintSchemaWritesEveryModule(t *testing.T) {
 		}
 	}
 }
-
-// TestInstalledUnitsAreTheOnesTheDaemonNames proves every unit the install
-// verb enables for the wan role is a unit the binary's own debug output
-// reports on, so the two lists cannot drift apart silently.
-func TestInstalledUnitsAreTheOnesTheDaemonNames(t *testing.T) {
-	t.Parallel()
-	focus := make(map[string]bool, len(debugSystemdFocusUnits))
-	for _, name := range debugSystemdFocusUnits {
-		focus[name] = true
-	}
-
-	wanSpec, _ := installspec.For(installspec.RoleWAN)
-	for _, unit := range wanSpec.Enable {
-		switch unit {
-		case "mwan-trace-boot.service":
-			// The boot trace is a oneshot that has already exited by the time
-			// anything inspects the running system, so it is not a unit the
-			// debug view times.
-			continue
-		case "rousette.service", "nghttpx-wanconfig.service":
-			// The wanconfig stack serves the management surface; it is not
-			// on the forwarding path whose startup the debug view times.
-			continue
-		}
-		if !focus[unit] {
-			t.Errorf("the wan role enables %s, which the debug view does not name", unit)
-		}
-	}
-}

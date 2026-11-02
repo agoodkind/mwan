@@ -11,9 +11,19 @@ import (
 	"github.com/spf13/cobra"
 
 	"goodkind.io/mwan/internal/configstate"
+	"goodkind.io/mwan/internal/ifmgr/modules/npt"
+	"goodkind.io/mwan/internal/logging"
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/statuspush"
 )
+
+func operatorLogger(diagnostics io.Writer, verbose bool) (*slog.Logger, io.Closer) {
+	destination := io.Discard
+	if verbose {
+		destination = diagnostics
+	}
+	return logging.New(logging.Config{Handlers: []slog.Handler{slog.NewTextHandler(destination, &slog.HandlerOptions{Level: slog.LevelDebug})}})
+}
 
 func outputFormatFlag(command *cobra.Command, format *string, defaultFormat string) {
 	command.Flags().StringVar(format, "output-format", defaultFormat, "Choose text or json output.")
@@ -26,7 +36,7 @@ func outputFormatFlag(command *cobra.Command, format *string, defaultFormat stri
 }
 
 type outputValue interface {
-	configstate.State | statuspush.Status | []netif.PingAttempt
+	configstate.State | statuspush.Status | []netif.PingAttempt | []debugConnectivityWANResult | []debugHTTPObservation | npt.RenderedTable | debugPrefixesResult | debugRoutesResult | debugPolicyResult | debugStatusResult | debugStatsResult | debugSimulationResult | debugSystemdResult
 }
 
 // WriteJSON encodes a finite result as one JSON record.

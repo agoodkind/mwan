@@ -214,12 +214,13 @@ func newVersionCommand() *cobra.Command {
 }
 
 func newGatewayStatusCommand() *cobra.Command {
-	command := leafCommand("gateway-status", "Print gateway health as JSON.", "  mwan gateway-status --config /etc/mwan/config.toml", cobra.NoArgs)
+	command := leafCommand("gateway-status", "Print gateway health.", "  mwan gateway-status --config /etc/mwan/config.toml", cobra.NoArgs)
 	var path string
 	var options gatewayStatusFlags
 	configFlag(command, &path)
 	networkFlags(command, &options.networkPath, &options.schemaDir)
 	outputFormatFlag(command, &options.outputFormat, "json")
+	command.Flags().BoolVar(&options.verbose, "verbose", false, "Print diagnostic logs to standard error.")
 	command.RunE = func(current *cobra.Command, _ []string) error {
 		return withConfig(current, path, func(cfg *config.Config) error {
 			return commandResult(runGatewayStatusOptions(options, cfg, current.OutOrStdout(), current.ErrOrStderr()))
@@ -229,12 +230,13 @@ func newGatewayStatusCommand() *cobra.Command {
 }
 
 func newConfigStateCommand() *cobra.Command {
-	command := leafCommand("config-state", "Print configuration file hashes and deploy state as JSON.", "  mwan config-state --config /etc/mwan/config.toml", cobra.NoArgs)
+	command := leafCommand("config-state", "Print configuration file hashes and deploy state.", "  mwan config-state --config /etc/mwan/config.toml", cobra.NoArgs)
 	var path string
 	var options configStateFlags
 	configFlag(command, &path)
 	command.Flags().StringVar(&options.root, "root", "", "Read configuration files below this directory.")
 	outputFormatFlag(command, &options.outputFormat, "json")
+	command.Flags().Bool("verbose", false, "Print diagnostic logs to standard error.")
 	command.RunE = func(current *cobra.Command, _ []string) error {
 		return withConfig(current, path, func(cfg *config.Config) error {
 			return commandResult(runConfigStateOptions(options, cfg, current.OutOrStdout(), current.ErrOrStderr()))

@@ -2,6 +2,7 @@ package netif
 
 import (
 	"context"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -97,6 +98,7 @@ func TestHTTPGetReturnsStatusAndTrimmedBody(t *testing.T) {
 
 	result, err := HTTPGet(
 		context.Background(),
+		slog.Default(),
 		"",
 		"inet",
 		server.URL,
@@ -129,7 +131,7 @@ func TestHTTPGetRejectsResponseBodyOverLimit(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := HTTPGet(context.Background(), "", "", server.URL, time.Second)
+	_, err := HTTPGet(context.Background(), slog.Default(), "", "", server.URL, time.Second)
 	if err == nil {
 		t.Fatal("HTTPGet accepted a response body larger than 4 KiB")
 	}

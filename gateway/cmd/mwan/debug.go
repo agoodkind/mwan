@@ -5,17 +5,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math"
-	"net/netip"
-	"sort"
-	"strings"
 
 	"goodkind.io/mwan/internal/config"
-	"goodkind.io/mwan/internal/ifmgr/modules/npt"
 	"goodkind.io/mwan/internal/logging"
-	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/networkload"
-	"goodkind.io/mwan/internal/pd"
 )
 
 const (
@@ -55,57 +48,33 @@ type debugOptions struct {
 	view         debugView
 	arguments    []string
 	outputFormat string
+	verbose      bool
 }
 
-func runDebugOptions(
-	options debugOptions,
-	cfg *config.Config,
-	output io.Writer,
-	diagnostics io.Writer,
-) int {
-	logger, closer := logging.New(logging.Config{Handlers: []slog.Handler{slog.NewTextHandler(diagnostics, &slog.HandlerOptions{Level: slog.LevelWarn})}})
+func runDebugOptions(options debugOptions, cfg *config.Config, output io.Writer, diagnostics io.Writer) int {
+	var logger *slog.Logger
+	var closer io.Closer
+	if options.view == debugViewTraceStart || options.view == debugViewTraceStop || options.view == debugViewTraceTail {
+		logger, closer = logging.New(logging.Config{Handlers: []slog.Handler{slog.NewTextHandler(diagnostics, &slog.HandlerOptions{Level: slog.LevelWarn})}})
+	} else {
+		logger, closer = operatorLogger(diagnostics, options.verbose)
+	}
 	defer closer.Close()
 	loadDebugNetworkConfig(diagnostics, cfg)
-
 	ctx := context.Background()
 	view, args := options.view, options.arguments
 	var err error
 	switch view {
-	case debugViewNPT:
-		err = showDebugNPT(ctx, output, logger)
-	case debugViewPrefixes:
-		err = showDebugPrefixes(ctx, output, logger, cfg)
-	case debugViewRoutes:
-		err = showDebugRoutes(ctx, output, logger)
-	case debugViewPolicy:
-		err = showDebugPolicy(ctx, output, logger, cfg)
-	case debugViewStatus:
-		err = showDebugStatus(ctx, output, logger, cfg)
-	case debugViewStats:
-		err = showDebugStats(output, logger, cfg)
-	case debugViewSim4:
-		err = showDebugSimulation(ctx, output, diagnostics, logger, cfg, debugFamilyV4)
-	case debugViewSim6:
-		err = showDebugSimulation(ctx, output, diagnostics, logger, cfg, debugFamilyV6)
-	case debugViewSystemd:
-		err = showDebugSystemd(ctx, output, logger)
+	case debugViewNPT, debugViewPrefixes, debugViewRoutes, debugViewPolicy, debugViewStatus, debugViewStats, debugViewSim4, debugViewSim6, debugViewSystemd:
+		err = runDebugInspection(ctx, output, diagnostics, logger, cfg, view, options.outputFormat)
 	case debugViewTraceStart:
 		err = showDebugTraceStart(ctx, output, logger, cfg, args)
 	case debugViewTraceTail:
 		err = showDebugTraceTail(ctx, output, logger, cfg, args)
 	case debugViewTraceStop:
 		err = showDebugTraceStop(output)
-	case debugViewPing4, debugViewPing6:
-		err = runDebugPing(ctx, output, cfg, view, args, options.outputFormat)
-	case debugViewConnectivity, debugViewCurl4, debugViewCurl6, debugViewLB4, debugViewLB6, debugViewLB4Ifaces, debugViewLB6Ifaces:
-		err = runDebugProbeView(
-			ctx,
-			output,
-			logger,
-			cfg,
-			view,
-			args,
-		)
+	case debugViewConnectivity, debugViewPing4, debugViewPing6, debugViewCurl4, debugViewCurl6, debugViewLB4, debugViewLB6, debugViewLB4Ifaces, debugViewLB6Ifaces:
+		err = runDebugProbeView(ctx, output, logger, cfg, view, args, options.outputFormat)
 	default:
 		fmt.Fprintf(diagnostics, "unknown debug view %q\n", view)
 		return 1
@@ -117,382 +86,9 @@ func runDebugOptions(
 	return 0
 }
 
-// loadDebugNetworkConfig fills the network tree the provider views read. A
-// diagnostic run must survive a gateway whose network configuration is missing
-// or broken, because that is one of the states an operator runs it to inspect,
-// so a failure is reported and the views that need no provider still run. The
-// tree is left untouched on failure, which is what keeps the WAN lists visibly
-// empty rather than half filled.
+// Independent inspections remain available when the network configuration fails.
 func loadDebugNetworkConfig(diagnostics io.Writer, cfg *config.Config) {
 	if err := networkload.ApplyDefault(cfg); err != nil {
-		fmt.Fprintf(
-			diagnostics,
-			"mwan debug: network configuration unreadable, "+
-				"WAN lists and route simulations will be empty: %v\n",
-			err,
-		)
+		fmt.Fprintf(diagnostics, "mwan debug: network configuration unreadable, WAN lists and route simulations will be empty: %v\n", err)
 	}
-}
-
-func showDebugNPT(
-	ctx context.Context,
-	output io.Writer,
-	logger *slog.Logger,
-) error {
-	table, err := npt.RenderTable(ctx, logger)
-	if err != nil {
-		return debugWrappedError(logger, "read ip6 nat table", err)
-	}
-	if len(table.Prerouting) == 0 && len(table.Postrouting) == 0 {
-		return nil
-	}
-
-	fmt.Fprintln(output, "table ip6 nat {")
-	fmt.Fprintln(output, "    chain prerouting {")
-	for _, line := range table.Prerouting {
-		fmt.Fprintf(output, "        %s\n", line)
-	}
-	fmt.Fprintln(output, "    }")
-	fmt.Fprintln(output, "    chain postrouting {")
-	for _, line := range table.Postrouting {
-		fmt.Fprintf(output, "        %s\n", line)
-	}
-	fmt.Fprintln(output, "    }")
-	fmt.Fprintln(output, "}")
-	return nil
-}
-
-func showDebugPrefixes(
-	ctx context.Context,
-	output io.Writer,
-	logger *slog.Logger,
-	cfg *config.Config,
-) error {
-	source := pd.New(logger)
-	for _, wan := range debugWANs(cfg) {
-		prefix, ok, err := source.Prefix(ctx, wan.Iface)
-		if err != nil {
-			message := wan.Iface + ": delegated prefix"
-			return debugWrappedError(logger, message, err)
-		}
-		value := "none"
-		if ok {
-			value = prefix.String()
-		}
-		fmt.Fprintf(output, "%s: %s\n", wan.Iface, value)
-	}
-	return nil
-}
-
-func showDebugRoutes(
-	ctx context.Context,
-	output io.Writer,
-	logger *slog.Logger,
-) error {
-	routes, err := netif.ListDHCPRoutes(ctx, logger, debugFamilyV6)
-	if err != nil {
-		return debugWrappedError(logger, "list IPv6 DHCP routes", err)
-	}
-	printDebugRoutes(output, routes)
-	return nil
-}
-
-func showDebugPolicy(
-	ctx context.Context,
-	output io.Writer,
-	logger *slog.Logger,
-	cfg *config.Config,
-) error {
-	fmt.Fprintln(output, "== IPv4 rules ==")
-	rulesV4, err := netif.ListRules(ctx, logger, debugFamilyV4)
-	if err != nil {
-		return debugWrappedError(logger, "list IPv4 rules", err)
-	}
-	printDebugRules(output, rulesV4)
-
-	fmt.Fprintln(output)
-	fmt.Fprintln(output, "== IPv6 rules ==")
-	rulesV6, err := netif.ListRules(ctx, logger, debugFamilyV6)
-	if err != nil {
-		return debugWrappedError(logger, "list IPv6 rules", err)
-	}
-	printDebugRules(output, rulesV6)
-
-	for _, wan := range debugWANs(cfg) {
-		fmt.Fprintln(output)
-		fmt.Fprintf(output, "== table %d (%s) v4 ==\n", wan.TableID, wan.Name)
-		routesV4, err := netif.ListTableRoutes(ctx, logger, debugFamilyV4, wan.TableID)
-		if err != nil {
-			message := fmt.Sprintf("table %d (%s) v4", wan.TableID, wan.Name)
-			return debugWrappedError(logger, message, err)
-		}
-		printDebugRoutes(output, routesV4)
-
-		fmt.Fprintf(output, "== table %d (%s) v6 ==\n", wan.TableID, wan.Name)
-		routesV6, err := netif.ListTableRoutes(ctx, logger, debugFamilyV6, wan.TableID)
-		if err != nil {
-			message := fmt.Sprintf("table %d (%s) v6", wan.TableID, wan.Name)
-			return debugWrappedError(logger, message, err)
-		}
-		printDebugRoutes(output, routesV6)
-	}
-	return nil
-}
-
-func printDebugRules(output io.Writer, rules []netif.CurrentRule) {
-	for _, rule := range rules {
-		from := "all"
-		if rule.From != "" {
-			from = rule.From
-		}
-		fmt.Fprintf(output, "%d: from %s", rule.Priority, from)
-		if rule.Mark != 0 {
-			fmt.Fprintf(output, " fwmark %#x", rule.Mark)
-		}
-		if rule.IifName != "" {
-			fmt.Fprintf(output, " iif %s", rule.IifName)
-		}
-		if rule.UIDRange != "" {
-			fmt.Fprintf(output, " uidrange %s", rule.UIDRange)
-		}
-		fmt.Fprintf(output, " lookup %d\n", rule.TableID)
-	}
-}
-
-func printDebugRoutes(output io.Writer, routes []netif.CurrentRoute) {
-	for _, route := range routes {
-		fmt.Fprint(output, route.Dest)
-		if route.Via != "" {
-			fmt.Fprintf(output, " via %s", route.Via)
-		}
-		if route.Dev != "" {
-			fmt.Fprintf(output, " dev %s", route.Dev)
-		}
-		if route.Metric != 0 {
-			fmt.Fprintf(output, " metric %d", route.Metric)
-		}
-		fmt.Fprintln(output)
-	}
-}
-
-func showDebugStatus(
-	ctx context.Context,
-	output io.Writer,
-	logger *slog.Logger,
-	cfg *config.Config,
-) error {
-	source := pd.New(logger)
-	for index, wan := range debugWANs(cfg) {
-		if index > 0 {
-			fmt.Fprintln(output)
-		}
-		fmt.Fprintf(output, "== %s ==\n", wan.Iface)
-
-		state, err := netif.ReadLinkState(logger, wan.Iface)
-		if err != nil {
-			message := wan.Iface + ": link state"
-			return debugWrappedError(logger, message, err)
-		}
-		fmt.Fprintf(output, "oper: %s\n", state.OperState)
-		fmt.Fprintf(output, "carrier: %s\n", debugCarrierState(state.Carrier))
-
-		addresses, err := netif.ListAddrs(ctx, logger, wan.Iface)
-		if err != nil {
-			message := wan.Iface + ": addresses"
-			return debugWrappedError(logger, message, err)
-		}
-		fmt.Fprintln(output, "global addresses:")
-		global := debugGlobalAddresses(addresses)
-		if len(global) == 0 {
-			fmt.Fprintln(output, "  none")
-		} else {
-			for _, address := range global {
-				fmt.Fprintf(output, "  %s\n", address)
-			}
-		}
-
-		prefix, ok, err := source.Prefix(ctx, wan.Iface)
-		if err != nil {
-			message := wan.Iface + ": delegated prefix"
-			return debugWrappedError(logger, message, err)
-		}
-		prefixValue := "none"
-		if ok {
-			prefixValue = prefix.String()
-		}
-		fmt.Fprintf(output, "delegated prefix: %s\n", prefixValue)
-	}
-	return nil
-}
-
-func debugCarrierState(carrier bool) string {
-	if carrier {
-		return "up"
-	}
-	return "down"
-}
-
-func debugGlobalAddresses(addresses []netif.CurrentAddr) []string {
-	global := make([]string, 0, len(addresses))
-	for _, address := range addresses {
-		prefix, err := netip.ParsePrefix(address.CIDR)
-		if err != nil || !prefix.Addr().IsGlobalUnicast() {
-			continue
-		}
-		global = append(global, address.CIDR)
-	}
-	sort.Strings(global)
-	return global
-}
-
-func showDebugStats(
-	output io.Writer,
-	logger *slog.Logger,
-	cfg *config.Config,
-) error {
-	for index, wan := range debugWANs(cfg) {
-		if index > 0 {
-			fmt.Fprintln(output)
-		}
-		fmt.Fprintf(output, "== %s ==\n", wan.Iface)
-		statistics, err := netif.ReadLinkStats(logger, wan.Iface)
-		if err != nil {
-			message := wan.Iface + ": link statistics"
-			return debugWrappedError(logger, message, err)
-		}
-		fmt.Fprintf(
-			output,
-			"RX: bytes %d packets %d errors %d dropped %d\n",
-			statistics.RxBytes,
-			statistics.RxPackets,
-			statistics.RxErrors,
-			statistics.RxDropped,
-		)
-		fmt.Fprintf(
-			output,
-			"TX: bytes %d packets %d errors %d dropped %d\n",
-			statistics.TxBytes,
-			statistics.TxPackets,
-			statistics.TxErrors,
-			statistics.TxDropped,
-		)
-	}
-	return nil
-}
-
-func showDebugSimulation(
-	ctx context.Context,
-	output io.Writer,
-	diagnostics io.Writer,
-	logger *slog.Logger,
-	cfg *config.Config,
-	family string,
-) error {
-	target, source, sourceLabel, ok, err := debugSimulationInputs(logger, cfg, family)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		fmt.Fprintf(
-			diagnostics,
-			"mwan debug %s: %s is unset; skipping probes\n",
-			debugSimulationName(family),
-			sourceLabel,
-		)
-		return nil
-	}
-
-	printDebugSimulationHeader(output, family, target)
-	result, ok, err := netif.RouteLookup(ctx, logger, family, target, source, 0)
-	if err != nil {
-		return debugWrappedError(logger, "default lookup", err)
-	}
-	printDebugRouteLookup(output, target, result, ok)
-
-	for _, wan := range debugWANs(cfg) {
-		if wan.FwMark < 0 || uint64(wan.FwMark) > math.MaxUint32 {
-			return fmt.Errorf("WAN %s fw_mark %d is outside uint32", wan.Name, wan.FwMark)
-		}
-		fmt.Fprintf(output, "-- mark %d (%s) --\n", wan.FwMark, wan.Name)
-		result, ok, err := netif.RouteLookup(
-			ctx,
-			logger,
-			family,
-			target,
-			source,
-			uint32(wan.FwMark),
-		)
-		if err != nil {
-			message := fmt.Sprintf("mark %d (%s)", wan.FwMark, wan.Name)
-			return debugWrappedError(logger, message, err)
-		}
-		printDebugRouteLookup(output, target, result, ok)
-	}
-	return nil
-}
-
-func debugSimulationInputs(
-	logger *slog.Logger,
-	cfg *config.Config,
-	family string,
-) (target string, source string, sourceLabel string, ok bool, err error) {
-	if family == debugFamilyV6 {
-		rawSource := strings.TrimSpace(cfg.IfMgr.OpnsenseEdgeV6)
-		return debugTargetV6, rawSource, "ifmgr.opnsense_edge_v6", rawSource != "", nil
-	}
-
-	rawPrefix := ""
-	if cfg.IfMgr.Modules.WAN != nil && cfg.IfMgr.Modules.WAN.Routes != nil {
-		rawPrefix = strings.TrimSpace(cfg.IfMgr.Modules.WAN.Routes.InternalNetV4)
-	}
-	if rawPrefix == "" {
-		return debugTargetV4, "", "ifmgr.modules.wan.routes.internal_net_v4", false, nil
-	}
-	source, err = debugIPv4Source(logger, rawPrefix)
-	if err != nil {
-		return "", "", "", false, err
-	}
-	return debugTargetV4, source, "ifmgr.modules.wan.routes.internal_net_v4", true, nil
-}
-
-func debugSimulationName(family string) string {
-	if family == debugFamilyV6 {
-		return "sim6"
-	}
-	return "sim4"
-}
-
-func printDebugSimulationHeader(output io.Writer, family string, target string) {
-	if family == debugFamilyV6 {
-		fmt.Fprintf(output, "== ip -6 route get %s from LAN ==\n", target)
-		return
-	}
-	fmt.Fprintf(output, "== ip route get %s from LAN ==\n", target)
-}
-
-func printDebugRouteLookup(
-	output io.Writer,
-	target string,
-	result netif.RouteLookupResult,
-	ok bool,
-) {
-	if !ok {
-		fmt.Fprintf(output, "%s: no route\n", target)
-		return
-	}
-	fmt.Fprintf(
-		output,
-		"%s via %s oif %s src %s\n",
-		target,
-		debugValueOrNone(result.Gateway),
-		debugValueOrNone(result.OIF),
-		debugValueOrNone(result.Source),
-	)
-}
-
-func debugValueOrNone(value string) string {
-	if value == "" {
-		return "none"
-	}
-	return value
 }

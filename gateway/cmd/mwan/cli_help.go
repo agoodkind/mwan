@@ -59,7 +59,10 @@ func installHelpRendering(command *cobra.Command, started *bool, boundary func(s
 				for top.Parent() != nil && top.Parent().Parent() != nil {
 					top = top.Parent()
 				}
-				boundary(top.Name())
+				verbose := current.Flags().Lookup("verbose")
+				if verbose == nil || verbose.Value.String() == "true" {
+					boundary(top.Name())
+				}
 			}
 			return execute(current, arguments)
 		}

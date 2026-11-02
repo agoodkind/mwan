@@ -235,18 +235,7 @@ func HTTPCheck4(
 // HTTPGet sends one interface-bound request with an optional address family.
 // The family accepts "inet" for IPv4, "inet6" for IPv6, or empty for the
 // default dual-stack behavior.
-func HTTPGet(
-	ctx context.Context,
-	iface string,
-	family string,
-	url string,
-	timeout time.Duration,
-) (HTTPResult, error) {
-	return httpGet(ctx, slog.Default(), iface, family, url, timeout, true, "HTTPGet")
-}
-
-// HTTPGetWithLogger lets operator probes control diagnostic output.
-func HTTPGetWithLogger(ctx context.Context, logger *slog.Logger, iface, family, url string, timeout time.Duration) (HTTPResult, error) {
+func HTTPGet(ctx context.Context, logger *slog.Logger, iface, family, url string, timeout time.Duration) (HTTPResult, error) {
 	return httpGet(ctx, logger, iface, family, url, timeout, true, "HTTPGet")
 }
 

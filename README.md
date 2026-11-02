@@ -32,6 +32,11 @@ use TOML accept `--config`; the first supplied path overrides `MWAN_CONFIG`.
 The CLI also accepts the existing single-hyphen flag spelling, such as
 `-config`.
 
+`gateway-status`, `config-state`, and the debug inspection and probe views
+accept `--output-format text` or `--output-format json`. The status commands
+default to JSON, and debug views default to text. Finite JSON output contains
+one object or array. Use `--verbose` to print diagnostic logs to standard error.
+
 ## Layout
 
 | Path | What it holds |

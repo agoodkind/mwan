@@ -82,9 +82,11 @@ func requiredTests(selected lane) ([]string, error) {
 			"TestKernelPolicyDaemonRuntime",
 			"TestObservationDaemonRuntime",
 			"TestDistributionObservationDaemonRuntime",
+			"TestCLIActiveProbeNamespaceRuntime",
+			"TestDebugInspectionPublicNamespace",
 		}, nil
 	case laneSystemd:
-		return []string{"TestNetworkdResolverDaemonRuntime", "TestNetworkdOrderedDaemonStartup", "TestStaticResolverDaemonRuntime", "TestOwnedRolesDaemonRuntime", "TestNetworkdNPTEdgeDaemonRuntime", "TestConnectionReleaseDaemonRuntime", "TestDeployOperationWatchRuntime"}, nil
+		return []string{"TestNetworkdResolverDaemonRuntime", "TestNetworkdOrderedDaemonStartup", "TestStaticResolverDaemonRuntime", "TestOwnedRolesDaemonRuntime", "TestNetworkdNPTEdgeDaemonRuntime", "TestConnectionReleaseDaemonRuntime", "TestDeployOperationWatchRuntime", "TestDebugSystemdPublicRuntime"}, nil
 	case laneOriginalUpgrade:
 		return []string{"TestLegacyNPTPreparationUpgrade"}, nil
 	default:

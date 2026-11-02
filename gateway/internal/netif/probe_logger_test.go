@@ -16,7 +16,7 @@ import (
 	"goodkind.io/mwan/internal/netif"
 )
 
-func TestHTTPGetWithLoggerPreservesResponseAndDiagnostics(t *testing.T) {
+func TestHTTPGetPreservesResponseAndDiagnostics(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = writer.Write([]byte("  original body\n"))
@@ -25,11 +25,11 @@ func TestHTTPGetWithLoggerPreservesResponseAndDiagnostics(t *testing.T) {
 	var logs bytes.Buffer
 	logger, closer := logging.New(logging.Config{Handlers: []slog.Handler{slog.NewTextHandler(&logs, nil)}})
 	defer closer.Close()
-	result, err := netif.HTTPGetWithLogger(context.Background(), logger, "", "inet", server.URL, time.Second)
+	result, err := netif.HTTPGet(context.Background(), logger, "", "inet", server.URL, time.Second)
 	if err != nil || result.StatusCode != http.StatusServiceUnavailable || result.Body != "original body" {
 		t.Fatalf("HTTP result=%+v error=%v", result, err)
 	}
-	_, err = netif.HTTPGetWithLogger(context.Background(), logger, "", "invalid", server.URL, time.Second)
+	_, err = netif.HTTPGet(context.Background(), logger, "", "invalid", server.URL, time.Second)
 	if err == nil || !strings.Contains(err.Error(), "unsupported address family") || !strings.Contains(logs.String(), "unsupported address family") {
 		t.Fatalf("HTTP error=%v logs=%q", err, logs.String())
 	}
