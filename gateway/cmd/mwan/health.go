@@ -46,7 +46,7 @@ func runHealthOptions(ctx context.Context, path string, flags healthFlags, outpu
 			return nil
 		}
 		if flags.outputFormat == "json" {
-			return WriteJSON(output, record)
+			return WriteJSON(logger, output, record)
 		}
 		return writeHealthRecordText(output, logger, record)
 	}
@@ -58,7 +58,7 @@ func runHealthOptions(ctx context.Context, path string, flags healthFlags, outpu
 		return nil
 	}
 	if flags.outputFormat == "json" {
-		return WriteJSON(output, records)
+		return WriteJSON(logger, output, records)
 	}
 	return writeHealthText(output, logger, records)
 }
