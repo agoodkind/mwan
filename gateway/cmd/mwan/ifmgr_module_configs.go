@@ -277,7 +277,7 @@ func buildHealthConfig(
 	return cfg, nil
 }
 
-// Keep provider policy independent of daemon observation files and state writes.
+// The operator shares provider policy without loading daemon observation files or writing daemon state.
 func buildHealthProviderConfig(
 	shared sharedWANInputs,
 	section *config.IfMgrHealthSection,

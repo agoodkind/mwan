@@ -30,7 +30,11 @@ func Run(ctx context.Context, options Options, logger *slog.Logger, emit func(Re
 				}
 				completed <- failure
 			}()
-			runWAN(ctx, wan, options, logger, records)
+			failure = runWAN(ctx, wan, options, logger, records)
+			if failure != nil {
+				logger.WarnContext(ctx, "health worker stopped", "wan", wan.Key(), "interface", wan.Iface, "err", failure)
+				cancel()
+			}
 		})
 	}
 	var outputError error
@@ -54,18 +58,21 @@ func Run(ctx context.Context, options Options, logger *slog.Logger, emit func(Re
 	return errors.Join(outputError, workerError)
 }
 
-func runWAN(ctx context.Context, wan health.WAN, options Options, logger *slog.Logger, records chan<- Record) {
+func runWAN(ctx context.Context, wan health.WAN, options Options, logger *slog.Logger, records chan<- Record) error {
 	for ctx.Err() == nil {
-		probeWAN(ctx, wan, options, logger, records)
+		if err := probeWAN(ctx, wan, options, logger, records); err != nil {
+			return err
+		}
 		if !options.Watch {
-			return
+			return nil
 		}
 		timer := time.NewTimer(wan.CheckInterval)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return
+			return nil
 		case <-timer.C:
 		}
 	}
+	return nil
 }

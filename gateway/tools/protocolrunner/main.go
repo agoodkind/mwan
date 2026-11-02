@@ -87,6 +87,7 @@ func requiredTests(selected lane) ([]string, error) {
 			"TestConfiguredHealthWatchNamespaceRuntime",
 			"TestConfiguredHealthCancellationNamespaceRuntime",
 			"TestConfiguredHealthZeroIntervalNamespaceRuntime",
+			"TestConfiguredHealthSetupNamespaceRuntime",
 			"TestDebugInspectionPublicNamespace",
 		}, nil
 	case laneSystemd:

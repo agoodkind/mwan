@@ -90,7 +90,7 @@ func ping4Source(ctx context.Context, logger *slog.Logger, iface string, source,
 
 	if !target.Is4() {
 		log.WarnContext(ctx, "netif: Ping4 target is not IPv4")
-		return PingProbeResult{}, fmt.Errorf("Ping4: target %q is not IPv4", target)
+		return PingProbeResult{}, probeSetupError(fmt.Errorf("Ping4: target %q is not IPv4", target))
 	}
 
 	listenConfig := net.ListenConfig{}
@@ -104,7 +104,7 @@ func ping4Source(ctx context.Context, logger *slog.Logger, iface string, source,
 	connection, err := listenConfig.ListenPacket(ctx, "ip4:icmp", listenAddress)
 	if err != nil {
 		log.WarnContext(ctx, "netif: Ping4 ListenPacket failed", "err", err)
-		return PingProbeResult{}, fmt.Errorf("Ping4 ListenPacket: %w", err)
+		return PingProbeResult{}, probeSetupError(fmt.Errorf("Ping4 ListenPacket: %w", err))
 	}
 	defer func() {
 		_ = connection.Close()
@@ -113,7 +113,7 @@ func ping4Source(ctx context.Context, logger *slog.Logger, iface string, source,
 	packetConnection := ipv4.NewPacketConn(connection)
 	if observe {
 		if err := packetConnection.SetControlMessage(ipv4.FlagDst, true); err != nil {
-			return PingProbeResult{}, fmt.Errorf("Ping4 source metadata: %w", err)
+			return PingProbeResult{}, probeSetupError(fmt.Errorf("Ping4 source metadata: %w", err))
 		}
 	}
 	startTime := probeClock.Now()
@@ -121,7 +121,7 @@ func ping4Source(ctx context.Context, logger *slog.Logger, iface string, source,
 	packet, err := message.Marshal(nil)
 	if err != nil {
 		log.WarnContext(ctx, "netif: Ping4 marshal echo failed", "err", err)
-		return PingProbeResult{}, fmt.Errorf("Ping4 marshal echo: %w", err)
+		return PingProbeResult{}, probeSetupError(fmt.Errorf("Ping4 marshal echo: %w", err))
 	}
 	deadline := startTime.Add(timeout)
 	if ctxDeadline, ok := ctx.Deadline(); ok && ctxDeadline.Before(deadline) {
@@ -129,7 +129,7 @@ func ping4Source(ctx context.Context, logger *slog.Logger, iface string, source,
 	}
 	if err := connection.SetReadDeadline(deadline); err != nil {
 		log.WarnContext(ctx, "netif: Ping4 SetReadDeadline failed", "err", err)
-		return PingProbeResult{}, fmt.Errorf("Ping4 SetReadDeadline: %w", err)
+		return PingProbeResult{}, probeSetupError(fmt.Errorf("Ping4 SetReadDeadline: %w", err))
 	}
 	destination := &net.IPAddr{IP: target.AsSlice()}
 	if _, err := connection.WriteTo(packet, destination); err != nil {
@@ -292,7 +292,7 @@ func httpRequest(ctx context.Context, logger *slog.Logger, spec HTTPProbeSpec, r
 	}()
 	network, err := httpNetwork(spec.Family)
 	if err != nil {
-		return HTTPProbeResult{}, err
+		return HTTPProbeResult{}, probeSetupError(err)
 	}
 	var result HTTPProbeResult
 	var socketResult HTTPProbeResult
@@ -312,7 +312,7 @@ func httpRequest(ctx context.Context, logger *slog.Logger, spec HTTPProbeSpec, r
 	}}
 	request, err := http.NewRequestWithContext(httptrace.WithClientTrace(ctx, trace), spec.Method, spec.URL, nil)
 	if err != nil {
-		return result, fmt.Errorf("HTTP request: %w", err)
+		return result, probeSetupError(fmt.Errorf("HTTP request: %w", err))
 	}
 	client := &http.Client{Timeout: spec.Timeout}
 	if direct {
@@ -328,7 +328,7 @@ func httpRequest(ctx context.Context, logger *slog.Logger, spec HTTPProbeSpec, r
 		}
 		defaultTransport, ok := http.DefaultTransport.(*http.Transport)
 		if !ok {
-			return result, fmt.Errorf("HTTP default transport has type %T", http.DefaultTransport)
+			return result, probeSetupError(fmt.Errorf("HTTP default transport has type %T", http.DefaultTransport))
 		}
 		transport := defaultTransport.Clone()
 		if direct {
@@ -336,7 +336,7 @@ func httpRequest(ctx context.Context, logger *slog.Logger, spec HTTPProbeSpec, r
 			transport.DisableKeepAlives = true
 		}
 		transport.DialContext = func(dialContext context.Context, _ string, address string) (net.Conn, error) {
-			return dialer.DialContext(dialContext, network, address)
+			return dialHTTPProbe(dialContext, dialer, network, address)
 		}
 		client.Transport = transport
 		defer transport.CloseIdleConnections()
@@ -346,7 +346,11 @@ func httpRequest(ctx context.Context, logger *slog.Logger, spec HTTPProbeSpec, r
 	result = socketResult
 	socketMutex.Unlock()
 	if err != nil {
-		return result, fmt.Errorf("HTTP %s: %w", spec.Method, err)
+		requestError := fmt.Errorf("HTTP %s: %w", spec.Method, err)
+		if request.URL.Host == "" || request.URL.Scheme != "http" && request.URL.Scheme != "https" {
+			return result, probeSetupError(requestError)
+		}
+		return result, requestError
 	}
 	defer func() { _ = response.Body.Close() }()
 	result.StatusCode = response.StatusCode
@@ -397,7 +401,7 @@ func bindToDevice(
 				"iface", iface,
 				"err", controlError,
 			)
-			return fmt.Errorf("access socket for interface %q: %w", iface, controlError)
+			return probeSetupError(fmt.Errorf("access socket for interface %q: %w", iface, controlError))
 		}
 		if bindError != nil {
 			logger.Warn(
@@ -405,7 +409,7 @@ func bindToDevice(
 				"iface", iface,
 				"err", bindError,
 			)
-			return fmt.Errorf("bind socket to interface %q: %w", iface, bindError)
+			return probeSetupError(fmt.Errorf("bind socket to interface %q: %w", iface, bindError))
 		}
 		return nil
 	}
