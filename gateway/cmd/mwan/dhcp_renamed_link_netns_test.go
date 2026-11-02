@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -186,27 +188,7 @@ func runOOBDHCPv4RecoveryLinkChange(t *testing.T, change dhcpRecoveryLinkChange)
 		stopProtocolServices(t, []protocolService{service})
 		serviceRunning = false
 		setRuntimeNamespace(t, gateway)
-		waitDHCPv4RuntimeState(t, daemon, "dhcp: renewal attempt failed", 60*time.Second)
-		renewingBefore := strings.Count(runtimeDaemonLog(t, daemon), "state=RENEWING")
-		flappedLink, err := netlink.LinkByName("enatt0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		flapDeadline := time.Now().Add(15 * time.Second)
-		for time.Now().Before(flapDeadline) {
-			if err := netlink.LinkSetDown(flappedLink); err != nil {
-				t.Fatal(err)
-			}
-			if err := netlink.LinkSetUp(flappedLink); err != nil {
-				t.Fatal(err)
-			}
-			time.Sleep(2 * time.Second)
-		}
-		assertRuntimeDaemonRunning(t, daemon)
-		renewingAfter := strings.Count(runtimeDaemonLog(t, daemon), "state=RENEWING")
-		if renewingAfter <= renewingBefore {
-			t.Fatalf("state=RENEWING count = %d, want > %d: %s", renewingAfter, renewingBefore, runtimeLogTail(t, daemon, 30))
-		}
+		assertDHCPRenewalRetriesDuringLinkFlaps(t, daemon, provider.namespace, gateway)
 		return
 	}
 	if change == dhcpRecoveryFlapAfterBoundLongLease {
@@ -237,9 +219,18 @@ func runOOBDHCPv4RecoveryLinkChange(t *testing.T, change dhcpRecoveryLinkChange)
 		if err != nil {
 			t.Fatal(err)
 		}
+		renamedAt := time.Now()
 		renameDHCPRecoveryLink(t, boundLink)
 		replacement := newRuntimePeer(t, gateway, "enatt0", "wan-new", nil, []string{"198.51.100.2/24"}, "")
 		defer replacement.namespace.Close()
+		if change == dhcpRecoveryRenameAfterBoundLongLease {
+			defer startDHCPRenamedLinkServer(t, replacement.namespace, gateway)()
+			waitStaticRuntimeAddress(t, daemon, "enatt0", "198.51.100.77/24", true)
+			waitDHCPv4RuntimeState(t, daemon, "state=BOUND ", 30*time.Second)
+			if elapsed := time.Since(renamedAt); elapsed > 30*time.Second {
+				t.Fatalf("198.51.100.77/24 elapsed = %s", elapsed)
+			}
+		}
 		waitDHCPRenamedLinkAddressRemoved(t, daemon, boundLink.Attrs().Index)
 		assertDHCPRenamedLinkForeignAddress(t, boundLink)
 		return
@@ -294,40 +285,86 @@ func runOOBDHCPv4RecoveryLinkChange(t *testing.T, change dhcpRecoveryLinkChange)
 	replacement := newRuntimePeer(t, gateway, "enatt0", "wan-new", nil, []string{"198.51.100.2/24"}, "")
 	defer replacement.namespace.Close()
 	if change == dhcpRecoveryRenameFastRebind {
-		setRuntimeNamespace(t, replacement.namespace)
-		server, err := server4.NewServer("wan-new", &net.UDPAddr{IP: net.IPv4zero, Port: 67},
-			func(conn net.PacketConn, peer net.Addr, packet *dhcpv4.DHCPv4) {
-				responseType := dhcpv4.MessageTypeOffer
-				if packet.MessageType() == dhcpv4.MessageTypeRequest {
-					if !packet.Options.Has(dhcpv4.OptionServerIdentifier) {
-						return
-					}
-					responseType = dhcpv4.MessageTypeAck
-				}
-				reply, replyErr := dhcpv4.NewReplyFromRequest(packet,
-					dhcpv4.WithMessageType(responseType),
-					dhcpv4.WithYourIP(net.ParseIP("198.51.100.77")),
-					dhcpv4.WithOption(dhcpv4.OptServerIdentifier(net.ParseIP("198.51.100.2"))),
-					dhcpv4.WithOption(dhcpv4.OptSubnetMask(net.CIDRMask(24, 32))),
-					dhcpv4.WithOption(dhcpv4.OptRouter(net.ParseIP("198.51.100.3"))),
-					dhcpv4.WithOption(dhcpv4.OptIPAddressLeaseTime(10*time.Minute)),
-				)
-				if replyErr == nil {
-					_, _ = conn.WriteTo(reply.ToBytes(), peer)
-				}
-			})
-		if err != nil {
-			t.Fatal(err)
-		}
-		go func() { _ = server.Serve() }()
-		defer func() { _ = server.Close() }()
-		setRuntimeNamespace(t, gateway)
+		defer startDHCPRenamedLinkServer(t, replacement.namespace, gateway)()
 		waitStaticRuntimeAddress(t, daemon, "enatt0", "198.51.100.77/24", true)
 	}
 
 	waitDHCPRenamedLinkAddressRemoved(t, daemon, oldLink.Attrs().Index)
 	assertRuntimeDaemonRunning(t, daemon)
 	assertDHCPRenamedLinkForeignAddress(t, oldLink)
+}
+
+func assertDHCPRenewalRetriesDuringLinkFlaps(t *testing.T, daemon *runtimeDaemon, serverNamespace, gateway netns.NsHandle) {
+	t.Helper()
+	flappedLink, err := netlink.LinkByName("enatt0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var requestCount atomic.Int64
+	setRuntimeNamespace(t, serverNamespace)
+	server, err := server4.NewServer("wan-vlan", &net.UDPAddr{IP: net.IPv4zero, Port: 67},
+		func(_ net.PacketConn, _ net.Addr, packet *dhcpv4.DHCPv4) {
+			if packet.MessageType() == dhcpv4.MessageTypeRequest && bytes.Equal(packet.ClientHWAddr, flappedLink.Attrs().HardwareAddr) {
+				requestCount.Add(1)
+			}
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = server.Serve() }()
+	defer func() { _ = server.Close() }()
+	setRuntimeNamespace(t, gateway)
+	waitDHCPv4RuntimeState(t, daemon, "dhcp: renewal attempt failed", 60*time.Second)
+	requestsBefore := requestCount.Load()
+	if requestsBefore == 0 {
+		t.Fatalf("DHCPREQUEST count = 0: %s", runtimeLogTail(t, daemon, 30))
+	}
+	flapDeadline := time.Now().Add(15 * time.Second)
+	for requestCount.Load() <= requestsBefore {
+		if !time.Now().Before(flapDeadline) {
+			t.Fatalf("DHCPREQUEST count = %d, want > %d: %s", requestCount.Load(), requestsBefore, runtimeLogTail(t, daemon, 30))
+		}
+		if err := netlink.LinkSetDown(flappedLink); err != nil {
+			t.Fatal(err)
+		}
+		if err := netlink.LinkSetUp(flappedLink); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(2 * time.Second)
+	}
+	assertRuntimeDaemonRunning(t, daemon)
+}
+
+func startDHCPRenamedLinkServer(t *testing.T, serverNamespace, gateway netns.NsHandle) func() {
+	t.Helper()
+	setRuntimeNamespace(t, serverNamespace)
+	server, err := server4.NewServer("wan-new", &net.UDPAddr{IP: net.IPv4zero, Port: 67},
+		func(conn net.PacketConn, peer net.Addr, packet *dhcpv4.DHCPv4) {
+			responseType := dhcpv4.MessageTypeOffer
+			if packet.MessageType() == dhcpv4.MessageTypeRequest {
+				if !packet.Options.Has(dhcpv4.OptionServerIdentifier) {
+					return
+				}
+				responseType = dhcpv4.MessageTypeAck
+			}
+			reply, replyErr := dhcpv4.NewReplyFromRequest(packet,
+				dhcpv4.WithMessageType(responseType),
+				dhcpv4.WithYourIP(net.ParseIP("198.51.100.77")),
+				dhcpv4.WithOption(dhcpv4.OptServerIdentifier(net.ParseIP("198.51.100.2"))),
+				dhcpv4.WithOption(dhcpv4.OptSubnetMask(net.CIDRMask(24, 32))),
+				dhcpv4.WithOption(dhcpv4.OptRouter(net.ParseIP("198.51.100.3"))),
+				dhcpv4.WithOption(dhcpv4.OptIPAddressLeaseTime(10*time.Minute)),
+			)
+			if replyErr == nil {
+				_, _ = conn.WriteTo(reply.ToBytes(), peer)
+			}
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = server.Serve() }()
+	setRuntimeNamespace(t, gateway)
+	return func() { _ = server.Close() }
 }
 
 func waitDHCPRenamedLinkAddressRemoved(t *testing.T, daemon *runtimeDaemon, linkIndex int) {
