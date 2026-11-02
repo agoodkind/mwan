@@ -236,7 +236,7 @@ func newConfigStateCommand() *cobra.Command {
 	configFlag(command, &path)
 	command.Flags().StringVar(&options.root, "root", "", "Read configuration files below this directory.")
 	outputFormatFlag(command, &options.outputFormat, "json")
-	command.Flags().Bool("verbose", false, "Print diagnostic logs to standard error.")
+	command.Flags().BoolVar(&options.verbose, "verbose", false, "Print diagnostic logs to standard error.")
 	command.RunE = func(current *cobra.Command, _ []string) error {
 		return withConfig(current, path, func(cfg *config.Config) error {
 			return commandResult(runConfigStateOptions(options, cfg, current.OutOrStdout(), current.ErrOrStderr()))

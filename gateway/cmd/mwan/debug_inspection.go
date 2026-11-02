@@ -242,7 +242,7 @@ func writeDebugInspectionResult[T outputValue](logger *slog.Logger, output io.Wr
 		return collectionError
 	}
 	if format == "json" {
-		return WriteJSON(output, result)
+		return WriteJSON(logger, output, result)
 	}
 	return writeText(logger, output, result)
 }

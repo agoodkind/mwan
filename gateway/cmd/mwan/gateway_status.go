@@ -24,9 +24,9 @@ func runGatewayStatusOptions(flags gatewayStatusFlags, cfg *config.Config, outpu
 		return 1
 	}
 	if flags.outputFormat == "text" {
-		err = WriteGatewayStatusText(output, status)
+		err = WriteGatewayStatusText(logger, output, status)
 	} else {
-		err = WriteJSON(output, status)
+		err = WriteJSON(logger, output, status)
 	}
 	if err != nil {
 		fmt.Fprintf(diagnostics, "mwan gateway-status: write status: %v\n", err)

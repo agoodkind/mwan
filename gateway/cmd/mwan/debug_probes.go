@@ -94,7 +94,7 @@ func runDebugProbeViewWithDependencies(ctx context.Context, output io.Writer, lo
 			return err
 		}
 		if format == "json" {
-			return WriteJSON(output, result)
+			return WriteJSON(logger, output, result)
 		}
 		return WriteDebugConnectivityText(output, logger, result)
 	case debugViewPing4, debugViewPing6:
@@ -108,7 +108,7 @@ func runDebugProbeViewWithDependencies(ctx context.Context, output io.Writer, lo
 		}
 		attempts := collectDebugPing(ctx, iface, family, debugPingTargets(family), debugPingAttempts, debugActiveProbeTimeout, probe)
 		if format == "json" {
-			return WriteJSON(output, attempts)
+			return WriteJSON(logger, output, attempts)
 		}
 		return WriteDebugPingText(output, logger, view, attempts)
 	case debugViewCurl4, debugViewCurl6, debugViewLB4, debugViewLB6, debugViewLB4Ifaces, debugViewLB6Ifaces:
@@ -118,7 +118,7 @@ func runDebugProbeViewWithDependencies(ctx context.Context, output io.Writer, lo
 		}
 		observations := collectDebugHTTP(ctx, requests, dependencies.httpGet)
 		if format == "json" {
-			return WriteJSON(output, observations)
+			return WriteJSON(logger, output, observations)
 		}
 		return WriteDebugHTTPText(output, logger, view, observations)
 	case debugViewNPT, debugViewPolicy, debugViewPrefixes, debugViewRoutes,

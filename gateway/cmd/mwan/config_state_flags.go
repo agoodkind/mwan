@@ -1,3 +1,6 @@
 package main
 
-type configStateFlags struct{ root, outputFormat string }
+type configStateFlags struct {
+	root, outputFormat string
+	verbose            bool
+}

@@ -10,14 +10,16 @@ import (
 )
 
 func runConfigStateOptions(flags configStateFlags, cfg *config.Config, output, diagnostics io.Writer) int {
+	logger, closer := operatorLogger(diagnostics, flags.verbose)
+	defer closer.Close()
 	// A missing deploy file produces LastDeployEpoch 0.
 	deployFile, _ := os.ReadFile(cfg.Agent.DeployFile)
 	state := configstate.Read(flags.root, deployFile)
 	var err error
 	if flags.outputFormat == "text" {
-		err = WriteConfigStateText(output, state)
+		err = WriteConfigStateText(logger, output, state)
 	} else {
-		err = WriteJSON(output, state)
+		err = WriteJSON(logger, output, state)
 	}
 	if err != nil {
 		fmt.Fprintf(diagnostics, "mwan config-state: encode config state: %v\n", err)
