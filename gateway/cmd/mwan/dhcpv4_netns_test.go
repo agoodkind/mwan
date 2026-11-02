@@ -51,16 +51,40 @@ func TestOwnedDHCPv4RejectedRecoveryRuntime(t *testing.T) {
 	testOwnedDHCPv4DaemonRuntime(t, false, false, false, true)
 }
 
+type dhcpv4LinkFlap int
+
+const (
+	dhcpv4LinkFlapNone dhcpv4LinkFlap = iota
+	dhcpv4LinkFlapBound
+	dhcpv4LinkFlapRenewing
+)
+
 func TestOOBDHCPv4DaemonRuntime(t *testing.T) {
-	testRoleDHCPv4DaemonRuntime(t, "oob", true)
+	testRoleDHCPv4DaemonRuntime(t, "oob", true, dhcpv4LinkFlapNone)
+}
+
+func TestOOBDHCPv4LinkFlapRestoresRoute(t *testing.T) {
+	testRoleDHCPv4DaemonRuntime(t, "oob", true, dhcpv4LinkFlapBound)
+}
+
+func TestOOBDHCPv4LinkFlapDuringRenewalRestoresRoute(t *testing.T) {
+	testRoleDHCPv4DaemonRuntime(t, "oob", true, dhcpv4LinkFlapRenewing)
 }
 
 func TestFailoverDHCPv4DaemonRuntime(t *testing.T) {
-	testRoleDHCPv4DaemonRuntime(t, "failover", true)
+	testRoleDHCPv4DaemonRuntime(t, "failover", true, dhcpv4LinkFlapNone)
+}
+
+func TestFailoverDHCPv4LinkFlapRestoresRoute(t *testing.T) {
+	testRoleDHCPv4DaemonRuntime(t, "failover", true, dhcpv4LinkFlapBound)
+}
+
+func TestFailoverDHCPv4LinkFlapDuringRenewalRestoresRoute(t *testing.T) {
+	testRoleDHCPv4DaemonRuntime(t, "failover", true, dhcpv4LinkFlapRenewing)
 }
 
 func TestFailoverDHCPv4DisabledRuntime(t *testing.T) {
-	testRoleDHCPv4DaemonRuntime(t, "failover", false)
+	testRoleDHCPv4DaemonRuntime(t, "failover", false, dhcpv4LinkFlapNone)
 }
 
 func testOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAddress, rejectedRecovery bool) {
@@ -457,10 +481,10 @@ func startDHCPv4RuntimeKea(t *testing.T, root string, classless bool, leaseSecon
 	return service
 }
 
-func testRoleDHCPv4DaemonRuntime(t *testing.T, role string, enabled bool) {
+func testRoleDHCPv4DaemonRuntime(t *testing.T, role string, enabled bool, linkFlap dhcpv4LinkFlap) {
 	t.Helper()
 	if os.Getenv(dhcpv4RuntimeChildEnv) == "1" {
-		runRoleDHCPv4DaemonRuntime(t, role, enabled)
+		runRoleDHCPv4DaemonRuntime(t, role, enabled, linkFlap)
 		return
 	}
 	binary := protocolTestBinary(t)
@@ -472,7 +496,7 @@ func testRoleDHCPv4DaemonRuntime(t *testing.T, role string, enabled bool) {
 	}
 }
 
-func runRoleDHCPv4DaemonRuntime(t *testing.T, role string, enabled bool) {
+func runRoleDHCPv4DaemonRuntime(t *testing.T, role string, enabled bool, linkFlap dhcpv4LinkFlap) {
 	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -513,7 +537,14 @@ func runRoleDHCPv4DaemonRuntime(t *testing.T, role string, enabled bool) {
 	}
 	configureRuntimeLink(t, "wan-vlan", []string{"198.51.100.2/24"})
 	configureRuntimeLink(t, "lo", []string{"203.0.113.2/32"})
-	service := startDHCPv4RuntimeKea(t, root, false, 8, "198.51.100.2", "198.51.100.100", true)
+	leaseSeconds := 8
+	if linkFlap == dhcpv4LinkFlapBound {
+		leaseSeconds = 600
+	}
+	if linkFlap == dhcpv4LinkFlapRenewing {
+		leaseSeconds = 80
+	}
+	service := startDHCPv4RuntimeKea(t, root, false, leaseSeconds, "198.51.100.2", "198.51.100.100", true)
 	serviceRunning := true
 	defer func() {
 		if serviceRunning {
@@ -552,6 +583,29 @@ func runRoleDHCPv4DaemonRuntime(t *testing.T, role string, enabled bool) {
 	}
 	waitStaticRuntimeAddress(t, daemon, "enatt0", "198.51.100.101/24", true)
 	waitRoleDHCPv4Route(t, daemon, table, true)
+	if linkFlap != dhcpv4LinkFlapNone {
+		if linkFlap == dhcpv4LinkFlapRenewing {
+			setRuntimeNamespace(t, provider.namespace)
+			stopProtocolServices(t, []protocolService{service})
+			serviceRunning = false
+			setRuntimeNamespace(t, gateway)
+			waitDHCPv4RuntimeState(t, daemon, "dhcp: renewal attempt failed", 60*time.Second)
+		}
+		flappedLink, err := netlink.LinkByName("enatt0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := netlink.LinkSetDown(flappedLink); err != nil {
+			t.Fatal(err)
+		}
+		if err := netlink.LinkSetUp(flappedLink); err != nil {
+			t.Fatal(err)
+		}
+		waitRoleDHCPv4Route(t, daemon, table, true)
+		waitStaticRuntimeAddress(t, daemon, "enatt0", "198.51.100.101/24", true)
+		waitRuntimeTCP(t, daemon, gateway, provider.namespace, downstream.namespace, "tcp4", "203.0.113.2:30525", "192.0.2.2:0", time.Now().Add(15*time.Second))
+		return
+	}
 	waitRuntimeTCP(t, daemon, gateway, provider.namespace, downstream.namespace, "tcp4", "203.0.113.2:30525", "192.0.2.2:0", time.Now().Add(15*time.Second))
 	setRuntimeNamespace(t, provider.namespace)
 	stopProtocolServices(t, []protocolService{service})

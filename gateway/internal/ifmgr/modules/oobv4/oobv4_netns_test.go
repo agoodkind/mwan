@@ -163,7 +163,29 @@ func TestOOBDHCPv4AssignmentLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertOOBDHCPv4(t, link, tableID, true)
+	lastBound := module.LastBound()
 	lease.State = netif.LeaseRenewing
+	if err := module.OnDHCPLease(ctx, slog.Default(), lease); err != nil {
+		t.Fatal(err)
+	}
+	assertOOBDHCPv4(t, link, tableID, true)
+	if !module.LastBound().Equal(lastBound) {
+		t.Fatalf("LastBound = %s, want %s", module.LastBound(), lastBound)
+	}
+	lease.State = netif.LeaseBound
+	lease.ExpiresAt = time.Now().Add(100 * time.Millisecond)
+	if err := module.OnDHCPLease(ctx, slog.Default(), lease); err != nil {
+		t.Fatal(err)
+	}
+	assertOOBDHCPv4(t, link, tableID, true)
+	time.Sleep(150 * time.Millisecond)
+	lease.State = netif.LeaseRenewing
+	if err := module.OnDHCPLease(ctx, slog.Default(), lease); err != nil {
+		t.Fatal(err)
+	}
+	assertOOBDHCPv4(t, link, tableID, false)
+	lease.State = netif.LeaseBound
+	lease.ExpiresAt = time.Time{}
 	if err := module.OnDHCPLease(ctx, slog.Default(), lease); err != nil {
 		t.Fatal(err)
 	}

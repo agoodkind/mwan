@@ -277,13 +277,18 @@ func (r *RealOps) VMFSFreezeThaw(ctx context.Context, vmid string) error {
 	return err
 }
 
-// GuestExec runs on the Proxmox host. For a VM, GuestExec tries vsock RPC,
-// management TCP RPC, then qm guest exec. For an LXC guest, GuestExec runs
-// only pct exec on the host and dials neither vsock nor TCP.
-// ChannelTracker records success or failure for each attempted channel.
+// GuestExec uses the configured failover agent for the failover container.
+// For the primary VM, it tries vsock, TCP, and then qm guest exec.
+// For a primary LXC, it uses pct exec. ChannelTracker records primary attempts.
 func (r *RealOps) GuestExec(
 	ctx context.Context, vmid string, args ...string,
 ) (GuestExecResult, error) {
+	if vmid != "" && vmid == r.failoverVMID && vmid != r.primaryVMID {
+		r.logAttemptStart(ctx, "guest_exec", ChanTCP, 1, vmid)
+		result, err := r.tcpExec(ctx, r.failoverTCPAddr, args...)
+		r.logAttemptResult(ctx, "guest_exec", ChanTCP, 1, vmid, err)
+		return result, err
+	}
 	if !r.guest.hasGuestAgentChannels() {
 		return r.trackedHypervisorExec(ctx, 1, vmid, args...)
 	}
@@ -310,7 +315,7 @@ func (r *RealOps) GuestExec(
 
 	// Channel 2: TCP management interface
 	r.logAttemptStart(ctx, "guest_exec", ChanTCP, 2, vmid)
-	tcpRes, tcpErr := r.tcpExec(ctx, args...)
+	tcpRes, tcpErr := r.tcpExec(ctx, r.tcpAddr, args...)
 	if tcpErr == nil {
 		r.tracker.recordSuccess(ChanTCP)
 		r.logAttemptResult(ctx, "guest_exec", ChanTCP, 2, vmid, nil)
@@ -414,15 +419,15 @@ func isLastDeployPath(p string) bool {
 }
 
 func (r *RealOps) tcpExec(
-	ctx context.Context, args ...string,
+	ctx context.Context, address string, args ...string,
 ) (GuestExecResult, error) {
-	if r.tcpAddr == "" {
+	if address == "" {
 		return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""}, fmt.Errorf("tcpExec: no tcp addr configured")
 	}
 	cctx, cancel := context.WithTimeout(ctx, timeoutTCPRPC)
 	defer cancel()
 	dialer := func(ctx context.Context, _ string) (net.Conn, error) {
-		return (&net.Dialer{}).DialContext(ctx, "tcp", r.tcpAddr)
+		return (&net.Dialer{}).DialContext(ctx, "tcp", address)
 	}
 	if r.testTCPDialer != nil {
 		dialer = r.testTCPDialer
@@ -949,18 +954,15 @@ func (r *RealOps) logAttemptResult(
 // ---------------------------------------------------------------------------
 
 func pingTarget(args []string) string {
-	for i, a := range args {
+	for i := 1; i < len(args); i++ {
+		a := args[i]
 		if a == "-I" || a == "-c" || a == "-W" {
 			i++
-			_ = i
 			continue
 		}
-		if !strings.HasPrefix(a, "-") && i > 0 {
+		if !strings.HasPrefix(a, "-") {
 			return a
 		}
-	}
-	if len(args) > 0 {
-		return args[len(args)-1]
 	}
 	return ""
 }
