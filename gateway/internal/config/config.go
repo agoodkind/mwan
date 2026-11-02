@@ -349,6 +349,18 @@ func loadConfig(path string) (*Config, error) {
 		slog.Error("validate BGP forwarding readiness failed", "error", err)
 		return nil, fmt.Errorf("validate BGP forwarding readiness: %w", err)
 	}
+	if slaac := cfg.IfMgr.Modules.SLAACHealth; slaac != nil {
+		if slaac.MaxTogglesPerHour != nil && *slaac.MaxTogglesPerHour != 0 {
+			slog.Warn("[ifmgr.modules.slaac_health] max_toggles_per_hour has no effect", "max_toggles_per_hour", *slaac.MaxTogglesPerHour)
+		}
+		if slaac.EscalateAfter != "" {
+			if _, err := time.ParseDuration(slaac.EscalateAfter); err != nil {
+				slog.Error("validate SLAAC health failed", "error", err)
+				return nil, fmt.Errorf("ifmgr.modules.slaac_health.escalate_after: %w", err)
+			}
+			slog.Warn("[ifmgr.modules.slaac_health] escalate_after has no effect", "escalate_after", slaac.EscalateAfter)
+		}
+	}
 
 	return &cfg, nil
 }

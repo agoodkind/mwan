@@ -1,8 +1,11 @@
 package config
 
 import (
+	"bytes"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -124,6 +127,50 @@ func TestLoadHealthMaxStateAge(t *testing.T) {
 			if gotAge != tc.wantAge || gotPresent != tc.wantPresent {
 				t.Fatalf("max_state_age = %s present %t, want %s present %t",
 					gotAge, gotPresent, tc.wantAge, tc.wantPresent)
+			}
+		})
+	}
+}
+
+func TestLoadSLAACHealthEscalateAfterRejectsInvalidDuration(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	text := "[ifmgr.modules.slaac_health]\niface = \"eth0\"\nescalate_after = \"soon\"\n"
+	if err := os.WriteFile(configPath, []byte(text), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	t.Setenv("MWAN_CONFIG", configPath)
+	if _, err := LoadPath(""); err == nil || !strings.Contains(err.Error(), "escalate_after") {
+		t.Fatalf("LoadPath error = %v, want escalate_after", err)
+	}
+}
+
+func TestLoadSLAACHealthMaxToggles(t *testing.T) {
+	cases := []struct {
+		name     string
+		text     string
+		wantWarn bool
+	}{
+		{name: "missing", text: "[ifmgr.modules.slaac_health]\niface = \"eth0\"\n", wantWarn: false},
+		{name: "zero", text: "[ifmgr.modules.slaac_health]\niface = \"eth0\"\nmax_toggles_per_hour = 0\n", wantWarn: false},
+		{name: "existing nonzero", text: "[ifmgr.modules.slaac_health]\niface = \"eth0\"\nmax_toggles_per_hour = 4\n", wantWarn: true},
+		{name: "existing escalate_after", text: "[ifmgr.modules.slaac_health]\niface = \"eth0\"\nescalate_after = \"90s\"\n", wantWarn: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			configPath := filepath.Join(t.TempDir(), "config.toml")
+			if err := os.WriteFile(configPath, []byte(tc.text), 0o600); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+			t.Setenv("MWAN_CONFIG", configPath)
+			var logged bytes.Buffer
+			previous := slog.Default()
+			slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+			defer slog.SetDefault(previous)
+			if _, err := LoadPath(""); err != nil {
+				t.Fatalf("LoadPath: %v", err)
+			}
+			if warned := strings.Contains(logged.String(), "has no effect"); warned != tc.wantWarn {
+				t.Fatalf("warning = %t, want %t: %s", warned, tc.wantWarn, logged.String())
 			}
 		})
 	}
