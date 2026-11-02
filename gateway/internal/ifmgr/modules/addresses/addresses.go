@@ -333,7 +333,7 @@ func (module *Module) currentDHCPClient(ctx context.Context, log *slog.Logger, c
 		Iface: ready.ActualName, InitialBackoff: 0, MaxBackoff: 0,
 		DiscoverTimeout: 0, RequestTimeout: 0, RenewTimeout: 0,
 		ClientID:    slices.Clone(module.clientIDs[id]),
-		CachedLease: cached,
+		CachedLease: cached, RestartWindow: 0,
 	})
 	recoveryUntil := time.Time{}
 	if cached != nil {

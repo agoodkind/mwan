@@ -74,6 +74,7 @@ func requiredTests(selected lane) ([]string, error) {
 			"TestOwnedDHCPv6IATentativeAddressInstallsNPTEdgeRuntime",
 			"TestOOBDHCPv4DaemonRestartRecovery", "TestOOBDHCPv4DaemonLateInterfaceRecovery",
 			"TestOOBDHCPv4DaemonRejectedRecovery", "TestOwnedDHCPv6DaemonRestartRecovery",
+			"TestOOBDHCPv4RecoveryDiscoverNewAddress", "TestOOBDHCPv4RecoveryDiscoverSameAddress",
 			"TestAutoconfigurationDaemonRuntime", "TestRadvdAutoconfigurationDaemonRuntime",
 			"TestAutoconfigurationSolicitsRouterOnFreshStart",
 			"TestOwnedMappedDaemonRuntime", "TestSelectionExclusionDaemonRuntime",
