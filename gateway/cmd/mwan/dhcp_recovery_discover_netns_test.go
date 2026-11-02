@@ -29,20 +29,24 @@ const (
 )
 
 func TestOOBDHCPv4RecoveryDiscoverNewAddress(t *testing.T) {
-	testOOBDHCPv4RecoveryDiscover(t, "198.51.100.77", "198.51.100.3")
+	testOOBDHCPv4RecoveryDiscover(t, "198.51.100.77", "198.51.100.3", false)
 }
 
 func TestOOBDHCPv4RecoveryDiscoverSameAddress(t *testing.T) {
-	testOOBDHCPv4RecoveryDiscover(t, "198.51.100.101", "198.51.100.3")
+	testOOBDHCPv4RecoveryDiscover(t, "198.51.100.101", "198.51.100.3", false)
 }
 
 func TestOOBDHCPv4RecoveryDiscoverInterfaceReplacement(t *testing.T) {
-	testOOBDHCPv4RecoveryDiscover(t, "", "")
+	testOOBDHCPv4RecoveryDiscover(t, "", "", false)
 }
 
-func testOOBDHCPv4RecoveryDiscover(t *testing.T, offeredAddress, offeredGateway string) {
+func TestOOBDHCPv4RecoveryDiscoverLinkReturnsLater(t *testing.T) {
+	testOOBDHCPv4RecoveryDiscover(t, "", "", true)
+}
+
+func testOOBDHCPv4RecoveryDiscover(t *testing.T, offeredAddress, offeredGateway string, linkReturnsLater bool) {
 	if os.Getenv(dhcpRecoveryDiscoverChildEnv) == "1" {
-		runOOBDHCPv4RecoveryDiscover(t, net.ParseIP(offeredAddress), net.ParseIP(offeredGateway))
+		runOOBDHCPv4RecoveryDiscover(t, net.ParseIP(offeredAddress), net.ParseIP(offeredGateway), linkReturnsLater)
 		return
 	}
 	t.Parallel()
@@ -55,7 +59,7 @@ func testOOBDHCPv4RecoveryDiscover(t *testing.T, offeredAddress, offeredGateway 
 	}
 }
 
-func runOOBDHCPv4RecoveryDiscover(t *testing.T, offeredAddress, offeredGateway net.IP) {
+func runOOBDHCPv4RecoveryDiscover(t *testing.T, offeredAddress, offeredGateway net.IP, linkReturnsLater bool) {
 	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -161,6 +165,15 @@ func runOOBDHCPv4RecoveryDiscover(t *testing.T, offeredAddress, offeredGateway n
 		oldLink, err := netlink.LinkByName("enatt0")
 		if err != nil {
 			t.Fatal(err)
+		}
+		if linkReturnsLater {
+			renameDHCPRecoveryLink(t, oldLink)
+			waitDHCPv4RuntimeState(t, daemon, "state=EXPIRED", 30*time.Second)
+			replacement := newRuntimePeer(t, gateway, "enatt0", "wan-new", nil, nil, "")
+			defer replacement.namespace.Close()
+			waitDHCPRenamedLinkAddressRemoved(t, daemon, oldLink.Attrs().Index)
+			assertDHCPRenamedLinkForeignAddress(t, oldLink)
+			return
 		}
 		if err := netlink.LinkDel(oldLink); err != nil {
 			t.Fatal(err)
