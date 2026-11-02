@@ -195,9 +195,10 @@ func TestDHCPRestartClientWithServer(t *testing.T) {
 		t.Cleanup(cancel)
 		client := StartDHCPClient(ctx, slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})), DHCPConfig{
 			Iface: clientInterface, CachedLease: &cached, ClientID: append(append([]byte(nil), clientID...), 0xfe),
-			RequestTimeout: 100 * time.Millisecond, InitialBackoff: 50 * time.Millisecond,
+			RequestTimeout: 5 * time.Second, InitialBackoff: 3 * time.Second,
 			DiscoverTimeout: time.Second, RestartWindow: 300 * time.Millisecond,
 		})
+		started := time.Now()
 		deadline := time.After(10 * time.Second)
 		for {
 			select {
@@ -207,6 +208,9 @@ func TestDHCPRestartClientWithServer(t *testing.T) {
 				}
 				if !event.IP.Equal(offered) {
 					t.Fatalf("LeaseBound event = %+v", event)
+				}
+				if elapsed := time.Since(started); elapsed > 2*time.Second {
+					t.Fatalf("LeaseBound elapsed = %s", elapsed)
 				}
 				return
 			case <-deadline:

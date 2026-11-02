@@ -36,6 +36,10 @@ func TestOOBDHCPv4RecoveryDiscoverSameAddress(t *testing.T) {
 	testOOBDHCPv4RecoveryDiscover(t, "198.51.100.101", "198.51.100.3")
 }
 
+func TestOOBDHCPv4RecoveryDiscoverInterfaceReplacement(t *testing.T) {
+	testOOBDHCPv4RecoveryDiscover(t, "", "")
+}
+
 func testOOBDHCPv4RecoveryDiscover(t *testing.T, offeredAddress, offeredGateway string) {
 	if os.Getenv(dhcpRecoveryDiscoverChildEnv) == "1" {
 		runOOBDHCPv4RecoveryDiscover(t, net.ParseIP(offeredAddress), net.ParseIP(offeredGateway))
@@ -108,9 +112,19 @@ func runOOBDHCPv4RecoveryDiscover(t *testing.T, offeredAddress, offeredGateway n
 	waitStaticRuntimeAddress(t, daemon, "enatt0", dhcpRecoverySavedAddress, true)
 	waitRoleDHCPv4Route(t, daemon, 100, true)
 
+	discoverSeen := make(chan struct{}, 1)
 	setRuntimeNamespace(t, provider.namespace)
 	server, err := server4.NewServer("wan-vlan", &net.UDPAddr{IP: net.IPv4zero, Port: 67},
 		func(conn net.PacketConn, peer net.Addr, packet *dhcpv4.DHCPv4) {
+			if offeredAddress == nil {
+				if packet.MessageType() == dhcpv4.MessageTypeDiscover {
+					select {
+					case discoverSeen <- struct{}{}:
+					default:
+					}
+				}
+				return
+			}
 			responseType := dhcpv4.MessageTypeOffer
 			if packet.MessageType() == dhcpv4.MessageTypeRequest {
 				if !packet.Options.Has(dhcpv4.OptionServerIdentifier) {
@@ -136,6 +150,27 @@ func runOOBDHCPv4RecoveryDiscover(t *testing.T, offeredAddress, offeredGateway n
 	go func() { _ = server.Serve() }()
 	defer func() { _ = server.Close() }()
 	setRuntimeNamespace(t, gateway)
+
+	if offeredAddress == nil {
+		select {
+		case <-discoverSeen:
+		case <-time.After(2 * time.Minute):
+			t.Fatalf("discoverSeen deadline: %s", runtimeLogTail(t, daemon, 40))
+		}
+		oldLink, err := netlink.LinkByName("enatt0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := netlink.LinkDel(oldLink); err != nil {
+			t.Fatal(err)
+		}
+		replacement := newRuntimePeer(t, gateway, "enatt0", "wan-new", nil, nil, "")
+		defer replacement.namespace.Close()
+		waitDHCPv4RuntimeState(t, daemon, "state=EXPIRED", 30*time.Second)
+		waitStaticRuntimeAddress(t, daemon, "enatt0", dhcpRecoverySavedAddress, false)
+		waitRoleDHCPv4Route(t, daemon, 100, false)
+		return
+	}
 
 	waitDHCPv4RuntimeState(t, daemon, "state=BOUND", 60*time.Second)
 	offeredPrefix := offeredAddress.String() + "/24"

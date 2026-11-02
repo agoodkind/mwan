@@ -336,8 +336,21 @@ func (c *DHCPClient) recoverLease(ctx context.Context, cached LeaseInfo) *nclien
 	}
 	backoff := c.cfg.InitialBackoff
 	discoverAt := c.clock.Now().Add(c.cfg.RestartWindow)
+	attemptDeadline := earlier(discoverAt, cached.ExpiresAt)
+	discoverStarted := false
 	for c.clock.Now().Before(cached.ExpiresAt) && ctx.Err() == nil {
-		lease, err := c.restartAttempt(ctx, cached)
+		// RFC 2131 section 3.2 allows continued use of the saved address until its lease expires, so retain it while DISCOVER runs.
+		if !c.clock.Now().Before(discoverAt) {
+			discoverStarted = true
+			attemptDeadline = cached.ExpiresAt
+			acquired, finished := c.recoveryAcquire(ctx, cached)
+			if finished {
+				return acquired
+			}
+		}
+		attemptCtx, cancelAttempt := context.WithDeadline(ctx, attemptDeadline)
+		lease, err := c.restartAttempt(attemptCtx, cached)
+		cancelAttempt()
 		if err == nil {
 			return lease
 		}
@@ -351,14 +364,10 @@ func (c *DHCPClient) recoverLease(ctx context.Context, cached LeaseInfo) *nclien
 		}
 		c.log.WarnContext(ctx, "dhcp: restart request failed", "err", err)
 		c.emit(leaseState(LeaseRequesting, cached.AcquiredAt, err))
-		// RFC 2131 section 3.2 allows continued use of the saved address until its lease expires, so retain it while DISCOVER runs.
-		if !c.clock.Now().Before(discoverAt) {
-			acquired, finished := c.recoveryAcquire(ctx, cached)
-			if finished {
-				return acquired
-			}
-		}
 		wait := min(backoff, max(cached.ExpiresAt.Sub(c.clock.Now()), 0))
+		if !discoverStarted {
+			wait = min(wait, max(discoverAt.Sub(c.clock.Now()), 0))
+		}
 		sleepOrCancel(ctx, wait)
 		backoff = nextBackoff(backoff, c.cfg.MaxBackoff)
 	}
@@ -379,9 +388,9 @@ func (c *DHCPClient) recoveryAcquire(ctx context.Context, cached LeaseInfo) (*nc
 	sameLink := c.origin.LinkIndex == recoveryOrigin.LinkIndex &&
 		bytes.Equal(c.origin.LinkHardwareAddr, recoveryOrigin.LinkHardwareAddr)
 	c.mu.Unlock()
-	if !sameLink {
+	if !sameLink || !c.originMatches() {
 		c.emit(leaseState(LeaseExpired, cached.AcquiredAt, errDHCPInterfaceChanged))
-		return acquired, true
+		return nil, true
 	}
 	if err != nil {
 		c.log.WarnContext(ctx, "dhcp: recovery DISCOVER failed", "err", err)
