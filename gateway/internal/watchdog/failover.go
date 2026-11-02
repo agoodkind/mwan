@@ -62,15 +62,17 @@ func (w *watchdog) triggerBGPFailover(ctx context.Context, cfg *watchdogconfig.C
 		w.log.InfoContext(ctx, "BGP_FAILOVER: routes announced on failover LXC", "lxc", cfg.Failover.LXCID)
 	}
 
+	status, err = w.ops.GetBGPStatus(ctx, cfg.Failover.LXCID)
+	if err != nil {
+		w.log.ErrorContext(ctx, "BGP_FAILOVER: failed to get BGP status on LXC", "lxc", cfg.Failover.LXCID, "err", err)
+	}
+	// Stop failover because OPNsense learns the backup route only through an established BGP session.
+	if err != nil || !status.GetAllEstablished() {
+		return fmt.Errorf("BGP failover on LXC %s: cannot confirm that every BGP session is established", cfg.Failover.LXCID)
+	}
 	// Stop manual failover because WithdrawRoutes would remove a working primary address family that the LXC cannot replace.
-	if w.requireCompleteBackup {
-		status, err = w.ops.GetBGPStatus(ctx, cfg.Failover.LXCID)
-		if err != nil {
-			w.log.ErrorContext(ctx, "BGP_FAILOVER: failed to get BGP status on LXC", "lxc", cfg.Failover.LXCID, "err", err)
-		}
-		if err != nil || !status.GetAnnouncing() {
-			return fmt.Errorf("BGP failover on LXC %s: LXC does not announce every configured address family", cfg.Failover.LXCID)
-		}
+	if w.requireCompleteBackup && !status.GetAnnouncing() {
+		return fmt.Errorf("BGP failover on LXC %s: LXC does not announce every configured address family", cfg.Failover.LXCID)
 	}
 
 	// Notify about BGP failover initiation. The notify boundary owns

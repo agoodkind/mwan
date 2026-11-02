@@ -32,6 +32,7 @@ type recordingAgent struct {
 	announceError   string
 	partialAnnounce bool
 	announcing      bool
+	sessionsDown    bool
 }
 
 func (a *recordingAgent) record(method string) {
@@ -57,7 +58,7 @@ func (a *recordingAgent) GetBGPStatus(
 	a.record("GetBGPStatus")
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return &mwanv1.GetBGPStatusResponse{Announcing: a.announcing}, nil
+	return &mwanv1.GetBGPStatusResponse{Announcing: a.announcing, AllEstablished: !a.sessionsDown}, nil
 }
 
 func (a *recordingAgent) AnnounceRoutes(
@@ -165,6 +166,25 @@ func TestFailoverRunKeepsPrimaryRoutesWhenFailoverAgentAnnouncesPartialFamilies(
 
 	if err := watchdog.FailoverRun(cfg); err == nil {
 		t.Fatal("FailoverRun error = nil")
+	}
+	if primary.received("WithdrawRoutes") {
+		t.Error("primary WithdrawRoutes")
+	}
+}
+
+func TestFailoverRunKeepsPrimaryRoutesWhenFailoverSessionsAreDown(t *testing.T) {
+	primary, primaryAddr := startAgent(t)
+	failover, failoverAddr := startAgent(t)
+	failover.mu.Lock()
+	failover.sessionsDown = true
+	failover.mu.Unlock()
+	cfg := failoverConfig(t, primaryAddr, failoverAddr)
+
+	if err := watchdog.FailoverRun(cfg); err == nil {
+		t.Fatal("FailoverRun error = nil")
+	}
+	if !failover.received("AnnounceRoutes") {
+		t.Error("failover AnnounceRoutes")
 	}
 	if primary.received("WithdrawRoutes") {
 		t.Error("primary WithdrawRoutes")

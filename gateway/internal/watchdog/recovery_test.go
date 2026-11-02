@@ -51,9 +51,10 @@ func TestRecoveryEmail_AfterFailover(t *testing.T) {
 			"ping:1.1.1.1":               true,
 			"ping6:2606:4700:4700::1111": true,
 		},
-		// Primary VM "113" reports BGP fully established; LXC "203" empty default.
+		// Failover requires established BGP sessions on LXC 203 before withdrawing routes from primary VM 113; recovery requires established sessions on VM 113.
 		bgpStatusByVMID: map[string]*mwanv1.GetBGPStatusResponse{
 			"113": {AllEstablished: true},
+			"203": {AllEstablished: true},
 		},
 	}
 	w := newTestWatchdog(t, m, recoveryTestCfgOverrides)
@@ -164,6 +165,7 @@ func TestRecoveryEmail_PrimaryStillUnhealthy(t *testing.T) {
 		},
 		bgpStatusByVMID: map[string]*mwanv1.GetBGPStatusResponse{
 			"113": {AllEstablished: true},
+			"203": {AllEstablished: true},
 		},
 	}
 	w := newTestWatchdog(t, m, recoveryTestCfgOverrides)
