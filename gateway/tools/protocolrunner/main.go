@@ -64,6 +64,8 @@ func requiredTests(selected lane) ([]string, error) {
 			"TestOwnedDHCPv4RebindDaemonRuntime", "TestOwnedDHCPv4NAKDaemonRuntime",
 			"TestOwnedDHCPv4RejectedRecoveryRuntime", "TestOOBDHCPv4DaemonRuntime",
 			"TestFailoverDHCPv4DaemonRuntime", "TestFailoverDHCPv4DisabledRuntime",
+			"TestOOBDHCPv4LinkFlapRestoresRoute", "TestFailoverDHCPv4LinkFlapRestoresRoute",
+			"TestOOBDHCPv4LinkFlapDuringRenewalRestoresRoute", "TestFailoverDHCPv4LinkFlapDuringRenewalRestoresRoute",
 			"TestOwnedDHCPv6PDDaemonRuntime", "TestOwnedDHCPv6PDDaemonWaitsForRA",
 			"TestOwnedDHCPv6PDRejectsInformationRequest",
 			"TestOwnedDHCPv6PDLateRenewReplyRuntime", "TestOwnedDHCPv6PDSolicitAfterExpiryRuntime",
@@ -269,6 +271,9 @@ func testArguments(opts options, container string, required []string) []string {
 		arguments = append(arguments, "-e", "MWAN_NETWORKD_RESOLVER_SYSTEMD_TEST=1", "-e", "MWAN_NETWORKD_STARTUP_SYSTEMD_TEST=1", "-e", "MWAN_RESOLVER_SYSTEMD_TEST=1", "-e", "MWAN_OWNED_ROLE_BOOTSTRAP_DIR=/mwan-bootstrap")
 	}
 	timeout := "20m"
+	if opts.lane == laneNamespace {
+		timeout = "30m"
+	}
 	if opts.lane == laneOriginalUpgrade {
 		arguments = append(arguments, "-e", "MWAN_NPT_LEGACY_BINARY=/mwan-original/mwan", "-e", "MWAN_NPT_LEGACY_SHA256="+opts.originalSHA256)
 		timeout = "10m"
