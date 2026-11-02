@@ -65,6 +65,7 @@ func requiredTests(selected lane) ([]string, error) {
 			"TestOwnedDHCPv4RejectedRecoveryRuntime", "TestOOBDHCPv4DaemonRuntime",
 			"TestFailoverDHCPv4DaemonRuntime", "TestFailoverDHCPv4DisabledRuntime",
 			"TestFailoverForwardingSelectsWorkingGateway",
+			"TestWatchdogRecoveryProbesPrimaryGateway",
 			"TestFailoverForwardingReadinessDaemonRuntime", "TestFailoverForwardingReadinessIPv4OnlyDaemonRuntime",
 			"TestOOBDHCPv4LinkFlapRestoresRoute", "TestFailoverDHCPv4LinkFlapRestoresRoute",
 			"TestOOBDHCPv4LinkFlapDuringRenewalRestoresRoute", "TestFailoverDHCPv4LinkFlapDuringRenewalRestoresRoute",

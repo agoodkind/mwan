@@ -9,6 +9,7 @@ import (
 	mwanv1 "goodkind.io/mwan/gen/mwan/v1"
 	"goodkind.io/mwan/internal/alert"
 	"goodkind.io/mwan/internal/notify"
+	"goodkind.io/mwan/internal/ops"
 	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
@@ -46,10 +47,9 @@ func notifyMessagesContaining(events []notifyEvent, needles ...string) []string 
 func TestRecoveryEmail_AfterFailover(t *testing.T) {
 	m := &mockOps{
 		vmRunning: true,
-		// Healthy host pings let triggerBGPRecovery believe the primary is back.
-		pingResults: map[string]bool{
-			"ping:1.1.1.1":               true,
-			"ping6:2606:4700:4700::1111": true,
+		guestResults: map[string]ops.GuestExecResult{
+			"113|ping|-c|2|-W|3|1.1.1.1":               {ExitCode: 0},
+			"113|ping6|-c|2|-W|3|2606:4700:4700::1111": {ExitCode: 0},
 		},
 		// Failover requires established BGP sessions on LXC 203 before withdrawing routes from primary VM 113; recovery requires established sessions on VM 113.
 		bgpStatusByVMID: map[string]*mwanv1.GetBGPStatusResponse{
@@ -158,10 +158,9 @@ func TestRecoveryEmail_NoEmailWhenNotInFailover(t *testing.T) {
 func TestRecoveryEmail_PrimaryStillUnhealthy(t *testing.T) {
 	m := &mockOps{
 		vmRunning: true,
-		// All pings fail: simulates primary VM still down from watchdog's vantage.
-		pingResults: map[string]bool{
-			"ping:1.1.1.1":               false,
-			"ping6:2606:4700:4700::1111": false,
+		guestResults: map[string]ops.GuestExecResult{
+			"113|ping|-c|2|-W|3|1.1.1.1":               {ExitCode: 1},
+			"113|ping6|-c|2|-W|3|2606:4700:4700::1111": {ExitCode: 1},
 		},
 		bgpStatusByVMID: map[string]*mwanv1.GetBGPStatusResponse{
 			"113": {AllEstablished: true},
