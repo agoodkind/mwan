@@ -207,29 +207,29 @@ func runDebugInspection(ctx context.Context, output, diagnostics io.Writer, logg
 	switch view {
 	case debugViewNPT:
 		result, err := collectDebugNPT(ctx, logger)
-		return writeDebugInspectionResult(output, format, result, err, writeDebugNPTText)
+		return writeDebugInspectionResult(logger, output, format, result, err, writeDebugNPTText)
 	case debugViewPrefixes:
 		result, err := collectDebugPrefixes(ctx, logger, cfg)
-		return writeDebugInspectionResult(output, format, result, err, writeDebugPrefixesText)
+		return writeDebugInspectionResult(logger, output, format, result, err, writeDebugPrefixesText)
 	case debugViewRoutes:
 		result, err := collectDebugRoutes(ctx, logger)
-		return writeDebugInspectionResult(output, format, result, err, writeDebugRoutesText)
+		return writeDebugInspectionResult(logger, output, format, result, err, writeDebugRoutesText)
 	case debugViewPolicy:
 		result, err := collectDebugPolicy(ctx, logger, cfg)
-		return writeDebugInspectionResult(output, format, result, err, writeDebugPolicyText)
+		return writeDebugInspectionResult(logger, output, format, result, err, writeDebugPolicyText)
 	case debugViewStatus:
 		result, err := collectDebugStatus(ctx, logger, cfg)
-		return writeDebugInspectionResult(output, format, result, err, writeDebugStatusText)
+		return writeDebugInspectionResult(logger, output, format, result, err, writeDebugStatusText)
 	case debugViewStats:
 		result, err := collectDebugStats(logger, cfg)
-		return writeDebugInspectionResult(output, format, result, err, writeDebugStatsText)
+		return writeDebugInspectionResult(logger, output, format, result, err, writeDebugStatsText)
 	case debugViewSim4:
 		return runDebugSimulationInspection(ctx, output, diagnostics, logger, cfg, debugFamilyV4, format)
 	case debugViewSim6:
 		return runDebugSimulationInspection(ctx, output, diagnostics, logger, cfg, debugFamilyV6, format)
 	case debugViewSystemd:
 		result, err := collectDebugSystemd(ctx, logger)
-		return writeDebugInspectionResult(output, format, result, err, writeDebugSystemdText)
+		return writeDebugInspectionResult(logger, output, format, result, err, writeDebugSystemdText)
 	case debugViewConnectivity, debugViewCurl4, debugViewCurl6, debugViewLB4, debugViewLB4Ifaces, debugViewLB6, debugViewLB6Ifaces, debugViewPing4, debugViewPing6, debugViewTraceStart, debugViewTraceStop, debugViewTraceTail:
 		return fmt.Errorf("debug view %q is not a passive inspection", view)
 	default:
@@ -237,14 +237,14 @@ func runDebugInspection(ctx context.Context, output, diagnostics io.Writer, logg
 	}
 }
 
-func writeDebugInspectionResult[T outputValue](output io.Writer, format string, result T, collectionError error, writeText func(io.Writer, T) error) error {
+func writeDebugInspectionResult[T outputValue](logger *slog.Logger, output io.Writer, format string, result T, collectionError error, writeText func(*slog.Logger, io.Writer, T) error) error {
 	if collectionError != nil {
 		return collectionError
 	}
 	if format == "json" {
 		return WriteJSON(output, result)
 	}
-	return writeText(output, result)
+	return writeText(logger, output, result)
 }
 
 func runDebugSimulationInspection(ctx context.Context, output, diagnostics io.Writer, logger *slog.Logger, cfg *config.Config, family, format string) error {
@@ -258,5 +258,5 @@ func runDebugSimulationInspection(ctx context.Context, output, diagnostics io.Wr
 			return fmt.Errorf("write simulation diagnostic: %w", err)
 		}
 	}
-	return writeDebugInspectionResult(output, format, result, nil, writeDebugSimulationText)
+	return writeDebugInspectionResult(logger, output, format, result, nil, writeDebugSimulationText)
 }

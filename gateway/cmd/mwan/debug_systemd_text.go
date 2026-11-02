@@ -11,7 +11,7 @@ import (
 	systemddbus "github.com/coreos/go-systemd/v22/dbus"
 )
 
-func writeDebugSystemdText(output io.Writer, result debugSystemdResult) error {
+func writeDebugSystemdText(logger *slog.Logger, output io.Writer, result debugSystemdResult) error {
 	var text strings.Builder
 	fmt.Fprintln(&text, "== failed units ==")
 	printUnitsInState(&text, result.Units, "failed")
@@ -27,7 +27,7 @@ func writeDebugSystemdText(output io.Writer, result debugSystemdResult) error {
 		fmt.Fprintf(writer, "%s\t%s\n", timing.Duration.Round(time.Millisecond), timing.Name)
 	}
 	if err := writer.Flush(); err != nil {
-		slog.Warn("flush systemd timings failed", "err", err)
+		logger.Warn("flush systemd timings failed", "err", err)
 		return fmt.Errorf("flush systemd timings: %w", err)
 	}
 
@@ -41,10 +41,10 @@ func writeDebugSystemdText(output io.Writer, result debugSystemdResult) error {
 		fmt.Fprintf(focusWriter, "%s\t%s\n", timing.Name, value)
 	}
 	if err := focusWriter.Flush(); err != nil {
-		slog.Warn("flush systemd focus timings failed", "err", err)
+		logger.Warn("flush systemd focus timings failed", "err", err)
 		return fmt.Errorf("flush systemd focus timings: %w", err)
 	}
-	return WriteDebugText(output, text.String())
+	return WriteDebugText(logger, output, text.String())
 }
 
 func printUnitsInState(output io.Writer, units []systemddbus.UnitStatus, state string) {
