@@ -231,10 +231,10 @@ func (m *Module) tryToggle(ctx context.Context, now time.Time, log *slog.Logger)
 		if !timer.Stop() {
 			<-timer.C
 		}
-		return
 	case <-timer.C:
 	}
-	if err := m.Env.Sysctl.Set(ctx, key, "0"); err != nil {
+	// Restore IPv6 without cancellation because daemon shutdown can cancel the original context during the wait.
+	if err := m.Env.Sysctl.Set(context.WithoutCancel(ctx), key, "0"); err != nil {
 		log.ErrorContext(ctx, "slaac_health: failed to set disable_ipv6=0", "err", err)
 		return
 	}
