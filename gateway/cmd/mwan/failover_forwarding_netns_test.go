@@ -638,7 +638,7 @@ func waitForwardingPathCount(t *testing.T, router *server.BgpServer, family bgpp
 		if err != nil {
 			t.Fatal(err)
 		}
-		if count >= want {
+		if count == want {
 			return
 		}
 		time.Sleep(50 * time.Millisecond)
