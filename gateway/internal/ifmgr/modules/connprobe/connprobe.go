@@ -17,6 +17,7 @@ import (
 	"time"
 
 	internalclock "goodkind.io/mwan/internal/clock"
+	"goodkind.io/mwan/internal/forwardingready"
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/netif"
 )
@@ -31,11 +32,13 @@ type Module struct {
 	lastResult    map[string]bool // key=target string, val=last probe healthy?
 	lastRunAt     time.Time
 	firstFailedAt map[string]time.Time // key=target string, val=first time it began failing in current run
+	readiness     forwardingready.State
 }
 
 // Config is the parsed [ifmgr.modules.connectivity_probe] sub-config.
 type Config struct {
 	Iface          string
+	TargetsV4      []netip.Addr
 	TargetsV6      []netip.Addr
 	Timeout        time.Duration
 	UnhealthyAfter time.Duration // a single failed probe must persist this long before alert
@@ -52,7 +55,7 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	}
 	log.InfoContext(
 		ctx, "connectivity_probe: Init",
-		"target_count", len(m.cfg.TargetsV6),
+		"target_count", len(m.cfg.TargetsV4)+len(m.cfg.TargetsV6),
 		"timeout", m.cfg.Timeout.String(),
 		"unhealthy_after", m.cfg.UnhealthyAfter.String(),
 	)
@@ -73,6 +76,13 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	probe := netif.NewV6Probe(m.cfg.Iface, log)
 	now := m.clock.Now()
 	results := map[string]bool{}
+	for _, t := range m.cfg.TargetsV4 {
+		_, err := netif.Ping4WithLogger(ctx, log, m.cfg.Iface, t, m.cfg.Timeout)
+		ok := err == nil
+		results[t.String()] = ok
+		log.DebugContext(ctx, "connectivity_probe: probe result",
+			"target", t.String(), "ok", ok, "err", err)
+	}
 	for _, t := range m.cfg.TargetsV6 {
 		_, err := probe.PingICMP6(ctx, t, m.cfg.Timeout)
 		ok := err == nil
@@ -94,8 +104,34 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	}
 	m.lastResult = results
 	m.lastRunAt = now
+	m.readiness = forwardingready.State{
+		IPv4: m.familyReady(m.cfg.TargetsV4, m.readiness.IPv4, results, now),
+		IPv6: m.familyReady(m.cfg.TargetsV6, m.readiness.IPv6, results, now),
+	}
 	m.Unlock()
 	return nil
+}
+
+func (m *Module) familyReady(targets []netip.Addr, wasReady bool, results map[string]bool, now time.Time) bool {
+	withinUnhealthyAfter := false
+	for _, target := range targets {
+		key := target.String()
+		if results[key] {
+			return true
+		}
+		if now.Sub(m.firstFailedAt[key]) < m.cfg.UnhealthyAfter {
+			withinUnhealthyAfter = true
+		}
+	}
+	// A previously successful target remains ready during unhealthy_after to avoid withdrawing routes after a brief failure.
+	return wasReady && withinUnhealthyAfter
+}
+
+// ForwardingReadiness reports readiness for each address family from connectivity probe results.
+func (m *Module) ForwardingReadiness() forwardingready.State {
+	m.Lock()
+	defer m.Unlock()
+	return m.readiness
 }
 
 // EvaluateAlerts implements ifmgr.Module. Aggregates per-target results
@@ -165,6 +201,7 @@ func (m *Module) EvaluateAlerts(ctx context.Context, log *slog.Logger, now time.
 func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 	c := Config{
 		Iface:          "",
+		TargetsV4:      nil,
 		TargetsV6:      nil,
 		Timeout:        2 * time.Second,
 		UnhealthyAfter: 10 * time.Second,
@@ -183,6 +220,7 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		lastResult:    nil,
 		lastRunAt:     time.Time{},
 		firstFailedAt: nil,
+		readiness:     forwardingready.State{IPv4: false, IPv6: false},
 	}, nil
 }
 

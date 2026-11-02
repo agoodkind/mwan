@@ -121,6 +121,7 @@ type IfMgrRALostSection struct {
 // that stays down does.
 type IfMgrConnectivityProbeSection struct {
 	Iface          string   `toml:"iface"`
+	TargetsV4      []string `toml:"targets_v4"`
 	TargetsV6      []string `toml:"targets_v6"`
 	Timeout        string   `toml:"timeout"`
 	UnhealthyAfter string   `toml:"unhealthy_after"`

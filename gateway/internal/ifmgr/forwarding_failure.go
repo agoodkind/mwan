@@ -17,6 +17,20 @@ type FamilyReadinessObserver interface {
 	OnFamilyReadiness(ctx context.Context, log *slog.Logger)
 }
 
+// ForwardingReadinessReporter supplies family readiness for roles that do not use WAN routing state.
+type ForwardingReadinessReporter interface {
+	ForwardingReadiness() forwardingready.State
+}
+
+func (d *Daemon) reportedForwardingReadiness() forwardingready.State {
+	for _, module := range d.modules {
+		if reporter, ok := module.(ForwardingReadinessReporter); ok {
+			return reporter.ForwardingReadiness()
+		}
+	}
+	return forwardingready.State{IPv4: false, IPv6: false}
+}
+
 func forwardingFailureImpact(module Module) forwardingready.State {
 	if reporter, ok := module.(forwardingFailureReporter); ok {
 		return reporter.ForwardingFailureImpact()
