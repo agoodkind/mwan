@@ -76,7 +76,7 @@ func requiredTests(selected lane) ([]string, error) {
 			"TestOOBDHCPv4DaemonRejectedRecovery", "TestOwnedDHCPv6DaemonRestartRecovery",
 			"TestOOBDHCPv4RecoveryWithdrawsRenamedLinkAddress", "TestOOBDHCPv4RecoveryWithdrawsRenamedLinkAddressAfterLateReplacement",
 			"TestOOBDHCPv4RecoveryPreservesForeignAddressOnRecreatedLink", "TestOOBDHCPv4RecoveryRenamedLinkFastRebind",
-			"TestOOBDHCPv4RecoveryRenamedLinkBeforeStart", "TestOOBDHCPv4BoundRenamedLink", "TestOOBDHCPv4BoundRenamedLinkLongLease", "TestOOBDHCPv4BoundLinkFlapKeepsLease",
+			"TestOOBDHCPv4RecoveryRenamedLinkBeforeStart", "TestOOBDHCPv4BoundRenamedLink", "TestOOBDHCPv4BoundRenamedLinkLongLease", "TestOOBDHCPv4BoundLinkFlapKeepsLease", "TestOOBDHCPv4LinkFlapsKeepRenewalRetryDeadline",
 			"TestAutoconfigurationDaemonRuntime", "TestRadvdAutoconfigurationDaemonRuntime",
 			"TestAutoconfigurationSolicitsRouterOnFreshStart",
 			"TestOwnedMappedDaemonRuntime", "TestSelectionExclusionDaemonRuntime",

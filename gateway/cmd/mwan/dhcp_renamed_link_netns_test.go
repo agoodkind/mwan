@@ -39,6 +39,7 @@ const (
 	dhcpRecoveryRenameAfterBound
 	dhcpRecoveryRenameAfterBoundLongLease
 	dhcpRecoveryFlapAfterBoundLongLease
+	dhcpRecoveryFlapDuringRenewalRetry
 )
 
 func TestOOBDHCPv4RecoveryWithdrawsRenamedLinkAddress(t *testing.T) {
@@ -71,6 +72,10 @@ func TestOOBDHCPv4BoundRenamedLinkLongLease(t *testing.T) {
 
 func TestOOBDHCPv4BoundLinkFlapKeepsLease(t *testing.T) {
 	testOOBDHCPv4RecoveryLinkChange(t, dhcpRecoveryFlapAfterBoundLongLease)
+}
+
+func TestOOBDHCPv4LinkFlapsKeepRenewalRetryDeadline(t *testing.T) {
+	testOOBDHCPv4RecoveryLinkChange(t, dhcpRecoveryFlapDuringRenewalRetry)
 }
 
 func renameDHCPRecoveryLink(t *testing.T, oldLink netlink.Link) {
@@ -148,6 +153,9 @@ func runOOBDHCPv4RecoveryLinkChange(t *testing.T, change dhcpRecoveryLinkChange)
 	if change == dhcpRecoveryRenameLateReplacement || change == dhcpRecoveryRenameAfterBound {
 		leaseSeconds = 40
 	}
+	if change == dhcpRecoveryFlapDuringRenewalRetry {
+		leaseSeconds = 80
+	}
 	setRuntimeNamespace(t, provider.namespace)
 	service := startDHCPv4RuntimeKea(t, root, false, leaseSeconds, "198.51.100.2", "198.51.100.100", true)
 	serviceRunning := true
@@ -173,6 +181,34 @@ func runOOBDHCPv4RecoveryLinkChange(t *testing.T, change dhcpRecoveryLinkChange)
 	waitStaticRuntimeAddress(t, daemon, "enatt0", dhcpRenamedLinkAddress, true)
 	waitRoleDHCPv4Route(t, daemon, 100, true)
 	waitDHCPRecoveryRecord(t, daemon, filepath.Join(leaseDirectory, "roles"))
+	if change == dhcpRecoveryFlapDuringRenewalRetry {
+		setRuntimeNamespace(t, provider.namespace)
+		stopProtocolServices(t, []protocolService{service})
+		serviceRunning = false
+		setRuntimeNamespace(t, gateway)
+		waitDHCPv4RuntimeState(t, daemon, "dhcp: renewal attempt failed", 60*time.Second)
+		renewingBefore := strings.Count(runtimeDaemonLog(t, daemon), "state=RENEWING")
+		flappedLink, err := netlink.LinkByName("enatt0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		flapDeadline := time.Now().Add(15 * time.Second)
+		for time.Now().Before(flapDeadline) {
+			if err := netlink.LinkSetDown(flappedLink); err != nil {
+				t.Fatal(err)
+			}
+			if err := netlink.LinkSetUp(flappedLink); err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(2 * time.Second)
+		}
+		assertRuntimeDaemonRunning(t, daemon)
+		renewingAfter := strings.Count(runtimeDaemonLog(t, daemon), "state=RENEWING")
+		if renewingAfter <= renewingBefore {
+			t.Fatalf("state=RENEWING count = %d, want > %d: %s", renewingAfter, renewingBefore, runtimeLogTail(t, daemon, 30))
+		}
+		return
+	}
 	if change == dhcpRecoveryFlapAfterBoundLongLease {
 		flappedLink, err := netlink.LinkByName("enatt0")
 		if err != nil {

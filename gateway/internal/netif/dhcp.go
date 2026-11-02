@@ -532,14 +532,8 @@ func (c *DHCPClient) bound(
 		}
 		deadline := c.renewalWaitDeadline(now, current, state)
 		wait := max(deadline.Sub(c.clock.Now()), 0)
-		select {
-		case <-ctx.Done():
+		if !c.waitForRenewal(ctx, wait) {
 			return
-		case <-c.linkChanged:
-			if c.originMatches() {
-				continue
-			}
-		case <-time.After(wait):
 		}
 		now = c.clock.Now()
 		if !now.Before(current.ExpiresAt) {
@@ -586,6 +580,23 @@ func (c *DHCPClient) bound(
 		c.emit(current)
 		current = c.LastLease()
 		state = LeaseBound
+	}
+}
+
+func (c *DHCPClient) waitForRenewal(ctx context.Context, wait time.Duration) bool {
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-c.linkChanged:
+			if !c.originMatches() {
+				return true
+			}
+		case <-timer.C:
+			return true
+		}
 	}
 }
 
