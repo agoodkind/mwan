@@ -22,6 +22,9 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
+	mwanv1 "goodkind.io/mwan/gen/mwan/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 const (
@@ -78,7 +81,7 @@ func TestFailoverForwardingSelectsWorkingGateway(t *testing.T) {
 		if !t.Failed() {
 			return
 		}
-		for _, name := range []string{"failover-agent", "failover-ifmgr", "primary-agent"} {
+		for _, name := range []string{"failover-agent", "failover-ifmgr", "primary-agent", "watchdog-run"} {
 			content, err := os.ReadFile(filepath.Join(root, name+".log"))
 			if err == nil {
 				t.Logf("%s log: %s", name, content)
@@ -91,6 +94,8 @@ func TestFailoverForwardingSelectsWorkingGateway(t *testing.T) {
 	startForwardingProcess(t, namespaces, namespaces.failover, root, "failover-agent", failoverConfig, "agent", "--tcp-addr", fmt.Sprintf("%s:%d", forwardingFailoverNH4, forwardingAgentPort), "--vsock-port", "0")
 	waitForwardingDefault(t, netlink.FAMILY_V4, forwardingFailoverNH4, 60*time.Second)
 	waitForwardingDefault(t, netlink.FAMILY_V6, forwardingFailoverNH6, 60*time.Second)
+	watchdogConfig := writeForwardingWatchdogConfig(t, root)
+	assertForwardingWatchdogUsesFailover(t, root, watchdogConfig)
 	assertForwardingDial(t, namespaces, "tcp4", forwardingTarget4)
 	assertForwardingDial(t, namespaces, "tcp6", forwardingTarget6)
 	startForwardingProcess(t, namespaces, namespaces.primary, root, "primary-agent", primaryConfig, "agent", "--tcp-addr", fmt.Sprintf("%s:%d", forwardingPrimaryNH4, forwardingAgentPort), "--vsock-port", "0")
@@ -98,7 +103,6 @@ func TestFailoverForwardingSelectsWorkingGateway(t *testing.T) {
 	waitForwardingPathCount(t, router, bgppkt.RF_IPv6_UC, 2)
 	waitForwardingDefault(t, netlink.FAMILY_V4, forwardingFailoverNH4, 10*time.Second)
 	waitForwardingDefault(t, netlink.FAMILY_V6, forwardingFailoverNH6, 10*time.Second)
-	watchdogConfig := writeForwardingWatchdogConfig(t, root)
 	cases := []struct {
 		family        int
 		network       string
@@ -163,11 +167,78 @@ func TestFailoverForwardingSelectsWorkingGateway(t *testing.T) {
 func writeForwardingWatchdogConfig(t *testing.T, root string) string {
 	t.Helper()
 	path := filepath.Join(root, "watchdog.toml")
-	config := fmt.Sprintf("mwan_vmid = \"301\"\n[watchdog]\nmwan_agent_tcp_addr = \"%s:%d\"\n[failover]\nlxc_id = \"203\"\nagent_tcp_addr = \"%s:%d\"\n", forwardingPrimaryNH4, forwardingAgentPort, forwardingFailoverNH4, forwardingAgentPort)
+	config := fmt.Sprintf("mwan_vmid = \"301\"\n[network]\nping_target_ipv4 = %q\nping_target_ipv6 = %q\n[watchdog]\nmwan_agent_tcp_addr = \"%s:%d\"\nlog_file = %q\njson_log_file = %q\nrollback_lock_file = %q\nrollback_state_file = %q\n[failover]\nlxc_id = \"203\"\nagent_tcp_addr = \"%s:%d\"\n", forwardingTarget4, forwardingTarget6, forwardingPrimaryNH4, forwardingAgentPort, filepath.Join(root, "watchdog.log"), filepath.Join(root, "watchdog.json"), filepath.Join(root, "rollback.lock"), filepath.Join(root, "rollback.state"), forwardingFailoverNH4, forwardingAgentPort)
 	if err := os.WriteFile(path, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return path
+}
+
+func assertForwardingWatchdogUsesFailover(t *testing.T, root, configPath string) {
+	t.Helper()
+	address := fmt.Sprintf("%s:%d", forwardingFailoverNH4, forwardingAgentPort)
+	connection, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	response, err := mwanv1.NewMWANAgentClient(connection).WithdrawRoutes(context.Background(), &mwanv1.WithdrawRoutesRequest{})
+	if err != nil || !response.GetSuccess() {
+		t.Fatalf("withdraw failover routes: response=%v error=%v", response, err)
+	}
+	waitForwardingNoDefault(t, netlink.FAMILY_V4)
+	waitForwardingNoDefault(t, netlink.FAMILY_V6)
+	qm := filepath.Join(root, "qm")
+	build := exec.Command("go", "build", "-o", qm, "../../internal/watchdog/testdata/qm")
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build guest status helper: %v: %s", err, output)
+	}
+	logFile, err := os.Create(filepath.Join(root, "watchdog-run.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer logFile.Close()
+	command := exec.Command(os.Getenv(forwardingBinaryEnv), "watchdog", "--red-team", "proxmox-routing", "--red-team-live", "--red-team-iterations", "8", "--config", configPath)
+	command.Env = append(os.Environ(), "PATH="+root+string(os.PathListSeparator)+os.Getenv("PATH"))
+	command.Stdout = logFile
+	command.Stderr = logFile
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = command.Process.Kill()
+		_ = command.Wait()
+	}()
+	waitForwardingDefault(t, netlink.FAMILY_V4, forwardingFailoverNH4, 40*time.Second)
+	waitForwardingDefault(t, netlink.FAMILY_V6, forwardingFailoverNH6, 40*time.Second)
+	if err := command.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	if err := command.Wait(); err != nil {
+		t.Fatalf("watchdog exit: %v", err)
+	}
+}
+
+func waitForwardingNoDefault(t *testing.T, family int) {
+	t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		routes, err := netlink.RouteListFiltered(family, &netlink.Route{Table: unix.RT_TABLE_MAIN}, netlink.RT_FILTER_TABLE)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, route := range routes {
+			if route.Dst == nil || route.Dst.IP.IsUnspecified() {
+				found = true
+			}
+		}
+		if !found {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("family %d default route remained after withdrawal", family)
 }
 
 func assertForwardingFailoverRejected(t *testing.T, configPath, expected string) {
