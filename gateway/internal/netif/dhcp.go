@@ -28,8 +28,10 @@ type DHCPConfig struct {
 	RenewTimeout    time.Duration // Per-attempt deadline for RENEW
 	ClientID        []byte        // Complete DHCP option 61 payload
 	CachedLease     *LeaseInfo    // Optional saved assignment for INIT-REBOOT
-	RestartWindow   time.Duration // Delay before starting DISCOVER during recovery
+	RestartWindow   time.Duration // Delay before DISCOVER during recovery; zero uses one minute
 }
+
+const defaultDHCPRestartWindow = time.Minute
 
 // LeaseState is the simplified RFC 2131 client state machine.
 type LeaseState int
@@ -168,7 +170,7 @@ func startDHCPClient(ctx context.Context, log *slog.Logger, cfg DHCPConfig, load
 		cfg.RenewTimeout = 10 * time.Second
 	}
 	if cfg.RestartWindow == 0 {
-		cfg.RestartWindow = 60 * time.Second
+		cfg.RestartWindow = defaultDHCPRestartWindow
 	}
 	cfg.ClientID = append([]byte(nil), cfg.ClientID...)
 	if cfg.CachedLease != nil {
