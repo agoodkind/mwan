@@ -502,6 +502,15 @@ func buildSLAACHealthConfig(section *config.IfMgrSLAACHealthSection) (slaachealt
 		return cfg, nil
 	}
 	cfg.Iface = section.Iface
+	if section.MaxTogglesPerHour != nil && *section.MaxTogglesPerHour != 0 {
+		slog.Warn("[ifmgr.modules.slaac_health] max_toggles_per_hour has no effect", "max_toggles_per_hour", *section.MaxTogglesPerHour)
+	}
+	if section.EscalateAfter != "" {
+		if _, err := parseDurationSetting(section.EscalateAfter, 0, "ifmgr.modules.slaac_health.escalate_after"); err != nil {
+			return slaachealth.Config{}, err
+		}
+		slog.Warn("[ifmgr.modules.slaac_health] escalate_after has no effect", "escalate_after", section.EscalateAfter)
+	}
 
 	var err error
 	cfg.DegradedAfter, err = parseDurationSetting(

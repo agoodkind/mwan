@@ -97,10 +97,10 @@ type IfMgrOOBV4Section struct {
 // persists for alert_after, the module sends an alert. The module does not
 // change disable_ipv6.
 //
-// The loader accepts escalate_after and max_toggles_per_hour for existing
-// configurations. It warns when escalate_after is set or
-// max_toggles_per_hour is nonzero. Neither setting affects the module.
-// The loader rejects an invalid escalate_after value.
+// Existing configurations may retain escalate_after and max_toggles_per_hour.
+// Neither setting affects the module. The failover role warns when
+// escalate_after is set or max_toggles_per_hour is nonzero, and rejects an
+// invalid escalate_after value.
 type IfMgrSLAACHealthSection struct {
 	Iface             string   `toml:"iface"`
 	DegradedAfter     string   `toml:"degraded_after"`
