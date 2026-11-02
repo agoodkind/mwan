@@ -140,7 +140,29 @@ func TestMainDHCPv4AssignmentLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertMainDHCPv4(t, link, true)
+	lastBound := module.LastBound()
 	lease.State = netif.LeaseRebinding
+	if err := module.OnDHCPLease(ctx, slog.Default(), lease); err != nil {
+		t.Fatal(err)
+	}
+	assertMainDHCPv4(t, link, true)
+	if !module.LastBound().Equal(lastBound) {
+		t.Fatalf("LastBound = %s, want %s", module.LastBound(), lastBound)
+	}
+	lease.State = netif.LeaseBound
+	lease.ExpiresAt = time.Now().Add(100 * time.Millisecond)
+	if err := module.OnDHCPLease(ctx, slog.Default(), lease); err != nil {
+		t.Fatal(err)
+	}
+	assertMainDHCPv4(t, link, true)
+	time.Sleep(150 * time.Millisecond)
+	lease.State = netif.LeaseRebinding
+	if err := module.OnDHCPLease(ctx, slog.Default(), lease); err != nil {
+		t.Fatal(err)
+	}
+	assertMainDHCPv4(t, link, false)
+	lease.State = netif.LeaseBound
+	lease.ExpiresAt = time.Time{}
 	if err := module.OnDHCPLease(ctx, slog.Default(), lease); err != nil {
 		t.Fatal(err)
 	}
