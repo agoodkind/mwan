@@ -483,6 +483,9 @@ func (d *Daemon) runLoop(
 			)
 			d.dispatchEvent(eventCtx, elog, ev)
 			if dhcpClient != nil && (ev.Kind == netif.EvLinkUp || ev.Kind == netif.EvLinkDown || ev.Kind == netif.EvResync) {
+				if ev.Kind == netif.EvLinkDown || (ev.Kind == netif.EvResync && !ev.Snapshot.LinkUp) {
+					dhcpClient.LinkDown()
+				}
 				dhcpClient.LinkChanged()
 			}
 			if ev.Kind == netif.EvResync {
