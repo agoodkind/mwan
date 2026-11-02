@@ -28,7 +28,10 @@ type DHCPConfig struct {
 	RenewTimeout    time.Duration // Per-attempt deadline for RENEW
 	ClientID        []byte        // Complete DHCP option 61 payload
 	CachedLease     *LeaseInfo    // Optional saved assignment for INIT-REBOOT
+	RestartWindow   time.Duration // Delay before DISCOVER during recovery; zero uses one minute
 }
+
+const defaultDHCPRestartWindow = time.Minute
 
 // LeaseState is the simplified RFC 2131 client state machine.
 type LeaseState int
@@ -166,6 +169,9 @@ func startDHCPClient(ctx context.Context, log *slog.Logger, cfg DHCPConfig, load
 	}
 	if cfg.RenewTimeout == 0 {
 		cfg.RenewTimeout = 10 * time.Second
+	}
+	if cfg.RestartWindow == 0 {
+		cfg.RestartWindow = defaultDHCPRestartWindow
 	}
 	cfg.ClientID = append([]byte(nil), cfg.ClientID...)
 	if cfg.CachedLease != nil {
@@ -334,8 +340,23 @@ func (c *DHCPClient) recoverLease(ctx context.Context, cached LeaseInfo) *nclien
 		return nil
 	}
 	backoff := c.cfg.InitialBackoff
+	discoverAt := c.clock.Now().Add(c.cfg.RestartWindow)
+	attemptDeadline := earlier(discoverAt, cached.ExpiresAt)
+	discoverStarted := false
 	for c.clock.Now().Before(cached.ExpiresAt) && ctx.Err() == nil {
-		lease, err := c.restartAttempt(ctx, cached)
+		// RFC 2131 section 3.2 permits use of the saved address until its lease
+		// expires. Retain the address during DISCOVER.
+		if !c.clock.Now().Before(discoverAt) {
+			discoverStarted = true
+			attemptDeadline = cached.ExpiresAt
+			acquired, finished := c.recoveryAcquire(ctx, cached)
+			if finished {
+				return acquired
+			}
+		}
+		attemptCtx, cancelAttempt := context.WithDeadline(ctx, attemptDeadline)
+		lease, err := c.restartAttempt(attemptCtx, cached)
+		cancelAttempt()
 		if err == nil {
 			return lease
 		}
@@ -351,6 +372,9 @@ func (c *DHCPClient) recoverLease(ctx context.Context, cached LeaseInfo) *nclien
 		c.log.WarnContext(ctx, "dhcp: restart request failed", "err", err)
 		c.emit(leaseState(LeaseRequesting, cached.AcquiredAt, err))
 		wait := min(backoff, max(cached.ExpiresAt.Sub(c.clock.Now()), 0))
+		if !discoverStarted {
+			wait = min(wait, max(discoverAt.Sub(c.clock.Now()), 0))
+		}
 		sleepOrCancel(ctx, wait)
 		backoff = nextBackoff(backoff, c.cfg.MaxBackoff)
 	}
@@ -361,6 +385,32 @@ func (c *DHCPClient) recoverLease(ctx context.Context, cached LeaseInfo) *nclien
 		c.emit(leaseState(LeaseExpired, cached.AcquiredAt, errors.New("saved DHCP lease expired")))
 	}
 	return nil
+}
+
+func (c *DHCPClient) recoveryAcquire(ctx context.Context, cached LeaseInfo) (*nclient4.Lease, bool) {
+	c.mu.Lock()
+	recoveryOrigin := c.origin
+	c.mu.Unlock()
+	acquireCtx, cancel := context.WithDeadline(ctx, cached.ExpiresAt)
+	defer cancel()
+	acquired, err := c.acquire(acquireCtx)
+	c.mu.Lock()
+	sameLink := c.origin.LinkIndex == recoveryOrigin.LinkIndex &&
+		bytes.Equal(c.origin.LinkHardwareAddr, recoveryOrigin.LinkHardwareAddr)
+	c.mu.Unlock()
+	if !sameLink || !c.originMatches() {
+		c.refreshExpiryOrigin(ctx)
+		c.emit(leaseState(LeaseExpired, cached.AcquiredAt, errDHCPInterfaceChanged))
+		return nil, true
+	}
+	if err != nil {
+		c.log.WarnContext(ctx, "dhcp: recovery DISCOVER failed", "err", err)
+		return nil, false
+	}
+	if !acquired.ACK.YourIPAddr.Equal(cached.IP) {
+		c.emit(leaseState(LeaseExpired, cached.AcquiredAt, errors.New("saved DHCP address replaced by a different address")))
+	}
+	return acquired, true
 }
 
 func (c *DHCPClient) refreshExpiryOrigin(ctx context.Context) {
