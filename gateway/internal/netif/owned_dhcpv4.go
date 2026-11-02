@@ -450,7 +450,10 @@ func (r *OwnedDHCPv4Reconciler) ensurePromotion(base ownedDHCPv4Object) error {
 			return fmt.Errorf("verify old DHCPv4 link: %w", err)
 		}
 		if err == nil && LinkMatchesIdentity(old, record.LinkIndex, record.LinkIdentity) {
-			return errors.New("DHCPv4 ownership moved while old link exists")
+			if err := r.restorePromotion(base); err != nil {
+				return err
+			}
+			break
 		}
 		if err := r.forgetPromotion(i); err != nil {
 			return err
@@ -488,10 +491,7 @@ func (r *OwnedDHCPv4Reconciler) restorePromotion(base ownedDHCPv4Object) error {
 		if !LinkMatchesIdentity(link, record.LinkIndex, record.LinkIdentity) {
 			return r.forgetPromotion(i)
 		}
-		if link.Attrs().Name != record.LinkName {
-			return errors.New("recorded DHCPv4 promotion link name changed")
-		}
-		current, err := readPromotion(record.LinkName)
+		current, err := readPromotion(link.Attrs().Name)
 		if err != nil {
 			return err
 		}
@@ -499,7 +499,7 @@ func (r *OwnedDHCPv4Reconciler) restorePromotion(base ownedDHCPv4Object) error {
 			return errors.New("DHCPv4 promotion changed outside MWAN")
 		}
 		if current != record.Previous {
-			if err := writePromotion(record.LinkName, record.Previous); err != nil {
+			if err := writePromotion(link.Attrs().Name, record.Previous); err != nil {
 				return err
 			}
 		}
@@ -748,9 +748,6 @@ func (r *OwnedDHCPv4Reconciler) remove(value ownedDHCPv4Object) error {
 	}
 	if !LinkMatchesIdentity(link, value.LinkIndex, value.LinkIdentity) {
 		return r.forget(value)
-	}
-	if link.Attrs().Name != value.LinkName {
-		return errors.New("recorded DHCPv4 link name changed")
 	}
 	if value.Prefix != "" {
 		if err := removeDHCPv4Address(link, value); err != nil {
