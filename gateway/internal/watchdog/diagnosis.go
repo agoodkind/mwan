@@ -3,17 +3,28 @@ package watchdog
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
 
+	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/tracing"
+)
+
+const (
+	alertKindConnectivityPartial = "connectivity-partial"
+	alertKindConnectivityTotal   = "connectivity-total"
+	connectivityPartialMessage   = "connectivity partial loss"
+	connectivityTotalMessage     = "connectivity total loss"
+	protoIPv4                    = "IPv4"
+	protoIPv6                    = "IPv6"
 )
 
 func (w *watchdog) sendPartialAlert(ctx context.Context, proto string) {
 	log := w.tracedLogger(ctx)
-	if !w.limiter.TrySendPartial(w.now()) {
-		remaining := w.limiter.PartialCooldownRemaining(w.now())
+	if !w.limiter.TrySendPartial(proto, w.now()) {
+		remaining := w.limiter.PartialCooldownRemaining(proto, w.now())
 		log.InfoContext(ctx,
 			"Partial alert suppressed (cooldown)",
 			"protocol", proto,
@@ -25,17 +36,48 @@ func (w *watchdog) sendPartialAlert(ctx context.Context, proto string) {
 		"Sending partial-degradation alert",
 		"protocol_down", proto,
 	)
-	log.WarnContext(ctx,
-		"connectivity partial loss",
-		"proto", proto,
-		"vm_id", w.cfg.MwanVMID,
-		"node", w.cfg.PVE.Node,
-	)
+	w.notifierOrNull().Notify(ctx, notify.Event{
+		Now:        time.Time{},
+		Level:      slog.LevelError,
+		Kind:       alertKindConnectivityPartial,
+		Key:        w.cfg.MwanVMID + "/" + proto,
+		Message:    connectivityPartialMessage,
+		Fields:     w.connectivityPartialFields(proto),
+		IsRecovery: false,
+	})
+}
+
+func (w *watchdog) connectivityPartialFields(proto string) []slog.Attr {
+	return []slog.Attr{
+		slog.String("proto", proto),
+		slog.String("vm_id", w.cfg.MwanVMID),
+		slog.String("node", w.cfg.PVE.Node),
+	}
+}
+
+func (w *watchdog) resolveConnectivityAlerts(ctx context.Context, v4ok, v6ok bool) {
+	notifier := w.notifierOrNull()
+	if v4ok {
+		w.limiter.ResetPartialCooldown(protoIPv4)
+		notifier.Resolve(ctx, alertKindConnectivityPartial, w.cfg.MwanVMID+"/"+protoIPv4,
+			connectivityPartialMessage, w.connectivityPartialFields(protoIPv4)...)
+	}
+	if v6ok {
+		w.limiter.ResetPartialCooldown(protoIPv6)
+		notifier.Resolve(ctx, alertKindConnectivityPartial, w.cfg.MwanVMID+"/"+protoIPv6,
+			connectivityPartialMessage, w.connectivityPartialFields(protoIPv6)...)
+	}
+	if v4ok || v6ok {
+		w.limiter.ResetTotalCooldown()
+		notifier.Resolve(ctx, alertKindConnectivityTotal, w.cfg.MwanVMID, connectivityTotalMessage,
+			slog.String("vm_id", w.cfg.MwanVMID),
+			slog.String("node", w.cfg.PVE.Node),
+		)
+	}
 }
 
 func (w *watchdog) sendTotalAlert(ctx context.Context, reason, detail string) {
 	log := w.tracedLogger(ctx)
-	_ = detail
 	if !w.limiter.TrySendTotal(w.now()) {
 		remaining := w.limiter.TotalCooldownRemaining(w.now())
 		log.InfoContext(ctx,
@@ -46,13 +88,20 @@ func (w *watchdog) sendTotalAlert(ctx context.Context, reason, detail string) {
 		return
 	}
 	log.InfoContext(ctx, "Sending total-loss alert", "reason", reason)
-	log.ErrorContext(ctx,
-		"connectivity total loss",
-		"reason", reason,
-		"vm_id", w.cfg.MwanVMID,
-		"node", w.cfg.PVE.Node,
-		"err", reason,
-	)
+	w.notifierOrNull().Notify(ctx, notify.Event{
+		Now:     time.Time{},
+		Level:   slog.LevelError,
+		Kind:    alertKindConnectivityTotal,
+		Key:     w.cfg.MwanVMID,
+		Message: connectivityTotalMessage,
+		Fields: []slog.Attr{
+			slog.String("reason", reason),
+			slog.String("detail", detail),
+			slog.String("vm_id", w.cfg.MwanVMID),
+			slog.String("node", w.cfg.PVE.Node),
+		},
+		IsRecovery: false,
+	})
 }
 
 // logPushedStatus records what the gateway last said about its providers and

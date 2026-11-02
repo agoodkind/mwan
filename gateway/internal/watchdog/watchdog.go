@@ -622,9 +622,9 @@ func (w *watchdog) handleHealthyProbe(ctx context.Context, iteration int) {
 // is down.
 func (w *watchdog) handlePartialProbe(ctx context.Context, v6ok bool) {
 	log := w.tracedLogger(ctx)
-	downProto := "IPv6"
+	downProto := protoIPv6
 	if v6ok {
-		downProto = "IPv4"
+		downProto = protoIPv4
 	}
 	if w.lastState != statePartial {
 		log.InfoContext(ctx,
@@ -726,6 +726,7 @@ func (w *watchdog) runIteration(ctx context.Context, iteration int) bool {
 		w.consecutiveHealthy = 0
 		w.healthyCyclesForHash = 0
 	}
+	w.resolveConnectivityAlerts(iterCtx, v4ok, v6ok)
 
 	switch {
 	case v4ok && v6ok:

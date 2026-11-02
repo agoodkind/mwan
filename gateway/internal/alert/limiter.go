@@ -68,7 +68,7 @@ func (c *Coord) TakeShutdownAfterRollback() bool {
 // tests drive the cooldown deterministically.
 type Limiter struct {
 	mu                sync.Mutex
-	nextPartialSendAt time.Time
+	nextPartialSendAt map[string]time.Time
 	nextTotalSendAt   time.Time
 	cooldown          time.Duration
 }
@@ -81,22 +81,22 @@ func NewLimiter(cooldownSec int) *Limiter {
 	// so the first alert of each severity goes out immediately.
 	return &Limiter{
 		mu:                sync.Mutex{},
-		nextPartialSendAt: time.Time{},
+		nextPartialSendAt: map[string]time.Time{},
 		nextTotalSendAt:   time.Time{},
 		cooldown:          time.Duration(cooldownSec) * time.Second,
 	}
 }
 
-// TrySendPartial reports whether a partial-loss alert may be sent now, and
-// starts a new cooldown when it may. A false result means the caller must
-// suppress the alert rather than retry.
-func (a *Limiter) TrySendPartial(now time.Time) bool {
+// TrySendPartial reports whether the caller may send a partial-loss alert for
+// the address family now. It starts that family's cooldown when it returns
+// true. On false, the caller must suppress the alert and not retry.
+func (a *Limiter) TrySendPartial(family string, now time.Time) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if now.Before(a.nextPartialSendAt) {
+	if now.Before(a.nextPartialSendAt[family]) {
 		return false
 	}
-	a.nextPartialSendAt = now.Add(a.cooldown)
+	a.nextPartialSendAt[family] = now.Add(a.cooldown)
 	return true
 }
 
@@ -118,18 +118,34 @@ func (a *Limiter) TrySendTotal(now time.Time) bool {
 func (a *Limiter) ResetCooldowns() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.nextPartialSendAt = time.Time{}
+	a.nextPartialSendAt = map[string]time.Time{}
 	a.nextTotalSendAt = time.Time{}
 }
 
-// PartialCooldownRemaining returns how long the partial cooldown still has to
-// run, or zero when an alert may be sent. The watchdog logs it on the line
-// that reports the suppression, so the log says why nothing was sent.
-func (a *Limiter) PartialCooldownRemaining(now time.Time) time.Duration {
+// ResetPartialCooldown clears the partial-loss cooldown for the address
+// family after it recovers. The next loss of that family alerts immediately.
+func (a *Limiter) ResetPartialCooldown(family string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if now.Before(a.nextPartialSendAt) {
-		return a.nextPartialSendAt.Sub(now)
+	delete(a.nextPartialSendAt, family)
+}
+
+// ResetTotalCooldown clears the total-loss cooldown after any address family
+// recovers. The next total loss alerts immediately.
+func (a *Limiter) ResetTotalCooldown() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.nextTotalSendAt = time.Time{}
+}
+
+// PartialCooldownRemaining returns the remaining cooldown for the address
+// family, or zero when the caller may send an alert. The watchdog logs the
+// duration on the line that reports the suppression.
+func (a *Limiter) PartialCooldownRemaining(family string, now time.Time) time.Duration {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if now.Before(a.nextPartialSendAt[family]) {
+		return a.nextPartialSendAt[family].Sub(now)
 	}
 	return 0
 }
