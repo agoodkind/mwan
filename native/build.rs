@@ -70,12 +70,16 @@ fn main() -> Result<(), Box<dyn Error>> {
         .no_default("mwan_native_error|MwanNativeError")
         .no_default("mwan_native_build_info|MwanNativeBuildInfo")
         .no_default("mwan_native_frame|MwanNativeFrame")
+        .no_default("mwan_native_kernel_frame|MwanNativeKernelFrame")
         .derive_eq(true)
         .derive_partialeq(true)
         .derive_hash(true)
         .layout_tests(true)
         .generate_comments(false)
-        .parse_callbacks(Box::new(TypeNames::default()))
+        .parse_callbacks(Box::new(TypeNames {
+            default_derives: vec!["MwanNativeKernelFrame".to_owned()],
+            ..TypeNames::default()
+        }))
         .generate()?
         .write_to_file(output.join("abi_bindings.rs"))?;
     if env::var_os("CARGO_FEATURE_DPDK").is_some() {

@@ -165,7 +165,7 @@ func TestNativeAdmissionECNGuards(t *testing.T) {
 			if err != nil || len(observed) != 1 || !observed[0].Eligible || observed[0].TrafficClass != admissionTrafficClass|ecn {
 				t.Fatalf("Rust changed the packet traffic class or eligibility: ECN=%d observations=%+v error=%v", ecn, observed, err)
 			}
-			observation := packetObservation{NativeObservation: observed[0], ifindex: fixture.input.Index, at: clock.Real{}.Now()}
+			observation := packetObservation{NativeObservation: observed[0], EffectiveNetworkLength: observed[0].NetworkLength, ifindex: fixture.input.Index, at: clock.Real{}.Now()}
 			fixture.requireCandidate(t, observation, flow, flow.TupleOrig, 0, fixture.output, fixture.peer)
 		}
 	}
@@ -777,7 +777,7 @@ func admissionObservation(t *testing.T, sender, input *net.Interface, tuple conn
 	if err != nil || len(observed) != 1 || !observed[0].Eligible || observed[0].DecodeError != nil || observed[0].Tuple != tuple {
 		t.Fatalf("Rust did not validate the Ethernet frame: observation=%+v error=%v", observed, err)
 	}
-	return packetObservation{NativeObservation: observed[0], ifindex: input.Index, at: time.Now()}
+	return packetObservation{NativeObservation: observed[0], EffectiveNetworkLength: observed[0].NetworkLength, ifindex: input.Index, at: time.Now()}
 }
 
 func admissionReplyFrame(t *testing.T, sender, input *net.Interface, tuple conntrack.Tuple) []byte {

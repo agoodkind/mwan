@@ -60,30 +60,9 @@ func (module *Module) resolveGraph() (configuration offload.NativeConfig, links 
 			continue
 		}
 		binding := connection.Link.NativeOffload
-		link, err := netlink.LinkByName(connection.Name)
+		link, kernel, mtu, err := nativeKernelReceiver(connection)
 		if err != nil {
-			return configuration, nil, fmt.Errorf("inspect native kernel receiver %s: %w", connection.Name, err)
-		}
-		if link.Attrs().MasterIndex != 0 {
-			return configuration, nil, fmt.Errorf("native receiver %s belongs to a live master interface", connection.Name)
-		}
-		kernel, err := net.InterfaceByIndex(link.Attrs().Index)
-		if err != nil {
-			return configuration, nil, fmt.Errorf("read native receiver identity: %w", err)
-		}
-		if kernel.Flags&net.FlagUp == 0 || link.Attrs().RawFlags&unix.IFF_LOWER_UP == 0 || len(kernel.HardwareAddr) != 6 || kernel.HardwareAddr[0]&1 != 0 || [6]byte(kernel.HardwareAddr) == [6]byte{} {
-			return configuration, nil, fmt.Errorf("native receiver %s requires an active Ethernet link with a valid MTU", connection.Name)
-		}
-		mtu, err := checkedNativeMTU(kernel.MTU)
-		if err != nil {
-			return configuration, nil, fmt.Errorf("check native receiver %s MTU: %w", connection.Name, err)
-		}
-		expectedMAC := connection.Link.HardwareAddress
-		if expectedMAC == "" {
-			expectedMAC = connection.Link.Match.HardwareAddress
-		}
-		if expectedMAC != "" && kernel.HardwareAddr.String() != expectedMAC {
-			return configuration, nil, fmt.Errorf("native receiver %s does not match its configured MAC", connection.Name)
+			return configuration, nil, err
 		}
 		dataIndex, err := checkedNativeIndex(len(configuration.Data))
 		if err != nil {
@@ -92,7 +71,14 @@ func (module *Module) resolveGraph() (configuration offload.NativeConfig, links 
 		dataID := offload.NativeDataID(dataIndex)
 		data := offload.NativeDataDevice{PCI: binding.DataPCI, MAC: binding.DataMAC, Controller: offload.NativeNoController, VF: 0}
 		bound := boundLink{connection: connection, kernel: *kernel, identity: netif.LinkOwnershipIdentity(link), data: dataID, origin: 0, hasOrigin: false}
-		if err := appendNativeController(&configuration, controllers, binding, kernel, &bound, &data); err != nil {
+		field := offload.NativeIPv6RestoreLegacy
+		if binding.Controller != nil && binding.Controller.PhysicalMiss {
+			field, err = module.ipv6RestoreField(connection)
+			if err != nil {
+				return configuration, nil, err
+			}
+		}
+		if err := appendNativeController(&configuration, controllers, binding, kernel, &bound, &data, field); err != nil {
 			return configuration, nil, err
 		}
 		configuration.Data = append(configuration.Data, data)
@@ -103,6 +89,40 @@ func (module *Module) resolveGraph() (configuration offload.NativeConfig, links 
 		return configuration, nil, fmt.Errorf("native automatic admission requires a physical-miss ingress binding")
 	}
 	return configuration, links, nil
+}
+
+func nativeKernelReceiver(connection interfaceintent.Connection) (link netlink.Link, kernel *net.Interface, mtu uint16, resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			slog.Warn("native kernel receiver resolution failed", "interface", connection.Name, "err", resultErr)
+		}
+	}()
+	link, err := netlink.LinkByName(connection.Name)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("inspect native kernel receiver %s: %w", connection.Name, err)
+	}
+	if link.Attrs().MasterIndex != 0 {
+		return nil, nil, 0, fmt.Errorf("native receiver %s belongs to a live master interface", connection.Name)
+	}
+	kernel, err = net.InterfaceByIndex(link.Attrs().Index)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("read native receiver identity: %w", err)
+	}
+	if kernel.Flags&net.FlagUp == 0 || link.Attrs().RawFlags&unix.IFF_LOWER_UP == 0 || len(kernel.HardwareAddr) != 6 || kernel.HardwareAddr[0]&1 != 0 || [6]byte(kernel.HardwareAddr) == [6]byte{} {
+		return nil, nil, 0, fmt.Errorf("native receiver %s requires an active Ethernet link with a valid MTU", connection.Name)
+	}
+	mtu, err = checkedNativeMTU(kernel.MTU)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("check native receiver %s MTU: %w", connection.Name, err)
+	}
+	expectedMAC := connection.Link.HardwareAddress
+	if expectedMAC == "" {
+		expectedMAC = connection.Link.Match.HardwareAddress
+	}
+	if expectedMAC != "" && kernel.HardwareAddr.String() != expectedMAC {
+		return nil, nil, 0, fmt.Errorf("native receiver %s does not match its configured MAC", connection.Name)
+	}
+	return link, kernel, mtu, nil
 }
 
 func (module *Module) verifyLinks() (resultErr error) {
@@ -127,7 +147,7 @@ func (module *Module) verifyLinks() (resultErr error) {
 	return nil
 }
 
-func appendNativeController(configuration *offload.NativeConfig, controllers map[interfaceintent.PCIAddress]offload.NativeControllerID, binding *interfaceintent.NativeOffloadBinding, kernel *net.Interface, bound *boundLink, data *offload.NativeDataDevice) (resultErr error) {
+func appendNativeController(configuration *offload.NativeConfig, controllers map[interfaceintent.PCIAddress]offload.NativeControllerID, binding *interfaceintent.NativeOffloadBinding, kernel *net.Interface, bound *boundLink, data *offload.NativeDataDevice, field offload.NativeIPv6RestoreField) (resultErr error) {
 	if binding.Controller == nil {
 		return nil
 	}
@@ -162,10 +182,41 @@ func appendNativeController(configuration *offload.NativeConfig, controllers map
 		}
 		bound.origin = offload.NativeOriginID(originIndex)
 		bound.hasOrigin = true
-		configuration.Origins = append(configuration.Origins, offload.NativeOrigin{Controller: controllerID, Kind: offload.NativePhysicalOrigin, Receiver: receiverID, Data: bound.data, ReturnMode: offload.NativeReturnOriginal, SourceVF: 0})
+		configuration.Origins = append(configuration.Origins, offload.NativeOrigin{Controller: controllerID, Kind: offload.NativePhysicalOrigin, Receiver: receiverID, Data: bound.data, ReturnMode: offload.NativeReturnOriginal, SourceVF: 0, IPv6RestoreField: field})
 	}
 
 	return nil
+}
+
+func (module *Module) ipv6RestoreField(connection interfaceintent.Connection) (offload.NativeIPv6RestoreField, error) {
+	internal := connection.Roles&interfaceintent.RoleInternal != 0
+	provider := connection.Roles&interfaceintent.RoleProvider != 0
+	if internal == provider {
+		return offload.NativeIPv6RestoreLegacy, fmt.Errorf("native ingress %s requires one internal or provider role", connection.Name)
+	}
+	if provider {
+		configured := false
+		for _, wan := range module.cfg.WANs {
+			if wan.Key() == connection.ID.String() && wan.Iface == connection.Name {
+				configured = true
+			}
+		}
+		if !configured {
+			return offload.NativeIPv6RestoreLegacy, fmt.Errorf("native ingress %s requires a configured WAN", connection.Name)
+		}
+	}
+	for _, path := range module.cfg.Firewall.Paths {
+		if !path.IPv4 && !path.IPv6 {
+			continue
+		}
+		if internal && path.InternalInterface == connection.Name {
+			return offload.NativeIPv6RestoreSource, nil
+		}
+		if provider && path.ExternalInterface == connection.Name {
+			return offload.NativeIPv6RestoreDestination, nil
+		}
+	}
+	return offload.NativeIPv6RestoreLegacy, fmt.Errorf("native ingress %s requires an allowed forwarding path", connection.Name)
 }
 
 func checkedNativeIndex(index int) (uint32, error) {

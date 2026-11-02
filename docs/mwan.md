@@ -130,6 +130,13 @@ can accept new generations while a separate bounded store retains those
 mappings. Capacity exhaustion leaves new connections in Linux. A timer does
 not clear the retained mappings or establish device completion.
 
+The optional native process setting `observation_diagnostics` defaults to
+`false`. When enabled, Go reports periodic capture and admission summaries
+with cumulative counters and bounded samples for each stage. Capture
+summaries keep separate samples for each interface. Samples include packet
+timestamps; admission samples also include observation age and the exact
+decision branch.
+
 ## BGP and gateway failover
 
 The `mwan agent` process runs Border Gateway Protocol (BGP) sessions and

@@ -96,6 +96,7 @@ type Module struct {
 	unregisterNPT        func()
 	policyGeneration     atomic.Uint64
 	stats                AdmissionStats
+	admissionDiagnostics *admissionDiagnostics
 	shutdownOnce         sync.Once
 	shutdownErr          error
 }
@@ -225,7 +226,7 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 			continue
 		}
 		captureContext := context.WithoutCancel(ifmgr.WithoutForwardingChange(ctx))
-		capture, err := openPacketCapture(captureContext, &link.kernel, int(module.cfg.Settings.SocketBufferBytes), module.observations, module.failures, &module.admissionPaused)
+		capture, err := openPacketCapture(captureContext, &link.kernel, int(module.cfg.Settings.SocketBufferBytes), module.observations, module.failures, &module.admissionPaused, module.cfg.Settings.ObservationDiagnostics)
 		if err != nil {
 			return module.fail(ctx, err)
 		}

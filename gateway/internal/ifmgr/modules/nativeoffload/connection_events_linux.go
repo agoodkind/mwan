@@ -26,7 +26,7 @@ func (module *Module) observeConnection(ctx context.Context, event offload.Connt
 	}
 	// Removal retains the restoration handle while the notification receives
 	// a fresh kernel check. An update is not a complete current snapshot.
-	if err := module.retire(ctx, identity, "connection notification requires verification"); err != nil {
+	if err := module.removeRules(ctx, identity, entry, "connection notification requires verification"); err != nil {
 		_ = module.fail(ctx, err)
 		return
 	}
@@ -35,10 +35,11 @@ func (module *Module) observeConnection(ctx context.Context, event offload.Connt
 	evidence := module.evidenceFor(module.currentEvidenceEpoch())
 	_, decision, err := module.verifyConnectionUpdate(requestContext, event, entry, evidence)
 	if err != nil || decision != EligibilityReady {
+		if removeErr := module.retire(ctx, identity, "connection notification rejected current mapping"); removeErr != nil {
+			_ = module.fail(ctx, removeErr)
+		}
 		return
 	}
-	module.flows[identity] = entry
-	delete(module.resumeCandidates, identity)
 	module.resumeEntry(ctx, requestContext, identity, entry, evidence)
 }
 

@@ -2,8 +2,11 @@
 
 use libfuzzer_sys::fuzz_target;
 use mwan_native::{
-    abi::{MWAN_NATIVE_FAMILY_IPV4, MWAN_NATIVE_FAMILY_IPV6, MwanNativeDirection},
-    packet::{decode, eligible, forward, restore, restore_forwarded},
+    abi::{
+        MWAN_NATIVE_FAMILY_IPV4, MWAN_NATIVE_FAMILY_IPV6, MWAN_NATIVE_IPV6_RESTORE_DESTINATION,
+        MWAN_NATIVE_IPV6_RESTORE_SOURCE, MwanNativeDirection,
+    },
+    packet::{decode, eligible, forward, restore, restore_forwarded, restore_ipv6_field},
 };
 
 const MAXIMUM_FRAME_LENGTH: usize = 14 + 8 + 40 + u16::MAX as usize;
@@ -49,6 +52,19 @@ fuzz_target!(|input: &[u8]| {
     restore(&mut returned, &parsed, &direction)
         .expect("decoded headers permit bounded restoration");
     assert_eq!(returned.len(), input.len());
+    if u32::from(tuple.family) == MWAN_NATIVE_FAMILY_IPV6 {
+        for field in [
+            MWAN_NATIVE_IPV6_RESTORE_SOURCE,
+            MWAN_NATIVE_IPV6_RESTORE_DESTINATION,
+        ] {
+            let mut shared = input.to_vec();
+            let result = restore_ipv6_field(&mut shared, &parsed, field, &identity_direction);
+            assert_eq!(shared, input);
+            if let Err(error) = result {
+                assert!(error.code > 0);
+            }
+        }
+    }
     if eligible(input, &parsed, &direction) {
         let mut forwarded = input.to_vec();
         forward(&mut forwarded, &parsed, &direction)

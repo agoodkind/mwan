@@ -34,7 +34,7 @@ func (worker *NativeRuntime) executeVXLAN(owner *C.struct_mwan_native, request n
 		rc = C.mwan_native_vxlan_remove(owner, request.vxlanRule, &result, &detail)
 	case nativeVXLANClose:
 		rc = C.mwan_native_vxlan_context_close(owner, request.handle, &result, &detail)
-	case nativeEnable, nativeInstall, nativeQuery, nativeRemove, nativeDisable, nativeShutdown, nativeRetirement, nativeResume, nativeReobserve:
+	case nativeEnable, nativeInstall, nativeQuery, nativeRemove, nativeDisable, nativeShutdown, nativeRetirement, nativeResume, nativeReobserve, nativeReleaseShared:
 		reply.err = fmt.Errorf("native operation %d is not a VXLAN operation", request.operation)
 		return reply
 	default:

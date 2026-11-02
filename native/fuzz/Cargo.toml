@@ -20,3 +20,10 @@ bench = false
 
 [workspace]
 members = ["."]
+
+[[bin]]
+name = "kernel_observation"
+path = "fuzz_targets/kernel_observation.rs"
+test = false
+doc = false
+bench = false
