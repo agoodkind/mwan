@@ -121,7 +121,7 @@ func (w *watchdog) diagnoseNoRecentChange(ctx context.Context) bool {
 		// VM has no internet and no config changed.
 		// Check if failover LXC can reach the internet.
 		// If yes: failover is useful (VM routing broken, LXC WAN works).
-		// If no: real ISP outage, failover is pointless.
+		// A failed probe does not identify the cause of the outage.
 		if w.cfg.Failover.LXCID != "" {
 			if w.tryFailover(ctx, w.cfg, "Total connectivity loss on primary, no recent config change") {
 				return true
@@ -131,8 +131,7 @@ func (w *watchdog) diagnoseNoRecentChange(ctx context.Context) bool {
 		detail = fmt.Sprintf(
 			"All connectivity tests failed and no config "+
 				"change detected within %dm.\n"+
-				"Failover LXC also unreachable or not configured. "+
-				"Treating as external outage.",
+				"The failover LXC did not pass an Internet probe or is not configured.",
 			w.cfg.Watchdog.DeployWindowMinutes,
 		)
 	}

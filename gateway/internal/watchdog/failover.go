@@ -212,24 +212,27 @@ func (w *watchdog) triggerBGPRecovery(ctx context.Context, cfg *watchdogconfig.C
 	return nil
 }
 
-// tryFailover attempts failover if the LXC has internet connectivity.
-// Returns true if failover was triggered, false if skipped (LXC also down).
+// tryFailover attempts failover when an LXC Internet probe succeeds.
 func (w *watchdog) tryFailover(ctx context.Context, cfg *watchdogconfig.Config, reason string) bool {
 	if cfg.Failover.LXCID == "" {
 		w.log.WarnContext(ctx, "FAILOVER: no failover LXC configured; skipping")
 		return false
 	}
 
-	// Test LXC WAN connectivity before triggering failover.
-	// If the LXC also has no internet, failover is pointless.
 	w.log.InfoContext(ctx, "FAILOVER: testing LXC WAN connectivity", "lxc", cfg.Failover.LXCID)
-	lxcV4 := w.ops.Ping(ctx, "ping", cfg.Network.PingTargetIPv4)
-	lxcV6 := w.ops.Ping(ctx, "ping6", cfg.Network.PingTargetIPv6)
-	// TODO: ping from inside LXC specifically, not from host.
-	// For now, host-level ping is a proxy.
+	resultV4, errV4 := w.ops.GuestExec(ctx, cfg.Failover.LXCID, "ping", cfg.Network.PingTargetIPv4)
+	resultV6, errV6 := w.ops.GuestExec(ctx, cfg.Failover.LXCID, "ping6", cfg.Network.PingTargetIPv6)
+	if errV4 != nil {
+		w.log.WarnContext(ctx, "FAILOVER: LXC IPv4 probe failed", "lxc", cfg.Failover.LXCID, "err", errV4)
+	}
+	if errV6 != nil {
+		w.log.WarnContext(ctx, "FAILOVER: LXC IPv6 probe failed", "lxc", cfg.Failover.LXCID, "err", errV6)
+	}
+	lxcV4 := errV4 == nil && resultV4.ExitCode == 0
+	lxcV6 := errV6 == nil && resultV6.ExitCode == 0
 
 	if !lxcV4 && !lxcV6 {
-		w.log.WarnContext(ctx, "FAILOVER: LXC also has no internet; skipping failover (real ISP outage)",
+		w.log.WarnContext(ctx, "FAILOVER: LXC did not pass an Internet probe; skipping failover",
 			"lxc", cfg.Failover.LXCID)
 		return false
 	}
