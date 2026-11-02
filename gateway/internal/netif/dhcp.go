@@ -130,6 +130,7 @@ type DHCPClient struct {
 	last           LeaseInfo
 	origin         LeaseInfo
 	epoch          uint64
+	expiryPending  bool
 	recoveryLoader func(context.Context) (*LeaseInfo, error)
 
 	Events chan LeaseInfo
@@ -195,6 +196,7 @@ func startDHCPClient(ctx context.Context, log *slog.Logger, cfg DHCPConfig, load
 		last:           leaseState(LeaseInit, time.Time{}, nil),
 		origin:         leaseState(LeaseInit, time.Time{}, nil),
 		epoch:          0,
+		expiryPending:  false,
 		recoveryLoader: loader,
 		Events:         make(chan LeaseInfo, 1),
 	}
@@ -282,9 +284,7 @@ func (c *DHCPClient) run(ctx context.Context) {
 		cached, err = c.recoveryLoader(ctx)
 		if err != nil && ctx.Err() == nil {
 			logger.WarnContext(ctx, "dhcp: saved lease unavailable", "err", err)
-			if originErr := c.captureOrigin(); originErr != nil {
-				logger.WarnContext(ctx, "dhcp: rejected lease link unavailable", "err", originErr)
-			}
+			c.refreshExpiryOrigin(ctx)
 			c.emit(leaseState(LeaseExpired, time.Time{}, err))
 		}
 	}
@@ -315,6 +315,9 @@ func (c *DHCPClient) run(ctx context.Context) {
 // recoverLease validates a saved address without publishing it before an ACK.
 func (c *DHCPClient) recoverLease(ctx context.Context, cached LeaseInfo) *nclient4.Lease {
 	if err := c.captureOrigin(); err != nil {
+		c.mu.Lock()
+		c.expiryPending = true
+		c.mu.Unlock()
 		c.emit(leaseState(LeaseExpired, cached.AcquiredAt, err))
 		return nil
 	}
@@ -337,6 +340,7 @@ func (c *DHCPClient) recoverLease(ctx context.Context, cached LeaseInfo) *nclien
 			return lease
 		}
 		if errors.Is(err, errDHCPInterfaceChanged) {
+			c.refreshExpiryOrigin(ctx)
 			c.emit(leaseState(LeaseExpired, cached.AcquiredAt, err))
 			return nil
 		}
@@ -351,9 +355,23 @@ func (c *DHCPClient) recoverLease(ctx context.Context, cached LeaseInfo) *nclien
 		backoff = nextBackoff(backoff, c.cfg.MaxBackoff)
 	}
 	if ctx.Err() == nil {
+		if !c.originMatches() {
+			c.refreshExpiryOrigin(ctx)
+		}
 		c.emit(leaseState(LeaseExpired, cached.AcquiredAt, errors.New("saved DHCP lease expired")))
 	}
 	return nil
+}
+
+func (c *DHCPClient) refreshExpiryOrigin(ctx context.Context) {
+	err := c.captureOrigin()
+	if err == nil {
+		return
+	}
+	c.log.WarnContext(ctx, "dhcp: rejected lease link unavailable", "err", err)
+	c.mu.Lock()
+	c.expiryPending = true
+	c.mu.Unlock()
 }
 
 func (c *DHCPClient) restartAttempt(ctx context.Context, cached LeaseInfo) (*nclient4.Lease, error) {
@@ -425,6 +443,13 @@ func (c *DHCPClient) acquire(ctx context.Context) (*nclient4.Lease, error) {
 	c.mu.Unlock()
 	if err := c.captureOrigin(); err != nil {
 		return nil, fmt.Errorf("DHCP interface: %w", err)
+	}
+	c.mu.Lock()
+	expiryPending := c.expiryPending
+	c.expiryPending = false
+	c.mu.Unlock()
+	if expiryPending {
+		c.emit(leaseState(LeaseExpired, time.Time{}, errDHCPInterfaceChanged))
 	}
 	c.emit(leaseState(LeaseInit, time.Time{}, nil))
 
@@ -507,6 +532,7 @@ func (c *DHCPClient) bound(
 			continue
 		}
 		if !c.originMatches() {
+			c.refreshExpiryOrigin(ctx)
 			c.emit(leaseState(LeaseExpired, current.AcquiredAt, errors.New("DHCP interface changed")))
 			return
 		}
@@ -521,6 +547,7 @@ func (c *DHCPClient) bound(
 		c.emit(active)
 		newLease, err := c.renewAttempt(ctx, lease, current, state, now)
 		if errors.Is(err, errDHCPInterfaceChanged) {
+			c.refreshExpiryOrigin(ctx)
 			c.emit(leaseState(LeaseExpired, current.AcquiredAt, err))
 			return
 		}
