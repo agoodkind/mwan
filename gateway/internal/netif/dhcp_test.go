@@ -34,7 +34,7 @@ func TestNextBackoff(t *testing.T) {
 
 func TestLeaseToInfoNilLease(t *testing.T) {
 	now := time.Now()
-	info := leaseToInfo(LeaseExpired, nil, now)
+	info := leaseToInfo(LeaseExpired, nil, now, now)
 	if info.State != LeaseExpired {
 		t.Fatalf("State got %v want %v", info.State, LeaseExpired)
 	}
@@ -108,7 +108,7 @@ func TestDHCPAckDeadlinesAndRequiredOptions(t *testing.T) {
 		t.Fatalf("valid ACK rejected: %v", err)
 	}
 	acquired := time.Now()
-	info := leaseToInfo(LeaseBound, lease, acquired)
+	info := leaseToInfo(LeaseBound, lease, acquired, acquired)
 	if !info.RenewAt.Equal(acquired.Add(40*time.Second)) ||
 		!info.RebindAt.Equal(acquired.Add(70*time.Second)) ||
 		!info.ExpiresAt.Equal(acquired.Add(80*time.Second)) {
@@ -117,14 +117,14 @@ func TestDHCPAckDeadlinesAndRequiredOptions(t *testing.T) {
 	}
 	packet.UpdateOption(dhcpv4.OptRenewTimeValue(20 * time.Second))
 	packet.UpdateOption(dhcpv4.OptRebindingTimeValue(60 * time.Second))
-	info = leaseToInfo(LeaseBound, lease, acquired)
+	info = leaseToInfo(LeaseBound, lease, acquired, acquired)
 	if !info.RenewAt.Equal(acquired.Add(20*time.Second)) ||
 		!info.RebindAt.Equal(acquired.Add(60*time.Second)) {
 		t.Fatalf("server deadlines: renew=%v rebind=%v", info.RenewAt, info.RebindAt)
 	}
 	packet.UpdateOption(dhcpv4.OptRenewTimeValue(75 * time.Second))
 	packet.UpdateOption(dhcpv4.OptRebindingTimeValue(30 * time.Second))
-	info = leaseToInfo(LeaseBound, lease, acquired)
+	info = leaseToInfo(LeaseBound, lease, acquired, acquired)
 	if !info.RenewAt.Equal(acquired.Add(40*time.Second)) ||
 		!info.RebindAt.Equal(acquired.Add(70*time.Second)) {
 		t.Fatalf("invalid timer fallback: renew=%v rebind=%v", info.RenewAt, info.RebindAt)
@@ -165,19 +165,20 @@ func TestDHCPClasslessRoutesOverrideRouterOption(t *testing.T) {
 	if err := validateLease(lease); err != nil {
 		t.Fatalf("valid classless routes rejected: %v", err)
 	}
-	info := leaseToInfo(LeaseBound, lease, time.Now())
+	now := time.Now()
+	info := leaseToInfo(LeaseBound, lease, now, now)
 	if !info.Gateway.Equal(defaultRoute.Router) || len(info.Routes) != 2 ||
 		info.Routes[1].Destination.String() != subnet.String() ||
 		!info.Routes[1].Gateway.Equal(subnetRoute.Router) {
 		t.Fatalf("classless routes did not override option 3: %+v", info)
 	}
 	packet.UpdateOption(dhcpv4.OptClasslessStaticRoute(subnetRoute))
-	info = leaseToInfo(LeaseBound, lease, time.Now())
+	info = leaseToInfo(LeaseBound, lease, now, now)
 	if info.Gateway != nil || len(info.Routes) != 1 {
 		t.Fatalf("option 3 supplied a default despite option 121: %+v", info)
 	}
 	packet.DeleteOption(dhcpv4.OptionClasslessStaticRoute)
-	info = leaseToInfo(LeaseBound, lease, time.Now())
+	info = leaseToInfo(LeaseBound, lease, now, now)
 	if !info.Gateway.Equal(net.IPv4(192, 0, 2, 1)) || len(info.Routes) != 1 {
 		t.Fatalf("option 3 default route missing: %+v", info)
 	}
