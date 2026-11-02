@@ -37,6 +37,11 @@ const (
 
 func runDebugProbeNamespaceTest(t *testing.T, run func(*testing.T, string)) {
 	t.Helper()
+	runDebugProbeIsolatedTest(t, run, uintptr(unix.CLONE_NEWNET|unix.CLONE_NEWNS))
+}
+
+func runDebugProbeIsolatedTest(t *testing.T, run func(*testing.T, string), cloneFlags uintptr) {
+	t.Helper()
 	if os.Getenv(debugProbeNamespaceChild) == t.Name() {
 		if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
 			t.Fatal(err)
@@ -69,7 +74,7 @@ func runDebugProbeNamespaceTest(t *testing.T, run func(*testing.T, string)) {
 	t.Logf("public debug executable: %s", binary)
 	child := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^"+t.Name()+"$", "-test.v")
 	child.Env = append(os.Environ(), debugProbeNamespaceChild+"="+t.Name(), debugProbeNamespaceBinary+"="+binary)
-	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
+	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: cloneFlags}
 	if output, err := child.CombinedOutput(); err != nil {
 		t.Fatalf("isolated public debug command: %v: %s", err, output)
 	}
@@ -104,6 +109,79 @@ func bindDebugProbePath(t *testing.T, source, target string) {
 
 func TestCLIActiveProbeNamespaceRuntime(t *testing.T) {
 	runDebugProbeNamespaceTest(t, runCLIActiveProbeNamespaceRuntime)
+}
+
+func TestCLIConnectivityAbsentPrefixSystemd(t *testing.T) {
+	if os.Getenv("MWAN_NETWORKD_RESOLVER_SYSTEMD_TEST") != "1" {
+		t.Skip("requires the isolated systemd protocol runner")
+	}
+	if os.Getenv(debugProbeNamespaceChild) != t.Name() {
+		ensureDebugNetworkd(t)
+	}
+	runDebugProbeIsolatedTest(t, runCLIConnectivityAbsentPrefix, uintptr(unix.CLONE_NEWNS))
+}
+
+func ensureDebugNetworkd(t *testing.T) {
+	t.Helper()
+	output, err := exec.CommandContext(t.Context(), "systemctl", "show", "systemd-networkd.service", "--property=ActiveState", "--value").CombinedOutput()
+	if err != nil {
+		t.Fatalf("read systemd-networkd state: %v: %s", err, output)
+	}
+	state := strings.TrimSpace(string(output))
+	if state == "active" {
+		return
+	}
+	if state != "inactive" {
+		t.Fatalf("systemd-networkd state %q cannot be restored", state)
+	}
+	t.Cleanup(func() {
+		if output, err := exec.Command("systemctl", "stop", "systemd-networkd.service").CombinedOutput(); err != nil {
+			t.Errorf("restore systemd-networkd state: %v: %s", err, output)
+		}
+	})
+	if output, err := exec.CommandContext(t.Context(), "systemctl", "start", "systemd-networkd.service").CombinedOutput(); err != nil {
+		t.Fatalf("start systemd-networkd: %v: %s", err, output)
+	}
+}
+
+func runCLIConnectivityAbsentPrefix(t *testing.T, binary string) {
+	config := installDebugProbeNetwork(t)
+	loopback, err := netlink.LinkByName("lo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loopback.Attrs().Flags&net.FlagUp == 0 {
+		t.Fatal("loopback must be up in the isolated systemd container")
+	}
+	for _, cidr := range []string{"1.1.1.1/32", "2606:4700:4700::1111/128"} {
+		address, err := netlink.ParseAddr(cidr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		address.Flags = unix.IFA_F_NODAD
+		if err := netlink.AddrAdd(loopback, address); err != nil {
+			t.Fatalf("add local probe target %s: %v", cidr, err)
+		}
+		t.Cleanup(func() {
+			if err := netlink.AddrDel(loopback, address); err != nil {
+				t.Errorf("remove local probe target %s: %v", cidr, err)
+			}
+		})
+	}
+	output, diagnostics, code := runCLIProcess(t, binary, "debug", "connectivity", "--config", config, "--output-format", "json")
+	var results []struct {
+		Prefix        string `json:"prefix"`
+		PrefixPresent bool   `json:"prefix_present"`
+		Ping4Status   string `json:"ping4_status"`
+		Ping6Status   string `json:"ping6_status"`
+	}
+	if code != 0 || json.Unmarshal([]byte(output), &results) != nil || len(results) != 1 || results[0].Prefix != "" || results[0].PrefixPresent || results[0].Ping4Status != "OK" || results[0].Ping6Status != "OK" {
+		t.Fatalf("absent prefix exit=%d output=%s diagnostics=%s", code, output, diagnostics)
+	}
+	text, diagnostics, code := runCLIProcess(t, binary, "debug", "connectivity", "--config", config, "--output-format", "text")
+	if code != 0 || !strings.Contains(text, "  prefix: \n  prefix present: false\n") || strings.Contains(text, "invalid Prefix") {
+		t.Fatalf("absent prefix text exit=%d output=%s diagnostics=%s", code, text, diagnostics)
+	}
 }
 
 func runCLIActiveProbeNamespaceRuntime(t *testing.T, binary string) {
@@ -181,6 +259,15 @@ func runCLIActiveProbeNamespaceRuntime(t *testing.T, binary string) {
 			if diagnostics != "" || strings.Count(text, debugProbeResponseBody) != count/2 || strings.Count(text, results[1].Error) != count/2 {
 				t.Fatalf("text=%s diagnostics=%s", text, diagnostics)
 			}
+			for _, result := range results {
+				record := fmt.Sprintf("  interface: %s\n  family: %s\n  target: %s\n  iteration: %d\n  timeout: %s\n  status code: %d\n  body: %s\n", result.Interface, result.Family, result.Target, result.Iteration, result.Timeout, result.StatusCode, result.Body)
+				if !strings.Contains(text, record) {
+					t.Fatalf("%s omitted response %+v: %s", view, result, text)
+				}
+				if result.WAN != nil && (!strings.Contains(text, "  WAN id: "+result.WAN.ID+"\n") || !strings.Contains(text, "  WAN name: "+result.WAN.Name+"\n") || !strings.Contains(text, "  WAN interface: "+result.WAN.Iface+"\n")) {
+					t.Fatalf("%s omitted WAN details: %s", view, text)
+				}
+			}
 			for _, format := range []string{"text", "json"} {
 				full, err := os.OpenFile("/dev/full", os.O_WRONLY, 0)
 				if err != nil {
@@ -207,6 +294,11 @@ func runCLIActiveProbeNamespaceRuntime(t *testing.T, binary string) {
 				t.Fatalf("real echo result=%+v", attempt)
 			}
 		}
+		text, diagnostics := runDebugProbeFixtureCommand(t, binary, config, certificate, view, "text", nil)
+		if diagnostics != "" {
+			t.Fatalf("%s diagnostics=%s", view, diagnostics)
+		}
+		assertDebugPingDetails(t, text, attempts)
 	}
 	output, diagnostics := runDebugProbeFixtureCommand(t, binary, config, certificate, "connectivity", "json", nil)
 	var connectivity []struct {
@@ -234,6 +326,16 @@ func runCLIActiveProbeNamespaceRuntime(t *testing.T, binary string) {
 			t.Fatalf("connectivity attempt=%+v", attempt)
 		}
 	}
+	text, diagnostics := runDebugProbeFixtureCommand(t, binary, config, certificate, "connectivity", "text", nil)
+	if diagnostics != "" || !strings.Contains(text, "  prefix: "+result.Prefix+"\n") || !strings.Contains(text, "  prefix present: true\n") || !strings.Contains(text, "  NPT present: false\n") {
+		t.Fatalf("connectivity text=%s diagnostics=%s", text, diagnostics)
+	}
+	for _, address := range result.Addresses {
+		if !strings.Contains(text, "  address: "+address.CIDR+"\n") || !strings.Contains(text, "    origin: "+address.Origin+"\n") {
+			t.Fatalf("connectivity omitted address %+v: %s", address, text)
+		}
+	}
+	assertDebugPingDetails(t, text, append(result.Ping4, result.Ping6...))
 	for _, format := range []string{"text", "json"} {
 		full, err := os.OpenFile("/dev/full", os.O_WRONLY, 0)
 		if err != nil {
@@ -246,6 +348,34 @@ func runCLIActiveProbeNamespaceRuntime(t *testing.T, binary string) {
 		if !strings.Contains(diagnostics, "no space left on device") {
 			t.Fatalf("connectivity output write diagnostics=%s", diagnostics)
 		}
+	}
+}
+
+func assertDebugPingDetails(t *testing.T, text string, attempts []netif.PingAttempt) {
+	t.Helper()
+	if strings.Count(text, "  attempt ") != len(attempts) {
+		t.Fatalf("ping details=%s", text)
+	}
+	for _, attempt := range attempts {
+		fields := fmt.Sprintf("\n    interface: %s\n    family: %s\n    target: %s\n    timeout: %s\n    error: \n", attempt.Interface, attempt.Family, attempt.Target, attempt.Timeout)
+		found := false
+		for _, record := range strings.Split(text, "  attempt ")[1:] {
+			value, rest, ok := strings.Cut(record, "\n")
+			if !ok || !strings.HasPrefix(value, fmt.Sprintf("%d: ", attempt.Attempt)) || !strings.HasPrefix("\n"+rest, fields) {
+				continue
+			}
+			rtt, err := time.ParseDuration(strings.TrimPrefix(value, fmt.Sprintf("%d: ", attempt.Attempt)))
+			if err != nil || rtt <= 0 {
+				t.Fatalf("invalid ping RTT %q: %v", value, err)
+			}
+			found = true
+		}
+		if !found {
+			t.Fatalf("ping omitted request %+v: %s", attempt, text)
+		}
+	}
+	if strings.Count(text, "    error: \n") != len(attempts) {
+		t.Fatalf("ping results=%s", text)
 	}
 }
 

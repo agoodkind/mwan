@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"text/tabwriter"
+	"time"
 
 	"goodkind.io/mwan/internal/netif"
 )
@@ -36,6 +37,50 @@ func WriteDebugConnectivityText(output io.Writer, logger *slog.Logger, results [
 		logger.Warn("flush connectivity table failed", "err", err)
 		return fmt.Errorf("connectivity: render table: %w", err)
 	}
+	for _, result := range results {
+		prefix := ""
+		if result.Prefix.IsValid() {
+			prefix = result.Prefix.String()
+		}
+		if _, err := fmt.Fprintf(output, "\nWAN: %s\n  id: %s\n  interface: %s\n  IPv4: %s\n  IPv4 present: %t\n  IPv6: %s\n  IPv6 present: %t\n  prefix: %s\n  prefix present: %t\n  NPT present: %t\n", result.WAN.Name, result.WAN.ID, result.WAN.Iface, result.IPv4, result.IPv4Present, result.IPv6, result.IPv6Present, prefix, result.PrefixPresent, result.NPTPresent); err != nil {
+			logger.Warn("write connectivity details failed", "err", err)
+			return fmt.Errorf("connectivity: write details: %w", err)
+		}
+		for _, address := range result.Addresses {
+			if _, err := fmt.Fprintf(output, "  address: %s\n    family: %s\n    flags: %d\n    scope: %d\n    preferred lifetime: %d\n    valid lifetime: %d\n    observed at: %s\n    origin: %s\n", address.CIDR, address.Family, address.Flags, address.Scope, address.PreferredLifetime, address.ValidLifetime, address.ObservedAt.Format(time.RFC3339Nano), address.Origin); err != nil {
+				logger.Warn("write connectivity address failed", "err", err)
+				return fmt.Errorf("connectivity: write address: %w", err)
+			}
+		}
+		for _, attempts := range [][]netif.PingAttempt{result.Ping4, result.Ping6} {
+			for _, attempt := range attempts {
+				if err := writeDebugPingAttempt(output, logger, attempt); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func writeDebugPingAttempt(output io.Writer, logger *slog.Logger, attempt netif.PingAttempt) error {
+	result := attempt.RTT.String()
+	if attempt.Error != "" {
+		result = "FAIL: " + attempt.Error
+	}
+	if _, err := fmt.Fprintf(output, "  attempt %d: %s\n    interface: %s\n    family: %s\n    target: %s\n    timeout: %s\n", attempt.Attempt, result, attempt.Interface, attempt.Family, attempt.Target, attempt.Timeout); err != nil {
+		logger.Warn("write ping details failed", "err", err)
+		return fmt.Errorf("write ping details: %w", err)
+	}
+	if attempt.Error != "" {
+		if _, err := fmt.Fprintf(output, "    rtt: %s\n", attempt.RTT); err != nil {
+			logger.Warn("write ping RTT failed", "err", err)
+			return fmt.Errorf("write ping RTT: %w", err)
+		}
+	} else if _, err := io.WriteString(output, "    error: \n"); err != nil {
+		logger.Warn("write ping error failed", "err", err)
+		return fmt.Errorf("write ping error: %w", err)
+	}
 	return nil
 }
 
@@ -50,17 +95,11 @@ func WriteDebugPingText(output io.Writer, logger *slog.Logger, view debugView, a
 			}
 			received = 0
 		}
-		if attempt.Error != "" {
-			if _, err := fmt.Fprintf(output, "attempt %d: FAIL: %s\n", attempt.Attempt, attempt.Error); err != nil {
-				logger.Warn("write ping attempt failed", "view", view, "attempt", attempt.Attempt, "err", err)
-				return fmt.Errorf("%s: write attempt: %w", view, err)
-			}
-		} else {
+		if attempt.Error == "" {
 			received++
-			if _, err := fmt.Fprintf(output, "attempt %d: %s\n", attempt.Attempt, attempt.RTT); err != nil {
-				logger.Warn("write ping attempt failed", "view", view, "attempt", attempt.Attempt, "err", err)
-				return fmt.Errorf("%s: write attempt: %w", view, err)
-			}
+		}
+		if err := writeDebugPingAttempt(output, logger, attempt); err != nil {
+			return err
 		}
 		if attempt.Attempt == debugPingAttempts {
 			if _, err := fmt.Fprintf(output, "%d transmitted, %d received\n\n", debugPingAttempts, received); err != nil {
@@ -91,17 +130,24 @@ func WriteDebugHTTPText(output io.Writer, logger *slog.Logger, view debugView, o
 		default:
 			return fmt.Errorf("debug view %q does not render HTTP probes", view)
 		}
-		body := observation.Body
-		if observation.Error != "" {
-			body = "FAIL: " + observation.Error
-		}
-		ending := "\n"
-		if view == debugViewCurl4 || view == debugViewCurl6 {
-			ending = "\n\n"
-		}
-		if _, err := fmt.Fprint(output, heading, body, ending); err != nil {
+		if _, err := fmt.Fprintf(output, "%s\n  interface: %s\n  family: %s\n  target: %s\n  iteration: %d\n  timeout: %s\n  status code: %d\n  body: %s\n", heading, observation.Interface, observation.Family, observation.Target, observation.Iteration, observation.Timeout, observation.StatusCode, observation.Body); err != nil {
 			logger.Warn("write HTTP result failed", "view", view, "iteration", observation.Iteration, "err", err)
 			return fmt.Errorf("%s: write response: %w", view, err)
+		}
+		if observation.WAN != nil {
+			wan := observation.WAN
+			if _, err := fmt.Fprintf(output, "  WAN id: %s\n  WAN name: %s\n  WAN interface: %s\n", wan.ID, wan.Name, wan.Iface); err != nil {
+				logger.Warn("write HTTP WAN details failed", "err", err)
+				return fmt.Errorf("%s: write WAN details: %w", view, err)
+			}
+		}
+		errorLine := "  error: \n"
+		if observation.Error != "" {
+			errorLine = "  FAIL: " + observation.Error + "\n"
+		}
+		if _, err := io.WriteString(output, errorLine); err != nil {
+			logger.Warn("write HTTP error failed", "err", err)
+			return fmt.Errorf("%s: write error: %w", view, err)
 		}
 	}
 	return nil

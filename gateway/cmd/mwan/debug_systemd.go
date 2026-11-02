@@ -10,10 +10,6 @@ import (
 	systemddbus "github.com/coreos/go-systemd/v22/dbus"
 )
 
-// debugSystemdSlowestCount bounds the slowest-starters table, matching the
-// shell's systemd-analyze blame | head -20.
-const debugSystemdSlowestCount = 20
-
 // debugSystemdFocusUnits are the units whose startup timing prints
 // individually, the same set the shell's critical-chain loop covered.
 func debugSystemdFocusUnits() []string {

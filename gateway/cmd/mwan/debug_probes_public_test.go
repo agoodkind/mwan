@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -41,7 +42,8 @@ func TestCLIActiveProbeFailuresRemainResultData(t *testing.T) {
 				t.Fatalf("exit=%d output=%s diagnostics=%s", code, output, diagnostics)
 			}
 			for _, attempt := range attempts {
-				if !strings.Contains(output, attempt.Error) {
+				fields := fmt.Sprintf("  attempt %d: FAIL: %s\n    interface: %s\n    family: %s\n    target: %s\n    timeout: %s\n    rtt: %s\n", attempt.Attempt, attempt.Error, attempt.Interface, attempt.Family, attempt.Target, attempt.Timeout, attempt.RTT)
+				if !strings.Contains(output, fields) {
 					t.Fatalf("text omitted raw error %q: %s", attempt.Error, output)
 				}
 			}

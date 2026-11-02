@@ -5,58 +5,24 @@ import (
 	"io"
 	"log/slog"
 	"strings"
-	"text/tabwriter"
-	"time"
-
-	systemddbus "github.com/coreos/go-systemd/v22/dbus"
 )
 
 func writeDebugSystemdText(logger *slog.Logger, output io.Writer, result debugSystemdResult) error {
 	var text strings.Builder
-	fmt.Fprintln(&text, "== failed units ==")
-	printUnitsInState(&text, result.Units, "failed")
-	fmt.Fprintln(&text, "\n== units stuck in activating ==")
-	printUnitsInState(&text, result.Units, "activating")
-
-	fmt.Fprintf(&text, "\n== slowest starters (top %d) ==\n", debugSystemdSlowestCount)
-	writer := tabwriter.NewWriter(&text, 0, 4, 2, ' ', 0)
-	for i, timing := range result.Timings {
-		if i >= debugSystemdSlowestCount {
-			break
-		}
-		fmt.Fprintf(writer, "%s\t%s\n", timing.Duration.Round(time.Millisecond), timing.Name)
+	fmt.Fprintf(&text, "== units ==\nunits: %d\n", len(result.Units))
+	for _, unit := range result.Units {
+		fmt.Fprintf(&text, "  name: %q\n  load state: %q\n  active state: %q\n  substate: %q\n  followed: %q\n  job ID: %d\n  job type: %q\n", unit.Name, unit.LoadState, unit.ActiveState, unit.SubState, unit.Followed, unit.JobId, unit.JobType)
 	}
-	if err := writer.Flush(); err != nil {
-		logger.Warn("flush systemd timings failed", "err", err)
-		return fmt.Errorf("flush systemd timings: %w", err)
+	fmt.Fprintf(&text, "\n== startup timings ==\ntimings: %d\n", len(result.Timings))
+	for _, timing := range result.Timings {
+		fmt.Fprintf(&text, "  name: %q\n  duration (ns): %d\n", timing.Name, timing.Duration)
 	}
-
-	fmt.Fprintln(&text, "\n== mwan unit timings ==")
-	focusWriter := tabwriter.NewWriter(&text, 0, 4, 2, ' ', 0)
+	fmt.Fprintf(&text, "\n== mwan unit timings ==\ntimings: %d\n", len(result.Focus))
 	for _, timing := range result.Focus {
-		value := "not measured"
+		fmt.Fprintf(&text, "  name: %q\n  present: %t\n", timing.Name, timing.Present)
 		if timing.Present {
-			value = timing.Duration.Round(time.Millisecond).String()
+			fmt.Fprintf(&text, "  duration (ns): %d\n", timing.Duration)
 		}
-		fmt.Fprintf(focusWriter, "%s\t%s\n", timing.Name, value)
-	}
-	if err := focusWriter.Flush(); err != nil {
-		logger.Warn("flush systemd focus timings failed", "err", err)
-		return fmt.Errorf("flush systemd focus timings: %w", err)
 	}
 	return WriteDebugText(logger, output, text.String())
-}
-
-func printUnitsInState(output io.Writer, units []systemddbus.UnitStatus, state string) {
-	count := 0
-	for _, unit := range units {
-		if unit.ActiveState != state {
-			continue
-		}
-		fmt.Fprintf(output, "%s %s (%s)\n", unit.Name, unit.ActiveState, unit.SubState)
-		count++
-	}
-	if count == 0 {
-		fmt.Fprintln(output, "none")
-	}
 }

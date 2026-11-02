@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/netip"
-	"sort"
 	"strings"
+	"time"
 
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/ifmgr/modules/npt"
@@ -42,18 +41,20 @@ func writeDebugNPTText(logger *slog.Logger, output io.Writer, table npt.Rendered
 
 func writeDebugPrefixesText(logger *slog.Logger, output io.Writer, result debugPrefixesResult) error {
 	var text strings.Builder
+	fmt.Fprintf(&text, "prefix records: %d\n", len(result.Prefixes))
 	for _, record := range result.Prefixes {
-		value := "none"
-		if record.Present {
-			value = record.Prefix.String()
+		printDebugWAN(&text, record.WAN)
+		fmt.Fprintf(&text, "  present: %t\n", record.Present)
+		if record.Prefix.IsValid() {
+			fmt.Fprintf(&text, "  prefix: %q\n", record.Prefix)
 		}
-		fmt.Fprintf(&text, "%s: %s\n", record.WAN.Iface, value)
 	}
 	return WriteDebugText(logger, output, text.String())
 }
 
 func writeDebugRoutesText(logger *slog.Logger, output io.Writer, result debugRoutesResult) error {
 	var text strings.Builder
+	fmt.Fprintf(&text, "family: %q\n", result.Family)
 	printDebugRoutes(&text, result.Routes)
 	return WriteDebugText(logger, output, text.String())
 }
@@ -64,117 +65,84 @@ func writeDebugPolicyText(logger *slog.Logger, output io.Writer, result debugPol
 	printDebugRules(&text, result.IPv4)
 	fmt.Fprintln(&text, "\n== IPv6 rules ==")
 	printDebugRules(&text, result.IPv6)
+	fmt.Fprintf(&text, "\nWAN tables: %d\n", len(result.Tables))
 	for _, table := range result.Tables {
-		fmt.Fprintf(&text, "\n== table %d (%s) v4 ==\n", table.WAN.TableID, table.WAN.Name)
+		printDebugWAN(&text, table.WAN)
+		fmt.Fprintf(&text, "  table ID: %d\n", table.WAN.TableID)
+		fmt.Fprintln(&text, "== IPv4 routes ==")
 		printDebugRoutes(&text, table.IPv4)
-		fmt.Fprintf(&text, "== table %d (%s) v6 ==\n", table.WAN.TableID, table.WAN.Name)
+		fmt.Fprintln(&text, "== IPv6 routes ==")
 		printDebugRoutes(&text, table.IPv6)
 	}
 	return WriteDebugText(logger, output, text.String())
 }
 
 func printDebugRules(output io.Writer, rules []netif.CurrentRule) {
+	fmt.Fprintf(output, "rules: %d\n", len(rules))
 	for _, rule := range rules {
-		from := "all"
-		if rule.From != "" {
-			from = rule.From
-		}
-		fmt.Fprintf(output, "%d: from %s", rule.Priority, from)
-		if rule.Mark != 0 {
-			fmt.Fprintf(output, " fwmark %#x", rule.Mark)
-		}
-		if rule.IifName != "" {
-			fmt.Fprintf(output, " iif %s", rule.IifName)
-		}
-		if rule.UIDRange != "" {
-			fmt.Fprintf(output, " uidrange %s", rule.UIDRange)
-		}
-		fmt.Fprintf(output, " lookup %d\n", rule.TableID)
+		fmt.Fprintf(output, "  priority: %d\n  from: %q\n  mark: %d\n  input interface: %q\n  UID range: %q\n  table ID: %d\n", rule.Priority, rule.From, rule.Mark, rule.IifName, rule.UIDRange, rule.TableID)
 	}
 }
 
 func printDebugRoutes(output io.Writer, routes []netif.CurrentRoute) {
+	fmt.Fprintf(output, "routes: %d\n", len(routes))
 	for _, route := range routes {
-		fmt.Fprint(output, route.Dest)
-		if route.Via != "" {
-			fmt.Fprintf(output, " via %s", route.Via)
+		fmt.Fprintf(output, "  family: %q\n  destination: %q\n  gateway: %q\n  device: %q\n  table ID: %d\n  protocol: %d\n  metric: %d\n  scope: %d\n  type: %d\n  next hops: %d\n", route.Family, route.Dest, route.Via, route.Dev, route.TableID, route.Protocol, route.Metric, route.Scope, route.Type, len(route.NextHops))
+		for _, hop := range route.NextHops {
+			fmt.Fprintf(output, "    gateway: %q\n    device: %q\n    link index: %d\n    weight: %d\n", hop.Via, hop.Dev, hop.LinkIndex, hop.Weight)
 		}
-		if route.Dev != "" {
-			fmt.Fprintf(output, " dev %s", route.Dev)
-		}
-		if route.Metric != 0 {
-			fmt.Fprintf(output, " metric %d", route.Metric)
-		}
-		fmt.Fprintln(output)
 	}
+}
+
+func printDebugWAN(output io.Writer, wan debugWAN) {
+	fmt.Fprintf(output, "WAN:\n  ID: %q\n  name: %q\n  interface: %q\n", wan.ID, wan.Name, wan.Iface)
 }
 
 func writeDebugStatusText(logger *slog.Logger, output io.Writer, result debugStatusResult) error {
 	var text strings.Builder
+	fmt.Fprintf(&text, "interfaces: %d\n", len(result.Interfaces))
 	for index, record := range result.Interfaces {
 		if index > 0 {
 			fmt.Fprintln(&text)
 		}
-		fmt.Fprintf(&text, "== %s ==\noper: %s\ncarrier: %s\nglobal addresses:\n", record.WAN.Iface, record.State.OperState, debugCarrierState(record.State.Carrier))
-		global := debugGlobalAddresses(record.Addresses)
-		if len(global) == 0 {
-			fmt.Fprintln(&text, "  none")
+		printDebugWAN(&text, record.WAN)
+		fmt.Fprintf(&text, "oper: %q\ncarrier: %t\naddresses: %d\n", record.State.OperState, record.State.Carrier, len(record.Addresses))
+		for _, address := range record.Addresses {
+			fmt.Fprintf(&text, "  CIDR: %q\n  family: %q\n  flags: %d\n  scope: %d\n  preferred lifetime (s): %d\n  valid lifetime (s): %d\n  observed at: %s\n  origin: %q\n", address.CIDR, address.Family, address.Flags, address.Scope, address.PreferredLifetime, address.ValidLifetime, address.ObservedAt.Format(time.RFC3339Nano), address.Origin)
 		}
-		for _, address := range global {
-			fmt.Fprintf(&text, "  %s\n", address)
+		fmt.Fprintf(&text, "prefix present: %t\n", record.PrefixPresent)
+		if record.Prefix.IsValid() {
+			fmt.Fprintf(&text, "delegated prefix: %q\n", record.Prefix)
 		}
-		value := "none"
-		if record.PrefixPresent {
-			value = record.Prefix.String()
-		}
-		fmt.Fprintf(&text, "delegated prefix: %s\n", value)
 	}
 	return WriteDebugText(logger, output, text.String())
 }
 
-func debugCarrierState(carrier bool) string {
-	if carrier {
-		return "up"
-	}
-	return "down"
-}
-
-func debugGlobalAddresses(addresses []netif.CurrentAddr) []string {
-	global := make([]string, 0, len(addresses))
-	for _, address := range addresses {
-		prefix, err := netip.ParsePrefix(address.CIDR)
-		if err != nil || !prefix.Addr().IsGlobalUnicast() {
-			continue
-		}
-		global = append(global, address.CIDR)
-	}
-	sort.Strings(global)
-	return global
-}
-
 func writeDebugStatsText(logger *slog.Logger, output io.Writer, result debugStatsResult) error {
 	var text strings.Builder
+	fmt.Fprintf(&text, "interfaces: %d\n", len(result.Interfaces))
 	for index, record := range result.Interfaces {
 		if index > 0 {
 			fmt.Fprintln(&text)
 		}
 		stats := record.Stats
-		fmt.Fprintf(&text, "== %s ==\nRX: bytes %d packets %d errors %d dropped %d\nTX: bytes %d packets %d errors %d dropped %d\n", record.WAN.Iface, stats.RxBytes, stats.RxPackets, stats.RxErrors, stats.RxDropped, stats.TxBytes, stats.TxPackets, stats.TxErrors, stats.TxDropped)
+		printDebugWAN(&text, record.WAN)
+		fmt.Fprintf(&text, "RX: bytes %d packets %d errors %d dropped %d\nTX: bytes %d packets %d errors %d dropped %d\n", stats.RxBytes, stats.RxPackets, stats.RxErrors, stats.RxDropped, stats.TxBytes, stats.TxPackets, stats.TxErrors, stats.TxDropped)
 	}
 	return WriteDebugText(logger, output, text.String())
 }
 
 func writeDebugSimulationText(logger *slog.Logger, output io.Writer, result debugSimulationResult) error {
-	if !result.SourcePresent {
-		return nil
-	}
 	var text strings.Builder
-	printDebugSimulationHeader(&text, result.Family, result.Target)
+	fmt.Fprintf(&text, "family: %q\ntarget: %q\nsource: %q\nsource present: %t\nlookups: %d\n", result.Family, result.Target, result.Source, result.SourcePresent, len(result.Lookups))
 	for _, lookup := range result.Lookups {
 		if lookup.WAN != nil {
-			fmt.Fprintf(&text, "-- mark %d (%s) --\n", lookup.Mark, lookup.WAN.Name)
+			printDebugWAN(&text, *lookup.WAN)
+		} else {
+			fmt.Fprintln(&text, "default lookup:")
 		}
-		printDebugRouteLookup(&text, result.Target, lookup.Route, lookup.Present)
+		fmt.Fprintf(&text, "  mark: %d\n  present: %t\n", lookup.Mark, lookup.Present)
+		fmt.Fprintf(&text, "  gateway: %q\n  output interface: %q\n  source: %q\n", lookup.Route.Gateway, lookup.Route.OIF, lookup.Route.Source)
 	}
 	return WriteDebugText(logger, output, text.String())
 }
@@ -184,29 +152,6 @@ func debugSimulationName(family string) string {
 		return "sim6"
 	}
 	return "sim4"
-}
-
-func printDebugSimulationHeader(output io.Writer, family, target string) {
-	if family == debugFamilyV6 {
-		fmt.Fprintf(output, "== ip -6 route get %s from LAN ==\n", target)
-		return
-	}
-	fmt.Fprintf(output, "== ip route get %s from LAN ==\n", target)
-}
-
-func printDebugRouteLookup(output io.Writer, target string, result netif.RouteLookupResult, ok bool) {
-	if !ok {
-		fmt.Fprintf(output, "%s: no route\n", target)
-		return
-	}
-	fmt.Fprintf(output, "%s via %s oif %s src %s\n", target, debugValueOrNone(result.Gateway), debugValueOrNone(result.OIF), debugValueOrNone(result.Source))
-}
-
-func debugValueOrNone(value string) string {
-	if value == "" {
-		return "none"
-	}
-	return value
 }
 
 func showDebugNPT(ctx context.Context, output io.Writer, logger *slog.Logger) error {
