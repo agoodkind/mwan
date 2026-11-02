@@ -577,6 +577,7 @@ func buildConnectivityProbeConfig(
 ) (connprobe.Config, error) {
 	cfg := connprobe.Config{
 		Iface:          "",
+		TargetsV4:      nil,
 		TargetsV6:      nil,
 		Timeout:        2 * time.Second,
 		UnhealthyAfter: 10 * time.Second,
@@ -599,6 +600,13 @@ func buildConnectivityProbeConfig(
 		section.UnhealthyAfter,
 		cfg.UnhealthyAfter,
 		"ifmgr.modules.connectivity_probe.unhealthy_after",
+	)
+	if err != nil {
+		return connprobe.Config{}, err
+	}
+	cfg.TargetsV4, err = parseAddrList(
+		section.TargetsV4,
+		"ifmgr.modules.connectivity_probe.targets_v4",
 	)
 	if err != nil {
 		return connprobe.Config{}, err

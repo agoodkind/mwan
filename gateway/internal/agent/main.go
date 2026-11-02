@@ -97,7 +97,7 @@ func Run(cfg *config.Config, options config.AgentSection) error {
 	)
 	agentServer := NewServer(*deployFile, logger, bgpSpeaker, notifier)
 	agentServer.SetDeployExpected(*deployExpected)
-	if bgpSpeaker != nil && cfg.BGP.UseWanconfig {
+	if bgpSpeaker != nil && cfg.BGP.ForwardingReadinessEnabled() {
 		readiness := cfg.BGP.ForwardingReadiness
 		agentServer.SetForwardingReady(
 			readiness.SocketPath,
@@ -105,11 +105,12 @@ func Run(cfg *config.Config, options config.AgentSection) error {
 			readiness.ReadTimeout(),
 			len(cfg.BGP.Announce.IPv4) > 0,
 			len(cfg.BGP.Announce.IPv6) > 0,
+			cfg.BGP.UseWanconfig,
 		)
 		go func() {
 			defer func() {
 				if recovered := recover(); recovered != nil {
-					logger.ErrorContext(runCtx, "primary forwarding readiness poll panic", "error", recovered)
+					logger.ErrorContext(runCtx, "forwarding readiness poll panic", "error", recovered)
 				}
 			}()
 			agentServer.pollForwardingReady(runCtx)

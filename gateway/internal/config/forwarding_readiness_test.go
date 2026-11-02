@@ -81,6 +81,65 @@ read_timeout_milliseconds = -1
 enabled = true
 `,
 		},
+		{
+			name: "backup with both target lists",
+			config: `[bgp]
+enabled = true
+
+[bgp.announce]
+ipv4 = ["0.0.0.0/0"]
+ipv6 = ["::/0"]
+
+[bgp.forwarding_readiness]
+socket_path = "/run/mwan-forwarding-ready.sock"
+poll_interval_milliseconds = 1000
+read_timeout_milliseconds = 500
+
+[ifmgr.modules.connectivity_probe]
+iface = "eth0"
+targets_v4 = ["1.1.1.1"]
+targets_v6 = ["2606:4700:4700::1111"]
+`,
+			wantConfig: true,
+		},
+		{
+			name: "backup missing targets_v4",
+			config: `[bgp]
+enabled = true
+
+[bgp.announce]
+ipv4 = ["0.0.0.0/0"]
+
+[bgp.forwarding_readiness]
+socket_path = "/run/mwan-forwarding-ready.sock"
+poll_interval_milliseconds = 1000
+read_timeout_milliseconds = 500
+
+[ifmgr.modules.connectivity_probe]
+iface = "eth0"
+targets_v6 = ["2606:4700:4700::1111"]
+`,
+			wantError: "targets_v4",
+		},
+		{
+			name: "backup missing targets_v6",
+			config: `[bgp]
+enabled = true
+
+[bgp.announce]
+ipv6 = ["::/0"]
+
+[bgp.forwarding_readiness]
+socket_path = "/run/mwan-forwarding-ready.sock"
+poll_interval_milliseconds = 1000
+read_timeout_milliseconds = 500
+
+[ifmgr.modules.connectivity_probe]
+iface = "eth0"
+targets_v4 = ["1.1.1.1"]
+`,
+			wantError: "targets_v6",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
