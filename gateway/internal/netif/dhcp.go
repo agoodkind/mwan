@@ -636,8 +636,7 @@ func (c *DHCPClient) bound(
 	}
 	c.emit(current)
 	current = c.LastLease()
-	state := LeaseBound
-	noResponse := false
+	state, noResponse := LeaseBound, false
 	for {
 		now := c.clock.Now()
 		if !now.Before(current.ExpiresAt) {
