@@ -190,7 +190,7 @@ func runOOBDHCPv4RecoveryLinkChange(t *testing.T, change dhcpRecoveryLinkChange)
 		serviceRunning = false
 		setRuntimeNamespace(t, gateway)
 		if change == dhcpRecoveryFlapDuringRenewalRetry {
-			assertDHCPRenewalRetriesDuringLinkFlaps(t, daemon, provider.namespace, gateway)
+			assertDHCPRenewalRetriesDuringLinkFlaps(t, daemon, provider.namespace, gateway, filepath.Join(leaseDirectory, "roles"))
 		} else {
 			assertDHCPBoundLinkFlapKeepsLease(t, daemon, provider.namespace, gateway, filepath.Join(leaseDirectory, "roles"))
 		}
@@ -276,7 +276,7 @@ func runOOBDHCPv4RecoveryLinkChange(t *testing.T, change dhcpRecoveryLinkChange)
 	assertDHCPRenamedLinkForeignAddress(t, oldLink)
 }
 
-func assertDHCPRenewalRetriesDuringLinkFlaps(t *testing.T, daemon *runtimeDaemon, serverNamespace, gateway netns.NsHandle) {
+func assertDHCPRenewalRetriesDuringLinkFlaps(t *testing.T, daemon *runtimeDaemon, serverNamespace, gateway netns.NsHandle, leaseDirectory string) {
 	t.Helper()
 	flappedLink, err := netlink.LinkByName("enatt0")
 	if err != nil {
@@ -284,12 +284,27 @@ func assertDHCPRenewalRetriesDuringLinkFlaps(t *testing.T, daemon *runtimeDaemon
 	}
 	var requestCount atomic.Int64
 	defer startDHCPRequestCounter(t, &requestCount, flappedLink.Attrs().HardwareAddr, serverNamespace, gateway)()
+	store, err := netif.NewLeaseRecoveryStore(leaseDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	iface, err := net.InterfaceByName("enatt0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := store.LoadDHCPv4("oob/enatt0", iface, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flapDeadline := lease.RebindAt.Add(5 * time.Second)
+	if !flapDeadline.Before(lease.ExpiresAt) {
+		t.Fatal("The rebind check must finish before the lease expires.")
+	}
 	waitDHCPv4RuntimeState(t, daemon, "dhcp: renewal attempt failed", 60*time.Second)
 	requestsBefore := requestCount.Load()
 	if requestsBefore == 0 {
 		t.Fatalf("DHCP client packet count = 0: %s", runtimeLogTail(t, daemon, 30))
 	}
-	flapDeadline := time.Now().Add(15 * time.Second)
 	for requestCount.Load() <= requestsBefore {
 		if !time.Now().Before(flapDeadline) {
 			t.Fatalf("DHCP client packet count = %d, want > %d: %s", requestCount.Load(), requestsBefore, runtimeLogTail(t, daemon, 30))
@@ -302,6 +317,7 @@ func assertDHCPRenewalRetriesDuringLinkFlaps(t *testing.T, daemon *runtimeDaemon
 		}
 		time.Sleep(2 * time.Second)
 	}
+	waitStaticRuntimeAddress(t, daemon, "enatt0", dhcpRenamedLinkAddress, true)
 	assertRuntimeDaemonRunning(t, daemon)
 }
 
