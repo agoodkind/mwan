@@ -93,9 +93,6 @@ func (w *watchdog) recoveryObservationFields(key string, recoveredAt time.Time) 
 }
 
 func (w *watchdog) observeConnectivityLoss(key string, observedAt time.Time) {
-	if w.connectivityLossObservedAt == nil {
-		w.connectivityLossObservedAt = map[string]time.Time{}
-	}
 	if _, observed := w.connectivityLossObservedAt[key]; !observed {
 		w.connectivityLossObservedAt[key] = observedAt
 	}

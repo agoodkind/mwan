@@ -385,6 +385,8 @@ func newTestWatchdog(
 		exitFn:      os.Exit,
 		coord:       &alert.Coord{},
 		configState: newConfigStateSource(cfg, ops, logger),
+
+		connectivityLossObservedAt: map[string]time.Time{},
 	}
 	return w
 }
