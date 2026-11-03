@@ -104,6 +104,8 @@ message GetBGPStatusResponse {
   bool announcing = 1;
   bool all_established = 2;
   repeated BGPPeerStatus peers = 3;
+  bool announcing_ipv4 = 4;
+  bool announcing_ipv6 = 5;
 }
 
 message BGPPeerStatus {

@@ -8,8 +8,8 @@ import (
 	"goodkind.io/mwan/internal/forwardingready"
 )
 
-// SetForwardingReady configures polling of ifmgr readiness for primary announcements.
-func (a *Server) SetForwardingReady(path string, pollInterval, readTimeout time.Duration, ipv4, ipv6 bool) {
+// SetForwardingReady configures ifmgr readiness polling for BGP announcements. When requireAllFamilies is true, AnnounceRoutes requires every configured family to be ready.
+func (a *Server) SetForwardingReady(path string, pollInterval, readTimeout time.Duration, ipv4, ipv6, requireAllFamilies bool) {
 	a.forwardingMu.Lock()
 	defer a.forwardingMu.Unlock()
 	a.forwardingPath = path
@@ -17,6 +17,7 @@ func (a *Server) SetForwardingReady(path string, pollInterval, readTimeout time.
 	a.forwardingReadTimeout = readTimeout
 	a.announceIPv4 = ipv4
 	a.announceIPv6 = ipv6
+	a.requireAllFamilies = requireAllFamilies
 }
 
 func (a *Server) readForwardingReady(ctx context.Context) (forwardingready.State, error) {
@@ -25,10 +26,10 @@ func (a *Server) readForwardingReady(ctx context.Context) (forwardingready.State
 	state, err := forwardingready.Read(readCtx, a.forwardingPath, a.forwardingReadTimeout)
 	if err != nil {
 		if err.Error() != a.lastReadError {
-			a.log.WarnContext(ctx, "read primary forwarding readiness failed", "error", err)
+			a.log.WarnContext(ctx, "read forwarding readiness failed", "error", err)
 			a.lastReadError = err.Error()
 		}
-		return forwardingready.State{}, fmt.Errorf("read primary forwarding readiness: %w", err)
+		return forwardingready.State{}, fmt.Errorf("read forwarding readiness: %w", err)
 	}
 	a.lastReadError = ""
 	return state, nil
@@ -58,6 +59,6 @@ func (a *Server) reconcileForwardingReady(ctx context.Context) {
 		state = forwardingready.State{}
 	}
 	if err := a.bgp.SetDefaultAnnouncements(state.IPv4, state.IPv6); err != nil {
-		a.log.ErrorContext(ctx, "reconcile primary BGP announcements failed", "error", err)
+		a.log.ErrorContext(ctx, "reconcile BGP announcements failed", "error", err)
 	}
 }

@@ -27,8 +27,9 @@ const (
 type recordingAgent struct {
 	mwanv1.UnimplementedMWANAgentServer
 
-	mu    sync.Mutex
-	calls []string
+	mu         sync.Mutex
+	calls      []string
+	announcing bool
 }
 
 func (a *recordingAgent) record(method string) {
@@ -52,13 +53,18 @@ func (a *recordingAgent) GetBGPStatus(
 	_ context.Context, _ *mwanv1.GetBGPStatusRequest,
 ) (*mwanv1.GetBGPStatusResponse, error) {
 	a.record("GetBGPStatus")
-	return &mwanv1.GetBGPStatusResponse{}, nil
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return &mwanv1.GetBGPStatusResponse{Announcing: a.announcing, AllEstablished: true}, nil
 }
 
 func (a *recordingAgent) AnnounceRoutes(
 	_ context.Context, _ *mwanv1.AnnounceRoutesRequest,
 ) (*mwanv1.AnnounceRoutesResponse, error) {
 	a.record("AnnounceRoutes")
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.announcing = true
 	return &mwanv1.AnnounceRoutesResponse{Success: true}, nil
 }
 

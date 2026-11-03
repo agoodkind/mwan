@@ -44,6 +44,7 @@ type Server struct {
 	forwardingReadTimeout  time.Duration
 	announceIPv4           bool
 	announceIPv6           bool
+	requireAllFamilies     bool
 	manualWithdraw         bool
 	lastReadError          string
 
@@ -472,6 +473,8 @@ func (a *Server) GetBGPStatus(
 	st := a.bgp.Status(ctx)
 	resp := &mwanv1.GetBGPStatusResponse{
 		Announcing:     st.Announcing,
+		AnnouncingIpv4: st.AnnouncingV4,
+		AnnouncingIpv6: st.AnnouncingV6,
 		AllEstablished: a.bgp.IsEstablished(ctx),
 	}
 	for _, p := range st.Peers {
@@ -500,8 +503,12 @@ func (a *Server) AnnounceRoutes(
 		if err != nil {
 			return &mwanv1.AnnounceRoutesResponse{Success: false, Error: err.Error()}, nil
 		}
-		if (a.announceIPv4 && !state.IPv4) || (a.announceIPv6 && !state.IPv6) {
+		if a.requireAllFamilies && ((a.announceIPv4 && !state.IPv4) || (a.announceIPv6 && !state.IPv6)) {
 			return &mwanv1.AnnounceRoutesResponse{Success: false, Error: "primary forwarding is not ready"}, nil
+		}
+		// A ready family can still serve clients while the primary is down.
+		if !a.requireAllFamilies && !(a.announceIPv4 && state.IPv4) && !(a.announceIPv6 && state.IPv6) {
+			return &mwanv1.AnnounceRoutesResponse{Success: false, Error: "no announced address families are ready"}, nil
 		}
 		if err := a.bgp.SetDefaultAnnouncements(state.IPv4, state.IPv6); err != nil {
 			return &mwanv1.AnnounceRoutesResponse{Success: false, Error: err.Error()}, nil
