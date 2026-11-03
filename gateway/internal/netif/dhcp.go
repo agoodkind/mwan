@@ -31,7 +31,10 @@ type DHCPConfig struct {
 	RestartWindow   time.Duration // Delay before DISCOVER during recovery; zero uses one minute
 }
 
-const defaultDHCPRestartWindow = time.Minute
+const (
+	defaultDHCPRestartWindow  = time.Minute
+	dhcpMinimumRetransmitWait = time.Minute
+)
 
 // LeaseState is the simplified RFC 2131 client state machine.
 type LeaseState int
@@ -634,13 +637,14 @@ func (c *DHCPClient) bound(
 	c.emit(current)
 	current = c.LastLease()
 	state := LeaseBound
+	noResponse := false
 	for {
 		now := c.clock.Now()
 		if !now.Before(current.ExpiresAt) {
 			c.emit(leaseState(LeaseExpired, current.AcquiredAt, errors.New("DHCP lease expired")))
 			return
 		}
-		deadline := c.renewalWaitDeadline(now, current, state)
+		deadline := c.renewalWaitDeadline(now, current, state, noResponse)
 		wait := max(deadline.Sub(c.clock.Now()), 0)
 		if !c.waitForRenewal(ctx, wait) {
 			return
@@ -677,8 +681,10 @@ func (c *DHCPClient) bound(
 			logger.WarnContext(ctx, "dhcp: renewal attempt failed", "state", state, "err", err)
 			active.Err = err
 			c.emit(active)
+			noResponse = errors.Is(err, nclient4.ErrNoResponse) || errors.Is(err, context.DeadlineExceeded)
 			continue
 		}
+		noResponse = false
 		if err := validateLease(newLease.lease); err != nil {
 			logger.WarnContext(ctx, "dhcp: invalid renewal ACK", "err", err)
 			active.Err = err
@@ -717,10 +723,18 @@ func (c *DHCPClient) waitForRenewal(ctx context.Context, wait time.Duration) boo
 	}
 }
 
-func (c *DHCPClient) renewalWaitDeadline(now time.Time, current LeaseInfo, state LeaseState) time.Time {
+func (c *DHCPClient) renewalWaitDeadline(now time.Time, current LeaseInfo, state LeaseState, noResponse bool) time.Time {
 	deadline := current.RenewAt
 	if state != LeaseBound {
-		deadline = now.Add(c.cfg.RenewTimeout)
+		wait := c.cfg.RenewTimeout
+		if noResponse {
+			boundary := current.RebindAt
+			if state == LeaseRebinding {
+				boundary = current.ExpiresAt
+			}
+			wait = max(boundary.Sub(now)/2, dhcpMinimumRetransmitWait)
+		}
+		deadline = now.Add(wait)
 	}
 	deadline = earlier(deadline, current.ExpiresAt)
 	if state != LeaseRebinding {
@@ -734,6 +748,7 @@ func (c *DHCPClient) renewAttempt(
 ) (*dhcpLease, error) {
 	options := []nclient4.ClientOpt{
 		nclient4.WithTimeout(c.cfg.RenewTimeout),
+		nclient4.WithRetry(1),
 		nclient4.WithLogger(newSlogDHCPLogger(c.log)),
 	}
 	if state == LeaseRenewing {
