@@ -438,3 +438,71 @@ Steps:
 6. Close MWAN-341 only after its production acceptance is recorded.
    Track MWAN-507's direct BGP and tunnel acceptance separately. New-circuit
    production exercises remain after October 2026.
+
+### 7. Complete configurable firewall and steering policy
+
+The operator reopened this epic for this follow-up. Preserve the accepted
+ownership work and prior acceptance records. Keep production settings unchanged
+while implementing the configuration contract.
+
+Files:
+
+- Modify [the current steering schema](../../internal/yangpub/schema/goodkind-mwan-steering@2026-10-01.yang), [JSON decoding](../../internal/networkjson/firewall.go), and [shared runtime configuration](../../internal/config/ifmgr_modules.go).
+- Modify [firewall compilation](../../internal/firewall/rules.go), [firewall input validation](../../internal/firewall/config.go), and [steering compilation](../../internal/ifmgr/modules/steering/applier.go).
+- Extend the configuration publication and public command tests identified in Task 2.
+
+Behavior:
+
+The network document defines operator policy. Go validates that policy and
+compiles it into kernel rules. Keep the selection algorithm independent of
+whether selection applies to a packet or a connection. Define a connection
+as one transport session with stable endpoint addresses and ports. Do not
+label the older established-only mark restoration as true per-packet selection.
+
+The proposed configuration separates the assignment algorithm from the
+selection unit:
+
+```json
+{
+  "hash-mode": "random",
+  "selection-unit": "connection"
+}
+```
+
+The proposed selection-unit values are connection and packet. Connection
+selection reuses one ISP choice for a transport session. Packet selection
+chooses an ISP for each packet. Packet selection requires endpoint addressing
+that remains valid through each selected ISP. The new field is not implemented.
+Settle its omission behavior and supported translation combinations in Step 2.
+
+Steps:
+
+1. Classify each hardcoded choice as operator policy, protocol requirement or
+   compiler behavior. Expose operator policy through typed configuration;
+   preserve required protocol handling and kernel implementation details.
+2. Settle supported selection modes, omitted-field compatibility and translation
+   constraints. Preserve the shared configuration source and avoid raw nftables
+   expressions or a second rule language in the network document.
+3. Add the settled contract to the schema, loader, shared types, publication,
+   firewall writer and steering writer. Validate the complete combination before
+   changing kernel state. Preserve DSCP and destination policies, inbound return
+   paths, family readiness, weights and provider exclusion.
+4. Add the smallest public command and real packet regression for each changed
+   behavior. Use the existing namespace and testbed clients; add no mocks,
+   static-content checks or private builder-call tests.
+5. Implement and review the coherent policy change before deployment. Use one
+   focused MWAN PR unless an actual dependency requires a stack. Prepare the
+   compatible Configs inputs separately and deploy only merged releases.
+6. Validate the accepted modes on testbed with both guest families, unreplied
+   TCP requests, established TCP, UDP, balancing, translation, inbound replies
+   and recovery. Record unsupported or unperformed combinations separately.
+7. Promote only after the required testbed proof. Record any production policy
+   change explicitly instead of assuming that omitted fields authorize it.
+
+Verification:
+
+Run the existing public network loader and isolated firewall validator against
+accepted and rejected configuration combinations. Require rejected settings to
+preserve the prior kernel policy. Verify actual provider selections and endpoint
+addresses with packet observations, then repeat the affected cutover acceptance.
+Close the reopened work only after its implementation and acceptance are recorded.
