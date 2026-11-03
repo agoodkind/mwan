@@ -505,7 +505,7 @@ func applyObservedDelta(current *ConnectionState, event netif.Event) {
 		state.Routes = appendOrReplaceRoute(state.Routes, routeFromEvent(event))
 	case netif.EvRouteDeleted:
 		state.Routes = removeRoute(state.Routes, routeFromEvent(event))
-	case netif.EvUnknown, netif.EvResync, netif.EvObservationStale, netif.EvObservationFailed:
+	case netif.EvUnknown, netif.EvResync, netif.EvObservationStale, netif.EvObservationFailed, netif.EvUplinkReturned:
 	}
 }
 

@@ -129,7 +129,7 @@ func (module *Module) onObservedEvent(_ context.Context, _ *slog.Logger, event n
 			module.Env.RequestReconcile(fmt.Sprintf("route event in table %d on %s", event.TableID, event.Iface))
 		}
 	case netif.EvUnknown, netif.EvAddrAdded, netif.EvAddrDeleted,
-		netif.EvObservationStale, netif.EvObservationFailed:
+		netif.EvObservationStale, netif.EvObservationFailed, netif.EvUplinkReturned:
 	}
 }
 

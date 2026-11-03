@@ -438,6 +438,23 @@ func (d *Daemon) shutdownModules(ctx context.Context) error {
 	return failures
 }
 
+func signalDHCPClient(client *netif.DHCPClient, ev netif.Event) {
+	if client == nil {
+		return
+	}
+	if ev.Kind == netif.EvUplinkReturned {
+		client.VerifyLease()
+		return
+	}
+	if ev.Kind != netif.EvLinkUp && ev.Kind != netif.EvLinkDown && ev.Kind != netif.EvResync {
+		return
+	}
+	if ev.Kind == netif.EvLinkDown || (ev.Kind == netif.EvResync && !ev.Snapshot.LinkUp) {
+		client.LinkDown()
+	}
+	client.LinkChanged()
+}
+
 func (d *Daemon) runLoop(
 	ctx context.Context,
 	mon *netif.Monitor,
@@ -490,12 +507,7 @@ func (d *Daemon) runLoop(
 				"iface", ev.Iface,
 			)
 			d.dispatchEvent(eventCtx, elog, ev)
-			if dhcpClient != nil && (ev.Kind == netif.EvLinkUp || ev.Kind == netif.EvLinkDown || ev.Kind == netif.EvResync) {
-				if ev.Kind == netif.EvLinkDown || (ev.Kind == netif.EvResync && !ev.Snapshot.LinkUp) {
-					dhcpClient.LinkDown()
-				}
-				dhcpClient.LinkChanged()
-			}
+			signalDHCPClient(dhcpClient, ev)
 			if ev.Kind == netif.EvResync {
 				d.reconcileAll(eventCtx, elog)
 			}
