@@ -62,6 +62,10 @@ type watchdog struct {
 	totalDownStartUnix    int64
 	lastHeartbeat         time.Time
 
+	connectivityLossObservedAt map[string]time.Time
+	lastTotalLossReason        string
+	lastTotalLossDetail        string
+
 	// probeLog accumulates per-cycle probe results for inclusion in emails.
 	probeLog []string
 
@@ -131,6 +135,10 @@ func newWatchdog(
 		consecutiveTotalFails: 0,
 		totalDownStartUnix:    0,
 		lastHeartbeat:         time.Time{},
+
+		connectivityLossObservedAt: map[string]time.Time{},
+		lastTotalLossReason:        "",
+		lastTotalLossDetail:        "",
 
 		probeLog: nil,
 		tracker:  nil,

@@ -85,8 +85,8 @@ func (w *watchdog) probeConnectivity(ctx context.Context) (v4ok, v6ok bool) {
 	return v4ok, v6ok
 }
 
-// testVMConnectivity pings through the VM's default route to distinguish a
-// MWAN routing failure from a Proxmox-side issue.
+// testVMConnectivity pings IPv6 via the VM default route, then IPv4 on failure,
+// and reports if either succeeds. It cannot explain hypervisor probe failure.
 func (w *watchdog) testVMConnectivity(ctx context.Context) bool {
 	log := w.tracedLogger(ctx)
 	log.InfoContext(ctx,
@@ -100,11 +100,11 @@ func (w *watchdog) testVMConnectivity(ctx context.Context) bool {
 	)
 	if v6ok {
 		log.InfoContext(ctx,
-			"VM default-route IPv6 ping OK -> issue is Proxmox-side",
+			"VM default-route IPv6 ping OK",
 			"vmid", w.cfg.MwanVMID,
 		)
 		w.appendProbe(fmt.Sprintf(
-			"VM %s default-route: IPv6 OK (Proxmox-side issue confirmed)",
+			"VM %s default-route: IPv6 OK",
 			w.cfg.MwanVMID,
 		))
 		return true
@@ -114,11 +114,11 @@ func (w *watchdog) testVMConnectivity(ctx context.Context) bool {
 	)
 	if v4ok {
 		log.InfoContext(ctx,
-			"VM default-route IPv4 ping OK -> issue is Proxmox-side",
+			"VM default-route IPv4 ping OK",
 			"vmid", w.cfg.MwanVMID,
 		)
 		w.appendProbe(fmt.Sprintf(
-			"VM %s default-route: IPv4 OK (Proxmox-side issue confirmed)",
+			"VM %s default-route: IPv4 OK",
 			w.cfg.MwanVMID,
 		))
 		return true

@@ -19,6 +19,14 @@ const (
 	connectivityTotalMessage     = "connectivity total loss"
 	protoIPv4                    = "IPv4"
 	protoIPv6                    = "IPv6"
+	connectivityObservationTotal = "total"
+	connectivityProbeSource      = "hypervisor"
+	connectivityProbeSucceeded   = "succeeded"
+	connectivityProbeFailed      = "failed"
+
+	connectivityTotalReason          = "The hypervisor IPv4 and IPv6 probes failed. The watchdog did not find a recent configuration change."
+	connectivityFailoverNotAttempted = "The watchdog did not attempt failover."
+	connectivityFailoverNotTriggered = "The watchdog attempted failover, but failover did not trigger."
 )
 
 func (w *watchdog) sendPartialAlert(ctx context.Context, proto string) {
@@ -48,36 +56,103 @@ func (w *watchdog) sendPartialAlert(ctx context.Context, proto string) {
 }
 
 func (w *watchdog) connectivityPartialFields(proto string) []slog.Attr {
+	target := w.cfg.Network.PingTargetIPv6
+	if proto == protoIPv4 {
+		target = w.cfg.Network.PingTargetIPv4
+	}
 	return []slog.Attr{
+		slog.String("probe_source", connectivityProbeSource),
 		slog.String("proto", proto),
+		slog.String("target", target),
+		slog.String("first_failed_probe_observed_at", formatObservedTime(w.connectivityLossObservedAt[proto])),
 		slog.String("vm_id", w.cfg.MwanVMID),
 		slog.String("node", w.cfg.PVE.Node),
 	}
 }
 
+func (w *watchdog) connectivityTotalFields() []slog.Attr {
+	return []slog.Attr{
+		slog.String("probe_source", connectivityProbeSource),
+		slog.String("target_ipv4", w.cfg.Network.PingTargetIPv4),
+		slog.String("target_ipv6", w.cfg.Network.PingTargetIPv6),
+		slog.String("first_failed_probe_observed_at", formatObservedTime(w.connectivityLossObservedAt[connectivityObservationTotal])),
+		slog.String("vm_id", w.cfg.MwanVMID),
+		slog.String("node", w.cfg.PVE.Node),
+	}
+}
+
+func formatObservedTime(observedAt time.Time) string {
+	return observedAt.UTC().Format(time.RFC3339)
+}
+
+func (w *watchdog) recoveryObservationFields(key string, recoveredAt time.Time) []slog.Attr {
+	return []slog.Attr{
+		slog.String("recovery_probe_observed_at", formatObservedTime(recoveredAt)),
+		slog.Duration("observed_elapsed", recoveredAt.Sub(w.connectivityLossObservedAt[key]).Round(time.Second)),
+	}
+}
+
+func (w *watchdog) observeConnectivityLoss(key string, observedAt time.Time) {
+	if w.connectivityLossObservedAt == nil {
+		w.connectivityLossObservedAt = map[string]time.Time{}
+	}
+	if _, observed := w.connectivityLossObservedAt[key]; !observed {
+		w.connectivityLossObservedAt[key] = observedAt
+	}
+}
+
+func (w *watchdog) resolvePartialConnectivityAlert(ctx context.Context, proto string, recoveredAt time.Time) {
+	w.limiter.ResetPartialCooldown(proto)
+	if _, observed := w.connectivityLossObservedAt[proto]; !observed {
+		return
+	}
+	fields := append(w.connectivityPartialFields(proto), w.recoveryObservationFields(proto, recoveredAt)...)
+	w.notifierOrNull().Resolve(ctx, alertKindConnectivityPartial, w.cfg.MwanVMID+"/"+proto,
+		connectivityPartialMessage, fields...)
+	delete(w.connectivityLossObservedAt, proto)
+}
+
+func (w *watchdog) resolveTotalConnectivityAlert(ctx context.Context, recoveredAt time.Time) {
+	w.limiter.ResetTotalCooldown()
+	if _, observed := w.connectivityLossObservedAt[connectivityObservationTotal]; !observed {
+		return
+	}
+	fields := append(w.connectivityTotalFields(), w.recoveryObservationFields(connectivityObservationTotal, recoveredAt)...)
+	if w.lastTotalLossReason != "" {
+		fields = append(fields,
+			slog.String("last_loss_reason", w.lastTotalLossReason),
+			slog.String("last_loss_detail", w.lastTotalLossDetail),
+		)
+	}
+	w.notifierOrNull().Resolve(ctx, alertKindConnectivityTotal, w.cfg.MwanVMID, connectivityTotalMessage, fields...)
+	delete(w.connectivityLossObservedAt, connectivityObservationTotal)
+	w.lastTotalLossReason = ""
+	w.lastTotalLossDetail = ""
+}
+
 func (w *watchdog) resolveConnectivityAlerts(ctx context.Context, v4ok, v6ok bool) {
-	notifier := w.notifierOrNull()
+	observedAt := w.now()
 	if v4ok {
-		w.limiter.ResetPartialCooldown(protoIPv4)
-		notifier.Resolve(ctx, alertKindConnectivityPartial, w.cfg.MwanVMID+"/"+protoIPv4,
-			connectivityPartialMessage, w.connectivityPartialFields(protoIPv4)...)
+		w.resolvePartialConnectivityAlert(ctx, protoIPv4, observedAt)
+	} else {
+		w.observeConnectivityLoss(protoIPv4, observedAt)
 	}
 	if v6ok {
-		w.limiter.ResetPartialCooldown(protoIPv6)
-		notifier.Resolve(ctx, alertKindConnectivityPartial, w.cfg.MwanVMID+"/"+protoIPv6,
-			connectivityPartialMessage, w.connectivityPartialFields(protoIPv6)...)
+		w.resolvePartialConnectivityAlert(ctx, protoIPv6, observedAt)
+	} else {
+		w.observeConnectivityLoss(protoIPv6, observedAt)
 	}
 	if v4ok || v6ok {
-		w.limiter.ResetTotalCooldown()
-		notifier.Resolve(ctx, alertKindConnectivityTotal, w.cfg.MwanVMID, connectivityTotalMessage,
-			slog.String("vm_id", w.cfg.MwanVMID),
-			slog.String("node", w.cfg.PVE.Node),
-		)
+		w.resolveTotalConnectivityAlert(ctx, observedAt)
+	} else {
+		w.observeConnectivityLoss(connectivityObservationTotal, observedAt)
 	}
 }
 
 func (w *watchdog) sendTotalAlert(ctx context.Context, reason, detail string) {
 	log := w.tracedLogger(ctx)
+	w.lastTotalLossReason = reason
+	w.lastTotalLossDetail = detail
 	if !w.limiter.TrySendTotal(w.now()) {
 		remaining := w.limiter.TotalCooldownRemaining(w.now())
 		log.InfoContext(ctx,
@@ -94,12 +169,10 @@ func (w *watchdog) sendTotalAlert(ctx context.Context, reason, detail string) {
 		Kind:    alertKindConnectivityTotal,
 		Key:     w.cfg.MwanVMID,
 		Message: connectivityTotalMessage,
-		Fields: []slog.Attr{
+		Fields: append(w.connectivityTotalFields(),
 			slog.String("reason", reason),
 			slog.String("detail", detail),
-			slog.String("vm_id", w.cfg.MwanVMID),
-			slog.String("node", w.cfg.PVE.Node),
-		},
+		),
 		IsRecovery: false,
 	})
 }
@@ -158,32 +231,18 @@ func (w *watchdog) diagnoseNoRecentChange(ctx context.Context) bool {
 	vmOK := w.testVMConnectivity(ctx)
 	w.logPushedStatus(ctx)
 
-	var reason, detail string
+	gatewayProbe := connectivityProbeFailed
+	failover := connectivityFailoverNotAttempted
 	if vmOK {
-		reason = "Proxmox host cannot reach internet but MWAN VM can"
-		detail = "VM has internet via default route. " +
-			"This suggests a Proxmox-side routing or " +
-			"OPNsense issue, not an MWAN configuration " +
-			"problem.\nNo rollback triggered. " +
-			"Manual investigation needed."
-	} else {
-		// VM has no internet and no config changed.
-		// Check if failover LXC can reach the internet.
-		// If yes: failover is useful (VM routing broken, LXC WAN works).
-		// A failed probe does not identify the cause of the outage.
-		if w.cfg.Failover.LXCID != "" {
-			if w.tryFailover(ctx, w.cfg, "Total connectivity loss on primary, no recent config change") {
-				return true
-			}
+		gatewayProbe = connectivityProbeSucceeded
+	} else if w.cfg.Failover.LXCID != "" {
+		if w.tryFailover(ctx, w.cfg, "Total connectivity loss on primary, no recent config change") {
+			return true
 		}
-		reason = "Total connectivity loss, no recent config change"
-		detail = fmt.Sprintf(
-			"All connectivity tests failed and no config "+
-				"change detected within %dm.\n"+
-				"The failover LXC did not pass an Internet probe or is not configured.",
-			w.cfg.Watchdog.DeployWindowMinutes,
-		)
+		failover = connectivityFailoverNotTriggered
 	}
+	reason := connectivityTotalReason
+	detail := fmt.Sprintf("Gateway default-route probe: %s\nFailover: %s", gatewayProbe, failover)
 
 	w.sendTotalAlert(ctx, reason, detail)
 	log.InfoContext(ctx,
