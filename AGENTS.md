@@ -1,6 +1,6 @@
 # AGENTS
 
-Standards for changing the Go code here. A violation blocks merge. What the
+Standards for changing code here. A violation blocks merge. What the
 binary installs, how to build it, and which gates to run are in
 [README.md](README.md); run those gates before reporting a change as done.
 
@@ -20,7 +20,28 @@ The OPNsense tooling, including the daemon inside the OPNsense guest, is the
 separate `opnsensectl` binary in
 [agoodkind/opnsensectl](https://github.com/agoodkind/opnsensectl).
 
+## Build and test selection
+
+Do not add build tags, including test tags, or new tag-selected alternative
+implementations unless the operator explicitly requests or approves an exception.
+Record each approved exception in the affected code's comments.
+Use runtime configuration to enable production features. Use
+explicit runtime settings to request tests that need namespaces, hardware or
+special privileges. Root access alone does not request those tests.
+
+Skip an unrequested special-environment test before it creates namespaces, opens
+devices or changes network state. Fail a requested test clearly when required
+privileges, hardware or configuration are missing. Run a requested test when its
+prerequisites are present.
+
+Mocking is strongly discouraged.
+
+Reuse exposed go-makefile primitives before adding custom Makefile code. Keep
+the Makefile limited to operations the shared primitives cannot express.
+
 ## Code standards
+
+Write new native logic and hardware test cases in Rust. Reuse existing C without a broad rewrite. Patches inside DPDK, VPP and other third-party systems may use C.
 
 - **One configuration path.** A subcommand reads its settings through
   `gateway/internal/config`, which loads one TOML file and overlays exactly two secrets
