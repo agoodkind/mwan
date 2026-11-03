@@ -260,6 +260,12 @@ func (c *DHCPClient) LinkDown() {
 	c.mu.Unlock()
 }
 
+// VerifyLease asks the client to verify its lease as after interface return.
+func (c *DHCPClient) VerifyLease() {
+	c.LinkDown()
+	c.LinkChanged()
+}
+
 func (c *DHCPClient) takeLinkDown() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
