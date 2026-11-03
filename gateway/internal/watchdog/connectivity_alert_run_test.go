@@ -193,7 +193,7 @@ func requireConnectivityRecovery(t *testing.T, server *testsmtp.Server, wantSubj
 func requireDelayedTotalAlert(t *testing.T, server *testsmtp.Server, lossSetAt time.Time, wantDetail []string) {
 	t.Helper()
 
-	body := requireConnectivityAlert(t, server, "ERROR: connectivity total loss", alertTotalReason)
+	body := requireConnectivityAlert(t, server, "ERROR: hypervisor probe total loss", alertTotalReason)
 	receivedAt := time.Now()
 	for _, want := range wantDetail {
 		if !strings.Contains(body, want) {
@@ -296,24 +296,24 @@ func TestRunNotifiesConnectivityLossAndRecovery(t *testing.T) {
 	}
 
 	v4LossAt := setAt(1, 0)
-	requireConnectivityAlert(t, server, "ERROR: connectivity partial loss", "IPv4")
+	requireConnectivityAlert(t, server, "ERROR: hypervisor probe partial loss", "IPv4")
 	v6LossAt := setAt(0, 1)
-	requireConnectivityRecovery(t, server, "ERROR: RECOVERED: connectivity partial loss", targetV4, v4LossAt, v6LossAt)
-	requireConnectivityAlert(t, server, "ERROR: connectivity partial loss", "IPv6")
+	requireConnectivityRecovery(t, server, "ERROR: RECOVERED: hypervisor probe partial loss", targetV4, v4LossAt, v6LossAt)
+	requireConnectivityAlert(t, server, "ERROR: hypervisor probe partial loss", "IPv6")
 	v4LossAt = setAt(1, 0)
-	requireConnectivityRecovery(t, server, "ERROR: RECOVERED: connectivity partial loss", targetV6, v6LossAt, v4LossAt)
-	requireConnectivityAlert(t, server, "ERROR: connectivity partial loss", "IPv4")
+	requireConnectivityRecovery(t, server, "ERROR: RECOVERED: hypervisor probe partial loss", targetV6, v6LossAt, v4LossAt)
+	requireConnectivityAlert(t, server, "ERROR: hypervisor probe partial loss", "IPv4")
 	healthyAt := setAt(0, 0)
-	requireConnectivityRecovery(t, server, "ERROR: RECOVERED: connectivity partial loss", targetV4, v4LossAt, healthyAt)
+	requireConnectivityRecovery(t, server, "ERROR: RECOVERED: hypervisor probe partial loss", targetV4, v4LossAt, healthyAt)
 	v6LossAt = setAt(0, 1)
-	requireConnectivityAlert(t, server, "ERROR: connectivity partial loss", "IPv6")
+	requireConnectivityAlert(t, server, "ERROR: hypervisor probe partial loss", "IPv6")
 	totalLossAt := setAt(1, 1)
 	requireDelayedTotalAlert(t, server, totalLossAt, []string{
 		"Gateway default-route probe: failed",
 		"Failover: The watchdog attempted failover, but failover did not trigger.",
 	})
 	v4BackAt := setAt(0, 1)
-	requireConnectivityRecovery(t, server, "ERROR: RECOVERED: connectivity total loss",
+	requireConnectivityRecovery(t, server, "ERROR: RECOVERED: hypervisor probe total loss",
 		append(targetsBoth, "Last_loss_reason: "+alertTotalReason, "Gateway default-route probe: failed"), totalLossAt, v4BackAt)
 	gatewayReachable = 0
 	totalLossAt = setAt(1, 1)
@@ -322,7 +322,7 @@ func TestRunNotifiesConnectivityLossAndRecovery(t *testing.T) {
 		"Failover: The watchdog did not attempt failover.",
 	})
 	healthyAt = setAt(0, 0)
-	requireConnectivityRecovery(t, server, "ERROR: RECOVERED: connectivity partial loss", targetV6, v6LossAt, healthyAt)
-	requireConnectivityRecovery(t, server, "ERROR: RECOVERED: connectivity total loss",
+	requireConnectivityRecovery(t, server, "ERROR: RECOVERED: hypervisor probe partial loss", targetV6, v6LossAt, healthyAt)
+	requireConnectivityRecovery(t, server, "ERROR: RECOVERED: hypervisor probe total loss",
 		append(targetsBoth, "Last_loss_reason: "+alertTotalReason, "Gateway default-route probe: succeeded"), totalLossAt, healthyAt)
 }

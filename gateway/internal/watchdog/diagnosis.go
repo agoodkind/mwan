@@ -15,8 +15,8 @@ import (
 const (
 	alertKindConnectivityPartial = "connectivity-partial"
 	alertKindConnectivityTotal   = "connectivity-total"
-	connectivityPartialMessage   = "connectivity partial loss"
-	connectivityTotalMessage     = "connectivity total loss"
+	connectivityPartialMessage   = "hypervisor probe partial loss"
+	connectivityTotalMessage     = "hypervisor probe total loss"
 	protoIPv4                    = "IPv4"
 	protoIPv6                    = "IPv6"
 	connectivityObservationTotal = "total"
