@@ -584,6 +584,9 @@ func (d *Daemon) reconcileAll(ctx context.Context, log *slog.Logger) {
 		}
 	}
 	if d.role != "wan" {
+		if d.cfg.ForwardingReadySocket != "" {
+			d.setForwardingReadiness(d.reportedForwardingReadiness())
+		}
 		return
 	}
 	if d.cfg.LiveState != nil {

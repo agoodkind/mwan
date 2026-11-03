@@ -112,7 +112,7 @@ func runIfMgr(cfg *config.Config, watchdogSection watchdogconfig.WatchdogSection
 	dcfg.Notifier = notify.FromConfig(cfg.Email, cfg.NotifyConfig(), logger, "mwan-ifmgr")
 	dcfg.LiveState = wanstate.New()
 	dcfg.LiveState.SetTransitionLogger(runID, logger)
-	if role == "wan" && cfg.BGP.Enabled && cfg.BGP.UseWanconfig {
+	if (role == "wan" || role == "failover") && cfg.BGP.Enabled && cfg.BGP.ForwardingReadinessEnabled() {
 		dcfg.ForwardingReadySocket = cfg.BGP.ForwardingReadiness.SocketPath
 		dcfg.ForwardingReadyTimeout = cfg.BGP.ForwardingReadiness.ReadTimeout()
 	}

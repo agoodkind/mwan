@@ -90,7 +90,12 @@ type BGPSection struct {
 	ForwardingReadiness BGPForwardingReadiness `toml:"forwarding_readiness"`
 }
 
-// BGPForwardingReadiness configures the primary speaker's ifmgr readiness check.
+// ForwardingReadinessEnabled reports whether the host gates BGP announcements on ifmgr readiness.
+func (b *BGPSection) ForwardingReadinessEnabled() bool {
+	return b.UseWanconfig || b.ForwardingReadiness.SocketPath != ""
+}
+
+// BGPForwardingReadiness configures the ifmgr readiness check for BGP announcements.
 type BGPForwardingReadiness struct {
 	SocketPath               string `toml:"socket_path"`
 	PollIntervalMilliseconds int    `toml:"poll_interval_milliseconds"`
@@ -345,7 +350,7 @@ func loadConfig(path string) (*Config, error) {
 		slog.Error("validate native offload process settings failed", "error", err)
 		return nil, fmt.Errorf("validate [ifmgr.modules.nativeoffload]: %w", err)
 	}
-	if err := validateBGPForwardingReadiness(&cfg.BGP); err != nil {
+	if err := validateBGPForwardingReadiness(&cfg); err != nil {
 		slog.Error("validate BGP forwarding readiness failed", "error", err)
 		return nil, fmt.Errorf("validate BGP forwarding readiness: %w", err)
 	}
@@ -378,8 +383,9 @@ func validateBGPDynamicNeighbors(prefixes []string) error {
 	return nil
 }
 
-func validateBGPForwardingReadiness(b *BGPSection) error {
-	if !b.Enabled || !b.UseWanconfig {
+func validateBGPForwardingReadiness(cfg *Config) error {
+	b := &cfg.BGP
+	if !b.Enabled || !b.ForwardingReadinessEnabled() {
 		return nil
 	}
 	readiness := b.ForwardingReadiness
@@ -391,6 +397,16 @@ func validateBGPForwardingReadiness(b *BGPSection) error {
 	}
 	if readiness.ReadTimeoutMilliseconds <= 0 {
 		return errors.New("[bgp.forwarding_readiness] read_timeout_milliseconds must be greater than zero")
+	}
+	if b.UseWanconfig {
+		return nil
+	}
+	probe := cfg.IfMgr.Modules.ConnectivityProbe
+	if len(b.Announce.IPv4) > 0 && (probe == nil || len(probe.TargetsV4) == 0) {
+		return errors.New("[ifmgr.modules.connectivity_probe] targets_v4 is required when [bgp.announce] ipv4 is configured and forwarding readiness is enabled without use_wanconfig")
+	}
+	if len(b.Announce.IPv6) > 0 && (probe == nil || len(probe.TargetsV6) == 0) {
+		return errors.New("[ifmgr.modules.connectivity_probe] targets_v6 is required when [bgp.announce] ipv6 is configured and forwarding readiness is enabled without use_wanconfig")
 	}
 	return nil
 }

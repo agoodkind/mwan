@@ -99,6 +99,9 @@ type watchdog struct {
 	failoverActive    bool
 	failoverStartedAt time.Time
 	failoverReason    string
+
+	// requireCompleteBackup requires the LXC to announce every configured address family before the watchdog withdraws primary routes.
+	requireCompleteBackup bool
 }
 
 // newWatchdog builds a watchdog with every field set, so the zero values
@@ -157,6 +160,8 @@ func newWatchdog(
 		failoverActive:    false,
 		failoverStartedAt: time.Time{},
 		failoverReason:    "",
+
+		requireCompleteBackup: false,
 	}
 }
 
