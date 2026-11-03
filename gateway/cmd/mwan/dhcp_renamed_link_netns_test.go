@@ -327,8 +327,19 @@ func assertDHCPBoundLinkFlapKeepsLease(t *testing.T, daemon *runtimeDaemon, serv
 	if err != nil {
 		t.Fatal(err)
 	}
-	var packetCount atomic.Int64
-	defer startDHCPRequestCounter(t, &packetCount, flappedLink.Attrs().HardwareAddr, serverNamespace, gateway)()
+	var verificationCount, otherPacketCount atomic.Int64
+	hardwareAddress := flappedLink.Attrs().HardwareAddr
+	defer startDHCPRuntimeServer(t, "wan-vlan", serverNamespace, gateway,
+		func(_ net.PacketConn, _ net.Addr, packet *dhcpv4.DHCPv4) {
+			if !bytes.Equal(packet.ClientHWAddr, hardwareAddress) {
+				return
+			}
+			if packet.MessageType() == dhcpv4.MessageTypeRequest && packet.ClientIPAddr.IsUnspecified() && !packet.Options.Has(dhcpv4.OptionServerIdentifier) {
+				verificationCount.Add(1)
+				return
+			}
+			otherPacketCount.Add(1)
+		})()
 	store, err := netif.NewLeaseRecoveryStore(leaseDirectory)
 	if err != nil {
 		t.Fatal(err)
@@ -349,7 +360,10 @@ func assertDHCPBoundLinkFlapKeepsLease(t *testing.T, daemon *runtimeDaemon, serv
 	}
 	time.Sleep(5 * time.Second)
 	assertRuntimeDaemonRunning(t, daemon)
-	if count := packetCount.Load(); count != 0 {
+	if verificationCount.Load() == 0 {
+		t.Fatalf("The server did not receive a verification request after the interface returned. Daemon log: %s", runtimeLogTail(t, daemon, 30))
+	}
+	if count := otherPacketCount.Load(); count != 0 {
 		t.Fatalf("DHCP client packet count = %d, want 0: %s", count, runtimeLogTail(t, daemon, 30))
 	}
 	waitStaticRuntimeAddress(t, daemon, "enatt0", dhcpRenamedLinkAddress, true)
