@@ -153,12 +153,10 @@ func (w *watchdog) triggerBGPRecovery(ctx context.Context, cfg *watchdogconfig.C
 	prevReason := w.failoverReason
 	w.failoverMu.Unlock()
 
-	// Step 1: confirm the primary VM is reachable. Reuse the existing host-
-	// level Ping probes the watchdog already uses to gate failover decisions.
-	w.log.InfoContext(ctx, "BGP_RECOVERY: probing primary VM reachability",
+	w.log.InfoContext(ctx, "BGP_RECOVERY: probing primary VM connectivity",
 		"vmid", cfg.MwanVMID)
-	v4ok := w.ops.Ping(ctx, "ping", cfg.Network.PingTargetIPv4)
-	v6ok := w.ops.Ping(ctx, "ping6", cfg.Network.PingTargetIPv6)
+	v4ok := w.guestExecProbe(ctx, "ping", "-c", "2", "-W", "3", cfg.Network.PingTargetIPv4)
+	v6ok := w.guestExecProbe(ctx, "ping6", "-c", "2", "-W", "3", cfg.Network.PingTargetIPv6)
 	if !v4ok && !v6ok {
 		return fmt.Errorf("BGP recovery: primary VM %s still unreachable", cfg.MwanVMID)
 	}
