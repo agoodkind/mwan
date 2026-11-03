@@ -138,6 +138,8 @@ type Env struct {
 	PrepareOwnedLink netif.OwnedLinkPreparer
 	// OwnedLinkUp lets the addresses module handle EvLinkUp events from link monitors.
 	OwnedLinkUp *OwnedLinkUpHandler
+	// VerifyDHCPv4 asks the named interface's DHCPv4 client to verify its lease.
+	VerifyDHCPv4 *OwnedLinkUpHandler
 }
 
 // OwnedLinkUpHandler stores one link-up handler. The links module starts its

@@ -271,6 +271,14 @@ func (d *Daemon) Run(ctx context.Context) (resultErr error) {
 		InspectNativePacketPolicy: nil,
 		PrepareOwnedLink:          nil,
 		OwnedLinkUp:               &OwnedLinkUpHandler{mu: sync.RWMutex{}, handle: nil},
+		VerifyDHCPv4:              &OwnedLinkUpHandler{mu: sync.RWMutex{}, handle: nil},
+	}
+	if dhcp.client != nil {
+		d.env.VerifyDHCPv4.Set(func(iface string) {
+			if iface == d.cfg.Iface {
+				dhcp.client.VerifyLease()
+			}
+		})
 	}
 
 	d.publishStartingPaths()

@@ -180,7 +180,21 @@ func (module *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	if env.OwnedLinkUp != nil {
 		env.OwnedLinkUp.Set(module.wakeDHCPv6)
 	}
+	if env.VerifyDHCPv4 != nil {
+		env.VerifyDHCPv4.Set(module.verifyDHCPv4)
+	}
 	return nil
+}
+
+func (module *Module) verifyDHCPv4(iface string) {
+	module.sessionMu.Lock()
+	defer module.sessionMu.Unlock()
+	for _, session := range module.sessions {
+		if session.ready.Name == iface {
+			session.client.VerifyLease()
+			return
+		}
+	}
 }
 
 // Reconcile applies owned addresses and routes, then removes deleted families.

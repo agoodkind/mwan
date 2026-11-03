@@ -34,11 +34,12 @@ type Module struct {
 	connections []interfaceintent.Connection
 	reconciler  *netif.OwnedLinkReconciler
 	observed    map[string]bool
+	linkDown    map[string]bool
 }
 
 // New validates link ownership before the daemon writes networkd files.
 func New(config ifmgr.ModuleConfig) (ifmgr.Module, error) {
-	module := &Module{BaseModule: ifmgr.NewBaseModule(moduleName), connections: nil, reconciler: nil, observed: nil}
+	module := &Module{BaseModule: ifmgr.NewBaseModule(moduleName), connections: nil, reconciler: nil, observed: nil, linkDown: make(map[string]bool)}
 	if config == nil {
 		return module, nil
 	}
@@ -119,6 +120,7 @@ func (module *Module) onObservedEvent(_ context.Context, _ *slog.Logger, event n
 		if event.Kind == netif.EvLinkUp && module.Env.OwnedLinkUp != nil {
 			module.Env.OwnedLinkUp.Notify(event.Iface)
 		}
+		module.verifyAfterLinkReturn(event)
 		module.Env.RequestReconcile("link event on " + event.Iface)
 	case netif.EvRouteAdded, netif.EvRouteDeleted:
 		// Other modules rewrite policy-table routes on every pass.
@@ -128,6 +130,23 @@ func (module *Module) onObservedEvent(_ context.Context, _ *slog.Logger, event n
 		}
 	case netif.EvUnknown, netif.EvAddrAdded, netif.EvAddrDeleted,
 		netif.EvObservationStale, netif.EvObservationFailed:
+	}
+}
+
+// verifyAfterLinkReturn requests DHCPv4 on down/up; other updates report up.
+func (module *Module) verifyAfterLinkReturn(event netif.Event) {
+	module.Lock()
+	wasDown := module.linkDown[event.Iface]
+	down := event.Kind == netif.EvLinkDown || (event.Kind == netif.EvResync && event.Snapshot != nil && !event.Snapshot.LinkUp)
+	returned := event.Kind == netif.EvLinkUp && wasDown
+	if down {
+		module.linkDown[event.Iface] = true
+	} else if returned {
+		delete(module.linkDown, event.Iface)
+	}
+	module.Unlock()
+	if returned && module.Env.VerifyDHCPv4 != nil {
+		module.Env.VerifyDHCPv4.Notify(event.Iface)
 	}
 }
 

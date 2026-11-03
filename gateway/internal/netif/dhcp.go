@@ -252,12 +252,18 @@ func (c *DHCPClient) LinkChanged() {
 	}
 }
 
-// LinkDown records that the DHCP interface went down. After a failed
-// acquisition, only its return ends the retry wait early.
+// LinkDown records that the DHCP interface went down. When it returns, the
+// client ends an acquisition retry wait early and verifies any held lease.
 func (c *DHCPClient) LinkDown() {
 	c.mu.Lock()
 	c.linkDownSeen = true
 	c.mu.Unlock()
+}
+
+// VerifyLease asks the client to verify its lease as after interface return.
+func (c *DHCPClient) VerifyLease() {
+	c.LinkDown()
+	c.LinkChanged()
 }
 
 func (c *DHCPClient) takeLinkDown() bool {
@@ -623,123 +629,6 @@ func (c *DHCPClient) acquire(ctx context.Context) (*dhcpLease, error) {
 		"lease_time", lease.ACK.IPAddressLeaseTime(0).String(),
 	)
 	return &dhcpLease{lease: lease, requestedAt: requestedAt}, nil
-}
-
-// bound retains the assignment until a NAK or its original expiry.
-func (c *DHCPClient) bound(
-	ctx context.Context, logger *slog.Logger, lease *dhcpLease,
-) {
-	current := leaseToInfo(LeaseBound, lease.lease, c.clock.Now(), lease.requestedAt)
-	if !c.clock.Now().Before(current.ExpiresAt) {
-		c.emit(leaseState(LeaseExpired, current.AcquiredAt, errors.New("DHCP lease expired")))
-		return
-	}
-	c.emit(current)
-	current = c.LastLease()
-	state, noResponse := LeaseBound, false
-	for {
-		now := c.clock.Now()
-		if !now.Before(current.ExpiresAt) {
-			c.emit(leaseState(LeaseExpired, current.AcquiredAt, errors.New("DHCP lease expired")))
-			return
-		}
-		deadline := c.renewalWaitDeadline(now, current, state, noResponse)
-		wait := max(deadline.Sub(c.clock.Now()), 0)
-		if !c.waitForRenewal(ctx, wait) {
-			return
-		}
-		now = c.clock.Now()
-		if !now.Before(current.ExpiresAt) {
-			continue
-		}
-		if !c.originMatches() {
-			c.refreshExpiryOrigin(ctx)
-			c.emit(leaseState(LeaseExpired, current.AcquiredAt, errors.New("DHCP interface changed")))
-			return
-		}
-		if !now.Before(current.RebindAt) {
-			state = LeaseRebinding
-		} else {
-			state = LeaseRenewing
-		}
-		active := current
-		active.State = state
-		active.Err = nil
-		c.emit(active)
-		newLease, err := c.renewAttempt(ctx, lease, current, state, now)
-		if errors.Is(err, errDHCPInterfaceChanged) {
-			c.refreshExpiryOrigin(ctx)
-			c.emit(leaseState(LeaseExpired, current.AcquiredAt, err))
-			return
-		}
-		if err != nil {
-			if _, isNAK := errors.AsType[*nclient4.ErrNak](err); isNAK {
-				c.emit(leaseState(LeaseExpired, current.AcquiredAt, err))
-				return
-			}
-			logger.WarnContext(ctx, "dhcp: renewal attempt failed", "state", state, "err", err)
-			active.Err = err
-			c.emit(active)
-			noResponse = errors.Is(err, nclient4.ErrNoResponse) || errors.Is(err, context.DeadlineExceeded)
-			continue
-		}
-		noResponse = false
-		if err := validateLease(newLease.lease); err != nil {
-			logger.WarnContext(ctx, "dhcp: invalid renewal ACK", "err", err)
-			active.Err = err
-			c.emit(active)
-			continue
-		}
-		next := leaseToInfo(LeaseBound, newLease.lease, c.clock.Now(), newLease.requestedAt)
-		if !c.clock.Now().Before(next.ExpiresAt) {
-			err := errors.New("renewed DHCP lease expired before the ACK arrived")
-			logger.WarnContext(ctx, "dhcp: renewed lease expired", "err", err)
-			c.emit(leaseState(LeaseExpired, current.AcquiredAt, err))
-			return
-		}
-		lease = newLease
-		current = next
-		c.emit(current)
-		current = c.LastLease()
-		state = LeaseBound
-	}
-}
-
-func (c *DHCPClient) waitForRenewal(ctx context.Context, wait time.Duration) bool {
-	timer := time.NewTimer(wait)
-	defer timer.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return false
-		case <-c.linkChanged:
-			if !c.originMatches() {
-				return true
-			}
-		case <-timer.C:
-			return true
-		}
-	}
-}
-
-func (c *DHCPClient) renewalWaitDeadline(now time.Time, current LeaseInfo, state LeaseState, noResponse bool) time.Time {
-	deadline := current.RenewAt
-	if state != LeaseBound {
-		wait := c.cfg.RenewTimeout
-		if noResponse {
-			boundary := current.RebindAt
-			if state == LeaseRebinding {
-				boundary = current.ExpiresAt
-			}
-			wait = max(boundary.Sub(now)/2, dhcpMinimumRetransmitWait)
-		}
-		deadline = now.Add(wait)
-	}
-	deadline = earlier(deadline, current.ExpiresAt)
-	if state != LeaseRebinding {
-		deadline = earlier(deadline, current.RebindAt)
-	}
-	return deadline
 }
 
 func (c *DHCPClient) renewAttempt(
