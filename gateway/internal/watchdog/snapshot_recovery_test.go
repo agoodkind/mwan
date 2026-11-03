@@ -106,11 +106,11 @@ func TestAlertFiresOnlyAfterRepeatedFailures(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	w.nowFn = func() time.Time { return now }
 	ctx := context.Background()
-	fn := fakeNotifierFrom(t, w)
+	useSMTPNotifier(t, w)
 
 	for i := 1; i < snapshotFailureAlertThreshold; i++ {
 		w.noteSnapshotFailure(ctx, "known-good-x", errors.New("boom"))
-		if fn.Active(alertKindSnapshotFailed, w.cfg.MwanVMID) {
+		if w.notify.Active(alertKindSnapshotFailed, w.cfg.MwanVMID) {
 			t.Fatalf("alert fired after %d failures, before the threshold of %d",
 				i, snapshotFailureAlertThreshold)
 		}
@@ -118,7 +118,7 @@ func TestAlertFiresOnlyAfterRepeatedFailures(t *testing.T) {
 
 	w.noteSnapshotFailure(ctx, "known-good-x", errors.New("boom"))
 
-	if !fn.Active(alertKindSnapshotFailed, w.cfg.MwanVMID) {
+	if !w.notify.Active(alertKindSnapshotFailed, w.cfg.MwanVMID) {
 		t.Fatalf("no alert after %d failures in a row",
 			snapshotFailureAlertThreshold)
 	}

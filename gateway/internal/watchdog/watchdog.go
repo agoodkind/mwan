@@ -43,7 +43,7 @@ const (
 type watchdog struct {
 	cfg     *watchdogconfig.Config
 	ops     ops.SysOps
-	notify  notify.Notifier
+	notify  notify.SilentNotifier
 	coord   *alert.Coord
 	limiter *alert.Limiter
 	log     *slog.Logger
@@ -114,7 +114,7 @@ type watchdog struct {
 func newWatchdog(
 	cfg *watchdogconfig.Config,
 	sysOps ops.SysOps,
-	notifier notify.Notifier,
+	notifier notify.SilentNotifier,
 	coord *alert.Coord,
 	logger *slog.Logger,
 	runID string,

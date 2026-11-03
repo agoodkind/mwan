@@ -1,8 +1,9 @@
 package watchdog
 
 import (
+	"bytes"
 	"context"
-	"strings"
+	"net/mail"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"goodkind.io/mwan/internal/alert"
 	"goodkind.io/mwan/internal/notify"
 	"goodkind.io/mwan/internal/ops"
+	"goodkind.io/mwan/internal/testsmtp"
 	"goodkind.io/mwan/internal/watchdogconfig"
 )
 
@@ -24,21 +26,40 @@ func recoveryTestCfgOverrides(cfg *watchdogconfig.Config) {
 	}
 }
 
-// notifyMessagesContaining returns the messages of every notify event
-// whose Message field includes any of the given substrings, preserving
-// order. Used by recovery tests that need to assert on what the
-// watchdog emitted through the notifier boundary.
-func notifyMessagesContaining(events []notifyEvent, needles ...string) []string {
-	var out []string
-	for _, e := range events {
-		for _, n := range needles {
-			if strings.Contains(e.Message, n) {
-				out = append(out, e.Message)
-				break
-			}
-		}
+func useSMTPNotifier(t *testing.T, w *watchdog) *testsmtp.Server {
+	t.Helper()
+	server := testsmtp.Start(t)
+	w.notify = notify.FromConfig(notify.EmailConfig{
+		MsmtprcPath: server.Path,
+		AlertEmail:  "test@test.com",
+		MinLevel:    "ERROR",
+	}, notify.Config{}, w.log, "mwan-watchdog")
+	return server
+}
+
+func requireEmailSubject(t *testing.T, server *testsmtp.Server, want string) {
+	t.Helper()
+	message, err := mail.ReadMessage(bytes.NewReader(server.Next(t)))
+	if err != nil {
+		t.Fatal(err)
 	}
-	return out
+	if subject := message.Header.Get("Subject"); subject != want {
+		t.Fatalf("The subject is %q; expected %q.", subject, want)
+	}
+}
+
+func queuedEmailSubject(t *testing.T, server *testsmtp.Server) (string, bool) {
+	t.Helper()
+	select {
+	case data := <-server.Messages:
+		message, err := mail.ReadMessage(bytes.NewReader(data))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return message.Header.Get("Subject"), true
+	default:
+		return "", false
+	}
 }
 
 // TestRecoveryEmail_AfterFailover walks failover then a healthy probe cycle
@@ -58,6 +79,7 @@ func TestRecoveryEmail_AfterFailover(t *testing.T) {
 		},
 	}
 	w := newTestWatchdog(t, m, recoveryTestCfgOverrides)
+	server := useSMTPNotifier(t, w)
 	// Provide a fixed clock so elapsed durations are deterministic in body.
 	now := time.Unix(1_700_000_000, 0)
 	w.nowFn = func() time.Time { return now }
@@ -90,28 +112,14 @@ func TestRecoveryEmail_AfterFailover(t *testing.T) {
 		t.Fatal("expected failoverActive=false after successful recovery")
 	}
 
-	fn := fakeNotifierFrom(t, w)
-	events := fn.snapshot()
-	messages := notifyMessagesContaining(events,
-		"BGP FAILOVER", "BGP FAILOVER COMPLETE", "BGP RECOVERED")
-	if len(messages) < 3 {
-		t.Fatalf("expected 3 notify events (FAILOVER, FAILOVER COMPLETE, RECOVERED); got %d: %v",
-			len(messages), messages)
+	requireEmailSubject(t, server, "ERROR: BGP FAILOVER: withdrawing routes from VM 113, announcing on LXC 203")
+	requireEmailSubject(t, server, "ERROR: BGP FAILOVER COMPLETE: LXC 203 announcing")
+	requireEmailSubject(t, server, "ERROR: RECOVERED: BGP RECOVERED: primary VM 113 accepted the announcement; backup remains available")
+	if subject, found := queuedEmailSubject(t, server); found {
+		t.Fatalf("An extra email arrived after the recovery email: %q.", subject)
 	}
-	// The last event the watchdog emits during recovery is the
-	// dedicated bgp-recovered Notify; the resolveAt of the active
-	// failover precedes it.
-	last := events[len(events)-1]
-	if !strings.Contains(last.Message, "BGP RECOVERED") {
-		t.Fatalf("expected last event to be BGP RECOVERED, got %q", last.Message)
-	}
-	if last.Kind != "bgp-recovered" {
-		t.Fatalf("expected last event kind=bgp-recovered, got %q", last.Kind)
-	}
-	// Verify the active failover state cleared so a future failover
-	// reads as a fresh transition.
-	if fn.Active("bgp-failover", w.cfg.MwanVMID) {
-		t.Fatal("expected bgp-failover key to be inactive after recovery")
+	if w.notify.Active("bgp-failover", w.cfg.MwanVMID) {
+		t.Fatal("The bgp-failover alert remained active after recovery.")
 	}
 
 	// Recovery leaves the backup announced until FRR selects the primary.
@@ -136,15 +144,13 @@ func TestRecoveryEmail_NoEmailWhenNotInFailover(t *testing.T) {
 		},
 	}
 	w := newTestWatchdog(t, m, recoveryTestCfgOverrides)
+	server := useSMTPNotifier(t, w)
 
 	ctx := context.Background()
 	w.maybeTriggerRecovery(ctx, w.cfg)
 
-	fn := fakeNotifierFrom(t, w)
-	events := fn.snapshot()
-	if len(events) != 0 {
-		t.Fatalf("expected zero notify events when not in failover; got %d: %+v",
-			len(events), events)
+	if subject, found := queuedEmailSubject(t, server); found {
+		t.Fatalf("%q: an email arrived while the watchdog was not in failover", subject)
 	}
 	if len(m.announceRoutesCalls) != 0 || len(m.withdrawRoutesCalls) != 0 {
 		t.Fatalf("expected zero route ops when not in failover; got announce=%v withdraw=%v",
@@ -168,6 +174,7 @@ func TestRecoveryEmail_PrimaryStillUnhealthy(t *testing.T) {
 		},
 	}
 	w := newTestWatchdog(t, m, recoveryTestCfgOverrides)
+	server := useSMTPNotifier(t, w)
 
 	ctx := context.Background()
 	if err := w.triggerBGPFailover(ctx, w.cfg, "backup announces no family"); err == nil {
@@ -181,8 +188,8 @@ func TestRecoveryEmail_PrimaryStillUnhealthy(t *testing.T) {
 		t.Fatalf("triggerBGPFailover: %v", err)
 	}
 
-	fn := fakeNotifierFrom(t, w)
-	preEvents := len(fn.snapshot())
+	requireEmailSubject(t, server, "ERROR: BGP FAILOVER: withdrawing routes from VM 113, announcing on LXC 203")
+	requireEmailSubject(t, server, "ERROR: BGP FAILOVER COMPLETE: LXC 203 announcing")
 	w.maybeTriggerRecovery(ctx, w.cfg)
 
 	w.failoverMu.Lock()
@@ -192,11 +199,7 @@ func TestRecoveryEmail_PrimaryStillUnhealthy(t *testing.T) {
 		t.Fatal("expected failoverActive to stay true while primary unreachable")
 	}
 
-	post := fn.snapshot()
-	for _, e := range post[preEvents:] {
-		if strings.Contains(e.Message, "BGP RECOVERED") {
-			t.Fatalf("did not expect a BGP RECOVERED notify when primary unreachable; got %q",
-				e.Message)
-		}
+	if subject, found := queuedEmailSubject(t, server); found {
+		t.Fatalf("%q: a recovery email arrived while the primary remained unreachable", subject)
 	}
 }

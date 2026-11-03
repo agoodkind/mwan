@@ -135,9 +135,12 @@ func (w *watchdog) triggerBGPFailover(ctx context.Context, cfg *watchdogconfig.C
 	// Record failover state under the mutex so the run loop can later detect
 	// recovery and emit the BGP RECOVERED email exactly once.
 	w.failoverMu.Lock()
+	// A repeated failover attempt during an active failover keeps the first start time and reason.
+	if !w.failoverActive {
+		w.failoverStartedAt = w.now()
+		w.failoverReason = reason
+	}
 	w.failoverActive = true
-	w.failoverStartedAt = w.now()
-	w.failoverReason = reason
 	w.failoverMu.Unlock()
 
 	return nil
@@ -192,28 +195,25 @@ func (w *watchdog) triggerBGPRecovery(ctx context.Context, cfg *watchdogconfig.C
 	// same severity the original Notify used (ERROR), per the Manager's
 	// resolveAt contract, so it crosses the same MinLevel threshold.
 	recoveryMsg := "BGP RECOVERED: primary VM " + cfg.MwanVMID + " accepted the announcement; backup remains available"
-	w.notify.Resolve(ctx, "bgp-failover", cfg.MwanVMID, recoveryMsg,
+	recoveryFields := []slog.Attr{
 		slog.Duration("recovery_elapsed", w.since(start).Round(time.Second)),
 		slog.String("original_reason", prevReason),
 		slog.Duration("time_in_failover", elapsedSinceFailover),
 		slog.String("lxc", cfg.Failover.LXCID),
 		slog.String("vmid", cfg.MwanVMID),
-	)
-	// Also emit a dedicated "bgp-recovered" event so dashboards or tests that
-	// gate on the explicit recovery kind see the transition.
-	w.notify.Notify(ctx, notify.Event{
-		Now:     time.Time{},
-		Level:   slog.LevelError,
-		Kind:    "bgp-recovered",
-		Key:     cfg.MwanVMID,
-		Message: recoveryMsg,
-		Fields: []slog.Attr{
-			slog.Duration("recovery_elapsed", w.since(start).Round(time.Second)),
-			slog.String("original_reason", prevReason),
-			slog.Duration("time_in_failover", elapsedSinceFailover),
-			slog.String("lxc", cfg.Failover.LXCID),
-			slog.String("vmid", cfg.MwanVMID),
-		},
+	}
+	w.notify.Resolve(ctx, "bgp-failover", cfg.MwanVMID, recoveryMsg, recoveryFields...)
+	// Resolve sends the recovery email for bgp-failover. Clear lets the next
+	// failover send a completion email without a second recovery email.
+	w.notify.Clear("bgp-failover-complete", cfg.MwanVMID)
+	// Journal logs bgp-recovered for consumers without a second recovery email.
+	w.notify.Journal(ctx, notify.Event{
+		Now:        time.Time{},
+		Level:      slog.LevelError,
+		Kind:       "bgp-recovered",
+		Key:        cfg.MwanVMID,
+		Message:    recoveryMsg,
+		Fields:     recoveryFields,
 		IsRecovery: false,
 	})
 

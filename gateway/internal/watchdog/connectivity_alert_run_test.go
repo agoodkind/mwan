@@ -24,6 +24,8 @@ const (
 	alertChildEnv          = "MWAN_WATCHDOG_ALERT_TEST_CHILD"
 	alertDirectoryEnv      = "MWAN_WATCHDOG_ALERT_TEST_DIRECTORY"
 	alertMsmtprcEnv        = "MWAN_WATCHDOG_ALERT_TEST_MSMTPRC"
+	alertPrimaryAgentEnv   = "MWAN_WATCHDOG_ALERT_TEST_PRIMARY_AGENT"
+	alertFailoverAgentEnv  = "MWAN_WATCHDOG_ALERT_TEST_FAILOVER_AGENT"
 	alertVMID              = "4300"
 	alertTotalDelaySeconds = 4
 	alertTargetV4          = "192.0.2.1"
@@ -60,6 +62,8 @@ func runConnectivityAlertChild(t *testing.T) {
 	cfg.Watchdog.CheckIntervalDegraded = 1
 	cfg.Watchdog.AlertCooldownSeconds = 3600
 	cfg.Watchdog.ConnectivityTimeoutSeconds = alertTotalDelaySeconds
+	cfg.Watchdog.MwanAgentTCPAddr = os.Getenv(alertPrimaryAgentEnv)
+	cfg.Failover.AgentTCPAddr = os.Getenv(alertFailoverAgentEnv)
 
 	if err := watchdog.Run(cfg, watchdog.Options{}); err != nil {
 		t.Fatalf("watchdog.Run failed: %v.", err)
@@ -99,6 +103,9 @@ func runConnectivityAlertQM(arguments []string) int {
 		fmt.Println("thawed")
 	case "guest":
 		status := 1
+		if os.Getenv(alertFailoverAgentEnv) != "" && len(arguments) > 2 && arguments[2] != alertVMID {
+			status = 0
+		}
 		if len(arguments) > 2 && arguments[2] == alertVMID {
 			var err error
 			status, err = readConnectivityAlertState(alertStateGateway)

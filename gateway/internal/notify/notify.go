@@ -57,6 +57,14 @@ type Notifier interface {
 	Active(kind, key string) bool
 }
 
+// SilentNotifier adds Clear, which marks a kind and key inactive.
+// Journal writes an alert log record. Neither sends a message.
+type SilentNotifier interface {
+	Notifier
+	Clear(kind, key string)
+	Journal(ctx context.Context, ev Event)
+}
+
 // Config controls the Manager's repeat cadence. RepeatEvery is the
 // global default applied to every (kind, key) unless overridden in
 // PerKind. Zero RepeatEvery means alerts fire once per transition and
@@ -103,7 +111,7 @@ func New(emailCfg EmailConfig, cfg Config, log *slog.Logger, serviceName string)
 // unconfigured. Construction errors collapse to NullNotifier so the
 // caller never crashes on a missing alert path; the underlying error
 // is logged at boot time through the supplied logger.
-func FromConfig(emailCfg EmailConfig, cfg Config, log *slog.Logger, serviceName string) Notifier {
+func FromConfig(emailCfg EmailConfig, cfg Config, log *slog.Logger, serviceName string) SilentNotifier {
 	if log == nil {
 		return NullNotifier{}
 	}

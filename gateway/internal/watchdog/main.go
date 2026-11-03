@@ -48,7 +48,7 @@ func printScenarios() {
 // handler is intentionally not attached: notify owns email delivery
 // for the watchdog now, so attaching the handler would produce a
 // duplicate email per failover or recovery event.
-func buildOpsLayer(cfg *watchdogconfig.Config, f Options) (*slog.Logger, ops.SysOps, notify.Notifier, error) {
+func buildOpsLayer(cfg *watchdogconfig.Config, f Options) (*slog.Logger, ops.SysOps, notify.SilentNotifier, error) {
 	handlers := []slog.Handler{logging.StdoutJSON()}
 	if p := cfg.Watchdog.LogFile; p != "" {
 		handlers = append(handlers, logging.FileText(p, "[watchdog]"))

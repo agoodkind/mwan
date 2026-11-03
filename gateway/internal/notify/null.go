@@ -16,5 +16,11 @@ func (NullNotifier) Notify(_ context.Context, _ Event) {}
 // Resolve is a no-op.
 func (NullNotifier) Resolve(_ context.Context, _, _, _ string, _ ...slog.Attr) {}
 
+// Clear does nothing because NullNotifier does not keep state.
+func (NullNotifier) Clear(_, _ string) {}
+
+// Journal does nothing because NullNotifier does not keep a log.
+func (NullNotifier) Journal(_ context.Context, _ Event) {}
+
 // Active always returns false.
 func (NullNotifier) Active(_, _ string) bool { return false }

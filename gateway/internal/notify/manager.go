@@ -100,6 +100,20 @@ func (m *Manager) Resolve(ctx context.Context, kind, key, msg string, fields ...
 	m.resolveAt(ctx, m.clock.Now(), kind, key, msg, fields...)
 }
 
+// Clear marks a kind and key inactive without sending a message.
+// The next Notify for that kind and key sends a message.
+func (m *Manager) Clear(kind, key string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.state, kind+"|"+key)
+}
+
+// Journal writes the event and its alert fields to the notifier log.
+// It does not change alert state or send a message.
+func (m *Manager) Journal(ctx context.Context, ev Event) {
+	m.log.LogAttrs(ctx, ev.Level, ev.Message, alertAttrs(ev.Kind, ev.Key, true, false, ev.Fields)...)
+}
+
 // Active reports whether the named alert is currently in the "fired
 // but not resolved" state.
 func (m *Manager) Active(kind, key string) bool {
@@ -177,15 +191,7 @@ func (m *Manager) emit(
 	transition, resolved bool,
 	fields []slog.Attr,
 ) {
-	attrs := make([]slog.Attr, 0, len(fields)+3)
-	attrs = append(attrs, slog.String("alert_kind", kind))
-	attrs = append(attrs, slog.String("alert_key", key))
-	if resolved {
-		attrs = append(attrs, slog.Bool("resolved", true))
-	} else {
-		attrs = append(attrs, slog.Bool("transition", transition))
-	}
-	attrs = append(attrs, fields...)
+	attrs := alertAttrs(kind, key, transition, resolved, fields)
 	m.log.LogAttrs(ctx, level, msg, attrs...)
 	if m.sink == nil {
 		return
@@ -194,4 +200,16 @@ func (m *Manager) emit(
 		m.log.WarnContext(ctx, "notify sink send failed",
 			"err", err, "alert_kind", kind, "alert_key", key)
 	}
+}
+
+func alertAttrs(kind, key string, transition, resolved bool, fields []slog.Attr) []slog.Attr {
+	attrs := make([]slog.Attr, 0, len(fields)+3)
+	attrs = append(attrs, slog.String("alert_kind", kind))
+	attrs = append(attrs, slog.String("alert_key", key))
+	if resolved {
+		attrs = append(attrs, slog.Bool("resolved", true))
+	} else {
+		attrs = append(attrs, slog.Bool("transition", transition))
+	}
+	return append(attrs, fields...)
 }

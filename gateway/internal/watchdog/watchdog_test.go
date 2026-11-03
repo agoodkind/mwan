@@ -22,80 +22,6 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// fakeNotifier
-// ---------------------------------------------------------------------------
-
-// notifyEvent captures one Notify or Resolve invocation for assertions.
-// Resolved is true for Resolve calls and for Notify calls whose Event
-// has IsRecovery set; both flow through notify.Notifier as transitions
-// out of an active alert.
-type notifyEvent struct {
-	Kind     string
-	Key      string
-	Message  string
-	Level    slog.Level
-	Resolved bool
-}
-
-// fakeNotifier records every Notify and Resolve call so failover and
-// recovery tests can assert on emitted kinds, keys, and messages
-// without going through email Sink machinery.
-type fakeNotifier struct {
-	mu     sync.Mutex
-	events []notifyEvent
-	active map[string]bool
-}
-
-func newFakeNotifier() *fakeNotifier {
-	return &fakeNotifier{active: make(map[string]bool)}
-}
-
-func (f *fakeNotifier) Notify(_ context.Context, ev notify.Event) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.events = append(f.events, notifyEvent{
-		Kind:     ev.Kind,
-		Key:      ev.Key,
-		Message:  ev.Message,
-		Level:    ev.Level,
-		Resolved: ev.IsRecovery,
-	})
-	if !ev.IsRecovery {
-		f.active[ev.Kind+"|"+ev.Key] = true
-	} else {
-		delete(f.active, ev.Kind+"|"+ev.Key)
-	}
-}
-
-func (f *fakeNotifier) Resolve(_ context.Context, kind, key, msg string, _ ...slog.Attr) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.events = append(f.events, notifyEvent{
-		Kind:     kind,
-		Key:      key,
-		Message:  msg,
-		Resolved: true,
-	})
-	delete(f.active, kind+"|"+key)
-}
-
-func (f *fakeNotifier) Active(kind, key string) bool {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.active[kind+"|"+key]
-}
-
-// snapshot returns a copy of the recorded events under the lock so
-// callers can iterate without holding it.
-func (f *fakeNotifier) snapshot() []notifyEvent {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	out := make([]notifyEvent, len(f.events))
-	copy(out, f.events)
-	return out
-}
-
-// ---------------------------------------------------------------------------
 // mockOps
 // ---------------------------------------------------------------------------
 
@@ -380,7 +306,7 @@ func newTestWatchdog(
 	w := &watchdog{
 		cfg:         cfg,
 		ops:         ops,
-		notify:      newFakeNotifier(),
+		notify:      notify.NullNotifier{},
 		log:         logger,
 		exitFn:      os.Exit,
 		coord:       &alert.Coord{},
@@ -575,18 +501,6 @@ func TestMaybeSnapshotThawsAfterFailedSnapshot(t *testing.T) {
 	if mock.thawCalls != 1 {
 		t.Fatalf("thawCalls = %d, want 1: the guard must run on the failed-snapshot path", mock.thawCalls)
 	}
-}
-
-// fakeNotifierFrom retrieves the fake notifier wired into a test
-// watchdog by newTestWatchdog. Tests that assert on emitted events
-// call this rather than poking the field directly.
-func fakeNotifierFrom(t *testing.T, w *watchdog) *fakeNotifier {
-	t.Helper()
-	fn, ok := w.notify.(*fakeNotifier)
-	if !ok {
-		t.Fatalf("expected *fakeNotifier on watchdog, got %T", w.notify)
-	}
-	return fn
 }
 
 // ---------------------------------------------------------------------------

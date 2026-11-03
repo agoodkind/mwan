@@ -30,12 +30,34 @@ type recordingAgent struct {
 	mu         sync.Mutex
 	calls      []string
 	announcing bool
+
+	pingSuccess bool
 }
 
 func (a *recordingAgent) record(method string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.calls = append(a.calls, method)
+}
+
+func (a *recordingAgent) Ping(
+	_ context.Context, _ *mwanv1.PingRequest,
+) (*mwanv1.PingResponse, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return &mwanv1.PingResponse{Success: a.pingSuccess}, nil
+}
+
+func (a *recordingAgent) count(method string) int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	total := 0
+	for _, call := range a.calls {
+		if call == method {
+			total++
+		}
+	}
+	return total
 }
 
 func (a *recordingAgent) received(method string) bool {
