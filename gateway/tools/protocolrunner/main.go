@@ -85,7 +85,7 @@ func requiredTests(selected lane) ([]string, error) {
 			"TestOOBDHCPv4RecoveryPreservesForeignAddressOnRecreatedLink", "TestOOBDHCPv4RecoveryRenamedLinkFastRebind",
 			"TestOOBDHCPv4RecoveryRenamedLinkBeforeStart", "TestOOBDHCPv4BoundRenamedLink", "TestOOBDHCPv4BoundRenamedLinkLongLease", "TestOOBDHCPv4BoundLinkFlapKeepsLease", "TestOOBDHCPv4LinkFlapsKeepRenewalRetryDeadline",
 			"TestOOBDHCPv4LinkUpWakesAcquisitionBackoff", "TestOOBDHCPv4LinkFlapDuringAcquireWakesRetry", "TestOOBDHCPv4UnrelatedLinkFlapKeepsAcquisitionBackoff", "TestOOBRALostAlertsWithoutAnyRouterAdvertisementAndRecovers",
-			"TestOOBDHCPv4ReconnectNAKReplacesLease", "TestOOBDHCPv4ReconnectDiscoversUpstreamThatIgnoresRequest", "TestOOBDHCPv4ReconnectDuringRenewalVerifiesWithoutStaleRepeat", "TestOOBDHCPv4ReconnectSilentServerKeepsLeaseAndT1", "TestOOBDHCPv4ReconnectBeforeT1ReplacesLeaseBeforeT2", "TestOOBDHCPv4ReconnectBeforeT1SilentServerKeepsLeaseT1AndT2", "TestOwnedDHCPv4ReconnectNAKReplacesLease", "TestOwnedDHCPv4UpstreamChangeBehindBridgeReplacesLease",
+			"TestOOBDHCPv4ReconnectNAKReplacesLease", "TestOOBDHCPv4ReconnectDiscoversUpstreamThatIgnoresRequest", "TestOOBDHCPv4ReconnectDuringRenewalVerifiesWithoutStaleRepeat", "TestOOBDHCPv4ReconnectSilentServerKeepsLeaseAndT1", "TestOOBDHCPv4ReconnectBeforeT1ReplacesLeaseBeforeT2", "TestOOBDHCPv4ReconnectBeforeT1SilentServerKeepsLeaseT1AndT2", "TestOwnedDHCPv4ReconnectNAKReplacesLease", "TestOwnedDHCPv4UpstreamChangeBehindBridgeReplacesLease", "TestOOBDHCPv4BridgeUplinkReturnReplacesLease",
 			"TestAutoconfigurationDaemonRuntime", "TestRadvdAutoconfigurationDaemonRuntime",
 			"TestAutoconfigurationSolicitsRouterOnFreshStart",
 			"TestOwnedMappedDaemonRuntime", "TestSelectionExclusionDaemonRuntime",

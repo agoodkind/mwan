@@ -41,6 +41,9 @@ const (
 	EvObservationStale
 	// EvObservationFailed reports a subscription or snapshot failure.
 	EvObservationFailed
+	// EvUplinkReturned fires when a non-virtual watched bridge port comes back
+	// after going down. The bridge keeps carrier while a guest port stays up.
+	EvUplinkReturned
 )
 
 // String returns the stable log-friendly name of the event kind.
@@ -66,6 +69,8 @@ func (k EventKind) String() string {
 		return "observation-stale"
 	case EvObservationFailed:
 		return "observation-failed"
+	case EvUplinkReturned:
+		return "uplink-returned"
 	}
 	return "unknown"
 }
@@ -164,6 +169,7 @@ type Monitor struct {
 	dirty        bool
 	ready        [3]bool
 	resync       chan struct{}
+	uplinkDown   map[int]bool
 }
 
 // NewMonitor returns a started Monitor. Cancel ctx to stop it cleanly.
@@ -204,6 +210,7 @@ func NewMonitor(
 	m.actualIface = actualIface
 	m.stale = true
 	m.resync = make(chan struct{}, 1)
+	m.uplinkDown = make(map[int]bool)
 
 	m.startWorker(ctx, "resync", m.resyncLoop)
 	m.startWorker(ctx, "subscribe-addr", m.subscribeAddr)
@@ -802,7 +809,7 @@ func (m *Monitor) linkUpdateToEvent(u netlink.LinkUpdate) Event {
 		m.invalidateBinding()
 	}
 	if !matched {
-		return unknownEvent()
+		return m.uplinkReturnEvent(u, index, actualIface)
 	}
 	makeEvent := func(kind EventKind) Event {
 		var event Event
@@ -831,6 +838,32 @@ func (m *Monitor) linkUpdateToEvent(u netlink.LinkUpdate) Event {
 		}
 	case unix.RTM_DELLINK:
 		return makeEvent(EvLinkDown)
+	}
+	return unknownEvent()
+}
+
+// uplinkReturnEvent reports watched bridge ports down then up, except guest
+// veth and tuntap; it ignores kernel AF_BRIDGE copies without a link type.
+func (m *Monitor) uplinkReturnEvent(u netlink.LinkUpdate, bridgeIndex int, actualIface string) Event {
+	attrs := u.Attrs()
+	if bridgeIndex == 0 || u.Header.Type != unix.RTM_NEWLINK || u.Family == unix.AF_BRIDGE ||
+		attrs == nil || attrs.MasterIndex != bridgeIndex {
+		return unknownEvent()
+	}
+	if linkType := u.Type(); linkType == "veth" || linkType == "tuntap" {
+		return unknownEvent()
+	}
+	switch attrs.OperState {
+	case netlink.OperDown, netlink.OperLowerLayerDown, netlink.OperNotPresent:
+		m.uplinkDown[int(u.Index)] = true
+	case netlink.OperUp, netlink.OperUnknown:
+		if m.uplinkDown[int(u.Index)] {
+			delete(m.uplinkDown, int(u.Index))
+			event := m.observationEvent(EvUplinkReturned, attrs.Name)
+			event.ActualIface = actualIface
+			event.IfIndex = bridgeIndex
+			return event
+		}
 	}
 	return unknownEvent()
 }
