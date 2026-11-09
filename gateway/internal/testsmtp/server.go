@@ -59,7 +59,8 @@ func Start(t *testing.T) *Server {
 	}
 
 	text := fmt.Sprintf(
-		"account local\nhost 127.0.0.1\nport %d\nfrom sender@example.com\nuser test\npassword test\ntls off\ntls_starttls off\naccount default : local\n",
+		"account local\nhost 127.0.0.1\nport %d\nfrom sender@example.com\n"+
+			"user test\npassword test\ntls off\ntls_starttls off\naccount default : local\n",
 		address.Port,
 	)
 	if err := os.WriteFile(server.Path, []byte(text), 0o600); err != nil {

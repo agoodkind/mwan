@@ -32,7 +32,11 @@ func ValidateConfiguredRoutes(family string, routes []RouteIntent, defaultGatewa
 		seen[destination] = true
 		gateway := route.Gateway
 		if gateway.IsValid() &&
-			(gateway.Is4In6() || gateway.Is4() != (family == "ipv4") || gateway.IsUnspecified() || gateway.IsMulticast() || gateway.Zone() != "") {
+			(gateway.Is4In6() ||
+				gateway.Is4() != (family == "ipv4") ||
+				gateway.IsUnspecified() ||
+				gateway.IsMulticast() ||
+				gateway.Zone() != "") {
 			return fmt.Errorf(
 				"%s route %s has invalid same-family gateway %q",
 				family,
