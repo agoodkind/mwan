@@ -87,15 +87,15 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 
 	for _, t := range m.cfg.TargetsV4 {
 		_, err := netif.Ping4WithLogger(ctx, log, m.cfg.Iface, t, m.cfg.Timeout)
-		ok := err == nil
-		results[t.String()] = ok
+		probeSucceeded := err == nil
+		results[t.String()] = probeSucceeded
 		log.DebugContext(
 			ctx,
 			"connectivity_probe: probe result",
 			"target",
 			t.String(),
 			"ok",
-			ok,
+			probeSucceeded,
 			"err",
 			err,
 		)
@@ -103,15 +103,15 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 
 	for _, t := range m.cfg.TargetsV6 {
 		_, err := probe.PingICMP6(ctx, t, m.cfg.Timeout)
-		ok := err == nil
-		results[t.String()] = ok
+		probeSucceeded := err == nil
+		results[t.String()] = probeSucceeded
 		log.DebugContext(
 			ctx,
 			"connectivity_probe: probe result",
 			"target",
 			t.String(),
 			"ok",
-			ok,
+			probeSucceeded,
 			"err",
 			err,
 		)

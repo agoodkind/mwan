@@ -96,21 +96,26 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 		)
 	}
 
-	for i, p := range m.cfg.DowngradePatterns {
-		re, err := regexp.Compile(p)
+	for patternIndex, pattern := range m.cfg.DowngradePatterns {
+		re, err := regexp.Compile(pattern)
 		if err != nil {
 			log.WarnContext(
 				ctx,
 				"cloudflared_tap: invalid downgrade pattern",
 				"index",
-				i,
+				patternIndex,
 				"pattern",
-				p,
+				pattern,
 				"err",
 				err,
 			)
 
-			return fmt.Errorf("cloudflared_tap: invalid downgrade_patterns[%d] %q: %w", i, p, err)
+			return fmt.Errorf(
+				"cloudflared_tap: invalid downgrade_patterns[%d] %q: %w",
+				patternIndex,
+				pattern,
+				err,
+			)
 		}
 
 		m.patterns = append(m.patterns, re)
