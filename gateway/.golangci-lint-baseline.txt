@@ -1,18 +1,18 @@
-# golangci-lint: generated_at=2026-11-09T16:34:19Z
-internal/netif/dhcpv6.go:1325:1: 1325-1373 lines are duplicate of `internal/netif/dhcpv6.go:1375-1423` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
-internal/netif/dhcpv6.go:1375:1: 1375-1423 lines are duplicate of `internal/netif/dhcpv6.go:1325-1373` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
-internal/netif/lease_recovery.go:185:1: 185-218 lines are duplicate of `internal/netif/lease_recovery.go:220-253` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
-internal/netif/lease_recovery.go:220:1: 220-253 lines are duplicate of `internal/netif/lease_recovery.go:185-218` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
-internal/netif/monitor.go:292:1: 292-356 lines are duplicate of `internal/netif/monitor.go:359-423` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
-internal/netif/monitor.go:359:1: 359-423 lines are duplicate of `internal/netif/monitor.go:428-492` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
-internal/netif/monitor.go:428:1: 428-492 lines are duplicate of `internal/netif/monitor.go:292-356` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
-internal/netif/owned_addrs_routes.go:179:1: 179-203 lines are duplicate of `internal/netif/owned_dhcpv4.go:110-134` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
-internal/netif/owned_dhcpv4.go:110:1: 110-134 lines are duplicate of `internal/netif/owned_links.go:168-192` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
-internal/netif/owned_links.go:168:1: 168-192 lines are duplicate of `internal/netif/owned_addrs_routes.go:179-203` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
-internal/ops/ops.go:434:1: 434-469 lines are duplicate of `internal/ops/ops.go:524-559` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
-internal/ops/ops.go:524:1: 524-559 lines are duplicate of `internal/ops/ops.go:434-469` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
-internal/ops/ops.go:895:1: 895-944 lines are duplicate of `internal/ops/ops.go:987-1036` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
-internal/ops/ops.go:987:1: 987-1036 lines are duplicate of `internal/ops/ops.go:895-944` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
+# golangci-lint: generated_at=2026-11-09T20:15:51Z
+internal/netif/dhcpv6.go:1325:1: 1325-1373 lines are duplicate of `internal/netif/dhcpv6.go:1375-1423` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T20:15:51Z
+internal/netif/dhcpv6.go:1375:1: 1375-1423 lines are duplicate of `internal/netif/dhcpv6.go:1325-1373` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T20:15:51Z
+internal/netif/lease_recovery.go:185:1: 185-218 lines are duplicate of `internal/netif/lease_recovery.go:220-253` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T20:15:51Z
+internal/netif/lease_recovery.go:220:1: 220-253 lines are duplicate of `internal/netif/lease_recovery.go:185-218` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T20:15:51Z
+internal/netif/monitor.go:292:1: 292-356 lines are duplicate of `internal/netif/monitor.go:359-423` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T20:15:51Z
+internal/netif/monitor.go:359:1: 359-423 lines are duplicate of `internal/netif/monitor.go:428-492` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T20:15:51Z
+internal/netif/monitor.go:428:1: 428-492 lines are duplicate of `internal/netif/monitor.go:292-356` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T20:15:51Z
+internal/netif/owned_addrs_routes.go:179:1: 179-203 lines are duplicate of `internal/netif/owned_dhcpv4.go:110-134` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T20:15:51Z
+internal/netif/owned_dhcpv4.go:110:1: 110-134 lines are duplicate of `internal/netif/owned_links.go:168-192` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T20:15:51Z
+internal/netif/owned_links.go:168:1: 168-192 lines are duplicate of `internal/netif/owned_addrs_routes.go:179-203` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T20:15:51Z
+internal/ops/ops.go:394:1: 394-429 lines are duplicate of `internal/ops/ops.go:484-519` (dupl)	# golangci-lint:first_added=2026-11-09T20:15:51Z last_seen=2026-11-09T20:15:51Z
+internal/ops/ops.go:484:1: 484-519 lines are duplicate of `internal/ops/ops.go:394-429` (dupl)	# golangci-lint:first_added=2026-11-09T20:15:51Z last_seen=2026-11-09T20:15:51Z
+internal/ops/ops.go:855:1: 855-904 lines are duplicate of `internal/ops/ops.go:947-996` (dupl)	# golangci-lint:first_added=2026-11-09T20:15:51Z last_seen=2026-11-09T20:15:51Z
+internal/ops/ops.go:947:1: 947-996 lines are duplicate of `internal/ops/ops.go:855-904` (dupl)	# golangci-lint:first_added=2026-11-09T20:15:51Z last_seen=2026-11-09T20:15:51Z
 cmd/mwan/cli.go:99:4: missing whitespace below this line (after-block) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:38:30Z
 cmd/mwan/cli.go:77:2: missing whitespace above this line (too many lines above return) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:38:30Z
 cmd/mwan/cli.go:134:2: missing whitespace above this line (invalid statement above for) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:38:30Z
