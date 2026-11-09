@@ -31,13 +31,13 @@ var (
 // the newest known-good snapshot. It returns the empty string when the guest
 // has neither, which leaves the caller with no rollback target.
 func ExtractLatestSnapshot(qmOutput []byte) string {
-	s := string(qmOutput)
-	pre := PreDeploySnapRE.FindAllString(s, -1)
+	snapshotOutput := string(qmOutput)
+	pre := PreDeploySnapRE.FindAllString(snapshotOutput, -1)
 	if len(pre) > 0 {
 		return pre[len(pre)-1]
 	}
 
-	kg := KnownGoodSnapRE.FindAllString(s, -1)
+	kg := KnownGoodSnapRE.FindAllString(snapshotOutput, -1)
 	if len(kg) > 0 {
 		return kg[len(kg)-1]
 	}

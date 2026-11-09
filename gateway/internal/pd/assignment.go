@@ -46,7 +46,7 @@ func (source *AssignmentSource) Prefix(
 	iface string,
 ) (netip.Prefix, bool, error) {
 	if source.owners[iface] != interfaceintent.OwnerMWAN {
-		prefix, ok, err := source.fallback.Prefix(ctx, iface)
+		prefix, prefixFound, err := source.fallback.Prefix(ctx, iface)
 		if err != nil {
 			slog.WarnContext(
 				ctx,
@@ -56,10 +56,11 @@ func (source *AssignmentSource) Prefix(
 				"err",
 				err,
 			)
+
 			return netip.Prefix{}, false, fmt.Errorf("observe delegated prefix: %w", err)
 		}
 
-		return prefix, ok, nil
+		return prefix, prefixFound, nil
 	}
 
 	if source.leases == nil {

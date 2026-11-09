@@ -60,14 +60,14 @@ func Addresses(ctx context.Context, name string) (result []Address, failure erro
 	}
 
 	for _, address := range link.Addresses {
-		ip, valid := netip.AddrFromSlice(address.Address)
+		ipAddress, valid := netip.AddrFromSlice(address.Address)
 		if !valid || (address.Family != 2 && address.Family != 10) ||
-			(address.Family == 2 && !ip.Is4()) ||
-			(address.Family == 10 && !ip.Is6()) {
+			(address.Family == 2 && !ipAddress.Is4()) ||
+			(address.Family == 10 && !ipAddress.Is6()) {
 			return nil, fmt.Errorf("networkd link %s has an invalid address", name)
 		}
 
-		prefix := netip.PrefixFrom(ip, address.PrefixLength)
+		prefix := netip.PrefixFrom(ipAddress, address.PrefixLength)
 		if !prefix.IsValid() {
 			return nil, fmt.Errorf("networkd link %s has an invalid address prefix", name)
 		}
