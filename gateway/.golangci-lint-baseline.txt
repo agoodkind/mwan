@@ -1,4 +1,18 @@
-# golangci-lint: generated_at=2026-11-09T07:38:30Z
+# golangci-lint: generated_at=2026-11-09T16:34:19Z
+internal/netif/dhcpv6.go:1325:1: 1325-1373 lines are duplicate of `internal/netif/dhcpv6.go:1375-1423` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
+internal/netif/dhcpv6.go:1375:1: 1375-1423 lines are duplicate of `internal/netif/dhcpv6.go:1325-1373` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
+internal/netif/lease_recovery.go:185:1: 185-218 lines are duplicate of `internal/netif/lease_recovery.go:220-253` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
+internal/netif/lease_recovery.go:220:1: 220-253 lines are duplicate of `internal/netif/lease_recovery.go:185-218` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
+internal/netif/monitor.go:292:1: 292-356 lines are duplicate of `internal/netif/monitor.go:359-423` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
+internal/netif/monitor.go:359:1: 359-423 lines are duplicate of `internal/netif/monitor.go:428-492` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
+internal/netif/monitor.go:428:1: 428-492 lines are duplicate of `internal/netif/monitor.go:292-356` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
+internal/netif/owned_addrs_routes.go:179:1: 179-203 lines are duplicate of `internal/netif/owned_dhcpv4.go:110-134` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
+internal/netif/owned_dhcpv4.go:110:1: 110-134 lines are duplicate of `internal/netif/owned_links.go:168-192` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
+internal/netif/owned_links.go:168:1: 168-192 lines are duplicate of `internal/netif/owned_addrs_routes.go:179-203` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
+internal/ops/ops.go:434:1: 434-469 lines are duplicate of `internal/ops/ops.go:524-559` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
+internal/ops/ops.go:524:1: 524-559 lines are duplicate of `internal/ops/ops.go:434-469` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
+internal/ops/ops.go:895:1: 895-944 lines are duplicate of `internal/ops/ops.go:987-1036` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
+internal/ops/ops.go:987:1: 987-1036 lines are duplicate of `internal/ops/ops.go:895-944` (dupl)	# golangci-lint:first_added=2026-11-09T16:34:19Z last_seen=2026-11-09T16:34:19Z
 cmd/mwan/cli.go:99:4: missing whitespace below this line (after-block) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:38:30Z
 cmd/mwan/cli.go:77:2: missing whitespace above this line (too many lines above return) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:38:30Z
 cmd/mwan/cli.go:134:2: missing whitespace above this line (invalid statement above for) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:38:30Z
@@ -3878,11 +3892,9 @@ internal/netif/dhcpv6.go:787:27: do not define dynamic errors, use wrapped stati
 internal/netif/dhcpv6.go:790:27: do not define dynamic errors, use wrapped static errors instead: "fmt.Errorf(\"DHCPv6 status %s\", status.StatusCode)" (err113)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/dhcpv6.go:798:1: The line is 125 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/dhcpv6.go:824:27: do not define dynamic errors, use wrapped static errors instead: "errors.New(\"DHCPv6 response has no valid association\")" (err113)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
-internal/netif/dhcpv6.go:829:1: 829-859 lines are duplicate of `internal/netif/dhcpv6.go:861-891` (dupl)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/dhcpv6.go:829:1: The line is 168 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/dhcpv6.go:836:49: do not define dynamic errors, use wrapped static errors instead: "errors.New(\"duplicate IA_PD\")" (err113)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/dhcpv6.go:878:22: Magic number: 30, in <argument> detected (mnd)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
-internal/netif/dhcpv6.go:861:1: 861-891 lines are duplicate of `internal/netif/dhcpv6.go:829-859` (dupl)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/dhcpv6.go:861:1: The line is 170 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/dhcpv6.go:868:49: do not define dynamic errors, use wrapped static errors instead: "errors.New(\"duplicate IA_NA\")" (err113)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/dhcpv6.go:899:21: Magic number: 2, in <operation> detected (mnd)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
@@ -3997,8 +4009,6 @@ internal/netif/lease_recovery.go:118:32: do not define dynamic errors, use wrapp
 internal/netif/lease_recovery.go:128:13: do not define dynamic errors, use wrapped static errors instead: "errors.New(\"invalid lease clock snapshot\")" (err113)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/lease_recovery.go:132:14: do not define dynamic errors, use wrapped static errors instead: "errors.New(\"lease uptime moved backward\")" (err113)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/lease_recovery.go:137:13: do not define dynamic errors, use wrapped static errors instead: "errors.New(\"lease wall clock moved backward\")" (err113)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
-internal/netif/lease_recovery.go:156:1: 156-174 lines are duplicate of `internal/netif/lease_recovery.go:176-194` (dupl)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
-internal/netif/lease_recovery.go:176:1: 176-194 lines are duplicate of `internal/netif/lease_recovery.go:156-174` (dupl)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/lease_recovery.go:212:10: do not define dynamic errors, use wrapped static errors instead: "errors.New(\"DHCPv4 lease is not assigned\")" (err113)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/lease_recovery.go:214:1: The line is 292 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/lease_recovery.go:215:10: do not define dynamic errors, use wrapped static errors instead: "errors.New(\"invalid DHCPv4 assignment\")" (err113)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
@@ -4107,16 +4117,13 @@ internal/netif/monitor.go:391:39: Magic number: 64, in <argument> detected (mnd)
 internal/netif/monitor.go:954:2: return with no blank line before (nlreturn)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/monitor.go:225:1: unexported method "startWorker" for struct "Monitor" should be placed after the exported method "IfIndex" (funcorder)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/monitor.go:246:1: unexported method "shutdownOnCtx" for struct "Monitor" should be placed after the exported method "IfIndex" (funcorder)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
-internal/netif/monitor.go:272:1: 272-325 lines are duplicate of `internal/netif/monitor.go:328-381` (dupl)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/monitor.go:272:1: unexported method "subscribeAddr" for struct "Monitor" should be placed after the exported method "IfIndex" (funcorder)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/monitor.go:531:13: Magic number: 100, in <operation> detected (mnd)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/monitor.go:391:3: variable name 'ch' is too short for the scope of its usage (varnamelen)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/monitor.go:529:4: continue with no blank line before (nlreturn)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/monitor.go:525:26: Magic number: 2, in <argument> detected (mnd)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/monitor.go:525:29: Magic number: 5, in <argument> detected (mnd)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
-internal/netif/monitor.go:328:1: 328-381 lines are duplicate of `internal/netif/monitor.go:386-439` (dupl)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/monitor.go:328:1: unexported method "subscribeRoute" for struct "Monitor" should be placed after the exported method "IfIndex" (funcorder)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
-internal/netif/monitor.go:386:1: 386-439 lines are duplicate of `internal/netif/monitor.go:272-325` (dupl)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/monitor.go:386:1: unexported method "subscribeLink" for struct "Monitor" should be placed after the exported method "IfIndex" (funcorder)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/monitor.go:443:1: unexported method "emit" for struct "Monitor" should be placed after the exported method "IfIndex" (funcorder)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/monitor.go:443:45: parameter name 'ev' is too short for the scope of its usage (varnamelen)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
@@ -4152,7 +4159,6 @@ internal/netif/owned_addrs_routes.go:775:7: avoid inline error handling using `i
 internal/netif/owned_addrs_routes.go:244:1: The line is 275 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/owned_addrs_routes.go:134:67: string `ipv6` has 10 occurrences, make it a constant (goconst)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/owned_addrs_routes.go:135:11: do not define dynamic errors, use wrapped static errors instead: "fmt.Errorf(\"invalid scoped address ownership record for %s\", value.ConnectionID)" (err113)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
-internal/netif/owned_addrs_routes.go:141:1: 141-162 lines are duplicate of `internal/netif/owned_dhcpv4.go:93-114` (dupl)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/owned_addrs_routes.go:141:1: unexported method "save" for struct "OwnedStaticReconciler" should be placed after the exported method "PruneRemoved" (funcorder)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/owned_addrs_routes.go:165:15: string `ipv4` has 10 occurrences, make it a constant (goconst)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/owned_addrs_routes.go:179:1: The line is 126 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
@@ -4250,7 +4256,6 @@ internal/netif/owned_dhcpv4.go:584:23: do not define dynamic errors, use wrapped
 internal/netif/owned_dhcpv4.go:626:10: do not define dynamic errors, use wrapped static errors instead: "fmt.Errorf(\"address %s exists without DHCP ownership\", value.Prefix)" (err113)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/owned_dhcpv4.go:64:15: do not define dynamic errors, use wrapped static errors instead: "errors.New(\"DHCPv4 ownership path must be absolute\")" (err113)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/owned_dhcpv4.go:71:2: variable name 'r' is too short for the scope of its usage (varnamelen)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
-internal/netif/owned_dhcpv4.go:93:1: 93-114 lines are duplicate of `internal/netif/owned_links.go:147-168` (dupl)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/owned_dhcpv4.go:93:1: unexported method "save" for struct "OwnedDHCPv4Reconciler" should be placed after the exported method "PruneConsumer" (funcorder)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/owned_kernel_policy.go:81:8: avoid inline error handling using `if err := ...; err != nil`; use plain assignment `err := ...` (noinlineerr)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/owned_kernel_policy.go:99:3: return with no blank line before (nlreturn)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
@@ -4292,7 +4297,6 @@ internal/netif/owned_links.go:121:1: constructor "NewOwnedLinkReconciler" for st
 internal/netif/owned_links.go:123:15: do not define dynamic errors, use wrapped static errors instead: "errors.New(\"owned link state path is empty\")" (err113)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/owned_links.go:129:2: variable name 'r' is too short for the scope of its usage (varnamelen)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/owned_links.go:924:6: avoid inline error handling using `if err := ...; err != nil`; use plain assignment `err := ...` (noinlineerr)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
-internal/netif/owned_links.go:147:1: 147-168 lines are duplicate of `internal/netif/owned_addrs_routes.go:141-162` (dupl)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/owned_links.go:147:1: unexported method "save" for struct "OwnedLinkReconciler" should be placed after the exported method "Reconcile" (funcorder)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/owned_links.go:187:1: The line is 176 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/netif/owned_links.go:347:1: The line is 129 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
@@ -5366,13 +5370,11 @@ internal/ops/ops.go:330:1: unexported method "trackedHypervisorExec" for struct 
 internal/ops/ops.go:344:1: unexported method "hypervisorExec" for struct "RealOps" should be placed after the exported method "ExtractTracker" (funcorder)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/ops/ops.go:352:1: unexported method "vsockExec" for struct "RealOps" should be placed after the exported method "ExtractTracker" (funcorder)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/ops/ops.go:378:64: do not define dynamic errors, use wrapped static errors instead: "fmt.Errorf(\"vsockExec: no args\")" (err113)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
-internal/ops/ops.go:380:1: 380-409 lines are duplicate of `internal/ops/ops.go:452-481` (dupl)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/ops/ops.go:458:20: Magic number: 3, in <assign> detected (mnd)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/ops/ops.go:411:3: do not define dynamic errors, use wrapped static errors instead: "fmt.Errorf(\"vsockExec: unhandled command %q\", args[0])" (err113)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/ops/ops.go:421:1: unexported method "tcpExec" for struct "RealOps" should be placed after the exported method "ExtractTracker" (funcorder)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/ops/ops.go:425:64: do not define dynamic errors, use wrapped static errors instead: "fmt.Errorf(\"tcpExec: no tcp addr configured\")" (err113)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/ops/ops.go:450:64: do not define dynamic errors, use wrapped static errors instead: "fmt.Errorf(\"tcpExec: no args\")" (err113)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
-internal/ops/ops.go:452:1: 452-481 lines are duplicate of `internal/ops/ops.go:380-409` (dupl)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/ops/ops.go:483:3: do not define dynamic errors, use wrapped static errors instead: "fmt.Errorf(\"tcpExec: unhandled command %q\", args[0])" (err113)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/ops/ops.go:486:1: unexported method "vsockGetConfigState" for struct "RealOps" should be placed after the exported method "ExtractTracker" (funcorder)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/ops/ops.go:516:1: unexported method "tcpGetConfigState" for struct "RealOps" should be placed after the exported method "ExtractTracker" (funcorder)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
@@ -5391,12 +5393,10 @@ internal/ops/ops.go:697:2: parameter name 'r' is too short for the scope of its 
 internal/ops/ops.go:736:14: do not define dynamic errors, use wrapped static errors instead: "fmt.Errorf(\"GetBGPStatus: all channels failed\")" (err113)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/ops/ops.go:739:1: unexported method "vsockAnnounceRoutes" for struct "RealOps" should be placed after the exported method "ExtractTracker" (funcorder)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/ops/ops.go:757:1: unexported method "tcpAnnounceRoutes" for struct "RealOps" should be placed after the exported method "ExtractTracker" (funcorder)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
-internal/ops/ops.go:777:1: 777-817 lines are duplicate of `internal/ops/ops.go:857-897` (dupl)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/ops/ops.go:810:11: do not define dynamic errors, use wrapped static errors instead: "fmt.Errorf(\"AnnounceRoutes: agent returned error: %s\", res.GetError())" (err113)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/ops/ops.go:816:9: do not define dynamic errors, use wrapped static errors instead: "fmt.Errorf(\"AnnounceRoutes: all channels failed\")" (err113)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/ops/ops.go:819:1: unexported method "vsockWithdrawRoutes" for struct "RealOps" should be placed after the exported method "ExtractTracker" (funcorder)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/ops/ops.go:837:1: unexported method "tcpWithdrawRoutes" for struct "RealOps" should be placed after the exported method "ExtractTracker" (funcorder)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
-internal/ops/ops.go:857:1: 857-897 lines are duplicate of `internal/ops/ops.go:777-817` (dupl)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/ops/ops.go:890:11: do not define dynamic errors, use wrapped static errors instead: "fmt.Errorf(\"WithdrawRoutes: agent returned error: %s\", res.GetError())" (err113)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/ops/ops.go:896:9: do not define dynamic errors, use wrapped static errors instead: "fmt.Errorf(\"WithdrawRoutes: all channels failed\")" (err113)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
 internal/ops/ops.go:909:1: unexported method "attemptLogger" for struct "RealOps" should be placed after the exported method "ExtractTracker" (funcorder)	# golangci-lint:first_added=2026-11-09T07:35:40Z last_seen=2026-11-09T07:35:40Z
