@@ -53,7 +53,7 @@ func (d *networkDataSource) Schema(
 		Description: "The data source validates known network content against the YANG schema during planning. " +
 			"The data source returns canonical JSON, the decoded guest type, and configured maps.",
 		Attributes: map[string]schema.Attribute{
-			"content": schema.StringAttribute{
+			contentAttributeKey: schema.StringAttribute{
 				Required:    true,
 				Description: "The content attribute contains the network document as RFC 7951 JSON.",
 			},

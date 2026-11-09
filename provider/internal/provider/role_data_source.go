@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -14,7 +13,6 @@ import (
 	"goodkind.io/mwan/internal/config"
 	"goodkind.io/mwan/internal/installspec"
 	"goodkind.io/mwan/internal/watchdogconfig"
-	moduleschema "goodkind.io/mwan/internal/yangpub/schema"
 )
 
 const fileModeFormat = "%04o"
@@ -133,7 +131,7 @@ func (d *roleDataSource) Schema(
 							Computed:    true,
 							Description: "The destination path is absolute.",
 						},
-						"content": schema.StringAttribute{
+						contentAttributeKey: schema.StringAttribute{
 							Computed:    true,
 							Description: "The value contains the file content.",
 						},
@@ -148,33 +146,7 @@ func (d *roleDataSource) Schema(
 				Computed:    true,
 				Description: "The service commands execute the MWAN binary at this path.",
 			},
-			"units": schema.ListNestedAttribute{
-				Computed:    true,
-				Description: "The list includes role services and system services that read installed files. It uses instance names instead of service templates.",
-				NestedObject: schema.NestedAttributeObject{
-					Attributes: map[string]schema.Attribute{
-						"name": schema.StringAttribute{
-							Computed:    true,
-							Description: "The name identifies a systemd unit.",
-						},
-						"enabled": schema.BoolAttribute{
-							Computed:    true,
-							Description: "The value specifies the desired service enablement state.",
-						},
-						"active": schema.BoolAttribute{
-							Computed: true,
-							Description: "The value specifies the desired active state. It is false for a oneshot unit " +
-								"without RemainAfterExit.",
-						},
-						"files": schema.ListAttribute{
-							Computed:    true,
-							ElementType: types.StringType,
-							Description: "These installation paths configure the service: its unit or instance template " +
-								"and their drop-ins.",
-						},
-					},
-				},
-			},
+			"units": roleUnitsAttribute(),
 			"sysrepo_data": schema.ListNestedAttribute{
 				Computed: true,
 				Description: "The data source returns sysrepo imports in order for the wan role. " +
@@ -197,40 +169,7 @@ func (d *roleDataSource) Schema(
 				},
 			},
 			"stack_yang_modules": stackYangModulesAttribute(),
-			"yang_modules": schema.ListNestedAttribute{
-				Computed: true,
-				Description: "The data source returns YANG modules in installation order for the wan role. " +
-					"The data source returns an empty list for other roles.",
-				NestedObject: schema.NestedAttributeObject{
-					Attributes: map[string]schema.Attribute{
-						"file": schema.StringAttribute{
-							Computed:    true,
-							Description: "The filename includes the YANG module revision.",
-						},
-						"path": schema.StringAttribute{
-							Computed:    true,
-							Description: "The module destination path is absolute.",
-						},
-						"content": schema.StringAttribute{
-							Computed:    true,
-							Description: "The value contains the YANG module source.",
-						},
-						"mode": schema.StringAttribute{
-							Computed:    true,
-							Description: "The file mode uses four octal digits.",
-						},
-						"features": schema.ListAttribute{
-							Computed:    true,
-							ElementType: types.StringType,
-							Description: "The installer enables these YANG features.",
-						},
-						"update": schema.BoolAttribute{
-							Computed:    true,
-							Description: "The value permits replacement of a different installed module revision.",
-						},
-					},
-				},
-			},
+			"yang_modules":       roleYangModulesAttribute(),
 		},
 	}
 }
@@ -252,6 +191,7 @@ func (d *roleDataSource) Read(
 			"Unknown role",
 			fmt.Sprintf("The role %q does not exist.", model.Role.ValueString()),
 		)
+
 		return
 	}
 
@@ -281,49 +221,8 @@ func (d *roleDataSource) Read(
 		model.Files = append(model.Files, newRoleFile(file.Dest, content))
 	}
 
-	model.YangModules = make([]yangModuleModel, 0, len(moduleschema.Modules()))
-	if spec.Schema || spec.ValidationSchema {
-		for _, module := range moduleschema.Modules() {
-			content, err := moduleschema.Read(module.File)
-			if err != nil {
-				resp.Diagnostics.AddError("Cannot read an embedded YANG module", err.Error())
-				return
-			}
-
-			path := filepath.Join(moduleschema.InstallDir, module.File)
-			if !spec.Schema {
-				model.Files = append(
-					model.Files,
-					roleFileModel{
-						Path:    types.StringValue(path),
-						Content: types.StringValue(string(content)),
-						Mode: types.StringValue(
-							fmt.Sprintf(fileModeFormat, moduleschema.FileMode.Perm()),
-						),
-					},
-				)
-				continue
-			}
-
-			features := module.Features
-			if features == nil {
-				features = []string{}
-			}
-
-			model.YangModules = append(
-				model.YangModules,
-				yangModuleModel{
-					File:    types.StringValue(module.File),
-					Path:    types.StringValue(path),
-					Content: types.StringValue(string(content)),
-					Mode: types.StringValue(
-						fmt.Sprintf(fileModeFormat, moduleschema.FileMode.Perm()),
-					),
-					Features: features,
-					Update:   types.BoolValue(module.Update),
-				},
-			)
-		}
+	if !readRoleYangModules(&model, spec, &resp.Diagnostics) {
+		return
 	}
 
 	model.StackYangModules = stackYangModuleModels(spec)
