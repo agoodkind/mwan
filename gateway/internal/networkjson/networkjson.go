@@ -380,18 +380,7 @@ func build(doc *document) (*Config, error) {
 		return nil, err
 	}
 
-	active := loaded.Connections[:0]
-	for _, connection := range loaded.Connections {
-		if connection.Roles&interfaceintent.RoleProvider != 0 {
-			if _, accepted := loaded.WAN[connection.ID.String()]; !accepted {
-				continue
-			}
-		}
-
-		active = append(active, connection)
-	}
-
-	loaded.Connections = active
+	retainAcceptedProviderConnections(loaded)
 	if err := validateActiveDependencies(loaded.Connections); err != nil {
 		return nil, err
 	}
@@ -564,19 +553,7 @@ func rejectEntry(entry ifaceEntry, err error) Rejection {
 // A failure here stops the daemon before it writes anything to the kernel,
 // which is the existing failure contract for a bad configuration.
 func checkProviderSet(loaded *Config) error {
-	reserved := make(map[int]string, len(loaded.ReservedTables)+len(kernelReservedTables))
-	for _, table := range kernelReservedTables {
-		reserved[table] = "the kernel"
-	}
-
-	for _, table := range loaded.ReservedTables {
-		// The kernel's own reservation is the true reason a table is off limits,
-		// so inventory redundantly listing it must not overwrite that label with
-		// a less accurate one.
-		if _, alreadyReserved := reserved[table]; !alreadyReserved {
-			reserved[table] = "steering-group/reserved-tables"
-		}
-	}
+	reserved := providerReservedTables(loaded)
 
 	names := make([]string, 0, len(loaded.WAN))
 	for name := range loaded.WAN {
@@ -982,4 +959,37 @@ func (c *Config) Apply(cfg *config.Config) {
 
 	cfg.IfMgr.Modules.Health.ProbeTimeoutMillis = c.ProbeTimeoutMillis
 	cfg.IfMgr.Modules.Health.WAN = c.Health
+}
+
+func retainAcceptedProviderConnections(loaded *Config) {
+	active := loaded.Connections[:0]
+	for _, connection := range loaded.Connections {
+		if connection.Roles&interfaceintent.RoleProvider != 0 {
+			if _, accepted := loaded.WAN[connection.ID.String()]; !accepted {
+				continue
+			}
+		}
+
+		active = append(active, connection)
+	}
+
+	loaded.Connections = active
+}
+
+func providerReservedTables(loaded *Config) map[int]string {
+	reserved := make(map[int]string, len(loaded.ReservedTables)+len(kernelReservedTables))
+	for _, table := range kernelReservedTables {
+		reserved[table] = "the kernel"
+	}
+
+	for _, table := range loaded.ReservedTables {
+		// The kernel's own reservation is the true reason a table is off limits,
+		// so inventory redundantly listing it must not overwrite that label with
+		// a less accurate one.
+		if _, alreadyReserved := reserved[table]; !alreadyReserved {
+			reserved[table] = "steering-group/reserved-tables"
+		}
+	}
+
+	return reserved
 }
