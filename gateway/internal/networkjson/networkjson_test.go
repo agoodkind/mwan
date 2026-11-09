@@ -1899,8 +1899,10 @@ func TestLoadMWANOwnedDHCPv4(t *testing.T) {
 				}
 
 				connection := requireConnection(t, loaded.Connections, "enowned0")
-				if connection.IPv4 == nil || connection.IPv4.DHCP == nil || !*connection.IPv4.DHCP ||
-					connection.IPv4.DHCPv4 == nil || connection.IPv4.RouteMetric == nil ||
+				if connection.IPv4 == nil || connection.IPv4.DHCP == nil ||
+					!*connection.IPv4.DHCP ||
+					connection.IPv4.DHCPv4 == nil ||
+					connection.IPv4.RouteMetric == nil ||
 					*connection.IPv4.RouteMetric != 17 {
 					t.Fatalf("DHCPv4 intent = %+v", connection.IPv4)
 				}

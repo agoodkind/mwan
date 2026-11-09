@@ -169,7 +169,8 @@ func (r *OwnedLinkReconciler) vxlanReceiverHolder(
 ) (string, bool) {
 	for _, link := range links {
 		observed, ok := link.(*netlink.Vxlan)
-		if !ok || observed.Index == requested.Index || observed.VxlanId != requested.VxlanId || observed.Port != requested.Port ||
+		if !ok || observed.Index == requested.Index || observed.VxlanId != requested.VxlanId ||
+			observed.Port != requested.Port ||
 			observed.FlowBased ||
 			observed.GBP ||
 			observed.UDP6ZeroCSumRx ||
