@@ -215,13 +215,13 @@ func (s *OwnedAddressResults) Replace() {
 }
 
 // Set records a verified address for one connection.
-func (s *OwnedAddressResults) Set(id, prefix string) {
+func (s *OwnedAddressResults) Set(connectionID, prefix string) {
 	s.mu.Lock()
-	if s.addresses[id] == nil {
-		s.addresses[id] = make(map[string]bool)
+	if s.addresses[connectionID] == nil {
+		s.addresses[connectionID] = make(map[string]bool)
 	}
 
-	s.addresses[id][prefix] = true
+	s.addresses[connectionID][prefix] = true
 	s.mu.Unlock()
 }
 
@@ -234,13 +234,13 @@ func (s *OwnedAddressResults) Has(id, prefix string) bool {
 }
 
 // SetFamilyReady records verified application of every owned object in a family.
-func (s *OwnedAddressResults) SetFamilyReady(id, family string) {
+func (s *OwnedAddressResults) SetFamilyReady(connectionID, family string) {
 	s.mu.Lock()
-	if s.families[id] == nil {
-		s.families[id] = make(map[string]bool)
+	if s.families[connectionID] == nil {
+		s.families[connectionID] = make(map[string]bool)
 	}
 
-	s.families[id][family] = true
+	s.families[connectionID][family] = true
 	s.mu.Unlock()
 }
 
@@ -253,13 +253,13 @@ func (s *OwnedAddressResults) FamilyReady(id, family string) bool {
 }
 
 // SetFamilyRoutable records that a family can support routing in the current pass.
-func (s *OwnedAddressResults) SetFamilyRoutable(id, family string) {
+func (s *OwnedAddressResults) SetFamilyRoutable(connectionID, family string) {
 	s.mu.Lock()
-	if s.routable[id] == nil {
-		s.routable[id] = make(map[string]bool)
+	if s.routable[connectionID] == nil {
+		s.routable[connectionID] = make(map[string]bool)
 	}
 
-	s.routable[id][family] = true
+	s.routable[connectionID][family] = true
 	s.mu.Unlock()
 }
 
@@ -272,13 +272,13 @@ func (s *OwnedAddressResults) FamilyRoutable(id, family string) bool {
 }
 
 // SetFamilyApplied records a successful kernel address and route reconciliation.
-func (s *OwnedAddressResults) SetFamilyApplied(id, family string) {
+func (s *OwnedAddressResults) SetFamilyApplied(connectionID, family string) {
 	s.mu.Lock()
-	if s.applied[id] == nil {
-		s.applied[id] = make(map[string]bool)
+	if s.applied[connectionID] == nil {
+		s.applied[connectionID] = make(map[string]bool)
 	}
 
-	s.applied[id][family] = true
+	s.applied[connectionID][family] = true
 	s.mu.Unlock()
 }
 

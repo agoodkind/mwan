@@ -562,15 +562,15 @@ func slotMapSet(conn nftConn, table *nftables.Table, slots []uint32) (*nftables.
 	return set, nil
 }
 
-// addrBytes returns the on-wire form of a: four bytes for IPv4 and sixteen for
-// IPv6, matching the payload the rule compares against.
-func addrBytes(a netip.Addr) []byte {
-	if a.Is4() {
-		octets := a.As4()
+// addrBytes returns four bytes for IPv4 or sixteen bytes for IPv6,
+// matching the payload comparison.
+func addrBytes(address netip.Addr) []byte {
+	if address.Is4() {
+		octets := address.As4()
 		return octets[:]
 	}
 
-	octets := a.As16()
+	octets := address.As16()
 
 	return octets[:]
 }
