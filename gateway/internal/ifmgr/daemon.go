@@ -193,20 +193,7 @@ func NewDaemon(log *slog.Logger, cfg DaemonConfig) (*Daemon, error) {
 		modules = append(modules, mod)
 	}
 
-	d := &Daemon{
-		cfg:               cfg,
-		log:               dlog,
-		role:              cfg.Role,
-		modules:           modules,
-		attemptedModules:  nil,
-		clock:             nil,
-		env:               nil,
-		primaryConnection: primaryConnection,
-		reconcileReq:      make(chan struct{}, 1),
-		mu:                sync.Mutex{},
-		startedAt:         time.Time{},
-		forwardingState:   forwardingready.State{IPv4: false, IPv6: false},
-	}
+	d := newDaemonState(cfg, dlog, modules, primaryConnection)
 	dlog.Info("ifmgr: Daemon ready", "module_count", len(modules))
 
 	return d, nil
@@ -301,41 +288,7 @@ func (d *Daemon) Run(ctx context.Context) (resultErr error) {
 		}
 	}
 
-	d.env = &Env{
-		Iface:               d.cfg.Iface,
-		Connections:         d.cfg.Connections,
-		Sysctl:              netif.NewProcSysctlRunner(d.log, false),
-		Log:                 d.log,
-		Alerts:              WrapNotifier(d.cfg.Notifier),
-		Monitor:             mon,
-		DHCP:                dhcp.client,
-		DHCPRecoveryPending: dhcp.cached,
-		RA:                  raClient,
-		RequestReconcile:    d.requestReconcile,
-		ForwardingChanges: &ForwardingChanges{
-			mu:               sync.RWMutex{},
-			registration:     nil,
-			requestReconcile: d.requestReconcile,
-		},
-		LiveState:                 d.cfg.LiveState,
-		OwnedLinks:                nil,
-		OwnedAddresses:            nil,
-		NPTAddresses:              nil,
-		Delegations:               nil,
-		TunnelEndpointRoutes:      nil,
-		PrepareLocalIPv6:          nil,
-		InspectNativePacketPolicy: nil,
-		PrepareOwnedLink:          nil,
-		OwnedLinkUp:               &OwnedLinkUpHandler{mu: sync.RWMutex{}, handle: nil},
-		VerifyDHCPv4:              &OwnedLinkUpHandler{mu: sync.RWMutex{}, handle: nil},
-	}
-	if dhcp.client != nil {
-		d.env.VerifyDHCPv4.Set(func(iface string) {
-			if iface == d.cfg.Iface {
-				dhcp.client.VerifyLease()
-			}
-		})
-	}
+	d.initializeEnvironment(mon, dhcp, raClient)
 
 	d.publishStartingPaths()
 	if err := d.initModules(ctx); err != nil {
@@ -926,4 +879,68 @@ func moduleConfigType(cfg ModuleConfig) string {
 	}
 
 	return cfg.ModuleConfigName()
+}
+
+func newDaemonState(
+	cfg DaemonConfig,
+	dlog *slog.Logger,
+	modules []Module,
+	primaryConnection *interfaceintent.Connection,
+) *Daemon {
+	return &Daemon{
+		cfg:               cfg,
+		log:               dlog,
+		role:              cfg.Role,
+		modules:           modules,
+		attemptedModules:  nil,
+		clock:             nil,
+		env:               nil,
+		primaryConnection: primaryConnection,
+		reconcileReq:      make(chan struct{}, 1),
+		mu:                sync.Mutex{},
+		startedAt:         time.Time{},
+		forwardingState:   forwardingready.State{IPv4: false, IPv6: false},
+	}
+}
+
+func (d *Daemon) initializeEnvironment(
+	mon *netif.Monitor,
+	dhcp dhcpStartup,
+	raClient *netif.RAClient,
+) {
+	d.env = &Env{
+		Iface:               d.cfg.Iface,
+		Connections:         d.cfg.Connections,
+		Sysctl:              netif.NewProcSysctlRunner(d.log, false),
+		Log:                 d.log,
+		Alerts:              WrapNotifier(d.cfg.Notifier),
+		Monitor:             mon,
+		DHCP:                dhcp.client,
+		DHCPRecoveryPending: dhcp.cached,
+		RA:                  raClient,
+		RequestReconcile:    d.requestReconcile,
+		ForwardingChanges: &ForwardingChanges{
+			mu:               sync.RWMutex{},
+			registration:     nil,
+			requestReconcile: d.requestReconcile,
+		},
+		LiveState:                 d.cfg.LiveState,
+		OwnedLinks:                nil,
+		OwnedAddresses:            nil,
+		NPTAddresses:              nil,
+		Delegations:               nil,
+		TunnelEndpointRoutes:      nil,
+		PrepareLocalIPv6:          nil,
+		InspectNativePacketPolicy: nil,
+		PrepareOwnedLink:          nil,
+		OwnedLinkUp:               &OwnedLinkUpHandler{mu: sync.RWMutex{}, handle: nil},
+		VerifyDHCPv4:              &OwnedLinkUpHandler{mu: sync.RWMutex{}, handle: nil},
+	}
+	if dhcp.client != nil {
+		d.env.VerifyDHCPv4.Set(func(iface string) {
+			if iface == d.cfg.Iface {
+				dhcp.client.VerifyLease()
+			}
+		})
+	}
 }
