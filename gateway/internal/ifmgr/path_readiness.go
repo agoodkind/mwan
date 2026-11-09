@@ -218,13 +218,13 @@ func (d *Daemon) publishStartingPaths() {
 			continue
 		}
 
-		id := connection.ID.String()
+		connectionID := connection.ID.String()
 		if connection.IPv4 != nil {
-			d.cfg.LiveState.SetPathReadiness(id, familyNameIPv4, verdict)
+			d.cfg.LiveState.SetPathReadiness(connectionID, familyNameIPv4, verdict)
 		}
 
 		if connection.IPv6 != nil {
-			d.cfg.LiveState.SetPathReadiness(id, familyNameIPv6, verdict)
+			d.cfg.LiveState.SetPathReadiness(connectionID, familyNameIPv6, verdict)
 		}
 	}
 }

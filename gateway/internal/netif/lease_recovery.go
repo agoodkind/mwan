@@ -521,30 +521,30 @@ func (store *LeaseRecoveryStore) LoadDHCPv6(
 	lease.IANARenewAt = rebaseLeaseDeadline(lease.IANARenewAt, record.Clock, current, elapsed)
 
 	lease.IANARebindAt = rebaseLeaseDeadline(lease.IANARebindAt, record.Clock, current, elapsed)
-	for i := range lease.Prefixes {
-		lease.Prefixes[i].PreferredUntil = rebaseLeaseDeadline(
-			lease.Prefixes[i].PreferredUntil,
+	for prefixIndex := range lease.Prefixes {
+		lease.Prefixes[prefixIndex].PreferredUntil = rebaseLeaseDeadline(
+			lease.Prefixes[prefixIndex].PreferredUntil,
 			record.Clock,
 			current,
 			elapsed,
 		)
-		lease.Prefixes[i].ValidUntil = rebaseLeaseDeadline(
-			lease.Prefixes[i].ValidUntil,
+		lease.Prefixes[prefixIndex].ValidUntil = rebaseLeaseDeadline(
+			lease.Prefixes[prefixIndex].ValidUntil,
 			record.Clock,
 			current,
 			elapsed,
 		)
 	}
 
-	for i := range lease.Addresses {
-		lease.Addresses[i].PreferredUntil = rebaseLeaseDeadline(
-			lease.Addresses[i].PreferredUntil,
+	for addressIndex := range lease.Addresses {
+		lease.Addresses[addressIndex].PreferredUntil = rebaseLeaseDeadline(
+			lease.Addresses[addressIndex].PreferredUntil,
 			record.Clock,
 			current,
 			elapsed,
 		)
-		lease.Addresses[i].ValidUntil = rebaseLeaseDeadline(
-			lease.Addresses[i].ValidUntil,
+		lease.Addresses[addressIndex].ValidUntil = rebaseLeaseDeadline(
+			lease.Addresses[addressIndex].ValidUntil,
 			record.Clock,
 			current,
 			elapsed,
@@ -684,6 +684,7 @@ func (store *LeaseRecoveryStore) pruneRecord(name string, active map[string]bool
 			"close_err",
 			closeErr,
 		)
+
 		return errors.Join(readErr, closeErr)
 	}
 

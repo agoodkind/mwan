@@ -841,8 +841,8 @@ func (module *Module) reconcileFamily(
 		}
 	}
 
-	ready, ok := module.Env.OwnedLinks.Get(id)
-	if family == "ipv6" && !leaseReady && ok {
+	ready, linkFound := module.Env.OwnedLinks.Get(id)
+	if family == "ipv6" && !leaseReady && linkFound {
 		leaseReady, leaseError = module.hasUsableAutoconfiguredAddress(
 			ctx,
 			log,
@@ -852,7 +852,7 @@ func (module *Module) reconcileFamily(
 	}
 
 	err := errors.Join(leaseError, preparationErr)
-	if err == nil && !ok {
+	if err == nil && !linkFound {
 		err = fmt.Errorf("current link result is absent")
 	} else if err == nil {
 		err = module.reconciler.ReconcileFamilyRoutesWithLifetimesRetaining(
@@ -960,6 +960,7 @@ func (module *Module) recoveryRetention(
 	defer module.sessionMu.Unlock()
 	if family == "ipv4" {
 		session := module.sessions[id]
+
 		return netif.RecordedRetention{
 			All: session != nil && session.recoveryPending && now.Before(
 				session.recoveryUntil,
@@ -1081,6 +1082,7 @@ func appendDHCPv4(
 				"connection_id",
 				connection.ID,
 			)
+
 			return settings, routes, assignments, fmt.Errorf(
 				"DHCPv4 lease has a route without a destination",
 			)
@@ -1095,6 +1097,7 @@ func appendDHCPv4(
 				"err",
 				err,
 			)
+
 			return settings, routes, assignments, fmt.Errorf("DHCPv4 route destination: %w", err)
 		}
 
@@ -1186,6 +1189,7 @@ func (module *Module) publishInstalled(
 			"err",
 			err,
 		)
+
 		return 0, fmt.Errorf("verify installed addresses: %w", err)
 	}
 

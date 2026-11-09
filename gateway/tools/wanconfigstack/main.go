@@ -317,7 +317,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	b := &builder{
+	stackBuilder := &builder{
 		log:      log,
 		pins:     opts.pins,
 		outDir:   opts.outDir,
@@ -327,9 +327,9 @@ func main() {
 	}
 	ctx := context.Background()
 	if opts.verifyBundle != "" {
-		err = b.verify(ctx, opts.verifyBundle)
+		err = stackBuilder.verify(ctx, opts.verifyBundle)
 	} else {
-		err = b.build(ctx)
+		err = stackBuilder.build(ctx)
 	}
 
 	if err != nil {

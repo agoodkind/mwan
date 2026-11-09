@@ -197,13 +197,13 @@ func (b *builder) writeBundle(
 		return err
 	}
 
-	for _, m := range members {
-		content, err := os.ReadFile(m.path)
+	for _, member := range members {
+		content, err := os.ReadFile(member.path)
 		if err != nil {
-			return b.fail(ctx, "read package", err, slog.String("path", m.path))
+			return b.fail(ctx, "read package", err, slog.String("path", member.path))
 		}
 
-		if err := b.writeMember(ctx, tw, "debs/"+filepath.Base(m.path), content); err != nil {
+		if err := b.writeMember(ctx, tw, "debs/"+filepath.Base(member.path), content); err != nil {
 			return err
 		}
 	}
