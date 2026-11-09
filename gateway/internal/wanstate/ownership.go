@@ -593,9 +593,7 @@ func (s *Store) RecordObservation(event netif.Event) {
 	log := s.transitionLog
 	s.mu.Unlock()
 
-	for i := range transitions {
-		logOwnershipTransition(log, id, &transitions[i])
-	}
+	logObservationTransitions(log, id, transitions)
 }
 
 func (s *Store) appendFamilyObservationTransitionsLocked(
@@ -664,47 +662,7 @@ func (s *Store) appendFamilyObservationTransitionsLocked(
 		}
 	}
 
-	for _, route := range previous.Routes {
-		if !slices.ContainsFunc(
-			next.Routes,
-			func(candidate netif.CurrentRoute) bool { return sameRoute(candidate, route) },
-		) {
-			*transitions = append(
-				*transitions,
-				s.addTransitionLocked(
-					current,
-					family,
-					"present",
-					"absent",
-					"observe-route",
-					"kernel",
-					routeTransitionReason(route, "removed"),
-					current.ObservedAt,
-				),
-			)
-		}
-	}
-
-	for _, route := range next.Routes {
-		if !slices.ContainsFunc(
-			previous.Routes,
-			func(candidate netif.CurrentRoute) bool { return sameRoute(candidate, route) },
-		) {
-			*transitions = append(
-				*transitions,
-				s.addTransitionLocked(
-					current,
-					family,
-					"absent",
-					"present",
-					"observe-route",
-					"kernel",
-					routeTransitionReason(route, "added"),
-					current.ObservedAt,
-				),
-			)
-		}
-	}
+	s.appendRouteObservationTransitionsLocked(current, family, previous, next, transitions)
 }
 
 func addressObservationState(address netif.CurrentAddr) string {
@@ -914,4 +872,60 @@ func removeRoute(routes []netif.CurrentRoute, value netif.CurrentRoute) []netif.
 		routes,
 		func(route netif.CurrentRoute) bool { return sameRoute(route, value) },
 	)
+}
+
+func logObservationTransitions(log *slog.Logger, id string, transitions []Transition) {
+	for i := range transitions {
+		logOwnershipTransition(log, id, &transitions[i])
+	}
+}
+
+func (s *Store) appendRouteObservationTransitionsLocked(
+	current *ConnectionState,
+	family string,
+	previous FamilyState,
+	next FamilyState,
+	transitions *[]Transition,
+) {
+	for _, route := range previous.Routes {
+		if !slices.ContainsFunc(
+			next.Routes,
+			func(candidate netif.CurrentRoute) bool { return sameRoute(candidate, route) },
+		) {
+			*transitions = append(
+				*transitions,
+				s.addTransitionLocked(
+					current,
+					family,
+					"present",
+					"absent",
+					"observe-route",
+					"kernel",
+					routeTransitionReason(route, "removed"),
+					current.ObservedAt,
+				),
+			)
+		}
+	}
+
+	for _, route := range next.Routes {
+		if !slices.ContainsFunc(
+			previous.Routes,
+			func(candidate netif.CurrentRoute) bool { return sameRoute(candidate, route) },
+		) {
+			*transitions = append(
+				*transitions,
+				s.addTransitionLocked(
+					current,
+					family,
+					"absent",
+					"present",
+					"observe-route",
+					"kernel",
+					routeTransitionReason(route, "added"),
+					current.ObservedAt,
+				),
+			)
+		}
+	}
 }
