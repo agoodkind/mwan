@@ -98,6 +98,7 @@ func probeFamily(
 						"err",
 						err,
 					)
+
 					return fmt.Errorf("ping %s via %s: %w", target, wan.Iface, err)
 				}
 
@@ -113,6 +114,18 @@ func probeFamily(
 		}
 	}
 
+	return probeHTTPFamily(ctx, wan, family, timeout, wallClock, logger, records)
+}
+
+func probeHTTPFamily(
+	ctx context.Context,
+	wan health.WAN,
+	family string,
+	timeout time.Duration,
+	wallClock clock.Clock,
+	logger *slog.Logger,
+	records chan<- Record,
+) error {
 	for index, target := range wan.HTTPURLs {
 		select {
 		case <-ctx.Done():
@@ -131,8 +144,7 @@ func probeFamily(
 			Error:      "",
 		}
 		if err != nil {
-			var setupError *netif.ProbeSetupError
-			if errors.As(err, &setupError) {
+			if _, setupFailed := errors.AsType[*netif.ProbeSetupError](err); setupFailed {
 				logger.WarnContext(
 					ctx,
 					"health HTTP setup failed",
@@ -145,6 +157,7 @@ func probeFamily(
 					"err",
 					err,
 				)
+
 				return fmt.Errorf("HTTP %s via %s: %w", target, wan.Iface, err)
 			}
 
