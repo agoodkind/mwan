@@ -438,13 +438,17 @@ func validateBGPForwardingReadiness(cfg *Config) error {
 	probe := cfg.IfMgr.Modules.ConnectivityProbe
 	if len(b.Announce.IPv4) > 0 && (probe == nil || len(probe.TargetsV4) == 0) {
 		return errors.New(
-			"[ifmgr.modules.connectivity_probe] targets_v4 is required when [bgp.announce] ipv4 is configured and forwarding readiness is enabled without use_wanconfig",
+			"[ifmgr.modules.connectivity_probe] targets_v4 is required when " +
+				"[bgp.announce] ipv4 is configured and forwarding readiness is " +
+				"enabled without use_wanconfig",
 		)
 	}
 
 	if len(b.Announce.IPv6) > 0 && (probe == nil || len(probe.TargetsV6) == 0) {
 		return errors.New(
-			"[ifmgr.modules.connectivity_probe] targets_v6 is required when [bgp.announce] ipv6 is configured and forwarding readiness is enabled without use_wanconfig",
+			"[ifmgr.modules.connectivity_probe] targets_v6 is required when " +
+				"[bgp.announce] ipv6 is configured and forwarding readiness is " +
+				"enabled without use_wanconfig",
 		)
 	}
 

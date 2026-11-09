@@ -434,6 +434,7 @@ func validateRenderedConnection(entry ifaceEntry, connection interfaceintent.Con
 			"err",
 			err,
 		)
+
 		return fmt.Errorf("interface %s: %w", entry.Name, err)
 	}
 
@@ -519,6 +520,7 @@ func buildIntentLink(entry ifaceEntry) (*interfaceintent.Link, error) {
 			"err",
 			err,
 		)
+
 		return nil, fmt.Errorf("interface %s: %w", entry.Name, err)
 	}
 
@@ -1246,7 +1248,8 @@ func claimConnectionResources(
 	}
 
 	if connection.IPv6 != nil &&
-		((connection.IPv6.AcceptRA != nil && *connection.IPv6.AcceptRA) || (connection.IPv6.AutoConf != nil && *connection.IPv6.AutoConf)) {
+		((connection.IPv6.AcceptRA != nil && *connection.IPv6.AcceptRA) ||
+			(connection.IPv6.AutoConf != nil && *connection.IPv6.AutoConf)) {
 		if err := add(interfaceintent.Claim{
 			ConnectionID: connection.ID,
 			Kind:         interfaceintent.ResourceRASLAAC,
