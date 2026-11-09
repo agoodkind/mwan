@@ -521,13 +521,13 @@ func parseUIDRangeUint32(s string) (uint32, uint32, error) {
 		return uint32(lo), uint32(lo), nil
 	}
 
-	hi, err := strconv.ParseUint(parts[1], 10, 32)
+	upperBound, err := strconv.ParseUint(parts[1], 10, 32)
 	if err != nil {
 		slog.Warn("rules: ParseUint failed", "uidrange", s, "part", parts[1], "err", err)
 		return 0, 0, fmt.Errorf("ParseUint(%q): %w", parts[1], err)
 	}
 
-	return uint32(lo), uint32(hi), nil
+	return uint32(lo), uint32(upperBound), nil
 }
 
 // af_unspec_unused is here to silence unused-import warnings on unix when

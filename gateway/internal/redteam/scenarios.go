@@ -566,13 +566,13 @@ func (r *Ops) handleDeployFault(
 
 	if r.preset.DeployTSMode == deployTSModeAlwaysRecent ||
 		r.preset.DeployTSMode == deployTSModeRecentThenStale {
-		ts := r.now().Unix() - 60
+		deployTimestamp := r.now().Unix() - 60
 		r.logFault(ctx, "inject_deploy_ts", vmid, args)
 		r.deployTSInjected = true
 
 		return ops.GuestExecResult{
 			ExitCode: 0,
-			Stdout:   strconv.FormatInt(ts, 10),
+			Stdout:   strconv.FormatInt(deployTimestamp, 10),
 			Stderr:   "",
 		}, true
 	}

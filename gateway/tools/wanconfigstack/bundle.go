@@ -168,15 +168,15 @@ func manifest(arch string, members []bundleMember) string {
 	var out strings.Builder
 	out.WriteString("# package version architecture sha256 file\n")
 
-	for _, m := range members {
+	for _, member := range members {
 		fmt.Fprintf(
 			&out,
 			"%s %s %s %s debs/%s\n",
-			m.name,
-			m.version,
+			member.name,
+			member.version,
 			arch,
-			m.sha256,
-			filepath.Base(m.path),
+			member.sha256,
+			filepath.Base(member.path),
 		)
 	}
 
@@ -221,11 +221,11 @@ func (b *builder) writeBundle(
 
 func (b *builder) writeMember(
 	ctx context.Context,
-	tw *tar.Writer,
+	archiveWriter *tar.Writer,
 	name string,
 	content []byte,
 ) error {
-	if err := tw.WriteHeader(&tar.Header{
+	if err := archiveWriter.WriteHeader(&tar.Header{
 		Name: name,
 		Mode: 0o644,
 		Size: int64(len(content)),
@@ -233,7 +233,7 @@ func (b *builder) writeMember(
 		return b.fail(ctx, "write member header", err, slog.String("member", name))
 	}
 
-	if _, err := tw.Write(content); err != nil {
+	if _, err := archiveWriter.Write(content); err != nil {
 		return b.fail(ctx, "write member", err, slog.String("member", name))
 	}
 

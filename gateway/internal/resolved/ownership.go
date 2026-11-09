@@ -273,7 +273,7 @@ func (o *Ownership) retireMissingLinks() error {
 
 func (o *Ownership) applyRecord(
 	ctx context.Context,
-	c *client,
+	resolverClient *client,
 	value *record,
 	intent Intent,
 ) error {
@@ -282,16 +282,16 @@ func (o *Ownership) applyRecord(
 		value,
 		&value.DNS,
 		intent.DNS,
-		func() ([]DNS, error) { return c.dns(ctx, value.Index) },
-		func(values []DNS) error { return c.setDNS(ctx, value.Index, values) },
+		func() ([]DNS, error) { return resolverClient.dns(ctx, value.Index) },
+		func(values []DNS) error { return resolverClient.setDNS(ctx, value.Index, values) },
 	)
 	domainsErr := reconcileField(
 		o,
 		value,
 		&value.Domains,
 		intent.Domains,
-		func() ([]Domain, error) { return c.domains(ctx, value.Index) },
-		func(values []Domain) error { return c.setDomains(ctx, value.Index, values) },
+		func() ([]Domain, error) { return resolverClient.domains(ctx, value.Index) },
+		func(values []Domain) error { return resolverClient.setDomains(ctx, value.Index, values) },
 	)
 	if err := errors.Join(dnsErr, domainsErr); err != nil {
 		return err

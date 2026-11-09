@@ -69,6 +69,7 @@ func Ping4WithLogger(
 		realClock{},
 		false,
 	)
+
 	return result.RoundTripTime, err
 }
 
@@ -89,6 +90,7 @@ func ping4(
 		probeClock,
 		false,
 	)
+
 	return result.RoundTripTime, err
 }
 
@@ -137,6 +139,7 @@ func ping4Source(
 
 	if !target.Is4() {
 		log.WarnContext(ctx, "netif: Ping4 target is not IPv4")
+
 		return PingProbeResult{}, probeSetupError(
 			fmt.Errorf("Ping4: target %q is not IPv4", target),
 		)
@@ -630,13 +633,13 @@ func matchesEchoReply4(message *icmp.Message, id int, sequence int) bool {
 // pinged. ReadFrom on an ip4:icmp socket yields a [net.IPAddr], so compare the
 // address bytes; an unexpected peer type is treated as no match.
 func peerMatchesTarget(peer net.Addr, target netip.Addr) bool {
-	ipAddr, ok := peer.(*net.IPAddr)
-	if !ok {
+	ipAddr, validAddress := peer.(*net.IPAddr)
+	if !validAddress {
 		return false
 	}
 
-	from, ok := netip.AddrFromSlice(ipAddr.IP)
-	if !ok {
+	from, validAddress := netip.AddrFromSlice(ipAddr.IP)
+	if !validAddress {
 		return false
 	}
 

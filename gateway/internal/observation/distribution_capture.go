@@ -301,13 +301,13 @@ func (capture *ingressCapture) receiveError(operation string, err error) error {
 func decodeIngress(data []byte, provider ProviderIngress, at time.Time) (TCPIngress, bool) {
 	var absent TCPIngress
 	decoded := gopacket.NewPacket(data, layers.LayerTypeEthernet, gopacket.Default)
-	ethernet, ok := decoded.Layer(layers.LayerTypeEthernet).(*layers.Ethernet)
-	if !ok || ethernet.DstMAC.String() != provider.DestinationMAC {
+	ethernet, layerMatched := decoded.Layer(layers.LayerTypeEthernet).(*layers.Ethernet)
+	if !layerMatched || ethernet.DstMAC.String() != provider.DestinationMAC {
 		return absent, false
 	}
 
-	tcp, ok := decoded.Layer(layers.LayerTypeTCP).(*layers.TCP)
-	if !ok || !tcp.SYN || tcp.ACK {
+	tcp, layerMatched := decoded.Layer(layers.LayerTypeTCP).(*layers.TCP)
+	if !layerMatched || !tcp.SYN || tcp.ACK {
 		return absent, false
 	}
 

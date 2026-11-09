@@ -183,7 +183,7 @@ func (r *OwnedStaticReconciler) RecordedNPTEdges() []NPTEdgeRecord {
 			continue
 		}
 
-		id := connectionid.ID(value.ConnectionID)
+		connectionID := connectionid.ID(value.ConnectionID)
 		prefix, err := netip.ParsePrefix(value.Prefix)
 		if err != nil {
 			continue
@@ -192,7 +192,7 @@ func (r *OwnedStaticReconciler) RecordedNPTEdges() []NPTEdgeRecord {
 		records = append(
 			records,
 			NPTEdgeRecord{
-				ConnectionID:   id,
+				ConnectionID:   connectionID,
 				Interface:      value.LinkName,
 				InterfaceIndex: value.LinkIndex,
 				LinkIdentity:   value.LinkIdentity,
