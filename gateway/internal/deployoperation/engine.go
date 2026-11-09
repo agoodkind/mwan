@@ -65,17 +65,7 @@ func (engine Engine) Arm(ctx context.Context, manifest Manifest) (resultErr erro
 		return fmt.Errorf("deployment baseline application checks did not pass")
 	}
 
-	record := Record{
-		Manifest:         manifest,
-		Status:           Armed,
-		Results:          results,
-		ObservedAt:       engine.Store.Clock.Now().UTC(),
-		Lease:            nil,
-		Watch:            WatchIdentity{Unit: "", InvocationID: "", PID: 0},
-		Reason:           "",
-		UpdatedAt:        time.Time{},
-		RestoredIdentity: nil,
-	}
+	record := engine.armRecord(manifest, results)
 	if err := engine.Store.Create(ctx, record); err != nil {
 		return err
 	}
@@ -467,31 +457,7 @@ func (engine Engine) RecoverCoordinated(
 		return err
 	}
 
-	if record.Status == Armed {
-		watchContext, watchCancel := context.WithTimeout(
-			recoveryContext,
-			time.Duration(record.ObservationTimeoutSeconds)*time.Second,
-		)
-		watchError := record.Watch.Verify(watchContext)
-		watchCancel()
-		if watchError != nil {
-			engine.transition(
-				recoveryContext,
-				record,
-				"deploy_operation_watch_failed",
-				"Deployment watch identity could not be verified",
-				watchError.Error(),
-			)
-		}
-	}
-
-	engine.transition(
-		recoveryContext,
-		record,
-		"deploy_operation_recovery",
-		"Deployment snapshot recovery started",
-		reason,
-	)
+	engine.announceRecovery(recoveryContext, record, reason)
 	defer func() {
 		if resultErr != nil {
 			engine.Log.WarnContext(ctx, "deployment snapshot recovery failed")
@@ -552,25 +518,7 @@ func (engine Engine) RecoverCoordinated(
 		return err
 	}
 
-	engine.Notify.Resolve(
-		recoveryContext,
-		"deploy_operation_observation_failed",
-		operationID+"/"+generation,
-		"Deployment baseline application responses restored",
-	)
-
-	for _, kind := range []string{
-		"deploy_operation_watch_failed",
-		"deploy_operation_recovery",
-		"deploy_operation_recovery_failed",
-	} {
-		engine.Notify.Resolve(
-			recoveryContext,
-			kind,
-			operationID+"/"+generation,
-			"Deployment baseline identity and application responses restored",
-		)
-	}
+	engine.resolveRecoveryNotifications(recoveryContext, operationID, generation)
 
 	return nil
 }
@@ -652,5 +600,77 @@ func wait(ctx context.Context, duration time.Duration) error {
 		return fmt.Errorf("deployment operation wait interrupted: %w", ctx.Err())
 	case <-timer.C:
 		return nil
+	}
+}
+
+func (engine Engine) armRecord(manifest Manifest, results []observation.Result) Record {
+	return Record{
+		Manifest:         manifest,
+		Status:           Armed,
+		Results:          results,
+		ObservedAt:       engine.Store.Clock.Now().UTC(),
+		Lease:            nil,
+		Watch:            WatchIdentity{Unit: "", InvocationID: "", PID: 0},
+		Reason:           "",
+		UpdatedAt:        time.Time{},
+		RestoredIdentity: nil,
+	}
+}
+
+func (engine Engine) announceRecovery(
+	recoveryContext context.Context,
+	record Record,
+	reason string,
+) {
+	if record.Status == Armed {
+		watchContext, watchCancel := context.WithTimeout(
+			recoveryContext,
+			time.Duration(record.ObservationTimeoutSeconds)*time.Second,
+		)
+		watchError := record.Watch.Verify(watchContext)
+		watchCancel()
+		if watchError != nil {
+			engine.transition(
+				recoveryContext,
+				record,
+				"deploy_operation_watch_failed",
+				"Deployment watch identity could not be verified",
+				watchError.Error(),
+			)
+		}
+	}
+
+	engine.transition(
+		recoveryContext,
+		record,
+		"deploy_operation_recovery",
+		"Deployment snapshot recovery started",
+		reason,
+	)
+}
+
+func (engine Engine) resolveRecoveryNotifications(
+	recoveryContext context.Context,
+	operationID string,
+	generation string,
+) {
+	engine.Notify.Resolve(
+		recoveryContext,
+		"deploy_operation_observation_failed",
+		operationID+"/"+generation,
+		"Deployment baseline application responses restored",
+	)
+
+	for _, kind := range []string{
+		"deploy_operation_watch_failed",
+		"deploy_operation_recovery",
+		"deploy_operation_recovery_failed",
+	} {
+		engine.Notify.Resolve(
+			recoveryContext,
+			kind,
+			operationID+"/"+generation,
+			"Deployment baseline identity and application responses restored",
+		)
 	}
 }
