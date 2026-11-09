@@ -31,6 +31,7 @@ func loopbackPair(t *testing.T) (*statuspush.Sender, *statuspush.Listener) {
 	if err != nil {
 		t.Fatalf("net.Listen: %v", err)
 	}
+
 	address := socket.Addr().String()
 
 	listener := statuspush.NewListenerWithListen(
@@ -50,6 +51,7 @@ func loopbackPair(t *testing.T) (*statuspush.Sender, *statuspush.Listener) {
 		},
 		discardLogger(),
 	)
+
 	return sender, listener
 }
 
@@ -69,9 +71,12 @@ func waitForStatus(
 		if ok && status.ActiveTier == wantTier {
 			return status, receivedAt
 		}
+
 		time.Sleep(5 * time.Millisecond)
 	}
+
 	t.Fatalf("no status with active tier %d arrived within the deadline", wantTier)
+
 	return statuspush.Status{}, time.Time{}
 }
 
@@ -91,35 +96,48 @@ func TestRoundTripKeepsTheLatestStatus(t *testing.T) {
 	sender, listener := loopbackPair(t)
 	sentAt := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
 
-	sender.Send(context.Background(), statuspush.Status{
-		SentAt:     sentAt,
-		ActiveTier: 0,
-		Providers: map[string]string{
-			"att": "healthy", "webpass": "healthy", "monkeybrains": "healthy",
+	sender.Send(
+		context.Background(),
+		statuspush.Status{
+			SentAt:     sentAt,
+			ActiveTier: 0,
+			Providers: map[string]string{
+				"att":          "healthy",
+				"webpass":      "healthy",
+				"monkeybrains": "healthy",
+			},
 		},
-	})
+	)
 	first, _ := waitForStatus(t, listener, 0)
 	if got := first.Providers["att"]; got != "healthy" {
 		t.Fatalf("att verdict = %q, want healthy", got)
 	}
+
 	if !first.SentAt.Equal(sentAt) {
 		t.Fatalf("sent_at = %s, want %s", first.SentAt, sentAt)
 	}
 
-	sender.Send(context.Background(), statuspush.Status{
-		SentAt:     sentAt.Add(10 * time.Second),
-		ActiveTier: 1,
-		Providers: map[string]string{
-			"att": "unhealthy", "webpass": "unhealthy", "monkeybrains": "healthy",
+	sender.Send(
+		context.Background(),
+		statuspush.Status{
+			SentAt:     sentAt.Add(10 * time.Second),
+			ActiveTier: 1,
+			Providers: map[string]string{
+				"att":          "unhealthy",
+				"webpass":      "unhealthy",
+				"monkeybrains": "healthy",
+			},
 		},
-	})
+	)
 	second, receivedAt := waitForStatus(t, listener, 1)
 	if got := second.Providers["att"]; got != "unhealthy" {
 		t.Fatalf("att verdict after failover = %q, want unhealthy", got)
 	}
+
 	if got := len(second.Providers); got != 3 {
 		t.Fatalf("provider count = %d, want 3", got)
 	}
+
 	if receivedAt.IsZero() {
 		t.Fatal("received time is zero on a status that arrived")
 	}
@@ -129,20 +147,25 @@ func TestMalformedLineLeavesTheLastGoodStatus(t *testing.T) {
 	t.Parallel()
 
 	sender, listener := loopbackPair(t)
-	sender.Send(context.Background(), statuspush.Status{
-		SentAt:     time.Now(),
-		ActiveTier: 2,
-		Providers:  map[string]string{"astound": "healthy"},
-	})
+	sender.Send(
+		context.Background(),
+		statuspush.Status{
+			SentAt:     time.Now(),
+			ActiveTier: 2,
+			Providers:  map[string]string{"astound": "healthy"},
+		},
+	)
 	good, _ := waitForStatus(t, listener, 2)
 
 	conn, err := net.Dial("tcp", listener.Address())
 	if err != nil {
 		t.Fatalf("net.Dial: %v", err)
 	}
+
 	if _, err := conn.Write([]byte("{not json\n")); err != nil {
 		t.Fatalf("write garbage: %v", err)
 	}
+
 	if err := conn.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
@@ -154,6 +177,7 @@ func TestMalformedLineLeavesTheLastGoodStatus(t *testing.T) {
 	if !ok {
 		t.Fatal("a malformed line cleared the stored status")
 	}
+
 	if after.ActiveTier != good.ActiveTier {
 		t.Fatalf("active tier = %d, want the last good %d", after.ActiveTier, good.ActiveTier)
 	}
@@ -180,6 +204,7 @@ func TestUnmarshalStatusRoundTripsAnEncodedStatus(t *testing.T) {
 	if !got.SentAt.Equal(sent.SentAt) || got.ActiveTier != sent.ActiveTier {
 		t.Fatalf("decoded = %+v, want %+v", got, sent)
 	}
+
 	if !maps.Equal(got.Providers, sent.Providers) {
 		t.Fatalf("providers = %v, want %v", got.Providers, sent.Providers)
 	}
@@ -193,6 +218,7 @@ func TestUnmarshalStatusRejectsMalformedInput(t *testing.T) {
 		if err == nil {
 			t.Errorf("UnmarshalStatus accepted %q", input)
 		}
+
 		if status.Providers != nil || status.ActiveTier != 0 || !status.SentAt.IsZero() {
 			t.Errorf("UnmarshalStatus(%q) returned a populated status: %+v", input, status)
 		}
@@ -220,11 +246,15 @@ func TestNewStatusPicksTheLowestHealthyTier(t *testing.T) {
 	if status.ActiveTier != 2 {
 		t.Fatalf("active tier = %d, want 2", status.ActiveTier)
 	}
+
 	if !status.SentAt.Equal(sentAt) {
 		t.Fatalf("sent_at = %s, want %s", status.SentAt, sentAt)
 	}
+
 	want := map[string]string{
-		"webpass": "unhealthy", "att": "unhealthy", "monkeybrains": "healthy",
+		"webpass":      "unhealthy",
+		"att":          "unhealthy",
+		"monkeybrains": "healthy",
 	}
 	if !maps.Equal(status.Providers, want) {
 		t.Fatalf("providers = %v, want %v", status.Providers, want)
@@ -242,9 +272,11 @@ func TestNewStatusReadsAnUnrecognizedVerdictAsUnknown(t *testing.T) {
 	if got := status.Providers["webpass"]; got != "unknown" {
 		t.Fatalf("webpass verdict = %q, want unknown", got)
 	}
+
 	if got := status.Providers["att"]; got != "unknown" {
 		t.Fatalf("att verdict = %q, want unknown", got)
 	}
+
 	if status.ActiveTier != 0 {
 		t.Fatalf("active tier = %d, want 0 because unknown reads healthy", status.ActiveTier)
 	}
@@ -265,11 +297,14 @@ func TestSendToNothingIsNotFatal(t *testing.T) {
 	)
 	done := make(chan struct{})
 	go func() {
-		sender.Send(context.Background(), statuspush.Status{
-			SentAt:     time.Now(),
-			ActiveTier: 0,
-			Providers:  map[string]string{"att": "healthy"},
-		})
+		sender.Send(
+			context.Background(),
+			statuspush.Status{
+				SentAt:     time.Now(),
+				ActiveTier: 0,
+				Providers:  map[string]string{"att": "healthy"},
+			},
+		)
 		close(done)
 	}()
 	select {

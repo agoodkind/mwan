@@ -20,9 +20,18 @@ const (
 
 func underlayTableMatch(t *testing.T) netlink.Route {
 	t.Helper()
-	matched, err := netlink.RouteGetWithOptions(net.ParseIP(tunnelRouteRemote), &netlink.RouteGetOptions{Mark: tunnelRouteUnderMark, FIBMatch: true})
+	matched, err := netlink.RouteGetWithOptions(
+		net.ParseIP(tunnelRouteRemote),
+		&netlink.RouteGetOptions{Mark: tunnelRouteUnderMark, FIBMatch: true},
+	)
 	if err != nil || len(matched) != 1 {
-		t.Fatalf("lookup of %s with mark %d = %+v, %v", tunnelRouteRemote, tunnelRouteUnderMark, matched, err)
+		t.Fatalf(
+			"lookup of %s with mark %d = %+v, %v",
+			tunnelRouteRemote,
+			tunnelRouteUnderMark,
+			matched,
+			err,
+		)
 	}
 	return matched[0]
 }
@@ -31,10 +40,16 @@ func requireEndpointRouteSelected(t *testing.T, gateway string) {
 	t.Helper()
 	requireTunnelEndpointRoute(t, gateway)
 	matched := underlayTableMatch(t)
-	if matched.Dst == nil || matched.Dst.String() != tunnelRouteEndpoint || matched.Table != tunnelRouteUnderTbl ||
+	if matched.Dst == nil || matched.Dst.String() != tunnelRouteEndpoint ||
+		matched.Table != tunnelRouteUnderTbl ||
 		!matched.Gw.Equal(net.ParseIP(gateway)) {
-		t.Fatalf("lookup with the underlay mark matched %+v, want the endpoint route %s via %s in table %d",
-			matched, tunnelRouteEndpoint, gateway, tunnelRouteUnderTbl)
+		t.Fatalf(
+			"lookup with the underlay mark matched %+v, want the endpoint route %s via %s in table %d",
+			matched,
+			tunnelRouteEndpoint,
+			gateway,
+			tunnelRouteUnderTbl,
+		)
 	}
 }
 
@@ -49,11 +64,21 @@ func requireOuterFrameTo(t *testing.T, gatewayMAC string) {
 		t.Fatal(err)
 	}
 	if len(frames) != 1 || !bytes.Equal(frames[0].destinationMAC, wantMAC) ||
-		frames[0].source != netip.MustParseAddr(tunnelRouteLocal) || frames[0].destination != netip.MustParseAddr(tunnelRouteRemote) {
-		t.Fatalf("outer frames on %s = %+v, want one protocol 41 frame from %s to %s through gateway %s",
-			tunnelRouteUnderlay, frames, tunnelRouteLocal, tunnelRouteRemote, gatewayMAC)
+		frames[0].source != netip.MustParseAddr(
+			tunnelRouteLocal,
+		) || frames[0].destination != netip.MustParseAddr(tunnelRouteRemote) {
+		t.Fatalf(
+			"outer frames on %s = %+v, want one protocol 41 frame from %s to %s through gateway %s",
+			tunnelRouteUnderlay,
+			frames,
+			tunnelRouteLocal,
+			tunnelRouteRemote,
+			gatewayMAC,
+		)
 	}
-	if misrouted := readOuterFrames(t, otherCapture, 300*time.Millisecond, false); len(misrouted) != 0 {
+	if misrouted := readOuterFrames(t, otherCapture, 300*time.Millisecond, false); len(
+		misrouted,
+	) != 0 {
 		t.Fatalf("outer frames on %s = %+v, want none", tunnelRouteOther, misrouted)
 	}
 }
@@ -68,7 +93,8 @@ func TestTunnelEndpointRouteFollowsTheUnderlayGateway(t *testing.T) {
 
 	requireTunnelRouting(t, fixture.reconcile(ctx, t), true, "")
 	requireEndpointRouteSelected(t, tunnelRouteGateway)
-	if got := tableGateways(ctx, t, fixture.module, tunnelRouteTunnelTbl); len(got) != 1 || got[0] != tunnelRouteInnerGW+" dev "+tunnelRouteIface {
+	if got := tableGateways(ctx, t, fixture.module, tunnelRouteTunnelTbl); len(got) != 1 ||
+		got[0] != tunnelRouteInnerGW+" dev "+tunnelRouteIface {
 		t.Fatalf("tunnel table gateways = %q, want the IPv6 default through the tunnel", got)
 	}
 	other, err := netlink.LinkByName(tunnelRouteOther)
@@ -77,7 +103,12 @@ func TestTunnelEndpointRouteFollowsTheUnderlayGateway(t *testing.T) {
 	}
 	preferred, err := netlink.RouteGet(net.ParseIP(tunnelRouteRemote))
 	if err != nil || len(preferred) != 1 || preferred[0].LinkIndex != other.Attrs().Index {
-		t.Fatalf("unbound lookup of the endpoint = %+v, %v; want the preferred default on %s", preferred, err, tunnelRouteOther)
+		t.Fatalf(
+			"unbound lookup of the endpoint = %+v, %v; want the preferred default on %s",
+			preferred,
+			err,
+			tunnelRouteOther,
+		)
 	}
 	requireOuterFrameTo(t, tunnelRouteUnderMAC)
 
@@ -86,18 +117,35 @@ func TestTunnelEndpointRouteFollowsTheUnderlayGateway(t *testing.T) {
 	requireEndpointRouteSelected(t, tunnelRouteSecondGW)
 	requireOuterFrameTo(t, tunnelRouteSecondMAC)
 
-	setTunnelRouteDefault(t, tunnelRouteUnderlay, tunnelRouteSecondGW, tunnelRouteUnderMetric, false)
+	setTunnelRouteDefault(
+		t,
+		tunnelRouteUnderlay,
+		tunnelRouteSecondGW,
+		tunnelRouteUnderMetric,
+		false,
+	)
 	withoutGateway := fixture.reconcile(ctx, t)
 	requireTunnelRouting(t, withoutGateway, false, reasonUnderlayNotReady)
-	if underlayRouting := withoutGateway.Routing["isp"]; underlayRouting.V4Ready || underlayRouting.V4Reason != reasonGatewayUnavailable {
+	if underlayRouting := withoutGateway.Routing["isp"]; underlayRouting.V4Ready ||
+		underlayRouting.V4Reason != reasonGatewayUnavailable {
 		t.Fatalf("underlay routing without a gateway = %+v", underlayRouting)
 	}
-	for _, tableID := range []int{tunnelRouteUnderTbl, tunnelRouteTunnelTbl, tunnelRouteOtherTbl, unix.RT_TABLE_MAIN} {
+	for _, tableID := range []int{
+		tunnelRouteUnderTbl,
+		tunnelRouteTunnelTbl,
+		tunnelRouteOtherTbl,
+		unix.RT_TABLE_MAIN,
+	} {
 		if endpoints := tunnelEndpointRoutes(t, tableID); len(endpoints) != 0 {
-			t.Fatalf("table %d endpoint routes without an underlay gateway = %+v", tableID, endpoints)
+			t.Fatalf(
+				"table %d endpoint routes without an underlay gateway = %+v",
+				tableID,
+				endpoints,
+			)
 		}
 	}
-	if matched := underlayTableMatch(t); matched.Dst != nil && matched.Dst.String() == tunnelRouteEndpoint {
+	if matched := underlayTableMatch(t); matched.Dst != nil &&
+		matched.Dst.String() == tunnelRouteEndpoint {
 		t.Fatalf("lookup with the underlay mark matched %+v without an underlay gateway", matched)
 	}
 

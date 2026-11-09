@@ -16,13 +16,22 @@ import (
 	"goodkind.io/mwan/internal/networkload"
 )
 
-func checkConnectionRelease(ctx context.Context, output io.Writer, cfg *config.Config, timeout time.Duration, id connectionid.ID, previous interfaceintent.Owner) int {
+func checkConnectionRelease(
+	ctx context.Context,
+	output io.Writer,
+	cfg *config.Config,
+	timeout time.Duration,
+	id connectionid.ID,
+	previous interfaceintent.Owner,
+) int {
 	loaded, err := networkload.Load(networkjson.DefaultPath, networkjson.DefaultSchemaDir)
 	if err != nil {
 		fmt.Fprintf(output, "release verification failed: %v\n", err)
 		return exitDeployGateFailed
 	}
+
 	var selected *interfaceintent.Connection
+
 	for index := range loaded.Connections {
 		connection := &loaded.Connections[index]
 		if connection.ID == id {
@@ -30,19 +39,35 @@ func checkConnectionRelease(ctx context.Context, output io.Writer, cfg *config.C
 			break
 		}
 	}
+
 	if selected == nil {
-		fmt.Fprintf(output, "release verification failed: connection %s is absent or rejected\n", id)
+		fmt.Fprintf(
+			output,
+			"release verification failed: connection %s is absent or rejected\n",
+			id,
+		)
 		return exitDeployGateFailed
 	}
+
 	if selected.Owner != interfaceintent.OwnerExternal {
-		fmt.Fprintf(output, "release verification failed: connection %s owner is %s, required external\n", id, selected.Owner)
+		fmt.Fprintf(
+			output,
+			"release verification failed: connection %s owner is %s, required external\n",
+			id,
+			selected.Owner,
+		)
 		return exitDeployGateFailed
 	}
+
 	if previous == interfaceintent.OwnerNetworkd {
 		if timeout <= 0 {
-			fmt.Fprintln(output, "release verification failed: watchdog connectivity timeout must be positive")
+			fmt.Fprintln(
+				output,
+				"release verification failed: watchdog connectivity timeout must be positive",
+			)
 			return exitDeployGateFailed
 		}
+
 		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		state, err := networkd.AdministrativeState(ctx, selected.Name)
@@ -50,28 +75,57 @@ func checkConnectionRelease(ctx context.Context, output io.Writer, cfg *config.C
 			fmt.Fprintf(output, "release verification failed: %v\n", err)
 			return exitDeployGateFailed
 		}
-		fmt.Fprintf(output, "connection %s interface %s networkd administrative state: %s\n", id, selected.Name, state)
+
+		fmt.Fprintf(
+			output,
+			"connection %s interface %s networkd administrative state: %s\n",
+			id,
+			selected.Name,
+			state,
+		)
 		if state != "unmanaged" {
 			return exitDeployGateFailed
 		}
 	}
+
 	modules := cfg.IfMgr.Modules
 	if modules.Links == nil || modules.Addresses == nil || modules.Autoconfiguration == nil {
-		fmt.Fprintln(output, "release verification failed: links, addresses, and autoconfiguration journal settings are required")
+		fmt.Fprintln(
+			output,
+			"release verification failed: links, addresses, and autoconfiguration journal settings are required",
+		)
 		return exitDeployGateFailed
 	}
-	receipts, err := netif.InspectOwnedRelease(id, modules.Links.StateFile, modules.Addresses.StateFile, modules.Autoconfiguration.StateFile)
+
+	receipts, err := netif.InspectOwnedRelease(
+		id,
+		modules.Links.StateFile,
+		modules.Addresses.StateFile,
+		modules.Autoconfiguration.StateFile,
+	)
 	if err != nil {
 		fmt.Fprintf(output, "release verification failed: %v\n", err)
 		return exitDeployGateFailed
 	}
+
 	if err := json.NewEncoder(output).Encode(receipts); err != nil {
 		return exitDeployGateFailed
 	}
+
 	if !receipts.Released() {
-		fmt.Fprintf(output, "release verification failed: connection %s has pending or previous-boot receipts\n", id)
+		fmt.Fprintf(
+			output,
+			"release verification failed: connection %s has pending or previous-boot receipts\n",
+			id,
+		)
 		return exitDeployGateFailed
 	}
-	fmt.Fprintf(output, "connection %s ordinary ownership receipts are released; daemon configuration and client cessation require separate verification\n", id)
+
+	fmt.Fprintf(
+		output,
+		"connection %s ordinary ownership receipts are released; daemon configuration and client cessation require separate verification\n",
+		id,
+	)
+
 	return exitDeployGateOK
 }

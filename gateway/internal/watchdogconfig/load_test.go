@@ -87,7 +87,9 @@ func writeConfig(t *testing.T, text string) string {
 	if err := os.WriteFile(configPath, []byte(text), 0o600); err != nil {
 		t.Fatalf("configuration file write failed: %v", err)
 	}
+
 	t.Setenv("MWAN_CONFIG", configPath)
+
 	return configPath
 }
 
@@ -128,6 +130,7 @@ func TestLoadMatchesGatewayLoaderForHypervisorSections(t *testing.T) {
 	if err != nil {
 		t.Fatalf("watchdog configuration load failed: %v", err)
 	}
+
 	want, err := config.LoadPath(configPath)
 	if err != nil {
 		t.Fatalf("gateway configuration load failed: %v", err)
@@ -136,39 +139,57 @@ func TestLoadMatchesGatewayLoaderForHypervisorSections(t *testing.T) {
 	if got.MwanVMID != "4100" || got.MwanVMID != want.MwanVMID {
 		t.Errorf("unexpected virtual machine identifier: %q %q", got.MwanVMID, want.MwanVMID)
 	}
+
 	if got.GuestType != watchdogconfig.GuestTypeLXC || got.GuestType != want.GuestType {
 		t.Errorf("unexpected guest type: %q %q", got.GuestType, want.GuestType)
 	}
+
 	if got.Email.SMTP2GOAPIKey != "key-from-environment" || got.Email != want.Email {
 		t.Errorf("unexpected email settings: %+v %+v", got.Email, want.Email)
 	}
+
 	wantPVE := watchdogconfig.PVEConfig{Node: "pve-test"}
 	if got.PVE != wantPVE {
 		t.Errorf("unexpected hypervisor node settings: %+v %+v", got.PVE, wantPVE)
 	}
+
 	if got.Network.PingTargetIPv4 != "192.0.2.1" || !reflect.DeepEqual(got.Network, want.Network) {
 		t.Errorf("unexpected network settings: %+v %+v", got.Network, want.Network)
 	}
+
 	wantWatchdog := mixedWatchdogSection()
 	if !reflect.DeepEqual(got.Watchdog, wantWatchdog) {
 		t.Errorf("unexpected watchdog settings: %+v %+v", got.Watchdog, wantWatchdog)
 	}
-	if got.Network.LastDeployPath != "/var/lib/mwan/last-deploy" || got.Network.PingTargetIPv6 != "2606:4700:4700::1111" {
+
+	if got.Network.LastDeployPath != "/var/lib/mwan/last-deploy" ||
+		got.Network.PingTargetIPv6 != "2606:4700:4700::1111" {
 		t.Errorf("unexpected network settings: %+v %+v", got.Network, want.Network)
 	}
+
 	wantFailover := watchdogconfig.FailoverSection{LXCID: "203", AgentTCPAddr: "192.0.2.2:50052"}
 	if got.Failover != wantFailover {
 		t.Errorf("unexpected failover settings: %+v %+v", got.Failover, wantFailover)
 	}
+
 	wantCadence := notify.Config{
 		RepeatEvery: 30 * time.Minute,
 		PerKind:     map[string]time.Duration{"wan-down": 2 * time.Hour},
 	}
 	if !reflect.DeepEqual(got.NotifyConfig(), wantCadence) {
-		t.Errorf("notification cadence differs between loaders: %+v %+v", got.NotifyConfig(), wantCadence)
+		t.Errorf(
+			"notification cadence differs between loaders: %+v %+v",
+			got.NotifyConfig(),
+			wantCadence,
+		)
 	}
+
 	if !reflect.DeepEqual(got.NotifyConfig(), want.NotifyConfig()) {
-		t.Errorf("notification cadence differs between loaders: %+v %+v", got.NotifyConfig(), want.NotifyConfig())
+		t.Errorf(
+			"notification cadence differs between loaders: %+v %+v",
+			got.NotifyConfig(),
+			want.NotifyConfig(),
+		)
 	}
 }
 
@@ -192,6 +213,7 @@ func TestLoadWatchdogSectionConnectivityTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("watchdog configuration load failed: %v", err)
 	}
+
 	if got := configured.ConnectivityTimeout(); got != 17*time.Second {
 		t.Errorf("configured connectivity timeout differs from 17 seconds: %v", got)
 	}
@@ -201,11 +223,15 @@ func TestLoadWatchdogSectionConnectivityTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("watchdog configuration load failed: %v", err)
 	}
+
 	if got := defaulted.ConnectivityTimeout(); got != 60*time.Second {
 		t.Errorf("default connectivity timeout differs from 60 seconds: %v", got)
 	}
 
-	if _, err := watchdogconfig.LoadWatchdogSection(""); !errors.Is(err, watchdogconfig.ErrEmptyPath) {
+	if _, err := watchdogconfig.LoadWatchdogSection(""); !errors.Is(
+		err,
+		watchdogconfig.ErrEmptyPath,
+	) {
 		t.Errorf("empty watchdog path returned an unexpected error: %v", err)
 	}
 }
@@ -216,36 +242,50 @@ func TestLoadRejectsConflictingStatusSource(t *testing.T) {
 	if err == nil {
 		t.Fatalf("watchdog loader accepted conflicting status sources: %s", conflictingStatusText)
 	}
+
 	if err.Error() != conflictingStatusError {
-		t.Errorf("status source errors differ between loaders: %q %q", err.Error(), conflictingStatusError)
+		t.Errorf(
+			"status source errors differ between loaders: %q %q",
+			err.Error(),
+			conflictingStatusError,
+		)
 	}
 }
 
 func TestLoadAcceptsEitherStatusSourceAlone(t *testing.T) {
-	writeConfig(t, `
+	writeConfig(
+		t,
+		`
 [watchdog]
 status_command = ["/usr/local/bin/mwan", "gateway-status"]
-`)
+`,
+	)
 	command, err := watchdogconfig.LoadPath("")
 	if err != nil {
 		t.Fatalf("Load rejected status_command alone: %v", err)
 	}
+
 	wantCommand := []string{"/usr/local/bin/mwan", "gateway-status"}
 	if !slices.Equal(command.Watchdog.StatusCommand, wantCommand) {
 		t.Fatalf("status_command = %v, want %v", command.Watchdog.StatusCommand, wantCommand)
 	}
 
-	writeConfig(t, `
+	writeConfig(
+		t,
+		`
 [watchdog]
 status_listen_port = 50053
-`)
+`,
+	)
 	port, err := watchdogconfig.LoadPath("")
 	if err != nil {
 		t.Fatalf("Load rejected status_listen_port alone: %v", err)
 	}
+
 	if port.Watchdog.StatusListenPort != 50053 {
 		t.Fatalf("status_listen_port = %d, want 50053", port.Watchdog.StatusListenPort)
 	}
+
 	if len(port.Watchdog.StatusCommand) != 0 {
 		t.Fatalf("status_command = %v, want empty", port.Watchdog.StatusCommand)
 	}

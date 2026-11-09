@@ -18,11 +18,13 @@ func CloneResult(result Result) (Result, error) {
 		slog.Warn("observation result could not be encoded", "check_id", result.CheckID, "err", err)
 		return Result{}, fmt.Errorf("encode observation copy: %w", err)
 	}
+
 	var copied Result
 	if err := json.Unmarshal(data, &copied); err != nil {
 		slog.Warn("observation result could not be copied", "check_id", result.CheckID, "err", err)
 		return copied, fmt.Errorf("decode observation copy: %w", err)
 	}
+
 	return copied, nil
 }
 
@@ -33,11 +35,13 @@ func CloneCheck(check CheckSpec) (CheckSpec, error) {
 		slog.Warn("observation check could not be encoded", "check_id", check.ID, "err", err)
 		return CheckSpec{}, fmt.Errorf("encode check copy: %w", err)
 	}
+
 	var copied CheckSpec
 	if err := json.Unmarshal(data, &copied); err != nil {
 		slog.Warn("observation check could not be copied", "check_id", check.ID, "err", err)
 		return copied, fmt.Errorf("decode check copy: %w", err)
 	}
+
 	return copied, nil
 }
 
@@ -46,9 +50,12 @@ func FreshResult(check CheckSpec, result Result, now time.Time) Result {
 	age := now.Sub(result.ObservedAt)
 	if result.ObservedAt.IsZero() {
 		result.Availability, result.Outcome, result.Reason = AvailabilityMissing, OutcomeUnknown, "observation has no timestamp"
-	} else if age < 0 || check.MaxAgeSeconds <= 0 || age > time.Duration(check.MaxAgeSeconds)*time.Second {
+	} else if age < 0 || check.MaxAgeSeconds <= 0 || age > time.Duration(
+		check.MaxAgeSeconds,
+	)*time.Second {
 		result.Availability, result.Outcome, result.Reason = AvailabilityStale, OutcomeUnknown, "observation freshness expired"
 	}
+
 	return result
 }
 

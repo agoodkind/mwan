@@ -23,12 +23,16 @@ func TestBuildPolicyRuleUIDRangeUsesStaticRange(t *testing.T) {
 	t.Parallel()
 
 	rule := config.IfMgrPolicyRuleSection{UIDRange: "997-997"}
-	got, err := buildPolicyRuleUIDRange(rule, func(string) (string, error) {
-		return "", errors.New("lookup should not run")
-	})
+	got, err := buildPolicyRuleUIDRange(
+		rule,
+		func(string) (string, error) {
+			return "", errors.New("lookup should not run")
+		},
+	)
 	if err != nil {
 		t.Fatalf("buildPolicyRuleUIDRange returned error: %v", err)
 	}
+
 	if got != "997-997" {
 		t.Fatalf("buildPolicyRuleUIDRange returned %q, want %q", got, "997-997")
 	}
@@ -38,15 +42,20 @@ func TestBuildPolicyRuleUIDRangeUsesUser(t *testing.T) {
 	t.Parallel()
 
 	rule := config.IfMgrPolicyRuleSection{UIDUser: "cloudflared-oob"}
-	got, err := buildPolicyRuleUIDRange(rule, func(username string) (string, error) {
-		if username != "cloudflared-oob" {
-			t.Fatalf("lookup username = %q, want %q", username, "cloudflared-oob")
-		}
-		return "997", nil
-	})
+	got, err := buildPolicyRuleUIDRange(
+		rule,
+		func(username string) (string, error) {
+			if username != "cloudflared-oob" {
+				t.Fatalf("lookup username = %q, want %q", username, "cloudflared-oob")
+			}
+
+			return "997", nil
+		},
+	)
 	if err != nil {
 		t.Fatalf("buildPolicyRuleUIDRange returned error: %v", err)
 	}
+
 	if got != "997-997" {
 		t.Fatalf("buildPolicyRuleUIDRange returned %q, want %q", got, "997-997")
 	}
@@ -59,9 +68,12 @@ func TestBuildPolicyRuleUIDRangeRejectsConflictingSelectors(t *testing.T) {
 		UIDRange: "997-997",
 		UIDUser:  "cloudflared-oob",
 	}
-	_, err := buildPolicyRuleUIDRange(rule, func(string) (string, error) {
-		return "997", nil
-	})
+	_, err := buildPolicyRuleUIDRange(
+		rule,
+		func(string) (string, error) {
+			return "997", nil
+		},
+	)
 	if err == nil {
 		t.Fatal("buildPolicyRuleUIDRange returned nil error")
 	}
@@ -71,9 +83,12 @@ func TestBuildPolicyRuleUIDRangeRejectsInvalidUID(t *testing.T) {
 	t.Parallel()
 
 	rule := config.IfMgrPolicyRuleSection{UIDUser: "cloudflared-oob"}
-	_, err := buildPolicyRuleUIDRange(rule, func(string) (string, error) {
-		return "not-a-number", nil
-	})
+	_, err := buildPolicyRuleUIDRange(
+		rule,
+		func(string) (string, error) {
+			return "not-a-number", nil
+		},
+	)
 	if err == nil {
 		t.Fatal("buildPolicyRuleUIDRange returned nil error")
 	}
@@ -106,15 +121,19 @@ func TestBuildHostIPv6PolicyConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildHostIPv6PolicyConfig returned error: %v", err)
 	}
+
 	if got := cfg.MissingIfaceGracePeriod; got != 3*time.Minute {
 		t.Fatalf("MissingIfaceGracePeriod = %s, want %s", got, 3*time.Minute)
 	}
+
 	if len(cfg.Policies) != 2 {
 		t.Fatalf("policy count = %d, want 2", len(cfg.Policies))
 	}
+
 	if got := cfg.Policies[0].Name; got != "vmbr0" {
 		t.Fatalf("first policy iface = %q, want %q", got, "vmbr0")
 	}
+
 	if got := cfg.Policies[1].CleanupRADefault; !got {
 		t.Fatal("second policy should clean denied RA defaults")
 	}
@@ -151,10 +170,19 @@ func sharedWANForTest() config.IfMgrSection {
 				V4Source:      "203.0.113.2",
 				Tier:          1,
 				Weight:        3,
-				TranslationV4: &config.IPv4Translation{Mode: config.TranslationNAPT44, StaticMappings: []config.StaticMapping{
-					{External: netip.MustParseAddr("203.0.113.2"), Internal: netip.MustParseAddr("192.0.2.2")},
-					{External: netip.MustParseAddr("203.0.113.3"), Internal: netip.MustParseAddr("192.0.2.3")},
-				}},
+				TranslationV4: &config.IPv4Translation{
+					Mode: config.TranslationNAPT44,
+					StaticMappings: []config.StaticMapping{
+						{
+							External: netip.MustParseAddr("203.0.113.2"),
+							Internal: netip.MustParseAddr("192.0.2.2"),
+						},
+						{
+							External: netip.MustParseAddr("203.0.113.3"),
+							Internal: netip.MustParseAddr("192.0.2.3"),
+						},
+					},
+				},
 			},
 		},
 	}
@@ -165,6 +193,7 @@ func sharedWANForTest() config.IfMgrSection {
 func ifmgrForTest(mods config.IfMgrModulesSection) config.IfMgrSection {
 	s := sharedWANForTest()
 	s.Modules = mods
+
 	return s
 }
 
@@ -200,10 +229,19 @@ func TestBuildWANRefs(t *testing.T) {
 				V4Source:      "203.0.113.2",
 				Tier:          1,
 				Weight:        3,
-				TranslationV4: &config.IPv4Translation{Mode: config.TranslationNAPT44, StaticMappings: []config.StaticMapping{
-					{External: netip.MustParseAddr("203.0.113.2"), Internal: netip.MustParseAddr("192.0.2.2")},
-					{External: netip.MustParseAddr("203.0.113.3"), Internal: netip.MustParseAddr("192.0.2.3")},
-				}},
+				TranslationV4: &config.IPv4Translation{
+					Mode: config.TranslationNAPT44,
+					StaticMappings: []config.StaticMapping{
+						{
+							External: netip.MustParseAddr("203.0.113.2"),
+							Internal: netip.MustParseAddr("192.0.2.2"),
+						},
+						{
+							External: netip.MustParseAddr("203.0.113.3"),
+							Internal: netip.MustParseAddr("192.0.2.3"),
+						},
+					},
+				},
 			},
 		},
 	}
@@ -216,11 +254,14 @@ func TestBuildWANRoutesConfig(t *testing.T) {
 	t.Parallel()
 
 	shared := buildWANRefs(sharedWANForTest())
-	cfg, err := buildWANRoutesConfig(shared, &config.IfMgrWANRoutesSection{
-		InternalIface:   "vmbr250",
-		InternalNetV4:   "10.250.250.0/29",
-		HealthStateFile: "/var/run/mwan-health.state",
-	})
+	cfg, err := buildWANRoutesConfig(
+		shared,
+		&config.IfMgrWANRoutesSection{
+			InternalIface:   "vmbr250",
+			InternalNetV4:   "10.250.250.0/29",
+			HealthStateFile: "/var/run/mwan-health.state",
+		},
+	)
 	if err != nil {
 		t.Fatalf("buildWANRoutesConfig returned error: %v", err)
 	}
@@ -256,8 +297,14 @@ func TestBuildWANRoutesConfig(t *testing.T) {
 				TranslationV4: &config.IPv4Translation{
 					Mode: config.TranslationNAPT44,
 					StaticMappings: []config.StaticMapping{
-						{External: netip.MustParseAddr("203.0.113.2"), Internal: netip.MustParseAddr("192.0.2.2")},
-						{External: netip.MustParseAddr("203.0.113.3"), Internal: netip.MustParseAddr("192.0.2.3")},
+						{
+							External: netip.MustParseAddr("203.0.113.2"),
+							Internal: netip.MustParseAddr("192.0.2.2"),
+						},
+						{
+							External: netip.MustParseAddr("203.0.113.3"),
+							Internal: netip.MustParseAddr("192.0.2.3"),
+						},
 					},
 				},
 				MappedExternals: []netip.Addr{
@@ -279,6 +326,7 @@ func TestBuildWANRoutesConfigNilSection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildWANRoutesConfig returned error: %v", err)
 	}
+
 	want := wanroutes.Config{}
 	if !reflect.DeepEqual(cfg, want) {
 		t.Fatalf("buildWANRoutesConfig nil = %#v, want %#v", cfg, want)
@@ -303,7 +351,9 @@ func modulesWithUnresolvableUIDRule() config.IfMgrModulesSection {
 				},
 			},
 		},
-		WAN: &config.IfMgrModulesWANSection{Routes: &config.IfMgrWANRoutesSection{InternalIface: "enmwanbr0"}},
+		WAN: &config.IfMgrModulesWANSection{
+			Routes: &config.IfMgrWANRoutesSection{InternalIface: "enmwanbr0"},
+		},
 	}
 }
 
@@ -318,9 +368,11 @@ func TestBuildIfMgrModuleConfigsWANRoleSkipsPolicyRules(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildIfMgrModuleConfigs(wan) returned error: %v", err)
 	}
+
 	if _, ok := set["policy_rules"]; ok {
 		t.Fatal("wan role must not build a policy_rules config")
 	}
+
 	if _, ok := set["wan.routes"]; !ok {
 		t.Fatal("wan role must build a wan.routes config")
 	}
@@ -336,6 +388,7 @@ func TestBuildIfMgrModuleConfigsOOBRoleBuildsPolicyRules(t *testing.T) {
 	if err == nil {
 		t.Fatal("oob role must build policy_rules and surface the uid lookup failure")
 	}
+
 	if !strings.Contains(err.Error(), "policy_rules") {
 		t.Fatalf("oob build error = %q, want it to mention policy_rules", err)
 	}
@@ -355,37 +408,41 @@ func TestBuildHealthConfig(t *testing.T) {
 	t.Parallel()
 
 	shared := buildWANRefs(sharedWANForTest())
-	cfg, err := buildHealthConfig(shared, &config.IfMgrHealthSection{
-		StateFile:          "/run/health",
-		ProbeTimeoutMillis: 3000,
-		WAN: map[string]config.IfMgrHealthWANSection{
-			"att": {
-				Enabled:              true,
-				PingCount:            new(4),
-				SuccessThreshold:     new(2),
-				CheckIntervalSeconds: new(15),
-				FailureThreshold:     new(3),
-				RecoveryThreshold:    new(4),
-				TargetsV4:            []string{"192.0.2.1", "192.0.2.2"},
-				TargetsV6:            []string{"2001:db8::1", "2001:db8::2"},
-				HTTPURLs:             []string{"https://example.com/health"},
-			},
-			"webpass": {
-				Enabled:              true,
-				PingCount:            new(5),
-				SuccessThreshold:     new(1),
-				CheckIntervalSeconds: new(30),
-				FailureThreshold:     new(5),
-				RecoveryThreshold:    new(3),
-				TargetsV4:            []string{"198.51.100.1", "198.51.100.2"},
-				TargetsV6:            []string{"2001:db8:1::1", "2001:db8:1::2"},
-				HTTPURLs:             []string{"https://example.net/health"},
+	cfg, err := buildHealthConfig(
+		shared,
+		&config.IfMgrHealthSection{
+			StateFile:          "/run/health",
+			ProbeTimeoutMillis: 3000,
+			WAN: map[string]config.IfMgrHealthWANSection{
+				"att": {
+					Enabled:              true,
+					PingCount:            new(4),
+					SuccessThreshold:     new(2),
+					CheckIntervalSeconds: new(15),
+					FailureThreshold:     new(3),
+					RecoveryThreshold:    new(4),
+					TargetsV4:            []string{"192.0.2.1", "192.0.2.2"},
+					TargetsV6:            []string{"2001:db8::1", "2001:db8::2"},
+					HTTPURLs:             []string{"https://example.com/health"},
+				},
+				"webpass": {
+					Enabled:              true,
+					PingCount:            new(5),
+					SuccessThreshold:     new(1),
+					CheckIntervalSeconds: new(30),
+					FailureThreshold:     new(5),
+					RecoveryThreshold:    new(3),
+					TargetsV4:            []string{"198.51.100.1", "198.51.100.2"},
+					TargetsV6:            []string{"2001:db8:1::1", "2001:db8:1::2"},
+					HTTPURLs:             []string{"https://example.net/health"},
+				},
 			},
 		},
-	})
+	)
 	if err != nil {
 		t.Fatalf("buildHealthConfig returned error: %v", err)
 	}
+
 	want := health.Config{
 		StateFile:         "/run/health",
 		TargetsV4:         nil,
@@ -483,23 +540,28 @@ func TestBuildHealthConfigSkipsDisabledAndAbsentWANs(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
 
-			cfg, err := buildHealthConfig(
-				buildWANRefs(sharedWANForTest()),
-				&config.IfMgrHealthSection{WAN: test.wan},
-			)
-			if err != nil {
-				t.Fatalf("buildHealthConfig returned error: %v", err)
-			}
-			if len(cfg.WANs) != 1 {
-				t.Fatalf("WAN count = %d, want 1", len(cfg.WANs))
-			}
-			if cfg.WANs[0].Name != test.wantName {
-				t.Fatalf("included WAN = %q, want %q", cfg.WANs[0].Name, test.wantName)
-			}
-		})
+				cfg, err := buildHealthConfig(
+					buildWANRefs(sharedWANForTest()),
+					&config.IfMgrHealthSection{WAN: test.wan},
+				)
+				if err != nil {
+					t.Fatalf("buildHealthConfig returned error: %v", err)
+				}
+
+				if len(cfg.WANs) != 1 {
+					t.Fatalf("WAN count = %d, want 1", len(cfg.WANs))
+				}
+
+				if cfg.WANs[0].Name != test.wantName {
+					t.Fatalf("included WAN = %q, want %q", cfg.WANs[0].Name, test.wantName)
+				}
+			},
+		)
 	}
 }
 
@@ -507,6 +569,7 @@ func TestBuildHealthConfigRejectsUnderspecifiedEnabledWAN(t *testing.T) {
 	t.Parallel()
 
 	base := enabledHealthWANSection(10)
+
 	tests := []struct {
 		name    string
 		mutate  func(s config.IfMgrHealthWANSection) config.IfMgrHealthWANSection
@@ -533,6 +596,7 @@ func TestBuildHealthConfigRejectsUnderspecifiedEnabledWAN(t *testing.T) {
 			mutate: func(s config.IfMgrHealthWANSection) config.IfMgrHealthWANSection {
 				s.TargetsV4 = nil
 				s.TargetsV6 = nil
+
 				return s
 			},
 			wantSub: "must have at least one targets-v4 or targets-v6 entry",
@@ -547,24 +611,28 @@ func TestBuildHealthConfigRejectsUnderspecifiedEnabledWAN(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
 
-			_, err := buildHealthConfig(
-				buildWANRefs(sharedWANForTest()),
-				&config.IfMgrHealthSection{
-					WAN: map[string]config.IfMgrHealthWANSection{
-						"att": test.mutate(base),
+				_, err := buildHealthConfig(
+					buildWANRefs(sharedWANForTest()),
+					&config.IfMgrHealthSection{
+						WAN: map[string]config.IfMgrHealthWANSection{
+							"att": test.mutate(base),
+						},
 					},
-				},
-			)
-			if err == nil {
-				t.Fatal("buildHealthConfig must reject an under-specified enabled WAN")
-			}
-			if !strings.Contains(err.Error(), test.wantSub) {
-				t.Fatalf("error %q does not mention %q", err, test.wantSub)
-			}
-		})
+				)
+				if err == nil {
+					t.Fatal("buildHealthConfig must reject an under-specified enabled WAN")
+				}
+
+				if !strings.Contains(err.Error(), test.wantSub) {
+					t.Fatalf("error %q does not mention %q", err, test.wantSub)
+				}
+			},
+		)
 	}
 }
 
@@ -587,15 +655,19 @@ func TestBuildHealthConfigAcceptsSingleFamilyProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildHealthConfig rejected an IPv4-only provider: %v", err)
 	}
+
 	if len(cfg.WANs) != 1 {
 		t.Fatalf("WAN count = %d, want 1", len(cfg.WANs))
 	}
+
 	if cfg.WANs[0].TargetsV6 == nil {
 		t.Fatal("a declared-empty targets-v6 must reach the module as an empty list, not as nil")
 	}
+
 	if len(cfg.WANs[0].TargetsV6) != 0 {
 		t.Fatalf("targets-v6 = %v, want empty", cfg.WANs[0].TargetsV6)
 	}
+
 	if len(cfg.WANs[0].TargetsV4) != 2 {
 		t.Fatalf("targets-v4 count = %d, want 2", len(cfg.WANs[0].TargetsV4))
 	}
@@ -618,9 +690,11 @@ func TestBuildHealthConfigKeepsAnOmittedTargetFamilyNil(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildHealthConfig returned error: %v", err)
 	}
+
 	if len(cfg.WANs) != 1 {
 		t.Fatalf("WAN count = %d, want 1", len(cfg.WANs))
 	}
+
 	if cfg.WANs[0].TargetsV6 != nil {
 		t.Fatalf("targets-v6 = %v, want nil so the module inherits", cfg.WANs[0].TargetsV6)
 	}
@@ -633,6 +707,7 @@ func TestBuildHealthConfigNilSection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildHealthConfig returned error: %v", err)
 	}
+
 	if len(cfg.WANs) != 2 {
 		t.Fatalf("WAN count = %d, want 2 from the shared list", len(cfg.WANs))
 	}
@@ -645,26 +720,33 @@ func TestBuildIfMgrModuleConfigsWANRoleBuildsAll(t *testing.T) {
 
 	modules := config.IfMgrModulesSection{
 		Health: &config.IfMgrHealthSection{},
-		WAN:    &config.IfMgrModulesWANSection{Routes: &config.IfMgrWANRoutesSection{InternalIface: "enmwanbr0"}},
+		WAN: &config.IfMgrModulesWANSection{
+			Routes: &config.IfMgrWANRoutesSection{InternalIface: "enmwanbr0"},
+		},
 	}
 	set, err := buildIfMgrModuleConfigs(ifmgrForTest(modules), "wan")
 	if err != nil {
 		t.Fatalf("buildIfMgrModuleConfigs(wan) returned error: %v", err)
 	}
+
 	if _, ok := set["wan.routes"]; !ok {
 		t.Fatal("wan role must build a wan.routes config")
 	}
+
 	healthCfg, ok := set["health"]
 	if !ok {
 		t.Fatal("wan role must build a health config")
 	}
+
 	if _, ok := healthCfg.(health.Config); !ok {
 		t.Fatalf("health config type = %T, want health.Config", healthCfg)
 	}
+
 	nptCfg, ok := set["npt"]
 	if !ok {
 		t.Fatal("wan role must build an npt config")
 	}
+
 	if _, ok := nptCfg.(npt.Config); !ok {
 		t.Fatalf("npt config type = %T, want npt.Config", nptCfg)
 	}
@@ -679,11 +761,15 @@ func TestBuildSteeringConfig(t *testing.T) {
 	ifmgrCfg := sharedWANForTest()
 	ifmgrCfg.HashMode = "source"
 	shared := buildWANRefs(ifmgrCfg)
-	cfg, err := buildSteeringConfig(shared, ifmgrCfg, &config.IfMgrWANRoutesSection{
-		InternalIface:   "vmbr250",
-		InternalNetV4:   "10.250.250.0/29",
-		HealthStateFile: "/var/run/mwan-health.state",
-	})
+	cfg, err := buildSteeringConfig(
+		shared,
+		ifmgrCfg,
+		&config.IfMgrWANRoutesSection{
+			InternalIface:   "vmbr250",
+			InternalNetV4:   "10.250.250.0/29",
+			HealthStateFile: "/var/run/mwan-health.state",
+		},
+	)
 	if err != nil {
 		t.Fatalf("buildSteeringConfig returned error: %v", err)
 	}
@@ -696,8 +782,18 @@ func TestBuildSteeringConfig(t *testing.T) {
 		HashMode:        "source",
 		HealthStateFile: "/var/run/mwan-health.state",
 		Members: []steering.Member{
-			{WANRef: ifmgr.WANRef{ID: "att", Name: "att", Iface: "att0"}, Mark: 1, Tier: 0, Weight: 1},
-			{WANRef: ifmgr.WANRef{ID: "webpass", Name: "webpass", Iface: "webpass0"}, Mark: 2, Tier: 1, Weight: 3},
+			{
+				WANRef: ifmgr.WANRef{ID: "att", Name: "att", Iface: "att0"},
+				Mark:   1,
+				Tier:   0,
+				Weight: 1,
+			},
+			{
+				WANRef: ifmgr.WANRef{ID: "webpass", Name: "webpass", Iface: "webpass0"},
+				Mark:   2,
+				Tier:   1,
+				Weight: 3,
+			},
 		},
 	}
 	if !reflect.DeepEqual(cfg, want) {
@@ -716,13 +812,16 @@ func TestBuildIfMgrModuleConfigsWANRoleBuildsSteering(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildIfMgrModuleConfigs(wan) returned error: %v", err)
 	}
+
 	steeringCfg, isSteering := set["steering"].(steering.Config)
 	if !isSteering {
 		t.Fatalf("wan role built %T for steering, want steering.Config", set["steering"])
 	}
+
 	if steeringCfg.HashMode != "random" {
 		t.Fatalf("steering hash mode = %q, want random", steeringCfg.HashMode)
 	}
+
 	if len(steeringCfg.Members) != 2 {
 		t.Fatalf("steering member count = %d, want 2", len(steeringCfg.Members))
 	}
@@ -772,28 +871,40 @@ ping_count = 99
 	if err := toml.Unmarshal([]byte(configTOML), &cfg); err != nil {
 		t.Fatalf("toml.Unmarshal: %v", err)
 	}
+
 	if len(cfg.IfMgr.WAN) != 0 {
 		t.Fatalf("[ifmgr.wan] still decodes from TOML: %#v", cfg.IfMgr.WAN)
 	}
+
 	if cfg.IfMgr.InternalPrefix != "" {
 		t.Fatalf("internal_prefix still decodes from TOML: %q", cfg.IfMgr.InternalPrefix)
 	}
+
 	if cfg.IfMgr.Modules.WAN.Routes.InternalIface != "" {
-		t.Fatalf("internal_iface still decodes from TOML: %q",
-			cfg.IfMgr.Modules.WAN.Routes.InternalIface)
+		t.Fatalf(
+			"internal_iface still decodes from TOML: %q",
+			cfg.IfMgr.Modules.WAN.Routes.InternalIface,
+		)
 	}
+
 	if len(cfg.IfMgr.Modules.Health.WAN) != 0 {
-		t.Fatalf("[ifmgr.modules.health.wan] still decodes from TOML: %#v",
-			cfg.IfMgr.Modules.Health.WAN)
+		t.Fatalf(
+			"[ifmgr.modules.health.wan] still decodes from TOML: %#v",
+			cfg.IfMgr.Modules.Health.WAN,
+		)
 	}
+
 	// The two runtime paths the network file deliberately does not carry must
 	// survive.
 	if cfg.IfMgr.Modules.Health.StateFile != "/run/mwan-health.state" {
 		t.Fatalf("health state_file did not parse: %q", cfg.IfMgr.Modules.Health.StateFile)
 	}
+
 	if cfg.IfMgr.Modules.WAN.Routes.HealthStateFile != "/run/mwan-health.state" {
-		t.Fatalf("wan.routes health_state_file did not parse: %q",
-			cfg.IfMgr.Modules.WAN.Routes.HealthStateFile)
+		t.Fatalf(
+			"wan.routes health_state_file did not parse: %q",
+			cfg.IfMgr.Modules.WAN.Routes.HealthStateFile,
+		)
 	}
 
 	network := networkjson.Config{
@@ -854,37 +965,50 @@ ping_count = 99
 	if err != nil {
 		t.Fatalf("buildIfMgrModuleConfigs(wan): %v", err)
 	}
+
 	wr, ok := set["wan.routes"].(wanroutes.Config)
 	if !ok {
 		t.Fatalf("wan.routes config missing or wrong type: %T", set["wan.routes"])
 	}
+
 	if wr.InternalIface != "enmwanbr0" {
 		t.Fatalf("wan.routes internal iface = %q, want enmwanbr0", wr.InternalIface)
 	}
+
 	if wr.HealthStateFile != "/run/mwan-health.state" {
-		t.Fatalf("wan.routes health state file = %q, want /run/mwan-health.state",
-			wr.HealthStateFile)
+		t.Fatalf(
+			"wan.routes health state file = %q, want /run/mwan-health.state",
+			wr.HealthStateFile,
+		)
 	}
+
 	byName := map[string]wanroutes.WAN{}
+
 	for _, w := range wr.WANs {
 		byName[w.Name] = w
 	}
+
 	if byName["att"].Iface != "enatt0" || byName["webpass"].Iface != "enwebpass0" {
 		t.Fatalf("wan.routes ifaces did not resolve from the network file: %#v", byName)
 	}
+
 	if byName["att"].TableID != 100 || byName["webpass"].V4Source != "10.241.204.2" {
 		t.Fatalf("wan.routes routing fields did not resolve from the network file: %#v", byName)
 	}
+
 	hc, ok := set["health"].(health.Config)
 	if !ok {
 		t.Fatalf("health config missing or wrong type: %T", set["health"])
 	}
+
 	if hc.Timeout != 2*time.Second {
 		t.Fatalf("health timeout = %s, want 2s", hc.Timeout)
 	}
+
 	if hc.Interval != 10*time.Second {
 		t.Fatalf("health interval = %s, want the shortest provider interval 10s", hc.Interval)
 	}
+
 	if _, ok := set["npt"]; !ok {
 		t.Fatal("wan role must build an npt config from the two-file load")
 	}
@@ -913,6 +1037,7 @@ state_file = "/run/mwan-health.state"
 	if err := toml.Unmarshal([]byte(configTOML), &cfg); err != nil {
 		t.Fatalf("toml.Unmarshal: %v", err)
 	}
+
 	network := networkjson.Config{
 		InternalPrefix:     "3d06:bad:b01:210::/60",
 		OpnsenseEdgeV6:     "3d06:bad:b01:201::2",
@@ -951,34 +1076,45 @@ state_file = "/run/mwan-health.state"
 	if err != nil {
 		t.Fatalf("buildIfMgrModuleConfigs(wan): %v", err)
 	}
+
 	nptConfig, ok := set["npt"].(npt.Config)
 	if !ok {
 		t.Fatalf("npt config missing or wrong type: %T", set["npt"])
 	}
+
 	if nptConfig.InternalPrefix != "3d06:bad:b01:210::/60" {
-		t.Fatalf("npt internal prefix = %q, want the network file's value",
-			nptConfig.InternalPrefix)
+		t.Fatalf(
+			"npt internal prefix = %q, want the network file's value",
+			nptConfig.InternalPrefix,
+		)
 	}
+
 	if len(nptConfig.WANs) != 1 || nptConfig.WANs[0].Iface != "enatt0" {
 		t.Fatalf("npt WAN list did not resolve: %#v", nptConfig.WANs)
 	}
+
 	wr, ok := set["wan.routes"].(wanroutes.Config)
 	if !ok {
 		t.Fatalf("wan.routes config missing or wrong type: %T", set["wan.routes"])
 	}
+
 	if wr.InternalNetV4 != "192.0.2.0/29" {
 		t.Fatalf("wan.routes internal net = %q, want the network file's value", wr.InternalNetV4)
 	}
+
 	if wr.HealthStateFile != "/run/mwan-health.state" {
 		t.Fatalf("wan.routes health state file = %q, want TOML's value", wr.HealthStateFile)
 	}
+
 	hc, ok := set["health"].(health.Config)
 	if !ok {
 		t.Fatalf("health config missing or wrong type: %T", set["health"])
 	}
+
 	if hc.StateFile != "/run/mwan-health.state" {
 		t.Fatalf("health state file = %q, want TOML's value", hc.StateFile)
 	}
+
 	if len(hc.WANs) != 1 || hc.WANs[0].CheckInterval != 10*time.Second {
 		t.Fatalf("health WAN list did not resolve: %#v", hc.WANs)
 	}

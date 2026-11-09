@@ -23,11 +23,29 @@ const apkgVersion = "1.0.0"
 // library) but for the C++ components' cmake, which requires the git
 // program to stamp their version.
 var buildPackages = []string{
-	"ca-certificates", "build-essential", "cmake", "pkg-config", "git",
-	"debhelper", "dpkg-dev", "fakeroot", "python3", "python3-venv", "python3-pip", "systemd-dev",
-	"libpcre2-dev", "libpam0g-dev", "libaudit-dev", "libhowardhinnant-date-dev",
-	"libspdlog-dev", "libdocopt-dev", "libboost-system-dev", "libboost-thread-dev",
-	"libssl-dev", "libnghttp2-dev", "libsystemd-dev",
+	"ca-certificates",
+	"build-essential",
+	"cmake",
+	"pkg-config",
+	"git",
+	"debhelper",
+	"dpkg-dev",
+	"fakeroot",
+	"python3",
+	"python3-venv",
+	"python3-pip",
+	"systemd-dev",
+	"libpcre2-dev",
+	"libpam0g-dev",
+	"libaudit-dev",
+	"libhowardhinnant-date-dev",
+	"libspdlog-dev",
+	"libdocopt-dev",
+	"libboost-system-dev",
+	"libboost-thread-dev",
+	"libssl-dev",
+	"libnghttp2-dev",
+	"libsystemd-dev",
 }
 
 var aptEnv = []string{"DEBIAN_FRONTEND=noninteractive"}
@@ -48,13 +66,17 @@ func (b *builder) installBuildTools(ctx context.Context) error {
 			return b.fail(ctx, "create build dir", err, slog.String("dir", dir))
 		}
 	}
+
 	if err := b.run(ctx, cmd(programAptGet, "update").with(aptEnv...)); err != nil {
 		return err
 	}
+
 	if err := b.aptInstall(ctx, buildPackages...); err != nil {
 		return err
 	}
-	return b.runAll(ctx,
+
+	return b.runAll(
+		ctx,
 		cmd(programPython3, "-m", "venv", filepath.Dir(filepath.Dir(pipPath))),
 		cmd(programPip, "install", "--quiet", "apkg=="+apkgVersion),
 	)
@@ -74,22 +96,39 @@ func (b *builder) apkgBuild(ctx context.Context, c component) error {
 	if err := b.portInstallFiles(ctx, templateDir); err != nil {
 		return err
 	}
+
 	depends, err := b.buildDepends(ctx, filepath.Join(templateDir, "control"))
 	if err != nil {
 		return err
 	}
+
 	if err := b.aptInstall(ctx, depends...); err != nil {
 		return err
 	}
+
 	archive, err := b.upstreamArchive(ctx, c)
 	if err != nil {
 		return err
 	}
-	build := cmd(programApkg, "build", "--archive", archive, "--no-cache", "--result-dir", b.pkgDir(c)).
-		in(src).with(aptEnv...)
+
+	build := cmd(
+		programApkg,
+		"build",
+		"--archive",
+		archive,
+		"--no-cache",
+		"--result-dir",
+		b.pkgDir(c),
+	).
+		in(
+			src,
+		).with(
+		aptEnv...,
+	)
 	if err := b.run(ctx, build); err != nil {
 		return err
 	}
+
 	return b.installBuilt(ctx, b.pkgDir(c))
 }
 
@@ -105,32 +144,44 @@ func (b *builder) nfpmBuild(ctx context.Context, c component) error {
 	if err := os.RemoveAll(stage); err != nil {
 		return b.fail(ctx, "clear stage", err, slog.String("stage", stage))
 	}
-	configure := append([]string{
-		"-S", src, "-B", buildDir,
-		"-DCMAKE_BUILD_TYPE=Release",
-		"-DCMAKE_INSTALL_PREFIX=" + stackPrefix,
-		"-DCMAKE_PREFIX_PATH=" + stackPrefix,
-		"-DBUILD_TESTING=OFF",
-	}, c.cmakeFlags...)
-	if err := b.runAll(ctx,
+
+	configure := append(
+		[]string{
+			"-S",
+			src,
+			"-B",
+			buildDir,
+			"-DCMAKE_BUILD_TYPE=Release",
+			"-DCMAKE_INSTALL_PREFIX=" + stackPrefix,
+			"-DCMAKE_PREFIX_PATH=" + stackPrefix,
+			"-DBUILD_TESTING=OFF",
+		},
+		c.cmakeFlags...,
+	)
+	if err := b.runAll(
+		ctx,
 		cmd(programCmake, configure...),
 		cmd(programCmake, "--build", buildDir, "--parallel", strconv.Itoa(b.jobs)),
 		cmd(programCmake, "--install", buildDir).with("DESTDIR="+stage),
 	); err != nil {
 		return err
 	}
+
 	if c.loaderConf {
 		if err := b.writeLoaderConf(ctx, stage); err != nil {
 			return err
 		}
 	}
+
 	version, err := b.packageVersion(ctx, c)
 	if err != nil {
 		return err
 	}
+
 	if err := b.nfpmPackage(ctx, c, version); err != nil {
 		return err
 	}
+
 	return b.installBuilt(ctx, b.pkgDir(c))
 }
 
@@ -142,20 +193,26 @@ func (b *builder) installBuilt(ctx context.Context, dir string) error {
 	if err != nil {
 		return b.fail(ctx, "list packages", err, slog.String("dir", dir))
 	}
+
 	if len(debs) == 0 {
 		return b.fail(ctx, "list packages", errNoPackages, slog.String("dir", dir))
 	}
+
 	if err := b.aptInstall(ctx, debs...); err != nil {
 		return err
 	}
+
 	for _, debPath := range debs {
 		name, version, err := b.debIdentity(ctx, debPath)
 		if err != nil {
 			return err
 		}
+
 		b.versions[name] = version
 	}
+
 	b.log.InfoContext(ctx, "wanconfigstack: packages installed", "dir", dir, "count", len(debs))
+
 	return nil
 }
 
@@ -165,15 +222,23 @@ func (b *builder) packageVersion(ctx context.Context, c component) (string, erro
 	if !c.versionFromCMake {
 		return b.pinVersion(c), nil
 	}
+
 	cmakeLists := filepath.Join(b.srcDir(c), "CMakeLists.txt")
 	content, err := os.ReadFile(cmakeLists)
 	if err != nil {
 		return "", b.fail(ctx, "read cmake project", err, slog.String("path", cmakeLists))
 	}
+
 	cmakeVersion, ok := projectVersion(string(content))
 	if !ok {
-		return "", b.fail(ctx, "read cmake project version", errNoProjectVersion, slog.String("path", cmakeLists))
+		return "", b.fail(
+			ctx,
+			"read cmake project version",
+			errNoProjectVersion,
+			slog.String("path", cmakeLists),
+		)
 	}
+
 	return cmakeVersion + "+git" + b.pin(c), nil
 }
 
@@ -184,11 +249,14 @@ func projectVersion(cmakeLists string) (string, bool) {
 		if !strings.HasPrefix(trimmed, "project(") {
 			continue
 		}
+
 		_, after, ok := strings.Cut(trimmed, "VERSION ")
 		if !ok {
 			continue
 		}
+
 		return strings.TrimRight(strings.Fields(after)[0], ")"), true
 	}
+
 	return "", false
 }

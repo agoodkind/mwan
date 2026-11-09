@@ -23,31 +23,43 @@ const (
 func TestNetworkAcceptsSchemaValidDocuments(t *testing.T) {
 	t.Parallel()
 	server := newNetworkServer(t)
-	for _, name := range []string{"network-min.json", "network-freeform.json", "network-routes.json"} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			document, err := os.ReadFile(gatewayInstances + name)
-			if err != nil {
-				t.Fatalf("read %s: %v", name, err)
-			}
-			state := server.mustReadNetwork(t, string(document))
-			wantCanonical, err := networkjson.Canonicalize(document)
-			if err != nil {
-				t.Fatalf("Canonicalize: %v", err)
-			}
-			if got := text(t, state, "canonical_content"); got != string(wantCanonical) {
-				t.Errorf("canonical_content = %s, want %s", got, wantCanonical)
-			}
-			if got := objectMap(t, state, "interfaces"); len(got) == 0 {
-				t.Error("interfaces are empty")
-			}
-		})
+
+	for _, name := range []string{
+		"network-min.json",
+		"network-freeform.json",
+		"network-routes.json",
+	} {
+		t.Run(
+			name,
+			func(t *testing.T) {
+				t.Parallel()
+				document, err := os.ReadFile(gatewayInstances + name)
+				if err != nil {
+					t.Fatalf("read %s: %v", name, err)
+				}
+
+				state := server.mustReadNetwork(t, string(document))
+				wantCanonical, err := networkjson.Canonicalize(document)
+				if err != nil {
+					t.Fatalf("Canonicalize: %v", err)
+				}
+
+				if got := text(t, state, "canonical_content"); got != string(wantCanonical) {
+					t.Errorf("canonical_content = %s, want %s", got, wantCanonical)
+				}
+
+				if got := objectMap(t, state, "interfaces"); len(got) == 0 {
+					t.Error("interfaces are empty")
+				}
+			},
+		)
 	}
 }
 
 func TestNetworkRejectsInvalidDocuments(t *testing.T) {
 	t.Parallel()
 	server := newNetworkServer(t)
+
 	cases := []struct {
 		name        string
 		old         string
@@ -120,23 +132,32 @@ func TestNetworkRejectsInvalidDocuments(t *testing.T) {
 		},
 	}
 	for _, test := range cases {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			_, diagnostics := server.readNetwork(t, readNetworkDocument(t, test.old, test.replacement))
-			if len(diagnostics) != 1 {
-				t.Fatalf("diagnostics = %q, want one diagnostic", diagnosticText(diagnostics))
-			}
-			diagnostic := diagnostics[0]
-			if diagnostic.Severity != tfprotov6.DiagnosticSeverityError {
-				t.Errorf("severity = %v, want error", diagnostic.Severity)
-			}
-			if diagnostic.Summary != test.summary {
-				t.Errorf("summary = %q, want %q", diagnostic.Summary, test.summary)
-			}
-			if !strings.Contains(diagnostic.Detail, test.detail) {
-				t.Errorf("detail = %q, want %q", diagnostic.Detail, test.detail)
-			}
-		})
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
+				_, diagnostics := server.readNetwork(
+					t,
+					readNetworkDocument(t, test.old, test.replacement),
+				)
+				if len(diagnostics) != 1 {
+					t.Fatalf("diagnostics = %q, want one diagnostic", diagnosticText(diagnostics))
+				}
+
+				diagnostic := diagnostics[0]
+				if diagnostic.Severity != tfprotov6.DiagnosticSeverityError {
+					t.Errorf("severity = %v, want error", diagnostic.Severity)
+				}
+
+				if diagnostic.Summary != test.summary {
+					t.Errorf("summary = %q, want %q", diagnostic.Summary, test.summary)
+				}
+
+				if !strings.Contains(diagnostic.Detail, test.detail) {
+					t.Errorf("detail = %q, want %q", diagnostic.Detail, test.detail)
+				}
+			},
+		)
 	}
 }
 
@@ -148,13 +169,21 @@ func TestNetworkDefersUnknownContent(t *testing.T) {
 		context.Background(),
 		&tfprotov6.ValidateDataResourceConfigRequest{
 			TypeName: networkDataSource,
-			Config:   dynamicValue(t, server.dataSource, map[string]tftypes.Value{"content": unknown}),
+			Config: dynamicValue(
+				t,
+				server.dataSource,
+				map[string]tftypes.Value{"content": unknown},
+			),
 		},
 	)
 	if err != nil {
 		t.Fatalf("validate unknown content: %v", err)
 	}
+
 	if len(response.Diagnostics) > 0 {
-		t.Errorf("unknown content diagnostics = %q, want none", diagnosticText(response.Diagnostics))
+		t.Errorf(
+			"unknown content diagnostics = %q, want none",
+			diagnosticText(response.Diagnostics),
+		)
 	}
 }

@@ -22,6 +22,7 @@ func debugWANs(cfg *config.Config) []debugWAN {
 	for name := range cfg.IfMgr.WAN {
 		names = append(names, name)
 	}
+
 	sort.Strings(names)
 
 	wans := make([]debugWAN, 0, len(names))
@@ -31,14 +32,19 @@ func debugWANs(cfg *config.Config) []debugWAN {
 		if providerName == "" {
 			providerName = name
 		}
-		wans = append(wans, debugWAN{
-			ID:      name,
-			Name:    providerName,
-			Iface:   entry.Iface,
-			TableID: entry.TableID,
-			FwMark:  entry.FwMark,
-		})
+
+		wans = append(
+			wans,
+			debugWAN{
+				ID:      name,
+				Name:    providerName,
+				Iface:   entry.Iface,
+				TableID: entry.TableID,
+				FwMark:  entry.FwMark,
+			},
+		)
 	}
+
 	return wans
 }
 
@@ -53,12 +59,15 @@ func debugIPv4Source(logger *slog.Logger, rawPrefix string) (string, error) {
 		message := fmt.Sprintf("parse IPv4 source prefix %q", rawPrefix)
 		return "", debugWrappedError(logger, message, err)
 	}
+
 	if !prefix.Addr().Is4() {
 		return "", fmt.Errorf("IPv4 source prefix %q is not IPv4", rawPrefix)
 	}
+
 	source := prefix.Masked().Addr().Next().Next()
 	if !source.IsValid() || !prefix.Contains(source) {
 		return "", fmt.Errorf("IPv4 source prefix %q has no second host address", rawPrefix)
 	}
+
 	return source.String(), nil
 }

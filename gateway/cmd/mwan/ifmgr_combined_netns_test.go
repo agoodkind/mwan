@@ -51,7 +51,12 @@ func (c *combinedRun) requireIPv4Unchanged(t *testing.T, since time.Time) {
 	c.requireIPv4PathsUnchanged(t, since, c.ipv4Providers()...)
 	selection, err := tunnelRuntimeIPv4Selection()
 	if err != nil || selection != c.ipv4 {
-		t.Fatalf("IPv4 steering assignment = %q (%v), want the assignment before the fault %q", selection, err, c.ipv4)
+		t.Fatalf(
+			"IPv4 steering assignment = %q (%v), want the assignment before the fault %q",
+			selection,
+			err,
+			c.ipv4,
+		)
 	}
 }
 
@@ -71,7 +76,11 @@ func TestCombinedPathsDaemonRuntime(t *testing.T) {
 
 func runCombinedPathsDaemonRuntime(t *testing.T, run *bgpRuntimeRun) {
 	provider := combinedDirectProvider()
-	combined := &combinedRun{run: run, topology: buildCombinedTopology(t, run, provider), provider: provider}
+	combined := &combinedRun{
+		run:      run,
+		topology: buildCombinedTopology(t, run, provider),
+		provider: provider,
+	}
 	combined.network = writeCombinedNetwork(t, run.networkDir, provider)
 	started := time.Now()
 	combined.daemon = run.start(t, "combined-first")
@@ -100,7 +109,11 @@ func combinedStartsWithoutPeers(t *testing.T, c *combinedRun, started time.Time)
 	for _, device := range c.paths() {
 		first := readCombinedPath(read, device, "ipv6").Transitions[0]
 		if first.Current != combinedStarting || first.Previous != "" || first.Reason == "" {
-			t.Fatalf("%s first ipv6 path transition = %+v, want starting with a reason", device, first)
+			t.Fatalf(
+				"%s first ipv6 path transition = %+v, want starting with a reason",
+				device,
+				first,
+			)
 		}
 	}
 	requireCombinedPaths(t, c.daemon, read, c.topology, combinedOrdinary)
@@ -114,13 +127,26 @@ func combinedPeersStart(t *testing.T, c *combinedRun) {
 	c.transit = c.run.startRouter(t, c.provider)
 	accepting := map[string]time.Time{c.provider.device: time.Now()}
 	c.transit.announce(t, combinedDefault(), c.provider.peer())
-	c.tunnel = startBGPRuntimeRouter(t, c.topology.tunnel.endpoint, "far6in4", combinedTunnelRouterID, bgpRuntimeRemoteASN, tunnelPeer,
-		netip.MustParseAddr(tunnelRuntimeInnerLocal), bgpRuntimeLocalASN)
+	c.tunnel = startBGPRuntimeRouter(
+		t,
+		c.topology.tunnel.endpoint,
+		"far6in4",
+		combinedTunnelRouterID,
+		bgpRuntimeRemoteASN,
+		tunnelPeer,
+		netip.MustParseAddr(tunnelRuntimeInnerLocal),
+		bgpRuntimeLocalASN,
+	)
 	accepting[tunnelRuntimeDevice] = time.Now()
 	c.tunnel.announce(t, combinedDefault(), tunnelPeer)
 	for _, device := range []string{c.provider.device, tunnelRuntimeDevice} {
 		measured := waitCombinedReady(t, c.daemon, read, device, "ipv6", accepting[device])
-		requireCombinedBound(t, device+" ready after the peer accepted connections", measured, c.connectBound(t, device))
+		requireCombinedBound(
+			t,
+			device+" ready after the peer accepted connections",
+			measured,
+			c.connectBound(t, device),
+		)
 	}
 	c.requireAnnounced(t)
 	requireCombinedPaths(t, c.daemon, read, c.topology, c.paths()...)
@@ -142,15 +168,27 @@ func combinedRestart(t *testing.T, c *combinedRun) {
 	killOwnedRuntimeDaemon(t, c.daemon)
 	waitBGPRuntimeReceived(t, nil, c.run.read, c.transit)
 	waitBGPRuntimeReceived(t, nil, c.run.read, c.tunnel)
-	routers := map[string]*bgpRuntimeRouter{c.provider.device: c.transit, tunnelRuntimeDevice: c.tunnel}
+	routers := map[string]*bgpRuntimeRouter{
+		c.provider.device:   c.transit,
+		tunnelRuntimeDevice: c.tunnel,
+	}
 	started := time.Now()
 	c.daemon = c.run.start(t, "combined-second")
 	for _, device := range c.paths() {
 		measured := waitCombinedReady(t, c.daemon, c.run.read, device, "ipv6", started)
-		requireCombinedBound(t, device+" ready after the daemon restart", measured, c.recoverBound(t, device))
+		requireCombinedBound(
+			t,
+			device+" ready after the daemon restart",
+			measured,
+			c.recoverBound(t, device),
+		)
 		first := readCombinedPath(c.run.read, device, "ipv6").Transitions[0]
 		if first.Current != combinedStarting {
-			t.Fatalf("%s first ipv6 path transition after the restart = %+v, want starting", device, first)
+			t.Fatalf(
+				"%s first ipv6 path transition after the restart = %+v, want starting",
+				device,
+				first,
+			)
 		}
 	}
 	c.requireAnnounced(t)
@@ -159,8 +197,17 @@ func combinedRestart(t *testing.T, c *combinedRun) {
 		// Monotonic readings can incorrectly place receipt before readiness.
 		receipt, received := router.firstReceipt(started)
 		receipt = receipt.Round(0)
-		if ready := started.Round(0).Add(waitCombinedReady(t, c.daemon, c.run.read, device, "ipv6", started)); !received || receipt.Before(ready) {
-			t.Fatalf("router behind %s first received a route at %s (received=%t), before the ipv6 path became ready at %s", device, receipt, received, ready)
+		if ready := started.Round(0).Add(
+			waitCombinedReady(t, c.daemon, c.run.read, device, "ipv6", started),
+		); !received ||
+			receipt.Before(ready) {
+			t.Fatalf(
+				"router behind %s first received a route at %s (received=%t), before the ipv6 path became ready at %s",
+				device,
+				receipt,
+				received,
+				ready,
+			)
 		}
 	}
 	for _, device := range c.ipv4Providers() {

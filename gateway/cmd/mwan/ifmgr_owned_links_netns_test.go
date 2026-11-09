@@ -42,7 +42,9 @@ func TestOwnedLinksDaemonRuntime(t *testing.T) {
 		t.Fatalf("build mwan: %v: %s", err, output)
 	}
 	child := exec.Command(os.Args[0], "-test.run=^TestOwnedLinksDaemonRuntime$")
-	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
+	child.SysProcAttr = &syscall.SysProcAttr{
+		Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS),
+	}
 	child.Env = append(os.Environ(), ownedRuntimeChildEnv+"=1", ownedRuntimeBinaryEnv+"="+binary)
 	if output, err := child.CombinedOutput(); err != nil {
 		t.Fatalf("isolated owned-link daemon test: %v: %s", err, output)
@@ -77,19 +79,49 @@ func runOwnedLinksDaemonRuntime(t *testing.T) {
 	}
 	bindStartupDirectory(t, networkdDir, "/etc/systemd/network")
 	configPath := filepath.Join(root, "config.toml")
-	config := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[wanconfig]\npublish = false\n", filepath.Join(root, "owned-links.json"), filepath.Join(root, "kernel-policy.json"))
+	config := fmt.Sprintf(
+		"[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[wanconfig]\npublish = false\n",
+		filepath.Join(root, "owned-links.json"),
+		filepath.Join(root, "kernel-policy.json"),
+	)
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	setRuntimeLoopback(t)
-	management := newRuntimePeer(t, gateway, "enmgmt0", "mgmt-host", []string{"203.0.113.1/24"}, []string{"203.0.113.2/24"}, "")
+	management := newRuntimePeer(
+		t,
+		gateway,
+		"enmgmt0",
+		"mgmt-host",
+		[]string{"203.0.113.1/24"},
+		[]string{"203.0.113.2/24"},
+		"",
+	)
 	defer management.namespace.Close()
-	lan := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29"}, []string{"192.0.2.2/29"}, "")
+	lan := newRuntimePeer(
+		t,
+		gateway,
+		"enmwanbr0",
+		"lan-host",
+		[]string{"192.0.2.1/29"},
+		[]string{"192.0.2.2/29"},
+		"",
+	)
 	defer lan.namespace.Close()
-	parentPeer := newRuntimePeer(t, gateway, "ownphys0", "owned-peer", nil, nil, ownedRuntimeParentMAC)
+	parentPeer := newRuntimePeer(
+		t,
+		gateway,
+		"ownphys0",
+		"owned-peer",
+		nil,
+		nil,
+		ownedRuntimeParentMAC,
+	)
 	defer parentPeer.namespace.Close()
 	setRuntimeNamespace(t, gateway)
-	if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: "foreign-br"}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Bridge{
+		LinkAttrs: netlink.LinkAttrs{Name: "foreign-br"},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	writeOwnedRuntimeNetwork(t, networkDir, true, true)
@@ -127,8 +159,15 @@ func runOwnedLinksDaemonRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bridge.Type() != "bridge" || vlan.Type() != "vlan" || vlan.Attrs().ParentIndex != parent.Attrs().Index || removable.Type() != "vlan" {
-		t.Fatalf("owned links have wrong topology: bridge=%+v vlan=%+v removable=%+v", bridge, vlan, removable)
+	if bridge.Type() != "bridge" || vlan.Type() != "vlan" ||
+		vlan.Attrs().ParentIndex != parent.Attrs().Index ||
+		removable.Type() != "vlan" {
+		t.Fatalf(
+			"owned links have wrong topology: bridge=%+v vlan=%+v removable=%+v",
+			bridge,
+			vlan,
+			removable,
+		)
 	}
 	bridgeIndex, vlanIndex := bridge.Attrs().Index, vlan.Attrs().Index
 	assertOwnedRuntimeVLANPacket(t, gateway, parentPeer.namespace, vlan)
@@ -148,10 +187,20 @@ func runOwnedLinksDaemonRuntime(t *testing.T) {
 	second := startRuntimeDaemon(t, binary, configPath, root, "owned-second")
 	defer killOwnedRuntimeDaemon(t, second)
 	waitRuntimeTable(t, second, "inet", "filter", 10*time.Second)
-	if got := waitOwnedRuntimeLink(t, second, "owned-br", 10*time.Second); got.Attrs().Index != bridgeIndex {
+	if got := waitOwnedRuntimeLink(
+		t,
+		second,
+		"owned-br",
+		10*time.Second,
+	); got.Attrs().Index != bridgeIndex {
 		t.Fatalf("restart recreated bridge: index %d, want %d", got.Attrs().Index, bridgeIndex)
 	}
-	if got := waitOwnedRuntimeLink(t, second, "owned397", 10*time.Second); got.Attrs().Index != vlanIndex {
+	if got := waitOwnedRuntimeLink(
+		t,
+		second,
+		"owned397",
+		10*time.Second,
+	); got.Attrs().Index != vlanIndex {
 		t.Fatalf("restart recreated VLAN: index %d, want %d", got.Attrs().Index, vlanIndex)
 	}
 	killOwnedRuntimeDaemon(t, second)
@@ -160,7 +209,14 @@ func runOwnedLinksDaemonRuntime(t *testing.T) {
 	defer killOwnedRuntimeDaemon(t, third)
 	waitRuntimeTable(t, third, "inet", "filter", 10*time.Second)
 	waitOwnedRuntimeAbsent(t, third, "owned398", 10*time.Second)
-	for _, name := range []string{"owned-br", "owned397", "ownphys0", "foreign-br", "enmgmt0", "enmwanbr0"} {
+	for _, name := range []string{
+		"owned-br",
+		"owned397",
+		"ownphys0",
+		"foreign-br",
+		"enmgmt0",
+		"enmwanbr0",
+	} {
 		if _, err := netlink.LinkByName(name); err != nil {
 			t.Fatalf("removing one child changed %s: %v", name, err)
 		}
@@ -171,7 +227,11 @@ func runOwnedLinksDaemonRuntime(t *testing.T) {
 	lateParent := waitOwnedRuntimeLink(t, third, "latephys0", 10*time.Second)
 	lateVLAN := waitOwnedRuntimeLink(t, third, "late397", 10*time.Second)
 	if lateVLAN.Attrs().ParentIndex != lateParent.Attrs().Index {
-		t.Fatalf("late VLAN parent index %d, want %d", lateVLAN.Attrs().ParentIndex, lateParent.Attrs().Index)
+		t.Fatalf(
+			"late VLAN parent index %d, want %d",
+			lateVLAN.Attrs().ParentIndex,
+			lateParent.Attrs().Index,
+		)
 	}
 	killOwnedRuntimeDaemon(t, third)
 	writeOwnedRuntimeNetwork(t, networkDir, false, false)
@@ -208,16 +268,24 @@ func writeOwnedRuntimeNetwork(t *testing.T, directory string, includeSecond, inc
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture = bytes.ReplaceAll(fixture, []byte(`"goodkind-mwan-steering:link-files": "rendered"`), []byte(`"goodkind-mwan-steering:link-files": "hand-authored"`))
-	legacyWAN := []byte(`"name": "enatt0",
+	fixture = bytes.ReplaceAll(
+		fixture,
+		[]byte(`"goodkind-mwan-steering:link-files": "rendered"`),
+		[]byte(`"goodkind-mwan-steering:link-files": "hand-authored"`),
+	)
+	legacyWAN := []byte(
+		`"name": "enatt0",
         "type": "iana-if-type:other",
-        "goodkind-mwan-steering:link-files": "hand-authored"`)
-	typedWAN := []byte(`"name": "enatt0",
+        "goodkind-mwan-steering:link-files": "hand-authored"`,
+	)
+	typedWAN := []byte(
+		`"name": "enatt0",
         "type": "iana-if-type:other",
         "goodkind-mwan-steering:owner": "external",
         "goodkind-mwan-steering:link": {
           "match": { "hardware-address": "02:00:5e:00:53:aa" }
-        }`)
+        }`,
+	)
 	if !bytes.Contains(fixture, legacyWAN) {
 		t.Fatal("test fixture has no hand-authored enatt0 entry")
 	}
@@ -237,17 +305,29 @@ func writeOwnedRuntimeNetwork(t *testing.T, directory string, includeSecond, inc
 	add := func(value string) {
 		entries = append(entries, json.RawMessage(value))
 	}
-	add(`{"name":"ownphys0","type":"iana-if-type:other","goodkind-mwan-steering:connection-id":"ownphys0","goodkind-mwan-steering:owner":"external","goodkind-mwan-steering:link":{"match":{"hardware-address":"` + ownedRuntimeParentMAC + `"}}}`)
+	add(
+		`{"name":"ownphys0","type":"iana-if-type:other","goodkind-mwan-steering:connection-id":"ownphys0","goodkind-mwan-steering:owner":"external","goodkind-mwan-steering:link":{"match":{"hardware-address":"` + ownedRuntimeParentMAC + `"}}}`,
+	)
 	if includeOwned {
-		add(`{"name":"owned-br","type":"iana-if-type:bridge","goodkind-mwan-steering:connection-id":"owned-br","goodkind-mwan-steering:owner":"mwan","goodkind-mwan-steering:link":{}}`)
-		add(`{"name":"owned397","type":"iana-if-type:other","goodkind-mwan-steering:connection-id":"owned397","goodkind-mwan-steering:owner":"mwan","goodkind-mwan-steering:link":{"vlan":{"parent":"ownphys0","id":397}}}`)
+		add(
+			`{"name":"owned-br","type":"iana-if-type:bridge","goodkind-mwan-steering:connection-id":"owned-br","goodkind-mwan-steering:owner":"mwan","goodkind-mwan-steering:link":{}}`,
+		)
+		add(
+			`{"name":"owned397","type":"iana-if-type:other","goodkind-mwan-steering:connection-id":"owned397","goodkind-mwan-steering:owner":"mwan","goodkind-mwan-steering:link":{"vlan":{"parent":"ownphys0","id":397}}}`,
+		)
 		if includeSecond {
-			add(`{"name":"owned398","type":"iana-if-type:other","goodkind-mwan-steering:connection-id":"owned398","goodkind-mwan-steering:owner":"mwan","goodkind-mwan-steering:link":{"vlan":{"parent":"ownphys0","id":398}}}`)
+			add(
+				`{"name":"owned398","type":"iana-if-type:other","goodkind-mwan-steering:connection-id":"owned398","goodkind-mwan-steering:owner":"mwan","goodkind-mwan-steering:link":{"vlan":{"parent":"ownphys0","id":398}}}`,
+			)
 		}
 	}
-	add(`{"name":"latephys0","type":"iana-if-type:other","goodkind-mwan-steering:connection-id":"latephys0","goodkind-mwan-steering:owner":"external","goodkind-mwan-steering:link":{"match":{"hardware-address":"` + ownedRuntimeLateMAC + `"}}}`)
+	add(
+		`{"name":"latephys0","type":"iana-if-type:other","goodkind-mwan-steering:connection-id":"latephys0","goodkind-mwan-steering:owner":"external","goodkind-mwan-steering:link":{"match":{"hardware-address":"` + ownedRuntimeLateMAC + `"}}}`,
+	)
 	if includeOwned {
-		add(`{"name":"late397","type":"iana-if-type:other","goodkind-mwan-steering:connection-id":"late397","goodkind-mwan-steering:owner":"mwan","goodkind-mwan-steering:link":{"vlan":{"parent":"latephys0","id":397}}}`)
+		add(
+			`{"name":"late397","type":"iana-if-type:other","goodkind-mwan-steering:connection-id":"late397","goodkind-mwan-steering:owner":"mwan","goodkind-mwan-steering:link":{"vlan":{"parent":"latephys0","id":397}}}`,
+		)
 	}
 	interfaces["interface"], err = json.Marshal(entries)
 	if err != nil {
@@ -266,7 +346,12 @@ func writeOwnedRuntimeNetwork(t *testing.T, directory string, includeSecond, inc
 	}
 }
 
-func waitOwnedRuntimeLink(t *testing.T, daemon *runtimeDaemon, name string, timeout time.Duration) netlink.Link {
+func waitOwnedRuntimeLink(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	name string,
+	timeout time.Duration,
+) netlink.Link {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -281,7 +366,12 @@ func waitOwnedRuntimeLink(t *testing.T, daemon *runtimeDaemon, name string, time
 	return nil
 }
 
-func waitOwnedRuntimeAbsent(t *testing.T, daemon *runtimeDaemon, name string, timeout time.Duration) {
+func waitOwnedRuntimeAbsent(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	name string,
+	timeout time.Duration,
+) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -296,7 +386,12 @@ func waitOwnedRuntimeAbsent(t *testing.T, daemon *runtimeDaemon, name string, ti
 	t.Fatalf("link %s was not removed: %s", name, runtimeLogTail(t, daemon, 40))
 }
 
-func assertOwnedRuntimeVLANPacket(t *testing.T, gateway, peer netns.NsHandle, gatewayVLAN netlink.Link) {
+func assertOwnedRuntimeVLANPacket(
+	t *testing.T,
+	gateway netns.NsHandle,
+	peer netns.NsHandle,
+	gatewayVLAN netlink.Link,
+) {
 	t.Helper()
 	address, err := netlink.ParseAddr("10.39.7.1/24")
 	if err != nil {
@@ -310,7 +405,10 @@ func assertOwnedRuntimeVLANPacket(t *testing.T, gateway, peer netns.NsHandle, ga
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "peer397", ParentIndex: parent.Attrs().Index}, VlanId: 397}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Vlan{
+		LinkAttrs: netlink.LinkAttrs{Name: "peer397", ParentIndex: parent.Attrs().Index},
+		VlanId:    397,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	configureRuntimeLink(t, "peer397", []string{"10.39.7.2/24"})

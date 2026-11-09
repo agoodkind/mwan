@@ -34,7 +34,11 @@ func TestDebugSystemdPublicRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, arguments := range [][]string{{"daemon-reload"}, {"start", unitName}} {
-		if output, err := exec.CommandContext(t.Context(), "systemctl", arguments...).CombinedOutput(); err != nil {
+		if output, err := exec.CommandContext(
+			t.Context(),
+			"systemctl",
+			arguments...,
+		).CombinedOutput(); err != nil {
 			t.Fatalf("systemctl %v: %v: %s", arguments, err, output)
 		}
 	}
@@ -70,7 +74,10 @@ func TestDebugSystemdPublicRuntime(t *testing.T) {
 		t.Fatalf("fixture unit=%+v", expected)
 	}
 	var timestamps [2]uint64
-	for index, property := range []string{"InactiveExitTimestampMonotonic", "ActiveEnterTimestampMonotonic"} {
+	for index, property := range []string{
+		"InactiveExitTimestampMonotonic",
+		"ActiveEnterTimestampMonotonic",
+	} {
 		value, err := connection.GetUnitPropertyContext(t.Context(), unitName, property)
 		if err != nil {
 			t.Fatal(err)
@@ -83,7 +90,16 @@ func TestDebugSystemdPublicRuntime(t *testing.T) {
 	if duration <= 0 {
 		t.Fatalf("fixture duration=%s", duration)
 	}
-	output, diagnostics, code := runCLIProcess(t, binary, "debug", "systemd", "--config", configPath, "--output-format", "json")
+	output, diagnostics, code := runCLIProcess(
+		t,
+		binary,
+		"debug",
+		"systemd",
+		"--config",
+		configPath,
+		"--output-format",
+		"json",
+	)
 	if code != 0 {
 		t.Fatalf("systemd exit=%d stdout=%s stderr=%s", code, output, diagnostics)
 	}
@@ -118,14 +134,20 @@ func TestDebugSystemdPublicRuntime(t *testing.T) {
 		}
 	}
 	if !timingFound || len(result.Focus) != 5 {
-		t.Fatalf("timings=%+v focus=%+v expected duration=%s", result.Timings, result.Focus, duration)
+		t.Fatalf(
+			"timings=%+v focus=%+v expected duration=%s",
+			result.Timings,
+			result.Focus,
+			duration,
+		)
 	}
 	specification, known := installspec.For(installspec.RoleWAN)
 	if !known {
 		t.Fatal("installed WAN role does not exist")
 	}
 	for _, name := range specification.Enable {
-		if name == "mwan-trace-boot.service" || name == "rousette.service" || name == "nghttpx-wanconfig.service" {
+		if name == "mwan-trace-boot.service" || name == "rousette.service" ||
+			name == "nghttpx-wanconfig.service" {
 			continue
 		}
 		found := false
@@ -150,11 +172,34 @@ func TestDebugSystemdPublicRuntime(t *testing.T) {
 			t.Fatalf("focus timing changed: %+v", focus)
 		}
 	}
-	text, diagnostics, code := runCLIProcess(t, binary, "debug", "systemd", "--config", configPath, "--output-format", "text")
+	text, diagnostics, code := runCLIProcess(
+		t,
+		binary,
+		"debug",
+		"systemd",
+		"--config",
+		configPath,
+		"--output-format",
+		"text",
+	)
 	if code != 0 {
 		t.Fatalf("systemd text exit=%d stdout=%s stderr=%s", code, text, diagnostics)
 	}
-	assertDebugInspectionFields(t, text, fmt.Sprintf("  name: %q\n  load state: %q\n  active state: %q\n  substate: %q\n  followed: %q\n  job ID: %d\n  job type: %q\n", expected.Name, expected.LoadState, expected.ActiveState, expected.SubState, expected.Followed, expected.JobId, expected.JobType), fmt.Sprintf("  name: %q\n  duration (ns): %d\n", unitName, duration))
+	assertDebugInspectionFields(
+		t,
+		text,
+		fmt.Sprintf(
+			"  name: %q\n  load state: %q\n  active state: %q\n  substate: %q\n  followed: %q\n  job ID: %d\n  job type: %q\n",
+			expected.Name,
+			expected.LoadState,
+			expected.ActiveState,
+			expected.SubState,
+			expected.Followed,
+			expected.JobId,
+			expected.JobType,
+		),
+		fmt.Sprintf("  name: %q\n  duration (ns): %d\n", unitName, duration),
+	)
 	measuredFixtures := 0
 	preciseFixtures := 0
 	for _, timing := range result.Timings {
@@ -162,7 +207,11 @@ func TestDebugSystemdPublicRuntime(t *testing.T) {
 			if timing.Name != name {
 				continue
 			}
-			assertDebugInspectionFields(t, text, fmt.Sprintf("  name: %q\n  duration (ns): %d\n", timing.Name, timing.Duration))
+			assertDebugInspectionFields(
+				t,
+				text,
+				fmt.Sprintf("  name: %q\n  duration (ns): %d\n", timing.Name, timing.Duration),
+			)
 			measuredFixtures++
 			if timing.Duration%time.Millisecond != 0 {
 				preciseFixtures++
@@ -170,7 +219,12 @@ func TestDebugSystemdPublicRuntime(t *testing.T) {
 		}
 	}
 	if measuredFixtures != len(additionalUnits) || measuredFixtures <= 20 || preciseFixtures == 0 {
-		t.Fatalf("measured fixtures=%d precise fixtures=%d timings=%+v", measuredFixtures, preciseFixtures, result.Timings)
+		t.Fatalf(
+			"measured fixtures=%d precise fixtures=%d timings=%+v",
+			measuredFixtures,
+			preciseFixtures,
+			result.Timings,
+		)
 	}
 	_, focusText, foundFocus := strings.Cut(text, "== mwan unit timings ==\n")
 	if !foundFocus {
@@ -190,7 +244,16 @@ func TestDebugSystemdPublicRuntime(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		command := exec.CommandContext(t.Context(), binary, "debug", "systemd", "--config", configPath, "--output-format", format)
+		command := exec.CommandContext(
+			t.Context(),
+			binary,
+			"debug",
+			"systemd",
+			"--config",
+			configPath,
+			"--output-format",
+			format,
+		)
 		var diagnostics bytes.Buffer
 		command.Stdout, command.Stderr = full, &diagnostics
 		err = command.Run()
@@ -227,7 +290,11 @@ func installDebugSystemdTimingUnits(t *testing.T) []string {
 		}
 	})
 	for _, arguments := range [][]string{{"daemon-reload"}, append([]string{"start"}, units...)} {
-		if output, err := exec.CommandContext(t.Context(), "systemctl", arguments...).CombinedOutput(); err != nil {
+		if output, err := exec.CommandContext(
+			t.Context(),
+			"systemctl",
+			arguments...,
+		).CombinedOutput(); err != nil {
 			t.Fatalf("systemctl timing units %v: %v: %s", arguments, err, output)
 		}
 	}

@@ -119,8 +119,12 @@ func TestDeployGateEgressNetNS(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := command.Wait(); err != nil {
-		t.Fatalf("recovery command: %v\nstdout:\n%s\nstderr:\n%s", err,
-			strings.Join(lines, "\n"), stderr.String())
+		t.Fatalf(
+			"recovery command: %v\nstdout:\n%s\nstderr:\n%s",
+			err,
+			strings.Join(lines, "\n"),
+			stderr.String(),
+		)
 	}
 	if !blocked || !restored || !strings.Contains(strings.Join(lines, "\n"), "consecutive=3/3") {
 		t.Fatalf("failed round did not reset the count: %s", strings.Join(lines, "\n"))
@@ -130,7 +134,8 @@ func TestDeployGateEgressNetNS(t *testing.T) {
 func setupEgressResponder(t *testing.T, requester netns.NsHandle) {
 	t.Helper()
 	if err := netlink.LinkAdd(&netlink.Veth{
-		LinkAttrs: netlink.LinkAttrs{Name: "egress-server"}, PeerName: "egress-client",
+		LinkAttrs: netlink.LinkAttrs{Name: "egress-server"},
+		PeerName:  "egress-client",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -146,8 +151,10 @@ func setupEgressResponder(t *testing.T, requester netns.NsHandle) {
 		t.Fatal(err)
 	}
 	for _, address := range []string{
-		"10.77.0.1/30", "fd77::1/64",
-		deployGateEgressTargetV4 + "/32", deployGateEgressTargetV6 + "/128",
+		"10.77.0.1/30",
+		"fd77::1/64",
+		deployGateEgressTargetV4 + "/32",
+		deployGateEgressTargetV6 + "/128",
 	} {
 		addEgressAddress(t, server, address)
 	}
@@ -191,7 +198,9 @@ func setupEgressRequester(t *testing.T) {
 			t.Fatal(err)
 		}
 		if err := netlink.RouteAdd(&netlink.Route{
-			LinkIndex: client.Attrs().Index, Dst: destination, Gw: net.ParseIP(route.gateway),
+			LinkIndex: client.Attrs().Index,
+			Dst:       destination,
+			Gw:        net.ParseIP(route.gateway),
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -226,8 +235,28 @@ func setIPv4EchoDrop(t *testing.T, responder, original netns.NsHandle, drop bool
 	if drop {
 		commands = [][]string{
 			{"add", "table", "ip", "mwan_egress_test"},
-			{"add", "chain", "ip", "mwan_egress_test", "input", "{ type filter hook input priority 0; policy accept; }"},
-			{"add", "rule", "ip", "mwan_egress_test", "input", "ip", "protocol", "icmp", "icmp", "type", "echo-request", "drop"},
+			{
+				"add",
+				"chain",
+				"ip",
+				"mwan_egress_test",
+				"input",
+				"{ type filter hook input priority 0; policy accept; }",
+			},
+			{
+				"add",
+				"rule",
+				"ip",
+				"mwan_egress_test",
+				"input",
+				"ip",
+				"protocol",
+				"icmp",
+				"icmp",
+				"type",
+				"echo-request",
+				"drop",
+			},
 		}
 	} else {
 		commands = [][]string{{"delete", "table", "ip", "mwan_egress_test"}}

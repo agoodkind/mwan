@@ -26,15 +26,19 @@ const (
 func releaseServer(t *testing.T, checksums string) (*httptest.Server, *atomic.Int64) {
 	t.Helper()
 	var requests atomic.Int64
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		requests.Add(1)
-		if request.URL.Path != "/"+releaseTag+"/checksums.txt" {
-			http.NotFound(writer, request)
-			return
-		}
-		_, _ = writer.Write([]byte(checksums))
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			requests.Add(1)
+			if request.URL.Path != "/"+releaseTag+"/checksums.txt" {
+				http.NotFound(writer, request)
+				return
+			}
+
+			_, _ = writer.Write([]byte(checksums))
+		}),
+	)
 	t.Cleanup(server.Close)
+
 	return server, &requests
 }
 
@@ -45,14 +49,17 @@ func fullChecksums() string {
 		amd64StackHash + "  wanconfig-stack_linux_amd64.tar.gz",
 		arm64StackHash + "  wanconfig-stack_linux_arm64.tar.gz",
 	}
+
 	return strings.Join(lines, "\n") + "\n"
 }
 
 func diagnosticText(diagnostics []*tfprotov6.Diagnostic) string {
 	var builder strings.Builder
+
 	for _, diagnostic := range diagnostics {
 		builder.WriteString(diagnostic.Summary + ": " + diagnostic.Detail + "\n")
 	}
+
 	return builder.String()
 }
 
@@ -66,9 +73,11 @@ func TestReleaseReadsArchiveAddressesAndHashes(t *testing.T) {
 	if len(diagnostics) > 0 {
 		t.Fatalf("read failed: %s", diagnosticText(diagnostics))
 	}
+
 	if release.ArchiveMember != "mwan" {
 		t.Errorf("archive member = %q, want mwan", release.ArchiveMember)
 	}
+
 	want := map[string]archives{
 		"amd64": {
 			MwanURL:     server.URL + "/" + releaseTag + "/mwan_linux_amd64.tar.gz",
@@ -86,6 +95,7 @@ func TestReleaseReadsArchiveAddressesAndHashes(t *testing.T) {
 	if len(release.Architectures) != len(want) {
 		t.Fatalf("architectures = %v, want %v", release.Architectures, want)
 	}
+
 	for name, wantArchives := range want {
 		got := release.Architectures[name]
 		debs := got.StackDebs
@@ -94,13 +104,21 @@ func TestReleaseReadsArchiveAddressesAndHashes(t *testing.T) {
 			got.StackURL != wantArchives.StackURL || got.StackSHA256 != wantArchives.StackSHA256 {
 			t.Errorf("architecture %s = %+v, want %+v", name, got, wantArchives)
 		}
+
 		wantMember := "debs/libyang3_3.13.6-1_" + name + ".deb"
 		if debs["libyang3"] != wantMember {
-			t.Errorf("architecture %s stack_debs[libyang3] = %q, want %q", name, debs["libyang3"], wantMember)
+			t.Errorf(
+				"architecture %s stack_debs[libyang3] = %q, want %q",
+				name,
+				debs["libyang3"],
+				wantMember,
+			)
 		}
+
 		if len(debs) != 10 {
 			t.Errorf("architecture %s lists %d stack packages, want 10", name, len(debs))
 		}
+
 		if debs["libspdlog1.15"] != "debs/libspdlog1.15_1.15.2+ds-2_"+name+".deb" {
 			t.Errorf("architecture %s stack_debs[libspdlog1.15] = %q", name, debs["libspdlog1.15"])
 		}
@@ -117,6 +135,7 @@ func TestReleaseRejectsAVersionThatDiffersFromTheBuild(t *testing.T) {
 	if !strings.Contains(diagnosticText(diagnostics), "differs from the provider build") {
 		t.Fatalf("diagnostics = %q, want a version mismatch", diagnosticText(diagnostics))
 	}
+
 	if requests.Load() != 0 {
 		t.Errorf("the data source made %d requests before it rejected the version", requests.Load())
 	}
@@ -132,6 +151,7 @@ func TestReleaseRejectsABuildWithoutAReleaseTag(t *testing.T) {
 	if !strings.Contains(diagnosticText(diagnostics), "no release version") {
 		t.Fatalf("diagnostics = %q, want an unstamped build error", diagnosticText(diagnostics))
 	}
+
 	if requests.Load() != 0 {
 		t.Errorf("the data source made %d requests", requests.Load())
 	}
@@ -159,10 +179,12 @@ func TestRoleWANListsFilesUnitsAndModules(t *testing.T) {
 	if len(diagnostics) > 0 {
 		t.Fatalf("read failed: %s", diagnosticText(diagnostics))
 	}
+
 	paths := make(map[string]string, len(role.Files))
 	for _, file := range role.Files {
 		paths[file.Path] = file.Mode
 	}
+
 	for _, wantPath := range []string{
 		"/etc/systemd/system/mwan-ifmgr@.service",
 		"/etc/sysctl.d/99-quiet-console.conf",
@@ -171,38 +193,53 @@ func TestRoleWANListsFilesUnitsAndModules(t *testing.T) {
 			t.Errorf("file %s has mode %q, want 0644", wantPath, paths[wantPath])
 		}
 	}
+
 	if _, listed := paths[installspec.NACMPolicyPath]; listed {
 		t.Error("files lists the NACM policy, which sysrepo_data provides")
 	}
+
 	owners := map[string][]string{}
+
 	for _, unit := range role.Units {
 		for _, path := range unit.Files {
 			owners[path] = append(owners[path], unit.Name)
 		}
 	}
+
 	for _, file := range role.Files {
 		if len(owners[file.Path]) != 1 {
-			t.Errorf("file %s is in the files of units %v, want exactly one", file.Path, owners[file.Path])
+			t.Errorf(
+				"file %s is in the files of units %v, want exactly one",
+				file.Path,
+				owners[file.Path],
+			)
 		}
 	}
+
 	for _, name := range []string{"systemd-networkd.service", "systemd-sysctl.service"} {
 		var found bool
+
 		for _, unit := range role.Units {
 			if unit.Name == name {
 				found = unit.Enabled && unit.Active && len(unit.Files) == 1
 			}
 		}
+
 		if !found {
 			t.Errorf("unit %s is missing, or not enabled and active with one file", name)
 		}
 	}
+
 	if role.BinaryPath != "/usr/local/bin/mwan" {
 		t.Errorf("binary path = %q, want /usr/local/bin/mwan", role.BinaryPath)
 	}
+
 	units := map[string]roleUnit{}
+
 	for _, unit := range role.Units {
 		units[unit.Name] = unit
 	}
+
 	instance := units["mwan-ifmgr@wan.service"]
 	wantInstanceFiles := []string{
 		"/etc/systemd/system/mwan-ifmgr@.service",
@@ -211,18 +248,34 @@ func TestRoleWANListsFilesUnitsAndModules(t *testing.T) {
 	if !slices.Equal(instance.Files, wantInstanceFiles) {
 		t.Errorf("mwan-ifmgr@wan.service files = %v, want %v", instance.Files, wantInstanceFiles)
 	}
+
 	if !instance.Enabled || !instance.Active {
-		t.Errorf("mwan-ifmgr@wan.service enabled=%v active=%v, want both true", instance.Enabled, instance.Active)
+		t.Errorf(
+			"mwan-ifmgr@wan.service enabled=%v active=%v, want both true",
+			instance.Enabled,
+			instance.Active,
+		)
 	}
+
 	if trace := units["mwan-trace-boot.service"]; !trace.Enabled || trace.Active {
-		t.Errorf("mwan-trace-boot.service enabled=%v active=%v, want enabled and not active", trace.Enabled, trace.Active)
+		t.Errorf(
+			"mwan-trace-boot.service enabled=%v active=%v, want enabled and not active",
+			trace.Enabled,
+			trace.Active,
+		)
 	}
+
 	if len(role.SysrepoData) != 2 || role.SysrepoData[0].Datastore != "startup" ||
 		role.SysrepoData[1].Datastore != "running" ||
 		role.SysrepoData[0].Module != "ietf-netconf-acm" {
-		t.Errorf("sysrepo data = %+v, want the NACM policy imports in startup and running datastores", role.SysrepoData)
+		t.Errorf(
+			"sysrepo data = %+v, want the NACM policy imports in startup and running datastores",
+			role.SysrepoData,
+		)
 	}
+
 	var natFeatures []string
+
 	for _, module := range role.Modules {
 		if strings.HasPrefix(module.File, "ietf-nat@") {
 			natFeatures = module.Features
@@ -231,29 +284,40 @@ func TestRoleWANListsFilesUnitsAndModules(t *testing.T) {
 			}
 		}
 	}
+
 	if len(natFeatures) != 4 {
 		t.Errorf("ietf-nat features = %v, want the four translation features", natFeatures)
 	}
+
 	const rousetteDir = "/opt/mwan-wanconfig/share/yang/modules/rousette/"
 	wantStackModules := []roleStackModule{
 		{
-			Name: "ietf-restconf", Revision: "2017-01-26",
-			Path: rousetteDir + "ietf-restconf@2017-01-26.yang", Features: []string{},
+			Name:     "ietf-restconf",
+			Revision: "2017-01-26",
+			Path:     rousetteDir + "ietf-restconf@2017-01-26.yang",
+			Features: []string{},
 		},
 		{
-			Name: "ietf-restconf-monitoring", Revision: "2017-01-26",
-			Path: rousetteDir + "ietf-restconf-monitoring@2017-01-26.yang", Features: []string{},
+			Name:     "ietf-restconf-monitoring",
+			Revision: "2017-01-26",
+			Path:     rousetteDir + "ietf-restconf-monitoring@2017-01-26.yang",
+			Features: []string{},
 		},
 		{
-			Name: "ietf-yang-patch", Revision: "2017-02-22",
-			Path: rousetteDir + "ietf-yang-patch@2017-02-22.yang", Features: []string{},
+			Name:     "ietf-yang-patch",
+			Revision: "2017-02-22",
+			Path:     rousetteDir + "ietf-yang-patch@2017-02-22.yang",
+			Features: []string{},
 		},
 		{
-			Name: "ietf-subscribed-notifications", Revision: "2019-09-09",
-			Path: rousetteDir + "ietf-subscribed-notifications@2019-09-09.yang", Features: []string{},
+			Name:     "ietf-subscribed-notifications",
+			Revision: "2019-09-09",
+			Path:     rousetteDir + "ietf-subscribed-notifications@2019-09-09.yang",
+			Features: []string{},
 		},
 		{
-			Name: "ietf-restconf-subscribed-notifications", Revision: "2019-11-17",
+			Name:     "ietf-restconf-subscribed-notifications",
+			Revision: "2019-11-17",
 			Path:     rousetteDir + "ietf-restconf-subscribed-notifications@2019-11-17.yang",
 			Features: []string{},
 		},
@@ -272,12 +336,19 @@ func TestRoleHostHasNoYangModules(t *testing.T) {
 	if len(diagnostics) > 0 {
 		t.Fatalf("read failed: %s", diagnosticText(diagnostics))
 	}
+
 	if len(role.Modules) != 0 || len(role.SysrepoData) != 0 {
-		t.Errorf("host role lists %d YANG modules and %d sysrepo imports, want none", len(role.Modules), len(role.SysrepoData))
+		t.Errorf(
+			"host role lists %d YANG modules and %d sysrepo imports, want none",
+			len(role.Modules),
+			len(role.SysrepoData),
+		)
 	}
+
 	if len(role.StackModules) != 0 {
 		t.Errorf("stack_yang_modules = %+v, want none", role.StackModules)
 	}
+
 	if len(role.Files) != 1 || role.Files[0].Path != "/etc/systemd/system/mwan-ifmgr.service" {
 		t.Errorf("host role files = %v, want the single interface manager unit", role.Files)
 	}
@@ -292,25 +363,32 @@ func TestRoleLXCGuestKeepsOnlyNamespacedSysctls(t *testing.T) {
 	if len(diagnostics) > 0 {
 		t.Fatalf("read failed: %s", diagnosticText(diagnostics))
 	}
+
 	const sysctlPath = "/etc/sysctl.d/99-quiet-console.conf"
+
 	for _, file := range role.Files {
 		if file.Path != sysctlPath {
 			continue
 		}
+
 		if !strings.Contains(file.Content, "net.netfilter.nf_conntrack_log_invalid = 0") {
 			t.Errorf("the lxc sysctl file dropped the conntrack setting:\n%s", file.Content)
 		}
+
 		for line := range strings.SplitSeq(file.Content, "\n") {
 			trimmed := strings.TrimSpace(line)
 			if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 				continue
 			}
+
 			if !strings.HasPrefix(trimmed, "net.") {
 				t.Errorf("the lxc sysctl file lists a key outside net.: %q", trimmed)
 			}
 		}
+
 		return
 	}
+
 	t.Fatalf("the wan role for lxc lists no %s", sysctlPath)
 }
 

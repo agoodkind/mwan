@@ -57,8 +57,14 @@ var publishedModules = []string{moduleInterfaces, moduleNAT, moduleSteering}
 func ownPublishedModules(ctx context.Context, log *slog.Logger, pub yangpub.Publisher) {
 	for _, module := range publishedModules {
 		if err := pub.OwnModule(ctx, module); err != nil {
-			log.ErrorContext(ctx, "wanconfig: owning module failed; operational reads carry state only",
-				"module", module, "err", err)
+			log.ErrorContext(
+				ctx,
+				"wanconfig: owning module failed; operational reads carry state only",
+				"module",
+				module,
+				"err",
+				err,
+			)
 		}
 	}
 }
@@ -78,10 +84,16 @@ func registerLiveStateProviders(
 	interfacesProvider := func(_ context.Context, _ string) ([]yangpub.Item, error) {
 		return interfacesLiveItems(store.Snapshot(), gateway, rejections), nil
 	}
-	if err := pub.RegisterProvider(ctx, moduleInterfaces, "/ietf-interfaces:interfaces", interfacesProvider); err != nil {
+	if err := pub.RegisterProvider(
+		ctx,
+		moduleInterfaces,
+		"/ietf-interfaces:interfaces",
+		interfacesProvider,
+	); err != nil {
 		log.ErrorContext(ctx, "wanconfig: register interfaces provider failed", "err", err)
 		return fmt.Errorf("register interfaces provider: %w", err)
 	}
+
 	natProvider := func(_ context.Context, _ string) ([]yangpub.Item, error) {
 		return natLiveItems(store.Snapshot(), gateway), nil
 	}
@@ -89,18 +101,30 @@ func registerLiveStateProviders(
 		log.ErrorContext(ctx, "wanconfig: register nat provider failed", "err", err)
 		return fmt.Errorf("register nat provider: %w", err)
 	}
+
 	log.DebugContext(ctx, "wanconfig: providers registered")
+
 	return registerObservationProvider(ctx, pub, store)
 }
 
-func registerObservationProvider(ctx context.Context, pub yangpub.Publisher, store *wanstate.Store) error {
+func registerObservationProvider(
+	ctx context.Context,
+	pub yangpub.Publisher,
+	store *wanstate.Store,
+) error {
 	observationProvider := func(_ context.Context, _ string) ([]yangpub.Item, error) {
 		return observationLiveItems(store.Snapshot())
 	}
-	if err := pub.RegisterProvider(ctx, moduleSteering, "/goodkind-mwan-steering:daemon/observation", observationProvider); err != nil {
+	if err := pub.RegisterProvider(
+		ctx,
+		moduleSteering,
+		"/goodkind-mwan-steering:daemon/observation",
+		observationProvider,
+	); err != nil {
 		slog.ErrorContext(ctx, "wanconfig: register observation provider failed", "err", err)
 		return fmt.Errorf("register observation provider: %w", err)
 	}
+
 	return nil
 }
 
@@ -108,47 +132,77 @@ func observationLiveItems(snapshot wanstate.Snapshot) ([]yangpub.Item, error) {
 	if snapshot.ObservationError != nil {
 		return nil, snapshot.ObservationError
 	}
+
 	var items []yangpub.Item
+
 	ids := make([]string, 0, len(snapshot.Checks))
 	for id := range snapshot.Checks {
 		ids = append(ids, id)
 	}
+
 	sort.Strings(ids)
+
 	for _, id := range ids {
 		state := snapshot.Checks[id]
 		definition, err := wanconfig.MarshalObservationItems(state.Check, state.IntervalSeconds)
 		if err != nil {
-			slog.Warn("wanconfig: observation definition could not be projected", "check_id", id, "err", err)
+			slog.Warn(
+				"wanconfig: observation definition could not be projected",
+				"check_id",
+				id,
+				"err",
+				err,
+			)
 			return nil, fmt.Errorf("project observation definition: %w", err)
 		}
+
 		for _, item := range definition {
 			items = append(items, yangpub.Item{Path: item.Path, Value: item.Value})
 		}
+
 		base := "/goodkind-mwan-steering:daemon/observation/check[id='" + id + "']"
 		resultItems, err := marshalObservationResult(base+"/result", state.Result)
 		if err != nil {
 			return nil, err
 		}
+
 		items = append(items, resultItems...)
+
 		for _, transition := range state.Recent {
 			transitionBase := base + "/recent-transition[id='" + transition.ID + "']"
-			items = append(items, yangpub.Item{Path: transitionBase + "/id", Value: transition.ID}, yangpub.Item{Path: transitionBase + "/previous", Value: transition.Previous})
-			resultItems, err := marshalObservationResult(transitionBase+"/result", transition.Result)
+			items = append(
+				items,
+				yangpub.Item{Path: transitionBase + "/id", Value: transition.ID},
+				yangpub.Item{Path: transitionBase + "/previous", Value: transition.Previous},
+			)
+			resultItems, err := marshalObservationResult(
+				transitionBase+"/result",
+				transition.Result,
+			)
 			if err != nil {
 				return nil, err
 			}
+
 			items = append(items, resultItems...)
 		}
 	}
+
 	return items, nil
 }
 
 func marshalObservationResult(base string, result contract.Result) ([]yangpub.Item, error) {
 	encoded, err := json.Marshal(result)
 	if err != nil {
-		slog.Error("served observation could not be encoded", "check_id", result.CheckID, "err", err)
+		slog.Error(
+			"served observation could not be encoded",
+			"check_id",
+			result.CheckID,
+			"err",
+			err,
+		)
 		return nil, fmt.Errorf("encode served observation: %w", err)
 	}
+
 	items := []yangpub.Item{
 		{Path: base + "/availability", Value: string(result.Availability)},
 		{Path: base + "/outcome", Value: string(result.Outcome)},
@@ -165,18 +219,32 @@ func marshalObservationResult(base string, result contract.Result) ([]yangpub.It
 		{Path: base + "/evidence-json", Value: string(encoded)},
 	}
 	if !result.ObservedAt.IsZero() {
-		items = append(items, yangpub.Item{Path: base + "/observed-at", Value: result.ObservedAt.UTC().Format(time.RFC3339Nano)})
+		items = append(
+			items,
+			yangpub.Item{
+				Path:  base + "/observed-at",
+				Value: result.ObservedAt.UTC().Format(time.RFC3339Nano),
+			},
+		)
 	}
+
 	for _, address := range []struct {
 		leaf  string
 		value netip.Addr
 	}{
-		{"source", result.Path.Source}, {"destination", result.Path.Destination}, {"next-hop", result.Path.NextHop}, {"public-ip", result.PublicIP},
+		{"source", result.Path.Source},
+		{"destination", result.Path.Destination},
+		{"next-hop", result.Path.NextHop},
+		{"public-ip", result.PublicIP},
 	} {
 		if address.value.IsValid() {
-			items = append(items, yangpub.Item{Path: base + "/" + address.leaf, Value: address.value.String()})
+			items = append(
+				items,
+				yangpub.Item{Path: base + "/" + address.leaf, Value: address.value.String()},
+			)
 		}
 	}
+
 	return items, nil
 }
 
@@ -189,12 +257,19 @@ func interfacesLiveItems(
 	rejections []networkjson.Rejection,
 ) []yangpub.Item {
 	items := make([]yangpub.Item, 0, len(gateway.Members)*8+len(rejections)*3+4)
+
 	items = append(items, ownershipLiveItems(snap, gateway)...)
 	for _, member := range gateway.Members {
 		base := "/ietf-interfaces:interfaces/interface[name='" + member.Iface +
 			"']/" + steeringPrefix + ":steering/state"
 		selectionEnabled := config.ConnectionSelectionEnabled(member.SelectionEnabled)
-		items = append(items, yangpub.Item{Path: base + "/administratively-enabled", Value: boolValue(selectionEnabled)})
+		items = append(
+			items,
+			yangpub.Item{
+				Path:  base + "/administratively-enabled",
+				Value: boolValue(selectionEnabled),
+			},
+		)
 		if health, known := snap.Health[member.Name]; known {
 			items = append(
 				items,
@@ -213,29 +288,40 @@ func interfacesLiveItems(
 				},
 			)
 			if !health.LastTransition.IsZero() {
-				items = append(items, yangpub.Item{
-					Path:  base + "/last-transition",
-					Value: health.LastTransition.UTC().Format(time.RFC3339),
-				})
+				items = append(
+					items,
+					yangpub.Item{
+						Path:  base + "/last-transition",
+						Value: health.LastTransition.UTC().Format(time.RFC3339),
+					},
+				)
 			}
 		}
+
 		if routing, known := snap.Routing[member.Name]; known {
-			items = append(items, yangpub.Item{
-				Path:  base + "/carrying",
-				Value: boolValue(selectionEnabled && routing.Carrying),
-			})
+			items = append(
+				items,
+				yangpub.Item{
+					Path:  base + "/carrying",
+					Value: boolValue(selectionEnabled && routing.Carrying),
+				},
+			)
 			items = append(items, ownedAddressItems(member, routing.OwnedAddresses)...)
 		}
+
 		if translation, known := snap.Translation[member.Name]; known {
 			if member.TranslationV4 != nil {
 				items = append(items, translationLiveItems(member.Iface, "ipv4", translation.V4)...)
 			}
+
 			if member.TranslationV6 != nil {
 				items = append(items, translationLiveItems(member.Iface, "ipv6", translation.V6)...)
 			}
 		}
 	}
+
 	groupBase := "/ietf-interfaces:interfaces/" + steeringPrefix + ":steering-group/state"
+
 	for _, rejection := range rejections {
 		base := groupBase + "/rejected-provider[interface='" + rejection.Interface + "']"
 		items = append(
@@ -247,12 +333,17 @@ func interfacesLiveItems(
 			items = append(items, yangpub.Item{Path: base + "/provider", Value: rejection.Provider})
 		}
 	}
+
 	if snap.TierValid {
-		items = append(items, yangpub.Item{
-			Path:  groupBase + "/active-tier",
-			Value: strconv.FormatUint(uint64(snap.ActiveTier), 10),
-		})
+		items = append(
+			items,
+			yangpub.Item{
+				Path:  groupBase + "/active-tier",
+				Value: strconv.FormatUint(uint64(snap.ActiveTier), 10),
+			},
+		)
 	}
+
 	stale := !snap.BGP.Reached || time.Since(snap.BGP.ReadAt) > bgpStaleAfter
 	for _, peer := range snap.BGP.Peers {
 		peerBase := groupBase + "/bgp-peer[address='" + peer.Address + "']"
@@ -262,12 +353,17 @@ func interfacesLiveItems(
 			yangpub.Item{Path: peerBase + "/stale", Value: boolValue(stale)},
 		)
 	}
+
 	if snap.IntendedRuleset != "" {
-		items = append(items, yangpub.Item{
-			Path:  groupBase + "/intended-ruleset",
-			Value: snap.IntendedRuleset,
-		})
+		items = append(
+			items,
+			yangpub.Item{
+				Path:  groupBase + "/intended-ruleset",
+				Value: snap.IntendedRuleset,
+			},
+		)
 	}
+
 	return items
 }
 
@@ -282,56 +378,108 @@ func ownedAddressItems(member wanconfig.Member, owned []netip.Addr) []yangpub.It
 	if len(owned) == 0 {
 		return nil
 	}
+
 	base := "/ietf-interfaces:interfaces/interface[name='" + member.Iface + "']/" + steeringPrefix + ":wan"
 	items := make([]yangpub.Item, 0, len(owned)+1)
 	providerName := member.ProviderName
 	if providerName == "" {
 		providerName = member.Name
 	}
+
 	items = append(items, yangpub.Item{Path: base + "/name", Value: providerName})
+
 	for _, address := range owned {
 		items = append(items, yangpub.Item{Path: base + "/owned-address", Value: address.String()})
 	}
+
 	return items
 }
 
-func translationLiveItems(iface string, family string, state wanstate.FamilyTranslation) []yangpub.Item {
+func translationLiveItems(
+	iface string,
+	family string,
+	state wanstate.FamilyTranslation,
+) []yangpub.Item {
 	base := "/ietf-interfaces:interfaces/interface[name='" + iface + "']/ietf-ip:" + family + "/goodkind-mwan-steering:translation/state"
 	items := []yangpub.Item{{Path: base + "/ready", Value: boolValue(state.Ready)}}
 	if state.Reason != "" {
 		items = append(items, yangpub.Item{Path: base + "/reason", Value: state.Reason})
 	}
+
 	if state.InternalPrefix.IsValid() {
-		items = append(items, yangpub.Item{Path: base + "/resolved-internal-prefix", Value: state.InternalPrefix.String()})
+		items = append(
+			items,
+			yangpub.Item{
+				Path:  base + "/resolved-internal-prefix",
+				Value: state.InternalPrefix.String(),
+			},
+		)
 	}
+
 	if state.ExternalPrefix.IsValid() {
-		items = append(items, yangpub.Item{Path: base + "/resolved-external-prefix", Value: state.ExternalPrefix.String()})
+		items = append(
+			items,
+			yangpub.Item{
+				Path:  base + "/resolved-external-prefix",
+				Value: state.ExternalPrefix.String(),
+			},
+		)
 	}
+
 	return items
 }
 
 func natLiveItems(snap wanstate.Snapshot, gateway wanconfig.Gateway) []yangpub.Item {
 	var items []yangpub.Item
+
 	for _, member := range gateway.Members {
 		state, known := snap.Translation[member.Name]
 		if !known {
 			continue
 		}
+
 		if member.TranslationV4 != nil && member.TranslationV4.Mode != config.TranslationNative {
-			items = append(items, yangpub.Item{Path: fmt.Sprintf("/ietf-nat:nat/instances/instance[id='%d']/%s:kernel-present", member.TranslationIDV4, steeringPrefix), Value: boolValue(state.V4.Ready)})
+			items = append(
+				items,
+				yangpub.Item{
+					Path: fmt.Sprintf(
+						"/ietf-nat:nat/instances/instance[id='%d']/%s:kernel-present",
+						member.TranslationIDV4,
+						steeringPrefix,
+					),
+					Value: boolValue(state.V4.Ready),
+				},
+			)
 		}
+
 		if member.TranslationV6 != nil && member.TranslationV6.Mode == config.TranslationNPTv6 {
 			base := fmt.Sprintf("/ietf-nat:nat/instances/instance[id='%d']", member.TranslationIDV6)
-			items = append(items, yangpub.Item{Path: base + "/" + steeringPrefix + ":kernel-present", Value: boolValue(state.V6.Ready)})
+			items = append(
+				items,
+				yangpub.Item{
+					Path:  base + "/" + steeringPrefix + ":kernel-present",
+					Value: boolValue(state.V6.Ready),
+				},
+			)
 			if member.TranslationV6.NPT != nil && member.TranslationV6.NPT.ExternalSource == config.PrefixDelegated &&
-				state.V6.Ready && state.V6.InternalPrefix.IsValid() && state.V6.ExternalPrefix.IsValid() &&
-				state.V6.InternalPrefix.Addr().Is6() && state.V6.ExternalPrefix.Addr().Is6() &&
+				state.V6.Ready &&
+				state.V6.InternalPrefix.IsValid() &&
+				state.V6.ExternalPrefix.IsValid() &&
+				state.V6.InternalPrefix.Addr().Is6() &&
+				state.V6.ExternalPrefix.Addr().Is6() &&
 				state.V6.InternalPrefix.Bits() == state.V6.ExternalPrefix.Bits() {
 				path := base + "/policy[id='1']/nptv6-prefixes[internal-ipv6-prefix='" + state.V6.InternalPrefix.String() + "']"
-				items = append(items, yangpub.Item{Path: path + "/external-ipv6-prefix", Value: state.V6.ExternalPrefix.String()})
+				items = append(
+					items,
+					yangpub.Item{
+						Path:  path + "/external-ipv6-prefix",
+						Value: state.V6.ExternalPrefix.String(),
+					},
+				)
 			}
 		}
 	}
+
 	return items
 }
 
@@ -339,6 +487,7 @@ func boolValue(value bool) string {
 	if value {
 		return "true"
 	}
+
 	return "false"
 }
 
@@ -356,13 +505,22 @@ func pollAgentBGP(
 ) {
 	target, err := agentDialTarget(cfg.Agent.TCPAddr)
 	if err != nil {
-		log.WarnContext(ctx, "wanconfig: agent address unusable; serving no routing-session state",
-			"tcp_addr", cfg.Agent.TCPAddr, "err", err)
+		log.WarnContext(
+			ctx,
+			"wanconfig: agent address unusable; serving no routing-session state",
+			"tcp_addr",
+			cfg.Agent.TCPAddr,
+			"err",
+			err,
+		)
+
 		return
 	}
+
 	ticker := time.NewTicker(bgpPollInterval)
 	defer ticker.Stop()
 	lastDropped := ""
+
 	for {
 		dropped := pollOnce(ctx, log, target, store)
 		// A peer the agent reports without a usable address is dropped
@@ -371,11 +529,17 @@ func pollAgentBGP(
 		// change, not once per poll.
 		if dropped != lastDropped {
 			if dropped != "" {
-				log.WarnContext(ctx, "wanconfig: agent reported peers without a usable address; not served",
-					"addresses", dropped)
+				log.WarnContext(
+					ctx,
+					"wanconfig: agent reported peers without a usable address; not served",
+					"addresses",
+					dropped,
+				)
 			}
+
 			lastDropped = dropped
 		}
+
 		select {
 		case <-ctx.Done():
 			return
@@ -392,9 +556,11 @@ func agentDialTarget(listenAddr string) (string, error) {
 		slog.Warn("wanconfig: agent tcp_addr unparsable", "tcp_addr", listenAddr, "err", err)
 		return "", fmt.Errorf("split agent tcp_addr %q: %w", listenAddr, err)
 	}
+
 	if host == "" || host == "::" || host == "0.0.0.0" {
 		host = "::1"
 	}
+
 	return net.JoinHostPort(host, port), nil
 }
 
@@ -417,15 +583,25 @@ func pollOnce(ctx context.Context, log *slog.Logger, target string, store *wanst
 		log.WarnContext(pollCtx, "wanconfig: agent client build failed", "err", err)
 		return ""
 	}
+
 	defer func() { _ = conn.Close() }()
 
-	resp, err := mwanv1.NewMWANAgentClient(conn).GetBGPStatus(pollCtx, &mwanv1.GetBGPStatusRequest{})
+	resp, err := mwanv1.NewMWANAgentClient(conn).GetBGPStatus(
+		pollCtx,
+		&mwanv1.GetBGPStatusRequest{},
+	)
 	if err != nil {
 		log.DebugContext(pollCtx, "wanconfig: agent bgp poll failed", "err", err)
 		return ""
 	}
+
 	peers, dropped := usablePeers(resp.GetPeers())
-	store.SetBGP(wanstate.BGP{Peers: peers, ReadAt: time.Now(), Reached: true})
+	store.SetBGP(wanstate.BGP{
+		Peers:   peers,
+		ReadAt:  time.Now(),
+		Reached: true,
+	})
+
 	return strings.Join(dropped, ",")
 }
 
@@ -437,16 +613,22 @@ func pollOnce(ctx context.Context, log *slog.Logger, target string, store *wanst
 func usablePeers(reported []*mwanv1.BGPPeerStatus) ([]wanstate.BGPPeer, []string) {
 	peers := make([]wanstate.BGPPeer, 0, len(reported))
 	dropped := make([]string, 0)
+
 	for _, peer := range reported {
 		address, err := netip.ParseAddr(peer.GetAddress())
 		if err != nil {
 			dropped = append(dropped, peer.GetAddress())
 			continue
 		}
-		peers = append(peers, wanstate.BGPPeer{
-			Address:     address.String(),
-			Established: peer.GetEstablished(),
-		})
+
+		peers = append(
+			peers,
+			wanstate.BGPPeer{
+				Address:     address.String(),
+				Established: peer.GetEstablished(),
+			},
+		)
 	}
+
 	return peers, dropped
 }

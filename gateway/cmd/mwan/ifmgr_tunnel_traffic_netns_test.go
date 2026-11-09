@@ -10,7 +10,14 @@ import (
 	"time"
 )
 
-func requireTunnelRuntimeDialFails(t *testing.T, topology tunnelRuntimeTopology, network, destination, source, phase string) {
+func requireTunnelRuntimeDialFails(
+	t *testing.T,
+	topology tunnelRuntimeTopology,
+	network string,
+	destination string,
+	source string,
+	phase string,
+) {
 	t.Helper()
 	setRuntimeNamespace(t, topology.client)
 	local, err := net.ResolveTCPAddr(network, source)
@@ -28,26 +35,67 @@ func requireTunnelRuntimeDialFails(t *testing.T, topology tunnelRuntimeTopology,
 	}
 }
 
-func requireTunnelRuntimeExchange(t *testing.T, daemon *runtimeDaemon, topology tunnelRuntimeTopology, port int, window time.Duration) {
+func requireTunnelRuntimeExchange(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	topology tunnelRuntimeTopology,
+	port int,
+	window time.Duration,
+) {
 	t.Helper()
-	client, remoteClient := netip.MustParseAddr(tunnelRuntimeClientV6), netip.MustParseAddr(tunnelRuntimeRemoteClient)
-	outbound := waitTunnelRuntimeTransfer(t, daemon, topology, topology.remote, topology.client, "tcp6",
-		net.JoinHostPort(tunnelRuntimeRemoteClient, fmt.Sprint(port)), net.JoinHostPort(tunnelRuntimeClientV6, "0"), window)
+	client, remoteClient := netip.MustParseAddr(tunnelRuntimeClientV6), netip.MustParseAddr(
+		tunnelRuntimeRemoteClient,
+	)
+	outbound := waitTunnelRuntimeTransfer(
+		t,
+		daemon,
+		topology,
+		topology.remote,
+		topology.client,
+		"tcp6",
+		net.JoinHostPort(tunnelRuntimeRemoteClient, fmt.Sprint(port)),
+		net.JoinHostPort(tunnelRuntimeClientV6, "0"),
+		window,
+	)
 	if outbound != client {
-		t.Fatalf("the remote client observed source %s, want the unchanged client address %s", outbound, client)
+		t.Fatalf(
+			"the remote client observed source %s, want the unchanged client address %s",
+			outbound,
+			client,
+		)
 	}
-	inbound := waitTunnelRuntimeTransfer(t, daemon, topology, topology.client, topology.remote, "tcp6",
-		net.JoinHostPort(tunnelRuntimeClientV6, fmt.Sprint(port+1)), net.JoinHostPort(tunnelRuntimeRemoteClient, "0"), window)
+	inbound := waitTunnelRuntimeTransfer(
+		t,
+		daemon,
+		topology,
+		topology.client,
+		topology.remote,
+		"tcp6",
+		net.JoinHostPort(tunnelRuntimeClientV6, fmt.Sprint(port+1)),
+		net.JoinHostPort(tunnelRuntimeRemoteClient, "0"),
+		window,
+	)
 	if inbound != remoteClient {
 		t.Fatalf("the internal client observed source %s, want %s", inbound, remoteClient)
 	}
 }
 
-func requireTunnelRuntimeNotForwarded(t *testing.T, topology tunnelRuntimeTopology, port int, phase string) {
+func requireTunnelRuntimeNotForwarded(
+	t *testing.T,
+	topology tunnelRuntimeTopology,
+	port int,
+	phase string,
+) {
 	t.Helper()
 	capture := openTunnelRuntimeCapture(t, topology)
-	requireTunnelRuntimeDialFails(t, topology, "tcp6", net.JoinHostPort(tunnelRuntimeRemoteClient, fmt.Sprint(port)),
-		net.JoinHostPort(tunnelRuntimeClientV6, "0"), phase)
+	requireTunnelRuntimeDialFails(
+		t,
+		topology,
+		"tcp6",
+		net.JoinHostPort(tunnelRuntimeRemoteClient, fmt.Sprint(port)),
+		net.JoinHostPort(tunnelRuntimeClientV6, "0"),
+		phase,
+	)
 	client := netip.MustParseAddr(tunnelRuntimeClientV6)
 	for _, frame := range readTunnelRuntimeCapture(t, capture) {
 		if frame.protocol == tunnelRuntimeProtocol41 && frame.innerSource == client {
@@ -58,8 +106,12 @@ func requireTunnelRuntimeNotForwarded(t *testing.T, topology tunnelRuntimeTopolo
 
 func requireTunnelRuntimeEncapsulation(t *testing.T, frames []tunnelRuntimeFrame) {
 	t.Helper()
-	local, remote := netip.MustParseAddr(tunnelRuntimeLocal), netip.MustParseAddr(tunnelRuntimeRemote)
-	client, remoteClient := netip.MustParseAddr(tunnelRuntimeClientV6), netip.MustParseAddr(tunnelRuntimeRemoteClient)
+	local, remote := netip.MustParseAddr(tunnelRuntimeLocal), netip.MustParseAddr(
+		tunnelRuntimeRemote,
+	)
+	client, remoteClient := netip.MustParseAddr(tunnelRuntimeClientV6), netip.MustParseAddr(
+		tunnelRuntimeRemoteClient,
+	)
 	outbound, inbound := 0, 0
 	for _, frame := range frames {
 		if frame.etherType == tunnelRuntimeEtherIPv6 {
@@ -78,10 +130,21 @@ func requireTunnelRuntimeEncapsulation(t *testing.T, frames []tunnelRuntimeFrame
 				inbound += frame.length
 			}
 		default:
-			t.Fatalf("protocol 41 frame between %s and %s, want the endpoints %s and %s", frame.source, frame.destination, local, remote)
+			t.Fatalf(
+				"protocol 41 frame between %s and %s, want the endpoints %s and %s",
+				frame.source,
+				frame.destination,
+				local,
+				remote,
+			)
 		}
 	}
 	if outbound < 3*tunnelRuntimeTransferSize || inbound < 3*tunnelRuntimeTransferSize {
-		t.Fatalf("protocol 41 bytes between the clients: outbound=%d inbound=%d, want at least %d each", outbound, inbound, 3*tunnelRuntimeTransferSize)
+		t.Fatalf(
+			"protocol 41 bytes between the clients: outbound=%d inbound=%d, want at least %d each",
+			outbound,
+			inbound,
+			3*tunnelRuntimeTransferSize,
+		)
 	}
 }

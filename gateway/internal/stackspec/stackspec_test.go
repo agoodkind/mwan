@@ -9,8 +9,14 @@ import (
 
 func TestCheckBuiltAcceptsTheListedPackageAndRefusesAnotherVersion(t *testing.T) {
 	t.Parallel()
+
 	for _, pkg := range stackspec.Packages() {
-		if err := stackspec.CheckBuilt(pkg.Name, pkg.Version, pkg.FileName("arm64"), "arm64"); err != nil {
+		if err := stackspec.CheckBuilt(
+			pkg.Name,
+			pkg.Version,
+			pkg.FileName("arm64"),
+			"arm64",
+		); err != nil {
 			t.Errorf("listed package %s refused: %v", pkg.Name, err)
 		}
 	}

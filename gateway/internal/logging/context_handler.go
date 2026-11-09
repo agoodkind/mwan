@@ -51,11 +51,22 @@ func (h *ContextHandler) Handle(ctx context.Context, record slog.Record) error {
 		cloned.AddAttrs(attrs...)
 		record = cloned
 	}
+
 	if err := h.next.Handle(ctx, record); err != nil {
-		h.fallbackLog.WarnContext(ctx, "log record not written",
-			"message", record.Message, "level", record.Level.String(), "err", err)
+		h.fallbackLog.WarnContext(
+			ctx,
+			"log record not written",
+			"message",
+			record.Message,
+			"level",
+			record.Level.String(),
+			"err",
+			err,
+		)
+
 		return fmt.Errorf("write log record: %w", err)
 	}
+
 	return nil
 }
 

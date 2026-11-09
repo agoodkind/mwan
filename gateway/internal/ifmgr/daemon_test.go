@@ -36,6 +36,7 @@ func (f *fakeModule) Init(_ context.Context, env *Env) error {
 	f.mu.Lock()
 	f.lastEnv = env
 	f.mu.Unlock()
+
 	return nil
 }
 
@@ -44,6 +45,7 @@ func (f *fakeModule) Reconcile(ctx context.Context, _ *slog.Logger) error {
 	if tracing.TraceID(ctx) != "" {
 		atomic.AddInt32(&f.traceSeen, 1)
 	}
+
 	return nil
 }
 
@@ -82,6 +84,7 @@ func withFakeRole(t *testing.T, role, modName string, mod Module) {
 		} else {
 			delete(registry, modName)
 		}
+
 		registryMu.Unlock()
 		if hadRole {
 			roleModules[role] = prevRole
@@ -96,12 +99,15 @@ func TestDaemonInitAndReconcile(t *testing.T) {
 	withFakeRole(t, "test-role", "fake1", mod)
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	d, err := NewDaemon(log, DaemonConfig{
-		Role:              "test-role",
-		Iface:             "lo", // exists on every Linux box
-		Connections:       []interfaceintent.Connection{{ID: "loopback", Name: "lo"}},
-		ReconcileInterval: 50 * time.Millisecond,
-	})
+	d, err := NewDaemon(
+		log,
+		DaemonConfig{
+			Role:              "test-role",
+			Iface:             "lo", // exists on every Linux box
+			Connections:       []interfaceintent.Connection{{ID: "loopback", Name: "lo"}},
+			ReconcileInterval: 50 * time.Millisecond,
+		},
+	)
 	if err != nil {
 		t.Fatalf("NewDaemon: %v", err)
 	}
@@ -116,30 +122,38 @@ func TestDaemonInitAndReconcile(t *testing.T) {
 	if got := atomic.LoadInt32(&mod.initCount); got != 1 {
 		t.Errorf("initCount=%d, want 1", got)
 	}
+
 	if got := atomic.LoadInt32(&mod.reconcile); got < 2 {
 		t.Errorf("reconcile count=%d, want >=2", got)
 	}
+
 	if got := atomic.LoadInt32(&mod.traceSeen); got < 1 {
 		t.Errorf("traceSeen=%d, want >=1", got)
 	}
+
 	// Env was populated.
 	mod.mu.Lock()
 	defer mod.mu.Unlock()
 	if mod.lastEnv == nil {
 		t.Fatal("Env not provided to module Init")
 	}
+
 	if mod.lastEnv.Iface != "lo" {
 		t.Errorf("env.Iface=%q want lo", mod.lastEnv.Iface)
 	}
+
 	if len(mod.lastEnv.Connections) != 1 || mod.lastEnv.Connections[0].ID != "loopback" {
 		t.Errorf("env.Connections=%+v, want loopback", mod.lastEnv.Connections)
 	}
+
 	if mod.lastEnv.Alerts == nil {
 		t.Error("env.Alerts is nil")
 	}
+
 	if mod.lastEnv.Sysctl == nil {
 		t.Error("env.Sysctl is nil")
 	}
+
 	if mod.lastEnv.Monitor == nil {
 		t.Error("env.Monitor is nil")
 	}
@@ -147,17 +161,21 @@ func TestDaemonInitAndReconcile(t *testing.T) {
 
 func TestDaemonRejectsDuplicateConfiguredInterface(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	_, err := NewDaemon(log, DaemonConfig{
-		Role:  "test-role",
-		Iface: "enwan0",
-		Connections: []interfaceintent.Connection{
-			{ID: "first", Name: "enwan0"},
-			{ID: "second", Name: "enwan0"},
+	_, err := NewDaemon(
+		log,
+		DaemonConfig{
+			Role:  "test-role",
+			Iface: "enwan0",
+			Connections: []interfaceintent.Connection{
+				{ID: "first", Name: "enwan0"},
+				{ID: "second", Name: "enwan0"},
+			},
 		},
-	})
+	)
 	if err == nil {
 		t.Fatal("NewDaemon accepted two connections for enwan0")
 	}
+
 	if got, want := err.Error(), `ifmgr.NewDaemon: multiple connections use interface "enwan0"`; got != want {
 		t.Fatalf("NewDaemon error = %q, want %q", got, want)
 	}
@@ -165,11 +183,14 @@ func TestDaemonRejectsDuplicateConfiguredInterface(t *testing.T) {
 
 func TestUnknownRoleErrors(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	_, err := NewDaemon(log, DaemonConfig{
-		Role:              "no-such-role",
-		Iface:             "lo",
-		ReconcileInterval: 50 * time.Millisecond,
-	})
+	_, err := NewDaemon(
+		log,
+		DaemonConfig{
+			Role:              "no-such-role",
+			Iface:             "lo",
+			ReconcileInterval: 50 * time.Millisecond,
+		},
+	)
 	if err == nil {
 		t.Fatal("expected error for unknown role")
 	}
@@ -189,11 +210,14 @@ func TestUnknownModuleErrors(t *testing.T) {
 	})
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	_, err := NewDaemon(log, DaemonConfig{
-		Role:              "test-role-with-missing",
-		Iface:             "lo",
-		ReconcileInterval: 50 * time.Millisecond,
-	})
+	_, err := NewDaemon(
+		log,
+		DaemonConfig{
+			Role:              "test-role-with-missing",
+			Iface:             "lo",
+			ReconcileInterval: 50 * time.Millisecond,
+		},
+	)
 	if err == nil {
 		t.Fatal("expected error for unregistered module")
 	}
@@ -207,6 +231,7 @@ func TestAlertManagerNotifyTransitionAndRepeat(t *testing.T) {
 	if am.Active("kind", "key") {
 		t.Fatal("should not be active before first Notify")
 	}
+
 	am.Notify(now, slog.LevelWarn, "kind", "key", "first")
 	if !am.Active("kind", "key") {
 		t.Fatal("should be active after Notify")

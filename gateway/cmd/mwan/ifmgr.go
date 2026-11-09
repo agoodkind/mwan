@@ -59,11 +59,16 @@ import (
 )
 
 // runIfMgr configures the daemon with the flags parsed before firewall bootstrap.
-func runIfMgr(cfg *config.Config, watchdogSection watchdogconfig.WatchdogSection, flags ifmgrFlags) error {
+func runIfMgr(
+	cfg *config.Config,
+	watchdogSection watchdogconfig.WatchdogSection,
+	flags ifmgrFlags,
+) error {
 	role, err := ifMgrRole(cfg, flags)
 	if err != nil {
 		return err
 	}
+
 	if err := validateNativeOffloadStartup(role, cfg.IfMgr); err != nil {
 		return err
 	}
@@ -76,21 +81,31 @@ func runIfMgr(cfg *config.Config, watchdogSection watchdogconfig.WatchdogSection
 	)
 	logger.Info(
 		"ifmgr: starting",
-		"build", version.BuildVersionString(),
-		"role", role,
-		"dry_run", flags.dryRun,
-		"known_roles", ifmgr.KnownRoles(),
+		"build",
+		version.BuildVersionString(),
+		"role",
+		role,
+		"dry_run",
+		flags.dryRun,
+		"known_roles",
+		ifmgr.KnownRoles(),
 	)
 
-	ctx, cancel := signal.NotifyContext(context.Background(),
-		os.Interrupt, syscall.SIGTERM)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	var aliasSync sync.WaitGroup
 	defer func() {
 		cancel()
 		aliasSync.Wait()
 	}()
 	if flags.captureLegacyNPT != "" || flags.adoptLegacyNPT != "" {
-		return runLegacyNPTTransition(ctx, logger, cfg, flags, role, watchdogSection.ConnectivityTimeout())
+		return runLegacyNPTTransition(
+			ctx,
+			logger,
+			cfg,
+			flags,
+			role,
+			watchdogSection.ConnectivityTimeout(),
+		)
 	}
 
 	if role == "wan" {
@@ -98,6 +113,7 @@ func runIfMgr(cfg *config.Config, watchdogSection watchdogconfig.WatchdogSection
 			return err
 		}
 	}
+
 	loaded, err := parseNetworkConfig(ctx, logger, cfg, role)
 	if err != nil {
 		logger.Error("ifmgr: network configuration unusable", "err", err)
@@ -109,37 +125,64 @@ func runIfMgr(cfg *config.Config, watchdogSection watchdogconfig.WatchdogSection
 		logger.Warn("ifmgr: build daemon config failed", "err", err)
 		return fmt.Errorf("build daemon config: %w", err)
 	}
+
 	dcfg.Notifier = notify.FromConfig(cfg.Email, cfg.NotifyConfig(), logger, "mwan-ifmgr")
 	dcfg.LiveState = wanstate.New()
 	dcfg.LiveState.SetTransitionLogger(runID, logger)
-	if (role == "wan" || role == "failover") && cfg.BGP.Enabled && cfg.BGP.ForwardingReadinessEnabled() {
+	if (role == "wan" || role == "failover") && cfg.BGP.Enabled &&
+		cfg.BGP.ForwardingReadinessEnabled() {
 		dcfg.ForwardingReadySocket = cfg.BGP.ForwardingReadiness.SocketPath
 		dcfg.ForwardingReadyTimeout = cfg.BGP.ForwardingReadiness.ReadTimeout()
 	}
+
 	d, err := ifmgr.NewDaemon(logger, dcfg)
 	if err != nil {
 		logger.Warn("ifmgr: new daemon failed", "err", err)
 		return fmt.Errorf("new daemon: %w", err)
 	}
+
 	rejections, err := writeInterfaceConfig(ctx, logger, loaded)
 	if err != nil {
 		return err
 	}
+
 	if role == "wan" && cfg.OPNsense.NPTv6HairpinAlias != "" {
 		base, ok := http.DefaultTransport.(*http.Transport)
 		if !ok {
-			logger.ErrorContext(ctx, "npt: unsupported HTTP transport", "err", fmt.Errorf("HTTP transport is %T", http.DefaultTransport))
+			logger.ErrorContext(
+				ctx,
+				"npt: unsupported HTTP transport",
+				"err",
+				fmt.Errorf("HTTP transport is %T", http.DefaultTransport),
+			)
 		} else {
-			startNPTv6HairpinAlias(ctx, logger, cfg.OPNsense, dcfg.LiveState, &aliasSync, base, hairpinAliasInterval)
+			startNPTv6HairpinAlias(
+				ctx,
+				logger,
+				cfg.OPNsense,
+				dcfg.LiveState,
+				&aliasSync,
+				base,
+				hairpinAliasInterval,
+			)
 		}
 	}
+
 	ctx, cancelObserver := context.WithCancelCause(ctx)
 	defer cancelObserver(nil)
 	startOwnershipObservers(ctx, logger, dcfg.LiveState, dcfg.Connections, cancelObserver)
 
 	// Runtime readiness uses the store even when the optional management
 	// datastore is unavailable.
-	surface := startWanconfigSurface(ctx, logger, cfg, watchdogSection, dcfg.ModuleConfigs, rejections, dcfg.LiveState)
+	surface := startWanconfigSurface(
+		ctx,
+		logger,
+		cfg,
+		watchdogSection,
+		dcfg.ModuleConfigs,
+		rejections,
+		dcfg.LiveState,
+	)
 	if surface != nil {
 		defer surface.Close()
 	}
@@ -154,38 +197,69 @@ func runIfMgr(cfg *config.Config, watchdogSection watchdogconfig.WatchdogSection
 		logger.WarnContext(ctx, "ifmgr: daemon run failed", "err", err)
 		return fmt.Errorf("ifmgr daemon: %w", err)
 	}
+
 	if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, context.Canceled) {
 		return fmt.Errorf("ifmgr daemon: %w", cause)
 	}
+
 	logShutdownReason(ctx, logger)
+
 	return nil
 }
 
-func startNPTv6HairpinAlias(ctx context.Context, log *slog.Logger, cfg config.OPNsenseSection, state *wanstate.Store, aliasSync *sync.WaitGroup, base *http.Transport, interval time.Duration) {
+func startNPTv6HairpinAlias(
+	ctx context.Context,
+	log *slog.Logger,
+	cfg config.OPNsenseSection,
+	state *wanstate.Store,
+	aliasSync *sync.WaitGroup,
+	base *http.Transport,
+	interval time.Duration,
+) {
 	certificate, err := os.ReadFile(cfg.NPTv6HairpinCAFile)
 	if err != nil {
 		log.ErrorContext(ctx, "npt: read OPNsense certificate failed", "err", err)
 		return
 	}
+
 	roots := x509.NewCertPool()
 	block, _ := pem.Decode(certificate)
 	if block == nil {
-		log.ErrorContext(ctx, "npt: OPNsense certificate configuration invalid", "err", fmt.Errorf("no PEM block found in certificate file"))
+		log.ErrorContext(
+			ctx,
+			"npt: OPNsense certificate configuration invalid",
+			"err",
+			fmt.Errorf("no PEM block found in certificate file"),
+		)
 		return
 	}
+
 	if !roots.AppendCertsFromPEM(certificate) {
-		log.ErrorContext(ctx, "npt: OPNsense certificate configuration invalid", "err", fmt.Errorf("certificate pool rejected PEM data"))
+		log.ErrorContext(
+			ctx,
+			"npt: OPNsense certificate configuration invalid",
+			"err",
+			fmt.Errorf("certificate pool rejected PEM data"),
+		)
 		return
 	}
+
 	parsed, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
 		log.ErrorContext(ctx, "npt: parse OPNsense certificate failed", "err", err)
 		return
 	}
+
 	if len(parsed.DNSNames) == 0 {
-		log.ErrorContext(ctx, "npt: OPNsense certificate has no DNS name", "err", fmt.Errorf("certificate has no DNS SAN"))
+		log.ErrorContext(
+			ctx,
+			"npt: OPNsense certificate has no DNS name",
+			"err",
+			fmt.Errorf("certificate has no DNS SAN"),
+		)
 		return
 	}
+
 	transport := base.Clone()
 	transport.TLSClientConfig = &tls.Config{RootCAs: roots, ServerName: parsed.DNSNames[0]}
 	client := &http.Client{Transport: transport, Timeout: 5 * time.Second}
@@ -212,21 +286,30 @@ func buildIfMgrLogger(cfg *config.Config, debug bool) *slog.Logger {
 	if debugEnabled {
 		stdoutLevel = slog.LevelDebug
 	}
+
 	handlers := []slog.Handler{logging.StdoutJSONLevel(stdoutLevel)}
 	if p := cfg.IfMgr.LogFile; p != "" {
 		handlers = append(handlers, logging.FileText(p, "[mwan-ifmgr]"))
 	}
+
 	if p := cfg.IfMgr.JSONLogFile; p != "" {
 		handlers = append(handlers, logging.FileJSON(p))
 	}
+
 	// Email flows through notify.Manager, constructed in runIfMgr via
 	// notify.FromConfig, with per-(kind, key) state-change semantics.
 	logger, _ := logging.New(logging.Config{
 		BuildVersion: version.BuildVersionString(),
 		Handlers:     handlers,
 	})
-	logger.Info("ifmgr: standard output debug logging",
-		"enabled", debugEnabled, "stdout_level", stdoutLevel.String())
+	logger.Info(
+		"ifmgr: standard output debug logging",
+		"enabled",
+		debugEnabled,
+		"stdout_level",
+		stdoutLevel.String(),
+	)
+
 	return logger
 }
 
@@ -240,7 +323,11 @@ func logShutdownReason(ctx context.Context, log *slog.Logger) {
 // buildIfMgrDaemonConfig translates cfg.IfMgr (the parsed TOML) into the
 // shape ifmgr.Daemon expects. Module configs are adapted from the explicit
 // TOML schema into typed runtime configs before daemon startup.
-func buildIfMgrDaemonConfig(cfg *config.Config, role string, timeout time.Duration) (ifmgr.DaemonConfig, error) {
+func buildIfMgrDaemonConfig(
+	cfg *config.Config,
+	role string,
+	timeout time.Duration,
+) (ifmgr.DaemonConfig, error) {
 	logger := slog.Default().With("component", "ifmgr")
 	ifaceName := ""
 	enableDHCP := false
@@ -253,34 +340,65 @@ func buildIfMgrDaemonConfig(cfg *config.Config, role string, timeout time.Durati
 		if ifaceName != "" {
 			return ifmgr.DaemonConfig{}, fmt.Errorf(
 				"ifmgr: multi-iface not supported yet (saw %q and %q)",
-				ifaceName, name,
+				ifaceName,
+				name,
 			)
 		}
+
 		ifaceName = iface.Name
 		if ifaceName == "" {
 			ifaceName = name
 		}
+
 		enableDHCP = iface.DHCPv4
 		enableRA = iface.RASolicit
 		if iface.DHCPInitialBackoff != "" {
 			d, err := time.ParseDuration(iface.DHCPInitialBackoff)
 			if err != nil {
-				logger.Warn("ifmgr: invalid dhcp_initial_backoff",
-					"iface", name, "value", iface.DHCPInitialBackoff, "err", err)
-				return ifmgr.DaemonConfig{}, fmt.Errorf("ifmgr.iface.%s.dhcp_initial_backoff: %w", name, err)
+				logger.Warn(
+					"ifmgr: invalid dhcp_initial_backoff",
+					"iface",
+					name,
+					"value",
+					iface.DHCPInitialBackoff,
+					"err",
+					err,
+				)
+
+				return ifmgr.DaemonConfig{}, fmt.Errorf(
+					"ifmgr.iface.%s.dhcp_initial_backoff: %w",
+					name,
+					err,
+				)
 			}
+
 			dhcpInit = d
 		}
+
 		if iface.DHCPMaxBackoff != "" {
 			d, err := time.ParseDuration(iface.DHCPMaxBackoff)
 			if err != nil {
-				logger.Warn("ifmgr: invalid dhcp_max_backoff",
-					"iface", name, "value", iface.DHCPMaxBackoff, "err", err)
-				return ifmgr.DaemonConfig{}, fmt.Errorf("ifmgr.iface.%s.dhcp_max_backoff: %w", name, err)
+				logger.Warn(
+					"ifmgr: invalid dhcp_max_backoff",
+					"iface",
+					name,
+					"value",
+					iface.DHCPMaxBackoff,
+					"err",
+					err,
+				)
+
+				return ifmgr.DaemonConfig{}, fmt.Errorf(
+					"ifmgr.iface.%s.dhcp_max_backoff: %w",
+					name,
+					err,
+				)
 			}
+
 			dhcpMax = d
 		}
 	}
+
 	if ifaceName == "" {
 		return ifmgr.DaemonConfig{}, fmt.Errorf("ifmgr: no [ifmgr.iface.<name>] section found")
 	}
@@ -289,10 +407,17 @@ func buildIfMgrDaemonConfig(cfg *config.Config, role string, timeout time.Durati
 	if cfg.IfMgr.ReconcileInterval != "" {
 		d, err := time.ParseDuration(cfg.IfMgr.ReconcileInterval)
 		if err != nil {
-			logger.Warn("ifmgr: invalid reconcile_interval",
-				"value", cfg.IfMgr.ReconcileInterval, "err", err)
+			logger.Warn(
+				"ifmgr: invalid reconcile_interval",
+				"value",
+				cfg.IfMgr.ReconcileInterval,
+				"err",
+				err,
+			)
+
 			return ifmgr.DaemonConfig{}, fmt.Errorf("ifmgr.reconcile_interval: %w", err)
 		}
+
 		rec = d
 	}
 
@@ -301,15 +426,18 @@ func buildIfMgrDaemonConfig(cfg *config.Config, role string, timeout time.Durati
 		logger.Warn("ifmgr: build module configs failed", "role", role, "err", err)
 		return ifmgr.DaemonConfig{}, err
 	}
+
 	if settings, found := moduleConfigs["addresses"].(addresses.Config); found {
 		settings.NetworkdTimeout = timeout
 		moduleConfigs["addresses"] = settings
 	}
+
 	if settings, found := moduleConfigs["bgp_sessions"].(bgpsessions.Config); found {
 		settings, err = withSessionRouterID(settings, cfg.BGP.RouterID, logger)
 		if err != nil {
 			return ifmgr.DaemonConfig{}, err
 		}
+
 		moduleConfigs["bgp_sessions"] = settings
 	}
 
@@ -345,24 +473,47 @@ func parseNetworkConfig(
 	if err != nil {
 		return nil, err
 	}
+
 	if !steers && role != "router" {
 		return nil, nil
 	}
+
 	loaded, err := networkload.Load(networkjson.DefaultPath, networkjson.DefaultSchemaDir)
 	if err != nil {
-		log.ErrorContext(ctx, "ifmgr: load network configuration failed",
-			"path", networkjson.DefaultPath, "role", role, "err", err)
+		log.ErrorContext(
+			ctx,
+			"ifmgr: load network configuration failed",
+			"path",
+			networkjson.DefaultPath,
+			"role",
+			role,
+			"err",
+			err,
+		)
+
 		return nil, fmt.Errorf("load network configuration: %w", err)
 	}
+
 	for _, rejected := range loaded.Rejected {
-		log.ErrorContext(ctx, "ifmgr: provider entry rejected; steering the remaining providers",
-			"path", networkjson.DefaultPath, "interface", rejected.Interface,
-			"provider", rejected.Provider, "err", rejected.Err)
+		log.ErrorContext(
+			ctx,
+			"ifmgr: provider entry rejected; steering the remaining providers",
+			"path",
+			networkjson.DefaultPath,
+			"interface",
+			rejected.Interface,
+			"provider",
+			rejected.Provider,
+			"err",
+			rejected.Err,
+		)
 	}
+
 	loaded.Apply(cfg)
 	if role == "router" && loaded.VPP == nil {
 		return nil, fmt.Errorf("router role requires goodkind-mwan-vpp:vpp network metadata")
 	}
+
 	return loaded, nil
 }
 
@@ -374,28 +525,43 @@ func writeInterfaceConfig(
 	if loaded == nil || loaded.VPP != nil {
 		return nil, nil
 	}
+
 	tables := make(map[connectionid.ID]int, len(loaded.WAN))
 	for id, provider := range loaded.WAN {
 		tables[connectionid.ID(id)] = provider.TableID
 	}
+
 	preserveStatic := networkdNPTPreservation(loaded)
-	retiring, err := networkd.ObsoleteLinkFiles(networkd.DefaultUnitDir, loaded.Connections, tables, preserveStatic)
+	retiring, err := networkd.ObsoleteLinkFiles(
+		networkd.DefaultUnitDir,
+		loaded.Connections,
+		tables,
+		preserveStatic,
+	)
 	if err != nil {
 		log.ErrorContext(ctx, "ifmgr: obsolete networkd name inspection failed", "err", err)
 		return nil, fmt.Errorf("inspect obsolete networkd names: %w", err)
 	}
-	if err := linkboot.ValidateDir(networkd.DefaultUnitDir, loaded.Connections, retiring...); err != nil {
+
+	if err := linkboot.ValidateDir(
+		networkd.DefaultUnitDir,
+		loaded.Connections,
+		retiring...,
+	); err != nil {
 		log.ErrorContext(ctx, "ifmgr: owned link name validation failed", "err", err)
 		return nil, fmt.Errorf("validate owned link names: %w", err)
 	}
+
 	rejections, err := writeNetworkConfig(ctx, log, loaded, tables, preserveStatic)
 	if err != nil {
 		return rejections, err
 	}
+
 	if _, err := linkboot.WriteDir(networkd.DefaultUnitDir, loaded.Connections); err != nil {
 		log.ErrorContext(ctx, "ifmgr: owned link name write failed", "err", err)
 		return nil, fmt.Errorf("write owned link names: %w", err)
 	}
+
 	return rejections, nil
 }
 
@@ -410,47 +576,101 @@ func writeNetworkConfig(
 		return nil, nil
 	}
 
-	changed, err := networkd.WriteDir(networkd.DefaultUnitDir, loaded.Connections, tables, preserveStatic)
+	changed, err := networkd.WriteDir(
+		networkd.DefaultUnitDir,
+		loaded.Connections,
+		tables,
+		preserveStatic,
+	)
 	if err != nil {
-		log.ErrorContext(ctx, "ifmgr: writing networkd unit files failed",
-			"dir", networkd.DefaultUnitDir, "err", err)
+		log.ErrorContext(
+			ctx,
+			"ifmgr: writing networkd unit files failed",
+			"dir",
+			networkd.DefaultUnitDir,
+			"err",
+			err,
+		)
+
 		return nil, fmt.Errorf("write networkd unit files: %w", err)
 	}
-	log.InfoContext(ctx, "ifmgr: networkd unit files written",
-		"dir", networkd.DefaultUnitDir, "changed", changed)
+
+	log.InfoContext(
+		ctx,
+		"ifmgr: networkd unit files written",
+		"dir",
+		networkd.DefaultUnitDir,
+		"changed",
+		changed,
+	)
 	if len(changed) == 0 {
 		return loaded.Rejected, nil
 	}
+
 	warnRenamedLinks(ctx, log, changed, loaded.Connections)
 	if err := networkd.ReloadIfRunning(ctx); err != nil {
 		log.ErrorContext(ctx, "ifmgr: reloading systemd-networkd failed", "err", err)
 		return nil, fmt.Errorf("reload systemd-networkd: %w", err)
 	}
+
 	return loaded.Rejected, nil
 }
 
 func bootstrapWANFirewall(ctx context.Context, path string) error {
 	baseline, err := networkjson.LoadBaseline(path)
 	if err != nil {
-		slog.ErrorContext(ctx, "ifmgr: load protective firewall baseline failed", "path", path, "err", err)
+		slog.ErrorContext(
+			ctx,
+			"ifmgr: load protective firewall baseline failed",
+			"path",
+			path,
+			"err",
+			err,
+		)
 		return fmt.Errorf("load protective firewall baseline: %w", err)
 	}
+
 	if baseline == nil {
 		return fmt.Errorf("WAN firewall policy is absent in %s", path)
 	}
+
 	desired, err := firewall.CompileBaseline(*baseline)
 	if err != nil {
-		slog.ErrorContext(ctx, "ifmgr: compile protective firewall baseline failed", "path", path, "err", err)
+		slog.ErrorContext(
+			ctx,
+			"ifmgr: compile protective firewall baseline failed",
+			"path",
+			path,
+			"err",
+			err,
+		)
 		return fmt.Errorf("compile protective firewall baseline: %w", err)
 	}
+
 	if err := firewall.Apply(ctx, desired); err != nil {
-		slog.ErrorContext(ctx, "ifmgr: apply protective firewall baseline failed", "path", path, "err", err)
+		slog.ErrorContext(
+			ctx,
+			"ifmgr: apply protective firewall baseline failed",
+			"path",
+			path,
+			"err",
+			err,
+		)
 		return fmt.Errorf("apply protective firewall baseline: %w", err)
 	}
+
 	if _, err := firewall.Inspect(ctx, desired); err != nil {
-		slog.ErrorContext(ctx, "ifmgr: inspect protective firewall baseline failed", "path", path, "err", err)
+		slog.ErrorContext(
+			ctx,
+			"ifmgr: inspect protective firewall baseline failed",
+			"path",
+			path,
+			"err",
+			err,
+		)
 		return fmt.Errorf("inspect protective firewall baseline: %w", err)
 	}
+
 	return nil
 }
 
@@ -465,5 +685,6 @@ func roleSteersProviders(role string) (bool, error) {
 		logger.Warn("ifmgr: modules for role failed", "role", role, "err", err)
 		return false, fmt.Errorf("ModulesForRole(%q): %w", role, err)
 	}
+
 	return slices.Contains(names, "wan.routes"), nil
 }

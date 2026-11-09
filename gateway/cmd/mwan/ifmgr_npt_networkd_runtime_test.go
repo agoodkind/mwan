@@ -60,7 +60,11 @@ func TestNetworkdNPTEdgeDaemonRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for destination, source := range map[string]string{"/etc/mwan": networkDir, "/etc/systemd/network": unitDir, "/usr/local/share/wanconfig/yang": schemaDir} {
+	for destination, source := range map[string]string{
+		"/etc/mwan":                       networkDir,
+		"/etc/systemd/network":            unitDir,
+		"/usr/local/share/wanconfig/yang": schemaDir,
+	} {
 		bindStartupDirectory(t, source, destination)
 		t.Cleanup(func() {
 			if err := unix.Unmount(destination, 0); err != nil {
@@ -72,11 +76,35 @@ func TestNetworkdNPTEdgeDaemonRuntime(t *testing.T) {
 	networkdResolverCommand(t, "systemctl", "set-environment", "SYSTEMD_LOG_LEVEL=debug")
 	t.Cleanup(func() { networkdResolverCommand(t, "systemctl", "stop", "systemd-networkd") })
 	setRuntimeLoopback(t)
-	management := newRuntimePeer(t, gateway, "enmgmt0", "npt-mgmt", []string{"203.0.113.1/24"}, []string{"203.0.113.2/24"}, "")
+	management := newRuntimePeer(
+		t,
+		gateway,
+		"enmgmt0",
+		"npt-mgmt",
+		[]string{"203.0.113.1/24"},
+		[]string{"203.0.113.2/24"},
+		"",
+	)
 	defer management.namespace.Close()
-	lan := newRuntimePeer(t, gateway, "enmwanbr0", "npt-lan", []string{"192.0.2.1/29", "2001:db8:b01:fe::3/64"}, []string{"192.0.2.3/29", "2001:db8:b01:fe::2/64"}, "")
+	lan := newRuntimePeer(
+		t,
+		gateway,
+		"enmwanbr0",
+		"npt-lan",
+		[]string{"192.0.2.1/29", "2001:db8:b01:fe::3/64"},
+		[]string{"192.0.2.3/29", "2001:db8:b01:fe::2/64"},
+		"",
+	)
 	defer lan.namespace.Close()
-	provider := newRuntimePeer(t, gateway, "enwebpass0", "wan-host", nil, []string{"198.51.100.2/24", "2001:db8:2::2/64"}, legacyRuntimeMAC)
+	provider := newRuntimePeer(
+		t,
+		gateway,
+		"enwebpass0",
+		"wan-host",
+		nil,
+		[]string{"198.51.100.2/24", "2001:db8:2::2/64"},
+		legacyRuntimeMAC,
+	)
 	defer provider.namespace.Close()
 	setRuntimeNamespace(t, provider.namespace)
 	waitAutoconfigurationLinkLocal(t, "wan-host")
@@ -90,7 +118,17 @@ func TestNetworkdNPTEdgeDaemonRuntime(t *testing.T) {
 		})
 	}
 	setRuntimeNamespace(t, gateway)
-	writeStaticRuntimeNetwork(t, networkDir, "10.39.7.1", "fd39:7::1", "10.39.7.2", "fd39:7::2", 398, 24, true)
+	writeStaticRuntimeNetwork(
+		t,
+		networkDir,
+		"10.39.7.1",
+		"fd39:7::1",
+		"10.39.7.2",
+		"fd39:7::2",
+		398,
+		24,
+		true,
+	)
 	writeMappedRuntimeProvider(t, networkDir, "10.39.7.3", "2001:db8:beef:300::/60")
 	writeRuntimeLegacyNPT(t, networkDir, "2001:db8:30::/56", false)
 	path := filepath.Join(networkDir, "network.json")
@@ -98,17 +136,36 @@ func TestNetworkdNPTEdgeDaemonRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	input = []byte(strings.ReplaceAll(string(input), `"external-source":"configured","external-prefix":"2001:db8:30::/56"`, `"external-source":"delegated","expected-prefix":"2001:db8:30::/56"`))
-	input = []byte(strings.ReplaceAll(string(input), `"ietf-ip:ipv6":{"goodkind-mwan-steering:translation"`, `"ietf-ip:ipv6":{"goodkind-mwan-steering:dhcp":true,"goodkind-mwan-steering:delegation":{"hint":"::/56","without-ra":"solicit","use-delegated-prefix":true},"goodkind-mwan-steering:translation"`))
+	input = []byte(
+		strings.ReplaceAll(
+			string(input),
+			`"external-source":"configured","external-prefix":"2001:db8:30::/56"`,
+			`"external-source":"delegated","expected-prefix":"2001:db8:30::/56"`,
+		),
+	)
+	input = []byte(
+		strings.ReplaceAll(
+			string(input),
+			`"ietf-ip:ipv6":{"goodkind-mwan-steering:translation"`,
+			`"ietf-ip:ipv6":{"goodkind-mwan-steering:dhcp":true,"goodkind-mwan-steering:delegation":{"hint":"::/56","without-ra":"solicit","use-delegated-prefix":true},"goodkind-mwan-steering:translation"`,
+		),
+	)
 	if err := os.WriteFile(path, input, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	unit := "[Match]\nName=enwebpass0\n[Network]\nDHCP=ipv6\nIPv6AcceptRA=yes\nKeepConfiguration=yes\n[IPv6AcceptRA]\nDHCPv6Client=always\n[DHCPv6]\nWithoutRA=solicit\nUseAddress=yes\nUseDelegatedPrefix=yes\nPrefixDelegationHint=::/56\n"
-	if err := os.WriteFile(filepath.Join(unitDir, "10-legacy.network"), []byte(unit), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(unitDir, "10-legacy.network"),
+		[]byte(unit),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 	networkdResolverCommand(t, "systemctl", "restart", "systemd-networkd")
-	configuration := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"100ms\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.addresses]\nstate_file = %q\n", filepath.Join(root, "addresses.json"))
+	configuration := fmt.Sprintf(
+		"[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"100ms\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.addresses]\nstate_file = %q\n",
+		filepath.Join(root, "addresses.json"),
+	)
 	configPath := filepath.Join(root, "config.toml")
 	if err := os.WriteFile(configPath, []byte(configuration), 0o600); err != nil {
 		t.Fatal(err)
@@ -120,8 +177,22 @@ func TestNetworkdNPTEdgeDaemonRuntime(t *testing.T) {
 		if t.Failed() {
 			t.Logf("network JSON: %s", input)
 			t.Logf("complete networkd NPT daemon log: %s", runtimeDaemonLog(t, daemon))
-			t.Logf("networkd state: %s", networkdResolverCommand(t, "networkctl", "status", "enwebpass0", "--no-pager"))
-			t.Logf("networkd journal: %s", networkdResolverCommand(t, "journalctl", "-u", "systemd-networkd", "--no-pager", "-n", "150"))
+			t.Logf(
+				"networkd state: %s",
+				networkdResolverCommand(t, "networkctl", "status", "enwebpass0", "--no-pager"),
+			)
+			t.Logf(
+				"networkd journal: %s",
+				networkdResolverCommand(
+					t,
+					"journalctl",
+					"-u",
+					"systemd-networkd",
+					"--no-pager",
+					"-n",
+					"150",
+				),
+			)
 			for _, service := range services {
 				data, err := os.ReadFile(service.logPath)
 				t.Logf("%s log: %s (%v)", service.name, data, err)
@@ -140,8 +211,14 @@ func TestNetworkdNPTEdgeDaemonRuntime(t *testing.T) {
 	}
 	status := networkdResolverCommand(t, "networkctl", "status", "enwebpass0", "--no-pager")
 	prefix, err := exec.Command(binary, "pd", "enwebpass0").Output()
-	if err != nil || !strings.Contains(status, "10-legacy.network") || strings.TrimSpace(string(prefix)) != "2001:db8:30::/56" {
-		t.Fatalf("networkd did not acquire the delegated prefix: prefix=%q error=%v status=%s", prefix, err, status)
+	if err != nil || !strings.Contains(status, "10-legacy.network") ||
+		strings.TrimSpace(string(prefix)) != "2001:db8:30::/56" {
+		t.Fatalf(
+			"networkd did not acquire the delegated prefix: prefix=%q error=%v status=%s",
+			prefix,
+			err,
+			status,
+		)
 	}
 	killOwnedRuntimeDaemon(t, daemon)
 	restarted := startRuntimeDaemon(t, binary, configPath, root, "networkd-npt-restarted")
@@ -169,7 +246,15 @@ func TestNetworkdNPTEdgeDaemonRuntime(t *testing.T) {
 	checkNetworkdNPTEdgeService(t, gateway, lan.namespace, binary, configPath, networkDir, root)
 }
 
-func checkNetworkdNPTEdgeService(t *testing.T, gateway, downstream netns.NsHandle, binary, configPath, networkDir, root string) {
+func checkNetworkdNPTEdgeService(
+	t *testing.T,
+	gateway netns.NsHandle,
+	downstream netns.NsHandle,
+	binary string,
+	configPath string,
+	networkDir string,
+	root string,
+) {
 	t.Helper()
 	provider := newRuntimePeer(t, gateway, "service-parent", "service-peer", nil, nil, "")
 	defer provider.namespace.Close()
@@ -178,7 +263,10 @@ func checkNetworkdNPTEdgeService(t *testing.T, gateway, downstream netns.NsHandl
 	if err != nil {
 		t.Fatal(err)
 	}
-	peerVLAN := &netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "service-vlan", ParentIndex: parent.Attrs().Index}, VlanId: 53}
+	peerVLAN := &netlink.Vlan{
+		LinkAttrs: netlink.LinkAttrs{Name: "service-vlan", ParentIndex: parent.Attrs().Index},
+		VlanId:    53,
+	}
 	if err := netlink.LinkAdd(peerVLAN); err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +305,11 @@ func checkNetworkdNPTEdgeService(t *testing.T, gateway, downstream netns.NsHandl
 	installStartupDaemonUnit(t, configPath)
 	t.Cleanup(func() {
 		networkdResolverCommand(t, "systemctl", "stop", "mwan-ifmgr@wan")
-		for _, path := range []string{"/etc/systemd/system/mwan-ifmgr@.service", "/etc/systemd/system/mwan-ifmgr@wan.service.d", "/usr/local/bin/mwan"} {
+		for _, path := range []string{
+			"/etc/systemd/system/mwan-ifmgr@.service",
+			"/etc/systemd/system/mwan-ifmgr@wan.service.d",
+			"/usr/local/bin/mwan",
+		} {
 			if err := os.RemoveAll(path); err != nil {
 				t.Error(err)
 			}
@@ -228,7 +320,11 @@ func checkNetworkdNPTEdgeService(t *testing.T, gateway, downstream netns.NsHandl
 		if t.Failed() {
 			setRuntimeNamespace(t, gateway)
 			t.Log(networkdResolverCommand(t, "journalctl", "-u", "mwan-ifmgr@wan", "--no-pager"))
-			for _, arguments := range [][]string{{"-6", "route", "show", "table", "all"}, {"-6", "rule", "show"}, {"-6", "neigh", "show"}} {
+			for _, arguments := range [][]string{
+				{"-6", "route", "show", "table", "all"},
+				{"-6", "rule", "show"},
+				{"-6", "neigh", "show"},
+			} {
 				output, err := exec.Command("ip", arguments...).CombinedOutput()
 				t.Logf("service ip %v: %s (%v)", arguments, output, err)
 			}
@@ -239,9 +335,23 @@ func checkNetworkdNPTEdgeService(t *testing.T, gateway, downstream netns.NsHandl
 		}
 	}()
 	startOrderedDaemon(t, "start")
-	t.Log(networkdResolverCommand(t, "systemctl", "show", "mwan-ifmgr@wan", "--property=AmbientCapabilities", "--property=CapabilityBoundingSet"))
+	t.Log(
+		networkdResolverCommand(
+			t,
+			"systemctl",
+			"show",
+			"mwan-ifmgr@wan",
+			"--property=AmbientCapabilities",
+			"--property=CapabilityBoundingSet",
+		),
+	)
 	waitNPTServiceAddress(t, "enservice0", "2001:db8:53::1/128", true)
-	assertRuntimeNPTEdges(t, filepath.Join(root, "addresses.json"), "2001:db8:30::1/128", "2001:db8:53::1/128")
+	assertRuntimeNPTEdges(
+		t,
+		filepath.Join(root, "addresses.json"),
+		"2001:db8:30::1/128",
+		"2001:db8:53::1/128",
+	)
 	waitRuntimeAttachedEdge(t, "enmwanbr0", "2001:db8:30::1")
 	waitRuntimeAttachedEdge(t, "enservice0", "2001:db8:53::1")
 	waitNPTServiceForwarding(t, 500, nil, "")
@@ -249,7 +359,14 @@ func checkNetworkdNPTEdgeService(t *testing.T, gateway, downstream netns.NsHandl
 	checkRenderedNPTStaticContinuity(t, gateway, provider.namespace, downstream, networkDir, root)
 	previousPrograms := nptServicePrograms(t)
 	// SIGKILL preserves the old daemon's attached programs and maps.
-	networkdResolverCommand(t, "systemctl", "kill", "--kill-whom=main", "--signal=SIGKILL", "mwan-ifmgr@wan")
+	networkdResolverCommand(
+		t,
+		"systemctl",
+		"kill",
+		"--kill-whom=main",
+		"--signal=SIGKILL",
+		"mwan-ifmgr@wan",
+	)
 	networkdResolverCommand(t, "systemctl", "stop", "mwan-ifmgr@wan")
 	waitRuntimeAttachedEdge(t, "enmwanbr0", "2001:db8:30::1")
 	writeNPTServiceProvider(t, networkDir, true)
@@ -281,7 +398,12 @@ func nptServicePrograms(t *testing.T) map[string][2]int {
 				attached, ok := filter.(*netlink.BpfFilter)
 				if ok && attached.Handle == 0x4e50 && attached.Priority == 45010 &&
 					(attached.Name == "mwan-npt-ingress" || attached.Name == "mwan-npt-egress") &&
-					runtimeProgramReferencesEdge(t, attached.Id, uint32(link.Attrs().Index), netip.MustParseAddr("2001:db8:53::1").As16()) {
+					runtimeProgramReferencesEdge(
+						t,
+						attached.Id,
+						uint32(link.Attrs().Index),
+						netip.MustParseAddr("2001:db8:53::1").As16(),
+					) {
 					ids[index] = attached.Id
 				}
 			}
@@ -319,7 +441,12 @@ func nptServiceReceiptReady(t *testing.T, path string) bool {
 	return edges == 1
 }
 
-func waitNPTServiceForwarding(t *testing.T, metric int, previous map[string][2]int, receiptPath string) {
+func waitNPTServiceForwarding(
+	t *testing.T,
+	metric int,
+	previous map[string][2]int,
+	receiptPath string,
+) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
@@ -332,25 +459,56 @@ func waitNPTServiceForwarding(t *testing.T, metric int, previous map[string][2]i
 				}
 			}
 		}
-		output, err := exec.Command("nft", "list", "chain", "inet", "mwan_steer", "forward").CombinedOutput()
+		output, err := exec.Command(
+			"nft",
+			"list",
+			"chain",
+			"inet",
+			"mwan_steer",
+			"forward",
+		).CombinedOutput()
 		// Daemon startup replaces the filter forward chain with established-only rules until the firewall module reconciles.
-		filter, filterErr := exec.Command("nft", "list", "chain", "inet", "filter", "forward").CombinedOutput()
-		filterReady := filterErr == nil && mappedRuntimeHasLine(string(filter), []string{`iifname "enservice0" oifname "enmwanbr0" meta nfproto ipv6 accept`})
-		if attachmentsReady && filterReady && err == nil && mappedRuntimeHasLine(string(output), []string{`iifname "enmwanbr0" oifname "enservice0" meta nfproto ipv6`, `meta mark != 0x00000005 drop`}) {
+		filter, filterErr := exec.Command(
+			"nft",
+			"list",
+			"chain",
+			"inet",
+			"filter",
+			"forward",
+		).CombinedOutput()
+		filterReady := filterErr == nil &&
+			mappedRuntimeHasLine(
+				string(filter),
+				[]string{`iifname "enservice0" oifname "enmwanbr0" meta nfproto ipv6 accept`},
+			)
+		if attachmentsReady && filterReady && err == nil &&
+			mappedRuntimeHasLine(
+				string(output),
+				[]string{
+					`iifname "enmwanbr0" oifname "enservice0" meta nfproto ipv6`,
+					`meta mark != 0x00000005 drop`,
+				},
+			) {
 			link, err := netlink.LinkByName("enservice0")
 			if err != nil {
 				t.Fatal(err)
 			}
-			routes, err := netlink.RouteListFiltered(unix.AF_INET6, &netlink.Route{LinkIndex: link.Attrs().Index, Table: unix.RT_TABLE_UNSPEC}, netlink.RT_FILTER_OIF|netlink.RT_FILTER_TABLE)
+			routes, err := netlink.RouteListFiltered(
+				unix.AF_INET6,
+				&netlink.Route{LinkIndex: link.Attrs().Index, Table: unix.RT_TABLE_UNSPEC},
+				netlink.RT_FILTER_OIF|netlink.RT_FILTER_TABLE,
+			)
 			if err != nil {
 				t.Fatal(err)
 			}
 			mainReady, policyReady := false, false
 			for _, route := range routes {
-				if route.Dst != nil && route.Dst.String() != "::/0" || !route.Gw.Equal(net.ParseIP("fd53::2")) {
+				if route.Dst != nil && route.Dst.String() != "::/0" ||
+					!route.Gw.Equal(net.ParseIP("fd53::2")) {
 					continue
 				}
-				mainReady = mainReady || route.Table == unix.RT_TABLE_MAIN && route.Priority == metric
+				mainReady = mainReady ||
+					route.Table == unix.RT_TABLE_MAIN && route.Priority == metric
 				// Linux converts the daemon's zero IPv6 metric to 1024.
 				policyReady = policyReady || route.Table == 530 && route.Priority == 1024
 			}
@@ -361,11 +519,18 @@ func waitNPTServiceForwarding(t *testing.T, metric int, previous map[string][2]i
 			markReady, sourceReady := false, false
 			for _, rule := range rules {
 				markReady = markReady || rule.Priority == 530 && rule.Table == 530 && rule.Mark == 5
-				sourceReady = sourceReady || rule.Priority == 60 && rule.Table == 530 && rule.Src != nil && rule.Src.String() == "2001:db8:53::/60"
+				sourceReady = sourceReady ||
+					rule.Priority == 60 && rule.Table == 530 && rule.Src != nil &&
+						rule.Src.String() == "2001:db8:53::/60"
 			}
 			if mainReady && policyReady && markReady && sourceReady &&
 				(receiptPath == "" || nptServiceReceiptReady(t, receiptPath)) {
-				t.Logf("service forwarding verified: metric=%d previous programs=%v current programs=%v", metric, previous, programs)
+				t.Logf(
+					"service forwarding verified: metric=%d previous programs=%v current programs=%v",
+					metric,
+					previous,
+					programs,
+				)
 				return
 			}
 		}
@@ -374,7 +539,14 @@ func waitNPTServiceForwarding(t *testing.T, metric int, previous map[string][2]i
 	t.Fatal("service provider forwarding did not become ready")
 }
 
-func checkRenderedNPTStaticContinuity(t *testing.T, gateway, upstream, downstream netns.NsHandle, directory, root string) {
+func checkRenderedNPTStaticContinuity(
+	t *testing.T,
+	gateway netns.NsHandle,
+	upstream netns.NsHandle,
+	downstream netns.NsHandle,
+	directory string,
+	root string,
+) {
 	t.Helper()
 	link, err := netlink.LinkByName("enservice0")
 	if err != nil {
@@ -385,24 +557,32 @@ func checkRenderedNPTStaticContinuity(t *testing.T, gateway, upstream, downstrea
 	if !ok || vlan.VlanId != 53 || parentErr != nil || parent.Attrs().Name != "service-parent" {
 		t.Fatalf("networkd provider is not VLAN 53 on service-parent: %+v, %v", link, parentErr)
 	}
-	before := runtimeScopedNPTReceipt(t, filepath.Join(root, "addresses.json"), "2001:db8:53::1/128")
+	before := runtimeScopedNPTReceipt(
+		t,
+		filepath.Join(root, "addresses.json"),
+		"2001:db8:53::1/128",
+	)
 	updates := make(chan netlink.AddrUpdate, 128)
 	done := make(chan struct{})
 	var mutex sync.Mutex
 	var observationErrors []error
-	if err := netlink.AddrSubscribeWithOptions(updates, done, netlink.AddrSubscribeOptions{
-		Namespace: &gateway,
-		ErrorCallback: func(err error) {
-			select {
-			case <-done:
-				return
-			default:
-			}
-			mutex.Lock()
-			observationErrors = append(observationErrors, err)
-			mutex.Unlock()
+	if err := netlink.AddrSubscribeWithOptions(
+		updates,
+		done,
+		netlink.AddrSubscribeOptions{
+			Namespace: &gateway,
+			ErrorCallback: func(err error) {
+				select {
+				case <-done:
+					return
+				default:
+				}
+				mutex.Lock()
+				observationErrors = append(observationErrors, err)
+				mutex.Unlock()
+			},
 		},
-	}); err != nil {
+	); err != nil {
 		t.Fatal(err)
 	}
 	collected := make(chan []netlink.AddrUpdate, 1)
@@ -422,7 +602,8 @@ func checkRenderedNPTStaticContinuity(t *testing.T, gateway, upstream, downstrea
 			t.Errorf("continuous address observer failed: %v", observationErrors)
 		}
 		for _, event := range events {
-			if event.LinkIndex == link.Attrs().Index && event.LinkAddress.String() == "2001:db8:53::1/128" {
+			if event.LinkIndex == link.Attrs().Index &&
+				event.LinkAddress.String() == "2001:db8:53::1/128" {
 				t.Errorf("networkd reconfiguration changed the configured NPT edge: %+v", event)
 			}
 		}
@@ -432,7 +613,12 @@ func checkRenderedNPTStaticContinuity(t *testing.T, gateway, upstream, downstrea
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated := strings.Replace(string(data), `"goodkind-mwan-steering:route-metric":500`, `"goodkind-mwan-steering:route-metric":501`, 1)
+	updated := strings.Replace(
+		string(data),
+		`"goodkind-mwan-steering:route-metric":500`,
+		`"goodkind-mwan-steering:route-metric":501`,
+		1,
+	)
 	if updated == string(data) {
 		t.Fatal("configured provider route metric was absent")
 	}
@@ -447,7 +633,11 @@ func checkRenderedNPTStaticContinuity(t *testing.T, gateway, upstream, downstrea
 	assertNPTServiceReply(t, gateway, upstream, downstream)
 	after := runtimeScopedNPTReceipt(t, filepath.Join(root, "addresses.json"), "2001:db8:53::1/128")
 	if !reflect.DeepEqual(before, after) {
-		t.Fatalf("networkd reconfiguration changed the scoped receipt: before=%s after=%s", before, after)
+		t.Fatalf(
+			"networkd reconfiguration changed the scoped receipt: before=%s after=%s",
+			before,
+			after,
+		)
 	}
 }
 
@@ -501,12 +691,19 @@ func writeNPTServiceProvider(t *testing.T, directory string, withdraw bool) {
 	if withdraw {
 		for _, entry := range entries {
 			if string(entry["name"]) == `"enwebpass0"` {
-				entry["ietf-ip:ipv6"] = json.RawMessage(`{"goodkind-mwan-steering:dhcp":true,"goodkind-mwan-steering:delegation":{"hint":"::/56","without-ra":"solicit","use-delegated-prefix":true}}`)
+				entry["ietf-ip:ipv6"] = json.RawMessage(
+					`{"goodkind-mwan-steering:dhcp":true,"goodkind-mwan-steering:delegation":{"hint":"::/56","without-ra":"solicit","use-delegated-prefix":true}}`,
+				)
 			}
 		}
 	} else {
 		var provider map[string]json.RawMessage
-		if err := json.Unmarshal([]byte(`{"name":"enservice0","type":"iana-if-type:l2vlan","enabled":true,"goodkind-mwan-steering:connection-id":"service-provider","goodkind-mwan-steering:owner":"networkd","goodkind-mwan-steering:link-files":"rendered","goodkind-mwan-steering:link":{"vlan":{"parent":"service-parent","id":53}},"ietf-ip:ipv6":{"address":[{"ip":"fd53::1","prefix-length":64}],"goodkind-mwan-steering:dhcp":false,"goodkind-mwan-steering:accept-ra":false,"goodkind-mwan-steering:gateway":"fd53::2","goodkind-mwan-steering:route-metric":500,"goodkind-mwan-steering:translation":{"mode":"ietf-nat:nptv6","nptv6":{"internal-prefix":"2001:db8:b01::/60","external-source":"configured","external-prefix":"2001:db8:53::/60"}}},"goodkind-mwan-steering:wan":{"name":"service","table-id":530,"fw-mark":5,"fw-mark-prio":530,"from-prio":60,"health":{"enabled":false}},"goodkind-mwan-steering:steering":{"tier":1,"weight":1}}`), &provider); err != nil {
+		if err := json.Unmarshal(
+			[]byte(
+				`{"name":"enservice0","type":"iana-if-type:l2vlan","enabled":true,"goodkind-mwan-steering:connection-id":"service-provider","goodkind-mwan-steering:owner":"networkd","goodkind-mwan-steering:link-files":"rendered","goodkind-mwan-steering:link":{"vlan":{"parent":"service-parent","id":53}},"ietf-ip:ipv6":{"address":[{"ip":"fd53::1","prefix-length":64}],"goodkind-mwan-steering:dhcp":false,"goodkind-mwan-steering:accept-ra":false,"goodkind-mwan-steering:gateway":"fd53::2","goodkind-mwan-steering:route-metric":500,"goodkind-mwan-steering:translation":{"mode":"ietf-nat:nptv6","nptv6":{"internal-prefix":"2001:db8:b01::/60","external-source":"configured","external-prefix":"2001:db8:53::/60"}}},"goodkind-mwan-steering:wan":{"name":"service","table-id":530,"fw-mark":5,"fw-mark-prio":530,"from-prio":60,"health":{"enabled":false}},"goodkind-mwan-steering:steering":{"tier":1,"weight":1}}`,
+			),
+			&provider,
+		); err != nil {
 			t.Fatal(err)
 		}
 		entries = append(entries, provider)
@@ -515,7 +712,10 @@ func writeNPTServiceProvider(t *testing.T, directory string, withdraw bool) {
 			t.Fatal(err)
 		}
 		var parent map[string]json.RawMessage
-		parentJSON := fmt.Sprintf(`{"name":"service-parent","type":"iana-if-type:ethernetCsmacd","goodkind-mwan-steering:owner":"networkd","goodkind-mwan-steering:link-files":"rendered","goodkind-mwan-steering:link":{"match":{"hardware-address":%q}}}`, parentLink.Attrs().HardwareAddr.String())
+		parentJSON := fmt.Sprintf(
+			`{"name":"service-parent","type":"iana-if-type:ethernetCsmacd","goodkind-mwan-steering:owner":"networkd","goodkind-mwan-steering:link-files":"rendered","goodkind-mwan-steering:link":{"match":{"hardware-address":%q}}}`,
+			parentLink.Attrs().HardwareAddr.String(),
+		)
 		if err := json.Unmarshal([]byte(parentJSON), &parent); err != nil {
 			t.Fatal(err)
 		}

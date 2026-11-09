@@ -86,6 +86,7 @@ func (wan WAN) targetsV4(cfg Config) []netip.Addr {
 	if wan.TargetsV4 != nil {
 		return wan.TargetsV4
 	}
+
 	return cfg.TargetsV4
 }
 
@@ -93,6 +94,7 @@ func (wan WAN) targetsV6(cfg Config) []netip.Addr {
 	if wan.TargetsV6 != nil {
 		return wan.TargetsV6
 	}
+
 	return cfg.TargetsV6
 }
 
@@ -100,6 +102,7 @@ func (wan WAN) httpURLs(cfg Config) []string {
 	if len(wan.HTTPURLs) > 0 {
 		return wan.HTTPURLs
 	}
+
 	return cfg.HTTPURLs
 }
 
@@ -107,6 +110,7 @@ func (wan WAN) pingCount(cfg Config) int {
 	if wan.PingCount != 0 {
 		return wan.PingCount
 	}
+
 	return cfg.PingCount
 }
 
@@ -114,6 +118,7 @@ func (wan WAN) successThreshold(cfg Config) int {
 	if wan.SuccessThreshold != 0 {
 		return wan.SuccessThreshold
 	}
+
 	return cfg.SuccessThreshold
 }
 
@@ -121,6 +126,7 @@ func (wan WAN) failureThreshold(cfg Config) int {
 	if wan.FailureThreshold != 0 {
 		return wan.FailureThreshold
 	}
+
 	return cfg.FailureThreshold
 }
 
@@ -128,6 +134,7 @@ func (wan WAN) recoveryThreshold(cfg Config) int {
 	if wan.RecoveryThreshold != 0 {
 		return wan.RecoveryThreshold
 	}
+
 	return cfg.RecoveryThreshold
 }
 
@@ -224,55 +231,86 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	log.InfoContext(
 		ctx,
 		"health: Init",
-		"wan_count", len(m.cfg.WANs),
-		"interval", m.cfg.Interval.String(),
+		"wan_count",
+		len(m.cfg.WANs),
+		"interval",
+		m.cfg.Interval.String(),
 	)
 	if len(m.cfg.WANs) == 0 && m.cfg.Observations == nil {
 		log.WarnContext(ctx, "health: no WAN config; disabling module")
 		return fmt.Errorf("%w: health: no [ifmgr.wan] WANs", ifmgr.ErrModuleDisabled)
 	}
+
 	if err := validateConfig(m.cfg); err != nil {
 		log.WarnContext(ctx, "health: invalid config", "err", err)
 		return fmt.Errorf("health: invalid config: %w", err)
 	}
+
 	if m.clock == nil {
 		m.clock = internalclock.Real{}
 	}
+
 	if m.cfg.Observations != nil {
 		if env.LiveState == nil || env.Alerts == nil {
 			return fmt.Errorf("recurring observations require live state and alerts")
 		}
+
 		settings := *m.cfg.Observations
+
 		settings.Runtime.State = env.LiveState
 		for _, scheduled := range settings.Checks {
-			if err := env.LiveState.ConfigureCheck(scheduled.Check, scheduled.IntervalSeconds); err != nil {
-				log.ErrorContext(ctx, "health observation state could not be initialized", "check_id", scheduled.Check.ID, "err", err)
+			if err := env.LiveState.ConfigureCheck(
+				scheduled.Check,
+				scheduled.IntervalSeconds,
+			); err != nil {
+				log.ErrorContext(
+					ctx,
+					"health observation state could not be initialized",
+					"check_id",
+					scheduled.Check.ID,
+					"err",
+					err,
+				)
 				return fmt.Errorf("configure health observation: %w", err)
 			}
 		}
+
 		m.observationWorkers.Go(func() {
-			summary, err := observation.RunContinuous(ctx, settings, healthObservationNotifier{alerts: env.Alerts, clock: m.clock}, log, env.LiveState.RecordCheck)
+			summary, err := observation.RunContinuous(
+				ctx,
+				settings,
+				healthObservationNotifier{alerts: env.Alerts, clock: m.clock},
+				log,
+				env.LiveState.RecordCheck,
+			)
 			if err != nil {
 				log.ErrorContext(ctx, "recurring health observations failed", "err", err)
 			}
+
 			log.Info("recurring health observations stopped", "summary", summary)
 		})
 	}
+
 	if len(m.cfg.WANs) == 0 {
 		return nil
 	}
+
 	if m.probeV4 == nil {
 		m.probeV4 = netif.Ping4
 	}
+
 	if m.probeV6 == nil {
 		m.probeV6 = netif.Ping6
 	}
+
 	if m.probeHTTP6 == nil {
 		m.probeHTTP6 = netif.HTTPCheck6
 	}
+
 	if m.probeHTTP4 == nil {
 		m.probeHTTP4 = netif.HTTPCheck4
 	}
+
 	m.initStatuses()
 	// Seed the state file. It is the module's required output, so fail Init
 	// rather than run blind on a broken /var/run.
@@ -280,21 +318,19 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 		log.WarnContext(ctx, "health: initialize runtime state failed", "err", err)
 		return fmt.Errorf("health: initialize state file: %w", err)
 	}
+
 	// The per-cycle recover in runCycleGuarded keeps a panicking cycle from
 	// killing the loop; this outer recover is a required last-resort backstop for
 	// a panic in the loop's own control code (it should effectively never fire).
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.ErrorContext(
-					ctx,
-					"health: probe loop panicked",
-					"err", fmt.Sprint(recovered),
-				)
+				log.ErrorContext(ctx, "health: probe loop panicked", "err", fmt.Sprint(recovered))
 			}
 		}()
 		m.probeLoop(ctx, log)
 	}()
+
 	return nil
 }
 
@@ -309,11 +345,13 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	if len(m.cfg.WANs) == 0 {
 		return nil
 	}
+
 	m.reconcileMu.Lock()
 	if m.reconcileCycleRunning || (!m.reconcilePending && !m.anyUnknown()) {
 		m.reconcileMu.Unlock()
 		return nil
 	}
+
 	m.reconcilePending = false
 	m.reconcileCycleRunning = true
 	m.reconcileMu.Unlock()
@@ -323,14 +361,21 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		var cycleErr error
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.ErrorContext(ctx, "health: startup probe cycle panicked", "err", fmt.Sprint(recovered))
+				log.ErrorContext(
+					ctx,
+					"health: startup probe cycle panicked",
+					"err",
+					fmt.Sprint(recovered),
+				)
 				cycleErr = fmt.Errorf("health: startup probe cycle panicked: %v", recovered)
 			}
+
 			m.reconcileMu.Lock()
 			m.reconcileCycleRunning = false
 			if cycleErr != nil {
 				m.reconcilePending = true
 			}
+
 			m.reconcileMu.Unlock()
 			cycleDone <- cycleErr
 		}()
@@ -345,8 +390,10 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		log.InfoContext(
 			ctx,
 			"health: startup probe cycle still running; continuing the reconcile pass",
-			"wait", startupCycleWait.String(),
+			"wait",
+			startupCycleWait.String(),
 		)
+
 		return nil
 	}
 }
@@ -357,10 +404,24 @@ type healthObservationNotifier struct {
 }
 
 func (adapter healthObservationNotifier) Notify(ctx context.Context, event notify.Event) {
-	adapter.alerts.NotifyContext(ctx, event.Now, event.Level, event.Kind, event.Key, event.Message, event.Fields...)
+	adapter.alerts.NotifyContext(
+		ctx,
+		event.Now,
+		event.Level,
+		event.Kind,
+		event.Key,
+		event.Message,
+		event.Fields...,
+	)
 }
 
-func (adapter healthObservationNotifier) Resolve(ctx context.Context, kind, key, message string, fields ...slog.Attr) {
+func (adapter healthObservationNotifier) Resolve(
+	ctx context.Context,
+	kind string,
+	key string,
+	message string,
+	fields ...slog.Attr,
+) {
 	adapter.alerts.ResolveContext(ctx, adapter.clock.Now(), kind, key, message, fields...)
 }
 
@@ -379,6 +440,7 @@ func (m *Module) probeLoop(ctx context.Context, log *slog.Logger) {
 	// collapsing the shell's post-cycle delay and probing back to back.
 	timer := time.NewTimer(m.cfg.Interval)
 	defer timer.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -398,11 +460,7 @@ func (m *Module) probeLoop(ctx context.Context, log *slog.Logger) {
 func (m *Module) runCycleGuarded(ctx context.Context, log *slog.Logger) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			log.ErrorContext(
-				ctx,
-				"health: probe cycle panicked",
-				"err", fmt.Sprint(recovered),
-			)
+			log.ErrorContext(ctx, "health: probe cycle panicked", "err", fmt.Sprint(recovered))
 		}
 	}()
 	if err := m.runCycle(ctx, log); err != nil {
@@ -418,6 +476,7 @@ func (m *Module) runCycle(ctx context.Context, log *slog.Logger) error {
 	transitions := make([]transition, 0, len(m.cfg.WANs))
 	results := make(map[string]probeResult, len(m.cfg.WANs))
 	familyChanged := false
+
 	for _, wan := range m.cfg.WANs {
 		result := m.probeWAN(ctx, wan, log)
 		results[wan.Key()] = result
@@ -431,37 +490,56 @@ func (m *Module) runCycle(ctx context.Context, log *slog.Logger) error {
 		nextStatuses[wan.Key()] = next
 		familyChanged = m.advanceFamilies(wan, result) || familyChanged
 		if changed {
-			transitions = append(transitions, transition{
-				WAN: wan, From: current.State, To: next.State,
-			})
+			transitions = append(
+				transitions,
+				transition{
+					WAN:  wan,
+					From: current.State,
+					To:   next.State,
+				},
+			)
 			// The clock is set by the constructor; a test that builds the
 			// struct bare records the transition without its timestamp.
 			if m.clock != nil {
 				if m.lastTransition == nil {
 					m.lastTransition = map[string]time.Time{}
 				}
+
 				m.lastTransition[wan.Key()] = m.clock.Now()
 			}
 		}
+
 		log.DebugContext(
 			ctx,
 			"health: probe result",
-			"wan", wan.Key(),
-			"iface", wan.Iface,
-			"passed", result.Passed,
-			"v6_successes", result.V6Successes,
-			"v4_successes", result.V4Successes,
-			"http6_successes", result.HTTP6Successes,
-			"http4_successes", result.HTTP4Successes,
-			"state", next.State,
-			"ok_count", next.OKCount,
-			"fail_count", next.FailCount,
+			"wan",
+			wan.Key(),
+			"iface",
+			wan.Iface,
+			"passed",
+			result.Passed,
+			"v6_successes",
+			result.V6Successes,
+			"v4_successes",
+			result.V4Successes,
+			"http6_successes",
+			result.HTTP6Successes,
+			"http4_successes",
+			result.HTTP4Successes,
+			"state",
+			next.State,
+			"ok_count",
+			next.OKCount,
+			"fail_count",
+			next.FailCount,
 		)
 	}
+
 	if err := m.writeStateFile(ctx, log, nextStatuses); err != nil {
 		log.WarnContext(ctx, "health: write state file failed", "err", err)
 		return fmt.Errorf("health: write state file: %w", err)
 	}
+
 	m.Lock()
 	m.statuses = nextStatuses
 	m.Unlock()
@@ -470,10 +548,12 @@ func (m *Module) runCycle(ctx context.Context, log *slog.Logger) error {
 	if familyChanged && m.Env != nil && m.Env.RequestReconcile != nil {
 		m.Env.RequestReconcile("health address family verdict changed")
 	}
+
 	// One push per cycle, after the transitions are committed, so a verdict
 	// change reaches the watchdog in the cycle that made it and a transition
 	// cycle never sends the same thing twice.
 	m.pushStatus(ctx, nextStatuses)
+
 	return nil
 }
 
@@ -490,6 +570,7 @@ func (m *Module) publishLiveState(
 	if m.Env == nil || m.Env.LiveState == nil {
 		return
 	}
+
 	members := make(map[string]wanstate.MemberHealth, len(m.cfg.WANs))
 	for _, wan := range m.cfg.WANs {
 		status := statuses[wan.Key()]
@@ -505,17 +586,21 @@ func (m *Module) publishLiveState(
 		if status.FailCount > 0 && status.FailCount <= math.MaxUint32 {
 			member.ConsecutiveFailures = uint32(status.FailCount)
 		}
+
 		if result, ran := results[wan.Key()]; ran {
 			threshold := wan.successThreshold(m.cfg)
 			if result.V6Probed {
 				member.V6 = legResult(result.V6Successes, result.HTTP6Successes, threshold)
 			}
+
 			if result.V4Probed {
 				member.V4 = legResult(result.V4Successes, result.HTTP4Successes, threshold)
 			}
 		}
+
 		members[wan.Key()] = member
 	}
+
 	m.Env.LiveState.SetHealth(members)
 }
 
@@ -526,14 +611,17 @@ func (m *Module) pushStatus(ctx context.Context, statuses map[string]wanStatus) 
 	if m.pusher == nil {
 		return
 	}
+
 	states := make(netif.HealthStates, len(m.cfg.WANs))
 	for _, wan := range m.cfg.WANs {
 		state := StateUnknown
 		if status, ok := statuses[wan.Key()]; ok && status.State.Valid() {
 			state = status.State
 		}
+
 		states[wan.Key()] = string(state)
 	}
+
 	m.pusher.Send(ctx, statuspush.NewStatus(m.now(), m.cfg.TierMembers(), states))
 }
 
@@ -548,6 +636,7 @@ func verdictOf(state State) wanstate.Health {
 	case StateUnknown:
 		return wanstate.HealthUnknown
 	}
+
 	return wanstate.HealthUnknown
 }
 
@@ -556,6 +645,7 @@ func legResult(pingSuccesses int, httpSuccesses int, threshold int) wanstate.Pro
 	if pingSuccesses >= threshold || httpSuccesses >= 1 {
 		return wanstate.ProbePass
 	}
+
 	return wanstate.ProbeFail
 }
 
@@ -587,10 +677,12 @@ func (m *Module) probeWAN(ctx context.Context, wan WAN, log *slog.Logger) probeR
 		result.V6Successes = m.probeTargets(ctx, wan, v6Targets, m.probeV6)
 		result.HTTP6Successes = m.probeHTTPURLs(ctx, wan, "inet6", m.probeHTTP6, log)
 	}
+
 	if v4Probed {
 		result.V4Successes = m.probeTargets(ctx, wan, v4Targets, m.probeV4)
 		result.HTTP4Successes = m.probeHTTPURLs(ctx, wan, "inet", m.probeHTTP4, log)
 	}
+
 	// Verdict matches health-check.sh check_wan_health: each address family the
 	// provider carries forms its own leg (ping threshold OR at least one HTTP
 	// success in that family), and the WAN is healthy when the IPv6 leg
@@ -607,6 +699,7 @@ func (m *Module) probeWAN(ctx context.Context, wan WAN, log *slog.Logger) probeR
 		(result.V4Successes >= successThreshold || result.HTTP4Successes >= 1)
 	result.V6Passed, result.V4Passed = v6Passed, v4Passed
 	result.Passed = v6Passed || v4Passed
+
 	return result
 }
 
@@ -620,24 +713,34 @@ func (m *Module) probeHTTPURLs(
 	log *slog.Logger,
 ) int {
 	successes := 0
+
 	for _, url := range wan.httpURLs(m.cfg) {
 		statusCode, err := probe(ctx, wan.Iface, url, m.cfg.Timeout)
 		reachable := err == nil
 		if reachable {
 			successes++
 		}
+
 		log.DebugContext(
 			ctx,
 			"health: HTTP probe result",
-			"wan", wan.Key(),
-			"iface", wan.Iface,
-			"family", family,
-			"url", url,
-			"status_code", statusCode,
-			"reachable", reachable,
-			"err", err,
+			"wan",
+			wan.Key(),
+			"iface",
+			wan.Iface,
+			"family",
+			family,
+			"url",
+			url,
+			"status_code",
+			statusCode,
+			"reachable",
+			reachable,
+			"err",
+			err,
 		)
 	}
+
 	return successes
 }
 
@@ -648,28 +751,34 @@ func (m *Module) probeTargets(
 	probe pingFunc,
 ) int {
 	successes := 0
+
 	for _, target := range targets {
 		targetReached := false
+
 		for range wan.pingCount(m.cfg) {
 			if _, err := probe(ctx, wan.Iface, target, m.cfg.Timeout); err == nil {
 				targetReached = true
 			}
 		}
+
 		if targetReached {
 			successes++
 		}
 	}
+
 	return successes
 }
 
 func (m *Module) anyUnknown() bool {
 	m.Lock()
 	defer m.Unlock()
+
 	for _, status := range m.statuses {
 		if status.State == StateUnknown {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -679,6 +788,7 @@ func (m *Module) snapshotStatuses() map[string]wanStatus {
 
 	statuses := make(map[string]wanStatus, len(m.statuses))
 	maps.Copy(statuses, m.statuses)
+
 	return statuses
 }
 
@@ -688,6 +798,7 @@ func (m *Module) now() time.Time {
 	if m.clock == nil {
 		return internalclock.Real{}.Now()
 	}
+
 	return m.clock.Now()
 }
 
@@ -711,6 +822,7 @@ func advanceHealth(
 			next.State = StateUnhealthy
 		}
 	}
+
 	return next, next.State != current.State
 }
 
@@ -732,10 +844,14 @@ func (m *Module) emitTransition(
 	log.InfoContext(
 		ctx,
 		"health: WAN state transition",
-		"wan", event.WAN.Name,
-		"iface", event.WAN.Iface,
-		"from", event.From,
-		"to", event.To,
+		"wan",
+		event.WAN.Name,
+		"iface",
+		event.WAN.Iface,
+		"from",
+		event.From,
+		"to",
+		event.To,
 	)
 	// The management surface streams the committed transition, so a
 	// subscriber learns of it at the moment it happens rather than on the
@@ -745,9 +861,12 @@ func (m *Module) emitTransition(
 	// transition that caused it.
 	if m.Env != nil && m.Env.LiveState != nil {
 		m.Env.LiveState.NotifyHealthTransition(
-			event.WAN.Key(), verdictOf(event.From), verdictOf(event.To),
+			event.WAN.Key(),
+			verdictOf(event.From),
+			verdictOf(event.To),
 		)
 	}
+
 	// A health transition changes routing eligibility, so ask the daemon to
 	// reconcile now rather than wait for the periodic tick; this makes
 	// wan.routes failover event-driven.
@@ -756,9 +875,11 @@ func (m *Module) emitTransition(
 			"health " + event.WAN.Name + " " + string(event.From) + "->" + string(event.To),
 		)
 	}
+
 	if m.Env == nil || m.Env.Alerts == nil {
 		return
 	}
+
 	now := m.clock.Now()
 	if event.To == StateUnhealthy {
 		// Alert even from the unknown warmup state: a WAN that is broken from
@@ -773,14 +894,17 @@ func (m *Module) emitTransition(
 			"health: WAN became unhealthy",
 			slog.String("iface", event.WAN.Iface),
 		)
+
 		return
 	}
+
 	if event.To == StateHealthy {
 		// An unknown-to-healthy transition has no prior alert to resolve, so skip
 		// the no-op resolve rather than emitting a spurious recovery.
 		if event.From == StateUnknown {
 			return
 		}
+
 		m.Env.Alerts.ResolveContext(
 			ctx,
 			now,

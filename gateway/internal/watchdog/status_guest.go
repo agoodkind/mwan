@@ -44,16 +44,27 @@ func (s *GuestStatusSource) Latest() (statuspush.Status, time.Time, bool) {
 		s.log.WarnContext(ctx, "guest status command failed", "vmid", s.vmid, "err", err)
 		return none, time.Time{}, false
 	}
+
 	if result.ExitCode != 0 {
-		s.log.WarnContext(ctx, "guest status command exited non-zero",
-			"vmid", s.vmid, "exit_code", result.ExitCode,
-			"stderr", strings.TrimSpace(result.Stderr))
+		s.log.WarnContext(
+			ctx,
+			"guest status command exited non-zero",
+			"vmid",
+			s.vmid,
+			"exit_code",
+			result.ExitCode,
+			"stderr",
+			strings.TrimSpace(result.Stderr),
+		)
+
 		return none, time.Time{}, false
 	}
+
 	status, err := statuspush.UnmarshalStatus([]byte(result.Stdout))
 	if err != nil {
 		s.log.WarnContext(ctx, "guest status output rejected", "vmid", s.vmid, "err", err)
 		return none, time.Time{}, false
 	}
+
 	return status, s.now(), true
 }

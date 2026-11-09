@@ -250,6 +250,7 @@ func (t *IPv6Translation) PolicySource() (bool, bool, netip.Prefix) {
 	if t == nil || t.Mode != TranslationNPTv6 || t.NPT == nil {
 		return false, false, netip.Prefix{}
 	}
+
 	return true, t.NPT.ExternalSource == PrefixConfigured, t.NPT.ExternalPrefix
 }
 
@@ -300,15 +301,21 @@ func (section IfMgrHealthSection) ParseMaxStateAge() (time.Duration, bool, error
 	if section.MaxStateAge == "" {
 		return 0, false, nil
 	}
+
 	maxAge, err := time.ParseDuration(section.MaxStateAge)
 	if err != nil {
 		slog.Warn("health max_state_age rejected", "value", section.MaxStateAge, "err", err)
 		return 0, true, fmt.Errorf("max_state_age %q: %w", section.MaxStateAge, err)
 	}
+
 	if maxAge <= 0 {
 		slog.Warn("health max_state_age rejected", "value", section.MaxStateAge)
-		return 0, true, fmt.Errorf("max_state_age %q must be greater than zero", section.MaxStateAge)
+		return 0, true, fmt.Errorf(
+			"max_state_age %q must be greater than zero",
+			section.MaxStateAge,
+		)
 	}
+
 	return maxAge, true, nil
 }
 

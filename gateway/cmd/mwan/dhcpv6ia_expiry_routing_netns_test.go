@@ -11,7 +11,11 @@ import (
 )
 
 func dhcpv6ExpiryMissingRouting() string {
-	routes, err := netlink.RouteListFiltered(netlink.FAMILY_V6, &netlink.Route{Table: dhcpv6ExpiryWANTable}, netlink.RT_FILTER_TABLE)
+	routes, err := netlink.RouteListFiltered(
+		netlink.FAMILY_V6,
+		&netlink.Route{Table: dhcpv6ExpiryWANTable},
+		netlink.RT_FILTER_TABLE,
+	)
 	if err != nil {
 		return "table route list: " + err.Error()
 	}

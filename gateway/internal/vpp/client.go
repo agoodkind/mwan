@@ -32,15 +32,22 @@ func (settings Endpoints) Validate() error {
 	if !filepath.IsAbs(settings.APISocket) {
 		return fmt.Errorf("VPP api_socket must be an absolute path")
 	}
+
 	if !filepath.IsAbs(settings.StatsSocket) {
 		return fmt.Errorf("VPP stats_socket must be an absolute path")
 	}
+
 	if settings.ExpectedVersion != BindingVersion {
-		return fmt.Errorf("VPP expected_version must be %s for the compiled binary API bindings", BindingVersion)
+		return fmt.Errorf(
+			"VPP expected_version must be %s for the compiled binary API bindings",
+			BindingVersion,
+		)
 	}
+
 	if settings.Timeout <= 0 {
 		return fmt.Errorf("VPP request_timeout must be positive")
 	}
+
 	return nil
 }
 
@@ -51,29 +58,55 @@ type Client struct {
 }
 
 // Open requires the configured process version and compiled API bindings to agree.
-func Open(ctx context.Context, settings Endpoints, messages ...api.Message) (result *Client, failure error) {
+func Open(
+	ctx context.Context,
+	settings Endpoints,
+	messages ...api.Message,
+) (result *Client, failure error) {
 	defer func() {
 		if failure != nil {
-			slog.ErrorContext(ctx, "open VPP binary API connection failed", "socket", settings.APISocket, "error", failure)
+			slog.ErrorContext(
+				ctx,
+				"open VPP binary API connection failed",
+				"socket",
+				settings.APISocket,
+				"error",
+				failure,
+			)
 		}
 	}()
 	if err := settings.Validate(); err != nil {
 		return nil, err
 	}
+
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("connect VPP API %s: %w", settings.APISocket, err)
 	}
+
 	socket := socketclient.NewVppClient(settings.APISocket)
 	socket.SetConnectTimeout(settings.Timeout)
 	connection, err := core.Connect(socket)
 	if err != nil {
 		return nil, fmt.Errorf("connect VPP API %s: %w", settings.APISocket, err)
 	}
-	messages = append(messages, &vpe.ShowVersion{}, &vpe.ShowVersionReply{}, &memclnt.ControlPing{}, &memclnt.ControlPingReply{})
+
+	messages = append(
+		messages,
+		&vpe.ShowVersion{},
+		&vpe.ShowVersionReply{},
+		&memclnt.ControlPing{},
+		&memclnt.ControlPingReply{},
+	)
 	if err := connection.CheckCompatibility(messages...); err != nil {
 		connection.Disconnect()
-		return nil, fmt.Errorf("VPP API %s is incompatible with %s bindings: %w", settings.APISocket, BindingVersion, err)
+		return nil, fmt.Errorf(
+			"VPP API %s is incompatible with %s bindings: %w",
+			settings.APISocket,
+			BindingVersion,
+			err,
+		)
 	}
+
 	requestContext, cancel := context.WithTimeout(ctx, settings.Timeout)
 	defer cancel()
 	version, err := vpe.NewServiceClient(connection).ShowVersion(requestContext, &vpe.ShowVersion{})
@@ -81,14 +114,21 @@ func Open(ctx context.Context, settings Endpoints, messages ...api.Message) (res
 		connection.Disconnect()
 		return nil, fmt.Errorf("read VPP version from %s: %w", settings.APISocket, err)
 	}
+
 	// VPP adds an implicit .0 for builds after an initial release tag.
 	release, _, _ := strings.Cut(version.Version, "-")
 	point, hasPoint := strings.CutPrefix(release, settings.ExpectedVersion+".")
 	validPoint := hasPoint && point != "" && strings.Trim(point, "0123456789") == ""
 	if release != settings.ExpectedVersion && !validPoint {
 		connection.Disconnect()
-		return nil, fmt.Errorf("VPP API %s reports version %q; expected %s", settings.APISocket, version.Version, settings.ExpectedVersion)
+		return nil, fmt.Errorf(
+			"VPP API %s reports version %q; expected %s",
+			settings.APISocket,
+			version.Version,
+			settings.ExpectedVersion,
+		)
 	}
+
 	return &Client{connection: connection, settings: settings}, nil
 }
 

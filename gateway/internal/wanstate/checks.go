@@ -30,6 +30,7 @@ func (s *Store) ConfigureCheck(spec contract.CheckSpec, intervalSeconds int) err
 		slog.Error("observation definition could not be copied", "check_id", spec.ID, "err", err)
 		return fmt.Errorf("copy configured observation: %w", err)
 	}
+
 	var initial contract.Result
 	initial.CheckID = spec.ID
 	initial.Dimension = spec.Dimension
@@ -41,8 +42,14 @@ func (s *Store) ConfigureCheck(spec contract.CheckSpec, intervalSeconds int) err
 	initial.Outcome = contract.OutcomeUnknown
 	initial.Reason = "no observation completed"
 	s.mu.Lock()
-	s.checks[spec.ID] = CheckState{Check: copied, IntervalSeconds: intervalSeconds, Recent: nil, Result: initial}
+	s.checks[spec.ID] = CheckState{
+		Check:           copied,
+		IntervalSeconds: intervalSeconds,
+		Recent:          nil,
+		Result:          initial,
+	}
 	s.mu.Unlock()
+
 	return nil
 }
 
@@ -53,11 +60,13 @@ func (s *Store) RecordCheck(spec contract.CheckSpec, result contract.Result) err
 		slog.Error("observation definition could not be copied", "check_id", spec.ID, "err", err)
 		return fmt.Errorf("copy check definition: %w", err)
 	}
+
 	copied, err := contract.CloneResult(result)
 	if err != nil {
 		slog.Error("observation result could not be copied", "check_id", spec.ID, "err", err)
 		return fmt.Errorf("copy check result: %w", err)
 	}
+
 	s.mu.Lock()
 	current := s.checks[spec.ID]
 	previous := string(current.Result.Availability) + "/" + string(current.Result.Outcome)
@@ -65,29 +74,51 @@ func (s *Store) RecordCheck(spec contract.CheckSpec, result contract.Result) err
 		last := current.Recent[len(current.Recent)-1].Result
 		previous = string(last.Availability) + "/" + string(last.Outcome)
 	}
+
 	verdict := string(copied.Availability) + "/" + string(copied.Outcome)
 	var transition *CheckTransition
 	if previous != verdict {
 		s.transitionSequence++
-		value := CheckTransition{ID: fmt.Sprintf("%s:%d", s.runID, s.transitionSequence), Previous: previous, Result: copied}
+		value := CheckTransition{
+			ID:       fmt.Sprintf("%s:%d", s.runID, s.transitionSequence),
+			Previous: previous,
+			Result:   copied,
+		}
 		current.Recent = append(current.Recent, value)
 		if len(current.Recent) > RecentTransitionLimit {
-			current.Recent = slices.Clone(current.Recent[len(current.Recent)-RecentTransitionLimit:])
+			current.Recent = slices.Clone(
+				current.Recent[len(current.Recent)-RecentTransitionLimit:],
+			)
 		}
+
 		transition = &value
 	}
+
 	current.Check = check
 	// Freshness events retain the completed reply in storage; reads classify a copy.
 	if copied.Availability != contract.AvailabilityStale || current.Result.ObservedAt.IsZero() {
 		current.Result = copied
 	}
+
 	s.checks[spec.ID] = current
 	logger := s.transitionLog
 	s.mu.Unlock()
 	if transition != nil && logger != nil {
-		logger.Info("application observation transition", "transition_id", transition.ID, "previous", transition.Previous,
-			"check_id", spec.ID, "connection_id", spec.ConnectionID, "result", transition.Result)
+		logger.Info(
+			"application observation transition",
+			"transition_id",
+			transition.ID,
+			"previous",
+			transition.Previous,
+			"check_id",
+			spec.ID,
+			"connection_id",
+			spec.ConnectionID,
+			"result",
+			transition.Result,
+		)
 	}
+
 	return nil
 }
 
@@ -95,22 +126,52 @@ func cloneCheckState(value CheckState) (CheckState, error) {
 	var copied CheckState
 	check, err := contract.CloneCheck(value.Check)
 	if err != nil {
-		slog.Error("stored observation definition could not be copied", "check_id", value.Check.ID, "err", err)
+		slog.Error(
+			"stored observation definition could not be copied",
+			"check_id",
+			value.Check.ID,
+			"err",
+			err,
+		)
 		return copied, fmt.Errorf("copy stored observation definition: %w", err)
 	}
+
 	result, err := contract.CloneResult(value.Result)
 	if err != nil {
-		slog.Error("stored observation result could not be copied", "check_id", value.Check.ID, "err", err)
+		slog.Error(
+			"stored observation result could not be copied",
+			"check_id",
+			value.Check.ID,
+			"err",
+			err,
+		)
 		return copied, fmt.Errorf("copy stored observation result: %w", err)
 	}
-	copied = CheckState{Check: check, Result: result, IntervalSeconds: value.IntervalSeconds, Recent: make([]CheckTransition, 0, len(value.Recent))}
+
+	copied = CheckState{
+		Check:           check,
+		Result:          result,
+		IntervalSeconds: value.IntervalSeconds,
+		Recent:          make([]CheckTransition, 0, len(value.Recent)),
+	}
 	for _, transition := range value.Recent {
 		result, err := contract.CloneResult(transition.Result)
 		if err != nil {
-			slog.Error("stored observation transition could not be copied", "check_id", value.Check.ID, "err", err)
+			slog.Error(
+				"stored observation transition could not be copied",
+				"check_id",
+				value.Check.ID,
+				"err",
+				err,
+			)
 			return copied, fmt.Errorf("copy stored observation transition: %w", err)
 		}
-		copied.Recent = append(copied.Recent, CheckTransition{ID: transition.ID, Previous: transition.Previous, Result: result})
+
+		copied.Recent = append(
+			copied.Recent,
+			CheckTransition{ID: transition.ID, Previous: transition.Previous, Result: result},
+		)
 	}
+
 	return copied, nil
 }

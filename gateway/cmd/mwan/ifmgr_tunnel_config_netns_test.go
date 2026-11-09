@@ -27,10 +27,13 @@ func tunnelRuntimeNetwork(withTunnel bool) string {
 			`"goodkind-mwan-steering:steering":{"tier":0,"weight":1}}`,
 	}
 	if withTunnel {
-		entries = append(entries,
+		entries = append(
+			entries,
 			`{"name":"`+tunnelRuntimeDevice+`","type":"iana-if-type:tunnel",`+
 				`"goodkind-mwan-steering:connection-id":"tunnel-6in4","goodkind-mwan-steering:owner":"mwan",`+
-				`"goodkind-mwan-steering:link":{"mtu":`+fmt.Sprint(tunnelRuntimeMTU)+`,"tunnel":{"protocol":"6in4",`+
+				`"goodkind-mwan-steering:link":{"mtu":`+fmt.Sprint(
+				tunnelRuntimeMTU,
+			)+`,"tunnel":{"protocol":"6in4",`+
 				`"underlay":"`+tunnelRuntimeUnderlay+`","remote-address":"`+tunnelRuntimeRemote+`",`+
 				`"local-address":"`+tunnelRuntimeLocal+`","ttl":64}},`+
 				`"ietf-ip:ipv6":{"address":[{"ip":"`+tunnelRuntimeInnerLocal+`","prefix-length":64}],`+
@@ -38,11 +41,14 @@ func tunnelRuntimeNetwork(withTunnel bool) string {
 				`"goodkind-mwan-steering:translation":{"mode":"native"}},`+
 				`"goodkind-mwan-steering:wan":{"name":"tunnel","table-id":200,"fw-mark":2,"fw-mark-prio":200,"from-prio":56,`+
 				`"health":{`+probe+`,"targets-v6":["`+tunnelRuntimeRemoteClient+`"]}},`+
-				`"goodkind-mwan-steering:steering":{"tier":0,"weight":1}}`)
+				`"goodkind-mwan-steering:steering":{"tier":0,"weight":1}}`,
+		)
 	}
-	entries = append(entries,
+	entries = append(
+		entries,
 		`{"name":"enmwanbr0","type":"iana-if-type:other"}`,
-		`{"name":"enmgmt0","type":"iana-if-type:other"}`)
+		`{"name":"enmgmt0","type":"iana-if-type:other"}`,
+	)
 	return `{"ietf-interfaces:interfaces":{"interface":[` + strings.Join(entries, ",") + `],` +
 		`"goodkind-mwan-steering:steering-group":{"hash-mode":"source","reserved-tables":[400,500],` +
 		`"translation":{"internal-prefix":"2001:db8:b01::/60","opnsense-edge-v6":"` + tunnelRuntimeClientV6 + `",` +
@@ -55,7 +61,11 @@ func tunnelRuntimeNetwork(withTunnel bool) string {
 
 func writeTunnelRuntimeNetwork(t *testing.T, directory string, withTunnel bool) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(directory, "network.json"), []byte(tunnelRuntimeNetwork(withTunnel)), 0o600); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(directory, "network.json"),
+		[]byte(tunnelRuntimeNetwork(withTunnel)),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -65,8 +75,27 @@ func setTunnelRuntimeFault(t *testing.T, topology tunnelRuntimeTopology, dropped
 	setRuntimeNamespace(t, topology.endpoint)
 	if dropped {
 		runRuntimeNFT(t, "add", "table", "ip", tunnelRuntimeFaultTable)
-		runRuntimeNFT(t, "add", "chain", "ip", tunnelRuntimeFaultTable, "input", "{ type filter hook input priority 0; }")
-		runRuntimeNFT(t, "add", "rule", "ip", tunnelRuntimeFaultTable, "input", "ip", "protocol", fmt.Sprint(tunnelRuntimeProtocol41), "drop")
+		runRuntimeNFT(
+			t,
+			"add",
+			"chain",
+			"ip",
+			tunnelRuntimeFaultTable,
+			"input",
+			"{ type filter hook input priority 0; }",
+		)
+		runRuntimeNFT(
+			t,
+			"add",
+			"rule",
+			"ip",
+			tunnelRuntimeFaultTable,
+			"input",
+			"ip",
+			"protocol",
+			fmt.Sprint(tunnelRuntimeProtocol41),
+			"drop",
+		)
 	} else {
 		runRuntimeNFT(t, "delete", "table", "ip", tunnelRuntimeFaultTable)
 	}

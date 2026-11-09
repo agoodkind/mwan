@@ -35,7 +35,10 @@ func (worker *NativeRuntime) unregisterEvidence(handle NativePairHandle) {
 	}
 }
 
-func (worker *NativeRuntime) registerEvidence(handle NativePairHandle, evidence *NativeEvidenceGuard) {
+func (worker *NativeRuntime) registerEvidence(
+	handle NativePairHandle,
+	evidence *NativeEvidenceGuard,
+) {
 	worker.unregisterEvidence(handle)
 	if worker.evidence[evidence] == nil {
 		worker.evidence[evidence] = make(map[NativePairHandle]struct{})
@@ -69,8 +72,15 @@ func (worker *NativeRuntime) retireInvalidEvidence(owner *C.struct_mwan_native) 
 	return failures
 }
 
-func (worker *NativeRuntime) poll(owner *C.struct_mwan_native, stats *C.struct_mwan_native_worker_stats, detail *C.struct_mwan_native_error) (bool, error) {
-	if err := errors.Join(worker.retireInvalidEvidence(owner), worker.retireInvalidVXLANEvidence(owner)); err != nil {
+func (worker *NativeRuntime) poll(
+	owner *C.struct_mwan_native,
+	stats *C.struct_mwan_native_worker_stats,
+	detail *C.struct_mwan_native_error,
+) (bool, error) {
+	if err := errors.Join(
+		worker.retireInvalidEvidence(owner),
+		worker.retireInvalidVXLANEvidence(owner),
+	); err != nil {
 		worker.mu.Lock()
 		worker.pollError = err
 		worker.mu.Unlock()

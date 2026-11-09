@@ -54,7 +54,9 @@ func loadEmbedded(t *testing.T) *yangschema.Schema {
 	if err != nil {
 		t.Fatalf("LoadEmbedded: %v", err)
 	}
+
 	t.Cleanup(loaded.Close)
+
 	return loaded
 }
 
@@ -64,22 +66,27 @@ func loadFromPath(t *testing.T) *yangschema.Schema {
 	if err != nil {
 		t.Fatalf("LoadSchema: %v", err)
 	}
+
 	t.Cleanup(loaded.Close)
+
 	return loaded
 }
 
 func writeSchemaDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
+
 	for _, module := range schema.Modules() {
 		content, err := schema.Read(module.File)
 		if err != nil {
 			t.Fatalf("read the embedded module: %v", err)
 		}
+
 		if err := os.WriteFile(filepath.Join(dir, module.File), content, 0o600); err != nil {
 			t.Fatalf("write %s: %v", module.File, err)
 		}
 	}
+
 	return dir
 }
 
@@ -89,6 +96,7 @@ func readNetworkMin(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("read %s: %v", networkMinPath, err)
 	}
+
 	return string(data)
 }
 
@@ -97,6 +105,7 @@ func replaceOnce(t *testing.T, base string, old string, replacement string) stri
 	if count := strings.Count(base, old); count != 1 {
 		t.Fatalf("edit target %q occurs %d times, want 1", old, count)
 	}
+
 	return strings.Replace(base, old, replacement, 1)
 }
 
@@ -106,33 +115,42 @@ func entryNames(t *testing.T, dir string) []string {
 	if err != nil {
 		t.Fatalf("read %s: %v", dir, err)
 	}
+
 	names := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		names = append(names, entry.Name())
 	}
+
 	return names
 }
 
 func TestSchemasAcceptNetworkMin(t *testing.T) {
 	document := readNetworkMin(t)
+
 	for _, loader := range schemaLoaders() {
-		t.Run(loader.name, func(t *testing.T) {
-			loaded := loader.load(t)
-			if err := loaded.ValidateConfigJSON([]byte(document)); err != nil {
-				t.Fatalf("ValidateConfigJSON rejected %s: %v", networkMinPath, err)
-			}
-		})
+		t.Run(
+			loader.name,
+			func(t *testing.T) {
+				loaded := loader.load(t)
+				if err := loaded.ValidateConfigJSON([]byte(document)); err != nil {
+					t.Fatalf("ValidateConfigJSON rejected %s: %v", networkMinPath, err)
+				}
+			},
+		)
 	}
 }
 
 func TestSchemasAcceptADocumentWithoutOptionalContainers(t *testing.T) {
 	for _, loader := range schemaLoaders() {
-		t.Run(loader.name, func(t *testing.T) {
-			loaded := loader.load(t)
-			if err := loaded.ValidateConfigJSON([]byte(`{}`)); err != nil {
-				t.Fatalf("ValidateConfigJSON rejected an empty document: %v", err)
-			}
-		})
+		t.Run(
+			loader.name,
+			func(t *testing.T) {
+				loaded := loader.load(t)
+				if err := loaded.ValidateConfigJSON([]byte(`{}`)); err != nil {
+					t.Fatalf("ValidateConfigJSON rejected an empty document: %v", err)
+				}
+			},
+		)
 	}
 }
 
@@ -181,38 +199,52 @@ func TestSchemasRejectSchemaViolations(t *testing.T) {
 			message:     "oper-status",
 		},
 	}
+
 	for _, loader := range schemaLoaders() {
 		for _, testCase := range cases {
-			t.Run(loader.name+"/"+testCase.name, func(t *testing.T) {
-				loaded := loader.load(t)
-				document := replaceOnce(t, base, testCase.old, testCase.replacement)
-				err := loaded.ValidateConfigJSON([]byte(document))
-				if err == nil {
-					t.Fatal("ValidateConfigJSON accepted the document")
-				}
-				if !strings.Contains(err.Error(), testCase.message) {
-					t.Fatalf("error = %q, want it to contain %q", err, testCase.message)
-				}
-			})
+			t.Run(
+				loader.name+"/"+testCase.name,
+				func(t *testing.T) {
+					loaded := loader.load(t)
+					document := replaceOnce(t, base, testCase.old, testCase.replacement)
+					err := loaded.ValidateConfigJSON([]byte(document))
+					if err == nil {
+						t.Fatal("ValidateConfigJSON accepted the document")
+					}
+
+					if !strings.Contains(err.Error(), testCase.message) {
+						t.Fatalf("error = %q, want it to contain %q", err, testCase.message)
+					}
+				},
+			)
 		}
 	}
 }
 
 func TestClosedSchemaRejectsValidation(t *testing.T) {
 	document := []byte(readNetworkMin(t))
+
 	for _, loader := range schemaLoaders() {
-		t.Run(loader.name, func(t *testing.T) {
-			loaded := loader.load(t)
-			if err := loaded.ValidateConfigJSON(document); err != nil {
-				t.Fatalf("ValidateConfigJSON before Close: %v", err)
-			}
-			loaded.Close()
-			loaded.Close()
-			if err := loaded.ValidateConfigJSON(document); !errors.Is(err, yangschema.ErrSchemaClosed) {
-				t.Fatalf("error after Close = %v, want ErrSchemaClosed", err)
-			}
-		})
+		t.Run(
+			loader.name,
+			func(t *testing.T) {
+				loaded := loader.load(t)
+				if err := loaded.ValidateConfigJSON(document); err != nil {
+					t.Fatalf("ValidateConfigJSON before Close: %v", err)
+				}
+
+				loaded.Close()
+				loaded.Close()
+				if err := loaded.ValidateConfigJSON(document); !errors.Is(
+					err,
+					yangschema.ErrSchemaClosed,
+				) {
+					t.Fatalf("error after Close = %v, want ErrSchemaClosed", err)
+				}
+			},
+		)
 	}
+
 	var absent *yangschema.Schema
 	absent.Close()
 	if err := absent.ValidateConfigJSON(document); !errors.Is(err, yangschema.ErrSchemaClosed) {
@@ -231,9 +263,11 @@ func TestLoadEmbeddedRemovesItsTemporaryDirectoryOnClose(t *testing.T) {
 	if names := entryNames(t, tempRoot); len(names) != 1 {
 		t.Fatalf("temporary root entries while open = %v, want one schema directory", names)
 	}
+
 	if err := loaded.ValidateConfigJSON([]byte(readNetworkMin(t))); err != nil {
 		t.Fatalf("ValidateConfigJSON: %v", err)
 	}
+
 	loaded.Close()
 	if names := entryNames(t, tempRoot); len(names) != 0 {
 		t.Fatalf("temporary root entries after Close = %v, want none", names)
@@ -248,9 +282,11 @@ func TestLoadEmbeddedReportsAnUnusableTemporaryRoot(t *testing.T) {
 		loaded.Close()
 		t.Fatal("LoadEmbedded succeeded without a temporary root")
 	}
+
 	if loaded != nil {
 		t.Fatalf("LoadEmbedded returned a schema with error %v", err)
 	}
+
 	if !strings.Contains(err.Error(), tempRoot) {
 		t.Fatalf("error = %q, want it to contain %q", err, tempRoot)
 	}
@@ -260,9 +296,14 @@ func TestLoadSchemaFailureReturnsNoSchema(t *testing.T) {
 	emptyDir := t.TempDir()
 	corrupt := writeSchemaDir(t)
 	corruptModule := filepath.Join(corrupt, schema.SteeringFile)
-	if err := os.WriteFile(corruptModule, []byte("module goodkind-mwan-steering {"), 0o600); err != nil {
+	if err := os.WriteFile(
+		corruptModule,
+		[]byte("module goodkind-mwan-steering {"),
+		0o600,
+	); err != nil {
 		t.Fatalf("write %s: %v", corruptModule, err)
 	}
+
 	cases := []struct {
 		name    string
 		dir     string
@@ -273,23 +314,29 @@ func TestLoadSchemaFailureReturnsNoSchema(t *testing.T) {
 		{name: "corrupt module", dir: corrupt, message: "goodkind-mwan-steering"},
 	}
 	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			loaded, err := yangschema.LoadSchema(testCase.dir)
-			if err == nil {
-				loaded.Close()
-				t.Fatal("LoadSchema succeeded")
-			}
-			if loaded != nil {
-				t.Fatalf("LoadSchema returned a schema with error %v", err)
-			}
-			if !strings.Contains(err.Error(), testCase.message) {
-				t.Fatalf("error = %q, want it to contain %q", err, testCase.message)
-			}
-			recovered := loadFromPath(t)
-			if err := recovered.ValidateConfigJSON([]byte(readNetworkMin(t))); err != nil {
-				t.Fatalf("ValidateConfigJSON after a failed load: %v", err)
-			}
-		})
+		t.Run(
+			testCase.name,
+			func(t *testing.T) {
+				loaded, err := yangschema.LoadSchema(testCase.dir)
+				if err == nil {
+					loaded.Close()
+					t.Fatal("LoadSchema succeeded")
+				}
+
+				if loaded != nil {
+					t.Fatalf("LoadSchema returned a schema with error %v", err)
+				}
+
+				if !strings.Contains(err.Error(), testCase.message) {
+					t.Fatalf("error = %q, want it to contain %q", err, testCase.message)
+				}
+
+				recovered := loadFromPath(t)
+				if err := recovered.ValidateConfigJSON([]byte(readNetworkMin(t))); err != nil {
+					t.Fatalf("ValidateConfigJSON after a failed load: %v", err)
+				}
+			},
+		)
 	}
 }
 
@@ -299,8 +346,10 @@ func TestRejectionsReturnTheMessageWithoutPrintingToStderr(t *testing.T) {
 		loaded := loadEmbedded(t)
 		validateErr := loaded.ValidateConfigJSON([]byte(rejectedDocument))
 		fmt.Fprintf(os.Stdout, "load: %v\nvalidate: %v\n", loadErr, validateErr)
+
 		return
 	}
+
 	command := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
 	command.Env = append(os.Environ(), rejectionChildEnv+"=1")
 	var stdout, stderr bytes.Buffer
@@ -309,10 +358,15 @@ func TestRejectionsReturnTheMessageWithoutPrintingToStderr(t *testing.T) {
 	if err := command.Run(); err != nil {
 		t.Fatalf("run the test binary: %v\nstderr: %s", err, stderr.String())
 	}
+
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q, want it empty", stderr.String())
 	}
-	for _, message := range []string{"load: yangschema: ly_ctx_new", `Node "no-such-leaf" not found`} {
+
+	for _, message := range []string{
+		"load: yangschema: ly_ctx_new",
+		`Node "no-such-leaf" not found`,
+	} {
 		if !strings.Contains(stdout.String(), message) {
 			t.Fatalf("stdout = %q, want it to contain %q", stdout.String(), message)
 		}
@@ -330,6 +384,7 @@ func TestValidateConfigJSONAlwaysReturnsTheMessage(t *testing.T) {
 		rounds     = 200
 	)
 	var wait sync.WaitGroup
+
 	failures := make(chan string, validators)
 	for i := 0; i < validators; i++ {
 		wait.Add(1)
@@ -341,12 +396,14 @@ func TestValidateConfigJSONAlwaysReturnsTheMessage(t *testing.T) {
 				return
 			}
 			defer loaded.Close()
+
 			for round := 0; round < rounds; round++ {
 				err := loaded.ValidateConfigJSON([]byte(rejectedDocument))
 				if err == nil {
 					failures <- "a document with an undefined leaf was accepted"
 					return
 				}
+
 				if !strings.Contains(err.Error(), "no-such-leaf") {
 					failures <- "rejection lost its message: " + err.Error()
 					return
@@ -354,8 +411,10 @@ func TestValidateConfigJSONAlwaysReturnsTheMessage(t *testing.T) {
 			}
 		}()
 	}
+
 	wait.Wait()
 	close(failures)
+
 	for failure := range failures {
 		t.Error(failure)
 	}

@@ -18,7 +18,13 @@ import (
 	"goodkind.io/mwan/internal/wanstate"
 )
 
-func markProofReadback(t *testing.T, ctx context.Context, writer ifmgr.Module, policy Config, snapshot wanstate.Snapshot) {
+func markProofReadback(
+	t *testing.T,
+	ctx context.Context,
+	writer ifmgr.Module,
+	policy Config,
+	snapshot wanstate.Snapshot,
+) {
 	t.Helper()
 	desired, err := CompilePolicy(policy, snapshot)
 	if err != nil {
@@ -35,7 +41,11 @@ func markProofReadback(t *testing.T, ctx context.Context, writer ifmgr.Module, p
 			t.Logf("rejected key=%v byte reversal: %v", reverseKey, err)
 		}
 		if err := writer.Reconcile(ctx, slog.Default()); err != nil {
-			t.Fatalf("restore production steering map after key=%v byte reversal: %v", reverseKey, err)
+			t.Fatalf(
+				"restore production steering map after key=%v byte reversal: %v",
+				reverseKey,
+				err,
+			)
 		}
 		if _, err := firewall.Inspect(ctx, desired); err != nil {
 			t.Fatalf("restored host-order steering map failed certification: %v", err)
@@ -81,7 +91,11 @@ func reverseSteeringMapBytes(t *testing.T, reverseKey bool) {
 		rules[0].Exprs[index] = &replacement
 		connection.ReplaceRule(rules[0])
 		if err := connection.Flush(); err != nil {
-			t.Fatalf("replace production steering map with key=%v byte reversal: %v", reverseKey, err)
+			t.Fatalf(
+				"replace production steering map with key=%v byte reversal: %v",
+				reverseKey,
+				err,
+			)
 		}
 		return
 	}
@@ -93,12 +107,22 @@ func reverseSteeringElements(t *testing.T, elements []nftables.SetElement, rever
 	for index := range elements {
 		element := &elements[index]
 		if len(element.Key) != 4 || len(element.Val) != 4 {
-			t.Fatalf("production steering map used an unexpected word width: key=%x value=%x", element.Key, element.Val)
+			t.Fatalf(
+				"production steering map used an unexpected word width: key=%x value=%x",
+				element.Key,
+				element.Val,
+			)
 		}
 		slot := binaryutil.NativeEndian.Uint32(element.Key)
 		mark := binaryutil.NativeEndian.Uint32(element.Val)
 		if slot >= 2 || mark != [2]uint32{markProofFirstMark, markProofSecondMark}[slot] {
-			t.Fatalf("production steering map changed native slot/mark bytes: slot=%d mark=%d key=%x value=%x", slot, mark, element.Key, element.Val)
+			t.Fatalf(
+				"production steering map changed native slot/mark bytes: slot=%d mark=%d key=%x value=%x",
+				slot,
+				mark,
+				element.Key,
+				element.Val,
+			)
 		}
 		if reverseKey {
 			element.Key = bytes.Clone(element.Key)

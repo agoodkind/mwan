@@ -38,7 +38,10 @@ func openBGPExpiryCapture(t *testing.T, topology bgpUpstreamRuntime) int {
 		t.Fatalf("open the VPS tunnel capture: %v", err)
 	}
 	t.Cleanup(func() { _ = unix.Close(fd) })
-	if err := unix.Bind(fd, &unix.SockaddrLinklayer{Protocol: protocol, Ifindex: link.Attrs().Index}); err != nil {
+	if err := unix.Bind(
+		fd,
+		&unix.SockaddrLinklayer{Protocol: protocol, Ifindex: link.Attrs().Index},
+	); err != nil {
 		t.Fatalf("bind the VPS tunnel capture: %v", err)
 	}
 	return fd
@@ -58,7 +61,8 @@ func bgpExpiryCaptured(t *testing.T, fd int, source, destination netip.Addr) boo
 		if err != nil {
 			t.Fatalf("read the VPS tunnel capture: %v", err)
 		}
-		if length < bgpExpiryFrame || buffer[bgpExpiryNextHeader] != bgpExpiryICMPv6 || buffer[bgpExpiryIPv6Header] != bgpExpiryTimeExceeded {
+		if length < bgpExpiryFrame || buffer[bgpExpiryNextHeader] != bgpExpiryICMPv6 ||
+			buffer[bgpExpiryIPv6Header] != bgpExpiryTimeExceeded {
 			continue
 		}
 		expired := buffer[bgpExpiryIPv6Header+bgpExpiryICMPv6Header:]
@@ -68,7 +72,8 @@ func bgpExpiryCaptured(t *testing.T, fd int, source, destination netip.Addr) boo
 		port := int(segment[2])<<8 | int(segment[3])
 		synchronize := segment[bgpExpiryTCPFlags]&bgpExpirySYN != 0
 		if expired[bgpExpiryNextHeader] == tunnelRuntimeProtocolTCP && expiredSource == source && expiredDestination == destination &&
-			port == bgpRuntimePort && synchronize {
+			port == bgpRuntimePort &&
+			synchronize {
 			return true
 		}
 	}
@@ -84,7 +89,11 @@ func setBGPMultihopSecondNeighbor(t *testing.T, present bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	route := &netlink.Route{LinkIndex: link.Attrs().Index, Dst: destination, Gw: net.ParseIP(bgpMultihopSecondNeighbor)}
+	route := &netlink.Route{
+		LinkIndex: link.Attrs().Index,
+		Dst:       destination,
+		Gw:        net.ParseIP(bgpMultihopSecondNeighbor),
+	}
 	if present {
 		err = netlink.RouteAdd(route)
 	} else {

@@ -52,7 +52,8 @@ type CurrentRule struct {
 //
 // All actions log at DEBUG with full diff context.
 func ReconcileRules(
-	ctx context.Context, log *slog.Logger,
+	ctx context.Context,
+	log *slog.Logger,
 	desired []DesiredRule,
 ) error {
 	log = log.With("component", "rules")
@@ -60,11 +61,13 @@ func ReconcileRules(
 
 	// Group desired by family so we list each family at most once.
 	byFamily := map[string][]DesiredRule{}
+
 	for _, r := range desired {
 		fam := r.Family
 		if fam == "" {
 			fam = "inet6"
 		}
+
 		byFamily[fam] = append(byFamily[fam], r)
 	}
 
@@ -77,10 +80,11 @@ func ReconcileRules(
 			flog.WarnContext(ctx, "rules: listRulesNetlink failed", "err", err)
 			return fmt.Errorf("list %s rules: %w", fam, err)
 		}
-		flog.DebugContext(ctx, "rules: current snapshot",
-			"count", len(current), "rules", current)
+
+		flog.DebugContext(ctx, "rules: current snapshot", "count", len(current), "rules", current)
 
 		byPrio := map[int]CurrentRule{}
+
 		for _, c := range current {
 			byPrio[c.Priority] = c
 		}
@@ -89,31 +93,72 @@ func ReconcileRules(
 			cur, exists := byPrio[w.Priority]
 			matches := exists && rulesMatch(cur, w)
 			if matches {
-				flog.DebugContext(ctx, "rules: already present",
-					"priority", w.Priority, "table_id", w.TableID)
+				flog.DebugContext(
+					ctx,
+					"rules: already present",
+					"priority",
+					w.Priority,
+					"table_id",
+					w.TableID,
+				)
 				continue
 			}
+
 			if exists {
-				flog.DebugContext(ctx, "rules: replacing rule at priority",
-					"priority", w.Priority, "old", cur, "new", w)
+				flog.DebugContext(
+					ctx,
+					"rules: replacing rule at priority",
+					"priority",
+					w.Priority,
+					"old",
+					cur,
+					"new",
+					w,
+				)
 				if err := delRuleNetlink(ctx, flog, fam, cur); err != nil {
-					flog.WarnContext(ctx, "rules: delRuleNetlink failed",
-						"priority", w.Priority, "err", err)
+					flog.WarnContext(
+						ctx,
+						"rules: delRuleNetlink failed",
+						"priority",
+						w.Priority,
+						"err",
+						err,
+					)
+
 					return fmt.Errorf("del rule prio=%d: %w", w.Priority, err)
 				}
 			} else {
-				flog.DebugContext(ctx, "rules: adding new rule",
-					"priority", w.Priority,
-					"from", w.From, "uidrange", w.UIDRange, "table_id", w.TableID)
+				flog.DebugContext(
+					ctx,
+					"rules: adding new rule",
+					"priority",
+					w.Priority,
+					"from",
+					w.From,
+					"uidrange",
+					w.UIDRange,
+					"table_id",
+					w.TableID,
+				)
 			}
+
 			if err := addRuleNetlink(ctx, flog, fam, w); err != nil {
-				flog.WarnContext(ctx, "rules: addRuleNetlink failed",
-					"priority", w.Priority, "err", err)
+				flog.WarnContext(
+					ctx,
+					"rules: addRuleNetlink failed",
+					"priority",
+					w.Priority,
+					"err",
+					err,
+				)
+
 				return fmt.Errorf("add rule prio=%d: %w", w.Priority, err)
 			}
 		}
 	}
+
 	log.DebugContext(ctx, "rules: reconcile complete")
+
 	return nil
 }
 
@@ -123,28 +168,45 @@ func ReconcileRules(
 // address that justified the rule disappears). Foreign rules at unrelated
 // priorities are not touched.
 func RemoveRuleAtPriority(
-	ctx context.Context, log *slog.Logger, family string, priority int,
+	ctx context.Context,
+	log *slog.Logger,
+	family string,
+	priority int,
 ) error {
-	log = log.With("component", "rules", "op", "remove-at-priority",
-		"family", family, "priority", priority)
+	log = log.With(
+		"component",
+		"rules",
+		"op",
+		"remove-at-priority",
+		"family",
+		family,
+		"priority",
+		priority,
+	)
 	current, err := listRulesNetlink(log, family)
 	if err != nil {
 		log.WarnContext(ctx, "rules: listRulesNetlink failed", "err", err)
 		return fmt.Errorf("list %s rules: %w", family, err)
 	}
+
 	removed := 0
+
 	for _, c := range current {
 		if c.Priority != priority {
 			continue
 		}
+
 		log.DebugContext(ctx, "rules: removing rule at priority", "rule", c)
 		if err := delRuleNetlink(ctx, log, family, c); err != nil {
 			log.WarnContext(ctx, "rules: delRuleNetlink failed", "err", err)
 			return fmt.Errorf("del rule prio=%d: %w", priority, err)
 		}
+
 		removed++
 	}
+
 	log.DebugContext(ctx, "rules: remove-at-priority done", "removed", removed)
+
 	return nil
 }
 
@@ -155,21 +217,27 @@ func rulesMatch(c CurrentRule, w DesiredRule) bool {
 	if c.Priority != w.Priority {
 		return false
 	}
+
 	if c.TableID != w.TableID {
 		return false
 	}
+
 	if c.From != w.From {
 		return false
 	}
+
 	if c.Mark != w.Mark {
 		return false
 	}
+
 	if c.IifName != w.IifName {
 		return false
 	}
+
 	if c.UIDRange != w.UIDRange {
 		return false
 	}
+
 	return true
 }
 
@@ -182,10 +250,14 @@ func listRulesNetlink(log *slog.Logger, family string) ([]CurrentRule, error) {
 	dur := realClock{}.Now().Sub(startTime)
 	log.Debug(
 		"rules: RuleList",
-		"family", family,
-		"count", len(rules),
-		"duration_ms", dur.Milliseconds(),
-		"err", err,
+		"family",
+		family,
+		"count",
+		len(rules),
+		"duration_ms",
+		dur.Milliseconds(),
+		"err",
+		err,
 	)
 	if err != nil {
 		log.Warn("rules: RuleList failed", "family", family, "err", err)
@@ -196,6 +268,7 @@ func listRulesNetlink(log *slog.Logger, family string) ([]CurrentRule, error) {
 	for _, r := range rules {
 		out = append(out, ruleToCurrent(r))
 	}
+
 	return out, nil
 }
 
@@ -215,6 +288,7 @@ func ruleToCurrent(r netlink.Rule) CurrentRule {
 	if r.Src != nil && !isAllAddr(r.Src) {
 		c.From = ipNetToString(r.Src)
 	}
+
 	if r.UIDRange != nil {
 		// netlink stores Start/End as uint32 even though the original CLI
 		// uses signed-looking strings. Re-emit in "lo-hi" form so it round-
@@ -222,6 +296,7 @@ func ruleToCurrent(r netlink.Rule) CurrentRule {
 		c.UIDRange = strconv.FormatUint(uint64(r.UIDRange.Start), 10) +
 			"-" + strconv.FormatUint(uint64(r.UIDRange.End), 10)
 	}
+
 	return c
 }
 
@@ -230,10 +305,12 @@ func isAllAddr(n *net.IPNet) bool {
 	if n == nil {
 		return true
 	}
+
 	ones, _ := n.Mask.Size()
 	if ones != 0 {
 		return false
 	}
+
 	return n.IP.Equal(net.IPv4zero) || n.IP.Equal(net.IPv6unspecified)
 }
 
@@ -244,76 +321,129 @@ func ipNetToString(n *net.IPNet) string {
 	if (bits == 32 && ones == 32) || (bits == 128 && ones == 128) {
 		return n.IP.String()
 	}
+
 	return n.String()
 }
 
 // addRuleNetlink installs one rule via netlink.RuleAdd. Returns nil on
 // EEXIST (idempotent add).
 func addRuleNetlink(
-	ctx context.Context, log *slog.Logger, family string, w DesiredRule,
+	ctx context.Context,
+	log *slog.Logger,
+	family string,
+	w DesiredRule,
 ) error {
 	r, err := buildNetlinkRule(family, w)
 	if err != nil {
 		return err
 	}
+
 	startTime := realClock{}.Now()
 	err = netlink.RuleAdd(r)
 	dur := realClock{}.Now().Sub(startTime)
 	log.DebugContext(
-		ctx, "rules: RuleAdd",
-		"family", family, "priority", w.Priority, "table_id", w.TableID,
-		"from", w.From, "uidrange", w.UIDRange,
-		"duration_ms", dur.Milliseconds(),
-		"err", err,
+		ctx,
+		"rules: RuleAdd",
+		"family",
+		family,
+		"priority",
+		w.Priority,
+		"table_id",
+		w.TableID,
+		"from",
+		w.From,
+		"uidrange",
+		w.UIDRange,
+		"duration_ms",
+		dur.Milliseconds(),
+		"err",
+		err,
 	)
 	if err != nil && errors.Is(err, syscall.EEXIST) {
 		log.DebugContext(ctx, "rules: RuleAdd EEXIST (already present)")
 		return nil
 	}
+
 	if err != nil {
-		log.WarnContext(ctx, "rules: RuleAdd failed",
-			"family", family, "priority", w.Priority, "err", err)
+		log.WarnContext(
+			ctx,
+			"rules: RuleAdd failed",
+			"family",
+			family,
+			"priority",
+			w.Priority,
+			"err",
+			err,
+		)
+
 		return fmt.Errorf("RuleAdd(prio=%d): %w", w.Priority, err)
 	}
+
 	return nil
 }
 
 // delRuleNetlink removes the rule at the given (family, priority, table)
 // triple. ENOENT is swallowed.
 func delRuleNetlink(
-	ctx context.Context, log *slog.Logger, family string, c CurrentRule,
+	ctx context.Context,
+	log *slog.Logger,
+	family string,
+	c CurrentRule,
 ) error {
-	r, err := buildNetlinkRule(family, DesiredRule{
-		Family:   family,
-		Priority: c.Priority,
-		From:     c.From,
-		Mark:     c.Mark,
-		IifName:  c.IifName,
-		UIDRange: c.UIDRange,
-		Table:    c.Table,
-		TableID:  c.TableID,
-	})
+	r, err := buildNetlinkRule(
+		family,
+		DesiredRule{
+			Family:   family,
+			Priority: c.Priority,
+			From:     c.From,
+			Mark:     c.Mark,
+			IifName:  c.IifName,
+			UIDRange: c.UIDRange,
+			Table:    c.Table,
+			TableID:  c.TableID,
+		},
+	)
 	if err != nil {
 		return err
 	}
+
 	startTime := realClock{}.Now()
 	err = netlink.RuleDel(r)
 	dur := realClock{}.Now().Sub(startTime)
 	log.DebugContext(
-		ctx, "rules: RuleDel",
-		"family", family, "priority", c.Priority, "table_id", c.TableID,
-		"duration_ms", dur.Milliseconds(),
-		"err", err,
+		ctx,
+		"rules: RuleDel",
+		"family",
+		family,
+		"priority",
+		c.Priority,
+		"table_id",
+		c.TableID,
+		"duration_ms",
+		dur.Milliseconds(),
+		"err",
+		err,
 	)
 	if err != nil && (errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.ESRCH)) {
 		log.DebugContext(ctx, "rules: RuleDel ENOENT (already absent)")
 		return nil
 	}
+
 	if err != nil {
-		log.WarnContext(ctx, "rules: RuleDel failed",
-			"family", family, "priority", c.Priority, "err", err)
+		log.WarnContext(
+			ctx,
+			"rules: RuleDel failed",
+			"family",
+			family,
+			"priority",
+			c.Priority,
+			"err",
+			err,
+		)
+
 		return fmt.Errorf("RuleDel(prio=%d): %w", c.Priority, err)
 	}
+
 	return nil
 }
 
@@ -333,6 +463,7 @@ func buildNetlinkRule(family string, w DesiredRule) (*netlink.Rule, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		r.Src = ipnet
 	}
 
@@ -341,6 +472,7 @@ func buildNetlinkRule(family string, w DesiredRule) (*netlink.Rule, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		r.UIDRange = netlink.NewRuleUIDRange(start, end)
 	}
 
@@ -356,12 +488,15 @@ func parseSelector(family, s string) (*net.IPNet, error) {
 			slog.Warn("rules: ParseCIDR failed", "selector", s, "err", err)
 			return nil, fmt.Errorf("ParseCIDR(%q): %w", s, err)
 		}
+
 		return ipnet, nil
 	}
+
 	ip := net.ParseIP(s)
 	if ip == nil {
 		return nil, fmt.Errorf("not an IP: %q", s)
 	}
+
 	bits := 128
 	if family == "inet" {
 		bits = 32
@@ -370,6 +505,7 @@ func parseSelector(family, s string) (*net.IPNet, error) {
 			return nil, fmt.Errorf("not an IPv4 address: %q", s)
 		}
 	}
+
 	return &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)}, nil
 }
 
@@ -380,14 +516,17 @@ func parseUIDRangeUint32(s string) (uint32, uint32, error) {
 		slog.Warn("rules: ParseUint failed", "uidrange", s, "part", parts[0], "err", err)
 		return 0, 0, fmt.Errorf("ParseUint(%q): %w", parts[0], err)
 	}
+
 	if len(parts) == 1 {
 		return uint32(lo), uint32(lo), nil
 	}
+
 	hi, err := strconv.ParseUint(parts[1], 10, 32)
 	if err != nil {
 		slog.Warn("rules: ParseUint failed", "uidrange", s, "part", parts[1], "err", err)
 		return 0, 0, fmt.Errorf("ParseUint(%q): %w", parts[1], err)
 	}
+
 	return uint32(lo), uint32(hi), nil
 }
 

@@ -79,11 +79,14 @@ func TestDesiredState(t *testing.T) {
 				fromRule(55, "3d06:bad:b01:1100::/56", 100),
 				fwmarkRule(familyV4, 300, 3, 300),
 			},
-			wantRoutes: routesForGateways(baseConfig, gateways{
-				"att":          baseGateways["att"],
-				"webpass":      baseGateways["webpass"],
-				"monkeybrains": {V4: "198.51.100.1", V6: ""},
-			}),
+			wantRoutes: routesForGateways(
+				baseConfig,
+				gateways{
+					"att":          baseGateways["att"],
+					"webpass":      baseGateways["webpass"],
+					"monkeybrains": {V4: "198.51.100.1", V6: ""},
+				},
+			),
 		},
 		{
 			// The active tier is not the first configured tier and exactly one
@@ -162,27 +165,39 @@ func TestDesiredState(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+		t.Run(
+			tc.name,
+			func(t *testing.T) {
+				t.Parallel()
 
-			gotRules, gotRoutes := desiredState(tc.gateways, tc.health, tc.cfg, readyTranslations(tc.cfg))
-			for i := range tc.wantRoutes {
-				if tc.wantRoutes[i].Dest != "default" {
-					continue
-				}
-				for _, wan := range tc.cfg.WANs {
-					if tc.wantRoutes[i].TableID == wan.TableID && !netif.HealthIsHealthy(tc.health.State(wan.Name)) {
-						tc.wantRoutes[i].Via = ""
+				gotRules, gotRoutes := desiredState(
+					tc.gateways,
+					tc.health,
+					tc.cfg,
+					readyTranslations(tc.cfg),
+				)
+				for i := range tc.wantRoutes {
+					if tc.wantRoutes[i].Dest != "default" {
+						continue
+					}
+
+					for _, wan := range tc.cfg.WANs {
+						if tc.wantRoutes[i].TableID == wan.TableID &&
+							!netif.HealthIsHealthy(tc.health.State(wan.Name)) {
+							tc.wantRoutes[i].Via = ""
+						}
 					}
 				}
-			}
-			if !reflect.DeepEqual(gotRules, tc.wantRules) {
-				t.Fatalf("rules mismatch\ngot:  %#v\nwant: %#v", gotRules, tc.wantRules)
-			}
-			if !reflect.DeepEqual(gotRoutes, tc.wantRoutes) {
-				t.Fatalf("routes mismatch\ngot:  %#v\nwant: %#v", gotRoutes, tc.wantRoutes)
-			}
-		})
+
+				if !reflect.DeepEqual(gotRules, tc.wantRules) {
+					t.Fatalf("rules mismatch\ngot:  %#v\nwant: %#v", gotRules, tc.wantRules)
+				}
+
+				if !reflect.DeepEqual(gotRoutes, tc.wantRoutes) {
+					t.Fatalf("routes mismatch\ngot:  %#v\nwant: %#v", gotRoutes, tc.wantRoutes)
+				}
+			},
+		)
 	}
 }
 
@@ -214,13 +229,18 @@ func TestDesiredStateTracksLiveDelegation(t *testing.T) {
 	att.V6.Ready = false
 	att.V6.ExternalPrefix = netip.Prefix{}
 	translations["att"] = att
+
 	rules, _ = desiredState(gateways, health, cfg, translations)
 	for _, rule := range rules {
 		if rule.Family == familyV6 && rule.TableID == cfg.WANs[0].TableID {
 			t.Fatalf("unavailable delegation retained an IPv6 rule: %+v", rule)
 		}
 	}
-	if !slices.Contains(rules, fwmarkRule(familyV4, cfg.WANs[0].FwMarkPrio, cfg.WANs[0].FwMark, cfg.WANs[0].TableID)) {
+
+	if !slices.Contains(
+		rules,
+		fwmarkRule(familyV4, cfg.WANs[0].FwMarkPrio, cfg.WANs[0].FwMark, cfg.WANs[0].TableID),
+	) {
 		t.Fatal("unavailable IPv6 delegation removed the provider's IPv4 rule")
 	}
 }
@@ -232,22 +252,28 @@ func TestPublishLiveStateReportsTheActiveTier(t *testing.T) {
 	module := &Module{cfg: testConfig()}
 	module.InitBase(testEnvWithStore(store), "module", moduleName)
 
-	module.publishLiveState(testGateways(), netif.HealthStates{
-		"att":          netif.HealthStateUnhealthy,
-		"webpass":      netif.HealthStateUnhealthy,
-		"monkeybrains": netif.HealthStateHealthy,
-	}, readyTranslations(module.cfg))
+	module.publishLiveState(
+		testGateways(),
+		netif.HealthStates{
+			"att":          netif.HealthStateUnhealthy,
+			"webpass":      netif.HealthStateUnhealthy,
+			"monkeybrains": netif.HealthStateHealthy,
+		},
+		readyTranslations(module.cfg),
+	)
 
 	snapshot := store.Snapshot()
 	if !snapshot.TierValid || snapshot.ActiveTier != 1 {
 		t.Fatalf("active tier = %d (valid=%v), want 1", snapshot.ActiveTier, snapshot.TierValid)
 	}
+
 	want := map[string]bool{"att": false, "webpass": false, "monkeybrains": true}
 	for name, wantCarrying := range want {
 		routing, ok := snapshot.Routing[name]
 		if !ok {
 			t.Fatalf("%s missing from snapshot.Routing", name)
 		}
+
 		if routing.Carrying != wantCarrying {
 			t.Fatalf("%s carrying = %v, want %v", name, routing.Carrying, wantCarrying)
 		}
@@ -264,11 +290,15 @@ func TestPublishLiveStateWithNoHealthyProvider(t *testing.T) {
 	module := &Module{cfg: testConfig()}
 	module.InitBase(testEnvWithStore(store), "module", moduleName)
 
-	module.publishLiveState(testGateways(), netif.HealthStates{
-		"att":          netif.HealthStateUnhealthy,
-		"webpass":      netif.HealthStateUnhealthy,
-		"monkeybrains": netif.HealthStateUnhealthy,
-	}, readyTranslations(module.cfg))
+	module.publishLiveState(
+		testGateways(),
+		netif.HealthStates{
+			"att":          netif.HealthStateUnhealthy,
+			"webpass":      netif.HealthStateUnhealthy,
+			"monkeybrains": netif.HealthStateUnhealthy,
+		},
+		readyTranslations(module.cfg),
+	)
 
 	for name, routing := range store.Snapshot().Routing {
 		if routing.Carrying {
@@ -298,24 +328,34 @@ func TestValidateWANAcceptsAnyPositivePriority(t *testing.T) {
 	if err := validateWAN(fourth); err != nil {
 		t.Fatalf("validateWAN rejected a fourth provider: %v", err)
 	}
+
 	fourth.FwMarkPrio = 0
 	if err := validateWAN(fourth); err == nil {
 		t.Fatal("validateWAN accepted a zero fw_mark_prio")
 	}
+
 	fourth.FwMarkPrio = 600
 	fourth.FromPrio = 0
 	if err := validateWAN(fourth); err == nil {
 		t.Fatal("validateWAN accepted a zero from_prio")
 	}
+
 	fourth.FromPrio = 58
 	fourth.FwMarkPrio = catchAllPriority
 	if err := validateWAN(fourth); err == nil || !strings.Contains(err.Error(), "catch-all") {
-		t.Fatalf("validateWAN(FwMarkPrio=catchAllPriority) = %v, want an error mentioning the catch-all priority", err)
+		t.Fatalf(
+			"validateWAN(FwMarkPrio=catchAllPriority) = %v, want an error mentioning the catch-all priority",
+			err,
+		)
 	}
+
 	fourth.FwMarkPrio = 600
 	fourth.FromPrio = catchAllPriority
 	if err := validateWAN(fourth); err == nil || !strings.Contains(err.Error(), "catch-all") {
-		t.Fatalf("validateWAN(FromPrio=catchAllPriority) = %v, want an error mentioning the catch-all priority", err)
+		t.Fatalf(
+			"validateWAN(FromPrio=catchAllPriority) = %v, want an error mentioning the catch-all priority",
+			err,
+		)
 	}
 }
 
@@ -326,10 +366,12 @@ func TestInitReturnsDisabledSentinelWhenWANsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
+
 	initErr := module.Init(context.Background(), testEnv())
 	if initErr == nil {
 		t.Fatal("Init returned nil error for empty WANs, want ErrModuleDisabled")
 	}
+
 	if !errors.Is(initErr, ifmgr.ErrModuleDisabled) {
 		t.Fatalf("Init returned err=%v, want errors.Is(err, ifmgr.ErrModuleDisabled)", initErr)
 	}
@@ -352,17 +394,27 @@ func TestDesiredStateOmitsStaticInternalRoute(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("routes mismatch\ngot:  %#v\nwant: %#v", got, want)
 	}
+
 	for _, gotRoute := range got {
 		if gotRoute.Via == cfg.OpnsenseEdgeV6 {
 			t.Fatalf("static internal route via the edge address remains: %#v", gotRoute)
 		}
 	}
+
 	for _, wan := range cfg.WANs {
 		wantTransit := route(familyV4, cfg.InternalNetV4, "", cfg.InternalIface, wan.TableID, 0)
-		wantEdge := route(familyV6, withPrefix(cfg.OpnsenseEdgeV6, "128"), "", cfg.InternalIface, wan.TableID, 0)
+		wantEdge := route(
+			familyV6,
+			withPrefix(cfg.OpnsenseEdgeV6, "128"),
+			"",
+			cfg.InternalIface,
+			wan.TableID,
+			0,
+		)
 		if !containsRoute(got, wantTransit) {
 			t.Fatalf("missing transit route: %#v", wantTransit)
 		}
+
 		if !containsRoute(got, wantEdge) {
 			t.Fatalf("missing edge route: %#v", wantEdge)
 		}
@@ -454,13 +506,28 @@ func routesForGateways(cfg Config, currentGateways gateways) []netif.RouteSpec {
 	routes := make([]netif.RouteSpec, 0, len(cfg.WANs)*5+1)
 	for _, wan := range cfg.WANs {
 		wanGateways := currentGateways[wan.Name]
-		routes = append(routes, route(familyV4, "default", wanGateways.V4, wan.Iface, wan.TableID, 0))
-		routes = append(routes, route(familyV6, "default", wanGateways.V6, wan.Iface, wan.TableID, 0))
-		routes = append(routes,
+		routes = append(
+			routes,
+			route(familyV4, "default", wanGateways.V4, wan.Iface, wan.TableID, 0),
+		)
+		routes = append(
+			routes,
+			route(familyV6, "default", wanGateways.V6, wan.Iface, wan.TableID, 0),
+		)
+		routes = append(
+			routes,
 			route(familyV4, cfg.InternalNetV4, "", cfg.InternalIface, wan.TableID, 0),
-			route(familyV6, withPrefix(cfg.OpnsenseEdgeV6, "128"), "", cfg.InternalIface, wan.TableID, 0),
+			route(
+				familyV6,
+				withPrefix(cfg.OpnsenseEdgeV6, "128"),
+				"",
+				cfg.InternalIface,
+				wan.TableID,
+				0,
+			),
 		)
 	}
+
 	return routes
 }
 
@@ -470,10 +537,18 @@ func containsRoute(routes []netif.RouteSpec, want netif.RouteSpec) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
-func route(family string, dest string, via string, dev string, tableID int, metric int) netif.RouteSpec {
+func route(
+	family string,
+	dest string,
+	via string,
+	dev string,
+	tableID int,
+	metric int,
+) netif.RouteSpec {
 	return netif.RouteSpec{
 		Family:   family,
 		Dest:     dest,
@@ -540,6 +615,7 @@ func catchAllRule(family string, iifName string, tableID int) netif.DesiredRule 
 func configWithoutWebpassNPT(cfg Config) Config {
 	cfg.WANs = append([]WAN(nil), cfg.WANs...)
 	cfg.WANs[1].TranslationV6 = &config.IPv6Translation{Mode: config.TranslationNative}
+
 	return cfg
 }
 
@@ -549,35 +625,51 @@ func configWithoutWebpassNPT(cfg Config) Config {
 func configWithWebpassInTierOne(cfg Config) Config {
 	cfg.WANs = append([]WAN(nil), cfg.WANs...)
 	cfg.WANs[1].Tier = 1
+
 	return cfg
 }
 
 func testEnv() *ifmgr.Env {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+
 	return &ifmgr.Env{
 		Iface: "vmbr250",
-		Log: slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{
-			Level: slog.LevelDebug,
-		})),
-		Alerts: ifmgr.WrapNotifier(notify.FromConfig(notify.EmailConfig{}, notify.Config{}, log, "mwan-ifmgr")),
+		Log: slog.New(
+			slog.NewTextHandler(
+				io.Discard,
+				&slog.HandlerOptions{
+					Level: slog.LevelDebug,
+				},
+			),
+		),
+		Alerts: ifmgr.WrapNotifier(
+			notify.FromConfig(notify.EmailConfig{}, notify.Config{}, log, "mwan-ifmgr"),
+		),
 	}
 }
 
 func testEnvWithStore(store *wanstate.Store) *ifmgr.Env {
 	env := testEnv()
 	env.LiveState = store
+
 	return env
 }
 
 func readyTranslations(cfg Config) map[string]wanstate.MemberTranslation {
 	translations := make(map[string]wanstate.MemberTranslation)
+
 	for _, wan := range cfg.WANs {
-		state := wanstate.MemberTranslation{V4: wanstate.FamilyTranslation{Ready: wan.TranslationV4 != nil}, V6: wanstate.FamilyTranslation{Ready: wan.TranslationV6 != nil}}
+		state := wanstate.MemberTranslation{
+			V4: wanstate.FamilyTranslation{Ready: wan.TranslationV4 != nil},
+			V6: wanstate.FamilyTranslation{Ready: wan.TranslationV6 != nil},
+		}
 		if wan.TranslationV6 != nil && wan.TranslationV6.NPT != nil {
 			state.V6.ExternalPrefix = wan.TranslationV6.NPT.ExpectedPrefix
 		}
+
 		translations[wan.Name] = state
 	}
+
 	return translations
 }
 
@@ -594,28 +686,36 @@ func TestFamilyReadinessPreservesIPv4AndSelectsIPv6Fallback(t *testing.T) {
 	if !slices.Contains(rules, fwmarkRule(familyV4, 100, 1, 100)) {
 		t.Fatal("unready IPv6 removed the provider's IPv4 rule")
 	}
+
 	if !containsRoute(routes, route(familyV4, "default", "192.0.2.1", "att0", 100, 0)) {
 		t.Fatal("unready IPv6 removed the ordinary IPv4 default")
 	}
+
 	for _, rule := range rules {
 		if rule.Family == familyV6 && rule.TableID != 300 {
 			t.Fatalf("IPv6 selected an unready or absent family: %+v", rule)
 		}
 	}
+
 	if !slices.Contains(rules, catchAllRule(familyV6, cfg.InternalIface, 300)) {
 		t.Fatal("IPv6 did not select the ready fallback tier")
 	}
+
 	if slices.Contains(rules, catchAllRule(familyV4, cfg.InternalIface, 300)) {
 		t.Fatal("IPv6 fallback changed the IPv4 tier")
 	}
+
 	store := wanstate.New()
 	module := &Module{cfg: cfg}
 	module.InitBase(testEnvWithStore(store), "module", moduleName)
 	module.publishLiveState(testGateways(), health, translations)
 	snapshot := store.Snapshot()
-	if !snapshot.Routing["att"].V4Ready || snapshot.Routing["att"].V6Ready || snapshot.Routing["webpass"].V6Ready || !snapshot.Routing["monkeybrains"].V6Ready {
+	if !snapshot.Routing["att"].V4Ready || snapshot.Routing["att"].V6Ready ||
+		snapshot.Routing["webpass"].V6Ready ||
+		!snapshot.Routing["monkeybrains"].V6Ready {
 		t.Fatalf("incorrect family readiness: %+v", snapshot.Routing)
 	}
+
 	if !snapshot.Routing["att"].Carrying || !snapshot.Routing["monkeybrains"].Carrying {
 		t.Fatalf("independent active families not reported: %+v", snapshot.Routing)
 	}

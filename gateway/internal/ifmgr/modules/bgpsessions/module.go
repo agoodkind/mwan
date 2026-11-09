@@ -82,18 +82,38 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	log := m.InitBase(env, "module", moduleName)
 	if m.cfg.StateFile == "" {
 		if len(m.cfg.Sessions) > 0 {
-			err := errors.New("bgp_sessions: a configured bgp-session requires [ifmgr.modules.bgp_sessions] state_file")
-			log.ErrorContext(ctx, "bgp_sessions: state_file is absent", "sessions", len(m.cfg.Sessions), "err", err)
+			err := errors.New(
+				"bgp_sessions: a configured bgp-session requires [ifmgr.modules.bgp_sessions] state_file",
+			)
+			log.ErrorContext(
+				ctx,
+				"bgp_sessions: state_file is absent",
+				"sessions",
+				len(m.cfg.Sessions),
+				"err",
+				err,
+			)
+
 			return err
 		}
+
 		log.DebugContext(ctx, "bgp_sessions: module disabled without a session and a state file")
+
 		return fmt.Errorf("%w: bgp_sessions: no session and no state_file", ifmgr.ErrModuleDisabled)
 	}
+
 	document, err := loadJournal(m.cfg.StateFile)
 	if err != nil {
-		log.ErrorContext(ctx, "bgp_sessions: journal unusable; routes of an earlier process stay in the kernel", "err", err)
+		log.ErrorContext(
+			ctx,
+			"bgp_sessions: journal unusable; routes of an earlier process stay in the kernel",
+			"err",
+			err,
+		)
 	}
+
 	m.owners = document.Owners
+
 	m.retaining = document.Retaining
 	for _, cfg := range m.cfg.Sessions {
 		sessionConfig := cfg.Config
@@ -101,17 +121,36 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 		sessionConfig.Tables = []int{unix.RT_TABLE_MAIN}
 		session, err := bgp.NewSession(sessionConfig, log)
 		if err != nil {
-			log.ErrorContext(ctx, "bgp_sessions: session configuration rejected", "connection_id", cfg.Key(), "err", err)
+			log.ErrorContext(
+				ctx,
+				"bgp_sessions: session configuration rejected",
+				"connection_id",
+				cfg.Key(),
+				"err",
+				err,
+			)
 			return fmt.Errorf("bgp_sessions: connection %s: %w", cfg.Key(), err)
 		}
+
 		session.OnChange(m.listener(cfg))
-		m.sessions = append(m.sessions, &managedSession{cfg: cfg, session: session, running: false, transport: "", connectBy: time.Time{}})
+		m.sessions = append(
+			m.sessions,
+			&managedSession{
+				cfg:       cfg,
+				session:   session,
+				running:   false,
+				transport: "",
+				connectBy: time.Time{},
+			},
+		)
 	}
+
 	now := m.clock.Now()
 	for _, entry := range m.sessions {
 		m.retainRoutes(ctx, log, entry, now)
 		m.publish(entry.cfg.Key())
 	}
+
 	done := make(chan struct{})
 	m.Lock()
 	m.done = done
@@ -120,11 +159,16 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 		defer close(done)
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.Error("bgp_sessions: shutdown panicked", "err", fmt.Errorf("panic: %v", recovered))
+				log.Error(
+					"bgp_sessions: shutdown panicked",
+					"err",
+					fmt.Errorf("panic: %v", recovered),
+				)
 			}
 		}()
 		m.stopOnShutdown(ctx, log)
 	}()
+
 	return nil
 }
 
@@ -134,12 +178,14 @@ func (m *Module) stopOnShutdown(ctx context.Context, log *slog.Logger) {
 	m.Lock()
 	defer m.Unlock()
 	m.stopped = true
+
 	retainedOwners := m.persistShutdownRetention(stopContext, log, m.clock.Now())
 	for _, entry := range m.sessions {
 		if entry.running && slices.Contains(retainedOwners, sessionOwner(entry.cfg)) {
 			m.stopRetainingLocked(stopContext, log, entry)
 			continue
 		}
+
 		m.stopLocked(stopContext, log, entry)
 	}
 }
@@ -167,8 +213,10 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		if !ok {
 			return nil, fmt.Errorf("bgp_sessions: invalid config type %T", cfg)
 		}
+
 		typed = value
 	}
+
 	return &Module{
 		BaseModule: ifmgr.NewBaseModule(moduleName),
 		cfg:        typed,

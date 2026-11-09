@@ -57,7 +57,14 @@ func readBGPRuntimeInterface(read func() string, name string) (bgpRuntimeInterfa
 	return bgpRuntimeInterface{}, false
 }
 
-func waitBGPRuntime(t *testing.T, daemon *runtimeDaemon, read func() string, description string, window time.Duration, condition func() bool) {
+func waitBGPRuntime(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	read func() string,
+	description string,
+	window time.Duration,
+	condition func() bool,
+) {
 	t.Helper()
 	deadline := time.Now().Add(window)
 	for time.Now().Before(deadline) {
@@ -73,35 +80,70 @@ func waitBGPRuntime(t *testing.T, daemon *runtimeDaemon, read func() string, des
 	if daemon != nil {
 		daemonLog = tunnelRuntimeLog(t, daemon)
 	}
-	t.Fatalf("%s absent after %s; published state=%s; daemon=%s", description, window, read(), daemonLog)
+	t.Fatalf(
+		"%s absent after %s; published state=%s; daemon=%s",
+		description,
+		window,
+		read(),
+		daemonLog,
+	)
 }
 
-func waitBGPRuntimeSession(t *testing.T, daemon *runtimeDaemon, read func() string, device, description string, accept func(bgpRuntimeSession) bool) bgpRuntimeSession {
+func waitBGPRuntimeSession(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	read func() string,
+	device string,
+	description string,
+	accept func(bgpRuntimeSession) bool,
+) bgpRuntimeSession {
 	t.Helper()
 	var matched bgpRuntimeSession
-	waitBGPRuntime(t, daemon, read, device+" session with "+description, tunnelRuntimeRecoverWindow, func() bool {
-		entry, found := readBGPRuntimeInterface(read, device)
-		if !found || len(entry.V6.Ownership.Sessions) != 1 {
-			return false
-		}
-		matched = entry.V6.Ownership.Sessions[0]
-		return accept(matched)
-	})
+	waitBGPRuntime(
+		t,
+		daemon,
+		read,
+		device+" session with "+description,
+		tunnelRuntimeRecoverWindow,
+		func() bool {
+			entry, found := readBGPRuntimeInterface(read, device)
+			if !found || len(entry.V6.Ownership.Sessions) != 1 {
+				return false
+			}
+			matched = entry.V6.Ownership.Sessions[0]
+			return accept(matched)
+		},
+	)
 	return matched
 }
 
-func waitBGPRuntimeReason(t *testing.T, daemon *runtimeDaemon, read func() string, device string, since time.Time, reason string) {
+func waitBGPRuntimeReason(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	read func() string,
+	device string,
+	since time.Time,
+	reason string,
+) {
 	t.Helper()
-	waitBGPRuntime(t, daemon, read, device+" IPv6 routing transition with reason "+reason, tunnelRuntimeRecoverWindow, func() bool {
-		entry, _ := readBGPRuntimeInterface(read, device)
-		for _, transition := range entry.Ownership.Transitions {
-			if transition.Family == "ipv6" && transition.Operation == "evaluate-routing" && transition.Current == "not-ready" &&
-				transition.Reason == reason && !transition.At.Before(since) {
-				return true
+	waitBGPRuntime(
+		t,
+		daemon,
+		read,
+		device+" IPv6 routing transition with reason "+reason,
+		tunnelRuntimeRecoverWindow,
+		func() bool {
+			entry, _ := readBGPRuntimeInterface(read, device)
+			for _, transition := range entry.Ownership.Transitions {
+				if transition.Family == "ipv6" && transition.Operation == "evaluate-routing" && transition.Current == "not-ready" &&
+					transition.Reason == reason &&
+					!transition.At.Before(since) {
+					return true
+				}
 			}
-		}
-		return false
-	})
+			return false
+		},
+	)
 }
 
 func requireBGPRuntimeFamily(t *testing.T, read func() string, device, routing, readiness string) {
@@ -109,18 +151,43 @@ func requireBGPRuntimeFamily(t *testing.T, read func() string, device, routing, 
 	entry, found := readBGPRuntimeInterface(read, device)
 	state := entry.V6.Ownership
 	if !found || state.Routing != routing || state.Readiness != readiness {
-		t.Fatalf("%s ipv6 routing=%s readiness=%s, want routing=%s readiness=%s", device, state.Routing, state.Readiness, routing, readiness)
+		t.Fatalf(
+			"%s ipv6 routing=%s readiness=%s, want routing=%s readiness=%s",
+			device,
+			state.Routing,
+			state.Readiness,
+			routing,
+			readiness,
+		)
 	}
 }
 
-func waitBGPRuntimeReceived(t *testing.T, daemon *runtimeDaemon, read func() string, router *bgpRuntimeRouter, want ...netip.Prefix) {
+func waitBGPRuntimeReceived(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	read func() string,
+	router *bgpRuntimeRouter,
+	want ...netip.Prefix,
+) {
 	t.Helper()
-	waitBGPRuntime(t, daemon, read, "router received prefixes", tunnelRuntimeRecoverWindow, func() bool {
-		return slices.Equal(router.received(t), want)
-	})
+	waitBGPRuntime(
+		t,
+		daemon,
+		read,
+		"router received prefixes",
+		tunnelRuntimeRecoverWindow,
+		func() bool {
+			return slices.Equal(router.received(t), want)
+		},
+	)
 }
 
-func bgpRuntimeGuardedRead(t *testing.T, read func() string, device string, router *bgpRuntimeRouter) func() string {
+func bgpRuntimeGuardedRead(
+	t *testing.T,
+	read func() string,
+	device string,
+	router *bgpRuntimeRouter,
+) func() string {
 	t.Helper()
 	return func() string {
 		received := router.received(t)
@@ -130,12 +197,19 @@ func bgpRuntimeGuardedRead(t *testing.T, read func() string, device string, rout
 			return published
 		}
 		if len(received) != 0 {
-			t.Fatalf("router received %v while the published IPv6 readiness was %s", received, entry.V6.Ownership.Readiness)
+			t.Fatalf(
+				"router received %v while the published IPv6 readiness was %s",
+				received,
+				entry.V6.Ownership.Readiness,
+			)
 		}
 		for _, session := range entry.V6.Ownership.Sessions {
 			if len(session.Advertised) != 0 {
-				t.Fatalf("session published the advertised prefixes %v while the IPv6 readiness was %s",
-					session.Advertised, entry.V6.Ownership.Readiness)
+				t.Fatalf(
+					"session published the advertised prefixes %v while the IPv6 readiness was %s",
+					session.Advertised,
+					entry.V6.Ownership.Readiness,
+				)
 			}
 		}
 		return published
@@ -145,7 +219,11 @@ func bgpRuntimeGuardedRead(t *testing.T, read func() string, device string, rout
 func bgpRuntimeGatewayRoute(t *testing.T, device string, prefix netip.Prefix) bool {
 	t.Helper()
 	filter := &netlink.Route{Table: unix.RT_TABLE_MAIN, Protocol: unix.RTPROT_BGP}
-	routes, err := netlink.RouteListFiltered(netlink.FAMILY_V6, filter, netlink.RT_FILTER_TABLE|netlink.RT_FILTER_PROTOCOL)
+	routes, err := netlink.RouteListFiltered(
+		netlink.FAMILY_V6,
+		filter,
+		netlink.RT_FILTER_TABLE|netlink.RT_FILTER_PROTOCOL,
+	)
 	if err != nil {
 		t.Fatalf("list the gateway BGP routes: %v", err)
 	}
@@ -165,9 +243,23 @@ func bgpRuntimeGatewayRoute(t *testing.T, device string, prefix netip.Prefix) bo
 	return false
 }
 
-func waitBGPRuntimeGatewayRoute(t *testing.T, daemon *runtimeDaemon, read func() string, device string, prefix netip.Prefix, present bool) {
+func waitBGPRuntimeGatewayRoute(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	read func() string,
+	device string,
+	prefix netip.Prefix,
+	present bool,
+) {
 	t.Helper()
-	waitBGPRuntime(t, daemon, read, "gateway BGP route "+prefix.String(), tunnelRuntimeRecoverWindow, func() bool {
-		return bgpRuntimeGatewayRoute(t, device, prefix) == present
-	})
+	waitBGPRuntime(
+		t,
+		daemon,
+		read,
+		"gateway BGP route "+prefix.String(),
+		tunnelRuntimeRecoverWindow,
+		func() bool {
+			return bgpRuntimeGatewayRoute(t, device, prefix) == present
+		},
+	)
 }

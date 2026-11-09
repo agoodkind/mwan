@@ -24,12 +24,25 @@ func logTunnelRuntimeKernelState(t *testing.T, label string) {
 	for _, link := range links {
 		attributes := link.Attrs()
 		addresses, addressErr := netlink.AddrList(link, netlink.FAMILY_ALL)
-		t.Logf("%s link %s index=%d type=%s flags=%s state=%s mtu=%d addresses=%v (%v) statistics=%+v",
-			label, attributes.Name, attributes.Index, link.Type(), attributes.Flags, attributes.OperState, attributes.MTU,
-			addresses, addressErr, attributes.Statistics)
+		t.Logf(
+			"%s link %s index=%d type=%s flags=%s state=%s mtu=%d addresses=%v (%v) statistics=%+v",
+			label,
+			attributes.Name,
+			attributes.Index,
+			link.Type(),
+			attributes.Flags,
+			attributes.OperState,
+			attributes.MTU,
+			addresses,
+			addressErr,
+			attributes.Statistics,
+		)
 	}
 	for _, path := range []string{
-		"/proc/sys/net/ipv6/conf/all/forwarding", "/proc/sys/net/ipv4/ip_forward", "/proc/net/snmp6", "/proc/net/snmp",
+		"/proc/sys/net/ipv6/conf/all/forwarding",
+		"/proc/sys/net/ipv4/ip_forward",
+		"/proc/net/snmp6",
+		"/proc/net/snmp",
 	} {
 		value, readErr := os.ReadFile(path)
 		t.Logf("%s %s: %v: %s", label, path, readErr, value)
@@ -37,7 +50,11 @@ func logTunnelRuntimeKernelState(t *testing.T, label string) {
 	for _, family := range []int{unix.AF_INET, unix.AF_INET6} {
 		policy, ruleErr := netlink.RuleList(family)
 		t.Logf("%s family %d policy rules: %v (%v)", label, family, policy, ruleErr)
-		routes, routeErr := netlink.RouteListFiltered(family, &netlink.Route{Table: unix.RT_TABLE_UNSPEC}, netlink.RT_FILTER_TABLE)
+		routes, routeErr := netlink.RouteListFiltered(
+			family,
+			&netlink.Route{Table: unix.RT_TABLE_UNSPEC},
+			netlink.RT_FILTER_TABLE,
+		)
 		t.Logf("%s family %d route listing error: %v", label, family, routeErr)
 		for _, route := range routes {
 			if route.Table != unix.RT_TABLE_LOCAL {
@@ -52,7 +69,10 @@ func tunnelRuntimeLog(t *testing.T, daemon *runtimeDaemon) string {
 	var relevant []string
 	for _, line := range strings.Split(runtimeDaemonLog(t, daemon), "\n") {
 		if strings.Contains(line, `"level":"WARN"`) || strings.Contains(line, `"level":"ERROR"`) ||
-			strings.Contains(line, "interface transition") || strings.Contains(line, "WAN state transition") {
+			strings.Contains(
+				line,
+				"interface transition",
+			) || strings.Contains(line, "WAN state transition") {
 			relevant = append(relevant, line)
 		}
 	}
@@ -71,7 +91,12 @@ func tunnelRuntimeInputRules(t *testing.T) string {
 	return string(output)
 }
 
-func tunnelRuntimePathMTU(t *testing.T, topology tunnelRuntimeTopology, namespace netns.NsHandle, destination string) int {
+func tunnelRuntimePathMTU(
+	t *testing.T,
+	topology tunnelRuntimeTopology,
+	namespace netns.NsHandle,
+	destination string,
+) int {
 	t.Helper()
 	setRuntimeNamespace(t, namespace)
 	defer setRuntimeNamespace(t, topology.gateway)
@@ -84,7 +109,11 @@ func tunnelRuntimePathMTU(t *testing.T, topology tunnelRuntimeTopology, namespac
 
 func tunnelRuntimeEndpointRoute(t *testing.T) (netlink.Route, bool) {
 	t.Helper()
-	routes, err := netlink.RouteListFiltered(unix.AF_INET, &netlink.Route{Table: tunnelRuntimeUnderlayTbl}, netlink.RT_FILTER_TABLE)
+	routes, err := netlink.RouteListFiltered(
+		unix.AF_INET,
+		&netlink.Route{Table: tunnelRuntimeUnderlayTbl},
+		netlink.RT_FILTER_TABLE,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +125,11 @@ func tunnelRuntimeEndpointRoute(t *testing.T) (netlink.Route, bool) {
 	return netlink.Route{}, false
 }
 
-func waitTunnelRuntimeEndpointRoute(t *testing.T, daemon *runtimeDaemon, present bool) netlink.Route {
+func waitTunnelRuntimeEndpointRoute(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	present bool,
+) netlink.Route {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
@@ -107,6 +140,11 @@ func waitTunnelRuntimeEndpointRoute(t *testing.T, daemon *runtimeDaemon, present
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("endpoint route present=%t not observed in table %d; daemon=%s", present, tunnelRuntimeUnderlayTbl, tunnelRuntimeLog(t, daemon))
+	t.Fatalf(
+		"endpoint route present=%t not observed in table %d; daemon=%s",
+		present,
+		tunnelRuntimeUnderlayTbl,
+		tunnelRuntimeLog(t, daemon),
+	)
 	return netlink.Route{}
 }

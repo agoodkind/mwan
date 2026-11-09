@@ -30,27 +30,36 @@ func modifiedNetworkFrom(t *testing.T, base string, replacements ...networkRepla
 	if err != nil {
 		t.Fatalf("read %s: %v", base, err)
 	}
+
 	mutated := string(body)
+
 	for _, replacement := range replacements {
 		updated := strings.Replace(mutated, replacement.old, replacement.new, 1)
 		if updated == mutated {
 			t.Fatalf("network document omits %q", replacement.old)
 		}
+
 		mutated = updated
 	}
+
 	path := filepath.Join(t.TempDir(), "network.json")
 	if err := os.WriteFile(path, []byte(mutated), 0o600); err != nil {
 		t.Fatalf("write document: %v", err)
 	}
+
 	return path
 }
 
 func webpassIPv6NoDHCP(t *testing.T) string {
 	t.Helper()
-	return modifiedNetwork(t, networkReplacement{
-		old: `          "goodkind-mwan-steering:dhcp": false,` + "\n",
-		new: "",
-	})
+
+	return modifiedNetwork(
+		t,
+		networkReplacement{
+			old: `          "goodkind-mwan-steering:dhcp": false,` + "\n",
+			new: "",
+		},
+	)
 }
 
 func runCheckNetworkCommand(t *testing.T, arguments ...string) (int, string) {
@@ -62,10 +71,12 @@ func runCheckNetworkCommand(t *testing.T, arguments ...string) (int, string) {
 	if err == nil {
 		return exitDeployGateOK, string(output)
 	}
+
 	var exitError *exec.ExitError
 	if !errors.As(err, &exitError) {
 		t.Fatalf("run check-network: %v\n%s", err, output)
 	}
+
 	return exitError.ExitCode(), string(output)
 }
 
@@ -90,10 +101,15 @@ func TestCheckNetwork(t *testing.T) {
 		"lxc gateway with a management service and no management interface": {
 			document: func(t *testing.T) string {
 				t.Helper()
-				return modifiedNetworkFrom(t, lxcNetworkDocument, networkReplacement{
-					old: `"firewall": {`,
-					new: `"firewall": { "management-service": [{ "protocol": "tcp", "port": 22 }],`,
-				})
+
+				return modifiedNetworkFrom(
+					t,
+					lxcNetworkDocument,
+					networkReplacement{
+						old: `"firewall": {`,
+						new: `"firewall": { "management-service": [{ "protocol": "tcp", "port": 22 }],`,
+					},
+				)
 			},
 			want:   exitDeployGateFailed,
 			expect: []string{"management services require a management interface"},
@@ -109,7 +125,9 @@ func TestCheckNetwork(t *testing.T) {
 		"two rejected providers": {
 			document: func(t *testing.T) string {
 				t.Helper()
-				return modifiedNetwork(t,
+
+				return modifiedNetwork(
+					t,
 					networkReplacement{
 						old: `          "goodkind-mwan-steering:dhcp": false,` + "\n",
 						new: "",
@@ -130,10 +148,14 @@ func TestCheckNetwork(t *testing.T) {
 		"schema-invalid provider": {
 			document: func(t *testing.T) string {
 				t.Helper()
-				return modifiedNetwork(t, networkReplacement{
-					old: "          \"name\": \"webpass\",\n",
-					new: "",
-				})
+
+				return modifiedNetwork(
+					t,
+					networkReplacement{
+						old: "          \"name\": \"webpass\",\n",
+						new: "",
+					},
+				)
 			},
 			want:   exitDeployGateFailed,
 			expect: []string{"network configuration rejected"},
@@ -141,10 +163,14 @@ func TestCheckNetwork(t *testing.T) {
 		"duplicate routing table": {
 			document: func(t *testing.T) string {
 				t.Helper()
-				return modifiedNetwork(t, networkReplacement{
-					old: "          \"table-id\": 200,\n",
-					new: "          \"table-id\": 100,\n",
-				})
+
+				return modifiedNetwork(
+					t,
+					networkReplacement{
+						old: "          \"table-id\": 200,\n",
+						new: "          \"table-id\": 100,\n",
+					},
+				)
 			},
 			want:   exitDeployGateFailed,
 			expect: []string{"table-id 100 is already taken"},
@@ -152,11 +178,22 @@ func TestCheckNetwork(t *testing.T) {
 		"shared provider label with explicit connection pin": {
 			document: func(t *testing.T) string {
 				t.Helper()
-				return modifiedNetwork(t,
-					networkReplacement{old: `"name": "enwebpass0",`, new: `"name": "enwebpass0", "goodkind-mwan-steering:connection-id": "sonic-a",`},
-					networkReplacement{old: `"name": "enatt0",`, new: `"name": "enatt0", "goodkind-mwan-steering:connection-id": "sonic-b",`},
+
+				return modifiedNetwork(
+					t,
+					networkReplacement{
+						old: `"name": "enwebpass0",`,
+						new: `"name": "enwebpass0", "goodkind-mwan-steering:connection-id": "sonic-a",`,
+					},
+					networkReplacement{
+						old: `"name": "enatt0",`,
+						new: `"name": "enatt0", "goodkind-mwan-steering:connection-id": "sonic-b",`,
+					},
 					networkReplacement{old: `"name": "att",`, new: `"name": "webpass",`},
-					networkReplacement{old: `"pinned-provider": "att"`, new: `"pinned-connection-id": "sonic-b"`},
+					networkReplacement{
+						old: `"pinned-provider": "att"`,
+						new: `"pinned-connection-id": "sonic-b"`,
+					},
 				)
 			},
 			want:   exitDeployGateOK,
@@ -165,11 +202,22 @@ func TestCheckNetwork(t *testing.T) {
 		"ambiguous legacy provider pin": {
 			document: func(t *testing.T) string {
 				t.Helper()
-				return modifiedNetwork(t,
-					networkReplacement{old: `"name": "enwebpass0",`, new: `"name": "enwebpass0", "goodkind-mwan-steering:connection-id": "sonic-a",`},
-					networkReplacement{old: `"name": "enatt0",`, new: `"name": "enatt0", "goodkind-mwan-steering:connection-id": "sonic-b",`},
+
+				return modifiedNetwork(
+					t,
+					networkReplacement{
+						old: `"name": "enwebpass0",`,
+						new: `"name": "enwebpass0", "goodkind-mwan-steering:connection-id": "sonic-a",`,
+					},
+					networkReplacement{
+						old: `"name": "enatt0",`,
+						new: `"name": "enatt0", "goodkind-mwan-steering:connection-id": "sonic-b",`,
+					},
 					networkReplacement{old: `"name": "att",`, new: `"name": "webpass",`},
-					networkReplacement{old: `"pinned-provider": "att"`, new: `"pinned-provider": "webpass"`},
+					networkReplacement{
+						old: `"pinned-provider": "att"`,
+						new: `"pinned-provider": "webpass"`,
+					},
 				)
 			},
 			want:   exitDeployGateFailed,
@@ -185,24 +233,28 @@ func TestCheckNetwork(t *testing.T) {
 		},
 	}
 	for name, testCase := range cases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
+		t.Run(
+			name,
+			func(t *testing.T) {
+				t.Parallel()
 
-			code, output := runCheckNetworkCommand(
-				t,
-				testCase.document(t),
-				networkSchemaDirForTest(t),
-			)
+				code, output := runCheckNetworkCommand(
+					t,
+					testCase.document(t),
+					networkSchemaDirForTest(t),
+				)
 
-			if code != testCase.want {
-				t.Fatalf("exit code = %d, want %d\noutput: %s", code, testCase.want, output)
-			}
-			for _, want := range testCase.expect {
-				if !strings.Contains(output, want) {
-					t.Fatalf("output omits %q: %s", want, output)
+				if code != testCase.want {
+					t.Fatalf("exit code = %d, want %d\noutput: %s", code, testCase.want, output)
 				}
-			}
-		})
+
+				for _, want := range testCase.expect {
+					if !strings.Contains(output, want) {
+						t.Fatalf("output omits %q: %s", want, output)
+					}
+				}
+			},
+		)
 	}
 }
 
@@ -218,6 +270,7 @@ func TestCheckNetworkRequiresTwoArguments(t *testing.T) {
 
 func TestCheckNetworkTranslation(t *testing.T) {
 	t.Parallel()
+
 	cases := map[string]struct {
 		document func(*testing.T) string
 		want     int
@@ -236,22 +289,39 @@ func TestCheckNetworkTranslation(t *testing.T) {
 		"IPv4 mode on IPv6": {
 			document: func(t *testing.T) string {
 				t.Helper()
-				return modifiedNetwork(t, networkReplacement{
-					old: `"mode": "ietf-nat:nptv6"`,
-					new: `"mode": "ietf-nat:napt44"`,
-				})
+
+				return modifiedNetwork(
+					t,
+					networkReplacement{
+						old: `"mode": "ietf-nat:nptv6"`,
+						new: `"mode": "ietf-nat:napt44"`,
+					},
+				)
 			},
 			want:   exitDeployGateFailed,
 			expect: `wan webpass ipv6: translation mode "ietf-nat:napt44" is not supported`,
 		},
 	}
 	for name, testCase := range cases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			code, output := runCheckNetworkCommand(t, testCase.document(t), networkSchemaDirForTest(t))
-			if code != testCase.want || !strings.Contains(output, testCase.expect) {
-				t.Fatalf("check-network exit = %d, want %d; output must contain %q:\n%s", code, testCase.want, testCase.expect, output)
-			}
-		})
+		t.Run(
+			name,
+			func(t *testing.T) {
+				t.Parallel()
+				code, output := runCheckNetworkCommand(
+					t,
+					testCase.document(t),
+					networkSchemaDirForTest(t),
+				)
+				if code != testCase.want || !strings.Contains(output, testCase.expect) {
+					t.Fatalf(
+						"check-network exit = %d, want %d; output must contain %q:\n%s",
+						code,
+						testCase.want,
+						testCase.expect,
+						output,
+					)
+				}
+			},
+		)
 	}
 }

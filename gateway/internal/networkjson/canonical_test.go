@@ -15,6 +15,7 @@ func requireCanonical(t *testing.T, input string, want string) {
 	if err != nil {
 		t.Fatalf("Canonicalize(%q): %v", input, err)
 	}
+
 	if string(got) != want {
 		t.Fatalf("Canonicalize(%q) = %s, want %s", input, got, want)
 	}
@@ -26,6 +27,7 @@ func jsonEscape(unit uint16) string {
 
 func TestCanonicalizeIgnoresWhitespaceAndMemberOrder(t *testing.T) {
 	want := `{"a":"value","b":[1,{"x":null,"y":true}],"c":{}}`
+
 	for _, input := range []string{
 		`{"b":[1,{"y":true,"x":null}],"a":"value","c":{}}`,
 		"\n{ \"c\" : { } ,\n\t\"a\": \"value\",\r\n  \"b\": [ 1 , { \"x\": null, \"y\": true } ] }\n",
@@ -39,13 +41,19 @@ func TestCanonicalizeSortsMembersByDecodedName(t *testing.T) {
 }
 
 func TestCanonicalizePreservesArrayOrder(t *testing.T) {
-	requireCanonical(t, `[3, 1, 2, "b", "a", [{"z":1}, {"a":1}]]`, `[3,1,2,"b","a",[{"z":1},{"a":1}]]`)
+	requireCanonical(
+		t,
+		`[3, 1, 2, "b", "a", [{"z":1}, {"a":1}]]`,
+		`[3,1,2,"b","a",[{"z":1},{"a":1}]]`,
+	)
 }
 
 func TestCanonicalizePreservesNumberLiterals(t *testing.T) {
-	requireCanonical(t,
+	requireCanonical(
+		t,
 		`{"n": [1.0, 1e2, 0, -0, 1E+2, 0.10, 18446744073709551616]}`,
-		`{"n":[1.0,1e2,0,-0,1E+2,0.10,18446744073709551616]}`)
+		`{"n":[1.0,1e2,0,-0,1E+2,0.10,18446744073709551616]}`,
+	)
 }
 
 func TestCanonicalizePreservesStringValues(t *testing.T) {
@@ -58,14 +66,17 @@ func TestCanonicalizePreservesStringValues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Canonicalize: %v", err)
 	}
+
 	var original map[string]string
 	if err := json.Unmarshal([]byte(input), &original); err != nil {
 		t.Fatalf("decode input: %v", err)
 	}
+
 	var canonical map[string]string
 	if err := json.Unmarshal(got, &canonical); err != nil {
 		t.Fatalf("decode output %s: %v", got, err)
 	}
+
 	if !reflect.DeepEqual(canonical, original) {
 		t.Fatalf("string values differ:\ngot  %q\nwant %q", canonical, original)
 	}
@@ -89,9 +100,13 @@ func TestCanonicalizeRejectsDuplicateMembers(t *testing.T) {
 		{input: `{"a":1,"` + jsonEscape('a') + `":2}`, member: "a"},
 		{input: `[{"name":"x","name":"y"}]`, member: "name"},
 	} {
-		requireCanonicalizeError(t, testCase.input,
-			`canonicalize: object member "`+testCase.member+`" appears more than once`)
+		requireCanonicalizeError(
+			t,
+			testCase.input,
+			`canonicalize: object member "`+testCase.member+`" appears more than once`,
+		)
 	}
+
 	requireCanonical(t, `[{"a":1},{"a":2}]`, `[{"a":1},{"a":2}]`)
 }
 
@@ -102,19 +117,28 @@ func TestCanonicalizeRejectsCaseVariantMembers(t *testing.T) {
 		first  string
 		second string
 	}{
-		{input: `{"destination":"x","Destination":"y"}`, first: "destination", second: "Destination"},
+		{
+			input:  `{"destination":"x","Destination":"y"}`,
+			first:  "destination",
+			second: "Destination",
+		},
 		{input: `{"outer":{"Key":1,"kEY":2}}`, first: "Key", second: "kEY"},
 		{input: `{"k":1,"` + kelvinSign + `":2}`, first: "k", second: kelvinSign},
 	} {
-		requireCanonicalizeError(t, testCase.input,
-			`canonicalize: object members "`+testCase.first+`" and "`+testCase.second+`" differ only in letter case`)
+		requireCanonicalizeError(
+			t,
+			testCase.input,
+			`canonicalize: object members "`+testCase.first+`" and "`+testCase.second+`" differ only in letter case`,
+		)
 	}
+
 	requireCanonical(t, `[{"a":1},{"A":2}]`, `[{"a":1},{"A":2}]`)
 }
 
 func TestCanonicalizeRejectsLoneSurrogateEscapes(t *testing.T) {
 	const prefix = "canonicalize: lone UTF-16 surrogate escape at byte offset "
 	high := jsonEscape(0xd83d)
+
 	low := jsonEscape(0xde00)
 	for _, testCase := range []struct {
 		input  string
@@ -129,6 +153,7 @@ func TestCanonicalizeRejectsLoneSurrogateEscapes(t *testing.T) {
 	} {
 		requireCanonicalizeError(t, testCase.input, prefix+testCase.offset)
 	}
+
 	escapedBackslash := `"x\\` + `ud83d"`
 	requireCanonical(t, escapedBackslash, escapedBackslash)
 }

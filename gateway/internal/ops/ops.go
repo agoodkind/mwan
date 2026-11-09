@@ -86,14 +86,18 @@ type SnapshotOps interface {
 // failover path calls it beside them.
 type GatewayOps interface {
 	GuestExec(
-		ctx context.Context, vmid string, args ...string,
+		ctx context.Context,
+		vmid string,
+		args ...string,
 	) (GuestExecResult, error)
 	Ping(ctx context.Context, bin, target string) bool
 	GetConfigState(
-		ctx context.Context, vmid string,
+		ctx context.Context,
+		vmid string,
 	) (*mwanv1.GetConfigStateResponse, string, error)
 	GetBGPStatus(
-		ctx context.Context, vmid string,
+		ctx context.Context,
+		vmid string,
 	) (*mwanv1.GetBGPStatusResponse, error)
 	AnnounceRoutes(ctx context.Context, vmid string) error
 	WithdrawRoutes(ctx context.Context, vmid string) error
@@ -140,7 +144,8 @@ type RealOps struct {
 
 	// testVsockOverride, if set, replaces vsockExec inside GuestExec (unit tests only).
 	testVsockOverride func(
-		ctx context.Context, args ...string,
+		ctx context.Context,
+		args ...string,
 	) (GuestExecResult, error)
 
 	// testGrpcDialer, if set, replaces vsock.Dial in vsockExec (unit tests only).
@@ -168,6 +173,7 @@ func NewRealOps(
 	if logger == nil {
 		logger = slog.Default()
 	}
+
 	return &RealOps{
 		log:       logger.With("component", "ops"),
 		vsockCID:  cfg.Watchdog.VsockCID,
@@ -195,20 +201,29 @@ func runHypervisor(
 	timeout time.Duration,
 	args ...string,
 ) ([]byte, error) {
-	slog.DebugContext(ctx, "ops: runHypervisor",
-		"binary", binary, "args", args, "timeout", timeout)
+	slog.DebugContext(ctx, "ops: runHypervisor", "binary", binary, "args", args, "timeout", timeout)
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	out, err := exec.CommandContext(cctx, binary, args...).CombinedOutput()
 	if err != nil {
 		// The caller decides whether a command failure requires an Error log.
-		slog.WarnContext(ctx, "ops: hypervisor command failed",
-			"binary", binary, "args", args, "err", err,
-			"output", strings.TrimSpace(string(out)))
+		slog.WarnContext(
+			ctx,
+			"ops: hypervisor command failed",
+			"binary",
+			binary,
+			"args",
+			args,
+			"err",
+			err,
+			"output",
+			strings.TrimSpace(string(out)),
+		)
 		// The output is returned alongside the error because callers read the
 		// combined output to decide what failed.
 		return out, fmt.Errorf("%s %s: %w", binary, strings.Join(args, " "), err)
 	}
+
 	return out, nil
 }
 
@@ -221,7 +236,9 @@ func runQm(
 }
 
 func (r *RealOps) runGuest(
-	ctx context.Context, timeout time.Duration, args ...string,
+	ctx context.Context,
+	timeout time.Duration,
+	args ...string,
 ) ([]byte, error) {
 	return runHypervisor(ctx, r.guest.binary(), timeout, args...)
 }
@@ -232,6 +249,7 @@ func (r *RealOps) VMStatus(ctx context.Context, vmid string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+
 	return strings.Contains(string(out), "running"), nil
 }
 
@@ -259,10 +277,12 @@ func (r *RealOps) VMFSFreezeStatus(ctx context.Context, vmid string) (string, er
 	if err != nil {
 		return "", err
 	}
+
 	out, err := r.runGuest(ctx, timeoutQmAgentFreeze, args...)
 	if err != nil {
 		return "", err
 	}
+
 	return strings.TrimSpace(string(out)), nil
 }
 
@@ -273,7 +293,9 @@ func (r *RealOps) VMFSFreezeThaw(ctx context.Context, vmid string) error {
 	if err != nil {
 		return err
 	}
+
 	_, err = r.runGuest(ctx, timeoutQmAgentFreeze, args...)
+
 	return err
 }
 
@@ -281,14 +303,18 @@ func (r *RealOps) VMFSFreezeThaw(ctx context.Context, vmid string) error {
 // For the primary VM, it tries vsock, TCP, and then qm guest exec.
 // For a primary LXC, it uses pct exec. ChannelTracker records primary attempts.
 func (r *RealOps) GuestExec(
-	ctx context.Context, vmid string, args ...string,
+	ctx context.Context,
+	vmid string,
+	args ...string,
 ) (GuestExecResult, error) {
 	if vmid != "" && vmid == r.failoverVMID && vmid != r.primaryVMID {
 		r.logAttemptStart(ctx, "guest_exec", ChanTCP, 1, vmid)
 		result, err := r.tcpExec(ctx, r.failoverTCPAddr, args...)
 		r.logAttemptResult(ctx, "guest_exec", ChanTCP, 1, vmid, err)
+
 		return result, err
 	}
+
 	if !r.guest.hasGuestAgentChannels() {
 		return r.trackedHypervisorExec(ctx, 1, vmid, args...)
 	}
@@ -299,6 +325,7 @@ func (r *RealOps) GuestExec(
 		if err == nil {
 			return res, nil
 		}
+
 		return r.hypervisorExec(ctx, vmid, args...)
 	}
 
@@ -308,8 +335,10 @@ func (r *RealOps) GuestExec(
 	if vsockErr == nil {
 		r.tracker.recordSuccess(ChanVsock)
 		r.logAttemptResult(ctx, "guest_exec", ChanVsock, 1, vmid, nil)
+
 		return vsockRes, nil
 	}
+
 	r.tracker.recordFailure(ChanVsock, vsockErr)
 	r.logAttemptResult(ctx, "guest_exec", ChanVsock, 1, vmid, vsockErr)
 
@@ -319,8 +348,10 @@ func (r *RealOps) GuestExec(
 	if tcpErr == nil {
 		r.tracker.recordSuccess(ChanTCP)
 		r.logAttemptResult(ctx, "guest_exec", ChanTCP, 2, vmid, nil)
+
 		return tcpRes, nil
 	}
+
 	r.tracker.recordFailure(ChanTCP, tcpErr)
 	r.logAttemptResult(ctx, "guest_exec", ChanTCP, 2, vmid, tcpErr)
 
@@ -328,7 +359,10 @@ func (r *RealOps) GuestExec(
 }
 
 func (r *RealOps) trackedHypervisorExec(
-	ctx context.Context, attempt int, vmid string, args ...string,
+	ctx context.Context,
+	attempt int,
+	vmid string,
+	args ...string,
 ) (GuestExecResult, error) {
 	r.logAttemptStart(ctx, "guest_exec", ChanPVE, attempt, vmid)
 	result, err := r.hypervisorExec(ctx, vmid, args...)
@@ -337,20 +371,32 @@ func (r *RealOps) trackedHypervisorExec(
 	} else {
 		r.tracker.recordFailure(ChanPVE, err)
 	}
+
 	r.logAttemptResult(ctx, "guest_exec", ChanPVE, attempt, vmid, err)
+
 	return result, err
 }
 
 func (r *RealOps) hypervisorExec(
-	ctx context.Context, vmid string, args ...string,
+	ctx context.Context,
+	vmid string,
+	args ...string,
 ) (GuestExecResult, error) {
 	result, err := r.guest.execGuest(
-		ctx, r.log, vmid, timeoutQmGuestExecWait, timeoutQmGuestExec, args)
+		ctx,
+		r.log,
+		vmid,
+		timeoutQmGuestExecWait,
+		timeoutQmGuestExec,
+		args,
+	)
+
 	return result, err
 }
 
 func (r *RealOps) vsockExec(
-	ctx context.Context, args ...string,
+	ctx context.Context,
+	args ...string,
 ) (GuestExecResult, error) {
 	cctx, cancel := context.WithTimeout(ctx, timeoutVsockRPC)
 	defer cancel()
@@ -360,6 +406,7 @@ func (r *RealOps) vsockExec(
 	if r.testGrpcDialer != nil {
 		dialer = r.testGrpcDialer
 	}
+
 	conn, err := grpc.NewClient(
 		"passthrough:///mwan",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -367,16 +414,23 @@ func (r *RealOps) vsockExec(
 	)
 	if err != nil {
 		r.log.WarnContext(ctx, "vsock grpc client failed", "err", err)
+
 		return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""},
 			fmt.Errorf("vsock grpc client: %w", err)
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	cli := mwanv1.NewMWANAgentClient(conn)
 
 	if len(args) == 0 {
-		return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""}, fmt.Errorf("vsockExec: no args")
+		return GuestExecResult{
+			ExitCode: 1,
+			Stdout:   "",
+			Stderr:   "",
+		}, fmt.Errorf("vsockExec: no args")
 	}
+
 	switch guestCmd(args[0]) {
 	case guestCmdPing, guestCmdPing6:
 		req := &mwanv1.PingRequest{
@@ -388,25 +442,32 @@ func (r *RealOps) vsockExec(
 		resp, err := cli.Ping(cctx, req)
 		if err != nil {
 			r.log.WarnContext(ctx, "vsock ping failed", "err", err)
+
 			return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""},
 				fmt.Errorf("vsock ping: %w", err)
 		}
+
 		if resp.GetSuccess() {
 			return GuestExecResult{ExitCode: 0, Stdout: "", Stderr: ""}, nil
 		}
+
 		return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""}, nil
 	case guestCmdCat:
 		if len(args) >= 2 && isLastDeployPath(args[1]) {
 			resp, err := cli.GetConfigState(cctx, &mwanv1.GetConfigStateRequest{})
 			if err != nil {
 				r.log.WarnContext(ctx, "vsock get config state failed", "err", err)
+
 				return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""},
 					fmt.Errorf("vsock get config state: %w", err)
 			}
+
 			ts := strconv.FormatInt(resp.GetLastDeployEpoch(), 10)
+
 			return GuestExecResult{ExitCode: 0, Stdout: ts, Stderr: ""}, nil
 		}
 	}
+
 	return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""},
 		fmt.Errorf("vsockExec: unhandled command %q", args[0])
 }
@@ -419,11 +480,18 @@ func isLastDeployPath(p string) bool {
 }
 
 func (r *RealOps) tcpExec(
-	ctx context.Context, address string, args ...string,
+	ctx context.Context,
+	address string,
+	args ...string,
 ) (GuestExecResult, error) {
 	if address == "" {
-		return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""}, fmt.Errorf("tcpExec: no tcp addr configured")
+		return GuestExecResult{
+			ExitCode: 1,
+			Stdout:   "",
+			Stderr:   "",
+		}, fmt.Errorf("tcpExec: no tcp addr configured")
 	}
+
 	cctx, cancel := context.WithTimeout(ctx, timeoutTCPRPC)
 	defer cancel()
 	dialer := func(ctx context.Context, _ string) (net.Conn, error) {
@@ -432,6 +500,7 @@ func (r *RealOps) tcpExec(
 	if r.testTCPDialer != nil {
 		dialer = r.testTCPDialer
 	}
+
 	conn, err := grpc.NewClient(
 		"passthrough:///mwan-tcp",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -439,9 +508,11 @@ func (r *RealOps) tcpExec(
 	)
 	if err != nil {
 		r.log.WarnContext(ctx, "tcp grpc client failed", "err", err)
+
 		return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""},
 			fmt.Errorf("tcp grpc client: %w", err)
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	cli := mwanv1.NewMWANAgentClient(conn)
@@ -449,6 +520,7 @@ func (r *RealOps) tcpExec(
 	if len(args) == 0 {
 		return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""}, fmt.Errorf("tcpExec: no args")
 	}
+
 	switch guestCmd(args[0]) {
 	case guestCmdPing, guestCmdPing6:
 		req := &mwanv1.PingRequest{
@@ -460,25 +532,32 @@ func (r *RealOps) tcpExec(
 		resp, err := cli.Ping(cctx, req)
 		if err != nil {
 			r.log.WarnContext(ctx, "tcp ping failed", "err", err)
+
 			return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""},
 				fmt.Errorf("tcp ping: %w", err)
 		}
+
 		if resp.GetSuccess() {
 			return GuestExecResult{ExitCode: 0, Stdout: "", Stderr: ""}, nil
 		}
+
 		return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""}, nil
 	case guestCmdCat:
 		if len(args) >= 2 && isLastDeployPath(args[1]) {
 			resp, err := cli.GetConfigState(cctx, &mwanv1.GetConfigStateRequest{})
 			if err != nil {
 				r.log.WarnContext(ctx, "tcp get config state failed", "err", err)
+
 				return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""},
 					fmt.Errorf("tcp get config state: %w", err)
 			}
+
 			ts := strconv.FormatInt(resp.GetLastDeployEpoch(), 10)
+
 			return GuestExecResult{ExitCode: 0, Stdout: ts, Stderr: ""}, nil
 		}
 	}
+
 	return GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""},
 		fmt.Errorf("tcpExec: unhandled command %q", args[0])
 }
@@ -494,6 +573,7 @@ func (r *RealOps) vsockGetConfigState(
 	if r.testGrpcDialer != nil {
 		dialer = r.testGrpcDialer
 	}
+
 	conn, err := grpc.NewClient(
 		"passthrough:///mwan",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -503,6 +583,7 @@ func (r *RealOps) vsockGetConfigState(
 		r.log.WarnContext(ctx, "vsock grpc client failed", "err", err)
 		return nil, fmt.Errorf("vsock grpc client: %w", err)
 	}
+
 	defer func() { _ = conn.Close() }()
 	cli := mwanv1.NewMWANAgentClient(conn)
 	res, err := cli.GetConfigState(cctx, &mwanv1.GetConfigStateRequest{})
@@ -510,6 +591,7 @@ func (r *RealOps) vsockGetConfigState(
 		r.log.WarnContext(ctx, "vsock get config state failed", "err", err)
 		return nil, fmt.Errorf("vsock get config state: %w", err)
 	}
+
 	return res, nil
 }
 
@@ -519,6 +601,7 @@ func (r *RealOps) tcpGetConfigState(
 	if r.tcpAddr == "" {
 		return nil, fmt.Errorf("tcpGetConfigState: no tcp addr configured")
 	}
+
 	cctx, cancel := context.WithTimeout(ctx, timeoutTCPRPC)
 	defer cancel()
 	dialer := func(ctx context.Context, _ string) (net.Conn, error) {
@@ -527,6 +610,7 @@ func (r *RealOps) tcpGetConfigState(
 	if r.testTCPDialer != nil {
 		dialer = r.testTCPDialer
 	}
+
 	conn, err := grpc.NewClient(
 		"passthrough:///mwan-tcp",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -536,6 +620,7 @@ func (r *RealOps) tcpGetConfigState(
 		r.log.ErrorContext(ctx, "tcp grpc client failed", "err", err)
 		return nil, fmt.Errorf("tcp grpc client: %w", err)
 	}
+
 	defer func() { _ = conn.Close() }()
 	cli := mwanv1.NewMWANAgentClient(conn)
 	res, err := cli.GetConfigState(cctx, &mwanv1.GetConfigStateRequest{})
@@ -543,6 +628,7 @@ func (r *RealOps) tcpGetConfigState(
 		r.log.ErrorContext(ctx, "tcp get config state failed", "err", err)
 		return nil, fmt.Errorf("tcp get config state: %w", err)
 	}
+
 	return res, nil
 }
 
@@ -555,7 +641,8 @@ func (r *RealOps) tcpGetConfigState(
 // vmid is accepted for symmetry with the rest of SysOps and is not used: both
 // channels address the one guest this daemon watches.
 func (r *RealOps) GetConfigState(
-	ctx context.Context, vmid string,
+	ctx context.Context,
+	vmid string,
 ) (*mwanv1.GetConfigStateResponse, string, error) {
 	_ = vmid
 	r.logAttemptStart(ctx, "get_config_state", ChanVsock, 1, vmid)
@@ -563,8 +650,10 @@ func (r *RealOps) GetConfigState(
 	if err == nil {
 		r.tracker.recordSuccess(ChanVsock)
 		r.logAttemptResult(ctx, "get_config_state", ChanVsock, 1, vmid, nil)
+
 		return res, "vsock", nil
 	}
+
 	r.tracker.recordFailure(ChanVsock, err)
 	r.logAttemptResult(ctx, "get_config_state", ChanVsock, 1, vmid, err)
 	r.logAttemptStart(ctx, "get_config_state", ChanTCP, 2, vmid)
@@ -572,10 +661,13 @@ func (r *RealOps) GetConfigState(
 	if err == nil {
 		r.tracker.recordSuccess(ChanTCP)
 		r.logAttemptResult(ctx, "get_config_state", ChanTCP, 2, vmid, nil)
+
 		return res, "tcp", nil
 	}
+
 	r.tracker.recordFailure(ChanTCP, err)
 	r.logAttemptResult(ctx, "get_config_state", ChanTCP, 2, vmid, err)
+
 	return nil, "", fmt.Errorf("GetConfigState: all channels failed")
 }
 
@@ -594,6 +686,7 @@ func (r *RealOps) vsockAgent(
 	if r.testGrpcDialer != nil {
 		dialer = r.testGrpcDialer
 	}
+
 	conn, err := grpc.NewClient(
 		"passthrough:///mwan",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -603,22 +696,26 @@ func (r *RealOps) vsockAgent(
 		r.log.WarnContext(ctx, "vsock grpc client failed", "err", err)
 		return nil, nil, fmt.Errorf("vsock grpc client: %w", err)
 	}
+
 	return mwanv1.NewMWANAgentClient(conn), func() { _ = conn.Close() }, nil
 }
 
 // tcpAgent requires an explicit address for the selected gateway.
 func (r *RealOps) tcpAgent(
-	ctx context.Context, addr string,
+	ctx context.Context,
+	addr string,
 ) (mwanv1.MWANAgentClient, func(), error) {
 	if addr == "" {
 		return nil, nil, fmt.Errorf("tcp agent: no tcp addr configured")
 	}
+
 	dialer := func(ctx context.Context, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, "tcp", addr)
 	}
 	if r.testTCPDialer != nil {
 		dialer = r.testTCPDialer
 	}
+
 	conn, err := grpc.NewClient(
 		"passthrough:///mwan-tcp",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -628,6 +725,7 @@ func (r *RealOps) tcpAgent(
 		r.log.ErrorContext(ctx, "tcp grpc client failed", "err", err)
 		return nil, nil, fmt.Errorf("tcp grpc client: %w", err)
 	}
+
 	return mwanv1.NewMWANAgentClient(conn), func() { _ = conn.Close() }, nil
 }
 
@@ -646,11 +744,13 @@ func (r *RealOps) vsockGetBGPStatus(
 		r.log.WarnContext(ctx, "vsock get bgp status failed", "err", err)
 		return nil, fmt.Errorf("vsock get bgp status: %w", err)
 	}
+
 	return res, nil
 }
 
 func (r *RealOps) tcpGetBGPStatus(
-	ctx context.Context, addr string,
+	ctx context.Context,
+	addr string,
 ) (*mwanv1.GetBGPStatusResponse, error) {
 	cctx, cancel := context.WithTimeout(ctx, timeoutTCPRPC)
 	defer cancel()
@@ -664,6 +764,7 @@ func (r *RealOps) tcpGetBGPStatus(
 		r.log.ErrorContext(ctx, "tcp get bgp status failed", "err", err)
 		return nil, fmt.Errorf("tcp get bgp status: %w", err)
 	}
+
 	return res, nil
 }
 
@@ -673,12 +774,16 @@ func (r *RealOps) routeTarget(vmid string) (bool, error) {
 	if vmid != "" && vmid == r.failoverVMID {
 		return true, nil
 	}
+
 	if vmid != "" && vmid == r.primaryVMID {
 		return false, nil
 	}
+
 	return false, fmt.Errorf(
 		"vmid %q is neither the primary gateway %q nor the failover container %q",
-		vmid, r.primaryVMID, r.failoverVMID,
+		vmid,
+		r.primaryVMID,
+		r.failoverVMID,
 	)
 }
 
@@ -695,33 +800,40 @@ type routeResponse interface {
 func callFailoverAgent[T routeResponse](
 	ctx context.Context,
 	r *RealOps,
-	operation, vmid string,
+	operation string,
+	vmid string,
 	call func(ctx context.Context, addr string) (T, error),
 ) (T, error) {
 	r.logAttemptStart(ctx, operation, ChanTCP, 1, vmid)
 	res, err := call(ctx, r.failoverTCPAddr)
 	r.logAttemptResult(ctx, operation, ChanTCP, 1, vmid, err)
+
 	return res, err
 }
 
 // GetBGPStatus omits the answering channel because no caller reports it.
 func (r *RealOps) GetBGPStatus(
-	ctx context.Context, vmid string,
+	ctx context.Context,
+	vmid string,
 ) (*mwanv1.GetBGPStatusResponse, error) {
 	isFailover, targetErr := r.routeTarget(vmid)
 	if targetErr != nil {
 		return nil, targetErr
 	}
+
 	if isFailover {
 		return callFailoverAgent(ctx, r, "get_bgp_status", vmid, r.tcpGetBGPStatus)
 	}
+
 	r.logAttemptStart(ctx, "get_bgp_status", ChanVsock, 1, vmid)
 	res, err := r.vsockGetBGPStatus(ctx)
 	if err == nil {
 		r.tracker.recordSuccess(ChanVsock)
 		r.logAttemptResult(ctx, "get_bgp_status", ChanVsock, 1, vmid, nil)
+
 		return res, nil
 	}
+
 	r.tracker.recordFailure(ChanVsock, err)
 	r.logAttemptResult(ctx, "get_bgp_status", ChanVsock, 1, vmid, err)
 	r.logAttemptStart(ctx, "get_bgp_status", ChanTCP, 2, vmid)
@@ -729,10 +841,13 @@ func (r *RealOps) GetBGPStatus(
 	if err == nil {
 		r.tracker.recordSuccess(ChanTCP)
 		r.logAttemptResult(ctx, "get_bgp_status", ChanTCP, 2, vmid, nil)
+
 		return res, nil
 	}
+
 	r.tracker.recordFailure(ChanTCP, err)
 	r.logAttemptResult(ctx, "get_bgp_status", ChanTCP, 2, vmid, err)
+
 	return nil, fmt.Errorf("GetBGPStatus: all channels failed")
 }
 
@@ -751,11 +866,13 @@ func (r *RealOps) vsockAnnounceRoutes(
 		r.log.WarnContext(ctx, "vsock announce routes failed", "err", err)
 		return nil, fmt.Errorf("vsock announce routes: %w", err)
 	}
+
 	return res, nil
 }
 
 func (r *RealOps) tcpAnnounceRoutes(
-	ctx context.Context, addr string,
+	ctx context.Context,
+	addr string,
 ) (*mwanv1.AnnounceRoutesResponse, error) {
 	cctx, cancel := context.WithTimeout(ctx, timeoutTCPRPC)
 	defer cancel()
@@ -769,6 +886,7 @@ func (r *RealOps) tcpAnnounceRoutes(
 		r.log.ErrorContext(ctx, "tcp announce routes failed", "err", err)
 		return nil, fmt.Errorf("tcp announce routes: %w", err)
 	}
+
 	return res, nil
 }
 
@@ -779,16 +897,20 @@ func (r *RealOps) AnnounceRoutes(ctx context.Context, vmid string) error {
 	if targetErr != nil {
 		return targetErr
 	}
+
 	if isFailover {
 		res, err := callFailoverAgent(ctx, r, "announce_routes", vmid, r.tcpAnnounceRoutes)
 		if err != nil {
 			return err
 		}
+
 		if !res.GetSuccess() {
 			return fmt.Errorf("AnnounceRoutes: agent returned error: %s", res.GetError())
 		}
+
 		return nil
 	}
+
 	r.logAttemptStart(ctx, "announce_routes", ChanVsock, 1, vmid)
 	res, err := r.vsockAnnounceRoutes(ctx)
 	if err == nil {
@@ -797,8 +919,10 @@ func (r *RealOps) AnnounceRoutes(ctx context.Context, vmid string) error {
 		if !res.GetSuccess() {
 			return fmt.Errorf("AnnounceRoutes: agent returned error: %s", res.GetError())
 		}
+
 		return nil
 	}
+
 	r.tracker.recordFailure(ChanVsock, err)
 	r.logAttemptResult(ctx, "announce_routes", ChanVsock, 1, vmid, err)
 	r.logAttemptStart(ctx, "announce_routes", ChanTCP, 2, vmid)
@@ -809,10 +933,13 @@ func (r *RealOps) AnnounceRoutes(ctx context.Context, vmid string) error {
 		if !res.GetSuccess() {
 			return fmt.Errorf("AnnounceRoutes: agent returned error: %s", res.GetError())
 		}
+
 		return nil
 	}
+
 	r.tracker.recordFailure(ChanTCP, err)
 	r.logAttemptResult(ctx, "announce_routes", ChanTCP, 2, vmid, err)
+
 	return fmt.Errorf("AnnounceRoutes: all channels failed")
 }
 
@@ -831,11 +958,13 @@ func (r *RealOps) vsockWithdrawRoutes(
 		r.log.WarnContext(ctx, "vsock withdraw routes failed", "err", err)
 		return nil, fmt.Errorf("vsock withdraw routes: %w", err)
 	}
+
 	return res, nil
 }
 
 func (r *RealOps) tcpWithdrawRoutes(
-	ctx context.Context, addr string,
+	ctx context.Context,
+	addr string,
 ) (*mwanv1.WithdrawRoutesResponse, error) {
 	cctx, cancel := context.WithTimeout(ctx, timeoutTCPRPC)
 	defer cancel()
@@ -849,6 +978,7 @@ func (r *RealOps) tcpWithdrawRoutes(
 		r.log.ErrorContext(ctx, "tcp withdraw routes failed", "err", err)
 		return nil, fmt.Errorf("tcp withdraw routes: %w", err)
 	}
+
 	return res, nil
 }
 
@@ -859,16 +989,20 @@ func (r *RealOps) WithdrawRoutes(ctx context.Context, vmid string) error {
 	if targetErr != nil {
 		return targetErr
 	}
+
 	if isFailover {
 		res, err := callFailoverAgent(ctx, r, "withdraw_routes", vmid, r.tcpWithdrawRoutes)
 		if err != nil {
 			return err
 		}
+
 		if !res.GetSuccess() {
 			return fmt.Errorf("WithdrawRoutes: agent returned error: %s", res.GetError())
 		}
+
 		return nil
 	}
+
 	r.logAttemptStart(ctx, "withdraw_routes", ChanVsock, 1, vmid)
 	res, err := r.vsockWithdrawRoutes(ctx)
 	if err == nil {
@@ -877,8 +1011,10 @@ func (r *RealOps) WithdrawRoutes(ctx context.Context, vmid string) error {
 		if !res.GetSuccess() {
 			return fmt.Errorf("WithdrawRoutes: agent returned error: %s", res.GetError())
 		}
+
 		return nil
 	}
+
 	r.tracker.recordFailure(ChanVsock, err)
 	r.logAttemptResult(ctx, "withdraw_routes", ChanVsock, 1, vmid, err)
 	r.logAttemptStart(ctx, "withdraw_routes", ChanTCP, 2, vmid)
@@ -889,10 +1025,13 @@ func (r *RealOps) WithdrawRoutes(ctx context.Context, vmid string) error {
 		if !res.GetSuccess() {
 			return fmt.Errorf("WithdrawRoutes: agent returned error: %s", res.GetError())
 		}
+
 		return nil
 	}
+
 	r.tracker.recordFailure(ChanTCP, err)
 	r.logAttemptResult(ctx, "withdraw_routes", ChanTCP, 2, vmid, err)
+
 	return fmt.Errorf("WithdrawRoutes: all channels failed")
 }
 
@@ -903,6 +1042,7 @@ func (r *RealOps) Ping(ctx context.Context, bin, target string) bool {
 	r.log.DebugContext(ctx, "ops: Ping", "bin", bin, "target", target)
 	cctx, cancel := context.WithTimeout(ctx, timeoutHostProbe)
 	defer cancel()
+
 	return exec.CommandContext(cctx, bin, "-c", "2", "-W", "3", target).Run() == nil
 }
 
@@ -914,9 +1054,8 @@ func (r *RealOps) attemptLogger(
 ) *slog.Logger {
 	attemptCtx := tracing.WithOperation(ctx, operation)
 	attemptCtx = tracing.WithAttempt(attemptCtx, attempt)
-	attemptCtx = tracing.WithAttrs(attemptCtx,
-		slog.String("channel", string(channel)),
-	)
+	attemptCtx = tracing.WithAttrs(attemptCtx, slog.String("channel", string(channel)))
+
 	return tracing.Logger(attemptCtx, r.log)
 }
 
@@ -927,10 +1066,7 @@ func (r *RealOps) logAttemptStart(
 	attempt int,
 	vmid string,
 ) {
-	r.attemptLogger(ctx, operation, channel, attempt).Info(
-		"ops transport attempt",
-		"vmid", vmid,
-	)
+	r.attemptLogger(ctx, operation, channel, attempt).Info("ops transport attempt", "vmid", vmid)
 }
 
 func (r *RealOps) logAttemptResult(
@@ -946,6 +1082,7 @@ func (r *RealOps) logAttemptResult(
 		log.WarnContext(ctx, "ops transport failed", "vmid", vmid, "err", err)
 		return
 	}
+
 	log.InfoContext(ctx, "ops transport succeeded", "vmid", vmid)
 }
 
@@ -960,10 +1097,12 @@ func pingTarget(args []string) string {
 			i++
 			continue
 		}
+
 		if !strings.HasPrefix(a, "-") {
 			return a
 		}
 	}
+
 	return ""
 }
 
@@ -973,6 +1112,7 @@ func pingIface(args []string) string {
 			return args[i+1]
 		}
 	}
+
 	return ""
 }
 
@@ -989,6 +1129,7 @@ func pingCount(args []string, def int32) int32 {
 			}
 		}
 	}
+
 	return def
 }
 
