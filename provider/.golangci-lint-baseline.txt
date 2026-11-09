@@ -1,0 +1,113 @@
+# golangci-lint: generated_at=2026-11-09T07:57:01Z
+internal/provider/network_config_resource.go:382:2: missing whitespace below this line (after-block) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_config_resource.go:243:3: missing whitespace above this line (too many statements above range) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_config_resource.go:92:2: missing whitespace above this line (too many lines above return) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_config_resource.go:264:2: missing whitespace above this line (no shared variables above range) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_config_resource.go:378:2: missing whitespace above this line (invalid statement above range) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_data_source.go:155:2: missing whitespace below this line (after-block) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_data_source.go:138:3: missing whitespace above this line (too many lines above return) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_data_source.go:140:2: missing whitespace above this line (invalid statement above range) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_model.go:424:2: missing whitespace above this line (too many statements above range) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_model.go:588:2: missing whitespace below this line (after-block) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_model.go:589:2: missing whitespace above this line (too many lines above return) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_model.go:376:2: missing whitespace above this line (no shared variables above range) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_rules_test.go:393:2: missing whitespace above this line (no shared variables above range) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_rules_test.go:96:2: missing whitespace below this line (after-block) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_rules_test.go:97:2: missing whitespace above this line (too many lines above return) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_rules_test.go:314:4: missing whitespace above this line (invalid statement above range) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_rules_test.go:371:3: missing whitespace above this line (too many statements above range) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_schema_test.go:40:4: missing whitespace below this line (after-block) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_schema_test.go:26:2: missing whitespace above this line (no shared variables above range) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_schema_test.go:51:2: missing whitespace above this line (too many statements above range) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_state_upgrade_test.go:98:2: missing whitespace below this line (after-block) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_state_upgrade_test.go:69:2: missing whitespace above this line (invalid statement above range) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_state_upgrade_test.go:82:2: missing whitespace above this line (no shared variables above range) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_test.go:79:2: missing whitespace above this line (too many lines above return) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_test.go:99:2: missing whitespace below this line (after-block) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_test.go:467:2: missing whitespace above this line (no shared variables above range) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_test.go:431:2: missing whitespace above this line (too many statements above range) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_test.go:407:4: missing whitespace above this line (invalid statement above range) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_test.go:93:2: missing whitespace above this line (no shared variables above for) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/protocol_test.go:95:2: missing whitespace below this line (after-block) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/protocol_test.go:349:2: missing whitespace above this line (too many lines above return) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/protocol_test.go:333:3: missing whitespace above this line (too many statements above range) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/protocol_test.go:328:2: missing whitespace above this line (invalid statement above range) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/provider.go:80:2: missing whitespace below this line (after-block) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/provider.go:75:3: missing whitespace above this line (too many lines above return) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/provider_test.go:96:3: missing whitespace below this line (after-block) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/provider_test.go:162:2: missing whitespace above this line (too many statements above range) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/provider_test.go:89:2: missing whitespace above this line (invalid statement above range) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/provider_test.go:53:2: missing whitespace above this line (no shared variables above range) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/provider_test.go:56:2: missing whitespace above this line (too many lines above return) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/release_data_source.go:96:2: missing whitespace below this line (after-block) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/release_data_source.go:134:3: missing whitespace above this line (too many lines above return) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/release_data_source.go:143:2: missing whitespace above this line (too many statements above range) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/role_data_source.go:92:2: missing whitespace below this line (after-block) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/role_data_source.go:89:2: missing whitespace above this line (too many statements above range) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/role_data_source.go:93:2: missing whitespace above this line (too many lines above return) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/release/release.go:96:2: missing whitespace below this line (after-block) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/release/release.go:97:2: missing whitespace above this line (too many lines above return) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/release/release.go:134:2: missing whitespace above this line (too many statements above for) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+main.go:28:2: missing whitespace below this line (after-block) (wsl_v5)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:57:01Z
+internal/provider/network_data_source.go:104:5: errorsastype: errors.As can be simplified using AsType[*networkload.SchemaError] (modernize)	# golangci-lint:first_added=2026-11-09T07:54:31Z last_seen=2026-11-09T07:55:04Z
+internal/provider/network_data_source.go:108:5: errorsastype: errors.As can be simplified using AsType[*networkload.JSONError] (modernize)	# golangci-lint:first_added=2026-11-09T07:54:31Z last_seen=2026-11-09T07:55:04Z
+internal/provider/network_config_resource.go:92:2: return with no blank line before (nlreturn)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_config_resource.go:26:1: newNetworkConfigResource returns interface (github.com/hashicorp/terraform-plugin-framework/resource.Resource) (ireturn)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_config_resource.go:30:1: The line is 124 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_config_resource.go:336:4: continue with no blank line before (nlreturn)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_data_source.go:138:3: return with no blank line before (nlreturn)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_data_source.go:35:1: newNetworkDataSource returns interface (github.com/hashicorp/terraform-plugin-framework/datasource.DataSource) (ireturn)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_data_source.go:39:1: The line is 124 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_data_source.go:48:4: string `content` has 4 occurrences, make it a constant (goconst)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_model.go:141:3: string `name` has 3 occurrences, make it a constant (goconst)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_model.go:145:3: string `connection_id` has 3 occurrences, make it a constant (goconst)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_model.go:153:3: string `interface` has 3 occurrences, make it a constant (goconst)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_model.go:154:3: string `family` has 6 occurrences, make it a constant (goconst)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_model.go:157:3: string `table_id` has 3 occurrences, make it a constant (goconst)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_model.go:159:3: string `source` has 3 occurrences, make it a constant (goconst)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_model.go:191:3: string `table` has 3 occurrences, make it a constant (goconst)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_model.go:21:1: The line is 132 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_model.go:589:2: return with no blank line before (nlreturn)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_model.go:26:1: The line is 124 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_model.go:27:1: The line is 129 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_model.go:28:1: The line is 171 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_model.go:29:1: The line is 165 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_model.go:30:1: The line is 232 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_model.go:34:1: The line is 126 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_model.go:47:1: The line is 142 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_rules_test.go:97:2: return with no blank line before (nlreturn)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_rules_test.go:519:4: continue with no blank line before (nlreturn)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_state_upgrade_test.go:73:4: continue with no blank line before (nlreturn)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_test.go:79:2: return with no blank line before (nlreturn)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_test.go:572:4: continue with no blank line before (nlreturn)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/protocol_test.go:349:2: return with no blank line before (nlreturn)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/provider.go:75:3: return with no blank line before (nlreturn)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/provider_test.go:56:2: return with no blank line before (nlreturn)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/release_data_source.go:95:3: return with no blank line before (nlreturn)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/release_data_source.go:33:1: newReleaseDataSource returns interface (github.com/hashicorp/terraform-plugin-framework/datasource.DataSource) (ireturn)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/release_data_source.go:37:1: The line is 124 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/release_data_source.go:88:1: The line is 127 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/role_data_source.go:120:7: string `path` has 3 occurrences, make it a constant (goconst)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/role_data_source.go:121:7: string `content` has 4 occurrences, make it a constant (goconst)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/role_data_source.go:122:1: The line is 124 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/role_data_source.go:132:1: The line is 151 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/role_data_source.go:135:7: string `name` has 3 occurrences, make it a constant (goconst)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/role_data_source.go:136:1: The line is 128 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/role_data_source.go:159:1: The line is 126 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/role_data_source.go:93:2: return with no blank line before (nlreturn)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/role_data_source.go:239:5: continue with no blank line before (nlreturn)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/role_data_source.go:70:1: newRoleDataSource returns interface (github.com/hashicorp/terraform-plugin-framework/datasource.DataSource) (ireturn)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/role_data_source.go:74:1: The line is 121 characters long, which exceeds the maximum of 120 characters. (lll)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/release/release.go:103:19: do not define dynamic errors, use wrapped static errors instead: "fmt.Errorf(\"%s of release %s has no entry for %s\", ChecksumsAsset, version, name)" (err113)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/release/release.go:97:2: return with no blank line before (nlreturn)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/release/release.go:126:15: do not define dynamic errors, use wrapped static errors instead: "fmt.Errorf(\"download %s: HTTP status %d\", checksumsURL, response.StatusCode)" (err113)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/release/release.go:142:16: do not define dynamic errors, use wrapped static errors instead: "fmt.Errorf(\"malformed checksum line %q\", line)" (err113)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/release/release.go:146:16: do not define dynamic errors, use wrapped static errors instead: "fmt.Errorf(\"checksum line %q has no SHA-256 hash\", line)" (err113)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/release/release.go:150:5: avoid inline error handling using `if err := ...; err != nil`; use plain assignment `err := ...` (noinlineerr)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/release/release.go:62:14: do not define dynamic errors, use wrapped static errors instead: "fmt.Errorf(\"release tag %q does not end in -<commit>\", tag)" (err113)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+main.go:34:5: avoid inline error handling using `if err := ...; err != nil`; use plain assignment `err := ...` (noinlineerr)	# golangci-lint:first_added=2026-11-09T07:54:48Z last_seen=2026-11-09T07:54:48Z
+internal/provider/network_config_resource.go:100:1: godoc line is too long (89 > 77) (godoclint)	# golangci-lint:first_added=2026-11-09T07:49:41Z last_seen=2026-11-09T07:49:41Z
+internal/provider/network_config_resource.go:394:1: godoc line is too long (93 > 77) (godoclint)	# golangci-lint:first_added=2026-11-09T07:49:41Z last_seen=2026-11-09T07:49:41Z
+internal/provider/network_data_source.go:100:1: godoc line is too long (82 > 77) (godoclint)	# golangci-lint:first_added=2026-11-09T07:49:41Z last_seen=2026-11-09T07:49:41Z
+internal/provider/provider.go:38:1: godoc line is too long (80 > 77) (godoclint)	# golangci-lint:first_added=2026-11-09T07:49:41Z last_seen=2026-11-09T07:49:41Z
+main.go:1:1: godoc line is too long (85 > 77) (godoclint)	# golangci-lint:first_added=2026-11-09T07:49:41Z last_seen=2026-11-09T07:49:41Z
