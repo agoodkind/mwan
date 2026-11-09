@@ -43,7 +43,8 @@ type familyEvaluation struct {
 
 func (family familyEvaluation) ready(evaluation routingEvaluation) bool {
 	return family.forwarding && evaluation.state != routingFailed && evaluation.state != routingNotPublished &&
-		family.internalReady && !family.moduleFailed && family.firewall == firewallReady &&
+		family.internalReady && !family.moduleFailed &&
+		family.firewall == firewallReady &&
 		family.enabled
 }
 

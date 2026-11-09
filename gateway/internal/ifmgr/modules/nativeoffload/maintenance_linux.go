@@ -233,7 +233,8 @@ func observeCounters(
 	queryError error,
 	now time.Time,
 ) offload.NativeCounterObservation {
-	if stats.Result.Handle != entry.result.Handle || stats.Result.State != offload.NativePairInstalled ||
+	if stats.Result.Handle != entry.result.Handle ||
+		stats.Result.State != offload.NativePairInstalled ||
 		stats.Result.RequestedDirections != entry.spec.RequestedDirections ||
 		stats.Result.InstalledDirections != entry.spec.RequestedDirections ||
 		stats.Result.RestorationDirections != entry.spec.RequestedDirections ||

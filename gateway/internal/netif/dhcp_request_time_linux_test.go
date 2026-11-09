@@ -147,7 +147,8 @@ func testDHCPLeaseDeadline(t *testing.T, phase string) {
 				if phase == "rebind" && renewing && !rebinding {
 					return
 				}
-				target := (phase == "acquire" && !renewing) || (phase == "restart" && !renewing) || (phase == "expired" && !renewing) ||
+				target := (phase == "acquire" && !renewing) || (phase == "restart" && !renewing) ||
+					(phase == "expired" && !renewing) ||
 					(phase == "renew" && renewing && !rebinding) ||
 					(phase == "rebind" && rebinding) ||
 					(phase == "expired-renew" && renewing && !rebinding)

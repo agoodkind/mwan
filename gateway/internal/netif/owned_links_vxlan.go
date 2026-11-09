@@ -170,7 +170,8 @@ func (r *OwnedLinkReconciler) vxlanReceiverHolder(
 	for _, link := range links {
 		observed, ok := link.(*netlink.Vxlan)
 		if !ok || observed.Index == requested.Index || observed.VxlanId != requested.VxlanId || observed.Port != requested.Port ||
-			observed.FlowBased || observed.GBP ||
+			observed.FlowBased ||
+			observed.GBP ||
 			observed.UDP6ZeroCSumRx ||
 			observed.Group.To4() == nil && observed.Group != nil ||
 			observed.SrcAddr.To4() == nil && observed.SrcAddr != nil {
@@ -217,6 +218,7 @@ func (r *OwnedLinkReconciler) validateVXLANReceiverAvailability(
 			"owned",
 			owned,
 		)
+
 		return fmt.Errorf(
 			"VXLAN receiver VNI %d UDP port %d is occupied by %s: %w",
 			requested.VxlanId,

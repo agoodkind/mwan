@@ -79,7 +79,8 @@ func TestLoadMWANOwnedDHCPv6RequestModes(t *testing.T) {
 				}
 
 				connection := requireConnection(t, loaded.Connections, "endhcp6")
-				if connection.IPv6 == nil || connection.IPv6.DHCP == nil || !*connection.IPv6.DHCP ||
+				if connection.IPv6 == nil || connection.IPv6.DHCP == nil ||
+					!*connection.IPv6.DHCP ||
 					(connection.IPv6.Delegation != nil) != testCase.wantDelegation {
 					t.Fatalf("DHCPv6 intent = %+v", connection.IPv6)
 				}

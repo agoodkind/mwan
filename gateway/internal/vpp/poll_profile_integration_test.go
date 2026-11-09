@@ -84,7 +84,8 @@ func verifyQueuePolling(
 			var empty uint64
 			for _, queue := range profile.Queues {
 				empty += queue.EmptyCalls
-				if queue.SecondsPerTick <= 0 || queue.EmptyElapsed < 0 || queue.NonemptyElapsed < 0 ||
+				if queue.SecondsPerTick <= 0 || queue.EmptyElapsed < 0 ||
+					queue.NonemptyElapsed < 0 ||
 					queue.RefillElapsed < 0 {
 					t.Fatalf("queue clock conversion is invalid: %+v", queue)
 				}

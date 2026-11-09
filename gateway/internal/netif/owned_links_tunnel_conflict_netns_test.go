@@ -51,7 +51,8 @@ func TestOwnedTunnelsExchangeRemoteEndpoints(t *testing.T) {
 
 	firstPass := reconcileBoth(secondRemote, tunnelRemoteOuter)
 
-	if result := firstPass[tunnelName]; result.Status != OwnedLinkWaiting || result.Operation != "wait-for-tunnel" ||
+	if result := firstPass[tunnelName]; result.Status != OwnedLinkWaiting ||
+		result.Operation != "wait-for-tunnel" ||
 		result.Err == nil ||
 		!strings.Contains(result.Err.Error(), secondName) {
 		t.Fatalf("first exchange pass result for %s = %+v", tunnelName, result)

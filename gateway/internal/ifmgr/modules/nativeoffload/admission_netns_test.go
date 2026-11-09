@@ -676,8 +676,18 @@ func newAdmissionFixture(t *testing.T, mode config.TranslationMode) admissionFix
 	store.SetRouting(
 		0,
 		map[string]wanstate.MemberRouting{
-			admissionWANID:   {Carrying: true, SelectionEnabled: true, V4Ready: true, V6Ready: true},
-			admissionOtherID: {Carrying: true, SelectionEnabled: true, V4Ready: true, V6Ready: true},
+			admissionWANID: {
+				Carrying:         true,
+				SelectionEnabled: true,
+				V4Ready:          true,
+				V6Ready:          true,
+			},
+			admissionOtherID: {
+				Carrying:         true,
+				SelectionEnabled: true,
+				V4Ready:          true,
+				V6Ready:          true,
+			},
 		},
 	)
 	for _, id := range []string{admissionWANID, admissionOtherID} {

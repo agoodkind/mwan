@@ -135,7 +135,8 @@ func waitBGPRuntimeReason(
 		func() bool {
 			entry, _ := readBGPRuntimeInterface(read, device)
 			for _, transition := range entry.Ownership.Transitions {
-				if transition.Family == "ipv6" && transition.Operation == "evaluate-routing" && transition.Current == "not-ready" &&
+				if transition.Family == "ipv6" && transition.Operation == "evaluate-routing" &&
+					transition.Current == "not-ready" &&
 					transition.Reason == reason &&
 					!transition.At.Before(since) {
 					return true

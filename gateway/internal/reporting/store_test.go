@@ -198,7 +198,8 @@ func TestStoreReportCoverageDetectsGapsAndUnavailableWANCounters(t *testing.T) {
 				}
 
 				for _, block := range message.Content {
-					if block.Table == nil || block.Table.Caption != "Traffic measurement intervals" {
+					if block.Table == nil ||
+						block.Table.Caption != "Traffic measurement intervals" {
 						continue
 					}
 

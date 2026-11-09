@@ -388,6 +388,7 @@ func (store Store) Commit(
 				commitErr = fmt.Errorf(
 					"deploy operation deadline expired during commit verification",
 				)
+
 				return nil
 			}
 
@@ -402,6 +403,7 @@ func (store Store) Commit(
 				commitErr = fmt.Errorf(
 					"deploy commit requires fresh passing application observations",
 				)
+
 				return nil
 			}
 
@@ -663,7 +665,8 @@ func (identity Identity) verifyRestored(baseline Identity) error {
 		return err
 	}
 
-	if identity.MachineID != baseline.MachineID || identity.ExecutableSHA256 != baseline.ExecutableSHA256 ||
+	if identity.MachineID != baseline.MachineID ||
+		identity.ExecutableSHA256 != baseline.ExecutableSHA256 ||
 		identity.NetworkSHA256 != baseline.NetworkSHA256 ||
 		identity.RuntimeSHA256 != baseline.RuntimeSHA256 {
 		return fmt.Errorf("restored deploy identity does not match the baseline recovery pair")

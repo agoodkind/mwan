@@ -100,9 +100,9 @@ func forwardingFIBMatches(selected, fib packetRouteObservation) bool {
 	}
 
 	for index, hop := range fib.route.MultiPath {
-		if !fib.hopEncapsulation[index] && hop != nil && hop.LinkIndex == selected.route.LinkIndex && hop.Gw.Equal(
-			selected.route.Gw,
-		) &&
+		if !fib.hopEncapsulation[index] && hop != nil &&
+			hop.LinkIndex == selected.route.LinkIndex &&
+			hop.Gw.Equal(selected.route.Gw) &&
 			hop.Encap == nil &&
 			hop.Via == nil &&
 			hop.NewDst == nil {

@@ -122,7 +122,8 @@ func waitTunnelRuntimeReason(
 		if found {
 			last = entry
 			for _, transition := range entry.Ownership.Transitions {
-				if transition.Family == "ipv6" && transition.Operation == "evaluate-routing" && transition.Current == "not-ready" &&
+				if transition.Family == "ipv6" && transition.Operation == "evaluate-routing" &&
+					transition.Current == "not-ready" &&
 					transition.Reason == reason &&
 					!transition.At.Before(since) {
 					return

@@ -342,7 +342,8 @@ func removeNativeHardwareDrop(link netlink.Link, timeout time.Duration) error {
 	}
 	filter := filters[0]
 	attributes := filter.Attrs()
-	if attributes.LinkIndex != link.Attrs().Index || attributes.Parent != netlink.HANDLE_MIN_EGRESS ||
+	if attributes.LinkIndex != link.Attrs().Index ||
+		attributes.Parent != netlink.HANDLE_MIN_EGRESS ||
 		attributes.Protocol != unix.ETH_P_IP ||
 		fmt.Sprint(attributes.Priority) != nativePolicyHardwareDropPriority ||
 		fmt.Sprintf("0x%x", attributes.Handle) != nativePolicyHardwareDropHandle ||

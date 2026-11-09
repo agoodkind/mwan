@@ -274,6 +274,7 @@ func (s *Speaker) applyBestPath(ctx context.Context, path *apiutil.Path) {
 			"error",
 			err,
 		)
+
 		return
 	}
 
@@ -301,6 +302,7 @@ func (s *Speaker) applyBestPath(ctx context.Context, path *apiutil.Path) {
 				"error",
 				err,
 			)
+
 			return
 		}
 
@@ -317,6 +319,7 @@ func (s *Speaker) applyBestPath(ctx context.Context, path *apiutil.Path) {
 				"error",
 				err,
 			)
+
 			return
 		}
 
@@ -329,6 +332,7 @@ func (s *Speaker) applyBestPath(ctx context.Context, path *apiutil.Path) {
 				"prefix",
 				prefix,
 			)
+
 			return
 		}
 	}
@@ -392,7 +396,8 @@ func (s *Speaker) reapplyFamilyBestPaths(
 		request,
 		func(_ bgppkt.NLRI, paths []*apiutil.Path) {
 			for _, path := range paths {
-				if path == nil || path.Family != family || !path.Best || path.Stale || path.Withdrawal {
+				if path == nil || path.Family != family || !path.Best || path.Stale ||
+					path.Withdrawal {
 					continue
 				}
 
@@ -554,6 +559,7 @@ func (s *Speaker) addDynamicPeers(ctx context.Context) error {
 			"error",
 			err,
 		)
+
 		return fmt.Errorf("add dynamic BGP peer group: %w", err)
 	}
 
@@ -573,6 +579,7 @@ func (s *Speaker) addDynamicPeers(ctx context.Context) error {
 				"error",
 				err,
 			)
+
 			return fmt.Errorf("add dynamic BGP neighbor %s: %w", prefix, err)
 		}
 	}
@@ -707,6 +714,7 @@ func (s *Speaker) SetDefaultAnnouncements(ipv4, ipv6 bool) error {
 					"error",
 					err,
 				)
+
 				return fmt.Errorf("reconcile ipv4 %s: %w", prefix, err)
 			}
 		}
@@ -731,6 +739,7 @@ func (s *Speaker) SetDefaultAnnouncements(ipv4, ipv6 bool) error {
 					"error",
 					err,
 				)
+
 				return fmt.Errorf("reconcile ipv6 %s: %w", prefix, err)
 			}
 		}

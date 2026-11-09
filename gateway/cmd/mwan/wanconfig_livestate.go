@@ -153,6 +153,7 @@ func observationLiveItems(snapshot wanstate.Snapshot) ([]yangpub.Item, error) {
 				"err",
 				err,
 			)
+
 			return nil, fmt.Errorf("project observation definition: %w", err)
 		}
 
@@ -200,6 +201,7 @@ func marshalObservationResult(base string, result contract.Result) ([]yangpub.It
 			"err",
 			err,
 		)
+
 		return nil, fmt.Errorf("encode served observation: %w", err)
 	}
 
@@ -461,7 +463,8 @@ func natLiveItems(snap wanstate.Snapshot, gateway wanconfig.Gateway) []yangpub.I
 					Value: boolValue(state.V6.Ready),
 				},
 			)
-			if member.TranslationV6.NPT != nil && member.TranslationV6.NPT.ExternalSource == config.PrefixDelegated &&
+			if member.TranslationV6.NPT != nil &&
+				member.TranslationV6.NPT.ExternalSource == config.PrefixDelegated &&
 				state.V6.Ready &&
 				state.V6.InternalPrefix.IsValid() &&
 				state.V6.ExternalPrefix.IsValid() &&

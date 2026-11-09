@@ -71,7 +71,8 @@ func bgpExpiryCaptured(t *testing.T, fd int, source, destination netip.Addr) boo
 		expiredDestination, _ := netip.AddrFromSlice(expired[24:40])
 		port := int(segment[2])<<8 | int(segment[3])
 		synchronize := segment[bgpExpiryTCPFlags]&bgpExpirySYN != 0
-		if expired[bgpExpiryNextHeader] == tunnelRuntimeProtocolTCP && expiredSource == source && expiredDestination == destination &&
+		if expired[bgpExpiryNextHeader] == tunnelRuntimeProtocolTCP && expiredSource == source &&
+			expiredDestination == destination &&
 			port == bgpRuntimePort &&
 			synchronize {
 			return true
