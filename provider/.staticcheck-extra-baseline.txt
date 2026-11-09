@@ -1,4 +1,4 @@
-# staticcheck-extra: generated_at=2026-11-09T07:57:37Z
+# staticcheck-extra: generated_at=2026-11-09T17:42:19Z
 internal/provider/network_config_resource.go:394:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:57:37Z last_seen=2026-11-09T07:57:37Z
 internal/provider/provider.go:38:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:57:37Z last_seen=2026-11-09T07:57:37Z
 internal/release/release.go:67:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:57:37Z last_seen=2026-11-09T07:57:37Z
