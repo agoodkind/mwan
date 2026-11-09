@@ -9,11 +9,17 @@ package policyrules
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
 	"goodkind.io/mwan/internal/ifmgr"
 	"goodkind.io/mwan/internal/netif"
+)
+
+var (
+	errInvalidPriority = errors.New("priority must be > 0")
+	errInvalidTableID  = errors.New("table_id must be > 0")
 )
 
 // Module owns the policy-rules state.
@@ -38,16 +44,35 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	log := m.InitBase(env, "module", "policy_rules")
 	log.InfoContext(ctx, "policy_rules: Init", "rule_count", len(m.cfg.Rules))
 
-	for i, r := range m.cfg.Rules {
-		if r.Priority <= 0 {
-			return fmt.Errorf("policy_rules[%d]: priority must be > 0", i)
+	for ruleIndex, rule := range m.cfg.Rules {
+		if rule.Priority <= 0 {
+			log.WarnContext(
+				ctx,
+				"policy_rules: invalid rule",
+				"rule_index",
+				ruleIndex,
+				"err",
+				errInvalidPriority,
+			)
+
+			return fmt.Errorf("policy_rules[%d]: %w", ruleIndex, errInvalidPriority)
 		}
 
-		if r.TableID <= 0 {
+		if rule.TableID <= 0 {
+			log.WarnContext(
+				ctx,
+				"policy_rules: invalid rule",
+				"rule_index",
+				ruleIndex,
+				"err",
+				errInvalidTableID,
+			)
+
 			return fmt.Errorf(
-				"policy_rules[%d]: table_id must be > 0 (rule prio=%d)",
-				i,
-				r.Priority,
+				"policy_rules[%d]: %w (rule prio=%d)",
+				ruleIndex,
+				errInvalidTableID,
+				rule.Priority,
 			)
 		}
 	}
