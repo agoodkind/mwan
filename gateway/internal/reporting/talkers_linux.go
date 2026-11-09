@@ -411,15 +411,15 @@ func (accounting *talkerAccounting) sample() ([]TalkerUsage, []AttributionCovera
 	}
 
 	coverage := make([]AttributionCoverage, 0, len(accounting.marks))
-	for _, id := range accounting.marks {
-		reason := accounting.gaps[id]
+	for _, connectionID := range accounting.marks {
+		reason := accounting.gaps[connectionID]
 		if accounting.failure != nil {
 			reason = accounting.failure.Error()
 		}
 
 		coverage = append(
 			coverage,
-			AttributionCoverage{WAN: id, Complete: reason == "", Reason: reason},
+			AttributionCoverage{WAN: connectionID, Complete: reason == "", Reason: reason},
 		)
 	}
 

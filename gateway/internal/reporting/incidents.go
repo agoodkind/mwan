@@ -118,18 +118,7 @@ func (service *Service) breaches(
 		observed[id] = false
 	}
 
-	for id, total := range traffic {
-		if trafficMinutes[id] == len(history) && total.Drops >= service.settings.MinDrops &&
-			100*float64(total.Drops)/float64(
-				total.Packets+total.Drops,
-			) > service.settings.DropPercent {
-			bad[id] = true
-			signals = append(
-				signals,
-				service.renderer.label(id)+" interface drops exceeded the configured threshold.",
-			)
-		}
-	}
+	signals = service.appendDropBreachSignals(traffic, trafficMinutes, history, bad, signals)
 
 	for _, id := range service.store.wanIDs() {
 		observed[id] = observed[id] && trafficMinutes[id] == len(history)

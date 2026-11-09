@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net/netip"
 	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -131,48 +130,17 @@ func (renderer *Renderer) messagePeriod(
 		definitions = definitions[3:]
 	}
 
-	for _, definition := range definitions {
-		inline, block, err := renderer.renderGraph(ctx, directory, definition)
-		if err != nil {
-			return message, err
-		}
-
-		message.Inlines = append(message.Inlines, inline)
-		message.Content = append(message.Content, block)
-		if definition.filename == "usage.png" {
-			message.Content = append(
-				message.Content,
-				tableBlock(
-					"Cumulative usage over the displayed period",
-					[]string{"WAN", "Downloaded (GiB)", "Uploaded (GiB)"},
-					totals,
-				),
-			)
-		}
-
-		if definition.filename == "speed.png" {
-			period := "Complete"
-			if !renderer.periodComplete(minuteHistory, start, end) ||
-				start.After(renderer.store.periodEnd(end.Add(-time.Nanosecond)).AddDate(0, 0, -1)) {
-				period = "Partial"
-			}
-
-			message.Content = append(
-				message.Content,
-				tableBlock(
-					"Traffic measurement intervals",
-					[]string{"Period start", "Period end", "Average interval", "Coverage"},
-					[][]string{
-						{
-							start.In(boundaryLocation(renderer.settings)).Format(time.RFC1123),
-							end.In(boundaryLocation(renderer.settings)).Format(time.RFC1123),
-							renderer.settings.SampleInterval,
-							period,
-						},
-					},
-				),
-			)
-		}
+	if err := renderer.appendMessageGraphs(
+		ctx,
+		directory,
+		definitions,
+		minuteHistory,
+		start,
+		end,
+		&message,
+		totals,
+	); err != nil {
+		return message, err
 	}
 
 	message.Content = append(message.Content, renderer.talkerContent(minuteHistory)...)
@@ -289,13 +257,13 @@ func (renderer *Renderer) graphDefinitions(
 		},
 	}
 
-	for _, id := range renderer.store.wanIDs() {
-		label := renderer.label(id)
-		if slices.Contains(incident.Affected, id) {
+	for _, connectionID := range renderer.store.wanIDs() {
+		label := renderer.label(connectionID)
+		if slices.Contains(incident.Affected, connectionID) {
 			label += " [incident]"
 		}
 
-		path := renderer.store.wanPath(id)
+		path := renderer.store.wanPath(connectionID)
 		definitions[0].traces = append(
 			definitions[0].traces,
 			graphTrace{
@@ -316,39 +284,7 @@ func (renderer *Renderer) graphDefinitions(
 			},
 		)
 
-		for _, family := range []Family{IPv4, IPv6} {
-			for _, target := range []Target{Gateway, Cloudflare} {
-				key := ProbeKey{WAN: id, Family: family, Target: target, Mode: Fresh}
-				traceLabel := fmt.Sprintf("%s %s IPv%d", label, target, family)
-				if !probeAvailable(history, key) {
-					traceLabel += " [unavailable]"
-				}
-
-				name := probeName(key)
-				definitions[1].traces = append(
-					definitions[1].traces,
-					graphTrace{
-						path:    path,
-						source:  name + "_mean",
-						minimum: name + "_min",
-						peak:    name + "_peak",
-						label:   traceLabel,
-						scale:   1,
-					},
-				)
-				definitions[2].traces = append(
-					definitions[2].traces,
-					graphTrace{
-						path:    path,
-						source:  name + "_loss",
-						minimum: "",
-						peak:    "",
-						label:   traceLabel,
-						scale:   1,
-					},
-				)
-			}
-		}
+		appendProbeGraphTraces(definitions, history, connectionID, label, path)
 	}
 
 	definitions[3].traces = renderer.hostTraces(history)
@@ -472,7 +408,7 @@ func (renderer *Renderer) usageGraph(
 	start = availableUsageStart(history, start)
 	ids := renderer.store.wanIDs()
 	definition := graphDefinition{
-		filename: "usage.png",
+		filename: usageGraphFilename,
 		title:    "Cumulative data usage (UTC days)",
 		unit:     "GiB",
 		traces:   nil,
@@ -481,62 +417,17 @@ func (renderer *Renderer) usageGraph(
 	}
 	var totals [][]string
 
-	for index, id := range ids {
-		path := filepath.Join(directory, fmt.Sprintf("usage-%d.rrd", index))
-		arguments := []string{
-			"create",
-			path,
-			"--start",
-			strconv.FormatInt(start.Unix()-1, 10),
-			"--step",
-			strconv.FormatInt(renderer.store.step, 10),
-			"DS:down:GAUGE:172800:0:U",
-			"DS:up:GAUGE:172800:0:U",
-			"RRA:AVERAGE:0.5:1:45000",
-		}
-		if _, err := renderer.store.rrd(ctx, arguments...); err != nil {
-			return definition, nil, err
-		}
-
-		var down, up uint64
-		updates := []string{"update", path, fmt.Sprintf("%d:0:0", start.Unix())}
-		cursor := 0
-
-		for dayEnd := start.AddDate(0, 0, 1); ; dayEnd = dayEnd.AddDate(0, 0, 1) {
-			stop := dayEnd
-			if stop.After(end) {
-				stop = end
-			}
-
-			observed := false
-
-			for cursor < len(history) && !history[cursor].End.After(stop) {
-				for _, traffic := range history[cursor].Traffic {
-					if traffic.WAN == id && traffic.Available {
-						down += traffic.Downloaded
-						up += traffic.Uploaded
-						observed = true
-					}
-				}
-
-				cursor++
-			}
-
-			updates = append(
-				updates,
-				fmt.Sprintf(
-					"%d:%s:%s",
-					stop.Unix(),
-					sampleValue(float64(down)/1073741824, observed),
-					sampleValue(float64(up)/1073741824, observed),
-				),
-			)
-			if !stop.Before(end) {
-				break
-			}
-		}
-
-		if _, err := renderer.store.rrd(ctx, updates...); err != nil {
+	for index, connectionID := range ids {
+		path, down, uploaded, err := renderer.writeUsageSeries(
+			ctx,
+			directory,
+			index,
+			connectionID,
+			history,
+			start,
+			end,
+		)
+		if err != nil {
 			return definition, nil, err
 		}
 
@@ -547,7 +438,7 @@ func (renderer *Renderer) usageGraph(
 				source:  "down",
 				minimum: "",
 				peak:    "",
-				label:   renderer.label(id) + " download",
+				label:   renderer.label(connectionID) + " download",
 				scale:   1,
 			},
 			graphTrace{
@@ -555,16 +446,16 @@ func (renderer *Renderer) usageGraph(
 				source:  "up",
 				minimum: "",
 				peak:    "",
-				label:   renderer.label(id) + " upload",
+				label:   renderer.label(connectionID) + " upload",
 				scale:   1,
 			},
 		)
 		totals = append(
 			totals,
 			[]string{
-				renderer.label(id),
-				fmt.Sprintf("%.2f", float64(down)/1073741824),
-				fmt.Sprintf("%.2f", float64(up)/1073741824),
+				renderer.label(connectionID),
+				fmt.Sprintf("%.2f", float64(down)/gibibyteBytes),
+				fmt.Sprintf("%.2f", float64(uploaded)/gibibyteBytes),
 			},
 		)
 	}

@@ -79,8 +79,8 @@ func (renderer *Renderer) renderGraph(
 
 	for _, trace := range definition.traces {
 		legendRows++
-		if utf8.RuneCountInString(trace.label) > 24 {
-			legendRows += len(wrapGraphLabel(trace.label, 60))
+		if utf8.RuneCountInString(trace.label) > inlineGraphLabelRunes {
+			legendRows += len(wrapGraphLabel(trace.label, wrappedGraphLabelRunes))
 		}
 	}
 
@@ -95,81 +95,20 @@ func (renderer *Renderer) renderGraph(
 	labelWidth := 17
 
 	for _, trace := range definition.traces {
-		if utf8.RuneCountInString(trace.label) <= 24 {
+		if utf8.RuneCountInString(trace.label) <= inlineGraphLabelRunes {
 			labelWidth = max(labelWidth, utf8.RuneCountInString(trace.label))
 		}
 	}
 
 	var legends []string
 
-	for index, trace := range definition.traces {
-		name := fmt.Sprintf("s%d", index)
-		arguments = append(
-			arguments,
-			graphDEF(name+"_raw", trace.path, trace.source, "AVERAGE", definition),
-			fmt.Sprintf("CDEF:%s=%s_raw,%g,*", name, name, trace.scale),
-		)
-		minimum, peak := name, name
-		if trace.minimum != "" {
-			minimum = name + "_observed_min"
-			arguments = append(
-				arguments,
-				graphDEF(minimum, trace.path, trace.minimum, "MIN", definition),
-			)
-		}
-
-		if trace.peak != "" {
-			peak = name + "_observed_peak"
-			arguments = append(arguments, graphDEF(peak, trace.path, trace.peak, "MAX", definition))
-		}
-
-		arguments = append(
-			arguments,
-			"VDEF:"+name+"_min="+minimum+",MINIMUM",
-			"VDEF:"+name+"_max="+peak+",MAXIMUM",
-			"VDEF:"+name+"_avg="+name+",AVERAGE",
-			"VDEF:"+name+"_last="+name+",LAST",
-		)
-		if utf8.RuneCountInString(trace.label) > 24 {
-			rows := wrapGraphLabel(trace.label, 60)
-
-			arguments = append(
-				arguments,
-				fmt.Sprintf("LINE1.7:%s#%s:%s\\l", name, seriesColor(index), rrdEscape(rows[0])),
-			)
-			for _, row := range rows[1:] {
-				arguments = append(arguments, "COMMENT:"+rrdEscape(row)+"\\l")
-			}
-
-			arguments = append(arguments, "COMMENT:"+strings.Repeat(" ", labelWidth))
-		} else {
-			arguments = append(
-				arguments,
-				fmt.Sprintf(
-					"LINE1.7:%s#%s:%s",
-					name,
-					seriesColor(index),
-					rrdEscape(fmt.Sprintf("%-*s", labelWidth, trace.label)),
-				),
-			)
-		}
-
-		switch {
-		case strings.HasSuffix(trace.label, "[unavailable]"):
-			arguments = append(arguments, "COMMENT:Measurements unavailable\\l")
-		case definition.filename == "usage.png":
-			arguments = append(arguments, "GPRINT:"+name+"_last:  total "+statFormat+"\\l")
-		default:
-			arguments = append(
-				arguments,
-				"GPRINT:"+name+"_min:  min "+statFormat,
-				"GPRINT:"+name+"_max:  max "+statFormat,
-				"GPRINT:"+name+"_avg:  avg "+statFormat+"\\l",
-			)
-		}
-
-		legends = append(legends, trace.label)
-	}
+	arguments, legends = appendTraceArguments(
+		arguments,
+		definition,
+		statFormat,
+		labelWidth,
+		legends,
+	)
 
 	if len(definition.traces) == 0 {
 		arguments = append(
@@ -186,6 +125,7 @@ func (renderer *Renderer) renderGraph(
 	data, err := os.ReadFile(path)
 	if err != nil {
 		slog.WarnContext(ctx, "rendered graph read failed", "path", path, "error", err)
+
 		return mailer.InlineImage{}, mailer.ContentBlock{}, fmt.Errorf(
 			"read rendered graph %s: %w",
 			path,

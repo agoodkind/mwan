@@ -220,78 +220,7 @@ func (renderer *Renderer) vppContent(history []Minute) []mailer.ContentBlock {
 		),
 	}
 
-	for _, minute := range slices.Backward(history) {
-		profile := minute.VPPProfile
-		if profile == nil {
-			continue
-		}
-
-		status := "Available"
-		if !profile.Available {
-			status = "Unavailable"
-		}
-
-		blocks = append(
-			blocks,
-			tableBlock(
-				"Latest VPP CPU profile",
-				[]string{"Status", "Duration", "Threads", "Measurement limit"},
-				[][]string{
-					{
-						status,
-						profile.Duration.String(),
-						strconv.Itoa(len(profile.Threads)),
-						profile.Reason,
-					},
-				},
-			),
-		)
-		var samples [][]string
-
-		for _, thread := range profile.Threads {
-			clock := "Unavailable"
-			if thread.CPUClockAvailable {
-				clock = thread.CPUClockTime.String()
-			}
-
-			threadStatus := "Available"
-			if !thread.Available {
-				threadStatus = "Unavailable: " + thread.Reason
-			}
-
-			samples = append(
-				samples,
-				[]string{
-					thread.Thread.Name,
-					clock,
-					strconv.FormatUint(thread.Counts.PacketWork, 10),
-					strconv.FormatUint(thread.Counts.Other, 10),
-					strconv.FormatUint(thread.Counts.Unresolved, 10),
-					strconv.FormatUint(thread.Counts.Lost, 10),
-					threadStatus,
-				},
-			)
-		}
-
-		blocks = append(
-			blocks,
-			tableBlock(
-				"Native VPP instruction samples",
-				[]string{
-					"Thread",
-					"CPU clock",
-					"Recognized packet function samples",
-					"Other samples",
-					"Unresolved samples",
-					"Lost samples",
-					"Status",
-				},
-				samples,
-			),
-		)
-		blocks = append(blocks, vppQueueContent(profile.QueuePolling)...)
-		break
-	}
+	blocks = appendLatestVPPProfile(blocks, history)
 
 	return blocks
 }

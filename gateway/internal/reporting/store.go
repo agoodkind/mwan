@@ -81,6 +81,7 @@ func (store *Store) rrd(ctx context.Context, arguments ...string) ([]byte, error
 			"error",
 			err,
 		)
+
 		return nil, fmt.Errorf("resolve configured RRDtool executable: %w", err)
 	}
 
@@ -98,6 +99,7 @@ func (store *Store) rrd(ctx context.Context, arguments ...string) ([]byte, error
 			"output",
 			strings.TrimSpace(string(output)),
 		)
+
 		return nil, fmt.Errorf(
 			"RRDtool %s: %w: %s",
 			arguments[0],
@@ -291,51 +293,7 @@ func (store *Store) Record(ctx context.Context, minute Minute) error {
 	}
 
 	for _, id := range store.wanIDs() {
-		values := make(map[string]string)
-
-		for _, traffic := range minute.Traffic {
-			if traffic.WAN != id {
-				continue
-			}
-
-			values["down"] = sampleValue(
-				float64(traffic.Downloaded)/minute.End.Sub(minute.Start).Seconds(),
-				traffic.Available,
-			)
-			values["up"] = sampleValue(
-				float64(traffic.Uploaded)/minute.End.Sub(minute.Start).Seconds(),
-				traffic.Available,
-			)
-		}
-
-		for _, probe := range minute.Probes {
-			if probe.Key.WAN != id {
-				continue
-			}
-
-			name := probeName(probe.Key)
-			values[name+"_mean"] = sampleValue(
-				float64(probe.LatencySum)/float64(time.Millisecond)/float64(probe.Replies),
-				probe.Available && probe.Replies > 0,
-			)
-			values[name+"_min"] = sampleValue(
-				float64(probe.LatencyMin)/float64(time.Millisecond),
-				probe.Available && probe.Replies > 0,
-			)
-			values[name+"_peak"] = sampleValue(
-				float64(probe.LatencyMax)/float64(time.Millisecond),
-				probe.Available && probe.Replies > 0,
-			)
-			values[name+"_loss"] = sampleValue(
-				100*float64(probe.Lost)/float64(probe.Sent),
-				probe.Available && probe.Sent > 0,
-			)
-			values[name+"_dns"] = sampleValue(
-				100*float64(probe.DNSFailures)/float64(probe.Sent),
-				probe.Available && probe.Sent > 0,
-			)
-		}
-
+		values := intervalWANValues(minute, id)
 		if err := store.updateRRD(
 			ctx,
 			store.wanPath(id),
@@ -414,6 +372,7 @@ func (store *Store) history(start, end time.Time) ([]Minute, error) {
 			"error",
 			err,
 		)
+
 		return nil, fmt.Errorf("list reporting history: %w", err)
 	}
 
