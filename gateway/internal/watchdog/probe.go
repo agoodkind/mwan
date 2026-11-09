@@ -3,6 +3,7 @@ package watchdog
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
@@ -202,16 +203,7 @@ func (w *watchdog) checkDeploy(ctx context.Context) (int64, bool) {
 		return 0, false
 	}
 
-	log.InfoContext(
-		ctx,
-		"checkDeploy: reading change window markers",
-		"last_deploy_path",
-		w.cfg.Network.LastDeployPath,
-		"last_change_path",
-		w.cfg.Network.LastChangePath,
-		"vmid",
-		w.cfg.MwanVMID,
-	)
+	w.logChangeMarkers(ctx, log)
 
 	deployTS, dOK := w.readGuestUnix(ctx, w.cfg.Network.LastDeployPath)
 	changeTS, cOK := w.readGuestUnix(ctx, w.cfg.Network.LastChangePath)
@@ -285,4 +277,17 @@ func (w *watchdog) checkDeploy(ctx context.Context) (int64, bool) {
 	)
 
 	return effective, true
+}
+
+func (w *watchdog) logChangeMarkers(ctx context.Context, log *slog.Logger) {
+	log.InfoContext(
+		ctx,
+		"checkDeploy: reading change window markers",
+		"last_deploy_path",
+		w.cfg.Network.LastDeployPath,
+		"last_change_path",
+		w.cfg.Network.LastChangePath,
+		"vmid",
+		w.cfg.MwanVMID,
+	)
 }

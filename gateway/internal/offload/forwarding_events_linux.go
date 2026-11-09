@@ -120,21 +120,7 @@ func NewForwardingEvents(
 
 	changes := make(chan struct{}, 1)
 	failures := make(chan error, 1)
-	source := &ForwardingEvents{
-		Changes:       changes,
-		Errors:        failures,
-		socket:        socket,
-		done:          make(chan struct{}),
-		stopping:      make(chan struct{}),
-		generation:    atomic.Uint64{},
-		closeOnce:     sync.Once{},
-		closeErr:      nil,
-		failureMu:     sync.RWMutex{},
-		terminalError: nil,
-		neighbors: forwardingNeighborCache{
-			entries: make(map[forwardingNeighborKey]rtnetlink.Neigh),
-		},
-	}
+	source := newForwardingEventSource(socket, changes, failures)
 	stop := context.AfterFunc(ctx, func() { source.closeSocket() })
 	go func() {
 		defer close(source.done)
@@ -162,6 +148,28 @@ func NewForwardingEvents(
 	}()
 
 	return source, nil
+}
+
+func newForwardingEventSource(
+	socket *netlink.Conn,
+	changes chan struct{},
+	failures chan error,
+) *ForwardingEvents {
+	return &ForwardingEvents{
+		Changes:       changes,
+		Errors:        failures,
+		socket:        socket,
+		done:          make(chan struct{}),
+		stopping:      make(chan struct{}),
+		generation:    atomic.Uint64{},
+		closeOnce:     sync.Once{},
+		closeErr:      nil,
+		failureMu:     sync.RWMutex{},
+		terminalError: nil,
+		neighbors: forwardingNeighborCache{
+			entries: make(map[forwardingNeighborKey]rtnetlink.Neigh),
+		},
+	}
 }
 
 // Generation counts changes even when the pending notification coalesces them.
