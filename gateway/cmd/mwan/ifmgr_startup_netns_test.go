@@ -39,7 +39,9 @@ func TestWANStartupProtectsBeforeConfigValidation(t *testing.T) {
 		t.Fatalf("build mwan: %v: %s", err, output)
 	}
 	child := exec.Command(os.Args[0], "-test.run=^TestWANStartupProtectsBeforeConfigValidation$")
-	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
+	child.SysProcAttr = &syscall.SysProcAttr{
+		Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS),
+	}
 	child.Env = append(os.Environ(), startupChildEnv+"=1", startupBinaryEnv+"="+binary)
 	if output, err := child.CombinedOutput(); err != nil {
 		t.Fatalf("isolated WAN startup test: %v: %s", err, output)
@@ -70,7 +72,11 @@ func runWANStartupChild(t *testing.T) {
 	}
 	bindStartupDirectory(t, networkdDir, "/etc/systemd/network")
 	configPath := filepath.Join(root, "invalid.toml")
-	if err := os.WriteFile(configPath, []byte("[bgp]\ndynamic_neighbors = [\"not-a-prefix\"]\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		configPath,
+		[]byte("[bgp]\ndynamic_neighbors = [\"not-a-prefix\"]\n"),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("MWAN_CONFIG", configPath)
@@ -84,7 +90,8 @@ func runWANStartupChild(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read protective input chain: %v: %s", err, input)
 	}
-	if !bytes.Contains(input, []byte("policy drop")) || !bytes.Contains(input, []byte("enmgmt0")) || !bytes.Contains(input, []byte("dport 22")) {
+	if !bytes.Contains(input, []byte("policy drop")) || !bytes.Contains(input, []byte("enmgmt0")) ||
+		!bytes.Contains(input, []byte("dport 22")) {
 		t.Fatalf("protective management policy missing: %s", input)
 	}
 	schema := filepath.Join("..", "..", "internal", "yangpub", "schema")
@@ -117,7 +124,8 @@ func runWANStartupChild(t *testing.T) {
 	if output, err := inspect.CombinedOutput(); err == nil {
 		t.Fatalf("inspect-firewall exited zero after flushing inet filter input chain: %s", output)
 	}
-	if output, err := exec.Command(binary, "ifmgr", "--role", "wan").CombinedOutput(); err == nil || !strings.Contains(string(output), "dynamic_neighbors") {
+	if output, err := exec.Command(binary, "ifmgr", "--role", "wan").CombinedOutput(); err == nil ||
+		!strings.Contains(string(output), "dynamic_neighbors") {
 		t.Fatalf("invalid TOML did not fail after restoring the baseline: %v: %s", err, output)
 	}
 	entries, err := os.ReadDir(networkdDir)
@@ -153,7 +161,13 @@ func runWANStartupChild(t *testing.T) {
 	before = startupRuleset(t)
 	commandContext, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
-	output, err = exec.CommandContext(commandContext, binary, "ifmgr", "--role", "wan").CombinedOutput()
+	output, err = exec.CommandContext(
+		commandContext,
+		binary,
+		"ifmgr",
+		"--role",
+		"wan",
+	).CombinedOutput()
 	if commandContext.Err() != nil {
 		t.Fatalf("The WAN startup command timed out without a firewall policy: %s", output)
 	}

@@ -56,27 +56,41 @@ func TestSpeakerInstallsLearnedRoutesInKernel(t *testing.T) {
 	ipv4Leftover := netip.MustParsePrefix("203.0.113.128/25")
 	ipv6Leftover := netip.MustParsePrefix("2001:db8:7::/48")
 
-	fibConfig := bgp.FIBConfig{Tables: []int{sessionRouteTable}, InternalIface: internalLink.Attrs().Name}
+	fibConfig := bgp.FIBConfig{
+		Tables:        []int{sessionRouteTable},
+		InternalIface: internalLink.Attrs().Name,
+	}
 	previousFIB := bgp.NewFIB(fibConfig, sessionLogger())
 	for _, prefix := range []netip.Prefix{ipv4Leftover, ipv4Default} {
-		applyFIB(t, previousFIB, bgp.PathEvent{Peer: "previous", Prefix: prefix, NextHop: ipv4NextHop})
+		applyFIB(
+			t,
+			previousFIB,
+			bgp.PathEvent{Peer: "previous", Prefix: prefix, NextHop: ipv4NextHop},
+		)
 	}
 	for _, prefix := range []netip.Prefix{ipv6Leftover, ipv6Default} {
-		applyFIB(t, previousFIB, bgp.PathEvent{Peer: "previous", Prefix: prefix, NextHop: ipv6NextHop})
+		applyFIB(
+			t,
+			previousFIB,
+			bgp.PathEvent{Peer: "previous", Prefix: prefix, NextHop: ipv6NextHop},
+		)
 	}
 
 	fib := bgp.NewFIB(fibConfig, sessionLogger())
 	fib.ArmSweep()
 	listenPort := unusedPort(t, transport)
-	speaker := bgp.New(bgp.Config{
-		Enabled:                 true,
-		ASN:                     sessionASN,
-		RouterID:                sessionRouterID,
-		KeepaliveSeconds:        keepaliveSeconds,
-		HoldSeconds:             holdSeconds,
-		ListenPort:              int32(listenPort),
-		DynamicNeighborPrefixes: []netip.Prefix{ipv6Transit},
-	}, sessionLogger())
+	speaker := bgp.New(
+		bgp.Config{
+			Enabled:                 true,
+			ASN:                     sessionASN,
+			RouterID:                sessionRouterID,
+			KeepaliveSeconds:        keepaliveSeconds,
+			HoldSeconds:             holdSeconds,
+			ListenPort:              int32(listenPort),
+			DynamicNeighborPrefixes: []netip.Prefix{ipv6Transit},
+		},
+		sessionLogger(),
+	)
 	speaker.SetFIB(fib)
 	if err := speaker.Start(t.Context()); err != nil {
 		t.Fatalf("start speaker: %v", err)
@@ -86,19 +100,26 @@ func TestSpeakerInstallsLearnedRoutesInKernel(t *testing.T) {
 			t.Errorf("stop speaker: %v", err)
 		}
 	})
-	peer := startTestPeerWithOptions(t, testPeerOptions{
-		asn:          sessionASN,
-		routerID:     "192.0.2.2",
-		listen:       transport,
-		neighbor:     transport,
-		neighborASN:  sessionASN,
-		neighborPort: listenPort,
-		families:     []apipb.Family_Afi{apipb.Family_AFI_IP, apipb.Family_AFI_IP6},
-		restartTime:  0,
-	})
-	eventually(t, "speaker peer session established", func() bool {
-		return speaker.IsEstablished(t.Context())
-	})
+	peer := startTestPeerWithOptions(
+		t,
+		testPeerOptions{
+			asn:          sessionASN,
+			routerID:     "192.0.2.2",
+			listen:       transport,
+			neighbor:     transport,
+			neighborASN:  sessionASN,
+			neighborPort: listenPort,
+			families:     []apipb.Family_Afi{apipb.Family_AFI_IP, apipb.Family_AFI_IP6},
+			restartTime:  0,
+		},
+	)
+	eventually(
+		t,
+		"speaker peer session established",
+		func() bool {
+			return speaker.IsEstablished(t.Context())
+		},
+	)
 
 	peer.announce(t, ipv4Default, ipv4NextHop)
 	peer.announce(t, ipv6Default, ipv6NextHop)
@@ -108,9 +129,14 @@ func TestSpeakerInstallsLearnedRoutesInKernel(t *testing.T) {
 	peer.announce(t, ipv6Learned, ipv6NextHop)
 	peer.announce(t, ipv4Retained, ipv4NextHop)
 	peer.announce(t, ipv6Retained, ipv6NextHop)
-	eventually(t, "announced routes installed in kernel", func() bool {
-		return hasKernelRoute(t, ipv4Retained, internalLink) && hasKernelRoute(t, ipv6Retained, internalLink)
-	})
+	eventually(
+		t,
+		"announced routes installed in kernel",
+		func() bool {
+			return hasKernelRoute(t, ipv4Retained, internalLink) &&
+				hasKernelRoute(t, ipv6Retained, internalLink)
+		},
+	)
 	assertKernelRoute(t, ipv4Learned, internalLink, ipv4NextHop, kernelDefaultIPv4Metric)
 	assertKernelRoute(t, ipv6Learned, internalLink, ipv6NextHop, kernelDefaultIPv6Metric)
 	assertKernelRoute(t, ipv4Retained, internalLink, ipv4NextHop, kernelDefaultIPv4Metric)
@@ -121,7 +147,14 @@ func TestSpeakerInstallsLearnedRoutesInKernel(t *testing.T) {
 	if err := speaker.SweepStale(t.Context()); err != nil {
 		t.Fatalf("sweep: %v", err)
 	}
-	guarded := []netip.Prefix{ipv4Default, ipv6Default, ipv4Transit, ipv6Transit, ipv4Leftover, ipv6Leftover}
+	guarded := []netip.Prefix{
+		ipv4Default,
+		ipv6Default,
+		ipv4Transit,
+		ipv6Transit,
+		ipv4Leftover,
+		ipv6Leftover,
+	}
 	for _, prefix := range guarded {
 		assertNoKernelRoute(t, prefix, internalLink)
 	}
@@ -132,14 +165,24 @@ func TestSpeakerInstallsLearnedRoutesInKernel(t *testing.T) {
 	peer.withdraw(t, ipv6Default)
 	peer.withdraw(t, ipv4Learned)
 	peer.withdraw(t, ipv6Learned)
-	eventually(t, "the kernel route to disappear after the peer withdrawal", func() bool {
-		return !hasKernelRoute(t, ipv4Learned, internalLink) && !hasKernelRoute(t, ipv6Learned, internalLink)
-	})
+	eventually(
+		t,
+		"the kernel route to disappear after the peer withdrawal",
+		func() bool {
+			return !hasKernelRoute(t, ipv4Learned, internalLink) &&
+				!hasKernelRoute(t, ipv6Learned, internalLink)
+		},
+	)
 	assertKernelRoute(t, ipv4Retained, internalLink, ipv4NextHop, kernelDefaultIPv4Metric)
 	assertKernelRoute(t, ipv6Retained, internalLink, ipv6NextHop, kernelDefaultIPv6Metric)
 
 	peer.server.Stop()
-	eventually(t, "the kernel route to disappear after peer loss", func() bool {
-		return !hasKernelRoute(t, ipv4Retained, internalLink) && !hasKernelRoute(t, ipv6Retained, internalLink)
-	})
+	eventually(
+		t,
+		"the kernel route to disappear after peer loss",
+		func() bool {
+			return !hasKernelRoute(t, ipv4Retained, internalLink) &&
+				!hasKernelRoute(t, ipv6Retained, internalLink)
+		},
+	)
 }

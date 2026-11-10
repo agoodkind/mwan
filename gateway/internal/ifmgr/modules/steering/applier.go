@@ -114,13 +114,16 @@ func newNFTApplier() *nftApplier {
 }
 
 func defaultNFTConn() (nftConn, error) {
-	conn, err := nftables.New(nftables.WithSockOptions(func(socket *netlink.Conn) error {
-		return socket.SetReadBuffer(steerReceiveBufferBytes)
-	}))
+	conn, err := nftables.New(
+		nftables.WithSockOptions(func(socket *netlink.Conn) error {
+			return socket.SetReadBuffer(steerReceiveBufferBytes)
+		}),
+	)
 	if err != nil {
 		slog.Warn("steering: open nftables netlink connection failed", "err", err)
 		return nil, fmt.Errorf("nftables.New: %w", err)
 	}
+
 	return conn, nil
 }
 
@@ -148,14 +151,17 @@ func (a *nftApplier) Apply(ctx context.Context, log *slog.Logger, desired []stee
 	if err != nil {
 		return fmt.Errorf("list inet chains: %w", err)
 	}
+
 	for _, old := range existing {
 		if old.Table == nil || old.Table.Name != steerTableName || old.Name != steerChainName {
 			continue
 		}
+
 		if old.Priority == nil || *old.Priority != steerChainPriority {
 			conn.FlushChain(old)
 			conn.DelChain(old)
 		}
+
 		break
 	}
 
@@ -173,8 +179,12 @@ func (a *nftApplier) Apply(ctx context.Context, log *slog.Logger, desired []stee
 	conn.AddChain(chain)
 	guardPriority := guardChainPriority
 	guard := &nftables.Chain{
-		Name: guardChainName, Table: table, Hooknum: nftables.ChainHookForward,
-		Priority: &guardPriority, Type: nftables.ChainTypeFilter, Policy: &policy,
+		Name:     guardChainName,
+		Table:    table,
+		Hooknum:  nftables.ChainHookForward,
+		Priority: &guardPriority,
+		Type:     nftables.ChainTypeFilter,
+		Policy:   &policy,
 	}
 	conn.AddChain(guard)
 
@@ -182,18 +192,26 @@ func (a *nftApplier) Apply(ctx context.Context, log *slog.Logger, desired []stee
 	// single Flush, so no packet ever sees a half-written chain.
 	conn.FlushChain(chain)
 	conn.FlushChain(guard)
+
 	for _, rule := range desired {
 		exprs, buildErr := ruleExprs(conn, table, rule)
 		if buildErr != nil {
 			return fmt.Errorf("build steering rule %s: %w", rule, buildErr)
 		}
+
 		target := chain
 		if rule.DropIface != "" {
 			target = guard
 		}
+
 		conn.AddRule(&nftables.Rule{
-			Table: table, Chain: target, Position: 0, Handle: 0,
-			Flags: 0, Exprs: exprs, UserData: nil,
+			Table:    table,
+			Chain:    target,
+			Position: 0,
+			Handle:   0,
+			Flags:    0,
+			Exprs:    exprs,
+			UserData: nil,
 		})
 	}
 
@@ -201,6 +219,7 @@ func (a *nftApplier) Apply(ctx context.Context, log *slog.Logger, desired []stee
 		log.WarnContext(ctx, "steering: nft flush failed", "err", err)
 		return fmt.Errorf("nft flush: %w", err)
 	}
+
 	return nil
 }
 
@@ -213,6 +232,7 @@ func ruleExprs(conn nftConn, table *nftables.Table, rule steerRule) ([]expr.Any,
 	if rule.DropIface != "" {
 		return guardExprs(rule), nil
 	}
+
 	exprs := make([]expr.Any, 0, 20)
 	if rule.IifName != "" {
 		exprs = append(
@@ -221,17 +241,20 @@ func ruleExprs(conn nftConn, table *nftables.Table, rule steerRule) ([]expr.Any,
 			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: ifname(rule.IifName)},
 		)
 	}
+
 	exprs = append(exprs, familyMatchExprs(rule.Source)...)
 	exprs = append(exprs, sourceMatchExprs(rule.Source)...)
 	exprs = append(exprs, markMatchExprs(rule.MatchMark)...)
 	if rule.Source.Addr().Is6() {
 		exprs = append(exprs, nonHairpinGuardExprs()...)
 	}
+
 	exprs = append(exprs, ctStateNewExprs()...)
 	assign, err := assignExprs(conn, table, rule)
 	if err != nil {
 		return nil, err
 	}
+
 	return append(exprs, assign...), nil
 }
 
@@ -248,12 +271,19 @@ func guardExprs(rule steerRule) []expr.Any {
 	exprs = append(exprs, familyMatchExprs(rule.Source)...)
 	if len(rule.AllowedMarks) > 0 {
 		exprs = append(exprs, &expr.Meta{Key: expr.MetaKeyMARK, Register: 1})
+
 		for _, mark := range rule.AllowedMarks {
-			exprs = append(exprs, &expr.Cmp{
-				Op: expr.CmpOpNeq, Register: 1, Data: binaryutil.NativeEndian.PutUint32(mark),
-			})
+			exprs = append(
+				exprs,
+				&expr.Cmp{
+					Op:       expr.CmpOpNeq,
+					Register: 1,
+					Data:     binaryutil.NativeEndian.PutUint32(mark),
+				},
+			)
 		}
 	}
+
 	return append(exprs, &expr.Verdict{Kind: expr.VerdictDrop})
 }
 
@@ -264,6 +294,7 @@ func familyMatchExprs(source netip.Prefix) []expr.Any {
 	if source.Addr().Is4() {
 		proto = byte(unix.NFPROTO_IPV4)
 	}
+
 	return []expr.Any{
 		&expr.Meta{Key: expr.MetaKeyNFPROTO, SourceRegister: false, Register: 1},
 		&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{proto}},
@@ -279,10 +310,17 @@ func sourceMatchExprs(source netip.Prefix) []expr.Any {
 	if source.Addr().Is4() {
 		offset, length, bits = ipv4SaddrOffset, ipv4AddrLen, ipv4AddrBits
 	}
+
 	load := &expr.Payload{
-		OperationType: expr.PayloadLoad, DestRegister: 1, SourceRegister: 0,
-		Base: expr.PayloadBaseNetworkHeader, Offset: offset, Len: length,
-		CsumType: expr.CsumTypeNone, CsumOffset: 0, CsumFlags: 0,
+		OperationType:  expr.PayloadLoad,
+		DestRegister:   1,
+		SourceRegister: 0,
+		Base:           expr.PayloadBaseNetworkHeader,
+		Offset:         offset,
+		Len:            length,
+		CsumType:       expr.CsumTypeNone,
+		CsumOffset:     0,
+		CsumFlags:      0,
 	}
 	network := addrBytes(source.Addr())
 	if source.Bits() == bits {
@@ -291,11 +329,15 @@ func sourceMatchExprs(source netip.Prefix) []expr.Any {
 			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: network},
 		}
 	}
+
 	return []expr.Any{
 		load,
 		&expr.Bitwise{
-			SourceRegister: 1, DestRegister: 1, Len: length,
-			Mask: net.CIDRMask(source.Bits(), bits), Xor: make([]byte, length),
+			SourceRegister: 1,
+			DestRegister:   1,
+			Len:            length,
+			Mask:           net.CIDRMask(source.Bits(), bits),
+			Xor:            make([]byte, length),
 		},
 		&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: network},
 	}
@@ -315,11 +357,17 @@ func nonHairpinGuardExprs() []expr.Any {
 	return []expr.Any{
 		&expr.Meta{Key: expr.MetaKeyPRIORITY, SourceRegister: false, Register: 1},
 		&expr.Bitwise{
-			SourceRegister: 1, DestRegister: 1, Len: 4,
-			Mask: binaryutil.NativeEndian.PutUint32(hairpinPriorityMask),
-			Xor:  binaryutil.NativeEndian.PutUint32(0),
+			SourceRegister: 1,
+			DestRegister:   1,
+			Len:            4,
+			Mask:           binaryutil.NativeEndian.PutUint32(hairpinPriorityMask),
+			Xor:            binaryutil.NativeEndian.PutUint32(0),
 		},
-		&expr.Cmp{Op: expr.CmpOpNeq, Register: 1, Data: binaryutil.NativeEndian.PutUint32(hairpinPriorityTag)},
+		&expr.Cmp{
+			Op:       expr.CmpOpNeq,
+			Register: 1,
+			Data:     binaryutil.NativeEndian.PutUint32(hairpinPriorityTag),
+		},
 	}
 }
 
@@ -330,9 +378,11 @@ func ctStateNewExprs() []expr.Any {
 	return []expr.Any{
 		&expr.Ct{Register: 1, SourceRegister: false, Key: expr.CtKeySTATE, Direction: 0},
 		&expr.Bitwise{
-			SourceRegister: 1, DestRegister: 1, Len: ctStateLen,
-			Mask: binaryutil.NativeEndian.PutUint32(ctStateNew),
-			Xor:  binaryutil.NativeEndian.PutUint32(0),
+			SourceRegister: 1,
+			DestRegister:   1,
+			Len:            ctStateLen,
+			Mask:           binaryutil.NativeEndian.PutUint32(ctStateNew),
+			Xor:            binaryutil.NativeEndian.PutUint32(0),
 		},
 		&expr.Cmp{Op: expr.CmpOpNeq, Register: 1, Data: binaryutil.NativeEndian.PutUint32(0)},
 	}
@@ -349,19 +399,26 @@ func assignExprs(conn nftConn, table *nftables.Table, rule steerRule) ([]expr.An
 			&expr.Meta{Key: expr.MetaKeyMARK, SourceRegister: true, Register: 1},
 		}, nil
 	}
+
 	generator, err := generatorExprs(rule)
 	if err != nil {
 		return nil, err
 	}
+
 	set, err := slotMapSet(conn, table, rule.Assign.Slots)
 	if err != nil {
 		return nil, err
 	}
+
 	return append(
 		generator,
 		&expr.Lookup{
-			SourceRegister: 1, DestRegister: 1, IsDestRegSet: true,
-			SetID: set.ID, SetName: set.Name, Invert: false,
+			SourceRegister: 1,
+			DestRegister:   1,
+			IsDestRegSet:   true,
+			SetID:          set.ID,
+			SetName:        set.Name,
+			Invert:         false,
 		},
 		&expr.Meta{Key: expr.MetaKeyMARK, SourceRegister: true, Register: 1},
 	), nil
@@ -376,8 +433,10 @@ func generatorExprs(rule steerRule) ([]expr.Any, error) {
 	case hashModeRandom:
 		return []expr.Any{
 			&expr.Numgen{
-				Register: 1, Modulus: rule.Assign.Modulus,
-				Type: unix.NFT_NG_RANDOM, Offset: 0,
+				Register: 1,
+				Modulus:  rule.Assign.Modulus,
+				Type:     unix.NFT_NG_RANDOM,
+				Offset:   0,
 			},
 		}, nil
 	case hashModeSource:
@@ -385,6 +444,7 @@ func generatorExprs(rule steerRule) ([]expr.Any, error) {
 	case hashModeSourceDestination:
 		return hashExprs(rule.Source, rule.Assign.Modulus, true), nil
 	}
+
 	return nil, fmt.Errorf("steering: unknown hash mode %q", string(rule.Mode))
 }
 
@@ -400,26 +460,51 @@ func hashExprs(source netip.Prefix, modulus uint32, withDestination bool) []expr
 		saddrOffset, daddrOffset = ipv4SaddrOffset, ipv4DaddrOffset
 		addrLen, secondRegister = ipv4AddrLen, hashKeyRegisterV4Second
 	}
+
 	exprs := []expr.Any{
 		&expr.Payload{
-			OperationType: expr.PayloadLoad, DestRegister: hashKeyRegister, SourceRegister: 0,
-			Base: expr.PayloadBaseNetworkHeader, Offset: saddrOffset, Len: addrLen,
-			CsumType: expr.CsumTypeNone, CsumOffset: 0, CsumFlags: 0,
+			OperationType:  expr.PayloadLoad,
+			DestRegister:   hashKeyRegister,
+			SourceRegister: 0,
+			Base:           expr.PayloadBaseNetworkHeader,
+			Offset:         saddrOffset,
+			Len:            addrLen,
+			CsumType:       expr.CsumTypeNone,
+			CsumOffset:     0,
+			CsumFlags:      0,
 		},
 	}
 	keyLength := addrLen
 	if withDestination {
-		exprs = append(exprs, &expr.Payload{
-			OperationType: expr.PayloadLoad, DestRegister: secondRegister, SourceRegister: 0,
-			Base: expr.PayloadBaseNetworkHeader, Offset: daddrOffset, Len: addrLen,
-			CsumType: expr.CsumTypeNone, CsumOffset: 0, CsumFlags: 0,
-		})
+		exprs = append(
+			exprs,
+			&expr.Payload{
+				OperationType:  expr.PayloadLoad,
+				DestRegister:   secondRegister,
+				SourceRegister: 0,
+				Base:           expr.PayloadBaseNetworkHeader,
+				Offset:         daddrOffset,
+				Len:            addrLen,
+				CsumType:       expr.CsumTypeNone,
+				CsumOffset:     0,
+				CsumFlags:      0,
+			},
+		)
 		keyLength = addrLen * 2
 	}
-	return append(exprs, &expr.Hash{
-		SourceRegister: hashKeyRegister, DestRegister: 1, Length: keyLength,
-		Modulus: modulus, Seed: hashSeed, Offset: 0, Type: expr.HashTypeJenkins,
-	})
+
+	return append(
+		exprs,
+		&expr.Hash{
+			SourceRegister: hashKeyRegister,
+			DestRegister:   1,
+			Length:         keyLength,
+			Modulus:        modulus,
+			Seed:           hashSeed,
+			Offset:         0,
+			Type:           expr.HashTypeJenkins,
+		},
+	)
 }
 
 // slotMapSet adds the anonymous slot-to-mark map one rule reads. The map is
@@ -429,33 +514,51 @@ func hashExprs(source netip.Prefix, modulus uint32, withDestination bool) []expr
 // mark are host-order words, so both sides use the kernel's own byte order.
 func slotMapSet(conn nftConn, table *nftables.Table, slots []uint32) (*nftables.Set, error) {
 	set := &nftables.Set{
-		Table: table, ID: 0, Name: "",
-		Anonymous: true, Constant: true, Interval: false, AutoMerge: false,
-		IsMap: true, HasTimeout: false, Counter: false, Dynamic: false,
-		Concatenation: false, Timeout: 0,
-		KeyType: nftables.TypeInteger, DataType: nftables.TypeMark,
-		KeyByteOrder: binaryutil.NativeEndian, Comment: "", Size: 0,
+		Table:         table,
+		ID:            0,
+		Name:          "",
+		Anonymous:     true,
+		Constant:      true,
+		Interval:      false,
+		AutoMerge:     false,
+		IsMap:         true,
+		HasTimeout:    false,
+		Counter:       false,
+		Dynamic:       false,
+		Concatenation: false,
+		Timeout:       0,
+		KeyType:       nftables.TypeInteger,
+		DataType:      nftables.TypeMark,
+		KeyByteOrder:  binaryutil.NativeEndian,
+		Comment:       "",
+		Size:          0,
 	}
 	elements := make([]nftables.SetElement, 0, len(slots))
 	slotIndex := uint32(0)
+
 	for _, mark := range slots {
-		elements = append(elements, nftables.SetElement{
-			Key:         binaryutil.NativeEndian.PutUint32(slotIndex),
-			Val:         binaryutil.NativeEndian.PutUint32(mark),
-			KeyEnd:      nil,
-			IntervalEnd: false,
-			VerdictData: nil,
-			Timeout:     0,
-			Expires:     0,
-			Counter:     nil,
-			Comment:     "",
-		})
+		elements = append(
+			elements,
+			nftables.SetElement{
+				Key:         binaryutil.NativeEndian.PutUint32(slotIndex),
+				Val:         binaryutil.NativeEndian.PutUint32(mark),
+				KeyEnd:      nil,
+				IntervalEnd: false,
+				VerdictData: nil,
+				Timeout:     0,
+				Expires:     0,
+				Counter:     nil,
+				Comment:     "",
+			},
+		)
 		slotIndex++
 	}
+
 	if err := conn.AddSet(set, elements); err != nil {
 		slog.Warn("steering: add slot map failed", "slots", len(slots), "err", err)
 		return nil, fmt.Errorf("add slot map: %w", err)
 	}
+
 	return set, nil
 }
 
@@ -466,7 +569,9 @@ func addrBytes(a netip.Addr) []byte {
 		octets := a.As4()
 		return octets[:]
 	}
+
 	octets := a.As16()
+
 	return octets[:]
 }
 

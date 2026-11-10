@@ -12,5 +12,6 @@ func (c *Config) NotifyConfig() notify.Config {
 	if c == nil {
 		return notify.Config{RepeatEvery: 0, PerKind: nil}
 	}
+
 	return watchdogconfig.NotifyCadence(c.Notify, c.IfMgr.Alerts)
 }

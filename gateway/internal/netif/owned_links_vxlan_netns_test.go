@@ -25,7 +25,10 @@ func TestOwnedVXLANReconcilesAndRestarts(t *testing.T) {
 	requireTunnelReady(t, reconcileVXLAN(t, reconciler, connection, external))
 	created := vxlanDevice(t, vxlanName)
 	requireVXLANAttributes(t, created, connection, underlay)
-	requireTunnelReady(t, reconcileVXLAN(t, newTunnelReconciler(t, statePath), connection, external))
+	requireTunnelReady(
+		t,
+		reconcileVXLAN(t, newTunnelReconciler(t, statePath), connection, external),
+	)
 	repeated := vxlanDevice(t, vxlanName)
 	if repeated.Index != created.Index || repeated.Alias != created.Alias {
 		t.Fatal("repeat reconciliation or restart replaced the owned VXLAN")
@@ -44,8 +47,12 @@ func TestOwnedVXLANReconcilesAndRestarts(t *testing.T) {
 	if changed.Index == created.Index {
 		t.Fatal("VXLAN envelope update did not replace the immutable device")
 	}
-	requireTunnelReady(t, reconcileVXLAN(t, newTunnelReconciler(t, statePath), connection, external))
-	if restarted := vxlanDevice(t, vxlanName); restarted.Index != changed.Index || restarted.Alias != changed.Alias {
+	requireTunnelReady(
+		t,
+		reconcileVXLAN(t, newTunnelReconciler(t, statePath), connection, external),
+	)
+	if restarted := vxlanDevice(t, vxlanName); restarted.Index != changed.Index ||
+		restarted.Alias != changed.Alias {
 		t.Fatal("restart did not retain the updated VXLAN identity")
 	}
 }
@@ -63,8 +70,13 @@ func TestOwnedVXLANRejectsForeignReceiverAndInvalidMTU(t *testing.T) {
 	attributes := netlink.NewLinkAttrs()
 	attributes.Name = "foreign-vx"
 	if err := netlink.LinkAdd(&netlink.Vxlan{
-		LinkAttrs: attributes, VxlanId: 1, VtepDevIndex: underlay.Attrs().Index,
-		Group: net.ParseIP("198.51.100.9"), SrcAddr: net.ParseIP(tunnelLocalOuter), Port: 4790, Learning: false,
+		LinkAttrs:    attributes,
+		VxlanId:      1,
+		VtepDevIndex: underlay.Attrs().Index,
+		Group:        net.ParseIP("198.51.100.9"),
+		SrcAddr:      net.ParseIP(tunnelLocalOuter),
+		Port:         4790,
+		Learning:     false,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +87,8 @@ func TestOwnedVXLANRejectsForeignReceiverAndInvalidMTU(t *testing.T) {
 	if result.Status != OwnedLinkFailed || !errors.Is(result.Err, unix.EEXIST) {
 		t.Fatalf("foreign receiver conflict=%+v", result)
 	}
-	if kept := vxlanDevice(t, vxlanName); kept.Index != created.Index || kept.VxlanId != 0 || kept.Alias != created.Alias {
+	if kept := vxlanDevice(t, vxlanName); kept.Index != created.Index || kept.VxlanId != 0 ||
+		kept.Alias != created.Alias {
 		t.Fatal("foreign conflict changed the owned VXLAN")
 	}
 	if kept := vxlanDevice(t, "foreign-vx"); kept.Index != foreign.Index || kept.Alias != "" {
@@ -103,7 +116,10 @@ func TestOwnedVXLANDisablesAndRemovesOnlyOwnedDevice(t *testing.T) {
 	reconciler := newTunnelReconciler(t, statePath)
 	requireTunnelReady(t, reconcileVXLAN(t, reconciler, connection, external))
 	connection.Enabled = new(false)
-	requireTunnelReady(t, reconcileVXLAN(t, newTunnelReconciler(t, statePath), connection, external))
+	requireTunnelReady(
+		t,
+		reconcileVXLAN(t, newTunnelReconciler(t, statePath), connection, external),
+	)
 	if vxlanDevice(t, vxlanName).Flags&net.FlagUp != 0 {
 		t.Fatal("disabled VXLAN remains administratively up")
 	}
@@ -137,18 +153,30 @@ func TestOwnedVXLANRejectsInvalidSourcePortRanges(t *testing.T) {
 		{name: "equal", minimum: vxlanSourcePortMin, maximum: vxlanSourcePortMin},
 		{name: "reversed", minimum: vxlanSourcePortMax, maximum: vxlanSourcePortMin},
 	} {
-		t.Run(entry.name, func(t *testing.T) {
-			connection := vxlanConnection()
-			connection.Link.Tunnel.VXLAN.SourcePortMin = entry.minimum
-			connection.Link.Tunnel.VXLAN.SourcePortMax = entry.maximum
-			result := reconcileVXLAN(t, reconciler, connection, external)
-			if result.Status != OwnedLinkFailed || result.Err == nil {
-				t.Fatalf("invalid VXLAN source-port range %d..%d accepted: %+v", entry.minimum, entry.maximum, result)
-			}
-			if kept := vxlanDevice(t, vxlanName); kept.Index != created.Index || kept.Alias != created.Alias ||
-				kept.PortLow != vxlanSourcePortMin || kept.PortHigh != vxlanSourcePortMax {
-				t.Fatal("invalid source-port range changed the owned VXLAN")
-			}
-		})
+		t.Run(
+			entry.name,
+			func(t *testing.T) {
+				connection := vxlanConnection()
+				connection.Link.Tunnel.VXLAN.SourcePortMin = entry.minimum
+				connection.Link.Tunnel.VXLAN.SourcePortMax = entry.maximum
+				result := reconcileVXLAN(t, reconciler, connection, external)
+				if result.Status != OwnedLinkFailed || result.Err == nil {
+					t.Fatalf(
+						"invalid VXLAN source-port range %d..%d accepted: %+v",
+						entry.minimum,
+						entry.maximum,
+						result,
+					)
+				}
+				if kept := vxlanDevice(
+					t,
+					vxlanName,
+				); kept.Index != created.Index || kept.Alias != created.Alias ||
+					kept.PortLow != vxlanSourcePortMin ||
+					kept.PortHigh != vxlanSourcePortMax {
+					t.Fatal("invalid source-port range changed the owned VXLAN")
+				}
+			},
+		)
 	}
 }

@@ -18,6 +18,7 @@ func (s *DefaultSource) command(
 	if runCommand == nil {
 		runCommand = runCommandOutput
 	}
+
 	return runCommand(ctx, log, name, args)
 }
 
@@ -30,6 +31,7 @@ func runCommandOutput(
 	if log == nil {
 		log = slog.Default()
 	}
+
 	log.DebugContext(ctx, "pd: command start", "command", name, "args", args)
 	cmd := exec.CommandContext(ctx, name, args...)
 	output, err := cmd.Output()
@@ -39,6 +41,7 @@ func runCommandOutput(
 		if errors.As(err, &exitErr) {
 			stderr = string(exitErr.Stderr)
 		}
+
 		log.WarnContext(
 			ctx,
 			"pd: command failed",
@@ -51,8 +54,11 @@ func runCommandOutput(
 			"stderr",
 			stderr,
 		)
+
 		return nil, fmt.Errorf("run %s: %w (stderr=%q)", name, err, stderr)
 	}
+
 	log.DebugContext(ctx, "pd: command ok", "command", name, "args", args, "out_bytes", len(output))
+
 	return output, nil
 }

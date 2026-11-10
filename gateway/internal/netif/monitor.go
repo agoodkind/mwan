@@ -72,6 +72,7 @@ func (k EventKind) String() string {
 	case EvUplinkReturned:
 		return "uplink-returned"
 	}
+
 	return "unknown"
 }
 
@@ -176,7 +177,9 @@ type Monitor struct {
 // A missing link starts with index zero and an empty snapshot. Link creation
 // binds the monitor when the configured identity matches.
 func NewMonitor(
-	ctx context.Context, log *slog.Logger, cfg MonitorConfig,
+	ctx context.Context,
+	log *slog.Logger,
+	cfg MonitorConfig,
 ) *Monitor {
 	mlog := log.With("component", "monitor", "iface", cfg.Iface)
 	mlog.DebugContext(ctx, "monitor: NewMonitor entry")
@@ -188,12 +191,16 @@ func NewMonitor(
 	} else {
 		link, err = netlink.LinkByName(cfg.Iface)
 	}
+
 	idx := 0
 	actualIface := ""
 	if err != nil || link == nil {
-		mlog.WarnContext(ctx,
+		mlog.WarnContext(
+			ctx,
 			"monitor: iface not matched at startup; events filtered until a matching link appears",
-			"err", err)
+			"err",
+			err,
+		)
 	} else {
 		idx = link.Attrs().Index
 		actualIface = link.Attrs().Name
@@ -219,6 +226,7 @@ func NewMonitor(
 	m.startWorker(ctx, "shutdown-on-ctx", m.shutdownOnCtx)
 
 	mlog.DebugContext(ctx, "monitor: subscriptions started")
+
 	return m
 }
 
@@ -233,9 +241,18 @@ func (m *Monitor) startWorker(
 			if recovered == nil {
 				return
 			}
+
 			panicMessage := fmt.Sprint(recovered)
-			m.log.ErrorContext(ctx, "monitor: worker panicked",
-				"worker", name, "err", panicMessage, "panic", panicMessage)
+			m.log.ErrorContext(
+				ctx,
+				"monitor: worker panicked",
+				"worker",
+				name,
+				"err",
+				panicMessage,
+				"panic",
+				panicMessage,
+			)
 		}()
 		run(ctx)
 	}()
@@ -252,9 +269,11 @@ func (m *Monitor) shutdownOnCtx(ctx context.Context) {
 	if m.closed {
 		return
 	}
+
 	m.closed = true
 	m.stateMu.Lock()
 	m.stopped = true
+
 	for draining := true; draining; {
 		select {
 		case <-m.Events:
@@ -262,6 +281,7 @@ func (m *Monitor) shutdownOnCtx(ctx context.Context) {
 			draining = false
 		}
 	}
+
 	m.stateMu.Unlock()
 	close(m.done)
 	m.log.DebugContext(ctx, "monitor: ctx cancelled, done closed; subscribe goroutines will exit")
@@ -273,19 +293,24 @@ func (m *Monitor) subscribeAddr(ctx context.Context) {
 	log := m.log.With("goroutine", "subscribe-addr")
 	log.DebugContext(ctx, "monitor: subscribe-addr starting")
 	backoff := 100 * time.Millisecond
+
 	for ctx.Err() == nil {
 		ch := make(chan netlink.AddrUpdate, 64)
 		failed := make(chan error, 1)
 		subDone := make(chan struct{})
-		err := netlink.AddrSubscribeWithOptions(ch, subDone, netlink.AddrSubscribeOptions{
-			ErrorCallback: func(err error) {
-				m.setSubscriptionReady(0, false, "address subscription lost: "+err.Error())
-				select {
-				case failed <- err:
-				default:
-				}
+		err := netlink.AddrSubscribeWithOptions(
+			ch,
+			subDone,
+			netlink.AddrSubscribeOptions{
+				ErrorCallback: func(err error) {
+					m.setSubscriptionReady(0, false, "address subscription lost: "+err.Error())
+					select {
+					case failed <- err:
+					default:
+					}
+				},
 			},
-		})
+		)
 		if err != nil {
 			close(subDone)
 			log.WarnContext(ctx, "monitor: address subscription failed", "err", err)
@@ -293,6 +318,7 @@ func (m *Monitor) subscribeAddr(ctx context.Context) {
 		} else {
 			backoff = 100 * time.Millisecond
 			m.setSubscriptionReady(0, true, "")
+
 			for active := true; active; {
 				select {
 				case <-m.done:
@@ -306,20 +332,25 @@ func (m *Monitor) subscribeAddr(ctx context.Context) {
 						active = false
 						continue
 					}
+
 					m.dispatchMu.Lock()
 					ev := m.addrUpdateToEvent(upd)
 					if ev.Kind != EvUnknown {
 						m.emit(ctx, ev)
 					}
+
 					m.dispatchMu.Unlock()
 				}
 			}
+
 			close(subDone)
 			m.setSubscriptionReady(0, false, "address subscription closed")
 		}
+
 		if !sleepMonitorRetry(ctx, backoff) {
 			return
 		}
+
 		backoff = min(backoff*2, 5*time.Second)
 	}
 }
@@ -329,19 +360,24 @@ func (m *Monitor) subscribeRoute(ctx context.Context) {
 	log := m.log.With("goroutine", "subscribe-route")
 	log.DebugContext(ctx, "monitor: subscribe-route starting")
 	backoff := 100 * time.Millisecond
+
 	for ctx.Err() == nil {
 		ch := make(chan netlink.RouteUpdate, 64)
 		failed := make(chan error, 1)
 		subDone := make(chan struct{})
-		err := netlink.RouteSubscribeWithOptions(ch, subDone, netlink.RouteSubscribeOptions{
-			ErrorCallback: func(err error) {
-				m.setSubscriptionReady(1, false, "route subscription lost: "+err.Error())
-				select {
-				case failed <- err:
-				default:
-				}
+		err := netlink.RouteSubscribeWithOptions(
+			ch,
+			subDone,
+			netlink.RouteSubscribeOptions{
+				ErrorCallback: func(err error) {
+					m.setSubscriptionReady(1, false, "route subscription lost: "+err.Error())
+					select {
+					case failed <- err:
+					default:
+					}
+				},
 			},
-		})
+		)
 		if err != nil {
 			close(subDone)
 			log.WarnContext(ctx, "monitor: route subscription failed", "err", err)
@@ -349,6 +385,7 @@ func (m *Monitor) subscribeRoute(ctx context.Context) {
 		} else {
 			backoff = 100 * time.Millisecond
 			m.setSubscriptionReady(1, true, "")
+
 			for active := true; active; {
 				select {
 				case <-m.done:
@@ -362,20 +399,25 @@ func (m *Monitor) subscribeRoute(ctx context.Context) {
 						active = false
 						continue
 					}
+
 					m.dispatchMu.Lock()
 					ev := m.routeUpdateToEvent(upd)
 					if ev.Kind != EvUnknown {
 						m.emit(ctx, ev)
 					}
+
 					m.dispatchMu.Unlock()
 				}
 			}
+
 			close(subDone)
 			m.setSubscriptionReady(1, false, "route subscription closed")
 		}
+
 		if !sleepMonitorRetry(ctx, backoff) {
 			return
 		}
+
 		backoff = min(backoff*2, 5*time.Second)
 	}
 }
@@ -387,19 +429,24 @@ func (m *Monitor) subscribeLink(ctx context.Context) {
 	log := m.log.With("goroutine", "subscribe-link")
 	log.DebugContext(ctx, "monitor: subscribe-link starting")
 	backoff := 100 * time.Millisecond
+
 	for ctx.Err() == nil {
 		ch := make(chan netlink.LinkUpdate, 64)
 		failed := make(chan error, 1)
 		subDone := make(chan struct{})
-		err := netlink.LinkSubscribeWithOptions(ch, subDone, netlink.LinkSubscribeOptions{
-			ErrorCallback: func(err error) {
-				m.setSubscriptionReady(2, false, "link subscription lost: "+err.Error())
-				select {
-				case failed <- err:
-				default:
-				}
+		err := netlink.LinkSubscribeWithOptions(
+			ch,
+			subDone,
+			netlink.LinkSubscribeOptions{
+				ErrorCallback: func(err error) {
+					m.setSubscriptionReady(2, false, "link subscription lost: "+err.Error())
+					select {
+					case failed <- err:
+					default:
+					}
+				},
 			},
-		})
+		)
 		if err != nil {
 			close(subDone)
 			log.WarnContext(ctx, "monitor: link subscription failed", "err", err)
@@ -407,6 +454,7 @@ func (m *Monitor) subscribeLink(ctx context.Context) {
 		} else {
 			backoff = 100 * time.Millisecond
 			m.setSubscriptionReady(2, true, "")
+
 			for active := true; active; {
 				select {
 				case <-m.done:
@@ -420,20 +468,25 @@ func (m *Monitor) subscribeLink(ctx context.Context) {
 						active = false
 						continue
 					}
+
 					m.dispatchMu.Lock()
 					ev := m.linkUpdateToEvent(upd)
 					if ev.Kind != EvUnknown {
 						m.emit(ctx, ev)
 					}
+
 					m.dispatchMu.Unlock()
 				}
 			}
+
 			close(subDone)
 			m.setSubscriptionReady(2, false, "link subscription closed")
 		}
+
 		if !sleepMonitorRetry(ctx, backoff) {
 			return
 		}
+
 		backoff = min(backoff*2, 5*time.Second)
 	}
 }
@@ -444,21 +497,30 @@ func (m *Monitor) emit(ctx context.Context, ev Event) {
 	if ctx.Err() != nil {
 		return
 	}
+
 	m.stateMu.Lock()
 	defer m.stateMu.Unlock()
 	if ctx.Err() != nil {
 		return
 	}
+
 	if m.stale {
 		m.dirty = true
 		return
 	}
+
 	select {
 	case m.Events <- ev:
 	case <-ctx.Done():
 	default:
-		m.log.WarnContext(ctx, "monitor: Events channel full; requesting snapshot",
-			"kind", ev.Kind.String(), "iface", ev.Iface)
+		m.log.WarnContext(
+			ctx,
+			"monitor: Events channel full; requesting snapshot",
+			"kind",
+			ev.Kind.String(),
+			"iface",
+			ev.Iface,
+		)
 		m.markStaleLocked("event queue overflow")
 	}
 }
@@ -475,8 +537,10 @@ func (m *Monitor) setSubscriptionReady(index int, ready bool, reason string) {
 		m.markStaleLocked(reason)
 		m.markFailedLocked(reason)
 		m.stateMu.Unlock()
+
 		return
 	}
+
 	m.stateMu.Lock()
 	defer m.stateMu.Unlock()
 	m.ready[index] = ready
@@ -501,18 +565,21 @@ func sleepMonitorRetry(ctx context.Context, delay time.Duration) bool {
 
 func (m *Monitor) resyncLoop(ctx context.Context) {
 	backoff := 100 * time.Millisecond
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-m.resync:
 		}
+
 		m.stateMu.Lock()
 		ready := m.ready[0] && m.ready[1] && m.ready[2]
 		m.stateMu.Unlock()
 		if !ready {
 			continue
 		}
+
 		snapshot, epoch, err := m.readSnapshot()
 		if err != nil {
 			m.log.WarnContext(ctx, "monitor: snapshot failed", "err", err)
@@ -522,12 +589,14 @@ func (m *Monitor) resyncLoop(ctx context.Context) {
 			if !sleepMonitorRetry(ctx, backoff) {
 				return
 			}
+
 			backoff = min(backoff*2, 5*time.Second)
 			m.stateMu.Lock()
 			m.markStaleLocked("kernel snapshot retry")
 			m.stateMu.Unlock()
 			continue
 		}
+
 		backoff = 100 * time.Millisecond
 		var event Event
 		event.Kind = EvResync
@@ -563,12 +632,15 @@ func (m *Monitor) readSnapshot() (*Snapshot, uint64, error) {
 			err = nil
 		}
 	}
+
 	if err != nil {
 		return nil, 0, err
 	}
+
 	if link == nil {
 		return snapshot, epoch, nil
 	}
+
 	attrs := link.Attrs()
 	snapshot.IfIndex = attrs.Index
 	snapshot.ActualIface = attrs.Name
@@ -577,33 +649,43 @@ func (m *Monitor) readSnapshot() (*Snapshot, uint64, error) {
 	if err != nil {
 		return nil, 0, err
 	}
+
 	snapshot.Routes, err = m.snapshotRoutes(attrs.Index)
 	if err != nil {
 		return nil, 0, err
 	}
+
 	return snapshot, epoch, nil
 }
 
 func (m *Monitor) snapshotRoutes(index int) ([]CurrentRoute, error) {
 	var observed []CurrentRoute
+
 	for _, family := range []int{unix.AF_INET, unix.AF_INET6} {
-		routes, err := listUsableRoutes(family,
-			&netlink.Route{Table: unix.RT_TABLE_UNSPEC}, netlink.RT_FILTER_TABLE)
+		routes, err := listUsableRoutes(
+			family,
+			&netlink.Route{Table: unix.RT_TABLE_UNSPEC},
+			netlink.RT_FILTER_TABLE,
+		)
 		if err != nil {
 			m.log.Warn("monitor: route snapshot failed", "family", family, "err", err)
 			return nil, fmt.Errorf("list %d routes: %w", family, err)
 		}
+
 		for _, route := range routes {
 			if !routeUsesIndex(route, index) {
 				continue
 			}
+
 			current, err := routeToCurrent(m.log, route)
 			if err != nil {
 				return nil, err
 			}
+
 			observed = append(observed, *current)
 		}
 	}
+
 	return observed, nil
 }
 
@@ -611,11 +693,13 @@ func routeUsesIndex(route netlink.Route, index int) bool {
 	if route.LinkIndex == index {
 		return true
 	}
+
 	for _, hop := range route.MultiPath {
 		if hop != nil && hop.LinkIndex == index {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -625,18 +709,22 @@ func (m *Monitor) addrUpdateToEvent(u netlink.AddrUpdate) Event {
 	if !m.watchesIndex(u.LinkIndex) {
 		return unknownEvent()
 	}
+
 	cidr := u.LinkAddress.String()
 	if cidr == "<nil>" || cidr == "" {
 		return unknownEvent()
 	}
+
 	fam := "inet"
 	if u.LinkAddress.IP.To4() == nil {
 		fam = "inet6"
 	}
+
 	kind := EvAddrAdded
 	if !u.NewAddr {
 		kind = EvAddrDeleted
 	}
+
 	var event Event
 	event.Kind = kind
 	event.Family = fam
@@ -647,6 +735,7 @@ func (m *Monitor) addrUpdateToEvent(u netlink.AddrUpdate) Event {
 	event.PreferredLifetime = u.PreferedLft
 	event.ValidLifetime = u.ValidLft
 	event.Origin = "unknown"
+
 	return m.decorate(event)
 }
 
@@ -656,6 +745,7 @@ func (m *Monitor) routeUpdateToEvent(u netlink.RouteUpdate) Event {
 	if !m.watchesRoute(r) {
 		return unknownEvent()
 	}
+
 	famConst := r.Family
 	if famConst == 0 {
 		// Some netlink versions leave Family unset; infer from Dst/Gw.
@@ -670,9 +760,11 @@ func (m *Monitor) routeUpdateToEvent(u netlink.RouteUpdate) Event {
 			famConst = unix.AF_INET6
 		}
 	}
+
 	if famConst != unix.AF_INET && famConst != unix.AF_INET6 {
 		return unknownEvent()
 	}
+
 	fam := "inet6"
 	if famConst == unix.AF_INET {
 		fam = "inet"
@@ -692,10 +784,12 @@ func (m *Monitor) routeUpdateToEvent(u netlink.RouteUpdate) Event {
 	if r.Gw != nil {
 		via = r.Gw.String()
 	}
+
 	dest := "default"
 	if !isDefaultRoute(r, famConst) {
 		dest = r.Dst.String()
 	}
+
 	hops := observedRouteNextHops(r)
 	dev := ""
 	if len(hops) > 0 {
@@ -704,6 +798,7 @@ func (m *Monitor) routeUpdateToEvent(u netlink.RouteUpdate) Event {
 			via = hops[0].Via
 		}
 	}
+
 	var event Event
 	event.Kind = kind
 	event.Family = fam
@@ -717,6 +812,7 @@ func (m *Monitor) routeUpdateToEvent(u netlink.RouteUpdate) Event {
 	event.Scope = int(r.Scope)
 	event.Type = r.Type
 	event.NextHops = hops
+
 	return m.decorate(event)
 }
 
@@ -729,26 +825,32 @@ func observedRouteNextHops(route netlink.Route) []RouteNextHop {
 		if route.Gw != nil {
 			hop.Via = route.Gw.String()
 		}
+
 		hops = append(hops, hop)
 	}
+
 	for _, next := range route.MultiPath {
 		if next == nil {
 			continue
 		}
+
 		var hop RouteNextHop
 		hop.LinkIndex = next.LinkIndex
 		hop.Weight = next.Hops + 1
 		if next.Gw != nil {
 			hop.Via = next.Gw.String()
 		}
+
 		hops = append(hops, hop)
 	}
+
 	for i := range hops {
 		link, err := netlink.LinkByIndex(hops[i].LinkIndex)
 		if err == nil && link.Attrs() != nil {
 			hops[i].Dev = link.Attrs().Name
 		}
 	}
+
 	return hops
 }
 
@@ -756,11 +858,13 @@ func (m *Monitor) watchesRoute(route netlink.Route) bool {
 	if m.watchesIndex(route.LinkIndex) {
 		return true
 	}
+
 	for _, hop := range route.MultiPath {
 		if hop != nil && m.watchesIndex(hop.LinkIndex) {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -774,6 +878,7 @@ func (m *Monitor) decorate(event Event) Event {
 	if m.cfg.Connection != nil {
 		event.ConnectionID = m.cfg.Connection.ID.String()
 	}
+
 	return event
 }
 
@@ -792,6 +897,7 @@ func (m *Monitor) linkUpdateToEvent(u netlink.LinkUpdate) Event {
 			m.rebindLegacyLocked(int(u.Index))
 		}
 	}
+
 	matched := int(u.Index) == m.ifIndex && m.ifIndex != 0
 	if u.Header.Type == unix.RTM_DELLINK && int(u.Index) == previousIndex &&
 		(m.cfg.Connection != nil || u.Attrs() != nil && u.Attrs().Name == m.cfg.Iface) {
@@ -799,18 +905,22 @@ func (m *Monitor) linkUpdateToEvent(u netlink.LinkUpdate) Event {
 		m.ifIndex = 0
 		m.actualIface = ""
 	}
+
 	actualIface := m.actualIface
 	index := m.ifIndex
 	if previousIndex != index || previousIface != actualIface {
 		m.bindingEpoch++
 	}
+
 	m.mu.Unlock()
 	if previousIndex != index || previousIface != actualIface {
 		m.invalidateBinding()
 	}
+
 	if !matched {
 		return m.uplinkReturnEvent(u, index, actualIface)
 	}
+
 	makeEvent := func(kind EventKind) Event {
 		var event Event
 		event.Kind = kind
@@ -822,6 +932,7 @@ func (m *Monitor) linkUpdateToEvent(u netlink.LinkUpdate) Event {
 		if m.cfg.Connection != nil {
 			event.ConnectionID = m.cfg.Connection.ID.String()
 		}
+
 		return event
 	}
 	switch u.Header.Type {
@@ -830,6 +941,7 @@ func (m *Monitor) linkUpdateToEvent(u netlink.LinkUpdate) Event {
 		if u.Attrs() == nil {
 			return unknownEvent()
 		}
+
 		switch u.Attrs().OperState {
 		case netlink.OperUp, netlink.OperUnknown:
 			return makeEvent(EvLinkUp)
@@ -839,20 +951,27 @@ func (m *Monitor) linkUpdateToEvent(u netlink.LinkUpdate) Event {
 	case unix.RTM_DELLINK:
 		return makeEvent(EvLinkDown)
 	}
+
 	return unknownEvent()
 }
 
 // uplinkReturnEvent reports watched bridge ports down then up, except guest
 // veth and tuntap; it ignores kernel AF_BRIDGE copies without a link type.
-func (m *Monitor) uplinkReturnEvent(u netlink.LinkUpdate, bridgeIndex int, actualIface string) Event {
+func (m *Monitor) uplinkReturnEvent(
+	u netlink.LinkUpdate,
+	bridgeIndex int,
+	actualIface string,
+) Event {
 	attrs := u.Attrs()
 	if bridgeIndex == 0 || u.Header.Type != unix.RTM_NEWLINK || u.Family == unix.AF_BRIDGE ||
 		attrs == nil || attrs.MasterIndex != bridgeIndex {
 		return unknownEvent()
 	}
+
 	if linkType := u.Type(); linkType == "veth" || linkType == "tuntap" {
 		return unknownEvent()
 	}
+
 	switch attrs.OperState {
 	case netlink.OperDown, netlink.OperLowerLayerDown, netlink.OperNotPresent:
 		m.uplinkDown[int(u.Index)] = true
@@ -862,9 +981,11 @@ func (m *Monitor) uplinkReturnEvent(u netlink.LinkUpdate, bridgeIndex int, actua
 			event := m.observationEvent(EvUplinkReturned, attrs.Name)
 			event.ActualIface = actualIface
 			event.IfIndex = bridgeIndex
+
 			return event
 		}
 	}
+
 	return unknownEvent()
 }
 
@@ -872,6 +993,7 @@ func (m *Monitor) watchesIndex(index int) bool {
 	if index == 0 {
 		return false
 	}
+
 	m.mu.Lock()
 	previousIndex := m.ifIndex
 	previousIface := m.actualIface
@@ -882,22 +1004,27 @@ func (m *Monitor) watchesIndex(index int) bool {
 		if changed {
 			m.bindingEpoch++
 		}
+
 		m.mu.Unlock()
 		if changed {
 			m.invalidateBinding()
 		}
+
 		return matched
 	}
+
 	m.rebindLegacyLocked(index)
 	matched := index == m.ifIndex && m.ifIndex != 0
 	changed := previousIndex != m.ifIndex || previousIface != m.actualIface
 	if changed {
 		m.bindingEpoch++
 	}
+
 	m.mu.Unlock()
 	if changed {
 		m.invalidateBinding()
 	}
+
 	return matched
 }
 
@@ -909,13 +1036,16 @@ func (m *Monitor) rebindLegacyLocked(index int) {
 			m.actualIface = ""
 		}
 	}
+
 	if m.ifIndex != 0 || index == 0 {
 		return
 	}
+
 	link, err := netlink.LinkByIndex(index)
 	if err != nil || link.Attrs() == nil || link.Attrs().Name != m.cfg.Iface {
 		return
 	}
+
 	m.ifIndex = index
 	m.actualIface = link.Attrs().Name
 }
@@ -931,11 +1061,14 @@ func (m *Monitor) rebindConfiguredLocked() {
 	if err != nil {
 		m.log.Warn("monitor: configured link match failed", "err", err)
 	}
+
 	if err != nil || link == nil {
 		m.ifIndex = 0
 		m.actualIface = ""
+
 		return
 	}
+
 	m.ifIndex = link.Attrs().Index
 	m.actualIface = link.Attrs().Name
 }
@@ -945,12 +1078,14 @@ func (m *Monitor) rebindConfiguredLocked() {
 func (m *Monitor) IfIndex() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+
 	return m.ifIndex
 }
 
 func unknownEvent() Event {
 	var event Event
 	event.Kind = EvUnknown
+
 	return event
 }
 

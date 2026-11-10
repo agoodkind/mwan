@@ -53,20 +53,28 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	if m.clock == nil {
 		m.clock = internalclock.Real{}
 	}
+
 	log.InfoContext(
-		ctx, "connectivity_probe: Init",
-		"target_count", len(m.cfg.TargetsV4)+len(m.cfg.TargetsV6),
-		"timeout", m.cfg.Timeout.String(),
-		"unhealthy_after", m.cfg.UnhealthyAfter.String(),
+		ctx,
+		"connectivity_probe: Init",
+		"target_count",
+		len(m.cfg.TargetsV4)+len(m.cfg.TargetsV6),
+		"timeout",
+		m.cfg.Timeout.String(),
+		"unhealthy_after",
+		m.cfg.UnhealthyAfter.String(),
 	)
 	if m.cfg.Iface == "" {
 		return fmt.Errorf("connectivity_probe: iface is required")
 	}
+
 	if len(m.cfg.TargetsV4) == 0 && len(m.cfg.TargetsV6) == 0 {
 		return fmt.Errorf("connectivity_probe: add at least one entry to targets_v4 or targets_v6")
 	}
+
 	m.lastResult = map[string]bool{}
 	m.firstFailedAt = map[string]time.Time{}
+
 	return nil
 }
 
@@ -76,32 +84,59 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	probe := netif.NewV6Probe(m.cfg.Iface, log)
 	now := m.clock.Now()
 	results := map[string]bool{}
+
 	for _, t := range m.cfg.TargetsV4 {
 		_, err := netif.Ping4WithLogger(ctx, log, m.cfg.Iface, t, m.cfg.Timeout)
 		ok := err == nil
 		results[t.String()] = ok
-		log.DebugContext(ctx, "connectivity_probe: probe result",
-			"target", t.String(), "ok", ok, "err", err)
+		log.DebugContext(
+			ctx,
+			"connectivity_probe: probe result",
+			"target",
+			t.String(),
+			"ok",
+			ok,
+			"err",
+			err,
+		)
 	}
+
 	for _, t := range m.cfg.TargetsV6 {
 		_, err := probe.PingICMP6(ctx, t, m.cfg.Timeout)
 		ok := err == nil
 		results[t.String()] = ok
-		log.DebugContext(ctx, "connectivity_probe: probe result",
-			"target", t.String(), "ok", ok, "err", err)
+		log.DebugContext(
+			ctx,
+			"connectivity_probe: probe result",
+			"target",
+			t.String(),
+			"ok",
+			ok,
+			"err",
+			err,
+		)
 	}
+
 	m.Lock()
 	for tgt, ok := range results {
 		if ok {
 			delete(m.firstFailedAt, tgt)
 			continue
 		}
+
 		if _, already := m.firstFailedAt[tgt]; !already {
 			m.firstFailedAt[tgt] = now
-			log.DebugContext(ctx, "connectivity_probe: target entered failing state",
-				"target", tgt, "unhealthy_after", m.cfg.UnhealthyAfter.String())
+			log.DebugContext(
+				ctx,
+				"connectivity_probe: target entered failing state",
+				"target",
+				tgt,
+				"unhealthy_after",
+				m.cfg.UnhealthyAfter.String(),
+			)
 		}
 	}
+
 	m.lastResult = results
 	m.lastRunAt = now
 	m.readiness = forwardingready.State{
@@ -109,20 +144,29 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		IPv6: m.familyReady(m.cfg.TargetsV6, m.readiness.IPv6, results, now),
 	}
 	m.Unlock()
+
 	return nil
 }
 
-func (m *Module) familyReady(targets []netip.Addr, wasReady bool, results map[string]bool, now time.Time) bool {
+func (m *Module) familyReady(
+	targets []netip.Addr,
+	wasReady bool,
+	results map[string]bool,
+	now time.Time,
+) bool {
 	withinUnhealthyAfter := false
+
 	for _, target := range targets {
 		key := target.String()
 		if results[key] {
 			return true
 		}
+
 		if now.Sub(m.firstFailedAt[key]) < m.cfg.UnhealthyAfter {
 			withinUnhealthyAfter = true
 		}
 	}
+
 	// A previously successful target remains ready during unhealthy_after to avoid withdrawing routes after a brief failure.
 	return wasReady && withinUnhealthyAfter
 }
@@ -131,6 +175,7 @@ func (m *Module) familyReady(targets []netip.Addr, wasReady bool, results map[st
 func (m *Module) ForwardingReadiness() forwardingready.State {
 	m.Lock()
 	defer m.Unlock()
+
 	return m.readiness
 }
 
@@ -153,10 +198,12 @@ func (m *Module) EvaluateAlerts(ctx context.Context, log *slog.Logger, now time.
 	allOK := true
 	failingTargets := []string{}
 	pendingTargets := []string{}
+
 	for t, ok := range results {
 		if ok {
 			continue
 		}
+
 		allOK = false
 		first, tracked := firstFailed[t]
 		if !tracked {
@@ -164,6 +211,7 @@ func (m *Module) EvaluateAlerts(ctx context.Context, log *slog.Logger, now time.
 			pendingTargets = append(pendingTargets, t)
 			continue
 		}
+
 		if now.Sub(first) >= m.cfg.UnhealthyAfter {
 			failingTargets = append(failingTargets, t)
 		} else {
@@ -173,22 +221,38 @@ func (m *Module) EvaluateAlerts(ctx context.Context, log *slog.Logger, now time.
 
 	if allOK {
 		if m.Env.Alerts.Active("connectivity-down", m.cfg.Iface) {
-			m.Env.Alerts.ResolveContext(ctx, now,
-				"connectivity-down", m.cfg.Iface,
-				"connectivity_probe: all targets responding again")
+			m.Env.Alerts.ResolveContext(
+				ctx,
+				now,
+				"connectivity-down",
+				m.cfg.Iface,
+				"connectivity_probe: all targets responding again",
+			)
 		}
+
 		return
 	}
+
 	if len(failingTargets) == 0 {
 		// Some failures, none debounced past threshold yet. Stay quiet but trace it.
-		log.DebugContext(ctx, "connectivity_probe: failures within debounce window",
-			"pending_targets", pendingTargets,
-			"unhealthy_after_s", int(m.cfg.UnhealthyAfter.Seconds()))
+		log.DebugContext(
+			ctx,
+			"connectivity_probe: failures within debounce window",
+			"pending_targets",
+			pendingTargets,
+			"unhealthy_after_s",
+			int(m.cfg.UnhealthyAfter.Seconds()),
+		)
+
 		return
 	}
+
 	m.Env.Alerts.NotifyContext(
-		ctx, now, slog.LevelWarn,
-		"connectivity-down", m.cfg.Iface,
+		ctx,
+		now,
+		slog.LevelWarn,
+		"connectivity-down",
+		m.cfg.Iface,
 		"connectivity_probe: one or more upstream targets unreachable",
 		slog.Any("failing_targets", failingTargets),
 		slog.Any("pending_targets", pendingTargets),
@@ -211,8 +275,10 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		if !ok {
 			return nil, fmt.Errorf("connectivity_probe: invalid config type %T", cfg)
 		}
+
 		c = typedConfig
 	}
+
 	return &Module{
 		BaseModule:    ifmgr.NewBaseModule("connectivity_probe"),
 		cfg:           c,

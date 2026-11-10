@@ -30,6 +30,7 @@ const (
 // background.
 func TestFileRotationKeepsAtMostMaxRotatedFiles(t *testing.T) {
 	t.Parallel()
+
 	cases := []struct {
 		name       string
 		newHandler func(path string) slog.Handler
@@ -46,10 +47,13 @@ func TestFileRotationKeepsAtMostMaxRotatedFiles(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			assertRotatedFilesCapped(t, tc.newHandler)
-		})
+		t.Run(
+			tc.name,
+			func(t *testing.T) {
+				t.Parallel()
+				assertRotatedFilesCapped(t, tc.newHandler)
+			},
+		)
 	}
 }
 
@@ -61,6 +65,7 @@ func assertRotatedFilesCapped(t *testing.T, newHandler func(path string) slog.Ha
 		Handlers: []slog.Handler{newHandler(activePath)},
 	})
 	payload := strings.Repeat("x", rotationTestPayloadBytes)
+
 	for range rotationTestRecordCount {
 		log.Info("rotation probe", "payload", payload)
 	}
@@ -68,9 +73,11 @@ func assertRotatedFilesCapped(t *testing.T, newHandler func(path string) slog.Ha
 	if err := closer.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
+
 	if _, err := os.Stat(activePath); err != nil {
 		t.Fatalf("active log file: %v", err)
 	}
+
 	waitForSettledRotation(t, dir)
 }
 
@@ -80,15 +87,23 @@ func waitForSettledRotation(t *testing.T, dir string) {
 	t.Helper()
 	deadline := time.Now().Add(rotationTestDeadline)
 	var previous []string
+
 	for {
 		rotated := rotatedLogFiles(t, dir)
 		if rotationSettled(rotated) && slices.Equal(rotated, previous) {
 			return
 		}
+
 		if time.Now().After(deadline) {
-			t.Fatalf("rotated files did not settle at most %d compressed files within %s: %d files %v",
-				wantMaxRotatedFiles, rotationTestDeadline, len(rotated), rotated)
+			t.Fatalf(
+				"rotated files did not settle at most %d compressed files within %s: %d files %v",
+				wantMaxRotatedFiles,
+				rotationTestDeadline,
+				len(rotated),
+				rotated,
+			)
 		}
+
 		previous = rotated
 		time.Sleep(rotationTestPollPeriod)
 	}
@@ -99,11 +114,13 @@ func rotationSettled(rotated []string) bool {
 	if len(rotated) > wantMaxRotatedFiles {
 		return false
 	}
+
 	for _, name := range rotated {
 		if !strings.HasSuffix(name, compressedLogSuffix) {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -115,11 +132,14 @@ func rotatedLogFiles(t *testing.T, dir string) []string {
 	if err != nil {
 		t.Fatalf("read log dir: %v", err)
 	}
+
 	var rotated []string
+
 	for _, entry := range entries {
 		if strings.HasPrefix(entry.Name(), "agent-") {
 			rotated = append(rotated, entry.Name())
 		}
 	}
+
 	return rotated
 }

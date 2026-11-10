@@ -30,30 +30,38 @@ func ReadHealthState(path string) (HealthStates, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return HealthStates{}, nil
 		}
+
 		slog.Error("netif: ReadHealthState open failed", "path", path, "err", err)
+
 		return nil, fmt.Errorf("open health state %q: %w", path, err)
 	}
+
 	defer func() {
 		_ = file.Close()
 	}()
 
 	states := HealthStates{}
+
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
 			continue
 		}
+
 		wanName, state, ok := strings.Cut(line, ":")
 		if !ok {
 			continue
 		}
+
 		states[strings.TrimSpace(wanName)] = strings.TrimSpace(state)
 	}
+
 	if err := scanner.Err(); err != nil {
 		slog.Error("netif: ReadHealthState scan failed", "path", path, "err", err)
 		return nil, fmt.Errorf("scan health state %q: %w", path, err)
 	}
+
 	return states, nil
 }
 
@@ -63,6 +71,7 @@ func (s HealthStates) State(wanName string) string {
 	if !ok {
 		return HealthStateUnknown
 	}
+
 	return state
 }
 

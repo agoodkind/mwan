@@ -49,6 +49,7 @@ func (s *Session) OnChange(listener func(SessionState)) {
 func (s *Session) State() SessionState {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return s.snapshotLocked()
 }
 
@@ -57,7 +58,9 @@ func (s *Session) snapshotLocked() SessionState {
 	for prefix := range s.accepted {
 		accepted = append(accepted, prefix)
 	}
+
 	slices.SortFunc(accepted, netip.Prefix.Compare)
+
 	return SessionState{
 		Name:        s.cfg.Name,
 		FSMState:    s.fsmState.String(),
@@ -75,7 +78,9 @@ func sortedPrefixes(set map[netip.Prefix]struct{}) []netip.Prefix {
 	for prefix := range set {
 		prefixes = append(prefixes, prefix)
 	}
+
 	slices.SortFunc(prefixes, netip.Prefix.Compare)
+
 	return prefixes
 }
 
@@ -92,17 +97,21 @@ func (s *Session) deliverChanges() {
 		s.mu.Unlock()
 		return
 	}
+
 	s.delivering = true
 	for len(s.pending) > 0 {
 		state := s.pending[0]
 		s.pending = s.pending[1:]
 		listeners := slices.Clone(s.listeners)
 		s.mu.Unlock()
+
 		for _, listener := range listeners {
 			listener(state)
 		}
+
 		s.mu.Lock()
 	}
+
 	s.delivering = false
 	s.mu.Unlock()
 }

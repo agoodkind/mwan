@@ -19,18 +19,49 @@ type dhcpv6TransmissionResult struct {
 // transmitDHCPv6 sends one transmission and listens until the next one is due.
 // nclient6 matches a reply only during SendAndRead. SendAndRead runs in its own
 // goroutine, and this goroutine runs the service work.
-func transmitDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.Client, config DHCPv6PDConfig, message *dhcpv6.Message, match nclient6.Matcher, until time.Time, service *dhcpv6ExchangeService) (*dhcpv6.Message, error) {
+func transmitDHCPv6(
+	ctx context.Context,
+	log *slog.Logger,
+	transport *nclient6.Client,
+	config DHCPv6PDConfig,
+	message *dhcpv6.Message,
+	match nclient6.Matcher,
+	until time.Time,
+	service *dhcpv6ExchangeService,
+) (*dhcpv6.Message, error) {
 	if message.MessageType == dhcpv6.MessageTypeSolicit {
-		log.InfoContext(ctx, "dhcpv6: Client schedules wait until next Solicit retransmission or exchange end", "iface", config.Iface, "xid", message.TransactionID, "wait", until.Sub(config.Clock.Now()))
+		log.InfoContext(
+			ctx,
+			"dhcpv6: Client schedules wait until next Solicit retransmission or exchange end",
+			"iface",
+			config.Iface,
+			"xid",
+			message.TransactionID,
+			"wait",
+			until.Sub(config.Clock.Now()),
+		)
 	}
+
 	attemptCtx, cancel := context.WithDeadline(ctx, until)
 	defer cancel()
 	results := make(chan dhcpv6TransmissionResult, 1)
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.ErrorContext(ctx, "dhcpv6: receive panicked", "iface", config.Iface, "xid", message.TransactionID, "err", recovered)
-				results <- dhcpv6TransmissionResult{response: nil, err: fmt.Errorf("DHCPv6 receive panicked: %v", recovered)}
+				log.ErrorContext(
+					ctx,
+					"dhcpv6: receive panicked",
+					"iface",
+					config.Iface,
+					"xid",
+					message.TransactionID,
+					"err",
+					recovered,
+				)
+				results <- dhcpv6TransmissionResult{
+					response: nil,
+					err:      fmt.Errorf("DHCPv6 receive panicked: %v", recovered),
+				}
 			}
 		}()
 		response, err := transport.SendAndRead(attemptCtx, transport.RemoteAddr(), message, match)
@@ -38,6 +69,7 @@ func transmitDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.C
 	}()
 	abandoned := false
 	woken := false
+
 	for {
 		var dueTimer *time.Timer
 		var due <-chan time.Time
@@ -47,15 +79,18 @@ func transmitDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.C
 			declines, wake = service.declines, service.wake
 			dueTimer = service.dueTimer(config)
 		}
+
 		if dueTimer != nil {
 			due = dueTimer.C
 		}
+
 		// Any SendAndRead error, from the send or the receive, counts as the transmission.
 		// The wait ends at until, the next retransmission time or the end of the exchange.
 		var listening <-chan struct{}
 		if results == nil {
 			listening = attemptCtx.Done()
 		}
+
 		select {
 		case result := <-results:
 			results = nil
@@ -63,15 +98,29 @@ func transmitDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.C
 				stopDHCPv6Timer(dueTimer)
 				return nil, endedDHCPv6Transmission(ctx, abandoned, woken)
 			}
+
 			if result.err == nil {
 				stopDHCPv6Timer(dueTimer)
 				return result.response, nil
 			}
+
 			if attemptCtx.Err() != nil {
 				stopDHCPv6Timer(dueTimer)
 				return nil, endedDHCPv6Transmission(ctx, abandoned, woken)
 			}
-			log.WarnContext(ctx, "dhcpv6: transmission failed", "iface", config.Iface, "message", message.MessageType, "xid", message.TransactionID, "err", result.err)
+
+			log.WarnContext(
+				ctx,
+				"dhcpv6: transmission failed",
+				"iface",
+				config.Iface,
+				"message",
+				message.MessageType,
+				"xid",
+				message.TransactionID,
+				"err",
+				result.err,
+			)
 		case <-listening:
 			stopDHCPv6Timer(dueTimer)
 			return nil, endedDHCPv6Transmission(ctx, abandoned, woken)
@@ -89,6 +138,7 @@ func transmitDHCPv6(ctx context.Context, log *slog.Logger, transport *nclient6.C
 			abandoned, woken = true, true
 			cancel()
 		}
+
 		stopDHCPv6Timer(dueTimer)
 	}
 }
@@ -97,10 +147,12 @@ func (service *dhcpv6ExchangeService) dueTimer(config DHCPv6PDConfig) *time.Time
 	if service.next == nil {
 		return nil
 	}
+
 	next := service.next()
 	if next.IsZero() {
 		return nil
 	}
+
 	return time.NewTimer(max(next.Sub(config.Clock.Now()), 0))
 }
 
@@ -108,12 +160,15 @@ func endedDHCPv6Transmission(ctx context.Context, abandoned, woken bool) error {
 	if ctx.Err() != nil {
 		return errDHCPv6ExchangeInterrupted
 	}
+
 	if woken {
 		return errDHCPv6ExchangeWoken
 	}
+
 	if abandoned {
 		return errDHCPv6ExchangeAbandoned
 	}
+
 	return errDHCPv6ExchangeTimeout
 }
 

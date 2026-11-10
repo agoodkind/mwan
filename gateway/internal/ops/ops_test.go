@@ -31,6 +31,7 @@ func newRealOpsWithGuestNetworkDown(logger *slog.Logger) *RealOps {
 	realOps.testTCPDialer = func(context.Context, string) (net.Conn, error) {
 		return nil, errors.New("tcp down")
 	}
+
 	return realOps
 }
 
@@ -45,14 +46,19 @@ func installFakeQm(t *testing.T, stdout string, exitCode int) string {
 	if err := os.WriteFile(stdoutFile, []byte(stdout), 0o600); err != nil {
 		t.Fatal(err)
 	}
+
 	script := fmt.Sprintf(
 		"#!/bin/sh\nprintf '%%s\\n' \"$@\" > '%s'\ncat '%s'\nexit %d\n",
-		argsFile, stdoutFile, exitCode,
+		argsFile,
+		stdoutFile,
+		exitCode,
 	)
 	if err := os.WriteFile(filepath.Join(dir, "qm"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
+
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
 	return argsFile
 }
 
@@ -70,6 +76,7 @@ func TestGuestExecLogsFallbackAttemptsWithTraceID(t *testing.T) {
 	}
 
 	output := builder.String()
+
 	for _, want := range []string{
 		"trace_id=trace-ops",
 		"channel=vsock",
@@ -85,12 +92,15 @@ func TestGuestExecLogsFallbackAttemptsWithTraceID(t *testing.T) {
 // qmChannelStatus returns the tracker's summary line for the qm channel.
 func qmChannelStatus(t *testing.T, tracker *ChannelTracker) string {
 	t.Helper()
+
 	for line := range strings.SplitSeq(tracker.Summary(), "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), string(ChanPVE)) {
 			return line
 		}
 	}
+
 	t.Fatalf("no %s line in %q", ChanPVE, tracker.Summary())
+
 	return ""
 }
 
@@ -166,44 +176,54 @@ func TestGuestExecFallsBackToQmGuestExec(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			argsFile := installFakeQm(t, tc.qmStdout, tc.qmExit)
-			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-			realOps := newRealOpsWithGuestNetworkDown(logger)
+		t.Run(
+			tc.name,
+			func(t *testing.T) {
+				argsFile := installFakeQm(t, tc.qmStdout, tc.qmExit)
+				logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+				realOps := newRealOpsWithGuestNetworkDown(logger)
 
-			result, err := realOps.GuestExec(
-				context.Background(), "123", "cat", "/var/lib/mwan/last-deploy",
-			)
+				result, err := realOps.GuestExec(
+					context.Background(),
+					"123",
+					"cat",
+					"/var/lib/mwan/last-deploy",
+				)
 
-			if result != tc.wantResult {
-				t.Fatalf("result = %+v, want %+v", result, tc.wantResult)
-			}
-			status := qmChannelStatus(t, realOps.ExtractTracker())
-			if tc.wantErr == "" {
-				if err != nil {
-					t.Fatalf("err = %v, want nil", err)
+				if result != tc.wantResult {
+					t.Fatalf("result = %+v, want %+v", result, tc.wantResult)
 				}
-				if !strings.Contains(status, "OK") {
-					t.Fatalf("qm channel = %q, want OK", status)
-				}
-			} else {
-				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-					t.Fatalf("err = %v, want one containing %q", err, tc.wantErr)
-				}
-				if !strings.Contains(status, "FAIL") {
-					t.Fatalf("qm channel = %q, want FAIL", status)
-				}
-			}
 
-			recorded, readErr := os.ReadFile(argsFile)
-			if readErr != nil {
-				t.Fatal(readErr)
-			}
-			wantArgs := "guest\nexec\n123\n--timeout\n30\n--\ncat\n/var/lib/mwan/last-deploy\n"
-			if string(recorded) != wantArgs {
-				t.Fatalf("qm args = %q, want %q", recorded, wantArgs)
-			}
-		})
+				status := qmChannelStatus(t, realOps.ExtractTracker())
+				if tc.wantErr == "" {
+					if err != nil {
+						t.Fatalf("err = %v, want nil", err)
+					}
+
+					if !strings.Contains(status, "OK") {
+						t.Fatalf("qm channel = %q, want OK", status)
+					}
+				} else {
+					if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+						t.Fatalf("err = %v, want one containing %q", err, tc.wantErr)
+					}
+
+					if !strings.Contains(status, "FAIL") {
+						t.Fatalf("qm channel = %q, want FAIL", status)
+					}
+				}
+
+				recorded, readErr := os.ReadFile(argsFile)
+				if readErr != nil {
+					t.Fatal(readErr)
+				}
+
+				wantArgs := "guest\nexec\n123\n--timeout\n30\n--\ncat\n/var/lib/mwan/last-deploy\n"
+				if string(recorded) != wantArgs {
+					t.Fatalf("qm args = %q, want %q", recorded, wantArgs)
+				}
+			},
+		)
 	}
 }
 
@@ -217,7 +237,8 @@ func TestLockHoldingTimeoutsOutlastProxmox(t *testing.T) {
 	if TimeoutQmLockHolding < minLockHoldingTimeout {
 		t.Errorf(
 			"lock-holding budget is %s, which is below the %s floor",
-			TimeoutQmLockHolding, minLockHoldingTimeout,
+			TimeoutQmLockHolding,
+			minLockHoldingTimeout,
 		)
 	}
 }

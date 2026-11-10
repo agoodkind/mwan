@@ -18,8 +18,10 @@ func newTestModule(t *testing.T, unhealthyAfter time.Duration) *Module {
 	t.Helper()
 	log := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	env := &ifmgr.Env{
-		Log:    log,
-		Alerts: ifmgr.WrapNotifier(notify.FromConfig(notify.EmailConfig{}, notify.Config{}, log, "mwan-ifmgr")),
+		Log: log,
+		Alerts: ifmgr.WrapNotifier(
+			notify.FromConfig(notify.EmailConfig{}, notify.Config{}, log, "mwan-ifmgr"),
+		),
 	}
 	m := &Module{
 		BaseModule: ifmgr.NewBaseModule("connectivity_probe"),
@@ -34,6 +36,7 @@ func newTestModule(t *testing.T, unhealthyAfter time.Duration) *Module {
 		firstFailedAt: map[string]time.Time{},
 	}
 	m.InitBase(env, "module", "connectivity_probe", "iface", m.cfg.Iface)
+
 	return m
 }
 
@@ -156,10 +159,12 @@ func TestReconcile_DebounceBookkeeping(t *testing.T) {
 			delete(m.firstFailedAt, tgt)
 			continue
 		}
+
 		if _, already := m.firstFailedAt[tgt]; !already {
 			m.firstFailedAt[tgt] = now1
 		}
 	}
+
 	m.lastResult = map[string]bool{"2001:db8::1": false}
 	m.lastRunAt = now1
 	m.Unlock()
@@ -176,10 +181,12 @@ func TestReconcile_DebounceBookkeeping(t *testing.T) {
 			delete(m.firstFailedAt, tgt)
 			continue
 		}
+
 		if _, already := m.firstFailedAt[tgt]; !already {
 			m.firstFailedAt[tgt] = now2
 		}
 	}
+
 	m.lastResult = map[string]bool{"2001:db8::1": false}
 	m.lastRunAt = now2
 	m.Unlock()
@@ -196,10 +203,12 @@ func TestReconcile_DebounceBookkeeping(t *testing.T) {
 			delete(m.firstFailedAt, tgt)
 			continue
 		}
+
 		if _, already := m.firstFailedAt[tgt]; !already {
 			m.firstFailedAt[tgt] = now3
 		}
 	}
+
 	m.lastResult = map[string]bool{"2001:db8::1": true}
 	m.lastRunAt = now3
 	m.Unlock()

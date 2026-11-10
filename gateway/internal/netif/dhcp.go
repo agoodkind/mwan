@@ -103,6 +103,7 @@ func leaseState(state LeaseState, acquired time.Time, err error) LeaseInfo {
 	info.State = state
 	info.AcquiredAt = acquired
 	info.Err = err
+
 	return info
 }
 
@@ -113,6 +114,7 @@ func (l LeaseInfo) MatchesLink(iface string) (bool, error) {
 		slog.Warn("dhcp: interface lookup failed", "iface", iface, "err", err)
 		return false, fmt.Errorf("find DHCP interface %s: %w", iface, err)
 	}
+
 	return l.LinkIndex > 0 && l.LinkIndex == link.Index &&
 		bytes.Equal(l.LinkHardwareAddr, link.HardwareAddr), nil
 }
@@ -122,8 +124,16 @@ func (l LeaseInfo) String() string {
 	if l.IP == nil {
 		return fmt.Sprintf("state=%s err=%v", l.State, l.Err)
 	}
-	return fmt.Sprintf("state=%s ip=%s/%d gw=%v server=%v lease=%s",
-		l.State, l.IP, l.PrefixLen, l.Gateway, l.Server, l.LeaseTime)
+
+	return fmt.Sprintf(
+		"state=%s ip=%s/%d gw=%v server=%v lease=%s",
+		l.State,
+		l.IP,
+		l.PrefixLen,
+		l.Gateway,
+		l.Server,
+		l.LeaseTime,
+	)
 }
 
 // DHCPClient runs a long-lived DHCPv4 state machine in its own goroutine.
@@ -155,35 +165,53 @@ var errDHCPInterfaceChanged = errors.New("DHCP interface changed during exchange
 // StartDHCPClient returns a DHCPClient running in its own goroutine.
 // Cancel ctx to stop it. The first assignment event follows a valid ACK.
 func StartDHCPClient(
-	ctx context.Context, log *slog.Logger, cfg DHCPConfig,
+	ctx context.Context,
+	log *slog.Logger,
+	cfg DHCPConfig,
 ) *DHCPClient {
 	return startDHCPClient(ctx, log, cfg, nil)
 }
 
 // StartDHCPClientWithRecovery loads a saved lease asynchronously before the first acquisition.
-func StartDHCPClientWithRecovery(ctx context.Context, log *slog.Logger, cfg DHCPConfig, loader func(context.Context) (*LeaseInfo, error)) *DHCPClient {
+func StartDHCPClientWithRecovery(
+	ctx context.Context,
+	log *slog.Logger,
+	cfg DHCPConfig,
+	loader func(context.Context) (*LeaseInfo, error),
+) *DHCPClient {
 	return startDHCPClient(ctx, log, cfg, loader)
 }
 
-func startDHCPClient(ctx context.Context, log *slog.Logger, cfg DHCPConfig, loader func(context.Context) (*LeaseInfo, error)) *DHCPClient {
+func startDHCPClient(
+	ctx context.Context,
+	log *slog.Logger,
+	cfg DHCPConfig,
+	loader func(context.Context) (*LeaseInfo, error),
+) *DHCPClient {
 	if cfg.InitialBackoff == 0 {
 		cfg.InitialBackoff = 5 * time.Second
 	}
+
 	if cfg.MaxBackoff == 0 {
 		cfg.MaxBackoff = 5 * time.Minute
 	}
+
 	if cfg.DiscoverTimeout == 0 {
 		cfg.DiscoverTimeout = 10 * time.Second
 	}
+
 	if cfg.RequestTimeout == 0 {
 		cfg.RequestTimeout = 10 * time.Second
 	}
+
 	if cfg.RenewTimeout == 0 {
 		cfg.RenewTimeout = 10 * time.Second
 	}
+
 	if cfg.RestartWindow == 0 {
 		cfg.RestartWindow = defaultDHCPRestartWindow
 	}
+
 	cfg.ClientID = append([]byte(nil), cfg.ClientID...)
 	if cfg.CachedLease != nil {
 		cachedCopy := *cfg.CachedLease
@@ -192,6 +220,7 @@ func startDHCPClient(ctx context.Context, log *slog.Logger, cfg DHCPConfig, load
 		cachedCopy.Gateway = append(net.IP(nil), cachedCopy.Gateway...)
 		cachedCopy.Server = append(net.IP(nil), cachedCopy.Server...)
 		cachedCopy.DNS = slices.Clone(cachedCopy.DNS)
+
 		cachedCopy.Routes = make([]LeaseRoute, len(cfg.CachedLease.Routes))
 		for i, route := range cfg.CachedLease.Routes {
 			cachedCopy.Routes[i].Gateway = append(net.IP(nil), route.Gateway...)
@@ -202,6 +231,7 @@ func startDHCPClient(ctx context.Context, log *slog.Logger, cfg DHCPConfig, load
 				}
 			}
 		}
+
 		cfg.CachedLease = &cachedCopy
 	}
 
@@ -225,10 +255,12 @@ func startDHCPClient(ctx context.Context, log *slog.Logger, cfg DHCPConfig, load
 			if recovered == nil {
 				return
 			}
+
 			c.log.ErrorContext(ctx, "dhcp: run panicked", "err", fmt.Sprint(recovered))
 		}()
 		c.run(ctx)
 	}()
+
 	return c
 }
 
@@ -240,6 +272,7 @@ func (c *DHCPClient) LastLease() LeaseInfo {
 	last := c.last
 	last.LinkHardwareAddr = append(net.HardwareAddr(nil), last.LinkHardwareAddr...)
 	last.DNS = slices.Clone(last.DNS)
+
 	return last
 }
 
@@ -271,6 +304,7 @@ func (c *DHCPClient) takeLinkDown() bool {
 	defer c.mu.Unlock()
 	linkDownSeen := c.linkDownSeen
 	c.linkDownSeen = false
+
 	return linkDownSeen
 }
 
@@ -279,6 +313,7 @@ func (c *DHCPClient) emit(info LeaseInfo) {
 	if info.State == LeaseExpired {
 		c.epoch++
 	}
+
 	info.InvalidationEpoch = c.epoch
 	info.LinkIndex = c.origin.LinkIndex
 	info.LinkHardwareAddr = append(net.HardwareAddr(nil), c.origin.LinkHardwareAddr...)
@@ -294,12 +329,14 @@ func (c *DHCPClient) emit(info LeaseInfo) {
 			case <-c.Events:
 			default:
 			}
+
 			select {
 			case c.Events <- info:
 			default:
 			}
 		}
 	}
+
 	c.mu.Unlock()
 	c.log.Debug("dhcp: state transition", "info", info.String())
 }
@@ -310,10 +347,12 @@ func (c *DHCPClient) captureOrigin() error {
 		c.log.Warn("dhcp: interface lookup failed", "err", err)
 		return fmt.Errorf("find DHCP interface: %w", err)
 	}
+
 	c.mu.Lock()
 	c.origin.LinkIndex = link.Index
 	c.origin.LinkHardwareAddr = append(net.HardwareAddr(nil), link.HardwareAddr...)
 	c.mu.Unlock()
+
 	return nil
 }
 
@@ -322,6 +361,7 @@ func (c *DHCPClient) originMatches() bool {
 	origin := c.origin
 	c.mu.Unlock()
 	matches, err := origin.MatchesLink(c.cfg.Iface)
+
 	return err == nil && matches
 }
 
@@ -338,29 +378,40 @@ func (c *DHCPClient) run(ctx context.Context) {
 			c.emit(leaseState(LeaseExpired, time.Time{}, err))
 		}
 	}
+
 	if cached != nil {
 		if lease := c.recoverLease(ctx, *cached); lease != nil {
 			c.bound(ctx, logger, lease)
 		}
 	}
+
 	for {
 		if ctx.Err() != nil {
 			return
 		}
+
 		select {
 		case <-c.linkChanged:
 		default:
 		}
+
 		c.takeLinkDown()
 		lease, err := c.acquire(ctx)
 		if err != nil {
-			logger.WarnContext(ctx, "dhcp: acquire failed; will retry",
-				"err", err, "backoff", backoff.String())
+			logger.WarnContext(
+				ctx,
+				"dhcp: acquire failed; will retry",
+				"err",
+				err,
+				"backoff",
+				backoff.String(),
+			)
 			c.emit(leaseState(LeaseSelecting, time.Time{}, err))
 			c.waitForAcquireRetry(ctx, backoff)
 			backoff = nextBackoff(backoff, c.cfg.MaxBackoff)
 			continue
 		}
+
 		backoff = c.cfg.InitialBackoff
 
 		c.bound(ctx, logger, lease)
@@ -376,6 +427,7 @@ func (c *DHCPClient) waitForAcquireRetry(ctx context.Context, wait time.Duration
 	timer := time.NewTimer(wait)
 	defer timer.Stop()
 	linkWasDown := !c.linkReady()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -398,12 +450,22 @@ func (c *DHCPClient) recoverLease(ctx context.Context, cached LeaseInfo) *dhcpLe
 		c.expiryPending = true
 		c.mu.Unlock()
 		c.emit(leaseState(LeaseExpired, cached.AcquiredAt, err))
+
 		return nil
 	}
+
 	if cached.IP.To4() == nil || !c.clock.Now().Before(cached.ExpiresAt) {
-		c.emit(leaseState(LeaseExpired, cached.AcquiredAt, errors.New("saved DHCP lease expired before validation")))
+		c.emit(
+			leaseState(
+				LeaseExpired,
+				cached.AcquiredAt,
+				errors.New("saved DHCP lease expired before validation"),
+			),
+		)
+
 		return nil
 	}
+
 	c.mu.Lock()
 	matches := len(cached.LinkHardwareAddr) > 0 &&
 		bytes.Equal(cached.LinkHardwareAddr, c.origin.LinkHardwareAddr)
@@ -412,10 +474,12 @@ func (c *DHCPClient) recoverLease(ctx context.Context, cached LeaseInfo) *dhcpLe
 		c.emit(leaseState(LeaseExpired, cached.AcquiredAt, errDHCPInterfaceChanged))
 		return nil
 	}
+
 	backoff := c.cfg.InitialBackoff
 	discoverAt := c.clock.Now().Add(c.cfg.RestartWindow)
 	attemptDeadline := earlier(discoverAt, cached.ExpiresAt)
 	discoverStarted := false
+
 	for c.clock.Now().Before(cached.ExpiresAt) && ctx.Err() == nil {
 		// RFC 2131 section 3.2 permits use of the saved address until its lease
 		// expires. Retain the address during DISCOVER.
@@ -427,36 +491,45 @@ func (c *DHCPClient) recoverLease(ctx context.Context, cached LeaseInfo) *dhcpLe
 				return acquired
 			}
 		}
+
 		attemptCtx, cancelAttempt := context.WithDeadline(ctx, attemptDeadline)
 		lease, err := c.restartAttempt(attemptCtx, cached)
 		cancelAttempt()
 		if err == nil {
 			return lease
 		}
+
 		if errors.Is(err, errDHCPInterfaceChanged) {
 			c.refreshExpiryOrigin(ctx)
 			c.emit(leaseState(LeaseExpired, cached.AcquiredAt, err))
+
 			return nil
 		}
+
 		if _, isNAK := errors.AsType[*nclient4.ErrNak](err); isNAK {
 			c.emit(leaseState(LeaseExpired, cached.AcquiredAt, err))
 			return nil
 		}
+
 		c.log.WarnContext(ctx, "dhcp: restart request failed", "err", err)
 		c.emit(leaseState(LeaseRequesting, cached.AcquiredAt, err))
 		wait := min(backoff, max(cached.ExpiresAt.Sub(c.clock.Now()), 0))
 		if !discoverStarted {
 			wait = min(wait, max(discoverAt.Sub(c.clock.Now()), 0))
 		}
+
 		sleepOrCancel(ctx, wait)
 		backoff = nextBackoff(backoff, c.cfg.MaxBackoff)
 	}
+
 	if ctx.Err() == nil {
 		if !c.originMatches() {
 			c.refreshExpiryOrigin(ctx)
 		}
+
 		c.emit(leaseState(LeaseExpired, cached.AcquiredAt, errors.New("saved DHCP lease expired")))
 	}
+
 	return nil
 }
 
@@ -474,15 +547,25 @@ func (c *DHCPClient) recoveryAcquire(ctx context.Context, cached LeaseInfo) (*dh
 	if !sameLink || !c.originMatches() {
 		c.refreshExpiryOrigin(ctx)
 		c.emit(leaseState(LeaseExpired, cached.AcquiredAt, errDHCPInterfaceChanged))
+
 		return nil, true
 	}
+
 	if err != nil {
 		c.log.WarnContext(ctx, "dhcp: recovery DISCOVER failed", "err", err)
 		return nil, false
 	}
+
 	if !acquired.lease.ACK.YourIPAddr.Equal(cached.IP) {
-		c.emit(leaseState(LeaseExpired, cached.AcquiredAt, errors.New("saved DHCP address replaced by a different address")))
+		c.emit(
+			leaseState(
+				LeaseExpired,
+				cached.AcquiredAt,
+				errors.New("saved DHCP address replaced by a different address"),
+			),
+		)
 	}
+
 	return acquired, true
 }
 
@@ -491,6 +574,7 @@ func (c *DHCPClient) refreshExpiryOrigin(ctx context.Context) {
 	if err == nil {
 		return
 	}
+
 	c.log.WarnContext(ctx, "dhcp: rejected lease link unavailable", "err", err)
 	c.mu.Lock()
 	c.expiryPending = true
@@ -498,7 +582,8 @@ func (c *DHCPClient) refreshExpiryOrigin(ctx context.Context) {
 }
 
 func (c *DHCPClient) restartAttempt(ctx context.Context, cached LeaseInfo) (*dhcpLease, error) {
-	client, err := nclient4.New(c.cfg.Iface,
+	client, err := nclient4.New(
+		c.cfg.Iface,
 		nclient4.WithTimeout(c.cfg.RequestTimeout),
 		nclient4.WithLogger(newSlogDHCPLogger(c.log)),
 	)
@@ -510,42 +595,57 @@ func (c *DHCPClient) restartAttempt(ctx context.Context, cached LeaseInfo) (*dhc
 	if !c.originMatches() || !bytes.Equal(client.InterfaceAddr(), cached.LinkHardwareAddr) {
 		return nil, errDHCPInterfaceChanged
 	}
+
 	request, err := c.restartRequest(client.InterfaceAddr(), cached.IP)
 	if err != nil {
 		return nil, fmt.Errorf("build DHCP restart request: %w", err)
 	}
+
 	deadline := earlier(c.clock.Now().Add(c.cfg.RequestTimeout), cached.ExpiresAt)
 	rctx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
 	requestedAt := c.clock.Now()
-	response, err := client.SendAndRead(rctx, nclient4.DefaultServers, request,
-		nclient4.IsMessageType(dhcpv4.MessageTypeAck, dhcpv4.MessageTypeNak))
+	response, err := client.SendAndRead(
+		rctx,
+		nclient4.DefaultServers,
+		request,
+		nclient4.IsMessageType(dhcpv4.MessageTypeAck, dhcpv4.MessageTypeNak),
+	)
 	if !c.originMatches() {
 		return nil, errDHCPInterfaceChanged
 	}
+
 	if err != nil {
 		c.log.WarnContext(ctx, "dhcp: restart response read failed", "err", err)
 		return nil, fmt.Errorf("DHCP restart request: %w", err)
 	}
+
 	if response.MessageType() == dhcpv4.MessageTypeNak {
 		return nil, &nclient4.ErrNak{Nak: response}
 	}
+
 	lease := &nclient4.Lease{ACK: response, Offer: response, CreationTime: c.clock.Now()}
 	if err := validateLease(lease); err != nil {
 		c.log.WarnContext(ctx, "dhcp: invalid restart ACK", "err", err)
 		return nil, fmt.Errorf("invalid DHCP restart ACK: %w", err)
 	}
+
 	return &dhcpLease{lease: lease, requestedAt: requestedAt}, nil
 }
 
-func (c *DHCPClient) restartRequest(hardwareAddress net.HardwareAddr, ip net.IP) (*dhcpv4.DHCPv4, error) {
+func (c *DHCPClient) restartRequest(
+	hardwareAddress net.HardwareAddr,
+	ip net.IP,
+) (*dhcpv4.DHCPv4, error) {
 	request, err := dhcpv4.New(
 		dhcpv4.WithHwAddr(hardwareAddress),
 		dhcpv4.WithMessageType(dhcpv4.MessageTypeRequest),
 		dhcpv4.WithBroadcast(true),
 		dhcpv4.WithRequestedOptions(
-			dhcpv4.OptionSubnetMask, dhcpv4.OptionRouter,
-			dhcpv4.OptionDomainName, dhcpv4.OptionDomainNameServer,
+			dhcpv4.OptionSubnetMask,
+			dhcpv4.OptionRouter,
+			dhcpv4.OptionDomainName,
+			dhcpv4.OptionDomainNameServer,
 		),
 		dhcpv4.WithOption(dhcpv4.OptRequestedIPAddress(ip.To4())),
 	)
@@ -553,9 +653,11 @@ func (c *DHCPClient) restartRequest(hardwareAddress net.HardwareAddr, ip net.IP)
 		c.log.Warn("dhcp: restart request encoding failed", "err", err)
 		return nil, fmt.Errorf("new DHCP restart request: %w", err)
 	}
+
 	for _, modifier := range c.requestModifiers() {
 		modifier(request)
 	}
+
 	return request, nil
 }
 
@@ -568,6 +670,7 @@ func (c *DHCPClient) acquire(ctx context.Context) (*dhcpLease, error) {
 	if err := c.captureOrigin(); err != nil {
 		return nil, fmt.Errorf("DHCP interface: %w", err)
 	}
+
 	c.mu.Lock()
 	expiryPending := c.expiryPending
 	c.expiryPending = false
@@ -575,6 +678,7 @@ func (c *DHCPClient) acquire(ctx context.Context) (*dhcpLease, error) {
 	if expiryPending {
 		c.emit(leaseState(LeaseExpired, time.Time{}, errDHCPInterfaceChanged))
 	}
+
 	c.emit(leaseState(LeaseInit, time.Time{}, nil))
 
 	client, err := nclient4.New(
@@ -603,9 +707,12 @@ func (c *DHCPClient) acquire(ctx context.Context) (*dhcpLease, error) {
 	}
 
 	c.log.DebugContext(
-		ctx, "dhcp: OFFER received",
-		"yiaddr", offer.YourIPAddr.String(),
-		"siaddr", offer.ServerIdentifier(),
+		ctx,
+		"dhcp: OFFER received",
+		"yiaddr",
+		offer.YourIPAddr.String(),
+		"siaddr",
+		offer.ServerIdentifier(),
 	)
 	c.emit(leaseState(LeaseRequesting, time.Time{}, nil))
 
@@ -617,22 +724,33 @@ func (c *DHCPClient) acquire(ctx context.Context) (*dhcpLease, error) {
 		c.log.WarnContext(ctx, "dhcp: RequestFromOffer failed", "err", err)
 		return nil, fmt.Errorf("RequestFromOffer: %w", err)
 	}
+
 	if err := validateLease(lease); err != nil {
 		return nil, fmt.Errorf("invalid DHCP ACK: %w", err)
 	}
+
 	if !c.originMatches() {
 		return nil, errors.New("DHCP interface changed during acquisition")
 	}
+
 	c.log.DebugContext(
-		ctx, "dhcp: ACK received",
-		"yiaddr", lease.ACK.YourIPAddr.String(),
-		"lease_time", lease.ACK.IPAddressLeaseTime(0).String(),
+		ctx,
+		"dhcp: ACK received",
+		"yiaddr",
+		lease.ACK.YourIPAddr.String(),
+		"lease_time",
+		lease.ACK.IPAddressLeaseTime(0).String(),
 	)
+
 	return &dhcpLease{lease: lease, requestedAt: requestedAt}, nil
 }
 
 func (c *DHCPClient) renewAttempt(
-	ctx context.Context, lease *dhcpLease, current LeaseInfo, state LeaseState, now time.Time,
+	ctx context.Context,
+	lease *dhcpLease,
+	current LeaseInfo,
+	state LeaseState,
+	now time.Time,
 ) (*dhcpLease, error) {
 	options := []nclient4.ClientOpt{
 		nclient4.WithTimeout(c.cfg.RenewTimeout),
@@ -642,10 +760,17 @@ func (c *DHCPClient) renewAttempt(
 	if state == LeaseRenewing {
 		options = append(
 			options,
-			nclient4.WithUnicast(&net.UDPAddr{IP: current.IP, Port: nclient4.ClientPort}),
-			nclient4.WithServerAddr(&net.UDPAddr{IP: current.Server, Port: nclient4.ServerPort}),
+			nclient4.WithUnicast(&net.UDPAddr{
+				IP:   current.IP,
+				Port: nclient4.ClientPort,
+			}),
+			nclient4.WithServerAddr(&net.UDPAddr{
+				IP:   current.Server,
+				Port: nclient4.ServerPort,
+			}),
 		)
 	}
+
 	client, err := nclient4.New(c.cfg.Iface, options...)
 	if err != nil {
 		c.log.WarnContext(ctx, "dhcp: renewal socket open failed", "err", err)
@@ -655,10 +780,12 @@ func (c *DHCPClient) renewAttempt(
 	if !c.originMatches() || !bytes.Equal(client.InterfaceAddr(), current.LinkHardwareAddr) {
 		return nil, errDHCPInterfaceChanged
 	}
+
 	deadline := earlier(now.Add(c.cfg.RenewTimeout), current.ExpiresAt)
 	if state == LeaseRenewing {
 		deadline = earlier(deadline, current.RebindAt)
 	}
+
 	rctx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
 	var renewed *nclient4.Lease
@@ -668,13 +795,16 @@ func (c *DHCPClient) renewAttempt(
 	} else {
 		renewed, err = client.Renew(rctx, lease.lease, c.requestModifiers()...)
 	}
+
 	if !c.originMatches() {
 		return nil, errDHCPInterfaceChanged
 	}
+
 	if err != nil {
 		c.log.WarnContext(ctx, "dhcp: renewal request failed", "err", err)
 		return nil, fmt.Errorf("DHCP renewal request: %w", err)
 	}
+
 	return &dhcpLease{lease: renewed, requestedAt: requestedAt}, nil
 }
 
@@ -682,25 +812,37 @@ func earlier(a, b time.Time) time.Time {
 	if a.After(b) {
 		return b
 	}
+
 	return a
 }
 
-func (c *DHCPClient) rebind(ctx context.Context, client *nclient4.Client, lease *nclient4.Lease) (*nclient4.Lease, error) {
+func (c *DHCPClient) rebind(
+	ctx context.Context,
+	client *nclient4.Client,
+	lease *nclient4.Lease,
+) (*nclient4.Lease, error) {
 	modifiers := append([]dhcpv4.Modifier{dhcpv4.WithBroadcast(true)}, c.requestModifiers()...)
 	request, err := dhcpv4.NewRenewFromAck(lease.ACK, modifiers...)
 	if err != nil {
 		c.log.WarnContext(ctx, "dhcp: rebinding request build failed", "err", err)
 		return nil, fmt.Errorf("build DHCP rebinding request: %w", err)
 	}
-	response, err := client.SendAndRead(ctx, nclient4.DefaultServers, request,
-		nclient4.IsMessageType(dhcpv4.MessageTypeAck, dhcpv4.MessageTypeNak))
+
+	response, err := client.SendAndRead(
+		ctx,
+		nclient4.DefaultServers,
+		request,
+		nclient4.IsMessageType(dhcpv4.MessageTypeAck, dhcpv4.MessageTypeNak),
+	)
 	if err != nil {
 		c.log.WarnContext(ctx, "dhcp: rebinding response read failed", "err", err)
 		return nil, fmt.Errorf("read DHCP rebinding response: %w", err)
 	}
+
 	if response.MessageType() == dhcpv4.MessageTypeNak {
 		return nil, &nclient4.ErrNak{Offer: lease.Offer, Nak: response}
 	}
+
 	return &nclient4.Lease{Offer: response, ACK: response, CreationTime: c.clock.Now()}, nil
 }
 
@@ -709,31 +851,41 @@ func (c *DHCPClient) requestModifiers() []dhcpv4.Modifier {
 	if len(c.cfg.ClientID) > 0 {
 		modifiers = append(modifiers, dhcpv4.WithOption(dhcpv4.OptClientIdentifier(c.cfg.ClientID)))
 	}
+
 	return modifiers
 }
 
 func requestClasslessRouteFirst(packet *dhcpv4.DHCPv4) {
 	requested := dhcpv4.OptionCodeList{dhcpv4.OptionClasslessStaticRoute}
 	requested.Add(dhcpv4.OptionDomainNameServer)
+
 	for _, code := range packet.ParameterRequestList() {
 		requested.Add(code)
 	}
+
 	packet.UpdateOption(dhcpv4.OptParameterRequestList(requested...))
 }
 
 // leaseToInfo extracts daemon-relevant fields from a DHCPv4 ACK.
 // Pure function for unit-testing.
-func leaseToInfo(state LeaseState, lease *nclient4.Lease, acquired, requestedAt time.Time) LeaseInfo {
+func leaseToInfo(
+	state LeaseState,
+	lease *nclient4.Lease,
+	acquired time.Time,
+	requestedAt time.Time,
+) LeaseInfo {
 	info := leaseState(state, acquired, nil)
 	if lease == nil || lease.ACK == nil {
 		return info
 	}
+
 	ack := lease.ACK
 	info.IP = ack.YourIPAddr
 	mask := ack.SubnetMask()
 	if mask != nil {
 		info.PrefixLen, _ = mask.Size()
 	}
+
 	if ack.Options.Has(dhcpv4.OptionClasslessStaticRoute) {
 		info.Routes, _ = classlessRoutes(ack)
 		for _, route := range info.Routes {
@@ -744,34 +896,43 @@ func leaseToInfo(state LeaseState, lease *nclient4.Lease, acquired, requestedAt 
 		}
 	} else if routers := ack.Router(); len(routers) > 0 {
 		info.Gateway = routers[0]
-		info.Routes = []LeaseRoute{{
-			Destination: &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)},
-			Gateway:     routers[0],
-		}}
+		info.Routes = []LeaseRoute{
+			{
+				Destination: &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)},
+				Gateway:     routers[0],
+			},
+		}
 	}
+
 	info.Server = ack.ServerIdentifier()
 	for _, server := range ack.DNS() {
 		address, ok := netip.AddrFromSlice(server.To4())
-		if ok && !address.IsUnspecified() && !address.IsMulticast() && address != netip.MustParseAddr("255.255.255.255") {
+		if ok && !address.IsUnspecified() && !address.IsMulticast() &&
+			address != netip.MustParseAddr("255.255.255.255") {
 			info.DNS = append(info.DNS, address.Unmap())
 		}
 	}
+
 	info.LeaseTime = ack.IPAddressLeaseTime(0)
 	t1 := ack.IPAddressRenewalTime(0)
 	t2 := ack.IPAddressRebindingTime(0)
 	if t1 <= 0 || t1 >= info.LeaseTime {
 		t1 = info.LeaseTime / 2
 	}
+
 	if t2 <= t1 || t2 >= info.LeaseTime {
 		t2 = info.LeaseTime * 7 / 8
 	}
+
 	if t1 >= t2 {
 		t1 = info.LeaseTime / 2
 		t2 = info.LeaseTime * 7 / 8
 	}
+
 	info.RenewAt = requestedAt.Add(t1)
 	info.RebindAt = requestedAt.Add(t2)
 	info.ExpiresAt = requestedAt.Add(info.LeaseTime)
+
 	return info
 }
 
@@ -779,32 +940,41 @@ func validateLease(lease *nclient4.Lease) error {
 	if lease == nil || lease.ACK == nil {
 		return errors.New("missing DHCP ACK")
 	}
+
 	ack := lease.ACK
 	address := ack.YourIPAddr.To4()
-	if address == nil || address.IsUnspecified() || address.IsMulticast() || address.Equal(net.IPv4bcast) {
+	if address == nil || address.IsUnspecified() || address.IsMulticast() ||
+		address.Equal(net.IPv4bcast) {
 		slog.Warn("dhcp: invalid ACK address", "address", ack.YourIPAddr)
 		return fmt.Errorf("invalid assigned address %v", ack.YourIPAddr)
 	}
+
 	mask := ack.SubnetMask()
 	if mask == nil {
 		return errors.New("missing subnet mask")
 	}
+
 	if _, bits := mask.Size(); bits != net.IPv4len*8 {
 		return errors.New("invalid subnet mask")
 	}
+
 	server := ack.ServerIdentifier().To4()
-	if server == nil || server.IsUnspecified() || server.IsMulticast() || server.Equal(net.IPv4bcast) {
+	if server == nil || server.IsUnspecified() || server.IsMulticast() ||
+		server.Equal(net.IPv4bcast) {
 		slog.Warn("dhcp: invalid ACK server identifier", "server", ack.ServerIdentifier())
 		return fmt.Errorf("invalid server identifier %v", ack.ServerIdentifier())
 	}
+
 	if ack.IPAddressLeaseTime(0) <= 0 {
 		return errors.New("missing or zero lease time")
 	}
+
 	if ack.Options.Has(dhcpv4.OptionClasslessStaticRoute) {
 		if _, err := classlessRoutes(ack); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -813,22 +983,28 @@ func classlessRoutes(ack *dhcpv4.DHCPv4) ([]LeaseRoute, error) {
 	if len(data) == 0 {
 		return nil, errors.New("empty classless route option")
 	}
+
 	var parsed dhcpv4.Routes
 	if err := parsed.FromBytes(data); err != nil {
 		slog.Warn("dhcp: invalid ACK classless routes", "err", err)
 		return nil, fmt.Errorf("invalid classless route option: %w", err)
 	}
+
 	routes := make([]LeaseRoute, 0, len(parsed))
 	for _, route := range parsed {
 		destination := &net.IPNet{
 			IP:   route.Dest.IP.Mask(route.Dest.Mask),
 			Mask: append(net.IPMask(nil), route.Dest.Mask...),
 		}
-		routes = append(routes, LeaseRoute{
-			Destination: destination,
-			Gateway:     append(net.IP(nil), route.Router...),
-		})
+		routes = append(
+			routes,
+			LeaseRoute{
+				Destination: destination,
+				Gateway:     append(net.IP(nil), route.Router...),
+			},
+		)
 	}
+
 	return routes, nil
 }
 
@@ -837,6 +1013,7 @@ func nextBackoff(cur, maxB time.Duration) time.Duration {
 	if n > maxB {
 		return maxB
 	}
+
 	return n
 }
 
@@ -867,9 +1044,13 @@ func newSlogDHCPLogger(base *slog.Logger) slogDHCPLogger {
 func (l slogDHCPLogger) PrintMessage(prefix string, message *dhcpv4.DHCPv4) {
 	l.base.Debug(
 		"dhcp: packet",
-		"dir", prefix,
-		"type", message.MessageType().String(),
-		"yiaddr", message.YourIPAddr.String(),
-		"server", message.ServerIdentifier(),
+		"dir",
+		prefix,
+		"type",
+		message.MessageType().String(),
+		"yiaddr",
+		message.YourIPAddr.String(),
+		"server",
+		message.ServerIdentifier(),
 	)
 }

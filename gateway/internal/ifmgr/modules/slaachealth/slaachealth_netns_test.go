@@ -44,7 +44,11 @@ func TestProlongedDegradationKeepsAddressAndSolicitsRouter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile("/proc/sys/net/ipv6/conf/"+iface+"/router_solicitations", []byte("0"), 0o644); err != nil {
+	if err := os.WriteFile(
+		"/proc/sys/net/ipv6/conf/"+iface+"/router_solicitations",
+		[]byte("0"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := netlink.LinkSetUp(veth); err != nil {
@@ -105,7 +109,9 @@ func TestProlongedDegradationKeepsAddressAndSolicitsRouter(t *testing.T) {
 		Log:    log,
 		RA:     raClient,
 		Sysctl: netif.NewProcSysctlRunner(log, false),
-		Alerts: ifmgr.WrapNotifier(notify.FromConfig(notify.EmailConfig{}, notify.Config{}, log, "mwan-ifmgr")),
+		Alerts: ifmgr.WrapNotifier(
+			notify.FromConfig(notify.EmailConfig{}, notify.Config{}, log, "mwan-ifmgr"),
+		),
 	}
 	if err := module.Init(context.Background(), env); err != nil {
 		t.Fatal(err)

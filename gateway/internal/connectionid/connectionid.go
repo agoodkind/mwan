@@ -12,8 +12,10 @@ func Resolve(explicit string, provider string, iface string) ID {
 	if explicit != "" {
 		return ID(explicit)
 	}
+
 	if provider != "" {
 		return ID(provider)
 	}
+
 	return ID(iface)
 }

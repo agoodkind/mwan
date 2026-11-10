@@ -33,35 +33,45 @@ func installSchema(ctx context.Context, log *slog.Logger, root string) (schemaOu
 	if err != nil {
 		return outcome, installFailed("write the schema into", schemaDir, err)
 	}
+
 	policy, err := installspec.NACMPolicy()
 	if err != nil {
 		return outcome, installFailed("read the embedded file", installspec.NACMPolicyPath, err)
 	}
+
 	wanSpec, _ := installspec.For(installspec.RoleWAN)
 	imports := wanSpec.SysrepoImports(policy)
 	batches := []moduleBatch{{models: models, searchDir: schemaDir}}
+
 	for _, module := range wanSpec.StackYangModules() {
 		model := yangpub.Model{
 			Path:     filepath.Join(root, module.Path()),
 			Features: module.Features,
 			Update:   false,
 		}
-		batches = append(batches, moduleBatch{
-			models:    []yangpub.Model{model},
-			searchDir: filepath.Join(root, module.Dir),
-		})
+		batches = append(
+			batches,
+			moduleBatch{
+				models:    []yangpub.Model{model},
+				searchDir: filepath.Join(root, module.Dir),
+			},
+		)
 	}
+
 	policyPath := filepath.Join(root, installspec.NACMPolicyPath)
 	if root == "" {
 		if err := applyDatastore(ctx, log, batches, imports, &outcome); err != nil {
 			return outcome, err
 		}
+
 		return outcome, writePolicy(policyPath, policy, &outcome)
 	}
+
 	repository := filepath.Join(root, sysrepoRepositoryDir)
 	if err := os.MkdirAll(repository, 0o750); err != nil {
 		return outcome, installFailed("create the private repository", repository, err)
 	}
+
 	// sysrepo selects its repository path and shared-memory prefix at the first connection.
 	// Configure both before opening the private repository.
 	// The underscore delimits the process ID in the cleanup pattern.
@@ -77,11 +87,15 @@ func installSchema(ctx context.Context, log *slog.Logger, root string) (schemaOu
 	if bound := yangpub.RepositoryPath(); bound != repository {
 		return outcome, fmt.Errorf(
 			"sysrepo in this process is bound to repository %s, not the private repository %s",
-			bound, repository)
+			bound,
+			repository,
+		)
 	}
+
 	if err := applyDatastore(ctx, log, batches, imports, &outcome); err != nil {
 		return outcome, err
 	}
+
 	return outcome, writePolicy(policyPath, policy, &outcome)
 }
 
@@ -95,9 +109,11 @@ func writePolicy(path string, policy []byte, outcome *schemaOutcome) error {
 	if err != nil {
 		return installFailed("write the NACM policy", path, err)
 	}
+
 	if changed {
 		outcome.changed = append(outcome.changed, path)
 	}
+
 	return nil
 }
 
@@ -112,7 +128,9 @@ func applyDatastore(
 	if err != nil {
 		return installFailed("connect to sysrepo for", "the schema modules", err)
 	}
+
 	defer func() { _ = datastore.Close() }()
+
 	for _, batch := range batches {
 		modules, err := datastore.InstallModules(ctx, batch.models, batch.searchDir)
 		outcome.modules = append(outcome.modules, modules...)
@@ -120,18 +138,28 @@ func applyDatastore(
 			return installFailed("install into sysrepo", "the schema modules", err)
 		}
 	}
+
 	for _, entry := range imports {
 		matches, err := datastore.ConfigMatches(ctx, entry.Datastore, entry.Module, entry.Content)
 		if err != nil {
 			return installFailed("read the NACM policy in", string(entry.Datastore), err)
 		}
+
 		if matches {
 			continue
 		}
-		if err := datastore.ImportConfig(ctx, entry.Datastore, entry.Module, entry.Content); err != nil {
+
+		if err := datastore.ImportConfig(
+			ctx,
+			entry.Datastore,
+			entry.Module,
+			entry.Content,
+		); err != nil {
 			return installFailed("import the NACM policy into", string(entry.Datastore), err)
 		}
+
 		outcome.nacmImported = append(outcome.nacmImported, entry.Datastore)
 	}
+
 	return nil
 }

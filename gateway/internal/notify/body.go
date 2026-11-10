@@ -41,12 +41,15 @@ func BuildEmailBody(r slog.Record, boundAttrs []slog.Attr) string {
 	if what := buildWhat(merged); what != "" {
 		sections = append(sections, what)
 	}
+
 	if where := buildWhere(merged); where != "" {
 		sections = append(sections, where)
 	}
+
 	if traceBuild := buildTraceLine(merged); traceBuild != "" {
 		sections = append(sections, traceBuild)
 	}
+
 	if extras := buildExtras(merged); extras != "" {
 		sections = append(sections, extras)
 	}
@@ -63,15 +66,20 @@ func mergeAttrs(bound []slog.Attr, r slog.Record) map[string]string {
 		if _, drop := dropKeys[a.Key]; drop {
 			continue
 		}
+
 		out[a.Key] = a.Value.String()
 	}
+
 	r.Attrs(func(a slog.Attr) bool {
 		if _, drop := dropKeys[a.Key]; drop {
 			return true
 		}
+
 		out[a.Key] = a.Value.String()
+
 		return true
 	})
+
 	return out
 }
 
@@ -83,11 +91,13 @@ func buildWhat(attrs map[string]string) string {
 	if !ok {
 		return ""
 	}
+
 	delete(attrs, "err")
 	main, stderrPart := splitStderr(errVal)
 	if stderrPart == "" {
 		return "What:    " + main
 	}
+
 	return "What:    " + main + "\n         stderr: " + stderrPart
 }
 
@@ -101,6 +111,7 @@ func splitStderr(err string) (string, string) {
 	if !ok {
 		return err, ""
 	}
+
 	main := strings.TrimRight(strings.TrimSpace(before), "(,: ")
 	rest := strings.TrimSpace(after)
 	rest = strings.TrimSuffix(rest, ")")
@@ -110,6 +121,7 @@ func splitStderr(err string) (string, string) {
 			return main, strings.TrimSpace(rest[1:closing])
 		}
 	}
+
 	return main, rest
 }
 
@@ -117,17 +129,21 @@ func splitStderr(err string) (string, string) {
 // daemon, phase) that are not in attrs.
 func buildWhere(attrs map[string]string) string {
 	var parts []string
+
 	for _, k := range whereKeys {
 		v, ok := attrs[k]
 		if !ok {
 			continue
 		}
+
 		parts = append(parts, k+"="+v)
 		delete(attrs, k)
 	}
+
 	if len(parts) == 0 {
 		return ""
 	}
+
 	return "Where:   " + strings.Join(parts, ", ")
 }
 
@@ -139,6 +155,7 @@ func buildTraceLine(attrs map[string]string) string {
 	if hasTrace {
 		delete(attrs, "trace")
 	}
+
 	build := buildSummary(attrs)
 	switch {
 	case hasTrace && build != "":
@@ -161,28 +178,36 @@ func buildSummary(attrs map[string]string) string {
 	commit := firstNonEmpty(attrs, "commit", "build")
 	dirty := attrs["dirty"]
 	binhash := attrs["binhash"]
+
 	for k := range buildKeys {
 		delete(attrs, k)
 	}
+
 	if commit == "" && dirty == "" && binhash == "" {
 		return ""
 	}
+
 	var b strings.Builder
 	if commit != "" {
 		b.WriteString(commit)
 	}
+
 	if dirty != "" {
 		if b.Len() > 0 {
 			b.WriteByte(' ')
 		}
+
 		b.WriteString("(" + dirty + ")")
 	}
+
 	if binhash != "" {
 		if b.Len() > 0 {
 			b.WriteByte(' ')
 		}
+
 		b.WriteString("binhash=" + binhash)
 	}
+
 	return b.String()
 }
 
@@ -194,6 +219,7 @@ func firstNonEmpty(attrs map[string]string, keys ...string) string {
 			return v
 		}
 	}
+
 	return ""
 }
 
@@ -205,18 +231,23 @@ func buildExtras(attrs map[string]string) string {
 	if len(attrs) == 0 {
 		return ""
 	}
+
 	keys := make([]string, 0, len(attrs))
 	for k := range attrs {
 		keys = append(keys, k)
 	}
+
 	if len(keys) == 0 {
 		return ""
 	}
+
 	sort.Strings(keys)
+
 	lines := make([]string, 0, len(keys))
 	for _, k := range keys {
 		lines = append(lines, titleKey(k)+": "+attrs[k])
 	}
+
 	return strings.Join(lines, "\n")
 }
 
@@ -229,5 +260,6 @@ func titleKey(k string) string {
 	if k == "" {
 		return k
 	}
+
 	return strings.ToUpper(k[:1]) + k[1:]
 }

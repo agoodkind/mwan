@@ -24,11 +24,13 @@ type State struct {
 func Read(root string, deployFile []byte) State {
 	composite := sha256.New()
 	var manifest strings.Builder
+
 	for _, p := range criticalPaths(root) {
 		data, err := os.ReadFile(p)
 		if err != nil {
 			continue
 		}
+
 		sum := sha256.Sum256(data)
 		fileSum := hex.EncodeToString(sum[:])
 		manifest.WriteString(fileSum)
@@ -39,6 +41,7 @@ func Read(root string, deployFile []byte) State {
 		_, _ = composite.Write([]byte{0})
 		_, _ = composite.Write(data)
 	}
+
 	deployEpoch, _ := strconv.ParseInt(strings.TrimSpace(string(deployFile)), 10, 64)
 
 	return State{
@@ -58,6 +61,7 @@ func criticalPaths(root string) []string {
 	add(filepath.Join(root, "/etc/iproute2/rt_tables"))
 	add(filepath.Join(root, "/etc/sysctl.d/99-mwan.conf"))
 	add(filepath.Join(root, "/etc/wpa_supplicant/wpa_supplicant.conf"))
+
 	for _, g := range []string{
 		"/etc/systemd/network/*",
 		"/etc/networkd-dispatcher/routable.d/*",
@@ -66,14 +70,18 @@ func criticalPaths(root string) []string {
 		if err != nil {
 			continue
 		}
+
 		for _, m := range matches {
 			st, err := os.Stat(m)
 			if err != nil || st.IsDir() {
 				continue
 			}
+
 			add(m)
 		}
 	}
+
 	sort.Strings(paths)
+
 	return paths
 }

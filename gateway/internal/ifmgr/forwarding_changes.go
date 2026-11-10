@@ -44,6 +44,7 @@ func (env *Env) BeginForwardingChange(ctx context.Context) (context.Context, fun
 	if env != nil {
 		changes = env.ForwardingChanges
 	}
+
 	return changes.Begin(ctx)
 }
 
@@ -52,17 +53,21 @@ func (changes *ForwardingChanges) Register(guard ForwardingGuard) (func(), error
 	if changes == nil {
 		return nil, fmt.Errorf("forwarding mutation registry is required")
 	}
+
 	if guard == nil {
 		return nil, fmt.Errorf("forwarding mutation guard is required")
 	}
+
 	changes.mu.Lock()
 	defer changes.mu.Unlock()
 	if changes.registration != nil {
 		return nil, fmt.Errorf("forwarding mutation guard already has an owner")
 	}
+
 	registration := &forwardingRegistration{guard: guard}
 	changes.registration = registration
 	var once sync.Once
+
 	return func() {
 		once.Do(func() {
 			changes.mu.Lock()
@@ -76,7 +81,9 @@ func (changes *ForwardingChanges) Register(guard ForwardingGuard) (func(), error
 
 // Begin returns a context for nested synchronous writers. Workers must use
 // WithoutForwardingChange before starting independent asynchronous work.
-func (changes *ForwardingChanges) Begin(ctx context.Context) (mutationContext context.Context, complete func(), resultErr error) {
+func (changes *ForwardingChanges) Begin(
+	ctx context.Context,
+) (mutationContext context.Context, complete func(), resultErr error) {
 	defer func() {
 		if resultErr != nil {
 			slog.WarnContext(ctx, "forwarding mutation rejected", "err", resultErr)
@@ -85,13 +92,16 @@ func (changes *ForwardingChanges) Begin(ctx context.Context) (mutationContext co
 	if err := ctx.Err(); err != nil {
 		return ctx, nil, fmt.Errorf("begin forwarding mutation: %w", err)
 	}
+
 	if changes == nil {
 		return ctx, func() {}, nil
 	}
+
 	if mutation, ok := ctx.Value(forwardingMutationKey{}).(*forwardingMutation); ok &&
 		mutation != nil && mutation.changes == changes && mutation.active.Load() {
 		return ctx, func() {}, nil
 	}
+
 	changes.mu.RLock()
 	locked := true
 	defer func() {
@@ -108,18 +118,25 @@ func (changes *ForwardingChanges) Begin(ctx context.Context) (mutationContext co
 			if release != nil {
 				release()
 			}
+
 			return ctx, nil, fmt.Errorf("prepare forwarding mutation: %w", err)
 		}
+
 		if release == nil {
-			return ctx, nil, fmt.Errorf("forwarding mutation guard did not supply its completion function")
+			return ctx, nil, fmt.Errorf(
+				"forwarding mutation guard did not supply its completion function",
+			)
 		}
 	}
+
 	if err := ctx.Err(); err != nil {
 		if release != nil {
 			release()
 		}
+
 		return ctx, nil, fmt.Errorf("prepare forwarding mutation: %w", err)
 	}
+
 	mutation := &forwardingMutation{changes: changes, active: atomic.Bool{}}
 	mutation.active.Store(true)
 	ctx = context.WithValue(ctx, forwardingMutationKey{}, mutation)
@@ -131,13 +148,16 @@ func (changes *ForwardingChanges) Begin(ctx context.Context) (mutationContext co
 			if release != nil {
 				release()
 			}
+
 			pass, _ := ctx.Value(forwardingReconcileKey{}).(*forwardingReconcilePass)
-			if registration != nil && changes.requestReconcile != nil && (pass == nil || !pass.active.Load()) {
+			if registration != nil && changes.requestReconcile != nil &&
+				(pass == nil || !pass.active.Load()) {
 				changes.requestReconcile("owned forwarding mutation completed")
 			}
 		})
 	}
 	locked = false
+
 	return ctx, finish, nil
 }
 
@@ -151,5 +171,10 @@ func WithoutForwardingChange(ctx context.Context) context.Context {
 func forwardingReconcileContext(ctx context.Context) (context.Context, func()) {
 	pass := new(forwardingReconcilePass)
 	pass.active.Store(true)
-	return context.WithValue(ctx, forwardingReconcileKey{}, pass), func() { pass.active.Store(false) }
+
+	return context.WithValue(
+		ctx,
+		forwardingReconcileKey{},
+		pass,
+	), func() { pass.active.Store(false) }
 }

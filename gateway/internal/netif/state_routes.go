@@ -23,13 +23,16 @@ func listUsableRoutes(family int, filter *netlink.Route, mask uint64) ([]netlink
 		slog.Warn("netif: usable route dump failed", "family", family, "err", err)
 		return nil, fmt.Errorf("list usable routes for family %d: %w", family, err)
 	}
+
 	current := routes[:0]
 	for _, route := range routes {
 		if route.CacheInfo != nil && route.CacheInfo.Expires < 0 {
 			continue
 		}
+
 		current = append(current, route)
 	}
+
 	return current, nil
 }
 
@@ -38,7 +41,9 @@ func listUsableRoutes(family int, filter *netlink.Route, mask uint64) ([]netlink
 // (nil, nil) for ENOENT-equivalent errors so callers can treat "table empty"
 // as "no default present" (matches the prior shellout behavior).
 func getTableDefaultNetlink(
-	log *slog.Logger, family string, tableID int,
+	log *slog.Logger,
+	family string,
+	tableID int,
 ) (*CurrentRoute, error) {
 	famConst := familyToNetlink(family)
 	filter := &netlink.Route{Table: tableID}
@@ -48,18 +53,33 @@ func getTableDefaultNetlink(
 	dur := realClock{}.Now().Sub(start)
 	log.Debug(
 		"route: RouteListFiltered (default lookup)",
-		"family", family, "table_id", tableID,
-		"count", len(routes),
-		"duration_ms", dur.Milliseconds(),
-		"err", err,
+		"family",
+		family,
+		"table_id",
+		tableID,
+		"count",
+		len(routes),
+		"duration_ms",
+		dur.Milliseconds(),
+		"err",
+		err,
 	)
 	if err != nil {
 		// Treat "table doesn't exist yet" as no-default.
 		if errors.Is(err, syscall.ENOENT) {
 			return nil, nil
 		}
-		log.Warn("route: RouteListFiltered failed",
-			"family", family, "table_id", tableID, "err", err)
+
+		log.Warn(
+			"route: RouteListFiltered failed",
+			"family",
+			family,
+			"table_id",
+			tableID,
+			"err",
+			err,
+		)
+
 		return nil, fmt.Errorf("RouteListFiltered(default,%s,%d): %w", family, tableID, err)
 	}
 
@@ -67,12 +87,15 @@ func getTableDefaultNetlink(
 		if !isDefaultRoute(r, famConst) {
 			continue
 		}
+
 		cur, err := routeToCurrent(log, r)
 		if err != nil {
 			return nil, fmt.Errorf("routeToCurrent(default,%s,%d): %w", family, tableID, err)
 		}
+
 		return cur, nil
 	}
+
 	return nil, nil
 }
 
@@ -84,16 +107,19 @@ func isDefaultRoute(r netlink.Route, family int) bool {
 	if r.Dst == nil {
 		return true
 	}
+
 	ones, _ := r.Dst.Mask.Size()
 	if ones != 0 {
 		return false
 	}
+
 	switch family {
 	case unix.AF_INET:
 		return r.Dst.IP.To4() != nil && r.Dst.IP.To4().Equal(net.IPv4zero)
 	case unix.AF_INET6:
 		return r.Dst.IP.To4() == nil && r.Dst.IP.Equal(net.IPv6unspecified)
 	}
+
 	return false
 }
 
@@ -106,6 +132,7 @@ func routeToCurrent(log *slog.Logger, r netlink.Route) (*CurrentRoute, error) {
 			dest = r.Dst.String()
 		}
 	}
+
 	cur := new(CurrentRoute)
 	cur.Dest = dest
 	cur.TableID = r.Table
@@ -123,9 +150,11 @@ func routeToCurrent(log *slog.Logger, r netlink.Route) (*CurrentRoute, error) {
 	case r.Dst != nil || r.Gw != nil:
 		cur.Family = "inet6"
 	}
+
 	if r.Gw != nil {
 		cur.Via = r.Gw.String()
 	}
+
 	if r.LinkIndex != 0 {
 		var hop RouteNextHop
 		hop.Via = cur.Via
@@ -133,43 +162,53 @@ func routeToCurrent(log *slog.Logger, r netlink.Route) (*CurrentRoute, error) {
 		hop.Weight = 1
 		cur.NextHops = append(cur.NextHops, hop)
 	}
+
 	for _, hop := range r.MultiPath {
 		if hop == nil {
 			continue
 		}
+
 		var observed RouteNextHop
 		observed.LinkIndex = hop.LinkIndex
 		observed.Weight = hop.Hops + 1
 		if hop.Gw != nil {
 			observed.Via = hop.Gw.String()
 		}
+
 		cur.NextHops = append(cur.NextHops, observed)
 	}
+
 	for i := range cur.NextHops {
 		link, err := netlink.LinkByIndex(cur.NextHops[i].LinkIndex)
 		if err != nil {
 			log.Warn("route: LinkByIndex failed", "index", cur.NextHops[i].LinkIndex, "err", err)
 			return nil, fmt.Errorf("LinkByIndex(%d): %w", cur.NextHops[i].LinkIndex, err)
 		}
+
 		cur.NextHops[i].Dev = link.Attrs().Name
 	}
+
 	if len(cur.NextHops) > 0 {
 		cur.Dev = cur.NextHops[0].Dev
 		cur.Via = cur.NextHops[0].Via
 	}
+
 	return cur, nil
 }
 
 // replaceTableDefaultNetlink installs (or replaces) a default route in the
 // named table. Uses RouteReplace which is "add or update" in one syscall.
 func replaceTableDefaultNetlink(
-	ctx context.Context, log *slog.Logger, want RouteSpec,
+	ctx context.Context,
+	log *slog.Logger,
+	want RouteSpec,
 ) error {
 	_ = ctx
 	link, err := linkByName(log, want.Dev)
 	if err != nil {
 		return err
 	}
+
 	famConst := familyToNetlink(want.Family)
 
 	gw := net.ParseIP(want.Via)
@@ -191,39 +230,75 @@ func replaceTableDefaultNetlink(
 	err = netlink.RouteReplace(r)
 	dur := realClock{}.Now().Sub(start)
 	log.DebugContext(
-		ctx, "route: RouteReplace (default)",
-		"family", want.Family, "table_id", want.TableID,
-		"via", want.Via, "dev", want.Dev,
-		"duration_ms", dur.Milliseconds(),
-		"err", err,
+		ctx,
+		"route: RouteReplace (default)",
+		"family",
+		want.Family,
+		"table_id",
+		want.TableID,
+		"via",
+		want.Via,
+		"dev",
+		want.Dev,
+		"duration_ms",
+		dur.Milliseconds(),
+		"err",
+		err,
 	)
 	if err != nil {
-		log.WarnContext(ctx, "route: RouteReplace (default) failed",
-			"family", want.Family, "table_id", want.TableID, "err", err)
+		log.WarnContext(
+			ctx,
+			"route: RouteReplace (default) failed",
+			"family",
+			want.Family,
+			"table_id",
+			want.TableID,
+			"err",
+			err,
+		)
+
 		return fmt.Errorf("RouteReplace(default,%s,%d): %w", want.Family, want.TableID, err)
 	}
+
 	return nil
 }
 
 func replaceTableRouteNetlink(
-	ctx context.Context, log *slog.Logger, want RouteSpec,
+	ctx context.Context,
+	log *slog.Logger,
+	want RouteSpec,
 ) error {
 	link, err := linkByName(log, want.Dev)
 	if err != nil {
 		return err
 	}
+
 	route, err := buildTableRoute(log, want, link)
 	if err != nil {
 		return err
 	}
+
 	desired := normalizedTableRouteRequest(*route)
-	current, err := listUsableRoutes(desired.Family, &desired, netlink.RT_FILTER_TABLE|netlink.RT_FILTER_DST)
+	current, err := listUsableRoutes(
+		desired.Family,
+		&desired,
+		netlink.RT_FILTER_TABLE|netlink.RT_FILTER_DST,
+	)
 	if err != nil && !errors.Is(err, syscall.ENOENT) {
 		return err
 	}
+
 	for _, existing := range current {
 		if reflect.DeepEqual(normalizedTableRoute(existing), desired) {
-			log.DebugContext(ctx, "route: prefix already correct", "dest", want.Dest, "dev", want.Dev)
+			log.DebugContext(
+				ctx,
+				"route: prefix already correct",
+				"dest",
+				want.Dest,
+				"dev",
+				want.Dev,
+			)
+
 			return nil
 		}
 	}
@@ -234,16 +309,44 @@ func replaceTableRouteNetlink(
 	log.DebugContext(
 		ctx,
 		"route: RouteReplace (prefix)",
-		"family", want.Family, "table_id", want.TableID,
-		"dest", want.Dest, "via", want.Via, "dev", want.Dev,
-		"duration_ms", dur.Milliseconds(),
-		"err", err,
+		"family",
+		want.Family,
+		"table_id",
+		want.TableID,
+		"dest",
+		want.Dest,
+		"via",
+		want.Via,
+		"dev",
+		want.Dev,
+		"duration_ms",
+		dur.Milliseconds(),
+		"err",
+		err,
 	)
 	if err != nil {
-		log.WarnContext(ctx, "route: RouteReplace (prefix) failed",
-			"family", want.Family, "table_id", want.TableID, "dest", want.Dest, "err", err)
-		return fmt.Errorf("RouteReplace(prefix,%s,%d,%s): %w", want.Family, want.TableID, want.Dest, err)
+		log.WarnContext(
+			ctx,
+			"route: RouteReplace (prefix) failed",
+			"family",
+			want.Family,
+			"table_id",
+			want.TableID,
+			"dest",
+			want.Dest,
+			"err",
+			err,
+		)
+
+		return fmt.Errorf(
+			"RouteReplace(prefix,%s,%d,%s): %w",
+			want.Family,
+			want.TableID,
+			want.Dest,
+			err,
+		)
 	}
+
 	return nil
 }
 
@@ -251,12 +354,15 @@ func normalizedTableRouteRequest(route netlink.Route) netlink.Route {
 	if route.Type == 0 {
 		route.Type = unix.RTN_UNICAST
 	}
+
 	if route.Protocol == 0 {
 		route.Protocol = unix.RTPROT_BOOT
 	}
+
 	if route.Table == 0 {
 		route.Table = unix.RT_TABLE_MAIN
 	}
+
 	if route.Family == unix.AF_INET6 {
 		// IPv6 route dumps report universe scope even for an on-link request.
 		route.Scope = netlink.SCOPE_UNIVERSE
@@ -264,6 +370,7 @@ func normalizedTableRouteRequest(route netlink.Route) netlink.Route {
 			route.Priority = ipv6UserRouteMetric
 		}
 	}
+
 	return normalizedTableRoute(route)
 }
 
@@ -271,12 +378,14 @@ func normalizedTableRoute(route netlink.Route) netlink.Route {
 	if route.Dst != nil {
 		route.Dst = &net.IPNet{IP: route.Dst.IP.To16(), Mask: route.Dst.Mask}
 	}
+
 	route.Src = route.Src.To16()
 	route.Gw = route.Gw.To16()
 	// Cache usage and age do not change a permanent route's forwarding policy.
 	if route.CacheInfo != nil && route.CacheInfo.Expires == 0 {
 		route.CacheInfo = nil
 	}
+
 	return route
 }
 
@@ -305,7 +414,9 @@ func buildTableRoute(log *slog.Logger, want RouteSpec, link netlink.Link) (*netl
 		log.Warn("route: parse gateway failed", "gateway", want.Via)
 		return nil, fmt.Errorf("parse gateway %q: not a valid IP", want.Via)
 	}
+
 	route.Gw = gateway
+
 	return route, nil
 }
 
@@ -314,7 +425,10 @@ func buildTableRoute(log *slog.Logger, want RouteSpec, link netlink.Link) (*netl
 // of the prior `ip route del` shellout which exited nonzero but the daemon
 // treated as success when called via the wrapper.
 func delTableDefaultNetlink(
-	ctx context.Context, log *slog.Logger, family string, tableID int,
+	ctx context.Context,
+	log *slog.Logger,
+	family string,
+	tableID int,
 ) error {
 	_ = ctx
 	famConst := familyToNetlink(family)
@@ -323,6 +437,7 @@ func delTableDefaultNetlink(
 	if famConst == unix.AF_INET6 {
 		destination = &net.IPNet{IP: net.IPv6zero, Mask: net.CIDRMask(0, 128)}
 	}
+
 	r := &netlink.Route{Table: tableID, Family: famConst, Dst: destination}
 	start := realClock{}.Now()
 	err := netlink.RouteDel(r)
@@ -330,19 +445,35 @@ func delTableDefaultNetlink(
 	log.DebugContext(
 		ctx,
 		"route: RouteDel (default)",
-		"family", family, "table_id", tableID,
-		"duration_ms", dur.Milliseconds(),
-		"err", err,
+		"family",
+		family,
+		"table_id",
+		tableID,
+		"duration_ms",
+		dur.Milliseconds(),
+		"err",
+		err,
 	)
 	if err != nil && (errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.ESRCH)) {
 		log.DebugContext(ctx, "route: nothing to delete (already absent)")
 		return nil
 	}
+
 	if err != nil {
-		log.WarnContext(ctx, "route: RouteDel (default) failed",
-			"family", family, "table_id", tableID, "err", err)
+		log.WarnContext(
+			ctx,
+			"route: RouteDel (default) failed",
+			"family",
+			family,
+			"table_id",
+			tableID,
+			"err",
+			err,
+		)
+
 		return fmt.Errorf("RouteDel(default,%s,%d): %w", family, tableID, err)
 	}
+
 	return nil
 }
 
@@ -371,39 +502,75 @@ func delTableRouteNetlink(ctx context.Context, log *slog.Logger, want RouteSpec)
 			log.DebugContext(ctx, "route: nothing to delete (device absent)", "dev", want.Dev)
 			return nil
 		}
+
 		if linkErr != nil {
 			return linkErr
 		}
+
 		route.LinkIndex = link.Attrs().Index
 	}
+
 	if want.Via != "" {
 		gateway := net.ParseIP(want.Via)
 		if gateway == nil {
 			log.WarnContext(ctx, "route: parse gateway failed", "gateway", want.Via)
 			return fmt.Errorf("parse gateway %q: not a valid IP", want.Via)
 		}
+
 		route.Gw = gateway
 	}
+
 	start := realClock{}.Now()
 	err = netlink.RouteDel(route)
 	duration := realClock{}.Now().Sub(start)
 	log.DebugContext(
 		ctx,
 		"route: RouteDel (prefix)",
-		"family", want.Family, "table_id", want.TableID, "dest", want.Dest,
-		"via", want.Via, "dev", want.Dev, "metric", want.Metric,
-		"duration_ms", duration.Milliseconds(),
-		"err", err,
+		"family",
+		want.Family,
+		"table_id",
+		want.TableID,
+		"dest",
+		want.Dest,
+		"via",
+		want.Via,
+		"dev",
+		want.Dev,
+		"metric",
+		want.Metric,
+		"duration_ms",
+		duration.Milliseconds(),
+		"err",
+		err,
 	)
 	if err != nil && (errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.ESRCH)) {
 		log.DebugContext(ctx, "route: nothing to delete (already absent)")
 		return nil
 	}
+
 	if err != nil {
-		log.WarnContext(ctx, "route: RouteDel (prefix) failed",
-			"family", want.Family, "table_id", want.TableID, "dest", want.Dest, "err", err)
-		return fmt.Errorf("RouteDel(prefix,%s,%d,%s): %w", want.Family, want.TableID, want.Dest, err)
+		log.WarnContext(
+			ctx,
+			"route: RouteDel (prefix) failed",
+			"family",
+			want.Family,
+			"table_id",
+			want.TableID,
+			"dest",
+			want.Dest,
+			"err",
+			err,
+		)
+
+		return fmt.Errorf(
+			"RouteDel(prefix,%s,%d,%s): %w",
+			want.Family,
+			want.TableID,
+			want.Dest,
+			err,
+		)
 	}
+
 	return nil
 }
 
@@ -411,7 +578,8 @@ func delTableRouteNetlink(ctx context.Context, log *slog.Logger, want RouteSpec)
 // main IPv6 routing table, if any. This is the source-of-truth gateway the
 // daemon mirrors into the oob table.
 func FindMainRADefault(
-	ctx context.Context, iface string,
+	ctx context.Context,
+	iface string,
 ) (*CurrentRoute, error) {
 	_ = ctx
 	log := slog.Default().With("component", "route", "iface", iface, "op", "find-ra-default")
@@ -435,12 +603,23 @@ func FindMainRADefault(
 	log.DebugContext(
 		ctx,
 		"route: RouteListFiltered (RA defaults)",
-		"count", len(routes),
-		"duration_ms", dur.Milliseconds(),
-		"err", err,
+		"count",
+		len(routes),
+		"duration_ms",
+		dur.Milliseconds(),
+		"err",
+		err,
 	)
 	if err != nil {
-		log.WarnContext(ctx, "route: RouteListFiltered (RA defaults) failed", "iface", iface, "err", err)
+		log.WarnContext(
+			ctx,
+			"route: RouteListFiltered (RA defaults) failed",
+			"iface",
+			iface,
+			"err",
+			err,
+		)
+
 		return nil, fmt.Errorf("RouteListFiltered(ra-defaults,%s): %w", iface, err)
 	}
 
@@ -448,15 +627,24 @@ func FindMainRADefault(
 		if !isDefaultRoute(r, unix.AF_INET6) {
 			continue
 		}
+
 		return routeToCurrent(log, r)
 	}
+
 	return nil, nil
 }
 
 // IfaceDefaultGateway returns the main-table default-route gateway for iface.
 func IfaceDefaultGateway(family string, iface string) (string, error) {
 	log := slog.Default().With(
-		"component", "route", "iface", iface, "family", family, "op", "iface-default-gateway",
+		"component",
+		"route",
+		"iface",
+		iface,
+		"family",
+		family,
+		"op",
+		"iface-default-gateway",
 	)
 	link, err := linkByName(log, iface)
 	if err != nil {
@@ -475,16 +663,28 @@ func IfaceDefaultGateway(family string, iface string) (string, error) {
 	dur := realClock{}.Now().Sub(start)
 	log.Debug(
 		"route: RouteListFiltered (iface default gateway)",
-		"count", len(routes),
-		"duration_ms", dur.Milliseconds(),
-		"err", err,
+		"count",
+		len(routes),
+		"duration_ms",
+		dur.Milliseconds(),
+		"err",
+		err,
 	)
 	if err != nil {
 		if errors.Is(err, syscall.ENOENT) {
 			return "", nil
 		}
-		log.Warn("route: RouteListFiltered (iface default gateway) failed",
-			"iface", iface, "family", family, "err", err)
+
+		log.Warn(
+			"route: RouteListFiltered (iface default gateway) failed",
+			"iface",
+			iface,
+			"family",
+			family,
+			"err",
+			err,
+		)
+
 		return "", fmt.Errorf("RouteListFiltered(iface-default,%s,%s): %w", iface, family, err)
 	}
 
@@ -492,21 +692,26 @@ func IfaceDefaultGateway(family string, iface string) (string, error) {
 		if !isDefaultRoute(route, famConst) {
 			continue
 		}
+
 		current, err := routeToCurrent(log, route)
 		if err != nil {
 			return "", fmt.Errorf("routeToCurrent(iface-default,%s,%s): %w", family, iface, err)
 		}
+
 		if current.Via != "" {
 			return current.Via, nil
 		}
 	}
+
 	return "", nil
 }
 
 // DeleteMainRADefaults removes every RA-learned IPv6 default route from the
 // main table on iface. Returns the number of defaults deleted.
 func DeleteMainRADefaults(
-	ctx context.Context, log *slog.Logger, iface string,
+	ctx context.Context,
+	log *slog.Logger,
+	iface string,
 ) (int, error) {
 	log = log.With("component", "route", "iface", iface, "op", "delete-ra-defaults")
 	log.DebugContext(ctx, "route: DeleteMainRADefaults entry")
@@ -529,24 +734,38 @@ func DeleteMainRADefaults(
 	log.DebugContext(
 		ctx,
 		"route: RouteListFiltered (delete RA defaults)",
-		"count", len(routes),
-		"duration_ms", dur.Milliseconds(),
-		"err", err,
+		"count",
+		len(routes),
+		"duration_ms",
+		dur.Milliseconds(),
+		"err",
+		err,
 	)
 	if err != nil {
-		log.WarnContext(ctx, "route: RouteListFiltered (delete RA defaults) failed", "iface", iface, "err", err)
+		log.WarnContext(
+			ctx,
+			"route: RouteListFiltered (delete RA defaults) failed",
+			"iface",
+			iface,
+			"err",
+			err,
+		)
+
 		return 0, fmt.Errorf("RouteListFiltered(delete-ra-defaults,%s): %w", iface, err)
 	}
 
 	deletedCount := 0
+
 	for _, route := range routes {
 		if !isDefaultRoute(route, unix.AF_INET6) {
 			continue
 		}
+
 		via := ""
 		if route.Gw != nil {
 			via = route.Gw.String()
 		}
+
 		route.Family = unix.AF_INET6
 		delStart := realClock{}.Now()
 		delErr := netlink.RouteDel(&route)
@@ -554,18 +773,25 @@ func DeleteMainRADefaults(
 		log.DebugContext(
 			ctx,
 			"route: RouteDel (RA default)",
-			"via", via,
-			"duration_ms", delDur.Milliseconds(),
-			"err", delErr,
+			"via",
+			via,
+			"duration_ms",
+			delDur.Milliseconds(),
+			"err",
+			delErr,
 		)
 		if delErr != nil {
 			if errors.Is(delErr, syscall.ENOENT) || errors.Is(delErr, syscall.ESRCH) {
 				continue
 			}
+
 			log.WarnContext(ctx, "route: RouteDel (RA default) failed", "via", via, "err", delErr)
+
 			return deletedCount, fmt.Errorf("RouteDel(ra-default,%s): %w", via, delErr)
 		}
+
 		deletedCount++
 	}
+
 	return deletedCount, nil
 }

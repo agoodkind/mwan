@@ -76,33 +76,58 @@ func (Config) ModuleConfigName() string { return "cloudflared_tap" }
 // from its dispatch list.
 func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	log := m.InitBase(env, "module", "cloudflared_tap", "unit", m.cfg.Unit)
-	log.InfoContext(ctx, "cloudflared_tap: Init",
-		"unit", m.cfg.Unit,
-		"downgrade_patterns", len(m.cfg.DowngradePatterns),
-		"journalctl_path", m.cfg.JournalctlPath)
+	log.InfoContext(
+		ctx,
+		"cloudflared_tap: Init",
+		"unit",
+		m.cfg.Unit,
+		"downgrade_patterns",
+		len(m.cfg.DowngradePatterns),
+		"journalctl_path",
+		m.cfg.JournalctlPath,
+	)
 
 	if m.cfg.Unit == "" {
-		log.WarnContext(ctx,
-			"cloudflared_tap: missing unit; disabling module")
-		return fmt.Errorf("%w: cloudflared_tap: no [ifmgr.modules.cloudflared_tap] section", ifmgr.ErrModuleDisabled)
+		log.WarnContext(ctx, "cloudflared_tap: missing unit; disabling module")
+
+		return fmt.Errorf(
+			"%w: cloudflared_tap: no [ifmgr.modules.cloudflared_tap] section",
+			ifmgr.ErrModuleDisabled,
+		)
 	}
 
 	for i, p := range m.cfg.DowngradePatterns {
 		re, err := regexp.Compile(p)
 		if err != nil {
-			log.WarnContext(ctx, "cloudflared_tap: invalid downgrade pattern",
-				"index", i, "pattern", p, "err", err)
+			log.WarnContext(
+				ctx,
+				"cloudflared_tap: invalid downgrade pattern",
+				"index",
+				i,
+				"pattern",
+				p,
+				"err",
+				err,
+			)
+
 			return fmt.Errorf("cloudflared_tap: invalid downgrade_patterns[%d] %q: %w", i, p, err)
 		}
+
 		m.patterns = append(m.patterns, re)
 	}
 
 	if m.cfg.JournalctlPath == "" {
 		m.cfg.JournalctlPath = "journalctl"
 	}
+
 	if m.cfg.JournalctlPath != "journalctl" {
-		log.WarnContext(ctx, "cloudflared_tap: unsupported journalctl_path override",
-			"journalctl_path", m.cfg.JournalctlPath)
+		log.WarnContext(
+			ctx,
+			"cloudflared_tap: unsupported journalctl_path override",
+			"journalctl_path",
+			m.cfg.JournalctlPath,
+		)
+
 		return fmt.Errorf("cloudflared_tap: journalctl_path must be \"journalctl\"")
 	}
 
@@ -116,11 +141,17 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 			if recovered == nil {
 				return
 			}
-			m.Log.ErrorContext(ctx, "cloudflared_tap: tailLoop panicked",
-				"err", fmt.Sprint(recovered))
+
+			m.Log.ErrorContext(
+				ctx,
+				"cloudflared_tap: tailLoop panicked",
+				"err",
+				fmt.Sprint(recovered),
+			)
 		}()
 		m.tailLoop(ctx)
 	}()
+
 	return nil
 }
 
@@ -140,6 +171,7 @@ func (m *Module) tailLoop(ctx context.Context) {
 
 	backoff := time.Second
 	const maxBackoff = 30 * time.Second
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -156,8 +188,14 @@ func (m *Module) tailLoop(ctx context.Context) {
 			return
 		}
 
-		m.Log.WarnContext(ctx, "cloudflared_tap: journalctl exited; will restart after backoff",
-			"backoff", backoff.String(), "err", errMsg(err))
+		m.Log.WarnContext(
+			ctx,
+			"cloudflared_tap: journalctl exited; will restart after backoff",
+			"backoff",
+			backoff.String(),
+			"err",
+			errMsg(err),
+		)
 		select {
 		case <-ctx.Done():
 			return
@@ -165,6 +203,7 @@ func (m *Module) tailLoop(ctx context.Context) {
 			return
 		case <-time.After(backoff):
 		}
+
 		backoff *= 2
 		if backoff > maxBackoff {
 			backoff = maxBackoff
@@ -177,11 +216,14 @@ func (m *Module) tailLoop(ctx context.Context) {
 // subprocess error.
 func (m *Module) runJournalctl(ctx context.Context) error {
 	args := []string{
-		"-u", m.cfg.Unit,
+		"-u",
+		m.cfg.Unit,
 		"-f",
-		"-o", "json",
+		"-o",
+		"json",
 		"--no-pager",
-		"-n", "0", // start at the tail; do not replay history
+		"-n",
+		"0", // start at the tail; do not replay history
 	}
 	cmd := exec.CommandContext(ctx, "journalctl", args...)
 	stdout, err := cmd.StdoutPipe()
@@ -189,28 +231,40 @@ func (m *Module) runJournalctl(ctx context.Context) error {
 		m.Log.WarnContext(ctx, "cloudflared_tap: stdout pipe failed", "err", err)
 		return fmt.Errorf("stdout pipe: %w", err)
 	}
+
 	if err := cmd.Start(); err != nil {
 		m.Log.WarnContext(ctx, "cloudflared_tap: journalctl start failed", "err", err)
 		return fmt.Errorf("start: %w", err)
 	}
-	m.Log.DebugContext(ctx, "cloudflared_tap: journalctl started",
-		"pid", cmd.Process.Pid, "args", args)
+
+	m.Log.DebugContext(
+		ctx,
+		"cloudflared_tap: journalctl started",
+		"pid",
+		cmd.Process.Pid,
+		"args",
+		args,
+	)
 
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // up to 1 MiB per line
+
 	for scanner.Scan() {
 		m.processLine(ctx, scanner.Bytes())
 	}
+
 	scanErr := scanner.Err()
 	waitErr := cmd.Wait()
 	if scanErr != nil {
 		m.Log.WarnContext(ctx, "cloudflared_tap: scanner failed", "err", scanErr)
 		return fmt.Errorf("scanner: %w", scanErr)
 	}
+
 	if waitErr != nil {
 		m.Log.WarnContext(ctx, "cloudflared_tap: journalctl wait failed", "err", waitErr)
 		return fmt.Errorf("wait: %w", waitErr)
 	}
+
 	return nil
 }
 
@@ -218,8 +272,15 @@ func (m *Module) runJournalctl(ctx context.Context) error {
 func (m *Module) processLine(ctx context.Context, line []byte) {
 	var entry journalEntry
 	if err := json.Unmarshal(line, &entry); err != nil {
-		m.Log.DebugContext(ctx, "cloudflared_tap: skip non-json line",
-			"raw", string(line), "err", err.Error())
+		m.Log.DebugContext(
+			ctx,
+			"cloudflared_tap: skip non-json line",
+			"raw",
+			string(line),
+			"err",
+			err.Error(),
+		)
+
 		return
 	}
 
@@ -227,6 +288,7 @@ func (m *Module) processLine(ctx context.Context, line []byte) {
 	if msg == "" {
 		return
 	}
+
 	priority := parsePriority(entry.Priority)
 	level := mapPriority(priority)
 
@@ -236,6 +298,7 @@ func (m *Module) processLine(ctx context.Context, line []byte) {
 	if level < slog.LevelWarn {
 		level = slog.LevelDebug
 	}
+
 	if matchAny(m.patterns, msg) {
 		level = slog.LevelDebug
 	}
@@ -280,6 +343,7 @@ func matchAny(patterns []*regexp.Regexp, s string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -287,10 +351,12 @@ func parsePriority(priority string) int {
 	if priority == "" {
 		return 0
 	}
+
 	n, err := strconv.Atoi(priority)
 	if err != nil {
 		return 0
 	}
+
 	return n
 }
 
@@ -298,6 +364,7 @@ func errMsg(err error) string {
 	if err == nil {
 		return ""
 	}
+
 	return err.Error()
 }
 
@@ -313,8 +380,10 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		if !ok {
 			return nil, fmt.Errorf("cloudflared_tap: invalid config type %T", cfg)
 		}
+
 		c = typedConfig
 	}
+
 	return &Module{
 		BaseModule: ifmgr.NewBaseModule("cloudflared_tap"),
 		cfg:        c,

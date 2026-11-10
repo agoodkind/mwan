@@ -87,24 +87,29 @@ func TestAdvanceHealthAppliesConsecutiveThresholds(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
 
-			status := wanStatus{State: StateUnknown}
-			got := make([]State, 0, len(test.cycles))
-			for _, passed := range test.cycles {
-				status, _ = advanceHealth(
-					status,
-					passed,
-					test.failureThreshold,
-					test.recoveryThreshold,
-				)
-				got = append(got, status.State)
-			}
-			if !reflect.DeepEqual(got, test.want) {
-				t.Fatalf("states = %v, want %v", got, test.want)
-			}
-		})
+				status := wanStatus{State: StateUnknown}
+
+				got := make([]State, 0, len(test.cycles))
+				for _, passed := range test.cycles {
+					status, _ = advanceHealth(
+						status,
+						passed,
+						test.failureThreshold,
+						test.recoveryThreshold,
+					)
+					got = append(got, status.State)
+				}
+
+				if !reflect.DeepEqual(got, test.want) {
+					t.Fatalf("states = %v, want %v", got, test.want)
+				}
+			},
+		)
 	}
 }
 
@@ -120,6 +125,7 @@ func TestAdvanceHealthUsesResolvedPerWANThresholds(t *testing.T) {
 		RecoveryThreshold: 3,
 	}
 	status := wanStatus{State: StateUnknown}
+
 	for range 4 {
 		status, _ = advanceHealth(
 			status,
@@ -128,18 +134,16 @@ func TestAdvanceHealthUsesResolvedPerWANThresholds(t *testing.T) {
 			wan.recoveryThreshold(cfg),
 		)
 	}
+
 	if status.State != StateUnknown {
 		t.Fatalf("state after 4 failures = %s, want %s", status.State, StateUnknown)
 	}
-	status, _ = advanceHealth(
-		status,
-		false,
-		wan.failureThreshold(cfg),
-		wan.recoveryThreshold(cfg),
-	)
+
+	status, _ = advanceHealth(status, false, wan.failureThreshold(cfg), wan.recoveryThreshold(cfg))
 	if status.State != StateUnhealthy {
 		t.Fatalf("state after 5 failures = %s, want %s", status.State, StateUnhealthy)
 	}
+
 	for range 2 {
 		status, _ = advanceHealth(
 			status,
@@ -148,15 +152,12 @@ func TestAdvanceHealthUsesResolvedPerWANThresholds(t *testing.T) {
 			wan.recoveryThreshold(cfg),
 		)
 	}
+
 	if status.State != StateUnhealthy {
 		t.Fatalf("state after 2 recoveries = %s, want %s", status.State, StateUnhealthy)
 	}
-	status, _ = advanceHealth(
-		status,
-		true,
-		wan.failureThreshold(cfg),
-		wan.recoveryThreshold(cfg),
-	)
+
+	status, _ = advanceHealth(status, true, wan.failureThreshold(cfg), wan.recoveryThreshold(cfg))
 	if status.State != StateHealthy {
 		t.Fatalf("state after 3 recoveries = %s, want %s", status.State, StateHealthy)
 	}
@@ -178,21 +179,27 @@ func TestWANResolversFallBackToModuleConfig(t *testing.T) {
 	if !reflect.DeepEqual(wan.targetsV4(cfg), cfg.TargetsV4) {
 		t.Fatal("targetsV4 did not fall back to the module config")
 	}
+
 	if !reflect.DeepEqual(wan.targetsV6(cfg), cfg.TargetsV6) {
 		t.Fatal("targetsV6 did not fall back to the module config")
 	}
+
 	if !reflect.DeepEqual(wan.httpURLs(cfg), cfg.HTTPURLs) {
 		t.Fatal("httpURLs did not fall back to the module config")
 	}
+
 	if wan.pingCount(cfg) != cfg.PingCount {
 		t.Fatal("pingCount did not fall back to the module config")
 	}
+
 	if wan.successThreshold(cfg) != cfg.SuccessThreshold {
 		t.Fatal("successThreshold did not fall back to the module config")
 	}
+
 	if wan.failureThreshold(cfg) != cfg.FailureThreshold {
 		t.Fatal("failureThreshold did not fall back to the module config")
 	}
+
 	if wan.recoveryThreshold(cfg) != cfg.RecoveryThreshold {
 		t.Fatal("recoveryThreshold did not fall back to the module config")
 	}
@@ -213,6 +220,7 @@ func TestWANResolversDistinguishAnEmptyTargetListFromAnOmittedOne(t *testing.T) 
 	if got := wan.targetsV6(cfg); len(got) != 0 {
 		t.Fatalf("targetsV6 = %v, want none for a declared-empty list", got)
 	}
+
 	if !reflect.DeepEqual(wan.targetsV4(cfg), cfg.TargetsV4) {
 		t.Fatal("an omitted targetsV4 must still inherit the module-wide list")
 	}
@@ -240,6 +248,7 @@ func TestValidateConfigUsesResolvedPerWANPolicy(t *testing.T) {
 		RecoveryThreshold: 2,
 		WANs:              nil,
 	}
+
 	tests := []struct {
 		name      string
 		wan       WAN
@@ -317,22 +326,27 @@ func TestValidateConfigUsesResolvedPerWANPolicy(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
 
-			cfg := base
-			cfg.WANs = []WAN{test.wan}
-			err := validateConfig(cfg)
-			if test.wantError == "" {
-				if err != nil {
-					t.Fatalf("validateConfig returned error: %v", err)
+				cfg := base
+				cfg.WANs = []WAN{test.wan}
+				err := validateConfig(cfg)
+				if test.wantError == "" {
+					if err != nil {
+						t.Fatalf("validateConfig returned error: %v", err)
+					}
+
+					return
 				}
-				return
-			}
-			if err == nil || !strings.Contains(err.Error(), test.wantError) {
-				t.Fatalf("validateConfig error = %v, want %q", err, test.wantError)
-			}
-		})
+
+				if err == nil || !strings.Contains(err.Error(), test.wantError) {
+					t.Fatalf("validateConfig error = %v, want %q", err, test.wantError)
+				}
+			},
+		)
 	}
 }
 
@@ -377,50 +391,56 @@ func TestProbeWANVerdictIsV6OrV4AndAlwaysProbesBoth(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
 
-			var calls []string
-			module := testProbeModule(
-				func(
-					_ context.Context,
-					_ string,
-					_ netip.Addr,
-					_ time.Duration,
-				) (time.Duration, error) {
-					calls = append(calls, "v6")
-					if test.v6Passes {
-						return time.Millisecond, nil
-					}
-					return 0, errors.New("IPv6 unavailable")
-				},
-				func(
-					_ context.Context,
-					_ string,
-					_ netip.Addr,
-					_ time.Duration,
-				) (time.Duration, error) {
-					calls = append(calls, "v4")
-					if test.v4Passes {
-						return time.Millisecond, nil
-					}
-					return 0, errors.New("IPv4 unavailable")
-				},
-			)
+				var calls []string
+				module := testProbeModule(
+					func(
+						_ context.Context,
+						_ string,
+						_ netip.Addr,
+						_ time.Duration,
+					) (time.Duration, error) {
+						calls = append(calls, "v6")
+						if test.v6Passes {
+							return time.Millisecond, nil
+						}
 
-			result := module.probeWAN(
-				context.Background(),
-				module.cfg.WANs[0],
-				slog.New(slog.NewTextHandler(io.Discard, nil)),
-			)
-			if result.Passed != test.wantPass {
-				t.Fatalf("Passed = %t, want %t", result.Passed, test.wantPass)
-			}
-			wantCalls := []string{"v6", "v6", "v4", "v4"}
-			if !reflect.DeepEqual(calls, wantCalls) {
-				t.Fatalf("probe calls = %v, want %v", calls, wantCalls)
-			}
-		})
+						return 0, errors.New("IPv6 unavailable")
+					},
+					func(
+						_ context.Context,
+						_ string,
+						_ netip.Addr,
+						_ time.Duration,
+					) (time.Duration, error) {
+						calls = append(calls, "v4")
+						if test.v4Passes {
+							return time.Millisecond, nil
+						}
+
+						return 0, errors.New("IPv4 unavailable")
+					},
+				)
+
+				result := module.probeWAN(
+					context.Background(),
+					module.cfg.WANs[0],
+					slog.New(slog.NewTextHandler(io.Discard, nil)),
+				)
+				if result.Passed != test.wantPass {
+					t.Fatalf("Passed = %t, want %t", result.Passed, test.wantPass)
+				}
+
+				wantCalls := []string{"v6", "v6", "v4", "v4"}
+				if !reflect.DeepEqual(calls, wantCalls) {
+					t.Fatalf("probe calls = %v, want %v", calls, wantCalls)
+				}
+			},
+		)
 	}
 }
 
@@ -446,6 +466,7 @@ func TestIPv4OnlyProviderValidatesProbesOneFamilyAndReadsHealthy(t *testing.T) {
 			if reachable {
 				return time.Millisecond, nil
 			}
+
 			return 0, errors.New(family + " unavailable")
 		}
 	}
@@ -501,24 +522,30 @@ func TestIPv4OnlyProviderValidatesProbesOneFamilyAndReadsHealthy(t *testing.T) {
 	if !reflect.DeepEqual(probed, wantProbes) {
 		t.Fatalf("probes issued = %v, want %v", probed, wantProbes)
 	}
+
 	contents, err := os.ReadFile(cfg.StateFile)
 	if err != nil {
 		t.Fatalf("ReadFile(state): %v", err)
 	}
+
 	if string(contents) != "astound:healthy\n" {
 		t.Fatalf("state file = %q, want %q", contents, "astound:healthy\n")
 	}
+
 	member := store.Snapshot().Health["astound"]
 	if member.Verdict != wanstate.HealthHealthy {
 		t.Fatalf("verdict = %q, want %q", member.Verdict, wanstate.HealthHealthy)
 	}
+
 	if member.V4 != wanstate.ProbePass {
 		t.Fatalf("IPv4 leg = %q, want %q", member.V4, wanstate.ProbePass)
 	}
+
 	if member.V6 != wanstate.ProbeNone {
 		t.Fatalf(
 			"IPv6 leg = %q, want %q for a provider that carries no IPv6",
-			member.V6, wanstate.ProbeNone,
+			member.V6,
+			wanstate.ProbeNone,
 		)
 	}
 }
@@ -538,6 +565,7 @@ func TestProbeWANUsesPerWANSuccessThreshold(t *testing.T) {
 			if target == v6PassingTarget {
 				return time.Millisecond, nil
 			}
+
 			return 0, errors.New("IPv6 target unavailable")
 		},
 		func(
@@ -549,6 +577,7 @@ func TestProbeWANUsesPerWANSuccessThreshold(t *testing.T) {
 			if target == v4PassingTarget {
 				return time.Millisecond, nil
 			}
+
 			return 0, errors.New("IPv4 target unavailable")
 		},
 	)
@@ -562,6 +591,7 @@ func TestProbeWANUsesPerWANSuccessThreshold(t *testing.T) {
 		},
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+
 	tests := []struct {
 		name     string
 		wan      WAN
@@ -579,14 +609,17 @@ func TestProbeWANUsesPerWANSuccessThreshold(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				t.Parallel()
 
-			result := module.probeWAN(context.Background(), test.wan, log)
-			if result.Passed != test.wantPass {
-				t.Fatalf("Passed = %t, want %t", result.Passed, test.wantPass)
-			}
-		})
+				result := module.probeWAN(context.Background(), test.wan, log)
+				if result.Passed != test.wantPass {
+					t.Fatalf("Passed = %t, want %t", result.Passed, test.wantPass)
+				}
+			},
+		)
 	}
 }
 
@@ -625,22 +658,40 @@ func TestProbeWANHTTPSucceedsWhenBothPingFamiliesFail(t *testing.T) {
 		probe4   httpFunc
 		wantPass bool
 	}{
-		{name: "http6 alone keeps the WAN healthy", probe6: httpOK, probe4: httpFail, wantPass: true},
-		{name: "http4 alone keeps the WAN healthy", probe6: httpFail, probe4: httpOK, wantPass: true},
-		{name: "both HTTP families failing marks the cycle failed", probe6: httpFail, probe4: httpFail, wantPass: false},
+		{
+			name:     "http6 alone keeps the WAN healthy",
+			probe6:   httpOK,
+			probe4:   httpFail,
+			wantPass: true,
+		},
+		{
+			name:     "http4 alone keeps the WAN healthy",
+			probe6:   httpFail,
+			probe4:   httpOK,
+			wantPass: true,
+		},
+		{
+			name:     "both HTTP families failing marks the cycle failed",
+			probe6:   httpFail,
+			probe4:   httpFail,
+			wantPass: false,
+		},
 	}
 	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			t.Parallel()
-			module := testProbeModule(pingFail, pingFail)
-			module.cfg.HTTPURLs = []string{"http://example.test/probe"}
-			module.probeHTTP6 = testCase.probe6
-			module.probeHTTP4 = testCase.probe4
-			result := module.probeWAN(context.Background(), module.cfg.WANs[0], log)
-			if result.Passed != testCase.wantPass {
-				t.Fatalf("Passed = %t, want %t", result.Passed, testCase.wantPass)
-			}
-		})
+		t.Run(
+			testCase.name,
+			func(t *testing.T) {
+				t.Parallel()
+				module := testProbeModule(pingFail, pingFail)
+				module.cfg.HTTPURLs = []string{"http://example.test/probe"}
+				module.probeHTTP6 = testCase.probe6
+				module.probeHTTP4 = testCase.probe4
+				result := module.probeWAN(context.Background(), module.cfg.WANs[0], log)
+				if result.Passed != testCase.wantPass {
+					t.Fatalf("Passed = %t, want %t", result.Passed, testCase.wantPass)
+				}
+			},
+		)
 	}
 }
 
@@ -679,6 +730,7 @@ func TestProbeTargetsUsesEveryConfiguredPing(t *testing.T) {
 	if successes != 1 {
 		t.Fatalf("successes = %d, want 1", successes)
 	}
+
 	if callCount != 3 {
 		t.Fatalf("probe call count = %d, want 3", callCount)
 	}
@@ -716,13 +768,16 @@ func TestWriteStateFileUsesShellFormat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile(%q): %v", stateFile, err)
 	}
+
 	if string(contents) != wantContents {
 		t.Fatalf("%s contents = %q, want %q", stateFile, contents, wantContents)
 	}
+
 	entries, err := os.ReadDir(tempDir)
 	if err != nil {
 		t.Fatalf("ReadDir(%q): %v", tempDir, err)
 	}
+
 	if len(entries) != 1 || entries[0].Name() != "run" {
 		t.Fatalf("writeStateFile created %v, want only the runtime directory", entries)
 	}
@@ -734,10 +789,18 @@ func TestConnectionIdentityStateFileRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read network document: %v", err)
 	}
+
 	document := string(raw)
+
 	for _, replacement := range []struct{ old, new string }{
-		{`"name": "enwebpass0",`, `"name": "enwebpass0", "goodkind-mwan-steering:connection-id": "sonic-a",`},
-		{`"name": "enatt0",`, `"name": "enatt0", "goodkind-mwan-steering:connection-id": "sonic-b",`},
+		{
+			`"name": "enwebpass0",`,
+			`"name": "enwebpass0", "goodkind-mwan-steering:connection-id": "sonic-a",`,
+		},
+		{
+			`"name": "enatt0",`,
+			`"name": "enatt0", "goodkind-mwan-steering:connection-id": "sonic-b",`,
+		},
 		{`"name": "att",`, `"name": "webpass",`},
 		{`"pinned-provider": "att"`, `"pinned-connection-id": "sonic-b"`},
 	} {
@@ -745,32 +808,44 @@ func TestConnectionIdentityStateFileRoundTrip(t *testing.T) {
 		if updated == document {
 			t.Fatalf("network document omits %q", replacement.old)
 		}
+
 		document = updated
 	}
+
 	documentPath := filepath.Join(t.TempDir(), "network.json")
 	if err := os.WriteFile(documentPath, []byte(document), 0o600); err != nil {
 		t.Fatalf("write network document: %v", err)
 	}
+
 	schemaDir := filepath.Join(t.TempDir(), "schema")
 	if _, err := yangpub.WriteSchema(schemaDir); err != nil {
 		t.Fatalf("write schema: %v", err)
 	}
+
 	loaded, err := networkload.Load(documentPath, schemaDir)
 	if err != nil {
 		t.Fatalf("load network document: %v", err)
 	}
+
 	first, firstFound := loaded.WAN["sonic-a"]
 	second, secondFound := loaded.WAN["sonic-b"]
 	if !firstFound || !secondFound || first.ProviderName != second.ProviderName {
 		t.Fatalf("connection identities and display names = %+v", loaded.WAN)
 	}
+
 	stateFile := filepath.Join(t.TempDir(), "mwan-health.state")
 	module := &Module{
 		cfg: Config{
 			StateFile: stateFile,
 			WANs: []WAN{
 				{WANRef: ifmgr.WANRef{ID: "sonic-a", Name: first.ProviderName, Iface: first.Iface}},
-				{WANRef: ifmgr.WANRef{ID: "sonic-b", Name: second.ProviderName, Iface: second.Iface}},
+				{
+					WANRef: ifmgr.WANRef{
+						ID:    "sonic-b",
+						Name:  second.ProviderName,
+						Iface: second.Iface,
+					},
+				},
 			},
 		},
 		statuses: map[string]wanStatus{
@@ -778,13 +853,19 @@ func TestConnectionIdentityStateFileRoundTrip(t *testing.T) {
 			"sonic-b": {State: StateHealthy},
 		},
 	}
-	if err := module.writeStateFile(context.Background(), slog.Default(), module.statuses); err != nil {
+	if err := module.writeStateFile(
+		context.Background(),
+		slog.Default(),
+		module.statuses,
+	); err != nil {
 		t.Fatalf("write state file: %v", err)
 	}
+
 	states, err := netif.ReadHealthState(stateFile)
 	if err != nil {
 		t.Fatalf("read state file: %v", err)
 	}
+
 	if states.State("sonic-a") != netif.HealthStateUnhealthy ||
 		states.State("sonic-b") != netif.HealthStateHealthy {
 		t.Fatalf("connection states = %v", states)
@@ -805,6 +886,7 @@ func TestInitReachesEveryVerdictFromThisRunAlone(t *testing.T) {
 	if err := os.MkdirAll(mirrorDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q): %v", mirrorDir, err)
 	}
+
 	mirrorPath := filepath.Join(mirrorDir, "health-state")
 	mirrorContents := []byte("att:unhealthy\n")
 	if err := os.WriteFile(mirrorPath, mirrorContents, 0o600); err != nil {
@@ -856,13 +938,16 @@ func TestInitReachesEveryVerdictFromThisRunAlone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile(%q): %v", stateFile, err)
 	}
+
 	if string(contents) != "att:unknown\n" {
 		t.Fatalf("runtime state = %q, want %q", contents, "att:unknown\n")
 	}
+
 	afterInit, err := os.ReadFile(mirrorPath)
 	if err != nil {
 		t.Fatalf("ReadFile(%q): %v", mirrorPath, err)
 	}
+
 	if string(afterInit) != string(mirrorContents) {
 		t.Fatalf("Init rewrote %s: %q, want %q", mirrorPath, afterInit, mirrorContents)
 	}
@@ -876,6 +961,7 @@ func TestInitFailsWhenRuntimeStateUnwritable(t *testing.T) {
 	if err := os.WriteFile(blocker, []byte("not a directory"), 0o600); err != nil {
 		t.Fatalf("WriteFile blocker: %v", err)
 	}
+
 	module := &Module{
 		cfg: Config{
 			StateFile: filepath.Join(blocker, "mwan-health.state"),
@@ -924,6 +1010,7 @@ func (f *fakeStatusSender) Send(_ context.Context, status statuspush.Status) {
 func (f *fakeStatusSender) all() []statuspush.Status {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
 	return append([]statuspush.Status(nil), f.sent...)
 }
 
@@ -938,15 +1025,22 @@ func TestPushSendsOncePerCycleAndCarriesTheTransition(t *testing.T) {
 	tempDir := t.TempDir()
 	pusher := &fakeStatusSender{}
 	failing := func(
-		_ context.Context, iface string, _ netip.Addr, _ time.Duration,
+		_ context.Context,
+		iface string,
+		_ netip.Addr,
+		_ time.Duration,
 	) (time.Duration, error) {
 		if iface == "enatt0" {
 			return 0, errors.New("att is down")
 		}
+
 		return time.Millisecond, nil
 	}
 	noHTTP := func(
-		_ context.Context, _ string, _ string, _ time.Duration,
+		_ context.Context,
+		_ string,
+		_ string,
+		_ time.Duration,
 	) (int, error) {
 		return 0, errors.New("no http")
 	}
@@ -984,20 +1078,24 @@ func TestPushSendsOncePerCycleAndCarriesTheTransition(t *testing.T) {
 	if err := module.runCycle(context.Background(), log); err != nil {
 		t.Fatalf("first runCycle: %v", err)
 	}
+
 	if got := len(pusher.all()); got != 1 {
 		t.Fatalf("pushes after one cycle = %d, want exactly 1", got)
 	}
+
 	first := pusher.all()[0]
 	if first.Providers["att"] != string(StateUnhealthy) {
 		t.Fatalf("att verdict = %q, want unhealthy", first.Providers["att"])
 	}
+
 	if first.Providers["monkeybrains"] != string(StateHealthy) {
-		t.Fatalf("monkeybrains verdict = %q, want healthy",
-			first.Providers["monkeybrains"])
+		t.Fatalf("monkeybrains verdict = %q, want healthy", first.Providers["monkeybrains"])
 	}
+
 	if first.ActiveTier != 1 {
 		t.Fatalf("active tier = %d, want 1 after att failed", first.ActiveTier)
 	}
+
 	if first.SentAt.IsZero() {
 		t.Fatal("sent_at is zero")
 	}
@@ -1007,6 +1105,7 @@ func TestPushSendsOncePerCycleAndCarriesTheTransition(t *testing.T) {
 	if err := module.runCycle(context.Background(), log); err != nil {
 		t.Fatalf("second runCycle: %v", err)
 	}
+
 	if got := len(pusher.all()); got != 2 {
 		t.Fatalf("pushes after two cycles = %d, want 2", got)
 	}
@@ -1019,7 +1118,10 @@ func TestPushIsSkippedWhenUnconfigured(t *testing.T) {
 
 	tempDir := t.TempDir()
 	passing := func(
-		_ context.Context, _ string, _ netip.Addr, _ time.Duration,
+		_ context.Context,
+		_ string,
+		_ netip.Addr,
+		_ time.Duration,
 	) (time.Duration, error) {
 		return time.Millisecond, nil
 	}
@@ -1061,6 +1163,7 @@ func TestRunCycleDoesNotCommitStateWhenPublicationFails(t *testing.T) {
 	if err := os.WriteFile(blockedParent, []byte("not a directory"), 0o600); err != nil {
 		t.Fatalf("WriteFile blocker: %v", err)
 	}
+
 	module := testProbeModule(
 		func(
 			_ context.Context,
@@ -1086,13 +1189,11 @@ func TestRunCycleDoesNotCommitStateWhenPublicationFails(t *testing.T) {
 		"att": {State: StateHealthy},
 	}
 
-	err := module.runCycle(
-		context.Background(),
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-	)
+	err := module.runCycle(context.Background(), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err == nil {
 		t.Fatal("runCycle must fail when the runtime state cannot be written")
 	}
+
 	if got := module.statuses["att"].State; got != StateHealthy {
 		t.Fatalf("state after failed publication = %s, want %s", got, StateHealthy)
 	}
@@ -1125,9 +1226,11 @@ func TestReconcileRunsOnlyTheStartupProbe(t *testing.T) {
 	if err := module.Reconcile(context.Background(), log); err != nil {
 		t.Fatalf("first Reconcile: %v", err)
 	}
+
 	if err := module.Reconcile(context.Background(), log); err != nil {
 		t.Fatalf("second Reconcile: %v", err)
 	}
+
 	if callCount != 4 {
 		t.Fatalf("probe call count = %d, want 4 from one dual-family cycle", callCount)
 	}
@@ -1148,6 +1251,7 @@ func TestReconcileProbesUntilEveryProviderHasAVerdict(t *testing.T) {
 		if !linkUp {
 			return 0, errors.New("network is unreachable")
 		}
+
 		return time.Millisecond, nil
 	}
 	module := testProbeModule(probe, probe)
@@ -1163,6 +1267,7 @@ func TestReconcileProbesUntilEveryProviderHasAVerdict(t *testing.T) {
 	if err := module.Reconcile(context.Background(), log); err != nil {
 		t.Fatalf("startup Reconcile: %v", err)
 	}
+
 	afterStartup := callCount
 	if got := module.statuses["att"].State; got != StateUnknown {
 		t.Fatalf("state after the failed startup probe = %s, want %s", got, StateUnknown)
@@ -1172,10 +1277,12 @@ func TestReconcileProbesUntilEveryProviderHasAVerdict(t *testing.T) {
 	if err := module.Reconcile(context.Background(), log); err != nil {
 		t.Fatalf("Reconcile after link up: %v", err)
 	}
+
 	afterLinkUp := callCount
 	if afterLinkUp == afterStartup {
 		t.Fatal("Reconcile did not probe a provider that does not have a health verdict")
 	}
+
 	if got := module.statuses["att"].State; got != StateHealthy {
 		t.Fatalf("state after the first passing probe = %s, want %s", got, StateHealthy)
 	}
@@ -1183,8 +1290,12 @@ func TestReconcileProbesUntilEveryProviderHasAVerdict(t *testing.T) {
 	if err := module.Reconcile(context.Background(), log); err != nil {
 		t.Fatalf("Reconcile after the verdict: %v", err)
 	}
+
 	if callCount != afterLinkUp {
-		t.Fatalf("Reconcile probed %d more times after every provider had a verdict", callCount-afterLinkUp)
+		t.Fatalf(
+			"Reconcile probed %d more times after every provider had a verdict",
+			callCount-afterLinkUp,
+		)
 	}
 }
 
@@ -1199,27 +1310,36 @@ func TestEmitTransitionsUsesInjectedClock(t *testing.T) {
 		cfg:        Config{},
 		clock:      fixedClock{now: now},
 	}
-	module.InitBase(&ifmgr.Env{
-		Iface:   "",
-		Sysctl:  nil,
-		Log:     log,
-		Alerts:  ifmgr.WrapNotifier(notifier),
-		Monitor: nil,
-		DHCP:    nil,
-		RA:      nil,
-	}, "module", moduleName)
-
-	module.emitTransitions(context.Background(), log, []transition{
-		{
-			WAN:  WAN{WANRef: ifmgr.WANRef{Name: "att", Iface: "att0"}},
-			From: StateHealthy,
-			To:   StateUnhealthy,
+	module.InitBase(
+		&ifmgr.Env{
+			Iface:   "",
+			Sysctl:  nil,
+			Log:     log,
+			Alerts:  ifmgr.WrapNotifier(notifier),
+			Monitor: nil,
+			DHCP:    nil,
+			RA:      nil,
 		},
-	})
+		"module",
+		moduleName,
+	)
+
+	module.emitTransitions(
+		context.Background(),
+		log,
+		[]transition{
+			{
+				WAN:  WAN{WANRef: ifmgr.WANRef{Name: "att", Iface: "att0"}},
+				From: StateHealthy,
+				To:   StateUnhealthy,
+			},
+		},
+	)
 
 	if len(notifier.events) != 1 {
 		t.Fatalf("Notify event count = %d, want 1", len(notifier.events))
 	}
+
 	if notifier.events[0].Now != now {
 		t.Fatalf("Notify event time = %s, want %s", notifier.events[0].Now, now)
 	}
@@ -1235,22 +1355,45 @@ func TestEmitTransitionAlertsFromUnknownUnhealthy(t *testing.T) {
 		cfg:        Config{},
 		clock:      fixedClock{now: time.Date(2026, time.July, 24, 0, 0, 0, 0, time.UTC)},
 	}
-	module.InitBase(&ifmgr.Env{Log: log, Alerts: ifmgr.WrapNotifier(notifier)}, "module", moduleName)
+	module.InitBase(
+		&ifmgr.Env{Log: log, Alerts: ifmgr.WrapNotifier(notifier)},
+		"module",
+		moduleName,
+	)
 
 	// A WAN broken from startup goes unknown -> unhealthy and must alert.
-	module.emitTransitions(context.Background(), log, []transition{
-		{WAN: WAN{WANRef: ifmgr.WANRef{Name: "att", Iface: "att0"}}, From: StateUnknown, To: StateUnhealthy},
-	})
+	module.emitTransitions(
+		context.Background(),
+		log,
+		[]transition{
+			{
+				WAN:  WAN{WANRef: ifmgr.WANRef{Name: "att", Iface: "att0"}},
+				From: StateUnknown,
+				To:   StateUnhealthy,
+			},
+		},
+	)
 	if len(notifier.events) != 1 {
 		t.Fatalf("unknown->unhealthy Notify count = %d, want 1", len(notifier.events))
 	}
 
 	// A WAN that comes up healthy from unknown has no prior alert to resolve.
-	module.emitTransitions(context.Background(), log, []transition{
-		{WAN: WAN{WANRef: ifmgr.WANRef{Name: "webpass", Iface: "webpass0"}}, From: StateUnknown, To: StateHealthy},
-	})
+	module.emitTransitions(
+		context.Background(),
+		log,
+		[]transition{
+			{
+				WAN:  WAN{WANRef: ifmgr.WANRef{Name: "webpass", Iface: "webpass0"}},
+				From: StateUnknown,
+				To:   StateHealthy,
+			},
+		},
+	)
 	if len(notifier.events) != 1 {
-		t.Fatalf("unknown->healthy must not emit a Notify; count = %d, want 1", len(notifier.events))
+		t.Fatalf(
+			"unknown->healthy must not emit a Notify; count = %d, want 1",
+			len(notifier.events),
+		)
 	}
 }
 
@@ -1264,23 +1407,31 @@ func TestEmitTransitionRequestsReconcile(t *testing.T) {
 		cfg:        Config{},
 		clock:      fixedClock{now: time.Date(2026, time.July, 24, 0, 0, 0, 0, time.UTC)},
 	}
-	module.InitBase(&ifmgr.Env{
-		Log:    log,
-		Alerts: ifmgr.WrapNotifier(&recordingNotifier{}),
-		RequestReconcile: func(reason string) {
-			reconcileReasons = append(reconcileReasons, reason)
+	module.InitBase(
+		&ifmgr.Env{
+			Log:    log,
+			Alerts: ifmgr.WrapNotifier(&recordingNotifier{}),
+			RequestReconcile: func(reason string) {
+				reconcileReasons = append(reconcileReasons, reason)
+			},
 		},
-	}, "module", moduleName)
+		"module",
+		moduleName,
+	)
 
 	// A health transition must ask the daemon to reconcile now so wan.routes
 	// fails over event-driven, not on the tick.
-	module.emitTransitions(context.Background(), log, []transition{
-		{
-			WAN:  WAN{WANRef: ifmgr.WANRef{Name: "att", Iface: "att0"}},
-			From: StateHealthy,
-			To:   StateUnhealthy,
+	module.emitTransitions(
+		context.Background(),
+		log,
+		[]transition{
+			{
+				WAN:  WAN{WANRef: ifmgr.WANRef{Name: "att", Iface: "att0"}},
+				From: StateHealthy,
+				To:   StateUnhealthy,
+			},
 		},
-	})
+	)
 
 	if len(reconcileReasons) != 1 {
 		t.Fatalf("RequestReconcile calls = %d, want 1", len(reconcileReasons))
@@ -1328,8 +1479,8 @@ func (n *recordingNotifier) Notify(_ context.Context, event notify.Event) {
 
 func (n *recordingNotifier) Resolve(
 	_ context.Context,
-	_,
-	_,
+	_ string,
+	_ string,
 	_ string,
 	_ ...slog.Attr,
 ) {

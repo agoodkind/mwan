@@ -37,14 +37,20 @@ listen = "/var/run/mwan-opnsense-drain.sock"
 	if err := os.WriteFile(configPath, []byte(configText), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
+
 	t.Setenv("MWAN_CONFIG", configPath)
 
 	cfg, err := LoadPath("")
 	if err != nil {
 		t.Fatalf("Load rejected a host config carrying [opnsense.*] tables: %v", err)
 	}
+
 	if cfg.Hostname != "hypervisor-test" || cfg.MwanVMID != "4100" {
-		t.Errorf("hostname = %q mwan_vmid = %q, want hypervisor-test and 4100", cfg.Hostname, cfg.MwanVMID)
+		t.Errorf(
+			"hostname = %q mwan_vmid = %q, want hypervisor-test and 4100",
+			cfg.Hostname,
+			cfg.MwanVMID,
+		)
 	}
 }
 
@@ -93,39 +99,54 @@ func TestLoadHealthMaxStateAge(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			configPath := filepath.Join(t.TempDir(), "config.toml")
-			if err := os.WriteFile(configPath, []byte(tc.text), 0o600); err != nil {
-				t.Fatalf("write config: %v", err)
-			}
-			t.Setenv("MWAN_CONFIG", configPath)
-
-			cfg, err := LoadPath("")
-
-			if tc.wantFail {
-				if err == nil {
-					t.Fatalf("Load accepted %q", tc.text)
+		t.Run(
+			tc.name,
+			func(t *testing.T) {
+				configPath := filepath.Join(t.TempDir(), "config.toml")
+				if err := os.WriteFile(configPath, []byte(tc.text), 0o600); err != nil {
+					t.Fatalf("write config: %v", err)
 				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("Load: %v", err)
-			}
-			if cfg.IfMgr.Modules.Health == nil {
-				if tc.wantPresent {
-					t.Fatal("health section did not load")
+
+				t.Setenv("MWAN_CONFIG", configPath)
+
+				cfg, err := LoadPath("")
+
+				if tc.wantFail {
+					if err == nil {
+						t.Fatalf("Load accepted %q", tc.text)
+					}
+
+					return
 				}
-				return
-			}
-			gotAge, gotPresent, parseErr := cfg.IfMgr.Modules.Health.ParseMaxStateAge()
-			if parseErr != nil {
-				t.Fatalf("ParseMaxStateAge: %v", parseErr)
-			}
-			if gotAge != tc.wantAge || gotPresent != tc.wantPresent {
-				t.Fatalf("max_state_age = %s present %t, want %s present %t",
-					gotAge, gotPresent, tc.wantAge, tc.wantPresent)
-			}
-		})
+
+				if err != nil {
+					t.Fatalf("Load: %v", err)
+				}
+
+				if cfg.IfMgr.Modules.Health == nil {
+					if tc.wantPresent {
+						t.Fatal("health section did not load")
+					}
+
+					return
+				}
+
+				gotAge, gotPresent, parseErr := cfg.IfMgr.Modules.Health.ParseMaxStateAge()
+				if parseErr != nil {
+					t.Fatalf("ParseMaxStateAge: %v", parseErr)
+				}
+
+				if gotAge != tc.wantAge || gotPresent != tc.wantPresent {
+					t.Fatalf(
+						"max_state_age = %s present %t, want %s present %t",
+						gotAge,
+						gotPresent,
+						tc.wantAge,
+						tc.wantPresent,
+					)
+				}
+			},
+		)
 	}
 }
 
@@ -136,34 +157,46 @@ func TestLoadGuestType(t *testing.T) {
 		want     GuestType
 		wantFail bool
 	}{
-		{name: "missing key is a QEMU guest", text: `mwan_vmid = "4100"`, want: GuestTypeQEMU, wantFail: false},
+		{
+			name:     "missing key is a QEMU guest",
+			text:     `mwan_vmid = "4100"`,
+			want:     GuestTypeQEMU,
+			wantFail: false,
+		},
 		{name: "qemu", text: `guest_type = "qemu"`, want: GuestTypeQEMU, wantFail: false},
 		{name: "lxc", text: `guest_type = "lxc"`, want: GuestTypeLXC, wantFail: false},
 		{name: "unknown value", text: `guest_type = "vm"`, want: "", wantFail: true},
 		{name: "empty value", text: `guest_type = ""`, want: "", wantFail: true},
 	}
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			configPath := filepath.Join(t.TempDir(), "config.toml")
-			if err := os.WriteFile(configPath, []byte(tc.text), 0o600); err != nil {
-				t.Fatalf("write config: %v", err)
-			}
-			t.Setenv("MWAN_CONFIG", configPath)
-
-			cfg, err := LoadPath("")
-
-			if tc.wantFail {
-				if err == nil {
-					t.Fatalf("Load accepted %q", tc.text)
+		t.Run(
+			tc.name,
+			func(t *testing.T) {
+				configPath := filepath.Join(t.TempDir(), "config.toml")
+				if err := os.WriteFile(configPath, []byte(tc.text), 0o600); err != nil {
+					t.Fatalf("write config: %v", err)
 				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("Load: %v", err)
-			}
-			if cfg.GuestType != tc.want {
-				t.Errorf("guest type = %q, want %q", cfg.GuestType, tc.want)
-			}
-		})
+
+				t.Setenv("MWAN_CONFIG", configPath)
+
+				cfg, err := LoadPath("")
+
+				if tc.wantFail {
+					if err == nil {
+						t.Fatalf("Load accepted %q", tc.text)
+					}
+
+					return
+				}
+
+				if err != nil {
+					t.Fatalf("Load: %v", err)
+				}
+
+				if cfg.GuestType != tc.want {
+					t.Errorf("guest type = %q, want %q", cfg.GuestType, tc.want)
+				}
+			},
+		)
 	}
 }

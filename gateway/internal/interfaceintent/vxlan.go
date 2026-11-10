@@ -23,12 +23,15 @@ func (tunnel *Tunnel) Clone() *Tunnel {
 	if tunnel == nil {
 		return nil
 	}
+
 	cloned := *tunnel
 	if tunnel.TTL != nil {
 		cloned.TTL = new(*tunnel.TTL)
 	}
+
 	if tunnel.VXLAN != nil {
 		cloned.VXLAN = new(*tunnel.VXLAN)
 	}
+
 	return &cloned
 }

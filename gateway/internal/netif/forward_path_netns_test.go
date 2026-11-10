@@ -91,13 +91,20 @@ func newForwardPathFixture(t *testing.T, family int, label string) forwardPathFi
 		t.Fatal(err)
 	}
 	for _, familyName := range []string{"ipv4", "ipv6"} {
-		if err := settings.Set(t.Context(), "net."+familyName+".conf.all.forwarding", "1"); err != nil {
+		if err := settings.Set(
+			t.Context(),
+			"net."+familyName+".conf.all.forwarding",
+			"1",
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for index, suffix := range []string{"in", "wa", "wb"} {
 		name, peerName := label+suffix, label+suffix+"p"
-		if err := netlink.LinkAdd(&netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: name}, PeerName: peerName}); err != nil {
+		if err := netlink.LinkAdd(&netlink.Veth{
+			LinkAttrs: netlink.LinkAttrs{Name: name},
+			PeerName:  peerName,
+		}); err != nil {
 			t.Fatal(err)
 		}
 		link, err := netlink.LinkByName(name)
@@ -127,14 +134,25 @@ func newForwardPathFixture(t *testing.T, family int, label string) forwardPathFi
 		}
 		fixture.outputs = append(fixture.outputs, link)
 		fixture.peers = append(fixture.peers, peer)
-		if err := netlink.NeighSet(&netlink.Neigh{LinkIndex: link.Attrs().Index, Family: family, State: unix.NUD_PERMANENT, IP: fixture.gateways[index-1], HardwareAddr: peer.Attrs().HardwareAddr}); err != nil {
+		if err := netlink.NeighSet(&netlink.Neigh{
+			LinkIndex:    link.Attrs().Index,
+			Family:       family,
+			State:        unix.NUD_PERMANENT,
+			IP:           fixture.gateways[index-1],
+			HardwareAddr: peer.Attrs().HardwareAddr,
+		}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	fixture.selector = netif.PacketSelector{
-		Source:      netip.AddrPortFrom(netip.MustParseAddr(source), forwardPathSourcePort),
-		Destination: netip.AddrPortFrom(netip.MustParseAddr(destination), forwardPathDestinationPort),
-		Protocol:    unix.IPPROTO_UDP, InputInterface: fixture.input.Attrs().Index, Mark: forwardPathMark,
+		Source: netip.AddrPortFrom(netip.MustParseAddr(source), forwardPathSourcePort),
+		Destination: netip.AddrPortFrom(
+			netip.MustParseAddr(destination),
+			forwardPathDestinationPort,
+		),
+		Protocol:       unix.IPPROTO_UDP,
+		InputInterface: fixture.input.Attrs().Index,
+		Mark:           forwardPathMark,
 	}
 	if family == unix.AF_INET6 {
 		fixture.selector.FlowLabel = 0x12345
@@ -142,7 +160,12 @@ func newForwardPathFixture(t *testing.T, family int, label string) forwardPathFi
 		fixture.selector.TrafficClass = 0x10
 	}
 	for index, table := range []int{unix.RT_TABLE_MAIN, forwardPathTable} {
-		if err := netlink.RouteAdd(&netlink.Route{Family: family, Table: table, LinkIndex: fixture.outputs[index].Attrs().Index, Gw: fixture.gateways[index]}); err != nil {
+		if err := netlink.RouteAdd(&netlink.Route{
+			Family:    family,
+			Table:     table,
+			LinkIndex: fixture.outputs[index].Attrs().Index,
+			Gw:        fixture.gateways[index],
+		}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -152,8 +175,14 @@ func newForwardPathFixture(t *testing.T, family int, label string) forwardPathFi
 	rule.Sport = netlink.NewRulePortRange(forwardPathSourcePort, forwardPathSourcePort)
 	rule.Dport = netlink.NewRulePortRange(forwardPathDestinationPort, forwardPathDestinationPort)
 	sourceAddress, destinationAddress := fixture.selector.Source.Addr(), fixture.selector.Destination.Addr()
-	rule.Src = &net.IPNet{IP: sourceAddress.AsSlice(), Mask: net.CIDRMask(sourceAddress.BitLen(), sourceAddress.BitLen())}
-	rule.Dst = &net.IPNet{IP: destinationAddress.AsSlice(), Mask: net.CIDRMask(destinationAddress.BitLen(), destinationAddress.BitLen())}
+	rule.Src = &net.IPNet{
+		IP:   sourceAddress.AsSlice(),
+		Mask: net.CIDRMask(sourceAddress.BitLen(), sourceAddress.BitLen()),
+	}
+	rule.Dst = &net.IPNet{
+		IP:   destinationAddress.AsSlice(),
+		Mask: net.CIDRMask(destinationAddress.BitLen(), destinationAddress.BitLen()),
+	}
 	if family == unix.AF_INET {
 		rule.Tos = uint(fixture.selector.TrafficClass)
 	}
@@ -163,14 +192,22 @@ func newForwardPathFixture(t *testing.T, family int, label string) forwardPathFi
 	return fixture
 }
 
-func assertForwardPath(t *testing.T, fixture forwardPathFixture, selector netif.PacketSelector, expected int) {
+func assertForwardPath(
+	t *testing.T,
+	fixture forwardPathFixture,
+	selector netif.PacketSelector,
+	expected int,
+) {
 	t.Helper()
 	path, usable, err := netif.ForwardPathLookup(t.Context(), slog.Default(), selector)
 	if err != nil || !usable {
 		t.Fatalf("forwarding path is unavailable: usable=%v path=%+v err=%v", usable, path, err)
 	}
-	if path.Route.LinkIndex != fixture.outputs[expected].Attrs().Index || path.Link.Attrs().Index != path.Route.LinkIndex || path.Neighbor.LinkIndex != path.Route.LinkIndex ||
-		!path.Neighbor.IP.Equal(fixture.gateways[expected]) || !bytes.Equal(path.Neighbor.HardwareAddr, fixture.peers[expected].Attrs().HardwareAddr) {
+	if path.Route.LinkIndex != fixture.outputs[expected].Attrs().Index ||
+		path.Link.Attrs().Index != path.Route.LinkIndex ||
+		path.Neighbor.LinkIndex != path.Route.LinkIndex ||
+		!path.Neighbor.IP.Equal(fixture.gateways[expected]) ||
+		!bytes.Equal(path.Neighbor.HardwareAddr, fixture.peers[expected].Attrs().HardwareAddr) {
 		t.Fatalf("forwarding path differs from the kernel policy: %+v", path)
 	}
 }
@@ -180,39 +217,76 @@ func TestForwardPathLookupPreservesPacketSelectors(t *testing.T) {
 		return
 	}
 	for index, family := range []int{unix.AF_INET, unix.AF_INET6} {
-		t.Run(fmt.Sprintf("family%d", family), func(t *testing.T) {
-			fixture := newForwardPathFixture(t, family, fmt.Sprintf("f%d", index))
-			assertForwardPath(t, fixture, fixture.selector, 1)
-			variants := []struct {
-				name   string
-				change func(*netif.PacketSelector)
-			}{
-				{"mark", func(p *netif.PacketSelector) { p.Mark = 0 }},
-				{"protocol", func(p *netif.PacketSelector) { p.Protocol = unix.IPPROTO_TCP }},
-				{"source-port", func(p *netif.PacketSelector) { p.Source = netip.AddrPortFrom(p.Source.Addr(), forwardPathSourcePort+1) }},
-				{"destination-port", func(p *netif.PacketSelector) {
-					p.Destination = netip.AddrPortFrom(p.Destination.Addr(), forwardPathDestinationPort+1)
-				}},
-				{"input-interface", func(p *netif.PacketSelector) { p.InputInterface = fixture.outputs[0].Attrs().Index }},
-				{"source-address", func(p *netif.PacketSelector) { p.Source = netip.AddrPortFrom(p.Source.Addr().Next(), p.Source.Port()) }},
-				{"destination-address", func(p *netif.PacketSelector) {
-					p.Destination = netip.AddrPortFrom(p.Destination.Addr().Next(), p.Destination.Port())
-				}},
-			}
-			if family == unix.AF_INET {
-				variants = append(variants, struct {
+		t.Run(
+			fmt.Sprintf("family%d", family),
+			func(t *testing.T) {
+				fixture := newForwardPathFixture(t, family, fmt.Sprintf("f%d", index))
+				assertForwardPath(t, fixture, fixture.selector, 1)
+				variants := []struct {
 					name   string
 					change func(*netif.PacketSelector)
-				}{"traffic-class", func(p *netif.PacketSelector) { p.TrafficClass = 0 }})
-			}
-			for _, variant := range variants {
-				t.Run(variant.name, func(t *testing.T) {
-					selector := fixture.selector
-					variant.change(&selector)
-					assertForwardPath(t, fixture, selector, 0)
-				})
-			}
-		})
+				}{
+					{"mark", func(p *netif.PacketSelector) { p.Mark = 0 }},
+					{"protocol", func(p *netif.PacketSelector) { p.Protocol = unix.IPPROTO_TCP }},
+					{
+						"source-port",
+						func(p *netif.PacketSelector) {
+							p.Source = netip.AddrPortFrom(p.Source.Addr(), forwardPathSourcePort+1)
+						},
+					},
+					{
+						"destination-port",
+						func(p *netif.PacketSelector) {
+							p.Destination = netip.AddrPortFrom(
+								p.Destination.Addr(),
+								forwardPathDestinationPort+1,
+							)
+						},
+					},
+					{
+						"input-interface",
+						func(p *netif.PacketSelector) { p.InputInterface = fixture.outputs[0].Attrs().Index },
+					},
+					{
+						"source-address",
+						func(p *netif.PacketSelector) {
+							p.Source = netip.AddrPortFrom(p.Source.Addr().Next(), p.Source.Port())
+						},
+					},
+					{
+						"destination-address",
+						func(p *netif.PacketSelector) {
+							p.Destination = netip.AddrPortFrom(
+								p.Destination.Addr().Next(),
+								p.Destination.Port(),
+							)
+						},
+					},
+				}
+				if family == unix.AF_INET {
+					variants = append(
+						variants,
+						struct {
+							name   string
+							change func(*netif.PacketSelector)
+						}{
+							"traffic-class",
+							func(p *netif.PacketSelector) { p.TrafficClass = 0 },
+						},
+					)
+				}
+				for _, variant := range variants {
+					t.Run(
+						variant.name,
+						func(t *testing.T) {
+							selector := fixture.selector
+							variant.change(&selector)
+							assertForwardPath(t, fixture, selector, 0)
+						},
+					)
+				}
+			},
+		)
 	}
 }
 
@@ -224,26 +298,36 @@ func TestForwardPathLookupPreservesECNIndependentRouting(t *testing.T) {
 		return
 	}
 	for index, family := range []int{unix.AF_INET, unix.AF_INET6} {
-		t.Run(fmt.Sprintf("family%d", family), func(t *testing.T) {
-			fixture := newForwardPathFixture(t, family, fmt.Sprintf("e%d", index))
-			fixture.selector.Protocol = unix.IPPROTO_TCP
-			dscpRule := addForwardPathDSCPRule(t, family, fixture)
-			for _, dscp := range []uint8{0, forwardPathPolicyDSCP} {
-				for ecn := uint8(0); ecn < forwardPathECNValues; ecn++ {
-					trafficClass := dscp*forwardPathECNValues | ecn
-					t.Run(fmt.Sprintf("traffic-class-%02x", trafficClass), func(t *testing.T) {
-						selector := fixture.selector
-						selector.TrafficClass = trafficClass
-						expected := 0
-						if dscpRule && dscp == forwardPathPolicyDSCP {
-							expected = 1
-						}
-						assertForwardPath(t, fixture, selector, expected)
-						t.Logf("traffic_class=%#02x selected_output=%s", trafficClass, fixture.outputs[expected].Attrs().Name)
-					})
+		t.Run(
+			fmt.Sprintf("family%d", family),
+			func(t *testing.T) {
+				fixture := newForwardPathFixture(t, family, fmt.Sprintf("e%d", index))
+				fixture.selector.Protocol = unix.IPPROTO_TCP
+				dscpRule := addForwardPathDSCPRule(t, family, fixture)
+				for _, dscp := range []uint8{0, forwardPathPolicyDSCP} {
+					for ecn := uint8(0); ecn < forwardPathECNValues; ecn++ {
+						trafficClass := dscp*forwardPathECNValues | ecn
+						t.Run(
+							fmt.Sprintf("traffic-class-%02x", trafficClass),
+							func(t *testing.T) {
+								selector := fixture.selector
+								selector.TrafficClass = trafficClass
+								expected := 0
+								if dscpRule && dscp == forwardPathPolicyDSCP {
+									expected = 1
+								}
+								assertForwardPath(t, fixture, selector, expected)
+								t.Logf(
+									"traffic_class=%#02x selected_output=%s",
+									trafficClass,
+									fixture.outputs[expected].Attrs().Name,
+								)
+							},
+						)
+					}
 				}
-			}
-		})
+			},
+		)
 	}
 }
 
@@ -257,12 +341,20 @@ func addForwardPathDSCPRule(t *testing.T, family int, fixture forwardPathFixture
 	if err := netlink.RuleAdd(rule); err != nil {
 		t.Fatalf("install the wildcard traffic-class TCP rule for family %d: %v", family, err)
 	}
-	rule.Priority, rule.Table, rule.Tos = 80, forwardPathTable, uint(forwardPathPolicyDSCP*forwardPathECNValues)
+	rule.Priority, rule.Table, rule.Tos = 80, forwardPathTable, uint(
+		forwardPathPolicyDSCP*forwardPathECNValues,
+	)
 	if err := netlink.RuleAdd(rule); err != nil {
-		if family != unix.AF_INET6 || !errors.Is(err, unix.EINVAL) && !errors.Is(err, unix.EOPNOTSUPP) {
+		if family != unix.AF_INET6 ||
+			!errors.Is(err, unix.EINVAL) && !errors.Is(err, unix.EOPNOTSUPP) {
 			t.Fatalf("install the DSCP TCP rule for family %d: %v", family, err)
 		}
-		t.Logf("family=%d kernel rejected nonzero legacy TOS %#02x after accepting the wildcard rule: %v", family, rule.Tos, err)
+		t.Logf(
+			"family=%d kernel rejected nonzero legacy TOS %#02x after accepting the wildcard rule: %v",
+			family,
+			rule.Tos,
+			err,
+		)
 		return false
 	}
 	t.Logf("family=%d kernel accepted nonzero legacy TOS %#02x", family, rule.Tos)
@@ -276,19 +368,40 @@ func TestForwardPathLookupRejectsUnavailablePaths(t *testing.T) {
 	fixture := newForwardPathFixture(t, unix.AF_INET, "fr")
 	selector := fixture.selector
 	selector.Mark = 0
-	neighbor := &netlink.Neigh{LinkIndex: fixture.outputs[0].Attrs().Index, Family: unix.AF_INET, IP: fixture.gateways[0], State: unix.NUD_PERMANENT, HardwareAddr: fixture.peers[0].Attrs().HardwareAddr}
+	neighbor := &netlink.Neigh{
+		LinkIndex:    fixture.outputs[0].Attrs().Index,
+		Family:       unix.AF_INET,
+		IP:           fixture.gateways[0],
+		State:        unix.NUD_PERMANENT,
+		HardwareAddr: fixture.peers[0].Attrs().HardwareAddr,
+	}
 	for _, state := range []int{unix.NUD_INCOMPLETE, unix.NUD_FAILED} {
-		if err := netlink.NeighSet(&netlink.Neigh{LinkIndex: neighbor.LinkIndex, Family: neighbor.Family, IP: neighbor.IP, State: state}); err != nil {
+		if err := netlink.NeighSet(&netlink.Neigh{
+			LinkIndex: neighbor.LinkIndex,
+			Family:    neighbor.Family,
+			IP:        neighbor.IP,
+			State:     state,
+		}); err != nil {
 			t.Fatal(err)
 		}
-		if path, usable, err := netif.ForwardPathLookup(t.Context(), slog.Default(), selector); err != nil || usable {
+		if path, usable, err := netif.ForwardPathLookup(
+			t.Context(),
+			slog.Default(),
+			selector,
+		); err != nil ||
+			usable {
 			t.Fatalf("unresolved neighbor admitted a path: %+v %v %v", path, usable, err)
 		}
 	}
 	if err := netlink.NeighDel(neighbor); err != nil {
 		t.Fatal(err)
 	}
-	if _, usable, err := netif.ForwardPathLookup(t.Context(), slog.Default(), selector); err != nil || usable {
+	if _, usable, err := netif.ForwardPathLookup(
+		t.Context(),
+		slog.Default(),
+		selector,
+	); err != nil ||
+		usable {
 		t.Fatalf("missing neighbor admitted a path: %v %v", usable, err)
 	}
 	if err := netlink.NeighSet(neighbor); err != nil {
@@ -296,8 +409,12 @@ func TestForwardPathLookupRejectsUnavailablePaths(t *testing.T) {
 	}
 	assertForwardPath(t, fixture, selector, 0)
 	local := selector
-	local.Destination = netip.AddrPortFrom(netip.MustParseAddr("192.0.2.1"), forwardPathDestinationPort)
-	if _, usable, err := netif.ForwardPathLookup(t.Context(), slog.Default(), local); err != nil || usable {
+	local.Destination = netip.AddrPortFrom(
+		netip.MustParseAddr("192.0.2.1"),
+		forwardPathDestinationPort,
+	)
+	if _, usable, err := netif.ForwardPathLookup(t.Context(), slog.Default(), local); err != nil ||
+		usable {
 		t.Fatalf("local delivery admitted a forwarding path: %v %v", usable, err)
 	}
 	for index, routeType := range []int{unix.RTN_BLACKHOLE, unix.RTN_UNREACHABLE, unix.RTN_PROHIBIT} {
@@ -305,7 +422,11 @@ func TestForwardPathLookupRejectsUnavailablePaths(t *testing.T) {
 		for range index {
 			address = address.Next()
 		}
-		if err := netlink.RouteAdd(&netlink.Route{Family: unix.AF_INET, Dst: &net.IPNet{IP: address.AsSlice(), Mask: net.CIDRMask(32, 32)}, Type: routeType}); err != nil {
+		if err := netlink.RouteAdd(&netlink.Route{
+			Family: unix.AF_INET,
+			Dst:    &net.IPNet{IP: address.AsSlice(), Mask: net.CIDRMask(32, 32)},
+			Type:   routeType,
+		}); err != nil {
 			t.Fatal(err)
 		}
 		blocked := selector
@@ -315,14 +436,28 @@ func TestForwardPathLookupRejectsUnavailablePaths(t *testing.T) {
 		}
 	}
 	encapsulated := selector
-	encapsulated.Destination = netip.AddrPortFrom(netip.MustParseAddr("203.0.113.30"), forwardPathDestinationPort)
+	encapsulated.Destination = netip.AddrPortFrom(
+		netip.MustParseAddr("203.0.113.30"),
+		forwardPathDestinationPort,
+	)
 	if err := netlink.RouteAdd(&netlink.Route{
-		Family: unix.AF_INET, Dst: &net.IPNet{IP: encapsulated.Destination.Addr().AsSlice(), Mask: net.CIDRMask(32, 32)},
-		LinkIndex: fixture.outputs[0].Attrs().Index, Via: &netlink.Via{AddrFamily: unix.AF_INET6, Addr: net.ParseIP("fe80::2")}, Flags: unix.RTNH_F_ONLINK,
+		Family: unix.AF_INET,
+		Dst: &net.IPNet{
+			IP:   encapsulated.Destination.Addr().AsSlice(),
+			Mask: net.CIDRMask(32, 32),
+		},
+		LinkIndex: fixture.outputs[0].Attrs().Index,
+		Via:       &netlink.Via{AddrFamily: unix.AF_INET6, Addr: net.ParseIP("fe80::2")},
+		Flags:     unix.RTNH_F_ONLINK,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, usable, err := netif.ForwardPathLookup(t.Context(), slog.Default(), encapsulated); err != nil || usable {
+	if _, usable, err := netif.ForwardPathLookup(
+		t.Context(),
+		slog.Default(),
+		encapsulated,
+	); err != nil ||
+		usable {
 		t.Fatalf("cross-family next hop admitted a path: %v %v", usable, err)
 	}
 	if err := netlink.LinkSetDown(fixture.outputs[0]); err != nil {
@@ -333,14 +468,22 @@ func TestForwardPathLookupRejectsUnavailablePaths(t *testing.T) {
 	}
 }
 
-func addForwardPathNexthop(t *testing.T, header unix.Nhmsg, attributes *mdnetlink.AttributeEncoder) {
+func addForwardPathNexthop(
+	t *testing.T,
+	header unix.Nhmsg,
+	attributes *mdnetlink.AttributeEncoder,
+) {
 	t.Helper()
-	executeForwardPathMessage(t, mdnetlink.Message{
-		Header: mdnetlink.Header{
-			Type: unix.RTM_NEWNEXTHOP, Flags: mdnetlink.Request | mdnetlink.Create | mdnetlink.Excl | mdnetlink.Acknowledge,
+	executeForwardPathMessage(
+		t,
+		mdnetlink.Message{
+			Header: mdnetlink.Header{
+				Type:  unix.RTM_NEWNEXTHOP,
+				Flags: mdnetlink.Request | mdnetlink.Create | mdnetlink.Excl | mdnetlink.Acknowledge,
+			},
+			Data: forwardPathMessagePayload(t, header, attributes),
 		},
-		Data: forwardPathMessagePayload(t, header, attributes),
-	})
+	)
 }
 
 func replaceForwardPathNexthopRoute(t *testing.T, selector netif.PacketSelector, id uint32) {
@@ -351,21 +494,33 @@ func replaceForwardPathNexthopRoute(t *testing.T, selector netif.PacketSelector,
 		family = unix.AF_INET
 	}
 	header := unix.RtMsg{
-		Family: family, Dst_len: uint8(destination.BitLen()), Table: unix.RT_TABLE_MAIN,
-		Protocol: unix.RTPROT_BGP, Scope: unix.RT_SCOPE_UNIVERSE, Type: unix.RTN_UNICAST,
+		Family:   family,
+		Dst_len:  uint8(destination.BitLen()),
+		Table:    unix.RT_TABLE_MAIN,
+		Protocol: unix.RTPROT_BGP,
+		Scope:    unix.RT_SCOPE_UNIVERSE,
+		Type:     unix.RTN_UNICAST,
 	}
 	attributes := mdnetlink.NewAttributeEncoder()
 	attributes.Bytes(unix.RTA_DST, destination.AsSlice())
 	attributes.Uint32(forwardPathRouteNexthopAttribute, id)
-	executeForwardPathMessage(t, mdnetlink.Message{
-		Header: mdnetlink.Header{
-			Type: unix.RTM_NEWROUTE, Flags: mdnetlink.Request | mdnetlink.Create | mdnetlink.Replace | mdnetlink.Acknowledge,
+	executeForwardPathMessage(
+		t,
+		mdnetlink.Message{
+			Header: mdnetlink.Header{
+				Type:  unix.RTM_NEWROUTE,
+				Flags: mdnetlink.Request | mdnetlink.Create | mdnetlink.Replace | mdnetlink.Acknowledge,
+			},
+			Data: forwardPathMessagePayload(t, header, attributes),
 		},
-		Data: forwardPathMessagePayload(t, header, attributes),
-	})
+	)
 }
 
-func forwardPathMessagePayload[Header unix.Nhmsg | unix.RtMsg](t *testing.T, header Header, attributes *mdnetlink.AttributeEncoder) []byte {
+func forwardPathMessagePayload[Header unix.Nhmsg | unix.RtMsg](
+	t *testing.T,
+	header Header,
+	attributes *mdnetlink.AttributeEncoder,
+) []byte {
 	t.Helper()
 	payload, err := binary.Append(nil, binary.NativeEndian, header)
 	if err != nil {
@@ -395,7 +550,11 @@ func executeForwardPathMessage(t *testing.T, message mdnetlink.Message) {
 		}
 	}
 	if _, err := socket.Execute(message); err != nil {
-		t.Fatalf("configure the forwarding fixture with message type %d: %v", message.Header.Type, err)
+		t.Fatalf(
+			"configure the forwarding fixture with message type %d: %v",
+			message.Header.Type,
+			err,
+		)
 	}
 }
 
@@ -407,22 +566,42 @@ func TestForwardPathLookupRequiresActualMultipathObservation(t *testing.T) {
 	selector := fixture.selector
 	selector.Mark = 0
 	destination := &net.IPNet{IP: selector.Destination.Addr().AsSlice(), Mask: net.CIDRMask(32, 32)}
-	if err := netlink.RouteAdd(&netlink.Route{Family: unix.AF_INET, Dst: destination, MultiPath: []*netlink.NexthopInfo{
-		{LinkIndex: fixture.outputs[0].Attrs().Index, Gw: fixture.gateways[0]}, {LinkIndex: fixture.outputs[1].Attrs().Index, Gw: fixture.gateways[1]},
-	}}); err != nil {
+	if err := netlink.RouteAdd(&netlink.Route{
+		Family: unix.AF_INET,
+		Dst:    destination,
+		MultiPath: []*netlink.NexthopInfo{
+			{
+				LinkIndex: fixture.outputs[0].Attrs().Index,
+				Gw:        fixture.gateways[0],
+			},
+			{LinkIndex: fixture.outputs[1].Attrs().Index, Gw: fixture.gateways[1]},
+		},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	path, usable, err := netif.ForwardPathLookup(t.Context(), slog.Default(), selector)
 	var requirement *netif.EgressObservationRequiredError
-	if usable || !errors.As(err, &requirement) || requirement.Reason != netif.EgressObservationMultipath || path.Link == nil || len(path.Neighbor.HardwareAddr) != 6 {
-		t.Fatalf("multipath admission did not require actual egress: path=%+v usable=%v err=%v", path, usable, err)
+	if usable || !errors.As(err, &requirement) ||
+		requirement.Reason != netif.EgressObservationMultipath ||
+		path.Link == nil ||
+		len(path.Neighbor.HardwareAddr) != 6 {
+		t.Fatalf(
+			"multipath admission did not require actual egress: path=%+v usable=%v err=%v",
+			path,
+			usable,
+			err,
+		)
 	}
 	for index, output := range fixture.outputs {
 		attributes := mdnetlink.NewAttributeEncoder()
 		attributes.Uint32(unix.NHA_ID, uint32(index+1))
 		attributes.Uint32(unix.NHA_OIF, uint32(output.Attrs().Index))
 		attributes.Bytes(unix.NHA_GATEWAY, fixture.gateways[index].To4())
-		addForwardPathNexthop(t, unix.Nhmsg{Family: unix.AF_INET, Protocol: unix.RTPROT_BGP}, attributes)
+		addForwardPathNexthop(
+			t,
+			unix.Nhmsg{Family: unix.AF_INET, Protocol: unix.RTPROT_BGP},
+			attributes,
+		)
 	}
 	settings := netif.NewProcSysctlRunner(slog.Default(), false)
 	if err := settings.Set(t.Context(), "net.ipv4.nexthop_compat_mode", "0"); err != nil {
@@ -438,7 +617,10 @@ func TestForwardPathLookupRequiresActualMultipathObservation(t *testing.T) {
 	addForwardPathNexthop(t, unix.Nhmsg{}, attributes)
 	replaceForwardPathNexthopRoute(t, selector, forwardPathNexthopGroupID)
 	path, usable, err = netif.ForwardPathLookup(t.Context(), slog.Default(), selector)
-	if usable || !errors.As(err, &requirement) || requirement.Reason != netif.EgressObservationNexthopGroup || requirement.NexthopID != forwardPathNexthopGroupID || path.Link == nil {
+	if usable || !errors.As(err, &requirement) ||
+		requirement.Reason != netif.EgressObservationNexthopGroup ||
+		requirement.NexthopID != forwardPathNexthopGroupID ||
+		path.Link == nil {
 		t.Fatalf("hidden nexthop group admitted a synthetic path: %+v %v %v", path, usable, err)
 	}
 	replaceForwardPathNexthopRoute(t, selector, 1)
@@ -457,8 +639,15 @@ func TestForwardPathLookupPreservesIPv6FlowLabel(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := netlink.RouteAdd(&netlink.Route{
-		Family: unix.AF_INET6, Dst: &net.IPNet{IP: selector.Destination.Addr().AsSlice(), Mask: net.CIDRMask(128, 128)},
-		MultiPath: []*netlink.NexthopInfo{{LinkIndex: fixture.outputs[0].Attrs().Index, Gw: fixture.gateways[0]}, {LinkIndex: fixture.outputs[1].Attrs().Index, Gw: fixture.gateways[1]}},
+		Family: unix.AF_INET6,
+		Dst: &net.IPNet{
+			IP:   selector.Destination.Addr().AsSlice(),
+			Mask: net.CIDRMask(128, 128),
+		},
+		MultiPath: []*netlink.NexthopInfo{
+			{LinkIndex: fixture.outputs[0].Attrs().Index, Gw: fixture.gateways[0]},
+			{LinkIndex: fixture.outputs[1].Attrs().Index, Gw: fixture.gateways[1]},
+		},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -467,7 +656,9 @@ func TestForwardPathLookupPreservesIPv6FlowLabel(t *testing.T) {
 		selector.FlowLabel = label
 		path, usable, err := netif.ForwardPathLookup(t.Context(), slog.Default(), selector)
 		var requirement *netif.EgressObservationRequiredError
-		if usable || !errors.As(err, &requirement) || requirement.Reason != netif.EgressObservationMultipath || path.Link == nil {
+		if usable || !errors.As(err, &requirement) ||
+			requirement.Reason != netif.EgressObservationMultipath ||
+			path.Link == nil {
 			t.Fatalf("flow-label query did not require observation: %+v %v %v", path, usable, err)
 		}
 		outputs[path.Link.Attrs().Index] = true

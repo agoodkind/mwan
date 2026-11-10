@@ -48,31 +48,41 @@ func TestPinnedFlowRespectsFamilyEligibility(t *testing.T) {
 	lan, client := hairpinVeth(t, "lan", "client")
 	badWAN, badPeer := hairpinVeth(t, "badwan", "badpeer")
 	goodWAN, goodPeer := hairpinVeth(t, "goodwan", "goodpeer")
-	if err := netlink.AddrAdd(lan, &netlink.Addr{IPNet: &net.IPNet{IP: net.IPv4(10, 0, 0, 1), Mask: net.CIDRMask(24, 32)}}); err != nil {
+	if err := netlink.AddrAdd(
+		lan,
+		&netlink.Addr{IPNet: &net.IPNet{IP: net.IPv4(10, 0, 0, 1), Mask: net.CIDRMask(24, 32)}},
+	); err != nil {
 		t.Fatal(err)
 	}
 	for _, item := range []struct {
 		link  netlink.Link
 		table int
-	}{{badWAN, unix.RT_TABLE_MAIN}, {badWAN, 100}, {goodWAN, 200}} {
+	}{
+		{badWAN, unix.RT_TABLE_MAIN},
+		{badWAN, 100},
+		{goodWAN, 200},
+	} {
 		if err := netlink.RouteAdd(&netlink.Route{
-			LinkIndex: item.link.Attrs().Index, Table: item.table,
-			Dst: &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)},
+			LinkIndex: item.link.Attrs().Index,
+			Table:     item.table,
+			Dst:       &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)},
 		}); err != nil {
 			t.Fatal(err)
 		}
 		if err := netlink.NeighSet(&netlink.Neigh{
-			LinkIndex: item.link.Attrs().Index,
-			IP:        net.IPv4(198, 51, 100, 8), HardwareAddr: peerFor(item.link, badWAN, badPeer, goodPeer).Attrs().HardwareAddr,
-			State: netlink.NUD_PERMANENT,
+			LinkIndex:    item.link.Attrs().Index,
+			IP:           net.IPv4(198, 51, 100, 8),
+			HardwareAddr: peerFor(item.link, badWAN, badPeer, goodPeer).Attrs().HardwareAddr,
+			State:        netlink.NUD_PERMANENT,
 		}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if err := netlink.NeighSet(&netlink.Neigh{
-		LinkIndex: lan.Attrs().Index,
-		IP:        net.IPv4(10, 0, 0, 3), HardwareAddr: client.Attrs().HardwareAddr,
-		State: netlink.NUD_PERMANENT,
+		LinkIndex:    lan.Attrs().Index,
+		IP:           net.IPv4(10, 0, 0, 3),
+		HardwareAddr: client.Attrs().HardwareAddr,
+		State:        netlink.NUD_PERMANENT,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -89,17 +99,23 @@ func TestPinnedFlowRespectsFamilyEligibility(t *testing.T) {
 	installLatePin(t, "lan", 1)
 	installLegacySteeringChain(t)
 	input := ruleInput{
-		InternalIface: "lan", InternalNetV4: netip.MustParsePrefix("10.0.0.0/24"),
+		InternalIface:  "lan",
+		InternalNetV4:  netip.MustParsePrefix("10.0.0.0/24"),
 		InternalPrefix: netip.MustParsePrefix("fd00::/64"),
-		OpnsenseEdgeV6: netip.MustParseAddr("fd00::1"), Mode: hashModeRandom,
-		AssignV4: balancer{Mark: 2},
+		OpnsenseEdgeV6: netip.MustParseAddr("fd00::1"),
+		Mode:           hashModeRandom,
+		AssignV4:       balancer{Mark: 2},
 		Members: []Member{
 			{WANRef: ifmgr.WANRef{Name: "bad", Iface: "badwan"}, Mark: 1},
 			{WANRef: ifmgr.WANRef{Name: "good", Iface: "goodwan"}, Mark: 2},
 		},
 		EligibleV4: map[uint32]bool{2: true},
 	}
-	if err := newNFTApplier().Apply(context.Background(), slog.Default(), buildRules(input)); err != nil {
+	if err := newNFTApplier().Apply(
+		context.Background(),
+		slog.Default(),
+		buildRules(input),
+	); err != nil {
 		t.Fatal(err)
 	}
 	assertSteeringPriority(t, steerChainPriority)
@@ -109,7 +125,11 @@ func TestPinnedFlowRespectsFamilyEligibility(t *testing.T) {
 		t.Fatal("pinned packet did not exit through the eligible provider")
 	}
 	input.EligibleV4 = map[uint32]bool{1: true, 2: true}
-	if err := newNFTApplier().Apply(context.Background(), slog.Default(), buildRules(input)); err != nil {
+	if err := newNFTApplier().Apply(
+		context.Background(),
+		slog.Default(),
+		buildRules(input),
+	); err != nil {
 		t.Fatal(err)
 	}
 	fallbackRule := netlink.NewRule()
@@ -129,7 +149,11 @@ func TestPinnedFlowRespectsFamilyEligibility(t *testing.T) {
 	}
 	input.AssignV4 = balancer{}
 	input.EligibleV4 = nil
-	if err := newNFTApplier().Apply(context.Background(), slog.Default(), buildRules(input)); err != nil {
+	if err := newNFTApplier().Apply(
+		context.Background(),
+		slog.Default(),
+		buildRules(input),
+	); err != nil {
 		t.Fatal(err)
 	}
 	badSocket := packetSocket(t, badPeer.Attrs().Index)
@@ -160,12 +184,18 @@ func installLegacySteeringChain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	table := conn.AddTable(&nftables.Table{Name: steerTableName, Family: nftables.TableFamilyINet})
+	table := conn.AddTable(&nftables.Table{
+		Name:   steerTableName,
+		Family: nftables.TableFamilyINet,
+	})
 	priority, policy := nftables.ChainPriority(-149), nftables.ChainPolicyAccept
 	conn.AddChain(&nftables.Chain{
-		Name: steerChainName, Table: table,
-		Hooknum: nftables.ChainHookPrerouting, Priority: &priority,
-		Type: nftables.ChainTypeFilter, Policy: &policy,
+		Name:     steerChainName,
+		Table:    table,
+		Hooknum:  nftables.ChainHookPrerouting,
+		Priority: &priority,
+		Type:     nftables.ChainTypeFilter,
+		Policy:   &policy,
 	})
 	if err := conn.Flush(); err != nil {
 		t.Fatal(err)
@@ -179,7 +209,10 @@ func assertSteeringPriority(t *testing.T, want nftables.ChainPriority) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	chain, err := conn.ListChain(&nftables.Table{Name: steerTableName, Family: nftables.TableFamilyINet}, steerChainName)
+	chain, err := conn.ListChain(
+		&nftables.Table{Name: steerTableName, Family: nftables.TableFamilyINet},
+		steerChainName,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,19 +227,29 @@ func installLatePin(t *testing.T, internal string, mark uint32) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	table := conn.AddTable(&nftables.Table{Name: "test_pin", Family: nftables.TableFamilyINet})
+	table := conn.AddTable(&nftables.Table{
+		Name:   "test_pin",
+		Family: nftables.TableFamilyINet,
+	})
 	priority, policy := nftables.ChainPriority(-100), nftables.ChainPolicyAccept
 	chain := conn.AddChain(&nftables.Chain{
-		Name: "prerouting", Table: table,
-		Hooknum: nftables.ChainHookPrerouting, Priority: &priority,
-		Type: nftables.ChainTypeFilter, Policy: &policy,
+		Name:     "prerouting",
+		Table:    table,
+		Hooknum:  nftables.ChainHookPrerouting,
+		Priority: &priority,
+		Type:     nftables.ChainTypeFilter,
+		Policy:   &policy,
 	})
-	conn.AddRule(&nftables.Rule{Table: table, Chain: chain, Exprs: []expr.Any{
-		&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
-		&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: ifname(internal)},
-		&expr.Immediate{Register: 1, Data: binaryutil.NativeEndian.PutUint32(mark)},
-		&expr.Meta{Key: expr.MetaKeyMARK, SourceRegister: true, Register: 1},
-	}})
+	conn.AddRule(&nftables.Rule{
+		Table: table,
+		Chain: chain,
+		Exprs: []expr.Any{
+			&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: ifname(internal)},
+			&expr.Immediate{Register: 1, Data: binaryutil.NativeEndian.PutUint32(mark)},
+			&expr.Meta{Key: expr.MetaKeyMARK, SourceRegister: true, Register: 1},
+		},
+	})
 	if err := conn.Flush(); err != nil {
 		t.Fatal(err)
 	}
@@ -214,19 +257,30 @@ func installLatePin(t *testing.T, internal string, mark uint32) {
 
 func packetSocket(t *testing.T, index int) int {
 	t.Helper()
-	socket, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, int(hairpinNetworkShort(unix.ETH_P_IP)))
+	socket, err := unix.Socket(
+		unix.AF_PACKET,
+		unix.SOCK_RAW,
+		int(hairpinNetworkShort(unix.ETH_P_IP)),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { unix.Close(socket) })
-	if err := unix.Bind(socket, &unix.SockaddrLinklayer{
-		Ifindex:  index,
-		Protocol: hairpinNetworkShort(unix.ETH_P_IP),
-	}); err != nil {
+	if err := unix.Bind(
+		socket,
+		&unix.SockaddrLinklayer{
+			Ifindex:  index,
+			Protocol: hairpinNetworkShort(unix.ETH_P_IP),
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
-	if err := unix.SetsockoptTimeval(socket, unix.SOL_SOCKET, unix.SO_RCVTIMEO,
-		&unix.Timeval{Sec: 1}); err != nil {
+	if err := unix.SetsockoptTimeval(
+		socket,
+		unix.SOL_SOCKET,
+		unix.SO_RCVTIMEO,
+		&unix.Timeval{Sec: 1},
+	); err != nil {
 		t.Fatal(err)
 	}
 	return socket
@@ -247,9 +301,15 @@ func sendIPv4Packet(t *testing.T, lan, client netlink.Link, destination net.IP, 
 	binary.BigEndian.PutUint16(frame[36:38], 443)
 	binary.BigEndian.PutUint16(frame[38:40], 8)
 	binary.BigEndian.PutUint16(frame[24:26], ipv4Checksum(frame[14:34]))
-	if err := unix.Sendto(socket, frame, 0, &unix.SockaddrLinklayer{
-		Ifindex: client.Attrs().Index, Protocol: hairpinNetworkShort(unix.ETH_P_IP),
-	}); err != nil {
+	if err := unix.Sendto(
+		socket,
+		frame,
+		0,
+		&unix.SockaddrLinklayer{
+			Ifindex:  client.Attrs().Index,
+			Protocol: hairpinNetworkShort(unix.ETH_P_IP),
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 }

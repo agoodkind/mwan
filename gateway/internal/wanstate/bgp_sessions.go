@@ -13,6 +13,7 @@ func cloneBGPSessions(sessions []bgp.SessionState) []bgp.SessionState {
 		copied[i].Advertised = slices.Clone(copied[i].Advertised)
 		copied[i].Rejected = slices.Clone(copied[i].Rejected)
 	}
+
 	return copied
 }
 
@@ -28,5 +29,6 @@ func (s *Store) SetBGPSessions(connectionID string, sessions []bgp.SessionState)
 func (s *Store) BGPSessions(connectionID string) []bgp.SessionState {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	return cloneBGPSessions(s.bgpSessions[connectionID])
 }

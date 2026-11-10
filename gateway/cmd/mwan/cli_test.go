@@ -21,7 +21,12 @@ func runCLIProcess(t *testing.T, binary string, arguments ...string) (string, st
 	return runCLIProcessInput(t, binary, "", arguments...)
 }
 
-func runCLIProcessInput(t *testing.T, binary, input string, arguments ...string) (string, string, int) {
+func runCLIProcessInput(
+	t *testing.T,
+	binary string,
+	input string,
+	arguments ...string,
+) (string, string, int) {
 	t.Helper()
 	command := exec.CommandContext(t.Context(), binary, arguments...)
 	command.Env = append(os.Environ(), "MWAN_CONFIG="+filepath.Join(t.TempDir(), "absent.toml"))
@@ -32,10 +37,12 @@ func runCLIProcessInput(t *testing.T, binary, input string, arguments ...string)
 	if err == nil {
 		return output.String(), diagnostics.String(), 0
 	}
+
 	var exitError *exec.ExitError
 	if !errors.As(err, &exitError) {
 		t.Fatal(err)
 	}
+
 	return output.String(), diagnostics.String(), exitError.ExitCode()
 }
 
@@ -66,42 +73,115 @@ func TestCLIHelpEveryCommand(t *testing.T) {
 		{"report", "watch"},
 		{"debug"},
 	}
-	for _, view := range []string{"connectivity", "curl4", "curl6", "lb4", "lb4-ifaces", "lb6", "lb6-ifaces", "npt", "ping4", "ping6", "policy", "prefixes", "routes", "sim4", "sim6", "stats", "status", "systemd", "trace-start", "trace-stop", "trace-tail"} {
+
+	for _, view := range []string{
+		"connectivity",
+		"curl4",
+		"curl6",
+		"lb4",
+		"lb4-ifaces",
+		"lb6",
+		"lb6-ifaces",
+		"npt",
+		"ping4",
+		"ping6",
+		"policy",
+		"prefixes",
+		"routes",
+		"sim4",
+		"sim6",
+		"stats",
+		"status",
+		"systemd",
+		"trace-start",
+		"trace-stop",
+		"trace-tail",
+	} {
 		commands = append(commands, []string{"debug", view})
 	}
+
 	for _, parent := range []string{"deploy", "deploy-gate"} {
-		for _, action := range []string{"arm", "watch", "status", "lease", "release", "verify", "recover", "check-egress", "check-owned-addresses", "check-network", "check-networkd", "check-release", "check-firewall", "inspect-firewall", "check-failover", "wait-reboot", "wait-egress", "wait-deploy"} {
+		for _, action := range []string{
+			"arm",
+			"watch",
+			"status",
+			"lease",
+			"release",
+			"verify",
+			"recover",
+			"check-egress",
+			"check-owned-addresses",
+			"check-network",
+			"check-networkd",
+			"check-release",
+			"check-firewall",
+			"inspect-firewall",
+			"check-failover",
+			"wait-reboot",
+			"wait-egress",
+			"wait-deploy",
+		} {
 			commands = append(commands, []string{parent, action})
 		}
 	}
+
 	commands = append(commands, []string{"deploy-gate", "commit"})
 	for _, arguments := range commands {
-		t.Run(strings.Join(arguments, "/"), func(t *testing.T) {
-			invocation := append(append([]string(nil), arguments...), "--help")
-			output, diagnostics, code := runCLIProcess(t, binary, invocation...)
-			if code != 0 || !strings.Contains(output, "Usage:") || !strings.Contains(output, "Flags:") {
-				t.Fatalf("help exit=%d output=%s diagnostics=%s", code, output, diagnostics)
-			}
-			if diagnostics != "" {
-				t.Fatalf("help wrote diagnostics: %s", diagnostics)
-			}
-		})
+		t.Run(
+			strings.Join(arguments, "/"),
+			func(t *testing.T) {
+				invocation := append(append([]string(nil), arguments...), "--help")
+				output, diagnostics, code := runCLIProcess(t, binary, invocation...)
+				if code != 0 || !strings.Contains(output, "Usage:") ||
+					!strings.Contains(output, "Flags:") {
+					t.Fatalf("help exit=%d output=%s diagnostics=%s", code, output, diagnostics)
+				}
+
+				if diagnostics != "" {
+					t.Fatalf("help wrote diagnostics: %s", diagnostics)
+				}
+			},
+		)
 	}
+
 	output, diagnostics, code := runCLIProcess(t, binary)
 	if code != 0 || !strings.Contains(output, "Available Commands:") {
 		t.Fatalf("root help exit=%d output=%s diagnostics=%s", code, output, diagnostics)
 	}
-	for _, name := range []string{"agent", "watchdog", "ifmgr", "health", "notify", "pd", "debug", "trace-boot", "deploy", "deploy-gate", "wanconfig-selftest", "version", "install", "observe", "gateway-status", "config-state", "report"} {
+
+	for _, name := range []string{
+		"agent",
+		"watchdog",
+		"ifmgr",
+		"health",
+		"notify",
+		"pd",
+		"debug",
+		"trace-boot",
+		"deploy",
+		"deploy-gate",
+		"wanconfig-selftest",
+		"version",
+		"install",
+		"observe",
+		"gateway-status",
+		"config-state",
+		"report",
+	} {
 		if !strings.Contains(output, name) {
 			t.Errorf("root help omitted %s", name)
 		}
 	}
+
 	output, diagnostics, code = runCLIProcess(t, binary, "install")
 	if code != 0 || strings.Count(output, "Usage:") != 1 || diagnostics != "" {
 		t.Fatalf("install help exit=%d output=%s diagnostics=%s", code, output, diagnostics)
 	}
+
 	output, diagnostics, code = runCLIProcess(t, binary, "deploy-gate", "verify", "--help")
-	if code != 0 || !strings.Contains(output, "Aliases:") || !strings.Contains(output, "verify, commit") || diagnostics != "" {
+	if code != 0 || !strings.Contains(output, "Aliases:") ||
+		!strings.Contains(output, "verify, commit") ||
+		diagnostics != "" {
 		t.Fatalf("verify alias help exit=%d output=%s diagnostics=%s", code, output, diagnostics)
 	}
 }
@@ -112,6 +192,7 @@ func TestCLIHelpSkipsConfigurationAndFirewall(t *testing.T) {
 	if err := os.WriteFile(path, []byte("invalid = ["), 0o600); err != nil {
 		t.Fatal(err)
 	}
+
 	for _, arguments := range [][]string{
 		{"ifmgr", "--role", "wan", "--config", path, "--help"},
 		{"ifmgr", "--role", "wan", "-config", path, "-help"},
@@ -130,6 +211,7 @@ func TestCLIHelpSkipsConfigurationAndFirewall(t *testing.T) {
 
 func TestCLINestedConfigurationPlacement(t *testing.T) {
 	binary := buildReportCommand(t)
+
 	path := filepath.Join(t.TempDir(), "selected-runtime.toml")
 	for _, arguments := range [][]string{
 		{"report", "--config", path, "send"},
@@ -137,7 +219,8 @@ func TestCLINestedConfigurationPlacement(t *testing.T) {
 		{"debug", "--config", path, "status"},
 	} {
 		_, diagnostics, code := runCLIProcess(t, binary, arguments...)
-		if code != 1 || !strings.Contains(diagnostics, path) || strings.Contains(diagnostics, "Usage:") {
+		if code != 1 || !strings.Contains(diagnostics, path) ||
+			strings.Contains(diagnostics, "Usage:") {
 			t.Fatalf("%v exit=%d diagnostics=%s", arguments, code, diagnostics)
 		}
 	}
@@ -145,6 +228,7 @@ func TestCLINestedConfigurationPlacement(t *testing.T) {
 
 func TestCLIUsageAndRuntimeErrors(t *testing.T) {
 	binary := buildReportCommand(t)
+
 	for _, test := range []struct {
 		arguments []string
 		code      int
@@ -168,15 +252,26 @@ func TestCLIUsageAndRuntimeErrors(t *testing.T) {
 		{[]string{"deploy", "arm", "manifest.json"}, 64, "mwan deploy arm"},
 	} {
 		output, diagnostics, code := runCLIProcess(t, binary, test.arguments...)
-		if code != test.code || strings.Count(diagnostics, "Usage:") != 1 || !strings.Contains(diagnostics, test.usage) || output != "" {
-			t.Fatalf("%v exit=%d output=%s diagnostics=%s", test.arguments, code, output, diagnostics)
+		if code != test.code || strings.Count(diagnostics, "Usage:") != 1 ||
+			!strings.Contains(diagnostics, test.usage) ||
+			output != "" {
+			t.Fatalf(
+				"%v exit=%d output=%s diagnostics=%s",
+				test.arguments,
+				code,
+				output,
+				diagnostics,
+			)
 		}
+
 		if strings.Contains(diagnostics, "read config") {
 			t.Fatalf("usage attempted configuration: %s", diagnostics)
 		}
 	}
+
 	_, diagnostics, code := runCLIProcess(t, binary, "agent")
-	if code != 1 || !strings.Contains(diagnostics, "read config") || strings.Contains(diagnostics, "Usage:") {
+	if code != 1 || !strings.Contains(diagnostics, "read config") ||
+		strings.Contains(diagnostics, "Usage:") {
 		t.Fatalf("runtime exit=%d diagnostics=%s", code, diagnostics)
 	}
 }
@@ -187,6 +282,7 @@ func TestCLIDeploymentOperationExitCodes(t *testing.T) {
 	if err := os.WriteFile(path, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
+
 	for _, arguments := range [][]string{
 		{"deploy", "arm", "--config", path},
 		{"deploy", "status", "operation-1", "--config", path},
@@ -196,9 +292,16 @@ func TestCLIDeploymentOperationExitCodes(t *testing.T) {
 	} {
 		output, diagnostics, code := runCLIProcess(t, binary, arguments...)
 		if code != 1 || strings.Count(diagnostics, "Usage:") != 1 || output != "" {
-			t.Fatalf("operation arguments %v exit=%d output=%s diagnostics=%s", arguments, code, output, diagnostics)
+			t.Fatalf(
+				"operation arguments %v exit=%d output=%s diagnostics=%s",
+				arguments,
+				code,
+				output,
+				diagnostics,
+			)
 		}
 	}
+
 	for _, arguments := range [][]string{
 		{"deploy", "arm", "manifest.json"},
 		{"deploy", "arm", "manifest.json", "--config", "relative.toml"},
@@ -209,26 +312,55 @@ func TestCLIDeploymentOperationExitCodes(t *testing.T) {
 			t.Fatalf("arm configuration %v exit=%d diagnostics=%s", arguments, code, diagnostics)
 		}
 	}
+
 	missing := filepath.Join(t.TempDir(), "missing-runtime.toml")
-	_, diagnostics, code := runCLIProcess(t, binary, "deploy", "status", "operation-1", "generation-1", "--config", missing)
-	if code != 64 || !strings.Contains(diagnostics, missing) || strings.Contains(diagnostics, "Usage:") {
+	_, diagnostics, code := runCLIProcess(
+		t,
+		binary,
+		"deploy",
+		"status",
+		"operation-1",
+		"generation-1",
+		"--config",
+		missing,
+	)
+	if code != 64 || !strings.Contains(diagnostics, missing) ||
+		strings.Contains(diagnostics, "Usage:") {
 		t.Fatalf("operation load exit=%d diagnostics=%s", code, diagnostics)
 	}
+
 	invalid := filepath.Join(t.TempDir(), "invalid-timeout.toml")
-	if err := os.WriteFile(invalid, []byte("[watchdog]\nconnectivity_timeout_seconds = 0\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		invalid,
+		[]byte("[watchdog]\nconnectivity_timeout_seconds = 0\n"),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
-	_, diagnostics, code = runCLIProcess(t, binary, "deploy", "status", "operation-1", "generation-1", "--config", invalid)
-	if code != 64 || !strings.Contains(diagnostics, "positive watchdog timeouts") || strings.Contains(diagnostics, "Usage:") {
+
+	_, diagnostics, code = runCLIProcess(
+		t,
+		binary,
+		"deploy",
+		"status",
+		"operation-1",
+		"generation-1",
+		"--config",
+		invalid,
+	)
+	if code != 64 || !strings.Contains(diagnostics, "positive watchdog timeouts") ||
+		strings.Contains(diagnostics, "Usage:") {
 		t.Fatalf("operation timeout exit=%d diagnostics=%s", code, diagnostics)
 	}
 }
 
 func TestCLIObservationJSONInput(t *testing.T) {
 	binary := buildReportCommand(t)
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		_, _ = writer.Write([]byte("healthy"))
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			_, _ = writer.Write([]byte("healthy"))
+		}),
+	)
 	defer server.Close()
 	root := t.TempDir()
 	machineID := "cli-observation-machine"
@@ -236,24 +368,41 @@ func TestCLIObservationJSONInput(t *testing.T) {
 	if err := os.WriteFile(machinePath, []byte(machineID), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	settings, err := json.Marshal(observation.RuntimeConfig{MachineIDPath: machinePath, ProbeBinary: binary})
+
+	settings, err := json.Marshal(observation.RuntimeConfig{
+		MachineIDPath: machinePath,
+		ProbeBinary:   binary,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	runtimePath := filepath.Join(root, "runtime.json")
 	if err := os.WriteFile(runtimePath, settings, 0o600); err != nil {
 		t.Fatal(err)
 	}
+
 	spec := observation.CheckSpec{
-		ID: "cli-http", Dimension: observation.DimensionDownstreamApplication,
-		Operation: observation.OperationHTTP, Observer: observation.Endpoint{Kind: observation.EndpointLocal, MachineID: machineID},
-		Family: observation.FamilyIPv4, Source: netip.MustParseAddr("127.0.0.1"), Target: server.URL,
-		TimeoutSeconds: 2, MaxAgeSeconds: 10, ExpectedHTTPStatus: []int{http.StatusOK}, ExpectedBody: "healthy",
+		ID:        "cli-http",
+		Dimension: observation.DimensionDownstreamApplication,
+		Operation: observation.OperationHTTP,
+		Observer: observation.Endpoint{
+			Kind:      observation.EndpointLocal,
+			MachineID: machineID,
+		},
+		Family:             observation.FamilyIPv4,
+		Source:             netip.MustParseAddr("127.0.0.1"),
+		Target:             server.URL,
+		TimeoutSeconds:     2,
+		MaxAgeSeconds:      10,
+		ExpectedHTTPStatus: []int{http.StatusOK},
+		ExpectedBody:       "healthy",
 	}
 	request, err := json.Marshal(spec)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	for _, standardInput := range []bool{false, true} {
 		arguments := []string{"observe", "--runtime-settings", runtimePath}
 		input := ""
@@ -262,15 +411,19 @@ func TestCLIObservationJSONInput(t *testing.T) {
 		} else {
 			arguments = append(arguments, "--check", string(request))
 		}
+
 		output, diagnostics, code := runCLIProcessInput(t, binary, input, arguments...)
 		if code != 0 {
 			t.Fatalf("observe exit=%d output=%s diagnostics=%s", code, output, diagnostics)
 		}
+
 		var result observation.Result
 		if err := json.Unmarshal([]byte(output), &result); err != nil {
 			t.Fatalf("result JSON: %v: %s", err, output)
 		}
-		if result.Outcome != observation.OutcomePass || result.CheckID != spec.ID || result.HTTPStatus != http.StatusOK {
+
+		if result.Outcome != observation.OutcomePass || result.CheckID != spec.ID ||
+			result.HTTPStatus != http.StatusOK {
 			t.Fatalf("HTTP observation did not pass: %+v", result)
 		}
 	}
@@ -282,10 +435,29 @@ func TestCLIConfigPrecedenceAndLegacyFlagValues(t *testing.T) {
 	if err := os.WriteFile(path, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
+
 	for _, value := range []string{"-example", "-config", "--help"} {
-		output, diagnostics, code := runCLIProcess(t, binary, "notify", "-self-test", "-dry-run", "-config", path, "--config", "/absent.toml", "--message", value)
+		output, diagnostics, code := runCLIProcess(
+			t,
+			binary,
+			"notify",
+			"-self-test",
+			"-dry-run",
+			"-config",
+			path,
+			"--config",
+			"/absent.toml",
+			"--message",
+			value,
+		)
 		if code != 0 || !strings.Contains(output, "message       = "+value) {
-			t.Fatalf("message=%q exit=%d output=%s diagnostics=%s", value, code, output, diagnostics)
+			t.Fatalf(
+				"message=%q exit=%d output=%s diagnostics=%s",
+				value,
+				code,
+				output,
+				diagnostics,
+			)
 		}
 	}
 }
@@ -296,9 +468,12 @@ func TestCLIDebugPingUsesRequestedInterface(t *testing.T) {
 	if err := os.WriteFile(path, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
+
 	iface := "mwan-no-iface"
 	output, diagnostics, code := runCLIProcess(t, binary, "debug", "ping4", iface, "--config", path)
-	if code != 0 || !strings.Contains(output, "via "+iface) || strings.Count(output, "attempt ") != 6 || strings.Count(output, "3 transmitted, 0 received") != 2 {
+	if code != 0 || !strings.Contains(output, "via "+iface) ||
+		strings.Count(output, "attempt ") != 6 ||
+		strings.Count(output, "3 transmitted, 0 received") != 2 {
 		t.Fatalf("debug ping exit=%d output=%s diagnostics=%s", code, output, diagnostics)
 	}
 }
@@ -307,13 +482,36 @@ func TestCLICheckReleaseConfigurationFailuresUseStdout(t *testing.T) {
 	binary := buildReportCommand(t)
 	missing := filepath.Join(t.TempDir(), "missing.toml")
 	invalid := filepath.Join(t.TempDir(), "invalid-watchdog.toml")
-	if err := os.WriteFile(invalid, []byte("[watchdog]\nconnectivity_timeout_seconds = 'invalid'\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		invalid,
+		[]byte("[watchdog]\nconnectivity_timeout_seconds = 'invalid'\n"),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
+
 	for _, path := range []string{missing, invalid} {
-		output, diagnostics, code := runCLIProcess(t, binary, "deploy", "check-release", "provider-1", "mwan", "--config", path)
-		if code != 1 || !strings.HasPrefix(output, "release configuration rejected: ") || strings.Contains(output, "Usage:") || strings.Contains(diagnostics, "Usage:") || strings.Contains(diagnostics, "mwan deploy check-release:") {
-			t.Fatalf("release configuration %s exit=%d output=%s diagnostics=%s", path, code, output, diagnostics)
+		output, diagnostics, code := runCLIProcess(
+			t,
+			binary,
+			"deploy",
+			"check-release",
+			"provider-1",
+			"mwan",
+			"--config",
+			path,
+		)
+		if code != 1 || !strings.HasPrefix(output, "release configuration rejected: ") ||
+			strings.Contains(output, "Usage:") ||
+			strings.Contains(diagnostics, "Usage:") ||
+			strings.Contains(diagnostics, "mwan deploy check-release:") {
+			t.Fatalf(
+				"release configuration %s exit=%d output=%s diagnostics=%s",
+				path,
+				code,
+				output,
+				diagnostics,
+			)
 		}
 	}
 }
@@ -324,7 +522,9 @@ func TestCLIDeploymentEmptyFilePathsPreserveRuntimeFailures(t *testing.T) {
 	if err := os.WriteFile(validConfig, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
+
 	schema := filepath.Join("..", "..", "internal", "yangpub", "schema")
+
 	for _, parent := range []string{"deploy", "deploy-gate"} {
 		for _, test := range []struct {
 			action    string
@@ -333,38 +533,67 @@ func TestCLIDeploymentEmptyFilePathsPreserveRuntimeFailures(t *testing.T) {
 			stderr    string
 		}{
 			{"check-network", []string{"", schema}, "network configuration rejected: ", ""},
-			{"check-networkd", []string{"", schema, t.TempDir()}, "network configuration rejected: ", ""},
+			{
+				"check-networkd",
+				[]string{"", schema, t.TempDir()},
+				"network configuration rejected: ",
+				"",
+			},
 			{"check-firewall", []string{"", schema}, "", "no such file or directory"},
 			{"inspect-firewall", []string{"", schema}, "", "no such file or directory"},
 			{"check-failover", []string{""}, "", "failover configuration rejected: read config .:"},
 		} {
-			t.Run(parent+"/"+test.action, func(t *testing.T) {
-				arguments := append([]string{parent, test.action}, test.arguments...)
-				command := exec.CommandContext(t.Context(), binary, arguments...)
-				command.Env = append(os.Environ(), "MWAN_CONFIG="+validConfig)
-				var output, diagnostics bytes.Buffer
-				command.Stdout, command.Stderr = &output, &diagnostics
-				err := command.Run()
-				var exitError *exec.ExitError
-				if !errors.As(err, &exitError) || exitError.ExitCode() != 1 {
-					t.Fatalf("empty path %v returned %v: stdout=%s stderr=%s", arguments, err, output.String(), diagnostics.String())
-				}
-				if test.stdout != "" && !strings.HasPrefix(output.String(), test.stdout) {
-					t.Fatalf("stdout=%q, want prefix %q", output.String(), test.stdout)
-				}
-				if test.stdout == "" && output.Len() != 0 {
-					t.Fatalf("unexpected stdout: %s", output.String())
-				}
-				if test.stderr != "" && !strings.Contains(diagnostics.String(), test.stderr) {
-					t.Fatalf("stderr=%q, want %q", diagnostics.String(), test.stderr)
-				}
-				if strings.Contains(output.String(), "Usage:") || strings.Contains(diagnostics.String(), "Usage:") {
-					t.Fatalf("runtime failure appended help: stdout=%s stderr=%s", output.String(), diagnostics.String())
-				}
-			})
+			t.Run(
+				parent+"/"+test.action,
+				func(t *testing.T) {
+					arguments := append([]string{parent, test.action}, test.arguments...)
+					command := exec.CommandContext(t.Context(), binary, arguments...)
+					command.Env = append(os.Environ(), "MWAN_CONFIG="+validConfig)
+					var output, diagnostics bytes.Buffer
+					command.Stdout, command.Stderr = &output, &diagnostics
+					err := command.Run()
+					var exitError *exec.ExitError
+					if !errors.As(err, &exitError) || exitError.ExitCode() != 1 {
+						t.Fatalf(
+							"empty path %v returned %v: stdout=%s stderr=%s",
+							arguments,
+							err,
+							output.String(),
+							diagnostics.String(),
+						)
+					}
+
+					if test.stdout != "" && !strings.HasPrefix(output.String(), test.stdout) {
+						t.Fatalf("stdout=%q, want prefix %q", output.String(), test.stdout)
+					}
+
+					if test.stdout == "" && output.Len() != 0 {
+						t.Fatalf("unexpected stdout: %s", output.String())
+					}
+
+					if test.stderr != "" && !strings.Contains(diagnostics.String(), test.stderr) {
+						t.Fatalf("stderr=%q, want %q", diagnostics.String(), test.stderr)
+					}
+
+					if strings.Contains(output.String(), "Usage:") ||
+						strings.Contains(diagnostics.String(), "Usage:") {
+						t.Fatalf(
+							"runtime failure appended help: stdout=%s stderr=%s",
+							output.String(),
+							diagnostics.String(),
+						)
+					}
+				},
+			)
 			_, diagnostics, code := runCLIProcess(t, binary, parent, test.action)
 			if code != 64 || strings.Count(diagnostics, "Usage:") != 1 {
-				t.Fatalf("invalid argument count for %s %s returned %d: %s", parent, test.action, code, diagnostics)
+				t.Fatalf(
+					"invalid argument count for %s %s returned %d: %s",
+					parent,
+					test.action,
+					code,
+					diagnostics,
+				)
 			}
 		}
 	}
@@ -373,28 +602,51 @@ func TestCLIDeploymentEmptyFilePathsPreserveRuntimeFailures(t *testing.T) {
 func TestCLIObservationRuntimeFileFailureDoesNotPrintHelp(t *testing.T) {
 	binary := buildReportCommand(t)
 	spec := observation.CheckSpec{
-		ID: "runtime-file", Dimension: observation.DimensionDownstreamApplication,
-		Operation: observation.OperationHTTP, Observer: observation.Endpoint{Kind: observation.EndpointLocal, MachineID: "runtime-file-observer"},
-		Family: observation.FamilyIPv4, Source: netip.MustParseAddr("127.0.0.1"), Target: "http://127.0.0.1:1",
-		TimeoutSeconds: 2, MaxAgeSeconds: 10, ExpectedHTTPStatus: []int{http.StatusOK},
+		ID:        "runtime-file",
+		Dimension: observation.DimensionDownstreamApplication,
+		Operation: observation.OperationHTTP,
+		Observer: observation.Endpoint{
+			Kind:      observation.EndpointLocal,
+			MachineID: "runtime-file-observer",
+		},
+		Family:             observation.FamilyIPv4,
+		Source:             netip.MustParseAddr("127.0.0.1"),
+		Target:             "http://127.0.0.1:1",
+		TimeoutSeconds:     2,
+		MaxAgeSeconds:      10,
+		ExpectedHTTPStatus: []int{http.StatusOK},
 	}
 	request, err := json.Marshal(spec)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	for _, standardInput := range []bool{false, true} {
-		arguments := []string{"observe", "--runtime-settings", filepath.Join(t.TempDir(), "missing.json")}
+		arguments := []string{
+			"observe",
+			"--runtime-settings",
+			filepath.Join(t.TempDir(), "missing.json"),
+		}
 		input := ""
 		if standardInput {
 			input = string(request)
 		} else {
 			arguments = append(arguments, "--check", string(request))
 		}
+
 		output, diagnostics, code := runCLIProcessInput(t, binary, input, arguments...)
-		if code != 2 || output != "" || !strings.Contains(diagnostics, "observe runtime settings cannot be opened") || strings.Contains(diagnostics, "Usage:") {
-			t.Fatalf("runtime file failure returned %d: stdout=%s stderr=%s", code, output, diagnostics)
+		if code != 2 || output != "" ||
+			!strings.Contains(diagnostics, "observe runtime settings cannot be opened") ||
+			strings.Contains(diagnostics, "Usage:") {
+			t.Fatalf(
+				"runtime file failure returned %d: stdout=%s stderr=%s",
+				code,
+				output,
+				diagnostics,
+			)
 		}
 	}
+
 	for _, arguments := range [][]string{
 		{"observe", "--check", "{"},
 		{"observe", "--check", string(request), "--paths", "{"},

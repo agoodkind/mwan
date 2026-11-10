@@ -51,14 +51,32 @@ func TestOOBDHCPv4LinkFlapDuringAcquireWakesRetry(t *testing.T) {
 	}
 	bindStartupDirectory(t, stateDir, "/var/lib/mwan")
 	setRuntimeLoopback(t)
-	downstream := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29"}, []string{"192.0.2.2/29"}, "")
+	downstream := newRuntimePeer(
+		t,
+		gateway,
+		"enmwanbr0",
+		"lan-host",
+		[]string{"192.0.2.1/29"},
+		[]string{"192.0.2.2/29"},
+		"",
+	)
 	defer downstream.namespace.Close()
-	provider := newRuntimePeer(t, gateway, "enatt0", "wan-vlan", nil, []string{"198.51.100.2/24"}, "")
+	provider := newRuntimePeer(
+		t,
+		gateway,
+		"enatt0",
+		"wan-vlan",
+		nil,
+		[]string{"198.51.100.2/24"},
+		"",
+	)
 	defer provider.namespace.Close()
 	var discoverCount atomic.Int64
 	var firstTransaction atomic.Uint32
 	setRuntimeNamespace(t, provider.namespace)
-	server, err := server4.NewServer("wan-vlan", &net.UDPAddr{IP: net.IPv4zero, Port: 67},
+	server, err := server4.NewServer(
+		"wan-vlan",
+		&net.UDPAddr{IP: net.IPv4zero, Port: 67},
 		func(conn net.PacketConn, peer net.Addr, packet *dhcpv4.DHCPv4) {
 			discoverCount.Add(1)
 			transaction := binary.BigEndian.Uint32(packet.TransactionID[:])
@@ -70,7 +88,8 @@ func TestOOBDHCPv4LinkFlapDuringAcquireWakesRetry(t *testing.T) {
 			if packet.MessageType() == dhcpv4.MessageTypeRequest {
 				responseType = dhcpv4.MessageTypeAck
 			}
-			reply, replyErr := dhcpv4.NewReplyFromRequest(packet,
+			reply, replyErr := dhcpv4.NewReplyFromRequest(
+				packet,
 				dhcpv4.WithMessageType(responseType),
 				dhcpv4.WithYourIP(net.ParseIP("198.51.100.101")),
 				dhcpv4.WithOption(dhcpv4.OptServerIdentifier(net.ParseIP("198.51.100.2"))),
@@ -81,7 +100,8 @@ func TestOOBDHCPv4LinkFlapDuringAcquireWakesRetry(t *testing.T) {
 			if replyErr == nil {
 				_, _ = conn.WriteTo(reply.ToBytes(), peer)
 			}
-		})
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +115,13 @@ func TestOOBDHCPv4LinkFlapDuringAcquireWakesRetry(t *testing.T) {
 	}()
 	setRuntimeNamespace(t, gateway)
 	configPath := writeDHCPAcquireBackoffConfig(t, root)
-	daemon := startRoleDHCPv4RuntimeDaemon(t, os.Getenv(dhcpAcquireBackoffBinaryEnv), configPath, root, "oob")
+	daemon := startRoleDHCPv4RuntimeDaemon(
+		t,
+		os.Getenv(dhcpAcquireBackoffBinaryEnv),
+		configPath,
+		root,
+		"oob",
+	)
 	defer func() { stopRuntimeDaemon(t, daemon) }()
 	discoverDeadline := time.Now().Add(20 * time.Second)
 	for discoverCount.Load() == 0 {
@@ -129,8 +155,14 @@ func dhcpAcquireBackoffIsolated(t *testing.T) bool {
 	}
 	daemonBinary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$", "-test.v")
-	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
-	child.Env = append(os.Environ(), dhcpAcquireBackoffChildEnv+"=1", dhcpAcquireBackoffBinaryEnv+"="+daemonBinary)
+	child.SysProcAttr = &syscall.SysProcAttr{
+		Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS),
+	}
+	child.Env = append(
+		os.Environ(),
+		dhcpAcquireBackoffChildEnv+"=1",
+		dhcpAcquireBackoffBinaryEnv+"="+daemonBinary,
+	)
 	if output, err := child.CombinedOutput(); err != nil {
 		t.Fatalf("exec %s: %v: %s", t.Name(), err, output)
 	}
@@ -144,7 +176,10 @@ func writeDHCPAcquireBackoffConfig(t *testing.T, root string) string {
 		t.Fatal(err)
 	}
 	configPath := filepath.Join(root, "config.toml")
-	config := fmt.Sprintf("[ifmgr]\nrole = \"oob\"\nreconcile_interval = \"1h\"\nlease_directory = %q\n[ifmgr.iface.enatt0]\ndhcp_v4 = true\ndhcp_initial_backoff = \"30s\"\ndhcp_max_backoff = \"5m\"\n[ifmgr.modules.oobv6]\niface = \"enatt0\"\noob_addr = \"2001:db8::100/128\"\noob_table_id = 100\nmanage_slaac_source_rule = false\n[ifmgr.modules.oobv4]\niface = \"enatt0\"\noob_table_id = 100\n[ifmgr.modules.ra_lost]\niface = \"enatt0\"\n[[ifmgr.modules.policy_rules.rule]]\nfamily = \"ipv4\"\npriority = 100\nfrom = \"192.0.2.2/32\"\ntable_id = 100\n", leaseDirectory)
+	config := fmt.Sprintf(
+		"[ifmgr]\nrole = \"oob\"\nreconcile_interval = \"1h\"\nlease_directory = %q\n[ifmgr.iface.enatt0]\ndhcp_v4 = true\ndhcp_initial_backoff = \"30s\"\ndhcp_max_backoff = \"5m\"\n[ifmgr.modules.oobv6]\niface = \"enatt0\"\noob_addr = \"2001:db8::100/128\"\noob_table_id = 100\nmanage_slaac_source_rule = false\n[ifmgr.modules.oobv4]\niface = \"enatt0\"\noob_table_id = 100\n[ifmgr.modules.ra_lost]\niface = \"enatt0\"\n[[ifmgr.modules.policy_rules.rule]]\nfamily = \"ipv4\"\npriority = 100\nfrom = \"192.0.2.2/32\"\ntable_id = 100\n",
+		leaseDirectory,
+	)
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -172,12 +207,30 @@ func TestOOBDHCPv4UnrelatedLinkFlapKeepsAcquisitionBackoff(t *testing.T) {
 	}
 	bindStartupDirectory(t, stateDir, "/var/lib/mwan")
 	setRuntimeLoopback(t)
-	downstream := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29"}, []string{"192.0.2.2/29"}, "")
+	downstream := newRuntimePeer(
+		t,
+		gateway,
+		"enmwanbr0",
+		"lan-host",
+		[]string{"192.0.2.1/29"},
+		[]string{"192.0.2.2/29"},
+		"",
+	)
 	defer downstream.namespace.Close()
-	provider := newRuntimePeer(t, gateway, "enatt0", "wan-vlan", nil, []string{"198.51.100.2/24"}, "")
+	provider := newRuntimePeer(
+		t,
+		gateway,
+		"enatt0",
+		"wan-vlan",
+		nil,
+		[]string{"198.51.100.2/24"},
+		"",
+	)
 	defer provider.namespace.Close()
 	unrelatedName := "unrelated0"
-	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: unrelatedName}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Dummy{
+		LinkAttrs: netlink.LinkAttrs{Name: unrelatedName},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	var transactionsMu sync.Mutex
@@ -188,12 +241,15 @@ func TestOOBDHCPv4UnrelatedLinkFlapKeepsAcquisitionBackoff(t *testing.T) {
 		return len(transactions)
 	}
 	setRuntimeNamespace(t, provider.namespace)
-	server, err := server4.NewServer("wan-vlan", &net.UDPAddr{IP: net.IPv4zero, Port: 67},
+	server, err := server4.NewServer(
+		"wan-vlan",
+		&net.UDPAddr{IP: net.IPv4zero, Port: 67},
 		func(_ net.PacketConn, _ net.Addr, packet *dhcpv4.DHCPv4) {
 			transactionsMu.Lock()
 			defer transactionsMu.Unlock()
 			transactions[binary.BigEndian.Uint32(packet.TransactionID[:])] = struct{}{}
-		})
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +263,13 @@ func TestOOBDHCPv4UnrelatedLinkFlapKeepsAcquisitionBackoff(t *testing.T) {
 	}()
 	setRuntimeNamespace(t, gateway)
 	configPath := writeDHCPAcquireBackoffConfig(t, root)
-	daemon := startRoleDHCPv4RuntimeDaemon(t, os.Getenv(dhcpAcquireBackoffBinaryEnv), configPath, root, "oob")
+	daemon := startRoleDHCPv4RuntimeDaemon(
+		t,
+		os.Getenv(dhcpAcquireBackoffBinaryEnv),
+		configPath,
+		root,
+		"oob",
+	)
 	defer func() { stopRuntimeDaemon(t, daemon) }()
 	waitDHCPv4RuntimeState(t, daemon, "dhcp: acquire failed; will retry", 40*time.Second)
 	for _, name := range []string{unrelatedName, "enmwanbr0", unrelatedName, "enmwanbr0"} {
@@ -238,7 +300,10 @@ func TestOOBDHCPv4UnrelatedLinkFlapKeepsAcquisitionBackoff(t *testing.T) {
 	if count := transactionCount(); count != 1 {
 		t.Fatalf("DHCP transaction count = %d, want 1: %s", count, runtimeLogTail(t, daemon, 30))
 	}
-	if count := strings.Count(runtimeDaemonLog(t, daemon), "dhcp: acquire failed; will retry"); count != 1 {
+	if count := strings.Count(
+		runtimeDaemonLog(t, daemon),
+		"dhcp: acquire failed; will retry",
+	); count != 1 {
 		t.Fatalf("acquire failure count = %d, want 1: %s", count, runtimeLogTail(t, daemon, 30))
 	}
 	if err := netlink.LinkSetDown(link); err != nil {
@@ -251,7 +316,11 @@ func TestOOBDHCPv4UnrelatedLinkFlapKeepsAcquisitionBackoff(t *testing.T) {
 	retryDeadline := flappedAt.Add(15 * time.Second)
 	for transactionCount() < 2 {
 		if !time.Now().Before(retryDeadline) {
-			t.Fatalf("DHCP transaction count = %d, want 2: %s", transactionCount(), runtimeLogTail(t, daemon, 30))
+			t.Fatalf(
+				"DHCP transaction count = %d, want 2: %s",
+				transactionCount(),
+				runtimeLogTail(t, daemon, 30),
+			)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -279,9 +348,25 @@ func TestOOBDHCPv4LinkUpWakesAcquisitionBackoff(t *testing.T) {
 	}
 	bindStartupDirectory(t, stateDir, "/var/lib/mwan")
 	setRuntimeLoopback(t)
-	downstream := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29"}, []string{"192.0.2.2/29"}, "")
+	downstream := newRuntimePeer(
+		t,
+		gateway,
+		"enmwanbr0",
+		"lan-host",
+		[]string{"192.0.2.1/29"},
+		[]string{"192.0.2.2/29"},
+		"",
+	)
 	defer downstream.namespace.Close()
-	provider := newRuntimePeer(t, gateway, "enatt0", "wan-vlan", nil, []string{"198.51.100.2/24"}, "")
+	provider := newRuntimePeer(
+		t,
+		gateway,
+		"enatt0",
+		"wan-vlan",
+		nil,
+		[]string{"198.51.100.2/24"},
+		"",
+	)
 	defer provider.namespace.Close()
 	setRuntimeNamespace(t, provider.namespace)
 	service := startDHCPv4RuntimeKea(t, root, false, 600, "198.51.100.2", "198.51.100.100", true)
@@ -298,7 +383,13 @@ func TestOOBDHCPv4LinkUpWakesAcquisitionBackoff(t *testing.T) {
 		t.Fatal(err)
 	}
 	configPath := writeDHCPAcquireBackoffConfig(t, root)
-	daemon := startRoleDHCPv4RuntimeDaemon(t, os.Getenv(dhcpAcquireBackoffBinaryEnv), configPath, root, "oob")
+	daemon := startRoleDHCPv4RuntimeDaemon(
+		t,
+		os.Getenv(dhcpAcquireBackoffBinaryEnv),
+		configPath,
+		root,
+		"oob",
+	)
 	defer func() { stopRuntimeDaemon(t, daemon) }()
 	backoffDeadline := time.Now().Add(40 * time.Second)
 	for !strings.Contains(runtimeDaemonLog(t, daemon), "dhcp: acquire failed; will retry") {

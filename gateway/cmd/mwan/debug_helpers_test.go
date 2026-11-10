@@ -39,6 +39,7 @@ func TestDebugIPv4SourceUsesSecondAddress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("debugIPv4Source returned error: %v", err)
 	}
+
 	if source != "10.250.250.2" {
 		t.Fatalf("debugIPv4Source = %q, want %q", source, "10.250.250.2")
 	}

@@ -68,7 +68,11 @@ func (log *dhcpv6TimerLog) snapshot() []dhcpv6TimerObservation {
 	return append([]dhcpv6TimerObservation(nil), log.entries...)
 }
 
-func (log *dhcpv6TimerLog) wait(t *testing.T, timeout time.Duration, match func(dhcpv6TimerObservation) bool) dhcpv6TimerObservation {
+func (log *dhcpv6TimerLog) wait(
+	t *testing.T,
+	timeout time.Duration,
+	match func(dhcpv6TimerObservation) bool,
+) dhcpv6TimerObservation {
 	t.Helper()
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
@@ -81,7 +85,11 @@ func (log *dhcpv6TimerLog) wait(t *testing.T, timeout time.Duration, match func(
 		select {
 		case <-log.changed:
 		case <-timer.C:
-			t.Fatalf("expected DHCPv6 message did not arrive within %s: messages=%v", timeout, log.snapshot())
+			t.Fatalf(
+				"expected DHCPv6 message did not arrive within %s: messages=%v",
+				timeout,
+				log.snapshot(),
+			)
 		}
 	}
 }
@@ -100,7 +108,10 @@ func startDHCPv6TimerServer(t *testing.T, mode dhcpv6TimerMode) *dhcpv6TimerLog 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ipv6.NewPacketConn(listener).JoinGroup(link, &net.UDPAddr{IP: net.ParseIP("ff02::1:2")}); err != nil {
+	if err := ipv6.NewPacketConn(listener).JoinGroup(
+		link,
+		&net.UDPAddr{IP: net.ParseIP("ff02::1:2")},
+	); err != nil {
 		t.Fatal(err)
 	}
 	serverID, err := dhcpv6.DUIDFromBytes([]byte{0, 3, 0, 1, 2, 0, 94, 0, 83, 2})
@@ -127,13 +138,19 @@ func startDHCPv6TimerServer(t *testing.T, mode dhcpv6TimerMode) *dhcpv6TimerLog 
 			}
 			received := time.Now()
 			observation := dhcpv6TimerObservation{
-				messageType: request.MessageType, transactionID: request.TransactionID,
-				elapsed: dhcpv6TimerElapsed(request), received: received, answered: false, validUntil: time.Time{},
+				messageType:   request.MessageType,
+				transactionID: request.TransactionID,
+				elapsed:       dhcpv6TimerElapsed(request),
+				received:      received,
+				answered:      false,
+				validUntil:    time.Time{},
 			}
 			delay := time.Duration(0)
 			switch request.MessageType {
 			case dhcpv6.MessageTypeSolicit:
-				if mode == dhcpv6TimerSilentUntilExpiry && !expiry.IsZero() && received.After(expiry) && !ignoredAfterExpiry {
+				if mode == dhcpv6TimerSilentUntilExpiry && !expiry.IsZero() &&
+					received.After(expiry) &&
+					!ignoredAfterExpiry {
 					ignoredAfterExpiry = true
 					observations.add(observation)
 					continue
@@ -154,26 +171,45 @@ func startDHCPv6TimerServer(t *testing.T, mode dhcpv6TimerMode) *dhcpv6TimerLog 
 			observation.answered = true
 			observation.validUntil = received.Add(delay + dhcpv6TimerValid)
 			index := observations.add(observation)
-			time.AfterFunc(delay, func() {
-				if _, err := listener.WriteTo(response.ToBytes(), peer); err == nil {
-					observations.markReplied(index, time.Now())
-				}
-			})
+			time.AfterFunc(
+				delay,
+				func() {
+					if _, err := listener.WriteTo(response.ToBytes(), peer); err == nil {
+						observations.markReplied(index, time.Now())
+					}
+				},
+			)
 		}
 	}()
 	return observations
 }
 
-func dhcpv6TimerResponse(request *dhcpv6.Message, serverID dhcpv6.DUID, prefix *net.IPNet) *dhcpv6.Message {
-	response := &dhcpv6.Message{MessageType: dhcpv6.MessageTypeReply, TransactionID: request.TransactionID}
+func dhcpv6TimerResponse(
+	request *dhcpv6.Message,
+	serverID dhcpv6.DUID,
+	prefix *net.IPNet,
+) *dhcpv6.Message {
+	response := &dhcpv6.Message{
+		MessageType:   dhcpv6.MessageTypeReply,
+		TransactionID: request.TransactionID,
+	}
 	if request.MessageType == dhcpv6.MessageTypeSolicit {
 		response.MessageType = dhcpv6.MessageTypeAdvertise
 	}
 	dhcpv6.WithClientID(request.Options.ClientID())(response)
 	dhcpv6.WithServerID(serverID)(response)
 	prefixes := dhcpv6.Options{}
-	prefixes.Add(&dhcpv6.OptIAPrefix{Prefix: prefix, PreferredLifetime: dhcpv6TimerPreferred, ValidLifetime: dhcpv6TimerValid})
-	response.AddOption(&dhcpv6.OptIAPD{IaId: request.Options.IAPD()[0].IaId, T1: dhcpv6TimerT1, T2: dhcpv6TimerT2, Options: dhcpv6.PDOptions{Options: prefixes}})
+	prefixes.Add(&dhcpv6.OptIAPrefix{
+		Prefix:            prefix,
+		PreferredLifetime: dhcpv6TimerPreferred,
+		ValidLifetime:     dhcpv6TimerValid,
+	})
+	response.AddOption(&dhcpv6.OptIAPD{
+		IaId:    request.Options.IAPD()[0].IaId,
+		T1:      dhcpv6TimerT1,
+		T2:      dhcpv6TimerT2,
+		Options: dhcpv6.PDOptions{Options: prefixes},
+	})
 	return response
 }
 

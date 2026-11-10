@@ -8,9 +8,11 @@ func LinkOwnershipIdentity(link netlink.Link) string {
 	if link.Attrs().Alias != "" {
 		return "alias:" + link.Attrs().Alias
 	}
+
 	if len(link.Attrs().PermHWAddr) != 0 {
 		return "mac:" + link.Attrs().PermHWAddr.String()
 	}
+
 	return "mac:" + link.Attrs().HardwareAddr.String()
 }
 

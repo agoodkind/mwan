@@ -87,7 +87,13 @@ func TestFailoverDHCPv4DisabledRuntime(t *testing.T) {
 	testRoleDHCPv4DaemonRuntime(t, "failover", false, dhcpv4LinkFlapNone)
 }
 
-func testOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAddress, rejectedRecovery bool) {
+func testOwnedDHCPv4DaemonRuntime(
+	t *testing.T,
+	classless bool,
+	recoverAtT2 bool,
+	replaceAddress bool,
+	rejectedRecovery bool,
+) {
 	t.Helper()
 	if os.Getenv(dhcpv4RuntimeChildEnv) == "1" {
 		runOwnedDHCPv4DaemonRuntime(t, classless, recoverAtT2, replaceAddress, rejectedRecovery)
@@ -95,14 +101,22 @@ func testOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceA
 	}
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
-	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
+	child.SysProcAttr = &syscall.SysProcAttr{
+		Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS),
+	}
 	child.Env = append(os.Environ(), dhcpv4RuntimeChildEnv+"=1", dhcpv4RuntimeBinaryEnv+"="+binary)
 	if output, err := child.CombinedOutput(); err != nil {
 		t.Fatalf("isolated DHCPv4 daemon test: %v: %s", err, output)
 	}
 }
 
-func runOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAddress, rejectedRecovery bool) {
+func runOwnedDHCPv4DaemonRuntime(
+	t *testing.T,
+	classless bool,
+	recoverAtT2 bool,
+	replaceAddress bool,
+	rejectedRecovery bool,
+) {
 	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -131,13 +145,23 @@ func runOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAd
 	bindStartupDirectory(t, networkdDir, "/etc/systemd/network")
 	writeDHCPv4RuntimeNetwork(t, networkDir)
 	configPath := filepath.Join(root, "config.toml")
-	config := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[wanconfig]\npublish = true\n", filepath.Join(root, "owned-links.json"), filepath.Join(root, "owned-addresses.json"), filepath.Join(root, "kernel-policy.json"))
+	config := fmt.Sprintf(
+		"[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[wanconfig]\npublish = true\n",
+		filepath.Join(root, "owned-links.json"),
+		filepath.Join(root, "owned-addresses.json"),
+		filepath.Join(root, "kernel-policy.json"),
+	)
 	leaseDirectory := filepath.Join(root, "leases")
 	if rejectedRecovery {
 		if err := os.Mkdir(leaseDirectory, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		config = strings.Replace(config, "[ifmgr.iface.enmwanbr0]", fmt.Sprintf("lease_directory = %q\n[ifmgr.iface.enmwanbr0]", leaseDirectory), 1)
+		config = strings.Replace(
+			config,
+			"[ifmgr.iface.enmwanbr0]",
+			fmt.Sprintf("lease_directory = %q\n[ifmgr.iface.enmwanbr0]", leaseDirectory),
+			1,
+		)
 	}
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
@@ -146,9 +170,25 @@ func runOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAd
 		t.Fatal(err)
 	}
 	setRuntimeLoopback(t)
-	management := newRuntimePeer(t, gateway, "enmgmt0", "mgmt-host", []string{"203.0.113.1/24"}, []string{"203.0.113.2/24"}, "")
+	management := newRuntimePeer(
+		t,
+		gateway,
+		"enmgmt0",
+		"mgmt-host",
+		[]string{"203.0.113.1/24"},
+		[]string{"203.0.113.2/24"},
+		"",
+	)
 	defer management.namespace.Close()
-	downstream := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29"}, []string{"192.0.2.2/29"}, "")
+	downstream := newRuntimePeer(
+		t,
+		gateway,
+		"enmwanbr0",
+		"lan-host",
+		[]string{"192.0.2.1/29"},
+		[]string{"192.0.2.2/29"},
+		"",
+	)
 	defer downstream.namespace.Close()
 	provider := newRuntimePeer(t, gateway, "wan-under", "wan-host", nil, nil, "")
 	defer provider.namespace.Close()
@@ -157,7 +197,10 @@ func runOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAd
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "wan-vlan", ParentIndex: parent.Attrs().Index}, VlanId: 101}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Vlan{
+		LinkAttrs: netlink.LinkAttrs{Name: "wan-vlan", ParentIndex: parent.Attrs().Index},
+		VlanId:    101,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	configureRuntimeLink(t, "wan-vlan", []string{"198.51.100.2/24"})
@@ -167,7 +210,15 @@ func runOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAd
 	} else if rejectedRecovery {
 		leaseSeconds = 40
 	}
-	service := startDHCPv4RuntimeKea(t, root, classless, leaseSeconds, "198.51.100.2", "198.51.100.100", true)
+	service := startDHCPv4RuntimeKea(
+		t,
+		root,
+		classless,
+		leaseSeconds,
+		"198.51.100.2",
+		"198.51.100.100",
+		true,
+	)
 	serviceRunning := true
 	defer func() {
 		if serviceRunning {
@@ -183,13 +234,24 @@ func runOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAd
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), runTimeout)
 	defer cancel()
-	reader, closeRepository, err := openPrivateRepository(ctx, slog.Default(), selftestFlags{repository: filepath.Join(root, "repository"), modelsDir: selftestModelsDir(t)})
+	reader, closeRepository, err := openPrivateRepository(
+		ctx,
+		slog.Default(),
+		selftestFlags{
+			repository: filepath.Join(root, "repository"),
+			modelsDir:  selftestModelsDir(t),
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer closeRepository()
 	read := func() string {
-		value, found, readErr := reader.ExportJSON(ctx, yangpub.DatastoreOperational, "/ietf-interfaces:*")
+		value, found, readErr := reader.ExportJSON(
+			ctx,
+			yangpub.DatastoreOperational,
+			"/ietf-interfaces:*",
+		)
 		if readErr != nil || !found {
 			return ""
 		}
@@ -220,19 +282,37 @@ func runOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAd
 		if err != nil || len(entries) != 1 {
 			t.Fatalf("saved WAN lease count: entries=%v err=%v", entries, err)
 		}
-		if err := os.WriteFile(filepath.Join(wanLeaseDirectory, entries[0].Name()), []byte("corrupt saved lease"), 0o600); err != nil {
+		if err := os.WriteFile(
+			filepath.Join(wanLeaseDirectory, entries[0].Name()),
+			[]byte("corrupt saved lease"),
+			0o600,
+		); err != nil {
 			t.Fatal(err)
 		}
 		setRuntimeNamespace(t, provider.namespace)
 		stopProtocolServices(t, []protocolService{service})
 		serviceRunning = false
 		setRuntimeNamespace(t, gateway)
-		daemon = startRuntimeDaemon(t, os.Getenv(dhcpv4RuntimeBinaryEnv), configPath, root, "dhcpv4-rejected")
+		daemon = startRuntimeDaemon(
+			t,
+			os.Getenv(dhcpv4RuntimeBinaryEnv),
+			configPath,
+			root,
+			"dhcpv4-rejected",
+		)
 		waitRuntimeOwnershipRead(t, daemon, read, `"acquisition":"recovery-rejected"`)
 		waitRuntimeOwnershipRead(t, daemon, read, `"lease-persistence":"rejected"`)
 		waitStaticRuntimeAddress(t, daemon, "enatt0", prefix, false)
 		setRuntimeNamespace(t, provider.namespace)
-		service = startDHCPv4RuntimeKea(t, root, false, leaseSeconds, "198.51.100.2", "198.51.100.100", false)
+		service = startDHCPv4RuntimeKea(
+			t,
+			root,
+			false,
+			leaseSeconds,
+			"198.51.100.2",
+			"198.51.100.100",
+			false,
+		)
 		serviceRunning = true
 		setRuntimeNamespace(t, gateway)
 		deadline := time.Now().Add(30 * time.Second)
@@ -245,7 +325,10 @@ func runOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAd
 			if err != nil {
 				t.Fatal(err)
 			}
-			if slices.ContainsFunc(addresses, func(address netlink.Addr) bool { return address.IPNet.String() == prefix }) {
+			if slices.ContainsFunc(
+				addresses,
+				func(address netlink.Addr) bool { return address.IPNet.String() == prefix },
+			) {
 				break
 			}
 			assertRuntimeDaemonRunning(t, daemon)
@@ -276,7 +359,17 @@ func runOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAd
 			t.Fatal(err)
 		}
 	}
-	waitRuntimeTCP(t, daemon, gateway, provider.namespace, downstream.namespace, "tcp4", "198.51.100.2:30522", "192.0.2.2:0", time.Now().Add(15*time.Second))
+	waitRuntimeTCP(
+		t,
+		daemon,
+		gateway,
+		provider.namespace,
+		downstream.namespace,
+		"tcp4",
+		"198.51.100.2:30522",
+		"192.0.2.2:0",
+		time.Now().Add(15*time.Second),
+	)
 	setRuntimeNamespace(t, provider.namespace)
 	stopProtocolServices(t, []protocolService{service})
 	serviceRunning = false
@@ -302,7 +395,15 @@ func runOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAd
 		if replaceAddress {
 			reserved = "198.51.100.101"
 		}
-		service = startDHCPv4RuntimeKea(t, root, classless, leaseSeconds, "198.51.100.3", reserved, false)
+		service = startDHCPv4RuntimeKea(
+			t,
+			root,
+			classless,
+			leaseSeconds,
+			"198.51.100.3",
+			reserved,
+			false,
+		)
 		serviceRunning = true
 		setRuntimeNamespace(t, gateway)
 		if replaceAddress {
@@ -317,7 +418,10 @@ func runOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAd
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := netlink.RouteReplace(&netlink.Route{Dst: destination, Gw: net.ParseIP("198.51.100.101")}); err != nil {
+			if err := netlink.RouteReplace(&netlink.Route{
+				Dst: destination,
+				Gw:  net.ParseIP("198.51.100.101"),
+			}); err != nil {
 				t.Fatal(err)
 			}
 			setRuntimeNamespace(t, gateway)
@@ -334,13 +438,27 @@ func runOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAd
 				}
 			}
 			keaLog, _ := os.ReadFile(filepath.Join(root, "kea-dhcp4.log"))
-			t.Fatalf("changed DHCPv4 route appeared only after the original lease expired: %s\nKea: %s", strings.Join(dhcpLog, "\n"), keaLog)
+			t.Fatalf(
+				"changed DHCPv4 route appeared only after the original lease expired: %s\nKea: %s",
+				strings.Join(dhcpLog, "\n"),
+				keaLog,
+			)
 		}
 		waitStaticRuntimeRoute(t, daemon, "ipv4", "198.51.100.2", 20, false)
 		waitDHCPv4RuntimeOnLinkRoute(t, daemon, "198.51.100.3", true)
 		waitDHCPv4RuntimeOnLinkRoute(t, daemon, "198.51.100.2", false)
 		waitStaticRuntimeAddress(t, daemon, "enatt0", prefix, true)
-		waitRuntimeTCP(t, daemon, gateway, provider.namespace, downstream.namespace, "tcp4", "198.51.100.2:30524", "192.0.2.2:0", time.Now().Add(15*time.Second))
+		waitRuntimeTCP(
+			t,
+			daemon,
+			gateway,
+			provider.namespace,
+			downstream.namespace,
+			"tcp4",
+			"198.51.100.2:30524",
+			"192.0.2.2:0",
+			time.Now().Add(15*time.Second),
+		)
 		return
 	}
 	waitStaticRuntimeAddress(t, daemon, "enatt0", prefix, false)
@@ -354,7 +472,15 @@ func runOwnedDHCPv4DaemonRuntime(t *testing.T, classless, recoverAtT2, replaceAd
 			t.Fatalf("DHCPv4 %s transition absent: %s", state, runtimeLogTail(t, daemon, 30))
 		}
 	}
-	assertRuntimeTCP(t, provider.namespace, downstream.namespace, "tcp4", "198.51.100.2:30523", "192.0.2.2:0", false)
+	assertRuntimeTCP(
+		t,
+		provider.namespace,
+		downstream.namespace,
+		"tcp4",
+		"198.51.100.2:30523",
+		"192.0.2.2:0",
+		false,
+	)
 	setRuntimeNamespace(t, gateway)
 	assertRuntimeDaemonRunning(t, daemon)
 }
@@ -374,7 +500,9 @@ func writeDHCPv4RuntimeNetwork(t *testing.T, directory string) {
 		t.Fatal(err)
 	}
 	owned := `{"name":"enatt0","type":"iana-if-type:l2vlan","enabled":true,"goodkind-mwan-steering:connection-id":"att","goodkind-mwan-steering:owner":"mwan","goodkind-mwan-steering:link":{"vlan":{"parent":"wan-under","id":101}},"ietf-ip:ipv4":{"goodkind-mwan-steering:dhcp":true,"goodkind-mwan-steering:route-metric":20,"goodkind-mwan-steering:dhcpv4":{"client-id":"hex:01aabb","use-dns":false,"use-routes":true},"goodkind-mwan-steering:translation":{"mode":"native"}},"goodkind-mwan-steering:wan":{"name":"att","table-id":100,"fw-mark":1,"fw-mark-prio":100,"from-prio":55},"goodkind-mwan-steering:steering":{"tier":0,"weight":1}}`
-	interfaces["interface"] = json.RawMessage(`[` + owned + `,{"name":"wan-under","type":"iana-if-type:ethernetCsmacd"},{"name":"enmwanbr0","type":"iana-if-type:other"},{"name":"enmgmt0","type":"iana-if-type:other"}]`)
+	interfaces["interface"] = json.RawMessage(
+		`[` + owned + `,{"name":"wan-under","type":"iana-if-type:ethernetCsmacd"},{"name":"enmwanbr0","type":"iana-if-type:other"},{"name":"enmgmt0","type":"iana-if-type:other"}]`,
+	)
 	document["ietf-interfaces:interfaces"], err = json.Marshal(interfaces)
 	if err != nil {
 		t.Fatal(err)
@@ -388,18 +516,29 @@ func writeDHCPv4RuntimeNetwork(t *testing.T, directory string) {
 	}
 }
 
-func waitDHCPv4RuntimeOnLinkRoute(t *testing.T, daemon *runtimeDaemon, gateway string, present bool) {
+func waitDHCPv4RuntimeOnLinkRoute(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	gateway string,
+	present bool,
+) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		routes, err := netlink.RouteListFiltered(unix.AF_INET, &netlink.Route{Table: unix.RT_TABLE_MAIN}, netlink.RT_FILTER_TABLE)
+		routes, err := netlink.RouteListFiltered(
+			unix.AF_INET,
+			&netlink.Route{Table: unix.RT_TABLE_MAIN},
+			netlink.RT_FILTER_TABLE,
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
 		found := false
 		for _, route := range routes {
 			if route.Dst != nil && route.Dst.String() == gateway+"/32" && route.Priority == 20 &&
-				route.Protocol == netif.OwnedStaticRouteProtocol && (route.Gw == nil || route.Gw.Equal(net.IPv4zero)) {
+				route.Protocol == netif.OwnedStaticRouteProtocol && (route.Gw == nil || route.Gw.Equal(
+				net.IPv4zero,
+			)) {
 				found = true
 			}
 		}
@@ -412,7 +551,12 @@ func waitDHCPv4RuntimeOnLinkRoute(t *testing.T, daemon *runtimeDaemon, gateway s
 	t.Fatalf("on-link route present=%t not observed: %s", present, runtimeLogTail(t, daemon, 40))
 }
 
-func waitDHCPv4RuntimeState(t *testing.T, daemon *runtimeDaemon, state string, timeout time.Duration) {
+func waitDHCPv4RuntimeState(
+	t *testing.T,
+	daemon *runtimeDaemon,
+	state string,
+	timeout time.Duration,
+) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -425,9 +569,20 @@ func waitDHCPv4RuntimeState(t *testing.T, daemon *runtimeDaemon, state string, t
 	t.Fatalf("DHCPv4 %s transition absent: %s", state, runtimeLogTail(t, daemon, 30))
 }
 
-func startDHCPv4RuntimeKea(t *testing.T, root string, classless bool, leaseSeconds int, gateway, reserved string, mountDirs bool) protocolService {
+func startDHCPv4RuntimeKea(
+	t *testing.T,
+	root string,
+	classless bool,
+	leaseSeconds int,
+	gateway string,
+	reserved string,
+	mountDirs bool,
+) protocolService {
 	t.Helper()
-	for _, path := range []string{filepath.Join(root, "kea-run"), filepath.Join(root, "kea-state")} {
+	for _, path := range []string{
+		filepath.Join(root, "kea-run"),
+		filepath.Join(root, "kea-state"),
+	} {
 		if err := os.MkdirAll(path, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -436,7 +591,12 @@ func startDHCPv4RuntimeKea(t *testing.T, root string, classless bool, leaseSecon
 		bindStartupDirectory(t, filepath.Join(root, "kea-run"), "/run/kea")
 		bindStartupDirectory(t, filepath.Join(root, "kea-state"), "/var/lib/kea")
 	}
-	config := fmt.Sprintf(`{"Dhcp4":{"interfaces-config":{"interfaces":["wan-vlan"]},"lease-database":{"type":"memfile","persist":true,"name":"/var/lib/kea/leases4.csv"},"valid-lifetime":%d,"subnet4":[{"id":1,"subnet":"198.51.100.0/24","pools":[{"pool":"198.51.100.100-198.51.100.110"}],"reservations":[{"client-id":"01:aa:bb","ip-address":"%s"}],"option-data":[{"name":"routers","data":"%s"}]}]}}`, leaseSeconds, reserved, gateway)
+	config := fmt.Sprintf(
+		`{"Dhcp4":{"interfaces-config":{"interfaces":["wan-vlan"]},"lease-database":{"type":"memfile","persist":true,"name":"/var/lib/kea/leases4.csv"},"valid-lifetime":%d,"subnet4":[{"id":1,"subnet":"198.51.100.0/24","pools":[{"pool":"198.51.100.100-198.51.100.110"}],"reservations":[{"client-id":"01:aa:bb","ip-address":"%s"}],"option-data":[{"name":"routers","data":"%s"}]}]}}`,
+		leaseSeconds,
+		reserved,
+		gateway,
+	)
 	if classless {
 		hooks, err := filepath.Glob("/usr/lib/*/kea/hooks/libdhcp_flex_option.so")
 		if err != nil {
@@ -445,7 +605,14 @@ func startDHCPv4RuntimeKea(t *testing.T, root string, classless bool, leaseSecon
 		if len(hooks) != 1 {
 			t.Fatalf("expected one installed Kea flex-option hook, found %d: %v", len(hooks), hooks)
 		}
-		config = fmt.Sprintf(`{"Dhcp4":{"interfaces-config":{"interfaces":["wan-vlan"]},"lease-database":{"type":"memfile","persist":true,"name":"/var/lib/kea/leases4.csv"},"valid-lifetime":%d,"hooks-libraries":[{"library":%q,"parameters":{"options":[{"code":1,"supersede":"255.255.255.255"}]}}],"subnet4":[{"id":1,"subnet":"198.51.100.0/24","pools":[{"pool":"198.51.100.100-198.51.100.110"}],"reservations":[{"client-id":"01:aa:bb","ip-address":"%s"}],"option-data":[{"name":"routers","data":"198.51.100.9"},{"code":121,"name":"classless-static-route","data":"%s/32 - 0.0.0.0, 0.0.0.0/0 - %s"}]}]}}`, leaseSeconds, hooks[0], reserved, gateway, gateway)
+		config = fmt.Sprintf(
+			`{"Dhcp4":{"interfaces-config":{"interfaces":["wan-vlan"]},"lease-database":{"type":"memfile","persist":true,"name":"/var/lib/kea/leases4.csv"},"valid-lifetime":%d,"hooks-libraries":[{"library":%q,"parameters":{"options":[{"code":1,"supersede":"255.255.255.255"}]}}],"subnet4":[{"id":1,"subnet":"198.51.100.0/24","pools":[{"pool":"198.51.100.100-198.51.100.110"}],"reservations":[{"client-id":"01:aa:bb","ip-address":"%s"}],"option-data":[{"name":"routers","data":"198.51.100.9"},{"code":121,"name":"classless-static-route","data":"%s/32 - 0.0.0.0, 0.0.0.0/0 - %s"}]}]}}`,
+			leaseSeconds,
+			hooks[0],
+			reserved,
+			gateway,
+			gateway,
+		)
 	}
 	configPath := filepath.Join(root, "kea-dhcp4.conf")
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
@@ -489,7 +656,9 @@ func testRoleDHCPv4DaemonRuntime(t *testing.T, role string, enabled bool, linkFl
 	}
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
-	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
+	child.SysProcAttr = &syscall.SysProcAttr{
+		Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS),
+	}
 	child.Env = append(os.Environ(), dhcpv4RuntimeChildEnv+"=1", dhcpv4RuntimeBinaryEnv+"="+binary)
 	if output, err := child.CombinedOutput(); err != nil {
 		t.Fatalf("isolated %s DHCPv4 daemon test: %v: %s", role, err, output)
@@ -514,7 +683,15 @@ func runRoleDHCPv4DaemonRuntime(t *testing.T, role string, enabled bool, linkFla
 	}
 	bindStartupDirectory(t, stateDir, "/var/lib/mwan")
 	setRuntimeLoopback(t)
-	downstream := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29"}, []string{"192.0.2.2/29"}, "")
+	downstream := newRuntimePeer(
+		t,
+		gateway,
+		"enmwanbr0",
+		"lan-host",
+		[]string{"192.0.2.1/29"},
+		[]string{"192.0.2.2/29"},
+		"",
+	)
 	defer downstream.namespace.Close()
 	provider := newRuntimePeer(t, gateway, "wan-under", "wan-host", nil, nil, "")
 	defer provider.namespace.Close()
@@ -523,7 +700,10 @@ func runRoleDHCPv4DaemonRuntime(t *testing.T, role string, enabled bool, linkFla
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "enatt0", ParentIndex: parent.Attrs().Index}, VlanId: 101}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Vlan{
+		LinkAttrs: netlink.LinkAttrs{Name: "enatt0", ParentIndex: parent.Attrs().Index},
+		VlanId:    101,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	configureRuntimeLink(t, "enatt0", nil)
@@ -532,7 +712,10 @@ func runRoleDHCPv4DaemonRuntime(t *testing.T, role string, enabled bool, linkFla
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "wan-vlan", ParentIndex: parent.Attrs().Index}, VlanId: 101}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Vlan{
+		LinkAttrs: netlink.LinkAttrs{Name: "wan-vlan", ParentIndex: parent.Attrs().Index},
+		VlanId:    101,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	configureRuntimeLink(t, "wan-vlan", []string{"198.51.100.2/24"})
@@ -544,7 +727,15 @@ func runRoleDHCPv4DaemonRuntime(t *testing.T, role string, enabled bool, linkFla
 	if linkFlap == dhcpv4LinkFlapRenewing {
 		leaseSeconds = 80
 	}
-	service := startDHCPv4RuntimeKea(t, root, false, leaseSeconds, "198.51.100.2", "198.51.100.100", true)
+	service := startDHCPv4RuntimeKea(
+		t,
+		root,
+		false,
+		leaseSeconds,
+		"198.51.100.2",
+		"198.51.100.100",
+		true,
+	)
 	serviceRunning := true
 	defer func() {
 		if serviceRunning {
@@ -559,7 +750,11 @@ func runRoleDHCPv4DaemonRuntime(t *testing.T, role string, enabled bool, linkFla
 	addRuntimeRoute(t, gateway, downstream.namespace, "203.0.113.2/32", "192.0.2.1")
 	addRuntimeRoute(t, gateway, provider.namespace, "192.0.2.0/29", "198.51.100.101")
 	configPath := filepath.Join(root, "config.toml")
-	config := fmt.Sprintf("[ifmgr]\nrole = %q\nreconcile_interval = \"1h\"\n[ifmgr.iface.enatt0]\ndhcp_v4 = %t\n", role, enabled)
+	config := fmt.Sprintf(
+		"[ifmgr]\nrole = %q\nreconcile_interval = \"1h\"\n[ifmgr.iface.enatt0]\ndhcp_v4 = %t\n",
+		role,
+		enabled,
+	)
 	if role == "oob" {
 		config += "[ifmgr.modules.oobv6]\niface = \"enatt0\"\noob_addr = \"2001:db8::100/128\"\noob_table_id = 100\nmanage_slaac_source_rule = false\n[ifmgr.modules.oobv4]\niface = \"enatt0\"\noob_table_id = 100\n[ifmgr.modules.ra_lost]\niface = \"enatt0\"\n[[ifmgr.modules.policy_rules.rule]]\nfamily = \"ipv4\"\npriority = 100\nfrom = \"192.0.2.2/32\"\ntable_id = 100\n"
 	} else {
@@ -568,7 +763,13 @@ func runRoleDHCPv4DaemonRuntime(t *testing.T, role string, enabled bool, linkFla
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	daemon := startRoleDHCPv4RuntimeDaemon(t, os.Getenv(dhcpv4RuntimeBinaryEnv), configPath, root, role)
+	daemon := startRoleDHCPv4RuntimeDaemon(
+		t,
+		os.Getenv(dhcpv4RuntimeBinaryEnv),
+		configPath,
+		root,
+		role,
+	)
 	defer stopRuntimeDaemon(t, daemon)
 	table := unix.RT_TABLE_MAIN
 	if role == "oob" {
@@ -603,21 +804,55 @@ func runRoleDHCPv4DaemonRuntime(t *testing.T, role string, enabled bool, linkFla
 		}
 		waitRoleDHCPv4Route(t, daemon, table, true)
 		waitStaticRuntimeAddress(t, daemon, "enatt0", "198.51.100.101/24", true)
-		waitRuntimeTCP(t, daemon, gateway, provider.namespace, downstream.namespace, "tcp4", "203.0.113.2:30525", "192.0.2.2:0", time.Now().Add(15*time.Second))
+		waitRuntimeTCP(
+			t,
+			daemon,
+			gateway,
+			provider.namespace,
+			downstream.namespace,
+			"tcp4",
+			"203.0.113.2:30525",
+			"192.0.2.2:0",
+			time.Now().Add(15*time.Second),
+		)
 		return
 	}
-	waitRuntimeTCP(t, daemon, gateway, provider.namespace, downstream.namespace, "tcp4", "203.0.113.2:30525", "192.0.2.2:0", time.Now().Add(15*time.Second))
+	waitRuntimeTCP(
+		t,
+		daemon,
+		gateway,
+		provider.namespace,
+		downstream.namespace,
+		"tcp4",
+		"203.0.113.2:30525",
+		"192.0.2.2:0",
+		time.Now().Add(15*time.Second),
+	)
 	setRuntimeNamespace(t, provider.namespace)
 	stopProtocolServices(t, []protocolService{service})
 	serviceRunning = false
 	setRuntimeNamespace(t, gateway)
 	waitStaticRuntimeAddress(t, daemon, "enatt0", "198.51.100.101/24", false)
 	waitRoleDHCPv4Route(t, daemon, table, false)
-	assertRuntimeTCP(t, provider.namespace, downstream.namespace, "tcp4", "203.0.113.2:30526", "192.0.2.2:0", false)
+	assertRuntimeTCP(
+		t,
+		provider.namespace,
+		downstream.namespace,
+		"tcp4",
+		"203.0.113.2:30526",
+		"192.0.2.2:0",
+		false,
+	)
 	setRuntimeNamespace(t, gateway)
 }
 
-func startRoleDHCPv4RuntimeDaemon(t *testing.T, binary, configPath, root, role string) *runtimeDaemon {
+func startRoleDHCPv4RuntimeDaemon(
+	t *testing.T,
+	binary string,
+	configPath string,
+	root string,
+	role string,
+) *runtimeDaemon {
 	t.Helper()
 	logPath := filepath.Join(root, role+".log")
 	logFile, err := os.Create(logPath)
@@ -640,14 +875,19 @@ func waitRoleDHCPv4Route(t *testing.T, daemon *runtimeDaemon, table int, present
 	deadline := time.Now().Add(12 * time.Second)
 	var observed []netlink.Route
 	for time.Now().Before(deadline) {
-		routes, err := netlink.RouteListFiltered(unix.AF_INET, &netlink.Route{Table: table}, netlink.RT_FILTER_TABLE)
+		routes, err := netlink.RouteListFiltered(
+			unix.AF_INET,
+			&netlink.Route{Table: table},
+			netlink.RT_FILTER_TABLE,
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
 		observed = routes
 		found := false
 		for _, route := range routes {
-			if (route.Dst == nil || route.Dst.String() == "0.0.0.0/0") && route.Gw.Equal(net.ParseIP("198.51.100.2")) {
+			if (route.Dst == nil || route.Dst.String() == "0.0.0.0/0") &&
+				route.Gw.Equal(net.ParseIP("198.51.100.2")) {
 				found = true
 			}
 		}
@@ -657,5 +897,11 @@ func waitRoleDHCPv4Route(t *testing.T, daemon *runtimeDaemon, table int, present
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("DHCPv4 table %d default present=%t not observed; routes=%v: %s", table, present, observed, runtimeLogTail(t, daemon, 30))
+	t.Fatalf(
+		"DHCPv4 table %d default present=%t not observed; routes=%v: %s",
+		table,
+		present,
+		observed,
+		runtimeLogTail(t, daemon, 30),
+	)
 }

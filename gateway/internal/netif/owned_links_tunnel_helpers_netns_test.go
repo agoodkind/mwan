@@ -53,7 +53,9 @@ func tunnelTestLog() *slog.Logger {
 
 func addTunnelUnderlay(t *testing.T, name string) netlink.Link {
 	t.Helper()
-	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: name}}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Dummy{
+		LinkAttrs: netlink.LinkAttrs{Name: name},
+	}); err != nil {
 		t.Fatalf("create underlay %s: %v", name, err)
 	}
 	underlay, err := netlink.LinkByName(name)
@@ -67,21 +69,42 @@ func addTunnelUnderlay(t *testing.T, name string) netlink.Link {
 }
 
 func externalConnection(name string) interfaceintent.Connection {
-	return interfaceintent.Connection{ID: connectionid.ID(name), Name: name, Owner: interfaceintent.OwnerExternal}
+	return interfaceintent.Connection{
+		ID:    connectionid.ID(name),
+		Name:  name,
+		Owner: interfaceintent.OwnerExternal,
+	}
 }
 
-func tunnelConnection(underlay string, remote string, ttl *uint8, mtu *uint32) interfaceintent.Connection {
+func tunnelConnection(
+	underlay string,
+	remote string,
+	ttl *uint8,
+	mtu *uint32,
+) interfaceintent.Connection {
 	return namedTunnelConnection(tunnelName, underlay, remote, ttl, mtu)
 }
 
-func namedTunnelConnection(name string, underlay string, remote string, ttl *uint8, mtu *uint32) interfaceintent.Connection {
+func namedTunnelConnection(
+	name string,
+	underlay string,
+	remote string,
+	ttl *uint8,
+	mtu *uint32,
+) interfaceintent.Connection {
 	return interfaceintent.Connection{
-		ID: connectionid.ID(name), Name: name, Owner: interfaceintent.OwnerMWAN,
+		ID:    connectionid.ID(name),
+		Name:  name,
+		Owner: interfaceintent.OwnerMWAN,
 		Link: &interfaceintent.Link{
-			Kind: interfaceintent.KindTunnel, MTU: mtu,
+			Kind: interfaceintent.KindTunnel,
+			MTU:  mtu,
 			Tunnel: &interfaceintent.Tunnel{
-				Protocol: interfaceintent.TunnelProtocol6in4, Underlay: underlay,
-				Remote: netip.MustParseAddr(remote), Local: netip.MustParseAddr(tunnelLocalOuter), TTL: ttl,
+				Protocol: interfaceintent.TunnelProtocol6in4,
+				Underlay: underlay,
+				Remote:   netip.MustParseAddr(remote),
+				Local:    netip.MustParseAddr(tunnelLocalOuter),
+				TTL:      ttl,
 			},
 		},
 	}
@@ -96,7 +119,11 @@ func newTunnelReconciler(t *testing.T, statePath string) *OwnedLinkReconciler {
 	return reconciler
 }
 
-func reconcileTunnel(t *testing.T, reconciler *OwnedLinkReconciler, connections ...interfaceintent.Connection) OwnedLinkResult {
+func reconcileTunnel(
+	t *testing.T,
+	reconciler *OwnedLinkReconciler,
+	connections ...interfaceintent.Connection,
+) OwnedLinkResult {
 	t.Helper()
 	results, err := reconciler.Reconcile(t.Context(), tunnelTestLog(), connections, nil)
 	if err != nil {
@@ -131,11 +158,24 @@ func tunnelDevice(t *testing.T, name string) *netlink.Sittun {
 	return device
 }
 
-func requireTunnelAttributes(t *testing.T, device *netlink.Sittun, underlay netlink.Link, remote string, ttl uint8, mtu int) {
+func requireTunnelAttributes(
+	t *testing.T,
+	device *netlink.Sittun,
+	underlay netlink.Link,
+	remote string,
+	ttl uint8,
+	mtu int,
+) {
 	t.Helper()
-	if !device.Remote.Equal(net.ParseIP(remote)) || !device.Local.Equal(net.ParseIP(tunnelLocalOuter)) {
-		t.Fatalf("tunnel endpoints local=%s remote=%s, want local=%s remote=%s",
-			device.Local, device.Remote, tunnelLocalOuter, remote)
+	if !device.Remote.Equal(net.ParseIP(remote)) ||
+		!device.Local.Equal(net.ParseIP(tunnelLocalOuter)) {
+		t.Fatalf(
+			"tunnel endpoints local=%s remote=%s, want local=%s remote=%s",
+			device.Local,
+			device.Remote,
+			tunnelLocalOuter,
+			remote,
+		)
 	}
 	if device.Ttl != ttl {
 		t.Fatalf("tunnel TTL = %d, want %d", device.Ttl, ttl)
@@ -144,8 +184,12 @@ func requireTunnelAttributes(t *testing.T, device *netlink.Sittun, underlay netl
 		t.Fatalf("tunnel MTU = %d, want %d", device.Attrs().MTU, mtu)
 	}
 	if device.Attrs().ParentIndex != underlay.Attrs().Index {
-		t.Fatalf("tunnel underlay index = %d, want %d (%s)",
-			device.Attrs().ParentIndex, underlay.Attrs().Index, underlay.Attrs().Name)
+		t.Fatalf(
+			"tunnel underlay index = %d, want %d (%s)",
+			device.Attrs().ParentIndex,
+			underlay.Attrs().Index,
+			underlay.Attrs().Name,
+		)
 	}
 	if device.Proto != unix.IPPROTO_IPV6 {
 		t.Fatalf("tunnel inner protocol = %d, want %d", device.Proto, unix.IPPROTO_IPV6)

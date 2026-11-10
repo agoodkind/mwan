@@ -50,14 +50,20 @@ func (s Spec) SysrepoImports(policy []byte) []SysrepoImport {
 	if !s.Schema {
 		return nil
 	}
+
 	imports := make([]SysrepoImport, 0, 2)
+
 	for _, datastore := range []Datastore{DatastoreStartup, DatastoreRunning} {
-		imports = append(imports, SysrepoImport{
-			Datastore: datastore,
-			Module:    NACMModule,
-			Content:   policy,
-		})
+		imports = append(
+			imports,
+			SysrepoImport{
+				Datastore: datastore,
+				Module:    NACMModule,
+				Content:   policy,
+			},
+		)
 	}
+
 	return imports
 }
 
@@ -67,6 +73,7 @@ func (s Spec) StackYangModules() []stackspec.YangModule {
 	if !slices.Contains(s.Enable, rousetteUnit) {
 		return nil
 	}
+
 	return stackspec.RousetteYangModules()
 }
 
@@ -89,44 +96,60 @@ func (s Spec) Units() ([]Unit, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		units = append(units, unit)
 	}
+
 	for _, notOwned := range s.NotOwned {
-		units = append(units, Unit{Name: notOwned.Name, Enabled: true, Active: true, Files: notOwned.Files})
+		units = append(
+			units,
+			Unit{Name: notOwned.Name, Enabled: true, Active: true, Files: notOwned.Files},
+		)
 	}
+
 	return units, nil
 }
 
 func (s Spec) unitFor(name string) (Unit, error) {
 	names := []string{name}
-	if before, after, found := strings.Cut(name, instanceSeparator); found && strings.HasSuffix(after, unitSuffix) {
+	if before, after, found := strings.Cut(name, instanceSeparator); found &&
+		strings.HasSuffix(after, unitSuffix) {
 		names = append(names, before+instanceSeparator+unitSuffix)
 	}
+
 	unit := Unit{Name: name, Enabled: true, Active: true, Files: []string{}}
 	for _, file := range s.Files {
 		for _, candidate := range names {
 			isUnitFile := file.Dest == filepath.Join(SystemdUnitDir, candidate)
-			isDropIn := filepath.Dir(file.Dest) == filepath.Join(SystemdUnitDir, candidate+dropInDirSuffix)
+			isDropIn := filepath.Dir(file.Dest) == filepath.Join(
+				SystemdUnitDir,
+				candidate+dropInDirSuffix,
+			)
 			if !isUnitFile && !isDropIn {
 				continue
 			}
+
 			unit.Files = append(unit.Files, file.Dest)
 			if !isUnitFile {
 				continue
 			}
+
 			content, err := Read(file.Embedded)
 			if err != nil {
 				return Unit{}, err
 			}
+
 			unit.Active = !exitsAfterRun(string(content))
 		}
 	}
+
 	return unit, nil
 }
 
 func exitsAfterRun(unitFile string) bool {
 	oneshot := false
 	remains := false
+
 	for line := range strings.SplitSeq(unitFile, "\n") {
 		switch strings.TrimSpace(line) {
 		case oneshotType:
@@ -135,5 +158,6 @@ func exitsAfterRun(unitFile string) bool {
 			remains = true
 		}
 	}
+
 	return oneshot && !remains
 }

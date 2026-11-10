@@ -31,10 +31,16 @@ func TestNativeAdmissionConntrackUpdateVerification(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	for _, addresses := range [][2]string{{admissionClientV4, admissionRemoteV4}, {admissionClientV6, admissionRemoteV6}} {
+	for _, addresses := range [][2]string{
+		{admissionClientV4, admissionRemoteV4},
+		{admissionClientV6, admissionRemoteV6},
+	} {
 		flow := fixture.flow(t, addresses[0], addresses[1], "")
 		observation := admissionObservation(t, fixture.sender, fixture.input, flow.TupleOrig)
-		spec, guards, current, wan, eligibility, err := fixture.module.candidate(fixture.ctx, observation)
+		spec, guards, current, wan, eligibility, err := fixture.module.candidate(
+			fixture.ctx,
+			observation,
+		)
 		if err != nil || eligibility != EligibilityReady {
 			t.Fatalf("initial live candidate failed: decision=%d error=%v", eligibility, err)
 		}
@@ -53,31 +59,82 @@ func TestNativeAdmissionConntrackUpdateVerification(t *testing.T) {
 		}
 		awaitAdmissionConntrackPolicy(t, fixture, events, flow.ID, admissionMark, false)
 		evidence := fixture.module.evidenceFor(fixture.module.currentEvidenceEpoch())
-		fresh, decision, err := fixture.module.verifyConnectionUpdate(fixture.ctx, old, entry, evidence)
-		if err != nil || decision != EligibilityReady || fresh.ID != flow.ID || fresh.Mark != admissionMark {
-			t.Fatalf("older kernel notification rejected current admitted policy: current=%+v decision=%d error=%v", fresh, decision, err)
+		fresh, decision, err := fixture.module.verifyConnectionUpdate(
+			fixture.ctx,
+			old,
+			entry,
+			evidence,
+		)
+		if err != nil || decision != EligibilityReady || fresh.ID != flow.ID ||
+			fresh.Mark != admissionMark {
+			t.Fatalf(
+				"older kernel notification rejected current admitted policy: current=%+v decision=%d error=%v",
+				fresh,
+				decision,
+				err,
+			)
 		}
 		evidence = requireConntrackEvidenceRefresh(t, fixture, old, entry, evidence)
 		if err := fixture.tracking.Update(changed); err != nil {
 			t.Fatal(err)
 		}
-		actual := awaitAdmissionConntrackPolicy(t, fixture, events, flow.ID, admissionOtherMark, false)
-		fresh, decision, err = fixture.module.verifyConnectionUpdate(fixture.ctx, actual, entry, evidence)
+		actual := awaitAdmissionConntrackPolicy(
+			t,
+			fixture,
+			events,
+			flow.ID,
+			admissionOtherMark,
+			false,
+		)
+		fresh, decision, err = fixture.module.verifyConnectionUpdate(
+			fixture.ctx,
+			actual,
+			entry,
+			evidence,
+		)
 		if err != nil || decision != EligibilityUnsupported || fresh.Mark != admissionOtherMark {
-			t.Fatalf("current changed policy accepted: current=%+v decision=%d error=%v", fresh, decision, err)
+			t.Fatalf(
+				"current changed policy accepted: current=%+v decision=%d error=%v",
+				fresh,
+				decision,
+				err,
+			)
 		}
 		if err := fixture.tracking.Delete(flow); err != nil {
 			t.Fatal(err)
 		}
-		destroyed := awaitAdmissionConntrackPolicy(t, fixture, events, flow.ID, admissionOtherMark, true)
-		fresh, decision, err = fixture.module.verifyConnectionUpdate(fixture.ctx, destroyed, entry, evidence)
+		destroyed := awaitAdmissionConntrackPolicy(
+			t,
+			fixture,
+			events,
+			flow.ID,
+			admissionOtherMark,
+			true,
+		)
+		fresh, decision, err = fixture.module.verifyConnectionUpdate(
+			fixture.ctx,
+			destroyed,
+			entry,
+			evidence,
+		)
 		if !errors.Is(err, syscall.ENOENT) || decision != EligibilityUnsupported {
-			t.Fatalf("deleted kernel connection passed fresh verification: current=%+v decision=%d error=%v", fresh, decision, err)
+			t.Fatalf(
+				"deleted kernel connection passed fresh verification: current=%+v decision=%d error=%v",
+				fresh,
+				decision,
+				err,
+			)
 		}
 	}
 }
 
-func requireConntrackEvidenceRefresh(t *testing.T, fixture admissionFixture, event offload.ConntrackEvent, entry *admittedFlow, stale *evidenceCheck) *evidenceCheck {
+func requireConntrackEvidenceRefresh(
+	t *testing.T,
+	fixture admissionFixture,
+	event offload.ConntrackEvent,
+	entry *admittedFlow,
+	stale *evidenceCheck,
+) *evidenceCheck {
 	t.Helper()
 	family := unix.AF_INET
 	if entry.flow.TupleOrig.IP.SourceAddress.Is6() {
@@ -99,14 +156,30 @@ func requireConntrackEvidenceRefresh(t *testing.T, fixture admissionFixture, eve
 		t.Fatal(err)
 	}
 	awaitConntrackForwardingGeneration(t, fixture, previous)
-	current, decision, err := fixture.module.verifyConnectionUpdate(fixture.ctx, event, entry, stale)
+	current, decision, err := fixture.module.verifyConnectionUpdate(
+		fixture.ctx,
+		event,
+		entry,
+		stale,
+	)
 	if !errors.Is(err, syscall.ESTALE) || decision != EligibilityStale {
-		t.Fatalf("obsolete forwarding evidence passed otherwise restored mapping verification: current=%+v decision=%d error=%v", current, decision, err)
+		t.Fatalf(
+			"obsolete forwarding evidence passed otherwise restored mapping verification: current=%+v decision=%d error=%v",
+			current,
+			decision,
+			err,
+		)
 	}
 	fresh := fixture.module.evidenceFor(fixture.module.currentEvidenceEpoch())
 	current, decision, err = fixture.module.verifyConnectionUpdate(fixture.ctx, event, entry, fresh)
-	if err != nil || decision != EligibilityReady || current.ID != entry.flow.ID || current.Mark != entry.flow.Mark {
-		t.Fatalf("current evidence rejected the restored admitted mapping: current=%+v decision=%d error=%v", current, decision, err)
+	if err != nil || decision != EligibilityReady || current.ID != entry.flow.ID ||
+		current.Mark != entry.flow.Mark {
+		t.Fatalf(
+			"current evidence rejected the restored admitted mapping: current=%+v decision=%d error=%v",
+			current,
+			decision,
+			err,
+		)
 	}
 	return fresh
 }
@@ -119,7 +192,11 @@ func awaitConntrackForwardingGeneration(t *testing.T, fixture admissionFixture, 
 		select {
 		case <-ticker.C:
 		case <-fixture.ctx.Done():
-			t.Fatalf("real neighbor update did not advance forwarding generation %d: %v", previous, fixture.ctx.Err())
+			t.Fatalf(
+				"real neighbor update did not advance forwarding generation %d: %v",
+				previous,
+				fixture.ctx.Err(),
+			)
 		}
 	}
 	if err := fixture.module.forwarding.Err(); err != nil {
@@ -127,7 +204,14 @@ func awaitConntrackForwardingGeneration(t *testing.T, fixture admissionFixture, 
 	}
 }
 
-func awaitAdmissionConntrackPolicy(t *testing.T, fixture admissionFixture, events *offload.ConntrackEvents, id, mark uint32, destroyed bool) offload.ConntrackEvent {
+func awaitAdmissionConntrackPolicy(
+	t *testing.T,
+	fixture admissionFixture,
+	events *offload.ConntrackEvents,
+	id uint32,
+	mark uint32,
+	destroyed bool,
+) offload.ConntrackEvent {
 	t.Helper()
 	for {
 		select {
@@ -141,7 +225,13 @@ func awaitAdmissionConntrackPolicy(t *testing.T, fixture admissionFixture, event
 		case err := <-events.Errors:
 			t.Fatalf("live conntrack event failure: %v", err)
 		case <-fixture.ctx.Done():
-			t.Fatalf("target conntrack update did not arrive: id=%d mark=%d destroyed=%v error=%v", id, mark, destroyed, fixture.ctx.Err())
+			t.Fatalf(
+				"target conntrack update did not arrive: id=%d mark=%d destroyed=%v error=%v",
+				id,
+				mark,
+				destroyed,
+				fixture.ctx.Err(),
+			)
 		}
 	}
 }

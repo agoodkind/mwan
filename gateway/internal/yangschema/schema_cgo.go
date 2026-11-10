@@ -150,8 +150,14 @@ func (s *Schema) ValidateConfigJSON(data []byte) error {
 	defer C.free(unsafe.Pointer(cData))
 
 	var tree *C.struct_lyd_node
-	parseErr := C.lyd_parse_data_mem(s.ctx, cData, C.LYD_JSON,
-		C.uint32_t(schemaParseOptions), C.uint32_t(schemaValidateOptions), &tree)
+	parseErr := C.lyd_parse_data_mem(
+		s.ctx,
+		cData,
+		C.LYD_JSON,
+		C.uint32_t(schemaParseOptions),
+		C.uint32_t(schemaValidateOptions),
+		&tree,
+	)
 	if tree != nil {
 		defer C.lyd_free_all(tree)
 	}
@@ -210,8 +216,11 @@ func obsoleteNodeError(node *C.struct_lyd_node) error {
 	cPath := C.lyd_path(node, C.LYD_PATH_STD, nil, 0)
 	defer C.free(unsafe.Pointer(cPath))
 	schemaNode := obsoleteSchemaNode(node.schema)
-	return fmt.Errorf("yangschema: Obsolete schema node %q instantiated in data. (path %q)",
-		C.GoString(schemaNode.name), C.GoString(cPath))
+	return fmt.Errorf(
+		"yangschema: Obsolete schema node %q instantiated in data. (path %q)",
+		C.GoString(schemaNode.name),
+		C.GoString(cPath),
+	)
 }
 
 func lastSchemaError(ctx *C.struct_ly_ctx) string {
@@ -233,8 +242,13 @@ func (s *Schema) Close() {
 		return
 	}
 	if err := os.RemoveAll(s.tempDir); err != nil {
-		slog.Warn("yangschema: remove the temporary schema directory failed",
-			"dir", s.tempDir, "err", err)
+		slog.Warn(
+			"yangschema: remove the temporary schema directory failed",
+			"dir",
+			s.tempDir,
+			"err",
+			err,
+		)
 	}
 	s.tempDir = ""
 }

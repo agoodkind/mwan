@@ -41,6 +41,7 @@ func New(cfg Config) (*slog.Logger, io.Closer) {
 	if cfg.BuildVersion != "" {
 		wrapped = wrapped.With("build", cfg.BuildVersion)
 	}
+
 	return wrapped, closer
 }
 

@@ -67,19 +67,17 @@ func TestRenderedTableHasInterface(t *testing.T) {
 	}
 
 	for _, testCase := range tests {
-		t.Run(testCase.name, func(t *testing.T) {
-			t.Parallel()
+		t.Run(
+			testCase.name,
+			func(t *testing.T) {
+				t.Parallel()
 
-			got := testCase.table.HasInterface(testCase.iface)
-			if got != testCase.want {
-				t.Fatalf(
-					"HasInterface(%q) = %v, want %v",
-					testCase.iface,
-					got,
-					testCase.want,
-				)
-			}
-		})
+				got := testCase.table.HasInterface(testCase.iface)
+				if got != testCase.want {
+					t.Fatalf("HasInterface(%q) = %v, want %v", testCase.iface, got, testCase.want)
+				}
+			},
+		)
 	}
 }
 
@@ -89,16 +87,24 @@ func TestRenderedTableHasInterface(t *testing.T) {
 func TestRenderIntended(t *testing.T) {
 	t.Parallel()
 	desired := desiredRules{
-		Prerouting: []natRule{{
-			Chain: chainPrerouting, Iface: "enatt0",
-			Match: netip.MustParsePrefix("2001:db8:a::/60"),
-			Op:    opDNATPrefix, ToPfx: netip.MustParsePrefix("3d06:bad:b01::/60"),
-		}},
-		Postrouting: []natRule{{
-			Chain: chainPostrouting, Iface: "enatt0",
-			Match: netip.MustParsePrefix("3d06:bad:b01::/60"),
-			Op:    opSNATPrefix, ToPfx: netip.MustParsePrefix("2001:db8:a::/60"),
-		}},
+		Prerouting: []natRule{
+			{
+				Chain: chainPrerouting,
+				Iface: "enatt0",
+				Match: netip.MustParsePrefix("2001:db8:a::/60"),
+				Op:    opDNATPrefix,
+				ToPfx: netip.MustParsePrefix("3d06:bad:b01::/60"),
+			},
+		},
+		Postrouting: []natRule{
+			{
+				Chain: chainPostrouting,
+				Iface: "enatt0",
+				Match: netip.MustParsePrefix("3d06:bad:b01::/60"),
+				Op:    opSNATPrefix,
+				ToPfx: netip.MustParsePrefix("2001:db8:a::/60"),
+			},
+		},
 	}
 	want := "chain prerouting:\n" +
 		"  iif \"enatt0\" ip6 daddr 2001:db8:a::/60 dnat prefix to 3d06:bad:b01::/60\n" +

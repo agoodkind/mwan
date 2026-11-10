@@ -20,10 +20,12 @@ func TestNewWritesToFile(t *testing.T) {
 	if log == nil {
 		t.Fatal("nil logger")
 	}
+
 	log.Info("probe", "k", "v")
 	if err := closer.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
+
 	if _, err := os.Stat(p); err != nil {
 		t.Fatalf("log file: %v", err)
 	}
@@ -37,6 +39,7 @@ func TestNewEmptyHandlers(t *testing.T) {
 	if log == nil {
 		t.Fatal("nil logger")
 	}
+
 	if err := closer.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}

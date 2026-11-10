@@ -24,14 +24,17 @@ func (h *captureHandler) Enabled(context.Context, slog.Level) bool { return true
 
 func (h *captureHandler) Handle(_ context.Context, record slog.Record) error {
 	out := make(map[string]string)
+
 	for _, attr := range h.attrs {
 		out[attr.Key] = attr.Value.String()
 	}
+
 	record.Attrs(func(attr slog.Attr) bool {
 		out[attr.Key] = attr.Value.String()
 		return true
 	})
 	h.last = out
+
 	return nil
 }
 
@@ -58,9 +61,11 @@ func TestContextHandlerAddsTracingAttrs(t *testing.T) {
 	if capture.last["trace_id"] != "trace-123" {
 		t.Fatalf("trace_id=%q", capture.last["trace_id"])
 	}
+
 	if capture.last["operation"] != "ping" {
 		t.Fatalf("operation=%q", capture.last["operation"])
 	}
+
 	if capture.last["key"] != "value" {
 		t.Fatalf("key=%q", capture.last["key"])
 	}
@@ -75,9 +80,11 @@ func TestContextHandlerReportsAndReturnsAWriteFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if err := closedFile.Close(); err != nil {
 		t.Fatal(err)
 	}
+
 	var fallbackOutput strings.Builder
 	handler := newContextHandler(
 		slog.NewJSONHandler(closedFile, nil),
@@ -86,12 +93,17 @@ func TestContextHandlerReportsAndReturnsAWriteFailure(t *testing.T) {
 	record := slog.NewRecord(time.Now(), slog.LevelInfo, "hello", 0)
 
 	handleErr := handler.WithAttrs([]slog.Attr{slog.String("key", "value")}).
-		Handle(context.Background(), record)
+		Handle(
+			context.Background(),
+			record,
+		)
 
 	if !errors.Is(handleErr, os.ErrClosed) {
 		t.Fatalf("err = %v, want one wrapping %v", handleErr, os.ErrClosed)
 	}
+
 	output := fallbackOutput.String()
+
 	for _, want := range []string{"log record not written", "message=hello", "file already closed"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("fallback output %q is missing %q", output, want)
@@ -103,9 +115,10 @@ func TestTextHandlerPreservesWithAttrsAndGroups(t *testing.T) {
 	t.Parallel()
 
 	var builder strings.Builder
-	logger := slog.New(gklog.NewTextHandler(&builder, "[mwan]")).
-		With("trace_id", "trace-456").
-		WithGroup("rpc")
+	logger := slog.New(gklog.NewTextHandler(&builder, "[mwan]")).With("trace_id", "trace-456").
+		WithGroup(
+			"rpc",
+		)
 
 	logger.Info("hello", "code", "OK")
 
@@ -113,6 +126,7 @@ func TestTextHandlerPreservesWithAttrsAndGroups(t *testing.T) {
 	if !strings.Contains(output, "trace_id=trace-456") {
 		t.Fatalf("output=%q", output)
 	}
+
 	if !strings.Contains(output, "rpc.code=OK") {
 		t.Fatalf("output=%q", output)
 	}

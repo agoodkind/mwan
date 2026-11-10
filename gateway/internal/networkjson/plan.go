@@ -44,6 +44,7 @@ func encodeKey(components ...string) string {
 		component = strings.ReplaceAll(component, "%", "%25")
 		encoded = append(encoded, strings.ReplaceAll(component, keySeparator, "%7C"))
 	}
+
 	return strings.Join(encoded, keySeparator)
 }
 
@@ -96,20 +97,28 @@ type ProviderDefault struct {
 // Decode rejects a gateway leaf with a /0 route-list entry in the same family.
 func (c *Config) ConfiguredRoutes() map[RouteKey]ConfiguredRoute {
 	routes := make(map[RouteKey]ConfiguredRoute)
+
 	for _, connection := range c.Connections {
 		for name, family := range routeClaimFamilies(connection) {
 			addFamilyRoutes(routes, connection.Name, Family(name), family)
 		}
 	}
+
 	return routes
 }
 
-func addFamilyRoutes(routes map[RouteKey]ConfiguredRoute, iface string, name Family, family interfaceintent.Family) {
+func addFamilyRoutes(
+	routes map[RouteKey]ConfiguredRoute,
+	iface string,
+	name Family,
+	family interfaceintent.Family,
+) {
 	if family.Gateway.IsValid() {
 		metric := uint32(0)
 		if family.RouteMetric != nil {
 			metric = *family.RouteMetric
 		}
+
 		gatewayRoute := interfaceintent.RouteIntent{
 			Destination: defaultPrefix(name),
 			Gateway:     family.Gateway,
@@ -119,6 +128,7 @@ func addFamilyRoutes(routes map[RouteKey]ConfiguredRoute, iface string, name Fam
 		key := RouteKey{Interface: iface, Family: name, Destination: gatewayRoute.Destination}
 		routes[key] = ConfiguredRoute{RouteIntent: gatewayRoute, Source: RouteSourceGateway}
 	}
+
 	for _, route := range family.Routes {
 		key := RouteKey{Interface: iface, Family: name, Destination: route.Destination}
 		routes[key] = ConfiguredRoute{RouteIntent: route, Source: RouteSourceRoute}
@@ -129,6 +139,7 @@ func defaultPrefix(family Family) netip.Prefix {
 	if family == FamilyIPv4 {
 		return netip.PrefixFrom(netip.IPv4Unspecified(), 0)
 	}
+
 	return netip.PrefixFrom(netip.IPv6Unspecified(), 0)
 }
 
@@ -138,26 +149,41 @@ func defaultPrefix(family Family) netip.Prefix {
 // Only libyang checks the table-id range during loading.
 func (c *Config) ProviderDefaults() (map[ProviderDefaultKey]ProviderDefault, error) {
 	defaults := make(map[ProviderDefaultKey]ProviderDefault)
+
 	for id, provider := range c.WAN {
 		if provider.TableID < 0 || uint64(provider.TableID) > math.MaxUint32 {
-			err := fmt.Errorf("wan %s: table-id %d is outside 0 to %d", id, provider.TableID, uint32(math.MaxUint32))
+			err := fmt.Errorf(
+				"wan %s: table-id %d is outside 0 to %d",
+				id,
+				provider.TableID,
+				uint32(math.MaxUint32),
+			)
 			slog.Error("networkjson: provider table-id outside uint32", "err", err)
+
 			return nil, err
 		}
+
 		tableID := uint32(provider.TableID)
 		var families []Family
 		if provider.TranslationV4 != nil {
 			families = append(families, FamilyIPv4)
 		}
+
 		if provider.TranslationV6 != nil {
 			families = append(families, FamilyIPv6)
 		}
+
 		for _, family := range families {
 			destination, err := c.internalDestination(family)
 			if err != nil {
 				return nil, err
 			}
-			key := ProviderDefaultKey{ConnectionID: connectionid.ID(id), Family: family, TableID: tableID}
+
+			key := ProviderDefaultKey{
+				ConnectionID: connectionid.ID(id),
+				Family:       family,
+				TableID:      tableID,
+			}
 			defaults[key] = ProviderDefault{
 				Interface:           provider.Iface,
 				Family:              family,
@@ -167,6 +193,7 @@ func (c *Config) ProviderDefaults() (map[ProviderDefaultKey]ProviderDefault, err
 			}
 		}
 	}
+
 	return defaults, nil
 }
 
@@ -174,15 +201,40 @@ func (c *Config) internalDestination(family Family) (netip.Prefix, error) {
 	if family == FamilyIPv4 {
 		destination, err := netip.ParsePrefix(c.InternalNetV4)
 		if err != nil {
-			slog.Error("networkjson: internal-net-v4 unparsable", "value", c.InternalNetV4, "err", err)
-			return netip.Prefix{}, fmt.Errorf("steering-group/routes/internal-net-v4 %q: %w", c.InternalNetV4, err)
+			slog.Error(
+				"networkjson: internal-net-v4 unparsable",
+				"value",
+				c.InternalNetV4,
+				"err",
+				err,
+			)
+
+			return netip.Prefix{}, fmt.Errorf(
+				"steering-group/routes/internal-net-v4 %q: %w",
+				c.InternalNetV4,
+				err,
+			)
 		}
+
 		return destination, nil
 	}
+
 	edge, err := netip.ParseAddr(c.OpnsenseEdgeV6)
 	if err != nil {
-		slog.Error("networkjson: opnsense-edge-v6 unparsable", "value", c.OpnsenseEdgeV6, "err", err)
-		return netip.Prefix{}, fmt.Errorf("steering-group/translation/opnsense-edge-v6 %q: %w", c.OpnsenseEdgeV6, err)
+		slog.Error(
+			"networkjson: opnsense-edge-v6 unparsable",
+			"value",
+			c.OpnsenseEdgeV6,
+			"err",
+			err,
+		)
+
+		return netip.Prefix{}, fmt.Errorf(
+			"steering-group/translation/opnsense-edge-v6 %q: %w",
+			c.OpnsenseEdgeV6,
+			err,
+		)
 	}
+
 	return netip.PrefixFrom(edge, edge.BitLen()), nil
 }

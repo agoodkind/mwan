@@ -40,29 +40,48 @@ func openClient() (*client, error) {
 	if err != nil {
 		return nil, failure("connect system bus", err)
 	}
+
 	if err := connection.Auth(nil); err != nil {
 		_ = connection.Close()
 		return nil, failure("authenticate system bus", err)
 	}
+
 	if err := connection.Hello(); err != nil {
 		_ = connection.Close()
 		return nil, failure("register system bus connection", err)
 	}
-	return &client{connection: connection, manager: connection.Object(service, dbus.ObjectPath("/org/freedesktop/resolve1"))}, nil
+
+	return &client{
+		connection: connection,
+		manager:    connection.Object(service, dbus.ObjectPath("/org/freedesktop/resolve1")),
+	}, nil
 }
 
 func (c *client) property(ctx context.Context, index int, name string) (dbus.Variant, error) {
 	if index <= 0 || index > math.MaxInt32 {
 		return dbus.Variant{}, fmt.Errorf("invalid resolver link index %d", index)
 	}
+
 	var path dbus.ObjectPath
-	if err := c.manager.CallWithContext(ctx, managerInterface+".GetLink", 0, int32(index)).Store(&path); err != nil {
+	if err := c.manager.CallWithContext(ctx, managerInterface+".GetLink", 0, int32(index)).Store(
+		&path,
+	); err != nil {
 		return dbus.Variant{}, failure("get resolved link", err)
 	}
+
 	var value dbus.Variant
-	if err := c.connection.Object(service, path).CallWithContext(ctx, "org.freedesktop.DBus.Properties.Get", 0, linkInterface, name).Store(&value); err != nil {
+	if err := c.connection.Object(service, path).CallWithContext(
+		ctx,
+		"org.freedesktop.DBus.Properties.Get",
+		0,
+		linkInterface,
+		name,
+	).Store(
+		&value,
+	); err != nil {
 		return dbus.Variant{}, failure("read resolved "+name, err)
 	}
+
 	return value, nil
 }
 
@@ -72,9 +91,11 @@ func (c *client) dns(ctx context.Context, index int) ([]DNS, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	if err := value.Store(&values); err != nil {
 		return nil, failure("decode resolved DNS", err)
 	}
+
 	return values, nil
 }
 
@@ -84,9 +105,11 @@ func (c *client) domains(ctx context.Context, index int) ([]Domain, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	if err := value.Store(&values); err != nil {
 		return nil, failure("decode resolved domains", err)
 	}
+
 	return values, nil
 }
 
@@ -94,12 +117,21 @@ func (c *client) setDNS(ctx context.Context, index int, values []DNS) error {
 	if index <= 0 || index > math.MaxInt32 {
 		return fmt.Errorf("invalid resolver link index %d", index)
 	}
+
 	if values == nil {
 		values = []DNS{}
 	}
-	if err := c.manager.CallWithContext(ctx, managerInterface+".SetLinkDNSEx", 0, int32(index), values).Err; err != nil {
+
+	if err := c.manager.CallWithContext(
+		ctx,
+		managerInterface+".SetLinkDNSEx",
+		0,
+		int32(index),
+		values,
+	).Err; err != nil {
 		return failure("set resolved DNS", err)
 	}
+
 	return nil
 }
 
@@ -107,12 +139,21 @@ func (c *client) setDomains(ctx context.Context, index int, values []Domain) err
 	if index <= 0 || index > math.MaxInt32 {
 		return fmt.Errorf("invalid resolver link index %d", index)
 	}
+
 	if values == nil {
 		values = []Domain{}
 	}
-	if err := c.manager.CallWithContext(ctx, managerInterface+".SetLinkDomains", 0, int32(index), values).Err; err != nil {
+
+	if err := c.manager.CallWithContext(
+		ctx,
+		managerInterface+".SetLinkDomains",
+		0,
+		int32(index),
+		values,
+	).Err; err != nil {
 		return failure("set resolved domains", err)
 	}
+
 	return nil
 }
 
