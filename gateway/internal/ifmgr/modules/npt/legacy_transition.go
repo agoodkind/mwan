@@ -174,16 +174,7 @@ func (m *Module) ReadLegacyNPTEdge(
 		return netif.LegacyNPTEdge{}, netif.NewLegacyNPTError("read legacy NPT addresses", err)
 	}
 
-	ready := false
-
-	for _, address := range addresses {
-		if address.IPNet.String() == prefix.String() &&
-			address.Flags&(unix.IFA_F_TENTATIVE|unix.IFA_F_DADFAILED) == 0 {
-			ready = true
-		}
-	}
-
-	if !ready {
+	if !legacyNPTAddressReady(addresses, prefix) {
 		return netif.LegacyNPTEdge{}, fmt.Errorf("legacy NPT edge is not ready for %s", wan.ID)
 	}
 
@@ -225,4 +216,17 @@ func (m *Module) ReadLegacyNPTEdge(
 		IntentSHA256: hex.EncodeToString(intentDigest[:]),
 		RulesSHA256:  hex.EncodeToString(ruleDigest[:]),
 	}, nil
+}
+
+func legacyNPTAddressReady(addresses []netlink.Addr, prefix netip.Prefix) bool {
+	ready := false
+
+	for _, address := range addresses {
+		if address.IPNet.String() == prefix.String() &&
+			address.Flags&(unix.IFA_F_TENTATIVE|unix.IFA_F_DADFAILED) == 0 {
+			ready = true
+		}
+	}
+
+	return ready
 }

@@ -76,11 +76,7 @@ func IPv4TranslationReadiness(
 	}
 
 	if !masquerade {
-		state.Reason = fmt.Sprintf(
-			"IPv4 masquerade for %s from %s is absent",
-			wan.Iface,
-			internal.Masked(),
-		)
+		state.Reason = missingIPv4MasqueradeReason(wan, internal)
 		return state
 	}
 
@@ -92,6 +88,7 @@ func IPv4TranslationReadiness(
 				mapping.External,
 				wan.Iface,
 			)
+
 			return state
 		}
 	}
@@ -111,6 +108,7 @@ func IPv4TranslationReadiness(
 					mapping.Internal,
 					wan.Iface,
 				)
+
 				return state
 			}
 		}
@@ -155,6 +153,7 @@ func readIPv4NATChain(
 			"err",
 			err,
 		)
+
 		return nil, fmt.Errorf("IPv4 %s chain could not be read: %w", direction, err)
 	}
 
@@ -182,6 +181,7 @@ func readIPv4NATChain(
 			"err",
 			err,
 		)
+
 		return nil, fmt.Errorf("IPv4 %s rules could not be read: %w", direction, err)
 	}
 
@@ -367,4 +367,8 @@ func decodeIPv4NATRule(expressions []expr.Any, direction ruleChain) (ipv4NATRule
 	result.target = netip.AddrFrom4([4]byte(immediate.Data))
 
 	return result, true
+}
+
+func missingIPv4MasqueradeReason(wan WAN, internal netip.Prefix) string {
+	return fmt.Sprintf("IPv4 masquerade for %s from %s is absent", wan.Iface, internal.Masked())
 }

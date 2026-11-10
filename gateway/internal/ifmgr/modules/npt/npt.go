@@ -23,7 +23,6 @@ import (
 	"goodkind.io/mwan/internal/netif"
 	"goodkind.io/mwan/internal/nptpolicy"
 	"goodkind.io/mwan/internal/pd"
-	"goodkind.io/mwan/internal/wanstate"
 )
 
 const (
@@ -322,75 +321,10 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 
 	published := false
 	defer m.finishPolicyChange(changed, finish, &published)
-	applyErr := m.apply.Apply(ctx, log, desired)
-	if applyErr != nil {
-		reconcileErr = errors.Join(reconcileErr, fmt.Errorf("apply: %w", applyErr))
-	} else {
-		m.activeRules = rules
-	}
-
-	bpfReady, nativeReady, desiredPolicies, policyErr := m.reconcileTranslator(ctx, log, pairs)
-	reconcileErr = errors.Join(reconcileErr, policyErr)
-	if err := m.releaseObsoleteEdges(
-		ctx,
-		log,
-		desiredEdges,
-		bpfReady,
-		desiredPolicies,
-	); err != nil {
-		reconcileErr = errors.Join(reconcileErr, err)
-	}
-
-	m.publishLiveState(ctx, log, delegated, desired, applyErr == nil, bpfReady, nativeReady, pairs)
+	m.applyPlan(ctx, log, desired, pairs, rules, desiredEdges, delegated, &reconcileErr)
 	published = true
 
 	return reconcileErr
-}
-
-func (m *Module) reconcileTranslator(
-	ctx context.Context,
-	log *slog.Logger,
-	pairs map[string]nptpolicy.PrefixPair,
-) (map[string]bool, bool, []bpf.InterfacePolicy, error) {
-	ready := make(map[string]bool, len(pairs))
-	if m.translator == nil {
-		return ready, false, nil, nil
-	}
-
-	policies, ifIndexes, internalIndex, policyErr := m.interfacePolicies(ctx, log, pairs)
-	states, err := m.translator.Reconcile(policies)
-	if err != nil {
-		log.WarnContext(ctx, "NPTv6 program reconciliation failed", "err", err)
-		policyErr = errors.Join(policyErr, fmt.Errorf("reconcile NPTv6 programs: %w", err))
-	} else if policyErr == nil {
-		m.activePairs = maps.Clone(pairs)
-	}
-
-	internalReady := attachmentsReady(states, internalIndex)
-
-	for name, index := range ifIndexes {
-		ready[name] = internalReady && attachmentsReady(states, index)
-	}
-
-	return ready, err == nil, policies, policyErr
-}
-
-func (m *Module) retainCurrentTranslation(
-	wan WAN,
-	desiredEdges map[ifmgr.NPTEdgeRecord]bool,
-	desired *desiredRules,
-	rules map[string][]natRule,
-	pairs map[string]nptpolicy.PrefixPair,
-	delegated map[string]netip.Prefix,
-) {
-	m.markDesiredEdges(desiredEdges, wan, "")
-	previous := m.activeRules[wan.Key()]
-	rules[wan.Key()] = previous
-	desired.add(previous)
-	if pair, hasPair := m.activePairs[wan.Key()]; hasPair {
-		pairs[wan.Key()] = pair
-		delegated[wan.Key()] = pair.External
-	}
 }
 
 func (m *Module) checkUnappliedWANs() error {
@@ -410,14 +344,6 @@ func (m *Module) checkUnappliedWANs() error {
 	}
 
 	return nil
-}
-
-func (m *Module) addressesNotApplied(wan WAN) bool {
-	return wan.Owned && wan.Translation != nil && wan.Translation.Mode == config.TranslationNPTv6 &&
-		(m.Env == nil || m.Env.OwnedAddresses == nil || !m.Env.OwnedAddresses.FamilyApplied(
-			wan.Key(),
-			"ipv6",
-		))
 }
 
 func (m *Module) prepareLocalIPv6(
@@ -565,6 +491,7 @@ func (m *Module) preparationPairs(
 					"err",
 					err,
 				)
+
 				return nil, fmt.Errorf("npt: %s local IPv6 preparation: %w", wan.Key(), err)
 			}
 		}
@@ -639,31 +566,6 @@ func (m *Module) ensureExternalAddress(
 	return nil
 }
 
-func attachmentsReady(states []bpf.AttachmentState, index int) bool {
-	if index == 0 {
-		return false
-	}
-
-	ingress := false
-	egress := false
-
-	for _, state := range states {
-		if state.IfIndex != index || !state.Ready {
-			continue
-		}
-
-		if state.Direction == bpf.Ingress {
-			ingress = true
-		}
-
-		if state.Direction == bpf.Egress {
-			egress = true
-		}
-	}
-
-	return ingress && egress
-}
-
 func (m *Module) interfacePolicies(
 	ctx context.Context,
 	log *slog.Logger,
@@ -684,6 +586,7 @@ func (m *Module) interfacePolicies(
 			"err",
 			err,
 		)
+
 		return nil, indices, 0, fmt.Errorf(
 			"npt: internal interface %s: %w",
 			m.cfg.InternalIface,
@@ -770,6 +673,7 @@ func internalPrefixRouteReady(prefix netip.Prefix, internalIndex int) error {
 			"err",
 			err,
 		)
+
 		return fmt.Errorf("list IPv6 routes for %s: %w", prefix, err)
 	}
 
@@ -784,170 +688,6 @@ func internalPrefixRouteReady(prefix netip.Prefix, internalIndex int) error {
 		prefix,
 		internalIndex,
 	)
-}
-
-// Native readiness requires verified nft absence even after an apply fails.
-func (m *Module) publishLiveState(
-	ctx context.Context,
-	log *slog.Logger,
-	delegated map[string]netip.Prefix,
-	desired desiredRules,
-	applied bool,
-	bpfReady map[string]bool,
-	nativeReady bool,
-	pairs map[string]nptpolicy.PrefixPair,
-) {
-	if m.Env == nil || m.Env.LiveState == nil {
-		return
-	}
-
-	// The intended ruleset is this pass's desired rules rendered in the
-	// same text form the inspector renders live rules, so the served
-	// intent and any live listing read alike.
-	m.Env.LiveState.SetIntendedRuleset(renderIntended(desired))
-	rendered, inspectErr := RenderTable(ctx, log)
-	if inspectErr != nil {
-		log.WarnContext(ctx, "npt: kernel read-back for the surface failed", "err", inspectErr)
-	}
-
-	members := make(map[string]wanstate.MemberTranslation, len(m.cfg.WANs))
-	verifiedPairs := make(map[string]nptpolicy.PrefixPair, len(pairs))
-
-	internalV4, internalV4Err := netip.ParsePrefix(m.cfg.InternalNetV4)
-	for _, wan := range m.cfg.WANs {
-		var member wanstate.MemberTranslation
-		if wan.TranslationV4 != nil {
-			member.V4 = IPv4TranslationReadiness(ctx, wan, internalV4)
-			if internalV4Err != nil && wan.TranslationV4.Mode == config.TranslationNAPT44 {
-				member.V4.Ready = false
-				member.V4.Reason = "internal IPv4 source network is unavailable"
-			}
-
-			if wan.Owned &&
-				(m.Env.OwnedAddresses == nil || !m.Env.OwnedAddresses.FamilyReady(
-					wan.Key(),
-					"ipv4",
-				)) {
-				member.V4.Ready = false
-				member.V4.Reason = "MWAN-owned IPv4 addresses are not verified"
-			}
-		}
-
-		member.V6 = ipv6TranslationReadiness(
-			wan,
-			delegated[wan.Key()],
-			applied && rendered.HasInterface(wan.Iface),
-			bpfReady[wan.Key()],
-			nativeReady && inspectErr == nil && rendered.interfaceAbsent(wan.Iface),
-		)
-		m.updateMasqueradeReadiness(
-			wan,
-			&member.V6,
-			rendered,
-			applied && inspectErr == nil && nativeReady,
-		)
-		if pair, found := pairs[wan.Key()]; found && member.V6.Ready {
-			if pair.Internal == member.V6.InternalPrefix &&
-				pair.External == member.V6.ExternalPrefix {
-				verifiedPairs[wan.Key()] = pair
-			} else {
-				member.V6.Ready = false
-				member.V6.Reason = "NPT prefixes differ from the verified policy"
-			}
-		}
-
-		members[wan.Key()] = member
-	}
-
-	if m.Env.LiveState.SetNPTTranslation(members, verifiedPairs) && m.Env.RequestReconcile != nil {
-		m.Env.RequestReconcile("NPT translation readiness changed")
-	}
-}
-
-func isMasquerade(wan WAN) bool {
-	return wan.Translation != nil && wan.Translation.Mode == config.TranslationMasquerade
-}
-
-func addMasqueradeRules(wan WAN, desired *desiredRules, rules map[string][]natRule) bool {
-	rules[wan.Key()] = nil
-	if !isMasquerade(wan) {
-		return false
-	}
-
-	rules[wan.Key()] = []natRule{masqueradeRule(wan.Iface)}
-	desired.add(rules[wan.Key()])
-
-	return true
-}
-
-func masqueradeRule(iface string) natRule {
-	return natRule{
-		Chain:  chainPostrouting,
-		Iface:  iface,
-		Match:  netip.MustParsePrefix("::/0"),
-		Op:     opMasquerade,
-		ToAddr: netip.Addr{},
-		ToPfx:  netip.Prefix{},
-	}
-}
-
-func (m *Module) updateMasqueradeReadiness(
-	wan WAN,
-	state *wanstate.FamilyTranslation,
-	rendered RenderedTable,
-	verified bool,
-) {
-	if !isMasquerade(wan) {
-		return
-	}
-
-	expected := formatRule(masqueradeRule(wan.Iface))
-	state.Ready = verified && slices.Contains(rendered.Postrouting, expected)
-	if !state.Ready {
-		state.Reason = "IPv6 masquerade is not verified"
-	}
-
-	if wan.Owned &&
-		(m.Env.OwnedAddresses == nil || !m.Env.OwnedAddresses.FamilyReady(wan.Key(), "ipv6")) {
-		state.Ready = false
-		state.Reason = "MWAN-owned IPv6 addresses are not verified"
-	}
-}
-
-func ipv6TranslationReadiness(
-	wan WAN,
-	external netip.Prefix,
-	kernelReady bool,
-	bpfReady bool,
-	nativeReady bool,
-) wanstate.FamilyTranslation {
-	var result wanstate.FamilyTranslation
-	if wan.Translation == nil {
-		return result
-	}
-
-	result.Mode = string(wan.Translation.Mode)
-	if wan.Translation.Mode == config.TranslationNative {
-		result.Ready = nativeReady
-		if !nativeReady {
-			result.Reason = "stale IPv6 translation cleanup is unverified"
-		}
-
-		return result
-	}
-
-	if wan.Translation.NPT == nil {
-		return result
-	}
-
-	result.InternalPrefix = wan.Translation.NPT.InternalPrefix
-	result.ExternalPrefix = external
-	result.Ready = kernelReady && bpfReady
-	if !result.Ready {
-		result.Reason = "required IPv6 translation is unavailable"
-	}
-
-	return result
 }
 
 // wanDesired contains one WAN's edge rules, prefix pair, and address to ensure.
@@ -1038,28 +778,7 @@ func (m *Module) buildWANDesired(
 			fmt.Errorf("enumerate extra /128 on %s: %w", wan.Iface, err)
 	}
 
-	rules := buildWANRules(wanRuleInput{
-		Iface:        wan.Iface,
-		External:     externalPrefix,
-		OpnsenseEdge: m.opnsenseEdge,
-		MwanbrEdge:   m.mwanbrEdge,
-		ExtraDNAT:    extra,
-	})
-	destinationExceptions := append([]netip.Addr{pd1}, extra...)
-
-	for _, addr := range local {
-		if externalPrefix.Contains(addr) {
-			destinationExceptions = append(destinationExceptions, addr)
-		}
-	}
-
-	pair := nptpolicy.PrefixPair{
-		ID:                    pairID(wan.Key()),
-		Internal:              policy.InternalPrefix.Masked(),
-		External:              externalPrefix,
-		SourceExceptions:      []netip.Addr{m.opnsenseEdge, m.mwanbrEdge},
-		DestinationExceptions: destinationExceptions,
-	}
+	rules, pair := m.planRules(wan, policy, externalPrefix, pd1, extra, local)
 	if err := nptpolicy.ValidatePair(pair); err != nil {
 		return empty, false, fmt.Errorf("npt: %s: %w", wan.Key(), err)
 	}
@@ -1158,20 +877,6 @@ func (m *Module) localAssignmentSet(wan WAN) map[netip.Addr]bool {
 	}
 
 	return local
-}
-
-func global128Address(current netif.CurrentAddr, pd1 netip.Addr) (netip.Addr, bool) {
-	if current.Family != "inet6" {
-		return netip.Addr{}, false
-	}
-
-	prefix, err := netip.ParsePrefix(current.CIDR)
-	if err != nil || prefix.Bits() != 128 || !prefix.Addr().IsGlobalUnicast() ||
-		prefix.Addr() == pd1 {
-		return netip.Addr{}, false
-	}
-
-	return prefix.Addr(), true
 }
 
 // EvaluateAlerts fires a per-iface WARN for each WAN that the configuration
