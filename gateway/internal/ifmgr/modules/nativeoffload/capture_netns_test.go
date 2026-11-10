@@ -41,14 +41,7 @@ func TestNativePacketObservation(t *testing.T) {
 	input, sender := nativeCaptureLinks(t)
 	observations := make(chan packetObservation, nativeCaptureCapacity)
 	failures := make(chan error, 1)
-	capture, err := openPacketCapture(
-		ctx,
-		input,
-		nativeCaptureSocketBytes,
-		observations,
-		failures,
-		nil,
-	)
+	capture, err := openPacketCapture(ctx, input, nativeCaptureSocketBytes, observations, failures, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,33 +61,16 @@ func TestNativePacketObservation(t *testing.T) {
 			nativeCaptureSend(t, sender, frame)
 			select {
 			case observation := <-observations:
-				if observation.ifindex != input.Index || observation.at.IsZero() ||
-					!observation.Eligible ||
-					observation.DecodeError != nil {
-					t.Fatalf(
-						"kernel capture did not provide an eligible Rust observation: %+v",
-						observation,
-					)
+				if observation.ifindex != input.Index || observation.at.IsZero() || !observation.Eligible || observation.DecodeError != nil {
+					t.Fatalf("kernel capture did not provide an eligible Rust observation: %+v", observation)
 				}
-				if observation.Tuple.IP.SourceAddress != netip.MustParseAddr(addresses[0]) ||
-					observation.Tuple.IP.DestinationAddress != netip.MustParseAddr(addresses[1]) ||
-					observation.Tuple.Proto.Protocol != protocol ||
-					observation.Tuple.Proto.SourcePort != nativeCaptureSourcePort ||
-					observation.Tuple.Proto.DestinationPort != nativeCaptureDestinationPort {
+				if observation.Tuple.IP.SourceAddress != netip.MustParseAddr(addresses[0]) || observation.Tuple.IP.DestinationAddress != netip.MustParseAddr(addresses[1]) || observation.Tuple.Proto.Protocol != protocol || observation.Tuple.Proto.SourcePort != nativeCaptureSourcePort || observation.Tuple.Proto.DestinationPort != nativeCaptureDestinationPort {
 					t.Fatalf("Rust observation changed the transmitted tuple: %+v", observation)
 				}
-				if observation.SourceMAC != [6]byte(sender.HardwareAddr) ||
-					observation.DestinationMAC != [6]byte(input.HardwareAddr) ||
-					observation.TrafficClass != nativeCaptureTrafficClass ||
-					observation.TTL != 64 {
-					t.Fatalf(
-						"Rust observation changed Ethernet or route selectors: %+v",
-						observation,
-					)
+				if observation.SourceMAC != [6]byte(sender.HardwareAddr) || observation.DestinationMAC != [6]byte(input.HardwareAddr) || observation.TrafficClass != nativeCaptureTrafficClass || observation.TTL != 64 {
+					t.Fatalf("Rust observation changed Ethernet or route selectors: %+v", observation)
 				}
-				if observation.Tuple.IP.SourceAddress.Is6() &&
-					observation.FlowLabel != nativeCaptureFlowLabel ||
-					observation.Tuple.IP.SourceAddress.Is4() && observation.FlowLabel != 0 {
+				if observation.Tuple.IP.SourceAddress.Is6() && observation.FlowLabel != nativeCaptureFlowLabel || observation.Tuple.IP.SourceAddress.Is4() && observation.FlowLabel != 0 {
 					t.Fatalf("Rust observation changed the IP flow label: %+v", observation)
 				}
 			case err := <-failures:
@@ -114,10 +90,7 @@ func TestNativePacketObservationCapacityFallback(t *testing.T) {
 	defer cancel()
 	input, sender := nativeCaptureLinks(t)
 	admissionAddress(t, input, "192.0.2.1/24")
-	server, err := net.ListenUDP(
-		"udp4",
-		&net.UDPAddr{IP: net.ParseIP("192.0.2.1"), Port: nativeCaptureDestinationPort},
-	)
+	server, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("192.0.2.1"), Port: nativeCaptureDestinationPort})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,14 +105,7 @@ func TestNativePacketObservationCapacityFallback(t *testing.T) {
 	var paused atomic.Bool
 	observations := make(chan packetObservation, 1)
 	failures := make(chan error, 1)
-	capture, err := openPacketCapture(
-		ctx,
-		input,
-		nativeCaptureSocketBytes,
-		observations,
-		failures,
-		&paused,
-	)
+	capture, err := openPacketCapture(ctx, input, nativeCaptureSocketBytes, observations, failures, &paused)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,13 +116,7 @@ func TestNativePacketObservationCapacityFallback(t *testing.T) {
 		}
 		<-capture.done
 	})
-	frame := nativeCaptureFrame(
-		t,
-		sender,
-		input,
-		[2]string{"192.0.2.2", "192.0.2.1"},
-		unix.IPPROTO_UDP,
-	)
+	frame := nativeCaptureFrame(t, sender, input, [2]string{"192.0.2.2", "192.0.2.1"}, unix.IPPROTO_UDP)
 	for range 2 {
 		nativeCaptureSend(t, sender, frame)
 	}
@@ -210,10 +170,7 @@ func TestNativePacketObservationPanicPreservesLinuxDelivery(t *testing.T) {
 	defer cancel()
 	input, sender := nativeCaptureLinks(t)
 	admissionAddress(t, input, "192.0.2.1/24")
-	server, err := net.ListenUDP(
-		"udp4",
-		&net.UDPAddr{IP: net.ParseIP("192.0.2.1"), Port: nativeCaptureDestinationPort},
-	)
+	server, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("192.0.2.1"), Port: nativeCaptureDestinationPort})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,14 +185,7 @@ func TestNativePacketObservationPanicPreservesLinuxDelivery(t *testing.T) {
 	var paused atomic.Bool
 	observations := make(chan packetObservation, 1)
 	failures := make(chan error, 1)
-	capture, err := openPacketCapture(
-		ctx,
-		input,
-		nativeCaptureSocketBytes,
-		observations,
-		failures,
-		&paused,
-	)
+	capture, err := openPacketCapture(ctx, input, nativeCaptureSocketBytes, observations, failures, &paused)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,23 +196,13 @@ func TestNativePacketObservationPanicPreservesLinuxDelivery(t *testing.T) {
 		<-capture.done
 	})
 	close(observations)
-	frame := nativeCaptureFrame(
-		t,
-		sender,
-		input,
-		[2]string{"192.0.2.2", "192.0.2.1"},
-		unix.IPPROTO_UDP,
-	)
+	frame := nativeCaptureFrame(t, sender, input, [2]string{"192.0.2.2", "192.0.2.1"}, unix.IPPROTO_UDP)
 	nativeCaptureSend(t, sender, frame)
 	select {
 	case failure := <-failures:
 		var panicked *nativePanicError
 		if !errors.As(failure, &panicked) || !paused.Load() {
-			t.Fatalf(
-				"capture panic did not stop admission and publish failure: paused=%v failure=%v",
-				paused.Load(),
-				failure,
-			)
+			t.Fatalf("capture panic did not stop admission and publish failure: paused=%v failure=%v", paused.Load(), failure)
 		}
 	case <-ctx.Done():
 		t.Fatal("capture panic did not publish failure")
@@ -277,13 +217,7 @@ func TestNativePacketObservationPanicPreservesLinuxDelivery(t *testing.T) {
 	requireNativeUDPDelivery(t, server)
 }
 
-func awaitObservationSkip(
-	t *testing.T,
-	ctx context.Context,
-	capture *packetCapture,
-	previous uint64,
-	failures <-chan error,
-) {
+func awaitObservationSkip(t *testing.T, ctx context.Context, capture *packetCapture, previous uint64, failures <-chan error) {
 	t.Helper()
 	ticker := time.NewTicker(time.Millisecond)
 	defer ticker.Stop()
@@ -332,14 +266,7 @@ func nativeCaptureNamespace(t *testing.T) bool {
 
 func nativeCaptureLinks(t *testing.T) (*net.Interface, *net.Interface) {
 	t.Helper()
-	link := &netlink.Veth{
-		LinkAttrs: netlink.LinkAttrs{
-			Name:         "native-in",
-			HardwareAddr: net.HardwareAddr{2, 0, 0, 0, 0, 1},
-		},
-		PeerName:         "native-peer",
-		PeerHardwareAddr: net.HardwareAddr{2, 0, 0, 0, 0, 2},
-	}
+	link := &netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: "native-in", HardwareAddr: net.HardwareAddr{2, 0, 0, 0, 0, 1}}, PeerName: "native-peer", PeerHardwareAddr: net.HardwareAddr{2, 0, 0, 0, 0, 2}}
 	if err := netlink.LinkAdd(link); err != nil {
 		t.Fatal(err)
 	}
@@ -363,75 +290,28 @@ func nativeCaptureLinks(t *testing.T) (*net.Interface, *net.Interface) {
 	return input, peer
 }
 
-func nativeCaptureFrame(
-	t *testing.T,
-	sender *net.Interface,
-	input *net.Interface,
-	addresses [2]string,
-	protocol uint8,
-) []byte {
+func nativeCaptureFrame(t *testing.T, sender, input *net.Interface, addresses [2]string, protocol uint8) []byte {
 	t.Helper()
-	return nativeCaptureFrameSelectors(
-		t,
-		sender,
-		input,
-		addresses,
-		protocol,
-		nativeCaptureTrafficClass,
-	)
+	return nativeCaptureFrameSelectors(t, sender, input, addresses, protocol, nativeCaptureTrafficClass)
 }
 
-func nativeCaptureFrameSelectors(
-	t *testing.T,
-	sender *net.Interface,
-	input *net.Interface,
-	addresses [2]string,
-	protocol uint8,
-	trafficClass uint8,
-) []byte {
+func nativeCaptureFrameSelectors(t *testing.T, sender, input *net.Interface, addresses [2]string, protocol, trafficClass uint8) []byte {
 	t.Helper()
 	source, destination := net.ParseIP(addresses[0]), net.ParseIP(addresses[1])
-	ethernet := &layers.Ethernet{
-		SrcMAC:       sender.HardwareAddr,
-		DstMAC:       input.HardwareAddr,
-		EthernetType: layers.EthernetTypeIPv4,
-	}
+	ethernet := &layers.Ethernet{SrcMAC: sender.HardwareAddr, DstMAC: input.HardwareAddr, EthernetType: layers.EthernetTypeIPv4}
 	var network gopacket.NetworkLayer
 	var serialNetwork gopacket.SerializableLayer
 	if source.To4() != nil {
-		ipv4 := &layers.IPv4{
-			Version:  4,
-			IHL:      5,
-			TTL:      64,
-			TOS:      trafficClass,
-			SrcIP:    source,
-			DstIP:    destination,
-			Protocol: layers.IPProtocol(protocol),
-		}
+		ipv4 := &layers.IPv4{Version: 4, IHL: 5, TTL: 64, TOS: trafficClass, SrcIP: source, DstIP: destination, Protocol: layers.IPProtocol(protocol)}
 		network, serialNetwork = ipv4, ipv4
 	} else {
 		ethernet.EthernetType = layers.EthernetTypeIPv6
-		ipv6 := &layers.IPv6{
-			Version:      6,
-			HopLimit:     64,
-			TrafficClass: trafficClass,
-			FlowLabel:    nativeCaptureFlowLabel,
-			SrcIP:        source,
-			DstIP:        destination,
-			NextHeader:   layers.IPProtocol(protocol),
-		}
+		ipv6 := &layers.IPv6{Version: 6, HopLimit: 64, TrafficClass: trafficClass, FlowLabel: nativeCaptureFlowLabel, SrcIP: source, DstIP: destination, NextHeader: layers.IPProtocol(protocol)}
 		network, serialNetwork = ipv6, ipv6
 	}
 	var transport gopacket.SerializableLayer
 	if protocol == unix.IPPROTO_TCP {
-		tcp := &layers.TCP{
-			SrcPort: nativeCaptureSourcePort,
-			DstPort: nativeCaptureDestinationPort,
-			ACK:     true,
-			Seq:     1,
-			Ack:     1,
-			Window:  1024,
-		}
+		tcp := &layers.TCP{SrcPort: nativeCaptureSourcePort, DstPort: nativeCaptureDestinationPort, ACK: true, Seq: 1, Ack: 1, Window: 1024}
 		if err := tcp.SetNetworkLayerForChecksum(network); err != nil {
 			t.Fatal(err)
 		}
@@ -444,14 +324,7 @@ func nativeCaptureFrameSelectors(
 		transport = udp
 	}
 	buffer := gopacket.NewSerializeBuffer()
-	if err := gopacket.SerializeLayers(
-		buffer,
-		gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true},
-		ethernet,
-		serialNetwork,
-		transport,
-		gopacket.Payload("native observation"),
-	); err != nil {
+	if err := gopacket.SerializeLayers(buffer, gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}, ethernet, serialNetwork, transport, gopacket.Payload("native observation")); err != nil {
 		t.Fatal(err)
 	}
 	return buffer.Bytes()
@@ -459,11 +332,7 @@ func nativeCaptureFrameSelectors(
 
 func nativeCaptureSend(t *testing.T, sender *net.Interface, frame []byte) {
 	t.Helper()
-	descriptor, err := unix.Socket(
-		unix.AF_PACKET,
-		unix.SOCK_RAW|unix.SOCK_CLOEXEC,
-		int(bits.ReverseBytes16(unix.ETH_P_ALL)),
-	)
+	descriptor, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW|unix.SOCK_CLOEXEC, int(bits.ReverseBytes16(unix.ETH_P_ALL)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -472,16 +341,7 @@ func nativeCaptureSend(t *testing.T, sender *net.Interface, frame []byte) {
 			t.Error(err)
 		}
 	}()
-	if err := unix.Sendto(
-		descriptor,
-		frame,
-		0,
-		&unix.SockaddrLinklayer{
-			Ifindex:  sender.Index,
-			Protocol: bits.ReverseBytes16(unix.ETH_P_ALL),
-			Halen:    6,
-		},
-	); err != nil {
+	if err := unix.Sendto(descriptor, frame, 0, &unix.SockaddrLinklayer{Ifindex: sender.Index, Protocol: bits.ReverseBytes16(unix.ETH_P_ALL), Halen: 6}); err != nil {
 		t.Fatal(err)
 	}
 }

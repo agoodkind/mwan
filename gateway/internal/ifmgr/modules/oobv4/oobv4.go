@@ -47,51 +47,38 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	if m.clock == nil {
 		m.clock = internalclock.Real{}
 	}
-
 	log.InfoContext(ctx, "oobv4: Init", "oob_table_id", m.cfg.OOBTableID)
 	if m.cfg.Iface == "" {
 		return fmt.Errorf("oobv4: iface is required")
 	}
-
 	if m.cfg.OOBTableID <= 0 {
 		return fmt.Errorf("oobv4: oob_table_id must be > 0")
 	}
-
 	if m.cfg.SourceRulePriority < 0 || m.cfg.SourceRulePriority >= 32766 {
-		return fmt.Errorf(
-			"oobv4: source_rule_priority must be 0 or between 1 and 32765, got %d",
-			m.cfg.SourceRulePriority,
-		)
+		return fmt.Errorf("oobv4: source_rule_priority must be 0 or between 1 and 32765, got %d", m.cfg.SourceRulePriority)
 	}
-
 	if env.DHCP == nil {
 		return fmt.Errorf("oobv4: requires DHCP client (set ifmgr.iface.<name>.dhcp_v4 = true)")
 	}
-
 	stateFile := m.cfg.StateFile
 	if stateFile == "" {
 		stateFile = "/var/lib/mwan/oobv4-dhcpv4.json"
 	}
-
 	owner, err := netif.NewOwnedDHCPv4Reconciler(stateFile)
 	if err != nil {
 		log.ErrorContext(ctx, "oobv4: ownership journal unavailable", "err", err)
 		return fmt.Errorf("oobv4: open DHCPv4 ownership journal: %w", err)
 	}
-
 	if !env.DHCPRecoveryPending {
 		if err := owner.PruneConsumer(ctx, "oobv4"); err != nil {
 			log.ErrorContext(ctx, "oobv4: prior assignment withdrawal failed", "err", err)
 			return fmt.Errorf("oobv4: withdraw prior DHCPv4 assignment: %w", err)
 		}
-
 		if err := m.reconcileSourceRule(ctx, nil); err != nil {
 			return err
 		}
 	}
-
 	m.owner = owner
-
 	return nil
 }
 
@@ -101,12 +88,10 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	if err := m.withdrawInvalidated(ctx, lease); err != nil {
 		return err
 	}
-
 	if lease.State == netif.LeaseBound || lease.State == netif.LeaseExpired ||
 		lease.State == netif.LeaseRenewing || lease.State == netif.LeaseRebinding {
 		return m.OnDHCPLease(ctx, log, lease)
 	}
-
 	return nil
 }
 
@@ -117,79 +102,56 @@ func (m *Module) withdrawInvalidated(ctx context.Context, lease netif.LeaseInfo)
 		if lease.InvalidationEpoch > m.appliedEpoch {
 			m.appliedEpoch = lease.InvalidationEpoch
 		}
-
 		return nil
 	}
-
 	expired := !m.appliedExpiresAt.IsZero() && !m.clock.Now().Before(m.appliedExpiresAt)
 	if !expired && lease.InvalidationEpoch <= m.appliedEpoch {
 		return nil
 	}
-
-	if err := m.owner.Reconcile(
-		ctx,
-		"oobv4",
-		m.cfg.Iface,
-		m.cfg.Iface,
-		m.cfg.OOBTableID,
-		0,
-		nil,
-	); err != nil {
+	if err := m.owner.Reconcile(ctx, "oobv4", m.cfg.Iface, m.cfg.Iface, m.cfg.OOBTableID, 0, nil); err != nil {
 		m.Log.WarnContext(ctx, "oobv4: invalidated assignment withdrawal failed", "err", err)
 		return fmt.Errorf("oobv4: withdraw expired DHCPv4 assignment: %w", err)
 	}
-
 	if err := m.reconcileSourceRule(ctx, nil); err != nil {
 		return err
 	}
-
 	m.appliedExpiresAt = time.Time{}
 	if lease.InvalidationEpoch > m.appliedEpoch {
 		m.appliedEpoch = lease.InvalidationEpoch
 	}
-
 	m.hasApplied = false
-
 	return nil
 }
 
 // OnDHCPLease implements ifmgr.Module.
 func (m *Module) OnDHCPLease(
-	ctx context.Context,
-	log *slog.Logger,
-	lease netif.LeaseInfo,
+	ctx context.Context, log *slog.Logger, lease netif.LeaseInfo,
 ) error {
 	log = log.With("op", "lease-event", "state", lease.State.String())
 	log.DebugContext(ctx, "oobv4: lease event", "info", lease.String())
 	m.Lock()
-	startupExpiry := lease.State == netif.LeaseExpired && lease.LinkIndex == 0 &&
-		m.Env.DHCPRecoveryPending &&
-		!m.hasApplied
+	startupExpiry := lease.State == netif.LeaseExpired && lease.LinkIndex == 0 && m.Env.DHCPRecoveryPending && !m.hasApplied
 	m.Unlock()
 	if startupExpiry {
 		return nil
 	}
-
 	if lease.State == netif.LeaseBound || lease.State == netif.LeaseRenewing ||
 		lease.State == netif.LeaseRebinding || lease.State == netif.LeaseExpired {
 		matches, err := lease.MatchesLink(m.cfg.Iface)
 		if err != nil {
 			return fmt.Errorf("oobv4: inspect DHCPv4 interface: %w", err)
 		}
-
 		if !matches {
 			log.WarnContext(ctx, "oobv4: ignored lease from replaced interface")
 			return nil
 		}
 	}
-
 	m.Lock()
 	stale := lease.InvalidationEpoch < m.appliedEpoch
 	m.Unlock()
 	if stale {
 		return nil
 	}
-
 	if err := m.withdrawInvalidated(ctx, lease); err != nil {
 		return err
 	}
@@ -202,7 +164,6 @@ func (m *Module) OnDHCPLease(
 	case netif.LeaseInit, netif.LeaseSelecting, netif.LeaseRequesting:
 		return nil
 	}
-
 	return nil
 }
 
@@ -212,7 +173,6 @@ func (m *Module) OnKernelEvent(ctx context.Context, log *slog.Logger, event neti
 	if event.Kind != netif.EvLinkUp || event.Iface != m.cfg.Iface {
 		return nil
 	}
-
 	return m.Reconcile(ctx, log)
 }
 
@@ -220,40 +180,26 @@ func (m *Module) applyBound(ctx context.Context, lease netif.LeaseInfo) error {
 	if lease.IP == nil {
 		return fmt.Errorf("oobv4: lease BOUND without IP")
 	}
-
 	m.Lock()
 	defer m.Unlock()
 	if !lease.ExpiresAt.IsZero() && !m.clock.Now().Before(lease.ExpiresAt) {
 		return nil
 	}
-
 	updateLastBound := lease.State == netif.LeaseBound || !m.hasApplied
 	lease.State = netif.LeaseBound
-	if err := m.owner.Reconcile(
-		ctx,
-		"oobv4",
-		m.cfg.Iface,
-		m.cfg.Iface,
-		m.cfg.OOBTableID,
-		0,
-		&lease,
-	); err != nil {
+	if err := m.owner.Reconcile(ctx, "oobv4", m.cfg.Iface, m.cfg.Iface, m.cfg.OOBTableID, 0, &lease); err != nil {
 		m.Log.WarnContext(ctx, "oobv4: assignment application failed", "err", err)
 		return fmt.Errorf("oobv4: apply DHCPv4 assignment: %w", err)
 	}
-
 	if err := m.reconcileSourceRule(ctx, lease.IP); err != nil {
 		return err
 	}
-
 	if updateLastBound {
 		m.lastBound = m.clock.Now()
 	}
-
 	m.appliedExpiresAt = lease.ExpiresAt
 	m.appliedEpoch = lease.InvalidationEpoch
 	m.hasApplied = true
-
 	return nil
 }
 
@@ -261,25 +207,14 @@ func (m *Module) applyExpired(ctx context.Context, log *slog.Logger) error {
 	log.WarnContext(ctx, "oobv4: DHCPv4 lease expired")
 	m.Lock()
 	defer m.Unlock()
-	if err := m.owner.Reconcile(
-		ctx,
-		"oobv4",
-		m.cfg.Iface,
-		m.cfg.Iface,
-		m.cfg.OOBTableID,
-		0,
-		nil,
-	); err != nil {
+	if err := m.owner.Reconcile(ctx, "oobv4", m.cfg.Iface, m.cfg.Iface, m.cfg.OOBTableID, 0, nil); err != nil {
 		return fmt.Errorf("oobv4: withdraw DHCPv4 assignment: %w", err)
 	}
-
 	if err := m.reconcileSourceRule(ctx, nil); err != nil {
 		return err
 	}
-
 	m.appliedExpiresAt = time.Time{}
 	m.hasApplied = false
-
 	return nil
 }
 
@@ -287,27 +222,23 @@ func (m *Module) applyExpired(ctx context.Context, log *slog.Logger) error {
 func (m *Module) LastBound() time.Time {
 	m.Lock()
 	defer m.Unlock()
-
 	return m.lastBound
 }
 
 // New is the Constructor.
 func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 	c := Config{
-		Iface:              "",
-		OOBTableID:         0,
-		StateFile:          "",
-		SourceRulePriority: 0,
+		Iface:      "",
+		OOBTableID: 0,
+		StateFile:  "", SourceRulePriority: 0,
 	}
 	if cfg != nil {
 		typedConfig, ok := cfg.(Config)
 		if !ok {
 			return nil, fmt.Errorf("oobv4: invalid config type %T", cfg)
 		}
-
 		c = typedConfig
 	}
-
 	return &Module{
 		BaseModule:       ifmgr.NewBaseModule("oobv4"),
 		cfg:              c,

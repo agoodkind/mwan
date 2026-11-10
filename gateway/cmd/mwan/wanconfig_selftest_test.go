@@ -32,23 +32,18 @@ func assertEmptyClientPresence(t *testing.T, exported []byte) {
 	if err := json.Unmarshal(exported, &tree); err != nil {
 		t.Fatalf("decode served interfaces: %v", err)
 	}
-
 	for _, entry := range tree.Interfaces.Interface {
 		if entry.Name != "enmwanbr0" {
 			continue
 		}
-
 		if _, present := entry.IPv4["goodkind-mwan-steering:dhcpv4"]; !present {
 			t.Fatal("empty DHCPv4 presence container was not published")
 		}
-
 		if _, present := entry.IPv6["goodkind-mwan-steering:dhcpv6-client"]; !present {
 			t.Fatal("empty DHCPv6 presence container was not published")
 		}
-
 		return
 	}
-
 	t.Fatal("internal interface was not published")
 }
 
@@ -62,7 +57,6 @@ func selftestModelsDir(t *testing.T) string {
 	if _, err := yangpub.WriteSchema(modelsDir); err != nil {
 		t.Fatalf("write the embedded schema: %v", err)
 	}
-
 	return modelsDir
 }
 
@@ -78,37 +72,18 @@ func TestPublishedTreeRoundTripsThroughSysrepo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("glob network documents: %v", err)
 	}
-
 	if len(documents) == 0 {
 		t.Fatalf("no network document matches %s", networkInstanceGlob)
 	}
-
-	sharedLabel := modifiedNetwork(
-		t,
-		networkReplacement{
-			old: `"name": "enwebpass0",`,
-			new: `"name": "enwebpass0", "goodkind-mwan-steering:connection-id": "sonic-a",`,
-		},
-		networkReplacement{
-			old: `"name": "enatt0",`,
-			new: `"name": "enatt0", "goodkind-mwan-steering:connection-id": "sonic-b",`,
-		},
+	sharedLabel := modifiedNetwork(t,
+		networkReplacement{old: `"name": "enwebpass0",`, new: `"name": "enwebpass0", "goodkind-mwan-steering:connection-id": "sonic-a",`},
+		networkReplacement{old: `"name": "enatt0",`, new: `"name": "enatt0", "goodkind-mwan-steering:connection-id": "sonic-b",`},
 		networkReplacement{old: `"name": "att",`, new: `"name": "webpass",`},
-		networkReplacement{
-			old: `"pinned-provider": "att"`,
-			new: `"pinned-connection-id": "sonic-b"`,
-		},
+		networkReplacement{old: `"pinned-provider": "att"`, new: `"pinned-connection-id": "sonic-b"`},
 	)
-	intentRoundtrip := modifiedNetwork(
-		t,
-		networkReplacement{
-			old: `{ "name": "enmwanbr0", "type": "iana-if-type:other" }`,
-			new: `{ "name": "enmwanbr0", "type": "iana-if-type:other", "ietf-ip:ipv4": { "goodkind-mwan-steering:dhcpv4": {} }, "ietf-ip:ipv6": { "goodkind-mwan-steering:dhcpv6-client": {}, "goodkind-mwan-steering:forwarding-address": [{ "address": "2001:db8:1::9" }] } }`,
-		},
-		networkReplacement{
-			old: `{ "name": "enmgmt0", "type": "iana-if-type:other" }`,
-			new: `{ "name": "enmgmt0", "type": "iana-if-type:other", "ietf-ip:ipv6": { "goodkind-mwan-steering:dhcpv6-client": { "address-iaid": 123, "prefix-iaid": 456 } } }`,
-		},
+	intentRoundtrip := modifiedNetwork(t,
+		networkReplacement{old: `{ "name": "enmwanbr0", "type": "iana-if-type:other" }`, new: `{ "name": "enmwanbr0", "type": "iana-if-type:other", "ietf-ip:ipv4": { "goodkind-mwan-steering:dhcpv4": {} }, "ietf-ip:ipv6": { "goodkind-mwan-steering:dhcpv6-client": {}, "goodkind-mwan-steering:forwarding-address": [{ "address": "2001:db8:1::9" }] } }`},
+		networkReplacement{old: `{ "name": "enmgmt0", "type": "iana-if-type:other" }`, new: `{ "name": "enmgmt0", "type": "iana-if-type:other", "ietf-ip:ipv6": { "goodkind-mwan-steering:dhcpv6-client": { "address-iaid": 123, "prefix-iaid": 456 } } }`},
 	)
 	documents = append(documents, intentRoundtrip)
 	documents = append(documents, sharedLabel)
@@ -130,69 +105,51 @@ func TestPublishedTreeRoundTripsThroughSysrepo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("daemon connection: %v", err)
 	}
-
 	defer func() { _ = daemon.Close() }()
 
 	for _, document := range documents {
-		t.Run(
-			filepath.Base(document),
-			func(t *testing.T) {
-				items := servedConfigItems(t, document, schemaDir)
-				replacer := runningReplacer{pub: daemon}
-				if err := replacer.ReplaceConfig(ctx, wanconfig.OwnedPaths, items); err != nil {
-					t.Fatalf("publish %s: %v", document, err)
-				}
-
-				exported, found, err := reader.ExportJSON(
-					ctx,
-					yangpub.DatastoreRunning,
-					"/ietf-interfaces:*",
-				)
-				if err != nil {
-					t.Fatalf("read running interfaces: %v", err)
-				}
-
-				if !found {
-					t.Fatal("read running interfaces: nothing served")
-				}
-
-				raw, err := os.ReadFile(document)
-				if err != nil {
-					t.Fatalf("read %s: %v", document, err)
-				}
-
-				inFile := flattenNetworkJSON(t, raw)
-				served := withoutServedOnlyPairs(flattenNetworkJSON(t, []byte(exported)), inFile)
-				compareLeafSets(t, inFile, served)
-				if document == intentRoundtrip {
-					assertEmptyClientPresence(t, []byte(exported))
-				}
-			},
-		)
+		t.Run(filepath.Base(document), func(t *testing.T) {
+			items := servedConfigItems(t, document, schemaDir)
+			replacer := runningReplacer{pub: daemon}
+			if err := replacer.ReplaceConfig(ctx, wanconfig.OwnedPaths, items); err != nil {
+				t.Fatalf("publish %s: %v", document, err)
+			}
+			exported, found, err := reader.ExportJSON(ctx, yangpub.DatastoreRunning, "/ietf-interfaces:*")
+			if err != nil {
+				t.Fatalf("read running interfaces: %v", err)
+			}
+			if !found {
+				t.Fatal("read running interfaces: nothing served")
+			}
+			raw, err := os.ReadFile(document)
+			if err != nil {
+				t.Fatalf("read %s: %v", document, err)
+			}
+			inFile := flattenNetworkJSON(t, raw)
+			served := withoutServedOnlyPairs(flattenNetworkJSON(t, []byte(exported)), inFile)
+			compareLeafSets(t, inFile, served)
+			if document == intentRoundtrip {
+				assertEmptyClientPresence(t, []byte(exported))
+			}
+		})
 	}
-
 	exportedNAT, foundNAT, err := reader.ExportJSON(ctx, yangpub.DatastoreRunning, "/ietf-nat:*")
 	if err != nil || !foundNAT {
 		t.Fatalf("read shared-label NAT instances: found=%v err=%v", foundNAT, err)
 	}
-
-	if !strings.Contains(exportedNAT, `sonic-a/ipv4`) ||
-		!strings.Contains(exportedNAT, `sonic-a/ipv6`) {
+	if !strings.Contains(exportedNAT, `sonic-a/ipv4`) || !strings.Contains(exportedNAT, `sonic-a/ipv6`) {
 		t.Fatalf("shared-label NAT identities are missing: %s", exportedNAT)
 	}
-
 	gateway := selftestGateway()
 	readIDs := func() map[string]uint32 {
 		t.Helper()
 		if err := wanconfig.Publish(ctx, log, runningReplacer{pub: daemon}, gateway); err != nil {
 			t.Fatalf("publish translation identities: %v", err)
 		}
-
 		exported, found, err := reader.ExportJSON(ctx, yangpub.DatastoreRunning, "/ietf-nat:*")
 		if err != nil || !found {
 			t.Fatalf("read NAT instances: found=%v err=%v", found, err)
 		}
-
 		var tree struct {
 			NAT struct {
 				Instances struct {
@@ -206,20 +163,16 @@ func TestPublishedTreeRoundTripsThroughSysrepo(t *testing.T) {
 		if err := json.Unmarshal([]byte(exported), &tree); err != nil {
 			t.Fatalf("decode NAT instances: %v", err)
 		}
-
 		ids := make(map[string]uint32)
-
 		for _, instance := range tree.NAT.Instances.Instance {
 			ids[instance.Name] = instance.ID
 		}
-
 		return ids
 	}
 	initial := readIDs()
 	if len(initial) != 2 {
 		t.Fatalf("initial NAT instances = %v, want one per translated family", initial)
 	}
-
 	other := gateway.Members[0]
 	other.Name, other.Iface = "another", "enanother0"
 	other.TableID, other.FwMark = 200, 2
@@ -228,131 +181,87 @@ func TestPublishedTreeRoundTripsThroughSysrepo(t *testing.T) {
 	otherConnection := gateway.Connections[len(gateway.Connections)-1]
 	otherConnection.ID, otherConnection.Name = "another", other.Iface
 	gateway.Connections = append(gateway.Connections, otherConnection)
-
 	original := gateway.Members[0]
 	for _, members := range [][]wanconfig.Member{{other, original}, {original, other}, {original}} {
 		gateway.Members = members
 		current := readIDs()
-
 		for name, id := range initial {
 			if current[name] != id {
 				t.Fatalf("NAT identity %s changed from %d to %d", name, id, current[name])
 			}
 		}
 	}
-
-	t.Run(
-		"IPv6 masquerade operational state",
-		func(t *testing.T) {
-			gateway.Members[0].TranslationV6 = &config.IPv6Translation{
-				Mode: config.TranslationMasquerade,
-			}
-			if err := wanconfig.Publish(
-				ctx,
-				log,
-				runningReplacer{pub: daemon},
-				gateway,
-			); err != nil {
-				t.Fatalf("publish masquerade: %v", err)
-			}
-
-			for _, module := range publishedModules {
-				if err := daemon.OwnModule(ctx, module); err != nil {
-					t.Fatal(err)
-				}
-			}
-
-			store := selftestStore()
-			store.SetTranslation(map[string]wanstate.MemberTranslation{
-				"example": {
-					V4: wanstate.FamilyTranslation{
-						Mode:  string(config.TranslationNAPT44),
-						Ready: true,
-					},
-					V6: wanstate.FamilyTranslation{
-						Mode:  string(config.TranslationMasquerade),
-						Ready: true,
-					},
-				},
-			})
-			if err := registerLiveStateProviders(
-				ctx,
-				log,
-				daemon,
-				store,
-				gateway,
-				nil,
-			); err != nil {
+	t.Run("IPv6 masquerade operational state", func(t *testing.T) {
+		gateway.Members[0].TranslationV6 = &config.IPv6Translation{Mode: config.TranslationMasquerade}
+		if err := wanconfig.Publish(ctx, log, runningReplacer{pub: daemon}, gateway); err != nil {
+			t.Fatalf("publish masquerade: %v", err)
+		}
+		for _, module := range publishedModules {
+			if err := daemon.OwnModule(ctx, module); err != nil {
 				t.Fatal(err)
 			}
-
-			interfaces, found, err := reader.ExportJSON(
-				ctx,
-				yangpub.DatastoreOperational,
-				"/ietf-interfaces:*",
-			)
-			if err != nil || !found {
-				t.Fatalf("read operational interfaces: found=%v err=%v", found, err)
+		}
+		store := selftestStore()
+		store.SetTranslation(map[string]wanstate.MemberTranslation{"example": {
+			V4: wanstate.FamilyTranslation{Mode: string(config.TranslationNAPT44), Ready: true},
+			V6: wanstate.FamilyTranslation{Mode: string(config.TranslationMasquerade), Ready: true},
+		}})
+		if err := registerLiveStateProviders(ctx, log, daemon, store, gateway, nil); err != nil {
+			t.Fatal(err)
+		}
+		interfaces, found, err := reader.ExportJSON(ctx, yangpub.DatastoreOperational, "/ietf-interfaces:*")
+		if err != nil || !found {
+			t.Fatalf("read operational interfaces: found=%v err=%v", found, err)
+		}
+		var tree struct {
+			Interfaces struct {
+				Interface []struct {
+					Name string `json:"name"`
+					IPv6 struct {
+						Translation struct {
+							Mode  string `json:"mode"`
+							State struct {
+								Ready bool `json:"ready"`
+							} `json:"state"`
+						} `json:"goodkind-mwan-steering:translation"`
+					} `json:"ietf-ip:ipv6"`
+				} `json:"interface"`
+			} `json:"ietf-interfaces:interfaces"`
+		}
+		if err := json.Unmarshal([]byte(interfaces), &tree); err != nil {
+			t.Fatal(err)
+		}
+		matched := false
+		for _, entry := range tree.Interfaces.Interface {
+			if entry.Name == gateway.Members[0].Iface {
+				matched = entry.IPv6.Translation.Mode == "masquerade" && entry.IPv6.Translation.State.Ready
 			}
-
-			var tree struct {
-				Interfaces struct {
-					Interface []struct {
+		}
+		if !matched {
+			t.Fatalf("operational IPv6 masquerade and readiness missing: %s", interfaces)
+		}
+		nat, found, err := reader.ExportJSON(ctx, yangpub.DatastoreOperational, "/ietf-nat:*")
+		if err != nil || !found {
+			t.Fatalf("read operational NAT: found=%v err=%v", found, err)
+		}
+		var natTree struct {
+			NAT struct {
+				Instances struct {
+					Instance []struct {
+						ID   uint32 `json:"id"`
 						Name string `json:"name"`
-						IPv6 struct {
-							Translation struct {
-								Mode  string `json:"mode"`
-								State struct {
-									Ready bool `json:"ready"`
-								} `json:"state"`
-							} `json:"goodkind-mwan-steering:translation"`
-						} `json:"ietf-ip:ipv6"`
-					} `json:"interface"`
-				} `json:"ietf-interfaces:interfaces"`
-			}
-			if err := json.Unmarshal([]byte(interfaces), &tree); err != nil {
-				t.Fatal(err)
-			}
-
-			matched := false
-
-			for _, entry := range tree.Interfaces.Interface {
-				if entry.Name == gateway.Members[0].Iface {
-					matched = entry.IPv6.Translation.Mode == "masquerade" &&
-						entry.IPv6.Translation.State.Ready
-				}
-			}
-
-			if !matched {
-				t.Fatalf("operational IPv6 masquerade and readiness missing: %s", interfaces)
-			}
-
-			nat, found, err := reader.ExportJSON(ctx, yangpub.DatastoreOperational, "/ietf-nat:*")
-			if err != nil || !found {
-				t.Fatalf("read operational NAT: found=%v err=%v", found, err)
-			}
-
-			var natTree struct {
-				NAT struct {
-					Instances struct {
-						Instance []struct {
-							ID   uint32 `json:"id"`
-							Name string `json:"name"`
-						} `json:"instance"`
-					} `json:"instances"`
-				} `json:"ietf-nat:nat"`
-			}
-			if err := json.Unmarshal([]byte(nat), &natTree); err != nil {
-				t.Fatal(err)
-			}
-
-			instances := natTree.NAT.Instances.Instance
-			if len(instances) != 1 || instances[0].Name != "example/ipv4" ||
-				instances[0].ID != gateway.Members[0].TranslationIDV4 {
-				t.Fatalf("unexpected NAT instances: %s", nat)
-			}
-		},
-	)
+					} `json:"instance"`
+				} `json:"instances"`
+			} `json:"ietf-nat:nat"`
+		}
+		if err := json.Unmarshal([]byte(nat), &natTree); err != nil {
+			t.Fatal(err)
+		}
+		instances := natTree.NAT.Instances.Instance
+		if len(instances) != 1 || instances[0].Name != "example/ipv4" || instances[0].ID != gateway.Members[0].TranslationIDV4 {
+			t.Fatalf("unexpected NAT instances: %s", nat)
+		}
+	})
 }
 
 func TestWanconfigSelftest_PrivateRepository(t *testing.T) {
@@ -362,44 +271,25 @@ func TestWanconfigSelftest_PrivateRepository(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	if err := os.WriteFile(filepath.Join(modelsDir, olderModule), olderData, 0o644); err != nil {
 		t.Fatal(err)
 	}
-
 	root := t.TempDir()
 	repository := filepath.Join(root, "etc", "sysrepo")
-	command := exec.CommandContext(
-		t.Context(),
-		buildMwanBinary(t),
-		"wanconfig-selftest",
-		"--repository",
-		repository,
-		"--models-dir",
-		modelsDir,
-	)
-	command.Env = append(
-		os.Environ(),
-		"SYSREPO_REPOSITORY_PATH=/prior/repository",
-		"SYSREPO_SHM_PREFIX=priorprefix",
-	)
+	command := exec.CommandContext(t.Context(), buildMwanBinary(t), "wanconfig-selftest", "--repository", repository, "--models-dir", modelsDir)
+	command.Env = append(os.Environ(), "SYSREPO_REPOSITORY_PATH=/prior/repository", "SYSREPO_SHM_PREFIX=priorprefix")
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("private selftest failed: %v: %s", err, output)
 	}
-
 	name, revision := moduleFileNameRevision(schema.SteeringFile)
 	installed := implementedModules(t, root, "private-selftest")
 	if module, present := installed[name]; !present || module.revision != revision {
 		t.Fatalf("private repository steering module = %+v, want revision %s", module, revision)
 	}
-
-	leftovers, err := filepath.Glob(
-		filepath.Join(sysrepoSHMDir, fmt.Sprintf("mwanselftest%d*", command.Process.Pid)),
-	)
+	leftovers, err := filepath.Glob(filepath.Join(sysrepoSHMDir, fmt.Sprintf("mwanselftest%d*", command.Process.Pid)))
 	if err != nil {
 		t.Fatalf("list shared memory: %v", err)
 	}
-
 	if len(leftovers) != 0 {
 		t.Fatalf("private selftest left shared memory segments: %v", leftovers)
 	}

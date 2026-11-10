@@ -34,13 +34,8 @@ func TestOwnedTunnelReplacesDeviceWithWrongInnerProtocol(t *testing.T) {
 	attrs := netlink.NewLinkAttrs()
 	attrs.Name = tunnelName
 	if err := netlink.LinkAdd(&netlink.Sittun{
-		LinkAttrs: attrs,
-		Link:      uint32(underlay.Attrs().Index),
-		Proto:     unix.IPPROTO_IPIP,
-		PMtuDisc:  1,
-		Ttl:       interfaceintent.DefaultTunnelTTL,
-		Local:     created.Local,
-		Remote:    created.Remote,
+		LinkAttrs: attrs, Link: uint32(underlay.Attrs().Index), Proto: unix.IPPROTO_IPIP, PMtuDisc: 1,
+		Ttl: interfaceintent.DefaultTunnelTTL, Local: created.Local, Remote: created.Remote,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -66,14 +61,7 @@ func TestOwnedTunnelReplacesDeviceWithWrongInnerProtocol(t *testing.T) {
 
 	requireTunnelReady(t, result)
 	replaced := tunnelDevice(t, tunnelName)
-	requireTunnelAttributes(
-		t,
-		replaced,
-		underlay,
-		tunnelRemoteOuter,
-		interfaceintent.DefaultTunnelTTL,
-		1480,
-	)
+	requireTunnelAttributes(t, replaced, underlay, tunnelRemoteOuter, interfaceintent.DefaultTunnelTTL, 1480)
 	if replaced.Attrs().Index == wrong.Attrs().Index {
 		t.Fatal("the device with the wrong inner protocol was not replaced")
 	}

@@ -53,12 +53,8 @@ type NativeCounterHistory struct {
 // readinessTimeout prevents waiting for initial EAGAIN.
 func NewNativeCounterHistory(now time.Time, readinessTimeout time.Duration) NativeCounterHistory {
 	return NativeCounterHistory{
-		previous:          [2]NativeCounter{},
-		samples:           0,
-		started:           now,
-		readinessDeadline: now.Add(readinessTimeout),
-		lastActive:        now,
-		lastSample:        time.Time{},
+		previous: [2]NativeCounter{}, samples: 0, started: now,
+		readinessDeadline: now.Add(readinessTimeout), lastActive: now, lastSample: time.Time{},
 	}
 }
 
@@ -72,99 +68,68 @@ func (history *NativeCounterHistory) Restart(now time.Time, readinessTimeout tim
 // Observe updates history only after every requested direction supplies valid,
 // nondecreasing counts and a newer sample time. Initial EAGAIN can remain pending
 // until the fixed deadline. Only increases after a complete baseline report activity.
-func (history *NativeCounterHistory) Observe(
-	requested uint32,
-	counters [2]NativeCounter,
-	queryError error,
-	now time.Time,
-) NativeCounterObservation {
-	if requested == 0 || requested > 3 || now.Before(history.started) ||
-		queryError != nil && !errors.Is(queryError, syscall.EAGAIN) {
+func (history *NativeCounterHistory) Observe(requested uint32, counters [2]NativeCounter, queryError error, now time.Time) NativeCounterObservation {
+	if requested == 0 || requested > 3 || now.Before(history.started) || queryError != nil && !errors.Is(queryError, syscall.EAGAIN) {
 		return NativeCounterInvalid
 	}
-
 	pending, active := false, false
-
 	for index, mask := range [2]uint32{1, 2} {
 		if requested&mask == 0 {
 			continue
 		}
-
 		observation := history.directionObservation(index, counters[index])
 		if observation == NativeCounterInvalid {
 			return NativeCounterInvalid
 		}
-
 		pending = pending || observation == NativeCounterPending
 		active = active || observation == NativeCounterActive
 	}
-
 	if pending {
 		if queryError == nil || history.samples != 0 {
 			return NativeCounterInvalid
 		}
-
 		if !now.Before(history.readinessDeadline) {
 			return NativeCounterReadinessExpired
 		}
-
 		return NativeCounterPending
 	}
-
 	if queryError != nil {
 		return NativeCounterInvalid
 	}
-
 	history.previous = counters
 	if history.samples == 0 || active {
 		history.lastActive = now
 	}
-
 	history.lastSample = now
 	if history.samples < nativeCounterSampleMinimum {
 		history.samples++
 	}
-
 	if active {
 		return NativeCounterActive
 	}
-
 	return NativeCounterIdle
 }
 
-func (history *NativeCounterHistory) directionObservation(
-	index int,
-	counter NativeCounter,
-) NativeCounterObservation {
+func (history *NativeCounterHistory) directionObservation(index int, counter NativeCounter) NativeCounterObservation {
 	if counter.Error != nil {
-		if !errors.Is(counter.Error, syscall.EAGAIN) || counter.PacketsValid ||
-			counter.BytesValid ||
-			counter.ObservedMonotonicNS != 0 {
+		if !errors.Is(counter.Error, syscall.EAGAIN) || counter.PacketsValid || counter.BytesValid || counter.ObservedMonotonicNS != 0 {
 			return NativeCounterInvalid
 		}
-
 		return NativeCounterPending
 	}
-
 	if !counter.PacketsValid || !counter.BytesValid || counter.ObservedMonotonicNS == 0 {
 		return NativeCounterInvalid
 	}
-
 	if history.samples == 0 {
 		return NativeCounterIdle
 	}
-
 	previous := history.previous[index]
-	if counter.ObservedMonotonicNS <= previous.ObservedMonotonicNS ||
-		counter.Packets < previous.Packets ||
-		counter.Bytes < previous.Bytes {
+	if counter.ObservedMonotonicNS <= previous.ObservedMonotonicNS || counter.Packets < previous.Packets || counter.Bytes < previous.Bytes {
 		return NativeCounterInvalid
 	}
-
 	if counter.Packets > previous.Packets || counter.Bytes > previous.Bytes {
 		return NativeCounterActive
 	}
-
 	return NativeCounterIdle
 }
 
@@ -184,6 +149,5 @@ func (history *NativeCounterHistory) Latest() ([2]NativeCounter, time.Time, bool
 // Evictable requires two complete samples and a last sample no older than
 // counterInterval. Pending and rejected reads do not supply new eviction evidence.
 func (history *NativeCounterHistory) Evictable(now time.Time, counterInterval time.Duration) bool {
-	return history.samples >= nativeCounterSampleMinimum && !now.Before(history.lastSample) &&
-		now.Sub(history.lastSample) <= counterInterval
+	return history.samples >= nativeCounterSampleMinimum && !now.Before(history.lastSample) && now.Sub(history.lastSample) <= counterInterval
 }

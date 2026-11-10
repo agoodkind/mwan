@@ -25,15 +25,8 @@ func RunInGuest(
 	command ...string,
 ) (GuestExecResult, error) {
 	driver := newGuestDriver(guestType)
-
 	return driver.execGuest(
-		ctx,
-		slog.Default(),
-		strconv.Itoa(vmid),
-		waitTimeout,
-		agentTimeout,
-		command,
-	)
+		ctx, slog.Default(), strconv.Itoa(vmid), waitTimeout, agentTimeout, command)
 }
 
 func failedGuestCommand() GuestExecResult {
@@ -43,19 +36,13 @@ func failedGuestCommand() GuestExecResult {
 // qmGuestExecArgs builds the `qm guest exec` argv. agentTimeout is how long qm
 // waits for the command to exit; past it qm returns without an exit code.
 func qmGuestExecArgs(
-	vmid string,
-	agentTimeout time.Duration,
-	command []string,
+	vmid string, agentTimeout time.Duration, command []string,
 ) []string {
 	args := []string{
-		"guest",
-		"exec",
-		vmid,
-		"--timeout",
-		strconv.Itoa(int(agentTimeout.Seconds())),
+		"guest", "exec", vmid,
+		"--timeout", strconv.Itoa(int(agentTimeout.Seconds())),
 		"--",
 	}
-
 	return append(args, command...)
 }
 
@@ -72,22 +59,13 @@ func (f *agentFlag) UnmarshalJSON(data []byte) error {
 		*f = agentFlag(asBool)
 		return nil
 	}
-
 	var asNumber int
 	if err := json.Unmarshal(data, &asNumber); err != nil {
-		slog.Warn(
-			"qm guest exec flag is neither a boolean nor a number",
-			"value",
-			string(data),
-			"err",
-			err,
-		)
-
+		slog.Warn("qm guest exec flag is neither a boolean nor a number",
+			"value", string(data), "err", err)
 		return fmt.Errorf("guest agent flag %s: %w", data, err)
 	}
-
 	*f = asNumber != 0
-
 	return nil
 }
 
@@ -111,67 +89,40 @@ func (qemuGuest) execGuest(
 	ctx context.Context,
 	log *slog.Logger,
 	vmid string,
-	waitTimeout time.Duration,
-	agentTimeout time.Duration,
+	waitTimeout, agentTimeout time.Duration,
 	command []string,
 ) (GuestExecResult, error) {
 	out, err := runQm(ctx, waitTimeout, qmGuestExecArgs(vmid, agentTimeout, command)...)
 	if err != nil {
-		log.ErrorContext(
-			ctx,
-			"qm guest exec failed",
-			"vmid",
-			vmid,
-			"err",
-			err,
-			"output",
-			strings.TrimSpace(string(out)),
-		)
-
+		log.ErrorContext(ctx, "qm guest exec failed",
+			"vmid", vmid, "err", err,
+			"output", strings.TrimSpace(string(out)))
 		return failedGuestCommand(),
 			fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
 	}
-
 	var status qmGuestExecStatus
 	if err := json.Unmarshal(out, &status); err != nil {
-		log.WarnContext(
-			ctx,
-			"qm guest exec output is not JSON",
-			"vmid",
-			vmid,
-			"err",
-			err,
-			"output",
-			strings.TrimSpace(string(out)),
-		)
-
+		log.WarnContext(ctx, "qm guest exec output is not JSON",
+			"vmid", vmid, "err", err,
+			"output", strings.TrimSpace(string(out)))
 		return failedGuestCommand(),
 			fmt.Errorf("parse qm guest exec output: %w", err)
 	}
-
 	if !status.Exited {
 		return failedGuestCommand(),
-			fmt.Errorf(
-				"guest command %q did not exit within %s",
-				strings.Join(command, " "),
-				agentTimeout,
-			)
+			fmt.Errorf("guest command %q did not exit within %s",
+				strings.Join(command, " "), agentTimeout)
 	}
-
 	if status.ExitCode == nil {
 		return failedGuestCommand(),
 			errors.New("qm guest exec reported an exited command without an exit code")
 	}
-
 	// Reject truncated stdout before parsing a probe result.
 	if status.OutTruncated {
 		return failedGuestCommand(),
-			fmt.Errorf(
-				"guest command %q output was truncated by the guest agent",
-				strings.Join(command, " "),
-			)
+			fmt.Errorf("guest command %q output was truncated by the guest agent",
+				strings.Join(command, " "))
 	}
-
 	return GuestExecResult{
 		ExitCode: *status.ExitCode,
 		Stdout:   status.OutData,

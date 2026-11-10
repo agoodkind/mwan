@@ -48,12 +48,7 @@ func TestCheckFirewallIsolatedKernel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("public firewall check: %v: %s", err, output)
 	}
-	for _, expected := range []string{
-		"inet filter input",
-		"ip nat postrouting",
-		"inet mangle prerouting",
-		"att_pinned_v4",
-	} {
+	for _, expected := range []string{"inet filter input", "ip nat postrouting", "inet mangle prerouting", "att_pinned_v4"} {
 		if !strings.Contains(string(output), expected) {
 			t.Errorf("readback omits %q: %s", expected, output)
 		}
@@ -66,11 +61,7 @@ func TestCheckFirewallIsolatedKernel(t *testing.T) {
 		t.Fatalf("public firewall check changed caller nftables rules")
 	}
 	invalid := filepath.Join(t.TempDir(), "invalid.json")
-	if err := os.WriteFile(
-		invalid,
-		[]byte(`{"ietf-interfaces:interfaces":{}}`),
-		0o600,
-	); err != nil {
+	if err := os.WriteFile(invalid, []byte(`{"ietf-interfaces:interfaces":{}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	badCheck := exec.Command(binary, "deploy-gate", "check-firewall", invalid, schema)
@@ -106,24 +97,14 @@ func TestCheckFirewallForcedDSCPReadback(t *testing.T) {
 	schema := filepath.Join("..", "..", "internal", "yangpub", "schema")
 	for _, dscp := range []int{forcedDSCPUnnamed, forcedDSCPNamed} {
 		fixture := forcedDSCPFixture(t, dscp)
-		output, err := exec.Command(
-			binary,
-			"deploy-gate",
-			"check-firewall",
-			fixture,
-			schema,
-		).CombinedOutput()
+		output, err := exec.Command(binary, "deploy-gate", "check-firewall", fixture, schema).CombinedOutput()
 		if err != nil {
 			t.Errorf("public firewall check rejected forced-dscp %d: %v: %s", dscp, err, output)
 		}
 	}
 	child := exec.Command(os.Args[0], "-test.run=^TestCheckFirewallForcedDSCPReadback$")
 	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNET}
-	child.Env = append(
-		os.Environ(),
-		forcedDSCPReadbackChildEnv+"=1",
-		forcedDSCPReadbackBinaryEnv+"="+binary,
-	)
+	child.Env = append(os.Environ(), forcedDSCPReadbackChildEnv+"=1", forcedDSCPReadbackBinaryEnv+"="+binary)
 	if output, err := child.CombinedOutput(); err != nil {
 		t.Fatalf("the isolated forced DSCP mismatch test failed: %v: %s", err, output)
 	}
@@ -145,20 +126,9 @@ func runForcedDSCPMismatchChild(t *testing.T) {
 	}
 	expected := forcedDSCPFixture(t, forcedDSCPNamed)
 	binary := os.Getenv(forcedDSCPReadbackBinaryEnv)
-	output, err := exec.Command(
-		binary,
-		"deploy-gate",
-		"inspect-firewall",
-		expected,
-		schema,
-	).CombinedOutput()
+	output, err := exec.Command(binary, "deploy-gate", "inspect-firewall", expected, schema).CombinedOutput()
 	if err == nil {
-		t.Fatalf(
-			"firewall readback accepted applied forced-dscp %d against expected %d: %s",
-			forcedDSCPUnnamed,
-			forcedDSCPNamed,
-			output,
-		)
+		t.Fatalf("firewall readback accepted applied forced-dscp %d against expected %d: %s", forcedDSCPUnnamed, forcedDSCPNamed, output)
 	}
 	appliedDSCP := "ip dscp 0x" + strconv.FormatInt(forcedDSCPUnnamed, 16) + " "
 	expectedDSCP := "ip dscp " + strconv.Itoa(forcedDSCPNamed) + " "
@@ -169,11 +139,7 @@ func runForcedDSCPMismatchChild(t *testing.T) {
 			return
 		}
 	}
-	t.Fatalf(
-		"firewall readback did not report the forced DSCP rule as the difference: %v: %s",
-		err,
-		output,
-	)
+	t.Fatalf("firewall readback did not report the forced DSCP rule as the difference: %v: %s", err, output)
 }
 
 func forcedDSCPFixture(t *testing.T, dscp int) string {
@@ -209,13 +175,7 @@ func TestCheckFirewallIsolatedKernelLXC(t *testing.T) {
 	}
 	fixture := filepath.Join("..", "..", "yang", "instances", "network-lxc.json")
 	schema := filepath.Join("..", "..", "internal", "yangpub", "schema")
-	output, err := exec.Command(
-		binary,
-		"deploy-gate",
-		"check-firewall",
-		fixture,
-		schema,
-	).CombinedOutput()
+	output, err := exec.Command(binary, "deploy-gate", "check-firewall", fixture, schema).CombinedOutput()
 	if err != nil {
 		t.Fatalf("public firewall check: %v: %s", err, output)
 	}

@@ -69,97 +69,42 @@ func readCombinedPath(read func() string, device, family string) combinedPath {
 		if family == "ipv4" {
 			path = entry.V4.Ownership.Path
 		}
-		slices.SortFunc(
-			path.Transitions,
-			func(left, right combinedTransition) int { return left.At.Compare(right.At) },
-		)
+		slices.SortFunc(path.Transitions, func(left, right combinedTransition) int { return left.At.Compare(right.At) })
 		return path
 	}
 	return combinedPath{}
 }
 
-func waitCombinedTransition(
-	t *testing.T,
-	daemon *runtimeDaemon,
-	read func() string,
-	device string,
-	family string,
-	since time.Time,
-	description string,
-	accept func(combinedTransition) bool,
-) combinedTransition {
+func waitCombinedTransition(t *testing.T, daemon *runtimeDaemon, read func() string, device, family string, since time.Time, description string, accept func(combinedTransition) bool) combinedTransition {
 	t.Helper()
 	var matched combinedTransition
-	waitBGPRuntime(
-		t,
-		daemon,
-		read,
-		device+" "+family+" path "+description,
-		tunnelRuntimeRecoverWindow,
-		func() bool {
-			path := readCombinedPath(read, device, family)
-			for _, transition := range path.Transitions {
-				if path.State == transition.Current && !transition.At.Before(since) &&
-					accept(transition) {
-					matched = transition
-					return true
-				}
+	waitBGPRuntime(t, daemon, read, device+" "+family+" path "+description, tunnelRuntimeRecoverWindow, func() bool {
+		path := readCombinedPath(read, device, family)
+		for _, transition := range path.Transitions {
+			if path.State == transition.Current && !transition.At.Before(since) && accept(transition) {
+				matched = transition
+				return true
 			}
-			return false
-		},
-	)
+		}
+		return false
+	})
 	return matched
 }
 
-func waitCombinedReady(
-	t *testing.T,
-	daemon *runtimeDaemon,
-	read func() string,
-	device string,
-	family string,
-	since time.Time,
-) time.Duration {
+func waitCombinedReady(t *testing.T, daemon *runtimeDaemon, read func() string, device, family string, since time.Time) time.Duration {
 	t.Helper()
-	transition := waitCombinedTransition(
-		t,
-		daemon,
-		read,
-		device,
-		family,
-		since,
-		"ready",
-		func(transition combinedTransition) bool {
-			return transition.Current == combinedReady && transition.Dependency == "" &&
-				transition.Reason == ""
-		},
-	)
+	transition := waitCombinedTransition(t, daemon, read, device, family, since, "ready", func(transition combinedTransition) bool {
+		return transition.Current == combinedReady && transition.Dependency == "" && transition.Reason == ""
+	})
 	return transition.At.Sub(since)
 }
 
-func waitCombinedUnavailable(
-	t *testing.T,
-	daemon *runtimeDaemon,
-	read func() string,
-	device string,
-	since time.Time,
-	dependencies ...string,
-) time.Duration {
+func waitCombinedUnavailable(t *testing.T, daemon *runtimeDaemon, read func() string, device string, since time.Time, dependencies ...string) time.Duration {
 	t.Helper()
 	description := fmt.Sprintf("unavailable with one dependency of %v", dependencies)
-	transition := waitCombinedTransition(
-		t,
-		daemon,
-		read,
-		device,
-		"ipv6",
-		since,
-		description,
-		func(transition combinedTransition) bool {
-			return transition.Current == combinedUnavailable &&
-				slices.Contains(dependencies, transition.Dependency) &&
-				transition.Reason != ""
-		},
-	)
+	transition := waitCombinedTransition(t, daemon, read, device, "ipv6", since, description, func(transition combinedTransition) bool {
+		return transition.Current == combinedUnavailable && slices.Contains(dependencies, transition.Dependency) && transition.Reason != ""
+	})
 	return transition.At.Sub(since)
 }
 
@@ -171,13 +116,7 @@ func requireCombinedBound(t *testing.T, description string, measured, bound time
 	}
 }
 
-func requireCombinedUnchanged(
-	t *testing.T,
-	read func() string,
-	since time.Time,
-	family string,
-	devices ...string,
-) {
+func requireCombinedUnchanged(t *testing.T, read func() string, since time.Time, family string, devices ...string) {
 	t.Helper()
 	for _, device := range devices {
 		path := readCombinedPath(read, device, family)
@@ -195,26 +134,10 @@ func requireCombinedUnchanged(
 func combinedTransferPath(t *testing.T, topology combinedTopology, source string) (string, error) {
 	t.Helper()
 	destination := net.JoinHostPort(combinedDestination, strconv.Itoa(combinedPort))
-	return runtimeTransferPath(
-		t,
-		topology.tunnel,
-		topology.destinations,
-		"tcp6",
-		destination,
-		source,
-		nil,
-	)
+	return runtimeTransferPath(t, topology.tunnel, topology.destinations, "tcp6", destination, source, nil)
 }
 
-func runtimeTransferPath(
-	t *testing.T,
-	topology tunnelRuntimeTopology,
-	destinations map[string]netns.NsHandle,
-	network string,
-	destination string,
-	source string,
-	control func(string, string, syscall.RawConn) error,
-) (string, error) {
+func runtimeTransferPath(t *testing.T, topology tunnelRuntimeTopology, destinations map[string]netns.NsHandle, network, destination, source string, control func(string, string, syscall.RawConn) error) (string, error) {
 	t.Helper()
 	defer setRuntimeNamespace(t, topology.gateway)
 	accepted := make(chan string, len(destinations))
@@ -237,11 +160,7 @@ func runtimeTransferPath(
 				return
 			}
 			defer func() { _ = connection.Close() }()
-			if _, copyErr := io.CopyN(
-				connection,
-				connection,
-				int64(len(combinedPayload)),
-			); copyErr == nil {
+			if _, copyErr := io.CopyN(connection, connection, int64(len(combinedPayload))); copyErr == nil {
 				accepted <- device
 			}
 		}()
@@ -267,39 +186,22 @@ func runtimeTransferPath(
 	return <-accepted, nil
 }
 
-func requireCombinedPaths(
-	t *testing.T,
-	daemon *runtimeDaemon,
-	read func() string,
-	topology combinedTopology,
-	ready ...string,
-) {
+func requireCombinedPaths(t *testing.T, daemon *runtimeDaemon, read func() string, topology combinedTopology, ready ...string) {
 	t.Helper()
 	for device := range topology.destinations {
-		if state := readCombinedPath(
-			read,
-			device,
-			"ipv6",
-		).State; (state == combinedReady) != slices.Contains(ready, device) {
+		if state := readCombinedPath(read, device, "ipv6").State; (state == combinedReady) != slices.Contains(ready, device) {
 			t.Fatalf("%s ipv6 path state = %s, want the ready paths %v", device, state, ready)
 		}
 	}
 	var used string
-	waitBGPRuntime(
-		t,
-		daemon,
-		read,
-		"transfer to "+combinedDestination,
-		tunnelRuntimeFailureWindow,
-		func() bool {
-			path, err := combinedTransferPath(t, topology, tunnelRuntimeClientV6)
-			if err != nil {
-				t.Logf("transfer failed and repeats: %v", err)
-			}
-			used = path
-			return err == nil
-		},
-	)
+	waitBGPRuntime(t, daemon, read, "transfer to "+combinedDestination, tunnelRuntimeFailureWindow, func() bool {
+		path, err := combinedTransferPath(t, topology, tunnelRuntimeClientV6)
+		if err != nil {
+			t.Logf("transfer failed and repeats: %v", err)
+		}
+		used = path
+		return err == nil
+	})
 	if !slices.Contains(ready, used) {
 		t.Fatalf("transfer used %s, want one of the ready paths %v", used, ready)
 	}

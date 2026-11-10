@@ -35,18 +35,9 @@ func nextHopNamespace(t *testing.T) bool {
 	return false
 }
 
-func addNextHopRoute(
-	t *testing.T,
-	link netlink.Link,
-	table int,
-	destination netip.Prefix,
-	gateway netip.Addr,
-) {
+func addNextHopRoute(t *testing.T, link netlink.Link, table int, destination netip.Prefix, gateway netip.Addr) {
 	t.Helper()
-	network := &net.IPNet{
-		IP:   net.IP(destination.Addr().AsSlice()),
-		Mask: net.CIDRMask(destination.Bits(), destination.Addr().BitLen()),
-	}
+	network := &net.IPNet{IP: net.IP(destination.Addr().AsSlice()), Mask: net.CIDRMask(destination.Bits(), destination.Addr().BitLen())}
 	route := &netlink.Route{Table: table, Dst: network, LinkIndex: link.Attrs().Index}
 	if gateway.IsValid() {
 		route.Gw = net.IP(gateway.AsSlice())
@@ -69,33 +60,14 @@ func TestFIBResolvesNextHopOnlyWithOption(t *testing.T) {
 	addNextHopRoute(t, link, sessionRouteTable, host, netip.Addr{})
 	addNextHopRoute(t, link, unix.RT_TABLE_MAIN, host, neighbor)
 
-	speakerFIB := bgp.NewFIB(
-		bgp.FIBConfig{Tables: []int{sessionRouteTable}, InternalIface: link.Attrs().Name},
-		sessionLogger(),
-	)
-	applyFIB(
-		t,
-		speakerFIB,
-		bgp.PathEvent{Peer: "internal", Prefix: speakerPrefix, NextHop: nextHop},
-	)
+	speakerFIB := bgp.NewFIB(bgp.FIBConfig{Tables: []int{sessionRouteTable}, InternalIface: link.Attrs().Name}, sessionLogger())
+	applyFIB(t, speakerFIB, bgp.PathEvent{Peer: "internal", Prefix: speakerPrefix, NextHop: nextHop})
 	assertKernelRoute(t, speakerPrefix, link, nextHop, kernelDefaultIPv6Metric)
 
-	sessionFIB := bgp.NewFIB(
-		bgp.FIBConfig{
-			Tables: []int{
-				sessionRouteTable,
-			},
-			InternalIface:  link.Attrs().Name,
-			Metric:         sessionRouteMetric,
-			ResolveNextHop: true,
-		},
-		sessionLogger(),
-	)
-	applyFIB(
-		t,
-		sessionFIB,
-		bgp.PathEvent{Peer: "external", Prefix: sessionPrefix, NextHop: nextHop},
-	)
+	sessionFIB := bgp.NewFIB(bgp.FIBConfig{
+		Tables: []int{sessionRouteTable}, InternalIface: link.Attrs().Name, Metric: sessionRouteMetric, ResolveNextHop: true,
+	}, sessionLogger())
+	applyFIB(t, sessionFIB, bgp.PathEvent{Peer: "external", Prefix: sessionPrefix, NextHop: nextHop})
 	assertKernelRoute(t, sessionPrefix, link, neighbor, sessionRouteMetric)
 }
 
@@ -109,17 +81,9 @@ func TestFIBRefreshKeepsCoveringRouteAndRestoresMissingRoute(t *testing.T) {
 	nextHop := netip.MustParseAddr("2001:db8:50::1")
 	addNextHopRoute(t, link, unix.RT_TABLE_MAIN, covering, neighbor)
 	learnedFilter := &netlink.Route{Table: unix.RT_TABLE_MAIN, Protocol: unix.RTPROT_BGP}
-	fib := bgp.NewFIB(
-		bgp.FIBConfig{
-			Tables: []int{
-				unix.RT_TABLE_MAIN,
-			},
-			InternalIface:  link.Attrs().Name,
-			Metric:         sessionRouteMetric,
-			ResolveNextHop: true,
-		},
-		sessionLogger(),
-	)
+	fib := bgp.NewFIB(bgp.FIBConfig{
+		Tables: []int{unix.RT_TABLE_MAIN}, InternalIface: link.Attrs().Name, Metric: sessionRouteMetric, ResolveNextHop: true,
+	}, sessionLogger())
 	applyFIB(t, fib, bgp.PathEvent{Peer: "external", Prefix: covering, NextHop: nextHop})
 	refresh := func() {
 		t.Helper()
@@ -127,30 +91,15 @@ func TestFIBRefreshKeepsCoveringRouteAndRestoresMissingRoute(t *testing.T) {
 		if err != nil || len(rejected) != 0 {
 			t.Fatalf("refresh rejected %v with error %v, want no rejection", rejected, err)
 		}
-		routes, err := netlink.RouteListFiltered(
-			unix.AF_INET6,
-			learnedFilter,
-			netlink.RT_FILTER_TABLE|netlink.RT_FILTER_PROTOCOL,
-		)
-		if err != nil || len(routes) != 1 || !routes[0].Gw.Equal(net.IP(neighbor.AsSlice())) ||
-			routes[0].Priority != sessionRouteMetric {
-			t.Fatalf(
-				"BGP routes = %v (%v), want one route to %s through %s",
-				routes,
-				err,
-				covering,
-				neighbor,
-			)
+		routes, err := netlink.RouteListFiltered(unix.AF_INET6, learnedFilter, netlink.RT_FILTER_TABLE|netlink.RT_FILTER_PROTOCOL)
+		if err != nil || len(routes) != 1 || !routes[0].Gw.Equal(net.IP(neighbor.AsSlice())) || routes[0].Priority != sessionRouteMetric {
+			t.Fatalf("BGP routes = %v (%v), want one route to %s through %s", routes, err, covering, neighbor)
 		}
 	}
 	refresh()
 	refresh()
 
-	learned, err := netlink.RouteListFiltered(
-		unix.AF_INET6,
-		learnedFilter,
-		netlink.RT_FILTER_TABLE|netlink.RT_FILTER_PROTOCOL,
-	)
+	learned, err := netlink.RouteListFiltered(unix.AF_INET6, learnedFilter, netlink.RT_FILTER_TABLE|netlink.RT_FILTER_PROTOCOL)
 	if err != nil || len(learned) != 1 {
 		t.Fatalf("BGP routes = %v (%v), want one route", learned, err)
 	}

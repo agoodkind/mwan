@@ -36,21 +36,12 @@ func newBGPSpeaker(cfg *config.Config, log *slog.Logger) (*bgp.Speaker, error) {
 		bgpCfg.Neighbors = append(bgpCfg.Neighbors, bgp.NeighborConfig{Address: neighbor.Address})
 	}
 	for _, neighbor := range cfg.BGP.NeighborsV6 {
-		bgpCfg.NeighborsV6 = append(
-			bgpCfg.NeighborsV6,
-			bgp.NeighborConfig{Address: neighbor.Address},
-		)
+		bgpCfg.NeighborsV6 = append(bgpCfg.NeighborsV6, bgp.NeighborConfig{Address: neighbor.Address})
 	}
 	for _, prefixText := range cfg.BGP.DynamicNeighbors {
 		prefix, err := netip.ParsePrefix(prefixText)
 		if err != nil {
-			log.Error(
-				"parse BGP dynamic neighbor failed",
-				"dynamic_neighbor",
-				prefixText,
-				"error",
-				err,
-			)
+			log.Error("parse BGP dynamic neighbor failed", "dynamic_neighbor", prefixText, "error", err)
 			return nil, fmt.Errorf("parse BGP dynamic neighbor %q: %w", prefixText, err)
 		}
 		bgpCfg.DynamicNeighborPrefixes = append(bgpCfg.DynamicNeighborPrefixes, prefix.Masked())

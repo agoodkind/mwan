@@ -22,10 +22,8 @@ type evidenceEpoch struct {
 
 func (epoch evidenceEpoch) LogValue() slog.Value {
 	return slog.GroupValue(
-		slog.Uint64("policy", epoch.policy),
-		slog.Uint64("routing", epoch.routing),
-		slog.Uint64("npt", epoch.npt),
-		slog.Uint64("forwarding", epoch.forwarding),
+		slog.Uint64("policy", epoch.policy), slog.Uint64("routing", epoch.routing),
+		slog.Uint64("npt", epoch.npt), slog.Uint64("forwarding", epoch.forwarding),
 		slog.Uint64("rules", epoch.rules),
 	)
 }
@@ -58,11 +56,8 @@ type evidenceCheck struct {
 func (module *Module) currentEvidenceEpoch() evidenceEpoch {
 	routing, npt := module.Env.LiveState.ForwardingGenerations()
 	return evidenceEpoch{
-		policy:     module.policyGeneration.Load(),
-		routing:    routing,
-		npt:        npt,
-		forwarding: module.forwarding.Generation(),
-		rules:      module.rules.Generation(),
+		policy: module.policyGeneration.Load(), routing: routing,
+		npt: npt, forwarding: module.forwarding.Generation(), rules: module.rules.Generation(),
 	}
 }
 
@@ -72,22 +67,12 @@ func (module *Module) evidenceFor(epoch evidenceEpoch) *evidenceCheck {
 	}
 	check := &evidenceCheck{epoch: epoch, guard: offload.NativeEvidenceGuard{Check: nil}}
 	check.guard.Check = func() error {
-		if err := errors.Join(
-			module.events.Err(),
-			module.forwarding.Err(),
-			module.rules.Err(),
-		); err != nil {
+		if err := errors.Join(module.events.Err(), module.forwarding.Err(), module.rules.Err()); err != nil {
 			slog.Warn("native kernel evidence became unavailable", "err", err)
 			return fmt.Errorf("read native kernel evidence: %w", err)
 		}
 		if current := module.currentEvidenceEpoch(); current != epoch {
-			module.Log.Warn(
-				"native forwarding evidence changed",
-				"expected",
-				epoch,
-				"current",
-				current,
-			)
+			module.Log.Warn("native forwarding evidence changed", "expected", epoch, "current", current)
 			return fmt.Errorf("native forwarding evidence changed: %w", syscall.ESTALE)
 		}
 		return nil

@@ -65,7 +65,6 @@ func NewChannelTrackerWithClock(now func() time.Time) *ChannelTracker {
 	if now == nil {
 		now = time.Now
 	}
-
 	// Every channel is present from the start, so recordSuccess and
 	// recordFailure can index the map without checking.
 	return &ChannelTracker{
@@ -98,7 +97,6 @@ func (t *ChannelTracker) recordFailure(ch ChannelName, err error) {
 	if err != nil {
 		h.lastError = err.Error()
 	}
-
 	h.healthy = false
 }
 
@@ -108,7 +106,6 @@ func (t *ChannelTracker) Summary() string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	var sb strings.Builder
-
 	for _, name := range []ChannelName{ChanVsock, ChanTCP, ChanPVE} {
 		h := t.channels[name]
 		status := "NEVER_USED"
@@ -116,18 +113,12 @@ func (t *ChannelTracker) Summary() string {
 			if h.healthy {
 				status = fmt.Sprintf("OK  (last_success=%s)", h.lastSuccess.Format(time.RFC3339))
 			} else {
-				status = fmt.Sprintf(
-					"FAIL(consecutive=%d last_err=%q last_failure=%s)",
-					h.consecutiveFails,
-					h.lastError,
-					h.lastFailure.Format(time.RFC3339),
-				)
+				status = fmt.Sprintf("FAIL(consecutive=%d last_err=%q last_failure=%s)",
+					h.consecutiveFails, h.lastError, h.lastFailure.Format(time.RFC3339))
 			}
 		}
-
 		fmt.Fprintf(&sb, "  %-10s %s\n", name, status)
 	}
-
 	return sb.String()
 }
 
@@ -135,24 +126,15 @@ func (t *ChannelTracker) Summary() string {
 func (t *ChannelTracker) LogAll(ctx context.Context, log *slog.Logger) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-
 	for _, name := range []ChannelName{ChanVsock, ChanTCP, ChanPVE} {
 		h := t.channels[name]
-		log.DebugContext(
-			ctx,
-			"channel health",
-			"channel",
-			name,
-			"healthy",
-			h.healthy,
-			"consecutive_fails",
-			h.consecutiveFails,
-			"last_error",
-			h.lastError,
-			"last_success",
-			h.lastSuccess,
-			"last_failure",
-			h.lastFailure,
+		log.DebugContext(ctx, "channel health",
+			"channel", name,
+			"healthy", h.healthy,
+			"consecutive_fails", h.consecutiveFails,
+			"last_error", h.lastError,
+			"last_success", h.lastSuccess,
+			"last_failure", h.lastFailure,
 		)
 	}
 }

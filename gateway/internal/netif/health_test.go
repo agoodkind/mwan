@@ -28,15 +28,12 @@ func TestReadHealthState(t *testing.T) {
 		{name: "missing key", wan: "missing", want: HealthStateUnknown},
 	}
 	for _, tc := range cases {
-		t.Run(
-			tc.name,
-			func(t *testing.T) {
-				got := states.State(tc.wan)
-				if got != tc.want {
-					t.Fatalf("state got %q, want %q", got, tc.want)
-				}
-			},
-		)
+		t.Run(tc.name, func(t *testing.T) {
+			got := states.State(tc.wan)
+			if got != tc.want {
+				t.Fatalf("state got %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -46,7 +43,6 @@ func TestReadHealthStateMissingFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadHealthState: %v", err)
 	}
-
 	if len(states) != 0 {
 		t.Fatalf("missing file states got %#v, want empty", states)
 	}
@@ -64,14 +60,11 @@ func TestHealthIsHealthy(t *testing.T) {
 		{name: "unhealthy", state: HealthStateUnhealthy, want: false},
 	}
 	for _, tc := range cases {
-		t.Run(
-			tc.name,
-			func(t *testing.T) {
-				got := HealthIsHealthy(tc.state)
-				if got != tc.want {
-					t.Fatalf("HealthIsHealthy(%q) = %v, want %v", tc.state, got, tc.want)
-				}
-			},
-		)
+		t.Run(tc.name, func(t *testing.T) {
+			got := HealthIsHealthy(tc.state)
+			if got != tc.want {
+				t.Fatalf("HealthIsHealthy(%q) = %v, want %v", tc.state, got, tc.want)
+			}
+		})
 	}
 }

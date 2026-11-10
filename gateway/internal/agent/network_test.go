@@ -362,47 +362,49 @@ func TestConfigureBGPFIBSkipsTheLoadWhereWanconfigIsOff(t *testing.T) {
 	}{
 		{name: "key rendered false", configTOML: failoverConfigTOML},
 		{
-			name:       "key absent",
-			configTOML: strings.Replace(failoverConfigTOML, "use_wanconfig = false\n", "", 1),
+			name: "key absent",
+			configTOML: strings.Replace(
+				failoverConfigTOML,
+				"use_wanconfig = false\n",
+				"",
+				1,
+			),
 		},
 	}
 
 	for _, test := range tests {
-		t.Run(
-			test.name,
-			func(t *testing.T) {
-				t.Parallel()
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 
-				var cfg config.Config
-				if err := toml.Unmarshal([]byte(test.configTOML), &cfg); err != nil {
-					t.Fatalf("toml.Unmarshal: %v", err)
-				}
-				if cfg.BGP.UseWanconfig {
-					t.Fatal("failover configuration must not turn the wanconfig load on")
-				}
-				log := discardLogger()
-				speaker := newTestSpeaker(t, &cfg, log)
+			var cfg config.Config
+			if err := toml.Unmarshal([]byte(test.configTOML), &cfg); err != nil {
+				t.Fatalf("toml.Unmarshal: %v", err)
+			}
+			if cfg.BGP.UseWanconfig {
+				t.Fatal("failover configuration must not turn the wanconfig load on")
+			}
+			log := discardLogger()
+			speaker := newTestSpeaker(t, &cfg, log)
 
-				ctx, cancel := context.WithCancel(context.Background())
-				defer cancel()
-				// Both paths point at nothing readable. Reaching the loader at all
-				// is the failure this test exists to catch.
-				err := configureBGPFIB(
-					ctx,
-					&cfg,
-					speaker,
-					log,
-					filepath.Join(t.TempDir(), "absent.json"),
-					filepath.Join(t.TempDir(), "absent-schema"),
-				)
-				if err != nil {
-					t.Fatalf("configureBGPFIB rejected a speaker that uses no wanconfig: %v", err)
-				}
-				want := []int{unix.RT_TABLE_MAIN}
-				if got := tablesFromConfig(&cfg); !reflect.DeepEqual(got, want) {
-					t.Fatalf("owned tables = %v, want %v", got, want)
-				}
-			},
-		)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			// Both paths point at nothing readable. Reaching the loader at all
+			// is the failure this test exists to catch.
+			err := configureBGPFIB(
+				ctx,
+				&cfg,
+				speaker,
+				log,
+				filepath.Join(t.TempDir(), "absent.json"),
+				filepath.Join(t.TempDir(), "absent-schema"),
+			)
+			if err != nil {
+				t.Fatalf("configureBGPFIB rejected a speaker that uses no wanconfig: %v", err)
+			}
+			want := []int{unix.RT_TABLE_MAIN}
+			if got := tablesFromConfig(&cfg); !reflect.DeepEqual(got, want) {
+				t.Fatalf("owned tables = %v, want %v", got, want)
+			}
+		})
 	}
 }

@@ -28,49 +28,31 @@ func StartIfaceMonitors(
 	handle MonitorEventHandler,
 ) {
 	for _, iface := range ifaces {
-		monitor := netif.NewMonitor(
-			ctx,
-			log,
-			netif.MonitorConfig{
-				Iface:        iface,
-				Connection:   connectionForIface(connections, iface),
-				ConnectionID: "",
-			},
-		)
+		monitor := netif.NewMonitor(ctx, log, netif.MonitorConfig{
+			Iface:        iface,
+			Connection:   connectionForIface(connections, iface),
+			ConnectionID: "",
+		})
 		go func(monitoredIface string, monitored *netif.Monitor) {
 			defer func() {
 				recovered := recover()
 				if recovered == nil {
 					return
 				}
-
-				log.ErrorContext(
-					ctx,
-					moduleName+": monitor goroutine panicked",
-					"iface",
-					monitoredIface,
-					"err",
-					fmt.Sprint(recovered),
-				)
+				log.ErrorContext(ctx, moduleName+": monitor goroutine panicked",
+					"iface", monitoredIface, "err", fmt.Sprint(recovered))
 			}()
 			drainIfaceMonitor(ctx, log, moduleName, monitoredIface, monitored, handle)
-		}(
-			iface,
-			monitor,
-		)
+		}(iface, monitor)
 	}
 }
 
-func connectionForIface(
-	connections []interfaceintent.Connection,
-	iface string,
-) *interfaceintent.Connection {
+func connectionForIface(connections []interfaceintent.Connection, iface string) *interfaceintent.Connection {
 	for i := range connections {
 		if connections[i].Name == iface && connections[i].Link != nil {
 			return &connections[i]
 		}
 	}
-
 	return nil
 }
 
@@ -83,7 +65,6 @@ func drainIfaceMonitor(
 	handle MonitorEventHandler,
 ) {
 	log = log.With("monitor_iface", iface)
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -94,7 +75,6 @@ func drainIfaceMonitor(
 				log.WarnContext(ctx, moduleName+": monitor event channel closed")
 				return
 			}
-
 			handle(ctx, log, event)
 		}
 	}

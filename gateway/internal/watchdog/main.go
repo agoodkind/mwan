@@ -33,14 +33,11 @@ func printScenarios() {
 	// not production diagnostics (which go through slog).
 	fmt.Fprintln(os.Stdout, "Available red-team scenarios:")
 	fmt.Fprintln(os.Stdout)
-
 	for name, preset := range redteam.Presets {
 		fmt.Fprintf(os.Stdout, "  %-22s %s\n", name, preset.Description)
 	}
-
 	fmt.Fprintln(os.Stdout)
-	fmt.Fprintln(
-		os.Stdout,
+	fmt.Fprintln(os.Stdout,
 		"Usage: mwan watchdog --red-team <scenario> "+
 			"[--red-team-live] [--red-team-iterations N]",
 	)
@@ -51,19 +48,14 @@ func printScenarios() {
 // handler is intentionally not attached: notify owns email delivery
 // for the watchdog now, so attaching the handler would produce a
 // duplicate email per failover or recovery event.
-func buildOpsLayer(
-	cfg *watchdogconfig.Config,
-	f Options,
-) (*slog.Logger, ops.SysOps, notify.Notifier, error) {
+func buildOpsLayer(cfg *watchdogconfig.Config, f Options) (*slog.Logger, ops.SysOps, notify.Notifier, error) {
 	handlers := []slog.Handler{logging.StdoutJSON()}
 	if p := cfg.Watchdog.LogFile; p != "" {
 		handlers = append(handlers, logging.FileText(p, "[watchdog]"))
 	}
-
 	if p := cfg.Watchdog.JSONLogFile; p != "" {
 		handlers = append(handlers, logging.FileJSON(p))
 	}
-
 	logger, _ := logging.New(logging.Config{
 		BuildVersion: version.BuildVersionString(),
 		Handlers:     handlers,
@@ -82,20 +74,13 @@ func buildOpsLayer(
 	if f.RedTeam != "" {
 		preset, ok := redteam.Presets[f.RedTeam]
 		if !ok {
-			return nil, nil, nil, fmt.Errorf(
-				"unknown scenario %q (use --list-scenarios)",
-				f.RedTeam,
-			)
+			return nil, nil, nil, fmt.Errorf("unknown scenario %q (use --list-scenarios)", f.RedTeam)
 		}
-
 		logger.Info(
 			"[MODE] Red-team scenario",
-			"scenario",
-			f.RedTeam,
-			"description",
-			preset.Description,
-			"live",
-			f.RedTeamLive,
+			"scenario", f.RedTeam,
+			"description", preset.Description,
+			"live", f.RedTeamLive,
 		)
 		baseOps = redteam.NewOps(baseOps, preset, logger)
 	}
@@ -110,11 +95,9 @@ func Run(cfg *watchdogconfig.Config, options Options) error {
 	if f.RedTeam != "" && !f.RedTeamLive {
 		f.DryRun = true
 	}
-
 	if os.Getenv("DRY_RUN") == "1" {
 		f.DryRun = true
 	}
-
 	if f.ListScenarios {
 		printScenarios()
 		return nil
@@ -124,7 +107,6 @@ func Run(cfg *watchdogconfig.Config, options Options) error {
 	if err != nil {
 		return err
 	}
-
 	runID := tracing.NewID()
 	logger = logger.With(
 		slog.String(tracing.RunIDKey, runID),
@@ -145,16 +127,13 @@ func Run(cfg *watchdogconfig.Config, options Options) error {
 	coord := &alert.Coord{}
 	mainCtx, cancelMain := context.WithCancel(context.Background())
 
-	sigCtx, stopSig := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	sigCtx, stopSig := signal.NotifyContext(
+		context.Background(), syscall.SIGTERM, syscall.SIGINT,
+	)
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				logger.ErrorContext(
-					mainCtx,
-					"signal handler panic",
-					"err",
-					fmt.Errorf("panic: %v", recovered),
-				)
+				logger.ErrorContext(mainCtx, "signal handler panic", "err", fmt.Errorf("panic: %v", recovered))
 			}
 		}()
 		<-sigCtx.Done()
@@ -165,10 +144,8 @@ func Run(cfg *watchdogconfig.Config, options Options) error {
 			)
 			coord.OnSignalDuringRollback()
 			stopSig()
-
 			return
 		}
-
 		logger.InfoContext(mainCtx, "Signal received; shutting down")
 		stopSig()
 		cancelMain()
@@ -181,7 +158,6 @@ func Run(cfg *watchdogconfig.Config, options Options) error {
 	w.tracker = extractTracker(baseOps)
 
 	w.run(mainCtx)
-
 	return nil
 }
 

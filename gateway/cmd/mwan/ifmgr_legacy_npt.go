@@ -24,22 +24,13 @@ func ifMgrRole(cfg *config.Config, flags ifmgrFlags) (string, error) {
 	if flags.role != "" {
 		role = flags.role
 	}
-
 	if role == "" {
 		return "", fmt.Errorf("ifmgr: role required (set [ifmgr].role in config or pass --role)")
 	}
-
 	return role, nil
 }
 
-func runLegacyNPTTransition(
-	ctx context.Context,
-	log *slog.Logger,
-	cfg *config.Config,
-	flags ifmgrFlags,
-	role string,
-	timeout time.Duration,
-) (resultErr error) {
+func runLegacyNPTTransition(ctx context.Context, log *slog.Logger, cfg *config.Config, flags ifmgrFlags, role string, timeout time.Duration) (resultErr error) {
 	defer func() {
 		if resultErr != nil {
 			log.ErrorContext(ctx, "legacy NPT transition rejected", "err", resultErr)
@@ -48,261 +39,167 @@ func runLegacyNPTTransition(
 	if role != "wan" || flags.dryRun {
 		return fmt.Errorf("legacy NPT transition requires the WAN role without dry-run")
 	}
-
 	if flags.captureLegacyNPT != "" && flags.adoptLegacyNPT != "" {
 		return fmt.Errorf("capture and apply are separate operations")
 	}
-
 	loaded, err := parseNetworkConfig(ctx, log, cfg, role)
 	if err != nil {
 		return err
 	}
-
 	if len(loaded.Rejected) != 0 {
 		return fmt.Errorf("legacy NPT transition requires every configured provider to be accepted")
 	}
-
 	if cfg.IfMgr.Modules.Addresses == nil || cfg.IfMgr.Modules.Addresses.StateFile == "" {
 		return fmt.Errorf("legacy NPT transition requires the configured address journal")
 	}
-
 	configs, err := buildIfMgrModuleConfigs(cfg.IfMgr, "wan")
 	if err != nil {
 		return err
 	}
-
 	nptConfig, ok := configs["npt"].(npt.Config)
 	if !ok {
 		return fmt.Errorf("legacy NPT transition requires configured NPT")
 	}
-
 	edges, err := npt.ReadLegacyNPTEdges(ctx, log, nptConfig, cfg.IfMgr.Connections)
 	if err != nil {
 		return fmt.Errorf("read legacy NPT transition: %w", err)
 	}
-
 	mappings, err := readLegacyMappedTransition(ctx, log, cfg, nptConfig, timeout)
 	if err != nil {
 		return fmt.Errorf("read legacy mapped transition: %w", err)
 	}
-
 	journal := cfg.IfMgr.Modules.Addresses.StateFile
 	if flags.captureLegacyNPT != "" {
-		if err := netif.WriteLegacyNPTTransition(
-			flags.captureLegacyNPT,
-			flags.producerPID,
-			flags.producerSHA256,
-			journal,
-			edges,
-			mappings,
-		); err != nil {
+		if err := netif.WriteLegacyNPTTransition(flags.captureLegacyNPT, flags.producerPID, flags.producerSHA256, journal, edges, mappings); err != nil {
 			return fmt.Errorf("capture legacy NPT transition: %w", err)
 		}
-
 		return nil
 	}
-
-	if err := netif.ApplyLegacyNPTTransition(
-		flags.adoptLegacyNPT,
-		journal,
-		edges,
-		mappings,
-	); err != nil {
+	if err := netif.ApplyLegacyNPTTransition(flags.adoptLegacyNPT, journal, edges, mappings); err != nil {
 		return fmt.Errorf("adopt legacy NPT transition: %w", err)
 	}
-
 	return nil
 }
 
-func readLegacyMappedTransition(
-	ctx context.Context,
-	log *slog.Logger,
-	cfg *config.Config,
-	settings npt.Config,
-	timeout time.Duration,
-) ([]netif.LegacyMappedAddress, error) {
+func readLegacyMappedTransition(ctx context.Context, log *slog.Logger, cfg *config.Config, settings npt.Config, timeout time.Duration) ([]netif.LegacyMappedAddress, error) {
 	var result []netif.LegacyMappedAddress
-
 	for _, wan := range settings.WANs {
 		if wan.TranslationV4 == nil || len(wan.TranslationV4.StaticMappings) == 0 {
 			continue
 		}
-
 		for _, connection := range cfg.IfMgr.Connections {
 			if connection.ID != wan.ID || connection.Name != wan.Iface {
 				continue
 			}
-
 			if connection.Owner != interfaceintent.OwnerNetworkd {
-				return nil, fmt.Errorf(
-					"mapped producer transition requires unchanged networkd ownership for %s",
-					connection.ID,
-				)
+				return nil, fmt.Errorf("mapped producer transition requires unchanged networkd ownership for %s", connection.ID)
 			}
-
-			prefixes, err := legacyMappedTransitionPrefixes(
-				ctx,
-				log,
-				connection,
-				wan.TranslationV4.StaticMappings,
-				timeout,
-			)
+			prefixes, err := legacyMappedTransitionPrefixes(ctx, log, connection, wan.TranslationV4.StaticMappings, timeout)
 			if err != nil {
 				return nil, err
 			}
-
 			intent := struct {
 				Connection  interfaceintent.Connection `json:"connection"`
 				Translation config.IPv4Translation     `json:"translation"`
-			}{
-				connection,
-				*wan.TranslationV4,
-			}
+			}{connection, *wan.TranslationV4}
 			var intentBytes bytes.Buffer
 			if err := gob.NewEncoder(&intentBytes).Encode(intent); err != nil {
 				return nil, netif.NewLegacyNPTError("marshal legacy mapping intent", err)
 			}
-
 			digest := sha256.Sum256(intentBytes.Bytes())
-			observed, err := netif.ReadLegacyMappedAddresses(
-				connection,
-				prefixes,
-				hex.EncodeToString(digest[:]),
-			)
+			observed, err := netif.ReadLegacyMappedAddresses(connection, prefixes, hex.EncodeToString(digest[:]))
 			if err != nil {
 				return nil, netif.NewLegacyNPTError("observe legacy mapped addresses", err)
 			}
-
 			result = append(result, observed...)
 		}
 	}
-
 	return result, nil
 }
 
-func legacyMappedTransitionPrefixes(
-	ctx context.Context,
-	log *slog.Logger,
-	connection interfaceintent.Connection,
-	mappings []config.StaticMapping,
-	timeout time.Duration,
-) ([]netip.Prefix, error) {
+func legacyMappedTransitionPrefixes(ctx context.Context, log *slog.Logger, connection interfaceintent.Connection, mappings []config.StaticMapping, timeout time.Duration) ([]netip.Prefix, error) {
 	current, err := netif.ListAddrs(ctx, log, connection.Name)
 	if err != nil {
 		return nil, netif.NewLegacyNPTError("read legacy mapping addresses", err)
 	}
-
 	primary, err := legacyMappedTransitionPrimary(ctx, connection, current, timeout)
 	if err != nil {
 		return nil, err
 	}
-
 	var external []netip.Addr
-
 	for _, mapping := range mappings {
 		if mapping.Delivery != interfaceintent.DeliveryRouted {
 			external = append(external, mapping.External)
 		}
 	}
-
 	onLink, err := netif.OnLinkMappedAddresses(current, external)
 	if err != nil {
 		return nil, netif.NewLegacyNPTError("select legacy mapped subnets", err)
 	}
-
 	var prefixes []netip.Prefix
-
 	for _, mapping := range mappings {
 		if primary[mapping.External] || mapping.Delivery == interfaceintent.DeliveryRouted {
 			continue
 		}
-
-		if mapping.Delivery != interfaceintent.DeliveryLocal &&
-			!slices.Contains(onLink, mapping.External) {
+		if mapping.Delivery != interfaceintent.DeliveryLocal && !slices.Contains(onLink, mapping.External) {
 			continue
 		}
-
 		prefixes = append(prefixes, netip.PrefixFrom(mapping.External, 32))
 	}
-
 	return prefixes, nil
 }
 
-func legacyMappedTransitionPrimary(
-	ctx context.Context,
-	connection interfaceintent.Connection,
-	current []netif.CurrentAddr,
-	timeout time.Duration,
-) (map[netip.Addr]bool, error) {
+func legacyMappedTransitionPrimary(ctx context.Context, connection interfaceintent.Connection, current []netif.CurrentAddr, timeout time.Duration) (map[netip.Addr]bool, error) {
 	primary := make(map[netip.Addr]bool)
-
 	for _, address := range current {
 		if address.Family != "inet" {
 			continue
 		}
-
 		prefix, err := netip.ParsePrefix(address.CIDR)
 		if err != nil {
 			return nil, netif.NewLegacyNPTError("parse legacy mapping subnet", err)
 		}
-
 		if prefix.Bits() < 32 {
 			primary[prefix.Addr()] = true
 		}
 	}
-
 	if connection.IPv4 == nil {
 		return primary, nil
 	}
-
 	for _, address := range connection.IPv4.Addresses {
 		primary[address.Prefix.Addr()] = true
 	}
-
 	if connection.IPv4.DHCP == nil || !*connection.IPv4.DHCP {
 		return primary, nil
 	}
-
 	acquired, err := legacyMappedAcquiredPrimary(ctx, timeout, connection.Name)
 	if err != nil {
 		return nil, err
 	}
-
 	for _, address := range acquired {
 		primary[address] = true
 	}
-
 	return primary, nil
 }
 
-func legacyMappedAcquiredPrimary(
-	ctx context.Context,
-	timeout time.Duration,
-	name string,
-) ([]netip.Addr, error) {
+func legacyMappedAcquiredPrimary(ctx context.Context, timeout time.Duration, name string) ([]netip.Addr, error) {
 	if timeout <= 0 {
 		return nil, fmt.Errorf("legacy mapping observation requires a positive networkd timeout")
 	}
-
 	bounded, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	addresses, err := networkd.Addresses(bounded, name)
 	if err != nil {
 		return nil, netif.NewLegacyNPTError("observe legacy networkd primary", err)
 	}
-
 	var acquired []netip.Addr
-
 	for _, address := range addresses {
-		if address.Prefix.Addr().Is4() && address.ConfigSource == "DHCPv4" &&
-			address.ConfigState == "configured" {
+		if address.Prefix.Addr().Is4() && address.ConfigSource == "DHCPv4" && address.ConfigState == "configured" {
 			acquired = append(acquired, address.Prefix.Addr())
 		}
 	}
-
 	if len(acquired) == 0 {
 		return nil, fmt.Errorf("networkd DHCPv4 primary address is not configured")
 	}
-
 	return acquired, nil
 }

@@ -18,10 +18,7 @@ type tunnelRuntimeIPv4State struct {
 }
 
 func tunnelRuntimeIPv4Providers() map[string]string {
-	return map[string]string{
-		tunnelRuntimeUnderlay:  tunnelRuntimeLocal,
-		tunnelRuntimeAlternate: tunnelRuntimeAltLocal,
-	}
+	return map[string]string{tunnelRuntimeUnderlay: tunnelRuntimeLocal, tunnelRuntimeAlternate: tunnelRuntimeAltLocal}
 }
 
 func tunnelRuntimeClientsV4() []string {
@@ -29,14 +26,7 @@ func tunnelRuntimeClientsV4() []string {
 }
 
 func tunnelRuntimeIPv4Selection() (string, error) {
-	output, err := exec.Command(
-		"nft",
-		"list",
-		"chain",
-		"inet",
-		"mwan_steer",
-		"prerouting",
-	).CombinedOutput()
+	output, err := exec.Command("nft", "list", "chain", "inet", "mwan_steer", "prerouting").CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("read the steering chain: %w: %s", err, output)
 	}
@@ -52,8 +42,7 @@ func tunnelRuntimeIPv4Assignments(chain string) string {
 	for _, line := range strings.Split(chain, "\n") {
 		_, assignment, found := strings.Cut(line, "meta mark set")
 		assignment = strings.TrimSpace(assignment)
-		if found && strings.Contains(line, "ip saddr") &&
-			!slices.Contains(assignments, assignment) {
+		if found && strings.Contains(line, "ip saddr") && !slices.Contains(assignments, assignment) {
 			assignments = append(assignments, assignment)
 		}
 	}
@@ -61,12 +50,7 @@ func tunnelRuntimeIPv4Assignments(chain string) string {
 	return strings.Join(assignments, "; ")
 }
 
-func waitTunnelRuntimeIPv4Selection(
-	t *testing.T,
-	daemon *runtimeDaemon,
-	description string,
-	accept func(string) bool,
-) {
+func waitTunnelRuntimeIPv4Selection(t *testing.T, daemon *runtimeDaemon, description string, accept func(string) bool) {
 	t.Helper()
 	deadline := time.Now().Add(tunnelRuntimeRecoverWindow)
 	var selection string
@@ -79,13 +63,7 @@ func waitTunnelRuntimeIPv4Selection(
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf(
-		"IPv4 steering assignment %q (%v), want %s; daemon=%s",
-		selection,
-		err,
-		description,
-		tunnelRuntimeLog(t, daemon),
-	)
+	t.Fatalf("IPv4 steering assignment %q (%v), want %s; daemon=%s", selection, err, description, tunnelRuntimeLog(t, daemon))
 }
 
 func TestTunnelRuntimeIPv4SelectionRejectsAMissingAssignment(t *testing.T) {
@@ -97,9 +75,7 @@ func TestTunnelRuntimeIPv4SelectionRejectsAMissingAssignment(t *testing.T) {
 		t.Fatalf("a chain without an IPv4 assignment returned selection %q", selection)
 	}
 	balanced := "\t\tiifname \"enmwanbr0\" ip saddr 192.0.2.0/29 ct state new meta mark set jhash ip saddr mod 2 map { 0 : 0x1, 1 : 0x3 }\n"
-	if selection := tunnelRuntimeIPv4Assignments(
-		ipv6Only + balanced,
-	); selection != "jhash ip saddr mod 2 map { 0 : 0x1, 1 : 0x3 }" {
+	if selection := tunnelRuntimeIPv4Assignments(ipv6Only + balanced); selection != "jhash ip saddr mod 2 map { 0 : 0x1, 1 : 0x3 }" {
 		t.Fatalf("selection of a chain with one IPv4 assignment = %q", selection)
 	}
 }
@@ -112,9 +88,7 @@ func readTunnelRuntimeIPv4State(run tunnelRuntimeRun) map[string]tunnelRuntimeIP
 			continue
 		}
 		state[provider] = tunnelRuntimeIPv4State{
-			Routing:   entry.V4.Ownership.Routing,
-			Readiness: entry.V4.Ownership.Readiness,
-			Carrying:  entry.Steering.State.Carrying,
+			Routing: entry.V4.Ownership.Routing, Readiness: entry.V4.Ownership.Readiness, Carrying: entry.Steering.State.Carrying,
 		}
 	}
 	return state
@@ -123,23 +97,9 @@ func readTunnelRuntimeIPv4State(run tunnelRuntimeRun) map[string]tunnelRuntimeIP
 func waitTunnelRuntimeIPv4Baseline(t *testing.T, daemon *runtimeDaemon, run tunnelRuntimeRun) {
 	t.Helper()
 	for provider := range tunnelRuntimeIPv4Providers() {
-		waitTunnelRuntimeFamily(
-			t,
-			daemon,
-			run.read,
-			provider,
-			"ipv4",
-			"ready",
-			"ready",
-			tunnelRuntimeRecoverWindow,
-		)
+		waitTunnelRuntimeFamily(t, daemon, run.read, provider, "ipv4", "ready", "ready", tunnelRuntimeRecoverWindow)
 	}
-	waitTunnelRuntimeIPv4Selection(
-		t,
-		daemon,
-		"the assignment before the first tunnel fault",
-		func(selection string) bool {
-			return selection == run.ipv4.Selection
-		},
-	)
+	waitTunnelRuntimeIPv4Selection(t, daemon, "the assignment before the first tunnel fault", func(selection string) bool {
+		return selection == run.ipv4.Selection
+	})
 }

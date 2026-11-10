@@ -56,7 +56,6 @@ func ParseExportMode(text string) (ExportMode, bool) {
 			return mode, true
 		}
 	}
-
 	return 0, false
 }
 
@@ -75,7 +74,6 @@ func (f Family) String() string {
 	if f == FamilyIPv6Unicast {
 		return familyIPv6UnicastText
 	}
-
 	return ""
 }
 
@@ -85,7 +83,6 @@ func ParseFamily(text string) (Family, bool) {
 	if text == familyIPv6UnicastText {
 		return FamilyIPv6Unicast, true
 	}
-
 	return 0, false
 }
 
@@ -96,7 +93,6 @@ func ValidateRouterID(routerID netip.Addr) error {
 	if !routerID.Is4() || routerID.IsUnspecified() {
 		return fmt.Errorf("router ID %s is not a usable IPv4 address", routerID)
 	}
-
 	return nil
 }
 
@@ -115,7 +111,6 @@ func (c Community) String() string {
 func ParseCommunity(text string) (Community, bool) {
 	var community Community
 	_, err := fmt.Sscanf(text, communityFormat, &community.ASN, &community.Value)
-
 	return community, err == nil && community.String() == text
 }
 
@@ -134,14 +129,7 @@ func (c LargeCommunity) String() string {
 // ParseLargeCommunity accepts only the canonical text of three decimal numbers separated by colons.
 func ParseLargeCommunity(text string) (LargeCommunity, bool) {
 	var community LargeCommunity
-	_, err := fmt.Sscanf(
-		text,
-		largeCommunityFormat,
-		&community.GlobalAdmin,
-		&community.LocalData1,
-		&community.LocalData2,
-	)
-
+	_, err := fmt.Sscanf(text, largeCommunityFormat, &community.GlobalAdmin, &community.LocalData1, &community.LocalData2)
 	return community, err == nil && community.String() == text
 }
 
@@ -200,35 +188,28 @@ func Validated(cfg Config) (Config, error) {
 	if cfg.Name == "" {
 		return none, errors.New("name is required")
 	}
-
 	if err := validateSessionIdentity(cfg); err != nil {
 		return none, err
 	}
-
 	if err := validateSessionTransport(cfg); err != nil {
 		return none, err
 	}
-
 	families, err := validatedFamilies(cfg.Families)
 	if err != nil {
 		return none, err
 	}
-
 	cfg.Families = families
 	importRules, err := validatedImportRules(cfg.Import)
 	if err != nil {
 		return none, err
 	}
-
 	exportRules, err := validatedExportRules(cfg.Export, cfg.Internal())
 	if err != nil {
 		return none, err
 	}
-
 	cfg.Import = importRules
 	cfg.Export = exportRules
 	cfg.Tables = append([]int(nil), cfg.Tables...)
-
 	return cfg, nil
 }
 
@@ -236,20 +217,16 @@ func validatedFamilies(families []Family) ([]Family, error) {
 	if len(families) == 0 {
 		return nil, errors.New("at least one address family is required")
 	}
-
 	validated := make([]Family, 0, len(families))
 	for _, family := range families {
 		if family.String() == "" {
 			return nil, fmt.Errorf("address family %d is not supported", family)
 		}
-
 		if slices.Contains(validated, family) {
 			return nil, fmt.Errorf("address family %s appears more than once", family)
 		}
-
 		validated = append(validated, family)
 	}
-
 	return validated, nil
 }
 
@@ -257,11 +234,9 @@ func validateSessionIdentity(cfg Config) error {
 	if cfg.LocalASN == 0 {
 		return errors.New("local ASN is required")
 	}
-
 	if cfg.RemoteASN == 0 {
 		return errors.New("remote ASN is required")
 	}
-
 	return nil
 }
 
@@ -269,74 +244,56 @@ func validateSessionTransport(cfg Config) error {
 	if !cfg.PeerAddress.IsValid() || cfg.PeerAddress.IsUnspecified() {
 		return fmt.Errorf("peer address %s is not a usable address", cfg.PeerAddress)
 	}
-
 	if cfg.PeerPort == 0 {
 		return errors.New("peer port is required")
 	}
-
 	if cfg.LocalAddress.IsValid() && cfg.LocalAddress.Is4() != cfg.PeerAddress.Is4() {
 		return fmt.Errorf(
 			"local address %s and peer address %s use different address families",
-			cfg.LocalAddress,
-			cfg.PeerAddress,
+			cfg.LocalAddress, cfg.PeerAddress,
 		)
 	}
-
 	if cfg.KeepaliveSeconds == 0 {
 		return errors.New("keepalive timer is required")
 	}
-
 	if cfg.HoldSeconds < MinHoldSeconds || cfg.HoldSeconds > maxHoldSeconds {
 		return fmt.Errorf(
 			"hold timer %d is outside the range %d to %d",
-			cfg.HoldSeconds,
-			MinHoldSeconds,
-			maxHoldSeconds,
+			cfg.HoldSeconds, MinHoldSeconds, maxHoldSeconds,
 		)
 	}
-
 	if cfg.KeepaliveSeconds >= cfg.HoldSeconds {
 		return fmt.Errorf(
 			"keepalive timer %d must be shorter than hold timer %d",
-			cfg.KeepaliveSeconds,
-			cfg.HoldSeconds,
+			cfg.KeepaliveSeconds, cfg.HoldSeconds,
 		)
 	}
-
 	if cfg.ConnectRetrySeconds != 0 && cfg.ConnectRetrySeconds < MinConnectRetrySeconds {
 		return fmt.Errorf(
 			"connect retry timer %d must be at least %d",
-			cfg.ConnectRetrySeconds,
-			MinConnectRetrySeconds,
+			cfg.ConnectRetrySeconds, MinConnectRetrySeconds,
 		)
 	}
-
 	if cfg.GracefulRestartSeconds > MaxGracefulRestartSeconds {
 		return fmt.Errorf(
 			"graceful restart time %d must be at most %d",
-			cfg.GracefulRestartSeconds,
-			MaxGracefulRestartSeconds,
+			cfg.GracefulRestartSeconds, MaxGracefulRestartSeconds,
 		)
 	}
-
 	if len(cfg.Tables) > 0 && cfg.Interface == "" {
 		return errors.New("interface is required when kernel tables are configured")
 	}
-
 	if len(cfg.Tables) > 0 && (cfg.RouteMetric == 0 || cfg.RouteMetric == KernelDefaultIPv6Metric) {
 		return fmt.Errorf(
 			"route metric %d collides with the kernel default metric %d",
-			cfg.RouteMetric,
-			KernelDefaultIPv6Metric,
+			cfg.RouteMetric, KernelDefaultIPv6Metric,
 		)
 	}
-
 	for _, tableID := range cfg.Tables {
 		if tableID <= 0 {
 			return fmt.Errorf("kernel table %d is not a valid table ID", tableID)
 		}
 	}
-
 	return nil
 }
 
@@ -350,63 +307,50 @@ func validatedImportRules(rules []ImportRule) ([]ImportRule, error) {
 		if !validIPv6Prefix(rule.Prefix) {
 			return nil, fmt.Errorf("import prefix %s is not an IPv6 prefix", rule.Prefix)
 		}
-
 		bits := rule.Prefix.Bits()
 		if int(rule.MinLength) < bits || rule.MaxLength < rule.MinLength ||
 			rule.MaxLength > maxIPv6PrefixLength {
 			return nil, fmt.Errorf(
 				"import prefix %s has inconsistent length bounds %d to %d",
-				rule.Prefix,
-				rule.MinLength,
-				rule.MaxLength,
+				rule.Prefix, rule.MinLength, rule.MaxLength,
 			)
 		}
-
 		rule.Prefix = rule.Prefix.Masked()
 		validated = append(validated, rule)
 	}
-
 	return validated, nil
 }
 
 func validatedExportRules(rules []ExportRule, internal bool) ([]ExportRule, error) {
 	validated := make([]ExportRule, 0, len(rules))
-
 	seen := make(map[netip.Prefix]struct{}, len(rules))
 	for _, rule := range rules {
 		if !validIPv6Prefix(rule.Prefix) {
 			return nil, fmt.Errorf("export prefix %s is not an IPv6 prefix", rule.Prefix)
 		}
-
 		rule.Prefix = rule.Prefix.Masked()
 		if _, duplicate := seen[rule.Prefix]; duplicate {
 			return nil, fmt.Errorf("export prefix %s is configured more than once", rule.Prefix)
 		}
-
 		seen[rule.Prefix] = struct{}{}
 		if rule.Mode != ExportAlways && rule.Mode != ExportBackup {
 			return nil, fmt.Errorf("export prefix %s has no valid export mode", rule.Prefix)
 		}
-
 		if !rule.NextHop.Is6() || rule.NextHop.Is4In6() || rule.NextHop.IsUnspecified() {
 			return nil, fmt.Errorf(
 				"export prefix %s next hop %s is not an IPv6 address",
-				rule.Prefix,
-				rule.NextHop,
+				rule.Prefix, rule.NextHop,
 			)
 		}
-
 		if internal && rule.PrependCount > 0 {
 			return nil, fmt.Errorf(
 				"export prefix %s prepends the local ASN on an iBGP session",
 				rule.Prefix,
 			)
 		}
-
 		rule.Communities = append([]Community(nil), rule.Communities...)
 		rule.LargeCommunities = append([]LargeCommunity(nil), rule.LargeCommunities...)
 		validated = append(validated, rule)
 	}
-
 	return validated, nil
 }

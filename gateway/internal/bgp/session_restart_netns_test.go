@@ -52,25 +52,15 @@ func TestSessionRestartRetainsKernelRoutesUntilTheEndOfRIB(t *testing.T) {
 	cfg.Tables = []int{sessionRouteTable}
 	cfg.RouteMetric = sessionRouteMetric
 	cfg.GracefulRestartSeconds = sessionRestartSeconds
-	cfg.Import = []bgp.ImportRule{
-		{Prefix: netip.MustParsePrefix("2001:db8::/32"), MinLength: 32, MaxLength: 48},
-	}
+	cfg.Import = []bgp.ImportRule{{Prefix: netip.MustParsePrefix("2001:db8::/32"), MinLength: 32, MaxLength: 48}}
 
 	first := startSession(t, cfg)
 	waitEstablished(t, first)
 	peer.announce(t, resent, nextHop)
 	peer.announce(t, withdrawn, nextHop)
-	eventually(
-		t,
-		"the first session to install both routes",
-		func() bool {
-			return hasKernelRoute(
-				t,
-				resent,
-				sessionLink,
-			) && hasKernelRoute(t, withdrawn, sessionLink)
-		},
-	)
+	eventually(t, "the first session to install both routes", func() bool {
+		return hasKernelRoute(t, resent, sessionLink) && hasKernelRoute(t, withdrawn, sessionLink)
+	})
 	if err := first.StopRetaining(t.Context()); err != nil {
 		t.Fatalf("StopRetaining: %v", err)
 	}
@@ -79,10 +69,7 @@ func TestSessionRestartRetainsKernelRoutesUntilTheEndOfRIB(t *testing.T) {
 	peer.withdraw(t, withdrawn)
 
 	restarted := restartRetainingRoutes(t, cfg)
-	if got, want := restarted.State().Retained, []netip.Prefix{
-		resent,
-		withdrawn,
-	}; !slices.Equal(got, want) {
+	if got, want := restarted.State().Retained, []netip.Prefix{resent, withdrawn}; !slices.Equal(got, want) {
 		t.Fatalf("restarted session retained prefixes = %v, want %v", got, want)
 	}
 	assertKernelRoute(t, resent, sessionLink, nextHop, sessionRouteMetric)
@@ -90,14 +77,10 @@ func TestSessionRestartRetainsKernelRoutesUntilTheEndOfRIB(t *testing.T) {
 	if err := restarted.Connect(t.Context()); err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
-	eventually(
-		t,
-		"the End-of-RIB marker to end the route retention",
-		func() bool {
-			state := restarted.State()
-			return len(state.Retained) == 0 && slices.Equal(state.Accepted, []netip.Prefix{resent})
-		},
-	)
+	eventually(t, "the End-of-RIB marker to end the route retention", func() bool {
+		state := restarted.State()
+		return len(state.Retained) == 0 && slices.Equal(state.Accepted, []netip.Prefix{resent})
+	})
 	assertKernelRoute(t, resent, sessionLink, nextHop, sessionRouteMetric)
 	assertNoKernelRoute(t, withdrawn, sessionLink)
 }
@@ -136,20 +119,14 @@ func TestSessionConnectsAfterTheRestartDeadlineDeletesTheRetainedRoutes(t *testi
 	cfg.Tables = []int{sessionRouteTable}
 	cfg.RouteMetric = sessionRouteMetric
 	cfg.GracefulRestartSeconds = sessionRestartSeconds
-	cfg.Import = []bgp.ImportRule{
-		{Prefix: netip.MustParsePrefix("2001:db8::/32"), MinLength: 32, MaxLength: 48},
-	}
+	cfg.Import = []bgp.ImportRule{{Prefix: netip.MustParsePrefix("2001:db8::/32"), MinLength: 32, MaxLength: 48}}
 
 	first := startSession(t, cfg)
 	waitEstablished(t, first)
 	peer.announce(t, retained, nextHop)
-	eventually(
-		t,
-		"the first session to install the learned route",
-		func() bool {
-			return hasKernelRoute(t, retained, sessionLink)
-		},
-	)
+	eventually(t, "the first session to install the learned route", func() bool {
+		return hasKernelRoute(t, retained, sessionLink)
+	})
 	if err := first.StopRetaining(t.Context()); err != nil {
 		t.Fatalf("StopRetaining: %v", err)
 	}
@@ -166,13 +143,9 @@ func TestSessionConnectsAfterTheRestartDeadlineDeletesTheRetainedRoutes(t *testi
 	if got := restarted.State().Retained; !slices.Equal(got, []netip.Prefix{retained}) {
 		t.Fatalf("retained prefixes = %v, want %s", got, retained)
 	}
-	eventually(
-		t,
-		"the restart deadline to delete the retained route",
-		func() bool {
-			return !hasKernelRoute(t, retained, sessionLink)
-		},
-	)
+	eventually(t, "the restart deadline to delete the retained route", func() bool {
+		return !hasKernelRoute(t, retained, sessionLink)
+	})
 	if err := restarted.Start(t.Context()); err != nil {
 		t.Fatalf("start session: %v", err)
 	}

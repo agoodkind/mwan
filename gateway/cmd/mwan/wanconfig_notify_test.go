@@ -30,11 +30,8 @@ func TestSurfaceNotifier_RendersTheNotifications(t *testing.T) {
 	if health.path != "/goodkind-mwan-steering:health-transition" {
 		t.Fatalf("health path = %s", health.path)
 	}
-
 	wantHealth := map[string]string{
-		"interface":       "enatt0",
-		"health":          "unhealthy",
-		"previous-health": "healthy",
+		"interface": "enatt0", "health": "unhealthy", "previous-health": "healthy",
 	}
 	assertItems(t, health, wantHealth)
 
@@ -42,7 +39,6 @@ func TestSurfaceNotifier_RendersTheNotifications(t *testing.T) {
 	if tier.path != "/goodkind-mwan-steering:tier-change" {
 		t.Fatalf("tier path = %s", tier.path)
 	}
-
 	assertItems(t, tier, map[string]string{"active-tier": "1", "previous-tier": "0"})
 }
 
@@ -57,11 +53,7 @@ func TestSurfaceObserverRemovalPreservesNewRegistration(t *testing.T) {
 	removeOld()
 	store.NotifyHealthTransition("att", wanstate.HealthHealthy, wanstate.HealthUnhealthy)
 	if len(oldNotifier.queue) != 0 || len(currentNotifier.queue) != 1 {
-		t.Fatalf(
-			"observer events: old=%d current=%d",
-			len(oldNotifier.queue),
-			len(currentNotifier.queue),
-		)
+		t.Fatalf("observer events: old=%d current=%d", len(oldNotifier.queue), len(currentNotifier.queue))
 	}
 
 	removeCurrent()
@@ -74,15 +66,12 @@ func TestSurfaceObserverRemovalPreservesNewRegistration(t *testing.T) {
 func assertItems(t *testing.T, event surfaceEvent, want map[string]string) {
 	t.Helper()
 	got := map[string]string{}
-
 	for _, item := range event.items {
 		got[item.Path] = item.Value
 	}
-
 	if len(got) != len(want) {
 		t.Fatalf("items = %v, want %v", got, want)
 	}
-
 	for leaf, value := range want {
 		if got[leaf] != value {
 			t.Fatalf("leaf %s = %q, want %q", leaf, got[leaf], value)
@@ -102,15 +91,10 @@ type blockingNotifier struct {
 func (b *blockingNotifier) SendNotification(_ context.Context, _ string, _ []yangpub.Item) error {
 	close(b.entered)
 	<-b.release
-
 	return nil
 }
 
-func (b *blockingNotifier) SubscribeNotifications(
-	_ context.Context,
-	_ string,
-	_ yangpub.NotificationFunc,
-) error {
+func (b *blockingNotifier) SubscribeNotifications(_ context.Context, _ string, _ yangpub.NotificationFunc) error {
 	return nil
 }
 
@@ -158,7 +142,6 @@ func TestSurfaceNotifier_UnknownMemberAndFullQueue(t *testing.T) {
 	for range notifyQueueDepth + 3 {
 		notifier.TierChange(0, 1)
 	}
-
 	if len(notifier.queue) != notifyQueueDepth {
 		t.Fatalf("queue holds %d events, want the cap %d", len(notifier.queue), notifyQueueDepth)
 	}

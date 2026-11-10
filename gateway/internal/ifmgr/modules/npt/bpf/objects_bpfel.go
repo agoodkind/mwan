@@ -55,25 +55,18 @@ func loadNptObjects(objects *nptObjects, options *ebpf.CollectionOptions) error 
 		slog.Error("NPTv6 embedded object could not be decoded", "err", err)
 		return fmt.Errorf("decode NPTv6 object: %w", err)
 	}
-
 	if err := spec.LoadAndAssign(objects, options); err != nil {
 		slog.Error("NPTv6 object could not be assigned", "err", err)
 		return fmt.Errorf("assign NPTv6 object: %w", err)
 	}
-
 	return nil
 }
 
 func (objects *nptObjects) Close() error {
-	err := errors.Join(
-		objects.NptEgress.Close(),
-		objects.NptIngress.Close(),
-		objects.Policies.Close(),
-	)
+	err := errors.Join(objects.NptEgress.Close(), objects.NptIngress.Close(), objects.Policies.Close())
 	if err != nil {
 		slog.Error("NPTv6 program and policy descriptors could not all be closed", "err", err)
 	}
-
 	return err
 }
 

@@ -31,15 +31,7 @@ func TestOOBDHCPv4BridgeUplinkReturnReplacesLease(t *testing.T) {
 	}
 	bindStartupDirectory(t, stateDir, "/var/lib/mwan")
 	setRuntimeLoopback(t)
-	downstream := newRuntimePeer(
-		t,
-		gateway,
-		"enmwanbr0",
-		"lan-host",
-		[]string{"192.0.2.1/29"},
-		[]string{"192.0.2.2/29"},
-		"",
-	)
+	downstream := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29"}, []string{"192.0.2.2/29"}, "")
 	t.Cleanup(func() { _ = downstream.namespace.Close() })
 	guest := newRuntimePeer(t, gateway, "guest0", "guest-peer", nil, nil, "")
 	t.Cleanup(func() { _ = guest.namespace.Close() })
@@ -53,16 +45,7 @@ func TestOOBDHCPv4BridgeUplinkReturnReplacesLease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	uplinkPort := dhcpOwnedAddLink(
-		t,
-		&netlink.Vlan{
-			LinkAttrs: netlink.LinkAttrs{
-				Name:        "uplink101",
-				ParentIndex: uplinkParent.Attrs().Index,
-			},
-			VlanId: 101,
-		},
-	)
+	uplinkPort := dhcpOwnedAddLink(t, &netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "uplink101", ParentIndex: uplinkParent.Attrs().Index}, VlanId: 101})
 	bridge := dhcpOwnedAddLink(t, &netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: "enatt0"}})
 	for _, port := range []netlink.Link{guestPort, uplinkPort} {
 		if err := netlink.LinkSetMaster(port, bridge); err != nil {
@@ -79,22 +62,13 @@ func TestOOBDHCPv4BridgeUplinkReturnReplacesLease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dhcpOwnedAddLink(
-		t,
-		&netlink.Vlan{
-			LinkAttrs: netlink.LinkAttrs{Name: "wan-vlan", ParentIndex: upstream.Attrs().Index},
-			VlanId:    101,
-		},
-	)
+	dhcpOwnedAddLink(t, &netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "wan-vlan", ParentIndex: upstream.Attrs().Index}, VlanId: 101})
 	configureRuntimeLink(t, "wan-vlan", []string{dhcpReconnectServerAddress + "/24"})
 	reconnect := &dhcpReconnectRuntime{}
-	server, err := server4.NewServer(
-		"wan-vlan",
-		&net.UDPAddr{IP: net.IPv4zero, Port: 67},
+	server, err := server4.NewServer("wan-vlan", &net.UDPAddr{IP: net.IPv4zero, Port: 67},
 		func(conn net.PacketConn, peer net.Addr, packet *dhcpv4.DHCPv4) {
 			reconnect.answer(conn, peer, packet, dhcpReconnectLongT1, dhcpReconnectLongT2)
-		},
-	)
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,21 +82,9 @@ func TestOOBDHCPv4BridgeUplinkReturnReplacesLease(t *testing.T) {
 	})
 	setRuntimeNamespace(t, gateway)
 	configPath := writeDHCPAcquireBackoffConfig(t, root)
-	reconnect.daemon = startRoleDHCPv4RuntimeDaemon(
-		t,
-		os.Getenv(dhcpAcquireBackoffBinaryEnv),
-		configPath,
-		root,
-		"oob",
-	)
+	reconnect.daemon = startRoleDHCPv4RuntimeDaemon(t, os.Getenv(dhcpAcquireBackoffBinaryEnv), configPath, root, "oob")
 	t.Cleanup(func() { stopRuntimeDaemon(t, reconnect.daemon) })
-	waitStaticRuntimeAddress(
-		t,
-		reconnect.daemon,
-		"enatt0",
-		dhcpReconnectOriginalAddress+"/24",
-		true,
-	)
+	waitStaticRuntimeAddress(t, reconnect.daemon, "enatt0", dhcpReconnectOriginalAddress+"/24", true)
 	reconnect.link, err = netlink.LinkByName("enatt0")
 	if err != nil {
 		t.Fatal(err)
@@ -137,11 +99,7 @@ func TestOOBDHCPv4BridgeUplinkReturnReplacesLease(t *testing.T) {
 	}
 	time.Sleep(3 * time.Second)
 	if count := len(reconnect.snapshot()) - packetsBefore; count != 0 {
-		t.Fatalf(
-			"Guest bridge port flap caused the client to send %d DHCP packets; daemon log: %s",
-			count,
-			runtimeLogTail(t, reconnect.daemon, 30),
-		)
+		t.Fatalf("Guest bridge port flap caused the client to send %d DHCP packets; daemon log: %s", count, runtimeLogTail(t, reconnect.daemon, 30))
 	}
 
 	reconnect.behavior.Store(int32(dhcpReconnectNAKOriginal))

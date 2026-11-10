@@ -41,8 +41,7 @@ type downstreamProbeFile struct {
 }
 
 func readDownstreamProbeConfig(
-	path string,
-	families requiredEgressFamilies,
+	path string, families requiredEgressFamilies,
 ) (downstreamProbeConfig, error) {
 	root, err := os.OpenRoot(filepath.Dir(path))
 	if err != nil {
@@ -61,66 +60,47 @@ func readDownstreamProbeConfig(
 	if err := decoder.Decode(&input); err != nil {
 		return downstreamProbeConfig{}, fmt.Errorf("decode probe config %s: %w", path, err)
 	}
-
 	var extra json.RawMessage
 	if err := decoder.Decode(&extra); err != io.EOF {
-		return downstreamProbeConfig{}, fmt.Errorf(
-			"probe config %s must contain one JSON object",
-			path,
-		)
+		return downstreamProbeConfig{}, fmt.Errorf("probe config %s must contain one JSON object", path)
 	}
-
 	if input.OPNsenseVMID <= 0 {
-		return downstreamProbeConfig{}, fmt.Errorf(
-			"probe config %s: opnsense_vmid must be positive",
-			path,
-		)
+		return downstreamProbeConfig{}, fmt.Errorf("probe config %s: opnsense_vmid must be positive", path)
 	}
-
 	probe := downstreamProbeConfig{opnsenseVMID: input.OPNsenseVMID}
 	if families.ipv4 {
 		probe.ipv4Source, err = parseProbeAddress("ipv4_source", input.IPv4Source, true)
 		if err != nil {
 			return downstreamProbeConfig{}, err
 		}
-
 		probe.ipv4NextHop, err = parseProbeAddress("ipv4_next_hop", input.IPv4NextHop, true)
 		if err != nil {
 			return downstreamProbeConfig{}, err
 		}
 	}
-
 	if families.ipv6 {
 		probe.ipv6Source, err = parseProbeAddress("ipv6_source", input.IPv6Source, false)
 		if err != nil {
 			return downstreamProbeConfig{}, err
 		}
-
 		probe.ipv6NextHop, err = parseProbeAddress("ipv6_next_hop", input.IPv6NextHop, false)
 		if err != nil {
 			return downstreamProbeConfig{}, err
 		}
 	}
-
 	return probe, nil
 }
 
 func parseProbeAddress(field string, value string, ipv4 bool) (netip.Addr, error) {
 	address, err := netip.ParseAddr(value)
 	if err != nil || !address.IsGlobalUnicast() || address.Is4() != ipv4 {
-		return netip.Addr{}, fmt.Errorf(
-			"probe config %s must be a unicast address of the required family",
-			field,
-		)
+		return netip.Addr{}, fmt.Errorf("probe config %s must be a unicast address of the required family", field)
 	}
-
 	return address, nil
 }
 
 func checkDownstreamEgress(
-	ctx context.Context,
-	deps deployGateDeps,
-	probe downstreamProbeConfig,
+	ctx context.Context, deps deployGateDeps, probe downstreamProbeConfig,
 	families requiredEgressFamilies,
 ) int {
 	ok, report := deps.probeDownstream(ctx, probe, families)
@@ -128,147 +108,91 @@ func checkDownstreamEgress(
 	if ok {
 		return exitDeployGateOK
 	}
-
 	fmt.Fprintln(deps.out, "required egress family failed")
-
 	return exitDeployGateFailed
 }
 
 func probeDownstreamEgressRound(
-	ctx context.Context,
-	probe downstreamProbeConfig,
-	families requiredEgressFamilies,
+	ctx context.Context, probe downstreamProbeConfig, families requiredEgressFamilies,
 ) (bool, string) {
 	v6 := "not-required"
 	v4 := "not-required"
 	var failures []string
 	if families.ipv6 {
-		err := probeDownstreamFamily(
-			ctx,
-			probe.opnsenseVMID,
-			false,
-			deployGateTargetV6,
-			probe.ipv6Source,
-			probe.ipv6NextHop,
-		)
+		err := probeDownstreamFamily(ctx, probe.opnsenseVMID, false,
+			deployGateTargetV6, probe.ipv6Source, probe.ipv6NextHop)
 		v6 = yesNo(err == nil)
 		if err != nil {
 			failures = append(failures, fmt.Sprintf("ipv6_error=%q", err))
 		}
 	}
-
 	if families.ipv4 {
-		err := probeDownstreamFamily(
-			ctx,
-			probe.opnsenseVMID,
-			true,
-			deployGateTargetV4,
-			probe.ipv4Source,
-			probe.ipv4NextHop,
-		)
+		err := probeDownstreamFamily(ctx, probe.opnsenseVMID, true,
+			deployGateTargetV4, probe.ipv4Source, probe.ipv4NextHop)
 		v4 = yesNo(err == nil)
 		if err != nil {
 			failures = append(failures, fmt.Sprintf("ipv4_error=%q", err))
 		}
 	}
-
 	report := fmt.Sprintf("ipv6=%s ipv4=%s", v6, v4)
 	if len(failures) > 0 {
 		report += " " + strings.Join(failures, " ")
 	}
-
 	return len(failures) == 0, report
 }
 
 func probeDownstreamFamily(
-	ctx context.Context,
-	vmid int,
-	ipv4 bool,
-	target netip.Addr,
-	source netip.Addr,
-	expectedHop netip.Addr,
+	ctx context.Context, vmid int, ipv4 bool,
+	target netip.Addr, source netip.Addr, expectedHop netip.Addr,
 ) (resultErr error) {
 	defer func() {
 		if resultErr != nil {
-			slog.WarnContext(
-				ctx,
-				"downstream egress probe failed",
-				"vmid",
-				vmid,
-				"target",
-				target,
-				"source",
-				source,
-				"err",
-				resultErr,
-			)
+			slog.WarnContext(ctx, "downstream egress probe failed", "vmid", vmid,
+				"target", target, "source", source, "err", resultErr)
 		}
 	}()
 	routeCommand := []string{"/sbin/route", "-n", "get"}
 	if !ipv4 {
 		routeCommand = append(routeCommand, "-inet6")
 	}
-
-	output, err := readGuestProbeCommand(ctx, vmid, append(routeCommand, target.String())...)
+	output, err := readGuestProbeCommand(ctx, vmid,
+		append(routeCommand, target.String())...)
 	if err != nil {
 		return fmt.Errorf("route get %s: %w", target, err)
 	}
-
 	hop, err := readRouteGateway(output)
 	if err != nil {
 		return fmt.Errorf("route get %s: %w", target, err)
 	}
-
 	if hop != expectedHop {
 		return fmt.Errorf("route get %s: next hop %s, expected %s", target, hop, expectedHop)
 	}
-
 	family := "-6"
 	if ipv4 {
 		family = "-4"
 	}
-
 	url := "https://" + net.JoinHostPort(target.String(), "443") + "/"
-	_, err = readGuestProbeCommand(
-		ctx,
-		vmid,
-		"/usr/local/bin/curl",
-		family,
-		"--noproxy",
-		"*",
-		"--interface",
-		source.String(),
-		"--connect-timeout",
-		strconv.Itoa(int(downstreamHTTPSConnectTimeout.Seconds())),
-		"--max-time",
-		strconv.Itoa(int(downstreamHTTPSRequestTimeout.Seconds())),
-		"-fsS",
-		"-o",
-		"/dev/null",
-		"-w",
-		"%{http_code}",
-		url,
-	)
+	_, err = readGuestProbeCommand(ctx, vmid,
+		"/usr/local/bin/curl", family, "--noproxy", "*", "--interface", source.String(),
+		"--connect-timeout", strconv.Itoa(int(downstreamHTTPSConnectTimeout.Seconds())),
+		"--max-time", strconv.Itoa(int(downstreamHTTPSRequestTimeout.Seconds())),
+		"-fsS", "-o", "/dev/null", "-w", "%{http_code}", url)
 	if err != nil {
 		return fmt.Errorf("HTTPS %s from %s: %w", target, source, err)
 	}
-
 	return nil
 }
 
 func readRouteGateway(output string) (netip.Addr, error) {
 	var gateway netip.Addr
-
 	for line := range strings.SplitSeq(output, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) == 0 || fields[0] != "gateway:" {
 			continue
 		}
-
 		if len(fields) != 2 || gateway.IsValid() {
 			return netip.Addr{}, fmt.Errorf("route output has an invalid gateway line")
 		}
-
 		var err error
 		gateway, err = netip.ParseAddr(fields[1])
 		if err != nil {
@@ -276,32 +200,23 @@ func readRouteGateway(output string) (netip.Addr, error) {
 			return netip.Addr{}, fmt.Errorf("route output gateway %q: %w", fields[1], err)
 		}
 	}
-
 	if !gateway.IsValid() {
 		return netip.Addr{}, fmt.Errorf("route output has no gateway")
 	}
-
 	return gateway, nil
 }
 
 // The OPNsense guest uses qm even when the gateway uses LXC.
 func readGuestProbeCommand(ctx context.Context, vmid int, command ...string) (string, error) {
-	result, err := ops.RunInGuest(
-		ctx,
-		config.GuestTypeQEMU,
-		downstreamGuestExecTimeout+5*time.Second,
-		downstreamGuestExecTimeout,
-		vmid,
-		command...,
-	)
+	result, err := ops.RunInGuest(ctx, config.GuestTypeQEMU,
+		downstreamGuestExecTimeout+5*time.Second, downstreamGuestExecTimeout,
+		vmid, command...)
 	if err != nil {
 		slog.WarnContext(ctx, "downstream guest command failed", "vmid", vmid, "err", err)
 		return "", fmt.Errorf("guest exec %d: %w", vmid, err)
 	}
-
 	if result.ExitCode != 0 {
 		return "", fmt.Errorf("guest command exited %d", result.ExitCode)
 	}
-
 	return result.Stdout, nil
 }

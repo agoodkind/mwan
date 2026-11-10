@@ -34,12 +34,7 @@ func TestConntrackUpdater(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		command := exec.CommandContext(
-			t.Context(),
-			binary,
-			"-test.run=^TestConntrackUpdater$",
-			"-test.v",
-		)
+		command := exec.CommandContext(t.Context(), binary, "-test.run=^TestConntrackUpdater$", "-test.v")
 		command.Env = append(os.Environ(), conntrackTestChild+"=1")
 		command.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNET}
 		output, err := command.CombinedOutput()
@@ -58,41 +53,23 @@ func TestConntrackUpdater(t *testing.T) {
 		{"192.0.2.1", "198.51.100.2"},
 		{"2001:db8:1::1", "2001:db8:2::2"},
 	} {
-		t.Run(
-			addresses[0],
-			func(t *testing.T) {
-				testConntrackFamily(t, connection, addresses)
-			},
-		)
+		t.Run(addresses[0], func(t *testing.T) {
+			testConntrackFamily(t, connection, addresses)
+		})
 	}
 }
 
-func createTrackedFlow(
-	t *testing.T,
-	connection *conntrack.Conn,
-	addresses [2]string,
-	protocol uint8,
-	zone uint16,
-) conntrack.Flow {
+func createTrackedFlow(t *testing.T, connection *conntrack.Conn, addresses [2]string, protocol uint8, zone uint16) conntrack.Flow {
 	t.Helper()
-	flow := conntrack.NewFlow(
-		protocol,
-		conntrack.StatusConfirmed|conntrack.StatusSeenReply|conntrack.StatusAssured,
-		netip.MustParseAddr(addresses[0]),
-		netip.MustParseAddr(addresses[1]),
-		23456,
-		443,
-		conntrackEntryTimeout,
-		73,
-	)
+	flow := conntrack.NewFlow(protocol, conntrack.StatusConfirmed|conntrack.StatusSeenReply|conntrack.StatusAssured,
+		netip.MustParseAddr(addresses[0]), netip.MustParseAddr(addresses[1]),
+		23456, 443, conntrackEntryTimeout, 73)
 	flow.Zone = zone
 	if protocol == unix.IPPROTO_TCP {
 		flow.ProtoInfo.TCP = &conntrack.ProtoInfoTCP{
 			State:               conntrackTCPStateEstablished,
-			OriginalWindowScale: 7,
-			ReplyWindowScale:    5,
-			OriginalFlags:       0x03ff,
-			ReplyFlags:          0x21ff,
+			OriginalWindowScale: 7, ReplyWindowScale: 5,
+			OriginalFlags: 0x03ff, ReplyFlags: 0x21ff,
 		}
 	}
 	if err := connection.Create(flow); err != nil {
@@ -103,10 +80,7 @@ func createTrackedFlow(
 
 func readTrackedFlow(t *testing.T, connection *conntrack.Conn, flow conntrack.Flow) conntrack.Flow {
 	t.Helper()
-	current, err := connection.Get(conntrack.Flow{
-		TupleOrig: flow.TupleOrig,
-		Zone:      flow.Zone,
-	})
+	current, err := connection.Get(conntrack.Flow{TupleOrig: flow.TupleOrig, Zone: flow.Zone})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,50 +106,33 @@ func testConntrackFamily(t *testing.T, connection *conntrack.Conn, addresses [2]
 		{"missing-id", func(flow *conntrack.Flow) { flow.ID = 0 }},
 		{"missing-entry", func(flow *conntrack.Flow) { flow.TupleOrig.Proto.SourcePort++ }},
 		{"missing-port", func(flow *conntrack.Flow) { flow.TupleOrig.Proto.SourcePort = 0 }},
-		{
-			"missing-address",
-			func(flow *conntrack.Flow) { flow.TupleOrig.IP.SourceAddress = netip.Addr{} },
-		},
-		{
-			"mixed-family",
-			func(flow *conntrack.Flow) {
-				address := netip.MustParseAddr("203.0.113.1")
-				if flow.TupleOrig.IP.SourceAddress.Is4() {
-					address = netip.MustParseAddr("2001:db8:3::1")
-				}
-				flow.TupleOrig.IP.DestinationAddress = address
-			},
-		},
-		{
-			"mixed-reply-family",
-			func(flow *conntrack.Flow) {
-				flow.TupleReply.IP.SourceAddress = netip.MustParseAddr("2001:db8:3::1")
-				flow.TupleReply.IP.DestinationAddress = netip.MustParseAddr("2001:db8:3::2")
-				if flow.TupleOrig.IP.SourceAddress.Is6() {
-					flow.TupleReply.IP.SourceAddress = netip.MustParseAddr("203.0.113.1")
-					flow.TupleReply.IP.DestinationAddress = netip.MustParseAddr("203.0.113.2")
-				}
-			},
-		},
+		{"missing-address", func(flow *conntrack.Flow) { flow.TupleOrig.IP.SourceAddress = netip.Addr{} }},
+		{"mixed-family", func(flow *conntrack.Flow) {
+			address := netip.MustParseAddr("203.0.113.1")
+			if flow.TupleOrig.IP.SourceAddress.Is4() {
+				address = netip.MustParseAddr("2001:db8:3::1")
+			}
+			flow.TupleOrig.IP.DestinationAddress = address
+		}},
+		{"mixed-reply-family", func(flow *conntrack.Flow) {
+			flow.TupleReply.IP.SourceAddress = netip.MustParseAddr("2001:db8:3::1")
+			flow.TupleReply.IP.DestinationAddress = netip.MustParseAddr("2001:db8:3::2")
+			if flow.TupleOrig.IP.SourceAddress.Is6() {
+				flow.TupleReply.IP.SourceAddress = netip.MustParseAddr("203.0.113.1")
+				flow.TupleReply.IP.DestinationAddress = netip.MustParseAddr("203.0.113.2")
+			}
+		}},
 	}
 	for _, test := range invalid {
-		t.Run(
-			test.name,
-			func(t *testing.T) {
-				flow := before
-				test.change(&flow)
-				if err := updater.SetLiberal(t.Context(), flow); err == nil {
-					t.Fatal("invalid identity updated a connection")
-				}
-				requireSameTrackedFlow(t, before, readTrackedFlow(t, connection, before), false)
-				requireSameTrackedFlow(
-					t,
-					otherZone,
-					readTrackedFlow(t, connection, otherZone),
-					false,
-				)
-			},
-		)
+		t.Run(test.name, func(t *testing.T) {
+			flow := before
+			test.change(&flow)
+			if err := updater.SetLiberal(t.Context(), flow); err == nil {
+				t.Fatal("invalid identity updated a connection")
+			}
+			requireSameTrackedFlow(t, before, readTrackedFlow(t, connection, before), false)
+			requireSameTrackedFlow(t, otherZone, readTrackedFlow(t, connection, otherZone), false)
+		})
 	}
 	if err := updater.SetLiberal(t.Context(), udp); err == nil {
 		t.Fatal("UDP entry accepted TCP flag update")
@@ -214,10 +171,7 @@ func testConntrackFamily(t *testing.T, connection *conntrack.Conn, addresses [2]
 	if err := updater.SetLiberal(t.Context(), before); err == nil {
 		t.Fatal("deleted entry accepted an update")
 	}
-	if _, err := connection.Get(conntrack.Flow{TupleOrig: before.TupleOrig}); !errors.Is(
-		err,
-		unix.ENOENT,
-	) {
+	if _, err := connection.Get(conntrack.Flow{TupleOrig: before.TupleOrig}); !errors.Is(err, unix.ENOENT) {
 		t.Fatalf("update recreated a deleted entry: %v", err)
 	}
 	if err := updater.Close(); err != nil {
@@ -235,11 +189,7 @@ func requireSameTrackedFlow(t *testing.T, before, after conntrack.Flow, liberal 
 	t.Helper()
 	// The kernel reports remaining whole seconds; the test never extends expiry.
 	if after.Timeout > before.Timeout || after.Timeout+10 < before.Timeout {
-		t.Fatalf(
-			"timeout changed beyond elapsed test time: %d to %d",
-			before.Timeout,
-			after.Timeout,
-		)
+		t.Fatalf("timeout changed beyond elapsed test time: %d to %d", before.Timeout, after.Timeout)
 	}
 	want := before
 	want.Timeout = after.Timeout
@@ -253,12 +203,6 @@ func requireSameTrackedFlow(t *testing.T, before, after conntrack.Flow, liberal 
 		want.ProtoInfo.TCP = &protocol
 	}
 	if !reflect.DeepEqual(want, after) {
-		t.Fatalf(
-			"conntrack metadata differs:\nwant: %+v TCP=%+v\ngot: %+v TCP=%+v",
-			want,
-			want.ProtoInfo.TCP,
-			after,
-			after.ProtoInfo.TCP,
-		)
+		t.Fatalf("conntrack metadata differs:\nwant: %+v TCP=%+v\ngot: %+v TCP=%+v", want, want.ProtoInfo.TCP, after, after.ProtoInfo.TCP)
 	}
 }

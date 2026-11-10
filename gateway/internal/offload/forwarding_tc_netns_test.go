@@ -20,22 +20,13 @@ func TestForwardingEventsObserveTrafficClasses(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), forwardingEventsTimeout)
 	defer cancel()
 	source := forwardingEventsSource(t, ctx)
-	queue := netlink.NewHtb(netlink.QdiscAttrs{
-		LinkIndex: link.Attrs().Index,
-		Handle:    netlink.MakeHandle(1, 0),
-		Parent:    netlink.HANDLE_ROOT,
-	})
+	queue := netlink.NewHtb(netlink.QdiscAttrs{LinkIndex: link.Attrs().Index, Handle: netlink.MakeHandle(1, 0), Parent: netlink.HANDLE_ROOT})
 	if err := netlink.QdiscAdd(queue); err != nil {
 		t.Fatal(err)
 	}
-	class := netlink.NewHtbClass(
-		netlink.ClassAttrs{
-			LinkIndex: link.Attrs().Index,
-			Handle:    netlink.MakeHandle(1, 1),
-			Parent:    queue.Handle,
-		},
-		netlink.HtbClassAttrs{Rate: 1000000, Ceil: 1000000},
-	)
+	class := netlink.NewHtbClass(netlink.ClassAttrs{
+		LinkIndex: link.Attrs().Index, Handle: netlink.MakeHandle(1, 1), Parent: queue.Handle,
+	}, netlink.HtbClassAttrs{Rate: 1000000, Ceil: 1000000})
 	previous := source.Generation()
 	if err := netlink.ClassAdd(class); err != nil {
 		t.Fatal(err)
@@ -75,9 +66,7 @@ func changeForwardingTestAction(t *testing.T, ctx context.Context, kind uint16) 
 	flags := mdnetlink.Request | mdnetlink.Acknowledge
 	if kind == unix.RTM_NEWACTION {
 		flags |= mdnetlink.Create | mdnetlink.Excl
-		action := &netlink.GenericAction{
-			ActionAttrs: netlink.ActionAttrs{Index: index, Action: netlink.TC_ACT_SHOT},
-		}
+		action := &netlink.GenericAction{ActionAttrs: netlink.ActionAttrs{Index: index, Action: netlink.TC_ACT_SHOT}}
 		if err := netlink.EncodeActions(attributes, []netlink.Action{action}); err != nil {
 			t.Fatal(err)
 		}

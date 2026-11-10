@@ -83,8 +83,7 @@ func (module *Module) run(ctx context.Context) {
 }
 
 func (module *Module) readyForWork(ctx context.Context) bool {
-	return module.stats.Failure == nil && module.runtime != nil && module.checkEvidence(ctx) &&
-		!module.policyBlocked
+	return module.stats.Failure == nil && module.runtime != nil && module.checkEvidence(ctx) && !module.policyBlocked
 }
 
 func (module *Module) observeForwardingChange(ctx context.Context) {
@@ -145,10 +144,7 @@ func (module *Module) retainCapture(capture *packetCapture) error {
 	module.captureMu.Lock()
 	defer module.captureMu.Unlock()
 	if module.capturesStopped {
-		failure := errors.Join(
-			fmt.Errorf("native packet observation owner already stopped"),
-			capture.close(),
-		)
+		failure := errors.Join(fmt.Errorf("native packet observation owner already stopped"), capture.close())
 		module.Log.Warn("native packet observation cannot retain its socket", "err", failure)
 		return failure
 	}

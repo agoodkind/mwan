@@ -32,35 +32,25 @@ type Module struct {
 
 // New validates the connection policies before the module starts.
 func New(config ifmgr.ModuleConfig) (ifmgr.Module, error) {
-	module := &Module{
-		BaseModule:  ifmgr.NewBaseModule(moduleName),
-		connections: nil,
-		stateFile:   "",
-		reconciler:  nil,
-	}
+	module := &Module{BaseModule: ifmgr.NewBaseModule(moduleName), connections: nil, stateFile: "", reconciler: nil}
 	if config == nil {
 		return module, nil
 	}
-
 	settings, ok := config.(Config)
 	if !ok {
 		return nil, fmt.Errorf("autoconfiguration: invalid config type %T", config)
 	}
-
 	for _, connection := range settings.Connections {
 		if connection.Owner != interfaceintent.OwnerMWAN {
 			continue
 		}
-
 		if connection.IPv6 != nil {
 			if err := validateIPv6(connection.Name, *connection.IPv6); err != nil {
 				return nil, err
 			}
 		}
-
 		module.connections = append(module.connections, connection)
 	}
-
 	module.stateFile = settings.StateFile
 	if len(module.connections) != 0 || module.stateFile != "" {
 		if err := netif.ValidateOwnedKernelPolicyJournal(module.stateFile); err != nil {
@@ -68,33 +58,23 @@ func New(config ifmgr.ModuleConfig) (ifmgr.Module, error) {
 			return nil, fmt.Errorf("validate autoconfiguration kernel policy: %w", err)
 		}
 	}
-
 	return module, nil
 }
 
 func validateIPv6(name string, ipv6 interfaceintent.IPv6) error {
 	if ipv6.AcceptRA == nil || !*ipv6.AcceptRA {
 		if ipv6.AutoConf != nil && *ipv6.AutoConf ||
-			ipv6.AcceptRADefaultRoute != nil &&
-				*ipv6.AcceptRADefaultRoute || ipv6.UseRADNS != nil && *ipv6.UseRADNS {
-			return fmt.Errorf(
-				"autoconfiguration: interface %s enables an RA option without accept-ra",
-				name,
-			)
+			ipv6.AcceptRADefaultRoute != nil && *ipv6.AcceptRADefaultRoute || ipv6.UseRADNS != nil && *ipv6.UseRADNS {
+			return fmt.Errorf("autoconfiguration: interface %s enables an RA option without accept-ra", name)
 		}
 	}
-
 	if ipv6.RouteMetric != nil && !ipv6.Gateway.IsValid() {
 		if ipv6.AcceptRA == nil || !*ipv6.AcceptRA ||
 			ipv6.AcceptRADefaultRoute != nil && !*ipv6.AcceptRADefaultRoute ||
 			*ipv6.RouteMetric == 0 {
-			return fmt.Errorf(
-				"autoconfiguration: interface %s has invalid RA default route metric",
-				name,
-			)
+			return fmt.Errorf("autoconfiguration: interface %s has invalid RA default route metric", name)
 		}
 	}
-
 	return nil
 }
 
@@ -104,20 +84,16 @@ func (module *Module) Init(_ context.Context, env *ifmgr.Env) error {
 	if len(module.connections) == 0 && module.stateFile == "" {
 		return ifmgr.ErrModuleDisabled
 	}
-
 	if env.Sysctl == nil || len(module.connections) != 0 && env.OwnedLinks == nil {
 		return fmt.Errorf("autoconfiguration: owned links and sysctl access are required")
 	}
-
 	reconciler, err := netif.NewOwnedKernelPolicyReconciler(module.stateFile, env.Sysctl)
 	if err != nil {
 		slog.Warn("autoconfiguration: kernel policy initialization failed", "err", err)
 		return fmt.Errorf("initialize autoconfiguration kernel policy: %w", err)
 	}
-
 	module.reconciler = reconciler
 	env.PrepareOwnedLink = module.prepareOwnedLink
-
 	return nil
 }
 
@@ -128,38 +104,23 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		return fmt.Errorf("prepare kernel forwarding policy change: %w", err)
 	}
 	defer finish()
-
 	results := make([]netif.OwnedLinkResult, 0, len(module.connections))
 	for _, connection := range module.connections {
 		if result, found := module.Env.OwnedLinks.Get(connection.ID.String()); found {
 			results = append(results, result)
 		}
 	}
-
 	if err := module.reconciler.Reconcile(ctx, module.connections, results); err != nil {
 		log.WarnContext(ctx, "autoconfiguration: kernel policy reconciliation failed", "err", err)
 		return fmt.Errorf("reconcile autoconfiguration kernel policy: %w", err)
 	}
-
 	return nil
 }
 
-func (module *Module) prepareOwnedLink(
-	ctx context.Context,
-	log *slog.Logger,
-	connection interfaceintent.Connection,
-	link netif.OwnedLinkResult,
-) (resultErr error) {
+func (module *Module) prepareOwnedLink(ctx context.Context, log *slog.Logger, connection interfaceintent.Connection, link netif.OwnedLinkResult) (resultErr error) {
 	defer func() {
 		if resultErr != nil {
-			log.WarnContext(
-				ctx,
-				"autoconfiguration: owned link preparation failed",
-				"connection_id",
-				connection.ID,
-				"err",
-				resultErr,
-			)
+			log.WarnContext(ctx, "autoconfiguration: owned link preparation failed", "connection_id", connection.ID, "err", resultErr)
 		}
 	}()
 	ctx, finish, err := module.Env.BeginForwardingChange(ctx)
@@ -170,7 +131,6 @@ func (module *Module) prepareOwnedLink(
 	if err := module.reconciler.PrepareLink(ctx, log, connection, link); err != nil {
 		return fmt.Errorf("prepare owned link kernel policy: %w", err)
 	}
-
 	return nil
 }
 

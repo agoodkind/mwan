@@ -15,8 +15,7 @@ func (lxcGuest) execGuest(
 	ctx context.Context,
 	log *slog.Logger,
 	vmid string,
-	waitTimeout time.Duration,
-	_ time.Duration,
+	waitTimeout, _ time.Duration,
 	command []string,
 ) (GuestExecResult, error) {
 	args := append([]string{"exec", vmid, "--"}, command...)
@@ -31,33 +30,19 @@ func (lxcGuest) execGuest(
 	if err == nil {
 		return lxcCommandResult(0, &stdout, &stderr), nil
 	}
-
 	if cctx.Err() != nil {
-		log.WarnContext(ctx, "pct exec timed out", "vmid", vmid, "timeout", waitTimeout, "err", err)
-
+		log.WarnContext(ctx, "pct exec timed out",
+			"vmid", vmid, "timeout", waitTimeout, "err", err)
 		return failedGuestCommand(), fmt.Errorf(
 			"guest command %q did not exit within %s",
-			strings.Join(command, " "),
-			waitTimeout,
-		)
+			strings.Join(command, " "), waitTimeout)
 	}
-
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) && exitErr.ExitCode() >= 0 {
 		return lxcCommandResult(exitErr.ExitCode(), &stdout, &stderr), nil
 	}
-
-	log.WarnContext(
-		ctx,
-		"pct exec failed",
-		"vmid",
-		vmid,
-		"err",
-		err,
-		"stderr",
-		strings.TrimSpace(stderr.String()),
-	)
-
+	log.WarnContext(ctx, "pct exec failed",
+		"vmid", vmid, "err", err, "stderr", strings.TrimSpace(stderr.String()))
 	return failedGuestCommand(), fmt.Errorf("pct %s: %w", strings.Join(args, " "), err)
 }
 

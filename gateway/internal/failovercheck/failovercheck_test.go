@@ -23,7 +23,6 @@ func validConfig() *watchdogconfig.Config {
 	cfg.Failover.LXCID = validLXCID
 	cfg.Failover.AgentTCPAddr = validAgent
 	cfg.Watchdog.MwanAgentTCPAddr = validPrimary
-
 	return cfg
 }
 
@@ -115,41 +114,27 @@ func TestCheck(t *testing.T) {
 		},
 	}
 	for name, testCase := range cases {
-		t.Run(
-			name,
-			func(t *testing.T) {
-				t.Parallel()
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-				cfg := validConfig()
-				testCase.mutate(cfg)
+			cfg := validConfig()
+			testCase.mutate(cfg)
 
-				failures := failovercheck.Check(cfg)
+			failures := failovercheck.Check(cfg)
 
-				if len(failures) != len(testCase.want) {
-					t.Fatalf(
-						"got %d failures %v, want %d",
-						len(failures),
-						failures,
-						len(testCase.want),
-					)
+			if len(failures) != len(testCase.want) {
+				t.Fatalf("got %d failures %v, want %d", len(failures), failures, len(testCase.want))
+			}
+			unmatched := slices.Clone(failures)
+			for _, want := range testCase.want {
+				matched := slices.IndexFunc(unmatched, func(failure error) bool {
+					return strings.Contains(failure.Error(), want)
+				})
+				if matched < 0 {
+					t.Fatalf("failures %v, want one to contain %q", unmatched, want)
 				}
-
-				unmatched := slices.Clone(failures)
-
-				for _, want := range testCase.want {
-					matched := slices.IndexFunc(
-						unmatched,
-						func(failure error) bool {
-							return strings.Contains(failure.Error(), want)
-						},
-					)
-					if matched < 0 {
-						t.Fatalf("failures %v, want one to contain %q", unmatched, want)
-					}
-
-					unmatched = slices.Delete(unmatched, matched, matched+1)
-				}
-			},
-		)
+				unmatched = slices.Delete(unmatched, matched, matched+1)
+			}
+		})
 	}
 }

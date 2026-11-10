@@ -205,7 +205,6 @@ func NewOpsWithClock(
 	if now == nil {
 		now = time.Now
 	}
-
 	return &Ops{
 		inner:            inner,
 		preset:           preset,
@@ -220,17 +219,19 @@ func NewOpsWithClock(
 // wrapped ops' answer.
 func (r *Ops) VMStatus(ctx context.Context, vmid string) (bool, error) {
 	if r.preset.VMStopped {
-		r.log.InfoContext(ctx, "[RED TEAM] injecting fault", "fault", "vm_stopped", "vmid", vmid)
-
+		r.log.InfoContext(
+			ctx,
+			"[RED TEAM] injecting fault",
+			"fault", "vm_stopped",
+			"vmid", vmid,
+		)
 		return false, nil
 	}
-
 	running, err := r.inner.VMStatus(ctx, vmid)
 	if err != nil {
 		r.log.WarnContext(ctx, "read vm status failed", "vmid", vmid, "err", err)
 		return running, fmt.Errorf("redteam VMStatus: %w", err)
 	}
-
 	return running, nil
 }
 
@@ -240,7 +241,6 @@ func (r *Ops) VMStop(ctx context.Context, vmid string) error {
 		r.log.WarnContext(ctx, "stop vm failed", "vmid", vmid, "err", err)
 		return fmt.Errorf("redteam VMStop: %w", err)
 	}
-
 	return nil
 }
 
@@ -249,11 +249,10 @@ func (r *Ops) VMStop(ctx context.Context, vmid string) error {
 // rollback call.
 func (r *Ops) VMRollback(ctx context.Context, vmid, snap string) error {
 	if err := r.inner.VMRollback(ctx, vmid, snap); err != nil {
-		r.log.WarnContext(ctx, "rollback vm failed", "vmid", vmid, "snapshot", snap, "err", err)
-
+		r.log.WarnContext(ctx, "rollback vm failed",
+			"vmid", vmid, "snapshot", snap, "err", err)
 		return fmt.Errorf("redteam VMRollback: %w", err)
 	}
-
 	return nil
 }
 
@@ -263,7 +262,6 @@ func (r *Ops) VMStart(ctx context.Context, vmid string) error {
 		r.log.WarnContext(ctx, "start vm failed", "vmid", vmid, "err", err)
 		return fmt.Errorf("redteam VMStart: %w", err)
 	}
-
 	return nil
 }
 
@@ -275,7 +273,12 @@ func (r *Ops) VMStart(ctx context.Context, vmid string) error {
 // the wrapped ops' output.
 func (r *Ops) VMSnapshots(ctx context.Context, vmid string) ([]byte, error) {
 	if r.preset.InjectSnapshot {
-		r.log.InfoContext(ctx, "[RED TEAM] injecting fault", "fault", "fake_snapshot", "vmid", vmid)
+		r.log.InfoContext(
+			ctx,
+			"[RED TEAM] injecting fault",
+			"fault", "fake_snapshot",
+			"vmid", vmid,
+		)
 		suffix := r.now().Format("20060102-150405")
 		var fake string
 		if r.preset.InjectKnownGoodSnap {
@@ -283,91 +286,52 @@ func (r *Ops) VMSnapshots(ctx context.Context, vmid string) ([]byte, error) {
 		} else {
 			fake = fmt.Sprintf("`-> pre-deploy-%s\n", suffix)
 		}
-
 		return []byte(fake), nil
 	}
-
 	out, err := r.inner.VMSnapshots(ctx, vmid)
 	if err != nil {
 		r.log.WarnContext(ctx, "list snapshots failed", "vmid", vmid, "err", err)
 		return out, fmt.Errorf("redteam VMSnapshots: %w", err)
 	}
-
 	return out, nil
 }
 
 // VMSnapshot passes the snapshot creation through to the wrapped ops. No preset
 // changes it; InjectSnapshot fabricates listings only, not new snapshots.
 func (r *Ops) VMSnapshot(
-	ctx context.Context,
-	vmid string,
-	snapName string,
+	ctx context.Context, vmid, snapName string,
 ) error {
 	if err := r.inner.VMSnapshot(ctx, vmid, snapName); err != nil {
-		r.log.WarnContext(
-			ctx,
-			"create snapshot failed",
-			"vmid",
-			vmid,
-			"snapshot",
-			snapName,
-			"err",
-			err,
-		)
-
+		r.log.WarnContext(ctx, "create snapshot failed",
+			"vmid", vmid, "snapshot", snapName, "err", err)
 		return fmt.Errorf("redteam VMSnapshot: %w", err)
 	}
-
 	return nil
 }
 
 // VMDelSnapshot passes the snapshot delete through to the wrapped ops. No
 // preset changes it.
 func (r *Ops) VMDelSnapshot(
-	ctx context.Context,
-	vmid string,
-	snapName string,
+	ctx context.Context, vmid, snapName string,
 ) error {
 	if err := r.inner.VMDelSnapshot(ctx, vmid, snapName); err != nil {
-		r.log.WarnContext(
-			ctx,
-			"delete snapshot failed",
-			"vmid",
-			vmid,
-			"snapshot",
-			snapName,
-			"err",
-			err,
-		)
-
+		r.log.WarnContext(ctx, "delete snapshot failed",
+			"vmid", vmid, "snapshot", snapName, "err", err)
 		return fmt.Errorf("redteam VMDelSnapshot: %w", err)
 	}
-
 	return nil
 }
 
 // VMDelSnapshotForce passes the forced delete through to the wrapped ops;
 // no red-team preset injects snapshot-cleanup faults.
 func (r *Ops) VMDelSnapshotForce(
-	ctx context.Context,
-	vmid string,
-	snapName string,
+	ctx context.Context, vmid, snapName string,
 ) error {
 	if err := r.inner.VMDelSnapshotForce(ctx, vmid, snapName); err != nil {
-		r.log.WarnContext(
-			ctx,
-			"delsnapshot force failed",
-			"vmid",
-			vmid,
-			"snapshot",
-			snapName,
-			"err",
-			err,
-		)
-
+		r.log.WarnContext(ctx, "delsnapshot force failed",
+			"vmid", vmid, "snapshot", snapName, "err", err)
 		return fmt.Errorf("delsnapshot force: %w", err)
 	}
-
 	return nil
 }
 
@@ -379,7 +343,6 @@ func (r *Ops) VMLock(ctx context.Context, vmid string) (string, error) {
 		r.log.WarnContext(ctx, "read guest lock failed", "vmid", vmid, "err", err)
 		return "", fmt.Errorf("read guest lock: %w", err)
 	}
-
 	return lock, nil
 }
 
@@ -390,22 +353,19 @@ func (r *Ops) VMUnlock(ctx context.Context, vmid string) error {
 		r.log.WarnContext(ctx, "clear guest lock failed", "vmid", vmid, "err", err)
 		return fmt.Errorf("clear guest lock: %w", err)
 	}
-
 	return nil
 }
 
 // VMHasRunningTask passes the task-liveness query through to the wrapped
 // ops; no red-team preset injects task faults.
 func (r *Ops) VMHasRunningTask(
-	ctx context.Context,
-	vmid string,
+	ctx context.Context, vmid string,
 ) (bool, error) {
 	running, err := r.inner.VMHasRunningTask(ctx, vmid)
 	if err != nil {
 		r.log.WarnContext(ctx, "task liveness check failed", "vmid", vmid, "err", err)
 		return false, fmt.Errorf("task liveness: %w", err)
 	}
-
 	return running, nil
 }
 
@@ -417,7 +377,6 @@ func (r *Ops) VMFSFreezeStatus(ctx context.Context, vmid string) (string, error)
 		r.log.WarnContext(ctx, "fsfreeze-status query failed", "vmid", vmid, "err", err)
 		return "", fmt.Errorf("fsfreeze-status: %w", err)
 	}
-
 	return status, nil
 }
 
@@ -428,7 +387,6 @@ func (r *Ops) VMFSFreezeThaw(ctx context.Context, vmid string) error {
 		r.log.WarnContext(ctx, "fsfreeze-thaw failed", "vmid", vmid, "err", err)
 		return fmt.Errorf("fsfreeze-thaw: %w", err)
 	}
-
 	return nil
 }
 
@@ -437,45 +395,28 @@ func (r *Ops) VMFSFreezeThaw(ctx context.Context, vmid string) error {
 // last-change handlers each get a chance to answer from the preset, and any
 // command none of them claims reaches the wrapped ops.
 func (r *Ops) GuestExec(
-	ctx context.Context,
-	vmid string,
-	args ...string,
+	ctx context.Context, vmid string, args ...string,
 ) (ops.GuestExecResult, error) {
 	if r.preset.GuestExecFail {
 		r.logFault(ctx, "guest_exec_fail", vmid, args)
-
 		return ops.GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""},
 			fmt.Errorf("red-team: guest agent down")
 	}
-
 	if res, handled := r.handlePingFault(ctx, vmid, args); handled {
 		return res, nil
 	}
-
 	if res, handled := r.handleDeployFault(ctx, vmid, args); handled {
 		return res, nil
 	}
-
 	if res, handled := r.handleChangeFault(ctx, vmid, args); handled {
 		return res, nil
 	}
-
 	res, err := r.inner.GuestExec(ctx, vmid, args...)
 	if err != nil {
-		r.log.WarnContext(
-			ctx,
-			"guest exec failed",
-			"vmid",
-			vmid,
-			"args",
-			strings.Join(args, " "),
-			"err",
-			err,
-		)
-
+		r.log.WarnContext(ctx, "guest exec failed",
+			"vmid", vmid, "args", strings.Join(args, " "), "err", err)
 		return res, fmt.Errorf("redteam GuestExec: %w", err)
 	}
-
 	return res, nil
 }
 
@@ -483,12 +424,9 @@ func (r *Ops) logFault(ctx context.Context, fault, vmid string, args []string) {
 	r.log.InfoContext(
 		ctx,
 		"[RED TEAM] injecting fault",
-		"fault",
-		fault,
-		"vmid",
-		vmid,
-		"args",
-		strings.Join(args, " "),
+		"fault", fault,
+		"vmid", vmid,
+		"args", strings.Join(args, " "),
 	)
 }
 
@@ -526,17 +464,14 @@ func (r *Ops) handlePingFault(
 		r.logFault(ctx, "guest_iface_fail", vmid, args)
 		return ops.GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""}, true
 	}
-
 	if isPing && hasIface && r.preset.GuestIfaceSucceed {
 		r.logFault(ctx, "guest_iface_succeed", vmid, args)
 		return ops.GuestExecResult{ExitCode: 0, Stdout: "", Stderr: ""}, true
 	}
-
 	if isPing && !hasIface && r.preset.GuestDefaultFail {
 		r.logFault(ctx, "guest_default_route_fail", vmid, args)
 		return ops.GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""}, true
 	}
-
 	return ops.GuestExecResult{ExitCode: 0, Stdout: "", Stderr: ""}, false
 }
 
@@ -548,35 +483,25 @@ func (r *Ops) handleDeployFault(
 	if !isCatDeployArgs(args) {
 		return ops.GuestExecResult{ExitCode: 0, Stdout: "", Stderr: ""}, false
 	}
-
 	if r.preset.OmitDeployMarker {
 		return ops.GuestExecResult{ExitCode: 1, Stdout: "", Stderr: ""}, true
 	}
-
 	if r.preset.DeployTSMode == deployTSModeRecentThenStale && r.deployTSInjected {
 		oldTS := r.now().Unix() - 7200
 		r.logFault(ctx, "inject_deploy_ts_once", vmid, args)
-
 		return ops.GuestExecResult{
-			ExitCode: 0,
-			Stdout:   strconv.FormatInt(oldTS, 10),
-			Stderr:   "",
+			ExitCode: 0, Stdout: strconv.FormatInt(oldTS, 10), Stderr: "",
 		}, true
 	}
-
 	if r.preset.DeployTSMode == deployTSModeAlwaysRecent ||
 		r.preset.DeployTSMode == deployTSModeRecentThenStale {
-		deployTimestamp := r.now().Unix() - 60
+		ts := r.now().Unix() - 60
 		r.logFault(ctx, "inject_deploy_ts", vmid, args)
 		r.deployTSInjected = true
-
 		return ops.GuestExecResult{
-			ExitCode: 0,
-			Stdout:   strconv.FormatInt(deployTimestamp, 10),
-			Stderr:   "",
+			ExitCode: 0, Stdout: strconv.FormatInt(ts, 10), Stderr: "",
 		}, true
 	}
-
 	return ops.GuestExecResult{ExitCode: 0, Stdout: "", Stderr: ""}, false
 }
 
@@ -588,14 +513,10 @@ func (r *Ops) handleChangeFault(
 	if !isCatChangeArgs(args) || !r.preset.InjectChangeMarker {
 		return ops.GuestExecResult{ExitCode: 0, Stdout: "", Stderr: ""}, false
 	}
-
 	ts := r.now().Unix() - 60
 	r.logFault(ctx, "inject_change_ts", vmid, args)
-
 	return ops.GuestExecResult{
-		ExitCode: 0,
-		Stdout:   strconv.FormatInt(ts, 10),
-		Stderr:   "",
+		ExitCode: 0, Stdout: strconv.FormatInt(ts, 10), Stderr: "",
 	}, true
 }
 
@@ -608,28 +529,20 @@ func (r *Ops) Ping(ctx context.Context, bin, target string) bool {
 		r.log.InfoContext(
 			ctx,
 			"[RED TEAM] injecting fault",
-			"fault",
-			"host_v4_fail",
-			"target",
-			target,
+			"fault", "host_v4_fail",
+			"target", target,
 		)
-
 		return false
 	}
-
 	if bin == "ping6" && r.preset.HostV6Fail {
 		r.log.InfoContext(
 			ctx,
 			"[RED TEAM] injecting fault",
-			"fault",
-			"host_v6_fail",
-			"target",
-			target,
+			"fault", "host_v6_fail",
+			"target", target,
 		)
-
 		return false
 	}
-
 	return r.inner.Ping(ctx, bin, target)
 }
 
@@ -637,30 +550,26 @@ func (r *Ops) Ping(ctx context.Context, bin, target string) bool {
 // preset changes it; a scenario that needs a fabricated deploy timestamp
 // injects one through the last-deploy marker read in GuestExec instead.
 func (r *Ops) GetConfigState(
-	ctx context.Context,
-	vmid string,
+	ctx context.Context, vmid string,
 ) (*mwanv1.GetConfigStateResponse, string, error) {
 	res, channel, err := r.inner.GetConfigState(ctx, vmid)
 	if err != nil {
 		r.log.WarnContext(ctx, "read config state failed", "vmid", vmid, "err", err)
 		return res, channel, fmt.Errorf("redteam GetConfigState: %w", err)
 	}
-
 	return res, channel, nil
 }
 
 // GetBGPStatus passes the BGP status query through to the wrapped ops. No
 // preset changes it.
 func (r *Ops) GetBGPStatus(
-	ctx context.Context,
-	vmid string,
+	ctx context.Context, vmid string,
 ) (*mwanv1.GetBGPStatusResponse, error) {
 	res, err := r.inner.GetBGPStatus(ctx, vmid)
 	if err != nil {
 		r.log.WarnContext(ctx, "read bgp status failed", "vmid", vmid, "err", err)
 		return res, fmt.Errorf("redteam GetBGPStatus: %w", err)
 	}
-
 	return res, nil
 }
 
@@ -672,7 +581,6 @@ func (r *Ops) AnnounceRoutes(ctx context.Context, vmid string) error {
 		r.log.WarnContext(ctx, "announce routes failed", "vmid", vmid, "err", err)
 		return fmt.Errorf("redteam AnnounceRoutes: %w", err)
 	}
-
 	return nil
 }
 
@@ -684,6 +592,5 @@ func (r *Ops) WithdrawRoutes(ctx context.Context, vmid string) error {
 		r.log.WarnContext(ctx, "withdraw routes failed", "vmid", vmid, "err", err)
 		return fmt.Errorf("redteam WithdrawRoutes: %w", err)
 	}
-
 	return nil
 }

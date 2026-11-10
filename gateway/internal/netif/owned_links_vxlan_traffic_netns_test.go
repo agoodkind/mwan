@@ -56,19 +56,12 @@ func TestOwnedVXLANCarriesIPv6OverIPv4(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := netlink.LinkAdd(&netlink.Veth{
-		LinkAttrs:     netlink.LinkAttrs{Name: vxlanUnderlayName},
-		PeerName:      vxlanPeerUnderlay,
-		PeerNamespace: netlink.NsFd(int(peerNamespace)),
+		LinkAttrs: netlink.LinkAttrs{Name: vxlanUnderlayName},
+		PeerName:  vxlanPeerUnderlay, PeerNamespace: netlink.NsFd(int(peerNamespace)),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	configureVXLANEndpoint(
-		t,
-		vxlanUnderlayName,
-		tunnelLocalOuter,
-		tunnelRemoteOuter,
-		tunnelLocalInner,
-	)
+	configureVXLANEndpoint(t, vxlanUnderlayName, tunnelLocalOuter, tunnelRemoteOuter, tunnelLocalInner)
 	underlay, err := net.InterfaceByName(vxlanUnderlayName)
 	if err != nil {
 		t.Fatal(err)
@@ -88,13 +81,7 @@ func TestOwnedVXLANCarriesIPv6OverIPv4(t *testing.T) {
 	if err := netns.Set(peerNamespace); err != nil {
 		t.Fatal(err)
 	}
-	configureVXLANEndpoint(
-		t,
-		vxlanPeerUnderlay,
-		tunnelRemoteOuter,
-		tunnelLocalOuter,
-		tunnelRemoteInner,
-	)
+	configureVXLANEndpoint(t, vxlanPeerUnderlay, tunnelRemoteOuter, tunnelLocalOuter, tunnelRemoteInner)
 	peerUnderlay, err := net.InterfaceByName(vxlanPeerUnderlay)
 	if err != nil {
 		t.Fatal(err)
@@ -109,13 +96,7 @@ func TestOwnedVXLANCarriesIPv6OverIPv4(t *testing.T) {
 	captureVXLANExchanges(t, capture, exchanges, underlay, peerUnderlay)
 }
 
-func captureVXLANExchanges(
-	t *testing.T,
-	capture *packet.Conn,
-	exchanges [][2]netip.AddrPort,
-	underlay *net.Interface,
-	peerUnderlay *net.Interface,
-) {
+func captureVXLANExchanges(t *testing.T, capture *packet.Conn, exchanges [][2]netip.AddrPort, underlay, peerUnderlay *net.Interface) {
 	t.Helper()
 	seen := make([][2]bool, len(exchanges))
 	remaining := len(exchanges) * 2
@@ -130,11 +111,7 @@ func captureVXLANExchanges(
 		if !present {
 			continue
 		}
-		inner := gopacket.NewPacket(
-			encapsulation.Payload,
-			layers.LayerTypeEthernet,
-			gopacket.Default,
-		)
+		inner := gopacket.NewPacket(encapsulation.Payload, layers.LayerTypeEthernet, gopacket.Default)
 		for index, endpoints := range exchanges {
 			for direction := range 2 {
 				if seen[index][direction] || !vxlanExchangePacket(inner, endpoints, direction) {
@@ -176,10 +153,7 @@ func configureVXLANEndpoint(t *testing.T, underlayName, local, remote, inner str
 	connection.Link.Tunnel.Local = netip.MustParseAddr(local)
 	connection.Link.Tunnel.Remote = netip.MustParseAddr(remote)
 	reconciler := newTunnelReconciler(t, filepath.Join(t.TempDir(), "links.json"))
-	requireTunnelReady(
-		t,
-		reconcileVXLAN(t, reconciler, connection, externalConnection(underlayName)),
-	)
+	requireTunnelReady(t, reconcileVXLAN(t, reconciler, connection, externalConnection(underlayName)))
 	device := vxlanDevice(t, vxlanName)
 	requireVXLANAttributes(t, device, connection, underlay)
 	if err := netlink.AddrAdd(device, mustTunnelAddress(t, inner+"/64")); err != nil {
@@ -190,13 +164,7 @@ func configureVXLANEndpoint(t *testing.T, underlayName, local, remote, inner str
 	}
 }
 
-func exchangeVXLAN(
-	t *testing.T,
-	serverNamespace netns.NsHandle,
-	serverAddress string,
-	clientNamespace netns.NsHandle,
-	home netns.NsHandle,
-) [2]netip.AddrPort {
+func exchangeVXLAN(t *testing.T, serverNamespace netns.NsHandle, serverAddress string, clientNamespace, home netns.NsHandle) [2]netip.AddrPort {
 	t.Helper()
 	deadline, bounded := t.Deadline()
 	if !bounded {
@@ -282,21 +250,11 @@ func vxlanExchangePacket(decoded gopacket.Packet, endpoints [2]netip.AddrPort, d
 	if direction == 1 {
 		source, destination, payload = destination, source, vxlanReply
 	}
-	return ipv6.SrcIP.Equal(
-		source.Addr().AsSlice(),
-	) && ipv6.DstIP.Equal(destination.Addr().AsSlice()) &&
-		tcp.SrcPort == layers.TCPPort(source.Port()) &&
-		tcp.DstPort == layers.TCPPort(destination.Port()) &&
-		string(tcp.Payload) == payload
+	return ipv6.SrcIP.Equal(source.Addr().AsSlice()) && ipv6.DstIP.Equal(destination.Addr().AsSlice()) &&
+		tcp.SrcPort == layers.TCPPort(source.Port()) && tcp.DstPort == layers.TCPPort(destination.Port()) && string(tcp.Payload) == payload
 }
 
-func requireVXLANEnvelope(
-	t *testing.T,
-	decoded gopacket.Packet,
-	encapsulation *layers.VXLAN,
-	home *net.Interface,
-	peer *net.Interface,
-) {
+func requireVXLANEnvelope(t *testing.T, decoded gopacket.Packet, encapsulation *layers.VXLAN, home, peer *net.Interface) {
 	t.Helper()
 	ethernet, ethernetPresent := decoded.Layer(layers.LayerTypeEthernet).(*layers.Ethernet)
 	ipv4, networkPresent := decoded.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
@@ -313,34 +271,13 @@ func requireVXLANEnvelope(
 		!ipv4.SrcIP.Equal(net.ParseIP(sourceIP)) || !ipv4.DstIP.Equal(net.ParseIP(destinationIP)) ||
 		ipv4.Version != 4 || ipv4.IHL != 5 || ipv4.Protocol != layers.IPProtocolUDP || ipv4.TTL != vxlanOuterTTL || ipv4.TOS != vxlanOuterTOS ||
 		udp.SrcPort < vxlanSourcePortMin || udp.SrcPort > vxlanSourcePortMax || udp.DstPort != vxlanDestinationPort ||
-		encapsulation.VNI != 0 || !encapsulation.ValidIDFlag || !bytes.Equal(
-		encapsulation.Contents,
-		[]byte{8, 0, 0, 0, 0, 0, 0, 0},
-	) {
-		t.Fatalf(
-			"VXLAN outer envelope differs from configured fields: Ethernet=%+v IPv4=%+v UDP=%+v VXLAN=%+v",
-			ethernet,
-			ipv4,
-			udp,
-			encapsulation,
-		)
+		encapsulation.VNI != 0 || !encapsulation.ValidIDFlag || !bytes.Equal(encapsulation.Contents, []byte{8, 0, 0, 0, 0, 0, 0, 0}) {
+		t.Fatalf("VXLAN outer envelope differs from configured fields: Ethernet=%+v IPv4=%+v UDP=%+v VXLAN=%+v", ethernet, ipv4, udp, encapsulation)
 	}
-	if int(ipv4.Length) != len(ipv4.Contents)+len(ipv4.Payload) ||
-		int(udp.Length) != 8+len(udp.Payload) ||
-		vxlanIPv4Checksum(ipv4.Contents) != 0 {
+	if int(ipv4.Length) != len(ipv4.Contents)+len(ipv4.Payload) || int(udp.Length) != 8+len(udp.Payload) || vxlanIPv4Checksum(ipv4.Contents) != 0 {
 		t.Fatalf("VXLAN envelope length or IPv4 checksum is invalid: IPv4=%+v UDP=%+v", ipv4, udp)
 	}
-	t.Logf(
-		"VXLAN %s:%d -> %s:%d VNI=%d TTL=%d TOS=%d inner=%d bytes",
-		ipv4.SrcIP,
-		udp.SrcPort,
-		ipv4.DstIP,
-		udp.DstPort,
-		encapsulation.VNI,
-		ipv4.TTL,
-		ipv4.TOS,
-		len(encapsulation.Payload),
-	)
+	t.Logf("VXLAN %s:%d -> %s:%d VNI=%d TTL=%d TOS=%d inner=%d bytes", ipv4.SrcIP, udp.SrcPort, ipv4.DstIP, udp.DstPort, encapsulation.VNI, ipv4.TTL, ipv4.TOS, len(encapsulation.Payload))
 }
 
 func vxlanIPv4Checksum(header []byte) uint16 {

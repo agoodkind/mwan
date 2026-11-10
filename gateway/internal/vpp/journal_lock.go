@@ -9,9 +9,7 @@ import (
 	"github.com/gofrs/flock"
 )
 
-func (controller *Controller) lockJournal(
-	ctx context.Context,
-) (result *flock.Flock, failure error) {
+func (controller *Controller) lockJournal(ctx context.Context) (result *flock.Flock, failure error) {
 	defer func() {
 		if failure != nil {
 			slog.ErrorContext(ctx, "lock VPP ownership journal failed", "error", failure)
@@ -22,14 +20,9 @@ func (controller *Controller) lockJournal(
 	if err != nil {
 		return nil, fmt.Errorf("lock VPP ownership journal: %w", errors.Join(err, lock.Close()))
 	}
-
 	if !locked {
-		return nil, errors.Join(
-			fmt.Errorf("another VPP controller owns %s", controller.settings.StateFile),
-			lock.Close(),
-		)
+		return nil, errors.Join(fmt.Errorf("another VPP controller owns %s", controller.settings.StateFile), lock.Close())
 	}
-
 	return lock, nil
 }
 
@@ -38,11 +31,9 @@ func (controller *Controller) refreshGeneration(ctx context.Context, state *jour
 	if err != nil {
 		return err
 	}
-
 	if state.Generation == generation {
 		return nil
 	}
-
 	state.Generation = generation
 	state.Objects = nil
 	state.Pending = nil
@@ -50,6 +41,5 @@ func (controller *Controller) refreshGeneration(ctx context.Context, state *jour
 	state.NAT64Enabled = false
 	state.NAT64Owned = false
 	state.NAT64EnablePending = false
-
 	return nil
 }

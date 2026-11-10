@@ -48,18 +48,14 @@ func (c *combinedRun) timers(t *testing.T, device string) combinedTimers {
 			continue
 		}
 		timers := combinedTimers{
-			check:    time.Duration(entry.WAN.Health.Check) * time.Second,
-			failure:  entry.WAN.Health.Failure,
-			recovery: entry.WAN.Health.Recovery,
-			timeout:  time.Duration(document.Interfaces.Group.Health.Timeout) * time.Millisecond,
+			check: time.Duration(entry.WAN.Health.Check) * time.Second, failure: entry.WAN.Health.Failure,
+			recovery: entry.WAN.Health.Recovery, timeout: time.Duration(document.Interfaces.Group.Health.Timeout) * time.Millisecond,
 		}
 		if timers.check == 0 || timers.failure == 0 || timers.recovery == 0 || timers.timeout == 0 {
 			t.Fatalf("%s has no complete probe timers: %+v", device, timers)
 		}
 		for _, session := range entry.WAN.Sessions {
-			timers.retry, timers.hold = time.Duration(session.Retry)*time.Second, time.Duration(
-				session.Hold,
-			)*time.Second
+			timers.retry, timers.hold = time.Duration(session.Retry)*time.Second, time.Duration(session.Hold)*time.Second
 		}
 		return timers
 	}
@@ -106,20 +102,11 @@ func requireCombinedSince(t *testing.T, read func() string, device, family strin
 	t.Helper()
 	path := readCombinedPath(read, device, family)
 	start := time.Time{}
-	for index := len(
-		path.Transitions,
-	) - 1; index >= 0 && path.Transitions[index].Current == path.State; index-- {
+	for index := len(path.Transitions) - 1; index >= 0 && path.Transitions[index].Current == path.State; index-- {
 		start = path.Transitions[index].At
 	}
 	if start.IsZero() || !path.Since.Equal(start) {
-		t.Fatalf(
-			"%s %s path since = %s, want the start %s of the %s state; transitions=%+v",
-			device,
-			family,
-			path.Since,
-			start,
-			path.State,
-			path.Transitions,
-		)
+		t.Fatalf("%s %s path since = %s, want the start %s of the %s state; transitions=%+v",
+			device, family, path.Since, start, path.State, path.Transitions)
 	}
 }

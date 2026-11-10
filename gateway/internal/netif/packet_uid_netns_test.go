@@ -37,69 +37,39 @@ func TestForwardPathLookupIPv6InputUIDNamespaces(t *testing.T) {
 	}
 	binary := copyForwardPathUIDTestBinary(t)
 	for _, current := range []string{"mapped", "ambiguous", "unmapped"} {
-		t.Run(
-			current,
-			func(t *testing.T) {
-				var attributes syscall.SysProcAttr
-				attributes.Cloneflags = unix.CLONE_NEWUSER | unix.CLONE_NEWNET
-				attributes.UidMappings = []syscall.SysProcIDMap{
-					{ContainerID: 0, HostID: forwardPathNonrootHostUID, Size: 1},
+		t.Run(current, func(t *testing.T) {
+			var attributes syscall.SysProcAttr
+			attributes.Cloneflags = unix.CLONE_NEWUSER | unix.CLONE_NEWNET
+			attributes.UidMappings = []syscall.SysProcIDMap{{ContainerID: 0, HostID: forwardPathNonrootHostUID, Size: 1}}
+			if current == "mapped" {
+				attributes.UidMappings = append(attributes.UidMappings, syscall.SysProcIDMap{ContainerID: forwardPathMappedKernelUID, HostID: 0, Size: 1})
+			} else if current == "ambiguous" {
+				attributes.UidMappings = append(attributes.UidMappings, syscall.SysProcIDMap{ContainerID: forwardPathAmbiguousKernelUID, HostID: 0, Size: 1})
+			} else {
+				attributes.UidMappings = []syscall.SysProcIDMap{{ContainerID: 0, HostID: forwardPathLXCUIDBase, Size: forwardPathLXCUIDCount}}
+			}
+			attributes.GidMappings = []syscall.SysProcIDMap{{ContainerID: 0, HostID: forwardPathNonrootHostUID, Size: 1}}
+			var user syscall.Credential
+			user.Uid, user.Gid = 0, 0
+			user.NoSetGroups = true
+			attributes.Credential = &user
+			arguments := []string{"-test.run=^TestForwardPathLookupIPv6InputUIDNamespaces$", "-test.v"}
+			if deadline, bounded := t.Deadline(); bounded {
+				remaining := deadline.Sub(clock.Real{}.Now())
+				if remaining <= 0 {
+					t.Fatal("user namespace test deadline expired before child startup")
 				}
-				if current == "mapped" {
-					attributes.UidMappings = append(
-						attributes.UidMappings,
-						syscall.SysProcIDMap{
-							ContainerID: forwardPathMappedKernelUID,
-							HostID:      0,
-							Size:        1,
-						},
-					)
-				} else if current == "ambiguous" {
-					attributes.UidMappings = append(
-						attributes.UidMappings,
-						syscall.SysProcIDMap{
-							ContainerID: forwardPathAmbiguousKernelUID,
-							HostID:      0,
-							Size:        1,
-						},
-					)
-				} else {
-					attributes.UidMappings = []syscall.SysProcIDMap{
-						{
-							ContainerID: 0,
-							HostID:      forwardPathLXCUIDBase,
-							Size:        forwardPathLXCUIDCount,
-						},
-					}
-				}
-				attributes.GidMappings = []syscall.SysProcIDMap{
-					{ContainerID: 0, HostID: forwardPathNonrootHostUID, Size: 1},
-				}
-				var user syscall.Credential
-				user.Uid, user.Gid = 0, 0
-				user.NoSetGroups = true
-				attributes.Credential = &user
-				arguments := []string{
-					"-test.run=^TestForwardPathLookupIPv6InputUIDNamespaces$",
-					"-test.v",
-				}
-				if deadline, bounded := t.Deadline(); bounded {
-					remaining := deadline.Sub(clock.Real{}.Now())
-					if remaining <= 0 {
-						t.Fatal("user namespace test deadline expired before child startup")
-					}
-					arguments = append(arguments, "-test.timeout="+remaining.String())
-				}
-				command := exec.CommandContext(t.Context(), binary, arguments...)
-				command.SysProcAttr = &attributes
-				command.Env = append(os.Environ(), forwardPathUIDNamespaceChild+"="+current)
-				output, err := command.CombinedOutput()
-				if err != nil {
-					t.Fatalf("IPv6 input UID %s namespace: %v: %s", current, err, output)
-				}
-				t.Log(string(output))
-			},
-		)
+				arguments = append(arguments, "-test.timeout="+remaining.String())
+			}
+			command := exec.CommandContext(t.Context(), binary, arguments...)
+			command.SysProcAttr = &attributes
+			command.Env = append(os.Environ(), forwardPathUIDNamespaceChild+"="+current)
+			output, err := command.CombinedOutput()
+			if err != nil {
+				t.Fatalf("IPv6 input UID %s namespace: %v: %s", current, err, output)
+			}
+			t.Log(string(output))
+		})
 	}
 }
 
@@ -133,44 +103,22 @@ func runForwardPathUIDNamespace(t *testing.T, mode string) {
 		t.Fatalf("install caller UID policy: %v", err)
 	}
 	if mode != "mapped" {
-		path, usable, queryErr := netif.ForwardPathLookup(
-			t.Context(),
-			slog.Default(),
-			fixture.selector,
-		)
+		path, usable, queryErr := netif.ForwardPathLookup(t.Context(), slog.Default(), fixture.selector)
 		var requirement *netif.EgressObservationRequiredError
-		if usable || path.Link != nil || !errors.As(queryErr, &requirement) ||
-			requirement.Reason != netif.EgressObservationUIDMapping {
-			t.Fatalf(
-				"%s kernel UID did not require egress observation: usable=%v path=%+v error=%v",
-				mode,
-				usable,
-				path,
-				queryErr,
-			)
+		if usable || path.Link != nil || !errors.As(queryErr, &requirement) || requirement.Reason != netif.EgressObservationUIDMapping {
+			t.Fatalf("%s kernel UID did not require egress observation: usable=%v path=%+v error=%v", mode, usable, path, queryErr)
 		}
 		observed := observeForwardPathPacket(t, fixture, endpoints, "unmapped-kernel-uid")
 		if observed.output != 1 || observed.hopLimit != forwardPathInitialHopLimit-1 {
-			t.Fatalf(
-				"kernel forwarding failed while UID certification was unavailable: %+v",
-				observed,
-			)
+			t.Fatalf("kernel forwarding failed while UID certification was unavailable: %+v", observed)
 		}
-		t.Logf(
-			"%s input UID: query rejected certification, wire=%+v error=%v",
-			mode,
-			observed,
-			queryErr,
-		)
+		t.Logf("%s input UID: query rejected certification, wire=%+v error=%v", mode, observed, queryErr)
 		return
 	}
 	requireForwardPathPacket(t, fixture, endpoints, 1, "caller-uid-rule")
 	input := netlink.NewRule()
 	input.Family, input.Priority, input.Table = unix.AF_INET6, forwardPathPacketUIDPriority, unix.RT_TABLE_MAIN
-	input.UIDRange = &netlink.RuleUIDRange{
-		Start: forwardPathMappedKernelUID,
-		End:   forwardPathMappedKernelUID,
-	}
+	input.UIDRange = &netlink.RuleUIDRange{Start: forwardPathMappedKernelUID, End: forwardPathMappedKernelUID}
 	if err := netlink.RuleAdd(input); err != nil {
 		t.Fatalf("install translated packet UID policy: %v", err)
 	}

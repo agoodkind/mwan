@@ -33,46 +33,37 @@ func installHelpRendering(command *cobra.Command, started *bool, boundary func(s
 	command.SetHelpTemplate(`{{.UsageString}}`)
 	command.SilenceUsage = false
 	validate := command.PreRunE
-
 	command.PreRunE = func(current *cobra.Command, arguments []string) error {
-		if option := current.Flags().Lookup("config"); option != nil && option.Changed &&
-			option.Value.String() == "" {
+		if option := current.Flags().Lookup("config"); option != nil && option.Changed && option.Value.String() == "" {
 			err := fmt.Errorf("--config requires a nonempty configuration path")
 			if isDeploymentOperation(current) {
 				return commandExitError{code: exitDeployGateUsage, cause: err}
 			}
-
 			return err
 		}
-
 		if validate != nil {
 			return validate(current, arguments)
 		}
-
 		return nil
 	}
 	for _, child := range command.Commands() {
 		installHelpRendering(child, started, boundary)
 	}
-
 	if command.RunE != nil {
 		execute := command.RunE
 		command.RunE = func(current *cobra.Command, arguments []string) error {
 			*started = true
 			current.SilenceUsage = true
-			if current.Parent() != nil &&
-				(!current.HasSubCommands() || commandName(current.Name()) == commandWatchdog) {
+			if current.Parent() != nil && (!current.HasSubCommands() || commandName(current.Name()) == commandWatchdog) {
 				top := current
 				for top.Parent() != nil && top.Parent().Parent() != nil {
 					top = top.Parent()
 				}
-
 				verbose := current.Flags().Lookup("verbose")
 				if verbose == nil || verbose.Value.String() == "true" {
 					boundary(top.Name())
 				}
 			}
-
 			return execute(current, arguments)
 		}
 	}

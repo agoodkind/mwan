@@ -20,51 +20,34 @@ func (s *Session) KeepRoutes(ctx context.Context, deadline time.Time) error {
 	if s.cfg.GracefulRestartSeconds == 0 {
 		return fmt.Errorf("bgp session %q has no graceful restart time", s.cfg.Name)
 	}
-
 	installed, err := s.fib.Installed(ctx)
 	if err != nil {
 		s.log.ErrorContext(ctx, "failed to read the retained BGP session routes", "error", err)
 		return fmt.Errorf("read bgp session %q retained routes: %w", s.cfg.Name, err)
 	}
-
 	timerContext := context.WithoutCancel(ctx)
 	s.mu.Lock()
 	if s.started || s.retaining {
 		s.mu.Unlock()
 		return fmt.Errorf("bgp session %q already started or already retains routes", s.cfg.Name)
 	}
-
 	s.retaining = true
-
 	for _, prefix := range installed {
 		s.retained[prefix] = struct{}{}
 	}
-
 	// The callback receives the generation by value and compares it with the
 	// generation field only after it locks the mutex.
 	s.retainGeneration++
 	generation := s.retainGeneration
-	s.retainTimer = time.AfterFunc(
-		deadline.Sub(s.clock.Now()),
-		func() {
-			s.endRetention(timerContext, generation)
-		},
-	)
+	s.retainTimer = time.AfterFunc(deadline.Sub(s.clock.Now()), func() {
+		s.endRetention(timerContext, generation)
+	})
 	s.enqueueChangeLocked()
 	s.mu.Unlock()
 
 	s.deliverChanges()
-	s.log.InfoContext(
-		ctx,
-		"kernel retains routes installed by the previous process during the BGP session restart",
-		"peer",
-		s.peerKey,
-		"retained",
-		installed,
-		"deadline",
-		deadline,
-	)
-
+	s.log.InfoContext(ctx, "kernel retains routes installed by the previous process during the BGP session restart",
+		"peer", s.peerKey, "retained", installed, "deadline", deadline)
 	return nil
 }
 
@@ -74,7 +57,6 @@ func (s *Session) KeepRoutes(ctx context.Context, deadline time.Time) error {
 func (s *Session) GracefulRestartNegotiated() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	return s.established && s.gracefulRestart
 }
 
@@ -84,14 +66,12 @@ func ipv6GracefulRestart(capabilities []bgppkt.ParameterCapabilityInterface) boo
 		if !ok {
 			continue
 		}
-
 		for _, tuple := range gracefulRestart.Tuples {
 			if tuple.AFI == bgppkt.AFI_IP6 && tuple.SAFI == bgppkt.SAFI_UNICAST {
 				return true
 			}
 		}
 	}
-
 	return false
 }
 
@@ -103,27 +83,15 @@ func (s *Session) Connect(ctx context.Context) error {
 	if !s.started {
 		return fmt.Errorf("bgp session %q is not started", s.cfg.Name)
 	}
-
 	if s.connected {
 		return nil
 	}
-
 	if err := s.addPeer(ctx, s.server); err != nil {
 		return err
 	}
-
 	s.connected = true
-	s.log.InfoContext(
-		ctx,
-		"bgp session connecting after a start with retained routes",
-		"peer",
-		s.peerKey,
-		"advertised",
-		len(s.advertised),
-		"retaining",
-		s.retaining,
-	)
-
+	s.log.InfoContext(ctx, "bgp session connecting after a start with retained routes",
+		"peer", s.peerKey, "advertised", len(s.advertised), "retaining", s.retaining)
 	return nil
 }
 
@@ -137,13 +105,11 @@ func (s *Session) StopRetaining(ctx context.Context) error {
 	if s.cfg.GracefulRestartSeconds == 0 {
 		return fmt.Errorf("bgp session %q has no graceful restart time", s.cfg.Name)
 	}
-
 	s.mu.Lock()
 	if !s.started {
 		s.mu.Unlock()
 		return nil
 	}
-
 	s.cancelWatch()
 	s.stopRetainTimerLocked()
 	// The process exits after this call. BgpServer.Stop repeats StopBgp
@@ -154,7 +120,6 @@ func (s *Session) StopRetaining(ctx context.Context) error {
 	if wasEstablished {
 		s.enqueueChangeLocked()
 	}
-
 	s.mu.Unlock()
 
 	s.deliverChanges()
@@ -162,8 +127,6 @@ func (s *Session) StopRetaining(ctx context.Context) error {
 		s.log.ErrorContext(ctx, "stop bgp session with retained routes failed", "error", stopErr)
 		return fmt.Errorf("stop bgp session %q with retained routes: %w", s.cfg.Name, stopErr)
 	}
-
 	s.log.InfoContext(ctx, "bgp session stopped with retained routes")
-
 	return nil
 }

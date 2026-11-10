@@ -35,17 +35,13 @@ func neighStateResolved(state int) bool {
 // unresolved; resolution triggered by the nudge lands in the table well
 // before the caller's next reconcile tick.
 func NextHopResolves(
-	ctx context.Context,
-	log *slog.Logger,
-	dev string,
-	addr string,
+	ctx context.Context, log *slog.Logger, dev string, addr string,
 ) (bool, error) {
 	parsed, err := netip.ParseAddr(addr)
 	if err != nil {
 		log.WarnContext(ctx, "next hop address does not parse", "addr", addr, "err", err)
 		return false, fmt.Errorf("next hop %q: %w", addr, err)
 	}
-
 	nudgeNeighbour(ctx, log, parsed)
 
 	link, err := netlink.LinkByName(dev)
@@ -53,45 +49,29 @@ func NextHopResolves(
 		log.WarnContext(ctx, "next hop link lookup failed", "dev", dev, "err", err)
 		return false, fmt.Errorf("link %q: %w", dev, err)
 	}
-
 	family := unix.AF_INET6
 	if parsed.Is4() {
 		family = unix.AF_INET
 	}
-
 	neighbours, err := netlink.NeighList(link.Attrs().Index, family)
 	if err != nil {
 		log.WarnContext(ctx, "neighbour list failed", "dev", dev, "err", err)
 		return false, fmt.Errorf("neighbour list on %q: %w", dev, err)
 	}
-
 	for _, neighbour := range neighbours {
 		entry, ok := netip.AddrFromSlice(neighbour.IP)
 		if !ok {
 			continue
 		}
-
 		if entry.Unmap() == parsed.Unmap() {
 			resolved := neighStateResolved(neighbour.State)
-			log.DebugContext(
-				ctx,
-				"next hop neighbour state",
-				"dev",
-				dev,
-				"addr",
-				addr,
-				"state",
-				neighbour.State,
-				"resolved",
-				resolved,
-			)
-
+			log.DebugContext(ctx, "next hop neighbour state",
+				"dev", dev, "addr", addr,
+				"state", neighbour.State, "resolved", resolved)
 			return resolved, nil
 		}
 	}
-
 	log.DebugContext(ctx, "next hop has no neighbour entry", "dev", dev, "addr", addr)
-
 	return false, nil
 }
 
@@ -103,17 +83,18 @@ func nudgeNeighbour(ctx context.Context, log *slog.Logger, addr netip.Addr) {
 	if addr.Is4() {
 		network = "udp4"
 	}
-
 	var dialer net.Dialer
-	conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(addr.String(), discardPort))
+	conn, err := dialer.DialContext(
+		ctx, network, net.JoinHostPort(addr.String(), discardPort),
+	)
 	if err != nil {
-		log.DebugContext(ctx, "neighbour nudge dial failed", "addr", addr.String(), "err", err)
-
+		log.DebugContext(ctx, "neighbour nudge dial failed",
+			"addr", addr.String(), "err", err)
 		return
 	}
-
 	defer func() { _ = conn.Close() }()
 	if _, err := conn.Write([]byte{0}); err != nil {
-		log.DebugContext(ctx, "neighbour nudge write failed", "addr", addr.String(), "err", err)
+		log.DebugContext(ctx, "neighbour nudge write failed",
+			"addr", addr.String(), "err", err)
 	}
 }

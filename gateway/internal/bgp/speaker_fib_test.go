@@ -38,7 +38,6 @@ func TestBestPathWatchInstallsRemotePathAndSkipsLocalPath(t *testing.T) {
 	if got, want := len(writer.installs), 1; got != want {
 		t.Fatalf("remote path install count = %d, want %d", got, want)
 	}
-
 	if got, want := writer.installs[0].Dest, remote.String(); got != want {
 		t.Fatalf("remote path destination = %s, want %s", got, want)
 	}
@@ -56,11 +55,9 @@ func TestBestPathWatchInstallsRemotePathAndSkipsLocalPath(t *testing.T) {
 	if got, want := len(writer.installs), 2; got != want {
 		t.Fatalf("remote path install count = %d, want %d", got, want)
 	}
-
 	if got, want := writer.installs[1].Dest, ipv4Remote.String(); got != want {
 		t.Fatalf("remote path destination = %s, want %s", got, want)
 	}
-
 	if route := writer.installs[1]; route.Family != ipv4RouteFamily || route.Via != ipv4Peer {
 		t.Fatalf("install[%d] route = %#v", 1, route)
 	}
@@ -78,7 +75,6 @@ func TestBestPathWatchInstallsRemotePathAndSkipsLocalPath(t *testing.T) {
 	if got, want := len(writer.installs), 2; got != want {
 		t.Fatalf("guarded install count = %d, want %d", got, want)
 	}
-
 	fake.emitBestPaths([]*apiutil.Path{
 		watchPathIPv4(t, ipv4Peer, ipv4Default, true),
 		watchPath(t, peer, ipv6Default, true),
@@ -92,7 +88,6 @@ func TestBestPathWatchInstallsRemotePathAndSkipsLocalPath(t *testing.T) {
 	if got, want := len(writer.installs), 3; got != want {
 		t.Fatalf("remote path install count = %d, want %d", got, want)
 	}
-
 	if got, want := writer.installs[2].Dest, otherDevice.String(); got != want {
 		t.Fatalf("remote path destination = %s, want %s", got, want)
 	}
@@ -104,13 +99,11 @@ func watchPathIPv4(t *testing.T, peer string, prefix netip.Prefix, withdrawn boo
 	if err != nil {
 		t.Fatalf("create NLRI: %v", err)
 	}
-
 	nextHop := netip.MustParseAddr(peer)
 	attribute, err := bgppkt.NewPathAttributeNextHop(nextHop)
 	if err != nil {
 		t.Fatalf("build IPv4 NEXT_HOP path attribute: %v", err)
 	}
-
 	return &apiutil.Path{
 		Family:      bgppkt.RF_IPv4_UC,
 		Nlri:        nlri,
@@ -141,7 +134,6 @@ func TestPeerDownWithdrawsTrackedRoutes(t *testing.T) {
 	if got, want := len(writer.deletes), 1; got != want {
 		t.Fatalf("peer-down delete count = %d, want %d", got, want)
 	}
-
 	if got, want := writer.deletes[0].Dest, prefix.String(); got != want {
 		t.Fatalf("peer-down deleted destination = %s, want %s", got, want)
 	}
@@ -154,11 +146,9 @@ func TestPeerDownWithdrawsTrackedRoutes(t *testing.T) {
 	if got, want := len(writer.deletes), 2; got != want {
 		t.Fatalf("peer-down delete count = %d, want %d", got, want)
 	}
-
 	if got, want := writer.deletes[1].Dest, ipv4Prefix.String(); got != want {
 		t.Fatalf("peer-down deleted destination = %s, want %s", got, want)
 	}
-
 	if got, want := writer.deletes[1].Family, ipv4RouteFamily; got != want {
 		t.Fatalf("delete[%d] family = %s, want %s", 1, got, want)
 	}
@@ -202,16 +192,10 @@ func TestSweepStaleReinstallsRoutesDeletedByPeerFlap(t *testing.T) {
 	if err := speaker.SweepStale(context.Background()); err != nil {
 		t.Fatalf("sweep after flap: %v", err)
 	}
-
 	if got, want := len(writer.installs), 2; got != want {
-		t.Fatalf(
-			"post-flap install count = %d, want %d: the sweep must"+
-				" reinstall the flap-deleted route",
-			got,
-			want,
-		)
+		t.Fatalf("post-flap install count = %d, want %d: the sweep must"+
+			" reinstall the flap-deleted route", got, want)
 	}
-
 	if got, want := writer.installs[1].Dest, prefix.String(); got != want {
 		t.Fatalf("reinstalled destination = %s, want %s", got, want)
 	}
@@ -223,15 +207,12 @@ func TestSweepStaleReinstallsRoutesDeletedByPeerFlap(t *testing.T) {
 	if err := speaker.SweepStale(context.Background()); err != nil {
 		t.Fatalf("sweep after flap: %v", err)
 	}
-
 	if got, want := len(writer.installs), 4; got != want {
 		t.Fatalf("install count = %d, want %d", got, want)
 	}
-
 	if got, want := writer.installs[2].Dest, ipv4Prefix.String(); got != want {
 		t.Fatalf("reinstalled destination = %s, want %s", got, want)
 	}
-
 	if got, want := writer.installs[3].Dest, prefix.String(); got != want {
 		t.Fatalf("reinstalled destination = %s, want %s", got, want)
 	}
@@ -270,7 +251,6 @@ func TestSweepStaleSkipsStaleLocalAndNonBestPaths(t *testing.T) {
 	if err := speaker.SweepStale(context.Background()); err != nil {
 		t.Fatalf("sweep: %v", err)
 	}
-
 	if got, want := len(writer.installs), 0; got != want {
 		t.Fatalf("guarded install count = %d, want %d", got, want)
 	}
@@ -295,30 +275,20 @@ func captureSweepArms(speaker *Speaker) *[]scheduledSweepArm {
 	scheduled := make([]scheduledSweepArm, 0, 2)
 	speaker.afterFunc = func(delay time.Duration, callback func()) sweepTimer {
 		timer := &capturedSweepTimer{}
-		scheduled = append(
-			scheduled,
-			scheduledSweepArm{
-				delay:    delay,
-				callback: callback,
-				timer:    timer,
-			},
-		)
-
+		scheduled = append(scheduled, scheduledSweepArm{
+			delay:    delay,
+			callback: callback,
+			timer:    timer,
+		})
 		return timer
 	}
-
 	return &scheduled
 }
 
 func TestStaleSweepDoesNotArmBeforePeerEstablishes(t *testing.T) {
 	fake := newFakeBGPServer()
 	cfg := baseGRConfig(true)
-	stale := netif.CurrentRoute{
-		Dest:   "3d06:bad:b01:8::/64",
-		Via:    "3d06:bad:b01:fe::5",
-		Dev:    "vmbr250",
-		Metric: 0,
-	}
+	stale := netif.CurrentRoute{Dest: "3d06:bad:b01:8::/64", Via: "3d06:bad:b01:fe::5", Dev: "vmbr250", Metric: 0}
 	writer := &recordedRouteWriter{routes: map[int][]netif.CurrentRoute{100: {stale}}}
 	fib := newFIB(FIBConfig{Tables: []int{100}, InternalIface: "vmbr250"}, testFIBLogger(), writer)
 	speaker := newSpeakerWithFake(cfg, fake)
@@ -328,23 +298,18 @@ func TestStaleSweepDoesNotArmBeforePeerEstablishes(t *testing.T) {
 	if err := speaker.Start(context.Background()); err != nil {
 		t.Fatalf("start speaker: %v", err)
 	}
-
 	if got, want := len(*scheduled), 1; got != want {
 		t.Fatalf("startup sweep timer count = %d, want %d", got, want)
 	}
-
 	if got, want := (*scheduled)[0].delay, staleSweepStartupGraceDelay; got != want {
 		t.Fatalf("startup grace sweep delay = %s, want %s", got, want)
 	}
-
 	if err := fib.SweepStale(context.Background()); err != nil {
 		t.Fatalf("sweep before peer establishment: %v", err)
 	}
-
 	if got := len(writer.deletes); got != 0 {
 		t.Fatalf("pre-establishment stale delete count = %d, want 0", got)
 	}
-
 	if got, want := len(*scheduled), 1; got != want {
 		t.Fatalf("pre-establishment sweep timer count = %d, want %d", got, want)
 	}
@@ -353,12 +318,7 @@ func TestStaleSweepDoesNotArmBeforePeerEstablishes(t *testing.T) {
 func TestFirstEstablishedPeerDoesNotArmStaleSweepEarly(t *testing.T) {
 	fake := newFakeBGPServer()
 	cfg := baseGRConfig(true)
-	stale := netif.CurrentRoute{
-		Dest:   "3d06:bad:b01:8::/64",
-		Via:    "3d06:bad:b01:fe::5",
-		Dev:    "vmbr250",
-		Metric: 0,
-	}
+	stale := netif.CurrentRoute{Dest: "3d06:bad:b01:8::/64", Via: "3d06:bad:b01:fe::5", Dev: "vmbr250", Metric: 0}
 	writer := &recordedRouteWriter{routes: map[int][]netif.CurrentRoute{100: {stale}}}
 	fib := newFIB(FIBConfig{Tables: []int{100}, InternalIface: "vmbr250"}, testFIBLogger(), writer)
 	speaker := newSpeakerWithFake(cfg, fake)
@@ -368,21 +328,17 @@ func TestFirstEstablishedPeerDoesNotArmStaleSweepEarly(t *testing.T) {
 	if err := speaker.Start(context.Background()); err != nil {
 		t.Fatalf("start speaker: %v", err)
 	}
-
 	peer := "3d06:bad:b01:fe::5"
 	fake.emitPeerUpdate(peerStateEvent(peer, bgppkt.BGP_FSM_ESTABLISHED))
 	if got, want := len(*scheduled), 1; got != want {
 		t.Fatalf("peer-established sweep timer count = %d, want %d", got, want)
 	}
-
 	if (*scheduled)[0].timer.stopped {
 		t.Fatal("first peer establishment stopped the startup grace timer")
 	}
-
 	if err := fib.SweepStale(context.Background()); err != nil {
 		t.Fatalf("sweep before startup grace: %v", err)
 	}
-
 	if got, want := len(writer.deletes), 0; got != want {
 		t.Fatalf("pre-grace stale delete count = %d, want %d", got, want)
 	}
@@ -391,7 +347,6 @@ func TestFirstEstablishedPeerDoesNotArmStaleSweepEarly(t *testing.T) {
 	if err := fib.SweepStale(context.Background()); err != nil {
 		t.Fatalf("sweep after startup grace: %v", err)
 	}
-
 	if got, want := len(writer.deletes), 1; got != want {
 		t.Fatalf("post-grace stale delete count = %d, want %d", got, want)
 	}
@@ -400,12 +355,7 @@ func TestFirstEstablishedPeerDoesNotArmStaleSweepEarly(t *testing.T) {
 func TestStaleSweepArmsAfterStartupGraceWithoutPeerEstablishment(t *testing.T) {
 	fake := newFakeBGPServer()
 	cfg := baseGRConfig(true)
-	stale := netif.CurrentRoute{
-		Dest:   "3d06:bad:b01:8::/64",
-		Via:    "3d06:bad:b01:fe::5",
-		Dev:    "vmbr250",
-		Metric: 0,
-	}
+	stale := netif.CurrentRoute{Dest: "3d06:bad:b01:8::/64", Via: "3d06:bad:b01:fe::5", Dev: "vmbr250", Metric: 0}
 	writer := &recordedRouteWriter{routes: map[int][]netif.CurrentRoute{100: {stale}}}
 	fib := newFIB(FIBConfig{Tables: []int{100}, InternalIface: "vmbr250"}, testFIBLogger(), writer)
 	speaker := newSpeakerWithFake(cfg, fake)
@@ -415,16 +365,13 @@ func TestStaleSweepArmsAfterStartupGraceWithoutPeerEstablishment(t *testing.T) {
 	if err := speaker.Start(context.Background()); err != nil {
 		t.Fatalf("start speaker: %v", err)
 	}
-
 	if got, want := len(*scheduled), 1; got != want {
 		t.Fatalf("startup grace sweep timer count = %d, want %d", got, want)
 	}
-
 	(*scheduled)[0].callback()
 	if err := fib.SweepStale(context.Background()); err != nil {
 		t.Fatalf("sweep after startup grace: %v", err)
 	}
-
 	if got, want := len(writer.deletes), 1; got != want {
 		t.Fatalf("post-grace stale delete count = %d, want %d", got, want)
 	}

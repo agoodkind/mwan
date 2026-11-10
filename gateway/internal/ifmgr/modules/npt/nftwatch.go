@@ -26,27 +26,18 @@ const nftMonitorRetryDelay = 2 * time.Second
 func (m *Module) watchNFTChanges(ctx context.Context, log *slog.Logger) {
 	log = log.With("goroutine", "nft-watch")
 	log.DebugContext(ctx, "npt: nft-watch starting")
-
 	for {
 		if ctx.Err() != nil {
 			log.DebugContext(ctx, "npt: nft-watch exiting (ctx done)")
 			return
 		}
-
 		err := m.runNFTMonitor(ctx, log)
 		if ctx.Err() != nil {
 			log.DebugContext(ctx, "npt: nft-watch exiting (ctx done)")
 			return
 		}
-
-		log.WarnContext(
-			ctx,
-			"npt: nft monitor ended; retrying",
-			"err",
-			err,
-			"retry_in",
-			nftMonitorRetryDelay.String(),
-		)
+		log.WarnContext(ctx, "npt: nft monitor ended; retrying", "err", err,
+			"retry_in", nftMonitorRetryDelay.String())
 		select {
 		case <-ctx.Done():
 			return
@@ -65,7 +56,6 @@ func (m *Module) runNFTMonitor(ctx context.Context, log *slog.Logger) error {
 		log.WarnContext(ctx, "npt: nft monitor open conn failed", "err", err)
 		return fmt.Errorf("nftables.New: %w", err)
 	}
-
 	monitor := nftables.NewMonitor(
 		nftables.WithMonitorAction(nftables.MonitorActionAny),
 		nftables.WithMonitorObject(nftables.MonitorObjectRuleset),
@@ -78,7 +68,6 @@ func (m *Module) runNFTMonitor(ctx context.Context, log *slog.Logger) error {
 		log.WarnContext(ctx, "npt: nft AddMonitor failed", "err", err)
 		return fmt.Errorf("nftables AddMonitor: %w", err)
 	}
-
 	log.DebugContext(ctx, "npt: nft monitor established")
 
 	for {
@@ -90,18 +79,15 @@ func (m *Module) runNFTMonitor(ctx context.Context, log *slog.Logger) error {
 			// strand it mid-send; draining lets it finish the in-flight send,
 			// observe the closed source channel after Close, and exit.
 			monitor.Close()
-
 			for discarded := range events {
 				_ = discarded
 			}
-
 			return fmt.Errorf("npt: nft monitor stopping: %w", ctx.Err())
 		case event, ok := <-events:
 			if !ok {
 				monitor.Close()
 				return errors.New("nft monitor channel closed")
 			}
-
 			m.handleNFTEvent(ctx, log, event)
 		}
 	}
@@ -111,25 +97,17 @@ func (m *Module) runNFTMonitor(ctx context.Context, log *slog.Logger) error {
 // table. Kept out of the monitor loop body so its info log is a per-flush state
 // change, not a per-iteration emission.
 func (m *Module) handleNFTEvent(
-	ctx context.Context,
-	log *slog.Logger,
-	event *nftables.MonitorEvent,
+	ctx context.Context, log *slog.Logger, event *nftables.MonitorEvent,
 ) {
 	if event.Error != nil {
 		log.WarnContext(ctx, "npt: nft monitor event error", "err", event.Error)
 		return
 	}
-
 	if !nftEventWipesNAT(event) {
 		return
 	}
-
-	log.InfoContext(
-		ctx,
-		"npt: ip6 nat table change detected; requesting reconcile",
-		"event_type",
-		int(event.Type),
-	)
+	log.InfoContext(ctx, "npt: ip6 nat table change detected; requesting reconcile",
+		"event_type", int(event.Type))
 	if m.Env != nil && m.Env.RequestReconcile != nil {
 		m.Env.RequestReconcile("npt: ip6 nat table change")
 	}
@@ -154,7 +132,6 @@ func nftEventWipesNAT(event *nftables.MonitorEvent) bool {
 	if event == nil {
 		return false
 	}
-
 	// Switch on the payload type rather than the event-type enum: only a delete
 	// of the ip6 nat table or of a chain inside it is a structural wipe. A
 	// create event carries the same payload types, so the event type is checked

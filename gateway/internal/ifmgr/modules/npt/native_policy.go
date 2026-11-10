@@ -11,36 +11,21 @@ func (m *Module) inspectNativePacketPolicy(ctx context.Context, indices []int) e
 	if m.Env.LiveState == nil {
 		return fmt.Errorf("native packet policy requires applied NPT state")
 	}
-
-	policies, _, _, err := m.interfacePolicies(
-		ctx,
-		m.Env.Log,
-		m.Env.LiveState.Snapshot().NPTPolicies,
-	)
+	policies, _, _, err := m.interfacePolicies(ctx, m.Env.Log, m.Env.LiveState.Snapshot().NPTPolicies)
 	if err != nil {
 		return err
 	}
-
 	inspector, available := m.translator.(interface {
 		InspectNativePolicy(context.Context, []int, []bpf.InterfacePolicy) error
 	})
 	if !available {
 		return fmt.Errorf("NPT translator cannot inspect native packet policy")
 	}
-
 	// Avoid the module lock: policy writers acquire the native guard before
 	// acquiring the translator lock, and this inspector already owns that guard.
 	if err := inspector.InspectNativePolicy(ctx, indices, policies); err != nil {
-		m.Env.Log.WarnContext(
-			ctx,
-			"applied NPT packet policy inspection failed",
-			"interfaces",
-			indices,
-			"err",
-			err,
-		)
+		m.Env.Log.WarnContext(ctx, "applied NPT packet policy inspection failed", "interfaces", indices, "err", err)
 		return fmt.Errorf("inspect applied NPT packet policy: %w", err)
 	}
-
 	return nil
 }

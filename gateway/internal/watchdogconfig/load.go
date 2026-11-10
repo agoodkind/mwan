@@ -41,33 +41,25 @@ func Default() Config {
 		LastChangePath: "/var/run/mwan-last-change",
 	}
 	cfg.Watchdog = WatchdogSection{
-		DeployWindowMinutes:        30,
-		ConnectivityTimeoutSeconds: 60,
-		CheckIntervalHealthy:       30,
-		CheckIntervalDegraded:      10,
-		PostRollbackGraceSeconds:   120,
-		AlertCooldownSeconds:       300,
-		DeployGracePeriodSeconds:   60,
-		MaxRollbackAttempts:        3,
-		MaxIterations:              0,
-		SnapshotHealthyThreshold:   20,
-		MaxKnownGoodSnapshots:      3,
-		HashCheckEveryNHealthy:     10,
-		MinSnapshotIntervalSeconds: 300,
-		MaxTotalSnapshots:          15,
-		VsockCID:                   0,
-		VsockPort:                  0,
-		MwanAgentTCPAddr:           "",
-		StatusListenPort:           0,
-		StatusCommand:              nil,
-		ConfigStateCommand:         nil,
-		LogFile:                    "/var/log/mwan-watchdog.log",
-		JSONLogFile:                "/var/log/mwan-watchdog.jsonl",
-		RollbackStateFile:          "/run/mwan-rollback.state",
-		RollbackLockFile:           "/run/mwan-watchdog-rollback.lock",
-		ServiceName:                "mwan-watchdog",
+		DeployWindowMinutes: 30, ConnectivityTimeoutSeconds: 60,
+		CheckIntervalHealthy: 30, CheckIntervalDegraded: 10,
+		PostRollbackGraceSeconds: 120, AlertCooldownSeconds: 300,
+		DeployGracePeriodSeconds: 60, MaxRollbackAttempts: 3,
+		MaxIterations:            0,
+		SnapshotHealthyThreshold: 20, MaxKnownGoodSnapshots: 3,
+		HashCheckEveryNHealthy: 10, MinSnapshotIntervalSeconds: 300,
+		MaxTotalSnapshots:  15,
+		VsockCID:           0,
+		VsockPort:          0,
+		MwanAgentTCPAddr:   "",
+		StatusListenPort:   0,
+		StatusCommand:      nil,
+		ConfigStateCommand: nil,
+		LogFile:            "/var/log/mwan-watchdog.log", JSONLogFile: "/var/log/mwan-watchdog.jsonl",
+		RollbackStateFile: "/run/mwan-rollback.state",
+		RollbackLockFile:  "/run/mwan-watchdog-rollback.lock",
+		ServiceName:       "mwan-watchdog",
 	}
-
 	return cfg
 }
 
@@ -76,7 +68,6 @@ func LoadPath(path string) (*Config, error) {
 	if path == "" {
 		path = DefaultPath()
 	}
-
 	return loadConfig(path)
 }
 
@@ -85,7 +76,6 @@ func DefaultPath() string {
 	if v := os.Getenv("MWAN_CONFIG"); v != "" {
 		return v
 	}
-
 	return "/etc/mwan/config.toml"
 }
 
@@ -103,17 +93,14 @@ func LoadWatchdogSection(path string) (WatchdogSection, error) {
 	if path == "" {
 		return none, ErrEmptyPath
 	}
-
 	path, data, err := readFile(path)
 	if err != nil {
 		return none, err
 	}
-
 	file := watchdogFile{Watchdog: Default().Watchdog}
 	if err := toml.Unmarshal(data, &file); err != nil {
 		return none, parseFailure(path, err)
 	}
-
 	return file.Watchdog, nil
 }
 
@@ -128,7 +115,6 @@ func readFile(path string) (string, []byte, error) {
 		slog.Error("read config failed", "path", path, "error", err)
 		return path, nil, fmt.Errorf("read config %s: %w", path, err)
 	}
-
 	return path, data, nil
 }
 
@@ -153,7 +139,6 @@ func loadConfig(path string) (*Config, error) {
 		slog.Error("validate guest type failed", "error", err)
 		return nil, fmt.Errorf("validate guest type: %w", err)
 	}
-
 	if err := ValidateStatusSource(cfg.Watchdog); err != nil {
 		slog.Error("validate watchdog status source failed", "error", err)
 		return nil, fmt.Errorf("validate watchdog status source: %w", err)
@@ -175,7 +160,6 @@ func ValidateStatusSource(section WatchdogSection) error {
 	if len(section.StatusCommand) > 0 && section.StatusListenPort != 0 {
 		return errors.New("[watchdog] status_command and status_listen_port are mutually exclusive")
 	}
-
 	return nil
 }
 
@@ -193,7 +177,6 @@ func ParseGuestType(name string) (GuestType, error) {
 			return guestType, nil
 		}
 	}
-
 	return "", fmt.Errorf("guest_type %q must be %q or %q", name, GuestTypeQEMU, GuestTypeLXC)
 }
 

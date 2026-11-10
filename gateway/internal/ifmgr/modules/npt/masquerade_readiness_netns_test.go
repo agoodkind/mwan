@@ -25,35 +25,12 @@ func TestMasqueradeAddressReadinessWithoutDHCPv6Lease(t *testing.T) {
 	}
 	enabled := true
 	connection := interfaceintent.Connection{
-		ID:    "wan0",
-		Name:  "wan0",
-		Owner: interfaceintent.OwnerMWAN,
-		IPv6: &interfaceintent.IPv6{
-			Family:   interfaceintent.Family{DHCP: &enabled},
-			AutoConf: &enabled,
-		},
+		ID: "wan0", Name: "wan0", Owner: interfaceintent.OwnerMWAN,
+		IPv6: &interfaceintent.IPv6{Family: interfaceintent.Family{DHCP: &enabled}, AutoConf: &enabled},
 	}
-	env := &ifmgr.Env{
-		Log:         slog.Default(),
-		Connections: []interfaceintent.Connection{connection},
-		OwnedLinks:  &ifmgr.OwnedLinkResults{},
-	}
-	env.OwnedLinks.Replace([]netif.OwnedLinkResult{
-		{
-			ConnectionID: "wan0",
-			Name:         "wan0",
-			ActualName:   "wan0",
-			IfIndex:      link.Attrs().Index,
-			Status:       netif.OwnedLinkReady,
-		},
-	})
-	authority, err := addresses.New(addresses.Config{
-		Connections: env.Connections,
-		Providers: map[string]addresses.Provider{
-			"wan0": {IPv6: &config.IPv6Translation{Mode: config.TranslationMasquerade}},
-		},
-		StateFile: filepath.Join(t.TempDir(), "state.json"),
-	})
+	env := &ifmgr.Env{Log: slog.Default(), Connections: []interfaceintent.Connection{connection}, OwnedLinks: &ifmgr.OwnedLinkResults{}}
+	env.OwnedLinks.Replace([]netif.OwnedLinkResult{{ConnectionID: "wan0", Name: "wan0", ActualName: "wan0", IfIndex: link.Attrs().Index, Status: netif.OwnedLinkReady}})
+	authority, err := addresses.New(addresses.Config{Connections: env.Connections, Providers: map[string]addresses.Provider{"wan0": {IPv6: &config.IPv6Translation{Mode: config.TranslationMasquerade}}}, StateFile: filepath.Join(t.TempDir(), "state.json")})
 	if err != nil {
 		t.Fatal(err)
 	}

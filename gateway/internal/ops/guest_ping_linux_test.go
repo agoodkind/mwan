@@ -22,7 +22,6 @@ func TestGuestExecPingsConfiguredTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := grpc.NewServer()
 	mwanv1.RegisterMWANAgentServer(server, agent.NewServer("", logger, nil, nil))
@@ -31,7 +30,6 @@ func TestGuestExecPingsConfiguredTarget(t *testing.T) {
 	config := &watchdogconfig.Config{}
 	config.MwanVMID = "213"
 	config.Watchdog.MwanAgentTCPAddr = listener.Addr().String()
-
 	cases := []struct {
 		name string
 		args []string
@@ -40,22 +38,18 @@ func TestGuestExecPingsConfiguredTarget(t *testing.T) {
 		{name: "ipv6 interface", args: []string{"ping6", "-I", "lo", "-c", "1", "-W", "3", "::1"}},
 	}
 	for _, testCase := range cases {
-		t.Run(
-			testCase.name,
-			func(t *testing.T) {
-				t.Parallel()
-				guest := ops.NewRealOps(config, logger)
-				ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
-				defer cancel()
-				result, err := guest.GuestExec(ctx, config.MwanVMID, testCase.args...)
-				if err != nil {
-					t.Fatalf("guest ping: %v", err)
-				}
-
-				if result.ExitCode != 0 {
-					t.Fatalf("guest ping exited %d", result.ExitCode)
-				}
-			},
-		)
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			guest := ops.NewRealOps(config, logger)
+			ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+			defer cancel()
+			result, err := guest.GuestExec(ctx, config.MwanVMID, testCase.args...)
+			if err != nil {
+				t.Fatalf("guest ping: %v", err)
+			}
+			if result.ExitCode != 0 {
+				t.Fatalf("guest ping exited %d", result.ExitCode)
+			}
+		})
 	}
 }

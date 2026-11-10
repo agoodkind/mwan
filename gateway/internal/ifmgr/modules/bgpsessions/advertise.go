@@ -17,11 +17,9 @@ const readinessReady = "ready"
 // previous without a lock.
 func (m *Module) listener(cfg Session) func(bgp.SessionState) {
 	var previous bgp.SessionState
-
 	return func(state bgp.SessionState) {
 		m.publish(cfg.Key())
-		changed := state.Established != previous.Established ||
-			!slices.Equal(state.Accepted, previous.Accepted) ||
+		changed := state.Established != previous.Established || !slices.Equal(state.Accepted, previous.Accepted) ||
 			!slices.Equal(state.Retained, previous.Retained)
 		previous = state
 		if changed && m.Env.RequestReconcile != nil {
@@ -34,17 +32,14 @@ func (m *Module) publish(connectionID string) {
 	if m.Env.LiveState == nil {
 		return
 	}
-
 	m.publishMu.Lock()
 	defer m.publishMu.Unlock()
-
 	states := make([]bgp.SessionState, 0, len(m.sessions))
 	for _, entry := range m.sessions {
 		if entry.cfg.Key() == connectionID {
 			states = append(states, entry.session.State())
 		}
 	}
-
 	m.Env.LiveState.SetBGPSessions(connectionID, states)
 }
 
@@ -59,37 +54,23 @@ func (m *Module) OnFamilyReadiness(ctx context.Context, log *slog.Logger) {
 	if m.Env.LiveState == nil {
 		return
 	}
-
 	snapshot := m.Env.LiveState.Snapshot()
 	for _, entry := range m.sessions {
 		if !entry.running {
 			continue
 		}
-
 		eligible := ipv6Ready(snapshot, entry.cfg.Key())
-
 		backupActive := make(map[netip.Prefix]bool, len(entry.cfg.BackupFor))
 		for prefix, connections := range entry.cfg.BackupFor {
-			backupActive[prefix] = !slices.ContainsFunc(
-				connections,
-				func(id connectionid.ID) bool {
-					return ipv6Ready(snapshot, id.String())
-				},
-			)
+			backupActive[prefix] = !slices.ContainsFunc(connections, func(id connectionid.ID) bool {
+				return ipv6Ready(snapshot, id.String())
+			})
 		}
-
 		advertiseErr := entry.session.SetAdvertisement(eligible, backupActive)
 		if advertiseErr != nil {
-			log.WarnContext(
-				ctx,
-				"bgp_sessions: advertisement change failed",
-				"session",
-				entry.cfg.Config.Name,
-				"err",
-				advertiseErr,
-			)
+			log.WarnContext(ctx, "bgp_sessions: advertisement change failed",
+				"session", entry.cfg.Config.Name, "err", advertiseErr)
 		}
-
 		// The previous process calls StopRetaining before it exits.
 		// The kernel keeps its routes. A nonzero connectBy marks a
 		// session starting without its peer because those routes remain.
@@ -100,18 +81,12 @@ func (m *Module) OnFamilyReadiness(ctx context.Context, log *slog.Logger) {
 		// connectLocked again and returns its error. The FamilyReadinessObserver
 		// interface does not return an error. OnFamilyReadiness only logs the
 		// failure.
-		if advertiseErr == nil && !entry.connectBy.IsZero() &&
-			ipv6PathEvaluated(snapshot, entry.cfg.Key()) {
+		if advertiseErr == nil && !entry.connectBy.IsZero() && ipv6PathEvaluated(snapshot, entry.cfg.Key()) {
 			if err := m.connectLocked(ctx, log, entry, "the ipv6 path has a verdict"); err != nil {
-				log.DebugContext(
-					ctx,
-					"bgp_sessions: the next reconcile pass retries the peer connection",
-					"session",
-					entry.cfg.Config.Name,
-				)
+				log.DebugContext(ctx, "bgp_sessions: the next reconcile pass retries the peer connection",
+					"session", entry.cfg.Config.Name)
 			}
 		}
-
 		m.publish(entry.cfg.Key())
 	}
 }

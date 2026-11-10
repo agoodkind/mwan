@@ -61,15 +61,12 @@ func tunnelConnections() []interfaceintent.Connection {
 	return []interfaceintent.Connection{
 		{ID: underlayName, Name: underlayName, Owner: interfaceintent.OwnerExternal},
 		{
-			ID:    tunnelID,
-			Name:  tunnelName,
-			Owner: interfaceintent.OwnerMWAN,
+			ID: tunnelID, Name: tunnelName, Owner: interfaceintent.OwnerMWAN,
 			Link: &interfaceintent.Link{
 				Kind: interfaceintent.KindTunnel,
 				Tunnel: &interfaceintent.Tunnel{
-					Protocol: interfaceintent.TunnelProtocol6in4,
-					Underlay: underlayName,
-					Remote:   netip.MustParseAddr("198.51.100.1"),
+					Protocol: interfaceintent.TunnelProtocol6in4, Underlay: underlayName,
+					Remote: netip.MustParseAddr("198.51.100.1"),
 				},
 			},
 		},
@@ -78,15 +75,10 @@ func tunnelConnections() []interfaceintent.Connection {
 
 // startLinksModule initializes the module and returns the reconcile reasons it requests.
 func startLinksModule(
-	ctx context.Context,
-	t *testing.T,
-	connections []interfaceintent.Connection,
+	ctx context.Context, t *testing.T, connections []interfaceintent.Connection,
 ) (ifmgr.Module, *ifmgr.Env, *wanstate.Store, <-chan string) {
 	t.Helper()
-	module, err := links.New(links.Config{
-		Connections: connections,
-		StateFile:   filepath.Join(t.TempDir(), "links.json"),
-	})
+	module, err := links.New(links.Config{Connections: connections, StateFile: filepath.Join(t.TempDir(), "links.json")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,9 +86,7 @@ func startLinksModule(
 	store.SetConnections(connections)
 	requests := make(chan string, 64)
 	env := &ifmgr.Env{
-		Connections: connections,
-		Log:         slog.New(slog.NewTextHandler(io.Discard, nil)),
-		LiveState:   store,
+		Connections: connections, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), LiveState: store,
 		RequestReconcile: func(reason string) {
 			select {
 			case requests <- reason:
@@ -172,18 +162,13 @@ func TestLinksModuleCreatesTunnelAfterUnderlayAppears(t *testing.T) {
 
 	apply := store.Snapshot().Connections[tunnelID].LastApply
 	if apply.Result != string(netif.OwnedLinkWaiting) || apply.Operation != "wait-for-underlay" ||
-		apply.Dependency != underlayName || !strings.Contains(
-		apply.Reason,
-		"underlay "+underlayName,
-	) {
+		apply.Dependency != underlayName || !strings.Contains(apply.Reason, "underlay "+underlayName) {
 		t.Fatalf("published apply result without the underlay = %+v", apply)
 	}
 	// The underlay monitor reports its first observation before the device exists.
 	awaitUnderlayEvent(t, requests)
 
-	if err := netlink.LinkAdd(&netlink.Dummy{
-		LinkAttrs: netlink.LinkAttrs{Name: underlayName},
-	}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: underlayName}}); err != nil {
 		t.Fatal(err)
 	}
 	awaitUnderlayEvent(t, requests)
@@ -200,14 +185,8 @@ func TestLinksModuleCreatesTunnelAfterUnderlayAppears(t *testing.T) {
 		t.Fatalf("tunnel device after the underlay appeared: link=%+v err=%v", device, err)
 	}
 	result, published := env.OwnedLinks.Get(tunnelID)
-	if !published || result.Status != netif.OwnedLinkReady ||
-		result.IfIndex != device.Attrs().Index {
-		t.Fatalf(
-			"shared link result = %+v published=%t, device index = %d",
-			result,
-			published,
-			device.Attrs().Index,
-		)
+	if !published || result.Status != netif.OwnedLinkReady || result.IfIndex != device.Attrs().Index {
+		t.Fatalf("shared link result = %+v published=%t, device index = %d", result, published, device.Attrs().Index)
 	}
 }
 
@@ -215,9 +194,7 @@ func TestLinksModuleRequestsReconcileForMainTableRoutesButNotPolicyTableRoutes(t
 	if !runInNetns(t, "TestLinksModuleRequestsReconcileForMainTableRoutesButNotPolicyTableRoutes") {
 		return
 	}
-	if err := netlink.LinkAdd(&netlink.Dummy{
-		LinkAttrs: netlink.LinkAttrs{Name: underlayName},
-	}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: underlayName}}); err != nil {
 		t.Fatal(err)
 	}
 	underlay, err := netlink.LinkByName(underlayName)
@@ -238,30 +215,18 @@ func TestLinksModuleRequestsReconcileForMainTableRoutesButNotPolicyTableRoutes(t
 	}
 	// This route represents the repeated policy-table writes that caused the loop.
 	if err := netlink.RouteAdd(&netlink.Route{
-		LinkIndex: underlay.Attrs().Index,
-		Dst:       destination,
-		Scope:     netlink.SCOPE_LINK,
-		Table:     policyTable,
+		LinkIndex: underlay.Attrs().Index, Dst: destination, Scope: netlink.SCOPE_LINK, Table: policyTable,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case reason := <-requests:
-		t.Fatalf(
-			"route %s in table %d on %s requested a reconcile: %q",
-			underlayRoute,
-			policyTable,
-			underlayName,
-			reason,
-		)
+		t.Fatalf("route %s in table %d on %s requested a reconcile: %q", underlayRoute, policyTable, underlayName, reason)
 	case <-time.After(underlayEventQuiet):
 	}
 
 	if err := netlink.RouteAdd(&netlink.Route{
-		LinkIndex: underlay.Attrs().Index,
-		Dst:       destination,
-		Scope:     netlink.SCOPE_LINK,
-		Table:     unix.RT_TABLE_MAIN,
+		LinkIndex: underlay.Attrs().Index, Dst: destination, Scope: netlink.SCOPE_LINK, Table: unix.RT_TABLE_MAIN,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -273,10 +238,7 @@ func TestLinksModuleRequestsReconcileForMainTableRoutesButNotPolicyTableRoutes(t
 		t.Fatal(err)
 	}
 	if err := netlink.RouteAdd(&netlink.Route{
-		LinkIndex: underlay.Attrs().Index,
-		Dst:       localDestination,
-		Scope:     netlink.SCOPE_LINK,
-		Table:     unix.RT_TABLE_LOCAL,
+		LinkIndex: underlay.Attrs().Index, Dst: localDestination, Scope: netlink.SCOPE_LINK, Table: unix.RT_TABLE_LOCAL,
 	}); err != nil {
 		t.Fatal(err)
 	}

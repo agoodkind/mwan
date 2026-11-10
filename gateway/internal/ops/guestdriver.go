@@ -29,8 +29,7 @@ type guestExecRunner interface {
 		ctx context.Context,
 		log *slog.Logger,
 		vmid string,
-		waitTimeout time.Duration,
-		agentTimeout time.Duration,
+		waitTimeout, agentTimeout time.Duration,
 		command []string,
 	) (GuestExecResult, error)
 }
@@ -60,7 +59,6 @@ func newGuestDriver(guestType watchdogconfig.GuestType) guestDriver {
 	if guestType == watchdogconfig.GuestTypeLXC {
 		return lxcGuest{}
 	}
-
 	return qemuGuest{}
 }
 
@@ -91,7 +89,6 @@ func (qemuGuest) deleteSnapshotArgs(vmid, snapName string, force bool) []string 
 	if force {
 		args = append(args, "--force")
 	}
-
 	return args
 }
 
@@ -137,7 +134,6 @@ func (lxcGuest) deleteSnapshotArgs(vmid, snapName string, force bool) []string {
 	if force {
 		args = append(args, "--force")
 	}
-
 	return args
 }
 

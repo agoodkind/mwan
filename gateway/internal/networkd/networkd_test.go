@@ -97,7 +97,6 @@ func readExpected(t *testing.T, name string) string {
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
-
 	return string(want)
 }
 
@@ -110,13 +109,11 @@ func assertFiles(t *testing.T, files map[string]string, expected map[string]stri
 	if !slices.Equal(got, names) {
 		t.Fatalf("Render produced %v, want %v", got, names)
 	}
-
 	for name, testdataName := range expected {
 		content := files[name]
 		if !strings.HasPrefix(content, networkd.Marker+"\n") {
 			t.Fatalf("%s does not open with the marker:\n%s", name, content)
 		}
-
 		if want := readExpected(t, testdataName); content != want {
 			t.Fatalf("%s mismatch:\ngot:\n%s\nwant:\n%s", name, content, want)
 		}
@@ -130,15 +127,10 @@ func TestRenderWritesAStaticLinkWithADelegation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
-
-	assertFiles(
-		t,
-		files,
-		map[string]string{
-			"20-enwebpass0.link":    "20-enwebpass0.link",
-			"20-enwebpass0.network": "20-enwebpass0.network",
-		},
-	)
+	assertFiles(t, files, map[string]string{
+		"20-enwebpass0.link":    "20-enwebpass0.link",
+		"20-enwebpass0.network": "20-enwebpass0.network",
+	})
 }
 
 // TestRenderWritesALeasedLinkMetricOntoTheLease pins where a leased family's
@@ -152,15 +144,10 @@ func TestRenderWritesALeasedLinkMetricOntoTheLease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
-
-	assertFiles(
-		t,
-		files,
-		map[string]string{
-			"20-enmbrains0.link":    "20-enmbrains0.link",
-			"20-enmbrains0.network": "20-enmbrains0.network",
-		},
-	)
+	assertFiles(t, files, map[string]string{
+		"20-enmbrains0.link":    "20-enmbrains0.link",
+		"20-enmbrains0.network": "20-enmbrains0.network",
+	})
 }
 
 // TestRenderAppendsFreeFormSectionsAfterTheTypedLines covers the three
@@ -185,45 +172,33 @@ func TestRenderAppendsFreeFormSectionsAfterTheTypedLines(t *testing.T) {
 			want:  "merge-new-heading.network",
 		},
 		"a heading the typed layer repeats": {
-			files: []interfaceintent.UnitFile{
-				{
-					Kind: string(networkd.FileNetwork),
-					Sections: []interfaceintent.UnitSection{
-						{
-							Index: 0,
-							Name:  "Route",
-							Entries: []interfaceintent.UnitEntry{
-								{Index: 0, Key: "Destination", Value: "198.51.100.0/24"},
-								{Index: 1, Key: "Gateway", Value: "203.0.113.1"},
-							},
-						},
+			files: []interfaceintent.UnitFile{{
+				Kind: string(networkd.FileNetwork),
+				Sections: []interfaceintent.UnitSection{{
+					Index: 0,
+					Name:  "Route",
+					Entries: []interfaceintent.UnitEntry{
+						{Index: 0, Key: "Destination", Value: "198.51.100.0/24"},
+						{Index: 1, Key: "Gateway", Value: "203.0.113.1"},
 					},
-				},
-			},
+				}},
+			}},
 			want: "merge-repeated-heading.network",
 		},
 	}
 	for name, tc := range cases {
-		t.Run(
-			name,
-			func(t *testing.T) {
-				t.Parallel()
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-				files, err := networkd.Render(staticLinkSpec(tc.files), 200)
-				if err != nil {
-					t.Fatalf("Render: %v", err)
-				}
-
-				assertFiles(
-					t,
-					files,
-					map[string]string{
-						"20-enwebpass0.link":    "20-enwebpass0.link",
-						"20-enwebpass0.network": tc.want,
-					},
-				)
-			},
-		)
+			files, err := networkd.Render(staticLinkSpec(tc.files), 200)
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+			assertFiles(t, files, map[string]string{
+				"20-enwebpass0.link":    "20-enwebpass0.link",
+				"20-enwebpass0.network": tc.want,
+			})
+		})
 	}
 }
 
@@ -238,15 +213,10 @@ func TestRenderWritesAVLANAsANetdevAndANetwork(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
-
-	assertFiles(
-		t,
-		files,
-		map[string]string{
-			"20-ensonic0.101.netdev":  "20-ensonic0.101.netdev",
-			"20-ensonic0.101.network": "20-ensonic0.101.network",
-		},
-	)
+	assertFiles(t, files, map[string]string{
+		"20-ensonic0.101.netdev":  "20-ensonic0.101.netdev",
+		"20-ensonic0.101.network": "20-ensonic0.101.network",
+	})
 }
 
 // TestRenderRejectsAHardwareAddressOnAVLAN pins that a VLAN carrying a
@@ -262,7 +232,6 @@ func TestRenderRejectsAHardwareAddressOnAVLAN(t *testing.T) {
 	if err == nil {
 		t.Fatal("Render wrote a .link file for a VLAN")
 	}
-
 	const want = "ensonic0.101: hardware-address is set on a VLAN, which has no .link file to carry it"
 	if err.Error() != want {
 		t.Fatalf("Render error = %q, want %q", err, want)
@@ -298,7 +267,6 @@ func assertOnDisk(t *testing.T, dir string, name string, testdataName string) {
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
-
 	if want := readExpected(t, testdataName); string(got) != want {
 		t.Fatalf("%s on disk mismatch:\ngot:\n%s\nwant:\n%s", name, got, want)
 	}
@@ -311,59 +279,34 @@ func TestWriteDirPrunesOnlyItsOwnStaleFiles(t *testing.T) {
 	mustWrite(t, dir, "20-enwebpass0.network", networkd.Marker+"\n[Match]\nName=old\n")
 	mustWrite(t, dir, "10-mgmt.network", "[Match]\nName=enmgmt0\n")
 
-	changed, err := networkd.WriteDir(
-		dir,
-		[]interfaceintent.Connection{leasedLinkSpec()},
-		map[connectionid.ID]int{"enmbrains0": 300},
-		nil,
-	)
+	changed, err := networkd.WriteDir(dir, []interfaceintent.Connection{leasedLinkSpec()}, map[connectionid.ID]int{"enmbrains0": 300}, nil)
 	if err != nil {
 		t.Fatalf("WriteDir: %v", err)
 	}
-
 	if _, err := os.Stat(filepath.Join(dir, "20-enwebpass0.network")); !os.IsNotExist(err) {
 		t.Fatal("a stale file this package wrote was kept")
 	}
-
 	if _, err := os.Stat(filepath.Join(dir, "10-mgmt.network")); err != nil {
 		t.Fatalf("a file this package did not write was removed: %v", err)
 	}
-
 	want := []networkd.Change{
-		{
-			File:      "20-enmbrains0.link",
-			Kind:      networkd.FileLink,
-			Interface: "enmbrains0",
-			Removed:   false,
-		},
-		{
-			File:      "20-enmbrains0.network",
-			Kind:      networkd.FileNetwork,
-			Interface: "enmbrains0",
-			Removed:   false,
-		},
+		{File: "20-enmbrains0.link", Kind: networkd.FileLink, Interface: "enmbrains0", Removed: false},
+		{File: "20-enmbrains0.network", Kind: networkd.FileNetwork, Interface: "enmbrains0", Removed: false},
 		{File: "20-enwebpass0.network", Kind: networkd.FileNetwork, Interface: "", Removed: true},
 	}
 	if !slices.Equal(changed, want) {
 		t.Fatalf("WriteDir changed %+v, want %+v", changed, want)
 	}
-
 	assertOnDisk(t, dir, "20-enmbrains0.link", "20-enmbrains0.link")
 	assertOnDisk(t, dir, "20-enmbrains0.network", "20-enmbrains0.network")
 
 	// The second pass is the point: identical content must not touch a file,
 	// because a changed modification time on a .link file is a reason for
 	// udev to act.
-	again, err := networkd.WriteDir(
-		dir,
-		[]interfaceintent.Connection{leasedLinkSpec()},
-		map[connectionid.ID]int{"enmbrains0": 300},
-		nil,
-	)
+	again, err := networkd.WriteDir(dir, []interfaceintent.Connection{leasedLinkSpec()}, map[connectionid.ID]int{"enmbrains0": 300}, nil)
 	if err != nil {
 		t.Fatalf("WriteDir second pass: %v", err)
 	}
-
 	if len(again) != 0 {
 		t.Fatalf("WriteDir rewrote unchanged files: %+v", again)
 	}
@@ -376,20 +319,13 @@ func TestWriteDirNamesAVLANInItsParentsFile(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	changed, err := networkd.WriteDir(
-		dir,
-		[]interfaceintent.Connection{parentLinkSpec(), vlanLinkSpec()},
-		map[connectionid.ID]int{"ensonic0.101": 600},
-		nil,
-	)
+	changed, err := networkd.WriteDir(dir, []interfaceintent.Connection{parentLinkSpec(), vlanLinkSpec()}, map[connectionid.ID]int{"ensonic0.101": 600}, nil)
 	if err != nil {
 		t.Fatalf("WriteDir: %v", err)
 	}
-
 	if len(changed) != 4 {
 		t.Fatalf("WriteDir changed %d files, want 4: %+v", len(changed), changed)
 	}
-
 	assertOnDisk(t, dir, "20-ensonic0.link", "20-ensonic0.link")
 	assertOnDisk(t, dir, "20-ensonic0.network", "20-ensonic0.network")
 	assertOnDisk(t, dir, "20-ensonic0.101.netdev", "20-ensonic0.101.netdev")
@@ -405,29 +341,22 @@ func TestWriteDirKeepsNonProviderParentOutOfProviderTable(t *testing.T) {
 		Family: interfaceintent.Family{Gateway: netip.MustParseAddr("192.0.2.1")},
 	}
 	dir := t.TempDir()
-	_, err := networkd.WriteDir(
-		dir,
+	_, err := networkd.WriteDir(dir,
 		[]interfaceintent.Connection{parent, vlanLinkSpec()},
-		map[connectionid.ID]int{"ensonic0.101": 600},
-		nil,
-	)
+		map[connectionid.ID]int{"ensonic0.101": 600}, nil)
 	if err != nil {
 		t.Fatalf("WriteDir: %v", err)
 	}
-
 	content, err := os.ReadFile(filepath.Join(dir, "20-ensonic0.network"))
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
-
 	if !strings.Contains(string(content), "VLAN=ensonic0.101\n") {
 		t.Fatalf("parent has no VLAN attachment:\n%s", content)
 	}
-
 	if !strings.Contains(string(content), "Gateway=192.0.2.1\n") {
 		t.Fatalf("parent has no main route:\n%s", content)
 	}
-
 	if strings.Contains(string(content), "Table=") {
 		t.Fatalf("parent has a provider table route:\n%s", content)
 	}
@@ -455,36 +384,25 @@ func TestWriteDirWritesNothingWhenASetIsRefused(t *testing.T) {
 		},
 	}
 	for name, tc := range cases {
-		t.Run(
-			name,
-			func(t *testing.T) {
-				t.Parallel()
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-				dir := t.TempDir()
-				mustWrite(t, dir, "20-enwebpass0.network", networkd.Marker+"\n[Match]\nName=old\n")
-				_, err := networkd.WriteDir(
-					dir,
-					tc.specs,
-					map[connectionid.ID]int{"ensonic0.101": 600, "enwebpass0": 200},
-					nil,
-				)
-				if err == nil {
-					t.Fatal("WriteDir accepted the set")
-				}
-
-				if err.Error() != tc.want {
-					t.Fatalf("WriteDir error = %q, want %q", err, tc.want)
-				}
-
-				entries, err := os.ReadDir(dir)
-				if err != nil {
-					t.Fatalf("ReadDir: %v", err)
-				}
-
-				if len(entries) != 1 || entries[0].Name() != "20-enwebpass0.network" {
-					t.Fatalf("directory changed after a refusal: %v", entries)
-				}
-			},
-		)
+			dir := t.TempDir()
+			mustWrite(t, dir, "20-enwebpass0.network", networkd.Marker+"\n[Match]\nName=old\n")
+			_, err := networkd.WriteDir(dir, tc.specs, map[connectionid.ID]int{"ensonic0.101": 600, "enwebpass0": 200}, nil)
+			if err == nil {
+				t.Fatal("WriteDir accepted the set")
+			}
+			if err.Error() != tc.want {
+				t.Fatalf("WriteDir error = %q, want %q", err, tc.want)
+			}
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				t.Fatalf("ReadDir: %v", err)
+			}
+			if len(entries) != 1 || entries[0].Name() != "20-enwebpass0.network" {
+				t.Fatalf("directory changed after a refusal: %v", entries)
+			}
+		})
 	}
 }

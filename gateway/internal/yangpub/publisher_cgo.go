@@ -128,9 +128,7 @@ const (
 	sysrepoTestModeName = "SR_ENV_RUN_TESTS"
 )
 
-var errSysrepoGroupMissing = errors.New(
-	"yangpub: group \"" + sysrepoGroupName + "\" does not exist",
-)
+var errSysrepoGroupMissing = errors.New("yangpub: group \"" + sysrepoGroupName + "\" does not exist")
 
 // RepositoryPath returns the repository sysrepo uses in this process. sysrepo
 // resolves it from SYSREPO_REPOSITORY_PATH, or its compiled default, the
@@ -162,10 +160,7 @@ func srError(operation string, returnCode C.int) error {
 // startSession opens a sysrepo session on ds over the live connection.
 // Every entry point needs one, and each previously repeated the same
 // call, check, and error wording.
-func (p *publisher) startSession(
-	ctx context.Context,
-	ds C.sr_datastore_t,
-) (*C.sr_session_ctx_t, error) {
+func (p *publisher) startSession(ctx context.Context, ds C.sr_datastore_t) (*C.sr_session_ctx_t, error) {
 	conn, err := p.connection()
 	if err != nil {
 		return nil, err
@@ -201,12 +196,7 @@ const importParseOptions = C.LYD_PARSE_NO_STATE | C.LYD_PARSE_ONLY | C.LYD_PARSE
 
 // ImportConfig parses xml against the connection's schema context and
 // replaces module's configuration in ds with it.
-func (p *publisher) ImportConfig(
-	ctx context.Context,
-	ds Datastore,
-	module string,
-	xml []byte,
-) error {
+func (p *publisher) ImportConfig(ctx context.Context, ds Datastore, module string, xml []byte) error {
 	if err := ctx.Err(); err != nil {
 		p.log.ErrorContext(ctx, "import aborted before start", "err", err)
 		return fmt.Errorf("yangpub: import aborted: %w", err)
@@ -230,11 +220,7 @@ func (p *publisher) ImportConfig(
 	var tree *C.struct_lyd_node
 	lyErr := C.lyd_parse_data_mem(lyCtx, cData, C.LYD_XML, C.uint32_t(importParseOptions), 0, &tree)
 	if lyFailed(lyErr) {
-		parseErr := fmt.Errorf(
-			"yangpub: parse the %s configuration: libyang code %d",
-			module,
-			int(lyErr),
-		)
+		parseErr := fmt.Errorf("yangpub: parse the %s configuration: libyang code %d", module, int(lyErr))
 		p.log.ErrorContext(ctx, "configuration parse failed", "module", module, "err", parseErr)
 		return parseErr
 	}
@@ -243,16 +229,8 @@ func (p *publisher) ImportConfig(
 	// sr_replace_config takes ownership of tree whether it succeeds or not.
 	if rc := C.sr_replace_config(session, cModule, tree, C.uint32_t(applyTimeoutMS)); srFailed(rc) {
 		replaceErr := srError("sr_replace_config "+module, rc)
-		p.log.ErrorContext(
-			ctx,
-			"sysrepo replace config failed",
-			"module",
-			module,
-			"datastore",
-			string(ds),
-			"err",
-			replaceErr,
-		)
+		p.log.ErrorContext(ctx, "sysrepo replace config failed", "module", module, "datastore", string(ds),
+			"err", replaceErr)
 		return replaceErr
 	}
 	return nil
@@ -262,12 +240,7 @@ func (p *publisher) ImportConfig(
 // module's configuration in ds. Both sides are printed as JSON with only
 // explicitly set nodes, so defaults sysrepo fills in never count as a
 // difference.
-func (p *publisher) ConfigMatches(
-	ctx context.Context,
-	ds Datastore,
-	module string,
-	xml []byte,
-) (bool, error) {
+func (p *publisher) ConfigMatches(ctx context.Context, ds Datastore, module string, xml []byte) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		p.log.ErrorContext(ctx, "comparison aborted before start", "err", err)
 		return false, fmt.Errorf("yangpub: comparison aborted: %w", err)
@@ -289,20 +262,9 @@ func (p *publisher) ConfigMatches(
 	cData := C.CString(string(xml))
 	defer C.free(unsafe.Pointer(cData))
 	var wantTree *C.struct_lyd_node
-	lyErr := C.lyd_parse_data_mem(
-		lyCtx,
-		cData,
-		C.LYD_XML,
-		C.uint32_t(importParseOptions),
-		0,
-		&wantTree,
-	)
+	lyErr := C.lyd_parse_data_mem(lyCtx, cData, C.LYD_XML, C.uint32_t(importParseOptions), 0, &wantTree)
 	if lyFailed(lyErr) {
-		parseErr := fmt.Errorf(
-			"yangpub: parse the %s configuration: libyang code %d",
-			module,
-			int(lyErr),
-		)
+		parseErr := fmt.Errorf("yangpub: parse the %s configuration: libyang code %d", module, int(lyErr))
 		p.log.ErrorContext(ctx, "configuration parse failed", "module", module, "err", parseErr)
 		return false, parseErr
 	}
@@ -340,9 +302,7 @@ func printTreeJSON(tree *C.struct_lyd_node) (string, error) {
 		return "", nil
 	}
 	var printed *C.char
-	if lyErr := C.lyd_print_mem(&printed, tree, C.LYD_JSON, C.LYD_PRINT_WITHSIBLINGS); lyFailed(
-		lyErr,
-	) {
+	if lyErr := C.lyd_print_mem(&printed, tree, C.LYD_JSON, C.LYD_PRINT_WITHSIBLINGS); lyFailed(lyErr) {
 		return "", fmt.Errorf("yangpub: lyd_print_mem: libyang code %d", int(lyErr))
 	}
 	defer C.free(unsafe.Pointer(printed))
@@ -358,24 +318,14 @@ func (p *publisher) SetItems(ctx context.Context, ds Datastore, items []Item) er
 // change. Deletes are non-strict, so a path that holds nothing is a no-op
 // rather than an error; that is what lets a publisher clear a subtree it
 // may or may not have written on an earlier run.
-func (p *publisher) ReplaceItems(
-	ctx context.Context,
-	ds Datastore,
-	deletePaths []string,
-	items []Item,
-) error {
+func (p *publisher) ReplaceItems(ctx context.Context, ds Datastore, deletePaths []string, items []Item) error {
 	return p.edit(ctx, ds, deletePaths, items)
 }
 
 // edit is the one write path: open a session on ds, stage every delete and
 // then every set, and apply once. SetItems and ReplaceItems are the two
 // public shapes of it.
-func (p *publisher) edit(
-	ctx context.Context,
-	ds Datastore,
-	deletePaths []string,
-	items []Item,
-) error {
+func (p *publisher) edit(ctx context.Context, ds Datastore, deletePaths []string, items []Item) error {
 	if err := ctx.Err(); err != nil {
 		p.log.ErrorContext(ctx, "publish aborted before start", "err", err)
 		return fmt.Errorf("yangpub: publish aborted: %w", err)
@@ -426,12 +376,7 @@ func (p *publisher) edit(
 
 // RegisterProvider registers fn as the operational provider of xpath
 // inside module. The subscription and its session live until Close.
-func (p *publisher) RegisterProvider(
-	ctx context.Context,
-	module string,
-	xpath string,
-	fn ProviderFunc,
-) error {
+func (p *publisher) RegisterProvider(ctx context.Context, module string, xpath string, fn ProviderFunc) error {
 	if err := ctx.Err(); err != nil {
 		p.log.ErrorContext(ctx, "provider registration aborted before start", "err", err)
 		return fmt.Errorf("yangpub: registration aborted: %w", err)
@@ -442,10 +387,7 @@ func (p *publisher) RegisterProvider(
 		return err
 	}
 
-	handle := cgo.NewHandle(&providerReg{
-		log: p.log,
-		fn:  fn,
-	})
+	handle := cgo.NewHandle(&providerReg{log: p.log, fn: fn})
 	handleCell := C.malloc(C.size_t(unsafe.Sizeof(C.uintptr_t(0))))
 	*(*C.uintptr_t)(handleCell) = C.uintptr_t(handle)
 
@@ -457,15 +399,9 @@ func (p *publisher) RegisterProvider(
 	// every existing node under the path before the callback runs, which
 	// discards the owned configuration an operational read is meant to
 	// carry beside the state.
-	rc := C.sr_oper_get_subscribe(
-		session,
-		cModule,
-		cPath,
-		C.sr_oper_get_items_cb(C.yangpubOperCB),
-		handleCell,
-		C.sr_subscr_options_t(C.SR_SUBSCR_OPER_MERGE),
-		&subscription,
-	)
+	rc := C.sr_oper_get_subscribe(session, cModule, cPath,
+		C.sr_oper_get_items_cb(C.yangpubOperCB), handleCell,
+		C.sr_subscr_options_t(C.SR_SUBSCR_OPER_MERGE), &subscription)
 	C.free(unsafe.Pointer(cModule))
 	C.free(unsafe.Pointer(cPath))
 	if srFailed(rc) {
@@ -473,29 +409,18 @@ func (p *publisher) RegisterProvider(
 		handle.Delete()
 		C.sr_session_stop(session)
 		subscribeErr := srError("sr_oper_get_subscribe "+xpath, rc)
-		p.log.ErrorContext(
-			ctx,
-			"sysrepo oper subscribe failed",
-			"module",
-			module,
-			"path",
-			xpath,
-			"err",
-			subscribeErr,
-		)
+		p.log.ErrorContext(ctx, "sysrepo oper subscribe failed",
+			"module", module, "path", xpath, "err", subscribeErr)
 		return subscribeErr
 	}
 
 	p.mu.Lock()
-	p.subscriptions = append(
-		p.subscriptions,
-		&operSubscription{
-			session:      session,
-			subscription: subscription,
-			handle:       handle,
-			handleCell:   handleCell,
-		},
-	)
+	p.subscriptions = append(p.subscriptions, &operSubscription{
+		session:      session,
+		subscription: subscription,
+		handle:       handle,
+		handleCell:   handleCell,
+	})
 	p.mu.Unlock()
 	return nil
 }
@@ -520,41 +445,25 @@ func (p *publisher) OwnModule(ctx context.Context, module string) error {
 
 	cModule := C.CString(module)
 	var subscription *C.sr_subscription_ctx_t
-	rc := C.sr_module_change_subscribe(
-		session,
-		cModule,
-		nil,
-		C.sr_module_change_cb(C.yangpubChangeCB),
-		nil,
-		0,
-		C.sr_subscr_options_t(C.SR_SUBSCR_DONE_ONLY),
-		&subscription,
-	)
+	rc := C.sr_module_change_subscribe(session, cModule, nil,
+		C.sr_module_change_cb(C.yangpubChangeCB), nil, 0,
+		C.sr_subscr_options_t(C.SR_SUBSCR_DONE_ONLY), &subscription)
 	C.free(unsafe.Pointer(cModule))
 	if srFailed(rc) {
 		C.sr_session_stop(session)
 		subscribeErr := srError("sr_module_change_subscribe "+module, rc)
-		p.log.ErrorContext(
-			ctx,
-			"sysrepo change subscribe failed",
-			"module",
-			module,
-			"err",
-			subscribeErr,
-		)
+		p.log.ErrorContext(ctx, "sysrepo change subscribe failed",
+			"module", module, "err", subscribeErr)
 		return subscribeErr
 	}
 
 	p.mu.Lock()
-	p.subscriptions = append(
-		p.subscriptions,
-		&operSubscription{
-			session:      session,
-			subscription: subscription,
-			handle:       0,
-			handleCell:   nil,
-		},
-	)
+	p.subscriptions = append(p.subscriptions, &operSubscription{
+		session:      session,
+		subscription: subscription,
+		handle:       0,
+		handleCell:   nil,
+	})
 	p.mu.Unlock()
 	return nil
 }
@@ -595,22 +504,10 @@ func (p *publisher) SendNotification(ctx context.Context, path string, items []I
 		C.free(unsafe.Pointer(cLeaf))
 		C.free(unsafe.Pointer(cValue))
 		if lyFailed(lyErr) {
-			buildErr := fmt.Errorf(
-				"yangpub: lyd_new_path %s/%s: libyang code %d",
-				path,
-				item.Path,
-				int(lyErr),
-			)
-			p.log.ErrorContext(
-				ctx,
-				"notification build failed",
-				"path",
-				path,
-				"leaf",
-				item.Path,
-				"err",
-				buildErr,
-			)
+			buildErr := fmt.Errorf("yangpub: lyd_new_path %s/%s: libyang code %d",
+				path, item.Path, int(lyErr))
+			p.log.ErrorContext(ctx, "notification build failed",
+				"path", path, "leaf", item.Path, "err", buildErr)
 			return buildErr
 		}
 	}
@@ -627,11 +524,7 @@ func (p *publisher) SendNotification(ctx context.Context, path string, items []I
 
 // SubscribeNotifications registers fn for every notification sent under
 // module. The subscription and its session live until Close.
-func (p *publisher) SubscribeNotifications(
-	ctx context.Context,
-	module string,
-	fn NotificationFunc,
-) error {
+func (p *publisher) SubscribeNotifications(ctx context.Context, module string, fn NotificationFunc) error {
 	if err := ctx.Err(); err != nil {
 		p.log.ErrorContext(ctx, "notification subscription aborted before start", "err", err)
 		return fmt.Errorf("yangpub: subscription aborted: %w", err)
@@ -642,53 +535,33 @@ func (p *publisher) SubscribeNotifications(
 		return err
 	}
 
-	handle := cgo.NewHandle(&notifReg{
-		log: p.log,
-		fn:  fn,
-	})
+	handle := cgo.NewHandle(&notifReg{log: p.log, fn: fn})
 	handleCell := C.malloc(C.size_t(unsafe.Sizeof(C.uintptr_t(0))))
 	*(*C.uintptr_t)(handleCell) = C.uintptr_t(handle)
 
 	cModule := C.CString(module)
 	var subscription *C.sr_subscription_ctx_t
-	rc := C.sr_notif_subscribe_tree(
-		session,
-		cModule,
-		nil,
-		nil,
-		nil,
-		C.sr_event_notif_tree_cb(C.yangpubNotifCB),
-		handleCell,
-		C.sr_subscr_options_t(0),
-		&subscription,
-	)
+	rc := C.sr_notif_subscribe_tree(session, cModule, nil, nil, nil,
+		C.sr_event_notif_tree_cb(C.yangpubNotifCB), handleCell,
+		C.sr_subscr_options_t(0), &subscription)
 	C.free(unsafe.Pointer(cModule))
 	if srFailed(rc) {
 		C.free(handleCell)
 		handle.Delete()
 		C.sr_session_stop(session)
 		subscribeErr := srError("sr_notif_subscribe_tree "+module, rc)
-		p.log.ErrorContext(
-			ctx,
-			"sysrepo notification subscribe failed",
-			"module",
-			module,
-			"err",
-			subscribeErr,
-		)
+		p.log.ErrorContext(ctx, "sysrepo notification subscribe failed",
+			"module", module, "err", subscribeErr)
 		return subscribeErr
 	}
 
 	p.mu.Lock()
-	p.subscriptions = append(
-		p.subscriptions,
-		&operSubscription{
-			session:      session,
-			subscription: subscription,
-			handle:       handle,
-			handleCell:   handleCell,
-		},
-	)
+	p.subscriptions = append(p.subscriptions, &operSubscription{
+		session:      session,
+		subscription: subscription,
+		handle:       handle,
+		handleCell:   handleCell,
+	})
 	p.mu.Unlock()
 	return nil
 }
@@ -701,9 +574,7 @@ func (p *publisher) SubscribeNotifications(
 // through sr_update_module to take the file's. That is the same split the
 // deploy made with sysrepoctl --install and sysrepoctl --update.
 func (p *publisher) InstallModules(
-	ctx context.Context,
-	models []Model,
-	searchDirs string,
+	ctx context.Context, models []Model, searchDirs string,
 ) ([]ModuleChange, error) {
 	if err := ctx.Err(); err != nil {
 		p.log.ErrorContext(ctx, "module install aborted before start", "err", err)
@@ -722,48 +593,21 @@ func (p *publisher) InstallModules(
 		switch {
 		case !installed:
 			if err := installModule(conn, model, cSearch); err != nil {
-				p.log.ErrorContext(
-					ctx,
-					"sysrepo module install failed",
-					"path",
-					model.Path,
-					"err",
-					err,
-				)
+				p.log.ErrorContext(ctx, "sysrepo module install failed", "path", model.Path, "err", err)
 				return changes, err
 			}
-			changes = append(
-				changes,
-				ModuleChange{
-					Module:        name,
-					Revision:      revision,
-					PriorRevision: "",
-					Action:        ModuleInstalled,
-				},
-			)
+			changes = append(changes, ModuleChange{
+				Module: name, Revision: revision, PriorRevision: "", Action: ModuleInstalled,
+			})
 		case model.Update && revision != "" && installedRev != revision:
 			if err := updateModule(conn, model, cSearch); err != nil {
-				p.log.ErrorContext(
-					ctx,
-					"sysrepo module update failed",
-					"path",
-					model.Path,
-					"installed_revision",
-					installedRev,
-					"err",
-					err,
-				)
+				p.log.ErrorContext(ctx, "sysrepo module update failed", "path", model.Path,
+					"installed_revision", installedRev, "err", err)
 				return changes, err
 			}
-			changes = append(
-				changes,
-				ModuleChange{
-					Module:        name,
-					Revision:      revision,
-					PriorRevision: installedRev,
-					Action:        ModuleUpdated,
-				},
-			)
+			changes = append(changes, ModuleChange{
+				Module: name, Revision: revision, PriorRevision: installedRev, Action: ModuleUpdated,
+			})
 		}
 	}
 	return changes, nil
@@ -833,11 +677,7 @@ func installModule(conn *C.sr_conn_ctx_t, model Model, cSearch *C.char) error {
 }
 
 // ExportJSON reads the subtree at xpath in ds and prints it as JSON.
-func (p *publisher) ExportJSON(
-	ctx context.Context,
-	ds Datastore,
-	xpath string,
-) (string, bool, error) {
+func (p *publisher) ExportJSON(ctx context.Context, ds Datastore, xpath string) (string, bool, error) {
 	if err := ctx.Err(); err != nil {
 		p.log.ErrorContext(ctx, "export aborted before start", "err", err)
 		return "", false, fmt.Errorf("yangpub: export aborted: %w", err)
@@ -871,17 +711,8 @@ func (p *publisher) ExportJSON(
 	defer C.sr_release_data(data)
 
 	var printed *C.char
-	if lyErr := C.lyd_print_mem(
-		&printed,
-		data.tree,
-		C.LYD_JSON,
-		C.LYD_PRINT_WITHSIBLINGS,
-	); lyFailed(lyErr) {
-		return "", false, fmt.Errorf(
-			"yangpub: lyd_print_mem %s: libyang code %d",
-			xpath,
-			int(lyErr),
-		)
+	if lyErr := C.lyd_print_mem(&printed, data.tree, C.LYD_JSON, C.LYD_PRINT_WITHSIBLINGS); lyFailed(lyErr) {
+		return "", false, fmt.Errorf("yangpub: lyd_print_mem %s: libyang code %d", xpath, int(lyErr))
 	}
 	defer C.free(unsafe.Pointer(printed))
 	return C.GoString(printed), true, nil

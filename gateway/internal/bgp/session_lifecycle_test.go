@@ -37,45 +37,33 @@ func TestSessionsWithSameASNsReportIndependentState(t *testing.T) {
 
 	firstPeer.announce(t, firstLearned, hop)
 	secondPeer.announce(t, secondLearned, hop)
-	eventually(
-		t,
-		"each session to accept its own peer's prefix",
-		func() bool {
-			return slices.Equal(first.State().Accepted, []netip.Prefix{firstLearned}) &&
-				slices.Equal(second.State().Accepted, []netip.Prefix{secondLearned})
-		},
-	)
+	eventually(t, "each session to accept its own peer's prefix", func() bool {
+		return slices.Equal(first.State().Accepted, []netip.Prefix{firstLearned}) &&
+			slices.Equal(second.State().Accepted, []netip.Prefix{secondLearned})
+	})
 
 	if err := first.SetAdvertisement(true, nil); err != nil {
 		t.Fatalf("first SetAdvertisement: %v", err)
 	}
-
 	waitReceived(t, firstPeer, exported)
 	if got := secondPeer.receivedPrefixes(t); len(got) != 0 {
 		t.Errorf("second peer received %v from a session that advertises no prefix", got)
 	}
-
 	if got := second.State().Advertised; len(got) != 0 {
 		t.Errorf("second session advertised prefixes = %v, want none", got)
 	}
-
 	if got, want := first.State().Name, "first"; got != want {
 		t.Errorf("first session name = %q, want %q", got, want)
 	}
 
 	firstPeer.server.Stop()
-	eventually(
-		t,
-		"the first session to lose its peer",
-		func() bool {
-			return !first.State().Established
-		},
-	)
+	eventually(t, "the first session to lose its peer", func() bool {
+		return !first.State().Established
+	})
 	secondState := second.State()
 	if !secondState.Established {
 		t.Error("second session lost its peer when the first session's peer stopped")
 	}
-
 	if got, want := secondState.Accepted, []netip.Prefix{secondLearned}; !slices.Equal(got, want) {
 		t.Errorf("second session accepted prefixes = %v, want %v", got, want)
 	}
@@ -93,12 +81,10 @@ func TestSessionOutlivesStartContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-
 	startContext, cancelStart := context.WithCancel(t.Context())
 	if err := session.Start(startContext); err != nil {
 		t.Fatalf("start session: %v", err)
 	}
-
 	cancelStart()
 	t.Cleanup(func() {
 		if err := session.Stop(t.Context()); err != nil {
@@ -108,13 +94,9 @@ func TestSessionOutlivesStartContext(t *testing.T) {
 
 	waitEstablished(t, session)
 	peer.announce(t, learned, netip.MustParseAddr("2001:db8:ffff::2"))
-	eventually(
-		t,
-		"the session to accept a prefix after the Start context ended",
-		func() bool {
-			return slices.Equal(session.State().Accepted, []netip.Prefix{learned})
-		},
-	)
+	eventually(t, "the session to accept a prefix after the Start context ended", func() bool {
+		return slices.Equal(session.State().Accepted, []netip.Prefix{learned})
+	})
 }
 
 // The test verifies that Stop does not run a second delivery while the test
@@ -122,10 +104,7 @@ func TestSessionOutlivesStartContext(t *testing.T) {
 func TestSessionDeliversChangesOneAtATimeInOrder(t *testing.T) {
 	loopback := netip.IPv6Loopback()
 	peer := startTestPeer(t, externalPeerASN, "192.0.2.2", loopback, loopback, sessionASN)
-	session, err := bgp.NewSession(
-		baseSessionConfig("ordered", externalPeerASN, peer),
-		sessionLogger(),
-	)
+	session, err := bgp.NewSession(baseSessionConfig("ordered", externalPeerASN, peer), sessionLogger())
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -139,12 +118,10 @@ func TestSessionDeliversChangesOneAtATimeInOrder(t *testing.T) {
 		if active.Add(1) > 1 {
 			overlapped.Store(true)
 		}
-
 		if state.Established {
 			entered <- struct{}{}
 			<-release
 		}
-
 		delivered <- state
 		active.Add(-1)
 	})
@@ -157,11 +134,9 @@ func TestSessionDeliversChangesOneAtATimeInOrder(t *testing.T) {
 	case <-time.After(waitTimeout):
 		t.Fatal("timed out waiting for the established change")
 	}
-
 	if err := session.Stop(t.Context()); err != nil {
 		t.Fatalf("stop session: %v", err)
 	}
-
 	close(release)
 
 	wantEstablished := []bool{true, false}
@@ -169,18 +144,12 @@ func TestSessionDeliversChangesOneAtATimeInOrder(t *testing.T) {
 		select {
 		case state := <-delivered:
 			if state.Established != want {
-				t.Fatalf(
-					"delivered state %d established = %t, want %t",
-					index,
-					state.Established,
-					want,
-				)
+				t.Fatalf("delivered state %d established = %t, want %t", index, state.Established, want)
 			}
 		case <-time.After(waitTimeout):
 			t.Fatalf("timed out waiting for delivered state %d", index)
 		}
 	}
-
 	if overlapped.Load() {
 		t.Error("two change deliveries ran at the same time")
 	}

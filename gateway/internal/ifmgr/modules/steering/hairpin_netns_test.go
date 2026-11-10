@@ -40,11 +40,7 @@ func TestHairpinPacketKeepsInternalRoute(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	if err := os.WriteFile(
-		"/proc/sys/net/ipv6/conf/all/forwarding",
-		[]byte("1"),
-		0o600,
-	); err != nil {
+	if err := os.WriteFile("/proc/sys/net/ipv6/conf/all/forwarding", []byte("1"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	lan, client := hairpinVeth(t, "lan", "client")
@@ -53,32 +49,25 @@ func TestHairpinPacketKeepsInternalRoute(t *testing.T) {
 	secondInternal := netip.MustParseAddr("fd01:203:405:2::5678")
 	secondExternal := netip.MustParseAddr("2001:db8:1:d551::5678")
 	pair := nptpolicy.PrefixPair{
-		ID:       7,
-		Internal: netip.MustParsePrefix("fd01:203:405::/48"),
+		ID: 7, Internal: netip.MustParsePrefix("fd01:203:405::/48"),
 		External: netip.MustParsePrefix("2001:db8:1::/48"),
 	}
 	_, internalNetwork, err := net.ParseCIDR(pair.Internal.String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.RouteAdd(&netlink.Route{
-		LinkIndex: lan.Attrs().Index,
-		Dst:       internalNetwork,
-	}); err != nil {
+	if err := netlink.RouteAdd(&netlink.Route{LinkIndex: lan.Attrs().Index, Dst: internalNetwork}); err != nil {
 		t.Fatalf("internal route: %v", err)
 	}
 	if err := netlink.NeighSet(&netlink.Neigh{
-		LinkIndex:    lan.Attrs().Index,
-		IP:           net.IP(secondInternal.AsSlice()),
-		HardwareAddr: client.Attrs().HardwareAddr,
-		State:        netlink.NUD_PERMANENT,
+		LinkIndex: lan.Attrs().Index, IP: net.IP(secondInternal.AsSlice()),
+		HardwareAddr: client.Attrs().HardwareAddr, State: netlink.NUD_PERMANENT,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := netlink.RouteAdd(&netlink.Route{
-		LinkIndex: wan.Attrs().Index,
-		Table:     200,
-		Dst:       &net.IPNet{IP: net.IPv6zero, Mask: net.CIDRMask(0, 128)},
+		LinkIndex: wan.Attrs().Index, Table: 200,
+		Dst: &net.IPNet{IP: net.IPv6zero, Mask: net.CIDRMask(0, 128)},
 	}); err != nil {
 		t.Fatalf("provider route: %v", err)
 	}
@@ -95,13 +84,9 @@ func TestHairpinPacketKeepsInternalRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer translator.Close()
-	states, err := translator.Reconcile([]bpf.InterfacePolicy{
-		{
-			IfIndex:  lan.Attrs().Index,
-			Internal: true,
-			Pairs:    []nptpolicy.PrefixPair{pair},
-		},
-	})
+	states, err := translator.Reconcile([]bpf.InterfacePolicy{{
+		IfIndex: lan.Attrs().Index, Internal: true, Pairs: []nptpolicy.PrefixPair{pair},
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,30 +106,17 @@ func TestHairpinPacketKeepsInternalRoute(t *testing.T) {
 	if err := newNFTApplier().Apply(context.Background(), slog.Default(), rules); err != nil {
 		t.Fatal(err)
 	}
-	socket, err := unix.Socket(
-		unix.AF_PACKET,
-		unix.SOCK_RAW,
-		int(hairpinNetworkShort(unix.ETH_P_IPV6)),
-	)
+	socket, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, int(hairpinNetworkShort(unix.ETH_P_IPV6)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer unix.Close(socket)
-	if err := unix.Bind(
-		socket,
-		&unix.SockaddrLinklayer{
-			Ifindex:  client.Attrs().Index,
-			Protocol: hairpinNetworkShort(unix.ETH_P_IPV6),
-		},
-	); err != nil {
+	if err := unix.Bind(socket, &unix.SockaddrLinklayer{
+		Ifindex: client.Attrs().Index, Protocol: hairpinNetworkShort(unix.ETH_P_IPV6),
+	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := unix.SetsockoptTimeval(
-		socket,
-		unix.SOL_SOCKET,
-		unix.SO_RCVTIMEO,
-		&unix.Timeval{Sec: 2},
-	); err != nil {
+	if err := unix.SetsockoptTimeval(socket, unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{Sec: 2}); err != nil {
 		t.Fatal(err)
 	}
 	frame := make([]byte, 14+40+8+8)
@@ -161,15 +133,9 @@ func TestHairpinPacketKeepsInternalRoute(t *testing.T) {
 	binary.BigEndian.PutUint16(frame[58:60], 16)
 	copy(frame[62:], []byte("hairpin!"))
 	binary.BigEndian.PutUint16(frame[60:62], hairpinChecksum(frame))
-	if err := unix.Sendto(
-		socket,
-		frame,
-		0,
-		&unix.SockaddrLinklayer{
-			Ifindex:  client.Attrs().Index,
-			Protocol: hairpinNetworkShort(unix.ETH_P_IPV6),
-		},
-	); err != nil {
+	if err := unix.Sendto(socket, frame, 0, &unix.SockaddrLinklayer{
+		Ifindex: client.Attrs().Index, Protocol: hairpinNetworkShort(unix.ETH_P_IPV6),
+	}); err != nil {
 		t.Fatal(err)
 	}
 	data := make([]byte, 2048)
@@ -181,8 +147,7 @@ func TestHairpinPacketKeepsInternalRoute(t *testing.T) {
 		if err != nil {
 			t.Fatalf("internal hairpin packet was not forwarded to the client: %v", err)
 		}
-		if count != len(frame) || data[21] != 63 ||
-			!bytes.Equal(data[62:count], []byte("hairpin!")) {
+		if count != len(frame) || data[21] != 63 || !bytes.Equal(data[62:count], []byte("hairpin!")) {
 			continue
 		}
 		destination := netip.AddrFrom16([16]byte(data[38:54]))
@@ -196,8 +161,7 @@ func TestHairpinPacketKeepsInternalRoute(t *testing.T) {
 func hairpinVeth(t *testing.T, name, peerName string) (netlink.Link, netlink.Link) {
 	t.Helper()
 	if err := netlink.LinkAdd(&netlink.Veth{
-		LinkAttrs: netlink.LinkAttrs{Name: name},
-		PeerName:  peerName,
+		LinkAttrs: netlink.LinkAttrs{Name: name}, PeerName: peerName,
 	}); err != nil {
 		t.Fatal(err)
 	}

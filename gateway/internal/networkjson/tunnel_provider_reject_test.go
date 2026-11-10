@@ -8,7 +8,6 @@ import (
 
 func TestDecodeRejectsInvalidTunnelProviders(t *testing.T) {
 	plainLink := `{ "name": "enmgmt0", "type": "iana-if-type:other" }`
-
 	cases := []struct {
 		name  string
 		edits []planEdit
@@ -21,12 +20,10 @@ func TestDecodeRejectsInvalidTunnelProviders(t *testing.T) {
 		},
 		{
 			name: "configured default route without a gateway",
-			edits: []planEdit{
-				{
-					old:         tunnelProviderGateway,
-					replacement: `"goodkind-mwan-steering:route": [{ "destination": "::/0" }],`,
-				},
-			},
+			edits: []planEdit{{
+				old:         tunnelProviderGateway,
+				replacement: `"goodkind-mwan-steering:route": [{ "destination": "::/0" }],`,
+			}},
 			want: "interface tun6in4: a 6in4 tunnel provider requires an ipv6 default route with an explicit gateway",
 		},
 		{
@@ -57,13 +54,11 @@ func TestDecodeRejectsInvalidTunnelProviders(t *testing.T) {
 		},
 		{
 			name: "IPv4 family on the tunnel provider",
-			edits: []planEdit{
-				{
-					old: `"ietf-ip:ipv6": {` + "\n" + `          "address": [{ "ip": "2001:db8:6::2", "prefix-length": 64 }],`,
-					replacement: `"ietf-ip:ipv4": { "goodkind-mwan-steering:translation": { "mode": "native" } },` + "\n" +
-						`        "ietf-ip:ipv6": {` + "\n" + `          "address": [{ "ip": "2001:db8:6::2", "prefix-length": 64 }],`,
-				},
-			},
+			edits: []planEdit{{
+				old: `"ietf-ip:ipv6": {` + "\n" + `          "address": [{ "ip": "2001:db8:6::2", "prefix-length": 64 }],`,
+				replacement: `"ietf-ip:ipv4": { "goodkind-mwan-steering:translation": { "mode": "native" } },` + "\n" +
+					`        "ietf-ip:ipv6": {` + "\n" + `          "address": [{ "ip": "2001:db8:6::2", "prefix-length": 64 }],`,
+			}},
 			want: "interface tun6in4: a 6in4 tunnel provider cannot include an ipv4 family",
 		},
 		{
@@ -73,12 +68,9 @@ func TestDecodeRejectsInvalidTunnelProviders(t *testing.T) {
 		},
 		{
 			name: "IPv4 probe target",
-			edits: []planEdit{
-				{
-					old:         tunnelProviderTargets,
-					replacement: tunnelProviderTargets + `, "targets-v4": ["192.0.2.11"]`,
-				},
-			},
+			edits: []planEdit{{
+				old: tunnelProviderTargets, replacement: tunnelProviderTargets + `, "targets-v4": ["192.0.2.11"]`,
+			}},
 			want: "interface tun6in4: a 6in4 tunnel provider cannot probe targets-v4",
 		},
 		{
@@ -97,43 +89,27 @@ func TestDecodeRejectsInvalidTunnelProviders(t *testing.T) {
 			want:  "wan tunnel-6in4: from-prio 100 is already taken by wan isp's fw-mark-prio",
 		},
 		{
-			name: "tunnel provider as the pinned provider",
-			edits: []planEdit{
-				{
-					old:         tunnelProviderPinSets,
-					replacement: `"pinned-provider": "tunnel", ` + tunnelProviderPin,
-				},
-			},
-			want: "firewall pin target tunnel has no ipv4 family",
+			name:  "tunnel provider as the pinned provider",
+			edits: []planEdit{{old: tunnelProviderPinSets, replacement: `"pinned-provider": "tunnel", ` + tunnelProviderPin}},
+			want:  "firewall pin target tunnel has no ipv4 family",
 		},
 		{
 			name: "tunnel provider as the pinned connection",
-			edits: []planEdit{
-				{
-					old:         tunnelProviderPinSets,
-					replacement: `"pinned-connection-id": "tunnel-6in4", ` + tunnelProviderPin,
-				},
-			},
+			edits: []planEdit{{
+				old: tunnelProviderPinSets, replacement: `"pinned-connection-id": "tunnel-6in4", ` + tunnelProviderPin,
+			}},
 			want: "firewall pin target tunnel has no ipv4 family",
 		},
 	}
 	for _, testCase := range cases {
-		t.Run(
-			testCase.name,
-			func(t *testing.T) {
-				loaded, err := networkjson.Decode(tunnelProviderDocument(t, testCase.edits...))
-				if err == nil {
-					t.Fatalf(
-						"Decode accepted the document: WAN=%+v rejected=%+v",
-						loaded.WAN,
-						loaded.Rejected,
-					)
-				}
-
-				if err.Error() != testCase.want {
-					t.Fatalf("Decode error = %q, want %q", err, testCase.want)
-				}
-			},
-		)
+		t.Run(testCase.name, func(t *testing.T) {
+			loaded, err := networkjson.Decode(tunnelProviderDocument(t, testCase.edits...))
+			if err == nil {
+				t.Fatalf("Decode accepted the document: WAN=%+v rejected=%+v", loaded.WAN, loaded.Rejected)
+			}
+			if err.Error() != testCase.want {
+				t.Fatalf("Decode error = %q, want %q", err, testCase.want)
+			}
+		})
 	}
 }

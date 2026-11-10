@@ -37,13 +37,7 @@ type PathEvent struct {
 type routeWriter interface {
 	ReconcileTableRoute(context.Context, *slog.Logger, netif.RouteSpec) error
 	DeleteTableRoute(context.Context, *slog.Logger, netif.RouteSpec) error
-	ListProtocolRoutes(
-		context.Context,
-		*slog.Logger,
-		string,
-		int,
-		int,
-	) ([]netif.CurrentRoute, error)
+	ListProtocolRoutes(context.Context, *slog.Logger, string, int, int) ([]netif.CurrentRoute, error)
 }
 
 type netifRouteWriter struct{}
@@ -57,7 +51,6 @@ func (netifRouteWriter) ReconcileTableRoute(
 		log.ErrorContext(ctx, "reconcile BGP table route", "err", err, "route", route)
 		return fmt.Errorf("reconcile BGP table route: %w", err)
 	}
-
 	return nil
 }
 
@@ -70,7 +63,6 @@ func (netifRouteWriter) DeleteTableRoute(
 		log.ErrorContext(ctx, "delete BGP table route", "err", err, "route", route)
 		return fmt.Errorf("delete BGP table route: %w", err)
 	}
-
 	return nil
 }
 
@@ -86,7 +78,6 @@ func (netifRouteWriter) ListProtocolRoutes(
 		log.ErrorContext(ctx, "list BGP table routes", "err", err, "table_id", tableID)
 		return nil, fmt.Errorf("list BGP table routes: %w", err)
 	}
-
 	return routes, nil
 }
 
@@ -124,9 +115,7 @@ func newFIB(cfg FIBConfig, log *slog.Logger, writer routeWriter) *FIB {
 	if log == nil {
 		log = slog.Default()
 	}
-
 	cfg.Tables = append([]int(nil), cfg.Tables...)
-
 	return &FIB{
 		cfg:     cfg,
 		log:     log,
@@ -155,7 +144,6 @@ func (f *FIB) Apply(ctx context.Context, event PathEvent) error {
 	if err != nil {
 		return err
 	}
-
 	if !event.Withdrawn && !event.NextHop.IsValid() {
 		return fmt.Errorf("BGP path %s has an invalid next hop", prefix)
 	}
@@ -168,7 +156,6 @@ func (f *FIB) Apply(ctx context.Context, event PathEvent) error {
 	}
 
 	f.desired[prefix.String()] = desiredRoute{peer: event.Peer, nextHop: event.NextHop, gateway: ""}
-
 	return f.installPrefix(ctx, prefix, event.NextHop)
 }
 
@@ -183,7 +170,6 @@ func (f *FIB) SweepStale(ctx context.Context) error {
 	}
 
 	var sweepErr error
-
 	for _, tableID := range f.cfg.Tables {
 		for _, family := range [...]string{ipv4RouteFamily, ipv6RouteFamily} {
 			if err := f.sweepFamily(ctx, tableID, family); err != nil {
@@ -191,40 +177,40 @@ func (f *FIB) SweepStale(ctx context.Context) error {
 			}
 		}
 	}
-
 	return sweepErr
 }
 
 func (f *FIB) sweepFamily(ctx context.Context, tableID int, family string) error {
-	routes, err := f.writer.ListProtocolRoutes(ctx, f.log, family, tableID, unix.RTPROT_BGP)
+	routes, err := f.writer.ListProtocolRoutes(
+		ctx,
+		f.log,
+		family,
+		tableID,
+		unix.RTPROT_BGP,
+	)
 	if err != nil {
 		f.log.ErrorContext(ctx, "list BGP table routes", "err", err, "table_id", tableID)
 		return fmt.Errorf("list table %d BGP routes: %w", tableID, err)
 	}
 
 	var sweepErr error
-
 	for _, route := range routes {
 		// Another installer can write BGP routes for a different device
 		// in the same table.
 		if route.Dev != f.cfg.InternalIface {
 			continue
 		}
-
 		// Kernel route listings use default for each address family's default route
 		if route.Dest == listedDefaultRoute {
 			route.Dest = defaultPrefix(family)
 		}
-
 		if _, ok := f.desired[route.Dest]; ok {
 			continue
 		}
-
 		if err := f.deleteRoute(ctx, "", tableID, family, route); err != nil {
 			sweepErr = errors.Join(sweepErr, err)
 		}
 	}
-
 	return sweepErr
 }
 
@@ -233,7 +219,6 @@ func (f *FIB) coversConnected(ctx context.Context, prefix netip.Prefix) (bool, e
 	if err != nil {
 		return false, err
 	}
-
 	routes, err := f.writer.ListProtocolRoutes(
 		ctx,
 		f.log,
@@ -242,32 +227,21 @@ func (f *FIB) coversConnected(ctx context.Context, prefix netip.Prefix) (bool, e
 		unix.RTPROT_KERNEL,
 	)
 	if err != nil {
-		f.log.ErrorContext(
-			ctx,
-			"list main table kernel routes failed",
-			"err",
-			err,
-			"prefix",
-			masked,
-		)
+		f.log.ErrorContext(ctx, "list main table kernel routes failed", "err", err, "prefix", masked)
 		return false, fmt.Errorf("list main table kernel routes: %w", err)
 	}
-
 	for _, route := range routes {
 		if route.Dev != f.cfg.InternalIface {
 			continue
 		}
-
 		connected, err := netip.ParsePrefix(route.Dest)
 		if err != nil {
 			continue
 		}
-
 		if masked.Bits() <= connected.Bits() && masked.Contains(connected.Addr()) {
 			return true, nil
 		}
 	}
-
 	return false, nil
 }
 
@@ -275,7 +249,6 @@ func prefixFamily(prefix netip.Prefix) string {
 	if prefix.Addr().Is4() {
 		return ipv4RouteFamily
 	}
-
 	return ipv6RouteFamily
 }
 
@@ -283,43 +256,35 @@ func defaultPrefix(family string) string {
 	if family == ipv4RouteFamily {
 		return ipv4DefaultPrefix
 	}
-
 	return ipv6DefaultPrefix
 }
 
 func (f *FIB) withdraw(ctx context.Context, peer string, prefix netip.Prefix) error {
 	matched := make([]netip.Prefix, 0)
-
 	for desiredText, desired := range f.desired {
 		if desired.peer != peer {
 			continue
 		}
-
 		desiredPrefix, err := netip.ParsePrefix(desiredText)
 		if err != nil {
 			continue
 		}
-
 		if !prefix.Contains(desiredPrefix.Addr()) || desiredPrefix.Bits() < prefix.Bits() {
 			continue
 		}
-
 		matched = append(matched, desiredPrefix)
 	}
-
 	if len(matched) == 0 {
 		return f.deletePrefix(ctx, peer, prefix)
 	}
 
 	var withdrawErr error
-
 	for _, matchedPrefix := range matched {
 		delete(f.desired, matchedPrefix.String())
 		if err := f.deletePrefix(ctx, peer, matchedPrefix); err != nil {
 			withdrawErr = errors.Join(withdrawErr, err)
 		}
 	}
-
 	return withdrawErr
 }
 
@@ -332,27 +297,16 @@ func (f *FIB) Installed(ctx context.Context) ([]netip.Prefix, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	prefixes := make([]netip.Prefix, 0, len(counts))
 	for destination := range counts {
 		prefix, err := netip.ParsePrefix(destination)
 		if err != nil {
-			f.log.WarnContext(
-				ctx,
-				"ignore installed BGP route with invalid destination",
-				"destination",
-				destination,
-				"err",
-				err,
-			)
+			f.log.WarnContext(ctx, "ignore installed BGP route with invalid destination", "destination", destination, "err", err)
 			continue
 		}
-
 		prefixes = append(prefixes, prefix.Masked())
 	}
-
 	slices.SortFunc(prefixes, netip.Prefix.Compare)
-
 	return prefixes, nil
 }
 
@@ -364,11 +318,9 @@ func (f *FIB) WithdrawExact(ctx context.Context, peer string, prefix netip.Prefi
 	if err != nil {
 		return err
 	}
-
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	delete(f.desired, masked.String())
-
 	return f.deletePrefix(ctx, peer, masked)
 }
 
@@ -378,23 +330,19 @@ func (f *FIB) WithdrawPeer(ctx context.Context, peer string) error {
 	defer f.mu.Unlock()
 
 	var withdrawErr error
-
 	for prefixText, desired := range f.desired {
 		if desired.peer != peer {
 			continue
 		}
-
 		prefix, err := netip.ParsePrefix(prefixText)
 		if err != nil {
 			continue
 		}
-
 		delete(f.desired, prefixText)
 		if err := f.deletePrefix(ctx, peer, prefix); err != nil {
 			withdrawErr = errors.Join(withdrawErr, err)
 		}
 	}
-
 	return withdrawErr
 }
 
@@ -402,7 +350,6 @@ func pathPrefix(prefix netip.Prefix) (netip.Prefix, error) {
 	if !prefix.IsValid() {
 		return netip.Prefix{}, fmt.Errorf("invalid BGP path prefix: %s", prefix)
 	}
-
 	return prefix.Masked(), nil
 }
 
@@ -415,7 +362,6 @@ func (f *FIB) installPrefix(
 	if err != nil {
 		return err
 	}
-
 	return f.installGateway(ctx, prefix, nextHop, gateway)
 }
 
@@ -426,29 +372,22 @@ func (f *FIB) installGateway(
 	gateway string,
 ) error {
 	var installErr error
-
 	for _, tableID := range f.cfg.Tables {
 		route := f.route(prefix, nextHop, tableID)
 		route.Via = gateway
 		if err := f.writer.ReconcileTableRoute(ctx, f.log, route); err != nil {
-			installErr = errors.Join(
-				installErr,
-				fmt.Errorf("install table %d route %s: %w", tableID, prefix, err),
-			)
+			installErr = errors.Join(installErr, fmt.Errorf("install table %d route %s: %w", tableID, prefix, err))
 		}
 	}
-
 	if desired, known := f.desired[prefix.String()]; known && installErr == nil {
 		desired.gateway = gateway
 		f.desired[prefix.String()] = desired
 	}
-
 	return installErr
 }
 
 func (f *FIB) deletePrefix(ctx context.Context, peer string, prefix netip.Prefix) error {
 	var deleteErr error
-
 	for _, tableID := range f.cfg.Tables {
 		route := f.route(prefix, netip.Addr{}, tableID)
 		current := netif.CurrentRoute{
@@ -467,7 +406,6 @@ func (f *FIB) deletePrefix(ctx context.Context, peer string, prefix netip.Prefix
 			deleteErr = errors.Join(deleteErr, err)
 		}
 	}
-
 	return deleteErr
 }
 
@@ -488,19 +426,9 @@ func (f *FIB) deleteRoute(
 		Protocol: unix.RTPROT_BGP,
 	}
 	if err := f.writer.DeleteTableRoute(ctx, f.log, route); err != nil {
-		f.log.ErrorContext(
-			ctx,
-			"delete BGP FIB route failed",
-			"err",
-			err,
-			"peer",
-			peer,
-			"route",
-			route,
-		)
+		f.log.ErrorContext(ctx, "delete BGP FIB route failed", "err", err, "peer", peer, "route", route)
 		return fmt.Errorf("delete table %d route %s: %w", tableID, route.Dest, err)
 	}
-
 	return nil
 }
 
@@ -509,7 +437,6 @@ func (f *FIB) route(prefix netip.Prefix, nextHop netip.Addr, tableID int) netif.
 	if nextHop.IsValid() {
 		via = nextHop.String()
 	}
-
 	return netif.RouteSpec{
 		Family:   prefixFamily(prefix),
 		Dest:     prefix.String(),

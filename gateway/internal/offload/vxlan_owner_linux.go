@@ -14,10 +14,7 @@ import (
 	"fmt"
 )
 
-func (worker *NativeRuntime) executeVXLAN(
-	owner *C.struct_mwan_native,
-	request nativeRequest,
-) nativeReply {
+func (worker *NativeRuntime) executeVXLAN(owner *C.struct_mwan_native, request nativeRequest) nativeReply {
 	var reply nativeReply
 	var emptyContext NativeVXLANContext
 	var result C.struct_mwan_native_vxlan_result
@@ -37,15 +34,7 @@ func (worker *NativeRuntime) executeVXLAN(
 		rc = C.mwan_native_vxlan_remove(owner, request.vxlanRule, &result, &detail)
 	case nativeVXLANClose:
 		rc = C.mwan_native_vxlan_context_close(owner, request.handle, &result, &detail)
-	case nativeEnable,
-		nativeInstall,
-		nativeQuery,
-		nativeRemove,
-		nativeDisable,
-		nativeShutdown,
-		nativeRetirement,
-		nativeResume,
-		nativeReobserve:
+	case nativeEnable, nativeInstall, nativeQuery, nativeRemove, nativeDisable, nativeShutdown, nativeRetirement, nativeResume, nativeReobserve:
 		reply.err = fmt.Errorf("native operation %d is not a VXLAN operation", request.operation)
 		return reply
 	default:
@@ -65,9 +54,7 @@ func (worker *NativeRuntime) executeVXLAN(
 
 func (worker *NativeRuntime) retainedVXLANResult(request nativeRequest) NativeVXLANResult {
 	contextHandle := NativeVXLANContext{
-		instance:   uint64(request.handle.instance),
-		generation: uint64(request.handle.generation),
-		slot:       uint32(request.handle.slot),
+		instance: uint64(request.handle.instance), generation: uint64(request.handle.generation), slot: uint32(request.handle.slot),
 	}
 	if request.operation == nativeVXLANQuery || request.operation == nativeVXLANRemove {
 		requested := decodeNativeVXLANResult(request.vxlanRule)
@@ -98,10 +85,7 @@ func (worker *NativeRuntime) retainVXLANResult(result NativeVXLANResult) {
 	worker.vxlan[result.Context] = owned
 }
 
-func (worker *NativeRuntime) installVXLANOnOwner(
-	owner *C.struct_mwan_native,
-	request nativeRequest,
-) nativeReply {
+func (worker *NativeRuntime) installVXLANOnOwner(owner *C.struct_mwan_native, request nativeRequest) nativeReply {
 	var reply nativeReply
 	var emptyContext NativeVXLANContext
 	reply.vxlan = worker.retainedVXLANResult(request)
@@ -124,10 +108,7 @@ func (worker *NativeRuntime) installVXLANOnOwner(
 	if rc != 0 || reply.vxlan.State != NativeVXLANRuleInstalled {
 		return reply
 	}
-	worker.vxlan[reply.vxlan.Context] = nativeVXLANOwnership{
-		result:   reply.vxlan,
-		evidence: request.evidence,
-	}
+	worker.vxlan[reply.vxlan.Context] = nativeVXLANOwnership{result: reply.vxlan, evidence: request.evidence}
 	if failure := checkNativeEvidence(request.evidence); failure != nil {
 		removed, err := worker.removeVXLANOnOwner(owner, reply.vxlan)
 		if removed.Context == reply.vxlan.Context {
@@ -138,10 +119,7 @@ func (worker *NativeRuntime) installVXLANOnOwner(
 	return reply
 }
 
-func (worker *NativeRuntime) removeVXLANOnOwner(
-	owner *C.struct_mwan_native,
-	rule NativeVXLANResult,
-) (NativeVXLANResult, error) {
+func (worker *NativeRuntime) removeVXLANOnOwner(owner *C.struct_mwan_native, rule NativeVXLANResult) (NativeVXLANResult, error) {
 	var result C.struct_mwan_native_vxlan_result
 	var detail C.struct_mwan_native_error
 	rc := C.mwan_native_vxlan_remove(owner, encodeNativeVXLANResult(rule), &result, &detail)

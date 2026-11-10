@@ -28,10 +28,7 @@ func enterPrivateNetworkNamespace(t *testing.T) {
 	t.Helper()
 	runtime.LockOSThread()
 	if err := unix.Unshare(unix.CLONE_NEWNET); err != nil {
-		t.Fatalf(
-			"unshare a network namespace (needs CAP_SYS_ADMIN, and CAP_NET_ADMIN for the links): %v",
-			err,
-		)
+		t.Fatalf("unshare a network namespace (needs CAP_SYS_ADMIN, and CAP_NET_ADMIN for the links): %v", err)
 	}
 }
 
@@ -150,11 +147,7 @@ func providerRules(ctx context.Context, t *testing.T, module *Module) map[instal
 		}
 		for _, rule := range rules {
 			if providerTables[rule.TableID] {
-				installed[installedRule{
-					family:   family,
-					priority: rule.Priority,
-					tableID:  rule.TableID,
-				}] = true
+				installed[installedRule{family: family, priority: rule.Priority, tableID: rule.TableID}] = true
 			}
 		}
 	}
@@ -166,11 +159,7 @@ func expectedRules(rules []netif.DesiredRule, tableIDs ...int) map[installedRule
 	for _, rule := range rules {
 		for _, tableID := range tableIDs {
 			if rule.TableID == tableID {
-				expected[installedRule{
-					family:   rule.Family,
-					priority: rule.Priority,
-					tableID:  tableID,
-				}] = true
+				expected[installedRule{family: rule.Family, priority: rule.Priority, tableID: tableID}] = true
 			}
 		}
 	}
@@ -199,12 +188,7 @@ func tableGateways(ctx context.Context, t *testing.T, module *Module, tableID in
 // with the Monkeybrains link absent must leave in the kernel: AT&T's and
 // Webpass's rules and table defaults, no Monkeybrains rule or default, and an
 // error that names only Monkeybrains.
-func reconcileWithMonkeybrainsMissing(
-	ctx context.Context,
-	t *testing.T,
-	module *Module,
-	store *wanstate.Store,
-) {
+func reconcileWithMonkeybrainsMissing(ctx context.Context, t *testing.T, module *Module, store *wanstate.Store) {
 	t.Helper()
 	err := module.Reconcile(ctx, module.Log)
 	if err == nil {
@@ -278,10 +262,7 @@ func TestReconcileRemovesAMissingProvidersRules(t *testing.T) {
 	if err := netif.ReconcileRules(ctx, module.Log, earlierRules); err != nil {
 		t.Fatalf("install monkeybrains rules: %v", err)
 	}
-	if got, want := providerRules(ctx, t, module), expectedRules(
-		earlierRules,
-		300,
-	); !reflect.DeepEqual(got, want) {
+	if got, want := providerRules(ctx, t, module), expectedRules(earlierRules, 300); !reflect.DeepEqual(got, want) {
 		t.Fatalf("kernel rules before the pass = %v, want the monkeybrains rules %v", got, want)
 	}
 
@@ -365,28 +346,19 @@ func TestReconcileExcludesFamilyWithConflictingDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conflict := &netlink.Route{
-		LinkIndex: link.Attrs().Index,
-		Table:     100,
-		Family:    netlink.FAMILY_V6,
-		Gw:        net.ParseIP("2001:db8:2::1"),
-		Priority:  77,
-	}
+	conflict := &netlink.Route{LinkIndex: link.Attrs().Index, Table: 100, Family: netlink.FAMILY_V6, Gw: net.ParseIP("2001:db8:2::1"), Priority: 77}
 	if err := netlink.RouteAdd(conflict); err != nil {
 		t.Fatal(err)
 	}
-	if err := module.Reconcile(ctx, module.Log); err == nil ||
-		!strings.Contains(err.Error(), "default route differs") {
+	if err := module.Reconcile(ctx, module.Log); err == nil || !strings.Contains(err.Error(), "default route differs") {
 		t.Fatalf("Reconcile = %v, want conflicting default verification error", err)
 	}
 	routing := store.Snapshot().Routing
-	if routing["att"].V6Ready || !routing["att"].V4Ready || !routing["webpass"].V6Ready ||
-		!routing["webpass"].Carrying {
+	if routing["att"].V6Ready || !routing["att"].V4Ready || !routing["webpass"].V6Ready || !routing["webpass"].Carrying {
 		t.Fatalf("failed IPv6 route did not select the healthy fallback: %+v", routing)
 	}
 	rules := providerRules(ctx, t, module)
-	if rules[installedRule{family: familyV6, priority: 100, tableID: 100}] ||
-		!rules[installedRule{family: familyV6, priority: catchAllPriority, tableID: 200}] {
+	if rules[installedRule{family: familyV6, priority: 100, tableID: 100}] || !rules[installedRule{family: familyV6, priority: catchAllPriority, tableID: 200}] {
 		t.Fatalf("failed IPv6 route still selected by policy rules: %+v", rules)
 	}
 	if err := netlink.RouteDel(conflict); err != nil {

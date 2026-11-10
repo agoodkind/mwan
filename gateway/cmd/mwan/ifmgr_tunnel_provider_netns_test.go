@@ -62,9 +62,7 @@ func TestTunnelProviderDaemonRuntime(t *testing.T) {
 	}
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^TestTunnelProviderDaemonRuntime$")
-	child.SysProcAttr = &syscall.SysProcAttr{
-		Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS),
-	}
+	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
 	child.Env = append(os.Environ(), tunnelRuntimeChildEnv+"=1", tunnelRuntimeBinaryEnv+"="+binary)
 	if output, err := child.CombinedOutput(); err != nil {
 		t.Fatalf("isolated tunnel provider daemon test: %v: %s", err, output)
@@ -92,13 +90,8 @@ func prepareTunnelRuntime(t *testing.T, gateway netns.NsHandle) tunnelRuntimeRun
 	t.Helper()
 	root, networkDir, configPath := prepareRuntimeDirectories(t)
 	return tunnelRuntimeRun{
-		topology:   buildTunnelRuntimeTopology(t, gateway),
-		read:       nil,
-		binary:     os.Getenv(tunnelRuntimeBinaryEnv),
-		configPath: configPath,
-		root:       root,
-		networkDir: networkDir,
-		ipv4:       new(tunnelRuntimeIPv4),
+		topology: buildTunnelRuntimeTopology(t, gateway), read: nil, binary: os.Getenv(tunnelRuntimeBinaryEnv),
+		configPath: configPath, root: root, networkDir: networkDir, ipv4: new(tunnelRuntimeIPv4),
 	}
 }
 
@@ -120,16 +113,12 @@ func prepareRuntimeDirectories(t *testing.T) (root, networkDir, configPath strin
 	bindStartupDirectory(t, schemaDir, "/usr/local/share/wanconfig/yang")
 	bindStartupDirectory(t, networkdDir, "/etc/systemd/network")
 	configPath = filepath.Join(root, "config.toml")
-	config := fmt.Sprintf(
-		"[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n"+
-			"[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n"+
-			"[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[ifmgr.modules.bgp_sessions]\nstate_file = %q\n"+
-			"[wanconfig]\npublish = true\n[bgp]\nrouter_id = \"192.0.2.1\"\n",
-		filepath.Join(root, "owned-links.json"),
-		filepath.Join(root, "owned-addresses.json"),
-		filepath.Join(root, "kernel-policy.json"),
-		filepath.Join(root, bgpRuntimeStateFile),
-	)
+	config := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n"+
+		"[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n"+
+		"[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[ifmgr.modules.bgp_sessions]\nstate_file = %q\n"+
+		"[wanconfig]\npublish = true\n[bgp]\nrouter_id = \"192.0.2.1\"\n",
+		filepath.Join(root, "owned-links.json"), filepath.Join(root, "owned-addresses.json"), filepath.Join(root, "kernel-policy.json"),
+		filepath.Join(root, bgpRuntimeStateFile))
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -151,24 +140,14 @@ func runTunnelProviderDaemonRuntime(t *testing.T) {
 	run := prepareTunnelRuntime(t, gateway)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	reader, closeRepository, err := openPrivateRepository(
-		ctx,
-		slog.Default(),
-		selftestFlags{
-			repository: filepath.Join(run.root, "repository"),
-			modelsDir:  selftestModelsDir(t),
-		},
-	)
+	reader, closeRepository, err := openPrivateRepository(ctx, slog.Default(),
+		selftestFlags{repository: filepath.Join(run.root, "repository"), modelsDir: selftestModelsDir(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer closeRepository()
 	run.read = func() string {
-		value, found, readErr := reader.ExportJSON(
-			ctx,
-			yangpub.DatastoreOperational,
-			"/ietf-interfaces:*",
-		)
+		value, found, readErr := reader.ExportJSON(ctx, yangpub.DatastoreOperational, "/ietf-interfaces:*")
 		if readErr != nil || !found {
 			return ""
 		}
@@ -179,10 +158,7 @@ func runTunnelProviderDaemonRuntime(t *testing.T) {
 			return
 		}
 		peers := map[string]netns.NsHandle{
-			"endpoint":  run.topology.endpoint,
-			"remote":    run.topology.remote,
-			"alternate": run.topology.alternate,
-			"gateway":   gateway,
+			"endpoint": run.topology.endpoint, "remote": run.topology.remote, "alternate": run.topology.alternate, "gateway": gateway,
 		}
 		for label, namespace := range peers {
 			setRuntimeNamespace(t, namespace)

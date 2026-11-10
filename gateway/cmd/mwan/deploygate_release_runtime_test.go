@@ -73,11 +73,7 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for destination, source := range map[string]string{
-		"/etc/mwan":                       networkDir,
-		"/etc/systemd/network":            unitDir,
-		"/usr/local/share/wanconfig/yang": schemaDir,
-	} {
+	for destination, source := range map[string]string{"/etc/mwan": networkDir, "/etc/systemd/network": unitDir, "/usr/local/share/wanconfig/yang": schemaDir} {
 		bindStartupDirectory(t, source, destination)
 		t.Cleanup(func() {
 			if err := unix.Unmount(destination, 0); err != nil {
@@ -87,35 +83,11 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 	}
 	t.Cleanup(func() { networkdResolverCommand(t, "systemctl", "stop", "systemd-networkd") })
 	setRuntimeLoopback(t)
-	management := newRuntimePeer(
-		t,
-		gateway,
-		"enmgmt0",
-		"release-mgmt",
-		[]string{"203.0.113.1/24"},
-		[]string{"203.0.113.2/24"},
-		"",
-	)
+	management := newRuntimePeer(t, gateway, "enmgmt0", "release-mgmt", []string{"203.0.113.1/24"}, []string{"203.0.113.2/24"}, "")
 	defer management.namespace.Close()
-	lan := newRuntimePeer(
-		t,
-		gateway,
-		"enmwanbr0",
-		"release-lan",
-		[]string{"192.0.2.1/29", "2001:db8:b01:fe::3/64"},
-		[]string{"192.0.2.2/29", "192.0.2.3/29", "192.0.2.4/29", "2001:db8:b01:fe::2/64"},
-		"",
-	)
+	lan := newRuntimePeer(t, gateway, "enmwanbr0", "release-lan", []string{"192.0.2.1/29", "2001:db8:b01:fe::3/64"}, []string{"192.0.2.2/29", "192.0.2.3/29", "192.0.2.4/29", "2001:db8:b01:fe::2/64"}, "")
 	defer lan.namespace.Close()
-	owned := newRuntimePeer(
-		t,
-		gateway,
-		"ownphys0",
-		"release-owned",
-		nil,
-		nil,
-		ownedRuntimeParentMAC,
-	)
+	owned := newRuntimePeer(t, gateway, "ownphys0", "release-owned", nil, nil, ownedRuntimeParentMAC)
 	defer owned.namespace.Close()
 	setRuntimeNamespace(t, owned.namespace)
 	addReleasePeerVLAN(t, "release-owned", "peer397", 397, []string{"10.39.7.2/24", "fd39:7::2/64"})
@@ -123,13 +95,7 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 	provider := newRuntimePeer(t, gateway, "service-parent", "service-peer", nil, nil, "")
 	defer provider.namespace.Close()
 	setRuntimeNamespace(t, provider.namespace)
-	addReleasePeerVLAN(
-		t,
-		"service-peer",
-		"wan-vlan",
-		53,
-		[]string{"fd53::2/64", "10.53.0.2/24", "198.51.100.2/24"},
-	)
+	addReleasePeerVLAN(t, "service-peer", "wan-vlan", 53, []string{"fd53::2/64", "10.53.0.2/24", "198.51.100.2/24"})
 	addMappedRuntimeRoute(t, "2001:db8:53::/60", "fd53::1", "wan-vlan")
 	setRuntimeNamespace(t, lan.namespace)
 	addMappedRuntimeRoute(t, "fd53::/64", "2001:db8:b01:fe::3", "release-lan")
@@ -141,51 +107,19 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(
-		"/proc/sys/net/ipv6/conf/all/forwarding",
-		[]byte("1\n"),
-		0o600,
-	); err != nil {
+	if err := os.WriteFile("/proc/sys/net/ipv6/conf/all/forwarding", []byte("1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
 		setRuntimeNamespace(t, gateway)
-		if err := os.WriteFile(
-			"/proc/sys/net/ipv6/conf/all/forwarding",
-			forwarding,
-			0o600,
-		); err != nil {
+		if err := os.WriteFile("/proc/sys/net/ipv6/conf/all/forwarding", forwarding, 0o600); err != nil {
 			t.Error(err)
 		}
 	}()
-	writeStaticRuntimeNetwork(
-		t,
-		networkDir,
-		"10.39.7.1",
-		"fd39:7::1",
-		"10.39.7.2",
-		"fd39:7::2",
-		398,
-		24,
-		true,
-	)
+	writeStaticRuntimeNetwork(t, networkDir, "10.39.7.1", "fd39:7::1", "10.39.7.2", "fd39:7::2", 398, 24, true)
 	writeNPTServiceProvider(t, networkDir, false)
-	setReleaseConnectionField(
-		t,
-		networkDir,
-		"service-provider",
-		"goodkind-mwan-steering:steering",
-		json.RawMessage(`{"tier":0,"weight":1}`),
-	)
-	setReleaseConnectionField(
-		t,
-		networkDir,
-		"service-provider",
-		"ietf-ip:ipv4",
-		json.RawMessage(
-			`{"goodkind-mwan-steering:dhcp":false,"address":[{"ip":"10.53.0.1","prefix-length":24},{"ip":"10.53.0.9","prefix-length":32}],"goodkind-mwan-steering:gateway":"10.53.0.2","goodkind-mwan-steering:translation":{"mode":"ietf-nat:napt44","static-mapping":[{"external":"10.53.0.3","internal":"192.0.2.3","delivery":"local"},{"external":"10.53.0.9","internal":"192.0.2.4","delivery":"local"}]}}`,
-		),
-	)
+	setReleaseConnectionField(t, networkDir, "service-provider", "goodkind-mwan-steering:steering", json.RawMessage(`{"tier":0,"weight":1}`))
+	setReleaseConnectionField(t, networkDir, "service-provider", "ietf-ip:ipv4", json.RawMessage(`{"goodkind-mwan-steering:dhcp":false,"address":[{"ip":"10.53.0.1","prefix-length":24},{"ip":"10.53.0.9","prefix-length":32}],"goodkind-mwan-steering:gateway":"10.53.0.2","goodkind-mwan-steering:translation":{"mode":"ietf-nat:napt44","static-mapping":[{"external":"10.53.0.3","internal":"192.0.2.3","delivery":"local"},{"external":"10.53.0.9","internal":"192.0.2.4","delivery":"local"}]}}`))
 	for name, unit := range map[string]string{
 		"10-service.network": "[Match]\nName=enservice0\n[Network]\nAddress=fd53::1/64\nAddress=10.53.0.1/24\nAddress=10.53.0.9/32\nIPv6AcceptRA=no\nKeepConfiguration=yes\n[Route]\nGateway=fd53::2\nMetric=500\n[Route]\nGateway=10.53.0.2\nMetric=500\n",
 		"10-service.netdev":  "[NetDev]\nName=enservice0\nKind=vlan\n[VLAN]\nId=53\n",
@@ -198,12 +132,7 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 	networkdResolverCommand(t, "systemctl", "start", "systemd-udevd")
 	networkdResolverCommand(t, "systemctl", "restart", "systemd-networkd")
 	configPath := filepath.Join(root, "config.toml")
-	configuration := fmt.Sprintf(
-		"[watchdog]\nconnectivity_timeout_seconds = 1\n[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"100ms\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n",
-		filepath.Join(root, "links.json"),
-		filepath.Join(root, "addresses.json"),
-		filepath.Join(root, "kernel.json"),
-	)
+	configuration := fmt.Sprintf("[watchdog]\nconnectivity_timeout_seconds = 1\n[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"100ms\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n", filepath.Join(root, "links.json"), filepath.Join(root, "addresses.json"), filepath.Join(root, "kernel.json"))
 	if err := os.WriteFile(configPath, []byte(configuration), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -214,14 +143,7 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 		if t.Failed() {
 			t.Log(runtimeDaemonLog(t, daemon))
 			setRuntimeNamespace(t, gateway)
-			for _, arguments := range [][]string{
-				{"-4", "route", "show", "table", "all"},
-				{"-4", "rule", "show"},
-				{"-4", "neigh", "show"},
-				{"-6", "route", "show", "table", "all"},
-				{"-6", "rule", "show"},
-				{"-6", "neigh", "show"},
-			} {
+			for _, arguments := range [][]string{{"-4", "route", "show", "table", "all"}, {"-4", "rule", "show"}, {"-4", "neigh", "show"}, {"-6", "route", "show", "table", "all"}, {"-6", "rule", "show"}, {"-6", "neigh", "show"}} {
 				output, err := exec.Command("ip", arguments...).CombinedOutput()
 				t.Logf("release ip %v: %s (%v)", arguments, output, err)
 			}
@@ -236,31 +158,10 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 	waitNPTServiceForwarding(t, 500, nil, "")
 	assertNPTServiceReply(t, gateway, provider.namespace, lan.namespace)
 	waitStaticRuntimeAddress(t, daemon, "enservice0", "10.53.0.9/32", true)
-	assertMappedRuntimeReply(
-		t,
-		daemon,
-		gateway,
-		provider.namespace,
-		lan.namespace,
-		"udp4",
-		"10.53.0.9:53009",
-		"192.0.2.4:53009",
-	)
-	receipt := runtimeScopedNPTReceipt(
-		t,
-		filepath.Join(root, "addresses.json"),
-		"2001:db8:53::1/128",
-	)
+	assertMappedRuntimeReply(t, daemon, gateway, provider.namespace, lan.namespace, "udp4", "10.53.0.9:53009", "192.0.2.4:53009")
+	receipt := runtimeScopedNPTReceipt(t, filepath.Join(root, "addresses.json"), "2001:db8:53::1/128")
 	killOwnedRuntimeDaemon(t, daemon)
-	setReleaseConnectionField(
-		t,
-		networkDir,
-		"service-provider",
-		"ietf-ip:ipv4",
-		json.RawMessage(
-			`{"goodkind-mwan-steering:dhcp":true,"address":[{"ip":"10.53.0.1","prefix-length":24},{"ip":"10.53.0.9","prefix-length":32}],"goodkind-mwan-steering:translation":{"mode":"ietf-nat:napt44","static-mapping":[{"external":"10.53.0.3","internal":"192.0.2.3","delivery":"local"},{"external":"198.51.100.101","internal":"192.0.2.4","delivery":"local"}]}}`,
-		),
-	)
+	setReleaseConnectionField(t, networkDir, "service-provider", "ietf-ip:ipv4", json.RawMessage(`{"goodkind-mwan-steering:dhcp":true,"address":[{"ip":"10.53.0.1","prefix-length":24},{"ip":"10.53.0.9","prefix-length":32}],"goodkind-mwan-steering:translation":{"mode":"ietf-nat:napt44","static-mapping":[{"external":"10.53.0.3","internal":"192.0.2.3","delivery":"local"},{"external":"198.51.100.101","internal":"192.0.2.4","delivery":"local"}]}}`))
 	unitPath := filepath.Join(unitDir, "10-service.network")
 	unit, err := os.ReadFile(unitPath)
 	if err != nil {
@@ -296,14 +197,7 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 		if t.Failed() {
 			content, err := os.ReadFile(service.logPath)
 			t.Logf("networkd DHCPv4 Kea log: %s (%v)", content, err)
-			output, err := exec.Command(
-				"journalctl",
-				"-u",
-				"systemd-networkd",
-				"-n",
-				"100",
-				"--no-pager",
-			).CombinedOutput()
+			output, err := exec.Command("journalctl", "-u", "systemd-networkd", "-n", "100", "--no-pager").CombinedOutput()
 			t.Logf("networkd DHCPv4 journal: %s (%v)", output, err)
 		}
 	}()
@@ -323,8 +217,7 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 	}
 	acquired := false
 	for _, address := range observed {
-		acquired = acquired ||
-			(address.Prefix.String() == "198.51.100.101/32" && address.ConfigSource == "DHCPv4" && address.ConfigState == "configured")
+		acquired = acquired || (address.Prefix.String() == "198.51.100.101/32" && address.ConfigSource == "DHCPv4" && address.ConfigState == "configured")
 	}
 	if !acquired {
 		t.Fatalf("DHCPv4 primary source missing: %+v", observed)
@@ -335,11 +228,7 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 	defer networkdResolverCommand(t, "systemctl", "kill", "--signal=CONT", "systemd-networkd")
 	daemon = startRuntimeDaemon(t, binary, configPath, root, "release-dhcp-observation-timeout")
 	defer killOwnedRuntimeDaemon(t, daemon)
-	waitStaticRuntimeLog(
-		t,
-		daemon,
-		"observe networkd acquisition: find networkd link enservice0: context deadline exceeded",
-	)
+	waitStaticRuntimeLog(t, daemon, "observe networkd acquisition: find networkd link enservice0: context deadline exceeded")
 	networkdResolverCommand(t, "systemctl", "kill", "--signal=CONT", "systemd-networkd")
 	assertRuntimeTranslationSettled(t, daemon)
 	setReleaseOwner(t, networkDir, "service-provider", "external")
@@ -349,11 +238,7 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(
-		filepath.Join(unitDir, "10-service.network"),
-		[]byte("[Match]\nName=enservice0\n[Link]\nUnmanaged=yes\n"),
-		0o644,
-	); err != nil {
+	if err := os.WriteFile(filepath.Join(unitDir, "10-service.network"), []byte("[Match]\nName=enservice0\n[Link]\nUnmanaged=yes\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	networkdResolverCommand(t, "networkctl", "reload")
@@ -366,42 +251,17 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 	networkdResolverCommand(t, "systemctl", "kill", "--signal=STOP", "systemd-networkd")
 	defer networkdResolverCommand(t, "systemctl", "kill", "--signal=CONT", "systemd-networkd")
 	deadline, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-	output, deadlineError := exec.CommandContext(
-		deadline,
-		binary,
-		"deploy-gate",
-		"check-release",
-		"service-provider",
-		"networkd",
-		"--config",
-		configPath,
-	).CombinedOutput()
+	output, deadlineError := exec.CommandContext(deadline, binary, "deploy-gate", "check-release", "service-provider", "networkd", "--config", configPath).CombinedOutput()
 	deadlineExpired := deadline.Err()
 	cancel()
 	networkdResolverCommand(t, "systemctl", "kill", "--signal=CONT", "systemd-networkd")
-	if deadlineError == nil || deadlineExpired != nil ||
-		!strings.Contains(string(output), "context deadline exceeded") {
-		t.Fatalf(
-			"stopped networkd did not fail within its configured observation deadline: %s (%v, outer deadline %v)",
-			output,
-			deadlineError,
-			deadlineExpired,
-		)
+	if deadlineError == nil || deadlineExpired != nil || !strings.Contains(string(output), "context deadline exceeded") {
+		t.Fatalf("stopped networkd did not fail within its configured observation deadline: %s (%v, outer deadline %v)", output, deadlineError, deadlineExpired)
 	}
 	t.Logf("configured networkd observation deadline: %s", output)
 	setReleaseOwner(t, networkDir, "service-provider", "networkd")
-	setReleaseConnectionField(
-		t,
-		networkDir,
-		"service-provider",
-		"goodkind-mwan-steering:link-files",
-		json.RawMessage(`"rendered"`),
-	)
-	if err := os.WriteFile(
-		filepath.Join(unitDir, "10-service.network"),
-		serviceUnit,
-		0o644,
-	); err != nil {
+	setReleaseConnectionField(t, networkDir, "service-provider", "goodkind-mwan-steering:link-files", json.RawMessage(`"rendered"`))
+	if err := os.WriteFile(filepath.Join(unitDir, "10-service.network"), serviceUnit, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	networkdResolverCommand(t, "networkctl", "reload")
@@ -451,11 +311,7 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	previousBoot := strings.ReplaceAll(
-		string(addresses),
-		strings.TrimSpace(string(boot)),
-		"00000000-0000-0000-0000-000000000000",
-	)
+	previousBoot := strings.ReplaceAll(string(addresses), strings.TrimSpace(string(boot)), "00000000-0000-0000-0000-000000000000")
 	if previousBoot == string(addresses) {
 		t.Fatal("production address journal has no current boot ID")
 	}
@@ -478,14 +334,8 @@ func TestConnectionReleaseDaemonRuntime(t *testing.T) {
 
 func assertServiceMappingReceipts(t *testing.T, root string) {
 	t.Helper()
-	receipts, err := netif.InspectOwnedRelease(
-		connectionid.ID("service-provider"),
-		filepath.Join(root, "links.json"),
-		filepath.Join(root, "addresses.json"),
-		filepath.Join(root, "kernel.json"),
-	)
-	if err != nil || receipts.OrdinaryObjects != 1 || receipts.Promotions != 1 ||
-		receipts.NPTEdges != 1 {
+	receipts, err := netif.InspectOwnedRelease(connectionid.ID("service-provider"), filepath.Join(root, "links.json"), filepath.Join(root, "addresses.json"), filepath.Join(root, "kernel.json"))
+	if err != nil || receipts.OrdinaryObjects != 1 || receipts.Promotions != 1 || receipts.NPTEdges != 1 {
 		t.Fatalf("service mapping receipts differ: %+v (%v)", receipts, err)
 	}
 }
@@ -496,10 +346,7 @@ func addReleasePeerVLAN(t *testing.T, parentName, name string, id int, addresses
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Vlan{
-		LinkAttrs: netlink.LinkAttrs{Name: name, ParentIndex: parent.Attrs().Index},
-		VlanId:    id,
-	}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: name, ParentIndex: parent.Attrs().Index}, VlanId: id}); err != nil {
 		t.Fatal(err)
 	}
 	configureRuntimeLink(t, name, addresses)
@@ -507,13 +354,7 @@ func addReleasePeerVLAN(t *testing.T, parentName, name string, id int, addresses
 
 func setReleaseOwner(t *testing.T, directory, id, owner string) {
 	t.Helper()
-	setReleaseConnectionField(
-		t,
-		directory,
-		id,
-		"goodkind-mwan-steering:owner",
-		json.RawMessage(fmt.Sprintf("%q", owner)),
-	)
+	setReleaseConnectionField(t, directory, id, "goodkind-mwan-steering:owner", json.RawMessage(fmt.Sprintf("%q", owner)))
 }
 
 func setReleaseConnectionField(t *testing.T, directory, id, field string, value json.RawMessage) {
@@ -565,24 +406,9 @@ func setReleaseConnectionField(t *testing.T, directory, id, field string, value 
 	}
 }
 
-func assertReleaseCommand(
-	t *testing.T,
-	binary string,
-	configPath string,
-	id string,
-	previous string,
-	success bool,
-) string {
+func assertReleaseCommand(t *testing.T, binary, configPath, id, previous string, success bool) string {
 	t.Helper()
-	output, err := exec.Command(
-		binary,
-		"deploy-gate",
-		"check-release",
-		id,
-		previous,
-		"--config",
-		configPath,
-	).CombinedOutput()
+	output, err := exec.Command(binary, "deploy-gate", "check-release", id, previous, "--config", configPath).CombinedOutput()
 	t.Logf("release %s previous=%s output=%s error=%v", id, previous, output, err)
 	if (err == nil) != success {
 		t.Fatalf("release %s expected success=%v: %s (%v)", id, success, output, err)
@@ -590,28 +416,13 @@ func assertReleaseCommand(
 	return string(output)
 }
 
-func waitReleaseCommand(
-	t *testing.T,
-	binary string,
-	configPath string,
-	id string,
-	previous string,
-	daemon *runtimeDaemon,
-) {
+func waitReleaseCommand(t *testing.T, binary, configPath, id, previous string, daemon *runtimeDaemon) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	var output []byte
 	var err error
 	for time.Now().Before(deadline) {
-		output, err = exec.Command(
-			binary,
-			"deploy-gate",
-			"check-release",
-			id,
-			previous,
-			"--config",
-			configPath,
-		).CombinedOutput()
+		output, err = exec.Command(binary, "deploy-gate", "check-release", id, previous, "--config", configPath).CombinedOutput()
 		if err == nil {
 			t.Logf("release %s previous=%s: %s", id, previous, output)
 			return
@@ -619,12 +430,5 @@ func waitReleaseCommand(
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf(
-		"release %s previous=%s did not complete: %s (%v); daemon=%s",
-		id,
-		previous,
-		output,
-		err,
-		runtimeDaemonLog(t, daemon),
-	)
+	t.Fatalf("release %s previous=%s did not complete: %s (%v); daemon=%s", id, previous, output, err, runtimeDaemonLog(t, daemon))
 }

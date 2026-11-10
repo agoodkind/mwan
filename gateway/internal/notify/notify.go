@@ -78,41 +78,22 @@ func New(emailCfg EmailConfig, cfg Config, log *slog.Logger, serviceName string)
 	var sender *email.Sender
 	if (emailCfg.SMTP2GOAPIKey != "" || emailCfg.MsmtprcPath != "") && emailCfg.AlertEmail != "" {
 		var err error
-		sender, err = email.NewSenderFromConfig(
-			email.SenderConfig{
-				Mail: mailer.Config{
-					SMTP2GOAPIKey: emailCfg.SMTP2GOAPIKey,
-					MsmtprcPath:   emailCfg.MsmtprcPath,
-					BindInterface: emailCfg.BindIface,
-					Transport:     mailer.MethodAuto,
-				},
-				From:           emailCfg.From,
-				Caller:         serviceName,
-				AttemptTimeout: 15 * time.Second,
-			},
-			log,
-		)
+		sender, err = email.NewSenderFromConfig(email.SenderConfig{
+			Mail: mailer.Config{SMTP2GOAPIKey: emailCfg.SMTP2GOAPIKey, MsmtprcPath: emailCfg.MsmtprcPath, BindInterface: emailCfg.BindIface, Transport: mailer.MethodAuto},
+			From: emailCfg.From, Caller: serviceName, AttemptTimeout: 15 * time.Second,
+		}, log)
 		if err != nil {
 			return nil, fmt.Errorf("notify email: %w", err)
 		}
-
-		sink = newEmailSink(
-			sender,
-			emailCfg.AlertEmail,
-			emailCfg.SubjectPrefix,
-			parseMinLevel(emailCfg.MinLevel),
-		)
+		sink = newEmailSink(sender, emailCfg.AlertEmail, emailCfg.SubjectPrefix, parseMinLevel(emailCfg.MinLevel))
 	}
-
 	m, err := newManager(log, cfg, sink)
 	if err != nil {
 		if log != nil {
 			log.Error("notify: construct manager failed", "err", err, "service", serviceName)
 		}
-
 		return nil, fmt.Errorf("notify new: %w", err)
 	}
-
 	return m, nil
 }
 
@@ -126,13 +107,11 @@ func FromConfig(emailCfg EmailConfig, cfg Config, log *slog.Logger, serviceName 
 	if log == nil {
 		return NullNotifier{}
 	}
-
 	m, err := New(emailCfg, cfg, log, serviceName)
 	if err != nil {
 		log.Error("notify: construction failed, falling back to null notifier", "err", err)
 		return NullNotifier{}
 	}
-
 	return m
 }
 

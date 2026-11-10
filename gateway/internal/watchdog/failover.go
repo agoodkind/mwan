@@ -18,18 +18,12 @@ import (
 )
 
 // triggerFailover dispatches to the BGP route-control failover path.
-func (w *watchdog) triggerFailover(
-	ctx context.Context,
-	cfg *watchdogconfig.Config,
-	reason string,
-) error {
+func (w *watchdog) triggerFailover(ctx context.Context, cfg *watchdogconfig.Config, reason string) error {
 	preconditionErr := errors.Join(failovercheck.Check(cfg)...)
 	if preconditionErr != nil {
 		return preconditionErr
 	}
-
 	w.log.InfoContext(ctx, "FAILOVER: dispatching to BGP route control path", "reason", reason)
-
 	return w.triggerBGPFailover(ctx, cfg, reason)
 }
 
@@ -39,20 +33,11 @@ func (w *watchdog) triggerFailover(
 //  3. Withdraw routes from the primary MWAN VM.
 //
 // This order must leave the primary routes in place if the announcement fails.
-func (w *watchdog) triggerBGPFailover(
-	ctx context.Context,
-	cfg *watchdogconfig.Config,
-	reason string,
-) error {
+func (w *watchdog) triggerBGPFailover(ctx context.Context, cfg *watchdogconfig.Config, reason string) error {
 	start := w.now()
 
 	// Step 1: Check BGP status on the failover LXC.
-	w.log.InfoContext(
-		ctx,
-		"BGP_FAILOVER: checking BGP status on failover LXC",
-		"lxc",
-		cfg.Failover.LXCID,
-	)
+	w.log.InfoContext(ctx, "BGP_FAILOVER: checking BGP status on failover LXC", "lxc", cfg.Failover.LXCID)
 	status, err := w.ops.GetBGPStatus(ctx, cfg.Failover.LXCID)
 	if err != nil {
 		return fmt.Errorf("BGP failover GetBGPStatus on LXC %s: %w", cfg.Failover.LXCID, err)
@@ -61,84 +46,91 @@ func (w *watchdog) triggerBGPFailover(
 	// Step 2: Tell the failover LXC to announce if it is not established or not already announcing.
 	needsAnnounce := true
 	if status != nil && status.GetAllEstablished() && status.GetAnnouncing() {
-		w.log.InfoContext(
-			ctx,
-			"BGP_FAILOVER: LXC already established and announcing; no action needed",
-			"lxc",
-			cfg.Failover.LXCID,
-		)
+		w.log.InfoContext(ctx, "BGP_FAILOVER: LXC already established and announcing; no action needed",
+			"lxc", cfg.Failover.LXCID)
 		needsAnnounce = false
 	}
 
 	if needsAnnounce {
-		w.log.InfoContext(
-			ctx,
-			"BGP_FAILOVER: announcing routes on failover LXC",
-			"lxc",
-			cfg.Failover.LXCID,
-		)
+		w.log.InfoContext(ctx, "BGP_FAILOVER: announcing routes on failover LXC", "lxc", cfg.Failover.LXCID)
 		if err := w.ops.AnnounceRoutes(ctx, cfg.Failover.LXCID); err != nil {
-			w.log.ErrorContext(
-				ctx,
-				"BGP_FAILOVER: announce routes failed on LXC",
-				"lxc",
-				cfg.Failover.LXCID,
-				"err",
-				err,
-				"elapsed",
-				w.since(start),
-			)
-
+			w.log.ErrorContext(ctx, "BGP_FAILOVER: announce routes failed on LXC",
+				"lxc", cfg.Failover.LXCID, "err", err, "elapsed", w.since(start))
 			return fmt.Errorf("BGP failover AnnounceRoutes on LXC %s: %w", cfg.Failover.LXCID, err)
 		}
-
-		w.log.InfoContext(
-			ctx,
-			"BGP_FAILOVER: routes announced on failover LXC",
-			"lxc",
-			cfg.Failover.LXCID,
-		)
+		w.log.InfoContext(ctx, "BGP_FAILOVER: routes announced on failover LXC", "lxc", cfg.Failover.LXCID)
 	}
 
 	status, err = w.ops.GetBGPStatus(ctx, cfg.Failover.LXCID)
 	if err != nil {
 		return fmt.Errorf("BGP failover GetBGPStatus on LXC %s: %w", cfg.Failover.LXCID, err)
 	}
-
 	// Stop failover because OPNsense learns the backup route only through an established BGP session.
 	if !status.GetAllEstablished() {
-		return fmt.Errorf(
-			"BGP failover on LXC %s: cannot confirm that every BGP session is established",
-			cfg.Failover.LXCID,
-		)
+		return fmt.Errorf("BGP failover on LXC %s: cannot confirm that every BGP session is established", cfg.Failover.LXCID)
 	}
-
 	// Keep primary routes when the LXC does not announce an address family.
 	// Manual failover also requires every configured family.
-	announcesAnyFamily := status.GetAnnouncing() || status.GetAnnouncingIpv4() ||
-		status.GetAnnouncingIpv6()
+	announcesAnyFamily := status.GetAnnouncing() || status.GetAnnouncingIpv4() || status.GetAnnouncingIpv6()
 	if !announcesAnyFamily {
-		return fmt.Errorf(
-			"BGP failover on LXC %s: LXC does not announce any configured address family",
-			cfg.Failover.LXCID,
-		)
+		return fmt.Errorf("BGP failover on LXC %s: LXC does not announce any configured address family", cfg.Failover.LXCID)
 	}
-
 	if w.requireCompleteBackup && !status.GetAnnouncing() {
-		return fmt.Errorf(
-			"BGP failover on LXC %s: LXC does not announce every configured address family",
-			cfg.Failover.LXCID,
-		)
+		return fmt.Errorf("BGP failover on LXC %s: LXC does not announce every configured address family", cfg.Failover.LXCID)
 	}
 
 	// Notify about BGP failover initiation. The notify boundary owns
 	// per-(kind, key) state-change suppression so a stuck watchdog cannot
 	// flood the inbox; the key is the primary vmid so a different vmid
 	// retains its own failover state.
-	w.notifyBGPFailoverInitiated(ctx, cfg, reason)
+	failoverMsg := fmt.Sprintf("BGP FAILOVER: withdrawing routes from VM %s, announcing on LXC %s",
+		cfg.MwanVMID, cfg.Failover.LXCID)
+	w.notify.Notify(ctx, notify.Event{
+		Now:     time.Time{},
+		Level:   slog.LevelError,
+		Kind:    "bgp-failover",
+		Key:     cfg.MwanVMID,
+		Message: failoverMsg,
+		Fields: []slog.Attr{
+			slog.String("reason", reason),
+			slog.String("vmid", cfg.MwanVMID),
+			slog.String("lxc", cfg.Failover.LXCID),
+		},
+		IsRecovery: false,
+	})
 
 	// Step 3: Withdraw routes from the primary VM.
-	w.finishBGPFailover(ctx, cfg, start)
+	w.log.InfoContext(ctx, "BGP_FAILOVER: withdrawing routes from primary VM", "vmid", cfg.MwanVMID)
+	if err := w.ops.WithdrawRoutes(ctx, cfg.MwanVMID); err != nil {
+		w.log.ErrorContext(ctx, "BGP_FAILOVER: withdraw routes failed on primary", "vmid", cfg.MwanVMID, "err", err)
+		// Continue because the primary may already be unreachable.
+	} else {
+		w.log.InfoContext(ctx, "BGP_FAILOVER: routes withdrawn from primary VM", "vmid", cfg.MwanVMID)
+	}
+
+	w.log.InfoContext(ctx, "BGP_FAILOVER: complete",
+		"lxc", cfg.Failover.LXCID,
+		"elapsed", w.since(start),
+	)
+
+	// Notify that the failover sequence completed. Kind "bgp-failover-complete"
+	// is a separate state-change so it does not collide with the active
+	// "bgp-failover" alert; the latter stays open until recovery resolves it.
+	completeMsg := fmt.Sprintf("BGP FAILOVER COMPLETE: LXC %s announcing", cfg.Failover.LXCID)
+	elapsed := w.since(start).Round(time.Second)
+	w.notify.Notify(ctx, notify.Event{
+		Now:     time.Time{},
+		Level:   slog.LevelError,
+		Kind:    "bgp-failover-complete",
+		Key:     cfg.MwanVMID,
+		Message: completeMsg,
+		Fields: []slog.Attr{
+			slog.Duration("elapsed", elapsed),
+			slog.String("vmid", cfg.MwanVMID),
+			slog.String("lxc", cfg.Failover.LXCID),
+		},
+		IsRecovery: false,
+	})
 
 	// Record failover state under the mutex so the run loop can later detect
 	// recovery and emit the BGP RECOVERED email exactly once.
@@ -151,91 +143,6 @@ func (w *watchdog) triggerBGPFailover(
 	return nil
 }
 
-func (w *watchdog) notifyBGPFailoverInitiated(
-	ctx context.Context,
-	cfg *watchdogconfig.Config,
-	reason string,
-) {
-	failoverMsg := fmt.Sprintf(
-		"BGP FAILOVER: withdrawing routes from VM %s, announcing on LXC %s",
-		cfg.MwanVMID,
-		cfg.Failover.LXCID,
-	)
-	w.notify.Notify(
-		ctx,
-		notify.Event{
-			Now:     time.Time{},
-			Level:   slog.LevelError,
-			Kind:    "bgp-failover",
-			Key:     cfg.MwanVMID,
-			Message: failoverMsg,
-			Fields: []slog.Attr{
-				slog.String("reason", reason),
-				slog.String("vmid", cfg.MwanVMID),
-				slog.String("lxc", cfg.Failover.LXCID),
-			},
-			IsRecovery: false,
-		},
-	)
-}
-
-func (w *watchdog) finishBGPFailover(
-	ctx context.Context,
-	cfg *watchdogconfig.Config,
-	start time.Time,
-) {
-	w.log.InfoContext(ctx, "BGP_FAILOVER: withdrawing routes from primary VM", "vmid", cfg.MwanVMID)
-	if err := w.ops.WithdrawRoutes(ctx, cfg.MwanVMID); err != nil {
-		w.log.ErrorContext(
-			ctx,
-			"BGP_FAILOVER: withdraw routes failed on primary",
-			"vmid",
-			cfg.MwanVMID,
-			"err",
-			err,
-		)
-		// Continue because the primary may already be unreachable.
-	} else {
-		w.log.InfoContext(
-			ctx,
-			"BGP_FAILOVER: routes withdrawn from primary VM",
-			"vmid",
-			cfg.MwanVMID,
-		)
-	}
-
-	w.log.InfoContext(
-		ctx,
-		"BGP_FAILOVER: complete",
-		"lxc",
-		cfg.Failover.LXCID,
-		"elapsed",
-		w.since(start),
-	)
-
-	// Notify that the failover sequence completed. Kind "bgp-failover-complete"
-	// is a separate state-change so it does not collide with the active
-	// "bgp-failover" alert; the latter stays open until recovery resolves it.
-	completeMsg := fmt.Sprintf("BGP FAILOVER COMPLETE: LXC %s announcing", cfg.Failover.LXCID)
-	elapsed := w.since(start).Round(time.Second)
-	w.notify.Notify(
-		ctx,
-		notify.Event{
-			Now:     time.Time{},
-			Level:   slog.LevelError,
-			Kind:    "bgp-failover-complete",
-			Key:     cfg.MwanVMID,
-			Message: completeMsg,
-			Fields: []slog.Attr{
-				slog.Duration("elapsed", elapsed),
-				slog.String("vmid", cfg.MwanVMID),
-				slog.String("lxc", cfg.Failover.LXCID),
-			},
-			IsRecovery: false,
-		},
-	)
-}
-
 // triggerBGPRecovery announces the primary after it is ready. The backup
 // remains advertised at lower priority while BGP installs the primary route.
 func (w *watchdog) triggerBGPRecovery(ctx context.Context, cfg *watchdogconfig.Config) error {
@@ -246,7 +153,8 @@ func (w *watchdog) triggerBGPRecovery(ctx context.Context, cfg *watchdogconfig.C
 	prevReason := w.failoverReason
 	w.failoverMu.Unlock()
 
-	w.log.InfoContext(ctx, "BGP_RECOVERY: probing primary VM connectivity", "vmid", cfg.MwanVMID)
+	w.log.InfoContext(ctx, "BGP_RECOVERY: probing primary VM connectivity",
+		"vmid", cfg.MwanVMID)
 	v4ok := w.guestExecProbe(ctx, "ping", "-c", "2", "-W", "3", cfg.Network.PingTargetIPv4)
 	v6ok := w.guestExecProbe(ctx, "ping6", "-c", "2", "-W", "3", cfg.Network.PingTargetIPv6)
 	if !v4ok && !v6ok {
@@ -254,29 +162,24 @@ func (w *watchdog) triggerBGPRecovery(ctx context.Context, cfg *watchdogconfig.C
 	}
 
 	// Step 2: confirm primary's BGP session is established.
-	w.log.InfoContext(ctx, "BGP_RECOVERY: checking BGP status on primary VM", "vmid", cfg.MwanVMID)
+	w.log.InfoContext(ctx, "BGP_RECOVERY: checking BGP status on primary VM",
+		"vmid", cfg.MwanVMID)
 	status, err := w.ops.GetBGPStatus(ctx, cfg.MwanVMID)
 	if err != nil {
 		return fmt.Errorf("BGP recovery: GetBGPStatus on primary VM %s: %w", cfg.MwanVMID, err)
 	}
-
 	if status == nil || !status.GetAllEstablished() {
 		return fmt.Errorf("BGP recovery: primary VM %s BGP not established", cfg.MwanVMID)
 	}
 
 	// Step 3: announce routes on the primary VM.
-	w.log.InfoContext(ctx, "BGP_RECOVERY: announcing routes on primary VM", "vmid", cfg.MwanVMID)
+	w.log.InfoContext(ctx, "BGP_RECOVERY: announcing routes on primary VM",
+		"vmid", cfg.MwanVMID)
 	if err := w.ops.AnnounceRoutes(ctx, cfg.MwanVMID); err != nil {
-		w.log.ErrorContext(
-			ctx,
-			"BGP_RECOVERY: announce routes failed on primary",
-			"vmid",
-			cfg.MwanVMID,
-			"err",
-			err,
-		)
-
-		return fmt.Errorf("BGP recovery AnnounceRoutes on primary VM %s: %w", cfg.MwanVMID, err)
+		w.log.ErrorContext(ctx, "BGP_RECOVERY: announce routes failed on primary",
+			"vmid", cfg.MwanVMID, "err", err)
+		return fmt.Errorf("BGP recovery AnnounceRoutes on primary VM %s: %w",
+			cfg.MwanVMID, err)
 	}
 
 	elapsedSinceFailover := time.Duration(0)
@@ -289,11 +192,7 @@ func (w *watchdog) triggerBGPRecovery(ctx context.Context, cfg *watchdogconfig.C
 	// same severity the original Notify used (ERROR), per the Manager's
 	// resolveAt contract, so it crosses the same MinLevel threshold.
 	recoveryMsg := "BGP RECOVERED: primary VM " + cfg.MwanVMID + " accepted the announcement; backup remains available"
-	w.notify.Resolve(
-		ctx,
-		"bgp-failover",
-		cfg.MwanVMID,
-		recoveryMsg,
+	w.notify.Resolve(ctx, "bgp-failover", cfg.MwanVMID, recoveryMsg,
 		slog.Duration("recovery_elapsed", w.since(start).Round(time.Second)),
 		slog.String("original_reason", prevReason),
 		slog.Duration("time_in_failover", elapsedSinceFailover),
@@ -302,24 +201,21 @@ func (w *watchdog) triggerBGPRecovery(ctx context.Context, cfg *watchdogconfig.C
 	)
 	// Also emit a dedicated "bgp-recovered" event so dashboards or tests that
 	// gate on the explicit recovery kind see the transition.
-	w.notify.Notify(
-		ctx,
-		notify.Event{
-			Now:     time.Time{},
-			Level:   slog.LevelError,
-			Kind:    "bgp-recovered",
-			Key:     cfg.MwanVMID,
-			Message: recoveryMsg,
-			Fields: []slog.Attr{
-				slog.Duration("recovery_elapsed", w.since(start).Round(time.Second)),
-				slog.String("original_reason", prevReason),
-				slog.Duration("time_in_failover", elapsedSinceFailover),
-				slog.String("lxc", cfg.Failover.LXCID),
-				slog.String("vmid", cfg.MwanVMID),
-			},
-			IsRecovery: false,
+	w.notify.Notify(ctx, notify.Event{
+		Now:     time.Time{},
+		Level:   slog.LevelError,
+		Kind:    "bgp-recovered",
+		Key:     cfg.MwanVMID,
+		Message: recoveryMsg,
+		Fields: []slog.Attr{
+			slog.Duration("recovery_elapsed", w.since(start).Round(time.Second)),
+			slog.String("original_reason", prevReason),
+			slog.Duration("time_in_failover", elapsedSinceFailover),
+			slog.String("lxc", cfg.Failover.LXCID),
+			slog.String("vmid", cfg.MwanVMID),
 		},
-	)
+		IsRecovery: false,
+	})
 
 	w.failoverMu.Lock()
 	w.failoverActive = false
@@ -327,24 +223,16 @@ func (w *watchdog) triggerBGPRecovery(ctx context.Context, cfg *watchdogconfig.C
 	w.failoverReason = ""
 	w.failoverMu.Unlock()
 
-	w.log.InfoContext(
-		ctx,
-		"BGP_RECOVERY: complete",
-		"vmid",
-		cfg.MwanVMID,
-		"elapsed",
-		w.since(start),
+	w.log.InfoContext(ctx, "BGP_RECOVERY: complete",
+		"vmid", cfg.MwanVMID,
+		"elapsed", w.since(start),
 	)
 
 	return nil
 }
 
 // tryFailover attempts failover when an LXC Internet probe succeeds.
-func (w *watchdog) tryFailover(
-	ctx context.Context,
-	cfg *watchdogconfig.Config,
-	reason string,
-) bool {
+func (w *watchdog) tryFailover(ctx context.Context, cfg *watchdogconfig.Config, reason string) bool {
 	if cfg.Failover.LXCID == "" {
 		w.log.WarnContext(ctx, "FAILOVER: no failover LXC configured; skipping")
 		return false
@@ -354,57 +242,27 @@ func (w *watchdog) tryFailover(
 	resultV4, errV4 := w.ops.GuestExec(ctx, cfg.Failover.LXCID, "ping", cfg.Network.PingTargetIPv4)
 	resultV6, errV6 := w.ops.GuestExec(ctx, cfg.Failover.LXCID, "ping6", cfg.Network.PingTargetIPv6)
 	if errV4 != nil {
-		w.log.WarnContext(
-			ctx,
-			"FAILOVER: LXC IPv4 probe failed",
-			"lxc",
-			cfg.Failover.LXCID,
-			"err",
-			errV4,
-		)
+		w.log.WarnContext(ctx, "FAILOVER: LXC IPv4 probe failed", "lxc", cfg.Failover.LXCID, "err", errV4)
 	}
-
 	if errV6 != nil {
-		w.log.WarnContext(
-			ctx,
-			"FAILOVER: LXC IPv6 probe failed",
-			"lxc",
-			cfg.Failover.LXCID,
-			"err",
-			errV6,
-		)
+		w.log.WarnContext(ctx, "FAILOVER: LXC IPv6 probe failed", "lxc", cfg.Failover.LXCID, "err", errV6)
 	}
-
 	lxcV4 := errV4 == nil && resultV4.ExitCode == 0
 	lxcV6 := errV6 == nil && resultV6.ExitCode == 0
 
 	if !lxcV4 && !lxcV6 {
-		w.log.WarnContext(
-			ctx,
-			"FAILOVER: LXC did not pass an Internet probe; skipping failover",
-			"lxc",
-			cfg.Failover.LXCID,
-		)
-
+		w.log.WarnContext(ctx, "FAILOVER: LXC did not pass an Internet probe; skipping failover",
+			"lxc", cfg.Failover.LXCID)
 		return false
 	}
 
-	w.log.InfoContext(
-		ctx,
-		"FAILOVER: LXC has internet; proceeding",
-		"lxc",
-		cfg.Failover.LXCID,
-		"v4",
-		lxcV4,
-		"v6",
-		lxcV6,
-	)
+	w.log.InfoContext(ctx, "FAILOVER: LXC has internet; proceeding",
+		"lxc", cfg.Failover.LXCID, "v4", lxcV4, "v6", lxcV6)
 
 	if err := w.triggerFailover(ctx, cfg, reason); err != nil {
 		w.log.ErrorContext(ctx, "FAILOVER: failed", "err", err)
 		return false
 	}
-
 	return true
 }
 
@@ -421,15 +279,10 @@ func (w *watchdog) maybeTriggerRecovery(ctx context.Context, cfg *watchdogconfig
 	if !active {
 		return
 	}
-
 	w.log.InfoContext(ctx, "BGP_RECOVERY: healthy cycle while failover active; attempting recovery")
 	if err := w.triggerBGPRecovery(ctx, cfg); err != nil {
-		w.log.WarnContext(
-			ctx,
-			"BGP_RECOVERY: deferred (will retry on next healthy cycle)",
-			"err",
-			err,
-		)
+		w.log.WarnContext(ctx, "BGP_RECOVERY: deferred (will retry on next healthy cycle)",
+			"err", err)
 	}
 }
 
@@ -440,11 +293,9 @@ func FailoverRun(cfg *watchdogconfig.Config) error {
 	if p := cfg.Watchdog.LogFile; p != "" {
 		handlers = append(handlers, logging.FileText(p, "[watchdog]"))
 	}
-
 	if p := cfg.Watchdog.JSONLogFile; p != "" {
 		handlers = append(handlers, logging.FileJSON(p))
 	}
-
 	// The slog email handler is intentionally not attached here: notify
 	// owns email delivery for the watchdog now, so attaching the handler
 	// would produce a duplicate email per failover or recovery event.
@@ -465,28 +316,18 @@ func FailoverRun(cfg *watchdogconfig.Config) error {
 
 	// Create watchdog instance
 	w := newWatchdog(
-		cfg,
-		ops.NewRealOps(cfg, logger),
-		notifier,
-		&alert.Coord{},
-		logger,
-		runID,
+		cfg, ops.NewRealOps(cfg, logger), notifier, &alert.Coord{}, logger, runID,
 	)
 	w.requireCompleteBackup = true
 
 	ctx := context.Background()
 	logger.InfoContext(ctx, "Manual failover requested")
 
-	if err := w.triggerFailover(
-		ctx,
-		cfg,
-		"manual trigger via `mwan watchdog failover`",
-	); err != nil {
+	if err := w.triggerFailover(ctx, cfg, "manual trigger via `mwan watchdog failover`"); err != nil {
 		logger.ErrorContext(ctx, "Failover failed", "err", err)
 		return err
 	}
 
 	logger.InfoContext(ctx, "Failover complete")
-
 	return nil
 }

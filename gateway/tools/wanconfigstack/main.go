@@ -78,62 +78,32 @@ type component struct {
 
 var components = []component{
 	{
-		name:      "libyang",
-		url:       "https://github.com/CESNET/libyang.git",
-		pinVar:    "wanconfig_libyang_version",
-		commitVar: "wanconfig_libyang_commit",
-		how:       packagingApkg,
+		name: "libyang", url: "https://github.com/CESNET/libyang.git",
+		pinVar: "wanconfig_libyang_version", commitVar: "wanconfig_libyang_commit", how: packagingApkg,
 	},
 	{
-		name:      "sysrepo",
-		url:       "https://github.com/sysrepo/sysrepo.git",
-		pinVar:    "wanconfig_sysrepo_version",
-		commitVar: "wanconfig_sysrepo_commit",
-		how:       packagingApkg,
+		name: "sysrepo", url: "https://github.com/sysrepo/sysrepo.git",
+		pinVar: "wanconfig_sysrepo_version", commitVar: "wanconfig_sysrepo_commit", how: packagingApkg,
 	},
 	{
-		name:      "libyang-cpp",
-		url:       "https://github.com/CESNET/libyang-cpp.git",
-		pinVar:    "wanconfig_libyang_cpp_version",
-		commitVar: "wanconfig_libyang_cpp_commit",
-		how:       packagingNfpm,
-		cmakeFlags: []string{
-			"-DWITH_DOCS=OFF",
-		},
-		description: "C++ bindings for libyang (wanconfig management stack)",
-		loaderConf:  true,
+		name: "libyang-cpp", url: "https://github.com/CESNET/libyang-cpp.git",
+		pinVar: "wanconfig_libyang_cpp_version", commitVar: "wanconfig_libyang_cpp_commit", how: packagingNfpm,
+		cmakeFlags: []string{"-DWITH_DOCS=OFF"}, description: "C++ bindings for libyang (wanconfig management stack)", loaderConf: true,
 	},
 	{
-		name:      "sysrepo-cpp",
-		url:       "https://github.com/sysrepo/sysrepo-cpp.git",
-		pinVar:    "wanconfig_sysrepo_cpp_version",
-		commitVar: "wanconfig_sysrepo_cpp_commit",
-		how:       packagingNfpm,
-		cmakeFlags: []string{
-			"-DWITH_DOCS=OFF",
-			"-DWITH_EXAMPLES=OFF",
-		},
-		description: "C++ bindings for sysrepo (wanconfig management stack)",
+		name: "sysrepo-cpp", url: "https://github.com/sysrepo/sysrepo-cpp.git",
+		pinVar: "wanconfig_sysrepo_cpp_version", commitVar: "wanconfig_sysrepo_cpp_commit", how: packagingNfpm,
+		cmakeFlags: []string{"-DWITH_DOCS=OFF", "-DWITH_EXAMPLES=OFF"}, description: "C++ bindings for sysrepo (wanconfig management stack)",
 	},
 	{
-		name:             "nghttp2-asio",
-		url:              "https://github.com/nghttp2/nghttp2-asio.git",
-		pinVar:           "wanconfig_nghttp2_asio_version",
-		commitVar:        "wanconfig_nghttp2_asio_commit",
-		how:              packagingNfpm,
-		description:      "HTTP/2 C++ library over Boost ASIO (wanconfig management stack)",
-		versionFromCMake: true,
+		name: "nghttp2-asio", url: "https://github.com/nghttp2/nghttp2-asio.git",
+		pinVar: "wanconfig_nghttp2_asio_version", commitVar: "wanconfig_nghttp2_asio_commit", how: packagingNfpm,
+		description: "HTTP/2 C++ library over Boost ASIO (wanconfig management stack)", versionFromCMake: true,
 	},
 	{
-		name:      "rousette",
-		url:       "https://github.com/CESNET/rousette.git",
-		pinVar:    "wanconfig_rousette_version",
-		commitVar: "wanconfig_rousette_commit",
-		how:       packagingNfpm,
-		cmakeFlags: []string{
-			"-DWITH_DOCS=OFF",
-		},
-		description: "RESTCONF server over sysrepo (wanconfig management stack)",
+		name: "rousette", url: "https://github.com/CESNET/rousette.git",
+		pinVar: "wanconfig_rousette_version", commitVar: "wanconfig_rousette_commit", how: packagingNfpm,
+		cmakeFlags: []string{"-DWITH_DOCS=OFF"}, description: "RESTCONF server over sysrepo (wanconfig management stack)",
 	},
 }
 
@@ -192,65 +162,44 @@ type options struct {
 func parseFlags(log *slog.Logger, args []string) (options, error) {
 	flags := flag.NewFlagSet("wanconfigstack", flag.ContinueOnError)
 	pins := map[string]*string{}
-
 	for _, c := range components {
 		pins[c.pinVar] = flags.String(c.pinVar, "", c.name+" pin")
 		pins[c.commitVar] = flags.String(c.commitVar, "", c.name+" pinned commit hash")
 	}
-
 	outDir := flags.String("out", "", "directory that receives the bundle")
-	verifyBundle := flags.String(
-		"verify",
-		"",
-		"bundle to install and prove on this system instead of building",
-	)
+	verifyBundle := flags.String("verify", "", "bundle to install and prove on this system instead of building")
 	if err := flags.Parse(args); err != nil {
 		if !errors.Is(err, flag.ErrHelp) {
 			log.Error("wanconfigstack: bad arguments", "err", err)
 		}
-
 		return options{}, fmt.Errorf("parse flags: %w", err)
 	}
-
 	opts := options{pins: map[string]string{}, outDir: *outDir, verifyBundle: *verifyBundle}
 	if opts.verifyBundle != "" {
 		return opts, nil
 	}
-
 	missing := []string{}
-
 	for name, value := range pins {
 		if *value == "" {
 			missing = append(missing, name)
 		}
-
 		opts.pins[name] = *value
 	}
-
 	if opts.outDir == "" {
 		missing = append(missing, "out")
 	}
-
 	if len(missing) > 0 {
 		err := fmt.Errorf("every pin and -out is required; missing %v", missing)
 		log.Error("wanconfigstack: bad arguments", "err", err)
-
 		return options{}, err
 	}
-
 	for _, c := range components {
 		if !commitPattern.MatchString(opts.pins[c.commitVar]) {
-			err := fmt.Errorf(
-				"%s must be a full lowercase 40-hex commit hash; got %q",
-				c.commitVar,
-				opts.pins[c.commitVar],
-			)
+			err := fmt.Errorf("%s must be a full lowercase 40-hex commit hash; got %q", c.commitVar, opts.pins[c.commitVar])
 			log.Error("wanconfigstack: bad arguments", "err", err)
-
 			return options{}, err
 		}
 	}
-
 	return opts, nil
 }
 
@@ -262,17 +211,14 @@ func (b *builder) build(ctx context.Context) error {
 	if err := b.installBuildTools(ctx); err != nil {
 		return err
 	}
-
 	for _, c := range components {
 		if err := b.buildComponent(ctx, c); err != nil {
 			return err
 		}
 	}
-
 	if err := b.downloadDistribution(ctx); err != nil {
 		return err
 	}
-
 	return b.bundle(ctx)
 }
 
@@ -282,20 +228,13 @@ func (b *builder) buildComponent(ctx context.Context, c component) error {
 	if err := b.clonePinned(ctx, c); err != nil {
 		return err
 	}
-
 	switch c.how {
 	case packagingApkg:
 		return b.apkgBuild(ctx, c)
 	case packagingNfpm:
 		return b.nfpmBuild(ctx, c)
 	}
-
-	return b.fail(
-		ctx,
-		"unknown packaging",
-		fmt.Errorf("packaging %d", c.how),
-		slog.String("component", c.name),
-	)
+	return b.fail(ctx, "unknown packaging", fmt.Errorf("packaging %d", c.how), slog.String("component", c.name))
 }
 
 func main() {
@@ -304,34 +243,18 @@ func main() {
 	if err != nil {
 		os.Exit(2)
 	}
-
 	arch, ok := debianArchs[runtime.GOARCH]
 	if !ok {
-		log.Error(
-			"wanconfigstack: unsupported architecture",
-			"goarch",
-			runtime.GOARCH,
-			"err",
-			errUnsupportedArch,
-		)
+		log.Error("wanconfigstack: unsupported architecture", "goarch", runtime.GOARCH, "err", errUnsupportedArch)
 		os.Exit(2)
 	}
-
-	stackBuilder := &builder{
-		log:      log,
-		pins:     opts.pins,
-		outDir:   opts.outDir,
-		arch:     arch,
-		jobs:     runtime.NumCPU(),
-		versions: map[string]string{},
-	}
+	b := &builder{log: log, pins: opts.pins, outDir: opts.outDir, arch: arch, jobs: runtime.NumCPU(), versions: map[string]string{}}
 	ctx := context.Background()
 	if opts.verifyBundle != "" {
-		err = stackBuilder.verify(ctx, opts.verifyBundle)
+		err = b.verify(ctx, opts.verifyBundle)
 	} else {
-		err = stackBuilder.build(ctx)
+		err = b.build(ctx)
 	}
-
 	if err != nil {
 		os.Exit(1)
 	}

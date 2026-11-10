@@ -51,40 +51,21 @@ type debugOptions struct {
 	verbose      bool
 }
 
-func runDebugOptions(
-	options debugOptions,
-	cfg *config.Config,
-	output io.Writer,
-	diagnostics io.Writer,
-) int {
+func runDebugOptions(options debugOptions, cfg *config.Config, output io.Writer, diagnostics io.Writer) int {
 	var logger *slog.Logger
 	var closer io.Closer
-	if options.view == debugViewTraceStart || options.view == debugViewTraceStop ||
-		options.view == debugViewTraceTail {
-		logger, closer = logging.New(logging.Config{
-			Handlers: []slog.Handler{
-				slog.NewTextHandler(diagnostics, &slog.HandlerOptions{Level: slog.LevelWarn}),
-			},
-		})
+	if options.view == debugViewTraceStart || options.view == debugViewTraceStop || options.view == debugViewTraceTail {
+		logger, closer = logging.New(logging.Config{Handlers: []slog.Handler{slog.NewTextHandler(diagnostics, &slog.HandlerOptions{Level: slog.LevelWarn})}})
 	} else {
 		logger, closer = operatorLogger(diagnostics, options.verbose)
 	}
-
 	defer closer.Close()
 	loadDebugNetworkConfig(diagnostics, cfg)
 	ctx := context.Background()
 	view, args := options.view, options.arguments
 	var err error
 	switch view {
-	case debugViewNPT,
-		debugViewPrefixes,
-		debugViewRoutes,
-		debugViewPolicy,
-		debugViewStatus,
-		debugViewStats,
-		debugViewSim4,
-		debugViewSim6,
-		debugViewSystemd:
+	case debugViewNPT, debugViewPrefixes, debugViewRoutes, debugViewPolicy, debugViewStatus, debugViewStats, debugViewSim4, debugViewSim6, debugViewSystemd:
 		err = runDebugInspection(ctx, output, diagnostics, logger, cfg, view, options.outputFormat)
 	case debugViewTraceStart:
 		err = showDebugTraceStart(ctx, output, logger, cfg, args)
@@ -92,36 +73,22 @@ func runDebugOptions(
 		err = showDebugTraceTail(ctx, output, logger, cfg, args)
 	case debugViewTraceStop:
 		err = showDebugTraceStop(output)
-	case debugViewConnectivity,
-		debugViewPing4,
-		debugViewPing6,
-		debugViewCurl4,
-		debugViewCurl6,
-		debugViewLB4,
-		debugViewLB6,
-		debugViewLB4Ifaces,
-		debugViewLB6Ifaces:
+	case debugViewConnectivity, debugViewPing4, debugViewPing6, debugViewCurl4, debugViewCurl6, debugViewLB4, debugViewLB6, debugViewLB4Ifaces, debugViewLB6Ifaces:
 		err = runDebugProbeView(ctx, output, logger, cfg, view, args, options.outputFormat)
 	default:
 		fmt.Fprintf(diagnostics, "unknown debug view %q\n", view)
 		return 1
 	}
-
 	if err != nil {
 		fmt.Fprintf(diagnostics, "mwan debug %s: %v\n", view, err)
 		return 1
 	}
-
 	return 0
 }
 
 // Independent inspections remain available when the network configuration fails.
 func loadDebugNetworkConfig(diagnostics io.Writer, cfg *config.Config) {
 	if err := networkload.ApplyDefault(cfg); err != nil {
-		fmt.Fprintf(
-			diagnostics,
-			"mwan debug: network configuration unreadable, WAN lists and route simulations will be empty: %v\n",
-			err,
-		)
+		fmt.Fprintf(diagnostics, "mwan debug: network configuration unreadable, WAN lists and route simulations will be empty: %v\n", err)
 	}
 }

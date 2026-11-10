@@ -41,14 +41,7 @@ type bgpTransitRouter struct {
 	installed map[string]bgpTransitInstalled
 }
 
-func startBGPTransitRouter(
-	t *testing.T,
-	namespace netns.NsHandle,
-	routerID string,
-	asn uint32,
-	listen []netip.Addr,
-	neighbors ...bgpTransitNeighbor,
-) *bgpTransitRouter {
+func startBGPTransitRouter(t *testing.T, namespace netns.NsHandle, routerID string, asn uint32, listen []netip.Addr, neighbors ...bgpTransitNeighbor) *bgpTransitRouter {
 	t.Helper()
 	handle, err := netlink.NewHandleAt(namespace)
 	if err != nil {
@@ -73,36 +66,21 @@ func startBGPTransitRouter(
 	for _, address := range listen {
 		addresses = append(addresses, address.String())
 	}
-	global := &apipb.Global{
-		Asn:             asn,
-		RouterId:        routerID,
-		ListenPort:      bgpRuntimePort,
-		ListenAddresses: addresses,
-	}
+	global := &apipb.Global{Asn: asn, RouterId: routerID, ListenPort: bgpRuntimePort, ListenAddresses: addresses}
 	if err := bgpServer.StartBgp(t.Context(), &apipb.StartBgpRequest{Global: global}); err != nil {
 		t.Fatalf("start the transit router BGP server: %v", err)
 	}
 	t.Cleanup(bgpServer.Stop)
-	router := &bgpTransitRouter{
-		server:    bgpServer,
-		handle:    handle,
-		installed: make(map[string]bgpTransitInstalled),
-	}
+	router := &bgpTransitRouter{server: bgpServer, handle: handle, installed: make(map[string]bgpTransitInstalled)}
 	callbacks := server.WatchEventMessageCallbacks{
 		OnBestPath: func(paths []*apiutil.Path, _ time.Time) { router.apply(t, paths) },
 		OnPeerUpdate: func(event *apiutil.WatchEventMessage_PeerEvent, _ time.Time) {
-			if event.Type == apiutil.PEER_EVENT_STATE &&
-				event.Peer.State.SessionState != bgppkt.BGP_FSM_ESTABLISHED {
+			if event.Type == apiutil.PEER_EVENT_STATE && event.Peer.State.SessionState != bgppkt.BGP_FSM_ESTABLISHED {
 				router.flush(t, event.Peer.State.NeighborAddress)
 			}
 		},
 	}
-	if err := bgpServer.WatchEvent(
-		t.Context(),
-		callbacks,
-		server.WatchPeer(),
-		server.WatchBestPath(true),
-	); err != nil {
+	if err := bgpServer.WatchEvent(t.Context(), callbacks, server.WatchPeer(), server.WatchBestPath(true)); err != nil {
 		t.Fatalf("watch the transit router BGP events: %v", err)
 	}
 	for _, neighbor := range neighbors {
@@ -113,29 +91,14 @@ func startBGPTransitRouter(
 
 func (r *bgpTransitRouter) addNeighbor(t *testing.T, neighbor bgpTransitNeighbor) {
 	t.Helper()
-	timers := &apipb.TimersConfig{
-		KeepaliveInterval: bgpRuntimeKeepalive,
-		HoldTime:          bgpRuntimeHold,
-		ConnectRetry:      bgpRuntimeKeepalive,
-	}
+	timers := &apipb.TimersConfig{KeepaliveInterval: bgpRuntimeKeepalive, HoldTime: bgpRuntimeHold, ConnectRetry: bgpRuntimeKeepalive}
 	peer := &apipb.Peer{
-		Conf: &apipb.PeerConf{
-			NeighborAddress: neighbor.address.String(),
-			PeerAsn:         neighbor.asn,
-		},
+		Conf:      &apipb.PeerConf{NeighborAddress: neighbor.address.String(), PeerAsn: neighbor.asn},
 		Transport: &apipb.Transport{PassiveMode: !neighbor.active},
 		Timers:    &apipb.Timers{Config: timers},
-		AfiSafis: []*apipb.AfiSafi{
-			{
-				Config: &apipb.AfiSafiConfig{
-					Family: &apipb.Family{
-						Afi:  apipb.Family_AFI_IP6,
-						Safi: apipb.Family_SAFI_UNICAST,
-					},
-					Enabled: true,
-				},
-			},
-		},
+		AfiSafis: []*apipb.AfiSafi{{Config: &apipb.AfiSafiConfig{
+			Family: &apipb.Family{Afi: apipb.Family_AFI_IP6, Safi: apipb.Family_SAFI_UNICAST}, Enabled: true,
+		}}},
 	}
 	if neighbor.multihopTTL > 0 {
 		peer.EbgpMultihop = &apipb.EbgpMultihop{Enabled: true, MultihopTtl: neighbor.multihopTTL}
@@ -161,11 +124,7 @@ func (r *bgpTransitRouter) apply(t *testing.T, paths []*apiutil.Path) {
 			r.remove(t, destination.String())
 			continue
 		}
-		route := &netlink.Route{
-			Dst:      destination,
-			Priority: bgpRuntimeRouterMetric,
-			Protocol: unix.RTPROT_BGP,
-		}
+		route := &netlink.Route{Dst: destination, Priority: bgpRuntimeRouterMetric, Protocol: unix.RTPROT_BGP}
 		for _, attribute := range path.Attrs {
 			if nextHop, ok := attribute.(*bgppkt.PathAttributeMpReachNLRI); ok {
 				route.Gw = net.IP(nextHop.Nexthop.AsSlice())
@@ -184,10 +143,7 @@ func (r *bgpTransitRouter) apply(t *testing.T, paths []*apiutil.Path) {
 			t.Errorf("transit router install %s: %v", destination, err)
 			continue
 		}
-		r.installed[destination.String()] = bgpTransitInstalled{
-			peer:  path.PeerAddress,
-			route: route,
-		}
+		r.installed[destination.String()] = bgpTransitInstalled{peer: path.PeerAddress, route: route}
 	}
 }
 
@@ -218,43 +174,25 @@ func (r *bgpTransitRouter) announce(t *testing.T, prefix netip.Prefix, nextHop n
 	if err != nil {
 		t.Fatalf("build NLRI for %s: %v", prefix, err)
 	}
-	nextHopAttribute, err := bgppkt.NewPathAttributeMpReachNLRI(
-		bgppkt.RF_IPv6_UC,
-		[]bgppkt.PathNLRI{{NLRI: nlri}},
-		nextHop,
-	)
+	nextHopAttribute, err := bgppkt.NewPathAttributeMpReachNLRI(bgppkt.RF_IPv6_UC, []bgppkt.PathNLRI{{NLRI: nlri}}, nextHop)
 	if err != nil {
 		t.Fatalf("build MP_REACH_NLRI for %s: %v", prefix, err)
 	}
-	path := &apiutil.Path{
-		Family: bgppkt.RF_IPv6_UC,
-		Nlri:   nlri,
-		Attrs: []bgppkt.PathAttributeInterface{
-			bgppkt.NewPathAttributeOrigin(bgppkt.BGP_ORIGIN_ATTR_TYPE_IGP),
-			nextHopAttribute,
-		},
-	}
-	if _, err := r.server.AddPath(apiutil.AddPathRequest{
-		Paths: []*apiutil.Path{path},
-	}); err != nil {
+	path := &apiutil.Path{Family: bgppkt.RF_IPv6_UC, Nlri: nlri, Attrs: []bgppkt.PathAttributeInterface{
+		bgppkt.NewPathAttributeOrigin(bgppkt.BGP_ORIGIN_ATTR_TYPE_IGP), nextHopAttribute,
+	}}
+	if _, err := r.server.AddPath(apiutil.AddPathRequest{Paths: []*apiutil.Path{path}}); err != nil {
 		t.Fatalf("transit router announce %s: %v", prefix, err)
 	}
 }
 
 func (r *bgpTransitRouter) received(t *testing.T, neighbor netip.Addr) []netip.Prefix {
 	t.Helper()
-	request := apiutil.ListPathRequest{
-		TableType: apipb.TableType_TABLE_TYPE_ADJ_IN,
-		Name:      neighbor.String(),
-		Family:    bgppkt.RF_IPv6_UC,
-	}
+	request := apiutil.ListPathRequest{TableType: apipb.TableType_TABLE_TYPE_ADJ_IN, Name: neighbor.String(), Family: bgppkt.RF_IPv6_UC}
 	prefixes := make([]netip.Prefix, 0)
-	err := r.server.ListPath(
-		request,
-		func(nlri bgppkt.NLRI, _ []*apiutil.Path) {
-			prefixes = append(prefixes, netip.MustParsePrefix(nlri.String()))
-		},
-	)
+	err := r.server.ListPath(request, func(nlri bgppkt.NLRI, _ []*apiutil.Path) {
+		prefixes = append(prefixes, netip.MustParsePrefix(nlri.String()))
+	})
 	if err != nil {
 		t.Fatalf("list the paths that the transit router received from %s: %v", neighbor, err)
 	}
@@ -264,11 +202,7 @@ func (r *bgpTransitRouter) received(t *testing.T, neighbor netip.Addr) []netip.P
 
 func bgpNamespaceRoute(t *testing.T, handle *netlink.Handle, prefix netip.Prefix) bool {
 	t.Helper()
-	routes, err := handle.RouteListFiltered(
-		netlink.FAMILY_V6,
-		&netlink.Route{Protocol: unix.RTPROT_BGP},
-		netlink.RT_FILTER_PROTOCOL,
-	)
+	routes, err := handle.RouteListFiltered(netlink.FAMILY_V6, &netlink.Route{Protocol: unix.RTPROT_BGP}, netlink.RT_FILTER_PROTOCOL)
 	if err != nil {
 		t.Fatalf("list the namespace BGP routes: %v", err)
 	}

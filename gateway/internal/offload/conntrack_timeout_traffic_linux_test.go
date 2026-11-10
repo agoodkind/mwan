@@ -60,12 +60,9 @@ func TestConntrackTimeoutRefreshActiveTCP(t *testing.T) {
 		{name: "IPv4", network: "tcp4", address: "127.0.0.1:0"},
 		{name: "IPv6", network: "tcp6", address: "[::1]:0"},
 	} {
-		t.Run(
-			family.name,
-			func(t *testing.T) {
-				conntrackTrafficFamily(t, family.network, family.address)
-			},
-		)
+		t.Run(family.name, func(t *testing.T) {
+			conntrackTrafficFamily(t, family.network, family.address)
+		})
 	}
 }
 
@@ -102,11 +99,7 @@ func TestConntrackTimeoutRefreshCompetingWriter(t *testing.T) {
 				return
 			}
 			writerRefreshes++
-			if err := background.Refresh(
-				writerContext,
-				flow,
-				conntrackTrafficCompetingSeconds,
-			); err != nil {
+			if err := background.Refresh(writerContext, flow, conntrackTrafficCompetingSeconds); err != nil {
 				if writerContext.Err() == nil {
 					writerErr = err
 				}
@@ -124,20 +117,14 @@ func TestConntrackTimeoutRefreshCompetingWriter(t *testing.T) {
 		select {
 		case <-finished:
 		case <-timer.C:
-			t.Fatalf(
-				"competing TCP timeout writer did not stop within %s",
-				conntrackTrafficWriterJoinTimeout,
-			)
+			t.Fatalf("competing TCP timeout writer did not stop within %s", conntrackTrafficWriterJoinTimeout)
 		}
 	}
 	defer joinWriter()
 	select {
 	case <-started:
 	case <-finished:
-		t.Fatalf(
-			"competing TCP timeout writer stopped before its first successful refresh: %v",
-			writerErr,
-		)
+		t.Fatalf("competing TCP timeout writer stopped before its first successful refresh: %v", writerErr)
 	case <-ctx.Done():
 		t.Fatalf("competing TCP timeout writer did not start: %v", ctx.Err())
 	}
@@ -149,20 +136,13 @@ refreshLoop:
 		case <-finished:
 			break refreshLoop
 		case <-ctx.Done():
-			t.Fatalf(
-				"competing TCP timeout requests exceeded %s: %v",
-				conntrackTrafficFamilyTimeout,
-				ctx.Err(),
-			)
+			t.Fatalf("competing TCP timeout requests exceeded %s: %v", conntrackTrafficFamilyTimeout, ctx.Err())
 		default:
 		}
 		refreshes++
 		if err := foreground.Refresh(ctx, flow, conntrackTrafficRequestedSeconds); err != nil {
 			if !errors.As(err, &failure) {
-				t.Fatalf(
-					"foreground TCP timeout refresh failed without a timeout verification error: %v",
-					err,
-				)
+				t.Fatalf("foreground TCP timeout refresh failed without a timeout verification error: %v", err)
 			}
 			break
 		}
@@ -172,17 +152,10 @@ refreshLoop:
 		t.Fatalf("competing TCP timeout writer failed: %v", writerErr)
 	}
 	if failure == nil {
-		t.Fatalf(
-			"competing TCP timeout writers did not expose a lower-bound rejection: foreground_calls=%d background_calls=%d",
-			refreshes,
-			writerRefreshes,
-		)
+		t.Fatalf("competing TCP timeout writers did not expose a lower-bound rejection: foreground_calls=%d background_calls=%d", refreshes, writerRefreshes)
 	}
-	if failure.ConnectionID != flow.ID ||
-		failure.RequestedSeconds != conntrackTrafficRequestedSeconds ||
-		uint64(failure.ObservedSeconds)+failure.AllowanceSeconds >= uint64(
-			failure.RequestedSeconds,
-		) {
+	if failure.ConnectionID != flow.ID || failure.RequestedSeconds != conntrackTrafficRequestedSeconds ||
+		uint64(failure.ObservedSeconds)+failure.AllowanceSeconds >= uint64(failure.RequestedSeconds) {
 		t.Fatalf("competing writer returned an invalid lower-bound rejection: %+v", failure)
 	}
 	current, err := FreshConntrackFlow(ctx, flow)
@@ -190,15 +163,7 @@ refreshLoop:
 		t.Fatalf("read original TCP identity after competing writes: %v", err)
 	}
 	conntrackTrafficEstablished(t, current)
-	t.Logf(
-		"competing TCP timeout rejection: connection_id=%d requested_seconds=%d observed_seconds=%d allowance_seconds=%d foreground_calls=%d background_calls=%d",
-		failure.ConnectionID,
-		failure.RequestedSeconds,
-		failure.ObservedSeconds,
-		failure.AllowanceSeconds,
-		refreshes,
-		writerRefreshes,
-	)
+	t.Logf("competing TCP timeout rejection: connection_id=%d requested_seconds=%d observed_seconds=%d allowance_seconds=%d foreground_calls=%d background_calls=%d", failure.ConnectionID, failure.RequestedSeconds, failure.ObservedSeconds, failure.AllowanceSeconds, refreshes, writerRefreshes)
 }
 
 func conntrackTrafficNamespace(t *testing.T) {
@@ -212,25 +177,17 @@ func conntrackTrafficNamespace(t *testing.T) {
 	}
 	connection := &nftables.Conn{}
 	table := connection.AddTable(&nftables.Table{
-		Family: nftables.TableFamilyINet,
-		Name:   conntrackTrafficTable,
+		Family: nftables.TableFamilyINet, Name: conntrackTrafficTable,
 	})
 	chain := connection.AddChain(&nftables.Chain{
-		Name:     conntrackTrafficChain,
-		Table:    table,
-		Type:     nftables.ChainTypeFilter,
-		Hooknum:  nftables.ChainHookOutput,
-		Priority: nftables.ChainPriorityFilter,
+		Name: conntrackTrafficChain, Table: table, Type: nftables.ChainTypeFilter,
+		Hooknum: nftables.ChainHookOutput, Priority: nftables.ChainPriorityFilter,
 	})
 	// Reading ct state activates both families' conntrack hooks in this namespace.
-	connection.AddRule(&nftables.Rule{
-		Table: table,
-		Chain: chain,
-		Exprs: []expr.Any{
-			&expr.Ct{Key: expr.CtKeySTATE, Register: conntrackTrafficRegister},
-			&expr.Counter{},
-		},
-	})
+	connection.AddRule(&nftables.Rule{Table: table, Chain: chain, Exprs: []expr.Any{
+		&expr.Ct{Key: expr.CtKeySTATE, Register: conntrackTrafficRegister},
+		&expr.Counter{},
+	}})
 	if err := connection.Flush(); err != nil {
 		t.Fatalf("activate namespace conntrack with nftables: %v", err)
 	}
@@ -249,17 +206,9 @@ func conntrackTrafficNamespace(t *testing.T) {
 		t.Fatalf("parse namespace established TCP timeout: %v", err)
 	}
 	if seconds != conntrackTrafficEstablishedSeconds {
-		t.Fatalf(
-			"set namespace nf_conntrack_tcp_timeout_established to %d seconds; observed %d",
-			conntrackTrafficEstablishedSeconds,
-			seconds,
-		)
+		t.Fatalf("set namespace nf_conntrack_tcp_timeout_established to %d seconds; observed %d", conntrackTrafficEstablishedSeconds, seconds)
 	}
-	t.Logf(
-		"namespace established TCP timeout=%d seconds; requested timeout=%d seconds",
-		seconds,
-		conntrackTrafficRequestedSeconds,
-	)
+	t.Logf("namespace established TCP timeout=%d seconds; requested timeout=%d seconds", seconds, conntrackTrafficRequestedSeconds)
 }
 
 func conntrackTrafficFamily(t *testing.T, network, address string) {
@@ -284,46 +233,20 @@ func conntrackTrafficFamily(t *testing.T, network, address string) {
 		t.Fatal(err)
 	}
 	conntrackTrafficEstablished(t, idle)
-	if idle.Timeout > conntrackTrafficRequestedSeconds ||
-		idle.Timeout+1 < conntrackTrafficRequestedSeconds {
-		t.Fatalf(
-			"idle refresh did not retain the requested timeout: observed=%d requested=%d",
-			idle.Timeout,
-			conntrackTrafficRequestedSeconds,
-		)
+	if idle.Timeout > conntrackTrafficRequestedSeconds || idle.Timeout+1 < conntrackTrafficRequestedSeconds {
+		t.Fatalf("idle refresh did not retain the requested timeout: observed=%d requested=%d", idle.Timeout, conntrackTrafficRequestedSeconds)
 	}
-	t.Logf(
-		"idle TCP refresh: id=%d state=%d observed_seconds=%d",
-		idle.ID,
-		idle.ProtoInfo.TCP.State,
-		idle.Timeout,
-	)
-	controlHash, err := conntrackTrafficTransfer(
-		ctx,
-		server,
-		client,
-		payload,
-		conntrackTrafficControlBursts,
-		nil,
-	)
+	t.Logf("idle TCP refresh: id=%d state=%d observed_seconds=%d", idle.ID, idle.ProtoInfo.TCP.State, idle.Timeout)
+	controlHash, err := conntrackTrafficTransfer(ctx, server, client, payload, conntrackTrafficControlBursts, nil)
 	if err != nil {
 		t.Fatalf("send one-way TCP expiry control: %v", err)
 	}
 	expectedControlHash := sha256.Sum256(payload)
 	if !bytes.Equal(controlHash, expectedControlHash[:]) {
-		t.Fatalf(
-			"one-way TCP expiry control changed payload bytes: expected=%x observed=%x",
-			expectedControlHash,
-			controlHash,
-		)
+		t.Fatalf("one-way TCP expiry control changed payload bytes: expected=%x observed=%x", expectedControlHash, controlHash)
 	}
 	exposed := conntrackTrafficExpiryExposure(t, ctx, flow)
-	t.Logf(
-		"packet-driven TCP expiry exposure: id=%d idle_seconds=%d after_one_way_seconds=%d",
-		exposed.ID,
-		idle.Timeout,
-		exposed.Timeout,
-	)
+	t.Logf("packet-driven TCP expiry exposure: id=%d idle_seconds=%d after_one_way_seconds=%d", exposed.ID, idle.Timeout, exposed.Timeout)
 	started := make(chan struct{})
 	finished := make(chan struct{})
 	var trafficResult conntrackTrafficResult
@@ -357,22 +280,14 @@ refreshLoop:
 		default:
 		}
 		refreshes++
-		if refreshErr = updater.Refresh(
-			ctx,
-			flow,
-			conntrackTrafficRequestedSeconds,
-		); refreshErr != nil {
+		if refreshErr = updater.Refresh(ctx, flow, conntrackTrafficRequestedSeconds); refreshErr != nil {
 			break
 		}
 	}
 	select {
 	case <-finished:
 	case <-ctx.Done():
-		t.Fatalf(
-			"TCP payload exchange did not finish within %s: %v",
-			conntrackTrafficFamilyTimeout,
-			ctx.Err(),
-		)
+		t.Fatalf("TCP payload exchange did not finish within %s: %v", conntrackTrafficFamilyTimeout, ctx.Err())
 	}
 	if trafficErr != nil {
 		t.Fatalf("original TCP payload exchange failed: %v", trafficErr)
@@ -385,19 +300,10 @@ refreshLoop:
 	}
 	for _, observed := range [][]byte{trafficResult.originalHash, trafficResult.replyHash} {
 		if !bytes.Equal(observed, expectedHash.Sum(nil)) {
-			t.Fatalf(
-				"original TCP payload exchange changed bytes: expected=%x observed=%x",
-				expectedHash.Sum(nil),
-				observed,
-			)
+			t.Fatalf("original TCP payload exchange changed bytes: expected=%x observed=%x", expectedHash.Sum(nil), observed)
 		}
 	}
-	t.Logf(
-		"original TCP exchange completed: bytes_per_direction=%d sha256=%x refresh_calls=%d",
-		trafficResult.bytesPerDirection,
-		trafficResult.originalHash,
-		refreshes,
-	)
+	t.Logf("original TCP exchange completed: bytes_per_direction=%d sha256=%x refresh_calls=%d", trafficResult.bytesPerDirection, trafficResult.originalHash, refreshes)
 	if refreshes == 0 {
 		t.Fatal("TCP traffic completed without an active timeout refresh")
 	}
@@ -409,20 +315,10 @@ refreshLoop:
 		t.Fatalf("final same-identity TCP lookup: %v", err)
 	}
 	conntrackTrafficEstablished(t, current)
-	t.Logf(
-		"final TCP state: id=%d state=%d timeout_seconds=%d",
-		current.ID,
-		current.ProtoInfo.TCP.State,
-		current.Timeout,
-	)
+	t.Logf("final TCP state: id=%d state=%d timeout_seconds=%d", current.ID, current.ProtoInfo.TCP.State, current.Timeout)
 }
 
-func conntrackTrafficSockets(
-	t *testing.T,
-	ctx context.Context,
-	network string,
-	address string,
-) (net.Conn, net.Conn, conntrack.Flow) {
+func conntrackTrafficSockets(t *testing.T, ctx context.Context, network, address string) (net.Conn, net.Conn, conntrack.Flow) {
 	t.Helper()
 	deadline, ok := ctx.Deadline()
 	if !ok {
@@ -455,14 +351,9 @@ func conntrackTrafficSockets(
 	original := client.LocalAddr().(*net.TCPAddr).AddrPort()
 	destination := client.RemoteAddr().(*net.TCPAddr).AddrPort()
 	tuple := conntrack.Tuple{
-		IP: conntrack.IPTuple{
-			SourceAddress:      original.Addr(),
-			DestinationAddress: destination.Addr(),
-		},
+		IP: conntrack.IPTuple{SourceAddress: original.Addr(), DestinationAddress: destination.Addr()},
 		Proto: conntrack.ProtoTuple{
-			Protocol:        unix.IPPROTO_TCP,
-			SourcePort:      original.Port(),
-			DestinationPort: destination.Port(),
+			Protocol: unix.IPPROTO_TCP, SourcePort: original.Port(), DestinationPort: destination.Port(),
 		},
 	}
 	flow, err := LookupConntrackFlow(ctx, tuple, conntrackTrafficZone)
@@ -473,11 +364,7 @@ func conntrackTrafficSockets(
 	return client, server, flow
 }
 
-func conntrackTrafficExpiryExposure(
-	t *testing.T,
-	ctx context.Context,
-	flow conntrack.Flow,
-) conntrack.Flow {
+func conntrackTrafficExpiryExposure(t *testing.T, ctx context.Context, flow conntrack.Flow) conntrack.Flow {
 	t.Helper()
 	exposureContext, cancel := context.WithTimeout(ctx, conntrackTrafficExposureTimeout)
 	defer cancel()
@@ -495,13 +382,7 @@ func conntrackTrafficExpiryExposure(
 		select {
 		case <-ticker.C:
 		case <-exposureContext.Done():
-			t.Fatalf(
-				"TCP packets did not extend expiry above %d seconds within %s: observed_seconds=%d: %v",
-				conntrackTrafficRequestedSeconds,
-				conntrackTrafficExposureTimeout,
-				current.Timeout,
-				exposureContext.Err(),
-			)
+			t.Fatalf("TCP packets did not extend expiry above %d seconds within %s: observed_seconds=%d: %v", conntrackTrafficRequestedSeconds, conntrackTrafficExposureTimeout, current.Timeout, exposureContext.Err())
 		}
 	}
 }
@@ -512,50 +393,22 @@ type conntrackTrafficResult struct {
 	bytesPerDirection int
 }
 
-func conntrackTrafficPhases(
-	ctx context.Context,
-	client net.Conn,
-	server net.Conn,
-	payload []byte,
-	started chan<- struct{},
-) (conntrackTrafficResult, error) {
-	replyHash, err := conntrackTrafficTransfer(
-		ctx,
-		server,
-		client,
-		payload,
-		conntrackTrafficBurstsPerDirection,
-		started,
-	)
+func conntrackTrafficPhases(ctx context.Context, client, server net.Conn, payload []byte, started chan<- struct{}) (conntrackTrafficResult, error) {
+	replyHash, err := conntrackTrafficTransfer(ctx, server, client, payload, conntrackTrafficBurstsPerDirection, started)
 	if err != nil {
 		return conntrackTrafficResult{}, fmt.Errorf("complete original TCP download: %w", err)
 	}
-	originalHash, err := conntrackTrafficTransfer(
-		ctx,
-		client,
-		server,
-		payload,
-		conntrackTrafficBurstsPerDirection,
-		nil,
-	)
+	originalHash, err := conntrackTrafficTransfer(ctx, client, server, payload, conntrackTrafficBurstsPerDirection, nil)
 	if err != nil {
 		return conntrackTrafficResult{}, fmt.Errorf("complete original TCP upload: %w", err)
 	}
 	return conntrackTrafficResult{
-		originalHash:      originalHash,
-		replyHash:         replyHash,
+		originalHash: originalHash, replyHash: replyHash,
 		bytesPerDirection: conntrackTrafficBurstsPerDirection * len(payload),
 	}, nil
 }
 
-func conntrackTrafficTransfer(
-	ctx context.Context,
-	sender net.Conn,
-	receiver net.Conn,
-	payload []byte,
-	bursts int,
-	started chan<- struct{},
-) ([]byte, error) {
+func conntrackTrafficTransfer(ctx context.Context, sender, receiver net.Conn, payload []byte, bursts int, started chan<- struct{}) ([]byte, error) {
 	receivedHash := sha256.New()
 	received := make([]byte, len(payload))
 	timer := time.NewTimer(conntrackTrafficBurstPause)
@@ -600,8 +453,7 @@ func conntrackTrafficPause(t *testing.T, ctx context.Context) {
 
 func conntrackTrafficEstablished(t *testing.T, flow conntrack.Flow) {
 	t.Helper()
-	if flow.ID == 0 || flow.ProtoInfo.TCP == nil ||
-		flow.ProtoInfo.TCP.State != conntrackTrafficEstablishedState {
+	if flow.ID == 0 || flow.ProtoInfo.TCP == nil || flow.ProtoInfo.TCP.State != conntrackTrafficEstablishedState {
 		t.Fatalf("real TCP socket did not retain an established conntrack identity: %+v", flow)
 	}
 }

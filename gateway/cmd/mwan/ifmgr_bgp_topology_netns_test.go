@@ -46,10 +46,7 @@ func (p bgpRuntimeProvider) exportEntries() string {
 		if export.backupFor != "" {
 			mode = `"mode":"backup","backup-for":["` + export.backupFor + `"],`
 		}
-		entries = append(
-			entries,
-			fmt.Sprintf(`{"prefix":%q,%s"next-hop":%q}`, export.prefix, mode, p.local()),
-		)
+		entries = append(entries, fmt.Sprintf(`{"prefix":%q,%s"next-hop":%q}`, export.prefix, mode, p.local()))
 	}
 	return strings.Join(entries, ",")
 }
@@ -68,42 +65,19 @@ func (p bgpRuntimeProvider) entry() string {
 		if p.restartTime > 0 {
 			restart = fmt.Sprintf(`"graceful-restart-time":%d,`, p.restartTime)
 		}
-		sessions = fmt.Sprintf(
-			`,"bgp-session":[{"name":"upstream","peer-address":%q,"local-address":%q,`+
-				`"local-as":%d,"remote-as":%d,"family":["ipv6-unicast"],"keepalive":%d,"hold":%d,%s"route-metric":%d,`+
-				`"import":[{"prefix":%q,"min-length":%d,"max-length":%d}],`+
-				`"export":[%s]}]`,
-			p.peer(),
-			p.local(),
-			p.localASN,
-			p.remoteASN,
-			bgpRuntimeKeepalive,
-			bgpRuntimeHold,
-			restart,
-			p.metric,
-			p.learned,
-			p.learned.Bits(),
-			p.learned.Bits(),
-			p.exportEntries(),
-		)
+		sessions = fmt.Sprintf(`,"bgp-session":[{"name":"upstream","peer-address":%q,"local-address":%q,`+
+			`"local-as":%d,"remote-as":%d,"family":["ipv6-unicast"],"keepalive":%d,"hold":%d,%s"route-metric":%d,`+
+			`"import":[{"prefix":%q,"min-length":%d,"max-length":%d}],`+
+			`"export":[%s]}]`,
+			p.peer(), p.local(), p.localASN, p.remoteASN, bgpRuntimeKeepalive, bgpRuntimeHold, restart, p.metric,
+			p.learned, p.learned.Bits(), p.learned.Bits(), p.exportEntries())
 	}
-	return fmt.Sprintf(
-		`{"name":%q,"type":"iana-if-type:other","goodkind-mwan-steering:owner":"external",`+
-			`"ietf-ip:ipv6":{"goodkind-mwan-steering:translation":{"mode":"native"}},`+
-			`"goodkind-mwan-steering:wan":{"name":%q,"table-id":%d,"fw-mark":%d,"fw-mark-prio":%d,"from-prio":%d,`+
-			`"health":{%s,"targets-v4":[],"targets-v6":[%q]}%s},`+
-			`"goodkind-mwan-steering:steering":{"tier":%d,"weight":1}}`,
-		p.device,
-		p.id,
-		p.table,
-		p.mark,
-		p.table,
-		bgpRuntimeFromPrioBase+p.mark,
-		probe,
-		p.remoteClient(),
-		sessions,
-		p.tier,
-	)
+	return fmt.Sprintf(`{"name":%q,"type":"iana-if-type:other","goodkind-mwan-steering:owner":"external",`+
+		`"ietf-ip:ipv6":{"goodkind-mwan-steering:translation":{"mode":"native"}},`+
+		`"goodkind-mwan-steering:wan":{"name":%q,"table-id":%d,"fw-mark":%d,"fw-mark-prio":%d,"from-prio":%d,`+
+		`"health":{%s,"targets-v4":[],"targets-v6":[%q]}%s},`+
+		`"goodkind-mwan-steering:steering":{"tier":%d,"weight":1}}`,
+		p.device, p.id, p.table, p.mark, p.table, bgpRuntimeFromPrioBase+p.mark, probe, p.remoteClient(), sessions, p.tier)
 }
 
 func bgpRuntimeNetwork(providers ...bgpRuntimeProvider) string {
@@ -118,11 +92,7 @@ func bgpRuntimeNetwork(providers ...bgpRuntimeProvider) string {
 	for _, provider := range providers {
 		entries = append(entries, provider.entry())
 	}
-	entries = append(
-		entries,
-		`{"name":"enmwanbr0","type":"iana-if-type:other"}`,
-		`{"name":"enmgmt0","type":"iana-if-type:other"}`,
-	)
+	entries = append(entries, `{"name":"enmwanbr0","type":"iana-if-type:other"}`, `{"name":"enmgmt0","type":"iana-if-type:other"}`)
 	return `{"ietf-interfaces:interfaces":{"interface":[` + strings.Join(entries, ",") + `],` +
 		`"goodkind-mwan-steering:steering-group":{"hash-mode":"source","reserved-tables":[400,500],` +
 		`"translation":{"internal-prefix":"2001:db8:b01::/60","opnsense-edge-v6":"` + tunnelRuntimeClientV6 + `",` +
@@ -135,11 +105,7 @@ func bgpRuntimeNetwork(providers ...bgpRuntimeProvider) string {
 
 func writeBGPRuntimeNetwork(t *testing.T, directory string, providers ...bgpRuntimeProvider) {
 	t.Helper()
-	if err := os.WriteFile(
-		filepath.Join(directory, "network.json"),
-		[]byte(bgpRuntimeNetwork(providers...)),
-		0o600,
-	); err != nil {
+	if err := os.WriteFile(filepath.Join(directory, "network.json"), []byte(bgpRuntimeNetwork(providers...)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -152,76 +118,29 @@ type bgpRuntimeTopology struct {
 	remotes map[string]netns.NsHandle
 }
 
-func addBGPRuntimeProvider(
-	t *testing.T,
-	gateway netns.NsHandle,
-	provider bgpRuntimeProvider,
-) (router, remote netns.NsHandle) {
+func addBGPRuntimeProvider(t *testing.T, gateway netns.NsHandle, provider bgpRuntimeProvider) (router, remote netns.NsHandle) {
 	t.Helper()
-	peer := newRuntimePeer(
-		t,
-		gateway,
-		provider.device,
-		provider.routerDevice,
-		[]string{provider.local().String() + "/64"},
-		[]string{provider.peer().String() + "/64"},
-		"",
-	)
+	peer := newRuntimePeer(t, gateway, provider.device, provider.routerDevice,
+		[]string{provider.local().String() + "/64"}, []string{provider.peer().String() + "/64"}, "")
 	remote = newTunnelRuntimeNamespace(t)
-	linkTunnelRuntimeNamespaces(
-		t,
-		peer.namespace,
-		provider.routerDevice+"-far",
-		[]string{provider.network + ":99::1/64"},
-		remote,
-		"remote-host",
-		[]string{provider.remoteClient() + "/64"},
-	)
+	linkTunnelRuntimeNamespaces(t, peer.namespace, provider.routerDevice+"-far", []string{provider.network + ":99::1/64"},
+		remote, "remote-host", []string{provider.remoteClient() + "/64"})
 	addRuntimeDefault(t, "remote-host", provider.network+":99::1")
 	setRuntimeNamespace(t, peer.namespace)
 	writeTunnelRuntimeSetting(t, "/proc/sys/net/ipv6/conf/all/forwarding", "1")
 	return peer.namespace, remote
 }
 
-func buildBGPRuntimeTopology(
-	t *testing.T,
-	gateway netns.NsHandle,
-	providers ...bgpRuntimeProvider,
-) bgpRuntimeTopology {
+func buildBGPRuntimeTopology(t *testing.T, gateway netns.NsHandle, providers ...bgpRuntimeProvider) bgpRuntimeTopology {
 	t.Helper()
-	management := newRuntimePeer(
-		t,
-		gateway,
-		"enmgmt0",
-		"mgmt-host",
-		[]string{"192.0.2.65/29"},
-		[]string{"192.0.2.66/29"},
-		"",
-	)
-	client := newRuntimePeer(
-		t,
-		gateway,
-		"enmwanbr0",
-		"lan-host",
-		[]string{"192.0.2.1/29", "2001:db8:b01:fe::3/64"},
-		[]string{tunnelRuntimeClientV6 + "/64", tunnelRuntimeClientV4 + "/29"},
-		"",
-	)
-	isp := newRuntimePeer(
-		t,
-		gateway,
-		tunnelRuntimeUnderlay,
-		tunnelRuntimeISPLink,
-		[]string{tunnelRuntimeLocal + "/30"},
-		[]string{tunnelRuntimeISPGateway + "/30"},
-		"",
-	)
+	management := newRuntimePeer(t, gateway, "enmgmt0", "mgmt-host", []string{"192.0.2.65/29"}, []string{"192.0.2.66/29"}, "")
+	client := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29", "2001:db8:b01:fe::3/64"},
+		[]string{tunnelRuntimeClientV6 + "/64", tunnelRuntimeClientV4 + "/29"}, "")
+	isp := newRuntimePeer(t, gateway, tunnelRuntimeUnderlay, tunnelRuntimeISPLink,
+		[]string{tunnelRuntimeLocal + "/30"}, []string{tunnelRuntimeISPGateway + "/30"}, "")
 	topology := bgpRuntimeTopology{
-		gateway: gateway,
-		client:  client.namespace,
-		isp:     isp.namespace,
-		routers: make(map[string]netns.NsHandle),
-		remotes: make(map[string]netns.NsHandle),
+		gateway: gateway, client: client.namespace, isp: isp.namespace,
+		routers: make(map[string]netns.NsHandle), remotes: make(map[string]netns.NsHandle),
 	}
 	namespaces := []netns.NsHandle{management.namespace, client.namespace, isp.namespace}
 	for _, provider := range providers {
@@ -237,11 +156,7 @@ func buildBGPRuntimeTopology(
 	addRuntimeDefault(t, "lan-host", "2001:db8:b01:fe::3")
 
 	setRuntimeNamespace(t, gateway)
-	writeTunnelRuntimeSetting(
-		t,
-		"/proc/sys/net/ipv6/conf/"+tunnelRuntimeUnderlay+"/disable_ipv6",
-		"1",
-	)
+	writeTunnelRuntimeSetting(t, "/proc/sys/net/ipv6/conf/"+tunnelRuntimeUnderlay+"/disable_ipv6", "1")
 	writeTunnelRuntimeSetting(t, "/proc/sys/net/ipv4/ip_forward", "1")
 	writeTunnelRuntimeSetting(t, "/proc/sys/net/ipv6/conf/all/forwarding", "1")
 	addRuntimeDefault(t, tunnelRuntimeUnderlay, tunnelRuntimeISPGateway)

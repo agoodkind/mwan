@@ -75,27 +75,19 @@ func (r steerRule) String() string {
 		for _, mark := range r.AllowedMarks {
 			marks = append(marks, strconv.FormatUint(uint64(mark), 10))
 		}
-
-		return "iif " + r.IifName + " oif " + r.DropIface + " family " + r.Source.String() + " mark outside {" + strings.Join(
-			marks,
-			",",
-		) + "} drop"
+		return "iif " + r.IifName + " oif " + r.DropIface + " family " + r.Source.String() + " mark outside {" + strings.Join(marks, ",") + "} drop"
 	}
-
 	where := "saddr " + r.Source.String()
 	if r.IifName != "" {
 		where = "iif " + r.IifName + " " + where
 	}
-
 	if len(r.Assign.Slots) == 0 {
 		return where + " mark set " + strconv.FormatUint(uint64(r.Assign.Mark), 10)
 	}
-
 	marks := make([]string, 0, len(r.Assign.Slots))
 	for _, mark := range r.Assign.Slots {
 		marks = append(marks, strconv.FormatUint(uint64(mark), 10))
 	}
-
 	return where + " mark set " + string(r.Mode) +
 		" mod " + strconv.FormatUint(uint64(r.Assign.Modulus), 10) +
 		" map {" + strings.Join(marks, ",") + "}"
@@ -119,11 +111,9 @@ func shouldAppendMemberRule(hasAssignment, selectionEnabled, eligible bool) bool
 	if selectionEnabled && eligible {
 		return false
 	}
-
 	if hasAssignment {
 		return true
 	}
-
 	return !selectionEnabled && eligible
 }
 
@@ -131,98 +121,47 @@ func shouldAppendMemberRule(hasAssignment, selectionEnabled, eligible bool) bool
 // egress when a packet has no family-eligible mark.
 func buildRules(in ruleInput) []steerRule {
 	var rules []steerRule
-	v4 := steerRule{
-		IifName:      in.InternalIface,
-		Source:       in.InternalNetV4,
-		Mode:         in.Mode,
-		Assign:       in.AssignV4,
-		MatchMark:    0,
-		DropIface:    "",
-		AllowedMarks: nil,
-	}
+	v4 := steerRule{IifName: in.InternalIface, Source: in.InternalNetV4, Mode: in.Mode, Assign: in.AssignV4, MatchMark: 0, DropIface: "", AllowedMarks: nil}
 	hasV4Assignment := in.AssignV4.Mark != 0 || len(in.AssignV4.Slots) != 0
 	if hasV4Assignment {
 		rules = append(rules, v4)
 	}
-
 	for _, member := range in.Members {
-		if shouldAppendMemberRule(
-			hasV4Assignment,
-			config.ConnectionSelectionEnabled(member.SelectionEnabled),
-			in.EligibleV4[member.Mark],
-		) {
+		if shouldAppendMemberRule(hasV4Assignment, config.ConnectionSelectionEnabled(member.SelectionEnabled), in.EligibleV4[member.Mark]) {
 			v4.MatchMark = member.Mark
 			rules = append(rules, v4)
 		}
 	}
-
 	hasV6Assignment := in.AssignV6.Mark != 0 || len(in.AssignV6.Slots) != 0
-	for _, source := range []netip.Prefix{
-		netip.PrefixFrom(in.OpnsenseEdgeV6, 128),
-		in.InternalPrefix,
-	} {
-		base := steerRule{
-			IifName:      "",
-			Source:       source,
-			Mode:         in.Mode,
-			Assign:       in.AssignV6,
-			MatchMark:    0,
-			DropIface:    "",
-			AllowedMarks: nil,
-		}
+	for _, source := range []netip.Prefix{netip.PrefixFrom(in.OpnsenseEdgeV6, 128), in.InternalPrefix} {
+		base := steerRule{IifName: "", Source: source, Mode: in.Mode, Assign: in.AssignV6, MatchMark: 0, DropIface: "", AllowedMarks: nil}
 		if hasV6Assignment {
 			rules = append(rules, base)
 		}
-
 		for _, member := range in.Members {
-			if shouldAppendMemberRule(
-				hasV6Assignment,
-				config.ConnectionSelectionEnabled(member.SelectionEnabled),
-				in.EligibleV6[member.Mark],
-			) {
+			if shouldAppendMemberRule(hasV6Assignment, config.ConnectionSelectionEnabled(member.SelectionEnabled), in.EligibleV6[member.Mark]) {
 				base.MatchMark = member.Mark
 				rules = append(rules, base)
 			}
 		}
 	}
-
 	v4Marks := eligibleMarks(in.EligibleV4)
-
 	v6Marks := eligibleMarks(in.EligibleV6)
 	for _, member := range in.Members {
 		var allowedV4 []uint32
 		if in.EligibleV4[member.Mark] {
 			allowedV4 = v4Marks
 		}
-
 		var allowedV6 []uint32
 		if in.EligibleV6[member.Mark] {
 			allowedV6 = v6Marks
 		}
-
 		rules = append(
 			rules,
-			steerRule{
-				IifName:      in.InternalIface,
-				Source:       netip.MustParsePrefix("0.0.0.0/0"),
-				Mode:         "",
-				Assign:       balancer{Mark: 0, Modulus: 0, Slots: nil},
-				MatchMark:    0,
-				DropIface:    member.Iface,
-				AllowedMarks: allowedV4,
-			},
-			steerRule{
-				IifName:      in.InternalIface,
-				Source:       netip.MustParsePrefix("::/0"),
-				Mode:         "",
-				Assign:       balancer{Mark: 0, Modulus: 0, Slots: nil},
-				MatchMark:    0,
-				DropIface:    member.Iface,
-				AllowedMarks: allowedV6,
-			},
+			steerRule{IifName: in.InternalIface, Source: netip.MustParsePrefix("0.0.0.0/0"), Mode: "", Assign: balancer{Mark: 0, Modulus: 0, Slots: nil}, MatchMark: 0, DropIface: member.Iface, AllowedMarks: allowedV4},
+			steerRule{IifName: in.InternalIface, Source: netip.MustParsePrefix("::/0"), Mode: "", Assign: balancer{Mark: 0, Modulus: 0, Slots: nil}, MatchMark: 0, DropIface: member.Iface, AllowedMarks: allowedV6},
 		)
 	}
-
 	return rules
 }
 
@@ -233,9 +172,7 @@ func eligibleMarks(eligible map[uint32]bool) []uint32 {
 			marks = append(marks, mark)
 		}
 	}
-
 	slices.Sort(marks)
-
 	return marks
 }
 
@@ -249,43 +186,33 @@ func balancerFor(members []Member, health netif.HealthStates) (balancer, bool) {
 	if !anyHealthy {
 		return none, false
 	}
-
 	carrying := make([]Member, 0, len(members))
 	for _, member := range members {
 		if member.Tier != activeTier || !netif.HealthIsHealthy(health.State(member.Key())) {
 			continue
 		}
-
 		carrying = append(carrying, member)
 	}
-
 	if len(carrying) == 0 {
 		return none, false
 	}
-
-	slices.SortFunc(
-		carrying,
-		func(left Member, right Member) int {
-			return cmp.Compare(left.Mark, right.Mark)
-		},
-	)
+	slices.SortFunc(carrying, func(left Member, right Member) int {
+		return cmp.Compare(left.Mark, right.Mark)
+	})
 	if len(carrying) == 1 {
 		// One provider takes everything whatever its weight, because there is
 		// nothing to divide. This is also the shape the gateway runs in while
 		// only the fallback tier is up.
 		return balancer{Mark: carrying[0].Mark, Modulus: 0, Slots: nil}, true
 	}
-
 	slots := make([]uint32, 0, len(carrying))
 	modulus := uint32(0)
-
 	for _, member := range carrying {
 		for range member.Weight {
 			slots = append(slots, member.Mark)
 			modulus++
 		}
 	}
-
 	return balancer{Mark: 0, Modulus: modulus, Slots: slots}, true
 }
 
@@ -296,6 +223,5 @@ func tierMembers(members []Member) []netif.TierMember {
 	for _, member := range members {
 		tiers = append(tiers, netif.TierMember{Name: member.Key(), Tier: member.Tier})
 	}
-
 	return tiers
 }

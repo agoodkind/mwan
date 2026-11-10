@@ -142,43 +142,34 @@ targets_v4 = ["1.1.1.1"]
 		},
 	}
 	for _, test := range tests {
-		t.Run(
-			test.name,
-			func(t *testing.T) {
-				configPath := filepath.Join(t.TempDir(), "config.toml")
-				if err := os.WriteFile(configPath, []byte(test.config), 0o600); err != nil {
-					t.Fatalf("write config: %v", err)
+		t.Run(test.name, func(t *testing.T) {
+			configPath := filepath.Join(t.TempDir(), "config.toml")
+			if err := os.WriteFile(configPath, []byte(test.config), 0o600); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+			t.Setenv("MWAN_CONFIG", configPath)
+			cfg, err := LoadPath("")
+			if test.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), test.wantError) {
+					t.Fatalf("LoadPath error = %v, want %q", err, test.wantError)
 				}
-
-				t.Setenv("MWAN_CONFIG", configPath)
-				cfg, err := LoadPath("")
-				if test.wantError != "" {
-					if err == nil || !strings.Contains(err.Error(), test.wantError) {
-						t.Fatalf("LoadPath error = %v, want %q", err, test.wantError)
-					}
-
-					return
+				return
+			}
+			if err != nil {
+				t.Fatalf("LoadPath: %v", err)
+			}
+			if test.wantConfig {
+				readiness := cfg.BGP.ForwardingReadiness
+				if readiness.SocketPath != "/run/mwan-forwarding-ready.sock" {
+					t.Errorf("socket_path = %q", readiness.SocketPath)
 				}
-
-				if err != nil {
-					t.Fatalf("LoadPath: %v", err)
+				if readiness.PollInterval() != time.Second {
+					t.Errorf("poll interval = %s", readiness.PollInterval())
 				}
-
-				if test.wantConfig {
-					readiness := cfg.BGP.ForwardingReadiness
-					if readiness.SocketPath != "/run/mwan-forwarding-ready.sock" {
-						t.Errorf("socket_path = %q", readiness.SocketPath)
-					}
-
-					if readiness.PollInterval() != time.Second {
-						t.Errorf("poll interval = %s", readiness.PollInterval())
-					}
-
-					if readiness.ReadTimeout() != 500*time.Millisecond {
-						t.Errorf("read timeout = %s", readiness.ReadTimeout())
-					}
+				if readiness.ReadTimeout() != 500*time.Millisecond {
+					t.Errorf("read timeout = %s", readiness.ReadTimeout())
 				}
-			},
-		)
+			}
+		})
 	}
 }

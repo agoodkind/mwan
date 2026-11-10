@@ -35,7 +35,6 @@ func (exit commandExitError) Error() string {
 	if exit.cause != nil {
 		return exit.cause.Error()
 	}
-
 	return fmt.Sprintf("command exited with status %d", exit.code)
 }
 
@@ -43,17 +42,10 @@ func commandResult(code int) error {
 	if code == 0 {
 		return nil
 	}
-
 	return commandExitError{code: code, cause: nil}
 }
 
-func run(
-	arguments []string,
-	input io.Reader,
-	output io.Writer,
-	diagnostics io.Writer,
-	boundary func(string),
-) int {
+func run(arguments []string, input io.Reader, output, diagnostics io.Writer, boundary func(string)) int {
 	started := false
 	root := newRootCommand(&started, boundary)
 	root.SetIn(input)
@@ -64,31 +56,24 @@ func run(
 	if err == nil {
 		return 0
 	}
-
 	if command == nil {
 		command = root
 	}
-
 	var result commandExitError
 	if errors.As(err, &result) {
 		if result.cause != nil {
 			fmt.Fprintf(diagnostics, "%s: %v\n", command.CommandPath(), result.cause)
 		}
-
 		if command != nil && (!started || !command.SilenceUsage) {
 			fmt.Fprint(diagnostics, command.UsageString())
 		}
-
 		return result.code
 	}
-
 	fmt.Fprintf(diagnostics, "%s: %v\n", command.CommandPath(), err)
 	if started && command.SilenceUsage {
 		return 1
 	}
-
 	fmt.Fprint(diagnostics, command.UsageString())
-
 	return usageExitCode(command)
 }
 
@@ -97,17 +82,14 @@ func normalizeLegacyFlags(root *cobra.Command, arguments []string) []string {
 	normalized := append([]string(nil), arguments...)
 	consumeValue := false
 	current := root
-
 	for index, argument := range normalized {
 		if consumeValue {
 			consumeValue = false
 			continue
 		}
-
 		if argument == "--" {
 			break
 		}
-
 		if !strings.HasPrefix(argument, "-") {
 			for _, child := range current.Commands() {
 				if child.Name() == argument || slices.Contains(child.Aliases, argument) {
@@ -115,23 +97,18 @@ func normalizeLegacyFlags(root *cobra.Command, arguments []string) []string {
 					break
 				}
 			}
-
 			continue
 		}
-
 		name, _, hasValue := strings.Cut(strings.TrimLeft(argument, "-"), "=")
 		option := findLegacyFlag(current, name)
 		if option == nil {
 			continue
 		}
-
 		if !strings.HasPrefix(argument, "--") {
 			normalized[index] = "-" + argument
 		}
-
 		consumeValue = !hasValue && option.NoOptDefVal == ""
 	}
-
 	return normalized
 }
 
@@ -139,17 +116,14 @@ func findLegacyFlag(command *cobra.Command, name string) *pflag.Flag {
 	if name == "help" {
 		command.InitDefaultHelpFlag()
 	}
-
 	if option := command.Flags().Lookup(name); option != nil {
 		return option
 	}
-
 	for current := command; current != nil; current = current.Parent() {
 		if option := current.PersistentFlags().Lookup(name); option != nil {
 			return option
 		}
 	}
-
 	return nil
 }
 
@@ -157,7 +131,6 @@ func usageExitCode(command *cobra.Command) int {
 	if isDeploymentOperation(command) {
 		return exitDeployGateFailed
 	}
-
 	for current := command; current != nil; current = current.Parent() {
 		switch commandName(current.Name()) {
 		case commandDeploy, commandDeployGate:
@@ -168,7 +141,6 @@ func usageExitCode(command *cobra.Command) int {
 			return 1
 		}
 	}
-
 	return 1
 }
 
@@ -177,71 +149,29 @@ func isDeploymentOperation(command *cobra.Command) bool {
 	if parent == nil {
 		return false
 	}
-
-	if commandName(parent.Name()) != commandDeploy &&
-		commandName(parent.Name()) != commandDeployGate {
+	if commandName(parent.Name()) != commandDeploy && commandName(parent.Name()) != commandDeployGate {
 		return false
 	}
-
 	switch operationMode(command.Name()) {
-	case operationArm,
-		operationWatch,
-		operationStatus,
-		operationLease,
-		operationRelease,
-		operationVerify,
-		operationRecover:
+	case operationArm, operationWatch, operationStatus, operationLease, operationRelease, operationVerify, operationRecover:
 		return true
 	}
-
 	return false
 }
 
 func newRootCommand(started *bool, boundary func(string)) *cobra.Command {
-	root := &cobra.Command{
-		Use:           "mwan",
-		Short:         "Manage the Multi-WAN gateway.",
-		Long:          "Manage gateway services, inspect network state, and verify deployments.",
-		SilenceErrors: true,
-		SilenceUsage:  true,
-		Args:          cobra.NoArgs,
-	}
+	root := &cobra.Command{Use: "mwan", Short: "Manage the Multi-WAN gateway.", Long: "Manage gateway services, inspect network state, and verify deployments.", SilenceErrors: true, SilenceUsage: true, Args: cobra.NoArgs}
 	root.Example = "  mwan ifmgr --help\n  mwan help deploy wait-deploy"
 	root.RunE = func(command *cobra.Command, _ []string) error { return command.Help() }
 	root.CompletionOptions.DisableDefaultCmd = true
-	root.AddCommand(
-		newAgentCommand(),
-		newWatchdogCommand(),
-		newIfmgrCommand(),
-		newHealthCommand(),
-		newNotifyCommand(),
-		newPDCommand(),
-		newDebugCommand(),
-		newTraceCommand(),
-		newDeployCommand("deploy"),
-		newDeployCommand("deploy-gate"),
-		newSelftestCommand(),
-		newVersionCommand(),
-		newInstallCommand(),
-		newObservationCommand(),
-		newGatewayStatusCommand(),
-		newConfigStateCommand(),
-		newReportCommand(),
-	)
+	root.AddCommand(newAgentCommand(), newWatchdogCommand(), newIfmgrCommand(), newHealthCommand(), newNotifyCommand(), newPDCommand(), newDebugCommand(), newTraceCommand(), newDeployCommand("deploy"), newDeployCommand("deploy-gate"), newSelftestCommand(), newVersionCommand(), newInstallCommand(), newObservationCommand(), newGatewayStatusCommand(), newConfigStateCommand(), newReportCommand())
 	installHelpRendering(root, started, boundary)
 	root.SilenceUsage = true
-
 	return root
 }
 
 func leafCommand(use, description, example string, arguments cobra.PositionalArgs) *cobra.Command {
-	return &cobra.Command{
-		Use:     use,
-		Short:   description,
-		Long:    description,
-		Example: example,
-		Args:    arguments,
-	}
+	return &cobra.Command{Use: use, Short: description, Long: description, Example: example, Args: arguments}
 }
 
 func requiredArguments(count int) cobra.PositionalArgs {
@@ -249,13 +179,11 @@ func requiredArguments(count int) cobra.PositionalArgs {
 		if err := cobra.ExactArgs(count)(command, arguments); err != nil {
 			return err
 		}
-
 		for index, argument := range arguments {
 			if argument == "" {
 				return fmt.Errorf("argument %d must not be empty", index+1)
 			}
 		}
-
 		return nil
 	}
 }
@@ -265,11 +193,7 @@ func configFlag(command *cobra.Command, path *string) {
 }
 
 func addConfigFlag(flags *pflag.FlagSet, path *string) {
-	flags.Var(
-		&firstConfigPath{path: path},
-		"config",
-		"Read TOML configuration from this path (default: MWAN_CONFIG or /etc/mwan/config.toml).",
-	)
+	flags.Var(&firstConfigPath{path: path}, "config", "Read TOML configuration from this path (default: MWAN_CONFIG or /etc/mwan/config.toml).")
 }
 
 type firstConfigPath struct {
@@ -284,7 +208,6 @@ func (value *firstConfigPath) Set(path string) error {
 		*value.path = path
 		value.set = true
 	}
-
 	return nil
 }
 
@@ -294,11 +217,9 @@ func withConfig(command *cobra.Command, path string, execute func(*config.Config
 		slog.Error("load configuration failed", "err", err)
 		return fmt.Errorf("load configuration: %w", err)
 	}
-
 	if err := execute(cfg); err != nil {
 		slog.Error("command failed", "command", command.CommandPath(), "err", err)
 		return err
 	}
-
 	return nil
 }

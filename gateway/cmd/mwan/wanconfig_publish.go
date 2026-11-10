@@ -39,7 +39,6 @@ func (s *wanconfigSurface) Close() {
 	if s.stop != nil {
 		s.stop()
 	}
-
 	if s.unobserve != nil {
 		s.unobserve()
 	}
@@ -57,14 +56,12 @@ func startWanconfigSurface(
 	if !cfg.Wanconfig.Publish {
 		return nil
 	}
-
 	log := logger.With("component", "wanconfig")
 	gateway, ok, err := gatewayFromModuleConfigs(cfg, watchdogSection, moduleConfigs)
 	if err != nil {
 		log.ErrorContext(ctx, "wanconfig: projection from module configs failed", "err", err)
 		return nil
 	}
-
 	if !ok {
 		healthConfig, configured := moduleConfigs["health"].(health.Config)
 		if !configured || healthConfig.Observations == nil {
@@ -72,7 +69,6 @@ func startWanconfigSurface(
 			return nil
 		}
 	}
-
 	surfaceCtx, stopSurface := context.WithCancel(ctx)
 	surface := &wanconfigSurface{store: store, log: log, stop: stopSurface}
 	var notifier *surfaceNotifier
@@ -80,25 +76,17 @@ func startWanconfigSurface(
 		notifier = newSurfaceNotifier(log, gateway)
 		surface.unobserve = store.Observe(notifier)
 	}
-
 	go func() {
 		if surface.unobserve != nil {
 			defer surface.unobserve()
 		}
-
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.ErrorContext(
-					surfaceCtx,
-					"wanconfig: initialization panicked; management surface disabled",
-					"err",
-					fmt.Sprint(recovered),
-				)
+				log.ErrorContext(surfaceCtx, "wanconfig: initialization panicked; management surface disabled", "err", fmt.Sprint(recovered))
 			}
 		}()
 		surface.initialize(surfaceCtx, cfg, gateway, rejections, notifier)
 	}()
-
 	return surface
 }
 
@@ -112,18 +100,11 @@ func (s *wanconfigSurface) initialize(
 	if ctx.Err() != nil {
 		return
 	}
-
 	pub, err := yangpub.New(s.log)
 	if err != nil {
-		s.log.ErrorContext(
-			ctx,
-			"wanconfig: datastore unavailable; management surface disabled",
-			"err",
-			err,
-		)
+		s.log.ErrorContext(ctx, "wanconfig: datastore unavailable; management surface disabled", "err", err)
 		return
 	}
-
 	defer func() {
 		if err := pub.Close(); err != nil {
 			s.log.Error("wanconfig: datastore close failed", "err", err)
@@ -132,83 +113,48 @@ func (s *wanconfigSurface) initialize(
 	if ctx.Err() != nil {
 		return
 	}
-
 	if notifier == nil {
 		if err := registerObservationProvider(ctx, pub, s.store); err != nil {
-			s.log.ErrorContext(
-				ctx,
-				"wanconfig: observation provider registration failed",
-				"err",
-				err,
-			)
+			s.log.ErrorContext(ctx, "wanconfig: observation provider registration failed", "err", err)
 			return
 		}
-
 		<-ctx.Done()
-
 		return
 	}
-
 	publishCtx, cancel := context.WithTimeout(ctx, wanconfigPublishTimeout)
 	_ = wanconfig.Publish(publishCtx, s.log, runningReplacer{pub: pub}, gateway)
 	cancel()
 	if ctx.Err() != nil {
 		return
 	}
-
 	ownCtx, ownCancel := context.WithTimeout(ctx, wanconfigPublishTimeout)
 	ownPublishedModules(ownCtx, s.log, pub)
 	ownCancel()
 	if ctx.Err() != nil {
 		return
 	}
-
 	senderCtx, stopSender := context.WithCancel(ctx)
 	senderDone := startNotifierSender(senderCtx, s.log, notifier, pub)
 	defer func() {
 		stopSender()
 		<-senderDone
 	}()
-	if err := registerLiveStateProviders(
-		ctx,
-		s.log,
-		pub,
-		s.store,
-		gateway,
-		rejections,
-	); err != nil {
-		s.log.ErrorContext(
-			ctx,
-			"wanconfig: provider registration failed; management surface disabled",
-			"err",
-			err,
-		)
+	if err := registerLiveStateProviders(ctx, s.log, pub, s.store, gateway, rejections); err != nil {
+		s.log.ErrorContext(ctx, "wanconfig: provider registration failed; management surface disabled", "err", err)
 		return
 	}
-
 	if ctx.Err() != nil {
 		return
 	}
-
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				s.log.ErrorContext(
-					ctx,
-					"wanconfig: agent poller panicked; routing-session state is no longer refreshed",
-					"err",
-					fmt.Sprint(recovered),
-				)
+				s.log.ErrorContext(ctx, "wanconfig: agent poller panicked; routing-session state is no longer refreshed", "err", fmt.Sprint(recovered))
 			}
 		}()
 		pollAgentBGP(ctx, s.log, cfg, s.store)
 	}()
-	s.log.InfoContext(
-		ctx,
-		"wanconfig: live-state providers registered",
-		"members",
-		len(gateway.Members),
-	)
+	s.log.InfoContext(ctx, "wanconfig: live-state providers registered", "members", len(gateway.Members))
 	<-ctx.Done()
 }
 
@@ -217,11 +163,7 @@ func (s *wanconfigSurface) initialize(
 // the out-of-band and tap module configs when this role runs them. A
 // section the configuration does not carry stays absent, so the tree
 // never invents values another host owns.
-func daemonSettings(
-	cfg *config.Config,
-	section watchdogconfig.WatchdogSection,
-	configs ifmgr.ModuleConfigSet,
-) wanconfig.DaemonSettings {
+func daemonSettings(cfg *config.Config, section watchdogconfig.WatchdogSection, configs ifmgr.ModuleConfigSet) wanconfig.DaemonSettings {
 	return wanconfig.DaemonSettings{
 		Watchdog: watchdogSettings(cfg, section),
 		OOB:      oobSettings(configs),
@@ -231,15 +173,11 @@ func daemonSettings(
 
 // watchdogSettings projects the watchdog section. The rendered section
 // always names the unit it drives, so the name doubles as presence.
-func watchdogSettings(
-	cfg *config.Config,
-	section watchdogconfig.WatchdogSection,
-) wanconfig.WatchdogSettings {
+func watchdogSettings(cfg *config.Config, section watchdogconfig.WatchdogSection) wanconfig.WatchdogSettings {
 	if cfg == nil || section.ServiceName == "" {
 		var none wanconfig.WatchdogSettings
 		return none
 	}
-
 	watchdog := wanconfig.WatchdogSettings{
 		Present:                      true,
 		DeployWindowMinutes:          clampUint16(section.DeployWindowMinutes),
@@ -259,22 +197,14 @@ func watchdogSettings(
 		if raw == "" {
 			continue
 		}
-
 		address, err := netip.ParseAddr(raw)
 		if err != nil {
-			slog.Warn(
-				"wanconfig: watchdog ping target unparsable; not published",
-				"value",
-				raw,
-				"err",
-				err,
-			)
+			slog.Warn("wanconfig: watchdog ping target unparsable; not published",
+				"value", raw, "err", err)
 			continue
 		}
-
 		watchdog.PingTargets = append(watchdog.PingTargets, address)
 	}
-
 	return watchdog
 }
 
@@ -290,25 +220,18 @@ func oobSettings(configs ifmgr.ModuleConfigSet) wanconfig.OOBSettings {
 		if v6.OOBAddr != "" {
 			address, err := netip.ParseAddr(v6.OOBAddr)
 			if err != nil {
-				slog.Warn(
-					"wanconfig: oob v6 address unparsable; not published",
-					"value",
-					v6.OOBAddr,
-					"err",
-					err,
-				)
+				slog.Warn("wanconfig: oob v6 address unparsable; not published",
+					"value", v6.OOBAddr, "err", err)
 			} else {
 				oob.V6Addr = address
 			}
 		}
 	}
-
 	if v4, ok := configs["oobv4"].(oobv4.Config); ok && v4.Iface != "" {
 		oob.V4Present = true
 		oob.V4Iface = v4.Iface
 		oob.V4TableID = clampUint32(v4.OOBTableID)
 	}
-
 	return oob
 }
 
@@ -320,7 +243,6 @@ func tapSettings(configs ifmgr.ModuleConfigSet) wanconfig.TapSettings {
 		tap.Unit = section.Unit
 		tap.DowngradePatterns = append([]string(nil), section.DowngradePatterns...)
 	}
-
 	return tap
 }
 
@@ -329,11 +251,9 @@ func clampUint16(value int) uint16 {
 	if value < 0 {
 		return 0
 	}
-
 	if value > int(^uint16(0)) {
 		return ^uint16(0)
 	}
-
 	return uint16(value)
 }
 
@@ -342,11 +262,9 @@ func clampUint8(value int) uint8 {
 	if value < 0 {
 		return 0
 	}
-
 	if value > int(^uint8(0)) {
 		return ^uint8(0)
 	}
-
 	return uint8(value)
 }
 
@@ -357,11 +275,9 @@ func clampUint32(value int) uint32 {
 	if value < 0 {
 		return 0
 	}
-
 	if uint64(value) > uint64(^uint32(0)) {
 		return ^uint32(0)
 	}
-
 	return uint32(value)
 }
 
@@ -373,29 +289,16 @@ type runningReplacer struct {
 }
 
 // ReplaceConfig implements wanconfig.Publisher over the binding.
-func (r runningReplacer) ReplaceConfig(
-	ctx context.Context,
-	ownedPaths []string,
-	items []wanconfig.Item,
-) error {
+func (r runningReplacer) ReplaceConfig(ctx context.Context, ownedPaths []string, items []wanconfig.Item) error {
 	published := make([]yangpub.Item, 0, len(items))
 	for _, item := range items {
 		published = append(published, yangpub.Item{Path: item.Path, Value: item.Value})
 	}
-
 	if err := r.pub.ReplaceItems(ctx, yangpub.DatastoreRunning, ownedPaths, published); err != nil {
-		slog.ErrorContext(
-			ctx,
-			"wanconfig: datastore replace failed",
-			"items",
-			len(published),
-			"err",
-			err,
-		)
-
+		slog.ErrorContext(ctx, "wanconfig: datastore replace failed",
+			"items", len(published), "err", err)
 		return fmt.Errorf("replace running config: %w", err)
 	}
-
 	return nil
 }
 
@@ -409,11 +312,7 @@ func (r runningReplacer) ReplaceConfig(
 // monolith configuration carries. It returns ok=false when the set carries no
 // wan.routes config, which is every role but wan; that is a quiet no-publish,
 // not an error.
-func gatewayFromModuleConfigs(
-	cfg *config.Config,
-	watchdogSection watchdogconfig.WatchdogSection,
-	configs ifmgr.ModuleConfigSet,
-) (wanconfig.Gateway, bool, error) {
+func gatewayFromModuleConfigs(cfg *config.Config, watchdogSection watchdogconfig.WatchdogSection, configs ifmgr.ModuleConfigSet) (wanconfig.Gateway, bool, error) {
 	var none wanconfig.Gateway
 	routesCfg, isRoutes := configs["wan.routes"].(wanroutes.Config)
 	if !isRoutes || len(routesCfg.WANs) == 0 {
@@ -431,7 +330,6 @@ func gatewayFromModuleConfigs(
 			probed[wan.Key()] = true
 		}
 	}
-
 	var pinnedConnectionID string
 	var guestType config.GuestType
 	var explicitConnectionIDs map[string]connectionid.ID
@@ -440,7 +338,6 @@ func gatewayFromModuleConfigs(
 		pinnedConnectionID = cfg.IfMgr.PinnedConnectionID
 		explicitConnectionIDs = cfg.IfMgr.ExplicitConnectionIDs
 	}
-
 	daemon := daemonSettings(cfg, watchdogSection, configs)
 
 	gateway := wanconfig.Gateway{
@@ -460,10 +357,8 @@ func gatewayFromModuleConfigs(
 		if err != nil {
 			return none, false, err
 		}
-
 		gateway.Members = append(gateway.Members, member)
 	}
-
 	return gateway, true, nil
 }
 
@@ -481,7 +376,6 @@ func memberFromWAN(
 	if err != nil {
 		return none, err
 	}
-
 	member := wanconfig.Member{
 		SelectionEnabled: wan.SelectionEnabled,
 		Name:             wan.Key(),
@@ -509,7 +403,6 @@ func memberFromWAN(
 		// keys its per-member policy by the same name.
 		member.ProbePolicy = wan.Key()
 	}
-
 	return member, nil
 }
 
@@ -533,41 +426,24 @@ func groupSettings(
 	}
 	var err error
 	if nptCfg, isNPT := configs["npt"].(npt.Config); isNPT {
-		if group.InternalPrefix, err = parseGroupPrefix(
-			"internal prefix",
-			nptCfg.InternalPrefix,
-		); err != nil {
+		if group.InternalPrefix, err = parseGroupPrefix("internal prefix", nptCfg.InternalPrefix); err != nil {
 			return none, err
 		}
-
 		// npt is the only module config that holds the gateway's own edge
 		// address.
-		if group.MwanbrEdgeV6, err = parseGroupAddr(
-			"mwanbr edge address",
-			nptCfg.MwanbrEdgeV6,
-		); err != nil {
+		if group.MwanbrEdgeV6, err = parseGroupAddr("mwanbr edge address", nptCfg.MwanbrEdgeV6); err != nil {
 			return none, err
 		}
 	}
-
-	if group.OpnsenseEdgeV6, err = parseGroupAddr(
-		"router edge address",
-		routesCfg.OpnsenseEdgeV6,
-	); err != nil {
+	if group.OpnsenseEdgeV6, err = parseGroupAddr("router edge address", routesCfg.OpnsenseEdgeV6); err != nil {
 		return none, err
 	}
-
-	if group.InternalNetV4, err = parseGroupPrefix(
-		"internal IPv4 network",
-		routesCfg.InternalNetV4,
-	); err != nil {
+	if group.InternalNetV4, err = parseGroupPrefix("internal IPv4 network", routesCfg.InternalNetV4); err != nil {
 		return none, err
 	}
-
 	if healthCfg, isHealth := configs["health"].(health.Config); isHealth {
 		group.ProbeTimeoutMillis = clampUint32(int(healthCfg.Timeout / time.Millisecond))
 	}
-
 	return group, nil
 }
 
@@ -578,13 +454,11 @@ func parseGroupPrefix(what string, value string) (netip.Prefix, error) {
 	if value == "" {
 		return netip.Prefix{}, nil
 	}
-
 	prefix, err := netip.ParsePrefix(value)
 	if err != nil {
 		slog.Warn("wanconfig: group prefix unparsable", "leaf", what, "value", value, "err", err)
 		return netip.Prefix{}, fmt.Errorf("wanconfig: %s %q: %w", what, value, err)
 	}
-
 	return prefix, nil
 }
 
@@ -593,13 +467,11 @@ func parseGroupAddr(what string, value string) (netip.Addr, error) {
 	if value == "" {
 		return netip.Addr{}, nil
 	}
-
 	address, err := netip.ParseAddr(value)
 	if err != nil {
 		slog.Warn("wanconfig: group address unparsable", "leaf", what, "value", value, "err", err)
 		return netip.Addr{}, fmt.Errorf("wanconfig: %s %q: %w", what, value, err)
 	}
-
 	return address, nil
 }
 
@@ -610,12 +482,10 @@ func reservedTablesFromConfig(cfg *config.Config) []uint32 {
 	if cfg == nil {
 		return nil
 	}
-
 	tables := make([]uint32, 0, len(cfg.IfMgr.ReservedTables))
 	for _, table := range cfg.IfMgr.ReservedTables {
 		tables = append(tables, clampUint32(table))
 	}
-
 	return tables
 }
 
@@ -626,7 +496,6 @@ func forcedDSCPFromConfig(cfg *config.Config, name string) uint8 {
 	if cfg == nil {
 		return 0
 	}
-
 	return clampUint8(cfg.IfMgr.WAN[name].ForcedDSCP)
 }
 
@@ -634,7 +503,6 @@ func translationV4FromConfig(cfg *config.Config, name string) *config.IPv4Transl
 	if cfg == nil {
 		return nil
 	}
-
 	return cfg.IfMgr.WAN[name].TranslationV4
 }
 
@@ -642,7 +510,6 @@ func translationV6FromConfig(cfg *config.Config, name string) *config.IPv6Transl
 	if cfg == nil {
 		return nil
 	}
-
 	return cfg.IfMgr.WAN[name].TranslationV6
 }
 
@@ -654,7 +521,6 @@ func linkFilesFromConfig(cfg *config.Config, name string) string {
 	if cfg == nil {
 		return ""
 	}
-
 	return cfg.IfMgr.WAN[name].LinkFiles
 }
 
@@ -662,7 +528,6 @@ func connectionsFromConfig(cfg *config.Config) []interfaceintent.Connection {
 	if cfg == nil {
 		return nil
 	}
-
 	return cfg.IfMgr.Connections
 }
 
@@ -670,23 +535,19 @@ func probeSettings(cfg *config.Config, name string) (*wanconfig.ProbeSettings, e
 	if cfg == nil || cfg.IfMgr.Modules.Health == nil {
 		return nil, nil
 	}
-
 	section, present := cfg.IfMgr.Modules.Health.WAN[name]
 	if !present {
 		return nil, nil
 	}
-
 	fieldPrefix := "network.json wan " + name + " health"
 	targetsV4, err := parseAddrList(section.TargetsV4, fieldPrefix+"/targets-v4")
 	if err != nil {
 		return nil, err
 	}
-
 	targetsV6, err := parseAddrList(section.TargetsV6, fieldPrefix+"/targets-v6")
 	if err != nil {
 		return nil, err
 	}
-
 	probe := &wanconfig.ProbeSettings{
 		Enabled:              section.Enabled,
 		PingCount:            uint8Setting(section.PingCount),
@@ -698,7 +559,6 @@ func probeSettings(cfg *config.Config, name string) (*wanconfig.ProbeSettings, e
 		TargetsV6:            targetsV6,
 		HTTPURLs:             append([]string(nil), section.HTTPURLs...),
 	}
-
 	return probe, nil
 }
 
@@ -708,7 +568,6 @@ func uint8Setting(setting *int) *uint8 {
 	if setting == nil {
 		return nil
 	}
-
 	return new(clampUint8(*setting))
 }
 
@@ -717,7 +576,6 @@ func uint32Setting(setting *int) *uint32 {
 	if setting == nil {
 		return nil
 	}
-
 	return new(clampUint32(*setting))
 }
 
@@ -729,7 +587,6 @@ func hashModeFromConfig(cfg *config.Config) string {
 	if cfg == nil {
 		return ""
 	}
-
 	return cfg.IfMgr.HashMode
 }
 
@@ -738,6 +595,5 @@ func firewallFromConfig(cfg *config.Config) firewall.Config {
 		var empty firewall.Config
 		return empty
 	}
-
 	return cfg.IfMgr.Firewall
 }

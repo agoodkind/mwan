@@ -38,34 +38,23 @@ func TestSessionRetryInstallsUnresolvedPathAndRemovesRejection(t *testing.T) {
 	cfg.Interface = link.Attrs().Name
 	cfg.Tables = []int{sessionRouteTable}
 	cfg.RouteMetric = sessionRouteMetric
-	cfg.Import = []bgp.ImportRule{
-		{Prefix: netip.MustParsePrefix("2001:db8::/32"), MinLength: 32, MaxLength: 48},
-	}
+	cfg.Import = []bgp.ImportRule{{Prefix: netip.MustParsePrefix("2001:db8::/32"), MinLength: 32, MaxLength: 48}}
 	session := startSession(t, cfg)
 	waitEstablished(t, session)
 
 	peer.announce(t, learned, nextHop)
-	eventually(
-		t,
-		"the session to reject the path without a route to the next hop",
-		func() bool {
-			state := session.State()
-			return len(state.Accepted) == 0 && len(state.Rejected) == 1 &&
-				strings.Contains(state.Rejected[0].Reason, "kernel route installation failed")
-		},
-	)
+	eventually(t, "the session to reject the path without a route to the next hop", func() bool {
+		state := session.State()
+		return len(state.Accepted) == 0 && len(state.Rejected) == 1 &&
+			strings.Contains(state.Rejected[0].Reason, "kernel route installation failed")
+	})
 	assertNoKernelRoute(t, learned, link)
 
 	addNextHopRoute(t, link, unix.RT_TABLE_MAIN, remote, neighbor)
 	session.RefreshRoutes(t.Context())
 	state := session.State()
 	if !slices.Equal(state.Accepted, []netip.Prefix{learned}) || len(state.Rejected) != 0 {
-		t.Fatalf(
-			"state after the retry = accepted %v rejected %v, want %s accepted and no rejection",
-			state.Accepted,
-			state.Rejected,
-			learned,
-		)
+		t.Fatalf("state after the retry = accepted %v rejected %v, want %s accepted and no rejection", state.Accepted, state.Rejected, learned)
 	}
 	assertKernelRoute(t, learned, link, neighbor, sessionRouteMetric)
 }

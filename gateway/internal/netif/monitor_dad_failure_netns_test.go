@@ -40,11 +40,8 @@ func runMonitorDADFailureChild(t *testing.T) {
 	const routerName = "dad-router"
 	const cidr = "2001:db8:523::d/128"
 	if err := netlink.LinkAdd(&netlink.Veth{
-		LinkAttrs: netlink.LinkAttrs{
-			Name:         clientName,
-			HardwareAddr: net.HardwareAddr{0x02, 0, 0x5e, 0, 0x05, 0x24},
-		},
-		PeerName: routerName,
+		LinkAttrs: netlink.LinkAttrs{Name: clientName, HardwareAddr: net.HardwareAddr{0x02, 0, 0x5e, 0, 0x05, 0x24}},
+		PeerName:  routerName,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -56,11 +53,7 @@ func runMonitorDADFailureChild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(
-		"/proc/sys/net/ipv6/conf/"+clientName+"/dad_transmits",
-		[]byte("1"),
-		0o644,
-	); err != nil {
+	if err := os.WriteFile("/proc/sys/net/ipv6/conf/"+clientName+"/dad_transmits", []byte("1"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := netlink.LinkSetUp(router); err != nil {
@@ -84,13 +77,9 @@ func runMonitorDADFailureChild(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	monitor := NewMonitor(ctx, logger, MonitorConfig{Iface: clientName})
-	waitObservedSnapshot(
-		t,
-		monitor.Events,
-		func(snapshot *Snapshot) bool {
-			return snapshot.IfIndex == client.Attrs().Index
-		},
-	)
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == client.Attrs().Index
+	})
 	clientAddress, err := netlink.ParseAddr(cidr)
 	if err != nil {
 		t.Fatal(err)
@@ -128,11 +117,7 @@ func runMonitorDADFailureChild(t *testing.T) {
 				kernelFailed = true
 			}
 		case <-deadline.C:
-			t.Fatalf(
-				"DAD failure not observed: kernel=%t monitor_event=%t",
-				kernelFailed,
-				eventFailed,
-			)
+			t.Fatalf("DAD failure not observed: kernel=%t monitor_event=%t", kernelFailed, eventFailed)
 		}
 	}
 	snapshot := raFreshSnapshot(t, logger, clientName)

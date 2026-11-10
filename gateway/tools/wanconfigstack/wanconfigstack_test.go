@@ -23,15 +23,7 @@ import (
 func testBuilder(t *testing.T) *builder {
 	t.Helper()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-
-	return &builder{
-		log:      log,
-		pins:     map[string]string{},
-		outDir:   t.TempDir(),
-		arch:     "amd64",
-		jobs:     1,
-		versions: map[string]string{},
-	}
+	return &builder{log: log, pins: map[string]string{}, outDir: t.TempDir(), arch: "amd64", jobs: 1, versions: map[string]string{}}
 }
 
 // TestBuildDependsReadsTheUpstreamSysrepoTemplate pins that the upstream
@@ -39,23 +31,11 @@ func testBuilder(t *testing.T) *builder {
 // without version constraints, in template order.
 func TestBuildDependsReadsTheUpstreamSysrepoTemplate(t *testing.T) {
 	t.Parallel()
-	names, err := testBuilder(t).buildDepends(
-		context.Background(),
-		filepath.Join("testdata", "sysrepo-control"),
-	)
+	names, err := testBuilder(t).buildDepends(context.Background(), filepath.Join("testdata", "sysrepo-control"))
 	if err != nil {
 		t.Fatalf("buildDepends: %v", err)
 	}
-
-	want := []string{
-		"cmake",
-		"debhelper",
-		"libyang-dev",
-		"libsystemd-dev",
-		"pkg-config",
-		"libcmocka-dev",
-		"valgrind",
-	}
+	want := []string{"cmake", "debhelper", "libyang-dev", "libsystemd-dev", "pkg-config", "libcmocka-dev", "valgrind"}
 	if !slices.Equal(names, want) {
 		t.Fatalf("buildDepends = %v, want %v", names, want)
 	}
@@ -67,26 +47,19 @@ func TestBuildDependsReadsTheUpstreamSysrepoTemplate(t *testing.T) {
 func TestPortInstallFilesGlobsTheAmd64MultiarchDirectory(t *testing.T) {
 	t.Parallel()
 	templateDir := t.TempDir()
-
 	upstream := map[string]string{
 		"libsysrepo7.install":    "usr/lib/*/*.so.*\nusr/share/yang/modules/sysrepo\nusr/lib/x86_64-linux-gnu/sysrepo/plugins\netc/sysrepo\n",
 		"sysrepo-tools.install":  "usr/bin/sysrepoctl\nusr/lib/x86_64-linux-gnu/sysrepo-plugind/plugins\nusr/lib/systemd/system/sysrepo-plugind.service\n",
 		"libsysrepo-dev.install": "usr/lib/*/*.so\nusr/lib/*/pkgconfig/sysrepo.pc\nusr/include/*.h\n",
 	}
 	for name, content := range upstream {
-		if err := os.WriteFile(
-			filepath.Join(templateDir, name),
-			[]byte(content),
-			0o600,
-		); err != nil {
+		if err := os.WriteFile(filepath.Join(templateDir, name), []byte(content), 0o600); err != nil {
 			t.Fatalf("write %s: %v", name, err)
 		}
 	}
-
 	if err := testBuilder(t).portInstallFiles(context.Background(), templateDir); err != nil {
 		t.Fatalf("portInstallFiles: %v", err)
 	}
-
 	want := map[string]string{
 		"libsysrepo7.install":    "usr/lib/*/*.so.*\nusr/share/yang/modules/sysrepo\nusr/lib/*/sysrepo/plugins\netc/sysrepo\n",
 		"sysrepo-tools.install":  "usr/bin/sysrepoctl\nusr/lib/*/sysrepo-plugind/plugins\nusr/lib/systemd/system/sysrepo-plugind.service\n",
@@ -97,7 +70,6 @@ func TestPortInstallFilesGlobsTheAmd64MultiarchDirectory(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)
 		}
-
 		if string(got) != wantContent {
 			t.Fatalf("%s = %q, want %q", name, got, wantContent)
 		}
@@ -108,13 +80,10 @@ func TestPortInstallFilesGlobsTheAmd64MultiarchDirectory(t *testing.T) {
 // component pinned to a commit.
 func TestProjectVersionReadsNghttp2Asio(t *testing.T) {
 	t.Parallel()
-	version, ok := projectVersion(
-		"cmake_minimum_required(VERSION 3.0)\nproject(nghttp2-asio VERSION 0.0.90)\n",
-	)
+	version, ok := projectVersion("cmake_minimum_required(VERSION 3.0)\nproject(nghttp2-asio VERSION 0.0.90)\n")
 	if !ok || version != "0.0.90" {
 		t.Fatalf("projectVersion = %q, %v; want 0.0.90, true", version, ok)
 	}
-
 	if _, ok := projectVersion("project(rousette LANGUAGES CXX)\n"); ok {
 		t.Fatal("projectVersion accepted a project() line without VERSION")
 	}
@@ -130,7 +99,6 @@ func TestOwnerOfFollowsMergedUsrAliases(t *testing.T) {
 	if !ok || pkg != "libyang3" {
 		t.Fatalf("ownerOf = %q, %v; want libyang3, true", pkg, ok)
 	}
-
 	if _, ok := ownerOf("/lib/x86_64-linux-gnu/libnone.so.1", owners); ok {
 		t.Fatal("ownerOf accepted a path no package owns")
 	}
@@ -147,53 +115,38 @@ func TestStageContentsKeepsSymlinksAndMarksLoaderConf(t *testing.T) {
 	if err := os.MkdirAll(libDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-
-	if err := os.WriteFile(
-		filepath.Join(libDir, "libyang-cpp.so.4"),
-		[]byte("elf"),
-		0o600,
-	); err != nil {
+	if err := os.WriteFile(filepath.Join(libDir, "libyang-cpp.so.4"), []byte("elf"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-
 	if err := os.Symlink("libyang-cpp.so.4", filepath.Join(libDir, "libyang-cpp.so")); err != nil {
 		t.Fatal(err)
 	}
-
 	if err := testBuilder(t).writeLoaderConf(context.Background(), stage); err != nil {
 		t.Fatalf("writeLoaderConf: %v", err)
 	}
-
 	contents, err := testBuilder(t).stageContents(context.Background(), stage)
 	if err != nil {
 		t.Fatalf("stageContents: %v", err)
 	}
-
 	byDestination := map[string]*files.Content{}
-
 	for _, content := range contents {
 		byDestination[content.Destination] = content
 	}
-
 	link := byDestination[stackPrefix+"/lib/libyang-cpp.so"]
 	if link == nil || link.Type != files.TypeSymlink || link.Source != "libyang-cpp.so.4" {
 		t.Fatalf("symlink content = %+v", link)
 	}
-
 	if dir := byDestination[stackPrefix+"/lib"]; dir == nil || dir.Type != files.TypeDir {
 		t.Fatalf("dir content = %+v", dir)
 	}
-
 	conf := byDestination[loaderConfPath]
 	if conf == nil || conf.Type != files.TypeConfig {
 		t.Fatalf("loader conf content = %+v", conf)
 	}
-
 	text, err := os.ReadFile(conf.Source)
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	if strings.TrimSpace(string(text)) != stackPrefix+"/lib" {
 		t.Fatalf("loader conf = %q, want %s/lib", text, stackPrefix)
 	}
@@ -209,60 +162,44 @@ func TestWriteBundleRoundTrips(t *testing.T) {
 	if err := os.WriteFile(debPath, []byte("deb bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-
 	b := testBuilder(t)
 	sum, err := b.fileSHA256(context.Background(), debPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	members := []bundleMember{{name: "libyang3", version: "3.13.6-1", path: debPath, sha256: sum}}
 	var archive bytes.Buffer
-	if err := b.writeBundle(
-		context.Background(),
-		&archive,
-		manifest("amd64", members),
-		members,
-	); err != nil {
+	if err := b.writeBundle(context.Background(), &archive, manifest("amd64", members), members); err != nil {
 		t.Fatalf("writeBundle: %v", err)
 	}
-
 	gz, err := gzip.NewReader(&archive)
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	reader := tar.NewReader(gz)
 	got := map[string]string{}
 	order := []string{}
-
 	for {
 		header, err := reader.Next()
 		if errors.Is(err, io.EOF) {
 			break
 		}
-
 		if err != nil {
 			t.Fatal(err)
 		}
-
 		content, err := io.ReadAll(reader)
 		if err != nil {
 			t.Fatal(err)
 		}
-
 		got[header.Name] = string(content)
 		order = append(order, header.Name)
 	}
-
 	if !slices.Equal(order, []string{manifestName, "debs/libyang3_3.13.6-1_amd64.deb"}) {
 		t.Fatalf("members = %v", order)
 	}
-
 	if got["debs/libyang3_3.13.6-1_amd64.deb"] != "deb bytes" {
 		t.Fatalf("package member = %q", got["debs/libyang3_3.13.6-1_amd64.deb"])
 	}
-
 	wantLine := "libyang3 3.13.6-1 amd64 " + sum + " debs/libyang3_3.13.6-1_amd64.deb"
 	if !strings.Contains(got[manifestName], wantLine) {
 		t.Fatalf("manifest = %q, want line %q", got[manifestName], wantLine)
@@ -284,22 +221,18 @@ func writeTestDeb(t *testing.T, dir, name, version string) string {
 	if err := nfpm.PrepareForPackager(info, "deb"); err != nil {
 		t.Fatal(err)
 	}
-
 	path := filepath.Join(dir, name+"_"+version+"_amd64.deb")
 	out, err := os.Create(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	if err := deb.Default.Package(info, out); err != nil {
 		_ = out.Close()
 		t.Fatal(err)
 	}
-
 	if err := out.Close(); err != nil {
 		t.Fatal(err)
 	}
-
 	return path
 }
 
@@ -312,17 +245,10 @@ func TestCollectRuntimeMembersRefusesDuplicatesAndNamesMissing(t *testing.T) {
 	b := testBuilder(t)
 	first := writeTestDeb(t, t.TempDir(), "libyang3", "3.13.6")
 	duplicate := writeTestDeb(t, t.TempDir(), "libyang3", "3.13.7")
-	if _, err := b.collectRuntimeMembers(
-		context.Background(),
-		[]string{first, duplicate},
-	); !errors.Is(err, errDuplicatePackage) {
+	if _, err := b.collectRuntimeMembers(context.Background(), []string{first, duplicate}); !errors.Is(err, errDuplicatePackage) {
 		t.Fatalf("duplicate error = %v, want %v", err, errDuplicatePackage)
 	}
-
-	if _, err := b.collectRuntimeMembers(
-		context.Background(),
-		[]string{first},
-	); !errors.Is(err, errMissingPackage) {
+	if _, err := b.collectRuntimeMembers(context.Background(), []string{first}); !errors.Is(err, errMissingPackage) {
 		t.Fatalf("missing error = %v, want %v", err, errMissingPackage)
 	}
 }
@@ -336,24 +262,16 @@ func TestElfNeededSkipsFilesTooShortForAHeader(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(stage, "empty"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-
 	if err := os.WriteFile(filepath.Join(stage, "version"), []byte("3.7\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-
-	if err := os.WriteFile(
-		filepath.Join(stage, "libyang.pc"),
-		[]byte("Name: libyang\nVersion: 3.13.6\n"),
-		0o600,
-	); err != nil {
+	if err := os.WriteFile(filepath.Join(stage, "libyang.pc"), []byte("Name: libyang\nVersion: 3.13.6\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-
 	needed, err := testBuilder(t).elfNeeded(context.Background(), stage)
 	if err != nil {
 		t.Fatalf("elfNeeded: %v", err)
 	}
-
 	if len(needed) != 0 {
 		t.Fatalf("elfNeeded = %v, want none", needed)
 	}
@@ -364,26 +282,21 @@ func TestElfNeededSkipsFilesTooShortForAHeader(t *testing.T) {
 // bundle, stops the unpack before anything is written.
 func TestUnpackBundleRejectsForeignMembers(t *testing.T) {
 	t.Parallel()
-
 	for _, member := range []string{"../../etc/passwd.deb", "debs/../escape.deb", "notes.txt"} {
-		t.Run(
-			member,
-			func(t *testing.T) {
-				t.Parallel()
-				dir := t.TempDir()
-				bundlePath := filepath.Join(dir, "bundle.tar.gz")
-				writeTestBundle(t, bundlePath, member)
-				root := filepath.Join(dir, "unpack")
-				err := testBuilder(t).unpackBundle(context.Background(), bundlePath, root)
-				if !errors.Is(err, errBundleMember) {
-					t.Fatalf("unpackBundle error = %v, want %v", err, errBundleMember)
-				}
-
-				if _, statErr := os.Stat(root); !errors.Is(statErr, fs.ErrNotExist) {
-					t.Fatalf("unpack root exists after a rejected member: stat = %v", statErr)
-				}
-			},
-		)
+		t.Run(member, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			bundlePath := filepath.Join(dir, "bundle.tar.gz")
+			writeTestBundle(t, bundlePath, member)
+			root := filepath.Join(dir, "unpack")
+			err := testBuilder(t).unpackBundle(context.Background(), bundlePath, root)
+			if !errors.Is(err, errBundleMember) {
+				t.Fatalf("unpackBundle error = %v, want %v", err, errBundleMember)
+			}
+			if _, statErr := os.Stat(root); !errors.Is(statErr, fs.ErrNotExist) {
+				t.Fatalf("unpack root exists after a rejected member: stat = %v", statErr)
+			}
+		})
 	}
 }
 
@@ -394,31 +307,21 @@ func writeTestBundle(t *testing.T, path string, member string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	gz := gzip.NewWriter(file)
 	tw := tar.NewWriter(gz)
 	b := testBuilder(t)
-	if err := b.writeMember(
-		context.Background(),
-		tw,
-		manifestName,
-		[]byte("# manifest\n"),
-	); err != nil {
+	if err := b.writeMember(context.Background(), tw, manifestName, []byte("# manifest\n")); err != nil {
 		t.Fatal(err)
 	}
-
 	if err := b.writeMember(context.Background(), tw, member, []byte("payload")); err != nil {
 		t.Fatal(err)
 	}
-
 	if err := tw.Close(); err != nil {
 		t.Fatal(err)
 	}
-
 	if err := gz.Close(); err != nil {
 		t.Fatal(err)
 	}
-
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -432,37 +335,28 @@ func TestParseFlagsRequiresEveryPin(t *testing.T) {
 	if _, err := parseFlags(log, []string{"-out", "/tmp/x"}); err == nil {
 		t.Fatal("parseFlags accepted missing pins")
 	}
-
 	args := []string{"-out", "/tmp/x"}
-
 	for _, c := range components {
 		args = append(args, "-"+c.pinVar, "v1", "-"+c.commitVar, strings.Repeat("a", 40))
 	}
-
 	opts, err := parseFlags(log, args)
 	if err != nil {
 		t.Fatalf("parseFlags: %v", err)
 	}
-
 	if opts.outDir != "/tmp/x" || len(opts.pins) != 2*len(components) {
 		t.Fatalf("parseFlags = %+v", opts)
 	}
-
 	short := []string{"-out", "/tmp/x"}
-
 	for _, c := range components {
 		short = append(short, "-"+c.pinVar, "v1", "-"+c.commitVar, "e877868abe")
 	}
-
 	if _, err := parseFlags(log, short); err == nil {
 		t.Fatal("parseFlags accepted a truncated commit pin")
 	}
-
 	verify, err := parseFlags(log, []string{"-verify", "/out/wanconfig-stack_linux_amd64.tar.gz"})
 	if err != nil {
 		t.Fatalf("parseFlags verify: %v", err)
 	}
-
 	if verify.verifyBundle != "/out/wanconfig-stack_linux_amd64.tar.gz" {
 		t.Fatalf("parseFlags verify = %+v", verify)
 	}

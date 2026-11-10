@@ -24,11 +24,9 @@ func (a AddrSpec) family() string {
 	if a.Family != "" {
 		return a.Family
 	}
-
 	if strings.Contains(a.CIDR, ":") {
 		return "inet6"
 	}
-
 	return "inet"
 }
 
@@ -74,10 +72,8 @@ const (
 // is retained for interface-level back-compat with callers that still
 // pass it in step 3; it is not consulted for this operation.
 func ReconcileAddrs(
-	ctx context.Context,
-	log *slog.Logger,
-	iface string,
-	desired []AddrSpec,
+	ctx context.Context, log *slog.Logger,
+	iface string, desired []AddrSpec,
 ) error {
 	log = log.With("component", "addrs", "iface", iface, "op", "reconcile")
 	log.DebugContext(ctx, "addrs: reconcile entry", "desired_count", len(desired))
@@ -93,11 +89,10 @@ func ReconcileAddrs(
 		log.WarnContext(ctx, "addrs: listAddrsNetlink failed", "err", err)
 		return fmt.Errorf("list addrs: %w", err)
 	}
-
-	log.DebugContext(ctx, "addrs: current snapshot", "count", len(current), "addrs", current)
+	log.DebugContext(ctx, "addrs: current snapshot",
+		"count", len(current), "addrs", current)
 
 	have := map[string]bool{}
-
 	for _, c := range current {
 		have[normalizeCIDR(c.CIDR)] = true
 	}
@@ -108,16 +103,13 @@ func ReconcileAddrs(
 			log.DebugContext(ctx, "addrs: already present", "addr", w.CIDR)
 			continue
 		}
-
 		log.DebugContext(ctx, "addrs: adding", "addr", w.CIDR, "family", w.family())
 		if err := addAddrNetlink(ctx, log, link, w); err != nil {
 			log.WarnContext(ctx, "addrs: addAddrNetlink failed", "addr", w.CIDR, "err", err)
 			return fmt.Errorf("add addr %s: %w", w.CIDR, err)
 		}
 	}
-
 	log.DebugContext(ctx, "addrs: reconcile complete", "applied", len(desired))
-
 	return nil
 }
 
@@ -131,7 +123,6 @@ func ListAddrs(ctx context.Context, log *slog.Logger, iface string) ([]CurrentAd
 		log.WarnContext(ctx, "addrs: linkByName failed", "err", err)
 		return nil, fmt.Errorf("link %s: %w", iface, err)
 	}
-
 	return listAddrsNetlink(log, link)
 }
 
@@ -143,46 +134,30 @@ func listAddrsNetlink(log *slog.Logger, link netlink.Link) ([]CurrentAddr, error
 	dur := realClock{}.Now().Sub(startTime)
 	log.Debug(
 		"addrs: AddrList",
-		"link",
-		link.Attrs().Name,
-		"count",
-		len(addrs),
-		"duration_ms",
-		dur.Milliseconds(),
-		"err",
-		err,
+		"link", link.Attrs().Name,
+		"count", len(addrs),
+		"duration_ms", dur.Milliseconds(),
+		"err", err,
 	)
 	if err != nil {
 		log.Warn("addrs: AddrList failed", "link", link.Attrs().Name, "err", err)
 		return nil, fmt.Errorf("AddrList(%s): %w", link.Attrs().Name, err)
 	}
-
 	out := make([]CurrentAddr, 0, len(addrs))
 	for _, a := range addrs {
 		if a.IPNet == nil {
 			continue
 		}
-
 		fam := "inet"
 		if a.IP.To4() == nil {
 			fam = "inet6"
 		}
-
-		out = append(
-			out,
-			CurrentAddr{
-				CIDR:              a.IPNet.String(),
-				Family:            fam,
-				Flags:             a.Flags,
-				Scope:             a.Scope,
-				PreferredLifetime: a.PreferedLft,
-				ValidLifetime:     a.ValidLft,
-				ObservedAt:        startTime,
-				Origin:            "unknown",
-			},
-		)
+		out = append(out, CurrentAddr{
+			CIDR: a.IPNet.String(), Family: fam, Flags: a.Flags, Scope: a.Scope,
+			PreferredLifetime: a.PreferedLft, ValidLifetime: a.ValidLft,
+			ObservedAt: startTime, Origin: "unknown",
+		})
 	}
-
 	return out, nil
 }
 
@@ -196,47 +171,28 @@ func normalizeCIDR(cidr string) string {
 // if the address already exists at that prefix; a no-op AddrReplace returns
 // nil from the kernel. Logged at DEBUG with parsed Addr struct.
 func addAddrNetlink(
-	ctx context.Context,
-	log *slog.Logger,
-	link netlink.Link,
-	a AddrSpec,
+	ctx context.Context, log *slog.Logger, link netlink.Link, a AddrSpec,
 ) error {
 	addr, err := netlink.ParseAddr(a.CIDR)
 	if err != nil {
 		log.WarnContext(ctx, "addrs: ParseAddr failed", "cidr", a.CIDR, "err", err)
 		return fmt.Errorf("parse %q: %w", a.CIDR, err)
 	}
-
 	start := realClock{}.Now()
 	err = netlink.AddrReplace(link, addr)
 	dur := realClock{}.Now().Sub(start)
 	log.DebugContext(
-		ctx,
-		"addrs: AddrReplace",
-		"link",
-		link.Attrs().Name,
-		"cidr",
-		addr.IPNet.String(),
-		"duration_ms",
-		dur.Milliseconds(),
-		"err",
-		err,
+		ctx, "addrs: AddrReplace",
+		"link", link.Attrs().Name,
+		"cidr", addr.IPNet.String(),
+		"duration_ms", dur.Milliseconds(),
+		"err", err,
 	)
 	if err != nil {
-		log.WarnContext(
-			ctx,
-			"addrs: AddrReplace failed",
-			"link",
-			link.Attrs().Name,
-			"cidr",
-			addr.IPNet.String(),
-			"err",
-			err,
-		)
-
+		log.WarnContext(ctx, "addrs: AddrReplace failed",
+			"link", link.Attrs().Name, "cidr", addr.IPNet.String(), "err", err)
 		return fmt.Errorf("AddrReplace(%s,%s): %w", link.Attrs().Name, addr.IPNet.String(), err)
 	}
-
 	return nil
 }
 
@@ -281,20 +237,11 @@ type RouteNextHop struct {
 // If no default exists, it's added. Other entries in the table are not
 // touched. Pass want.Via == "" to clear the default route from the table.
 func ReconcileTableDefault(
-	ctx context.Context,
-	log *slog.Logger,
+	ctx context.Context, log *slog.Logger,
 	want RouteSpec,
 ) error {
-	log = log.With(
-		"component",
-		"route",
-		"family",
-		want.Family,
-		"table_id",
-		want.TableID,
-		"op",
-		"reconcile",
-	)
+	log = log.With("component", "route",
+		"family", want.Family, "table_id", want.TableID, "op", "reconcile")
 	log.DebugContext(ctx, "route: reconcile entry", "want", want)
 
 	cur, err := getTableDefaultNetlink(log, want.Family, want.TableID)
@@ -302,8 +249,8 @@ func ReconcileTableDefault(
 		log.WarnContext(ctx, "route: getTableDefaultNetlink failed", "err", err)
 		return fmt.Errorf("read table default: %w", err)
 	}
-
-	log.DebugContext(ctx, "route: current default in table", "current", cur, "want", want)
+	log.DebugContext(ctx, "route: current default in table",
+		"current", cur, "want", want)
 
 	if want.Via == "" {
 		// Caller wants no default. Delete if present.
@@ -311,20 +258,12 @@ func ReconcileTableDefault(
 			log.DebugContext(ctx, "route: no default present and none wanted")
 			return nil
 		}
-
-		log.DebugContext(
-			ctx,
-			"route: removing default from table",
-			"old_via",
-			cur.Via,
-			"old_dev",
-			cur.Dev,
-		)
+		log.DebugContext(ctx, "route: removing default from table",
+			"old_via", cur.Via, "old_dev", cur.Dev)
 		err = delTableDefaultNetlink(ctx, log, want.Family, want.TableID)
 		if err != nil {
 			log.WarnContext(ctx, "route: delTableDefaultNetlink failed", "err", err)
 		}
-
 		return err
 	}
 
@@ -334,67 +273,41 @@ func ReconcileTableDefault(
 	}
 
 	log.DebugContext(
-		ctx,
-		"route: replacing default in table",
-		"new_via",
-		want.Via,
-		"new_dev",
-		want.Dev,
-		"old",
-		cur,
+		ctx, "route: replacing default in table",
+		"new_via", want.Via, "new_dev", want.Dev,
+		"old", cur,
 	)
 	err = replaceTableDefaultNetlink(ctx, log, want)
 	if err != nil {
 		log.WarnContext(ctx, "route: replaceTableDefaultNetlink failed", "err", err)
 	}
-
 	return err
 }
 
 // ReconcileTableRoute ensures the table contains the desired non-default
 // prefix route. Other entries in the table are not touched.
 func ReconcileTableRoute(
-	ctx context.Context,
-	log *slog.Logger,
+	ctx context.Context, log *slog.Logger,
 	want RouteSpec,
 ) error {
-	log = log.With(
-		"component",
-		"route",
-		"family",
-		want.Family,
-		"table_id",
-		want.TableID,
-		"op",
-		"reconcile-prefix",
-	)
+	log = log.With("component", "route",
+		"family", want.Family, "table_id", want.TableID, "op", "reconcile-prefix")
 	log.DebugContext(ctx, "route: reconcile prefix entry", "want", want)
-
 	return replaceTableRouteNetlink(ctx, log, want)
 }
 
 // DeleteTableRoute removes the desired non-default prefix route from its table.
 func DeleteTableRoute(
-	ctx context.Context,
-	log *slog.Logger,
+	ctx context.Context, log *slog.Logger,
 	want RouteSpec,
 ) error {
-	log = log.With(
-		"component",
-		"route",
-		"family",
-		want.Family,
-		"table_id",
-		want.TableID,
-		"op",
-		"delete-prefix",
-	)
+	log = log.With("component", "route",
+		"family", want.Family, "table_id", want.TableID, "op", "delete-prefix")
 	log.DebugContext(ctx, "route: delete prefix entry", "want", want)
 	err := delTableRouteNetlink(ctx, log, want)
 	if err != nil {
 		log.WarnContext(ctx, "route: delTableRouteNetlink failed", "err", err)
 	}
-
 	return err
 }
 
@@ -406,20 +319,15 @@ func linkByName(log *slog.Logger, iface string) (netlink.Link, error) {
 	dur := realClock{}.Now().Sub(start)
 	log.Debug(
 		"link: LinkByName",
-		"iface",
-		iface,
-		"index",
-		linkIndex(link),
-		"duration_ms",
-		dur.Milliseconds(),
-		"err",
-		err,
+		"iface", iface,
+		"index", linkIndex(link),
+		"duration_ms", dur.Milliseconds(),
+		"err", err,
 	)
 	if err != nil {
 		log.Warn("link: LinkByName failed", "iface", iface, "err", err)
 		return nil, fmt.Errorf("link %q: %w", iface, err)
 	}
-
 	return link, nil
 }
 
@@ -435,7 +343,6 @@ func linkIndex(link netlink.Link) int {
 	if link == nil {
 		return 0
 	}
-
 	return link.Attrs().Index
 }
 
@@ -445,6 +352,5 @@ func familyToNetlink(family string) int {
 	if family == "inet" {
 		return unix.AF_INET
 	}
-
 	return unix.AF_INET6
 }

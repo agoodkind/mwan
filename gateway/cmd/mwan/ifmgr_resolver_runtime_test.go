@@ -71,25 +71,9 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 		}
 	})
 	setRuntimeLoopback(t)
-	management := newRuntimePeer(
-		t,
-		gateway,
-		"enmgmt0",
-		"resolver-mgmt",
-		[]string{"203.0.113.1/24"},
-		[]string{"203.0.113.2/24"},
-		"",
-	)
+	management := newRuntimePeer(t, gateway, "enmgmt0", "resolver-mgmt", []string{"203.0.113.1/24"}, []string{"203.0.113.2/24"}, "")
 	defer management.namespace.Close()
-	lan := newRuntimePeer(
-		t,
-		gateway,
-		"enmwanbr0",
-		"resolver-lan",
-		[]string{"192.0.2.1/29"},
-		[]string{"192.0.2.2/29"},
-		"",
-	)
+	lan := newRuntimePeer(t, gateway, "enmwanbr0", "resolver-lan", []string{"192.0.2.1/29"}, []string{"192.0.2.2/29"}, "")
 	defer lan.namespace.Close()
 	peer := newRuntimePeer(t, gateway, "ownphys0", "resolver-dns", nil, nil, ownedRuntimeParentMAC)
 	defer peer.namespace.Close()
@@ -98,17 +82,10 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Vlan{
-		LinkAttrs: netlink.LinkAttrs{Name: "resolver397", ParentIndex: parent.Attrs().Index},
-		VlanId:    397,
-	}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "resolver397", ParentIndex: parent.Attrs().Index}, VlanId: 397}); err != nil {
 		t.Fatal(err)
 	}
-	configureRuntimeLink(
-		t,
-		"resolver397",
-		[]string{"10.39.7.2/24", "10.39.7.53/24", "10.39.7.54/24", "fd39:7::2/64"},
-	)
+	configureRuntimeLink(t, "resolver397", []string{"10.39.7.2/24", "10.39.7.53/24", "10.39.7.54/24", "fd39:7::2/64"})
 	queries := startResolverAuthority(t)
 	setRuntimeNamespace(t, gateway)
 	unrelated := &netlink.Dummy{LinkAttrs: netlink.NewLinkAttrs()}
@@ -126,13 +103,7 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	otherDNS, otherDomains := resolverRuntimeValues(t, "resolver-other")
 	binary := protocolTestBinary(t)
 	configPath := filepath.Join(root, "config.toml")
-	config := fmt.Sprintf(
-		"[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"200ms\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[ifmgr.modules.resolver]\nstate_file = %q\n[wanconfig]\npublish = true\n",
-		filepath.Join(root, "links.json"),
-		filepath.Join(root, "addresses.json"),
-		filepath.Join(root, "kernel-policy.json"),
-		filepath.Join(root, "resolver.json"),
-	)
+	config := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"200ms\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[ifmgr.modules.resolver]\nstate_file = %q\n[wanconfig]\npublish = true\n", filepath.Join(root, "links.json"), filepath.Join(root, "addresses.json"), filepath.Join(root, "kernel-policy.json"), filepath.Join(root, "resolver.json"))
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -140,48 +111,26 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	if err := os.Mkdir(leaseDirectory, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	config = strings.Replace(
-		config,
-		"[ifmgr.iface.enmwanbr0]",
-		fmt.Sprintf("lease_directory = %q\n[ifmgr.iface.enmwanbr0]", leaseDirectory),
-		1,
-	)
+	config = strings.Replace(config, "[ifmgr.iface.enmwanbr0]", fmt.Sprintf("lease_directory = %q\n[ifmgr.iface.enmwanbr0]", leaseDirectory), 1)
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	reader, closeRepository, err := openPrivateRepository(
-		ctx,
-		slog.Default(),
-		selftestFlags{
-			repository: filepath.Join(root, "repository"),
-			modelsDir:  selftestModelsDir(t),
-		},
-	)
+	reader, closeRepository, err := openPrivateRepository(ctx, slog.Default(), selftestFlags{repository: filepath.Join(root, "repository"), modelsDir: selftestModelsDir(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer closeRepository()
 	read := func() string {
-		value, found, err := reader.ExportJSON(
-			ctx,
-			yangpub.DatastoreOperational,
-			"/ietf-interfaces:*",
-		)
+		value, found, err := reader.ExportJSON(ctx, yangpub.DatastoreOperational, "/ietf-interfaces:*")
 		if err != nil || !found {
 			return ""
 		}
 		return value
 	}
-	wantedDNS := []resolved.DNS{
-		{Family: 2, Address: []byte{10, 39, 7, 2}, Port: 0, ServerName: ""},
-		{Family: 10, Address: net.ParseIP("fd39:7::2").To16(), Port: 0, ServerName: ""},
-	}
-	wantedDomains := []resolved.Domain{
-		{Name: "lab.test", RoutingOnly: false},
-		{Name: "v6.test", RoutingOnly: false},
-	}
+	wantedDNS := []resolved.DNS{{Family: 2, Address: []byte{10, 39, 7, 2}, Port: 0, ServerName: ""}, {Family: 10, Address: net.ParseIP("fd39:7::2").To16(), Port: 0, ServerName: ""}}
+	wantedDomains := []resolved.Domain{{Name: "lab.test", RoutingOnly: false}, {Name: "v6.test", RoutingOnly: false}}
 	writeResolverRuntimeNetwork(t, networkDir, false, false, false)
 	daemon := startRuntimeDaemon(t, binary, configPath, root, "resolver-bootstrap")
 	defer func() { killOwnedRuntimeDaemon(t, daemon) }()
@@ -191,15 +140,8 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	runResolverCommand(t, "resolvectl", "dns", "owned397", "192.0.2.53:5300#baseline.example.test")
 	runResolverCommand(t, "resolvectl", "domain", "owned397", "baseline.test", "~route.test")
 	baselineDNS, baselineDomains := resolverRuntimeValues(t, "owned397")
-	if len(baselineDNS) != 1 || baselineDNS[0].Port != 5300 ||
-		baselineDNS[0].ServerName != "baseline.example.test" ||
-		len(baselineDomains) != 2 ||
-		!baselineDomains[1].RoutingOnly {
-		t.Fatalf(
-			"resolved baseline lacks extended server/domain values: %+v %+v",
-			baselineDNS,
-			baselineDomains,
-		)
+	if len(baselineDNS) != 1 || baselineDNS[0].Port != 5300 || baselineDNS[0].ServerName != "baseline.example.test" || len(baselineDomains) != 2 || !baselineDomains[1].RoutingOnly {
+		t.Fatalf("resolved baseline lacks extended server/domain values: %+v %+v", baselineDNS, baselineDomains)
 	}
 	writeResolverRuntimeNetwork(t, networkDir, true, true, false)
 	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-first")
@@ -225,38 +167,16 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 		content, err := os.ReadFile(filepath.Join(root, "resolver-kea.log"))
 		t.Logf("resolver Kea: %s (%v)", content, err)
 	})
-	acquiredDNS := append(
-		append([]resolved.DNS(nil), wantedDNS...),
-		resolved.DNS{
-			Family:     10,
-			Address:    net.ParseIP("fd39:7::53").To16(),
-			Port:       0,
-			ServerName: "",
-		},
-		resolved.DNS{
-			Family:     10,
-			Address:    net.ParseIP("fd39:7::54").To16(),
-			Port:       0,
-			ServerName: "",
-		},
-	)
+	acquiredDNS := append(append([]resolved.DNS(nil), wantedDNS...), resolved.DNS{Family: 10, Address: net.ParseIP("fd39:7::53").To16(), Port: 0, ServerName: ""}, resolved.DNS{Family: 10, Address: net.ParseIP("fd39:7::54").To16(), Port: 0, ServerName: ""})
 	waitResolverRuntimeValues(t, daemon, acquiredDNS, wantedDomains)
 	t.Logf("resolved acquired DHCPv6 and RA DNS with configured servers: %+v", acquiredDNS)
 	stopRA()
 	stopDHCP()
 	waitResolverRuntimeValues(t, daemon, wantedDNS, wantedDomains)
-	t.Logf(
-		"resolved removed expired DHCPv6 and RA DNS and retained configured servers: %+v",
-		wantedDNS,
-	)
+	t.Logf("resolved removed expired DHCPv6 and RA DNS and retained configured servers: %+v", wantedDNS)
 	actualOtherDNS, actualOtherDomains := resolverRuntimeValues(t, "resolver-other")
-	if !reflect.DeepEqual(actualOtherDNS, otherDNS) ||
-		!reflect.DeepEqual(actualOtherDomains, otherDomains) {
-		t.Fatalf(
-			"acquired DNS changed unrelated settings: %+v %+v",
-			actualOtherDNS,
-			actualOtherDomains,
-		)
+	if !reflect.DeepEqual(actualOtherDNS, otherDNS) || !reflect.DeepEqual(actualOtherDomains, otherDomains) {
+		t.Fatalf("acquired DNS changed unrelated settings: %+v %+v", actualOtherDNS, actualOtherDomains)
 	}
 	killOwnedRuntimeDaemon(t, daemon)
 	writeDHCPv4ResolverRuntimeNetwork(t, networkDir, false, true)
@@ -268,20 +188,8 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	waitResolverRuntimeValues(t, daemon, dns4, baselineDomains)
 	runResolverCommand(t, "resolvectl", "flush-caches")
 	beforeDHCP4Query := queries.Load()
-	if output := runResolverCommand(
-		t,
-		"resolvectl",
-		"query",
-		"--interface=owned397",
-		"sensor.route.test",
-	); !strings.Contains(output, "10.39.7.99") ||
-		queries.Load() <= beforeDHCP4Query {
-		t.Fatalf(
-			"acquired DHCPv4 DNS query: %s; authoritative queries before=%d after=%d",
-			output,
-			beforeDHCP4Query,
-			queries.Load(),
-		)
+	if output := runResolverCommand(t, "resolvectl", "query", "--interface=owned397", "sensor.route.test"); !strings.Contains(output, "10.39.7.99") || queries.Load() <= beforeDHCP4Query {
+		t.Fatalf("acquired DHCPv4 DNS query: %s; authoritative queries before=%d after=%d", output, beforeDHCP4Query, queries.Load())
 	}
 	stopDHCP4()
 	setRuntimeNamespace(t, peer.namespace)
@@ -298,10 +206,7 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	killOwnedRuntimeDaemon(t, daemon)
 	writeDHCPv4ResolverRuntimeNetwork(t, networkDir, true, true)
 	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-dhcpv4-renewed")
-	dns4 = append(
-		append([]resolved.DNS(nil), wantedDNS...),
-		resolved.DNS{Family: 2, Address: []byte{10, 39, 7, 54}, Port: 0, ServerName: ""},
-	)
+	dns4 = append(append([]resolved.DNS(nil), wantedDNS...), resolved.DNS{Family: 2, Address: []byte{10, 39, 7, 54}, Port: 0, ServerName: ""})
 	waitResolverRuntimeValues(t, daemon, dns4, wantedDomains)
 	killOwnedRuntimeDaemon(t, daemon)
 	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-dhcpv4-recovered")
@@ -318,13 +223,8 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	waitStaticRuntimeAddress(t, daemon, "owned397", "10.39.7.100/24", true)
 	waitResolverRuntimeValues(t, daemon, wantedDNS, wantedDomains)
 	actualOtherDNS, actualOtherDomains = resolverRuntimeValues(t, "resolver-other")
-	if !reflect.DeepEqual(actualOtherDNS, otherDNS) ||
-		!reflect.DeepEqual(actualOtherDomains, otherDomains) {
-		t.Fatalf(
-			"DHCPv4 DNS changed unrelated settings: %+v %+v",
-			actualOtherDNS,
-			actualOtherDomains,
-		)
+	if !reflect.DeepEqual(actualOtherDNS, otherDNS) || !reflect.DeepEqual(actualOtherDomains, otherDomains) {
+		t.Fatalf("DHCPv4 DNS changed unrelated settings: %+v %+v", actualOtherDNS, actualOtherDomains)
 	}
 	stopDHCP4()
 	killOwnedRuntimeDaemon(t, daemon)
@@ -332,23 +232,12 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-static-after-acquired")
 	waitResolverRuntimeValues(t, daemon, wantedDNS, wantedDomains)
 	waitRuntimeOwnershipRead(t, daemon, read, `"search"`)
-	if output := runResolverCommand(
-		t,
-		"resolvectl",
-		"query",
-		"sensor",
-	); !strings.Contains(output, "10.39.7.99") ||
-		queries.Load() == 0 {
+	if output := runResolverCommand(t, "resolvectl", "query", "sensor"); !strings.Contains(output, "10.39.7.99") || queries.Load() == 0 {
 		t.Fatalf("single-label DNS query: %s; authoritative queries=%d", output, queries.Load())
 	}
 	initialOtherDNS, initialOtherDomains := resolverRuntimeValues(t, "resolver-other")
-	if !reflect.DeepEqual(initialOtherDNS, otherDNS) ||
-		!reflect.DeepEqual(initialOtherDomains, otherDomains) {
-		t.Fatalf(
-			"initial apply changed unrelated settings: %+v %+v",
-			initialOtherDNS,
-			initialOtherDomains,
-		)
+	if !reflect.DeepEqual(initialOtherDNS, otherDNS) || !reflect.DeepEqual(initialOtherDomains, otherDomains) {
+		t.Fatalf("initial apply changed unrelated settings: %+v %+v", initialOtherDNS, initialOtherDomains)
 	}
 	killOwnedRuntimeDaemon(t, daemon)
 	writeResolverRuntimeNetwork(t, networkDir, true, true, true)
@@ -356,19 +245,8 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	waitResolverRuntimeValues(t, daemon, wantedDNS[1:], wantedDomains)
 	runResolverCommand(t, "resolvectl", "flush-caches")
 	beforeIPv6Query := queries.Load()
-	if output := runResolverCommand(
-		t,
-		"resolvectl",
-		"query",
-		"sensor",
-	); !strings.Contains(output, "10.39.7.99") ||
-		queries.Load() <= beforeIPv6Query {
-		t.Fatalf(
-			"IPv6-only DNS query: %s; authoritative queries before=%d after=%d",
-			output,
-			beforeIPv6Query,
-			queries.Load(),
-		)
+	if output := runResolverCommand(t, "resolvectl", "query", "sensor"); !strings.Contains(output, "10.39.7.99") || queries.Load() <= beforeIPv6Query {
+		t.Fatalf("IPv6-only DNS query: %s; authoritative queries before=%d after=%d", output, beforeIPv6Query, queries.Load())
 	}
 	killOwnedRuntimeDaemon(t, daemon)
 	writeResolverRuntimeNetwork(t, networkDir, true, true, false)
@@ -392,10 +270,7 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	// Resolved restart resets unrelated per-link settings; reset the control before subsequent reconciles.
 	runResolverCommand(t, "resolvectl", "dns", "resolver-other", "198.51.100.53")
 	runResolverCommand(t, "resolvectl", "domain", "resolver-other", "~unrelated.test")
-	if output := runResolverCommand(t, "resolvectl", "query", "sensor"); !strings.Contains(
-		output,
-		"10.39.7.99",
-	) {
+	if output := runResolverCommand(t, "resolvectl", "query", "sensor"); !strings.Contains(output, "10.39.7.99") {
 		t.Fatalf("query after resolved restart: %s", output)
 	}
 	killOwnedRuntimeDaemon(t, daemon)
@@ -431,10 +306,7 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	waitOwnedRuntimeAbsent(t, daemon, "owned397", 10*time.Second)
 	waitStaticRuntimeLog(t, daemon, `"phase":"initial-reconcile","module":"resolver"`)
 	killOwnedRuntimeDaemon(t, daemon)
-	cleanupConfig := fmt.Sprintf(
-		"[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"200ms\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.resolver]\nstate_file = %q\n[wanconfig]\npublish = true\n",
-		filepath.Join(root, "resolver.json"),
-	)
+	cleanupConfig := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"200ms\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.resolver]\nstate_file = %q\n[wanconfig]\npublish = true\n", filepath.Join(root, "resolver.json"))
 	if err := os.WriteFile(configPath, []byte(cleanupConfig), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -442,13 +314,7 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	waitStaticRuntimeLog(t, daemon, `"phase":"initial-reconcile","module":"resolver"`)
 	killOwnedRuntimeDaemon(t, daemon)
 	emptyJournal := filepath.Join(root, "resolver-empty.json")
-	if err := os.WriteFile(
-		configPath,
-		[]byte(
-			strings.Replace(cleanupConfig, filepath.Join(root, "resolver.json"), emptyJournal, 1),
-		),
-		0o600,
-	); err != nil {
+	if err := os.WriteFile(configPath, []byte(strings.Replace(cleanupConfig, filepath.Join(root, "resolver.json"), emptyJournal, 1)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	daemon = startRuntimeDaemon(t, binary, configPath, root, "resolver-empty-cleanup")
@@ -457,26 +323,7 @@ func TestStaticResolverDaemonRuntime(t *testing.T) {
 	if _, err := os.Stat(emptyJournal); !os.IsNotExist(err) {
 		t.Errorf("empty cleanup created a resolver journal: %v", err)
 	}
-	for _, name := range []string{
-		"resolver-bootstrap",
-		"resolver-first",
-		"resolver-acquired",
-		"resolver-dhcpv4",
-		"resolver-dhcpv4-renewed",
-		"resolver-dhcpv4-recovered",
-		"resolver-dhcpv4-disabled",
-		"resolver-static-after-acquired",
-		"resolver-ipv6-only",
-		"resolver-restart",
-		"resolver-dns-remove",
-		"resolver-domains-remove",
-		"resolver-remove",
-		"resolver-external-control",
-		"resolver-external-preserve",
-		"resolver-prune",
-		"resolver-cleanup-only",
-		"resolver-empty-cleanup",
-	} {
+	for _, name := range []string{"resolver-bootstrap", "resolver-first", "resolver-acquired", "resolver-dhcpv4", "resolver-dhcpv4-renewed", "resolver-dhcpv4-recovered", "resolver-dhcpv4-disabled", "resolver-static-after-acquired", "resolver-ipv6-only", "resolver-restart", "resolver-dns-remove", "resolver-domains-remove", "resolver-remove", "resolver-external-control", "resolver-external-preserve", "resolver-prune", "resolver-cleanup-only", "resolver-empty-cleanup"} {
 		data, err := os.ReadFile(filepath.Join(root, name+".log"))
 		if err != nil {
 			t.Fatal(err)
@@ -512,9 +359,7 @@ func writeAcquiredResolverRuntimeNetwork(t *testing.T, directory string) {
 		if name != "owned397" {
 			continue
 		}
-		entry["goodkind-mwan-steering:wan"] = json.RawMessage(
-			`{"name":"resolver","table-id":101,"fw-mark":2,"fw-mark-prio":200,"from-prio":60}`,
-		)
+		entry["goodkind-mwan-steering:wan"] = json.RawMessage(`{"name":"resolver","table-id":101,"fw-mark":2,"fw-mark-prio":200,"from-prio":60}`)
 		entry["goodkind-mwan-steering:steering"] = json.RawMessage(`{"tier":0,"weight":1}`)
 		var ipv4 map[string]json.RawMessage
 		if err := json.Unmarshal(entry["ietf-ip:ipv4"], &ipv4); err != nil {
@@ -533,9 +378,7 @@ func writeAcquiredResolverRuntimeNetwork(t *testing.T, directory string) {
 		family["goodkind-mwan-steering:use-ra-dns"] = json.RawMessage(`true`)
 		family["goodkind-mwan-steering:dhcp"] = json.RawMessage(`true`)
 		family["goodkind-mwan-steering:translation"] = json.RawMessage(`{"mode":"native"}`)
-		family["goodkind-mwan-steering:dhcpv6-client"] = json.RawMessage(
-			`{"duid":"00:01:00:01:2a:5b:3c:4d:02:00:5e:00:53:01","prefix-iaid":397,"request-prefix":true,"without-ra":"solicit","use-dns":true}`,
-		)
+		family["goodkind-mwan-steering:dhcpv6-client"] = json.RawMessage(`{"duid":"00:01:00:01:2a:5b:3c:4d:02:00:5e:00:53:01","prefix-iaid":397,"request-prefix":true,"without-ra":"solicit","use-dns":true}`)
 		entry["ietf-ip:ipv6"], err = json.Marshal(family)
 		if err != nil {
 			t.Fatal(err)
@@ -591,9 +434,7 @@ func writeDHCPv4ResolverRuntimeNetwork(t *testing.T, directory string, staticDNS
 			t.Fatal(err)
 		}
 		family["goodkind-mwan-steering:dhcp"] = json.RawMessage(`true`)
-		family["goodkind-mwan-steering:dhcpv4"] = json.RawMessage(
-			fmt.Sprintf(`{"client-id":"hex:01aabb","use-dns":%t,"use-routes":true}`, useDNS),
-		)
+		family["goodkind-mwan-steering:dhcpv4"] = json.RawMessage(fmt.Sprintf(`{"client-id":"hex:01aabb","use-dns":%t,"use-routes":true}`, useDNS))
 		family["goodkind-mwan-steering:route-metric"] = json.RawMessage(`100`)
 		entry["ietf-ip:ipv4"], err = json.Marshal(family)
 		if err != nil {
@@ -624,10 +465,7 @@ func startResolverDHCPv4Kea(t *testing.T, root, server string) func() {
 	if server != "" {
 		options += fmt.Sprintf(`,{"name":"domain-name-servers","data":%q}`, server)
 	}
-	config := fmt.Sprintf(
-		`{"Dhcp4":{"interfaces-config":{"interfaces":["resolver397"]},"lease-database":{"type":"memfile","persist":false},"valid-lifetime":6,"renew-timer":2,"rebind-timer":4,"subnet4":[{"id":1,"subnet":"10.39.7.0/24","interface":"resolver397","pools":[{"pool":"10.39.7.100-10.39.7.100"}],"option-data":[%s]}]}}`,
-		options,
-	)
+	config := fmt.Sprintf(`{"Dhcp4":{"interfaces-config":{"interfaces":["resolver397"]},"lease-database":{"type":"memfile","persist":false},"valid-lifetime":6,"renew-timer":2,"rebind-timer":4,"subnet4":[{"id":1,"subnet":"10.39.7.0/24","interface":"resolver397","pools":[{"pool":"10.39.7.100-10.39.7.100"}],"option-data":[%s]}]}}`, options)
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -704,14 +542,7 @@ func startResolverRouter(t *testing.T) func() {
 	if err != nil {
 		t.Fatal(err)
 	}
-	advertisement := &ndp.RouterAdvertisement{
-		Options: []ndp.Option{
-			&ndp.RecursiveDNSServer{
-				Lifetime: 3 * time.Second,
-				Servers:  []netip.Addr{netip.MustParseAddr("fd39:7::54")},
-			},
-		},
-	}
+	advertisement := &ndp.RouterAdvertisement{Options: []ndp.Option{&ndp.RecursiveDNSServer{Lifetime: 3 * time.Second, Servers: []netip.Addr{netip.MustParseAddr("fd39:7::54")}}}}
 	stop := make(chan struct{})
 	done := make(chan struct{})
 	go func() {
@@ -723,11 +554,7 @@ func startResolverRouter(t *testing.T) func() {
 			case <-stop:
 				return
 			case <-ticker.C:
-				if err := connection.WriteTo(
-					advertisement,
-					nil,
-					netip.MustParseAddr("ff02::1"),
-				); err != nil {
+				if err := connection.WriteTo(advertisement, nil, netip.MustParseAddr("ff02::1")); err != nil {
 					t.Errorf("write resolver RA: %v", err)
 					return
 				}
@@ -751,14 +578,8 @@ func waitResolverRuntimeFailureLogs(t *testing.T, daemon *runtimeDaemon) {
 		finalFound := false
 		for _, line := range strings.Split(runtimeDaemonLog(t, daemon), "\n") {
 			if strings.Contains(line, "WARN resolver operation failed") {
-				if !strings.HasSuffix(
-					line,
-					`WARN resolver operation failed operation="get resolved link" result=failed`,
-				) {
-					t.Fatalf(
-						"resolver operation event repeats the error or lacks its outcome: %s",
-						line,
-					)
+				if !strings.HasSuffix(line, `WARN resolver operation failed operation="get resolved link" result=failed`) {
+					t.Fatalf("resolver operation event repeats the error or lacks its outcome: %s", line)
 				}
 				operationFound = true
 			}
@@ -776,49 +597,25 @@ func waitResolverRuntimeFailureLogs(t *testing.T, daemon *runtimeDaemon) {
 				continue
 			}
 			if event.Message == "resolver operation failed" {
-				if event.Level != "WARN" || event.Operation != "get resolved link" ||
-					event.Result != "failed" ||
-					len(event.Err) != 0 ||
-					len(event.Error) != 0 {
-					t.Fatalf(
-						"resolver operation event repeats the error or lacks its outcome: %s",
-						line,
-					)
+				if event.Level != "WARN" || event.Operation != "get resolved link" || event.Result != "failed" || len(event.Err) != 0 || len(event.Error) != 0 {
+					t.Fatalf("resolver operation event repeats the error or lacks its outcome: %s", line)
 				}
 				operationFound = true
 			}
 			if event.Message == "resolver application failed" {
-				if event.Level != "WARN" || event.Module != "resolver" || event.Operation == "" ||
-					event.Result != "failed" ||
-					len(event.Err) != 0 ||
-					len(event.Error) != 0 {
-					t.Fatalf(
-						"resolver application event repeats the error or lacks its outcome: %s",
-						line,
-					)
+				if event.Level != "WARN" || event.Module != "resolver" || event.Operation == "" || event.Result != "failed" || len(event.Err) != 0 || len(event.Error) != 0 {
+					t.Fatalf("resolver application event repeats the error or lacks its outcome: %s", line)
 				}
 				applicationFound = true
 			}
 			if event.Message == "ifmgr: module Reconcile failed" && event.Module == "resolver" {
 				var diagnostic string
-				if err := json.Unmarshal(
-					event.Err,
-					&diagnostic,
-				); err != nil || event.TraceID == "" || !strings.Contains(
-					diagnostic,
-					"connection ",
-				) ||
-					!strings.Contains(diagnostic, "get resolved link") {
-					t.Fatalf(
-						"resolver final diagnostic lacks connection, operation, or trace context: %s",
-						line,
-					)
+				if err := json.Unmarshal(event.Err, &diagnostic); err != nil || event.TraceID == "" || !strings.Contains(diagnostic, "connection ") || !strings.Contains(diagnostic, "get resolved link") {
+					t.Fatalf("resolver final diagnostic lacks connection, operation, or trace context: %s", line)
 				}
 				finalFound = true
 			}
-			if event.Message == "resolver: reconcile failed" ||
-				event.Message == "resolved: link apply failed" ||
-				event.Message == "resolved: reconcile resolver fields failed" {
+			if event.Message == "resolver: reconcile failed" || event.Message == "resolved: link apply failed" || event.Message == "resolved: reconcile resolver fields failed" {
 				t.Fatalf("resolver emitted an intermediate duplicate diagnostic: %s", line)
 			}
 		}
@@ -828,10 +625,7 @@ func waitResolverRuntimeFailureLogs(t *testing.T, daemon *runtimeDaemon) {
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf(
-		"resolver dependency failure lacks operation and final diagnostics: %s",
-		runtimeLogTail(t, daemon, 40),
-	)
+	t.Fatalf("resolver dependency failure lacks operation and final diagnostics: %s", runtimeLogTail(t, daemon, 40))
 }
 
 func writeResolverCleanupNetwork(t *testing.T, directory string) {
@@ -908,13 +702,7 @@ func resolverRuntimeValues(t *testing.T, name string) ([]resolved.DNS, []resolve
 		t.Fatal(err)
 	}
 	var path dbus.ObjectPath
-	if err := bus.Object("org.freedesktop.resolve1", "/org/freedesktop/resolve1").Call(
-		"org.freedesktop.resolve1.Manager.GetLink",
-		0,
-		int32(link.Attrs().Index),
-	).Store(
-		&path,
-	); err != nil {
+	if err := bus.Object("org.freedesktop.resolve1", "/org/freedesktop/resolve1").Call("org.freedesktop.resolve1.Manager.GetLink", 0, int32(link.Attrs().Index)).Store(&path); err != nil {
 		t.Fatal(err)
 	}
 	object := bus.Object("org.freedesktop.resolve1", path)
@@ -937,12 +725,7 @@ func resolverRuntimeValues(t *testing.T, name string) ([]resolved.DNS, []resolve
 	return servers, domains
 }
 
-func waitResolverRuntimeValues(
-	t *testing.T,
-	daemon *runtimeDaemon,
-	dns []resolved.DNS,
-	domains []resolved.Domain,
-) {
+func waitResolverRuntimeValues(t *testing.T, daemon *runtimeDaemon, dns []resolved.DNS, domains []resolved.Domain) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
@@ -954,23 +737,10 @@ func waitResolverRuntimeValues(
 		time.Sleep(50 * time.Millisecond)
 	}
 	actualDNS, actualDomains := resolverRuntimeValues(t, "owned397")
-	t.Fatalf(
-		"resolved values differ: DNS=%+v domains=%+v; expected DNS=%+v domains=%+v; %s",
-		actualDNS,
-		actualDomains,
-		dns,
-		domains,
-		runtimeLogTail(t, daemon, 40),
-	)
+	t.Fatalf("resolved values differ: DNS=%+v domains=%+v; expected DNS=%+v domains=%+v; %s", actualDNS, actualDomains, dns, domains, runtimeLogTail(t, daemon, 40))
 }
 
-func writeResolverRuntimeNetwork(
-	t *testing.T,
-	directory string,
-	dnsEnabled bool,
-	domainsEnabled bool,
-	ipv6Only bool,
-) {
+func writeResolverRuntimeNetwork(t *testing.T, directory string, dnsEnabled, domainsEnabled, ipv6Only bool) {
 	t.Helper()
 	writeOwnedRuntimeNetwork(t, directory, false, true)
 	path := filepath.Join(directory, "network.json")
@@ -996,8 +766,7 @@ func writeResolverRuntimeNetwork(
 		if err := json.Unmarshal(entry["name"], &name); err != nil {
 			t.Fatal(err)
 		}
-		if name == "owned-br" || name == "late397" || name == "latephys0" || name == "enwebpass0" ||
-			name == "enmbrains0" {
+		if name == "owned-br" || name == "late397" || name == "latephys0" || name == "enwebpass0" || name == "enmbrains0" {
 			continue
 		}
 		configured = append(configured, entry)
@@ -1015,15 +784,10 @@ func writeResolverRuntimeNetwork(
 			search4 = append(search4, "lab.test")
 			search6 = append(search6, "lab.test", "v6.test")
 		}
-		resolver4, err := json.Marshal(
-			struct {
-				DNS    []string `json:"dns"`
-				Search []string `json:"search"`
-			}{
-				DNS:    servers,
-				Search: search4,
-			},
-		)
+		resolver4, err := json.Marshal(struct {
+			DNS    []string `json:"dns"`
+			Search []string `json:"search"`
+		}{DNS: servers, Search: search4})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1031,37 +795,18 @@ func writeResolverRuntimeNetwork(
 		if dnsEnabled {
 			servers6 = append(servers6, "fd39:7::2")
 		}
-		resolver6, err := json.Marshal(
-			struct {
-				DNS    []string `json:"dns"`
-				Search []string `json:"search"`
-			}{
-				DNS:    servers6,
-				Search: search6,
-			},
-		)
+		resolver6, err := json.Marshal(struct {
+			DNS    []string `json:"dns"`
+			Search []string `json:"search"`
+		}{DNS: servers6, Search: search6})
 		if err != nil {
 			t.Fatal(err)
 		}
-		entry["ietf-ip:ipv4"] = json.RawMessage(
-			fmt.Sprintf(
-				`{"address":[{"ip":"10.39.7.1","prefix-length":24}],"goodkind-mwan-steering:resolver":%s}`,
-				resolver4,
-			),
-		)
-		entry["ietf-ip:ipv6"] = json.RawMessage(
-			fmt.Sprintf(
-				`{"address":[{"ip":"fd39:7::1","prefix-length":64}],"goodkind-mwan-steering:resolver":%s}`,
-				resolver6,
-			),
-		)
+		entry["ietf-ip:ipv4"] = json.RawMessage(fmt.Sprintf(`{"address":[{"ip":"10.39.7.1","prefix-length":24}],"goodkind-mwan-steering:resolver":%s}`, resolver4))
+		entry["ietf-ip:ipv6"] = json.RawMessage(fmt.Sprintf(`{"address":[{"ip":"fd39:7::1","prefix-length":64}],"goodkind-mwan-steering:resolver":%s}`, resolver6))
 		if !dnsEnabled && !domainsEnabled {
-			entry["ietf-ip:ipv4"] = json.RawMessage(
-				`{"address":[{"ip":"10.39.7.1","prefix-length":24}]}`,
-			)
-			entry["ietf-ip:ipv6"] = json.RawMessage(
-				`{"address":[{"ip":"fd39:7::1","prefix-length":64}]}`,
-			)
+			entry["ietf-ip:ipv4"] = json.RawMessage(`{"address":[{"ip":"10.39.7.1","prefix-length":24}]}`)
+			entry["ietf-ip:ipv6"] = json.RawMessage(`{"address":[{"ip":"fd39:7::1","prefix-length":64}]}`)
 		}
 	}
 	interfaces["interface"], err = json.Marshal(configured)
@@ -1107,27 +852,9 @@ func startResolverAuthority(t *testing.T) *atomic.Int64 {
 			message.Header.Response = true
 			message.Header.Authoritative = true
 			for _, question := range message.Questions {
-				t.Logf(
-					"authoritative DNS query: name=%s type=%s source=%s",
-					question.Name.String(),
-					question.Type.String(),
-					peer.String(),
-				)
-				if (question.Name.String() == "sensor.lab.test." || question.Name.String() == "sensor.route.test.") &&
-					question.Type == dnsmessage.TypeA {
-					message.Answers = append(
-						message.Answers,
-						dnsmessage.Resource{
-							Header: dnsmessage.ResourceHeader{
-								Name:   question.Name,
-								Type:   dnsmessage.TypeA,
-								Class:  dnsmessage.ClassINET,
-								TTL:    1,
-								Length: 0,
-							},
-							Body: &dnsmessage.AResource{A: [4]byte{10, 39, 7, 99}},
-						},
-					)
+				t.Logf("authoritative DNS query: name=%s type=%s source=%s", question.Name.String(), question.Type.String(), peer.String())
+				if (question.Name.String() == "sensor.lab.test." || question.Name.String() == "sensor.route.test.") && question.Type == dnsmessage.TypeA {
+					message.Answers = append(message.Answers, dnsmessage.Resource{Header: dnsmessage.ResourceHeader{Name: question.Name, Type: dnsmessage.TypeA, Class: dnsmessage.ClassINET, TTL: 1, Length: 0}, Body: &dnsmessage.AResource{A: [4]byte{10, 39, 7, 99}}})
 				}
 			}
 			response, err := message.Pack()

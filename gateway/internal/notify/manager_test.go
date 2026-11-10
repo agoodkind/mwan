@@ -24,7 +24,6 @@ func (h *captureHandler) Handle(_ context.Context, r slog.Record) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.records = append(h.records, r.Clone())
-
 	return nil
 }
 
@@ -36,21 +35,18 @@ func (h *captureHandler) snapshot() []slog.Record {
 	defer h.mu.Unlock()
 	out := make([]slog.Record, len(h.records))
 	copy(out, h.records)
-
 	return out
 }
 
 func (h *captureHandler) count() int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-
 	return len(h.records)
 }
 
 func newManagerForTest() (*Manager, *captureHandler) {
 	h := &captureHandler{}
 	log := slog.New(h)
-
 	return mustManager(log, Config{RepeatEvery: 0, PerKind: nil}, nil), h
 }
 
@@ -63,7 +59,6 @@ func mustManager(log *slog.Logger, cfg Config, sink Sink) *Manager {
 	if err != nil {
 		panic(err)
 	}
-
 	return m
 }
 
@@ -72,24 +67,16 @@ func TestResolveEmitsAtNotifyLevelWarn(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 
 	m.notifyAt(context.Background(), now, slog.LevelWarn, "service-check", "target-one", "stalled")
-	m.resolveAt(
-		context.Background(),
-		now.Add(time.Minute),
-		"service-check",
-		"target-one",
-		"back to good",
-	)
+	m.resolveAt(context.Background(), now.Add(time.Minute), "service-check", "target-one", "back to good")
 
 	records := h.snapshot()
 	if len(records) != 2 {
 		t.Fatalf("got %d records, want 2", len(records))
 	}
-
 	resolve := records[1]
 	if resolve.Level != slog.LevelWarn {
 		t.Errorf("resolve level=%v, want WARN", resolve.Level)
 	}
-
 	wantMsg := "RECOVERED: back to good"
 	if resolve.Message != wantMsg {
 		t.Errorf("resolve message=%q, want %q", resolve.Message, wantMsg)
@@ -100,32 +87,17 @@ func TestResolveEmitsAtNotifyLevelError(t *testing.T) {
 	m, h := newManagerForTest()
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 
-	m.notifyAt(
-		context.Background(),
-		now,
-		slog.LevelError,
-		"service-check",
-		"target-two",
-		"service status check failed",
-	)
-	m.resolveAt(
-		context.Background(),
-		now.Add(time.Minute),
-		"service-check",
-		"target-two",
-		"service status check succeeded",
-	)
+	m.notifyAt(context.Background(), now, slog.LevelError, "service-check", "target-two", "service status check failed")
+	m.resolveAt(context.Background(), now.Add(time.Minute), "service-check", "target-two", "service status check succeeded")
 
 	records := h.snapshot()
 	if len(records) != 2 {
 		t.Fatalf("got %d records, want 2", len(records))
 	}
-
 	resolve := records[1]
 	if resolve.Level != slog.LevelError {
 		t.Errorf("resolve level=%v, want ERROR", resolve.Level)
 	}
-
 	wantMsg := "RECOVERED: service status check succeeded"
 	if resolve.Message != wantMsg {
 		t.Errorf("resolve message=%q, want %q", resolve.Message, wantMsg)
@@ -151,19 +123,12 @@ func TestResolveDoesNotDoublePrefixRecovered(t *testing.T) {
 
 	m.notifyAt(context.Background(), now, slog.LevelError, "kind", "key", "broken")
 	// Caller has already added the prefix; Manager must not stack it.
-	m.resolveAt(
-		context.Background(),
-		now.Add(time.Minute),
-		"kind",
-		"key",
-		"RECOVERED: fixed itself",
-	)
+	m.resolveAt(context.Background(), now.Add(time.Minute), "kind", "key", "RECOVERED: fixed itself")
 
 	records := h.snapshot()
 	if len(records) != 2 {
 		t.Fatalf("got %d records, want 2", len(records))
 	}
-
 	if got := records[1].Message; got != "RECOVERED: fixed itself" {
 		t.Errorf("resolve message=%q, want %q", got, "RECOVERED: fixed itself")
 	}
@@ -179,17 +144,9 @@ func TestManager_StateChangeOnlyByDefault(t *testing.T) {
 	m := mustManager(log, Config{RepeatEvery: 0, PerKind: nil}, nil)
 
 	start := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
-
 	for i := range 240 {
 		now := start.Add(time.Duration(i) * time.Minute)
-		m.notifyAt(
-			context.Background(),
-			now,
-			slog.LevelWarn,
-			"service-unavailable",
-			"target-one",
-			"stalled",
-		)
+		m.notifyAt(context.Background(), now, slog.LevelWarn, "service-unavailable", "target-one", "stalled")
 	}
 
 	if got := h.count(); got != 1 {
@@ -209,17 +166,9 @@ func TestManager_RepeatEveryGlobal(t *testing.T) {
 	m := mustManager(log, Config{RepeatEvery: 30 * time.Minute, PerKind: nil}, nil)
 
 	start := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
-
 	for i := range 120 {
 		now := start.Add(time.Duration(i) * time.Minute)
-		m.notifyAt(
-			context.Background(),
-			now,
-			slog.LevelWarn,
-			"service-unavailable",
-			"target-one",
-			"stalled",
-		)
+		m.notifyAt(context.Background(), now, slog.LevelWarn, "service-unavailable", "target-one", "stalled")
 	}
 
 	if got := h.count(); got != 4 {
@@ -236,31 +185,18 @@ func TestManager_PerKindOverride(t *testing.T) {
 	h := &captureHandler{}
 	log := slog.New(h)
 
-	m := mustManager(
-		log,
-		Config{
-			RepeatEvery: 30 * time.Minute,
-			PerKind: map[string]time.Duration{
-				"service-unavailable": 24 * time.Hour,
-			},
+	m := mustManager(log, Config{
+		RepeatEvery: 30 * time.Minute,
+		PerKind: map[string]time.Duration{
+			"service-unavailable": 24 * time.Hour,
 		},
-		nil,
-	)
+	}, nil)
 
 	start := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
-
 	for i := range 120 {
 		now := start.Add(time.Duration(i) * time.Minute)
-		m.notifyAt(
-			context.Background(),
-			now,
-			slog.LevelWarn,
-			"service-unavailable",
-			"target-one",
-			"stalled",
-		)
+		m.notifyAt(context.Background(), now, slog.LevelWarn, "service-unavailable", "target-one", "stalled")
 	}
-
 	stalledCount := h.count()
 	if stalledCount != 1 {
 		t.Fatalf("service-unavailable with 24h override: expected 1 emit, got %d", stalledCount)
@@ -268,16 +204,8 @@ func TestManager_PerKindOverride(t *testing.T) {
 
 	for i := range 120 {
 		now := start.Add(time.Duration(i) * time.Minute)
-		m.notifyAt(
-			context.Background(),
-			now,
-			slog.LevelWarn,
-			"check-failed",
-			"target-one",
-			"reconcile failed",
-		)
+		m.notifyAt(context.Background(), now, slog.LevelWarn, "check-failed", "target-one", "reconcile failed")
 	}
-
 	totalCount := h.count()
 	reconcileCount := totalCount - stalledCount
 	if reconcileCount != 4 {
@@ -293,26 +221,21 @@ func TestManager_NotifyEventShape(t *testing.T) {
 	m := mustManager(log, Config{RepeatEvery: 0, PerKind: nil}, nil)
 
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
-	m.Notify(
-		context.Background(),
-		Event{
-			Now:     now,
-			Level:   slog.LevelWarn,
-			Kind:    "vsock-fallback",
-			Key:     "950:50051",
-			Message: "vsock unavailable, used TCP fallback",
-			Fields:  []slog.Attr{slog.String("vmid", "950"), slog.Int("port", 50051)},
-		},
-	)
+	m.Notify(context.Background(), Event{
+		Now:     now,
+		Level:   slog.LevelWarn,
+		Kind:    "vsock-fallback",
+		Key:     "950:50051",
+		Message: "vsock unavailable, used TCP fallback",
+		Fields:  []slog.Attr{slog.String("vmid", "950"), slog.Int("port", 50051)},
+	})
 	if !m.Active("vsock-fallback", "950:50051") {
 		t.Fatal("expected alert to be Active after Notify")
 	}
-
 	m.Resolve(context.Background(), "vsock-fallback", "950:50051", "vsock back online")
 	if m.Active("vsock-fallback", "950:50051") {
 		t.Fatal("expected alert to be cleared after Resolve")
 	}
-
 	records := h.snapshot()
 	if len(records) != 2 {
 		t.Fatalf("got %d records, want 2", len(records))

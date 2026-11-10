@@ -20,14 +20,12 @@ func TestSnapshotReplayDoesNotRefreshLastRA(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	alerts := ifmgr.WrapNotifier(notifier)
 	m := &Module{
 		cfg:   Config{Iface: "bridge0", NoSignalAlertAfter: 5 * time.Millisecond},
 		clock: internalclock.Real{},
 	}
 	m.Env = &ifmgr.Env{Alerts: alerts}
-
 	for _, event := range []netif.Event{
 		{Kind: netif.EvLinkUp, Iface: "bridge0"},
 		{Kind: netif.EvRouteAdded, Iface: "bridge0", Family: "inet6", Dest: "default"},
@@ -36,34 +34,20 @@ func TestSnapshotReplayDoesNotRefreshLastRA(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-
 	if err := m.OnDHCPLease(ctx, log, netif.LeaseInfo{State: netif.LeaseBound}); err != nil {
 		t.Fatal(err)
 	}
-
-	alerts.NotifyContext(
-		ctx,
-		time.Now(),
-		slog.LevelWarn,
-		"slaac-degraded",
-		"bridge0",
-		"SLAAC unavailable",
-	)
+	alerts.NotifyContext(ctx, time.Now(), slog.LevelWarn, "slaac-degraded", "bridge0", "SLAAC unavailable")
 	time.Sleep(20 * time.Millisecond)
-	if err := m.OnKernelEvent(
-		ctx,
-		log,
-		netif.Event{
-			Kind:           netif.EvRouteAdded,
-			Iface:          "bridge0",
-			Family:         "inet6",
-			Dest:           "default",
-			SnapshotReplay: true,
-		},
-	); err != nil {
+	if err := m.OnKernelEvent(ctx, log, netif.Event{
+		Kind:           netif.EvRouteAdded,
+		Iface:          "bridge0",
+		Family:         "inet6",
+		Dest:           "default",
+		SnapshotReplay: true,
+	}); err != nil {
 		t.Fatal(err)
 	}
-
 	m.EvaluateAlerts(ctx, log, time.Now())
 	if !alerts.Active("bridge-suspected-dangling", "bridge0") {
 		t.Fatal("snapshot replay suppressed the missing-signal alert")

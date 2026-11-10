@@ -45,7 +45,6 @@ func ListRules(ctx context.Context, log *slog.Logger, family string) ([]CurrentR
 		log.WarnContext(ctx, "rules: list failed", "err", err)
 		return nil, fmt.Errorf("list %s rules: %w", family, err)
 	}
-
 	return rules, nil
 }
 
@@ -56,8 +55,14 @@ func ListDHCPRoutes(
 	family string,
 ) ([]CurrentRoute, error) {
 	filter := &netlink.Route{Protocol: unix.RTPROT_DHCP}
-
-	return listRoutesFiltered(ctx, log, family, filter, netlink.RT_FILTER_PROTOCOL, "dhcp")
+	return listRoutesFiltered(
+		ctx,
+		log,
+		family,
+		filter,
+		netlink.RT_FILTER_PROTOCOL,
+		"dhcp",
+	)
 }
 
 // ListProtocolRoutes returns routes installed with protocol in tableID for one family.
@@ -69,7 +74,6 @@ func ListProtocolRoutes(
 	protocol int,
 ) ([]CurrentRoute, error) {
 	filter := &netlink.Route{Table: tableID, Protocol: netlink.RouteProtocol(protocol)}
-
 	return listRoutesFiltered(
 		ctx,
 		log,
@@ -88,7 +92,6 @@ func ListTableRoutes(
 	tableID int,
 ) ([]CurrentRoute, error) {
 	filter := &netlink.Route{Table: tableID}
-
 	return listRoutesFiltered(
 		ctx,
 		log,
@@ -107,27 +110,27 @@ func listRoutesFiltered(
 	filterMask uint64,
 	filterName string,
 ) ([]CurrentRoute, error) {
-	log = log.With("component", "route", "op", "list", "family", family, "filter", filterName)
+	log = log.With(
+		"component", "route",
+		"op", "list",
+		"family", family,
+		"filter", filterName,
+	)
 	startTime := realClock{}.Now()
 	routes, err := listUsableRoutes(familyToNetlink(family), filter, filterMask)
 	duration := realClock{}.Now().Sub(startTime)
 	log.DebugContext(
 		ctx,
 		"route: RouteListFiltered",
-		"count",
-		len(routes),
-		"duration_ms",
-		duration.Milliseconds(),
-		"err",
-		err,
+		"count", len(routes),
+		"duration_ms", duration.Milliseconds(),
+		"err", err,
 	)
 	if err != nil {
 		if errors.Is(err, syscall.ENOENT) {
 			return []CurrentRoute{}, nil
 		}
-
 		log.WarnContext(ctx, "route: RouteListFiltered failed", "err", err)
-
 		return nil, fmt.Errorf("RouteListFiltered(%s,%s): %w", family, filterName, err)
 	}
 
@@ -137,10 +140,8 @@ func listRoutesFiltered(
 		if err != nil {
 			return nil, fmt.Errorf("routeToCurrent(%s,%s): %w", family, filterName, err)
 		}
-
 		current = append(current, *converted)
 	}
-
 	return current, nil
 }
 
@@ -150,9 +151,7 @@ func ReadLinkState(log *slog.Logger, iface string) (LinkState, error) {
 	if err != nil {
 		return LinkState{}, err
 	}
-
 	attrs := link.Attrs()
-
 	return LinkState{
 		OperState: attrs.OperState.String(),
 		Carrier:   attrs.RawFlags&unix.IFF_LOWER_UP != 0,
@@ -165,12 +164,10 @@ func ReadLinkStats(log *slog.Logger, iface string) (LinkStats, error) {
 	if err != nil {
 		return LinkStats{}, err
 	}
-
 	statistics := link.Attrs().Statistics
 	if statistics == nil {
 		return LinkStats{}, fmt.Errorf("link %q has no statistics", iface)
 	}
-
 	return LinkStats{
 		RxBytes:   statistics.RxBytes,
 		RxPackets: statistics.RxPackets,
@@ -200,53 +197,40 @@ func RouteLookup(
 	if err != nil {
 		return RouteLookupResult{}, false, fmt.Errorf("target: %w", err)
 	}
-
 	sourceIP, err := parseFamilyIP(family, source)
 	if err != nil {
 		return RouteLookupResult{}, false, fmt.Errorf("source: %w", err)
 	}
 
 	startTime := realClock{}.Now()
-	routes, err := netlink.RouteGetWithOptions(
-		targetIP,
-		&netlink.RouteGetOptions{
-			Iif:      "",
-			IifIndex: 0,
-			Oif:      "",
-			OifIndex: 0,
-			VrfName:  "",
-			SrcAddr:  sourceIP,
-			UID:      nil,
-			Mark:     fwmark,
-			FIBMatch: false,
-		},
-	)
+	routes, err := netlink.RouteGetWithOptions(targetIP, &netlink.RouteGetOptions{
+		Iif:      "",
+		IifIndex: 0,
+		Oif:      "",
+		OifIndex: 0,
+		VrfName:  "",
+		SrcAddr:  sourceIP,
+		UID:      nil,
+		Mark:     fwmark,
+		FIBMatch: false,
+	})
 	duration := realClock{}.Now().Sub(startTime)
 	log.DebugContext(
 		ctx,
 		"route: RouteGetWithOptions",
-		"family",
-		family,
-		"target",
-		target,
-		"source",
-		source,
-		"fwmark",
-		fwmark,
-		"count",
-		len(routes),
-		"duration_ms",
-		duration.Milliseconds(),
-		"err",
-		err,
+		"family", family,
+		"target", target,
+		"source", source,
+		"fwmark", fwmark,
+		"count", len(routes),
+		"duration_ms", duration.Milliseconds(),
+		"err", err,
 	)
 	if err != nil {
 		if isNoRouteError(err) {
 			return RouteLookupResult{OIF: "", Gateway: "", Source: ""}, false, nil
 		}
-
 		log.WarnContext(ctx, "route: RouteGetWithOptions failed", "err", err)
-
 		return RouteLookupResult{}, false, fmt.Errorf(
 			"RouteGetWithOptions(%s,%s,mark=%d): %w",
 			target,
@@ -255,16 +239,13 @@ func RouteLookup(
 			err,
 		)
 	}
-
 	if len(routes) == 0 {
 		return RouteLookupResult{OIF: "", Gateway: "", Source: ""}, false, nil
 	}
-
 	result, err := routeLookupResult(log, routes[0], source)
 	if err != nil {
 		return RouteLookupResult{}, false, err
 	}
-
 	return result, true, nil
 }
 
@@ -281,20 +262,16 @@ func parseFamilyIP(family string, rawIP string) (net.IP, error) {
 	if ip == nil {
 		return nil, fmt.Errorf("parse %q: not an IP address", rawIP)
 	}
-
 	if family == "inet" {
 		ip = ip.To4()
 		if ip == nil {
 			return nil, fmt.Errorf("parse %q: not an IPv4 address", rawIP)
 		}
-
 		return ip, nil
 	}
-
 	if family != "inet6" || ip.To4() != nil {
 		return nil, fmt.Errorf("parse %q: not an IPv6 address", rawIP)
 	}
-
 	return ip, nil
 }
 
@@ -309,7 +286,6 @@ func routeLookupResult(
 		if linkIndex == 0 {
 			linkIndex = route.MultiPath[0].LinkIndex
 		}
-
 		if gateway == nil {
 			gateway = route.MultiPath[0].Gw
 		}
@@ -322,19 +298,15 @@ func routeLookupResult(
 			log.Warn("route: LinkByIndex failed", "index", linkIndex, "err", err)
 			return RouteLookupResult{}, fmt.Errorf("LinkByIndex(%d): %w", linkIndex, err)
 		}
-
 		oif = link.Attrs().Name
 	}
-
 	source := requestedSource
 	if route.Src != nil {
 		source = route.Src.String()
 	}
-
 	gatewayString := ""
 	if gateway != nil {
 		gatewayString = gateway.String()
 	}
-
 	return RouteLookupResult{OIF: oif, Gateway: gatewayString, Source: source}, nil
 }

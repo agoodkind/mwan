@@ -51,11 +51,7 @@ func (fixture *tunnelRouteFixture) repairRequested(want string, window time.Dura
 
 func tunnelEndpointRoutes(t *testing.T, tableID int) []netlink.Route {
 	t.Helper()
-	routes, err := netlink.RouteListFiltered(
-		unix.AF_INET,
-		&netlink.Route{Table: tableID},
-		netlink.RT_FILTER_TABLE,
-	)
+	routes, err := netlink.RouteListFiltered(unix.AF_INET, &netlink.Route{Table: tableID}, netlink.RT_FILTER_TABLE)
 	if err != nil {
 		t.Fatalf("list table %d: %v", tableID, err)
 	}
@@ -75,18 +71,10 @@ func requireTunnelEndpointRoute(t *testing.T, gateway string) netlink.Route {
 		t.Fatal(err)
 	}
 	endpoints := tunnelEndpointRoutes(t, tunnelRouteUnderTbl)
-	if len(endpoints) != 1 || !endpoints[0].Gw.Equal(net.ParseIP(gateway)) ||
-		endpoints[0].LinkIndex != underlay.Attrs().Index ||
+	if len(endpoints) != 1 || !endpoints[0].Gw.Equal(net.ParseIP(gateway)) || endpoints[0].LinkIndex != underlay.Attrs().Index ||
 		int(endpoints[0].Protocol) != netif.TunnelEndpointRouteProtocol {
-		t.Fatalf(
-			"table %d endpoint routes = %+v, want %s via %s dev %s protocol %d",
-			tunnelRouteUnderTbl,
-			endpoints,
-			tunnelRouteEndpoint,
-			gateway,
-			tunnelRouteUnderlay,
-			netif.TunnelEndpointRouteProtocol,
-		)
+		t.Fatalf("table %d endpoint routes = %+v, want %s via %s dev %s protocol %d",
+			tunnelRouteUnderTbl, endpoints, tunnelRouteEndpoint, gateway, tunnelRouteUnderlay, netif.TunnelEndpointRouteProtocol)
 	}
 	for _, tableID := range []int{tunnelRouteTunnelTbl, tunnelRouteOtherTbl, unix.RT_TABLE_MAIN} {
 		if misplaced := tunnelEndpointRoutes(t, tableID); len(misplaced) != 0 {
@@ -99,14 +87,8 @@ func requireTunnelEndpointRoute(t *testing.T, gateway string) netlink.Route {
 func requireTunnelRouting(t *testing.T, snapshot wanstate.Snapshot, ready bool, reason string) {
 	t.Helper()
 	routing := snapshot.Routing[tunnelRouteID]
-	if routing.V6Ready != ready || routing.V6Reason != reason || routing.V4Ready ||
-		routing.V4Reason != "" {
-		t.Fatalf(
-			"tunnel routing = %+v, want IPv6 ready=%t reason=%q and no IPv4 family",
-			routing,
-			ready,
-			reason,
-		)
+	if routing.V6Ready != ready || routing.V6Reason != reason || routing.V4Ready || routing.V4Reason != "" {
+		t.Fatalf("tunnel routing = %+v, want IPv6 ready=%t reason=%q and no IPv4 family", routing, ready, reason)
 	}
 	if other := snapshot.Routing["other"]; !other.V4Ready || other.V6Ready {
 		t.Fatalf("other provider routing = %+v, want IPv4 ready and no IPv6 family", other)

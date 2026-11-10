@@ -39,36 +39,28 @@ func New(settings ifmgr.ModuleConfig) (result ifmgr.Module, failure error) {
 	if settings == nil {
 		return module, nil
 	}
-
 	configuration, ok := settings.(Config)
 	if !ok {
 		return nil, fmt.Errorf("vpp: invalid config type %T", settings)
 	}
-
 	if configuration.Settings == nil {
 		return module, nil
 	}
-
 	if configuration.Policy == nil {
 		return nil, fmt.Errorf("vpp: router requires a goodkind-mwan-vpp:vpp network policy")
 	}
-
 	if err := configuration.Policy.Validate(); err != nil {
 		return nil, fmt.Errorf("validate router VPP policy: %w", err)
 	}
-
 	controller, err := vpp.NewController(*configuration.Settings)
 	if err != nil {
 		return nil, fmt.Errorf("configure router VPP controller: %w", err)
 	}
-
 	if err := controller.Validate(*configuration.Policy); err != nil {
 		return nil, fmt.Errorf("validate router VPP resources: %w", err)
 	}
-
 	module.controller = controller
 	module.policy = configuration.Policy
-
 	return module, nil
 }
 
@@ -78,7 +70,6 @@ func (module *Module) Init(_ context.Context, environment *ifmgr.Env) error {
 	if module.controller == nil {
 		return ifmgr.ErrModuleDisabled
 	}
-
 	return nil
 }
 
@@ -86,18 +77,12 @@ func (module *Module) Init(_ context.Context, environment *ifmgr.Env) error {
 func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	err := module.controller.Reconcile(ctx, log, *module.policy)
 	if module.Env.LiveState != nil {
-		module.Env.LiveState.SetOwnedIntendedRuleset(
-			moduleName,
-			"Configure router VPP through its local binary API.",
-			err,
-		)
+		module.Env.LiveState.SetOwnedIntendedRuleset(moduleName, "Configure router VPP through its local binary API.", err)
 	}
-
 	if err != nil {
 		log.ErrorContext(ctx, "VPP reconciliation failed", "error", err)
 		return fmt.Errorf("reconcile optional router VPP: %w", err)
 	}
-
 	return nil
 }
 

@@ -20,58 +20,52 @@ func TestOwnedVXLANTemporaryRecovery(t *testing.T) {
 		if foreign {
 			name = "foreign"
 		}
-		t.Run(
-			name,
-			func(t *testing.T) {
-				if !enterVXLANNamespace(t) {
-					return
+		t.Run(name, func(t *testing.T) {
+			if !enterVXLANNamespace(t) {
+				return
+			}
+			underlay := addTunnelUnderlay(t, vxlanUnderlayName)
+			statePath := filepath.Join(t.TempDir(), "links.json")
+			connection := vxlanConnection()
+			external := externalConnection(vxlanUnderlayName)
+			reconciler := newTunnelReconciler(t, statePath)
+			requireTunnelReady(t, reconcileVXLAN(t, reconciler, connection, external))
+			created := vxlanDevice(t, vxlanName)
+			record := reserveExistingVXLAN(t, statePath, created)
+			if foreign {
+				if err := netlink.LinkDel(vxlanDevice(t, record.TempName)); err != nil {
+					t.Fatal(err)
 				}
-				underlay := addTunnelUnderlay(t, vxlanUnderlayName)
-				statePath := filepath.Join(t.TempDir(), "links.json")
-				connection := vxlanConnection()
-				external := externalConnection(vxlanUnderlayName)
-				reconciler := newTunnelReconciler(t, statePath)
-				requireTunnelReady(t, reconcileVXLAN(t, reconciler, connection, external))
-				created := vxlanDevice(t, vxlanName)
-				record := reserveExistingVXLAN(t, statePath, created)
-				if foreign {
-					if err := netlink.LinkDel(vxlanDevice(t, record.TempName)); err != nil {
-						t.Fatal(err)
-					}
-					settings := connection.Link.Tunnel.Clone()
-					settings.VXLAN.VNI++
-					requested, err := requestedVXLAN(record.TempName, 0, settings, underlay)
-					if err != nil {
-						t.Fatal(err)
-					}
-					if err := netlink.LinkAdd(requested); err != nil {
-						t.Fatal(err)
-					}
+				settings := connection.Link.Tunnel.Clone()
+				settings.VXLAN.VNI++
+				requested, err := requestedVXLAN(record.TempName, 0, settings, underlay)
+				if err != nil {
+					t.Fatal(err)
 				}
-				result := reconcileVXLAN(t, newTunnelReconciler(t, statePath), connection, external)
-				if foreign {
-					if result.Status != OwnedLinkFailed || result.Err == nil {
-						t.Fatalf("foreign temporary VXLAN was accepted: %+v", result)
-					}
-					if kept := vxlanDevice(
-						t,
-						record.TempName,
-					); kept.Alias != "" || kept.VxlanId != 1 {
-						t.Fatalf("foreign temporary VXLAN changed: %+v", kept)
-					}
-					if _, err := netlink.LinkByName(vxlanName); !IsLinkNotFound(err) {
-						t.Fatalf("foreign temporary VXLAN acquired the configured name: %v", err)
-					}
-					return
+				if err := netlink.LinkAdd(requested); err != nil {
+					t.Fatal(err)
 				}
-				requireTunnelReady(t, result)
-				recovered := vxlanDevice(t, vxlanName)
-				if recovered.Index != created.Index || recovered.Alias != record.Alias {
-					t.Fatal("temporary VXLAN recovery lost kernel identity or ownership")
+			}
+			result := reconcileVXLAN(t, newTunnelReconciler(t, statePath), connection, external)
+			if foreign {
+				if result.Status != OwnedLinkFailed || result.Err == nil {
+					t.Fatalf("foreign temporary VXLAN was accepted: %+v", result)
 				}
-				requireVXLANAttributes(t, recovered, connection, underlay)
-			},
-		)
+				if kept := vxlanDevice(t, record.TempName); kept.Alias != "" || kept.VxlanId != 1 {
+					t.Fatalf("foreign temporary VXLAN changed: %+v", kept)
+				}
+				if _, err := netlink.LinkByName(vxlanName); !IsLinkNotFound(err) {
+					t.Fatalf("foreign temporary VXLAN acquired the configured name: %v", err)
+				}
+				return
+			}
+			requireTunnelReady(t, result)
+			recovered := vxlanDevice(t, vxlanName)
+			if recovered.Index != created.Index || recovered.Alias != record.Alias {
+				t.Fatal("temporary VXLAN recovery lost kernel identity or ownership")
+			}
+			requireVXLANAttributes(t, recovered, connection, underlay)
+		})
 	}
 }
 
@@ -137,28 +131,18 @@ func TestOwnedVXLANRetainsOwnershipAfterCleanupFailure(t *testing.T) {
 		}
 	}()
 	results, err := reconciler.Reconcile(t.Context(), tunnelTestLog(), nil, nil)
-	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkFailed ||
-		!errors.Is(results[0].Err, unix.EPERM) {
-		t.Fatalf(
-			"cleanup without NET_ADMIN did not report retained ownership: results=%+v error=%v",
-			results,
-			err,
-		)
+	if err != nil || len(results) != 1 || results[0].Status != OwnedLinkFailed || !errors.Is(results[0].Err, unix.EPERM) {
+		t.Fatalf("cleanup without NET_ADMIN did not report retained ownership: results=%+v error=%v", results, err)
 	}
-	if kept := vxlanDevice(t, vxlanName); kept.Index != created.Index ||
-		kept.Alias != created.Alias {
+	if kept := vxlanDevice(t, vxlanName); kept.Index != created.Index || kept.Alias != created.Alias {
 		t.Fatal("failed cleanup changed the VXLAN device")
 	}
 	if err := unix.Capset(&header, &capabilities[0]); err != nil {
 		t.Fatal(err)
 	}
 	requireTunnelReady(t, reconcileVXLAN(t, reconciler, connection, external))
-	requireTunnelReady(
-		t,
-		reconcileVXLAN(t, newTunnelReconciler(t, statePath), connection, external),
-	)
-	if kept := vxlanDevice(t, vxlanName); kept.Index != created.Index ||
-		kept.Alias != created.Alias {
+	requireTunnelReady(t, reconcileVXLAN(t, newTunnelReconciler(t, statePath), connection, external))
+	if kept := vxlanDevice(t, vxlanName); kept.Index != created.Index || kept.Alias != created.Alias {
 		t.Fatal("cleanup failure discarded durable VXLAN ownership")
 	}
 }

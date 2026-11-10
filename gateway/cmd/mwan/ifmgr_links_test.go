@@ -18,28 +18,12 @@ import (
 func TestRenamedLinksNamesALinkWhoseNameTheFileDoesNotAsk(t *testing.T) {
 	t.Parallel()
 
-	byDriver := staticLinkSpecForMain(
-		"enwebpass0",
-		interfaceintent.Match{Driver: "igc", HardwareAddress: ""},
-	)
-	byAddress := staticLinkSpecForMain(
-		"enmbrains0",
-		interfaceintent.Match{Driver: "", HardwareAddress: "02:00:5E:00:53:02"},
-	)
+	byDriver := staticLinkSpecForMain("enwebpass0", interfaceintent.Match{Driver: "igc", HardwareAddress: ""})
+	byAddress := staticLinkSpecForMain("enmbrains0", interfaceintent.Match{Driver: "", HardwareAddress: "02:00:5E:00:53:02"})
 	connections := []interfaceintent.Connection{byDriver, byAddress}
 	linkChanges := []networkd.Change{
-		{
-			File:      "20-enwebpass0.link",
-			Kind:      networkd.FileLink,
-			Interface: "enwebpass0",
-			Removed:   false,
-		},
-		{
-			File:      "20-enmbrains0.link",
-			Kind:      networkd.FileLink,
-			Interface: "enmbrains0",
-			Removed:   false,
-		},
+		{File: "20-enwebpass0.link", Kind: networkd.FileLink, Interface: "enwebpass0", Removed: false},
+		{File: "20-enmbrains0.link", Kind: networkd.FileLink, Interface: "enmbrains0", Removed: false},
 	}
 
 	cases := map[string]struct {
@@ -76,12 +60,7 @@ func TestRenamedLinksNamesALinkWhoseNameTheFileDoesNotAsk(t *testing.T) {
 		},
 		"a changed .network file and a removed .link file": {
 			changes: []networkd.Change{
-				{
-					File:      "20-enwebpass0.network",
-					Kind:      networkd.FileNetwork,
-					Interface: "enwebpass0",
-					Removed:   false,
-				},
+				{File: "20-enwebpass0.network", Kind: networkd.FileNetwork, Interface: "enwebpass0", Removed: false},
 				{File: "20-enold0.link", Kind: networkd.FileLink, Interface: "", Removed: true},
 			},
 			live: []netif.LinkIdentity{
@@ -91,17 +70,14 @@ func TestRenamedLinksNamesALinkWhoseNameTheFileDoesNotAsk(t *testing.T) {
 		},
 	}
 	for name, tc := range cases {
-		t.Run(
-			name,
-			func(t *testing.T) {
-				t.Parallel()
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-				got := renamedLinks(tc.changes, connections, tc.live)
-				if !reflect.DeepEqual(got, tc.want) {
-					t.Fatalf("renamedLinks = %+v, want %+v", got, tc.want)
-				}
-			},
-		)
+			got := renamedLinks(tc.changes, connections, tc.live)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("renamedLinks = %+v, want %+v", got, tc.want)
+			}
+		})
 	}
 }
 

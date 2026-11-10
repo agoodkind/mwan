@@ -26,25 +26,12 @@ func main() {
 		slog.Warn("provider build has no stamped commit; mwan_release rejects every version")
 		buildCommit = ""
 	}
-
 	options := providerserver.ServeOpts{
 		Address: providerAddress,
 		Debug:   debug,
 	}
-	slog.Info(
-		"provider server starting",
-		"address",
-		providerAddress,
-		"commit",
-		buildCommit,
-		"debug",
-		debug,
-	)
-	if err := providerserver.Serve(
-		context.Background(),
-		provider.New(buildCommit),
-		options,
-	); err != nil {
+	slog.Info("provider server starting", "address", providerAddress, "commit", buildCommit, "debug", debug)
+	if err := providerserver.Serve(context.Background(), provider.New(buildCommit), options); err != nil {
 		slog.Error("provider server stopped", "address", providerAddress, "err", err)
 		os.Exit(1)
 	}

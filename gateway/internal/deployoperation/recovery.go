@@ -21,23 +21,18 @@ func (store Store) WaitForLease(ctx context.Context, operationID, generation str
 		if err != nil {
 			return err
 		}
-
-		if record.OperationID != operationID || record.Generation != generation ||
-			record.Status != Recovering {
+		if record.OperationID != operationID || record.Generation != generation || record.Status != Recovering {
 			return fmt.Errorf("deploy recovery operation identity or state has changed")
 		}
-
 		if record.Lease == nil || !record.Lease.ExpiresAt.After(store.Clock.Now()) {
 			return nil
 		}
-
 		delay := min(store.PollInterval, record.Lease.ExpiresAt.Sub(store.Clock.Now()))
 		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
 			slog.WarnContext(ctx, "deployment mutation lease wait interrupted")
-
 			return fmt.Errorf("deployment mutation lease wait interrupted: %w", ctx.Err())
 		case <-timer.C:
 		}
@@ -48,50 +43,39 @@ func (store Store) WaitForLease(ctx context.Context, operationID, generation str
 // drain the mutation lease before stopping the guest.
 func Restore(ctx context.Context, operations *ops.RealOps, record Record, now time.Time) error {
 	if record.Status != Recovering || (record.Lease != nil && record.Lease.ExpiresAt.After(now)) {
-		return fmt.Errorf(
-			"snapshot restoration requires recovery state and an expired or released mutation lease",
-		)
+		return fmt.Errorf("snapshot restoration requires recovery state and an expired or released mutation lease")
 	}
-
 	snapshots, err := operations.VMSnapshots(ctx, record.VMID)
 	if err != nil {
 		return fmt.Errorf("verify deploy recovery snapshot: %w", err)
 	}
-
 	if !snapshotExists(snapshots, record.Snapshot) {
 		return fmt.Errorf("exact deploy recovery snapshot %s is absent", record.Snapshot)
 	}
-
 	if err := operations.VMStop(ctx, record.VMID); err != nil {
 		slog.WarnContext(ctx, "deploy recovery VM stop failed")
 		return fmt.Errorf("stop VM for deploy recovery: %w", err)
 	}
-
 	running, err := operations.VMStatus(ctx, record.VMID)
 	if err != nil {
 		return fmt.Errorf("verify stopped deploy recovery VM: %w", err)
 	}
-
 	if running {
 		return fmt.Errorf("deploy recovery VM remains running after stop")
 	}
-
 	for _, snapshot := range slices.Backward(rollback.SnapshotsAfter(snapshots, record.Snapshot)) {
 		if err := operations.VMDelSnapshot(ctx, record.VMID, snapshot); err != nil {
 			return fmt.Errorf("remove deploy recovery snapshot descendant %s: %w", snapshot, err)
 		}
 	}
-
 	if err := operations.VMRollback(ctx, record.VMID, record.Snapshot); err != nil {
 		slog.WarnContext(ctx, "deploy recovery snapshot restore failed")
 		return fmt.Errorf("restore deploy recovery snapshot: %w", err)
 	}
-
 	if err := operations.VMStart(ctx, record.VMID); err != nil {
 		slog.WarnContext(ctx, "deploy recovery VM start failed")
 		return fmt.Errorf("start restored deploy recovery VM: %w", err)
 	}
-
 	return nil
 }
 
@@ -102,6 +86,5 @@ func snapshotExists(output []byte, name string) bool {
 			return true
 		}
 	}
-
 	return false
 }

@@ -30,10 +30,7 @@ type forwardPathPacketEndpoints struct {
 	client          *net.Interface
 }
 
-func isolateForwardPathEndpoints(
-	t *testing.T,
-	fixture forwardPathFixture,
-) forwardPathPacketEndpoints {
+func isolateForwardPathEndpoints(t *testing.T, fixture forwardPathFixture) forwardPathPacketEndpoints {
 	t.Helper()
 	receiver := newForwardPathPacketNamespace(t)
 	for _, peer := range fixture.peers {
@@ -73,18 +70,8 @@ func isolateForwardPathEndpoints(
 	if router.Equal(senderNamespace) || router.Equal(receiver) || senderNamespace.Equal(receiver) {
 		t.Fatal("packet sender, router and receivers require distinct network namespaces")
 	}
-	t.Logf(
-		"forwarding namespaces: sender=%s router=%s receivers=%s",
-		senderNamespace,
-		router,
-		receiver,
-	)
-	return forwardPathPacketEndpoints{
-		receiver:        receiver,
-		senderNamespace: senderNamespace,
-		sender:          sender,
-		client:          client,
-	}
+	t.Logf("forwarding namespaces: sender=%s router=%s receivers=%s", senderNamespace, router, receiver)
+	return forwardPathPacketEndpoints{receiver: receiver, senderNamespace: senderNamespace, sender: sender, client: client}
 }
 
 func enableForwardPathEndpoint(t *testing.T, namespace netns.NsHandle, name string) {
@@ -117,11 +104,7 @@ func newForwardPathPacketNamespace(t *testing.T) netns.NsHandle {
 		if err == nil {
 			settings := netif.NewProcSysctlRunner(slog.Default(), false)
 			for _, family := range []string{"ipv4", "ipv6"} {
-				if err = settings.Set(
-					t.Context(),
-					"net."+family+".conf.all.forwarding",
-					"0",
-				); err != nil {
+				if err = settings.Set(t.Context(), "net."+family+".conf.all.forwarding", "0"); err != nil {
 					err = errors.Join(err, namespace.Close())
 					break
 				}
@@ -151,11 +134,7 @@ type forwardPathReceiverSocketResult struct {
 	err        error
 }
 
-func openForwardPathReceiverSocket(
-	t *testing.T,
-	namespace netns.NsHandle,
-	name string,
-) *packet.Conn {
+func openForwardPathReceiverSocket(t *testing.T, namespace netns.NsHandle, name string) *packet.Conn {
 	t.Helper()
 	results := make(chan forwardPathReceiverSocketResult, 1)
 	go func() {
@@ -175,11 +154,7 @@ func openForwardPathReceiverSocket(
 	}
 }
 
-func forwardPathReceiverSocket(
-	t *testing.T,
-	namespace netns.NsHandle,
-	name string,
-) (*packet.Conn, error) {
+func forwardPathReceiverSocket(t *testing.T, namespace netns.NsHandle, name string) (*packet.Conn, error) {
 	t.Helper()
 	if err := netns.Set(namespace); err != nil {
 		return nil, fmt.Errorf("select receiver namespace: %w", err)
@@ -201,10 +176,7 @@ func forwardPathReceiverSocket(
 	}
 	if deadline, bounded := t.Deadline(); bounded {
 		if err := connection.SetDeadline(deadline); err != nil {
-			return nil, errors.Join(
-				fmt.Errorf("set receiver deadline: %w", err),
-				connection.Close(),
-			)
+			return nil, errors.Join(fmt.Errorf("set receiver deadline: %w", err), connection.Close())
 		}
 	}
 	return connection, nil

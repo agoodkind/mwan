@@ -22,13 +22,8 @@ func staticLinkSpec(files []interfaceintent.UnitFile) interfaceintent.Connection
 		},
 		IPv4: &interfaceintent.IPv4{
 			Family: interfaceintent.Family{
-				Forwarding: new(true),
-				Addresses: []interfaceintent.Address{
-					{
-						Prefix:  netip.MustParsePrefix("203.0.113.2/29"),
-						Purpose: interfaceintent.PurposeLocal,
-					},
-				},
+				Forwarding:  new(true),
+				Addresses:   []interfaceintent.Address{{Prefix: netip.MustParsePrefix("203.0.113.2/29"), Purpose: interfaceintent.PurposeLocal}},
 				DHCP:        new(false),
 				Gateway:     netip.MustParseAddr("203.0.113.1"),
 				RouteMetric: new(uint32(10)),
@@ -49,18 +44,14 @@ func staticLinkSpec(files []interfaceintent.UnitFile) interfaceintent.Connection
 
 // networkSection builds one free-form section of the .network file.
 func networkSection(name string, key string, value string) []interfaceintent.UnitFile {
-	return []interfaceintent.UnitFile{
-		{
-			Kind: string(networkd.FileNetwork),
-			Sections: []interfaceintent.UnitSection{
-				{
-					Index:   0,
-					Name:    name,
-					Entries: []interfaceintent.UnitEntry{{Index: 0, Key: key, Value: value}},
-				},
-			},
-		},
-	}
+	return []interfaceintent.UnitFile{{
+		Kind: string(networkd.FileNetwork),
+		Sections: []interfaceintent.UnitSection{{
+			Index:   0,
+			Name:    name,
+			Entries: []interfaceintent.UnitEntry{{Index: 0, Key: key, Value: value}},
+		}},
+	}}
 }
 
 func TestValidateRejectsAKeySetByBothLayers(t *testing.T) {
@@ -85,39 +76,29 @@ func TestValidateRejectsAKeySetByBothLayers(t *testing.T) {
 			want:  "networkd section Network key Address is set by the ipv4 address leaf; remove one",
 		},
 		"driver match in the link file": {
-			files: []interfaceintent.UnitFile{
-				{
-					Kind: string(networkd.FileLink),
-					Sections: []interfaceintent.UnitSection{
-						{
-							Index: 0,
-							Name:  "Match",
-							Entries: []interfaceintent.UnitEntry{
-								{Index: 0, Key: "Driver", Value: "e1000e"},
-							},
-						},
-					},
-				},
-			},
+			files: []interfaceintent.UnitFile{{
+				Kind: string(networkd.FileLink),
+				Sections: []interfaceintent.UnitSection{{
+					Index:   0,
+					Name:    "Match",
+					Entries: []interfaceintent.UnitEntry{{Index: 0, Key: "Driver", Value: "e1000e"}},
+				}},
+			}},
 			want: "networkd section Match key Driver is set by the match driver leaf; remove one",
 		},
 	}
 	for name, tc := range cases {
-		t.Run(
-			name,
-			func(t *testing.T) {
-				t.Parallel()
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-				err := networkd.Validate(staticLinkSpec(tc.files))
-				if err == nil {
-					t.Fatal("Validate accepted a key set by both layers")
-				}
-
-				if err.Error() != tc.want {
-					t.Fatalf("Validate error = %q, want %q", err, tc.want)
-				}
-			},
-		)
+			err := networkd.Validate(staticLinkSpec(tc.files))
+			if err == nil {
+				t.Fatal("Validate accepted a key set by both layers")
+			}
+			if err.Error() != tc.want {
+				t.Fatalf("Validate error = %q, want %q", err, tc.want)
+			}
+		})
 	}
 }
 
@@ -130,33 +111,24 @@ func TestValidateAcceptsAKeyNoTypedLeafSets(t *testing.T) {
 		// The typed table places a key in one file kind, so the same key in
 		// another kind is the network manager's to judge rather than a
 		// doubled leaf.
-		"a typed key in another file": {
-			{
-				Kind: string(networkd.FileNetdev),
-				Sections: []interfaceintent.UnitSection{
-					{
-						Index: 0,
-						Name:  "Match",
-						Entries: []interfaceintent.UnitEntry{
-							{Index: 0, Key: "Driver", Value: "igc"},
-						},
-					},
-				},
-			},
-		},
+		"a typed key in another file": {{
+			Kind: string(networkd.FileNetdev),
+			Sections: []interfaceintent.UnitSection{{
+				Index:   0,
+				Name:    "Match",
+				Entries: []interfaceintent.UnitEntry{{Index: 0, Key: "Driver", Value: "igc"}},
+			}},
+		}},
 		"no free-form content": nil,
 	}
 	for name, files := range cases {
-		t.Run(
-			name,
-			func(t *testing.T) {
-				t.Parallel()
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-				if err := networkd.Validate(staticLinkSpec(files)); err != nil {
-					t.Fatalf("Validate rejected a key no typed leaf sets: %v", err)
-				}
-			},
-		)
+			if err := networkd.Validate(staticLinkSpec(files)); err != nil {
+				t.Fatalf("Validate rejected a key no typed leaf sets: %v", err)
+			}
+		})
 	}
 }
 
@@ -184,30 +156,26 @@ func TestValidateOccupiesTheLeaseMetricOnlyWithoutAGateway(t *testing.T) {
 		},
 	}
 	for name, tc := range cases {
-		t.Run(
-			name,
-			func(t *testing.T) {
-				t.Parallel()
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-				leased := leasedLinkSpec()
-				leased.Networkd = networkSection(tc.section, tc.key, "100")
-				err := networkd.Validate(leased)
-				if err == nil {
-					t.Fatal("Validate accepted a lease metric set by both layers")
-				}
+			leased := leasedLinkSpec()
+			leased.Networkd = networkSection(tc.section, tc.key, "100")
+			err := networkd.Validate(leased)
+			if err == nil {
+				t.Fatal("Validate accepted a lease metric set by both layers")
+			}
+			if err.Error() != tc.want {
+				t.Fatalf("Validate error = %q, want %q", err, tc.want)
+			}
 
-				if err.Error() != tc.want {
-					t.Fatalf("Validate error = %q, want %q", err, tc.want)
-				}
-
-				static := staticLinkSpec(networkSection(tc.section, tc.key, "100"))
-				static.IPv6.Gateway = netip.MustParseAddr("2001:db8::1")
-				static.IPv6.RouteMetric = new(uint32(10))
-				if err := networkd.Validate(static); err != nil {
-					t.Fatalf("Validate rejected a lease metric on a family with a gateway: %v", err)
-				}
-			},
-		)
+			static := staticLinkSpec(networkSection(tc.section, tc.key, "100"))
+			static.IPv6.Gateway = netip.MustParseAddr("2001:db8::1")
+			static.IPv6.RouteMetric = new(uint32(10))
+			if err := networkd.Validate(static); err != nil {
+				t.Fatalf("Validate rejected a lease metric on a family with a gateway: %v", err)
+			}
+		})
 	}
 }
 

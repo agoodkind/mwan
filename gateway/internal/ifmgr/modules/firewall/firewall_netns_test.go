@@ -22,18 +22,14 @@ func TestReconcileRepairsDeletedRulesAndRetriesFailedRefresh(t *testing.T) {
 	enterFirewallTestNamespace(t)
 
 	policy := firewall.Config{
-		Enabled:             true,
-		InternalInterface:   "lan0",
-		InternalNetworkIPv4: netip.MustParsePrefix("192.0.2.0/24"),
-		ManagementInterface: "mgmt0",
-		ManagementServices:  []firewall.Service{{Protocol: "tcp", Port: 22}},
-		KnownInterfaces:     []string{"lan0", "mgmt0", "wan0"},
-		Paths: []firewall.ForwardingPath{
-			{InternalInterface: "lan0", ExternalInterface: "wan0", IPv4: true, IPv6: true},
-		},
-		Providers: []firewall.Provider{
-			{Interface: "wan0", Mark: 100, MasqueradeIPv4: true},
-		},
+		Enabled:               true,
+		InternalInterface:     "lan0",
+		InternalNetworkIPv4:   netip.MustParsePrefix("192.0.2.0/24"),
+		ManagementInterface:   "mgmt0",
+		ManagementServices:    []firewall.Service{{Protocol: "tcp", Port: 22}},
+		KnownInterfaces:       []string{"lan0", "mgmt0", "wan0"},
+		Paths:                 []firewall.ForwardingPath{{InternalInterface: "lan0", ExternalInterface: "wan0", IPv4: true, IPv6: true}},
+		Providers:             []firewall.Provider{{Interface: "wan0", Mark: 100, MasqueradeIPv4: true}},
 		PinnedProvider:        "wan0",
 		PinnedSourceIPv4:      netip.MustParseAddr("192.0.2.10"),
 		PinnedSourceIPv6:      netip.MustParseAddr("2001:db8::10"),
@@ -116,12 +112,8 @@ func TestReconcileRequestsNoRefreshWithoutPinnedProvider(t *testing.T) {
 		ManagementInterface: "mgmt0",
 		ManagementServices:  []firewall.Service{{Protocol: "tcp", Port: 22}},
 		KnownInterfaces:     []string{"lan0", "mgmt0", "wan0"},
-		Paths: []firewall.ForwardingPath{
-			{InternalInterface: "lan0", ExternalInterface: "wan0", IPv4: true, IPv6: true},
-		},
-		Providers: []firewall.Provider{
-			{Interface: "wan0", Mark: 100, MasqueradeIPv4: true},
-		},
+		Paths:               []firewall.ForwardingPath{{InternalInterface: "lan0", ExternalInterface: "wan0", IPv4: true, IPv6: true}},
+		Providers:           []firewall.Provider{{Interface: "wan0", Mark: 100, MasqueradeIPv4: true}},
 	}
 	selected, err := New(policy)
 	if err != nil {

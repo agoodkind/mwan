@@ -48,17 +48,11 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	if m.clock == nil {
 		m.clock = internalclock.Real{}
 	}
-
-	log.InfoContext(
-		ctx,
-		"bridge_probe: Init",
-		"no_signal_alert_after",
-		m.cfg.NoSignalAlertAfter.String(),
-	)
+	log.InfoContext(ctx, "bridge_probe: Init",
+		"no_signal_alert_after", m.cfg.NoSignalAlertAfter.String())
 	if m.cfg.Iface == "" {
 		return fmt.Errorf("bridge_probe: iface is required")
 	}
-
 	return nil
 }
 
@@ -74,7 +68,6 @@ func (m *Module) OnKernelEvent(_ context.Context, _ *slog.Logger, ev netif.Event
 	if ev.Iface != m.cfg.Iface {
 		return nil
 	}
-
 	now := m.clock.Now()
 	switch ev.Kind {
 	case netif.EvRouteAdded:
@@ -87,18 +80,9 @@ func (m *Module) OnKernelEvent(_ context.Context, _ *slog.Logger, ev netif.Event
 		m.Lock()
 		m.lastLinkUp = now
 		m.Unlock()
-	case netif.EvUnknown,
-		netif.EvRouteDeleted,
-		netif.EvAddrAdded,
-		netif.EvAddrDeleted,
-		netif.EvLinkDown,
-		netif.EvResync,
-		netif.EvObservationStale,
-		netif.EvObservationFailed,
-		netif.EvUplinkReturned:
+	case netif.EvUnknown, netif.EvRouteDeleted, netif.EvAddrAdded, netif.EvAddrDeleted, netif.EvLinkDown, netif.EvResync, netif.EvObservationStale, netif.EvObservationFailed, netif.EvUplinkReturned:
 		return nil
 	}
-
 	return nil
 }
 
@@ -109,7 +93,6 @@ func (m *Module) OnDHCPLease(_ context.Context, _ *slog.Logger, lease netif.Leas
 		m.lastDHCP = m.clock.Now()
 		m.Unlock()
 	}
-
 	return nil
 }
 
@@ -135,11 +118,8 @@ func (m *Module) EvaluateAlerts(ctx context.Context, _ *slog.Logger, now time.Ti
 
 	if suspected {
 		m.Env.Alerts.NotifyContext(
-			ctx,
-			now,
-			slog.LevelWarn,
-			"bridge-suspected-dangling",
-			m.cfg.Iface,
+			ctx, now, slog.LevelWarn,
+			"bridge-suspected-dangling", m.cfg.Iface,
 			"bridge_probe: bridge-side veth attachment suspected dangling "+
 				"(no RA, no DHCP, link observed up, SLAAC self-heal exhausted)",
 			slog.String("last_ra", lastRA.Format(time.RFC3339)),
@@ -148,13 +128,9 @@ func (m *Module) EvaluateAlerts(ctx context.Context, _ *slog.Logger, now time.Ti
 			slog.String("hint", "host-side: verify veth is attached to expected bridge"),
 		)
 	} else if m.Env.Alerts.Active("bridge-suspected-dangling", m.cfg.Iface) {
-		m.Env.Alerts.ResolveContext(
-			ctx,
-			now,
-			"bridge-suspected-dangling",
-			m.cfg.Iface,
-			"bridge_probe: signal returned",
-		)
+		m.Env.Alerts.ResolveContext(ctx, now,
+			"bridge-suspected-dangling", m.cfg.Iface,
+			"bridge_probe: signal returned")
 	}
 }
 
@@ -169,10 +145,8 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		if !ok {
 			return nil, fmt.Errorf("bridge_probe: invalid config type %T", cfg)
 		}
-
 		c = typedConfig
 	}
-
 	return &Module{
 		BaseModule: ifmgr.NewBaseModule("bridge_probe"),
 		cfg:        c,

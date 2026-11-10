@@ -40,82 +40,37 @@ func unmetBy(reason string) map[string]wanstate.DependencyState {
 
 func dependencyRules() []dependencyRule {
 	probeStates := map[string]wanstate.DependencyState{
-		reasonProbePending: wanstate.DependencyPending,
-		reasonProbeFailed:  wanstate.DependencyUnmet,
+		reasonProbePending: wanstate.DependencyPending, reasonProbeFailed: wanstate.DependencyUnmet,
 	}
-
 	return []dependencyRule{
 		{name: dependencyTunnel, applies: appliesV6Tunnel, states: unmetBy(reasonTunnelLinkAbsent)},
-		{
-			name:    dependencyUnderlay,
-			applies: appliesV6Tunnel,
-			states:  unmetBy(reasonUnderlayNotReady),
-		},
-		{
-			name:    dependencyEndpointRoute,
-			applies: appliesV6Tunnel,
-			states:  unmetBy(reasonEndpointRouteAbsent),
-		},
-		{
-			name:    dependencyBGPSession,
-			applies: appliesV6BGP,
-			states:  unmetBy(reasonBGPNotEstablished),
-		},
-		{
-			name:    dependencyBGPRoute,
-			applies: appliesV6BGP,
-			states:  unmetBy(reasonBGPNoAcceptedRoute),
-		},
+		{name: dependencyUnderlay, applies: appliesV6Tunnel, states: unmetBy(reasonUnderlayNotReady)},
+		{name: dependencyEndpointRoute, applies: appliesV6Tunnel, states: unmetBy(reasonEndpointRouteAbsent)},
+		{name: dependencyBGPSession, applies: appliesV6BGP, states: unmetBy(reasonBGPNotEstablished)},
+		{name: dependencyBGPRoute, applies: appliesV6BGP, states: unmetBy(reasonBGPNoAcceptedRoute)},
 		{name: dependencyProbe, applies: appliesAlways, states: probeStates},
-		{
-			name:    dependencyTranslation,
-			applies: appliesAlways,
-			states:  unmetBy(reasonTranslationNotReady),
-		},
-		{
-			name:    dependencyGateway,
-			applies: appliesAlways,
-			states:  unmetBy(reasonGatewayUnavailable),
-		},
+		{name: dependencyTranslation, applies: appliesAlways, states: unmetBy(reasonTranslationNotReady)},
+		{name: dependencyGateway, applies: appliesAlways, states: unmetBy(reasonGatewayUnavailable)},
 	}
 }
 
 func familyDependencies(wan WAN, family, reason string) []wanstate.DependencyResult {
 	if !familyConfigured(wan, family) {
-		return []wanstate.DependencyResult{
-			{
-				Name:   dependencyConfiguration,
-				State:  wanstate.DependencyUnmet,
-				Reason: reasonFamilyNotRouted,
-			},
-		}
+		return []wanstate.DependencyResult{{Name: dependencyConfiguration, State: wanstate.DependencyUnmet, Reason: reasonFamilyNotRouted}}
 	}
-
-	results := []wanstate.DependencyResult{
-		{Name: dependencyConfiguration, State: wanstate.DependencyMet, Reason: ""},
-	}
+	results := []wanstate.DependencyResult{{Name: dependencyConfiguration, State: wanstate.DependencyMet, Reason: ""}}
 	following := wanstate.DependencyMet
-
 	for _, rule := range dependencyRules() {
 		if !rule.applies(wan, family) {
 			continue
 		}
-
 		state, reported := rule.states[reason]
 		if following != wanstate.DependencyMet || !reported {
-			results = append(
-				results,
-				wanstate.DependencyResult{Name: rule.name, State: following, Reason: ""},
-			)
+			results = append(results, wanstate.DependencyResult{Name: rule.name, State: following, Reason: ""})
 			continue
 		}
-
-		results = append(
-			results,
-			wanstate.DependencyResult{Name: rule.name, State: state, Reason: reason},
-		)
+		results = append(results, wanstate.DependencyResult{Name: rule.name, State: state, Reason: reason})
 		following = wanstate.DependencyNotEvaluated
 	}
-
 	return results
 }

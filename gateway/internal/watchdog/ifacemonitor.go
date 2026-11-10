@@ -15,26 +15,20 @@ func collectIfaceAddrs() map[string][]string {
 	if err != nil {
 		return result
 	}
-
 	for _, iface := range ifaces {
 		if iface.Flags&net.FlagLoopback != 0 {
 			continue
 		}
-
 		addrs, err := iface.Addrs()
 		if err != nil {
 			continue
 		}
-
 		var cidrs []string
-
 		for _, a := range addrs {
 			cidrs = append(cidrs, a.String())
 		}
-
 		result[iface.Name] = cidrs
 	}
-
 	return result
 }
 
@@ -43,15 +37,12 @@ func collectIfaceAddrs() map[string][]string {
 func diffIfaceAddrs(prev, curr map[string][]string) string {
 	prevSet := func(m map[string][]string) map[string]map[string]struct{} {
 		out := make(map[string]map[string]struct{})
-
 		for iface, addrs := range m {
 			out[iface] = make(map[string]struct{})
-
 			for _, a := range addrs {
 				out[iface][a] = struct{}{}
 			}
 		}
-
 		return out
 	}
 	ps := prevSet(prev)
@@ -66,10 +57,10 @@ func diffIfaceAddrs(prev, curr map[string][]string) string {
 			changes = append(changes, fmt.Sprintf("  REMOVED  %-20s  (interface gone)", iface))
 			continue
 		}
-
 		for a := range paddrs {
 			if _, ok := caddrs[a]; !ok {
-				changes = append(changes, fmt.Sprintf("  REMOVED  %-20s  %s", iface, a))
+				changes = append(changes,
+					fmt.Sprintf("  REMOVED  %-20s  %s", iface, a))
 			}
 		}
 	}
@@ -79,18 +70,15 @@ func diffIfaceAddrs(prev, curr map[string][]string) string {
 		paddrs, exists := ps[iface]
 		if !exists {
 			for a := range caddrs {
-				changes = append(
-					changes,
-					fmt.Sprintf("  ADDED    %-20s  %s (new interface)", iface, a),
-				)
+				changes = append(changes,
+					fmt.Sprintf("  ADDED    %-20s  %s (new interface)", iface, a))
 			}
-
 			continue
 		}
-
 		for a := range caddrs {
 			if _, ok := paddrs[a]; !ok {
-				changes = append(changes, fmt.Sprintf("  ADDED    %-20s  %s", iface, a))
+				changes = append(changes,
+					fmt.Sprintf("  ADDED    %-20s  %s", iface, a))
 			}
 		}
 	}
@@ -98,7 +86,6 @@ func diffIfaceAddrs(prev, curr map[string][]string) string {
 	if len(changes) == 0 {
 		return ""
 	}
-
 	return strings.Join(changes, "\n")
 }
 
@@ -109,42 +96,31 @@ func (w *watchdog) runIfaceMonitor(ctx context.Context) {
 	log := w.tracedLogger(ctx)
 	const pollInterval = 30 * time.Second
 	prev := collectIfaceAddrs()
-	log.InfoContext(
-		ctx,
+	log.InfoContext(ctx,
 		"Interface monitor started",
-		"poll_interval",
-		pollInterval,
-		"interface_count",
-		len(prev),
+		"poll_interval", pollInterval,
+		"interface_count", len(prev),
 	)
-
 	for {
 		select {
 		case <-ctx.Done():
 			break
 		case <-time.After(pollInterval):
 		}
-
 		if ctx.Err() != nil {
 			break
 		}
-
 		curr := collectIfaceAddrs()
 		diff := diffIfaceAddrs(prev, curr)
 		if diff == "" {
 			prev = curr
 			continue
 		}
-
-		log.WarnContext(
-			ctx,
+		log.WarnContext(ctx,
 			"vault host interface address changed",
-			"diff",
-			diff,
-			"vm_id",
-			w.cfg.MwanVMID,
-			"node",
-			w.cfg.PVE.Node,
+			"diff", diff,
+			"vm_id", w.cfg.MwanVMID,
+			"node", w.cfg.PVE.Node,
 		)
 		prev = curr
 	}

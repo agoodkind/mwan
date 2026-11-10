@@ -44,11 +44,8 @@ func TestForwardingEventsObserveNeighborsAndRoutes(t *testing.T) {
 		{unix.AF_INET6, "2001:db8:1::2", "2001:db8:2::/64"},
 	} {
 		neighbor := &netlink.Neigh{
-			LinkIndex:    link.Attrs().Index,
-			Family:       test.family,
-			IP:           net.ParseIP(test.neighbor),
-			HardwareAddr: net.HardwareAddr{2, 0, 0, 0, 0, 2},
-			State:        unix.NUD_PERMANENT,
+			LinkIndex: link.Attrs().Index, Family: test.family, IP: net.ParseIP(test.neighbor),
+			HardwareAddr: net.HardwareAddr{2, 0, 0, 0, 0, 2}, State: unix.NUD_PERMANENT,
 		}
 		previous := source.Generation()
 		if err := netlink.NeighSet(neighbor); err != nil {
@@ -71,11 +68,8 @@ func TestForwardingEventsObserveNeighborsAndRoutes(t *testing.T) {
 			t.Fatal(err)
 		}
 		route := &netlink.Route{
-			LinkIndex: link.Attrs().Index,
-			Family:    test.family,
-			Dst:       destination,
-			Scope:     netlink.SCOPE_LINK,
-			Table:     unix.RT_TABLE_MAIN,
+			LinkIndex: link.Attrs().Index, Family: test.family, Dst: destination,
+			Scope: netlink.SCOPE_LINK, Table: unix.RT_TABLE_MAIN,
 		}
 		previous = source.Generation()
 		if err := netlink.RouteAdd(route); err != nil {
@@ -105,18 +99,8 @@ func TestForwardingEventsCoalesceWithoutLosingGeneration(t *testing.T) {
 	previous := initial
 	for index := range forwardingEventsCoalescedChanges {
 		if err := netlink.NeighSet(&netlink.Neigh{
-			LinkIndex: link.Attrs().Index,
-			Family:    unix.AF_INET,
-			IP:        net.ParseIP("192.0.2.2"),
-			HardwareAddr: net.HardwareAddr{
-				2,
-				0,
-				0,
-				0,
-				0,
-				byte(index + 2),
-			},
-			State: unix.NUD_PERMANENT,
+			LinkIndex: link.Attrs().Index, Family: unix.AF_INET, IP: net.ParseIP("192.0.2.2"),
+			HardwareAddr: net.HardwareAddr{2, 0, 0, 0, 0, byte(index + 2)}, State: unix.NUD_PERMANENT,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -149,34 +133,18 @@ func TestForwardingEventsObserveTrafficControl(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), forwardingEventsTimeout)
 	defer cancel()
 	source := forwardingEventsSource(t, ctx)
-	qdisc := &netlink.Clsact{
-		QdiscAttrs: netlink.QdiscAttrs{
-			LinkIndex: link.Attrs().Index,
-			Handle:    netlink.MakeHandle(0xffff, 0),
-			Parent:    netlink.HANDLE_CLSACT,
-		},
-	}
+	qdisc := &netlink.Clsact{QdiscAttrs: netlink.QdiscAttrs{
+		LinkIndex: link.Attrs().Index, Handle: netlink.MakeHandle(0xffff, 0), Parent: netlink.HANDLE_CLSACT,
+	}}
 	previous := source.Generation()
 	if err := netlink.QdiscAdd(qdisc); err != nil {
 		t.Fatal(err)
 	}
 	awaitForwardingGeneration(t, ctx, source, previous)
-	filter := &netlink.MatchAll{
-		FilterAttrs: netlink.FilterAttrs{
-			LinkIndex: link.Attrs().Index,
-			Parent:    netlink.HANDLE_MIN_EGRESS,
-			Handle:    1,
-			Priority:  1,
-			Protocol:  unix.ETH_P_ALL,
-		},
-		Actions: []netlink.Action{
-			&netlink.GenericAction{
-				ActionAttrs: netlink.ActionAttrs{
-					Action: netlink.TC_ACT_SHOT,
-				},
-			},
-		},
-	}
+	filter := &netlink.MatchAll{FilterAttrs: netlink.FilterAttrs{
+		LinkIndex: link.Attrs().Index, Parent: netlink.HANDLE_MIN_EGRESS,
+		Handle: 1, Priority: 1, Protocol: unix.ETH_P_ALL,
+	}, Actions: []netlink.Action{&netlink.GenericAction{ActionAttrs: netlink.ActionAttrs{Action: netlink.TC_ACT_SHOT}}}}
 	previous = source.Generation()
 	if err := netlink.FilterAdd(filter); err != nil {
 		t.Fatal(err)
@@ -206,12 +174,9 @@ func TestForwardingEventsPublishStickyKernelFailure(t *testing.T) {
 	source := forwardingEventsSource(t, ctx)
 	initial := source.Generation()
 	// A notification socket cannot accept a query response as change evidence.
-	if _, err := source.socket.Send(mdnetlink.Message{
-		Header: mdnetlink.Header{
-			Type:  unix.RTM_GETLINK,
-			Flags: mdnetlink.Request | mdnetlink.Acknowledge,
-		},
-	}); err != nil {
+	if _, err := source.socket.Send(mdnetlink.Message{Header: mdnetlink.Header{
+		Type: unix.RTM_GETLINK, Flags: mdnetlink.Request | mdnetlink.Acknowledge,
+	}}); err != nil {
 		t.Fatal(err)
 	}
 	timer := time.NewTicker(forwardingEventsPollInterval)
@@ -263,11 +228,7 @@ func TestForwardingEventsCancellation(t *testing.T) {
 		t.Fatalf("cancellation reported forwarding event loss: %v", failure)
 	}
 	if source.Err() != nil || source.Generation() != 0 {
-		t.Fatalf(
-			"cancellation changed forwarding evidence: generation=%d error=%v",
-			source.Generation(),
-			source.Err(),
-		)
+		t.Fatalf("cancellation changed forwarding evidence: generation=%d error=%v", source.Generation(), source.Err())
 	}
 }
 
@@ -307,9 +268,7 @@ func forwardingEventsSource(t *testing.T, ctx context.Context) *ForwardingEvents
 
 func forwardingEventsLink(t *testing.T) netlink.Link {
 	t.Helper()
-	if err := netlink.LinkAdd(&netlink.Dummy{
-		LinkAttrs: netlink.LinkAttrs{Name: forwardingEventsInterface},
-	}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: forwardingEventsInterface}}); err != nil {
 		t.Fatal(err)
 	}
 	link, err := netlink.LinkByName(forwardingEventsInterface)
@@ -327,12 +286,7 @@ func forwardingEventsLink(t *testing.T) netlink.Link {
 	return link
 }
 
-func awaitForwardingGeneration(
-	t *testing.T,
-	ctx context.Context,
-	source *ForwardingEvents,
-	previous uint64,
-) {
+func awaitForwardingGeneration(t *testing.T, ctx context.Context, source *ForwardingEvents, previous uint64) {
 	t.Helper()
 	timer := time.NewTicker(forwardingEventsPollInterval)
 	defer timer.Stop()

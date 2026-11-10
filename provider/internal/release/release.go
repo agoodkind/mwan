@@ -61,7 +61,6 @@ func CommitOf(tag string) (string, error) {
 	if index < 0 || index == len(tag)-1 {
 		return "", fmt.Errorf("release tag %q does not end in -<commit>", tag)
 	}
-
 	return tag[index+1:], nil
 }
 
@@ -78,7 +77,6 @@ func Resolve(
 		slog.ErrorContext(ctx, "build of the checksums URL failed", "base", baseURL, "err", err)
 		return nil, fmt.Errorf("build the URL of %s: %w", ChecksumsAsset, err)
 	}
-
 	checksums, err := fetchChecksums(ctx, client, checksumsURL)
 	if err != nil {
 		return nil, err
@@ -86,124 +84,72 @@ func Resolve(
 
 	result := make(map[string]Architecture, len(Architectures()))
 	for _, architecture := range Architectures() {
-		mwan, err := resolveAsset(
-			baseURL,
-			version,
-			fmt.Sprintf(MwanAssetPattern, architecture),
-			checksums,
-		)
+		mwan, err := resolveAsset(baseURL, version, fmt.Sprintf(MwanAssetPattern, architecture), checksums)
 		if err != nil {
 			return nil, err
 		}
-
-		stack, err := resolveAsset(
-			baseURL,
-			version,
-			fmt.Sprintf(StackAssetPattern, architecture),
-			checksums,
-		)
+		stack, err := resolveAsset(baseURL, version, fmt.Sprintf(StackAssetPattern, architecture), checksums)
 		if err != nil {
 			return nil, err
 		}
-
 		result[architecture] = Architecture{Mwan: mwan, Stack: stack}
 	}
-
 	return result, nil
 }
 
-func resolveAsset(
-	baseURL string,
-	version string,
-	name string,
-	checksums map[string]string,
-) (Asset, error) {
+func resolveAsset(baseURL string, version string, name string, checksums map[string]string) (Asset, error) {
 	hash, found := checksums[name]
 	if !found {
-		return Asset{}, fmt.Errorf(
-			"%s of release %s has no entry for %s",
-			ChecksumsAsset,
-			version,
-			name,
-		)
+		return Asset{}, fmt.Errorf("%s of release %s has no entry for %s", ChecksumsAsset, version, name)
 	}
-
 	assetURL, err := url.JoinPath(baseURL, version, name)
 	if err != nil {
 		slog.Error("build of the asset URL failed", "base", baseURL, "asset", name, "err", err)
 		return Asset{}, fmt.Errorf("build the URL of %s: %w", name, err)
 	}
-
 	return Asset{URL: assetURL, SHA256: hash}, nil
 }
 
-func fetchChecksums(
-	ctx context.Context,
-	client *http.Client,
-	checksumsURL string,
-) (map[string]string, error) {
+func fetchChecksums(ctx context.Context, client *http.Client, checksumsURL string) (map[string]string, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, checksumsURL, nil)
 	if err != nil {
-		slog.ErrorContext(
-			ctx,
-			"build of the checksums request failed",
-			"url",
-			checksumsURL,
-			"err",
-			err,
-		)
+		slog.ErrorContext(ctx, "build of the checksums request failed", "url", checksumsURL, "err", err)
 		return nil, fmt.Errorf("build the request for %s: %w", checksumsURL, err)
 	}
-
 	response, err := client.Do(request)
 	if err != nil {
-		slog.ErrorContext(
-			ctx,
-			"download of the release checksums failed",
-			"url",
-			checksumsURL,
-			"err",
-			err,
-		)
+		slog.ErrorContext(ctx, "download of the release checksums failed", "url", checksumsURL, "err", err)
 		return nil, fmt.Errorf("download %s: %w", checksumsURL, err)
 	}
-
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("download %s: HTTP status %d", checksumsURL, response.StatusCode)
 	}
-
 	return parseChecksums(io.LimitReader(response.Body, maxChecksumsSize))
 }
 
 // sha256sum prefixes binary-mode filenames with an asterisk.
 func parseChecksums(reader io.Reader) (map[string]string, error) {
 	checksums := make(map[string]string)
-
 	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
 			continue
 		}
-
 		fields := strings.Fields(line)
 		if len(fields) != checksumFields {
 			return nil, fmt.Errorf("malformed checksum line %q", line)
 		}
-
 		hash := strings.ToLower(fields[0])
 		if len(hash) != sha256HexLength || strings.Trim(hash, "0123456789abcdef") != "" {
 			return nil, fmt.Errorf("checksum line %q has no SHA-256 hash", line)
 		}
-
 		checksums[strings.TrimPrefix(fields[1], "*")] = hash
 	}
-
 	if err := scanner.Err(); err != nil {
 		slog.Error("read of the checksums failed", "err", err)
 		return nil, fmt.Errorf("read the checksums: %w", err)
 	}
-
 	return checksums, nil
 }

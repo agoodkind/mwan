@@ -44,43 +44,22 @@ func TestOOBDHCPv4RecoveryDiscoverLinkReturnsLater(t *testing.T) {
 	testOOBDHCPv4RecoveryDiscover(t, "", "", true)
 }
 
-func testOOBDHCPv4RecoveryDiscover(
-	t *testing.T,
-	offeredAddress string,
-	offeredGateway string,
-	linkReturnsLater bool,
-) {
+func testOOBDHCPv4RecoveryDiscover(t *testing.T, offeredAddress, offeredGateway string, linkReturnsLater bool) {
 	if os.Getenv(dhcpRecoveryDiscoverChildEnv) == "1" {
-		runOOBDHCPv4RecoveryDiscover(
-			t,
-			net.ParseIP(offeredAddress),
-			net.ParseIP(offeredGateway),
-			linkReturnsLater,
-		)
+		runOOBDHCPv4RecoveryDiscover(t, net.ParseIP(offeredAddress), net.ParseIP(offeredGateway), linkReturnsLater)
 		return
 	}
 	t.Parallel()
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
-	child.SysProcAttr = &syscall.SysProcAttr{
-		Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS),
-	}
-	child.Env = append(
-		os.Environ(),
-		dhcpRecoveryDiscoverChildEnv+"=1",
-		dhcpRecoveryDiscoverBinaryEnv+"="+binary,
-	)
+	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
+	child.Env = append(os.Environ(), dhcpRecoveryDiscoverChildEnv+"=1", dhcpRecoveryDiscoverBinaryEnv+"="+binary)
 	if output, err := child.CombinedOutput(); err != nil {
 		t.Fatalf("exec %s: %v: %s", t.Name(), err, output)
 	}
 }
 
-func runOOBDHCPv4RecoveryDiscover(
-	t *testing.T,
-	offeredAddress net.IP,
-	offeredGateway net.IP,
-	linkReturnsLater bool,
-) {
+func runOOBDHCPv4RecoveryDiscover(t *testing.T, offeredAddress, offeredGateway net.IP, linkReturnsLater bool) {
 	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -98,36 +77,12 @@ func runOOBDHCPv4RecoveryDiscover(
 	}
 	bindStartupDirectory(t, stateDir, "/var/lib/mwan")
 	setRuntimeLoopback(t)
-	downstream := newRuntimePeer(
-		t,
-		gateway,
-		"enmwanbr0",
-		"lan-host",
-		[]string{"192.0.2.1/29"},
-		[]string{"192.0.2.2/29"},
-		"",
-	)
+	downstream := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29"}, []string{"192.0.2.2/29"}, "")
 	defer downstream.namespace.Close()
-	provider := newRuntimePeer(
-		t,
-		gateway,
-		"enatt0",
-		"wan-vlan",
-		nil,
-		[]string{"198.51.100.2/24"},
-		"",
-	)
+	provider := newRuntimePeer(t, gateway, "enatt0", "wan-vlan", nil, []string{"198.51.100.2/24"}, "")
 	defer provider.namespace.Close()
 	setRuntimeNamespace(t, provider.namespace)
-	service := startDHCPv4RuntimeKea(
-		t,
-		root,
-		false,
-		600,
-		dhcpRecoverySavedGateway,
-		"198.51.100.100",
-		true,
-	)
+	service := startDHCPv4RuntimeKea(t, root, false, 600, dhcpRecoverySavedGateway, "198.51.100.100", true)
 	serviceRunning := true
 	defer func() {
 		if serviceRunning {
@@ -141,10 +96,7 @@ func runOOBDHCPv4RecoveryDiscover(
 		t.Fatal(err)
 	}
 	configPath := filepath.Join(root, "config.toml")
-	config := fmt.Sprintf(
-		"[ifmgr]\nrole = \"oob\"\nreconcile_interval = \"1h\"\nlease_directory = %q\n[ifmgr.iface.enatt0]\ndhcp_v4 = true\n[ifmgr.modules.oobv6]\niface = \"enatt0\"\noob_addr = \"2001:db8::100/128\"\noob_table_id = 100\nmanage_slaac_source_rule = false\n[ifmgr.modules.oobv4]\niface = \"enatt0\"\noob_table_id = 100\n[ifmgr.modules.ra_lost]\niface = \"enatt0\"\n[[ifmgr.modules.policy_rules.rule]]\nfamily = \"ipv4\"\npriority = 100\nfrom = \"192.0.2.2/32\"\ntable_id = 100\n",
-		leaseDirectory,
-	)
+	config := fmt.Sprintf("[ifmgr]\nrole = \"oob\"\nreconcile_interval = \"1h\"\nlease_directory = %q\n[ifmgr.iface.enatt0]\ndhcp_v4 = true\n[ifmgr.modules.oobv6]\niface = \"enatt0\"\noob_addr = \"2001:db8::100/128\"\noob_table_id = 100\nmanage_slaac_source_rule = false\n[ifmgr.modules.oobv4]\niface = \"enatt0\"\noob_table_id = 100\n[ifmgr.modules.ra_lost]\niface = \"enatt0\"\n[[ifmgr.modules.policy_rules.rule]]\nfamily = \"ipv4\"\npriority = 100\nfrom = \"192.0.2.2/32\"\ntable_id = 100\n", leaseDirectory)
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -167,9 +119,7 @@ func runOOBDHCPv4RecoveryDiscover(
 
 	discoverSeen := make(chan struct{}, 1)
 	setRuntimeNamespace(t, provider.namespace)
-	server, err := server4.NewServer(
-		"wan-vlan",
-		&net.UDPAddr{IP: net.IPv4zero, Port: 67},
+	server, err := server4.NewServer("wan-vlan", &net.UDPAddr{IP: net.IPv4zero, Port: 67},
 		func(conn net.PacketConn, peer net.Addr, packet *dhcpv4.DHCPv4) {
 			if offeredAddress == nil {
 				if packet.MessageType() == dhcpv4.MessageTypeDiscover {
@@ -187,13 +137,10 @@ func runOOBDHCPv4RecoveryDiscover(
 				}
 				responseType = dhcpv4.MessageTypeAck
 			}
-			reply, replyErr := dhcpv4.NewReplyFromRequest(
-				packet,
+			reply, replyErr := dhcpv4.NewReplyFromRequest(packet,
 				dhcpv4.WithMessageType(responseType),
 				dhcpv4.WithYourIP(offeredAddress),
-				dhcpv4.WithOption(
-					dhcpv4.OptServerIdentifier(net.ParseIP(dhcpRecoverySavedGateway)),
-				),
+				dhcpv4.WithOption(dhcpv4.OptServerIdentifier(net.ParseIP(dhcpRecoverySavedGateway))),
 				dhcpv4.WithOption(dhcpv4.OptSubnetMask(net.CIDRMask(24, 32))),
 				dhcpv4.WithOption(dhcpv4.OptRouter(offeredGateway)),
 				dhcpv4.WithOption(dhcpv4.OptIPAddressLeaseTime(10*time.Minute)),
@@ -201,8 +148,7 @@ func runOOBDHCPv4RecoveryDiscover(
 			if replyErr == nil {
 				_, _ = conn.WriteTo(reply.ToBytes(), peer)
 			}
-		},
-	)
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,11 +223,7 @@ func assertDHCPRecoverySavedAssignment(t *testing.T, daemon *runtimeDaemon) {
 	for _, address := range addresses {
 		addressPresent = addressPresent || address.IPNet.String() == dhcpRecoverySavedAddress
 	}
-	routes, err := netlink.RouteListFiltered(
-		unix.AF_INET,
-		&netlink.Route{Table: 100},
-		netlink.RT_FILTER_TABLE,
-	)
+	routes, err := netlink.RouteListFiltered(unix.AF_INET, &netlink.Route{Table: 100}, netlink.RT_FILTER_TABLE)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,30 +232,16 @@ func assertDHCPRecoverySavedAssignment(t *testing.T, daemon *runtimeDaemon) {
 		routePresent = routePresent || route.Gw.Equal(net.ParseIP(dhcpRecoverySavedGateway))
 	}
 	if !addressPresent || !routePresent {
-		t.Fatalf(
-			"assertDHCPRecoverySavedAssignment: addresses=%v routes=%v: %s",
-			addresses,
-			routes,
-			runtimeLogTail(t, daemon, 30),
-		)
+		t.Fatalf("assertDHCPRecoverySavedAssignment: addresses=%v routes=%v: %s", addresses, routes, runtimeLogTail(t, daemon, 30))
 	}
 }
 
-func waitDHCPRecoveryGateway(
-	t *testing.T,
-	daemon *runtimeDaemon,
-	table int,
-	gatewayAddress net.IP,
-) {
+func waitDHCPRecoveryGateway(t *testing.T, daemon *runtimeDaemon, table int, gatewayAddress net.IP) {
 	t.Helper()
 	deadline := time.Now().Add(15 * time.Second)
 	var observed []netlink.Route
 	for time.Now().Before(deadline) {
-		routes, err := netlink.RouteListFiltered(
-			unix.AF_INET,
-			&netlink.Route{Table: table},
-			netlink.RT_FILTER_TABLE,
-		)
+		routes, err := netlink.RouteListFiltered(unix.AF_INET, &netlink.Route{Table: table}, netlink.RT_FILTER_TABLE)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -333,10 +261,5 @@ func waitDHCPRecoveryGateway(
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf(
-		"waitDHCPRecoveryGateway %s: routes=%v: %s",
-		gatewayAddress,
-		observed,
-		runtimeLogTail(t, daemon, 30),
-	)
+	t.Fatalf("waitDHCPRecoveryGateway %s: routes=%v: %s", gatewayAddress, observed, runtimeLogTail(t, daemon, 30))
 }

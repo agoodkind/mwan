@@ -41,14 +41,8 @@ func testFailoverForwardingReadiness(t *testing.T, ipv4Only bool) {
 	}
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
-	child.SysProcAttr = &syscall.SysProcAttr{
-		Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS),
-	}
-	child.Env = append(
-		os.Environ(),
-		failoverReadinessChildEnv+"=1",
-		failoverReadinessBinaryEnv+"="+binary,
-	)
+	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
+	child.Env = append(os.Environ(), failoverReadinessChildEnv+"=1", failoverReadinessBinaryEnv+"="+binary)
 	if output, err := child.CombinedOutput(); err != nil {
 		t.Fatalf("exec %s: %v: %s", t.Name(), err, output)
 	}
@@ -72,15 +66,9 @@ func runFailoverForwardingReadinessDaemonRuntime(t *testing.T, ipv4Only bool) {
 	}
 	bindStartupDirectory(t, stateDir, "/var/lib/mwan")
 	setRuntimeLoopback(t)
-	upstream := newRuntimePeer(
-		t,
-		gateway,
-		"enatt0",
-		"upstream",
+	upstream := newRuntimePeer(t, gateway, "enatt0", "upstream",
 		[]string{"198.51.100.1/24", "2001:db8:116::1/64"},
-		[]string{"198.51.100.2/24", failoverPeerIPv6},
-		"",
-	)
+		[]string{"198.51.100.2/24", failoverPeerIPv6}, "")
 	defer upstream.namespace.Close()
 	socket := filepath.Join(root, "forwarding.sock")
 	configPath := filepath.Join(root, "config.toml")
@@ -90,8 +78,7 @@ func runFailoverForwardingReadinessDaemonRuntime(t *testing.T, ipv4Only bool) {
 		ipv6Target = ""
 		ipv6Announcement = ""
 	}
-	configuration := fmt.Sprintf(
-		`[ifmgr]
+	configuration := fmt.Sprintf(`[ifmgr]
 role = "failover"
 reconcile_interval = "200ms"
 [ifmgr.iface.enatt0]
@@ -118,22 +105,11 @@ ipv4 = ["0.0.0.0/0"]
 socket_path = %q
 poll_interval_milliseconds = 100
 read_timeout_milliseconds = 500
-`,
-		ipv6Target,
-		failoverUnhealthyAfter,
-		ipv6Announcement,
-		socket,
-	)
+`, ipv6Target, failoverUnhealthyAfter, ipv6Announcement, socket)
 	if err := os.WriteFile(configPath, []byte(configuration), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	daemon := startRoleDHCPv4RuntimeDaemon(
-		t,
-		os.Getenv(failoverReadinessBinaryEnv),
-		configPath,
-		root,
-		"failover",
-	)
+	daemon := startRoleDHCPv4RuntimeDaemon(t, os.Getenv(failoverReadinessBinaryEnv), configPath, root, "failover")
 	defer stopRuntimeDaemon(t, daemon)
 	if ipv4Only {
 		waitOwnedRoleForwarding(t, daemon, socket, forwardingready.State{IPv4: true, IPv6: false})

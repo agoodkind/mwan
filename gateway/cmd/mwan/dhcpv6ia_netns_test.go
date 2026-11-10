@@ -46,9 +46,7 @@ func testOwnedDHCPv6IARuntime(t *testing.T, combined, unequal, duplicate bool) {
 	}
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
-	child.SysProcAttr = &syscall.SysProcAttr{
-		Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS),
-	}
+	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
 	child.Env = append(os.Environ(), dhcpv6RuntimeChildEnv+"=1", dhcpv6RuntimeBinaryEnv+"="+binary)
 	if output, err := child.CombinedOutput(); err != nil {
 		t.Fatalf("isolated DHCPv6 IA daemon test: %v: %s", err, output)
@@ -83,42 +81,18 @@ func runOwnedDHCPv6IARuntime(t *testing.T, combined, unequal, duplicate bool) {
 	}
 	bindStartupDirectory(t, networkdDir, "/etc/systemd/network")
 	writeDHCPv6IARuntimeNetwork(t, networkDir, combined)
-	if _, err := networkload.Load(
-		filepath.Join(networkDir, "network.json"),
-		schemaDir,
-	); err != nil {
+	if _, err := networkload.Load(filepath.Join(networkDir, "network.json"), schemaDir); err != nil {
 		t.Fatalf("load runtime network: %v", err)
 	}
 	configPath := filepath.Join(root, "config.toml")
-	config := fmt.Sprintf(
-		"[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[wanconfig]\npublish = true\n",
-		filepath.Join(root, "owned-links.json"),
-		filepath.Join(root, "owned-addresses.json"),
-		filepath.Join(root, "kernel-policy.json"),
-	)
+	config := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[wanconfig]\npublish = true\n", filepath.Join(root, "owned-links.json"), filepath.Join(root, "owned-addresses.json"), filepath.Join(root, "kernel-policy.json"))
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	setRuntimeLoopback(t)
-	management := newRuntimePeer(
-		t,
-		gateway,
-		"enmgmt0",
-		"mgmt-host",
-		[]string{"203.0.113.1/24"},
-		[]string{"203.0.113.2/24"},
-		"",
-	)
+	management := newRuntimePeer(t, gateway, "enmgmt0", "mgmt-host", []string{"203.0.113.1/24"}, []string{"203.0.113.2/24"}, "")
 	defer management.namespace.Close()
-	downstream := newRuntimePeer(
-		t,
-		gateway,
-		"enmwanbr0",
-		"lan-host",
-		[]string{"192.0.2.1/29", "2001:db8:b01:fe::3/64"},
-		[]string{"192.0.2.2/29", "2001:db8:b01:fe::2/64"},
-		"",
-	)
+	downstream := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29", "2001:db8:b01:fe::3/64"}, []string{"192.0.2.2/29", "2001:db8:b01:fe::2/64"}, "")
 	defer downstream.namespace.Close()
 	provider := newRuntimePeer(t, gateway, "wan-under", "wan-host", nil, nil, "")
 	defer provider.namespace.Close()
@@ -127,10 +101,7 @@ func runOwnedDHCPv6IARuntime(t *testing.T, combined, unequal, duplicate bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Vlan{
-		LinkAttrs: netlink.LinkAttrs{Name: "wan-vlan", ParentIndex: parent.Attrs().Index},
-		VlanId:    101,
-	}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "wan-vlan", ParentIndex: parent.Attrs().Index}, VlanId: 101}); err != nil {
 		t.Fatal(err)
 	}
 	providerAddresses := []string{"2001:db8:2::2/64"}
@@ -142,19 +113,12 @@ func runOwnedDHCPv6IARuntime(t *testing.T, combined, unequal, duplicate bool) {
 	setRuntimeNamespace(t, downstream.namespace)
 	addMappedRuntimeRoute(t, "2001:db8:2::/64", "2001:db8:b01:fe::3", "lan-host")
 	setRuntimeNamespace(t, gateway)
-	if err := os.WriteFile(
-		"/proc/sys/net/ipv6/conf/all/forwarding",
-		[]byte("1\n"),
-		0o600,
-	); err != nil {
+	if err := os.WriteFile("/proc/sys/net/ipv6/conf/all/forwarding", []byte("1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	addMappedRuntimeRoute(t, "2001:db8:b01::/60", "", "enmwanbr0")
 	setRuntimeNamespace(t, provider.namespace)
-	for _, directory := range []string{
-		filepath.Join(root, "kea-run"),
-		filepath.Join(root, "kea-state"),
-	} {
+	for _, directory := range []string{filepath.Join(root, "kea-run"), filepath.Join(root, "kea-state")} {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -187,22 +151,10 @@ func runOwnedDHCPv6IARuntime(t *testing.T, combined, unequal, duplicate bool) {
 		return
 	}
 	waitStaticRuntimeAddress(t, daemon, "enatt0", "2001:db8:2::100/128", true)
-	waitDHCPv6IALeaseRecord(
-		t,
-		daemon,
-		filepath.Join(root, "kea-state", "leases6.csv"),
-		"2001:db8:2::100",
-		"0",
-	)
+	waitDHCPv6IALeaseRecord(t, daemon, filepath.Join(root, "kea-state", "leases6.csv"), "2001:db8:2::100", "0")
 	if combined {
 		waitStaticRuntimeAddress(t, daemon, "enatt0", "2001:db8:30::1/128", true)
-		waitDHCPv6IALeaseRecord(
-			t,
-			daemon,
-			filepath.Join(root, "kea-state", "leases6.csv"),
-			"2001:db8:30::",
-			"2",
-		)
+		waitDHCPv6IALeaseRecord(t, daemon, filepath.Join(root, "kea-state", "leases6.csv"), "2001:db8:30::", "2")
 	}
 	assertDHCPv6IALocalPacket(t, daemon, gateway, provider.namespace, "[2001:db8:2::100]:52228")
 	if !unequal {
@@ -211,19 +163,11 @@ func runOwnedDHCPv6IARuntime(t *testing.T, combined, unequal, duplicate bool) {
 	unequalStarted := time.Now()
 	var phases []runtimePacketPhase
 	mark := func(stage string) {
-		phases = append(
-			phases,
-			runtimePacketPhase{Stage: stage, Elapsed: time.Since(unequalStarted)},
-		)
+		phases = append(phases, runtimePacketPhase{Stage: stage, Elapsed: time.Since(unequalStarted)})
 	}
 	defer func() {
 		if t.Failed() {
-			t.Logf(
-				"unequal IA elapsed=%s phases=%+v; daemon: %s",
-				time.Since(unequalStarted),
-				phases,
-				runtimeLogTail(t, daemon, 80),
-			)
+			t.Logf("unequal IA elapsed=%s phases=%+v; daemon: %s", time.Since(unequalStarted), phases, runtimeLogTail(t, daemon, 80))
 		}
 	}()
 	stopRuntimeDaemon(t, daemon)
@@ -233,11 +177,7 @@ func runOwnedDHCPv6IARuntime(t *testing.T, combined, unequal, duplicate bool) {
 	addMappedRuntimeRoute(t, "2001:db8:30::/60", "2001:db8:2::1", "wan-vlan")
 	// The gateway removes its RA default route after a Neighbor Advertisement
 	// without the Router flag. A forwarding provider link sets that flag.
-	if err := os.WriteFile(
-		"/proc/sys/net/ipv6/conf/wan-vlan/forwarding",
-		[]byte("1\n"),
-		0o600,
-	); err != nil {
+	if err := os.WriteFile("/proc/sys/net/ipv6/conf/wan-vlan/forwarding", []byte("1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	served, stopServer := startDHCPv6IAUnequalServer(t)
@@ -245,13 +185,7 @@ func runOwnedDHCPv6IARuntime(t *testing.T, combined, unequal, duplicate bool) {
 	stopRouter := startDHCPv6RuntimeRouter(t, true)
 	defer stopRouter()
 	setRuntimeNamespace(t, gateway)
-	daemon = startRuntimeDaemon(
-		t,
-		os.Getenv(dhcpv6RuntimeBinaryEnv),
-		configPath,
-		root,
-		"dhcpv6ia-unequal",
-	)
+	daemon = startRuntimeDaemon(t, os.Getenv(dhcpv6RuntimeBinaryEnv), configPath, root, "dhcpv6ia-unequal")
 	mark("unequal_daemon_started")
 	waitStaticRuntimeAddress(t, daemon, "enatt0", "2001:db8:30::100/128", true)
 	mark("short_address_installed")
@@ -275,26 +209,13 @@ func runOwnedDHCPv6IARuntime(t *testing.T, combined, unequal, duplicate bool) {
 	// guard that drops the downstream reply during duplicate address detection.
 	waitDHCPv6RuntimeSteering(t, daemon)
 	mark("mapping_and_source_rule_installed")
-	assertMappedRuntimeReply(
-		t,
-		daemon,
-		gateway,
-		provider.namespace,
-		downstream.namespace,
-		"udp6",
-		"[2001:db8:30::1]:52227",
-		"[2001:db8:b01:fe::2]:52227",
-	)
+	assertMappedRuntimeReply(t, daemon, gateway, provider.namespace, downstream.namespace,
+		"udp6", "[2001:db8:30::1]:52227", "[2001:db8:b01:fe::2]:52227")
 	waitDHCPv6RuntimeAddressGone(t, daemon, "2001:db8:30::100/128")
 	waitStaticRuntimeAddress(t, daemon, "enatt0", "2001:db8:30::1/128", true)
 }
 
-func assertDHCPv6IADuplicate(
-	t *testing.T,
-	daemon *runtimeDaemon,
-	root string,
-	updates <-chan netlink.AddrUpdate,
-) {
+func assertDHCPv6IADuplicate(t *testing.T, daemon *runtimeDaemon, root string, updates <-chan netlink.AddrUpdate) {
 	t.Helper()
 	deadline := time.Now().Add(15 * time.Second)
 	logPath := filepath.Join(root, "kea-dhcp6.log")
@@ -308,10 +229,7 @@ func assertDHCPv6IADuplicate(
 				if update.LinkAddress.String() != "2001:db8:2::100/128" {
 					continue
 				}
-				observedUpdates = append(
-					observedUpdates,
-					fmt.Sprintf("new=%t flags=%d", update.NewAddr, update.Flags),
-				)
+				observedUpdates = append(observedUpdates, fmt.Sprintf("new=%t flags=%d", update.NewAddr, update.Flags))
 				if update.Flags&unix.IFA_F_DADFAILED != 0 {
 					dadFailed = true
 				}
@@ -331,8 +249,7 @@ func assertDHCPv6IADuplicate(
 			}
 			observed = addresses
 			for _, address := range addresses {
-				if address.IPNet.String() == "2001:db8:2::100/128" &&
-					address.Flags&(unix.IFA_F_TENTATIVE|unix.IFA_F_DADFAILED) == 0 {
+				if address.IPNet.String() == "2001:db8:2::100/128" && address.Flags&(unix.IFA_F_TENTATIVE|unix.IFA_F_DADFAILED) == 0 {
 					t.Fatalf("duplicate IA_NA address became ready: %+v", address)
 				}
 			}
@@ -363,10 +280,7 @@ func assertDHCPv6IADuplicate(
 	var daemonEvents []string
 	for _, line := range strings.Split(runtimeDaemonLog(t, daemon), "\n") {
 		if strings.Contains(line, `"module":"addresses"`) &&
-			(strings.Contains(
-				line,
-				`"level":"WARN"`,
-			) || strings.Contains(line, `"level":"ERROR"`)) {
+			(strings.Contains(line, `"level":"WARN"`) || strings.Contains(line, `"level":"ERROR"`)) {
 			daemonEvents = append(daemonEvents, line)
 		}
 	}
@@ -375,19 +289,9 @@ func assertDHCPv6IADuplicate(
 	}
 	var addressStates []string
 	for _, address := range observed {
-		addressStates = append(
-			addressStates,
-			fmt.Sprintf("%s flags=%d", address.IPNet, address.Flags),
-		)
+		addressStates = append(addressStates, fmt.Sprintf("%s flags=%d", address.IPNet, address.Flags))
 	}
-	t.Fatalf(
-		"Kea did not receive DHCPv6 Decline: dad_failed=%t addresses=%v updates=%v Kea packets=%v daemon events=%v",
-		dadFailed,
-		addressStates,
-		observedUpdates,
-		keaPackets,
-		daemonEvents,
-	)
+	t.Fatalf("Kea did not receive DHCPv6 Decline: dad_failed=%t addresses=%v updates=%v Kea packets=%v daemon events=%v", dadFailed, addressStates, observedUpdates, keaPackets, daemonEvents)
 }
 
 func writeDHCPv6IARuntimeNetwork(t *testing.T, directory string, combined bool) {
@@ -477,8 +381,7 @@ func startDHCPv6IARuntimeKea(t *testing.T, root string, combined bool) protocolS
 	service := protocolService{name: "kea-dhcp6", command: command, logPath: logPath}
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if content, err := os.ReadFile(logPath); err == nil &&
-			strings.Contains(string(content), "DHCP6_STARTED") {
+		if content, err := os.ReadFile(logPath); err == nil && strings.Contains(string(content), "DHCP6_STARTED") {
 			return service
 		}
 		time.Sleep(25 * time.Millisecond)
@@ -499,10 +402,7 @@ func startDHCPv6IAUnequalServer(t *testing.T) (<-chan error, func()) {
 		listener.Close()
 		t.Fatal(err)
 	}
-	if err := ipv6.NewPacketConn(listener).JoinGroup(
-		link,
-		&net.UDPAddr{IP: net.ParseIP("ff02::1:2")},
-	); err != nil {
+	if err := ipv6.NewPacketConn(listener).JoinGroup(link, &net.UDPAddr{IP: net.ParseIP("ff02::1:2")}); err != nil {
 		listener.Close()
 		t.Fatal(err)
 	}
@@ -531,60 +431,29 @@ func startDHCPv6IAUnequalServer(t *testing.T) (<-chan error, func()) {
 				return
 			}
 			request, err := dhcpv6.MessageFromBytes(buffer[:count])
-			if err != nil ||
-				request.MessageType != dhcpv6.MessageTypeSolicit &&
-					request.MessageType != dhcpv6.MessageTypeRequest {
+			if err != nil || request.MessageType != dhcpv6.MessageTypeSolicit && request.MessageType != dhcpv6.MessageTypeRequest {
 				continue
 			}
 			prefixes := request.Options.IAPD()
 			addresses := request.Options.IANA()
 			if len(prefixes) != 1 || len(addresses) != 1 || request.Options.ClientID() == nil {
-				served <- fmt.Errorf(
-					"%s requested %d IA_PD and %d IA_NA associations",
-					request.MessageType,
-					len(prefixes),
-					len(addresses),
-				)
+				served <- fmt.Errorf("%s requested %d IA_PD and %d IA_NA associations", request.MessageType, len(prefixes), len(addresses))
 				return
 			}
 			responseType := dhcpv6.MessageTypeAdvertise
 			if request.MessageType == dhcpv6.MessageTypeRequest {
 				responseType = dhcpv6.MessageTypeReply
 			}
-			response := &dhcpv6.Message{
-				MessageType:   responseType,
-				TransactionID: request.TransactionID,
-			}
+			response := &dhcpv6.Message{MessageType: responseType, TransactionID: request.TransactionID}
 			dhcpv6.WithClientID(request.Options.ClientID())(response)
 			dhcpv6.WithServerID(serverID)(response)
-			response.AddOption(&dhcpv6.OptionGeneric{
-				OptionCode: dhcpv6.OptionSolMaxRT,
-				OptionData: []byte{0, 0, 0, 60},
-			})
+			response.AddOption(&dhcpv6.OptionGeneric{OptionCode: dhcpv6.OptionSolMaxRT, OptionData: []byte{0, 0, 0, 60}})
 			prefixOptions := dhcpv6.PDOptions{}
-			prefixOptions.Add(&dhcpv6.OptIAPrefix{
-				Prefix:            prefix,
-				PreferredLifetime: 20 * time.Second,
-				ValidLifetime:     30 * time.Second,
-			})
-			response.AddOption(&dhcpv6.OptIAPD{
-				IaId:    prefixes[0].IaId,
-				T1:      10 * time.Second,
-				T2:      20 * time.Second,
-				Options: prefixOptions,
-			})
+			prefixOptions.Add(&dhcpv6.OptIAPrefix{Prefix: prefix, PreferredLifetime: 20 * time.Second, ValidLifetime: 30 * time.Second})
+			response.AddOption(&dhcpv6.OptIAPD{IaId: prefixes[0].IaId, T1: 10 * time.Second, T2: 20 * time.Second, Options: prefixOptions})
 			addressOptions := dhcpv6.IdentityOptions{}
-			addressOptions.Add(&dhcpv6.OptIAAddress{
-				IPv6Addr:          net.ParseIP("2001:db8:30::100"),
-				PreferredLifetime: 2 * time.Second,
-				ValidLifetime:     6 * time.Second,
-			})
-			response.AddOption(&dhcpv6.OptIANA{
-				IaId:    addresses[0].IaId,
-				T1:      2 * time.Second,
-				T2:      4 * time.Second,
-				Options: addressOptions,
-			})
+			addressOptions.Add(&dhcpv6.OptIAAddress{IPv6Addr: net.ParseIP("2001:db8:30::100"), PreferredLifetime: 2 * time.Second, ValidLifetime: 6 * time.Second})
+			response.AddOption(&dhcpv6.OptIANA{IaId: addresses[0].IaId, T1: 2 * time.Second, T2: 4 * time.Second, Options: addressOptions})
 			if _, err := listener.WriteTo(response.ToBytes(), peer); err != nil {
 				served <- err
 				return
@@ -615,25 +484,13 @@ func waitDHCPv6IALeaseRecord(t *testing.T, daemon *runtimeDaemon, path, address,
 		time.Sleep(50 * time.Millisecond)
 	}
 	content, _ := os.ReadFile(path)
-	t.Fatalf(
-		"Kea did not record %s lease %s: %s; daemon: %s",
-		leaseType,
-		address,
-		content,
-		runtimeLogTail(t, daemon, 30),
-	)
+	t.Fatalf("Kea did not record %s lease %s: %s; daemon: %s", leaseType, address, content, runtimeLogTail(t, daemon, 30))
 }
 
 // firewall.ApplyWithReport flushes inet filter input and deletes test rules.
 // An outbound exchange uses the ct state established,related accept rule
 // for the reply and proves that the gateway can use the IA_NA address.
-func assertDHCPv6IALocalPacket(
-	t *testing.T,
-	daemon *runtimeDaemon,
-	gateway netns.NsHandle,
-	upstream netns.NsHandle,
-	address string,
-) {
+func assertDHCPv6IALocalPacket(t *testing.T, daemon *runtimeDaemon, gateway, upstream netns.NsHandle, address string) {
 	t.Helper()
 	setRuntimeNamespace(t, upstream)
 	server, err := net.ListenPacket("udp6", "[2001:db8:2::2]:0")
@@ -664,14 +521,7 @@ func assertDHCPv6IALocalPacket(
 	buffer := make([]byte, 32)
 	count, peer, err := server.ReadFrom(buffer)
 	if err != nil || string(buffer[:count]) != "local-ia-na" || peer.String() != address {
-		t.Fatalf(
-			"local IA_NA request: count=%d data=%q peer=%v error=%v: %s",
-			count,
-			buffer[:count],
-			peer,
-			err,
-			runtimeLogTail(t, daemon, 30),
-		)
+		t.Fatalf("local IA_NA request: count=%d data=%q peer=%v error=%v: %s", count, buffer[:count], peer, err, runtimeLogTail(t, daemon, 30))
 	}
 	if _, err := server.WriteTo(buffer[:count], peer); err != nil {
 		t.Fatal(err)
@@ -681,12 +531,6 @@ func assertDHCPv6IALocalPacket(
 	}
 	count, err = connection.Read(buffer)
 	if err != nil || string(buffer[:count]) != "local-ia-na" {
-		t.Fatalf(
-			"local IA_NA reply: count=%d data=%q error=%v: %s",
-			count,
-			buffer[:count],
-			err,
-			runtimeLogTail(t, daemon, 30),
-		)
+		t.Fatalf("local IA_NA reply: count=%d data=%q error=%v: %s", count, buffer[:count], err, runtimeLogTail(t, daemon, 30))
 	}
 }

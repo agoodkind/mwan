@@ -56,11 +56,7 @@ func TestNativePolicyResyncHardware(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(
-			filepath.Join(models, model.File),
-			data,
-			schema.FileMode,
-		); err != nil {
+		if err := os.WriteFile(filepath.Join(models, model.File), data, schema.FileMode); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -75,8 +71,7 @@ func TestNativePolicyResyncHardware(t *testing.T) {
 		t.Fatal(err)
 	}
 	nativeConfig, ok := modules["nativeoffload"].(nativeoffload.Config)
-	if !ok || !nativeConfig.Enabled || !nativeConfig.Firewall.Enabled ||
-		nativeConfig.Steering == nil {
+	if !ok || !nativeConfig.Enabled || !nativeConfig.Firewall.Enabled || nativeConfig.Steering == nil {
 		t.Fatal("lab configuration requires enabled native offload, firewall and steering")
 	}
 	log, closer := logging.New(logging.Config{BuildVersion: "native-policy-hardware"})
@@ -100,10 +95,7 @@ func TestNativePolicyResyncHardware(t *testing.T) {
 	prepareNativeHardwareClsact(t, link)
 
 	ctx := t.Context()
-	forwarding, err := offload.NewForwardingEvents(
-		ctx,
-		int(nativeConfig.Settings.SocketBufferBytes),
-	)
+	forwarding, err := offload.NewForwardingEvents(ctx, int(nativeConfig.Settings.SocketBufferBytes))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,19 +113,14 @@ func TestNativePolicyResyncHardware(t *testing.T) {
 			t.Errorf("close independent ruleset observer: %v", err)
 		}
 	})
-	checkpointContext, checkpointCancel := context.WithTimeout(
-		ctx,
-		nativeConfig.Settings.RequestTimeout,
-	)
+	checkpointContext, checkpointCancel := context.WithTimeout(ctx, nativeConfig.Settings.RequestTimeout)
 	_, err = rules.Barrier(checkpointContext)
 	checkpointCancel()
 	if err != nil {
 		t.Fatalf("establish independent ruleset generation: %v", err)
 	}
 	env := &ifmgr.Env{
-		Log:               log,
-		Connections:       cfg.IfMgr.Connections,
-		LiveState:         store,
+		Log: log, Connections: cfg.IfMgr.Connections, LiveState: store,
 		ForwardingChanges: new(ifmgr.ForwardingChanges),
 	}
 	module := openNativeHardwareModule(t, ctx, nativeConfig, env, log)
@@ -146,15 +133,9 @@ func TestNativePolicyResyncHardware(t *testing.T) {
 	forwardingGeneration, rulesGeneration := forwarding.Generation(), rules.Generation()
 	unchanged := func() {
 		requireNativeHardwareEvidence(t, forwarding, rules)
-		if forwarding.Generation() != forwardingGeneration ||
-			rules.Generation() != rulesGeneration {
-			t.Fatalf(
-				"kernel policy changed during timer recovery: forwarding %d -> %d, ruleset %d -> %d",
-				forwardingGeneration,
-				forwarding.Generation(),
-				rulesGeneration,
-				rules.Generation(),
-			)
+		if forwarding.Generation() != forwardingGeneration || rules.Generation() != rulesGeneration {
+			t.Fatalf("kernel policy changed during timer recovery: forwarding %d -> %d, ruleset %d -> %d",
+				forwardingGeneration, forwarding.Generation(), rulesGeneration, rules.Generation())
 		}
 	}
 	canceled, cancel := context.WithCancel(ctx)
@@ -174,27 +155,10 @@ func TestNativePolicyResyncHardware(t *testing.T) {
 		}
 	})
 	filterContext, filterCancel := context.WithTimeout(ctx, nativeConfig.Settings.RequestTimeout)
-	output, err := exec.CommandContext(
-		filterContext,
-		"tc",
-		"filter",
-		"add",
-		"dev",
-		link.Attrs().Name,
-		"egress",
-		"protocol",
-		"ip",
-		"pref",
-		nativePolicyHardwareDropPriority,
-		"handle",
-		nativePolicyHardwareDropHandle,
-		"flower",
-		"skip_hw",
-		"dst_ip",
-		nativePolicyHardwareDropTarget,
-		"action",
-		"drop",
-	).CombinedOutput()
+	output, err := exec.CommandContext(filterContext, "tc", "filter", "add", "dev", link.Attrs().Name,
+		"egress", "protocol", "ip", "pref", nativePolicyHardwareDropPriority,
+		"handle", nativePolicyHardwareDropHandle, "flower", "skip_hw",
+		"dst_ip", nativePolicyHardwareDropTarget, "action", "drop").CombinedOutput()
 	filterCancel()
 	if err != nil {
 		t.Fatalf("install lab egress DROP on %s: %v: %s", link.Attrs().Name, err, output)
@@ -204,13 +168,7 @@ func TestNativePolicyResyncHardware(t *testing.T) {
 	}
 	requireNativeHardwareBlocked(t, module)
 	waitNativeHardwarePolicy(t, module, true, recoveryWindow, nil)
-	observeNativeHardwarePolicy(
-		t,
-		module,
-		true,
-		3*nativeConfig.Settings.ResyncInterval+2*nativeConfig.Settings.RequestTimeout,
-		nil,
-	)
+	observeNativeHardwarePolicy(t, module, true, 3*nativeConfig.Settings.ResyncInterval+2*nativeConfig.Settings.RequestTimeout, nil)
 	if err := removeNativeHardwareDrop(link, nativeConfig.Settings.RequestTimeout); err != nil {
 		t.Fatal(err)
 	}
@@ -220,13 +178,7 @@ func TestNativePolicyResyncHardware(t *testing.T) {
 	}
 }
 
-func openNativeHardwareModule(
-	t *testing.T,
-	ctx context.Context,
-	settings nativeoffload.Config,
-	env *ifmgr.Env,
-	log *slog.Logger,
-) *nativeoffload.Module {
+func openNativeHardwareModule(t *testing.T, ctx context.Context, settings nativeoffload.Config, env *ifmgr.Env, log *slog.Logger) *nativeoffload.Module {
 	t.Helper()
 	created, err := nativeoffload.New(settings)
 	if err != nil {
@@ -281,13 +233,9 @@ func prepareNativeHardwareClsact(t *testing.T, link netlink.Link) {
 			return
 		}
 	}
-	qdisc := &netlink.Clsact{
-		QdiscAttrs: netlink.QdiscAttrs{
-			LinkIndex: link.Attrs().Index,
-			Handle:    netlink.MakeHandle(0xffff, 0),
-			Parent:    netlink.HANDLE_CLSACT,
-		},
-	}
+	qdisc := &netlink.Clsact{QdiscAttrs: netlink.QdiscAttrs{
+		LinkIndex: link.Attrs().Index, Handle: netlink.MakeHandle(0xffff, 0), Parent: netlink.HANDLE_CLSACT,
+	}}
 	if err := netlink.QdiscAdd(qdisc); err != nil {
 		t.Fatalf("create lab clsact on %s: %v", link.Attrs().Name, err)
 	}
@@ -299,11 +247,7 @@ func prepareNativeHardwareClsact(t *testing.T, link netlink.Link) {
 				return
 			}
 			if len(filters) != 0 {
-				t.Errorf(
-					"preserve lab clsact on %s with remaining filters: %v",
-					link.Attrs().Name,
-					filters,
-				)
+				t.Errorf("preserve lab clsact on %s with remaining filters: %v", link.Attrs().Name, filters)
 				return
 			}
 		}
@@ -334,73 +278,35 @@ func removeNativeHardwareDrop(link netlink.Link, timeout time.Duration) error {
 		return nil
 	}
 	if len(filters) != 1 {
-		return fmt.Errorf(
-			"preserve unexpected egress filters on %s: %v",
-			link.Attrs().Name,
-			filters,
-		)
+		return fmt.Errorf("preserve unexpected egress filters on %s: %v", link.Attrs().Name, filters)
 	}
 	filter := filters[0]
 	attributes := filter.Attrs()
-	if attributes.LinkIndex != link.Attrs().Index ||
-		attributes.Parent != netlink.HANDLE_MIN_EGRESS ||
-		attributes.Protocol != unix.ETH_P_IP ||
-		fmt.Sprint(attributes.Priority) != nativePolicyHardwareDropPriority ||
-		fmt.Sprintf("0x%x", attributes.Handle) != nativePolicyHardwareDropHandle ||
-		attributes.Chain != nil && *attributes.Chain != 0 {
-		return fmt.Errorf(
-			"preserve mismatched lab egress filter on %s: %v",
-			link.Attrs().Name,
-			attributes,
-		)
+	if attributes.LinkIndex != link.Attrs().Index || attributes.Parent != netlink.HANDLE_MIN_EGRESS ||
+		attributes.Protocol != unix.ETH_P_IP || fmt.Sprint(attributes.Priority) != nativePolicyHardwareDropPriority ||
+		fmt.Sprintf("0x%x", attributes.Handle) != nativePolicyHardwareDropHandle || attributes.Chain != nil && *attributes.Chain != 0 {
+		return fmt.Errorf("preserve mismatched lab egress filter on %s: %v", link.Attrs().Name, attributes)
 	}
 	flower, ok := filter.(*netlink.Flower)
 	if !ok {
-		return fmt.Errorf(
-			"preserve unexpected classifier %s on %s",
-			filter.Type(),
-			link.Attrs().Name,
-		)
+		return fmt.Errorf("preserve unexpected classifier %s on %s", filter.Type(), link.Attrs().Name)
 	}
 	target := netip.MustParsePrefix(nativePolicyHardwareDropTarget)
 	destination, valid := netip.AddrFromSlice(flower.DestIP)
 	ones, bits := flower.DestIPMask.Size()
-	if !valid || destination.Unmap() != target.Addr() || ones != target.Bits() ||
-		bits != target.Addr().BitLen() ||
-		flower.EthType != unix.ETH_P_IP ||
-		len(flower.Actions) != 1 {
-		return fmt.Errorf(
-			"preserve mismatched Flower selector on %s: %+v",
-			link.Attrs().Name,
-			flower,
-		)
+	if !valid || destination.Unmap() != target.Addr() || ones != target.Bits() || bits != target.Addr().BitLen() ||
+		flower.EthType != unix.ETH_P_IP || len(flower.Actions) != 1 {
+		return fmt.Errorf("preserve mismatched Flower selector on %s: %+v", link.Attrs().Name, flower)
 	}
 	action, ok := flower.Actions[0].(*netlink.GenericAction)
 	if !ok || action.Action != netlink.TC_ACT_SHOT {
-		return fmt.Errorf(
-			"preserve mismatched Flower action on %s: %v",
-			link.Attrs().Name,
-			flower.Actions,
-		)
+		return fmt.Errorf("preserve mismatched Flower action on %s: %v", link.Attrs().Name, flower.Actions)
 	}
 	cleanupContext, cleanupCancel := context.WithTimeout(context.Background(), timeout)
 	defer cleanupCancel()
-	output, err := exec.CommandContext(
-		cleanupContext,
-		"tc",
-		"filter",
-		"del",
-		"dev",
-		link.Attrs().Name,
-		"egress",
-		"protocol",
-		"ip",
-		"pref",
-		nativePolicyHardwareDropPriority,
-		"handle",
-		nativePolicyHardwareDropHandle,
-		"flower",
-	).CombinedOutput()
+	output, err := exec.CommandContext(cleanupContext, "tc", "filter", "del", "dev", link.Attrs().Name,
+		"egress", "protocol", "ip", "pref", nativePolicyHardwareDropPriority,
+		"handle", nativePolicyHardwareDropHandle, "flower").CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("delete lab egress DROP on %s: %w: %s", link.Attrs().Name, err, output)
 	}
@@ -452,23 +358,10 @@ func installNativeHardwarePolicy(t *testing.T, desired firewall.Ruleset, timeout
 					continue
 				}
 				ctx, cancel := context.WithTimeout(context.Background(), timeout)
-				output, err := exec.CommandContext(
-					ctx,
-					"nft",
-					"delete",
-					"table",
-					table.Family,
-					table.Name,
-				).CombinedOutput()
+				output, err := exec.CommandContext(ctx, "nft", "delete", "table", table.Family, table.Name).CombinedOutput()
 				cancel()
 				if err != nil {
-					t.Errorf(
-						"delete lab table %s %s: %v: %s",
-						table.Family,
-						table.Name,
-						err,
-						output,
-					)
+					t.Errorf("delete lab table %s %s: %v: %s", table.Family, table.Name, err, output)
 				}
 			}
 		}
@@ -483,18 +376,13 @@ func installNativeHardwarePolicy(t *testing.T, desired firewall.Ruleset, timeout
 	}
 }
 
-func requireNativeHardwareStats(
-	t *testing.T,
-	module *nativeoffload.Module,
-) nativeoffload.AdmissionStats {
+func requireNativeHardwareStats(t *testing.T, module *nativeoffload.Module) nativeoffload.AdmissionStats {
 	t.Helper()
 	stats := module.Stats()
 	if stats.Failure != nil {
 		t.Fatalf("native module entered terminal failure: %v", stats.Failure)
 	}
-	if stats.Installed != 0 || stats.Active != 0 || stats.Tracked != 0 ||
-		stats.ResumeCandidates != 0 ||
-		stats.CleanupUncertain != 0 {
+	if stats.Installed != 0 || stats.Active != 0 || stats.Tracked != 0 || stats.ResumeCandidates != 0 || stats.CleanupUncertain != 0 {
 		t.Fatalf("certification regression requires empty ownership: %+v", stats)
 	}
 	return stats
@@ -508,13 +396,7 @@ func requireNativeHardwareBlocked(t *testing.T, module *nativeoffload.Module) {
 	}
 }
 
-func waitNativeHardwarePolicy(
-	t *testing.T,
-	module *nativeoffload.Module,
-	blocked bool,
-	timeout time.Duration,
-	inspect func(),
-) {
+func waitNativeHardwarePolicy(t *testing.T, module *nativeoffload.Module, blocked bool, timeout time.Duration, inspect func()) {
 	t.Helper()
 	deadline := time.NewTimer(timeout)
 	defer deadline.Stop()
@@ -535,24 +417,13 @@ func waitNativeHardwarePolicy(
 		case <-t.Context().Done():
 			t.Fatal(t.Context().Err())
 		case <-deadline.C:
-			t.Fatalf(
-				"native policy did not become blocked=%t within %s: %+v",
-				blocked,
-				timeout,
-				stats,
-			)
+			t.Fatalf("native policy did not become blocked=%t within %s: %+v", blocked, timeout, stats)
 		case <-ticker.C:
 		}
 	}
 }
 
-func observeNativeHardwarePolicy(
-	t *testing.T,
-	module *nativeoffload.Module,
-	blocked bool,
-	duration time.Duration,
-	inspect func(),
-) {
+func observeNativeHardwarePolicy(t *testing.T, module *nativeoffload.Module, blocked bool, duration time.Duration, inspect func()) {
 	t.Helper()
 	deadline := time.NewTimer(duration)
 	defer deadline.Stop()
@@ -564,11 +435,7 @@ func observeNativeHardwarePolicy(
 		}
 		stats := requireNativeHardwareStats(t, module)
 		if stats.PolicyBlocked != blocked || blocked && !stats.Paused {
-			t.Fatalf(
-				"native policy changed during required blocked=%t interval: %+v",
-				blocked,
-				stats,
-			)
+			t.Fatalf("native policy changed during required blocked=%t interval: %+v", blocked, stats)
 		}
 		select {
 		case <-t.Context().Done():
@@ -580,25 +447,14 @@ func observeNativeHardwarePolicy(
 	}
 }
 
-func requireNativeHardwareEvidence(
-	t *testing.T,
-	forwarding *offload.ForwardingEvents,
-	rules *offload.RulesetEvents,
-) {
+func requireNativeHardwareEvidence(t *testing.T, forwarding *offload.ForwardingEvents, rules *offload.RulesetEvents) {
 	t.Helper()
 	if err := errors.Join(forwarding.Err(), rules.Err()); err != nil {
 		t.Fatalf("independent kernel observers failed: %v", err)
 	}
 }
 
-func stableNativeHardwareEvidence(
-	t *testing.T,
-	module *nativeoffload.Module,
-	forwarding *offload.ForwardingEvents,
-	rules *offload.RulesetEvents,
-	duration time.Duration,
-	timeout time.Duration,
-) {
+func stableNativeHardwareEvidence(t *testing.T, module *nativeoffload.Module, forwarding *offload.ForwardingEvents, rules *offload.RulesetEvents, duration, timeout time.Duration) {
 	t.Helper()
 	deadline := time.NewTimer(timeout)
 	defer deadline.Stop()
@@ -609,8 +465,7 @@ func stableNativeHardwareEvidence(
 	for {
 		requireNativeHardwareEvidence(t, forwarding, rules)
 		stats := requireNativeHardwareStats(t, module)
-		if stats.PolicyBlocked || forwarding.Generation() != forwardingGeneration ||
-			rules.Generation() != rulesGeneration {
+		if stats.PolicyBlocked || forwarding.Generation() != forwardingGeneration || rules.Generation() != rulesGeneration {
 			stableSince = time.Now()
 			forwardingGeneration, rulesGeneration = forwarding.Generation(), rules.Generation()
 		}
@@ -621,10 +476,7 @@ func stableNativeHardwareEvidence(
 		case <-t.Context().Done():
 			t.Fatal(t.Context().Err())
 		case <-deadline.C:
-			t.Fatalf(
-				"lab policy did not remain certified with stable kernel generations for %s",
-				duration,
-			)
+			t.Fatalf("lab policy did not remain certified with stable kernel generations for %s", duration)
 		case <-ticker.C:
 		}
 	}

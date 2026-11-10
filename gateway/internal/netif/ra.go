@@ -49,8 +49,8 @@ func NewRAClient(iface string, log *slog.Logger) (client *RAClient, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("InterfaceByName(%q): %w", iface, err)
 	}
-
-	log.Debug("ra: InterfaceByName ok", "index", netIface.Index, "mtu", netIface.MTU)
+	log.Debug("ra: InterfaceByName ok",
+		"index", netIface.Index, "mtu", netIface.MTU)
 
 	// ndp.Listen takes the netip.Addr we want to bind as source. Pass the
 	// link-local; the library will wait for one to appear if the iface is
@@ -59,7 +59,6 @@ func NewRAClient(iface string, log *slog.Logger) (client *RAClient, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("ndp.Listen(%q, link-local): %w", iface, err)
 	}
-
 	log.Debug("ra: ndp.Listen ok", "link_local", ll.String())
 	if err := conn.SetControlMessage(ipv6.FlagHopLimit, true); err != nil {
 		_ = conn.Close()
@@ -73,7 +72,6 @@ func NewRAClient(iface string, log *slog.Logger) (client *RAClient, err error) {
 		_ = conn.Close()
 		return nil, fmt.Errorf("JoinGroup(ff02::2): %w", err)
 	}
-
 	log.Debug("ra: joined all-routers multicast group")
 	if err := conn.JoinGroup(netip.MustParseAddr("ff02::1")); err != nil {
 		_ = conn.Close()
@@ -98,19 +96,14 @@ func NewRAClient(iface string, log *slog.Logger) (client *RAClient, err error) {
 // Concurrent callers serialise on a mutex: the underlying ndp.Conn is
 // not goroutine-safe.
 func (c *RAClient) SolicitRA(
-	ctx context.Context,
-	timeout time.Duration,
+	ctx context.Context, timeout time.Duration,
 ) (*ndp.RouterAdvertisement, error) {
 	advertisement, _, err := c.ReceiveRA(ctx, timeout, true)
 	return advertisement, err
 }
 
 // ReceiveRA reads an advertisement and its router, optionally sending a solicitation.
-func (c *RAClient) ReceiveRA(
-	ctx context.Context,
-	timeout time.Duration,
-	solicit bool,
-) (*ndp.RouterAdvertisement, netip.Addr, error) {
+func (c *RAClient) ReceiveRA(ctx context.Context, timeout time.Duration, solicit bool) (*ndp.RouterAdvertisement, netip.Addr, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -137,7 +130,6 @@ func (c *RAClient) ReceiveRA(
 		if err := c.conn.WriteTo(rs, nil, allRouters); err != nil {
 			return nil, netip.Addr{}, fmt.Errorf("send RS: %w", err)
 		}
-
 		op.DebugContext(ctx, "ra: RouterSolicitation sent", "to", allRouters.String())
 	}
 
@@ -148,7 +140,6 @@ func (c *RAClient) ReceiveRA(
 			return nil, netip.Addr{}, fmt.Errorf("ctx cancelled while waiting for RA: %w", ctxErr)
 		default:
 		}
-
 		msg, control, from, err := c.conn.ReadFrom()
 		dur := c.clock.Now().Sub(startTime)
 		if err != nil {
@@ -156,53 +147,34 @@ func (c *RAClient) ReceiveRA(
 			var nerr net.Error
 			if errors.As(err, &nerr) && nerr.Timeout() {
 				if solicit {
-					c.log.WarnContext(
-						ctx,
-						"ra: deadline exceeded waiting for RA",
-						"op",
-						"SolicitRA",
-						"timeout_ms",
-						timeout.Milliseconds(),
-						"waited_ms",
-						dur.Milliseconds(),
-					)
+					c.log.WarnContext(ctx, "ra: deadline exceeded waiting for RA",
+						"op", "SolicitRA", "timeout_ms", timeout.Milliseconds(),
+						"waited_ms", dur.Milliseconds())
 				}
-
 				return nil, netip.Addr{}, context.DeadlineExceeded
 			}
-
 			return nil, netip.Addr{}, fmt.Errorf("read RA: %w", err)
 		}
-
 		op.DebugContext(
 			ctx,
 			"ra: ICMPv6 message received",
-			"from",
-			from.String(),
-			"msg_type",
-			fmt.Sprintf("%T", msg),
-			"waited_ms",
-			dur.Milliseconds(),
+			"from", from.String(),
+			"msg_type", fmt.Sprintf("%T", msg),
+			"waited_ms", dur.Milliseconds(),
 		)
 		ra, ok := msg.(*ndp.RouterAdvertisement)
 		if !ok || !from.IsLinkLocalUnicast() || control == nil || control.HopLimit != ndp.HopLimit {
 			op.DebugContext(ctx, "ra: not a RA, continuing wait")
 			continue
 		}
-
 		op.DebugContext(
 			ctx,
 			"ra: RouterAdvertisement received",
-			"from",
-			from.String(),
-			"router_lifetime_s",
-			ra.RouterLifetime.Seconds(),
-			"managed_config",
-			ra.ManagedConfiguration,
-			"other_config",
-			ra.OtherConfiguration,
+			"from", from.String(),
+			"router_lifetime_s", ra.RouterLifetime.Seconds(),
+			"managed_config", ra.ManagedConfiguration,
+			"other_config", ra.OtherConfiguration,
 		)
-
 		return ra, from.WithZone(""), nil
 	}
 }
@@ -218,7 +190,6 @@ func (c *RAClient) Close() error {
 	if c.conn == nil {
 		return nil
 	}
-
 	c.log.Debug("ra: Close entry")
 	err := c.conn.Close()
 	c.conn = nil
@@ -226,6 +197,5 @@ func (c *RAClient) Close() error {
 		c.log.Warn("ra: Close failed", "err", err)
 		return fmt.Errorf("close RA client: %w", err)
 	}
-
 	return nil
 }

@@ -326,9 +326,7 @@ func build(doc *document) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	group := doc.Interfaces.SteeringGroup
-
 	required := []struct {
 		leaf  string
 		value string
@@ -345,32 +343,22 @@ func build(doc *document) (*Config, error) {
 			return nil, fmt.Errorf("%s is required", leaf.leaf)
 		}
 	}
-
 	if group.Health.ProbeTimeout == nil {
 		return nil, errors.New("steering-group/health/probe-timeout is required")
 	}
-
 	loaded.ProbeTimeoutMillis = *group.Health.ProbeTimeout
 	ids, explicitIDs, err := normalizeConnectionIDs(doc.Interfaces.Interface)
 	if err != nil {
 		return nil, err
 	}
-
 	loaded.ConnectionIDs = ids
 	loaded.ExplicitConnectionIDs = explicitIDs
-	connections, rejected, err := compileConnections(
-		doc.Interfaces.Interface,
-		ids,
-		loaded.InternalIface,
-		group.Firewall,
-	)
+	connections, rejected, err := compileConnections(doc.Interfaces.Interface, ids, loaded.InternalIface, group.Firewall)
 	if err != nil {
 		return nil, err
 	}
-
 	loaded.Connections = connections
 	loaded.Rejected = append(loaded.Rejected, rejected...)
-
 	byName := make(map[string]interfaceintent.Connection, len(connections))
 	for _, connection := range connections {
 		byName[connection.Name] = connection
@@ -379,47 +367,39 @@ func build(doc *document) (*Config, error) {
 	if err := compileProviderProjections(doc.Interfaces.Interface, byName, loaded); err != nil {
 		return nil, err
 	}
-
-	retainAcceptedProviderConnections(loaded)
+	active := loaded.Connections[:0]
+	for _, connection := range loaded.Connections {
+		if connection.Roles&interfaceintent.RoleProvider != 0 {
+			if _, accepted := loaded.WAN[connection.ID.String()]; !accepted {
+				continue
+			}
+		}
+		active = append(active, connection)
+	}
+	loaded.Connections = active
 	if err := validateActiveDependencies(loaded.Connections); err != nil {
 		return nil, err
 	}
-
 	if len(loaded.WAN) == 0 {
 		if len(loaded.Rejected) > 0 {
-			slog.Error(
-				"networkjson: every provider entry was rejected; nothing to steer",
-				"rejected",
-				len(loaded.Rejected),
-				"err",
-				loaded.Rejected[0].Err,
-			)
-
-			return nil, fmt.Errorf(
-				"every provider entry was rejected; the first: %w",
-				loaded.Rejected[0].Err,
-			)
+			slog.Error("networkjson: every provider entry was rejected; nothing to steer",
+				"rejected", len(loaded.Rejected), "err", loaded.Rejected[0].Err)
+			return nil, fmt.Errorf("every provider entry was rejected; the first: %w", loaded.Rejected[0].Err)
 		}
-
 		return nil, errors.New("no interface declares a provider")
 	}
-
 	if err := checkProviderSet(loaded); err != nil {
 		return nil, err
 	}
-
 	loaded.Claims, err = compileClaims(loaded.Connections, loaded.WAN)
 	if err != nil {
 		return nil, err
 	}
-
 	firewallConfig, err := buildFirewall(doc, loaded)
 	if err != nil {
 		return nil, err
 	}
-
 	loaded.Firewall = firewallConfig
-
 	return loaded, nil
 }
 
@@ -428,28 +408,23 @@ func newWANNetworkConfig(doc *document) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	group := doc.Interfaces.SteeringGroup
 	var zeroFirewall firewall.Config
-
 	return &Config{
-		VPP:                nil,
-		GuestType:          guestType,
-		Firewall:           zeroFirewall,
-		PinnedConnectionID: pinnedConnectionID(group.Firewall),
-		InternalPrefix:     group.Translation.InternalPrefix,
-		OpnsenseEdgeV6:     group.Translation.OpnsenseEdgeV6,
-		MwanbrEdgeV6:       group.Translation.MwanbrEdgeV6,
-		InternalIface:      group.Routes.InternalIface,
-		InternalNetV4:      group.Routes.InternalNetV4,
-		HashMode:           group.HashMode,
-		ReservedTables:     group.ReservedTables,
-		ProbeTimeoutMillis: 0,
-		WAN:                make(map[string]config.IfMgrWANEntry, len(doc.Interfaces.Interface)),
-		Health: make(
-			map[string]config.IfMgrHealthWANSection,
-			len(doc.Interfaces.Interface),
-		),
+		VPP:                   nil,
+		GuestType:             guestType,
+		Firewall:              zeroFirewall,
+		PinnedConnectionID:    pinnedConnectionID(group.Firewall),
+		InternalPrefix:        group.Translation.InternalPrefix,
+		OpnsenseEdgeV6:        group.Translation.OpnsenseEdgeV6,
+		MwanbrEdgeV6:          group.Translation.MwanbrEdgeV6,
+		InternalIface:         group.Routes.InternalIface,
+		InternalNetV4:         group.Routes.InternalNetV4,
+		HashMode:              group.HashMode,
+		ReservedTables:        group.ReservedTables,
+		ProbeTimeoutMillis:    0,
+		WAN:                   make(map[string]config.IfMgrWANEntry, len(doc.Interfaces.Interface)),
+		Health:                make(map[string]config.IfMgrHealthWANSection, len(doc.Interfaces.Interface)),
 		ConnectionIDs:         make(map[string]connectionid.ID, len(doc.Interfaces.Interface)),
 		ExplicitConnectionIDs: make(map[string]connectionid.ID),
 		Connections:           nil,
@@ -458,68 +433,45 @@ func newWANNetworkConfig(doc *document) (*Config, error) {
 	}, nil
 }
 
-func compileProviderProjections(
-	entries []ifaceEntry,
-	byName map[string]interfaceintent.Connection,
-	loaded *Config,
-) error {
+func compileProviderProjections(entries []ifaceEntry, byName map[string]interfaceintent.Connection, loaded *Config) error {
 	// Provider rejection must not hide malformed bindings from graph validation.
 	if err := interfaceintent.ValidateNativeBindings(loaded.Connections); err != nil {
 		slog.Warn("networkjson: declared native hardware graph invalid", "err", err)
 		return fmt.Errorf("native offload bindings: %w", err)
 	}
-
 	dscpOwners := make(map[int]string, len(entries))
 	for _, entry := range entries {
 		if entry.WAN == nil {
 			continue
 		}
-
 		connection, accepted := byName[entry.Name]
 		if !accepted {
 			continue
 		}
-
 		id := loaded.ConnectionIDs[entry.Name].String()
 		routing, probe, err := buildProvider(entry)
 		if err != nil {
 			if entry.Owner == string(interfaceintent.OwnerMWAN) {
-				slog.Error(
-					"networkjson: MWAN-owned provider invalid",
-					"interface",
-					entry.Name,
-					"err",
-					err,
-				)
+				slog.Error("networkjson: MWAN-owned provider invalid", "interface", entry.Name, "err", err)
 				return fmt.Errorf("interface %s: %w", entry.Name, err)
 			}
-
 			loaded.Rejected = append(loaded.Rejected, rejectEntry(entry, err))
 			continue
 		}
-
 		routing.V4Source = staticV4Source(connection)
 		if entry.WAN.ForcedDSCP != nil {
 			value := *entry.WAN.ForcedDSCP
 			if owner, taken := dscpOwners[value]; taken {
-				return fmt.Errorf(
-					"wan %s: forced-dscp %d is already taken by wan %s",
-					id,
-					value,
-					owner,
-				)
+				return fmt.Errorf("wan %s: forced-dscp %d is already taken by wan %s", id, value, owner)
 			}
-
 			dscpOwners[value] = id
 		}
-
 		routing.ProviderName = entry.WAN.Name
 		loaded.WAN[id] = routing
 		if probe != nil {
 			loaded.Health[id] = *probe
 		}
 	}
-
 	return nil
 }
 
@@ -531,17 +483,8 @@ func rejectEntry(entry ifaceEntry, err error) Rejection {
 	if entry.WAN != nil {
 		provider = entry.WAN.Name
 	}
-
-	slog.Error(
-		"networkjson: provider entry rejected; the daemon runs without it",
-		"interface",
-		entry.Name,
-		"provider",
-		provider,
-		"err",
-		err,
-	)
-
+	slog.Error("networkjson: provider entry rejected; the daemon runs without it",
+		"interface", entry.Name, "provider", provider, "err", err)
 	return Rejection{Interface: entry.Name, Provider: provider, Err: err}
 }
 
@@ -553,13 +496,23 @@ func rejectEntry(entry ifaceEntry, err error) Rejection {
 // A failure here stops the daemon before it writes anything to the kernel,
 // which is the existing failure contract for a bad configuration.
 func checkProviderSet(loaded *Config) error {
-	reserved := providerReservedTables(loaded)
+	reserved := make(map[int]string, len(loaded.ReservedTables)+len(kernelReservedTables))
+	for _, table := range kernelReservedTables {
+		reserved[table] = "the kernel"
+	}
+	for _, table := range loaded.ReservedTables {
+		// The kernel's own reservation is the true reason a table is off limits,
+		// so inventory redundantly listing it must not overwrite that label with
+		// a less accurate one.
+		if _, alreadyReserved := reserved[table]; !alreadyReserved {
+			reserved[table] = "steering-group/reserved-tables"
+		}
+	}
 
 	names := make([]string, 0, len(loaded.WAN))
 	for name := range loaded.WAN {
 		names = append(names, name)
 	}
-
 	slices.Sort(names)
 
 	slots := []struct {
@@ -574,15 +527,9 @@ func checkProviderSet(loaded *Config) error {
 		for _, name := range names {
 			value := slot.value(loaded.WAN[name])
 			if taken, seen := owner[value]; seen {
-				return fmt.Errorf(
-					"wan %s: %s %d is already taken by wan %s",
-					name,
-					slot.leaf,
-					value,
-					taken,
-				)
+				return fmt.Errorf("wan %s: %s %d is already taken by wan %s",
+					name, slot.leaf, value, taken)
 			}
-
 			owner[value] = name
 		}
 	}
@@ -601,30 +548,18 @@ func checkProviderSet(loaded *Config) error {
 		leaf  string
 		value func(entry config.IfMgrWANEntry) int
 	}{
-		{
-			leaf:  "fw-mark-prio",
-			value: func(entry config.IfMgrWANEntry) int { return entry.FwMarkPrio },
-		},
+		{leaf: "fw-mark-prio", value: func(entry config.IfMgrWANEntry) int { return entry.FwMarkPrio }},
 		{leaf: "from-prio", value: func(entry config.IfMgrWANEntry) int { return entry.FromPrio }},
 	}
-
 	priorityOwners := make(map[int]priorityOwner, len(names)*len(priorityLeaves))
 	for _, name := range names {
 		entry := loaded.WAN[name]
-
 		for _, priorityLeaf := range priorityLeaves {
 			value := priorityLeaf.value(entry)
 			if taken, seen := priorityOwners[value]; seen {
-				return fmt.Errorf(
-					"wan %s: %s %d is already taken by wan %s's %s",
-					name,
-					priorityLeaf.leaf,
-					value,
-					taken.provider,
-					taken.leaf,
-				)
+				return fmt.Errorf("wan %s: %s %d is already taken by wan %s's %s",
+					name, priorityLeaf.leaf, value, taken.provider, taken.leaf)
 			}
-
 			priorityOwners[value] = priorityOwner{provider: name, leaf: priorityLeaf.leaf}
 		}
 	}
@@ -632,7 +567,6 @@ func checkProviderSet(loaded *Config) error {
 	if err := checkMappedExternals(loaded, names); err != nil {
 		return err
 	}
-
 	if err := checkBGPSessionSet(loaded, names); err != nil {
 		return err
 	}
@@ -642,7 +576,6 @@ func checkProviderSet(loaded *Config) error {
 		if owner, isReserved := reserved[entry.TableID]; isReserved {
 			return fmt.Errorf("wan %s: table-id %d is reserved by %s", name, entry.TableID, owner)
 		}
-
 		// The schema already ranges weight at 1..max, so libyang rejects a zero
 		// before build ever runs, and no test through Load can reach this branch
 		// today. It stays as a decode-boundary guard: checkProviderSet is the
@@ -650,14 +583,9 @@ func checkProviderSet(loaded *Config) error {
 		// revision that drops or loosens the range must not silently let a
 		// zero-weight provider through it.
 		if entry.Weight < 1 {
-			return fmt.Errorf(
-				"wan %s: steering/weight must be at least 1, got %d",
-				name,
-				entry.Weight,
-			)
+			return fmt.Errorf("wan %s: steering/weight must be at least 1, got %d", name, entry.Weight)
 		}
 	}
-
 	return nil
 }
 
@@ -668,63 +596,30 @@ func buildStaticMappings(label string, entries []staticMapping) ([]config.Static
 	if len(entries) == 0 {
 		return nil, nil
 	}
-
 	mappings := make([]config.StaticMapping, 0, len(entries))
 	for _, entry := range entries {
 		external, err := netip.ParseAddr(entry.External)
 		if err != nil {
-			slog.Error(
-				"networkjson: static-mapping external unparsable",
-				"wan",
-				label,
-				"external",
-				entry.External,
-				"err",
-				err,
-			)
-
+			slog.Error("networkjson: static-mapping external unparsable",
+				"wan", label, "external", entry.External, "err", err)
 			return nil, fmt.Errorf("%s: static-mapping external %q: %w", label, entry.External, err)
 		}
-
 		internal, err := netip.ParseAddr(entry.Internal)
 		if err != nil {
-			slog.Error(
-				"networkjson: static-mapping internal unparsable",
-				"wan",
-				label,
-				"internal",
-				entry.Internal,
-				"err",
-				err,
-			)
-
+			slog.Error("networkjson: static-mapping internal unparsable",
+				"wan", label, "internal", entry.Internal, "err", err)
 			return nil, fmt.Errorf("%s: static-mapping internal %q: %w", label, entry.Internal, err)
 		}
-
 		if !external.Is4() || !internal.Is4() {
 			return nil, fmt.Errorf("%s: static-mapping requires IPv4 addresses", label)
 		}
-
 		for _, existing := range mappings {
 			if existing.External == external {
-				return nil, fmt.Errorf(
-					"%s: static-mapping external %s is duplicated",
-					label,
-					external,
-				)
+				return nil, fmt.Errorf("%s: static-mapping external %s is duplicated", label, external)
 			}
 		}
-
-		mappings = append(
-			mappings,
-			config.StaticMapping{
-				External: external,
-				Internal: internal,
-				Delivery: interfaceintent.AddressDelivery(entry.Delivery),
-			},
-		)
+		mappings = append(mappings, config.StaticMapping{External: external, Internal: internal, Delivery: interfaceintent.AddressDelivery(entry.Delivery)})
 	}
-
 	return mappings, nil
 }
 
@@ -732,34 +627,18 @@ func buildStaticMappings(label string, entries []staticMapping) ([]config.Static
 func parseAddress(label string, leaf string, raw string) (netip.Addr, error) {
 	parsed, err := netip.ParseAddr(raw)
 	if err != nil {
-		slog.Error(
-			"networkjson: address unparsable",
-			"entry",
-			label,
-			"leaf",
-			leaf,
-			"value",
-			raw,
-			"err",
-			err,
-		)
+		slog.Error("networkjson: address unparsable", "entry", label, "leaf", leaf, "value", raw, "err", err)
 		return netip.Addr{}, fmt.Errorf("%s: %s %q: %w", label, leaf, raw, err)
 	}
-
 	return parsed, nil
 }
 
 func buildProvider(entry ifaceEntry) (config.IfMgrWANEntry, *config.IfMgrHealthWANSection, error) {
 	provider := entry.WAN
 	if provider.Name == "" {
-		return config.IfMgrWANEntry{}, nil, fmt.Errorf(
-			"interface %q carries a provider with no name",
-			entry.Name,
-		)
+		return config.IfMgrWANEntry{}, nil, fmt.Errorf("interface %q carries a provider with no name", entry.Name)
 	}
-
 	label := "wan " + provider.Name
-
 	numbers := []struct {
 		leaf  string
 		value *int
@@ -774,39 +653,31 @@ func buildProvider(entry ifaceEntry) (config.IfMgrWANEntry, *config.IfMgrHealthW
 			return config.IfMgrWANEntry{}, nil, fmt.Errorf("%s: %s is required", label, number.leaf)
 		}
 	}
-
 	if provider.V4Source != "" {
 		return config.IfMgrWANEntry{}, nil, fmt.Errorf(
-			"%s: v4-source is derived from the link's static ipv4 address and must not be typed",
-			label,
+			"%s: v4-source is derived from the link's static ipv4 address and must not be typed", label,
 		)
 	}
-
 	tier, weight, err := buildSteering(label, entry.Steering)
 	if err != nil {
 		return config.IfMgrWANEntry{}, nil, err
 	}
-
 	policyV4, err := buildTranslationV4(label+" ipv4", entry)
 	if err != nil {
 		return config.IfMgrWANEntry{}, nil, err
 	}
-
 	policyV6, err := buildTranslationV6(label+" ipv6", entry)
 	if err != nil {
 		return config.IfMgrWANEntry{}, nil, err
 	}
-
 	sessions, err := buildBGPSessions(label, entry)
 	if err != nil {
 		return config.IfMgrWANEntry{}, nil, err
 	}
-
 	forcedDSCP := 0
 	if provider.ForcedDSCP != nil {
 		forcedDSCP = *provider.ForcedDSCP
 	}
-
 	routing := config.IfMgrWANEntry{
 		ProviderName:  provider.Name,
 		Iface:         entry.Name,
@@ -829,12 +700,10 @@ func buildProvider(entry ifaceEntry) (config.IfMgrWANEntry, *config.IfMgrHealthW
 	if provider.Health == nil {
 		return routing, nil, nil
 	}
-
 	probe, err := buildHealth(label, provider.Health)
 	if err != nil {
 		return config.IfMgrWANEntry{}, nil, err
 	}
-
 	return routing, probe, nil
 }
 
@@ -848,20 +717,16 @@ func buildSteering(label string, member *steering) (uint8, int, error) {
 	if member == nil {
 		return 0, 0, fmt.Errorf("%s: steering is required", label)
 	}
-
 	if member.Tier == nil {
 		return 0, 0, fmt.Errorf("%s: steering/tier is required", label)
 	}
-
 	if member.Weight == nil {
 		return 0, 0, fmt.Errorf("%s: steering/weight is required", label)
 	}
-
 	tier := *member.Tier
 	if tier < 0 || tier > int(^uint8(0)) {
 		return 0, 0, fmt.Errorf("%s: steering/tier %d is outside 0 to 255", label, tier)
 	}
-
 	return uint8(tier), *member.Weight, nil
 }
 
@@ -877,7 +742,6 @@ func buildHealth(label string, probe *health) (*config.IfMgrHealthWANSection, er
 	if probe.Enabled == nil {
 		return nil, fmt.Errorf("%s: health/enabled is required", label)
 	}
-
 	section := &config.IfMgrHealthWANSection{
 		Enabled:              *probe.Enabled,
 		PingCount:            probe.PingCount,
@@ -892,7 +756,6 @@ func buildHealth(label string, probe *health) (*config.IfMgrHealthWANSection, er
 	if !section.Enabled {
 		return section, nil
 	}
-
 	counts := []struct {
 		leaf  string
 		value *int
@@ -908,7 +771,6 @@ func buildHealth(label string, probe *health) (*config.IfMgrHealthWANSection, er
 			return nil, fmt.Errorf("%s: health/%s is required", label, count.leaf)
 		}
 	}
-
 	return section, nil
 }
 
@@ -933,7 +795,6 @@ func (c *Config) Apply(cfg *config.Config) {
 	if cfg.IfMgr.Modules.WAN == nil {
 		cfg.IfMgr.Modules.WAN = &config.IfMgrModulesWANSection{Routes: nil}
 	}
-
 	if cfg.IfMgr.Modules.WAN.Routes == nil {
 		cfg.IfMgr.Modules.WAN.Routes = &config.IfMgrWANRoutesSection{
 			InternalIface:   "",
@@ -941,7 +802,6 @@ func (c *Config) Apply(cfg *config.Config) {
 			HealthStateFile: "",
 		}
 	}
-
 	cfg.IfMgr.Modules.WAN.Routes.InternalIface = c.InternalIface
 	cfg.IfMgr.Modules.WAN.Routes.InternalNetV4 = c.InternalNetV4
 
@@ -956,40 +816,6 @@ func (c *Config) Apply(cfg *config.Config) {
 			WAN:                     nil,
 		}
 	}
-
 	cfg.IfMgr.Modules.Health.ProbeTimeoutMillis = c.ProbeTimeoutMillis
 	cfg.IfMgr.Modules.Health.WAN = c.Health
-}
-
-func retainAcceptedProviderConnections(loaded *Config) {
-	active := loaded.Connections[:0]
-	for _, connection := range loaded.Connections {
-		if connection.Roles&interfaceintent.RoleProvider != 0 {
-			if _, accepted := loaded.WAN[connection.ID.String()]; !accepted {
-				continue
-			}
-		}
-
-		active = append(active, connection)
-	}
-
-	loaded.Connections = active
-}
-
-func providerReservedTables(loaded *Config) map[int]string {
-	reserved := make(map[int]string, len(loaded.ReservedTables)+len(kernelReservedTables))
-	for _, table := range kernelReservedTables {
-		reserved[table] = "the kernel"
-	}
-
-	for _, table := range loaded.ReservedTables {
-		// The kernel's own reservation is the true reason a table is off limits,
-		// so inventory redundantly listing it must not overwrite that label with
-		// a less accurate one.
-		if _, alreadyReserved := reserved[table]; !alreadyReserved {
-			reserved[table] = "steering-group/reserved-tables"
-		}
-	}
-
-	return reserved
 }

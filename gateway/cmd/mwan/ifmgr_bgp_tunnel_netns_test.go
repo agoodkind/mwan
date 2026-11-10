@@ -24,20 +24,12 @@ func TestBGPTunnelDaemonRuntime(t *testing.T) {
 func bgpTunnelRuntimeNetwork(t *testing.T) string {
 	t.Helper()
 	targets := `"targets-v6":["` + tunnelRuntimeRemoteClient + `"]}`
-	session := fmt.Sprintf(
-		`,"bgp-session":[{"name":"endpoint","peer-address":%q,"local-address":%q,`+
-			`"local-as":%d,"remote-as":%d,"family":["ipv6-unicast"],"keepalive":%d,"hold":%d,"route-metric":300,`+
-			`"import":[{"prefix":"::/0","min-length":0,"max-length":0}],`+
-			`"export":[{"prefix":%q,"mode":"always","next-hop":%q}]}]`,
-		tunnelRuntimeInnerRemote,
-		tunnelRuntimeInnerLocal,
-		bgpRuntimeLocalASN,
-		bgpRuntimeRemoteASN,
-		bgpRuntimeKeepalive,
-		bgpRuntimeHold,
-		bgpRuntimeHome,
-		tunnelRuntimeInnerLocal,
-	)
+	session := fmt.Sprintf(`,"bgp-session":[{"name":"endpoint","peer-address":%q,"local-address":%q,`+
+		`"local-as":%d,"remote-as":%d,"family":["ipv6-unicast"],"keepalive":%d,"hold":%d,"route-metric":300,`+
+		`"import":[{"prefix":"::/0","min-length":0,"max-length":0}],`+
+		`"export":[{"prefix":%q,"mode":"always","next-hop":%q}]}]`,
+		tunnelRuntimeInnerRemote, tunnelRuntimeInnerLocal, bgpRuntimeLocalASN, bgpRuntimeRemoteASN,
+		bgpRuntimeKeepalive, bgpRuntimeHold, bgpRuntimeHome, tunnelRuntimeInnerLocal)
 	edits := map[string]string{
 		`"goodkind-mwan-steering:gateway":"` + tunnelRuntimeInnerRemote + `",`: "",
 		targets: targets + session,
@@ -64,10 +56,7 @@ func removeTunnelRuntimeReturnRoute(t *testing.T, topology tunnelRuntimeTopology
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.RouteDel(&netlink.Route{
-		Dst:       destination,
-		LinkIndex: link.Attrs().Index,
-	}); err != nil {
+	if err := netlink.RouteDel(&netlink.Route{Dst: destination, LinkIndex: link.Attrs().Index}); err != nil {
 		t.Fatalf("remove the configured return route: %v", err)
 	}
 }
@@ -80,118 +69,46 @@ func runBGPTunnelDaemonRuntime(t *testing.T, run *bgpRuntimeRun) {
 	peer := netip.MustParseAddr(tunnelRuntimeInnerRemote)
 	topology := buildTunnelRuntimeTopology(t, run.gateway)
 	removeTunnelRuntimeReturnRoute(t, topology)
-	if err := os.WriteFile(
-		filepath.Join(run.networkDir, "network.json"),
-		[]byte(bgpTunnelRuntimeNetwork(t)),
-		0o600,
-	); err != nil {
+	if err := os.WriteFile(filepath.Join(run.networkDir, "network.json"), []byte(bgpTunnelRuntimeNetwork(t)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	daemon := run.start(t, "bgp-tunnel")
 	waitRuntimeTable(t, daemon, "inet", "filter", 10*time.Second)
-	router := startBGPRuntimeRouter(
-		t,
-		topology.endpoint,
-		"far6in4",
-		"198.51.100.1",
-		bgpRuntimeRemoteASN,
-		peer,
-		netip.MustParseAddr(tunnelRuntimeInnerLocal),
-		bgpRuntimeLocalASN,
-	)
+	router := startBGPRuntimeRouter(t, topology.endpoint, "far6in4", "198.51.100.1", bgpRuntimeRemoteASN, peer,
+		netip.MustParseAddr(tunnelRuntimeInnerLocal), bgpRuntimeLocalASN)
 	router.announce(t, defaultRoute, peer)
 	established := func(session bgpRuntimeSession) bool {
-		return session.Established &&
-			slices.Equal(session.Accepted, []string{defaultRoute.String()})
+		return session.Established && slices.Equal(session.Accepted, []string{defaultRoute.String()})
 	}
 	exchange := func() {
 		t.Helper()
-		waitBGPRuntimeSession(
-			t,
-			daemon,
-			run.read,
-			tunnelRuntimeDevice,
-			"an established state and the default route",
-			established,
-		)
-		waitTunnelRuntimeFamily(
-			t,
-			daemon,
-			run.read,
-			tunnelRuntimeDevice,
-			"ipv6",
-			"ready",
-			"ready",
-			tunnelRuntimeRecoverWindow,
-		)
+		waitBGPRuntimeSession(t, daemon, run.read, tunnelRuntimeDevice, "an established state and the default route", established)
+		waitTunnelRuntimeFamily(t, daemon, run.read, tunnelRuntimeDevice, "ipv6", "ready", "ready", tunnelRuntimeRecoverWindow)
 		waitBGPRuntimeReceived(t, daemon, run.read, router, home)
-		observed := waitTunnelRuntimeTransfer(
-			t,
-			daemon,
-			topology,
-			topology.remote,
-			topology.client,
-			"tcp6",
-			net.JoinHostPort(remoteClient.String(), strconv.Itoa(bgpRuntimeRemotePort)),
-			net.JoinHostPort(client.String(), "0"),
-			tunnelRuntimeRecoverWindow,
-		)
+		observed := waitTunnelRuntimeTransfer(t, daemon, topology, topology.remote, topology.client, "tcp6",
+			net.JoinHostPort(remoteClient.String(), strconv.Itoa(bgpRuntimeRemotePort)), net.JoinHostPort(client.String(), "0"),
+			tunnelRuntimeRecoverWindow)
 		if observed != client {
 			t.Fatalf("remote listener observed %s, want the internal client %s", observed, client)
 		}
-		observed = waitTunnelRuntimeTransfer(
-			t,
-			daemon,
-			topology,
-			topology.client,
-			topology.remote,
-			"tcp6",
-			net.JoinHostPort(client.String(), strconv.Itoa(bgpRuntimeClientPort)),
-			net.JoinHostPort(remoteClient.String(), "0"),
-			tunnelRuntimeRecoverWindow,
-		)
+		observed = waitTunnelRuntimeTransfer(t, daemon, topology, topology.client, topology.remote, "tcp6",
+			net.JoinHostPort(client.String(), strconv.Itoa(bgpRuntimeClientPort)), net.JoinHostPort(remoteClient.String(), "0"),
+			tunnelRuntimeRecoverWindow)
 		if observed != remoteClient {
-			t.Fatalf(
-				"internal listener observed %s, want the remote client %s",
-				observed,
-				remoteClient,
-			)
+			t.Fatalf("internal listener observed %s, want the remote client %s", observed, remoteClient)
 		}
 	}
 	exchange()
 
 	setTunnelRuntimeFault(t, topology, true)
-	waitBGPRuntimeSession(
-		t,
-		daemon,
-		run.read,
-		tunnelRuntimeDevice,
-		"no established state",
-		func(session bgpRuntimeSession) bool {
-			return !session.Established && len(session.Accepted) == 0
-		},
-	)
-	waitTunnelRuntimeFamily(
-		t,
-		daemon,
-		run.read,
-		tunnelRuntimeDevice,
-		"ipv6",
-		"not-ready",
-		"not-ready",
-		tunnelRuntimeRecoverWindow,
-	)
+	waitBGPRuntimeSession(t, daemon, run.read, tunnelRuntimeDevice, "no established state", func(session bgpRuntimeSession) bool {
+		return !session.Established && len(session.Accepted) == 0
+	})
+	waitTunnelRuntimeFamily(t, daemon, run.read, tunnelRuntimeDevice, "ipv6", "not-ready", "not-ready", tunnelRuntimeRecoverWindow)
 	waitBGPRuntimeGatewayRoute(t, daemon, run.read, tunnelRuntimeDevice, defaultRoute, false)
-	waitBGPRuntime(
-		t,
-		daemon,
-		run.read,
-		"endpoint without the home prefix",
-		tunnelRuntimeRecoverWindow,
-		func() bool {
-			return !router.kernelRoute(t, home)
-		},
-	)
+	waitBGPRuntime(t, daemon, run.read, "endpoint without the home prefix", tunnelRuntimeRecoverWindow, func() bool {
+		return !router.kernelRoute(t, home)
+	})
 
 	setTunnelRuntimeFault(t, topology, false)
 	exchange()

@@ -21,14 +21,9 @@ func TestBackupBGPAnnouncesEachReadyFamily(t *testing.T) {
 	readTimeout := 500 * time.Millisecond
 	serveDone := make(chan error, 1)
 	go func() {
-		serveDone <- forwardingready.Serve(
-			ctx,
-			socketPath,
-			readTimeout,
-			func() forwardingready.State {
-				return forwardingready.State{IPv4: ipv4Ready.Load(), IPv6: ipv6Ready.Load()}
-			},
-		)
+		serveDone <- forwardingready.Serve(ctx, socketPath, readTimeout, func() forwardingready.State {
+			return forwardingready.State{IPv4: ipv4Ready.Load(), IPv6: ipv6Ready.Load()}
+		})
 	}()
 	t.Cleanup(func() {
 		cancel()
@@ -47,21 +42,18 @@ func TestBackupBGPAnnouncesEachReadyFamily(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	speaker := bgp.New(
-		bgp.Config{
-			Enabled:      true,
-			RequireReady: true,
-			ASN:          65001,
-			RouterID:     "10.0.0.4",
-			NextHopV6:    "fd00::4",
-			ListenPort:   -1,
-			Announce: bgp.AnnounceConfig{
-				IPv4: []string{"0.0.0.0/0"},
-				IPv6: []string{"::/0"},
-			},
+	speaker := bgp.New(bgp.Config{
+		Enabled:      true,
+		RequireReady: true,
+		ASN:          65001,
+		RouterID:     "10.0.0.4",
+		NextHopV6:    "fd00::4",
+		ListenPort:   -1,
+		Announce: bgp.AnnounceConfig{
+			IPv4: []string{"0.0.0.0/0"},
+			IPv6: []string{"::/0"},
 		},
-		testLogger(t),
-	)
+	}, testLogger(t))
 	if err := speaker.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -112,14 +104,9 @@ func TestPrimaryBGPAnnouncesOnlyReadyFamilies(t *testing.T) {
 	readTimeout := 500 * time.Millisecond
 	serveDone := make(chan error, 1)
 	go func() {
-		serveDone <- forwardingready.Serve(
-			ctx,
-			socketPath,
-			readTimeout,
-			func() forwardingready.State {
-				return forwardingready.State{IPv4: ipv4Ready.Load(), IPv6: ipv6Ready.Load()}
-			},
-		)
+		serveDone <- forwardingready.Serve(ctx, socketPath, readTimeout, func() forwardingready.State {
+			return forwardingready.State{IPv4: ipv4Ready.Load(), IPv6: ipv6Ready.Load()}
+		})
 	}()
 	t.Cleanup(func() {
 		cancel()
@@ -138,21 +125,18 @@ func TestPrimaryBGPAnnouncesOnlyReadyFamilies(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	speaker := bgp.New(
-		bgp.Config{
-			Enabled:      true,
-			RequireReady: true,
-			ASN:          65001,
-			RouterID:     "10.0.0.3",
-			NextHopV6:    "fd00::3",
-			ListenPort:   -1,
-			Announce: bgp.AnnounceConfig{
-				IPv4: []string{"0.0.0.0/0"},
-				IPv6: []string{"::/0"},
-			},
+	speaker := bgp.New(bgp.Config{
+		Enabled:      true,
+		RequireReady: true,
+		ASN:          65001,
+		RouterID:     "10.0.0.3",
+		NextHopV6:    "fd00::3",
+		ListenPort:   -1,
+		Announce: bgp.AnnounceConfig{
+			IPv4: []string{"0.0.0.0/0"},
+			IPv6: []string{"::/0"},
 		},
-		testLogger(t),
-	)
+	}, testLogger(t))
 	if err := speaker.Start(ctx); err != nil {
 		t.Fatal(err)
 	}

@@ -21,9 +21,7 @@ func TestLinksModuleFencesKernelWritesUntilRetirementSucceeds(t *testing.T) {
 	if !runInNetns(t, "TestLinksModuleFencesKernelWritesUntilRetirementSucceeds") {
 		return
 	}
-	if err := netlink.LinkAdd(&netlink.Dummy{
-		LinkAttrs: netlink.LinkAttrs{Name: underlayName},
-	}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: underlayName}}); err != nil {
 		t.Fatal(err)
 	}
 	underlay, err := netlink.LinkByName(underlayName)
@@ -37,16 +35,13 @@ func TestLinksModuleFencesKernelWritesUntilRetirementSucceeds(t *testing.T) {
 	defer cancel()
 	connections := tunnelConnections()
 	forwarding := true
-	connections[1].IPv4 = &interfaceintent.IPv4{
-		Family: interfaceintent.Family{Forwarding: &forwarding},
-	}
+	connections[1].IPv4 = &interfaceintent.IPv4{Family: interfaceintent.Family{Forwarding: &forwarding}}
 	module, env, store, _ := startLinksModule(ctx, t, connections)
 	changes := new(ifmgr.ForwardingChanges)
 	env.ForwardingChanges = changes
 	env.Sysctl = netif.NewProcSysctlRunner(env.Log, false)
 	policy, err := autoconfiguration.New(autoconfiguration.Config{
-		Connections: connections,
-		StateFile:   filepath.Join(t.TempDir(), "kernel-policy.json"),
+		Connections: connections, StateFile: filepath.Join(t.TempDir(), "kernel-policy.json"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -86,15 +81,9 @@ func TestLinksModuleFencesKernelWritesUntilRetirementSucceeds(t *testing.T) {
 		return func() {
 			result, ok := env.OwnedLinks.Get(tunnelID)
 			if !ok || result.Status != netif.OwnedLinkReady {
-				t.Errorf(
-					"guard completion preceded link publication: %+v, published=%t",
-					result,
-					ok,
-				)
+				t.Errorf("guard completion preceded link publication: %+v, published=%t", result, ok)
 			}
-			if result := store.Snapshot().Connections[tunnelID].LastApply; result.Result != string(
-				netif.OwnedLinkReady,
-			) {
+			if result := store.Snapshot().Connections[tunnelID].LastApply; result.Result != string(netif.OwnedLinkReady) {
 				t.Errorf("guard completion preceded apply publication: %+v", result)
 			}
 		}, nil

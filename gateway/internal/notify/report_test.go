@@ -19,32 +19,18 @@ func TestSendReportReturnsAcceptance(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	manager, err := notify.New(
-		notify.EmailConfig{
-			MsmtprcPath:   server.Path,
-			AlertEmail:    "recipient@example.com",
-			SubjectPrefix: "[lab]",
-			MinLevel:      "error",
-		},
-		notify.Config{},
-		logger,
-		"mwan-report",
-	)
+	manager, err := notify.New(notify.EmailConfig{MsmtprcPath: server.Path, AlertEmail: "recipient@example.com", SubjectPrefix: "[lab]", MinLevel: "error"}, notify.Config{}, logger, "mwan-report")
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	message := mailer.Message{Subject: "Daily report", Body: "Daily measurements"}
 	if err := manager.SendReport(t.Context(), message); err != nil {
 		t.Fatal(err)
 	}
-
 	accepted := string(server.Next(t))
-	if !strings.Contains(accepted, "Subject: [lab] Daily report") ||
-		!strings.Contains(accepted, "recipient@example.com") {
+	if !strings.Contains(accepted, "Subject: [lab] Daily report") || !strings.Contains(accepted, "recipient@example.com") {
 		t.Fatal("report lost configured subject prefix or recipient")
 	}
-
 	server.Reject(true)
 	if err := manager.SendReport(t.Context(), message); err == nil {
 		t.Fatal("report did not return SMTP rejection")
@@ -63,12 +49,7 @@ func TestSendReportRejectsMissingTransport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	if err := manager.SendReport(
-		t.Context(),
-		mailer.Message{Subject: "Report", Body: "Measurements"},
-	); err == nil ||
-		!strings.Contains(err.Error(), "configure email delivery and alert_email") {
+	if err := manager.SendReport(t.Context(), mailer.Message{Subject: "Report", Body: "Measurements"}); err == nil || !strings.Contains(err.Error(), "configure email delivery and alert_email") {
 		t.Fatalf("unconfigured report delivery did not identify missing settings: %v", err)
 	}
 }

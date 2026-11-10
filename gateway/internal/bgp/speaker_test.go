@@ -57,7 +57,6 @@ func (f *fakeBGPServer) StartBgp(_ context.Context, r *apipb.StartBgpRequest) er
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.startReq = r
-
 	return nil
 }
 
@@ -65,7 +64,6 @@ func (f *fakeBGPServer) StopBgp(_ context.Context, r *apipb.StopBgpRequest) erro
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.stopReq = r
-
 	return nil
 }
 
@@ -73,7 +71,6 @@ func (f *fakeBGPServer) AddPeer(_ context.Context, r *apipb.AddPeerRequest) erro
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.addPeerReqs = append(f.addPeerReqs, r)
-
 	return nil
 }
 
@@ -81,47 +78,31 @@ func (f *fakeBGPServer) AddPeerGroup(_ context.Context, r *apipb.AddPeerGroupReq
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.addPeerGroupReqs = append(f.addPeerGroupReqs, r)
-
 	return nil
 }
 
-func (f *fakeBGPServer) AddDynamicNeighbor(
-	_ context.Context,
-	r *apipb.AddDynamicNeighborRequest,
-) error {
+func (f *fakeBGPServer) AddDynamicNeighbor(_ context.Context, r *apipb.AddDynamicNeighborRequest) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.addDynamicNeighborReqs = append(f.addDynamicNeighborReqs, r)
-
 	return nil
 }
 
-func (f *fakeBGPServer) WatchEvent(
-	_ context.Context,
-	callbacks server.WatchEventMessageCallbacks,
-	_ ...server.WatchOption,
-) error {
+func (f *fakeBGPServer) WatchEvent(_ context.Context, callbacks server.WatchEventMessageCallbacks, _ ...server.WatchOption) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.watchRegistered = true
 	f.watchCallbacks = callbacks
-
 	return nil
 }
 
-func (f *fakeBGPServer) ListPeer(
-	_ context.Context,
-	_ *apipb.ListPeerRequest,
-	fn func(*apipb.Peer),
-) error {
+func (f *fakeBGPServer) ListPeer(_ context.Context, _ *apipb.ListPeerRequest, fn func(*apipb.Peer)) error {
 	f.mu.Lock()
 	peers := f.listPeers
 	f.mu.Unlock()
-
 	for _, peer := range peers {
 		fn(peer)
 	}
-
 	return nil
 }
 
@@ -132,8 +113,7 @@ func (f *fakeBGPServer) setListPeers(peers []*apipb.Peer) {
 }
 
 func (f *fakeBGPServer) ListPath(
-	_ apiutil.ListPathRequest,
-	fn func(bgppkt.NLRI, []*apiutil.Path),
+	_ apiutil.ListPathRequest, fn func(bgppkt.NLRI, []*apiutil.Path),
 ) error {
 	f.mu.Lock()
 	paths := f.listPaths
@@ -142,27 +122,22 @@ func (f *fakeBGPServer) ListPath(
 	if err != nil {
 		return err
 	}
-
 	// Group per prefix like the real table listing, so a test that
 	// serves several paths for one prefix exercises a multi-path
 	// callback rather than one call per path.
 	groups := make(map[string][]*apiutil.Path, len(paths))
-
 	order := make([]string, 0, len(paths))
 	for _, path := range paths {
 		key := path.Nlri.String()
 		if _, seen := groups[key]; !seen {
 			order = append(order, key)
 		}
-
 		groups[key] = append(groups[key], path)
 	}
-
 	for _, key := range order {
 		group := groups[key]
 		fn(group[0].Nlri, group)
 	}
-
 	return nil
 }
 
@@ -261,61 +236,44 @@ func TestStartRegistersDynamicPeerGroupAndNeighbors(t *testing.T) {
 	if err := s.Start(context.Background()); err != nil {
 		t.Fatalf("Start returned error: %v", err)
 	}
-
 	if got, want := len(fake.addPeerReqs), 2; got != want {
 		t.Fatalf("AddPeer call count = %d, want %d", got, want)
 	}
-
 	if got, want := len(fake.addPeerGroupReqs), 1; got != want {
 		t.Fatalf("AddPeerGroup call count = %d, want %d", got, want)
 	}
-
 	peerGroup := fake.addPeerGroupReqs[0].PeerGroup
 	if peerGroup == nil || peerGroup.Conf == nil {
 		t.Fatal("dynamic peer group configuration is nil")
 	}
-
 	if got, want := peerGroup.Conf.PeerAsn, cfg.ASN; got != want {
 		t.Fatalf("dynamic peer group ASN = %d, want %d", got, want)
 	}
-
 	if peerGroup.Transport == nil || !peerGroup.Transport.PassiveMode {
 		t.Fatal("dynamic peer group must be passive")
 	}
-
 	if got, want := len(peerGroup.AfiSafis), 2; got != want {
 		t.Fatalf("dynamic peer group AFI-SAFI count = %d, want %d", got, want)
 	}
-
 	for index, afiSafi := range peerGroup.AfiSafis {
 		if afiSafi.MpGracefulRestart == nil || afiSafi.MpGracefulRestart.Config == nil {
 			t.Fatalf("dynamic peer group AFI-SAFI[%d] MP graceful restart is nil", index)
 		}
-
 		if !afiSafi.MpGracefulRestart.Config.Enabled {
-			t.Errorf(
-				"dynamic peer group AFI-SAFI[%d] MP graceful restart enabled = false, want true",
-				index,
-			)
+			t.Errorf("dynamic peer group AFI-SAFI[%d] MP graceful restart enabled = false, want true", index)
 		}
 	}
-
-	if got, want := len(fake.addDynamicNeighborReqs), len(
-		cfg.DynamicNeighborPrefixes,
-	); got != want {
+	if got, want := len(fake.addDynamicNeighborReqs), len(cfg.DynamicNeighborPrefixes); got != want {
 		t.Fatalf("AddDynamicNeighbor call count = %d, want %d", got, want)
 	}
-
 	for index, prefix := range cfg.DynamicNeighborPrefixes {
 		dynamicNeighbor := fake.addDynamicNeighborReqs[index].DynamicNeighbor
 		if dynamicNeighbor == nil {
 			t.Fatalf("AddDynamicNeighbor[%d] is nil", index)
 		}
-
 		if got, want := dynamicNeighbor.Prefix, prefix.String(); got != want {
 			t.Fatalf("AddDynamicNeighbor[%d] prefix = %q, want %q", index, got, want)
 		}
-
 		if got, want := dynamicNeighbor.PeerGroup, dynamicPeerGroupName; got != want {
 			t.Fatalf("AddDynamicNeighbor[%d] peer group = %q, want %q", index, got, want)
 		}
@@ -337,7 +295,6 @@ func TestStatus_ReportsTheSessionAddressForDynamicPeers(t *testing.T) {
 	if err := s.Start(context.Background()); err != nil {
 		t.Fatalf("Start returned error: %v", err)
 	}
-
 	fake.setListPeers([]*apipb.Peer{
 		{
 			Conf: &apipb.PeerConf{NeighborAddress: netip.Addr{}.String()},
@@ -360,11 +317,9 @@ func TestStatus_ReportsTheSessionAddressForDynamicPeers(t *testing.T) {
 	if len(st.Peers) != 2 {
 		t.Fatalf("peers = %+v", st.Peers)
 	}
-
 	if st.Peers[0].Address != "10.250.250.4" || !st.Peers[0].Established {
 		t.Fatalf("dynamic peer = %+v, want its session address, established", st.Peers[0])
 	}
-
 	if st.Peers[1].Address != "10.0.0.2" || st.Peers[1].Established {
 		t.Fatalf("configured peer = %+v, want its configured address, not established", st.Peers[1])
 	}
@@ -379,18 +334,12 @@ func TestDynamicPeerGroupOmitsMpGracefulRestartWhenDisabled(t *testing.T) {
 	if err := s.Start(context.Background()); err != nil {
 		t.Fatalf("Start returned error: %v", err)
 	}
-
 	if got, want := len(fake.addPeerGroupReqs), 1; got != want {
 		t.Fatalf("AddPeerGroup call count = %d, want %d", got, want)
 	}
-
 	for index, afiSafi := range fake.addPeerGroupReqs[0].PeerGroup.AfiSafis {
 		if afiSafi.MpGracefulRestart != nil {
-			t.Errorf(
-				"dynamic peer group AFI-SAFI[%d] MP graceful restart = %+v, want nil",
-				index,
-				afiSafi.MpGracefulRestart,
-			)
+			t.Errorf("dynamic peer group AFI-SAFI[%d] MP graceful restart = %+v, want nil", index, afiSafi.MpGracefulRestart)
 		}
 	}
 }
@@ -401,7 +350,6 @@ func watchPath(t *testing.T, peer string, prefix netip.Prefix, withdrawn bool) *
 	if err != nil {
 		t.Fatalf("create NLRI: %v", err)
 	}
-
 	nextHop := netip.MustParseAddr(peer)
 	attribute, err := bgppkt.NewPathAttributeMpReachNLRI(
 		bgppkt.RF_IPv6_UC,
@@ -411,7 +359,6 @@ func watchPath(t *testing.T, peer string, prefix netip.Prefix, withdrawn bool) *
 	if err != nil {
 		t.Fatalf("create MP_REACH_NLRI: %v", err)
 	}
-
 	return &apiutil.Path{
 		Family:      bgppkt.RF_IPv6_UC,
 		Nlri:        nlri,
@@ -424,12 +371,10 @@ func watchPath(t *testing.T, peer string, prefix netip.Prefix, withdrawn bool) *
 func peerStateEvent(peer string, state bgppkt.FSMState) *apiutil.WatchEventMessage_PeerEvent {
 	return &apiutil.WatchEventMessage_PeerEvent{
 		Type: apiutil.PEER_EVENT_STATE,
-		Peer: apiutil.Peer{
-			State: apiutil.PeerState{
-				NeighborAddress: netip.MustParseAddr(peer),
-				SessionState:    state,
-			},
-		},
+		Peer: apiutil.Peer{State: apiutil.PeerState{
+			NeighborAddress: netip.MustParseAddr(peer),
+			SessionState:    state,
+		}},
 	}
 }
 
@@ -446,24 +391,19 @@ func TestStartPropagatesGracefulRestartToGlobal(t *testing.T) {
 	if fake.startReq == nil {
 		t.Fatal("StartBgp was not called")
 	}
-
 	if fake.startReq.Global == nil {
 		t.Fatal("StartBgp called with nil Global")
 	}
-
 	gr := fake.startReq.Global.GracefulRestart
 	if gr == nil {
 		t.Fatal("Global.GracefulRestart is nil; expected GR config to propagate")
 	}
-
 	if !gr.Enabled {
 		t.Error("Global.GracefulRestart.Enabled = false; want true")
 	}
-
 	if gr.RestartTime != 30 {
 		t.Errorf("Global.GracefulRestart.RestartTime = %d; want 30", gr.RestartTime)
 	}
-
 	if !gr.NotificationEnabled {
 		t.Error("Global.GracefulRestart.NotificationEnabled = false; want true")
 	}
@@ -482,16 +422,11 @@ func TestStartOmitsGracefulRestartWhenDisabled(t *testing.T) {
 	if fake.startReq == nil {
 		t.Fatal("StartBgp was not called")
 	}
-
 	if fake.startReq.Global == nil {
 		t.Fatal("StartBgp called with nil Global")
 	}
-
 	if fake.startReq.Global.GracefulRestart != nil {
-		t.Errorf(
-			"Global.GracefulRestart = %+v; want nil when GR disabled",
-			fake.startReq.Global.GracefulRestart,
-		)
+		t.Errorf("Global.GracefulRestart = %+v; want nil when GR disabled", fake.startReq.Global.GracefulRestart)
 	}
 }
 
@@ -508,47 +443,30 @@ func TestAddPeerSetsGracefulRestartAndMpGracefulRestart(t *testing.T) {
 	if len(fake.addPeerReqs) != 2 {
 		t.Fatalf("AddPeer call count = %d; want 2 (one v4, one v6)", len(fake.addPeerReqs))
 	}
-
 	for i, req := range fake.addPeerReqs {
 		if req.Peer == nil {
 			t.Fatalf("AddPeer[%d].Peer is nil", i)
 		}
-
 		if req.Peer.GracefulRestart == nil {
 			t.Errorf("AddPeer[%d].Peer.GracefulRestart is nil; want set when GR enabled", i)
 			continue
 		}
-
 		if !req.Peer.GracefulRestart.Enabled {
 			t.Errorf("AddPeer[%d].Peer.GracefulRestart.Enabled = false; want true", i)
 		}
-
 		if req.Peer.GracefulRestart.RestartTime != 30 {
-			t.Errorf(
-				"AddPeer[%d].Peer.GracefulRestart.RestartTime = %d; want 30",
-				i,
-				req.Peer.GracefulRestart.RestartTime,
-			)
+			t.Errorf("AddPeer[%d].Peer.GracefulRestart.RestartTime = %d; want 30", i, req.Peer.GracefulRestart.RestartTime)
 		}
-
 		if len(req.Peer.AfiSafis) != 1 {
 			t.Fatalf("AddPeer[%d].Peer.AfiSafis len = %d; want 1", i, len(req.Peer.AfiSafis))
 		}
-
 		af := req.Peer.AfiSafis[0]
 		if af.MpGracefulRestart == nil || af.MpGracefulRestart.Config == nil {
-			t.Errorf(
-				"AddPeer[%d] AfiSafi[0].MpGracefulRestart.Config is nil; want set when GR enabled",
-				i,
-			)
+			t.Errorf("AddPeer[%d] AfiSafi[0].MpGracefulRestart.Config is nil; want set when GR enabled", i)
 			continue
 		}
-
 		if !af.MpGracefulRestart.Config.Enabled {
-			t.Errorf(
-				"AddPeer[%d] AfiSafi[0].MpGracefulRestart.Config.Enabled = false; want true",
-				i,
-			)
+			t.Errorf("AddPeer[%d] AfiSafi[0].MpGracefulRestart.Config.Enabled = false; want true", i)
 		}
 	}
 }
@@ -565,21 +483,11 @@ func TestAddPeerOmitsGracefulRestartWhenDisabled(t *testing.T) {
 
 	for i, req := range fake.addPeerReqs {
 		if req.Peer.GracefulRestart != nil {
-			t.Errorf(
-				"AddPeer[%d].Peer.GracefulRestart = %+v; want nil when GR disabled",
-				i,
-				req.Peer.GracefulRestart,
-			)
+			t.Errorf("AddPeer[%d].Peer.GracefulRestart = %+v; want nil when GR disabled", i, req.Peer.GracefulRestart)
 		}
-
 		for j, af := range req.Peer.AfiSafis {
 			if af.MpGracefulRestart != nil {
-				t.Errorf(
-					"AddPeer[%d] AfiSafi[%d].MpGracefulRestart = %+v; want nil when GR disabled",
-					i,
-					j,
-					af.MpGracefulRestart,
-				)
+				t.Errorf("AddPeer[%d] AfiSafi[%d].MpGracefulRestart = %+v; want nil when GR disabled", i, j, af.MpGracefulRestart)
 			}
 		}
 	}
@@ -594,7 +502,6 @@ func TestStopPassesAllowGracefulRestartWhenEnabled(t *testing.T) {
 	if err := s.Start(context.Background()); err != nil {
 		t.Fatalf("Start returned error: %v", err)
 	}
-
 	if err := s.Stop(); err != nil {
 		t.Fatalf("Stop returned error: %v", err)
 	}
@@ -602,7 +509,6 @@ func TestStopPassesAllowGracefulRestartWhenEnabled(t *testing.T) {
 	if fake.stopReq == nil {
 		t.Fatal("StopBgp was not called")
 	}
-
 	if !fake.stopReq.AllowGracefulRestart {
 		t.Error("StopBgpRequest.AllowGracefulRestart = false; want true when GR enabled")
 	}
@@ -617,7 +523,6 @@ func TestStopOmitsAllowGracefulRestartWhenDisabled(t *testing.T) {
 	if err := s.Start(context.Background()); err != nil {
 		t.Fatalf("Start returned error: %v", err)
 	}
-
 	if err := s.Stop(); err != nil {
 		t.Fatalf("Stop returned error: %v", err)
 	}
@@ -625,7 +530,6 @@ func TestStopOmitsAllowGracefulRestartWhenDisabled(t *testing.T) {
 	if fake.stopReq == nil {
 		t.Fatal("StopBgp was not called")
 	}
-
 	if fake.stopReq.AllowGracefulRestart {
 		t.Error("StopBgpRequest.AllowGracefulRestart = true; want false when GR disabled")
 	}

@@ -21,18 +21,17 @@ func TestTraceStatsHandlerUsesIncomingTraceID(t *testing.T) {
 
 	var buffer bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buffer, nil)).
-		With(
-			slog.String(tracing.RunIDKey, "run-test"),
-		).
-		With(
-			slog.String(tracing.ComponentKey, "agent"),
-		)
+		With(slog.String(tracing.RunIDKey, "run-test")).
+		With(slog.String(tracing.ComponentKey, "agent"))
 
 	listener := bufconn.Listen(bufSize)
 	server := grpc.NewServer(
 		grpc.StatsHandler(newTraceStatsHandler(logger, &mwanv1.MWANAgent_ServiceDesc)),
 	)
-	mwanv1.RegisterMWANAgentServer(server, NewServer("/nonexistent", testLogger(t), nil, nil))
+	mwanv1.RegisterMWANAgentServer(
+		server,
+		NewServer("/nonexistent", testLogger(t), nil, nil),
+	)
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(func() { server.Stop() })
 

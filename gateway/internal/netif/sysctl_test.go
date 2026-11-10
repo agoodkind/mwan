@@ -36,13 +36,10 @@ func TestKeyToPath(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		t.Run(
-			tc.key,
-			func(t *testing.T) {
-				if got := keyToPath(tc.key); got != tc.want {
-					t.Errorf("keyToPath(%q) = %q, want %q", tc.key, got, tc.want)
-				}
-			},
-		)
+		t.Run(tc.key, func(t *testing.T) {
+			if got := keyToPath(tc.key); got != tc.want {
+				t.Errorf("keyToPath(%q) = %q, want %q", tc.key, got, tc.want)
+			}
+		})
 	}
 }

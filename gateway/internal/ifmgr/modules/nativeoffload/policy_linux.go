@@ -41,14 +41,7 @@ func (module *Module) certifyPolicy(ctx context.Context, checkpoint bool) error 
 	before, err := module.rules.Barrier(requestContext)
 	if err != nil {
 		module.policyCertificate = nil
-		module.Log.WarnContext(
-			ctx,
-			"native policy checkpoint failed",
-			"phase",
-			"before inspection",
-			"err",
-			err,
-		)
+		module.Log.WarnContext(ctx, "native policy checkpoint failed", "phase", "before inspection", "err", err)
 		return fmt.Errorf("checkpoint nftables before native policy inspection: %w", err)
 	}
 	if !checkpoint && module.policyCached(before, configured) {
@@ -60,56 +53,24 @@ func (module *Module) certifyPolicy(ctx context.Context, checkpoint bool) error 
 		module.Log.WarnContext(ctx, "native policy compilation failed", "err", err)
 		return fmt.Errorf("compile expected native forwarding policy: %w", err)
 	}
-	inspection := errors.Join(
-		firewall.InspectNative(requestContext, desired),
-		module.inspectTrafficPolicy(requestContext),
-	)
+	inspection := errors.Join(firewall.InspectNative(requestContext, desired), module.inspectTrafficPolicy(requestContext))
 	after, err := module.rules.Barrier(requestContext)
 	if err != nil {
 		module.policyCertificate = nil
-		module.Log.WarnContext(
-			ctx,
-			"native policy checkpoint failed",
-			"phase",
-			"after inspection",
-			"err",
-			err,
-		)
+		module.Log.WarnContext(ctx, "native policy checkpoint failed", "phase", "after inspection", "err", err)
 		return fmt.Errorf("checkpoint nftables after native policy inspection: %w", err)
 	}
 	_, currentNPT := module.Env.LiveState.ForwardingGenerations()
-	if before != after || configured != module.policyGeneration.Load() ||
-		forwarding != module.forwarding.Generation() ||
-		npt != currentNPT {
+	if before != after || configured != module.policyGeneration.Load() || forwarding != module.forwarding.Generation() || npt != currentNPT {
 		module.policyCertificate = nil
-		module.Log.WarnContext(
-			ctx,
-			"native policy changed during certification",
-			"rules_before",
-			before,
-			"rules_after",
-			after,
-			"configured",
-			configured,
-		)
+		module.Log.WarnContext(ctx, "native policy changed during certification", "rules_before", before, "rules_after", after, "configured", configured)
 		return fmt.Errorf("packet policy changed during native certification: %w", syscall.ESTALE)
 	}
 	if inspection != nil {
-		module.Log.WarnContext(
-			ctx,
-			"native forwarding policy certification failed",
-			"err",
-			inspection,
-		)
+		module.Log.WarnContext(ctx, "native forwarding policy certification failed", "err", inspection)
 		inspection = fmt.Errorf("inspect native forwarding policy: %w", inspection)
 	}
-	module.policyCertificate = &policyCertificate{
-		rules:      after,
-		configured: configured,
-		forwarding: forwarding,
-		npt:        npt,
-		failure:    inspection,
-	}
+	module.policyCertificate = &policyCertificate{rules: after, configured: configured, forwarding: forwarding, npt: npt, failure: inspection}
 	return inspection
 }
 
@@ -134,10 +95,7 @@ func (module *Module) expectedPacketPolicy(ctx context.Context) (firewall.Rulese
 func (module *Module) policyCached(rules, configured uint64) bool {
 	_, npt := module.Env.LiveState.ForwardingGenerations()
 	certificate := module.policyCertificate
-	return certificate != nil && certificate.rules == rules &&
-		certificate.configured == configured &&
-		certificate.forwarding == module.forwarding.Generation() &&
-		certificate.npt == npt
+	return certificate != nil && certificate.rules == rules && certificate.configured == configured && certificate.forwarding == module.forwarding.Generation() && certificate.npt == npt
 }
 
 func (module *Module) inspectTrafficPolicy(ctx context.Context) (resultErr error) {
@@ -147,14 +105,7 @@ func (module *Module) inspectTrafficPolicy(ctx context.Context) (resultErr error
 	}
 	defer func() {
 		if resultErr != nil {
-			module.Log.WarnContext(
-				ctx,
-				"native traffic-control certification failed",
-				"interfaces",
-				indices,
-				"err",
-				resultErr,
-			)
+			module.Log.WarnContext(ctx, "native traffic-control certification failed", "interfaces", indices, "err", resultErr)
 		}
 	}()
 	if module.Env.InspectNativePacketPolicy != nil {

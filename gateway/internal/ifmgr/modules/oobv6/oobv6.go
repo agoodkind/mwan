@@ -68,21 +68,17 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 		log.WarnContext(ctx, "oobv6: missing iface")
 		return fmt.Errorf("oobv6: iface is required")
 	}
-
 	if m.cfg.OOBAddr == "" {
 		log.WarnContext(ctx, "oobv6: missing oob_addr")
 		return fmt.Errorf("oobv6: oob_addr is required")
 	}
-
 	if m.cfg.OOBTableID <= 0 {
 		log.WarnContext(ctx, "oobv6: invalid oob_table_id", "oob_table_id", m.cfg.OOBTableID)
 		return fmt.Errorf("oobv6: oob_table_id must be > 0")
 	}
-
 	if m.clock == nil {
 		m.clock = internalclock.Real{}
 	}
-
 	return nil
 }
 
@@ -92,14 +88,9 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	log.DebugContext(ctx, "oobv6: Reconcile entry")
 
 	// Ensure the static OOB v6 address is present.
-	if err := netif.ReconcileAddrs(
-		ctx,
-		log,
-		m.cfg.Iface,
-		[]netif.AddrSpec{
-			{CIDR: m.cfg.OOBAddr, Family: "inet6"},
-		},
-	); err != nil {
+	if err := netif.ReconcileAddrs(ctx, log, m.cfg.Iface, []netif.AddrSpec{
+		{CIDR: m.cfg.OOBAddr, Family: "inet6"},
+	}); err != nil {
 		log.WarnContext(ctx, "oobv6: ReconcileAddrs failed", "err", err)
 		return fmt.Errorf("reconcile OOB v6 addr: %w", err)
 	}
@@ -123,11 +114,9 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 			timer.Stop()
 			ctxErr := ctx.Err()
 			log.WarnContext(ctx, "oobv6: reconcile cancelled after solicit", "err", ctxErr)
-
 			return fmt.Errorf("oobv6: reconcile cancelled after solicit: %w", ctxErr)
 		case <-timer.C:
 		}
-
 		cur, err = netif.FindMainRADefault(ctx, m.cfg.Iface)
 		if err != nil {
 			log.WarnContext(ctx, "oobv6: FindMainRADefault after solicit failed", "err", err)
@@ -150,9 +139,7 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 // syncOOBDefault writes the desired default into the oob table. If cur is
 // nil, the daemon clears the OOB default (no upstream visible).
 func (m *Module) syncOOBDefault(
-	ctx context.Context,
-	log *slog.Logger,
-	cur *netif.CurrentRoute,
+	ctx context.Context, log *slog.Logger, cur *netif.CurrentRoute,
 ) error {
 	want := netif.RouteSpec{
 		Family:   "inet6",
@@ -180,31 +167,25 @@ func (m *Module) syncOOBDefault(
 		if m.lastRAGW != "" && m.lastRAGW != cur.Via {
 			log.InfoContext(ctx, "oobv6: RA gateway changed", "old", m.lastRAGW, "new", cur.Via)
 		}
-
 		m.lastRAGW = cur.Via
 		m.lastRASeen = m.clock.Now()
 	}
-
 	return nil
 }
 
 // OnKernelEvent implements ifmgr.Module. Reacts to default route changes
 // on the watched iface and to non-OOB SLAAC arrivals (renumber detect).
 func (m *Module) OnKernelEvent(
-	ctx context.Context,
-	log *slog.Logger,
-	ev netif.Event,
+	ctx context.Context, log *slog.Logger, ev netif.Event,
 ) error {
 	if ev.Iface != m.cfg.Iface {
 		return nil
 	}
-
 	switch ev.Kind {
 	case netif.EvRouteAdded, netif.EvRouteDeleted:
 		if ev.Family != "inet6" || ev.Dest != "default" {
 			return nil
 		}
-
 		log = log.With("op", "route-event", "kind", ev.Kind.String(), "via", ev.Via)
 		log.DebugContext(ctx, "oobv6: route event for the watched link's default")
 		cur, err := netif.FindMainRADefault(ctx, m.cfg.Iface)
@@ -212,18 +193,15 @@ func (m *Module) OnKernelEvent(
 			log.WarnContext(ctx, "oobv6: FindMainRADefault after route event failed", "err", err)
 			return fmt.Errorf("find main RA default after event: %w", err)
 		}
-
 		return m.syncOOBDefault(ctx, log, cur)
 	case netif.EvAddrAdded:
 		if ev.Family != "inet6" || ev.SnapshotReplay {
 			return nil
 		}
-
 		// Skip link-local and our static OOB.
 		if strings.HasPrefix(strings.ToLower(ev.CIDR), "fe80") || ev.CIDR == m.cfg.OOBAddr {
 			return nil
 		}
-
 		m.Lock()
 		old := m.lastSLAACPx
 		m.lastSLAACPx = ev.CIDR
@@ -232,17 +210,13 @@ func (m *Module) OnKernelEvent(
 			// The Alerts.Notify path below is the single email surface;
 			// the prior log.Warn here was a double-emit (audit-flagged).
 			m.Env.Alerts.NotifyContext(
-				ctx,
-				m.clock.Now(),
-				slog.LevelWarn,
-				"slaac-renumber",
-				m.cfg.Iface,
+				ctx, m.clock.Now(), slog.LevelWarn,
+				"slaac-renumber", m.cfg.Iface,
 				"oobv6: SLAAC prefix changed",
 				slog.String("old", old),
 				slog.String("new", ev.CIDR),
 			)
 		}
-
 		// Re-run the SLAAC source-rule reconcile so the rule tracks the
 		// new address within one event tick instead of one reconcile cycle.
 		if err := m.reconcileSLAACSrcRule(ctx, log); err != nil {
@@ -252,29 +226,21 @@ func (m *Module) OnKernelEvent(
 		if ev.Family != "inet6" {
 			return nil
 		}
-
 		if strings.HasPrefix(strings.ToLower(ev.CIDR), "fe80") || ev.CIDR == m.cfg.OOBAddr {
 			return nil
 		}
-
 		// A non-OOB SLAAC address went away. The rule may now point at a
 		// stale source; let reconcile remove it (or replace if another
 		// SLAAC is still present).
-		log.DebugContext(ctx, "oobv6: SLAAC addr deleted, re-evaluating src rule", "addr", ev.CIDR)
+		log.DebugContext(ctx, "oobv6: SLAAC addr deleted, re-evaluating src rule",
+			"addr", ev.CIDR)
 		if err := m.reconcileSLAACSrcRule(ctx, log); err != nil {
 			log.WarnContext(ctx, "oobv6: reconcileSLAACSrcRule on AddrDeleted failed", "err", err)
 			return fmt.Errorf("reconcile slaac src rule on AddrDeleted: %w", err)
 		}
-	case netif.EvUnknown,
-		netif.EvLinkUp,
-		netif.EvLinkDown,
-		netif.EvResync,
-		netif.EvObservationStale,
-		netif.EvObservationFailed,
-		netif.EvUplinkReturned:
+	case netif.EvUnknown, netif.EvLinkUp, netif.EvLinkDown, netif.EvResync, netif.EvObservationStale, netif.EvObservationFailed, netif.EvUplinkReturned:
 		return nil
 	}
-
 	return nil
 }
 
@@ -284,7 +250,6 @@ func (m *Module) OnKernelEvent(
 func (m *Module) LastRASeen() time.Time {
 	m.Lock()
 	defer m.Unlock()
-
 	return m.lastRASeen
 }
 
@@ -315,18 +280,9 @@ func (m *Module) reconcileSLAACSrcRule(ctx context.Context, log *slog.Logger) er
 	installed := m.installedSLAACAddr
 	m.Unlock()
 
-	log.DebugContext(
-		ctx,
-		"oobv6: SLAAC src rule state",
-		"installed",
-		installed,
-		"current",
-		current,
-		"priority",
-		m.cfg.SLAACRulePriority,
-		"table_id",
-		m.cfg.OOBTableID,
-	)
+	log.DebugContext(ctx, "oobv6: SLAAC src rule state",
+		"installed", installed, "current", current,
+		"priority", m.cfg.SLAACRulePriority, "table_id", m.cfg.OOBTableID)
 
 	if current == installed {
 		// No-op for both "both empty" and "match" cases.
@@ -337,24 +293,14 @@ func (m *Module) reconcileSLAACSrcRule(ctx context.Context, log *slog.Logger) er
 	// first (covers stale-installed cleanup and the renumber case), then
 	// install the new one if we have a current SLAAC.
 	if installed != "" || current != "" {
-		log.InfoContext(
-			ctx,
-			"oobv6: SLAAC source-rule update",
-			"old",
-			installed,
-			"new",
-			current,
-			"priority",
-			m.cfg.SLAACRulePriority,
-		)
+		log.InfoContext(ctx, "oobv6: SLAAC source-rule update",
+			"old", installed, "new", current,
+			"priority", m.cfg.SLAACRulePriority)
 	}
 
 	if installed != "" {
 		if err := netif.RemoveRuleAtPriority(
-			ctx,
-			log,
-			"inet6",
-			m.cfg.SLAACRulePriority,
+			ctx, log, "inet6", m.cfg.SLAACRulePriority,
 		); err != nil {
 			log.WarnContext(ctx, "oobv6: RemoveRuleAtPriority failed", "err", err)
 			return fmt.Errorf("remove stale SLAAC src rule: %w", err)
@@ -362,18 +308,16 @@ func (m *Module) reconcileSLAACSrcRule(ctx context.Context, log *slog.Logger) er
 	}
 
 	if current != "" {
-		desired := []netif.DesiredRule{
-			{
-				Family:   "inet6",
-				Priority: m.cfg.SLAACRulePriority,
-				From:     current,
-				Mark:     0,
-				IifName:  "",
-				UIDRange: "",
-				Table:    "",
-				TableID:  m.cfg.OOBTableID,
-			},
-		}
+		desired := []netif.DesiredRule{{
+			Family:   "inet6",
+			Priority: m.cfg.SLAACRulePriority,
+			From:     current,
+			Mark:     0,
+			IifName:  "",
+			UIDRange: "",
+			Table:    "",
+			TableID:  m.cfg.OOBTableID,
+		}}
 		if err := netif.ReconcileRules(ctx, log, desired); err != nil {
 			log.WarnContext(ctx, "oobv6: ReconcileRules failed", "err", err)
 			return fmt.Errorf("install SLAAC src rule: %w", err)
@@ -383,7 +327,6 @@ func (m *Module) reconcileSLAACSrcRule(ctx context.Context, log *slog.Logger) er
 	m.Lock()
 	m.installedSLAACAddr = current
 	m.Unlock()
-
 	return nil
 }
 
@@ -407,22 +350,18 @@ func (m *Module) reconcileSLAACSrcRule(ctx context.Context, log *slog.Logger) er
 // first one netlink returns (kernel ordering is stable across reconciles
 // so this is deterministic).
 func (m *Module) findCurrentGlobalSLAAC(
-	ctx context.Context,
-	log *slog.Logger,
+	ctx context.Context, log *slog.Logger,
 ) (string, error) {
 	addrs, err := netif.ListAddrs(ctx, log, m.cfg.Iface)
 	if err != nil {
 		log.WarnContext(ctx, "oobv6: ListAddrs failed", "err", err)
 		return "", fmt.Errorf("list addrs on %s: %w", m.cfg.Iface, err)
 	}
-
 	oobBare := netif.StripPrefix(m.cfg.OOBAddr)
-
 	for _, a := range addrs {
 		if a.Family != "inet6" {
 			continue
 		}
-
 		bare := netif.StripPrefix(a.CIDR)
 		lower := strings.ToLower(bare)
 		if strings.HasPrefix(lower, "fe80") || strings.HasPrefix(lower, "fe8") ||
@@ -431,24 +370,19 @@ func (m *Module) findCurrentGlobalSLAAC(
 			// link-local fe80::/10
 			continue
 		}
-
 		if bare == oobBare {
 			continue
 		}
-
 		if a.Flags&netif.IFAFPermanent != 0 {
 			// Manually-added address (not SLAAC autoconf). Skip.
 			continue
 		}
-
 		if a.Flags&netif.IFAFTentative != 0 {
 			// Still doing DAD; not yet usable as source.
 			continue
 		}
-
 		return bare, nil
 	}
-
 	return "", nil
 }
 
@@ -469,17 +403,11 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		if !ok {
 			return nil, fmt.Errorf("oobv6: invalid config type %T", cfg)
 		}
-
 		c = typedConfig
 	}
-
 	if c.SLAACRulePriority <= 0 || c.SLAACRulePriority >= 32766 {
-		return nil, fmt.Errorf(
-			"oobv6: slaac_rule_priority out of range (1..32765): %d",
-			c.SLAACRulePriority,
-		)
+		return nil, fmt.Errorf("oobv6: slaac_rule_priority out of range (1..32765): %d", c.SLAACRulePriority)
 	}
-
 	return &Module{
 		BaseModule:         ifmgr.NewBaseModule("oobv6"),
 		cfg:                c,

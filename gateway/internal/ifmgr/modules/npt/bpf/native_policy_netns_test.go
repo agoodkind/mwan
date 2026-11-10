@@ -31,22 +31,10 @@ func TestNativePacketPolicyRejectsForeignFilters(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, direction := range []Direction{Ingress, Egress} {
-		filter := &netlink.MatchAll{
-			FilterAttrs: netlink.FilterAttrs{
-				LinkIndex: link.Attrs().Index,
-				Parent:    filterParent(direction),
-				Handle:    1,
-				Priority:  1,
-				Protocol:  unix.ETH_P_ALL,
-			},
-			Actions: []netlink.Action{
-				&netlink.GenericAction{
-					ActionAttrs: netlink.ActionAttrs{
-						Action: netlink.TC_ACT_SHOT,
-					},
-				},
-			},
-		}
+		filter := &netlink.MatchAll{FilterAttrs: netlink.FilterAttrs{
+			LinkIndex: link.Attrs().Index, Parent: filterParent(direction),
+			Handle: 1, Priority: 1, Protocol: unix.ETH_P_ALL,
+		}, Actions: []netlink.Action{&netlink.GenericAction{ActionAttrs: netlink.ActionAttrs{Action: netlink.TC_ACT_SHOT}}}}
 		if err := netlink.FilterAdd(filter); err != nil {
 			t.Fatal(err)
 		}
@@ -57,18 +45,10 @@ func TestNativePacketPolicyRejectsForeignFilters(t *testing.T) {
 			t.Fatal(err)
 		}
 		if err := InspectNativePolicy(ctx, indices); err != nil {
-			t.Fatalf(
-				"native policy did not recover after exact %s filter removal: %v",
-				direction,
-				err,
-			)
+			t.Fatalf("native policy did not recover after exact %s filter removal: %v", direction, err)
 		}
 	}
-	queue := netlink.NewPrio(netlink.QdiscAttrs{
-		LinkIndex: link.Attrs().Index,
-		Parent:    netlink.HANDLE_ROOT,
-		Handle:    netlink.MakeHandle(1, 0),
-	})
+	queue := netlink.NewPrio(netlink.QdiscAttrs{LinkIndex: link.Attrs().Index, Parent: netlink.HANDLE_ROOT, Handle: netlink.MakeHandle(1, 0)})
 	if err := netlink.QdiscReplace(queue); err != nil {
 		t.Fatal(err)
 	}
@@ -116,9 +96,7 @@ func TestNativePacketPolicyNPTIdentity(t *testing.T) {
 	}
 	changedPair := policies[0].Pairs[0]
 	changedPair.External = netip.MustParsePrefix("2001:db8:2::/48")
-	changed := []InterfacePolicy{
-		{IfIndex: link.Attrs().Index, Pairs: []nptpolicy.PrefixPair{changedPair}},
-	}
+	changed := []InterfacePolicy{{IfIndex: link.Attrs().Index, Pairs: []nptpolicy.PrefixPair{changedPair}}}
 	if _, err := first.Reconcile(changed); err != nil {
 		t.Fatal(err)
 	}
@@ -138,13 +116,8 @@ func TestNativePacketPolicyKernelDefaultMQ(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), nativePolicyTestTimeout)
 	defer cancel()
 	link := &netlink.Tuntap{
-		LinkAttrs: netlink.LinkAttrs{
-			Name:   "native-mq",
-			TxQLen: 1000,
-		},
-		Mode:   netlink.TUNTAP_MODE_TAP,
-		Flags:  netlink.TUNTAP_MULTI_QUEUE | netlink.TUNTAP_NO_PI,
-		Queues: 2,
+		LinkAttrs: netlink.LinkAttrs{Name: "native-mq", TxQLen: 1000}, Mode: netlink.TUNTAP_MODE_TAP,
+		Flags: netlink.TUNTAP_MULTI_QUEUE | netlink.TUNTAP_NO_PI, Queues: 2,
 	}
 	if err := netlink.LinkAdd(link); err != nil {
 		t.Fatalf("create the real multiqueue TAP fixture through /dev/net/tun: %v", err)
@@ -178,16 +151,10 @@ func TestNativePacketPolicyKernelDefaultMQ(t *testing.T) {
 		t.Fatalf("kernel-default mq topology failed inspection: %v", err)
 	}
 	configured := netlink.NewPrio(netlink.QdiscAttrs{
-		LinkIndex: actual.Attrs().Index,
-		Parent:    netlink.HANDLE_ROOT,
-		Handle:    netlink.MakeHandle(1, 0),
+		LinkIndex: actual.Attrs().Index, Parent: netlink.HANDLE_ROOT, Handle: netlink.MakeHandle(1, 0),
 	})
 	if err := netlink.QdiscReplace(configured); err != nil {
-		t.Fatalf(
-			"replace mq root on %s with explicit three-band prio handle 1:0: %v",
-			actual.Attrs().Name,
-			err,
-		)
+		t.Fatalf("replace mq root on %s with explicit three-band prio handle 1:0: %v", actual.Attrs().Name, err)
 	}
 	queues, err = netlink.QdiscList(actual)
 	if err != nil {
@@ -195,22 +162,12 @@ func TestNativePacketPolicyKernelDefaultMQ(t *testing.T) {
 	}
 	installed := false
 	for _, queue := range queues {
-		installed = installed ||
-			queue.Type() == configured.Type() && queue.Attrs().Parent == configured.Parent &&
-				queue.Attrs().Handle == configured.Handle
+		installed = installed || queue.Type() == configured.Type() && queue.Attrs().Parent == configured.Parent && queue.Attrs().Handle == configured.Handle
 	}
 	if !installed {
-		t.Fatalf(
-			"kernel did not confirm the explicit prio root on %s: %+v",
-			actual.Attrs().Name,
-			queues,
-		)
+		t.Fatalf("kernel did not confirm the explicit prio root on %s: %+v", actual.Attrs().Name, queues)
 	}
-	if err := InspectNativePolicy(
-		ctx,
-		[]int{actual.Attrs().Index},
-	); err == nil ||
-		!strings.Contains(err.Error(), "cannot bypass an explicitly configured qdisc") {
+	if err := InspectNativePolicy(ctx, []int{actual.Attrs().Index}); err == nil || !strings.Contains(err.Error(), "cannot bypass an explicitly configured qdisc") {
 		t.Fatalf("native inspection did not reject the confirmed explicit root policy: %v", err)
 	}
 }

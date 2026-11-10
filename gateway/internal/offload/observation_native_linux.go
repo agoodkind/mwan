@@ -40,17 +40,11 @@ func ObserveNativeFrames(frames [][]byte) (result []NativeObservation, resultErr
 		}
 	}()
 	if len(frames) == 0 || len(frames) > C.MWAN_NATIVE_OBSERVATION_BATCH_LIMIT {
-		return nil, fmt.Errorf(
-			"native observation batch requires between 1 and %d frames",
-			C.MWAN_NATIVE_OBSERVATION_BATCH_LIMIT,
-		)
+		return nil, fmt.Errorf("native observation batch requires between 1 and %d frames", C.MWAN_NATIVE_OBSERVATION_BATCH_LIMIT)
 	}
 	for _, frame := range frames {
 		if len(frame) == 0 || len(frame) > C.MWAN_NATIVE_OBSERVATION_FRAME_LIMIT {
-			return nil, fmt.Errorf(
-				"native observation frame requires between 1 and %d bytes",
-				C.MWAN_NATIVE_OBSERVATION_FRAME_LIMIT,
-			)
+			return nil, fmt.Errorf("native observation frame requires between 1 and %d bytes", C.MWAN_NATIVE_OBSERVATION_FRAME_LIMIT)
 		}
 	}
 	descriptors := C.calloc(C.size_t(len(frames)), C.sizeof_struct_mwan_native_frame)
@@ -77,11 +71,7 @@ func ObserveNativeFrames(frames [][]byte) (result []NativeObservation, resultErr
 		offset += len(frame)
 	}
 	observations := make([]C.struct_mwan_native_observation, len(frames))
-	if result := C.mwan_native_observe_batch(
-		(*C.struct_mwan_native_frame)(descriptors),
-		&observations[0],
-		C.uint32_t(len(frames)),
-	); result != 0 {
+	if result := C.mwan_native_observe_batch((*C.struct_mwan_native_frame)(descriptors), &observations[0], C.uint32_t(len(frames))); result != 0 {
 		return nil, fmt.Errorf("decode native observations: %w", syscall.Errno(-result))
 	}
 	decoded := make([]NativeObservation, len(frames))

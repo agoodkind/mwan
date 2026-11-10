@@ -49,18 +49,10 @@ var networkListKeys = map[string][]string{
 // settings. Every other published leaf must appear in the file.
 var servedOnlyPaths = []*regexp.Regexp{
 	regexp.MustCompile(`^/ietf-interfaces:interfaces/interface\[name='[^']+'\]/enabled$`),
-	regexp.MustCompile(
-		`^/ietf-interfaces:interfaces/interface\[name='[^']+'\]/ietf-ip:ipv[46]/enabled$`,
-	),
-	regexp.MustCompile(
-		`^/ietf-interfaces:interfaces/interface\[name='[^']+'\]/goodkind-mwan-steering:owner$`,
-	),
-	regexp.MustCompile(
-		`^/ietf-interfaces:interfaces/interface\[name='[^']+'\]/goodkind-mwan-steering:steering/probe-policy$`,
-	),
-	regexp.MustCompile(
-		`^/ietf-interfaces:interfaces/interface\[name='[^']+'\]/goodkind-mwan-steering:wan/v4-source$`,
-	),
+	regexp.MustCompile(`^/ietf-interfaces:interfaces/interface\[name='[^']+'\]/ietf-ip:ipv[46]/enabled$`),
+	regexp.MustCompile(`^/ietf-interfaces:interfaces/interface\[name='[^']+'\]/goodkind-mwan-steering:owner$`),
+	regexp.MustCompile(`^/ietf-interfaces:interfaces/interface\[name='[^']+'\]/goodkind-mwan-steering:steering/probe-policy$`),
+	regexp.MustCompile(`^/ietf-interfaces:interfaces/interface\[name='[^']+'\]/goodkind-mwan-steering:wan/v4-source$`),
 	regexp.MustCompile(`^/ietf-nat:nat/`),
 	regexp.MustCompile(`^/goodkind-mwan-steering:daemon/`),
 	regexp.MustCompile(`/firewall/management-service\[protocol='[^']+'\]\[port='[0-9]+'\]$`),
@@ -84,31 +76,21 @@ func TestPublishedTreeCarriesEveryNetworkLeaf(t *testing.T) {
 	if err != nil {
 		t.Fatalf("glob network documents: %v", err)
 	}
-
 	if len(documents) == 0 {
 		t.Fatalf("no network document matches %s", networkInstanceGlob)
 	}
-
 	schemaDir := networkSchemaDirForTest(t)
-
 	for _, document := range documents {
-		t.Run(
-			filepath.Base(document),
-			func(t *testing.T) {
-				t.Parallel()
-				raw, err := os.ReadFile(document)
-				if err != nil {
-					t.Fatalf("read %s: %v", document, err)
-				}
-
-				inFile := flattenNetworkJSON(t, raw)
-				served := withoutServedOnlyPairs(
-					itemPairs(servedConfigItems(t, document, schemaDir)),
-					inFile,
-				)
-				compareLeafSets(t, inFile, served)
-			},
-		)
+		t.Run(filepath.Base(document), func(t *testing.T) {
+			t.Parallel()
+			raw, err := os.ReadFile(document)
+			if err != nil {
+				t.Fatalf("read %s: %v", document, err)
+			}
+			inFile := flattenNetworkJSON(t, raw)
+			served := withoutServedOnlyPairs(itemPairs(servedConfigItems(t, document, schemaDir)), inFile)
+			compareLeafSets(t, inFile, served)
+		})
 	}
 }
 
@@ -121,7 +103,6 @@ func networkSchemaDirForTest(t *testing.T) string {
 	if _, err := yangpub.WriteSchema(dir); err != nil {
 		t.Fatalf("write the embedded schema: %v", err)
 	}
-
 	return dir
 }
 
@@ -135,32 +116,23 @@ func servedConfigItems(t *testing.T, document string, schemaDir string) []wancon
 	if err != nil {
 		t.Fatalf("load %s: %v", document, err)
 	}
-
 	var cfg config.Config
 	loaded.Apply(&cfg)
 	moduleConfigs, err := buildIfMgrModuleConfigs(cfg.IfMgr, "wan")
 	if err != nil {
 		t.Fatalf("build wan module configs: %v", err)
 	}
-
-	gateway, ok, err := gatewayFromModuleConfigs(
-		&cfg,
-		watchdogconfig.WatchdogSection{},
-		moduleConfigs,
-	)
+	gateway, ok, err := gatewayFromModuleConfigs(&cfg, watchdogconfig.WatchdogSection{}, moduleConfigs)
 	if err != nil {
 		t.Fatalf("project gateway: %v", err)
 	}
-
 	if !ok {
 		t.Fatal("projection found no wan role configuration")
 	}
-
 	items, err := wanconfig.ConfigItems(gateway)
 	if err != nil {
 		t.Fatalf("build items: %v", err)
 	}
-
 	return items
 }
 
@@ -170,7 +142,6 @@ func itemPairs(items []wanconfig.Item) []leafPair {
 	for _, item := range items {
 		pairs = append(pairs, leafPair{path: item.Path, value: item.Value})
 	}
-
 	return pairs
 }
 
@@ -181,19 +152,16 @@ func withoutServedOnlyPairs(pairs []leafPair, inFile []leafPair) []leafPair {
 	kept := make([]leafPair, 0, len(pairs))
 	for _, pair := range pairs {
 		servedOnly := false
-
 		for _, pattern := range servedOnlyPaths {
 			if pattern.MatchString(pair.path) {
 				servedOnly = !slices.Contains(inFile, pair)
 				break
 			}
 		}
-
 		if !servedOnly {
 			kept = append(kept, pair)
 		}
 	}
-
 	return kept
 }
 
@@ -209,16 +177,13 @@ func flattenNetworkJSON(t *testing.T, raw []byte) []leafPair {
 	if err := decoder.Decode(&root); err != nil {
 		t.Fatalf("decode document: %v", err)
 	}
-
 	var pairs []leafPair
 	flattenObject(t, "", root, &pairs)
-
 	return pairs
 }
 
 func flattenObject(t *testing.T, path string, object map[string]any, pairs *[]leafPair) {
 	t.Helper()
-
 	for _, name := range slices.Sorted(maps.Keys(object)) {
 		flattenMember(t, path+"/"+name, name, object[name], pairs)
 	}
@@ -240,35 +205,28 @@ func flattenMember(t *testing.T, path string, name string, value any, pairs *[]l
 // entries are addressed by their key, and an array of scalars is a leaf-list.
 func flattenArray(t *testing.T, path string, name string, elements []any, pairs *[]leafPair) {
 	t.Helper()
-
 	for _, element := range elements {
 		entry, isEntry := element.(map[string]any)
 		if !isEntry {
 			*pairs = append(*pairs, leafPair{path: path, value: scalarText(t, path, element)})
 			continue
 		}
-
 		keyLeaves, known := networkListKeys[name]
 		if !known {
 			t.Fatalf("list %s has no key in networkListKeys; add its key", path)
 		}
-
 		entryPath := path
-
 		for _, keyLeaf := range keyLeaves {
 			keyValue, present := entry[keyLeaf]
 			if !present {
 				t.Fatalf("list %s has an entry with no %s", path, keyLeaf)
 			}
-
 			entryPath += "[" + keyLeaf + "='" + scalarText(t, path, keyValue) + "']"
 		}
-
 		for _, leaf := range slices.Sorted(maps.Keys(entry)) {
 			if slices.Contains(keyLeaves, leaf) {
 				continue
 			}
-
 			flattenMember(t, entryPath+"/"+leaf, leaf, entry[leaf], pairs)
 		}
 	}
@@ -286,7 +244,6 @@ func scalarText(t *testing.T, path string, value any) string {
 		if typed {
 			return "true"
 		}
-
 		return "false"
 	default:
 		t.Fatalf("%s holds %T, which no leaf of this model encodes", path, value)
@@ -304,12 +261,9 @@ func compareLeafSets(t *testing.T, inFile []leafPair, served []leafPair) {
 	if slices.Equal(fileLines, servedLines) {
 		return
 	}
-
-	t.Fatalf(
-		"served tree and file differ\nin file, not served:\n  %s\nserved, not in file:\n  %s",
+	t.Fatalf("served tree and file differ\nin file, not served:\n  %s\nserved, not in file:\n  %s",
 		strings.Join(multisetDifference(fileLines, servedLines), "\n  "),
-		strings.Join(multisetDifference(servedLines, fileLines), "\n  "),
-	)
+		strings.Join(multisetDifference(servedLines, fileLines), "\n  "))
 }
 
 func renderPairs(pairs []leafPair) []string {
@@ -317,9 +271,7 @@ func renderPairs(pairs []leafPair) []string {
 	for _, pair := range pairs {
 		lines = append(lines, pair.path+" = "+pair.value)
 	}
-
 	slices.Sort(lines)
-
 	return lines
 }
 
@@ -330,17 +282,13 @@ func multisetDifference(from []string, subtract []string) []string {
 	for _, line := range subtract {
 		remaining[line]++
 	}
-
 	var difference []string
-
 	for _, line := range from {
 		if remaining[line] > 0 {
 			remaining[line]--
 			continue
 		}
-
 		difference = append(difference, line)
 	}
-
 	return difference
 }

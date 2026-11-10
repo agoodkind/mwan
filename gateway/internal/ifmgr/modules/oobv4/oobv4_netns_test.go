@@ -36,9 +36,7 @@ func TestOOBDHCPv4AssignmentLifecycle(t *testing.T) {
 	}
 	const iface = "oob-dhcp4"
 	const tableID = 500
-	if err := netlink.LinkAdd(&netlink.Dummy{
-		LinkAttrs: netlink.LinkAttrs{Name: iface},
-	}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: iface}}); err != nil {
 		t.Fatal(err)
 	}
 	link, err := netlink.LinkByName(iface)
@@ -50,42 +48,30 @@ func TestOOBDHCPv4AssignmentLifecycle(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	client := netif.StartDHCPClient(
-		ctx,
-		slog.Default(),
-		netif.DHCPConfig{
-			Iface:           iface,
-			DiscoverTimeout: time.Minute,
-		},
-	)
+	client := netif.StartDHCPClient(ctx, slog.Default(), netif.DHCPConfig{
+		Iface:           iface,
+		DiscoverTimeout: time.Minute,
+	})
 	stateFile := filepath.Join(t.TempDir(), "oob-dhcpv4.json")
 	moduleInterface, err := New(Config{
-		Iface:      iface,
-		OOBTableID: tableID,
-		StateFile:  stateFile,
+		Iface: iface, OOBTableID: tableID,
+		StateFile: stateFile,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	module := moduleInterface.(*Module)
-	if err := module.Init(
-		ctx,
-		&ifmgr.Env{Iface: iface, Log: slog.Default(), DHCP: client},
-	); err != nil {
+	if err := module.Init(ctx, &ifmgr.Env{Iface: iface, Log: slog.Default(), DHCP: client}); err != nil {
 		t.Fatal(err)
 	}
 	lease := netif.LeaseInfo{
-		State:            netif.LeaseBound,
-		LinkIndex:        link.Attrs().Index,
-		LinkHardwareAddr: append(net.HardwareAddr(nil), link.Attrs().HardwareAddr...),
-		IP:               net.IPv4(192, 0, 2, 8),
-		PrefixLen:        24,
-		Routes: []netif.LeaseRoute{
-			{
-				Destination: &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)},
-				Gateway:     net.IPv4(192, 0, 2, 1),
-			},
-		},
+		State:     netif.LeaseBound,
+		LinkIndex: link.Attrs().Index, LinkHardwareAddr: append(net.HardwareAddr(nil), link.Attrs().HardwareAddr...),
+		IP: net.IPv4(192, 0, 2, 8), PrefixLen: 24,
+		Routes: []netif.LeaseRoute{{
+			Destination: &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)},
+			Gateway:     net.IPv4(192, 0, 2, 1),
+		}},
 	}
 	legacyAddress, err := netlink.ParseAddr("192.0.2.8/24")
 	if err != nil {
@@ -95,12 +81,8 @@ func TestOOBDHCPv4AssignmentLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	legacyRoute := &netlink.Route{
-		LinkIndex: link.Attrs().Index,
-		Table:     tableID,
-		Family:    unix.AF_INET,
-		Priority:  0,
-		Protocol:  99,
-		Gw:        net.IPv4(192, 0, 2, 254),
+		LinkIndex: link.Attrs().Index, Table: tableID, Family: unix.AF_INET,
+		Priority: 0, Protocol: 99, Gw: net.IPv4(192, 0, 2, 254),
 	}
 	if err := netlink.RouteAdd(legacyRoute); err != nil {
 		t.Fatal(err)
@@ -112,65 +94,39 @@ func TestOOBDHCPv4AssignmentLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	legacySpec := netif.RouteSpec{
-		Family:   "inet",
-		Dest:     "default",
-		Via:      "192.0.2.254",
-		Dev:      iface,
-		TableID:  tableID,
-		Metric:   0,
-		Protocol: 0,
+		Family: "inet", Dest: "default", Via: "192.0.2.254", Dev: iface,
+		TableID: tableID, Metric: 0, Protocol: 0,
 	}
 	if err := netif.ReconcileTableDefault(ctx, slog.Default(), legacySpec); err != nil {
 		t.Fatal(err)
 	}
-	routes, err := netlink.RouteListFiltered(
-		unix.AF_INET,
-		&netlink.Route{Table: tableID},
-		netlink.RT_FILTER_TABLE,
-	)
+	routes, err := netlink.RouteListFiltered(unix.AF_INET, &netlink.Route{Table: tableID}, netlink.RT_FILTER_TABLE)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.ContainsFunc(
-		routes,
-		func(route netlink.Route) bool {
-			return route.Protocol == unix.RTPROT_BOOT && route.LinkIndex == link.Attrs().Index &&
-				route.Priority == 0 && route.Gw.Equal(net.IPv4(192, 0, 2, 254))
-		},
-	) {
+	if !slices.ContainsFunc(routes, func(route netlink.Route) bool {
+		return route.Protocol == unix.RTPROT_BOOT && route.LinkIndex == link.Attrs().Index &&
+			route.Priority == 0 && route.Gw.Equal(net.IPv4(192, 0, 2, 254))
+	}) {
 		t.Fatal("old route writer did not create the expected kernel route")
 	}
 	if err := module.OnDHCPLease(ctx, slog.Default(), lease); err != nil {
 		t.Fatal(err)
 	}
 	assertOOBDHCPv4(t, link, tableID, true)
-	routes, err = netlink.RouteListFiltered(
-		unix.AF_INET,
-		&netlink.Route{Table: tableID},
-		netlink.RT_FILTER_TABLE,
-	)
+	routes, err = netlink.RouteListFiltered(unix.AF_INET, &netlink.Route{Table: tableID}, netlink.RT_FILTER_TABLE)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if slices.ContainsFunc(
-		routes,
-		func(route netlink.Route) bool { return route.Protocol == unix.RTPROT_BOOT },
-	) {
+	if slices.ContainsFunc(routes, func(route netlink.Route) bool { return route.Protocol == unix.RTPROT_BOOT }) {
 		t.Fatal("legacy default route remained after replacement")
 	}
-	recoveryInterface, err := New(Config{
-		Iface:      iface,
-		OOBTableID: tableID,
-		StateFile:  stateFile,
-	})
+	recoveryInterface, err := New(Config{Iface: iface, OOBTableID: tableID, StateFile: stateFile})
 	if err != nil {
 		t.Fatal(err)
 	}
 	recoveryModule := recoveryInterface.(*Module)
-	if err := recoveryModule.Init(
-		ctx,
-		&ifmgr.Env{Iface: iface, Log: slog.Default(), DHCP: client, DHCPRecoveryPending: true},
-	); err != nil {
+	if err := recoveryModule.Init(ctx, &ifmgr.Env{Iface: iface, Log: slog.Default(), DHCP: client, DHCPRecoveryPending: true}); err != nil {
 		t.Fatal(err)
 	}
 	startupExpiry := netif.LeaseInfo{State: netif.LeaseExpired}
@@ -178,19 +134,12 @@ func TestOOBDHCPv4AssignmentLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertOOBDHCPv4(t, link, tableID, true)
-	moduleInterface, err = New(Config{
-		Iface:      iface,
-		OOBTableID: tableID,
-		StateFile:  stateFile,
-	})
+	moduleInterface, err = New(Config{Iface: iface, OOBTableID: tableID, StateFile: stateFile})
 	if err != nil {
 		t.Fatal(err)
 	}
 	module = moduleInterface.(*Module)
-	if err := module.Init(
-		ctx,
-		&ifmgr.Env{Iface: iface, Log: slog.Default(), DHCP: client},
-	); err != nil {
+	if err := module.Init(ctx, &ifmgr.Env{Iface: iface, Log: slog.Default(), DHCP: client}); err != nil {
 		t.Fatal(err)
 	}
 	assertOOBDHCPv4(t, link, tableID, false)
@@ -249,14 +198,10 @@ func TestOOBDHCPv4AssignmentLifecycle(t *testing.T) {
 	if err := netlink.LinkDel(link); err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Dummy{
-		LinkAttrs: netlink.LinkAttrs{Name: "index-spacer"},
-	}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "index-spacer"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Dummy{
-		LinkAttrs: netlink.LinkAttrs{Name: iface},
-	}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: iface}}); err != nil {
 		t.Fatal(err)
 	}
 	link, err = netlink.LinkByName(iface)
@@ -286,22 +231,16 @@ func TestOOBDHCPv4AssignmentLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertOOBDHCPv4(t, link, tableID, true)
-	foreign := &netlink.Addr{
-		IPNet: &net.IPNet{IP: net.IPv4(198, 51, 100, 8), Mask: net.CIDRMask(24, 32)},
-	}
+	foreign := &netlink.Addr{IPNet: &net.IPNet{IP: net.IPv4(198, 51, 100, 8), Mask: net.CIDRMask(24, 32)}}
 	if err := netlink.AddrAdd(link, foreign); err != nil {
 		t.Fatal(err)
 	}
 	const newIface = "oob-new"
-	if err := netlink.LinkAdd(&netlink.Dummy{
-		LinkAttrs: netlink.LinkAttrs{Name: newIface},
-	}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: newIface}}); err != nil {
 		t.Fatal(err)
 	}
 	const otherIface = "other-dhcp4"
-	if err := netlink.LinkAdd(&netlink.Dummy{
-		LinkAttrs: netlink.LinkAttrs{Name: otherIface},
-	}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: otherIface}}); err != nil {
 		t.Fatal(err)
 	}
 	otherLink, err := netlink.LinkByName(otherIface)
@@ -313,48 +252,27 @@ func TestOOBDHCPv4AssignmentLifecycle(t *testing.T) {
 	}
 	otherLease := lease
 	otherLease.IP = net.IPv4(203, 0, 113, 8)
-	otherLease.Routes = []netif.LeaseRoute{
-		{
-			Destination: &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)},
-			Gateway:     net.IPv4(203, 0, 113, 1),
-		},
-	}
+	otherLease.Routes = []netif.LeaseRoute{{
+		Destination: &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)},
+		Gateway:     net.IPv4(203, 0, 113, 1),
+	}}
 	journal, err := netif.NewOwnedDHCPv4Reconciler(stateFile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := journal.Reconcile(
-		ctx,
-		"other",
-		otherIface,
-		otherIface,
-		tableID+1,
-		0,
-		&otherLease,
-	); err != nil {
+	if err := journal.Reconcile(ctx, "other", otherIface, otherIface, tableID+1, 0, &otherLease); err != nil {
 		t.Fatal(err)
 	}
-	newClient := netif.StartDHCPClient(
-		ctx,
-		slog.Default(),
-		netif.DHCPConfig{
-			Iface:           newIface,
-			DiscoverTimeout: time.Minute,
-		},
-	)
-	moduleInterface, err = New(Config{
-		Iface:      newIface,
-		OOBTableID: tableID,
-		StateFile:  stateFile,
+	newClient := netif.StartDHCPClient(ctx, slog.Default(), netif.DHCPConfig{
+		Iface:           newIface,
+		DiscoverTimeout: time.Minute,
 	})
+	moduleInterface, err = New(Config{Iface: newIface, OOBTableID: tableID, StateFile: stateFile})
 	if err != nil {
 		t.Fatal(err)
 	}
 	module = moduleInterface.(*Module)
-	if err := module.Init(
-		ctx,
-		&ifmgr.Env{Iface: newIface, Log: slog.Default(), DHCP: newClient},
-	); err != nil {
+	if err := module.Init(ctx, &ifmgr.Env{Iface: newIface, Log: slog.Default(), DHCP: newClient}); err != nil {
 		t.Fatal(err)
 	}
 	assertOOBDHCPv4(t, link, tableID, false)
@@ -362,41 +280,27 @@ func TestOOBDHCPv4AssignmentLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.ContainsFunc(
-		addresses,
-		func(address netlink.Addr) bool {
-			return address.IPNet.String() == foreign.IPNet.String()
-		},
-	) {
+	if !slices.ContainsFunc(addresses, func(address netlink.Addr) bool {
+		return address.IPNet.String() == foreign.IPNet.String()
+	}) {
 		t.Fatal("foreign address was removed during interface rename")
 	}
 	otherAddresses, err := netlink.AddrList(otherLink, unix.AF_INET)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.ContainsFunc(
-		otherAddresses,
-		func(address netlink.Addr) bool {
-			return address.IPNet.String() == "203.0.113.8/24"
-		},
-	) {
+	if !slices.ContainsFunc(otherAddresses, func(address netlink.Addr) bool {
+		return address.IPNet.String() == "203.0.113.8/24"
+	}) {
 		t.Fatal("another consumer's address was removed during interface rename")
 	}
-	otherRoutes, err := netlink.RouteListFiltered(
-		unix.AF_INET,
-		&netlink.Route{Table: tableID + 1},
-		netlink.RT_FILTER_TABLE,
-	)
+	otherRoutes, err := netlink.RouteListFiltered(unix.AF_INET, &netlink.Route{Table: tableID + 1}, netlink.RT_FILTER_TABLE)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.ContainsFunc(
-		otherRoutes,
-		func(route netlink.Route) bool {
-			return route.Protocol == netif.OwnedDHCPv4RouteProtocol &&
-				route.LinkIndex == otherLink.Attrs().Index
-		},
-	) {
+	if !slices.ContainsFunc(otherRoutes, func(route netlink.Route) bool {
+		return route.Protocol == netif.OwnedDHCPv4RouteProtocol && route.LinkIndex == otherLink.Attrs().Index
+	}) {
 		t.Fatal("another consumer's route was removed during interface rename")
 	}
 	newLink, err := netlink.LinkByName(newIface)
@@ -414,20 +318,16 @@ func TestOOBDHCPv4AssignmentLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertOOBDHCPv4(t, newLink, tableID, true)
-	foreignB := &netlink.Addr{
-		IPNet: &net.IPNet{IP: net.IPv4(198, 51, 100, 9), Mask: net.CIDRMask(24, 32)},
-	}
+	foreignB := &netlink.Addr{IPNet: &net.IPNet{IP: net.IPv4(198, 51, 100, 9), Mask: net.CIDRMask(24, 32)}}
 	if err := netlink.AddrAdd(newLink, foreignB); err != nil {
 		t.Fatal(err)
 	}
 	leaseB := leaseA
 	leaseB.IP = net.IPv4(198, 51, 100, 9)
-	leaseB.Routes = []netif.LeaseRoute{
-		{
-			Destination: &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)},
-			Gateway:     net.IPv4(198, 51, 100, 1),
-		},
-	}
+	leaseB.Routes = []netif.LeaseRoute{{
+		Destination: &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)},
+		Gateway:     net.IPv4(198, 51, 100, 1),
+	}}
 	leaseB.ExpiresAt = time.Now().Add(time.Hour)
 	if err := module.OnDHCPLease(ctx, slog.Default(), leaseB); err == nil {
 		t.Fatal("conflicting replacement address was accepted before prior expiry")
@@ -449,17 +349,12 @@ func TestOOBDHCPv4AssignmentLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.ContainsFunc(
-		addresses,
-		func(address netlink.Addr) bool {
-			return address.IPNet.String() == "198.51.100.9/24"
-		},
-	) {
+	if !slices.ContainsFunc(addresses, func(address netlink.Addr) bool {
+		return address.IPNet.String() == "198.51.100.9/24"
+	}) {
 		t.Fatal("renewing snapshot did not retry the failed assignment")
 	}
-	foreignC := &netlink.Addr{
-		IPNet: &net.IPNet{IP: net.IPv4(203, 0, 113, 9), Mask: net.CIDRMask(24, 32)},
-	}
+	foreignC := &netlink.Addr{IPNet: &net.IPNet{IP: net.IPv4(203, 0, 113, 9), Mask: net.CIDRMask(24, 32)}}
 	if err := netlink.AddrAdd(newLink, foreignC); err != nil {
 		t.Fatal(err)
 	}
@@ -467,12 +362,10 @@ func TestOOBDHCPv4AssignmentLifecycle(t *testing.T) {
 	leaseC.State = netif.LeaseBound
 	leaseC.InvalidationEpoch++
 	leaseC.IP = net.IPv4(203, 0, 113, 9)
-	leaseC.Routes = []netif.LeaseRoute{
-		{
-			Destination: &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)},
-			Gateway:     net.IPv4(203, 0, 113, 1),
-		},
-	}
+	leaseC.Routes = []netif.LeaseRoute{{
+		Destination: &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)},
+		Gateway:     net.IPv4(203, 0, 113, 1),
+	}}
 	if err := module.OnDHCPLease(ctx, slog.Default(), leaseC); err == nil {
 		t.Fatal("conflicting assignment after invalidation was accepted")
 	}
@@ -480,12 +373,9 @@ func TestOOBDHCPv4AssignmentLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if slices.ContainsFunc(
-		addresses,
-		func(address netlink.Addr) bool {
-			return address.IPNet.String() == "198.51.100.9/24"
-		},
-	) {
+	if slices.ContainsFunc(addresses, func(address netlink.Addr) bool {
+		return address.IPNet.String() == "198.51.100.9/24"
+	}) {
 		t.Fatal("invalidated assignment survived failed replacement")
 	}
 	if err := netlink.AddrDel(newLink, foreignC); err != nil {
@@ -499,12 +389,9 @@ func TestOOBDHCPv4AssignmentLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.ContainsFunc(
-		addresses,
-		func(address netlink.Addr) bool {
-			return address.IPNet.String() == "203.0.113.9/24"
-		},
-	) {
+	if !slices.ContainsFunc(addresses, func(address netlink.Addr) bool {
+		return address.IPNet.String() == "203.0.113.9/24"
+	}) {
 		t.Fatal("rebinding snapshot did not retry the failed assignment")
 	}
 	leaseC.State = netif.LeaseBound
@@ -520,12 +407,9 @@ func TestOOBDHCPv4AssignmentLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if slices.ContainsFunc(
-		addresses,
-		func(address netlink.Addr) bool {
-			return address.IPNet.String() == "203.0.113.9/24"
-		},
-	) {
+	if slices.ContainsFunc(addresses, func(address netlink.Addr) bool {
+		return address.IPNet.String() == "203.0.113.9/24"
+	}) {
 		t.Fatal("periodic reconciliation retained expired assignment")
 	}
 }
@@ -542,11 +426,7 @@ func assertOOBDHCPv4(t *testing.T, link netlink.Link, tableID int, assigned bool
 			addressCount++
 		}
 	}
-	routes, err := netlink.RouteListFiltered(
-		unix.AF_INET,
-		&netlink.Route{Table: tableID},
-		netlink.RT_FILTER_TABLE,
-	)
+	routes, err := netlink.RouteListFiltered(unix.AF_INET, &netlink.Route{Table: tableID}, netlink.RT_FILTER_TABLE)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -561,11 +441,6 @@ func assertOOBDHCPv4(t *testing.T, link netlink.Link, tableID int, assigned bool
 		want = 1
 	}
 	if addressCount != want || routeCount != want {
-		t.Fatalf(
-			"owned address count %d and route count %d, want %d",
-			addressCount,
-			routeCount,
-			want,
-		)
+		t.Fatalf("owned address count %d and route count %d, want %d", addressCount, routeCount, want)
 	}
 }

@@ -31,14 +31,8 @@ func TestProtocolRunnerBootstrap(t *testing.T) {
 	}
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^TestProtocolRunnerBootstrap$")
-	child.SysProcAttr = &syscall.SysProcAttr{
-		Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS),
-	}
-	child.Env = append(
-		os.Environ(),
-		protocolRunnerChildEnv+"=1",
-		protocolRunnerBinaryEnv+"="+binary,
-	)
+	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
+	child.Env = append(os.Environ(), protocolRunnerChildEnv+"=1", protocolRunnerBinaryEnv+"="+binary)
 	if output, err := child.CombinedOutput(); err != nil {
 		t.Fatalf("isolated protocol runner: %v: %s", err, output)
 	}
@@ -64,24 +58,16 @@ func runProtocolRunnerBootstrap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture = bytes.ReplaceAll(
-		fixture,
-		[]byte(`"goodkind-mwan-steering:link-files": "rendered"`),
-		[]byte(`"goodkind-mwan-steering:link-files": "hand-authored"`),
-	)
-	legacy := []byte(
-		`"name": "enatt0",
+	fixture = bytes.ReplaceAll(fixture, []byte(`"goodkind-mwan-steering:link-files": "rendered"`), []byte(`"goodkind-mwan-steering:link-files": "hand-authored"`))
+	legacy := []byte(`"name": "enatt0",
         "type": "iana-if-type:other",
-        "goodkind-mwan-steering:link-files": "hand-authored"`,
-	)
-	typed := []byte(
-		`"name": "enatt0",
+        "goodkind-mwan-steering:link-files": "hand-authored"`)
+	typed := []byte(`"name": "enatt0",
         "type": "iana-if-type:other",
         "goodkind-mwan-steering:owner": "external",
         "goodkind-mwan-steering:link": {
           "match": { "hardware-address": "` + runtimeWANMAC + `" }
-        }`,
-	)
+        }`)
 	if !bytes.Contains(fixture, legacy) {
 		t.Fatal("network fixture has no external WAN entry")
 	}
@@ -108,43 +94,15 @@ func runProtocolRunnerBootstrap(t *testing.T) {
 	if err := os.WriteFile("/proc/sys/net/ipv4/ip_forward", []byte("1"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(
-		"/proc/sys/net/ipv6/conf/all/forwarding",
-		[]byte("1"),
-		0o644,
-	); err != nil {
+	if err := os.WriteFile("/proc/sys/net/ipv6/conf/all/forwarding", []byte("1"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	setRuntimeLoopback(t)
-	management := newRuntimePeer(
-		t,
-		gateway,
-		"enmgmt0",
-		"mgmt-host",
-		[]string{"203.0.113.1/24"},
-		[]string{"203.0.113.2/24"},
-		"",
-	)
+	management := newRuntimePeer(t, gateway, "enmgmt0", "mgmt-host", []string{"203.0.113.1/24"}, []string{"203.0.113.2/24"}, "")
 	defer management.namespace.Close()
-	downstream := newRuntimePeer(
-		t,
-		gateway,
-		"enmwanbr0",
-		"lan-host",
-		[]string{"192.0.2.1/29"},
-		[]string{"192.0.2.2/29"},
-		"",
-	)
+	downstream := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29"}, []string{"192.0.2.2/29"}, "")
 	defer downstream.namespace.Close()
-	provider := newRuntimePeer(
-		t,
-		gateway,
-		"enatt0",
-		"wan-host",
-		[]string{"198.51.100.1/24", "2001:db8:2::1/64"},
-		[]string{"198.51.100.2/24", "2001:db8:2::2/64"},
-		runtimeWANMAC,
-	)
+	provider := newRuntimePeer(t, gateway, "enatt0", "wan-host", []string{"198.51.100.1/24", "2001:db8:2::1/64"}, []string{"198.51.100.2/24", "2001:db8:2::2/64"}, runtimeWANMAC)
 	defer provider.namespace.Close()
 	setRuntimeNamespace(t, provider.namespace)
 	services := startProtocolServices(t, root)
@@ -161,17 +119,7 @@ func runProtocolRunnerBootstrap(t *testing.T) {
 	setRuntimeNamespace(t, provider.namespace)
 	assertProtocolServicesRunning(t, services)
 	setRuntimeNamespace(t, gateway)
-	waitRuntimeTCP(
-		t,
-		daemon,
-		gateway,
-		provider.namespace,
-		downstream.namespace,
-		"tcp4",
-		"198.51.100.2:30522",
-		"192.0.2.2:0",
-		time.Now().Add(15*time.Second),
-	)
+	waitRuntimeTCP(t, daemon, gateway, provider.namespace, downstream.namespace, "tcp4", "198.51.100.2:30522", "192.0.2.2:0", time.Now().Add(15*time.Second))
 	setRuntimeNamespace(t, gateway)
 	assertRuntimeDaemonRunning(t, daemon)
 }
@@ -187,11 +135,7 @@ func startProtocolServices(t *testing.T, root string) []protocolService {
 	return startProtocolServicesForInterface(t, root, "")
 }
 
-func startProtocolServicesForInterface(
-	t *testing.T,
-	root string,
-	subnetInterface string,
-) []protocolService {
+func startProtocolServicesForInterface(t *testing.T, root, subnetInterface string) []protocolService {
 	t.Helper()
 	runtimeDir := filepath.Join(root, "kea-run")
 	if err := os.MkdirAll(runtimeDir, 0o755); err != nil {
@@ -206,12 +150,7 @@ func startProtocolServicesForInterface(
 	dhcp4 := `{"Dhcp4":{"interfaces-config":{"interfaces":["wan-host"]},"lease-database":{"type":"memfile","persist":false},"valid-lifetime":600,"subnet4":[{"id":1,"subnet":"198.51.100.0/24","pools":[{"pool":"198.51.100.100-198.51.100.110"}],"option-data":[{"name":"routers","data":"198.51.100.2"}]}]}}`
 	dhcp6 := `{"Dhcp6":{"interfaces-config":{"interfaces":["wan-host"]},"lease-database":{"type":"memfile","persist":false},"valid-lifetime":600,"preferred-lifetime":300,"subnet6":[{"id":1,"subnet":"2001:db8:2::/64","pools":[{"pool":"2001:db8:2::100-2001:db8:2::110"}],"pd-pools":[{"prefix":"2001:db8:30::","prefix-len":48,"delegated-len":56}]}]}}`
 	if subnetInterface != "" {
-		dhcp6 = strings.Replace(
-			dhcp6,
-			`"subnet6":[{"id":1,`,
-			fmt.Sprintf(`"subnet6":[{"id":1,"interface":%q,`, subnetInterface),
-			1,
-		)
+		dhcp6 = strings.Replace(dhcp6, `"subnet6":[{"id":1,`, fmt.Sprintf(`"subnet6":[{"id":1,"interface":%q,`, subnetInterface), 1)
 	}
 	ra := "interface wan-host { AdvSendAdvert on; MinRtrAdvInterval 3; MaxRtrAdvInterval 4; prefix 2001:db8:2::/64 { AdvOnLink on; AdvAutonomous on; }; };\n"
 	services := []struct {
@@ -244,10 +183,7 @@ func startProtocolServicesForInterface(
 			t.Fatal(err)
 		}
 		logFile.Close()
-		started = append(
-			started,
-			protocolService{name: service.name, command: command, logPath: logPath},
-		)
+		started = append(started, protocolService{name: service.name, command: command, logPath: logPath})
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for {
@@ -264,10 +200,7 @@ func startProtocolServicesForInterface(
 				}
 				logs = append(logs, service.name+": "+string(content))
 			}
-			t.Fatalf(
-				"protocol services did not become ready within five seconds:\n%s",
-				strings.Join(logs, "\n"),
-			)
+			t.Fatalf("protocol services did not become ready within five seconds:\n%s", strings.Join(logs, "\n"))
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
@@ -307,13 +240,7 @@ func assertProtocolServicesRunning(t *testing.T, services []protocolService) {
 		}
 		if pid != 0 {
 			content, readErr := os.ReadFile(service.logPath)
-			t.Fatalf(
-				"%s exited early: status=%v read=%v log=%s",
-				service.name,
-				status,
-				readErr,
-				content,
-			)
+			t.Fatalf("%s exited early: status=%v read=%v log=%s", service.name, status, readErr, content)
 		}
 	}
 }

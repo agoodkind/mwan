@@ -29,70 +29,49 @@ var (
 func (b *builder) elfNeeded(ctx context.Context, dir string) ([]string, error) {
 	needed := map[string]bool{}
 	provided := map[string]bool{}
-	err := filepath.WalkDir(
-		dir,
-		func(path string, entry fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return b.fail(ctx, "walk stage", walkErr, slog.String("path", path))
-			}
-
-			if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 {
-				return nil
-			}
-
-			file, err := elf.Open(path)
-			if isNotELF(err) {
-				return nil
-			}
-
-			if err != nil {
-				return b.fail(ctx, "open ELF file", err, slog.String("path", path))
-			}
-
-			defer func() { _ = file.Close() }()
-			libs, err := file.ImportedLibraries()
-			if err != nil {
-				return b.fail(ctx, "read imported libraries", err, slog.String("path", path))
-			}
-
-			for _, lib := range libs {
-				needed[lib] = true
-			}
-
-			if file.Type == elf.ET_DYN {
-				provided[entry.Name()] = true
-				if sonames, err := file.DynString(elf.DT_SONAME); err == nil {
-					for _, soname := range sonames {
-						provided[soname] = true
-					}
+	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return b.fail(ctx, "walk stage", walkErr, slog.String("path", path))
+		}
+		if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 {
+			return nil
+		}
+		file, err := elf.Open(path)
+		if isNotELF(err) {
+			return nil
+		}
+		if err != nil {
+			return b.fail(ctx, "open ELF file", err, slog.String("path", path))
+		}
+		defer func() { _ = file.Close() }()
+		libs, err := file.ImportedLibraries()
+		if err != nil {
+			return b.fail(ctx, "read imported libraries", err, slog.String("path", path))
+		}
+		for _, lib := range libs {
+			needed[lib] = true
+		}
+		if file.Type == elf.ET_DYN {
+			provided[entry.Name()] = true
+			if sonames, err := file.DynString(elf.DT_SONAME); err == nil {
+				for _, soname := range sonames {
+					provided[soname] = true
 				}
 			}
-
-			return nil
-		},
-	)
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, b.fail(ctx, "walk stage", err, slog.String("dir", dir))
 	}
-
 	result := []string{}
-
 	for soname := range needed {
 		if !provided[soname] {
 			result = append(result, soname)
 		}
 	}
-
 	slices.Sort(result)
-	b.log.InfoContext(
-		ctx,
-		"wanconfigstack: shared libraries needed",
-		"dir",
-		dir,
-		"sonames",
-		strings.Join(result, " "),
-	)
-
+	b.log.InfoContext(ctx, "wanconfigstack: shared libraries needed", "dir", dir, "sonames", strings.Join(result, " "))
 	return result, nil
 }
 
@@ -104,7 +83,6 @@ func isNotELF(err error) bool {
 	if errors.As(err, &formatErr) {
 		return true
 	}
-
 	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 }
 
@@ -112,29 +90,22 @@ func isNotELF(err error) bool {
 func (b *builder) findLibrary(ctx context.Context, soname string) (string, error) {
 	for _, root := range libraryDirs {
 		found := ""
-		err := filepath.WalkDir(
-			root,
-			func(path string, entry fs.DirEntry, walkErr error) error {
-				if walkErr != nil {
-					return b.fail(ctx, "walk library dir", walkErr, slog.String("path", path))
-				}
-
-				if found == "" && entry.Name() == soname {
-					found = path
-				}
-
-				return nil
-			},
-		)
+		err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return b.fail(ctx, "walk library dir", walkErr, slog.String("path", path))
+			}
+			if found == "" && entry.Name() == soname {
+				found = path
+			}
+			return nil
+		})
 		if err != nil {
 			return "", b.fail(ctx, "walk library dir", err, slog.String("dir", root))
 		}
-
 		if found != "" {
 			return found, nil
 		}
 	}
-
 	return "", b.fail(ctx, "resolve shared library", errNoProvider, slog.String("soname", soname))
 }
 
@@ -142,46 +113,29 @@ func (b *builder) findLibrary(ctx context.Context, soname string) (string, error
 // that owns each shared library its ELF files need. Packages from this
 // build are pinned to their exact version; distribution packages are named
 // without one, because the gateway and the container run the same release.
-func (b *builder) shlibDepends(
-	ctx context.Context,
-	stage string,
-	owners map[string]string,
-) ([]string, error) {
+func (b *builder) shlibDepends(ctx context.Context, stage string, owners map[string]string) ([]string, error) {
 	sonames, err := b.elfNeeded(ctx, stage)
 	if err != nil {
 		return nil, err
 	}
-
 	depends := []string{}
-
 	for _, soname := range sonames {
 		path, err := b.findLibrary(ctx, soname)
 		if err != nil {
 			return nil, err
 		}
-
 		pkg, ok := ownerOf(path, owners)
 		if !ok {
-			return nil, b.fail(
-				ctx,
-				"resolve library owner",
-				errNoOwner,
-				slog.String("soname", soname),
-				slog.String("path", path),
-			)
+			return nil, b.fail(ctx, "resolve library owner", errNoOwner, slog.String("soname", soname), slog.String("path", path))
 		}
-
 		if version, ok := b.versions[pkg]; ok {
 			pkg = pkg + " (= " + version + ")"
 		}
-
 		if !slices.Contains(depends, pkg) {
 			depends = append(depends, pkg)
 		}
 	}
-
 	slices.Sort(depends)
-
 	return depends, nil
 }
 
@@ -193,19 +147,13 @@ func ownerOf(path string, owners map[string]string) (string, bool) {
 	if resolved, err := filepath.EvalSymlinks(path); err == nil {
 		candidates = append(candidates, resolved)
 	}
-
 	for _, candidate := range candidates {
-		for _, alias := range []string{
-			candidate,
-			"/usr" + candidate,
-			strings.TrimPrefix(candidate, "/usr"),
-		} {
+		for _, alias := range []string{candidate, "/usr" + candidate, strings.TrimPrefix(candidate, "/usr")} {
 			if pkg, ok := owners[alias]; ok {
 				return pkg, true
 			}
 		}
 	}
-
 	return "", false
 }
 
@@ -213,33 +161,21 @@ func ownerOf(path string, owners map[string]string) (string, bool) {
 // the stage's shared libraries, as the gateway will see it.
 func (b *builder) stagedLibraryDir(ctx context.Context, stage string) (string, error) {
 	found := ""
-	err := filepath.WalkDir(
-		filepath.Join(stage, stackPrefix),
-		func(path string, entry fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return b.fail(ctx, "walk stage", walkErr, slog.String("path", path))
-			}
-
-			if found == "" && !entry.IsDir() && strings.Contains(entry.Name(), ".so") {
-				found = filepath.Dir(path)
-			}
-
-			return nil
-		},
-	)
+	err := filepath.WalkDir(filepath.Join(stage, stackPrefix), func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return b.fail(ctx, "walk stage", walkErr, slog.String("path", path))
+		}
+		if found == "" && !entry.IsDir() && strings.Contains(entry.Name(), ".so") {
+			found = filepath.Dir(path)
+		}
+		return nil
+	})
 	if err != nil {
 		return "", b.fail(ctx, "walk stage", err, slog.String("stage", stage))
 	}
-
 	if found == "" {
-		return "", b.fail(
-			ctx,
-			"find staged library dir",
-			errNoSharedLibrary,
-			slog.String("stage", stage),
-		)
+		return "", b.fail(ctx, "find staged library dir", errNoSharedLibrary, slog.String("stage", stage))
 	}
-
 	return strings.TrimPrefix(found, stage), nil
 }
 
@@ -250,24 +186,13 @@ func (b *builder) writeLoaderConf(ctx context.Context, stage string) error {
 	if err != nil {
 		return err
 	}
-
 	path := filepath.Join(stage, loaderConfPath)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return b.fail(ctx, "create loader conf dir", err, slog.String("path", path))
 	}
-
 	if err := os.WriteFile(path, []byte(libDir+"\n"), 0o600); err != nil {
 		return b.fail(ctx, "write loader conf", err, slog.String("path", path))
 	}
-
-	b.log.InfoContext(
-		ctx,
-		"wanconfigstack: loader conf staged",
-		"path",
-		loaderConfPath,
-		"libdir",
-		libDir,
-	)
-
+	b.log.InfoContext(ctx, "wanconfigstack: loader conf staged", "path", loaderConfPath, "libdir", libDir)
 	return nil
 }

@@ -32,9 +32,7 @@ func TestKernelPolicyDaemonRuntime(t *testing.T) {
 	}
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^TestKernelPolicyDaemonRuntime$")
-	child.SysProcAttr = &syscall.SysProcAttr{
-		Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS),
-	}
+	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
 	child.Env = append(os.Environ(), kernelPolicyChildEnv+"=1", kernelPolicyBinaryEnv+"="+binary)
 	if output, err := child.CombinedOutput(); err != nil {
 		t.Fatalf("isolated kernel policy daemon: %v: %s", err, output)
@@ -69,35 +67,14 @@ func runKernelPolicyDaemonRuntime(t *testing.T) {
 	}
 	bindStartupDirectory(t, networkdDir, "/etc/systemd/network")
 	configPath := filepath.Join(root, "config.toml")
-	config := fmt.Sprintf(
-		"[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[wanconfig]\npublish = false\n",
-		filepath.Join(root, "links.json"),
-		filepath.Join(root, "addresses.json"),
-		filepath.Join(root, "kernel-policy.json"),
-	)
+	config := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[wanconfig]\npublish = false\n", filepath.Join(root, "links.json"), filepath.Join(root, "addresses.json"), filepath.Join(root, "kernel-policy.json"))
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	setRuntimeLoopback(t)
-	management := newRuntimePeer(
-		t,
-		gateway,
-		"enmgmt0",
-		"mgmt-host",
-		[]string{"203.0.113.1/24"},
-		[]string{"203.0.113.2/24"},
-		"",
-	)
+	management := newRuntimePeer(t, gateway, "enmgmt0", "mgmt-host", []string{"203.0.113.1/24"}, []string{"203.0.113.2/24"}, "")
 	defer management.namespace.Close()
-	lan := newRuntimePeer(
-		t,
-		gateway,
-		"enmwanbr0",
-		"lan-host",
-		[]string{"192.0.2.1/29"},
-		[]string{"192.0.2.2/29"},
-		"",
-	)
+	lan := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29"}, []string{"192.0.2.2/29"}, "")
 	defer lan.namespace.Close()
 	source := newRuntimePeer(t, gateway, "ownphys0", "owned-peer", nil, nil, ownedRuntimeParentMAC)
 	defer source.namespace.Close()
@@ -106,10 +83,7 @@ func runKernelPolicyDaemonRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Vlan{
-		LinkAttrs: netlink.LinkAttrs{Name: "peer521", ParentIndex: parent.Attrs().Index},
-		VlanId:    521,
-	}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "peer521", ParentIndex: parent.Attrs().Index}, VlanId: 521}); err != nil {
 		t.Fatal(err)
 	}
 	configureRuntimeLink(t, "peer521", []string{"10.52.1.2/24"})
@@ -208,10 +182,7 @@ func assertKernelPolicyCleanupOnly(t *testing.T, binary, networkDir, configPath,
 		t.Fatal(err)
 	}
 	writeOwnedRuntimeNetwork(t, networkDir, false, false)
-	config := fmt.Sprintf(
-		"[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"200ms\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[wanconfig]\npublish = false\n",
-		journalPath,
-	)
+	config := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"200ms\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[wanconfig]\npublish = false\n", journalPath)
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -225,10 +196,7 @@ func assertKernelPolicyCleanupOnly(t *testing.T, binary, networkDir, configPath,
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf(
-		"cleanup-only daemon retained kernel journal fields: %s",
-		runtimeLogTail(t, daemon, 40),
-	)
+	t.Fatalf("cleanup-only daemon retained kernel journal fields: %s", runtimeLogTail(t, daemon, 40))
 }
 
 func kernelPolicyFieldCount(t *testing.T, path string) int {
@@ -246,14 +214,7 @@ func kernelPolicyFieldCount(t *testing.T, path string) int {
 	return len(journal.Fields)
 }
 
-func assertKernelPolicyStartupValidation(
-	t *testing.T,
-	binary string,
-	networkDir string,
-	networkdDir string,
-	root string,
-	config string,
-) {
+func assertKernelPolicyStartupValidation(t *testing.T, binary, networkDir, networkdDir, root, config string) {
 	t.Helper()
 	networkPath := filepath.Join(networkDir, "network.json")
 	original, err := os.ReadFile(networkPath)
@@ -272,12 +233,7 @@ func assertKernelPolicyStartupValidation(
 	if err := json.Unmarshal(interfaces["interface"], &entries); err != nil {
 		t.Fatal(err)
 	}
-	entries = append(
-		entries,
-		json.RawMessage(
-			`{"name":"legacy-policy","type":"iana-if-type:ethernetCsmacd","goodkind-mwan-steering:owner":"networkd","goodkind-mwan-steering:link-files":"rendered","goodkind-mwan-steering:link":{"match":{"hardware-address":"02:00:5e:00:53:ab"}},"ietf-ip:ipv4":{"address":[{"ip":"203.0.113.9","prefix-length":24}]}}`,
-		),
-	)
+	entries = append(entries, json.RawMessage(`{"name":"legacy-policy","type":"iana-if-type:ethernetCsmacd","goodkind-mwan-steering:owner":"networkd","goodkind-mwan-steering:link-files":"rendered","goodkind-mwan-steering:link":{"match":{"hardware-address":"02:00:5e:00:53:ab"}},"ietf-ip:ipv4":{"address":[{"ip":"203.0.113.9","prefix-length":24}]}}`))
 	interfaces["interface"], err = json.Marshal(entries)
 	if err != nil {
 		t.Fatal(err)
@@ -302,12 +258,7 @@ func assertKernelPolicyStartupValidation(
 		{path: malformed, reason: "decode ownership journal"},
 	} {
 		invalidPath := filepath.Join(root, "invalid-kernel-config.toml")
-		invalid := strings.Replace(
-			config,
-			fmt.Sprintf("%q", filepath.Join(root, "kernel-policy.json")),
-			fmt.Sprintf("%q", check.path),
-			1,
-		)
+		invalid := strings.Replace(config, fmt.Sprintf("%q", filepath.Join(root, "kernel-policy.json")), fmt.Sprintf("%q", check.path), 1)
 		if err := os.WriteFile(invalidPath, []byte(invalid), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -353,32 +304,17 @@ func writeKernelPolicyNetwork(t *testing.T, directory string, forwarding *bool, 
 			entry["enabled"] = json.RawMessage("true")
 			entry["goodkind-mwan-steering:owner"] = json.RawMessage(`"mwan"`)
 			entry["goodkind-mwan-steering:connection-id"] = json.RawMessage(`"att"`)
-			entry["goodkind-mwan-steering:link"] = json.RawMessage(
-				`{"vlan":{"parent":"ownphys0","id":521}}`,
-			)
-			entry["ietf-ip:ipv4"] = json.RawMessage(
-				`{"address":[{"ip":"10.52.1.1","prefix-length":24}],"goodkind-mwan-steering:gateway":"10.52.1.2","goodkind-mwan-steering:translation":{"mode":"native"}}`,
-			)
-			entry["ietf-ip:ipv6"] = json.RawMessage(
-				`{"goodkind-mwan-steering:translation":{"mode":"native"}}`,
-			)
+			entry["goodkind-mwan-steering:link"] = json.RawMessage(`{"vlan":{"parent":"ownphys0","id":521}}`)
+			entry["ietf-ip:ipv4"] = json.RawMessage(`{"address":[{"ip":"10.52.1.1","prefix-length":24}],"goodkind-mwan-steering:gateway":"10.52.1.2","goodkind-mwan-steering:translation":{"mode":"native"}}`)
+			entry["ietf-ip:ipv6"] = json.RawMessage(`{"goodkind-mwan-steering:translation":{"mode":"native"}}`)
 			if forwarding != nil {
-				entry["ietf-ip:ipv4"] = json.RawMessage(
-					fmt.Sprintf(
-						`{"forwarding":%t,"address":[{"ip":"10.52.1.1","prefix-length":24}],"goodkind-mwan-steering:gateway":"10.52.1.2","goodkind-mwan-steering:translation":{"mode":"native"}}`,
-						*forwarding,
-					),
-				)
+				entry["ietf-ip:ipv4"] = json.RawMessage(fmt.Sprintf(`{"forwarding":%t,"address":[{"ip":"10.52.1.1","prefix-length":24}],"goodkind-mwan-steering:gateway":"10.52.1.2","goodkind-mwan-steering:translation":{"mode":"native"}}`, *forwarding))
 			}
 			if ipv6 {
-				entry["ietf-ip:ipv6"] = json.RawMessage(
-					`{"forwarding":true,"goodkind-mwan-steering:accept-ra":true,"goodkind-mwan-steering:route-metric":777,"goodkind-mwan-steering:translation":{"mode":"native"}}`,
-				)
+				entry["ietf-ip:ipv6"] = json.RawMessage(`{"forwarding":true,"goodkind-mwan-steering:accept-ra":true,"goodkind-mwan-steering:route-metric":777,"goodkind-mwan-steering:translation":{"mode":"native"}}`)
 			}
 			retained = append(retained, entry)
-		} else if string(entry["name"]) == `"enmwanbr0"` || string(
-			entry["name"],
-		) == `"enmgmt0"` || string(entry["name"]) == `"ownphys0"` {
+		} else if string(entry["name"]) == `"enmwanbr0"` || string(entry["name"]) == `"enmgmt0"` || string(entry["name"]) == `"ownphys0"` {
 			retained = append(retained, entry)
 		}
 	}
@@ -387,10 +323,7 @@ func writeKernelPolicyNetwork(t *testing.T, directory string, forwarding *bool, 
 		t.Fatal(err)
 	}
 	var group map[string]json.RawMessage
-	if err := json.Unmarshal(
-		interfaces["goodkind-mwan-steering:steering-group"],
-		&group,
-	); err != nil {
+	if err := json.Unmarshal(interfaces["goodkind-mwan-steering:steering-group"], &group); err != nil {
 		t.Fatal(err)
 	}
 	interfaces["goodkind-mwan-steering:steering-group"], err = json.Marshal(group)
@@ -421,11 +354,7 @@ func readKernelPolicyValue(t *testing.T, family, name, leaf string) string {
 
 func setKernelPolicyValue(t *testing.T, family, name, leaf, value string) {
 	t.Helper()
-	if err := os.WriteFile(
-		filepath.Join("/proc/sys/net", family, "conf", name, leaf),
-		[]byte(value),
-		0o600,
-	); err != nil {
+	if err := os.WriteFile(filepath.Join("/proc/sys/net", family, "conf", name, leaf), []byte(value), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -442,38 +371,19 @@ func waitKernelPolicyValue(t *testing.T, daemon *runtimeDaemon, family, name, le
 	}
 	var relevant []string
 	for _, line := range strings.Split(runtimeDaemonLog(t, daemon), "\n") {
-		if strings.Contains(line, "autoconfiguration") || strings.Contains(line, "kernel policy") ||
-			strings.Contains(line, "owned-link") {
+		if strings.Contains(line, "autoconfiguration") || strings.Contains(line, "kernel policy") || strings.Contains(line, "owned-link") {
 			relevant = append(relevant, line)
 		}
 	}
-	t.Fatalf(
-		"%s/%s/%s did not become %s: %s",
-		family,
-		name,
-		leaf,
-		value,
-		strings.Join(relevant, "\n"),
-	)
+	t.Fatalf("%s/%s/%s did not become %s: %s", family, name, leaf, value, strings.Join(relevant, "\n"))
 }
 
 func waitKernelPolicyFirewall(t *testing.T, daemon *runtimeDaemon) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		output, err := exec.Command(
-			"nft",
-			"list",
-			"chain",
-			"inet",
-			"filter",
-			"forward",
-		).CombinedOutput()
-		if err == nil &&
-			strings.Contains(
-				string(output),
-				`iifname "enatt0" oifname "enmwanbr0" meta nfproto ipv4 accept`,
-			) {
+		output, err := exec.Command("nft", "list", "chain", "inet", "filter", "forward").CombinedOutput()
+		if err == nil && strings.Contains(string(output), `iifname "enatt0" oifname "enmwanbr0" meta nfproto ipv4 accept`) {
 			return
 		}
 		assertRuntimeDaemonRunning(t, daemon)
@@ -482,14 +392,7 @@ func waitKernelPolicyFirewall(t *testing.T, daemon *runtimeDaemon) {
 	t.Fatalf("daemon forwarding rule was not installed: %s", runtimeDaemonLog(t, daemon))
 }
 
-func assertKernelPolicyPacket(
-	t *testing.T,
-	daemon *runtimeDaemon,
-	gateway netns.NsHandle,
-	source netns.NsHandle,
-	destination netns.NsHandle,
-	expected bool,
-) {
+func assertKernelPolicyPacket(t *testing.T, daemon *runtimeDaemon, gateway, source, destination netns.NsHandle, expected bool) {
 	t.Helper()
 	defer func() {
 		if t.Failed() {
@@ -521,18 +424,7 @@ func assertKernelPolicyPacket(
 		rules, rulesErr := exec.Command("nft", "list", "ruleset").CombinedOutput()
 		routes, routeErr := netlink.RouteList(nil, netlink.FAMILY_V4)
 		policy, policyErr := netlink.RuleList(netlink.FAMILY_V4)
-		t.Fatalf(
-			"forwarded packet missing: %v; forwarding=%s; rules=%s (%v); routes=%+v (%v); policy=%+v (%v); rp_filter=%s",
-			readErr,
-			readKernelPolicyValue(t, "ipv4", "enatt0", "forwarding"),
-			rules,
-			rulesErr,
-			routes,
-			routeErr,
-			policy,
-			policyErr,
-			readKernelPolicyValue(t, "ipv4", "enatt0", "rp_filter"),
-		)
+		t.Fatalf("forwarded packet missing: %v; forwarding=%s; rules=%s (%v); routes=%+v (%v); policy=%+v (%v); rp_filter=%s", readErr, readKernelPolicyValue(t, "ipv4", "enatt0", "forwarding"), rules, rulesErr, routes, routeErr, policy, policyErr, readKernelPolicyValue(t, "ipv4", "enatt0", "rp_filter"))
 	}
 	if !expected && readErr == nil {
 		t.Fatal("packet forwarded while per-link forwarding was disabled")
@@ -544,63 +436,27 @@ func assertKernelPolicyPacket(
 	}
 }
 
-func logKernelPolicyPacketFailure(
-	t *testing.T,
-	daemon *runtimeDaemon,
-	gateway netns.NsHandle,
-	source netns.NsHandle,
-	destination netns.NsHandle,
-) {
+func logKernelPolicyPacketFailure(t *testing.T, daemon *runtimeDaemon, gateway, source, destination netns.NsHandle) {
 	t.Helper()
 	for _, endpoint := range []struct {
 		name      string
 		namespace netns.NsHandle
-	}{
-		{"gateway", gateway},
-		{"source", source},
-		{"destination", destination},
-	} {
+	}{{"gateway", gateway}, {"source", source}, {"destination", destination}} {
 		setRuntimeNamespace(t, endpoint.namespace)
-		routes, routeErr := netlink.RouteListFiltered(
-			netlink.FAMILY_V4,
-			&netlink.Route{Table: unix.RT_TABLE_UNSPEC},
-			netlink.RT_FILTER_TABLE,
-		)
+		routes, routeErr := netlink.RouteListFiltered(netlink.FAMILY_V4, &netlink.Route{Table: unix.RT_TABLE_UNSPEC}, netlink.RT_FILTER_TABLE)
 		rules, ruleErr := netlink.RuleList(netlink.FAMILY_V4)
 		neighbors, neighborErr := netlink.NeighList(0, netlink.FAMILY_V4)
-		state, marshalErr := json.Marshal(
-			struct {
-				Routes    []netlink.Route
-				Rules     []netlink.Rule
-				Neighbors []netlink.Neigh
-			}{
-				routes,
-				rules,
-				neighbors,
-			},
-		)
-		t.Logf(
-			"%s network state: %s; routes error=%v; rules error=%v; neighbors error=%v; encoding error=%v",
-			endpoint.name,
-			state,
-			routeErr,
-			ruleErr,
-			neighborErr,
-			marshalErr,
-		)
+		state, marshalErr := json.Marshal(struct {
+			Routes    []netlink.Route
+			Rules     []netlink.Rule
+			Neighbors []netlink.Neigh
+		}{routes, rules, neighbors})
+		t.Logf("%s network state: %s; routes error=%v; rules error=%v; neighbors error=%v; encoding error=%v", endpoint.name, state, routeErr, ruleErr, neighborErr, marshalErr)
 	}
 	setRuntimeNamespace(t, gateway)
-	routes, err := netlink.RouteGetWithOptions(
-		net.ParseIP("192.0.2.2"),
-		&netlink.RouteGetOptions{SrcAddr: net.ParseIP("10.52.1.2"), Iif: "enatt0", Mark: 1},
-	)
+	routes, err := netlink.RouteGetWithOptions(net.ParseIP("192.0.2.2"), &netlink.RouteGetOptions{SrcAddr: net.ParseIP("10.52.1.2"), Iif: "enatt0", Mark: 1})
 	state, marshalErr := json.Marshal(routes)
-	t.Logf(
-		"marked packet route after failure: %s; lookup error=%v; encoding error=%v",
-		state,
-		err,
-		marshalErr,
-	)
+	t.Logf("marked packet route after failure: %s; lookup error=%v; encoding error=%v", state, err, marshalErr)
 	for _, iface := range []string{"all", "enatt0", "enmwanbr0"} {
 		for _, leaf := range []string{"rp_filter", "forwarding"} {
 			t.Logf("ipv4 %s %s=%s", iface, leaf, readKernelPolicyValue(t, "ipv4", iface, leaf))

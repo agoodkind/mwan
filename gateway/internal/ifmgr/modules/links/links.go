@@ -39,84 +39,59 @@ type Module struct {
 
 // New validates link ownership before the daemon writes networkd files.
 func New(config ifmgr.ModuleConfig) (ifmgr.Module, error) {
-	module := &Module{
-		BaseModule:  ifmgr.NewBaseModule(moduleName),
-		connections: nil,
-		reconciler:  nil,
-		observed:    nil,
-		linkDown:    make(map[string]bool),
-	}
+	module := &Module{BaseModule: ifmgr.NewBaseModule(moduleName), connections: nil, reconciler: nil, observed: nil, linkDown: make(map[string]bool)}
 	if config == nil {
 		return module, nil
 	}
-
 	settings, ok := config.(Config)
 	if !ok {
 		return nil, fmt.Errorf("links: invalid config type %T", config)
 	}
-
 	module.connections = settings.Connections
 	owned := 0
-
 	for _, connection := range settings.Connections {
 		if connection.Owner != interfaceintent.OwnerMWAN {
 			continue
 		}
-
 		owned++
 		if connection.ID == "" || connection.Link == nil ||
 			connection.LeaseStore != "" || len(connection.Networkd) != 0 {
-			return nil, fmt.Errorf(
-				"links: connection %s has unsupported owned intent",
-				connection.Name,
-			)
+			return nil, fmt.Errorf("links: connection %s has unsupported owned intent", connection.Name)
 		}
 	}
-
 	if owned == 0 && settings.StateFile == "" {
 		return module, nil
 	}
-
 	if !filepath.IsAbs(settings.StateFile) {
-		return nil, fmt.Errorf(
-			"links: state_file must be an absolute path when MWAN owns or removes links",
-		)
+		return nil, fmt.Errorf("links: state_file must be an absolute path when MWAN owns or removes links")
 	}
-
 	reconciler, err := netif.NewOwnedLinkReconciler(settings.StateFile)
 	if err != nil {
 		slog.Error("links: open ownership state failed", "path", settings.StateFile, "err", err)
 		return nil, fmt.Errorf("links: open ownership state: %w", err)
 	}
-
 	module.reconciler = reconciler
 	module.observed = observedLinks(settings.Connections)
-
 	return module, nil
 }
 
 func observedLinks(connections []interfaceintent.Connection) map[string]bool {
 	observed := make(map[string]bool)
-
 	for _, connection := range connections {
 		if connection.Owner != interfaceintent.OwnerMWAN || connection.Link == nil {
 			continue
 		}
-
 		observed[connection.Name] = true
 		if connection.Link.VLAN != nil {
 			observed[connection.Link.VLAN.Parent] = true
 		}
-
 		if connection.Link.BridgeMaster != "" {
 			observed[connection.Link.BridgeMaster] = true
 		}
-
 		if connection.Link.Tunnel != nil {
 			observed[connection.Link.Tunnel.Underlay] = true
 		}
 	}
-
 	return observed
 }
 
@@ -126,17 +101,13 @@ func (module *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	if module.reconciler == nil {
 		return ifmgr.ErrModuleDisabled
 	}
-
 	env.OwnedLinks = &ifmgr.OwnedLinkResults{}
-
 	names := make([]string, 0, len(module.observed))
 	for name := range module.observed {
 		names = append(names, name)
 	}
-
 	sort.Strings(names)
 	ifmgr.StartIfaceMonitors(ctx, log, moduleName, names, env.Connections, module.onObservedEvent)
-
 	return nil
 }
 
@@ -144,22 +115,18 @@ func (module *Module) onObservedEvent(_ context.Context, _ *slog.Logger, event n
 	if module.Env.RequestReconcile == nil || !module.observed[event.Iface] {
 		return
 	}
-
 	switch event.Kind {
 	case netif.EvLinkUp, netif.EvLinkDown, netif.EvResync:
 		if event.Kind == netif.EvLinkUp && module.Env.OwnedLinkUp != nil {
 			module.Env.OwnedLinkUp.Notify(event.Iface)
 		}
-
 		module.verifyAfterLinkReturn(event)
 		module.Env.RequestReconcile("link event on " + event.Iface)
 	case netif.EvRouteAdded, netif.EvRouteDeleted:
 		// Other modules rewrite policy-table routes on every pass.
 		// Reconciling their route events would start another pass each time.
 		if event.TableID == unix.RT_TABLE_MAIN || event.TableID == unix.RT_TABLE_LOCAL {
-			module.Env.RequestReconcile(
-				fmt.Sprintf("route event in table %d on %s", event.TableID, event.Iface),
-			)
+			module.Env.RequestReconcile(fmt.Sprintf("route event in table %d on %s", event.TableID, event.Iface))
 		}
 	case netif.EvUnknown, netif.EvAddrAdded, netif.EvAddrDeleted,
 		netif.EvObservationStale, netif.EvObservationFailed, netif.EvUplinkReturned:
@@ -170,15 +137,13 @@ func (module *Module) onObservedEvent(_ context.Context, _ *slog.Logger, event n
 func (module *Module) verifyAfterLinkReturn(event netif.Event) {
 	module.Lock()
 	wasDown := module.linkDown[event.Iface]
-	down := event.Kind == netif.EvLinkDown ||
-		(event.Kind == netif.EvResync && event.Snapshot != nil && !event.Snapshot.LinkUp)
+	down := event.Kind == netif.EvLinkDown || (event.Kind == netif.EvResync && event.Snapshot != nil && !event.Snapshot.LinkUp)
 	returned := event.Kind == netif.EvLinkUp && wasDown
 	if down {
 		module.linkDown[event.Iface] = true
 	} else if returned {
 		delete(module.linkDown, event.Iface)
 	}
-
 	module.Unlock()
 	if returned && module.Env.VerifyDHCPv4 != nil {
 		module.Env.VerifyDHCPv4.Notify(event.Iface)
@@ -187,11 +152,7 @@ func (module *Module) verifyAfterLinkReturn(event netif.Event) {
 
 // OnKernelEvent requests a reconcile when a watched link goes up or down, a
 // route changes in the main or local table, or the monitor reports a resync.
-func (module *Module) OnKernelEvent(
-	ctx context.Context,
-	log *slog.Logger,
-	event netif.Event,
-) error {
+func (module *Module) OnKernelEvent(ctx context.Context, log *slog.Logger, event netif.Event) error {
 	module.onObservedEvent(ctx, log, event)
 	return nil
 }
@@ -204,52 +165,30 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	}
 	defer finish()
 	module.Env.OwnedLinks.Replace(nil)
-	results, err := module.reconciler.Reconcile(
-		ctx,
-		log,
-		module.connections,
-		module.Env.PrepareOwnedLink,
-	)
+	results, err := module.reconciler.Reconcile(ctx, log, module.connections, module.Env.PrepareOwnedLink)
 	if err != nil {
 		log.ErrorContext(ctx, "links: reconcile pass failed", "err", err)
 		return fmt.Errorf("links: reconcile: %w", err)
 	}
-
 	module.Env.OwnedLinks.Replace(results)
-
 	for _, result := range results {
 		reason := ""
 		if result.Err != nil {
 			reason = result.Err.Error()
 		}
-
 		if result.Status == netif.OwnedLinkFailed && result.Err != nil {
-			log.WarnContext(
-				ctx,
-				"links: reconcile failed",
-				"connection_id",
-				result.ConnectionID,
-				"operation",
-				result.Operation,
-				"err",
-				result.Err,
-			)
+			log.WarnContext(ctx, "links: reconcile failed", "connection_id", result.ConnectionID, "operation", result.Operation, "err", result.Err)
 		}
-
 		if module.Env.LiveState != nil {
-			module.Env.LiveState.SetApplyResult(
-				result.ConnectionID,
-				wanstate.ApplyResult{
-					At:         time.Time{},
-					Operation:  result.Operation,
-					Dependency: result.Dependency,
-					Result:     string(result.Status),
-					Reason:     reason,
-				},
-			)
+			module.Env.LiveState.SetApplyResult(result.ConnectionID, wanstate.ApplyResult{
+				At:         time.Time{},
+				Operation:  result.Operation,
+				Dependency: result.Dependency,
+				Result:     string(result.Status),
+				Reason:     reason,
+			})
 		}
 	}
-
 	return nil
 }
 

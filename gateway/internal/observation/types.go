@@ -115,21 +115,17 @@ func RequiredPassed(spec CheckSpec, result Result, now time.Time) bool {
 		result.Operation != spec.Operation || result.Target != spec.Target || result.PublicIPPolicy != spec.PublicIPPolicy || result.Family != spec.Family || result.Observer != spec.Observer {
 		return false
 	}
-
 	if result.Availability != AvailabilityComplete || result.Outcome != OutcomePass ||
 		result.ObservedAt.IsZero() || spec.MaxAgeSeconds <= 0 {
 		return false
 	}
-
 	age := now.Sub(result.ObservedAt)
 	if age < 0 || age > time.Duration(spec.MaxAgeSeconds)*time.Second {
 		return false
 	}
-
 	if spec.Operation == OperationDistribution {
 		return requiredDistributionPassed(spec, result, now)
 	}
-
 	return requiredPathPassed(spec, result) && requiredReplyPassed(spec, result)
 }
 
@@ -137,43 +133,33 @@ func requiredPathPassed(spec CheckSpec, result Result) bool {
 	if spec.Router != "" && result.Path.Router != spec.Router {
 		return false
 	}
-
 	if spec.ConnectionID != "" && result.Path.ConnectionID != spec.ConnectionID {
 		return false
 	}
-
 	if spec.Source.IsValid() && result.Path.Source != spec.Source {
 		return false
 	}
-
 	if spec.ExpectedNextHop.IsValid() && result.Path.NextHop != spec.ExpectedNextHop {
 		return false
 	}
-
 	if spec.Interface != "" && result.Path.Interface != spec.Interface {
 		return false
 	}
-
 	return true
 }
 
 func requiredReplyPassed(spec CheckSpec, result Result) bool {
 	if spec.Operation == OperationCloudflarePool {
-		return result.CloudflarePool != nil && poolOriginsPresent(spec, *result.CloudflarePool) &&
-			poolHealthy(spec, *result.CloudflarePool)
+		return result.CloudflarePool != nil && poolOriginsPresent(spec, *result.CloudflarePool) && poolHealthy(spec, *result.CloudflarePool)
 	}
-
 	if spec.Operation == OperationHTTP || spec.Operation == OperationPublicIP {
-		if !slices.Contains(spec.ExpectedHTTPStatus, result.HTTPStatus) ||
-			(spec.ExpectedBody != "" && result.ResponseBody != spec.ExpectedBody) {
+		if !slices.Contains(spec.ExpectedHTTPStatus, result.HTTPStatus) || (spec.ExpectedBody != "" && result.ResponseBody != spec.ExpectedBody) {
 			return false
 		}
 	}
-
 	if spec.Operation == OperationSSHBanner && result.SSHVersion != spec.ExpectedSSHVersion {
 		return false
 	}
-
 	if spec.Operation == OperationDNS {
 		for _, address := range spec.DNSExpectedAddresses {
 			if !slices.Contains(result.DNSAddresses, address) {
@@ -181,6 +167,5 @@ func requiredReplyPassed(spec CheckSpec, result Result) bool {
 			}
 		}
 	}
-
 	return true
 }

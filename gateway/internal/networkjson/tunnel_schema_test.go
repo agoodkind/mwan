@@ -13,7 +13,6 @@ func TestLoadSchemaRejectsInvalidTunnels(t *testing.T) {
 	schemaDir := schemaDirForTest(t)
 	_, data := readInstance(t, tunnelInstance)
 	base := string(data)
-
 	cases := []struct {
 		name string
 		edit documentEdit
@@ -32,10 +31,7 @@ func TestLoadSchemaRejectsInvalidTunnels(t *testing.T) {
 		},
 		{
 			name: "limited broadcast remote-address",
-			edit: documentEdit{
-				old:         tunnelRemote,
-				replacement: `"remote-address": "255.255.255.255",`,
-			},
+			edit: documentEdit{old: tunnelRemote, replacement: `"remote-address": "255.255.255.255",`},
 		},
 		{
 			name: "reserved remote-address",
@@ -55,10 +51,7 @@ func TestLoadSchemaRejectsInvalidTunnels(t *testing.T) {
 		},
 		{
 			name: "limited broadcast local-address",
-			edit: documentEdit{
-				old:         tunnelLocal,
-				replacement: `"local-address": "255.255.255.255",`,
-			},
+			edit: documentEdit{old: tunnelLocal, replacement: `"local-address": "255.255.255.255",`},
 		},
 		{
 			name: "mtu below the IPv6 minimum",
@@ -66,15 +59,12 @@ func TestLoadSchemaRejectsInvalidTunnels(t *testing.T) {
 		},
 	}
 	for _, testCase := range cases {
-		t.Run(
-			testCase.name,
-			func(t *testing.T) {
-				document := editDocument(t, base, testCase.edit)
-				_, err := networkload.Load(writeDocument(t, document), schemaDir)
-				if err == nil || !strings.HasPrefix(err.Error(), "validate ") {
-					t.Fatalf("Load error = %v, want a schema validation error", err)
-				}
-			},
-		)
+		t.Run(testCase.name, func(t *testing.T) {
+			document := editDocument(t, base, testCase.edit)
+			_, err := networkload.Load(writeDocument(t, document), schemaDir)
+			if err == nil || !strings.HasPrefix(err.Error(), "validate ") {
+				t.Fatalf("Load error = %v, want a schema validation error", err)
+			}
+		})
 	}
 }

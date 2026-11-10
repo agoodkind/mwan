@@ -71,45 +71,31 @@ func (c *Config) FirewallPlan() (FirewallPlan, error) {
 		slog.Error("networkjson: firewall compile failed", "err", err)
 		return FirewallPlan{}, fmt.Errorf("steering-group/firewall: %w", err)
 	}
-
 	for _, chain := range compiled.Chains {
-		chainKey := FirewallChainKey{
-			Family: chain.Table.Family,
-			Table:  chain.Table.Name,
-			Chain:  chain.Name,
-		}
+		chainKey := FirewallChainKey{Family: chain.Table.Family, Table: chain.Table.Name, Chain: chain.Name}
 		if _, duplicated := plan.Chains[chainKey]; duplicated {
 			return FirewallPlan{}, fmt.Errorf("firewall chain %s is compiled twice", chainKey)
 		}
-
 		order := make([]FirewallRuleKey, 0, len(chain.Rules))
 		for _, rule := range chain.Rules {
 			ruleKey := FirewallRuleKey{
-				Family:  chainKey.Family,
-				Table:   chainKey.Table,
-				Chain:   chainKey.Chain,
-				Purpose: rule.Purpose,
-				Scope:   rule.Scope,
+				Family: chainKey.Family, Table: chainKey.Table, Chain: chainKey.Chain,
+				Purpose: rule.Purpose, Scope: rule.Scope,
 			}
 			if _, duplicated := plan.Rules[ruleKey]; duplicated {
 				return FirewallPlan{}, fmt.Errorf("firewall rule %s is compiled twice", ruleKey)
 			}
-
 			plan.Rules[ruleKey] = rule
 			order = append(order, ruleKey)
 		}
-
 		plan.Chains[chainKey] = FirewallChain{Chain: chain, RuleOrder: order}
 	}
-
 	for _, set := range compiled.Sets {
 		setKey := FirewallSetKey{Family: set.Table.Family, Table: set.Table.Name, Set: set.Name}
 		if _, duplicated := plan.Sets[setKey]; duplicated {
 			return FirewallPlan{}, fmt.Errorf("firewall set %s is compiled twice", setKey)
 		}
-
 		plan.Sets[setKey] = set
 	}
-
 	return plan, nil
 }

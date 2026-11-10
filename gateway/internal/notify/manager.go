@@ -61,7 +61,6 @@ func newManager(log *slog.Logger, cfg Config, sink Sink) (*Manager, error) {
 	if log == nil {
 		return nil, errLogRequired
 	}
-
 	return &Manager{
 		cfg:   cfg,
 		log:   log.With("component", "notify"),
@@ -83,17 +82,13 @@ func (m *Manager) Notify(ctx context.Context, ev Event) {
 		if now.IsZero() {
 			now = m.clock.Now()
 		}
-
 		m.resolveAt(ctx, now, ev.Kind, ev.Key, ev.Message, ev.Fields...)
-
 		return
 	}
-
 	now := ev.Now
 	if now.IsZero() {
 		now = m.clock.Now()
 	}
-
 	m.notifyAt(ctx, now, ev.Level, ev.Kind, ev.Key, ev.Message, ev.Fields...)
 }
 
@@ -111,7 +106,6 @@ func (m *Manager) Active(kind, key string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	st, ok := m.state[kind+"|"+key]
-
 	return ok && st.active
 }
 
@@ -119,13 +113,7 @@ func (m *Manager) Active(kind, key string) bool {
 // state-change tests. The public Notify consults the injected clock
 // when ev.Now is zero, then funnels here.
 func (m *Manager) notifyAt(
-	ctx context.Context,
-	now time.Time,
-	level slog.Level,
-	kind string,
-	key string,
-	msg string,
-	fields ...slog.Attr,
+	ctx context.Context, now time.Time, level slog.Level, kind, key, msg string, fields ...slog.Attr,
 ) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -136,11 +124,9 @@ func (m *Manager) notifyAt(
 	if d, ok := m.cfg.PerKind[kind]; ok {
 		repeatEvery = d
 	}
-
 	if !shouldEmit && repeatEvery > 0 && now.Sub(st.lastEmit) >= repeatEvery {
 		shouldEmit = true
 	}
-
 	transition := !exists || !st.active
 	st.active = true
 	if shouldEmit {
@@ -148,19 +134,13 @@ func (m *Manager) notifyAt(
 		st.lastLevel = level
 		m.emit(ctx, level, kind, key, msg, transition, false, fields)
 	}
-
 	m.state[id] = st
 }
 
 // resolveAt is the deterministic-clock entry point for Resolve. The
 // public Resolve consults the injected clock then funnels here.
 func (m *Manager) resolveAt(
-	ctx context.Context,
-	now time.Time,
-	kind string,
-	key string,
-	msg string,
-	fields ...slog.Attr,
+	ctx context.Context, now time.Time, kind, key, msg string, fields ...slog.Attr,
 ) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -169,7 +149,6 @@ func (m *Manager) resolveAt(
 	if !exists || !st.active {
 		return
 	}
-
 	st.active = false
 	st.lastEmit = now
 	m.state[id] = st
@@ -181,11 +160,9 @@ func (m *Manager) resolveAt(
 	if level == 0 {
 		level = slog.LevelWarn
 	}
-
 	if !strings.HasPrefix(msg, "RECOVERED:") {
 		msg = "RECOVERED: " + msg
 	}
-
 	m.emit(ctx, level, kind, key, msg, false, true, fields)
 }
 
@@ -196,11 +173,8 @@ func (m *Manager) resolveAt(
 func (m *Manager) emit(
 	ctx context.Context,
 	level slog.Level,
-	kind string,
-	key string,
-	msg string,
-	transition bool,
-	resolved bool,
+	kind, key, msg string,
+	transition, resolved bool,
 	fields []slog.Attr,
 ) {
 	attrs := make([]slog.Attr, 0, len(fields)+3)
@@ -211,23 +185,13 @@ func (m *Manager) emit(
 	} else {
 		attrs = append(attrs, slog.Bool("transition", transition))
 	}
-
 	attrs = append(attrs, fields...)
 	m.log.LogAttrs(ctx, level, msg, attrs...)
 	if m.sink == nil {
 		return
 	}
-
 	if err := m.sink.Send(ctx, level, msg, attrs); err != nil {
-		m.log.WarnContext(
-			ctx,
-			"notify sink send failed",
-			"err",
-			err,
-			"alert_kind",
-			kind,
-			"alert_key",
-			key,
-		)
+		m.log.WarnContext(ctx, "notify sink send failed",
+			"err", err, "alert_kind", kind, "alert_key", key)
 	}
 }

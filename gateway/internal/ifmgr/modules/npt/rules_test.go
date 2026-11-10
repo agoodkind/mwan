@@ -30,35 +30,11 @@ func TestBuildWANRules(t *testing.T) {
 	want := []natRule{
 		// postrouting, in order (guard MUST be first).
 		{Chain: chainPostrouting, Iface: iface, Match: netip.PrefixFrom(edge, 128), Op: opGuard},
-		{
-			Chain:  chainPostrouting,
-			Iface:  iface,
-			Match:  netip.PrefixFrom(edge, 128),
-			Op:     opSNAT,
-			ToAddr: pd1,
-		},
-		{
-			Chain:  chainPostrouting,
-			Iface:  iface,
-			Match:  netip.PrefixFrom(mwanbr, 128),
-			Op:     opSNAT,
-			ToAddr: pd1,
-		},
+		{Chain: chainPostrouting, Iface: iface, Match: netip.PrefixFrom(edge, 128), Op: opSNAT, ToAddr: pd1},
+		{Chain: chainPostrouting, Iface: iface, Match: netip.PrefixFrom(mwanbr, 128), Op: opSNAT, ToAddr: pd1},
 		// prerouting.
-		{
-			Chain:  chainPrerouting,
-			Iface:  iface,
-			Match:  netip.PrefixFrom(pd1, 128),
-			Op:     opDNAT,
-			ToAddr: edge,
-		},
-		{
-			Chain:  chainPrerouting,
-			Iface:  iface,
-			Match:  netip.PrefixFrom(extra, 128),
-			Op:     opDNAT,
-			ToAddr: edge,
-		},
+		{Chain: chainPrerouting, Iface: iface, Match: netip.PrefixFrom(pd1, 128), Op: opDNAT, ToAddr: edge},
+		{Chain: chainPrerouting, Iface: iface, Match: netip.PrefixFrom(extra, 128), Op: opDNAT, ToAddr: edge},
 	}
 
 	got := buildWANRules(wanInputForTest())
@@ -77,7 +53,6 @@ func TestBuildWANRulesNoExtra(t *testing.T) {
 	if len(got) != 4 {
 		t.Fatalf("rule count = %d, want 4 (no extra /128)", len(got))
 	}
-
 	if got[len(got)-1].Op != opDNAT {
 		t.Fatalf("last rule op = %v, want opDNAT", got[len(got)-1].Op)
 	}

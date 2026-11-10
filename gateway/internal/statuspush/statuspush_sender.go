@@ -42,28 +42,15 @@ type Sender struct {
 
 // NewSender returns a Sender that dials the hypervisor at cid on port.
 func NewSender(cid uint32, port uint32, log *slog.Logger) *Sender {
-	return NewSenderWithDial(
-		func(ctx context.Context) (net.Conn, error) {
-			conn, err := vsock.Dial(cid, port, nil)
-			if err != nil {
-				log.WarnContext(
-					ctx,
-					"statuspush: vsock dial failed",
-					"cid",
-					cid,
-					"port",
-					port,
-					"err",
-					err,
-				)
-
-				return nil, fmt.Errorf("vsock dial cid %d port %d: %w", cid, port, err)
-			}
-
-			return conn, nil
-		},
-		log,
-	)
+	return NewSenderWithDial(func(ctx context.Context) (net.Conn, error) {
+		conn, err := vsock.Dial(cid, port, nil)
+		if err != nil {
+			log.WarnContext(ctx, "statuspush: vsock dial failed",
+				"cid", cid, "port", port, "err", err)
+			return nil, fmt.Errorf("vsock dial cid %d port %d: %w", cid, port, err)
+		}
+		return conn, nil
+	}, log)
 }
 
 // NewSenderWithDial is NewSender with the transport named, so a test drives the
@@ -85,13 +72,11 @@ func (s *Sender) Send(ctx context.Context, status Status) {
 	if s == nil || s.dial == nil {
 		return
 	}
-
 	payload, err := json.Marshal(status)
 	if err != nil {
 		s.log.WarnContext(ctx, "statuspush: marshal status failed", "err", err)
 		return
 	}
-
 	sendCtx, cancel := context.WithTimeout(ctx, transferTimeout)
 	defer cancel()
 
@@ -100,7 +85,6 @@ func (s *Sender) Send(ctx context.Context, status Status) {
 		s.noteFailure(ctx, "dial", err)
 		return
 	}
-
 	defer func() {
 		_ = conn.Close()
 	}()
@@ -111,12 +95,10 @@ func (s *Sender) Send(ctx context.Context, status Status) {
 			return
 		}
 	}
-
 	if _, err := conn.Write(append(payload, '\n')); err != nil {
 		s.noteFailure(ctx, "write", err)
 		return
 	}
-
 	s.noteSuccess()
 }
 
@@ -134,22 +116,17 @@ func (s *Sender) noteFailure(ctx context.Context, operation string, err error) {
 	} else {
 		s.suppressed++
 	}
-
 	s.mu.Unlock()
 
 	if !report {
 		return
 	}
-
 	s.log.DebugContext(
 		ctx,
 		"statuspush: send failed",
-		"operation",
-		operation,
-		"suppressed_since_last",
-		suppressed,
-		"err",
-		err,
+		"operation", operation,
+		"suppressed_since_last", suppressed,
+		"err", err,
 	)
 }
 

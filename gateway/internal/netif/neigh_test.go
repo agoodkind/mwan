@@ -27,19 +27,12 @@ func TestNeighStateResolved(t *testing.T) {
 		{name: "none", state: unix.NUD_NONE, resolved: false},
 	}
 	for _, testCase := range cases {
-		t.Run(
-			testCase.name,
-			func(t *testing.T) {
-				t.Parallel()
-				if got := neighStateResolved(testCase.state); got != testCase.resolved {
-					t.Fatalf(
-						"neighStateResolved(%#x) = %v, want %v",
-						testCase.state,
-						got,
-						testCase.resolved,
-					)
-				}
-			},
-		)
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			if got := neighStateResolved(testCase.state); got != testCase.resolved {
+				t.Fatalf("neighStateResolved(%#x) = %v, want %v",
+					testCase.state, got, testCase.resolved)
+			}
+		})
 	}
 }

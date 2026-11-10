@@ -25,7 +25,6 @@ func (h *captureHandler) Handle(_ context.Context, r slog.Record) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.records = append(h.records, r.Clone())
-
 	return nil
 }
 
@@ -37,7 +36,6 @@ func (h *captureHandler) snapshot() []slog.Record {
 	defer h.mu.Unlock()
 	out := make([]slog.Record, len(h.records))
 	copy(out, h.records)
-
 	return out
 }
 
@@ -56,7 +54,6 @@ func TestAlertManager_NotifyResolveAdapter(t *testing.T) {
 	if !a.Active("kind", "key") {
 		t.Fatal("expected Active=true after Notify")
 	}
-
 	a.Resolve(now.Add(time.Minute), "kind", "key", "fixed")
 	if a.Active("kind", "key") {
 		t.Fatal("expected Active=false after Resolve")
@@ -66,15 +63,12 @@ func TestAlertManager_NotifyResolveAdapter(t *testing.T) {
 	if len(records) != 2 {
 		t.Fatalf("got %d records, want 2", len(records))
 	}
-
 	if records[0].Level != slog.LevelWarn {
 		t.Errorf("notify level=%v, want WARN", records[0].Level)
 	}
-
 	if records[1].Level != slog.LevelWarn {
 		t.Errorf("resolve level=%v, want WARN (matches notify level)", records[1].Level)
 	}
-
 	if got := records[1].Message; got != "RECOVERED: fixed" {
 		t.Errorf("resolve message=%q, want %q", got, "RECOVERED: fixed")
 	}
@@ -85,7 +79,6 @@ func TestAlertManager_NotifyResolveAdapter(t *testing.T) {
 		if a.Key == "extra" && a.Value.String() == "ctx" {
 			sawExtra = true
 		}
-
 		return true
 	})
 	if !sawExtra {
@@ -102,11 +95,7 @@ func TestAlertManager_AttrTailPassesThrough(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 
 	a.Notify(
-		now,
-		slog.LevelError,
-		"kind",
-		"key",
-		"msg",
+		now, slog.LevelError, "kind", "key", "msg",
 		slog.String("complete_pair_key", "complete_pair_val"),
 		slog.Int("count", 7),
 	)
@@ -115,7 +104,6 @@ func TestAlertManager_AttrTailPassesThrough(t *testing.T) {
 	if len(records) != 1 {
 		t.Fatalf("got %d records, want 1", len(records))
 	}
-
 	var sawComplete, sawCount bool
 	records[0].Attrs(func(a slog.Attr) bool {
 		switch a.Key {
@@ -124,13 +112,11 @@ func TestAlertManager_AttrTailPassesThrough(t *testing.T) {
 		case "count":
 			sawCount = true
 		}
-
 		return true
 	})
 	if !sawComplete {
 		t.Error("expected complete attr to survive translation")
 	}
-
 	if !sawCount {
 		t.Error("expected numeric attr to survive translation")
 	}

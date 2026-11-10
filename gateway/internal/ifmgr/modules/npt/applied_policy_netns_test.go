@@ -49,9 +49,7 @@ func newPolicyKernelFixture(t *testing.T) policyKernelFixture {
 	inIPv4Namespace(t)
 	var wan, lan netlink.Link
 	for _, name := range []string{policyWANName, policyLANName} {
-		if err := netlink.LinkAdd(&netlink.Dummy{
-			LinkAttrs: netlink.LinkAttrs{Name: name},
-		}); err != nil {
+		if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: name}}); err != nil {
 			t.Fatal(err)
 		}
 		link, err := netlink.LinkByName(name)
@@ -71,43 +69,23 @@ func newPolicyKernelFixture(t *testing.T) policyKernelFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.RouteAdd(&netlink.Route{
-		LinkIndex: lan.Attrs().Index,
-		Dst:       internal,
-	}); err != nil {
+	if err := netlink.RouteAdd(&netlink.Route{LinkIndex: lan.Attrs().Index, Dst: internal}); err != nil {
 		t.Fatal(err)
 	}
-	translation := &config.IPv6Translation{
-		Mode: config.TranslationNPTv6,
-		NPT: &config.NPTv6Translation{
-			InternalPrefix: netip.MustParsePrefix(policyInternal),
-			ExternalSource: config.PrefixConfigured,
-			ExternalPrefix: netip.MustParsePrefix(policyExternal),
-		},
-	}
+	translation := &config.IPv6Translation{Mode: config.TranslationNPTv6, NPT: &config.NPTv6Translation{
+		InternalPrefix: netip.MustParsePrefix(policyInternal), ExternalSource: config.PrefixConfigured,
+		ExternalPrefix: netip.MustParsePrefix(policyExternal),
+	}}
 	connection := interfaceintent.Connection{
-		ID:    policyConnectionID,
-		Name:  policyWANName,
-		Owner: interfaceintent.OwnerMWAN,
-		Roles: interfaceintent.RoleProvider,
-		IPv6:  &interfaceintent.IPv6{},
+		ID: policyConnectionID, Name: policyWANName, Owner: interfaceintent.OwnerMWAN,
+		Roles: interfaceintent.RoleProvider, IPv6: &interfaceintent.IPv6{},
 	}
 	store := wanstate.New()
-	env := &ifmgr.Env{
-		Log:         slog.Default(),
-		LiveState:   store,
-		Connections: []interfaceintent.Connection{connection},
-		OwnedLinks:  &ifmgr.OwnedLinkResults{},
-	}
-	env.OwnedLinks.Replace([]netif.OwnedLinkResult{
-		{
-			ConnectionID: policyConnectionID,
-			Name:         policyWANName,
-			ActualName:   policyWANName,
-			IfIndex:      wan.Attrs().Index,
-			Status:       netif.OwnedLinkReady,
-		},
-	})
+	env := &ifmgr.Env{Log: slog.Default(), LiveState: store, Connections: []interfaceintent.Connection{connection}, OwnedLinks: &ifmgr.OwnedLinkResults{}}
+	env.OwnedLinks.Replace([]netif.OwnedLinkResult{{
+		ConnectionID: policyConnectionID, Name: policyWANName, ActualName: policyWANName,
+		IfIndex: wan.Attrs().Index, Status: netif.OwnedLinkReady,
+	}})
 	ctx, cancel := context.WithCancel(t.Context())
 	authority, err := addresses.New(addresses.Config{
 		Connections: env.Connections,
@@ -127,21 +105,9 @@ func newPolicyKernelFixture(t *testing.T) policyKernelFixture {
 		t.Fatal(err)
 	}
 	created, err := New(Config{
-		InternalIface:  policyLANName,
-		InternalPrefix: policyInternal,
-		OpnsenseEdgeV6: "fd01:203:405::2",
-		MwanbrEdgeV6:   "fd01:203:405::3",
-		WANs: []WAN{
-			{
-				WANRef: ifmgr.WANRef{
-					ID:    policyConnectionID,
-					Name:  policyConnectionID,
-					Iface: policyWANName,
-				},
-				Owned:       true,
-				Translation: translation,
-			},
-		},
+		InternalIface: policyLANName, InternalPrefix: policyInternal,
+		OpnsenseEdgeV6: "fd01:203:405::2", MwanbrEdgeV6: "fd01:203:405::3",
+		WANs: []WAN{{WANRef: ifmgr.WANRef{ID: policyConnectionID, Name: policyConnectionID, Iface: policyWANName}, Owned: true, Translation: translation}},
 	})
 	if err != nil {
 		cancel()
@@ -165,11 +131,7 @@ func newPolicyKernelFixture(t *testing.T) policyKernelFixture {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf(
-				"NPT baseline did not become ready: %v; %+v",
-				err,
-				store.Snapshot().Translation,
-			)
+			t.Fatalf("NPT baseline did not become ready: %v; %+v", err, store.Snapshot().Translation)
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
@@ -242,31 +204,18 @@ func TestAppliedNPTPolicySnapshotKernel(t *testing.T) {
 	fixture := newPolicyKernelFixture(t)
 	before := fixture.store.Snapshot()
 	pair := before.NPTPolicies[policyConnectionID]
-	if before.NPTPolicyGeneration == 0 || pair.ID == 0 ||
-		pair.Internal.String() != policyInternal ||
-		pair.External.String() != policyExternal ||
-		!slices.Equal(
-			pair.SourceExceptions,
-			[]netip.Addr{
-				netip.MustParseAddr("fd01:203:405::2"),
-				netip.MustParseAddr("fd01:203:405::3"),
-			},
-		) ||
+	if before.NPTPolicyGeneration == 0 || pair.ID == 0 || pair.Internal.String() != policyInternal || pair.External.String() != policyExternal ||
+		!slices.Equal(pair.SourceExceptions, []netip.Addr{netip.MustParseAddr("fd01:203:405::2"), netip.MustParseAddr("fd01:203:405::3")}) ||
 		!slices.Contains(pair.DestinationExceptions, netip.MustParseAddr("2001:db8:1::1")) {
 		t.Fatalf("applied NPT snapshot differs from the kernel policy: %+v", before)
 	}
 	kernel := policyMapBytes(t, fixture.wan)
 	modified := fixture.store.Snapshot()
-	modified.NPTPolicies[policyConnectionID].SourceExceptions[0] = netip.MustParseAddr(
-		"fd00:dead::1",
-	)
-	modified.NPTPolicies[policyConnectionID].DestinationExceptions[0] = netip.MustParseAddr(
-		"2001:db8:dead::1",
-	)
+	modified.NPTPolicies[policyConnectionID].SourceExceptions[0] = netip.MustParseAddr("fd00:dead::1")
+	modified.NPTPolicies[policyConnectionID].DestinationExceptions[0] = netip.MustParseAddr("2001:db8:dead::1")
 	delete(modified.NPTPolicies, policyConnectionID)
 	actual := fixture.store.Snapshot().NPTPolicies[policyConnectionID]
-	if !slices.Equal(actual.SourceExceptions, pair.SourceExceptions) ||
-		!slices.Equal(actual.DestinationExceptions, pair.DestinationExceptions) {
+	if !slices.Equal(actual.SourceExceptions, pair.SourceExceptions) || !slices.Equal(actual.DestinationExceptions, pair.DestinationExceptions) {
 		t.Fatal("snapshot edits changed the stored exception slices")
 	}
 	reordered := fixture.store.Snapshot()
@@ -274,8 +223,7 @@ func TestAppliedNPTPolicySnapshotKernel(t *testing.T) {
 	slices.Reverse(pair.SourceExceptions)
 	pair.DestinationExceptions = append(pair.DestinationExceptions, pair.DestinationExceptions[0])
 	reordered.NPTPolicies[policyConnectionID] = pair
-	if fixture.store.SetNPTTranslation(reordered.Translation, reordered.NPTPolicies) ||
-		fixture.store.Snapshot().NPTPolicyGeneration != before.NPTPolicyGeneration {
+	if fixture.store.SetNPTTranslation(reordered.Translation, reordered.NPTPolicies) || fixture.store.Snapshot().NPTPolicyGeneration != before.NPTPolicyGeneration {
 		t.Fatal("exception ordering or duplication advanced the policy generation")
 	}
 	owner, cancel := context.WithCancel(t.Context())
@@ -298,8 +246,7 @@ func TestAppliedNPTPolicySnapshotKernel(t *testing.T) {
 	if err := fixture.module.Reconcile(fixture.ctx, slog.Default()); err != nil {
 		t.Fatalf("unchanged policy invoked the rejecting guard: %v", err)
 	}
-	if fixture.store.Snapshot().NPTPolicyGeneration != before.NPTPolicyGeneration ||
-		!bytes.Equal(kernel, policyMapBytes(t, fixture.wan)) {
+	if fixture.store.Snapshot().NPTPolicyGeneration != before.NPTPolicyGeneration || !bytes.Equal(kernel, policyMapBytes(t, fixture.wan)) {
 		t.Fatal("an unchanged reconciliation changed applied policy semantics")
 	}
 }
@@ -308,14 +255,12 @@ func TestNPTGuardRejectionPreservesKernelPolicy(t *testing.T) {
 	fixture := newPolicyKernelFixture(t)
 	owner, cancel := context.WithCancel(t.Context())
 	cancel()
-	unregister, err := fixture.store.RegisterNPTGuard(
-		func(context.Context, []string) (func(), error) {
-			if len(fixture.store.Snapshot().NPTPolicies) == 0 {
-				return nil, fmt.Errorf("guard owner cannot inspect the applied policy")
-			}
-			return nil, owner.Err()
-		},
-	)
+	unregister, err := fixture.store.RegisterNPTGuard(func(context.Context, []string) (func(), error) {
+		if len(fixture.store.Snapshot().NPTPolicies) == 0 {
+			return nil, fmt.Errorf("guard owner cannot inspect the applied policy")
+		}
+		return nil, owner.Err()
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,21 +269,13 @@ func TestNPTGuardRejectionPreservesKernelPolicy(t *testing.T) {
 	kernel := policyMapBytes(t, fixture.wan)
 	rules := runNFT(t, "list", "table", "ip6", "nat")
 	addPolicyAddress(t, fixture.wan, "2001:db8:1::20")
-	if err := fixture.module.Reconcile(fixture.ctx, slog.Default()); !errors.Is(
-		err,
-		context.Canceled,
-	) {
+	if err := fixture.module.Reconcile(fixture.ctx, slog.Default()); !errors.Is(err, context.Canceled) {
 		t.Fatalf("closed guard owner did not reject the policy mutation: %v", err)
 	}
 	after := fixture.store.Snapshot()
-	if after.NPTPolicyGeneration != before.NPTPolicyGeneration ||
-		!after.Translation[policyConnectionID].V6.Ready ||
-		!nptpolicy.EqualPair(
-			after.NPTPolicies[policyConnectionID],
-			before.NPTPolicies[policyConnectionID],
-		) ||
-		!bytes.Equal(kernel, policyMapBytes(t, fixture.wan)) ||
-		rules != runNFT(t, "list", "table", "ip6", "nat") {
+	if after.NPTPolicyGeneration != before.NPTPolicyGeneration || !after.Translation[policyConnectionID].V6.Ready ||
+		!nptpolicy.EqualPair(after.NPTPolicies[policyConnectionID], before.NPTPolicies[policyConnectionID]) ||
+		!bytes.Equal(kernel, policyMapBytes(t, fixture.wan)) || rules != runNFT(t, "list", "table", "ip6", "nat") {
 		t.Fatal("guard rejection changed the applied snapshot, BPF policy or nftables rules")
 	}
 }
@@ -346,19 +283,17 @@ func TestNPTGuardRejectionPreservesKernelPolicy(t *testing.T) {
 func TestNPTPartialFailurePublishesBeforeGuardRelease(t *testing.T) {
 	fixture := newPolicyKernelFixture(t)
 	var admission sync.Mutex
-	unregister, err := fixture.store.RegisterNPTGuard(
-		func(context.Context, []string) (func(), error) {
-			admission.Lock()
-			return func() {
-				state := fixture.store.Snapshot()
-				_, applied := state.NPTPolicies[policyConnectionID]
-				if state.Translation[policyConnectionID].V6.Ready || applied {
-					t.Error("admission resumed before the uncertain NPT policy became unavailable")
-				}
-				admission.Unlock()
-			}, nil
-		},
-	)
+	unregister, err := fixture.store.RegisterNPTGuard(func(context.Context, []string) (func(), error) {
+		admission.Lock()
+		return func() {
+			state := fixture.store.Snapshot()
+			_, applied := state.NPTPolicies[policyConnectionID]
+			if state.Translation[policyConnectionID].V6.Ready || applied {
+				t.Error("admission resumed before the uncertain NPT policy became unavailable")
+			}
+			admission.Unlock()
+		}, nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -392,35 +327,26 @@ func TestNPTPreparedExceptionsPublishBeforeGuardRelease(t *testing.T) {
 	before := fixture.store.Snapshot()
 	kernel := policyMapBytes(t, fixture.wan)
 	var admission sync.Mutex
-	unregister, err := fixture.store.RegisterNPTGuard(
-		func(context.Context, []string) (func(), error) {
-			admission.Lock()
-			return func() {
-				state := fixture.store.Snapshot()
-				pair := state.NPTPolicies[policyConnectionID]
-				if !state.Translation[policyConnectionID].V6.Ready ||
-					!slices.Contains(pair.DestinationExceptions, address) {
-					t.Error("admission resumed before the applied local-address exception appeared")
-				}
-				admission.Unlock()
-			}, nil
-		},
-	)
+	unregister, err := fixture.store.RegisterNPTGuard(func(context.Context, []string) (func(), error) {
+		admission.Lock()
+		return func() {
+			state := fixture.store.Snapshot()
+			pair := state.NPTPolicies[policyConnectionID]
+			if !state.Translation[policyConnectionID].V6.Ready || !slices.Contains(pair.DestinationExceptions, address) {
+				t.Error("admission resumed before the applied local-address exception appeared")
+			}
+			admission.Unlock()
+		}, nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer unregister()
-	if err := fixture.module.Env.PrepareLocalIPv6(
-		fixture.ctx,
-		slog.Default(),
-		policyWANName,
-		[]netip.Addr{address},
-	); err != nil {
+	if err := fixture.module.Env.PrepareLocalIPv6(fixture.ctx, slog.Default(), policyWANName, []netip.Addr{address}); err != nil {
 		t.Fatal(err)
 	}
 	after := fixture.store.Snapshot()
-	if after.NPTPolicyGeneration <= before.NPTPolicyGeneration ||
-		bytes.Equal(kernel, policyMapBytes(t, fixture.wan)) {
+	if after.NPTPolicyGeneration <= before.NPTPolicyGeneration || bytes.Equal(kernel, policyMapBytes(t, fixture.wan)) {
 		t.Fatal("local-address preparation did not publish the changed kernel policy")
 	}
 }
@@ -428,19 +354,17 @@ func TestNPTPreparedExceptionsPublishBeforeGuardRelease(t *testing.T) {
 func TestNPTPreparedFailureWithdrawsPolicyBeforeRelease(t *testing.T) {
 	fixture := newPolicyKernelFixture(t)
 	var admission sync.Mutex
-	unregister, err := fixture.store.RegisterNPTGuard(
-		func(context.Context, []string) (func(), error) {
-			admission.Lock()
-			return func() {
-				state := fixture.store.Snapshot()
-				_, applied := state.NPTPolicies[policyConnectionID]
-				if state.Translation[policyConnectionID].V6.Ready || applied {
-					t.Error("failed local-address preparation released an admissible policy")
-				}
-				admission.Unlock()
-			}, nil
-		},
-	)
+	unregister, err := fixture.store.RegisterNPTGuard(func(context.Context, []string) (func(), error) {
+		admission.Lock()
+		return func() {
+			state := fixture.store.Snapshot()
+			_, applied := state.NPTPolicies[policyConnectionID]
+			if state.Translation[policyConnectionID].V6.Ready || applied {
+				t.Error("failed local-address preparation released an admissible policy")
+			}
+			admission.Unlock()
+		}, nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -451,16 +375,10 @@ func TestNPTPreparedFailureWithdrawsPolicyBeforeRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	address := netip.MustParseAddr("2001:db8:1::50")
-	if err := fixture.module.Env.PrepareLocalIPv6(
-		fixture.ctx,
-		slog.Default(),
-		policyWANName,
-		[]netip.Addr{address},
-	); err == nil {
+	if err := fixture.module.Env.PrepareLocalIPv6(fixture.ctx, slog.Default(), policyWANName, []netip.Addr{address}); err == nil {
 		t.Fatal("closed BPF descriptors accepted local-address preparation")
 	}
-	if rules != runNFT(t, "list", "table", "ip6", "nat") ||
-		!bytes.Equal(kernel, policyMapBytes(t, fixture.wan)) {
+	if rules != runNFT(t, "list", "table", "ip6", "nat") || !bytes.Equal(kernel, policyMapBytes(t, fixture.wan)) {
 		t.Fatal("failed local-address preparation changed the kernel policy")
 	}
 }
@@ -478,10 +396,7 @@ func TestNPTGuardUnregistrationWaitsForMutation(t *testing.T) {
 	}
 	desired := fixture.store.Snapshot().NPTPolicies
 	pair := desired[policyConnectionID]
-	pair.DestinationExceptions = append(
-		pair.DestinationExceptions,
-		netip.MustParseAddr("2001:db8:1::60"),
-	)
+	pair.DestinationExceptions = append(pair.DestinationExceptions, netip.MustParseAddr("2001:db8:1::60"))
 	desired[policyConnectionID] = pair
 	_, finish, err := fixture.store.BeginNPTChange(t.Context(), desired)
 	if err != nil {

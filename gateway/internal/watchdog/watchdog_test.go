@@ -53,16 +53,13 @@ func newFakeNotifier() *fakeNotifier {
 func (f *fakeNotifier) Notify(_ context.Context, ev notify.Event) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.events = append(
-		f.events,
-		notifyEvent{
-			Kind:     ev.Kind,
-			Key:      ev.Key,
-			Message:  ev.Message,
-			Level:    ev.Level,
-			Resolved: ev.IsRecovery,
-		},
-	)
+	f.events = append(f.events, notifyEvent{
+		Kind:     ev.Kind,
+		Key:      ev.Key,
+		Message:  ev.Message,
+		Level:    ev.Level,
+		Resolved: ev.IsRecovery,
+	})
 	if !ev.IsRecovery {
 		f.active[ev.Kind+"|"+ev.Key] = true
 	} else {
@@ -73,22 +70,18 @@ func (f *fakeNotifier) Notify(_ context.Context, ev notify.Event) {
 func (f *fakeNotifier) Resolve(_ context.Context, kind, key, msg string, _ ...slog.Attr) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.events = append(
-		f.events,
-		notifyEvent{
-			Kind:     kind,
-			Key:      key,
-			Message:  msg,
-			Resolved: true,
-		},
-	)
+	f.events = append(f.events, notifyEvent{
+		Kind:     kind,
+		Key:      key,
+		Message:  msg,
+		Resolved: true,
+	})
 	delete(f.active, kind+"|"+key)
 }
 
 func (f *fakeNotifier) Active(kind, key string) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-
 	return f.active[kind+"|"+key]
 }
 
@@ -99,7 +92,6 @@ func (f *fakeNotifier) snapshot() []notifyEvent {
 	defer f.mu.Unlock()
 	out := make([]notifyEvent, len(f.events))
 	copy(out, f.events)
-
 	return out
 }
 
@@ -173,11 +165,9 @@ func (m *mockOps) VMFSFreezeStatus(ctx context.Context, vmid string) (string, er
 	if m.freezeStatusErr != nil {
 		return "", m.freezeStatusErr
 	}
-
 	if m.freezeStatus == "" {
 		return "thawed", nil
 	}
-
 	return m.freezeStatus, nil
 }
 
@@ -188,11 +178,9 @@ func (m *mockOps) VMFSFreezeThaw(ctx context.Context, vmid string) error {
 	if m.thawErr != nil {
 		return m.thawErr
 	}
-
 	if !m.thawKeepsFrozen {
 		m.freezeStatus = "thawed"
 	}
-
 	return nil
 }
 
@@ -203,21 +191,14 @@ func (m *mockOps) VMStatus(ctx context.Context, vmid string) (bool, error) {
 	if m.vmStatusErr != nil {
 		return false, m.vmStatusErr
 	}
-
 	return m.vmRunning, nil
 }
 
-func (m *mockOps) GetConfigState(
-	ctx context.Context,
-	vmid string,
-) (*mwanv1.GetConfigStateResponse, string, error) {
+func (m *mockOps) GetConfigState(ctx context.Context, vmid string) (*mwanv1.GetConfigStateResponse, string, error) {
 	return &mwanv1.GetConfigStateResponse{}, "", nil
 }
 
-func (m *mockOps) GetBGPStatus(
-	ctx context.Context,
-	vmid string,
-) (*mwanv1.GetBGPStatusResponse, error) {
+func (m *mockOps) GetBGPStatus(ctx context.Context, vmid string) (*mwanv1.GetBGPStatusResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.getBGPStatusCalls = append(m.getBGPStatusCalls, vmid)
@@ -226,7 +207,6 @@ func (m *mockOps) GetBGPStatus(
 			return resp, nil
 		}
 	}
-
 	return &mwanv1.GetBGPStatusResponse{}, nil
 }
 
@@ -234,7 +214,6 @@ func (m *mockOps) AnnounceRoutes(ctx context.Context, vmid string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.announceRoutesCalls = append(m.announceRoutesCalls, vmid)
-
 	return nil
 }
 
@@ -242,7 +221,6 @@ func (m *mockOps) WithdrawRoutes(ctx context.Context, vmid string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.withdrawRoutesCalls = append(m.withdrawRoutesCalls, vmid)
-
 	return nil
 }
 
@@ -250,7 +228,6 @@ func (m *mockOps) VMStart(ctx context.Context, vmid string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.vmStartCalls++
-
 	return m.vmStartErr
 }
 
@@ -258,7 +235,6 @@ func (m *mockOps) VMStop(ctx context.Context, vmid string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.vmStopCalls++
-
 	return m.vmStopErr
 }
 
@@ -269,7 +245,6 @@ func (m *mockOps) VMSnapshots(ctx context.Context, vmid string) ([]byte, error) 
 	if m.vmSnapErr != nil {
 		return nil, m.vmSnapErr
 	}
-
 	return m.snapshotsOut, nil
 }
 
@@ -279,7 +254,6 @@ func (m *mockOps) VMSnapshot(ctx context.Context, vmid, snapname string) error {
 	if m.vmSnapErr != nil {
 		return m.vmSnapErr
 	}
-
 	return nil
 }
 
@@ -287,7 +261,6 @@ func (m *mockOps) VMDelSnapshot(ctx context.Context, vmid, snapname string) erro
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.delSnapshotCalls = append(m.delSnapshotCalls, snapname)
-
 	return m.delSnapshotErr
 }
 
@@ -295,7 +268,6 @@ func (m *mockOps) VMDelSnapshotForce(ctx context.Context, vmid, snapname string)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.forceDelSnapshotCalls = append(m.forceDelSnapshotCalls, snapname)
-
 	return m.forceDelSnapshotErr
 }
 
@@ -305,7 +277,6 @@ func (m *mockOps) VMLock(ctx context.Context, vmid string) (string, error) {
 	if m.guestLockErr != nil {
 		return "", m.guestLockErr
 	}
-
 	return m.guestLock, nil
 }
 
@@ -316,9 +287,7 @@ func (m *mockOps) VMUnlock(ctx context.Context, vmid string) error {
 	if m.unlockErr != nil {
 		return m.unlockErr
 	}
-
 	m.guestLock = ""
-
 	return nil
 }
 
@@ -328,7 +297,6 @@ func (m *mockOps) VMHasRunningTask(ctx context.Context, vmid string) (bool, erro
 	if m.taskRunningErr != nil {
 		return false, m.taskRunningErr
 	}
-
 	return m.taskRunning, nil
 }
 
@@ -336,7 +304,6 @@ func (m *mockOps) VMRollback(ctx context.Context, vmid, snapname string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.vmRollbackCalls = append(m.vmRollbackCalls, vmRollbackCall{VMID: vmid, Snap: snapname})
-
 	return m.vmRollbackErr
 }
 
@@ -350,15 +317,10 @@ func (m *mockOps) Ping(ctx context.Context, cmd string, target string) bool {
 			return res
 		}
 	}
-
 	return false
 }
 
-func (m *mockOps) GuestExec(
-	ctx context.Context,
-	vmid string,
-	cmd ...string,
-) (ops.GuestExecResult, error) {
+func (m *mockOps) GuestExec(ctx context.Context, vmid string, cmd ...string) (ops.GuestExecResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	key := strings.Join(append([]string{vmid}, cmd...), "|")
@@ -368,7 +330,6 @@ func (m *mockOps) GuestExec(
 			return res, nil
 		}
 	}
-
 	return ops.GuestExecResult{}, nil
 }
 
@@ -388,9 +349,7 @@ func testNC() watchdogconfig.NetworkConfig {
 }
 
 func newTestWatchdog(
-	t *testing.T,
-	ops ops.SysOps,
-	cfgOverrides ...func(*watchdogconfig.Config),
+	t *testing.T, ops ops.SysOps, cfgOverrides ...func(*watchdogconfig.Config),
 ) *watchdog {
 	t.Helper()
 	tmp := t.TempDir()
@@ -413,7 +372,6 @@ func newTestWatchdog(
 			MaxIterations:              5,
 		},
 	}
-
 	for _, fn := range cfgOverrides {
 		fn(cfg)
 	}
@@ -428,7 +386,6 @@ func newTestWatchdog(
 		coord:       &alert.Coord{},
 		configState: newConfigStateSource(cfg, ops, logger),
 	}
-
 	return w
 }
 
@@ -453,14 +410,9 @@ func TestDiagnosisLogsThePushedStatus(t *testing.T) {
 	var logged bytes.Buffer
 	mock := &mockOps{}
 	w := newTestWatchdog(t, mock)
-	w.log = slog.New(
-		slog.NewTextHandler(
-			&logged,
-			&slog.HandlerOptions{
-				Level: slog.LevelDebug,
-			},
-		),
-	)
+	w.log = slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
 	now := time.Date(2026, 9, 2, 12, 0, 30, 0, time.UTC)
 	w.nowFn = func() time.Time { return now }
 	w.status = fixedStatus{
@@ -480,7 +432,6 @@ func TestDiagnosisLogsThePushedStatus(t *testing.T) {
 	w.logPushedStatus(context.Background())
 
 	output := logged.String()
-
 	for _, want := range []string{
 		"Gateway provider status",
 		"att=unhealthy",
@@ -523,7 +474,6 @@ func TestEnsureGuestThawedRecoversStuckFreeze(t *testing.T) {
 	if mock.thawCalls != 1 {
 		t.Fatalf("thawCalls = %d, want 1", mock.thawCalls)
 	}
-
 	if mock.freezeStatus != "thawed" {
 		t.Fatalf("freezeStatus = %q, want thawed", mock.freezeStatus)
 	}
@@ -563,14 +513,9 @@ func TestEnsureGuestThawedSkipsRecheckWhenThawFails(t *testing.T) {
 	if mock.thawCalls != 1 {
 		t.Fatalf("thawCalls = %d, want 1", mock.thawCalls)
 	}
-
 	if mock.freezeStatusCalls != 1 {
-		t.Fatalf(
-			"freezeStatusCalls = %d, want 1: no recheck after a failed thaw",
-			mock.freezeStatusCalls,
-		)
+		t.Fatalf("freezeStatusCalls = %d, want 1: no recheck after a failed thaw", mock.freezeStatusCalls)
 	}
-
 	if mock.freezeStatus != "frozen" {
 		t.Fatalf("freezeStatus = %q, want frozen", mock.freezeStatus)
 	}
@@ -588,14 +533,9 @@ func TestEnsureGuestThawedRechecksWhenThawIsIneffective(t *testing.T) {
 	if mock.thawCalls != 1 {
 		t.Fatalf("thawCalls = %d, want 1", mock.thawCalls)
 	}
-
 	if mock.freezeStatusCalls != 2 {
-		t.Fatalf(
-			"freezeStatusCalls = %d, want 2: the recheck must observe the surviving freeze",
-			mock.freezeStatusCalls,
-		)
+		t.Fatalf("freezeStatusCalls = %d, want 2: the recheck must observe the surviving freeze", mock.freezeStatusCalls)
 	}
-
 	if mock.freezeStatus != "frozen" {
 		t.Fatalf("freezeStatus = %q, want frozen", mock.freezeStatus)
 	}
@@ -610,12 +550,8 @@ func TestEnsureGuestThawedRunsWithCancelledCaller(t *testing.T) {
 	w.ensureGuestThawed(ctx, "test")
 
 	if mock.thawCalls != 1 {
-		t.Fatalf(
-			"thawCalls = %d, want 1: the guard must survive a cancelled snapshot context",
-			mock.thawCalls,
-		)
+		t.Fatalf("thawCalls = %d, want 1: the guard must survive a cancelled snapshot context", mock.thawCalls)
 	}
-
 	if mock.freezeStatus != "thawed" {
 		t.Fatalf("freezeStatus = %q, want thawed", mock.freezeStatus)
 	}
@@ -626,23 +562,16 @@ func TestMaybeSnapshotThawsAfterFailedSnapshot(t *testing.T) {
 		freezeStatus: "frozen",
 		vmSnapErr:    errors.New("snapshot task aborted"),
 	}
-	w := newTestWatchdog(
-		t,
-		mock,
-		func(cfg *watchdogconfig.Config) {
-			cfg.Watchdog.SnapshotHealthyThreshold = 1
-		},
-	)
+	w := newTestWatchdog(t, mock, func(cfg *watchdogconfig.Config) {
+		cfg.Watchdog.SnapshotHealthyThreshold = 1
+	})
 	w.consecutiveHealthy = 1
 	w.lastHashCheckOK = true
 
 	w.maybeSnapshot(context.Background())
 
 	if mock.thawCalls != 1 {
-		t.Fatalf(
-			"thawCalls = %d, want 1: the guard must run on the failed-snapshot path",
-			mock.thawCalls,
-		)
+		t.Fatalf("thawCalls = %d, want 1: the guard must run on the failed-snapshot path", mock.thawCalls)
 	}
 }
 
@@ -655,7 +584,6 @@ func fakeNotifierFrom(t *testing.T, w *watchdog) *fakeNotifier {
 	if !ok {
 		t.Fatalf("expected *fakeNotifier on watchdog, got %T", w.notify)
 	}
-
 	return fn
 }
 
@@ -680,7 +608,6 @@ func TestMockOpsBasics(t *testing.T) {
 	if !running || err != nil {
 		t.Fatalf("vmstatus failed: %v", err)
 	}
-
 	if !m.Ping(context.Background(), "ping", "1.1.1.1") {
 		t.Fatal("ping failed")
 	}

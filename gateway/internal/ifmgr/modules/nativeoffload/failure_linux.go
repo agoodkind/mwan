@@ -36,10 +36,7 @@ func (module *Module) guardRuntime(ctx context.Context) error {
 	if _, err := module.runtime.Stats(); err != nil {
 		module.ownershipUncertain = true
 		module.Log.WarnContext(ctx, "native runtime failure blocks forwarding changes", "err", err)
-		return module.fail(
-			ctx,
-			fmt.Errorf("verify native runtime before forwarding mutation: %w", err),
-		)
+		return module.fail(ctx, fmt.Errorf("verify native runtime before forwarding mutation: %w", err))
 	}
 	return nil
 }
@@ -49,10 +46,7 @@ func (module *Module) recoverWorkerPanic(ctx context.Context, operation string, 
 }
 
 func (module *Module) stopAfterPanic(ctx context.Context, failure error) {
-	cleanupContext, cancel := context.WithTimeout(
-		context.WithoutCancel(ctx),
-		module.cfg.Settings.ShutdownTimeout,
-	)
+	cleanupContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), module.cfg.Settings.ShutdownTimeout)
 	defer cancel()
 	module.Lock()
 	defer module.Unlock()
@@ -72,12 +66,7 @@ func (module *Module) stopAfterPanic(ctx context.Context, failure error) {
 			module.admissionPaused.Store(true)
 			module.resumePass = nil
 			module.stats.Failure = errors.Join(module.stats.Failure, cleanupFailure)
-			module.Log.ErrorContext(
-				cleanupContext,
-				"native panic cleanup retained ownership",
-				"err",
-				cleanupFailure,
-			)
+			module.Log.ErrorContext(cleanupContext, "native panic cleanup retained ownership", "err", cleanupFailure)
 		}
 	}()
 	module.recordFailure(failure)

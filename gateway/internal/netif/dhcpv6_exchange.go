@@ -72,165 +72,63 @@ func dhcpv6TransportOptions() []nclient6.ClientOpt {
 
 // exchangeDHCPv6Retransmitting uses one transaction ID for every transmission of the
 // exchange. A late reply to an earlier transmission matches that ID and completes it.
-func exchangeDHCPv6Retransmitting(
-	ctx context.Context,
-	log *slog.Logger,
-	transport *nclient6.Client,
-	config DHCPv6PDConfig,
-	messageType dhcpv6.MessageType,
-	timing dhcpv6Retransmission,
-	prepare func(*dhcpv6.Message) error,
-	match nclient6.Matcher,
-	service *dhcpv6ExchangeService,
-) (*dhcpv6.Message, error) {
+func exchangeDHCPv6Retransmitting(ctx context.Context, log *slog.Logger, transport *nclient6.Client, config DHCPv6PDConfig, messageType dhcpv6.MessageType, timing dhcpv6Retransmission, prepare func(*dhcpv6.Message) error, match nclient6.Matcher, service *dhcpv6ExchangeService) (*dhcpv6.Message, error) {
 	duid, err := dhcpv6.DUIDFromBytes(config.DUID)
 	if err != nil {
 		log.WarnContext(ctx, "dhcpv6: invalid configured DUID", "iface", config.Iface, "err", err)
 		return nil, fmt.Errorf("decode DHCPv6 DUID: %w", err)
 	}
-
 	transactionID, err := dhcpv6.GenerateTransactionID()
 	if err != nil {
-		log.WarnContext(
-			ctx,
-			"dhcpv6: transaction ID unavailable",
-			"iface",
-			config.Iface,
-			"message",
-			messageType,
-			"err",
-			err,
-		)
+		log.WarnContext(ctx, "dhcpv6: transaction ID unavailable", "iface", config.Iface, "message", messageType, "err", err)
 		return nil, fmt.Errorf("create DHCPv6 %s transaction ID: %w", messageType, err)
 	}
-
 	if timing.maxDelay > 0 {
 		delay, err := rand.Int(rand.Reader, big.NewInt(int64(timing.maxDelay)))
 		if err != nil {
-			log.WarnContext(
-				ctx,
-				"dhcpv6: initial delay unavailable",
-				"iface",
-				config.Iface,
-				"message",
-				messageType,
-				"err",
-				err,
-			)
+			log.WarnContext(ctx, "dhcpv6: initial delay unavailable", "iface", config.Iface, "message", messageType, "err", err)
 			return nil, fmt.Errorf("choose DHCPv6 %s delay: %w", messageType, err)
 		}
-
 		if !waitDHCPv6Duration(ctx, time.Duration(delay.Int64())) {
 			return nil, errDHCPv6ExchangeInterrupted
 		}
 	}
-
 	started := config.Clock.Now()
 	end := timing.end
 	if timing.duration > 0 {
 		end = earliestDHCPv6Time(end, started.Add(timing.duration))
 	}
-
 	rt := firstDHCPv6RT(messageType, timing.initial)
 	var response *dhcpv6.Message
 	var sent time.Time
-
 	transmission := 0
 	for response == nil && (timing.count == 0 || transmission < timing.count) {
 		sent = config.Clock.Now()
 		if !end.IsZero() && !sent.Before(end) {
 			break
 		}
-
 		transmission++
-		message := &dhcpv6.Message{
-			MessageType:   messageType,
-			TransactionID: transactionID,
-			Options:       dhcpv6.MessageOptions{Options: dhcpv6.Options{}},
-		}
+		message := &dhcpv6.Message{MessageType: messageType, TransactionID: transactionID, Options: dhcpv6.MessageOptions{Options: dhcpv6.Options{}}}
 		dhcpv6.WithClientID(duid)(message)
 		if err := prepare(message); err != nil {
 			return nil, err
 		}
-
 		message.UpdateOption(dhcpv6.OptElapsedTime(min(sent.Sub(started), dhcpv6MaxElapsedTime)))
 		if transmission > 1 {
-			log.DebugContext(
-				ctx,
-				"dhcpv6: retransmitting",
-				"iface",
-				config.Iface,
-				"message",
-				messageType,
-				"xid",
-				transactionID,
-				"transmission",
-				transmission,
-				"rt",
-				rt,
-				"elapsed",
-				sent.Sub(started),
-			)
+			log.DebugContext(ctx, "dhcpv6: retransmitting", "iface", config.Iface, "message", messageType, "xid", transactionID, "transmission", transmission, "rt", rt, "elapsed", sent.Sub(started))
 		}
-
-		response, err = transmitDHCPv6(
-			ctx,
-			log,
-			transport,
-			config,
-			message,
-			match,
-			earliestDHCPv6Time(end, sent.Add(rt)),
-			service,
-		)
+		response, err = transmitDHCPv6(ctx, log, transport, config, message, match, earliestDHCPv6Time(end, sent.Add(rt)), service)
 		if err != nil && !errors.Is(err, errDHCPv6ExchangeTimeout) {
 			return nil, err
 		}
-
 		rt = nextDHCPv6RT(rt, timing.maximum)
 	}
-
 	if response == nil {
-		log.WarnContext(
-			ctx,
-			"dhcpv6: exchange ended without a reply",
-			"iface",
-			config.Iface,
-			"message",
-			messageType,
-			"xid",
-			transactionID,
-			"transmissions",
-			transmission,
-			"elapsed",
-			config.Clock.Now().Sub(started),
-		)
-		return nil, fmt.Errorf(
-			"DHCPv6 %s xid %s: %w",
-			messageType,
-			transactionID,
-			errDHCPv6ExchangeTimeout,
-		)
+		log.WarnContext(ctx, "dhcpv6: exchange ended without a reply", "iface", config.Iface, "message", messageType, "xid", transactionID, "transmissions", transmission, "elapsed", config.Clock.Now().Sub(started))
+		return nil, fmt.Errorf("DHCPv6 %s xid %s: %w", messageType, transactionID, errDHCPv6ExchangeTimeout)
 	}
-
 	replied := config.Clock.Now()
-	log.InfoContext(
-		ctx,
-		"dhcpv6: exchange completed",
-		"iface",
-		config.Iface,
-		"message",
-		messageType,
-		"xid",
-		transactionID,
-		"transmissions",
-		transmission,
-		"reply_delay",
-		replied.Sub(sent),
-		"elapsed",
-		replied.Sub(started),
-	)
-
+	log.InfoContext(ctx, "dhcpv6: exchange completed", "iface", config.Iface, "message", messageType, "xid", transactionID, "transmissions", transmission, "reply_delay", replied.Sub(sent), "elapsed", replied.Sub(started))
 	return response, nil
 }
 
@@ -240,12 +138,10 @@ func firstDHCPv6RT(messageType dhcpv6.MessageType, initial time.Duration) time.D
 	if messageType != dhcpv6.MessageTypeSolicit {
 		return jitterDHCPv6(initial)
 	}
-
 	extra, err := rand.Int(rand.Reader, big.NewInt(int64(initial/10)))
 	if err != nil {
 		return initial + initial/10
 	}
-
 	return initial + time.Duration(extra.Int64()) + 1
 }
 
@@ -254,7 +150,6 @@ func nextDHCPv6RT(previous, maximum time.Duration) time.Duration {
 	if maximum > 0 && next > maximum {
 		return jitterDHCPv6(maximum)
 	}
-
 	return next
 }
 
@@ -262,6 +157,5 @@ func earliestDHCPv6Time(current, candidate time.Time) time.Time {
 	if current.IsZero() || candidate.Before(current) {
 		return candidate
 	}
-
 	return current
 }

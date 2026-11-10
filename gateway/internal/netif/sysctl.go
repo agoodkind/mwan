@@ -37,14 +37,12 @@ func NewProcSysctlRunner(log *slog.Logger, dryRun bool) *ProcSysctlRunner {
 	if log == nil {
 		log = slog.Default()
 	}
-
 	r := &ProcSysctlRunner{
 		log:    log.With("component", "sysctl"),
 		dryRun: dryRun,
 		clock:  realClock{},
 	}
 	r.log.Debug("sysctl: constructed", "dry_run", dryRun)
-
 	return r
 }
 
@@ -57,24 +55,15 @@ func (r *ProcSysctlRunner) Get(ctx context.Context, key string) (string, error) 
 	dur := r.clock.Now().Sub(startTime)
 	val := strings.TrimRight(string(data), "\n\t ")
 	r.log.DebugContext(
-		ctx,
-		"sysctl: read",
-		"key",
-		key,
-		"path",
-		path,
-		"value",
-		val,
-		"duration_ms",
-		dur.Milliseconds(),
-		"err",
-		err,
+		ctx, "sysctl: read",
+		"key", key, "path", path, "value", val,
+		"duration_ms", dur.Milliseconds(),
+		"err", err,
 	)
 	if err != nil {
 		r.log.WarnContext(ctx, "sysctl: read failed", "key", key, "path", path, "err", err)
 		return "", fmt.Errorf("sysctl read %s: %w", key, err)
 	}
-
 	return val, nil
 }
 
@@ -84,64 +73,33 @@ func (r *ProcSysctlRunner) Get(ctx context.Context, key string) (string, error) 
 func (r *ProcSysctlRunner) Set(ctx context.Context, key, value string) error {
 	path := keyToPath(key)
 	if r.dryRun {
-		r.log.InfoContext(
-			ctx,
-			"sysctl: dry-run skipping write",
-			"key",
-			key,
-			"path",
-			path,
-			"value",
-			value,
-		)
-
+		r.log.InfoContext(ctx, "sysctl: dry-run skipping write",
+			"key", key, "path", path, "value", value)
 		return nil
 	}
-
 	startTime := r.clock.Now()
 	err := os.WriteFile(path, []byte(value), 0o600)
 	dur := r.clock.Now().Sub(startTime)
 	r.log.DebugContext(
-		ctx,
-		"sysctl: write",
-		"key",
-		key,
-		"path",
-		path,
-		"value",
-		value,
-		"duration_ms",
-		dur.Milliseconds(),
-		"err",
-		err,
+		ctx, "sysctl: write",
+		"key", key, "path", path, "value", value,
+		"duration_ms", dur.Milliseconds(),
+		"err", err,
 	)
 	if err != nil {
-		r.log.WarnContext(
-			ctx,
-			"sysctl: write failed",
-			"key",
-			key,
-			"path",
-			path,
-			"value",
-			value,
-			"err",
-			err,
-		)
+		r.log.WarnContext(ctx, "sysctl: write failed",
+			"key", key, "path", path, "value", value, "err", err)
 		// Surface EACCES specifically; it's the most common operator
 		// misconfiguration and the diagnostic message helps unblock.
 		if errors.Is(err, os.ErrPermission) {
 			return fmt.Errorf(
 				"sysctl write %s: permission denied (need CAP_SYS_ADMIN or "+
 					"ReadWritePaths=/proc/sys/net/ipv6/conf in systemd unit): %w",
-				key,
-				err,
+				key, err,
 			)
 		}
-
 		return fmt.Errorf("sysctl write %s: %w", key, err)
 	}
-
 	return nil
 }
 
@@ -176,15 +134,12 @@ func keyToPath(key string) string {
 			if lastDot < 0 {
 				return procSys + strings.ReplaceAll(key, ".", "/")
 			}
-
 			name := rest[:lastDot]
 			leaf := rest[lastDot+1:]
 			head := strings.ReplaceAll(strings.TrimSuffix(prefix, "."), ".", "/")
-
 			return procSys + head + "/" + name + "/" + leaf
 		}
 	}
-
 	// Default: every dot becomes a slash.
 	return procSys + strings.ReplaceAll(key, ".", "/")
 }

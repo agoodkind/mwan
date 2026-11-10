@@ -70,11 +70,7 @@ func runOwnedRolesDaemonRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for source, target := range map[string]string{
-		networkDir:  "/etc/mwan",
-		networkdDir: "/etc/systemd/network",
-		schemaDir:   "/usr/local/share/wanconfig/yang",
-	} {
+	for source, target := range map[string]string{networkDir: "/etc/mwan", networkdDir: "/etc/systemd/network", schemaDir: "/usr/local/share/wanconfig/yang"} {
 		bindStartupDirectory(t, source, target)
 		t.Cleanup(func() {
 			if err := unix.Unmount(target, 0); err != nil {
@@ -84,55 +80,27 @@ func runOwnedRolesDaemonRuntime(t *testing.T) {
 	}
 	setupOwnedRoleUpdater(t, networkDir)
 	sentinel := []byte("[Match]\nName=unrelated0\n[Network]\nAddress=198.51.100.1/24\n")
-	if err := os.WriteFile(
-		filepath.Join(networkdDir, "unrelated.network"),
-		sentinel,
-		0o600,
-	); err != nil {
+	if err := os.WriteFile(filepath.Join(networkdDir, "unrelated.network"), sentinel, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	setRuntimeLoopback(t)
-	for _, path := range []string{
-		"/proc/sys/net/ipv4/ip_forward",
-		"/proc/sys/net/ipv6/conf/all/forwarding",
-	} {
+	for _, path := range []string{"/proc/sys/net/ipv4/ip_forward", "/proc/sys/net/ipv6/conf/all/forwarding"} {
 		if err := os.WriteFile(path, []byte("1"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
-	upstream := newRuntimePeer(
-		t,
-		gateway,
-		"ownphys0",
-		"roles-upstream",
-		nil,
-		nil,
-		ownedRuntimeParentMAC,
-	)
+	upstream := newRuntimePeer(t, gateway, "ownphys0", "roles-upstream", nil, nil, ownedRuntimeParentMAC)
 	defer upstream.namespace.Close()
 	setRuntimeNamespace(t, upstream.namespace)
-	addOwnedRolePeerVLAN(
-		t,
-		"roles-upstream",
-		"roles-wan",
-		397,
-		[]string{"10.39.7.2/24", "fd39:7::2/64"},
-	)
+	addOwnedRolePeerVLAN(t, "roles-upstream", "roles-wan", 397, []string{"10.39.7.2/24", "fd39:7::2/64"})
 	addOwnedRolePeerVLAN(t, "roles-upstream", "roles-mgmt", 396, []string{"fd39:6::2/64"})
 	queries := startResolverAuthority(t)
-	for _, specification := range []struct{ destination, gateway string }{
-		{"192.0.2.0/29", "10.39.7.1"},
-		{"2001:db8:b01:fe::/64", "fd39:7::1"},
-		{"fd39:5::/64", "fd39:7::1"},
-	} {
+	for _, specification := range []struct{ destination, gateway string }{{"192.0.2.0/29", "10.39.7.1"}, {"2001:db8:b01:fe::/64", "fd39:7::1"}, {"fd39:5::/64", "fd39:7::1"}} {
 		_, destination, parseErr := net.ParseCIDR(specification.destination)
 		if parseErr != nil {
 			t.Fatal(parseErr)
 		}
-		if err := netlink.RouteAdd(&netlink.Route{
-			Dst: destination,
-			Gw:  net.ParseIP(specification.gateway),
-		}); err != nil {
+		if err := netlink.RouteAdd(&netlink.Route{Dst: destination, Gw: net.ParseIP(specification.gateway)}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -153,48 +121,25 @@ func runOwnedRolesDaemonRuntime(t *testing.T) {
 	binary := protocolTestBinary(t)
 	configPath := filepath.Join(root, "config.toml")
 	var applicationFailing atomic.Bool
-	application := httptest.NewServer(
-		http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-			if applicationFailing.Load() {
-				writer.WriteHeader(http.StatusServiceUnavailable)
-				return
-			}
-			_, _ = writer.Write([]byte("healthy"))
-		}),
-	)
+	application := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		if applicationFailing.Load() {
+			writer.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = writer.Write([]byte("healthy"))
+	}))
 	defer application.Close()
 	identity, err := os.ReadFile("/etc/machine-id")
 	if err != nil {
 		t.Fatal(err)
 	}
 	settingsPath := filepath.Join(root, "observations.json")
-	settings := observation.ContinuousSettings{
-		Runtime: observation.RuntimeConfig{MachineIDPath: "/etc/machine-id", ProbeBinary: binary},
-		Checks: []observation.ScheduledCheck{
-			{
-				IntervalSeconds: 1,
-				Check: observation.CheckSpec{
-					ID:        "required-inbound",
-					Dimension: observation.DimensionInboundApplication,
-					Operation: observation.OperationHTTP,
-					Observer: observation.Endpoint{
-						Kind:      observation.EndpointLocal,
-						MachineID: strings.TrimSpace(string(identity)),
-					},
-					Family:    observation.FamilyIPv4,
-					Interface: "lo",
-					Source:    netip.MustParseAddr("127.0.0.1"),
-					Target:    application.URL,
-					ExpectedHTTPStatus: []int{
-						http.StatusOK,
-					},
-					ExpectedBody:   "healthy",
-					TimeoutSeconds: 2,
-					MaxAgeSeconds:  10,
-				},
-			},
-		},
-	}
+	settings := observation.ContinuousSettings{Runtime: observation.RuntimeConfig{MachineIDPath: "/etc/machine-id", ProbeBinary: binary}, Checks: []observation.ScheduledCheck{{IntervalSeconds: 1, Check: observation.CheckSpec{
+		ID: "required-inbound", Dimension: observation.DimensionInboundApplication, Operation: observation.OperationHTTP,
+		Observer: observation.Endpoint{Kind: observation.EndpointLocal, MachineID: strings.TrimSpace(string(identity))},
+		Family:   observation.FamilyIPv4, Interface: "lo", Source: netip.MustParseAddr("127.0.0.1"), Target: application.URL,
+		ExpectedHTTPStatus: []int{http.StatusOK}, ExpectedBody: "healthy", TimeoutSeconds: 2, MaxAgeSeconds: 10,
+	}}}}
 	encodedSettings, err := json.Marshal(settings)
 	if err != nil {
 		t.Fatal(err)
@@ -203,39 +148,21 @@ func runOwnedRolesDaemonRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	socket := filepath.Join(root, "forwarding.sock")
-	config := fmt.Sprintf(
-		"[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"200ms\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[ifmgr.modules.resolver]\nstate_file = %q\n[wanconfig]\npublish = true\n[bgp]\nenabled = true\nuse_wanconfig = true\n[bgp.forwarding_readiness]\nsocket_path = %q\npoll_interval_milliseconds = 100\nread_timeout_milliseconds = 500\n",
-		filepath.Join(root, "links.json"),
-		filepath.Join(root, "addresses.json"),
-		filepath.Join(root, "kernel.json"),
-		filepath.Join(root, "resolver.json"),
-		socket,
-	)
+	config := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"200ms\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.links]\nstate_file = %q\n[ifmgr.modules.addresses]\nstate_file = %q\n[ifmgr.modules.autoconfiguration]\nstate_file = %q\n[ifmgr.modules.resolver]\nstate_file = %q\n[wanconfig]\npublish = true\n[bgp]\nenabled = true\nuse_wanconfig = true\n[bgp.forwarding_readiness]\nsocket_path = %q\npoll_interval_milliseconds = 100\nread_timeout_milliseconds = 500\n", filepath.Join(root, "links.json"), filepath.Join(root, "addresses.json"), filepath.Join(root, "kernel.json"), filepath.Join(root, "resolver.json"), socket)
 	config += fmt.Sprintf("[ifmgr.modules.health]\nobservation_settings_file = %q\n", settingsPath)
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	reader, closeRepository, err := openPrivateRepository(
-		ctx,
-		slog.Default(),
-		selftestFlags{
-			repository: filepath.Join(root, "repository"),
-			modelsDir:  selftestModelsDir(t),
-		},
-	)
+	reader, closeRepository, err := openPrivateRepository(ctx, slog.Default(), selftestFlags{repository: filepath.Join(root, "repository"), modelsDir: selftestModelsDir(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer closeRepository()
 	exerciseHostObservations(t, ctx, reader, binary, settingsPath, root)
 	read := func() string {
-		value, found, exportErr := reader.ExportJSON(
-			ctx,
-			yangpub.DatastoreOperational,
-			"/ietf-interfaces:*",
-		)
+		value, found, exportErr := reader.ExportJSON(ctx, yangpub.DatastoreOperational, "/ietf-interfaces:*")
 		if exportErr != nil || !found {
 			return ""
 		}
@@ -250,8 +177,7 @@ func runOwnedRolesDaemonRuntime(t *testing.T) {
 			t.Logf("public state: %s", read())
 			var failures []string
 			for _, line := range strings.Split(runtimeDaemonLog(t, daemon), "\n") {
-				if strings.Contains(line, `"level":"WARN"`) ||
-					strings.Contains(line, `"level":"ERROR"`) {
+				if strings.Contains(line, `"level":"WARN"`) || strings.Contains(line, `"level":"ERROR"`) {
 					failures = append(failures, line)
 				}
 			}
@@ -266,35 +192,20 @@ func runOwnedRolesDaemonRuntime(t *testing.T) {
 	waitOwnedRoleUpdater(t, daemon)
 	waitOwnedRoleForwarding(t, daemon, socket, forwardingready.State{})
 	waitOwnedRuntimeAbsent(t, daemon, "enmwanbr0", 10*time.Second)
-	wantedDNS := []resolved.DNS{
-		{Family: unix.AF_INET6, Address: net.ParseIP("fd39:6::2").To16(), Port: 0, ServerName: ""},
-	}
+	wantedDNS := []resolved.DNS{{Family: unix.AF_INET6, Address: net.ParseIP("fd39:6::2").To16(), Port: 0, ServerName: ""}}
 	wantedDomains := []resolved.Domain{{Name: "lab.test", RoutingOnly: false}}
 	actualDNS, actualDomains := resolverRuntimeValues(t, "enmgmt0")
-	if !reflect.DeepEqual(actualDNS, wantedDNS) ||
-		!reflect.DeepEqual(actualDomains, wantedDomains) {
+	if !reflect.DeepEqual(actualDNS, wantedDNS) || !reflect.DeepEqual(actualDomains, wantedDomains) {
 		t.Fatalf("management resolver: DNS=%+v domains=%+v", actualDNS, actualDomains)
 	}
-	if output := runResolverCommand(
-		t,
-		"resolvectl",
-		"query",
-		"sensor",
-	); !strings.Contains(output, "10.39.7.99") ||
-		queries.Load() == 0 {
+	if output := runResolverCommand(t, "resolvectl", "query", "sensor"); !strings.Contains(output, "10.39.7.99") || queries.Load() == 0 {
 		t.Fatalf("management DNS query: %s; queries=%d", output, queries.Load())
 	}
 	assertStaticRuntimePacket(t, gateway, upstream.namespace, "udp6", "[fd39:6::2]:39601")
 	transit := newRuntimePeer(t, gateway, "latephys0", "roles-down", nil, nil, ownedRuntimeLateMAC)
 	defer transit.namespace.Close()
 	setRuntimeNamespace(t, transit.namespace)
-	addOwnedRolePeerVLAN(
-		t,
-		"roles-down",
-		"roles-lan",
-		395,
-		[]string{"192.0.2.2/29", "2001:db8:b01:fe::2/64"},
-	)
+	addOwnedRolePeerVLAN(t, "roles-down", "roles-lan", 395, []string{"192.0.2.2/29", "2001:db8:b01:fe::2/64"})
 	configureRuntimeLink(t, "lo", []string{"fd39:5::2/128"})
 	for _, address := range []string{"192.0.2.1", "2001:db8:b01:fe::1"} {
 		if err := netlink.RouteAdd(&netlink.Route{Gw: net.ParseIP(address)}); err != nil {
@@ -335,15 +246,7 @@ func runOwnedRolesDaemonRuntime(t *testing.T) {
 	assertOwnedRolePackets(t, gateway, transit.namespace, upstream.namespace)
 	killOwnedRuntimeDaemon(t, daemon)
 	writeOwnedRoleNetwork(t, networkDir, &enabled)
-	setReleaseConnectionField(
-		t,
-		networkDir,
-		"owned397",
-		"ietf-ip:ipv6",
-		json.RawMessage(
-			`{"address":[{"ip":"fd39:7::1","prefix-length":64}],"goodkind-mwan-steering:dhcp":false,"goodkind-mwan-steering:accept-ra":false,"goodkind-mwan-steering:gateway":"fd39:7::2","goodkind-mwan-steering:route-metric":398,"goodkind-mwan-steering:translation":{"mode":"ietf-nat:nptv6","nptv6":{"internal-prefix":"2001:db8:b01::/60","external-source":"configured","external-prefix":"2001:db8:540::/60"}}}`,
-		),
-	)
+	setReleaseConnectionField(t, networkDir, "owned397", "ietf-ip:ipv6", json.RawMessage(`{"address":[{"ip":"fd39:7::1","prefix-length":64}],"goodkind-mwan-steering:dhcp":false,"goodkind-mwan-steering:accept-ra":false,"goodkind-mwan-steering:gateway":"fd39:7::2","goodkind-mwan-steering:route-metric":398,"goodkind-mwan-steering:translation":{"mode":"ietf-nat:nptv6","nptv6":{"internal-prefix":"2001:db8:b01::/60","external-source":"configured","external-prefix":"2001:db8:540::/60"}}}`))
 	configureRuntimeLink(t, "owned397", []string{"2001:db8:540::1/128"})
 	daemon = startRuntimeDaemon(t, binary, configPath, root, "roles-ipv6-failure")
 	waitOwnedRoleForwarding(t, daemon, socket, forwardingready.State{IPv4: true, IPv6: false})
@@ -378,20 +281,9 @@ func runOwnedRolesDaemonRuntime(t *testing.T) {
 	waitStaticRuntimeAddress(t, daemon, "roles-other", "198.51.100.1/24", true)
 }
 
-func exerciseHostObservations(
-	t *testing.T,
-	ctx context.Context,
-	reader yangpub.Publisher,
-	binary string,
-	settingsPath string,
-	root string,
-) {
+func exerciseHostObservations(t *testing.T, ctx context.Context, reader yangpub.Publisher, binary, settingsPath, root string) {
 	t.Helper()
-	if err := reader.SetItems(
-		ctx,
-		yangpub.DatastoreRunning,
-		[]yangpub.Item{{Path: selftestHashModePath, Value: selftestHashModeValue}},
-	); err != nil {
+	if err := reader.SetItems(ctx, yangpub.DatastoreRunning, []yangpub.Item{{Path: selftestHashModePath, Value: selftestHashModeValue}}); err != nil {
 		t.Fatal(err)
 	}
 	before, found, err := reader.ExportJSON(ctx, yangpub.DatastoreRunning, "/ietf-interfaces:*")
@@ -399,10 +291,7 @@ func exerciseHostObservations(
 		t.Fatalf("read host running configuration: found=%v err=%v", found, err)
 	}
 	configPath := filepath.Join(root, "host.toml")
-	configuration := fmt.Sprintf(
-		"[ifmgr]\nrole = \"host\"\n[ifmgr.iface.lo]\n[ifmgr.modules.health]\nobservation_settings_file = %q\n[wanconfig]\npublish = true\n",
-		settingsPath,
-	)
+	configuration := fmt.Sprintf("[ifmgr]\nrole = \"host\"\n[ifmgr.iface.lo]\n[ifmgr.modules.health]\nobservation_settings_file = %q\n[wanconfig]\npublish = true\n", settingsPath)
 	if err := os.WriteFile(configPath, []byte(configuration), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -424,13 +313,7 @@ func exerciseHostObservations(
 	waitRecurringApplication(t, ctx, reader, daemon, observation.OutcomePass)
 	after, found, err := reader.ExportJSON(ctx, yangpub.DatastoreRunning, "/ietf-interfaces:*")
 	if err != nil || !found || after != before {
-		t.Fatalf(
-			"host observation replaced running WAN configuration: found=%v err=%v before=%s after=%s",
-			found,
-			err,
-			before,
-			after,
-		)
+		t.Fatalf("host observation replaced running WAN configuration: found=%v err=%v before=%s after=%s", found, err, before, after)
 	}
 	stopRuntimeDaemon(t, daemon)
 	if !strings.Contains(runtimeDaemonLog(t, daemon), "recurring health observations stopped") {
@@ -438,22 +321,12 @@ func exerciseHostObservations(
 	}
 }
 
-func waitRecurringApplication(
-	t *testing.T,
-	ctx context.Context,
-	reader yangpub.Publisher,
-	daemon *runtimeDaemon,
-	expected observation.Outcome,
-) {
+func waitRecurringApplication(t *testing.T, ctx context.Context, reader yangpub.Publisher, daemon *runtimeDaemon, expected observation.Outcome) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	var last string
 	for time.Now().Before(deadline) {
-		value, found, err := reader.ExportJSON(
-			ctx,
-			yangpub.DatastoreOperational,
-			"/goodkind-mwan-steering:daemon/observation",
-		)
+		value, found, err := reader.ExportJSON(ctx, yangpub.DatastoreOperational, "/goodkind-mwan-steering:daemon/observation")
 		if err != nil {
 			t.Fatalf("read recurring operational state: %v", err)
 		}
@@ -484,11 +357,8 @@ func waitRecurringApplication(
 				if err := json.Unmarshal([]byte(check.Result.Evidence), &result); err != nil {
 					t.Fatal(err)
 				}
-				if check.ID == "required-inbound" &&
-					result.Availability == observation.AvailabilityComplete &&
-					result.Outcome == expected {
-					if result.Path.Source != netip.MustParseAddr("127.0.0.1") ||
-						result.Path.Interface != "lo" {
+				if check.ID == "required-inbound" && result.Availability == observation.AvailabilityComplete && result.Outcome == expected {
+					if result.Path.Source != netip.MustParseAddr("127.0.0.1") || result.Path.Interface != "lo" {
 						t.Fatalf("served result omitted actual application path: %+v", result)
 					}
 					if expected == observation.OutcomeFail && len(check.Recent) < 2 {
@@ -500,12 +370,7 @@ func waitRecurringApplication(
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	t.Fatalf(
-		"recurring application outcome %s absent: %s; %s",
-		expected,
-		last,
-		runtimeLogTail(t, daemon, 40),
-	)
+	t.Fatalf("recurring application outcome %s absent: %s; %s", expected, last, runtimeLogTail(t, daemon, 40))
 }
 
 func addOwnedRolePeerVLAN(t *testing.T, parentName, name string, tag int, addresses []string) {
@@ -514,10 +379,7 @@ func addOwnedRolePeerVLAN(t *testing.T, parentName, name string, tag int, addres
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Vlan{
-		LinkAttrs: netlink.LinkAttrs{Name: name, ParentIndex: parent.Attrs().Index},
-		VlanId:    tag,
-	}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: name, ParentIndex: parent.Attrs().Index}, VlanId: tag}); err != nil {
 		t.Fatal(err)
 	}
 	configureRuntimeLink(t, name, addresses)
@@ -536,12 +398,7 @@ func assertOwnedRolePackets(t *testing.T, gateway, transit, upstream netns.NsHan
 	setRuntimeNamespace(t, gateway)
 }
 
-func waitOwnedRoleForwarding(
-	t *testing.T,
-	daemon *runtimeDaemon,
-	socket string,
-	expected forwardingready.State,
-) {
+func waitOwnedRoleForwarding(t *testing.T, daemon *runtimeDaemon, socket string, expected forwardingready.State) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	var state forwardingready.State
@@ -562,13 +419,7 @@ func waitOwnedRoleForwarding(
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf(
-		"forwarding readiness=%+v expected=%+v err=%v; %s",
-		state,
-		expected,
-		err,
-		runtimeLogTail(t, daemon, 50),
-	)
+	t.Fatalf("forwarding readiness=%+v expected=%+v err=%v; %s", state, expected, err, runtimeLogTail(t, daemon, 50))
 }
 
 func waitOwnedRoleProvider(t *testing.T, daemon *runtimeDaemon, read func() string) {
@@ -598,8 +449,7 @@ func waitOwnedRoleProvider(t *testing.T, daemon *runtimeDaemon, read func() stri
 				}
 				passed := 0
 				for _, probe := range entry.Steering.State.Probe {
-					if probe.Result == "pass" &&
-						(probe.Family == "ipv4" || probe.Family == "ipv6") {
+					if probe.Result == "pass" && (probe.Family == "ipv4" || probe.Family == "ipv6") {
 						passed++
 					}
 				}
@@ -616,17 +466,7 @@ func waitOwnedRoleProvider(t *testing.T, daemon *runtimeDaemon, read func() stri
 
 func writeOwnedRoleNetwork(t *testing.T, directory string, forwarding *bool) {
 	t.Helper()
-	writeStaticRuntimeNetwork(
-		t,
-		directory,
-		"10.39.7.1",
-		"fd39:7::1",
-		"10.39.7.2",
-		"fd39:7::2",
-		398,
-		24,
-		true,
-	)
+	writeStaticRuntimeNetwork(t, directory, "10.39.7.1", "fd39:7::1", "10.39.7.2", "fd39:7::2", 398, 24, true)
 	path := filepath.Join(directory, "network.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -650,14 +490,11 @@ func writeOwnedRoleNetwork(t *testing.T, directory string, forwarding *bool) {
 		if err := json.Unmarshal(entry["name"], &name); err != nil {
 			t.Fatal(err)
 		}
-		if name != "ownphys0" && name != "latephys0" && name != "owned397" && name != "enmgmt0" &&
-			name != "enmwanbr0" {
+		if name != "ownphys0" && name != "latephys0" && name != "owned397" && name != "enmgmt0" && name != "enmwanbr0" {
 			continue
 		}
 		if name == "owned397" {
-			entry["goodkind-mwan-steering:wan"] = json.RawMessage(
-				`{"name":"static","table-id":397,"fw-mark":4,"fw-mark-prio":397,"from-prio":97,"health":{"enabled":true,"ping-count":1,"success-threshold":1,"failure-threshold":1,"recovery-threshold":1,"check-interval":1,"targets-v4":["10.39.7.2"],"targets-v6":["fd39:7::2"]}}`,
-			)
+			entry["goodkind-mwan-steering:wan"] = json.RawMessage(`{"name":"static","table-id":397,"fw-mark":4,"fw-mark-prio":397,"from-prio":97,"health":{"enabled":true,"ping-count":1,"success-threshold":1,"failure-threshold":1,"recovery-threshold":1,"check-interval":1,"targets-v4":["10.39.7.2"],"targets-v6":["fd39:7::2"]}}`)
 		}
 		if name == "enmgmt0" || name == "enmwanbr0" {
 			entry["goodkind-mwan-steering:owner"] = json.RawMessage(`"mwan"`)
@@ -667,38 +504,25 @@ func writeOwnedRoleNetwork(t *testing.T, directory string, forwarding *bool) {
 			if name == "enmwanbr0" {
 				parent, tag = "latephys0", 395
 			}
-			entry["goodkind-mwan-steering:link"] = json.RawMessage(
-				fmt.Sprintf(`{"vlan":{"parent":%q,"id":%d}}`, parent, tag),
-			)
+			entry["goodkind-mwan-steering:link"] = json.RawMessage(fmt.Sprintf(`{"vlan":{"parent":%q,"id":%d}}`, parent, tag))
 			if name == "enmgmt0" {
-				entry["ietf-ip:ipv6"] = json.RawMessage(
-					`{"address":[{"ip":"fd39:6::1","prefix-length":64}],"forwarding":false,"goodkind-mwan-steering:dhcp":false,"goodkind-mwan-steering:accept-ra":false,"goodkind-mwan-steering:resolver":{"dns":["fd39:6::2"],"search":["lab.test"]}}`,
-				)
+				entry["ietf-ip:ipv6"] = json.RawMessage(`{"address":[{"ip":"fd39:6::1","prefix-length":64}],"forwarding":false,"goodkind-mwan-steering:dhcp":false,"goodkind-mwan-steering:accept-ra":false,"goodkind-mwan-steering:resolver":{"dns":["fd39:6::2"],"search":["lab.test"]}}`)
 			} else {
 				forwardingField := ""
 				if forwarding != nil {
 					forwardingField = fmt.Sprintf(`,"forwarding":%t`, *forwarding)
 				}
-				entry["ietf-ip:ipv4"] = json.RawMessage(
-					`{"address":[{"ip":"192.0.2.1","prefix-length":29}]` + forwardingField + `}`,
-				)
-				entry["ietf-ip:ipv6"] = json.RawMessage(
-					`{"address":[{"ip":"2001:db8:b01:fe::1","prefix-length":64}],"goodkind-mwan-steering:dhcp":false,"goodkind-mwan-steering:accept-ra":false,"goodkind-mwan-steering:route":[{"destination":"fd39:5::/64","gateway":"2001:db8:b01:fe::2"}]` + forwardingField + `}`,
-				)
+				entry["ietf-ip:ipv4"] = json.RawMessage(`{"address":[{"ip":"192.0.2.1","prefix-length":29}]` + forwardingField + `}`)
+				entry["ietf-ip:ipv6"] = json.RawMessage(`{"address":[{"ip":"2001:db8:b01:fe::1","prefix-length":64}],"goodkind-mwan-steering:dhcp":false,"goodkind-mwan-steering:accept-ra":false,"goodkind-mwan-steering:route":[{"destination":"fd39:5::/64","gateway":"2001:db8:b01:fe::2"}]` + forwardingField + `}`)
 			}
 		}
 		configured = append(configured, entry)
 	}
 	var group map[string]json.RawMessage
-	if err := json.Unmarshal(
-		interfaces["goodkind-mwan-steering:steering-group"],
-		&group,
-	); err != nil {
+	if err := json.Unmarshal(interfaces["goodkind-mwan-steering:steering-group"], &group); err != nil {
 		t.Fatal(err)
 	}
-	group["firewall"] = json.RawMessage(
-		`{"management-interface":"enmgmt0","management-service":[{"protocol":"tcp","port":22}],"pinned-provider":"static","pinned-source-v4":"192.0.2.1","pinned-source-port":51820,"pinned-destination-port":51821,"pinned-set-v4-name":"roles_pinned_v4","pinned-set-v6-name":"roles_pinned_v6"}`,
-	)
+	group["firewall"] = json.RawMessage(`{"management-interface":"enmgmt0","management-service":[{"protocol":"tcp","port":22}],"pinned-provider":"static","pinned-source-v4":"192.0.2.1","pinned-source-port":51820,"pinned-destination-port":51821,"pinned-set-v4-name":"roles_pinned_v4","pinned-set-v6-name":"roles_pinned_v6"}`)
 	interfaces["goodkind-mwan-steering:steering-group"], err = json.Marshal(group)
 	if err != nil {
 		t.Fatal(err)
@@ -724,9 +548,7 @@ func setupOwnedRoleUpdater(t *testing.T, networkDir string) {
 	t.Helper()
 	bootstrap := os.Getenv("MWAN_OWNED_ROLE_BOOTSTRAP_DIR")
 	if bootstrap == "" {
-		t.Fatal(
-			"MWAN_OWNED_ROLE_BOOTSTRAP_DIR must contain the production Configs destination-refresh service and script",
-		)
+		t.Fatal("MWAN_OWNED_ROLE_BOOTSTRAP_DIR must contain the production Configs destination-refresh service and script")
 	}
 	service := "mwan-update-att-pinned-dests.service"
 	t.Cleanup(func() { runResolverCommand(t, "systemctl", "daemon-reload") })
@@ -755,11 +577,7 @@ func setupOwnedRoleUpdater(t *testing.T, networkDir string) {
 		})
 	}
 	configuration := "MWAN_PINNED_SET_V4_NAME=roles_pinned_v4\nMWAN_PINNED_SET_V6_NAME=roles_pinned_v6\nMWAN_ATT_PINNED_V4_SEED_CIDRS=198.51.100.0/24\nMWAN_ATT_PINNED_V6_SEED_CIDRS=2001:db8:100::/48\n"
-	if err := os.WriteFile(
-		filepath.Join(networkDir, "mwan.env"),
-		[]byte(configuration),
-		0o600,
-	); err != nil {
+	if err := os.WriteFile(filepath.Join(networkDir, "mwan.env"), []byte(configuration), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	runResolverCommand(t, "systemctl", "daemon-reload")
@@ -773,18 +591,9 @@ func waitOwnedRoleUpdater(t *testing.T, daemon *runtimeDaemon) {
 	deadline := time.Now().Add(10 * time.Second)
 	var status, sets []byte
 	for time.Now().Before(deadline) {
-		status, _ = exec.Command(
-			"systemctl",
-			"show",
-			"mwan-update-att-pinned-dests.service",
-			"--property=Result",
-			"--property=ActiveState",
-		).CombinedOutput()
+		status, _ = exec.Command("systemctl", "show", "mwan-update-att-pinned-dests.service", "--property=Result", "--property=ActiveState").CombinedOutput()
 		sets, _ = exec.Command("nft", "list", "table", "inet", "mangle").CombinedOutput()
-		if strings.Contains(string(status), "Result=success") &&
-			strings.Contains(string(status), "ActiveState=inactive") &&
-			strings.Contains(string(sets), "198.51.100.0/24") &&
-			strings.Contains(string(sets), "2001:db8:100::/48") {
+		if strings.Contains(string(status), "Result=success") && strings.Contains(string(status), "ActiveState=inactive") && strings.Contains(string(sets), "198.51.100.0/24") && strings.Contains(string(sets), "2001:db8:100::/48") {
 			return
 		}
 		assertRuntimeDaemonRunning(t, daemon)

@@ -20,25 +20,11 @@ func TestBGPSpecificPrefixDaemonRuntime(t *testing.T) {
 
 func runBGPSpecificPrefixDaemonRuntime(t *testing.T, run *bgpRuntimeRun) {
 	defaultRoute := netip.MustParsePrefix("::/0")
-	specific := bgpRuntimeDirectProvider(
-		bgpRuntimeLocalASN,
-		bgpRuntimeLocalASN,
-		"2001:db8:a:99::/64",
-	)
+	specific := bgpRuntimeDirectProvider(bgpRuntimeLocalASN, bgpRuntimeLocalASN, "2001:db8:a:99::/64")
 	other := bgpRuntimeProvider{
-		id:           "other",
-		device:       "enbgp1",
-		routerDevice: "rtr-b",
-		network:      "2001:db8:c",
-		table:        300,
-		mark:         3,
-		tier:         1,
-		metric:       310,
-		localASN:     bgpRuntimeLocalASN,
-		remoteASN:    bgpRuntimeRemoteASN,
-		learned:      defaultRoute,
-		exports:      []bgpRuntimeExport{{prefix: bgpRuntimeHome, backupFor: ""}},
-		session:      true,
+		id: "other", device: "enbgp1", routerDevice: "rtr-b", network: "2001:db8:c", table: 300, mark: 3, tier: 1, metric: 310,
+		localASN: bgpRuntimeLocalASN, remoteASN: bgpRuntimeRemoteASN, learned: defaultRoute,
+		exports: []bgpRuntimeExport{{prefix: bgpRuntimeHome, backupFor: ""}}, session: true,
 	}
 	run.topology = buildBGPRuntimeTopology(t, run.gateway, specific, other)
 	writeBGPRuntimeNetwork(t, run.networkDir, specific, other)
@@ -49,24 +35,9 @@ func runBGPSpecificPrefixDaemonRuntime(t *testing.T, run *bgpRuntimeRun) {
 		run.startRouter(t, provider).announce(t, provider.learned, provider.peer())
 	}
 	for _, provider := range providers {
-		waitTunnelRuntimeFamily(
-			t,
-			daemon,
-			run.read,
-			provider.device,
-			"ipv6",
-			"ready",
-			"ready",
-			tunnelRuntimeRecoverWindow,
-		)
+		waitTunnelRuntimeFamily(t, daemon, run.read, provider.device, "ipv6", "ready", "ready", tunnelRuntimeRecoverWindow)
 	}
-	waitBGPRuntimeReceived(
-		t,
-		daemon,
-		run.read,
-		run.routers[other.id],
-		netip.MustParsePrefix(bgpRuntimeHome),
-	)
+	waitBGPRuntimeReceived(t, daemon, run.read, run.routers[other.id], netip.MustParsePrefix(bgpRuntimeHome))
 	requireBGPRuntimeExchange(t, run, daemon, specific)
 
 	setRuntimeNamespace(t, run.topology.remotes[other.id])

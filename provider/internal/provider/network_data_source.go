@@ -36,24 +36,16 @@ func newNetworkDataSource() datasource.DataSource {
 	return &networkDataSource{}
 }
 
-func (d *networkDataSource) Metadata(
-	_ context.Context,
-	req datasource.MetadataRequest,
-	resp *datasource.MetadataResponse,
-) {
+func (d *networkDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_network"
 }
 
-func (d *networkDataSource) Schema(
-	_ context.Context,
-	_ datasource.SchemaRequest,
-	resp *datasource.SchemaResponse,
-) {
+func (d *networkDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: "The data source validates known network content against the YANG schema during planning. " +
 			"The data source returns canonical JSON, the decoded guest type, and configured maps.",
 		Attributes: map[string]schema.Attribute{
-			contentAttributeKey: schema.StringAttribute{
+			"content": schema.StringAttribute{
 				Required:    true,
 				Description: "The content attribute contains the network document as RFC 7951 JSON.",
 			},
@@ -112,26 +104,19 @@ func networkLoadFailure(err error) (string, string) {
 	if errors.As(err, &rejected) {
 		return invalidSchemaSummary, rejected.Unwrap().Error()
 	}
-
 	var malformed *networkload.JSONError
 	if errors.As(err, &malformed) {
 		return invalidDocumentSummary, malformed.Unwrap().Error()
 	}
-
 	return invalidConfigurationSummary, err.Error()
 }
 
-func (d *networkDataSource) Read(
-	ctx context.Context,
-	req datasource.ReadRequest,
-	resp *datasource.ReadResponse,
-) {
+func (d *networkDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var model networkDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &model)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
 	contentPath := path.Root("content")
 	content := []byte(model.Content.ValueString())
 
@@ -140,7 +125,6 @@ func (d *networkDataSource) Read(
 		resp.Diagnostics.AddAttributeError(contentPath, invalidDocumentSummary, err.Error())
 		return
 	}
-
 	networkSchema, err := yangschema.LoadEmbedded()
 	if err != nil {
 		resp.Diagnostics.AddError(schemaUnavailableSummary, err.Error())
@@ -151,10 +135,8 @@ func (d *networkDataSource) Read(
 	if err != nil {
 		summary, detail := networkLoadFailure(err)
 		resp.Diagnostics.AddAttributeError(contentPath, summary, detail)
-
 		return
 	}
-
 	for _, rejection := range config.Rejected {
 		resp.Diagnostics.AddAttributeError(
 			contentPath,
@@ -162,7 +144,6 @@ func (d *networkDataSource) Read(
 			fmt.Sprintf("Interface %s: %v", rejection.Interface, rejection.Err),
 		)
 	}
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -172,7 +153,6 @@ func (d *networkDataSource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
 	model.CanonicalContent = types.StringValue(string(canonical))
 	model.GuestType = types.StringValue(string(config.GuestType))
 	model.networkMaps = maps

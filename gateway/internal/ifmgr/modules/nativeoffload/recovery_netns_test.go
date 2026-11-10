@@ -23,31 +23,15 @@ func TestNativeAdmissionBlockedPolicyRecovery(t *testing.T) {
 	if !module.refreshPolicy(fixture.ctx) {
 		t.Fatal("the real kernel baseline did not certify")
 	}
-	if err := netlink.QdiscAdd(&netlink.Clsact{
-		QdiscAttrs: netlink.QdiscAttrs{
-			LinkIndex: fixture.output.Index,
-			Handle:    netlink.MakeHandle(0xffff, 0),
-			Parent:    netlink.HANDLE_CLSACT,
-		},
-	}); err != nil {
+	if err := netlink.QdiscAdd(&netlink.Clsact{QdiscAttrs: netlink.QdiscAttrs{
+		LinkIndex: fixture.output.Index, Handle: netlink.MakeHandle(0xffff, 0), Parent: netlink.HANDLE_CLSACT,
+	}}); err != nil {
 		t.Fatalf("add recovery fixture clsact: %v", err)
 	}
-	filter := &netlink.MatchAll{
-		FilterAttrs: netlink.FilterAttrs{
-			LinkIndex: fixture.output.Index,
-			Parent:    netlink.HANDLE_MIN_EGRESS,
-			Handle:    1,
-			Priority:  1,
-			Protocol:  unix.ETH_P_ALL,
-		},
-		Actions: []netlink.Action{
-			&netlink.GenericAction{
-				ActionAttrs: netlink.ActionAttrs{
-					Action: netlink.TC_ACT_SHOT,
-				},
-			},
-		},
-	}
+	filter := &netlink.MatchAll{FilterAttrs: netlink.FilterAttrs{
+		LinkIndex: fixture.output.Index, Parent: netlink.HANDLE_MIN_EGRESS,
+		Handle: 1, Priority: 1, Protocol: unix.ETH_P_ALL,
+	}, Actions: []netlink.Action{&netlink.GenericAction{ActionAttrs: netlink.ActionAttrs{Action: netlink.TC_ACT_SHOT}}}}
 	if err := netlink.FilterAdd(filter); err != nil {
 		t.Fatalf("install the real recovery fixture drop: %v", err)
 	}

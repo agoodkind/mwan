@@ -36,7 +36,6 @@ func AdministrativeState(ctx context.Context, name string) (state string, failur
 	if err != nil {
 		return "", err
 	}
-
 	return link.AdministrativeState, nil
 }
 
@@ -44,58 +43,31 @@ func AdministrativeState(ctx context.Context, name string) (state string, failur
 func Addresses(ctx context.Context, name string) (result []Address, failure error) {
 	defer func() {
 		if failure != nil {
-			slog.WarnContext(
-				ctx,
-				"networkd address observation failed",
-				"interface",
-				name,
-				"error",
-				failure,
-			)
+			slog.WarnContext(ctx, "networkd address observation failed", "interface", name, "error", failure)
 		}
 	}()
 	link, err := describeLink(ctx, name)
 	if err != nil {
 		return nil, err
 	}
-
 	for _, address := range link.Addresses {
-		ipAddress, valid := netip.AddrFromSlice(address.Address)
-		if !valid || (address.Family != 2 && address.Family != 10) ||
-			(address.Family == 2 && !ipAddress.Is4()) ||
-			(address.Family == 10 && !ipAddress.Is6()) {
+		ip, valid := netip.AddrFromSlice(address.Address)
+		if !valid || (address.Family != 2 && address.Family != 10) || (address.Family == 2 && !ip.Is4()) || (address.Family == 10 && !ip.Is6()) {
 			return nil, fmt.Errorf("networkd link %s has an invalid address", name)
 		}
-
-		prefix := netip.PrefixFrom(ipAddress, address.PrefixLength)
+		prefix := netip.PrefixFrom(ip, address.PrefixLength)
 		if !prefix.IsValid() {
 			return nil, fmt.Errorf("networkd link %s has an invalid address prefix", name)
 		}
-
-		result = append(
-			result,
-			Address{
-				Prefix:       prefix,
-				ConfigSource: address.ConfigSource,
-				ConfigState:  address.ConfigState,
-			},
-		)
+		result = append(result, Address{Prefix: prefix, ConfigSource: address.ConfigSource, ConfigState: address.ConfigState})
 	}
-
 	return result, nil
 }
 
 func describeLink(ctx context.Context, name string) (result linkDescription, failure error) {
 	defer func() {
 		if failure != nil {
-			slog.WarnContext(
-				ctx,
-				"networkd link observation failed",
-				"interface",
-				name,
-				"error",
-				failure,
-			)
+			slog.WarnContext(ctx, "networkd link observation failed", "interface", name, "error", failure)
 		}
 	}()
 	bus, err := dbus.ConnectSystemBus(dbus.WithContext(ctx))
@@ -106,36 +78,18 @@ func describeLink(ctx context.Context, name string) (result linkDescription, fai
 	manager := bus.Object("org.freedesktop.network1", "/org/freedesktop/network1")
 	var index int32
 	var path dbus.ObjectPath
-	if err := manager.CallWithContext(
-		ctx,
-		"org.freedesktop.network1.Manager.GetLinkByName",
-		dbus.FlagNoAutoStart,
-		name,
-	).Store(
-		&index,
-		&path,
-	); err != nil {
+	if err := manager.CallWithContext(ctx, "org.freedesktop.network1.Manager.GetLinkByName", dbus.FlagNoAutoStart, name).Store(&index, &path); err != nil {
 		return result, fmt.Errorf("find networkd link %s: %w", name, err)
 	}
-
 	var data string
-	if err := bus.Object("org.freedesktop.network1", path).CallWithContext(
-		ctx,
-		"org.freedesktop.network1.Link.Describe",
-		dbus.FlagNoAutoStart,
-	).Store(
-		&data,
-	); err != nil {
+	if err := bus.Object("org.freedesktop.network1", path).CallWithContext(ctx, "org.freedesktop.network1.Link.Describe", dbus.FlagNoAutoStart).Store(&data); err != nil {
 		return result, fmt.Errorf("describe networkd link %s: %w", name, err)
 	}
-
 	if err := json.Unmarshal([]byte(data), &result); err != nil {
 		return result, fmt.Errorf("decode networkd link %s: %w", name, err)
 	}
-
 	if result.AdministrativeState == "" {
 		return result, fmt.Errorf("networkd link %s has no administrative state", name)
 	}
-
 	return result, nil
 }

@@ -66,11 +66,7 @@ type PathReadiness struct {
 }
 
 func noPath() PathReadiness {
-	return PathReadiness{
-		PathVerdict: PathVerdict{State: "", Dependency: "", Reason: ""},
-		Since:       time.Time{},
-		History:     nil,
-	}
+	return PathReadiness{PathVerdict: PathVerdict{State: "", Dependency: "", Reason: ""}, Since: time.Time{}, History: nil}
 }
 
 func familyState(current *ConnectionState, family string) *FamilyState {
@@ -80,7 +76,6 @@ func familyState(current *ConnectionState, family string) *FamilyState {
 	case familyIPv6:
 		return &current.IPv6
 	}
-
 	return nil
 }
 
@@ -88,41 +83,26 @@ func (s *Store) applyPathLocked(state *FamilyState, verdict PathVerdict) *PathTr
 	if state.Path.PathVerdict == verdict {
 		return nil
 	}
-
 	s.transitionSequence++
 	at := s.clock.Now().UTC()
 	transition := PathTransition{
-		ID:       fmt.Sprintf("%s:%d", s.runID, s.transitionSequence),
-		At:       at,
-		Previous: state.Path.State,
-		Current:  verdict,
+		ID: fmt.Sprintf("%s:%d", s.runID, s.transitionSequence), At: at, Previous: state.Path.State, Current: verdict,
 	}
 	history := append(slices.Clone(state.Path.History), transition)
 	if len(history) > PathHistoryLimit {
 		history = history[len(history)-PathHistoryLimit:]
 	}
-
 	since := state.Path.Since
 	if state.Path.State != verdict.State {
 		since = at
 	}
-
 	state.Path = PathReadiness{PathVerdict: verdict, Since: since, History: history}
-
 	return &transition
 }
 
 func logPathTransition(logger *slog.Logger, id, family string, transition *PathTransition) {
 	if logger != nil && transition != nil {
-		logger.Info(
-			"ifmgr: path readiness transition",
-			"connection_id",
-			id,
-			"family",
-			family,
-			"transition",
-			*transition,
-		)
+		logger.Info("ifmgr: path readiness transition", "connection_id", id, "family", family, "transition", *transition)
 	}
 }
 
@@ -135,7 +115,6 @@ func (s *Store) SetPathReadiness(id, family string, verdict PathVerdict) {
 		s.mu.Unlock()
 		return
 	}
-
 	transition := s.applyPathLocked(state, verdict)
 	s.connections[id] = current
 	logger := s.transitionLog
@@ -152,7 +131,6 @@ func (s *Store) SetFamilyReadiness(id, family, readiness string, verdict PathVer
 		s.mu.Unlock()
 		return
 	}
-
 	forwarding := s.applyReadinessLocked(&current, state, family, readiness)
 	path := s.applyPathLocked(state, verdict)
 	s.connections[id] = current
@@ -162,28 +140,12 @@ func (s *Store) SetFamilyReadiness(id, family, readiness string, verdict PathVer
 	logPathTransition(logger, id, family, path)
 }
 
-func (s *Store) applyReadinessLocked(
-	current *ConnectionState,
-	state *FamilyState,
-	family string,
-	readiness string,
-) *Transition {
+func (s *Store) applyReadinessLocked(current *ConnectionState, state *FamilyState, family, readiness string) *Transition {
 	previous := state.Readiness
 	state.Readiness = readiness
 	if previous == readiness {
 		return nil
 	}
-
-	value := s.addTransitionLocked(
-		current,
-		family,
-		previous,
-		readiness,
-		"evaluate-forwarding",
-		"routing",
-		"forwarding readiness changed",
-		s.clock.Now(),
-	)
-
+	value := s.addTransitionLocked(current, family, previous, readiness, "evaluate-forwarding", "routing", "forwarding readiness changed", s.clock.Now())
 	return &value
 }

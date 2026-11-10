@@ -110,7 +110,8 @@ type gateVerdict struct {
 
 // bootIDPattern matches the kernel's boot_id UUID exactly, so a truncated or
 // error-shaped guest-agent response never passes as a boot id.
-var bootIDPattern = regexp.MustCompile(`^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$`)
+var bootIDPattern = regexp.MustCompile(
+	`^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$`)
 
 // deployGateDeps carries the gate's side-effecting operations so the verdict
 // logic is testable without a hypervisor. The real wiring lives in
@@ -120,21 +121,15 @@ type deployGateDeps struct {
 	diagnostics     io.Writer
 	ping6           func(context.Context, netip.Addr, time.Duration) (time.Duration, error)
 	ping4           func(context.Context, string, netip.Addr, time.Duration) (time.Duration, error)
-	probeDownstream func(context.Context, downstreamProbeConfig, requiredEgressFamilies) (
-		bool,
-		string,
-	)
-	readBootID func(ctx context.Context, vmid int) (string, error)
-	now        func() time.Time
-	sleep      func(d time.Duration)
+	probeDownstream func(context.Context, downstreamProbeConfig, requiredEgressFamilies) (bool, string)
+	readBootID      func(ctx context.Context, vmid int) (string, error)
+	now             func() time.Time
+	sleep           func(d time.Duration)
 	// loadNetwork and loadNetworkFrom both call networkjson.Load. Both checks
 	// apply identical schema validation and loader rules.
 	loadNetwork     func() (*networkjson.Config, error)
 	loadNetworkFrom func(path string, schemaDir string) (*networkjson.Config, error)
-	listAddrs       func(ctx context.Context, log *slog.Logger, iface string) (
-		[]netif.CurrentAddr,
-		error,
-	)
+	listAddrs       func(ctx context.Context, log *slog.Logger, iface string) ([]netif.CurrentAddr, error)
 	// runGuestOwnedCheck runs that check from the hypervisor through the guest
 	// agent.
 	runGuestOwnedCheck func(ctx context.Context, vmid int) (ops.GuestExecResult, error)
@@ -152,7 +147,6 @@ type ownedMissingAlert struct {
 
 func newDeployGateDeps(output, diagnostics io.Writer) deployGateDeps {
 	probe := netif.NewV6Probe("", nil)
-
 	return deployGateDeps{
 		out:             output,
 		diagnostics:     diagnostics,
@@ -218,68 +212,41 @@ func waitDeploy(ctx context.Context, deps deployGateDeps, in waitDeployInputs) i
 	}
 	verdict.RebootRC = waitReboot(ctx, deps, in.vmid, in.oldBootID, in.rebootBudget)
 	if verdict.RebootRC != exitDeployGateFailed {
-		verdict.EgressRC = waitEgressWithProbe(
-			ctx,
-			deps,
-			in.egressBudget,
-			in.rounds,
+		verdict.EgressRC = waitEgressWithProbe(ctx, deps, in.egressBudget, in.rounds,
 			func(ctx context.Context) (bool, string) {
 				return deps.probeDownstream(ctx, in.probe, in.families)
-			},
-		)
+			})
 	}
-
 	ownedReport := ""
 	if verdict.EgressRC == exitDeployGateOK {
 		verdict.OwnedRC, ownedReport = waitOwnedAddresses(ctx, deps, in.vmid, deployGateOwnedBudget)
 	}
-
 	verdict.FinishedAt = deps.now().UTC().Format(time.RFC3339)
 	writeErr := writeVerdictFile(in.verdictPath, verdict)
 	if verdict.OwnedRC == exitDeployGateFailed {
-		alertErr := deps.alertOwnedMissing(
-			ctx,
-			ownedMissingAlert{
-				VMID:    in.vmid,
-				TraceID: in.traceID,
-				Report:  ownedReport,
-			},
-		)
+		alertErr := deps.alertOwnedMissing(ctx, ownedMissingAlert{
+			VMID:    in.vmid,
+			TraceID: in.traceID,
+			Report:  ownedReport,
+		})
 		if alertErr != nil {
 			fmt.Fprintf(deps.out, "owned-address alert not sent: %v\n", alertErr)
 		} else {
 			fmt.Fprintln(deps.out, "owned-address alert sent")
 		}
 	}
-
 	if writeErr != nil {
 		fmt.Fprintf(deps.diagnostics, "mwan deploy: write verdict: %v\n", writeErr)
 		return exitDeployGateFailed
 	}
-
-	log.InfoContext(
-		ctx,
-		"deploy-gate: verdict recorded",
-		"trace_id",
-		verdict.TraceID,
-		"reboot_rc",
-		verdict.RebootRC,
-		"egress_rc",
-		verdict.EgressRC,
-		"owned_rc",
-		verdict.OwnedRC,
-		"path",
-		in.verdictPath,
-	)
-	fmt.Fprintf(
-		deps.out,
-		"verdict recorded: reboot_rc=%d egress_rc=%d owned_rc=%d path=%s\n",
-		verdict.RebootRC,
-		verdict.EgressRC,
-		verdict.OwnedRC,
-		in.verdictPath,
-	)
-
+	log.InfoContext(ctx, "deploy-gate: verdict recorded",
+		"trace_id", verdict.TraceID,
+		"reboot_rc", verdict.RebootRC,
+		"egress_rc", verdict.EgressRC,
+		"owned_rc", verdict.OwnedRC,
+		"path", in.verdictPath)
+	fmt.Fprintf(deps.out, "verdict recorded: reboot_rc=%d egress_rc=%d owned_rc=%d path=%s\n",
+		verdict.RebootRC, verdict.EgressRC, verdict.OwnedRC, in.verdictPath)
 	return exitDeployGateOK
 }
 
@@ -293,51 +260,40 @@ func writeVerdictFile(path string, verdict gateVerdict) error {
 		log.Warn("deploy-gate: marshal verdict failed", "err", err)
 		return fmt.Errorf("marshal verdict: %w", err)
 	}
-
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		log.Warn("deploy-gate: create verdict dir failed", "err", err)
 		return fmt.Errorf("create verdict dir %s: %w", dir, err)
 	}
-
 	tmp, err := os.CreateTemp(dir, ".verdict-*")
 	if err != nil {
 		log.Warn("deploy-gate: create verdict temp file failed", "err", err)
 		return fmt.Errorf("create verdict temp file: %w", err)
 	}
-
 	tmpName := tmp.Name()
 	if _, err := tmp.Write(payload); err != nil {
 		_ = tmp.Close()
 		_ = os.Remove(tmpName)
 		log.Warn("deploy-gate: write verdict temp file failed", "err", err)
-
 		return fmt.Errorf("write verdict temp file: %w", err)
 	}
-
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(tmpName)
 		log.Warn("deploy-gate: close verdict temp file failed", "err", err)
-
 		return fmt.Errorf("close verdict temp file: %w", err)
 	}
-
 	// The collector reads over SSH as a non-root probe in some paths, so the
 	// verdict is world-readable; it carries no secrets.
 	if err := os.Chmod(tmpName, 0o644); err != nil {
 		_ = os.Remove(tmpName)
 		log.Warn("deploy-gate: chmod verdict temp file failed", "err", err)
-
 		return fmt.Errorf("chmod verdict temp file: %w", err)
 	}
-
 	if err := os.Rename(tmpName, path); err != nil {
 		_ = os.Remove(tmpName)
 		log.Warn("deploy-gate: rename verdict into place failed", "err", err)
-
 		return fmt.Errorf("rename verdict into place: %w", err)
 	}
-
 	return nil
 }
 
@@ -349,32 +305,27 @@ func parseVMID(raw string) (int, error) {
 	if err != nil || vmid <= 0 {
 		return 0, fmt.Errorf("vmid %q is not a positive integer", raw)
 	}
-
 	return vmid, nil
 }
 
 func parseRequiredEgressFamilies(raw string) (requiredEgressFamilies, error) {
 	var families requiredEgressFamilies
-
 	for name := range strings.SplitSeq(raw, ",") {
 		switch egressFamily(name) {
 		case egressIPv4:
 			if families.ipv4 {
 				return requiredEgressFamilies{}, fmt.Errorf("duplicate egress family %q", name)
 			}
-
 			families.ipv4 = true
 		case egressIPv6:
 			if families.ipv6 {
 				return requiredEgressFamilies{}, fmt.Errorf("duplicate egress family %q", name)
 			}
-
 			families.ipv6 = true
 		default:
 			return requiredEgressFamilies{}, fmt.Errorf("unknown egress family %q", name)
 		}
 	}
-
 	return families, nil
 }
 
@@ -383,7 +334,6 @@ func parseConsecutiveRounds(raw string) (int, error) {
 	if err != nil || rounds <= 0 {
 		return 0, fmt.Errorf("consecutive rounds %q is not a positive integer", raw)
 	}
-
 	return rounds, nil
 }
 
@@ -392,7 +342,6 @@ func parseBudgetSeconds(raw string) (time.Duration, error) {
 	if err != nil || seconds <= 0 {
 		return 0, fmt.Errorf("budget %q is not a positive integer of seconds", raw)
 	}
-
 	return time.Duration(seconds) * time.Second, nil
 }
 
@@ -409,34 +358,28 @@ func checkOwnedAddresses(ctx context.Context, deps deployGateDeps) int {
 		fmt.Fprintf(deps.out, "network configuration unreadable: %v\n", err)
 		return exitDeployGateFailed
 	}
-
 	present := 0
 	missing := 0
-
 	for _, name := range slices.Sorted(maps.Keys(network.WAN)) {
 		entry := network.WAN[name]
 		policy := entry.TranslationV4
 		if policy == nil || len(policy.StaticMappings) == 0 {
 			continue
 		}
-
 		held, err := deps.listAddrs(ctx, log, entry.Iface)
 		if err != nil {
 			fmt.Fprintf(deps.out, "addresses on %s unreadable: %v\n", entry.Iface, err)
 			return exitDeployGateFailed
 		}
-
 		externals := make([]netip.Addr, 0, len(policy.StaticMappings))
 		for _, mapping := range policy.StaticMappings {
 			externals = append(externals, mapping.External)
 		}
-
 		owned, err := netif.OnLinkMappedAddresses(held, externals)
 		if err != nil {
 			fmt.Fprintf(deps.out, "addresses on %s unreadable: %v\n", entry.Iface, err)
 			return exitDeployGateFailed
 		}
-
 		for _, address := range owned {
 			state := "missing"
 			if holdsHostAddress(held, address) {
@@ -445,16 +388,13 @@ func checkOwnedAddresses(ctx context.Context, deps deployGateDeps) int {
 			} else {
 				missing++
 			}
-
 			fmt.Fprintf(deps.out, "owned address %s on %s: %s\n", address, entry.Iface, state)
 		}
 	}
-
 	fmt.Fprintf(deps.out, "owned addresses: %d present, %d missing\n", present, missing)
 	if missing > 0 {
 		return exitDeployGateFailed
 	}
-
 	return exitDeployGateOK
 }
 
@@ -467,39 +407,26 @@ func checkNetwork(deps deployGateDeps, path string, schemaDir string) int {
 		fmt.Fprintf(deps.out, "network configuration rejected: %v\n", err)
 		return exitDeployGateFailed
 	}
-
 	for _, rejected := range loaded.Rejected {
-		fmt.Fprintf(
-			deps.out,
-			"provider entry rejected: interface %s: %v\n",
-			rejected.Interface,
-			rejected.Err,
-		)
+		fmt.Fprintf(deps.out, "provider entry rejected: interface %s: %v\n",
+			rejected.Interface, rejected.Err)
 	}
-
-	fmt.Fprintf(
-		deps.out,
-		"network configuration: %d providers, %d rejected\n",
-		len(loaded.WAN),
-		len(loaded.Rejected),
-	)
+	fmt.Fprintf(deps.out, "network configuration: %d providers, %d rejected\n",
+		len(loaded.WAN), len(loaded.Rejected))
 	if len(loaded.Rejected) > 0 {
 		return exitDeployGateFailed
 	}
-
 	return exitDeployGateOK
 }
 
 // holdsHostAddress reports whether held carries address as a /32.
 func holdsHostAddress(held []netif.CurrentAddr, address netip.Addr) bool {
 	want := netip.PrefixFrom(address, deployGateHostPrefixBits).String()
-
 	for _, current := range held {
 		if current.CIDR == want {
 			return true
 		}
 	}
-
 	return false
 }
 
@@ -509,14 +436,10 @@ func holdsHostAddress(held []netif.CurrentAddr, address netip.Addr) bool {
 // module may not have reconciled yet; the last report reaches the deploy log
 // either way.
 func waitOwnedAddresses(
-	ctx context.Context,
-	deps deployGateDeps,
-	vmid int,
-	budget time.Duration,
+	ctx context.Context, deps deployGateDeps, vmid int, budget time.Duration,
 ) (int, string) {
 	deadline := deps.now().Add(budget)
 	lastReport := "no owned-address check completed"
-
 	for deps.now().Before(deadline) {
 		response, err := deps.runGuestOwnedCheck(ctx, vmid)
 		switch {
@@ -525,23 +448,14 @@ func waitOwnedAddresses(
 		case response.ExitCode == exitDeployGateOK:
 			report := strings.TrimSpace(response.Stdout)
 			fmt.Fprintf(deps.out, "owned addresses held: %s\n", report)
-
 			return exitDeployGateOK, report
 		default:
 			lastReport = response.Stdout
 		}
-
 		deps.sleep(deployGatePollInterval)
 	}
-
 	lastReport = strings.TrimSpace(lastReport)
-	fmt.Fprintf(
-		deps.out,
-		"owned addresses not held within %s; last report: %s\n",
-		budget,
-		lastReport,
-	)
-
+	fmt.Fprintf(deps.out, "owned addresses not held within %s; last report: %s\n", budget, lastReport)
 	return exitDeployGateFailed, lastReport
 }
 
@@ -551,33 +465,17 @@ func waitOwnedAddresses(
 // alert path the watchdog already sends through rather than carrying mail
 // settings of its own.
 
-func sendOwnedMissingAlertWithConfig(
-	ctx context.Context,
-	alert ownedMissingAlert,
-	cfg *config.Config,
-) error {
-	log := slog.With(
-		"component",
-		"deploy-gate",
-		"op",
-		"sendOwnedMissingAlert",
-		"vmid",
-		alert.VMID,
-		"trace_id",
-		alert.TraceID,
-	)
+func sendOwnedMissingAlertWithConfig(ctx context.Context, alert ownedMissingAlert, cfg *config.Config) error {
+	log := slog.With("component", "deploy-gate", "op", "sendOwnedMissingAlert", "vmid", alert.VMID, "trace_id", alert.TraceID)
 	if cfg.Email.SMTP2GOAPIKey == "" || cfg.Email.AlertEmail == "" {
 		unconfigured := errors.New("email unconfigured in the hypervisor configuration")
 		log.ErrorContext(ctx, "deploy-gate: alert not sent", "err", unconfigured)
-
 		return unconfigured
 	}
-
 	sendCtx, cancel := context.WithTimeout(ctx, deployGateAlertTimeout)
 	defer cancel()
 	notifier := notify.FromConfig(cfg.Email, cfg.NotifyConfig(), log, deployGateAlertService)
 	notifier.Notify(sendCtx, ownedMissingEvent(alert))
-
 	return nil
 }
 
@@ -585,17 +483,13 @@ func ownedMissingEvent(alert ownedMissingAlert) notify.Event {
 	message := fmt.Sprintf("VM %d: mapped IPv4 address check failed", alert.VMID)
 	for line := range strings.SplitSeq(alert.Report, "\n") {
 		var present, missing int
-		if _, err := fmt.Sscanf(
-			strings.TrimSpace(line),
-			"owned addresses: %d present, %d missing",
-			&present,
-			&missing,
-		); err == nil && missing > 0 {
-			message = fmt.Sprintf("VM %d: %d mapped IPv4 addresses missing", alert.VMID, missing)
+		if _, err := fmt.Sscanf(strings.TrimSpace(line),
+			"owned addresses: %d present, %d missing", &present, &missing); err == nil && missing > 0 {
+			message = fmt.Sprintf("VM %d: %d mapped IPv4 addresses missing",
+				alert.VMID, missing)
 			break
 		}
 	}
-
 	return notify.Event{
 		Now:     time.Now(),
 		Level:   slog.LevelError,
@@ -603,25 +497,12 @@ func ownedMissingEvent(alert ownedMissingAlert) notify.Event {
 		Key:     alert.TraceID,
 		Message: message,
 		Fields: []slog.Attr{
-			slog.String(
-				"action",
-				fmt.Sprintf("On gateway VM %d, run: mwan deploy check-owned-addresses", alert.VMID),
-			),
-			slog.String(
-				"deployment",
-				"The postdeploy check failed after reboot. The gateway deploy is unhealthy. No rollback occurred; the deployed configuration remains active.",
-			),
-			slog.String(
-				"if missing",
-				fmt.Sprintf(
-					"On gateway VM %d, run: journalctl -u mwan-ifmgr@wan -b --no-pager. Repair the cause, redeploy, then repeat the check.",
-					alert.VMID,
-				),
-			),
-			slog.String(
-				"later result",
-				"If a fresh check reports 0 missing after a later deploy, the current gateway state passes; this older alert needs no action.",
-			),
+			slog.String("action", fmt.Sprintf(
+				"On gateway VM %d, run: mwan deploy check-owned-addresses", alert.VMID)),
+			slog.String("deployment", "The postdeploy check failed after reboot. The gateway deploy is unhealthy. No rollback occurred; the deployed configuration remains active."),
+			slog.String("if missing", fmt.Sprintf(
+				"On gateway VM %d, run: journalctl -u mwan-ifmgr@wan -b --no-pager. Repair the cause, redeploy, then repeat the check.", alert.VMID)),
+			slog.String("later result", "If a fresh check reports 0 missing after a later deploy, the current gateway state passes; this older alert needs no action."),
 			slog.Int("vmid", alert.VMID),
 			slog.String("trace_id", alert.TraceID),
 			slog.String("report", alert.Report),
@@ -633,24 +514,15 @@ func ownedMissingEvent(alert ownedMissingAlert) notify.Event {
 // readGuestOwnedCheck runs the owned-address check inside the guest through
 // the QEMU guest agent and returns its exit code and report.
 func readGuestOwnedCheck(
-	ctx context.Context,
-	guestType config.GuestType,
-	vmid int,
+	ctx context.Context, guestType config.GuestType, vmid int,
 ) (ops.GuestExecResult, error) {
 	log := slog.With("component", "deploy-gate", "op", "readGuestOwnedCheck", "vmid", vmid)
-	result, err := execInGateGuest(
-		ctx,
-		guestType,
-		vmid,
-		deployGateGuestBinary,
-		"deploy-gate",
-		string(gateModeCheckOwned),
-	)
+	result, err := execInGateGuest(ctx, guestType, vmid,
+		deployGateGuestBinary, "deploy-gate", string(gateModeCheckOwned))
 	if err != nil {
 		log.WarnContext(ctx, "deploy-gate: guest exec failed", "err", err)
 		return result, err
 	}
-
 	return result, nil
 }
 
@@ -665,30 +537,20 @@ func gatewayGuestReads(deps deployGateDeps, cfg *config.Config) deployGateDeps {
 	deps.alertOwnedMissing = func(ctx context.Context, alert ownedMissingAlert) error {
 		return sendOwnedMissingAlertWithConfig(ctx, alert, cfg)
 	}
-
 	return deps
 }
 
 func execInGateGuest(
-	ctx context.Context,
-	guestType config.GuestType,
-	vmid int,
-	command ...string,
+	ctx context.Context, guestType config.GuestType, vmid int, command ...string,
 ) (ops.GuestExecResult, error) {
 	var none ops.GuestExecResult
-	result, err := ops.RunInGuest(
-		ctx,
-		guestType,
-		deployGateGuestExecTimeout+5*time.Second,
-		deployGateGuestExecTimeout,
-		vmid,
-		command...,
-	)
+	result, err := ops.RunInGuest(ctx, guestType,
+		deployGateGuestExecTimeout+5*time.Second, deployGateGuestExecTimeout,
+		vmid, command...)
 	if err != nil {
 		slog.WarnContext(ctx, "deploy-gate: guest exec failed", "vmid", vmid, "err", err)
 		return none, fmt.Errorf("guest exec %d: %w", vmid, err)
 	}
-
 	return result, nil
 }
 
@@ -707,7 +569,6 @@ func waitReboot(
 ) int {
 	deadline := deps.now().Add(budget)
 	var lastReadErr error
-
 	for deps.now().Before(deadline) {
 		current, err := deps.readBootID(ctx, vmid)
 		if err != nil {
@@ -716,54 +577,28 @@ func waitReboot(
 			// reboot is in flight.
 			lastReadErr = err
 		} else if current != oldBootID {
-			fmt.Fprintf(
-				deps.out,
-				"guest %d rebooted: boot_id %s changed to %s\n",
-				vmid,
-				oldBootID,
-				current,
-			)
-
+			fmt.Fprintf(deps.out, "guest %d rebooted: boot_id %s changed to %s\n",
+				vmid, oldBootID, current)
 			return exitDeployGateOK
 		}
-
 		deps.sleep(deployGateRebootPoll)
 	}
-
 	final, err := deps.readBootID(ctx, vmid)
 	if err == nil && final == oldBootID {
-		fmt.Fprintf(
-			deps.out,
+		fmt.Fprintf(deps.out,
 			"guest %d still runs boot_id %s after %s, so the reboot never fired\n",
-			vmid,
-			oldBootID,
-			budget,
-		)
-
+			vmid, oldBootID, budget)
 		return exitDeployGateFailed
 	}
-
 	if err == nil {
-		fmt.Fprintf(
-			deps.out,
-			"guest %d rebooted: boot_id %s changed to %s\n",
-			vmid,
-			oldBootID,
-			final,
-		)
-
+		fmt.Fprintf(deps.out, "guest %d rebooted: boot_id %s changed to %s\n",
+			vmid, oldBootID, final)
 		return exitDeployGateOK
 	}
-
-	fmt.Fprintf(
-		deps.out,
+	fmt.Fprintf(deps.out,
 		"guest %d was unobservable at the %s deadline (last agent error: %v);"+
 			" deferring the reboot verdict to the egress gate\n",
-		vmid,
-		budget,
-		errorOrPrior(err, lastReadErr),
-	)
-
+		vmid, budget, errorOrPrior(err, lastReadErr))
 	return exitDeployGateUnobservable
 }
 
@@ -774,14 +609,11 @@ func errorOrPrior(final error, prior error) error {
 	if final != nil {
 		return final
 	}
-
 	return prior
 }
 
 func probeEgressRound(
-	ctx context.Context,
-	deps deployGateDeps,
-	families requiredEgressFamilies,
+	ctx context.Context, deps deployGateDeps, families requiredEgressFamilies,
 ) (bool, string) {
 	ok := true
 	v6 := "not-required"
@@ -795,7 +627,6 @@ func probeEgressRound(
 			failures = append(failures, fmt.Sprintf("ipv6_error=%q", err))
 		}
 	}
-
 	if families.ipv4 {
 		_, err := deps.ping4(ctx, "", deployGateTargetV4, deployGateProbeTimeout)
 		v4 = yesNo(err == nil)
@@ -804,43 +635,29 @@ func probeEgressRound(
 			failures = append(failures, fmt.Sprintf("ipv4_error=%q", err))
 		}
 	}
-
 	report := fmt.Sprintf("ipv6=%s ipv4=%s", v6, v4)
 	if len(failures) > 0 {
 		report += " " + strings.Join(failures, " ")
 	}
-
 	return ok, report
 }
 
 func waitEgress(
-	ctx context.Context,
-	deps deployGateDeps,
-	budget time.Duration,
-	families requiredEgressFamilies,
-	requiredRounds int,
+	ctx context.Context, deps deployGateDeps, budget time.Duration,
+	families requiredEgressFamilies, requiredRounds int,
 ) int {
-	return waitEgressWithProbe(
-		ctx,
-		deps,
-		budget,
-		requiredRounds,
+	return waitEgressWithProbe(ctx, deps, budget, requiredRounds,
 		func(ctx context.Context) (bool, string) {
 			return probeEgressRound(ctx, deps, families)
-		},
-	)
+		})
 }
 
 func waitEgressWithProbe(
-	ctx context.Context,
-	deps deployGateDeps,
-	budget time.Duration,
-	requiredRounds int,
-	probe func(context.Context) (bool, string),
+	ctx context.Context, deps deployGateDeps, budget time.Duration,
+	requiredRounds int, probe func(context.Context) (bool, string),
 ) int {
 	deadline := deps.now().Add(budget)
 	consecutive := 0
-
 	for deps.now().Before(deadline) {
 		ok, report := probe(ctx)
 		if ok {
@@ -848,36 +665,17 @@ func waitEgressWithProbe(
 		} else {
 			consecutive = 0
 		}
-
-		fmt.Fprintf(
-			deps.out,
-			"egress round: %s consecutive=%d/%d\n",
-			report,
-			consecutive,
-			requiredRounds,
-		)
+		fmt.Fprintf(deps.out, "egress round: %s consecutive=%d/%d\n",
+			report, consecutive, requiredRounds)
 		if consecutive == requiredRounds {
-			fmt.Fprintf(
-				deps.out,
-				"egress restored: %s after %d consecutive rounds\n",
-				report,
-				requiredRounds,
-			)
-
+			fmt.Fprintf(deps.out, "egress restored: %s after %d consecutive rounds\n",
+				report, requiredRounds)
 			return exitDeployGateOK
 		}
-
 		deps.sleep(deployGatePollInterval)
 	}
-
-	fmt.Fprintf(
-		deps.out,
-		"required egress not restored within %s; consecutive=%d/%d\n",
-		budget,
-		consecutive,
-		requiredRounds,
-	)
-
+	fmt.Fprintf(deps.out, "required egress not restored within %s; consecutive=%d/%d\n",
+		budget, consecutive, requiredRounds)
 	return exitDeployGateFailed
 }
 
@@ -885,7 +683,6 @@ func yesNo(ok bool) string {
 	if ok {
 		return "yes"
 	}
-
 	return "no"
 }
 
@@ -893,24 +690,21 @@ func yesNo(ok bool) string {
 // through the QEMU guest agent and validates the response shape, so a
 // partial or error-shaped reply never compares equal or unequal by accident.
 func readGuestBootID(
-	ctx context.Context,
-	guestType config.GuestType,
-	vmid int,
+	ctx context.Context, guestType config.GuestType, vmid int,
 ) (string, error) {
 	log := slog.With("component", "deploy-gate", "op", "readGuestBootID", "vmid", vmid)
 	log.DebugContext(ctx, "deploy-gate: reading guest boot_id")
-	result, err := execInGateGuest(ctx, guestType, vmid, "cat", "/proc/sys/kernel/random/boot_id")
+	result, err := execInGateGuest(ctx, guestType, vmid,
+		"cat", "/proc/sys/kernel/random/boot_id")
 	if err != nil {
 		log.WarnContext(ctx, "deploy-gate: guest exec failed", "err", err)
 		return "", err
 	}
-
 	bootID, err := guestBootID(result)
 	if err != nil {
 		log.WarnContext(ctx, "deploy-gate: guest boot_id response invalid", "err", err)
 		return "", err
 	}
-
 	return bootID, nil
 }
 
@@ -918,14 +712,11 @@ func guestBootID(result ops.GuestExecResult) (string, error) {
 	if result.ExitCode != 0 {
 		return "", fmt.Errorf(
 			"guest command exited %d (exit code from cat inside the guest)",
-			result.ExitCode,
-		)
+			result.ExitCode)
 	}
-
 	bootID := strings.TrimSpace(result.Stdout)
 	if !bootIDPattern.MatchString(bootID) {
 		return "", fmt.Errorf("guest returned %q, which is not a boot_id UUID", bootID)
 	}
-
 	return bootID, nil
 }

@@ -31,7 +31,6 @@ func newEmailSink(sender *email.Sender, to, subjectPrefix string, minLevel slog.
 	if sender == nil || strings.TrimSpace(to) == "" {
 		return nil
 	}
-
 	return &emailSink{
 		sender:        sender,
 		to:            to,
@@ -47,38 +46,20 @@ func newEmailSink(sender *email.Sender, to, subjectPrefix string, minLevel slog.
 // "LEVEL: message" when no prefix is configured. The function name
 // matches the [io.Writer]-style Send shape so the wrapped-error rule
 // recognises it as a transport boundary.
-func (s *emailSink) Send(
-	ctx context.Context,
-	level slog.Level,
-	msg string,
-	fields []slog.Attr,
-) error {
+func (s *emailSink) Send(ctx context.Context, level slog.Level, msg string, fields []slog.Attr) error {
 	if level < s.minLevel {
 		return nil
 	}
-
 	subject := buildSubject(s.subjectPrefix, level, msg)
 	r := slog.NewRecord(s.clock.Now(), level, msg, 0)
 	r.AddAttrs(fields...)
 	body := BuildEmailBody(r, nil)
 	err := s.sender.Send(ctx, s.to, subject, body)
 	if err != nil {
-		slog.ErrorContext(
-			ctx,
-			"notify email send failed",
-			"err",
-			err,
-			"to",
-			s.to,
-			"alert_level",
-			level.String(),
-			"alert_msg",
-			msg,
-		)
-
+		slog.ErrorContext(ctx, "notify email send failed",
+			"err", err, "to", s.to, "alert_level", level.String(), "alert_msg", msg)
 		return fmt.Errorf("notify email send: %w", err)
 	}
-
 	return nil
 }
 
@@ -86,16 +67,13 @@ func (s *emailSink) SendMessage(ctx context.Context, message mailer.Message) err
 	if message.To == "" {
 		message.To = s.to
 	}
-
 	if s.subjectPrefix != "" && !strings.HasPrefix(message.Subject, s.subjectPrefix) {
 		message.Subject = s.subjectPrefix + " " + message.Subject
 	}
-
 	if err := s.sender.SendMessage(ctx, message); err != nil {
 		slog.WarnContext(ctx, "notify message delivery failed", "error", err, "to", message.To)
 		return fmt.Errorf("send email message: %w", err)
 	}
-
 	return nil
 }
 
@@ -109,6 +87,5 @@ func buildSubject(prefix string, level slog.Level, msg string) string {
 	if prefix == "" {
 		return lvl + ": " + msg
 	}
-
 	return prefix + " " + lvl + ": " + msg
 }

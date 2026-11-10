@@ -23,22 +23,10 @@ func TestAppliedNPTNativePacketPolicy(t *testing.T) {
 	if err := inspect(ctx, indices); err != nil {
 		t.Fatalf("applied NPT owner could not certify its actual programs and map: %v", err)
 	}
-	filter := &netlink.MatchAll{
-		FilterAttrs: netlink.FilterAttrs{
-			LinkIndex: fixture.wan.Attrs().Index,
-			Parent:    netlink.HANDLE_MIN_EGRESS,
-			Handle:    1,
-			Priority:  1,
-			Protocol:  unix.ETH_P_ALL,
-		},
-		Actions: []netlink.Action{
-			&netlink.GenericAction{
-				ActionAttrs: netlink.ActionAttrs{
-					Action: netlink.TC_ACT_SHOT,
-				},
-			},
-		},
-	}
+	filter := &netlink.MatchAll{FilterAttrs: netlink.FilterAttrs{
+		LinkIndex: fixture.wan.Attrs().Index, Parent: netlink.HANDLE_MIN_EGRESS,
+		Handle: 1, Priority: 1, Protocol: unix.ETH_P_ALL,
+	}, Actions: []netlink.Action{&netlink.GenericAction{ActionAttrs: netlink.ActionAttrs{Action: netlink.TC_ACT_SHOT}}}}
 	if err := netlink.FilterAdd(filter); err != nil {
 		t.Fatal(err)
 	}

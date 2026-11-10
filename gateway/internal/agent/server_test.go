@@ -33,8 +33,7 @@ func startTestServer(t *testing.T, srv *Server) mwanv1.MWANAgentClient {
 	mwanv1.RegisterMWANAgentServer(s, srv)
 	go func() { _ = s.Serve(lis) }()
 	t.Cleanup(func() { s.Stop() })
-	conn, err := grpc.NewClient(
-		"passthrough:///bufnet",
+	conn, err := grpc.NewClient("passthrough:///bufnet",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
 			return lis.DialContext(ctx)
@@ -69,15 +68,14 @@ func TestAgentServesOnTCPWithoutVsock(t *testing.T) {
 
 	grpcServer := grpc.NewServer()
 	deployPath := filepath.Join(t.TempDir(), "deploy")
-	mwanv1.RegisterMWANAgentServer(
-		grpcServer,
-		NewServer(deployPath, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil),
-	)
+	mwanv1.RegisterMWANAgentServer(grpcServer,
+		NewServer(deployPath, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil))
 
 	go func() { _ = grpcServer.Serve(lis) }()
 	t.Cleanup(func() { grpcServer.GracefulStop() })
 
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,8 +92,7 @@ func TestAgentServesOnTCPWithoutVsock(t *testing.T) {
 // writeGetHealthBinDir writes ping, ping6, and systemctl into one directory for PATH.
 func writeGetHealthBinDir(
 	t *testing.T,
-	pingExit int,
-	ping6Exit int,
+	pingExit, ping6Exit int,
 	systemctlBody string,
 	systemctlFail bool,
 ) string {
@@ -241,10 +238,7 @@ func TestPing_IPv4UsesPingBinary(t *testing.T) {
 	tmp := t.TempDir()
 	out := filepath.Join(tmp, "ping.out")
 	pingPath := filepath.Join(tmp, "ping")
-	script := fmt.Sprintf(
-		"#!/bin/sh\necho \"$@\" >> %q\necho '2 packets transmitted, 2 received'\nexit 0\n",
-		out,
-	)
+	script := fmt.Sprintf("#!/bin/sh\necho \"$@\" >> %q\necho '2 packets transmitted, 2 received'\nexit 0\n", out)
 	if err := os.WriteFile(pingPath, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -256,12 +250,9 @@ func TestPing_IPv4UsesPingBinary(t *testing.T) {
 
 	srv := NewServer("/x", testLogger(t), nil, nil)
 	cli := startTestServer(t, srv)
-	_, err := cli.Ping(
-		context.Background(),
-		&mwanv1.PingRequest{
-			Target: "8.8.8.8",
-		},
-	)
+	_, err := cli.Ping(context.Background(), &mwanv1.PingRequest{
+		Target: "8.8.8.8",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,10 +273,7 @@ func TestPing_IPv6UsesPing6Binary(t *testing.T) {
 	tmp := t.TempDir()
 	out := filepath.Join(tmp, "ping6.out")
 	p6 := filepath.Join(tmp, "ping6")
-	script := fmt.Sprintf(
-		"#!/bin/sh\necho \"$@\" >> %q\necho '2 packets transmitted, 2 received'\nexit 0\n",
-		out,
-	)
+	script := fmt.Sprintf("#!/bin/sh\necho \"$@\" >> %q\necho '2 packets transmitted, 2 received'\nexit 0\n", out)
 	if err := os.WriteFile(p6, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -297,12 +285,9 @@ func TestPing_IPv6UsesPing6Binary(t *testing.T) {
 
 	srv := NewServer("/x", testLogger(t), nil, nil)
 	cli := startTestServer(t, srv)
-	_, err := cli.Ping(
-		context.Background(),
-		&mwanv1.PingRequest{
-			Target: "2606:4700:4700::1111",
-		},
-	)
+	_, err := cli.Ping(context.Background(), &mwanv1.PingRequest{
+		Target: "2606:4700:4700::1111",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,10 +304,7 @@ func TestPing_BindInterfaceAddsIFlag(t *testing.T) {
 	tmp := t.TempDir()
 	out := filepath.Join(tmp, "args.log")
 	pingPath := filepath.Join(tmp, "ping")
-	script := fmt.Sprintf(
-		"#!/bin/sh\necho \"$@\" >> %q\necho '2 packets transmitted, 2 received'\nexit 0\n",
-		out,
-	)
+	script := fmt.Sprintf("#!/bin/sh\necho \"$@\" >> %q\necho '2 packets transmitted, 2 received'\nexit 0\n", out)
 	if err := os.WriteFile(pingPath, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -334,15 +316,12 @@ func TestPing_BindInterfaceAddsIFlag(t *testing.T) {
 
 	srv := NewServer("/x", testLogger(t), nil, nil)
 	cli := startTestServer(t, srv)
-	_, err := cli.Ping(
-		context.Background(),
-		&mwanv1.PingRequest{
-			Target:         "1.1.1.1",
-			BindInterface:  "eth0",
-			Count:          2,
-			TimeoutSeconds: 3,
-		},
-	)
+	_, err := cli.Ping(context.Background(), &mwanv1.PingRequest{
+		Target:         "1.1.1.1",
+		BindInterface:  "eth0",
+		Count:          2,
+		TimeoutSeconds: 3,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,10 +336,7 @@ func TestPing_CountAndTimeoutDefaults(t *testing.T) {
 	tmp := t.TempDir()
 	out := filepath.Join(tmp, "args.log")
 	pingPath := filepath.Join(tmp, "ping")
-	script := fmt.Sprintf(
-		"#!/bin/sh\necho \"$@\" >> %q\necho '2 packets transmitted, 2 received'\nexit 0\n",
-		out,
-	)
+	script := fmt.Sprintf("#!/bin/sh\necho \"$@\" >> %q\necho '2 packets transmitted, 2 received'\nexit 0\n", out)
 	if err := os.WriteFile(pingPath, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -372,12 +348,9 @@ func TestPing_CountAndTimeoutDefaults(t *testing.T) {
 
 	srv := NewServer("/x", testLogger(t), nil, nil)
 	cli := startTestServer(t, srv)
-	_, err := cli.Ping(
-		context.Background(),
-		&mwanv1.PingRequest{
-			Target: "9.9.9.9",
-		},
-	)
+	_, err := cli.Ping(context.Background(), &mwanv1.PingRequest{
+		Target: "9.9.9.9",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -522,11 +495,7 @@ func (r *recordingNotifier) Notify(_ context.Context, ev notify.Event) {
 }
 
 func (r *recordingNotifier) Resolve(
-	_ context.Context,
-	_ string,
-	_ string,
-	_ string,
-	_ ...slog.Attr,
+	_ context.Context, _, _, _ string, _ ...slog.Attr,
 ) {
 	r.resolves++
 }
@@ -557,10 +526,7 @@ func TestGetConfigState_DeployExpectedTrueFiresNotify(t *testing.T) {
 	// Default deployExpected is true; do not flip the setter.
 	srv := NewServer(filepath.Join(t.TempDir(), "missing"), testLogger(t), nil, rec)
 	cli := startTestServer(t, srv)
-	if _, err := cli.GetConfigState(
-		context.Background(),
-		&mwanv1.GetConfigStateRequest{},
-	); err != nil {
+	if _, err := cli.GetConfigState(context.Background(), &mwanv1.GetConfigStateRequest{}); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 	if len(rec.notifies) != 1 {
@@ -631,60 +597,45 @@ func TestParsePingReceivedCount(t *testing.T) {
 	}
 	for _, tc := range tests {
 		tc := tc
-		t.Run(
-			tc.in,
-			func(t *testing.T) {
-				t.Parallel()
-				if got := parsePingReceivedCount(tc.in); got != tc.want {
-					t.Fatalf("parsePingReceivedCount(%q)=%d want %d", tc.in, got, tc.want)
-				}
-			},
-		)
+		t.Run(tc.in, func(t *testing.T) {
+			t.Parallel()
+			if got := parsePingReceivedCount(tc.in); got != tc.want {
+				t.Fatalf("parsePingReceivedCount(%q)=%d want %d", tc.in, got, tc.want)
+			}
+		})
 	}
 }
 
 func TestParseMeminfoLineKB(t *testing.T) {
 	t.Parallel()
-	t.Run(
-		"ok",
-		func(t *testing.T) {
-			t.Parallel()
-			v, ok := parseMeminfoLineKB("MemTotal:       12345 kB")
-			if !ok || v != 12345 {
-				t.Fatalf("got %v %v", v, ok)
-			}
-		},
-	)
-	t.Run(
-		"no_colon",
-		func(t *testing.T) {
-			t.Parallel()
-			_, ok := parseMeminfoLineKB("MemTotal 123")
-			if ok {
-				t.Fatal("expected false")
-			}
-		},
-	)
-	t.Run(
-		"empty_fields",
-		func(t *testing.T) {
-			t.Parallel()
-			_, ok := parseMeminfoLineKB("MemTotal:")
-			if ok {
-				t.Fatal("expected false")
-			}
-		},
-	)
-	t.Run(
-		"bad_number",
-		func(t *testing.T) {
-			t.Parallel()
-			_, ok := parseMeminfoLineKB("MemTotal:       xyz kB")
-			if ok {
-				t.Fatal("expected false")
-			}
-		},
-	)
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+		v, ok := parseMeminfoLineKB("MemTotal:       12345 kB")
+		if !ok || v != 12345 {
+			t.Fatalf("got %v %v", v, ok)
+		}
+	})
+	t.Run("no_colon", func(t *testing.T) {
+		t.Parallel()
+		_, ok := parseMeminfoLineKB("MemTotal 123")
+		if ok {
+			t.Fatal("expected false")
+		}
+	})
+	t.Run("empty_fields", func(t *testing.T) {
+		t.Parallel()
+		_, ok := parseMeminfoLineKB("MemTotal:")
+		if ok {
+			t.Fatal("expected false")
+		}
+	})
+	t.Run("bad_number", func(t *testing.T) {
+		t.Parallel()
+		_, ok := parseMeminfoLineKB("MemTotal:       xyz kB")
+		if ok {
+			t.Fatal("expected false")
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -693,58 +644,46 @@ func TestParseMeminfoLineKB(t *testing.T) {
 
 func TestReadUptimeSecondsFrom(t *testing.T) {
 	t.Parallel()
-	t.Run(
-		"ok",
-		func(t *testing.T) {
-			t.Parallel()
-			p := filepath.Join(t.TempDir(), "uptime")
-			if err := os.WriteFile(p, []byte("3661.12 7200.00\n"), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			v, err := readUptimeSecondsFrom(p)
-			if err != nil || v != 3661 {
-				t.Fatalf("got %d %v", v, err)
-			}
-		},
-	)
-	t.Run(
-		"missing",
-		func(t *testing.T) {
-			t.Parallel()
-			_, err := readUptimeSecondsFrom(filepath.Join(t.TempDir(), "nope"))
-			if err == nil {
-				t.Fatal("expected error")
-			}
-		},
-	)
-	t.Run(
-		"empty",
-		func(t *testing.T) {
-			t.Parallel()
-			p := filepath.Join(t.TempDir(), "uptime")
-			if err := os.WriteFile(p, []byte(""), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			_, err := readUptimeSecondsFrom(p)
-			if err == nil {
-				t.Fatal("expected error for empty file")
-			}
-		},
-	)
-	t.Run(
-		"bad_float",
-		func(t *testing.T) {
-			t.Parallel()
-			p := filepath.Join(t.TempDir(), "uptime")
-			if err := os.WriteFile(p, []byte("notafloat idle\n"), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			_, err := readUptimeSecondsFrom(p)
-			if err == nil {
-				t.Fatal("expected error for non-float")
-			}
-		},
-	)
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+		p := filepath.Join(t.TempDir(), "uptime")
+		if err := os.WriteFile(p, []byte("3661.12 7200.00\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		v, err := readUptimeSecondsFrom(p)
+		if err != nil || v != 3661 {
+			t.Fatalf("got %d %v", v, err)
+		}
+	})
+	t.Run("missing", func(t *testing.T) {
+		t.Parallel()
+		_, err := readUptimeSecondsFrom(filepath.Join(t.TempDir(), "nope"))
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+	t.Run("empty", func(t *testing.T) {
+		t.Parallel()
+		p := filepath.Join(t.TempDir(), "uptime")
+		if err := os.WriteFile(p, []byte(""), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := readUptimeSecondsFrom(p)
+		if err == nil {
+			t.Fatal("expected error for empty file")
+		}
+	})
+	t.Run("bad_float", func(t *testing.T) {
+		t.Parallel()
+		p := filepath.Join(t.TempDir(), "uptime")
+		if err := os.WriteFile(p, []byte("notafloat idle\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := readUptimeSecondsFrom(p)
+		if err == nil {
+			t.Fatal("expected error for non-float")
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -753,44 +692,35 @@ func TestReadUptimeSecondsFrom(t *testing.T) {
 
 func TestReadLoadAverageFrom(t *testing.T) {
 	t.Parallel()
-	t.Run(
-		"ok",
-		func(t *testing.T) {
-			t.Parallel()
-			p := filepath.Join(t.TempDir(), "loadavg")
-			if err := os.WriteFile(p, []byte("0.12 0.08 0.05 1/200 12345\n"), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			v, err := readLoadAverageFrom(p)
-			if err != nil || v != "0.12 0.08 0.05" {
-				t.Fatalf("got %q %v", v, err)
-			}
-		},
-	)
-	t.Run(
-		"missing",
-		func(t *testing.T) {
-			t.Parallel()
-			_, err := readLoadAverageFrom(filepath.Join(t.TempDir(), "nope"))
-			if err == nil {
-				t.Fatal("expected error")
-			}
-		},
-	)
-	t.Run(
-		"too_few_fields",
-		func(t *testing.T) {
-			t.Parallel()
-			p := filepath.Join(t.TempDir(), "loadavg")
-			if err := os.WriteFile(p, []byte("0.12 0.08\n"), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			_, err := readLoadAverageFrom(p)
-			if err == nil {
-				t.Fatal("expected error for too few fields")
-			}
-		},
-	)
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+		p := filepath.Join(t.TempDir(), "loadavg")
+		if err := os.WriteFile(p, []byte("0.12 0.08 0.05 1/200 12345\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		v, err := readLoadAverageFrom(p)
+		if err != nil || v != "0.12 0.08 0.05" {
+			t.Fatalf("got %q %v", v, err)
+		}
+	})
+	t.Run("missing", func(t *testing.T) {
+		t.Parallel()
+		_, err := readLoadAverageFrom(filepath.Join(t.TempDir(), "nope"))
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+	t.Run("too_few_fields", func(t *testing.T) {
+		t.Parallel()
+		p := filepath.Join(t.TempDir(), "loadavg")
+		if err := os.WriteFile(p, []byte("0.12 0.08\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := readLoadAverageFrom(p)
+		if err == nil {
+			t.Fatal("expected error for too few fields")
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -799,95 +729,69 @@ func TestReadLoadAverageFrom(t *testing.T) {
 
 func TestReadMeminfoKBFrom(t *testing.T) {
 	t.Parallel()
-	t.Run(
-		"ok",
-		func(t *testing.T) {
-			t.Parallel()
-			content := "MemTotal:       16384000 kB\nMemAvailable:   8192000 kB\nOther: 1 kB\n"
-			p := filepath.Join(t.TempDir(), "meminfo")
-			if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			tot, avail, err := readMeminfoKBFrom(p)
-			if err != nil || tot != 16384000 || avail != 8192000 {
-				t.Fatalf("tot=%d avail=%d err=%v", tot, avail, err)
-			}
-		},
-	)
-	t.Run(
-		"missing_file",
-		func(t *testing.T) {
-			t.Parallel()
-			_, _, err := readMeminfoKBFrom(filepath.Join(t.TempDir(), "nope"))
-			if err == nil {
-				t.Fatal("expected error")
-			}
-		},
-	)
-	t.Run(
-		"missing_memtotal",
-		func(t *testing.T) {
-			t.Parallel()
-			p := filepath.Join(t.TempDir(), "meminfo")
-			if err := os.WriteFile(p, []byte("MemAvailable: 1000 kB\n"), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			_, _, err := readMeminfoKBFrom(p)
-			if err == nil {
-				t.Fatal("expected error")
-			}
-		},
-	)
-	t.Run(
-		"missing_memavailable",
-		func(t *testing.T) {
-			t.Parallel()
-			p := filepath.Join(t.TempDir(), "meminfo")
-			if err := os.WriteFile(p, []byte("MemTotal: 1000 kB\n"), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			_, _, err := readMeminfoKBFrom(p)
-			if err == nil {
-				t.Fatal("expected error")
-			}
-		},
-	)
-	t.Run(
-		"bad_memtotal_value",
-		func(t *testing.T) {
-			t.Parallel()
-			p := filepath.Join(t.TempDir(), "meminfo")
-			if err := os.WriteFile(
-				p,
-				[]byte("MemTotal: bad kB\nMemAvailable: 1000 kB\n"),
-				0o644,
-			); err != nil {
-				t.Fatal(err)
-			}
-			_, _, err := readMeminfoKBFrom(p)
-			if err == nil {
-				t.Fatal("expected error for bad MemTotal")
-			}
-		},
-	)
-	t.Run(
-		"bad_memavailable_value",
-		func(t *testing.T) {
-			t.Parallel()
-			p := filepath.Join(t.TempDir(), "meminfo")
-			if err := os.WriteFile(
-				p,
-				[]byte("MemTotal: 1000 kB\nMemAvailable: bad kB\n"),
-				0o644,
-			); err != nil {
-				t.Fatal(err)
-			}
-			_, _, err := readMeminfoKBFrom(p)
-			if err == nil {
-				t.Fatal("expected error for bad MemAvailable")
-			}
-		},
-	)
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+		content := "MemTotal:       16384000 kB\nMemAvailable:   8192000 kB\nOther: 1 kB\n"
+		p := filepath.Join(t.TempDir(), "meminfo")
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		tot, avail, err := readMeminfoKBFrom(p)
+		if err != nil || tot != 16384000 || avail != 8192000 {
+			t.Fatalf("tot=%d avail=%d err=%v", tot, avail, err)
+		}
+	})
+	t.Run("missing_file", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := readMeminfoKBFrom(filepath.Join(t.TempDir(), "nope"))
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+	t.Run("missing_memtotal", func(t *testing.T) {
+		t.Parallel()
+		p := filepath.Join(t.TempDir(), "meminfo")
+		if err := os.WriteFile(p, []byte("MemAvailable: 1000 kB\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, _, err := readMeminfoKBFrom(p)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+	t.Run("missing_memavailable", func(t *testing.T) {
+		t.Parallel()
+		p := filepath.Join(t.TempDir(), "meminfo")
+		if err := os.WriteFile(p, []byte("MemTotal: 1000 kB\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, _, err := readMeminfoKBFrom(p)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+	t.Run("bad_memtotal_value", func(t *testing.T) {
+		t.Parallel()
+		p := filepath.Join(t.TempDir(), "meminfo")
+		if err := os.WriteFile(p, []byte("MemTotal: bad kB\nMemAvailable: 1000 kB\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, _, err := readMeminfoKBFrom(p)
+		if err == nil {
+			t.Fatal("expected error for bad MemTotal")
+		}
+	})
+	t.Run("bad_memavailable_value", func(t *testing.T) {
+		t.Parallel()
+		p := filepath.Join(t.TempDir(), "meminfo")
+		if err := os.WriteFile(p, []byte("MemTotal: 1000 kB\nMemAvailable: bad kB\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, _, err := readMeminfoKBFrom(p)
+		if err == nil {
+			t.Fatal("expected error for bad MemAvailable")
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -1008,11 +912,8 @@ func TestGetSystemInfo_StatfsError(t *testing.T) {
 	if err := os.WriteFile(loadAvgPath, []byte("0.1 0.2 0.3 1/50 123\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(
-		meminfoPath,
-		[]byte("MemTotal: 1000 kB\nMemAvailable: 500 kB\n"),
-		0o644,
-	); err != nil {
+	if err := os.WriteFile(meminfoPath,
+		[]byte("MemTotal: 1000 kB\nMemAvailable: 500 kB\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	srv := NewServer("/x", testLogger(t), nil, nil)
@@ -1045,11 +946,8 @@ func TestGetHealth_PingExecMissing(t *testing.T) {
 		t.Fatal(err)
 	}
 	if res.GetIpv4Ok() || res.GetIpv6Ok() {
-		t.Fatalf(
-			"expected both false with missing ping, got ipv4=%v ipv6=%v",
-			res.GetIpv4Ok(),
-			res.GetIpv6Ok(),
-		)
+		t.Fatalf("expected both false with missing ping, got ipv4=%v ipv6=%v",
+			res.GetIpv4Ok(), res.GetIpv6Ok())
 	}
 }
 

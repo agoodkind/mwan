@@ -193,13 +193,11 @@ func (s *Store) Observe(observer Observer) func() {
 	generation := s.observerGeneration
 	s.observer = observer
 	s.mu.Unlock()
-
 	return func() {
 		s.mu.Lock()
 		if s.observerGeneration == generation {
 			s.observer = nil
 		}
-
 		s.mu.Unlock()
 	}
 }
@@ -237,7 +235,6 @@ func (s *Store) SetRouting(activeTier uint8, members map[string]MemberRouting) {
 		value Transition
 	}
 	var transitions []routingTransition
-
 	copied := make(map[string]MemberRouting, len(members))
 	for id, member := range members {
 		member.OwnedAddresses = slices.Clone(member.OwnedAddresses)
@@ -245,33 +242,27 @@ func (s *Store) SetRouting(activeTier uint8, members map[string]MemberRouting) {
 		member.V6Dependencies = slices.Clone(member.V6Dependencies)
 		copied[id] = member
 	}
-
 	s.mu.Lock()
 	previousTier := s.activeTier
 	previousValid := s.tierValid
 	s.activeTier = activeTier
 	s.tierValid = true
 	s.routing = copied
-
 	for id, member := range members {
 		connection, present := s.connections[id]
 		if !present {
 			continue
 		}
-
 		oldV4, oldV6 := connection.IPv4.Routing, connection.IPv6.Routing
 		connection.IPv4.Routing = "not-ready"
 		connection.IPv6.Routing = "not-ready"
 		if member.V4Ready {
 			connection.IPv4.Routing = "ready"
 		}
-
 		if member.V6Ready {
 			connection.IPv6.Routing = "ready"
 		}
-
 		oldReasonV4, oldReasonV6 := connection.IPv4.routingReason, connection.IPv6.routingReason
-
 		connection.IPv4.routingReason, connection.IPv6.routingReason = member.V4Reason, member.V6Reason
 		for _, change := range []struct{ family, previous, current, previousReason, reason string }{
 			{"ipv4", oldV4, connection.IPv4.Routing, oldReasonV4, member.V4Reason},
@@ -281,37 +272,22 @@ func (s *Store) SetRouting(activeTier uint8, members map[string]MemberRouting) {
 			if change.previous == "unknown" || unchanged {
 				continue
 			}
-
 			reason := change.reason
 			if reason == "" {
 				reason = "routing readiness changed"
 			}
-
-			value := s.addTransitionLocked(
-				&connection,
-				change.family,
-				change.previous,
-				change.current,
-				"evaluate-routing",
-				"wan-routes",
-				reason,
-				s.clock.Now(),
-			)
+			value := s.addTransitionLocked(&connection, change.family, change.previous, change.current, "evaluate-routing", "wan-routes", reason, s.clock.Now())
 			transitions = append(transitions, routingTransition{id: id, value: value})
 		}
-
 		s.connections[id] = connection
 	}
-
 	s.routingGeneration++
 	observer := s.observer
 	transitionLog := s.transitionLog
 	s.mu.Unlock()
-
 	for _, change := range transitions {
 		logOwnershipTransition(transitionLog, change.id, &change.value)
 	}
-
 	if observer != nil && previousValid && previousTier != activeTier {
 		observer.TierChange(previousTier, activeTier)
 	}
@@ -325,7 +301,6 @@ func (s *Store) SetTranslation(members map[string]MemberTranslation) bool {
 	changed := !maps.Equal(s.translation, copied)
 	s.translation = copied
 	s.mu.Unlock()
-
 	return changed
 }
 
@@ -340,7 +315,6 @@ func (s *Store) SetOwnedIntendedRuleset(owner string, text string, reconcileErro
 	if reconcileError != nil {
 		state.Error = reconcileError.Error()
 	}
-
 	s.mu.Lock()
 	s.intendedRulesets[owner] = state
 	s.mu.Unlock()
@@ -399,42 +373,32 @@ func (s *Store) Snapshot() Snapshot {
 		IntendedByOwner:     make(map[string]OwnedRuleset, len(s.intendedRulesets)),
 	}
 	maps.Copy(snap.Health, s.health)
-
 	for id, check := range s.checks {
 		copied, err := cloneCheckState(check)
 		if err != nil {
 			snap.ObservationError = err
 			continue
 		}
-
 		copied.Result = contract.FreshResult(copied.Check, copied.Result, s.clock.Now())
 		snap.Checks[id] = copied
 	}
-
 	maps.Copy(snap.PendingRemovals, s.pendingRemovals)
-
 	for id, connection := range s.connections {
 		snap.Connections[id] = cloneConnection(connection)
 	}
-
 	maps.Copy(snap.Routing, s.routing)
-
 	for id, member := range snap.Routing {
 		member.OwnedAddresses = slices.Clone(member.OwnedAddresses)
 		snap.Routing[id] = member
 	}
-
 	maps.Copy(snap.Translation, s.translation)
-
 	for id, sessions := range s.bgpSessions {
 		snap.BGPSessions[id] = cloneBGPSessions(sessions)
 	}
-
 	maps.Copy(snap.IntendedByOwner, s.intendedRulesets)
 	peers := make([]BGPPeer, len(s.bgp.Peers))
 	copy(peers, s.bgp.Peers)
 	snap.BGP.Peers = peers
-
 	return snap
 }
 
@@ -442,7 +406,6 @@ func (s *Store) Snapshot() Snapshot {
 func (s *Store) ForwardingGenerations() (routing, npt uint64) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
 	return s.routingGeneration, s.nptPolicyGeneration
 }
 
@@ -450,15 +413,12 @@ func renderIntendedRulesets(owners map[string]OwnedRuleset) string {
 	if len(owners) == 0 {
 		return ""
 	}
-
 	keys := make([]string, 0, len(owners))
 	for owner := range owners {
 		keys = append(keys, owner)
 	}
-
 	sort.Strings(keys)
 	var output strings.Builder
-
 	for _, owner := range keys {
 		state := owners[owner]
 		output.WriteString(owner + ":\n")
@@ -466,11 +426,9 @@ func renderIntendedRulesets(owners map[string]OwnedRuleset) string {
 		if !strings.HasSuffix(state.Rules, "\n") {
 			output.WriteByte('\n')
 		}
-
 		if state.Error != "" {
 			output.WriteString("error: " + state.Error + "\n")
 		}
 	}
-
 	return output.String()
 }

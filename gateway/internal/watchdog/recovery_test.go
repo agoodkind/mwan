@@ -30,7 +30,6 @@ func recoveryTestCfgOverrides(cfg *watchdogconfig.Config) {
 // watchdog emitted through the notifier boundary.
 func notifyMessagesContaining(events []notifyEvent, needles ...string) []string {
 	var out []string
-
 	for _, e := range events {
 		for _, n := range needles {
 			if strings.Contains(e.Message, n) {
@@ -39,7 +38,6 @@ func notifyMessagesContaining(events []notifyEvent, needles ...string) []string 
 			}
 		}
 	}
-
 	return out
 }
 
@@ -78,7 +76,6 @@ func TestRecoveryEmail_AfterFailover(t *testing.T) {
 		w.failoverMu.Unlock()
 		t.Fatal("expected failoverActive=true after triggerBGPFailover")
 	}
-
 	w.failoverMu.Unlock()
 
 	// Advance the clock so the recovery body shows non-zero elapsed.
@@ -95,20 +92,12 @@ func TestRecoveryEmail_AfterFailover(t *testing.T) {
 
 	fn := fakeNotifierFrom(t, w)
 	events := fn.snapshot()
-	messages := notifyMessagesContaining(
-		events,
-		"BGP FAILOVER",
-		"BGP FAILOVER COMPLETE",
-		"BGP RECOVERED",
-	)
+	messages := notifyMessagesContaining(events,
+		"BGP FAILOVER", "BGP FAILOVER COMPLETE", "BGP RECOVERED")
 	if len(messages) < 3 {
-		t.Fatalf(
-			"expected 3 notify events (FAILOVER, FAILOVER COMPLETE, RECOVERED); got %d: %v",
-			len(messages),
-			messages,
-		)
+		t.Fatalf("expected 3 notify events (FAILOVER, FAILOVER COMPLETE, RECOVERED); got %d: %v",
+			len(messages), messages)
 	}
-
 	// The last event the watchdog emits during recovery is the
 	// dedicated bgp-recovered Notify; the resolveAt of the active
 	// failover precedes it.
@@ -116,11 +105,9 @@ func TestRecoveryEmail_AfterFailover(t *testing.T) {
 	if !strings.Contains(last.Message, "BGP RECOVERED") {
 		t.Fatalf("expected last event to be BGP RECOVERED, got %q", last.Message)
 	}
-
 	if last.Kind != "bgp-recovered" {
 		t.Fatalf("expected last event kind=bgp-recovered, got %q", last.Kind)
 	}
-
 	// Verify the active failover state cleared so a future failover
 	// reads as a fresh transition.
 	if fn.Active("bgp-failover", w.cfg.MwanVMID) {
@@ -129,14 +116,12 @@ func TestRecoveryEmail_AfterFailover(t *testing.T) {
 
 	// Recovery leaves the backup announced until FRR selects the primary.
 	if len(m.withdrawRoutesCalls) != 1 || m.withdrawRoutesCalls[0] != "113" {
-		t.Fatalf("expected only primary withdrawal during failover; got %v", m.withdrawRoutesCalls)
+		t.Fatalf("expected only primary withdrawal during failover; got %v",
+			m.withdrawRoutesCalls)
 	}
-
 	if len(m.announceRoutesCalls) < 2 || m.announceRoutesCalls[1] != "113" {
-		t.Fatalf(
-			"expected announce on primary VM 113 during recovery; got %v",
-			m.announceRoutesCalls,
-		)
+		t.Fatalf("expected announce on primary VM 113 during recovery; got %v",
+			m.announceRoutesCalls)
 	}
 }
 
@@ -158,19 +143,12 @@ func TestRecoveryEmail_NoEmailWhenNotInFailover(t *testing.T) {
 	fn := fakeNotifierFrom(t, w)
 	events := fn.snapshot()
 	if len(events) != 0 {
-		t.Fatalf(
-			"expected zero notify events when not in failover; got %d: %+v",
-			len(events),
-			events,
-		)
+		t.Fatalf("expected zero notify events when not in failover; got %d: %+v",
+			len(events), events)
 	}
-
 	if len(m.announceRoutesCalls) != 0 || len(m.withdrawRoutesCalls) != 0 {
-		t.Fatalf(
-			"expected zero route ops when not in failover; got announce=%v withdraw=%v",
-			m.announceRoutesCalls,
-			m.withdrawRoutesCalls,
-		)
+		t.Fatalf("expected zero route ops when not in failover; got announce=%v withdraw=%v",
+			m.announceRoutesCalls, m.withdrawRoutesCalls)
 	}
 }
 
@@ -195,15 +173,10 @@ func TestRecoveryEmail_PrimaryStillUnhealthy(t *testing.T) {
 	if err := w.triggerBGPFailover(ctx, w.cfg, "backup announces no family"); err == nil {
 		t.Fatal("triggerBGPFailover err = nil")
 	}
-
 	if len(m.withdrawRoutesCalls) != 0 {
 		t.Fatalf("withdrawRoutesCalls = %v, want none", m.withdrawRoutesCalls)
 	}
-
-	m.bgpStatusByVMID["203"] = &mwanv1.GetBGPStatusResponse{
-		AllEstablished: true,
-		AnnouncingIpv6: true,
-	}
+	m.bgpStatusByVMID["203"] = &mwanv1.GetBGPStatusResponse{AllEstablished: true, AnnouncingIpv6: true}
 	if err := w.triggerBGPFailover(ctx, w.cfg, "primary unhealthy test"); err != nil {
 		t.Fatalf("triggerBGPFailover: %v", err)
 	}
@@ -222,10 +195,8 @@ func TestRecoveryEmail_PrimaryStillUnhealthy(t *testing.T) {
 	post := fn.snapshot()
 	for _, e := range post[preEvents:] {
 		if strings.Contains(e.Message, "BGP RECOVERED") {
-			t.Fatalf(
-				"did not expect a BGP RECOVERED notify when primary unreachable; got %q",
-				e.Message,
-			)
+			t.Fatalf("did not expect a BGP RECOVERED notify when primary unreachable; got %q",
+				e.Message)
 		}
 	}
 }

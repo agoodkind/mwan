@@ -33,36 +33,27 @@ func (cache *forwardingNeighborCache) observe(message syscall.NetlinkMessage) bo
 		clear(cache.entries)
 		return true
 	}
-
 	neighbor, valid := forwardingNeighborRecord(message.Data)
 	if !valid {
 		clear(cache.entries)
 		return true
 	}
-
 	address, _ := netip.AddrFromSlice(neighbor.IP)
-	key := forwardingNeighborKey{
-		family:  neighbor.Family,
-		index:   neighbor.LinkIndex,
-		address: address,
-	}
+	key := forwardingNeighborKey{family: neighbor.Family, index: neighbor.LinkIndex, address: address}
 	previous, present := cache.entries[key]
 	if message.Header.Type == unix.RTM_DELNEIGH || !netif.ForwardingNeighborUsable(neighbor) {
 		delete(cache.entries, key)
 		return true
 	}
-
 	equivalent := present && previous.Flags == neighbor.Flags && previous.Type == neighbor.Type &&
 		bytes.Equal(previous.HardwareAddr, neighbor.HardwareAddr)
 	if !present && len(cache.entries) >= forwardingNeighborCapacity {
 		clear(cache.entries)
 	}
-
 	// Netlink attribute slices refer to the reusable receive buffer.
 	neighbor.IP = slices.Clone(neighbor.IP)
 	neighbor.HardwareAddr = slices.Clone(neighbor.HardwareAddr)
 	cache.entries[key] = neighbor
-
 	return !equivalent
 }
 
@@ -71,7 +62,6 @@ func forwardingNeighborRecord(data []byte) (netlink.Neigh, bool) {
 	if len(data) < forwardingNeighborHeaderBytes {
 		return empty, false
 	}
-
 	addressBytes := net.IPv4len
 	switch data[0] {
 	case unix.AF_INET:
@@ -80,35 +70,28 @@ func forwardingNeighborRecord(data []byte) (netlink.Neigh, bool) {
 	default:
 		return empty, false
 	}
-
 	attributes, err := nl.ParseRouteAttr(data[forwardingNeighborHeaderBytes:])
 	if err != nil {
 		return empty, false
 	}
-
 	seen := make(map[uint16]bool, len(attributes))
 	for _, attribute := range attributes {
 		if seen[attribute.Attr.Type] || !forwardingNeighborAttribute(attribute, addressBytes) {
 			return empty, false
 		}
-
 		seen[attribute.Attr.Type] = true
 	}
-
 	if !seen[unix.NDA_DST] || !seen[unix.NDA_LLADDR] {
 		return empty, false
 	}
-
 	neighbor, err := netlink.NeighDeserialize(data)
 	if err != nil || neighbor.LinkIndex <= 0 {
 		return empty, false
 	}
-
 	address, valid := netip.AddrFromSlice(neighbor.IP)
 	if !valid || address.Is4In6() || address.IsUnspecified() || address.IsMulticast() {
 		return empty, false
 	}
-
 	return *neighbor, true
 }
 

@@ -23,12 +23,7 @@ import (
 	vppclient "goodkind.io/mwan/internal/vpp"
 )
 
-func verifyNAT64Recovery(
-	t *testing.T,
-	logger *slog.Logger,
-	settings vppclient.Settings,
-	policy vppclient.Policy,
-) {
+func verifyNAT64Recovery(t *testing.T, logger *slog.Logger, settings vppclient.Settings, policy vppclient.Policy) {
 	t.Helper()
 	settings.TAPs = slices.Clone(settings.TAPs)
 	connection, err := govpp.Connect(settings.Endpoints.APISocket)
@@ -36,10 +31,7 @@ func verifyNAT64Recovery(
 		t.Fatal(err)
 	}
 	defer connection.Disconnect()
-	if err := connection.CheckCompatibility(
-		&feature.FeatureIsEnabled{},
-		&feature.FeatureIsEnabledReply{},
-	); err != nil {
+	if err := connection.CheckCompatibility(&feature.FeatureIsEnabled{}, &feature.FeatureIsEnabledReply{}); err != nil {
 		t.Fatal(err)
 	}
 	settings.StateFile = filepath.Join(filepath.Dir(settings.StateFile), "completed-enable.json")
@@ -52,21 +44,14 @@ func verifyNAT64Recovery(
 	verifyNAT64InterfaceCount(t, connection, 0)
 	disable := *settings.NAT64
 	disable.Enable = false
-	if _, err := nat64.NewServiceClient(connection).Nat64PluginEnableDisable(
-		t.Context(),
-		&disable,
-	); err != nil {
+	if _, err := nat64.NewServiceClient(connection).Nat64PluginEnableDisable(t.Context(), &disable); err != nil {
 		t.Fatalf("reset the empty private NAT64 instance after its owned enable: %v", err)
 	}
 
 	settings.StateFile = filepath.Join(filepath.Dir(settings.StateFile), "pending-enable.json")
 	empty := settings
 	empty.TAPs = nil
-	if err := recoveryController(t, empty).Reconcile(
-		t.Context(),
-		logger,
-		vppclient.Policy{},
-	); err != nil {
+	if err := recoveryController(t, empty).Reconcile(t.Context(), logger, vppclient.Policy{}); err != nil {
 		t.Fatal(err)
 	}
 	record := readRecoveryJournal(t, settings.StateFile)
@@ -74,20 +59,11 @@ func verifyNAT64Recovery(
 	writeRecoveryJournal(t, settings.StateFile, record)
 	enable := *settings.NAT64
 	enable.Enable = true
-	if _, err := nat64.NewServiceClient(connection).Nat64PluginEnableDisable(
-		t.Context(),
-		&enable,
-	); err != nil {
+	if _, err := nat64.NewServiceClient(connection).Nat64PluginEnableDisable(t.Context(), &enable); err != nil {
 		t.Fatalf("apply the journaled enable before its interrupted completion: %v", err)
 	}
-	if _, err := nat64.NewServiceClient(connection).Nat64PluginEnableDisable(
-		t.Context(),
-		&enable,
-	); !errors.Is(err, api.VPPApiError(1)) {
-		t.Fatalf(
-			"VPP 26.06 must identify the already enabled zero-interface plugin with typed result 1: %v",
-			err,
-		)
+	if _, err := nat64.NewServiceClient(connection).Nat64PluginEnableDisable(t.Context(), &enable); !errors.Is(err, api.VPPApiError(1)) {
+		t.Fatalf("VPP 26.06 must identify the already enabled zero-interface plugin with typed result 1: %v", err)
 	}
 	verifyEnableJournal(t, settings.StateFile, false, false, true)
 	verifyNAT64InterfaceCount(t, connection, 0)
@@ -104,38 +80,21 @@ func verifyNAT64Recovery(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := nat64.NewServiceClient(connection).Nat64AddDelPoolAddrRange(
-		t.Context(),
-		&nat64.Nat64AddDelPoolAddrRange{
-			StartAddr: foreignPool,
-			EndAddr:   foreignPool,
-			VrfID:     ^uint32(0),
-			IsAdd:     true,
-		},
-	); err != nil {
+	if _, err := nat64.NewServiceClient(connection).Nat64AddDelPoolAddrRange(t.Context(), &nat64.Nat64AddDelPoolAddrRange{StartAddr: foreignPool, EndAddr: foreignPool, VrfID: ^uint32(0), IsAdd: true}); err != nil {
 		t.Fatal(err)
 	}
 	foreignPrefix, err := ip_types.ParseIP6Prefix("2001:db8:77:64::/96")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := nat64.NewServiceClient(connection).Nat64AddDelPrefix(
-		t.Context(),
-		&nat64.Nat64AddDelPrefix{Prefix: foreignPrefix, VrfID: 77, IsAdd: true},
-	); err != nil {
+	if _, err := nat64.NewServiceClient(connection).Nat64AddDelPrefix(t.Context(), &nat64.Nat64AddDelPrefix{Prefix: foreignPrefix, VrfID: 77, IsAdd: true}); err != nil {
 		t.Fatal(err)
 	}
 	verifyForeignNAT64Resources(t, connection)
 	verifyNAT64InterfaceCount(t, connection, 0)
 }
 
-func verifyPendingTAPReplacement(
-	t *testing.T,
-	logger *slog.Logger,
-	connection *core.Connection,
-	settings vppclient.Settings,
-	policy vppclient.Policy,
-) {
+func verifyPendingTAPReplacement(t *testing.T, logger *slog.Logger, connection *core.Connection, settings vppclient.Settings, policy vppclient.Policy) {
 	t.Helper()
 	record := readRecoveryJournal(t, settings.StateFile)
 	var objects []json.RawMessage
@@ -199,20 +158,9 @@ func verifyPendingTAPReplacement(
 	if !exists {
 		t.Fatal("the replacement inside TAP does not exist")
 	}
-	reply, err := feature.NewServiceClient(connection).FeatureIsEnabled(
-		t.Context(),
-		&feature.FeatureIsEnabled{
-			ArcName:     "ip6-unicast",
-			FeatureName: "nat64-in2out",
-			SwIfIndex:   inside.SwIfIndex,
-		},
-	)
+	reply, err := feature.NewServiceClient(connection).FeatureIsEnabled(t.Context(), &feature.FeatureIsEnabled{ArcName: "ip6-unicast", FeatureName: "nat64-in2out", SwIfIndex: inside.SwIfIndex})
 	if err != nil || !reply.IsEnabled {
-		t.Fatalf(
-			"the replacement TAP must enable NAT64 packet processing after resolving pending membership: %v, %+v",
-			err,
-			reply,
-		)
+		t.Fatalf("the replacement TAP must enable NAT64 packet processing after resolving pending membership: %v, %+v", err, reply)
 	}
 	record = readRecoveryJournal(t, settings.StateFile)
 	var pending []json.RawMessage
@@ -227,11 +175,7 @@ func verifyPendingTAPReplacement(
 func removeRecoveryPolicy(t *testing.T, logger *slog.Logger, settings vppclient.Settings) {
 	t.Helper()
 	settings.TAPs = nil
-	if err := recoveryController(t, settings).Reconcile(
-		t.Context(),
-		logger,
-		vppclient.Policy{},
-	); err != nil {
+	if err := recoveryController(t, settings).Reconcile(t.Context(), logger, vppclient.Policy{}); err != nil {
 		t.Fatalf("remove the private recovery policy: %v", err)
 	}
 }
@@ -272,11 +216,7 @@ func writeRecoveryJournal(t *testing.T, path string, record map[string]json.RawM
 func verifyEnableJournal(t *testing.T, path string, enabled, owned, pending bool) {
 	t.Helper()
 	record := readRecoveryJournal(t, path)
-	for field, expected := range map[string]bool{
-		"NAT64Enabled":       enabled,
-		"NAT64Owned":         owned,
-		"NAT64EnablePending": pending,
-	} {
+	for field, expected := range map[string]bool{"NAT64Enabled": enabled, "NAT64Owned": owned, "NAT64EnablePending": pending} {
 		var actual bool
 		if err := json.Unmarshal(record[field], &actual); err != nil {
 			t.Fatal(err)
@@ -289,10 +229,7 @@ func verifyEnableJournal(t *testing.T, path string, enabled, owned, pending bool
 
 func verifyNAT64InterfaceCount(t *testing.T, connection *core.Connection, expected int) {
 	t.Helper()
-	stream, err := nat64.NewServiceClient(connection).Nat64InterfaceDump(
-		t.Context(),
-		&nat64.Nat64InterfaceDump{},
-	)
+	stream, err := nat64.NewServiceClient(connection).Nat64InterfaceDump(t.Context(), &nat64.Nat64InterfaceDump{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,10 +252,7 @@ func verifyNAT64InterfaceCount(t *testing.T, connection *core.Connection, expect
 
 func verifyForeignNAT64Resources(t *testing.T, connection *core.Connection) {
 	t.Helper()
-	pool, err := nat64.NewServiceClient(connection).Nat64PoolAddrDump(
-		t.Context(),
-		&nat64.Nat64PoolAddrDump{},
-	)
+	pool, err := nat64.NewServiceClient(connection).Nat64PoolAddrDump(t.Context(), &nat64.Nat64PoolAddrDump{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,10 +270,7 @@ func verifyForeignNAT64Resources(t *testing.T, connection *core.Connection) {
 			poolPreserved = true
 		}
 	}
-	prefixes, err := nat64.NewServiceClient(connection).Nat64PrefixDump(
-		t.Context(),
-		&nat64.Nat64PrefixDump{},
-	)
+	prefixes, err := nat64.NewServiceClient(connection).Nat64PrefixDump(t.Context(), &nat64.Nat64PrefixDump{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,10 +289,6 @@ func verifyForeignNAT64Resources(t *testing.T, connection *core.Connection) {
 		}
 	}
 	if !poolPreserved || !prefixPreserved {
-		t.Fatalf(
-			"NAT64 recovery changed foreign resources: pool %t, prefix %t",
-			poolPreserved,
-			prefixPreserved,
-		)
+		t.Fatalf("NAT64 recovery changed foreign resources: pool %t, prefix %t", poolPreserved, prefixPreserved)
 	}
 }

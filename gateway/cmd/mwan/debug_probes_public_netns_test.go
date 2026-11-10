@@ -73,11 +73,7 @@ func runDebugProbeIsolatedTest(t *testing.T, run func(*testing.T, string), clone
 	}
 	t.Logf("public debug executable: %s", binary)
 	child := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^"+t.Name()+"$", "-test.v")
-	child.Env = append(
-		os.Environ(),
-		debugProbeNamespaceChild+"="+t.Name(),
-		debugProbeNamespaceBinary+"="+binary,
-	)
+	child.Env = append(os.Environ(), debugProbeNamespaceChild+"="+t.Name(), debugProbeNamespaceBinary+"="+binary)
 	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: cloneFlags}
 	if output, err := child.CombinedOutput(); err != nil {
 		t.Fatalf("isolated public debug command: %v: %s", err, output)
@@ -127,14 +123,7 @@ func TestCLIConnectivityAbsentPrefixSystemd(t *testing.T) {
 
 func ensureDebugNetworkd(t *testing.T) {
 	t.Helper()
-	output, err := exec.CommandContext(
-		t.Context(),
-		"systemctl",
-		"show",
-		"systemd-networkd.service",
-		"--property=ActiveState",
-		"--value",
-	).CombinedOutput()
+	output, err := exec.CommandContext(t.Context(), "systemctl", "show", "systemd-networkd.service", "--property=ActiveState", "--value").CombinedOutput()
 	if err != nil {
 		t.Fatalf("read systemd-networkd state: %v: %s", err, output)
 	}
@@ -146,20 +135,11 @@ func ensureDebugNetworkd(t *testing.T) {
 		t.Fatalf("systemd-networkd state %q cannot be restored", state)
 	}
 	t.Cleanup(func() {
-		if output, err := exec.Command(
-			"systemctl",
-			"stop",
-			"systemd-networkd.service",
-		).CombinedOutput(); err != nil {
+		if output, err := exec.Command("systemctl", "stop", "systemd-networkd.service").CombinedOutput(); err != nil {
 			t.Errorf("restore systemd-networkd state: %v: %s", err, output)
 		}
 	})
-	if output, err := exec.CommandContext(
-		t.Context(),
-		"systemctl",
-		"start",
-		"systemd-networkd.service",
-	).CombinedOutput(); err != nil {
+	if output, err := exec.CommandContext(t.Context(), "systemctl", "start", "systemd-networkd.service").CombinedOutput(); err != nil {
 		t.Fatalf("start systemd-networkd: %v: %s", err, output)
 	}
 }
@@ -188,41 +168,18 @@ func runCLIConnectivityAbsentPrefix(t *testing.T, binary string) {
 			}
 		})
 	}
-	output, diagnostics, code := runCLIProcess(
-		t,
-		binary,
-		"debug",
-		"connectivity",
-		"--config",
-		config,
-		"--output-format",
-		"json",
-	)
+	output, diagnostics, code := runCLIProcess(t, binary, "debug", "connectivity", "--config", config, "--output-format", "json")
 	var results []struct {
 		Prefix        string `json:"prefix"`
 		PrefixPresent bool   `json:"prefix_present"`
 		Ping4Status   string `json:"ping4_status"`
 		Ping6Status   string `json:"ping6_status"`
 	}
-	if code != 0 || json.Unmarshal([]byte(output), &results) != nil || len(results) != 1 ||
-		results[0].Prefix != "" ||
-		results[0].PrefixPresent ||
-		results[0].Ping4Status != "OK" ||
-		results[0].Ping6Status != "OK" {
+	if code != 0 || json.Unmarshal([]byte(output), &results) != nil || len(results) != 1 || results[0].Prefix != "" || results[0].PrefixPresent || results[0].Ping4Status != "OK" || results[0].Ping6Status != "OK" {
 		t.Fatalf("absent prefix exit=%d output=%s diagnostics=%s", code, output, diagnostics)
 	}
-	text, diagnostics, code := runCLIProcess(
-		t,
-		binary,
-		"debug",
-		"connectivity",
-		"--config",
-		config,
-		"--output-format",
-		"text",
-	)
-	if code != 0 || !strings.Contains(text, "  prefix: \n  prefix present: false\n") ||
-		strings.Contains(text, "invalid Prefix") {
+	text, diagnostics, code := runCLIProcess(t, binary, "debug", "connectivity", "--config", config, "--output-format", "text")
+	if code != 0 || !strings.Contains(text, "  prefix: \n  prefix present: false\n") || strings.Contains(text, "invalid Prefix") {
 		t.Fatalf("absent prefix text exit=%d output=%s diagnostics=%s", code, text, diagnostics)
 	}
 }
@@ -236,14 +193,7 @@ func runCLIActiveProbeNamespaceRuntime(t *testing.T, binary string) {
 	if err := netlink.LinkSetUp(loopback); err != nil {
 		t.Fatal(err)
 	}
-	for _, cidr := range []string{
-		"192.0.2.10/24",
-		"2001:db8:1::10/64",
-		"1.1.1.1/32",
-		"8.8.8.8/32",
-		"2606:4700:4700::1111/128",
-		"2620:fe::9/128",
-	} {
+	for _, cidr := range []string{"192.0.2.10/24", "2001:db8:1::10/64", "1.1.1.1/32", "8.8.8.8/32", "2606:4700:4700::1111/128", "2620:fe::9/128"} {
 		address, err := netlink.ParseAddr(cidr)
 		if err != nil {
 			t.Fatal(err)
@@ -257,149 +207,86 @@ func runCLIActiveProbeNamespaceRuntime(t *testing.T, binary string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.RouteAdd(&netlink.Route{
-		LinkIndex: loopback.Attrs().Index,
-		Dst:       prefix,
-		Protocol:  unix.RTPROT_DHCP,
-	}); err != nil {
+	if err := netlink.RouteAdd(&netlink.Route{LinkIndex: loopback.Attrs().Index, Dst: prefix, Protocol: unix.RTPROT_DHCP}); err != nil {
 		t.Fatal(err)
 	}
 	certificate := startDebugProbeHTTPS(t)
 	for _, view := range []string{"curl4", "curl6", "lb4", "lb6", "lb4-ifaces", "lb6-ifaces"} {
-		t.Run(
-			view,
-			func(t *testing.T) {
-				output, diagnostics := runDebugProbeFixtureCommand(
-					t,
-					binary,
-					config,
-					certificate,
-					view,
-					"json",
-					nil,
-				)
-				var results []struct {
-					netif.HTTPAttempt
-					WAN *struct {
-						ID    string `json:"id"`
-						Name  string `json:"name"`
-						Iface string `json:"interface"`
-					} `json:"wan"`
+		t.Run(view, func(t *testing.T) {
+			output, diagnostics := runDebugProbeFixtureCommand(t, binary, config, certificate, view, "json", nil)
+			var results []struct {
+				netif.HTTPAttempt
+				WAN *struct {
+					ID    string `json:"id"`
+					Name  string `json:"name"`
+					Iface string `json:"interface"`
+				} `json:"wan"`
+			}
+			if err := json.Unmarshal([]byte(output), &results); err != nil {
+				t.Fatalf("decode=%v output=%s diagnostics=%s", err, output, diagnostics)
+			}
+			count := 6
+			if strings.HasPrefix(view, "curl") {
+				count = 2
+			}
+			if len(results) != count || strings.Count(output, "\n") != 1 || diagnostics != "" {
+				t.Fatalf("results=%+v diagnostics=%s", results, diagnostics)
+			}
+			for index, result := range results {
+				family := "inet"
+				if strings.Contains(view, "6") {
+					family = "inet6"
 				}
-				if err := json.Unmarshal([]byte(output), &results); err != nil {
-					t.Fatalf("decode=%v output=%s diagnostics=%s", err, output, diagnostics)
+				iface := ""
+				if strings.HasPrefix(view, "curl") || strings.HasSuffix(view, "-ifaces") {
+					iface = "lo"
 				}
-				count := 6
-				if strings.HasPrefix(view, "curl") {
-					count = 2
+				if result.Iteration != index+1 || result.Timeout != 5*time.Second || result.Family != family || result.Interface != iface {
+					t.Fatalf("request=%+v", result)
 				}
-				if len(results) != count || strings.Count(output, "\n") != 1 || diagnostics != "" {
-					t.Fatalf("results=%+v diagnostics=%s", results, diagnostics)
+				if index%2 == 0 {
+					if result.Target != "https://ifconfig.co" || result.StatusCode != http.StatusServiceUnavailable || result.Body != debugProbeResponseBody || result.Error != "" {
+						t.Fatalf("response=%+v", result)
+					}
+				} else if result.Target != "https://api.ipify.org" || result.Error != "HTTPGet: HTTP GET: Get \"https://api.ipify.org\": EOF" || result.Body != "" || result.StatusCode != 0 {
+					t.Fatalf("failed response=%+v", result)
 				}
-				for index, result := range results {
-					family := "inet"
-					if strings.Contains(view, "6") {
-						family = "inet6"
-					}
-					iface := ""
-					if strings.HasPrefix(view, "curl") || strings.HasSuffix(view, "-ifaces") {
-						iface = "lo"
-					}
-					if result.Iteration != index+1 || result.Timeout != 5*time.Second ||
-						result.Family != family ||
-						result.Interface != iface {
-						t.Fatalf("request=%+v", result)
-					}
-					if index%2 == 0 {
-						if result.Target != "https://ifconfig.co" ||
-							result.StatusCode != http.StatusServiceUnavailable ||
-							result.Body != debugProbeResponseBody ||
-							result.Error != "" {
-							t.Fatalf("response=%+v", result)
-						}
-					} else if result.Target != "https://api.ipify.org" || result.Error != "HTTPGet: HTTP GET: Get \"https://api.ipify.org\": EOF" || result.Body != "" || result.StatusCode != 0 {
-						t.Fatalf("failed response=%+v", result)
-					}
-					if strings.HasSuffix(view, "-ifaces") &&
-						(result.WAN == nil || result.WAN.Name != "att" || result.WAN.Iface != "lo") {
-						t.Fatalf("WAN=%+v", result.WAN)
-					}
+				if strings.HasSuffix(view, "-ifaces") && (result.WAN == nil || result.WAN.Name != "att" || result.WAN.Iface != "lo") {
+					t.Fatalf("WAN=%+v", result.WAN)
 				}
-				text, diagnostics := runDebugProbeFixtureCommand(
-					t,
-					binary,
-					config,
-					certificate,
-					view,
-					"text",
-					nil,
-				)
-				if diagnostics != "" || strings.Count(text, debugProbeResponseBody) != count/2 ||
-					strings.Count(text, results[1].Error) != count/2 {
-					t.Fatalf("text=%s diagnostics=%s", text, diagnostics)
+			}
+			text, diagnostics := runDebugProbeFixtureCommand(t, binary, config, certificate, view, "text", nil)
+			if diagnostics != "" || strings.Count(text, debugProbeResponseBody) != count/2 || strings.Count(text, results[1].Error) != count/2 {
+				t.Fatalf("text=%s diagnostics=%s", text, diagnostics)
+			}
+			for _, result := range results {
+				record := fmt.Sprintf("  interface: %s\n  family: %s\n  target: %s\n  iteration: %d\n  timeout: %s\n  status code: %d\n  body: %s\n", result.Interface, result.Family, result.Target, result.Iteration, result.Timeout, result.StatusCode, result.Body)
+				if !strings.Contains(text, record) {
+					t.Fatalf("%s omitted response %+v: %s", view, result, text)
 				}
-				for _, result := range results {
-					record := fmt.Sprintf(
-						"  interface: %s\n  family: %s\n  target: %s\n  iteration: %d\n  timeout: %s\n  status code: %d\n  body: %s\n",
-						result.Interface,
-						result.Family,
-						result.Target,
-						result.Iteration,
-						result.Timeout,
-						result.StatusCode,
-						result.Body,
-					)
-					if !strings.Contains(text, record) {
-						t.Fatalf("%s omitted response %+v: %s", view, result, text)
-					}
-					if result.WAN != nil &&
-						(!strings.Contains(
-							text,
-							"  WAN id: "+result.WAN.ID+"\n",
-						) || !strings.Contains(
-							text,
-							"  WAN name: "+result.WAN.Name+"\n",
-						) || !strings.Contains(text, "  WAN interface: "+result.WAN.Iface+"\n")) {
-						t.Fatalf("%s omitted WAN details: %s", view, text)
-					}
+				if result.WAN != nil && (!strings.Contains(text, "  WAN id: "+result.WAN.ID+"\n") || !strings.Contains(text, "  WAN name: "+result.WAN.Name+"\n") || !strings.Contains(text, "  WAN interface: "+result.WAN.Iface+"\n")) {
+					t.Fatalf("%s omitted WAN details: %s", view, text)
 				}
-				for _, format := range []string{"text", "json"} {
-					full, err := os.OpenFile("/dev/full", os.O_WRONLY, 0)
-					if err != nil {
-						t.Fatal(err)
-					}
-					_, diagnostics = runDebugProbeFixtureCommand(
-						t,
-						binary,
-						config,
-						certificate,
-						view,
-						format,
-						full,
-					)
-					if err := full.Close(); err != nil {
-						t.Fatal(err)
-					}
-					if !strings.Contains(diagnostics, "no space left on device") {
-						t.Fatalf("write error diagnostics=%s", diagnostics)
-					}
+			}
+			for _, format := range []string{"text", "json"} {
+				full, err := os.OpenFile("/dev/full", os.O_WRONLY, 0)
+				if err != nil {
+					t.Fatal(err)
 				}
-			},
-		)
+				_, diagnostics = runDebugProbeFixtureCommand(t, binary, config, certificate, view, format, full)
+				if err := full.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if !strings.Contains(diagnostics, "no space left on device") {
+					t.Fatalf("write error diagnostics=%s", diagnostics)
+				}
+			}
+		})
 	}
 	for _, view := range []string{"ping4", "ping6"} {
-		output, diagnostics := runDebugProbeFixtureCommand(
-			t,
-			binary,
-			config,
-			certificate,
-			view,
-			"json",
-			nil,
-		)
+		output, diagnostics := runDebugProbeFixtureCommand(t, binary, config, certificate, view, "json", nil)
 		var attempts []netif.PingAttempt
-		if err := json.Unmarshal([]byte(output), &attempts); err != nil || len(attempts) != 6 ||
-			diagnostics != "" {
+		if err := json.Unmarshal([]byte(output), &attempts); err != nil || len(attempts) != 6 || diagnostics != "" {
 			t.Fatalf("%s: decode=%v results=%+v diagnostics=%s", view, err, attempts, diagnostics)
 		}
 		for _, attempt := range attempts {
@@ -407,29 +294,13 @@ func runCLIActiveProbeNamespaceRuntime(t *testing.T, binary string) {
 				t.Fatalf("real echo result=%+v", attempt)
 			}
 		}
-		text, diagnostics := runDebugProbeFixtureCommand(
-			t,
-			binary,
-			config,
-			certificate,
-			view,
-			"text",
-			nil,
-		)
+		text, diagnostics := runDebugProbeFixtureCommand(t, binary, config, certificate, view, "text", nil)
 		if diagnostics != "" {
 			t.Fatalf("%s diagnostics=%s", view, diagnostics)
 		}
 		assertDebugPingDetails(t, text, attempts)
 	}
-	output, diagnostics := runDebugProbeFixtureCommand(
-		t,
-		binary,
-		config,
-		certificate,
-		"connectivity",
-		"json",
-		nil,
-	)
+	output, diagnostics := runDebugProbeFixtureCommand(t, binary, config, certificate, "connectivity", "json", nil)
 	var connectivity []struct {
 		Addresses     []netif.CurrentAddr `json:"addresses"`
 		IPv4Present   bool                `json:"ipv4_present"`
@@ -443,20 +314,11 @@ func runCLIActiveProbeNamespaceRuntime(t *testing.T, binary string) {
 		Ping4         []netif.PingAttempt `json:"ping4"`
 		Ping6         []netif.PingAttempt `json:"ping6"`
 	}
-	if err := json.Unmarshal([]byte(output), &connectivity); err != nil || len(connectivity) != 1 ||
-		diagnostics != "" {
+	if err := json.Unmarshal([]byte(output), &connectivity); err != nil || len(connectivity) != 1 || diagnostics != "" {
 		t.Fatalf("decode=%v result=%s diagnostics=%s", err, output, diagnostics)
 	}
 	result := connectivity[0]
-	if !result.IPv4Present || !result.IPv6Present || !result.PrefixPresent ||
-		result.Prefix != "2001:db8:100::/56" ||
-		result.NPTPresent ||
-		result.NPTStatus != "FAIL" ||
-		result.Ping4Status != "OK" ||
-		result.Ping6Status != "OK" ||
-		len(result.Addresses) < 6 ||
-		len(result.Ping4) != 2 ||
-		len(result.Ping6) != 2 {
+	if !result.IPv4Present || !result.IPv6Present || !result.PrefixPresent || result.Prefix != "2001:db8:100::/56" || result.NPTPresent || result.NPTStatus != "FAIL" || result.Ping4Status != "OK" || result.Ping6Status != "OK" || len(result.Addresses) < 6 || len(result.Ping4) != 2 || len(result.Ping6) != 2 {
 		t.Fatalf("connectivity=%+v", result)
 	}
 	for _, attempt := range append(result.Ping4, result.Ping6...) {
@@ -464,23 +326,12 @@ func runCLIActiveProbeNamespaceRuntime(t *testing.T, binary string) {
 			t.Fatalf("connectivity attempt=%+v", attempt)
 		}
 	}
-	text, diagnostics := runDebugProbeFixtureCommand(
-		t,
-		binary,
-		config,
-		certificate,
-		"connectivity",
-		"text",
-		nil,
-	)
-	if diagnostics != "" || !strings.Contains(text, "  prefix: "+result.Prefix+"\n") ||
-		!strings.Contains(text, "  prefix present: true\n") ||
-		!strings.Contains(text, "  NPT present: false\n") {
+	text, diagnostics := runDebugProbeFixtureCommand(t, binary, config, certificate, "connectivity", "text", nil)
+	if diagnostics != "" || !strings.Contains(text, "  prefix: "+result.Prefix+"\n") || !strings.Contains(text, "  prefix present: true\n") || !strings.Contains(text, "  NPT present: false\n") {
 		t.Fatalf("connectivity text=%s diagnostics=%s", text, diagnostics)
 	}
 	for _, address := range result.Addresses {
-		if !strings.Contains(text, "  address: "+address.CIDR+"\n") ||
-			!strings.Contains(text, "    origin: "+address.Origin+"\n") {
+		if !strings.Contains(text, "  address: "+address.CIDR+"\n") || !strings.Contains(text, "    origin: "+address.Origin+"\n") {
 			t.Fatalf("connectivity omitted address %+v: %s", address, text)
 		}
 	}
@@ -490,15 +341,7 @@ func runCLIActiveProbeNamespaceRuntime(t *testing.T, binary string) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, diagnostics := runDebugProbeFixtureCommand(
-			t,
-			binary,
-			config,
-			certificate,
-			"connectivity",
-			format,
-			full,
-		)
+		_, diagnostics := runDebugProbeFixtureCommand(t, binary, config, certificate, "connectivity", format, full)
 		if err := full.Close(); err != nil {
 			t.Fatal(err)
 		}
@@ -514,23 +357,14 @@ func assertDebugPingDetails(t *testing.T, text string, attempts []netif.PingAtte
 		t.Fatalf("ping details=%s", text)
 	}
 	for _, attempt := range attempts {
-		fields := fmt.Sprintf(
-			"\n    interface: %s\n    family: %s\n    target: %s\n    timeout: %s\n    error: \n",
-			attempt.Interface,
-			attempt.Family,
-			attempt.Target,
-			attempt.Timeout,
-		)
+		fields := fmt.Sprintf("\n    interface: %s\n    family: %s\n    target: %s\n    timeout: %s\n    error: \n", attempt.Interface, attempt.Family, attempt.Target, attempt.Timeout)
 		found := false
 		for _, record := range strings.Split(text, "  attempt ")[1:] {
 			value, rest, ok := strings.Cut(record, "\n")
-			if !ok || !strings.HasPrefix(value, fmt.Sprintf("%d: ", attempt.Attempt)) ||
-				!strings.HasPrefix("\n"+rest, fields) {
+			if !ok || !strings.HasPrefix(value, fmt.Sprintf("%d: ", attempt.Attempt)) || !strings.HasPrefix("\n"+rest, fields) {
 				continue
 			}
-			rtt, err := time.ParseDuration(
-				strings.TrimPrefix(value, fmt.Sprintf("%d: ", attempt.Attempt)),
-			)
+			rtt, err := time.ParseDuration(strings.TrimPrefix(value, fmt.Sprintf("%d: ", attempt.Attempt)))
 			if err != nil || rtt <= 0 {
 				t.Fatalf("invalid ping RTT %q: %v", value, err)
 			}
@@ -566,8 +400,7 @@ func installDebugProbeNetwork(t *testing.T) string {
 	}
 	retained := make([]json.RawMessage, 0, len(entries))
 	for _, entry := range entries {
-		if bytes.Contains(entry, []byte(`"goodkind-mwan-steering:wan"`)) &&
-			!bytes.Contains(entry, []byte(`"name": "att"`)) {
+		if bytes.Contains(entry, []byte(`"goodkind-mwan-steering:wan"`)) && !bytes.Contains(entry, []byte(`"name": "att"`)) {
 			continue
 		}
 		retained = append(retained, bytes.ReplaceAll(entry, []byte("enatt0"), []byte("lo")))
@@ -604,11 +437,7 @@ func startDebugProbeHTTPS(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
 	hosts := filepath.Join(root, "hosts")
-	if err := os.WriteFile(
-		hosts,
-		[]byte("127.0.0.1 ifconfig.co api.ipify.org\n::1 ifconfig.co api.ipify.org\n"),
-		0o600,
-	); err != nil {
+	if err := os.WriteFile(hosts, []byte("127.0.0.1 ifconfig.co api.ipify.org\n::1 ifconfig.co api.ipify.org\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	bindDebugProbePath(t, hosts, "/etc/hosts")
@@ -616,33 +445,17 @@ func startDebugProbeHTTPS(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	template := &x509.Certificate{
-		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "debug probe fixture"},
-		DNSNames:              []string{"ifconfig.co", "api.ipify.org"},
-		NotBefore:             time.Now().Add(-time.Hour),
-		NotAfter:              time.Now().Add(time.Hour),
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		IsCA:                  true,
-		BasicConstraintsValid: true,
-	}
+	template := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "debug probe fixture"}, DNSNames: []string{"ifconfig.co", "api.ipify.org"}, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour), KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, IsCA: true, BasicConstraintsValid: true}
 	der, err := x509.CreateCertificate(rand.Reader, template, template, public, signingKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	certificatePEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: der,
-	})
+	certificatePEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 	keyDER, err := x509.MarshalPKCS8PrivateKey(signingKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	keyPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "PRIVATE KEY",
-		Bytes: keyDER,
-	})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
 	tlsCertificate, err := tls.X509KeyPair(certificatePEM, keyPEM)
 	if err != nil {
 		t.Fatal(err)
@@ -679,13 +492,7 @@ func startDebugProbeHTTPS(t *testing.T) string {
 			t.Fatal(err)
 		}
 		server := &http.Server{Handler: handler, ReadHeaderTimeout: time.Second}
-		listener = tls.NewListener(
-			listener,
-			&tls.Config{
-				Certificates: []tls.Certificate{tlsCertificate},
-				MinVersion:   tls.VersionTLS12,
-			},
-		)
+		listener = tls.NewListener(listener, &tls.Config{Certificates: []tls.Certificate{tlsCertificate}, MinVersion: tls.VersionTLS12})
 		t.Cleanup(func() {
 			if err := server.Close(); err != nil {
 				t.Error(err)
@@ -700,26 +507,9 @@ func startDebugProbeHTTPS(t *testing.T) string {
 	return certificate
 }
 
-func runDebugProbeFixtureCommand(
-	t *testing.T,
-	binary string,
-	config string,
-	certificate string,
-	view string,
-	format string,
-	destination io.Writer,
-) (string, string) {
+func runDebugProbeFixtureCommand(t *testing.T, binary, config, certificate, view, format string, destination io.Writer) (string, string) {
 	t.Helper()
-	command := exec.CommandContext(
-		t.Context(),
-		binary,
-		"debug",
-		view,
-		"--config",
-		config,
-		"--output-format",
-		format,
-	)
+	command := exec.CommandContext(t.Context(), binary, "debug", view, "--config", config, "--output-format", format)
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
 		if strings.Contains(strings.ToLower(key), "proxy") || key == "SSL_CERT_FILE" {
@@ -735,14 +525,7 @@ func runDebugProbeFixtureCommand(
 	}
 	err := command.Run()
 	if destination == nil && err != nil {
-		t.Fatalf(
-			"%s %s: %v output=%s diagnostics=%s",
-			view,
-			format,
-			err,
-			output.String(),
-			diagnostics.String(),
-		)
+		t.Fatalf("%s %s: %v output=%s diagnostics=%s", view, format, err, output.String(), diagnostics.String())
 	}
 	if destination != nil && err == nil {
 		t.Fatal("command accepted the failed output write")

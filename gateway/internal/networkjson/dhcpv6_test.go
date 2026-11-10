@@ -18,18 +18,12 @@ func mwanDHCPv6Document(family string) string {
         "goodkind-mwan-steering:owner": "mwan",
         "goodkind-mwan-steering:link": { "match": { "hardware-address": "02:00:5e:00:53:77" } },
         "ietf-ip:ipv6": ` + family + ` },`
-
-	return strings.Replace(
-		validDocument,
-		`{ "name": "enmwanbr0", "type": "iana-if-type:other" }`,
-		owned+` { "name": "enmwanbr0", "type": "iana-if-type:other" }`,
-		1,
-	)
+	return strings.Replace(validDocument, `{ "name": "enmwanbr0", "type": "iana-if-type:other" }`,
+		owned+` { "name": "enmwanbr0", "type": "iana-if-type:other" }`, 1)
 }
 
 func TestLoadMWANOwnedDHCPv6RequestModes(t *testing.T) {
 	t.Parallel()
-
 	for _, testCase := range []struct {
 		name           string
 		family         string
@@ -62,66 +56,47 @@ func TestLoadMWANOwnedDHCPv6RequestModes(t *testing.T) {
                 "goodkind-mwan-steering:dhcpv6-client": {
                   "address-iaid": 41, "request-address": true,
                   "request-prefix": true, "use-dns": false } }`,
-			wantAddress:    true,
-			wantDelegation: true,
+			wantAddress: true, wantDelegation: true,
 		},
 	} {
-		t.Run(
-			testCase.name,
-			func(t *testing.T) {
-				t.Parallel()
-				loaded, err := networkload.Load(
-					writeDocument(t, mwanDHCPv6Document(testCase.family)),
-					schemaDirForTest(t),
-				)
-				if err != nil {
-					t.Fatalf("Load: %v", err)
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			loaded, err := networkload.Load(writeDocument(t, mwanDHCPv6Document(testCase.family)), schemaDirForTest(t))
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			connection := requireConnection(t, loaded.Connections, "endhcp6")
+			if connection.IPv6 == nil || connection.IPv6.DHCP == nil || !*connection.IPv6.DHCP ||
+				(connection.IPv6.Delegation != nil) != testCase.wantDelegation {
+				t.Fatalf("DHCPv6 intent = %+v", connection.IPv6)
+			}
+			client := connection.IPv6.DHCPv6
+			if testCase.wantAddress && (client == nil || client.RequestAddress == nil || !*client.RequestAddress ||
+				client.IANAIAID == nil || *client.IANAIAID != 41) {
+				t.Fatalf("IA_NA intent = %+v", client)
+			}
+			foundClient := false
+			foundAddress := false
+			for _, claim := range loaded.Claims {
+				if claim.ConnectionID != connection.ID || claim.Family != "ipv6" {
+					continue
 				}
-
-				connection := requireConnection(t, loaded.Connections, "endhcp6")
-				if connection.IPv6 == nil || connection.IPv6.DHCP == nil ||
-					!*connection.IPv6.DHCP ||
-					(connection.IPv6.Delegation != nil) != testCase.wantDelegation {
-					t.Fatalf("DHCPv6 intent = %+v", connection.IPv6)
+				if claim.Kind == interfaceintent.ResourceDHCPv6 && claim.Writer == interfaceintent.WriterMWANProtocol {
+					foundClient = true
 				}
-
-				client := connection.IPv6.DHCPv6
-				if testCase.wantAddress &&
-					(client == nil || client.RequestAddress == nil || !*client.RequestAddress ||
-						client.IANAIAID == nil || *client.IANAIAID != 41) {
-					t.Fatalf("IA_NA intent = %+v", client)
+				if claim.Kind == interfaceintent.ResourceAcquiredAddress && claim.Writer == interfaceintent.WriterMWANAddress {
+					foundAddress = true
 				}
-
-				foundClient := false
-				foundAddress := false
-
-				for _, claim := range loaded.Claims {
-					if claim.ConnectionID != connection.ID || claim.Family != "ipv6" {
-						continue
-					}
-
-					if claim.Kind == interfaceintent.ResourceDHCPv6 &&
-						claim.Writer == interfaceintent.WriterMWANProtocol {
-						foundClient = true
-					}
-
-					if claim.Kind == interfaceintent.ResourceAcquiredAddress &&
-						claim.Writer == interfaceintent.WriterMWANAddress {
-						foundAddress = true
-					}
-				}
-
-				if !foundClient || !foundAddress {
-					t.Fatalf("DHCPv6 ownership claims = %+v", loaded.Claims)
-				}
-			},
-		)
+			}
+			if !foundClient || !foundAddress {
+				t.Fatalf("DHCPv6 ownership claims = %+v", loaded.Claims)
+			}
+		})
 	}
 }
 
 func TestLoadRejectsInvalidMWANOwnedDHCPv6Requests(t *testing.T) {
 	t.Parallel()
-
 	for _, testCase := range []struct {
 		name   string
 		family string
@@ -148,18 +123,12 @@ func TestLoadRejectsInvalidMWANOwnedDHCPv6Requests(t *testing.T) {
 			want:   "information-request cannot acquire",
 		},
 	} {
-		t.Run(
-			testCase.name,
-			func(t *testing.T) {
-				t.Parallel()
-				_, err := networkload.Load(
-					writeDocument(t, mwanDHCPv6Document(testCase.family)),
-					schemaDirForTest(t),
-				)
-				if err == nil || !strings.Contains(err.Error(), testCase.want) {
-					t.Fatalf("Load error = %v, want %q", err, testCase.want)
-				}
-			},
-		)
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := networkload.Load(writeDocument(t, mwanDHCPv6Document(testCase.family)), schemaDirForTest(t))
+			if err == nil || !strings.Contains(err.Error(), testCase.want) {
+				t.Fatalf("Load error = %v, want %q", err, testCase.want)
+			}
+		})
 	}
 }

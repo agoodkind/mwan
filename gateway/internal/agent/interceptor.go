@@ -41,8 +41,7 @@ type traceStatsHandler struct {
 
 // newTraceStatsHandler builds the handler for the unary methods of services.
 func newTraceStatsHandler(
-	logger *slog.Logger,
-	services ...*grpc.ServiceDesc,
+	logger *slog.Logger, services ...*grpc.ServiceDesc,
 ) *traceStatsHandler {
 	unaryMethods := make(map[string]struct{})
 	for _, service := range services {
@@ -56,8 +55,7 @@ func newTraceStatsHandler(
 // TagRPC attaches the trace ID from the incoming metadata, or a new one, to a
 // unary RPC's context.
 func (h *traceStatsHandler) TagRPC(
-	ctx context.Context,
-	info *stats.RPCTagInfo,
+	ctx context.Context, info *stats.RPCTagInfo,
 ) context.Context {
 	if _, unary := h.unaryMethods[info.FullMethodName]; !unary {
 		return ctx
@@ -91,31 +89,24 @@ func (h *traceStatsHandler) HandleRPC(ctx context.Context, rpcStats stats.RPCSta
 		log.InfoContext(
 			ctx,
 			"grpc request started",
-			"rpc_method",
-			fullMethod,
-			"peer_addr",
-			peerAddr,
-			"transport",
-			transport,
+			"rpc_method", fullMethod,
+			"peer_addr", peerAddr,
+			"transport", transport,
 		)
 	case *stats.End:
 		log.InfoContext(
 			ctx,
 			"grpc request finished",
-			"rpc_method",
-			fullMethod,
-			"grpc_code",
-			status.Code(event.Error).String(),
-			"duration_ms",
-			event.EndTime.Sub(event.BeginTime).Milliseconds(),
+			"rpc_method", fullMethod,
+			"grpc_code", status.Code(event.Error).String(),
+			"duration_ms", event.EndTime.Sub(event.BeginTime).Milliseconds(),
 		)
 	}
 }
 
 // TagConn returns ctx unchanged; the handler traces RPCs, not connections.
 func (h *traceStatsHandler) TagConn(
-	ctx context.Context,
-	_ *stats.ConnTagInfo,
+	ctx context.Context, _ *stats.ConnTagInfo,
 ) context.Context {
 	return ctx
 }

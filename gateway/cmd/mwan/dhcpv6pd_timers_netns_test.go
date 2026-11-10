@@ -44,9 +44,7 @@ func testOwnedDHCPv6PDTimerRuntime(t *testing.T, mode dhcpv6TimerMode) {
 	}
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
-	child.SysProcAttr = &syscall.SysProcAttr{
-		Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS),
-	}
+	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
 	child.Env = append(os.Environ(), dhcpv6RuntimeChildEnv+"=1", dhcpv6RuntimeBinaryEnv+"="+binary)
 	if output, err := child.CombinedOutput(); err != nil {
 		t.Fatalf("isolated DHCPv6 timer daemon test: %v: %s", err, output)
@@ -59,23 +57,13 @@ func runOwnedDHCPv6PDTimerRuntime(t *testing.T, mode dhcpv6TimerMode) {
 	topology := buildDHCPv6PDRuntime(t, "solicit")
 	observations := startDHCPv6TimerServer(t, mode)
 	setRuntimeNamespace(t, topology.gateway)
-	daemon := startRuntimeDaemon(
-		t,
-		os.Getenv(dhcpv6RuntimeBinaryEnv),
-		topology.configPath,
-		topology.root,
-		"dhcpv6pd-timers",
-	)
+	daemon := startRuntimeDaemon(t, os.Getenv(dhcpv6RuntimeBinaryEnv), topology.configPath, topology.root, "dhcpv6pd-timers")
 	defer stopRuntimeDaemon(t, daemon)
 	waitStaticRuntimeAddress(t, daemon, "enatt0", dhcpv6TimerAddress, true)
 	setRuntimeNamespace(t, topology.provider)
 	// The gateway removes its RA default route after a Neighbor Advertisement
 	// without the Router flag. A forwarding provider link sets that flag.
-	if err := os.WriteFile(
-		"/proc/sys/net/ipv6/conf/wan-vlan/forwarding",
-		[]byte("1\n"),
-		0o600,
-	); err != nil {
+	if err := os.WriteFile("/proc/sys/net/ipv6/conf/wan-vlan/forwarding", []byte("1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	addMappedRuntimeRoute(t, dhcpv6TimerPrefix, "2001:db8:2::1", "wan-vlan")
@@ -99,21 +87,10 @@ func assertDHCPv6TimerLeaseHeld(t *testing.T, daemon *runtimeDaemon, observation
 	deadline := started.Add(2*dhcpv6TimerValid + dhcpv6TimerT1)
 	for time.Now().Before(deadline) {
 		if !dhcpv6TimerAddressReady() {
-			t.Fatalf(
-				"delegated address %s disappeared %s after the lease check started: messages=%v daemon=%s",
-				dhcpv6TimerAddress,
-				time.Since(started),
-				observations.snapshot(),
-				runtimeLogTail(t, daemon, 40),
-			)
+			t.Fatalf("delegated address %s disappeared %s after the lease check started: messages=%v daemon=%s", dhcpv6TimerAddress, time.Since(started), observations.snapshot(), runtimeLogTail(t, daemon, 40))
 		}
 		if !dhcpv6TimerTableDefault() {
-			t.Fatalf(
-				"WAN table default disappeared %s after the lease check started: messages=%v daemon=%s",
-				time.Since(started),
-				observations.snapshot(),
-				runtimeLogTail(t, daemon, 40),
-			)
+			t.Fatalf("WAN table default disappeared %s after the lease check started: messages=%v daemon=%s", time.Since(started), observations.snapshot(), runtimeLogTail(t, daemon, 40))
 		}
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
@@ -126,8 +103,7 @@ func assertDHCPv6TimerLeaseHeld(t *testing.T, daemon *runtimeDaemon, observation
 		}
 		switch observation.messageType {
 		case dhcpv6.MessageTypeRenew, dhcpv6.MessageTypeRebind:
-			if !observation.replied.IsZero() &&
-				observation.replied.Sub(observation.received) >= dhcpv6TimerReplyDelay {
+			if !observation.replied.IsZero() && observation.replied.Sub(observation.received) >= dhcpv6TimerReplyDelay {
 				lateReplies++
 			}
 		case dhcpv6.MessageTypeSolicit:
@@ -135,69 +111,36 @@ func assertDHCPv6TimerLeaseHeld(t *testing.T, daemon *runtimeDaemon, observation
 		}
 	}
 	if lateReplies < 2 || solicits != 0 {
-		t.Fatalf(
-			"lease did not stay renewed through late replies: late_replies=%d solicits=%d messages=%v",
-			lateReplies,
-			solicits,
-			observations.snapshot(),
-		)
+		t.Fatalf("lease did not stay renewed through late replies: late_replies=%d solicits=%d messages=%v", lateReplies, solicits, observations.snapshot())
 	}
 }
 
 // assertDHCPv6TimerSolicitAfterExpiry requires the first Solicit at or after expiry and
 // no later than 1.5 s after it. The retransmission must keep the transaction ID, carry a
 // larger Elapsed Time, and arrive 0.5 s to 1.6 s after the first Solicit.
-func assertDHCPv6TimerSolicitAfterExpiry(
-	t *testing.T,
-	daemon *runtimeDaemon,
-	observations *dhcpv6TimerLog,
-) {
+func assertDHCPv6TimerSolicitAfterExpiry(t *testing.T, daemon *runtimeDaemon, observations *dhcpv6TimerLog) {
 	t.Helper()
-	request := observations.wait(
-		t,
-		dhcpv6TimerValid,
-		func(observation dhcpv6TimerObservation) bool {
-			return observation.messageType == dhcpv6.MessageTypeRequest && observation.answered
-		},
-	)
+	request := observations.wait(t, dhcpv6TimerValid, func(observation dhcpv6TimerObservation) bool {
+		return observation.messageType == dhcpv6.MessageTypeRequest && observation.answered
+	})
 	expiry := request.validUntil
-	first := observations.wait(
-		t,
-		time.Until(expiry)+dhcpv6TimerSolicitDelay+dhcpv6TimerScheduleMargin,
-		func(observation dhcpv6TimerObservation) bool {
-			return observation.messageType == dhcpv6.MessageTypeSolicit &&
-				observation.received.After(request.received)
-		},
-	)
+	first := observations.wait(t, time.Until(expiry)+dhcpv6TimerSolicitDelay+dhcpv6TimerScheduleMargin, func(observation dhcpv6TimerObservation) bool {
+		return observation.messageType == dhcpv6.MessageTypeSolicit && observation.received.After(request.received)
+	})
 	if first.received.Before(expiry) {
 		t.Fatalf("Solicit at %s preceded lease expiry at %s", first.received, expiry)
 	}
-	second := observations.wait(
-		t,
-		dhcpv6TimerSolicitMaxRT+dhcpv6TimerScheduleMargin,
-		func(observation dhcpv6TimerObservation) bool {
-			return observation.messageType == dhcpv6.MessageTypeSolicit &&
-				observation.received.After(first.received)
-		},
-	)
+	second := observations.wait(t, dhcpv6TimerSolicitMaxRT+dhcpv6TimerScheduleMargin, func(observation dhcpv6TimerObservation) bool {
+		return observation.messageType == dhcpv6.MessageTypeSolicit && observation.received.After(first.received)
+	})
 	gap := second.received.Sub(first.received)
 	if second.transactionID != first.transactionID || second.elapsed <= first.elapsed ||
 		gap < dhcpv6TimerSolicitDelay-dhcpv6TimerScheduleMargin || gap > dhcpv6TimerSolicitMaxRT+dhcpv6TimerScheduleMargin {
-		t.Fatalf(
-			"Solicit retransmission broke RFC 8415 timing: first=%+v second=%+v gap=%s",
-			first,
-			second,
-			gap,
-		)
+		t.Fatalf("Solicit retransmission broke RFC 8415 timing: first=%+v second=%+v gap=%s", first, second, gap)
 	}
-	observations.wait(
-		t,
-		dhcpv6TimerSolicitMaxRT+dhcpv6TimerScheduleMargin,
-		func(observation dhcpv6TimerObservation) bool {
-			return observation.messageType == dhcpv6.MessageTypeRequest && observation.answered &&
-				observation.received.After(second.received)
-		},
-	)
+	observations.wait(t, dhcpv6TimerSolicitMaxRT+dhcpv6TimerScheduleMargin, func(observation dhcpv6TimerObservation) bool {
+		return observation.messageType == dhcpv6.MessageTypeRequest && observation.answered && observation.received.After(second.received)
+	})
 	waitDHCPv6RuntimeAddress(t, daemon, dhcpv6TimerAddress)
 }
 
@@ -211,25 +154,12 @@ func waitDHCPv6TimerTableDefault(t *testing.T, daemon *runtimeDaemon) {
 		assertRuntimeDaemonRunning(t, daemon)
 		time.Sleep(50 * time.Millisecond)
 	}
-	routes, err := netlink.RouteListFiltered(
-		netlink.FAMILY_V6,
-		&netlink.Route{Table: dhcpv6TimerWANTable},
-		netlink.RT_FILTER_TABLE,
-	)
-	t.Fatalf(
-		"WAN table IPv6 default missing: routes=%v err=%v daemon=%s",
-		routes,
-		err,
-		runtimeLogTail(t, daemon, 40),
-	)
+	routes, err := netlink.RouteListFiltered(netlink.FAMILY_V6, &netlink.Route{Table: dhcpv6TimerWANTable}, netlink.RT_FILTER_TABLE)
+	t.Fatalf("WAN table IPv6 default missing: routes=%v err=%v daemon=%s", routes, err, runtimeLogTail(t, daemon, 40))
 }
 
 func dhcpv6TimerTableDefault() bool {
-	routes, err := netlink.RouteListFiltered(
-		netlink.FAMILY_V6,
-		&netlink.Route{Table: dhcpv6TimerWANTable},
-		netlink.RT_FILTER_TABLE,
-	)
+	routes, err := netlink.RouteListFiltered(netlink.FAMILY_V6, &netlink.Route{Table: dhcpv6TimerWANTable}, netlink.RT_FILTER_TABLE)
 	if err != nil {
 		return false
 	}

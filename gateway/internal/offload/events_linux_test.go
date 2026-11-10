@@ -51,35 +51,20 @@ func TestConntrackEvents(t *testing.T) {
 		for _, protocol := range []uint8{unix.IPPROTO_TCP, unix.IPPROTO_UDP} {
 			before := conntrackEventsCreate(t, connection, addresses, protocol, 23456)
 			event := awaitConntrackEvent(t, ctx, source)
-			if event.Destroyed || event.ReceivedAt.IsZero() || event.Flow.ID != before.ID ||
-				event.Flow.TupleOrig != before.TupleOrig ||
-				event.Flow.TupleReply != before.TupleReply {
+			if event.Destroyed || event.ReceivedAt.IsZero() || event.Flow.ID != before.ID || event.Flow.TupleOrig != before.TupleOrig || event.Flow.TupleReply != before.TupleReply {
 				t.Fatalf("creation did not publish the kernel identity: %+v", event)
 			}
 			current, err := FreshConntrackFlow(ctx, before)
 			if err != nil || current.Mark != before.Mark || current.ID != before.ID {
-				t.Fatalf(
-					"fresh lookup did not read the current kernel connection: %+v: %v",
-					current,
-					err,
-				)
+				t.Fatalf("fresh lookup did not read the current kernel connection: %+v: %v", current, err)
 			}
 			for _, tuple := range []conntrack.Tuple{before.TupleOrig, before.TupleReply} {
 				lookedUp, err := LookupConntrackFlow(ctx, tuple, before.Zone)
-				if err != nil || lookedUp.ID != before.ID ||
-					lookedUp.TupleOrig != before.TupleOrig ||
-					lookedUp.TupleReply != before.TupleReply {
-					t.Fatalf(
-						"tuple lookup did not identify the existing connection: %+v: %v",
-						lookedUp,
-						err,
-					)
+				if err != nil || lookedUp.ID != before.ID || lookedUp.TupleOrig != before.TupleOrig || lookedUp.TupleReply != before.TupleReply {
+					t.Fatalf("tuple lookup did not identify the existing connection: %+v: %v", lookedUp, err)
 				}
 			}
-			if _, err := LookupConntrackFlow(ctx, before.TupleOrig, 23); !errors.Is(
-				err,
-				unix.ENOENT,
-			) {
+			if _, err := LookupConntrackFlow(ctx, before.TupleOrig, 23); !errors.Is(err, unix.ENOENT) {
 				t.Fatalf("tuple lookup accepted a different conntrack zone: %v", err)
 			}
 			stale := before
@@ -92,17 +77,8 @@ func TestConntrackEvents(t *testing.T) {
 			if _, err := FreshConntrackFlow(ctx, stale); !errors.Is(err, unix.ESTALE) {
 				t.Fatalf("fresh lookup accepted a changed reply tuple: %v", err)
 			}
-			if err := connection.Update(conntrack.Flow{
-				TupleOrig:  before.TupleOrig,
-				TupleReply: before.TupleReply,
-				Mark:       before.Mark + 1,
-			}); err != nil {
-				t.Fatalf(
-					"update kernel connection %s protocol %d mark: %v",
-					before.TupleOrig.IP.SourceAddress,
-					protocol,
-					err,
-				)
+			if err := connection.Update(conntrack.Flow{TupleOrig: before.TupleOrig, TupleReply: before.TupleReply, Mark: before.Mark + 1}); err != nil {
+				t.Fatalf("update kernel connection %s protocol %d mark: %v", before.TupleOrig.IP.SourceAddress, protocol, err)
 			}
 			event = awaitConntrackEvent(t, ctx, source)
 			if event.Destroyed || event.Flow.ID != before.ID || event.Flow.Mark != before.Mark+1 {
@@ -110,18 +86,13 @@ func TestConntrackEvents(t *testing.T) {
 			}
 			current, err = FreshConntrackFlow(ctx, event.Flow)
 			if err != nil || current.Mark != event.Flow.Mark {
-				t.Fatalf(
-					"fresh lookup did not preserve the changed kernel mark: %+v: %v",
-					current,
-					err,
-				)
+				t.Fatalf("fresh lookup did not preserve the changed kernel mark: %+v: %v", current, err)
 			}
 			if err := connection.Delete(before); err != nil {
 				t.Fatal(err)
 			}
 			event = awaitConntrackEvent(t, ctx, source)
-			if !event.Destroyed || event.Flow.ID != before.ID ||
-				event.Flow.TupleOrig != before.TupleOrig {
+			if !event.Destroyed || event.Flow.ID != before.ID || event.Flow.TupleOrig != before.TupleOrig {
 				t.Fatalf("deletion did not publish the destroyed kernel identity: %+v", event)
 			}
 			if _, err := FreshConntrackFlow(ctx, before); !errors.Is(err, unix.ENOENT) {
@@ -172,10 +143,7 @@ func TestConntrackTimeoutRefresh(t *testing.T) {
 			}
 			stale = before
 			stale.TupleReply.Proto.DestinationPort++
-			if err := updater.Refresh(ctx, stale, conntrackEventsFlowTimeout*2); !errors.Is(
-				err,
-				unix.ESTALE,
-			) {
+			if err := updater.Refresh(ctx, stale, conntrackEventsFlowTimeout*2); !errors.Is(err, unix.ESTALE) {
 				t.Fatalf("timeout refresh accepted a changed reply tuple: %v", err)
 			}
 			input := before
@@ -189,34 +157,20 @@ func TestConntrackTimeoutRefresh(t *testing.T) {
 				t.Fatal(err)
 			}
 			if after.Timeout <= before.Timeout || after.Timeout > conntrackEventsFlowTimeout*2 {
-				t.Fatalf(
-					"timeout refresh did not extend kernel expiry: %d to %d",
-					before.Timeout,
-					after.Timeout,
-				)
+				t.Fatalf("timeout refresh did not extend kernel expiry: %d to %d", before.Timeout, after.Timeout)
 			}
 			want := before
 			want.Timeout = after.Timeout
 			if !reflect.DeepEqual(want, after) {
-				t.Fatalf(
-					"timeout refresh changed other kernel metadata: want=%+v got=%+v",
-					want,
-					after,
-				)
+				t.Fatalf("timeout refresh changed other kernel metadata: want=%+v got=%+v", want, after)
 			}
 			if err := connection.Delete(before); err != nil {
 				t.Fatal(err)
 			}
-			if err := updater.Refresh(ctx, before, conntrackEventsFlowTimeout*2); !errors.Is(
-				err,
-				unix.ENOENT,
-			) {
+			if err := updater.Refresh(ctx, before, conntrackEventsFlowTimeout*2); !errors.Is(err, unix.ENOENT) {
 				t.Fatalf("timeout refresh accepted a deleted connection: %v", err)
 			}
-			if _, err := LookupConntrackFlow(ctx, before.TupleOrig, before.Zone); !errors.Is(
-				err,
-				unix.ENOENT,
-			) {
+			if _, err := LookupConntrackFlow(ctx, before.TupleOrig, before.Zone); !errors.Is(err, unix.ENOENT) {
 				t.Fatalf("timeout refresh recreated a deleted connection: %v", err)
 			}
 		}
@@ -324,11 +278,7 @@ func TestConntrackReceiveRejectsTruncatedDatagram(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sender, err := unix.Socket(
-		unix.AF_NETLINK,
-		unix.SOCK_RAW|unix.SOCK_CLOEXEC,
-		unix.NETLINK_USERSOCK,
-	)
+	sender, err := unix.Socket(unix.AF_NETLINK, unix.SOCK_RAW|unix.SOCK_CLOEXEC, unix.NETLINK_USERSOCK)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,19 +287,10 @@ func TestConntrackReceiveRejectsTruncatedDatagram(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	if err := unix.Sendmsg(
-		sender,
-		make([]byte, conntrackReceiveBytes+1),
-		nil,
-		&unix.SockaddrNetlink{Family: unix.AF_NETLINK, Pid: receiver.PID()},
-		0,
-	); err != nil {
+	if err := unix.Sendmsg(sender, make([]byte, conntrackReceiveBytes+1), nil, &unix.SockaddrNetlink{Family: unix.AF_NETLINK, Pid: receiver.PID()}, 0); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readNetlinkDatagram(raw, make([]byte, conntrackReceiveBytes)); !errors.Is(
-		err,
-		unix.EMSGSIZE,
-	) {
+	if _, err := readNetlinkDatagram(raw, make([]byte, conntrackReceiveBytes)); !errors.Is(err, unix.EMSGSIZE) {
 		t.Fatalf("oversized netlink datagram did not report truncation: %v", err)
 	}
 }
@@ -388,24 +329,11 @@ func conntrackEventsConnection(t *testing.T) *conntrack.Conn {
 	return connection
 }
 
-func conntrackEventsCreate(
-	t *testing.T,
-	connection *conntrack.Conn,
-	addresses [2]string,
-	protocol uint8,
-	sourcePort uint16,
-) conntrack.Flow {
+func conntrackEventsCreate(t *testing.T, connection *conntrack.Conn, addresses [2]string, protocol uint8, sourcePort uint16) conntrack.Flow {
 	t.Helper()
-	flow := conntrack.NewFlow(
-		protocol,
-		conntrack.StatusConfirmed|conntrack.StatusSeenReply|conntrack.StatusAssured,
-		netip.MustParseAddr(addresses[0]),
-		netip.MustParseAddr(addresses[1]),
-		sourcePort,
-		conntrackEventsDestinationPort,
-		conntrackEventsFlowTimeout,
-		conntrackEventsMark,
-	)
+	flow := conntrack.NewFlow(protocol, conntrack.StatusConfirmed|conntrack.StatusSeenReply|conntrack.StatusAssured,
+		netip.MustParseAddr(addresses[0]), netip.MustParseAddr(addresses[1]), sourcePort,
+		conntrackEventsDestinationPort, conntrackEventsFlowTimeout, conntrackEventsMark)
 	if protocol == unix.IPPROTO_TCP {
 		flow.ProtoInfo.TCP = &conntrack.ProtoInfoTCP{State: conntrackEventsTCPState}
 	}
@@ -419,11 +347,7 @@ func conntrackEventsCreate(
 	return current
 }
 
-func awaitConntrackEvent(
-	t *testing.T,
-	ctx context.Context,
-	source *ConntrackEvents,
-) ConntrackEvent {
+func awaitConntrackEvent(t *testing.T, ctx context.Context, source *ConntrackEvents) ConntrackEvent {
 	t.Helper()
 	select {
 	case event, open := <-source.Events:

@@ -58,7 +58,6 @@ func (p program) process(ctx context.Context, args []string) (*exec.Cmd, error) 
 	case programRousette:
 		return execabs.CommandContext(ctx, rousettePath, args...), nil
 	}
-
 	return nil, errUnknownProgram
 }
 
@@ -89,12 +88,7 @@ func (c command) with(env ...string) command {
 // the same message, so every failure is both in the build log and in the
 // error the caller sees.
 func (b *builder) fail(ctx context.Context, msg string, err error, attrs ...slog.Attr) error {
-	b.log.LogAttrs(
-		ctx,
-		slog.LevelError,
-		"wanconfigstack: "+msg,
-		append(attrs, slog.Any("err", err))...,
-	)
+	b.log.LogAttrs(ctx, slog.LevelError, "wanconfigstack: "+msg, append(attrs, slog.Any("err", err))...)
 	return fmt.Errorf("%s: %w", msg, err)
 }
 
@@ -106,22 +100,14 @@ func (b *builder) run(ctx context.Context, c command) error {
 	if err != nil {
 		return b.fail(ctx, "resolve program", err)
 	}
-
 	b.log.InfoContext(ctx, "wanconfigstack: run", "program", proc.Path, "args", argv, "dir", c.dir)
 	proc.Dir = c.dir
 	proc.Env = append(os.Environ(), c.env...)
 	proc.Stdout = os.Stderr
 	proc.Stderr = os.Stderr
 	if err := proc.Run(); err != nil {
-		return b.fail(
-			ctx,
-			"command failed",
-			err,
-			slog.String("program", proc.Path),
-			slog.String("args", argv),
-		)
+		return b.fail(ctx, "command failed", err, slog.String("program", proc.Path), slog.String("args", argv))
 	}
-
 	return nil
 }
 
@@ -132,6 +118,5 @@ func (b *builder) runAll(ctx context.Context, commands ...command) error {
 			return err
 		}
 	}
-
 	return nil
 }

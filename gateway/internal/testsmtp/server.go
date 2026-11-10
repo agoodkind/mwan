@@ -43,30 +43,15 @@ func Start(t *testing.T) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	server := &Server{
-		listener: listener,
-		mu:       sync.Mutex{},
-		reject:   false,
-		paused:   nil,
-		resume:   nil,
-		Messages: make(chan []byte, 128),
-		Path:     filepath.Join(t.TempDir(), "msmtprc"),
-	}
+	server := &Server{listener: listener, mu: sync.Mutex{}, reject: false, paused: nil, resume: nil, Messages: make(chan []byte, 128), Path: filepath.Join(t.TempDir(), "msmtprc")}
 	address, ok := listener.Addr().(*net.TCPAddr)
 	if !ok {
 		t.Fatalf("SMTP listener returned address type %T", listener.Addr())
 	}
-
-	text := fmt.Sprintf(
-		"account local\nhost 127.0.0.1\nport %d\nfrom sender@example.com\n"+
-			"user test\npassword test\ntls off\ntls_starttls off\naccount default : local\n",
-		address.Port,
-	)
+	text := fmt.Sprintf("account local\nhost 127.0.0.1\nport %d\nfrom sender@example.com\nuser test\npassword test\ntls off\ntls_starttls off\naccount default : local\n", address.Port)
 	if err := os.WriteFile(server.Path, []byte(text), 0o600); err != nil {
 		t.Fatal(err)
 	}
-
 	t.Cleanup(func() { _ = listener.Close() })
 	slog.Info("SMTP test receiver started", "address", listener.Addr().String())
 	go func() {
@@ -76,13 +61,11 @@ func Start(t *testing.T) *Server {
 				t.Errorf("SMTP accept loop panicked: %v", recovered)
 			}
 		}()
-
 		for {
 			connection, err := listener.Accept()
 			if err != nil {
 				return
 			}
-
 			go func() {
 				defer func() {
 					if recovered := recover(); recovered != nil {
@@ -91,19 +74,12 @@ func Start(t *testing.T) *Server {
 					}
 				}()
 				if err := server.receive(connection); err != nil && !errors.Is(err, io.EOF) {
-					slog.Error(
-						"SMTP receiver session failed",
-						"address",
-						connection.RemoteAddr().String(),
-						"error",
-						err,
-					)
+					slog.Error("SMTP receiver session failed", "address", connection.RemoteAddr().String(), "error", err)
 					t.Errorf("SMTP receiver: %v", err)
 				}
 			}()
 		}
 	}()
-
 	return server
 }
 
@@ -121,7 +97,6 @@ func (server *Server) PauseDelivery() (received <-chan struct{}, release func())
 	server.paused, server.resume = paused, resume
 	server.mu.Unlock()
 	var once sync.Once
-
 	return paused, func() {
 		once.Do(func() {
 			server.mu.Lock()
@@ -138,18 +113,15 @@ func (server *Server) receive(connection net.Conn) error {
 		slog.Error("set SMTP receiver deadline failed", "error", err)
 		return fmt.Errorf("set SMTP receiver deadline: %w", err)
 	}
-
 	protocol := textproto.NewConn(connection)
 	if err := protocol.PrintfLine("220 localhost SMTP"); err != nil {
 		return fmt.Errorf("write SMTP greeting: %w", err)
 	}
-
 	for {
 		line, err := protocol.ReadLine()
 		if err != nil {
 			return fmt.Errorf("read SMTP command: %w", err)
 		}
-
 		switch {
 		case strings.HasPrefix(line, "EHLO"):
 			err = protocol.PrintfLine("250-localhost\r\n250 AUTH PLAIN")
@@ -159,12 +131,10 @@ func (server *Server) receive(connection net.Conn) error {
 			if err := protocol.PrintfLine("354 send data"); err != nil {
 				return fmt.Errorf("write SMTP DATA reply: %w", err)
 			}
-
 			data, readError := io.ReadAll(protocol.DotReader())
 			if readError != nil {
 				return fmt.Errorf("read SMTP message: %w", readError)
 			}
-
 			server.mu.Lock()
 			reject := server.reject
 			paused, resume := server.paused, server.resume
@@ -174,10 +144,8 @@ func (server *Server) receive(connection net.Conn) error {
 				case paused <- struct{}{}:
 				default:
 				}
-
 				<-resume
 			}
-
 			if reject {
 				err = protocol.PrintfLine("451 temporary delivery failure")
 			} else {
@@ -188,12 +156,10 @@ func (server *Server) receive(connection net.Conn) error {
 			if err := protocol.PrintfLine("221 closing"); err != nil {
 				return fmt.Errorf("write SMTP closing reply: %w", err)
 			}
-
 			return nil
 		default:
 			err = protocol.PrintfLine("250 accepted")
 		}
-
 		if err != nil {
 			return fmt.Errorf("write SMTP command reply: %w", err)
 		}
@@ -219,16 +185,10 @@ func HTML(t *testing.T, data []byte) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	text, err := htmlPart(
-		message.Header.Get("Content-Type"),
-		message.Header.Get("Content-Transfer-Encoding"),
-		message.Body,
-	)
+	text, err := htmlPart(message.Header.Get("Content-Type"), message.Header.Get("Content-Transfer-Encoding"), message.Body)
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	return text
 }
 
@@ -238,49 +198,36 @@ func htmlPart(contentType, encoding string, body io.Reader) (string, error) {
 		slog.Error("parse message content type failed", "content_type", contentType, "error", err)
 		return "", fmt.Errorf("parse message content type: %w", err)
 	}
-
 	if strings.HasPrefix(mediaType, "multipart/") {
 		reader := multipart.NewReader(body, parameters["boundary"])
-
 		for {
 			part, err := reader.NextPart()
 			if errors.Is(err, io.EOF) {
 				return "", nil
 			}
-
 			if err != nil {
 				slog.Error("read MIME message part failed", "error", err)
 				return "", fmt.Errorf("read MIME part: %w", err)
 			}
-
-			text, err := htmlPart(
-				part.Header.Get("Content-Type"),
-				part.Header.Get("Content-Transfer-Encoding"),
-				part,
-			)
+			text, err := htmlPart(part.Header.Get("Content-Type"), part.Header.Get("Content-Transfer-Encoding"), part)
 			if err != nil || text != "" {
 				return text, err
 			}
 		}
 	}
-
 	if mediaType != "text/html" {
 		return "", nil
 	}
-
 	if encoding == "quoted-printable" {
 		body = quotedprintable.NewReader(body)
 	}
-
 	if encoding == "base64" {
 		body = base64.NewDecoder(base64.StdEncoding, body)
 	}
-
 	data, err := io.ReadAll(body)
 	if err != nil {
 		slog.Error("decode HTML message failed", "encoding", encoding, "error", err)
 		return "", fmt.Errorf("decode HTML message: %w", err)
 	}
-
 	return string(data), nil
 }

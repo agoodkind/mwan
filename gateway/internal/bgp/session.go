@@ -64,17 +64,14 @@ func NewSession(cfg SessionConfig, log *slog.Logger) (*Session, error) {
 	if log == nil {
 		log = slog.Default()
 	}
-
 	validated, err := bgpsession.Validated(cfg)
 	if err == nil {
 		err = bgpsession.ValidateRouterID(cfg.RouterID)
 	}
-
 	if err != nil {
 		log.Error("bgp session configuration rejected", "session", cfg.Name, "error", err)
 		return nil, fmt.Errorf("bgp session %q: %w", cfg.Name, err)
 	}
-
 	log = log.With("session", validated.Name)
 	fibConfig := FIBConfig{
 		Tables:         validated.Tables,
@@ -82,7 +79,6 @@ func NewSession(cfg SessionConfig, log *slog.Logger) (*Session, error) {
 		Metric:         validated.RouteMetric,
 		ResolveNextHop: true,
 	}
-
 	return &Session{
 		cfg:              validated,
 		log:              log,
@@ -122,26 +118,17 @@ func (s *Session) Start(ctx context.Context) error {
 	if s.started {
 		return nil
 	}
-
 	if err := s.startServerLocked(ctx, !s.retaining); err != nil {
 		return err
 	}
-
 	s.log.InfoContext(
-		ctx,
-		"bgp session started",
-		"local_asn",
-		s.cfg.LocalASN,
-		"remote_asn",
-		s.cfg.RemoteASN,
-		"peer",
-		s.peerKey,
-		"peer_port",
-		s.cfg.PeerPort,
-		"connected",
-		s.connected,
+		ctx, "bgp session started",
+		"local_asn", s.cfg.LocalASN,
+		"remote_asn", s.cfg.RemoteASN,
+		"peer", s.peerKey,
+		"peer_port", s.cfg.PeerPort,
+		"connected", s.connected,
 	)
-
 	return nil
 }
 
@@ -165,7 +152,6 @@ func (s *Session) startServerLocked(ctx context.Context, connect bool) error {
 	if err := s.configureServer(watchContext, bgpServer, connect); err != nil {
 		cancelWatch()
 		bgpServer.Stop()
-
 		return err
 	}
 
@@ -174,15 +160,10 @@ func (s *Session) startServerLocked(ctx context.Context, connect bool) error {
 	s.cancelWatch = cancelWatch
 	s.started = true
 	s.connected = connect
-
 	return nil
 }
 
-func (s *Session) configureServer(
-	ctx context.Context,
-	bgpServer *server.BgpServer,
-	connect bool,
-) error {
+func (s *Session) configureServer(ctx context.Context, bgpServer *server.BgpServer, connect bool) error {
 	global := &apipb.Global{
 		Asn:        s.cfg.LocalASN,
 		RouterId:   s.cfg.RouterID.String(),
@@ -192,7 +173,6 @@ func (s *Session) configureServer(
 		s.log.ErrorContext(ctx, "start bgp session server failed", "error", err)
 		return fmt.Errorf("start bgp session %q: %w", s.cfg.Name, err)
 	}
-
 	callbacks := server.WatchEventMessageCallbacks{
 		OnPeerUpdate: func(event *apiutil.WatchEventMessage_PeerEvent, timestamp time.Time) {
 			s.handlePeerEvent(ctx, event, timestamp)
@@ -208,16 +188,13 @@ func (s *Session) configureServer(
 	if s.cfg.GracefulRestartSeconds > 0 {
 		options = append(options, server.WatchEor(false))
 	}
-
 	if err := bgpServer.WatchEvent(ctx, callbacks, options...); err != nil {
 		s.log.ErrorContext(ctx, "bgp session watch registration failed", "error", err)
 		return fmt.Errorf("watch bgp session %q events: %w", s.cfg.Name, err)
 	}
-
 	if !connect {
 		return nil
 	}
-
 	return s.addPeer(ctx, bgpServer)
 }
 
@@ -227,12 +204,10 @@ func (s *Session) addPeer(ctx context.Context, bgpServer *server.BgpServer) erro
 		s.log.ErrorContext(ctx, "build bgp session peer failed", "peer", s.peerKey, "error", err)
 		return fmt.Errorf("build bgp session %q peer %s: %w", s.cfg.Name, s.peerKey, err)
 	}
-
 	if err := bgpServer.AddPeer(ctx, &apipb.AddPeerRequest{Peer: peer}); err != nil {
 		s.log.ErrorContext(ctx, "add bgp session peer failed", "peer", s.peerKey, "error", err)
 		return fmt.Errorf("add bgp session %q peer %s: %w", s.cfg.Name, s.peerKey, err)
 	}
-
 	return nil
 }
 
@@ -243,15 +218,10 @@ func (s *Session) peer() (*apipb.Peer, error) {
 		if err != nil {
 			return nil, err
 		}
-
-		afiSafis = append(
-			afiSafis,
-			&apipb.AfiSafi{
-				Config: &apipb.AfiSafiConfig{Family: gobgpFamily, Enabled: true},
-			},
-		)
+		afiSafis = append(afiSafis, &apipb.AfiSafi{
+			Config: &apipb.AfiSafiConfig{Family: gobgpFamily, Enabled: true},
+		})
 	}
-
 	transport := &apipb.Transport{
 		RemotePort:    uint32(s.cfg.PeerPort),
 		BindInterface: s.cfg.Interface,
@@ -259,7 +229,6 @@ func (s *Session) peer() (*apipb.Peer, error) {
 	if s.cfg.LocalAddress.IsValid() {
 		transport.LocalAddress = s.cfg.LocalAddress.String()
 	}
-
 	peer := &apipb.Peer{
 		Conf: &apipb.PeerConf{
 			NeighborAddress: s.peerKey,
@@ -281,7 +250,6 @@ func (s *Session) peer() (*apipb.Peer, error) {
 			MultihopTtl: uint32(s.cfg.MultihopTTL),
 		}
 	}
-
 	if s.cfg.GracefulRestartSeconds > 0 {
 		// LocalRestarting sets the Restart State bit in the OPEN message. GoBGP
 		// then withholds the session paths until the peer End-of-RIB marker
@@ -294,14 +262,12 @@ func (s *Session) peer() (*apipb.Peer, error) {
 			DeferralTime:    s.cfg.GracefulRestartSeconds,
 			LocalRestarting: s.retaining,
 		}
-
 		for _, afiSafi := range afiSafis {
 			afiSafi.MpGracefulRestart = &apipb.MpGracefulRestart{
 				Config: &apipb.MpGracefulRestartConfig{Enabled: true},
 			}
 		}
 	}
-
 	return peer, nil
 }
 
@@ -337,7 +303,6 @@ func (s *Session) Stop(ctx context.Context) error {
 	if stateChanged {
 		s.enqueueChangeLocked()
 	}
-
 	s.mu.Unlock()
 
 	s.deliverChanges()
@@ -346,7 +311,6 @@ func (s *Session) Stop(ctx context.Context) error {
 		s.log.ErrorContext(ctx, "remove bgp session routes failed", "error", withdrawErr)
 		return fmt.Errorf("remove bgp session %q routes: %w", s.cfg.Name, withdrawErr)
 	}
-
 	return nil
 }
 

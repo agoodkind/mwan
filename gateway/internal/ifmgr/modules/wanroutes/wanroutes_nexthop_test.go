@@ -10,17 +10,12 @@ import (
 
 // stubResolver returns a fixed sequence of results, repeating the last one.
 func stubResolver(results ...bool) func(
-	ctx context.Context,
-	log *slog.Logger,
-	dev string,
-	addr string,
+	ctx context.Context, log *slog.Logger, dev string, addr string,
 ) (bool, error) {
 	callCount := 0
-
 	return func(context.Context, *slog.Logger, string, string) (bool, error) {
 		result := results[min(callCount, len(results)-1)]
 		callCount++
-
 		return result, nil
 	}
 }
@@ -29,7 +24,6 @@ func newNextHopModule(t *testing.T) *Module {
 	t.Helper()
 	module := &Module{cfg: testConfig()}
 	module.InitBase(testEnv(), "module", moduleName)
-
 	return module
 }
 
@@ -89,10 +83,7 @@ func TestNextHopCheckErrorKeepsState(t *testing.T) {
 	}
 
 	module.resolveNextHop = func(
-		context.Context,
-		*slog.Logger,
-		string,
-		string,
+		context.Context, *slog.Logger, string, string,
 	) (bool, error) {
 		return false, errors.New("netlink unavailable")
 	}

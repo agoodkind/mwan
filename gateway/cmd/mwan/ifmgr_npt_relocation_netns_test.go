@@ -25,39 +25,17 @@ import (
 	"goodkind.io/mwan/internal/interfaceintent"
 )
 
-func checkRuntimeInternalNPTRelocation(
-	t *testing.T,
-	gateway netns.NsHandle,
-	configPath string,
-	networkDir string,
-	root string,
-) {
+func checkRuntimeInternalNPTRelocation(t *testing.T, gateway netns.NsHandle, configPath, networkDir, root string) {
 	t.Helper()
 	configuration, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(
-		configPath,
-		[]byte(
-			strings.ReplaceAll(
-				string(configuration),
-				`reconcile_interval = "100ms"`,
-				`reconcile_interval = "1h"`,
-			),
-		),
-		0o600,
-	); err != nil {
+	if err := os.WriteFile(configPath, []byte(strings.ReplaceAll(string(configuration), `reconcile_interval = "100ms"`, `reconcile_interval = "1h"`)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	writeRuntimeLegacyNPT(t, networkDir, "2001:db8:beef:900::/60", false)
-	original := startRuntimeDaemon(
-		t,
-		os.Getenv(mappedRuntimeBinaryEnv),
-		configPath,
-		root,
-		"mapped-original-internal",
-	)
+	original := startRuntimeDaemon(t, os.Getenv(mappedRuntimeBinaryEnv), configPath, root, "mapped-original-internal")
 	defer killOwnedRuntimeDaemon(t, original)
 	waitMappedRuntimeRule(t, original, "ip6", "nat", "2001:db8:beef:900::1", 10*time.Second)
 	waitRuntimeAttachedEdge(t, "enmwanbr0", "2001:db8:beef:900::1")
@@ -70,15 +48,7 @@ func checkRuntimeInternalNPTRelocation(
 	if err := netlink.LinkSetName(former, "former-lan"); err != nil {
 		t.Fatal(err)
 	}
-	replacement := newRuntimePeer(
-		t,
-		gateway,
-		"enmwanbr0",
-		"replacement-lan",
-		[]string{"192.0.2.1/29", "2001:db8:b01:fe::3/64"},
-		[]string{"192.0.2.3/29", "2001:db8:b01:fe::2/64"},
-		"",
-	)
+	replacement := newRuntimePeer(t, gateway, "enmwanbr0", "replacement-lan", []string{"192.0.2.1/29", "2001:db8:b01:fe::3/64"}, []string{"192.0.2.3/29", "2001:db8:b01:fe::2/64"}, "")
 	defer replacement.namespace.Close()
 	setRuntimeNamespace(t, gateway)
 	link, err := netlink.LinkByName("enmwanbr0")
@@ -89,41 +59,18 @@ func checkRuntimeInternalNPTRelocation(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.RouteReplace(&netlink.Route{
-		LinkIndex: link.Attrs().Index,
-		Dst:       internalPrefix,
-	}); err != nil {
+	if err := netlink.RouteReplace(&netlink.Route{LinkIndex: link.Attrs().Index, Dst: internalPrefix}); err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.QdiscAdd(&netlink.Clsact{
-		QdiscAttrs: netlink.QdiscAttrs{
-			LinkIndex: link.Attrs().Index,
-			Handle:    netlink.MakeHandle(0xffff, 0),
-			Parent:    netlink.HANDLE_CLSACT,
-		},
-	}); err != nil {
+	if err := netlink.QdiscAdd(&netlink.Clsact{QdiscAttrs: netlink.QdiscAttrs{LinkIndex: link.Attrs().Index, Handle: netlink.MakeHandle(0xffff, 0), Parent: netlink.HANDLE_CLSACT}}); err != nil {
 		t.Fatal(err)
 	}
-	conflict := &netlink.MatchAll{
-		FilterAttrs: netlink.FilterAttrs{
-			LinkIndex: link.Attrs().Index,
-			Parent:    netlink.HANDLE_MIN_EGRESS,
-			Handle:    1,
-			Priority:  45010,
-			Protocol:  unix.ETH_P_ALL,
-		},
-	}
+	conflict := &netlink.MatchAll{FilterAttrs: netlink.FilterAttrs{LinkIndex: link.Attrs().Index, Parent: netlink.HANDLE_MIN_EGRESS, Handle: 1, Priority: 45010, Protocol: unix.ETH_P_ALL}}
 	if err := netlink.FilterAdd(conflict); err != nil {
 		t.Fatal(err)
 	}
 	writeRuntimeLegacyNPT(t, networkDir, "2001:db8:beef:a00::/60", false)
-	current := startRuntimeDaemon(
-		t,
-		os.Getenv(mappedRuntimeBinaryEnv),
-		configPath,
-		root,
-		"mapped-replacement-internal",
-	)
+	current := startRuntimeDaemon(t, os.Getenv(mappedRuntimeBinaryEnv), configPath, root, "mapped-replacement-internal")
 	defer killOwnedRuntimeDaemon(t, current)
 	defer func() {
 		if t.Failed() {
@@ -135,12 +82,7 @@ func checkRuntimeInternalNPTRelocation(
 	waitRuntimeAttachedEdge(t, "former-lan", "2001:db8:beef:900::1")
 	time.Sleep(500 * time.Millisecond)
 	waitStaticRuntimeAddress(t, current, "enwebpass0", "2001:db8:beef:900::1/128", true)
-	assertRuntimeNPTEdges(
-		t,
-		filepath.Join(root, "owned-addresses.json"),
-		"2001:db8:beef:900::1/128",
-		"2001:db8:beef:a00::1/128",
-	)
+	assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"), "2001:db8:beef:900::1/128", "2001:db8:beef:a00::1/128")
 	if err := netlink.FilterDel(conflict); err != nil {
 		t.Fatal(err)
 	}
@@ -157,36 +99,17 @@ func checkRuntimeInternalNPTRelocation(
 		t.Fatal(err)
 	}
 	waitStaticRuntimeAddress(t, current, "enwebpass0", "2001:db8:beef:900::1/128", false)
-	assertRuntimeNPTEdges(
-		t,
-		filepath.Join(root, "owned-addresses.json"),
-		"2001:db8:beef:a00::1/128",
-	)
+	assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"), "2001:db8:beef:a00::1/128")
 }
 
 func prepareRuntimeRelocationEdge(t *testing.T, original *runtimeDaemon, root string) {
 	t.Helper()
 	authority, err := addresses.New(addresses.Config{
-		Connections: []interfaceintent.Connection{
-			{
-				ID:    "webpass",
-				Name:  "enwebpass0",
-				Owner: interfaceintent.OwnerExternal,
-				Roles: interfaceintent.RoleProvider,
-			},
-		},
-		Providers: map[string]addresses.Provider{
-			"webpass": {
-				IPv6: &config.IPv6Translation{
-					Mode: config.TranslationNPTv6,
-					NPT: &config.NPTv6Translation{
-						InternalPrefix: netip.MustParsePrefix("2001:db8:b01::/60"),
-						ExternalSource: config.PrefixConfigured,
-						ExternalPrefix: netip.MustParsePrefix("2001:db8:beef:a00::/60"),
-					},
-				},
-			},
-		},
+		Connections: []interfaceintent.Connection{{ID: "webpass", Name: "enwebpass0", Owner: interfaceintent.OwnerExternal, Roles: interfaceintent.RoleProvider}},
+		Providers: map[string]addresses.Provider{"webpass": {IPv6: &config.IPv6Translation{
+			Mode: config.TranslationNPTv6,
+			NPT:  &config.NPTv6Translation{InternalPrefix: netip.MustParsePrefix("2001:db8:b01::/60"), ExternalSource: config.PrefixConfigured, ExternalPrefix: netip.MustParsePrefix("2001:db8:beef:a00::/60")},
+		}}},
 		StateFile: filepath.Join(root, "owned-addresses.json"),
 	})
 	if err != nil {
@@ -197,21 +120,14 @@ func prepareRuntimeRelocationEdge(t *testing.T, original *runtimeDaemon, root st
 	if err := authority.Init(ctx, env); err != nil {
 		t.Fatal(err)
 	}
-	request := ifmgr.NPTEdgeRequest{
-		ConnectionID: "webpass",
-		Interface:    "enwebpass0",
-		Prefix:       netip.MustParsePrefix("2001:db8:beef:a00::1/128"),
-	}
+	request := ifmgr.NPTEdgeRequest{ConnectionID: "webpass", Interface: "enwebpass0", Prefix: netip.MustParsePrefix("2001:db8:beef:a00::1/128")}
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		if _, err := env.NPTAddresses.Ensure(ctx, slog.Default(), request); err == nil {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf(
-				"replacement NPT edge did not complete DAD; original daemon log: %s",
-				runtimeDaemonLog(t, original),
-			)
+			t.Fatalf("replacement NPT edge did not complete DAD; original daemon log: %s", runtimeDaemonLog(t, original))
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
@@ -234,16 +150,10 @@ func waitRuntimeAttachedEdge(t *testing.T, interfaceName, edge string) {
 			}
 			for _, filter := range filters {
 				attached, ok := filter.(*netlink.BpfFilter)
-				if !ok || attached.Handle != 0x4e50 || attached.Priority != 45010 ||
-					(attached.Name != "mwan-npt-ingress" && attached.Name != "mwan-npt-egress") {
+				if !ok || attached.Handle != 0x4e50 || attached.Priority != 45010 || (attached.Name != "mwan-npt-ingress" && attached.Name != "mwan-npt-egress") {
 					continue
 				}
-				if runtimeProgramReferencesEdge(
-					t,
-					attached.Id,
-					uint32(link.Attrs().Index),
-					address,
-				) {
+				if runtimeProgramReferencesEdge(t, attached.Id, uint32(link.Attrs().Index), address) {
 					matched++
 				}
 			}
@@ -256,12 +166,7 @@ func waitRuntimeAttachedEdge(t *testing.T, interfaceName, edge string) {
 	t.Fatalf("%s does not have both attached NPT programs referencing edge %s", interfaceName, edge)
 }
 
-func runtimeProgramReferencesEdge(
-	t *testing.T,
-	programID int,
-	index uint32,
-	address [16]byte,
-) bool {
+func runtimeProgramReferencesEdge(t *testing.T, programID int, index uint32, address [16]byte) bool {
 	t.Helper()
 	program, err := ebpf.NewProgramFromID(ebpf.ProgramID(programID))
 	if errors.Is(err, unix.ENOENT) {
@@ -299,13 +204,7 @@ func runtimeProgramReferencesEdge(
 			t.Fatal(err)
 		}
 		if bytes.Contains(value, address[:]) {
-			t.Logf(
-				"interface %d attached program %d references policy map %d with edge %s",
-				index,
-				programID,
-				mapID,
-				netip.AddrFrom16(address),
-			)
+			t.Logf("interface %d attached program %d references policy map %d with edge %s", index, programID, mapID, netip.AddrFrom16(address))
 			return true
 		}
 	}

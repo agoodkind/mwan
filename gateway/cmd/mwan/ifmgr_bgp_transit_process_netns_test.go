@@ -28,18 +28,8 @@ func TestBGPUpstreamRouterProcess(t *testing.T) {
 	}
 	defer func() { _ = namespace.Close() }()
 	address := netip.MustParseAddr(bgpUpstreamAddress)
-	router := startBGPTransitRouter(
-		t,
-		namespace,
-		"198.51.100.9",
-		bgpUpstreamASN,
-		[]netip.Addr{address},
-		bgpTransitNeighbor{
-			address: netip.MustParseAddr(bgpUpstreamVPSAddress),
-			asn:     bgpRuntimeRemoteASN,
-			active:  true,
-		},
-	)
+	router := startBGPTransitRouter(t, namespace, "198.51.100.9", bgpUpstreamASN, []netip.Addr{address},
+		bgpTransitNeighbor{address: netip.MustParseAddr(bgpUpstreamVPSAddress), asn: bgpRuntimeRemoteASN, active: true})
 	router.announce(t, netip.MustParsePrefix("::/0"), address)
 	router.announce(t, netip.MustParsePrefix(bgpRuntimeUndeclared), address)
 	if _, err := io.Copy(io.Discard, os.Stdin); err != nil {

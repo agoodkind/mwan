@@ -17,23 +17,17 @@ func TestNew_DefaultsApplied(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-
 	mod, ok := m.(*Module)
 	if !ok {
 		t.Fatalf("New returned wrong type")
 	}
-
 	if mod.cfg.Unit != "cloudflared-oob" {
 		t.Errorf("unit=%q want cloudflared-oob", mod.cfg.Unit)
 	}
-
 	if mod.cfg.JournalctlPath != "" {
-		t.Errorf(
-			"JournalctlPath should be empty until Init applies the default; got %q",
-			mod.cfg.JournalctlPath,
-		)
+		t.Errorf("JournalctlPath should be empty until Init applies the default; got %q",
+			mod.cfg.JournalctlPath)
 	}
-
 	if len(mod.cfg.DowngradePatterns) != 0 {
 		t.Errorf("DowngradePatterns should be empty; got %d", len(mod.cfg.DowngradePatterns))
 	}
@@ -48,17 +42,13 @@ func TestNew_DowngradePatternsParsed(t *testing.T) {
 	if len(mod.cfg.DowngradePatterns) != 2 {
 		t.Fatalf("expected 2 patterns, got %d", len(mod.cfg.DowngradePatterns))
 	}
-
 	if mod.cfg.DowngradePatterns[0] != "foo" || mod.cfg.DowngradePatterns[1] != "bar.*" {
 		t.Errorf("patterns: %v", mod.cfg.DowngradePatterns)
 	}
 }
 
 func TestNew_JournalctlPathOverride(t *testing.T) {
-	m, _ := New(Config{
-		Unit:           "x",
-		JournalctlPath: "/usr/bin/journalctl-test",
-	})
+	m, _ := New(Config{Unit: "x", JournalctlPath: "/usr/bin/journalctl-test"})
 	if m.(*Module).cfg.JournalctlPath != "/usr/bin/journalctl-test" {
 		t.Errorf("journalctl_path not parsed")
 	}
@@ -95,15 +85,12 @@ func TestMatchAny(t *testing.T) {
 	if !matchAny(pats, "WRN failed to dial to edge with quic: timeout connIndex=2") {
 		t.Errorf("expected match for noisy edge-rotation line")
 	}
-
 	if !matchAny(pats, "datagram manager encountered a failure while serving connIndex=0") {
 		t.Errorf("expected match for datagram-manager line")
 	}
-
 	if matchAny(pats, "Registered tunnel connection connIndex=0 location=sjc07") {
 		t.Errorf("unexpected match for benign Registered line")
 	}
-
 	if matchAny(nil, "anything") {
 		t.Errorf("nil patterns should never match")
 	}
@@ -113,11 +100,9 @@ func TestParsePriority(t *testing.T) {
 	if got := parsePriority("6"); got != 6 {
 		t.Errorf("parsePriority(6) = %d", got)
 	}
-
 	if got := parsePriority("not-a-number"); got != 0 {
 		t.Errorf("non-numeric should return 0; got %d", got)
 	}
-
 	if got := parsePriority(""); got != 0 {
 		t.Errorf("empty should return 0; got %d", got)
 	}
@@ -130,24 +115,20 @@ func TestInitReturnsDisabledSentinelWhenUnitEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
-
 	env := &ifmgr.Env{
 		Iface: "lo",
 		Log:   slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Alerts: ifmgr.WrapNotifier(
-			notify.FromConfig(
-				notify.EmailConfig{},
-				notify.Config{},
-				slog.New(slog.NewTextHandler(io.Discard, nil)),
-				"mwan-ifmgr",
-			),
-		),
+		Alerts: ifmgr.WrapNotifier(notify.FromConfig(
+			notify.EmailConfig{},
+			notify.Config{},
+			slog.New(slog.NewTextHandler(io.Discard, nil)),
+			"mwan-ifmgr",
+		)),
 	}
 	initErr := module.Init(context.Background(), env)
 	if initErr == nil {
 		t.Fatal("Init returned nil error for empty Unit, want ErrModuleDisabled")
 	}
-
 	if !errors.Is(initErr, ifmgr.ErrModuleDisabled) {
 		t.Fatalf("Init returned err=%v, want errors.Is(err, ifmgr.ErrModuleDisabled)", initErr)
 	}

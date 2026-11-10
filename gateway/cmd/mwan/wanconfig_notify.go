@@ -54,7 +54,6 @@ func newSurfaceNotifier(log *slog.Logger, gateway wanconfig.Gateway) *surfaceNot
 	for _, member := range gateway.Members {
 		ifaces[member.Name] = member.Iface
 	}
-
 	return &surfaceNotifier{
 		log:    log,
 		ifaces: ifaces,
@@ -63,37 +62,26 @@ func newSurfaceNotifier(log *slog.Logger, gateway wanconfig.Gateway) *surfaceNot
 }
 
 // HealthTransition implements wanstate.Observer.
-func (n *surfaceNotifier) HealthTransition(
-	member string,
-	from wanstate.Health,
-	to wanstate.Health,
-) {
+func (n *surfaceNotifier) HealthTransition(member string, from wanstate.Health, to wanstate.Health) {
 	iface, known := n.ifaces[member]
 	if !known {
 		// A member outside the published gateway has no interface entry in
 		// the tree, so there is nothing coherent to notify about.
 		return
 	}
-
-	n.enqueue(surfaceEvent{
-		path: notifHealthPath,
-		items: []yangpub.Item{
-			{Path: "interface", Value: iface},
-			{Path: "health", Value: string(to)},
-			{Path: "previous-health", Value: string(from)},
-		},
-	})
+	n.enqueue(surfaceEvent{path: notifHealthPath, items: []yangpub.Item{
+		{Path: "interface", Value: iface},
+		{Path: "health", Value: string(to)},
+		{Path: "previous-health", Value: string(from)},
+	}})
 }
 
 // TierChange implements wanstate.Observer.
 func (n *surfaceNotifier) TierChange(from uint8, to uint8) {
-	n.enqueue(surfaceEvent{
-		path: notifTierPath,
-		items: []yangpub.Item{
-			{Path: "active-tier", Value: strconv.FormatUint(uint64(to), 10)},
-			{Path: "previous-tier", Value: strconv.FormatUint(uint64(from), 10)},
-		},
-	})
+	n.enqueue(surfaceEvent{path: notifTierPath, items: []yangpub.Item{
+		{Path: "active-tier", Value: strconv.FormatUint(uint64(to), 10)},
+		{Path: "previous-tier", Value: strconv.FormatUint(uint64(from), 10)},
+	}})
 }
 
 // enqueue hands one event to the sender without ever blocking the
@@ -122,17 +110,13 @@ func startNotifierSender(
 		defer close(done)
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.ErrorContext(
-					ctx,
+				log.ErrorContext(ctx,
 					"wanconfig: notifier panicked; transitions stop streaming",
-					"err",
-					fmt.Sprint(recovered),
-				)
+					"err", fmt.Sprint(recovered))
 			}
 		}()
 		notifier.run(ctx, pub)
 	}()
-
 	return done
 }
 
@@ -147,16 +131,9 @@ func (n *surfaceNotifier) run(ctx context.Context, pub yangpub.Notifier) {
 		case event := <-n.queue:
 			sendCtx, cancel := context.WithTimeout(ctx, notifySendTimeout)
 			if err := pub.SendNotification(sendCtx, event.path, event.items); err != nil {
-				n.log.ErrorContext(
-					sendCtx,
-					"wanconfig: notification send failed",
-					"path",
-					event.path,
-					"err",
-					err,
-				)
+				n.log.ErrorContext(sendCtx, "wanconfig: notification send failed",
+					"path", event.path, "err", err)
 			}
-
 			cancel()
 		}
 	}

@@ -42,20 +42,12 @@ func New(buildCommit string) func() provider.Provider {
 	}
 }
 
-func (p *mwanProvider) Metadata(
-	_ context.Context,
-	_ provider.MetadataRequest,
-	resp *provider.MetadataResponse,
-) {
+func (p *mwanProvider) Metadata(_ context.Context, _ provider.MetadataRequest, resp *provider.MetadataResponse) {
 	resp.TypeName = providerTypeName
 	resp.Version = p.buildCommit
 }
 
-func (p *mwanProvider) Schema(
-	_ context.Context,
-	_ provider.SchemaRequest,
-	resp *provider.SchemaResponse,
-) {
+func (p *mwanProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: "The provider returns MWAN release and role configuration data. " +
 			"It does not install files or manage services.",
@@ -69,31 +61,23 @@ func (p *mwanProvider) Schema(
 	}
 }
 
-func (p *mwanProvider) Configure(
-	ctx context.Context,
-	req provider.ConfigureRequest,
-	resp *provider.ConfigureResponse,
-) {
+func (p *mwanProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
 	var config providerModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
 	if config.ReleaseBaseURL.IsUnknown() {
 		resp.Diagnostics.AddError(
 			"Unknown provider configuration",
 			"The release_base_url argument must be known when the provider is configured.",
 		)
-
 		return
 	}
-
 	baseURL := release.DefaultBaseURL
 	if !config.ReleaseBaseURL.IsNull() {
 		baseURL = config.ReleaseBaseURL.ValueString()
 	}
-
 	resp.DataSourceData = &providerData{
 		buildCommit:    p.buildCommit,
 		releaseBaseURL: baseURL,

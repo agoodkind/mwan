@@ -24,12 +24,10 @@ func (f *fakeSysctlRunner) Get(_ context.Context, key string) (string, error) {
 	if f.missingKeys[key] {
 		return "", os.ErrNotExist
 	}
-
 	value, ok := f.values[key]
 	if !ok {
 		return "", nil
 	}
-
 	return value, nil
 }
 
@@ -37,9 +35,7 @@ func (f *fakeSysctlRunner) Set(_ context.Context, key, value string) error {
 	if f.missingKeys[key] {
 		return os.ErrNotExist
 	}
-
 	f.values[key] = value
-
 	return nil
 }
 
@@ -54,15 +50,11 @@ type invalidModuleConfig struct{}
 
 func (invalidModuleConfig) ModuleConfigName() string { return "invalid" }
 
-func (f *fakeRAClient) SolicitRA(
-	_ context.Context,
-	_ time.Duration,
-) (*ndp.RouterAdvertisement, error) {
+func (f *fakeRAClient) SolicitRA(_ context.Context, _ time.Duration) (*ndp.RouterAdvertisement, error) {
 	f.solicitCount++
 	if f.solicitErr != nil {
 		return nil, f.solicitErr
 	}
-
 	return &ndp.RouterAdvertisement{}, nil
 }
 
@@ -70,14 +62,11 @@ func (f *fakeRAClient) Close() error { return nil }
 
 func newTestEnv(sysctl netif.SysctlRunner) *ifmgr.Env {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-
 	return &ifmgr.Env{
 		Iface:  "lo",
 		Sysctl: sysctl,
 		Log:    log,
-		Alerts: ifmgr.WrapNotifier(
-			notify.FromConfig(notify.EmailConfig{}, notify.Config{}, log, "mwan-ifmgr"),
-		),
+		Alerts: ifmgr.WrapNotifier(notify.FromConfig(notify.EmailConfig{}, notify.Config{}, log, "mwan-ifmgr")),
 	}
 }
 
@@ -91,11 +80,7 @@ func TestInitRejectsInvalidAcceptRA(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
-
-	if err := module.Init(
-		context.Background(),
-		newTestEnv(&fakeSysctlRunner{values: map[string]string{}}),
-	); err == nil {
+	if err := module.Init(context.Background(), newTestEnv(&fakeSysctlRunner{values: map[string]string{}})); err == nil {
 		t.Fatal("Init returned nil error for invalid accept_ra")
 	}
 }
@@ -117,17 +102,14 @@ func TestReconcileWaitsDuringMissingIfaceGracePeriod(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
-
 	concreteModule := module.(*Module)
 	concreteModule.now = func() time.Time { return baseTime }
 	if err := concreteModule.Init(context.Background(), newTestEnv(sysctl)); err != nil {
 		t.Fatalf("Init returned error: %v", err)
 	}
-
 	if err := concreteModule.Reconcile(context.Background(), concreteModule.Log); err != nil {
 		t.Fatalf("Reconcile returned error during grace period: %v", err)
 	}
-
 	concreteModule.now = func() time.Time { return baseTime.Add(3 * time.Minute) }
 	if err := concreteModule.Reconcile(context.Background(), concreteModule.Log); err == nil {
 		t.Fatal("Reconcile returned nil error after missing iface grace expired")
@@ -137,28 +119,23 @@ func TestReconcileWaitsDuringMissingIfaceGracePeriod(t *testing.T) {
 func TestReconcileCleansDeniedRADefault(t *testing.T) {
 	t.Parallel()
 
-	sysctl := &fakeSysctlRunner{
-		values: map[string]string{
-			acceptRAKey("vmbr4"):       "1",
-			autoconfKey("vmbr4"):       "1",
-			acceptRADefRtrKey("vmbr4"): "1",
-		},
-	}
+	sysctl := &fakeSysctlRunner{values: map[string]string{
+		acceptRAKey("vmbr4"):       "1",
+		autoconfKey("vmbr4"):       "1",
+		acceptRADefRtrKey("vmbr4"): "1",
+	}}
 	module, err := New(Config{
-		Policies: []InterfacePolicy{
-			{
-				Name:             "vmbr4",
-				AcceptRA:         0,
-				AutoConf:         false,
-				AcceptRADefRtr:   false,
-				CleanupRADefault: true,
-			},
-		},
+		Policies: []InterfacePolicy{{
+			Name:             "vmbr4",
+			AcceptRA:         0,
+			AutoConf:         false,
+			AcceptRADefRtr:   false,
+			CleanupRADefault: true,
+		}},
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
-
 	concreteModule := module.(*Module)
 	deleteCallCount := 0
 	concreteModule.findMainRADefault = func(context.Context, string) (*netif.CurrentRoute, error) {
@@ -171,23 +148,18 @@ func TestReconcileCleansDeniedRADefault(t *testing.T) {
 	if err := concreteModule.Init(context.Background(), newTestEnv(sysctl)); err != nil {
 		t.Fatalf("Init returned error: %v", err)
 	}
-
 	if err := concreteModule.Reconcile(context.Background(), concreteModule.Log); err != nil {
 		t.Fatalf("Reconcile returned error: %v", err)
 	}
-
 	if got := sysctl.values[acceptRAKey("vmbr4")]; got != "0" {
 		t.Fatalf("accept_ra got %q, want %q", got, "0")
 	}
-
 	if got := sysctl.values[autoconfKey("vmbr4")]; got != "0" {
 		t.Fatalf("autoconf got %q, want %q", got, "0")
 	}
-
 	if got := sysctl.values[acceptRADefRtrKey("vmbr4")]; got != "0" {
 		t.Fatalf("accept_ra_defrtr got %q, want %q", got, "0")
 	}
-
 	if deleteCallCount != 1 {
 		t.Fatalf("deleteMainRADefaults call count = %d, want 1", deleteCallCount)
 	}
@@ -196,28 +168,23 @@ func TestReconcileCleansDeniedRADefault(t *testing.T) {
 func TestReconcileSolicitsAllowedIfaceRA(t *testing.T) {
 	t.Parallel()
 
-	sysctl := &fakeSysctlRunner{
-		values: map[string]string{
-			acceptRAKey("vmbr0"):       "0",
-			autoconfKey("vmbr0"):       "0",
-			acceptRADefRtrKey("vmbr0"): "0",
-		},
-	}
+	sysctl := &fakeSysctlRunner{values: map[string]string{
+		acceptRAKey("vmbr0"):       "0",
+		autoconfKey("vmbr0"):       "0",
+		acceptRADefRtrKey("vmbr0"): "0",
+	}}
 	module, err := New(Config{
-		Policies: []InterfacePolicy{
-			{
-				Name:           "vmbr0",
-				AcceptRA:       2,
-				AutoConf:       true,
-				AcceptRADefRtr: true,
-				SolicitRA:      true,
-			},
-		},
+		Policies: []InterfacePolicy{{
+			Name:           "vmbr0",
+			AcceptRA:       2,
+			AutoConf:       true,
+			AcceptRADefRtr: true,
+			SolicitRA:      true,
+		}},
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
-
 	concreteModule := module.(*Module)
 	lookupCount := 0
 	concreteModule.findMainRADefault = func(context.Context, string) (*netif.CurrentRoute, error) {
@@ -225,7 +192,6 @@ func TestReconcileSolicitsAllowedIfaceRA(t *testing.T) {
 		if lookupCount == 1 {
 			return nil, nil
 		}
-
 		return &netif.CurrentRoute{Dest: "default", Via: "fe80::2", Dev: "vmbr0"}, nil
 	}
 	fakeClient := &fakeRAClient{}
@@ -235,23 +201,18 @@ func TestReconcileSolicitsAllowedIfaceRA(t *testing.T) {
 	if err := concreteModule.Init(context.Background(), newTestEnv(sysctl)); err != nil {
 		t.Fatalf("Init returned error: %v", err)
 	}
-
 	if err := concreteModule.Reconcile(context.Background(), concreteModule.Log); err != nil {
 		t.Fatalf("Reconcile returned error: %v", err)
 	}
-
 	if got := sysctl.values[acceptRAKey("vmbr0")]; got != "2" {
 		t.Fatalf("accept_ra got %q, want %q", got, "2")
 	}
-
 	if got := sysctl.values[autoconfKey("vmbr0")]; got != "1" {
 		t.Fatalf("autoconf got %q, want %q", got, "1")
 	}
-
 	if got := sysctl.values[acceptRADefRtrKey("vmbr0")]; got != "1" {
 		t.Fatalf("accept_ra_defrtr got %q, want %q", got, "1")
 	}
-
 	if fakeClient.solicitCount != 1 {
 		t.Fatalf("SolicitRA call count = %d, want 1", fakeClient.solicitCount)
 	}
@@ -273,15 +234,10 @@ func TestInitReturnsDisabledSentinelWhenPoliciesEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
-
-	initErr := module.Init(
-		context.Background(),
-		newTestEnv(&fakeSysctlRunner{values: map[string]string{}}),
-	)
+	initErr := module.Init(context.Background(), newTestEnv(&fakeSysctlRunner{values: map[string]string{}}))
 	if initErr == nil {
 		t.Fatal("Init returned nil error for empty Policies, want ErrModuleDisabled")
 	}
-
 	if !errors.Is(initErr, ifmgr.ErrModuleDisabled) {
 		t.Fatalf("Init returned err=%v, want errors.Is(err, ifmgr.ErrModuleDisabled)", initErr)
 	}

@@ -84,31 +84,22 @@ type Module struct {
 // empty, so the wan role can list the module unconditionally.
 func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	log := m.InitBase(env, "module", moduleName)
-	log.InfoContext(
-		ctx,
-		"steering: Init",
-		"member_count",
-		len(m.cfg.Members),
-		"hash_mode",
-		m.cfg.HashMode,
-		"health_state_file",
-		m.cfg.HealthStateFile,
-	)
+	log.InfoContext(ctx, "steering: Init",
+		"member_count", len(m.cfg.Members),
+		"hash_mode", m.cfg.HashMode,
+		"health_state_file", m.cfg.HealthStateFile)
 
 	if len(m.cfg.Members) == 0 {
 		log.WarnContext(ctx, "steering: no providers configured; disabling module")
 		return fmt.Errorf("%w: steering: no providers", ifmgr.ErrModuleDisabled)
 	}
-
 	if err := m.parse(); err != nil {
 		log.WarnContext(ctx, "steering: config parse failed", "err", err)
 		return err
 	}
-
 	if m.apply == nil {
 		m.apply = newNFTApplier()
 	}
-
 	if m.readHealth == nil {
 		m.readHealth = netif.ReadHealthState
 	}
@@ -117,25 +108,18 @@ func (m *Module) Init(ctx context.Context, env *ifmgr.Env) error {
 	// with a new index needs the chain rewritten. The provider links are not
 	// watched: a provider going away is a health verdict, which the health
 	// module owns and which already drives a reconcile.
-	ifmgr.StartIfaceMonitors(
-		ctx,
-		log,
-		moduleName,
-		[]string{m.cfg.InternalIface},
-		env.Connections,
-		m.onMonitorEvent,
-	)
+	ifmgr.StartIfaceMonitors(ctx, log, moduleName, []string{m.cfg.InternalIface}, env.Connections, m.onMonitorEvent)
 
 	// The recover keeps a monitor panic from taking down the daemon.
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.ErrorContext(ctx, "steering: nft-watch panicked", "err", fmt.Sprint(recovered))
+				log.ErrorContext(ctx, "steering: nft-watch panicked",
+					"err", fmt.Sprint(recovered))
 			}
 		}()
 		m.watchNFTChanges(ctx, log)
 	}()
-
 	return nil
 }
 
@@ -145,42 +129,34 @@ func (m *Module) parse() error {
 	if err := validateConfig(m.cfg); err != nil {
 		return err
 	}
-
 	internalNetV4, err := netip.ParsePrefix(m.cfg.InternalNetV4)
 	if err != nil {
 		slog.Warn("steering: invalid internal_net_v4", "value", m.cfg.InternalNetV4, "err", err)
 		return fmt.Errorf("steering: internal_net_v4 %q: %w", m.cfg.InternalNetV4, err)
 	}
-
 	if !internalNetV4.Addr().Is4() {
 		return fmt.Errorf("steering: internal_net_v4 %q is not IPv4", m.cfg.InternalNetV4)
 	}
-
 	internalPrefix, err := netip.ParsePrefix(m.cfg.InternalPrefix)
 	if err != nil {
 		slog.Warn("steering: invalid internal_prefix", "value", m.cfg.InternalPrefix, "err", err)
 		return fmt.Errorf("steering: internal_prefix %q: %w", m.cfg.InternalPrefix, err)
 	}
-
 	if internalPrefix.Addr().Is4() {
 		return fmt.Errorf("steering: internal_prefix %q is not IPv6", m.cfg.InternalPrefix)
 	}
-
 	edge, err := netip.ParseAddr(m.cfg.OpnsenseEdgeV6)
 	if err != nil {
 		slog.Warn("steering: invalid opnsense_edge_v6", "value", m.cfg.OpnsenseEdgeV6, "err", err)
 		return fmt.Errorf("steering: opnsense_edge_v6 %q: %w", m.cfg.OpnsenseEdgeV6, err)
 	}
-
 	if edge.Is4() {
 		return fmt.Errorf("steering: opnsense_edge_v6 %q is not IPv6", m.cfg.OpnsenseEdgeV6)
 	}
-
 	m.internalNetV4 = internalNetV4.Masked()
 	m.internalPrefix = internalPrefix.Masked()
 	m.opnsenseEdge = edge
 	m.mode = hashMode(m.cfg.HashMode)
-
 	return nil
 }
 
@@ -192,54 +168,38 @@ func validateConfig(cfg Config) error {
 		slog.Warn("steering: missing internal_iface")
 		return fmt.Errorf("steering: internal_iface is required")
 	}
-
 	switch hashMode(cfg.HashMode) {
 	case hashModeRandom, hashModeSource, hashModeSourceDestination:
 	default:
 		slog.Warn("steering: unknown hash mode", "value", cfg.HashMode)
-
-		return fmt.Errorf(
-			"steering: hash_mode %q is not one of random, source, source-destination",
-			cfg.HashMode,
-		)
+		return fmt.Errorf("steering: hash_mode %q is not one of random, source, source-destination",
+			cfg.HashMode)
 	}
-
 	seenIDs := make(map[string]bool, len(cfg.Members))
 	weightSum := 0
-
 	for i, member := range cfg.Members {
 		if member.Key() == "" {
 			return fmt.Errorf("steering: member[%d]: connection ID is required", i)
 		}
-
 		if member.Iface == "" {
 			return fmt.Errorf("steering: member[%d] (%s): iface is required", i, member.Key())
 		}
-
 		if seenIDs[member.Key()] {
 			return fmt.Errorf("steering: member[%d]: duplicate connection ID %q", i, member.Key())
 		}
-
 		seenIDs[member.Key()] = true
 		if member.Mark == 0 {
 			return fmt.Errorf("steering: member[%d] (%s): mark must be > 0", i, member.Key())
 		}
-
 		if member.Weight < 1 {
 			return fmt.Errorf("steering: member[%d] (%s): weight must be >= 1", i, member.Key())
 		}
-
 		weightSum += member.Weight
 	}
-
 	if weightSum > maxSlots {
-		return fmt.Errorf(
-			"steering: weights sum to %d, above the %d the balancer programs",
-			weightSum,
-			maxSlots,
-		)
+		return fmt.Errorf("steering: weights sum to %d, above the %d the balancer programs",
+			weightSum, maxSlots)
 	}
-
 	return nil
 }
 
@@ -263,12 +223,10 @@ func (m *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		log.WarnContext(ctx, "steering: ReadHealthState failed", "err", err)
 		return fmt.Errorf("read health state %q: %w", m.cfg.HealthStateFile, err)
 	}
-
 	desired := m.desiredRules(health)
 	if applyErr := m.apply.Apply(ctx, log, desired); applyErr != nil {
 		return fmt.Errorf("apply: %w", applyErr)
 	}
-
 	return nil
 }
 
@@ -277,56 +235,39 @@ func (m *Module) desiredRules(health netif.HealthStates) []steerRule {
 	if m.Env == nil || m.Env.LiveState == nil {
 		return nil
 	}
-
 	snapshot := m.Env.LiveState.Snapshot()
-
 	return m.rulesForSnapshot(health, snapshot)
 }
 
-func (m *Module) rulesForSnapshot(
-	health netif.HealthStates,
-	snapshot wanstate.Snapshot,
-) []steerRule {
+func (m *Module) rulesForSnapshot(health netif.HealthStates, snapshot wanstate.Snapshot) []steerRule {
 	v4 := make([]Member, 0, len(m.cfg.Members))
 	v6 := make([]Member, 0, len(m.cfg.Members))
 	eligibleV4 := make(map[uint32]bool, len(m.cfg.Members))
-
 	eligibleV6 := make(map[uint32]bool, len(m.cfg.Members))
 	for _, member := range m.cfg.Members {
 		selectionEnabled := config.ConnectionSelectionEnabled(member.SelectionEnabled)
 		routing := snapshot.Routing[member.Key()]
 		translation := snapshot.Translation[member.Key()]
-		if routing.V4Ready && translation.V4.Ready &&
-			netif.HealthIsHealthy(health.State(member.Key())) {
+		if routing.V4Ready && translation.V4.Ready && netif.HealthIsHealthy(health.State(member.Key())) {
 			eligibleV4[member.Mark] = true
 			if selectionEnabled {
 				v4 = append(v4, member)
 			}
 		}
-
-		if routing.V6Ready && translation.V6.Ready &&
-			netif.HealthIsHealthy(health.State(member.Key())) {
+		if routing.V6Ready && translation.V6.Ready && netif.HealthIsHealthy(health.State(member.Key())) {
 			eligibleV6[member.Mark] = true
 			if selectionEnabled {
 				v6 = append(v6, member)
 			}
 		}
 	}
-
 	assignV4, _ := balancerFor(v4, health)
 	assignV6, _ := balancerFor(v6, health)
-
 	return buildRules(ruleInput{
-		InternalIface:  m.cfg.InternalIface,
-		InternalNetV4:  m.internalNetV4,
-		InternalPrefix: m.internalPrefix,
-		OpnsenseEdgeV6: m.opnsenseEdge,
-		Mode:           m.mode,
-		AssignV4:       assignV4,
-		AssignV6:       assignV6,
-		Members:        m.cfg.Members,
-		EligibleV4:     eligibleV4,
-		EligibleV6:     eligibleV6,
+		InternalIface: m.cfg.InternalIface, InternalNetV4: m.internalNetV4,
+		InternalPrefix: m.internalPrefix, OpnsenseEdgeV6: m.opnsenseEdge, Mode: m.mode,
+		AssignV4: assignV4, AssignV6: assignV6,
+		Members: m.cfg.Members, EligibleV4: eligibleV4, EligibleV6: eligibleV6,
 	})
 }
 
@@ -337,7 +278,6 @@ func (m *Module) onMonitorEvent(ctx context.Context, log *slog.Logger, event net
 	if event.Kind != netif.EvLinkUp && event.Kind != netif.EvLinkDown {
 		return
 	}
-
 	eventLog := log.With("kind", event.Kind.String(), "iface", event.Iface)
 	eventLog.DebugContext(ctx, "steering: internal link event, reconciling")
 	if err := m.Reconcile(ctx, eventLog); err != nil {
@@ -361,10 +301,8 @@ func New(cfg ifmgr.ModuleConfig) (ifmgr.Module, error) {
 		if !ok {
 			return nil, fmt.Errorf("steering: invalid config type %T", cfg)
 		}
-
 		c = typedConfig
 	}
-
 	return newConfiguredModule(c), nil
 }
 
@@ -372,7 +310,6 @@ func newConfiguredModule(configuration Config) *Module {
 	if configuration.HealthStateFile == "" && len(configuration.Members) > 0 {
 		configuration.HealthStateFile = netif.DefaultHealthStatePath
 	}
-
 	return &Module{
 		BaseModule:     ifmgr.NewBaseModule(moduleName),
 		cfg:            configuration,

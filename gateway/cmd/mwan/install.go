@@ -48,42 +48,24 @@ func runInstallOptions(flags installFlags, output, diagnostics io.Writer) int {
 			fmt.Fprintf(diagnostics, "mwan install: %v\n", err)
 			return exitInstallFailed
 		}
-
 		fmt.Fprintf(output, "schema written to %s\n", flags.printSchema)
-
 		return exitInstallOK
 	}
-
 	role := installspec.Role(flags.role)
 	spec, known := installspec.For(role)
 	if !known {
-		fmt.Fprintf(
-			diagnostics,
-			"mwan install: unknown role %q; want one of %s\n",
-			flags.role,
-			strings.Join(knownInstallRoles(), ", "),
-		)
-
+		fmt.Fprintf(diagnostics, "mwan install: unknown role %q; want one of %s\n",
+			flags.role, strings.Join(knownInstallRoles(), ", "))
 		return exitInstallUsage
 	}
-
 	rooted := flags.root != ""
 	ctx := context.Background()
-	outcome, err := installUnits(
-		ctx,
-		role,
-		flags.root,
-		config.GuestType(flags.guestType),
-		enablerFor(rooted),
-	)
+	outcome, err := installUnits(ctx, role, flags.root, config.GuestType(flags.guestType), enablerFor(rooted))
 	if err == nil && spec.ValidationSchema {
 		var changed []string
-		_, changed, err = yangpub.WriteSchemaChanges(
-			filepath.Join(flags.root, networkjson.DefaultSchemaDir),
-		)
+		_, changed, err = yangpub.WriteSchemaChanges(filepath.Join(flags.root, networkjson.DefaultSchemaDir))
 		outcome.changed = append(outcome.changed, changed...)
 	}
-
 	if err == nil && spec.Schema {
 		var schema schemaOutcome
 		schema, err = installSchema(ctx, slog.Default(), flags.root)
@@ -91,13 +73,11 @@ func runInstallOptions(flags installFlags, output, diagnostics io.Writer) int {
 		outcome.modules = schema.modules
 		outcome.nacmImported = schema.nacmImported
 	}
-
 	reportInstall(output, outcome, rooted)
 	if err != nil {
 		fmt.Fprintf(diagnostics, "mwan install: %v\n", err)
 		return exitInstallFailed
 	}
-
 	return exitInstallOK
 }
 
@@ -106,7 +86,6 @@ func enablerFor(rooted bool) unitEnabler {
 	if !rooted {
 		return realUnitEnabler
 	}
-
 	return func(_ context.Context, _ []string, _ bool) error { return nil }
 }
 
@@ -126,13 +105,11 @@ func installUnits(
 	if !known {
 		return outcome, fmt.Errorf("unknown role %q", role)
 	}
-
 	for _, file := range spec.Files {
 		content, install, err := file.Content(guest)
 		if err != nil {
 			return outcome, installFailed("read the embedded file", file.Embedded, err)
 		}
-
 		path := filepath.Join(root, file.Dest)
 		if !install {
 			removeErr := os.Remove(path)
@@ -141,36 +118,22 @@ func installUnits(
 			} else if !errors.Is(removeErr, fs.ErrNotExist) {
 				return outcome, installFailed("remove the file", file.Dest, removeErr)
 			}
-
 			continue
 		}
-
 		changed, err := installfile.Write(path, content, installspec.FileMode)
 		if err != nil {
 			return outcome, installFailed("install the file", file.Dest, err)
 		}
-
 		if changed {
 			outcome.changed = append(outcome.changed, path)
 		}
 	}
-
-	slog.InfoContext(
-		ctx,
-		"install: processed unit files",
-		"written",
-		outcome.changed,
-		"removed",
-		outcome.removed,
-		"guest_type",
-		guest,
-	)
+	slog.InfoContext(ctx, "install: processed unit files",
+		"written", outcome.changed, "removed", outcome.removed, "guest_type", guest)
 	if err := enabler(ctx, spec.Enable, len(outcome.changed)+len(outcome.removed) > 0); err != nil {
 		return outcome, err
 	}
-
 	outcome.enabled = spec.Enable
-
 	return outcome, nil
 }
 
@@ -182,31 +145,22 @@ func realUnitEnabler(ctx context.Context, units []string, reload bool) error {
 		return installFailed("connect to systemd for", strings.Join(units, " "), err)
 	}
 	defer conn.Close()
-
 	return reenableUnits(ctx, conn, units, reload)
 }
 
 type unitInstaller interface {
 	ReloadContext(ctx context.Context) error
 	DisableUnitFilesContext(
-		ctx context.Context,
-		files []string,
-		runtime bool,
+		ctx context.Context, files []string, runtime bool,
 	) ([]systemddbus.DisableUnitFileChange, error)
 	EnableUnitFilesContext(
-		ctx context.Context,
-		files []string,
-		runtime bool,
-		force bool,
+		ctx context.Context, files []string, runtime bool, force bool,
 	) (bool, []systemddbus.EnableUnitFileChange, error)
 }
 
 // systemd reads the current [Install] section when creating unit links.
 func reenableUnits(
-	ctx context.Context,
-	manager unitInstaller,
-	units []string,
-	reload bool,
+	ctx context.Context, manager unitInstaller, units []string, reload bool,
 ) error {
 	named := strings.Join(units, " ")
 	if reload {
@@ -214,20 +168,17 @@ func reenableUnits(
 			return installFailed("reload systemd before enabling", named, err)
 		}
 	}
-
 	// A unit that is not enabled has no symlinks to remove, which systemd
 	// reports as an empty change list rather than an error, so a first install
 	// runs through here unremarkably.
 	if _, err := manager.DisableUnitFilesContext(ctx, units, false); err != nil {
 		return installFailed("clear the install symlinks of", named, err)
 	}
-
 	// runtimeOnly=false writes the symlinks under /etc so they survive a
 	// reboot; force=true replaces one that points somewhere else.
 	if _, _, err := manager.EnableUnitFilesContext(ctx, units, false, true); err != nil {
 		return installFailed("enable", named, err)
 	}
-
 	return nil
 }
 
@@ -240,53 +191,34 @@ func reportInstall(out io.Writer, outcome installOutcome, rooted bool) {
 	if len(outcome.changed)+len(outcome.removed) == 0 {
 		fmt.Fprintln(out, "no change")
 	}
-
 	for _, path := range outcome.changed {
 		fmt.Fprintf(out, "wrote %s\n", path)
 	}
-
 	for _, path := range outcome.removed {
 		fmt.Fprintf(out, "removed %s\n", path)
 	}
-
 	for _, module := range outcome.modules {
 		if module.Action == yangpub.ModuleUpdated {
-			fmt.Fprintf(
-				out,
-				"updated module %s from %s to %s\n",
-				module.Module,
-				module.PriorRevision,
-				module.Revision,
-			)
+			fmt.Fprintf(out, "updated module %s from %s to %s\n",
+				module.Module, module.PriorRevision, module.Revision)
 			continue
 		}
-
 		fmt.Fprintf(out, "installed module %s@%s\n", module.Module, module.Revision)
 	}
-
 	if len(outcome.nacmImported) > 0 {
 		names := make([]string, 0, len(outcome.nacmImported))
 		for _, ds := range outcome.nacmImported {
 			names = append(names, string(ds))
 		}
-
-		fmt.Fprintf(
-			out,
-			"imported the %s policy into %s\n",
-			installspec.NACMModule,
-			strings.Join(names, " and "),
-		)
+		fmt.Fprintf(out, "imported the %s policy into %s\n", installspec.NACMModule, strings.Join(names, " and "))
 	}
-
 	if len(outcome.enabled) == 0 {
 		return
 	}
-
 	verb := "enabled"
 	if rooted {
 		verb = "would enable"
 	}
-
 	fmt.Fprintf(out, "%s %s\n", verb, strings.Join(outcome.enabled, " "))
 }
 
@@ -300,22 +232,18 @@ func rootIsHost(root string) bool {
 	if cleaned == "/" {
 		return true
 	}
-
 	resolved, err := filepath.EvalSymlinks(cleaned)
 	if err != nil {
 		return false
 	}
-
 	return filepath.Clean(resolved) == "/"
 }
 
 func knownInstallRoles() []string {
 	known := installspec.Roles()
-
 	roles := make([]string, 0, len(known))
 	for _, role := range known {
 		roles = append(roles, string(role))
 	}
-
 	return roles
 }

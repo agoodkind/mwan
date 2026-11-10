@@ -50,11 +50,7 @@ type bgpServerPeering interface {
 	AddPeer(ctx context.Context, r *apipb.AddPeerRequest) error
 	AddPeerGroup(ctx context.Context, r *apipb.AddPeerGroupRequest) error
 	AddDynamicNeighbor(ctx context.Context, r *apipb.AddDynamicNeighborRequest) error
-	WatchEvent(
-		ctx context.Context,
-		callbacks server.WatchEventMessageCallbacks,
-		opts ...server.WatchOption,
-	) error
+	WatchEvent(ctx context.Context, callbacks server.WatchEventMessageCallbacks, opts ...server.WatchOption) error
 	ListPeer(ctx context.Context, r *apipb.ListPeerRequest, fn func(*apipb.Peer)) error
 }
 
@@ -137,9 +133,10 @@ func (s *Speaker) Start(ctx context.Context) error {
 	} else {
 		logLevel := new(slog.LevelVar)
 		logLevel.Set(slog.LevelInfo)
-		s.server = server.NewBgpServer(server.LoggerOption(s.log, logLevel))
+		s.server = server.NewBgpServer(
+			server.LoggerOption(s.log, logLevel),
+		)
 	}
-
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
@@ -162,7 +159,6 @@ func (s *Speaker) Start(ctx context.Context) error {
 			NotificationEnabled: s.cfg.GracefulRestart.NotificationEnabled,
 		}
 	}
-
 	if err := s.server.StartBgp(ctx, &apipb.StartBgpRequest{Global: global}); err != nil {
 		s.log.ErrorContext(ctx, "start bgp failed", "error", err)
 		return fmt.Errorf("start bgp: %w", err)
@@ -174,46 +170,32 @@ func (s *Speaker) Start(ctx context.Context) error {
 
 	// One watch keeps route installation and peer-loss cleanup ordered with
 	// GoBGP's view of the session.
-	if err := s.server.WatchEvent(
-		ctx,
-		server.WatchEventMessageCallbacks{
-			OnPeerUpdate: func(event *apiutil.WatchEventMessage_PeerEvent, _ time.Time) {
-				s.handlePeerUpdate(ctx, event)
-			},
-			OnBestPath: func(paths []*apiutil.Path, _ time.Time) {
-				s.handleBestPaths(ctx, paths)
-			},
+	if err := s.server.WatchEvent(ctx, server.WatchEventMessageCallbacks{
+		OnPeerUpdate: func(event *apiutil.WatchEventMessage_PeerEvent, _ time.Time) {
+			s.handlePeerUpdate(ctx, event)
 		},
-		server.WatchPeer(),
-		server.WatchBestPath(true),
-	); err != nil {
+		OnBestPath: func(paths []*apiutil.Path, _ time.Time) {
+			s.handleBestPaths(ctx, paths)
+		},
+	}, server.WatchPeer(), server.WatchBestPath(true)); err != nil {
 		s.log.ErrorContext(ctx, "bgp watch event registration failed", "error", err)
 	}
 
 	s.started = true
 	s.armSweepAfterStartupLocked()
 	s.log.InfoContext(
-		ctx,
-		"bgp speaker started",
-		"asn",
-		s.cfg.ASN,
-		"router_id",
-		s.cfg.RouterID,
-		"port",
-		s.cfg.ListenPort,
+		ctx, "bgp speaker started",
+		"asn", s.cfg.ASN,
+		"router_id", s.cfg.RouterID,
+		"port", s.cfg.ListenPort,
 	)
-
 	return nil
 }
 
-func (s *Speaker) handlePeerUpdate(
-	ctx context.Context,
-	event *apiutil.WatchEventMessage_PeerEvent,
-) {
+func (s *Speaker) handlePeerUpdate(ctx context.Context, event *apiutil.WatchEventMessage_PeerEvent) {
 	if event.Type != apiutil.PEER_EVENT_STATE {
 		return
 	}
-
 	peer := event.Peer.State.NeighborAddress.String()
 	if event.Peer.State.SessionState == bgppkt.BGP_FSM_ESTABLISHED {
 		s.handleEstablishedPeer(ctx, peer)
@@ -228,12 +210,10 @@ func (s *Speaker) handleEstablishedPeer(ctx context.Context, peer string) {
 	if s.cfg.RequireReady || !s.IsEstablished(ctx) {
 		return
 	}
-
 	if err := s.AnnounceDefault(); err != nil {
 		s.log.ErrorContext(ctx, "bgp auto-announce failed", "error", err)
 		return
 	}
-
 	s.log.InfoContext(ctx, "bgp routes announced (all peers established)")
 }
 
@@ -241,7 +221,6 @@ func (s *Speaker) handleBestPaths(ctx context.Context, paths []*apiutil.Path) {
 	if s.fib == nil {
 		return
 	}
-
 	for _, path := range paths {
 		s.applyBestPath(ctx, path)
 	}
@@ -254,35 +233,22 @@ func (s *Speaker) applyBestPath(ctx context.Context, path *apiutil.Path) {
 	if s.fib == nil {
 		return
 	}
-
 	if path == nil || !learnedRouteFamily(path.Family) || path.Nlri == nil {
 		return
 	}
-
 	if !path.PeerAddress.IsValid() {
 		return
 	}
-
 	peer := path.PeerAddress.String()
 	prefix, err := netip.ParsePrefix(path.Nlri.String())
 	if err != nil {
-		s.log.WarnContext(
-			ctx,
-			"ignore BGP best path with invalid prefix",
-			"peer",
-			peer,
-			"error",
-			err,
-		)
-
+		s.log.WarnContext(ctx, "ignore BGP best path with invalid prefix", "peer", peer, "error", err)
 		return
 	}
-
 	if prefix.Bits() == 0 {
 		s.log.DebugContext(ctx, "ignore learned default route", "peer", peer, "prefix", prefix)
 		return
 	}
-
 	event := PathEvent{
 		Peer:      peer,
 		Prefix:    prefix,
@@ -292,62 +258,22 @@ func (s *Speaker) applyBestPath(ctx context.Context, path *apiutil.Path) {
 	if !path.Withdrawal {
 		nextHop, err := bestPathNextHop(path)
 		if err != nil {
-			s.log.WarnContext(
-				ctx,
-				"ignore BGP best path with invalid next hop",
-				"peer",
-				peer,
-				"prefix",
-				prefix,
-				"error",
-				err,
-			)
-
+			s.log.WarnContext(ctx, "ignore BGP best path with invalid next hop", "peer", peer, "prefix", prefix, "error", err)
 			return
 		}
-
 		event.NextHop = nextHop
 		coversConnected, err := s.fib.coversConnected(ctx, prefix)
 		if err != nil {
-			s.log.ErrorContext(
-				ctx,
-				"reconcile BGP best path failed",
-				"peer",
-				peer,
-				"prefix",
-				prefix,
-				"error",
-				err,
-			)
-
+			s.log.ErrorContext(ctx, "reconcile BGP best path failed", "peer", peer, "prefix", prefix, "error", err)
 			return
 		}
-
 		if coversConnected {
-			s.log.DebugContext(
-				ctx,
-				"ignore learned prefix matching or covering connected network",
-				"peer",
-				peer,
-				"prefix",
-				prefix,
-			)
-
+			s.log.DebugContext(ctx, "ignore learned prefix matching or covering connected network", "peer", peer, "prefix", prefix)
 			return
 		}
 	}
-
 	if err := s.fib.Apply(ctx, event); err != nil {
-		s.log.ErrorContext(
-			ctx,
-			"reconcile BGP best path failed",
-			"peer",
-			peer,
-			"prefix",
-			prefix,
-			"error",
-			err,
-		)
+		s.log.ErrorContext(ctx, "reconcile BGP best path failed", "peer", peer, "prefix", prefix, "error", err)
 	}
 }
 
@@ -373,17 +299,12 @@ func (s *Speaker) reapplyBestPaths(ctx context.Context) {
 	if !started || srv == nil || fib == nil {
 		return
 	}
-
 	for _, family := range [...]bgppkt.Family{bgppkt.RF_IPv4_UC, bgppkt.RF_IPv6_UC} {
 		s.reapplyFamilyBestPaths(ctx, srv, family)
 	}
 }
 
-func (s *Speaker) reapplyFamilyBestPaths(
-	ctx context.Context,
-	srv bgpServerRIB,
-	family bgppkt.Family,
-) {
+func (s *Speaker) reapplyFamilyBestPaths(ctx context.Context, srv bgpServerRIB, family bgppkt.Family) {
 	request := apiutil.ListPathRequest{
 		TableType:      apipb.TableType_TABLE_TYPE_GLOBAL,
 		Name:           "",
@@ -392,19 +313,14 @@ func (s *Speaker) reapplyFamilyBestPaths(
 		SortType:       0,
 		EnableFiltered: false,
 	}
-	err := srv.ListPath(
-		request,
-		func(_ bgppkt.NLRI, paths []*apiutil.Path) {
-			for _, path := range paths {
-				if path == nil || path.Family != family || !path.Best || path.Stale ||
-					path.Withdrawal {
-					continue
-				}
-
-				s.applyBestPath(ctx, path)
+	err := srv.ListPath(request, func(_ bgppkt.NLRI, paths []*apiutil.Path) {
+		for _, path := range paths {
+			if path == nil || path.Family != family || !path.Best || path.Stale || path.Withdrawal {
+				continue
 			}
-		},
-	)
+			s.applyBestPath(ctx, path)
+		}
+	})
 	if err != nil {
 		s.log.ErrorContext(ctx, "list BGP best paths failed", "error", err)
 	}
@@ -423,7 +339,6 @@ func bestPathNextHop(path *apiutil.Path) (netip.Addr, error) {
 			}
 		}
 	}
-
 	return netip.Addr{}, fmt.Errorf("missing next hop")
 }
 
@@ -434,7 +349,6 @@ func (s *Speaker) handlePeerDown(ctx context.Context, peer string) {
 	if fib == nil {
 		return
 	}
-
 	if err := fib.WithdrawPeer(ctx, peer); err != nil {
 		s.log.ErrorContext(ctx, "withdraw BGP peer routes failed", "peer", peer, "error", err)
 	}
@@ -444,7 +358,6 @@ func (s *Speaker) addConfiguredPeers(ctx context.Context) error {
 	if err := s.addLegacyPeers(ctx); err != nil {
 		return err
 	}
-
 	return s.addDynamicPeers(ctx)
 }
 
@@ -455,14 +368,12 @@ func (s *Speaker) addLegacyPeers(ctx context.Context) error {
 			return fmt.Errorf("add peer %s: %w", neighbor.Address, err)
 		}
 	}
-
 	for _, neighbor := range s.cfg.NeighborsV6 {
 		if err := s.addPeer(ctx, neighbor.Address, true); err != nil {
 			s.log.ErrorContext(ctx, "add BGP peer failed", "peer", neighbor.Address, "error", err)
 			return fmt.Errorf("add peer %s: %w", neighbor.Address, err)
 		}
 	}
-
 	return nil
 }
 
@@ -500,20 +411,17 @@ func (s *Speaker) addPeer(ctx context.Context, addr string, ipv6 bool) error {
 	} else {
 		afiSafi.Config.Family.Afi = apipb.Family_AFI_IP
 	}
-
 	if s.cfg.GracefulRestart.Enabled {
 		afiSafi.MpGracefulRestart = &apipb.MpGracefulRestart{
 			Config: &apipb.MpGracefulRestartConfig{Enabled: true},
 		}
 	}
-
 	peer.AfiSafis = append(peer.AfiSafis, afiSafi)
 
 	if err := s.server.AddPeer(ctx, &apipb.AddPeerRequest{Peer: peer}); err != nil {
 		s.log.ErrorContext(ctx, "add bgp peer api failed", "peer", addr, "error", err)
 		return fmt.Errorf("add peer: %w", err)
 	}
-
 	return nil
 }
 
@@ -521,18 +429,15 @@ func (s *Speaker) addDynamicPeers(ctx context.Context) error {
 	if len(s.cfg.DynamicNeighborPrefixes) == 0 {
 		return nil
 	}
-
 	peerGroup := &apipb.PeerGroup{
 		Conf: &apipb.PeerGroupConf{
 			PeerAsn:       s.cfg.ASN,
 			PeerGroupName: dynamicPeerGroupName,
 		},
-		Timers: &apipb.Timers{
-			Config: &apipb.TimersConfig{
-				KeepaliveInterval: uint64(s.cfg.KeepaliveSeconds),
-				HoldTime:          uint64(s.cfg.HoldSeconds),
-			},
-		},
+		Timers: &apipb.Timers{Config: &apipb.TimersConfig{
+			KeepaliveInterval: uint64(s.cfg.KeepaliveSeconds),
+			HoldTime:          uint64(s.cfg.HoldSeconds),
+		}},
 		Transport: &apipb.Transport{PassiveMode: true},
 		AfiSafis: []*apipb.AfiSafi{
 			dynamicPeerGroupAfiSafi(apipb.Family_AFI_IP, s.cfg.GracefulRestart.Enabled),
@@ -546,60 +451,33 @@ func (s *Speaker) addDynamicPeers(ctx context.Context) error {
 			NotificationEnabled: s.cfg.GracefulRestart.NotificationEnabled,
 		}
 	}
-
-	if err := s.server.AddPeerGroup(
-		ctx,
-		&apipb.AddPeerGroupRequest{PeerGroup: peerGroup},
-	); err != nil {
-		s.log.ErrorContext(
-			ctx,
-			"add dynamic BGP peer group failed",
-			"dynamic_neighbor_prefixes",
-			s.cfg.DynamicNeighborPrefixes,
-			"error",
-			err,
-		)
-
+	if err := s.server.AddPeerGroup(ctx, &apipb.AddPeerGroupRequest{PeerGroup: peerGroup}); err != nil {
+		s.log.ErrorContext(ctx, "add dynamic BGP peer group failed", "dynamic_neighbor_prefixes", s.cfg.DynamicNeighborPrefixes, "error", err)
 		return fmt.Errorf("add dynamic BGP peer group: %w", err)
 	}
-
 	for _, prefix := range s.cfg.DynamicNeighborPrefixes {
-		request := &apipb.AddDynamicNeighborRequest{
-			DynamicNeighbor: &apipb.DynamicNeighbor{
-				Prefix:    prefix.String(),
-				PeerGroup: dynamicPeerGroupName,
-			},
-		}
+		request := &apipb.AddDynamicNeighborRequest{DynamicNeighbor: &apipb.DynamicNeighbor{
+			Prefix:    prefix.String(),
+			PeerGroup: dynamicPeerGroupName,
+		}}
 		if err := s.server.AddDynamicNeighbor(ctx, request); err != nil {
-			s.log.ErrorContext(
-				ctx,
-				"add dynamic BGP neighbor failed",
-				"dynamic_neighbor_prefix",
-				prefix,
-				"error",
-				err,
-			)
-
+			s.log.ErrorContext(ctx, "add dynamic BGP neighbor failed", "dynamic_neighbor_prefix", prefix, "error", err)
 			return fmt.Errorf("add dynamic BGP neighbor %s: %w", prefix, err)
 		}
 	}
-
 	return nil
 }
 
 func dynamicPeerGroupAfiSafi(afi apipb.Family_Afi, gracefulRestartEnabled bool) *apipb.AfiSafi {
-	afiSafi := &apipb.AfiSafi{
-		Config: &apipb.AfiSafiConfig{
-			Family:  &apipb.Family{Afi: afi, Safi: apipb.Family_SAFI_UNICAST},
-			Enabled: true,
-		},
-	}
+	afiSafi := &apipb.AfiSafi{Config: &apipb.AfiSafiConfig{
+		Family:  &apipb.Family{Afi: afi, Safi: apipb.Family_SAFI_UNICAST},
+		Enabled: true,
+	}}
 	if gracefulRestartEnabled {
 		afiSafi.MpGracefulRestart = &apipb.MpGracefulRestart{
 			Config: &apipb.MpGracefulRestartConfig{Enabled: true},
 		}
 	}
-
 	return afiSafi
 }
 
@@ -607,7 +485,6 @@ func (s *Speaker) armSweepAfterStartupLocked() {
 	if s.fib == nil {
 		return
 	}
-
 	// Dynamic peers have no configured set, so one established peer cannot prove
 	// the others are absent. A slow passive peer's retained routes must survive
 	// until the full grace expires.
@@ -621,14 +498,12 @@ func (s *Speaker) scheduleSweepArm(delay time.Duration) sweepTimer {
 		if !s.started || s.fib == nil || s.sweepArmed {
 			return
 		}
-
 		s.fib.ArmSweep()
 		s.sweepArmed = true
 	}
 	if s.afterFunc != nil {
 		return s.afterFunc(delay, arm)
 	}
-
 	return time.AfterFunc(delay, arm)
 }
 
@@ -645,7 +520,6 @@ func (s *Speaker) SweepStale(ctx context.Context) error {
 	if fib == nil {
 		return nil
 	}
-
 	return fib.SweepStale(ctx)
 }
 
@@ -663,23 +537,19 @@ func (s *Speaker) Stop() error {
 	if s.cfg.GracefulRestart.Enabled {
 		stopReq.AllowGracefulRestart = true
 	}
-
 	if err := s.server.StopBgp(ctx, stopReq); err != nil {
 		s.log.ErrorContext(ctx, "stop bgp failed", "error", err)
 		return fmt.Errorf("stop bgp: %w", err)
 	}
-
 	if s.startupGraceTimer != nil {
 		s.startupGraceTimer.Stop()
 		s.startupGraceTimer = nil
 	}
-
 	s.started = false
 	s.announcing = false
 	s.announcingV4 = false
 	s.announcingV6 = false
 	s.log.Info("bgp speaker stopped")
-
 	return nil
 }
 
@@ -705,23 +575,13 @@ func (s *Speaker) SetDefaultAnnouncements(ipv4, ipv6 bool) error {
 			} else {
 				err = s.deleteIPv4Path(prefix)
 			}
-
 			if err != nil {
-				s.log.Error(
-					"reconcile ipv4 BGP announcement failed",
-					"prefix",
-					prefix,
-					"error",
-					err,
-				)
-
+				s.log.Error("reconcile ipv4 BGP announcement failed", "prefix", prefix, "error", err)
 				return fmt.Errorf("reconcile ipv4 %s: %w", prefix, err)
 			}
 		}
-
 		s.announcingV4 = ipv4
 	}
-
 	if len(s.cfg.Announce.IPv6) > 0 && ipv6 != s.announcingV6 {
 		for _, prefix := range s.cfg.Announce.IPv6 {
 			var err error
@@ -730,27 +590,16 @@ func (s *Speaker) SetDefaultAnnouncements(ipv4, ipv6 bool) error {
 			} else {
 				err = s.deleteIPv6Path(prefix)
 			}
-
 			if err != nil {
-				s.log.Error(
-					"reconcile ipv6 BGP announcement failed",
-					"prefix",
-					prefix,
-					"error",
-					err,
-				)
-
+				s.log.Error("reconcile ipv6 BGP announcement failed", "prefix", prefix, "error", err)
 				return fmt.Errorf("reconcile ipv6 %s: %w", prefix, err)
 			}
 		}
-
 		s.announcingV6 = ipv6
 	}
-
 	s.announcing = (len(s.cfg.Announce.IPv4) == 0 || s.announcingV4) &&
 		(len(s.cfg.Announce.IPv6) == 0 || s.announcingV6) &&
 		(len(s.cfg.Announce.IPv4) > 0 || len(s.cfg.Announce.IPv6) > 0)
-
 	return nil
 }
 
@@ -760,7 +609,6 @@ func parsePrefix(s string) (netip.Prefix, error) {
 		slog.Warn("bgp: parse prefix failed", "err", err, "input", s)
 		return netip.Prefix{}, fmt.Errorf("parse prefix %q: %w", s, err)
 	}
-
 	return pfx, nil
 }
 
@@ -801,7 +649,6 @@ func (s *Speaker) addIPv4Path(prefix string) error {
 	}); err != nil {
 		return fmt.Errorf("add ipv4 path: %w", err)
 	}
-
 	return nil
 }
 
@@ -828,7 +675,6 @@ func (s *Speaker) deleteIPv4Path(prefix string) error {
 	}); err != nil {
 		return fmt.Errorf("delete ipv4 path: %w", err)
 	}
-
 	return nil
 }
 
@@ -852,7 +698,6 @@ func (s *Speaker) addIPv6Path(prefix string) error {
 	if nhStr == "" {
 		nhStr = s.cfg.RouterID
 	}
-
 	nextHop, err := netip.ParseAddr(nhStr)
 	if err != nil {
 		s.log.Error("parse ipv6 nexthop failed", "next_hop", nhStr, "error", err)
@@ -882,7 +727,6 @@ func (s *Speaker) addIPv6Path(prefix string) error {
 	}); err != nil {
 		return fmt.Errorf("add ipv6 path: %w", err)
 	}
-
 	return nil
 }
 
@@ -909,7 +753,6 @@ func (s *Speaker) deleteIPv6Path(prefix string) error {
 	}); err != nil {
 		return fmt.Errorf("delete ipv6 path: %w", err)
 	}
-
 	return nil
 }
 
@@ -923,7 +766,6 @@ func peerAddress(p *apipb.Peer) string {
 	if _, err := netip.ParseAddr(sessionAddress); err == nil {
 		return sessionAddress
 	}
-
 	return p.GetConf().GetNeighborAddress()
 }
 
@@ -938,54 +780,44 @@ func (s *Speaker) Status(ctx context.Context) Status {
 	started := s.started
 	s.mu.Unlock()
 
-	st := Status{
-		Announcing:   announcing,
-		AnnouncingV4: announcingV4,
-		AnnouncingV6: announcingV6,
-		Peers:        nil,
-	}
+	st := Status{Announcing: announcing, AnnouncingV4: announcingV4, AnnouncingV6: announcingV6, Peers: nil}
 	if !started {
 		return st
 	}
 
-	err := s.server.ListPeer(
-		ctx,
-		&apipb.ListPeerRequest{},
-		func(p *apipb.Peer) {
-			// Established, UpSince and AFI are filled in below only for a peer
-			// that reached the established state.
-			ps := PeerState{
-				Address:     peerAddress(p),
-				State:       p.GetState().GetSessionState().String(),
-				AFI:         "",
-				Established: false,
-				UpSince:     0,
-			}
+	err := s.server.ListPeer(ctx, &apipb.ListPeerRequest{}, func(p *apipb.Peer) {
+		// Established, UpSince and AFI are filled in below only for a peer
+		// that reached the established state.
+		ps := PeerState{
+			Address:     peerAddress(p),
+			State:       p.GetState().GetSessionState().String(),
+			AFI:         "",
+			Established: false,
+			UpSince:     0,
+		}
 
-			if p.GetState().GetSessionState() == apipb.PeerState_SESSION_STATE_ESTABLISHED {
-				ps.Established = true
-				if p.GetTimers() != nil && p.GetTimers().GetState() != nil {
-					ps.UpSince = p.GetTimers().GetState().GetUptime().GetSeconds()
+		if p.GetState().GetSessionState() == apipb.PeerState_SESSION_STATE_ESTABLISHED {
+			ps.Established = true
+			if p.GetTimers() != nil && p.GetTimers().GetState() != nil {
+				ps.UpSince = p.GetTimers().GetState().GetUptime().GetSeconds()
+			}
+		}
+
+		for _, af := range p.GetAfiSafis() {
+			if af.GetConfig() != nil && af.GetConfig().GetFamily() != nil {
+				if af.GetConfig().GetFamily().GetAfi() == apipb.Family_AFI_IP6 {
+					ps.AFI = "ipv6"
+				} else {
+					ps.AFI = "ipv4"
 				}
 			}
+		}
+		if ps.AFI == "" {
+			ps.AFI = "ipv4"
+		}
 
-			for _, af := range p.GetAfiSafis() {
-				if af.GetConfig() != nil && af.GetConfig().GetFamily() != nil {
-					if af.GetConfig().GetFamily().GetAfi() == apipb.Family_AFI_IP6 {
-						ps.AFI = "ipv6"
-					} else {
-						ps.AFI = "ipv4"
-					}
-				}
-			}
-
-			if ps.AFI == "" {
-				ps.AFI = "ipv4"
-			}
-
-			st.Peers = append(st.Peers, ps)
-		},
-	)
+		st.Peers = append(st.Peers, ps)
+	})
 	if err != nil {
 		s.log.ErrorContext(ctx, "list peers failed", "error", err)
 	}
@@ -999,12 +831,10 @@ func (s *Speaker) IsEstablished(ctx context.Context) bool {
 	if len(st.Peers) == 0 {
 		return false
 	}
-
 	for _, p := range st.Peers {
 		if !p.Established {
 			return false
 		}
 	}
-
 	return true
 }

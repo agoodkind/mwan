@@ -36,115 +36,69 @@ func TestNativeIPv6ReadinessAfterNFTFailure(t *testing.T) {
 	}{
 		{name: "retained-dnat", pre: fmt.Sprintf(pre, dnat), post: fmt.Sprintf(post, "")},
 		{name: "missing-prerouting", post: fmt.Sprintf(post, snat)},
-		{
-			name: "missing-postrouting",
-			pre:  fmt.Sprintf(strings.ReplaceAll(pre, "dstnat", "-99"), dnat),
-		},
-		{
-			name:  "unrelated-dnat",
-			pre:   fmt.Sprintf(pre, strings.ReplaceAll(dnat, "nativewan", "otherwan")),
-			post:  fmt.Sprintf(post, ""),
-			ready: true,
-		},
-		{
-			name: "unknown-relevant-action",
-			pre:  fmt.Sprintf(pre, strings.ReplaceAll(dnat, "ip6 daddr", "counter ip6 daddr")),
-			post: fmt.Sprintf(post, ""),
-		},
-		{
-			name: "unknown-unrelated-action",
-			pre: fmt.Sprintf(
-				pre,
-				strings.ReplaceAll(
-					strings.ReplaceAll(dnat, "nativewan", "otherwan"),
-					"ip6 daddr",
-					"counter ip6 daddr",
-				),
-			),
-			post:  fmt.Sprintf(post, ""),
-			ready: true,
-		},
-		{
-			name: "unidentified-rule",
-			pre:  fmt.Sprintf(pre, strings.ReplaceAll(dnat, `iifname "nativewan" `, "")),
-			post: fmt.Sprintf(post, ""),
-		},
-		{
-			name:  "empty-incompatible-chain",
-			pre:   fmt.Sprintf(pre, ""),
-			post:  fmt.Sprintf(post, ""),
-			ready: true,
-		},
+		{name: "missing-postrouting", pre: fmt.Sprintf(strings.ReplaceAll(pre, "dstnat", "-99"), dnat)},
+		{name: "unrelated-dnat", pre: fmt.Sprintf(pre, strings.ReplaceAll(dnat, "nativewan", "otherwan")), post: fmt.Sprintf(post, ""), ready: true},
+		{name: "unknown-relevant-action", pre: fmt.Sprintf(pre, strings.ReplaceAll(dnat, "ip6 daddr", "counter ip6 daddr")), post: fmt.Sprintf(post, "")},
+		{name: "unknown-unrelated-action", pre: fmt.Sprintf(pre, strings.ReplaceAll(strings.ReplaceAll(dnat, "nativewan", "otherwan"), "ip6 daddr", "counter ip6 daddr")), post: fmt.Sprintf(post, ""), ready: true},
+		{name: "unidentified-rule", pre: fmt.Sprintf(pre, strings.ReplaceAll(dnat, `iifname "nativewan" `, "")), post: fmt.Sprintf(post, "")},
+		{name: "empty-incompatible-chain", pre: fmt.Sprintf(pre, ""), post: fmt.Sprintf(post, ""), ready: true},
 	}
 	for _, test := range cases {
-		t.Run(
-			test.name,
-			func(t *testing.T) {
-				inIPv4Namespace(t)
-				loadIPv4Rules(t, fmt.Sprintf("table ip6 nat { %s %s }", test.pre, test.post))
-				before := runNFT(t, "list", "table", "ip6", "nat")
-				wan := &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "nativewan"}}
-				if err := netlink.LinkAdd(wan); err != nil {
-					t.Fatal(err)
-				}
-				seed, err := bpf.New()
-				if err != nil {
-					t.Fatal(err)
-				}
-				pair := nptpolicy.PrefixPair{
-					ID:       1,
-					Internal: netip.MustParsePrefix("fd01:203:405::/48"),
-					External: netip.MustParsePrefix("2001:db8:1::/48"),
-				}
-				if _, err := seed.Reconcile([]bpf.InterfacePolicy{
-					{IfIndex: wan.Attrs().Index, Pairs: []nptpolicy.PrefixPair{pair}},
-				}); err != nil {
-					t.Fatal(err)
-				}
-				if err := seed.Close(); err != nil {
-					t.Fatal(err)
-				}
-				assertNativeFilters(t, wan, 1)
-				module, store, ctx := newNativeReadinessModule(t, nil)
-				if err := module.Reconcile(ctx, slog.Default()); err == nil {
-					t.Fatal("incompatible nft chain unexpectedly reconciled")
-				}
-				if after := runNFT(t, "list", "table", "ip6", "nat"); after != before {
-					t.Fatalf("failed apply changed nft rules: before=%s after=%s", before, after)
-				}
-				assertNativeFilters(t, wan, 0)
-				state := store.Snapshot().Translation["nativewan"].V6
-				if state.Ready != test.ready {
-					t.Errorf(
-						"native readiness with retained nft rules = %+v, want ready=%v",
-						state,
-						test.ready,
-					)
-				}
-				if !test.ready && state.Reason == "" {
-					t.Error("unverified native cleanup has no reason")
-				}
-				runNFT(t, "delete", "table", "ip6", "nat")
-				if err := module.Reconcile(ctx, slog.Default()); err != nil {
-					t.Fatal(err)
-				}
-				assertNativeFilters(t, wan, 0)
-				rendered, err := RenderTable(ctx, slog.Default())
-				if err != nil || rendered.HasInterface("nativewan") {
-					t.Fatalf("native nft cleanup: table=%+v err=%v", rendered, err)
-				}
-				state = store.Snapshot().Translation["nativewan"].V6
-				if !state.Ready || state.Reason != "" {
-					t.Fatalf("native readiness after nft/BPF cleanup = %+v", state)
-				}
-				canceled, cancel := context.WithCancel(ctx)
-				cancel()
-				_ = module.Reconcile(canceled, slog.Default())
-				if state := store.Snapshot().Translation["nativewan"].V6; state.Ready {
-					t.Fatalf("unverified nft inspection reported native ready: %+v", state)
-				}
-			},
-		)
+		t.Run(test.name, func(t *testing.T) {
+			inIPv4Namespace(t)
+			loadIPv4Rules(t, fmt.Sprintf("table ip6 nat { %s %s }", test.pre, test.post))
+			before := runNFT(t, "list", "table", "ip6", "nat")
+			wan := &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "nativewan"}}
+			if err := netlink.LinkAdd(wan); err != nil {
+				t.Fatal(err)
+			}
+			seed, err := bpf.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			pair := nptpolicy.PrefixPair{ID: 1, Internal: netip.MustParsePrefix("fd01:203:405::/48"), External: netip.MustParsePrefix("2001:db8:1::/48")}
+			if _, err := seed.Reconcile([]bpf.InterfacePolicy{{IfIndex: wan.Attrs().Index, Pairs: []nptpolicy.PrefixPair{pair}}}); err != nil {
+				t.Fatal(err)
+			}
+			if err := seed.Close(); err != nil {
+				t.Fatal(err)
+			}
+			assertNativeFilters(t, wan, 1)
+			module, store, ctx := newNativeReadinessModule(t, nil)
+			if err := module.Reconcile(ctx, slog.Default()); err == nil {
+				t.Fatal("incompatible nft chain unexpectedly reconciled")
+			}
+			if after := runNFT(t, "list", "table", "ip6", "nat"); after != before {
+				t.Fatalf("failed apply changed nft rules: before=%s after=%s", before, after)
+			}
+			assertNativeFilters(t, wan, 0)
+			state := store.Snapshot().Translation["nativewan"].V6
+			if state.Ready != test.ready {
+				t.Errorf("native readiness with retained nft rules = %+v, want ready=%v", state, test.ready)
+			}
+			if !test.ready && state.Reason == "" {
+				t.Error("unverified native cleanup has no reason")
+			}
+			runNFT(t, "delete", "table", "ip6", "nat")
+			if err := module.Reconcile(ctx, slog.Default()); err != nil {
+				t.Fatal(err)
+			}
+			assertNativeFilters(t, wan, 0)
+			rendered, err := RenderTable(ctx, slog.Default())
+			if err != nil || rendered.HasInterface("nativewan") {
+				t.Fatalf("native nft cleanup: table=%+v err=%v", rendered, err)
+			}
+			state = store.Snapshot().Translation["nativewan"].V6
+			if !state.Ready || state.Reason != "" {
+				t.Fatalf("native readiness after nft/BPF cleanup = %+v", state)
+			}
+			canceled, cancel := context.WithCancel(ctx)
+			cancel()
+			_ = module.Reconcile(canceled, slog.Default())
+			if state := store.Snapshot().Translation["nativewan"].V6; state.Ready {
+				t.Fatalf("unverified nft inspection reported native ready: %+v", state)
+			}
+		})
 	}
 }
 
@@ -157,17 +111,10 @@ func TestNativeIPv6ReadinessIgnoresOtherWANPolicyError(t *testing.T) {
 	if err := netlink.LinkSetUp(wan); err != nil {
 		t.Fatal(err)
 	}
-	other := WAN{
-		WANRef: ifmgr.WANRef{ID: "otherwan", Name: "otherwan", Iface: "otherwan"},
-		Translation: &config.IPv6Translation{
-			Mode: config.TranslationNPTv6,
-			NPT: &config.NPTv6Translation{
-				InternalPrefix: netip.MustParsePrefix("fd01:203:405::/48"),
-				ExternalSource: config.PrefixConfigured,
-				ExternalPrefix: netip.MustParsePrefix("2001:db8:1::/48"),
-			},
-		},
-	}
+	other := WAN{WANRef: ifmgr.WANRef{ID: "otherwan", Name: "otherwan", Iface: "otherwan"}, Translation: &config.IPv6Translation{
+		Mode: config.TranslationNPTv6,
+		NPT:  &config.NPTv6Translation{InternalPrefix: netip.MustParsePrefix("fd01:203:405::/48"), ExternalSource: config.PrefixConfigured, ExternalPrefix: netip.MustParsePrefix("2001:db8:1::/48")},
+	}}
 	module, store, ctx := newNativeReadinessModule(t, []WAN{other})
 	t.Logf("initial NPT acquisition: %v", module.Reconcile(ctx, slog.Default()))
 	deadline := time.Now().Add(10 * time.Second)
@@ -178,8 +125,7 @@ func TestNativeIPv6ReadinessIgnoresOtherWANPolicyError(t *testing.T) {
 		}
 		ready := false
 		for _, address := range acquired {
-			if address.IP.String() == "2001:db8:1::1" &&
-				address.Flags&(unix.IFA_F_TENTATIVE|unix.IFA_F_DADFAILED) == 0 {
+			if address.IP.String() == "2001:db8:1::1" && address.Flags&(unix.IFA_F_TENTATIVE|unix.IFA_F_DADFAILED) == 0 {
 				ready = true
 			}
 		}
@@ -191,8 +137,7 @@ func TestNativeIPv6ReadinessIgnoresOtherWANPolicyError(t *testing.T) {
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
-	if err := module.Reconcile(ctx, slog.Default()); err == nil ||
-		!strings.Contains(err.Error(), "internal interface") {
+	if err := module.Reconcile(ctx, slog.Default()); err == nil || !strings.Contains(err.Error(), "internal interface") {
 		t.Fatalf("missing internal interface policy error = %v", err)
 	}
 	if state := store.Snapshot().Translation["nativewan"].V6; !state.Ready || state.Reason != "" {
@@ -203,25 +148,11 @@ func TestNativeIPv6ReadinessIgnoresOtherWANPolicyError(t *testing.T) {
 	}
 }
 
-func newNativeReadinessModule(
-	t *testing.T,
-	other []WAN,
-) (*Module, *wanstate.Store, context.Context) {
+func newNativeReadinessModule(t *testing.T, other []WAN) (*Module, *wanstate.Store, context.Context) {
 	t.Helper()
 	cfg := Config{
-		InternalIface:  "absentlan",
-		InternalPrefix: "fd01:203:405::/48",
-		OpnsenseEdgeV6: "fd01:203:405::2",
-		MwanbrEdgeV6:   "fd01:203:405::3",
-		WANs: append(
-			[]WAN{
-				{
-					WANRef:      ifmgr.WANRef{Name: "nativewan", Iface: "nativewan"},
-					Translation: &config.IPv6Translation{Mode: config.TranslationNative},
-				},
-			},
-			other...,
-		),
+		InternalIface: "absentlan", InternalPrefix: "fd01:203:405::/48", OpnsenseEdgeV6: "fd01:203:405::2", MwanbrEdgeV6: "fd01:203:405::3",
+		WANs: append([]WAN{{WANRef: ifmgr.WANRef{Name: "nativewan", Iface: "nativewan"}, Translation: &config.IPv6Translation{Mode: config.TranslationNative}}}, other...),
 	}
 	created, err := New(cfg)
 	if err != nil {
@@ -236,22 +167,10 @@ func newNativeReadinessModule(
 		connections := make([]interfaceintent.Connection, 0, len(other))
 		providers := make(map[string]addresses.Provider, len(other))
 		for _, wan := range other {
-			connections = append(
-				connections,
-				interfaceintent.Connection{
-					ID:    wan.ID,
-					Name:  wan.Iface,
-					Owner: interfaceintent.OwnerExternal,
-					Roles: interfaceintent.RoleProvider,
-				},
-			)
+			connections = append(connections, interfaceintent.Connection{ID: wan.ID, Name: wan.Iface, Owner: interfaceintent.OwnerExternal, Roles: interfaceintent.RoleProvider})
 			providers[wan.ID.String()] = addresses.Provider{IPv6: wan.Translation}
 		}
-		authority, err := addresses.New(addresses.Config{
-			Connections: connections,
-			Providers:   providers,
-			StateFile:   filepath.Join(t.TempDir(), "addresses.json"),
-		})
+		authority, err := addresses.New(addresses.Config{Connections: connections, Providers: providers, StateFile: filepath.Join(t.TempDir(), "addresses.json")})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -25,21 +25,16 @@ func TestMonitorRebindsConfiguredLinkAfterRenameAndRecreation(t *testing.T) {
 	link := addObservedVeth(t, "obs-a", "obs-peer-a", "02:00:5e:00:53:71")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	monitor := NewMonitor(
-		ctx,
-		logger,
-		MonitorConfig{
-			Iface: "obs-a",
-			Connection: &interfaceintent.Connection{
-				ID:   "stable-observer",
-				Name: "obs-a",
-				Link: &interfaceintent.Link{
-					Kind:  interfaceintent.KindPhysical,
-					Match: interfaceintent.Match{HardwareAddress: "02:00:5e:00:53:71"},
-				},
+	monitor := NewMonitor(ctx, logger, MonitorConfig{
+		Iface: "obs-a",
+		Connection: &interfaceintent.Connection{
+			ID: "stable-observer", Name: "obs-a",
+			Link: &interfaceintent.Link{
+				Kind:  interfaceintent.KindPhysical,
+				Match: interfaceintent.Match{HardwareAddress: "02:00:5e:00:53:71"},
 			},
 		},
-	)
+	})
 	if monitor.IfIndex() != link.Attrs().Index {
 		t.Fatalf("initial index = %d, want %d", monitor.IfIndex(), link.Attrs().Index)
 	}
@@ -48,8 +43,7 @@ func TestMonitorRebindsConfiguredLinkAfterRenameAndRecreation(t *testing.T) {
 	}
 	addObservedAddress(t, link, "192.0.2.71/32")
 	first := waitObservedAddress(t, monitor.Events, "192.0.2.71/32")
-	if first.ConnectionID != "stable-observer" || first.ActualIface != "obs-renamed" ||
-		first.Iface != "obs-a" {
+	if first.ConnectionID != "stable-observer" || first.ActualIface != "obs-renamed" || first.Iface != "obs-a" {
 		t.Fatalf("renamed link identity = %+v", first)
 	}
 	if err := netlink.LinkDel(link); err != nil {
@@ -58,8 +52,7 @@ func TestMonitorRebindsConfiguredLinkAfterRenameAndRecreation(t *testing.T) {
 	replacement := addObservedVeth(t, "obs-new", "obs-peer-b", "02:00:5e:00:53:71")
 	addObservedAddress(t, replacement, "192.0.2.72/32")
 	second := waitObservedAddress(t, monitor.Events, "192.0.2.72/32")
-	if second.ConnectionID != "stable-observer" || second.ActualIface != "obs-new" ||
-		second.IfIndex != replacement.Attrs().Index {
+	if second.ConnectionID != "stable-observer" || second.ActualIface != "obs-new" || second.IfIndex != replacement.Attrs().Index {
 		t.Fatalf("replacement link identity = %+v", second)
 	}
 }
@@ -70,10 +63,7 @@ func TestMonitorRebindsPhysicalLinkAfterIndexReuse(t *testing.T) {
 		if os.Geteuid() != 0 {
 			t.Skip("network namespace requires root")
 		}
-		child := exec.Command(
-			os.Args[0],
-			"-test.run=^TestMonitorRebindsPhysicalLinkAfterIndexReuse$",
-		)
+		child := exec.Command(os.Args[0], "-test.run=^TestMonitorRebindsPhysicalLinkAfterIndexReuse$")
 		child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNET}
 		child.Env = append(os.Environ(), childEnv+"=1")
 		if output, err := child.CombinedOutput(); err != nil {
@@ -87,8 +77,7 @@ func TestMonitorRebindsPhysicalLinkAfterIndexReuse(t *testing.T) {
 	const mac = "02:00:5e:00:53:93"
 	const connectionID = "index-reuse-observer"
 	first := &netlink.Veth{
-		LinkAttrs: netlink.LinkAttrs{Name: configuredName},
-		PeerName:  "obs-peer-old",
+		LinkAttrs: netlink.LinkAttrs{Name: configuredName}, PeerName: "obs-peer-old",
 	}
 	if err := netlink.LinkAdd(first); err != nil {
 		t.Fatal(err)
@@ -109,8 +98,7 @@ func TestMonitorRebindsPhysicalLinkAfterIndexReuse(t *testing.T) {
 	}
 	oldIndex := firstLink.Attrs().Index
 	connection := &interfaceintent.Connection{
-		ID:   connectionID,
-		Name: configuredName,
+		ID: connectionID, Name: configuredName,
 		Link: &interfaceintent.Link{
 			Kind:  interfaceintent.KindPhysical,
 			Match: interfaceintent.Match{HardwareAddress: mac},
@@ -120,13 +108,9 @@ func TestMonitorRebindsPhysicalLinkAfterIndexReuse(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	monitor := NewMonitor(ctx, logger, MonitorConfig{Iface: configuredName, Connection: connection})
-	initial := waitObservedSnapshot(
-		t,
-		monitor.Events,
-		func(snapshot *Snapshot) bool {
-			return snapshot.IfIndex == oldIndex
-		},
-	)
+	initial := waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == oldIndex
+	})
 	if initial.ConnectionID != connectionID || initial.ActualIface != configuredName {
 		t.Fatalf("initial binding = %+v", initial)
 	}
@@ -138,13 +122,9 @@ func TestMonitorRebindsPhysicalLinkAfterIndexReuse(t *testing.T) {
 	if err := netlink.LinkDel(firstLink); err != nil {
 		t.Fatal(err)
 	}
-	waitObservedSnapshot(
-		t,
-		monitor.Events,
-		func(snapshot *Snapshot) bool {
-			return snapshot.IfIndex == 0
-		},
-	)
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == 0
+	})
 
 	unrelated := &netlink.Veth{
 		LinkAttrs: netlink.LinkAttrs{Name: "obs-unrelated", Index: oldIndex},
@@ -158,11 +138,7 @@ func TestMonitorRebindsPhysicalLinkAfterIndexReuse(t *testing.T) {
 		t.Fatal(err)
 	}
 	if unrelatedLink.Attrs().Index != oldIndex {
-		t.Fatalf(
-			"kernel assigned unrelated index %d, want %d",
-			unrelatedLink.Attrs().Index,
-			oldIndex,
-		)
+		t.Fatalf("kernel assigned unrelated index %d, want %d", unrelatedLink.Attrs().Index, oldIndex)
 	}
 	unrelatedHardware, err := net.ParseMAC("02:00:5e:00:53:95")
 	if err != nil {
@@ -192,18 +168,10 @@ func TestMonitorRebindsPhysicalLinkAfterIndexReuse(t *testing.T) {
 			watchingUnrelated = false
 		}
 	}
-	unrelatedMonitor := NewMonitor(
-		ctx,
-		logger,
-		MonitorConfig{Iface: configuredName, Connection: connection},
-	)
-	unbound := waitObservedSnapshot(
-		t,
-		unrelatedMonitor.Events,
-		func(snapshot *Snapshot) bool {
-			return snapshot.IfIndex == 0
-		},
-	)
+	unrelatedMonitor := NewMonitor(ctx, logger, MonitorConfig{Iface: configuredName, Connection: connection})
+	unbound := waitObservedSnapshot(t, unrelatedMonitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == 0
+	})
 	if unbound.ActualIface != "" || len(unbound.Addresses) != 0 {
 		t.Fatalf("unrelated link entered configured snapshot: %+v", unbound)
 	}
@@ -223,11 +191,7 @@ func TestMonitorRebindsPhysicalLinkAfterIndexReuse(t *testing.T) {
 		t.Fatal(err)
 	}
 	if replacementLink.Attrs().Index != oldIndex {
-		t.Fatalf(
-			"kernel assigned replacement index %d, want %d",
-			replacementLink.Attrs().Index,
-			oldIndex,
-		)
+		t.Fatalf("kernel assigned replacement index %d, want %d", replacementLink.Attrs().Index, oldIndex)
 	}
 	if err := netlink.LinkSetHardwareAddr(replacementLink, hardware); err != nil {
 		t.Fatal(err)
@@ -235,13 +199,9 @@ func TestMonitorRebindsPhysicalLinkAfterIndexReuse(t *testing.T) {
 	if err := netlink.LinkSetUp(replacementLink); err != nil {
 		t.Fatal(err)
 	}
-	bound := waitObservedSnapshot(
-		t,
-		monitor.Events,
-		func(snapshot *Snapshot) bool {
-			return snapshot.IfIndex == oldIndex && snapshot.ActualIface == replacementName
-		},
-	)
+	bound := waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == oldIndex && snapshot.ActualIface == replacementName
+	})
 	if bound.ConnectionID != connectionID {
 		t.Fatalf("replacement binding = %+v", bound)
 	}
@@ -257,13 +217,9 @@ func TestMonitorRebindsPhysicalLinkAfterIndexReuse(t *testing.T) {
 		t.Fatalf("replacement address identity = %+v", newAddress)
 	}
 	fresh := NewMonitor(ctx, logger, MonitorConfig{Iface: configuredName, Connection: connection})
-	final := waitObservedSnapshot(
-		t,
-		fresh.Events,
-		func(snapshot *Snapshot) bool {
-			return snapshot.IfIndex == oldIndex && snapshot.ActualIface == replacementName
-		},
-	)
+	final := waitObservedSnapshot(t, fresh.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == oldIndex && snapshot.ActualIface == replacementName
+	})
 	if final.ConnectionID != connectionID {
 		t.Fatalf("fresh replacement binding = %+v", final)
 	}
@@ -287,13 +243,9 @@ func TestLegacyMonitorRebindsConfiguredNameAfterRename(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	monitor := NewMonitor(ctx, logger, MonitorConfig{Iface: "obs-legacy"})
-	waitObservedSnapshot(
-		t,
-		monitor.Events,
-		func(snapshot *Snapshot) bool {
-			return snapshot.IfIndex == link.Attrs().Index
-		},
-	)
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == link.Attrs().Index
+	})
 	if err := netlink.LinkSetName(link, "obs-legacy-old"); err != nil {
 		t.Fatal(err)
 	}
@@ -336,11 +288,8 @@ func TestLegacyMonitorRebindsConfiguredNameAfterRename(t *testing.T) {
 	}
 	second := addObservedVeth(t, "obs-other", "obs-other-peer", "02:00:5e:00:53:83")
 	oldRoute := &netlink.Route{
-		Dst:      oldDestination,
-		Family:   netlink.FAMILY_V4,
-		Table:    123,
-		Protocol: 42,
-		Scope:    netlink.SCOPE_LINK,
+		Dst: oldDestination, Family: netlink.FAMILY_V4,
+		Table: 123, Protocol: 42, Scope: netlink.SCOPE_LINK,
 		MultiPath: []*netlink.NexthopInfo{
 			{LinkIndex: link.Attrs().Index, Hops: 0},
 			{LinkIndex: second.Attrs().Index, Hops: 0},
@@ -377,11 +326,8 @@ func TestLegacyMonitorRebindsConfiguredNameAfterRename(t *testing.T) {
 		t.Fatal(err)
 	}
 	newRoute := &netlink.Route{
-		Dst:      newDestination,
-		Family:   netlink.FAMILY_V4,
-		Table:    123,
-		Protocol: 42,
-		Scope:    netlink.SCOPE_LINK,
+		Dst: newDestination, Family: netlink.FAMILY_V4,
+		Table: 123, Protocol: 42, Scope: netlink.SCOPE_LINK,
 		MultiPath: []*netlink.NexthopInfo{
 			{LinkIndex: replacement.Attrs().Index, Hops: 0},
 			{LinkIndex: second.Attrs().Index, Hops: 0},
@@ -407,9 +353,7 @@ func TestMonitorRebindsTypedBridgeAfterRename(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	addBridge := func(name string) netlink.Link {
 		t.Helper()
-		if err := netlink.LinkAdd(&netlink.Bridge{
-			LinkAttrs: netlink.LinkAttrs{Name: name},
-		}); err != nil {
+		if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: name}}); err != nil {
 			t.Fatal(err)
 		}
 		link, err := netlink.LinkByName(name)
@@ -425,35 +369,22 @@ func TestMonitorRebindsTypedBridgeAfterRename(t *testing.T) {
 	old := addBridge("obs-bridge")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	monitor := NewMonitor(
-		ctx,
-		logger,
-		MonitorConfig{
-			Iface: "obs-bridge",
-			Connection: &interfaceintent.Connection{
-				ID:   "bridge-observer",
-				Name: "obs-bridge",
-				Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
-			},
+	monitor := NewMonitor(ctx, logger, MonitorConfig{
+		Iface: "obs-bridge",
+		Connection: &interfaceintent.Connection{
+			ID: "bridge-observer", Name: "obs-bridge",
+			Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
 		},
-	)
-	waitObservedSnapshot(
-		t,
-		monitor.Events,
-		func(snapshot *Snapshot) bool {
-			return snapshot.IfIndex == old.Attrs().Index && snapshot.ActualIface == "obs-bridge"
-		},
-	)
+	})
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == old.Attrs().Index && snapshot.ActualIface == "obs-bridge"
+	})
 	if err := netlink.LinkSetName(old, "obs-bridge-old"); err != nil {
 		t.Fatal(err)
 	}
-	waitObservedSnapshot(
-		t,
-		monitor.Events,
-		func(snapshot *Snapshot) bool {
-			return snapshot.IfIndex == 0
-		},
-	)
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == 0
+	})
 	if monitor.IfIndex() != 0 {
 		t.Fatalf("renamed bridge remains bound at index %d", monitor.IfIndex())
 	}
@@ -463,12 +394,8 @@ func TestMonitorRebindsTypedBridgeAfterRename(t *testing.T) {
 		t.Fatal(err)
 	}
 	oldRoute := &netlink.Route{
-		LinkIndex: old.Attrs().Index,
-		Dst:       oldDestination,
-		Family:    netlink.FAMILY_V4,
-		Table:     123,
-		Protocol:  42,
-		Scope:     netlink.SCOPE_LINK,
+		LinkIndex: old.Attrs().Index, Dst: oldDestination, Family: netlink.FAMILY_V4,
+		Table: 123, Protocol: 42, Scope: netlink.SCOPE_LINK,
 	}
 	if err := netlink.RouteAdd(oldRoute); err != nil {
 		t.Fatal(err)
@@ -535,13 +462,9 @@ func TestMonitorReportsIPv6AddressAndDefaultRoute(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	monitor := NewMonitor(ctx, logger, MonitorConfig{Iface: "obs-family"})
-	waitObservedSnapshot(
-		t,
-		monitor.Events,
-		func(snapshot *Snapshot) bool {
-			return snapshot.IfIndex == link.Attrs().Index
-		},
-	)
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == link.Attrs().Index
+	})
 	addObservedAddress(t, link, "2001:db8:84::1/64")
 	ipv6 := waitObservedAddress(t, monitor.Events, "2001:db8:84::1/64")
 	if ipv6.Family != "inet6" || ipv6.IfIndex != link.Attrs().Index {
@@ -550,11 +473,8 @@ func TestMonitorReportsIPv6AddressAndDefaultRoute(t *testing.T) {
 	addObservedAddress(t, link, "192.0.2.84/24")
 	waitObservedAddress(t, monitor.Events, "192.0.2.84/24")
 	defaultRoute := &netlink.Route{
-		LinkIndex: link.Attrs().Index,
-		Family:    netlink.FAMILY_V4,
-		Gw:        net.ParseIP("192.0.2.1"),
-		Table:     123,
-		Protocol:  42,
+		LinkIndex: link.Attrs().Index, Family: netlink.FAMILY_V4,
+		Gw: net.ParseIP("192.0.2.1"), Table: 123, Protocol: 42,
 	}
 	if err := netlink.RouteAdd(defaultRoute); err != nil {
 		t.Fatal(err)
@@ -568,8 +488,7 @@ func TestMonitorReportsIPv6AddressAndDefaultRoute(t *testing.T) {
 			if event.Kind != EvRouteAdded || event.Dest != "default" {
 				continue
 			}
-			if event.Family != "inet" || event.Via != "192.0.2.1" ||
-				event.IfIndex != link.Attrs().Index {
+			if event.Family != "inet" || event.Via != "192.0.2.1" || event.IfIndex != link.Attrs().Index {
 				t.Fatalf("default route event = %+v", event)
 			}
 			goto checkIPv6Route
@@ -583,12 +502,8 @@ checkIPv6Route:
 		t.Fatal(err)
 	}
 	ipv6Route := &netlink.Route{
-		LinkIndex: link.Attrs().Index,
-		Dst:       destination,
-		Family:    netlink.FAMILY_V6,
-		Table:     123,
-		Protocol:  42,
-		Scope:     netlink.SCOPE_LINK,
+		LinkIndex: link.Attrs().Index, Dst: destination, Family: netlink.FAMILY_V6,
+		Table: 123, Protocol: 42, Scope: netlink.SCOPE_LINK,
 	}
 	if err := netlink.RouteAdd(ipv6Route); err != nil {
 		t.Fatal(err)
@@ -634,35 +549,21 @@ func TestMonitorIdentifiesDeletedRouteAmongMatchingDestinations(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	monitor := NewMonitor(ctx, logger, MonitorConfig{Iface: "obs-route"})
-	waitObservedSnapshot(
-		t,
-		monitor.Events,
-		func(snapshot *Snapshot) bool {
-			return snapshot.IfIndex == link.Attrs().Index
-		},
-	)
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == link.Attrs().Index
+	})
 
 	_, destination, err := net.ParseCIDR("203.0.113.0/24")
 	if err != nil {
 		t.Fatal(err)
 	}
 	first := &netlink.Route{
-		LinkIndex: link.Attrs().Index,
-		Dst:       destination,
-		Family:    netlink.FAMILY_V4,
-		Table:     123,
-		Protocol:  42,
-		Scope:     netlink.SCOPE_LINK,
-		Priority:  77,
+		LinkIndex: link.Attrs().Index, Dst: destination, Family: netlink.FAMILY_V4,
+		Table: 123, Protocol: 42, Scope: netlink.SCOPE_LINK, Priority: 77,
 	}
 	second := &netlink.Route{
-		LinkIndex: link.Attrs().Index,
-		Dst:       destination,
-		Family:    netlink.FAMILY_V4,
-		Table:     124,
-		Protocol:  43,
-		Scope:     netlink.SCOPE_LINK,
-		Priority:  88,
+		LinkIndex: link.Attrs().Index, Dst: destination, Family: netlink.FAMILY_V4,
+		Table: 124, Protocol: 43, Scope: netlink.SCOPE_LINK, Priority: 88,
 	}
 	for _, route := range []*netlink.Route{first, second} {
 		if err := netlink.RouteAdd(route); err != nil {
@@ -699,13 +600,9 @@ func TestMonitorIdentifiesDeletedRouteAmongMatchingDestinations(t *testing.T) {
 				t.Fatalf("deleted route identity = %+v", event)
 			}
 			fresh := NewMonitor(ctx, logger, MonitorConfig{Iface: "obs-route"})
-			snapshot := waitObservedSnapshot(
-				t,
-				fresh.Events,
-				func(snapshot *Snapshot) bool {
-					return snapshot.IfIndex == link.Attrs().Index
-				},
-			)
+			snapshot := waitObservedSnapshot(t, fresh.Events, func(snapshot *Snapshot) bool {
+				return snapshot.IfIndex == link.Attrs().Index
+			})
 			for _, current := range snapshot.Routes {
 				if current.Dest != destination.String() {
 					continue
@@ -729,13 +626,9 @@ func TestMonitorDistinguishesSnapshotReplayFromNewAddress(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	monitor := NewMonitor(ctx, logger, MonitorConfig{Iface: "obs-replay"})
-	waitObservedSnapshot(
-		t,
-		monitor.Events,
-		func(snapshot *Snapshot) bool {
-			return snapshot.IfIndex == link.Attrs().Index
-		},
-	)
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == link.Attrs().Index
+	})
 	replayed := waitObservedAddress(t, monitor.Events, "192.0.2.77/32")
 	if !replayed.SnapshotReplay {
 		t.Fatalf("existing address was reported as new: %+v", replayed)
@@ -754,18 +647,14 @@ func TestMonitorReplaysExistingAddressBeforeItsDeletion(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	monitor := NewMonitor(ctx, logger, MonitorConfig{Iface: "obs-order"})
-	waitObservedSnapshot(
-		t,
-		monitor.Events,
-		func(snapshot *Snapshot) bool {
-			for _, address := range snapshot.Addresses {
-				if address.CIDR == "192.0.2.79/32" {
-					return true
-				}
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		for _, address := range snapshot.Addresses {
+			if address.CIDR == "192.0.2.79/32" {
+				return true
 			}
-			return false
-		},
-	)
+		}
+		return false
+	})
 	address, err := netlink.ParseAddr("192.0.2.79/32")
 	if err != nil {
 		t.Fatal(err)
@@ -808,13 +697,9 @@ func TestMonitorResyncsAfterAnUnconsumedEventBurst(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	monitor := NewMonitor(ctx, logger, MonitorConfig{Iface: "obs-b"})
-	waitObservedSnapshot(
-		t,
-		monitor.Events,
-		func(snapshot *Snapshot) bool {
-			return snapshot.IfIndex == link.Attrs().Index
-		},
-	)
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == link.Attrs().Index
+	})
 	const burstSize = 160
 	for i := 1; i <= burstSize; i++ {
 		addObservedAddress(t, link, fmt.Sprintf("198.18.1.%d/32", i))
@@ -863,11 +748,7 @@ func TestMonitorResyncsAfterAnUnconsumedEventBurst(t *testing.T) {
 				continue
 			}
 			if event.Snapshot.IfIndex != link.Attrs().Index {
-				t.Fatalf(
-					"recovery snapshot link index = %d, want %d",
-					event.Snapshot.IfIndex,
-					link.Attrs().Index,
-				)
+				t.Fatalf("recovery snapshot link index = %d, want %d", event.Snapshot.IfIndex, link.Attrs().Index)
 			}
 			observed := map[string]bool{}
 			for _, address := range event.Snapshot.Addresses {
@@ -886,12 +767,8 @@ func TestMonitorResyncsAfterAnUnconsumedEventBurst(t *testing.T) {
 			}
 			clear(replayed)
 		case <-deadline.C:
-			t.Fatalf(
-				"recovery snapshot matched=%t, replayed=%d of %d kernel addresses",
-				snapshotMatched,
-				len(replayed),
-				len(want),
-			)
+			t.Fatalf("recovery snapshot matched=%t, replayed=%d of %d kernel addresses",
+				snapshotMatched, len(replayed), len(want))
 		}
 	}
 	const nextAddress = "198.18.1.161/32"
@@ -899,10 +776,7 @@ func TestMonitorResyncsAfterAnUnconsumedEventBurst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	warningsBeforeDelta := strings.Count(
-		string(logBeforeDelta),
-		"monitor: Events channel full; requesting snapshot",
-	)
+	warningsBeforeDelta := strings.Count(string(logBeforeDelta), "monitor: Events channel full; requesting snapshot")
 	addObservedAddress(t, link, nextAddress)
 	deltaDeadline := time.NewTimer(5 * time.Second)
 	defer deltaDeadline.Stop()
@@ -920,15 +794,8 @@ func TestMonitorResyncsAfterAnUnconsumedEventBurst(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			warningsAfterDelta := strings.Count(
-				string(logAfterDelta),
-				"monitor: Events channel full; requesting snapshot",
-			)
-			t.Fatalf(
-				"post-resync address delta was not observed; overflow warnings before=%d after=%d",
-				warningsBeforeDelta,
-				warningsAfterDelta,
-			)
+			warningsAfterDelta := strings.Count(string(logAfterDelta), "monitor: Events channel full; requesting snapshot")
+			t.Fatalf("post-resync address delta was not observed; overflow warnings before=%d after=%d", warningsBeforeDelta, warningsAfterDelta)
 		}
 	}
 }
@@ -939,26 +806,17 @@ func TestMonitorReportsAmbiguousLinkFailureAndRecovers(t *testing.T) {
 	link := addObservedVeth(t, "obs-failure", "obs-fail-peer", hardwareAddress)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	monitor := NewMonitor(
-		ctx,
-		logger,
-		MonitorConfig{
-			Iface: "obs-failure",
-			Connection: &interfaceintent.Connection{
-				ID:   "ambiguous-observer",
-				Name: "obs-failure",
-				Link: &interfaceintent.Link{
-					Kind:  interfaceintent.KindPhysical,
-					Match: interfaceintent.Match{HardwareAddress: hardwareAddress},
-				},
+	monitor := NewMonitor(ctx, logger, MonitorConfig{
+		Iface: "obs-failure",
+		Connection: &interfaceintent.Connection{
+			ID: "ambiguous-observer", Name: "obs-failure",
+			Link: &interfaceintent.Link{
+				Kind:  interfaceintent.KindPhysical,
+				Match: interfaceintent.Match{HardwareAddress: hardwareAddress},
 			},
 		},
-	)
-	waitObservedSnapshot(
-		t,
-		monitor.Events,
-		func(snapshot *Snapshot) bool { return snapshot.IfIndex == link.Attrs().Index },
-	)
+	})
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool { return snapshot.IfIndex == link.Attrs().Index })
 	duplicate := addObservedVeth(t, "obs-duplicate", "obs-dupe-peer", hardwareAddress)
 	deadline := time.NewTimer(5 * time.Second)
 	defer deadline.Stop()
@@ -973,27 +831,16 @@ func TestMonitorReportsAmbiguousLinkFailureAndRecovers(t *testing.T) {
 				failed = event
 			}
 		case <-deadline.C:
-			t.Fatalf(
-				"ambiguous link did not report snapshot failure; stale=%+v failed=%+v",
-				stale,
-				failed,
-			)
+			t.Fatalf("ambiguous link did not report snapshot failure; stale=%+v failed=%+v", stale, failed)
 		}
 	}
-	if stale.Kind != EvObservationStale ||
-		!strings.Contains(failed.Reason, "matches 2 kernel links") ||
-		stale.ObservedAt.IsZero() ||
-		failed.ObservedAt.IsZero() {
+	if stale.Kind != EvObservationStale || !strings.Contains(failed.Reason, "matches 2 kernel links") || stale.ObservedAt.IsZero() || failed.ObservedAt.IsZero() {
 		t.Fatalf("ambiguous link status = stale %+v, failed %+v", stale, failed)
 	}
 	if err := netlink.LinkDel(duplicate); err != nil {
 		t.Fatal(err)
 	}
-	waitObservedSnapshot(
-		t,
-		monitor.Events,
-		func(snapshot *Snapshot) bool { return snapshot.IfIndex == link.Attrs().Index },
-	)
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool { return snapshot.IfIndex == link.Attrs().Index })
 
 	queuedDuplicate := addObservedVeth(t, "obs-duplicate2", "obs-dupe-peer2", hardwareAddress)
 	defer func() { _ = netlink.LinkDel(queuedDuplicate) }()
@@ -1020,24 +867,16 @@ func TestMonitorReportsEveryNextHopForAWatchedMultipathRoute(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	monitor := NewMonitor(ctx, logger, MonitorConfig{Iface: "obs-d"})
-	waitObservedSnapshot(
-		t,
-		monitor.Events,
-		func(snapshot *Snapshot) bool {
-			return snapshot.IfIndex == second.Attrs().Index
-		},
-	)
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == second.Attrs().Index
+	})
 	_, destination, err := net.ParseCIDR("203.0.113.0/24")
 	if err != nil {
 		t.Fatal(err)
 	}
 	route := &netlink.Route{
-		Dst:      destination,
-		Family:   netlink.FAMILY_V4,
-		Table:    123,
-		Protocol: 42,
-		Priority: 77,
-		Scope:    netlink.SCOPE_LINK,
+		Dst: destination, Family: netlink.FAMILY_V4,
+		Table: 123, Protocol: 42, Priority: 77, Scope: netlink.SCOPE_LINK,
 		MultiPath: []*netlink.NexthopInfo{
 			{LinkIndex: first.Attrs().Index, Hops: 0},
 			{LinkIndex: second.Attrs().Index, Hops: 1},
@@ -1060,17 +899,12 @@ func TestMonitorReportsEveryNextHopForAWatchedMultipathRoute(t *testing.T) {
 				t.Fatalf("multipath route observation = %+v", event)
 			}
 			fresh := NewMonitor(ctx, logger, MonitorConfig{Iface: "obs-d"})
-			snapshot := waitObservedSnapshot(
-				t,
-				fresh.Events,
-				func(snapshot *Snapshot) bool {
-					return snapshot.IfIndex == second.Attrs().Index
-				},
-			)
+			snapshot := waitObservedSnapshot(t, fresh.Events, func(snapshot *Snapshot) bool {
+				return snapshot.IfIndex == second.Attrs().Index
+			})
 			found := false
 			for _, current := range snapshot.Routes {
-				if current.Dest == "203.0.113.0/24" && current.TableID == 123 &&
-					len(current.NextHops) == 2 {
+				if current.Dest == "203.0.113.0/24" && current.TableID == 123 && len(current.NextHops) == 2 {
 					found = true
 				}
 			}
@@ -1089,13 +923,9 @@ func TestMonitorStopsReportingAfterCancellation(t *testing.T) {
 	link := addObservedVeth(t, "obs-e", "obs-peer-f", "02:00:5e:00:53:75")
 	ctx, cancel := context.WithCancel(context.Background())
 	monitor := NewMonitor(ctx, logger, MonitorConfig{Iface: "obs-e"})
-	waitObservedSnapshot(
-		t,
-		monitor.Events,
-		func(snapshot *Snapshot) bool {
-			return snapshot.IfIndex == link.Attrs().Index
-		},
-	)
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == link.Attrs().Index
+	})
 	addObservedAddress(t, link, "192.0.2.74/32")
 	queuedDeadline := time.Now().Add(2 * time.Second)
 	for len(monitor.Events) == 0 && time.Now().Before(queuedDeadline) {
@@ -1141,31 +971,19 @@ func TestMonitorSnapshotsLinkAppearanceAndDeletion(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	monitor := NewMonitor(ctx, logger, MonitorConfig{Iface: "obs-late"})
-	waitObservedSnapshot(
-		t,
-		monitor.Events,
-		func(snapshot *Snapshot) bool {
-			return snapshot.IfIndex == 0
-		},
-	)
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == 0
+	})
 	link := addObservedVeth(t, "obs-late", "obs-late-peer", "02:00:5e:00:53:78")
-	waitObservedSnapshot(
-		t,
-		monitor.Events,
-		func(snapshot *Snapshot) bool {
-			return snapshot.IfIndex == link.Attrs().Index && snapshot.ActualIface == "obs-late"
-		},
-	)
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == link.Attrs().Index && snapshot.ActualIface == "obs-late"
+	})
 	if err := netlink.LinkDel(link); err != nil {
 		t.Fatal(err)
 	}
-	waitObservedSnapshot(
-		t,
-		monitor.Events,
-		func(snapshot *Snapshot) bool {
-			return snapshot.IfIndex == 0
-		},
-	)
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == 0
+	})
 }
 
 func TestMonitorRejectsAmbiguousPhysicalAndWrongVirtualLinks(t *testing.T) {
@@ -1174,21 +992,16 @@ func TestMonitorRejectsAmbiguousPhysicalAndWrongVirtualLinks(t *testing.T) {
 	second := addObservedVeth(t, "obs-g", "obs-peer-h", "02:00:5e:00:53:76")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	physical := NewMonitor(
-		ctx,
-		logger,
-		MonitorConfig{
-			Iface: "obs-f",
-			Connection: &interfaceintent.Connection{
-				ID:   "ambiguous",
-				Name: "obs-f",
-				Link: &interfaceintent.Link{
-					Kind:  interfaceintent.KindPhysical,
-					Match: interfaceintent.Match{HardwareAddress: "02:00:5e:00:53:76"},
-				},
+	physical := NewMonitor(ctx, logger, MonitorConfig{
+		Iface: "obs-f",
+		Connection: &interfaceintent.Connection{
+			ID: "ambiguous", Name: "obs-f",
+			Link: &interfaceintent.Link{
+				Kind:  interfaceintent.KindPhysical,
+				Match: interfaceintent.Match{HardwareAddress: "02:00:5e:00:53:76"},
 			},
 		},
-	)
+	})
 	if physical.IfIndex() != 0 {
 		t.Fatalf("ambiguous physical match selected index %d", physical.IfIndex())
 	}
@@ -1210,10 +1023,7 @@ func TestMonitorRejectsAmbiguousPhysicalAndWrongVirtualLinks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	vlan := &netlink.Vlan{
-		LinkAttrs: netlink.LinkAttrs{Name: "obs-vlan", ParentIndex: parentLink.Attrs().Index},
-		VlanId:    101,
-	}
+	vlan := &netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "obs-vlan", ParentIndex: parentLink.Attrs().Index}, VlanId: 101}
 	if err := netlink.LinkAdd(vlan); err != nil {
 		t.Fatal(err)
 	}
@@ -1221,54 +1031,39 @@ func TestMonitorRejectsAmbiguousPhysicalAndWrongVirtualLinks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wrong := NewMonitor(
-		ctx,
-		logger,
-		MonitorConfig{
-			Iface: "obs-vlan",
-			Connection: &interfaceintent.Connection{
-				ID:   "wrong-vlan",
-				Name: "obs-vlan",
-				Link: &interfaceintent.Link{
-					Kind: interfaceintent.KindVLAN,
-					VLAN: &interfaceintent.VLAN{Parent: "obs-parent", ID: 102},
-				},
+	wrong := NewMonitor(ctx, logger, MonitorConfig{
+		Iface: "obs-vlan",
+		Connection: &interfaceintent.Connection{
+			ID: "wrong-vlan", Name: "obs-vlan",
+			Link: &interfaceintent.Link{
+				Kind: interfaceintent.KindVLAN,
+				VLAN: &interfaceintent.VLAN{Parent: "obs-parent", ID: 102},
 			},
 		},
-	)
+	})
 	if wrong.IfIndex() != 0 {
 		t.Fatalf("wrong VLAN tag selected index %d", wrong.IfIndex())
 	}
-	correct := NewMonitor(
-		ctx,
-		logger,
-		MonitorConfig{
-			Iface: "obs-vlan",
-			Connection: &interfaceintent.Connection{
-				ID:   "correct-vlan",
-				Name: "obs-vlan",
-				Link: &interfaceintent.Link{
-					Kind: interfaceintent.KindVLAN,
-					VLAN: &interfaceintent.VLAN{Parent: "obs-parent", ID: 101},
-				},
+	correct := NewMonitor(ctx, logger, MonitorConfig{
+		Iface: "obs-vlan",
+		Connection: &interfaceintent.Connection{
+			ID: "correct-vlan", Name: "obs-vlan",
+			Link: &interfaceintent.Link{
+				Kind: interfaceintent.KindVLAN,
+				VLAN: &interfaceintent.VLAN{Parent: "obs-parent", ID: 101},
 			},
 		},
-	)
+	})
 	if correct.IfIndex() != vlanLink.Attrs().Index {
 		t.Fatalf("valid VLAN selected index %d, want %d", correct.IfIndex(), vlanLink.Attrs().Index)
 	}
-	bridge := NewMonitor(
-		ctx,
-		logger,
-		MonitorConfig{
-			Iface: "obs-vlan",
-			Connection: &interfaceintent.Connection{
-				ID:   "not-bridge",
-				Name: "obs-vlan",
-				Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
-			},
+	bridge := NewMonitor(ctx, logger, MonitorConfig{
+		Iface: "obs-vlan",
+		Connection: &interfaceintent.Connection{
+			ID: "not-bridge", Name: "obs-vlan",
+			Link: &interfaceintent.Link{Kind: interfaceintent.KindBridge},
 		},
-	)
+	})
 	if bridge.IfIndex() != 0 {
 		t.Fatalf("VLAN was accepted as a bridge at index %d", bridge.IfIndex())
 	}
@@ -1290,9 +1085,8 @@ func TestMonitorTracksRenamedVLANByParentTagAndProtocol(t *testing.T) {
 	}
 	makeVLAN := func(name string, protocol netlink.VlanProtocol) netlink.Link {
 		vlan := &netlink.Vlan{
-			LinkAttrs:    netlink.LinkAttrs{Name: name, ParentIndex: parentLink.Attrs().Index},
-			VlanId:       101,
-			VlanProtocol: protocol,
+			LinkAttrs: netlink.LinkAttrs{Name: name, ParentIndex: parentLink.Attrs().Index},
+			VlanId:    101, VlanProtocol: protocol,
 		}
 		if err := netlink.LinkAdd(vlan); err != nil {
 			t.Fatal(err)
@@ -1310,28 +1104,19 @@ func TestMonitorTracksRenamedVLANByParentTagAndProtocol(t *testing.T) {
 	configured := makeVLAN("obs-vlan", netlink.VLAN_PROTOCOL_8021Q)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	monitor := NewMonitor(
-		ctx,
-		logger,
-		MonitorConfig{
-			Iface: "obs-vlan",
-			Connection: &interfaceintent.Connection{
-				ID:   "vlan-observer",
-				Name: "obs-vlan",
-				Link: &interfaceintent.Link{
-					Kind: interfaceintent.KindVLAN,
-					VLAN: &interfaceintent.VLAN{Parent: "obs-v-parent", ID: 101},
-				},
+	monitor := NewMonitor(ctx, logger, MonitorConfig{
+		Iface: "obs-vlan",
+		Connection: &interfaceintent.Connection{
+			ID: "vlan-observer", Name: "obs-vlan",
+			Link: &interfaceintent.Link{
+				Kind: interfaceintent.KindVLAN,
+				VLAN: &interfaceintent.VLAN{Parent: "obs-v-parent", ID: 101},
 			},
 		},
-	)
-	waitObservedSnapshot(
-		t,
-		monitor.Events,
-		func(snapshot *Snapshot) bool {
-			return snapshot.IfIndex == configured.Attrs().Index
-		},
-	)
+	})
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == configured.Attrs().Index
+	})
 	if err := netlink.LinkSetName(configured, "obs-v-renamed"); err != nil {
 		t.Fatal(err)
 	}
@@ -1361,21 +1146,16 @@ verifyOtherProtocol:
 	if err := netlink.LinkDel(configured); err != nil {
 		t.Fatal(err)
 	}
-	waitObservedSnapshot(
-		t,
-		monitor.Events,
-		func(snapshot *Snapshot) bool {
-			return snapshot.IfIndex == 0
-		},
-	)
+	waitObservedSnapshot(t, monitor.Events, func(snapshot *Snapshot) bool {
+		return snapshot.IfIndex == 0
+	})
 	addObservedAddress(t, otherProtocol, "192.0.2.91/32")
 	otherDeadline := time.NewTimer(100 * time.Millisecond)
 	defer otherDeadline.Stop()
 	for {
 		select {
 		case event := <-monitor.Events:
-			if event.CIDR == "192.0.2.91/32" ||
-				event.Snapshot != nil && event.Snapshot.IfIndex == otherProtocol.Attrs().Index {
+			if event.CIDR == "192.0.2.91/32" || event.Snapshot != nil && event.Snapshot.IfIndex == otherProtocol.Attrs().Index {
 				t.Fatalf("802.1ad link replaced configured 802.1Q connection: %+v", event)
 			}
 		case <-otherDeadline.C:
@@ -1384,11 +1164,7 @@ verifyOtherProtocol:
 	}
 }
 
-func waitObservedSnapshot(
-	t *testing.T,
-	events <-chan Event,
-	matches func(*Snapshot) bool,
-) *Snapshot {
+func waitObservedSnapshot(t *testing.T, events <-chan Event, matches func(*Snapshot) bool) *Snapshot {
 	t.Helper()
 	deadline := time.NewTimer(5 * time.Second)
 	defer deadline.Stop()
@@ -1410,10 +1186,7 @@ func addObservedVeth(t *testing.T, name string, peerName string, mac string) net
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.LinkAdd(&netlink.Veth{
-		LinkAttrs: netlink.LinkAttrs{Name: name, HardwareAddr: hardware},
-		PeerName:  peerName,
-	}); err != nil {
+	if err := netlink.LinkAdd(&netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: name, HardwareAddr: hardware}, PeerName: peerName}); err != nil {
 		t.Fatal(err)
 	}
 	link, err := netlink.LinkByName(name)
@@ -1456,13 +1229,7 @@ func waitObservedAddress(t *testing.T, events <-chan Event, address string) Even
 			if event.Kind == EvAddrAdded && event.CIDR == address {
 				return event
 			}
-			summary := fmt.Sprintf(
-				"%s cidr=%s iface=%s index=%d",
-				event.Kind,
-				event.CIDR,
-				event.ActualIface,
-				event.IfIndex,
-			)
+			summary := fmt.Sprintf("%s cidr=%s iface=%s index=%d", event.Kind, event.CIDR, event.ActualIface, event.IfIndex)
 			if event.Snapshot != nil {
 				containsAddress := false
 				for _, observed := range event.Snapshot.Addresses {
@@ -1471,12 +1238,7 @@ func waitObservedAddress(t *testing.T, events <-chan Event, address string) Even
 						break
 					}
 				}
-				summary += fmt.Sprintf(
-					" snapshot-index=%d address-count=%d contains-target=%t",
-					event.Snapshot.IfIndex,
-					len(event.Snapshot.Addresses),
-					containsAddress,
-				)
+				summary += fmt.Sprintf(" snapshot-index=%d address-count=%d contains-target=%t", event.Snapshot.IfIndex, len(event.Snapshot.Addresses), containsAddress)
 			}
 			recent = append(recent, summary)
 			if len(recent) > 20 {

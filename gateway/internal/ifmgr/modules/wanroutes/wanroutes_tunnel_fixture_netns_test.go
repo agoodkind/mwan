@@ -35,24 +35,10 @@ func openTunnelRouteJournal(t *testing.T, path string) *netif.OwnedStaticReconci
 	return journal
 }
 
-func addTunnelRouteProvider(
-	ctx context.Context,
-	t *testing.T,
-	fixture *tunnelRouteFixture,
-	iface string,
-	address string,
-	gateway string,
-	gatewayMAC string,
-	metric int,
-) {
+func addTunnelRouteProvider(ctx context.Context, t *testing.T, fixture *tunnelRouteFixture, iface, address, gateway, gatewayMAC string, metric int) {
 	t.Helper()
 	addDummyLink(t, iface)
-	if err := netif.ReconcileAddrs(
-		ctx,
-		fixture.module.Log,
-		iface,
-		[]netif.AddrSpec{{CIDR: address}},
-	); err != nil {
+	if err := netif.ReconcileAddrs(ctx, fixture.module.Log, iface, []netif.AddrSpec{{CIDR: address}}); err != nil {
 		t.Fatalf("address %s: %v", iface, err)
 	}
 	setTunnelRouteDefault(t, iface, gateway, metric, true)
@@ -69,12 +55,7 @@ func setTunnelRouteNeighbour(t *testing.T, iface, gateway, gatewayMAC string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	neighbour := &netlink.Neigh{
-		LinkIndex:    link.Attrs().Index,
-		State:        netlink.NUD_PERMANENT,
-		IP:           net.ParseIP(gateway),
-		HardwareAddr: hardware,
-	}
+	neighbour := &netlink.Neigh{LinkIndex: link.Attrs().Index, State: netlink.NUD_PERMANENT, IP: net.ParseIP(gateway), HardwareAddr: hardware}
 	if err := netlink.NeighSet(neighbour); err != nil {
 		t.Fatalf("neighbour %s on %s: %v", gateway, iface, err)
 	}
@@ -86,12 +67,7 @@ func replaceTunnelRouteDefault(t *testing.T, iface, gateway string, metric int) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	route := &netlink.Route{
-		LinkIndex: link.Attrs().Index,
-		Gw:        net.ParseIP(gateway),
-		Priority:  metric,
-		Table:     unix.RT_TABLE_MAIN,
-	}
+	route := &netlink.Route{LinkIndex: link.Attrs().Index, Gw: net.ParseIP(gateway), Priority: metric, Table: unix.RT_TABLE_MAIN}
 	if err := netlink.RouteReplace(route); err != nil {
 		t.Fatalf("replace the main default on %s with %s: %v", iface, gateway, err)
 	}
@@ -103,12 +79,7 @@ func setTunnelRouteDefault(t *testing.T, iface, gateway string, metric int, pres
 	if err != nil {
 		t.Fatal(err)
 	}
-	route := &netlink.Route{
-		LinkIndex: link.Attrs().Index,
-		Gw:        net.ParseIP(gateway),
-		Priority:  metric,
-		Table:     unix.RT_TABLE_MAIN,
-	}
+	route := &netlink.Route{LinkIndex: link.Attrs().Index, Gw: net.ParseIP(gateway), Priority: metric, Table: unix.RT_TABLE_MAIN}
 	if present {
 		err = netlink.RouteAdd(route)
 	} else {
@@ -123,9 +94,7 @@ func setTunnelRouteDefault(t *testing.T, iface, gateway string, metric int, pres
 func newTunnelRouteFixture(ctx context.Context, t *testing.T) *tunnelRouteFixture {
 	t.Helper()
 	fixture := &tunnelRouteFixture{
-		store:       wanstate.New(),
-		links:       &ifmgr.OwnedLinkResults{},
-		repairs:     make(chan string, 256),
+		store: wanstate.New(), links: &ifmgr.OwnedLinkResults{}, repairs: make(chan string, 256),
 		healthPath:  filepath.Join(t.TempDir(), "mwan-health.state"),
 		journalPath: filepath.Join(t.TempDir(), "owned-addresses.json"),
 	}
@@ -143,71 +112,31 @@ func newTunnelRouteFixture(ctx context.Context, t *testing.T) *tunnelRouteFixtur
 	fixture.module.resolveNextHop = netif.NextHopResolves
 
 	addDummyLink(t, tunnelRouteInternal)
-	addTunnelRouteProvider(
-		ctx,
-		t,
-		fixture,
-		tunnelRouteUnderlay,
-		tunnelRouteLocal+"/24",
-		tunnelRouteGateway,
-		tunnelRouteUnderMAC,
-		tunnelRouteUnderMetric,
-	)
-	addTunnelRouteProvider(
-		ctx,
-		t,
-		fixture,
-		tunnelRouteOther,
-		"203.0.113.2/29",
-		tunnelRouteOtherGW,
-		tunnelRouteOtherMAC,
-		tunnelRouteOtherMetric,
-	)
+	addTunnelRouteProvider(ctx, t, fixture, tunnelRouteUnderlay, tunnelRouteLocal+"/24", tunnelRouteGateway, tunnelRouteUnderMAC, tunnelRouteUnderMetric)
+	addTunnelRouteProvider(ctx, t, fixture, tunnelRouteOther, "203.0.113.2/29", tunnelRouteOtherGW, tunnelRouteOtherMAC, tunnelRouteOtherMetric)
 
 	reconciler, err := netif.NewOwnedLinkReconciler(filepath.Join(t.TempDir(), "links.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture.applied, err = reconciler.Reconcile(
-		ctx,
-		fixture.module.Log,
-		[]interfaceintent.Connection{
-			{ID: "isp", Name: tunnelRouteUnderlay, Owner: interfaceintent.OwnerExternal},
-			{
-				ID:    tunnelRouteID,
-				Name:  tunnelRouteIface,
-				Owner: interfaceintent.OwnerMWAN,
-				Link: &interfaceintent.Link{
-					Kind:   interfaceintent.KindTunnel,
-					Tunnel: tunnelRouteIntent(),
-				},
-			},
+	fixture.applied, err = reconciler.Reconcile(ctx, fixture.module.Log, []interfaceintent.Connection{
+		{ID: "isp", Name: tunnelRouteUnderlay, Owner: interfaceintent.OwnerExternal},
+		{
+			ID: tunnelRouteID, Name: tunnelRouteIface, Owner: interfaceintent.OwnerMWAN,
+			Link: &interfaceintent.Link{Kind: interfaceintent.KindTunnel, Tunnel: tunnelRouteIntent()},
 		},
-		nil,
-	)
+	}, nil)
 	if err != nil {
 		t.Fatalf("create the tunnel: %v", err)
 	}
 	fixture.links.Replace(fixture.applied)
-	if result, found := fixture.links.Get(tunnelRouteID); !found ||
-		result.Status != netif.OwnedLinkReady {
+	if result, found := fixture.links.Get(tunnelRouteID); !found || result.Status != netif.OwnedLinkReady {
 		t.Fatalf("tunnel link result = %+v (found=%t)", result, found)
 	}
-	if err := netif.ReconcileAddrs(
-		ctx,
-		fixture.module.Log,
-		tunnelRouteIface,
-		[]netif.AddrSpec{{CIDR: "2001:db8:6::2/64"}},
-	); err != nil {
+	if err := netif.ReconcileAddrs(ctx, fixture.module.Log, tunnelRouteIface, []netif.AddrSpec{{CIDR: "2001:db8:6::2/64"}}); err != nil {
 		t.Fatalf("tunnel address: %v", err)
 	}
-	innerDefault := netif.RouteSpec{
-		Family:  familyV6,
-		Dest:    "default",
-		Via:     tunnelRouteInnerGW,
-		Dev:     tunnelRouteIface,
-		TableID: unix.RT_TABLE_MAIN,
-	}
+	innerDefault := netif.RouteSpec{Family: familyV6, Dest: "default", Via: tunnelRouteInnerGW, Dev: tunnelRouteIface, TableID: unix.RT_TABLE_MAIN}
 	if err := netif.ReconcileTableDefault(ctx, fixture.module.Log, innerDefault); err != nil {
 		t.Fatalf("tunnel default route: %v", err)
 	}
@@ -219,13 +148,6 @@ func newTunnelRouteFixture(ctx context.Context, t *testing.T) *tunnelRouteFixtur
 		}
 	}
 	fixture.store.SetTranslation(translations)
-	fixture.writeHealth(
-		t,
-		map[string]string{
-			"isp":         netif.HealthStateHealthy,
-			"other":       netif.HealthStateHealthy,
-			tunnelRouteID: netif.HealthStateHealthy,
-		},
-	)
+	fixture.writeHealth(t, map[string]string{"isp": netif.HealthStateHealthy, "other": netif.HealthStateHealthy, tunnelRouteID: netif.HealthStateHealthy})
 	return fixture
 }

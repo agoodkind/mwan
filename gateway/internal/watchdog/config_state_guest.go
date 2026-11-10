@@ -30,7 +30,6 @@ func newConfigStateSource(
 			log,
 		)
 	}
-
 	return &rpcConfigStateSource{
 		gateway: gateway,
 		vmid:    cfg.MwanVMID,
@@ -50,16 +49,13 @@ func (s *rpcConfigStateSource) Latest(ctx context.Context) (configstate.State, s
 		none := configstate.State{ConfigHash: "", ConfigManifest: "", LastDeployEpoch: 0}
 		log := tracing.Logger(ctx, s.log)
 		log.WarnContext(ctx, "checkConfigHash getConfigState", "err", err)
-
 		return none, "", fmt.Errorf("get config state: %w", err)
 	}
-
 	state := configstate.State{
 		ConfigHash:      resp.GetConfigHash(),
 		ConfigManifest:  resp.GetConfigManifest(),
 		LastDeployEpoch: resp.GetLastDeployEpoch(),
 	}
-
 	return state, usedChannel, nil
 }
 
@@ -99,39 +95,17 @@ func (s *GuestConfigStateSource) Latest(ctx context.Context) (configstate.State,
 		log.WarnContext(ctx, "config state command execution failed", "vmid", s.vmid, "err", err)
 		return none, "", fmt.Errorf("execute config state command: %w", err)
 	}
-
 	if result.ExitCode != 0 {
 		stderr := strings.TrimSpace(result.Stderr)
-		log.WarnContext(
-			ctx,
-			"config state command exited with a nonzero status",
-			"vmid",
-			s.vmid,
-			"exit_code",
-			result.ExitCode,
-			"stderr",
-			stderr,
-		)
-
-		return none, "", fmt.Errorf(
-			"config state command exited with status %d: %s",
-			result.ExitCode,
-			stderr,
-		)
+		log.WarnContext(ctx, "config state command exited with a nonzero status",
+			"vmid", s.vmid, "exit_code", result.ExitCode,
+			"stderr", stderr)
+		return none, "", fmt.Errorf("config state command exited with status %d: %s", result.ExitCode, stderr)
 	}
-
 	var state configstate.State
 	if err := json.Unmarshal([]byte(result.Stdout), &state); err != nil {
-		log.WarnContext(
-			ctx,
-			"config state command output decoding failed",
-			"vmid",
-			s.vmid,
-			"err",
-			err,
-		)
+		log.WarnContext(ctx, "config state command output decoding failed", "vmid", s.vmid, "err", err)
 		return none, "", fmt.Errorf("decode config state command output: %w", err)
 	}
-
 	return state, string(ops.ChanPVE), nil
 }

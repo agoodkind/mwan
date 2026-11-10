@@ -26,7 +26,6 @@ func probeSetupError(cause error) error {
 	if errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
 		return cause
 	}
-
 	return &ProbeSetupError{cause: cause}
 }
 
@@ -35,16 +34,10 @@ func probeDialError(cause error) error {
 	if errors.As(cause, &socketError) && socketError.Syscall == "socket" {
 		return probeSetupError(cause)
 	}
-
 	return cause
 }
 
-func dialHTTPProbe(
-	ctx context.Context,
-	dialer *net.Dialer,
-	network string,
-	address string,
-) (net.Conn, error) {
+func dialHTTPProbe(ctx context.Context, dialer *net.Dialer, network, address string) (net.Conn, error) {
 	connection, err := dialer.DialContext(ctx, network, address)
 	return connection, probeDialError(err)
 }

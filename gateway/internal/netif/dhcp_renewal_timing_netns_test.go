@@ -71,8 +71,7 @@ func TestDHCPRenewalRetransmissionFollowsRemainingLeaseTime(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := netlink.LinkAdd(&netlink.Veth{
-		LinkAttrs: netlink.LinkAttrs{Name: renewalTimingClient},
-		PeerName:  renewalTimingServer,
+		LinkAttrs: netlink.LinkAttrs{Name: renewalTimingClient}, PeerName: renewalTimingServer,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -109,17 +108,11 @@ func TestDHCPRenewalRetransmissionFollowsRemainingLeaseTime(t *testing.T) {
 	}
 	var mu sync.Mutex
 	var requests []renewalTimingRequest
-	server, err := server4.NewServer(
-		renewalTimingServer,
-		&net.UDPAddr{IP: net.IPv4zero, Port: 67},
+	server, err := server4.NewServer(renewalTimingServer, &net.UDPAddr{IP: net.IPv4zero, Port: 67},
 		func(conn net.PacketConn, peer net.Addr, packet *dhcpv4.DHCPv4) {
-			if packet.MessageType() == dhcpv4.MessageTypeRequest &&
-				!packet.ClientIPAddr.IsUnspecified() {
+			if packet.MessageType() == dhcpv4.MessageTypeRequest && !packet.ClientIPAddr.IsUnspecified() {
 				mu.Lock()
-				requests = append(
-					requests,
-					renewalTimingRequest{at: time.Now(), broadcast: packet.IsBroadcast()},
-				)
+				requests = append(requests, renewalTimingRequest{at: time.Now(), broadcast: packet.IsBroadcast()})
 				mu.Unlock()
 				return
 			}
@@ -127,8 +120,7 @@ func TestDHCPRenewalRetransmissionFollowsRemainingLeaseTime(t *testing.T) {
 			if packet.MessageType() == dhcpv4.MessageTypeRequest {
 				responseType = dhcpv4.MessageTypeAck
 			}
-			reply, replyErr := dhcpv4.NewReplyFromRequest(
-				packet,
+			reply, replyErr := dhcpv4.NewReplyFromRequest(packet,
 				dhcpv4.WithMessageType(responseType),
 				dhcpv4.WithYourIP(net.ParseIP("198.51.100.77")),
 				dhcpv4.WithOption(dhcpv4.OptServerIdentifier(net.ParseIP("198.51.100.2"))),
@@ -140,8 +132,7 @@ func TestDHCPRenewalRetransmissionFollowsRemainingLeaseTime(t *testing.T) {
 			if replyErr == nil {
 				_, _ = conn.WriteTo(reply.ToBytes(), peer)
 			}
-		},
-	)
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,15 +143,11 @@ func TestDHCPRenewalRetransmissionFollowsRemainingLeaseTime(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	client := netif.StartDHCPClient(
-		ctx,
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		netif.DHCPConfig{
-			Iface:          renewalTimingClient,
-			InitialBackoff: time.Second,
-			RenewTimeout:   renewalTimingAttempt,
-		},
-	)
+	client := netif.StartDHCPClient(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), netif.DHCPConfig{
+		Iface:          renewalTimingClient,
+		InitialBackoff: time.Second,
+		RenewTimeout:   renewalTimingAttempt,
+	})
 	var boundAt time.Time
 	var expiredAt time.Time
 	deadline := time.After(renewalTimingLease + 30*time.Second)
@@ -184,10 +171,7 @@ func TestDHCPRenewalRetransmissionFollowsRemainingLeaseTime(t *testing.T) {
 				expiredAt = time.Now()
 			}
 		case <-deadline:
-			t.Fatalf(
-				"The client did not emit a lease expiry event before the deadline. Last lease: %+v",
-				client.LastLease(),
-			)
+			t.Fatalf("The client did not emit a lease expiry event before the deadline. Last lease: %+v", client.LastLease())
 		}
 	}
 	mu.Lock()
@@ -196,11 +180,7 @@ func TestDHCPRenewalRetransmissionFollowsRemainingLeaseTime(t *testing.T) {
 	for _, request := range requests {
 		observed = append(observed, request.at.Sub(boundAt).Round(100*time.Millisecond))
 	}
-	t.Logf(
-		"Request times after the bound event: %v. Lease expiry time after the bound event: %s.",
-		observed,
-		expiredAt.Sub(boundAt).Round(100*time.Millisecond),
-	)
+	t.Logf("Request times after the bound event: %v. Lease expiry time after the bound event: %s.", observed, expiredAt.Sub(boundAt).Round(100*time.Millisecond))
 	want := []struct {
 		at        time.Duration
 		broadcast bool
@@ -212,38 +192,19 @@ func TestDHCPRenewalRetransmissionFollowsRemainingLeaseTime(t *testing.T) {
 		{212 * time.Second, true},
 	}
 	if len(requests) != len(want) {
-		t.Fatalf(
-			"The server received %d requests; expected %d. Request times after the bound event: %v.",
-			len(requests),
-			len(want),
-			observed,
-		)
+		t.Fatalf("The server received %d requests; expected %d. Request times after the bound event: %v.", len(requests), len(want), observed)
 	}
 	for i, expected := range want {
 		difference := observed[i] - expected.at
 		if difference < -renewalTimingTolerance || difference > renewalTimingTolerance {
-			t.Errorf(
-				"Request %d arrived %s after the bound event; expected %s.",
-				i,
-				observed[i],
-				expected.at,
-			)
+			t.Errorf("Request %d arrived %s after the bound event; expected %s.", i, observed[i], expected.at)
 		}
 		if requests[i].broadcast != expected.broadcast {
-			t.Errorf(
-				"Request %d had broadcast flag %t; expected %t.",
-				i,
-				requests[i].broadcast,
-				expected.broadcast,
-			)
+			t.Errorf("Request %d had broadcast flag %t; expected %t.", i, requests[i].broadcast, expected.broadcast)
 		}
 	}
 	difference := expiredAt.Sub(boundAt) - renewalTimingLease
 	if difference < -renewalTimingTolerance || difference > renewalTimingTolerance {
-		t.Errorf(
-			"The lease expired %s after the bound event; expected %s.",
-			expiredAt.Sub(boundAt),
-			renewalTimingLease,
-		)
+		t.Errorf("The lease expired %s after the bound event; expected %s.", expiredAt.Sub(boundAt), renewalTimingLease)
 	}
 }

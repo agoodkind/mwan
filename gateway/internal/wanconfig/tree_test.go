@@ -31,9 +31,7 @@ func testMember(name string, iface string) Member {
 
 func testConnection(name string) interfaceintent.Connection {
 	return interfaceintent.Connection{
-		ID:    connectionid.ID(name),
-		Name:  name,
-		Type:  "iana-if-type:ethernetCsmacd",
+		ID: connectionid.ID(name), Name: name, Type: "iana-if-type:ethernetCsmacd",
 		Owner: interfaceintent.OwnerExternal,
 	}
 }
@@ -43,16 +41,10 @@ func testGateway(members ...Member) Gateway {
 	internal.Roles = interfaceintent.RoleInternal
 	internal.IPv4 = &interfaceintent.IPv4{Family: interfaceintent.Family{Enabled: new(true)}}
 	internal.IPv6 = &interfaceintent.IPv6{Family: interfaceintent.Family{Enabled: new(true)}}
-
-	gateway := Gateway{
-		InternalIface: internal.Name,
-		Members:       members,
-		Connections:   []interfaceintent.Connection{internal},
-	}
+	gateway := Gateway{InternalIface: internal.Name, Members: members, Connections: []interfaceintent.Connection{internal}}
 	for _, member := range members {
 		gateway.Connections = append(gateway.Connections, testConnection(member.Iface))
 	}
-
 	return gateway
 }
 
@@ -63,19 +55,13 @@ func renderedLinkConnection(name string) interfaceintent.Connection {
 	connection := testConnection(name)
 	connection.Owner = interfaceintent.OwnerNetworkd
 	connection.Link = &interfaceintent.Link{
-		Kind:            interfaceintent.KindPhysical,
-		Match:           interfaceintent.Match{Driver: "igc"},
+		Kind: interfaceintent.KindPhysical, Match: interfaceintent.Match{Driver: "igc"},
 		HardwareAddress: "02:00:5e:00:53:01",
 	}
 	connection.IPv4 = &interfaceintent.IPv4{
 		Family: interfaceintent.Family{
-			Forwarding: new(true),
-			Addresses: []interfaceintent.Address{
-				{
-					Prefix:  netip.MustParsePrefix("203.0.113.2/29"),
-					Purpose: interfaceintent.PurposeLocal,
-				},
-			},
+			Forwarding:  new(true),
+			Addresses:   []interfaceintent.Address{{Prefix: netip.MustParsePrefix("203.0.113.2/29"), Purpose: interfaceintent.PurposeLocal}},
 			DHCP:        new(false),
 			Gateway:     netip.MustParseAddr("203.0.113.1"),
 			RouteMetric: new(uint32(10)),
@@ -83,11 +69,7 @@ func renderedLinkConnection(name string) interfaceintent.Connection {
 		SourceAddresses: []netip.Addr{netip.MustParseAddr("203.0.113.3")},
 	}
 	connection.IPv6 = &interfaceintent.IPv6{
-		Family: interfaceintent.Family{
-			Forwarding:  new(true),
-			DHCP:        new(true),
-			RouteMetric: new(uint32(10)),
-		},
+		Family:   interfaceintent.Family{Forwarding: new(true), DHCP: new(true), RouteMetric: new(uint32(10))},
 		AcceptRA: new(true),
 		Delegation: &interfaceintent.Delegation{
 			Hint:                  netip.MustParsePrefix("::/56"),
@@ -98,19 +80,14 @@ func renderedLinkConnection(name string) interfaceintent.Connection {
 			RouterLifetimeSeconds: new(uint32(1800)),
 		},
 	}
-	connection.Networkd = []interfaceintent.UnitFile{
-		{
-			Kind: "network",
-			Sections: []interfaceintent.UnitSection{
-				{
-					Index:   0,
-					Name:    "DHCPv6",
-					Entries: []interfaceintent.UnitEntry{{Index: 0, Key: "UseDNS", Value: "no"}},
-				},
-			},
-		},
-	}
-
+	connection.Networkd = []interfaceintent.UnitFile{{
+		Kind: "network",
+		Sections: []interfaceintent.UnitSection{{
+			Index:   0,
+			Name:    "DHCPv6",
+			Entries: []interfaceintent.UnitEntry{{Index: 0, Key: "UseDNS", Value: "no"}},
+		}},
+	}}
 	return connection
 }
 
@@ -147,7 +124,6 @@ func TestConfigItems_DescribesTheLinkTheDaemonRenders(t *testing.T) {
 		section     = webpassLink + "/goodkind-mwan-steering:networkd/file[kind='network']/section[index='0']"
 	)
 	var got []Item
-
 	for _, item := range items {
 		if strings.Contains(item.Path, "link") ||
 			strings.Contains(item.Path, "ietf-ip:ipv") ||
@@ -155,16 +131,9 @@ func TestConfigItems_DescribesTheLinkTheDaemonRenders(t *testing.T) {
 			got = append(got, item)
 		}
 	}
-
 	want := []Item{
-		{
-			Path:  "/ietf-interfaces:interfaces/interface[name='eninternal0']/ietf-ip:ipv4/enabled",
-			Value: "true",
-		},
-		{
-			Path:  "/ietf-interfaces:interfaces/interface[name='eninternal0']/ietf-ip:ipv6/enabled",
-			Value: "true",
-		},
+		{Path: "/ietf-interfaces:interfaces/interface[name='eninternal0']/ietf-ip:ipv4/enabled", Value: "true"},
+		{Path: "/ietf-interfaces:interfaces/interface[name='eninternal0']/ietf-ip:ipv6/enabled", Value: "true"},
 
 		{Path: webpassLink + "/goodkind-mwan-steering:link-files", Value: "rendered"},
 		{Path: link + "/match/driver", Value: "igc"},
@@ -189,10 +158,7 @@ func TestConfigItems_DescribesTheLinkTheDaemonRenders(t *testing.T) {
 		{Path: section + "/entry[index='0']/key", Value: "UseDNS"},
 		{Path: section + "/entry[index='0']/value", Value: "no"},
 
-		{
-			Path:  "/ietf-interfaces:interfaces/interface[name='enatt0']/goodkind-mwan-steering:link-files",
-			Value: "hand-authored",
-		},
+		{Path: "/ietf-interfaces:interfaces/interface[name='enatt0']/goodkind-mwan-steering:link-files", Value: "hand-authored"},
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("link items differ\n got: %v\nwant: %v", got, want)
@@ -214,16 +180,13 @@ func TestConfigItems_PublishesAVLANLink(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ConfigItems: %v", err)
 	}
-
 	const link = "/ietf-interfaces:interfaces/interface[name='ensonic0.101']/goodkind-mwan-steering:link"
 	var got []Item
-
 	for _, item := range items {
 		if strings.HasPrefix(item.Path, link+"/") {
 			got = append(got, item)
 		}
 	}
-
 	want := []Item{
 		{Path: link + "/vlan/parent", Value: "ensonic0"},
 		{Path: link + "/vlan/id", Value: "101"},
@@ -251,16 +214,13 @@ func TestConfigItems_PublishesExactlyTheSettingsADisabledProbeHolds(t *testing.T
 	if err != nil {
 		t.Fatalf("ConfigItems: %v", err)
 	}
-
 	const health = "/ietf-interfaces:interfaces/interface[name='enatt0']/goodkind-mwan-steering:wan/health"
 	var got []Item
-
 	for _, item := range items {
 		if strings.HasPrefix(item.Path, health+"/") {
 			got = append(got, item)
 		}
 	}
-
 	want := []Item{
 		{Path: health + "/enabled", Value: "false"},
 		{Path: health + "/ping-count", Value: "4"},
@@ -284,26 +244,13 @@ func TestConfigItems_PublishesOnlyWhatAnUnconfiguredGatewayHolds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ConfigItems: %v", err)
 	}
-
 	const attLink = "/ietf-interfaces:interfaces/interface[name='enatt0']"
 	want := []Item{
-		{
-			Path:  "/ietf-interfaces:interfaces/interface[name='eninternal0']/type",
-			Value: "iana-if-type:ethernetCsmacd",
-		},
+		{Path: "/ietf-interfaces:interfaces/interface[name='eninternal0']/type", Value: "iana-if-type:ethernetCsmacd"},
 		{Path: "/ietf-interfaces:interfaces/interface[name='eninternal0']/enabled", Value: "true"},
-		{
-			Path:  "/ietf-interfaces:interfaces/interface[name='eninternal0']/goodkind-mwan-steering:owner",
-			Value: "external",
-		},
-		{
-			Path:  "/ietf-interfaces:interfaces/interface[name='eninternal0']/ietf-ip:ipv4/enabled",
-			Value: "true",
-		},
-		{
-			Path:  "/ietf-interfaces:interfaces/interface[name='eninternal0']/ietf-ip:ipv6/enabled",
-			Value: "true",
-		},
+		{Path: "/ietf-interfaces:interfaces/interface[name='eninternal0']/goodkind-mwan-steering:owner", Value: "external"},
+		{Path: "/ietf-interfaces:interfaces/interface[name='eninternal0']/ietf-ip:ipv4/enabled", Value: "true"},
+		{Path: "/ietf-interfaces:interfaces/interface[name='eninternal0']/ietf-ip:ipv6/enabled", Value: "true"},
 		{Path: attLink + "/type", Value: "iana-if-type:ethernetCsmacd"},
 		{Path: attLink + "/enabled", Value: "true"},
 		{Path: attLink + "/goodkind-mwan-steering:owner", Value: "external"},
@@ -314,10 +261,7 @@ func TestConfigItems_PublishesOnlyWhatAnUnconfiguredGatewayHolds(t *testing.T) {
 		{Path: attLink + "/goodkind-mwan-steering:wan/fw-mark", Value: "1"},
 		{Path: attLink + "/goodkind-mwan-steering:wan/fw-mark-prio", Value: "100"},
 		{Path: attLink + "/goodkind-mwan-steering:wan/from-prio", Value: "55"},
-		{
-			Path:  "/ietf-interfaces:interfaces/goodkind-mwan-steering:steering-group/routes/internal-iface",
-			Value: "eninternal0",
-		},
+		{Path: "/ietf-interfaces:interfaces/goodkind-mwan-steering:steering-group/routes/internal-iface", Value: "eninternal0"},
 	}
 	if !slices.Equal(items, want) {
 		t.Fatalf("items differ\n got: %v\nwant: %v", items, want)
@@ -330,38 +274,20 @@ func TestConfigItems_PublishesNonProviderConnectionIntent(t *testing.T) {
 	management := testConnection("enmanagement0")
 	management.Owner = interfaceintent.OwnerNetworkd
 	management.Roles = interfaceintent.RoleManagement
-	management.Link = &interfaceintent.Link{
-		Kind:  interfaceintent.KindPhysical,
-		Match: interfaceintent.Match{Driver: "igc"},
-	}
-	management.IPv4 = &interfaceintent.IPv4{
-		Family: interfaceintent.Family{
-			Enabled:    new(false),
-			Forwarding: new(false),
-			Addresses: []interfaceintent.Address{
-				{
-					Prefix:  netip.MustParsePrefix("192.0.2.20/24"),
-					Purpose: interfaceintent.PurposeLocal,
-				},
-			},
-			DNS: []netip.Addr{
-				netip.MustParseAddr("192.0.2.53"),
-			},
-			SearchDomains: []string{"example.test"},
-		},
-	}
+	management.Link = &interfaceintent.Link{Kind: interfaceintent.KindPhysical, Match: interfaceintent.Match{Driver: "igc"}}
+	management.IPv4 = &interfaceintent.IPv4{Family: interfaceintent.Family{
+		Enabled: new(false), Forwarding: new(false),
+		Addresses: []interfaceintent.Address{{Prefix: netip.MustParsePrefix("192.0.2.20/24"), Purpose: interfaceintent.PurposeLocal}},
+		DNS:       []netip.Addr{netip.MustParseAddr("192.0.2.53")}, SearchDomains: []string{"example.test"},
+	}}
 	management.IPv6 = &interfaceintent.IPv6{
 		Family: interfaceintent.Family{
-			Forwarding:    new(true),
-			DNS:           []netip.Addr{netip.MustParseAddr("2001:db8::53")},
+			Forwarding: new(true), DNS: []netip.Addr{netip.MustParseAddr("2001:db8::53")},
 			SearchDomains: []string{"v6.example.test"},
 		},
-		ForwardingAddresses: []interfaceintent.ForwardingAddress{
-			{
-				Address:  netip.MustParseAddr("2001:db8::20"),
-				Delivery: interfaceintent.DeliveryRouted,
-			},
-		},
+		ForwardingAddresses: []interfaceintent.ForwardingAddress{{
+			Address: netip.MustParseAddr("2001:db8::20"), Delivery: interfaceintent.DeliveryRouted,
+		}},
 	}
 	gateway.Connections = append(gateway.Connections, management)
 	gateway.ConnectionIDs = map[string]connectionid.ID{management.Name: "management"}
@@ -370,14 +296,11 @@ func TestConfigItems_PublishesNonProviderConnectionIntent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ConfigItems: %v", err)
 	}
-
 	served := make(map[string]string, len(items))
 	for _, item := range items {
 		served[item.Path] = item.Value
 	}
-
 	base := "/ietf-interfaces:interfaces/interface[name='enmanagement0']"
-
 	want := map[string]string{
 		base + "/type":                                                                                    "iana-if-type:ethernetCsmacd",
 		base + "/goodkind-mwan-steering:owner":                                                            "networkd",
@@ -398,7 +321,6 @@ func TestConfigItems_PublishesNonProviderConnectionIntent(t *testing.T) {
 			t.Errorf("%s = %q, want %q", path, got, value)
 		}
 	}
-
 	for path := range served {
 		if strings.HasPrefix(path, base+"/goodkind-mwan-steering:wan") ||
 			strings.HasPrefix(path, base+"/goodkind-mwan-steering:steering") {
@@ -423,12 +345,10 @@ func TestConfigItems_PublishesMWANOwnedLink(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ConfigItems: %v", err)
 	}
-
 	served := make(map[string]string, len(items))
 	for _, item := range items {
 		served[item.Path] = item.Value
 	}
-
 	base := "/ietf-interfaces:interfaces/interface[name='owned397']/goodkind-mwan-steering:"
 	for path, want := range map[string]string{
 		base + "owner":            "mwan",
@@ -440,7 +360,6 @@ func TestConfigItems_PublishesMWANOwnedLink(t *testing.T) {
 			t.Errorf("%s = %q, want %q", path, got, want)
 		}
 	}
-
 	if _, exists := served[base+"link-files"]; exists {
 		t.Fatal("MWAN-owned link published networkd ownership")
 	}
@@ -457,23 +376,17 @@ func TestConfigItems_PublishesMWANOwnedDHCPv4(t *testing.T) {
 	}
 	owned.IPv4 = &interfaceintent.IPv4{
 		Family: interfaceintent.Family{DHCP: new(true), RouteMetric: new(uint32(17))},
-		DHCPv4: &interfaceintent.DHCPv4{
-			ClientID:  "hex:01aabb",
-			UseDNS:    new(false),
-			UseRoutes: new(true),
-		},
+		DHCPv4: &interfaceintent.DHCPv4{ClientID: "hex:01aabb", UseDNS: new(false), UseRoutes: new(true)},
 	}
 	gateway.Connections = append(gateway.Connections, owned)
 	items, err := ConfigItems(gateway)
 	if err != nil {
 		t.Fatalf("ConfigItems: %v", err)
 	}
-
 	served := make(map[string]string, len(items))
 	for _, item := range items {
 		served[item.Path] = item.Value
 	}
-
 	base := "/ietf-interfaces:interfaces/interface[name='endhcp0']/ietf-ip:ipv4/goodkind-mwan-steering:"
 	for path, want := range map[string]string{
 		base + "dhcp":              "true",
@@ -486,7 +399,6 @@ func TestConfigItems_PublishesMWANOwnedDHCPv4(t *testing.T) {
 			t.Errorf("%s = %q, want %q", path, got, want)
 		}
 	}
-
 	gateway.Connections[len(gateway.Connections)-1].IPv4.Gateway = netip.MustParseAddr("192.0.2.1")
 	gateway.Connections[len(gateway.Connections)-1].IPv4.DHCPv4.UseRoutes = new(false)
 	if _, err := ConfigItems(gateway); err != nil {
@@ -508,26 +420,18 @@ func TestConfigItems_PublishesMWANOwnedAcquiredSettings(t *testing.T) {
 		DHCPv4: &interfaceintent.DHCPv4{UseDNS: new(true)},
 	}
 	owned.IPv6 = &interfaceintent.IPv6{
-		Family:               interfaceintent.Family{RouteMetric: new(uint32(18))},
-		AcceptRA:             new(true),
-		AutoConf:             new(true),
-		AcceptRADefaultRoute: new(true),
-		UseRADNS:             new(true),
+		Family:   interfaceintent.Family{RouteMetric: new(uint32(18))},
+		AcceptRA: new(true), AutoConf: new(true), AcceptRADefaultRoute: new(true), UseRADNS: new(true),
 	}
 	gateway.Connections = append(gateway.Connections, owned)
 	items, err := ConfigItems(gateway)
 	if err != nil {
-		t.Fatalf(
-			"ConfigItems rejected settings that the network configuration loader accepts: %v",
-			err,
-		)
+		t.Fatalf("ConfigItems rejected settings that the network configuration loader accepts: %v", err)
 	}
-
 	served := make(map[string]string, len(items))
 	for _, item := range items {
 		served[item.Path] = item.Value
 	}
-
 	base := "/ietf-interfaces:interfaces/interface[name='enacquired0']"
 	for path, want := range map[string]string{
 		base + "/ietf-ip:ipv4/goodkind-mwan-steering:dhcpv4/use-dns":          "true",
@@ -545,7 +449,6 @@ func TestConfigItems_PublishesMWANOwnedAcquiredSettings(t *testing.T) {
 
 func TestConfigItems_RejectsUnsupportedMWANOwnedDHCPv4(t *testing.T) {
 	t.Parallel()
-
 	for _, testCase := range []struct {
 		name    string
 		client  interfaceintent.DHCPv4
@@ -554,38 +457,26 @@ func TestConfigItems_RejectsUnsupportedMWANOwnedDHCPv4(t *testing.T) {
 	}{
 		{"client ID", interfaceintent.DHCPv4{ClientID: "hex:01"}, false, "client-id"},
 		{"missing route metric", interfaceintent.DHCPv4{}, false, "routes require route-metric"},
-		{
-			"static gateway with DHCP routes",
-			interfaceintent.DHCPv4{
-				UseRoutes: new(true),
-			},
-			true,
-			"cannot combine a static gateway with DHCP routes",
-		},
+		{"static gateway with DHCP routes", interfaceintent.DHCPv4{UseRoutes: new(true)}, true, "cannot combine a static gateway with DHCP routes"},
 	} {
-		t.Run(
-			testCase.name,
-			func(t *testing.T) {
-				t.Parallel()
-				gateway := testGateway()
-				owned := testConnection("endhcp0")
-				owned.Owner = interfaceintent.OwnerMWAN
-				owned.Link = &interfaceintent.Link{Kind: interfaceintent.KindPhysical}
-				owned.IPv4 = &interfaceintent.IPv4{
-					Family: interfaceintent.Family{DHCP: new(true)},
-					DHCPv4: &testCase.client,
-				}
-				if testCase.gateway {
-					owned.IPv4.Gateway = netip.MustParseAddr("192.0.2.1")
-				}
-
-				gateway.Connections = append(gateway.Connections, owned)
-				_, err := ConfigItems(gateway)
-				if err == nil || !strings.Contains(err.Error(), testCase.want) {
-					t.Fatalf("ConfigItems error = %v, want %q", err, testCase.want)
-				}
-			},
-		)
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			gateway := testGateway()
+			owned := testConnection("endhcp0")
+			owned.Owner = interfaceintent.OwnerMWAN
+			owned.Link = &interfaceintent.Link{Kind: interfaceintent.KindPhysical}
+			owned.IPv4 = &interfaceintent.IPv4{
+				Family: interfaceintent.Family{DHCP: new(true)}, DHCPv4: &testCase.client,
+			}
+			if testCase.gateway {
+				owned.IPv4.Gateway = netip.MustParseAddr("192.0.2.1")
+			}
+			gateway.Connections = append(gateway.Connections, owned)
+			_, err := ConfigItems(gateway)
+			if err == nil || !strings.Contains(err.Error(), testCase.want) {
+				t.Fatalf("ConfigItems error = %v, want %q", err, testCase.want)
+			}
+		})
 	}
 }
 
@@ -618,16 +509,12 @@ func TestConfigItems_PublishesTheDaemonSettingsItHolds(t *testing.T) {
 			},
 		},
 		OOB: OOBSettings{
-			V6Present:         true,
-			V6Iface:           "enoob0",
-			V6Addr:            netip.MustParseAddr("2001:db8:ff::2"),
-			V6TableID:         500,
-			ManageSLAACRule:   true,
-			SLAACRulePriority: 7,
+			V6Present: true, V6Iface: "enoob0",
+			V6Addr:    netip.MustParseAddr("2001:db8:ff::2"),
+			V6TableID: 500, ManageSLAACRule: true, SLAACRulePriority: 7,
 		},
 		Tap: TapSettings{
-			Present:           true,
-			Unit:              "cloudflared-oob.service",
+			Present: true, Unit: "cloudflared-oob.service",
 			DowngradePatterns: []string{"receive buffer size"},
 		},
 	}
@@ -636,13 +523,10 @@ func TestConfigItems_PublishesTheDaemonSettingsItHolds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ConfigItems: %v", err)
 	}
-
 	served := map[string][]string{}
-
 	for _, item := range items {
 		served[item.Path] = append(served[item.Path], item.Value)
 	}
-
 	want := map[string]string{
 		"/goodkind-mwan-steering:daemon/watchdog/deploy-window-minutes":      "30",
 		"/goodkind-mwan-steering:daemon/watchdog/max-rollback-attempts":      "3",
@@ -660,12 +544,10 @@ func TestConfigItems_PublishesTheDaemonSettingsItHolds(t *testing.T) {
 			t.Fatalf("path %s = %v, want [%s]", path, got, value)
 		}
 	}
-
 	pings := served["/goodkind-mwan-steering:daemon/watchdog/probe-targets/ping"]
 	if len(pings) != 2 || pings[0] != "2606:4700:4700::1111" || pings[1] != "1.1.1.1" {
 		t.Fatalf("ping targets = %v, want both families in order", pings)
 	}
-
 	for path := range served {
 		if strings.HasPrefix(path, "/goodkind-mwan-steering:daemon/oob/ipv4") {
 			t.Fatalf("oob ipv4 published without a config carrying it: %s", path)
@@ -682,7 +564,6 @@ func TestConfigItems_PublishesNoDaemonSettingsWhenAbsent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ConfigItems: %v", err)
 	}
-
 	for _, item := range items {
 		if strings.HasPrefix(item.Path, "/goodkind-mwan-steering:daemon") {
 			t.Fatalf("daemon settings published with none configured: %v", item)
@@ -700,125 +581,66 @@ func TestConfigItems_RejectsWhatAPathCannotCarry(t *testing.T) {
 	withMember := func(mutate func(member *Member)) Gateway {
 		member := testMember("att", "enatt0")
 		mutate(&member)
-
 		return testGateway(member)
 	}
 	withConnection := func(mutate func(connection *interfaceintent.Connection)) Gateway {
 		gateway := testGateway(testMember("att", "enatt0"))
 		mutate(&gateway.Connections[1])
-
 		return gateway
 	}
 	withGroup := func(mutate func(group *GroupSettings)) Gateway {
 		gateway := withMember(func(*Member) {})
 		mutate(&gateway.Group)
-
 		return gateway
 	}
 	cases := map[string]Gateway{
 		"empty internal link": {InternalIface: "", Members: nil},
 		"empty member name":   withMember(func(member *Member) { member.Name = "" }),
-		"quote in link": withConnection(
-			func(connection *interfaceintent.Connection) { connection.Name = "en'att0" },
-		),
+		"quote in link":       withConnection(func(connection *interfaceintent.Connection) { connection.Name = "en'att0" }),
 		"quote in connection interface key": {
-			InternalIface: "eninternal0",
-			Connections:   testGateway().Connections,
-			ConnectionIDs: map[string]connectionid.ID{"en'other0": "other"},
+			InternalIface: "eninternal0", Connections: testGateway().Connections, ConnectionIDs: map[string]connectionid.ID{"en'other0": "other"},
 		},
 		"slash in connection interface key": {
-			InternalIface: "eninternal0",
-			Connections:   testGateway().Connections,
-			ConnectionIDs: map[string]connectionid.ID{"en/other0": "other"},
+			InternalIface: "eninternal0", Connections: testGateway().Connections, ConnectionIDs: map[string]connectionid.ID{"en/other0": "other"},
 		},
-		"duplicate link": testGateway(
-			testMember("att", "enatt0"),
-			testMember("webpass", "enatt0"),
-		),
+		"duplicate link": testGateway(testMember("att", "enatt0"), testMember("webpass", "enatt0")),
 		"one translation prefix": withMember(func(member *Member) {
-			member.TranslationV6 = &config.IPv6Translation{
-				Mode: config.TranslationNPTv6,
-				NPT: &config.NPTv6Translation{
-					InternalPrefix: internal,
-					ExternalSource: config.PrefixConfigured,
-				},
-			}
+			member.TranslationV6 = &config.IPv6Translation{Mode: config.TranslationNPTv6, NPT: &config.NPTv6Translation{InternalPrefix: internal, ExternalSource: config.PrefixConfigured}}
 		}),
 		"ipv4 translation prefix": withMember(func(member *Member) {
-			member.TranslationV6 = &config.IPv6Translation{
-				Mode: config.TranslationNPTv6,
-				NPT: &config.NPTv6Translation{
-					InternalPrefix: internal,
-					ExternalSource: config.PrefixConfigured,
-				},
-			}
+			member.TranslationV6 = &config.IPv6Translation{Mode: config.TranslationNPTv6, NPT: &config.NPTv6Translation{InternalPrefix: internal, ExternalSource: config.PrefixConfigured}}
 			member.TranslationV6.NPT.ExternalPrefix = netip.MustParsePrefix("10.0.0.0/8")
 		}),
 		"zero weight": withMember(func(member *Member) { member.Weight = 0 }),
 		"unknown hash mode": func() Gateway {
 			gateway := testGateway(testMember("att", "enatt0"))
 			gateway.HashMode = "round-robin"
-
 			return gateway
 		}(),
-		"zero table id": withMember(
-			func(member *Member) { member.TableID = 0 },
-		),
-		"zero firewall mark": withMember(func(member *Member) { member.FwMark = 0 }),
-		"forced dscp above range": withMember(
-			func(member *Member) { member.ForcedDSCP = 64 },
-		),
-		"ipv6 source pin": withMember(
-			func(member *Member) { member.V4Source = "2001:db8::1" },
-		),
+		"zero table id":           withMember(func(member *Member) { member.TableID = 0 }),
+		"zero firewall mark":      withMember(func(member *Member) { member.FwMark = 0 }),
+		"forced dscp above range": withMember(func(member *Member) { member.ForcedDSCP = 64 }),
+		"ipv6 source pin":         withMember(func(member *Member) { member.V4Source = "2001:db8::1" }),
 		"ipv6 mapped external": withMember(func(member *Member) {
-			member.TranslationV4 = &config.IPv4Translation{
-				Mode: config.TranslationNAPT44,
-				StaticMappings: []config.StaticMapping{
-					{
-						External: netip.MustParseAddr("2001:db8::2"),
-						Internal: netip.MustParseAddr("10.250.250.2"),
-					},
-				},
-			}
+			member.TranslationV4 = &config.IPv4Translation{Mode: config.TranslationNAPT44, StaticMappings: []config.StaticMapping{
+				{External: netip.MustParseAddr("2001:db8::2"), Internal: netip.MustParseAddr("10.250.250.2")},
+			}}
 		}),
 		"missing mapped internal": withMember(func(member *Member) {
-			member.TranslationV4 = &config.IPv4Translation{
-				Mode: config.TranslationNAPT44,
-				StaticMappings: []config.StaticMapping{
-					{External: netip.MustParseAddr("198.51.100.2")},
-				},
-			}
+			member.TranslationV4 = &config.IPv4Translation{Mode: config.TranslationNAPT44, StaticMappings: []config.StaticMapping{{External: netip.MustParseAddr("198.51.100.2")}}}
 		}),
 		"external mapped twice": withMember(func(member *Member) {
-			member.TranslationV4 = &config.IPv4Translation{
-				Mode: config.TranslationNAPT44,
-				StaticMappings: []config.StaticMapping{
-					{
-						External: netip.MustParseAddr("198.51.100.2"),
-						Internal: netip.MustParseAddr("10.250.250.2"),
-					},
-					{
-						External: netip.MustParseAddr("198.51.100.2"),
-						Internal: netip.MustParseAddr("10.250.250.3"),
-					},
-				},
-			}
+			member.TranslationV4 = &config.IPv4Translation{Mode: config.TranslationNAPT44, StaticMappings: []config.StaticMapping{
+				{External: netip.MustParseAddr("198.51.100.2"), Internal: netip.MustParseAddr("10.250.250.2")},
+				{External: netip.MustParseAddr("198.51.100.2"), Internal: netip.MustParseAddr("10.250.250.3")},
+			}}
 		}),
-		"unparsable source pin": withMember(
-			func(member *Member) { member.V4Source = "not-an-address" },
-		),
+		"unparsable source pin": withMember(func(member *Member) { member.V4Source = "not-an-address" }),
 		"ipv6 target in the ipv4 list": withMember(func(member *Member) {
-			member.Health = &ProbeSettings{
-				Enabled:   true,
-				TargetsV4: []netip.Addr{netip.MustParseAddr("2001:db8::1")},
-			}
+			member.Health = &ProbeSettings{Enabled: true, TargetsV4: []netip.Addr{netip.MustParseAddr("2001:db8::1")}}
 		}),
 		"ipv4 target in the ipv6 list": withMember(func(member *Member) {
-			member.Health = &ProbeSettings{
-				Enabled:   true,
-				TargetsV6: []netip.Addr{netip.MustParseAddr("192.0.2.1")},
-			}
+			member.Health = &ProbeSettings{Enabled: true, TargetsV6: []netip.Addr{netip.MustParseAddr("192.0.2.1")}}
 		}),
 		"ipv4 internal prefix": withGroup(func(group *GroupSettings) {
 			group.InternalPrefix = netip.MustParsePrefix("10.0.0.0/8")
@@ -832,72 +654,42 @@ func TestConfigItems_RejectsWhatAPathCannotCarry(t *testing.T) {
 		"ipv6 internal network": withGroup(func(group *GroupSettings) {
 			group.InternalNetV4 = netip.MustParsePrefix("2001:db8::/64")
 		}),
-		"unknown owner": withConnection(
-			func(
-				connection *interfaceintent.Connection,
-			) {
-				connection.Owner = interfaceintent.Owner("unknown")
-			},
-		),
-		"missing type": withConnection(
-			func(connection *interfaceintent.Connection) { connection.Type = "" },
-		),
-		"vlan id above range": withConnection(
-			func(
-				connection *interfaceintent.Connection,
-			) {
-				*connection = renderedLinkConnection("enatt0")
-				connection.Link.VLAN = &interfaceintent.VLAN{Parent: "enphys0", ID: 4095}
-			},
-		),
-		"quote in vlan parent": withConnection(
-			func(
-				connection *interfaceintent.Connection,
-			) {
-				*connection = renderedLinkConnection("enatt0")
-				connection.Link.VLAN = &interfaceintent.VLAN{Parent: "en'phys0", ID: 1}
-			},
-		),
-		"ipv6 address in the ipv4 family": withConnection(
-			func(connection *interfaceintent.Connection) {
-				*connection = renderedLinkConnection("enatt0")
-				connection.IPv4.Addresses[0].Prefix = netip.MustParsePrefix("2001:db8::2/64")
-			},
-		),
-		"ipv4 gateway in the ipv6 family": withConnection(
-			func(connection *interfaceintent.Connection) {
-				*connection = renderedLinkConnection("enatt0")
-				connection.IPv6.Gateway = netip.MustParseAddr("203.0.113.1")
-			},
-		),
-		"ipv4 delegation hint": withConnection(
-			func(
-				connection *interfaceintent.Connection,
-			) {
-				*connection = renderedLinkConnection("enatt0")
-				connection.IPv6.Delegation.Hint = netip.MustParsePrefix("10.0.0.0/8")
-			},
-		),
-		"free-form section with no name": withConnection(
-			func(connection *interfaceintent.Connection) {
-				*connection = renderedLinkConnection("enatt0")
-				connection.Networkd[0].Sections[0].Name = ""
-			},
-		),
-		"free-form line with no key": withConnection(
-			func(
-				connection *interfaceintent.Connection,
-			) {
-				*connection = renderedLinkConnection("enatt0")
-				connection.Networkd[0].Sections[0].Entries[0].Key = ""
-			},
-		),
-		"free-form file of an unknown kind": withConnection(
-			func(connection *interfaceintent.Connection) {
-				*connection = renderedLinkConnection("enatt0")
-				connection.Networkd[0].Kind = "unit"
-			},
-		),
+		"unknown owner": withConnection(func(connection *interfaceintent.Connection) {
+			connection.Owner = interfaceintent.Owner("unknown")
+		}),
+		"missing type": withConnection(func(connection *interfaceintent.Connection) { connection.Type = "" }),
+		"vlan id above range": withConnection(func(connection *interfaceintent.Connection) {
+			*connection = renderedLinkConnection("enatt0")
+			connection.Link.VLAN = &interfaceintent.VLAN{Parent: "enphys0", ID: 4095}
+		}),
+		"quote in vlan parent": withConnection(func(connection *interfaceintent.Connection) {
+			*connection = renderedLinkConnection("enatt0")
+			connection.Link.VLAN = &interfaceintent.VLAN{Parent: "en'phys0", ID: 1}
+		}),
+		"ipv6 address in the ipv4 family": withConnection(func(connection *interfaceintent.Connection) {
+			*connection = renderedLinkConnection("enatt0")
+			connection.IPv4.Addresses[0].Prefix = netip.MustParsePrefix("2001:db8::2/64")
+		}),
+		"ipv4 gateway in the ipv6 family": withConnection(func(connection *interfaceintent.Connection) {
+			*connection = renderedLinkConnection("enatt0")
+			connection.IPv6.Gateway = netip.MustParseAddr("203.0.113.1")
+		}),
+		"ipv4 delegation hint": withConnection(func(connection *interfaceintent.Connection) {
+			*connection = renderedLinkConnection("enatt0")
+			connection.IPv6.Delegation.Hint = netip.MustParsePrefix("10.0.0.0/8")
+		}),
+		"free-form section with no name": withConnection(func(connection *interfaceintent.Connection) {
+			*connection = renderedLinkConnection("enatt0")
+			connection.Networkd[0].Sections[0].Name = ""
+		}),
+		"free-form line with no key": withConnection(func(connection *interfaceintent.Connection) {
+			*connection = renderedLinkConnection("enatt0")
+			connection.Networkd[0].Sections[0].Entries[0].Key = ""
+		}),
+		"free-form file of an unknown kind": withConnection(func(connection *interfaceintent.Connection) {
+			*connection = renderedLinkConnection("enatt0")
+			connection.Networkd[0].Kind = "unit"
+		}),
 	}
 	// A rendered link with every value in range is accepted, so each case
 	// above fails on the one value it breaks.
@@ -907,25 +699,19 @@ func TestConfigItems_RejectsWhatAPathCannotCarry(t *testing.T) {
 	if _, err := ConfigItems(whole); err != nil {
 		t.Fatalf("the rendered link the link cases start from is rejected: %v", err)
 	}
-
 	if _, err := ConfigItems(withMember(func(*Member) {})); err != nil {
 		t.Fatalf("the unbroken gateway every case starts from is rejected: %v", err)
 	}
-
 	for name, gateway := range cases {
-		t.Run(
-			name,
-			func(t *testing.T) {
-				t.Parallel()
-				items, err := ConfigItems(gateway)
-				if !errors.Is(err, ErrInvalidGateway) {
-					t.Fatalf("err = %v, want ErrInvalidGateway", err)
-				}
-
-				if items != nil {
-					t.Fatalf("items = %v, want none", items)
-				}
-			},
-		)
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			items, err := ConfigItems(gateway)
+			if !errors.Is(err, ErrInvalidGateway) {
+				t.Fatalf("err = %v, want ErrInvalidGateway", err)
+			}
+			if items != nil {
+				t.Fatalf("items = %v, want none", items)
+			}
+		})
 	}
 }

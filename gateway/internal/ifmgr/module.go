@@ -186,12 +186,7 @@ type NPTAddressAuthority interface {
 
 // TunnelEndpointRoutes deletes only the tunnel endpoint routes in the address ownership journal.
 type TunnelEndpointRoutes interface {
-	EnsureTunnelEndpointRoute(
-		ctx context.Context,
-		log *slog.Logger,
-		connectionID string,
-		want netif.RouteSpec,
-	) error
+	EnsureTunnelEndpointRoute(ctx context.Context, log *slog.Logger, connectionID string, want netif.RouteSpec) error
 	ReleaseTunnelEndpointRoutes(ctx context.Context, log *slog.Logger, keep map[string]bool) error
 }
 
@@ -215,13 +210,12 @@ func (s *OwnedAddressResults) Replace() {
 }
 
 // Set records a verified address for one connection.
-func (s *OwnedAddressResults) Set(connectionID, prefix string) {
+func (s *OwnedAddressResults) Set(id, prefix string) {
 	s.mu.Lock()
-	if s.addresses[connectionID] == nil {
-		s.addresses[connectionID] = make(map[string]bool)
+	if s.addresses[id] == nil {
+		s.addresses[id] = make(map[string]bool)
 	}
-
-	s.addresses[connectionID][prefix] = true
+	s.addresses[id][prefix] = true
 	s.mu.Unlock()
 }
 
@@ -229,18 +223,16 @@ func (s *OwnedAddressResults) Set(connectionID, prefix string) {
 func (s *OwnedAddressResults) Has(id, prefix string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
 	return s.addresses[id][prefix]
 }
 
 // SetFamilyReady records verified application of every owned object in a family.
-func (s *OwnedAddressResults) SetFamilyReady(connectionID, family string) {
+func (s *OwnedAddressResults) SetFamilyReady(id, family string) {
 	s.mu.Lock()
-	if s.families[connectionID] == nil {
-		s.families[connectionID] = make(map[string]bool)
+	if s.families[id] == nil {
+		s.families[id] = make(map[string]bool)
 	}
-
-	s.families[connectionID][family] = true
+	s.families[id][family] = true
 	s.mu.Unlock()
 }
 
@@ -248,18 +240,16 @@ func (s *OwnedAddressResults) SetFamilyReady(connectionID, family string) {
 func (s *OwnedAddressResults) FamilyReady(id, family string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
 	return s.families[id][family]
 }
 
 // SetFamilyRoutable records that a family can support routing in the current pass.
-func (s *OwnedAddressResults) SetFamilyRoutable(connectionID, family string) {
+func (s *OwnedAddressResults) SetFamilyRoutable(id, family string) {
 	s.mu.Lock()
-	if s.routable[connectionID] == nil {
-		s.routable[connectionID] = make(map[string]bool)
+	if s.routable[id] == nil {
+		s.routable[id] = make(map[string]bool)
 	}
-
-	s.routable[connectionID][family] = true
+	s.routable[id][family] = true
 	s.mu.Unlock()
 }
 
@@ -267,18 +257,16 @@ func (s *OwnedAddressResults) SetFamilyRoutable(connectionID, family string) {
 func (s *OwnedAddressResults) FamilyRoutable(id, family string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
 	return s.routable[id][family]
 }
 
 // SetFamilyApplied records a successful kernel address and route reconciliation.
-func (s *OwnedAddressResults) SetFamilyApplied(connectionID, family string) {
+func (s *OwnedAddressResults) SetFamilyApplied(id, family string) {
 	s.mu.Lock()
-	if s.applied[connectionID] == nil {
-		s.applied[connectionID] = make(map[string]bool)
+	if s.applied[id] == nil {
+		s.applied[id] = make(map[string]bool)
 	}
-
-	s.applied[connectionID][family] = true
+	s.applied[id][family] = true
 	s.mu.Unlock()
 }
 
@@ -286,7 +274,6 @@ func (s *OwnedAddressResults) SetFamilyApplied(connectionID, family string) {
 func (s *OwnedAddressResults) FamilyApplied(id, family string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
 	return s.applied[id][family]
 }
 
@@ -300,7 +287,6 @@ type OwnedLinkResults struct {
 func (s *OwnedLinkResults) Replace(results []netif.OwnedLinkResult) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	s.results = make(map[string]netif.OwnedLinkResult, len(results))
 	for _, result := range results {
 		s.results[result.ConnectionID] = result
@@ -312,7 +298,6 @@ func (s *OwnedLinkResults) Get(id string) (netif.OwnedLinkResult, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	result, ok := s.results[id]
-
 	return result, ok
 }
 
@@ -331,11 +316,10 @@ func Register(name string, ctor Constructor) {
 	registryMu.Lock()
 	defer registryMu.Unlock()
 	if _, exists := registry[name]; exists {
-		slog.Default().Error("ifmgr: duplicate module registration", "module", name)
-
+		slog.Default().Error("ifmgr: duplicate module registration",
+			"module", name)
 		return
 	}
-
 	registry[name] = ctor
 }
 
@@ -345,7 +329,6 @@ func Lookup(name string) (Constructor, bool) {
 	registryMu.RLock()
 	defer registryMu.RUnlock()
 	c, ok := registry[name]
-
 	return c, ok
 }
 
@@ -355,13 +338,10 @@ func Lookup(name string) (Constructor, bool) {
 func RegisteredNames() []string {
 	registryMu.RLock()
 	defer registryMu.RUnlock()
-
 	names := make([]string, 0, len(registry))
 	for n := range registry {
 		names = append(names, n)
 	}
-
 	sort.Strings(names)
-
 	return names
 }

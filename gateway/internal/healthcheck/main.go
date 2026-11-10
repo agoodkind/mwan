@@ -18,31 +18,18 @@ func Run(ctx context.Context, options Options, logger *slog.Logger, emit func(Re
 	records := make(chan Record)
 	completed := make(chan error, len(options.WANs))
 	var workers sync.WaitGroup
-
 	for _, wan := range options.WANs {
 		workers.Go(func() {
 			failure := runWAN(ctx, wan, options, logger, records)
 			if failure != nil {
-				logger.WarnContext(
-					ctx,
-					"health worker stopped",
-					"wan",
-					wan.Key(),
-					"interface",
-					wan.Iface,
-					"err",
-					failure,
-				)
+				logger.WarnContext(ctx, "health worker stopped", "wan", wan.Key(), "interface", wan.Iface, "err", failure)
 				cancel()
 			}
-
 			completed <- failure
 		})
 	}
-
 	var outputError error
 	var workerError error
-
 	for remaining := len(options.WANs); remaining > 0; {
 		select {
 		case failure := <-completed:
@@ -58,28 +45,18 @@ func Run(ctx context.Context, options Options, logger *slog.Logger, emit func(Re
 			}
 		}
 	}
-
 	workers.Wait()
-
 	return errors.Join(outputError, workerError)
 }
 
-func runWAN(
-	ctx context.Context,
-	wan health.WAN,
-	options Options,
-	logger *slog.Logger,
-	records chan<- Record,
-) error {
+func runWAN(ctx context.Context, wan health.WAN, options Options, logger *slog.Logger, records chan<- Record) error {
 	for ctx.Err() == nil {
 		if err := probeWAN(ctx, wan, options, logger, records); err != nil {
 			return err
 		}
-
 		if !options.Watch {
 			return nil
 		}
-
 		timer := time.NewTimer(wan.CheckInterval)
 		select {
 		case <-ctx.Done():
@@ -88,6 +65,5 @@ func runWAN(
 		case <-timer.C:
 		}
 	}
-
 	return nil
 }

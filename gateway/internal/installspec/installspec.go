@@ -90,22 +90,14 @@ func specs() map[Role]Spec {
 				unit("mwan-ifmgr@.service"),
 				{
 					Embedded: "mwan-ifmgr-wan.conf",
-					Dest: filepath.Join(
-						SystemdUnitDir,
-						"mwan-ifmgr@wan.service.d",
-						"firewall.conf",
-					),
+					Dest:     filepath.Join(SystemdUnitDir, "mwan-ifmgr@wan.service.d", "firewall.conf"),
 				},
 				unit("mwan-trace-boot.service"),
 				unit(rousetteUnit),
 				unit("nghttpx-wanconfig.service"),
 				{
 					Embedded: "systemd-networkd-override.conf",
-					Dest: filepath.Join(
-						SystemdUnitDir,
-						"systemd-networkd.service.d",
-						"override.conf",
-					),
+					Dest:     filepath.Join(SystemdUnitDir, "systemd-networkd.service.d", "override.conf"),
 				},
 				{
 					Embedded: "99-quiet-console.conf",
@@ -113,24 +105,15 @@ func specs() map[Role]Spec {
 				},
 			},
 			Enable: []string{
-				"mwan-agent.service",
-				"mwan-ifmgr@wan.service",
-				"mwan-trace-boot.service",
-				rousetteUnit,
-				"nghttpx-wanconfig.service",
+				"mwan-agent.service", "mwan-ifmgr@wan.service", "mwan-trace-boot.service",
+				rousetteUnit, "nghttpx-wanconfig.service",
 			},
 			Schema:           true,
 			ValidationSchema: false,
 			NotOwned: []NotOwnedUnit{
 				{
-					Name: "systemd-networkd.service",
-					Files: []string{
-						filepath.Join(
-							SystemdUnitDir,
-							"systemd-networkd.service.d",
-							"override.conf",
-						),
-					},
+					Name:  "systemd-networkd.service",
+					Files: []string{filepath.Join(SystemdUnitDir, "systemd-networkd.service.d", "override.conf")},
 				},
 				{
 					Name:  "systemd-sysctl.service",
@@ -144,11 +127,7 @@ func specs() map[Role]Spec {
 				unit("mwan-ifmgr.service"),
 				{
 					Embedded: "mwan-ifmgr-failover.conf",
-					Dest: filepath.Join(
-						SystemdUnitDir,
-						"mwan-ifmgr.service.d",
-						"lxc-failover.conf",
-					),
+					Dest:     filepath.Join(SystemdUnitDir, "mwan-ifmgr.service.d", "lxc-failover.conf"),
 				},
 			},
 			Enable:           []string{"mwan-agent.service", "mwan-ifmgr.service"},
@@ -166,14 +145,7 @@ func specs() map[Role]Spec {
 		RoleRouter: {
 			Files: []File{
 				unit("mwan-ifmgr@.service"),
-				{
-					Embedded: "mwan-ifmgr-router.conf",
-					Dest: filepath.Join(
-						SystemdUnitDir,
-						"mwan-ifmgr@router.service.d",
-						"router.conf",
-					),
-				},
+				{Embedded: "mwan-ifmgr-router.conf", Dest: filepath.Join(SystemdUnitDir, "mwan-ifmgr@router.service.d", "router.conf")},
 			},
 			Enable:           []string{"mwan-ifmgr@router.service"},
 			Schema:           false,
@@ -192,14 +164,11 @@ func For(role Role) (Spec, bool) {
 // Roles returns role names in sorted order.
 func Roles() []Role {
 	all := specs()
-
 	roles := make([]Role, 0, len(all))
 	for role := range all {
 		roles = append(roles, role)
 	}
-
 	slices.Sort(roles)
-
 	return roles
 }
 
@@ -210,7 +179,6 @@ func Read(embedded string) ([]byte, error) {
 		slog.Warn("installspec: read the embedded file failed", "name", embedded, "err", err)
 		return nil, fmt.Errorf("read the embedded file %s: %w", embedded, err)
 	}
-
 	return content, nil
 }
 

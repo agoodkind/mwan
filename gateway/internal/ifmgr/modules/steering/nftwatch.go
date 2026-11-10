@@ -24,27 +24,18 @@ const nftMonitorRetryDelay = 2 * time.Second
 func (m *Module) watchNFTChanges(ctx context.Context, log *slog.Logger) {
 	log = log.With("goroutine", "nft-watch")
 	log.DebugContext(ctx, "steering: nft-watch starting")
-
 	for {
 		if ctx.Err() != nil {
 			log.DebugContext(ctx, "steering: nft-watch exiting (ctx done)")
 			return
 		}
-
 		err := m.runNFTMonitor(ctx, log)
 		if ctx.Err() != nil {
 			log.DebugContext(ctx, "steering: nft-watch exiting (ctx done)")
 			return
 		}
-
-		log.WarnContext(
-			ctx,
-			"steering: nft monitor ended; retrying",
-			"err",
-			err,
-			"retry_in",
-			nftMonitorRetryDelay.String(),
-		)
+		log.WarnContext(ctx, "steering: nft monitor ended; retrying", "err", err,
+			"retry_in", nftMonitorRetryDelay.String())
 		select {
 		case <-ctx.Done():
 			return
@@ -63,7 +54,6 @@ func (m *Module) runNFTMonitor(ctx context.Context, log *slog.Logger) error {
 		log.WarnContext(ctx, "steering: nft monitor open conn failed", "err", err)
 		return fmt.Errorf("nftables.New: %w", err)
 	}
-
 	monitor := nftables.NewMonitor(
 		nftables.WithMonitorAction(nftables.MonitorActionAny),
 		nftables.WithMonitorObject(nftables.MonitorObjectRuleset),
@@ -76,7 +66,6 @@ func (m *Module) runNFTMonitor(ctx context.Context, log *slog.Logger) error {
 		log.WarnContext(ctx, "steering: nft AddMonitor failed", "err", err)
 		return fmt.Errorf("nftables AddMonitor: %w", err)
 	}
-
 	log.DebugContext(ctx, "steering: nft monitor established")
 
 	for {
@@ -87,18 +76,15 @@ func (m *Module) runNFTMonitor(ctx context.Context, log *slog.Logger) error {
 			// the unbuffered events channel; returning without draining can
 			// strand it mid-send.
 			monitor.Close()
-
 			for discarded := range events {
 				_ = discarded
 			}
-
 			return fmt.Errorf("steering: nft monitor stopping: %w", ctx.Err())
 		case event, ok := <-events:
 			if !ok {
 				monitor.Close()
 				return errors.New("nft monitor channel closed")
 			}
-
 			m.handleNFTEvent(ctx, log, event)
 		}
 	}
@@ -108,30 +94,21 @@ func (m *Module) runNFTMonitor(ctx context.Context, log *slog.Logger) error {
 // chain. Kept out of the monitor loop body so its info log is a per-wipe state
 // change rather than a per-iteration emission.
 func (m *Module) handleNFTEvent(
-	ctx context.Context,
-	log *slog.Logger,
-	event *nftables.MonitorEvent,
+	ctx context.Context, log *slog.Logger, event *nftables.MonitorEvent,
 ) {
 	if event == nil {
 		log.WarnContext(ctx, "steering: nft monitor delivered a nil event")
 		return
 	}
-
 	if event.Error != nil {
 		log.WarnContext(ctx, "steering: nft monitor event error", "err", event.Error)
 		return
 	}
-
 	if !nftEventWipesSteering(event) {
 		return
 	}
-
-	log.InfoContext(
-		ctx,
-		"steering: table change detected; requesting reconcile",
-		"event_type",
-		int(event.Type),
-	)
+	log.InfoContext(ctx, "steering: table change detected; requesting reconcile",
+		"event_type", int(event.Type))
 	if m.Env != nil && m.Env.RequestReconcile != nil {
 		m.Env.RequestReconcile("steering: table change")
 	}
@@ -155,7 +132,6 @@ func nftEventWipesSteering(event *nftables.MonitorEvent) bool {
 	if event == nil {
 		return false
 	}
-
 	switch data := event.Data.(type) {
 	case *nftables.Table:
 		return event.Type == nftables.MonitorEventTypeDelTable && isSteerTable(data)

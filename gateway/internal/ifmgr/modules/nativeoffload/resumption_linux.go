@@ -32,14 +32,7 @@ func (module *Module) suspendAll(ctx context.Context, reason string) error {
 		}
 		if wasInstalled {
 			module.stats.Suspended++
-			module.logRuleCounters(
-				ctx,
-				slog.LevelDebug,
-				"native rule suspended",
-				entry,
-				reason,
-				nil,
-			)
+			module.logRuleCounters(ctx, slog.LevelDebug, "native rule suspended", entry, reason, nil)
 		}
 	}
 	return failures
@@ -64,8 +57,7 @@ func (module *Module) OnFamilyReadiness(ctx context.Context, _ *slog.Logger) {
 		evidence: module.evidenceFor(module.currentEvidenceEpoch()),
 	}
 	for identity, entry := range module.flows {
-		if entry.result.State == offload.NativePairDraining &&
-			entry.result.InstalledDirections == 0 {
+		if entry.result.State == offload.NativePairDraining && entry.result.InstalledDirections == 0 {
 			pass.keys = append(pass.keys, identity)
 		}
 	}
@@ -95,11 +87,7 @@ func (module *Module) requestResumeReconcile() {
 }
 
 func (module *Module) resumeEvidence(ctx context.Context, pass *resumption) bool {
-	if err := errors.Join(
-		module.events.Err(),
-		module.forwarding.Err(),
-		module.rules.Err(),
-	); err != nil {
+	if err := errors.Join(module.events.Err(), module.forwarding.Err(), module.rules.Err()); err != nil {
 		_ = module.fail(ctx, err)
 		return false
 	}
@@ -148,28 +136,16 @@ func (module *Module) resumeOne(ctx context.Context) {
 	module.scheduleResumption()
 }
 
-func (module *Module) resumeEntry(
-	ctx context.Context,
-	requestContext context.Context,
-	identity connectionIdentity,
-	entry *admittedFlow,
-	evidence *evidenceCheck,
-) {
+func (module *Module) resumeEntry(ctx, requestContext context.Context, identity connectionIdentity, entry *admittedFlow, evidence *evidenceCheck) {
 	if entry.selectorsPending {
 		return
 	}
 	counterStarted := clock.Real{}.Now()
 	spec, guards, current, _, decision, err := module.candidate(requestContext, entry.observation)
-	if err != nil || decision != EligibilityReady || !sameConnectionPolicy(entry.flow, current) ||
-		!sameNativeMapping(entry.spec, spec) ||
-		guards != entry.guards {
+	if err != nil || decision != EligibilityReady || !sameConnectionPolicy(entry.flow, current) || !sameNativeMapping(entry.spec, spec) || guards != entry.guards {
 		module.stats.Fallback++
 		if ctx.Err() == nil {
-			if removeErr := module.retire(
-				ctx,
-				identity,
-				"suspended connection mapping changed",
-			); removeErr != nil {
+			if removeErr := module.retire(ctx, identity, "suspended connection mapping changed"); removeErr != nil {
 				_ = module.fail(ctx, removeErr)
 			}
 		}
@@ -178,42 +154,20 @@ func (module *Module) resumeEntry(
 	if evidence.guard.Check() != nil {
 		return
 	}
-	result, err := module.runtime.ResumeObservedWithEvidence(
-		requestContext,
-		current,
-		entry.result.Handle,
-		spec,
-		guards,
-		&evidence.guard,
-	)
+	result, err := module.runtime.ResumeObservedWithEvidence(requestContext, current, entry.result.Handle, spec, guards, &evidence.guard)
 	if result.Handle == entry.result.Handle {
 		entry.result = result
 		entry.uncertain = result.CleanupFailedDirections != 0
 	} else if err != nil {
 		entry.uncertain = true
 	}
-	if err != nil || result.State != offload.NativePairInstalled ||
-		result.InstalledDirections != spec.RequestedDirections {
+	if err != nil || result.State != offload.NativePairInstalled || result.InstalledDirections != spec.RequestedDirections {
 		if err == nil {
-			err = fmt.Errorf(
-				"native resumption did not confirm every direction for connection %d",
-				identity.id,
-			)
+			err = fmt.Errorf("native resumption did not confirm every direction for connection %d", identity.id)
 		}
-		module.Log.WarnContext(
-			ctx,
-			"native resumption failed",
-			"connection_id",
-			identity.id,
-			"err",
-			err,
-		)
+		module.Log.WarnContext(ctx, "native resumption failed", "connection_id", identity.id, "err", err)
 		module.stats.Fallback++
-		if removeErr := module.retire(
-			ctx,
-			identity,
-			"native resumption did not complete",
-		); removeErr != nil {
+		if removeErr := module.retire(ctx, identity, "native resumption did not complete"); removeErr != nil {
 			_ = module.fail(ctx, errors.Join(err, removeErr))
 		}
 		return

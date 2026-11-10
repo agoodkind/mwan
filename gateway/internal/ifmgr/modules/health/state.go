@@ -21,7 +21,6 @@ func (m *Module) initStatuses() {
 			FailCount: 0,
 		}
 	}
-
 	m.Lock()
 	m.statuses = statuses
 	m.Unlock()
@@ -42,31 +41,24 @@ func (m *Module) writeStateFile(
 	if err := writeFileAtomic(ctx, log, statePath, contents); err != nil {
 		return stateFileError(ctx, log, "write runtime state", statePath, err)
 	}
-
 	log.DebugContext(
 		ctx,
 		"health: state file written",
-		"state_file",
-		statePath,
-		"bytes",
-		len(contents),
+		"state_file", statePath,
+		"bytes", len(contents),
 	)
-
 	return nil
 }
 
 func (m *Module) serializeState(statuses map[string]wanStatus) []byte {
 	var buffer bytes.Buffer
-
 	for _, wan := range m.cfg.WANs {
 		state := StateUnknown
 		if status, ok := statuses[wan.Key()]; ok && status.State.Valid() {
 			state = status.State
 		}
-
 		_, _ = fmt.Fprintf(&buffer, "%s:%s\n", wan.Key(), state)
 	}
-
 	return buffer.Bytes()
 }
 
@@ -80,12 +72,10 @@ func writeFileAtomic(
 	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return stateFileError(ctx, log, "create parent directory", parent, err)
 	}
-
 	tempFile, err := os.CreateTemp(parent, ".mwan-health-*")
 	if err != nil {
 		return stateFileError(ctx, log, "create temporary file", parent, err)
 	}
-
 	tempPath := tempFile.Name()
 	defer func() {
 		_ = os.Remove(tempPath)
@@ -94,22 +84,17 @@ func writeFileAtomic(
 		_ = tempFile.Close()
 		return stateFileError(ctx, log, "chmod temporary file", tempPath, err)
 	}
-
 	if _, err := tempFile.Write(contents); err != nil {
 		_ = tempFile.Close()
 		return stateFileError(ctx, log, "write temporary file", tempPath, err)
 	}
-
 	if err := tempFile.Close(); err != nil {
 		return stateFileError(ctx, log, "close temporary file", tempPath, err)
 	}
-
 	if err := os.Rename(tempPath, path); err != nil {
 		return stateFileError(ctx, log, "replace destination", path, err)
 	}
-
 	log.DebugContext(ctx, "health: state file replaced", "path", path, "bytes", len(contents))
-
 	return nil
 }
 
@@ -123,13 +108,9 @@ func stateFileError(
 	log.WarnContext(
 		ctx,
 		"health: state file operation failed",
-		"operation",
-		operation,
-		"path",
-		path,
-		"err",
-		err,
+		"operation", operation,
+		"path", path,
+		"err", err,
 	)
-
 	return fmt.Errorf("%s %q: %w", operation, path, err)
 }

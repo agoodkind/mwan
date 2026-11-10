@@ -43,19 +43,13 @@ func TestForwardingEventsPreserveEquivalentNeighbors(t *testing.T) {
 	for _, family := range []struct {
 		name  string
 		value int
-	}{
-		{name: "ipv4", value: unix.AF_INET},
-		{name: "ipv6", value: unix.AF_INET6},
-	} {
-		t.Run(
-			family.name,
-			func(t *testing.T) {
-				if !forwardingEventsNamespace(t) {
-					return
-				}
-				checkEquivalentForwardingNeighbors(t, family.value)
-			},
-		)
+	}{{name: "ipv4", value: unix.AF_INET}, {name: "ipv6", value: unix.AF_INET6}} {
+		t.Run(family.name, func(t *testing.T) {
+			if !forwardingEventsNamespace(t) {
+				return
+			}
+			checkEquivalentForwardingNeighbors(t, family.value)
+		})
 	}
 }
 
@@ -68,72 +62,33 @@ func checkEquivalentForwardingNeighbors(t *testing.T, family int) {
 	records := forwardingNeighborLogs(t, ctx)
 	source := forwardingEventsSource(t, ctx)
 	neighbor := netlink.Neigh{
-		LinkIndex:    link.Attrs().Index,
-		Family:       family,
-		IP:           net.IP(selector.Destination.Addr().AsSlice()),
-		HardwareAddr: net.HardwareAddr{2, 0, 0, 0, 0, 2},
-		State:        unix.NUD_PERMANENT,
+		LinkIndex: link.Attrs().Index, Family: family,
+		IP: net.IP(selector.Destination.Addr().AsSlice()), HardwareAddr: net.HardwareAddr{2, 0, 0, 0, 0, 2}, State: unix.NUD_PERMANENT,
 	}
 	previous := source.Generation()
 	batch, entry := changeForwardingNeighbor(t, ctx, records, neighbor, unix.RTM_NEWNEIGH)
 	if err := source.Err(); err != nil || source.Generation() <= previous {
-		t.Fatalf(
-			"first neighbor observation did not invalidate forwarding evidence: generation=%d previous=%d error=%v batch=%+v entry=%+v",
-			source.Generation(),
-			previous,
-			err,
-			batch,
-			entry,
-		)
+		t.Fatalf("first neighbor observation did not invalidate forwarding evidence: generation=%d previous=%d error=%v batch=%+v entry=%+v", source.Generation(), previous, err, batch, entry)
 	}
 	baseline := source.Generation()
-	for _, state := range []int{
-		unix.NUD_NOARP,
-		unix.NUD_REACHABLE,
-		unix.NUD_STALE,
-		unix.NUD_DELAY,
-		unix.NUD_PROBE,
-		unix.NUD_PERMANENT,
-	} {
+	for _, state := range []int{unix.NUD_NOARP, unix.NUD_REACHABLE, unix.NUD_STALE, unix.NUD_DELAY, unix.NUD_PROBE, unix.NUD_PERMANENT} {
 		neighbor.State = state
 		batch, entry = changeForwardingNeighbor(t, ctx, records, neighbor, unix.RTM_NEWNEIGH)
 		if err := source.Err(); err != nil || source.Generation() != baseline {
-			t.Fatalf(
-				"equivalent state %d changed forwarding evidence: generation=%d baseline=%d error=%v batch=%+v entry=%+v",
-				state,
-				source.Generation(),
-				baseline,
-				err,
-				batch,
-				entry,
-			)
+			t.Fatalf("equivalent state %d changed forwarding evidence: generation=%d baseline=%d error=%v batch=%+v entry=%+v", state, source.Generation(), baseline, err, batch, entry)
 		}
 		assertForwardingNeighborPath(t, ctx, selector, neighbor, true)
 	}
 	neighbor.HardwareAddr = net.HardwareAddr{2, 0, 0, 0, 0, 3}
 	batch, entry = changeForwardingNeighbor(t, ctx, records, neighbor, unix.RTM_NEWNEIGH)
 	if err := source.Err(); err != nil || source.Generation() <= baseline {
-		t.Fatalf(
-			"changed MAC did not invalidate its exact neighbor notification: generation=%d baseline=%d error=%v batch=%+v entry=%+v",
-			source.Generation(),
-			baseline,
-			err,
-			batch,
-			entry,
-		)
+		t.Fatalf("changed MAC did not invalidate its exact neighbor notification: generation=%d baseline=%d error=%v batch=%+v entry=%+v", source.Generation(), baseline, err, batch, entry)
 	}
 	baseline = source.Generation()
 	neighbor.State = unix.NUD_NOARP
 	batch, entry = changeForwardingNeighbor(t, ctx, records, neighbor, unix.RTM_NEWNEIGH)
 	if err := source.Err(); err != nil || source.Generation() != baseline {
-		t.Fatalf(
-			"equivalent update changed the confirmed MAC-change generation: generation=%d baseline=%d error=%v batch=%+v entry=%+v",
-			source.Generation(),
-			baseline,
-			err,
-			batch,
-			entry,
-		)
+		t.Fatalf("equivalent update changed the confirmed MAC-change generation: generation=%d baseline=%d error=%v batch=%+v entry=%+v", source.Generation(), baseline, err, batch, entry)
 	}
 	assertForwardingNeighborPath(t, ctx, selector, neighbor, true)
 	for _, state := range []int{unix.NUD_FAILED, unix.NUD_INCOMPLETE} {
@@ -143,55 +98,26 @@ func checkEquivalentForwardingNeighbors(t *testing.T, family int) {
 		unusable.HardwareAddr = nil
 		batch, entry = changeForwardingNeighbor(t, ctx, records, unusable, unix.RTM_NEWNEIGH)
 		if err := source.Err(); err != nil || source.Generation() <= previous {
-			t.Fatalf(
-				"unusable neighbor state %d did not invalidate evidence: generation=%d previous=%d error=%v batch=%+v entry=%+v",
-				state,
-				source.Generation(),
-				previous,
-				err,
-				batch,
-				entry,
-			)
+			t.Fatalf("unusable neighbor state %d did not invalidate evidence: generation=%d previous=%d error=%v batch=%+v entry=%+v", state, source.Generation(), previous, err, batch, entry)
 		}
 		assertForwardingNeighborPath(t, ctx, selector, neighbor, false)
 		neighbor.State = unix.NUD_PERMANENT
 		previous = source.Generation()
 		batch, entry = changeForwardingNeighbor(t, ctx, records, neighbor, unix.RTM_NEWNEIGH)
 		if err := source.Err(); err != nil || source.Generation() <= previous {
-			t.Fatalf(
-				"recovery after unusable state reused a revoked baseline: generation=%d previous=%d error=%v batch=%+v entry=%+v",
-				source.Generation(),
-				previous,
-				err,
-				batch,
-				entry,
-			)
+			t.Fatalf("recovery after unusable state reused a revoked baseline: generation=%d previous=%d error=%v batch=%+v entry=%+v", source.Generation(), previous, err, batch, entry)
 		}
 	}
 	previous = source.Generation()
 	batch, entry = changeForwardingNeighbor(t, ctx, records, neighbor, unix.RTM_DELNEIGH)
 	if err := source.Err(); err != nil || source.Generation() <= previous {
-		t.Fatalf(
-			"neighbor deletion did not invalidate evidence: generation=%d previous=%d error=%v batch=%+v entry=%+v",
-			source.Generation(),
-			previous,
-			err,
-			batch,
-			entry,
-		)
+		t.Fatalf("neighbor deletion did not invalidate evidence: generation=%d previous=%d error=%v batch=%+v entry=%+v", source.Generation(), previous, err, batch, entry)
 	}
 	assertForwardingNeighborPath(t, ctx, selector, neighbor, false)
 	previous = source.Generation()
 	batch, entry = changeForwardingNeighbor(t, ctx, records, neighbor, unix.RTM_NEWNEIGH)
 	if err := source.Err(); err != nil || source.Generation() <= previous {
-		t.Fatalf(
-			"neighbor creation after deletion reused a revoked baseline: generation=%d previous=%d error=%v batch=%+v entry=%+v",
-			source.Generation(),
-			previous,
-			err,
-			batch,
-			entry,
-		)
+		t.Fatalf("neighbor creation after deletion reused a revoked baseline: generation=%d previous=%d error=%v batch=%+v entry=%+v", source.Generation(), previous, err, batch, entry)
 	}
 }
 
@@ -223,57 +149,30 @@ func forwardingNeighborPath(t *testing.T, family int, link netlink.Link) netif.P
 		t.Fatal(err)
 	}
 	if err := netlink.RouteAdd(&netlink.Route{
-		Family:    family,
-		LinkIndex: link.Attrs().Index,
-		Dst:       network,
-		Scope:     netlink.SCOPE_LINK,
-		Table:     unix.RT_TABLE_MAIN,
+		Family: family, LinkIndex: link.Attrs().Index,
+		Dst: network, Scope: netlink.SCOPE_LINK, Table: unix.RT_TABLE_MAIN,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	return netif.PacketSelector{
-		Source:         netip.AddrPortFrom(netip.MustParseAddr(source), 45001),
-		Destination:    netip.AddrPortFrom(netip.MustParseAddr(destination), 5201),
-		Protocol:       unix.IPPROTO_TCP,
-		InputInterface: link.Attrs().Index,
-		Mark:           0,
-		TrafficClass:   0,
-		FlowLabel:      0,
+		Source:      netip.AddrPortFrom(netip.MustParseAddr(source), 45001),
+		Destination: netip.AddrPortFrom(netip.MustParseAddr(destination), 5201),
+		Protocol:    unix.IPPROTO_TCP, InputInterface: link.Attrs().Index, Mark: 0, TrafficClass: 0, FlowLabel: 0,
 	}
 }
 
-func assertForwardingNeighborPath(
-	t *testing.T,
-	ctx context.Context,
-	selector netif.PacketSelector,
-	neighbor netlink.Neigh,
-	wantUsable bool,
-) {
+func assertForwardingNeighborPath(t *testing.T, ctx context.Context, selector netif.PacketSelector, neighbor netlink.Neigh, wantUsable bool) {
 	t.Helper()
 	path, usable, err := netif.ForwardPathLookup(ctx, slog.Default(), selector)
 	if err != nil || usable != wantUsable {
-		t.Fatalf(
-			"kernel forwarding path for neighbor state %d: usable=%v want=%v path=%+v error=%v",
-			neighbor.State,
-			usable,
-			wantUsable,
-			path,
-			err,
-		)
+		t.Fatalf("kernel forwarding path for neighbor state %d: usable=%v want=%v path=%+v error=%v", neighbor.State, usable, wantUsable, path, err)
 	}
-	if usable &&
-		(path.Link.Attrs().Index != neighbor.LinkIndex || path.Neighbor.HardwareAddr.String() != neighbor.HardwareAddr.String()) {
+	if usable && (path.Link.Attrs().Index != neighbor.LinkIndex || path.Neighbor.HardwareAddr.String() != neighbor.HardwareAddr.String()) {
 		t.Fatalf("kernel forwarding identity differs from observed neighbor: %+v", path)
 	}
 }
 
-func changeForwardingNeighbor(
-	t *testing.T,
-	ctx context.Context,
-	records <-chan forwardingNeighborLog,
-	neighbor netlink.Neigh,
-	kind uint16,
-) (forwardingNeighborLog, forwardingNeighborEntry) {
+func changeForwardingNeighbor(t *testing.T, ctx context.Context, records <-chan forwardingNeighborLog, neighbor netlink.Neigh, kind uint16) (forwardingNeighborLog, forwardingNeighborEntry) {
 	t.Helper()
 	var err error
 	if kind == unix.RTM_DELNEIGH {
@@ -294,26 +193,15 @@ func changeForwardingNeighbor(
 				t.Fatalf("read real forwarding JSON stream: %v", batch.readError)
 			}
 			for _, entry := range batch.Mutations {
-				if entry.Type == kind && entry.Object.Family == neighbor.Family &&
-					entry.Object.Index == neighbor.LinkIndex &&
-					entry.Object.Destination == neighbor.IP.String() &&
-					(kind == unix.RTM_DELNEIGH || entry.Object.State == neighbor.State &&
-						(len(
-							neighbor.HardwareAddr,
-						) == 0 || entry.Object.LinkAddress == neighbor.HardwareAddr.String())) {
+				if entry.Type == kind && entry.Object.Family == neighbor.Family && entry.Object.Index == neighbor.LinkIndex &&
+					entry.Object.Destination == neighbor.IP.String() && (kind == unix.RTM_DELNEIGH || entry.Object.State == neighbor.State &&
+					(len(neighbor.HardwareAddr) == 0 || entry.Object.LinkAddress == neighbor.HardwareAddr.String())) {
 					return batch, entry
 				}
 			}
 		case <-ctx.Done():
-			t.Fatalf(
-				"target kernel notification did not complete processing: family=%d interface=%d address=%s state=%d type=%d: %v",
-				neighbor.Family,
-				neighbor.LinkIndex,
-				neighbor.IP,
-				neighbor.State,
-				kind,
-				ctx.Err(),
-			)
+			t.Fatalf("target kernel notification did not complete processing: family=%d interface=%d address=%s state=%d type=%d: %v",
+				neighbor.Family, neighbor.LinkIndex, neighbor.IP, neighbor.State, kind, ctx.Err())
 		}
 	}
 }
@@ -324,15 +212,9 @@ func forwardingNeighborLogs(t *testing.T, ctx context.Context) <-chan forwarding
 	if err != nil {
 		t.Fatal(err)
 	}
-	log, closer := logging.New(logging.Config{
-		BuildVersion: "",
-		Handlers: []slog.Handler{
-			slog.NewJSONHandler(
-				writer,
-				&slog.HandlerOptions{Level: slog.LevelInfo, AddSource: false, ReplaceAttr: nil},
-			),
-		},
-	})
+	log, closer := logging.New(logging.Config{BuildVersion: "", Handlers: []slog.Handler{
+		slog.NewJSONHandler(writer, &slog.HandlerOptions{Level: slog.LevelInfo, AddSource: false, ReplaceAttr: nil}),
+	}})
 	previous := slog.Default()
 	slog.SetDefault(log)
 	records := make(chan forwardingNeighborLog, 32)

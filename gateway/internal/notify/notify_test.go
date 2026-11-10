@@ -12,7 +12,6 @@ import (
 func recordFromAttrs(msg string, attrs ...slog.Attr) slog.Record {
 	r := slog.NewRecord(time.Date(2026, 5, 6, 22, 33, 6, 0, time.UTC), slog.LevelError, msg, 0)
 	r.AddAttrs(attrs...)
-
 	return r
 }
 
@@ -29,10 +28,7 @@ func TestBuildEmailBodyShape(t *testing.T) {
 		slog.String("trace", "4df84777"),
 		slog.String("phase", "periodic-reconcile"),
 		slog.String("module", "service-check"),
-		slog.String(
-			"err",
-			"ssh agoodkind@host: exit status 255 (stderr=\"Permission denied (publickey)\")",
-		),
+		slog.String("err", "ssh agoodkind@host: exit status 255 (stderr=\"Permission denied (publickey)\")"),
 		slog.String("level", "ERROR"),
 	)
 	bound := []slog.Attr{
@@ -69,7 +65,6 @@ func TestBuildEmailBodyMissingOptionalWhere(t *testing.T) {
 	if !strings.Contains(got, "Where:   role=primary, phase=switchover") {
 		t.Fatalf("Where line missing or malformed:\n%s", got)
 	}
-
 	if strings.Contains(got, "iface=") || strings.Contains(got, "daemon=") {
 		t.Fatalf("absent keys leaked into body:\n%s", got)
 	}
@@ -91,7 +86,6 @@ func TestBuildEmailBodyExtraKey(t *testing.T) {
 	if !strings.Contains(got, "Remote_addr: 10.0.0.1") {
 		t.Fatalf("extra key not rendered:\n%s", got)
 	}
-
 	traceIdx := strings.Index(got, "Trace:")
 	extraIdx := strings.Index(got, "Remote_addr:")
 	if traceIdx < 0 || extraIdx < 0 || traceIdx > extraIdx {
@@ -104,13 +98,15 @@ func TestBuildEmailBodyExtraKey(t *testing.T) {
 // What:.
 func TestBuildEmailBodyErrWithoutStderr(t *testing.T) {
 	t.Parallel()
-	r := recordFromAttrs("dial failed", slog.String("err", "context deadline exceeded"))
+	r := recordFromAttrs(
+		"dial failed",
+		slog.String("err", "context deadline exceeded"),
+	)
 
 	got := BuildEmailBody(r, nil)
 	if !strings.Contains(got, "What:    context deadline exceeded") {
 		t.Fatalf("plain err not rendered cleanly:\n%s", got)
 	}
-
 	if strings.Contains(got, "stderr:") {
 		t.Fatalf("synthetic stderr line emitted for err without stderr=:\n%s", got)
 	}
@@ -131,17 +127,7 @@ func TestBuildEmailBodyDropsSubjectAndFooterDups(t *testing.T) {
 	)
 
 	got := BuildEmailBody(r, nil)
-
-	for _, key := range []string{
-		"level:",
-		"Level:",
-		"module:",
-		"Module:",
-		"time:",
-		"Time:",
-		"caller:",
-		"Caller:",
-	} {
+	for _, key := range []string{"level:", "Level:", "module:", "Module:", "time:", "Time:", "caller:", "Caller:"} {
 		if strings.Contains(got, key) {
 			t.Fatalf("dropped key %q leaked into body:\n%s", key, got)
 		}

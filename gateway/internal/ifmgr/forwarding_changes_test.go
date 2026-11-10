@@ -17,7 +17,6 @@ func TestForwardingChangeRetiresBeforePublicationAndWaitsForCompletion(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	t.Cleanup(func() { _ = listener.Close() })
 	publication := filepath.Join(t.TempDir(), "applied")
 	completed := make(chan []byte, 1)
@@ -26,35 +25,27 @@ func TestForwardingChangeRetiresBeforePublicationAndWaitsForCompletion(t *testin
 		if err := listener.Close(); err != nil {
 			return nil, err
 		}
-
 		return func() {
 			data, readErr := os.ReadFile(publication)
 			if readErr != nil {
 				t.Error(readErr)
 			}
-
 			completed <- data
 		}, nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	t.Cleanup(unregister)
 	ctx, finish, err := changes.Begin(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer finish()
-	if connection, err := net.DialTimeout(
-		"tcp4",
-		listener.Addr().String(),
-		time.Second,
-	); err == nil {
+	if connection, err := net.DialTimeout("tcp4", listener.Addr().String(), time.Second); err == nil {
 		connection.Close()
 		t.Fatal("retired listener accepted a connection before the writer published")
 	}
-
 	unregistered := make(chan struct{})
 	started := make(chan struct{})
 	go func() {
@@ -68,23 +59,19 @@ func TestForwardingChangeRetiresBeforePublicationAndWaitsForCompletion(t *testin
 		t.Fatal("unregistration returned while the writer was active")
 	case <-time.After(20 * time.Millisecond):
 	}
-
 	beginNestedForwardingChange(t, &changes, ctx, finish)
 	if err := os.WriteFile(publication, []byte("ready\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-
 	finish()
 	if data := <-completed; string(data) != "ready\n" {
 		t.Fatalf("completion read publication %q", data)
 	}
-
 	select {
 	case <-unregistered:
 	case <-time.After(time.Second):
 		t.Fatal("unregistration did not finish after publication")
 	}
-
 	finish()
 }
 
@@ -93,32 +80,27 @@ func TestForwardingWorkerRetiresIndependentlyAndCancellationPreservesListener(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	t.Cleanup(func() { _ = listener.Close() })
 	var changes ifmgr.ForwardingChanges
 	unregister, err := changes.Register(func(context.Context) (func(), error) {
 		if err := listener.Close(); err != nil {
 			return nil, err
 		}
-
 		return func() {}, nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	t.Cleanup(unregister)
 	canceled, cancel := context.WithCancel(t.Context())
 	cancel()
 	if _, _, err := changes.Begin(canceled); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled mutation returned %v", err)
 	}
-
 	connection, err := net.DialTimeout("tcp4", listener.Addr().String(), time.Second)
 	if err != nil {
 		t.Fatalf("canceled mutation retired the listener: %v", err)
 	}
-
 	connection.Close()
 	ctx, finish, err := changes.Begin(t.Context())
 	if err != nil {
@@ -142,7 +124,6 @@ func TestForwardingRegistrationWaitsForAnUnacceleratedWriter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	t.Cleanup(func() { _ = listener.Close() })
 	type registrationResult struct {
 		unregister func()
@@ -154,7 +135,6 @@ func TestForwardingRegistrationWaitsForAnUnacceleratedWriter(t *testing.T) {
 			if err := listener.Close(); err != nil {
 				return nil, err
 			}
-
 			return func() {}, nil
 		})
 		registered <- registrationResult{unregister: unregister, err: err}
@@ -165,41 +145,28 @@ func TestForwardingRegistrationWaitsForAnUnacceleratedWriter(t *testing.T) {
 		if result.unregister != nil {
 			result.unregister()
 		}
-
 		t.Fatalf("registration completed before the writer: %v", result.err)
 	case <-time.After(20 * time.Millisecond):
 	}
-
 	beginNestedForwardingChange(t, &changes, ctx, finish)
 	finish()
 	result := <-registered
 	if result.err != nil {
 		t.Fatal(result.err)
 	}
-
 	t.Cleanup(result.unregister)
 	_, retireFinish, err := changes.Begin(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	retireFinish()
-	if connection, err := net.DialTimeout(
-		"tcp4",
-		listener.Addr().String(),
-		time.Second,
-	); err == nil {
+	if connection, err := net.DialTimeout("tcp4", listener.Addr().String(), time.Second); err == nil {
 		connection.Close()
 		t.Fatal("registered retirement did not close the listener")
 	}
 }
 
-func beginNestedForwardingChange(
-	t *testing.T,
-	changes *ifmgr.ForwardingChanges,
-	ctx context.Context,
-	outerFinish func(),
-) {
+func beginNestedForwardingChange(t *testing.T, changes *ifmgr.ForwardingChanges, ctx context.Context, outerFinish func()) {
 	t.Helper()
 	done := make(chan error, 1)
 	go func() {
@@ -207,7 +174,6 @@ func beginNestedForwardingChange(
 		if err == nil {
 			finish()
 		}
-
 		done <- err
 	}()
 	select {

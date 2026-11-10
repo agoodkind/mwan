@@ -86,10 +86,7 @@ func ValidateNativeVXLANPlan(plan NativeVXLANPlan) error {
 
 // OpenVXLANContext uses the existing owner's declared kernel VF TX endpoint.
 // Each receiver permits one context and one exact outbound IPv6 TCP rule.
-func (worker *NativeRuntime) OpenVXLANContext(
-	ctx context.Context,
-	endpoint NativeVXLANEndpoint,
-) (NativeVXLANResult, error) {
+func (worker *NativeRuntime) OpenVXLANContext(ctx context.Context, endpoint NativeVXLANEndpoint) (NativeVXLANResult, error) {
 	var request nativeRequest
 	request.operation = nativeVXLANOpen
 	request.vxlanEndpoint.version = C.MWAN_NATIVE_VXLAN_VERSION
@@ -104,16 +101,9 @@ func (worker *NativeRuntime) OpenVXLANContext(
 
 // InstallVXLAN checks evidence before and after creation and between poll batches.
 // Errors do not release the caller's context or a previously installed rule.
-func (worker *NativeRuntime) InstallVXLAN(
-	ctx context.Context,
-	handle NativeVXLANContext,
-	plan NativeVXLANPlan,
-	evidence *NativeEvidenceGuard,
-) (NativeVXLANResult, error) {
+func (worker *NativeRuntime) InstallVXLAN(ctx context.Context, handle NativeVXLANContext, plan NativeVXLANPlan, evidence *NativeEvidenceGuard) (NativeVXLANResult, error) {
 	if evidence == nil || evidence.Check == nil {
-		return NativeVXLANResult{}, errors.New(
-			"VXLAN installation requires a forwarding evidence guard",
-		)
+		return NativeVXLANResult{}, errors.New("VXLAN installation requires a forwarding evidence guard")
 	}
 	encoded, err := encodeNativeVXLANPlan(plan)
 	if err != nil {
@@ -130,10 +120,7 @@ func (worker *NativeRuntime) InstallVXLAN(
 }
 
 // QueryVXLAN preserves counter validity and errno when hardware sampling fails.
-func (worker *NativeRuntime) QueryVXLAN(
-	ctx context.Context,
-	rule NativeVXLANResult,
-) (NativeVXLANStats, error) {
+func (worker *NativeRuntime) QueryVXLAN(ctx context.Context, rule NativeVXLANResult) (NativeVXLANStats, error) {
 	var request nativeRequest
 	request.operation, request.vxlanRule = nativeVXLANQuery, encodeNativeVXLANResult(rule)
 	result := worker.call(ctx, request)
@@ -142,10 +129,7 @@ func (worker *NativeRuntime) QueryVXLAN(
 
 // RemoveVXLAN retains its context. Failed removal retains uncertain ownership.
 // Successful removal does not prove Linux VXLAN fallback or TCP continuation.
-func (worker *NativeRuntime) RemoveVXLAN(
-	ctx context.Context,
-	rule NativeVXLANResult,
-) (NativeVXLANResult, error) {
+func (worker *NativeRuntime) RemoveVXLAN(ctx context.Context, rule NativeVXLANResult) (NativeVXLANResult, error) {
 	var request nativeRequest
 	request.operation, request.vxlanRule = nativeVXLANRemove, encodeNativeVXLANResult(rule)
 	result := worker.call(ctx, request)
@@ -154,10 +138,7 @@ func (worker *NativeRuntime) RemoveVXLAN(
 
 // CloseVXLANContext releases the context only after Rust confirms rule removal.
 // Disable and final Close also remove VXLAN rules before stopping owned ports.
-func (worker *NativeRuntime) CloseVXLANContext(
-	ctx context.Context,
-	handle NativeVXLANContext,
-) (NativeVXLANResult, error) {
+func (worker *NativeRuntime) CloseVXLANContext(ctx context.Context, handle NativeVXLANContext) (NativeVXLANResult, error) {
 	var request nativeRequest
 	request.operation = nativeVXLANClose
 	request.handle = encodeNativeHandle(NativePairHandle(handle))
@@ -175,9 +156,7 @@ func encodeNativeVXLANPlan(plan NativeVXLANPlan) (C.struct_mwan_native_vxlan_pla
 		return result, errors.New("VXLAN outer endpoints require IPv4 addresses")
 	}
 	result.version, result.record_size = C.MWAN_NATIVE_VXLAN_VERSION, C.sizeof_struct_mwan_native_vxlan_plan
-	result.cookie, result.policy_generation = C.uint64_t(plan.Cookie), C.uint64_t(
-		plan.PolicyGeneration,
-	)
+	result.cookie, result.policy_generation = C.uint64_t(plan.Cookie), C.uint64_t(plan.PolicyGeneration)
 	result.inner = inner
 	for index := range plan.InnerSourceMAC {
 		result.inner_source_mac[index] = C.uint8_t(plan.InnerSourceMAC[index])
@@ -187,14 +166,10 @@ func encodeNativeVXLANPlan(plan NativeVXLANPlan) (C.struct_mwan_native_vxlan_pla
 	}
 	source, destination := plan.OuterSource.Addr().As4(), plan.OuterDestination.Addr().As4()
 	for index := range source {
-		result.outer_source[index], result.outer_destination[index] = C.uint8_t(
-			source[index],
-		), C.uint8_t(destination[index])
+		result.outer_source[index], result.outer_destination[index] = C.uint8_t(source[index]), C.uint8_t(destination[index])
 	}
 	result.vni = C.uint32_t(plan.VNI)
-	result.outer_source_port, result.outer_destination_port = C.uint16_t(
-		plan.OuterSource.Port(),
-	), C.uint16_t(plan.OuterDestination.Port())
+	result.outer_source_port, result.outer_destination_port = C.uint16_t(plan.OuterSource.Port()), C.uint16_t(plan.OuterDestination.Port())
 	result.inner_mtu, result.underlay_mtu = C.uint16_t(plan.InnerMTU), C.uint16_t(plan.UnderlayMTU)
 	result.outer_ttl, result.outer_tos = C.uint8_t(plan.OuterTTL), C.uint8_t(plan.OuterTOS)
 	var detail C.struct_mwan_native_error
@@ -205,20 +180,13 @@ func encodeNativeVXLANPlan(plan NativeVXLANPlan) (C.struct_mwan_native_vxlan_pla
 func encodeNativeVXLANResult(result NativeVXLANResult) C.struct_mwan_native_vxlan_result {
 	var encoded C.struct_mwan_native_vxlan_result
 	encoded.context = encodeNativeHandle(NativePairHandle(result.Context))
-	encoded.rule_generation, encoded.state = C.uint64_t(result.RuleGeneration), C.uint32_t(
-		result.State,
-	)
+	encoded.rule_generation, encoded.state = C.uint64_t(result.RuleGeneration), C.uint32_t(result.State)
 	return encoded
 }
 
 func decodeNativeVXLANResult(result C.struct_mwan_native_vxlan_result) NativeVXLANResult {
 	return NativeVXLANResult{
-		Context: NativeVXLANContext{
-			instance:   uint64(result.context.instance),
-			generation: uint64(result.context.generation),
-			slot:       uint32(result.context.slot),
-		},
-		RuleGeneration: uint64(result.rule_generation),
-		State:          NativeVXLANState(result.state),
+		Context:        NativeVXLANContext{instance: uint64(result.context.instance), generation: uint64(result.context.generation), slot: uint32(result.context.slot)},
+		RuleGeneration: uint64(result.rule_generation), State: NativeVXLANState(result.state),
 	}
 }

@@ -19,15 +19,10 @@ type recordingPublisher struct {
 	err        error
 }
 
-func (r *recordingPublisher) ReplaceConfig(
-	_ context.Context,
-	ownedPaths []string,
-	items []Item,
-) error {
+func (r *recordingPublisher) ReplaceConfig(_ context.Context, ownedPaths []string, items []Item) error {
 	r.calls++
 	r.ownedPaths = ownedPaths
 	r.items = items
-
 	return r.err
 }
 
@@ -51,11 +46,9 @@ func TestPublish_ReplacesOwnedSubtreesWithTheProjection(t *testing.T) {
 	if err := Publish(context.Background(), slog.Default(), rec, gateway); err != nil {
 		t.Fatalf("Publish: %v", err)
 	}
-
 	if rec.calls != 1 {
 		t.Fatalf("ReplaceConfig calls = %d, want 1", rec.calls)
 	}
-
 	wantOwned := []string{
 		"/ietf-interfaces:interfaces",
 		"/ietf-nat:nat",
@@ -64,12 +57,10 @@ func TestPublish_ReplacesOwnedSubtreesWithTheProjection(t *testing.T) {
 	if !slices.Equal(rec.ownedPaths, wantOwned) {
 		t.Fatalf("ownedPaths = %v, want %v", rec.ownedPaths, wantOwned)
 	}
-
 	wantItems, err := ConfigItems(gateway)
 	if err != nil {
 		t.Fatalf("ConfigItems: %v", err)
 	}
-
 	if !slices.Equal(rec.items, wantItems) {
 		t.Fatalf("items = %v, want %v", rec.items, wantItems)
 	}
@@ -81,16 +72,10 @@ func TestPublish_ReplacesOwnedSubtreesWithTheProjection(t *testing.T) {
 func TestPublish_NeverWritesAnInvalidGateway(t *testing.T) {
 	t.Parallel()
 	rec := &recordingPublisher{}
-	err := Publish(
-		context.Background(),
-		slog.Default(),
-		rec,
-		Gateway{InternalIface: "", Members: nil},
-	)
+	err := Publish(context.Background(), slog.Default(), rec, Gateway{InternalIface: "", Members: nil})
 	if !errors.Is(err, ErrInvalidGateway) {
 		t.Fatalf("err = %v, want ErrInvalidGateway", err)
 	}
-
 	if rec.calls != 0 {
 		t.Fatalf("ReplaceConfig calls = %d, want 0", rec.calls)
 	}
@@ -103,19 +88,10 @@ func TestPublish_SurfacesTheDatastoreFailure(t *testing.T) {
 	t.Parallel()
 	rejection := errors.New("session start failed")
 	rec := &recordingPublisher{err: rejection}
-	err := Publish(
-		context.Background(),
-		slog.Default(),
-		rec,
-		testGateway(testMember("att", "enatt0")),
-	)
+	err := Publish(context.Background(), slog.Default(), rec, testGateway(testMember("att", "enatt0")))
 	if rec.calls != 1 {
-		t.Fatalf(
-			"ReplaceConfig calls = %d, want 1: the gateway never reached the datastore",
-			rec.calls,
-		)
+		t.Fatalf("ReplaceConfig calls = %d, want 1: the gateway never reached the datastore", rec.calls)
 	}
-
 	if !errors.Is(err, rejection) {
 		t.Fatalf("err = %v, want the datastore rejection", err)
 	}

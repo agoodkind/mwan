@@ -25,7 +25,6 @@ type fakeApplier struct {
 func (f *fakeApplier) Apply(_ context.Context, _ *slog.Logger, desired []steerRule) error {
 	f.calls++
 	f.last = desired
-
 	return f.err
 }
 
@@ -47,40 +46,27 @@ func newTestModule(t *testing.T, cfg Config, health netif.HealthStates) (*Module
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-
 	typed, isModule := module.(*Module)
 	if !isModule {
 		t.Fatalf("New returned %T, want *Module", module)
 	}
-
 	if err := typed.parse(); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-
 	store := wanstate.New()
 	routing := make(map[string]wanstate.MemberRouting)
 	translation := make(map[string]wanstate.MemberTranslation)
-
 	for _, member := range cfg.Members {
 		routing[member.Name] = wanstate.MemberRouting{V4Ready: true, V6Ready: true}
-		translation[member.Name] = wanstate.MemberTranslation{
-			V4: wanstate.FamilyTranslation{Ready: true},
-			V6: wanstate.FamilyTranslation{Ready: true},
-		}
+		translation[member.Name] = wanstate.MemberTranslation{V4: wanstate.FamilyTranslation{Ready: true}, V6: wanstate.FamilyTranslation{Ready: true}}
 	}
-
 	store.SetRouting(0, routing)
 	store.SetTranslation(translation)
-	typed.Env = &ifmgr.Env{
-		Log:       slog.Default(),
-		Alerts:    ifmgr.WrapNotifier(notify.NullNotifier{}),
-		LiveState: store,
-	}
+	typed.Env = &ifmgr.Env{Log: slog.Default(), Alerts: ifmgr.WrapNotifier(notify.NullNotifier{}), LiveState: store}
 	typed.Log = slog.Default()
 	typed.readHealth = func(string) (netif.HealthStates, error) { return health, nil }
 	applier := &fakeApplier{calls: 0, last: nil, err: nil}
 	typed.apply = applier
-
 	return typed, applier
 }
 
@@ -90,37 +76,27 @@ func newTestModule(t *testing.T, cfg Config, health netif.HealthStates) (*Module
 func TestReconcileProgramsTheActiveTierSplit(t *testing.T) {
 	t.Parallel()
 
-	module, applier := newTestModule(
-		t,
-		testConfig(),
-		netif.HealthStates{
-			"att":          netif.HealthStateHealthy,
-			"webpass":      netif.HealthStateHealthy,
-			"monkeybrains": netif.HealthStateHealthy,
-		},
-	)
+	module, applier := newTestModule(t, testConfig(), netif.HealthStates{
+		"att": netif.HealthStateHealthy, "webpass": netif.HealthStateHealthy,
+		"monkeybrains": netif.HealthStateHealthy,
+	})
 	if err := module.Reconcile(context.Background(), slog.Default()); err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-
 	if applier.calls != 1 {
 		t.Fatalf("applier called %d times, want 1", applier.calls)
 	}
-
 	assignments := 0
-
 	for index, rule := range applier.last {
 		if rule.DropIface != "" {
 			continue
 		}
-
 		assignments++
 		want := balancer{Mark: 0, Modulus: 2, Slots: []uint32{1, 2}}
 		if !reflect.DeepEqual(rule.Assign, want) {
 			t.Fatalf("rule %d balancer = %#v, want %#v", index, rule.Assign, want)
 		}
 	}
-
 	if assignments != 3 {
 		t.Fatalf("assignment count = %d, want 3", assignments)
 	}
@@ -132,23 +108,16 @@ func TestReconcileProgramsTheActiveTierSplit(t *testing.T) {
 func TestReconcileWithNoHealthyProviderProgramsNothing(t *testing.T) {
 	t.Parallel()
 
-	module, applier := newTestModule(
-		t,
-		testConfig(),
-		netif.HealthStates{
-			"att":          netif.HealthStateUnhealthy,
-			"webpass":      netif.HealthStateUnhealthy,
-			"monkeybrains": netif.HealthStateUnhealthy,
-		},
-	)
+	module, applier := newTestModule(t, testConfig(), netif.HealthStates{
+		"att": netif.HealthStateUnhealthy, "webpass": netif.HealthStateUnhealthy,
+		"monkeybrains": netif.HealthStateUnhealthy,
+	})
 	if err := module.Reconcile(context.Background(), slog.Default()); err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-
 	if applier.calls != 1 {
 		t.Fatalf("applier called %d times, want 1", applier.calls)
 	}
-
 	for _, rule := range applier.last {
 		if rule.DropIface == "" || len(rule.AllowedMarks) != 0 {
 			t.Fatalf("ineligible family kept a steering rule: %v", rule)
@@ -162,21 +131,15 @@ func TestReconcileWithNoHealthyProviderProgramsNothing(t *testing.T) {
 func TestReconcileWrapsApplyError(t *testing.T) {
 	t.Parallel()
 
-	module, applier := newTestModule(
-		t,
-		testConfig(),
-		netif.HealthStates{
-			"att":          netif.HealthStateHealthy,
-			"webpass":      netif.HealthStateHealthy,
-			"monkeybrains": netif.HealthStateHealthy,
-		},
-	)
+	module, applier := newTestModule(t, testConfig(), netif.HealthStates{
+		"att": netif.HealthStateHealthy, "webpass": netif.HealthStateHealthy,
+		"monkeybrains": netif.HealthStateHealthy,
+	})
 	applier.err = errors.New("apply rejected")
 	err := module.Reconcile(context.Background(), slog.Default())
 	if err == nil {
 		t.Fatal("Reconcile returned nil error, want the wrapped apply error")
 	}
-
 	if !errors.Is(err, applier.err) {
 		t.Fatalf("Reconcile error = %v, want it to wrap %v", err, applier.err)
 	}
@@ -193,13 +156,11 @@ func TestModuleDisablesWithoutMembers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-
 	env := &ifmgr.Env{Log: slog.Default(), Alerts: ifmgr.WrapNotifier(notify.NullNotifier{})}
 	initErr := module.Init(context.Background(), env)
 	if initErr == nil {
 		t.Fatal("Init should disable when no providers are configured")
 	}
-
 	if !strings.Contains(initErr.Error(), "disabled") {
 		t.Fatalf("Init error = %v, want the disabled sentinel", initErr)
 	}
@@ -217,12 +178,10 @@ func TestParseRejectsAnUnknownHashMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-
 	typed, isModule := module.(*Module)
 	if !isModule {
 		t.Fatalf("New returned %T, want *Module", module)
 	}
-
 	if parseErr := typed.parse(); parseErr == nil {
 		t.Fatal("parse accepted an unknown hash mode")
 	}
@@ -240,12 +199,10 @@ func TestParseRejectsAWeightSumThatCannotBeProgrammed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-
 	typed, isModule := module.(*Module)
 	if !isModule {
 		t.Fatalf("New returned %T, want *Module", module)
 	}
-
 	if parseErr := typed.parse(); parseErr == nil {
 		t.Fatal("parse accepted a weight sum above the bound")
 	}
@@ -259,7 +216,6 @@ func TestNoTeardownMethod(t *testing.T) {
 
 	module := &Module{}
 	typ := reflect.TypeOf(module)
-
 	for _, name := range []string{"Stop", "Close", "Teardown", "Shutdown", "Remove"} {
 		if _, found := typ.MethodByName(name); found {
 			t.Fatalf("Module exposes %q; steering must not clear its chain on stop", name)
@@ -273,42 +229,29 @@ func TestFamilyRulesUseIndependentReadyTiers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	m := module.(*Module)
 	if err := m.parse(); err != nil {
 		t.Fatal(err)
 	}
-
 	store := wanstate.New()
 	m.Env = &ifmgr.Env{LiveState: store}
-	store.SetRouting(
-		0,
-		map[string]wanstate.MemberRouting{
-			"att":          {V4Ready: true, V6Ready: true},
-			"webpass":      {V4Ready: true, V6Ready: false},
-			"monkeybrains": {V4Ready: true, V6Ready: true},
-		},
-	)
+	store.SetRouting(0, map[string]wanstate.MemberRouting{
+		"att":          {V4Ready: true, V6Ready: true},
+		"webpass":      {V4Ready: true, V6Ready: false},
+		"monkeybrains": {V4Ready: true, V6Ready: true},
+	})
 	translations := map[string]wanstate.MemberTranslation{
-		"att": {
-			V4: wanstate.FamilyTranslation{Ready: true},
-			V6: wanstate.FamilyTranslation{Ready: false},
-		},
-		"webpass": {V4: wanstate.FamilyTranslation{Ready: true}},
-		"monkeybrains": {
-			V4: wanstate.FamilyTranslation{Ready: true},
-			V6: wanstate.FamilyTranslation{Ready: true},
-		},
+		"att":          {V4: wanstate.FamilyTranslation{Ready: true}, V6: wanstate.FamilyTranslation{Ready: false}},
+		"webpass":      {V4: wanstate.FamilyTranslation{Ready: true}},
+		"monkeybrains": {V4: wanstate.FamilyTranslation{Ready: true}, V6: wanstate.FamilyTranslation{Ready: true}},
 	}
 	store.SetTranslation(translations)
 	rules := m.desiredRules(netif.HealthStates{})
 	v6Assignments := 0
-
 	for _, rule := range rules {
 		if rule.DropIface != "" {
 			continue
 		}
-
 		if rule.Source.Addr().Is4() {
 			if !reflect.DeepEqual(rule.Assign.Slots, []uint32{1, 2}) {
 				t.Fatalf("IPv4 changed tier: %+v", rule.Assign)
@@ -320,16 +263,11 @@ func TestFamilyRulesUseIndependentReadyTiers(t *testing.T) {
 			}
 		}
 	}
-
 	if v6Assignments == 0 {
 		t.Fatal("no IPv6 assignment")
 	}
-
-	translations["monkeybrains"] = wanstate.MemberTranslation{
-		V4: wanstate.FamilyTranslation{Ready: true},
-	}
+	translations["monkeybrains"] = wanstate.MemberTranslation{V4: wanstate.FamilyTranslation{Ready: true}}
 	store.SetTranslation(translations)
-
 	rules = m.desiredRules(netif.HealthStates{})
 	for _, rule := range rules {
 		if rule.DropIface == "" && rule.Source.Addr().Is6() {

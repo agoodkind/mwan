@@ -80,7 +80,6 @@ func runWanconfigSelftestOptions(log *slog.Logger, flags selftestFlags) int {
 	if flags.repository != "" {
 		return runPrivateSelftest(log, flags)
 	}
-
 	return runGatewaySelftest(log)
 }
 
@@ -93,7 +92,6 @@ func runGatewaySelftest(log *slog.Logger) int {
 		fmt.Fprintf(os.Stderr, "mwan wanconfig-selftest: %v\n", err)
 		return 1
 	}
-
 	defer func() {
 		if cerr := pub.Close(); cerr != nil {
 			log.Error("yangpub close failed", "err", cerr)
@@ -121,14 +119,8 @@ func runGatewaySelftest(log *slog.Logger) int {
 		fmt.Fprintf(os.Stderr, "mwan wanconfig-selftest: publish: %v\n", err)
 		return 1
 	}
-
-	log.Info(
-		"published selftest leaf",
-		"path",
-		selftestHashModePath,
-		"prior_value_present",
-		priorFound,
-	)
+	log.Info("published selftest leaf",
+		"path", selftestHashModePath, "prior_value_present", priorFound)
 
 	providerFn := func(_ context.Context, xpath string) ([]yangpub.Item, error) {
 		log.Info("provider read", "xpath", xpath)
@@ -143,31 +135,18 @@ func runGatewaySelftest(log *slog.Logger) int {
 				Value: "computed at " + requestTime,
 			},
 		}
-
 		return operItems, nil
 	}
-	if err := pub.RegisterProvider(
-		ctx,
-		selftestProviderModule,
-		selftestProviderPath,
-		providerFn,
-	); err != nil {
+	if err := pub.RegisterProvider(ctx, selftestProviderModule, selftestProviderPath, providerFn); err != nil {
 		fmt.Fprintf(os.Stderr, "mwan wanconfig-selftest: register provider: %v\n", err)
 		return 1
 	}
-
-	log.Info(
-		"provider registered, holding for external reads",
-		"module",
-		selftestProviderModule,
-		"path",
-		selftestProviderPath,
-		"hold",
-		selftestHoldTime.String(),
-	)
+	log.Info("provider registered, holding for external reads",
+		"module", selftestProviderModule,
+		"path", selftestProviderPath,
+		"hold", selftestHoldTime.String())
 	time.Sleep(selftestHoldTime)
 	log.Info("wanconfig selftest complete")
-
 	return 0
 }
 
@@ -176,41 +155,24 @@ func runGatewaySelftest(log *slog.Logger) int {
 // was absent and the schema default applied. A restore failure is logged
 // rather than returned, because it runs from a deferred call after the
 // exit code is decided.
-func restoreSelftestLeaf(
-	pub yangpub.Publisher,
-	log *slog.Logger,
-	priorValue string,
-	priorFound bool,
-) {
+func restoreSelftestLeaf(pub yangpub.Publisher, log *slog.Logger, priorValue string, priorFound bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), restoreSelftestTimeout)
 	defer cancel()
 
 	if priorFound {
 		items := []yangpub.Item{{Path: selftestHashModePath, Value: priorValue}}
 		if err := pub.SetItems(ctx, yangpub.DatastoreRunning, items); err != nil {
-			log.Error(
-				"selftest leaf restore failed",
-				"path",
-				selftestHashModePath,
-				"value",
-				priorValue,
-				"err",
-				err,
-			)
-
+			log.Error("selftest leaf restore failed",
+				"path", selftestHashModePath, "value", priorValue, "err", err)
 			return
 		}
-
 		log.Info("selftest leaf restored", "path", selftestHashModePath, "value", priorValue)
-
 		return
 	}
-
 	if err := pub.DeleteItem(ctx, yangpub.DatastoreRunning, selftestHashModePath); err != nil {
 		log.Error("selftest leaf removal failed", "path", selftestHashModePath, "err", err)
 		return
 	}
-
 	log.Info("selftest leaf removed", "path", selftestHashModePath)
 }
 
@@ -237,67 +199,21 @@ func resolveSelftestModels(log *slog.Logger, dir string) ([]yangpub.Model, error
 		if err != nil {
 			return nil, failStep(log, "match "+entry.pattern, err)
 		}
-
 		if len(matches) != 1 {
-			return nil, fmt.Errorf(
-				"want exactly one file matching %s in %s, found %d",
-				entry.pattern,
-				dir,
-				len(matches),
-			)
+			return nil, fmt.Errorf("want exactly one file matching %s in %s, found %d",
+				entry.pattern, dir, len(matches))
 		}
-
 		// The private repository starts empty, so nothing is ever updated.
-		models = append(
-			models,
-			yangpub.Model{Path: matches[0], Features: entry.features, Update: false},
-		)
+		models = append(models, yangpub.Model{Path: matches[0], Features: entry.features, Update: false})
 	}
-
 	return models, nil
 }
 
 func selftestConnections() []interfaceintent.Connection {
 	return []interfaceintent.Connection{
-		{
-			ID:         connectionid.ID("eninternal0"),
-			Name:       "eninternal0",
-			Type:       "iana-if-type:other",
-			Enabled:    nil,
-			Roles:      interfaceintent.RoleInternal,
-			Owner:      interfaceintent.OwnerExternal,
-			Link:       nil,
-			IPv4:       nil,
-			IPv6:       nil,
-			LeaseStore: "",
-			Networkd:   nil,
-		},
-		{
-			ID:         connectionid.ID("enmgmt0"),
-			Name:       "enmgmt0",
-			Type:       "iana-if-type:other",
-			Enabled:    nil,
-			Roles:      interfaceintent.RoleManagement,
-			Owner:      interfaceintent.OwnerExternal,
-			Link:       nil,
-			IPv4:       nil,
-			IPv6:       nil,
-			LeaseStore: "",
-			Networkd:   nil,
-		},
-		{
-			ID:         connectionid.ID("example"),
-			Name:       "enexample0",
-			Type:       "iana-if-type:other",
-			Enabled:    nil,
-			Roles:      interfaceintent.RoleProvider,
-			Owner:      interfaceintent.OwnerExternal,
-			Link:       nil,
-			IPv4:       nil,
-			IPv6:       nil,
-			LeaseStore: "",
-			Networkd:   nil,
-		},
+		{ID: connectionid.ID("eninternal0"), Name: "eninternal0", Type: "iana-if-type:other", Enabled: nil, Roles: interfaceintent.RoleInternal, Owner: interfaceintent.OwnerExternal, Link: nil, IPv4: nil, IPv6: nil, LeaseStore: "", Networkd: nil},
+		{ID: connectionid.ID("enmgmt0"), Name: "enmgmt0", Type: "iana-if-type:other", Enabled: nil, Roles: interfaceintent.RoleManagement, Owner: interfaceintent.OwnerExternal, Link: nil, IPv4: nil, IPv6: nil, LeaseStore: "", Networkd: nil},
+		{ID: connectionid.ID("example"), Name: "enexample0", Type: "iana-if-type:other", Enabled: nil, Roles: interfaceintent.RoleProvider, Owner: interfaceintent.OwnerExternal, Link: nil, IPv4: nil, IPv6: nil, LeaseStore: "", Networkd: nil},
 	}
 }
 
@@ -308,30 +224,13 @@ func selftestGateway() wanconfig.Gateway {
 	firewallConfig.Enabled, firewallConfig.InternalInterface = true, "eninternal0"
 	firewallConfig.InternalNetworkIPv4 = netip.MustParsePrefix("192.0.2.0/29")
 	firewallConfig.ManagementInterface = "enmgmt0"
-	firewallConfig.ManagementServices = []firewall.Service{
-		{Protocol: "tcp", Port: 22, Sources: nil},
-	}
+	firewallConfig.ManagementServices = []firewall.Service{{Protocol: "tcp", Port: 22, Sources: nil}}
 	firewallConfig.KnownInterfaces = []string{"eninternal0", "enmgmt0", "enexample0"}
-	firewallConfig.Providers = []firewall.Provider{
-		{
-			Interface:      "enexample0",
-			Mark:           1,
-			ForcedDSCP:     8,
-			MasqueradeIPv4: true,
-			StaticMappings: nil,
-			ReducedMTU:     false,
-		},
-	}
-	firewallConfig.Paths = []firewall.ForwardingPath{
-		{
-			InternalInterface: "eninternal0",
-			ExternalInterface: "enexample0",
-			IPv4:              true,
-			IPv6:              true,
-		},
-	}
+	firewallConfig.Providers = []firewall.Provider{{Interface: "enexample0", Mark: 1, ForcedDSCP: 8, MasqueradeIPv4: true, StaticMappings: nil, ReducedMTU: false}}
+	firewallConfig.Paths = []firewall.ForwardingPath{{
+		InternalInterface: "eninternal0", ExternalInterface: "enexample0", IPv4: true, IPv6: true,
+	}}
 	firewallConfig.PinnedSetV4Name, firewallConfig.PinnedSetV6Name = "selftest_pinned_v4", "selftest_pinned_v6"
-
 	return wanconfig.Gateway{
 		GuestType:          config.GuestTypeQEMU,
 		PinnedConnectionID: "",
@@ -348,60 +247,45 @@ func selftestGateway() wanconfig.Gateway {
 			InternalNetV4:      netip.MustParsePrefix("192.0.2.0/29"),
 			ProbeTimeoutMillis: 2000,
 		},
-		Members: []wanconfig.Member{
-			{
-				SelectionEnabled: nil,
-				Name:             "example",
-				ProviderName:     "example",
-				Iface:            "enexample0",
-				Tier:             0,
-				Weight:           1,
-				ProbePolicy:      "example",
-				TranslationV6: &config.IPv6Translation{
-					Mode: config.TranslationNPTv6,
-					NPT: &config.NPTv6Translation{
-						InternalPrefix: netip.MustParsePrefix("3d06:bad:b01:210::/60"),
-						ExternalSource: config.PrefixDelegated,
-						ExternalPrefix: netip.Prefix{},
-						ExpectedPrefix: netip.MustParsePrefix("2001:db8:a::/60"),
-					},
-				},
-				TranslationIDV4: wanconfig.TranslationInstanceID("example", "ipv4"),
-				TranslationIDV6: wanconfig.TranslationInstanceID("example", "ipv6"),
-				TableID:         100,
-				FwMark:          1,
-				FwMarkPrio:      100,
-				FromPrio:        55,
-				V4Source:        "",
-				ForcedDSCP:      8,
-				// The configured mapping and operational owned address use the same external address.
-				TranslationV4: &config.IPv4Translation{
-					Mode: config.TranslationNAPT44,
-					StaticMappings: []config.StaticMapping{
-						{
-							External: netip.MustParseAddr(selftestOwnedAddress),
-							Internal: netip.MustParseAddr("192.0.2.3"),
-							Delivery: "",
-						},
-					},
-				},
-				Health: &wanconfig.ProbeSettings{
-					Enabled:              true,
-					PingCount:            new(uint8(3)),
-					SuccessThreshold:     new(uint8(2)),
-					FailureThreshold:     new(uint8(2)),
-					RecoveryThreshold:    new(uint8(2)),
-					CheckIntervalSeconds: new(uint32(10)),
-					TargetsV4:            []netip.Addr{netip.MustParseAddr("192.0.2.10")},
-					TargetsV6:            []netip.Addr{netip.MustParseAddr("2001:db8:53::1")},
-					HTTPURLs:             []string{"https://example.test/ip"},
-				},
-				// The selftest proves the serving contract, not the renderer, so
-				// the member states no link files and publishes no link.
-				LinkFiles:   "",
-				BGPSessions: nil,
+		Members: []wanconfig.Member{{
+			SelectionEnabled: nil,
+			Name:             "example",
+			ProviderName:     "example",
+			Iface:            "enexample0",
+			Tier:             0,
+			Weight:           1,
+			ProbePolicy:      "example",
+			TranslationV6:    &config.IPv6Translation{Mode: config.TranslationNPTv6, NPT: &config.NPTv6Translation{InternalPrefix: netip.MustParsePrefix("3d06:bad:b01:210::/60"), ExternalSource: config.PrefixDelegated, ExternalPrefix: netip.Prefix{}, ExpectedPrefix: netip.MustParsePrefix("2001:db8:a::/60")}},
+			TranslationIDV4:  wanconfig.TranslationInstanceID("example", "ipv4"),
+			TranslationIDV6:  wanconfig.TranslationInstanceID("example", "ipv6"),
+			TableID:          100,
+			FwMark:           1,
+			FwMarkPrio:       100,
+			FromPrio:         55,
+			V4Source:         "",
+			ForcedDSCP:       8,
+			// The configured mapping and operational owned address use the same external address.
+			TranslationV4: &config.IPv4Translation{Mode: config.TranslationNAPT44, StaticMappings: []config.StaticMapping{{
+				External: netip.MustParseAddr(selftestOwnedAddress),
+				Internal: netip.MustParseAddr("192.0.2.3"),
+				Delivery: "",
+			}}},
+			Health: &wanconfig.ProbeSettings{
+				Enabled:              true,
+				PingCount:            new(uint8(3)),
+				SuccessThreshold:     new(uint8(2)),
+				FailureThreshold:     new(uint8(2)),
+				RecoveryThreshold:    new(uint8(2)),
+				CheckIntervalSeconds: new(uint32(10)),
+				TargetsV4:            []netip.Addr{netip.MustParseAddr("192.0.2.10")},
+				TargetsV6:            []netip.Addr{netip.MustParseAddr("2001:db8:53::1")},
+				HTTPURLs:             []string{"https://example.test/ip"},
 			},
-		},
+			// The selftest proves the serving contract, not the renderer, so
+			// the member states no link files and publishes no link.
+			LinkFiles:   "",
+			BGPSessions: nil,
+		}},
 		Daemon: wanconfig.DaemonSettings{
 			Watchdog: wanconfig.WatchdogSettings{
 				Present:                      true,
@@ -449,61 +333,31 @@ func selftestStore() *wanstate.Store {
 			Verdict:             wanstate.HealthHealthy,
 			ConsecutiveFailures: 0,
 			LastTransition:      time.Time{},
-			V4:                  wanstate.ProbePass,
-			V4Verdict:           wanstate.HealthHealthy,
-			V6:                  wanstate.ProbePass,
-			V6Verdict:           wanstate.HealthHealthy,
+			V4:                  wanstate.ProbePass, V4Verdict: wanstate.HealthHealthy,
+			V6: wanstate.ProbePass, V6Verdict: wanstate.HealthHealthy,
 		},
 	})
-	store.SetRouting(
-		0,
-		map[string]wanstate.MemberRouting{
-			"example": {
-				Carrying:         true,
-				SelectionEnabled: true,
-				V4Ready:          false,
-				V6Ready:          false,
-				V4Dependencies:   nil,
-				V6Dependencies:   nil,
-				V4Reason:         "",
-				V6Reason:         "",
-				OwnedAddresses:   []netip.Addr{netip.MustParseAddr(selftestOwnedAddress)},
-			},
-		},
-	)
+	store.SetRouting(0, map[string]wanstate.MemberRouting{"example": {
+		Carrying: true, SelectionEnabled: true, V4Ready: false, V6Ready: false, V4Dependencies: nil, V6Dependencies: nil,
+		V4Reason: "", V6Reason: "",
+		OwnedAddresses: []netip.Addr{netip.MustParseAddr(selftestOwnedAddress)},
+	}})
 	store.SetTranslation(map[string]wanstate.MemberTranslation{
 		"example": {
-			V4: wanstate.FamilyTranslation{
-				Mode:           string(config.TranslationNAPT44),
-				Ready:          true,
-				Reason:         "",
-				InternalPrefix: netip.Prefix{},
-				ExternalPrefix: netip.Prefix{},
-			},
-			V6: wanstate.FamilyTranslation{
-				Mode:           string(config.TranslationNPTv6),
-				Ready:          true,
-				Reason:         "",
-				InternalPrefix: netip.MustParsePrefix("3d06:bad:b01:210::/60"),
-				ExternalPrefix: netip.MustParsePrefix("2001:db8:b::/60"),
-			},
+			V4: wanstate.FamilyTranslation{Mode: string(config.TranslationNAPT44), Ready: true, Reason: "", InternalPrefix: netip.Prefix{}, ExternalPrefix: netip.Prefix{}},
+			V6: wanstate.FamilyTranslation{Mode: string(config.TranslationNPTv6), Ready: true, Reason: "", InternalPrefix: netip.MustParsePrefix("3d06:bad:b01:210::/60"), ExternalPrefix: netip.MustParsePrefix("2001:db8:b::/60")},
 		},
 	})
-	store.SetIntendedRuleset(
-		"chain prerouting:\n  iif \"enexample0\" ip6 daddr 2001:db8:a::/60 dnat prefix to 3d06:bad:b01:210::/60\nchain postrouting:\n",
-	)
-
+	store.SetIntendedRuleset("chain prerouting:\n  iif \"enexample0\" ip6 daddr 2001:db8:a::/60 dnat prefix to 3d06:bad:b01:210::/60\nchain postrouting:\n")
 	return store
 }
 
 func selftestRejections() []networkjson.Rejection {
-	return []networkjson.Rejection{
-		{
-			Interface: "enrejected0",
-			Provider:  "rejected-example",
-			Err:       errors.New("ipv6/dhcp is required"),
-		},
-	}
+	return []networkjson.Rejection{{
+		Interface: "enrejected0",
+		Provider:  "rejected-example",
+		Err:       errors.New("ipv6/dhcp is required"),
+	}}
 }
 
 // runPrivateSelftest proves the serving contract against a private
@@ -518,9 +372,7 @@ func runPrivateSelftest(log *slog.Logger, flags selftestFlags) int {
 		fmt.Fprintf(os.Stderr, "mwan wanconfig-selftest: %v\n", err)
 		return 1
 	}
-
 	log.Info("wanconfig private selftest complete", "repository", flags.repository)
-
 	return 0
 }
 
@@ -545,20 +397,17 @@ func runPrivateSelftestSteps(log *slog.Logger, flags selftestFlags) error {
 	if err != nil {
 		return failStep(log, "daemon connection", err)
 	}
-
 	defer func() { _ = daemon.Close() }()
 
 	gateway := selftestGateway()
 	if err := wanconfig.Publish(ctx, log, runningReplacer{pub: daemon}, gateway); err != nil {
 		return failStep(log, "publish configuration", err)
 	}
-
 	for _, module := range publishedModules {
 		if err := daemon.OwnModule(ctx, module); err != nil {
 			return failStep(log, "own "+module, err)
 		}
 	}
-
 	if err := registerLiveStateProviders(
 		ctx,
 		log,
@@ -573,39 +422,31 @@ func runPrivateSelftestSteps(log *slog.Logger, flags selftestFlags) error {
 	if err := checkSelftestTree(ctx, log, reader); err != nil {
 		return err
 	}
-
 	if err := checkSelftestDaemon(ctx, log, reader); err != nil {
 		return err
 	}
-
 	if err := checkSelftestNotifications(ctx, log, reader, daemon); err != nil {
 		return err
 	}
-
 	if err := wanconfig.Publish(ctx, log, runningReplacer{pub: daemon}, gateway); err != nil {
 		return failStep(log, "publish configuration with ownership alive", err)
 	}
-
 	if err := daemon.Close(); err != nil {
 		return failStep(log, "close daemon connection", err)
 	}
-
 	after, found, err := reader.ExportJSON(ctx, yangpub.DatastoreOperational, "/ietf-interfaces:*")
 	if err != nil {
 		return failStep(log, "operational read after close", err)
 	}
-
 	if !found {
 		return nil
 	}
-
 	// With nothing owned and nothing provided the datastore may still
 	// print the bare container; what must be gone is the member's
 	// configuration and its state.
 	if err := checkSelftestInterfacesBare(log, json.RawMessage(after)); err != nil {
 		return failStep(log, "interfaces tree after close: "+after, err)
 	}
-
 	return nil
 }
 
@@ -623,7 +464,6 @@ func openPrivateRepository(
 	if err := os.MkdirAll(flags.repository, 0o750); err != nil {
 		return nil, nil, failStep(log, "create repository", err)
 	}
-
 	// The repository must be this run's own. Pointing the selftest at a
 	// populated one, the host's included, would leave connection records
 	// in it and test a datastore the host may be serving.
@@ -631,14 +471,9 @@ func openPrivateRepository(
 	if err != nil {
 		return nil, nil, failStep(log, "read repository", err)
 	}
-
 	if len(entries) > 0 {
-		return nil, nil, fmt.Errorf(
-			"repository %s is not empty; the private selftest needs a fresh directory",
-			flags.repository,
-		)
+		return nil, nil, fmt.Errorf("repository %s is not empty; the private selftest needs a fresh directory", flags.repository)
 	}
-
 	// sysrepo reads its repository path and shared-memory prefix from the
 	// environment at connect time; a distinct prefix keeps this run apart
 	// from any datastore the host serves.
@@ -660,15 +495,12 @@ func openPrivateRepository(
 		restoreEnv()
 		return nil, nil, err
 	}
-
 	reader, err := yangpub.New(log)
 	if err != nil {
 		removeSelftestSHM(log, shmPrefix)
 		restoreEnv()
-
 		return nil, nil, failStep(log, "reader connection", err)
 	}
-
 	// The environment goes back last, after the connection has disconnected
 	// and the shared memory is gone, so a later connection in this process
 	// reaches the datastore it reached before the selftest ran.
@@ -681,7 +513,6 @@ func openPrivateRepository(
 		closeRepository()
 		return nil, nil, failStep(log, "install models", err)
 	}
-
 	return reader, closeRepository, nil
 }
 
@@ -705,7 +536,6 @@ func setSelftestEnv(settings []envSetting) func() {
 			restores = append(restores, func() { os.Unsetenv(setting.name) })
 		}
 	}
-
 	return func() {
 		for _, restore := range restores {
 			restore()
@@ -760,22 +590,7 @@ func checkSelftestNotifications(
 	// transition, and a routing pass that installs a different tier than
 	// the baseline selftestStore wrote.
 	store.NotifyHealthTransition("example", wanstate.HealthHealthy, wanstate.HealthUnhealthy)
-	store.SetRouting(
-		1,
-		map[string]wanstate.MemberRouting{
-			"example": {
-				Carrying:         false,
-				SelectionEnabled: true,
-				V4Ready:          false,
-				V6Ready:          false,
-				V4Reason:         "",
-				V6Reason:         "",
-				V4Dependencies:   nil,
-				V6Dependencies:   nil,
-				OwnedAddresses:   nil,
-			},
-		},
-	)
+	store.SetRouting(1, map[string]wanstate.MemberRouting{"example": {Carrying: false, SelectionEnabled: true, V4Ready: false, V6Ready: false, V4Reason: "", V6Reason: "", V4Dependencies: nil, V6Dependencies: nil, OwnedAddresses: nil}})
 
 	byPath := map[string]string{}
 	for len(byPath) < 2 {
@@ -783,28 +598,16 @@ func checkSelftestNotifications(
 		case notification := <-received:
 			byPath[notification.xpath] = notification.payload
 		case <-time.After(selftestNotifTimeout):
-			return failStep(
-				log,
-				"await notifications",
-				fmt.Errorf("received %v, want health-transition and tier-change", byPath),
-			)
+			return failStep(log, "await notifications",
+				fmt.Errorf("received %v, want health-transition and tier-change", byPath))
 		}
 	}
-
-	if err := checkSelftestHealthNotification(
-		log,
-		byPath["/goodkind-mwan-steering:health-transition"],
-	); err != nil {
+	if err := checkSelftestHealthNotification(log, byPath["/goodkind-mwan-steering:health-transition"]); err != nil {
 		return failStep(log, "health-transition notification", err)
 	}
-
-	if err := checkSelftestTierNotification(
-		log,
-		byPath["/goodkind-mwan-steering:tier-change"],
-	); err != nil {
+	if err := checkSelftestTierNotification(log, byPath["/goodkind-mwan-steering:tier-change"]); err != nil {
 		return failStep(log, "tier-change notification", err)
 	}
-
 	return nil
 }
 
@@ -812,29 +615,20 @@ func checkSelftestHealthNotification(log *slog.Logger, payload string) error {
 	if payload == "" {
 		return errors.New("not received")
 	}
-
 	root, err := unmarshalObject(log, json.RawMessage(payload), "health-transition payload")
 	if err != nil {
 		return err
 	}
-
-	body, err := unmarshalObject(
-		log,
-		root["goodkind-mwan-steering:health-transition"],
-		"health-transition body",
-	)
+	body, err := unmarshalObject(log, root["goodkind-mwan-steering:health-transition"], "health-transition body")
 	if err != nil {
 		return err
 	}
-
 	if err := expectLeaf(body, "interface", `"enexample0"`, payload); err != nil {
 		return err
 	}
-
 	if err := expectLeaf(body, "health", `"unhealthy"`, payload); err != nil {
 		return err
 	}
-
 	return expectLeaf(body, "previous-health", `"healthy"`, payload)
 }
 
@@ -842,25 +636,17 @@ func checkSelftestTierNotification(log *slog.Logger, payload string) error {
 	if payload == "" {
 		return errors.New("not received")
 	}
-
 	root, err := unmarshalObject(log, json.RawMessage(payload), "tier-change payload")
 	if err != nil {
 		return err
 	}
-
-	body, err := unmarshalObject(
-		log,
-		root["goodkind-mwan-steering:tier-change"],
-		"tier-change body",
-	)
+	body, err := unmarshalObject(log, root["goodkind-mwan-steering:tier-change"], "tier-change body")
 	if err != nil {
 		return err
 	}
-
 	if err := expectLeaf(body, "active-tier", "1", payload); err != nil {
 		return err
 	}
-
 	return expectLeaf(body, "previous-tier", "0", payload)
 }
 
@@ -873,7 +659,6 @@ func removeSelftestSHM(log *slog.Logger, prefix string) {
 		log.Warn("selftest shared memory listing failed", "prefix", prefix, "err", err)
 		return
 	}
-
 	for _, segment := range segments {
 		if err := os.Remove(segment); err != nil {
 			log.Warn("selftest shared memory removal failed", "segment", segment, "err", err)
@@ -883,16 +668,11 @@ func removeSelftestSHM(log *slog.Logger, prefix string) {
 
 // unmarshalObject decodes one JSON object level, so a check reaches into
 // the tree without committing to its full shape.
-func unmarshalObject(
-	log *slog.Logger,
-	raw json.RawMessage,
-	what string,
-) (map[string]json.RawMessage, error) {
+func unmarshalObject(log *slog.Logger, raw json.RawMessage, what string) (map[string]json.RawMessage, error) {
 	object := map[string]json.RawMessage{}
 	if err := json.Unmarshal(raw, &object); err != nil {
 		return nil, failStep(log, "decode "+what, err)
 	}
-
 	return object, nil
 }
 
@@ -901,7 +681,6 @@ func unmarshalArray(log *slog.Logger, raw json.RawMessage, what string) ([]json.
 	if err := json.Unmarshal(raw, &array); err != nil {
 		return nil, failStep(log, "decode "+what, err)
 	}
-
 	return array, nil
 }
 
@@ -911,11 +690,9 @@ func expectLeaf(object map[string]json.RawMessage, name string, want string, whe
 	if !present {
 		return fmt.Errorf("%s: %s is absent", where, name)
 	}
-
 	if string(got) != want {
 		return fmt.Errorf("%s: %s = %s, want %s", where, name, got, want)
 	}
-
 	return nil
 }
 
@@ -923,36 +700,26 @@ func expectLeaf(object map[string]json.RawMessage, name string, want string, whe
 // datastore and checks that the configuration and the live state arrive
 // together.
 func checkSelftestTree(ctx context.Context, log *slog.Logger, reader yangpub.Publisher) error {
-	interfacesJSON, found, err := reader.ExportJSON(
-		ctx,
-		yangpub.DatastoreOperational,
-		"/ietf-interfaces:*",
-	)
+	interfacesJSON, found, err := reader.ExportJSON(ctx, yangpub.DatastoreOperational, "/ietf-interfaces:*")
 	if err != nil {
 		return failStep(log, "operational interfaces read", err)
 	}
-
 	if !found {
 		return errors.New("operational interfaces read: nothing served")
 	}
-
 	if err := checkSelftestInterfaces(log, json.RawMessage(interfacesJSON)); err != nil {
 		return failStep(log, "interfaces tree: "+interfacesJSON, err)
 	}
-
 	natJSON, found, err := reader.ExportJSON(ctx, yangpub.DatastoreOperational, "/ietf-nat:*")
 	if err != nil {
 		return failStep(log, "operational nat read", err)
 	}
-
 	if !found {
 		return errors.New("operational nat read: nothing served")
 	}
-
 	if err := checkSelftestNAT(log, json.RawMessage(natJSON)); err != nil {
 		return failStep(log, "nat tree: "+natJSON, err)
 	}
-
 	return nil
 }
 
@@ -961,102 +728,70 @@ func checkSelftestInterfaces(log *slog.Logger, tree json.RawMessage) error {
 	if err != nil {
 		return err
 	}
-
-	interfaces, err := unmarshalObject(
-		log,
-		root["ietf-interfaces:interfaces"],
-		"interfaces container",
-	)
+	interfaces, err := unmarshalObject(log, root["ietf-interfaces:interfaces"], "interfaces container")
 	if err != nil {
 		return err
 	}
-
 	entries, err := unmarshalArray(log, interfaces["interface"], "interface list")
 	if err != nil {
 		return err
 	}
-
 	var member map[string]json.RawMessage
-
 	for _, entry := range entries {
 		decoded, err := unmarshalObject(log, entry, "interface entry")
 		if err != nil {
 			return err
 		}
-
 		if string(decoded["name"]) == `"enexample0"` {
 			member = decoded
 		}
 	}
-
 	if member == nil {
 		return errors.New("interface enexample0 is absent")
 	}
-
-	steering, err := unmarshalObject(
-		log,
-		member["goodkind-mwan-steering:steering"],
-		"steering container",
-	)
+	steering, err := unmarshalObject(log, member["goodkind-mwan-steering:steering"], "steering container")
 	if err != nil {
 		return err
 	}
-
 	if err := expectLeaf(steering, "tier", "0", "configuration"); err != nil {
 		return err
 	}
-
 	if err := expectLeaf(steering, "probe-policy", `"example"`, "configuration"); err != nil {
 		return err
 	}
-
 	state, err := unmarshalObject(log, steering["state"], "steering state")
 	if err != nil {
 		return err
 	}
-
 	if err := expectLeaf(state, "health", `"healthy"`, "live state"); err != nil {
 		return err
 	}
-
 	if err := expectLeaf(state, "carrying", "true", "live state"); err != nil {
 		return err
 	}
-
 	if err := checkSelftestTranslation(log, member); err != nil {
 		return err
 	}
-
 	if err := checkSelftestOwnedAddresses(log, member); err != nil {
 		return err
 	}
-
-	group, err := unmarshalObject(
-		log,
-		interfaces["goodkind-mwan-steering:steering-group"],
-		"steering group",
-	)
+	group, err := unmarshalObject(log, interfaces["goodkind-mwan-steering:steering-group"], "steering group")
 	if err != nil {
 		return err
 	}
-
 	groupState, err := unmarshalObject(log, group["state"], "steering group state")
 	if err != nil {
 		return err
 	}
-
 	if err := expectLeaf(groupState, "active-tier", "0", "live state"); err != nil {
 		return err
 	}
-
 	if _, present := groupState["intended-ruleset"]; !present {
 		return errors.New("live state: intended-ruleset is absent")
 	}
-
 	if err := checkSelftestRejectedProviders(log, groupState); err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -1068,32 +803,19 @@ func checkSelftestRejectedProviders(
 	if err != nil {
 		return err
 	}
-
 	if len(entries) != 1 {
-		return fmt.Errorf(
-			"live state: rejected-provider = %s, want one entry",
-			groupState["rejected-provider"],
-		)
+		return fmt.Errorf("live state: rejected-provider = %s, want one entry", groupState["rejected-provider"])
 	}
-
 	rejected, err := unmarshalObject(log, entries[0], "rejected provider entry")
 	if err != nil {
 		return err
 	}
-
 	if err := expectLeaf(rejected, "interface", `"enrejected0"`, "rejected provider"); err != nil {
 		return err
 	}
-
-	if err := expectLeaf(
-		rejected,
-		"provider",
-		`"rejected-example"`,
-		"rejected provider",
-	); err != nil {
+	if err := expectLeaf(rejected, "provider", `"rejected-example"`, "rejected provider"); err != nil {
 		return err
 	}
-
 	return expectLeaf(rejected, "reason", `"ipv6/dhcp is required"`, "rejected provider")
 }
 
@@ -1103,61 +825,39 @@ func checkSelftestOwnedAddresses(log *slog.Logger, member map[string]json.RawMes
 	if err != nil {
 		return err
 	}
-
 	if err := expectLeaf(wan, "name", `"example"`, "live state"); err != nil {
 		return err
 	}
-
 	ipv4, err := unmarshalObject(log, member["ietf-ip:ipv4"], "IPv4 container")
 	if err != nil {
 		return err
 	}
-
-	translation, err := unmarshalObject(
-		log,
-		ipv4["goodkind-mwan-steering:translation"],
-		"IPv4 translation",
-	)
+	translation, err := unmarshalObject(log, ipv4["goodkind-mwan-steering:translation"], "IPv4 translation")
 	if err != nil {
 		return err
 	}
-
 	mappings, err := unmarshalArray(log, translation["static-mapping"], "static-mapping list")
 	if err != nil {
 		return err
 	}
-
 	if len(mappings) != 1 {
-		return fmt.Errorf(
-			"configuration: static-mapping = %s, want one entry",
-			translation["static-mapping"],
-		)
+		return fmt.Errorf("configuration: static-mapping = %s, want one entry", translation["static-mapping"])
 	}
-
 	mapping, err := unmarshalObject(log, mappings[0], "static-mapping entry")
 	if err != nil {
 		return err
 	}
-
-	if err := expectLeaf(
-		mapping,
-		"external",
-		`"`+selftestOwnedAddress+`"`,
-		"configuration",
-	); err != nil {
+	if err := expectLeaf(mapping, "external", `"`+selftestOwnedAddress+`"`, "configuration"); err != nil {
 		return err
 	}
-
 	owned, err := unmarshalArray(log, wan["owned-address"], "owned-address leaf-list")
 	if err != nil {
 		return err
 	}
-
 	want := `"` + selftestOwnedAddress + `"`
 	if len(owned) != 1 || string(owned[0]) != want {
 		return fmt.Errorf("live state: owned-address = %s, want [%s]", wan["owned-address"], want)
 	}
-
 	return nil
 }
 
@@ -1166,83 +866,63 @@ func checkSelftestOwnedAddresses(log *slog.Logger, member map[string]json.RawMes
 // watchdog policy with its probe targets, the out-of-band policy, and
 // the tap.
 func checkSelftestDaemon(ctx context.Context, log *slog.Logger, reader yangpub.Publisher) error {
-	daemonJSON, found, err := reader.ExportJSON(
-		ctx,
-		yangpub.DatastoreOperational,
-		"/goodkind-mwan-steering:*",
-	)
+	daemonJSON, found, err := reader.ExportJSON(ctx, yangpub.DatastoreOperational, "/goodkind-mwan-steering:*")
 	if err != nil {
 		return failStep(log, "operational daemon read", err)
 	}
-
 	if !found {
 		return errors.New("operational daemon read: nothing served")
 	}
-
 	root, err := unmarshalObject(log, json.RawMessage(daemonJSON), "daemon tree")
 	if err != nil {
 		return failStep(log, "daemon tree: "+daemonJSON, err)
 	}
-
 	daemon, err := unmarshalObject(log, root["goodkind-mwan-steering:daemon"], "daemon container")
 	if err != nil {
 		return failStep(log, "daemon tree: "+daemonJSON, err)
 	}
-
 	watchdog, err := unmarshalObject(log, daemon["watchdog"], "watchdog container")
 	if err != nil {
 		return err
 	}
-
 	if err := expectLeaf(watchdog, "deploy-window-minutes", "30", "watchdog"); err != nil {
 		return err
 	}
-
 	if err := expectLeaf(watchdog, "max-rollback-attempts", "3", "watchdog"); err != nil {
 		return err
 	}
-
 	targets, err := unmarshalObject(log, watchdog["probe-targets"], "probe targets")
 	if err != nil {
 		return err
 	}
-
 	pings, err := unmarshalArray(log, targets["ping"], "ping targets")
 	if err != nil {
 		return err
 	}
-
 	if len(pings) != 2 {
 		return fmt.Errorf("watchdog ping targets = %d, want 2", len(pings))
 	}
-
 	oob, err := unmarshalObject(log, daemon["oob"], "oob container")
 	if err != nil {
 		return err
 	}
-
 	oobV6, err := unmarshalObject(log, oob["ipv6"], "oob ipv6")
 	if err != nil {
 		return err
 	}
-
 	if err := expectLeaf(oobV6, "interface", `"enoob0"`, "oob"); err != nil {
 		return err
 	}
-
 	if err := expectLeaf(oobV6, "table-id", "500", "oob"); err != nil {
 		return err
 	}
-
 	if _, present := oob["ipv4"]; present {
 		return errors.New("oob ipv4 published without a config carrying it")
 	}
-
 	tap, err := unmarshalObject(log, daemon["tap"], "tap container")
 	if err != nil {
 		return err
 	}
-
 	return expectLeaf(tap, "unit", `"cloudflared-oob.service"`, "tap")
 }
 
@@ -1253,51 +933,41 @@ func checkSelftestInterfacesBare(log *slog.Logger, tree json.RawMessage) error {
 	if err != nil {
 		return err
 	}
-
 	raw, present := root["ietf-interfaces:interfaces"]
 	if !present {
 		return nil
 	}
-
 	interfaces, err := unmarshalObject(log, raw, "interfaces container")
 	if err != nil {
 		return err
 	}
-
 	rawList, present := interfaces["interface"]
 	if !present {
 		return nil
 	}
-
 	entries, err := unmarshalArray(log, rawList, "interface list")
 	if err != nil {
 		return err
 	}
-
 	for _, entry := range entries {
 		decoded, err := unmarshalObject(log, entry, "interface entry")
 		if err != nil {
 			return err
 		}
-
 		rawSteering, present := decoded["goodkind-mwan-steering:steering"]
 		if !present {
 			continue
 		}
-
 		steering, err := unmarshalObject(log, rawSteering, "steering container")
 		if err != nil {
 			return err
 		}
-
 		if _, present := steering["tier"]; present {
 			return errors.New("configuration still enabled after close")
 		}
-
 		if _, present := steering["state"]; present {
 			return errors.New("live state still served after close")
 		}
 	}
-
 	return nil
 }

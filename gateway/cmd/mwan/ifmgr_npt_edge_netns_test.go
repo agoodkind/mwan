@@ -39,9 +39,7 @@ func assertRuntimeTranslationSettled(t *testing.T, daemon *runtimeDaemon) {
 
 func TestLegacyNPTPreparationUpgrade(t *testing.T) {
 	if os.Getenv("MWAN_NPT_LEGACY_BINARY") == "" || os.Getenv("MWAN_NPT_LEGACY_SHA256") == "" {
-		t.Fatal(
-			"original-release upgrade requires MWAN_NPT_LEGACY_BINARY and MWAN_NPT_LEGACY_SHA256",
-		)
+		t.Fatal("original-release upgrade requires MWAN_NPT_LEGACY_BINARY and MWAN_NPT_LEGACY_SHA256")
 	}
 	if os.Getenv("MWAN_NPT_UPGRADE_CHILD") == "1" {
 		runLegacyNPTPreparationUpgrade(t)
@@ -49,9 +47,7 @@ func TestLegacyNPTPreparationUpgrade(t *testing.T) {
 	}
 	binary := protocolTestBinary(t)
 	child := exec.Command(os.Args[0], "-test.run=^TestLegacyNPTPreparationUpgrade$")
-	child.SysProcAttr = &syscall.SysProcAttr{
-		Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS),
-	}
+	child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: uintptr(unix.CLONE_NEWNET | unix.CLONE_NEWNS)}
 	child.Env = append(os.Environ(), "MWAN_NPT_UPGRADE_CHILD=1", mappedRuntimeBinaryEnv+"="+binary)
 	if output, err := child.CombinedOutput(); err != nil {
 		t.Fatalf("isolated original-release upgrade: %v: %s", err, output)
@@ -85,35 +81,11 @@ func runLegacyNPTPreparationUpgrade(t *testing.T) {
 	bindStartupDirectory(t, networkdDir, "/etc/systemd/network")
 	bindStartupDirectory(t, schemaDir, "/usr/local/share/wanconfig/yang")
 	setRuntimeLoopback(t)
-	management := newRuntimePeer(
-		t,
-		gateway,
-		"enmgmt0",
-		"mgmt-host",
-		[]string{"203.0.113.1/24"},
-		[]string{"203.0.113.2/24"},
-		"",
-	)
+	management := newRuntimePeer(t, gateway, "enmgmt0", "mgmt-host", []string{"203.0.113.1/24"}, []string{"203.0.113.2/24"}, "")
 	defer management.namespace.Close()
-	lan := newRuntimePeer(
-		t,
-		gateway,
-		"enmwanbr0",
-		"lan-host",
-		[]string{"192.0.2.1/29", "2001:db8:b01:fe::3/64", "2001:db8:b01:1::3/64"},
-		[]string{"192.0.2.2/29", "2001:db8:b01:fe::2/64", "2001:db8:b01:1::2/64"},
-		"",
-	)
+	lan := newRuntimePeer(t, gateway, "enmwanbr0", "lan-host", []string{"192.0.2.1/29", "2001:db8:b01:fe::3/64", "2001:db8:b01:1::3/64"}, []string{"192.0.2.2/29", "2001:db8:b01:fe::2/64", "2001:db8:b01:1::2/64"}, "")
 	defer lan.namespace.Close()
-	provider := newRuntimePeer(
-		t,
-		gateway,
-		"enwebpass0",
-		"legacy-peer",
-		[]string{"10.20.0.2/24", "fd20::1/64"},
-		[]string{"10.20.0.1/24", "fd20::2/64"},
-		legacyRuntimeMAC,
-	)
+	provider := newRuntimePeer(t, gateway, "enwebpass0", "legacy-peer", []string{"10.20.0.2/24", "fd20::1/64"}, []string{"10.20.0.1/24", "fd20::2/64"}, legacyRuntimeMAC)
 	defer provider.namespace.Close()
 	setRuntimeNamespace(t, lan.namespace)
 	addMappedRuntimeRoute(t, "10.20.0.0/24", "192.0.2.1", "lan-host")
@@ -130,46 +102,24 @@ func runLegacyNPTPreparationUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.RouteAdd(&netlink.Route{
-		LinkIndex: internalLink.Attrs().Index,
-		Dst:       internalRoute,
-		Table:     200,
-	}); err != nil {
+	if err := netlink.RouteAdd(&netlink.Route{LinkIndex: internalLink.Attrs().Index, Dst: internalRoute, Table: 200}); err != nil {
 		t.Fatal(err)
 	}
 	internalV4Route, err := netlink.ParseIPNet("192.0.2.0/29")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := netlink.RouteAdd(&netlink.Route{
-		LinkIndex: internalLink.Attrs().Index,
-		Dst:       internalV4Route,
-		Table:     200,
-	}); err != nil {
+	if err := netlink.RouteAdd(&netlink.Route{LinkIndex: internalLink.Attrs().Index, Dst: internalV4Route, Table: 200}); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile("/proc/sys/net/ipv4/ip_forward", []byte("1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(
-		"/proc/sys/net/ipv6/conf/all/forwarding",
-		[]byte("1\n"),
-		0o600,
-	); err != nil {
+	if err := os.WriteFile("/proc/sys/net/ipv6/conf/all/forwarding", []byte("1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	network := `{"ietf-interfaces:interfaces":{"interface":[{"name":"enwebpass0","type":"iana-if-type:ethernetCsmacd","goodkind-mwan-steering:connection-id":"webpass","goodkind-mwan-steering:owner":"networkd","goodkind-mwan-steering:link-files":"hand-authored","goodkind-mwan-steering:wan":{"name":"webpass","table-id":200,"fw-mark":2,"fw-mark-prio":200,"from-prio":56,"health":{"enabled":false}},"goodkind-mwan-steering:steering":{"tier":1,"weight":1},"ietf-ip:ipv6":{"goodkind-mwan-steering:translation":{"mode":"ietf-nat:nptv6","nptv6":{"internal-prefix":"2001:db8:b01::/60","external-source":"configured","external-prefix":"2001:db8:beef:600::/60"}}}}]}}`
-	writeStaticRuntimeNetwork(
-		t,
-		networkDir,
-		"10.39.7.1",
-		"fd39:7::1",
-		"10.39.7.2",
-		"fd39:7::2",
-		398,
-		24,
-		true,
-	)
+	writeStaticRuntimeNetwork(t, networkDir, "10.39.7.1", "fd39:7::1", "10.39.7.2", "fd39:7::2", 398, 24, true)
 	base, err := os.ReadFile(filepath.Join(networkDir, "network.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -185,10 +135,7 @@ func runLegacyNPTPreparationUpgrade(t *testing.T) {
 	if err := json.Unmarshal(document["ietf-interfaces:interfaces"], &interfaces); err != nil {
 		t.Fatal(err)
 	}
-	if err := json.Unmarshal(
-		providerDocument["ietf-interfaces:interfaces"],
-		&providerInterfaces,
-	); err != nil {
+	if err := json.Unmarshal(providerDocument["ietf-interfaces:interfaces"], &providerInterfaces); err != nil {
 		t.Fatal(err)
 	}
 	var entries, providers []map[string]json.RawMessage
@@ -208,18 +155,14 @@ func runLegacyNPTPreparationUpgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 	var steering, firewall map[string]json.RawMessage
-	if err := json.Unmarshal(
-		interfaces["goodkind-mwan-steering:steering-group"],
-		&steering,
-	); err != nil {
+	if err := json.Unmarshal(interfaces["goodkind-mwan-steering:steering-group"], &steering); err != nil {
 		t.Fatal(err)
 	}
 	if err := json.Unmarshal(steering["firewall"], &firewall); err != nil {
 		t.Fatal(err)
 	}
 	for key := range firewall {
-		if strings.HasPrefix(key, "pinned-") && key != "pinned-set-v4-name" &&
-			key != "pinned-set-v6-name" {
+		if strings.HasPrefix(key, "pinned-") && key != "pinned-set-v4-name" && key != "pinned-set-v6-name" {
 			delete(firewall, key)
 		}
 	}
@@ -243,31 +186,17 @@ func runLegacyNPTPreparationUpgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 	configPath := filepath.Join(root, "config.toml")
-	config := fmt.Sprintf(
-		"[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.addresses]\nstate_file = %q\n",
-		filepath.Join(root, "owned-addresses.json"),
-	)
+	config := fmt.Sprintf("[ifmgr]\nrole = \"wan\"\nreconcile_interval = \"1h\"\n[ifmgr.iface.enmwanbr0]\n[ifmgr.modules.addresses]\nstate_file = %q\n", filepath.Join(root, "owned-addresses.json"))
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(
-		filepath.Join(root, "owned-addresses.json"),
-		[]byte("{}"),
-		0o600,
-	); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "owned-addresses.json"), []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	checkRuntimeLegacyFirstStart(t, configPath, root, gateway, provider.namespace, lan.namespace)
 }
 
-func checkRuntimeLegacyFirstStart(
-	t *testing.T,
-	configPath string,
-	root string,
-	gateway netns.NsHandle,
-	upstream netns.NsHandle,
-	downstream netns.NsHandle,
-) {
+func checkRuntimeLegacyFirstStart(t *testing.T, configPath, root string, gateway, upstream, downstream netns.NsHandle) {
 	t.Helper()
 	legacyBinary := os.Getenv("MWAN_NPT_LEGACY_BINARY")
 	legacySHA256 := os.Getenv("MWAN_NPT_LEGACY_SHA256")
@@ -283,15 +212,7 @@ func checkRuntimeLegacyFirstStart(
 	addMappedRuntimeRoute(t, "2001:db8:beef:600::/60", "fd20::1", "legacy-peer")
 	setRuntimeNamespace(t, gateway)
 	configureLegacyUpgradeLink(t, filepath.Join(root, "mwan", "network.json"))
-	setReleaseConnectionField(
-		t,
-		filepath.Join(root, "mwan"),
-		"webpass",
-		"ietf-ip:ipv4",
-		json.RawMessage(
-			`{"address":[{"ip":"10.20.0.2","prefix-length":24}],"goodkind-mwan-steering:gateway":"10.20.0.1","goodkind-mwan-steering:dhcp":false,"goodkind-mwan-steering:translation":{"mode":"ietf-nat:napt44","static-mapping":[{"external":"10.20.0.3","internal":"192.0.2.2"}]}}`,
-		),
-	)
+	setReleaseConnectionField(t, filepath.Join(root, "mwan"), "webpass", "ietf-ip:ipv4", json.RawMessage(`{"address":[{"ip":"10.20.0.2","prefix-length":24}],"goodkind-mwan-steering:gateway":"10.20.0.1","goodkind-mwan-steering:dhcp":false,"goodkind-mwan-steering:translation":{"mode":"ietf-nat:napt44","static-mapping":[{"external":"10.20.0.3","internal":"192.0.2.2"}]}}`))
 	config, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatal(err)
@@ -310,105 +231,32 @@ func checkRuntimeLegacyFirstStart(
 		t.Fatal(err)
 	}
 	addEgressAddress(t, unrelatedLink, "10.20.0.99/32")
-	assertMappedRuntimeReply(
-		t,
-		old,
-		gateway,
-		upstream,
-		downstream,
-		"udp4",
-		"10.20.0.3:17608",
-		"192.0.2.2:17608",
-	)
+	assertMappedRuntimeReply(t, old, gateway, upstream, downstream, "udp4", "10.20.0.3:17608", "192.0.2.2:17608")
 	assertRuntimeDaemonRunning(t, old)
 	assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"))
-	assertMappedRuntimeReply(
-		t,
-		old,
-		gateway,
-		upstream,
-		downstream,
-		"udp6",
-		"[2001:db8:beef:601:4611::2]:17600",
-		"[2001:db8:b01:1::2]:17600",
-	)
-	assertMappedRuntimeReply(
-		t,
-		old,
-		gateway,
-		upstream,
-		downstream,
-		"udp6",
-		"[2001:db8:beef:600::1]:17604",
-		"[2001:db8:b01:fe::2]:17604",
-	)
+	assertMappedRuntimeReply(t, old, gateway, upstream, downstream, "udp6", "[2001:db8:beef:601:4611::2]:17600", "[2001:db8:b01:1::2]:17600")
+	assertMappedRuntimeReply(t, old, gateway, upstream, downstream, "udp6", "[2001:db8:beef:600::1]:17604", "[2001:db8:b01:fe::2]:17604")
 	if err := os.WriteFile(configPath, config, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	manifest := filepath.Join(root, "legacy-npt-transition.json")
-	capture := exec.Command(
-		os.Getenv(mappedRuntimeBinaryEnv),
-		"ifmgr",
-		"--role",
-		"wan",
-		"--capture-legacy-npt",
-		manifest,
-		"--producer-pid",
-		fmt.Sprint(old.command.Process.Pid),
-		"--producer-sha256",
-		legacySHA256,
-	)
+	capture := exec.Command(os.Getenv(mappedRuntimeBinaryEnv), "ifmgr", "--role", "wan", "--capture-legacy-npt", manifest, "--producer-pid", fmt.Sprint(old.command.Process.Pid), "--producer-sha256", legacySHA256)
 	capture.Env = append(os.Environ(), "MWAN_CONFIG="+configPath)
 	removeExtra := addExtraLegacyUpgradeRule(t)
-	if output, err := capture.CombinedOutput(); err == nil ||
-		!strings.Contains(string(output), "rules differ from configured producer intent") {
+	if output, err := capture.CombinedOutput(); err == nil || !strings.Contains(string(output), "rules differ from configured producer intent") {
 		t.Fatalf("capture must reject an extra recognized rule: %v: %s", err, output)
 	}
 	assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"))
 	removeExtra()
-	assertMappedRuntimeReply(
-		t,
-		old,
-		gateway,
-		upstream,
-		downstream,
-		"udp6",
-		"[2001:db8:beef:601:4611::2]:17607",
-		"[2001:db8:b01:1::2]:17607",
-	)
-	capture = exec.Command(
-		os.Getenv(mappedRuntimeBinaryEnv),
-		"ifmgr",
-		"--role",
-		"wan",
-		"--capture-legacy-npt",
-		manifest,
-		"--producer-pid",
-		fmt.Sprint(old.command.Process.Pid),
-		"--producer-sha256",
-		legacySHA256,
-	)
+	assertMappedRuntimeReply(t, old, gateway, upstream, downstream, "udp6", "[2001:db8:beef:601:4611::2]:17607", "[2001:db8:b01:1::2]:17607")
+	capture = exec.Command(os.Getenv(mappedRuntimeBinaryEnv), "ifmgr", "--role", "wan", "--capture-legacy-npt", manifest, "--producer-pid", fmt.Sprint(old.command.Process.Pid), "--producer-sha256", legacySHA256)
 	capture.Env = append(os.Environ(), "MWAN_CONFIG="+configPath)
 	if output, err := capture.CombinedOutput(); err != nil {
 		t.Fatalf("capture original producer: %v: %s", err, output)
 	}
 	assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"))
-	assertMappedRuntimeReply(
-		t,
-		old,
-		gateway,
-		upstream,
-		downstream,
-		"udp6",
-		"[2001:db8:beef:601:4611::2]:17601",
-		"[2001:db8:b01:1::2]:17601",
-	)
-	assertLegacyAdoptionCommand(
-		t,
-		configPath,
-		manifest,
-		"is still present or cannot be verified absent",
-	)
+	assertMappedRuntimeReply(t, old, gateway, upstream, downstream, "udp6", "[2001:db8:beef:601:4611::2]:17601", "[2001:db8:b01:1::2]:17601")
+	assertLegacyAdoptionCommand(t, configPath, manifest, "is still present or cannot be verified absent")
 	assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"))
 	stopRuntimeDaemon(t, old)
 	manifestBytes, err := os.ReadFile(manifest)
@@ -430,9 +278,7 @@ func checkRuntimeLegacyFirstStart(
 	if len(mapped) != 1 || mapped[0].Record.Prefix != "10.20.0.3/32" {
 		t.Fatalf("capture selected primary or unrelated addresses: %s", manifestBytes)
 	}
-	captured["mapped_addresses"] = json.RawMessage(
-		strings.ReplaceAll(string(captured["mapped_addresses"]), "10.20.0.3/32", "10.20.0.99/32"),
-	)
+	captured["mapped_addresses"] = json.RawMessage(strings.ReplaceAll(string(captured["mapped_addresses"]), "10.20.0.3/32", "10.20.0.99/32"))
 	unrelated, err := json.Marshal(captured)
 	if err != nil {
 		t.Fatal(err)
@@ -440,12 +286,7 @@ func checkRuntimeLegacyFirstStart(
 	if err := os.WriteFile(manifest, unrelated, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	assertLegacyAdoptionCommand(
-		t,
-		configPath,
-		manifest,
-		"legacy mapped address intent, link or kernel address changed",
-	)
+	assertLegacyAdoptionCommand(t, configPath, manifest, "legacy mapped address intent, link or kernel address changed")
 	assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"))
 	if err := json.Unmarshal(manifestBytes, &captured); err != nil {
 		t.Fatal(err)
@@ -463,11 +304,7 @@ func checkRuntimeLegacyFirstStart(
 	if err := os.WriteFile(manifest, manifestBytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	staleConfig := strings.ReplaceAll(
-		string(config),
-		"owned-addresses.json",
-		"another-journal.json",
-	)
+	staleConfig := strings.ReplaceAll(string(config), "owned-addresses.json", "another-journal.json")
 	if err := os.WriteFile(configPath, []byte(staleConfig), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -495,102 +332,24 @@ func checkRuntimeLegacyFirstStart(
 	}
 	assertLegacyAdoptionCommand(t, configPath, manifest, "")
 	assertLegacyAdoptionCommand(t, configPath, manifest, "")
-	assertRuntimeNPTEdges(
-		t,
-		filepath.Join(root, "owned-addresses.json"),
-		"2001:db8:beef:600::1/128",
-	)
-	current := startRuntimeDaemon(
-		t,
-		os.Getenv(mappedRuntimeBinaryEnv),
-		configPath,
-		root,
-		"mapped-first-journal-start",
-	)
+	assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"), "2001:db8:beef:600::1/128")
+	current := startRuntimeDaemon(t, os.Getenv(mappedRuntimeBinaryEnv), configPath, root, "mapped-first-journal-start")
 	defer killOwnedRuntimeDaemon(t, current)
 	waitMappedRuntimeRule(t, current, "ip6", "nat", "2001:db8:beef:600::1", 10*time.Second)
 	waitStaticRuntimeAddress(t, current, "enwebpass0", "2001:db8:beef:600::1/128", true)
 	waitStaticRuntimeAddress(t, current, "enwebpass0", "10.20.0.3/32", true)
-	assertMappedRuntimeReply(
-		t,
-		current,
-		gateway,
-		upstream,
-		downstream,
-		"udp4",
-		"10.20.0.3:17609",
-		"192.0.2.2:17609",
-	)
-	assertRuntimeNPTEdges(
-		t,
-		filepath.Join(root, "owned-addresses.json"),
-		"2001:db8:beef:600::1/128",
-	)
-	assertMappedRuntimeReply(
-		t,
-		current,
-		gateway,
-		upstream,
-		downstream,
-		"udp6",
-		"[2001:db8:beef:601:4611::2]:17602",
-		"[2001:db8:b01:1::2]:17602",
-	)
-	assertMappedRuntimeReply(
-		t,
-		current,
-		gateway,
-		upstream,
-		downstream,
-		"udp6",
-		"[2001:db8:beef:600::1]:17605",
-		"[2001:db8:b01:fe::2]:17605",
-	)
+	assertMappedRuntimeReply(t, current, gateway, upstream, downstream, "udp4", "10.20.0.3:17609", "192.0.2.2:17609")
+	assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"), "2001:db8:beef:600::1/128")
+	assertMappedRuntimeReply(t, current, gateway, upstream, downstream, "udp6", "[2001:db8:beef:601:4611::2]:17602", "[2001:db8:b01:1::2]:17602")
+	assertMappedRuntimeReply(t, current, gateway, upstream, downstream, "udp6", "[2001:db8:beef:600::1]:17605", "[2001:db8:b01:fe::2]:17605")
 	killOwnedRuntimeDaemon(t, current)
-	restarted := startRuntimeDaemon(
-		t,
-		os.Getenv(mappedRuntimeBinaryEnv),
-		configPath,
-		root,
-		"mapped-upgrade-restart",
-	)
+	restarted := startRuntimeDaemon(t, os.Getenv(mappedRuntimeBinaryEnv), configPath, root, "mapped-upgrade-restart")
 	defer killOwnedRuntimeDaemon(t, restarted)
 	waitMappedRuntimeRule(t, restarted, "ip6", "nat", "2001:db8:beef:600::1", 10*time.Second)
-	assertRuntimeNPTEdges(
-		t,
-		filepath.Join(root, "owned-addresses.json"),
-		"2001:db8:beef:600::1/128",
-	)
-	assertMappedRuntimeReply(
-		t,
-		restarted,
-		gateway,
-		upstream,
-		downstream,
-		"udp6",
-		"[2001:db8:beef:601:4611::2]:17603",
-		"[2001:db8:b01:1::2]:17603",
-	)
-	assertMappedRuntimeReply(
-		t,
-		restarted,
-		gateway,
-		upstream,
-		downstream,
-		"udp6",
-		"[2001:db8:beef:600::1]:17606",
-		"[2001:db8:b01:fe::2]:17606",
-	)
-	assertMappedRuntimeReply(
-		t,
-		restarted,
-		gateway,
-		upstream,
-		downstream,
-		"udp4",
-		"10.20.0.3:17610",
-		"192.0.2.2:17610",
-	)
+	assertRuntimeNPTEdges(t, filepath.Join(root, "owned-addresses.json"), "2001:db8:beef:600::1/128")
+	assertMappedRuntimeReply(t, restarted, gateway, upstream, downstream, "udp6", "[2001:db8:beef:601:4611::2]:17603", "[2001:db8:b01:1::2]:17603")
+	assertMappedRuntimeReply(t, restarted, gateway, upstream, downstream, "udp6", "[2001:db8:beef:600::1]:17606", "[2001:db8:b01:fe::2]:17606")
+	assertMappedRuntimeReply(t, restarted, gateway, upstream, downstream, "udp4", "10.20.0.3:17610", "192.0.2.2:17610")
 	waitStaticRuntimeAddress(t, restarted, "enmgmt0", "203.0.113.1/24", true)
 }
 
@@ -607,12 +366,7 @@ func addExtraLegacyUpgradeRule(t *testing.T) func() {
 		t.Fatalf("read original NPT rules: %v", err)
 	}
 	marker := []byte("legacy-upgrade-extra-rule")
-	connection.AddRule(&nftables.Rule{
-		Table:    table,
-		Chain:    chain,
-		Exprs:    rules[0].Exprs,
-		UserData: marker,
-	})
+	connection.AddRule(&nftables.Rule{Table: table, Chain: chain, Exprs: rules[0].Exprs, UserData: marker})
 	if err := connection.Flush(); err != nil {
 		t.Fatal(err)
 	}
@@ -638,14 +392,7 @@ func addExtraLegacyUpgradeRule(t *testing.T) func() {
 
 func assertLegacyAdoptionCommand(t *testing.T, configPath, manifest, expectedError string) {
 	t.Helper()
-	command := exec.Command(
-		os.Getenv(mappedRuntimeBinaryEnv),
-		"ifmgr",
-		"--role",
-		"wan",
-		"--adopt-legacy-npt",
-		manifest,
-	)
+	command := exec.Command(os.Getenv(mappedRuntimeBinaryEnv), "ifmgr", "--role", "wan", "--adopt-legacy-npt", manifest)
 	command.Env = append(os.Environ(), "MWAN_CONFIG="+configPath)
 	output, err := command.CombinedOutput()
 	if expectedError == "" {
@@ -660,9 +407,7 @@ func assertLegacyAdoptionCommand(t *testing.T, configPath, manifest, expectedErr
 	if count := strings.Count(string(output), "legacy NPT transition rejected"); count != 1 {
 		t.Fatalf("adoption rejection requires one command error log, got %d: %s", count, output)
 	}
-	if strings.Contains(string(output), "legacy NPT manifest inspection failed") ||
-		strings.Contains(string(output), "legacy NPT edge inspection failed") ||
-		strings.Contains(string(output), "legacy link identity inspection failed") {
+	if strings.Contains(string(output), "legacy NPT manifest inspection failed") || strings.Contains(string(output), "legacy NPT edge inspection failed") || strings.Contains(string(output), "legacy link identity inspection failed") {
 		t.Fatalf("adoption rejection logged a helper failure: %s", output)
 	}
 }
@@ -690,9 +435,7 @@ func configureLegacyUpgradeLink(t *testing.T, path string) {
 			continue
 		}
 		entry["goodkind-mwan-steering:link-files"] = json.RawMessage(`"rendered"`)
-		entry["goodkind-mwan-steering:link"] = json.RawMessage(
-			fmt.Sprintf(`{"match":{"driver":"veth"},"hardware-address":%q}`, legacyRuntimeMAC),
-		)
+		entry["goodkind-mwan-steering:link"] = json.RawMessage(fmt.Sprintf(`{"match":{"driver":"veth"},"hardware-address":%q}`, legacyRuntimeMAC))
 		var ipv6 map[string]json.RawMessage
 		if err := json.Unmarshal(entry["ietf-ip:ipv6"], &ipv6); err != nil {
 			t.Fatal(err)
@@ -737,8 +480,7 @@ func waitRuntimeNPTEdgeReady(t *testing.T, daemon *runtimeDaemon, iface, cidr st
 			t.Fatal(err)
 		}
 		for _, address := range addresses {
-			if address.IP.String() == prefix.Addr().String() &&
-				address.Flags&(unix.IFA_F_TENTATIVE|unix.IFA_F_DADFAILED) == 0 {
+			if address.IP.String() == prefix.Addr().String() && address.Flags&(unix.IFA_F_TENTATIVE|unix.IFA_F_DADFAILED) == 0 {
 				return
 			}
 		}
@@ -779,12 +521,7 @@ func writeRuntimeLegacyNPT(t *testing.T, directory, prefix string, removeWANs bo
 			entry["goodkind-mwan-steering:owner"] = json.RawMessage(`"networkd"`)
 			entry["goodkind-mwan-steering:link-files"] = json.RawMessage(`"hand-authored"`)
 			delete(entry, "goodkind-mwan-steering:link")
-			entry["ietf-ip:ipv6"] = json.RawMessage(
-				fmt.Sprintf(
-					`{"goodkind-mwan-steering:translation":{"mode":"ietf-nat:nptv6","nptv6":{"internal-prefix":"2001:db8:b01::/60","external-source":"configured","external-prefix":%q}}}`,
-					prefix,
-				),
-			)
+			entry["ietf-ip:ipv6"] = json.RawMessage(fmt.Sprintf(`{"goodkind-mwan-steering:translation":{"mode":"ietf-nat:nptv6","nptv6":{"internal-prefix":"2001:db8:b01::/60","external-source":"configured","external-prefix":%q}}}`, prefix))
 		}
 		if removeWANs {
 			delete(entry, "ietf-ip:ipv6")
@@ -852,25 +589,7 @@ func setMappedRuntimeIncompatibleChain(t *testing.T) {
 	t.Helper()
 	for _, arguments := range [][]string{
 		{"delete", "chain", "ip6", "nat", "postrouting"},
-		{
-			"add",
-			"chain",
-			"ip6",
-			"nat",
-			"postrouting",
-			"{",
-			"type",
-			"filter",
-			"hook",
-			"postrouting",
-			"priority",
-			"100",
-			";",
-			"policy",
-			"accept",
-			";",
-			"}",
-		},
+		{"add", "chain", "ip6", "nat", "postrouting", "{", "type", "filter", "hook", "postrouting", "priority", "100", ";", "policy", "accept", ";", "}"},
 	} {
 		if output, err := exec.Command("nft", arguments...).CombinedOutput(); err != nil {
 			t.Fatalf("replace NPT postrouting chain: %v: %s", err, output)

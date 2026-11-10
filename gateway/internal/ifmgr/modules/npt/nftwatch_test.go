@@ -38,10 +38,7 @@ func TestNftEventWipesNAT(t *testing.T) {
 			name: "delete ip6 nat rule is not a wipe (self-trigger guard)",
 			event: &nftables.MonitorEvent{
 				Type: nftables.MonitorEventTypeDelRule,
-				Data: &nftables.Rule{
-					Table: natTable,
-					Chain: &nftables.Chain{Name: postroutingChain},
-				},
+				Data: &nftables.Rule{Table: natTable, Chain: &nftables.Chain{Name: postroutingChain}},
 			},
 			want: false,
 		},
@@ -51,20 +48,14 @@ func TestNftEventWipesNAT(t *testing.T) {
 			want:  false,
 		},
 		{
-			name: "delete a different ip6 table",
-			event: &nftables.MonitorEvent{
-				Type: nftables.MonitorEventTypeDelTable,
-				Data: otherV6Table,
-			},
-			want: false,
+			name:  "delete a different ip6 table",
+			event: &nftables.MonitorEvent{Type: nftables.MonitorEventTypeDelTable, Data: otherV6Table},
+			want:  false,
 		},
 		{
-			name: "delete the ip4 nat table",
-			event: &nftables.MonitorEvent{
-				Type: nftables.MonitorEventTypeDelTable,
-				Data: v4NatTable,
-			},
-			want: false,
+			name:  "delete the ip4 nat table",
+			event: &nftables.MonitorEvent{Type: nftables.MonitorEventTypeDelTable, Data: v4NatTable},
+			want:  false,
 		},
 		{
 			name:  "nil event",
@@ -72,24 +63,18 @@ func TestNftEventWipesNAT(t *testing.T) {
 			want:  false,
 		},
 		{
-			name: "delete chain with nil table",
-			event: &nftables.MonitorEvent{
-				Type: nftables.MonitorEventTypeDelChain,
-				Data: &nftables.Chain{},
-			},
-			want: false,
+			name:  "delete chain with nil table",
+			event: &nftables.MonitorEvent{Type: nftables.MonitorEventTypeDelChain, Data: &nftables.Chain{}},
+			want:  false,
 		},
 	}
 	for _, test := range tests {
-		t.Run(
-			test.name,
-			func(t *testing.T) {
-				t.Parallel()
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 
-				if got := nftEventWipesNAT(test.event); got != test.want {
-					t.Fatalf("nftEventWipesNAT = %t, want %t", got, test.want)
-				}
-			},
-		)
+			if got := nftEventWipesNAT(test.event); got != test.want {
+				t.Fatalf("nftEventWipesNAT = %t, want %t", got, test.want)
+			}
+		})
 	}
 }

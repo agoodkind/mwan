@@ -13,41 +13,13 @@ func tunnelRuntimeProbeFault(t *testing.T, run tunnelRuntimeRun, daemon *runtime
 	topology := run.topology
 	faultStarted := time.Now().Add(-time.Second)
 	setTunnelRuntimeFault(t, topology, true)
-	elapsed := waitTunnelRuntimeFamily(
-		t,
-		daemon,
-		run.read,
-		tunnelRuntimeDevice,
-		"ipv6",
-		"not-ready",
-		"not-ready",
-		tunnelRuntimeFailureWindow,
-	)
-	t.Logf(
-		"tunnel IPv6 readiness reported not-ready %s after the remote endpoint dropped protocol 41",
-		elapsed,
-	)
-	waitTunnelRuntimeReason(
-		t,
-		daemon,
-		run.read,
-		faultStarted,
-		"probe failed",
-		tunnelRuntimeFailureWindow,
-	)
+	elapsed := waitTunnelRuntimeFamily(t, daemon, run.read, tunnelRuntimeDevice, "ipv6", "not-ready", "not-ready", tunnelRuntimeFailureWindow)
+	t.Logf("tunnel IPv6 readiness reported not-ready %s after the remote endpoint dropped protocol 41", elapsed)
+	waitTunnelRuntimeReason(t, daemon, run.read, faultStarted, "probe failed", tunnelRuntimeFailureWindow)
 	requireTunnelRuntimeIPv4(t, daemon, run, 4103, "during the tunnel probe fault")
 	requireTunnelRuntimeNotForwarded(t, topology, 4230, "during the tunnel probe fault")
 	setTunnelRuntimeFault(t, topology, false)
-	waitTunnelRuntimeFamily(
-		t,
-		daemon,
-		run.read,
-		tunnelRuntimeDevice,
-		"ipv6",
-		"ready",
-		"ready",
-		tunnelRuntimeRecoverWindow,
-	)
+	waitTunnelRuntimeFamily(t, daemon, run.read, tunnelRuntimeDevice, "ipv6", "ready", "ready", tunnelRuntimeRecoverWindow)
 	requireTunnelRuntimeExchange(t, daemon, topology, 4240, tunnelRuntimeRecoverWindow)
 	requireTunnelRuntimeIPv4(t, daemon, run, 4104, "after the tunnel probe fault")
 }
@@ -58,73 +30,19 @@ func tunnelRuntimeUnderlayFault(t *testing.T, run tunnelRuntimeRun, daemon *runt
 	daemonPID := daemon.command.Process.Pid
 	faultStarted := time.Now().Add(-time.Second)
 	setTunnelRuntimeISPLink(t, topology, false)
-	waitTunnelRuntimeFamily(
-		t,
-		daemon,
-		run.read,
-		tunnelRuntimeUnderlay,
-		"ipv4",
-		"not-ready",
-		"not-ready",
-		tunnelRuntimeFailureWindow,
-	)
-	waitTunnelRuntimeFamily(
-		t,
-		daemon,
-		run.read,
-		tunnelRuntimeDevice,
-		"ipv6",
-		"not-ready",
-		"not-ready",
-		tunnelRuntimeFailureWindow,
-	)
-	waitTunnelRuntimeReason(
-		t,
-		daemon,
-		run.read,
-		faultStarted,
-		"underlay not ready",
-		tunnelRuntimeFailureWindow,
-	)
-	waitTunnelRuntimeFamily(
-		t,
-		daemon,
-		run.read,
-		tunnelRuntimeAlternate,
-		"ipv4",
-		"ready",
-		"ready",
-		time.Second,
-	)
-	waitTunnelRuntimeIPv4Provider(
-		t,
-		daemon,
-		run,
-		4105,
-		tunnelRuntimeAlternate,
-		"with the underlay link down",
-	)
+	waitTunnelRuntimeFamily(t, daemon, run.read, tunnelRuntimeUnderlay, "ipv4", "not-ready", "not-ready", tunnelRuntimeFailureWindow)
+	waitTunnelRuntimeFamily(t, daemon, run.read, tunnelRuntimeDevice, "ipv6", "not-ready", "not-ready", tunnelRuntimeFailureWindow)
+	waitTunnelRuntimeReason(t, daemon, run.read, faultStarted, "underlay not ready", tunnelRuntimeFailureWindow)
+	waitTunnelRuntimeFamily(t, daemon, run.read, tunnelRuntimeAlternate, "ipv4", "ready", "ready", time.Second)
+	waitTunnelRuntimeIPv4Provider(t, daemon, run, 4105, tunnelRuntimeAlternate, "with the underlay link down")
 	setTunnelRuntimeISPLink(t, topology, true)
-	waitTunnelRuntimeFamily(
-		t,
-		daemon,
-		run.read,
-		tunnelRuntimeDevice,
-		"ipv6",
-		"ready",
-		"ready",
-		tunnelRuntimeRecoverWindow,
-	)
+	waitTunnelRuntimeFamily(t, daemon, run.read, tunnelRuntimeDevice, "ipv6", "ready", "ready", tunnelRuntimeRecoverWindow)
 	waitTunnelRuntimeIPv4Baseline(t, daemon, run)
 	requireTunnelRuntimeExchange(t, daemon, topology, 4250, tunnelRuntimeRecoverWindow)
 	requireTunnelRuntimeIPv4(t, daemon, run, 4106, "after the underlay link returned")
 	assertRuntimeDaemonRunning(t, daemon)
 	if daemon.command.Process.Pid != daemonPID {
-		t.Fatalf(
-			"daemon PID changed from %d to %d during the underlay fault",
-			daemonPID,
-			daemon.command.Process.Pid,
-		)
+		t.Fatalf("daemon PID changed from %d to %d during the underlay fault", daemonPID, daemon.command.Process.Pid)
 	}
 }
 
@@ -134,27 +52,9 @@ func tunnelRuntimeRestart(t *testing.T, run tunnelRuntimeRun, first *runtimeDaem
 	tunnelIndex := device.Attrs().Index
 	killOwnedRuntimeDaemon(t, first)
 	second := run.start(t, "tunnel-second")
-	waitTunnelRuntimeFamily(
-		t,
-		second,
-		run.read,
-		tunnelRuntimeDevice,
-		"ipv6",
-		"ready",
-		"ready",
-		tunnelRuntimeRecoverWindow,
-	)
-	if restarted := waitOwnedRuntimeLink(
-		t,
-		second,
-		tunnelRuntimeDevice,
-		10*time.Second,
-	); restarted.Attrs().Index != tunnelIndex {
-		t.Fatalf(
-			"restart recreated the tunnel device: index %d, want %d",
-			restarted.Attrs().Index,
-			tunnelIndex,
-		)
+	waitTunnelRuntimeFamily(t, second, run.read, tunnelRuntimeDevice, "ipv6", "ready", "ready", tunnelRuntimeRecoverWindow)
+	if restarted := waitOwnedRuntimeLink(t, second, tunnelRuntimeDevice, 10*time.Second); restarted.Attrs().Index != tunnelIndex {
+		t.Fatalf("restart recreated the tunnel device: index %d, want %d", restarted.Attrs().Index, tunnelIndex)
 	}
 	waitTunnelRuntimeIPv4Baseline(t, second, run)
 	requireTunnelRuntimeExchange(t, second, run.topology, 4260, tunnelRuntimeRecoverWindow)

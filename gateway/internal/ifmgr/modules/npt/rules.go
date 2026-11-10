@@ -41,7 +41,6 @@ func (o natOp) String() string {
 	case opMasquerade:
 		return "masquerade"
 	}
-
 	return fmt.Sprintf("op(%d)", int(o))
 }
 
@@ -59,7 +58,6 @@ func (c ruleChain) String() string {
 	if c == chainPrerouting {
 		return "prerouting"
 	}
-
 	return "postrouting"
 }
 
@@ -87,7 +85,6 @@ func (r natRule) String() string {
 	case opMasquerade:
 		return fmt.Sprintf("%s %s match=%s masquerade", r.Chain, r.Iface, r.Match)
 	}
-
 	return fmt.Sprintf("%s %s match=%s %s", r.Chain, r.Iface, r.Match, r.Op)
 }
 
@@ -104,7 +101,6 @@ type wanRuleInput struct {
 func externalHostOne(externalPrefix netip.Prefix) netip.Addr {
 	octets := externalPrefix.Masked().Addr().As16()
 	octets[15] = 1
-
 	return netip.AddrFrom16(octets)
 }
 
@@ -121,56 +117,23 @@ func buildWANRules(in wanRuleInput) []natRule {
 	noPfx := netip.Prefix{}
 
 	rules := make([]natRule, 0, 4+len(in.ExtraDNAT))
-
 	rules = append(
 		rules,
-		natRule{
-			Chain:  chainPostrouting,
-			Iface:  in.Iface,
-			Match:  edge128,
-			Op:     opGuard,
-			ToAddr: noAddr,
-			ToPfx:  noPfx,
-		},
-		natRule{
-			Chain:  chainPostrouting,
-			Iface:  in.Iface,
-			Match:  edge128,
-			Op:     opSNAT,
-			ToAddr: pd1,
-			ToPfx:  noPfx,
-		},
-		natRule{
-			Chain:  chainPostrouting,
-			Iface:  in.Iface,
-			Match:  mwanbr128,
-			Op:     opSNAT,
-			ToAddr: pd1,
-			ToPfx:  noPfx,
-		},
-		natRule{
+		natRule{Chain: chainPostrouting, Iface: in.Iface, Match: edge128, Op: opGuard, ToAddr: noAddr, ToPfx: noPfx},
+		natRule{Chain: chainPostrouting, Iface: in.Iface, Match: edge128, Op: opSNAT, ToAddr: pd1, ToPfx: noPfx},
+		natRule{Chain: chainPostrouting, Iface: in.Iface, Match: mwanbr128, Op: opSNAT, ToAddr: pd1, ToPfx: noPfx},
+		natRule{Chain: chainPrerouting, Iface: in.Iface, Match: pd1128, Op: opDNAT, ToAddr: in.OpnsenseEdge, ToPfx: noPfx},
+	)
+	for _, addr := range in.ExtraDNAT {
+		rules = append(rules, natRule{
 			Chain:  chainPrerouting,
 			Iface:  in.Iface,
-			Match:  pd1128,
+			Match:  netip.PrefixFrom(addr, 128),
 			Op:     opDNAT,
 			ToAddr: in.OpnsenseEdge,
 			ToPfx:  noPfx,
-		},
-	)
-	for _, addr := range in.ExtraDNAT {
-		rules = append(
-			rules,
-			natRule{
-				Chain:  chainPrerouting,
-				Iface:  in.Iface,
-				Match:  netip.PrefixFrom(addr, 128),
-				Op:     opDNAT,
-				ToAddr: in.OpnsenseEdge,
-				ToPfx:  noPfx,
-			},
-		)
+		})
 	}
-
 	return rules
 }
 
@@ -188,17 +151,13 @@ type desiredRules struct {
 func renderIntended(desired desiredRules) string {
 	var rendered strings.Builder
 	rendered.WriteString("chain prerouting:\n")
-
 	for _, rule := range desired.Prerouting {
 		rendered.WriteString("  " + formatRule(rule) + "\n")
 	}
-
 	rendered.WriteString("chain postrouting:\n")
-
 	for _, rule := range desired.Postrouting {
 		rendered.WriteString("  " + formatRule(rule) + "\n")
 	}
-
 	return rendered.String()
 }
 
@@ -210,7 +169,6 @@ func (d *desiredRules) add(rules []natRule) {
 			d.Prerouting = append(d.Prerouting, rule)
 			continue
 		}
-
 		d.Postrouting = append(d.Postrouting, rule)
 	}
 }

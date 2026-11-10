@@ -55,18 +55,13 @@ func TestLoadTunnelInstance(t *testing.T) {
 	if connection.Owner != interfaceintent.OwnerMWAN || connection.Link == nil {
 		t.Fatalf("tunnel connection = %+v", connection)
 	}
-
-	if connection.Link.Kind != interfaceintent.KindTunnel || connection.Link.MTU == nil ||
-		*connection.Link.MTU != 1480 {
+	if connection.Link.Kind != interfaceintent.KindTunnel || connection.Link.MTU == nil || *connection.Link.MTU != 1480 {
 		t.Fatalf("tunnel link = %+v", connection.Link)
 	}
-
 	want := &interfaceintent.Tunnel{
-		Protocol: interfaceintent.TunnelProtocol6in4,
-		Underlay: "enatt0",
-		Remote:   netip.MustParseAddr("198.51.100.1"),
-		Local:    netip.MustParseAddr("192.0.2.130"),
-		TTL:      new(uint8(64)),
+		Protocol: interfaceintent.TunnelProtocol6in4, Underlay: "enatt0",
+		Remote: netip.MustParseAddr("198.51.100.1"), Local: netip.MustParseAddr("192.0.2.130"),
+		TTL: new(uint8(64)),
 	}
 	if !reflect.DeepEqual(connection.Link.Tunnel, want) {
 		t.Fatalf("tunnel = %+v, want %+v", connection.Link.Tunnel, want)
@@ -79,7 +74,6 @@ func TestDecodeRejectsInvalidTunnels(t *testing.T) {
 	if _, err := networkjson.Decode(data); err != nil {
 		t.Fatalf("Decode rejected the valid tunnel instance: %v", err)
 	}
-
 	cases := []struct {
 		name string
 		edit documentEdit
@@ -87,10 +81,7 @@ func TestDecodeRejectsInvalidTunnels(t *testing.T) {
 	}{
 		{
 			name: "owner other than mwan",
-			edit: documentEdit{
-				old:         tunnelOwner,
-				replacement: `"goodkind-mwan-steering:owner": "external",`,
-			},
+			edit: documentEdit{old: tunnelOwner, replacement: `"goodkind-mwan-steering:owner": "external",`},
 			want: "tunnel link requires owner mwan",
 		},
 		{
@@ -110,18 +101,12 @@ func TestDecodeRejectsInvalidTunnels(t *testing.T) {
 		},
 		{
 			name: "tunnel with vlan",
-			edit: documentEdit{
-				old:         tunnelMTU,
-				replacement: tunnelMTU + ` "vlan": { "parent": "enatt0", "id": 7 },`,
-			},
+			edit: documentEdit{old: tunnelMTU, replacement: tunnelMTU + ` "vlan": { "parent": "enatt0", "id": 7 },`},
 			want: "link cannot include both a tunnel and a vlan",
 		},
 		{
 			name: "tunnel with bridge-master",
-			edit: documentEdit{
-				old:         tunnelMTU,
-				replacement: tunnelMTU + ` "bridge-master": "enmwanbr0",`,
-			},
+			edit: documentEdit{old: tunnelMTU, replacement: tunnelMTU + ` "bridge-master": "enmwanbr0",`},
 			want: "link cannot include both a tunnel and a bridge-master",
 		},
 		{
@@ -136,10 +121,7 @@ func TestDecodeRejectsInvalidTunnels(t *testing.T) {
 		},
 		{
 			name: "limited broadcast remote-address",
-			edit: documentEdit{
-				old:         tunnelRemote,
-				replacement: `"remote-address": "255.255.255.255",`,
-			},
+			edit: documentEdit{old: tunnelRemote, replacement: `"remote-address": "255.255.255.255",`},
 			want: "link/tunnel/remote-address 255.255.255.255 must be a unicast IPv4 address",
 		},
 		{
@@ -164,18 +146,12 @@ func TestDecodeRejectsInvalidTunnels(t *testing.T) {
 		},
 		{
 			name: "hardware-address on a tunnel",
-			edit: documentEdit{
-				old:         tunnelMTU,
-				replacement: tunnelMTU + ` "hardware-address": "02:00:5e:00:53:09",`,
-			},
+			edit: documentEdit{old: tunnelMTU, replacement: tunnelMTU + ` "hardware-address": "02:00:5e:00:53:09",`},
 			want: "tunnel link cannot include a hardware-address",
 		},
 		{
 			name: "match on a tunnel",
-			edit: documentEdit{
-				old:         tunnelMTU,
-				replacement: tunnelMTU + ` "match": { "driver": "igc" },`,
-			},
+			edit: documentEdit{old: tunnelMTU, replacement: tunnelMTU + ` "match": { "driver": "igc" },`},
 			want: "tunnel link cannot include a device match",
 		},
 		{
@@ -189,39 +165,25 @@ func TestDecodeRejectsInvalidTunnels(t *testing.T) {
 			want: "6in4 tunnel mtu 1279 is below the IPv6 minimum 1280",
 		},
 	}
-
-	cases = append(
-		cases,
-		struct {
-			name string
-			edit documentEdit
-			want string
-		}{
-			name: "IPv4 address on a 6in4 tunnel",
-			edit: documentEdit{
-				old:         `"ietf-ip:ipv6": {` + "\n" + `          "address": [{ "ip": "2001:db8:6::2", "prefix-length": 64 }]`,
-				replacement: `"ietf-ip:ipv4": {` + "\n" + `          "address": [{ "ip": "192.0.2.131", "prefix-length": 30 }]`,
-			},
-			want: "a 6in4 tunnel transports only IPv6",
+	cases = append(cases, struct {
+		name string
+		edit documentEdit
+		want string
+	}{
+		name: "IPv4 address on a 6in4 tunnel",
+		edit: documentEdit{
+			old:         `"ietf-ip:ipv6": {` + "\n" + `          "address": [{ "ip": "2001:db8:6::2", "prefix-length": 64 }]`,
+			replacement: `"ietf-ip:ipv4": {` + "\n" + `          "address": [{ "ip": "192.0.2.131", "prefix-length": 30 }]`,
 		},
-	)
+		want: "a 6in4 tunnel transports only IPv6",
+	})
 	for _, testCase := range cases {
-		t.Run(
-			testCase.name,
-			func(t *testing.T) {
-				loaded, err := networkjson.Decode([]byte(editDocument(t, base, testCase.edit)))
-				if rejection := rejectionText(loaded, err); !strings.Contains(
-					rejection,
-					testCase.want,
-				) {
-					t.Fatalf(
-						"Decode rejection = %q, want it to contain %q",
-						rejection,
-						testCase.want,
-					)
-				}
-			},
-		)
+		t.Run(testCase.name, func(t *testing.T) {
+			loaded, err := networkjson.Decode([]byte(editDocument(t, base, testCase.edit)))
+			if rejection := rejectionText(loaded, err); !strings.Contains(rejection, testCase.want) {
+				t.Fatalf("Decode rejection = %q, want it to contain %q", rejection, testCase.want)
+			}
+		})
 	}
 }
 
@@ -239,11 +201,7 @@ func TestDecodeRejectsTunnelMTUAboveConfiguredUnderlay(t *testing.T) {
       }`,
 	}
 	document := editDocument(t, string(data), ownedUnderlay)
-	document = editDocument(
-		t,
-		document,
-		documentEdit{old: tunnelUnderlay, replacement: `"underlay": "brunder0",`},
-	)
+	document = editDocument(t, document, documentEdit{old: tunnelUnderlay, replacement: `"underlay": "brunder0",`})
 	if _, err := networkjson.Decode([]byte(document)); err != nil {
 		t.Fatalf("Decode rejected tunnel mtu 1480 under underlay mtu 1500: %v", err)
 	}

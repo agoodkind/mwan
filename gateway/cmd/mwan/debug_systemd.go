@@ -54,18 +54,11 @@ func collectDebugSystemd(
 	if err != nil {
 		return debugSystemdResult{}, debugWrappedError(logger, "list systemd units", err)
 	}
-
 	timings := unitTimings(ctx, conn, units, logger)
 	focusUnits := debugSystemdFocusUnits()
-
-	result := debugSystemdResult{
-		Units:   units,
-		Timings: timings,
-		Focus:   make([]debugFocusTiming, 0, len(focusUnits)),
-	}
+	result := debugSystemdResult{Units: units, Timings: timings, Focus: make([]debugFocusTiming, 0, len(focusUnits))}
 	for _, name := range focusUnits {
 		focus := debugFocusTiming{unitTiming: unitTiming{Name: name}}
-
 		for _, timing := range timings {
 			if timing.Name == name {
 				focus.unitTiming = timing
@@ -73,10 +66,8 @@ func collectDebugSystemd(
 				break
 			}
 		}
-
 		result.Focus = append(result.Focus, focus)
 	}
-
 	return result, nil
 }
 
@@ -94,46 +85,27 @@ func unitTimings(
 		if unit.ActiveState != "active" {
 			continue
 		}
-
 		exitMono, exitOK := monotonicProperty(
-			ctx,
-			conn,
-			logger,
-			unit.Name,
-			"InactiveExitTimestampMonotonic",
+			ctx, conn, logger, unit.Name, "InactiveExitTimestampMonotonic",
 		)
 		enterMono, enterOK := monotonicProperty(
-			ctx,
-			conn,
-			logger,
-			unit.Name,
-			"ActiveEnterTimestampMonotonic",
+			ctx, conn, logger, unit.Name, "ActiveEnterTimestampMonotonic",
 		)
 		if !exitOK || !enterOK || enterMono <= exitMono {
 			continue
 		}
-
 		spanMicros := enterMono - exitMono
 		if spanMicros > uint64(math.MaxInt64/int64(time.Microsecond)) {
 			continue
 		}
-
-		timings = append(
-			timings,
-			unitTiming{
-				Name:     unit.Name,
-				Duration: time.Duration(spanMicros) * time.Microsecond,
-			},
-		)
+		timings = append(timings, unitTiming{
+			Name:     unit.Name,
+			Duration: time.Duration(spanMicros) * time.Microsecond,
+		})
 	}
-
-	sort.Slice(
-		timings,
-		func(i, j int) bool {
-			return timings[i].Duration > timings[j].Duration
-		},
-	)
-
+	sort.Slice(timings, func(i, j int) bool {
+		return timings[i].Duration > timings[j].Duration
+	})
 	return timings
 }
 
@@ -150,34 +122,18 @@ func monotonicProperty(
 	property, err := conn.GetUnitPropertyContext(ctx, unitName, propertyName)
 	if err != nil || property == nil {
 		logger.DebugContext(
-			ctx,
-			"read unit property failed",
-			"unit",
-			unitName,
-			"property",
-			propertyName,
-			"err",
-			err,
+			ctx, "read unit property failed",
+			"unit", unitName, "property", propertyName, "err", err,
 		)
-
 		return 0, false
 	}
-
 	var monotonic uint64
 	if storeErr := property.Value.Store(&monotonic); storeErr != nil {
 		logger.DebugContext(
-			ctx,
-			"unit property is not a monotonic timestamp",
-			"unit",
-			unitName,
-			"property",
-			propertyName,
-			"err",
-			storeErr,
+			ctx, "unit property is not a monotonic timestamp",
+			"unit", unitName, "property", propertyName, "err", storeErr,
 		)
-
 		return 0, false
 	}
-
 	return monotonic, true
 }
