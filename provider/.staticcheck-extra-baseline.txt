@@ -1,14 +1,14 @@
-# staticcheck-extra: generated_at=2026-11-09T17:42:19Z
-internal/provider/network_config_resource.go:394:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:57:37Z last_seen=2026-11-09T07:57:37Z
-internal/provider/provider.go:38:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:57:37Z last_seen=2026-11-09T07:57:37Z
-internal/release/release.go:67:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:57:37Z last_seen=2026-11-09T07:57:37Z
-internal/provider/network_config_resource.go:1:9: filenameprefix: network_config_resource.go repeats prefix "network"; use directory "network"	# staticcheck-extra:first_added=2026-11-09T07:56:32Z last_seen=2026-11-09T07:56:32Z
-internal/provider/network_data_source.go:1:9: filenameprefix: network_data_source.go repeats prefix "network"; use directory "network"	# staticcheck-extra:first_added=2026-11-09T07:56:32Z last_seen=2026-11-09T07:56:32Z
-internal/provider/network_model.go:1:9: filenameprefix: network_model.go repeats prefix "network"; use directory "network"	# staticcheck-extra:first_added=2026-11-09T07:56:32Z last_seen=2026-11-09T07:56:32Z
-internal/provider/network_rules_test.go:1:9: filenameprefix: network_rules_test.go repeats prefix "network"; use directory "network"	# staticcheck-extra:first_added=2026-11-09T07:56:32Z last_seen=2026-11-09T07:56:32Z
-internal/provider/network_schema_test.go:1:9: filenameprefix: network_schema_test.go repeats prefix "network"; use directory "network"	# staticcheck-extra:first_added=2026-11-09T07:56:32Z last_seen=2026-11-09T07:56:32Z
-internal/provider/network_state_upgrade_test.go:1:9: filenameprefix: network_state_upgrade_test.go repeats prefix "network"; use directory "network"	# staticcheck-extra:first_added=2026-11-09T07:56:32Z last_seen=2026-11-09T07:56:32Z
-internal/provider/network_test.go:1:9: filenameprefix: network_test.go repeats prefix "network"; use directory "network"	# staticcheck-extra:first_added=2026-11-09T07:56:32Z last_seen=2026-11-09T07:56:32Z
-internal/provider/protocol_test.go:1:9: filenameprefix: protocol_test.go repeats prefix "pro"; use directory "pro"	# staticcheck-extra:first_added=2026-11-09T07:56:32Z last_seen=2026-11-09T07:56:32Z
-internal/provider/provider.go:3:9: filenameprefix: provider.go repeats prefix "pro"; use directory "pro"	# staticcheck-extra:first_added=2026-11-09T07:56:32Z last_seen=2026-11-09T07:56:32Z
-internal/provider/provider_test.go:1:9: filenameprefix: provider_test.go repeats prefix "pro"; use directory "pro"	# staticcheck-extra:first_added=2026-11-09T07:56:32Z last_seen=2026-11-09T07:56:32Z
+# staticcheck-extra: generated_at=2026-11-10T05:01:46Z
+internal/provider/network_config_resource.go:1:9: filenameprefix: network_config_resource.go repeats prefix "network"; use directory "network"	# staticcheck-extra:first_added=2026-11-09T07:56:32Z last_seen=2026-11-10T05:01:46Z
+internal/provider/network_config_resource.go:595:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:57:37Z last_seen=2026-11-10T05:01:46Z
+internal/provider/network_data_source.go:1:9: filenameprefix: network_data_source.go repeats prefix "network"; use directory "network"	# staticcheck-extra:first_added=2026-11-09T07:56:32Z last_seen=2026-11-10T05:01:46Z
+internal/provider/network_model.go:1:9: filenameprefix: network_model.go repeats prefix "network"; use directory "network"	# staticcheck-extra:first_added=2026-11-09T07:56:32Z last_seen=2026-11-10T05:01:46Z
+internal/provider/network_rules_test.go:1:9: filenameprefix: network_rules_test.go repeats prefix "network"; use directory "network"	# staticcheck-extra:first_added=2026-11-09T07:56:32Z last_seen=2026-11-10T05:01:46Z
+internal/provider/network_schema_test.go:1:9: filenameprefix: network_schema_test.go repeats prefix "network"; use directory "network"	# staticcheck-extra:first_added=2026-11-09T07:56:32Z last_seen=2026-11-10T05:01:46Z
+internal/provider/network_state_upgrade_test.go:1:9: filenameprefix: network_state_upgrade_test.go repeats prefix "network"; use directory "network"	# staticcheck-extra:first_added=2026-11-09T07:56:32Z last_seen=2026-11-10T05:01:46Z
+internal/provider/network_test.go:1:9: filenameprefix: network_test.go repeats prefix "network"; use directory "network"	# staticcheck-extra:first_added=2026-11-09T07:56:32Z last_seen=2026-11-10T05:01:46Z
+internal/provider/protocol_test.go:1:9: filenameprefix: protocol_test.go repeats prefix "pro"; use directory "pro"	# staticcheck-extra:first_added=2026-11-09T07:56:32Z last_seen=2026-11-10T05:01:46Z
+internal/provider/provider.go:38:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:57:37Z last_seen=2026-11-10T05:01:46Z
+internal/provider/provider.go:3:9: filenameprefix: provider.go repeats prefix "pro"; use directory "pro"	# staticcheck-extra:first_added=2026-11-09T07:56:32Z last_seen=2026-11-10T05:01:46Z
+internal/provider/provider_test.go:1:9: filenameprefix: provider_test.go repeats prefix "pro"; use directory "pro"	# staticcheck-extra:first_added=2026-11-09T07:56:32Z last_seen=2026-11-10T05:01:46Z
+internal/release/release.go:68:1: doc_structure: add an introduction, explanation, and example or layout	# staticcheck-extra:first_added=2026-11-09T07:57:37Z last_seen=2026-11-10T05:01:46Z
