@@ -28,10 +28,10 @@ jobs:
     with:
       working_directory: gateway
       go_version_file: gateway/go.mod
-      # libyang2-tools supplies yanglint for the YANG model gate, and
+      # libyang3-tools supplies yanglint for the YANG model gate, and
       # libpcre2-dev is what the pinned libyang links against when the
       # cgo-deps hook builds it.
-      apt_packages: libyang2-tools libpcre2-dev rrdtool fonts-liberation
+      apt_packages: libyang3-tools libpcre2-dev rrdtool fonts-liberation
       go_tool_packages: github.com/bufbuild/buf/cmd/buf@latest google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12 google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
       # Each module's Makefile sets its release platforms through RELEASE_PLATFORMS.
       # The build gate compiles the gateway platforms on native runners with cgo.
@@ -143,9 +143,9 @@ jobs:
         with:
           go-version-file: gateway/go.mod
           cache-dependency-path: gateway/go.sum
-      # libyang2-tools provides yanglint, which both gates run.
+      # libyang3-tools provides yanglint, which both gates run.
       - name: Install yanglint
-        run: sudo apt-get update && sudo apt-get install -y libyang2-tools
+        run: sudo apt-get update && sudo apt-get install -y libyang3-tools
       # The Makefile fetches go-makefile through gh while make parses it, so
       # the token keeps that fetch on the authenticated API path instead of
       # its anonymous raw fallback.
