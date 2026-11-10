@@ -293,6 +293,7 @@ func (source *RulesetEvents) sendBarrier(ctx context.Context, sequence uint32) e
 			"err",
 			err,
 		)
+
 		return fmt.Errorf("request nftables generation: %w", err)
 	}
 
@@ -305,6 +306,7 @@ func (source *RulesetEvents) sendBarrier(ctx context.Context, sequence uint32) e
 			"err",
 			err,
 		)
+
 		return fmt.Errorf("complete nftables generation request %d: %w", sequence, err)
 	}
 
@@ -389,15 +391,7 @@ func (source *RulesetEvents) message(
 
 	attributes, err := netlink.NewAttributeDecoder(message.Data[rulesetHeaderBytes:])
 	if err != nil {
-		slog.Warn(
-			"nftables observation attributes invalid",
-			"type",
-			message.Header.Type,
-			"sequence",
-			message.Header.Seq,
-			"err",
-			err,
-		)
+		warnRulesetAttributes(message, err)
 		return fmt.Errorf("decode nftables observation attributes: %w", err)
 	}
 
@@ -418,15 +412,7 @@ func (source *RulesetEvents) message(
 	}
 
 	if err := attributes.Err(); err != nil {
-		slog.Warn(
-			"nftables observation value invalid",
-			"type",
-			message.Header.Type,
-			"sequence",
-			message.Header.Seq,
-			"err",
-			err,
-		)
+		warnRulesetValue(message, err)
 		return fmt.Errorf("decode nftables observation attribute value: %w", err)
 	}
 
@@ -521,4 +507,28 @@ func (source *RulesetEvents) observeGeneration(identifier uint32) (bool, error) 
 	source.generation.Add(uint64(difference))
 
 	return true, nil
+}
+
+func warnRulesetAttributes(message syscall.NetlinkMessage, err error) {
+	slog.Warn(
+		"nftables observation attributes invalid",
+		"type",
+		message.Header.Type,
+		"sequence",
+		message.Header.Seq,
+		"err",
+		err,
+	)
+}
+
+func warnRulesetValue(message syscall.NetlinkMessage, err error) {
+	slog.Warn(
+		"nftables observation value invalid",
+		"type",
+		message.Header.Type,
+		"sequence",
+		message.Header.Seq,
+		"err",
+		err,
+	)
 }

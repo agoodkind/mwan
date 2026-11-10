@@ -144,6 +144,7 @@ func ProfileWithOptions(
 				Sequence:  0,
 				Queues:    nil,
 			}
+
 			return result, err
 		}
 
@@ -171,16 +172,7 @@ func profileThreads(
 	polling *queuePollSession,
 ) (ProfileResult, error) {
 	var counts SampleCounts
-	result := ProfileResult{
-		Available:             false,
-		Reason:                profileLimitation,
-		Duration:              duration,
-		SamplePeriod:          profileSamplePeriod,
-		EmptyPollingAvailable: false,
-		Counts:                counts,
-		Threads:               nil,
-		QueuePolling:          nil,
-	}
+	result := initialProfileResult(duration, counts)
 	var samplers []*perfSampler
 	var openFailures []error
 	defer func() {
@@ -192,18 +184,7 @@ func profileThreads(
 	for _, thread := range threads {
 		sampler, err := openSampler(thread, executable)
 		if err != nil {
-			result.Threads = append(
-				result.Threads,
-				ThreadProfile{
-					Thread:            thread,
-					Available:         false,
-					Reason:            err.Error(),
-					CPUClockTime:      0,
-					CPUClockAvailable: false,
-					Counts:            counts,
-					Symbols:           nil,
-				},
-			)
+			result.Threads = append(result.Threads, unavailableThreadProfile(thread, counts, err))
 			openFailures = append(openFailures, err)
 			continue
 		}
@@ -213,6 +194,7 @@ func profileThreads(
 
 	if len(samplers) == 0 {
 		slog.WarnContext(ctx, "open VPP native profiling events failed", "errors", openFailures)
+
 		return result, errors.Join(
 			fmt.Errorf("VPP native profiling could not open a perf event for any reported thread"),
 			errors.Join(openFailures...),
@@ -229,6 +211,7 @@ func profileThreads(
 				Sequence:  0,
 				Queues:    nil,
 			}
+
 			return result, err
 		}
 	}
@@ -241,20 +224,7 @@ func profileThreads(
 		failure = errors.Join(failure, err)
 	}
 
-	for _, sampler := range samplers {
-		profile, err := sampler.result()
-		if err != nil {
-			failure = errors.Join(failure, err)
-		}
-
-		result.Threads = append(result.Threads, profile)
-		addSampleCounts(&result.Counts, profile.Counts)
-	}
-
-	complete := len(result.Threads) == len(samplers)
-	for _, thread := range result.Threads {
-		complete = complete && thread.Available
-	}
+	complete := collectThreadResults(samplers, &result, &failure)
 
 	result.Available = failure == nil && complete && result.Counts.Total > 0 &&
 		result.Counts.Lost == 0
@@ -276,6 +246,7 @@ func profileThreads(
 			"open_errors",
 			openFailures,
 		)
+
 		return result, errors.Join(
 			fmt.Errorf(
 				"VPP native profile is incomplete: %d samples, %d lost records, %d unavailable threads",
@@ -378,6 +349,7 @@ func openSampler(thread vlib.ThreadData, executable string) (*perfSampler, error
 	fd, err := unix.PerfEventOpen(&attribute, threadID, -1, -1, unix.PERF_FLAG_FD_CLOEXEC)
 	if err != nil {
 		slog.Warn("open VPP native perf event failed", "thread_id", threadID, "error", err)
+
 		return nil, fmt.Errorf(
 			"open native perf event for VPP thread %d; permit perf_event_open with CAP_PERFMON and the host perf policy: %w",
 			threadID,
@@ -482,6 +454,7 @@ func readMappedImages(threadID int) ([]mappedImage, error) {
 			"error",
 			err,
 		)
+
 		return nil, fmt.Errorf("read VPP thread %d executable mappings: %w", threadID, err)
 	}
 
@@ -512,6 +485,7 @@ func readMappedImages(threadID int) ([]mappedImage, error) {
 				"error",
 				err,
 			)
+
 			return nil, fmt.Errorf("parse VPP thread %d executable mapping: %w", threadID, err)
 		}
 
@@ -549,6 +523,7 @@ func readMappedImages(threadID int) ([]mappedImage, error) {
 			"error",
 			err,
 		)
+
 		return nil, fmt.Errorf("scan VPP executable mappings: %w", err)
 	}
 
@@ -828,32 +803,7 @@ func (sampler *perfSampler) result() (ThreadProfile, error) {
 		result.CPUClockTime, result.CPUClockAvailable = time.Duration(clock), true
 	}
 
-	for identity, count := range sampler.symbols {
-		result.Symbols = append(
-			result.Symbols,
-			SymbolSamples{
-				Module:  identity.module,
-				Symbol:  identity.name,
-				Class:   identity.class,
-				Samples: count,
-			},
-		)
-	}
-
-	slices.SortFunc(
-		result.Symbols,
-		func(left, right SymbolSamples) int {
-			if left.Samples > right.Samples {
-				return -1
-			}
-
-			if left.Samples < right.Samples {
-				return 1
-			}
-
-			return strings.Compare(left.Module+left.Symbol, right.Module+right.Symbol)
-		},
-	)
+	sampler.appendSymbols(&result)
 	result.Available = result.Counts.Lost == 0 && result.CPUClockAvailable
 	if !result.Available {
 		result.Reason = "VPP thread profile lacks complete CPU clock samples"
@@ -891,8 +841,90 @@ func (sampler *perfSampler) close() error {
 			"error",
 			err,
 		)
+
 		return err
 	}
 
 	return nil
+}
+
+func unavailableThreadProfile(
+	thread vlib.ThreadData,
+	counts SampleCounts,
+	err error,
+) ThreadProfile {
+	return ThreadProfile{
+		Thread:            thread,
+		Available:         false,
+		Reason:            err.Error(),
+		CPUClockTime:      0,
+		CPUClockAvailable: false,
+		Counts:            counts,
+		Symbols:           nil,
+	}
+}
+
+func collectThreadResults(
+	samplers []*perfSampler,
+	result *ProfileResult,
+	failure *error,
+) bool {
+	for _, sampler := range samplers {
+		profile, err := sampler.result()
+		if err != nil {
+			*failure = errors.Join(*failure, err)
+		}
+
+		result.Threads = append(result.Threads, profile)
+		addSampleCounts(&result.Counts, profile.Counts)
+	}
+
+	complete := len(result.Threads) == len(samplers)
+	for _, thread := range result.Threads {
+		complete = complete && thread.Available
+	}
+
+	return complete
+}
+
+func (sampler *perfSampler) appendSymbols(result *ThreadProfile) {
+	for identity, count := range sampler.symbols {
+		result.Symbols = append(
+			result.Symbols,
+			SymbolSamples{
+				Module:  identity.module,
+				Symbol:  identity.name,
+				Class:   identity.class,
+				Samples: count,
+			},
+		)
+	}
+
+	slices.SortFunc(
+		result.Symbols,
+		func(left, right SymbolSamples) int {
+			if left.Samples > right.Samples {
+				return -1
+			}
+
+			if left.Samples < right.Samples {
+				return 1
+			}
+
+			return strings.Compare(left.Module+left.Symbol, right.Module+right.Symbol)
+		},
+	)
+}
+
+func initialProfileResult(duration time.Duration, counts SampleCounts) ProfileResult {
+	return ProfileResult{
+		Available:             false,
+		Reason:                profileLimitation,
+		Duration:              duration,
+		SamplePeriod:          profileSamplePeriod,
+		EmptyPollingAvailable: false,
+		Counts:                counts,
+		Threads:               nil,
+		QueuePolling:          nil,
+	}
 }

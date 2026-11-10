@@ -184,25 +184,7 @@ func forwardingIdentityHeader(kind uint16, data []byte) ([]slog.Attr, int, []for
 			{forwardingRouteNextHopID, "next_hop_id", forwardingUint32},
 		}
 	case unix.RTM_NEWRULE, unix.RTM_DELRULE:
-		fields = append(
-			fields,
-			slog.Int("destination_prefix_length", int(data[1])),
-			slog.Int("source_prefix_length", int(data[2])),
-			slog.Int("tos", int(data[3])),
-			slog.Int("table", int(data[4])),
-			slog.Int("action", int(data[7])),
-		)
-
-		return fields, unix.SizeofRtMsg, []forwardingField{
-			{unix.FRA_DST, "destination", forwardingAddress},
-			{unix.FRA_SRC, "source", forwardingAddress},
-			{unix.FRA_IIFNAME, "input_name", forwardingName},
-			{unix.FRA_OIFNAME, "output_name", forwardingName},
-			{unix.FRA_PRIORITY, "priority", forwardingUint32},
-			{unix.FRA_FWMARK, "mark", forwardingUint32},
-			{unix.FRA_FWMASK, "mark_mask", forwardingUint32},
-			{unix.FRA_TABLE, "extended_table", forwardingUint32},
-		}
+		return forwardingRuleHeader(fields, data)
 	case unix.RTM_NEWNEIGH, unix.RTM_DELNEIGH:
 		fields = append(
 			fields,
@@ -241,15 +223,7 @@ func forwardingIdentityHeader(kind uint16, data []byte) ([]slog.Attr, int, []for
 		}
 	case unix.RTM_NEWQDISC, unix.RTM_DELQDISC, unix.RTM_NEWTCLASS, unix.RTM_DELTCLASS,
 		unix.RTM_NEWTFILTER, unix.RTM_DELTFILTER, unix.RTM_NEWCHAIN, unix.RTM_DELCHAIN:
-		fields = append(
-			fields,
-			slog.Uint64("interface_index", uint64(binary.NativeEndian.Uint32(data[4:8]))),
-			slog.Uint64("handle", uint64(binary.NativeEndian.Uint32(data[8:12]))),
-			slog.Uint64("parent", uint64(binary.NativeEndian.Uint32(data[12:16]))),
-			slog.Uint64("info", uint64(binary.NativeEndian.Uint32(data[16:20]))),
-		)
-
-		return fields, nl.SizeofTcMsg, []forwardingField{{nl.TCA_KIND, "kind", forwardingName}}
+		return forwardingTrafficHeader(fields, data)
 	case unix.RTM_NEWACTION, unix.RTM_DELACTION:
 		return fields, nl.SizeofTcActionMsg, nil
 	default:
@@ -278,4 +252,41 @@ func forwardingAttribute(field forwardingField, data []byte) slog.Attr {
 	}
 
 	return slog.Group(field.name, "invalid_length", len(data))
+}
+
+func forwardingRuleHeader(fields []slog.Attr, data []byte) ([]slog.Attr, int, []forwardingField) {
+	fields = append(
+		fields,
+		slog.Int("destination_prefix_length", int(data[1])),
+		slog.Int("source_prefix_length", int(data[2])),
+		slog.Int("tos", int(data[3])),
+		slog.Int("table", int(data[4])),
+		slog.Int("action", int(data[7])),
+	)
+
+	return fields, unix.SizeofRtMsg, []forwardingField{
+		{unix.FRA_DST, "destination", forwardingAddress},
+		{unix.FRA_SRC, "source", forwardingAddress},
+		{unix.FRA_IIFNAME, "input_name", forwardingName},
+		{unix.FRA_OIFNAME, "output_name", forwardingName},
+		{unix.FRA_PRIORITY, "priority", forwardingUint32},
+		{unix.FRA_FWMARK, "mark", forwardingUint32},
+		{unix.FRA_FWMASK, "mark_mask", forwardingUint32},
+		{unix.FRA_TABLE, "extended_table", forwardingUint32},
+	}
+}
+
+func forwardingTrafficHeader(
+	fields []slog.Attr,
+	data []byte,
+) ([]slog.Attr, int, []forwardingField) {
+	fields = append(
+		fields,
+		slog.Uint64("interface_index", uint64(binary.NativeEndian.Uint32(data[4:8]))),
+		slog.Uint64("handle", uint64(binary.NativeEndian.Uint32(data[8:12]))),
+		slog.Uint64("parent", uint64(binary.NativeEndian.Uint32(data[12:16]))),
+		slog.Uint64("info", uint64(binary.NativeEndian.Uint32(data[16:20]))),
+	)
+
+	return fields, nl.SizeofTcMsg, []forwardingField{{nl.TCA_KIND, "kind", forwardingName}}
 }
