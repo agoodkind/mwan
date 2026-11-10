@@ -270,31 +270,7 @@ func (w *watchdog) executeRollbackVM(ctx context.Context, snap string) error {
 
 	// Delete any watchdog-managed snapshots that are children of the target.
 	// Proxmox/ZFS only allows rollback to the leaf snapshot in the chain.
-	if listOut, lErr := w.ops.VMSnapshots(ctx, w.cfg.MwanVMID); lErr == nil {
-		toDelete := rollback.SnapshotsAfter(listOut, snap)
-		for _, child := range slices.Backward(toDelete) {
-			log.DebugContext(
-				ctx,
-				"Deleting intermediate snapshot before rollback",
-				"snapshot",
-				child,
-				"target",
-				snap,
-			)
-			if dErr := w.ops.VMDelSnapshot(ctx, w.cfg.MwanVMID, child); dErr != nil {
-				log.ErrorContext(
-					ctx,
-					"Failed to delete intermediate snapshot",
-					"snapshot",
-					child,
-					"err",
-					dErr,
-				)
-			}
-		}
-	} else {
-		log.WarnContext(ctx, "Could not list snapshots before rollback", "err", lErr)
-	}
+	w.deleteRollbackSnapshotChildren(ctx, log, snap)
 
 	var rollbackErr error
 	rollbackStart := w.now()
@@ -358,6 +334,38 @@ func (w *watchdog) executeRollbackVM(ctx context.Context, snap string) error {
 	)
 
 	return rollbackErr
+}
+
+func (w *watchdog) deleteRollbackSnapshotChildren(
+	ctx context.Context,
+	log *slog.Logger,
+	snap string,
+) {
+	if listOut, lErr := w.ops.VMSnapshots(ctx, w.cfg.MwanVMID); lErr == nil {
+		toDelete := rollback.SnapshotsAfter(listOut, snap)
+		for _, child := range slices.Backward(toDelete) {
+			log.DebugContext(
+				ctx,
+				"Deleting intermediate snapshot before rollback",
+				"snapshot",
+				child,
+				"target",
+				snap,
+			)
+			if dErr := w.ops.VMDelSnapshot(ctx, w.cfg.MwanVMID, child); dErr != nil {
+				log.ErrorContext(
+					ctx,
+					"Failed to delete intermediate snapshot",
+					"snapshot",
+					child,
+					"err",
+					dErr,
+				)
+			}
+		}
+	} else {
+		log.WarnContext(ctx, "Could not list snapshots before rollback", "err", lErr)
+	}
 }
 
 // recordRollbackResult persists rollback state, removes the lock file, and
