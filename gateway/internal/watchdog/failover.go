@@ -135,6 +135,27 @@ func (w *watchdog) triggerBGPFailover(
 	// per-(kind, key) state-change suppression so a stuck watchdog cannot
 	// flood the inbox; the key is the primary vmid so a different vmid
 	// retains its own failover state.
+	w.notifyBGPFailoverInitiated(ctx, cfg, reason)
+
+	// Step 3: Withdraw routes from the primary VM.
+	w.finishBGPFailover(ctx, cfg, start)
+
+	// Record failover state under the mutex so the run loop can later detect
+	// recovery and emit the BGP RECOVERED email exactly once.
+	w.failoverMu.Lock()
+	w.failoverActive = true
+	w.failoverStartedAt = w.now()
+	w.failoverReason = reason
+	w.failoverMu.Unlock()
+
+	return nil
+}
+
+func (w *watchdog) notifyBGPFailoverInitiated(
+	ctx context.Context,
+	cfg *watchdogconfig.Config,
+	reason string,
+) {
 	failoverMsg := fmt.Sprintf(
 		"BGP FAILOVER: withdrawing routes from VM %s, announcing on LXC %s",
 		cfg.MwanVMID,
@@ -156,8 +177,13 @@ func (w *watchdog) triggerBGPFailover(
 			IsRecovery: false,
 		},
 	)
+}
 
-	// Step 3: Withdraw routes from the primary VM.
+func (w *watchdog) finishBGPFailover(
+	ctx context.Context,
+	cfg *watchdogconfig.Config,
+	start time.Time,
+) {
 	w.log.InfoContext(ctx, "BGP_FAILOVER: withdrawing routes from primary VM", "vmid", cfg.MwanVMID)
 	if err := w.ops.WithdrawRoutes(ctx, cfg.MwanVMID); err != nil {
 		w.log.ErrorContext(
@@ -208,16 +234,6 @@ func (w *watchdog) triggerBGPFailover(
 			IsRecovery: false,
 		},
 	)
-
-	// Record failover state under the mutex so the run loop can later detect
-	// recovery and emit the BGP RECOVERED email exactly once.
-	w.failoverMu.Lock()
-	w.failoverActive = true
-	w.failoverStartedAt = w.now()
-	w.failoverReason = reason
-	w.failoverMu.Unlock()
-
-	return nil
 }
 
 // triggerBGPRecovery announces the primary after it is ready. The backup
