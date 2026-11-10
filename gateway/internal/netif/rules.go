@@ -128,18 +128,7 @@ func ReconcileRules(
 					return fmt.Errorf("del rule prio=%d: %w", w.Priority, err)
 				}
 			} else {
-				flog.DebugContext(
-					ctx,
-					"rules: adding new rule",
-					"priority",
-					w.Priority,
-					"from",
-					w.From,
-					"uidrange",
-					w.UIDRange,
-					"table_id",
-					w.TableID,
-				)
+				logRuleAddition(ctx, flog, &w)
 			}
 
 			if err := addRuleNetlink(ctx, flog, fam, w); err != nil {
@@ -533,3 +522,18 @@ func parseUIDRangeUint32(s string) (uint32, uint32, error) {
 // af_unspec_unused is here to silence unused-import warnings on unix when
 // compiled with build tags that strip earlier references.
 var _ = unix.AF_UNSPEC
+
+func logRuleAddition(ctx context.Context, log *slog.Logger, rule *DesiredRule) {
+	log.DebugContext(
+		ctx,
+		"rules: adding new rule",
+		"priority",
+		rule.Priority,
+		"from",
+		rule.From,
+		"uidrange",
+		rule.UIDRange,
+		"table_id",
+		rule.TableID,
+	)
+}

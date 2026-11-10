@@ -85,16 +85,11 @@ func ForwardPathLookup(
 			log.WarnContext(
 				ctx,
 				"forwarding path lookup failed",
-				"source",
-				packet.Source,
-				"destination",
-				packet.Destination,
-				"input_interface",
-				packet.InputInterface,
-				"mark",
-				packet.Mark,
-				"err",
-				resultErr,
+				slog.Any("source", packet.Source),
+				slog.Any("destination", packet.Destination),
+				slog.Any("input_interface", packet.InputInterface),
+				slog.Any("mark", packet.Mark),
+				slog.Any("err", resultErr),
 			)
 		}
 	}()
@@ -118,10 +113,7 @@ func ForwardPathLookup(
 	}
 
 	defer func() {
-		if err := handle.Close(); err != nil {
-			resultErr = errors.Join(resultErr, fmt.Errorf("close forwarding route socket: %w", err))
-			usable = false
-		}
+		closeForwardPathHandle(handle, &resultErr, &usable)
 	}()
 	if deadline, ok := ctx.Deadline(); ok {
 		remaining := deadline.Sub(realClock{}.Now())
@@ -157,16 +149,11 @@ func ForwardPathLookup(
 		return path, false, fmt.Errorf("inspect forwarding output: %w", err)
 	}
 
-	attributes := link.Attrs()
-	if attributes.Flags&net.FlagUp == 0 || attributes.RawFlags&unix.IFF_LOWER_UP == 0 ||
-		!forwardingMACValid(attributes.HardwareAddr) {
+	if forwardingLinkUnavailable(link) {
 		return path, false, nil
 	}
 
-	nextHop := selected.Gw
-	if len(nextHop) == 0 {
-		nextHop = packet.Destination.Addr().AsSlice()
-	}
+	nextHop := forwardingNextHop(&selected, &packet)
 
 	neighbors, err := handle.NeighList(selected.LinkIndex, packet.family())
 	if err != nil {
@@ -187,16 +174,7 @@ func ForwardPathLookup(
 		return path, false, fmt.Errorf("complete forwarding path lookup: %w", err)
 	}
 
-	path = ForwardingPath{Route: selected, Link: link, Neighbor: neighbor}
-	if err := uid.verify(handle); err != nil {
-		return path, false, err
-	}
-
-	if requirement != nil {
-		return path, false, requirement
-	}
-
-	return path, true, nil
+	return finishForwardPath(handle, uid, requirement, &path, &selected, link, &neighbor)
 }
 
 func (p PacketSelector) validate() error {
@@ -246,6 +224,7 @@ func forwardingRouteSupported(route netlink.Route) bool {
 
 func forwardingMACValid(address net.HardwareAddr) bool {
 	var zero [forwardingMACLength]byte
+
 	return len(address) == forwardingMACLength && address[0]&1 == 0 &&
 		!bytes.Equal(address, zero[:])
 }
@@ -272,4 +251,48 @@ func ForwardingNeighborUsable(neighbor netlink.Neigh) bool {
 		neighbor.State&(unix.NUD_FAILED|unix.NUD_INCOMPLETE) == 0 &&
 		neighbor.Flags&unix.NTF_PROXY == 0 &&
 		forwardingMACValid(neighbor.HardwareAddr)
+}
+
+func closeForwardPathHandle(handle *netlink.Handle, resultErr *error, usable *bool) {
+	if err := handle.Close(); err != nil {
+		*resultErr = errors.Join(*resultErr, fmt.Errorf("close forwarding route socket: %w", err))
+		*usable = false
+	}
+}
+
+func forwardingLinkUnavailable(link netlink.Link) bool {
+	attributes := link.Attrs()
+
+	return attributes.Flags&net.FlagUp == 0 || attributes.RawFlags&unix.IFF_LOWER_UP == 0 ||
+		!forwardingMACValid(attributes.HardwareAddr)
+}
+
+func forwardingNextHop(selected *netlink.Route, packet *PacketSelector) net.IP {
+	nextHop := selected.Gw
+	if len(nextHop) == 0 {
+		nextHop = packet.Destination.Addr().AsSlice()
+	}
+
+	return nextHop
+}
+
+func finishForwardPath(
+	handle *netlink.Handle,
+	uid packetRouteUID,
+	requirement *EgressObservationRequiredError,
+	path *ForwardingPath,
+	selected *netlink.Route,
+	link netlink.Link,
+	neighbor *netlink.Neigh,
+) (ForwardingPath, bool, error) {
+	*path = ForwardingPath{Route: *selected, Link: link, Neighbor: *neighbor}
+	if err := uid.verify(handle); err != nil {
+		return *path, false, err
+	}
+
+	if requirement != nil {
+		return *path, false, requirement
+	}
+
+	return *path, true, nil
 }
