@@ -63,32 +63,6 @@ type Module struct {
 	nextGeneration  uint64
 }
 
-type dhcpSession struct {
-	client           *netif.DHCPClient
-	cancel           context.CancelFunc
-	ready            netif.OwnedLinkResult
-	identity         string
-	generation       uint64
-	recoveryPending  bool
-	recoveryUntil    time.Time
-	recoveryRejected bool
-}
-
-type dhcpv6Session struct {
-	client           *netif.DHCPv6PDClient
-	cancel           context.CancelFunc
-	ready            netif.OwnedLinkResult
-	identity         string
-	generation       uint64
-	recoveryPending  bool
-	recoveryUntil    time.Time
-	cachedLease      *netif.DHCPv6PDLease
-	recoveryRejected bool
-	addrUpdates      chan netlink.AddrUpdate
-	addrErrors       chan error
-	addrDone         chan struct{}
-}
-
 // New validates the address journal before daemon startup.
 func New(moduleConfig ifmgr.ModuleConfig) (ifmgr.Module, error) {
 	module := &Module{
@@ -256,7 +230,7 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 		if connection.Owner == interfaceintent.OwnerNetworkd {
 			provider := module.providers[connection.ID.String()]
 			if provider.IPv4 != nil && len(provider.IPv4.StaticMappings) != 0 {
-				desiredFamilies[connection.ID.String()] = map[string]bool{"ipv4": true}
+				desiredFamilies[connection.ID.String()] = map[string]bool{familyIPv4: true}
 				mappingErr = errors.Join(
 					mappingErr,
 					module.reconcileLegacyMappings(ctx, log, connection, provider.IPv4),
@@ -317,100 +291,6 @@ func (module *Module) Reconcile(ctx context.Context, log *slog.Logger) error {
 	return nil
 }
 
-func (module *Module) reconcileConnection(
-	ctx context.Context,
-	log *slog.Logger,
-	connection interfaceintent.Connection,
-) map[string]bool {
-	families := make(map[string]bool)
-	provider := module.providers[connection.ID.String()]
-	session := module.currentDHCPClient(ctx, log, connection)
-	module.currentDHCPv6Client(ctx, log, connection)
-
-	for _, candidate := range []struct {
-		name   string
-		intent *interfaceintent.Family
-	}{
-		{name: "ipv4", intent: familyV4(connection.IPv4)},
-		{name: "ipv6", intent: familyV6(connection.IPv6)},
-	} {
-		if candidate.intent == nil {
-			continue
-		}
-
-		families[candidate.name] = true
-		module.reconcileConfiguredFamily(
-			ctx,
-			log,
-			connection,
-			provider,
-			candidate.name,
-			*candidate.intent,
-			session,
-		)
-	}
-
-	return families
-}
-
-func (module *Module) reconcileConfiguredFamily(
-	ctx context.Context,
-	log *slog.Logger,
-	connection interfaceintent.Connection,
-	provider Provider,
-	family string,
-	settings interfaceintent.Family,
-	session *dhcpSession,
-) {
-	assignments := make([]interfaceintent.Assignment, 0, len(settings.Addresses)+1)
-	for _, address := range settings.Addresses {
-		assignments = append(
-			assignments,
-			addressAssignment(
-				connection,
-				family,
-				interfaceintent.AssignmentStatic,
-				address.Purpose,
-				address.Prefix,
-			),
-		)
-	}
-
-	var preparationErr error
-	if family == "ipv4" {
-		for _, address := range mappedAddresses(connection, provider.IPv4) {
-			settings.Addresses = append(slices.Clone(settings.Addresses), address)
-			assignments = append(
-				assignments,
-				addressAssignment(
-					connection,
-					family,
-					interfaceintent.AssignmentMapped,
-					address.Purpose,
-					address.Prefix,
-				),
-			)
-		}
-	} else {
-		leasedAddresses, leasedAssignments := module.localDHCPv6Assignments(connection)
-		preparationErr = module.prepareLocalIPv6(ctx, log, connection.Name, leasedAddresses)
-		settings.Addresses = append(slices.Clone(settings.Addresses), leasedAddresses...)
-		assignments = append(assignments, leasedAssignments...)
-	}
-
-	assignments = append(assignments, module.familyDelegations(connection, family)...)
-	module.reconcileFamily(
-		ctx,
-		log,
-		connection,
-		family,
-		settings,
-		assignments,
-		session,
-		preparationErr,
-	)
-}
-
 func (module *Module) prepareLocalIPv6(
 	ctx context.Context,
 	log *slog.Logger,
@@ -442,21 +322,7 @@ func (module *Module) currentDHCPClient(
 	id := connection.ID.String()
 	wantsDHCP := connection.IPv4 != nil && connection.IPv4.DHCP != nil && *connection.IPv4.DHCP
 	ready, ok := module.Env.OwnedLinks.Get(id)
-	identity := ""
-	if wantsDHCP && ok && ready.Status == netif.OwnedLinkReady && ready.ConnectionID == id &&
-		ready.Name == connection.Name && ready.IfIndex != 0 {
-		link, err := netlink.LinkByIndex(ready.IfIndex)
-		if err == nil && link.Attrs().Name == ready.ActualName {
-			attributes := link.Attrs()
-			identity = fmt.Sprintf(
-				"%s/%s/%s/%d",
-				link.Type(),
-				attributes.HardwareAddr,
-				attributes.Alias,
-				attributes.ParentIndex,
-			)
-		}
-	}
+	identity := dhcpv4LinkIdentity(connection, ready, id, wantsDHCP && ok)
 
 	module.sessionMu.Lock()
 	previous := module.sessions[id]
@@ -522,21 +388,7 @@ func (module *Module) currentDHCPClient(
 	}
 	module.sessions[id] = session
 	module.sessionMu.Unlock()
-	go func() {
-		defer func() {
-			if recovered := recover(); recovered != nil {
-				log.ErrorContext(
-					clientContext,
-					"addresses: DHCP event watcher panicked",
-					"connection_id",
-					id,
-					"err",
-					recovered,
-				)
-			}
-		}()
-		module.watchDHCP(clientContext, id, session)
-	}()
+	module.startDHCPv4Watcher(clientContext, log, id, session)
 
 	return session
 }
@@ -563,7 +415,7 @@ func (module *Module) loadDHCPv4Recovery(
 
 	log.WarnContext(ctx, "addresses: DHCPv4 saved lease rejected", "connection_id", id, "err", err)
 	if module.deleteRecoveryLease(ctx, id, netif.LeaseProtocolDHCPv4) {
-		module.recordLeasePersistence(id, "ipv4", "rejected", err.Error())
+		module.recordLeasePersistence(id, familyIPv4, "rejected", err.Error())
 	}
 
 	return nil, true
@@ -629,9 +481,9 @@ func (module *Module) handleDHCPv4Event(ctx context.Context, id string, session 
 					"err",
 					err,
 				)
-				module.recordLeasePersistence(id, "ipv4", "failed", err.Error())
+				module.recordLeasePersistence(id, familyIPv4, "failed", err.Error())
 			} else {
-				module.recordLeasePersistence(id, "ipv4", "saved", "")
+				module.recordLeasePersistence(id, familyIPv4, "saved", "")
 			}
 		case netif.LeaseExpired:
 			module.deleteRecoveryLease(ctx, id, netif.LeaseProtocolDHCPv4)
@@ -648,19 +500,6 @@ func (module *Module) handleDHCPv4Event(ctx context.Context, id string, session 
 	return resolved
 }
 
-func (module *Module) resolveDHCPv4Recovery(id string, session *dhcpSession) bool {
-	module.sessionMu.Lock()
-	defer module.sessionMu.Unlock()
-	current := module.sessions[id]
-	if current != session || current.generation != session.generation || !session.recoveryPending {
-		return false
-	}
-
-	session.recoveryPending = false
-
-	return true
-}
-
 func (module *Module) deleteRecoveryLease(
 	ctx context.Context,
 	id string,
@@ -670,9 +509,9 @@ func (module *Module) deleteRecoveryLease(
 		return false
 	}
 
-	family := "ipv4"
+	family := familyIPv4
 	if protocol == netif.LeaseProtocolDHCPv6 {
-		family = "ipv6"
+		family = familyIPv6
 	}
 
 	if err := module.leaseStore.Delete(id, protocol); err != nil &&
@@ -697,18 +536,6 @@ func (module *Module) deleteRecoveryLease(
 	return true
 }
 
-func (module *Module) recordLeasePersistence(id, family, result, reason string) {
-	if module.Env.LiveState != nil {
-		module.Env.LiveState.SetLeasePersistence(id, family, result, reason)
-	}
-}
-
-func (module *Module) requestLeaseReconcile(reason string) {
-	if module.Env.RequestReconcile != nil {
-		module.Env.RequestReconcile(reason)
-	}
-}
-
 func (module *Module) reconcileFamily(
 	ctx context.Context,
 	log *slog.Logger,
@@ -725,124 +552,27 @@ func (module *Module) reconcileFamily(
 		metric = *settings.RouteMetric
 	}
 
-	routes := netif.OwnedRoutesFromIntent(settings.Routes)
-	for _, route := range settings.Routes {
-		assignments = append(
-			assignments,
-			interfaceintent.Assignment{
-				ConnectionID: connection.ID,
-				Family:       family,
-				Kind:         interfaceintent.AssignmentStaticRoute,
-				Source:       "configured",
-				Purpose:      "",
-				Value:        netip.Prefix{},
-				Route: &interfaceintent.RouteIntent{
-					Destination: route.Destination,
-					Gateway:     route.Gateway,
-					TableID:     route.TableID,
-					Metric:      route.Metric,
-				},
-				ClientID:       "",
-				DNS:            nil,
-				DUID:           "",
-				IAID:           nil,
-				AcquiredAt:     time.Time{},
-				RenewAt:        nil,
-				RebindAt:       nil,
-				PreferredUntil: nil,
-				ValidUntil:     nil,
-				Valid:          true,
-			},
-		)
-	}
+	routes := configuredFamilyRoutes(connection, family, settings, &assignments)
 
-	if settings.Gateway.IsValid() {
-		destination := netip.MustParsePrefix("::/0")
-		if family == "ipv4" {
-			destination = netip.MustParsePrefix("0.0.0.0/0")
-		}
+	appendGatewayRoute(connection, family, settings, metric, &routes, &assignments)
 
-		routes = append(
-			routes,
-			netif.OwnedRoute{Destination: destination, Gateway: settings.Gateway, Metric: metric},
-		)
-		assignments = append(
-			assignments,
-			interfaceintent.Assignment{
-				ConnectionID: connection.ID,
-				Family:       family,
-				Kind:         interfaceintent.AssignmentStaticRoute,
-				Source:       "configured",
-				Purpose:      "",
-				Value:        netip.Prefix{},
-				Route: &interfaceintent.RouteIntent{
-					Destination: destination,
-					Gateway:     settings.Gateway,
-					TableID:     254,
-					Metric:      metric,
-				},
-				ClientID:       "",
-				DNS:            nil,
-				DUID:           "",
-				IAID:           nil,
-				AcquiredAt:     time.Time{},
-				RenewAt:        nil,
-				RebindAt:       nil,
-				PreferredUntil: nil,
-				ValidUntil:     nil,
-				Valid:          true,
-			},
-		)
-	}
-
-	acquisition := "static"
-	validity := "valid"
-	leaseReady := true
-	var leaseError error
-	if family == "ipv4" && connection.IPv4 != nil && connection.IPv4.DHCP != nil &&
-		*connection.IPv4.DHCP {
-		lease, state, status, valid := currentLease(session, module.clock.Now())
-		acquisition, validity, leaseReady = state, status, valid
-		if valid {
-			settings, routes, assignments, leaseError = appendDHCPv4(
-				connection,
-				settings,
-				routes,
-				assignments,
-				lease,
-			)
-			if leaseError != nil {
-				leaseReady = false
-				validity = "invalid"
-			}
-		}
-	}
-
-	if family == "ipv6" {
-		acquisition, validity, leaseReady = module.dhcpv6State(connection)
-	}
+	acquisition, validity, leaseReady, leaseError := module.acquireFamily(
+		connection,
+		family,
+		session,
+		&settings,
+		&routes,
+		&assignments,
+	)
 
 	if module.Env.LiveState != nil {
 		module.Env.LiveState.SetAssignment(id, family, acquisition, validity, assignments)
 	}
 
-	lifetimes := make(map[netip.Prefix]netif.OwnedAddressLifetime)
-
-	for _, assignment := range assignments {
-		if assignment.Kind != interfaceintent.AssignmentDHCPv6IANA ||
-			assignment.PreferredUntil == nil ||
-			assignment.ValidUntil == nil {
-			continue
-		}
-
-		lifetimes[assignment.Value] = netif.OwnedAddressLifetime{
-			PreferredUntil: *assignment.PreferredUntil,
-			ValidUntil:     *assignment.ValidUntil,
-		}
-	}
+	lifetimes := assignmentLifetimes(assignments)
 
 	ready, linkFound := module.Env.OwnedLinks.Get(id)
-	if family == "ipv6" && !leaseReady && linkFound {
+	if family == familyIPv6 && !leaseReady && linkFound {
 		leaseReady, leaseError = module.hasUsableAutoconfiguredAddress(
 			ctx,
 			log,
@@ -881,40 +611,7 @@ func (module *Module) reconcileFamily(
 		)
 	}
 
-	result := "ready"
-	if !leaseReady {
-		result = "waiting"
-	}
-
-	reason := ""
-	if err != nil {
-		result = "failed"
-		reason = err.Error()
-		log.WarnContext(
-			ctx,
-			"addresses: reconcile family failed",
-			"connection_id",
-			id,
-			"family",
-			family,
-			"err",
-			err,
-		)
-	}
-
-	if module.Env.LiveState != nil {
-		module.Env.LiveState.SetFamilyApplyResult(
-			id,
-			family,
-			wanstate.ApplyResult{
-				Operation:  "reconcile-addresses",
-				Dependency: "link",
-				Result:     result,
-				Reason:     reason,
-				At:         time.Time{},
-			},
-		)
-	}
+	module.recordFamilyApply(ctx, log, id, family, leaseReady, err)
 }
 
 func (module *Module) hasUsableAutoconfiguredAddress(
@@ -958,7 +655,7 @@ func (module *Module) recoveryRetention(
 	now := module.clock.Now()
 	module.sessionMu.Lock()
 	defer module.sessionMu.Unlock()
-	if family == "ipv4" {
+	if family == familyIPv4 {
 		session := module.sessions[id]
 
 		return netif.RecordedRetention{
@@ -1021,7 +718,7 @@ func currentLease(session *dhcpSession, now time.Time) (netif.LeaseInfo, string,
 		return lease, "acquiring", "pending", false
 	}
 
-	return lease, strings.ToLower(lease.State.String()), "valid", true
+	return lease, strings.ToLower(lease.State.String()), assignmentValidityValid, true
 }
 
 func appendDHCPv4(
@@ -1042,18 +739,11 @@ func appendDHCPv4(
 		slices.Clone(settings.Addresses),
 		interfaceintent.Address{Prefix: prefix, Purpose: interfaceintent.PurposeLocal},
 	)
-	clientID := ""
-	useRoutes := true
-	if connection.IPv4.DHCPv4 != nil {
-		clientID = connection.IPv4.DHCPv4.ClientID
-		if connection.IPv4.DHCPv4.UseRoutes != nil {
-			useRoutes = *connection.IPv4.DHCPv4.UseRoutes
-		}
-	}
+	clientID, useRoutes := dhcpv4LeaseOptions(connection)
 
 	assignment := interfaceintent.Assignment{
 		ConnectionID:   connection.ID,
-		Family:         "ipv4",
+		Family:         familyIPv4,
 		Kind:           interfaceintent.AssignmentDHCPv4,
 		Source:         "dhcpv4",
 		Purpose:        interfaceintent.PurposeLocal,
@@ -1130,14 +820,6 @@ func appendDHCPv4(
 	}
 
 	return settings, routes, assignments, nil
-}
-
-func metricForFamily(family interfaceintent.Family) uint32 {
-	if family.RouteMetric == nil {
-		return 0
-	}
-
-	return *family.RouteMetric
 }
 
 func (module *Module) publishFamilyReadiness(
@@ -1248,21 +930,6 @@ func (module *Module) publishInstalled(
 	return len(verified), unready
 }
 
-func (module *Module) queueDHCPv6Decline(
-	id string,
-	expected *dhcpv6Session,
-	address netip.Addr,
-) bool {
-	module.sessionMu.Lock()
-	session := module.dhcpv6Sessions[id]
-	module.sessionMu.Unlock()
-	if session == nil || expected != nil && session != expected {
-		return false
-	}
-
-	return session.client.DeclineAddress(address)
-}
-
 func mappedAddresses(
 	connection interfaceintent.Connection,
 	translation *config.IPv4Translation,
@@ -1294,78 +961,6 @@ func mappedAddresses(
 	}
 
 	return addresses
-}
-
-func staticAddressEquals(connection interfaceintent.Connection, external netip.Addr) bool {
-	if connection.IPv4 == nil {
-		return false
-	}
-
-	for _, address := range connection.IPv4.Addresses {
-		if address.Prefix.Addr() == external {
-			return true
-		}
-	}
-
-	return false
-}
-
-func mappingOnLink(connection interfaceintent.Connection, external netip.Addr) bool {
-	if connection.IPv4 == nil {
-		return false
-	}
-
-	for _, address := range connection.IPv4.Addresses {
-		if address.Prefix.Bits() < 32 && address.Prefix.Masked().Contains(external) {
-			return true
-		}
-	}
-
-	return false
-}
-
-func addressAssignment(
-	connection interfaceintent.Connection,
-	family string,
-	kind interfaceintent.AssignmentKind,
-	purpose interfaceintent.AddressPurpose,
-	value netip.Prefix,
-) interfaceintent.Assignment {
-	return interfaceintent.Assignment{
-		ConnectionID:   connection.ID,
-		Family:         family,
-		Kind:           kind,
-		Source:         "configured",
-		Purpose:        purpose,
-		Value:          value,
-		Route:          nil,
-		ClientID:       "",
-		DNS:            nil,
-		DUID:           "",
-		IAID:           nil,
-		AcquiredAt:     time.Time{},
-		RenewAt:        nil,
-		RebindAt:       nil,
-		PreferredUntil: nil,
-		ValidUntil:     nil,
-		Valid:          true,
-	}
-}
-
-func familyV4(value *interfaceintent.IPv4) *interfaceintent.Family {
-	if value == nil {
-		return nil
-	}
-
-	return &value.Family
-}
-
-func familyV6(value *interfaceintent.IPv6) *interfaceintent.Family {
-	if value == nil {
-		return nil
-	}
-
-	return &value.Family
 }
 
 func init() { ifmgr.Register(moduleName, New) }

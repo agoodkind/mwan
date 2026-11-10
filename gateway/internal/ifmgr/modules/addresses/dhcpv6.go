@@ -67,15 +67,7 @@ func (module *Module) currentDHCPv6Client(
 	module.sessionMu.Unlock()
 	clientConfig, err := dhcpv6PDConfig(connection, ready.ActualName)
 	if err != nil {
-		module.Env.Delegations.Delete(connection.Name)
-		log.ErrorContext(
-			ctx,
-			"addresses: DHCPv6 configuration invalid",
-			"connection_id",
-			id,
-			"err",
-			err,
-		)
+		module.rejectDHCPv6Configuration(ctx, log, connection, id, err)
 
 		return
 	}
@@ -117,40 +109,20 @@ func (module *Module) currentDHCPv6Client(
 		}
 	}
 
-	clientContext, cancel := context.WithCancel(ifmgr.WithoutForwardingChange(ctx))
-	client, err := netif.StartDHCPv6PDClient(clientContext, log, clientConfig)
-	if err != nil {
-		cancel()
-		if addrDone != nil {
-			close(addrDone)
-		}
-
-		module.Env.Delegations.Delete(connection.Name)
-		log.ErrorContext(ctx, "addresses: DHCPv6 client failed", "connection_id", id, "err", err)
-
-		return
-	}
-
-	module.sessionMu.Lock()
-	module.nextGeneration++
-	session := &dhcpv6Session{
-		client:           client,
-		cancel:           cancel,
-		ready:            ready,
-		identity:         identity,
-		generation:       module.nextGeneration,
-		addrUpdates:      addrUpdates,
-		addrErrors:       addrErrors,
-		addrDone:         addrDone,
-		recoveryPending:  cached != nil,
-		recoveryUntil:    dhcpv6RecoveryExpiry(cached),
-		cachedLease:      cached,
-		recoveryRejected: recoveryRejected,
-	}
-	module.dhcpv6Sessions[id] = session
-	module.Env.Delegations.Delete(connection.Name)
-	module.sessionMu.Unlock()
-	module.startDHCPv6Watcher(clientContext, log, id, connection.Name, session)
+	module.startDHCPv6Session(
+		ctx,
+		log,
+		connection,
+		id,
+		ready,
+		identity,
+		cached,
+		recoveryRejected,
+		clientConfig,
+		addrUpdates,
+		addrErrors,
+		addrDone,
+	)
 }
 
 func dhcpv6LinkIdentity(
@@ -202,6 +174,7 @@ func (module *Module) loadDHCPv6Recovery(
 			"err",
 			err,
 		)
+
 		return nil, false
 	}
 
@@ -217,7 +190,7 @@ func (module *Module) loadDHCPv6Recovery(
 
 	log.WarnContext(ctx, "addresses: DHCPv6 saved lease rejected", "connection_id", id, "err", err)
 	if module.deleteRecoveryLease(ctx, id, netif.LeaseProtocolDHCPv6) {
-		module.recordLeasePersistence(id, "ipv6", "rejected", err.Error())
+		module.recordLeasePersistence(id, familyIPv6, "rejected", err.Error())
 	}
 
 	return nil, true
@@ -377,6 +350,7 @@ func dhcpv6PDConfig(
 			"err",
 			err,
 		)
+
 		return netif.DHCPv6PDConfig{}, fmt.Errorf("decode DUID: %w", err)
 	}
 
@@ -452,6 +426,7 @@ func (module *Module) watchDHCPv6(ctx context.Context, id, iface string, session
 				"err",
 				err,
 			)
+
 			return
 		case update, ok := <-session.addrUpdates:
 			if !ok {
@@ -552,9 +527,9 @@ func (module *Module) handleDHCPv6Event(
 				"err",
 				err,
 			)
-			module.recordLeasePersistence(id, "ipv6", "failed", err.Error())
+			module.recordLeasePersistence(id, familyIPv6, "failed", err.Error())
 		} else {
-			module.recordLeasePersistence(id, "ipv6", "saved", "")
+			module.recordLeasePersistence(id, familyIPv6, "saved", "")
 		}
 	}
 
@@ -638,7 +613,7 @@ func (module *Module) delegationAssignments(
 		iaid := lease.IAID
 		assignment := interfaceintent.Assignment{
 			ConnectionID:   connection.ID,
-			Family:         "ipv6",
+			Family:         familyIPv6,
 			Kind:           interfaceintent.AssignmentDHCPv6IAPD,
 			Source:         "dhcpv6",
 			Purpose:        "",
@@ -688,7 +663,7 @@ func (module *Module) localDHCPv6Assignments(
 			assignments,
 			interfaceintent.Assignment{
 				ConnectionID:   connection.ID,
-				Family:         "ipv6",
+				Family:         familyIPv6,
 				Kind:           interfaceintent.AssignmentDHCPv6IANA,
 				Source:         "dhcpv6",
 				Purpose:        interfaceintent.PurposeLocal,
@@ -717,7 +692,7 @@ func leaseAddressInstallable(validUntil, now time.Time) bool {
 
 func (module *Module) dhcpv6State(connection interfaceintent.Connection) (string, string, bool) {
 	if connection.IPv6 == nil || connection.IPv6.DHCP == nil || !*connection.IPv6.DHCP {
-		return "static", "valid", true
+		return "static", assignmentValidityValid, true
 	}
 
 	wantsAddress := false
@@ -772,16 +747,91 @@ func (module *Module) dhcpv6State(connection interfaceintent.Connection) (string
 		return "partial", "partial", true
 	}
 
-	return "bound", "valid", true
+	return "bound", assignmentValidityValid, true
 }
 
 func (module *Module) familyDelegations(
 	connection interfaceintent.Connection,
 	family string,
 ) []interfaceintent.Assignment {
-	if family != "ipv6" {
+	if family != familyIPv6 {
 		return nil
 	}
 
 	return module.delegationAssignments(connection)
+}
+
+func (module *Module) startDHCPv6Session(
+	ctx context.Context,
+	log *slog.Logger,
+	connection interfaceintent.Connection,
+	connectionID string,
+	ready netif.OwnedLinkResult,
+	identity string,
+	cached *netif.DHCPv6PDLease,
+	recoveryRejected bool,
+	clientConfig netif.DHCPv6PDConfig,
+	addrUpdates chan netlink.AddrUpdate,
+	addrErrors chan error,
+	addrDone chan struct{},
+) {
+	clientContext, cancel := context.WithCancel(ifmgr.WithoutForwardingChange(ctx))
+	client, err := netif.StartDHCPv6PDClient(clientContext, log, clientConfig)
+	if err != nil {
+		cancel()
+		if addrDone != nil {
+			close(addrDone)
+		}
+
+		module.Env.Delegations.Delete(connection.Name)
+		log.ErrorContext(
+			ctx,
+			"addresses: DHCPv6 client failed",
+			"connection_id",
+			connectionID,
+			"err",
+			err,
+		)
+
+		return
+	}
+
+	module.sessionMu.Lock()
+	module.nextGeneration++
+	session := &dhcpv6Session{
+		client:           client,
+		cancel:           cancel,
+		ready:            ready,
+		identity:         identity,
+		generation:       module.nextGeneration,
+		addrUpdates:      addrUpdates,
+		addrErrors:       addrErrors,
+		addrDone:         addrDone,
+		recoveryPending:  cached != nil,
+		recoveryUntil:    dhcpv6RecoveryExpiry(cached),
+		cachedLease:      cached,
+		recoveryRejected: recoveryRejected,
+	}
+	module.dhcpv6Sessions[connectionID] = session
+	module.Env.Delegations.Delete(connection.Name)
+	module.sessionMu.Unlock()
+	module.startDHCPv6Watcher(clientContext, log, connectionID, connection.Name, session)
+}
+
+func (module *Module) rejectDHCPv6Configuration(
+	ctx context.Context,
+	log *slog.Logger,
+	connection interfaceintent.Connection,
+	connectionID string,
+	err error,
+) {
+	module.Env.Delegations.Delete(connection.Name)
+	log.ErrorContext(
+		ctx,
+		"addresses: DHCPv6 configuration invalid",
+		"connection_id",
+		connectionID,
+		"err",
+		err,
+	)
 }
