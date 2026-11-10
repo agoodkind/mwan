@@ -264,6 +264,16 @@ func openQueuePollSession(ctx context.Context, endpoints Endpoints) (*queuePollS
 		)
 	}
 
+	return newQueuePollSession(client, statistics, generation, token, threads.ThreadData), nil
+}
+
+func newQueuePollSession(
+	client *Client,
+	statistics *statsclient.StatsClient,
+	generation string,
+	token uint64,
+	threads []vlib.ThreadData,
+) *queuePollSession {
 	return &queuePollSession{
 		client:     client,
 		statistics: statistics,
@@ -278,8 +288,8 @@ func openQueuePollSession(ctx context.Context, endpoints Endpoints) (*queuePollS
 			Sequence:  0,
 			Queues:    nil,
 		},
-		threads: threads.ThreadData,
-	}, nil
+		threads: threads,
+	}
 }
 
 func (session *queuePollSession) control(
@@ -432,6 +442,7 @@ func (session *queuePollSession) read(
 			"error",
 			err,
 		)
+
 		return QueuePollProfile{}, fmt.Errorf("read VPP queue profiling snapshot: %w", err)
 	}
 
@@ -574,6 +585,7 @@ func (snapshot queuePollSnapshot) threadCounters(threadID uint32) ([]QueuePollCo
 				"error",
 				err,
 			)
+
 			return counters, fmt.Errorf("parse VPP queue identity %q: %w", name, err)
 		}
 
